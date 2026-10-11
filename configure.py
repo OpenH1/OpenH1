@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # root build script: writes build.ninja for the native ports (Linux, Windows,
-# Android)
+# Android) and the web port
 
 import argparse
 import io
@@ -13,7 +13,8 @@ from types import SimpleNamespace
 from tools import ninja_syntax
 from tools.android_build import android_configure_inputs, generate_android_build
 from tools.linux_arm64_build import generate_linux_arm64_build, is_linux_arm64, linux_arm64_configure_inputs
-from tools.linux_build import generate_linux_build, linux_configure_inputs
+from tools.linux_build import check_profile_options, generate_linux_build, linux_configure_inputs
+from tools.web_build import generate_web_build, web_configure_inputs
 from tools.windows_build import generate_windows_build, windows_configure_inputs
 
 # arguments
@@ -32,7 +33,13 @@ parser.add_argument(
 parser.add_argument(
     "--release",
     action="store_true",
-    help="release builds (Linux, Windows, Android): assertions are not checked",
+    help="release builds (Linux, Windows, Android, web): assertions are not checked",
+)
+parser.add_argument(
+    "--profile",
+    action="store_true",
+    help="profiling builds (Linux, Windows, Android): CPU scopes recorded on a "
+    "console command or launch setting (README, \"Profiling builds\"); not with --pgo=train",
 )
 parser.add_argument(
     "--lto",
@@ -95,7 +102,16 @@ parser.add_argument(
     help="the VR mode (OpenXR) in `ninja linux_arm64`, with the desktop OpenGL renderer; "
     "refer to \"VR\" in port/linux/README.md",
 )
+parser.add_argument(
+    "--web-emcc",
+    type=str,
+    help="Emscripten's emcc for `ninja web` (default: emcc on the PATH, then EMSDK's or ~/emsdk's)",
+)
 args = parser.parse_args()
+try:
+    check_profile_options(args.profile, args.pgo)
+except ValueError as error:
+    parser.error(str(error))
 
 # the settings the builds read
 sln = SimpleNamespace(
@@ -103,6 +119,7 @@ sln = SimpleNamespace(
     linux_cc=args.linux_cc,
     compiler_launcher=args.compiler_launcher,
     port_release=args.release,
+    port_profile=args.profile,
     port_lto=args.lto,
     port_portable=args.portable,
     port_pgo=args.pgo,
@@ -112,6 +129,7 @@ sln = SimpleNamespace(
     linux_arm64_cc=args.linux_arm64_cc,
     linux_arm64_gl=args.linux_arm64_gl,
     port_vr=args.vr,
+    web_emcc=args.web_emcc,
 )
 
 
@@ -138,6 +156,7 @@ generate_linux_build(n, sln)
 generate_android_build(n, sln)
 generate_linux_arm64_build(n, sln)
 generate_windows_build(n, sln)
+generate_web_build(n, sln)
 
 n.comment("Reconfigure on change")
 n.rule(
@@ -156,6 +175,7 @@ n.build(
         *android_configure_inputs(),
         *linux_arm64_configure_inputs(),
         *windows_configure_inputs(),
+        *web_configure_inputs(),
     ],
 )
 n.newline()

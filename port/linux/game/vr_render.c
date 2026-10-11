@@ -1103,6 +1103,13 @@ void vr_render_screen_point(const real clip[4], real width, real height)
 	halo_vr_set_screen_corrections(corrections);
 }
 
+/* whether what is drawn about a screen point moves to each eye as the point
+does (vr_render_screen_point): then each such draw is its own */
+boolean vr_render_screen_points_move(void)
+{
+	return vr_render.active;
+}
+
 /* the draws in the screen are the same in both eyes again */
 void vr_render_screen_point_end(void)
 {

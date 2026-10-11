@@ -1372,7 +1372,9 @@ static void audio_start(void)
 		the menus' music broke up, which 1024 does not (about 21 ms at 48 kHz,
 		11 ms more than 512) */
 		SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "1024");
-#else
+#elif !defined(HALO_WEB)
+		/* (a browser's, SDL's own: with room for the page's scheduling, which
+		512 frames underran) */
 		SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "512");
 #endif
 		snprintf(audio_device_name, sizeof(audio_device_name), "%s", audio_device_setting());
@@ -1449,6 +1451,10 @@ static void stream_complete_head(struct sdl_stream *stream, DWORD status, DWORD 
 	struct voice_packet *entry = &stream->packets[stream->packet_head];
 	XMEDIAPACKET packet = entry->packet;
 
+	/* (one not played to its end, flushed: the cursor was its place, and the
+	mixer may take the next while the lock is let go below) */
+	if (!entry->finished)
+		stream->cursor = 0;
 	packet_release(entry);
 	entry->finished = FALSE;
 	stream->packet_head = (stream->packet_head + 1) % MAXIMUM_STREAM_PACKETS;

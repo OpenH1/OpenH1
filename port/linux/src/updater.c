@@ -29,7 +29,7 @@ update.h's: posix_update.c on Linux, win32_update.c on Windows.
 #include "port_config.h"
 #include "update.h"
 
-#ifndef HALO_ANDROID
+#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
 
 #include "zlib_prefixed.h"
 
@@ -418,6 +418,7 @@ static int updater_download_zip(const char *zip_path, char *error, size_t error_
 	thread = SDL_CreateThread(updater_download_thread, "update download", &download);
 	if (!thread)
 	{
+		SDL_DestroyMutex(download.lock);
 		snprintf(error, error_size, "could not start the download");
 		return 0;
 	}
@@ -662,5 +663,15 @@ void updater_poll(SDL_Window *window)
 void updater_start(void)
 {
 }
+
+#ifdef HALO_WEB
+#include <SDL3/SDL.h>
+
+/* (the site updates itself: port/web/site/sw.js) */
+void updater_poll(SDL_Window *window)
+{
+	(void)window;
+}
+#endif
 
 #endif

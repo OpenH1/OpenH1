@@ -54,6 +54,9 @@ changes GL state behind it (binding a texture to upload it, deleting one)
 must call this afterwards. */
 
 void xgpu_gl_state_invalidate(void);
+/* a texture about to be deleted: the binding shadows forget it, since GL
+may give its name to a new texture (call before glDeleteTextures) */
+void xgpu_gl_texture_deleted(unsigned int texture);
 
 /* a compiled shader, or a linked program of two, or 0 with the log
 written */
@@ -172,7 +175,11 @@ struct nv2a_pixel_shader_key
 	/* drawn into both eyes at once (the VR mode, d3d8_gl.c): layered
 	render targets are sampled at the view's layer (XGPU_MULTIVIEW_*) */
 	unsigned char multiview;
-	unsigned char reserved[1];
+	/* the source's blend factor, applied here instead (1 the blend color, 2
+	one less it, 3 its alpha, 4 one less that; 0 none): WebGL refuses a
+	blend of a constant color factor with a constant alpha one, as the
+	meters' (shader_transparent_meter) */
+	unsigned char source_blend;
 };
 
 char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key);

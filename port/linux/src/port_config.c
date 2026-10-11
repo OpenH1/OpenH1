@@ -54,6 +54,8 @@ enum
 	_platform_all = _platform_desktop | _platform_android,
 	/* (of the desktop builds, only Windows) */
 	_platform_windows = 4,
+	/* (the web build, which has the desktop's settings, and these) */
+	_platform_web = 8,
 };
 
 struct config_setting
@@ -68,6 +70,14 @@ struct config_setting
 	unsigned platforms;
 	const char *comment;
 };
+
+/* crouching's keys (in a browser C alone: a page cannot keep Ctrl+W, Ctrl+S or
+Ctrl+D, which moving and crouching would press, from the browser) */
+#ifdef HALO_WEB
+#define CROUCH_KEYS "\"C\""
+#else
+#define CROUCH_KEYS "\"Left Ctrl, C\""
+#endif
 
 static const struct config_setting config_settings[] =
 {
@@ -115,6 +125,17 @@ static const struct config_setting config_settings[] =
 		"In first person, point the view where the player aims now instead of\n"
 		"where the last tick left it: the view turns the frame the mouse moves,\n"
 		"not up to two ticks (66 ms) later." },
+	{ "display.fov", _config_real, "0.0", "HALO_FOV", _environment_value, _platform_all,
+		"The first-person view's field of view on foot, in degrees across at\n"
+		"16:9 (20 to 150); 0 keeps the stock view. Vehicles, cinematics and\n"
+		"scripted cameras keep their own." },
+	{ "display.viewmodel_fov", _config_real, "0.0", "HALO_VIEWMODEL_FOV", _environment_value, _platform_all,
+		"The first-person weapon's and hands' field of view, in degrees across\n"
+		"at 16:9 (20 to 150); 0 keeps the weapon's stock view, also when\n"
+		"display.fov widens the world." },
+	{ "display.viewmodel_visible", _config_boolean, "true", "HALO_VIEWMODEL_VISIBLE", _environment_value, _platform_all,
+		"Draw the first-person weapon, hands and what is attached to them.\n"
+		"Off, they are not drawn; firing, animation, sound and lights go on." },
 	{ "display.high_res_hud", _config_boolean, "true", "HALO_HIGH_RES_HUD", _environment_value, _platform_all,
 		"Draw the HUD (meters, counters, panels, motion sensor, reticles,\n"
 		"waypoints, scopes) from the high-res assets (8x the maps' bitmaps);\n"
@@ -338,6 +359,15 @@ static const struct config_setting config_settings[] =
 		"How wide the menus are, in metres." },
 
 #endif
+	{ "input.touch_controls", _config_string, "\"auto\"", "HALO_TOUCH_CONTROLS", _environment_value, _platform_android | _platform_web,
+		"The on-screen touch controls in a game: \"auto\" shows them on a\n"
+		"touchscreen while no controller is connected, \"on\" also with a\n"
+		"controller, \"off\" never. A device without a touchscreen never shows\n"
+		"them. The menus take taps in any case." },
+	{ "input.touch_aim_assist", _config_boolean, "true", "HALO_TOUCH_AIM_ASSIST", _environment_value, _platform_android | _platform_web,
+		"The touch controls' swipe aiming gets a controller's aim assist: the\n"
+		"aim slows over a target and follows a moving one. false: none, as a\n"
+		"mouse (the bullets' own autoaim stays)." },
 	{ "input.mouse_sensitivity", _config_real, "1.0", "HALO_MOUSE_SENSITIVITY", _environment_value, _platform_desktop,
 		"How far the view turns for the mouse's movement." },
 	{ "input.invert_mouse", _config_boolean, "false", "HALO_MOUSE_INVERT", _environment_set_is_true, _platform_desktop,
@@ -367,7 +397,7 @@ static const struct config_setting config_settings[] =
 		"Moving right." },
 	{ "controls.jump", _config_string, "\"Space\"", "HALO_KEY_JUMP", _environment_value, _platform_all,
 		"Jumping (and skipping cutscenes)." },
-	{ "controls.crouch", _config_string, "\"Left Ctrl, C\"", "HALO_KEY_CROUCH", _environment_value, _platform_all,
+	{ "controls.crouch", _config_string, CROUCH_KEYS, "HALO_KEY_CROUCH", _environment_value, _platform_all,
 		"Crouching." },
 	{ "controls.fire", _config_string, "\"Mouse Left\"", "HALO_KEY_FIRE", _environment_value, _platform_all,
 		"Firing." },
@@ -423,6 +453,23 @@ static const struct config_setting config_settings[] =
 		"as CUSTOM SINGLEPLAYER and CUSTOM MULTIPLAYER. Their tags are checked\n"
 		"as the game's own maps' are before they run; false refuses them\n"
 		"(docs/custom_edition_caches.md)." },
+	{ "display.viewmodel_shield", _config_boolean, "false", "HALO_VIEWMODEL_SHIELD", _environment_value, _platform_all,
+		"The energy shield's flare on the first-person arms too, as on the body\n"
+		"(the stock game draws it on the body only)." },
+	{ "display.first_person_legs", _config_boolean, "false", "HALO_FIRST_PERSON_LEGS", _environment_value, _platform_all,
+		"Your own legs in first person, seen looking down: your body as others\n"
+		"see it, drawn from the waist down, moving as it moves." },
+	{ "display.shield_glow", _config_boolean, "false", "HALO_SHIELD_GLOW", _environment_value, _platform_all,
+		"Energy shields light what is around them as they flare, as plasma\n"
+		"does, in the shield's own color." },
+	{ "display.shield_glow_intensity", _config_string, "\"default\"", "HALO_SHIELD_GLOW_INTENSITY", _environment_value, _platform_all,
+		"How far the shield glow reaches: \"default\" or \"light_show\" (three\n"
+		"times as far, and at full strength from a third of the flare)." },
+	{ "display.shield_color", _config_string, "\"default\"", "HALO_SHIELD_COLOR", _environment_value, _platform_all,
+		"Your energy shield's color, as this machine draws it: \"default\" (the\n"
+		"shield's own) or a multiplayer armor color: white, black, red, blue,\n"
+		"gray, yellow, green, pink, purple, cyan, cobalt, orange, teal, sage,\n"
+		"brown, tan, maroon or salmon." },
 
 	{ "paths.data", _config_string, "\"\"", "HALO_DATA_ROOT", _environment_value, _platform_desktop,
 		"The folder holding the game data's maps folder; empty looks in the\n"
@@ -556,8 +603,9 @@ static const struct config_setting config_settings[] =
 
 	{ "debug.network_test", _config_string, "\"\"", "HALO_NETWORK_TEST", _environment_value, _platform_all,
 		"Automated system link sessions for testing (port/linux/game/network_test.c):\n"
-		"\"host:<map>\" hosts a game on that map, \"join\" joins the first game found;\n"
-		"empty for none." },
+		"\"host:<map>\" hosts a game on that map, \"join\" joins the first game found,\n"
+		"\"browse\" the one with the most players the server browser lists (not\n"
+		"co-op, if it can); empty for none." },
 	{ "debug.network_test_start", _config_real, "15.0", "HALO_NETWORK_TEST_START", _environment_value, _platform_all,
 		"Seconds after hosting that an automated test game starts." },
 	{ "debug.network_test_kill", _config_real, "0.0", "HALO_NETWORK_TEST_KILL", _environment_value, _platform_all,
@@ -579,6 +627,10 @@ static const struct config_setting config_settings[] =
 		_platform_all,
 		"The weapon network_test_pickup stands the player on: the first whose tag\n"
 		"name has this in it (\"sniper\", say); empty any." },
+	{ "debug.network_test_public", _config_boolean, "false", "HALO_NETWORK_TEST_PUBLIC", _environment_value,
+		_platform_all,
+		"The network test's host lists its game in the server browser, as Create\n"
+		"Game > Internet's PUBLIC does (debug.network_test \"browse\" joins it)." },
 	{ "debug.telnet_console", _config_boolean, "false", "HALO_TELNET_CONSOLE", _environment_set_is_true, _platform_all,
 		"Listen on 127.0.0.1 (port telnet_console_port) for a script console that\n"
 		"runs what it is sent as the game's console does, with no password; false\n"
@@ -587,6 +639,12 @@ static const struct config_setting config_settings[] =
 		_platform_all,
 		"The port of the script console (telnet_console); the Xbox's was 23, which\n"
 		"only the administrator can listen on." },
+	{ "debug.touch_targets", _config_boolean, "false", "HALO_TOUCH_TARGETS", _environment_set_is_true, _platform_all,
+		"Outline the menus' tap targets (item green, value blue, list slot yellow,\n"
+		"legend button red, the band beside a list's slots orange; the virtual\n"
+		"keyboard's keys white), mark where the last finger went down and the\n"
+		"last tap landed for 3 seconds, and log each tap with the target it hit\n"
+		"(and a value's split); to judge touch accuracy." },
 	{ "debug.network_latency", _config_real, "0.0", "HALO_NETWORK_LATENCY", _environment_value, _platform_all,
 		"Milliseconds everything received is held back (a round trip between two\n"
 		"machines of twice it), to test the netcode as over the internet; 0 none." },
@@ -714,12 +772,29 @@ static const struct config_setting config_settings[] =
 		"protection; false compares page contents once a frame instead, which is\n"
 		"slower. Under ARM translation (the x86 emulator) the app always compares\n"
 		"contents. Read by the app from the file (port/android/host/host_main.c)." },
+#ifdef HALO_PROFILE
+	{ "debug.profile_record", _config_boolean, "false", "HALO_PROFILE_RECORD", _environment_value, _platform_all,
+		"Record a profile with no command (configure.py --profile builds): from\n"
+		"when profile_record_when says until profile_stop, a map change or the\n"
+		"end, into numbered part files in the data folder's profiles folder\n"
+		"(tools/net_report.py reads it)." },
+	{ "debug.profile_record_when", _config_string, "\"start\"", "HALO_PROFILE_RECORD_WHEN", _environment_value,
+		_platform_all,
+		"\"start\": from the first frame until the first map change; \"game\":\n"
+		"each game that is not the main menu, a recording each, until its map\n"
+		"goes." },
+	{ "debug.profile_memory", _config_integer, "256", "HALO_PROFILE_MEMORY", _environment_value, _platform_all,
+		"Megabytes a recording keeps in memory, 4 to 1024: two halves, each\n"
+		"written out as a part when it fills." },
+#endif
 };
 
 #define NUMBER_OF_CONFIG_SETTINGS (sizeof(config_settings) / sizeof(config_settings[0]))
 
 #ifdef HALO_ANDROID
 #define CONFIG_PLATFORM _platform_android
+#elif defined(HALO_WEB)
+#define CONFIG_PLATFORM (_platform_desktop | _platform_web)
 #elif defined(_WIN32)
 #define CONFIG_PLATFORM (_platform_desktop | _platform_windows)
 #else
@@ -742,8 +817,9 @@ static pthread_mutex_t config_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void config_path(char *path, size_t size)
 {
-#ifdef HALO_ANDROID
-	/* the data folder, which the app names (port/android/host/host_main.c) */
+#if defined(HALO_ANDROID) || defined(HALO_WEB)
+	/* the data folder, which the app names (port/android/host/host_main.c;
+	on the web, port/web/src/web_main.c) */
 	const char *root = getenv("HALO_DATA_ROOT");
 
 	snprintf(path, size, "%s/config.toml", root && *root ? root : ".");
@@ -937,22 +1013,38 @@ static char *config_default_text(void)
 		"# the environment variable named with it, which wins over this file.\n");
 #endif
 	config_append(&text, "#\n" CONFIG_DEFAULTS_NOTE);
+	/* each section once, where its first setting is, with all of its
+	settings: a section twice is an error to TOML, which would leave the
+	whole file unread */
 	for (index = 0; index < NUMBER_OF_CONFIG_SETTINGS; index++)
 	{
 		const struct config_setting *setting = &config_settings[index];
 		const char *dot = strchr(setting->name, '.');
+		size_t length, earlier, later;
 		char buffer[64];
 
 		if (!(setting->platforms & CONFIG_PLATFORM) || !dot)
 			continue;
-		if (strncmp(section, setting->name, (size_t)(dot - setting->name)) ||
-			section[dot - setting->name] != 0)
+		length = (size_t)(dot - setting->name);
+		for (earlier = 0; earlier < index; earlier++)
 		{
-			snprintf(section, sizeof(section), "%.*s", (int)(dot - setting->name), setting->name);
-			snprintf(buffer, sizeof(buffer), "\n[%s]\n", section);
-			config_append(&text, buffer);
+			const struct config_setting *other = &config_settings[earlier];
+
+			if ((other->platforms & CONFIG_PLATFORM) && !strncmp(other->name, setting->name, length + 1))
+				break;
 		}
-		config_append_setting(&text, setting);
+		if (earlier < index)
+			continue;
+		snprintf(section, sizeof(section), "%.*s", (int)length, setting->name);
+		snprintf(buffer, sizeof(buffer), "\n[%s]\n", section);
+		config_append(&text, buffer);
+		for (later = index; later < NUMBER_OF_CONFIG_SETTINGS; later++)
+		{
+			const struct config_setting *other = &config_settings[later];
+
+			if ((other->platforms & CONFIG_PLATFORM) && !strncmp(other->name, setting->name, length + 1))
+				config_append_setting(&text, other);
+		}
 	}
 	return text.buffer;
 }

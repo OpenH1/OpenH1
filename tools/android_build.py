@@ -26,8 +26,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .linux_build import (LINUX_PROFILE, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL_MATH_DIR, XDK_INCLUDE,
-                          compile_launcher, game_defines_and_includes, game_sources, miniupnpc_sources,
-                          musl_math_sources, opus_cflags, opus_sources, pgo_mode, pgo_profile,
+                          compile_launcher, configuration_defines, game_defines_and_includes, game_sources,
+                          miniupnpc_sources, musl_math_sources, opus_cflags, opus_sources, pgo_mode, pgo_profile,
                           profile_use_flags, updater_defines, xdk_headers)
 from .embed_assets import hud_assets_build, hud_configure_inputs
 from .ninja_syntax import Writer
@@ -41,6 +41,8 @@ TOML_DIR = Path("port/third_party/tomlc17")
 EXPAT_DIR = Path("port/third_party/expat")
 EXPAT_SOURCES = ("xmlparse.c", "xmlrole.c", "xmltok.c")
 KCP_DIR = Path("port/third_party/kcp")
+# internet play's DTLS with browsers (port/linux/src/posix_dtls.c, in the host)
+MBEDTLS_DIR = Path("port/third_party/mbedtls")
 MONOCYPHER_DIR = Path("port/third_party/monocypher")
 # the port's zlib (port/third_party/zlib/zlib_prefixed.h): what inflates the
 # maps, the menus' and the HUD's PNGs and the updates, data from anywhere,
@@ -362,7 +364,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
         f"-isystem {libc_include}", f"-isystem {arch}", f"-isystem {musl_dir}/arch/generic",
         f"-isystem {musl_dir}/include",
     ]
-    guest_abi = " ".join(abi_flags + (["-DHALO_RELEASE"] if getattr(sln, "port_release", False) else []))
+    guest_abi = " ".join(abi_flags + configuration_defines(sln))
     guest_code = " ".join(GUEST_CODE_FLAGS)
     tool_implicit = [Path("tools/android_asm_convert.py"), *generated_headers]
     # profile-guided optimisation with the Linux build's profile (committed,
@@ -628,6 +630,15 @@ def generate_android_build(n: Writer, sln: Any) -> None:
                               else source.name + ".o")
         n.build(outputs=obj, rule="android_host_cc", inputs=source,
                 variables={"cflags": miniupnpc_cflags + (" -w" if source.name != "posix_upnp.c" else "")})
+        host_objects.append(obj)
+    # internet play's DTLS with browsers (posix_dtls.c, with
+    # port/third_party/mbedtls), as the other posix_*.c in the host
+    mbedtls_cflags = " ".join([host_cflags, f"-I{MBEDTLS_DIR / 'include'}", f"-I{MBEDTLS_DIR / 'library'}"])
+    for source in [LINUX_DIR / "src" / "posix_dtls.c", *sorted((MBEDTLS_DIR / "library").glob("*.c"))]:
+        obj = host_obj_dir / ("mbedtls_" + source.name + ".o" if source.parent.parent == MBEDTLS_DIR
+                              else source.name + ".o")
+        n.build(outputs=obj, rule="android_host_cc", inputs=source,
+                variables={"cflags": mbedtls_cflags + (" -w" if source.name != "posix_dtls.c" else "")})
         host_objects.append(obj)
     table_obj = host_obj_dir / "host_import_table.c.o"
     n.build(outputs=table_obj, rule="android_host_cc", inputs=host_table_c, variables={"cflags": host_cflags})

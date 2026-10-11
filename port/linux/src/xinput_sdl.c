@@ -40,6 +40,7 @@ drive the controller.
 #include "platform.h"
 #include "sdl_platform.h"
 #include "port_config.h"
+#include "touch_input.h"
 #include "halo_keyboard.h"
 #ifdef HALO_VR
 #include "vr.h"
@@ -93,10 +94,14 @@ static Uint64 wheel_press_until_ms = 0;
 static BOOL wheel_scrolling = FALSE;
 /* the way the scroll under way turns: 1 up (away), -1 down */
 static int wheel_direction = 0;
-/* when port 0's aim last moved, by the mouse and by the right stick
-(halo_linux_mouse_aiming) */
+/* when port 0's aim last moved, by the mouse, by the right stick, and by
+the touch controls (their swipe, gyroscope or stick: halo_linux_mouse_aiming,
+halo_linux_touch_aiming) */
 static Uint64 mouse_aimed_ms = 0;
 static Uint64 stick_aimed_ms = 0;
+#if defined(HALO_ANDROID) || defined(HALO_WEB)
+static Uint64 touch_aimed_ms = 0;
+#endif
 
 /* the right stick's deflection that counts as aiming with it, clear of a
 worn stick's drift */
@@ -154,6 +159,80 @@ int halo_linux_mouse_look(short gamepad_index, float *yaw, float *pitch)
 	*yaw = -x * scale * mouse_sensitivity();
 	*pitch = (invert ? y : -y) * scale * vertical_sensitivity;
 	return TRUE;
+}
+
+#if defined(HALO_ANDROID) || defined(HALO_WEB)
+/* the touch controls moved the player or the aim (halo_linux_touch_aiming) */
+static void touch_used(void)
+{
+	pthread_mutex_lock(&mouse_lock);
+	touch_aimed_ms = SDL_GetTicks();
+	pthread_mutex_unlock(&mouse_lock);
+}
+#endif
+
+/* the touch controls' stick as the player's movement (input_abstraction.c's
+keyboard_controls_update), forward and strafe -1..1, whatever the
+profile's sticks do; nonzero while it is pushed. Nothing but on Android and
+the web (port/web/site/touch.js). */
+int halo_linux_touch_move(short controller_index, float *forward, float *strafe)
+{
+	*forward = 0.0f;
+	*strafe = 0.0f;
+	if (controller_index != 0)
+		return FALSE;
+#if defined(HALO_ANDROID) || defined(HALO_WEB)
+	if (!touch_input_move(forward, strafe))
+		return FALSE;
+	touch_used();
+	return TRUE;
+#else
+	return FALSE;
+#endif
+}
+
+/* the touch controls' swipe and gyroscope since the last call, in radians at
+the mouse's rate per pixel (the view applies its own sensitivity), each
+apart: player_control.c inverts the swipe as the profile inverts the stick,
+not the gyroscope, which turns as the phone does, and makes them the
+stick's rate before the magnetism. Nothing but on Android and the web. */
+int halo_linux_touch_look(short gamepad_index, float *yaw, float *pitch, float *gyro_yaw, float *gyro_pitch)
+{
+	*yaw = 0.0f;
+	*pitch = 0.0f;
+	*gyro_yaw = 0.0f;
+	*gyro_pitch = 0.0f;
+	if (gamepad_index != 0)
+		return FALSE;
+#if defined(HALO_ANDROID) || defined(HALO_WEB)
+	touch_input_look(0.0022f, yaw, pitch, gyro_yaw, gyro_pitch);
+	if (*yaw == 0.0f && *pitch == 0.0f && *gyro_yaw == 0.0f && *gyro_pitch == 0.0f)
+		return FALSE;
+	touch_used();
+	return TRUE;
+#else
+	return FALSE;
+#endif
+}
+
+/* whether port 0's player aims with the touch controls without their aim
+assist (input.touch_aim_assist false): no magnetism, as for the mouse
+(player_control.c), until a stick moves the aim again */
+int halo_linux_touch_aiming(short gamepad_index)
+{
+#if defined(HALO_ANDROID) || defined(HALO_WEB)
+	int aiming;
+
+	if (gamepad_index != 0 || touch_input_aim_assist())
+		return FALSE;
+	pthread_mutex_lock(&mouse_lock);
+	aiming = touch_aimed_ms != 0 && touch_aimed_ms >= stick_aimed_ms;
+	pthread_mutex_unlock(&mouse_lock);
+	return aiming;
+#else
+	(void)gamepad_index;
+	return FALSE;
+#endif
 }
 
 /* whether the player on the gamepad aims with the mouse (it moved after the
@@ -549,6 +628,14 @@ the same weapon straight back. Timed in milliseconds, not polls: polls come
 once a frame, at the display's refresh rate. */
 #define WHEEL_PRESS_MS 50
 #define WHEEL_SCROLL_GAP_MS 200
+/* how far the wheel turns before it switches: a notch. A browser's notch is
+pixels, which SDL counts as a notch per 100, and some send fewer for one
+(about half), so in the web build half of SDL's notch is one */
+#ifdef HALO_WEB
+#define WHEEL_NOTCH 0.5f
+#else
+#define WHEEL_NOTCH 1.0f
+#endif
 
 /* debug.test_input "bot:<seed>": a scripted player for the automated
 network tests (port/linux/game/network_test.c), different for each seed:
@@ -698,7 +785,7 @@ static void wheel_update(void)
 	pthread_mutex_lock(&mouse_lock);
 	if (!wheel_scrolling)
 	{
-		if (fabsf(mouse_wheel_accumulated) >= 1.0f)
+		if (fabsf(mouse_wheel_accumulated) >= WHEEL_NOTCH)
 		{
 			wheel_scrolling = TRUE;
 			wheel_direction = mouse_wheel_accumulated > 0.0f ? 1 : -1;
@@ -962,6 +1049,10 @@ static int controller_port(HANDLE device)
 	return -1;
 }
 
+/* reads a controller's state; for port 0 the keyboard, mouse, debug input
+and touchscreen are merged into the first gamepad's; runs on the game's main
+thread (touch_input_gamepad relies on it); returns ERROR_SUCCESS or
+ERROR_DEVICE_NOT_CONNECTED for an unknown port */
 DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 {
 	int port = controller_port(device);
@@ -1017,6 +1108,10 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		halo_vr_gamepad(&state->Gamepad);
 #endif
 		test_input_gamepad(&state->Gamepad);
+		touch_input_gamepad(&state->Gamepad);
+#if defined(HALO_ANDROID) || defined(HALO_WEB)
+		touch_input_controls(&state->Gamepad, input.menus);
+#endif
 #ifdef HALO_VR
 		/* a gamepad's Back held recentres (not the keyboard's tab, the
 		scores) */
@@ -1059,6 +1154,12 @@ DWORD WINAPI XInputSetState(HANDLE device, PXINPUT_FEEDBACK feedback)
 	feedback->Header.dwStatus = ERROR_SUCCESS;
 	if (port < 0)
 		return ERROR_DEVICE_NOT_CONNECTED;
+#if defined(HALO_ANDROID) || defined(HALO_WEB)
+	/* the phone vibrates for the touch controls' player (in a browser, where
+	it can) */
+	if (port == 0)
+		touch_input_rumble(feedback->Rumble.wLeftMotorSpeed, feedback->Rumble.wRightMotorSpeed);
+#endif
 #ifdef HALO_VR
 	if (port == 0)
 		halo_vr_rumble(feedback->Rumble.wLeftMotorSpeed / 65535.0f, feedback->Rumble.wRightMotorSpeed / 65535.0f);

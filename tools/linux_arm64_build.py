@@ -163,7 +163,9 @@ def generate_linux_arm64_build(n: Writer, sln: Any) -> None:
         f"-I{ANDROID_DIR}/include", f"-I{ANDROID_DIR}/host", f"-I{SDL_DIR}/include", f"-I{LINUX_DIR}/src",
         f"-I{TOML_DIR}", f"-I{OPENXR_DIR}", *host_defines,
     ])
-    host_sources = [source for source in sorted((ANDROID_DIR / "host").glob("*.c")) if source.name != "host_main.c"]
+    # (the app's own: its entry point, and the touch controls through Java)
+    android_only = {"host_main.c", "host_touch.c"}
+    host_sources = [source for source in sorted((ANDROID_DIR / "host").glob("*.c")) if source.name not in android_only]
     host_sources += [
         PORT_DIR / "host_main.c", PORT_DIR / "host_desktop.c",
         LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",
@@ -186,11 +188,13 @@ def generate_linux_arm64_build(n: Writer, sln: Any) -> None:
         n.build(outputs=obj, rule="linux_arm64_host_cc", inputs=source,
                 variables={"cflags": miniupnpc_cflags + (" -w" if source.name != "posix_upnp.c" else "")})
         host_objects.append(obj)
-    # the self-updater's download (posix_update.c, with port/third_party/mbedtls)
+    # the self-updater's download (posix_update.c) and internet play's DTLS
+    # with browsers (posix_dtls.c), with port/third_party/mbedtls
     mbedtls_cflags = " ".join([host_cflags, f"-I{MBEDTLS_DIR / 'include'}"])
-    n.build(outputs=host_obj_dir / "posix_update.c.o", rule="linux_arm64_host_cc",
-            inputs=LINUX_DIR / "src" / "posix_update.c", variables={"cflags": mbedtls_cflags})
-    host_objects.append(host_obj_dir / "posix_update.c.o")
+    for name in ("posix_update.c", "posix_dtls.c"):
+        n.build(outputs=host_obj_dir / (name + ".o"), rule="linux_arm64_host_cc",
+                inputs=LINUX_DIR / "src" / name, variables={"cflags": mbedtls_cflags})
+        host_objects.append(host_obj_dir / (name + ".o"))
     for source in sorted((MBEDTLS_DIR / "library").glob("*.c")):
         obj = host_obj_dir / "mbedtls" / (source.name + ".o")
         n.build(outputs=obj, rule="linux_arm64_host_cc", inputs=source,
