@@ -6709,13 +6709,20 @@ eyepiece does, the view darkens to black at the lens's edge (its field
 stop), so that the lens's rim reads as the scope's, and the reticle is
 the scope's, over it: a fine cross through the middle, thick posts from
 the edge toward it (a duplex, which the eye finds at once), and a faint
-lit dot at the middle, which shows against what is dark. FALSE if the
-copy's program cannot be made. */
+lit dot at the middle, which shows against what is dark. The zoom is
+shown small in the lens (about as tall as the eye sees it, whatever the
+lens's size: vr_scope.c), below and right of the middle between the posts,
+as the game's HUD labels it ("2x", "10x"; vr.c's halo_vr_scope_zoom), as
+a scope's display shows it, in the HUD's blue with a shadow: the flat game's zoom readout,
+in the HUD's layer, would float beside the lens (hud_weapon.c leaves it
+out while a scope is raised). FALSE if the copy's program cannot be made. */
 static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 {
 	static GLuint program, sampler;
 	static BOOL failed;
-	static GLint size_location;
+	static GLint size_location, zoom_location, zoom_cell_location;
+	float zoom_height;
+	int zoom = (int)(halo_vr_scope_zoom(&zoom_height) + 0.5f);
 	static const char vertex_source[] =
 		"#version 450 core\n"
 		"void main()\n"
@@ -6727,7 +6734,28 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		"#version 450 core\n"
 		"uniform sampler2D scope_texture;\n"
 		"uniform float size;\n"
+		/* (the zoom, rounded: up to 99; 0, none; and its cells' size,
+		pixels) */
+		"uniform int zoom;\n"
+		"uniform float zoom_cell;\n"
 		"out vec4 colour;\n"
+		/* the readout's glyphs, 3x5 cells, a bit each, from the top row's
+		left: the digits, then x (lower) */
+		"const int glyphs[11] = int[11](31599, 11415, 29671, 29647, 23497, 31183, 31215, 29257, 31727,\n"
+		"	31695, 2728);\n"
+		/* whether the readout lights the cell q (cells from its top left,
+		down the display) */
+		"float readout(vec2 q)\n"
+		"{\n"
+		"	if (q.x < 0.0 || q.y < 0.0 || q.y >= 5.0)\n"
+		"		return 0.0;\n"
+		"	ivec2 cell = ivec2(floor(q));\n"
+		"	int count = zoom >= 10 ? 3 : 2, glyph = cell.x / 4, column = cell.x - glyph * 4;\n"
+		"	if (glyph >= count || column > 2)\n"
+		"		return 0.0;\n"
+		"	int code = glyph == count - 1 ? glyphs[10] : glyphs[count == 3 && glyph == 0 ? zoom / 10 : zoom % 10];\n"
+		"	return float((code >> (14 - cell.y * 3 - column)) & 1);\n"
+		"}\n"
 		"void main()\n"
 		"{\n"
 		/* (pixels from the middle, and the lens's radius in them; row 0
@@ -6748,6 +6776,14 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		"	c = mix(c, vec3(0.0), max(fine * 0.85, post));\n"
 		"	float dot_light = clamp(1.6 * pixel + 0.5 - length(p), 0.0, 1.0);\n"
 		"	c = mix(c, vec3(1.0, 0.35, 0.15), dot_light * 0.8);\n"
+		/* the zoom: 5 cells tall, from 0.3 of the radius right of and
+		below the middle; its shadow half a cell down and right */
+		"	if (zoom > 0)\n"
+		"	{\n"
+		"		vec2 q = (vec2(p.x, -p.y) - vec2(0.3 * radius)) / zoom_cell;\n"
+		"		c = mix(c, vec3(0.0), readout(q - vec2(0.5)) * 0.7);\n"
+		"		c = mix(c, vec3(0.45, 0.72, 1.0), readout(q) * 0.9);\n"
+		"	}\n"
 		"	float alpha = 1.0 - smoothstep(1.0 - 1.5 / radius, 1.0, r);\n"
 		"	colour = vec4(c * alpha, alpha);\n"
 		"}\n";
@@ -6774,6 +6810,8 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		glUseProgram(program);
 		glUniform1i(glGetUniformLocation(program, "scope_texture"), 0);
 		size_location = glGetUniformLocation(program, "size");
+		zoom_location = glGetUniformLocation(program, "zoom");
+		zoom_cell_location = glGetUniformLocation(program, "zoom_cell");
 		glGenSamplers(1, &sampler);
 		glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -6791,6 +6829,8 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glUseProgram(program);
 	glUniform1f(size_location, (GLfloat)size);
+	glUniform1i(zoom_location, zoom < 0 ? 0 : zoom > 99 ? 99 : zoom);
+	glUniform1f(zoom_cell_location, fmaxf(floorf((float)size * zoom_height / 5.0f), 1.0f));
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, source);
 	glBindSampler(0, sampler);

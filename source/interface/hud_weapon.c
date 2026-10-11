@@ -80,6 +80,18 @@ symbols in this file:
 #include <math.h>
 #include <string.h>
 
+#ifdef HALO_VR
+/* port/linux/game/vr_scope.c: a scope is raised to an eye in the VR mode,
+its lens showing the zoom (port/linux/src/d3d8_gl.c): the zoomed view's
+elements (the zoom's crosshairs, the readout with its arc and the side
+panel's waveform; the range ticks) are not drawn, which in the HUD's layer
+would float beside the lens */
+boolean vr_scope_raised(void);
+#define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) ((zoomed_layout) && vr_scope_raised())
+#else
+#define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) FALSE
+#endif
+
 /* ---------- constants */
 
 enum hud_crosshair_show_flags
@@ -1031,7 +1043,8 @@ static void crosshairs_draw(
 
 					if (weapon_hud_state_index_valid(state_index, NUMBER_OF_WEAPON_HUD_CROSSHAIR_STATES) &&
 						TEST_FLAG(render_flags, state_index) &&
-						TEST_FLAG(map_type_flags, element->use_on_map_type))
+						TEST_FLAG(map_type_flags, element->use_on_map_type) &&
+						!HUD_WEAPON_ZOOMED_HIDDEN(state_index == _crosshair_state_zoom))
 					{
 						struct crosshair_state *state = &crosshair->states[state_index];
 						short item_index;
@@ -1732,6 +1745,8 @@ static void render_weapon_hud(
 			rectangle2d window_bounds;
 			boolean zoomed_layout = hud_multitexture_overlays_follow_zoom(&element->static_element.multitexture_overlays);
 
+			if (HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout))
+				continue;
 			if (zoomed_layout)
 				hud_zoomed_layout_begin(&window_bounds);
 			state_index = element->header.state_type;
@@ -1763,6 +1778,8 @@ static void render_weapon_hud(
 			rectangle2d window_bounds;
 			boolean zoomed_layout = hud_multitexture_overlays_follow_zoom(&element->meter_element.multitexture_overlays);
 
+			if (HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout))
+				continue;
 			if (zoomed_layout)
 				hud_zoomed_layout_begin(&window_bounds);
 
@@ -1801,6 +1818,8 @@ static void render_weapon_hud(
 			rectangle2d window_bounds;
 			boolean zoomed_layout = hud_number_shows_only_when_zoomed(&element->number_element);
 
+			if (HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout))
+				continue;
 			if (TEST_FLAG(
 				element->weapon_flags,
 				_weapon_number_divide_by_clip_size_bit))

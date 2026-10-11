@@ -1203,7 +1203,8 @@ eye sees the scope from outside, as it would.
   than the scope itself: its sight's display.
 - Raised, it is as many times larger in the lens as the game's zoom is
   (the sniper rifle 2x, the pistol 2x), and the right stick's click steps
-  through the levels (the sniper rifle's 2x and 10x, and back). A scope
+  through the levels (the sniper rifle's 2x and 10x, and back; its "10x"
+  magnifies 8 times, as on the flat screen). A scope
   raised again has the level it had last, until you switch weapons.
   Lowered, nothing zooms, and the click does nothing.
 - The scope also counts as the game's zoom (sent to the other players as
@@ -1212,7 +1213,14 @@ eye sees the scope from outside, as it would.
   then shows the world at its own size until you click.
 - The lens has a reticle (fine lines through the middle, thick posts from
   its edge, and a faint red dot), which is where the shot goes: the world's
-  reticle is not drawn while a scope is raised. It must point within about
+  reticle is not drawn while a scope is raised. The zoom is shown small in
+  the lens, below and right of its middle, as the game's HUD labels it
+  ("2x", "10x"; about 1.6 degrees tall, larger in the pistol's small
+  window), not while unzoomed. The flat game's zoomed view (its "2x" and
+  "10x" with their dial, the range ticks) is not drawn while a scope is
+  raised, which in the HUD would float beside the lens, nor the display on
+  the back of the sniper rifle's scope (its green waveform and dial), all
+  about the lens at your eye; lowered, the rifle shows it again. It must point within about
   20 degrees of where your head looks; it is lowered past 25 degrees, or
   once your eye leaves it by a quarter more than it came in.
 - Only with `vr.aim = "controller"`, on foot. Other weapons that zoom (the

@@ -230,6 +230,10 @@ struct halo_vr_scope
 	float forward[3];
 	float up[3];
 	float size;
+	/* the zoom shown in the lens, as the game's HUD labels the zoom level
+	(0: unzoomed, none shown), and how tall (of the lens's width) */
+	float zoom;
+	float zoom_height;
 };
 
 /* the reload by hand (vr.manual_reload, port/linux/game/vr_reload.c): the
@@ -350,6 +354,9 @@ int halo_vr_scopes(void);
 /* this frame's scope, drawn into its image (the scope pass): shown where
 it says at the present; NULL, none */
 void halo_vr_scope(const struct halo_vr_scope *scope);
+/* d3d8_gl.c, as it makes the scope's image: the zoom shown in its lens
+(halo_vr_scope's; 0: none), and how tall (of the lens's width) */
+float halo_vr_scope_zoom(float *height);
 /* the weapon in hand, for the reload by hand, once a frame; and the reload
 by hand as it is (0 when it is off) */
 void halo_vr_reload_weapon(const struct halo_vr_reload_weapon *weapon);

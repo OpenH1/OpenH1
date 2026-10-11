@@ -15,10 +15,13 @@ at the eyepiece, to that eye alone (vr.c, host_vr.c): a quad layer, which
 the runtime reprojects to the head's latest pose as it does the eyes'.
 
 The view in the scope is as many times larger as the game's zoom
-magnifies (2 and 10 for the sniper rifle, 2 for the pistol), as the lens is
-seen from the eye: its field of view is the angle the lens spans from the
-eye over the magnification, so the image is that much larger than the
-world about it, wherever the eye is.
+magnifies (2 and 8 for the sniper rifle, whose HUD says "10x"; 2 for the
+pistol), as the lens is seen from the eye: its field of view is the angle
+the lens spans from the eye over the magnification, so the image is that
+much larger than the world about it, wherever the eye is. The lens shows
+the zoom as the HUD labels it; the HUD's zoomed view is not drawn while a
+scope is raised (hud_weapon.c), nor the display on the back of the sniper
+rifle's scope, about the lens at the eye.
 
 A scope is raised when an eye looks through it (behind its eyepiece,
 within its eye relief, near its axis) and it points about where the head
@@ -73,6 +76,11 @@ angle the lens spans */
 (d3d8_gl.c copies those into its image) */
 #define SCOPE_VIEW_LEFT 80
 #define SCOPE_VIEW_RIGHT 560
+/* the zoom shown in the lens this tall as the eye sees it (degrees), and
+no less nor more of the lens's width than these */
+#define ZOOM_DEGREES 1.6f
+#define ZOOM_LEAST 0.04f
+#define ZOOM_MOST 0.12f
 /* the scope's pass drawn once unseen, to make its shaders: this wide
 (degrees) */
 #define WARM_FIELD_OF_VIEW 100.0f
@@ -82,7 +90,12 @@ the camera the first-person weapon is posed from (forward, left, up), and
 its lens's radius, in metres as the first-person model has them (its world
 units, as large at any vr.world_scale as the world is); its eye relief, how
 far behind the eyepiece an eye looks through it, and how far from its axis
-(metres); and the smallest half angle (degrees) its lens spans from the eye.
+(metres); the smallest half angle (degrees) its lens spans from the eye;
+what the names of the shaders of the display on the back of its scope have
+in them (NULL: none), not drawn while it is raised; and its zoom levels'
+labels, which its lens shows as the game's HUD does (its zoom's sprites:
+the sniper rifle's second level magnifies 8 times, and says "10x"; 0: the
+magnification).
 The sniper rifle's is a rifle scope, at the eye: its eyepiece the back of
 the scope, where its display is. The pistol's (the smart-linked scope on
 the front of its slide) is a pistol scope, of long eye relief, looked
@@ -91,7 +104,9 @@ degrees, as its sight's display. Each was found from the model: its lens
 shown at every pose (as if raised) over the weapon held still, seen from
 behind and the side (debug.vr_test_hands, view*.bmp: the compositor's
 placement; the game's debug lines are not where they should be in the
-eyes). */
+eyes). The sniper rifle's display (its zoom's green waveform and dial, a
+hand's width across) is all about the lens at the eye, which shows the zoom
+itself (d3d8_gl.c). */
 struct vr_scope_definition
 {
 	char const *name;
@@ -100,12 +115,14 @@ struct vr_scope_definition
 	real relief;
 	real off_axis;
 	real smallest_angle;
+	char const *screen;
+	short labels[2];
 };
 
 static struct vr_scope_definition const vr_scope_definitions[] =
 {
-	{ "weapons\\sniper rifle\\sniper rifle", { 0.26f, -0.13f, -0.058f }, 0.025f, 0.12f, 0.07f, 0.0f },
-	{ "weapons\\pistol\\pistol", { 0.545f, -0.057f, -0.101f }, 0.013f, 0.65f, 0.04f, 6.0f },
+	{ "weapons\\sniper rifle\\sniper rifle", { 0.26f, -0.13f, -0.058f }, 0.025f, 0.12f, 0.07f, 0.0f, "screen", { 2, 10 } },
+	{ "weapons\\pistol\\pistol", { 0.545f, -0.057f, -0.101f }, 0.013f, 0.65f, 0.04f, 6.0f, NULL, { 2, 0 } },
 };
 
 void platform_log(char const *format, ...);
@@ -209,7 +226,7 @@ boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rast
 	struct halo_vr_scope layer;
 	real_point3d eyes[2], eyepiece;
 	real_vector3d head_forward, left;
-	real units, along[2], off_axis[2], tangent, magnification = 1.0f, angle, radius;
+	real units, along[2], off_axis[2], tangent, magnification = 1.0f, angle, radius, lens_degrees;
 	long weapon_index = vr_scope_weapon();
 	short scope = vr_scope_find(weapon_index), eye, zoom_level;
 
@@ -317,6 +334,7 @@ boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rast
 			radius = smallest;
 		tangent = radius / (distance * units);
 	}
+	lens_degrees = 2.0f * (real)atan(tangent) * 180.0f / _pi;
 	zoom_level = player_control_get_zoom_level(0);
 	if (zoom_level != NONE)
 		magnification = weapon_get_zoom_magnification(weapon_index, zoom_level);
@@ -333,6 +351,10 @@ boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rast
 		layer.up);
 	layer.eye = eye;
 	layer.size = 2.0f * radius / units;
+	layer.zoom = zoom_level == NONE ? 0.0f :
+		zoom_level < (short)NUMBEROF(definition->labels) && definition->labels[zoom_level] ? definition->labels[zoom_level] :
+		magnification;
+	layer.zoom_height = PIN(ZOOM_DEGREES / MAX(lens_degrees, 1.0f), ZOOM_LEAST, ZOOM_MOST);
 	halo_vr_scope(&layer);
 	return TRUE;
 }
@@ -341,6 +363,24 @@ boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rast
 boolean vr_scope_raised(void)
 {
 	return vr_scope.raised && vr_scope.weapon_index != NONE;
+}
+
+/* models.c, as each part of an object's model is drawn: whether this part
+(its shader's tag) is the display on the back of the raised scope, not
+drawn (the weapon's own, in its first-person model, which only the player
+holding it draws) */
+boolean vr_scope_hides_part(long object_index, long shader_index)
+{
+	char const *screen, *name;
+
+	if (!vr_scope.raised || object_index == NONE || object_index != vr_scope.weapon_index || vr_scope.scope == NONE ||
+		shader_index == NONE)
+	{
+		return FALSE;
+	}
+	screen = vr_scope_definitions[vr_scope.scope].screen;
+	name = screen ? tag_get_name(shader_index) : NULL;
+	return name && strstr(name, screen);
 }
 
 /* debug.vr_test_weapons: "<name>[, <name>]", the weapons whose tag names

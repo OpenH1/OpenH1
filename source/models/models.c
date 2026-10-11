@@ -247,6 +247,11 @@ static void model_data_error(
 	struct model const *model,
 	char const *problem);
 
+#ifdef HALO_VR
+/* port/linux/game/vr_scope.c */
+boolean vr_scope_hides_part(long object_index, long shader_index);
+#endif
+
 /* ---------- globals */
 
 extern boolean rasterizer_model_cortana_hack;
@@ -344,6 +349,12 @@ static void render_model_parts(
 							part->shader_index,
 							struct model_shader_reference);
 						shader = shader_definition_get(shader_reference->shader.index);
+#ifdef HALO_VR
+						/* port: not the display on the back of a scope raised
+						to the eye in the VR mode (port/linux/game/vr_scope.c) */
+						if (vr_scope_hides_part(object_index, shader_reference->shader.index))
+							continue;
+#endif
 
 						if (shader_type_is_valid_for_model(shader->base.type) &&
 							!TEST_FLAG(part->flags, _model_geometry_part_stripped_bit))

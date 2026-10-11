@@ -1349,6 +1349,12 @@ void halo_vr_scope(const struct halo_vr_scope *scope)
 		vr.scope = *scope;
 }
 
+float halo_vr_scope_zoom(float *height)
+{
+	*height = vr.scope.zoom_height;
+	return vr.scope_set ? vr.scope.zoom : 0.0f;
+}
+
 /* a point along a pose's axes from its position (OpenXR axes; along:
 metres forward, left, up), the axes those of the orientation or, given
 forward and up, those */
