@@ -963,6 +963,21 @@ boolean vr_render_body_anchor(real_point3d *neck, real *yaw)
 	return TRUE;
 }
 
+/* first_person_legs.c: each eye in the world during the eye pass, how
+near the eyes' view begins (world units: what is nearer is cut away), and
+the time from the last frame's display to this one's (seconds); FALSE as
+vr_render_body_anchor */
+boolean vr_render_body_eyes(real_point3d eyes[2], real *near, real *seconds)
+{
+	if (!vr_render.active || !vr_render.view.body_heading_valid || !halo_vr_aiming() || cinematic_in_progress())
+		return FALSE;
+	eyes[0] = vr_render.eye_positions[0];
+	eyes[1] = vr_render.eye_positions[1];
+	*near = MAX(vr_render.eyes[0].z_near, vr_render.eyes[1].z_near);
+	*seconds = vr_render.view.seconds;
+	return TRUE;
+}
+
 /* player_control.c: the weapon is a long gun, which the left hand may hold
 by its foregrip too (vr.two_handed): any but the pistols, the needler, the
 flag and the ball */
