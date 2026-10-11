@@ -394,6 +394,10 @@ boolean vr_grenade_throw_advance(long unit_index, short *frame_index, short key_
 void vr_grenade_draw(unsigned long flags);
 /* port/linux/game/vr_holster.c's */
 void vr_holster_draw(unsigned long flags);
+/* port/linux/game/vr_render.c's: the view in a scope is drawn (from it, the
+weapon not drawn), and the eye pass, which zooming does not magnify */
+boolean vr_render_scope_pass(void);
+boolean vr_render_eye_pass(void);
 #endif
 
 /* ---------- globals */
@@ -484,6 +488,10 @@ void first_person_weapon_draw(
 	/* port: not drawn with display.viewmodel_visible off (view_fov.c) */
 	if (!viewmodel_is_visible())
 		return;
+#ifdef HALO_VR
+	if (vr_render_scope_pass())
+		return;
+#endif
 	if (render.local_player_index!=NONE)
 	{
 		struct first_person_weapon *first_person_weapon= first_person_weapon_get(render.local_player_index);
@@ -672,7 +680,14 @@ void first_person_weapon_render_update(
 			first_person_weapon->weapon_index!=NONE)
 		{
 			boolean visible= director_get_perspective(render.local_player_index)==_director_perspective_first_person &&
-				player_control_get_zoom_level(render.local_player_index)==NONE;
+				(player_control_get_zoom_level(render.local_player_index)==NONE
+#ifdef HALO_VR
+				/* port: the VR mode's eyes are not magnified as the game zooms (a
+				raised scope magnifies its own view: port/linux/game/vr_scope.c),
+				so the weapon stays in the hand */
+				|| vr_render_eye_pass()
+#endif
+				);
 
 			first_person_weapon_set_visibility(render.local_player_index, visible);
 			if (first_person_weapon->visible)

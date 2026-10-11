@@ -167,8 +167,15 @@ void vr_render_hud_end(void);
 boolean vr_render_weapon_camera(struct render_camera *camera);
 void vr_render_crosshairs(void);
 void vr_seat_blink_draw(void);
+/* the view in a raised scope (port/linux/game/vr_scope.c), drawn before the
+eyes into an image of its own: the eye pass's state (the clusters seen, the
+lights, the scene) is then the eyes' */
+boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rasterizer_camera);
+void vr_render_scope_begin(void);
+void vr_render_scope_end(void);
 
 static boolean render_vr_eye_pass;
+static boolean render_vr_scope_pass;
 #endif
 
 /* ---------- public code */
@@ -370,6 +377,11 @@ static void render_window(
 			first_person_weapon_render_update();
 			render.camera = head;
 		}
+		else if (render_vr_scope_pass)
+		{
+			/* (the scope looks out of the first-person weapon, not drawn:
+			first_person_weapons.c) */
+		}
 		else
 #endif
 		first_person_weapon_render_update();
@@ -377,8 +389,18 @@ static void render_window(
 		render_objects();
 		structure_render_preprocess();
 		structure_render_lightmaps();
+#ifdef HALO_VR
+		/* the scope's view: no lens flares (their visibility tests are the
+		eyes', counted per frame), nor the objects' shadows, which a few
+		hundred pixels need not pay for */
+		if (!render_vr_scope_pass)
+		{
+#endif
 		rasterizer_lens_flares_submit_occlusion_tests();
 		render_object_shadows();
+#ifdef HALO_VR
+		}
+#endif
 		lights_render_diffuse();
 
 		rasterizer_decals_begin(_decal_layer_light);
@@ -427,6 +449,10 @@ static void render_window(
 		structure_render_transparent_geometry();
 		structure_render_fog();
 		game_engine_post_rasterize_objects();
+#ifdef HALO_VR
+		/* (the weather's particles about the camera: the eyes') */
+		if (!render_vr_scope_pass)
+#endif
 		weather_particle_systems_render();
 		render_particles();
 		particle_systems_render();
@@ -446,10 +472,14 @@ static void render_window(
 		rasterizer_transparent_geometry_draw(FALSE);
 		rasterizer_transparent_geometry_stop();
 		structure_render_fog_screen();
-		rasterizer_lens_flares_draw();
 #ifdef HALO_VR
-		if (render_vr_eye_pass)
+		if (render_vr_scope_pass)
 		{
+			/* the scope's own reticle is drawn over its image (d3d8_gl.c) */
+		}
+		else if (render_vr_eye_pass)
+		{
+			rasterizer_lens_flares_draw();
 			rasterizer_screen_flash();
 			/* a blink through a jump of the eye (port/linux/game/vr_seat.c) */
 			vr_seat_blink_draw();
@@ -459,6 +489,7 @@ static void render_window(
 		else
 #endif
 		{
+		rasterizer_lens_flares_draw();
 		/* port: the 3D view antialiased (display.anti_aliasing), before the
 		HUD and menus are drawn over it (not the VR mode's eye pass: its
 		targets have a layer for each eye) */
@@ -479,10 +510,16 @@ static void render_window(
 	}
 
 	bink_playback_render();
+#ifdef HALO_VR
+	/* (the debug draws, the eyes') */
+	if (!render_vr_scope_pass)
+#endif
+	{
 	render_camera_debug_frustum(&render.camera, &render.frustum);
 	render_debug();
 	editor_render();
 	rasterizer_debug_draw();
+	}
 	rasterizer_window_end();
 	profile_render_window_end();
 
@@ -598,8 +635,9 @@ static void render_player_frame(
 
 	if (main_get_window_count() == 1
 #ifdef HALO_VR
-		/* (a mirror's view would need the eyes' mirrored too) */
-		&& !render_vr_eye_pass
+		/* (a mirror's view would need the eyes' mirrored too; the scope's
+		has none) */
+		&& !render_vr_eye_pass && !render_vr_scope_pass
 #endif
 		)
 	{
@@ -694,6 +732,17 @@ static void render_vr_player_frame(
 
 	if (vr_render_camera(&eye_window.render_camera, &eye_window.rasterizer_camera))
 	{
+		struct render_window scope_window = *window;
+
+		if (vr_scope_camera(&scope_window.render_camera, &scope_window.rasterizer_camera))
+		{
+			vr_render_scope_begin();
+			render_vr_scope_pass = TRUE;
+			halo_vr_pass(HALO_VR_PASS_SCOPE);
+			render_player_frame(&scope_window, NULL);
+			render_vr_scope_pass = FALSE;
+			vr_render_scope_end();
+		}
 		render_vr_eye_pass = TRUE;
 		halo_vr_pass(HALO_VR_PASS_EYES);
 		render_player_frame(&eye_window, NULL);

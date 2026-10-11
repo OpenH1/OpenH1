@@ -263,6 +263,11 @@ static const struct config_setting config_settings[] =
 		"Crouch in the room and the game crouches (on foot, from about 35 cm\n"
 		"below your standing eyes, or 25 cm seated); stand and it stands. The\n"
 		"view follows your head alone." },
+	{ "vr.scopes", _config_boolean, "true", "HALO_VR_SCOPES", _environment_value, _platform_desktop,
+		"With vr.aim = \"controller\", the sniper rifle's and the pistol's scopes\n"
+		"magnify the view within them as you raise them to an eye, the rest of\n"
+		"the view as it was (the right stick's click changes the magnification);\n"
+		"not raised, they do not zoom." },
 	{ "vr.two_handed", _config_boolean, "true", "HALO_VR_TWO_HANDED", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", a long gun (not a pistol or the needler)\n"
 		"is aimed with both hands while the left grip holds it by the foregrip:\n"
@@ -736,6 +741,11 @@ static const struct config_setting config_settings[] =
 		"this text in it, as the action button does, and take them out later,\n"
 		"logging the view's motion each frame, for automated tests:\n"
 		"\"<label> <seconds in> [<seconds seated>]\" (\"gunner\" 5 10); empty none." },
+	{ "debug.vr_test_weapons", _config_string, "\"\"", "HALO_VR_TEST_WEAPONS", _environment_value, _platform_desktop,
+		"Give the first player these weapons as the map starts, in place of their\n"
+		"own, the first in hand, for automated tests of the scopes: \"<name>[,\n"
+		"<name>]\", parts of the weapons' tag names (\"sniper rifle, pistol\");\n"
+		"empty none." },
 #endif
 	{ "debug.null_renderer", _config_boolean, "false", "HALO_NULL_RENDERER", _environment_set_is_true, _platform_all,
 		"Run without a window, drawing nothing." },

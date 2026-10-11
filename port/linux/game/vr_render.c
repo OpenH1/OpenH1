@@ -107,8 +107,12 @@ static struct
 	boolean weapon_camera_set;
 	boolean weapon_camera_valid;
 	struct render_camera weapon_camera;
-	/* the eyes' middle, in the world */
+	/* the eyes' middle, and each eye, in the world */
 	real_point3d head_position;
+	real_point3d eye_positions[2];
+	/* the scope's pass is drawing (vr_scope.c): from the scope, with no eye
+	pass's moves to the eyes (active is FALSE meanwhile) */
+	boolean scope_pass;
 	/* where the gamepad aims (vr.aim = "gamepad"): the player's facing, and
 	up from it */
 	real_vector3d aim_forward;
@@ -141,6 +145,8 @@ static struct
 short vr_render_crosshair_offset[2];
 
 void vr_render_screen_point_end(void);
+/* vr_scope.c's */
+boolean vr_scope_raised(void);
 /* vr_seat.c's */
 void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_point3d *position);
 void vr_seat_log_camera(real_point3d const *position, real_vector3d const *forward, real_vector3d const *up);
@@ -514,6 +520,7 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 		eye_bounds.y0 = view->fov[eye][3] / tangent;
 		eye_bounds.y1 = view->fov[eye][2] / tangent;
 		render_camera_build_frustum(&eye_camera, &eye_bounds, &vr_render.eyes[eye], TRUE);
+		vr_render.eye_positions[eye] = eye_camera.position;
 		render_camera_build_frustum(camera, &eye_bounds, &vr_render.eyes_at_centre[eye], TRUE);
 	}
 	{
@@ -624,6 +631,95 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 	vr_render.weapon_camera = *camera;
 	vr_render.weapon_camera_valid = TRUE;
 	return TRUE;
+}
+
+/* vr_scope.c, before the eye pass: the camera the first-person weapon will
+be posed from (vr_render_weapon_camera's, the controller's), each eye and
+the head's forward in the world, and the world's units a metre; FALSE
+unless the right controller aims the weapon on foot */
+boolean vr_render_scope_view(struct render_camera *weapon_camera, real_point3d eyes[2], real_vector3d *head_forward,
+	real *units)
+{
+	struct render_camera camera;
+
+	if (!vr_render.active || !vr_render.view.controller_aim || !halo_vr_aiming() || cinematic_in_progress() ||
+		vr_render.seated_unit_index != NONE)
+	{
+		return FALSE;
+	}
+	csmemset(&camera, 0, sizeof(camera));
+	camera.position = vr_render.head_position;
+	if (!vr_render_weapon_camera(&camera) || !vr_render.weapon_camera_valid)
+		return FALSE;
+	*weapon_camera = camera;
+	eyes[0] = vr_render.eye_positions[0];
+	eyes[1] = vr_render.eye_positions[1];
+	view_rotate(vr_render.base_yaw, view_pitch(), vr_render.view.head_forward, head_forward);
+	*units = vr_render.view.world_units_per_metre;
+	return TRUE;
+}
+
+/* vr_scope.c: a point and two directions in the world as the recentred
+head's game axes (metres; hand_point's inverse), for vr.c's layers */
+void vr_render_world_to_head(real_point3d const *point, real_vector3d const *forward, real_vector3d const *up,
+	float position[3], float head_forward[3], float head_up[3])
+{
+	float offset[3], f[3], u[3];
+	real_vector3d turned;
+	real units = vr_render.view.world_units_per_metre;
+
+	offset[0] = (float)((point->x - vr_render.base_position.x) / units);
+	offset[1] = (float)((point->y - vr_render.base_position.y) / units);
+	offset[2] = (float)((point->z - vr_render.base_position.z) / units);
+	f[0] = forward->i;
+	f[1] = forward->j;
+	f[2] = forward->k;
+	u[0] = up->i;
+	u[1] = up->j;
+	u[2] = up->k;
+	yaw_rotate(-vr_render.base_yaw, offset, &turned);
+	position[0] = turned.i;
+	position[1] = turned.j;
+	position[2] = turned.k;
+	yaw_rotate(-vr_render.base_yaw, f, &turned);
+	head_forward[0] = turned.i;
+	head_forward[1] = turned.j;
+	head_forward[2] = turned.k;
+	yaw_rotate(-vr_render.base_yaw, u, &turned);
+	head_up[0] = turned.i;
+	head_up[1] = turned.j;
+	head_up[2] = turned.k;
+}
+
+/* render.c: the scope's pass begins (before the eye pass) and ends: in
+between, what the eye pass moves to the eyes is drawn from the scope's
+camera as it is */
+void vr_render_scope_begin(void)
+{
+	vr_render.active = FALSE;
+	vr_render.scope_pass = TRUE;
+}
+
+void vr_render_scope_end(void)
+{
+	vr_render.scope_pass = FALSE;
+	vr_render.infinite = FALSE;
+	vr_render.projection_valid = FALSE;
+	vr_render.active = TRUE;
+	vr_render_screen_point_end();
+}
+
+/* first_person_weapons.c: the scope's pass draws no first-person weapon
+(the view is out of its scope); the eye pass keeps it while zoomed (the eyes
+are not magnified) */
+boolean vr_render_scope_pass(void)
+{
+	return vr_render.scope_pass;
+}
+
+boolean vr_render_eye_pass(void)
+{
+	return vr_render.active;
 }
 
 /* the body's heading: halo_vr_view's (the head's, slowly, not the aim's),
@@ -1053,6 +1149,14 @@ void vr_render_crosshairs(void)
 		!(view->gamepad_aim || view->controller_aim) || player_index == NONE)
 	{
 		vr_render.crosshair_distance_valid = FALSE;
+		return;
+	}
+	if (vr_scope_raised())
+	{
+		/* the scope at the eye: its reticle is the aim (vr_scope.c), none
+		in the world nor in the HUD's layer */
+		vr_render.crosshair_distance_valid = FALSE;
+		vr_render.crosshairs_drawn = TRUE;
 		return;
 	}
 	if (view->gamepad_aim)

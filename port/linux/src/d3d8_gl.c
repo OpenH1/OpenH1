@@ -698,6 +698,14 @@ static struct
 	present) */
 	struct render_target_entry eye_target;
 	BOOL eyes_drawn, hud_drawn;
+	/* the scope pass (vr.scopes): the 640x480 screen at the scale that
+	makes 480 lines its square image's, its view in the middle 480x480
+	(vr_scope.c), copied into the scope's image at the present; whether it
+	was drawn this frame, and the image it was copied into */
+	int scope_size;
+	float scope_scale;
+	BOOL scope_drawn;
+	GLuint scope_image;
 	/* the visor's image drawn this frame (vr_draw_visor), else 0 */
 	GLuint visor_image;
 	/* the HUD's groups (vr.h's HALO_VR_HUD_GROUP_*, halo_vr_hud_group): the
@@ -1554,12 +1562,14 @@ struct xgpu_render_target *xgpu_render_target_find(unsigned long data)
 #endif
 	for (entry = *render_target_bucket(data); entry; entry = entry->next_in_bucket)
 	{
-		/* (in a VR pass, the targets of its own pass) */
+		/* (in a VR pass, the screen's targets of its own pass: the eyes' have
+		a layer for each eye, the HUD's and the scope's one, each at its
+		pass's scale) */
 		if (entry->target.data == data && !entry->target.depth && (!best || entry->last_rendered > best->last_rendered)
 #ifdef HALO_VR
-			&& (vr_gl.pass == HALO_VR_PASS_NONE || entry->target.width != (unsigned long)halo_screen_width() ||
-				entry->target.height != SCREEN_HEIGHT ||
-				(entry->target.layers > 1) == (vr_gl.pass == HALO_VR_PASS_EYES))
+			&& (vr_gl.pass == HALO_VR_PASS_NONE || entry->kind != _render_target_screen ||
+				((entry->target.layers > 1) == (vr_gl.pass == HALO_VR_PASS_EYES) &&
+					entry->target.scale[0] == screen_scale[0] && entry->target.scale[1] == screen_scale[1]))
 #endif
 			)
 			best = entry;
@@ -6106,6 +6116,8 @@ static void vr_gl_initialize(void)
 		return;
 	halo_vr_eye_size(&vr_gl.eye_width, &vr_gl.eye_height);
 	halo_vr_hud_size(&vr_gl.hud_width, &vr_gl.hud_height);
+	vr_gl.scope_size = halo_vr_scope_size();
+	vr_gl.scope_scale = (float)vr_gl.scope_size / (float)SCREEN_HEIGHT;
 	vr_gl.statistics = config_boolean("debug.gpu_stats");
 	vr_gl.gpu_time = vr_gl.statistics && config_boolean("debug.vr_gpu_time");
 	/* the eyes' images are sRGB (the only colour formats SteamVR offers),
@@ -6195,7 +6207,16 @@ void halo_vr_pass(int pass)
 			pass = HALO_VR_PASS_HUD;
 		}
 	}
-	if (pass != HALO_VR_PASS_EYES)
+	if (pass == HALO_VR_PASS_SCOPE && vr_gl.scope_size <= 0)
+		pass = HALO_VR_PASS_HUD;
+	if (pass == HALO_VR_PASS_SCOPE)
+	{
+		/* (its targets, at their own scale, are the game's ordinary 1-layer
+		ones, apart from the HUD's: xgpu_render_target_find) */
+		screen_scale[0] = screen_scale[1] = vr_gl.scope_scale;
+		vr_gl.scope_drawn = TRUE;
+	}
+	else if (pass != HALO_VR_PASS_EYES)
 	{
 		screen_scale[0] = (float)vr_gl.hud_width / 640.0f;
 		screen_scale[1] = (float)vr_gl.hud_height / (float)SCREEN_HEIGHT;
@@ -6320,6 +6341,9 @@ static void vr_write_screenshots(struct render_target_entry *hud, GLuint hud_ima
 				read_target(hud_image, -1, (unsigned long)vr_gl.hud_width, (unsigned long)vr_gl.hud_height) : NULL;
 			unsigned char *visor_pixels = layers.visor && vr_gl.visor_image ?
 				read_target(vr_gl.visor_image, -1, VR_VISOR_IMAGE_SIZE, VR_VISOR_IMAGE_SIZE) : NULL;
+			unsigned char *scope_pixels = layers.scope && vr_gl.scope_image ?
+				read_target(vr_gl.scope_image, -1, (unsigned long)vr_gl.scope_size, (unsigned long)vr_gl.scope_size) :
+				NULL;
 			unsigned char *panel_pixels[VR_PANEL_COUNT];
 			int panel_width[VR_PANEL_COUNT], panel_height[VR_PANEL_COUNT], panel;
 
@@ -6334,7 +6358,7 @@ static void vr_write_screenshots(struct render_target_entry *hud, GLuint hud_ima
 			eyes[1] = right;
 			vr_visor_composite(eyes, (int)width, (int)height, &layers, &head, hud_pixels, vr_gl.hud_width,
 				vr_gl.hud_height, visor_pixels, VR_VISOR_IMAGE_SIZE, VR_VISOR_IMAGE_SIZE, panel_pixels, panel_width,
-				panel_height);
+				panel_height, scope_pixels, vr_gl.scope_size);
 			for (panel = 0; panel < VR_PANEL_COUNT; panel++)
 				free(panel_pixels[panel]);
 			for (row = 0; row < height; row++)
@@ -6345,8 +6369,28 @@ static void vr_write_screenshots(struct render_target_entry *hud, GLuint hud_ima
 			for (index = 0; index < width * 2 * height; index++)
 				both[index * 4 + 3] = 0xff;
 			write_bmp("view", both, width * 2, height, TRUE);
+			/* (the scope's image alone, as it is submitted: over grey where
+			it is transparent) */
+			if (scope_pixels)
+			{
+				for (index = 0; index < (unsigned long)(vr_gl.scope_size * vr_gl.scope_size); index++)
+				{
+					unsigned char *pixel = scope_pixels + index * 4;
+					int channel;
+
+					for (channel = 0; channel < 3; channel++)
+					{
+						int value = pixel[channel] + (255 - pixel[3]) * 96 / 255;
+
+						pixel[channel] = (unsigned char)(value > 255 ? 255 : value);
+					}
+					pixel[3] = 0xff;
+				}
+				write_bmp("scope", scope_pixels, (unsigned long)vr_gl.scope_size, (unsigned long)vr_gl.scope_size, TRUE);
+			}
 			free(hud_pixels);
 			free(visor_pixels);
+			free(scope_pixels);
 		}
 		free(left);
 		free(right);
@@ -6654,6 +6698,105 @@ static BOOL vr_copy_hud(struct render_target_entry *hud, GLuint image)
 				vr_gl.panel_images[panel] = panel_image;
 		}
 	}
+	return TRUE;
+}
+
+/* The scope's view (the scope pass, vr.scopes: port/linux/game/
+vr_scope.c) into its image, upside down for OpenXR's GL images: the middle
+480x480 of the 640x480 screen, where the pass drew it, as the lens, round,
+the image transparent about it (premultiplied, as the HUD's). As a scope's
+eyepiece does, the view darkens to black at the lens's edge (its field
+stop), so that the lens's rim reads as the scope's, and the reticle is
+the scope's, over it: a fine cross through the middle, thick posts from
+the edge toward it (a duplex, which the eye finds at once), and a faint
+lit dot at the middle, which shows against what is dark. FALSE if the
+copy's program cannot be made. */
+static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
+{
+	static GLuint program, sampler;
+	static BOOL failed;
+	static GLint size_location;
+	static const char vertex_source[] =
+		"#version 450 core\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+		"	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+		"}\n";
+	static const char fragment_source[] =
+		"#version 450 core\n"
+		"uniform sampler2D scope_texture;\n"
+		"uniform float size;\n"
+		"out vec4 colour;\n"
+		"void main()\n"
+		"{\n"
+		/* (pixels from the middle, and the lens's radius in them; row 0
+		of the image is the target's last) */
+		"	vec2 p = gl_FragCoord.xy - vec2(size * 0.5);\n"
+		"	float radius = size * 0.5;\n"
+		"	float r = length(p) / radius;\n"
+		"	vec2 uv = vec2(0.125 + 0.75 * gl_FragCoord.x / size, 1.0 - gl_FragCoord.y / size);\n"
+		"	vec3 c = texture(scope_texture, uv).rgb;\n"
+		"	c *= 1.0 - smoothstep(0.86, 0.97, r);\n"
+		/* the reticle: lines' half widths (pixels), the posts from 0.5 of
+		the radius out */
+		"	float pixel = max(size / 480.0, 1.0);\n"
+		"	vec2 a = abs(p);\n"
+		"	float fine = clamp(0.6 * pixel + 0.5 - min(a.x, a.y), 0.0, 1.0);\n"
+		"	float post = clamp(2.5 * pixel + 0.5 - min(a.x, a.y), 0.0, 1.0) *\n"
+		"		step(0.5 * radius, max(a.x, a.y));\n"
+		"	c = mix(c, vec3(0.0), max(fine * 0.85, post));\n"
+		"	float dot_light = clamp(1.6 * pixel + 0.5 - length(p), 0.0, 1.0);\n"
+		"	c = mix(c, vec3(1.0, 0.35, 0.15), dot_light * 0.8);\n"
+		"	float alpha = 1.0 - smoothstep(1.0 - 1.5 / radius, 1.0, r);\n"
+		"	colour = vec4(c * alpha, alpha);\n"
+		"}\n";
+
+	if (failed)
+		return FALSE;
+	if (!program)
+	{
+		GLuint vertex = xgpu_compile_shader(GL_VERTEX_SHADER, vertex_source, "VR scope vertex");
+		GLuint fragment = xgpu_compile_shader(GL_FRAGMENT_SHADER, fragment_source, "VR scope pixel");
+		GLint status = 0;
+
+		program = glCreateProgram();
+		glAttachShader(program, vertex);
+		glAttachShader(program, fragment);
+		glLinkProgram(program);
+		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		if (!vertex || !fragment || !status)
+		{
+			platform_log("vr: cannot make the scope copy's program; no scope is shown");
+			failed = TRUE;
+			return FALSE;
+		}
+		glUseProgram(program);
+		glUniform1i(glGetUniformLocation(program, "scope_texture"), 0);
+		size_location = glGetUniformLocation(program, "size");
+		glGenSamplers(1, &sampler);
+		glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(image, 0));
+	glViewport(0, 0, size, size);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_BLEND);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glUseProgram(program);
+	glUniform1f(size_location, (GLfloat)size);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, source);
+	glBindSampler(0, sampler);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glBindSampler(0, 0);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	return TRUE;
 }
 
@@ -7199,6 +7342,29 @@ static void vr_present(BOOL screenshot)
 		if (!hud_image || !vr_copy_hud(hud, hud_image))
 			hud_image = 0;
 	}
+	/* the scope's view, with the eyes */
+	vr_gl.scope_image = 0;
+	if (vr_gl.scope_drawn && vr_gl.eyes_drawn)
+	{
+		struct render_target_entry *scope;
+		int pass = vr_gl.pass;
+		float scale[2];
+		GLuint image;
+
+		scale[0] = screen_scale[0];
+		scale[1] = screen_scale[1];
+		vr_gl.pass = HALO_VR_PASS_SCOPE;
+		screen_scale[0] = screen_scale[1] = vr_gl.scope_scale;
+		scope = render_target_get(&device.back_buffer);
+		vr_gl.pass = pass;
+		screen_scale[0] = scale[0];
+		screen_scale[1] = scale[1];
+		if (scope && (image = halo_vr_image(VR_SWAPCHAIN_SCOPE)) != 0 &&
+			vr_copy_scope(scope->target.texture, image, vr_gl.scope_size))
+		{
+			vr_gl.scope_image = image;
+		}
+	}
 	/* the visor, with the eyes (not in the menus: vr_visor.c) */
 	vr_gl.visor_image = 0;
 	if (vr_gl.eyes_drawn)
@@ -7226,11 +7392,12 @@ static void vr_present(BOOL screenshot)
 			vr_gl.gpu_worst = milliseconds;
 		vr_gl.gpu_frames++;
 	}
-	halo_vr_present(vr_gl.eyes_drawn, hud_image != 0);
+	halo_vr_present(vr_gl.eyes_drawn, hud_image != 0, vr_gl.scope_image != 0);
 	if (screenshot)
 		vr_write_screenshots(hud, hud_image);
 	vr_gl.eyes_drawn = FALSE;
 	vr_gl.hud_drawn = FALSE;
+	vr_gl.scope_drawn = FALSE;
 	vr_gl.groups_drawn = 0;
 	halo_vr_hud_group(HALO_VR_HUD_GROUP_CENTRE);
 	vr_timing(0);

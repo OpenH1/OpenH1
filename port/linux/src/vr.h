@@ -24,6 +24,7 @@ enum
 	HALO_VR_PASS_NONE = 0, /* not drawing a VR frame: the flat window */
 	HALO_VR_PASS_EYES,     /* the 3D view, into both eyes */
 	HALO_VR_PASS_HUD,      /* the HUD and the menus, into the quad layer */
+	HALO_VR_PASS_SCOPE,    /* the view in a weapon's scope, into its own image */
 };
 
 struct halo_vr_view
@@ -213,6 +214,21 @@ struct halo_vr_holsters
 	float distance[HALO_VR_HOLSTERS];
 };
 
+/* the magnified view in a weapon's scope raised to an eye (vr.scopes,
+port/linux/game/vr_scope.c): its image on a quad at the scope's eyepiece,
+facing back along the scope, seen by that eye alone */
+struct halo_vr_scope
+{
+	/* the eye (0 left, 1 right) */
+	int eye;
+	/* the lens's middle, the way the scope points and its up (game axes
+	from the recentred head, metres), and the lens's width (metres) */
+	float position[3];
+	float forward[3];
+	float up[3];
+	float size;
+};
+
 /* ---------- vr.c */
 
 /* the VR build with vr.enabled */
@@ -263,6 +279,11 @@ left stick's click, a gamepad's) */
 #define HALO_VR_CROUCH_BUTTON 2
 void halo_vr_crouch_able(int able);
 int halo_vr_crouch(void);
+/* the scopes are on (vr.scopes, with vr.aim = "controller") */
+int halo_vr_scopes(void);
+/* this frame's scope, drawn into its image (the scope pass): shown where
+it says at the present; NULL, none */
+void halo_vr_scope(const struct halo_vr_scope *scope);
 
 /* the player, for the visor's effects (vr_visor.c) */
 void halo_vr_visor_state(const struct halo_vr_visor_state *state);
@@ -284,12 +305,15 @@ void halo_vr_hud_size(int *width, int *height);
 /* a HUD panel's image (vr_host.h's VR_SWAPCHAIN_PANEL + panel); 0 by 0 if
 there is none */
 void halo_vr_panel_size(int panel, int *width, int *height);
+/* the scope's image, square (vr_host.h's VR_SWAPCHAIN_SCOPE); 0 if there is
+none */
+int halo_vr_scope_size(void);
 /* the swapchain's image for this frame (vr_host.h's VR_SWAPCHAIN_*), a GL
 texture: a 2-layer array for the eyes; 0 if there is none */
 unsigned int halo_vr_image(int swapchain);
 /* the frame is presented with what was drawn (it ends as the next begins,
 which halo_vr_frame_active waits for, as vsync would) */
-void halo_vr_present(int eyes_drawn, int hud_drawn);
+void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn);
 /* the controllers as port 0's gamepad (an XINPUT_GAMEPAD), merged in */
 void halo_vr_gamepad(void *gamepad);
 void halo_vr_rumble(float left, float right);

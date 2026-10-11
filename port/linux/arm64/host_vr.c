@@ -756,6 +756,8 @@ int host_vr_initialize(struct vr_host_info *info)
 			}
 		}
 	}
+	if (info->scope_size > 0 && !swapchain_create(VR_SWAPCHAIN_SCOPE, info->scope_size, info->scope_size, 1, info))
+		info->scope_size = 0;
 	info->cylinder = vr.has_cylinder;
 
 	space.poseInReferenceSpace.orientation.w = 1.0f;
@@ -1093,7 +1095,8 @@ void host_vr_frame_end(const struct vr_host_layers *layers)
 	XrCompositionLayerQuad visor = { XR_TYPE_COMPOSITION_LAYER_QUAD };
 	XrCompositionLayerCylinderKHR cylinder = { XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR };
 	XrCompositionLayerQuad panels[VR_PANEL_COUNT];
-	const XrCompositionLayerBaseHeader *submitted[4 + VR_PANEL_COUNT];
+	XrCompositionLayerQuad scope = { XR_TYPE_COMPOSITION_LAYER_QUAD };
+	const XrCompositionLayerBaseHeader *submitted[5 + VR_PANEL_COUNT];
 	uint32_t count = 0;
 	int eye, panel;
 
@@ -1107,6 +1110,7 @@ void host_vr_frame_end(const struct vr_host_layers *layers)
 	host_vr_release(VR_SWAPCHAIN_VISOR);
 	for (panel = 0; panel < VR_PANEL_COUNT; panel++)
 		host_vr_release(VR_SWAPCHAIN_PANEL + panel);
+	host_vr_release(VR_SWAPCHAIN_SCOPE);
 	if (timing.enabled > 0)
 		timing.release += seconds_now();
 	if (layers && layers->projection)
@@ -1142,6 +1146,23 @@ void host_vr_frame_end(const struct vr_host_layers *layers)
 		projection.viewCount = 2;
 		projection.views = views;
 		submitted[count++] = (const XrCompositionLayerBaseHeader *)&projection;
+	}
+	if (layers && layers->projection && layers->scope && vr.swapchains[VR_SWAPCHAIN_SCOPE])
+	{
+		/* the scope's magnified view at its eyepiece, over the world (the
+		weapon about it included), for the eye that looks through it alone:
+		the other sees the scope's body, as it would. Premultiplied, its
+		lens round in the square image */
+		scope.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+		scope.space = vr.play_space;
+		scope.eyeVisibility = layers->scope_eye ? XR_EYE_VISIBILITY_RIGHT : XR_EYE_VISIBILITY_LEFT;
+		scope.subImage.swapchain = vr.swapchains[VR_SWAPCHAIN_SCOPE];
+		scope.subImage.imageRect.extent.width = vr.swapchain_width[VR_SWAPCHAIN_SCOPE];
+		scope.subImage.imageRect.extent.height = vr.swapchain_height[VR_SWAPCHAIN_SCOPE];
+		pose_to_xr(&layers->scope_pose, &scope.pose);
+		scope.size.width = layers->scope_size;
+		scope.size.height = layers->scope_size;
+		submitted[count++] = (const XrCompositionLayerBaseHeader *)&scope;
 	}
 	/* the HUD's panels behind its layer (farther), then the layer, then
 	those before it, then the visor's glass over all */

@@ -25,7 +25,9 @@ enum
 	VR_SWAPCHAIN_VISOR,    /* the helmet's visor glass: its edges and its glows, a quad layer */
 	/* the HUD's panels at their own depths (vr_visor.c), a quad layer each */
 	VR_SWAPCHAIN_PANEL,
-	VR_SWAPCHAIN_COUNT = VR_SWAPCHAIN_PANEL + 4,
+	/* the magnified view in a weapon's scope, a quad layer at its eyepiece */
+	VR_SWAPCHAIN_SCOPE = VR_SWAPCHAIN_PANEL + 4,
+	VR_SWAPCHAIN_COUNT,
 	VR_PANEL_COUNT = 4,
 	VR_SWAPCHAIN_IMAGES = 4,
 };
@@ -62,6 +64,9 @@ struct vr_host_info
 	/* in: the HUD's panels' images (0: none); out: 0 where one could not be
 	made */
 	int panel_width[VR_PANEL_COUNT], panel_height[VR_PANEL_COUNT];
+	/* in: the scope's image, square (0: none); out: 0 if it could not be
+	made */
+	int scope_size;
 	int standing;
 	float refresh_rate_wanted; /* 0: the runtime's choice */
 	int depth; /* in: submit the eyes' depth; out: the runtime takes it */
@@ -142,6 +147,13 @@ struct vr_host_layers
 	int visor;
 	struct vr_host_pose visor_pose;
 	float visor_size[2];
+	/* the scope's image (VR_SWAPCHAIN_SCOPE) on a quad at the scope's
+	eyepiece, in the play space, size metres square, seen by one eye alone
+	(scope_eye: 0 left, 1 right): over the eyes' images, under the HUD */
+	int scope;
+	int scope_eye;
+	struct vr_host_pose scope_pose;
+	float scope_size;
 };
 
 /* after the GL context is made and current (on its thread); 0 if there is

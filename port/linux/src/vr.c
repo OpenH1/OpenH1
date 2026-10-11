@@ -47,6 +47,12 @@ the view while the crouch is the head's: the head has already come down.
 /* the HUD's and menus' image: the 640x480 screen at twice its size */
 #define HUD_WIDTH 1280
 #define HUD_HEIGHT 960
+/* the scope's image (vr.scopes), square: about as many pixels as the eye's
+image has over the lens (a lens of 28 degrees, an eye of 1728 lines over
+about 100), times vr.resolution_scale, within these */
+#define SCOPE_IMAGE_SIZE 480
+#define SCOPE_IMAGE_SMALLEST 256
+#define SCOPE_IMAGE_LARGEST 768
 /* a world unit is 10 feet */
 #define METRES_PER_WORLD_UNIT 3.048f
 /* a melee gesture: the right hand faster than this along where it points
@@ -264,6 +270,9 @@ static struct
 	int crouching;
 	int crouch_button;
 	float depth_near, depth_far;
+	/* this frame's scope (halo_vr_scope), if it was drawn */
+	int scope_set;
+	struct halo_vr_scope scope;
 	/* the presented frame, ended when the next begins (halo_vr_present) */
 	struct vr_host_layers pending_layers;
 	int pending;
@@ -300,6 +309,7 @@ static struct
 	int melee_gesture;
 	int holsters;
 	int physical_crouch;
+	int scopes;
 	/* vr.grenade_throw = "gesture", and debug.vr_throw_log */
 	int throw_gesture;
 	int throw_log;
@@ -401,6 +411,7 @@ static void settings_read(void)
 	settings.throw_gesture = !strcmp(config_string("vr.grenade_throw"), "gesture");
 	settings.holsters = config_boolean("vr.holsters");
 	settings.physical_crouch = config_boolean("vr.physical_crouch");
+	settings.scopes = config_boolean("vr.scopes");
 	settings.throw_log = config_boolean("debug.vr_throw_log");
 	settings.vehicle_first_person = strcmp(config_string("vr.vehicle_view"), "third_person") != 0;
 	settings.test_turn = (float)config_real("debug.vr_test_turn") * (float)M_PI / 180.0f;
@@ -475,6 +486,46 @@ static void quaternion_multiply(const float a[4], const float b[4], float out[4]
 	memcpy(out, r, sizeof(r));
 }
 
+/* an OpenXR orientation (x, y, z, w) whose axes are these (right, up,
+back: orthonormal) */
+static void quaternion_from_axes(const float x[3], const float y[3], const float z[3], float q[4])
+{
+	float trace = x[0] + y[1] + z[2], s;
+
+	if (trace > 0.0f)
+	{
+		s = sqrtf(trace + 1.0f) * 2.0f;
+		q[3] = 0.25f * s;
+		q[0] = (y[2] - z[1]) / s;
+		q[1] = (z[0] - x[2]) / s;
+		q[2] = (x[1] - y[0]) / s;
+	}
+	else if (x[0] > y[1] && x[0] > z[2])
+	{
+		s = sqrtf(1.0f + x[0] - y[1] - z[2]) * 2.0f;
+		q[3] = (y[2] - z[1]) / s;
+		q[0] = 0.25f * s;
+		q[1] = (y[0] + x[1]) / s;
+		q[2] = (z[0] + x[2]) / s;
+	}
+	else if (y[1] > z[2])
+	{
+		s = sqrtf(1.0f + y[1] - x[0] - z[2]) * 2.0f;
+		q[3] = (z[0] - x[2]) / s;
+		q[0] = (y[0] + x[1]) / s;
+		q[1] = 0.25f * s;
+		q[2] = (z[1] + y[2]) / s;
+	}
+	else
+	{
+		s = sqrtf(1.0f + z[2] - x[0] - y[1]) * 2.0f;
+		q[3] = (x[1] - y[0]) / s;
+		q[0] = (z[0] + x[2]) / s;
+		q[1] = (z[1] + y[2]) / s;
+		q[2] = 0.25f * s;
+	}
+}
+
 /* an OpenXR vector turned by -yaw about y, in game axes */
 static void game_axes(const float v[3], float yaw, float out[3])
 {
@@ -485,6 +536,18 @@ static void game_axes(const float v[3], float yaw, float out[3])
 	out[0] = -z;
 	out[1] = -x;
 	out[2] = v[1];
+}
+
+/* game axes turned by yaw about y, as an OpenXR vector (game_axes'
+inverse) */
+static void play_axes(const float g[3], float yaw, float out[3])
+{
+	float c = cosf(-yaw), s = sinf(-yaw);
+	float x = -g[1], z = -g[0];
+
+	out[0] = x * c - z * s;
+	out[1] = g[2];
+	out[2] = x * s + z * c;
 }
 
 /* ---------- the session */
@@ -509,6 +572,12 @@ int halo_vr_initialize(void)
 	vr.info.hud_height = HUD_HEIGHT;
 	vr.info.visor_width = vr.info.visor_height = VR_VISOR_IMAGE_SIZE;
 	vr_visor_panel_sizes(vr.info.panel_width, vr.info.panel_height);
+	{
+		int size = (int)(SCOPE_IMAGE_SIZE * vr.info.scale / 16.0f + 0.5f) * 16;
+
+		vr.info.scope_size = size < SCOPE_IMAGE_SMALLEST ? SCOPE_IMAGE_SMALLEST :
+			size > SCOPE_IMAGE_LARGEST ? SCOPE_IMAGE_LARGEST : size;
+	}
 	vr.info.standing = settings.standing;
 	vr.info.refresh_rate_wanted = (float)config_real("vr.refresh_rate");
 	vr.info.depth = config_boolean("vr.depth");
@@ -544,6 +613,11 @@ void halo_vr_panel_size(int panel, int *width, int *height)
 {
 	*width = panel >= 0 && panel < VR_PANEL_COUNT ? vr.info.panel_width[panel] : 0;
 	*height = panel >= 0 && panel < VR_PANEL_COUNT ? vr.info.panel_height[panel] : 0;
+}
+
+int halo_vr_scope_size(void)
+{
+	return vr.info.scope_size;
 }
 
 static void acquired_clear(void)
@@ -1204,6 +1278,21 @@ int halo_vr_holsters(struct halo_vr_holsters *holsters)
 	return holsters->enabled;
 }
 
+/* ---------- the scopes */
+
+int halo_vr_scopes(void)
+{
+	settings_read();
+	return vr.initialized && settings.scopes && settings.controller_aim && vr.info.scope_size > 0;
+}
+
+void halo_vr_scope(const struct halo_vr_scope *scope)
+{
+	vr.scope_set = scope != NULL;
+	if (scope)
+		vr.scope = *scope;
+}
+
 /* the controllers' turning and recentring, once a frame */
 static void input_update(void)
 {
@@ -1644,7 +1733,7 @@ int halo_vr_frame_active(void)
 /* The frame is ended (xrEndFrame) only when the next begins, as the game
 starts drawing it: SteamVR's xrEndFrame waits for the GPU to finish the
 frame, and in the meantime the game updates (input, ticks, sounds). */
-void halo_vr_present(int eyes_drawn, int hud_drawn)
+void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn)
 {
 	struct vr_host_layers *pending = &vr.pending_layers;
 
@@ -1669,6 +1758,41 @@ void halo_vr_present(int eyes_drawn, int hud_drawn)
 			vr.depth_far > vr.depth_near;
 		pending->near_z = vr.depth_near;
 		pending->far_z = vr.depth_far;
+		if (pending->projection && scope_drawn && vr.scope_set && vr.acquired[VR_SWAPCHAIN_SCOPE] >= 0)
+		{
+			/* the scope's lens, from the recentred head's game axes to the
+			play space: its quad faces back along the scope (its +z), up as
+			the scope's up */
+			struct vr_host_pose *pose = &pending->scope_pose;
+			float back[3], up[3], right[3], g[3];
+			int axis;
+
+			play_axes(vr.scope.position, vr.origin_yaw, pose->position);
+			for (axis = 0; axis < 3; axis++)
+			{
+				pose->position[axis] += vr.origin_position[axis];
+				g[axis] = -vr.scope.forward[axis];
+			}
+			play_axes(g, vr.origin_yaw, back);
+			play_axes(vr.scope.up, vr.origin_yaw, up);
+			normalize(back);
+			/* (up made square to back) */
+			{
+				float along = up[0] * back[0] + up[1] * back[1] + up[2] * back[2];
+
+				for (axis = 0; axis < 3; axis++)
+					up[axis] -= back[axis] * along;
+			}
+			normalize(up);
+			right[0] = up[1] * back[2] - up[2] * back[1];
+			right[1] = up[2] * back[0] - up[0] * back[2];
+			right[2] = up[0] * back[1] - up[1] * back[0];
+			quaternion_from_axes(right, up, back, pose->orientation);
+			pose->valid = 1;
+			pending->scope = 1;
+			pending->scope_eye = vr.scope.eye;
+			pending->scope_size = vr.scope.size;
+		}
 		if (pending->projection && !vr.menus && vr_visor_enabled())
 		{
 			/* the HUD on the helmet's visor (vr_visor.c) */
@@ -1706,6 +1830,7 @@ void halo_vr_present(int eyes_drawn, int hud_drawn)
 	vr.pending = 1;
 	vr.frame = 0;
 	vr.depth_written = 0;
+	vr.scope_set = 0;
 }
 
 int halo_vr_submitted(struct vr_host_layers *layers, struct vr_host_pose *head)

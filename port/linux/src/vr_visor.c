@@ -1112,10 +1112,12 @@ static void layer_over(unsigned char *pixel, const unsigned char *image, int wid
 void vr_visor_composite(unsigned char *eyes[2], int width, int height, const struct vr_host_layers *layers,
 	const struct vr_host_pose *head, const unsigned char *hud, int hud_width, int hud_height,
 	const unsigned char *visor_pixels, int visor_width, int visor_height, unsigned char *const panels[VR_PANEL_COUNT],
-	const int panel_width[VR_PANEL_COUNT], const int panel_height[VR_PANEL_COUNT])
+	const int panel_width[VR_PANEL_COUNT], const int panel_height[VR_PANEL_COUNT], const unsigned char *scope,
+	int scope_size)
 {
 	float hud_position[3], hud_orientation[4], visor_position[3], visor_orientation[4];
 	float panel_position[VR_PANEL_COUNT][3], panel_orientation[VR_PANEL_COUNT][4];
+	float scope_extent[2] = { layers->scope_size, layers->scope_size };
 	int eye, x, y, panel, over;
 	/* the eyes' pixels the glass is not over (its edges in view) */
 	long uncovered[2] = { 0, 0 };
@@ -1144,6 +1146,12 @@ void vr_visor_composite(unsigned char *eyes[2], int width, int height, const str
 				local[2] = -1.0f;
 				quaternion_rotate(layers->eye[eye].orientation, local, direction);
 				/* (in the order the host submits them: host_vr.c) */
+				if (layers->scope && scope && eye == layers->scope_eye && layer_hit(layers->eye[eye].position,
+					direction, layers->scope_pose.position, layers->scope_pose.orientation, 0, 0.0f, 0.0f,
+					scope_extent, uv))
+				{
+					layer_over(pixel, scope, scope_size, scope_size, uv);
+				}
 				for (over = 0; over < 2; over++)
 				{
 					if (over && layers->hud && hud && layer_hit(layers->eye[eye].position, direction, hud_position,

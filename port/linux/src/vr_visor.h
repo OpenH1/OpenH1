@@ -136,11 +136,13 @@ void vr_visor_image(struct vr_visor_image *image);
 int vr_visor_rim(struct vr_visor_rim *rim);
 /* debug.screenshot_every: the frame as the headset shows it, the layers
 over each eye's image (BGRA, rows from the bottom), from the layers as
-submitted; the HUD's and the visor's images as BGRA, rows from the bottom */
+submitted; the HUD's, the visor's and the scope's images as BGRA, rows from
+the bottom */
 void vr_visor_composite(unsigned char *eyes[2], int width, int height, const struct vr_host_layers *layers,
 	const struct vr_host_pose *head, const unsigned char *hud, int hud_width, int hud_height,
 	const unsigned char *visor, int visor_width, int visor_height, unsigned char *const panels[VR_PANEL_COUNT],
-	const int panel_width[VR_PANEL_COUNT], const int panel_height[VR_PANEL_COUNT]);
+	const int panel_width[VR_PANEL_COUNT], const int panel_height[VR_PANEL_COUNT], const unsigned char *scope,
+	int scope_size);
 
 /* vr.c's: the layers of the frame presented last, and the head they were
 placed before; 0 if there is none */
