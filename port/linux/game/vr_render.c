@@ -585,6 +585,22 @@ boolean vr_render_body_place(const float place[3], const float forward[3], const
 	return TRUE;
 }
 
+/* first_person_legs.c: where the player's body is drawn in the eye pass,
+under the real head rather than the game's eye: the top of the neck
+(halo_vr_view's body_neck) in the world, and the body's heading there;
+FALSE: the game's place (no eye pass, a cinematic, the aim not the VR
+mode's) */
+boolean vr_render_body_anchor(real_point3d *neck, real *yaw)
+{
+	struct halo_vr_view const *view = &vr_render.view;
+
+	if (!vr_render.active || !view->body_heading_valid || !halo_vr_aiming() || cinematic_in_progress())
+		return FALSE;
+	hand_point(view->body_neck, neck);
+	*yaw = vr_render.base_yaw + body_heading();
+	return TRUE;
+}
+
 /* player_control.c: the weapon is a long gun, which the left hand may hold
 by its foregrip too (vr.two_handed): any but the pistols, the needler, the
 flag and the ball */

@@ -531,7 +531,8 @@ set back behind the eye as far as keeps the open waist below the view
 (the way Halo 2 keeps its first-person body's open top out of sight), more
 the further down you look. It is drawn with the world's camera, so it keeps
 its place and size at any field of view. Hit boxes, markers and everything
-the game does with the body are unchanged.
+the game does with the body are unchanged. In the VR mode the chest is drawn
+too, under the real head (VR, "Your body").
 
 Only this machine's view changes. Nothing the machines send each other
 changes, so players with different settings play together.
@@ -1157,8 +1158,9 @@ there, so you can find it without looking.
 - The holsters follow your body, which faces where your head does, but
   only once your head turns more than 40 degrees from it, and then slowly:
   looking about does not move them, nor does looking down (they hang from
-  your neck, not from your eyes, which a nod moves forward). Recentring (both grips) sets them again. Your arms'
-  shoulders face the same way.
+  your neck, as your body does, not from your eyes, which a nod moves
+  forward). Recentring (both grips) sets them again. Your body drawn
+  (below) and your arms' shoulders face the same way.
 - The shoulder's holster is behind and just above your right shoulder,
   the hip's at your right hip, about 70 cm below your eyes: from about
   20 cm away from either, your hand is there.
@@ -1166,6 +1168,34 @@ there, so you can find it without looking.
   A punch does not melee while your hand is in a holster, nor for half a
   second after you draw (drawing is a fast move forward).
 - Only on foot, with `vr.aim = "controller"`.
+
+#### Your body (`display.first_person_legs`)
+
+With LEGS on (Video Setup > FOV and Viewmodels, `display.first_person_legs`),
+looking down in the headset shows Master Chief's body under you: the
+chest, the legs and the feet, but not his head nor his arms (your arms are
+the VR mode's own, `vr.hands`, from shoulders over his). The body is where
+yours is, not where the game's eye is:
+
+- Its neck is under your head: at the top of your neck, about 10 cm behind
+  and 10 cm below your eyes as your head is turned and tilted, so that it
+  stays put as you nod and look down, and moves with you as you lean or
+  step about the play space. It stands on the ground as the game has it.
+- It faces your body's heading, the holsters' (above): where your head
+  faces, once your head turns more than 40 degrees from it, and then
+  slowly; not where the gun aims. Your arms' shoulders (`vr.shoulders`)
+  face the same way, from the same neck.
+- It stands upright and square over its hips, as you do: the game's body
+  leans into its aim, its chest turned to the gun while its feet stay
+  planted. Its legs walk, run and crouch as the game animates them.
+- It is not set back behind the eye as on the flat screen: its chest
+  closes its waist. Looking straight down, the Chief's broad chest hides
+  his feet below it; they show as they step forward, or looking less
+  steeply.
+
+The body is the one everyone else sees, drawn differently for you alone:
+hit boxes, markers and what others see are the game's. It is drawn on
+foot only, as on the flat screen (not in a vehicle's seat).
 
 #### With a gamepad (`vr.aim = "gamepad"`)
 
