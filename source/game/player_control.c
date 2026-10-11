@@ -802,6 +802,16 @@ static void handle_one_player_input(
 
 				vr_holster_update(player->unit_index, vr_aim == 1);
 			}
+			/* (whether the head's crouch may crouch the player: on foot,
+			alive, the VR mode aiming; port/linux/src/vr.c) */
+			if (local_player_index == 0)
+			{
+				extern void halo_vr_crouch_able(int able);
+
+				halo_vr_crouch_able(vr_aim != 0 && unit->object.type == _object_type_biped &&
+					unit->object.parent_object_index == NONE &&
+					!TEST_FLAG(unit->object.damage_flags, _object_dead_bit));
+			}
 			if (vr_aim == 1)
 			{
 				while (vr_yaw < 0.f)
@@ -1463,8 +1473,20 @@ static void get_local_player_input_blob(
 				{
 					struct biped_datum *biped = biped_try_and_get(player->unit_index);
 
+#ifdef HALO_VR
+					/* port: the VR mode's physical crouch crouches at a full
+					stick too: the player's head is down, and the player with it
+					(port/linux/src/vr.c) */
+					extern int halo_vr_crouch(void);
+					boolean vr_physical_crouch = local_player_index == 0 &&
+						(halo_vr_crouch() & 1 /* HALO_VR_CROUCH_PHYSICAL */);
+#endif
+
 					if (biped &&
 						(controls_enable_crouch ||
+#ifdef HALO_VR
+						vr_physical_crouch ||
+#endif
 						TEST_FLAG(biped->biped.flags, _biped_airborne_bit) ||
 						magnitude_squared2d(&input->throttle) < 0.98f * 0.98f))
 					{

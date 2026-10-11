@@ -209,7 +209,9 @@ VR_SCREENS = {
     "vr_controls": {
         "screen": "vr_controls_screen",
         "header": ("header_vr_controls", f"{PE}/vr_controls/header_vr_controls"),
-        "spacing": 28,
+        # (closer than the others' 28px: twelve rows, and the help below them)
+        "spacing": 24,
+        "help_top": 366,
         "rows": [
             ("HANDS:", "vr.hands", VR_HANDS,
              "Aiming with the controller, your hands: with arms\nfrom the shoulders, floating, or the game's arms.",
@@ -225,6 +227,8 @@ VR_SCREENS = {
             ("HOLSTERS:", "vr.holsters", ON_OFF,
              "Reach over your right shoulder for a long gun, or\nto your right hip for a pistol, and grip to draw it.",
              None),
+            ("PHYSICAL CROUCH:", "vr.physical_crouch", ON_OFF,
+             "Crouch in the room and you crouch in the game;\nstand up and you stand.", None),
             ("TURNING:", "vr.turn", [("SNAP", "snap"), ("SMOOTH", "smooth")],
              "How the right stick turns you: in steps, or\ncontinuously.", None),
             ("SNAP TURN ANGLE:", "vr.snap_turn_angle",

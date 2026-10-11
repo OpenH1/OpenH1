@@ -1090,6 +1090,7 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | Controller | Game |
 | --- | --- |
 | Left stick | Move (click: crouch) |
+| Head | Crouch: crouch in the room, and the game crouches (`vr.physical_crouch`) |
 | Right stick, left and right | Turn: in steps (`vr.turn = "snap"`) or smoothly (`"smooth"`) |
 | Right stick click | Zoom |
 | Head | Look |
@@ -1202,6 +1203,23 @@ The body is the one everyone else sees, drawn differently for you alone:
 hit boxes, markers and what others see are the game's. It is drawn on
 foot only, as on the flat screen (not in a vehicle's seat).
 
+#### Crouching (`vr.physical_crouch`)
+
+Crouch in the room and you crouch in the game; stand up and you stand.
+Your head about 35 cm below your standing eyes (`vr.height = "standing"`:
+`vr.player_height` above the floor), or 25 cm below where it was at the
+recentring (seated), crouches; back up within 7 cm of that, you stand. The
+game crouches as the left stick's click does, held while your head is down
+(Halo's crouch is held, not toggled), and through its input and the
+netcode as ever: your body is lower, and moves as a crouched player does
+(at a full stick too, which would stand a crouch by the stick).
+
+- The view follows your head alone: the game lowers its eye as it crouches
+  (0.82 m for the Master Chief, at `vr.world_scale` 1), which is taken back
+  out while the crouch is your head's. A crouch by the stick's click keeps
+  the game's drop.
+- Only on foot, not in a vehicle's seat nor in the menus; any `vr.aim`.
+
 #### With a gamepad (`vr.aim = "gamepad"`)
 
 A gamepad (an Xbox controller, by Bluetooth or USB, or the headset's
@@ -1242,7 +1260,7 @@ does.
 In the headset, Settings' VR Setup (below About; only there while the
 game plays in VR) sets most of these with the left d-pad: VR Controls
 (the hands, the aim, the gamepad's view, two-handed aiming, the melee
-punch, turning and the vehicles' view) and, from its last row, VR Display (the play position,
+punch, the holsters, the physical crouch, turning and the vehicles' view) and, from its last row, VR Display (the play position,
 the eye height, the world's scale, the HUD's and the menus' distance and
 size, the resolution and the refresh rate) and, from its last row, its
 visor page (the HUD on the visor or flat, its depth, lag and glow, the
@@ -1263,6 +1281,7 @@ headset's session is opened with, apply from the next start.
 | `vr.depth` | `false` | `HALO_VR_DEPTH` | `true`: give the runtime the eyes' depth too (`XR_KHR_composition_layer_depth`), for its reprojection. SteamVR on the Steam Frame cannot make a depth swapchain for an OpenGL session yet. |
 | `vr.melee_gesture` | `true` | `HALO_VR_MELEE_GESTURE` | A punch with the right controller (fast, in the direction it points) melees, as B does. |
 | `vr.holsters` | `true` | `HALO_VR_HOLSTERS` | With `vr.aim = "controller"`: the weapon you carry but do not hold is on your body, and the right hand reaching there and gripping draws it (above, "Holsters"). Y switches weapons as ever. |
+| `vr.physical_crouch` | `true` | `HALO_VR_PHYSICAL_CROUCH` | The head crouching crouches the player: about 0.35 m below the standing eyes (`vr.height = "standing"`), or 0.25 m below the recentred ones (seated), and standing within 0.07 m of that stands (above, "Crouching"). The left stick's click crouches as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand (above, "Throwing a grenade with the left hand") or with the left trigger; `"button"`, with the left trigger alone. |
 | `vr.two_handed` | `true` | `HALO_VR_TWO_HANDED` | With `vr.aim = "controller"`: a long gun (any but the pistols, the needler, the flag and the ball) is aimed along the line from the right hand to the left while the left grip holds it by the foregrip (pressed within 18 cm of the line ahead of the right hand). The aim turns to that line over 0.15 s, smoothed, and back when the grip is let go. |
 | `vr.hands` | `"arms"` | `HALO_VR_HANDS` | With `vr.aim = "controller"`: each first-person hand where its controller is (the right holding the weapon, its index finger on the trigger as far as the trigger is pulled; the left open, closing as the grip is pulled, and on a long gun's foregrip while it holds it). `"arms"`: the arms reach the hands from the shoulders (`vr.shoulders`). `"floating"`: no arms above the wrists. `"game"`: the game's arms, posed from the weapon in the right hand. A hand whose controller is not tracked is not drawn, nor its arm. |
@@ -1292,7 +1311,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_turn` | `0.0` | `HALO_VR_TEST_TURN` | Turn the player this many degrees a second, for automated tests without hands. |
 | `debug.vr_test_jitter` | `0.0` | `HALO_VR_TEST_JITTER` | Move the head by up to this many millimetres (and turn it as many hundredths of a degree) at random each frame, as a worn headset moves: for automated tests of what flickers when the view barely moves. |
 | `debug.vr_test_head` | `""` | `HALO_VR_TEST_HEAD` | Hold the head still and level where it is first located (a simulated headset's head wobbles), for automated tests: `"0"`, or `"<degrees> <seconds>"` turns it left and right by as many degrees over as many seconds, smoothly (a sine of the frames' display times); `"<degrees> <seconds> <pitch>"` also pitches it up by as many degrees (less than 0: down), as looking down at the hip's holster. |
-| `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right trigger 65536, the left 131072, the right grip 262144), the right trigger's pull (0 to 1), the head turned (degrees left), the frames the pose lasts (`0`: 288) and the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps). Up to 16 poses separated by `;` are taken in turn (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. Below, a grenade throw scripted. |
+| `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move[, down]]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right trigger 65536, the left 131072, the right grip 262144), the right trigger's pull (0 to 1), the head turned (degrees left), the frames the pose lasts (`0`: 288), the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps), and the head lowered (metres, as a crouch; moved with the hands: below). A pose shorter than 20 frames presses its buttons only as long. Up to 16 poses separated by `;` are taken in turn (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. Below, a grenade throw scripted. |
 | `debug.vr_throw_log` | `false` | `HALO_VR_THROW_LOG` | Log each step of a grenade thrown with the left hand (`vr.grenade_throw`): the grip taken (or why it holds nothing), the swing (or why a fast hand was none), the release's speed, power and direction, and the game's throw: when it began, its animations held or moved on to their release, and the grenade's place and speed. |
 | `debug.vr_test_seat` | `""` | `HALO_VR_TEST_SEAT` | Get into a vehicle's seat and out again, for automated tests of the view in a seat: `"<label> <seconds> [<seconds seated>]"`, the first player gets into the seat whose label has this text in it (`"gunner"`, `"W-driver"`, `"GT-gunner"`: the Shade) that many seconds into the level, as the action button does, in a vehicle of the kind made before them three seconds earlier (standing at the seat's entrance from two seconds earlier), and out again after as many seconds seated (10 by default). From a second before, the log says how far the view moved and turned each frame, how dark a blink made it, and each phase's sums (on foot, entering, seated, exiting) with how much of the motion was seen (not in a blink's full darkness), and each blink: with `debug.vr_test_head = "0"`, the motion the player did not make. |
 | `debug.vr_test_fov` | `""` | `HALO_VR_TEST_FOV` | Each eye's field of view instead of the runtime's, for automated tests of what the edges of a wide view show: `"<outward> <inward> <up> <down>[ <cant>]"`, in degrees from the eye's axis, each eye turned outward by `<cant>` degrees (as canted displays are; the game's 3D view assumes the eyes look the same way, so only the visor and the helmet's rim are right with it). |
@@ -1320,6 +1339,21 @@ and drawn back beside the head over half a second, swung 0.55 m forward
 in 8 frames (5 m/s) and let go of, which logs the swing, the game's throw
 beginning, its animation moved on to the release, and the grenade thrown
 from the hand.
+
+A crouch scripted (seated, `R` and `L` the hands at their places, `R4` and
+`L4` 0.4 m lower), with the head still:
+
+```
+HALO_VR_TEST_HANDS="L, R, 0, 0, 0, 0, 1200, 0, 0;
+  L4, R4, 0, 0, 0, 0, 576, 72, 0.40;
+  L, R, 0, 0, 0, 0, 576, 72, 0"
+```
+
+stands, crouches 0.4 m over 72 frames, holds it, and stands up again: the
+log says when the crouch is on and off (`vr: crouch:`) and, once a tick
+while the crouch or the head moves, how high the view is above the
+player's feet: the game's eye, what of its drop is taken back out, and the
+head's own (`vr crouch:`).
 
 `debug.gpu_stats` also logs the VR frames' timing, and
 `debug.screenshot_every` writes both eyes (`eyes*.bmp`), the HUD
@@ -1522,6 +1556,22 @@ supersampling costs as above, and multisampling the eye pass
   the arm, the forearm twisted with the hand. Out of reach, the shoulder
   comes forward up to 5 cm and the arm stretches the rest. With floating
   hands, the arms are scaled to almost nothing at the wrists.
+- The physical crouch (`vr.physical_crouch`, `src/vr.c`): the head's
+  height from the recentred eyes (with 7 cm of hysteresis) presses the
+  left stick's click, the game's crouch, which the game holds only while it
+  is pressed; with it, the crouch is held at a full stick too
+  (`player_control.c`, which otherwise stands a player pushing the stick
+  all the way). The game's eye drops by its crouch (`biped->biped.crouch`
+  times the biped's standing camera height less its crouching one,
+  `biped_get_sight_position`) over a few ticks; `game/vr_render.c` adds
+  that back to the eye while the head is low (just out of a vehicle the
+  player is still crouched from before it, a frame before the crouch is
+  pressed again), the crouch blended between the last two ticks as the
+  camera is, and keeps doing so until the game has stood the player up
+  again (else standing up would drop the view by the crouch still left). A crouch by a hand, with the head up, keeps the
+  game's drop. With `vr.aim = "gamepad"` the weapon, posed from the eye,
+  comes down with the head's crouch, and the reticle stays where the aim
+  from the game's eye meets the world.
 - In a vehicle's seat (`vr.vehicle_view = "first_person"`) the eye is in
   the seat, and the player's body is not drawn. The game animates the
   seated body, none of it the player's own motion: getting in sweeps the

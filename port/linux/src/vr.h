@@ -253,6 +253,17 @@ now); and the holsters as they are */
 void halo_vr_holster_stowed(int holster);
 int halo_vr_holsters(struct halo_vr_holsters *holsters);
 
+/* the physical crouch (vr.physical_crouch): whether the game could crouch
+the player now (the first player on foot, alive, the VR mode aiming), each
+frame; and the crouch as it is: HALO_VR_CROUCH_PHYSICAL while the head is
+low enough to crouch (vr.c presses the game's crouch for it while the game
+could crouch the player), HALO_VR_CROUCH_BUTTON while a hand presses it (the
+left stick's click, a gamepad's) */
+#define HALO_VR_CROUCH_PHYSICAL 1
+#define HALO_VR_CROUCH_BUTTON 2
+void halo_vr_crouch_able(int able);
+int halo_vr_crouch(void);
+
 /* the player, for the visor's effects (vr_visor.c) */
 void halo_vr_visor_state(const struct halo_vr_visor_state *state);
 /* the HUD's draws from now on are of this group (HALO_VR_HUD_GROUP_*), or

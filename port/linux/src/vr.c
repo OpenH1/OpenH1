@@ -24,6 +24,12 @@ turns and aims the player (the game's own look code), and the head looks
 about from the aim: the view is the facing, yaw and pitch, turned and moved
 by the head (vr.gamepad_view = "camera"), or the facing's yaw alone, with
 it or in steps ("level", "snap"). The controllers are a gamepad's halves.
+
+The player crouches as the head does (vr.physical_crouch): the head low
+enough below the recentred eyes presses the game's crouch (the left stick's
+click), which Halo holds only while it is pressed; standing up lets it go.
+The game lowers its eye as it crouches, which vr_render.c takes back out of
+the view while the crouch is the head's: the head has already come down.
 */
 
 #ifdef HALO_VR
@@ -138,6 +144,13 @@ which the eyes find. */
 #define HOLSTER_NEAR_FASTEST 0.06f
 static const float holster_near_amplitude[2] = { 0.08f, 0.18f };
 #define HOLSTER_NEAR_TICK_SECONDS 0.012f
+/* the physical crouch (vr.physical_crouch): the head this far below the
+recentred eyes (metres; standing, from vr.player_height; seated, from where
+they were) crouches, and back up within CROUCH_HYSTERESIS of it stands (a
+head bobbing about the line does not crouch and stand each frame) */
+#define CROUCH_STANDING_DROP 0.35f
+#define CROUCH_SEATED_DROP 0.25f
+#define CROUCH_HYSTERESIS 0.07f
 /* debug.vr_test_hands: the poses it gives the controllers, each held this
 many frames unless it says */
 #define TEST_HANDS_POSES 16
@@ -148,6 +161,8 @@ pressed for the first frames of the pose */
 #define TEST_HANDS_RIGHT_TRIGGER (1 << 16)
 #define TEST_HANDS_LEFT_TRIGGER (1 << 17)
 #define TEST_HANDS_RIGHT_GRIP (1 << 18)
+/* and its numbers in each pose */
+#define TEST_HANDS_NUMBERS 19
 
 static struct
 {
@@ -239,6 +254,15 @@ static struct
 	int holster_press_frames;
 	unsigned long holster_ticks;
 	float holster_near_seconds;
+	/* the physical crouch: whether the game could crouch the player this
+	frame (halo_vr_crouch_able) and the frame before, the head low (with
+	CROUCH_HYSTERESIS), the game's crouch pressed for it, and pressed by a
+	hand (the left stick, a gamepad) */
+	int crouch_able;
+	int crouch_able_frame;
+	int head_low;
+	int crouching;
+	int crouch_button;
 	float depth_near, depth_far;
 	/* the presented frame, ended when the next begins (halo_vr_present) */
 	struct vr_host_layers pending_layers;
@@ -275,6 +299,7 @@ static struct
 	float weapon_offset[3];
 	int melee_gesture;
 	int holsters;
+	int physical_crouch;
 	/* vr.grenade_throw = "gesture", and debug.vr_throw_log */
 	int throw_gesture;
 	int throw_log;
@@ -298,16 +323,17 @@ static struct
 	/* debug.vr_test_hands: each pose's left and right hands (metres right,
 	up, forward from the recentred head; degrees of yaw left, pitch up, roll
 	right), the left grip's pull, the buttons pressed, the right trigger's
-	pull, the head's turn (degrees left), the frames it lasts and the frames
-	the hands take to move to it from the pose before; the poses' frames in
-	all */
+	pull, the head's turn (degrees left), the frames it lasts, the frames the
+	hands take to move to it from the pose before, and the head lowered
+	(metres); the poses' frames in all */
 	int test_hand_poses;
-	float test_hands[TEST_HANDS_POSES][18];
+	float test_hands[TEST_HANDS_POSES][TEST_HANDS_NUMBERS];
 	unsigned long test_hands_frames;
 } settings = { (unsigned long)-1 };
 
 /* debug.vr_test_hands: "lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch
-rroll[, grip[, buttons[, trigger[, head yaw[, frames[, move frames]]]]]]",
+rroll[, grip[, buttons[, trigger[, head yaw[, frames[, move frames[, head
+down]]]]]]]",
 poses separated by ';', each lasting its frames (TEST_HANDS_FRAMES if 0) */
 static void test_hands_read(const char *text)
 {
@@ -331,10 +357,10 @@ static void test_hands_read(const char *text)
 			if (*c == ',')
 				*c = ' ';
 		}
-		pose[12] = pose[13] = pose[14] = pose[15] = pose[16] = pose[17] = 0.0f;
-		count = sscanf(numbers, "%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f", &pose[0], &pose[1],
+		pose[12] = pose[13] = pose[14] = pose[15] = pose[16] = pose[17] = pose[18] = 0.0f;
+		count = sscanf(numbers, "%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f", &pose[0], &pose[1],
 			&pose[2], &pose[3], &pose[4], &pose[5], &pose[6], &pose[7], &pose[8], &pose[9], &pose[10], &pose[11],
-			&pose[12], &pose[13], &pose[14], &pose[15], &pose[16], &pose[17]);
+			&pose[12], &pose[13], &pose[14], &pose[15], &pose[16], &pose[17], &pose[18]);
 		if (count >= 12)
 		{
 			if (pose[16] < 1.0f)
@@ -374,6 +400,7 @@ static void settings_read(void)
 	settings.melee_gesture = config_boolean("vr.melee_gesture");
 	settings.throw_gesture = !strcmp(config_string("vr.grenade_throw"), "gesture");
 	settings.holsters = config_boolean("vr.holsters");
+	settings.physical_crouch = config_boolean("vr.physical_crouch");
 	settings.throw_log = config_boolean("debug.vr_throw_log");
 	settings.vehicle_first_person = strcmp(config_string("vr.vehicle_view"), "third_person") != 0;
 	settings.test_turn = (float)config_real("debug.vr_test_turn") * (float)M_PI / 180.0f;
@@ -1121,6 +1148,50 @@ static void holsters_update(float seconds)
 	}
 }
 
+/* the physical crouch, once a frame (vr.physical_crouch; CROUCH_* above):
+the head low enough below the recentred eyes crouches, and back up near
+them stands; only while the game could crouch the player (on foot, the VR
+mode aiming, not in the menus) */
+static void crouch_update(void)
+{
+	float drop = settings.standing ? CROUCH_STANDING_DROP : CROUCH_SEATED_DROP;
+	float below = vr.origin_position[1] - vr.views.head.position[1];
+	int able = settings.physical_crouch && vr.crouch_able_frame && !vr.menus && vr.origin_valid &&
+		vr.views.head.valid;
+	int crouching;
+
+	if (!vr.origin_valid || !vr.views.head.valid)
+		vr.head_low = 0;
+	else if (!vr.head_low && below > drop)
+		vr.head_low = 1;
+	else if (vr.head_low && below < drop - CROUCH_HYSTERESIS)
+		vr.head_low = 0;
+	crouching = able && vr.head_low;
+	if (crouching != vr.crouching)
+	{
+		platform_log("vr: crouch: %s (the head %.2f m below the recentred eyes)%s", crouching ? "on" : "off", below,
+			crouching || !vr.head_low ? "" : !settings.physical_crouch ? ", vr.physical_crouch is off" :
+			vr.menus ? ", the menus" : !vr.crouch_able_frame ? ", not on foot" : "");
+		vr.crouching = crouching;
+	}
+}
+
+void halo_vr_crouch_able(int able)
+{
+	vr.crouch_able = able;
+}
+
+int halo_vr_crouch(void)
+{
+	if (!vr.initialized)
+		return 0;
+	/* (the head low counts whether or not the game's crouch is pressed for
+	it: just out of a vehicle the player is still crouched from before it,
+	the head down, a frame before the game says the player is on foot) */
+	return (settings.physical_crouch && vr.head_low ? HALO_VR_CROUCH_PHYSICAL : 0) |
+		(vr.crouch_button ? HALO_VR_CROUCH_BUTTON : 0);
+}
+
 void halo_vr_holster_stowed(int holster)
 {
 	vr.holster_stowed = holster;
@@ -1170,6 +1241,7 @@ static void input_update(void)
 		}
 	}
 	two_handed_update(seconds);
+	crouch_update();
 	/* (the poses' times: from one frame's display to the next's) */
 	throw_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
 	vr.hand_valid = vr.views.grip[1].valid;
@@ -1478,6 +1550,18 @@ static void test_hands_apply(void)
 			quaternion_multiply(turn, poses[which]->orientation, poses[which]->orientation);
 		}
 	}
+	{
+		/* the head lowered, as a crouch (with the hands, over the move
+		frames) */
+		struct vr_host_pose *poses[3] = { &vr.views.eye[0], &vr.views.eye[1], &vr.views.head };
+		float down = pose[18];
+		int which;
+
+		if (pose[17] >= 1.0f && (float)frame < pose[17])
+			down = before[18] + (pose[18] - before[18]) * (float)(frame + 1) / pose[17];
+		for (which = 0; which < 3; which++)
+			poses[which]->position[1] -= down;
+	}
 	if (frame < TEST_HANDS_PRESS_FRAMES)
 	{
 		unsigned int buttons = (unsigned int)pose[13];
@@ -1570,6 +1654,8 @@ void halo_vr_present(int eyes_drawn, int hud_drawn)
 	gamepad goes by this frame's) */
 	vr.aimed = vr.aiming;
 	vr.aiming = 0;
+	vr.crouch_able_frame = vr.crouch_able;
+	vr.crouch_able = 0;
 	if (!vr.frame)
 		return;
 	memset(pending, 0, sizeof(*pending));
@@ -1921,7 +2007,10 @@ void halo_vr_gamepad(void *gamepad)
 	if (buttons & VR_BUTTON_DPAD_RIGHT) pad->wButtons |= XINPUT_GAMEPAD_DPAD_RIGHT;
 	if (buttons & VR_BUTTON_MENU) pad->wButtons |= XINPUT_GAMEPAD_START;
 	if (buttons & VR_BUTTON_VIEW) pad->wButtons |= XINPUT_GAMEPAD_BACK;
-	if (buttons & VR_BUTTON_LEFT_STICK) pad->wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
+	/* the crouch: a hand's (the left stick's click, a gamepad's), or the
+	head's (vr.physical_crouch), which Halo holds only while it is pressed */
+	vr.crouch_button = (buttons & VR_BUTTON_LEFT_STICK) || (pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB);
+	if (vr.crouch_button || vr.crouching) pad->wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
 	if (buttons & VR_BUTTON_RIGHT_STICK) pad->wButtons |= XINPUT_GAMEPAD_RIGHT_THUMB;
 	stick_merge(&pad->sThumbLX, vr.input.left_stick[0]);
 	stick_merge(&pad->sThumbLY, vr.input.left_stick[1]);

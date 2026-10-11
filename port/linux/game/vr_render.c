@@ -24,6 +24,11 @@ port/linux/src/vr_visor.c) the layer is curved about the eyes and laid out
 in angles, and the camera looks where the HUD does (a moment behind the
 head): what the HUD projects from the world goes through the same curve
 (vr_render_hud_to_screen).
+
+The game lowers the player's eye as the player crouches. With the crouch
+the head's (vr.physical_crouch, port/linux/src/vr.c, which presses the
+game's crouch while the head is low) that drop is taken back out of the
+eye: the head has already come down, and the view follows it alone.
 */
 
 #ifdef HALO_VR
@@ -37,6 +42,9 @@ head): what the HUD projects from the world goes through the same curve
 #include "game/players.h"
 #include "objects/objects.h"
 #include "units/units.h"
+#include "units/bipeds.h"
+#include "units/biped_definitions.h"
+#include "game/game.h"
 #include "tag_files/tag_files.h"
 #include "interface/hud.h"
 #include "interface/hud_unit.h"
@@ -110,6 +118,22 @@ static struct
 	boolean crosshairs_drawn;
 	boolean crosshair_distance_valid;
 	real crosshair_inverse_distance;
+	/* the physical crouch (crouch_lift): the unit whose crouch is
+	followed, the tick it was last read at, its crouch at the last two ticks
+	(blended as the camera is), whether the crouch is the head's, and this
+	frame's: the game's drop taken back out of the eye (world units) and how
+	far the player is crouched (0 to 1); what it last logged (with
+	debug.vr_test_hands) */
+	boolean crouch_valid;
+	long crouch_unit_index;
+	long crouch_tick;
+	real crouch_previous;
+	real crouch_latest;
+	boolean crouch_physical;
+	real crouch_lift;
+	real crouch_blended;
+	real crouch_head_drop;
+	real crouch_logged_head;
 } vr_render;
 
 /* where the crosshairs are drawn from the HUD's middle, in its 640x480
@@ -120,6 +144,8 @@ void vr_render_screen_point_end(void);
 /* vr_seat.c's */
 void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_point3d *position);
 void vr_seat_log_camera(real_point3d const *position, real_vector3d const *forward, real_vector3d const *up);
+real render_interpolation_fraction(void);
+void platform_log(char const *format, ...);
 
 /* ---------- maths */
 
@@ -262,6 +288,105 @@ static long seated_unit(void)
 	return unit_index;
 }
 
+/* how far the game's eye is lowered by its crouch now (world units) that
+the view takes back out, the crouch being the head's (vr.physical_crouch):
+the head has already come down as far as it did, and the game's drop to its
+crouching camera height (biped_get_sight_position) would lower the view
+again, and further (the cyborg's, 0.27 world units: 0.82 m). The crouch the
+eye has is blended between the last two ticks, as the camera is. Once the
+head's, the crouch stays it until the game has stood the player up again
+(both ticks the eye blends), so that standing up does not drop the view by
+the game's crouch still left; a hand's crouch (the left stick) without the
+head's keeps the game's drop. Only on foot and alive, in the first-person
+view. */
+static real crouch_lift(void)
+{
+	long player_index = local_player_get_player_index(0);
+	long unit_index = player_index != NONE ? player_get(player_index)->unit_index : NONE;
+	struct biped_datum *biped = unit_index != NONE ? biped_try_and_get(unit_index) : NULL;
+	struct biped_definition *definition;
+	long tick = game_time_get();
+	int crouch = halo_vr_crouch();
+
+	vr_render.crouch_lift = 0.0f;
+	vr_render.crouch_blended = 0.0f;
+	if (!biped || biped->object.parent_object_index != NONE || TEST_FLAG(biped->object.damage_flags, _object_dead_bit) ||
+		cinematic_in_progress() || director_get_perspective(0) != _director_perspective_first_person)
+	{
+		vr_render.crouch_valid = FALSE;
+		vr_render.crouch_physical = FALSE;
+		return 0.0f;
+	}
+	if (!vr_render.crouch_valid || unit_index != vr_render.crouch_unit_index)
+	{
+		vr_render.crouch_valid = TRUE;
+		vr_render.crouch_unit_index = unit_index;
+		vr_render.crouch_previous = vr_render.crouch_latest = biped->biped.crouch;
+		vr_render.crouch_tick = tick;
+		vr_render.crouch_physical = FALSE;
+	}
+	else if (tick != vr_render.crouch_tick)
+	{
+		/* (several ticks since the last frame: the crouch a tick ago, as
+		nearly as a steady change since tells, as the camera's previous is,
+		render_interpolation.c) */
+		real ticks = (real)(tick - vr_render.crouch_tick);
+
+		vr_render.crouch_previous = vr_render.crouch_latest;
+		vr_render.crouch_latest = biped->biped.crouch;
+		if (ticks > 1.0f)
+			vr_render.crouch_previous += (vr_render.crouch_latest - vr_render.crouch_previous) * (ticks - 1.0f) / ticks;
+		vr_render.crouch_tick = tick;
+	}
+	if (crouch & HALO_VR_CROUCH_PHYSICAL)
+		vr_render.crouch_physical = TRUE;
+	else if ((crouch & HALO_VR_CROUCH_BUTTON) || (vr_render.crouch_latest <= 0.0f && vr_render.crouch_previous <= 0.0f))
+		vr_render.crouch_physical = FALSE;
+	if (!vr_render.crouch_physical)
+		return 0.0f;
+	definition = biped_definition_get(biped->definition_index);
+	vr_render.crouch_blended = vr_render.crouch_previous +
+		(vr_render.crouch_latest - vr_render.crouch_previous) * render_interpolation_fraction();
+	vr_render.crouch_lift = vr_render.crouch_blended *
+		(definition->biped.standing_camera_height - definition->biped.crouching_camera_height);
+	return vr_render.crouch_lift;
+}
+
+/* debug.vr_test_hands (which can lower the head): the view's height above
+the player's feet as the crouch and the head move, once a tick while
+either does: with the crouch the head's, the game's eye standing plus the
+head's drop, however far the game has crouched */
+static void crouch_log(real lift)
+{
+	long player_index = local_player_get_player_index(0);
+	struct halo_vr_view *view = &vr_render.view;
+	struct biped_datum *biped;
+	real units = view->world_units_per_metre;
+	static long logged_tick = -1;
+	static real logged_crouch = -1.0f;
+	static boolean logged_physical;
+
+	if (!halo_vr_test_hands() || !vr_render.crouch_valid || units <= 0.0f || player_index == NONE ||
+		vr_render.crouch_tick == logged_tick || !(biped = biped_try_and_get(player_get(player_index)->unit_index)))
+	{
+		return;
+	}
+	if (vr_render.crouch_latest == logged_crouch && vr_render.crouch_physical == logged_physical &&
+		fabsf(view->head_position[2] - vr_render.crouch_logged_head) < 0.02f)
+	{
+		return;
+	}
+	logged_tick = vr_render.crouch_tick;
+	logged_crouch = vr_render.crouch_latest;
+	logged_physical = vr_render.crouch_physical;
+	vr_render.crouch_logged_head = view->head_position[2];
+	platform_log("vr crouch: tick %ld, the game's crouch %.2f (%s), the view %.3f m above the feet: the game's eye "
+		"%.3f, taken back out %.3f, the head %+.3f", vr_render.crouch_tick, vr_render.crouch_latest,
+		vr_render.crouch_physical ? "the head's" : (halo_vr_crouch() & HALO_VR_CROUCH_BUTTON) ? "a hand's" : "none",
+		(vr_render.head_position.z - biped->object.position.z) / units,
+		(vr_render.base_position.z - lift - biped->object.position.z) / units, lift / units, view->head_position[2]);
+}
+
 /* turns the window's camera into the VR frame's centre camera (both its
 render and rasterizer cameras); FALSE without a VR frame to draw */
 boolean vr_render_camera(struct render_camera *camera, struct render_camera *rasterizer_camera)
@@ -270,6 +395,7 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	real base_yaw;
 	real pitch;
 	real_vector3d offset;
+	real lift;
 	real left = 0.0f, right = 0.0f, up = 0.0f, down = 0.0f, tangent;
 	real aspect;
 	short eye;
@@ -291,6 +417,18 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	swings about it with the aim. Jumps between the two blink (vr_seat.c). */
 	if (view->vehicle_first_person && halo_vr_aiming())
 		vr_render.seated_unit_index = seated_unit();
+	/* (on foot, crouched by the head: the game's drop taken back out of
+	the player's eye, before the seat's blinks hold it) */
+	if (vr_render.seated_unit_index == NONE)
+	{
+		lift = crouch_lift();
+	}
+	else
+	{
+		lift = vr_render.crouch_lift = vr_render.crouch_blended = 0.0f;
+		vr_render.crouch_valid = vr_render.crouch_physical = FALSE;
+	}
+	camera->position.z += lift;
 	vr_seat_eye(vr_render.seated_unit_index, halo_vr_aiming() && !cinematic_in_progress(), view->seconds,
 		&camera->position);
 	vr_render.base_position = camera->position;
@@ -322,6 +460,11 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	camera->position.z += offset.k * view->world_units_per_metre;
 	vr_render.head_position = camera->position;
 	vr_seat_log_camera(&camera->position, &camera->forward, &camera->up);
+	crouch_log(lift);
+	/* (the gamepad's weapon, posed from the eye whichever way the head
+	leans, comes down with the head's crouch as far as the game's drop is
+	taken out) */
+	vr_render.crouch_head_drop = vr_render.crouch_blended * offset.k * view->world_units_per_metre;
 
 	for (eye = 0; eye < 2; eye++)
 	{
@@ -446,6 +589,7 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 		the flat screen, from the player's eye looking where the player
 		faces, there whichever way the head looks or leans */
 		camera->position = vr_render.base_position;
+		camera->position.z += vr_render.crouch_head_drop;
 		camera->forward = vr_render.aim_forward;
 		camera->up = vr_render.aim_up;
 		vr_render.weapon_camera = *camera;
@@ -913,7 +1057,9 @@ void vr_render_crosshairs(void)
 	}
 	if (view->gamepad_aim)
 	{
+		/* (from the game's eye, which the aim is from, crouched or not) */
 		origin = vr_render.base_position;
+		origin.z -= vr_render.crouch_lift;
 		direction = vr_render.aim_forward;
 	}
 	else
