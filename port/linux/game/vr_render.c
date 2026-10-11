@@ -29,6 +29,10 @@ The game lowers the player's eye as the player crouches. With the crouch
 the head's (vr.physical_crouch, port/linux/src/vr.c, which presses the
 game's crouch while the head is low) that drop is taken back out of the
 eye: the head has already come down, and the view follows it alone.
+
+A cinematic seen from the player's own head (the game's first-person
+camera, not a movie camera) has the hands the controllers' as in play,
+though they aim nothing (cinematic_head).
 */
 
 #ifdef HALO_VR
@@ -138,7 +142,19 @@ static struct
 	real crouch_blended;
 	real crouch_head_drop;
 	real crouch_logged_head;
+	/* a cinematic seen from the player's head (cinematic_head): this
+	frame's, and the view logged last (enum cinematic_view) */
+	boolean cinematic_head;
+	short cinematic_logged;
 } vr_render;
+
+/* what the first player's view is, as logged (cinematic_log) */
+enum cinematic_view
+{
+	_cinematic_view_none = 0,
+	_cinematic_view_head,
+	_cinematic_view_camera,
+};
 
 /* where the crosshairs are drawn from the HUD's middle, in its 640x480
 (hud_draw.c): where the right controller points */
@@ -294,6 +310,64 @@ static long seated_unit(void)
 	return unit_index;
 }
 
+/* a cinematic seen from the first player's own head: the game's
+first-person camera, not a movie camera (a script's camera_control), as on
+the Pelicans' rides in (b30's insertion, where the player sits in the bay and
+looks out). The head looks about there as ever, and the hands are the
+controllers' (vr.hands) rather than the game's arms posed before the eyes;
+they aim nothing (the aim is the game's in a cinematic: player_control.c),
+and the player's input is off (cinematic_start), so they cannot fire. A
+movie camera elsewhere keeps the game's view, with no hands floating in it. */
+static boolean cinematic_head(void)
+{
+	return cinematic_in_progress() && local_player_get_player_index(0) != NONE &&
+		director_get_perspective(0) == _director_perspective_first_person;
+}
+
+/* the log of each cinematic: from the player's head (with the unit's seat,
+and whether the hands are the controllers'), from a movie camera, and its
+end, with the tick of each */
+static void cinematic_log(boolean head, boolean hands)
+{
+	short view = head ? _cinematic_view_head : cinematic_in_progress() ? _cinematic_view_camera : _cinematic_view_none;
+	long player_index = local_player_get_player_index(0);
+	long unit_index = player_index != NONE ? player_get(player_index)->unit_index : NONE;
+	struct object_datum *unit, *parent = NULL;
+	char const *vehicle = NULL;
+
+	if (view == vr_render.cinematic_logged)
+		return;
+	/* (looked up again here, and only if still there: a frame drawn as a map
+	ends has the old map's handles) */
+	unit = unit_index != NONE ? object_try_and_get(unit_index) : NULL;
+	if (unit && unit->object.parent_object_index != NONE)
+		parent = object_try_and_get(unit->object.parent_object_index);
+	if (parent)
+		vehicle = tag_get_name(parent->definition_index);
+	if (view == _cinematic_view_head)
+	{
+		platform_log("vr cinematic: tick %ld: from the player's head%s%s, the hands %s", game_time_get(),
+			vehicle ? ", seated in " : "", vehicle ? vehicle : "", hands ? "the controllers'" : "the game's");
+	}
+	else if (view == _cinematic_view_camera)
+	{
+		platform_log("vr cinematic: tick %ld: from a movie camera", game_time_get());
+	}
+	else
+	{
+		platform_log("vr cinematic: tick %ld: over, the player's view", game_time_get());
+	}
+	vr_render.cinematic_logged = view;
+}
+
+/* the hands are posed where the controllers are (vr_render_weapon_camera):
+while the right controller aims, and in a cinematic from the player's head
+(posed, aiming nothing) */
+static boolean hands_posed(void)
+{
+	return vr_render.view.controller_aim && (halo_vr_aiming() || vr_render.cinematic_head);
+}
+
 /* how far the game's eye is lowered by its crouch now (world units) that
 the view takes back out, the crouch being the head's (vr.physical_crouch):
 the head has already come down as far as it did, and the game's drop to its
@@ -410,8 +484,11 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	vr_render.seated_unit_index = NONE;
 	vr_render.weapon_camera_set = FALSE;
 	vr_render.weapon_camera_valid = FALSE;
+	vr_render.cinematic_head = FALSE;
 	if (!halo_vr_view(view))
 		return FALSE;
+	vr_render.cinematic_head = cinematic_head();
+	cinematic_log(vr_render.cinematic_head, hands_posed());
 	/* the turn of the stick (and of the aim) while the aim follows the head;
 	else (a cinematic, the main menu's scene) the camera's own heading */
 	base_yaw = cinematic_in_progress() || !halo_vr_aiming() ?
@@ -572,7 +649,8 @@ static void hand_point(const float place[3], real_point3d *point)
 }
 
 /* the camera the first-person weapon is posed from (render.c): with the
-controller aiming, one placed so that the weapon is in the right controller,
+controller aiming (or the hands posed in a cinematic from the player's
+head: hands_posed), one placed so that the weapon is in the right controller,
 pointing where it points: with the hands floating (vr.hands), the right
 hand's middle (as the weapon's idle pose has it) at the controller's grip,
 else the weapon's grip vr.weapon_offset from the camera; FALSE leaves the
@@ -589,7 +667,7 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 		return FALSE;
 	/* (the head's, kept for the hands when the controller is not tracked) */
 	vr_render.weapon_camera = *camera;
-	vr_render.weapon_camera_set = halo_vr_aiming();
+	vr_render.weapon_camera_set = halo_vr_aiming() || hands_posed();
 	if (view->gamepad_aim && halo_vr_aiming())
 	{
 		/* the gamepad aims (vr.aim = "gamepad"): the weapon is posed as on
@@ -603,7 +681,7 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 		vr_render.weapon_camera_valid = TRUE;
 		return TRUE;
 	}
-	if (!view->controller_aim || !halo_vr_aiming())
+	if (!hands_posed())
 		return FALSE;
 	yaw_rotate(vr_render.base_yaw, view->hand_forward, &forward);
 	yaw_rotate(vr_render.base_yaw, view->hand_up, &up);

@@ -1298,6 +1298,26 @@ netcode as ever: your body is lower, and moves as a crouched player does
   the game's drop.
 - Only on foot, not in a vehicle's seat nor in the menus; any `vr.aim`.
 
+#### Cinematics seen from your own head
+
+Some cinematics are seen from the player's own eyes, not from a movie
+camera: the Pelicans' rides in (the openings of a50, b30, b40 and c10),
+seated in the troop bay, and a30's lifepod once it has come down, where you
+look about but cannot move yet. There your hands are your own
+(`vr.hands`), the weapon in your right hand as the game has it in hand, the
+left hand open or closing with its grip, as in play. They act on nothing:
+the cinematic has the game's aim and none of the player's input, so the
+trigger fires nothing, and the holsters, a grenade's throw and the scopes
+wait until you have control. A cinematic seen from a movie camera elsewhere
+keeps the game's view, with no hands floating in it.
+
+- The hands are the first-person weapon's (its arms are the model): with no
+  weapon in hand there are no hands, in a cinematic as in play.
+- With `vr.aim = "controller"` (with `"head"` or `"gamepad"`, the game's
+  arms as ever).
+- The log says when each cinematic begins, whether from the player's head
+  or a movie camera, and when it ends (`vr cinematic:`).
+
 #### With a gamepad (`vr.aim = "gamepad"`)
 
 A gamepad (an Xbox controller, by Bluetooth or USB, or the headset's
@@ -1364,7 +1384,7 @@ headset's session is opened with, apply from the next start.
 | `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the right stick pushed down ejects the magazine, the left hand takes another from the left hip and pushes it in; the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand (above, "Throwing a grenade with the left hand") or with the left trigger; `"button"`, with the left trigger alone. |
 | `vr.two_handed` | `true` | `HALO_VR_TWO_HANDED` | With `vr.aim = "controller"`: a long gun (any but the pistols, the needler, the flag and the ball) is aimed along the line from the right hand to the left while the left grip holds it by the foregrip (pressed within 18 cm of the line ahead of the right hand). The aim turns to that line over 0.15 s, smoothed, and back when the grip is let go. |
-| `vr.hands` | `"arms"` | `HALO_VR_HANDS` | With `vr.aim = "controller"`: each first-person hand where its controller is (the right holding the weapon, its index finger on the trigger as far as the trigger is pulled; the left open, closing as the grip is pulled, and on a long gun's foregrip while it holds it). `"arms"`: the arms reach the hands from the shoulders (`vr.shoulders`). `"floating"`: no arms above the wrists. `"game"`: the game's arms, posed from the weapon in the right hand. A hand whose controller is not tracked is not drawn, nor its arm. |
+| `vr.hands` | `"arms"` | `HALO_VR_HANDS` | With `vr.aim = "controller"`: each first-person hand where its controller is (the right holding the weapon, its index finger on the trigger as far as the trigger is pulled; the left open, closing as the grip is pulled, and on a long gun's foregrip while it holds it). `"arms"`: the arms reach the hands from the shoulders (`vr.shoulders`). `"floating"`: no arms above the wrists. `"game"`: the game's arms, posed from the weapon in the right hand. A hand whose controller is not tracked is not drawn, nor its arm. In a cinematic seen from the player's head the hands are the controllers' too, acting on nothing (above, "Cinematics seen from your own head"). |
 | `vr.shoulders` | `"0.19, -0.20, -0.07"` | `HALO_VR_SHOULDERS` | With `vr.hands = "arms"`: where each shoulder is from the eyes, in metres: out to its side, up, forward, turned with the body (the holsters' heading: it faces where the head does, follows it past a 40 degree turn, and slowly). From the eyes as they would be with the head level and turned with the body: the shoulders hang from the neck, so a nod or a turn of the head does not move them. |
 | `vr.vehicle_view` | `"first_person"` | `HALO_VR_VEHICLE_VIEW` | `"first_person"`: in a vehicle's seat, the view is from the seated player's head, level with the horizon. `"third_person"`: the game's camera following the vehicle. |
 | `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, the eye stays put in the vehicle, riding with it but not with the body climbing in and out, a turret's turning or flinches, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
