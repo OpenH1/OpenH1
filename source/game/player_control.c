@@ -794,6 +794,14 @@ static void handle_one_player_input(
 					vr_pitch = throw_pitch;
 				}
 			}
+			/* (the weapon not in hand, in its holster on the body:
+			port/linux/game/vr_holster.c) */
+			if (local_player_index == 0)
+			{
+				extern void vr_holster_update(long unit_index, boolean aiming);
+
+				vr_holster_update(player->unit_index, vr_aim == 1);
+			}
 			if (vr_aim == 1)
 			{
 				while (vr_yaw < 0.f)

@@ -392,6 +392,8 @@ real pal_tags_first_person_fraction(short local_player_index, long graph_index, 
 /* port/linux/game/vr_grenade.c's */
 boolean vr_grenade_throw_advance(long unit_index, short *frame_index, short key_frame_index, boolean first_person);
 void vr_grenade_draw(unsigned long flags);
+/* port/linux/game/vr_holster.c's */
+void vr_holster_draw(unsigned long flags);
 #endif
 
 /* ---------- globals */
@@ -609,6 +611,8 @@ void first_person_weapon_draw(
 		if (render.local_player_index==0)
 		{
 			vr_grenade_draw(FLAG(_render_model_first_person_bit));
+			/* and the weapon not in hand, in its holster on the body */
+			vr_holster_draw(FLAG(_render_model_first_person_bit));
 		}
 #endif
 	}

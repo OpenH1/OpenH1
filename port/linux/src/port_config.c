@@ -253,6 +253,11 @@ static const struct config_setting config_settings[] =
 		"throwing it with the left hand (hold the left grip, draw the hand back,\n"
 		"swing and let go: it flies where the hand threw it, as hard as it did)\n"
 		"or with the left trigger; \"button\" with the left trigger alone." },
+	{ "vr.holsters", _config_boolean, "true", "HALO_VR_HOLSTERS", _environment_value, _platform_desktop,
+		"With vr.aim = \"controller\", the weapon you carry but do not hold is on\n"
+		"your body: a long gun over your right shoulder, a pistol or the needler\n"
+		"at your right hip. Reach there with your right hand and grip to draw it\n"
+		"(it lights up as your hand comes, and the controller ticks)." },
 	{ "vr.two_handed", _config_boolean, "true", "HALO_VR_TWO_HANDED", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", a long gun (not a pistol or the needler)\n"
 		"is aimed with both hands while the left grip holds it by the foregrip:\n"
@@ -695,7 +700,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.vr_test_head", _config_string, "\"\"", "HALO_VR_TEST_HEAD", _environment_value, _platform_desktop,
 		"Hold the VR head still and level where it is first, for automated tests\n"
 		"(a simulated headset's wobbles): \"0\", or \"<degrees> <seconds>\" turns it\n"
-		"left and right by as many degrees over as many seconds; empty none." },
+		"left and right by as many degrees over as many seconds, and a third\n"
+		"number pitches it up by as many degrees (less than 0: down); empty none." },
 	{ "debug.vr_test_fov", _config_string, "\"\"", "HALO_VR_TEST_FOV", _environment_value, _platform_desktop,
 		"Each VR eye's field of view, instead of the runtime's, for automated tests\n"
 		"of the edges of a wide view: \"<outward> <inward> <up> <down>[ <cant>]\",\n"
@@ -708,8 +714,9 @@ static const struct config_setting config_settings[] =
 		"metres right, up and forward from the recentred head and degrees of yaw\n"
 		"(left), pitch (up) and roll (right), the left grip's pull (0 to 1), the\n"
 		"buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the\n"
-		"right trigger 65536, the left 131072), the right trigger's pull (0 to\n"
-		"1), the head turned (degrees left), the frames the pose lasts (0: 288)\n"
+		"right trigger 65536, the left 131072, the right grip 262144), the right\n"
+		"trigger's pull (0 to 1), the head turned (degrees left), the frames the\n"
+		"pose lasts (0: 288)\n"
 		"and the frames the hands take to move to it from the pose before (0:\n"
 		"none; a swing); poses separated by ';' (16 at most) in turn.\n"
 		"Empty: the controllers' own." },

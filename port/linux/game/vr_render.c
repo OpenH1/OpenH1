@@ -550,6 +550,27 @@ boolean vr_render_left_hand(real_matrix4x3 *hand, real *units)
 	return TRUE;
 }
 
+/* vr_holster.c: a place on the body (game axes from the recentred head,
+metres) with directions there, in the world, during the eye pass with the
+controller aiming; and the world's units a metre. FALSE otherwise */
+boolean vr_render_body_place(const float place[3], const float forward[3], const float up[3], real_matrix4x3 *matrix,
+	real *units)
+{
+	real_vector3d f, u;
+	real_point3d position;
+
+	if (!vr_render.active || !vr_render.view.controller_aim || !halo_vr_aiming())
+		return FALSE;
+	yaw_rotate(vr_render.base_yaw, forward, &f);
+	yaw_rotate(vr_render.base_yaw, up, &u);
+	if (normalize3d(&f) <= 0.0f || normalize3d(&u) <= 0.0f)
+		return FALSE;
+	hand_point(place, &position);
+	matrix4x3_from_point_and_vectors(matrix, &position, &f, &u);
+	*units = vr_render.view.world_units_per_metre;
+	return TRUE;
+}
+
 /* player_control.c: the weapon is a long gun, which the left hand may hold
 by its foregrip too (vr.two_handed): any but the pistols, the needler, the
 flag and the ball */

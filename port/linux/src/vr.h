@@ -173,6 +173,34 @@ struct halo_vr_throw
 	int log;
 };
 
+/* the holsters (vr.holsters, port/linux/game/vr_holster.c): the weapon the
+player carries but does not hold is on the body, a long gun over the right
+shoulder, a pistol at the right hip; the right hand reaching there and
+gripping draws it (the game's weapon switch, as Y) */
+enum
+{
+	HALO_VR_HOLSTER_NONE = 0,
+	HALO_VR_HOLSTER_BACK, /* over the right shoulder: a long gun */
+	HALO_VR_HOLSTER_HIP,  /* at the right hip: a pistol, the needler */
+	HALO_VR_HOLSTERS,
+};
+
+struct halo_vr_holsters
+{
+	/* the holsters are on (vr.holsters, the controller aiming) */
+	int enabled;
+	/* the body's heading (radians, game axes from the recentred head: the
+	head's, which it follows only past a turn of the head, and slowly), and
+	where each holster is (game axes from the recentred head, metres) */
+	float body_yaw;
+	float place[HALO_VR_HOLSTERS][3];
+	/* the holster the right hand is in, if any (HALO_VR_HOLSTER_*), and how
+	far the hand is from each one's reach (metres; 0 within it, large when
+	the hand is not tracked): the stowed weapon lights up as it comes */
+	int reach;
+	float distance[HALO_VR_HOLSTERS];
+};
+
 /* ---------- vr.c */
 
 /* the VR build with vr.enabled */
@@ -206,6 +234,12 @@ ends the gesture's */
 int halo_vr_throw(struct halo_vr_throw *throw_state);
 void halo_vr_throw_ready(int ready);
 void halo_vr_throw_done(void);
+
+/* the holster of the weapon the player carries but does not hold, once a
+frame (HALO_VR_HOLSTER_*: NONE when there is none, or it cannot be drawn
+now); and the holsters as they are */
+void halo_vr_holster_stowed(int holster);
+int halo_vr_holsters(struct halo_vr_holsters *holsters);
 
 /* the player, for the visor's effects (vr_visor.c) */
 void halo_vr_visor_state(const struct halo_vr_visor_state *state);
