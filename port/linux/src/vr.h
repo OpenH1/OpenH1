@@ -276,8 +276,9 @@ struct halo_vr_reload
 	int held;
 	unsigned long inserted;
 	/* the pouch it is taken from (game axes from the recentred head,
-	metres), whether the hand takes one there now (wanted: the magazine is
-	out, or the shotgun has room for a shell), how far the left hand is from
+	metres), whether the hand takes one there now (wanted: the weapon has
+	room for one and rounds to fill it; the magazine in it, if not out
+	already, ejects itself as one is taken), how far the left hand is from
 	its reach (metres; 0 within it, large when the hand is not tracked), and
 	how far the one held is from the well (large when none is held) */
 	float body_yaw;

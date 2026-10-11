@@ -5,11 +5,11 @@ The VR mode's reload by hand (HALO_VR; vr.manual_reload, port/linux/README.md
 "VR"): the game's side of it, for player_control.c, weapons.c and
 first_person_weapons.c.
 
-The hand reloads as it would a real gun: the right stick pushed down ejects
-the magazine, the left hand takes another from its pouch on the body (the
-left hip; the rocket launcher's tubes from behind the left shoulder) and
-pushes it into the weapon where it goes (port/linux/src/vr.c, which has the
-hands). The shotgun is fed a shell at a time, with no magazine to eject.
+The hand reloads as it would a real gun: the left hand takes another
+magazine from its pouch on the body (the left hip; the rocket launcher's
+tubes from behind the left shoulder), the one in the weapon ejecting itself
+(or the right stick pushed down ejects it first), and pushes it into the
+weapon where it goes (port/linux/src/vr.c, which has the hands). The shotgun is fed a shell at a time, with no magazine to eject.
 Each one pushed home presses the game's reload, here, through the player's
 input as the keyboard's reload key does (player_control.c), so that the
 ammunition, the netcode and the animations stay the game's: the game's
@@ -51,7 +51,8 @@ game's ammunition's: the shotgun's shells and the rocket launcher's tubes
 the same.
 
 Lit up as the holsters are (vr_holster.c): the pouch's magazine as the left
-hand comes to it, while one is to be taken, and where the magazine goes, in
+hand comes to it, while one is to be taken (the weapon has room for one,
+and rounds to fill it), and where the magazine goes, in
 the weapon, while the hand holds one, the more the nearer it comes.
 
 debug.vr_test_weapon puts a weapon of the map's in the first player's hand,

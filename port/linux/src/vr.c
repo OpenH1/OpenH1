@@ -165,12 +165,14 @@ the body's heading (metres forward, left, up) and how near it the left hand
 reaches it (metres): the magazines' and the shells' at the front of the left
 hip, the rocket launcher's tubes behind the left shoulder (the holsters'
 mirrored). The left grip pulled past RELOAD_GRIP_PRESSED in the pouch takes
-one (while the magazine is out, or the shotgun has room for a shell), and
-held there it is the hand's alone: no foregrip, no grenade, until the grip is
-let go. Let go below RELOAD_GRIP_RELEASED, it is dropped; brought within
-RELOAD_WELL_REACH of where it goes in, it is pushed home. It is held
-RELOAD_HELD from the grip along the hand's axes (forward, left, up): its top,
-which goes in, above the fist. */
+one whenever the weapon has room for it and rounds to fill it (the magazine
+in the weapon, if not out already, ejects itself as the new one is taken).
+A grip there is the reload's whether or not it takes one, and a grip at the
+hip whatever the weapon: no foregrip, no grenade, until the grip is let go
+(the grenades are taken anywhere else). Let go below RELOAD_GRIP_RELEASED,
+the one held is dropped; brought within RELOAD_WELL_REACH of where it goes
+in, it is pushed home. It is held RELOAD_HELD from the grip along the hand's
+axes (forward, left, up): its top, which goes in, above the fist. */
 static const float reload_pouches[2][4] =
 {
 	{ 0.06f, 0.22f, -0.66f, 0.18f },
@@ -297,9 +299,10 @@ static struct
 	int crouch_button;
 	/* the reload by hand: the weapon as the game has it, the reload as it
 	is this frame, the weapon it is of, whether the right stick was down
-	last frame, whether the left grip was pressed last frame and took one
-	(nothing else takes that grip until it is let go), and whether the hand
-	was in the pouch last frame */
+	last frame, whether the left grip was pressed last frame and was the
+	reload's (it took one, or was pressed at a pouch: nothing else takes
+	that grip until it is let go), and whether the hand was in the pouch
+	last frame */
 	struct halo_vr_reload_weapon reload_weapon;
 	struct halo_vr_reload reload;
 	long reload_weapon_index;
@@ -998,7 +1001,7 @@ static void throw_update(float seconds)
 		else if (pressing && settings.throw_log && settings.throw_gesture)
 		{
 			platform_log("vr: throw: the grip taken, holding nothing (%s)", vr.two_handed ? "on the foregrip" :
-				vr.reload.held || vr.reload_grip_taken ? "a magazine taken" :
+				vr.reload.held ? "a magazine taken" : vr.reload_grip_taken ? "the grip at a pouch" :
 				vr.input.right_grip > 0.8f ? "both grips: recentring" : !settings.controller_aim ?
 				"vr.aim is not the controller" : !vr.aimed ? "the aim is the game's" : !hand->valid ?
 				"the hand is lost" : !vr.throw_ready ? "the game cannot throw" : "the head is lost");
@@ -1374,13 +1377,39 @@ static void pose_point(const float position[3], const float orientation[4], cons
 		point[axis] = position[axis] + forward[axis] * along[0] + left[axis] * along[1] + up[axis] * along[2];
 }
 
+/* the left hand's distance from a pouch's reach (reload_pouches; 0 within
+it, large when the hand is not tracked), and the pouch's middle (game axes
+from the recentred head) */
+static float reload_pouch_distance(int pouch, float yaw, const float eyes[3], float middle[3])
+{
+	const struct vr_host_pose *hand = &vr.views.grip[0];
+	const float *p = reload_pouches[pouch];
+	float v[3], place[3], c = cosf(yaw), s = sinf(yaw), distance;
+	int axis;
+
+	middle[0] = eyes[0] + p[0] * c - p[1] * s;
+	middle[1] = eyes[1] + p[0] * s + p[1] * c;
+	middle[2] = eyes[2] + p[2];
+	if (!hand->valid || !vr.views.aim[0].valid)
+		return 1000.0f;
+	for (axis = 0; axis < 3; axis++)
+		v[axis] = hand->position[axis] - vr.origin_position[axis];
+	game_axes(v, vr.origin_yaw, place);
+	for (axis = 0; axis < 3; axis++)
+		v[axis] = place[axis] - middle[axis];
+	distance = length3(v) - p[3];
+	return distance < 0.0f ? 0.0f : distance;
+}
+
 /* the reload by hand, once a frame (vr.manual_reload; RELOAD_* above):
 after holsters_update, before two_handed_update and throw_update, which
-leave the left grip to it when it takes a magazine. The right stick down
-ejects the magazine (not the shotgun's: it takes shells while it has room),
-the left hand takes another from its pouch (a tick of its controller as it
-gets there, and a firmer one as it takes it) and pushes it home where it
-goes (a knock in both hands): the game's reload (vr_reload.c presses it). */
+leave the left grip to it when it is pressed at a pouch. The right stick
+down ejects the magazine (not the shotgun's: it takes shells while it has
+room); the left hand takes another from its pouch whenever the weapon has
+room for it (a tick of its controller as it gets there, and a firmer one as
+it takes it; the magazine in the weapon ejects itself if the stick has not)
+and pushes it home where it goes (a knock in both hands): the game's reload
+(vr_reload.c presses it). */
 static void reload_update(void)
 {
 	static const char *const names[] = { "", "magazine", "shell", "tubes" };
@@ -1391,11 +1420,10 @@ static void reload_update(void)
 	/* (the weapon's grip as vr_render_right_hand has it) */
 	const struct vr_host_pose *right = settings.floating_hands && vr.views.grip[1].valid ? &vr.views.grip[1] :
 		&vr.views.aim[1];
-	float v[3], eyes[3], place[3], c, s, stick = vr.input.right_stick[1];
+	float v[3], eyes[3], place[3], stick = vr.input.right_stick[1];
 	int pressed = vr.input.left_grip > RELOAD_GRIP_PRESSED;
 	int pressing = pressed && !vr.reload_grip_pressed;
-	int pouch, in_pouch, axis;
-	const float *p;
+	int pouch, in_pouch, at_hip, axis;
 
 	if (pressed)
 	{
@@ -1423,7 +1451,7 @@ static void reload_update(void)
 	r->wanted = 0;
 	r->pouch_distance = 1000.0f;
 	r->well_distance = 1000.0f;
-	if (r->kind == HALO_VR_RELOAD_NONE)
+	if (!r->enabled)
 	{
 		vr.reload_in_pouch = 0;
 		return;
@@ -1431,7 +1459,8 @@ static void reload_update(void)
 	/* the game reloading (X, or a reload the hand began): the magazine is
 	in, and one held is not wanted (but the next shell, while the last
 	loads) */
-	if (w->reloading && r->kind != HALO_VR_RELOAD_SHELL && (r->ejected || r->held))
+	if (w->reloading && (r->kind == HALO_VR_RELOAD_MAGAZINE || r->kind == HALO_VR_RELOAD_TUBE) &&
+		(r->ejected || r->held))
 	{
 		platform_log("vr: reload: the game reloads: the %s in", names[r->kind]);
 		r->ejected = 0;
@@ -1446,7 +1475,7 @@ static void reload_update(void)
 	/* the right stick down ejects the magazine */
 	if (stick < -RELOAD_STICK_PRESSED)
 	{
-		if (!vr.reload_stick_down)
+		if (!vr.reload_stick_down && r->kind != HALO_VR_RELOAD_NONE)
 		{
 			if (r->kind != HALO_VR_RELOAD_SHELL && !r->ejected && w->can_reload)
 			{
@@ -1466,40 +1495,27 @@ static void reload_update(void)
 	}
 
 	/* the pouch, about the body (as the holsters are), and the left hand
-	in it; the one held from where it goes in */
+	in it, or at the hip (the magazines' place, whatever the weapon: a
+	plasma weapon's, the rocket launcher's); the one held from where it goes
+	in. One is to be taken there whenever the weapon has room for it */
 	pouch = r->kind == HALO_VR_RELOAD_TUBE;
-	p = reload_pouches[pouch];
 	r->body_yaw = vr.body_heading;
 	body_eyes(eyes);
-	c = cosf(r->body_yaw);
-	s = sinf(r->body_yaw);
-	r->pouch[0] = eyes[0] + p[0] * c - p[1] * s;
-	r->pouch[1] = eyes[1] + p[0] * s + p[1] * c;
-	r->pouch[2] = eyes[2] + p[2];
-	r->wanted = !r->held && w->can_reload && (r->kind == HALO_VR_RELOAD_SHELL || r->ejected);
-	if (hand->valid && vr.views.aim[0].valid)
+	r->pouch_distance = reload_pouch_distance(pouch, r->body_yaw, eyes, r->pouch);
+	at_hip = pouch ? reload_pouch_distance(0, r->body_yaw, eyes, place) <= 0.0f : r->pouch_distance <= 0.0f;
+	r->wanted = r->kind != HALO_VR_RELOAD_NONE && !r->held && w->can_reload;
+	if (r->held && w->well_known && right->valid && hand->valid && vr.views.aim[0].valid)
 	{
-		for (axis = 0; axis < 3; axis++)
-			v[axis] = hand->position[axis] - vr.origin_position[axis];
-		game_axes(v, vr.origin_yaw, place);
-		for (axis = 0; axis < 3; axis++)
-			v[axis] = place[axis] - r->pouch[axis];
-		r->pouch_distance = length3(v) - p[3];
-		if (r->pouch_distance < 0.0f)
-			r->pouch_distance = 0.0f;
-		if (r->held && w->well_known && right->valid)
-		{
-			float forward[3], up[3], held[3], well[3];
+		float forward[3], up[3], held[3], well[3];
 
-			weapon_pointing(forward, up);
-			pose_point(right->position, NULL, forward, up, w->well, well);
-			pose_point(hand->position, vr.views.aim[0].orientation, NULL, NULL, reload_held, held);
-			for (axis = 0; axis < 3; axis++)
-				v[axis] = held[axis] - well[axis];
-			r->well_distance = length3(v);
-		}
+		weapon_pointing(forward, up);
+		pose_point(right->position, NULL, forward, up, w->well, well);
+		pose_point(hand->position, vr.views.aim[0].orientation, NULL, NULL, reload_held, held);
+		for (axis = 0; axis < 3; axis++)
+			v[axis] = held[axis] - well[axis];
+		r->well_distance = length3(v);
 	}
-	in_pouch = r->pouch_distance <= 0.0f;
+	in_pouch = r->kind != HALO_VR_RELOAD_NONE && r->pouch_distance <= 0.0f;
 	if (in_pouch && !vr.reload_in_pouch && r->wanted)
 		host_vr_haptic(0, 0.2f, 0.02f);
 	vr.reload_in_pouch = in_pouch;
@@ -1512,6 +1528,16 @@ static void reload_update(void)
 		host_vr_haptic(0, 0.35f, 0.03f);
 		platform_log("vr: reload: %s%s taken from the %s", articles[r->kind], names[r->kind],
 			pouch ? "left shoulder" : "left hip");
+		/* (the magazine in the weapon out as the new one is taken, as the
+		right stick would have: the weapon is drawn without it, and does not
+		fire until the new one is in) */
+		if (r->kind != HALO_VR_RELOAD_SHELL && !r->ejected)
+		{
+			r->ejected = 1;
+			host_vr_haptic(1, 0.4f, 0.04f);
+			platform_log("vr: reload: eject: the %s out, as the new %s taken", names[r->kind],
+				r->kind == HALO_VR_RELOAD_TUBE ? "ones are" : "one is");
+		}
 		if (w->well_known && right->valid)
 		{
 			float forward[3], up[3], well[3];
@@ -1526,10 +1552,13 @@ static void reload_update(void)
 				-place[1], place[2], place[0]);
 		}
 	}
-	else if (pressing && in_pouch)
+	else if (pressing && (in_pouch || at_hip))
 	{
-		platform_log("vr: reload: the grip in the pouch: %s", r->kind != HALO_VR_RELOAD_SHELL && !r->ejected ?
-			"the magazine is in (the right stick down ejects it)" : "nothing to reload");
+		/* (the grip there is the reload's all the same: never a grenade) */
+		vr.reload_grip_taken = 1;
+		platform_log("vr: reload: the grip in the pouch, nothing taken: %s", r->kind == HALO_VR_RELOAD_NONE ?
+			"the weapon has no magazine" : w->reloading ? "the game is reloading" :
+			"nothing to reload (full, or no rounds left)");
 	}
 	else if (r->held && !vr.reload_grip_pressed)
 	{

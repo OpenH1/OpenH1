@@ -1102,7 +1102,7 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | A punch of the right controller | Melee (`vr.melee_gesture`) |
 | The right hand over the right shoulder or at the right hip, gripping | Draw the weapon carried there (`vr.holsters`, below) |
 | The sniper rifle's or the pistol's scope raised to an eye | Look through it, magnified (`vr.scopes`, below) |
-| The right stick pushed down, then the left hand gripping at the left hip and pushing what it took into the weapon | Reload by hand: eject the magazine, take another and push it in (`vr.manual_reload`, below) |
+| The left hand gripping at the left hip and pushing what it took into the weapon (the right stick pushed down ejects the magazine first, if you like) | Reload by hand: take another magazine, the one in the weapon ejecting itself, and push it in (`vr.manual_reload`, below) |
 | The left grip held, the left hand drawn back and swung, the grip let go | Throw a grenade where the hand threw it, as hard as it did (`vr.grenade_throw`, below) |
 | Left bumper, right bumper | Flashlight, switch grenade |
 | D-pad (left controller), View, Menu | The menus' d-pad, Back (scoreboard), Start (pause) |
@@ -1115,7 +1115,8 @@ Other controllers that SteamVR maps to the Touch layout operate as well
 #### Throwing a grenade with the left hand (`vr.grenade_throw = "gesture"`)
 
 Throw it as you would a ball: squeeze the left grip to take a grenade (a
-short buzz says you hold one; only with a grenade to throw, on foot), draw
+short buzz says you hold one; only with a grenade to throw, on foot;
+anywhere but at the magazines' pouch on your left hip, below), draw
 the hand back (beside your head, or low for a lob), swing it forward and
 open the hand. The grenade leaves from your hand as you let go, along the
 way the hand was going (lifted 8 degrees), as hard as you threw it: a
@@ -1136,6 +1137,12 @@ you held it.
   anyway after 0.75 s.
 - The left grip on a long gun's foregrip takes the foregrip instead
   (`vr.two_handed`), and both grips held recentre: neither takes a grenade.
+  Nor does the left grip at your left hip, whatever the weapon (with the
+  rocket launcher, nor behind your left shoulder): that is where magazines
+  are taken (`vr.manual_reload`, below), and a grip there never brings a
+  grenade, even with nothing to reload. Grenades have no place of their
+  own on the body: the grip takes one wherever else the hand is, as the
+  throw starts from wherever the hand is drawn back to.
 - Your left hand and arm are the throw in first person: the weapon stays
   in your right hand (with `vr.hands = "game"` the game's arms throw, timed
   to yours). The player's body throws as you do: its throw waits before
@@ -1214,12 +1221,14 @@ eye sees the scope from outside, as it would.
 
 #### Reloading by hand (`vr.manual_reload`)
 
-Reload as you would a real gun: push the right stick down to eject the
-magazine (a buzz in the right hand; the weapon is empty now, and does not
-fire), reach to your left hip with your left hand and squeeze the left grip
-to take a magazine (a tick as your hand gets there, a firmer one as you
-take it), and push it into the weapon where it goes, still gripping (a
-knock in both hands). The game then reloads, as X does: the same
+Reload as you would a real gun: reach to your left hip with your left hand
+and squeeze the left grip to take a magazine (a tick as your hand gets
+there, a firmer one as you take it), whenever the weapon has room for one
+and rounds to fill it: the magazine in the weapon ejects itself as you take
+the new one (a buzz in the right hand; the weapon is empty now, and does
+not fire). Push it into the weapon where it goes, still gripping (a knock
+in both hands). The right stick pushed down ejects the magazine before you
+reach, if you like (the same buzz). The game then reloads, as X does: the same
 ammunition, the same time, and others see your body reload; but your
 weapon stays in your hand, without the flat screen's reload animation.
 
@@ -1230,7 +1239,8 @@ weapon stays in your hand, without the flat screen's reload animation.
   in under its body, ahead of your hand. While your hand holds one, where it goes lights up
   in your shield's energy, as the holsters do, the more the nearer it comes;
   within about 7 cm of it, it goes in. While the magazine is out, the
-  weapon is drawn without it, and the magazine at your hip lights up as your
+  weapon is drawn without it. Whenever one is to be taken (the weapon not
+  full, with rounds to fill it), the magazine at your hip lights up as your
   hand comes to it.
 - The shotgun is fed a shell at a time, with nothing to eject: take a shell
   from your hip whenever it has room, and push it in at the loading port,
@@ -1243,9 +1253,10 @@ weapon stays in your hand, without the flat screen's reload animation.
 - The plasma weapons have no magazine, and are as ever.
 - An empty weapon does not reload itself, as it does on the flat screen:
   reload it by hand, or with X, which reloads as ever (with its animation).
-- A grip that took a magazine is the reload's until you let go: it holds no
-  foregrip and takes no grenade. Letting go before the magazine is in drops
-  it; take another.
+- A grip at your left hip is the reload's until you let go, whether it
+  took a magazine or not (full, no rounds left, a plasma weapon): it holds
+  no foregrip and takes no grenade. Letting go before the magazine is in
+  drops it (the old one is out: take another).
 - In a network game the host runs your weapon: as a client, its copy
   reloads an empty weapon by itself and loads the shotgun to full, and
   yours then takes the host's ammunition, as it always does. Your hand's
