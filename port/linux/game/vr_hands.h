@@ -29,17 +29,18 @@ struct vr_hands_frame
 	/* the right trigger's and the left grip's pull (0 to 1) */
 	real right_trigger;
 	real left_grip;
-	/* the eyes' middle, in the world, and the head's heading: from the
-	heading the view is turned by (base_yaw, the turns of the stick) */
+	/* the eyes' middle as it would be with the head level and turned with
+	the body (from the top of the neck, which the head nods about), in the
+	world, which the shoulders hang from; and the body's heading (vr.c's,
+	the holsters' and the body's under the head): from the heading the view
+	is turned by (base_yaw, the turns of the stick) */
 	real_point3d head;
 	real base_yaw;
-	real head_yaw;
-	/* vr.shoulders: each shoulder from the eyes' middle, in metres (out to
+	real body_yaw;
+	/* vr.shoulders: each shoulder from that middle, in metres (out to
 	its side, up, forward), and the world's units a metre */
 	real shoulder[3];
 	real units;
-	/* the time from the last frame's display to this one's (seconds) */
-	real seconds;
 };
 
 /* vr_render.c's: the frame, FALSE when the hands are the game's */

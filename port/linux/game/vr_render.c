@@ -482,6 +482,15 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 	return TRUE;
 }
 
+/* the body's heading: halo_vr_view's (the head's, slowly, not the aim's),
+else the head's own (game axes from the recentred head, radians) */
+static real body_heading(void)
+{
+	struct halo_vr_view const *view = &vr_render.view;
+
+	return view->body_heading_valid ? view->body_heading : (real)atan2(view->head_forward[1], view->head_forward[0]);
+}
+
 /* vr_hands.c: the frame the hands are posed in (vr.hands), when the weapon
 was posed for the eyes (vr_render_weapon_camera); FALSE when the hands are
 the game's */
@@ -518,14 +527,19 @@ boolean vr_render_hands(struct vr_hands_frame *frame)
 	frame->two_handed = view->two_handed;
 	frame->right_trigger = view->right_trigger;
 	frame->left_grip = view->left_grip;
-	frame->head = vr_render.head_position;
 	frame->base_yaw = vr_render.base_yaw;
-	frame->head_yaw = (real)atan2(view->head_forward[1], view->head_forward[0]);
+	frame->body_yaw = body_heading();
+	/* (the eyes as they would be with the head level and turned with the
+	body, from the top of the neck: the shoulders stay put as the head nods
+	and turns, over the body's, first_person_legs.c) */
+	if (view->body_heading_valid)
+		hand_point(view->body_eyes, &frame->head);
+	else
+		frame->head = vr_render.head_position;
 	frame->shoulder[0] = view->shoulder_offset[0];
 	frame->shoulder[1] = view->shoulder_offset[1];
 	frame->shoulder[2] = view->shoulder_offset[2];
 	frame->units = view->world_units_per_metre;
-	frame->seconds = view->seconds;
 	return TRUE;
 }
 

@@ -39,6 +39,19 @@ struct halo_vr_view
 	float fov[2][4];
 	/* the turn of the controllers' stick (radians, the game's yaw) */
 	float body_yaw;
+	/* the body's heading (radians, game axes from the recentred head: the
+	head's, which it follows only past a turn of the head, and slowly), the
+	one of the holsters, the body drawn under the head and the arms'
+	shoulders; and whether it is known (a head tracked since recentring) */
+	int body_heading_valid;
+	float body_heading;
+	/* where the body hangs from the head (game axes from the recentred
+	head, metres): the top of the neck, which the head nods and turns about,
+	and the eyes as they would be from it with the head level and turned to
+	the body's heading (the holsters and the arms' shoulders are placed from
+	them) */
+	float body_neck[3];
+	float body_eyes[3];
 	/* the HUD's layer: the tangent of half its vertical field of view, so
 	that its camera's projection matches (waypoints, the reticle) */
 	float hud_tangent;
@@ -189,9 +202,8 @@ struct halo_vr_holsters
 {
 	/* the holsters are on (vr.holsters, the controller aiming) */
 	int enabled;
-	/* the body's heading (radians, game axes from the recentred head: the
-	head's, which it follows only past a turn of the head, and slowly), and
-	where each holster is (game axes from the recentred head, metres) */
+	/* the body's heading (halo_vr_view's body_heading), and where each
+	holster is (game axes from the recentred head, metres) */
 	float body_yaw;
 	float place[HALO_VR_HOLSTERS][3];
 	/* the holster the right hand is in, if any (HALO_VR_HOLSTER_*), and how

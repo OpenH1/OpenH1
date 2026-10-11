@@ -20,8 +20,11 @@ It is on the weapon as animated only while it holds a long gun's foregrip
 weapon's own trigger, where it has one, with it.
 
 With vr.hands = "arms", each arm reaches its hand from a shoulder: the
-shoulders are below and beside the eyes, turned with the body (the head's
-heading, which follows the head only past a turn of the head, and slowly),
+shoulders are below and beside the eyes (as they would be with the head
+level: they hang from the neck, and stay put as the head nods), turned with
+the body (vr.c's
+heading of the body, the holsters' and the body's drawn under the head: the
+head's, which it follows only past a turn of the head, and slowly),
 and the upper arm and the forearm, their lengths the model's, are turned
 to reach the wrist with the elbow bent down and out (two bones, solved by
 the law of cosines). Beyond the arm's reach the shoulder comes forward, so
@@ -48,10 +51,6 @@ origin). A hand whose controller is not tracked is not drawn, nor its arm.
 /* what is not drawn: scaled to this (not 0, which a vertex shader
 normalizing the normals would divide by) */
 #define COLLAPSED_SCALE 0.0001f
-/* the body's heading: the head turns this far from it before it follows,
-and it follows the rest of the way with this time constant (seconds) */
-#define BODY_TURN_FREE 0.70f
-#define BODY_TURN_SECONDS 1.5f
 /* beyond an arm's reach, its shoulder comes forward this far at most
 (metres), and the arm stretches the rest */
 #define SHOULDER_REACH 0.05f
@@ -144,9 +143,6 @@ static struct
 	real_vector3d left_centre;
 	real upper_arm_length[NUMBER_OF_SIDES];
 	real forearm_length[NUMBER_OF_SIDES];
-	/* the body's heading, from the view's (vr_hands_frame.base_yaw) */
-	boolean body_valid;
-	real body_yaw;
 } vr_hands = { NONE };
 
 /* first_person_weapons.c's */
@@ -694,58 +690,15 @@ static void left_fingers_free(real_matrix4x3 *node_matrices, real_matrix4x3 cons
 
 /* ---------- the arms */
 
-static real angle_wrap(real angle)
+/* the shoulders, where the body is: below and beside the eyes (as they
+would be with the head level), turned with the body's heading */
+static void shoulders_place(struct vr_hands_frame const *frame, real_point3d shoulders[NUMBER_OF_SIDES],
+	real_vector3d *forward, real_vector3d *left, real_vector3d *up)
 {
-	while (angle > _pi)
-		angle -= 2.0f * _pi;
-	while (angle < -_pi)
-		angle += 2.0f * _pi;
-	return angle;
-}
+	real yaw;
+	short side;
 
-/* the shoulders, where the body is: below and beside the eyes, turned
-with the body's heading, which faces between the head's and the hands'
-(visible[]: where they are), and follows it past a turn and slowly */
-static void shoulders_place(struct vr_hands_frame const *frame, boolean const visible[NUMBER_OF_SIDES],
-	real_point3d shoulders[NUMBER_OF_SIDES], real_vector3d *forward, real_vector3d *left, real_vector3d *up)
-{
-	real yaw, difference, facing = frame->head_yaw;
-	real_vector3d hands = { 0.0f, 0.0f, 0.0f };
-	short side, count = 0;
-
-	for (side = 0; side < NUMBER_OF_SIDES; side++)
-	{
-		real_matrix4x3 const *hand = side == _left ? &frame->left : &frame->right;
-
-		if (visible[side])
-		{
-			hands.i += hand->position.x - frame->head.x;
-			hands.j += hand->position.y - frame->head.y;
-			count++;
-		}
-	}
-	if (count && (real)sqrt(hands.i * hands.i + hands.j * hands.j) > 0.1f * frame->units * count)
-		facing += 0.5f * angle_wrap((real)atan2(hands.j, hands.i) - frame->base_yaw - frame->head_yaw);
-	if (!vr_hands.body_valid)
-	{
-		vr_hands.body_yaw = facing;
-		vr_hands.body_valid = TRUE;
-	}
-	difference = facing - vr_hands.body_yaw;
-	difference = angle_wrap(difference);
-	if (difference > BODY_TURN_FREE)
-	{
-		vr_hands.body_yaw += difference - BODY_TURN_FREE;
-		difference = BODY_TURN_FREE;
-	}
-	else if (difference < -BODY_TURN_FREE)
-	{
-		vr_hands.body_yaw += difference + BODY_TURN_FREE;
-		difference = -BODY_TURN_FREE;
-	}
-	if (frame->seconds > 0.0f)
-		vr_hands.body_yaw += difference * (1.0f - (real)exp(-frame->seconds / BODY_TURN_SECONDS));
-	yaw = frame->base_yaw + vr_hands.body_yaw;
+	yaw = frame->base_yaw + frame->body_yaw;
 	forward->i = (real)cos(yaw);
 	forward->j = (real)sin(yaw);
 	forward->k = 0.0f;
@@ -996,7 +949,7 @@ void vr_hands_pose(
 		real_point3d shoulders[NUMBER_OF_SIDES];
 		real_vector3d forward, left_axis, up;
 
-		shoulders_place(&frame, visible, shoulders, &forward, &left_axis, &up);
+		shoulders_place(&frame, shoulders, &forward, &left_axis, &up);
 		for (side = 0; side < NUMBER_OF_SIDES; side++)
 		{
 			if (visible[side])

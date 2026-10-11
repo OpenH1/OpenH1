@@ -98,13 +98,21 @@ than THROW_RELEASE_LOOKBACK's frames at 144 Hz) */
 /* the left trigger held for the game's throw at least this many frames (a
 tick is 33 ms; a frame at 144 Hz 7) */
 #define THROW_PRESS_FRAMES 6
+/* the body's heading (body_update): the head's, which it follows only
+past a turn of BODY_TURN_FREE (radians), and the rest of the way over
+BODY_TURN_SECONDS; from the head alone, so that a hand reaching back for a
+holster does not turn the holster away from it */
+#define BODY_TURN_FREE 0.70f
+#define BODY_TURN_SECONDS 1.5f
+/* where the body hangs from the head (body_place): the top of the neck,
+which the head nods and turns about, NECK_BACK behind the eyes and NECK_DOWN
+below them along the head's own axes (metres) */
+#define NECK_BACK 0.10f
+#define NECK_DOWN 0.10f
 /* the holsters (vr.holsters): each one's middle from the head, along the
 body's heading (metres forward, left, up), and how near it the right hand
 reaches it (metres): over the right shoulder, behind it, and at the right
-hip. The body's heading is the head's, which it follows only past a turn of
-BODY_TURN_FREE (radians), and the rest of the way over BODY_TURN_SECONDS (as
-the arms' shoulders, vr_hands.c, but from the head alone: a hand reaching
-back does not turn it). The right grip pulled past HOLSTER_GRIP_PRESSED in
+hip. The right grip pulled past HOLSTER_GRIP_PRESSED in
 the stowed weapon's holster switches to it (Y, for HOLSTER_PRESS_FRAMES
 frames); the hand's punch does not melee for HOLSTER_NO_MELEE_MS after, nor
 while it is in a holster (drawing a gun is a fast move forward). */
@@ -114,8 +122,6 @@ static const float holster_places[HALO_VR_HOLSTERS][4] =
 	{ -0.12f, -0.14f, -0.08f, 0.20f },
 	{ 0.02f, -0.24f, -0.68f, 0.20f },
 };
-#define BODY_TURN_FREE 0.70f
-#define BODY_TURN_SECONDS 1.5f
 #define HOLSTER_GRIP_PRESSED 0.6f
 #define HOLSTER_GRIP_RELEASED 0.3f
 #define HOLSTER_PRESS_FRAMES 6
@@ -206,12 +212,15 @@ static struct
 	int throw_press_frames;
 	int throw_ready;
 	struct halo_vr_throw throw_out;
+	/* the body's heading (body_update: radians, game axes from the
+	recentred head) and whether it is known */
+	int body_heading_valid;
+	float body_heading;
 	/* the holsters: the stowed weapon's (the game's, HALO_VR_HOLSTER_*), the
-	body's heading and whether it is known, the holsters as they are this
-	frame, whether the right grip was pressed last frame, the Y button's
-	frames left, and when a weapon was last drawn (GetTickCount) */
+	holsters as they are this frame, whether the right grip was pressed last
+	frame, the Y button's frames left, and when a weapon was last drawn
+	(GetTickCount) */
 	int holster_stowed;
-	int holster_body_valid;
 	struct halo_vr_holsters holsters;
 	int holster_grip_pressed;
 	int holster_press_frames;
@@ -533,7 +542,7 @@ static void recentre(void)
 		vr.body_yaw += yaw - vr.origin_yaw;
 	vr.origin_yaw = yaw;
 	/* (the body's heading is from the origin's) */
-	vr.holster_body_valid = 0;
+	vr.body_heading_valid = 0;
 	vr.origin_position[0] = head->position[0];
 	vr.origin_position[1] = settings.standing ? settings.player_height : head->position[1];
 	vr.origin_position[2] = head->position[2];
@@ -938,15 +947,70 @@ void halo_vr_throw_done(void)
 	}
 }
 
+/* the body's heading, once a frame (BODY_TURN_* above): the one heading
+of all that is on the body, the holsters, the body drawn under the head
+(first_person_legs.c) and the arms' shoulders (vr_hands.c) */
+static void body_update(float seconds)
+{
+	static const float backwards[3] = { 0.0f, 0.0f, -1.0f };
+	float v[3], f[3], difference;
+
+	if (!vr.origin_valid || !vr.views.head.valid)
+	{
+		vr.body_heading_valid = 0;
+		return;
+	}
+	quaternion_rotate(vr.views.head.orientation, backwards, v);
+	game_axes(v, vr.origin_yaw, f);
+	/* (straight up or down the head has no heading: the body keeps its own) */
+	if (f[0] * f[0] + f[1] * f[1] <= 1e-4f)
+		return;
+	if (!vr.body_heading_valid)
+	{
+		vr.body_heading = atan2f(f[1], f[0]);
+		vr.body_heading_valid = 1;
+	}
+	difference = remainderf(atan2f(f[1], f[0]) - vr.body_heading, 2.0f * (float)M_PI);
+	if (difference > BODY_TURN_FREE)
+	{
+		vr.body_heading += difference - BODY_TURN_FREE;
+		difference = BODY_TURN_FREE;
+	}
+	else if (difference < -BODY_TURN_FREE)
+	{
+		vr.body_heading += difference + BODY_TURN_FREE;
+		difference = -BODY_TURN_FREE;
+	}
+	if (seconds > 0.0f)
+		vr.body_heading += difference * (1.0f - expf(-seconds / BODY_TURN_SECONDS));
+	vr.body_heading = remainderf(vr.body_heading, 2.0f * (float)M_PI);
+}
+
+/* where the body hangs from the head (head: its place, forward and up, in
+game axes from the recentred head): the top of the neck, which stays put as
+the head nods and turns, and the eyes as they would be from it with the
+head level and turned to the body's heading, which the holsters and the
+arms' shoulders are placed from */
+static void body_place(const float head[3], const float forward[3], const float up[3], float neck[3], float eyes[3])
+{
+	int axis;
+
+	for (axis = 0; axis < 3; axis++)
+		neck[axis] = head[axis] - forward[axis] * NECK_BACK - up[axis] * NECK_DOWN;
+	eyes[0] = neck[0] + cosf(vr.body_heading) * NECK_BACK;
+	eyes[1] = neck[1] + sinf(vr.body_heading) * NECK_BACK;
+	eyes[2] = neck[2] + NECK_DOWN;
+}
+
 /* the holsters, once a frame (vr.holsters; HOLSTER_* above): where they
 are on the body, the right hand reaching into one (a tick of its
 controller), and its grip there drawing the stowed weapon */
-static void holsters_update(float seconds)
+static void holsters_update(void)
 {
-	static const float backwards[3] = { 0.0f, 0.0f, -1.0f };
+	static const float backwards[3] = { 0.0f, 0.0f, -1.0f }, upwards[3] = { 0.0f, 1.0f, 0.0f };
 	struct halo_vr_holsters *h = &vr.holsters;
 	const struct vr_host_pose *hand = &vr.views.grip[1];
-	float v[3], f[3], head[3], place[3], difference, c, s;
+	float v[3], head[3], forward[3], up[3], neck[3], eyes[3], place[3], c, s;
 	int pressed = vr.input.right_grip > HOLSTER_GRIP_PRESSED;
 	int pressing = pressed && !vr.holster_grip_pressed;
 	int reach = HALO_VR_HOLSTER_NONE, holster, axis;
@@ -957,54 +1021,34 @@ static void holsters_update(float seconds)
 		vr.holster_grip_pressed = 1;
 	else if (vr.input.right_grip < HOLSTER_GRIP_RELEASED)
 		vr.holster_grip_pressed = 0;
-	h->enabled = settings.holsters && settings.controller_aim && vr.origin_valid && vr.views.head.valid;
+	h->enabled = settings.holsters && settings.controller_aim && vr.body_heading_valid;
 	if (!h->enabled)
 	{
 		h->reach = HALO_VR_HOLSTER_NONE;
 		for (holster = 0; holster < HALO_VR_HOLSTERS; holster++)
 			h->distance[holster] = 1000.0f;
-		vr.holster_body_valid = 0;
 		return;
 	}
-	/* the body's heading, after the head's */
-	quaternion_rotate(vr.views.head.orientation, backwards, v);
-	game_axes(v, vr.origin_yaw, f);
-	if (f[0] * f[0] + f[1] * f[1] > 1e-4f)
-	{
-		float facing = atan2f(f[1], f[0]);
-
-		if (!vr.holster_body_valid)
-		{
-			h->body_yaw = facing;
-			vr.holster_body_valid = 1;
-		}
-		difference = remainderf(facing - h->body_yaw, 2.0f * (float)M_PI);
-		if (difference > BODY_TURN_FREE)
-		{
-			h->body_yaw += difference - BODY_TURN_FREE;
-			difference = BODY_TURN_FREE;
-		}
-		else if (difference < -BODY_TURN_FREE)
-		{
-			h->body_yaw += difference + BODY_TURN_FREE;
-			difference = -BODY_TURN_FREE;
-		}
-		if (seconds > 0.0f)
-			h->body_yaw += difference * (1.0f - expf(-seconds / BODY_TURN_SECONDS));
-	}
-	/* the holsters about the head, along the body */
+	/* the holsters about the head (as it would be level and turned with
+	the body: they stay put as it looks down at them), along the body */
+	h->body_yaw = vr.body_heading;
 	for (axis = 0; axis < 3; axis++)
 		v[axis] = vr.views.head.position[axis] - vr.origin_position[axis];
 	game_axes(v, vr.origin_yaw, head);
+	quaternion_rotate(vr.views.head.orientation, backwards, v);
+	game_axes(v, vr.origin_yaw, forward);
+	quaternion_rotate(vr.views.head.orientation, upwards, v);
+	game_axes(v, vr.origin_yaw, up);
+	body_place(head, forward, up, neck, eyes);
 	c = cosf(h->body_yaw);
 	s = sinf(h->body_yaw);
 	for (holster = HALO_VR_HOLSTER_BACK; holster < HALO_VR_HOLSTERS; holster++)
 	{
 		const float *p = holster_places[holster];
 
-		h->place[holster][0] = head[0] + p[0] * c - p[1] * s;
-		h->place[holster][1] = head[1] + p[0] * s + p[1] * c;
-		h->place[holster][2] = head[2] + p[2];
+		h->place[holster][0] = eyes[0] + p[0] * c - p[1] * s;
+		h->place[holster][1] = eyes[1] + p[0] * s + p[1] * c;
+		h->place[holster][2] = eyes[2] + p[2];
 	}
 	/* the right hand in one */
 	for (holster = 0; holster < HALO_VR_HOLSTERS; holster++)
@@ -1072,7 +1116,8 @@ static void input_update(void)
 	where it points, for a few frames (vr.melee_gesture) */
 	if (vr.melee_frames > 0)
 		vr.melee_frames--;
-	holsters_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
+	body_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
+	holsters_update();
 	/* (not as a gun is drawn from a holster) */
 	if (settings.melee_gesture && !settings.gamepad_aim && vr.views.grip[1].valid && vr.hand_valid &&
 		seconds > 0.0f && vr.holsters.reach == HALO_VR_HOLSTER_NONE && now - vr.holster_ticks > HOLSTER_NO_MELEE_MS)
@@ -1623,6 +1668,9 @@ int halo_vr_view(struct halo_vr_view *view)
 	}
 	(void)head;
 	view->body_yaw = vr.body_yaw;
+	view->body_heading_valid = vr.body_heading_valid;
+	view->body_heading = vr.body_heading;
+	body_place(view->head_position, view->head_forward, view->head_up, view->body_neck, view->body_eyes);
 	view->hud_tangent = tanf(settings.hud_size * 0.5f * (float)M_PI / 180.0f) * (float)HUD_HEIGHT / (float)HUD_WIDTH;
 	/* the HUD's camera: where the head looks, or on the visor where the HUD
 	does (a moment behind the head, vr.hud_lag) */
