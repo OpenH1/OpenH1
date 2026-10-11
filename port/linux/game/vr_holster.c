@@ -22,7 +22,9 @@ nears and full within reach, as the arms' flare is drawn over them
 on the colour. The plasma moves and is added to what is behind it, so it
 shows on a weapon that is bright already, where a light alone barely
 does; it is the game's own shader, so no new assets. A unit with no
-plasma shield (a marine, a map's own biped) has the light alone.
+plasma shield (a marine, a map's own biped) has the light alone. The
+reload by hand lights up its pouch and where the magazine goes the same way
+(vr_reload.c, vr_holster_highlight).
 */
 
 #ifdef HALO_VR
@@ -85,6 +87,16 @@ boolean vr_render_long_gun(long weapon_index);
 boolean vr_render_body_place(const float place[3], const float forward[3], const float up[3], real_matrix4x3 *matrix,
 	real *units);
 
+/* the highlights drawn in a frame: the stowed weapon's, and the reload's
+(vr_reload.c: its pouch, where the magazine goes) */
+enum
+{
+	_vr_highlight_holster = 0,
+	_vr_highlight_pouch,
+	_vr_highlight_well,
+	NUMBER_OF_VR_HIGHLIGHTS,
+};
+
 static struct
 {
 	/* the stowed weapon and its holster (HALO_VR_HOLSTER_*), and the unit
@@ -92,25 +104,17 @@ static struct
 	long weapon_index;
 	int holster;
 	long unit_index;
-	/* the shield's plasma over it this frame, its four functions' values
-	and colours: kept until the plasma is drawn, after the model (the
-	rasterizer keeps pointers to them), and the colours told again by
-	vr_holster_plasma_override, with how far it stands off the weapon */
-	real plasma_values[4];
-	real_rgb_color plasma_colors[4];
-	real plasma_offset;
+	/* the shield's plasma over each highlight this frame, its four
+	functions' values and colours: kept until the plasma is drawn, after
+	the model (the rasterizer keeps pointers to them), and the colours told
+	again by vr_holster_plasma_override, with how far it stands off */
+	struct
+	{
+		real values[4];
+		real_rgb_color colors[4];
+		real offset;
+	} plasma[NUMBER_OF_VR_HIGHLIGHTS];
 } vr_holster = { NONE, HALO_VR_HOLSTER_NONE, NONE };
-
-/* the first player's unit, which the VR mode plays; NONE in the menus and
-between maps */
-static long vr_holster_player_unit(void)
-{
-	long player_index = local_player_get_player_index(0);
-
-	if (!halo_vr_running() || player_index == NONE)
-		return NONE;
-	return player_get(player_index)->unit_index;
-}
 
 /* the weapon the switch would take up: the next one carried after the one
 held */
@@ -167,12 +171,40 @@ void vr_holster_update(long unit_index, boolean aiming)
 	halo_vr_holster_stowed(holster);
 }
 
-/* the shield's plasma over the stowed weapon as strong as this (0 to 1),
-the world's units a metre, or FALSE when the unit has none: model_effect
-set to draw it */
-static boolean vr_holster_plasma(real strength, real units, struct render_model_effect *model_effect)
+/* whether the unit and the stowed weapon kept from the frame's update are
+still the first player's unit and a weapon it carries, found again from the
+player: the game's ticks since (a script taking the weapons), or the level
+ending (the frame drawn as it ends, the map's objects gone), may have
+deleted them */
+static boolean vr_holster_current(void)
 {
-	struct object_definition *definition = object_definition_get(object_get(vr_holster.unit_index)->definition_index);
+	long player_index = local_player_get_player_index(0);
+	long unit_index;
+	short slot;
+
+	if (vr_holster.unit_index == NONE || vr_holster.weapon_index == NONE || !halo_vr_running() ||
+		player_index == NONE)
+	{
+		return FALSE;
+	}
+	unit_index = player_get(player_index)->unit_index;
+	if (unit_index == NONE || unit_index != vr_holster.unit_index || !unit_try_and_get(unit_index))
+		return FALSE;
+	for (slot = 0; slot < MAXIMUM_WEAPONS_PER_UNIT; slot++)
+	{
+		if (unit_inventory_get_weapon(unit_index, slot) == vr_holster.weapon_index)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/* the shield's plasma of the unit's over a highlight (_vr_highlight_*) as
+strong as this (0 to 1), the world's units a metre, or FALSE when the unit
+has none: model_effect set to draw it */
+static boolean vr_holster_plasma(short highlight, long unit_index, real strength, real units,
+	struct render_model_effect *model_effect)
+{
+	struct object_definition *definition = object_definition_get(object_get(unit_index)->definition_index);
 	struct shader *shader;
 	struct vr_holster_plasma const *plasma;
 	real value;
@@ -189,28 +221,71 @@ static boolean vr_holster_plasma(real strength, real units, struct render_model_
 	value = plasma->intensity_exponent > 0.0f ? (real)pow(strength, 1.0 / plasma->intensity_exponent) : strength;
 	for (index = 0; index < 4; index++)
 	{
-		vr_holster.plasma_values[index] = value;
-		vr_holster.plasma_colors[index] = highlight_color;
+		vr_holster.plasma[highlight].values[index] = value;
+		vr_holster.plasma[highlight].colors[index] = highlight_color;
 	}
-	vr_holster.plasma_offset = HIGHLIGHT_PLASMA_OFFSET * units;
+	vr_holster.plasma[highlight].offset = HIGHLIGHT_PLASMA_OFFSET * units;
 	model_effect->modifier_shader = shader;
-	model_effect->modifier_animation.values = vr_holster.plasma_values;
-	model_effect->modifier_animation.colors = vr_holster.plasma_colors;
+	model_effect->modifier_animation.values = vr_holster.plasma[highlight].values;
+	model_effect->modifier_animation.colors = vr_holster.plasma[highlight].colors;
 	return TRUE;
 }
 
 /* rasterizer_xbox_plasma_energy.c, as a plasma is drawn with these colours:
-when it is the plasma over the stowed weapon, the highlight's colour, and
-how far it stands off the weapon at the most (world units; it is drawn no
+when it is the plasma over a highlight, the highlight's colour, and how far
+it stands off what it lights up at the most (world units; it is drawn no
 farther); FALSE otherwise, drawn as it is */
 boolean vr_holster_plasma_override(real_rgb_color const *colors, real_rgb_color *color, real *offset_amount)
 {
-	if (!colors || colors != vr_holster.plasma_colors)
+	short highlight;
+
+	if (!colors)
 		return FALSE;
-	*color = highlight_color;
-	if (*offset_amount > vr_holster.plasma_offset)
-		*offset_amount = vr_holster.plasma_offset;
-	return TRUE;
+	for (highlight = 0; highlight < NUMBER_OF_VR_HIGHLIGHTS; highlight++)
+	{
+		if (colors == vr_holster.plasma[highlight].colors)
+		{
+			*color = highlight_color;
+			if (*offset_amount > vr_holster.plasma[highlight].offset)
+				*offset_amount = vr_holster.plasma[highlight].offset;
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+/* a model lit up as strong as this (0 to 1) for the unit's player, the
+world's units a metre: the shield's plasma over it (model_effect set to draw
+it, else none), and its light, the unit's, raised toward the highlight's
+colour (the light's, given) */
+static void vr_holster_light_up(short highlight, long unit_index, real strength, real units,
+	struct render_model_effect *model_effect, struct render_lighting *lighting)
+{
+	csmemset(model_effect, 0, sizeof(*model_effect));
+	model_effect->type = _render_model_effect_type_none;
+	vr_holster_plasma(highlight, unit_index, strength, units, model_effect);
+	*lighting = *object_get_cached_render_lighting(unit_index, FLT_MAX);
+	if (strength > 0.0f)
+	{
+		real light = strength * HIGHLIGHT_LIGHT;
+
+		lighting->ambient_color.red += (highlight_color.red - lighting->ambient_color.red) * light;
+		lighting->ambient_color.green += (highlight_color.green - lighting->ambient_color.green) * light;
+		lighting->ambient_color.blue += (highlight_color.blue - lighting->ambient_color.blue) * light;
+		/* (and what its metal reflects, which makes a pistol's bright) */
+		lighting->reflection_tint_color.red += (highlight_color.red - lighting->reflection_tint_color.red) * light;
+		lighting->reflection_tint_color.green += (highlight_color.green - lighting->reflection_tint_color.green) * light;
+		lighting->reflection_tint_color.blue += (highlight_color.blue - lighting->reflection_tint_color.blue) * light;
+	}
+}
+
+/* vr_reload.c: its pouch (well: where the magazine goes) lit up as the
+holsters are, as strong as this (0 to 1) */
+void vr_holster_highlight(boolean well, long unit_index, real strength, real units,
+	struct render_model_effect *model_effect, struct render_lighting *lighting)
+{
+	vr_holster_light_up(well ? _vr_highlight_well : _vr_highlight_pouch, unit_index, strength, units, model_effect,
+		lighting);
 }
 
 /* first_person_weapons.c, as the first-person weapon is drawn (flags: its
@@ -228,17 +303,8 @@ void vr_holster_draw(unsigned long flags)
 	float forward[3], up[3];
 	long model_index, unit_index;
 
-	if (vr_holster.weapon_index == NONE || vr_holster.unit_index == NONE || !halo_vr_holsters(&holsters))
+	if (!vr_holster_current() || !halo_vr_holsters(&holsters))
 		return;
-	/* (the weapon and unit kept from player_control.c's last frame only
-	while they are still the player's: a frame drawn as a map ends, before
-	the next map's first tick, has the old map's handles, gone) */
-	unit_index = vr_holster_player_unit();
-	if (unit_index == NONE || unit_index != vr_holster.unit_index ||
-		vr_holster_next_weapon(unit_index) != vr_holster.weapon_index)
-	{
-		return;
-	}
 	model_index = object_definition_get(object_get(vr_holster.weapon_index)->definition_index)->object.model.index;
 	if (model_index == NONE)
 		return;
@@ -282,22 +348,7 @@ void vr_holster_draw(unsigned long flags)
 		highlight = (1.0f - holsters.distance[vr_holster.holster] / HIGHLIGHT_DISTANCE) * HIGHLIGHT_NEAR;
 	else
 		highlight = 0.0f;
-	csmemset(&model_effect, 0, sizeof(model_effect));
-	model_effect.type = _render_model_effect_type_none;
-	vr_holster_plasma(highlight, units, &model_effect);
-	lighting = *object_get_cached_render_lighting(vr_holster.unit_index, FLT_MAX);
-	if (highlight > 0.0f)
-	{
-		real light = highlight * HIGHLIGHT_LIGHT;
-
-		lighting.ambient_color.red += (highlight_color.red - lighting.ambient_color.red) * light;
-		lighting.ambient_color.green += (highlight_color.green - lighting.ambient_color.green) * light;
-		lighting.ambient_color.blue += (highlight_color.blue - lighting.ambient_color.blue) * light;
-		/* (and what its metal reflects, which makes a pistol's bright) */
-		lighting.reflection_tint_color.red += (highlight_color.red - lighting.reflection_tint_color.red) * light;
-		lighting.reflection_tint_color.green += (highlight_color.green - lighting.reflection_tint_color.green) * light;
-		lighting.reflection_tint_color.blue += (highlight_color.blue - lighting.reflection_tint_color.blue) * light;
-	}
+	vr_holster_light_up(_vr_highlight_holster, vr_holster.unit_index, highlight, units, &model_effect, &lighting);
 	render_model(model_index, HOLSTERED_DETAIL_PIXELS, node_matrices, NULL, NULL, NULL, &lighting,
 		&holstered.position, 0.0f, &model_effect, vr_holster.weapon_index, 0, flags);
 }

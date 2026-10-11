@@ -804,6 +804,27 @@ boolean vr_render_left_hand(real_matrix4x3 *hand, real *units)
 	return TRUE;
 }
 
+/* vr_reload.c: the right controller in the world, during the eye pass, as
+the weapon is posed in it: its grip's position (with the hands the game's,
+where it points from), turned as the weapon points; and the world's units
+a metre. FALSE when the weapon is not posed in it */
+boolean vr_render_right_hand(real_matrix4x3 *hand, real *units)
+{
+	struct halo_vr_view *view = &vr_render.view;
+	struct render_camera const *camera = &vr_render.weapon_camera;
+	real_point3d position;
+
+	if (!vr_render.active || !view->controller_aim || view->gamepad_aim || !vr_render.weapon_camera_valid ||
+		!halo_vr_aiming())
+	{
+		return FALSE;
+	}
+	hand_point(view->floating_hands ? view->right_grip_position : view->hand_position, &position);
+	matrix4x3_from_point_and_vectors(hand, &position, &camera->forward, &camera->up);
+	*units = view->world_units_per_metre;
+	return TRUE;
+}
+
 /* vr_holster.c: a place on the body (game axes from the recentred head,
 metres) with directions there, in the world, during the eye pass with the
 controller aiming; and the world's units a metre. FALSE otherwise */

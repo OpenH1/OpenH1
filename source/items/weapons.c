@@ -239,6 +239,11 @@ symbols in this file:
 
 /* port/linux/game/pal_tags.c's */
 short pal_tags_first_person_frames(long graph_index, short animation_index, short frames);
+#ifdef HALO_VR
+/* port/linux/game/vr_reload.c's */
+boolean vr_reload_automatic(long weapon_index);
+boolean vr_reload_chain(long weapon_index);
+#endif
 
 /* ---------- constants */
 
@@ -1553,7 +1558,13 @@ static void weapon_magazine_finish_reload(
 	if (magazine->rounds_total>0 &&
 		magazine->rounds_loaded<magazine_definition->rounds_loaded_maximum &&
 		!TEST_FLAG(magazine_definition->flags, 0) &&
-		!(weapon->weapon.control_flags & 0x26))
+		!(weapon->weapon.control_flags & 0x26)
+#ifdef HALO_VR
+		/* port: the VR mode's shotgun loaded by hand goes on only for a
+		shell the hand pushed in (port/linux/game/vr_reload.c) */
+		&& vr_reload_chain(weapon_index)
+#endif
+		)
 	{
 		weapon_magazine_start_reload(weapon_index, magazine_index, FALSE);
 	}
@@ -3283,7 +3294,13 @@ boolean weapon_update(
 				if (magazine &&
 					((magazine->rounds_loaded<trigger_definition->rounds_per_shot && !TEST_FLAG(trigger_definition->flags, _weapon_trigger_can_fire_with_partial_ammunition_bit)) ||
 					magazine->rounds_loaded<trigger_definition->minimum_rounds_loaded_per_shot ||
-					magazine->rounds_loaded==0))
+					magazine->rounds_loaded==0)
+#ifdef HALO_VR
+					/* port: not the VR mode's weapon reloaded by hand
+					(port/linux/game/vr_reload.c) */
+					&& vr_reload_automatic(weapon_index)
+#endif
+					)
 				{
 					weapon_magazine_start_reload(weapon_index, trigger_definition->magazine_index, TRUE);
 				}

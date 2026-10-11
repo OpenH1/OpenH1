@@ -823,6 +823,14 @@ static void handle_one_player_input(
 				player->zoom_level = vr_scope_zoom(player->unit_index, current_weapon_index, player->zoom_level,
 					TEST_FLAG(input.player_control_flags, _player_control_input_zoom_bit), vr_aim == 1);
 			}
+			/* (the reload by hand: the weapon in hand, and the magazines
+			pushed home: port/linux/game/vr_reload.c) */
+			if (local_player_index == 0)
+			{
+				extern void vr_reload_update(long unit_index, boolean aiming);
+
+				vr_reload_update(player->unit_index, vr_aim == 1);
+			}
 			if (vr_aim == 1)
 			{
 				while (vr_yaw < 0.f)
@@ -1540,6 +1548,20 @@ static void get_local_player_input_blob(
 				{
 					SET_FLAG(input->unit_control_flags, _unit_control_weapon_reload_bit, TRUE);
 				}
+#ifdef HALO_VR
+				/* port: and the VR mode's reload by hand, a magazine pushed
+				home (port/linux/game/vr_reload.c) */
+				{
+					extern boolean vr_reload_pressed(void);
+
+					if (local_player_index == 0 &&
+						!TEST_FLAG(control->inhibited_button_bit_vector, _button_action_reload) &&
+						vr_reload_pressed())
+					{
+						SET_FLAG(input->unit_control_flags, _unit_control_weapon_reload_bit, TRUE);
+					}
+				}
+#endif
 				/* port: and its action key acts only, never reloading */
 				if (TEST_FLAG(input->unit_control_flags, _unit_control_action_bit) &&
 					input_abstraction_port_action_only(gamepad_index))

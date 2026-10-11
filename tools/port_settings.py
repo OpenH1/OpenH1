@@ -209,8 +209,8 @@ VR_SCREENS = {
     "vr_controls": {
         "screen": "vr_controls_screen",
         "header": ("header_vr_controls", f"{PE}/vr_controls/header_vr_controls"),
-        # (thirteen rows: closer than the others' 28px, the help line lower)
-        "spacing": 22,
+        # (fourteen rows: closer than the others' 28px, the help line lower)
+        "spacing": 20,
         "help_top": 366,
         "rows": [
             ("HANDS:", "vr.hands", VR_HANDS,
@@ -231,6 +231,8 @@ VR_SCREENS = {
              "Crouch in the room and you crouch in the game;\nstand up and you stand.", None),
             ("SCOPES:", "vr.scopes", ON_OFF,
              "Raise the sniper rifle's or the pistol's scope to\nyour eye: it magnifies the view within it.", None),
+            ("RELOAD BY HAND:", "vr.manual_reload", ON_OFF,
+             "Right stick down ejects; take a magazine from\nyour left hip and push it in. X still reloads.", None),
             ("TURNING:", "vr.turn", [("SNAP", "snap"), ("SMOOTH", "smooth")],
              "How the right stick turns you: in steps, or\ncontinuously.", None),
             ("SNAP TURN ANGLE:", "vr.snap_turn_angle",

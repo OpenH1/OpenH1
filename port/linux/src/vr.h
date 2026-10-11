@@ -229,6 +229,68 @@ struct halo_vr_scope
 	float size;
 };
 
+/* the reload by hand (vr.manual_reload, port/linux/game/vr_reload.c): the
+right stick pushed down ejects the magazine (or the rocket launcher's
+tubes), the left hand takes another from its pouch on the body and pushes
+it into the weapon, which presses the game's reload; the shotgun takes its
+shells one at a time, each a reload of one */
+enum
+{
+	HALO_VR_RELOAD_NONE = 0, /* no reload (a plasma weapon), or none by hand */
+	HALO_VR_RELOAD_MAGAZINE, /* a magazine, from the left hip */
+	HALO_VR_RELOAD_SHELL,    /* a shell at a time, from the left hip */
+	HALO_VR_RELOAD_TUBE,     /* the rocket launcher's tubes, from behind the left shoulder */
+};
+
+/* the weapon in hand as the game has it, told once a frame */
+struct halo_vr_reload_weapon
+{
+	/* HALO_VR_RELOAD_*, and the weapon (its object's index: another one
+	ends what the hand was doing with the last) */
+	int kind;
+	long weapon;
+	/* the game would take a reload now (rounds to load, the magazine not
+	full) and is reloading */
+	int can_reload;
+	int reloading;
+	/* where the magazine goes in (or the shell, the tubes): from the right
+	controller's grip along the weapon's axes (metres forward, left, up);
+	well_known: told by the first-person weapon as it was drawn */
+	int well_known;
+	float well[3];
+};
+
+struct halo_vr_reload
+{
+	/* the reload by hand is on (vr.manual_reload, the controller aiming, the
+	body's heading known), and the weapon's kind (HALO_VR_RELOAD_*) */
+	int enabled;
+	int kind;
+	/* the weapon's magazine is out (ejected), waiting for another; the left
+	hand holds one (a magazine, a shell, the tubes); and the magazines
+	pushed home so far (each is a press of the game's reload) */
+	int ejected;
+	int held;
+	unsigned long inserted;
+	/* the pouch it is taken from (game axes from the recentred head,
+	metres), whether the hand takes one there now (wanted: the magazine is
+	out, or the shotgun has room for a shell), how far the left hand is from
+	its reach (metres; 0 within it, large when the hand is not tracked), and
+	how far the one held is from the well (large when none is held) */
+	float body_yaw;
+	float pouch[3];
+	int wanted;
+	float pouch_distance;
+	float well_distance;
+	/* the one held is drawn this far from the left controller's grip along
+	the hand's axes (metres forward, left, up) */
+	float held_offset[3];
+	/* the first-person hands are the controllers' (vr.hands = "arms",
+	"floating"): the first-person weapon plays no reload after the hand's,
+	it stays in the hand */
+	int hands;
+};
+
 /* ---------- vr.c */
 
 /* the VR build with vr.enabled */
@@ -284,6 +346,10 @@ int halo_vr_scopes(void);
 /* this frame's scope, drawn into its image (the scope pass): shown where
 it says at the present; NULL, none */
 void halo_vr_scope(const struct halo_vr_scope *scope);
+/* the weapon in hand, for the reload by hand, once a frame; and the reload
+by hand as it is (0 when it is off) */
+void halo_vr_reload_weapon(const struct halo_vr_reload_weapon *weapon);
+int halo_vr_reload(struct halo_vr_reload *reload);
 
 /* the player, for the visor's effects (vr_visor.c) */
 void halo_vr_visor_state(const struct halo_vr_visor_state *state);

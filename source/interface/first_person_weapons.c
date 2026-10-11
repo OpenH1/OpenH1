@@ -398,6 +398,10 @@ void vr_holster_draw(unsigned long flags);
 weapon not drawn), and the eye pass, which zooming does not magnify */
 boolean vr_render_scope_pass(void);
 boolean vr_render_eye_pass(void);
+/* port/linux/game/vr_reload.c's */
+void vr_reload_weapon_nodes(long model_index, long weapon_index, struct real_matrix4x3 *node_matrices);
+void vr_reload_draw(unsigned long flags);
+boolean vr_reload_first_person_reload(long weapon_index);
 #endif
 
 /* ---------- globals */
@@ -547,6 +551,18 @@ void first_person_weapon_draw(
 							weapon_definition->weapon.interface_definition.first_person_animations.index,
 							first_person_weapon->node_matrices,
 							first_person_weapon->weapon_node_remapping_table);
+#ifdef HALO_VR
+						/* port: the VR mode's reload by hand: where the magazine
+						goes, and not drawn in it while it is out
+						(port/linux/game/vr_reload.c) */
+						if (render.local_player_index==0)
+						{
+							vr_reload_weapon_nodes(
+								weapon_definition->weapon.interface_definition.first_person_model.index,
+								first_person_weapon->weapon_index,
+								model_node_matrices);
+						}
+#endif
 						render_model(
 							weapon_definition->weapon.interface_definition.first_person_model.index,
 							0.0f,
@@ -621,6 +637,9 @@ void first_person_weapon_draw(
 			vr_grenade_draw(FLAG(_render_model_first_person_bit));
 			/* and the weapon not in hand, in its holster on the body */
 			vr_holster_draw(FLAG(_render_model_first_person_bit));
+			/* and the magazine the hand reloads with, its pouch, and where
+			it goes */
+			vr_reload_draw(FLAG(_render_model_first_person_bit));
 		}
 #endif
 	}
@@ -1643,6 +1662,20 @@ static void first_person_weapon_message(
 		struct first_person_weapon *first_person_weapon= first_person_weapon_get(local_player_index);
 		short state= NONE;
 
+#ifdef HALO_VR
+		/* port: the VR mode's reload by hand plays no first-person reload:
+		the magazine went in by hand, and the weapon stays in it, idle, while
+		the game reloads (port/linux/game/vr_reload.c) */
+		if ((message_type==_first_person_weapon_message_reload_while_empty ||
+			message_type==_first_person_weapon_message_reload_while_full) &&
+			local_player_index==0 &&
+			first_person_weapon->weapon_index!=NONE &&
+			!vr_reload_first_person_reload(first_person_weapon->weapon_index))
+		{
+			player_control_unzoom(first_person_weapon->unit_index);
+			return;
+		}
+#endif
 		switch (message_type)
 		{
 			case _first_person_weapon_message_drop:

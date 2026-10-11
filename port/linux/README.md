@@ -1102,6 +1102,7 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | A punch of the right controller | Melee (`vr.melee_gesture`) |
 | The right hand over the right shoulder or at the right hip, gripping | Draw the weapon carried there (`vr.holsters`, below) |
 | The sniper rifle's or the pistol's scope raised to an eye | Look through it, magnified (`vr.scopes`, below) |
+| The right stick pushed down, then the left hand gripping at the left hip and pushing what it took into the weapon | Reload by hand: eject the magazine, take another and push it in (`vr.manual_reload`, below) |
 | The left grip held, the left hand drawn back and swung, the grip let go | Throw a grenade where the hand threw it, as hard as it did (`vr.grenade_throw`, below) |
 | Left bumper, right bumper | Flashlight, switch grenade |
 | D-pad (left controller), View, Menu | The menus' d-pad, Back (scoreboard), Start (pause) |
@@ -1211,6 +1212,46 @@ eye sees the scope from outside, as it would.
   rocket launcher) zoom as the game does, which magnifies nothing in the
   headset; the first-person weapon stays in your hand while zoomed.
 
+#### Reloading by hand (`vr.manual_reload`)
+
+Reload as you would a real gun: push the right stick down to eject the
+magazine (a buzz in the right hand; the weapon is empty now, and does not
+fire), reach to your left hip with your left hand and squeeze the left grip
+to take a magazine (a tick as your hand gets there, a firmer one as you
+take it), and push it into the weapon where it goes, still gripping (a
+knock in both hands). The game then reloads, as X does: the same
+ammunition, the same time, and others see your body reload; but your
+weapon stays in your hand, without the flat screen's reload animation.
+
+- Where it goes is where the weapon's own magazine is, in its first-person
+  model (on the assault rifle, a bullpup, behind the grip, under your
+  forearm). The magazine you hold is the weapon's own, drawn in your hand;
+  the needler, whose model has none, has its ammunition's pickup, which goes
+  in under its body, ahead of your hand. While your hand holds one, where it goes lights up
+  in your shield's energy, as the holsters do, the more the nearer it comes;
+  within about 7 cm of it, it goes in. While the magazine is out, the
+  weapon is drawn without it, and the magazine at your hip lights up as your
+  hand comes to it.
+- The shotgun is fed a shell at a time, with nothing to eject: take a shell
+  from your hip whenever it has room, and push it in at the loading port,
+  under the receiver ahead of the grip. Each shell is one round of the
+  game's reload; the game stops after it unless you have pushed in another
+  meanwhile (on the flat screen it loads to full).
+- The rocket launcher: the right stick ejects its tubes, and new ones are
+  behind your left shoulder (where your left hand reaches over it, as the
+  right one does for a long gun).
+- The plasma weapons have no magazine, and are as ever.
+- An empty weapon does not reload itself, as it does on the flat screen:
+  reload it by hand, or with X, which reloads as ever (with its animation).
+- A grip that took a magazine is the reload's until you let go: it holds no
+  foregrip and takes no grenade. Letting go before the magazine is in drops
+  it; take another.
+- In a network game the host runs your weapon: as a client, its copy
+  reloads an empty weapon by itself and loads the shotgun to full, and
+  yours then takes the host's ammunition, as it always does. Your hand's
+  reload is a press of reload there, as X is.
+- Only on foot, with `vr.aim = "controller"`.
+
 #### Your body (`display.first_person_legs`)
 
 With LEGS on (Video Setup > FOV and Viewmodels, `display.first_person_legs`),
@@ -1296,7 +1337,7 @@ does.
 In the headset, Settings' VR Setup (below About; only there while the
 game plays in VR) sets most of these with the left d-pad: VR Controls
 (the hands, the aim, the gamepad's view, two-handed aiming, the melee
-punch, the holsters, the physical crouch, the scopes, turning and the vehicles' view) and, from its last row, VR Display (the play position,
+punch, the holsters, the physical crouch, the scopes, reloading by hand, turning and the vehicles' view) and, from its last row, VR Display (the play position,
 the eye height, the world's scale, the HUD's and the menus' distance and
 size, the resolution and the refresh rate) and, from its last row, its
 visor page (the HUD on the visor or flat, its depth, lag and glow, the
@@ -1319,6 +1360,7 @@ headset's session is opened with, apply from the next start.
 | `vr.holsters` | `true` | `HALO_VR_HOLSTERS` | With `vr.aim = "controller"`: the weapon you carry but do not hold is on your body, and the right hand reaching there and gripping draws it (above, "Holsters"). Y switches weapons as ever. |
 | `vr.physical_crouch` | `true` | `HALO_VR_PHYSICAL_CROUCH` | The head crouching crouches the player: about 0.35 m below the standing eyes (`vr.height = "standing"`), or 0.25 m below the recentred ones (seated), and standing within 0.07 m of that stands (above, "Crouching"). The left stick's click crouches as ever. |
 | `vr.scopes` | `true` | `HALO_VR_SCOPES` | With `vr.aim = "controller"`: the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye (above, "Scopes"); lowered, they do not zoom. `false`: they zoom as the game does (nothing is magnified in the headset). |
+| `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the right stick pushed down ejects the magazine, the left hand takes another from the left hip and pushes it in; the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand (above, "Throwing a grenade with the left hand") or with the left trigger; `"button"`, with the left trigger alone. |
 | `vr.two_handed` | `true` | `HALO_VR_TWO_HANDED` | With `vr.aim = "controller"`: a long gun (any but the pistols, the needler, the flag and the ball) is aimed along the line from the right hand to the left while the left grip holds it by the foregrip (pressed within 18 cm of the line ahead of the right hand). The aim turns to that line over 0.15 s, smoothed, and back when the grip is let go. |
 | `vr.hands` | `"arms"` | `HALO_VR_HANDS` | With `vr.aim = "controller"`: each first-person hand where its controller is (the right holding the weapon, its index finger on the trigger as far as the trigger is pulled; the left open, closing as the grip is pulled, and on a long gun's foregrip while it holds it). `"arms"`: the arms reach the hands from the shoulders (`vr.shoulders`). `"floating"`: no arms above the wrists. `"game"`: the game's arms, posed from the weapon in the right hand. A hand whose controller is not tracked is not drawn, nor its arm. |
@@ -1348,9 +1390,10 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_turn` | `0.0` | `HALO_VR_TEST_TURN` | Turn the player this many degrees a second, for automated tests without hands. |
 | `debug.vr_test_jitter` | `0.0` | `HALO_VR_TEST_JITTER` | Move the head by up to this many millimetres (and turn it as many hundredths of a degree) at random each frame, as a worn headset moves: for automated tests of what flickers when the view barely moves. |
 | `debug.vr_test_head` | `""` | `HALO_VR_TEST_HEAD` | Hold the head still and level where it is first located (a simulated headset's head wobbles), for automated tests: `"0"`, or `"<degrees> <seconds>"` turns it left and right by as many degrees over as many seconds, smoothly (a sine of the frames' display times); `"<degrees> <seconds> <pitch>"` also pitches it up by as many degrees (less than 0: down), as looking down at the hip's holster. |
-| `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move[, down]]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right trigger 65536, the left 131072, the right grip 262144), the right trigger's pull (0 to 1), the head turned (degrees left), the frames the pose lasts (`0`: 288), the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps), and the head lowered (metres, as a crouch; moved with the hands: below). A pose shorter than 20 frames presses its buttons only as long. Up to 16 poses separated by `;` are taken in turn (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. Below, a grenade throw scripted. |
+| `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move[, down]]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right trigger 65536, the left 131072, the right grip 262144, the right stick pushed down 524288), the right trigger's pull (0 to 1), the head turned (degrees left), the frames the pose lasts (`0`: 288), the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps), and the head lowered (metres, as a crouch; moved with the hands: below). A pose shorter than 20 frames presses its buttons only as long. Up to 16 poses separated by `;` are taken in turn (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. Below, a grenade throw scripted. |
 | `debug.vr_test_weapons` | `""` | `HALO_VR_TEST_WEAPONS` | Give the first player these weapons in place of their own, the first in hand, once a map, 2 s after the player first aims (a level's script gives its own as the player takes control), for automated tests of the scopes: `"<name>[, <name>]"`, parts of the weapons' tag names (`"sniper rifle, pistol"`; b30 has no sniper rifle, a50 has both). |
 | `debug.vr_throw_log` | `false` | `HALO_VR_THROW_LOG` | Log each step of a grenade thrown with the left hand (`vr.grenade_throw`): the grip taken (or why it holds nothing), the swing (or why a fast hand was none), the release's speed, power and direction, and the game's throw: when it began, its animations held or moved on to their release, and the grenade's place and speed. |
+| `debug.vr_test_weapon` | `""` | `HALO_VR_TEST_WEAPON` | Put a weapon in the first player's hand, for automated tests of the reload by hand: `"<text> <seconds>"`, that many seconds into the level the player's weapons are taken and a new one is in hand, the first of the map's whose tag name has the text in it (`"shotgun 15"` on d20, `"rocket 15"` on b30). |
 | `debug.vr_test_seat` | `""` | `HALO_VR_TEST_SEAT` | Get into a vehicle's seat and out again, for automated tests of the view in a seat: `"<label> <seconds> [<seconds seated>]"`, the first player gets into the seat whose label has this text in it (`"gunner"`, `"W-driver"`, `"GT-gunner"`: the Shade) that many seconds into the level, as the action button does, in a vehicle of the kind made before them three seconds earlier (standing at the seat's entrance from two seconds earlier), and out again after as many seconds seated (10 by default). From a second before, the log says how far the view moved and turned each frame, how dark a blink made it, and each phase's sums (on foot, entering, seated, exiting) with how much of the motion was seen (not in a blink's full darkness), and each blink: with `debug.vr_test_head = "0"`, the motion the player did not make. |
 | `debug.vr_test_fov` | `""` | `HALO_VR_TEST_FOV` | Each eye's field of view instead of the runtime's, for automated tests of what the edges of a wide view show: `"<outward> <inward> <up> <down>[ <cant>]"`, in degrees from the eye's axis, each eye turned outward by `<cant>` degrees (as canted displays are; the game's 3D view assumes the eyes look the same way, so only the visor and the helmet's rim are right with it). |
 | `debug.vr_gpu_time` | `false` | `HALO_VR_GPU_TIME` | With `debug.gpu_stats`, log the GPU's time for each frame too, waiting for it at the present (which costs the overlap of the GPU and the game, and lets the GPU's clock drop: an upper bound). |
@@ -1392,6 +1435,28 @@ log says when the crouch is on and off (`vr: crouch:`) and, once a tick
 while the crouch or the head moves, how high the view is above the
 player's feet: the game's eye, what of its drop is taken back out, and the
 head's own (`vr crouch:`).
+
+A reload by hand, scripted (b30, the assault rifle; `R` as above, the head
+pitched down, `HALO_VR_TEST_HEAD="0 1 -35"`):
+
+```
+HALO_VR_TEST_HANDS="-0.25 -0.45 0.15 0 0 0, R, 0, 0, 0, 0, 1300, 0;
+  -0.25 -0.45 0.15 0 0 0, R, 0, 65536, 1, 0, 60, 0;
+  -0.25 -0.45 0.15 0 0 0, R, 0, 524288, 0, 0, 60, 0;
+  -0.22 -0.62 0.06 0 0 0, R, 0, 0, 0, 0, 40, 15;
+  -0.22 -0.62 0.06 0 0 0, R, 1, 0, 0, 0, 40, 0;
+  0.10 -0.60 0.22 0 0 0, R, 1, 0, 0, 0, 100, 20;
+  0.16 -0.43 0.27 0 0 0, R, 1, 0, 0, 0, 200, 12;
+  -0.25 -0.45 0.15 0 0 0, R, 0, 0, 0, 0, 400, 20"
+```
+
+(on one line): the right trigger fires a burst, the right stick ejects,
+the left hand goes to the left hip and takes a magazine, comes under the
+rifle and pushes it home behind the grip. The log says each step (`vr:
+reload:` and `vr reload:`): where the magazine goes, from the recentred
+head as the hands are placed here, how far off it was pushed home, the
+game's reload with the rounds loaded and carried before and after, and
+that the first-person weapon stayed in the hand.
 
 `debug.gpu_stats` also logs the VR frames' timing, and
 `debug.screenshot_every` writes both eyes (`eyes*.bmp`), the HUD
