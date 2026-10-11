@@ -297,6 +297,12 @@ static const struct config_setting config_settings[] =
 		"the vehicle, riding with it but not with the body climbing in and out,\n"
 		"a turret's turning or flinches, and blinks between its places; \"head\"\n"
 		"it follows the seated body's head as the game animates it." },
+	{ "vr.death_view", _config_string, "\"face\"", "HALO_VR_DEATH_VIEW", _environment_value, _platform_desktop,
+		"As you die: \"face\" the view stays where your head was, the world\n"
+		"dimmed and reddened, your body falling before you, and turns to it\n"
+		"in a blink if it lands out of sight, until the game brings you back\n"
+		"from the dark; \"still\" the same, never turned; \"game\" the game's\n"
+		"camera pulling away from the body." },
 	{ "vr.turn", _config_string, "\"snap\"", "HALO_VR_TURN", _environment_value, _platform_desktop,
 		"How the right stick turns: \"snap\" in steps (vr.snap_turn_angle),\n"
 		"\"smooth\" continuously (vr.smooth_turn_speed); with vr.aim = \"gamepad\",\n"
@@ -757,6 +763,13 @@ static const struct config_setting config_settings[] =
 		"this text in it, as the action button does, and take them out later,\n"
 		"logging the view's motion each frame, for automated tests:\n"
 		"\"<label> <seconds in> [<seconds seated>]\" (\"gunner\" 5 10); empty none." },
+	{ "debug.vr_test_death", _config_string, "\"\"", "HALO_VR_TEST_DEATH", _environment_value, _platform_desktop,
+		"Kill the first VR player this many seconds after they first aim,\n"
+		"once, and log the view's motion each frame until some seconds after\n"
+		"they are back, for automated tests: \"<seconds> [kill|grenade|watch]\"\n"
+		"(as the script's unit_kill does, by a frag grenade's blast before\n"
+		"them, or killed and then watching the nearest living biped); empty\n"
+		"none." },
 	{ "debug.vr_test_weapons", _config_string, "\"\"", "HALO_VR_TEST_WEAPONS", _environment_value, _platform_desktop,
 		"Give the first player these weapons as the map starts, in place of their\n"
 		"own, the first in hand, for automated tests of the scopes: \"<name>[,\n"

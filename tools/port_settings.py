@@ -209,8 +209,8 @@ VR_SCREENS = {
     "vr_controls": {
         "screen": "vr_controls_screen",
         "header": ("header_vr_controls", f"{PE}/vr_controls/header_vr_controls"),
-        # (fourteen rows: closer than the others' 28px, the help line lower)
-        "spacing": 20,
+        # (fifteen rows: closer than the others' 28px, the help line lower)
+        "spacing": 19,
         "help_top": 366,
         "rows": [
             ("HANDS:", "vr.hands", VR_HANDS,
@@ -243,6 +243,9 @@ VR_SCREENS = {
              "How fast smooth turning turns you, the stick\npushed all the way: degrees a second.", None),
             ("VEHICLE VIEW:", "vr.vehicle_view", [("FIRST PERSON", "first_person"), ("THIRD PERSON", "third_person")],
              "In a vehicle's seat, the view from your head, or\nthe game's camera following the vehicle.", None),
+            ("DEATH VIEW:", "vr.death_view", [("FACE YOUR BODY", "face"), ("STILL", "still"), ("GAME'S CAMERA", "game")],
+             "As you die, the view stays where your head was\n(turned to your body in a blink), or the game's.",
+             None),
             ("HEIGHT, HUD, MENUS...", None, VR_DISPLAY,
              "Your height, the world's scale, the HUD, the\nmenus and the headset's resolution.", None),
         ],

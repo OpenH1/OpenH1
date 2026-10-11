@@ -7222,6 +7222,96 @@ static void vr_draw_rim(void)
 	xgpu_gl_state_invalidate();
 }
 
+/* the eyes' tint this frame (port/linux/game/vr_seat.c's blinks, vr_death.c's
+dimming as the player dies): the colour each eye's image is multiplied by
+at the present, all of it, before the helmet's rim. The game's screen flash
+covers its viewport only, which the eyes' images reach past at their outer
+edges (by the margin of the union of their views), so a flash left those
+edges lit. */
+static float vr_tint[3] = { 1.0f, 1.0f, 1.0f };
+
+void halo_vr_eye_tint(float red, float green, float blue)
+{
+	vr_tint[0] *= red;
+	vr_tint[1] *= green;
+	vr_tint[2] *= blue;
+}
+
+static void vr_draw_tint(void)
+{
+	static GLuint program;
+	static BOOL failed;
+	static GLint tint_location;
+	static const char vertex_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"layout(num_views = 2) in;\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+		"	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+		"}\n";
+	static const char fragment_source[] =
+		"#version 450 core\n"
+		"uniform vec4 tint;\n"
+		"out vec4 colour;\n"
+		"void main()\n"
+		"{\n"
+		"	colour = tint;\n"
+		"}\n";
+	float tint[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	int channel;
+
+	memcpy(tint, vr_tint, sizeof(vr_tint));
+	vr_tint[0] = vr_tint[1] = vr_tint[2] = 1.0f;
+	if (failed || !vr_gl.eyes_drawn || !vr_gl.eye_target.target.texture ||
+		(tint[0] >= 1.0f && tint[1] >= 1.0f && tint[2] >= 1.0f))
+	{
+		return;
+	}
+	if (!program)
+	{
+		GLuint vertex = xgpu_compile_shader(GL_VERTEX_SHADER, vertex_source, "VR tint vertex");
+		GLuint fragment = xgpu_compile_shader(GL_FRAGMENT_SHADER, fragment_source, "VR tint pixel");
+		GLint status = 0;
+
+		program = glCreateProgram();
+		glAttachShader(program, vertex);
+		glAttachShader(program, fragment);
+		glLinkProgram(program);
+		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		if (!vertex || !fragment || !status)
+		{
+			platform_log("vr: cannot make the eyes' tint's program; no blink or tint is drawn");
+			failed = TRUE;
+			return;
+		}
+		tint_location = glGetUniformLocation(program, "tint");
+	}
+	framebuffer_views = 2;
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(vr_gl.eye_target.target.texture, 0));
+	framebuffer_views = 1;
+	glViewport(0, 0, vr_gl.eye_width, vr_gl.eye_height);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+	glUseProgram(program);
+	for (channel = 0; channel < 3; channel++)
+		tint[channel] = tint[channel] > 0.0f ? tint[channel] : 0.0f;
+	glUniform4fv(tint_location, 1, tint);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glDisable(GL_BLEND);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	xgpu_gl_state_invalidate();
+}
+
 /* the eyes' depth into its swapchain (XR_KHR_composition_layer_depth),
 for the compositor's reprojection: the game's depth buffer has a stencil,
 which OpenXR's depth formats have not, so a full-screen draw copies it,
@@ -7314,6 +7404,15 @@ static void vr_copy_depth(void)
 	halo_vr_depth_written();
 }
 
+/* a test's screenshot of this frame (as debug.screenshot_every's, into
+debug.screenshot_directory: port/linux/game/vr_death.c's) */
+static BOOL vr_screenshot_wanted;
+
+void halo_vr_test_screenshot(void)
+{
+	vr_screenshot_wanted = TRUE;
+}
+
 /* presents a VR frame: the HUD copied into its image, upside down for
 OpenXR's GL images (the eyes were drawn so), and the frame ended */
 static void vr_present(BOOL screenshot)
@@ -7322,7 +7421,9 @@ static void vr_present(BOOL screenshot)
 	GLuint hud_image = 0;
 
 	vr_timing(3);
-	/* the helmet's rim in the eyes, its depth with theirs */
+	/* the eyes' tint (a blink, the dead's), then the helmet's rim in the
+	eyes, its depth with theirs */
+	vr_draw_tint();
 	vr_draw_rim();
 	vr_copy_depth();
 	memset(vr_gl.panel_images, 0, sizeof(vr_gl.panel_images));
@@ -7485,7 +7586,8 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 	if (device.gl_ready && vr_gl.ready)
 	{
 		/* (the window stays hidden: the headset paces the frames) */
-		vr_present(screenshot_every > 0 && device.frame % (unsigned long)screenshot_every == 0);
+		vr_present(vr_screenshot_wanted || (screenshot_every > 0 && device.frame % (unsigned long)screenshot_every == 0));
+		vr_screenshot_wanted = FALSE;
 		xgpu_texture_cache_begin_frame();
 		frame_end_buffers();
 	}

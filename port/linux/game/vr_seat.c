@@ -61,6 +61,8 @@ camera (vr_render.c), and in the eye pass (render.c).
 const char *config_string(char const *name);
 unsigned long config_changes(void);
 void platform_log(char const *format, ...);
+/* d3d8_gl.c's */
+void halo_vr_eye_tint(float red, float green, float blue);
 
 #define METRES_PER_WORLD_UNIT 3.048f
 #define DEGREES_PER_RADIAN (180.0f / 3.14159265f)
@@ -70,10 +72,6 @@ this */
 #define BLINK_DISTANCE 0.1f
 #define BLINK_DARKENING_SECONDS 0.1f
 #define BLINK_LIGHTENING_SECONDS 0.15f
-/* the screen flash that darkens (rasterizer_xbox_screen_effect.c's
-_render_screen_flash_type_lighten: the colour added over the view dimmed by
-its alpha) */
-#define SCREEN_FLASH_LIGHTEN 1
 
 /* where the eye is: the game's first-person camera, another of the game's
 (following a vehicle, the dead's), the seated head (vr.seat_motion =
@@ -347,23 +345,33 @@ void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_poin
 		vehicle_to_local(vehicle_index, &desired, &vr_seat.shown_local);
 }
 
+/* where the eye was last frame (vr_death.c: the eye held as the player
+dies), FALSE when none was */
+boolean vr_seat_shown(real_point3d *position)
+{
+	if (!vr_seat.shown_valid)
+		return FALSE;
+	shown_position(position);
+	return TRUE;
+}
+
+/* how dark the blink makes the view (0 to 1) */
+real vr_seat_darkness(void)
+{
+	return vr_seat.darkness;
+}
+
 /* the eye pass, after the game's screen flash (render.c): the blink's
-darkness over both eyes, as a black flash (the HUD's layer stays lit) */
+darkness over both eyes, all of each (d3d8_gl.c's tint, as they are
+presented; the HUD's layer stays lit) */
 void vr_seat_blink_draw(void)
 {
-	struct render_screen_flash flash = global_window_parameters.screen_flash;
 	real t = vr_seat.darkness;
 
 	if (t <= 0.0f)
 		return;
-	global_window_parameters.screen_flash.type = SCREEN_FLASH_LIGHTEN;
-	global_window_parameters.screen_flash.intensity = t * t * (3.0f - 2.0f * t);
-	global_window_parameters.screen_flash.color.alpha = 1.0f;
-	global_window_parameters.screen_flash.color.red = 0.0f;
-	global_window_parameters.screen_flash.color.green = 0.0f;
-	global_window_parameters.screen_flash.color.blue = 0.0f;
-	rasterizer_screen_flash();
-	global_window_parameters.screen_flash = flash;
+	t = 1.0f - t * t * (3.0f - 2.0f * t);
+	halo_vr_eye_tint(t, t, t);
 }
 
 /* ---------- the test */

@@ -611,6 +611,21 @@ static void director_rotate_cameras(
 	return;
 }
 
+#ifdef HALO_VR
+/* port: the first player's camera, if it is the dead's (watching its body,
+or a teammate network co-op's spectating follows), else NULL: the VR mode's
+view of a death (port/linux/game/vr_death.c) */
+struct dead_camera *director_vr_dead_camera(
+	void)
+{
+	struct director *director = director_get(0);
+
+	if (director->camera_proc != (director_camera_update_proc)dead_camera_update)
+		return NULL;
+	return (struct dead_camera *)director->camera_data;
+}
+#endif
+
 static void director_choose_game_perspective(
 	short local_player_index,
 	boolean force)

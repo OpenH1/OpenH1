@@ -684,6 +684,7 @@ typedef char screenshot_and_framerate_globals_size_assert[
 void network_test_update(boolean main_menu_loaded, real seconds);
 #ifdef HALO_VR
 void vr_seat_test_update(void);
+void vr_death_test_update(void);
 #endif
 
 /* ---------- prototypes */
@@ -2192,6 +2193,17 @@ static void main_lost_map_private(
 	return;
 }
 
+#ifdef HALO_VR
+/* port: the ticks left before the game reverts, the players all dead
+(main_lost_map_private's 92), else NONE: the VR mode's view of a death
+darkens toward it (port/linux/game/vr_death.c) */
+long main_vr_revert_ticks_left(
+	void)
+{
+	return main_globals.lost_map ? MAX(0, 92 - main_globals.loss_timer) : NONE;
+}
+#endif
+
 static void main_respawn_private(
 	void)
 {
@@ -3536,8 +3548,10 @@ static boolean main_loop_iteration(
 			network_voice_update();
 
 #ifdef HALO_VR
-			/* the VR mode's vehicle seat test (port/linux/game/vr_seat.c) */
+			/* the VR mode's vehicle seat test (port/linux/game/vr_seat.c) and
+			death test (vr_death.c) */
 			vr_seat_test_update();
+			vr_death_test_update();
 #endif
 			profile_scope_enter(main_network_start_frame_section)
 			connection = main_globals.connection;

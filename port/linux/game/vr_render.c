@@ -166,6 +166,15 @@ boolean vr_scope_raised(void);
 /* vr_seat.c's */
 void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_point3d *position);
 void vr_seat_log_camera(real_point3d const *position, real_vector3d const *forward, real_vector3d const *up);
+/* vr_death.c's */
+boolean vr_death_eye(boolean playing, real seconds, real head_yaw, real body_yaw, real_vector3d const *camera_forward,
+	real_point3d *position, real *yaw);
+boolean vr_death_turn(real *turn);
+boolean vr_death_viewing(void);
+/* director.c's: the first player's camera, if the dead's */
+struct dead_camera *director_vr_dead_camera(void);
+void vr_death_camera(real_point3d const *position, real_vector3d const *forward, real_vector3d const *up,
+	real half_across, real half_up);
 real render_interpolation_fraction(void);
 void platform_log(char const *format, ...);
 
@@ -478,6 +487,7 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	real lift;
 	real left = 0.0f, right = 0.0f, up = 0.0f, down = 0.0f, tangent;
 	real aspect;
+	boolean dead;
 	short eye;
 
 	vr_render.active = FALSE;
@@ -512,7 +522,17 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 		vr_render.crouch_valid = vr_render.crouch_physical = FALSE;
 	}
 	camera->position.z += lift;
-	vr_seat_eye(vr_render.seated_unit_index, halo_vr_aiming() && !cinematic_in_progress(), view->seconds,
+	/* dead (vr.death_view = "face", "still"): the eye held where the player
+	died, and the view turned as the player turns it, not the game's dead
+	camera pulling away from the body and turning to it; watching another,
+	held where the game's camera was and put again in a blink, the view then
+	turned to look where it does (vr_death.c). With "game", the game's
+	camera, blinked into and out of (vr_seat.c). */
+	dead = vr_death_eye(!cinematic_in_progress(), view->seconds,
+		(real)atan2(view->head_forward[1], view->head_forward[0]), view->body_yaw, &camera->forward,
+		&camera->position, &base_yaw);
+	vr_seat_eye(vr_render.seated_unit_index,
+		(halo_vr_aiming() || dead || director_vr_dead_camera()) && !cinematic_in_progress(), view->seconds,
 		&camera->position);
 	vr_render.base_position = camera->position;
 	vr_render.base_yaw = base_yaw;
@@ -543,6 +563,9 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	camera->position.z += offset.k * view->world_units_per_metre;
 	vr_render.head_position = camera->position;
 	vr_seat_log_camera(&camera->position, &camera->forward, &camera->up);
+	vr_death_camera(&camera->position, &camera->forward, &camera->up,
+		(real)atan(MIN(-MIN(view->fov[0][0], view->fov[1][0]), MAX(view->fov[0][1], view->fov[1][1]))),
+		(real)atan(MIN(MAX(view->fov[0][2], view->fov[1][2]), -MIN(view->fov[0][3], view->fov[1][3]))));
 	crouch_log(lift);
 	/* (the gamepad's weapon, posed from the eye whichever way the head
 	leans, comes down with the head's crouch as far as the game's drop is
@@ -1101,6 +1124,7 @@ static void visor_state_tell(void)
 	memset(&state, 0, sizeof(state));
 	if (player_index != NONE && !cinematic_in_progress() && hud_scripted_globals && hud_scripted_globals->show_hud)
 		unit = unit_try_and_get(player_get(player_index)->unit_index);
+	state.dead = vr_death_viewing();
 	if (unit && unit->object.body_vitality > 0.0f && !TEST_FLAG(unit->object.damage_flags, _object_dead_bit))
 	{
 		state.active = TRUE;
@@ -1161,6 +1185,7 @@ boolean vr_render_hud_camera(struct render_camera *camera)
 {
 	struct halo_vr_view *view = &vr_render.view;
 	real base_yaw;
+	real turn;
 
 	vr_hud.curved = FALSE;
 	if (!halo_vr_frame_active())
@@ -1168,6 +1193,8 @@ boolean vr_render_hud_camera(struct render_camera *camera)
 	visor_state_tell();
 	base_yaw = cinematic_in_progress() || !halo_vr_aiming() ?
 		(real)atan2(camera->forward.j, camera->forward.i) : view->body_yaw;
+	if (vr_death_turn(&turn))
+		base_yaw = view->body_yaw + turn;
 	vr_render_crosshair_offset[0] = vr_render_crosshair_offset[1] = 0;
 	if (vr_render.crosshairs_drawn)
 	{

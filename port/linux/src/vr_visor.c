@@ -777,6 +777,12 @@ void halo_vr_visor_state(const struct halo_vr_visor_state *state)
 	visor.pulse += seconds;
 	if (!state->active)
 	{
+		/* (dead: a last flare of red on the glass as it goes) */
+		if (state->dead && visor.active)
+		{
+			platform_log("vr: visor: dead");
+			visor.wound = 1.0f;
+		}
 		visor.known = 0;
 		visor.active = 0;
 		visor.look.glow = 0.0f;

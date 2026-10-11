@@ -167,6 +167,7 @@ void vr_render_hud_end(void);
 boolean vr_render_weapon_camera(struct render_camera *camera);
 void vr_render_crosshairs(void);
 void vr_seat_blink_draw(void);
+void vr_death_draw(void);
 /* the view in a raised scope (port/linux/game/vr_scope.c), drawn before the
 eyes into an image of its own: the eye pass's state (the clusters seen, the
 lights, the scene) is then the eyes' */
@@ -483,6 +484,8 @@ static void render_window(
 			rasterizer_screen_flash();
 			/* a blink through a jump of the eye (port/linux/game/vr_seat.c) */
 			vr_seat_blink_draw();
+			/* the world dimmed as the player dies (port/linux/game/vr_death.c) */
+			vr_death_draw();
 			/* the crosshairs where the aim meets the world, in the eyes */
 			vr_render_crosshairs();
 		}

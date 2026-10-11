@@ -1318,6 +1318,42 @@ keeps the game's view, with no hands floating in it.
 - The log says when each cinematic begins, whether from the player's head
   or a movie camera, and when it ends (`vr cinematic:`).
 
+#### Dying (`vr.death_view`)
+
+When you die, the view stays where your head was: you look about from there
+as ever, and nothing else moves or turns it but a blink. Your body
+falls before and under you (look down), drawn as the others see it, and the
+world dims and reddens. Just before the game reverts to the last checkpoint
+(three seconds after, in the campaign) or respawns you (in a multiplayer
+game), it goes dark, and you come up out of the dark in your new place. The
+flat game's camera instead pulls away from the body over three seconds,
+turning to keep it in view: on b30, 10 to 14 m out and 7 to 12 m up, at up
+to half a metre a frame, which in a headset carries the world off and
+turns it about your head.
+
+- The death begins with a dark beat: your eyes are within the falling body
+  for a moment (its head is not drawn while it is at your eyes, and the
+  view dims while any of it is within 25 to 55 cm of them), and the body
+  falls away out of it.
+- With `"face"` (the default), a body that lands out of sight (more than
+  50 degrees from where you look and more than a metre away across the
+  ground: a blast before you throws it back) turns the view to it in a
+  blink, once, about a second after, when it has landed; your eye stays
+  where it is. A body at your feet you see by looking down. `"still"`
+  never turns the view.
+- The visor goes with the HUD (the game shows the dead none), with a last
+  red flare on its glass.
+- Watching someone else (network co-op's spectating follows a teammate; a
+  multiplayer game's camera turns to another player after 15 seconds), the
+  view is put where the game's camera is, looking where it looks, once it
+  has settled on them, in a blink, and held there; and put there again in a
+  blink once the game's camera has moved 4 m from it.
+- `"game"`: the game's camera, as the flat screen's, blinked into and out
+  of.
+
+Only the view changes: the game's camera (which the sounds are heard from),
+the revert, the respawn and what the netcode sends are the game's.
+
 #### With a gamepad (`vr.aim = "gamepad"`)
 
 A gamepad (an Xbox controller, by Bluetooth or USB, or the headset's
@@ -1358,7 +1394,7 @@ does.
 In the headset, Settings' VR Setup (below About; only there while the
 game plays in VR) sets most of these with the left d-pad: VR Controls
 (the hands, the aim, the gamepad's view, two-handed aiming, the melee
-punch, the holsters, the physical crouch, the scopes, reloading by hand, turning and the vehicles' view) and, from its last row, VR Display (the play position,
+punch, the holsters, the physical crouch, the scopes, reloading by hand, turning, the vehicles' view and the view as you die) and, from its last row, VR Display (the play position,
 the eye height, the world's scale, the HUD's and the menus' distance and
 size, the resolution and the refresh rate) and, from its last row, its
 visor page (the HUD on the visor or flat, its depth, lag and glow, the
@@ -1388,6 +1424,7 @@ headset's session is opened with, apply from the next start.
 | `vr.shoulders` | `"0.19, -0.20, -0.07"` | `HALO_VR_SHOULDERS` | With `vr.hands = "arms"`: where each shoulder is from the eyes, in metres: out to its side, up, forward, turned with the body (the holsters' heading: it faces where the head does, follows it past a 40 degree turn, and slowly). From the eyes as they would be with the head level and turned with the body: the shoulders hang from the neck, so a nod or a turn of the head does not move them. |
 | `vr.vehicle_view` | `"first_person"` | `HALO_VR_VEHICLE_VIEW` | `"first_person"`: in a vehicle's seat, the view is from the seated player's head, level with the horizon. `"third_person"`: the game's camera following the vehicle. |
 | `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, the eye stays put in the vehicle, riding with it but not with the body climbing in and out, a turret's turning or flinches, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
+| `vr.death_view` | `"face"` | `HALO_VR_DEATH_VIEW` | As you die: `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |
 | `vr.turn` | `"snap"` | `HALO_VR_TURN` | `"snap"` or `"smooth"` (with `vr.aim = "gamepad"`, `vr.gamepad_view` instead). |
 | `vr.snap_turn_angle` | `30.0` | `HALO_VR_SNAP_TURN_ANGLE` | Degrees of each snap turn. |
 | `vr.smooth_turn_speed` | `150.0` | `HALO_VR_SMOOTH_TURN_SPEED` | Degrees each second of smooth turning. |
@@ -1412,6 +1449,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_jitter` | `0.0` | `HALO_VR_TEST_JITTER` | Move the head by up to this many millimetres (and turn it as many hundredths of a degree) at random each frame, as a worn headset moves: for automated tests of what flickers when the view barely moves. |
 | `debug.vr_test_head` | `""` | `HALO_VR_TEST_HEAD` | Hold the head still and level where it is first located (a simulated headset's head wobbles), for automated tests: `"0"`, or `"<degrees> <seconds>"` turns it left and right by as many degrees over as many seconds, smoothly (a sine of the frames' display times); `"<degrees> <seconds> <pitch>"` also pitches it up by as many degrees (less than 0: down), as looking down at the hip's holster. |
 | `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move[, down]]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right trigger 65536, the left 131072, the right grip 262144, the right stick pushed down 524288), the right trigger's pull (0 to 1), the head turned (degrees left), the frames the pose lasts (`0`: 288), the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps), and the head lowered (metres, as a crouch; moved with the hands: below). A pose shorter than 20 frames presses its buttons only as long. Up to 16 poses separated by `;` are taken in turn (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. Below, a grenade throw scripted. |
+| `debug.vr_test_death` | `""` | `HALO_VR_TEST_DEATH` | Kill the first player, for automated tests of the view as they die: `"<seconds> [kill\|grenade\|watch]"`, that many seconds after they first aim (a level's clock does not start at 0), once a run, as the script's `unit_kill` does, by a frag grenade's blast half a metre before them (their shields and nearly all their health gone first: the body thrown back), or killed and then the dead camera turned to the nearest living biped, as network co-op's spectating turns it to a teammate. From a second before, the log says how far the view moved and turned each frame, how tinted, dimmed and dark it was, and where the body was from the eye (how far, across and up, in view or not), and each phase's sums (alive, dead, back) with how much of the motion was seen (between frames not in full darkness), and each blink; with `debug.screenshot_directory`, the eyes six times a second from the death to 1.5 s after the player is back (24 times in its first half second). With `debug.vr_test_head = "0"`, the motion the player did not make. |
 | `debug.vr_test_weapons` | `""` | `HALO_VR_TEST_WEAPONS` | Give the first player these weapons in place of their own, the first in hand, once a map, 2 s after the player first aims (a level's script gives its own as the player takes control), for automated tests of the scopes: `"<name>[, <name>]"`, parts of the weapons' tag names (`"sniper rifle, pistol"`; b30 has no sniper rifle, a50 has both). |
 | `debug.vr_throw_log` | `false` | `HALO_VR_THROW_LOG` | Log each step of a grenade thrown with the left hand (`vr.grenade_throw`): the grip taken (or why it holds nothing), the swing (or why a fast hand was none), the release's speed, power and direction, and the game's throw: when it began, its animations held or moved on to their release, and the grenade's place and speed. |
 | `debug.vr_test_weapon` | `""` | `HALO_VR_TEST_WEAPON` | Put a weapon in the first player's hand, for automated tests of the reload by hand: `"<text> <seconds>"`, that many seconds into the level the player's weapons are taken and a new one is in hand, the first of the map's whose tag name has the text in it (`"shotgun 15"` on d20, `"rocket 15"` on b30). |
@@ -1713,14 +1751,50 @@ supersampling costs as above, and multisampling the eye pass
   whatever the vehicle does.
 - Where the eye would jump more than 0.1 m (into the seat once seated, back
   to the player's own eye once out, to the game's camera following the
-  vehicle or the dead's, and back), it blinks: the view darkens over 0.1 s
-  with the eye held, moves in the dark, and lightens over 0.15 s. The
-  darkness is a black screen flash in the eye pass, after the game's own
-  (the HUD's layer stays lit). The game's director cuts between its
-  first-person camera and the one following a vehicle in the VR mode,
-  rather than flying between them for a second (`camera_change_pause`),
-  which swept the view some 6 m, from behind the player into their head,
-  on getting out.
+  vehicle or, with `vr.death_view = "game"`, the dead's, and back), it
+  blinks: the view darkens over 0.1 s with the eye held, moves in the dark,
+  and lightens over 0.15 s. The darkness multiplies the eyes' images as
+  they are presented, all of each, before the helmet's rim
+  (`halo_vr_eye_tint`, `vr_draw_tint`; the HUD's layer stays lit): a
+  screen flash in the eye pass, as it was, covers the game's viewport
+  alone, which the eyes' images reach past at their outer edges (the left
+  eye's outer 3% stayed lit on spark's simulated headset). The game's
+  director cuts between its first-person camera and the one following a
+  vehicle in the VR mode, rather than flying between them for a second
+  (`camera_change_pause`), which swept the view some 6 m, from behind the
+  player into their head, on getting out.
+- As the player dies (`vr.death_view`, `game/vr_death.c`) the game's
+  director turns to its dead camera (`dead_camera.c`), which the VR mode
+  took as the eye, and its heading as the view's (the dead do not aim):
+  from inside the body it pulls out over three seconds to 2 to 6 world
+  units from it, in a direction picked at random, 27 to 63 degrees above
+  it, looking at it. With `"face"` and `"still"` the eye is held instead
+  where it was the frame before (`vr_seat.c`'s, in a vehicle's seat too),
+  and the view's heading is the player's, as the stick turns it: the game's
+  camera is the director's as ever (the sounds' listener, what is drawn
+  about it), but not the view. The dead body is not the player's unit any
+  more, so the game draws it whatever the camera; while its head is within
+  0.6 m of the eye it is drawn shrunk into its neck (`render_objects.c`,
+  from 0.3 m), and while any of its nodes is within 0.55 m the view is
+  dimmed (by 85% within 0.25 m), the dead body's armour seen from within it
+  and lit by its shields' last flash. The tint (the view times 0.68, 0.34,
+  0.30 over 1.2 s), the dimming, the blinks and the dark are one more
+  multiple of the eyes' images, as the seat's blink is (`vr_death_draw`).
+  The dark comes over the last 15 ticks before the game brings the player
+  back: the revert's (`main.c`'s timer, 92 ticks after the players are all dead:
+  `main_vr_revert_ticks_left`) or the multiplayer respawn's (the player's
+  `respawn_timer`); where neither is known (a client of network co-op), the
+  view goes dark as the player is back. Back, it is held dark 0.1 s and
+  lifted over 0.3 s, in steps of at most a thirtieth of a second (the frame
+  a checkpoint is loaded in is long), while the eye's jump to its new place
+  blinks (`vr_seat.c`). A blink of the death's own (0.1 s down, 0.15 s up)
+  turns the view to a body landed out of sight (`"face"`: once it is slower
+  than 0.5 m/s, from 0.8 s after the death, at the latest 1.6 s), or puts
+  the eye at the game's camera when it watches someone else (the dead
+  camera's unit is not the player's body: `director_vr_dead_camera`), once
+  it moves slower than 1 m/s from 0.5 s after it turned to them (at the
+  latest 2.5 s), and again 4 m on, at most every 2 s; never as the dark
+  before the player is back comes.
 - The sky is drawn about the camera at a thousandth of its size, a few
   metres away: its draws move to each eye as from the centre of the head,
   so that it is at infinity. Its draws are depth-clamped rather than

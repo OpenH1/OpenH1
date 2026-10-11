@@ -375,6 +375,10 @@ void render_objects(
 /* port: port/linux/game/first_person_legs.c */
 boolean first_person_legs_wanted(long object_index);
 real_matrix4x3 const *first_person_legs_node_matrices(long object_index, real_matrix4x3 const *nodes);
+#ifdef HALO_VR
+/* port: port/linux/game/vr_death.c */
+real_matrix4x3 const *vr_death_body_nodes(long object_index, real_matrix4x3 const *nodes);
+#endif
 /* port: port/linux/game/shield_color.c */
 real_rgb_color const *shield_color_colors(long unit_index, real_rgb_color const *colors);
 
@@ -506,6 +510,13 @@ static void render_object_list(
 			first_person_legs_node_matrices(object_index, object_get_node_matrices(object_index)) :
 			object_get_node_matrices(object_index);
 
+#ifdef HALO_VR
+		/* port: the VR mode's dead player's body, seen from where its head
+		was, its head shrunk into its neck while it is at the eye
+		(port/linux/game/vr_death.c) */
+		if (!legs && !data->shadow && !render.camera.mirrored)
+			node_matrices = vr_death_body_nodes(object_index, node_matrices);
+#endif
 		if (!object_is_first_person_camera(object_index) || render.camera.mirrored || (legs && node_matrices))
 		{
 			struct render_model_effect model_effect;

@@ -112,8 +112,11 @@ struct halo_vr_view
 told once a frame (vr_render.c) */
 struct halo_vr_visor_state
 {
-	/* the player's unit is alive and plays (no cinematic) */
+	/* the player's unit is alive and plays (no cinematic); the player is
+	dead, the view the death's (vr.death_view: the visor's last flare as it
+	goes) */
 	int active;
+	int dead;
 	/* its shields (0 to 1, more when overcharged; has_shield: the game has
 	them), recharging, and its body's health (0 to 1) */
 	int has_shield;
@@ -415,5 +418,10 @@ or both at once (-1, multiview) */
 void halo_vr_draw_eye(int eye);
 /* the sky is being drawn (vr_render.c): with depth clamping, not clipped */
 void halo_vr_sky(int sky);
+/* this frame's eyes' images multiplied by this colour as they are
+presented, all of each, before the helmet's rim; each call multiplies it
+further (vr_seat.c's blinks, vr_death.c's dimming: the game's screen flash
+covers its viewport alone, which the eyes' images reach past) */
+void halo_vr_eye_tint(float red, float green, float blue);
 
 #endif
