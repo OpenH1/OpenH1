@@ -142,6 +142,10 @@ void rasterizer_set_pixel_shader(
 /* port: port/linux/game/shield_color.c */
 boolean shield_color_override(real_rgb_color const *colors, real_rgb_color *chosen);
 void shield_color_apply(real_rgb_color const *chosen, real_rgb_color const *original, real_rgb_color *result);
+#ifdef HALO_VR
+/* port: port/linux/game/vr_holster.c */
+boolean vr_holster_plasma_override(real_rgb_color const *colors, real_rgb_color *color, real *offset_amount);
+#endif
 
 /* ---------- globals */
 
@@ -172,6 +176,10 @@ void rasterizer_plasma_energy_draw(
 	real_rgb_color perpendicular_color; /* port: (shield_color.c) */
 	real_rgb_color parallel_color;
 	real_rgb_color chosen;
+#ifdef HALO_VR
+	boolean holster_highlight;
+	real_rgb_color holster_color;
+#endif
 
 	match_assert(
 		"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox_plasma_energy.c",
@@ -193,6 +201,12 @@ void rasterizer_plasma_energy_draw(
 			offset_amount = PLASMA_FIRST_PERSON_MAXIMUM_OFFSET;
 		}
 		runtime = group->runtime_parameters;
+#ifdef HALO_VR
+		/* port: the VR mode's highlight of the weapon in its holster, the
+		shield's plasma in its own colour and kept close to the weapon
+		(port/linux/game/vr_holster.c) */
+		holster_highlight = vr_holster_plasma_override(runtime ? runtime->colors : NULL, &holster_color, &offset_amount);
+#endif
 		if (runtime)
 		{
 			if (runtime->colors)
@@ -226,6 +240,14 @@ void rasterizer_plasma_energy_draw(
 			shield_color_apply(&chosen, &plasma->parallel_color, &parallel_color);
 			tint = global_real_rgb_white;
 		}
+#ifdef HALO_VR
+		else if (holster_highlight)
+		{
+			shield_color_apply(&holster_color, &plasma->perpendicular_color, &perpendicular_color);
+			shield_color_apply(&holster_color, &plasma->parallel_color, &parallel_color);
+			tint = global_real_rgb_white;
+		}
+#endif
 
 		rasterizer_set_texture(0, 1, 0, plasma->primary_noise_map, group->bitmap_sequence_index);
 		IDirect3DDevice8_SetTextureStageState(global_d3d_device, 0, D3DTSS_ADDRESSU, D3DTADDRESS_WRAP);

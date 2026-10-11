@@ -126,6 +126,18 @@ static const float holster_places[HALO_VR_HOLSTERS][4] =
 #define HOLSTER_GRIP_RELEASED 0.3f
 #define HOLSTER_PRESS_FRAMES 6
 #define HOLSTER_NO_MELEE_MS 500
+/* the shoulder's holster is out of sight: the right hand nearer it than
+HOLSTER_NEAR_DISTANCE (metres from its reach) with the stowed weapon there
+ticks its controller, a tick each HOLSTER_NEAR_SLOWEST seconds at that
+distance down to each HOLSTER_NEAR_FASTEST at the reach, and stronger (as
+strong as holster_near_amplitude says, there and at the reach), until the
+tick of the reach. Not the hip's, which the hand passes and rests by, and
+which the eyes find. */
+#define HOLSTER_NEAR_DISTANCE 0.30f
+#define HOLSTER_NEAR_SLOWEST 0.25f
+#define HOLSTER_NEAR_FASTEST 0.06f
+static const float holster_near_amplitude[2] = { 0.08f, 0.18f };
+#define HOLSTER_NEAR_TICK_SECONDS 0.012f
 /* debug.vr_test_hands: the poses it gives the controllers, each held this
 many frames unless it says */
 #define TEST_HANDS_POSES 16
@@ -218,13 +230,15 @@ static struct
 	float body_heading;
 	/* the holsters: the stowed weapon's (the game's, HALO_VR_HOLSTER_*), the
 	holsters as they are this frame, whether the right grip was pressed last
-	frame, the Y button's frames left, and when a weapon was last drawn
-	(GetTickCount) */
+	frame, the Y button's frames left, when a weapon was last drawn
+	(GetTickCount), and the seconds since the hand nearing the shoulder's
+	holster last ticked */
 	int holster_stowed;
 	struct halo_vr_holsters holsters;
 	int holster_grip_pressed;
 	int holster_press_frames;
 	unsigned long holster_ticks;
+	float holster_near_seconds;
 	float depth_near, depth_far;
 	/* the presented frame, ended when the next begins (halo_vr_present) */
 	struct vr_host_layers pending_layers;
@@ -1005,7 +1019,7 @@ static void body_place(const float head[3], const float forward[3], const float 
 /* the holsters, once a frame (vr.holsters; HOLSTER_* above): where they
 are on the body, the right hand reaching into one (a tick of its
 controller), and its grip there drawing the stowed weapon */
-static void holsters_update(void)
+static void holsters_update(float seconds)
 {
 	static const float backwards[3] = { 0.0f, 0.0f, -1.0f }, upwards[3] = { 0.0f, 1.0f, 0.0f };
 	struct halo_vr_holsters *h = &vr.holsters;
@@ -1070,9 +1084,28 @@ static void holsters_update(void)
 			}
 		}
 	}
-	/* (a tick as the hand comes to the stowed weapon) */
+	/* (a tick as the hand comes to the stowed weapon; before, ticks
+	quickening as it nears the shoulder's, which it cannot see) */
 	if (reach != h->reach && reach != HALO_VR_HOLSTER_NONE && reach == vr.holster_stowed)
 		host_vr_haptic(1, 0.2f, 0.02f);
+	if (reach == HALO_VR_HOLSTER_NONE && vr.holster_stowed == HALO_VR_HOLSTER_BACK &&
+		h->distance[HALO_VR_HOLSTER_BACK] < HOLSTER_NEAR_DISTANCE)
+	{
+		float near = 1.0f - h->distance[HALO_VR_HOLSTER_BACK] / HOLSTER_NEAR_DISTANCE;
+
+		vr.holster_near_seconds += seconds;
+		if (vr.holster_near_seconds >= HOLSTER_NEAR_SLOWEST + (HOLSTER_NEAR_FASTEST - HOLSTER_NEAR_SLOWEST) * near)
+		{
+			vr.holster_near_seconds = 0.0f;
+			host_vr_haptic(1, holster_near_amplitude[0] + (holster_near_amplitude[1] - holster_near_amplitude[0]) * near,
+				HOLSTER_NEAR_TICK_SECONDS);
+		}
+	}
+	else
+	{
+		/* (the first tick as soon as the hand comes near) */
+		vr.holster_near_seconds = HOLSTER_NEAR_SLOWEST;
+	}
 	h->reach = reach;
 	if (pressing && reach != HALO_VR_HOLSTER_NONE)
 	{
@@ -1117,7 +1150,7 @@ static void input_update(void)
 	if (vr.melee_frames > 0)
 		vr.melee_frames--;
 	body_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
-	holsters_update();
+	holsters_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
 	/* (not as a gun is drawn from a holster) */
 	if (settings.melee_gesture && !settings.gamepad_aim && vr.views.grip[1].valid && vr.hand_valid &&
 		seconds > 0.0f && vr.holsters.reach == HALO_VR_HOLSTER_NONE && now - vr.holster_ticks > HOLSTER_NO_MELEE_MS)
