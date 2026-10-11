@@ -477,7 +477,12 @@ static const struct config_setting config_settings[] =
 	{ "display.viewmodel_shield", _config_boolean, "false", "HALO_VIEWMODEL_SHIELD", _environment_value, _platform_all,
 		"The energy shield's flare on the first-person arms too, as on the body\n"
 		"(the stock game draws it on the body only)." },
+#ifdef HALO_VR
+	/* (the VR build's on: in the headset, your body under you, port/linux/README.md "Your body") */
+	{ "display.first_person_legs", _config_boolean, "true", "HALO_FIRST_PERSON_LEGS", _environment_value, _platform_all,
+#else
 	{ "display.first_person_legs", _config_boolean, "false", "HALO_FIRST_PERSON_LEGS", _environment_value, _platform_all,
+#endif
 		"Your own legs in first person, seen looking down: your body as others\n"
 		"see it, drawn from the waist down, moving as it moves." },
 	{ "display.shield_glow", _config_boolean, "false", "HALO_SHIELD_GLOW", _environment_value, _platform_all,

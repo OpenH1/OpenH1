@@ -1254,7 +1254,8 @@ weapon stays in your hand, without the flat screen's reload animation.
 
 #### Your body (`display.first_person_legs`)
 
-With LEGS on (Video Setup > FOV and Viewmodels, `display.first_person_legs`),
+With LEGS on (Video Setup > FOV and Viewmodels, `display.first_person_legs`;
+on by default in the VR build),
 looking down in the headset shows Master Chief's body under you: the
 chest, the legs and the feet, but not his head nor his arms (your arms are
 the VR mode's own, `vr.hands`, from shoulders over his). The body is where
