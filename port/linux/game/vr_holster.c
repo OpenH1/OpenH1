@@ -29,6 +29,7 @@ plasma shield (a marine, a map's own biped) has the light alone.
 
 #include "cseries.h"
 #include "math/real_math.h"
+#include "game/players.h"
 #include "items/weapons.h"
 #include "models/model_definitions.h"
 #include "models/models.h"
@@ -99,6 +100,17 @@ static struct
 	real_rgb_color plasma_colors[4];
 	real plasma_offset;
 } vr_holster = { NONE, HALO_VR_HOLSTER_NONE, NONE };
+
+/* the first player's unit, which the VR mode plays; NONE in the menus and
+between maps */
+static long vr_holster_player_unit(void)
+{
+	long player_index = local_player_get_player_index(0);
+
+	if (!halo_vr_running() || player_index == NONE)
+		return NONE;
+	return player_get(player_index)->unit_index;
+}
 
 /* the weapon the switch would take up: the next one carried after the one
 held */
@@ -214,10 +226,19 @@ void vr_holster_draw(unsigned long flags)
 	real_matrix4x3 holstered;
 	real c, s, units, highlight;
 	float forward[3], up[3];
-	long model_index;
+	long model_index, unit_index;
 
 	if (vr_holster.weapon_index == NONE || vr_holster.unit_index == NONE || !halo_vr_holsters(&holsters))
 		return;
+	/* (the weapon and unit kept from player_control.c's last frame only
+	while they are still the player's: a frame drawn as a map ends, before
+	the next map's first tick, has the old map's handles, gone) */
+	unit_index = vr_holster_player_unit();
+	if (unit_index == NONE || unit_index != vr_holster.unit_index ||
+		vr_holster_next_weapon(unit_index) != vr_holster.weapon_index)
+	{
+		return;
+	}
 	model_index = object_definition_get(object_get(vr_holster.weapon_index)->definition_index)->object.model.index;
 	if (model_index == NONE)
 		return;
