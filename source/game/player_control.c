@@ -812,9 +812,10 @@ static void handle_one_player_input(
 					unit->object.parent_object_index == NONE &&
 					!TEST_FLAG(unit->object.damage_flags, _object_dead_bit));
 			}
-			/* (with the controller aiming, a scope zooms while it is raised
-			to an eye, in its own view, and not otherwise: the netcode sees
-			an ordinary zoom; port/linux/game/vr_scope.c) */
+			/* (with the controller aiming, a scope at the eye zooms while it
+			is raised to an eye, in its own view, and not otherwise; smart-
+			linked, the game's zoom stands: the netcode sees an ordinary
+			zoom; port/linux/game/vr_scope.c) */
 			if (local_player_index == 0)
 			{
 				extern short vr_scope_zoom(long unit_index, long weapon_index, short zoom_level, boolean pressed,

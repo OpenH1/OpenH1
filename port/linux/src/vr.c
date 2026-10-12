@@ -54,6 +54,10 @@ about 100), times vr.resolution_scale, within these */
 #define SCOPE_IMAGE_SIZE 480
 #define SCOPE_IMAGE_SMALLEST 256
 #define SCOPE_IMAGE_LARGEST 768
+/* the smart-link's view on the visor (vr.smartlink_size): no narrower nor
+wider than these (degrees) */
+#define SMARTLINK_NARROWEST 10.0f
+#define SMARTLINK_WIDEST 45.0f
 /* a world unit is 10 feet */
 #define METRES_PER_WORLD_UNIT 3.048f
 /* a melee gesture: the right hand faster than this along where it points
@@ -350,7 +354,10 @@ static struct
 	int melee_gesture;
 	int holsters;
 	int physical_crouch;
+	/* vr.scopes and vr.scope_view: HALO_VR_SCOPES_*, 0 off; and the
+	smart-link's view, how wide (degrees, vr.smartlink_size) */
 	int scopes;
+	float smartlink_degrees;
 	int manual_reload;
 	/* vr.grenade_throw = "gesture", and debug.vr_throw_log */
 	int throw_gesture;
@@ -453,7 +460,12 @@ static void settings_read(void)
 	settings.throw_gesture = !strcmp(config_string("vr.grenade_throw"), "gesture");
 	settings.holsters = config_boolean("vr.holsters");
 	settings.physical_crouch = config_boolean("vr.physical_crouch");
-	settings.scopes = config_boolean("vr.scopes");
+	settings.scopes = !config_boolean("vr.scopes") || !strcmp(config_string("vr.scope_view"), "off") ? 0 :
+		!strcmp(config_string("vr.scope_view"), "eye") ? HALO_VR_SCOPES_EYE : HALO_VR_SCOPES_SMARTLINK;
+	settings.smartlink_degrees = (float)config_real("vr.smartlink_size");
+	if (settings.smartlink_degrees < SMARTLINK_NARROWEST || settings.smartlink_degrees > SMARTLINK_WIDEST)
+		settings.smartlink_degrees = settings.smartlink_degrees < SMARTLINK_NARROWEST ? SMARTLINK_NARROWEST :
+			SMARTLINK_WIDEST;
 	settings.manual_reload = config_boolean("vr.manual_reload");
 	settings.throw_log = config_boolean("debug.vr_throw_log");
 	settings.vehicle_first_person = strcmp(config_string("vr.vehicle_view"), "third_person") != 0;
@@ -1339,7 +1351,14 @@ int halo_vr_holsters(struct halo_vr_holsters *holsters)
 int halo_vr_scopes(void)
 {
 	settings_read();
-	return vr.initialized && settings.scopes && settings.controller_aim && vr.info.scope_size > 0;
+	return vr.initialized && settings.controller_aim && vr.info.scope_size > 0 ? settings.scopes : 0;
+}
+
+void halo_vr_smartlink_view(float *degrees, float *distance)
+{
+	settings_read();
+	*degrees = settings.smartlink_degrees;
+	*distance = settings.hud_distance;
 }
 
 void halo_vr_scope(const struct halo_vr_scope *scope)
@@ -1353,6 +1372,13 @@ float halo_vr_scope_zoom(float *height)
 {
 	*height = vr.scope.zoom_height;
 	return vr.scope_set ? vr.scope.zoom : 0.0f;
+}
+
+int halo_vr_scope_smartlink(float reticle[2])
+{
+	reticle[0] = vr.scope.reticle[0];
+	reticle[1] = vr.scope.reticle[1];
+	return vr.scope_set && vr.scope.eye < 0;
 }
 
 /* a point along a pose's axes from its position (OpenXR axes; along:

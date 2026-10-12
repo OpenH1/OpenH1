@@ -734,6 +734,56 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 	return TRUE;
 }
 
+/* the aim's line: from the right controller along it (or, with a gamepad,
+from the game's eye along the facing); FALSE if it has no direction */
+static boolean aim_line(real_point3d *origin, real_vector3d *direction)
+{
+	struct halo_vr_view *view = &vr_render.view;
+
+	if (view->gamepad_aim)
+	{
+		/* (from the game's eye, which the aim is from, crouched or not) */
+		*origin = vr_render.base_position;
+		origin->z -= vr_render.crouch_lift;
+		*direction = vr_render.aim_forward;
+	}
+	else
+	{
+		hand_point(view->hand_position, origin);
+		yaw_rotate(vr_render.base_yaw, view->hand_forward, direction);
+	}
+	return normalize3d(direction) > 0.0f;
+}
+
+/* how far along the aim's line it meets the world (a line-of-sight test,
+past the player's own body and vehicle), within CROSSHAIR_NEAREST and
+CROSSHAIR_FARTHEST */
+static real aim_distance(real_point3d const *origin, real_vector3d const *direction)
+{
+	struct collision_result collision;
+	real_vector3d vector;
+	long player_index = local_player_get_player_index(0);
+	long ignore_index = NONE;
+	real distance = CROSSHAIR_FARTHEST;
+
+	if (player_index != NONE && player_get(player_index)->unit_index != NONE)
+		ignore_index = object_get_ultimate_parent(player_get(player_index)->unit_index);
+	vector.i = direction->i * CROSSHAIR_FARTHEST;
+	vector.j = direction->j * CROSSHAIR_FARTHEST;
+	vector.k = direction->k * CROSSHAIR_FARTHEST;
+	if (global_current_collision_user_depth < MAXIMUM_COLLISION_USER_STACK_DEPTH)
+	{
+		global_current_collision_users[global_current_collision_user_depth++] = _collision_user_ui;
+		if (collision_test_vector(_collision_test_for_line_of_sight_flags | FLAG(_collision_test_objects_bipeds_bit),
+			(real_point3d *)origin, &vector, ignore_index, &collision))
+		{
+			distance = (real)sqrt(distance_squared3d(origin, &collision.point));
+		}
+		--global_current_collision_user_depth;
+	}
+	return distance < CROSSHAIR_NEAREST ? CROSSHAIR_NEAREST : distance;
+}
+
 /* vr_scope.c, before the eye pass: the camera the first-person weapon will
 be posed from (vr_render_weapon_camera's, the controller's), each eye and
 the head's forward in the world, and the world's units a metre; FALSE
@@ -757,6 +807,25 @@ boolean vr_render_scope_view(struct render_camera *weapon_camera, real_point3d e
 	eyes[1] = vr_render.eye_positions[1];
 	view_rotate(vr_render.base_yaw, view_pitch(), vr_render.view.head_forward, head_forward);
 	*units = vr_render.view.world_units_per_metre;
+	return TRUE;
+}
+
+/* vr_scope.c, before the eye pass: where the reticle is, the aim meeting
+the world (as vr_render_crosshairs draws it, at its smoothed distance from
+the frame before, else the world's now); FALSE without the controller's aim */
+boolean vr_render_scope_aim(real_point3d *point)
+{
+	real_point3d origin;
+	real_vector3d direction;
+	real distance;
+
+	if (!vr_render.active || !vr_render.view.controller_aim || !aim_line(&origin, &direction))
+		return FALSE;
+	distance = vr_render.crosshair_distance_valid && vr_render.crosshair_inverse_distance > 0.0f ?
+		1.0f / vr_render.crosshair_inverse_distance : aim_distance(&origin, &direction);
+	point->x = origin.x + direction.i * distance;
+	point->y = origin.y + direction.j * distance;
+	point->z = origin.z + direction.k * distance;
 	return TRUE;
 }
 
@@ -1278,11 +1347,9 @@ void vr_render_crosshairs(void)
 {
 	struct halo_vr_view *view = &vr_render.view;
 	real_point3d origin, point;
-	real_vector3d direction, vector;
-	struct collision_result collision;
+	real_vector3d direction;
 	long player_index = local_player_get_player_index(0);
-	long ignore_index = NONE;
-	real distance = CROSSHAIR_FARTHEST, width, height, aspect, centre_x, centre_y;
+	real distance, width, height, aspect, centre_x, centre_y;
 	float corrections[2][4];
 	short eye, i;
 
@@ -1300,37 +1367,9 @@ void vr_render_crosshairs(void)
 		vr_render.crosshairs_drawn = TRUE;
 		return;
 	}
-	if (view->gamepad_aim)
-	{
-		/* (from the game's eye, which the aim is from, crouched or not) */
-		origin = vr_render.base_position;
-		origin.z -= vr_render.crouch_lift;
-		direction = vr_render.aim_forward;
-	}
-	else
-	{
-		hand_point(view->hand_position, &origin);
-		yaw_rotate(vr_render.base_yaw, view->hand_forward, &direction);
-	}
-	if (normalize3d(&direction) <= 0.0f)
+	if (!aim_line(&origin, &direction))
 		return;
-	if (player_get(player_index)->unit_index != NONE)
-		ignore_index = object_get_ultimate_parent(player_get(player_index)->unit_index);
-	vector.i = direction.i * CROSSHAIR_FARTHEST;
-	vector.j = direction.j * CROSSHAIR_FARTHEST;
-	vector.k = direction.k * CROSSHAIR_FARTHEST;
-	if (global_current_collision_user_depth < MAXIMUM_COLLISION_USER_STACK_DEPTH)
-	{
-		global_current_collision_users[global_current_collision_user_depth++] = _collision_user_ui;
-		if (collision_test_vector(_collision_test_for_line_of_sight_flags | FLAG(_collision_test_objects_bipeds_bit),
-			&origin, &vector, ignore_index, &collision))
-		{
-			distance = (real)sqrt(distance_squared3d(&origin, &collision.point));
-		}
-		--global_current_collision_user_depth;
-	}
-	if (distance < CROSSHAIR_NEAREST)
-		distance = CROSSHAIR_NEAREST;
+	distance = aim_distance(&origin, &direction);
 	if (!vr_render.crosshair_distance_valid)
 	{
 		vr_render.crosshair_inverse_distance = 1.0f / distance;

@@ -81,13 +81,13 @@ symbols in this file:
 #include <string.h>
 
 #ifdef HALO_VR
-/* port/linux/game/vr_scope.c: a scope is raised to an eye in the VR mode,
-its lens showing the zoom (port/linux/src/d3d8_gl.c): the zoomed view's
-elements (the zoom's crosshairs, the readout with its arc and the side
-panel's waveform; the range ticks) are not drawn, which in the HUD's layer
-would float beside the lens */
-boolean vr_scope_raised(void);
-#define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) ((zoomed_layout) && vr_scope_raised())
+/* port/linux/game/vr_scope.c: a scope's view is shown in the VR mode,
+raised to an eye or smart-linked on the visor, showing the zoom
+(port/linux/src/d3d8_gl.c): the zoomed view's elements (the zoom's
+crosshairs, the readout with its arc and the side panel's waveform; the
+range ticks) are not drawn, which in the HUD's layer would float beside it */
+boolean vr_scope_shown(void);
+#define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) ((zoomed_layout) && vr_scope_shown())
 #else
 #define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) FALSE
 #endif

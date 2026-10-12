@@ -1152,7 +1152,7 @@ void vr_visor_composite(unsigned char *eyes[2], int width, int height, const str
 				local[2] = -1.0f;
 				quaternion_rotate(layers->eye[eye].orientation, local, direction);
 				/* (in the order the host submits them: host_vr.c) */
-				if (layers->scope && scope && eye == layers->scope_eye && layer_hit(layers->eye[eye].position,
+				if (layers->scope && scope && (layers->scope_eye < 0 || eye == layers->scope_eye) && layer_hit(layers->eye[eye].position,
 					direction, layers->scope_pose.position, layers->scope_pose.orientation, 0, 0.0f, 0.0f,
 					scope_extent, uv))
 				{

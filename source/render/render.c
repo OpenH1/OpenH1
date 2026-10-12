@@ -168,9 +168,10 @@ boolean vr_render_weapon_camera(struct render_camera *camera);
 void vr_render_crosshairs(void);
 void vr_seat_blink_draw(void);
 void vr_death_draw(void);
-/* the view in a raised scope (port/linux/game/vr_scope.c), drawn before the
-eyes into an image of its own: the eye pass's state (the clusters seen, the
-lights, the scene) is then the eyes' */
+/* the view in a raised scope, or the smart-link's on the visor while zoomed
+(port/linux/game/vr_scope.c), drawn before the eyes into an image of its
+own: the eye pass's state (the clusters seen, the lights, the scene) is then
+the eyes' */
 boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rasterizer_camera);
 void vr_render_scope_begin(void);
 void vr_render_scope_end(void);

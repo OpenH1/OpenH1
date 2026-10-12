@@ -25,7 +25,8 @@ enum
 	VR_SWAPCHAIN_VISOR,    /* the helmet's visor glass: its edges and its glows, a quad layer */
 	/* the HUD's panels at their own depths (vr_visor.c), a quad layer each */
 	VR_SWAPCHAIN_PANEL,
-	/* the magnified view in a weapon's scope, a quad layer at its eyepiece */
+	/* the magnified view in a weapon's scope, a quad layer at its eyepiece
+	(or on the visor, smart-linked) */
 	VR_SWAPCHAIN_SCOPE = VR_SWAPCHAIN_PANEL + 4,
 	VR_SWAPCHAIN_COUNT,
 	VR_PANEL_COUNT = 4,
@@ -149,7 +150,8 @@ struct vr_host_layers
 	float visor_size[2];
 	/* the scope's image (VR_SWAPCHAIN_SCOPE) on a quad at the scope's
 	eyepiece, in the play space, size metres square, seen by one eye alone
-	(scope_eye: 0 left, 1 right): over the eyes' images, under the HUD */
+	(scope_eye: 0 left, 1 right), or the smart-link's on the visor by both
+	(-1): over the eyes' images, under the HUD */
 	int scope;
 	int scope_eye;
 	struct vr_host_pose scope_pose;

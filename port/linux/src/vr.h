@@ -217,12 +217,14 @@ struct halo_vr_holsters
 	float distance[HALO_VR_HOLSTERS];
 };
 
-/* the magnified view in a weapon's scope raised to an eye (vr.scopes,
-port/linux/game/vr_scope.c): its image on a quad at the scope's eyepiece,
-facing back along the scope, seen by that eye alone */
+/* the magnified view in a weapon's scope (vr.scopes, vr.scope_view,
+port/linux/game/vr_scope.c): raised to an eye, its image on a quad at the
+scope's eyepiece, facing back along the scope, seen by that eye alone;
+smart-linked, on a quad on the visor where the aim is, facing the head, seen
+by both */
 struct halo_vr_scope
 {
-	/* the eye (0 left, 1 right) */
+	/* the eye (0 left, 1 right; -1 both: the smart-link's) */
 	int eye;
 	/* the lens's middle, the way the scope points and its up (game axes
 	from the recentred head, metres), and the lens's width (metres) */
@@ -234,6 +236,10 @@ struct halo_vr_scope
 	(0: unzoomed, none shown), and how tall (of the lens's width) */
 	float zoom;
 	float zoom_height;
+	/* the smart-link's: where its reticle (the aim) is, right of and above
+	the view's middle, as fractions of its radius (it is held in view where
+	the aim is not) */
+	float reticle[2];
 };
 
 /* the reload by hand (vr.manual_reload, port/linux/game/vr_reload.c): the
@@ -349,14 +355,23 @@ left stick's click, a gamepad's) */
 #define HALO_VR_CROUCH_BUTTON 2
 void halo_vr_crouch_able(int able);
 int halo_vr_crouch(void);
-/* the scopes are on (vr.scopes, with vr.aim = "controller") */
+/* the scopes are on (vr.scopes, with vr.aim = "controller"), and how they
+show their view (vr.scope_view): HALO_VR_SCOPES_EYE raised to an eye, in
+their lens; HALO_VR_SCOPES_SMARTLINK on the visor, as the game zooms; 0 off.
+And the smart-link's view: how wide (degrees) and how far before the eyes
+(metres: the HUD's distance) */
+#define HALO_VR_SCOPES_EYE 1
+#define HALO_VR_SCOPES_SMARTLINK 2
 int halo_vr_scopes(void);
+void halo_vr_smartlink_view(float *degrees, float *distance);
 /* this frame's scope, drawn into its image (the scope pass): shown where
 it says at the present; NULL, none */
 void halo_vr_scope(const struct halo_vr_scope *scope);
 /* d3d8_gl.c, as it makes the scope's image: the zoom shown in its lens
 (halo_vr_scope's; 0: none), and how tall (of the lens's width) */
 float halo_vr_scope_zoom(float *height);
+/* and whether it is the smart-link's, its reticle's place (halo_vr_scope's) */
+int halo_vr_scope_smartlink(float reticle[2]);
 /* the weapon in hand, for the reload by hand, once a frame; and the reload
 by hand as it is (0 when it is off) */
 void halo_vr_reload_weapon(const struct halo_vr_reload_weapon *weapon);

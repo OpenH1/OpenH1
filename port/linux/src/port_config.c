@@ -264,10 +264,20 @@ static const struct config_setting config_settings[] =
 		"below your standing eyes, or 25 cm seated); stand and it stands. The\n"
 		"view follows your head alone." },
 	{ "vr.scopes", _config_boolean, "true", "HALO_VR_SCOPES", _environment_value, _platform_desktop,
-		"With vr.aim = \"controller\", the sniper rifle's and the pistol's scopes\n"
-		"magnify the view within them as you raise them to an eye, the rest of\n"
-		"the view as it was (the right stick's click changes the magnification);\n"
-		"not raised, they do not zoom." },
+		"With vr.aim = \"controller\", zooming magnifies a view of its own (as\n"
+		"vr.scope_view says), the rest of the view as it was. false: the game's\n"
+		"zoom, which magnifies nothing in the headset." },
+	{ "vr.scope_view", _config_string, "\"smartlink\"", "HALO_VR_SCOPE_VIEW", _environment_value,
+		_platform_desktop,
+		"With vr.scopes: \"smartlink\", the right stick's click zooms as the game\n"
+		"does, whatever the weapon's place, and the zoom shows on the visor, a\n"
+		"round magnified view where the weapon aims (vr.smartlink_size wide);\n"
+		"\"eye\", the sniper rifle's and the pistol's scopes magnify the view\n"
+		"within their lens as you raise them to an eye, and only then (the\n"
+		"click changes the magnification); \"off\", as vr.scopes = false." },
+	{ "vr.smartlink_size", _config_real, "28.0", "HALO_VR_SMARTLINK_SIZE", _environment_value, _platform_desktop,
+		"With vr.scope_view = \"smartlink\", how wide the zoom's view on the\n"
+		"visor is, in degrees of your view (10 to 45)." },
 	{ "vr.manual_reload", _config_boolean, "true", "HALO_VR_MANUAL_RELOAD", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", reload by hand: push the right stick down to\n"
 		"eject the magazine, take another from your left hip with the left grip\n"
