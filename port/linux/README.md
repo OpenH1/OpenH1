@@ -1137,12 +1137,13 @@ you held it.
   anyway after 0.75 s.
 - The left grip on a long gun's foregrip takes the foregrip instead
   (`vr.two_handed`), and both grips held recentre: neither takes a grenade.
-  Nor does the left grip at your left hip, whatever the weapon (with the
-  rocket launcher, nor behind your left shoulder): that is where magazines
-  are taken (`vr.manual_reload`, below), and a grip there never brings a
-  grenade, even with nothing to reload. Grenades have no place of their
-  own on the body: the grip takes one wherever else the hand is, as the
-  throw starts from wherever the hand is drawn back to.
+  Nor does the left grip at your left hip, or within 4 cm of it,
+  whatever the weapon (with the rocket launcher, nor behind your left
+  shoulder): that is where magazines are taken (`vr.manual_reload`,
+  below), and a grip there never brings a grenade, even with nothing to
+  reload (two weak ticks say so). Grenades have no place of their own on
+  the body: the grip takes one wherever else the hand is, as the throw
+  starts from wherever the hand is drawn back to.
 - Your left hand and arm are the throw in first person: the weapon stays
   in your right hand (with `vr.hands = "game"` the game's arms throw, timed
   to yours). The player's body throws as you do: its throw waits before
@@ -1301,8 +1302,11 @@ weapon stays in your hand, without the flat screen's reload animation.
   reload it by hand, or with X, which reloads as ever (with its animation).
 - A grip at your left hip is the reload's until you let go, whether it
   took a magazine or not (full, no rounds left, a plasma weapon): it holds
-  no foregrip and takes no grenade. Letting go before the magazine is in
-  drops it (the old one is out: take another).
+  no foregrip and takes no grenade. So is a grip a little short of it
+  (within 4 cm of where it takes a magazine), which takes the magazine as
+  your hand gets there. With nothing to take, the pouch does not light up,
+  and the grip there gives two weak ticks: full. Letting go before the
+  magazine is in drops it (the old one is out: take another).
 - In a network game the host runs your weapon: as a client, its copy
   reloads an empty weapon by itself and loads the shotgun to full, and
   yours then takes the host's ammunition, as it always does. Your hand's

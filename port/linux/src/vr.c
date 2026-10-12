@@ -173,7 +173,12 @@ one whenever the weapon has room for it and rounds to fill it (the magazine
 in the weapon, if not out already, ejects itself as the new one is taken).
 A grip there is the reload's whether or not it takes one, and a grip at the
 hip whatever the weapon: no foregrip, no grenade, until the grip is let go
-(the grenades are taken anywhere else). Let go below RELOAD_GRIP_RELEASED,
+(the grenades are taken anywhere else). So is a grip within
+RELOAD_POUCH_MARGIN beyond the reach (a hand closing as it arrives, or a
+little short of where the pouch is: with nothing to take there is no light
+nor tick to guide it in), and the hand that closed there takes one as it
+gets to the pouch. With nothing to take, the left controller ticks twice,
+weakly (RELOAD_FULL_*): full. Let go below RELOAD_GRIP_RELEASED,
 the one held is dropped; brought within RELOAD_WELL_REACH of where it goes
 in, it is pushed home. It is held RELOAD_HELD from the grip along the hand's
 axes (forward, left, up): its top, which goes in, above the fist. */
@@ -186,6 +191,10 @@ static const float reload_pouches[2][4] =
 #define RELOAD_STICK_RELEASED 0.3f
 #define RELOAD_GRIP_PRESSED 0.6f
 #define RELOAD_GRIP_RELEASED 0.3f
+#define RELOAD_POUCH_MARGIN 0.04f
+#define RELOAD_FULL_AMPLITUDE 0.12f
+#define RELOAD_FULL_SECONDS 0.012f
+#define RELOAD_FULL_GAP_MS 90
 #define RELOAD_WELL_REACH 0.07f
 static const float reload_held[3] = { 0.0f, 0.0f, 0.08f };
 /* debug.vr_test_hands: the poses it gives the controllers, each held this
@@ -305,15 +314,18 @@ static struct
 	is this frame, the weapon it is of, whether the right stick was down
 	last frame, whether the left grip was pressed last frame and was the
 	reload's (it took one, or was pressed at a pouch: nothing else takes
-	that grip until it is let go), and whether the hand was in the pouch
-	last frame */
+	that grip until it is let go) and whether it was pressed by a pouch and
+	has taken nothing yet, whether the hand was in the pouch last frame, and
+	when the second tick of "full" is due (GetTickCount, 0 none) */
 	struct halo_vr_reload_weapon reload_weapon;
 	struct halo_vr_reload reload;
 	long reload_weapon_index;
 	int reload_stick_down;
 	int reload_grip_pressed;
 	int reload_grip_taken;
+	int reload_grip_waiting;
 	int reload_in_pouch;
+	unsigned long reload_full_tick;
 	float depth_near, depth_far;
 	/* this frame's scope (halo_vr_scope), if it was drawn */
 	int scope_set;
@@ -1453,10 +1465,11 @@ static void reload_update(void)
 	/* (the weapon's grip as vr_render_right_hand has it) */
 	const struct vr_host_pose *right = settings.floating_hands && vr.views.grip[1].valid ? &vr.views.grip[1] :
 		&vr.views.aim[1];
-	float v[3], eyes[3], place[3], stick = vr.input.right_stick[1];
+	float v[3], eyes[3], place[3], stick = vr.input.right_stick[1], hip_distance;
 	int pressed = vr.input.left_grip > RELOAD_GRIP_PRESSED;
 	int pressing = pressed && !vr.reload_grip_pressed;
-	int pouch, in_pouch, at_hip, axis;
+	int pouch, in_pouch, near_pouch, axis;
+	unsigned long now = GetTickCount();
 
 	if (pressed)
 	{
@@ -1466,6 +1479,12 @@ static void reload_update(void)
 	{
 		vr.reload_grip_pressed = 0;
 		vr.reload_grip_taken = 0;
+		vr.reload_grip_waiting = 0;
+	}
+	if (vr.reload_full_tick && (long)(now - vr.reload_full_tick) >= 0)
+	{
+		host_vr_haptic(0, RELOAD_FULL_AMPLITUDE, RELOAD_FULL_SECONDS);
+		vr.reload_full_tick = 0;
 	}
 	r->enabled = settings.manual_reload && settings.controller_aim && vr.aimed && vr.body_heading_valid;
 	r->hands = settings.floating_hands && settings.controller_aim;
@@ -1528,14 +1547,17 @@ static void reload_update(void)
 	}
 
 	/* the pouch, about the body (as the holsters are), and the left hand
-	in it, or at the hip (the magazines' place, whatever the weapon: a
-	plasma weapon's, the rocket launcher's); the one held from where it goes
-	in. One is to be taken there whenever the weapon has room for it */
+	in it, or by it or the hip (the magazines' place, whatever the weapon: a
+	plasma weapon's, the rocket launcher's), within RELOAD_POUCH_MARGIN; the
+	one held from where it goes in. One is to be taken there whenever the
+	weapon has room for it */
 	pouch = r->kind == HALO_VR_RELOAD_TUBE;
 	r->body_yaw = vr.body_heading;
 	body_eyes(eyes);
 	r->pouch_distance = reload_pouch_distance(pouch, r->body_yaw, eyes, r->pouch);
-	at_hip = pouch ? reload_pouch_distance(0, r->body_yaw, eyes, place) <= 0.0f : r->pouch_distance <= 0.0f;
+	hip_distance = pouch ? reload_pouch_distance(0, r->body_yaw, eyes, place) : r->pouch_distance;
+	near_pouch = hip_distance <= RELOAD_POUCH_MARGIN ||
+		(r->kind != HALO_VR_RELOAD_NONE && r->pouch_distance <= RELOAD_POUCH_MARGIN);
 	r->wanted = r->kind != HALO_VR_RELOAD_NONE && !r->held && w->can_reload;
 	if (r->held && w->well_known && right->valid && hand->valid && vr.views.aim[0].valid)
 	{
@@ -1553,14 +1575,17 @@ static void reload_update(void)
 		host_vr_haptic(0, 0.2f, 0.02f);
 	vr.reload_in_pouch = in_pouch;
 
-	if (pressing && in_pouch && r->wanted)
+	/* (taken as the grip closes in the pouch, or as the hand that closed by
+	it comes in) */
+	if (in_pouch && r->wanted && (pressing || (vr.reload_grip_waiting && vr.reload_grip_pressed)))
 	{
 		r->held = 1;
 		r->wanted = 0;
 		vr.reload_grip_taken = 1;
+		vr.reload_grip_waiting = 0;
 		host_vr_haptic(0, 0.35f, 0.03f);
-		platform_log("vr: reload: %s%s taken from the %s", articles[r->kind], names[r->kind],
-			pouch ? "left shoulder" : "left hip");
+		platform_log("vr: reload: %s%s taken from the %s%s", articles[r->kind], names[r->kind],
+			pouch ? "left shoulder" : "left hip", pressing ? "" : " (the grip closed by it)");
 		/* (the magazine in the weapon out as the new one is taken, as the
 		right stick would have: the weapon is drawn without it, and does not
 		fire until the new one is in) */
@@ -1585,13 +1610,24 @@ static void reload_update(void)
 				-place[1], place[2], place[0]);
 		}
 	}
-	else if (pressing && (in_pouch || at_hip))
+	else if (pressing && near_pouch)
 	{
-		/* (the grip there is the reload's all the same: never a grenade) */
+		/* (the grip there is the reload's all the same: never a grenade.
+		Short of the pouch, it takes one as it gets there; in it, or with
+		nothing to take, a double tick says so: full) */
 		vr.reload_grip_taken = 1;
-		platform_log("vr: reload: the grip in the pouch, nothing taken: %s", r->kind == HALO_VR_RELOAD_NONE ?
-			"the weapon has no magazine" : w->reloading ? "the game is reloading" :
-			"nothing to reload (full, or no rounds left)");
+		vr.reload_grip_waiting = r->wanted && !in_pouch;
+		if (!vr.reload_grip_waiting)
+		{
+			host_vr_haptic(0, RELOAD_FULL_AMPLITUDE, RELOAD_FULL_SECONDS);
+			vr.reload_full_tick = now + RELOAD_FULL_GAP_MS;
+			if (!vr.reload_full_tick)
+				vr.reload_full_tick = 1;
+		}
+		platform_log("vr: reload: the grip by the pouch (%.2f m from its reach), nothing taken: %s",
+			r->kind != HALO_VR_RELOAD_NONE ? r->pouch_distance : hip_distance, vr.reload_grip_waiting ?
+			"one is taken as the hand gets there" : r->kind == HALO_VR_RELOAD_NONE ? "the weapon has no magazine" :
+			w->reloading ? "the game is reloading" : "nothing to reload (full, or no rounds left)");
 	}
 	else if (r->held && !vr.reload_grip_pressed)
 	{
