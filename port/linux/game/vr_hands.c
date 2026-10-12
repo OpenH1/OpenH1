@@ -54,18 +54,33 @@ normalizing the normals would divide by) */
 /* beyond an arm's reach, its shoulder comes forward this far at most
 (metres), and the arm stretches the rest */
 #define SHOULDER_REACH 0.05f
-/* the fingers' curls (radians, at each joint from the knuckle): the right
-index finger's at a full pull of the trigger, and the left hand's,
-relaxed and with the grip pulled */
-#define TRIGGER_CURL_0 0.35f
-#define TRIGGER_CURL_1 0.55f
-#define TRIGGER_CURL_2 0.35f
+/* the fingers' curls (radians, at each joint from the knuckle): the left
+hand's, relaxed and with the grip pulled */
 #define GRIP_OPEN_CURL -0.10f
 #define GRIP_CLOSED_CURL 1.30f
-/* the weapon's trigger node, at a full pull: back toward the grip, this
-far (metres; the node's origin is not the trigger's pivot, and holds its
-guard too, so it is moved, not turned) */
-#define WEAPON_TRIGGER_TRAVEL 0.005f
+/* the right index finger on each weapon's trigger (by the first-person
+animation graph's tag name; the first that matches, the last for any
+other): its curl at each joint from the knuckle at rest, against the
+trigger (the idle animation's finger lies straight, through the trigger),
+and how much more at a full pull, as the trigger goes back; and how far the
+weapon's trigger node goes back at a full pull, toward the grip (metres;
+the node's origin is not the trigger's pivot, and holds its guard too, so
+it is moved, not turned). debug.vr_test_finger sets the weapon in hand's,
+for tests. */
+static const struct trigger_finger
+{
+	char const *name;
+	real rest[3];
+	real pull[3];
+	real travel;
+} trigger_fingers[] =
+{
+	/* (the pistol's, seen from its side: curled to rest against the back
+	of its trigger, just short of it, and following it back. The model's
+	finger is one plane with the trigger, so it cannot wrap round its face
+	without going through it) */
+	{ "", { 0.30f, 0.90f, 0.60f }, { 0.07f, 0.15f, 0.10f }, 0.005f },
+};
 
 enum
 {
@@ -132,8 +147,9 @@ static struct
 	/* the sign that curls each hand's fingers about the line of its
 	knuckles, from the index finger's to the little finger's */
 	real curl_sign[NUMBER_OF_SIDES];
-	/* the weapon's trigger */
+	/* the weapon's trigger, and the finger on it (trigger_fingers) */
 	short trigger;
+	struct trigger_finger finger;
 	byte roles[MAXIMUM_NODES_PER_ANIMATION];
 	/* the idle pose, in the camera's axes (forward, left, up; world units),
 	and in it the middle of the right hand, the middle of the left hand
@@ -151,6 +167,9 @@ short first_person_weapon_vr_idle_pose(short local_player_index, real_matrix4x3 
 	byte *node_models);
 int halo_vr_test_hands(void);
 void platform_log(char const *format, ...);
+char const *config_string(char const *name);
+
+static void trigger_finger_find(char const *graph_name);
 
 /* ---------- vectors */
 
@@ -506,15 +525,18 @@ static boolean hands_learn(void)
 	vr_hands.trigger = node_find(graph, node_count, "trigger");
 	if (vr_hands.trigger != NONE && !TEST_FLAG(node_models[vr_hands.trigger], _vr_hands_node_weapon_bit))
 		vr_hands.trigger = NONE;
+	trigger_finger_find(tag_get_name(animation_graph_index));
 	hand_centre(graph, vr_hands.idle, node_count, node_models, vr_hands.wrist[_right], &vr_hands.right_centre);
 	hand_centre(graph, vr_hands.idle, node_count, node_models, vr_hands.wrist[_left], &left_centre);
 	vector_between(&vr_hands.idle[vr_hands.wrist[_left]].position, &left_centre, &vr_hands.left_centre);
 	vr_hands.usable = TRUE;
-	platform_log("vr: hands: %s: wrists %d (%s) and %d (%s), arms %d %d and %d %d (%.2f and %.2f m), trigger %d",
+	platform_log("vr: hands: %s: wrists %d (%s) and %d (%s), arms %d %d and %d %d (%.2f and %.2f m), trigger %d, "
+		"its finger's \"%s\"",
 		tag_get_name(animation_graph_index), vr_hands.wrist[_left], graph_node(graph, vr_hands.wrist[_left])->name,
 		vr_hands.wrist[_right], graph_node(graph, vr_hands.wrist[_right])->name, vr_hands.upper_arm[_left],
 		vr_hands.forearm[_left], vr_hands.upper_arm[_right], vr_hands.forearm[_right],
-		vr_hands.upper_arm_length[_right] * 3.048f, vr_hands.forearm_length[_right] * 3.048f, vr_hands.trigger);
+		vr_hands.upper_arm_length[_right] * 3.048f, vr_hands.forearm_length[_right] * 3.048f, vr_hands.trigger,
+		vr_hands.finger.name);
 	return TRUE;
 }
 
@@ -639,19 +661,46 @@ static void finger_curl(real_matrix4x3 *node_matrices, short side, short finger,
 	}
 }
 
-/* the right index finger on the trigger, and the weapon's trigger, back
-along the weapon (backward: the camera's, in world units) */
+/* the right index finger on the trigger, at rest and pulled, and the
+weapon's trigger, back along the weapon (backward: the camera's, in world
+units, a full pull's) */
 static void trigger_pull(real_matrix4x3 *node_matrices, real pull, real_vector3d const *backward)
 {
-	real angles[NUMBER_OF_FINGER_JOINTS] = { TRIGGER_CURL_0 * pull, TRIGGER_CURL_1 * pull, TRIGGER_CURL_2 * pull };
+	struct trigger_finger const *finger = &vr_hands.finger;
+	real angles[NUMBER_OF_FINGER_JOINTS];
 	real_vector3d axis;
+	short joint;
 
-	if (pull <= 0.0f)
-		return;
+	if (pull < 0.0f)
+		pull = 0.0f;
+	for (joint = 0; joint < NUMBER_OF_FINGER_JOINTS; joint++)
+		angles[joint] = finger->rest[joint] + finger->pull[joint] * pull;
 	if (knuckle_axis(node_matrices, _right, &axis))
 		finger_curl(node_matrices, _right, _finger_index, &axis, angles);
-	if (vr_hands.trigger != NONE)
+	if (vr_hands.trigger != NONE && pull > 0.0f)
 		point_add(&node_matrices[vr_hands.trigger].position, backward, pull, &node_matrices[vr_hands.trigger].position);
+}
+
+/* the weapon's finger on its trigger (trigger_fingers), or
+debug.vr_test_finger's: "<rest at each joint> <more pulled at each joint>
+<the trigger's travel>" */
+static void trigger_finger_find(char const *graph_name)
+{
+	struct trigger_finger *finger = &vr_hands.finger;
+	char const *test = config_string("debug.vr_test_finger");
+	short index;
+
+	for (index = 0; index < (short)NUMBEROF(trigger_fingers) - 1; index++)
+	{
+		if (graph_name && strstr(graph_name, trigger_fingers[index].name))
+			break;
+	}
+	*finger = trigger_fingers[index];
+	if (test && *test && sscanf(test, "%f %f %f %f %f %f %f", &finger->rest[0], &finger->rest[1], &finger->rest[2],
+		&finger->pull[0], &finger->pull[1], &finger->pull[2], &finger->travel) >= 6)
+	{
+		finger->name = "debug.vr_test_finger";
+	}
 }
 
 /* the left hand's fingers in the idle pose's shape about its wrist (where
@@ -919,9 +968,9 @@ void vr_hands_pose(
 	{
 		real_vector3d backward;
 
-		backward.i = -frame.camera.forward.i * WEAPON_TRIGGER_TRAVEL * frame.units;
-		backward.j = -frame.camera.forward.j * WEAPON_TRIGGER_TRAVEL * frame.units;
-		backward.k = -frame.camera.forward.k * WEAPON_TRIGGER_TRAVEL * frame.units;
+		backward.i = -frame.camera.forward.i * vr_hands.finger.travel * frame.units;
+		backward.j = -frame.camera.forward.j * vr_hands.finger.travel * frame.units;
+		backward.k = -frame.camera.forward.k * vr_hands.finger.travel * frame.units;
 		trigger_pull(node_matrices, frame.right_trigger, &backward);
 	}
 

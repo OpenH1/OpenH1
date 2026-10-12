@@ -782,6 +782,12 @@ static const struct config_setting config_settings[] =
 		"(as the script's unit_kill does, by a frag grenade's blast before\n"
 		"them, or killed and then watching the nearest living biped); empty\n"
 		"none." },
+	{ "debug.vr_test_finger", _config_string, "\"\"", "HALO_VR_TEST_FINGER", _environment_value, _platform_desktop,
+		"The right index finger on the weapon's trigger instead of the weapon's own\n"
+		"(vr_hands.c's trigger_fingers), for tests: \"<rest> <rest> <rest> <pull>\n"
+		"<pull> <pull> [<travel>]\", its curl at each joint from the knuckle at rest\n"
+		"and how much more at a full pull (radians), and how far back the trigger\n"
+		"goes (metres); empty none." },
 	{ "debug.vr_test_weapons", _config_string, "\"\"", "HALO_VR_TEST_WEAPONS", _environment_value, _platform_desktop,
 		"Give the first player these weapons as the map starts, in place of their\n"
 		"own, the first in hand, for automated tests of the scopes: \"<name>[,\n"
