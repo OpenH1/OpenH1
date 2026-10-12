@@ -243,6 +243,8 @@ short pal_tags_first_person_frames(long graph_index, short animation_index, shor
 /* port/linux/game/vr_reload.c's */
 boolean vr_reload_automatic(long weapon_index);
 boolean vr_reload_chain(long weapon_index);
+boolean vr_reload_by_hand(long weapon_index);
+void vr_reload_loaded(long weapon_index);
 #endif
 
 /* ---------- constants */
@@ -471,6 +473,10 @@ static void weapon_magazine_start_reload(
 	long weapon_index,
 	short magazine_index,
 	boolean unknown);
+#ifdef HALO_VR
+static boolean weapon_magazine_reload_at_once(
+	long weapon_index);
+#endif
 static void weapon_state_next(
 	long weapon_index);
 
@@ -1767,6 +1773,41 @@ static void weapon_magazine_start_reload(
 
 	return;
 }
+
+#ifdef HALO_VR
+/* port: the VR mode's reload by hand (port/linux/game/vr_reload.c): the
+magazine the hand pushed home (the shotgun's shell) loaded now, as the
+game's reload would load it when it ends, the weapon ready to fire. The
+hand took the reload's time: no reload's state, no time, and no animation
+of the weapon or of the unit, whose reload would keep the weapon from firing
+(the unit's busy animation) and show the body reloading a loaded weapon.
+Only when the game's reload could begin (the triggers and the weapon idle);
+FALSE else, for the caller to try again. */
+static boolean weapon_magazine_reload_at_once(
+	long weapon_index)
+{
+	struct weapon_datum *weapon = weapon_get(weapon_index);
+	struct weapon_magazine *magazine = weapon_magazine_get(weapon, 0);
+	struct weapon_definition *weapon_definition = weapon_definition_get(weapon->definition_index);
+	struct weapon_magazine_definition *magazine_definition;
+
+	if (!magazine || weapon_definition->weapon.magazines.count<=0 ||
+		(magazine->state!=_magazine_idle && magazine->state!=_magazine_unchambered) ||
+		!weapon_magazine_state_change_ok(weapon_index))
+	{
+		return FALSE;
+	}
+	magazine_definition = TAG_BLOCK_GET_ELEMENT(&weapon_definition->weapon.magazines, 0, struct weapon_magazine_definition);
+	if (magazine->rounds_total<=0 || magazine->rounds_loaded>=magazine_definition->rounds_loaded_maximum)
+		return FALSE;
+	/* (the shotgun goes on to no other shell: each is the hand's) */
+	weapon_magazine_finish_reload(weapon_index, 0);
+	weapon_magazine_idle(weapon_index, 0);
+	weapon->weapon.flags &= ~FLAG(_weapon_needs_to_reload_bit);
+
+	return TRUE;
+}
+#endif
 
 static void weapon_state_next(
 	long weapon_index)
@@ -3168,6 +3209,14 @@ boolean weapon_update(
 	{
 		weapon_magazine_start_reload(weapon_index, 0, TRUE);
 	}
+#ifdef HALO_VR
+	/* port: the VR mode's magazine (or shell) pushed home by hand, loaded
+	at once (port/linux/game/vr_reload.c) */
+	if (vr_reload_by_hand(weapon_index) && weapon_magazine_reload_at_once(weapon_index))
+	{
+		vr_reload_loaded(weapon_index);
+	}
+#endif
 
 	for (magazine_index= 0; magazine_index<weapon_magazine_count(weapon_definition); magazine_index++)
 	{

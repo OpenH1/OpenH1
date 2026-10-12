@@ -1275,9 +1275,13 @@ and rounds to fill it: the magazine in the weapon ejects itself as you take
 the new one (a buzz in the right hand; the weapon is empty now, and does
 not fire). Push it into the weapon where it goes, still gripping (a knock
 in both hands). The right stick pushed down ejects the magazine before you
-reach, if you like (the same buzz). The game then reloads, as X does: the same
-ammunition, the same time, and others see your body reload; but your
-weapon stays in your hand, without the flat screen's reload animation.
+reach, if you like (the same buzz). The rounds are in the weapon the moment
+it is pushed home: the HUD counts them, and the weapon fires at once (your
+hand took the reload's time: the game's own reload, its time and its
+animation, is not run). The ammunition is the game's, as a reload by X
+would leave it; others see your count change, not your body reload. Your
+weapon stays in your hand, as the flat screen's reload animation would not
+leave it.
 
 - Where it goes is where the weapon's own magazine is, in its first-person
   model (on the assault rifle, a bullpup, behind the grip, under your
@@ -1291,9 +1295,8 @@ weapon stays in your hand, without the flat screen's reload animation.
   hand comes to it.
 - The shotgun is fed a shell at a time, with nothing to eject: take a shell
   from your hip whenever it has room, and push it in at the loading port,
-  under the receiver ahead of the grip. Each shell is one round of the
-  game's reload; the game stops after it unless you have pushed in another
-  meanwhile (on the flat screen it loads to full).
+  under the receiver ahead of the grip. Each shell is loaded as it goes
+  in, one round (on the flat screen the game loads to full).
 - The rocket launcher: the right stick ejects its tubes, and new ones are
   behind your left shoulder (where your left hand reaches over it, as the
   right one does for a long gun).
@@ -1310,7 +1313,11 @@ weapon stays in your hand, without the flat screen's reload animation.
 - In a network game the host runs your weapon: as a client, its copy
   reloads an empty weapon by itself and loads the shotgun to full, and
   yours then takes the host's ammunition, as it always does. Your hand's
-  reload is a press of reload there, as X is.
+  reload is a press of reload there, as X is, so as a client the magazine
+  pushed home is loaded after the game's reload time, as before (the
+  host is not told a reload was the hand's: the network's messages have no
+  room for it without a new network version). As the host, or alone, it is
+  loaded at once.
 - Only on foot, with `vr.aim = "controller"`.
 
 #### Your body (`display.first_person_legs`)
@@ -1490,7 +1497,7 @@ headset's session is opened with, apply from the next start.
 | `vr.scopes` | `true` | `HALO_VR_SCOPES` | With `vr.aim = "controller"`: the zoom magnifies a view of its own, as `vr.scope_view` says (above, "Scopes"). `false`: the game's zoom (nothing is magnified in the headset), whatever `vr.scope_view` is. |
 | `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a round magnified view shows on the visor where the weapon aims, at the HUD's distance (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
 | `vr.smartlink_size` | `28.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the magnified view on the visor is, in degrees of the view (10 to 45). |
-| `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the right stick pushed down ejects the magazine, the left hand takes another from the left hip and pushes it in; the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
+| `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the left hand takes another magazine from the left hip (the one in the weapon ejecting itself, or the right stick pushed down ejects it) and pushes it in, loaded at once (as a network game's client, after the game's reload time); the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand (above, "Throwing a grenade with the left hand") or with the left trigger; `"button"`, with the left trigger alone. |
 | `vr.two_handed` | `true` | `HALO_VR_TWO_HANDED` | With `vr.aim = "controller"`: a long gun (any but the pistols, the needler, the flag and the ball) is aimed along the line from the right hand to the left while the left grip holds it by the foregrip (pressed within 18 cm of the line ahead of the right hand). The aim turns to that line over 0.15 s, smoothed, and back when the grip is let go. |
 | `vr.hands` | `"arms"` | `HALO_VR_HANDS` | With `vr.aim = "controller"`: each first-person hand where its controller is (the right holding the weapon, its index finger on the trigger as far as the trigger is pulled; the left open, closing as the grip is pulled, and on a long gun's foregrip while it holds it). `"arms"`: the arms reach the hands from the shoulders (`vr.shoulders`). `"floating"`: no arms above the wrists. `"game"`: the game's arms, posed from the weapon in the right hand. A hand whose controller is not tracked is not drawn, nor its arm. In a cinematic seen from the player's head the hands are the controllers' too, acting on nothing (above, "Cinematics seen from your own head"). |
@@ -1586,9 +1593,12 @@ HALO_VR_TEST_HANDS="-0.25 -0.45 0.15 0 0 0, R, 0, 0, 0, 0, 1300, 0;
 the left hand goes to the left hip and takes a magazine, comes under the
 rifle and pushes it home behind the grip. The log says each step (`vr:
 reload:` and `vr reload:`): where the magazine goes, from the recentred
-head as the hands are placed here, how far off it was pushed home, the
-game's reload with the rounds loaded and carried before and after, and
-that the first-person weapon stayed in the hand.
+head as the hands are placed here, how far off it was pushed home, the tick
+it was pushed home and the tick it was loaded (the same), with the rounds
+loaded and carried before and after, and the tick of the first trigger pull
+and shot after it. With `HALO_SCREENSHOT_DIR` (and no
+`HALO_SCREENSHOT_EVERY`), the frames as it is loaded and every 12 frames for
+half a second after are written (the HUD's count).
 
 `debug.gpu_stats` also logs the VR frames' timing, and
 `debug.screenshot_every` writes both eyes (`eyes*.bmp`), the HUD

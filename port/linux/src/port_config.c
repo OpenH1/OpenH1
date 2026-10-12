@@ -279,11 +279,12 @@ static const struct config_setting config_settings[] =
 		"With vr.scope_view = \"smartlink\", how wide the zoom's view on the\n"
 		"visor is, in degrees of your view (10 to 45)." },
 	{ "vr.manual_reload", _config_boolean, "true", "HALO_VR_MANUAL_RELOAD", _environment_value, _platform_desktop,
-		"With vr.aim = \"controller\", reload by hand: push the right stick down to\n"
-		"eject the magazine, take another from your left hip with the left grip\n"
-		"and push it into the weapon (the rocket launcher's tubes from behind\n"
-		"your left shoulder; the shotgun's shells one at a time, without\n"
-		"ejecting). An empty weapon does not reload itself; X reloads as ever." },
+		"With vr.aim = \"controller\", reload by hand: take another magazine from\n"
+		"your left hip with the left grip (the one in the weapon ejects itself,\n"
+		"or push the right stick down to eject it) and push it into the weapon,\n"
+		"loaded at once (the rocket launcher's tubes from behind your left\n"
+		"shoulder; the shotgun's shells one at a time, without ejecting). An\n"
+		"empty weapon does not reload itself; X reloads as ever." },
 	{ "vr.two_handed", _config_boolean, "true", "HALO_VR_TWO_HANDED", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", a long gun (not a pistol or the needler)\n"
 		"is aimed with both hands while the left grip holds it by the foregrip:\n"

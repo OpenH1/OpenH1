@@ -9,25 +9,40 @@ The hand reloads as it would a real gun: the left hand takes another
 magazine from its pouch on the body (the left hip; the rocket launcher's
 tubes from behind the left shoulder), the one in the weapon ejecting itself
 (or the right stick pushed down ejects it first), and pushes it into the
-weapon where it goes (port/linux/src/vr.c, which has the hands). The shotgun is fed a shell at a time, with no magazine to eject.
-Each one pushed home presses the game's reload, here, through the player's
-input as the keyboard's reload key does (player_control.c), so that the
-ammunition, the netcode and the animations stay the game's: the game's
-reload then runs as it does for X (which reloads as ever). Not X itself,
-which over a weapon on the ground would take it up.
+weapon where it goes (port/linux/src/vr.c, which has the hands). The
+shotgun is fed a shell at a time, with no magazine to eject.
+
+Each one pushed home is loaded at once, where this machine runs the weapon
+(alone, split screen, a network game's host): the hand took the reload's
+time, so the rounds are in the magazine on the tick it is pushed home, the
+HUD counts them, and the weapon fires (weapons.c,
+weapon_magazine_reload_at_once, in the weapon's own update: the game's
+ammunition as its reload would leave it). Without the game's reload, its
+state, its time and its animations: the unit's reload animation would show
+the body reloading a weapon already loaded, and keep it from firing until it
+ends (the unit is busy); others see the count change, not the body reload.
+Should the weapon be busy (firing, drawn), it is loaded as soon as it is
+not, within PRESS_TICKS. X reloads as ever.
+
+On a network game's client the host runs the weapon (network_objects.c:
+its count is the host's), and nothing it is sent says a reload was the
+hand's: there each one pushed home presses the game's reload, through the
+player's input as the keyboard's reload key does (player_control.c), so
+that the host reloads, in the game's time, as it does for X. Not X itself,
+which over a weapon on the ground would take it up. A client loading at
+once alone would fight the host: its count is taken from the host's a round
+trip later, before the host's reload has ended.
 
 The game reloads a magazine whole, and the shotgun a shell at a time: its
 magazine reloads one round (rounds_reloaded) and starts over until it is full
 (weapon_magazine_finish_reload), unless the trigger is held. Each shell the
-hand pushes in is one of those; the game goes on to the next only for a
-shell the hand has pushed in meanwhile, else it stops (vr_reload_chain),
-and the next shell presses the reload again. Nor does an empty magazine
-reload itself, as the game would do it at once (weapons.c's idle trigger):
-the hand reloads it, or X (vr_reload_automatic). Both are the game's
-decisions on the machine that runs the weapon: on a network game's client
-the host's copy of the weapon decides (network_objects.c: its count is the
-host's), so there the game reloads as ever, and the hand's reload is a
-press of reload like X.
+hand pushes in is one of those (loaded at once, or pressing the reload); the
+game goes on to the next only for a shell the hand has pushed in meanwhile,
+else it stops (vr_reload_chain). Nor does an empty magazine reload itself,
+as the game would do it at once (weapons.c's idle trigger): the hand
+reloads it, or X (vr_reload_automatic). Both are the game's decisions on
+the machine that runs the weapon: on a client the host's copy decides, so
+there the game reloads as ever.
 
 What the weapon's magazine is: its first-person model's node named for it
 (the assault rifle's, the pistol's and the sniper rifle's "frame magazine",
@@ -41,12 +56,12 @@ weapon whose model has none (the needler) has its ammunition's pickup
 instead, and a place under its grip. While the magazine is out it is not
 drawn in the weapon.
 
-The game's reload after the hand's runs underneath (the ammunition, its
-time, the unit's animation that others see), but the first-person weapon
-plays no reload (with the hands the controllers', vr.hands): it stays in
-the right hand, idle, as the hand's grenade throw leaves it there
-(vr_grenade.c). Its animation would swing it up out of the hand and take
-the magazine out and put it back again. The weapon is the hands' and the
+On a client the game's reload after the hand's runs underneath (the
+ammunition, its time, the unit's animation that others see), but the
+first-person weapon plays no reload (with the hands the controllers',
+vr.hands): it stays in the right hand, idle, as the hand's grenade throw
+leaves it there (vr_grenade.c). Its animation would swing it up out of the
+hand and take the magazine out and put it back again. The weapon is the hands' and the
 game's ammunition's: the shotgun's shells and the rocket launcher's tubes
 the same.
 
@@ -121,6 +136,8 @@ boolean vr_render_left_hand(real_matrix4x3 *hand, real *units);
 boolean vr_render_right_hand(real_matrix4x3 *hand, real *units);
 boolean vr_render_body_place(const float place[3], const float forward[3], const float up[3], real_matrix4x3 *matrix,
 	real *units);
+/* d3d8_gl.c's */
+void halo_vr_test_screenshot(void);
 /* vr_holster.c's */
 void vr_holster_highlight(boolean well, long unit_index, real strength, real units,
 	struct render_model_effect *model_effect, struct render_lighting *lighting);
@@ -136,9 +153,20 @@ static struct
 	(halo_vr_reload's inserted) */
 	unsigned long inserted;
 	/* the game's reload pressed (player_control.c) since this tick, until
-	the game reloads */
+	the game reloads (a client) */
 	boolean pressing;
 	long press_time;
+	/* the magazines (shells) pushed home to be loaded at once, the first of
+	them since this tick (where this machine runs the weapon); the trigger
+	and the first shot after one is, to be logged, and the rounds it was
+	loaded with */
+	short loads;
+	long load_time;
+	boolean watch_shot;
+	boolean watch_trigger;
+	short watch_rounds;
+	/* debug.screenshot_directory: the frames to take after one is loaded */
+	short screenshots;
 	/* debug.vr_test_weapon: given (or not to be) */
 	boolean test_weapon_done;
 	/* the shells pushed into the shotgun that the game has yet to load */
@@ -164,7 +192,8 @@ static struct
 	float well[3];
 	boolean well_drawn;
 	real_matrix4x3 well_matrix;
-} vr_reload = { NONE, NONE, HALO_VR_RELOAD_NONE, 0, FALSE, 0, 0, FALSE, NONE, NONE, NONE };
+} vr_reload = { NONE, NONE, HALO_VR_RELOAD_NONE, 0, FALSE, 0, 0, 0, FALSE, FALSE, 0, 0, FALSE, 0, FALSE, FALSE,
+	NONE, NONE, NONE };
 
 /* the weapon's reload by hand (HALO_VR_RELOAD_*), and its magazine's
 definition: none without a magazine of rounds (the plasma weapons' is their
@@ -387,6 +416,8 @@ void vr_reload_update(long unit_index, boolean aiming)
 	{
 		vr_reload.pressing = FALSE;
 		vr_reload.shells = 0;
+		vr_reload.loads = 0;
+		vr_reload.watch_shot = FALSE;
 		vr_reload.hand_reload = FALSE;
 		vr_reload.empty_logged = FALSE;
 		vr_reload.well_known = FALSE;
@@ -397,14 +428,22 @@ void vr_reload_update(long unit_index, boolean aiming)
 	vr_reload.weapon_index = weapon_index;
 	vr_reload.kind = kind;
 
-	/* the magazines pushed home since the last frame: the game's reload
-	pressed for each, the shells counted for the shotgun to load in turn */
+	/* the magazines pushed home since the last frame: loaded at once where
+	this machine runs the weapon (weapons.c, vr_reload_by_hand); else the
+	game's reload pressed for each, the shells counted for the shotgun to
+	load in turn */
 	halo_vr_reload(&reload);
 	inserted = reload.inserted - vr_reload.inserted;
 	vr_reload.inserted = reload.inserted;
 	if (inserted && kind != HALO_VR_RELOAD_NONE)
 	{
-		if (kind == HALO_VR_RELOAD_SHELL)
+		if (vr_reload_decides())
+		{
+			if (!vr_reload.loads)
+				vr_reload.load_time = now;
+			vr_reload.loads += (short)inserted;
+		}
+		else if (kind == HALO_VR_RELOAD_SHELL)
 		{
 			vr_reload.shells += (short)inserted;
 		}
@@ -414,8 +453,31 @@ void vr_reload_update(long unit_index, boolean aiming)
 			vr_reload.press_time = now;
 		}
 		platform_log("vr reload: tick %ld: pushed home (%d rounds loaded, %d more carried)%s", now,
-			magazine->rounds_loaded, magazine->rounds_total, kind == HALO_VR_RELOAD_SHELL ? ", a shell to load" :
-			": the game's reload pressed");
+			magazine->rounds_loaded, magazine->rounds_total, vr_reload_decides() ? ": to be loaded at once" :
+			kind == HALO_VR_RELOAD_SHELL ? ", a shell to load" : ": the game's reload pressed");
+	}
+	if (vr_reload.loads && (now - vr_reload.load_time > PRESS_TICKS || now < vr_reload.load_time))
+	{
+		platform_log("vr reload: tick %ld: the weapon could not be loaded (busy)", now);
+		vr_reload.loads = 0;
+	}
+	/* (the trigger and the first shot after, and what the HUD shows) */
+	if (vr_reload.watch_shot && magazine && !vr_reload.watch_trigger &&
+		TEST_FLAG(unit_get(unit_index)->unit.control_flags, _unit_control_weapon_primary_trigger_bit))
+	{
+		platform_log("vr reload: tick %ld: the trigger pulled", now);
+		vr_reload.watch_trigger = TRUE;
+	}
+	if (vr_reload.watch_shot && magazine && magazine->rounds_loaded < vr_reload.watch_rounds)
+	{
+		platform_log("vr reload: tick %ld: fired, %d rounds loaded", now, magazine->rounds_loaded);
+		vr_reload.watch_shot = FALSE;
+	}
+	if (vr_reload.screenshots > 0)
+	{
+		vr_reload.screenshots--;
+		if (vr_reload.screenshots % 12 == 11 || vr_reload.screenshots == 0)
+			halo_vr_test_screenshot();
 	}
 	if (kind == HALO_VR_RELOAD_SHELL && !vr_reload.pressing && !reloading && vr_reload.shells > 0)
 	{
@@ -457,12 +519,12 @@ void vr_reload_update(long unit_index, boolean aiming)
 	weapon_state.weapon = weapon_index;
 	if (magazine)
 	{
-		short coming = kind == HALO_VR_RELOAD_SHELL ? vr_reload.shells + (reloading ? 1 : 0) : 0;
+		short coming = kind == HALO_VR_RELOAD_SHELL ? vr_reload.shells + vr_reload.loads + (reloading ? 1 : 0) : 0;
 
 		weapon_state.reloading = reloading || magazine->state == _magazine_chambering;
 		weapon_state.can_reload = magazine->rounds_total > coming &&
 			magazine->rounds_loaded + coming < magazine_definition->rounds_loaded_maximum &&
-			(kind == HALO_VR_RELOAD_SHELL || !reloading);
+			(kind == HALO_VR_RELOAD_SHELL || (!reloading && !vr_reload.loads));
 	}
 	weapon_state.well_known = vr_reload.well_known;
 	weapon_state.well[0] = vr_reload.well[0];
@@ -476,6 +538,45 @@ reload pressed, for a magazine the hand pushed home */
 boolean vr_reload_pressed(void)
 {
 	return vr_reload.pressing;
+}
+
+/* weapons.c, as the weapon updates: whether the hand pushed home a
+magazine (a shell) for it to load at once (where this machine runs it).
+The shotgun's shell pushed in while the game loads one (X) goes on after it
+instead (vr_reload_chain). */
+boolean vr_reload_by_hand(long weapon_index)
+{
+	struct halo_vr_reload reload;
+
+	if (weapon_index != vr_reload.weapon_index || vr_reload.loads <= 0 || vr_reload.kind == HALO_VR_RELOAD_NONE ||
+		!vr_reload_decides() || !halo_vr_reload(&reload))
+	{
+		return FALSE;
+	}
+	if (vr_reload.kind == HALO_VR_RELOAD_SHELL &&
+		weapon_get(weapon_index)->weapon.magazines[0].state == _magazine_reloading)
+	{
+		vr_reload.shells += vr_reload.loads;
+		vr_reload.loads = 0;
+		return FALSE;
+	}
+	return TRUE;
+}
+
+/* weapons.c, as it has loaded one the hand pushed home */
+void vr_reload_loaded(long weapon_index)
+{
+	struct weapon_magazine *magazine = &weapon_get(weapon_index)->weapon.magazines[0];
+
+	if (vr_reload.loads > 0)
+		vr_reload.loads--;
+	platform_log("vr reload: tick %ld: loaded at once: %d rounds loaded, %d more carried", game_time_get(),
+		magazine->rounds_loaded, magazine->rounds_total);
+	vr_reload.watch_shot = TRUE;
+	vr_reload.watch_trigger = FALSE;
+	vr_reload.watch_rounds = magazine->rounds_loaded;
+	if (*config_string("debug.screenshot_directory"))
+		vr_reload.screenshots = 37;
 }
 
 /* first_person_weapons.c, as the first-person weapon is told to play its
@@ -536,8 +637,12 @@ boolean vr_reload_chain(long weapon_index)
 		vr_reload.shells--;
 		return TRUE;
 	}
-	platform_log("vr reload: tick %ld: a shell loaded (%d), no other pushed in", game_time_get(),
-		weapon_get(weapon_index)->weapon.magazines[0].rounds_loaded);
+	/* (not for one loaded at once: vr_reload_loaded logs it) */
+	if (vr_reload.loads <= 0)
+	{
+		platform_log("vr reload: tick %ld: a shell loaded (%d), no other pushed in", game_time_get(),
+			weapon_get(weapon_index)->weapon.magazines[0].rounds_loaded);
+	}
 	return FALSE;
 }
 

@@ -232,7 +232,7 @@ VR_SCREENS = {
             ("SCOPES:", "vr.scope_view", [("OFF", "off"), ("SMART-LINK", "smartlink"), ("AT THE EYE", "eye")],
              "Smart-link: the right stick's click zooms on your\nvisor. At the eye: raise the scope to your eye.", None),
             ("RELOAD BY HAND:", "vr.manual_reload", ON_OFF,
-             "Right stick down ejects; take a magazine from\nyour left hip and push it in. X still reloads.", None),
+             "Take a magazine from your left hip and push it\nin: loaded at once. X still reloads.", None),
             ("TURNING:", "vr.turn", [("SNAP", "snap"), ("SMOOTH", "smooth")],
              "How the right stick turns you: in steps, or\ncontinuously.", None),
             ("SNAP TURN ANGLE:", "vr.snap_turn_angle",

@@ -206,7 +206,7 @@
 		<string text="Reach over your right shoulder for a long gun, or\nto your right hip for a pistol, and grip to draw it."/>
 		<string text="Crouch in the room and you crouch in the game;\nstand up and you stand."/>
 		<string text="Smart-link: the right stick's click zooms on your\nvisor. At the eye: raise the scope to your eye."/>
-		<string text="Right stick down ejects; take a magazine from\nyour left hip and push it in. X still reloads."/>
+		<string text="Take a magazine from your left hip and push it\nin: loaded at once. X still reloads."/>
 		<string text="How the right stick turns you: in steps, or\ncontinuously."/>
 		<string text="How far each snap turn turns you."/>
 		<string text="How fast smooth turning turns you, the stick\npushed all the way: degrees a second."/>

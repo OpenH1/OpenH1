@@ -1,0 +1,55 @@
+diff --git a/src/xrt/compositor/null/null_compositor.c b/src/xrt/compositor/null/null_compositor.c
+index 758220857..44cdb3985 100644
+--- a/src/xrt/compositor/null/null_compositor.c
++++ b/src/xrt/compositor/null/null_compositor.c
+@@ -33,6 +33,9 @@
+ 
+ 
+ DEBUG_GET_ONCE_LOG_OPTION(log, "XRT_COMPOSITOR_LOG", U_LOGGING_INFO)
++// The refresh rate and view size, for headless tests that need a real headset's pacing
++DEBUG_GET_ONCE_NUM_OPTION(null_fps, "XRT_COMPOSITOR_NULL_FPS", 20)
++DEBUG_GET_ONCE_NUM_OPTION(null_view_size, "XRT_COMPOSITOR_NULL_VIEW_SIZE", 128)
+ 
+ 
+ /*
+@@ -258,19 +261,22 @@ compositor_init_sys_info(struct null_compositor *c, struct xrt_device *xdev)
+ 	(void)sys_info->client_d3d_deviceLUID;
+ 	(void)sys_info->client_d3d_deviceLUID_valid;
+ 
++	uint32_t view_size = (uint32_t)debug_get_num_option_null_view_size();
++	uint32_t max_size = view_size > 1024 ? view_size : 1024;
++
+ 	// clang-format off
+-	sys_info->views[0].recommended.width_pixels  = 128;
+-	sys_info->views[0].recommended.height_pixels = 128;
++	sys_info->views[0].recommended.width_pixels  = view_size;
++	sys_info->views[0].recommended.height_pixels = view_size;
+ 	sys_info->views[0].recommended.sample_count  = 1;
+-	sys_info->views[0].max.width_pixels          = 1024;
+-	sys_info->views[0].max.height_pixels         = 1024;
++	sys_info->views[0].max.width_pixels          = max_size;
++	sys_info->views[0].max.height_pixels         = max_size;
+ 	sys_info->views[0].max.sample_count          = 1;
+ 
+-	sys_info->views[1].recommended.width_pixels  = 128;
+-	sys_info->views[1].recommended.height_pixels = 128;
++	sys_info->views[1].recommended.width_pixels  = view_size;
++	sys_info->views[1].recommended.height_pixels = view_size;
+ 	sys_info->views[1].recommended.sample_count  = 1;
+-	sys_info->views[1].max.width_pixels          = 1024;
+-	sys_info->views[1].max.height_pixels         = 1024;
++	sys_info->views[1].max.width_pixels          = max_size;
++	sys_info->views[1].max.height_pixels         = max_size;
+ 	sys_info->views[1].max.sample_count          = 1;
+ 	// clang-format on
+ 
+@@ -548,7 +554,8 @@ null_compositor_create_system(struct xrt_device *xdev, struct xrt_system_composi
+ 	c->frame.waited.id = -1;
+ 	c->frame.rendering.id = -1;
+ 	c->state = NULL_COMP_STATE_READY;
+-	c->settings.frame_interval_ns = U_TIME_1S_IN_NS / 20; // 20 FPS
++	int64_t fps = debug_get_num_option_null_fps();
++	c->settings.frame_interval_ns = U_TIME_1S_IN_NS / (fps > 0 ? fps : 20); // 20 FPS unless set
+ 	c->xdev = xdev;
+ 
+ 	NULL_DEBUG(c, "Doing init %p", (void *)c);
