@@ -43,6 +43,7 @@ origin). A hand whose controller is not tracked is not drawn, nor its arm.
 #include "tag_files/tag_files.h"
 
 #include "vr_hands.h"
+#include "../src/vr.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -58,6 +59,9 @@ normalizing the normals would divide by) */
 hand's, relaxed and with the grip pulled */
 #define GRIP_OPEN_CURL -0.10f
 #define GRIP_CLOSED_CURL 1.30f
+/* the left grip's pull at most while the hand holds a grenade
+(vr_grenade.c): the fingers about it, not through it */
+#define GRIP_GRENADE 0.5f
 /* the right index finger on each weapon's trigger (by the first-person
 animation graph's tag name; the first that matches, the last for any
 other): its curl at each joint from the knuckle at rest, against the
@@ -953,7 +957,14 @@ void vr_hands_pose(
 		held.position.z = frame.left.position.z - centre.k;
 		held.scale = left->scale;
 		*left = held;
-		left_fingers_free(node_matrices, &frame.camera, frame.left_grip);
+		{
+			struct halo_vr_throw throw_state;
+			real grip = frame.left_grip;
+
+			if (halo_vr_throw(&throw_state) != HALO_VR_THROW_RELEASED && throw_state.held && grip > GRIP_GRENADE)
+				grip = GRIP_GRENADE;
+			left_fingers_free(node_matrices, &frame.camera, grip);
+		}
 		if (weight > 0.0f)
 		{
 			/* (the animation's hand, on the weapon, its fingers as they are) */

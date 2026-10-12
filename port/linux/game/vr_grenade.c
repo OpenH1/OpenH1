@@ -59,6 +59,7 @@ starts where the held one was drawn last, and is drawn from there
 
 #include <float.h>
 #include <math.h>
+#include <stdio.h>
 
 /* the grenade held in the left hand (vr_grenade_draw): its middle from the
 controller's grip, in metres along where the hand points, to its right (the
@@ -69,11 +70,17 @@ left palm's side) and up; the hand's fingers close about it there */
 /* its size, of the game's: the game's grenades are large for a human hand
 (a frag about 20 cm), but smaller here, the one thrown would grow as it
 leaves the hand */
-#define HELD_SCALE 1.0f
+#define HELD_SCALE 0.6f
 /* drawn at its finest detail (as many pixels as its finest level wants) */
 #define HELD_DETAIL_PIXELS 1000.0f
+/* the plasma grenade (the game's second type) lit by its own light, as a
+live one is (its projectile's attached light, blue): added to the light
+about the hand */
+static real_rgb_color const plasma_glow = { 0.30f, 0.55f, 1.00f };
+#define PLASMA_GLOW_STRENGTH 0.8f
 
 void platform_log(char const *format, ...);
+char const *config_string(char const *name);
 /* vr_render.c's */
 boolean vr_render_left_hand(real_matrix4x3 *hand, real *units);
 /* render_interpolation.c's */
@@ -95,7 +102,9 @@ static struct
 	where the thrown one starts */
 	boolean drawn_valid;
 	real_matrix4x3 drawn;
-} vr_grenade = { NONE };
+	/* debug.vr_test_grenades: the unit given them */
+	long test_unit_index;
+} vr_grenade = { NONE, FALSE, FALSE, 0, { FALSE, FALSE }, FALSE, { 0 }, NONE };
 
 /* the first player's unit, which the VR mode plays */
 static long vr_grenade_player_unit(void)
@@ -161,6 +170,20 @@ boolean vr_grenade_facing(long unit_index, boolean aiming, real *yaw, real *pitc
 		return FALSE;
 	}
 	unit = unit_get(unit_index);
+	/* debug.vr_test_grenades, "<frags> <plasma grenades>": the unit's, as it
+	first aims (for tests of the grenade held in the hand) */
+	if (aiming && unit_index != vr_grenade.test_unit_index)
+	{
+		int counts[2];
+
+		vr_grenade.test_unit_index = unit_index;
+		if (sscanf(config_string("debug.vr_test_grenades"), "%d %d", &counts[0], &counts[1]) == 2)
+		{
+			unit->unit.grenade_counts[0] = (char)counts[0];
+			unit->unit.grenade_counts[1] = (char)counts[1];
+			platform_log("vr grenade test: %d frag and %d plasma grenades", counts[0], counts[1]);
+		}
+	}
 	weapon_index = unit_inventory_get_weapon(unit_index, unit->unit.current_weapon_index);
 	grenade_type = unit_get_current_grenade_type(unit_index);
 	/* (the rules of unit_throw_grenade_begin: one to throw, on foot, a
@@ -261,9 +284,11 @@ void vr_grenade_draw(unsigned long flags)
 	struct game_globals_grenade *grenade;
 	struct model *model;
 	real_matrix4x3 node_matrices[MAXIMUM_NODES_PER_MODEL];
+	real function_values[NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS];
+	struct render_lighting lighting;
 	long unit_index = vr_grenade_player_unit();
 	long model_index;
-	short grenade_type;
+	short grenade_type, function_index;
 
 	halo_vr_throw(&throw_state);
 	if (unit_index == NONE || !throw_state.held)
@@ -315,9 +340,19 @@ void vr_grenade_draw(unsigned long flags)
 			position->z = vr_grenade.drawn.position.z + (position->z - vr_grenade.drawn.position.z) * HELD_SCALE;
 		}
 	}
-	render_model(model_index, HELD_DETAIL_PIXELS, node_matrices, NULL, NULL, NULL,
-		object_get_cached_render_lighting(unit_index, FLT_MAX), &vr_grenade.drawn.position, 0.0f, NULL, unit_index, 0,
-		flags);
+	/* (its shader's functions as a live grenade's: the plasma grenade's
+	glow; with none, its self-illumination is off) */
+	for (function_index = 0; function_index < NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS; function_index++)
+		function_values[function_index] = 1.0f;
+	lighting = *object_get_cached_render_lighting(unit_index, FLT_MAX);
+	if (grenade_type == 1)
+	{
+		lighting.ambient_color.red += plasma_glow.red * PLASMA_GLOW_STRENGTH;
+		lighting.ambient_color.green += plasma_glow.green * PLASMA_GLOW_STRENGTH;
+		lighting.ambient_color.blue += plasma_glow.blue * PLASMA_GLOW_STRENGTH;
+	}
+	render_model(model_index, HELD_DETAIL_PIXELS, node_matrices, NULL, NULL, function_values, &lighting,
+		&vr_grenade.drawn.position, 0.0f, NULL, unit_index, 0, flags);
 }
 
 /* units.c, as the unit lets its grenade go with the velocity the game
