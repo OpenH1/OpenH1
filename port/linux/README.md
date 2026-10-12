@@ -1096,7 +1096,7 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | Head | Look |
 | Right controller | Aim: it holds the weapon, and the reticle shows where it points (`vr.aim = "controller"`). With `vr.aim = "head"`, the head aims and the reticle stays in the middle of the view. |
 | Left controller | The left hand, where the controller is; the left grip closes it (`vr.hands`). The right trigger pulls the right index finger too. |
-| Right trigger, left trigger | Fire, throw a grenade |
+| Right trigger, left trigger | Fire, throw a grenade (the left trigger only with `vr.grenade_throw = "both"` or `"button"`: by default the hand throws, below) |
 | A, B, X, Y | Jump, melee, action and reload, switch weapon |
 | Left grip, the left hand on a long gun's foregrip | Aim it with both hands, along the line from the right hand to the left (`vr.two_handed`) |
 | A punch of the right controller | Melee (`vr.melee_gesture`) |
@@ -1120,9 +1120,11 @@ anywhere but at the magazines' pouch on your left hip, below), draw
 the hand back (beside your head, or low for a lob), swing it forward and
 open the hand. The grenade leaves from your hand as you let go, along the
 way the hand was going (lifted 8 degrees), as hard as you threw it: a
-throw of 4 m/s or faster throws as far as the left trigger does, slower
-ones shorter (to 30% of it), never farther. The left trigger still throws
-as ever, and the right bumper switches the grenade. From the moment you
+throw of 4 m/s or faster throws as far as the game's throw does, slower
+ones shorter (to 30% of it), never farther. Only the hand throws: on foot
+the left trigger throws nothing (`vr.grenade_throw = "both"` lets it throw
+as well, `"button"` alone; in a vehicle it is the vehicle's, as ever). The
+right bumper switches the grenade. From the moment you
 take it until it flies, the grenade (frag or plasma, the one selected) is
 in your left hand, whatever `vr.hands` is, and it leaves from just where
 you held it.
@@ -1132,7 +1134,7 @@ you held it.
   no farther than 15 cm ahead of your eyes since you took it. A hand held
   out (on a foregrip, reaching) and pushed forward is no throw; nor is the
   grip let go of before a swing.
-- The swing starts the game's throw (as the left trigger does), and the
+- The swing starts the game's throw (as the left trigger would), and the
   game's grenade is then yours: a swing held without letting go throws it
   anyway after 0.75 s.
 - The left grip on a long gun's foregrip takes the foregrip instead
@@ -1498,7 +1500,7 @@ headset's session is opened with, apply from the next start.
 | `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a round magnified view shows on the visor where the weapon aims, at the HUD's distance (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
 | `vr.smartlink_size` | `28.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the magnified view on the visor is, in degrees of the view (10 to 45). |
 | `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the left hand takes another magazine from the left hip (the one in the weapon ejecting itself, or the right stick pushed down ejects it) and pushes it in, loaded at once (as a network game's client, after the game's reload time); the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
-| `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand (above, "Throwing a grenade with the left hand") or with the left trigger; `"button"`, with the left trigger alone. |
+| `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand alone (above, "Throwing a grenade with the left hand"; on foot the left trigger throws nothing); `"both"`, with the left hand or the left trigger; `"button"`, with the left trigger alone. |
 | `vr.two_handed` | `true` | `HALO_VR_TWO_HANDED` | With `vr.aim = "controller"`: a long gun (any but the pistols, the needler, the flag and the ball) is aimed along the line from the right hand to the left while the left grip holds it by the foregrip (pressed within 18 cm of the line ahead of the right hand). The aim turns to that line over 0.15 s, smoothed, and back when the grip is let go. |
 | `vr.hands` | `"arms"` | `HALO_VR_HANDS` | With `vr.aim = "controller"`: each first-person hand where its controller is (the right holding the weapon, its index finger on the trigger as far as the trigger is pulled; the left open, closing as the grip is pulled, and on a long gun's foregrip while it holds it). `"arms"`: the arms reach the hands from the shoulders (`vr.shoulders`). `"floating"`: no arms above the wrists. `"game"`: the game's arms, posed from the weapon in the right hand. A hand whose controller is not tracked is not drawn, nor its arm. In a cinematic seen from the player's head the hands are the controllers' too, acting on nothing (above, "Cinematics seen from your own head"). |
 | `vr.shoulders` | `"0.19, -0.20, -0.07"` | `HALO_VR_SHOULDERS` | With `vr.hands = "arms"`: where each shoulder is from the eyes, in metres: out to its side, up, forward, turned with the body (the holsters' heading: it faces where the head does, follows it past a 40 degree turn, and slowly). From the eyes as they would be with the head level and turned with the body: the shoulders hang from the neck, so a nod or a turn of the head does not move them. |

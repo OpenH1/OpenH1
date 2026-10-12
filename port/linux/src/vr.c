@@ -78,8 +78,9 @@ between the hands, smoothed over this time constant (seconds) */
 #define FOREGRIP_RELEASED 0.3f
 #define TWO_HANDED_SMOOTHING 0.05f
 #define TWO_HANDED_BLEND 0.15f
-/* a grenade thrown with the left hand (vr.grenade_throw = "gesture"; the
-names are the ones debug.vr_throw_log uses):
+/* a grenade thrown with the left hand (vr.grenade_throw = "gesture", the
+hand alone, or "both", the hand or the left trigger; the names are the ones
+debug.vr_throw_log uses):
 - held: the left grip pulled past THROW_GRIP_PRESSED (not on a long gun's
   foregrip, not with the right grip too, which recentres), with a grenade
   to throw;
@@ -371,8 +372,10 @@ static struct
 	int scopes;
 	float smartlink_degrees;
 	int manual_reload;
-	/* vr.grenade_throw = "gesture", and debug.vr_throw_log */
+	/* vr.grenade_throw: the hand throws ("gesture", "both"), and not the
+	left trigger too ("gesture"); debug.vr_throw_log */
 	int throw_gesture;
+	int throw_gesture_only;
 	int throw_log;
 	int vehicle_first_person;
 	float test_turn;
@@ -469,7 +472,8 @@ static void settings_read(void)
 	settings.gamepad_snap = !strcmp(config_string("vr.gamepad_view"), "snap");
 	settings.gamepad_pitch = !settings.gamepad_snap && strcmp(config_string("vr.gamepad_view"), "level") != 0;
 	settings.melee_gesture = config_boolean("vr.melee_gesture");
-	settings.throw_gesture = !strcmp(config_string("vr.grenade_throw"), "gesture");
+	settings.throw_gesture_only = !strcmp(config_string("vr.grenade_throw"), "gesture");
+	settings.throw_gesture = settings.throw_gesture_only || !strcmp(config_string("vr.grenade_throw"), "both");
 	settings.holsters = config_boolean("vr.holsters");
 	settings.physical_crouch = config_boolean("vr.physical_crouch");
 	settings.scopes = !config_boolean("vr.scopes") || !strcmp(config_string("vr.scope_view"), "off") ? 0 :
@@ -960,7 +964,7 @@ static void throw_release(const char *why)
 }
 
 /* the left hand throwing a grenade, once a frame (vr.grenade_throw =
-"gesture"; THROW_* above): after two_handed_update, which takes the left
+"gesture" or "both"; THROW_* above): after two_handed_update, which takes the left
 grip first on a long gun's foregrip */
 static void throw_update(float seconds)
 {
@@ -2491,6 +2495,12 @@ void halo_vr_gamepad(void *gamepad)
 	analog(pad, XINPUT_GAMEPAD_WHITE, buttons & VR_BUTTON_LEFT_BUMPER);
 	analog(pad, XINPUT_GAMEPAD_BLACK, buttons & VR_BUTTON_RIGHT_BUMPER);
 	trigger = (BYTE)(vr.input.left_trigger * 255.0f);
+	/* (vr.grenade_throw = "gesture": on foot, aiming with the controller,
+	only the hand throws, not the left trigger; in a vehicle it is the
+	vehicle's, the Banshee's second weapon. halo_vr_crouch_able says on
+	foot) */
+	if (settings.throw_gesture_only && settings.controller_aim && vr.crouch_able_frame)
+		trigger = 0;
 	/* (the left hand's swing throws as the left trigger does: the game's
 	throw, which its release then times, vr_grenade.c) */
 	if (vr.throw_state == THROW_SWING || vr.throw_press_frames > 0)

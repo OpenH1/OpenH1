@@ -250,9 +250,10 @@ static const struct config_setting config_settings[] =
 	{ "vr.grenade_throw", _config_string, "\"gesture\"", "HALO_VR_GRENADE_THROW", _environment_value,
 		_platform_desktop,
 		"With vr.aim = \"controller\", how a grenade is thrown: \"gesture\" by\n"
-		"throwing it with the left hand (hold the left grip, draw the hand back,\n"
-		"swing and let go: it flies where the hand threw it, as hard as it did)\n"
-		"or with the left trigger; \"button\" with the left trigger alone." },
+		"throwing it with the left hand alone (hold the left grip, draw the hand\n"
+		"back, swing and let go: it flies where the hand threw it, as hard as it\n"
+		"did; the left trigger throws nothing on foot); \"both\" with the hand or\n"
+		"the left trigger; \"button\" with the left trigger alone." },
 	{ "vr.holsters", _config_boolean, "true", "HALO_VR_HOLSTERS", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", the weapon you carry but do not hold is on\n"
 		"your body: a long gun over your right shoulder, a pistol or the needler\n"
