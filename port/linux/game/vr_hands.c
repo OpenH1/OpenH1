@@ -64,9 +64,9 @@ hand's, relaxed and with the grip pulled */
 #define GRIP_GRENADE 0.5f
 /* the right index finger on each weapon's trigger (by the first-person
 animation graph's tag name; the first that matches, the last for any
-other): its curl at each joint from the knuckle at rest, against the
-trigger (the idle animation's finger lies straight, through the trigger),
-and how much more at a full pull, as the trigger goes back; and how far the
+other): its curl at each joint from the knuckle at rest, from the idle
+animation's finger (less than 0: straighter), against the trigger, and how
+much more at a full pull, as the trigger goes back; and how far the
 weapon's trigger goes back at a full pull, toward the grip (metres): its
 trigger node (the node's origin is not the trigger's pivot, and holds its
 guard too, so it is moved, not turned), or the blade vr_trigger.c draws,
@@ -80,15 +80,36 @@ static const struct trigger_finger
 	real travel;
 } trigger_fingers[] =
 {
-	/* (the assault rifle's: its idle animation's finger already hooks round
-	where a trigger would be, and rests against the blade vr_trigger.c draws
-	there, curling a little more to follow it back) */
+	/* (each fitted to its weapon's first-person model as the game poses it,
+	the finger's mesh against the model's: resting against the trigger (the
+	pistol's, the assault rifle's) or where one would be, following it back,
+	never into the weapon. From the idle animation's finger, which hooks
+	round a trigger's place on most weapons, but on the pistol runs along its
+	trigger's side, into the frame, and on the Covenant's wraps into the
+	front of the grip) */
+	/* (the assault rifle's: its finger hooks round the blade vr_trigger.c
+	draws, and curls a little more to follow it back) */
 	{ "weapons\\assault rifle\\", { 0.0f, 0.0f, 0.0f }, { 0.03f, 0.06f, 0.06f }, 0.005f },
-	/* (the pistol's, seen from its side: curled to rest against the back
-	of its trigger, just short of it, and following it back. The model's
-	finger is one plane with the trigger, so it cannot wrap round its face
-	without going through it) */
-	{ "", { 0.30f, 0.90f, 0.60f }, { 0.07f, 0.15f, 0.10f }, 0.005f },
+	/* (the pistol's: straightened at the knuckle, off the frame, and curled
+	at the middle onto its trigger's face, against it as it goes back) */
+	{ "weapons\\pistol\\", { -0.15f, 0.30f, 0.0f }, { 0.0f, 0.05f, 0.15f }, 0.005f },
+	/* (no trigger in their models: on the shotgun, the sniper rifle and the
+	flamethrower the finger lies in the gap where one would be, the sniper
+	rifle's straightened at the knuckle, out of its grip) */
+	{ "weapons\\shotgun\\", { -0.025f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.10f }, 0.005f },
+	{ "weapons\\sniper rifle\\", { -0.225f, -0.05f, 0.0f }, { 0.0f, 0.10f, 0.20f }, 0.005f },
+	{ "weapons\\flamethrower\\", { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.20f, 0.20f }, 0.005f },
+	/* (the rocket launcher's grip's front corner meets its finger whatever
+	the curl: its tip straightened, the least of it) */
+	{ "weapons\\rocket launcher\\", { -0.10f, 0.10f, -0.60f }, { 0.0f, 0.0f, 0.10f }, 0.005f },
+	/* (the Covenant's have no trigger: the finger straightened out of the
+	front of the grip to lie against it; the needler's still meets its grip,
+	less) */
+	{ "weapons\\plasma pistol\\", { -0.25f, -0.10f, 0.0f }, { 0.0f, 0.0f, 0.05f }, 0.005f },
+	{ "weapons\\plasma rifle\\", { -0.375f, -0.05f, -0.10f }, { 0.0f, 0.0f, 0.05f }, 0.005f },
+	{ "weapons\\needler\\", { -0.10f, -0.60f, 0.0f }, { 0.0f, 0.0f, 0.10f }, 0.005f },
+	/* (any other: the idle animation's finger, curling a little) */
+	{ "", { 0.0f, 0.0f, 0.0f }, { 0.03f, 0.06f, 0.06f }, 0.005f },
 };
 
 enum
