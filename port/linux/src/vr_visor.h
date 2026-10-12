@@ -11,10 +11,6 @@ halo_vr_visor_state.
 
 #include "vr_host.h"
 
-/* the visor's glass (vr_host.h's VR_SWAPCHAIN_VISOR): soft gradients and
-the shields' energy across it */
-#define VR_VISOR_IMAGE_SIZE 1024
-
 /* how the HUD's layer shows the game's HUD image (d3d8_gl.c draws it so) */
 struct vr_visor_hud_image
 {
@@ -74,19 +70,23 @@ struct vr_visor_rim
 /* the visor's glass, VR_GLASS_DISTANCE before the middle of the head, just
 behind the rim's lip: the edges of the view darkened, its tint, the
 warning's glow on its rim, and the shields' energy across it (d3d8_gl.c
-draws it) */
+draws it into each eye's image, as the rim) */
 #define VR_GLASS_DISTANCE 0.105f
 struct vr_visor_image
 {
 	int shown;
-	/* the image's edges, what the eyes see of the glass along their views'
-	edges (their middles: where its shade is), and all that they see of it
-	(every corner of their views: past it, to the image's edges, the glass
+	/* how far it reaches, what the eyes see of the glass along their
+	views' edges (their middles: where its shade is), and all that they see
+	of it (every corner of their views: past it, out to its reach, the glass
 	fades to nothing), from the middle of the head (tangents at the glass's
 	distance: left, right, up, down) */
 	float extent[4];
 	float fov[4];
 	float clear[4];
+	/* each eye's transform from the head and its field of view, as the
+	rim's */
+	float eye[2][3][4];
+	float eye_fov[2][4];
 	/* the frame about the visor (vr.visor_frame, 0 to 1) */
 	float frame;
 	/* the warning's glow on the rim (linear, premultiplied: added) */
@@ -120,9 +120,10 @@ void vr_visor_follow(const struct vr_host_pose *head, const struct vr_host_pose 
 /* the HUD's orientation (play space; the head's without a lag), and
 whether it follows the head (not locked to it) */
 int vr_visor_orientation(float orientation[4]);
-/* the HUD's and the visor's layers for a frame of the game (not the
-menus), before the head followed; the visor's image drawn this frame */
-void vr_visor_layers(struct vr_host_layers *layers, int visor_drawn);
+/* the HUD's layers for a frame of the game (not the menus), before the
+head followed (the visor's glass is no layer: it is drawn into the eyes'
+images) */
+void vr_visor_layers(struct vr_host_layers *layers);
 /* the menus are up (halo_vr_menus): their layer is as it is, and the
 visor is not there */
 void vr_visor_menus(int active);
@@ -136,11 +137,11 @@ void vr_visor_image(struct vr_visor_image *image);
 int vr_visor_rim(struct vr_visor_rim *rim);
 /* debug.screenshot_every: the frame as the headset shows it, the layers
 over each eye's image (BGRA, rows from the bottom), from the layers as
-submitted; the HUD's, the visor's and the scope's images as BGRA, rows from
-the bottom */
+submitted; the HUD's and the scope's images as BGRA, rows from the
+bottom */
 void vr_visor_composite(unsigned char *eyes[2], int width, int height, const struct vr_host_layers *layers,
 	const struct vr_host_pose *head, const unsigned char *hud, int hud_width, int hud_height,
-	const unsigned char *visor, int visor_width, int visor_height, unsigned char *const panels[VR_PANEL_COUNT],
+	unsigned char *const panels[VR_PANEL_COUNT],
 	const int panel_width[VR_PANEL_COUNT], const int panel_height[VR_PANEL_COUNT], const unsigned char *scope,
 	int scope_size);
 

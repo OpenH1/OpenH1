@@ -1589,8 +1589,8 @@ that the first-person weapon stayed in the hand.
 `debug.gpu_stats` also logs the VR frames' timing, and
 `debug.screenshot_every` writes both eyes (`eyes*.bmp`), the HUD
 (`hud*.bmp`) and both eyes with the layers over them, as the headset shows
-them (`view*.bmp`), and while a scope's view is shown (raised, or smart-linked) its image (`scope*.bmp`); with the visor's glass, the log says whether its edges
-are out of view (how many of each eye's pixels are past them).
+them (`view*.bmp`), and while a scope's view is shown (raised, or smart-linked)
+its image (`scope*.bmp`).
 
 The GPU's time is best read from the kernel: the process's
 `drm-engine-gpu` time in `/proc/<pid>/fdinfo`. On the Steam Frame (b30's
@@ -1660,16 +1660,21 @@ supersampling costs as above, and multisampling the eye pass
   nearer or farther, and the waypoints stay on what they mark. Quads,
   which every runtime has; the stereo depth is the compositor's, and the
   HUD's pixels never enter the eyes' images, whose depth is the world's.
-  The visor's glass is a layer of its own 0.105 m before the head, over
-  the HUD's, on the head exactly (the helmet does not lag): the helmet's
-  shadow on it from the brow and the chin, the glass a faint gold, and
-  the shields on it, from the player's unit as the game has it. Its
-  edges are never seen: its quad reaches past every corner of both eyes'
-  views as the runtime gives them (`xrLocateViews`: their fields of view
-  and their turns, on any headset), and all of it fades to nothing in a
-  band beyond them before its edges (a view past 80 degrees from the
-  head's forward, which no quad this near can reach, sees the fade, never
-  an edge). Their
+  The visor's glass is 0.105 m before the head, on the head exactly
+  (the helmet does not lag): the helmet's shadow on it from the brow and
+  the chin, the glass a faint gold, and the shields on it, from the
+  player's unit as the game has it. It is drawn into the eyes' images, as
+  the rim is (`vr_draw_visor`, multiview), each pixel where that eye's
+  ray meets the glass, blended linearly as the compositor would
+  (`GL_FRAMEBUFFER_SRGB`), not a layer of its own: as a quad layer that
+  near and that wide (it reached 80 degrees from the head's forward), the
+  Steam Frame showed a straight diagonal line across it, in a different
+  place in each eye, which made it hard to look at; SteamVR draws such a
+  quad wrongly. Its pattern never ends in an edge: it reaches past every
+  corner of both eyes' views as the runtime gives them (`xrLocateViews`:
+  their fields of view and their turns, on any headset), and fades to
+  nothing beyond them. It is under the HUD's layers now (they are the
+  compositor's, over the eyes' images), which it no longer shades. Their
   energy is the armour's own: the unit's modifier shader (the Chief's
   `characters\cyborg\shaders\shield hit`, a plasma), its two noise maps
   (`characters\elite\bitmaps\plasma shield noise`) moving through the

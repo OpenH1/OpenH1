@@ -22,7 +22,7 @@ enum
 	VR_SWAPCHAIN_EYES = 0, /* a 2-layer texture array: layer 0 the left eye */
 	VR_SWAPCHAIN_HUD,      /* the HUD and the menus, a quad (or cylinder) layer */
 	VR_SWAPCHAIN_DEPTH,    /* the eyes' depth (XR_KHR_composition_layer_depth), 2 layers */
-	VR_SWAPCHAIN_VISOR,    /* the helmet's visor glass: its edges and its glows, a quad layer */
+	VR_SWAPCHAIN_VISOR,    /* a quad layer for the visor's glass (unused: the game draws it into the eyes' images, vr_visor.c) */
 	/* the HUD's panels at their own depths (vr_visor.c), a quad layer each */
 	VR_SWAPCHAIN_PANEL,
 	/* the magnified view in a weapon's scope, a quad layer at its eyepiece

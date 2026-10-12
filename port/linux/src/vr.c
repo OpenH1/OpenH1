@@ -625,7 +625,8 @@ int halo_vr_initialize(void)
 		vr.info.scale = 1.0f;
 	vr.info.hud_width = HUD_WIDTH;
 	vr.info.hud_height = HUD_HEIGHT;
-	vr.info.visor_width = vr.info.visor_height = VR_VISOR_IMAGE_SIZE;
+	/* (no image for the visor's glass: it is drawn into the eyes', vr_visor.c) */
+	vr.info.visor_width = vr.info.visor_height = 0;
 	vr_visor_panel_sizes(vr.info.panel_width, vr.info.panel_height);
 	{
 		int size = (int)(SCOPE_IMAGE_SIZE * vr.info.scale / 16.0f + 0.5f) * 16;
@@ -2136,7 +2137,7 @@ void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn)
 
 			for (panel = 0; panel < VR_PANEL_COUNT; panel++)
 				pending->panels[panel].shown = vr.acquired[VR_SWAPCHAIN_PANEL + panel] >= 0;
-			vr_visor_layers(pending, vr.acquired[VR_SWAPCHAIN_VISOR] >= 0);
+			vr_visor_layers(pending);
 		}
 		else if (pending->projection && !vr.menus)
 		{
