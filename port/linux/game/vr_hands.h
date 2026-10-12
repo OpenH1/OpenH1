@@ -48,6 +48,7 @@ boolean vr_render_hands(struct vr_hands_frame *frame);
 
 /* vr_hands.c's */
 boolean vr_hands_right_centre(real_point3d *centre);
+real vr_hands_trigger_travel(void);
 
 #endif
 

@@ -1771,6 +1771,18 @@ supersampling costs as above, and multisampling the eye pass
   line as the grip is pulled, and blended onto the weapon's foregrip as
   the left hand takes it. The right index finger curls as the trigger is
   pulled, and the weapon's `frame trigger` (the pistol's) moves back.
+- The assault rifle's first-person model has no trigger: its animation's
+  index finger hooks round an empty gap under the receiver, ahead of the
+  grip. So one is drawn there (`game/vr_trigger.c`): a curved blade,
+  hanging from the receiver in the crook of the finger, its tip sweeping
+  forward below it, made once a map (89 vertices, as a model part's
+  buffers) and drawn just after the rifle's model with the rifle's own
+  receiver shader, from its gun node, as the model is drawn (its lighting,
+  tint and camouflage), its faces sampling the trigger the rifle's texture
+  paints but no face of the model shows. It turns back about its top as
+  the finger pulls, its face going back as far as the finger's weapon has
+  its trigger go (`trigger_fingers`). Only for that model (by its tag
+  name): the world's rifle and the third person have none.
 - The game throws a grenade in an animation: the throw button starts the
   unit's throw animation, its third frame puts the grenade in the unit's
   left hand, and its key frame (the cyborg's with the assault rifle: frame

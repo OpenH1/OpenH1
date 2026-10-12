@@ -402,6 +402,10 @@ boolean vr_render_eye_pass(void);
 void vr_reload_weapon_nodes(long model_index, long weapon_index, struct real_matrix4x3 *node_matrices);
 void vr_reload_draw(unsigned long flags);
 boolean vr_reload_first_person_reload(long weapon_index);
+/* port/linux/game/vr_trigger.c's */
+void vr_trigger_draw(long model_index, struct real_matrix4x3 const *node_matrices,
+	union real_rgb_color const *change_colors, real const *function_values, struct render_lighting const *lighting,
+	struct render_model_effect const *model_effect, long unique_identifier, unsigned long flags);
 #endif
 
 /* ---------- globals */
@@ -577,6 +581,23 @@ void first_person_weapon_draw(
 							first_person_weapon->weapon_index,
 							0,
 							FLAG(_render_model_first_person_bit));
+#ifdef HALO_VR
+						/* port: the VR mode's trigger on a first-person model
+						that has none, the assault rifle's, drawn as the model
+						was (port/linux/game/vr_trigger.c) */
+						if (render.local_player_index==0)
+						{
+							vr_trigger_draw(
+								weapon_definition->weapon.interface_definition.first_person_model.index,
+								model_node_matrices,
+								weapon->object.outgoing_change_colors,
+								weapon->object.outgoing_function_values,
+								lighting,
+								&model_effect,
+								first_person_weapon->weapon_index,
+								FLAG(_render_model_first_person_bit));
+						}
+#endif
 					}
 
 					/* port: the shield's flare on the arms as on the body, the

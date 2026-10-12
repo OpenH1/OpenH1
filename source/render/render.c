@@ -175,6 +175,10 @@ the eyes' */
 boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rasterizer_camera);
 void vr_render_scope_begin(void);
 void vr_render_scope_end(void);
+/* the trigger drawn on the assault rifle's first-person model
+(port/linux/game/vr_trigger.c), made as a map is loaded */
+void vr_trigger_initialize_for_new_map(void);
+void vr_trigger_dispose_from_old_map(void);
 
 static boolean render_vr_eye_pass;
 static boolean render_vr_scope_pass;
@@ -203,11 +207,19 @@ void render_initialize_for_new_map(
 	/* port: preserve retail's energy-then-two-sided-glass compositing. */
 	models_fix_transparent_part_links();
 	render_objects_initialize_for_new_map();
+#ifdef HALO_VR
+	/* port: the VR mode's trigger on the assault rifle's first-person model
+	(port/linux/game/vr_trigger.c) */
+	vr_trigger_initialize_for_new_map();
+#endif
 }
 
 void render_dispose_from_old_map(
 	void)
 {
+#ifdef HALO_VR
+	vr_trigger_dispose_from_old_map();
+#endif
 	render_objects_dispose_from_old_map();
 }
 
