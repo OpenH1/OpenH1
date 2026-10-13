@@ -293,7 +293,7 @@ VR_SCREENS = {
 VR_SCREENS["vr_visor"] = {
     "screen": "vr_visor_screen",
     "header": ("header_vr_display", f"{PE}/vr_display/header_vr_display"),
-    # (eleven rows: closer than VR Display's 28px, the help line lower)
+    # (twelve rows: closer than VR Display's 28px, the help line lower)
     "spacing": 24,
     "help_top": 366,
     "rows": [
@@ -314,6 +314,9 @@ VR_SCREENS["vr_visor"] = {
         ("HUD ON GLASS:", "vr.hud_glass",
          [("NONE", "0"), *((f"{round(glass * 100)}%", f"{glass:g}") for glass in (0.25, 0.5, 0.75, 1))],
          "The HUD as light on the glass: the world through\nit, the glass's tint, its bloom and reflection.", None),
+        ("HUD REACTS:", "vr.hud_react",
+         [("NONE", "0"), *((f"{round(react * 100)}%", f"{react:g}") for react in (0.25, 0.5, 0.75, 1))],
+         "More contrast in bright light, dimmer in the dark,\na flicker as your shields are hit.", None),
         ("HELMET RIM:", "vr.helmet_rim",
          [("NONE", "0"), *((f"{round(rim * 100)}%", f"{rim:g}") for rim in (0.25, 0.5, 0.75, 1))],
          "The helmet's faceplate about the visor, at the\nedges of your view, in depth.", None),

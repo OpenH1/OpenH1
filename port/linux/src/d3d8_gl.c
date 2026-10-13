@@ -6095,6 +6095,7 @@ static void visibility_copy_batch(void)
 /* ---------- the VR mode's passes */
 
 #define GL_TEXTURE_SRGB_DECODE_EXT 0x8A48
+#define GL_DECODE_EXT 0x8A49
 #define GL_SKIP_DECODE_EXT 0x8A4A
 
 int host_gl_has_extension(const char *name);
@@ -6494,6 +6495,142 @@ static GLuint vr_group_target(const struct render_target_entry *hud, int group)
 	return *texture;
 }
 
+/* The world's light behind the HUD (vr.hud_react, vr_visor.c): a small map
+of it in tangents from the middle of the head, worked out from the eyes'
+images as drawn (with the visor's glass), each of its pixels the light
+(linear) of what both eyes see in its direction, sixteen samples across its
+footprint in each. It keeps its light from frame to frame, taking in a
+little of each (the look's light_blend), so that what is behind the HUD
+brightens and darkens it smoothly, never with each frame's detail. Read by
+the HUD's copy, before which it is made. 0 if there is none. */
+#define VR_LIGHT_WIDTH 64
+#define VR_LIGHT_HEIGHT 52
+static GLuint vr_light_map(const struct vr_visor_hud_image *look)
+{
+	static GLuint program, sampler, texture;
+	static BOOL failed, filled;
+	static GLint rows_location, eye_fov_location, reach_location, blend_location;
+	static const char vertex_source[] =
+		"#version 450 core\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+		"	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+		"}\n";
+	static const char fragment_source[] =
+		"#version 450 core\n"
+		"uniform sampler2DArray eyes;\n"
+		/* (the map's size, each eye's transform from the head (rows) and
+		field of view, as the visor's, and where the map reaches) */
+		"uniform vec2 size;\n"
+		"uniform vec4 rows[6];\n"
+		"uniform vec4 eye_fov[2];\n"
+		"uniform vec4 reach;\n"
+		"uniform float blend;\n"
+		"out vec4 colour;\n"
+		"void main()\n"
+		"{\n"
+		"	float light = 0.0, samples = 0.0;\n"
+		"	for (int i = 0; i < 16; i++)\n"
+		"	{\n"
+		"		vec2 q = (gl_FragCoord.xy + (vec2(float(i & 3), float(i >> 2)) - 1.5) * 0.25) / size;\n"
+		"		vec3 d = vec3(mix(reach.x, reach.y, q.x), mix(reach.w, reach.z, q.y), -1.0);\n"
+		"		for (int eye = 0; eye < 2; eye++)\n"
+		"		{\n"
+		/* (in the eye's view, its image's first row its bottom) */
+		"			vec3 e = vec3(dot(rows[eye * 3].xyz, d), dot(rows[eye * 3 + 1].xyz, d), dot(rows[eye * 3 + 2].xyz, d));\n"
+		"			vec4 f = eye_fov[eye];\n"
+		"			vec2 t = e.xy / max(-e.z, 1e-4);\n"
+		"			vec2 uv = (t - f.xw) / (f.yz - f.xw);\n"
+		"			if (e.z < -1e-3 && uv.x > 0.0 && uv.y > 0.0 && uv.x < 1.0 && uv.y < 1.0)\n"
+		"			{\n"
+		"				light += dot(texture(eyes, vec3(uv, float(eye))).rgb, vec3(0.2126, 0.7152, 0.0722));\n"
+		"				samples += 1.0;\n"
+		"			}\n"
+		"		}\n"
+		"	}\n"
+		/* (nothing seen there: what it had) */
+		"	colour = vec4(samples > 0.0 ? light / samples : 0.0, 0.0, 0.0, samples > 0.0 ? blend : 0.0);\n"
+		"}\n";
+	float rows[6][4];
+	int eye, row;
+
+	if (failed || look->react <= 0.0f || !look->curve)
+		return 0;
+	if (!vr_gl.eyes_drawn || !vr_gl.eye_target.target.texture)
+		return filled ? texture : 0;
+	if (!program)
+	{
+		GLuint vertex = xgpu_compile_shader(GL_VERTEX_SHADER, vertex_source, "VR light vertex");
+		GLuint fragment = xgpu_compile_shader(GL_FRAGMENT_SHADER, fragment_source, "VR light pixel");
+		GLint status = 0;
+
+		program = glCreateProgram();
+		glAttachShader(program, vertex);
+		glAttachShader(program, fragment);
+		glLinkProgram(program);
+		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		if (!vertex || !fragment || !status)
+		{
+			platform_log("vr: cannot make the light map's program; the HUD does not react to the light");
+			failed = TRUE;
+			return 0;
+		}
+		glUseProgram(program);
+		glUniform1i(glGetUniformLocation(program, "eyes"), 0);
+		glUniform2f(glGetUniformLocation(program, "size"), (GLfloat)VR_LIGHT_WIDTH, (GLfloat)VR_LIGHT_HEIGHT);
+		rows_location = glGetUniformLocation(program, "rows");
+		eye_fov_location = glGetUniformLocation(program, "eye_fov");
+		reach_location = glGetUniformLocation(program, "reach");
+		blend_location = glGetUniformLocation(program, "blend");
+		/* (the eyes' sRGB decoded, for their light: the renderer's own
+		samplers skip it) */
+		glGenSamplers(1, &sampler);
+		glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glSamplerParameteri(sampler, GL_TEXTURE_SRGB_DECODE_EXT, GL_DECODE_EXT);
+		glGenTextures(1, &texture);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, VR_LIGHT_WIDTH, VR_LIGHT_HEIGHT, 0, GL_RGBA, GL_HALF_FLOAT, NULL);
+		xgpu_gl_state_invalidate();
+	}
+	for (eye = 0; eye < 2; eye++)
+	{
+		for (row = 0; row < 3; row++)
+			memcpy(rows[eye * 3 + row], look->eye[eye][row], sizeof(rows[0]));
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(texture, 0));
+	glViewport(0, 0, VR_LIGHT_WIDTH, VR_LIGHT_HEIGHT);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	/* (taking in the frame's light: all of it the first time) */
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glUseProgram(program);
+	glUniform4fv(rows_location, 6, rows[0]);
+	glUniform4fv(eye_fov_location, 2, look->eye_fov[0]);
+	glUniform4fv(reach_location, 1, look->light_reach);
+	glUniform1f(blend_location, filled ? look->light_blend : 1.0f);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, vr_gl.eye_target.target.texture);
+	glBindSampler(0, sampler);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glBindSampler(0, 0);
+	glDisable(GL_BLEND);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	xgpu_gl_state_invalidate();
+	filled = TRUE;
+	return texture;
+}
+
 /* the HUD's (or the menus') target into its swapchain image, upside down
 for OpenXR's GL images. The game's draws leave the target's alpha as their
 scratch, not as coverage (the Xbox's display ignored it), and the layer
@@ -6512,15 +6649,22 @@ colour), and it flickers as the shields break. As light on the glass
 (vr.hud_glass) it covers less of the world behind it than its brightness
 (the world shows through its light), the glass's gold is a little in it
 and more in its bloom, a wider ring about the glow's, and the glass's
-second surface reflects it faintly, blurred, a little below. FALSE if the
-copy's program cannot be made. */
+second surface reflects it faintly, blurred, a little below. It reacts to
+the world (vr.hud_react) as a helmet's display would: before bright light
+the glass darkens behind it, softly about each element, and it brightens a
+little, so that it reads on a sunlit beach; in the dark it dims. The light
+behind it is the world's light map's (vr_light_map), in the direction of
+each pixel. As the shields are hit its projection is disturbed for a
+moment: bands of it shifted across and dimmed, a new pattern every few
+frames, as the hit fades; and its bloom pulses red with the low shields'
+warning. FALSE if the copy's program cannot be made. */
 static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height,
-	const struct vr_visor_hud_image *look, const struct vr_visor_panel *panel)
+	const struct vr_visor_hud_image *look, const struct vr_visor_panel *panel, GLuint light)
 {
-	static GLuint program, sampler;
+	static GLuint program, sampler, light_sampler;
 	static BOOL failed;
 	static GLint size_location, curve_location, angles_location, extent_location, opacity_location, glow_location;
-	static GLint glass_location;
+	static GLint glass_location, react_location, reach_location, hit_location, warning_location;
 	static GLint centre_location, right_location, up_location, region_location, wrap_location;
 	static const char vertex_source[] =
 		"#version 450 core\n"
@@ -6539,6 +6683,14 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		"uniform float opacity;\n"
 		"uniform float glow;\n"
 		"uniform float glass;\n"
+		/* (the world's light: how much the HUD reacts to it, and where its
+		map reaches, in tangents from the middle of the head; the hit's
+		disturbance and its pattern; the warning's pulse) */
+		"uniform sampler2D light_map;\n"
+		"uniform float react;\n"
+		"uniform vec4 reach;\n"
+		"uniform vec2 hit;\n"
+		"uniform float warning;\n"
 		/* (a quad's plane: its middle and axes from the head, at a unit's
 		distance, and the HUD's region it shows) */
 		"uniform vec4 centre;\n"
@@ -6553,6 +6705,8 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		/* (row 0 of the image is the target's last) */
 		"	vec2 p = gl_FragCoord.xy / size;\n"
 		"	vec2 uv = vec2(p.x, 1.0 - p.y);\n"
+		/* (the pixel's direction from the head, for the world's light) */
+		"	vec3 d = vec3(0.0, 0.0, -1.0);\n"
 		"	if (curve > 0.5)\n"
 		"	{\n"
 		/* the direction's angles across and up: through a quad's plane, or
@@ -6560,10 +6714,13 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		"		vec2 s = (p * 2.0 - 1.0) * extent;\n"
 		"		vec2 angles;\n"
 		"		if (curve > 1.5)\n"
+		"		{\n"
 		"			angles = vec2(s.x, atan(s.y));\n"
+		"			d = vec3(sin(s.x), s.y, -cos(s.x));\n"
+		"		}\n"
 		"		else\n"
 		"		{\n"
-		"			vec3 d = normalize(centre.xyz + right_axis.xyz * s.x + up_axis.xyz * s.y);\n"
+		"			d = normalize(centre.xyz + right_axis.xyz * s.x + up_axis.xyz * s.y);\n"
 		"			angles = vec2(atan(d.x, -d.z), atan(d.y, length(d.xz)));\n"
 		"			angles.x -= wrap.x;\n"
 		"			angles.y += wrap.z * angles.x * angles.x - wrap.y;\n"
@@ -6575,9 +6732,30 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		"			return;\n"
 		"		}\n"
 		"	}\n"
+		"	vec2 texel = 1.0 / vec2(textureSize(hud_texture, 0));\n"
+		/* a hit: bands of the projection shifted across, each its own way,
+		some dimmed */
+		"	float dim = 1.0;\n"
+		"	if (hit.x > 0.0)\n"
+		"	{\n"
+		"		float band = floor(uv.y * 48.0);\n"
+		"		float h = fract(sin(band * 12.9898 + hit.y * 78.233) * 43758.5453);\n"
+		"		float k = fract(sin(band * 39.3468 + hit.y * 11.135) * 24634.6345);\n"
+		"		uv.x += (h - 0.5) * 0.008 * hit.x * step(0.4, k);\n"
+		"		dim = 1.0 - hit.x * (0.1 + 0.2 * step(0.75, k));\n"
+		"	}\n"
 		"	vec4 c = texture(hud_texture, uv);\n"
 		"	vec4 result = vec4(c.rgb, max(c.r, max(c.g, c.b)));\n"
-		"	vec2 texel = 1.0 / vec2(textureSize(hud_texture, 0));\n"
+		"	float coverage = result.a;\n"
+		"	vec3 ring = vec3(0.0);\n"
+		"	if (glow > 0.0 || react > 0.0)\n"
+		"	{\n"
+		"		for (int i = 0; i < 8; i++)\n"
+		"		{\n"
+		"			float a = float(i) * 0.785398 + 0.392699;\n"
+		"			ring += texture(hud_texture, uv + vec2(cos(a), sin(a)) * texel * 5.0).rgb;\n"
+		"		}\n"
+		"	}\n"
 		/* (the visor's gold, as the glass has it) */
 		"	const vec3 gold = vec3(1.0, 0.80, 0.52);\n"
 		"	if (glass > 0.0)\n"
@@ -6589,17 +6767,16 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		"	}\n"
 		"	if (glow > 0.0)\n"
 		"	{\n"
-		"		vec3 light = vec3(0.0), wide = vec3(0.0);\n"
-		"		for (int i = 0; i < 8; i++)\n"
+		"		vec3 light = ring * glow * 0.11, wide = vec3(0.0);\n"
+		"		for (int i = 0; i < 8 && glass > 0.0; i++)\n"
 		"		{\n"
-		"			float a = float(i) * 0.785398 + 0.392699;\n"
-		"			light += texture(hud_texture, uv + vec2(cos(a), sin(a)) * texel * 5.0).rgb;\n"
-		"			if (glass > 0.0)\n"
-		"				wide += texture(hud_texture, uv + vec2(cos(a + 0.392699), sin(a + 0.392699)) * texel * 14.0).rgb;\n"
+		"			float a = float(i) * 0.785398 + 0.785398;\n"
+		"			wide += texture(hud_texture, uv + vec2(cos(a), sin(a)) * texel * 14.0).rgb;\n"
 		"		}\n"
-		"		light *= glow * 0.11;\n"
 		/* (the bloom, wider, the glass's gold in it) */
 		"		light += wide * glow * glass * 0.09 * mix(vec3(1.0), gold, 0.5);\n"
+		/* (the warning's red in it, pulsing) */
+		"		light = mix(light, vec3(1.0, 0.18, 0.10) * max(light.r, max(light.g, light.b)), 0.6 * warning);\n"
 		"		result.rgb += light * (1.0 - result.a);\n"
 		"		result.a += max(light.r, max(light.g, light.b)) * (1.0 - result.a);\n"
 		"	}\n"
@@ -6616,7 +6793,21 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		"			reflection = vec3(0.0);\n"
 		"		result.rgb += reflection * 0.25 * 0.10 * glass * gold;\n"
 		"	}\n"
-		"	colour = result * opacity;\n"
+		"	if (react > 0.0 && curve > 0.5)\n"
+		"	{\n"
+		/* the world's light behind it: before bright light the glass
+		darkens behind it, softly about each element (its own light and
+		its ring's), and it brightens a little; in the dark it dims */
+		"		vec2 t = d.xy / max(-d.z, 1e-3);\n"
+		"		float world = texture(light_map, (t - reach.xw) / (reach.yz - reach.xw)).r;\n"
+		"		float bright = react * smoothstep(0.06, 0.40, world);\n"
+		"		float dark = react * (1.0 - smoothstep(0.004, 0.05, world));\n"
+		"		float near = clamp(2.5 * coverage + 0.2 * max(ring.r, max(ring.g, ring.b)), 0.0, 1.0);\n"
+		"		result.rgb = min(result.rgb * (1.0 + 0.3 * bright), vec3(1.0));\n"
+		"		result.a += 0.5 * bright * near * (1.0 - result.a);\n"
+		"		result *= 1.0 - 0.3 * dark;\n"
+		"	}\n"
+		"	colour = result * opacity * dim;\n"
 		"}\n";
 	static const float none[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
 
@@ -6649,6 +6840,11 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		opacity_location = glGetUniformLocation(program, "opacity");
 		glow_location = glGetUniformLocation(program, "glow");
 		glass_location = glGetUniformLocation(program, "glass");
+		react_location = glGetUniformLocation(program, "react");
+		reach_location = glGetUniformLocation(program, "reach");
+		hit_location = glGetUniformLocation(program, "hit");
+		warning_location = glGetUniformLocation(program, "warning");
+		glUniform1i(glGetUniformLocation(program, "light_map"), 1);
 		centre_location = glGetUniformLocation(program, "centre");
 		right_location = glGetUniformLocation(program, "right_axis");
 		up_location = glGetUniformLocation(program, "up_axis");
@@ -6661,6 +6857,12 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
 		glSamplerParameterfv(sampler, GL_TEXTURE_BORDER_COLOR, transparent);
+		/* (the light map: its edges' light beyond them) */
+		glGenSamplers(1, &light_sampler);
+		glSamplerParameteri(light_sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glSamplerParameteri(light_sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glSamplerParameteri(light_sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glSamplerParameteri(light_sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(image, 0));
 	glViewport(0, 0, width, height);
@@ -6677,6 +6879,10 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 	glUniform1f(opacity_location, look->opacity);
 	glUniform1f(glow_location, look->curve ? look->glow : 0.0f);
 	glUniform1f(glass_location, look->curve ? look->glass : 0.0f);
+	glUniform1f(react_location, look->curve && light ? look->react : 0.0f);
+	glUniform4fv(reach_location, 1, look->light_reach);
+	glUniform2f(hit_location, look->curve ? look->hit : 0.0f, look->hit_pattern);
+	glUniform1f(warning_location, look->curve ? look->warning : 0.0f);
 	if (panel)
 	{
 		glUniform1f(curve_location, 1.0f);
@@ -6700,11 +6906,18 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		glUniform4fv(region_location, 1, none);
 		vr_uniform3(wrap_location, straight);
 	}
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, light);
+	glBindSampler(1, light_sampler);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, source);
 	glBindSampler(0, sampler);
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 	glBindSampler(0, 0);
+	glBindSampler(1, 0);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glActiveTexture(GL_TEXTURE0);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	return TRUE;
 }
@@ -6715,8 +6928,11 @@ static BOOL vr_copy_hud(struct render_target_entry *hud, GLuint image)
 	struct vr_visor_panel panels[VR_PANEL_COUNT];
 	int panel;
 
+	GLuint light;
+
 	vr_visor_hud_image(&look);
-	if (!vr_copy_hud_image(hud->target.texture, image, vr_gl.hud_width, vr_gl.hud_height, &look, NULL))
+	light = vr_light_map(&look);
+	if (!vr_copy_hud_image(hud->target.texture, image, vr_gl.hud_width, vr_gl.hud_height, &look, NULL, light))
 		return FALSE;
 	/* the panels of the groups drawn */
 	if (vr_gl.hud_panels && vr_visor_panels(panels))
@@ -6732,7 +6948,8 @@ static BOOL vr_copy_hud(struct render_target_entry *hud, GLuint image)
 			{
 				continue;
 			}
-			if (vr_copy_hud_image(vr_gl.group_textures[group], panel_image, width, height, &look, &panels[panel]))
+			if (vr_copy_hud_image(vr_gl.group_textures[group], panel_image, width, height, &look, &panels[panel],
+				light))
 				vr_gl.panel_images[panel] = panel_image;
 		}
 	}

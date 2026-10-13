@@ -39,10 +39,12 @@ end), each element as large as ever.
 
 It looks to be on the glass (vr.hud_glass): light on it, the world seen
 through it, the glass's gold in it and its bloom, its faint reflection in
-the glass's other surface (d3d8_gl.c draws it so). But its layers stay
-where they are, at 1.45 to 2.5 m, as a real visor's display is collimated
-beyond the glass: the glass itself is too near for the eyes to cross on it
-or focus there.
+the glass's other surface; and it reacts to the world as a helmet's display
+would (vr.hud_react): more contrast before bright light, dimmer in the
+dark, and a moment's disturbance as the shields are hit (d3d8_gl.c draws
+it so, from the eyes' images' light). But its layers stay where they are,
+at 1.45 to 2.5 m, as a real visor's display is collimated beyond the glass:
+the glass itself is too near for the eyes to cross on it or focus there.
 Every panel is placed with the HUD's layer, a moment behind the head. Quad
 layers, which every runtime has (SteamVR on the Steam Frame has no
 cylinders): the compositor gives each its stereo depth, and the HUD's
@@ -114,6 +116,18 @@ as they break, and the HUD coming up as the player takes control (seconds) */
 #define FLICKER_SECONDS 0.45f
 #define BOOT_SECONDS 0.40f
 #define PRESENCE_EASE 0.25f
+/* the HUD's disturbance as the shields are hit (vr.hud_react): fading over
+this time constant (seconds), its pattern a new one this often (seconds:
+slower than the frames, not a strobe) */
+#define HIT_FADE 0.12f
+#define HIT_PATTERN_SECONDS 0.045f
+/* the world's light behind the HUD: smoothed over this time constant
+(seconds), as eyes adapt and as a helmet's display would follow it, so
+that a glance across a bright window does not flash it; its map reaches
+this far from the middle of the head (tangents across and up) */
+#define LIGHT_EASE 0.35f
+#define LIGHT_REACH_ACROSS 1.1f
+#define LIGHT_REACH_UP 0.9f
 /* the shields are gone at this (the game's 0, or a frame into recharging) */
 #define SHIELD_GONE 0.03f
 
@@ -126,6 +140,7 @@ static struct
 	int effects;
 	float glow;
 	float glass;
+	float react;
 	float depth;
 	/* each panel's distance from the HUD's at vr.hud_depth 1 (metres), the
 	tracker's tilt (radians) */
@@ -202,6 +217,10 @@ static struct
 	float pulse;
 	float flicker;
 	float boot;
+	/* the HUD's disturbance as the shields are hit (0 to 1), and its
+	seconds since the last hit */
+	float hit;
+	float hit_time;
 	/* the shields' look on the armour (halo_vr_visor_state) */
 	struct halo_vr_visor_state look;
 } visor;
@@ -222,6 +241,7 @@ static void settings_read(void)
 	settings.effects = config_boolean("vr.visor_effects");
 	settings.glow = clamp((float)config_real("vr.hud_glow"), 0.0f, 1.0f);
 	settings.glass = clamp((float)config_real("vr.hud_glass"), 0.0f, 1.0f);
+	settings.react = clamp((float)config_real("vr.hud_react"), 0.0f, 1.0f);
 	settings.depth = clamp((float)config_real("vr.hud_depth"), 0.0f, 2.0f);
 	{
 		int index;
@@ -823,6 +843,8 @@ void halo_vr_visor_state(const struct halo_vr_visor_state *state)
 	visor.flicker += seconds;
 	visor.boot += seconds;
 	visor.pulse += seconds;
+	visor.hit *= expf(-seconds / HIT_FADE);
+	visor.hit_time += seconds;
 	if (!state->active)
 	{
 		/* (dead: a last flare of red on the glass as it goes) */
@@ -862,6 +884,20 @@ void halo_vr_visor_state(const struct halo_vr_visor_state *state)
 	if (visor.known && visor.body - state->body > 0.001f)
 		visor.wound = clamp(visor.wound + 0.4f + 3.0f * (visor.body - state->body), 0.0f, 1.0f);
 	{
+		/* a hit, on the shields or (without them) the body: the HUD's
+		projection is disturbed for a moment, more the harder the hit (a
+		recharge, which raises them, is none) */
+		float shield = visor.known && state->has_shield && visor.shield > state->shield ? visor.shield - state->shield :
+			0.0f;
+		float body = visor.known && visor.body > state->body ? visor.body - state->body : 0.0f;
+
+		if (shield > 0.004f || body > 0.001f)
+		{
+			visor.hit = clamp(visor.hit + 0.45f + 5.0f * (shield + body), 0.0f, 1.0f);
+			visor.hit_time = 0.0f;
+		}
+	}
+	{
 		/* the warning: the shields low (more as they fall), or gone, or the
 		body's health low without them */
 		float warning = 0.0f;
@@ -882,6 +918,8 @@ void halo_vr_visor_state(const struct halo_vr_visor_state *state)
 	visor.known = 1;
 	visor.look = *state;
 }
+
+static void eye_frames(float frames[2][3][4], float fov[2][4]);
 
 /* the HUD's opacity as the shields break: three dips, each shallower, then
 none (three in under half a second, then still: not a strobe) */
@@ -932,6 +970,21 @@ void vr_visor_hud_image(struct vr_visor_hud_image *image)
 	/* its own light on the glass, brighter as the shields recharge */
 	image->glow = settings.glow * (1.0f + 0.5f * visor.charge * (settings.effects ? 1.0f : 0.0f));
 	image->glass = settings.glass;
+	/* the world's light behind it, and the shields' hits and warning */
+	image->react = settings.react;
+	image->light_reach[0] = -LIGHT_REACH_ACROSS;
+	image->light_reach[1] = LIGHT_REACH_ACROSS;
+	image->light_reach[2] = LIGHT_REACH_UP;
+	image->light_reach[3] = -LIGHT_REACH_UP;
+	image->light_blend = 1.0f - expf(-visor.seconds / LIGHT_EASE);
+	eye_frames(image->eye, image->eye_fov);
+	if (settings.react > 0.0f && settings.effects && visor.active)
+	{
+		image->hit = settings.react * visor.hit;
+		image->hit_pattern = floorf(visor.hit_time / HIT_PATTERN_SECONDS);
+		image->warning = settings.react * visor.warning * (1.0f - visor.charge) *
+			(0.55f + 0.45f * sinf(2.0f * (float)M_PI * WARNING_PULSE * visor.pulse));
+	}
 	if (settings.effects && visor.active)
 	{
 		/* coming up: from nothing, with a flicker, as the projector warms */

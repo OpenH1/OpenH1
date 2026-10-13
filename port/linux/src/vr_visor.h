@@ -30,6 +30,23 @@ struct vr_visor_hud_image
 	glass rather than over the world, the glass's tint in it and in its
 	bloom, and its faint reflection */
 	float glass;
+	/* the world's light (vr.hud_react, 0 none to 1): the HUD's contrast
+	with what is behind it, from a map of the world's light worked out from
+	the eyes' images (d3d8_gl.c): how far it reaches from the middle of the
+	head (tangents: left, right, up, down), how much of the frame's light it
+	takes in (its smoothing over time: 1 the frame's alone), and each eye's
+	transform from the head and field of view (as the rim's) */
+	float react;
+	float light_reach[4];
+	float light_blend;
+	float eye[2][3][4];
+	float eye_fov[2][4];
+	/* a hit on the shields: how much the HUD is disturbed (0 none to 1),
+	and its pattern (a whole number, a new one every few frames) */
+	float hit;
+	float hit_pattern;
+	/* the low shields' warning's pulse (0 to 1), in the HUD's bloom */
+	float warning;
 	/* the HUD's groups each in an image of their own, for the panels
 	(vr.hud_depth); else all in the HUD's */
 	int panels;
