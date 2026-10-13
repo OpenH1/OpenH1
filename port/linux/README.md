@@ -1406,16 +1406,18 @@ yours is, not where the game's eye is:
   closes its waist. Looking straight down, the Chief's broad chest hides
   his feet below it; they show as they step forward, or looking less
   steeply.
-- Its upper body leans back from your eyes, about its waist, as far as
-  keeps them out of it: looking down, your eyes nod forward over the
-  chest, and the near edge of the view (about 19 cm before them) would cut
-  into the armour of the chest and collar and show it hollow; nor are your
-  eyes over the opening of the collar (no head is drawn, and the top of
-  the neck is a dark pit), which a chin would hide. It leans at once as
-  far as needed, and comes upright again over a second; standing, about
-  15 degrees, crouched up to about 20 (the game's crouched body is lower
-  than your head). Its hips and legs, and the holsters and the pouch about
-  them, stay where they are.
+- Its upper body leans back from your eyes, about its hips, as far as
+  keeps what your eyes see of it out of the near edge of the view (about
+  19 cm before them), which would cut into the armour of the chest and
+  collar and show it hollow: looking ahead, or down at your belt, it stands
+  upright; looking down over the chest, your eyes nod forward over it, and
+  it leans back only as far as needed, about 25 degrees looking 60 degrees
+  down and 45 looking 80 down (up to 50 crouched low, or with a pistol,
+  whose stance holds the chest higher). Nor do your eyes see the opening of
+  the collar (no head is drawn, and the top of the neck is a dark pit),
+  which a chin would hide. It leans at once as far as needed, and comes
+  upright again over a second. Its hips and legs, and the holsters and the
+  pouch about them, stay where they are.
 
 The body is the one everyone else sees, drawn differently for you alone:
 hit boxes, markers and what others see are the game's. It is drawn on
