@@ -171,7 +171,10 @@ void vr_render_screen_point_end(void);
 boolean vr_scope_raised(void);
 /* vr_seat.c's */
 void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_point3d *position);
-void vr_seat_log_camera(real_point3d const *position, real_vector3d const *forward, real_vector3d const *up);
+void vr_seat_log_camera(real_point3d const *position, real_vector3d const *forward, real_vector3d const *up,
+	real seconds);
+/* vr_vehicle.c's */
+boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye, real units, real *base_yaw);
 /* vr_death.c's */
 boolean vr_death_eye(boolean playing, real seconds, real head_yaw, real body_yaw, real_vector3d const *camera_forward,
 	real_point3d *position, real *yaw);
@@ -540,6 +543,10 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	vr_seat_eye(vr_render.seated_unit_index,
 		(halo_vr_aiming() || dead || director_vr_dead_camera()) && !cinematic_in_progress(), view->seconds,
 		&camera->position);
+	/* (on a vehicle's handlebars, the view turns with the vehicle:
+	vr_vehicle.c) */
+	vr_vehicle_view(vr_render.seated_unit_index, view->seconds, &camera->position, view->world_units_per_metre,
+		&base_yaw);
 	vr_render.base_position = camera->position;
 	vr_render.base_yaw = base_yaw;
 	vr_render.aim_base_valid = halo_vr_aiming() && !cinematic_in_progress() && !dead &&
@@ -575,7 +582,7 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	camera->position.y += offset.j * view->world_units_per_metre;
 	camera->position.z += offset.k * view->world_units_per_metre;
 	vr_render.head_position = camera->position;
-	vr_seat_log_camera(&camera->position, &camera->forward, &camera->up);
+	vr_seat_log_camera(&camera->position, &camera->forward, &camera->up, view->seconds);
 	vr_death_camera(&camera->position, &camera->forward, &camera->up,
 		(real)atan(MIN(-MIN(view->fov[0][0], view->fov[1][0]), MAX(view->fov[0][1], view->fov[1][1]))),
 		(real)atan(MIN(MAX(view->fov[0][2], view->fov[1][2]), -MIN(view->fov[0][3], view->fov[1][3]))));
@@ -950,6 +957,14 @@ static real body_heading(void)
 /* vr_hands.c: the frame the hands are posed in (vr.hands), when the weapon
 was posed for the eyes (vr_render_weapon_camera); FALSE when the hands are
 the game's */
+/* first_person_weapons.c: the hands on a vehicle's handlebars are drawn
+from its seat, whose camera is the game's following the vehicle, without the
+weapon (vr_vehicle.c) */
+boolean vr_render_handlebar_hands(void)
+{
+	return vr_render.active && vr_render.view.handlebars && vr_render.seated_unit_index != NONE;
+}
+
 boolean vr_render_hands(struct vr_hands_frame *frame)
 {
 	struct halo_vr_view *view = &vr_render.view;

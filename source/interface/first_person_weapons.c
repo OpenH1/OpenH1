@@ -398,6 +398,9 @@ void vr_holster_draw(unsigned long flags);
 weapon not drawn), and the eye pass, which zooming does not magnify */
 boolean vr_render_scope_pass(void);
 boolean vr_render_eye_pass(void);
+/* and the hands on a vehicle's handlebars, without the weapon, from its
+seat (port/linux/game/vr_vehicle.c) */
+boolean vr_render_handlebar_hands(void);
 /* port/linux/game/vr_reload.c's */
 void vr_reload_weapon_nodes(long model_index, long weapon_index, struct real_matrix4x3 *node_matrices);
 void vr_reload_draw(unsigned long flags);
@@ -547,6 +550,10 @@ void first_person_weapon_draw(
 					}
 
 					if (first_person_weapon->weapon_node_remapping_table_valid &&
+#ifdef HALO_VR
+						/* port: on a vehicle's handlebars, the hands alone */
+						!(render.local_player_index==0 && vr_render_handlebar_hands()) &&
+#endif
 						weapon_definition->weapon.interface_definition.first_person_model.index!=NONE)
 					{
 						model_remap_node_matrices_to_match_animation_graph(
@@ -728,6 +735,13 @@ void first_person_weapon_render_update(
 				|| vr_render_eye_pass()
 #endif
 				);
+#ifdef HALO_VR
+			/* port: the VR mode's hands on a vehicle's handlebars, from a
+			seat whose camera is the game's following the vehicle (the
+			Ghost's: port/linux/game/vr_vehicle.c), without the weapon */
+			if (render.local_player_index==0 && vr_render_handlebar_hands())
+				visible= TRUE;
+#endif
 
 			first_person_weapon_set_visibility(render.local_player_index, visible);
 			if (first_person_weapon->visible)

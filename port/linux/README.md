@@ -1107,7 +1107,8 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | Beside an overturned vehicle, both hands low gripping it, then lifted together | Flip it (`vr.vehicle_flip`, below; X reloads there) |
 | Left bumper, right bumper | Flashlight, switch grenade |
 | D-pad (left controller), View, Menu | The menus' d-pad, Back (scoreboard), Start (pause) |
-| Both grips, held | Recentre: the head's place and heading become the player's eye and facing (not while the left hand holds a foregrip, nor while the hands hold a vehicle to lift it) |
+| Both grips, held | Recentre: the head's place and heading become the player's eye and facing (not while the left hand holds a foregrip, nor while the hands hold a vehicle to lift it, nor on a Ghost's handlebars) |
+| Both grips on a Ghost's handles, turned as a bike's | Steer it, its guns aiming where the bars point (`vr.ghost_steering`, below) |
 | A gamepad's Back (View), held 1 s | Recentre, as both grips do |
 
 Other controllers that SteamVR maps to the Touch layout operate as well
@@ -1483,6 +1484,49 @@ X.
 - Not with `vr.aim = "gamepad"`: the gamepad's X flips, as on the flat
   screen.
 
+#### Driving a Ghost by its handlebars (`vr.ghost_steering`)
+
+In a Ghost's driver seat, grip its handles with both hands and turn them as
+a bike's handlebars: the Ghost turns, and its guns aim where the bars point.
+The left stick throttles and strafes as ever, the right trigger fires, and
+jump brakes (the Ghost has no boost).
+
+- Take hold: squeeze each grip with the hand near its handle (within
+  30 cm: the handles, on each side of the cockpit, are wide apart for the
+  Chief), a tick in that hand; from then on that hand is drawn on its
+  handle, closed about it, wherever your hand is, and the other where its
+  controller is, until you let go.
+- Steer: with both hands on, turn the bars (the line from your left hand to
+  your right) and the Ghost turns, 2 degrees a second for each degree of
+  the bars, up to 90 degrees a second (from 45 degrees of bars); bars held
+  turned keep it turning, straight bars hold it straight (2 degrees either
+  way are straight: hands are never quite still). Tilting your hands up or
+  down (from how they pointed as you took hold) pitches the guns, 35
+  degrees at most. The reticle is where the guns aim.
+- Let go of either grip and the Ghost holds its course: the turn eases out
+  over a few tenths of a second, never a sudden turn; your head looks
+  about freely and steers nothing.
+- The view turns with the Ghost: your heading is the Ghost's, smoothed
+  each frame (not in the steps of the game's 30 ticks a second), and you
+  look about from there; the right stick turns nothing, and both grips are
+  the bars, not a recentring. You take the Ghost's heading as your eye
+  moves into the seat, in the blink as you get in, and keep it as you get
+  out. The horizon stays level, and your eye is held in the Ghost as it
+  would be level: its pitching and rolling as it hovers (up to 9 degrees,
+  your eye 1.45 m behind its middle) reach your head only slowly, as a
+  slope's, not as its quick wobble.
+- The edges of your view dim a little while it turns fast (from 40 degrees
+  a second, most at 120) or the Ghost speeds up or slows hard
+  (`vr.comfort_vignette`, on by default).
+- The Ghost's handles do not turn on its model (it has no node for them).
+  The steering is the driver's facing, the game's own (the Ghost turns
+  toward its driver's facing), which is all a network game sends of it: it
+  steers so as a client too.
+- `"look"`: the Ghost steers and aims where the right controller points, as
+  any other vehicle does, and the view turns with the stick, not the Ghost.
+- Only with `vr.aim = "controller"`; other vehicles are as before (the
+  Warthog's wheel and the Banshee are to come).
+
 #### Your body (`display.first_person_legs`)
 
 With LEGS on (Video Setup > FOV and Viewmodels, `display.first_person_legs`;
@@ -1674,6 +1718,8 @@ headset's session is opened with, apply from the next start.
 | `vr.hands` | `"arms"` | `HALO_VR_HANDS` | With `vr.aim = "controller"`: each first-person hand where its controller is (the right holding the weapon, its index finger on the trigger as far as the trigger is pulled; the left open, closing as the grip is pulled, and on a long gun's foregrip while it holds it). `"arms"`: the arms reach the hands from the shoulders (`vr.shoulders`). `"floating"`: no arms above the wrists. `"game"`: the game's arms, posed from the weapon in the right hand. A hand whose controller is not tracked is not drawn, nor its arm. In a cinematic seen from the player's head the hands are the controllers' too, acting on nothing (above, "Cinematics seen from your own head"). |
 | `vr.shoulders` | `"0.19, -0.20, -0.07"` | `HALO_VR_SHOULDERS` | With `vr.hands = "arms"`: where each shoulder is from the eyes, in metres: out to its side, up, forward, turned with the body (the holsters' heading: it faces where the head does, follows it past a 40 degree turn, and slowly). From the eyes as they would be with the head level and turned with the body: the shoulders hang from the neck, so a nod or a turn of the head does not move them. |
 | `vr.vehicle_view` | `"first_person"` | `HALO_VR_VEHICLE_VIEW` | `"first_person"`: in a vehicle's seat, the view is from the seated player's head, level with the horizon. `"third_person"`: the game's camera following the vehicle. |
+| `vr.ghost_steering` | `"handlebars"` | `HALO_VR_GHOST_STEERING` | With `vr.aim = "controller"`, in a Ghost's driver seat: `"handlebars"`, grip its handles and turn them to steer, the view turning with the Ghost ("Driving a Ghost by its handlebars"); `"look"`, it steers and aims where the right controller points, the view turned by the stick. |
+| `vr.comfort_vignette` | `true` | `HALO_VR_COMFORT_VIGNETTE` | The edges of the view dim a little while the view turns fast with a Ghost steered by its handlebars, or it speeds up or slows hard. |
 | `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, the eye stays put in the vehicle, riding with it but not with the body climbing in and out, a turret's turning or flinches, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
 | `vr.death_view` | `"face"` | `HALO_VR_DEATH_VIEW` | As you die: `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |
 | `vr.turn` | `"snap"` | `HALO_VR_TURN` | `"snap"` or `"smooth"` (with `vr.aim = "gamepad"`, `vr.gamepad_view` instead). |
@@ -1702,7 +1748,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_turn` | `0.0` | `HALO_VR_TEST_TURN` | Turn the player this many degrees a second, for automated tests without hands. |
 | `debug.vr_test_jitter` | `0.0` | `HALO_VR_TEST_JITTER` | Move the head by up to this many millimetres (and turn it as many hundredths of a degree) at random each frame, as a worn headset moves: for automated tests of what flickers when the view barely moves. |
 | `debug.vr_test_head` | `""` | `HALO_VR_TEST_HEAD` | Hold the head still and level where it is first located (a simulated headset's head wobbles), for automated tests: `"0"`, or `"<degrees> <seconds>"` turns it left and right by as many degrees over as many seconds, smoothly (a sine of the frames' display times); `"<degrees> <seconds> <pitch>"` also pitches it up by as many degrees (less than 0: down), as looking down at the hip's holster. |
-| `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move[, down[, nod[, forward[, right[, right grip]]]]]]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right stick's click (zoom) 2048, the right trigger 65536, the left 131072, the right grip 262144, the right stick pushed down 524288), the right trigger's pull (0 to 1; less than 0, the index finger off the trigger, as when its touch senses none: "The trigger finger"), the head turned (degrees left), the frames the pose lasts (`0`: 288), the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps), the head lowered (metres, as a crouch; moved with the hands: below), nodded (degrees up, about the neck 8 cm behind and 15 cm below the eyes, as a person's lower neck: looking 60 degrees down, the eyes come 9 cm forward and 14 cm down) and moved in the room (metres forward and right, as a lean or a step from where the head was recentred), each with the hands, and the right grip's pull (0 to 1, held all the pose). A pose shorter than 20 frames presses its buttons only as long. Up to 512 poses separated by `;` are taken in turn (a pose a frame, of 1 frame moved in 1, poses a path frame by frame: a swing's curve) (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. Below, a grenade throw scripted. |
+| `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move[, down[, nod[, forward[, right[, stick x[, stick y[, right grip]]]]]]]]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right stick's click (zoom) 2048, the right trigger 65536, the left 131072, the right grip 262144, the right stick pushed down 524288), the right trigger's pull (0 to 1; less than 0, the index finger off the trigger, as when its touch senses none: "The trigger finger"), the head turned (degrees left), the frames the pose lasts (`0`: 288), the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps), the head lowered (metres, as a crouch; moved with the hands: below), nodded (degrees up, about the neck 8 cm behind and 15 cm below the eyes, as a person's lower neck: looking 60 degrees down, the eyes come 9 cm forward and 14 cm down) and moved in the room (metres forward and right, as a lean or a step from where the head was recentred), each with the hands, and the left stick (right and forward, -1 to 1: driving) and the right grip's pull (0 to 1: a vehicle's handlebars) through the pose. A pose shorter than 20 frames presses its buttons only as long. Up to 512 poses separated by `;` are taken in turn (a pose a frame, of 1 frame moved in 1, poses a path frame by frame: a swing's curve) (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. Below, a grenade throw scripted. |
 | `debug.vr_test_death` | `""` | `HALO_VR_TEST_DEATH` | Kill the first player, for automated tests of the view as they die: `"<seconds> [kill\|grenade\|watch]"`, that many seconds after they first aim (a level's clock does not start at 0), once a run, as the script's `unit_kill` does, by a frag grenade's blast half a metre before them (their shields and nearly all their health gone first: the body thrown back), or killed and then the dead camera turned to the nearest living biped, as network co-op's spectating turns it to a teammate. From a second before, the log says how far the view moved and turned each frame, how tinted, dimmed and dark it was, and where the body was from the eye (how far, across and up, in view or not), and each phase's sums (alive, dead, back) with how much of the motion was seen (between frames not in full darkness), and each blink; with `debug.screenshot_directory`, the eyes six times a second from the death to 1.5 s after the player is back (24 times in its first half second). With `debug.vr_test_head = "0"`, the motion the player did not make. |
 | `debug.vr_test_grenades` | `""` | `HALO_VR_TEST_GRENADES` | Give the first VR player these grenades as they first aim, for tests of the grenade held in the hand: `"<frags> <plasma grenades>"`. |
 | `debug.vr_test_finger` | `""` | `HALO_VR_TEST_FINGER` | The right index finger on the weapon's trigger instead of the weapon's own (`game/vr_hands.c`, `trigger_fingers`), for tests: `"<rest> <rest> <rest> <pull> <pull> <pull> [<travel> [<off> <off> <off>]]"`, its curl at each joint from the knuckle at rest, from the idle animation's (less than 0: straighter), and how much more at a full pull (radians), how far back the trigger goes (metres), and its curl off the trigger (the trigger's touch sensing no finger; a test pose's trigger less than 0). |
@@ -1714,7 +1760,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_throw_log` | `false` | `HALO_VR_THROW_LOG` | Log each step of a grenade thrown with the left hand (`vr.grenade_throw`): the grip taken (or why it holds nothing), the swing (or why a fast hand was none), the release's speed, power and direction, and the game's throw: when it began, its animations held or moved on to their release, and the grenade's place and speed. |
 | `debug.vr_melee_log` | `false` | `HALO_VR_MELEE_LOG` | Log the right hand's swings that did not melee (`vr.melee_gesture`) too: how fast and how far each went, and why it was none (too slow, a holster, a throw, a reload, the tracking jumping). Each melee by a swing is logged whatever this is. |
 | `debug.vr_test_weapon` | `""` | `HALO_VR_TEST_WEAPON` | Put a weapon in the first player's hand, for automated tests of the reload by hand: `"<text> <seconds>"`, that many seconds into the level the player's weapons are taken and a new one is in hand, the first of the map's whose tag name has the text in it (`"shotgun 15"` on d20, `"rocket 15"` on b30). |
-| `debug.vr_test_seat` | `""` | `HALO_VR_TEST_SEAT` | Get into a vehicle's seat and out again, for automated tests of the view in a seat: `"<label> <seconds> [<seconds seated>]"`, the first player gets into the seat whose label has this text in it (`"gunner"`, `"W-driver"`, `"GT-gunner"`: the Shade) that many seconds into the level, as the action button does, in a vehicle of the kind made before them three seconds earlier (standing at the seat's entrance from two seconds earlier), and out again after as many seconds seated (10 by default). From a second before, the log says how far the view moved and turned each frame, how dark a blink made it, and each phase's sums (on foot, entering, seated, exiting) with how much of the motion was seen (not in a blink's full darkness), and each blink: with `debug.vr_test_head = "0"`, the motion the player did not make. |
+| `debug.vr_test_seat` | `""` | `HALO_VR_TEST_SEAT` | Get into a vehicle's seat and out again, for automated tests of the view in a seat: `"<label> <seconds> [<seconds seated>]"`, the first player gets into the seat whose label has this text in it (`"gunner"`, `"W-driver"`, `"GT-gunner"`: the Shade) that many seconds into the level, as the action button does, in a vehicle of the kind made before them three seconds earlier (one found in the level, else of a kind the map has a tag for: `"G-driver"` makes a Ghost on b30, whose Ghosts come later; standing at the seat's entrance from two seconds earlier), and out again after as many seconds seated (10 by default). From a second before, the log says how far the view moved and turned each frame (and its heading and roll, the vehicle's heading, pitch and roll, the comfort vignette and the frame's time: degrees, seconds), how dark a blink made it, and each phase's sums (on foot, entering, seated, exiting) with how much of the motion was seen (not in a blink's full darkness), and each blink: with `debug.vr_test_head = "0"`, the motion the player did not make. |
 | `debug.vr_test_fov` | `""` | `HALO_VR_TEST_FOV` | Each eye's field of view instead of the runtime's, for automated tests of what the edges of a wide view show: `"<outward> <inward> <up> <down>[ <cant>]"`, in degrees from the eye's axis, each eye turned outward by `<cant>` degrees (as canted displays are; the game's 3D view assumes the eyes look the same way, so only the visor and the helmet's rim are right with it). |
 | `debug.vr_gpu_time` | `false` | `HALO_VR_GPU_TIME` | With `debug.gpu_stats`, log the GPU's time for each frame too, waiting for it at the present (which costs the overlap of the GPU and the game, and lets the GPU's clock drop: an upper bound). |
 
@@ -2160,7 +2206,31 @@ supersampling costs as above, and multisampling the eye pass
   the eye is the seated player's head marker. The view turns as on foot
   (the stick and the head, never the vehicle): the vehicle steers and aims
   where the controller (or head) points, and the horizon stays level
-  whatever the vehicle does.
+  whatever the vehicle does. But in a Ghost's driver seat steered by its
+  handlebars (`vr.ghost_steering`, `game/vr_vehicle.c`): once the eye is in
+  the seat (the blink in at its darkest), the view's heading (the player's
+  axes, `body_yaw`) is the Ghost's root node's, as the frame draws it
+  between ticks, eased over 0.05 s (the ticks' steps in its turn rate
+  smoothed out); the eye is the seat's held level in the Ghost (its place
+  turned by the heading alone), its shift by the Ghost's tilt let in over
+  0.3 s; the handles are its "left hand elite" and "right hand elite"
+  markers (where the Chief's hands are too as the game animates him
+  driving; the Ghost has none for him), given to `src/vr.c` in the
+  player's axes, which takes each as the grip closes within 30 cm, and
+  turns the bars into the driver's facing: the Ghost's heading at its last
+  tick turned by the error at which the game's turn toward the facing
+  (`update_alien_scout_physics`: the lesser of sqrt(2 a e) and e / 2 a tick,
+  a = 0.2 degrees a tick squared) is the turn the bars ask for, so that the
+  error holds as it turns. Its aim line, which the reticle and the aim from
+  the game's eye follow (`vr_aim.c`), is from between the handles along
+  that facing. The first-person model, which the game does not draw from
+  a seat whose camera follows the vehicle (`first_person_weapons.c`), is
+  drawn there without its weapon (the arms alone), each hand holding its
+  handle placed on it as the controller would be, upright along the Ghost,
+  its fingers closed. The comfort vignette (`vr_draw_vignette`,
+  `src/d3d8_gl.c`) multiplies each eye's image by a dimming beyond 50
+  degrees from that eye's own middle (30 at its strongest) over 22
+  degrees, by 65% at most, eased in over 0.12 s and out over 0.4 s.
 - Where the eye would jump more than 0.1 m (into the seat once seated, back
   to the player's own eye once out, to the game's camera following the
   vehicle or, with `vr.death_view = "game"`, the dead's, and back), it

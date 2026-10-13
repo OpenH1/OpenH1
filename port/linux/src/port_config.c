@@ -321,6 +321,16 @@ static const struct config_setting config_settings[] =
 		"the vehicle, riding with it but not with the body climbing in and out,\n"
 		"a turret's turning or flinches, and blinks between its places; \"head\"\n"
 		"it follows the seated body's head as the game animates it." },
+	{ "vr.ghost_steering", _config_string, "\"handlebars\"", "HALO_VR_GHOST_STEERING", _environment_value,
+		_platform_desktop,
+		"Driving a Ghost with vr.aim = \"controller\": \"handlebars\" grip its\n"
+		"handles with both hands and turn them as a bike's, the view turning with\n"
+		"the Ghost and its guns aiming where the bars point; \"look\" it steers and\n"
+		"aims where the right controller points, the view turned by the stick." },
+	{ "vr.comfort_vignette", _config_boolean, "true", "HALO_VR_COMFORT_VIGNETTE", _environment_value, _platform_desktop,
+		"The edges of your view dim a little while the view turns fast with a\n"
+		"vehicle you steer by its handlebars (vr.ghost_steering), or it speeds\n"
+		"up or slows hard." },
 	{ "vr.death_view", _config_string, "\"face\"", "HALO_VR_DEATH_VIEW", _environment_value, _platform_desktop,
 		"As you die: \"face\" the view stays where your head was, the world\n"
 		"dimmed and reddened, your body falling before you, and turns to it\n"
@@ -775,8 +785,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.vr_test_hands", _config_string, "\"\"", "HALO_VR_TEST_HANDS", _environment_value, _platform_desktop,
 		"Hold the VR controllers still, for automated tests without hands:\n"
 		"\"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons\n"
-		"[, trigger[, head[, frames[, move[, down[, nod[, forward[, right[, right\n"
-		"grip]]]]]]]]]]]\",\n"
+		"[, trigger[, head[, frames[, move[, down[, nod[, forward[, right[, stick x[,\n"
+		"stick y[, right grip]]]]]]]]]]]]]\",\n"
 		"the left and right hands in\n"
 		"metres right, up and forward from the recentred head and degrees of yaw\n"
 		"(left), pitch (up) and roll (right), the left grip's pull (0 to 1), the\n"
@@ -788,8 +798,10 @@ static const struct config_setting config_settings[] =
 		"and the frames the hands take to move to it from the pose before (0:\n"
 		"none; a swing), the head lowered (metres, as a crouch), nodded\n"
 		"about the neck (degrees up) and moved in the room (metres forward\n"
-		"and right), each moved with the hands, and the right grip's pull (0\n"
-		"to 1); poses separated by ';' (512 at most) in turn.\n"
+		"and right), each moved with the hands, the left stick (right, forward:\n"
+		"-1 to 1) and the right grip's pull (0 to 1) through the pose; poses\n"
+		"separated by ';' (512 at\n"
+		"most) in turn.\n"
 		"Empty: the controllers' own." },
 	{ "debug.vr_throw_log", _config_boolean, "false", "HALO_VR_THROW_LOG", _environment_value, _platform_desktop,
 		"Log each step of a grenade thrown with the left hand (vr.grenade_throw):\n"

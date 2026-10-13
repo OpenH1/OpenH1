@@ -43,11 +43,13 @@ camera (vr_render.c), and in the eye pass (render.c).
 
 #include "cseries.h"
 #include "math/real_math.h"
+#include "cache/cache_files.h"
 #include "game/game.h"
 #include "game/players.h"
 #include "objects/objects.h"
 #include "units/units.h"
 #include "units/unit_definitions.h"
+#include "units/vehicle_definitions.h"
 #include "tag_files/tag_files.h"
 #include "camera/director.h"
 #include "render/render_cameras.h"
@@ -61,8 +63,9 @@ camera (vr_render.c), and in the eye pass (render.c).
 const char *config_string(char const *name);
 unsigned long config_changes(void);
 void platform_log(char const *format, ...);
-/* d3d8_gl.c's */
+/* d3d8_gl.c's, vr.c's */
 void halo_vr_eye_tint(float red, float green, float blue);
+float halo_vr_vignette(float fov[2][4]);
 
 #define METRES_PER_WORLD_UNIT 3.048f
 #define DEGREES_PER_RADIAN (180.0f / 3.14159265f)
@@ -345,6 +348,14 @@ void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_poin
 		vehicle_to_local(vehicle_index, &desired, &vr_seat.shown_local);
 }
 
+/* whether the eye is in the seat now, once moved there (the blink in at
+its darkest, or since): vr_vehicle.c turns the view with the vehicle from
+then */
+boolean vr_seat_seated_shown(void)
+{
+	return vr_seat.shown_valid && vr_seat.source == _seat_source_seated && vr_seat.anchored;
+}
+
 /* where the eye was last frame (vr_death.c: the eye held as the player
 dies), FALSE when none was */
 boolean vr_seat_shown(real_point3d *position)
@@ -424,23 +435,51 @@ static long vr_seat_test_vehicle(long unit_index, short *seat_found)
 	return nearest_index;
 }
 
+/* a vehicle's tag in the map with such a seat (none of its kind placed
+yet: the level's Ghosts come later), else NONE */
+static long vr_seat_test_vehicle_tag(void)
+{
+	struct tag_iterator iterator;
+	long tag_index;
+
+	tag_iterator_new(&iterator, VEHICLE_DEFINITION_TAG);
+	for (tag_index = tag_iterator_next(&iterator); tag_index != NONE; tag_index = tag_iterator_next(&iterator))
+	{
+		struct unit_definition *definition = vehicle_definition_get(tag_index);
+		short seat_index;
+
+		for (seat_index = 0; seat_index < definition->unit.seats.count; seat_index++)
+		{
+			if (strstr(TAG_BLOCK_GET_ELEMENT(&definition->unit.seats, seat_index, struct unit_seat)->label,
+				vr_seat.seat_label))
+			{
+				return tag_index;
+			}
+		}
+	}
+	return NONE;
+}
+
 /* three seconds before getting in, a vehicle of the kind found is made
-before the first player (a level's are far apart, or carried by dropships):
-two world units ahead, upright, a little above the ground it falls to */
+before the first player (a level's are far apart, or carried by dropships),
+or of a kind the map has a tag for: two world units ahead, upright, a
+little above the ground it falls to */
 static void vr_seat_test_bring(long unit_index)
 {
 	short seat_index = NONE;
 	long vehicle_index = vr_seat_test_vehicle(unit_index, &seat_index);
+	long definition_index = vehicle_index != NONE ? object_get(vehicle_index)->definition_index :
+		vr_seat_test_vehicle_tag();
 	struct object_datum *unit = object_get(unit_index);
 	struct object_placement_data data;
 	long new_index;
 
-	if (vehicle_index == NONE)
+	if (definition_index == NONE)
 	{
 		platform_log("vr seat test: no vehicle with a free \"%s\" seat", vr_seat.seat_label);
 		return;
 	}
-	object_placement_data_new(&data, object_get(vehicle_index)->definition_index, NONE);
+	object_placement_data_new(&data, definition_index, NONE);
 	data.forward.i = unit->object.forward.i;
 	data.forward.j = unit->object.forward.j;
 	data.forward.k = 0.0f;
@@ -450,7 +489,7 @@ static void vr_seat_test_bring(long unit_index)
 	data.position.y = unit->object.position.y + data.forward.j * 2.0f;
 	data.position.z = unit->object.position.z + 0.2f;
 	new_index = object_new(&data);
-	platform_log("vr seat test: %s %s before the player", tag_get_name(object_get(vehicle_index)->definition_index),
+	platform_log("vr seat test: %s %s before the player", tag_get_name(definition_index),
 		new_index == NONE ? "could not be made" : "made");
 }
 
@@ -570,9 +609,10 @@ static void vr_seat_log_phase_end(void)
 		vr_seat.phase_turn, vr_seat.phase_largest_turn, vr_seat.blinks);
 }
 
-/* each VR frame's centre camera (vr_render.c): logs its motion while the
-test logs */
-void vr_seat_log_camera(real_point3d const *position, real_vector3d const *forward, real_vector3d const *up)
+/* each VR frame's centre camera (vr_render.c), and the time since the last
+frame's display (seconds): logs its motion while the test logs */
+void vr_seat_log_camera(real_point3d const *position, real_vector3d const *forward, real_vector3d const *up,
+	real seconds)
 {
 	long unit_index;
 	short phase;
@@ -592,6 +632,9 @@ void vr_seat_log_camera(real_point3d const *position, real_vector3d const *forwa
 		real move = distance3d(position, &vr_seat.last_position) * METRES_PER_WORLD_UNIT;
 		real turn = MAX(angle_between(forward, &vr_seat.last_forward), angle_between(up, &vr_seat.last_up));
 		real_point3d local;
+		real_vector3d right;
+		real vehicle_yaw = 0.0f, vehicle_pitch = 0.0f, vehicle_roll = 0.0f;
+		float fov[2][4];
 		long parent_index = unit_index == NONE ? NONE : object_get(unit_index)->object.parent_object_index;
 
 		if (phase != vr_seat.phase)
@@ -620,11 +663,27 @@ void vr_seat_log_camera(real_point3d const *position, real_vector3d const *forwa
 		seat swings about the vehicle) */
 		local.x = local.y = local.z = 0.0f;
 		if (parent_index != NONE)
-			matrix4x3_inverse_transform_point(object_get_node_matrix(parent_index, 0), position, &local);
+		{
+			real_matrix4x3 const *root = object_get_node_matrix(parent_index, 0);
+
+			matrix4x3_inverse_transform_point(root, position, &local);
+			vehicle_yaw = (real)atan2(root->forward.j, root->forward.i) * DEGREES_PER_RADIAN;
+			vehicle_pitch = (real)asin(PIN(root->forward.k, -1.0f, 1.0f)) * DEGREES_PER_RADIAN;
+			vehicle_roll = (real)asin(PIN(root->left.k, -1.0f, 1.0f)) * DEGREES_PER_RADIAN;
+		}
+		/* (the view's heading, its roll, the vehicle's heading, degrees, and the
+		frame's time: its turning and its acceleration) */
+		cross_product3d(forward, up, &right);
 		platform_log("vr seat log: frame %ld %s: moved %.1f mm, turned %.2f degrees; pitch %.1f; dark %.2f; "
-			"height %.3f m; in the vehicle %.3f %.3f %.3f m", vr_seat.frame, seat_phase_names[phase], move * 1000.0f,
-			turn, (real)asin(forward->k > 1.0f ? 1.0f : forward->k < -1.0f ? -1.0f : forward->k) * DEGREES_PER_RADIAN,
-			vr_seat.darkness, position->z * METRES_PER_WORLD_UNIT, local.x * METRES_PER_WORLD_UNIT, local.y * METRES_PER_WORLD_UNIT, local.z * METRES_PER_WORLD_UNIT);
+			"height %.3f m; in the vehicle %.3f %.3f %.3f m; yaw %.3f roll %.3f vehicle %.3f pitch %.3f roll %.3f; "
+			"vignette %.2f; %.4f s",
+			vr_seat.frame, seat_phase_names[phase], move * 1000.0f, turn,
+			(real)asin(forward->k > 1.0f ? 1.0f : forward->k < -1.0f ? -1.0f : forward->k) * DEGREES_PER_RADIAN,
+			vr_seat.darkness, position->z * METRES_PER_WORLD_UNIT, local.x * METRES_PER_WORLD_UNIT,
+			local.y * METRES_PER_WORLD_UNIT, local.z * METRES_PER_WORLD_UNIT,
+			(real)atan2(forward->j, forward->i) * DEGREES_PER_RADIAN,
+			(real)asin(right.k > 1.0f ? 1.0f : right.k < -1.0f ? -1.0f : right.k) * DEGREES_PER_RADIAN, vehicle_yaw,
+			vehicle_pitch, vehicle_roll, halo_vr_vignette(fov), seconds);
 	}
 	vr_seat.phase = phase;
 	vr_seat.last_valid = TRUE;

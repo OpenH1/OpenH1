@@ -7619,6 +7619,103 @@ void halo_vr_eye_tint(float red, float green, float blue)
 	vr_tint[2] *= blue;
 }
 
+/* the comfort vignette (halo_vr_vignette): the eyes' images dimmed toward
+the edges of each eye's view, beyond VIGNETTE_CLEAR_DEGREES (less
+VIGNETTE_CLOSING_DEGREES at its strongest) from the eye's own middle (where
+its view's line is: the fields of view are not even), over
+VIGNETTE_FADE_DEGREES, by VIGNETTE_DIMMING at its strongest: a little
+narrower and darker the stronger; drawn before the helmet's rim, after the
+tint (multiplied too) */
+#define VIGNETTE_CLEAR_DEGREES 50.0f
+#define VIGNETTE_CLOSING_DEGREES 20.0f
+#define VIGNETTE_FADE_DEGREES 22.0f
+#define VIGNETTE_DIMMING 0.65f
+static void vr_draw_vignette(void)
+{
+	static GLuint program;
+	static BOOL failed;
+	static GLint fov_location, clear_location, fade_location, dimming_location;
+	static const char vertex_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"layout(num_views = 2) in;\n"
+		"out vec2 at;\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+		"	at = p;\n"
+		"	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+		"}\n";
+	static const char fragment_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		/* (each eye's tangents: left, right, up, down; the angles, radians) */
+		"uniform vec4 fov[2];\n"
+		"uniform float clear;\n"
+		"uniform float fade;\n"
+		"uniform float dimming;\n"
+		"in vec2 at;\n"
+		"out vec4 colour;\n"
+		"void main()\n"
+		"{\n"
+		"	vec4 f = fov[int(gl_ViewID_OVR)];\n"
+		"	vec2 t = vec2(mix(f.x, f.y, at.x), mix(f.w, f.z, at.y));\n"
+		"	float angle = atan(length(t));\n"
+		"	float m = 1.0 - dimming * smoothstep(clear, clear + fade, angle);\n"
+		"	colour = vec4(m, m, m, 1.0);\n"
+		"}\n";
+	float fov[2][4], strength = halo_vr_vignette(fov);
+	float radians = 3.14159265f / 180.0f;
+
+	if (failed || strength <= 0.0f || !vr_gl.eyes_drawn || !vr_gl.eye_target.target.texture)
+		return;
+	if (!program)
+	{
+		GLuint vertex = xgpu_compile_shader(GL_VERTEX_SHADER, vertex_source, "VR vignette vertex");
+		GLuint fragment = xgpu_compile_shader(GL_FRAGMENT_SHADER, fragment_source, "VR vignette pixel");
+		GLint status = 0;
+
+		program = glCreateProgram();
+		glAttachShader(program, vertex);
+		glAttachShader(program, fragment);
+		glLinkProgram(program);
+		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		if (!vertex || !fragment || !status)
+		{
+			platform_log("vr: cannot make the comfort vignette's program; none is drawn");
+			failed = TRUE;
+			return;
+		}
+		fov_location = glGetUniformLocation(program, "fov");
+		clear_location = glGetUniformLocation(program, "clear");
+		fade_location = glGetUniformLocation(program, "fade");
+		dimming_location = glGetUniformLocation(program, "dimming");
+	}
+	framebuffer_views = 2;
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(vr_gl.eye_target.target.texture, 0));
+	framebuffer_views = 1;
+	glViewport(0, 0, vr_gl.eye_width, vr_gl.eye_height);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_ZERO, GL_SRC_COLOR);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+	glUseProgram(program);
+	glUniform4fv(fov_location, 2, fov[0]);
+	glUniform1f(clear_location, (VIGNETTE_CLEAR_DEGREES - VIGNETTE_CLOSING_DEGREES * strength) * radians);
+	glUniform1f(fade_location, VIGNETTE_FADE_DEGREES * radians);
+	glUniform1f(dimming_location, VIGNETTE_DIMMING * strength);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glDisable(GL_BLEND);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	xgpu_gl_state_invalidate();
+}
+
 static void vr_draw_tint(void)
 {
 	static GLuint program;
@@ -7807,6 +7904,7 @@ static void vr_present(BOOL screenshot)
 	visor's glass in the eyes (not in the menus: vr_visor.c), the rim's depth
 	with theirs */
 	vr_draw_tint();
+	vr_draw_vignette();
 	vr_draw_rim();
 	vr_draw_visor();
 	vr_copy_depth();
