@@ -118,9 +118,13 @@ static const struct trigger_finger
 	be) */
 	{ "weapons\\flamethrower\\", { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.20f, 0.20f }, 0.005f,
 		{ -0.25f, -0.905f, -1.19f } },
-	/* (the rocket launcher's grip's front corner meets its finger whatever
-	the curl: its tip straightened, the least of it) */
-	{ "weapons\\rocket launcher\\", { -0.10f, 0.10f, -0.60f }, { 0.0f, 0.0f, 0.10f }, 0.005f,
+	/* (the rocket launcher's: straightened at the knuckle and the tip and
+	curled at the middle, its finger lies flat along the front of the grip,
+	under the body, off the grip's front corner (the idle animation's presses
+	into it): no room there for a trigger to be drawn, as the finger would
+	have to go into the body to leave one. Pulled, its tip curls a little
+	and its knuckle straightens as much, staying off the grip) */
+	{ "weapons\\rocket launcher\\", { -0.30f, 0.35f, -1.10f }, { -0.02f, 0.0f, 0.05f }, 0.005f,
 		{ -0.535f, -1.375f, -0.755f } },
 	/* (the Covenant's have no trigger: the finger straightened out of the
 	front of the grip to lie against it; the needler's still meets its grip,

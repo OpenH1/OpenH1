@@ -2010,8 +2010,9 @@ supersampling costs as above, and multisampling the eye pass
   below) as it goes back, or lying where a trigger would be, never in the
   weapon. The idle animation's finger runs along the pistol's trigger into
   its frame, and wraps into the front of the Covenant weapons' grips; the
-  rocket launcher's and the needler's grips still meet the finger a
-  little, whatever its curl.
+  needler's grip still meets the finger a little, whatever its curl. The
+  rocket launcher's finger lies flat along the front of its grip, off its
+  corner, with no room for a trigger.
 - Some first-person models have no trigger (the assault rifle's, the
   sniper rifle's, the shotgun's): their animation's index finger hooks
   round an empty gap under the receiver, ahead of the grip. So one is
