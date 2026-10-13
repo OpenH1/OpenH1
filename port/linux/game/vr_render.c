@@ -224,6 +224,9 @@ boolean vr_death_viewing(void);
 struct dead_camera *director_vr_dead_camera(void);
 void vr_death_camera(real_point3d const *position, real_vector3d const *forward, real_vector3d const *up,
 	real half_across, real half_up);
+/* vr_headwall.c's */
+void vr_headwall_update(boolean playing, real_point3d const *eye, real_point3d const *head,
+	real_vector3d const *forward, real_vector3d const *up, real near, real units, real seconds);
 real render_interpolation_fraction(void);
 void platform_log(char const *format, ...);
 char const *config_string(char const *name);
@@ -534,6 +537,7 @@ render and rasterizer cameras); FALSE without a VR frame to draw */
 boolean vr_render_camera(struct render_camera *camera, struct render_camera *rasterizer_camera)
 {
 	struct halo_vr_view *view = &vr_render.view;
+	real_point3d game_eye;
 	real base_yaw;
 	real pitch;
 	real_vector3d offset;
@@ -553,6 +557,7 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	vr_render.cinematic_head = FALSE;
 	if (!halo_vr_view(view))
 		return FALSE;
+	game_eye = camera->position;
 	vr_render.cinematic_head = cinematic_head();
 	cinematic_log(vr_render.cinematic_head, hands_posed());
 	/* the turn of the stick (and of the aim) while the aim follows the head;
@@ -636,6 +641,11 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	camera->position.y += offset.j * view->world_units_per_metre;
 	camera->position.z += offset.k * view->world_units_per_metre;
 	vr_render.head_position = camera->position;
+	/* the head inside a wall, or through it, fades the view: tested from
+	the game's own eye, where the game knows the player can be (on foot
+	alone: vr_headwall.c) */
+	vr_headwall_update(halo_vr_aiming() && !cinematic_in_progress() && !dead, &game_eye, &camera->position,
+		&camera->forward, &camera->up, camera->z_near, view->world_units_per_metre, view->seconds);
 	vr_seat_log_camera(&camera->position, &camera->forward, &camera->up, view->seconds);
 	vr_death_camera(&camera->position, &camera->forward, &camera->up,
 		(real)atan(MIN(-MIN(view->fov[0][0], view->fov[1][0]), MAX(view->fov[0][1], view->fov[1][1]))),

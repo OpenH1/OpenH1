@@ -1811,6 +1811,35 @@ turns it about your head.
 Only the view changes: the game's camera (which the sounds are heard from),
 the revert, the respawn and what the netcode sends are the game's.
 
+#### Your head in a wall (`vr.head_in_wall`)
+
+Your head moves in the room apart from your body in the game, which the
+game moves and keeps off the walls (its eye stays some 0.6 m from them).
+Lean or step into a wall, a rock or a pillar and your eyes would go into it,
+and see through it: the level's far side, and what is behind. With
+`"fade"` (the default) the view fades to black as your eyes go in, over the
+last few centimetres, and comes back as you lean or step out (over a
+quarter of a second). The HUD stays, saying to step back, and a scope shows
+nothing meanwhile (it would see through the wall too).
+
+- The game draws nothing nearer the eyes than 19 cm (its near plane): a
+  wall closer than that before your eyes is cut away whole and shows what
+  is behind it. So the view begins to fade where the wall before your eyes
+  is 25 cm away and is black at 20 cm; your eyes in it, or through it (the
+  line from the game's eye to yours crossing it), it is black whichever way
+  you look.
+- Leaning around a corner or out from behind a rock with your head in the
+  open, crouching behind cover, and your head near a wall (farther than
+  that) do not fade, nor does anything in a vehicle's seat (its own hull
+  about you) or as you die.
+- What counts is what blocks the game's line of sight: the level, scenery
+  and machines (doors); not grates and fences (two-sided surfaces), the
+  invisible walls at a level's edges, water, other people, nor vehicles,
+  which drive past your head (and whose hulls are not their models).
+- `"off"`: you see through it, as before.
+
+Only the view changes: your body stays where the game has it.
+
 #### With a gamepad (`vr.aim = "gamepad"`)
 
 A gamepad (an Xbox controller, by Bluetooth or USB, or the headset's
@@ -1932,6 +1961,7 @@ headset's session is opened with, apply from the next start.
 | `vr.comfort_vignette` | `true` | `HALO_VR_COMFORT_VIGNETTE` | The edges of the view dim a little while the view turns fast with a Ghost steered by its handlebars, or it speeds up or slows hard. |
 | `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, the eye stays put in the vehicle, riding with it but not with the body climbing in and out, a turret's turning or flinches, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
 | `vr.death_view` | `"face"` | `HALO_VR_DEATH_VIEW` | As you die: `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |
+| `vr.head_in_wall` | `"fade"` | `HALO_VR_HEAD_IN_WALL` | Your head leaned or stepped into a wall or a pillar, or through it: `"fade"`, the view fades to black as your eyes go in (where the wall before them comes within 25 cm, black at 20 cm, just short of the game's near plane; black once they are in it or past it) and back as they come out, the HUD saying to step back, a scope showing nothing; not in a vehicle's seat (above, "Your head in a wall"). `"off"`: you see through it. |
 | `vr.turn` | `"snap"` | `HALO_VR_TURN` | `"snap"` or `"smooth"` (with `vr.aim = "gamepad"`, `vr.gamepad_view` instead). |
 | `vr.snap_turn_angle` | `30.0` | `HALO_VR_SNAP_TURN_ANGLE` | Degrees of each snap turn. |
 | `vr.smooth_turn_speed` | `150.0` | `HALO_VR_SMOOTH_TURN_SPEED` | Degrees each second of smooth turning. |
@@ -1974,6 +2004,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_melee_log` | `false` | `HALO_VR_MELEE_LOG` | Log the right hand's swings that did not melee (`vr.melee_gesture`) too: how fast and how far each went, and why it was none (too slow, a holster, a throw, a reload, the tracking jumping). Each melee by a swing is logged whatever this is. |
 | `debug.vr_test_weapon` | `""` | `HALO_VR_TEST_WEAPON` | Put a weapon in the first player's hand, for automated tests of the reload by hand: `"<text> <seconds>"`, that many seconds into the level the player's weapons are taken and a new one is in hand, the first of the map's whose tag name has the text in it (`"shotgun 15"` on d20, `"rocket 15"` on b30). |
 | `debug.vr_test_seat` | `""` | `HALO_VR_TEST_SEAT` | Get into a vehicle's seat and out again, for automated tests of the view in a seat: `"<label> <seconds> [<seconds seated>]"`, the first player gets into the seat whose label has this text in it (`"gunner"`, `"W-driver"`, `"GT-gunner"`: the Shade) that many seconds into the level, as the action button does, in a vehicle of the kind made before them three seconds earlier (one found in the level, else of a kind the map has a tag for: `"G-driver"` makes a Ghost on b30, whose Ghosts come later; standing at the seat's entrance from two seconds earlier), and out again after as many seconds seated (10 by default). From a second before, the log says how far the view moved and turned each frame (and its heading and roll, the vehicle's heading, pitch and roll, the comfort vignette and the frame's time: degrees, seconds), how dark a blink made it, and each phase's sums (on foot, entering, seated, exiting) with how much of the motion was seen (not in a blink's full darkness), and each blink: with `debug.vr_test_head = "0"`, the motion the player did not make. |
+| `debug.vr_test_head_wall` | `""` | `HALO_VR_TEST_HEAD_WALL` | Put the first player's eye at `"<x> <y> <z>"` (world units) once they have been on foot 2 s, once a run, for automated tests of the head in a wall (`vr.head_in_wall`): `debug.vr_test_hands` then leans the head into the world from a known place, and logs, as the head moves and the fade changes, where the game's eye is and where the view looks, how far the head is from it, how far past the world it is, how near the world is ahead (within the near plane and 6 cm), and how dark the view is to be and is; and once the unit's collision radius and the near plane. |
 | `debug.vr_test_fov` | `""` | `HALO_VR_TEST_FOV` | Each eye's field of view instead of the runtime's, for automated tests of what the edges of a wide view show: `"<outward> <inward> <up> <down>[ <cant>]"`, in degrees from the eye's axis, each eye turned outward by `<cant>` degrees (as canted displays are; the game's 3D view assumes the eyes look the same way, so only the visor and the helmet's rim are right with it). |
 | `debug.vr_gpu_time` | `false` | `HALO_VR_GPU_TIME` | With `debug.gpu_stats`, log the GPU's time for each frame too, waiting for it at the present (which costs the overlap of the GPU and the game, and lets the GPU's clock drop: an upper bound). |
 
@@ -2551,6 +2582,31 @@ supersampling costs as above, and multisampling the eye pass
   it moves slower than 1 m/s from 0.5 s after it turned to them (at the
   latest 2.5 s), and again 4 m on, at most every 2 s; never as the dark
   before the player is back comes.
+- The head in a wall (`vr.head_in_wall`, `game/vr_headwall.c`): each frame
+  on foot (in the first-person view, alive, no cinematic), once the eyes
+  are placed (`vr_render.c`), the line from the game's eye (before the
+  head moves it: the unit's physics keeps it 0.2 world units, 0.61 m, from
+  the walls) to the eyes' middle and 5 cm on (the eyes' sphere) is tested
+  with `collision_test_vector`, as the game's line of sight is
+  (`_collision_test_for_line_of_sight_flags`: front faces of the
+  structure, scenery and machines, not two-sided nor invisible surfaces)
+  but without vehicles, ignoring the player's unit; how far the sphere's
+  front is past the hit fades the view to black over 5 cm (black with the
+  eyes' middle at the surface, past which the tests from it find nothing,
+  front faces only). And from the eyes' middle, five lines ahead (along
+  the view and 15 degrees off it up, down, left and right) as far as the
+  near plane (`rasterizer_near_clip_distance`, 0.0625 world units) and
+  6 cm: the nearest depth along the view fades it over 5 cm, black 1 cm
+  short of the near plane, where a wall facing the eyes is clipped whole
+  (and a little before which the edges of the view, where a rock bulges
+  nearer than it is at the middle, see through already). The
+  darkness rises to that at most in 0.05 s and falls in 0.25 s; it is one
+  more multiple of the eyes' images (`vr_headwall_draw`, after the
+  death's), and from half dark the HUD's state message is ours
+  (`hud.c`, outranking the game's) and the scope pass is skipped
+  (`render.c`), so neither a raised scope nor the smart-link sees through.
+  A wall beside the head clipped at the edge of the view (leaning around
+  a corner) does not fade it.
 - The sky is drawn about the camera at a thousandth of its size, a few
   metres away: its draws move to each eye as from the centre of the head,
   so that it is at infinity. Its draws are depth-clamped rather than

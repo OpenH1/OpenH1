@@ -169,6 +169,8 @@ void vr_render_crosshairs(void);
 void vr_render_world_marks(void);
 void vr_seat_blink_draw(void);
 void vr_death_draw(void);
+void vr_headwall_draw(void);
+boolean vr_headwall_faded(void);
 /* the view in a raised scope, or the smart-link's on the visor while zoomed
 (port/linux/game/vr_scope.c), drawn before the eyes into an image of its
 own: the eye pass's state (the clusters seen, the lights, the scene) is then
@@ -508,6 +510,9 @@ static void render_window(
 			vr_seat_blink_draw();
 			/* the world dimmed as the player dies (port/linux/game/vr_death.c) */
 			vr_death_draw();
+			/* the view faded with the head in a wall
+			(port/linux/game/vr_headwall.c) */
+			vr_headwall_draw();
 			/* the crosshairs where the aim meets the world, in the eyes */
 			vr_render_crosshairs();
 			/* the teammates' triangles, the players' names and the
@@ -762,7 +767,10 @@ static void render_vr_player_frame(
 	{
 		struct render_window scope_window = *window;
 
-		if (vr_scope_camera(&scope_window.render_camera, &scope_window.rasterizer_camera))
+		/* (none with the head in a wall: the scope, at the eye or the hand,
+		would see through it as the faded eyes do not:
+		port/linux/game/vr_headwall.c) */
+		if (vr_scope_camera(&scope_window.render_camera, &scope_window.rasterizer_camera) && !vr_headwall_faded())
 		{
 			vr_render_scope_begin();
 			render_vr_scope_pass = TRUE;

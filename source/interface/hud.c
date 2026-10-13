@@ -350,6 +350,23 @@ static void hud_show_action_response(
 	short respawn_failure = players_get_respawn_failure();
 	short item_name_index;
 
+#ifdef HALO_VR
+	/* port: the VR mode's head in a wall fades the view, which the HUD's
+	layer is not (vr.head_in_wall, port/linux/game/vr_headwall.c): its
+	state message says to step back */
+	if (render.local_player_index == 0)
+	{
+		extern boolean vr_headwall_prompt(wchar_t *text, long length);
+		wchar_t text[64];
+
+		if (vr_headwall_prompt(text, NUMBEROF(text)))
+		{
+			hud_enable_custom_state_message(render.local_player_index, TRUE);
+			hud_set_state_text(render.local_player_index, text);
+			return;
+		}
+	}
+#endif
 	if (respawn_failure != _player_respawn_failure_none &&
 		player->unit_index == NONE)
 	{

@@ -351,6 +351,11 @@ static const struct config_setting config_settings[] =
 		"in a blink if it lands out of sight, until the game brings you back\n"
 		"from the dark; \"still\" the same, never turned; \"game\" the game's\n"
 		"camera pulling away from the body." },
+	{ "vr.head_in_wall", _config_string, "\"fade\"", "HALO_VR_HEAD_IN_WALL", _environment_value, _platform_desktop,
+		"Your head leaned or stepped into a wall or a pillar, or through it:\n"
+		"\"fade\" the view fades to black as your eyes go in, and back as\n"
+		"they come out, the HUD saying to step back; \"off\" you see through\n"
+		"it." },
 	{ "vr.turn", _config_string, "\"snap\"", "HALO_VR_TURN", _environment_value, _platform_desktop,
 		"How the right stick turns: \"snap\" in steps (vr.snap_turn_angle),\n"
 		"\"smooth\" continuously (vr.smooth_turn_speed); with vr.aim = \"gamepad\",\n"
@@ -901,6 +906,10 @@ static const struct config_setting config_settings[] =
 		"vehicle's tag name (\"warthog\"), on its roof (by default) or side, or\n"
 		"upright (to enter), its middle as far ahead as puts it within reach (by\n"
 		"default); empty none." },
+	{ "debug.vr_test_head_wall", _config_string, "\"\"", "HALO_VR_TEST_HEAD_WALL", _environment_value, _platform_desktop,
+		"Put the first VR player's eye at \"<x> <y> <z>\" (world units) once they\n"
+		"have been on foot 2 s, once, for automated tests of the head in a wall\n"
+		"(vr.head_in_wall) with debug.vr_test_hands, which logs the test." },
 	{ "debug.vr_test_target", _config_string, "\"\"", "HALO_VR_TEST_TARGET", _environment_value, _platform_desktop,
 		"Place a still biped before the first VR player 3 s after they first aim\n"
 		"on foot (again 2 s after it dies), the level's AI erased, point the right\n"
