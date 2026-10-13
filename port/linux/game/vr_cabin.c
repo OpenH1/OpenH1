@@ -24,9 +24,16 @@ the model as the model is drawn:
 - the Scorpion's commander (vr.scorpion_view = "hatch", the default): the eye
   above the turret, on its axis, so that it does not swing as the turret
   turns, a cupola ring with its lid open about it on the turret.
+- the Banshee's pilot: the model's canopy closes over the pilot's head in
+  flight, and faces out, so only the nose was seen below; now a cockpit
+  about the pilot: on the hull, a sill at the shoulders, a console ahead
+  with the Covenant's glowing panels and two handles; on the canopy (so that
+  it opens with it), a rail along each side, a spine overhead, a bow ahead
+  framing the view, and a shell behind the head. The view ahead and above
+  stays open, as through the canopy.
 
 The view stays the player's, level and turned by the head and the stick (as
-in any seat): the Scorpion turns toward its driver's facing (the game's
+in any seat; how the view turns in a Banshee is not this file's): the Scorpion turns toward its driver's facing (the game's
 steering, vehicles.c), so a view turned with the hull would chase its own
 turn; the hull turns under the eye toward where the player looks, as it
 does under the game's camera.

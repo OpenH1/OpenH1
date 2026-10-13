@@ -322,6 +322,102 @@ def scorpion_hatch():
 	return {'eye': eye, 'meshes': [ring, inner_ring]}
 
 
+# ---------- the Banshee (vehicles\banshee\banshee: banshee, 512 x 512)
+
+BANSHEE_BASE_MAP_SCALE = (1.989500, 0.996510)
+BANSHEE_CONSOLE = (0.360, 0.915, 0.750, 0.995)
+BANSHEE_GLOW = (0.580, 0.555, 0.660, 0.600)
+BANSHEE_PLATE = (0.270, 0.620, 0.400, 0.700)
+BANSHEE_MACHINE = (0.430, 0.705, 0.750, 0.830)
+BANSHEE_SHELL = (0.700, 0.560, 0.970, 0.700)
+BANSHEE_DARK = (0.440, 0.730, 0.560, 0.800)
+
+# the canopy (its node "frame cab") as the game poses it in flight, closed
+# over the pilot, from the hull's node (logged on the simulated headset: its
+# axes, forward, left and up, and its place): it hinges at its front, turned
+# 26.5 degrees from the model's pose, in which it stands open
+BANSHEE_HULL = (-0.020, 0.000, 0.425)
+BANSHEE_CAB = (0.416763, 0.000000, 0.641160)
+BANSHEE_CAB_CLOSED = ((0.89494, 0.0, 0.44620), (0.0, 1.0, 0.0), (-0.44620, 0.0, 0.89494), (0.43676, 0.0, 0.21616))
+
+
+def banshee_closed_to_model(mesh):
+	"""a mesh made about the closed canopy, put in the model's pose (the
+	canopy's node's vertices are open there): the closed pose's inverse"""
+	f, l, u, p = BANSHEE_CAB_CLOSED
+	def back(v):
+		# (the rotation's transpose)
+		return (dot(v, f), dot(v, l), dot(v, u))
+	moved = []
+	for pos, n, uv in mesh.vertices:
+		rel = sub(sub(pos, BANSHEE_HULL), p)
+		moved.append((add(BANSHEE_CAB, back(rel)), back(n), uv))
+	mesh.vertices = moved
+
+
+def arc(cx, cy, cz, ry, rz, a0, a1, segments):
+	"""points on an ellipse across the Banshee (y, z) at forward cx, from angle
+	a0 to a1 (0 to the left, pi/2 up)"""
+	return [(cx, cy + ry * math.cos(a0 + (a1 - a0) * k / segments), cz + rz * math.sin(a0 + (a1 - a0) * k / segments))
+		for k in range(segments + 1)]
+
+
+def banshee_cockpit():
+	"""the pilot's cockpit, inside the canopy as it closes: on the hull, a sill
+	about the pilot at the shoulders, a console ahead with the Covenant's
+	glowing panels, two handles; on the canopy (made closed, put open as the
+	model has it, so that it opens with the canopy), a rail along each side,
+	a spine overhead, a bow ahead framing the view, and a shell behind the
+	head. The view stays open ahead and above, as through the canopy: its own
+	faces face out, and are not drawn from inside"""
+	eye = (0.131, 0.000, 0.920)
+	shader = 'vehicles\\banshee\\shaders\\banshee'
+	hull = Mesh('frame hull', shader)
+	canopy = Mesh('frame cab', shader)
+	# the sill: a ledge each side and its inner face down to the pilot's sides
+	for sign in (1.0, -1.0):
+		yi, yo = 0.165 * sign, 0.205 * sign
+		hull.face([(-0.120, yi, 0.860), (0.260, yi, 0.860), (0.260, yo, 0.868), (-0.120, yo, 0.868)], eye, BANSHEE_PLATE)
+		hull.face([(-0.120, yi, 0.790), (0.260, yi, 0.790), (0.260, yi, 0.860), (-0.120, yi, 0.860)], eye, BANSHEE_MACHINE)
+	# the console: across ahead, its face to the pilot sloping back, its top
+	segments = 6
+	for k in range(segments):
+		a0, a1 = math.pi * k / segments, math.pi * (k + 1) / segments
+		def at(x, z, a):
+			return (x - 0.05 * math.sin(a), 0.165 * math.cos(a), z)
+		# (its face, the glowing panels across it; its top)
+		hull.face([at(0.255, 0.760, a0), at(0.255, 0.760, a1), at(0.235, 0.832, a1), at(0.235, 0.832, a0)], eye,
+			(BANSHEE_CONSOLE[0] + (BANSHEE_CONSOLE[2] - BANSHEE_CONSOLE[0]) * k / segments, BANSHEE_CONSOLE[1],
+			BANSHEE_CONSOLE[0] + (BANSHEE_CONSOLE[2] - BANSHEE_CONSOLE[0]) * (k + 1) / segments, BANSHEE_CONSOLE[3]))
+		hull.face([at(0.235, 0.832, a0), at(0.235, 0.832, a1), at(0.330, 0.842, a1), at(0.330, 0.842, a0)], eye, BANSHEE_PLATE)
+	# a glowing eye on the console's middle
+	hull.box((0.228, -0.025, 0.836), (0.250, 0.025, 0.848), {'x': BANSHEE_GLOW, 'X': BANSHEE_DARK, 'y': BANSHEE_DARK,
+		'Y': BANSHEE_DARK, 'z': BANSHEE_DARK, 'Z': BANSHEE_GLOW}, faces='xyYZ')
+	# the handles, either side ahead of the pilot, leaning back to the hands
+	for sign in (1.0, -1.0):
+		hull.bar((0.230, 0.115 * sign, 0.790), (0.205, 0.120 * sign, 0.850), 0.008, BANSHEE_DARK)
+		hull.bar((0.205, 0.120 * sign, 0.850), (0.195, 0.120 * sign, 0.880), 0.013, BANSHEE_MACHINE)
+	# on the canopy, closed: the rails along its lower sides
+	for sign in (1.0, -1.0):
+		canopy.bar((-0.200, 0.190 * sign, 0.900), (0.380, 0.180 * sign, 0.905), 0.010, BANSHEE_PLATE)
+	# the spine overhead, and the bow ahead (from rail to rail over the top)
+	canopy.bar((-0.200, 0.0, 1.030), (0.400, 0.0, 1.045), 0.010, BANSHEE_PLATE)
+	bow = arc(0.360, 0.0, 0.905, 0.180, 0.140, 0.0, math.pi, 8)
+	for k in range(8):
+		canopy.bar(bow[k], bow[k + 1], 0.010, BANSHEE_PLATE)
+	# the shell behind the head: across the canopy from rail to rail over the
+	# top, its inside toward the pilot, from behind the head back
+	back0 = arc(-0.060, 0.0, 0.900, 0.188, 0.135, 0.0, math.pi, 8)
+	back1 = arc(-0.260, 0.0, 0.900, 0.188, 0.130, 0.0, math.pi, 8)
+	for k in range(8):
+		canopy.face([back0[k], back0[k + 1], back1[k + 1], back1[k]], eye,
+			(BANSHEE_SHELL[0] + (BANSHEE_SHELL[2] - BANSHEE_SHELL[0]) * k / 8, BANSHEE_SHELL[1],
+			BANSHEE_SHELL[0] + (BANSHEE_SHELL[2] - BANSHEE_SHELL[0]) * (k + 1) / 8, BANSHEE_SHELL[3]))
+	canopy.face(list(reversed(back1)), eye, BANSHEE_SHELL)
+	banshee_closed_to_model(canopy)
+	return {'eye': eye, 'meshes': [hull, canopy]}
+
+
 CABINS = [
 	{'name': 'scorpion_inside', 'title': "the Scorpion's driver, inside", 'model': 'vehicles\\scorpion\\scorpion',
 		'base_map_scale': SCORPION_BASE_MAP_SCALE,
@@ -330,6 +426,8 @@ CABINS = [
 		'base_map_scale': SCORPION_BASE_MAP_SCALE,
 		'model': 'vehicles\\scorpion\\scorpion', 'seat': 'scorpion-driver', 'setting': 'vr.scorpion_view', 'view': 'hatch',
 		'make': scorpion_hatch},
+	{'name': 'banshee_cockpit', 'title': "the Banshee's pilot", 'model': 'vehicles\\banshee\\banshee',
+		'base_map_scale': BANSHEE_BASE_MAP_SCALE, 'seat': 'B-driver', 'make': banshee_cockpit},
 ]
 
 

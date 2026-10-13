@@ -1890,6 +1890,17 @@ In both, the view stays yours, level and turned by your head and the stick:
 the Scorpion turns toward where you aim as you drive it, as it does under
 the game's camera, so the hull turns under you, not the view with it.
 
+
+#### Flying a Banshee
+
+The Banshee's canopy closes over your head as you fly, and its faces face
+out, so from the seat you saw only its nose below you. Now you sit in a
+cockpit: a sill at your shoulders, a console ahead with the Covenant's
+glowing panels and two handles, and on the canopy a rail along each side, a
+spine overhead, a bow ahead framing the view and a shell behind your head,
+opening with the canopy as you get in and out. The view ahead and above
+stays open, as through the canopy.
+
 #### Your body (`display.first_person_legs`)
 
 With LEGS on (Video Setup > FOV and Viewmodels, `display.first_person_legs`;
@@ -2651,7 +2662,6 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   The Scorpion's: inside, a driver's compartment ahead of the slot, under
   the front plate, its vision blocks open (the hull's own faces about it
   face out and are not drawn from inside); the hatch, a cupola ring on the
-  turret, the eye on the turret's axis. The view stays the player's in its
   seat: the game turns a Scorpion toward its driver's facing (vehicles.c),
   so a view turned with the hull would chase its own turn.
 - The weapon's kick (`game/vr_feel.c`): the game tells it of each shot of
@@ -2678,6 +2688,15 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   from frame to frame. The patterns are played by `src/vr.c` a pulse at a
   time as each comes due, at the frame (OpenXR's haptics: each pulse
   replaces the one before).
+  turret, the eye on the turret's axis. The Banshee's: its canopy closes
+  over the pilot in flight and faces out, so only the nose was seen; a
+  cockpit about the pilot, on the hull a sill, a console with the
+  Covenant's glowing panels and two handles, and on the canopy's node
+  (made closed as the game poses it in flight, put open as the model is)
+  the rails, a spine, a bow framing the view ahead and a shell behind the
+  head, the view ahead and above left open. The view stays the player's in
+  its seat: the game turns a Scorpion toward its driver's facing
+  (vehicles.c), so a view turned with the hull would chase its own turn.
 - The game throws a grenade in an animation: the throw button starts the
   unit's throw animation, its third frame puts the grenade in the unit's
   left hand, and its key frame (the cyborg's with the assault rifle: frame
