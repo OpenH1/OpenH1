@@ -63,6 +63,9 @@ struct halo_vr_view
 	float hand_forward[3];
 	float hand_up[3];
 	float hand_position[3];
+	/* where the aim points from hand_position: the line the reticle is
+	drawn along and the game is aimed by (halo_vr_aim_line) */
+	float aim_forward[3];
 	/* where the weapon's hand is from the eye it is drawn for (metres:
 	right, up, forward) */
 	float weapon_offset[3];
@@ -331,8 +334,21 @@ int halo_vr_aim(float current_yaw, int long_gun, float *yaw, float *pitch);
 /* the aim no longer follows the head (a cinematic, a vehicle's camera
 taking over): the next halo_vr_aim starts again from the player's facing */
 void halo_vr_aim_release(void);
+/* with the right controller aiming (vr.aim = "controller"), the line
+halo_vr_aim aimed along last: from the controller (game axes from the
+recentred head, metres) along its aim (halo_vr_view's aim_forward, as it is
+now), and the turn of the stick (radians) the head's axes are turned by in
+the world; 0 without it. The game aims from its own eye at where this line
+meets the world (port/linux/game/vr_aim.c), so that the shot goes where the
+reticle is, not along a line beside it. */
+int halo_vr_aim_line(float position[3], float forward[3], float *body_yaw);
 /* debug.vr_test_hands holds the controllers (vr_hands.c marks them) */
 int halo_vr_test_hands(void);
+/* debug.vr_test_target: the right controller held by debug.vr_test_hands
+points along this (game axes from the recentred head: at the target the
+game placed, vr_aim.c), from the next frame; NULL: as debug.vr_test_hands
+has it */
+void halo_vr_test_point(const float direction[3]);
 /* the throw with the left hand: its phase (HALO_VR_THROW_*), and what it
 is; whether the game would throw a grenade now (the first player on foot,
 with one, not throwing), each frame, which the hand needs to take one; and

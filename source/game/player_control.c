@@ -779,6 +779,14 @@ static void handle_one_player_input(
 					unit->object.parent_object_index == NONE && vr_render_long_gun(current_weapon_index),
 					&vr_yaw, &vr_pitch);
 			}
+			/* (the controller's aim from the game's eye to where its line
+			meets the world, where the reticle is: port/linux/game/vr_aim.c) */
+			if (local_player_index == 0)
+			{
+				extern void vr_aim_converge(long unit_index, boolean aiming, real *yaw, real *pitch);
+
+				vr_aim_converge(player->unit_index, vr_aim == 1, &vr_yaw, &vr_pitch);
+			}
 			/* (a grenade thrown with the left hand: whether the game would
 			throw one, and while the hand throws, the facing along the throw,
 			so that the netcode's copies of it go the same way:

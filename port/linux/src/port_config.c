@@ -820,6 +820,18 @@ static const struct config_setting config_settings[] =
 		"own, the first in hand, for automated tests of the scopes: \"<name>[,\n"
 		"<name>]\", parts of the weapons' tag names (\"sniper rifle, pistol\");\n"
 		"empty none." },
+	{ "debug.vr_test_target", _config_string, "\"\"", "HALO_VR_TEST_TARGET", _environment_value, _platform_desktop,
+		"Place a still biped before the first VR player 3 s after they first aim\n"
+		"(again 2 s after it dies), the level's AI erased, point the right\n"
+		"controller held by debug.vr_test_hands at its middle, and log each hit\n"
+		"on it, for automated tests of the aim: \"<metres ahead> [<metres right>\n"
+		"[<name>]]\", name a part of the biped's tag name (\"grunt\" if none);\n"
+		"empty none." },
+	{ "debug.vr_aim_log", _config_boolean, "false", "HALO_VR_AIM_LOG", _environment_value, _platform_desktop,
+		"Log the controller's aim once a tick: where its line meets the world,\n"
+		"how far the game's aim is turned to meet it there from the game's eye,\n"
+		"how far from that point the unit's aim passes, and whether the reticle\n"
+		"is red." },
 #endif
 	{ "debug.null_renderer", _config_boolean, "false", "HALO_NULL_RENDERER", _environment_set_is_true, _platform_all,
 		"Run without a window, drawing nothing." },

@@ -146,6 +146,12 @@ static struct
 	frame's, and the view logged last (enum cinematic_view) */
 	boolean cinematic_head;
 	short cinematic_logged;
+	/* the player's eye as the last frame was drawn (base_position), while
+	the VR mode aimed: the player's unit then and the game's tick, for the
+	aim (vr_render_aim_hit) before the next frame is drawn */
+	boolean aim_base_valid;
+	long aim_base_unit_index;
+	long aim_base_tick;
 } vr_render;
 
 /* what the first player's view is, as logged (cinematic_log) */
@@ -536,6 +542,13 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 		&camera->position);
 	vr_render.base_position = camera->position;
 	vr_render.base_yaw = base_yaw;
+	vr_render.aim_base_valid = halo_vr_aiming() && !cinematic_in_progress() && !dead &&
+		local_player_get_player_index(0) != NONE;
+	if (vr_render.aim_base_valid)
+	{
+		vr_render.aim_base_unit_index = player_get(local_player_get_player_index(0))->unit_index;
+		vr_render.aim_base_tick = game_time_get();
+	}
 	vr_render.aim_forward = camera->forward;
 	vr_render.aim_up = camera->up;
 	if (view->gamepad_aim && halo_vr_aiming() && local_player_get_player_index(0) != NONE)
@@ -750,7 +763,7 @@ static boolean aim_line(real_point3d *origin, real_vector3d *direction)
 	else
 	{
 		hand_point(view->hand_position, origin);
-		yaw_rotate(vr_render.base_yaw, view->hand_forward, direction);
+		yaw_rotate(vr_render.base_yaw, view->aim_forward, direction);
 	}
 	return normalize3d(direction) > 0.0f;
 }
@@ -826,6 +839,40 @@ boolean vr_render_scope_aim(real_point3d *point)
 	point->x = origin.x + direction.i * distance;
 	point->y = origin.y + direction.j * distance;
 	point->z = origin.z + direction.k * distance;
+	return TRUE;
+}
+
+/* vr_aim.c, as the player's control aims, before this frame is drawn: the
+right controller's line as vr.c aims along it now (halo_vr_aim_line: game
+axes from the recentred head, metres, and the stick's turn) in the world,
+from the player's eye as the last frame drew it (the eye is the game's at
+the latest tick: no tick has passed since that frame was drawn); how far
+along it the world is met, as the reticle is drawn there (aim_distance, not
+the reticle's smoothed distance: what the line is on now); and the world's
+units a metre. FALSE before a frame is drawn aiming with this unit, or
+after a tick has passed (a map ended, a revert). */
+boolean vr_render_aim_hit(const float position[3], const float forward[3], real yaw, real_point3d *origin,
+	real_vector3d *direction, real *distance, real *units)
+{
+	long player_index = local_player_get_player_index(0);
+	real_vector3d offset;
+
+	if (!vr_render.aim_base_valid || player_index == NONE ||
+		player_get(player_index)->unit_index != vr_render.aim_base_unit_index ||
+		game_time_get() < vr_render.aim_base_tick || game_time_get() > vr_render.aim_base_tick + 1 ||
+		vr_render.view.world_units_per_metre <= 0.0f)
+	{
+		return FALSE;
+	}
+	*units = vr_render.view.world_units_per_metre;
+	yaw_rotate(yaw, position, &offset);
+	origin->x = vr_render.base_position.x + offset.i * *units;
+	origin->y = vr_render.base_position.y + offset.j * *units;
+	origin->z = vr_render.base_position.z + offset.k * *units;
+	yaw_rotate(yaw, forward, direction);
+	if (normalize3d(direction) <= 0.0f)
+		return FALSE;
+	*distance = aim_distance(origin, direction);
 	return TRUE;
 }
 
@@ -1314,7 +1361,7 @@ boolean vr_render_hud_camera(struct render_camera *camera)
 			if (view->gamepad_aim)
 				forward = vr_render.aim_forward;
 			else if (view->controller_aim)
-				yaw_rotate(base_yaw, view->hand_forward, &forward);
+				yaw_rotate(base_yaw, view->aim_forward, &forward);
 			else
 				view_rotate(base_yaw, pitch, view->head_forward, &forward);
 			point.x = camera->position.x + forward.i * 100.0f;

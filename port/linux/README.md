@@ -1168,6 +1168,27 @@ a wall, the ground) knocks the right controller.
 fast and how far each went, and why (too slow, a holster, a throw...); the
 thresholds are named constants at the top of `src/vr.c` (`MELEE_*`).
 
+#### Aiming with the controller (`vr.aim = "controller"`)
+
+The reticle is where the right controller's line meets the world (as far
+as what it is on, in both eyes), and the shot goes there: the game fires
+from its own eye (the Master Chief's, crouched or not, which is not where
+your hand is), so it is aimed from its eye at the point the reticle is on.
+The reticle turns red, and the bullets' own autoaim helps, as the game
+judges them from its eye along that aim. At any range, held low and to
+the side, after a step in the room away from the game's eye or in a
+vehicle's seat, what the reticle is on is what you hit.
+
+- A reticle nearer than 1.5 m (a wall at arm's length) aims at the point
+  1.5 m along your line, as the game's aim would swing about wildly
+  otherwise as the line crossed edges near and far: the shot meets so near
+  a wall within a few centimetres of the reticle anyway.
+- As the line moves from something near to something far, the reticle
+  moves to it along the line over a few hundredths of a second (its
+  distance smoothed, so that it does not jump), and the shot goes where
+  the line is on at once.
+- Only the aim's direction changes: the netcode sends it as ever.
+
 #### Throwing a grenade with the left hand (`vr.grenade_throw = "gesture"`)
 
 Throw it as you would a ball: squeeze the left grip to take a grenade (a
@@ -1604,6 +1625,8 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_grenades` | `""` | `HALO_VR_TEST_GRENADES` | Give the first VR player these grenades as they first aim, for tests of the grenade held in the hand: `"<frags> <plasma grenades>"`. |
 | `debug.vr_test_finger` | `""` | `HALO_VR_TEST_FINGER` | The right index finger on the weapon's trigger instead of the weapon's own (`game/vr_hands.c`, `trigger_fingers`), for tests: `"<rest> <rest> <rest> <pull> <pull> <pull> [<travel> [<off> <off> <off>]]"`, its curl at each joint from the knuckle at rest, from the idle animation's (less than 0: straighter), and how much more at a full pull (radians), how far back the trigger goes (metres), and its curl off the trigger (the trigger's touch sensing no finger; a test pose's trigger less than 0). |
 | `debug.vr_test_weapons` | `""` | `HALO_VR_TEST_WEAPONS` | Give the first player these weapons in place of their own, the first in hand, once a map, 2 s after the player first aims (a level's script gives its own as the player takes control), for automated tests of the scopes: `"<name>[, <name>]"`, parts of the weapons' tag names (`"sniper rifle, pistol"`; b30 has no sniper rifle, a50 has both). |
+| `debug.vr_test_target` | `""` | `HALO_VR_TEST_TARGET` | Place a still biped before the first VR player, for automated tests of the aim: `"<metres ahead> [<metres right> [<name>]]"`, a biped whose tag's name has this in it (`"grunt"` if none), 3 s after they first aim, on the ground, turned left or right as little as puts it in sight, with no mind of its own (the level's AI erased, so that only the player's shots hit it), and again 2 s after it dies. The right controller held by `debug.vr_test_hands` points at its middle, and each hit on it is logged (`vr aim: test target`). |
+| `debug.vr_aim_log` | `false` | `HALO_VR_AIM_LOG` | Log the controller's aim once a tick: where its line meets the world, how far the game's aim was turned to meet it there from the game's eye, how far from that point the unit's aim passes, and whether the reticle is red (with `debug.vr_test_target`, how far the target's middle is from both). |
 | `debug.vr_throw_log` | `false` | `HALO_VR_THROW_LOG` | Log each step of a grenade thrown with the left hand (`vr.grenade_throw`): the grip taken (or why it holds nothing), the swing (or why a fast hand was none), the release's speed, power and direction, and the game's throw: when it began, its animations held or moved on to their release, and the grenade's place and speed. |
 | `debug.vr_melee_log` | `false` | `HALO_VR_MELEE_LOG` | Log the right hand's swings that did not melee (`vr.melee_gesture`) too: how fast and how far each went, and why it was none (too slow, a holster, a throw, a reload, the tracking jumping). Each melee by a swing is logged whatever this is. |
 | `debug.vr_test_weapon` | `""` | `HALO_VR_TEST_WEAPON` | Put a weapon in the first player's hand, for automated tests of the reload by hand: `"<text> <seconds>"`, that many seconds into the level the player's weapons are taken and a new one is in hand, the first of the map's whose tag name has the text in it (`"shotgun 15"` on d20, `"rocket 15"` on b30). |
@@ -1846,6 +1869,32 @@ supersampling costs as above, and multisampling the eye pass
   the world is. With both hands on a long gun, the facing and the weapon
   follow the line between the hands instead: still only an aim for the
   netcode.
+- The game fires from its own eye (`unit_adjust_projectile_ray`: the
+  unit's camera) and judges its red reticle and its bullets' autoaim from
+  there along the facing (`aim_assist.c`). Given the controller's
+  direction alone, its line was the controller's moved to its eye,
+  parallel, 30 to 50 cm away (the weapon held low and to the right; more as
+  the head leans or walks in the room away from the eye): with the reticle
+  on a grunt's middle the shot went over its head, saved only where the
+  bullets' autoaim reached: with the hand 0.9 m from the eye, a grunt 6 m
+  away was red 22 ticks of 664 and was killed twice in five bursts of the
+  rifle; the sniper rifle, zoomed, never turned red on a grunt 15 m away.
+  So the facing is the direction from the game's eye (as it fires from it:
+  `director_camera_deterministic`, crouched or not, or a vehicle's camera,
+  which aims the seat's weapon) to where the controller's line meets the
+  world, the reticle's point (`game/vr_aim.c`): taken as the player's
+  control aims, with the poses the aim is taken with, placed in the world
+  from the eye the last frame was drawn from (no tick has passed since),
+  and the line-of-sight test's distance, not the reticle's smoothed one.
+  No nearer than 1.5 m along the line, nor nearer the eye along it than
+  three times the eye's distance across it, so that the aim swings by 18
+  degrees at most. Measured on b30 (`debug.vr_test_target`,
+  `debug.vr_aim_log`), the rifle held 0.53 m from the eye, low and right:
+  the unit's aim passed 50 cm from the reticle's point before, 0 to 1 cm
+  after, on foot, crouched by the head (the eye 0.37 m away) and in the
+  Warthog's gunner seat (its camera 8 m behind); the grunt with the hand
+  0.9 m away red 542 ticks of 547 and killed five times, and the sniper
+  rifle's reticle red on it while zoomed.
 - With a gamepad (`vr.aim = "gamepad"`) the facing is the game's own, from
   the stick (`player_control.c`), and the netcode sees it as ever; the
   view before the head's turn and move is the facing's yaw and pitch

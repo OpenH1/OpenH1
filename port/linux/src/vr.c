@@ -287,6 +287,15 @@ static struct
 	int aiming;
 	int aimed;
 	int aim_synced;
+	/* the right controller's line halo_vr_aim aimed along last (game axes
+	from the recentred head), if it did (halo_vr_aim_line) */
+	int aim_line_valid;
+	float aim_line_position[3];
+	float aim_line_forward[3];
+	/* debug.vr_test_target: the right controller pointed along this
+	(halo_vr_test_point: game axes from the recentred head), if set */
+	int test_point_valid;
+	float test_point[3];
 	int snap_latched;
 	float recentre_time;
 	/* a gamepad's Back held (halo_vr_gamepad_back), and for how long */
@@ -2325,6 +2334,40 @@ int halo_vr_test_hands(void)
 	return settings.test_hand_poses > 0;
 }
 
+/* debug.vr_test_target: the right controller, held by debug.vr_test_hands,
+pointed along the direction the game gives (at a target it placed), its
+roll level; after test_hands_apply */
+static void test_point_apply(void)
+{
+	float forward[3], up[3] = { 0.0f, 1.0f, 0.0f }, back[3], right[3], along = 0.0f;
+	int axis;
+
+	if (!vr.test_point_valid || !settings.test_hand_poses || !vr.views.aim[1].valid)
+		return;
+	play_axes(vr.test_point, vr.origin_yaw, forward);
+	normalize(forward);
+	for (axis = 0; axis < 3; axis++)
+		along += up[axis] * forward[axis];
+	for (axis = 0; axis < 3; axis++)
+	{
+		up[axis] -= forward[axis] * along;
+		back[axis] = -forward[axis];
+	}
+	normalize(up);
+	right[0] = up[1] * back[2] - up[2] * back[1];
+	right[1] = up[2] * back[0] - up[0] * back[2];
+	right[2] = up[0] * back[1] - up[1] * back[0];
+	quaternion_from_axes(right, up, back, vr.views.aim[1].orientation);
+	memcpy(vr.views.grip[1].orientation, vr.views.aim[1].orientation, sizeof(vr.views.grip[1].orientation));
+}
+
+void halo_vr_test_point(const float direction[3])
+{
+	vr.test_point_valid = direction != NULL;
+	if (direction)
+		memcpy(vr.test_point, direction, sizeof(vr.test_point));
+}
+
 /* waits for the runtime's next frame and begins it; whether it did now */
 static int frame_begin(void)
 {
@@ -2361,6 +2404,7 @@ static int frame_begin(void)
 		vr.was_focused = vr.views.focused;
 	host_vr_input(&vr.input);
 	test_hands_apply();
+	test_point_apply();
 	input_update();
 	return 1;
 }
@@ -2534,6 +2578,7 @@ int halo_vr_view(struct halo_vr_view *view)
 		test_fov_apply();
 		jitter_apply();
 		test_hands_apply();
+		test_point_apply();
 	}
 	if (!vr.views.eye[0].valid)
 		return 0;
@@ -2606,6 +2651,7 @@ int halo_vr_view(struct halo_vr_view *view)
 		for (eye = 0; eye < 3; eye++)
 			offset[eye] = hand->position[eye] - vr.origin_position[eye];
 		game_axes(offset, vr.origin_yaw, view->hand_position);
+		memcpy(view->aim_forward, view->hand_forward, sizeof(view->aim_forward));
 	}
 	memcpy(view->weapon_offset, settings.weapon_offset, sizeof(view->weapon_offset));
 	/* the hands (vr.hands): where the controllers' grips are (else where
@@ -2658,6 +2704,7 @@ int halo_vr_aim(float current_yaw, int long_gun, float *yaw, float *pitch)
 	if (!(vr.frame || vr.pending) || !vr.views.should_render || !vr.views.head.valid)
 	{
 		vr.aiming = 0;
+		vr.aim_line_valid = 0;
 		return 0;
 	}
 	if (settings.gamepad_aim)
@@ -2691,15 +2738,22 @@ int halo_vr_aim(float current_yaw, int long_gun, float *yaw, float *pitch)
 		vr.aim_synced = 1;
 	}
 	vr.long_gun = long_gun;
+	vr.aim_line_valid = 0;
 	/* where the right controller points (vr.aim), or a long gun held in
 	both hands, else where the head looks */
 	if (settings.controller_aim && vr.views.aim[1].valid)
 	{
-		float up[3];
+		float up[3], offset[3];
+		int axis;
 
 		weapon_pointing(v, up);
 		game_axes(v, vr.origin_yaw, f);
 		head_yaw = atan2f(f[1], f[0]);
+		for (axis = 0; axis < 3; axis++)
+			offset[axis] = vr.views.aim[1].position[axis] - vr.origin_position[axis];
+		game_axes(offset, vr.origin_yaw, vr.aim_line_position);
+		memcpy(vr.aim_line_forward, f, sizeof(vr.aim_line_forward));
+		vr.aim_line_valid = 1;
 	}
 	*yaw = vr.body_yaw + head_yaw;
 	*pitch = asinf(f[2] < -1.0f ? -1.0f : f[2] > 1.0f ? 1.0f : f[2]);
@@ -2711,6 +2765,17 @@ void halo_vr_aim_release(void)
 {
 	vr.aim_synced = 0;
 	vr.aiming = 0;
+	vr.aim_line_valid = 0;
+}
+
+int halo_vr_aim_line(float position[3], float forward[3], float *body_yaw)
+{
+	if (!vr.aiming || !vr.aim_line_valid || settings.gamepad_aim)
+		return 0;
+	memcpy(position, vr.aim_line_position, sizeof(vr.aim_line_position));
+	memcpy(forward, vr.aim_line_forward, sizeof(vr.aim_line_forward));
+	*body_yaw = vr.body_yaw;
+	return 1;
 }
 
 void halo_vr_menus(int active)
