@@ -25,6 +25,22 @@ what the hand is at, and the HUD's prompt names it. A network game's client
 offers what the host would (the host decides pick-ups, by the body), and its
 hand takes only that one. X keeps working as ever. Ammunition is picked up
 by walking over it, as ever.
+
+A control the game would let the player use (a device control: a door's
+panel, a bridge's, a lift's: "Press X to activate"; in reach of the body,
+able to change, facing the eye: player_examine_nearby_device) is pressed by
+pushing either hand's fingers into its face (vr.c, press_update), a click
+in the hand: the game's action, as X. The game offers a control only along
+the player's aim, which in the VR mode is the right controller's, whatever
+the hand pressing does; so as the hand presses, the game's aim turns to the
+control (vr_grab_facing) until the game offers it, a tick later, and its
+action is pressed, as a network game's host decides a client's use of a
+control by the client's aim: the host, and the client's copy, both see the
+aim on the control as the action comes. The aim is the game's alone (the
+reticle, the weapon and the view follow the controller), for a few ticks;
+the controls of the campaign are large (a Forerunner holo panel, 2 m
+across) and the game mostly offers them at arm's length whatever the aim.
+Entering a vehicle stays on X.
 */
 
 #ifdef HALO_VR
@@ -33,6 +49,8 @@ by walking over it, as ever.
 #include "math/real_math.h"
 #include "ai/ai_script.h"
 #include "cache/cache_files.h"
+#include "devices/device_controls.h"
+#include "devices/devices.h"
 #include "game/game.h"
 #include "game/players.h"
 #include "items/weapon_definitions.h"
@@ -48,6 +66,7 @@ by walking over it, as ever.
 
 #include "../src/vr.h"
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -75,6 +94,16 @@ hand's), the pick-up pressed for this many ticks (the game takes the swap
 bit's press, not its hold) */
 #define VR_GRAB_WAIT_TICKS 15
 #define VR_GRAB_PRESS_TICKS 3
+/* a control is pressed within this radius of its face's middle (metres):
+half its bounding sphere's, within these */
+#define VR_GRAB_CONTROL_SMALLEST 0.06f
+#define VR_GRAB_CONTROL_LARGEST 0.5f
+/* a control pressed is used once the game offers it, within this many
+ticks, the game's aim turned to it meanwhile (the game offers the control
+its aim is on), its action pressed for this many ticks and the aim held on
+it one more */
+#define VR_GRAB_CONTROL_WAIT_TICKS 10
+#define VR_GRAB_ACTION_TICKS 2
 /* debug.vr_test_grab: placed this many seconds after the player first
 aims, this many at most */
 #define VR_GRAB_TEST_SECONDS 3
@@ -99,6 +128,13 @@ static struct
 	long taken;
 	long taken_until;
 	long press_until;
+	/* the control a hand pressed, until the game offers it (NONE: none) or
+	the tick it is given up at; its action pressed until this tick, and the
+	aim on it until that one */
+	long control;
+	long control_until;
+	long action_until;
+	long facing_until;
 	/* debug.vr_test_grab: when the player first aimed (NONE: not yet, on
 	this map), the thing placed, and the weapons the player carried, logged */
 	long test_first_aim_tick;
@@ -106,7 +142,8 @@ static struct
 	long test_weapon_index[VR_GRAB_TEST_THINGS];
 	long test_carried[2];
 	char test_logged[VR_GRAB_TEST_THINGS][160];
-} vr_grab = { NONE, 0, { 0 }, FALSE, NONE, 0.0f, 0.0f, NONE, NONE, NONE, NONE, FALSE, { NONE, NONE }, { NONE, NONE } };
+} vr_grab = { NONE, 0, { 0 }, FALSE, NONE, 0.0f, 0.0f, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, FALSE,
+	{ NONE, NONE }, { NONE, NONE } };
 
 /* the pick-up of a weapon, as the game offers it */
 static boolean vr_grab_weapon_result(short action_result)
@@ -181,6 +218,124 @@ static long vr_grab_test_weapon(struct unit_datum *unit, char const *name, real 
 	return weapon_index;
 }
 
+/* debug.vr_test_grab: "control [<n> [<metres>]]": the controls the unit
+could use (able to change) logged, and the unit stood before the nth
+nearest (the nearest by default), so far from its face (0.6 m by default),
+and (turn) the first player turned to it */
+static long vr_grab_test_control(long unit_index, boolean turn, char const *test)
+{
+	short wanted = 0;
+	real metres = 0.6f;
+	struct unit_datum *unit = unit_get(unit_index);
+	struct object_iterator iterator;
+	long usable[32];
+	real distances[32];
+	short count = 0, index, rank;
+	struct object_datum *control;
+	struct object_marker marker;
+	real_point3d face, place, above;
+	real_vector3d front, down = { 0.0f, 0.0f, -3.0f / 3.048f };
+	struct collision_result collision;
+	real yaw;
+
+	sscanf(test, "%hd %f", &wanted, &metres);
+	object_iterator_new(&iterator, _object_mask_control, 0);
+	while ((control = (struct object_datum *)object_iterator_next(&iterator)) != NULL)
+	{
+		real distance = distance3d(&unit->object.position, &control->object.bounding_sphere_center);
+		boolean marked = object_get_marker_by_name(iterator.index, "front", &marker, 1) == 1;
+		platform_log("vr grab: control %lx %s, %.1f m away, %.2f m across%s%s%s", iterator.index,
+			tag_name_strip_path(tag_get_name(control->definition_index)), distance * 3.048f,
+			control->object.bounding_sphere_radius * 2.0f * 3.048f,
+			device_can_change_position(iterator.index) ? ", usable" : "", marked ? ", its front marked" : "",
+			TEST_FLAG(control->object.flags, _object_outside_of_map_bit) ? ", outside the map" : "");
+		if (device_can_change_position(iterator.index) && count < NUMBEROF(usable) &&
+			!TEST_FLAG(control->object.flags, _object_outside_of_map_bit))
+		{
+			usable[count] = iterator.index;
+			distances[count++] = distance;
+		}
+	}
+	/* (the wanted'th nearest: as many nearer) */
+	for (index = 0; index < count; index++)
+	{
+		short other;
+
+		for (rank = 0, other = 0; other < count; other++)
+			rank += distances[other] < distances[index] || (distances[other] == distances[index] && other < index);
+		if (rank == wanted)
+			break;
+	}
+	if (index >= count)
+	{
+		platform_log("vr grab: no usable control %d in this map (%d)", wanted, count);
+		return NONE;
+	}
+	control = object_get(usable[index]);
+	face = control->object.bounding_sphere_center;
+	vector_from_points3d(&face, &unit->object.position, &front);
+	if (object_get_marker_by_name(usable[index], "front", &marker, 1) == 1)
+	{
+		face = marker.matrix.position;
+		front = marker.matrix.forward;
+	}
+	front.k = 0.0f;
+	if (normalize3d(&front) <= 0.0f)
+		return NONE;
+	/* (on the ground before it) */
+	place.x = face.x + front.i * metres / 3.048f;
+	place.y = face.y + front.j * metres / 3.048f;
+	place.z = face.z;
+	above = place;
+	if (global_current_collision_user_depth < MAXIMUM_COLLISION_USER_STACK_DEPTH)
+	{
+		global_current_collision_users[global_current_collision_user_depth++] = _collision_user_ui;
+		if (collision_test_vector(FLAG(_collision_test_structure_bit), &above, &down, NONE, &collision))
+			place.z = collision.point.z;
+		--global_current_collision_user_depth;
+	}
+	place.z += 0.05f / 3.048f;
+	object_set_position(unit_index, &place, NULL, NULL);
+	yaw = (real)atan2(-front.j, -front.i);
+	if (turn)
+		halo_vr_test_face(yaw);
+	platform_log("vr grab: unit %lx stood %.2f m before control %lx %s, its face %.2f m above the feet", unit_index,
+		metres, usable[index], tag_get_name(control->definition_index), (face.z - place.z) * 3.048f);
+	return usable[index];
+}
+
+/* debug.vr_test_grab = "control" as a network game's client: the first
+player turned, once, to the usable control whose face is within 1.5 m of
+the unit across the floor (the host stands them there: vr_grab_test); TRUE
+once turned */
+static boolean vr_grab_test_control_turn(struct unit_datum *unit)
+{
+	struct object_iterator iterator;
+	struct object_datum *control;
+	struct object_marker marker;
+
+	object_iterator_new(&iterator, _object_mask_control, 0);
+	while ((control = (struct object_datum *)object_iterator_next(&iterator)) != NULL)
+	{
+		real_vector3d front, across;
+
+		if (!device_can_change_position(iterator.index) ||
+			object_get_marker_by_name(iterator.index, "front", &marker, 1) != 1)
+		{
+			continue;
+		}
+		vector_from_points3d(&unit->object.position, &marker.matrix.position, &across);
+		if (across.i * across.i + across.j * across.j > (1.5f / 3.048f) * (1.5f / 3.048f) || fabs(across.k) > 1.0f)
+			continue;
+		front = marker.matrix.forward;
+		halo_vr_test_face((real)atan2(-front.j, -front.i));
+		platform_log("vr grab: turned to control %lx", iterator.index);
+		vr_grab.test_weapon_index[0] = iterator.index;
+		return TRUE;
+	}
+	return FALSE;
+}
+
 /* debug.vr_test_grab: "weapon <name>[ @ <metres ahead> <metres right>][;
 weapon ...]", up to VR_GRAB_TEST_THINGS weapons whose tag names have name in
 them laid on the ground before the first player (0.5 m ahead and 0.15 m to
@@ -196,8 +351,25 @@ static void vr_grab_test(long player_index, boolean aiming)
 	struct unit_datum *unit;
 	short thing;
 
-	if (strncmp(test, "weapon ", 7) || player->unit_index == NONE)
+	boolean host = game_connection() == _game_connection_network_server && !halo_vr_running();
+	boolean client = network_game_distributed_client();
+
+	if ((strncmp(test, "weapon ", 7) && strncmp(test, "control", 7)) || player->unit_index == NONE)
 		return;
+	/* (a network game's host, flat, stands the last player, on another
+	machine, before a control; that machine's player turns to it) */
+	if (host)
+	{
+		struct data_iterator players;
+		struct player_datum *other, *last = NULL;
+
+		data_iterator_new(&players, player_data);
+		while ((other = (struct player_datum *)data_iterator_next(&players)) != NULL)
+			last = other;
+		if (!last || last == player || last->unit_index == NONE || strncmp(test, "control", 7))
+			return;
+		aiming = TRUE;
+	}
 	if (vr_grab.test_first_aim_tick != NONE && now < vr_grab.test_first_aim_tick)
 	{
 		/* (a new map, or a revert) */
@@ -216,20 +388,25 @@ static void vr_grab_test(long player_index, boolean aiming)
 		long carried[2];
 		short slot;
 
-		/* (the level's own AI erased: nothing shoots the player) */
-		ai_scripting_erase_all();
+		/* (the level's own AI erased: nothing shoots the player; a
+		client's are the host's) */
+		if (!client)
+			ai_scripting_erase_all();
 		for (thing = 0; thing < VR_GRAB_TEST_THINGS; thing++)
 		{
 			long weapon_index = vr_grab.test_weapon_index[thing];
 			struct object_datum *weapon = weapon_index != NONE ? object_try_and_get(weapon_index) : NULL;
-			float place[3];
+			float place[3] = { 0.0f, 0.0f, 0.0f };
 			char text[160];
 
-			if (!weapon || !vr_render_world_place(&weapon->object.bounding_sphere_center, place))
+			/* (a flat host's: from nowhere) */
+			if (!weapon || (!vr_render_world_place(&weapon->object.bounding_sphere_center, place) && !host))
 				continue;
 			snprintf(text, sizeof(text), "at %.1f m ahead, %.1f m right, %.1f m up from the head%s; the game offers "
 				"%s; the hand %s", place[0], -place[1], place[2],
-				weapon->object.parent_object_index != NONE ? ", carried" : "",
+				weapon->object.parent_object_index != NONE ? ", carried" :
+				TEST_FLAG(_object_mask_control, weapon->object.type) ?
+				(((struct device_datum *)weapon)->device.position > 0.5f ? ", on" : ", off") : "",
 				player->action_object_index == weapon_index ?
 					(player->action_result == _player_action_result_swap_for_weapon ? "a swap for it" : "it") :
 					player->action_object_index != NONE ? "another" : "nothing",
@@ -237,7 +414,8 @@ static void vr_grab_test(long player_index, boolean aiming)
 					vr_grab.distance < VR_GRAB_PREFER_DISTANCE ? "near it" : "nearest it, far");
 			if (strcmp(text, vr_grab.test_logged[thing]))
 			{
-				platform_log("vr grab: test weapon %d (%s) %s", thing,
+				platform_log("vr grab: test %s %d (%s) %s", TEST_FLAG(_object_mask_control, weapon->object.type) ?
+					"control" : "weapon", thing,
 					tag_name_strip_path(tag_get_name(weapon->definition_index)), text);
 			}
 			strncpy(vr_grab.test_logged[thing], text, sizeof(vr_grab.test_logged[thing]) - 1);
@@ -258,7 +436,28 @@ static void vr_grab_test(long player_index, boolean aiming)
 	}
 	if (vr_grab.test_placed || now < vr_grab.test_first_aim_tick + VR_GRAB_TEST_SECONDS * TICKS_PER_SECOND)
 		return;
+	if (client)
+	{
+		vr_grab.test_placed = !strncmp(test, "control", 7) && vr_grab_test_control_turn(unit);
+		return;
+	}
 	vr_grab.test_placed = TRUE;
+	if (!strncmp(test, "control", 7) && host)
+	{
+		struct data_iterator players;
+		struct player_datum *other, *last = NULL;
+
+		data_iterator_new(&players, player_data);
+		while ((other = (struct player_datum *)data_iterator_next(&players)) != NULL)
+			last = other;
+		vr_grab.test_weapon_index[0] = vr_grab_test_control(last->unit_index, FALSE, test + 7);
+		return;
+	}
+	if (!strncmp(test, "control", 7))
+	{
+		vr_grab.test_weapon_index[0] = vr_grab_test_control(player->unit_index, TRUE, test + 7);
+		return;
+	}
 	for (thing = 0; thing < VR_GRAB_TEST_THINGS && test && !strncmp(test, "weapon ", 7); thing++)
 	{
 		char spec[96], *at, *end;
@@ -346,6 +545,90 @@ static boolean vr_grab_weapon_thing(long weapon_index, struct halo_vr_grab_thing
 	return TRUE;
 }
 
+/* a control the game would let the player use (in reach of the body, able
+to change, facing the eye) as a thing to press: its face (its "front"
+marker, and which way it faces: toward the eye, for one used from either
+side), else its middle */
+static boolean vr_grab_control_thing(long unit_index, long control_index, struct halo_vr_grab_thing *thing)
+{
+	struct control_datum *control = control_try_and_get(control_index);
+	real units = vr_grab.units > 0.0f ? vr_grab.units : 1.0f / 3.048f;
+	struct object_marker marker;
+	real_point3d camera, face;
+	real_vector3d toward;
+	real radius;
+	short axis;
+
+	if (!control || !device_can_change_position(control_index))
+		return FALSE;
+	unit_get_camera_position(unit_index, &camera);
+	vector_from_points3d(&camera, &control->object.bounding_sphere_center, &toward);
+	if (normalize3d(&toward) <= 0.0f || !device_frontfacing(control_index, &camera, &toward))
+		return FALSE;
+	face = control->object.bounding_sphere_center;
+	thing->front[0] = thing->front[1] = thing->front[2] = 0.0f;
+	if (object_get_marker_by_name(control_index, "front", &marker, 1) == 1)
+	{
+		real_vector3d front = marker.matrix.forward;
+		real_point3d ahead;
+		float place[3];
+
+		face = marker.matrix.position;
+		if (dot_product3d(&front, &toward) > 0.0f)
+			scale_vector3d(&front, -1.0f, &front);
+		ahead.x = face.x + front.i * units;
+		ahead.y = face.y + front.j * units;
+		ahead.z = face.z + front.k * units;
+		if (!vr_render_world_place(&ahead, place))
+			return FALSE;
+		for (axis = 0; axis < 3; axis++)
+			thing->front[axis] = place[axis];
+	}
+	if (!vr_render_world_place(&face, thing->ends[0]))
+		return FALSE;
+	for (axis = 0; axis < 3; axis++)
+	{
+		thing->ends[1][axis] = thing->ends[0][axis];
+		if (thing->front[0] != 0.0f || thing->front[1] != 0.0f || thing->front[2] != 0.0f)
+			thing->front[axis] -= thing->ends[0][axis];
+	}
+	radius = control->object.bounding_sphere_radius / units * 0.5f;
+	thing->kind = HALO_VR_GRAB_CONTROL;
+	thing->object = control_index;
+	thing->radius = PIN(radius, VR_GRAB_CONTROL_SMALLEST, VR_GRAB_CONTROL_LARGEST);
+	return TRUE;
+}
+
+/* player_control.c, each frame, for the first local player's unit: while a
+control a hand pressed waits for the game to offer it, and as its action is
+pressed, the facing (TRUE, yaw and pitch) at it from the eye, as X's aim
+would be, so that the game offers it, as a network game's host does for a
+client (the host decides the controls a player uses, by the player's aim) */
+boolean vr_grab_facing(long unit_index, real *yaw, real *pitch)
+{
+	long now = game_time_get();
+	struct object_datum *control;
+	real_point3d camera;
+	real_vector3d toward;
+
+	if (vr_grab.facing_until == NONE || now >= vr_grab.facing_until ||
+		now < vr_grab.facing_until - VR_GRAB_CONTROL_WAIT_TICKS - VR_GRAB_ACTION_TICKS - 1 || unit_index == NONE ||
+		vr_grab.control == NONE)
+	{
+		return FALSE;
+	}
+	control = (struct object_datum *)object_try_and_get_and_verify_type(vr_grab.control, _object_mask_control);
+	if (!control || !object_try_and_get_and_verify_type(unit_index, _object_mask_unit))
+		return FALSE;
+	unit_get_camera_position(unit_index, &camera);
+	vector_from_points3d(&camera, &control->object.bounding_sphere_center, &toward);
+	if (normalize3d(&toward) <= 0.0f)
+		return FALSE;
+	*yaw = (real)atan2(toward.j, toward.i);
+	*pitch = (real)asin(PIN(toward.k, -1.0f, 1.0f));
+	return TRUE;
+}
+
 /* player_control.c, as the first local player's input is read (the
 player, and the flags the input has set): the things to grab told to vr.c,
 and the grip's weapon picked up, the game's pick-up pressed for it (the swap
@@ -360,7 +643,7 @@ void vr_grab_input(long player_index, unsigned long *unit_control_flags)
 	struct halo_vr_grab grab;
 	short index;
 
-	vr_grab_test(player_index, halo_vr_aiming());
+	vr_grab_test(player_index, halo_vr_aiming() || vr_grab.enabled);
 	memset(&grab, 0, sizeof(grab));
 	if (unit)
 	{
@@ -379,11 +662,25 @@ void vr_grab_input(long player_index, unsigned long *unit_control_flags)
 		{
 			grab.count = 1;
 		}
+		/* (the controls in reach of the body, as the game finds them:
+		player_examine_nearby_objects) */
+		{
+			long controls[HALO_VR_GRAB_THINGS];
+			short count = objects_in_sphere(0, _object_mask_control, &unit->object.location,
+				&unit->object.bounding_sphere_center, unit->object.bounding_sphere_radius, controls, NUMBEROF(controls));
+
+			for (index = 0; index < count && grab.count < HALO_VR_GRAB_THINGS; index++)
+			{
+				if (vr_grab_control_thing(player->unit_index, controls[index], &grab.things[grab.count]))
+					grab.count++;
+			}
+		}
 	}
 	if (!halo_vr_grab(&grab))
 	{
 		vr_grab.enabled = FALSE;
 		vr_grab.nearest = NONE;
+		vr_grab.control = NONE;
 		return;
 	}
 	vr_grab.enabled = grab.enabled && unit;
@@ -415,6 +712,44 @@ void vr_grab_input(long player_index, unsigned long *unit_control_flags)
 		vr_grab.press_until = NONE;
 	if (vr_grab.press_until != NONE)
 		SET_FLAG(*unit_control_flags, _unit_control_swap_weapons_bit, TRUE);
+
+	/* (the control a hand pressed: the aim turned to it, vr_grab_facing,
+	until the game offers it, then its action) */
+	if (grab.pressed != -1 && vr_grab.enabled && vr_grab.action_until == NONE)
+	{
+		if (player->action_result != _player_action_result_touch_device || player->action_object_index != grab.pressed)
+			platform_log("vr grab: the control pressed is not on offer: the aim turned to it");
+		vr_grab.control = grab.pressed;
+		vr_grab.control_until = now + VR_GRAB_CONTROL_WAIT_TICKS;
+		vr_grab.facing_until = vr_grab.control_until + VR_GRAB_ACTION_TICKS + 1;
+	}
+	if (vr_grab.action_until != NONE && (now >= vr_grab.action_until ||
+		now < vr_grab.action_until - VR_GRAB_ACTION_TICKS))
+	{
+		vr_grab.action_until = NONE;
+		vr_grab.control = NONE;
+	}
+	if (vr_grab.control != NONE && vr_grab.action_until == NONE)
+	{
+		if (!vr_grab.enabled || now > vr_grab.control_until || now < vr_grab.control_until - VR_GRAB_CONTROL_WAIT_TICKS)
+		{
+			platform_log("vr grab: the control pressed was not offered: nothing done");
+			vr_grab.control = NONE;
+			vr_grab.facing_until = NONE;
+		}
+		else if (unit && player->action_result == _player_action_result_touch_device &&
+			player->action_object_index == vr_grab.control)
+		{
+			platform_log("vr grab: pressed %s", tag_get_name(object_get(vr_grab.control)->definition_index));
+			vr_grab.action_until = now + VR_GRAB_ACTION_TICKS;
+			vr_grab.facing_until = vr_grab.action_until + 1;
+		}
+	}
+	if (vr_grab.action_until != NONE && player->action_result == _player_action_result_touch_device &&
+		player->action_object_index == vr_grab.control)
+	{
+		SET_FLAG(*unit_control_flags, _unit_control_action_bit, TRUE);
+	}
 }
 
 /* render_objects.c, as an object is drawn in the world (its light given):

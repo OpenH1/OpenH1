@@ -345,11 +345,14 @@ struct halo_vr_flip
 
 /* grabbing the world with the hands (vr.grab_world, port/linux/game/
 vr_grab.c): a weapon on the ground the game offers to pick up, the right
-hand reaching to it and gripping takes it (the game's pick-up, as X held) */
+hand reaching to it and gripping takes it (the game's pick-up, as X held);
+a control the game would let the player use (a door's panel, a switch),
+either hand's fingers pushed into it press it (the game's action, as X) */
 #define HALO_VR_GRAB_THINGS 8
 enum
 {
 	HALO_VR_GRAB_WEAPON = 1,
+	HALO_VR_GRAB_CONTROL,
 };
 
 struct halo_vr_grab_thing
@@ -359,9 +362,11 @@ struct halo_vr_grab_thing
 	int kind;
 	long object;
 	/* the line along it (its ends: game axes from the recentred head,
-	metres), and how far about that line it is (metres) */
+	metres), and how far about that line it is (metres); a control's face,
+	both ends its middle, and the way it faces (0 0 0: either way) */
 	float ends[2][3];
 	float radius;
+	float front[3];
 };
 
 struct halo_vr_grab
@@ -372,11 +377,13 @@ struct halo_vr_grab
 	/* given: the grab is on (vr.grab_world, the controller aiming, on
 	foot); the weapon the right hand is nearest (its object; -1 none) and
 	how far it is from its reach (metres; 0 within it); and the weapon its
-	grip took since the last call (-1 none); the world's units a metre */
+	grip took since the last call (-1 none), and the control a hand pressed
+	(-1 none); the world's units a metre */
 	int enabled;
 	long nearest;
 	float distance;
 	long taken;
+	long pressed;
 	float world_units_per_metre;
 };
 
@@ -559,9 +566,13 @@ int halo_vr_flip(struct halo_vr_flip *flip);
 int halo_vr_flips(void);
 
 /* the grab, once a frame (port/linux/game/vr_grab.c): the things to grab
-told, the right hand's reach and grip given (0 when the VR mode is not
-running) */
+told, the right hand's reach and grip given, and a press of a control (0
+when the VR mode is not running) */
 int halo_vr_grab(struct halo_vr_grab *grab);
+/* debug.vr_test_grab: the player turned (as the stick turns) so that the
+head faces this way (radians, the world's yaw), to face what the test
+stood them before */
+void halo_vr_test_face(float yaw);
 
 /* the player, for the visor's effects (vr_visor.c) */
 void halo_vr_visor_state(const struct halo_vr_visor_state *state);

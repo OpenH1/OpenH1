@@ -1155,6 +1155,7 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | The left grip held, the left hand drawn back and swung, the grip let go | Throw a grenade where the hand threw it, as hard as it did (`vr.grenade_throw`, below) |
 | Beside an overturned vehicle, both hands low gripping it, then lifted together | Flip it (`vr.vehicle_flip`, below; X reloads there) |
 | The right hand reaching down to a weapon on the ground, gripping | Pick it up, or swap the one in hand for it (`vr.grab_world`, below; X held as ever) |
+| Either hand pushed into a control (a door's panel, a bridge's, a lift's) | Press it, as X (`vr.grab_world`, below; X as ever) |
 | Left bumper, right bumper | Flashlight, switch grenade |
 | D-pad (left controller), View, Menu | The menus' d-pad, Back (scoreboard), Start (pause) |
 | Both grips, held | Recentre: the head's place and heading become the player's eye and facing (not while the left hand holds a foregrip, nor while the hands hold a vehicle to lift it, nor on a Ghost's handlebars) |
@@ -1646,6 +1647,31 @@ the host picks it up as it would for X.
   edge, differs for each seat, and a reach past a vehicle would climb in).
 - Only on foot, with `vr.aim = "controller"`.
 
+#### Pressing a control by hand (`vr.grab_world`)
+
+Where the game offers a control to activate ("Press X to activate": a
+door's panel, a bridge's, a lift's, the holo panels of the Forerunner
+buildings), press it with your hand: push either hand into its face, as
+you would a button (the left hand open, or the right hand's fist, the
+weapon in it). Your fingers (9 cm before the controller's grip, where it
+points) pushed to its face within half its size of its middle (from 6 cm
+to 50 cm: the holo panels are 2 m across) press it, a click in that hand:
+the game's action, as X. Once your fingers have left it (5 cm back), they
+press it again.
+
+- The game offers a control along your aim, which is the right
+  controller's, whatever the hand pressing does: as your hand presses, the
+  game's aim turns to the control for a few hundredths of a second, until
+  the game offers it, then the action. The reticle, your weapon and the
+  view stay with your hands and head: only your body, as others see it,
+  looks at what you press. As a network game's client, the host decides
+  the controls you use by your aim, which it is told, as for X: it presses
+  it as it would for X.
+- Not the left hand on a long gun's foregrip, holding a grenade or a
+  magazine. A swing does not melee for 0.4 s after a press (a brisk push).
+- X activates as ever (`vr.grab_world = false`: X alone).
+- Only on foot, with `vr.aim = "controller"`.
+
 #### Driving a Ghost by its handlebars (`vr.ghost_steering`)
 
 In a Ghost's driver seat, grip its handles with both hands and turn them as
@@ -2033,7 +2059,7 @@ headset's session is opened with, apply from the next start.
 | `vr.recoil` | `1.0` | `HALO_VR_RECOIL` | With `vr.aim = "controller"`: how far the weapon in your hand kicks as it fires, each its own way, from `0` (none) to `1` (above, "The weapons' feel"). Drawn alone: the aim, the shots and the scopes' views stay where you point. Not in VR Controls. |
 | `vr.weapon_haptics` | `1.0` | `HALO_VR_WEAPON_HAPTICS` | With `vr.aim = "controller"`: how strongly the controllers feel each weapon firing, each its own way, and the hits on you, in the hand on the side they came from, in place of the gamepad's rumble for them, from `0` (none) to `1` (above, "The weapons' feel"). Not in VR Controls. |
 | `vr.vehicle_flip` | `"lift"` | `HALO_VR_VEHICLE_FLIP` | How an overturned vehicle the game offers to flip is flipped (above, "Flipping a vehicle"): `"lift"`, by both hands gripping it low beside it and lifting together, fast (X reloads there); `"button"`, by X, as ever; `"both"`, by either. With `vr.aim = "gamepad"`, by X. Not in VR Controls. |
-| `vr.grab_world` | `true` | `HALO_VR_GRAB_WORLD` | With `vr.aim = "controller"`: the hands take hold of the world (above, "Picking up a weapon by hand"): a weapon on the ground the game offers is taken by reaching down to it with the right hand and gripping. `false`: X alone, which works either way. Not in VR Controls. |
+| `vr.grab_world` | `true` | `HALO_VR_GRAB_WORLD` | With `vr.aim = "controller"`: the hands take hold of the world (above, "Picking up a weapon by hand", "Pressing a control by hand"): a weapon on the ground the game offers is taken by reaching down to it with the right hand and gripping; a control the game offers to activate is pressed by pushing either hand into it. `false`: X alone, which works either way. Not in VR Controls. |
 | `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the left hand takes another magazine from the left hip (the one in the weapon ejecting itself, or the right stick pushed down ejects it) and pushes it in, loaded at once (as a network game's client, after the game's reload time); the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand alone (above, "Throwing a grenade with the left hand"; on foot the left trigger throws nothing); `"both"`, with the left hand or the left trigger; `"button"`, with the left trigger alone. |
 | `vr.aim_assist` | `1.0` | `HALO_VR_AIM_ASSIST` | With `vr.aim = "controller"`: the aim assist (above, "Aiming with the controller"): near an enemy the game's magnetism would be drawn to, the aim is slow to leave it, and zoomed, is drawn gently toward it; how strongly, from `0` (none) to `2`. The bullets' own autoaim is the game's whatever this is. |
@@ -2080,7 +2106,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_grenades` | `""` | `HALO_VR_TEST_GRENADES` | Give the first VR player these grenades as they first aim, for tests of the grenade held in the hand: `"<frags> <plasma grenades>"`. |
 | `debug.vr_test_finger` | `""` | `HALO_VR_TEST_FINGER` | The right index finger on the weapon's trigger instead of the weapon's own (`game/vr_hands.c`, `trigger_fingers`), for tests: `"<rest> <rest> <rest> <pull> <pull> <pull> [<travel> [<off> <off> <off>]]"`, its curl at each joint from the knuckle at rest, from the idle animation's (less than 0: straighter), and how much more at a full pull (radians), how far back the trigger goes (metres), and its curl off the trigger (the trigger's touch sensing no finger; a test pose's trigger less than 0). |
 | `debug.vr_test_flip` | `""` | `HALO_VR_TEST_FLIP` | Overturn a vehicle before the first player, once a map, 3 s after the player first aims, the level's AI erased (once a second), for automated tests of the lift (`vr.vehicle_flip`): `"<name> [roof\|side\|upright] [<metres ahead>]"`, a part of the vehicle's tag name (`"warthog"`; b30 has the Warthog, b40 the Ghost and the Scorpion too), on its roof (by default) or its left side, or upright (to enter it), broadside, its middle as far ahead as puts it within reach (by default). The log says where, how it lies each second and whether the player is in it (`vr flip: test vehicle's up`), each offer, and each step of the lift (`vr: flip:`). |
-| `debug.vr_test_grab` | `""` | `HALO_VR_TEST_GRAB` | Lay weapons on the ground before the first player, once a map, 3 s after the player first aims, the level's AI erased (once a second), for automated tests of the grab (`vr.grab_world`): `"weapon <name>[ @ <metres ahead> <metres right>][; weapon ...]"`, up to two, a part of each weapon's tag name (`"plasma rifle"`; b30 has the needler and the plasma pistol too), 0.5 m ahead and 0.15 m right by default, across the player's way. The log says, as they change, where each is from the head, what the game offers, how near the right hand is, and what the player carries (`vr grab:`), and each grip (`vr: grab:`). |
+| `debug.vr_test_grab` | `""` | `HALO_VR_TEST_GRAB` | Lay weapons on the ground before the first player, once a map, 3 s after the player first aims, the level's AI erased (once a second), for automated tests of the grab (`vr.grab_world`): `"weapon <name>[ @ <metres ahead> <metres right>][; weapon ...]"`, up to two, a part of each weapon's tag name (`"plasma rifle"`; b30 has the needler and the plasma pistol too), 0.5 m ahead and 0.15 m right by default, across the player's way. Or `"control [<n> [<metres>]]"`: the map's controls listed, and the player stood before the nth nearest they could use in this part of the map (the nearest by default; c10 starts beside a holo panel, a10 and b30's beach have none), facing it, 0.6 m from its face by default; as a network game's host, flat (`debug.network_test`, co-op), the last player is stood there, and their machine, with the same setting, turns them to it. The log says, as they change, where each is from the head, what the game offers, how near the right hand is, a control's state (on, off), and what the player carries (`vr grab:`), and each grip and press (`vr: grab:`). |
 | `debug.vr_test_weapons` | `""` | `HALO_VR_TEST_WEAPONS` | Give the first player these weapons in place of their own, the first in hand, once a map, 2 s after the player first aims (a level's script gives its own as the player takes control), for automated tests of the scopes: `"<name>[, <name>]"`, parts of the weapons' tag names (`"sniper rifle, pistol"`; b30 has no sniper rifle, a50 has both). |
 | `debug.vr_test_target` | `""` | `HALO_VR_TEST_TARGET` | Place a still biped before the first VR player, for automated tests of the aim: `"<metres ahead> [<metres right> [<name> [free\|head]]][; <vehicle>]"`, a biped whose tag's name has this in it (`"grunt"` if none), 3 s after they first aim on foot standing still (a level's drop moves them), on the ground; after a `;`, in a seat of a vehicle whose tag's name has that in it, placed there (`"c gun turret"`: the Shade, on b40, c10 and d20; `"ghost"`, `"banshee"`), or with the name `-`, the vehicle alone, empty; turned left or right as little as puts it in sight, with no mind of its own (the level's AI erased, so that only the player's shots hit it), and again 2 s after it dies. The right controller held by `debug.vr_test_hands` points at its middle (`head`: its head; `free`: where `debug.vr_test_hands` points it), and each hit on it is logged (`vr aim: test target`). |
 | `debug.vr_test_shake` | `""` | `HALO_VR_TEST_SHAKE` | Shake the controllers as a hand does, for automated tests of the aim steadied while zoomed: `"<degrees> [<millimetres>]"`, the right controller turned at random by about this much (RMS: half a slow wander, smoothed noise below 1.5 Hz, half a 9 Hz tremor), both moved by this much. |
@@ -2600,6 +2626,19 @@ supersampling costs as above, and multisampling the eye pass
   (`player_handle_weapon_swap`). `render_objects.c` draws the weapon the
   hand is nearest lit up as the holsters' are (`vr_holster.c`,
   `vr_holster_highlight_object`).
+- The press of a control (`vr.grab_world`, the same files): the game offers
+  a device control only where the player's aim meets its bounding sphere
+  (`player_examine_nearby_device`, which a network game's host runs for a
+  client by the aim the client sends). `vr_grab.c` tells `vr.c` the
+  controls the game would offer were the aim on them (in reach of the body,
+  able to change, front-facing: the same tests), each as its face (its
+  `front` marker, facing the player's side for one used from both sides)
+  and a radius; `vr.c` presses one as either hand's fingers reach its face
+  from before it. Until the game offers it (or 10 ticks), and for the two
+  ticks of its action, `player_control.c` takes the facing from
+  `vr_grab_facing`: from the eye to the control's middle, as the grenade's
+  throw takes it (`vr_grenade_facing`), so the action bit goes with an aim
+  on the control, in the same ticks, to the host as to the game here.
 - In a vehicle's seat (`vr.vehicle_view = "first_person"`) the eye is in
   the seat, and the player's body is not drawn. The game animates the
   seated body, none of it the player's own motion: getting in sweeps the

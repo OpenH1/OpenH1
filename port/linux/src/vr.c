@@ -343,6 +343,21 @@ told are the game's for GRAB_TOLD_FRAMES frames. */
 #define GRAB_STILL_SPEED 2.0f
 #define GRAB_NO_MELEE_MS 500
 #define GRAB_TOLD_FRAMES 2
+/* a control the game would let the player use (a door's panel, a switch) is
+pressed by either hand's fingers, PRESS_FINGERS ahead of its grip along
+where it points (metres; with the right hand, the weapon's hand, its fist
+pushed in), pushed into its face: within its radius of the face's middle,
+across it, and from PRESS_BEHIND before the face to PRESS_DEPTH into it
+(metres; a control without a face, within its radius of the middle), the
+fingers coming there from outside (a click of the controller); again once
+they have left it by PRESS_REARM (metres). Not the left hand on a long gun's
+foregrip, holding a grenade or a magazine. A swing does not melee for
+PRESS_NO_MELEE_MS after a press (a brisk push into it). */
+#define PRESS_FINGERS 0.09f
+#define PRESS_BEHIND 0.10f
+#define PRESS_DEPTH 0.02f
+#define PRESS_REARM 0.05f
+#define PRESS_NO_MELEE_MS 400
 /* the reload's feel in the hands, each a few pulses (their amplitude, their
 length and their start after the first, seconds), firmer and longer than the
 pouch's ticks (a tick as the hand gets there, a firmer one as it takes one,
@@ -366,6 +381,8 @@ static const struct haptic_pulse flip_hand_feel[] = { { 0.25f, 0.025f, 0.0f } };
 static const struct haptic_pulse flip_hold_feel[] = { { 0.50f, 0.05f, 0.0f } };
 static const struct haptic_pulse flip_lift_feel[] = { { 1.0f, 0.08f, 0.0f }, { 0.6f, 0.06f, 0.11f },
 	{ 0.3f, 0.05f, 0.20f } };
+/* and a control pressed: a button's click, and its spring back */
+static const struct haptic_pulse press_feel[] = { { 0.7f, 0.015f, 0.0f }, { 0.25f, 0.01f, 0.05f } };
 #define HAPTIC_PULSES 4
 /* a pattern and its count of pulses, for haptic_play */
 #define HAPTIC_FEEL(feel) (feel), (int)(sizeof(feel) / sizeof((feel)[0]))
@@ -745,6 +762,12 @@ static struct
 	int grab_gripped;
 	long grab_taken;
 	unsigned long grab_ticks;
+	/* and each hand's fingers in a control (pressing it, until they leave
+	it), the control pressed not yet told to the game (-1 none), and when
+	the last was pressed (GetTickCount) */
+	int press_in[2];
+	long grab_pressed;
+	unsigned long press_ticks;
 	float depth_near, depth_far;
 	/* this frame's scope (halo_vr_scope), if it was drawn */
 	int scope_set;
@@ -794,7 +817,8 @@ static struct
 	"both") and a lift of both hands ("lift", "both") */
 	int flip_button;
 	int flip_lift;
-	/* vr.grab_world: the hands grab the world (a weapon on the ground) */
+	/* vr.grab_world: the hands grab the world (a weapon on the ground, a
+	control) */
 	int grab_world;
 	/* vr.grenade_throw: the hand throws ("gesture", "both"), and not the
 	left trigger too ("gesture"); debug.vr_throw_log */
@@ -1090,6 +1114,9 @@ static void play_axes(const float g[3], float yaw, float out[3])
 /* ---------- the session */
 
 static void acquired_clear(void);
+static void pose_point(const float position[3], const float orientation[4], const float *forward_given,
+	const float *up_given, const float along[3], float point[3]);
+static void haptic_play(int hand, const struct haptic_pulse *pulses, int count);
 
 int halo_vr_initialize(void)
 {
@@ -1129,7 +1156,7 @@ int halo_vr_initialize(void)
 	acquired_clear();
 	vr_visor_initialize(&vr.info);
 	vr.trigger_touch_sensed = -1;
-	vr.grab_nearest = vr.grab_reach = vr.grab_taken = -1;
+	vr.grab_nearest = vr.grab_reach = vr.grab_taken = vr.grab_pressed = -1;
 	vr.initialized = 1;
 	vr.statistics = config_boolean("debug.gpu_stats");
 	platform_log("vr: %s, eyes %dx%d, %.0f Hz", vr.info.system_name, vr.info.eye_width, vr.info.eye_height,
@@ -1824,6 +1851,95 @@ static float segment_distance(const float point[3], const float a[3], const floa
 	return length3(ap);
 }
 
+/* where a hand's fingers press (game axes from the recentred head), if the
+hand may press */
+static int press_fingers(int hand, float place[3])
+{
+	static const float along[3] = { PRESS_FINGERS, 0.0f, 0.0f };
+	const struct vr_host_pose *grip = &vr.views.grip[hand], *aim = &vr.views.aim[hand];
+	float point[3], v[3];
+	int axis;
+
+	if (!grip->valid || !aim->valid)
+		return 0;
+	/* (the left hand holding the foregrip, a grenade, a magazine) */
+	if (!hand && (vr.two_handed || vr.throw_state != THROW_IDLE || vr.reload.held))
+		return 0;
+	pose_point(grip->position, aim->orientation, NULL, NULL, along, point);
+	for (axis = 0; axis < 3; axis++)
+		v[axis] = point[axis] - vr.origin_position[axis];
+	game_axes(v, vr.origin_yaw, place);
+	return 1;
+}
+
+/* how far the fingers are out of a control (metres; 0 or less: pressing
+it), its face's middle and way given */
+static float press_distance(const float fingers[3], const struct halo_vr_grab_thing *thing)
+{
+	float v[3], depth, across;
+	int axis;
+
+	for (axis = 0; axis < 3; axis++)
+		v[axis] = fingers[axis] - thing->ends[0][axis];
+	if (length3(thing->front) < 0.5f)
+		return length3(v) - thing->radius;
+	depth = v[0] * thing->front[0] + v[1] * thing->front[1] + v[2] * thing->front[2];
+	for (axis = 0; axis < 3; axis++)
+		v[axis] -= thing->front[axis] * depth;
+	across = length3(v) - thing->radius;
+	/* (before the face: as far as it is beyond PRESS_BEHIND; into it: as
+	far as it is past PRESS_DEPTH) */
+	depth = depth > PRESS_DEPTH ? depth - PRESS_DEPTH : depth < -PRESS_BEHIND ? -PRESS_BEHIND - depth : 0.0f;
+	return across > depth ? across : depth;
+}
+
+/* the controls pressed, once a frame (vr.grab_world; PRESS_* above): either
+hand's fingers pushed into one press it (the game presses its action:
+vr_grab.c) */
+static void press_update(int able)
+{
+	static const char *const hands[2] = { "left", "right" };
+	int hand, index;
+
+	for (hand = 0; hand < 2; hand++)
+	{
+		float fingers[3], nearest = 1000.0f;
+		const struct halo_vr_grab_thing *control = NULL;
+
+		if (!able || !press_fingers(hand, fingers))
+		{
+			vr.press_in[hand] = 0;
+			continue;
+		}
+		for (index = 0; index < vr.grab_told.count; index++)
+		{
+			const struct halo_vr_grab_thing *thing = &vr.grab_told.things[index];
+			float distance;
+
+			if (thing->kind != HALO_VR_GRAB_CONTROL)
+				continue;
+			distance = press_distance(fingers, thing);
+			if (distance < nearest)
+			{
+				nearest = distance;
+				control = thing;
+			}
+		}
+		if (vr.press_in[hand] && nearest > PRESS_REARM)
+			vr.press_in[hand] = 0;
+		if (!vr.press_in[hand] && control && nearest <= 0.0f)
+		{
+			vr.press_in[hand] = 1;
+			vr.grab_pressed = control->object;
+			vr.press_ticks = GetTickCount();
+			haptic_play(hand, HAPTIC_FEEL(press_feel));
+			platform_log("vr: grab: the %s hand presses the control %lx (the fingers at %.2f %.2f %.2f, its face %.2f "
+				"%.2f %.2f)", hands[hand], (unsigned long)control->object, fingers[0], fingers[1], fingers[2],
+				control->ends[0][0], control->ends[0][1], control->ends[0][2]);
+		}
+	}
+}
+
 /* the grab, once a frame (vr.grab_world; GRAB_* above), after
 holsters_update, whose holsters keep the grip squeezed in them: the weapon
 on offer that the right hand reaches (a tick of its controller as it gets
@@ -1878,6 +1994,7 @@ static void grab_update(void)
 	if (reach != -1 && reach != vr.grab_reach)
 		host_vr_haptic(1, 0.2f, 0.02f);
 	vr.grab_reach = reach;
+	press_update(able);
 	if (!pressing || reach == -1)
 		return;
 	if (vr.holsters.reach != HALO_VR_HOLSTER_NONE)
@@ -1900,13 +2017,14 @@ static void grab_update(void)
 
 /* player_control.c, as the first player's input is read, each frame: the
 things to grab told, the right hand's reach given, and the weapon its grip
-took (once) */
+took and the control a hand pressed (once each) */
 int halo_vr_grab(struct halo_vr_grab *grab)
 {
 	grab->enabled = 0;
 	grab->nearest = -1;
 	grab->distance = 1000.0f;
 	grab->taken = -1;
+	grab->pressed = -1;
 	if (!vr.initialized)
 		return 0;
 	settings_read();
@@ -1919,14 +2037,27 @@ int halo_vr_grab(struct halo_vr_grab *grab)
 	grab->enabled = settings.grab_world && settings.controller_aim && vr.aimed && vr.crouch_able_frame && !vr.menus;
 	if (!grab->enabled)
 	{
-		vr.grab_taken = -1;
+		vr.grab_taken = vr.grab_pressed = -1;
 		return 1;
 	}
 	grab->nearest = vr.grab_nearest;
 	grab->distance = vr.grab_distance;
 	grab->taken = vr.grab_taken;
-	vr.grab_taken = -1;
+	grab->pressed = vr.grab_pressed;
+	vr.grab_taken = vr.grab_pressed = -1;
 	return 1;
+}
+
+void halo_vr_test_face(float yaw)
+{
+	static const float backwards[3] = { 0.0f, 0.0f, -1.0f };
+	float v[3], f[3];
+
+	if (!vr.initialized || !vr.views.head.valid)
+		return;
+	quaternion_rotate(vr.views.head.orientation, backwards, v);
+	game_axes(v, vr.origin_yaw, f);
+	vr.body_yaw = yaw - atan2f(f[1], f[0]);
 }
 
 /* the physical crouch, once a frame (vr.physical_crouch; CROUCH_* above):
@@ -2455,6 +2586,8 @@ static void melee_update(float seconds)
 		guard = "the grip taken at a weapon";
 	else if (vr.grab_ticks && now - vr.grab_ticks < GRAB_NO_MELEE_MS)
 		guard = "just after a grab";
+	else if (vr.press_ticks && now - vr.press_ticks < PRESS_NO_MELEE_MS)
+		guard = "just after a press";
 
 	/* the swing: from faster than MELEE_REARM_SPEED until slower again */
 	if (speed < MELEE_REARM_SPEED)

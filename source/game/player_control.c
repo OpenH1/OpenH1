@@ -802,6 +802,20 @@ static void handle_one_player_input(
 					vr_pitch = throw_pitch;
 				}
 			}
+			/* (a control pressed by a hand: the facing at it until the
+			game, and a client's host, offers it: port/linux/game/
+			vr_grab.c) */
+			if (local_player_index == 0 && vr_aim == 1)
+			{
+				extern boolean vr_grab_facing(long unit_index, real *yaw, real *pitch);
+				real control_yaw, control_pitch;
+
+				if (vr_grab_facing(player->unit_index, &control_yaw, &control_pitch))
+				{
+					vr_yaw = control_yaw;
+					vr_pitch = control_pitch;
+				}
+			}
 			/* (the weapon not in hand, in its holster on the body:
 			port/linux/game/vr_holster.c) */
 			if (local_player_index == 0)
