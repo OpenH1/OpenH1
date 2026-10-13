@@ -257,6 +257,23 @@ pressed for the first frames of the pose */
 behind and below the eyes (metres) */
 #define TEST_HEAD_NECK_BACK 0.08f
 #define TEST_HEAD_NECK_DOWN 0.15f
+/* the aim steadied while the smart-link magnifies it (aim_steady: a
+one-euro filter of its direction): smoothed with a cutoff of STEADY_HZ over
+the magnification less one (2 Hz at 2x, 0.29 Hz at 8x), less still
+(STEADY_TWO_HANDED times) with the left hand on the foregrip, raised by
+STEADY_GAIN for each degree a second the hand turns (its turn smoothed with
+a cutoff of STEADY_VELOCITY_HZ, so that a tremor's back and forth cancels and
+a swing does not); the magnification eased over STEADY_ZOOM_SECONDS as it
+changes (frequencies in Hz) */
+#define STEADY_HZ 2.0f
+#define STEADY_TWO_HANDED 1.5f
+#define STEADY_GAIN 0.15f
+#define STEADY_VELOCITY_HZ 1.5f
+#define STEADY_ZOOM_SECONDS 0.1f
+/* debug.vr_test_shake: a hand's shake, half a slow wander (noise smoothed
+with a cutoff of SHAKE_WANDER_HZ) and half a tremor (SHAKE_TREMOR_HZ) */
+#define SHAKE_WANDER_HZ 1.5f
+#define SHAKE_TREMOR_HZ 9.0f
 
 static struct
 {
@@ -296,6 +313,32 @@ static struct
 	(halo_vr_test_point: game axes from the recentred head), if set */
 	int test_point_valid;
 	float test_point[3];
+	/* the aim steadied (aim_steady): as the last frame left it, and as this
+	frame began from it (each frame's poses are located twice, the aim's
+	and the draws', both steadied from the same state): the controller's
+	direction (OpenXR axes), its turn (radians a second, smoothed), the
+	steadied direction and the magnification it was steadied for (eased);
+	the frame it is of (vr.presents); and this frame's magnification
+	(halo_vr_aim_zoom: 1, none) */
+	struct aim_steady
+	{
+		int valid;
+		float raw[3];
+		float velocity[3];
+		float out[3];
+		float magnification;
+	} steady, steady_before;
+	unsigned long steady_frame;
+	float steady_zoom;
+	/* debug.vr_test_shake: the shake's wander (degrees: yaw, pitch;
+	millimetres: each hand's), the tremor's time and phases, and this
+	frame's turn of the right controller and move of each */
+	float shake_wander[2];
+	float shake_wander_place[2][3];
+	double shake_time;
+	float shake_phase[2];
+	float shake_turn[2];
+	float shake_offset[2][3];
 	int snap_latched;
 	float recentre_time;
 	/* a gamepad's Back held (halo_vr_gamepad_back), and for how long */
@@ -457,6 +500,12 @@ static struct
 	int vehicle_first_person;
 	float test_turn;
 	float test_jitter;
+	/* debug.vr_test_shake: the right controller's shake (degrees, RMS) and
+	both hands' (metres) */
+	float test_shake;
+	float test_shake_place;
+	/* debug.vr_aim_log */
+	int aim_log;
 	/* debug.vr_test_head: the head held still, turned left and right by
 	this many degrees over this many seconds, and pitched up this many */
 	int test_head;
@@ -568,6 +617,10 @@ static void settings_read(void)
 	settings.vehicle_first_person = strcmp(config_string("vr.vehicle_view"), "third_person") != 0;
 	settings.test_turn = (float)config_real("debug.vr_test_turn") * (float)M_PI / 180.0f;
 	settings.test_jitter = (float)config_real("debug.vr_test_jitter") * 0.001f;
+	settings.test_shake = settings.test_shake_place = 0.0f;
+	sscanf(config_string("debug.vr_test_shake"), "%f %f", &settings.test_shake, &settings.test_shake_place);
+	settings.test_shake_place *= 0.001f;
+	settings.aim_log = config_boolean("debug.vr_aim_log");
 	settings.test_head_yaw = 0.0f;
 	settings.test_head_period = 0.0f;
 	settings.test_head_pitch = 0.0f;
@@ -2368,6 +2421,164 @@ void halo_vr_test_point(const float direction[3])
 		memcpy(vr.test_point, direction, sizeof(vr.test_point));
 }
 
+/* debug.vr_test_shake: a random number of unit variance, of its own (the
+head's jitter keeps its sequence) */
+static float shake_random(void)
+{
+	static unsigned int state = 0x2545f491u;
+
+	state ^= state << 13;
+	state ^= state >> 17;
+	state ^= state << 5;
+	return ((float)(state >> 8) / (float)(1u << 23) - 1.0f) * 1.7320508f;
+}
+
+/* debug.vr_test_shake, as a frame begins: this frame's shake of the hands,
+a slow wander and a tremor, half of it each (by its RMS) */
+static void shake_new(float seconds)
+{
+	float keep = expf(-2.0f * (float)M_PI * SHAKE_WANDER_HZ * seconds), add = sqrtf(1.0f - keep * keep);
+	float half = 0.70710678f;
+	int axis, hand;
+
+	if (settings.test_shake <= 0.0f && settings.test_shake_place <= 0.0f)
+		return;
+	if (vr.shake_time == 0.0)
+	{
+		vr.shake_phase[0] = shake_random();
+		vr.shake_phase[1] = shake_random();
+	}
+	vr.shake_time += seconds;
+	for (axis = 0; axis < 2; axis++)
+	{
+		float tremor = sinf(2.0f * (float)M_PI * SHAKE_TREMOR_HZ * (float)vr.shake_time + vr.shake_phase[axis]);
+
+		vr.shake_wander[axis] = vr.shake_wander[axis] * keep + add * settings.test_shake * half * shake_random();
+		vr.shake_turn[axis] = vr.shake_wander[axis] + settings.test_shake * half * 1.41421356f * tremor;
+	}
+	for (hand = 0; hand < 2; hand++)
+	{
+		for (axis = 0; axis < 3; axis++)
+		{
+			vr.shake_wander_place[hand][axis] = vr.shake_wander_place[hand][axis] * keep +
+				add * settings.test_shake_place * shake_random();
+			vr.shake_offset[hand][axis] = vr.shake_wander_place[hand][axis];
+		}
+	}
+}
+
+/* debug.vr_test_shake: the frame's shake on the controllers (the right one
+turned about the play space's up and its own right, both moved); after
+test_point_apply */
+static void shake_apply(void)
+{
+	static const float upward[3] = { 0.0f, 1.0f, 0.0f }, rightward[3] = { 1.0f, 0.0f, 0.0f };
+	struct vr_host_pose *poses[2][2] = { { &vr.views.aim[0], &vr.views.grip[0] }, { &vr.views.aim[1], &vr.views.grip[1] } };
+	int hand, pose, axis;
+
+	if (settings.test_shake <= 0.0f && settings.test_shake_place <= 0.0f)
+		return;
+	for (hand = 0; hand < 2; hand++)
+	{
+		for (pose = 0; pose < 2; pose++)
+		{
+			struct vr_host_pose *p = poses[hand][pose];
+
+			if (!p->valid)
+				continue;
+			for (axis = 0; axis < 3; axis++)
+				p->position[axis] += vr.shake_offset[hand][axis];
+			if (hand == 1)
+			{
+				float right[3], yaw[4], pitch[4];
+				float half_yaw = vr.shake_turn[0] * (float)M_PI / 180.0f * 0.5f;
+				float half_pitch = vr.shake_turn[1] * (float)M_PI / 180.0f * 0.5f;
+
+				quaternion_rotate(p->orientation, rightward, right);
+				for (axis = 0; axis < 3; axis++)
+				{
+					yaw[axis] = upward[axis] * sinf(half_yaw);
+					pitch[axis] = right[axis] * sinf(half_pitch);
+				}
+				yaw[3] = cosf(half_yaw);
+				pitch[3] = cosf(half_pitch);
+				quaternion_multiply(pitch, p->orientation, p->orientation);
+				quaternion_multiply(yaw, p->orientation, p->orientation);
+			}
+		}
+	}
+}
+
+/* The aim's direction (OpenXR axes), steadied while the smart-link
+magnifies it (halo_vr_aim_zoom), else as it is. Zoomed, the view on the
+visor magnifies the hand's shake as much as the world: steadied by a
+one-euro filter, whose cutoff is low while the hand is about still (a
+tremor's back and forth, a slow wander) and rises as it turns, so that a
+deliberate swing passes through promptly: STEADY_HZ over the magnification
+less one, less still with the left hand on the foregrip, plus STEADY_GAIN for
+each degree a second of the hand's turn. The reticle, the view on the visor
+and the game's aim all follow it (halo_vr_aim, halo_vr_view): the shot goes
+where the steadied reticle is. The first-person weapon stays in the hand.
+Each frame steps it once from the last frame's state, however often its
+poses are steadied (halo_vr_aim's as the game aims, then halo_vr_view's,
+located again for the draws: the later replaces the earlier). */
+static void aim_steady(float forward[3])
+{
+	float seconds = vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : vr.views.display_period;
+	struct aim_steady *state = &vr.steady;
+	const struct aim_steady *before = &vr.steady_before;
+	float t, speed = 0.0f, cutoff;
+	int axis;
+
+	if (vr.steady_frame != vr.presents)
+	{
+		/* (a frame or more not aimed: from the hand as it is) */
+		vr.steady_before = vr.steady;
+		vr.steady_before.valid = vr.steady.valid && vr.steady_frame + 1 == vr.presents;
+		vr.steady_frame = vr.presents;
+	}
+	if (!before->valid || seconds <= 0.0f || seconds > 0.1f)
+	{
+		state->valid = 1;
+		memcpy(state->raw, forward, sizeof(state->raw));
+		memset(state->velocity, 0, sizeof(state->velocity));
+		memcpy(state->out, forward, sizeof(state->out));
+		state->magnification = vr.steady_zoom;
+		return;
+	}
+	t = 1.0f - expf(-2.0f * (float)M_PI * STEADY_VELOCITY_HZ * seconds);
+	for (axis = 0; axis < 3; axis++)
+	{
+		float velocity = (forward[axis] - before->raw[axis]) / seconds;
+
+		state->velocity[axis] = before->velocity[axis] + (velocity - before->velocity[axis]) * t;
+		speed += state->velocity[axis] * state->velocity[axis];
+	}
+	memcpy(state->raw, forward, sizeof(state->raw));
+	state->magnification = before->magnification +
+		(vr.steady_zoom - before->magnification) * (1.0f - expf(-seconds / STEADY_ZOOM_SECONDS));
+	if (state->magnification < 1.01f && vr.steady_zoom <= 1.0f)
+	{
+		memcpy(state->out, forward, sizeof(state->out));
+		return;
+	}
+	speed = sqrtf(speed) * 180.0f / (float)M_PI;
+	cutoff = STEADY_HZ / (state->magnification > 1.01f ? state->magnification - 1.0f : 0.01f);
+	if (vr.two_handed_weight > 0.5f)
+		cutoff /= STEADY_TWO_HANDED;
+	cutoff += STEADY_GAIN * speed;
+	t = 1.0f - expf(-2.0f * (float)M_PI * cutoff * seconds);
+	for (axis = 0; axis < 3; axis++)
+		state->out[axis] = before->out[axis] + (forward[axis] - before->out[axis]) * t;
+	normalize(state->out);
+	memcpy(forward, state->out, sizeof(state->out));
+}
+
+void halo_vr_aim_zoom(float magnification)
+{
+	vr.steady_zoom = magnification > 1.0f ? magnification : 1.0f;
+}
+
 /* waits for the runtime's next frame and begins it; whether it did now */
 static int frame_begin(void)
 {
@@ -2391,6 +2602,7 @@ static int frame_begin(void)
 	if (vr.force_render)
 		vr.views.should_render = 1;
 	jitter_new();
+	shake_new(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : vr.views.display_period);
 	vr.test_head_seconds += vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : vr.views.display_period;
 	if (host_vr_locate(&vr.views))
 	{
@@ -2405,6 +2617,7 @@ static int frame_begin(void)
 	host_vr_input(&vr.input);
 	test_hands_apply();
 	test_point_apply();
+	shake_apply();
 	input_update();
 	return 1;
 }
@@ -2579,6 +2792,7 @@ int halo_vr_view(struct halo_vr_view *view)
 		jitter_apply();
 		test_hands_apply();
 		test_point_apply();
+		shake_apply();
 	}
 	if (!vr.views.eye[0].valid)
 		return 0;
@@ -2651,7 +2865,20 @@ int halo_vr_view(struct halo_vr_view *view)
 		for (eye = 0; eye < 3; eye++)
 			offset[eye] = hand->position[eye] - vr.origin_position[eye];
 		game_axes(offset, vr.origin_yaw, view->hand_position);
-		memcpy(view->aim_forward, view->hand_forward, sizeof(view->aim_forward));
+		/* (the aim steadied while zoomed: aim_steady) */
+		aim_steady(v);
+		game_axes(v, vr.origin_yaw, view->aim_forward);
+		if (settings.aim_log && settings.test_hand_poses)
+		{
+			float raw[3];
+
+			weapon_pointing(raw, pointing_up);
+			platform_log("vr aim steady: frame %lu, zoom %.2f (eased %.2f)%s, the controller %.4f %.4f, the aim %.4f "
+				"%.4f (degrees: yaw left, pitch up)", vr.presents, vr.steady_zoom, vr.steady.magnification,
+				vr.two_handed_weight > 0.5f ? ", both hands" : "",
+				atan2f(-raw[0], -raw[2]) * 180.0f / (float)M_PI, asinf(raw[1]) * 180.0f / (float)M_PI,
+				atan2f(-v[0], -v[2]) * 180.0f / (float)M_PI, asinf(v[1]) * 180.0f / (float)M_PI);
+		}
 	}
 	memcpy(view->weapon_offset, settings.weapon_offset, sizeof(view->weapon_offset));
 	/* the hands (vr.hands): where the controllers' grips are (else where
@@ -2747,6 +2974,7 @@ int halo_vr_aim(float current_yaw, int long_gun, float *yaw, float *pitch)
 		int axis;
 
 		weapon_pointing(v, up);
+		aim_steady(v);
 		game_axes(v, vr.origin_yaw, f);
 		head_yaw = atan2f(f[1], f[0]);
 		for (axis = 0; axis < 3; axis++)

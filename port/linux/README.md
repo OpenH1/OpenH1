@@ -1302,6 +1302,13 @@ on your visor: you never bring a scope to your eye.
   "10x"), and a soft edge, fading out with a faint glow of the HUD's blue,
   no line about it. The flat game's zoomed view (its "2x" and "10x" with
   their dial, the range ticks) is not drawn.
+- While zoomed, the aim is steadied, the more the more it magnifies (and
+  more still with your left hand on a long gun's foregrip): your hand's
+  small shake and slow sway are damped, while a deliberate swing passes
+  through promptly, its reticle a little behind it and caught up within a
+  quarter of a second once you stop. The reticle, the magnified view and
+  the shot all follow the steadied aim: the shot goes where the reticle
+  shows, and the weapon in your hand stays where your hand is.
 
 ##### At the eye (`vr.scope_view = "eye"`)
 
@@ -1626,7 +1633,8 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_finger` | `""` | `HALO_VR_TEST_FINGER` | The right index finger on the weapon's trigger instead of the weapon's own (`game/vr_hands.c`, `trigger_fingers`), for tests: `"<rest> <rest> <rest> <pull> <pull> <pull> [<travel> [<off> <off> <off>]]"`, its curl at each joint from the knuckle at rest, from the idle animation's (less than 0: straighter), and how much more at a full pull (radians), how far back the trigger goes (metres), and its curl off the trigger (the trigger's touch sensing no finger; a test pose's trigger less than 0). |
 | `debug.vr_test_weapons` | `""` | `HALO_VR_TEST_WEAPONS` | Give the first player these weapons in place of their own, the first in hand, once a map, 2 s after the player first aims (a level's script gives its own as the player takes control), for automated tests of the scopes: `"<name>[, <name>]"`, parts of the weapons' tag names (`"sniper rifle, pistol"`; b30 has no sniper rifle, a50 has both). |
 | `debug.vr_test_target` | `""` | `HALO_VR_TEST_TARGET` | Place a still biped before the first VR player, for automated tests of the aim: `"<metres ahead> [<metres right> [<name>]]"`, a biped whose tag's name has this in it (`"grunt"` if none), 3 s after they first aim, on the ground, turned left or right as little as puts it in sight, with no mind of its own (the level's AI erased, so that only the player's shots hit it), and again 2 s after it dies. The right controller held by `debug.vr_test_hands` points at its middle, and each hit on it is logged (`vr aim: test target`). |
-| `debug.vr_aim_log` | `false` | `HALO_VR_AIM_LOG` | Log the controller's aim once a tick: where its line meets the world, how far the game's aim was turned to meet it there from the game's eye, how far from that point the unit's aim passes, and whether the reticle is red (with `debug.vr_test_target`, how far the target's middle is from both). |
+| `debug.vr_test_shake` | `""` | `HALO_VR_TEST_SHAKE` | Shake the controllers as a hand does, for automated tests of the aim steadied while zoomed: `"<degrees> [<millimetres>]"`, the right controller turned at random by about this much (RMS: half a slow wander, smoothed noise below 1.5 Hz, half a 9 Hz tremor), both moved by this much. |
+| `debug.vr_aim_log` | `false` | `HALO_VR_AIM_LOG` | Log the controller's aim once a tick: where its line meets the world, how far the game's aim was turned to meet it there from the game's eye, how far from that point the unit's aim passes, and whether the reticle is red (with `debug.vr_test_target`, how far the target's middle is from both); with `debug.vr_test_hands`, each frame, the controller's direction and the aim's, steadied (`vr aim steady`). |
 | `debug.vr_throw_log` | `false` | `HALO_VR_THROW_LOG` | Log each step of a grenade thrown with the left hand (`vr.grenade_throw`): the grip taken (or why it holds nothing), the swing (or why a fast hand was none), the release's speed, power and direction, and the game's throw: when it began, its animations held or moved on to their release, and the grenade's place and speed. |
 | `debug.vr_melee_log` | `false` | `HALO_VR_MELEE_LOG` | Log the right hand's swings that did not melee (`vr.melee_gesture`) too: how fast and how far each went, and why it was none (too slow, a holster, a throw, a reload, the tracking jumping). Each melee by a swing is logged whatever this is. |
 | `debug.vr_test_weapon` | `""` | `HALO_VR_TEST_WEAPON` | Put a weapon in the first player's hand, for automated tests of the reload by hand: `"<text> <seconds>"`, that many seconds into the level the player's weapons are taken and a new one is in hand, the first of the map's whose tag name has the text in it (`"shotgun 15"` on d20, `"rocket 15"` on b30). |
@@ -2116,6 +2124,28 @@ supersampling costs as above, and multisampling the eye pass
   GPU's time, about 0.1 ms in 1 (b30's fight varies far more from run to
   run); the pass is the eye's, as large, whose 0.5 to 1.3 ms on b30 is the
   better guide. Confirm it on a Steam Frame.
+- Zoomed, the smart-link's view magnifies the hand's shake as much as the
+  world (2 and 8 times). The aim is steadied while it shows (`vr.c`,
+  `aim_steady`; the game tells vr.c the magnification, `vr_aim.c`): a
+  one-euro filter of the aim's direction, its cutoff 2 Hz over the
+  magnification less one (2 Hz at 2x, 0.29 Hz at 8x), a third lower with
+  the left hand on the foregrip, plus 0.15 Hz for each degree a second the
+  hand turns (its turn smoothed at 1.5 Hz, so that a tremor's back and
+  forth cancels and a swing does not), eased in and out with the zoom. The
+  reticle, the view and the game's aim follow it (`aim_forward`, the
+  aim's line); the first-person weapon follows the hand. Each frame steps
+  it once from the last frame's state: the poses located as the game aims
+  and those located again for the draws are each steadied from it, the
+  later replacing the earlier. Measured with `debug.vr_test_shake = "0.4
+  1"` on a50 (the sniper rifle; a shake of 0.55 degrees RMS, half a 1.5 Hz
+  wander, half a 9 Hz tremor): the aim's change from frame to frame was
+  3.2 times less at 2x and 7.2 times less at 8x (0.05 degrees, 0.4 in the
+  view), its sway 0.6 and 0.5 of the hand's; with both hands on the rifle
+  (the line between them sways 0.2 degrees) 0.1 to 0.15 degree at 8x,
+  about a degree in the view. A 10 degree swing in half a second at 8x
+  lagged by 1.2 degrees at most and was within 0.1 degree of the hand
+  0.25 s after it stopped; at 2x, 0.7 degrees and 0.06 s. How it feels in
+  the hand is the Steam Frame's to say.
 - The visibility tests (the lens flares') are counted by the pixel shaders'
   atomic counters, as on ES, not by queries: Vulkan counts a query in a
   multiview pass in as many slots as views, which Zink does not allow for,

@@ -827,11 +827,17 @@ static const struct config_setting config_settings[] =
 		"on it, for automated tests of the aim: \"<metres ahead> [<metres right>\n"
 		"[<name>]]\", name a part of the biped's tag name (\"grunt\" if none);\n"
 		"empty none." },
+	{ "debug.vr_test_shake", _config_string, "\"\"", "HALO_VR_TEST_SHAKE", _environment_value, _platform_desktop,
+		"Shake the controllers as a hand does, for automated tests of the aim\n"
+		"steadied while zoomed: \"<degrees> [<millimetres>]\", the right\n"
+		"controller turned at random by this much (RMS, half a slow wander, half a\n"
+		"9 Hz tremor), both moved by this much; empty none." },
 	{ "debug.vr_aim_log", _config_boolean, "false", "HALO_VR_AIM_LOG", _environment_value, _platform_desktop,
 		"Log the controller's aim once a tick: where its line meets the world,\n"
 		"how far the game's aim is turned to meet it there from the game's eye,\n"
 		"how far from that point the unit's aim passes, and whether the reticle\n"
-		"is red." },
+		"is red; with debug.vr_test_hands, the controller's direction and the\n"
+		"aim's, steadied, each frame." },
 #endif
 	{ "debug.null_renderer", _config_boolean, "false", "HALO_NULL_RENDERER", _environment_set_is_true, _platform_all,
 		"Run without a window, drawing nothing." },

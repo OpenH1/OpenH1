@@ -34,6 +34,7 @@ eye, along the same facing.
 #include "camera/director.h"
 #include "game/game.h"
 #include "game/players.h"
+#include "items/weapons.h"
 #include "objects/objects.h"
 #include "physics/collision_usage.h"
 #include "physics/collisions.h"
@@ -346,6 +347,24 @@ static void vr_aim_log(real_point3d const *origin, real_vector3d const *directio
 	}
 }
 
+/* how many times the smart-link's view on the visor magnifies the aim
+(vr.scope_view = "smartlink", on foot, zoomed), which vr.c steadies the aim
+for; 1 when it is not shown */
+static real vr_aim_smartlink_magnification(long unit_index, boolean aiming)
+{
+	struct unit_datum *unit = unit_index != NONE ? unit_try_and_get(unit_index) : NULL;
+	short zoom_level = player_control_get_zoom_level(0);
+	long weapon_index;
+
+	if (!aiming || !unit || halo_vr_scopes() != HALO_VR_SCOPES_SMARTLINK || zoom_level == NONE ||
+		unit->object.parent_object_index != NONE)
+	{
+		return 1.0f;
+	}
+	weapon_index = unit_inventory_get_weapon(unit_index, unit->unit.current_weapon_index);
+	return weapon_index != NONE ? MAX(weapon_get_zoom_magnification(weapon_index, zoom_level), 1.0f) : 1.0f;
+}
+
 /* player_control.c, each update of the first local player (aiming: the VR
 mode aims, halo_vr_aim's 1): the player's facing, as halo_vr_aim gave it
 along the controller, turned to the direction from the game's eye to where
@@ -360,6 +379,7 @@ void vr_aim_converge(long unit_index, boolean aiming, real *yaw, real *pitch)
 	real body_yaw, distance, hit, units, nearest;
 
 	vr_aim_test_target(unit_index, aiming);
+	halo_vr_aim_zoom(vr_aim_smartlink_magnification(unit_index, aiming));
 	if (!aiming || unit_index == NONE || !halo_vr_aim_line(position, forward, &body_yaw) ||
 		!vr_render_aim_hit(position, forward, body_yaw, &origin, &direction, &distance, &units))
 	{

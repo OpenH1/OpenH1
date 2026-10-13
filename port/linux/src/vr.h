@@ -64,7 +64,8 @@ struct halo_vr_view
 	float hand_up[3];
 	float hand_position[3];
 	/* where the aim points from hand_position: the line the reticle is
-	drawn along and the game is aimed by (halo_vr_aim_line) */
+	drawn along and the game is aimed by (halo_vr_aim_line), the weapon's
+	pointing steadied while the smart-link magnifies it */
 	float aim_forward[3];
 	/* where the weapon's hand is from the eye it is drawn for (metres:
 	right, up, forward) */
@@ -342,6 +343,10 @@ the world; 0 without it. The game aims from its own eye at where this line
 meets the world (port/linux/game/vr_aim.c), so that the shot goes where the
 reticle is, not along a line beside it. */
 int halo_vr_aim_line(float position[3], float forward[3], float *body_yaw);
+/* the smart-link's view on the visor magnifies the aim this many times
+this frame (1: it is not shown), told by the game (vr_aim.c): the aim is
+steadied the more, the more it is magnified */
+void halo_vr_aim_zoom(float magnification);
 /* debug.vr_test_hands holds the controllers (vr_hands.c marks them) */
 int halo_vr_test_hands(void);
 /* debug.vr_test_target: the right controller held by debug.vr_test_hands
