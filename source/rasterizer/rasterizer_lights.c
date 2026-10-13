@@ -359,6 +359,13 @@ static byte local_lens_flare_occlusion_test_results2[MAXIMUM_LENS_FLARE_MARKERS_
 static struct rasterizer_lens_flare_submit_parameters local_lens_flare_parameters[MAXIMUM_LENS_FLARES_PER_FRAME] = {0};
 static long local_lens_flare_count = 0;
 extern short global_screenshot_count;
+#ifdef HALO_VR
+/* port: the flares of the frame not tested, drawn as wholly visible (the VR
+mode's first-person weapon's: rasterizer_lens_flares_submit_occlusion_tests) */
+static boolean local_lens_flare_untested[MAXIMUM_LENS_FLARES_PER_FRAME];
+/* port/linux/game/vr_render.c's */
+boolean vr_render_eye_pass(void);
+#endif
 
 /* ---------- private code */
 
@@ -582,6 +589,9 @@ void rasterizer_lens_flare_submit(
 					lens_flare_parameters_get((short)local_lens_flare_count++);
 
 				memcpy(lens_flare_parameters, parameters, sizeof(*lens_flare_parameters));
+#ifdef HALO_VR
+				local_lens_flare_untested[local_lens_flare_count-1]= FALSE;
+#endif
 
 				if (parameters->light_identifier==NONE)
 				{
@@ -658,6 +668,15 @@ void rasterizer_lights_begin_for_new_frame(
 			byte *occlusion_test_result= lens_flare_occlusion_test_results_get(lens_flare_parameters);
 			byte latest_visibility;
 
+#ifdef HALO_VR
+			/* port: (not tested: rasterizer_lens_flares_submit_occlusion_tests) */
+			if (local_lens_flare_untested[lens_flare_index])
+			{
+				latest_visibility= 255;
+				local_lens_flare_untested[lens_flare_index]= FALSE;
+			}
+			else
+#endif
 			if (lens_flare_parameters->internal__occlusion_pixels>0)
 			{
 				long visible_pixels= rasterizer_widget_get_occlusion_test_result(lens_flare_index);
@@ -868,6 +887,28 @@ void rasterizer_lens_flares_submit_occlusion_tests(
 					_lens_flare_first_person_weapon_flag) != 0;
 				real occlusion_radius = definition->occlusion_radius;
 				real_point3d occlusion_point;
+
+#ifdef HALO_VR
+				/* port: the VR mode's first-person weapon's own glows (the
+				plasma pistol's charge at its muzzle, the plasma rifle's vents,
+				a muzzle flash's) are not tested: drawn wholly visible. The
+				weapon is drawn over the world, which hides neither it nor them,
+				and over the weapon itself they are masked where they are drawn
+				(the stencil, rasterizer_lens_flares_draw). The test is of a
+				point a centimetre or two across at the marker: on the flat
+				screen, the weapon posed the same way before the eye, it was in
+				the clear; held in the hand and seen from any side, the weapon
+				covers it from many (aimed with the eye behind the pistol, its
+				charge was a faint sliver at the muzzle, the glow's size and
+				brightness being how much of the point is seen), and the glow
+				rested on the eyes' visibility tests on the GPU besides */
+				if (first_person && vr_render_eye_pass())
+				{
+					local_lens_flare_untested[lens_flare_index] = TRUE;
+					lens_flare_parameters->internal__occlusion_pixels = 1;
+					continue;
+				}
+#endif
 
 				/* port: the first-person weapon's projection (view_fov.c) */
 				if (first_person)

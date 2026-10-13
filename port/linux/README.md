@@ -2619,6 +2619,16 @@ supersampling costs as above, and multisampling the eye pass
   and Turnip's writes past them faulted the GPU (and could lose the
   device). Without atomic counters they would be drawn into the left eye's
   layer alone, outside the multiview pass.
+- The first-person weapon's own lens flares (the plasma pistol's charge, a
+  ball of light at its muzzle; the tips' glow; the plasma rifle's vents; a
+  muzzle flash's) are not tested in the eyes: they are drawn wholly visible
+  (`rasterizer_lights.c`). The weapon is drawn over the world, which hides
+  neither it nor them, and over the weapon itself they are masked where
+  they are drawn, as on the flat screen. Their test is of a point a
+  centimetre or two across at the marker, which the flat screen's pose of
+  the weapon keeps in the clear; held in the hand, the weapon covers it
+  from many sides: aimed with the eye behind the pistol, its charge was a
+  faint sliver at the muzzle (b30 on spark), and the tips' glow was gone.
 
 ## What operates
 
