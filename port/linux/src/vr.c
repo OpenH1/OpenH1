@@ -277,7 +277,7 @@ pressed for the first frames of the pose */
 #define TEST_HANDS_LEFT_TRIGGER (1 << 17)
 #define TEST_HANDS_RIGHT_GRIP (1 << 18)
 /* and its numbers in each pose */
-#define TEST_HANDS_NUMBERS 22
+#define TEST_HANDS_NUMBERS 23
 #define TEST_HANDS_RIGHT_STICK_DOWN (1 << 19)
 /* and where the head nods about, as a person's does: the lower neck, so far
 behind and below the eyes (metres) */
@@ -605,7 +605,7 @@ static struct
 	pull, the head's turn (degrees left), the frames it lasts, the frames the
 	hands take to move to it from the pose before, the head lowered (metres),
 	nodded about the neck (degrees up) and moved in the room (metres forward
-	and right); the poses' frames in all */
+	and right), and the right grip's pull; the poses' frames in all */
 	int test_hand_poses;
 	float test_hands[TEST_HANDS_POSES][TEST_HANDS_NUMBERS];
 	unsigned long test_hands_frames;
@@ -613,7 +613,7 @@ static struct
 
 /* debug.vr_test_hands: "lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch
 rroll[, grip[, buttons[, trigger[, head yaw[, frames[, move frames[, head
-down[, head pitch[, head forward[, head right]]]]]]]]]]",
+down[, head pitch[, head forward[, head right[, right grip]]]]]]]]]]]",
 poses separated by ';', each lasting its frames (TEST_HANDS_FRAMES if 0) */
 static void test_hands_read(const char *text)
 {
@@ -638,11 +638,11 @@ static void test_hands_read(const char *text)
 				*c = ' ';
 		}
 		pose[12] = pose[13] = pose[14] = pose[15] = pose[16] = pose[17] = pose[18] = 0.0f;
-		pose[19] = pose[20] = pose[21] = 0.0f;
-		count = sscanf(numbers, "%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f", &pose[0],
+		pose[19] = pose[20] = pose[21] = pose[22] = 0.0f;
+		count = sscanf(numbers, "%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f", &pose[0],
 			&pose[1], &pose[2], &pose[3], &pose[4], &pose[5], &pose[6], &pose[7], &pose[8], &pose[9], &pose[10],
 			&pose[11], &pose[12], &pose[13], &pose[14], &pose[15], &pose[16], &pose[17], &pose[18], &pose[19],
-			&pose[20], &pose[21]);
+			&pose[20], &pose[21], &pose[22]);
 		if (count >= 12)
 		{
 			if (pose[16] < 1.0f)
@@ -2436,6 +2436,7 @@ static void test_hands_apply(void)
 		vr.views.grip[hand] = held;
 	}
 	vr.input.left_grip = pose[12];
+	vr.input.right_grip = pose[22];
 	/* (a pull less than 0: the finger off the trigger, which senses touch) */
 	vr.input.right_trigger = pose[14] > 0.0f ? pose[14] : 0.0f;
 	vr.input.right_trigger_touch = pose[14] >= 0.0f;
