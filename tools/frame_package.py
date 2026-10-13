@@ -1,0 +1,170 @@
+#!/usr/bin/env python3
+"""Packages the VR build for a Steam Frame: dist/halo-vr-frame/ and
+dist/halo-vr-frame.tar.gz, which tools/frame_install.sh installs.
+
+    python3 configure.py --vr && ninja linux_arm64
+    python3 tools/frame_package.py
+
+The package is what ~/apps/halo-vr/ on the Frame needs beside the game's
+data and the player's own files: the game (build/linux_arm64/halo), the
+SDL3 it finds beside it, the launcher of its Steam shortcut
+(port/linux/frame/halo-vr.sh), internet play's brokers.txt, a README
+(port/linux/frame/README.md), the libraries' licenses (as
+tools/ci_build.py's dist has them), VERSION (the commit) and SHA256SUMS.
+Never config.toml: the player's own, which an install must not replace.
+
+The game must be a VR build, for 64-bit ARM, and each library it or its
+SDL3 needs must be in the package or one that SteamOS has (the C library,
+Mesa's EGL and OpenGL ES); else this stops, as the Frame would not start
+it. Refer to "Steam Frame" in port/linux/README.md.
+"""
+
+import argparse
+import datetime
+import hashlib
+import shutil
+import struct
+import subprocess
+import sys
+import tarfile
+from pathlib import Path
+from typing import List
+
+ROOT = Path(__file__).resolve().parent.parent
+FRAME_DIR = ROOT / "port/linux/frame"
+NAME = "halo-vr-frame"
+
+# the libraries a Frame has (glibc's, and Mesa's through libglvnd)
+SYSTEM_LIBRARIES = {
+    "libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0", "librt.so.1", "ld-linux-aarch64.so.1",
+    "libGLESv2.so.2", "libEGL.so.1",
+}
+# (the package's name for each, from the repository; as tools/ci_build.py)
+LICENSES = {
+    "SDL3-LICENSE.txt": "build/linux_arm64/third_party/SDL3/LICENSE.txt",
+    "extract-xiso-LICENSE.txt": "port/third_party/extract-xiso/LICENSE.TXT",
+    "mbedtls-LICENSE.txt": "port/third_party/mbedtls/LICENSE",
+    "miniupnpc-LICENSE.txt": "port/third_party/miniupnpc/LICENSE",
+    "Overpass-OFL.txt": "port/assets/fonts/Overpass-OFL.txt",
+    "expat-COPYING.txt": "port/third_party/expat/COPYING",
+    "opus-COPYING.txt": "port/third_party/opus/COPYING",
+    "lucide-LICENSE.txt": "port/assets/icons/lucide/LICENSE",
+}
+# the files an install never writes over (the player's)
+PLAYER_FILES = {"config.toml", "halo-vr.env", "debug.txt", "halo-vr.log", "maps"}
+
+EM_AARCH64 = 183
+DT_NEEDED, DT_STRTAB = 1, 5
+PT_LOAD, PT_DYNAMIC = 1, 2
+
+
+def needed_libraries(path: Path) -> List[str]:
+    """The DT_NEEDED entries of a 64-bit little-endian ARM ELF file; stops if
+    it is not one."""
+    data = path.read_bytes()
+    if data[:6] != b"\x7fELF\x02\x01" or struct.unpack_from("<H", data, 18)[0] != EM_AARCH64:
+        sys.exit(f"{path}: not a 64-bit ARM executable (build with configure.py --vr, then ninja linux_arm64)")
+    phoff, = struct.unpack_from("<Q", data, 32)
+    phentsize, phnum = struct.unpack_from("<HH", data, 54)
+    loads, dynamic = [], None
+    for index in range(phnum):
+        kind, _, offset, vaddr, _, filesz, _, _ = struct.unpack_from("<IIQQQQQQ", data, phoff + index * phentsize)
+        if kind == PT_LOAD:
+            loads.append((vaddr, offset, filesz))
+        elif kind == PT_DYNAMIC:
+            dynamic = (offset, filesz)
+    if dynamic is None:
+        return []
+
+    def file_offset(address: int) -> int:
+        for vaddr, offset, filesz in loads:
+            if vaddr <= address < vaddr + filesz:
+                return offset + address - vaddr
+        sys.exit(f"{path}: a dynamic entry outside the file")
+
+    entries = [struct.unpack_from("<qQ", data, dynamic[0] + at) for at in range(0, dynamic[1], 16)]
+    strtab = file_offset(next(value for tag, value in entries if tag == DT_STRTAB))
+    return [data[strtab + value:data.index(b"\0", strtab + value)].decode() for tag, value in entries
+            if tag == DT_NEEDED]
+
+
+def version() -> str:
+    """VERSION: the commit the package is of, which the install prints"""
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+
+    changes = " (with changes)" if git("status", "--porcelain", "-uno") else ""
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    return (f"commit {git('rev-parse', 'HEAD') or 'unknown'}{changes}\n"
+            f"branch {git('rev-parse', '--abbrev-ref', 'HEAD') or 'unknown'}\n"
+            f"{git('log', '-1', '--format=%s')}\n"
+            f"packaged {stamp}\n")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--build", type=Path, default=ROOT / "build/linux_arm64",
+                        help="the VR build's folder (default: build/linux_arm64)")
+    parser.add_argument("--out", type=Path, default=ROOT / "dist",
+                        help=f"where {NAME}/ and {NAME}.tar.gz go (default: dist)")
+    args = parser.parse_args()
+
+    game = args.build / "halo"
+    if not game.is_file():
+        sys.exit(f"{game}: no game; build it first: python3 configure.py --vr && ninja linux_arm64")
+    if b"xrNegotiateLoaderRuntimeInterface" not in game.read_bytes():
+        sys.exit(f"{game}: not a VR build (python3 configure.py --vr, then ninja linux_arm64)")
+
+    files = {
+        "halo": game,
+        "libSDL3.so.0": args.build / "libSDL3.so.0",
+        "halo-vr.sh": FRAME_DIR / "halo-vr.sh",
+        "brokers.txt": ROOT / "port/assets/network/brokers.txt",
+        "README.md": FRAME_DIR / "README.md",
+        **{name: ROOT / source for name, source in LICENSES.items()},
+    }
+    assert not PLAYER_FILES & set(files)
+    for name, source in files.items():
+        if not source.is_file():
+            sys.exit(f"{source}: missing (for {name})")
+    # each library the game (or SDL3) needs: in the package, or the Frame's
+    for name in ("halo", "libSDL3.so.0"):
+        missing = [library for library in needed_libraries(files[name])
+                   if library not in files and library not in SYSTEM_LIBRARIES]
+        if missing:
+            sys.exit(f"{name} needs {', '.join(missing)}, which is neither in the package nor one of the "
+                     f"libraries every Steam Frame has (SYSTEM_LIBRARIES)")
+
+    dist = args.out / NAME
+    if dist.exists():
+        shutil.rmtree(dist)
+    dist.mkdir(parents=True)
+    for name, source in files.items():
+        shutil.copyfile(source, dist / name)
+        (dist / name).chmod(0o755 if name in ("halo", "libSDL3.so.0", "halo-vr.sh") else 0o644)
+    (dist / "VERSION").write_text(version(), encoding="utf-8")
+    sums = [f"{hashlib.sha256((dist / name).read_bytes()).hexdigest()}  {name}\n"
+            for name in [*files, "VERSION"]]
+    (dist / "SHA256SUMS").write_text("".join(sums), encoding="utf-8")
+    (dist / "VERSION").chmod(0o644)
+    (dist / "SHA256SUMS").chmod(0o644)
+
+    tarball = args.out / f"{NAME}.tar.gz"
+    def anyone(info: tarfile.TarInfo) -> tarfile.TarInfo:
+        # (the files are whoever unpacks them's, not this computer's user)
+        info.uid = info.gid = 0
+        info.uname = info.gname = ""
+        return info
+
+    with tarfile.open(tarball, "w:gz") as archive:
+        archive.add(dist, arcname=NAME, filter=anyone)
+    print((dist / "VERSION").read_text(encoding="utf-8"), end="")
+    for line in sums:
+        digest, name = line.split()
+        print(f"  {name:28} {(dist / name).stat().st_size:>10,} bytes  {digest[:16]}")
+    print(f"{dist}\n{tarball}\nInstall it: tools/frame_install.sh <frame>")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

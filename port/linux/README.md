@@ -1129,8 +1129,57 @@ Steam). Without a runtime or a headset the game plays flat, in its window.
 `vr.enabled = false` (or `HALO_VR=0`) plays flat too.
 
 The VR build doesn't update itself (`update.auto` has no effect): the
-releases it would update to have no VR mode. Install a new VR build by
-hand.
+releases it would update to have no VR mode. Install a new VR build with
+`tools/frame_install.sh` (below), or by hand.
+
+### Steam Frame
+
+On the Frame, the game is in `~/apps/halo-vr/`, and Steam starts it
+through a shortcut (a non-Steam game) to the launcher there,
+`halo-vr.sh` (`port/linux/frame/halo-vr.sh`, whose comments list the
+environment it gives the game). From a computer with SSH to the Frame:
+
+```sh
+python3 configure.py --vr && ninja linux_arm64
+python3 tools/frame_package.py
+tools/frame_install.sh <frame>
+```
+
+- `tools/frame_package.py` makes the package, `dist/halo-vr-frame/` and
+  `dist/halo-vr-frame.tar.gz`: the game, `libSDL3.so.0`, `halo-vr.sh`,
+  `brokers.txt` (without which internet play finds no games), a README
+  (`port/linux/frame/README.md`: install, update, uninstall, the files),
+  the libraries' licenses, `VERSION` (the commit) and `SHA256SUMS`. It
+  stops if the game is not a VR build, or needs a library that neither the
+  package nor SteamOS has.
+- `tools/frame_install.sh <host>` (`--package` for another package, a
+  folder or the `.tar.gz`) copies it to `~/apps/halo-vr/` over SSH. It
+  refuses while the game runs (`pgrep -x halo`) and never starts it. Each
+  file that differs goes in as `<name>.new`, checked against
+  `SHA256SUMS`, and once all are, each takes its name (a rename, so a
+  stopped install leaves the old game whole). The replaced `halo`,
+  `libSDL3.so.0` and `halo-vr.sh` are kept as `<name>.prev` (the last
+  only): `mv halo.prev halo` goes back. `brokers.txt` is replaced. It
+  prints what changed (and the commits, from `VERSION`). It never touches
+  `config.toml`, `halo-vr.env`, the maps, the logs or the saved games.
+  `--local <folder>` installs into `<folder>/apps/halo-vr` instead, the
+  folder standing in for the Frame's home (from a terminal on the Frame,
+  or to test the script).
+- The Steam shortcut: until Steam has one to the launcher (in
+  `~/.local/share/Steam/userdata/*/config/shortcuts.vdf`, which the
+  install only reads), the install prints how to add it on the Frame:
+  in Steam's desktop mode, Games > Add a Non-Steam Game to My Library >
+  Browse, `~/apps/halo-vr/halo-vr.sh`, Add Selected Programs. It does not
+  add it itself: Steam rewrites that file while it runs, which on the
+  Frame is always.
+- The maps go in `~/apps/halo-vr/maps` (or `paths.data`); the install
+  says so when there are none.
+- Settings of your own for the launcher (`HALO_*=value` lines) go in
+  `~/apps/halo-vr/halo-vr.env`, which updates keep, or in the shortcut's
+  launch options in Steam (`HALO_VR=0 %command%`).
+- Started from Steam, the game's output (and a crash's backtrace) is in
+  `~/apps/halo-vr/halo-vr.log`, the previous run's in `halo-vr.log.prev`;
+  its log is `debug.txt` beside the maps.
 
 ### Controls
 

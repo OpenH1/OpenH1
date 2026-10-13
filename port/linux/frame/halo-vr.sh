@@ -1,0 +1,41 @@
+#!/bin/sh
+# Starts the VR build on a Steam Frame: the target of its Steam shortcut
+# (a non-Steam game), installed beside the game in ~/apps/halo-vr by
+# tools/frame_install.sh, which replaces it at each update. Refer to
+# README.md beside it, and to "Steam Frame" in port/linux/README.md.
+#
+# The environment, as Steam gives it to the game:
+#
+# - MESA_GL_VERSION_OVERRIDE, MESA_GLSL_VERSION_OVERRIDE: Steam starts its
+#   games with Mesa capped at GL 4.3 (and GLSL 430), where the GL 4.5
+#   context the VR build's renderer asks for fails (EGL_BAD_MATCH). The
+#   game removes both itself as it starts (port/linux/arm64/host_main.c),
+#   so they need nothing here.
+# - mesa_glthread: Mesa's GL thread, which the game asks for (true) unless
+#   it is set.
+# - XR_RUNTIME_JSON: an OpenXR runtime's manifest, to use instead of the
+#   active one ($XDG_CONFIG_HOME/openxr/1/active_runtime.json, SteamVR's
+#   on the Frame). Unset: the active runtime.
+# - HALO_*: the game's settings (port/linux/README.md, "Settings"), over
+#   config.toml's. Put them in Steam's launch options for the shortcut
+#   (Properties > Launch Options: HALO_VR=0 %command%, say), or in
+#   halo-vr.env beside this script, which updates never touch.
+#
+# The game's data is the folder that contains maps/: here (the script's
+# folder, the current folder of the game), unless config.toml's paths.data
+# names another. Started from Steam (no terminal), the game's output (its
+# log, and a crash's backtrace) goes to halo-vr.log here, the previous
+# run's to halo-vr.log.prev; the game's own log is debug.txt in the data
+# folder.
+set -eu
+cd "$(dirname "$(readlink -f "$0")")"
+if [ -f halo-vr.env ]; then
+	set -a
+	. ./halo-vr.env
+	set +a
+fi
+if [ ! -t 2 ]; then
+	[ -f halo-vr.log ] && mv -f halo-vr.log halo-vr.log.prev
+	exec >halo-vr.log 2>&1
+fi
+exec ./halo "$@"
