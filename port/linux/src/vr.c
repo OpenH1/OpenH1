@@ -97,6 +97,12 @@ left hand holds a grenade or a magazine, or for MELEE_GUARD_MS after
 /* the right hand's and the head's places kept for it (a power of two: more
 than MELEE_VELOCITY_SECONDS's frames at 144 Hz) */
 #define MELEE_SAMPLES 16
+/* the right index finger on the trigger (halo_vr_view's right_trigger_touch):
+on it while the trigger senses it, or is pulled past TRIGGER_TOUCH_PULL (a
+finger pulling is on it, whatever the touch says), or always where the
+trigger senses no touch; it comes on and off over TRIGGER_TOUCH_SECONDS */
+#define TRIGGER_TOUCH_PULL 0.02f
+#define TRIGGER_TOUCH_SECONDS 0.08f
 /* a melee's hit (halo_vr_melee_hit): a knock in the right controller */
 #define MELEE_HIT_AMPLITUDE 0.8f
 #define MELEE_HIT_SECONDS 0.06f
@@ -311,6 +317,10 @@ static struct
 	unsigned long melee_release;
 	unsigned long melee_ticks;
 	unsigned long melee_guard_ticks;
+	/* the right index finger on the trigger (0 off, 1 on, eased), and
+	whether the trigger senses touch (-1 not known yet), as last logged */
+	float trigger_touch;
+	int trigger_touch_sensed;
 	/* both hands on a long gun: whether the left holds the foregrip, how
 	far the aim has turned to the line between the hands (0 to 1), that
 	line, smoothed (OpenXR axes), and whether the weapon is one */
@@ -717,6 +727,7 @@ int halo_vr_initialize(void)
 	vr.force_render = config_boolean("debug.vr_force_render");
 	acquired_clear();
 	vr_visor_initialize(&vr.info);
+	vr.trigger_touch_sensed = -1;
 	vr.initialized = 1;
 	vr.statistics = config_boolean("debug.gpu_stats");
 	platform_log("vr: %s, eyes %dx%d, %.0f Hz", vr.info.system_name, vr.info.eye_width, vr.info.eye_height,
@@ -1895,6 +1906,28 @@ void halo_vr_melee_hit(void)
 		platform_log("vr: melee: it landed");
 }
 
+/* the right index finger on the trigger or off it, once a frame
+(TRIGGER_TOUCH_* above) */
+static void trigger_touch_update(float seconds)
+{
+	int sensed = vr.input.right_trigger_touch >= 0;
+	float on = !sensed || vr.input.right_trigger_touch || vr.input.right_trigger > TRIGGER_TOUCH_PULL ? 1.0f : 0.0f;
+	float step = seconds / TRIGGER_TOUCH_SECONDS;
+
+	/* (the input's state is the runtime's once the controllers are
+	active: said once, and again if it changes) */
+	if ((vr.input.active[1] || sensed) && sensed != vr.trigger_touch_sensed)
+	{
+		platform_log("vr: the right trigger %s", sensed ? "senses a finger on it: the index finger lies off it "
+			"until then" : "senses no finger on it: the index finger rests on it");
+		vr.trigger_touch_sensed = sensed;
+	}
+	if (vr.trigger_touch < on)
+		vr.trigger_touch = vr.trigger_touch + step < on ? vr.trigger_touch + step : on;
+	else
+		vr.trigger_touch = vr.trigger_touch - step > on ? vr.trigger_touch - step : on;
+}
+
 /* the controllers' turning and recentring, once a frame */
 static void input_update(void)
 {
@@ -1912,6 +1945,7 @@ static void input_update(void)
 	reload_update();
 	/* a swing of the right controller melees (vr.melee_gesture) */
 	melee_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
+	trigger_touch_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
 	two_handed_update(seconds);
 	crouch_update();
 	/* (the poses' times: from one frame's display to the next's) */
@@ -2197,7 +2231,9 @@ static void test_hands_apply(void)
 		vr.views.grip[hand] = held;
 	}
 	vr.input.left_grip = pose[12];
-	vr.input.right_trigger = pose[14];
+	/* (a pull less than 0: the finger off the trigger, which senses touch) */
+	vr.input.right_trigger = pose[14] > 0.0f ? pose[14] : 0.0f;
+	vr.input.right_trigger_touch = pose[14] >= 0.0f;
 	vr.input.active[0] = vr.input.active[1] = 1;
 	if (pose[15] != 0.0f)
 	{
@@ -2238,7 +2274,10 @@ static void test_hands_apply(void)
 
 		vr.input.buttons |= buttons & 0xffff;
 		if (buttons & TEST_HANDS_RIGHT_TRIGGER)
+		{
 			vr.input.right_trigger = 1.0f;
+			vr.input.right_trigger_touch = 1;
+		}
 		if (buttons & TEST_HANDS_LEFT_TRIGGER)
 			vr.input.left_trigger = 1.0f;
 		if (buttons & TEST_HANDS_RIGHT_GRIP)
@@ -2566,6 +2605,7 @@ int halo_vr_view(struct halo_vr_view *view)
 	}
 	view->two_handed = vr.two_handed_weight * vr.two_handed_weight * (3.0f - 2.0f * vr.two_handed_weight);
 	view->right_trigger = vr.input.right_trigger;
+	view->right_trigger_touch = vr.trigger_touch;
 	view->left_grip = vr.input.left_grip;
 	memcpy(view->shoulder_offset, settings.shoulder_offset, sizeof(view->shoulder_offset));
 	view->seconds = vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : vr.views.display_period;

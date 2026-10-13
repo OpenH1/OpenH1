@@ -936,6 +936,7 @@ boolean vr_render_hands(struct vr_hands_frame *frame)
 	}
 	frame->two_handed = view->two_handed;
 	frame->right_trigger = view->right_trigger;
+	frame->right_trigger_touch = view->right_trigger_touch;
 	frame->left_grip = view->left_grip;
 	frame->base_yaw = vr_render.base_yaw;
 	frame->body_yaw = body_heading();

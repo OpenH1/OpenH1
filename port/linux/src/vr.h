@@ -72,7 +72,9 @@ struct halo_vr_view
 	positions, as hand_position), the left controller's pointing pose (as
 	the right's), how far the left hand holds the long gun's foregrip
 	(vr.two_handed: 0 to 1, eased), the right trigger's and the left grip's
-	pull (0 to 1), and the shoulders from the eyes (vr.shoulders: metres
+	pull (0 to 1), the right index finger on the trigger (0, off it, to 1,
+	on it: eased, as the trigger senses the finger; 1 where it senses none),
+	and the shoulders from the eyes (vr.shoulders: metres
 	out to each side, up, forward) */
 	int floating_hands;
 	int arms;
@@ -83,6 +85,7 @@ struct halo_vr_view
 	float left_grip_position[3];
 	float two_handed;
 	float right_trigger;
+	float right_trigger_touch;
 	float left_grip;
 	float shoulder_offset[3];
 	/* the time from the last frame's display to this one's (seconds) */

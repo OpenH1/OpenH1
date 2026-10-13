@@ -101,6 +101,7 @@ enum
 	_action_a, _action_b, _action_x, _action_y, _action_menu, _action_view,
 	_action_dpad_up, _action_dpad_down, _action_dpad_left, _action_dpad_right,
 	_action_left_stick_click, _action_right_stick_click, _action_left_bumper, _action_right_bumper,
+	_action_right_trigger_touch,
 	NUMBER_OF_BUTTON_ACTIONS,
 	_action_left_stick = NUMBER_OF_BUTTON_ACTIONS, _action_right_stick,
 	_action_left_trigger, _action_right_trigger, _action_left_grip, _action_right_grip,
@@ -505,7 +506,7 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 static const char *const action_names[NUMBER_OF_ACTIONS] =
 {
 	"a", "b", "x", "y", "menu", "view", "dpad_up", "dpad_down", "dpad_left", "dpad_right",
-	"left_stick_click", "right_stick_click", "left_bumper", "right_bumper",
+	"left_stick_click", "right_stick_click", "left_bumper", "right_bumper", "right_trigger_touch",
 	"left_stick", "right_stick", "left_trigger", "right_trigger", "left_grip", "right_grip",
 	"aim_pose", "grip_pose", "haptic",
 };
@@ -517,7 +518,8 @@ struct binding
 };
 
 /* the Steam Frame's controllers: a gamepad in two halves (the d-pad and
-View on the left, A, B, X, Y and Menu on the right) */
+View on the left, A, B, X, Y and Menu on the right); their triggers sense a
+finger on them (touch), as the Touch's do */
 static const struct binding frame_controller_bindings[] =
 {
 	{ _action_a, "/user/hand/right/input/a/click" },
@@ -538,6 +540,7 @@ static const struct binding frame_controller_bindings[] =
 	{ _action_right_stick, "/user/hand/right/input/thumbstick" },
 	{ _action_left_trigger, "/user/hand/left/input/trigger/value" },
 	{ _action_right_trigger, "/user/hand/right/input/trigger/value" },
+	{ _action_right_trigger_touch, "/user/hand/right/input/trigger/touch" },
 	{ _action_left_grip, "/user/hand/left/input/squeeze/value" },
 	{ _action_right_grip, "/user/hand/right/input/squeeze/value" },
 	{ _action_aim_pose, "/user/hand/left/input/aim/pose" },
@@ -565,6 +568,7 @@ static const struct binding touch_bindings[] =
 	{ _action_right_stick, "/user/hand/right/input/thumbstick" },
 	{ _action_left_trigger, "/user/hand/left/input/trigger/value" },
 	{ _action_right_trigger, "/user/hand/right/input/trigger/value" },
+	{ _action_right_trigger_touch, "/user/hand/right/input/trigger/touch" },
 	{ _action_aim_pose, "/user/hand/left/input/aim/pose" },
 	{ _action_aim_pose, "/user/hand/right/input/aim/pose" },
 	{ _action_grip_pose, "/user/hand/left/input/grip/pose" },
@@ -595,8 +599,9 @@ static void bindings_suggest(const char *profile, const struct binding *bindings
 	if (result == XR_ERROR_PATH_UNSUPPORTED)
 	{
 		/* a path the runtime's profile lacks spoils all of them: find it
-		(each alone) and suggest the rest */
-		int kept = 0;
+		(each alone) and suggest the rest; a profile the runtime has none
+		of is said once */
+		int kept = 0, lacking[32], lacked = 0;
 
 		count = index;
 		for (index = 0; index < count; index++)
@@ -606,8 +611,15 @@ static void bindings_suggest(const char *profile, const struct binding *bindings
 			if (xrSuggestInteractionProfileBindings(vr.instance, &suggestion) == XR_SUCCESS)
 				suggested[kept++] = suggested[index];
 			else
-				host_logf(HOST_LOG_WARN, "vr: %s has no %s", profile, bindings[index].path);
+				lacking[lacked++] = index;
 		}
+		if (!kept)
+		{
+			host_logf(HOST_LOG_INFO, "vr: the runtime has no %s", profile);
+			return;
+		}
+		for (index = 0; index < lacked; index++)
+			host_logf(HOST_LOG_WARN, "vr: %s has no %s", profile, bindings[lacking[index]].path);
 		suggestion.countSuggestedBindings = (uint32_t)kept;
 		suggestion.suggestedBindings = suggested;
 		result = xrSuggestInteractionProfileBindings(vr.instance, &suggestion);
@@ -647,10 +659,16 @@ static int actions_create(void)
 			return 0;
 	}
 	/* (booleans bound to the Touch squeeze's value, a float, are pressed
-	past the runtime's threshold) */
+	past the runtime's threshold. The Frame's profile as Valve documents it,
+	frame_controller_valve, and as this build first named it, which a
+	runtime without it refuses) */
 	if (vr.has_frame_controller)
+	{
+		bindings_suggest("/interaction_profiles/valve/frame_controller_valve", frame_controller_bindings,
+			(int)(sizeof(frame_controller_bindings) / sizeof(frame_controller_bindings[0])));
 		bindings_suggest("/interaction_profiles/valve/frame_controller", frame_controller_bindings,
 			(int)(sizeof(frame_controller_bindings) / sizeof(frame_controller_bindings[0])));
+	}
 	bindings_suggest("/interaction_profiles/oculus/touch_controller", touch_bindings,
 		(int)(sizeof(touch_bindings) / sizeof(touch_bindings[0])));
 	attach.countActionSets = 1;
@@ -984,6 +1002,7 @@ int host_vr_input(struct vr_host_input *input)
 	int index, hand;
 
 	memset(input, 0, sizeof(*input));
+	input->right_trigger_touch = -1;
 	if (!vr.running || vr.state != XR_SESSION_STATE_FOCUSED)
 		return 0;
 	active.actionSet = vr.action_set;
@@ -993,8 +1012,18 @@ int host_vr_input(struct vr_host_input *input)
 		return 0;
 	for (index = 0; index < NUMBER_OF_BUTTON_ACTIONS; index++)
 	{
-		if (button(index))
+		if (index != _action_right_trigger_touch && button(index))
 			input->buttons |= 1u << index;
+	}
+	{
+		/* (-1: the controller has no touch on its trigger, or the runtime
+		binds none) */
+		XrActionStateGetInfo get = { XR_TYPE_ACTION_STATE_GET_INFO };
+		XrActionStateBoolean state = { XR_TYPE_ACTION_STATE_BOOLEAN };
+
+		get.action = vr.actions[_action_right_trigger_touch];
+		input->right_trigger_touch = xrGetActionStateBoolean(vr.session, &get, &state) == XR_SUCCESS && state.isActive ?
+			state.currentState != 0 : -1;
 	}
 	stick(_action_left_stick, input->left_stick);
 	stick(_action_right_stick, input->right_stick);

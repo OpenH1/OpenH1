@@ -111,6 +111,9 @@ struct vr_host_input
 	float left_stick[2], right_stick[2];
 	float left_trigger, right_trigger;
 	float left_grip, right_grip;
+	/* a finger on the right trigger: 1, none: 0, the trigger senses none
+	(no such input): -1 */
+	int right_trigger_touch;
 	int active[2];
 };
 

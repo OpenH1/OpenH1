@@ -26,8 +26,10 @@ struct vr_hands_frame
 	real_matrix4x3 left;
 	/* how far the left hand holds the long gun's foregrip (0 to 1) */
 	real two_handed;
-	/* the right trigger's and the left grip's pull (0 to 1) */
+	/* the right trigger's and the left grip's pull (0 to 1), and the right
+	index finger on the trigger (0, off it, to 1) */
 	real right_trigger;
+	real right_trigger_touch;
 	real left_grip;
 	/* the eyes' middle as it would be with the head level and turned with
 	the body (from the top of the neck, which the head nods about), in the

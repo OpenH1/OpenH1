@@ -66,18 +66,21 @@ hand's, relaxed and with the grip pulled */
 animation graph's tag name; the first that matches, the last for any
 other): its curl at each joint from the knuckle at rest, from the idle
 animation's finger (less than 0: straighter), against the trigger, and how
-much more at a full pull, as the trigger goes back; and how far the
-weapon's trigger goes back at a full pull, toward the grip (metres): its
-trigger node (the node's origin is not the trigger's pivot, and holds its
-guard too, so it is moved, not turned), or the blade vr_trigger.c draws,
-where the finger is. debug.vr_test_finger sets the weapon in hand's, for
-tests. */
+much more at a full pull, as the trigger goes back; how far the weapon's
+trigger goes back at a full pull, toward the grip (metres): its trigger
+node (the node's origin is not the trigger's pivot, and holds its guard
+too, so it is moved, not turned), or the blade vr_trigger.c draws, where the
+finger is; and its curl off the trigger, where the controller's trigger
+senses the finger is not on it: straight along the side of the weapon above
+the trigger, out of the guard, as a finger is kept off a trigger.
+debug.vr_test_finger sets the weapon in hand's, for tests. */
 static const struct trigger_finger
 {
 	char const *name;
 	real rest[3];
 	real pull[3];
 	real travel;
+	real off[3];
 } trigger_fingers[] =
 {
 	/* (each fitted to its weapon's first-person model as the game poses it,
@@ -86,31 +89,45 @@ static const struct trigger_finger
 	never into the weapon. From the idle animation's finger, which hooks
 	round a trigger's place on most weapons, but on the pistol runs along its
 	trigger's side, into the frame, and on the Covenant's wraps into the
-	front of the grip) */
+	front of the grip. Off the trigger, each joint of the finger is laid
+	forward along the weapon's right side, its first bone a little out from
+	the weapon and its tip a little in toward it: solved from the finger's
+	bones as the idle animation poses them, whose curls turn it about an
+	axis close to the weapon's up) */
 	/* (the assault rifle's: its finger hooks round the trigger vr_trigger.c
 	draws, its tip a little straighter, open round the trigger's face, and
 	curls a little more to follow it back) */
-	{ "weapons\\assault rifle\\", { 0.0f, 0.0f, -0.15f }, { 0.03f, 0.05f, 0.06f }, 0.005f },
+	{ "weapons\\assault rifle\\", { 0.0f, 0.0f, -0.15f }, { 0.03f, 0.05f, 0.06f }, 0.005f,
+		{ -0.25f, -0.905f, -1.19f } },
 	/* (the pistol's: straightened at the knuckle, off the frame, and curled
 	at the middle onto its trigger's face, against it as it goes back) */
-	{ "weapons\\pistol\\", { -0.15f, 0.30f, 0.0f }, { 0.0f, 0.05f, 0.15f }, 0.005f },
+	{ "weapons\\pistol\\", { -0.15f, 0.30f, 0.0f }, { 0.0f, 0.05f, 0.15f }, 0.005f,
+		{ -0.20f, -0.02f, -1.07f } },
 	/* (no trigger in their models: on the shotgun, the sniper rifle and the
 	flamethrower the finger lies in the gap where one would be, the sniper
 	rifle's straightened at the knuckle, out of its grip) */
-	{ "weapons\\shotgun\\", { -0.025f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.10f }, 0.005f },
-	{ "weapons\\sniper rifle\\", { -0.225f, -0.05f, 0.0f }, { 0.0f, 0.10f, 0.20f }, 0.005f },
-	{ "weapons\\flamethrower\\", { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.20f, 0.20f }, 0.005f },
+	{ "weapons\\shotgun\\", { -0.025f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.10f }, 0.005f,
+		{ -0.275f, -0.905f, -1.19f } },
+	{ "weapons\\sniper rifle\\", { -0.225f, -0.05f, 0.0f }, { 0.0f, 0.10f, 0.20f }, 0.005f,
+		{ -0.25f, -0.91f, -1.195f } },
+	{ "weapons\\flamethrower\\", { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.20f, 0.20f }, 0.005f,
+		{ -0.25f, -0.905f, -1.19f } },
 	/* (the rocket launcher's grip's front corner meets its finger whatever
 	the curl: its tip straightened, the least of it) */
-	{ "weapons\\rocket launcher\\", { -0.10f, 0.10f, -0.60f }, { 0.0f, 0.0f, 0.10f }, 0.005f },
+	{ "weapons\\rocket launcher\\", { -0.10f, 0.10f, -0.60f }, { 0.0f, 0.0f, 0.10f }, 0.005f,
+		{ -0.535f, -1.375f, -0.755f } },
 	/* (the Covenant's have no trigger: the finger straightened out of the
 	front of the grip to lie against it; the needler's still meets its grip,
 	less) */
-	{ "weapons\\plasma pistol\\", { -0.25f, -0.10f, 0.0f }, { 0.0f, 0.0f, 0.05f }, 0.005f },
-	{ "weapons\\plasma rifle\\", { -0.375f, -0.05f, -0.10f }, { 0.0f, 0.0f, 0.05f }, 0.005f },
-	{ "weapons\\needler\\", { -0.10f, -0.60f, 0.0f }, { 0.0f, 0.0f, 0.10f }, 0.005f },
+	{ "weapons\\plasma pistol\\", { -0.25f, -0.10f, 0.0f }, { 0.0f, 0.0f, 0.05f }, 0.005f,
+		{ -0.265f, -1.325f, -0.775f } },
+	{ "weapons\\plasma rifle\\", { -0.375f, -0.05f, -0.10f }, { 0.0f, 0.0f, 0.05f }, 0.005f,
+		{ -0.24f, -0.89f, -1.255f } },
+	{ "weapons\\needler\\", { -0.10f, -0.60f, 0.0f }, { 0.0f, 0.0f, 0.10f }, 0.005f,
+		{ -0.19f, -1.38f, -1.09f } },
 	/* (any other: the idle animation's finger, curling a little) */
-	{ "", { 0.0f, 0.0f, 0.0f }, { 0.03f, 0.06f, 0.06f }, 0.005f },
+	{ "", { 0.0f, 0.0f, 0.0f }, { 0.03f, 0.06f, 0.06f }, 0.005f,
+		{ -0.25f, -0.905f, -1.19f } },
 };
 
 enum
@@ -694,10 +711,10 @@ static void finger_curl(real_matrix4x3 *node_matrices, short side, short finger,
 	}
 }
 
-/* the right index finger on the trigger, at rest and pulled, and the
-weapon's trigger, back along the weapon (backward: the camera's, in world
-units, a full pull's) */
-static void trigger_pull(real_matrix4x3 *node_matrices, real pull, real_vector3d const *backward)
+/* the right index finger on the trigger, at rest and pulled, or off it
+(touch, 0 off to 1 on), and the weapon's trigger, back along the weapon
+(backward: the camera's, in world units, a full pull's) */
+static void trigger_pull(real_matrix4x3 *node_matrices, real pull, real touch, real_vector3d const *backward)
 {
 	struct trigger_finger const *finger = &vr_hands.finger;
 	real angles[NUMBER_OF_FINGER_JOINTS];
@@ -706,8 +723,15 @@ static void trigger_pull(real_matrix4x3 *node_matrices, real pull, real_vector3d
 
 	if (pull < 0.0f)
 		pull = 0.0f;
+	/* (onto the trigger from off it as the touch eases in, eased again: the
+	finger comes to rest on it, as it leaves it) */
+	touch = PIN(touch, 0.0f, 1.0f);
+	touch = touch * touch * (3.0f - 2.0f * touch);
 	for (joint = 0; joint < NUMBER_OF_FINGER_JOINTS; joint++)
-		angles[joint] = finger->rest[joint] + finger->pull[joint] * pull;
+	{
+		angles[joint] = finger->off[joint] +
+			(finger->rest[joint] + finger->pull[joint] * pull - finger->off[joint]) * touch;
+	}
 	if (knuckle_axis(node_matrices, _right, &axis))
 		finger_curl(node_matrices, _right, _finger_index, &axis, angles);
 	if (vr_hands.trigger != NONE && pull > 0.0f)
@@ -725,7 +749,7 @@ real vr_hands_trigger_travel(void)
 
 /* the weapon's finger on its trigger (trigger_fingers), or
 debug.vr_test_finger's: "<rest at each joint> <more pulled at each joint>
-<the trigger's travel>" */
+[<the trigger's travel> [<off it at each joint>]]" */
 static void trigger_finger_find(char const *graph_name)
 {
 	struct trigger_finger *finger = &vr_hands.finger;
@@ -738,8 +762,9 @@ static void trigger_finger_find(char const *graph_name)
 			break;
 	}
 	*finger = trigger_fingers[index];
-	if (test && *test && sscanf(test, "%f %f %f %f %f %f %f", &finger->rest[0], &finger->rest[1], &finger->rest[2],
-		&finger->pull[0], &finger->pull[1], &finger->pull[2], &finger->travel) >= 6)
+	if (test && *test && sscanf(test, "%f %f %f %f %f %f %f %f %f %f", &finger->rest[0], &finger->rest[1],
+		&finger->rest[2], &finger->pull[0], &finger->pull[1], &finger->pull[2], &finger->travel, &finger->off[0],
+		&finger->off[1], &finger->off[2]) >= 6)
 	{
 		finger->name = "debug.vr_test_finger";
 	}
@@ -1022,7 +1047,7 @@ void vr_hands_pose(
 		backward.i = -frame.camera.forward.i * vr_hands.finger.travel * frame.units;
 		backward.j = -frame.camera.forward.j * vr_hands.finger.travel * frame.units;
 		backward.k = -frame.camera.forward.k * vr_hands.finger.travel * frame.units;
-		trigger_pull(node_matrices, frame.right_trigger, &backward);
+		trigger_pull(node_matrices, frame.right_trigger, frame.right_trigger_touch, &backward);
 		vr_hands.trigger_travel = vr_hands.finger.travel * frame.units * PIN(frame.right_trigger, 0.0f, 1.0f);
 	}
 
