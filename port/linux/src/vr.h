@@ -473,6 +473,12 @@ zoomed, is drawn toward its nearest point (vr.c, aim_assist_step) */
 void halo_vr_aim_assist(long target, float level, const float middle[3], const float low[3], const float high[3]);
 /* debug.vr_test_hands holds the controllers (vr_hands.c marks them) */
 int halo_vr_test_hands(void);
+/* a left-hander's controllers (vr.dominant_hand = "left", the controllers
+aiming or the head): the left one holds the weapon. All this file says of
+the right hand (the right controller's poses, its trigger, its grip) is the
+left's then, and of the left hand the right's; and the first-person weapon
+and hands are drawn mirrored (vr_render.c), as the game's are right-handed */
+int halo_vr_left_handed(void);
 /* debug.vr_test_target: the right controller held by debug.vr_test_hands
 points along this (game axes from the recentred head: at the target the
 game placed, vr_aim.c), from the next frame; NULL: as debug.vr_test_hands
@@ -638,6 +644,12 @@ or both at once (-1, multiview) */
 void halo_vr_draw_eye(int eye);
 /* the sky is being drawn (vr_render.c): with depth clamping, not clipped */
 void halo_vr_sky(int sky);
+/* the model drawn from now on is mirrored (its nodes' axes left-handed: a
+left-hander's first-person weapon and hands), its triangles' winding the
+other way; told by the rasterizer as each model's nodes are set, and as it
+ends (rasterizer_xbox.c) */
+void halo_vr_mirrored_draws(int mirrored);
+int halo_vr_mirrored(void);
 /* the comfort vignette (vr.comfort_vignette): asked for each frame by
 the game (vr_vehicle.c: how fast the view turns with a vehicle, how hard
 the vehicle speeds up or slows), 0 to 1; and as it is drawn this frame,

@@ -205,7 +205,7 @@
 		<string text="SMOOTH TURN SPEED:"/>
 		<string text="VEHICLE VIEW:"/>
 		<string text="DEATH VIEW:"/>
-		<string text="HEIGHT, HUD, MENUS..."/>
+		<string text="HAND, HEIGHT, HUD..."/>
 	</strings>
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/vr_controls/help_strings">
 		<string text=""/>
@@ -224,7 +224,7 @@
 		<string text="How fast smooth turning turns you, the stick\npushed all the way: degrees a second."/>
 		<string text="In a vehicle's seat, the view from your head, or\nthe game's camera following the vehicle."/>
 		<string text="As you die, the view stays where your head was\n(turned to your body in a blink), or the game's."/>
-		<string text="Your height, the world's scale, the HUD, the\nmenus and the headset's resolution."/>
+		<string text="The hand that holds the weapon, your height, the\nworld's scale, the HUD, the menus, the resolution."/>
 	</strings>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/vr_setup_profile_item" type="text" left="51" top="375" width="232" height="32" bitmap="bitmaps/list_item_bkd" text="VR SETUP" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" open="main_menu/settings_select/player_setup/player_profile_edit/vr_controls/vr_controls_screen"/>

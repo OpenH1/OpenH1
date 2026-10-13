@@ -32,6 +32,19 @@ the hand stays in the controller and the arm straight. The forearm twists
 with the hand. With vr.hands = "floating" the arms are collapsed into the
 wrists instead (a node scaled to almost nothing draws its vertices at its
 origin). A hand whose controller is not tracked is not drawn, nor its arm.
+
+A left-hander's (vr.dominant_hand = "left": vr.c's right controller is then
+the left one, and its left the right) has the weapon and both hands drawn
+mirrored, as the game's models are right-handed: all is posed as above in
+the mirror's world (the controllers' poses and the shoulders mirrored into
+it, the left hand there a mirrored right one), and then every node is
+mirrored back (vr_hands_mirror), the weapon in the left hand, the left
+hand's model a right hand on the right. The mirror is the plane along the
+weapon, of the forward and the up of the camera it is posed from
+(vr_render_weapon_mirrored), which the camera is placed for (vr_render_
+weapon_camera). Its
+nodes' axes are then left-handed: the renderer turns their triangles'
+winding about (rasterizer_set_model_skinning).
 */
 
 #ifdef HALO_VR
@@ -219,8 +232,15 @@ static struct
 	real_vector3d left_centre;
 	real upper_arm_length[NUMBER_OF_SIDES];
 	real forearm_length[NUMBER_OF_SIDES];
+	/* posing a left-hander's in the mirror's world (vr_hands_pose): the
+	mirror's plane, through origin, normal its unit normal */
+	boolean mirrored;
+	real_point3d mirror_origin;
+	real_vector3d mirror_normal;
 } vr_hands = { NONE };
 
+/* vr_render.c's */
+boolean vr_render_weapon_mirrored(real_point3d *origin, real_vector3d *normal);
 /* first_person_weapons.c's */
 long first_person_weapon_vr_graph(short local_player_index);
 short first_person_weapon_vr_idle_pose(short local_player_index, real_matrix4x3 *node_matrices,
@@ -273,6 +293,35 @@ static void point_add(real_point3d const *point, real_vector3d const *v, real sc
 	result->x = point->x + v->i * scale;
 	result->y = point->y + v->j * scale;
 	result->z = point->z + v->k * scale;
+}
+
+/* a point and a direction in the mirror (vr_hands' plane) */
+static void point_mirror(real_point3d const *point, real_point3d *result)
+{
+	real_vector3d v;
+
+	vector_between(&vr_hands.mirror_origin, point, &v);
+	point_add(point, &vr_hands.mirror_normal, -2.0f * vector_dot(&v, &vr_hands.mirror_normal), result);
+}
+
+static void vector_mirror(real_vector3d const *v, real_vector3d *result)
+{
+	real along = vector_dot(v, &vr_hands.mirror_normal);
+
+	result->i = v->i - 2.0f * along * vr_hands.mirror_normal.i;
+	result->j = v->j - 2.0f * along * vr_hands.mirror_normal.j;
+	result->k = v->k - 2.0f * along * vr_hands.mirror_normal.k;
+}
+
+/* a controller's pose in the mirror, turned so that it is a pose again:
+the left controller's as a right one's would be, and the right's as a left
+one's */
+static void pose_mirror(real_matrix4x3 *pose)
+{
+	point_mirror(&pose->position, &pose->position);
+	vector_mirror(&pose->forward, &pose->forward);
+	vector_mirror(&pose->up, &pose->up);
+	vector_cross(&pose->up, &pose->forward, &pose->left);
 }
 
 /* v without its part along unit, normalized; FALSE if nothing is left */
@@ -951,11 +1000,20 @@ static void arm_reach(real_matrix4x3 *node_matrices, real_matrix4x3 const *camer
 	node_matrices[forearm] = idle_fore;
 	matrix_reframe(&node_matrices[forearm], &idle_direction, &idle_toward, &direction, &toward);
 	node_matrices[forearm].position = elbow;
-	/* debug.vr_test_hands: the arm's bones */
+	/* debug.vr_test_hands: the arm's bones (where they are drawn, out of
+	the mirror's world) */
 	if (halo_vr_test_hands())
 	{
-		render_debug_line(FALSE, &shoulder, &elbow, global_real_argb_white);
-		render_debug_line(FALSE, &elbow, hand, global_real_argb_white);
+		real_point3d seen[3] = { shoulder, elbow, *hand };
+
+		if (vr_hands.mirrored)
+		{
+			point_mirror(&seen[0], &seen[0]);
+			point_mirror(&seen[1], &seen[1]);
+			point_mirror(&seen[2], &seen[2]);
+		}
+		render_debug_line(FALSE, &seen[0], &seen[1], global_real_argb_white);
+		render_debug_line(FALSE, &seen[1], &seen[2], global_real_argb_white);
 	}
 }
 
@@ -999,11 +1057,15 @@ void vr_hands_pose(
 {
 	struct vr_hands_frame frame;
 	real_matrix4x3 *left;
+	real_matrix4x3 seen[NUMBER_OF_SIDES];
 	short node_index, side;
 	boolean visible[NUMBER_OF_SIDES];
 
 	if (local_player_index == 0)
+	{
 		vr_hands.trigger_travel = 0.0f;
+		vr_hands.mirrored = FALSE;
+	}
 	if (local_player_index != 0 || !vr_render_hands(&frame) || !hands_learn() ||
 		animation_graph_index != vr_hands.animation_graph_index || node_count != vr_hands.node_count)
 	{
@@ -1012,6 +1074,16 @@ void vr_hands_pose(
 	left = &node_matrices[vr_hands.wrist[_left]];
 	visible[_left] = frame.left_valid;
 	visible[_right] = frame.right_valid;
+	seen[_left] = frame.left;
+	seen[_right] = frame.right;
+	/* a left-hander's, posed in the mirror's world (vr_hands_mirror brings
+	them back) */
+	vr_hands.mirrored = vr_render_weapon_mirrored(&vr_hands.mirror_origin, &vr_hands.mirror_normal);
+	if (vr_hands.mirrored)
+	{
+		pose_mirror(&frame.left);
+		pose_mirror(&frame.right);
+	}
 
 	/* the left hand: in the controller, or on the long gun's foregrip */
 	if (frame.left_valid)
@@ -1067,7 +1139,7 @@ void vr_hands_pose(
 	{
 		for (side = 0; side < NUMBER_OF_SIDES; side++)
 		{
-			real_matrix4x3 const *hand = side == _left ? &frame.left : &frame.right;
+			real_matrix4x3 const *hand = &seen[side];
 			real_argb_color const *color = side == _right ? global_real_argb_red : global_real_argb_green;
 			real_point3d ahead;
 
@@ -1086,6 +1158,21 @@ void vr_hands_pose(
 		real_vector3d forward, left_axis, up;
 
 		shoulders_place(&frame, shoulders, &forward, &left_axis, &up);
+		if (vr_hands.mirrored)
+		{
+			/* (in the mirror the right shoulder is the left one's, and the
+			body's left its right) */
+			real_point3d body[NUMBER_OF_SIDES] = { shoulders[_left], shoulders[_right] };
+
+			point_mirror(&body[_right], &shoulders[_left]);
+			point_mirror(&body[_left], &shoulders[_right]);
+			vector_mirror(&forward, &forward);
+			vector_mirror(&up, &up);
+			vector_mirror(&left_axis, &left_axis);
+			left_axis.i = -left_axis.i;
+			left_axis.j = -left_axis.j;
+			left_axis.k = -left_axis.k;
+		}
 		for (side = 0; side < NUMBER_OF_SIDES; side++)
 		{
 			if (visible[side])
@@ -1109,6 +1196,26 @@ void vr_hands_pose(
 	{
 		if (!visible[side])
 			side_hide(node_matrices, side);
+	}
+}
+
+/* first_person_weapons.c, after vr_hands_pose: a left-hander's weapon and
+hands, posed in the mirror's world, mirrored back, every node: left-handed
+(vr_render_weapon_mirrored) */
+void vr_hands_mirror(short local_player_index, real_matrix4x3 *node_matrices, short node_count)
+{
+	short node_index;
+
+	if (local_player_index != 0 || !vr_render_weapon_mirrored(&vr_hands.mirror_origin, &vr_hands.mirror_normal))
+		return;
+	for (node_index = 0; node_index < node_count; node_index++)
+	{
+		real_matrix4x3 *node = &node_matrices[node_index];
+
+		point_mirror(&node->position, &node->position);
+		vector_mirror(&node->forward, &node->forward);
+		vector_mirror(&node->left, &node->left);
+		vector_mirror(&node->up, &node->up);
 	}
 }
 

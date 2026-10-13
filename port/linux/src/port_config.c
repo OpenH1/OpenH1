@@ -238,6 +238,11 @@ static const struct config_setting config_settings[] =
 		"likely to make you sick), \"level\" turns it smoothly but never pitches\n"
 		"it (the stick's pitch moves the reticle), \"snap\" turns it a step of\n"
 		"vr.snap_turn_angle each time the aim is that far from it." },
+	{ "vr.dominant_hand", _config_string, "\"right\"", "HALO_VR_DOMINANT_HAND", _environment_value,
+		_platform_desktop,
+		"The hand that holds the weapon: \"right\", or \"left\" (the weapon and the\n"
+		"hands drawn mirrored; the left trigger fires, the right hand holds the\n"
+		"foregrip, reloads and throws). Not with vr.aim = \"gamepad\"." },
 	{ "vr.weapon_offset", _config_string, "\"0.15, -0.22, 0.30\"", "HALO_VR_WEAPON_OFFSET", _environment_value,
 		_platform_desktop,
 		"With vr.aim = \"controller\" and vr.hands = \"game\", where the weapon's\n"

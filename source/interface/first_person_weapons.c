@@ -1672,15 +1672,22 @@ static void first_person_weapon_build_node_matrices(
 #ifdef HALO_VR
 		{
 			/* the VR mode: the hands and arms follow the controllers
-			(vr.hands, port/linux/game/vr_hands.c) */
+			(vr.hands, port/linux/game/vr_hands.c), and a left-hander's
+			weapon and hands are mirrored (vr.dominant_hand) */
 			extern void vr_hands_pose(short local_player_index, long animation_graph_index,
 				struct real_matrix4x3 *node_matrices, short node_count);
+			extern void vr_hands_mirror(short local_player_index, struct real_matrix4x3 *node_matrices,
+				short node_count);
 
 			vr_hands_pose(
 				local_player_index,
 				weapon_definition->weapon.interface_definition.first_person_animations.index,
 				first_person_weapon->node_matrices,
 				(short)animation_graph->nodes.count);
+			vr_hands_mirror(
+				local_player_index,
+				first_person_weapon->node_matrices,
+				(short)MIN(animation_graph->nodes.count, MAXIMUM_NODES_PER_ANIMATION));
 		}
 #endif
 	}

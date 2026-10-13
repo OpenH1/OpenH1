@@ -753,6 +753,9 @@ static struct
 	BOOL right_eye;
 	BOOL visibility_test;
 	int eye_alone;
+	/* the model drawn is mirrored (halo_vr_mirrored_draws): its triangles'
+	winding is the other way */
+	BOOL mirrored;
 	/* debug.gpu_stats: where a frame's time goes (vr_timing) */
 	BOOL depth_failed;
 	BOOL statistics;
@@ -3937,6 +3940,9 @@ static void apply_raster_state(BOOL has_depth)
 		/* (as does the eye pass's) */
 		if (vr_gl.multiview || vr_gl.left_eye || vr_gl.right_eye)
 			front_face = front_face == GL_CW ? GL_CCW : GL_CW;
+		/* (and a mirrored model's) */
+		if (vr_gl.mirrored)
+			front_face = front_face == GL_CW ? GL_CCW : GL_CW;
 #endif
 		GLenum cull_mode = rs[D3DRS_CULLMODE] == rs[D3DRS_FRONTFACE] ? GL_FRONT : GL_BACK;
 
@@ -6460,6 +6466,20 @@ both (-1): the crosshairs, each eye's in a draw of its own */
 void halo_vr_draw_eye(int eye)
 {
 	vr_gl.eye_alone = eye;
+}
+
+/* the model whose nodes' matrices are set now (rasterizer_set_model_skinning)
+is mirrored, its axes left-handed (a left-hander's first-person weapon and
+hands, vr.dominant_hand): what was its front is its back, until the next
+model's, or the model's end */
+void halo_vr_mirrored_draws(int mirrored)
+{
+	vr_gl.mirrored = mirrored != 0;
+}
+
+int halo_vr_mirrored(void)
+{
+	return vr_gl.mirrored;
 }
 
 void halo_vr_set_screen_corrections(const float corrections[2][4])

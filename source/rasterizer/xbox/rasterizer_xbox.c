@@ -1275,6 +1275,24 @@ void rasterizer_set_model_skinning(
 		"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox.c",
 		2751,
 		skinning->node_matrix_count>0 && skinning->node_matrix_count<=MAXIMUM_NODES_PER_MODEL);
+#ifdef HALO_VR
+	{
+		/* port: the VR mode's left-hander's first-person weapon and hands
+		are mirrored, their nodes' axes left-handed (port/linux/game/
+		vr_hands.c): their triangles wound the other way (d3d8_gl.c), until
+		the next model's nodes or the model's end */
+		extern int halo_vr_left_handed(void);
+		extern void halo_vr_mirrored_draws(int mirrored);
+		real_matrix4x3 const *node = &skinning->node_matrices[0];
+		real_vector3d up_from_left;
+
+		if (halo_vr_left_handed())
+		{
+			cross_product3d(&node->forward, &node->left, &up_from_left);
+			halo_vr_mirrored_draws(dot_product3d(&up_from_left, &node->up) < 0.0f);
+		}
+	}
+#endif
 	/* port: a model of more nodes than the constants hold is skinned a
 	part's own nodes at a time (rasterizer_model_part_skinning) */
 	if (skinning->node_matrix_count >= RASTERIZER_MAXIMUM_NODES_PER_MODEL)

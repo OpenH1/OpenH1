@@ -621,6 +621,15 @@ void _rasterizer_model_end(
 		}
 		local_parameters = NULL;
 	}
+#ifdef HALO_VR
+	{
+		/* port: a mirrored model's winding (rasterizer_set_model_skinning)
+		ends with it */
+		extern void halo_vr_mirrored_draws(int mirrored);
+
+		halo_vr_mirrored_draws(FALSE);
+	}
+#endif
 
 	return;
 }

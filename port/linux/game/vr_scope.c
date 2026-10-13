@@ -582,6 +582,11 @@ boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rast
 	definition = &vr_scope_definitions[scope];
 	cross_product3d(&weapon_camera.up, &weapon_camera.forward, &left);
 	normalize3d(&left);
+	/* (a left-hander's weapon is drawn mirrored about the plane of the
+	camera's forward and up: its scope on the camera's other side,
+	vr_render_weapon_mirrored) */
+	if (halo_vr_left_handed())
+		negate_vector3d(&left, &left);
 	radius = definition->radius / METRES_PER_WORLD_UNIT;
 	{
 		real f = definition->eyepiece[0] / METRES_PER_WORLD_UNIT, l = definition->eyepiece[1] / METRES_PER_WORLD_UNIT,

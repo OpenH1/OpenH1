@@ -115,6 +115,8 @@ struct vr_host_input
 	(no such input): -1 */
 	int right_trigger_touch;
 	int active[2];
+	/* and on the left trigger, the same (a left-hander's trigger finger) */
+	int left_trigger_touch;
 };
 
 struct vr_host_layers

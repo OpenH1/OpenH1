@@ -1166,6 +1166,38 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 Other controllers that SteamVR maps to the Touch layout operate as well
 (the grips as the bumpers).
 
+#### Left-handed (`vr.dominant_hand`)
+
+`vr.dominant_hand = "left"` (VR Display's DOMINANT HAND: LEFT) puts the
+weapon in your left hand, and all that the right hand does above the left
+does, and the other way round: the left trigger fires, its touch lays the
+index finger on it, the left controller aims (the reticle, the shot, the
+smart-link's view, a scope raised to your left eye) and swings to melee, and
+the left grip draws from the holsters. The right hand holds a long gun's
+foregrip, takes the magazines and pushes them in, and throws the grenades
+(the right trigger with `vr.grenade_throw = "both"`). The haptics are
+swapped with the hands, the game's rumble too (the weapon's in the left
+controller).
+
+- The first-person weapon and both hands are drawn mirrored, a left hand
+  holding a left-handed weapon (the game's models are right-handed): the
+  weapon in the left hand, the right hand on its foregrip, the arms from
+  the shoulders on their own sides, the magazine and its well, the trigger
+  and the finger on it mirrored with it. The assault rifle's counter reads
+  as it does (its digits and its compass the right way round); the other
+  marks on its display are mirrored.
+- The buttons and the sticks stay where they are, as the game's prompts
+  name them: A and B on the right, X and Y, the d-pad and View on the left,
+  the bumpers; the left stick moves, the right turns.
+- A vehicle's handlebars and wheel are held by both hands as ever, each
+  hand on its own side's handle; a turret fires with the left trigger and
+  aims where the left controller points.
+- Not with `vr.aim = "gamepad"`, where the controllers are a gamepad's
+  halves.
+- SteamVR's dominant hand for the game (its per-application setting) is not
+  read: OpenXR, which this build uses, does not expose it (SteamVR gives it
+  to OpenVR applications alone), so the setting says.
+
 #### The trigger finger
 
 The Steam Frame's triggers sense a finger on them (capacitive touch), as
@@ -2032,7 +2064,8 @@ game plays in VR) sets most of these with the left d-pad: VR Controls
 (the hands, the aim, the gamepad's view, two-handed aiming, the aim assist, the melee
 swing, the holsters, the physical crouch, the scopes (smart-link, at the eye or off), reloading by hand, turning, the vehicles' view and the view as you die) and, from its last row, VR Display (the play position,
 the eye height, the world's scale, the HUD's and the menus' distance and
-size, the resolution and the refresh rate) and, from its last row, its
+size, the resolution and the refresh rate, and first the dominant hand)
+and, from its last row, its
 visor page (the HUD on the visor or flat, its depth, its wrap along the
 visor, its lag and glow, its look on the glass, its reaction to the world, the
 helmet's rim and its depth, the glass's shade, the shields' effects and
@@ -2048,6 +2081,7 @@ headset's session is opened with, apply from the next start.
 | `vr.refresh_rate` | `90.0` | `HALO_VR_REFRESH_RATE` | The refresh rate to ask the runtime for. `0`: the runtime's. When the runtime refuses it or gives another, the log lists the rates the display has (`vr: the display's refresh rates: ...`). |
 | `vr.aim` | `"controller"` | `HALO_VR_AIM` | `"controller"`: the right controller aims and holds the weapon. `"head"`: the head aims. `"gamepad"`: a gamepad aims and plays, as on the flat screen, and the head looks about freely (above, "With a gamepad"). |
 | `vr.gamepad_view` | `"camera"` | `HALO_VR_GAMEPAD_VIEW` | With `vr.aim = "gamepad"`: `"camera"`, the stick turns and pitches the view as the flat screen's camera, the head's turn on top (the most like the Xbox game, and the most likely to make you sick); `"level"`, it turns the view smoothly, and its pitch moves only the reticle; `"snap"`, the view turns a step of `vr.snap_turn_angle` each time the aim is more than that from it, and its pitch moves only the reticle. |
+| `vr.dominant_hand` | `"right"` | `HALO_VR_DOMINANT_HAND` | The hand that holds the weapon: `"right"`, or `"left"`: the weapon in the left controller, drawn mirrored with both hands, the left trigger firing, the right hand on the foregrip, at the magazines and throwing, the haptics swapped with the hands (above, "Left-handed"). Not with `vr.aim = "gamepad"`. |
 | `vr.weapon_offset` | `"0.15, -0.22, 0.30"` | `HALO_VR_WEAPON_OFFSET` | With `vr.hands = "game"`: where the weapon's grip is from the eye that the game poses it for, in metres: right, up, forward. |
 | `vr.depth` | `false` | `HALO_VR_DEPTH` | `true`: give the runtime the eyes' depth too (`XR_KHR_composition_layer_depth`), for its reprojection. SteamVR on the Steam Frame cannot make a depth swapchain for an OpenGL session yet. |
 | `vr.melee_gesture` | `true` | `HALO_VR_MELEE_GESTURE` | A swing of the right controller melees, as B does: a hard one in any direction, or a softer one with the right grip held ("Meleeing with a swing"). |
@@ -2101,7 +2135,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_turn` | `0.0` | `HALO_VR_TEST_TURN` | Turn the player this many degrees a second, for automated tests without hands. |
 | `debug.vr_test_jitter` | `0.0` | `HALO_VR_TEST_JITTER` | Move the head by up to this many millimetres (and turn it as many hundredths of a degree) at random each frame, as a worn headset moves: for automated tests of what flickers when the view barely moves. |
 | `debug.vr_test_head` | `""` | `HALO_VR_TEST_HEAD` | Hold the head still and level where it is first located (a simulated headset's head wobbles), for automated tests: `"0"`, or `"<degrees> <seconds>"` turns it left and right by as many degrees over as many seconds, smoothly (a sine of the frames' display times); `"<degrees> <seconds> <pitch>"` also pitches it up by as many degrees (less than 0: down), as looking down at the hip's holster. |
-| `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move[, down[, nod[, forward[, right[, stick x[, stick y[, right grip]]]]]]]]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right stick's click (zoom) 2048, the right trigger 65536, the left 131072, the right grip 262144, the right stick pushed down 524288), the right trigger's pull (0 to 1; less than 0, the index finger off the trigger, as when its touch senses none: "The trigger finger"), the head turned (degrees left), the frames the pose lasts (`0`: 288), the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps), the head lowered (metres, as a crouch; moved with the hands: below), nodded (degrees up, about the neck 8 cm behind and 15 cm below the eyes, as a person's lower neck: looking 60 degrees down, the eyes come 9 cm forward and 14 cm down) and moved in the room (metres forward and right, as a lean or a step from where the head was recentred), each with the hands, and the left stick (right and forward, -1 to 1: driving) and the right grip's pull (0 to 1: a vehicle's handlebars) through the pose. A pose shorter than 20 frames presses its buttons only as long. Up to 512 poses separated by `;` are taken in turn (a pose a frame, of 1 frame moved in 1, poses a path frame by frame: a swing's curve) (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. Below, a grenade throw scripted. |
+| `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move[, down[, nod[, forward[, right[, stick x[, stick y[, right grip]]]]]]]]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right stick's click (zoom) 2048, the right trigger 65536, the left 131072, the right grip 262144, the right stick pushed down 524288), the right trigger's pull (0 to 1; less than 0, the index finger off the trigger, as when its touch senses none: "The trigger finger"), the head turned (degrees left), the frames the pose lasts (`0`: 288), the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps), the head lowered (metres, as a crouch; moved with the hands: below), nodded (degrees up, about the neck 8 cm behind and 15 cm below the eyes, as a person's lower neck: looking 60 degrees down, the eyes come 9 cm forward and 14 cm down) and moved in the room (metres forward and right, as a lean or a step from where the head was recentred), each with the hands, and the left stick (right and forward, -1 to 1: driving) and the right grip's pull (0 to 1: a vehicle's handlebars) through the pose. A pose shorter than 20 frames presses its buttons only as long. Up to 512 poses separated by `;` are taken in turn (a pose a frame, of 1 frame moved in 1, poses a path frame by frame: a swing's curve) (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. With `vr.dominant_hand = "left"` the poses are a left-hander's, mirrored: the right hand is the weapon's, held by the left controller where the mirror puts it (right and left, yaw and roll, the head's turn and its move across, all the other way), the left hand the right controller, and the trigger and the grips are those of the controllers that do what they name (the left trigger), so a test of the right hand plays as a left-hander's. Below, a grenade throw scripted. |
 | `debug.vr_test_death` | `""` | `HALO_VR_TEST_DEATH` | Kill the first player, for automated tests of the view as they die: `"<seconds> [kill\|grenade\|watch]"`, that many seconds after they first aim (a level's clock does not start at 0), once a run, as the script's `unit_kill` does, by a frag grenade's blast half a metre before them (their shields and nearly all their health gone first: the body thrown back), or killed and then the dead camera turned to the nearest living biped, as network co-op's spectating turns it to a teammate. From a second before, the log says how far the view moved and turned each frame, how tinted, dimmed and dark it was, and where the body was from the eye (how far, across and up, in view or not), and each phase's sums (alive, dead, back) with how much of the motion was seen (between frames not in full darkness), and each blink; with `debug.screenshot_directory`, the eyes six times a second from the death to 1.5 s after the player is back (24 times in its first half second). With `debug.vr_test_head = "0"`, the motion the player did not make. |
 | `debug.vr_test_grenades` | `""` | `HALO_VR_TEST_GRENADES` | Give the first VR player these grenades as they first aim, for tests of the grenade held in the hand: `"<frags> <plasma grenades>"`. |
 | `debug.vr_test_finger` | `""` | `HALO_VR_TEST_FINGER` | The right index finger on the weapon's trigger instead of the weapon's own (`game/vr_hands.c`, `trigger_fingers`), for tests: `"<rest> <rest> <rest> <pull> <pull> <pull> [<travel> [<off> <off> <off>]]"`, its curl at each joint from the knuckle at rest, from the idle animation's (less than 0: straighter), and how much more at a full pull (radians), how far back the trigger goes (metres), and its curl off the trigger (the trigger's touch sensing no finger; a test pose's trigger less than 0). |

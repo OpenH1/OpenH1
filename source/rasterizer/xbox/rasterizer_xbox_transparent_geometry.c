@@ -1064,6 +1064,44 @@ real_vector4d *offset_vector4d(
 	return result;
 }
 
+#ifdef HALO_VR
+/* port: a numeric shader's digit on a mirrored model (the VR mode's
+left-hander's first-person weapon, port/linux/game/vr_hands.c: the assault
+rifle's counter and its compass), whose digits are in the other order and
+each glyph mirrored: the digit across from it, of as many as the counter's
+largest value has in the bitmap's base, is the one it shows, and its map's
+u is turned about (1 - u: numeric_mirrored_map), so that the counter reads
+as it does in the right hand. Its digit as it is, on any other model */
+static short numeric_mirrored_digit(
+	short digit,
+	short frame_count,
+	short counter_limit,
+	boolean *mirrored)
+{
+	extern int halo_vr_mirrored(void);
+	long largest = counter_limit - 1;
+	short digits = 1;
+
+	*mirrored = halo_vr_mirrored();
+	if (!*mirrored)
+		return digit;
+	while (frame_count > 1 && largest >= frame_count)
+	{
+		largest /= frame_count;
+		digits++;
+	}
+	return digit < digits ? digits - 1 - digit : digit;
+}
+
+static void numeric_mirrored_map(
+	real u_transform[4])
+{
+	u_transform[0] = -u_transform[0];
+	u_transform[1] = -u_transform[1];
+	u_transform[3] = 1.0f - u_transform[3];
+}
+#endif
+
 void rasterizer_transparent_geometry_group_draw(
 	struct transparent_geometry_group *group,
 	boolean dirty)
@@ -1907,6 +1945,9 @@ void rasterizer_transparent_geometry_group_draw(
 							short map_index;
 							short stage_index;
 							long result;
+#ifdef HALO_VR
+							boolean numeric_mirrored = FALSE;
+#endif
 
 							for (layer_index = 0;
 								layer_index < shader_transparent_generic->generic.extra_layers.count;
@@ -1963,9 +2004,13 @@ void rasterizer_transparent_geometry_group_draw(
 								short counter_value = PIN(fast_ftol(floor(counter_limit*
 									group->animation->values[function_index] + 0.5f)), 0, counter_limit);
 								short digit_index;
+								short digit = group->shader_permutation_index;
 
+#ifdef HALO_VR
+								digit = numeric_mirrored_digit(digit, frame_count, counter_limit, &numeric_mirrored);
+#endif
 								for (digit_index = 0;
-									digit_index < group->shader_permutation_index;
+									digit_index < digit;
 									digit_index++)
 									counter_value /= frame_count;
 
@@ -2135,6 +2180,10 @@ void rasterizer_transparent_geometry_group_draw(
 									}
 							}
 
+#ifdef HALO_VR
+							if (numeric_mirrored)
+								numeric_mirrored_map(vsh_constants__texanim[0]);
+#endif
 							result = IDirect3DDevice8_SetVertexShaderConstant(
 								global_d3d_device,
 								VSH_CONSTANTS__TEXANIM_OFFSET,
@@ -2406,6 +2455,9 @@ void rasterizer_transparent_geometry_group_draw(
 							short layer_index;
 							short map_index;
 							long result;
+#ifdef HALO_VR
+							boolean numeric_mirrored = FALSE;
+#endif
 
 							/* port: the next layer each time: January never advanced
 							layer_index, so the loop never ended on a chicago shader with
@@ -2476,9 +2528,13 @@ void rasterizer_transparent_geometry_group_draw(
 									short counter_value = PIN(fast_ftol(floor(counter_limit*
 										group->animation->values[function_index] + 0.5f)), 0, counter_limit);
 									short digit_index;
+									short digit = group->shader_permutation_index;
 
+#ifdef HALO_VR
+									digit = numeric_mirrored_digit(digit, frame_count, counter_limit, &numeric_mirrored);
+#endif
 									for (digit_index = 0;
-										digit_index < group->shader_permutation_index;
+										digit_index < digit;
 										digit_index++)
 										counter_value /= frame_count;
 
@@ -2660,6 +2716,10 @@ void rasterizer_transparent_geometry_group_draw(
 								}
 							}
 
+#ifdef HALO_VR
+							if (numeric_mirrored)
+								numeric_mirrored_map(vsh_constants__texanim[0]);
+#endif
 							result = IDirect3DDevice8_SetVertexShaderConstant(
 								global_d3d_device,
 								VSH_CONSTANTS__TEXANIM_OFFSET,
@@ -3590,6 +3650,18 @@ void rasterizer_transparent_geometry_group_draw(
 				_error_silent,
 				"### ERROR rasterizer_transparent_geometry_group_draw failed");
 	}
+
+#ifdef HALO_VR
+	{
+		/* port: a mirrored model's winding (rasterizer_set_model_skinning)
+		ends with its group, one queued (drawn with its own nodes); one drawn
+		as its model is (not queued) is the model's, which goes on */
+		extern void halo_vr_mirrored_draws(int mirrored);
+
+		if (!TEST_FLAG(group->geometry_flags, _rasterizer_geometry_no_queue_bit))
+			halo_vr_mirrored_draws(FALSE);
+	}
+#endif
 
 	return;
 }

@@ -511,6 +511,10 @@ static struct
 	float jitter_offset[3];
 	float jitter_turn[4];
 	struct vr_host_input input;
+	/* the controllers' poses in views are as the runtime (or debug.vr_test_
+	hands) gave them, each hand's its own controller's: not yet assigned to
+	the hands (hands_assign_views) */
+	int views_unassigned;
 	/* the recentred origin, in the play space */
 	int origin_valid;
 	/* whether the session had the focus last frame: the headset going on
@@ -800,6 +804,10 @@ static struct
 	float menu_width;
 	int controller_aim;
 	int gamepad_aim;
+	/* vr.dominant_hand = "left" (not with vr.aim = "gamepad", where the
+	controllers are a gamepad's halves): the left controller is the weapon's
+	hand, which the rest of this file calls the right (hands_assign) */
+	int left_handed;
 	/* vr.gamepad_view: the view's heading in steps ("snap"), and pitched
 	with the facing ("camera") */
 	int gamepad_snap;
@@ -939,6 +947,7 @@ static void settings_read(void)
 	settings.menu_width = (float)config_real("vr.menu_width");
 	settings.gamepad_aim = !strcmp(config_string("vr.aim"), "gamepad");
 	settings.controller_aim = !settings.gamepad_aim && strcmp(config_string("vr.aim"), "head") != 0;
+	settings.left_handed = !settings.gamepad_aim && !strcmp(config_string("vr.dominant_hand"), "left");
 	settings.gamepad_snap = !strcmp(config_string("vr.gamepad_view"), "snap");
 	settings.gamepad_pitch = !settings.gamepad_snap && strcmp(config_string("vr.gamepad_view"), "level") != 0;
 	settings.melee_gesture = config_boolean("vr.melee_gesture");
@@ -1244,6 +1253,72 @@ static void normalize(float v[3])
 	}
 }
 
+/* ---------- the dominant hand */
+
+/* A left-hander's controllers (vr.dominant_hand = "left"): the left one
+holds the weapon. What the runtime says of each hand is swapped as it comes,
+the poses as each frame locates them and the triggers, the grips and the
+trigger's touch as they are read, so that all that follows has the weapon's
+hand where it had the right: the aim, the trigger finger, the melee swing,
+the holsters', the scope's zoom, and the other hand the foregrip's, the
+magazines', the grenades'. The haptics go back to the hand they are for
+(hand_haptic), and the first-person weapon and hands are drawn mirrored
+(port/linux/game/vr_render.c). The buttons and the sticks
+stay where they are, as the game's prompts name them (A, B, X, Y, the
+bumpers, the d-pad, View and Menu). debug.vr_test_hands mirrors its poses
+(test_hands_apply). */
+static void hands_assign_views(void)
+{
+	struct vr_host_pose pose;
+
+	if (!vr.views_unassigned)
+		return;
+	vr.views_unassigned = 0;
+	if (!settings.left_handed)
+		return;
+	pose = vr.views.aim[0];
+	vr.views.aim[0] = vr.views.aim[1];
+	vr.views.aim[1] = pose;
+	pose = vr.views.grip[0];
+	vr.views.grip[0] = vr.views.grip[1];
+	vr.views.grip[1] = pose;
+}
+
+static void hands_assign_input(void)
+{
+	struct vr_host_input *input = &vr.input;
+	float value;
+	int flag;
+
+	if (settings.left_handed)
+	{
+		value = input->left_trigger;
+		input->left_trigger = input->right_trigger;
+		input->right_trigger = value;
+		value = input->left_grip;
+		input->left_grip = input->right_grip;
+		input->right_grip = value;
+		flag = input->left_trigger_touch;
+		input->left_trigger_touch = input->right_trigger_touch;
+		input->right_trigger_touch = flag;
+		flag = input->active[0];
+		input->active[0] = input->active[1];
+		input->active[1] = flag;
+	}
+}
+
+/* the controller of a hand as this file names them (0 the left, 1 the
+right: the weapon's) */
+static int hand_controller(int hand)
+{
+	return settings.left_handed ? !hand : hand;
+}
+
+static void hand_haptic(int hand, float amplitude, float seconds)
+{
+	host_vr_haptic(hand_controller(hand), amplitude, seconds);
+}
+
 /* both hands on a long gun, once a frame: the left hand takes the foregrip
 (its grip pressed near the line ahead of the right hand) and lets it go, and
 the line between the hands is smoothed */
@@ -1277,7 +1352,7 @@ static void two_handed_update(float seconds)
 			vr.two_handed = 1;
 			if (vr.two_handed_weight <= 0.0f)
 				memcpy(vr.two_handed_line, pointing, sizeof(vr.two_handed_line));
-			host_vr_haptic(0, 0.25f, 0.03f);
+			hand_haptic(0, 0.25f, 0.03f);
 		}
 		else if (vr.two_handed && vr.input.left_grip < FOREGRIP_RELEASED)
 		{
@@ -1455,7 +1530,7 @@ static void throw_release(const char *why)
 			remainderf(out->yaw - vr.body_yaw - quaternion_yaw(vr.views.head.orientation) + vr.origin_yaw,
 				2.0f * (float)M_PI) * 180.0f / (float)M_PI, pitch * 180.0f / (float)M_PI);
 	}
-	host_vr_haptic(0, 0.6f, 0.05f);
+	hand_haptic(0, 0.6f, 0.05f);
 	throw_enter(THROW_RELEASED);
 }
 
@@ -1519,7 +1594,7 @@ static void throw_update(float seconds)
 		{
 			throw_enter(THROW_HELD);
 			vr.throw_nearest = ahead;
-			host_vr_haptic(0, 0.15f, 0.02f);
+			hand_haptic(0, 0.15f, 0.02f);
 			if (settings.throw_log)
 				platform_log("vr: throw: held, %.2f m ahead of the eyes", ahead);
 		}
@@ -1783,7 +1858,7 @@ static void holsters_update(float seconds)
 	/* (a tick as the hand comes to the stowed weapon; before, ticks
 	quickening as it nears the shoulder's, which it cannot see) */
 	if (reach != h->reach && reach != HALO_VR_HOLSTER_NONE && reach == vr.holster_stowed)
-		host_vr_haptic(1, 0.2f, 0.02f);
+		hand_haptic(1, 0.2f, 0.02f);
 	if (reach == HALO_VR_HOLSTER_NONE && vr.holster_stowed == HALO_VR_HOLSTER_BACK &&
 		h->distance[HALO_VR_HOLSTER_BACK] < HOLSTER_NEAR_DISTANCE && !holster_near_aiming())
 	{
@@ -1793,7 +1868,7 @@ static void holsters_update(float seconds)
 		if (vr.holster_near_seconds >= HOLSTER_NEAR_SLOWEST + (HOLSTER_NEAR_FASTEST - HOLSTER_NEAR_SLOWEST) * near)
 		{
 			vr.holster_near_seconds = 0.0f;
-			host_vr_haptic(1, holster_near_amplitude[0] + (holster_near_amplitude[1] - holster_near_amplitude[0]) * near,
+			hand_haptic(1, holster_near_amplitude[0] + (holster_near_amplitude[1] - holster_near_amplitude[0]) * near,
 				HOLSTER_NEAR_TICK_SECONDS);
 		}
 	}
@@ -1821,7 +1896,7 @@ static void holsters_update(float seconds)
 			vr.holster_press_frames = HOLSTER_PRESS_FRAMES;
 			vr.holster_ticks = GetTickCount();
 			vr.holster_drawn = 1;
-			host_vr_haptic(1, 0.5f, 0.05f);
+			hand_haptic(1, 0.5f, 0.05f);
 		}
 		platform_log("vr: holster: the grip in the %s holster: %s", reach == HALO_VR_HOLSTER_BACK ? "shoulder's" : "hip's",
 			reach == vr.holster_stowed ? "drawing its weapon" : vr.holster_stowed == HALO_VR_HOLSTER_NONE ?
@@ -2217,7 +2292,7 @@ static void haptics_update(void)
 		{
 			const struct haptic_pulse *pulse = &vr.haptic_pulses[hand][vr.haptic_sent[hand]++];
 
-			host_vr_haptic(hand, pulse->amplitude, pulse->seconds);
+			hand_haptic(hand, pulse->amplitude, pulse->seconds);
 		}
 	}
 }
@@ -2302,7 +2377,7 @@ static void reload_update(void)
 	}
 	if (vr.reload_full_tick && (long)(now - vr.reload_full_tick) >= 0)
 	{
-		host_vr_haptic(0, RELOAD_FULL_AMPLITUDE, RELOAD_FULL_SECONDS);
+		hand_haptic(0, RELOAD_FULL_AMPLITUDE, RELOAD_FULL_SECONDS);
 		vr.reload_full_tick = 0;
 	}
 	r->enabled = settings.manual_reload && settings.controller_aim && vr.aimed && vr.body_heading_valid;
@@ -2391,7 +2466,7 @@ static void reload_update(void)
 	}
 	in_pouch = r->kind != HALO_VR_RELOAD_NONE && r->pouch_distance <= 0.0f;
 	if (in_pouch && !vr.reload_in_pouch && r->wanted)
-		host_vr_haptic(0, 0.2f, 0.02f);
+		hand_haptic(0, 0.2f, 0.02f);
 	vr.reload_in_pouch = in_pouch;
 
 	/* (taken as the grip closes in the pouch, or as the hand that closed by
@@ -2402,7 +2477,7 @@ static void reload_update(void)
 		r->wanted = 0;
 		vr.reload_grip_taken = 1;
 		vr.reload_grip_waiting = 0;
-		host_vr_haptic(0, 0.35f, 0.03f);
+		hand_haptic(0, 0.35f, 0.03f);
 		platform_log("vr: reload: %s%s taken from the %s%s", articles[r->kind], names[r->kind],
 			pouch ? "left shoulder" : "left hip", pressing ? "" : " (the grip closed by it)");
 		/* (the magazine in the weapon out as the new one is taken, as the
@@ -2438,7 +2513,7 @@ static void reload_update(void)
 		vr.reload_grip_waiting = r->wanted && !in_pouch;
 		if (!vr.reload_grip_waiting)
 		{
-			host_vr_haptic(0, RELOAD_FULL_AMPLITUDE, RELOAD_FULL_SECONDS);
+			hand_haptic(0, RELOAD_FULL_AMPLITUDE, RELOAD_FULL_SECONDS);
 			vr.reload_full_tick = now + RELOAD_FULL_GAP_MS;
 			if (!vr.reload_full_tick)
 				vr.reload_full_tick = 1;
@@ -2663,7 +2738,7 @@ void halo_vr_melee_hit(void)
 {
 	if (!vr.initialized)
 		return;
-	host_vr_haptic(1, MELEE_HIT_AMPLITUDE, MELEE_HIT_SECONDS);
+	hand_haptic(1, MELEE_HIT_AMPLITUDE, MELEE_HIT_SECONDS);
 	if (settings.melee_log)
 		platform_log("vr: melee: it landed");
 }
@@ -2752,8 +2827,8 @@ static void trigger_touch_update(float seconds)
 	active: said once, and again if it changes) */
 	if ((vr.input.active[1] || sensed) && sensed != vr.trigger_touch_sensed)
 	{
-		platform_log("vr: the right trigger %s", sensed ? "senses a finger on it: the index finger lies off it "
-			"until then" : "senses no finger on it: the index finger rests on it");
+		platform_log("vr: the %s trigger %s", settings.left_handed ? "left" : "right", sensed ? "senses a finger on "
+			"it: the index finger lies off it until then" : "senses no finger on it: the index finger rests on it");
 		vr.trigger_touch_sensed = sensed;
 	}
 	if (vr.trigger_touch < on)
@@ -2841,12 +2916,13 @@ static void flip_update(float seconds)
 			vr.flip_grip[hand] = 1;
 			haptic_play(hand, HAPTIC_FEEL(flip_hand_feel));
 			platform_log("vr: flip: the %s hand takes hold, %.2f m below the eyes, the hands %.2f m out toward it",
-				hands[hand], -heights[hand], out);
+				hands[hand_controller(hand)], -heights[hand], out);
 		}
 		else if (pressing && able)
 		{
 			platform_log("vr: flip: the %s grip, the hands %.2f and %.2f m below the eyes and %.2f m out toward it: "
-				"not both low and out (%.2f, %.2f)", hands[hand], -heights[0], -heights[1], out, FLIP_LOW, FLIP_OUT);
+				"not both low and out (%.2f, %.2f)", hands[hand_controller(hand)], -heights[0], -heights[1], out,
+				FLIP_LOW, FLIP_OUT);
 		}
 	}
 
@@ -3037,26 +3113,29 @@ static void handlebars_update(float seconds)
 	for (hand = 0; hand < 2; hand++)
 	{
 		int valid = bars_hand(hand, place[hand], &pitch[hand]);
+		/* (each hand's handle is the one on its side, the weapon's hand the
+		left one's: vr.dominant_hand) */
+		int side = hand_controller(hand);
 		int axis;
 
 		if (vr.bars_held[hand] && (grips[hand] < HANDLEBAR_GRIP_RELEASED || !valid))
 		{
 			vr.bars_held[hand] = 0;
 			platform_log("vr: %s: the %s hand lets go", vr.seat.kind == HALO_VR_SEAT_WHEEL ? "wheel" : vr.seat.kind ==
-				HALO_VR_SEAT_TURRET ? "turret" : "handlebars", hand ? "right" : "left");
+				HALO_VR_SEAT_TURRET ? "turret" : "handlebars", side ? "right" : "left");
 		}
 		else if (!vr.bars_held[hand] && valid && grips[hand] > HANDLEBAR_GRIP_PRESSED)
 		{
 			for (axis = 0; axis < 3; axis++)
-				v[axis] = place[hand][axis] - vr.seat.handles[hand][axis];
+				v[axis] = place[hand][axis] - vr.seat.handles[side][axis];
 			if (length3(v) < HANDLEBAR_REACH)
 			{
 				vr.bars_held[hand] = 1;
-				host_vr_haptic(hand, 0.3f, 0.02f);
+				hand_haptic(hand, 0.3f, 0.02f);
 				platform_log("vr: %s: the %s hand takes its handle (%.2f m from it, at %.2f %.2f %.2f m: forward, left, "
 					"up of the recentred head)", vr.seat.kind == HALO_VR_SEAT_WHEEL ? "wheel" : vr.seat.kind ==
-					HALO_VR_SEAT_TURRET ? "turret" : "handlebars", hand ? "right" : "left", length3(v),
-					vr.seat.handles[hand][0], vr.seat.handles[hand][1], vr.seat.handles[hand][2]);
+					HALO_VR_SEAT_TURRET ? "turret" : "handlebars", side ? "right" : "left", length3(v),
+					vr.seat.handles[side][0], vr.seat.handles[side][1], vr.seat.handles[side][2]);
 			}
 		}
 	}
@@ -3091,7 +3170,8 @@ static void handlebars_update(float seconds)
 		/* (the bars' turn: the line from the left hand to the right, straight
 		across when it points right, turned left as the right hand comes
 		forward) */
-		float turn = atan2f(place[1][0] - place[0][0], -(place[1][1] - place[0][1]));
+		const float *left = place[hand_controller(0)], *right = place[hand_controller(1)];
+		float turn = atan2f(right[0] - left[0], -(right[1] - left[1]));
 		float tilt = (pitch[0] + pitch[1]) * 0.5f - vr.bars_pitch_zero;
 
 		turn = fabsf(turn) <= HANDLEBAR_DEADZONE ? 0.0f : turn - (turn > 0.0f ? HANDLEBAR_DEADZONE : -HANDLEBAR_DEADZONE);
@@ -3405,12 +3485,24 @@ static void jitter_apply(void)
 
 /* debug.vr_test_hands: the controllers held where the setting says, from
 the recentred head, each of its poses in turn (for automated tests of the
-hands: a simulated headset has none) */
-static void test_hands_apply(void)
+hands: a simulated headset has none), and with input, its grips, trigger,
+stick and buttons, as the runtime gives them (before hands_assign). A
+left-hander's (vr.dominant_hand), mirrored: its right hand is the weapon's,
+the left controller, and its left the right controller, each where the other
+would be across the body (right and left, yaw and roll the other way, the
+head's turn and its move across too), and its grips and trigger are those
+of the controllers that do what it names */
+static void test_hands_apply(int input)
 {
 	static int last_index = -1;
 	const float *pose, *before;
 	float moved[12];
+	float mirror = settings.left_handed ? -1.0f : 1.0f;
+	float *weapon_trigger = settings.left_handed ? &vr.input.left_trigger : &vr.input.right_trigger;
+	float *other_trigger = settings.left_handed ? &vr.input.right_trigger : &vr.input.left_trigger;
+	float *weapon_grip = settings.left_handed ? &vr.input.left_grip : &vr.input.right_grip;
+	float *other_grip = settings.left_handed ? &vr.input.right_grip : &vr.input.left_grip;
+	int *weapon_touch = settings.left_handed ? &vr.input.left_trigger_touch : &vr.input.right_trigger_touch;
 	unsigned long frame;
 	int hand, index;
 
@@ -3445,11 +3537,11 @@ static void test_hands_apply(void)
 	{
 		const float *p = moved + hand * 6;
 		float radians = (float)M_PI / 180.0f;
-		float local[3] = { p[0], p[1], -p[2] };
-		float yaw[4] = { 0.0f, sinf((vr.origin_yaw + p[3] * radians) * 0.5f), 0.0f,
-			cosf((vr.origin_yaw + p[3] * radians) * 0.5f) };
+		float local[3] = { p[0] * mirror, p[1], -p[2] };
+		float yaw[4] = { 0.0f, sinf((vr.origin_yaw + p[3] * mirror * radians) * 0.5f), 0.0f,
+			cosf((vr.origin_yaw + p[3] * mirror * radians) * 0.5f) };
 		float pitch[4] = { sinf(p[4] * radians * 0.5f), 0.0f, 0.0f, cosf(p[4] * radians * 0.5f) };
-		float roll[4] = { 0.0f, 0.0f, -sinf(p[5] * radians * 0.5f), cosf(p[5] * radians * 0.5f) };
+		float roll[4] = { 0.0f, 0.0f, -sinf(p[5] * mirror * radians * 0.5f), cosf(p[5] * mirror * radians * 0.5f) };
 		float heading[4] = { 0.0f, sinf(vr.origin_yaw * 0.5f), 0.0f, cosf(vr.origin_yaw * 0.5f) };
 		struct vr_host_pose held;
 		float offset[3];
@@ -3462,28 +3554,33 @@ static void test_hands_apply(void)
 		quaternion_multiply(held.orientation, roll, held.orientation);
 		/* (a hand 10 metres or more out to the side is not tracked) */
 		held.valid = fabsf(p[0]) < 10.0f;
-		vr.views.aim[hand] = held;
-		vr.views.grip[hand] = held;
+		vr.views.aim[hand_controller(hand)] = held;
+		vr.views.grip[hand_controller(hand)] = held;
 	}
-	vr.input.left_grip = pose[12];
-	/* (the left stick and the right grip held through the pose: driving, a
-	vehicle's handlebars) */
-	if (pose[22] != 0.0f || pose[23] != 0.0f)
+	/* (both written, the controllers' poses: hands_assign_views) */
+	vr.views_unassigned = 1;
+	if (input)
 	{
-		vr.input.left_stick[0] = pose[22];
-		vr.input.left_stick[1] = pose[23];
+		*other_grip = pose[12];
+		/* (the left stick and the right grip held through the pose: driving,
+		a vehicle's handlebars) */
+		if (pose[22] != 0.0f || pose[23] != 0.0f)
+		{
+			vr.input.left_stick[0] = pose[22];
+			vr.input.left_stick[1] = pose[23];
+		}
+		if (pose[24] > *weapon_grip)
+			*weapon_grip = pose[24];
+		/* (a pull less than 0: the finger off the trigger, which senses touch) */
+		*weapon_trigger = pose[14] > 0.0f ? pose[14] : 0.0f;
+		*weapon_touch = pose[14] >= 0.0f;
+		vr.input.active[0] = vr.input.active[1] = 1;
 	}
-	if (pose[24] > vr.input.right_grip)
-		vr.input.right_grip = pose[24];
-	/* (a pull less than 0: the finger off the trigger, which senses touch) */
-	vr.input.right_trigger = pose[14] > 0.0f ? pose[14] : 0.0f;
-	vr.input.right_trigger_touch = pose[14] >= 0.0f;
-	vr.input.active[0] = vr.input.active[1] = 1;
 	if (pose[15] != 0.0f)
 	{
 		/* the head turned about its middle, by the pose's yaw */
 		struct vr_host_pose *poses[3] = { &vr.views.eye[0], &vr.views.eye[1], &vr.views.head };
-		float half = pose[15] * (float)M_PI / 180.0f * 0.5f;
+		float half = pose[15] * mirror * (float)M_PI / 180.0f * 0.5f;
 		float turn[4] = { 0.0f, sinf(half), 0.0f, cosf(half) };
 		float centre[3], v[3], turned[3];
 		int which, axis;
@@ -3507,7 +3604,7 @@ static void test_hands_apply(void)
 		float t = pose[17] >= 1.0f && (float)frame < pose[17] ? (float)(frame + 1) / pose[17] : 1.0f;
 		float down = before[18] + (pose[18] - before[18]) * t;
 		float pitch = (before[19] + (pose[19] - before[19]) * t) * (float)M_PI / 180.0f;
-		float local[3] = { before[21] + (pose[21] - before[21]) * t, 0.0f,
+		float local[3] = { (before[21] + (pose[21] - before[21]) * t) * mirror, 0.0f,
 			-(before[20] + (pose[20] - before[20]) * t) };
 		float heading[4] = { 0.0f, sinf(vr.origin_yaw * 0.5f), 0.0f, cosf(vr.origin_yaw * 0.5f) };
 		float neck[3], right[3], nod[4], moved_by[3], v[3], turned[3];
@@ -3538,20 +3635,20 @@ static void test_hands_apply(void)
 			poses[which]->position[1] -= down;
 		}
 	}
-	if (frame < TEST_HANDS_PRESS_FRAMES)
+	if (input && frame < TEST_HANDS_PRESS_FRAMES)
 	{
 		unsigned int buttons = (unsigned int)pose[13];
 
 		vr.input.buttons |= buttons & 0xffff;
 		if (buttons & TEST_HANDS_RIGHT_TRIGGER)
 		{
-			vr.input.right_trigger = 1.0f;
-			vr.input.right_trigger_touch = 1;
+			*weapon_trigger = 1.0f;
+			*weapon_touch = 1;
 		}
 		if (buttons & TEST_HANDS_LEFT_TRIGGER)
-			vr.input.left_trigger = 1.0f;
+			*other_trigger = 1.0f;
 		if (buttons & TEST_HANDS_RIGHT_GRIP)
-			vr.input.right_grip = 1.0f;
+			*weapon_grip = 1.0f;
 		if (buttons & TEST_HANDS_RIGHT_STICK_DOWN)
 			vr.input.right_stick[1] = -1.0f;
 	}
@@ -3560,6 +3657,11 @@ static void test_hands_apply(void)
 int halo_vr_test_hands(void)
 {
 	return settings.test_hand_poses > 0;
+}
+
+int halo_vr_left_handed(void)
+{
+	return vr.initialized && settings.left_handed;
 }
 
 /* debug.vr_test_target: the right controller, held by debug.vr_test_hands,
@@ -3927,6 +4029,7 @@ static int frame_begin(void)
 	vr.test_head_seconds += vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : vr.views.display_period;
 	if (host_vr_locate(&vr.views))
 	{
+		vr.views_unassigned = 1;
 		test_head_apply();
 		test_fov_apply();
 		jitter_apply();
@@ -3936,7 +4039,9 @@ static int frame_begin(void)
 	if (vr.views.head.valid)
 		vr.was_focused = vr.views.focused;
 	host_vr_input(&vr.input);
-	test_hands_apply();
+	test_hands_apply(1);
+	hands_assign_views();
+	hands_assign_input();
 	test_point_apply();
 	shake_apply();
 	input_update();
@@ -4134,10 +4239,12 @@ int halo_vr_view(struct halo_vr_view *view)
 	/* late: the poses the frame is drawn and submitted with */
 	if (host_vr_locate(&vr.views))
 	{
+		vr.views_unassigned = 1;
 		test_head_apply();
 		test_fov_apply();
 		jitter_apply();
-		test_hands_apply();
+		test_hands_apply(0);
+		hands_assign_views();
 		test_point_apply();
 		shake_apply();
 	}
@@ -4271,7 +4378,7 @@ int halo_vr_view(struct halo_vr_view *view)
 
 		if (vr.bars_held[1])
 		{
-			memcpy(view->right_grip_position, vr.seat.handles[1], sizeof(view->right_grip_position));
+			memcpy(view->right_grip_position, vr.seat.handles[hand_controller(1)], sizeof(view->right_grip_position));
 			memcpy(view->hand_forward, along, sizeof(view->hand_forward));
 			memcpy(view->hand_up, upright, sizeof(view->hand_up));
 			view->right_trigger = 1.0f;
@@ -4280,7 +4387,7 @@ int halo_vr_view(struct halo_vr_view *view)
 		if (vr.bars_held[0])
 		{
 			view->left_hand_valid = 1;
-			memcpy(view->left_grip_position, vr.seat.handles[0], sizeof(view->left_grip_position));
+			memcpy(view->left_grip_position, vr.seat.handles[hand_controller(0)], sizeof(view->left_grip_position));
 			memcpy(view->left_hand_forward, along, sizeof(view->left_hand_forward));
 			memcpy(view->left_hand_up, upright, sizeof(view->left_hand_up));
 			view->left_grip = 1.0f;
@@ -4515,8 +4622,8 @@ void halo_vr_rumble(float left, float right)
 		return;
 	/* (not over a hand's own pattern while it plays: haptic_play) */
 	if (left > 0.01f && (long)(now - vr.haptic_end[0]) >= 0)
-		host_vr_haptic(0, left, 0.1f);
+		hand_haptic(0, left, 0.1f);
 	if (right > 0.01f && (long)(now - vr.haptic_end[1]) >= 0)
-		host_vr_haptic(1, right, 0.1f);
+		hand_haptic(1, right, 0.1f);
 }
 #endif

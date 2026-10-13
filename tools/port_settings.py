@@ -248,15 +248,20 @@ VR_SCREENS = {
             ("DEATH VIEW:", "vr.death_view", [("FACE YOUR BODY", "face"), ("STILL", "still"), ("GAME'S CAMERA", "game")],
              "As you die, the view stays where your head was\n(turned to your body in a blink), or the game's.",
              None),
-            ("HEIGHT, HUD, MENUS...", None, VR_DISPLAY,
-             "Your height, the world's scale, the HUD, the\nmenus and the headset's resolution.", None),
+            ("HAND, HEIGHT, HUD...", None, VR_DISPLAY,
+             "The hand that holds the weapon, your height, the\nworld's scale, the HUD, the menus, the resolution.",
+             None),
         ],
     },
     "vr_display": {
         "screen": "vr_display_screen",
         "header": ("header_vr_display", f"{PE}/vr_display/header_vr_display"),
-        "spacing": 28,
+        # (eleven rows: closer than the others' 28px, the help line lower)
+        "spacing": 24,
+        "help_top": 366,
         "rows": [
+            ("DOMINANT HAND:", "vr.dominant_hand", [("RIGHT", "right"), ("LEFT", "left")],
+             "The hand that holds the weapon. Left: the weapon\nand your hands mirrored.", None),
             (f"POSITION {RESTART}:", "vr.height", [("SEATED", "seated"), ("STANDING", "standing")],
              "Seated: your eyes where they are when you\nrecentre. From the next time the game starts.", None),
             ("EYE HEIGHT:", "vr.player_height",

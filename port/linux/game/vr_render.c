@@ -120,6 +120,9 @@ static struct
 	boolean weapon_camera_set;
 	boolean weapon_camera_valid;
 	struct render_camera weapon_camera;
+	/* and whether the weapon and the hands are drawn mirrored about it, a
+	left-hander's (vr_render_weapon_mirrored) */
+	boolean weapon_mirrored;
 	/* the eyes' middle, and each eye, in the world */
 	real_point3d head_position;
 	real_point3d eye_positions[2];
@@ -951,7 +954,11 @@ head: hands_posed), one placed so that the weapon is in the right controller,
 pointing where it points: with the hands floating (vr.hands), the right
 hand's middle (as the weapon's idle pose has it) at the controller's grip,
 else the weapon's grip vr.weapon_offset from the camera; FALSE leaves the
-head's */
+head's. A left-hander's weapon (halo_vr_left_handed: the right controller
+here is the left one) is drawn mirrored about the plane of the camera's
+forward and up, along the weapon (vr_render_weapon_mirrored), so it is
+placed with its hand on the other side of that plane, where the mirror
+brings it back */
 boolean vr_render_weapon_camera(struct render_camera *camera)
 {
 	struct halo_vr_view *view = &vr_render.view;
@@ -959,12 +966,14 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 	real_point3d hand, centre;
 	real units = view->world_units_per_metre;
 	const float *o = view->weapon_offset;
+	real across;
 
 	if (!vr_render.active)
 		return FALSE;
 	/* (the head's, kept for the hands when the controller is not tracked) */
 	vr_render.weapon_camera = *camera;
 	vr_render.weapon_camera_set = halo_vr_aiming() || hands_posed();
+	vr_render.weapon_mirrored = FALSE;
 	if (view->gamepad_aim && halo_vr_aiming())
 	{
 		/* the gamepad aims (vr.aim = "gamepad"): the weapon is posed as on
@@ -980,6 +989,8 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 	}
 	if (!hands_posed())
 		return FALSE;
+	vr_render.weapon_mirrored = halo_vr_left_handed();
+	across = vr_render.weapon_mirrored ? -1.0f : 1.0f;
 	yaw_rotate(vr_render.base_yaw, view->hand_forward, &forward);
 	yaw_rotate(vr_render.base_yaw, view->hand_up, &up);
 	cross_product3d(&forward, &up, &right);
@@ -992,6 +1003,7 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 		left.i = -right.i;
 		left.j = -right.j;
 		left.k = -right.k;
+		centre.y *= across;
 		camera->position.x = hand.x - (forward.i * centre.x + left.i * centre.y + up.i * centre.z);
 		camera->position.y = hand.y - (forward.j * centre.x + left.j * centre.y + up.j * centre.z);
 		camera->position.z = hand.z - (forward.k * centre.x + left.k * centre.y + up.k * centre.z);
@@ -999,9 +1011,9 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 	else
 	{
 		hand_point(view->hand_position, &hand);
-		camera->position.x = hand.x - (right.i * o[0] + up.i * o[1] + forward.i * o[2]) * units;
-		camera->position.y = hand.y - (right.j * o[0] + up.j * o[1] + forward.j * o[2]) * units;
-		camera->position.z = hand.z - (right.k * o[0] + up.k * o[1] + forward.k * o[2]) * units;
+		camera->position.x = hand.x - (right.i * o[0] * across + up.i * o[1] + forward.i * o[2]) * units;
+		camera->position.y = hand.y - (right.j * o[0] * across + up.j * o[1] + forward.j * o[2]) * units;
+		camera->position.z = hand.z - (right.k * o[0] * across + up.k * o[1] + forward.k * o[2]) * units;
 	}
 	/* the shots' kick, the drawn weapon's alone: not a scope's view's
 	(vr_render_scope_view), nor while a scope is raised to an eye */
@@ -1010,6 +1022,22 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 	vr_render.weapon_camera = *camera;
 	vr_render.weapon_camera_valid = TRUE;
 	return TRUE;
+}
+
+/* vr_hands.c and first_person_weapons.c: the first-person weapon and the
+hands posed this frame are drawn mirrored (a left-hander's: the game's are
+right-handed), about the plane of the forward and the up of the camera it
+was posed from, along the weapon (vr_render_weapon_camera): the camera's
+place and its left (the plane's normal) in the world; FALSE, they are not */
+boolean vr_render_weapon_mirrored(real_point3d *origin, real_vector3d *normal)
+{
+	struct render_camera const *camera = &vr_render.weapon_camera;
+
+	if (!vr_render.active || !vr_render.weapon_camera_set || !vr_render.weapon_mirrored)
+		return FALSE;
+	*origin = camera->position;
+	cross_product3d(&camera->up, &camera->forward, normal);
+	return normalize3d(normal) > 0.0f;
 }
 
 /* the aim's line: from the right controller along it (or, with a gamepad,

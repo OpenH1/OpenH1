@@ -101,7 +101,7 @@ enum
 	_action_a, _action_b, _action_x, _action_y, _action_menu, _action_view,
 	_action_dpad_up, _action_dpad_down, _action_dpad_left, _action_dpad_right,
 	_action_left_stick_click, _action_right_stick_click, _action_left_bumper, _action_right_bumper,
-	_action_right_trigger_touch,
+	_action_right_trigger_touch, _action_left_trigger_touch,
 	NUMBER_OF_BUTTON_ACTIONS,
 	_action_left_stick = NUMBER_OF_BUTTON_ACTIONS, _action_right_stick,
 	_action_left_trigger, _action_right_trigger, _action_left_grip, _action_right_grip,
@@ -507,7 +507,7 @@ static const char *const action_names[NUMBER_OF_ACTIONS] =
 {
 	"a", "b", "x", "y", "menu", "view", "dpad_up", "dpad_down", "dpad_left", "dpad_right",
 	"left_stick_click", "right_stick_click", "left_bumper", "right_bumper", "right_trigger_touch",
-	"left_stick", "right_stick", "left_trigger", "right_trigger", "left_grip", "right_grip",
+	"left_trigger_touch", "left_stick", "right_stick", "left_trigger", "right_trigger", "left_grip", "right_grip",
 	"aim_pose", "grip_pose", "haptic",
 };
 
@@ -541,6 +541,7 @@ static const struct binding frame_controller_bindings[] =
 	{ _action_left_trigger, "/user/hand/left/input/trigger/value" },
 	{ _action_right_trigger, "/user/hand/right/input/trigger/value" },
 	{ _action_right_trigger_touch, "/user/hand/right/input/trigger/touch" },
+	{ _action_left_trigger_touch, "/user/hand/left/input/trigger/touch" },
 	{ _action_left_grip, "/user/hand/left/input/squeeze/value" },
 	{ _action_right_grip, "/user/hand/right/input/squeeze/value" },
 	{ _action_aim_pose, "/user/hand/left/input/aim/pose" },
@@ -569,6 +570,7 @@ static const struct binding touch_bindings[] =
 	{ _action_left_trigger, "/user/hand/left/input/trigger/value" },
 	{ _action_right_trigger, "/user/hand/right/input/trigger/value" },
 	{ _action_right_trigger_touch, "/user/hand/right/input/trigger/touch" },
+	{ _action_left_trigger_touch, "/user/hand/left/input/trigger/touch" },
 	{ _action_aim_pose, "/user/hand/left/input/aim/pose" },
 	{ _action_aim_pose, "/user/hand/right/input/aim/pose" },
 	{ _action_grip_pose, "/user/hand/left/input/grip/pose" },
@@ -1031,6 +1033,7 @@ int host_vr_input(struct vr_host_input *input)
 
 	memset(input, 0, sizeof(*input));
 	input->right_trigger_touch = -1;
+	input->left_trigger_touch = -1;
 	if (!vr.running || vr.state != XR_SESSION_STATE_FOCUSED)
 		return 0;
 	active.actionSet = vr.action_set;
@@ -1040,7 +1043,7 @@ int host_vr_input(struct vr_host_input *input)
 		return 0;
 	for (index = 0; index < NUMBER_OF_BUTTON_ACTIONS; index++)
 	{
-		if (index != _action_right_trigger_touch && button(index))
+		if (index != _action_right_trigger_touch && index != _action_left_trigger_touch && button(index))
 			input->buttons |= 1u << index;
 	}
 	{
@@ -1051,6 +1054,9 @@ int host_vr_input(struct vr_host_input *input)
 
 		get.action = vr.actions[_action_right_trigger_touch];
 		input->right_trigger_touch = xrGetActionStateBoolean(vr.session, &get, &state) == XR_SUCCESS && state.isActive ?
+			state.currentState != 0 : -1;
+		get.action = vr.actions[_action_left_trigger_touch];
+		input->left_trigger_touch = xrGetActionStateBoolean(vr.session, &get, &state) == XR_SUCCESS && state.isActive ?
 			state.currentState != 0 : -1;
 	}
 	stick(_action_left_stick, input->left_stick);
