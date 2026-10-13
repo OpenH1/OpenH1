@@ -795,9 +795,13 @@ int host_vr_initialize(struct vr_host_info *info)
 	{
 		PFN_xrRequestDisplayRefreshRateFB request = NULL;
 		PFN_xrGetDisplayRefreshRateFB current = NULL;
+		PFN_xrEnumerateDisplayRefreshRatesFB enumerate = NULL;
+		int refused = 0;
 
 		get_instance_proc_address(vr.instance, "xrRequestDisplayRefreshRateFB", (PFN_xrVoidFunction *)&request);
 		get_instance_proc_address(vr.instance, "xrGetDisplayRefreshRateFB", (PFN_xrVoidFunction *)&current);
+		get_instance_proc_address(vr.instance, "xrEnumerateDisplayRefreshRatesFB",
+			(PFN_xrVoidFunction *)&enumerate);
 		/* the rate asked for (vr.refresh_rate), which the runtime may round
 		to a mode of the display or refuse */
 		if (request && info->refresh_rate_wanted > 0.0f)
@@ -805,10 +809,34 @@ int host_vr_initialize(struct vr_host_info *info)
 			XrResult result = request(vr.session, info->refresh_rate_wanted);
 
 			if (result != XR_SUCCESS)
+			{
 				host_logf(HOST_LOG_WARN, "vr: %.0f Hz refused: %s", info->refresh_rate_wanted, result_name(result));
+				refused = 1;
+			}
 		}
 		if (current)
 			current(vr.session, &info->refresh_rate);
+		/* (refused, or another given: the rates the display has, to choose
+		from) */
+		if (enumerate && info->refresh_rate_wanted > 0.0f &&
+			(refused || fabsf(info->refresh_rate - info->refresh_rate_wanted) > 0.5f))
+		{
+			float *rates = NULL;
+			char text[256] = "";
+			uint32_t count = 0, index;
+			int at = 0;
+
+			if (enumerate(vr.session, 0, &count, NULL) == XR_SUCCESS && count > 0 &&
+				(rates = calloc(count, sizeof(*rates))) != NULL &&
+				enumerate(vr.session, count, &count, rates) == XR_SUCCESS)
+			{
+				for (index = 0; index < count && at < (int)sizeof(text) - 1; index++)
+					at += snprintf(text + at, sizeof(text) - (size_t)at, "%s%g", index ? ", " : "", rates[index]);
+				host_logf(HOST_LOG_INFO, "vr: the display's refresh rates: %s Hz (vr.refresh_rate %g; %g now)",
+					text, info->refresh_rate_wanted, info->refresh_rate);
+			}
+			free(rates);
+		}
 	}
 	host_logf(HOST_LOG_INFO, "vr: %s, eyes %dx%d (recommended %dx%d), HUD %dx%d, visor %dx%d, %d HUD panels, %s space%s",
 		info->system_name, info->eye_width, info->eye_height, info->recommended_width, info->recommended_height,
