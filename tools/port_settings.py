@@ -256,13 +256,15 @@ VR_SCREENS = {
     "vr_display": {
         "screen": "vr_display_screen",
         "header": ("header_vr_display", f"{PE}/vr_display/header_vr_display"),
-        # (eleven rows: closer than the others' 28px, the help line lower)
+        # (twelve rows: closer than the others' 28px, the help line lower)
         "spacing": 24,
         "help_top": 366,
         "rows": [
             ("DOMINANT HAND:", "vr.dominant_hand", [("RIGHT", "right"), ("LEFT", "left")],
              "The hand that holds the weapon. Left: mirrored,\nthe holsters at your left, the magazines at your right.",
              None),
+            ("SWAP STICKS:", "vr.swap_sticks", [("AS THE HAND", "auto"), ("NO", "no"), ("YES", "yes")],
+             "Move with the right stick and turn with the left:\nby default, with the left hand dominant.", None),
             (f"POSITION {RESTART}:", "vr.height", [("SEATED", "seated"), ("STANDING", "standing")],
              "Seated: your eyes where they are when you\nrecentre. From the next time the game starts.", None),
             ("EYE HEIGHT:", "vr.player_height",

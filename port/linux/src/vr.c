@@ -809,8 +809,11 @@ static struct
 	int gamepad_aim;
 	/* vr.dominant_hand = "left" (not with vr.aim = "gamepad", where the
 	controllers are a gamepad's halves): the left controller is the weapon's
-	hand, which the rest of this file calls the right (hands_assign) */
+	hand, which the rest of this file calls the right (hands_assign); and
+	vr.swap_sticks (by default as the dominant hand): the right stick moves,
+	the left turns */
 	int left_handed;
+	int swap_sticks;
 	/* vr.gamepad_view: the view's heading in steps ("snap"), and pitched
 	with the facing ("camera") */
 	int gamepad_snap;
@@ -951,6 +954,8 @@ static void settings_read(void)
 	settings.gamepad_aim = !strcmp(config_string("vr.aim"), "gamepad");
 	settings.controller_aim = !settings.gamepad_aim && strcmp(config_string("vr.aim"), "head") != 0;
 	settings.left_handed = !settings.gamepad_aim && !strcmp(config_string("vr.dominant_hand"), "left");
+	settings.swap_sticks = !settings.gamepad_aim && (!strcmp(config_string("vr.swap_sticks"), "yes") ||
+		(settings.left_handed && strcmp(config_string("vr.swap_sticks"), "no") != 0));
 	settings.gamepad_snap = !strcmp(config_string("vr.gamepad_view"), "snap");
 	settings.gamepad_pitch = !settings.gamepad_snap && strcmp(config_string("vr.gamepad_view"), "level") != 0;
 	settings.melee_gesture = config_boolean("vr.melee_gesture");
@@ -1267,9 +1272,11 @@ the holsters', the scope's zoom, and the other hand the foregrip's, the
 magazines', the grenades'. What is on the body is mirrored where it is
 placed (hand_left: the holsters, the pouches), the haptics go back to the
 hand they are for (hand_haptic), and the first-person weapon and hands are
-drawn mirrored (port/linux/game/vr_render.c). The buttons and the sticks
-stay where they are, as the game's prompts name them (A, B, X, Y, the
-bumpers, the d-pad, View and Menu). debug.vr_test_hands mirrors its poses
+drawn mirrored (port/linux/game/vr_render.c). The buttons stay where they
+are, as the game's prompts name them (A, B, X, Y, the bumpers, the d-pad,
+View and Menu); the sticks swap as vr.swap_sticks says, the move's and the
+turn's, each with its click (the crouch, the zoom) and the turn's pushed
+down (the magazine's eject). debug.vr_test_hands mirrors its poses
 (test_hands_apply). */
 static void hands_assign_views(void)
 {
@@ -1291,7 +1298,8 @@ static void hands_assign_views(void)
 static void hands_assign_input(void)
 {
 	struct vr_host_input *input = &vr.input;
-	float value;
+	unsigned int clicks = VR_BUTTON_LEFT_STICK | VR_BUTTON_RIGHT_STICK;
+	float value, stick[2];
 	int flag;
 
 	if (settings.left_handed)
@@ -1308,6 +1316,14 @@ static void hands_assign_input(void)
 		flag = input->active[0];
 		input->active[0] = input->active[1];
 		input->active[1] = flag;
+	}
+	if (settings.swap_sticks)
+	{
+		memcpy(stick, input->left_stick, sizeof(stick));
+		memcpy(input->left_stick, input->right_stick, sizeof(stick));
+		memcpy(input->right_stick, stick, sizeof(stick));
+		if ((input->buttons & clicks) == VR_BUTTON_LEFT_STICK || (input->buttons & clicks) == VR_BUTTON_RIGHT_STICK)
+			input->buttons ^= clicks;
 	}
 }
 
@@ -3503,8 +3519,8 @@ stick and buttons, as the runtime gives them (before hands_assign). A
 left-hander's (vr.dominant_hand), mirrored: its right hand is the weapon's,
 the left controller, and its left the right controller, each where the other
 would be across the body (right and left, yaw and roll the other way, the
-head's turn and its move across too), and its grips and trigger are those
-of the controllers that do what it names */
+head's turn and its move across too), and its grips, trigger, stick and
+stick clicks are those of the controllers and sticks that do what it names */
 static void test_hands_apply(int input)
 {
 	static int last_index = -1;
@@ -3516,6 +3532,8 @@ static void test_hands_apply(int input)
 	float *weapon_grip = settings.left_handed ? &vr.input.left_grip : &vr.input.right_grip;
 	float *other_grip = settings.left_handed ? &vr.input.right_grip : &vr.input.left_grip;
 	int *weapon_touch = settings.left_handed ? &vr.input.left_trigger_touch : &vr.input.right_trigger_touch;
+	float *move_stick = settings.swap_sticks ? vr.input.right_stick : vr.input.left_stick;
+	float *turn_stick = settings.swap_sticks ? vr.input.left_stick : vr.input.right_stick;
 	unsigned long frame;
 	int hand, index;
 
@@ -3579,8 +3597,8 @@ static void test_hands_apply(int input)
 		a vehicle's handlebars) */
 		if (pose[22] != 0.0f || pose[23] != 0.0f)
 		{
-			vr.input.left_stick[0] = pose[22];
-			vr.input.left_stick[1] = pose[23];
+			move_stick[0] = pose[22];
+			move_stick[1] = pose[23];
 		}
 		if (pose[24] > *weapon_grip)
 			*weapon_grip = pose[24];
@@ -3651,7 +3669,14 @@ static void test_hands_apply(int input)
 	if (input && frame < TEST_HANDS_PRESS_FRAMES)
 	{
 		unsigned int buttons = (unsigned int)pose[13];
+		unsigned int clicks = VR_BUTTON_LEFT_STICK | VR_BUTTON_RIGHT_STICK;
 
+		/* (the move's stick's click and the turn's, on their sticks) */
+		if (settings.swap_sticks && ((buttons & clicks) == VR_BUTTON_LEFT_STICK ||
+			(buttons & clicks) == VR_BUTTON_RIGHT_STICK))
+		{
+			buttons ^= clicks;
+		}
 		vr.input.buttons |= buttons & 0xffff;
 		if (buttons & TEST_HANDS_RIGHT_TRIGGER)
 		{
@@ -3663,7 +3688,7 @@ static void test_hands_apply(int input)
 		if (buttons & TEST_HANDS_RIGHT_GRIP)
 			*weapon_grip = 1.0f;
 		if (buttons & TEST_HANDS_RIGHT_STICK_DOWN)
-			vr.input.right_stick[1] = -1.0f;
+			turn_stick[1] = -1.0f;
 	}
 }
 

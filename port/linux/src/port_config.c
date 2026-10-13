@@ -244,6 +244,10 @@ static const struct config_setting config_settings[] =
 		"hands drawn mirrored; the left trigger fires, the right hand holds the\n"
 		"foregrip and throws, the holsters on your left, the magazines at your\n"
 		"right hip). Not with vr.aim = \"gamepad\"." },
+	{ "vr.swap_sticks", _config_string, "\"auto\"", "HALO_VR_SWAP_STICKS", _environment_value, _platform_desktop,
+		"\"yes\": the right stick moves and the left turns (and zooms, its click;\n"
+		"pushed down, ejects the magazine), \"no\": as they are; \"auto\": swapped\n"
+		"with vr.dominant_hand = \"left\". Not with vr.aim = \"gamepad\"." },
 	{ "vr.weapon_offset", _config_string, "\"0.15, -0.22, 0.30\"", "HALO_VR_WEAPON_OFFSET", _environment_value,
 		_platform_desktop,
 		"With vr.aim = \"controller\" and vr.hands = \"game\", where the weapon's\n"
