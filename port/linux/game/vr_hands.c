@@ -87,9 +87,10 @@ static const struct trigger_finger
 	round a trigger's place on most weapons, but on the pistol runs along its
 	trigger's side, into the frame, and on the Covenant's wraps into the
 	front of the grip) */
-	/* (the assault rifle's: its finger hooks round the blade vr_trigger.c
-	draws, and curls a little more to follow it back) */
-	{ "weapons\\assault rifle\\", { 0.0f, 0.0f, 0.0f }, { 0.03f, 0.06f, 0.06f }, 0.005f },
+	/* (the assault rifle's: its finger hooks round the trigger vr_trigger.c
+	draws, its tip a little straighter, open round the trigger's face, and
+	curls a little more to follow it back) */
+	{ "weapons\\assault rifle\\", { 0.0f, 0.0f, -0.15f }, { 0.03f, 0.05f, 0.06f }, 0.005f },
 	/* (the pistol's: straightened at the knuckle, off the frame, and curled
 	at the middle onto its trigger's face, against it as it goes back) */
 	{ "weapons\\pistol\\", { -0.15f, 0.30f, 0.0f }, { 0.0f, 0.05f, 0.15f }, 0.005f },

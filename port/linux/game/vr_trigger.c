@@ -11,18 +11,22 @@ goes back with it where the first-person model has a node for it
 (vr_hands.c). The assault rifle's first-person model has no trigger at all:
 the finger of the game's own animation rests in an empty gap under the
 receiver, ahead of the pistol grip, and not one vertex of the model is
-there. So a trigger is drawn there: a curved blade hanging from the
-receiver's underside, its front face hollowed where the finger lies, made
-once a map (vertex and index buffers, as a model part's) and drawn just
-after the rifle's model, with the rifle's own shader (its texture, its
-lighting, its tint and the camouflage's effect, as the rifle is drawn), from
-the rifle's gun node, so wherever the rifle's first-person model is drawn
-(both eyes; the scopes' pass draws no first-person weapon). The rifle's
-texture paints a trigger, in the stock's side view, which no face of the
-model samples: the blade's faces sample it. As the finger pulls, the blade
-turns back about its top, where it hangs from the receiver, its face going
-back as far as the finger's weapon has its trigger go (vr_hands.c's
-trigger_fingers).
+there. So a trigger is drawn there: an MA5B's, modelled to sit in the
+finger's crook (vr_trigger_model.h, made by tools/vr_trigger_model.py): a
+curved blade of rounded section, its front face crowned where the finger
+lies, broad where it hangs from the receiver and curling forward to its tip
+below the finger, coming out of a low housing on the receiver's underside.
+It is made once a map (vertex and index buffers, as a model part's) and
+drawn just after the rifle's model, with the rifle's own shader (its
+texture, its lighting, its tint and the camouflage's effect, as the rifle is
+drawn), from the rifle's gun node, so wherever the rifle's first-person
+model is drawn (both eyes; the scopes' pass draws no first-person weapon).
+The rifle's texture paints a trigger, in the stock's side view, which no
+face of the model samples: the blade's faces sample it; the housing's
+sample the receiver's underside as the receiver's own faces do. As the
+finger pulls, the blade turns back about its top, where it comes out of the
+housing, its face going back as far as the finger's weapon has its trigger
+go (vr_hands.c's trigger_fingers); the housing stays.
 
 Nothing is drawn for any other model, nor where the rifle's first-person
 model, its gun node or its shader is not in the map; the world's rifle and
@@ -44,6 +48,7 @@ the third person are other models.
 #include "tag_files/tag_files.h"
 
 #include "vr_hands.h"
+#include "vr_trigger_model.h"
 
 #include <math.h>
 #include <string.h>
@@ -54,68 +59,18 @@ shader it is drawn with (its receiver's) */
 #define BLADE_NODE "frame gun"
 #define BLADE_SHADER "weapons\\assault rifle\\fp\\shaders\\gun"
 
-/* The blade, in the gun node's space (world units: forward, left, up; the
-receiver's underside is at up 0.0264, the grip's front at forward 0.0101,
-the handguard's rear end at 0.0301), from its top, inside the receiver, to
-its tip: at each height, its front face (forward), its thickness back from
-the face and its half width. The idle animation's index finger hooks round
-the gap from the right, from up 0.015 to 0.025, its crook at about forward
-0.0152: the blade stands in that crook, its face 0.0001 short of the finger
-(an MA5B's trigger is as near its grip), and below the finger it sweeps
-forward to its tip, as an MA5B's does. */
-static real const blade_rows[][4] =
-{
-	/* up, front, thickness, half width */
-	{ 0.0272f, 0.0156f, 0.0017f, 0.0011f },
-	{ 0.0255f, 0.0154f, 0.0017f, 0.0011f },
-	{ 0.0235f, 0.0152f, 0.0016f, 0.0011f },
-	{ 0.0215f, 0.0151f, 0.0016f, 0.0011f },
-	{ 0.0195f, 0.0151f, 0.0016f, 0.0011f },
-	{ 0.0175f, 0.0153f, 0.0016f, 0.0011f },
-	{ 0.0158f, 0.0157f, 0.0015f, 0.0011f },
-	{ 0.0143f, 0.0164f, 0.0015f, 0.0011f },
-	{ 0.0131f, 0.0173f, 0.0015f, 0.0011f },
-	{ 0.0123f, 0.0181f, 0.0014f, 0.0011f },
-	{ 0.0119f, 0.0185f, 0.0011f, 0.0009f },
-};
-/* its tip, closing the last row: below its middle by this */
-#define BLADE_TIP_DROP 0.0002f
-/* it turns back about this point, where it meets the receiver (forward, up),
-and its face goes back by the finger's travel at this height (the finger's) */
-#define BLADE_PIVOT_FORWARD 0.0156f
-#define BLADE_PIVOT_UP 0.0264f
+/* the blade turns back about its top as the finger pulls, its face going
+back by the finger's travel at this height (the finger's: where it lies on
+the face) */
 #define BLADE_PULL_UP 0.0200f
-/* the trigger the texture paints (texture coordinates, its middle third
-across, along its length): the blade's front face samples its middle, the
-sides its edges */
-#define BLADE_U0 0.2773f
-#define BLADE_U1 0.3086f
-#define BLADE_V0 0.6660f
-#define BLADE_V1 0.7559f
-
-/* each row's outline, round from the left of the front face (x: back from the
-face as a fraction of the thickness, y: across as a fraction of the half
-width): the face and its back rounded at their edges */
-static real const blade_outline[][2] =
-{
-	{ 0.00f, 0.55f },
-	{ 0.22f, 1.00f },
-	{ 0.80f, 1.00f },
-	{ 1.00f, 0.55f },
-	{ 1.00f, -0.55f },
-	{ 0.80f, -1.00f },
-	{ 0.22f, -1.00f },
-	{ 0.00f, -0.55f },
-};
 
 enum
 {
-	NUMBER_OF_BLADE_ROWS = NUMBEROF(blade_rows),
-	NUMBER_OF_BLADE_SIDES = NUMBEROF(blade_outline),
-	/* every row's outline, then the tip */
-	NUMBER_OF_BLADE_VERTICES = NUMBER_OF_BLADE_ROWS * NUMBER_OF_BLADE_SIDES + 1,
-	/* two triangles a side between rows, and one a side to the tip */
-	NUMBER_OF_BLADE_TRIANGLES = (NUMBER_OF_BLADE_ROWS - 1) * NUMBER_OF_BLADE_SIDES * 2 + NUMBER_OF_BLADE_SIDES,
+	NUMBER_OF_TRIGGER_VERTICES = NUMBEROF(vr_trigger_model_vertices),
+	NUMBER_OF_TRIGGER_TRIANGLES = NUMBEROF(vr_trigger_model_triangles) / 3,
+	/* the blade's vertices are node 0's, the housing's node 1's
+	(vr_trigger_model.h): two matrices, the first turned back */
+	NUMBER_OF_TRIGGER_NODES = 2,
 	/* (models.c's) */
 	_shader_type_model = 4,
 	_shader_model_alpha_blended_decal_bit = 3,
@@ -172,104 +127,49 @@ static void vector_set_normalized(real_vector3d *vector, real i, real j, real k)
 	vector->k = k / length;
 }
 
-/* the blade's vertices (in the model's space, all the node's) and triangles */
-static void blade_build(struct model_vertex_uncompressed *vertices, word *triangles)
+/* the trigger's vertices (in the model's space: the blade's node 0's, the
+housing's node 1's) and triangles, from the table */
+static void trigger_build(struct model_vertex_uncompressed *vertices, word *triangles)
 {
-	short row, side;
-	long triangle = 0;
+	long index;
 
-	memset(vertices, 0, sizeof(*vertices) * NUMBER_OF_BLADE_VERTICES);
-	for (row = 0; row < NUMBER_OF_BLADE_ROWS; row++)
+	memset(vertices, 0, sizeof(*vertices) * NUMBER_OF_TRIGGER_VERTICES);
+	for (index = 0; index < NUMBER_OF_TRIGGER_VERTICES; index++)
 	{
-		/* the run of the front face down the blade here, for the normals */
-		short above = row > 0 ? row - 1 : row;
-		short below = row < NUMBER_OF_BLADE_ROWS - 1 ? row + 1 : row;
-		real slope = (blade_rows[below][1] - blade_rows[above][1]) / (blade_rows[above][0] - blade_rows[below][0]);
-		real v = BLADE_V0 + (BLADE_V1 - BLADE_V0) * row / (NUMBER_OF_BLADE_ROWS - 1);
+		struct vr_trigger_model_vertex const *source = &vr_trigger_model_vertices[index];
+		struct model_vertex_uncompressed *vertex = &vertices[index];
+		real across;
 
-		for (side = 0; side < NUMBER_OF_BLADE_SIDES; side++)
-		{
-			struct model_vertex_uncompressed *vertex = &vertices[row * NUMBER_OF_BLADE_SIDES + side];
-			short previous = (side + NUMBER_OF_BLADE_SIDES - 1) % NUMBER_OF_BLADE_SIDES;
-			short next = (side + 1) % NUMBER_OF_BLADE_SIDES;
-			real thickness = blade_rows[row][2];
-			real half_width = blade_rows[row][3];
-			/* (smooth: across the outline's neighbours, outward; leaning up or
-			down as the face runs down the blade) */
-			real along_x = -(blade_outline[next][0] - blade_outline[previous][0]) * thickness;
-			real along_y = (blade_outline[next][1] - blade_outline[previous][1]) * half_width;
-
-			vertex->position.x = blade_rows[row][1] - blade_outline[side][0] * thickness;
-			vertex->position.y = blade_outline[side][1] * half_width;
-			vertex->position.z = blade_rows[row][0];
-			vector_set_normalized(&vertex->normal, along_y, -along_x, slope * along_y);
-			vector_set_normalized(&vertex->tangent, 0.0f, 1.0f, 0.0f);
-			cross_product3d(&vertex->normal, &vertex->tangent, &vertex->binormal);
-			vector_set_normalized(&vertex->binormal, vertex->binormal.i, vertex->binormal.j, vertex->binormal.k);
-			vertex->texcoord.x = BLADE_U0 + (BLADE_U1 - BLADE_U0) * (0.5f - 0.5f * blade_outline[side][1]);
-			vertex->texcoord.y = v;
-			vertex->nodes[0] = 0;
-			vertex->nodes[1] = 0;
-			vertex->node_weights[0] = 1.0f;
-			vertex->node_weights[1] = 0.0f;
-		}
+		vertex->position.x = source->position[0];
+		vertex->position.y = source->position[1];
+		vertex->position.z = source->position[2];
+		vector_set_normalized(&vertex->normal, source->normal[0], source->normal[1], source->normal[2]);
+		/* (the tangent across the trigger, the left axis less its part along
+		the normal; the binormal from the two, as the model's) */
+		across = vertex->normal.j;
+		vector_set_normalized(&vertex->tangent, -across * vertex->normal.i, 1.0f - across * vertex->normal.j,
+			-across * vertex->normal.k);
+		cross_product3d(&vertex->normal, &vertex->tangent, &vertex->binormal);
+		vector_set_normalized(&vertex->binormal, vertex->binormal.i, vertex->binormal.j, vertex->binormal.k);
+		vertex->texcoord.x = source->texcoord[0];
+		vertex->texcoord.y = source->texcoord[1];
+		vertex->nodes[0] = source->node;
+		vertex->nodes[1] = source->node;
+		vertex->node_weights[0] = 1.0f;
+		vertex->node_weights[1] = 0.0f;
 	}
-	{
-		struct model_vertex_uncompressed *tip = &vertices[NUMBER_OF_BLADE_VERTICES - 1];
-		real const *last = blade_rows[NUMBER_OF_BLADE_ROWS - 1];
-
-		tip->position.x = last[1] - last[2] * 0.5f;
-		tip->position.y = 0.0f;
-		tip->position.z = last[0] - BLADE_TIP_DROP;
-		vector_set_normalized(&tip->normal, 0.0f, 0.0f, -1.0f);
-		vector_set_normalized(&tip->tangent, 0.0f, 1.0f, 0.0f);
-		vector_set_normalized(&tip->binormal, 1.0f, 0.0f, 0.0f);
-		tip->texcoord.x = (BLADE_U0 + BLADE_U1) * 0.5f;
-		tip->texcoord.y = BLADE_V1;
-		tip->node_weights[0] = 1.0f;
-	}
-
-	/* (wound as the model's faces are, its outside drawn) */
-	for (row = 0; row < NUMBER_OF_BLADE_ROWS - 1; row++)
-	{
-		for (side = 0; side < NUMBER_OF_BLADE_SIDES; side++)
-		{
-			word a = (word)(row * NUMBER_OF_BLADE_SIDES + side);
-			word b = (word)(row * NUMBER_OF_BLADE_SIDES + (side + 1) % NUMBER_OF_BLADE_SIDES);
-			word c = (word)(a + NUMBER_OF_BLADE_SIDES);
-			word d = (word)(b + NUMBER_OF_BLADE_SIDES);
-
-			triangles[triangle * 3 + 0] = a;
-			triangles[triangle * 3 + 1] = c;
-			triangles[triangle * 3 + 2] = b;
-			triangle++;
-			triangles[triangle * 3 + 0] = b;
-			triangles[triangle * 3 + 1] = c;
-			triangles[triangle * 3 + 2] = d;
-			triangle++;
-		}
-	}
-	for (side = 0; side < NUMBER_OF_BLADE_SIDES; side++)
-	{
-		word a = (word)((NUMBER_OF_BLADE_ROWS - 1) * NUMBER_OF_BLADE_SIDES + side);
-		word b = (word)((NUMBER_OF_BLADE_ROWS - 1) * NUMBER_OF_BLADE_SIDES + (side + 1) % NUMBER_OF_BLADE_SIDES);
-
-		triangles[triangle * 3 + 0] = a;
-		triangles[triangle * 3 + 1] = (word)(NUMBER_OF_BLADE_VERTICES - 1);
-		triangles[triangle * 3 + 2] = b;
-		triangle++;
-	}
+	memcpy(triangles, vr_trigger_model_triangles, sizeof(vr_trigger_model_triangles));
 }
 
 /* ---------- public code */
 
 /* render.c, as a map is loaded: the rifle's first-person model, and the
-blade's buffers, if the map has it */
+trigger's buffers, if the map has it */
 void vr_trigger_initialize_for_new_map(void)
 {
-	static struct model_vertex_uncompressed vertices[NUMBER_OF_BLADE_VERTICES];
-	static struct model_vertex_compressed compressed[NUMBER_OF_BLADE_VERTICES];
-	static word triangles[NUMBER_OF_BLADE_TRIANGLES * 3];
+	static struct model_vertex_uncompressed vertices[NUMBER_OF_TRIGGER_VERTICES];
+	static struct model_vertex_compressed compressed[NUMBER_OF_TRIGGER_VERTICES];
+	static word triangles[NUMBER_OF_TRIGGER_TRIANGLES * 3];
 	long model_index = tag_loaded(MODELS_GROUP_TAG, BLADE_MODEL);
 	long vertex_size = rasterizer_geometry_get_vertex_size(_rasterizer_vertex_type_model_compressed);
 	struct model *model;
@@ -309,13 +209,13 @@ void vr_trigger_initialize_for_new_map(void)
 		return;
 	}
 
-	blade_build(vertices, triangles);
-	rasterizer_geometry_compress_vertices(_rasterizer_vertex_type_model_uncompressed, NUMBER_OF_BLADE_VERTICES,
-		compressed, NUMBER_OF_BLADE_VERTICES * vertex_size, vertices, sizeof(vertices));
+	trigger_build(vertices, triangles);
+	rasterizer_geometry_compress_vertices(_rasterizer_vertex_type_model_uncompressed, NUMBER_OF_TRIGGER_VERTICES,
+		compressed, NUMBER_OF_TRIGGER_VERTICES * vertex_size, vertices, sizeof(vertices));
 	if (!rasterizer_vertex_buffer_new(&vr_trigger.vertex_buffer, _rasterizer_vertex_type_model_compressed,
-			NUMBER_OF_BLADE_VERTICES, compressed, NUMBER_OF_BLADE_VERTICES * vertex_size) ||
+			NUMBER_OF_TRIGGER_VERTICES, compressed, NUMBER_OF_TRIGGER_VERTICES * vertex_size) ||
 		!rasterizer_triangle_buffer_new(&vr_trigger.triangle_buffer, _triangle_buffer_type_triangles,
-			NUMBER_OF_BLADE_TRIANGLES, triangles))
+			NUMBER_OF_TRIGGER_TRIANGLES, triangles))
 	{
 		rasterizer_vertex_buffer_delete(&vr_trigger.vertex_buffer);
 		return;
@@ -325,7 +225,7 @@ void vr_trigger_initialize_for_new_map(void)
 	vr_trigger.shader = shader;
 	vr_trigger.permutation_index = reference->permutation_index;
 	platform_log("vr trigger: %s: a trigger drawn from %s with %s (%d vertices, %d triangles; base map scale %.3f %.3f)",
-		BLADE_MODEL, BLADE_NODE, BLADE_SHADER, NUMBER_OF_BLADE_VERTICES, NUMBER_OF_BLADE_TRIANGLES,
+		BLADE_MODEL, BLADE_NODE, BLADE_SHADER, NUMBER_OF_TRIGGER_VERTICES, NUMBER_OF_TRIGGER_TRIANGLES,
 		model->base_map_scale.i, model->base_map_scale.j);
 }
 
@@ -340,8 +240,8 @@ void vr_trigger_dispose_from_old_map(void)
 }
 
 /* first_person_weapons.c, just after a first-person weapon's model is drawn
-with these (render_model's): the blade, if it is the rifle's, back as far
-as the finger pulls it */
+with these (render_model's): the trigger, if it is the rifle's, its blade
+back as far as the finger pulls it */
 void vr_trigger_draw(
 	long model_index,
 	real_matrix4x3 const *node_matrices,
@@ -354,7 +254,8 @@ void vr_trigger_draw(
 {
 	struct model *model;
 	struct rasterizer_model_begin_parameters parameters;
-	real_matrix4x3 relative, turn, turned;
+	/* the blade's (turned) and the housing's */
+	real_matrix4x3 relative[NUMBER_OF_TRIGGER_NODES], turn;
 	real_point3d middle;
 	real angle, cosine, sine;
 
@@ -365,11 +266,12 @@ void vr_trigger_draw(
 	default pose's inverse */
 	matrix4x3_multiply(&node_matrices[vr_trigger.node_index],
 		&TAG_BLOCK_GET_ELEMENT(&model->nodes, vr_trigger.node_index, struct model_node)->runtime_default_inverse_matrix,
-		&relative);
-	/* turned back about its top, its face at the finger's height as far
-	back as the finger pulls it (about the left axis: the tip back, toward
-	the grip) */
-	angle = vr_hands_trigger_travel() / (BLADE_PIVOT_UP - BLADE_PULL_UP);
+		&relative[1]);
+	relative[0] = relative[1];
+	/* the blade turned back about its top, its face at the finger's height
+	as far back as the finger pulls it (about the left axis: the tip back,
+	toward the grip) */
+	angle = vr_hands_trigger_travel() / (VR_TRIGGER_PIVOT_UP - BLADE_PULL_UP);
 	if (angle > 0.0f)
 	{
 		cosine = (real)cos(angle);
@@ -384,15 +286,14 @@ void vr_trigger_draw(
 		turn.up.i = sine;
 		turn.up.j = 0.0f;
 		turn.up.k = cosine;
-		turn.position.x = BLADE_PIVOT_FORWARD - (cosine * BLADE_PIVOT_FORWARD + sine * BLADE_PIVOT_UP);
+		turn.position.x = VR_TRIGGER_PIVOT_FORWARD - (cosine * VR_TRIGGER_PIVOT_FORWARD + sine * VR_TRIGGER_PIVOT_UP);
 		turn.position.y = 0.0f;
-		turn.position.z = BLADE_PIVOT_UP - (-sine * BLADE_PIVOT_FORWARD + cosine * BLADE_PIVOT_UP);
-		matrix4x3_multiply(&relative, &turn, &turned);
-		relative = turned;
+		turn.position.z = VR_TRIGGER_PIVOT_UP - (-sine * VR_TRIGGER_PIVOT_FORWARD + cosine * VR_TRIGGER_PIVOT_UP);
+		matrix4x3_multiply(&relative[1], &turn, &relative[0]);
 	}
-	middle.x = blade_rows[NUMBER_OF_BLADE_ROWS / 2][1];
+	middle.x = VR_TRIGGER_MIDDLE_FORWARD;
 	middle.y = 0.0f;
-	middle.z = blade_rows[NUMBER_OF_BLADE_ROWS / 2][0];
+	middle.z = VR_TRIGGER_MIDDLE_UP;
 
 	/* (as render_model begins a model) */
 	memset(&parameters, 0, sizeof(parameters));
@@ -403,8 +304,8 @@ void vr_trigger_draw(
 	parameters.effect = *model_effect;
 	parameters.animation.colors = change_colors;
 	parameters.animation.values = function_values;
-	parameters.skinning.node_matrices = &relative;
-	parameters.skinning.node_matrix_count = 1;
+	parameters.skinning.node_matrices = relative;
+	parameters.skinning.node_matrix_count = NUMBER_OF_TRIGGER_NODES;
 	parameters.geometry_flags = 0;
 	SET_FLAG(parameters.geometry_flags, _rasterizer_geometry_first_person_bit,
 		TEST_FLAG(flags, _render_model_first_person_bit));
