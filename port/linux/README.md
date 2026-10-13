@@ -1099,7 +1099,7 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | Right trigger, left trigger | Fire, throw a grenade (the left trigger only with `vr.grenade_throw = "both"` or `"button"`: by default the hand throws, below) |
 | A, B, X, Y | Jump, melee, action and reload, switch weapon |
 | Left grip, the left hand on a long gun's foregrip | Aim it with both hands, along the line from the right hand to the left (`vr.two_handed`) |
-| A punch of the right controller | Melee (`vr.melee_gesture`) |
+| A swing of the right controller: hard, or softer with the right grip held | Melee (`vr.melee_gesture`, below) |
 | The right hand over the right shoulder or at the right hip, gripping | Draw the weapon carried there (`vr.holsters`, below) |
 | The sniper rifle's or the pistol's scope raised to an eye | Look through it, magnified (`vr.scope_view = "eye"`, below) |
 | The left hand gripping at the left hip and pushing what it took into the weapon (the right stick pushed down ejects the magazine first, if you like) | Reload by hand: take another magazine, the one in the weapon ejecting itself, and push it in (`vr.manual_reload`, below) |
@@ -1111,6 +1111,41 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 
 Other controllers that SteamVR maps to the Touch layout operate as well
 (the grips as the bumpers).
+
+#### Meleeing with a swing (`vr.melee_gesture`)
+
+Whack with the weapon in your right hand, as you would with a real one: a
+hard swing in any direction (sideways, down, forward, the butt or the body
+of the gun leading) melees, as B does (B still melees too). With the right
+grip held, a softer swing will do. A melee that lands on anything (a body,
+a wall, the ground) knocks the right controller.
+
+- Hard: the hand faster than 3 m/s; with the right grip squeezed, faster
+  than 1.8 m/s. Either for at least 10 cm and 40 ms of the swing (a twitch,
+  or the tracking jumping when it finds the controller again, is none).
+- One melee a swing: the hand must slow down (below 1 m/s) before the next
+  swing melees, and no sooner than 0.6 s after the last.
+- What is not a swing: the hand carried by your body or your head (a quick
+  turn to a new target, a step, crouching: its speed is counted from your
+  head as it moves and turns too), aiming (a sweep to a new target is
+  slower than a whack), and a hand going back toward your body (drawing
+  back, reaching over your shoulder).
+- Nor while your hand is at a holster or within 15 cm of one, reaching for
+  one (heading at it from within 70 cm), while your left hand holds a
+  grenade or a magazine, or for 0.4 s after any of those (drawing a gun,
+  the reload's push, the throw's swing; half a second after a draw).
+- The right grip's other uses: it draws a weapon from a holster (squeezed
+  at one, where a swing never melees) and, with the left grip, recentres
+  (held both for 0.75 s; a whack is far shorter). It closes no hand: the
+  right hand holds the weapon.
+- Only on foot, in play (not in a vehicle, the menus or a cinematic), with
+  the controllers aiming (not `vr.aim = "gamepad"`). The swing presses the
+  game's B, so it melees as B does in a network game too (the host is told
+  of a melee as of a press of B).
+
+`debug.vr_melee_log = true` logs the swings that did not melee too: how
+fast and how far each went, and why (too slow, a holster, a throw...); the
+thresholds are named constants at the top of `src/vr.c` (`MELEE_*`).
 
 #### Throwing a grenade with the left hand (`vr.grenade_throw = "gesture"`)
 
@@ -1186,8 +1221,9 @@ hip's does not: your hand passes by it and rests by it).
   the hip's at your right hip, about 70 cm below your eyes: from about
   20 cm away from either, your hand is there.
 - A gripping hand in the other holster (with nothing in it) does nothing.
-  A punch does not melee while your hand is in a holster, nor for half a
-  second after you draw (drawing is a fast move forward).
+  A swing does not melee while your hand is at a holster or reaching for
+  one, nor for half a second after you draw (drawing is a fast move
+  forward).
 - Only on foot, with `vr.aim = "controller"`.
 
 #### Scopes (`vr.scopes`, `vr.scope_view`)
@@ -1464,7 +1500,7 @@ The reticle is in the world, where the aim meets it (as far as what it
 aims at, in both eyes), as large as in the HUD.
 The headset's controllers are an Xbox controller's halves here: their
 sticks, buttons and triggers are a gamepad's (the right stick looks, never
-snap-turns), where they point aims nothing, and a punch does not melee;
+snap-turns), where they point aims nothing, and a swing does not melee;
 they rumble with the gamepad. Both grips held still recentre. In the headset
 every gamepad is the first player's: Steam may list a gamepad of its own
 (Steam Input's) besides the one in the hands, and all of them merge into
@@ -1477,7 +1513,7 @@ does.
 In the headset, Settings' VR Setup (below About; only there while the
 game plays in VR) sets most of these with the left d-pad: VR Controls
 (the hands, the aim, the gamepad's view, two-handed aiming, the melee
-punch, the holsters, the physical crouch, the scopes (smart-link, at the eye or off), reloading by hand, turning, the vehicles' view and the view as you die) and, from its last row, VR Display (the play position,
+swing, the holsters, the physical crouch, the scopes (smart-link, at the eye or off), reloading by hand, turning, the vehicles' view and the view as you die) and, from its last row, VR Display (the play position,
 the eye height, the world's scale, the HUD's and the menus' distance and
 size, the resolution and the refresh rate) and, from its last row, its
 visor page (the HUD on the visor or flat, its depth, its wrap along the
@@ -1497,7 +1533,7 @@ headset's session is opened with, apply from the next start.
 | `vr.gamepad_view` | `"camera"` | `HALO_VR_GAMEPAD_VIEW` | With `vr.aim = "gamepad"`: `"camera"`, the stick turns and pitches the view as the flat screen's camera, the head's turn on top (the most like the Xbox game, and the most likely to make you sick); `"level"`, it turns the view smoothly, and its pitch moves only the reticle; `"snap"`, the view turns a step of `vr.snap_turn_angle` each time the aim is more than that from it, and its pitch moves only the reticle. |
 | `vr.weapon_offset` | `"0.15, -0.22, 0.30"` | `HALO_VR_WEAPON_OFFSET` | With `vr.hands = "game"`: where the weapon's grip is from the eye that the game poses it for, in metres: right, up, forward. |
 | `vr.depth` | `false` | `HALO_VR_DEPTH` | `true`: give the runtime the eyes' depth too (`XR_KHR_composition_layer_depth`), for its reprojection. SteamVR on the Steam Frame cannot make a depth swapchain for an OpenGL session yet. |
-| `vr.melee_gesture` | `true` | `HALO_VR_MELEE_GESTURE` | A punch with the right controller (fast, in the direction it points) melees, as B does. |
+| `vr.melee_gesture` | `true` | `HALO_VR_MELEE_GESTURE` | A swing of the right controller melees, as B does: a hard one in any direction, or a softer one with the right grip held ("Meleeing with a swing"). |
 | `vr.holsters` | `true` | `HALO_VR_HOLSTERS` | With `vr.aim = "controller"`: the weapon you carry but do not hold is on your body, and the right hand reaching there and gripping draws it (above, "Holsters"). Y switches weapons as ever. |
 | `vr.physical_crouch` | `true` | `HALO_VR_PHYSICAL_CROUCH` | The head crouching crouches the player: about 0.35 m below the standing eyes (`vr.height = "standing"`), or 0.25 m below the recentred ones (seated), and standing within 0.07 m of that stands (above, "Crouching"). The left stick's click crouches as ever. |
 | `vr.scopes` | `true` | `HALO_VR_SCOPES` | With `vr.aim = "controller"`: the zoom magnifies a view of its own, as `vr.scope_view` says (above, "Scopes"). `false`: the game's zoom (nothing is magnified in the headset), whatever `vr.scope_view` is. |
@@ -1543,6 +1579,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_finger` | `""` | `HALO_VR_TEST_FINGER` | The right index finger on the weapon's trigger instead of the weapon's own (`game/vr_hands.c`, `trigger_fingers`), for tests: `"<rest> <rest> <rest> <pull> <pull> <pull> [<travel>]"`, its curl at each joint from the knuckle at rest, from the idle animation's (less than 0: straighter), and how much more at a full pull (radians), and how far back the trigger goes (metres). |
 | `debug.vr_test_weapons` | `""` | `HALO_VR_TEST_WEAPONS` | Give the first player these weapons in place of their own, the first in hand, once a map, 2 s after the player first aims (a level's script gives its own as the player takes control), for automated tests of the scopes: `"<name>[, <name>]"`, parts of the weapons' tag names (`"sniper rifle, pistol"`; b30 has no sniper rifle, a50 has both). |
 | `debug.vr_throw_log` | `false` | `HALO_VR_THROW_LOG` | Log each step of a grenade thrown with the left hand (`vr.grenade_throw`): the grip taken (or why it holds nothing), the swing (or why a fast hand was none), the release's speed, power and direction, and the game's throw: when it began, its animations held or moved on to their release, and the grenade's place and speed. |
+| `debug.vr_melee_log` | `false` | `HALO_VR_MELEE_LOG` | Log the right hand's swings that did not melee (`vr.melee_gesture`) too: how fast and how far each went, and why it was none (too slow, a holster, a throw, a reload, the tracking jumping). Each melee by a swing is logged whatever this is. |
 | `debug.vr_test_weapon` | `""` | `HALO_VR_TEST_WEAPON` | Put a weapon in the first player's hand, for automated tests of the reload by hand: `"<text> <seconds>"`, that many seconds into the level the player's weapons are taken and a new one is in hand, the first of the map's whose tag name has the text in it (`"shotgun 15"` on d20, `"rocket 15"` on b30). |
 | `debug.vr_test_seat` | `""` | `HALO_VR_TEST_SEAT` | Get into a vehicle's seat and out again, for automated tests of the view in a seat: `"<label> <seconds> [<seconds seated>]"`, the first player gets into the seat whose label has this text in it (`"gunner"`, `"W-driver"`, `"GT-gunner"`: the Shade) that many seconds into the level, as the action button does, in a vehicle of the kind made before them three seconds earlier (standing at the seat's entrance from two seconds earlier), and out again after as many seconds seated (10 by default). From a second before, the log says how far the view moved and turned each frame, how dark a blink made it, and each phase's sums (on foot, entering, seated, exiting) with how much of the motion was seen (not in a blink's full darkness), and each blink: with `debug.vr_test_head = "0"`, the motion the player did not make. |
 | `debug.vr_test_fov` | `""` | `HALO_VR_TEST_FOV` | Each eye's field of view instead of the runtime's, for automated tests of what the edges of a wide view show: `"<outward> <inward> <up> <down>[ <cant>]"`, in degrees from the eye's axis, each eye turned outward by `<cant>` degrees (as canted displays are; the game's 3D view assumes the eyes look the same way, so only the visor and the helmet's rim are right with it). |

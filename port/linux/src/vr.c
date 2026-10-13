@@ -60,10 +60,46 @@ wider than these (degrees) */
 #define SMARTLINK_WIDEST 45.0f
 /* a world unit is 10 feet */
 #define METRES_PER_WORLD_UNIT 3.048f
-/* a melee gesture: the right hand faster than this along where it points
-(metres a second), no sooner than this after the last */
-#define MELEE_SPEED 2.5f
+/* a melee by the right hand's swing (vr.melee_gesture), in any direction:
+its speed past MELEE_SPEED, or past MELEE_GRIP_SPEED with the right grip
+held past MELEE_GRIP_PRESSED, once it has gone MELEE_TRAVEL since it was
+faster than MELEE_REARM_SPEED, and for MELEE_SUSTAIN_SECONDS, still
+moving faster than that from the frame before (a twitch, or the tracking
+jumping in a frame, is no swing), presses B for MELEE_PRESS_MS; once a
+swing: again only after the hand has slowed below MELEE_REARM_SPEED, and no
+sooner than MELEE_INTERVAL_MS after the last. Its speed is measured over MELEE_VELOCITY_SECONDS, and is
+the lesser of the hand's own and the hand's from the head (as the head is
+turned and moved: a turn of the body, a step or a crouch carries the hand
+with the head, which is no swing; the head turning alone does not move the
+hand). Not a swing: one going back toward the body (its speed backward,
+along where the head faces, more than MELEE_BACKWARD of it: a hand drawn
+back, reaching for the shoulder's holster), faster than MELEE_FASTEST
+(the tracking lost and found), one toward a holster within
+MELEE_REACH_DISTANCE (within MELEE_REACH_COSINE of straight at it), nor
+while the hand is within MELEE_HOLSTER_MARGIN of a holster's reach or the
+left hand holds a grenade or a magazine, or for MELEE_GUARD_MS after
+(drawing a gun, the reload's push, the throw's swing). (Speeds in metres a second.) */
+#define MELEE_SPEED 3.0f
+#define MELEE_GRIP_SPEED 1.8f
+#define MELEE_GRIP_PRESSED 0.6f
+#define MELEE_REARM_SPEED 1.0f
+#define MELEE_TRAVEL 0.10f
+#define MELEE_SUSTAIN_SECONDS 0.04f
+#define MELEE_VELOCITY_SECONDS 0.03f
+#define MELEE_BACKWARD 0.6f
+#define MELEE_FASTEST 15.0f
+#define MELEE_HOLSTER_MARGIN 0.15f
+#define MELEE_REACH_DISTANCE 0.70f
+#define MELEE_REACH_COSINE 0.8f
+#define MELEE_GUARD_MS 400
+#define MELEE_PRESS_MS 70
 #define MELEE_INTERVAL_MS 600
+/* the right hand's and the head's places kept for it (a power of two: more
+than MELEE_VELOCITY_SECONDS's frames at 144 Hz) */
+#define MELEE_SAMPLES 16
+/* a melee's hit (halo_vr_melee_hit): a knock in the right controller */
+#define MELEE_HIT_AMPLITUDE 0.8f
+#define MELEE_HIT_SECONDS 0.06f
 /* holding both grips this long recentres, or a gamepad's Back (View) */
 #define RECENTRE_SECONDS 0.75f
 #define GAMEPAD_RECENTRE_SECONDS 1.0f
@@ -253,12 +289,28 @@ static struct
 	int menus;
 	/* the eyes' depth this frame, and its range */
 	int depth_written;
-	/* the melee gesture: the right hand's last position, and the frames
-	left of the button it presses */
-	int hand_valid;
-	float hand_position[3];
-	int melee_frames;
+	/* the melee by a swing: the right hand's places from the head and its
+	own, each at its time (seconds), whether the hand swings, whether the
+	swing has melee'd or not yet (armed), how far it has gone and for how
+	long, its fastest, whether the grip was held and why it has not melee'd
+	(debug.vr_melee_log), when the B button it presses is let go, when the
+	last melee was and when a guard last held (GetTickCount) */
+	unsigned int melee_sample;
+	double melee_clock;
+	float melee_hand[MELEE_SAMPLES][3];
+	float melee_from_head[MELEE_SAMPLES][3];
+	double melee_times[MELEE_SAMPLES];
+	int melee_valid[MELEE_SAMPLES];
+	int melee_swinging;
+	int melee_fired;
+	float melee_travel;
+	float melee_seconds;
+	float melee_fastest;
+	int melee_grip;
+	const char *melee_guard;
+	unsigned long melee_release;
 	unsigned long melee_ticks;
+	unsigned long melee_guard_ticks;
 	/* both hands on a long gun: whether the left holds the foregrip, how
 	far the aim has turned to the line between the hands (0 to 1), that
 	line, smoothed (OpenXR axes), and whether the weapon is one */
@@ -377,6 +429,8 @@ static struct
 	int throw_gesture;
 	int throw_gesture_only;
 	int throw_log;
+	/* debug.vr_melee_log: the swings that did not melee too */
+	int melee_log;
 	int vehicle_first_person;
 	float test_turn;
 	float test_jitter;
@@ -484,6 +538,7 @@ static void settings_read(void)
 			SMARTLINK_WIDEST;
 	settings.manual_reload = config_boolean("vr.manual_reload");
 	settings.throw_log = config_boolean("debug.vr_throw_log");
+	settings.melee_log = config_boolean("debug.vr_melee_log");
 	settings.vehicle_first_person = strcmp(config_string("vr.vehicle_view"), "third_person") != 0;
 	settings.test_turn = (float)config_real("debug.vr_test_turn") * (float)M_PI / 180.0f;
 	settings.test_jitter = (float)config_real("debug.vr_test_jitter") * 0.001f;
@@ -1667,6 +1722,179 @@ int halo_vr_reload(struct halo_vr_reload *reload)
 	return reload->enabled;
 }
 
+/* the right hand's velocity, and from the head, at the newest sample over
+seconds back (or as long as the samples go back, if a frame or more); 0 if
+there is none */
+static int melee_velocity(float seconds, float hand[3], float from_head[3])
+{
+	unsigned int newest = vr.melee_sample & (MELEE_SAMPLES - 1), back;
+	int axis;
+
+	if (!vr.melee_valid[newest])
+		return 0;
+	for (back = 1; back < MELEE_SAMPLES; back++)
+	{
+		unsigned int older = (vr.melee_sample - back) & (MELEE_SAMPLES - 1);
+		double span;
+
+		if (!vr.melee_valid[older])
+			break;
+		span = vr.melee_times[newest] - vr.melee_times[older];
+		if (span >= seconds || back == MELEE_SAMPLES - 1 ||
+			!vr.melee_valid[(vr.melee_sample - back - 1) & (MELEE_SAMPLES - 1)])
+		{
+			if (span <= 0.0)
+				return 0;
+			for (axis = 0; axis < 3; axis++)
+			{
+				hand[axis] = (float)((vr.melee_hand[newest][axis] - vr.melee_hand[older][axis]) / span);
+				from_head[axis] = (float)((vr.melee_from_head[newest][axis] - vr.melee_from_head[older][axis]) / span);
+			}
+			return 1;
+		}
+	}
+	return 0;
+}
+
+/* the melee by the right hand's swing, once a frame (vr.melee_gesture;
+MELEE_* above): after holsters_update and reload_update, which it keeps out
+of the way of */
+static void melee_update(float seconds)
+{
+	static const float backwards[3] = { 0.0f, 0.0f, -1.0f };
+	const struct vr_host_pose *hand = &vr.views.grip[1], *head = &vr.views.head;
+	unsigned long now = GetTickCount();
+	unsigned int sample;
+	float velocity[3], from_head[3], forward[3], v[3], speed, moving, along, level;
+	float inverse[4] = { -head->orientation[0], -head->orientation[1], -head->orientation[2], head->orientation[3] };
+	int grip = vr.input.right_grip > MELEE_GRIP_PRESSED, holster, axis;
+	const char *guard = NULL;
+
+	/* the hand's place, and from the head in the head's own axes, kept */
+	vr.melee_clock += seconds;
+	sample = ++vr.melee_sample & (MELEE_SAMPLES - 1);
+	vr.melee_valid[sample] = hand->valid && head->valid && seconds > 0.0f;
+	for (axis = 0; axis < 3; axis++)
+		v[axis] = hand->position[axis] - head->position[axis];
+	memcpy(vr.melee_hand[sample], hand->position, sizeof(vr.melee_hand[0]));
+	quaternion_rotate(inverse, v, vr.melee_from_head[sample]);
+	vr.melee_times[sample] = vr.melee_clock;
+
+	/* (only on foot, the controllers aiming, in play) */
+	if (!settings.melee_gesture || settings.gamepad_aim || !vr.crouch_able_frame || vr.menus ||
+		!melee_velocity(0.0f, velocity, from_head))
+	{
+		vr.melee_swinging = 0;
+		return;
+	}
+	moving = length3(from_head) < length3(velocity) ? length3(from_head) : length3(velocity);
+	melee_velocity(MELEE_VELOCITY_SECONDS, velocity, from_head);
+	speed = length3(from_head) < length3(velocity) ? length3(from_head) : length3(velocity);
+	/* its way backward, along where the head faces, level */
+	quaternion_rotate(head->orientation, backwards, forward);
+	level = sqrtf(forward[0] * forward[0] + forward[2] * forward[2]);
+	along = level > 0.0f && length3(velocity) > 0.0f ?
+		-(velocity[0] * forward[0] + velocity[2] * forward[2]) / level / length3(velocity) : 0.0f;
+
+	/* what keeps a swing from meleeing */
+	if (vr.holsters.enabled && vr.aimed)
+	{
+		float place[3], going[3], to[3];
+
+		for (axis = 0; axis < 3; axis++)
+			v[axis] = hand->position[axis] - vr.origin_position[axis];
+		game_axes(v, vr.origin_yaw, place);
+		game_axes(velocity, vr.origin_yaw, going);
+		for (holster = HALO_VR_HOLSTER_BACK; holster < HALO_VR_HOLSTERS; holster++)
+		{
+			for (axis = 0; axis < 3; axis++)
+				to[axis] = vr.holsters.place[holster][axis] - place[axis];
+			if (vr.holsters.distance[holster] < MELEE_HOLSTER_MARGIN)
+				guard = "by a holster";
+			else if (length3(to) < MELEE_REACH_DISTANCE && going[0] * to[0] + going[1] * to[1] + going[2] * to[2] >
+				MELEE_REACH_COSINE * length3(going) * length3(to))
+			{
+				guard = "reaching for a holster";
+			}
+		}
+	}
+	if (vr.throw_state != THROW_IDLE)
+		guard = "the left hand throwing";
+	if (vr.reload.held)
+		guard = "the left hand holding a magazine";
+	if (guard)
+		vr.melee_guard_ticks = now;
+	else if (now - vr.melee_guard_ticks < MELEE_GUARD_MS)
+		guard = "just after a holster, a throw or a reload";
+	else if (now - vr.holster_ticks < HOLSTER_NO_MELEE_MS)
+		guard = "just after drawing";
+
+	/* the swing: from faster than MELEE_REARM_SPEED until slower again */
+	if (speed < MELEE_REARM_SPEED)
+	{
+		if (vr.melee_swinging && settings.melee_log && !vr.melee_fired && vr.melee_fastest > MELEE_GRIP_SPEED)
+		{
+			platform_log("vr: melee: a swing of %.2f m/s over %.2f m%s, no melee (%s)", vr.melee_fastest,
+				vr.melee_travel, vr.melee_grip ? ", the grip held" : "", vr.melee_guard);
+		}
+		vr.melee_swinging = 0;
+		return;
+	}
+	if (!vr.melee_swinging)
+	{
+		vr.melee_swinging = 1;
+		vr.melee_fired = 0;
+		vr.melee_travel = 0.0f;
+		vr.melee_seconds = 0.0f;
+		vr.melee_fastest = 0.0f;
+		vr.melee_grip = 0;
+		vr.melee_guard = "slower than a swing, the grip not held";
+	}
+	vr.melee_travel += speed * seconds;
+	vr.melee_seconds += seconds;
+	if (speed > vr.melee_fastest)
+		vr.melee_fastest = speed;
+	vr.melee_grip |= grip;
+	if (!guard && speed > MELEE_FASTEST)
+		guard = "too fast: the tracking jumped";
+	if (!guard && along > MELEE_BACKWARD)
+		guard = "going back toward the body";
+	/* (why not, for debug.vr_melee_log, as it goes) */
+	if (vr.melee_fired)
+		return;
+	if (!guard && speed < (grip ? MELEE_GRIP_SPEED : MELEE_SPEED))
+		guard = vr.melee_grip ? "slower than a gripped swing" : "slower than a swing, the grip not held";
+	if (!guard && (vr.melee_travel < MELEE_TRAVEL || vr.melee_seconds < MELEE_SUSTAIN_SECONDS))
+		guard = "too short";
+	if (!guard && moving < MELEE_REARM_SPEED)
+		guard = "not moving on: the tracking jumped";
+	if (!guard && now - vr.melee_ticks < MELEE_INTERVAL_MS)
+		guard = "too soon after the last";
+	if (guard)
+	{
+		/* (the slowness of a swing that was guarded says less than its
+		guard) */
+		if (strncmp(guard, "slower", 6) != 0 || !strncmp(vr.melee_guard, "slower", 6))
+			vr.melee_guard = guard;
+		return;
+	}
+	vr.melee_fired = 1;
+	vr.melee_ticks = now;
+	vr.melee_release = now + MELEE_PRESS_MS;
+	platform_log("vr: melee: a swing of %.2f m/s over %.2f m%s", speed, vr.melee_travel,
+		grip ? ", the grip held" : "");
+}
+
+/* units.c: the first player's melee landed (on anything: its sound plays) */
+void halo_vr_melee_hit(void)
+{
+	if (!vr.initialized)
+		return;
+	host_vr_haptic(1, MELEE_HIT_AMPLITUDE, MELEE_HIT_SECONDS);
+	if (settings.melee_log)
+		platform_log("vr: melee: it landed");
+}
+
 /* the controllers' turning and recentring, once a frame */
 static void input_update(void)
 {
@@ -1679,37 +1907,15 @@ static void input_update(void)
 	vr.last_ticks = now;
 	if (seconds > 0.1f)
 		seconds = 0.1f;
-	/* a punch of the right controller melees: its hand moving fast along
-	where it points, for a few frames (vr.melee_gesture) */
-	if (vr.melee_frames > 0)
-		vr.melee_frames--;
 	body_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
 	holsters_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
 	reload_update();
-	/* (not as a gun is drawn from a holster) */
-	if (settings.melee_gesture && !settings.gamepad_aim && vr.views.grip[1].valid && vr.hand_valid &&
-		seconds > 0.0f && vr.holsters.reach == HALO_VR_HOLSTER_NONE && now - vr.holster_ticks > HOLSTER_NO_MELEE_MS)
-	{
-		static const float backwards[3] = { 0.0f, 0.0f, -1.0f };
-		float pointing[3], speed = 0.0f;
-		int axis;
-
-		quaternion_rotate(vr.views.grip[1].orientation, backwards, pointing);
-		for (axis = 0; axis < 3; axis++)
-			speed += (vr.views.grip[1].position[axis] - vr.hand_position[axis]) * pointing[axis];
-		speed /= seconds;
-		if (speed > MELEE_SPEED && !vr.melee_frames && now - vr.melee_ticks > MELEE_INTERVAL_MS)
-		{
-			vr.melee_frames = 3;
-			vr.melee_ticks = now;
-		}
-	}
+	/* a swing of the right controller melees (vr.melee_gesture) */
+	melee_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
 	two_handed_update(seconds);
 	crouch_update();
 	/* (the poses' times: from one frame's display to the next's) */
 	throw_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
-	vr.hand_valid = vr.views.grip[1].valid;
-	memcpy(vr.hand_position, vr.views.grip[1].position, sizeof(vr.hand_position));
 	/* debug.vr_test_turn: turning without hands, for automated tests (the
 	gamepad's aim turns the body itself) */
 	if (!settings.gamepad_aim)
@@ -2486,7 +2692,8 @@ void halo_vr_gamepad(void *gamepad)
 	if (!vr.initialized || !(vr.frame || vr.pending))
 		return;
 	analog(pad, XINPUT_GAMEPAD_A, buttons & VR_BUTTON_A);
-	analog(pad, XINPUT_GAMEPAD_B, (buttons & VR_BUTTON_B) || vr.melee_frames > 0);
+	/* (and a swing of the right controller melees, as B: vr.melee_gesture) */
+	analog(pad, XINPUT_GAMEPAD_B, (buttons & VR_BUTTON_B) || (long)(vr.melee_release - GetTickCount()) > 0);
 	analog(pad, XINPUT_GAMEPAD_X, buttons & VR_BUTTON_X);
 	/* (and a gun drawn from its holster switches to it, as Y) */
 	analog(pad, XINPUT_GAMEPAD_Y, (buttons & VR_BUTTON_Y) || vr.holster_press_frames > 0);

@@ -184,7 +184,7 @@
 		<string text="AIM:"/>
 		<string text="GAMEPAD VIEW:"/>
 		<string text="TWO-HANDED AIM:"/>
-		<string text="PUNCH TO MELEE:"/>
+		<string text="SWING TO MELEE:"/>
 		<string text="HOLSTERS:"/>
 		<string text="PHYSICAL CROUCH:"/>
 		<string text="SCOPES:"/>
@@ -202,7 +202,7 @@
 		<string text="What aims: the right controller, which holds the\nweapon, your head, or a gamepad's right stick."/>
 		<string text="With a gamepad, the right stick turns and\npitches the view, only turns it, or in steps."/>
 		<string text="The left grip holds a long gun by its foregrip:\nit aims along the line between your hands."/>
-		<string text="A punch of the right controller melees, as B does."/>
+		<string text="A hard swing of the right controller melees, as\nB does; with its grip held, a softer one will do."/>
 		<string text="Reach over your right shoulder for a long gun, or\nto your right hip for a pistol, and grip to draw it."/>
 		<string text="Crouch in the room and you crouch in the game;\nstand up and you stand."/>
 		<string text="Smart-link: the right stick's click zooms on your\nvisor. At the eye: raise the scope to your eye."/>

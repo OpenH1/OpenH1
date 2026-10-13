@@ -355,6 +355,9 @@ left stick's click, a gamepad's) */
 #define HALO_VR_CROUCH_BUTTON 2
 void halo_vr_crouch_able(int able);
 int halo_vr_crouch(void);
+/* the first player's melee landed on something (units.c, as its sound
+plays): a swing's or B's, a knock in the right controller */
+void halo_vr_melee_hit(void);
 /* the scopes are on (vr.scopes, with vr.aim = "controller"), and how they
 show their view (vr.scope_view): HALO_VR_SCOPES_EYE raised to an eye, in
 their lens; HALO_VR_SCOPES_SMARTLINK on the visor, as the game zooms; 0 off.

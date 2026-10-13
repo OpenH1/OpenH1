@@ -9266,6 +9266,17 @@ void unit_cause_player_melee_damage(
 
 		if (hit_material_type!=NONE)
 		{
+#ifdef HALO_VR
+			/* the VR mode: the first player's blow landing knocks the right
+			controller, the hand that swung it (port/linux/src/vr.c) */
+			{
+				extern void halo_vr_melee_hit(void);
+				long vr_player_index = local_player_get_player_index(0);
+
+				if (vr_player_index!=NONE && player_get(vr_player_index)->unit_index==unit_index)
+					halo_vr_melee_hit();
+			}
+#endif
 			unit_melee_sound(
 				unit_index,
 				hit_material_type,

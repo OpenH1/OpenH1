@@ -246,7 +246,8 @@ static const struct config_setting config_settings[] =
 		"Give the runtime the eyes' depth too, for its reprojection (SteamVR on\n"
 		"the Steam Frame cannot take it yet)." },
 	{ "vr.melee_gesture", _config_boolean, "true", "HALO_VR_MELEE_GESTURE", _environment_value, _platform_desktop,
-		"A punch with the right controller (fast, where it points) melees, as B does." },
+		"A swing of the right controller melees, as B does: a hard one in any\n"
+		"direction, or a softer one with the right grip held." },
 	{ "vr.grenade_throw", _config_string, "\"gesture\"", "HALO_VR_GRENADE_THROW", _environment_value,
 		_platform_desktop,
 		"With vr.aim = \"controller\", how a grenade is thrown: \"gesture\" by\n"
@@ -778,6 +779,9 @@ static const struct config_setting config_settings[] =
 		"Log each step of a grenade thrown with the left hand (vr.grenade_throw):\n"
 		"the grip taken, the swing (or why not), the release's speed and\n"
 		"direction, and the game's throw timed to it." },
+	{ "debug.vr_melee_log", _config_boolean, "false", "HALO_VR_MELEE_LOG", _environment_value, _platform_desktop,
+		"Log the right hand's swings that did not melee (vr.melee_gesture) too:\n"
+		"how fast and far each went, and why it was none." },
 
 	{ "debug.vr_test_weapon", _config_string, "\"\"", "HALO_VR_TEST_WEAPON", _environment_value, _platform_desktop,
 		"Put a weapon in the first VR player's hand, for automated tests of the\n"
