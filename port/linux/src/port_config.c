@@ -288,6 +288,12 @@ static const struct config_setting config_settings[] =
 		"magnetism would be drawn to, the aim's turn across it slows, and zoomed,\n"
 		"the aim is drawn gently toward it; how strongly, from 0 (none) to 2 (1:\n"
 		"the default). The bullets' own autoaim is the game's whatever this is." },
+	{ "vr.weapon_haptics", _config_real, "1.0", "HALO_VR_WEAPON_HAPTICS", _environment_value, _platform_desktop,
+		"With vr.aim = \"controller\", how strongly the controllers feel each\n"
+		"weapon firing, each its own way (the pistol's sharp tap, the assault\n"
+		"rifle's buzz, the shotgun's thump...), and the hits on you, in the hand\n"
+		"on the side they came from, in place of the gamepad's rumble for them:\n"
+		"from 0 (none) to 1 (the default)." },
 	{ "vr.recoil", _config_real, "1.0", "HALO_VR_RECOIL", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", how far the weapon in your hand kicks as\n"
 		"it fires, each its own way (drawn alone: the aim and the shots stay\n"

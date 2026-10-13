@@ -467,6 +467,26 @@ mode's (the controllers aim: vr.aim = "controller"), and how far the
 first-person weapon kicks as it fires (vr.recoil, 0 to 1; 0 without it) */
 int halo_vr_weapon_feel(void);
 float halo_vr_recoil(void);
+/* ... each shot of the first player's weapon in hand, felt in the hands as
+its kind (HALO_VR_FEEL_*), in place of the game's rumble for it
+(vr.weapon_haptics); and the plasma pistol charging, once a frame (0 to 1;
+0: not) */
+enum
+{
+	HALO_VR_FEEL_TAP = 0, /* any other weapon */
+	HALO_VR_FEEL_PISTOL,
+	HALO_VR_FEEL_RIFLE,   /* the assault rifle */
+	HALO_VR_FEEL_SHOTGUN,
+	HALO_VR_FEEL_SNIPER,
+	HALO_VR_FEEL_ROCKET,  /* the rocket launcher, the fuel rod gun */
+	HALO_VR_FEEL_PLASMA,  /* the plasma pistol, the plasma rifle */
+	HALO_VR_FEEL_CHARGED, /* the plasma pistol's charged shot */
+	HALO_VR_FEEL_NEEDLER,
+	HALO_VR_FEEL_FLAME,   /* the flamethrower */
+	HALO_VR_FEELS,
+};
+void halo_vr_weapon_fire(int feel);
+void halo_vr_weapon_charge(float charge);
 /* the scopes are on (vr.scopes, with vr.aim = "controller"), and how they
 show their view (vr.scope_view): HALO_VR_SCOPES_EYE raised to an eye, in
 their lens; HALO_VR_SCOPES_SMARTLINK on the visor, as the game zooms; 0 off.

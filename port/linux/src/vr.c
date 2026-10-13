@@ -354,6 +354,53 @@ static const struct haptic_pulse flip_lift_feel[] = { { 1.0f, 0.08f, 0.0f }, { 0
 #define HAPTIC_PULSES 4
 /* a pattern and its count of pulses, for haptic_play */
 #define HAPTIC_FEEL(feel) (feel), (int)(sizeof(feel) / sizeof((feel)[0]))
+/* each weapon's feel as it fires (vr.weapon_haptics, halo_vr_weapon_fire:
+HALO_VR_FEEL_*), in the weapon's hand, the left on a long gun's foregrip
+WEAPON_FOREGRIP as strong: any other's tap; the pistol's sharp tap (a short
+hard pulse, the slide settling); the assault rifle's fast buzz (a short
+pulse a round, the rounds' pulses running together); the shotgun's heavy
+thump, long and slow to die; the sniper rifle's crack, very short and full,
+and its decay; the rocket launcher's long push, rising and falling; the
+plasma weapons' soft pulse; the plasma pistol's charged shot's surge,
+rising to full and ebbing; the needler's ticks (a double tick a needle);
+the flamethrower's rumble (each shot's pulse longer than the time to the
+next, so that they run on). Never over the reload's or the lift's patterns
+(haptic_play) while they play, but over the game's rumble. The plasma
+pistol charging hums in its hand, WEAPON_CHARGE_HUM rising to its full as
+it charges (halo_vr_weapon_charge). */
+static const struct haptic_pulse weapon_tap_feel[] = { { 0.50f, 0.03f, 0.0f } };
+static const struct haptic_pulse weapon_pistol_feel[] = { { 1.0f, 0.018f, 0.0f }, { 0.25f, 0.03f, 0.025f } };
+static const struct haptic_pulse weapon_rifle_feel[] = { { 0.60f, 0.035f, 0.0f } };
+static const struct haptic_pulse weapon_shotgun_feel[] = { { 1.0f, 0.07f, 0.0f }, { 0.65f, 0.06f, 0.08f },
+	{ 0.30f, 0.08f, 0.15f } };
+static const struct haptic_pulse weapon_sniper_feel[] = { { 1.0f, 0.02f, 0.0f }, { 0.70f, 0.04f, 0.025f },
+	{ 0.40f, 0.06f, 0.07f }, { 0.15f, 0.10f, 0.14f } };
+static const struct haptic_pulse weapon_rocket_feel[] = { { 0.60f, 0.06f, 0.0f }, { 1.0f, 0.15f, 0.05f },
+	{ 0.60f, 0.12f, 0.20f }, { 0.25f, 0.15f, 0.32f } };
+static const struct haptic_pulse weapon_plasma_feel[] = { { 0.45f, 0.05f, 0.0f } };
+static const struct haptic_pulse weapon_charged_feel[] = { { 0.50f, 0.05f, 0.0f }, { 0.90f, 0.08f, 0.04f },
+	{ 1.0f, 0.12f, 0.12f }, { 0.40f, 0.15f, 0.24f } };
+static const struct haptic_pulse weapon_needler_feel[] = { { 0.40f, 0.012f, 0.0f }, { 0.20f, 0.01f, 0.03f } };
+static const struct haptic_pulse weapon_flame_feel[] = { { 0.45f, 0.08f, 0.0f } };
+static const struct
+{
+	const struct haptic_pulse *pulses;
+	int count;
+} weapon_feels[HALO_VR_FEELS] =
+{
+	{ HAPTIC_FEEL(weapon_tap_feel) },
+	{ HAPTIC_FEEL(weapon_pistol_feel) },
+	{ HAPTIC_FEEL(weapon_rifle_feel) },
+	{ HAPTIC_FEEL(weapon_shotgun_feel) },
+	{ HAPTIC_FEEL(weapon_sniper_feel) },
+	{ HAPTIC_FEEL(weapon_rocket_feel) },
+	{ HAPTIC_FEEL(weapon_plasma_feel) },
+	{ HAPTIC_FEEL(weapon_charged_feel) },
+	{ HAPTIC_FEEL(weapon_needler_feel) },
+	{ HAPTIC_FEEL(weapon_flame_feel) },
+};
+#define WEAPON_FOREGRIP 0.35f
+#define WEAPON_CHARGE_HUM 0.35f
 /* debug.vr_test_hands: the poses it gives the controllers (enough for a
 swing posed frame by frame), each held this many frames unless it says */
 #define TEST_HANDS_POSES 512
@@ -629,6 +676,9 @@ static struct
 	int haptic_sent[2];
 	unsigned long haptic_ticks[2];
 	unsigned long haptic_end[2];
+	/* ... and when the last of the reload's or the lift's ends, which the
+	weapons' and the hits' feel (haptic_feel) does not play over */
+	unsigned long haptic_kept_end[2];
 	/* the lift of an overturned vehicle (flip_update): the game's offer
 	(halo_vr_flip) and where the vehicle is (game axes from the recentred
 	head), the offer logged; each grip held, and whether it is the lift's;
@@ -721,7 +771,9 @@ static struct
 	int aim_log;
 	/* vr.aim_assist: how strong (0: none) */
 	float aim_assist;
-	/* vr.recoil: how far the weapon kicks in the hand (0: none, 1) */
+	/* vr.weapon_haptics, vr.recoil: how strong the weapons' and the hits'
+	feel in the hands is, and the weapon's kick in the hand (0: none, 1) */
+	float weapon_haptics;
 	float recoil;
 	/* debug.vr_test_head: the head held still, turned left and right by
 	this many degrees over this many seconds, and pitched up this many */
@@ -846,6 +898,9 @@ static void settings_read(void)
 	settings.aim_assist = (float)config_real("vr.aim_assist");
 	if (settings.aim_assist < 0.0f || settings.aim_assist > 2.0f)
 		settings.aim_assist = settings.aim_assist < 0.0f ? 0.0f : 2.0f;
+	settings.weapon_haptics = (float)config_real("vr.weapon_haptics");
+	if (settings.weapon_haptics < 0.0f || settings.weapon_haptics > 1.0f)
+		settings.weapon_haptics = settings.weapon_haptics < 0.0f ? 0.0f : 1.0f;
 	settings.recoil = (float)config_real("vr.recoil");
 	if (settings.recoil < 0.0f || settings.recoil > 1.0f)
 		settings.recoil = settings.recoil < 0.0f ? 0.0f : 1.0f;
@@ -1874,6 +1929,30 @@ static void haptic_play(int hand, const struct haptic_pulse *pulses, int count)
 	vr.haptic_ticks[hand] = GetTickCount();
 	vr.haptic_end[hand] = vr.haptic_ticks[hand] +
 		(unsigned long)((pulses[count - 1].start + pulses[count - 1].seconds) * 1000.0f);
+	vr.haptic_kept_end[hand] = vr.haptic_end[hand];
+	haptics_update();
+}
+
+/* a weapon's or a hit's pattern (haptic_play's), its pulses this strong
+(times their own), unless the reload's or the lift's plays in that hand */
+static void haptic_feel(int hand, const struct haptic_pulse *pulses, int count, float strength)
+{
+	unsigned long now = GetTickCount();
+	int index;
+
+	if ((long)(now - vr.haptic_kept_end[hand]) < 0 || strength <= 0.0f)
+		return;
+	if (count > HAPTIC_PULSES)
+		count = HAPTIC_PULSES;
+	for (index = 0; index < count; index++)
+	{
+		vr.haptic_pulses[hand][index] = pulses[index];
+		vr.haptic_pulses[hand][index].amplitude = fminf(pulses[index].amplitude * strength, 1.0f);
+	}
+	vr.haptic_count[hand] = count;
+	vr.haptic_sent[hand] = 0;
+	vr.haptic_ticks[hand] = now;
+	vr.haptic_end[hand] = now + (unsigned long)((pulses[count - 1].start + pulses[count - 1].seconds) * 1000.0f);
 	haptics_update();
 }
 
@@ -2284,6 +2363,28 @@ int halo_vr_weapon_feel(void)
 float halo_vr_recoil(void)
 {
 	return halo_vr_weapon_feel() ? settings.recoil : 0.0f;
+}
+
+/* vr_feel.c: the first player's weapon in hand fired (weapon_feels) */
+void halo_vr_weapon_fire(int feel)
+{
+	if (!halo_vr_weapon_feel() || feel < 0 || feel >= HALO_VR_FEELS)
+		return;
+	haptic_feel(1, weapon_feels[feel].pulses, weapon_feels[feel].count, settings.weapon_haptics);
+	if (vr.two_handed)
+		haptic_feel(0, weapon_feels[feel].pulses, weapon_feels[feel].count, settings.weapon_haptics * WEAPON_FOREGRIP);
+}
+
+/* ... and charging (the plasma pistol), once a frame: a hum in its hand
+between its pulses, rising with the charge */
+void halo_vr_weapon_charge(float charge)
+{
+	unsigned long now = GetTickCount();
+	float amplitude = WEAPON_CHARGE_HUM * charge * settings.weapon_haptics;
+
+	if (charge <= 0.0f || !halo_vr_weapon_feel() || amplitude <= 0.0f || (long)(now - vr.haptic_end[1]) < 0)
+		return;
+	host_vr_haptic(1, amplitude, 0.05f);
 }
 
 /* the right index finger on the trigger or off it, once a frame

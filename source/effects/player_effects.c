@@ -108,6 +108,11 @@ symbols in this file:
 #include "units/units.h"
 
 #include <stddef.h>
+
+#ifdef HALO_VR
+/* port/linux/game/vr_feel.c's */
+boolean vr_feel_damage(long player_index, struct damage_data const *damage, real total_damage);
+#endif
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 
 /* ---------- constants */
@@ -1270,6 +1275,12 @@ void player_effect_start(
 			&definition->camera_shake,
 			scale,
 			1.0f);
+#ifdef HALO_VR
+		/* port: the VR mode's controllers feel the player's own firing
+		their own way, not as the gamepad's rumble (port/linux/game/
+		vr_feel.c) */
+		if (!vr_feel_damage(player_index, damage, total_damage))
+#endif
 		rumble_player_impulse(
 			local_player_index,
 			(struct rumble_definition *)&definition->vibrate,
