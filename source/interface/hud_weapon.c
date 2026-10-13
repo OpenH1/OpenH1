@@ -82,10 +82,11 @@ symbols in this file:
 
 #ifdef HALO_VR
 /* port/linux/game/vr_scope.c: a scope's view is shown in the VR mode,
-raised to an eye or smart-linked on the visor, showing the zoom
-(port/linux/src/d3d8_gl.c): the zoomed view's elements (the zoom's
-crosshairs, the readout with its arc and the side panel's waveform; the
-range ticks) are not drawn, which in the HUD's layer would float beside it */
+raised to an eye or smart-linked (on the sniper rifle's display, or on the
+visor), showing the zoom (port/linux/src/d3d8_gl.c): the zoomed view's
+elements (the zoom's crosshairs, the readout with its arc and the side
+panel's waveform; the range ticks; the sniper's target distance and
+elevation at the reticle) are not drawn, which would float beside it */
 boolean vr_scope_shown(void);
 #define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) ((zoomed_layout) && vr_scope_shown())
 #else
@@ -1059,6 +1060,9 @@ static void crosshairs_draw(
 								struct weapon_hud_crosshair_item);
 
 							if (!TEST_FLAG(item->flags, _hud_crosshair_runtime_invalid_bit) &&
+								!HUD_WEAPON_ZOOMED_HIDDEN(
+									TEST_FLAG(item->flags, _hud_crosshair_not_on_default_zoom_bit) ||
+									TEST_FLAG(item->flags, _hud_crosshair_show_sniper_data_bit)) &&
 								(!TEST_FLAG(item->flags, _hud_crosshair_not_on_default_zoom_bit) ||
 									crosshair->states[_crosshair_state_zoom].value.reference_data > 0) &&
 								(!TEST_FLAG(item->flags, _hud_crosshair_only_on_default_zoom_bit) ||

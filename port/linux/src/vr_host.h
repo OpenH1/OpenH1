@@ -153,12 +153,15 @@ struct vr_host_layers
 	float visor_size[2];
 	/* the scope's image (VR_SWAPCHAIN_SCOPE) on a quad at the scope's
 	eyepiece, in the play space, size metres square, seen by one eye alone
-	(scope_eye: 0 left, 1 right), or the smart-link's on the visor by both
-	(-1): over the eyes' images, under the HUD */
+	(scope_eye: 0 left, 1 right), or the smart-link's by both (-1): on the
+	visor, or on the display on the back of the sniper rifle's scope, a
+	rectangle scope_height of its width tall, the image's middle rows as
+	many (1: all of it, square): over the eyes' images, under the HUD */
 	int scope;
 	int scope_eye;
 	struct vr_host_pose scope_pose;
 	float scope_size;
+	float scope_height;
 };
 
 /* after the GL context is made and current (on its thread); 0 if there is

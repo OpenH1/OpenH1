@@ -1236,7 +1236,8 @@ void vr_visor_composite(unsigned char *eyes[2], int width, int height, const str
 {
 	float hud_position[3], hud_orientation[4];
 	float panel_position[VR_PANEL_COUNT][3], panel_orientation[VR_PANEL_COUNT][4];
-	float scope_extent[2] = { layers->scope_size, layers->scope_size };
+	/* (a display's rectangle: the image's middle rows, as host_vr.c submits it) */
+	float scope_extent[2] = { layers->scope_size, layers->scope_size * layers->scope_height };
 	int eye, x, y, panel, over;
 
 	layer_pose(&layers->hud_pose, layers->hud_head_locked, head, hud_position, hud_orientation);
@@ -1265,6 +1266,7 @@ void vr_visor_composite(unsigned char *eyes[2], int width, int height, const str
 					direction, layers->scope_pose.position, layers->scope_pose.orientation, 0, 0.0f, 0.0f,
 					scope_extent, uv))
 				{
+					uv[1] = 0.5f + (uv[1] - 0.5f) * layers->scope_height;
 					layer_over(pixel, scope, scope_size, scope_size, uv);
 				}
 				for (over = 0; over < 2; over++)

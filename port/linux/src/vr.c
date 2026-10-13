@@ -1776,10 +1776,11 @@ float halo_vr_scope_zoom(float *height)
 	return vr.scope_set ? vr.scope.zoom : 0.0f;
 }
 
-int halo_vr_scope_smartlink(float reticle[2])
+int halo_vr_scope_smartlink(float reticle[2], float *height)
 {
 	reticle[0] = vr.scope.reticle[0];
 	reticle[1] = vr.scope.reticle[1];
+	*height = vr.scope.height;
 	return vr.scope_set && vr.scope.eye < 0;
 }
 
@@ -3553,6 +3554,7 @@ void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn)
 			pending->scope = 1;
 			pending->scope_eye = vr.scope.eye;
 			pending->scope_size = vr.scope.size;
+			pending->scope_height = vr.scope.height;
 		}
 		if (pending->projection && !vr.menus && vr_visor_enabled())
 		{

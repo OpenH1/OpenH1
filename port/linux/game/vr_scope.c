@@ -14,16 +14,20 @@ host_vr.c), which the runtime reprojects to the head's latest pose as it
 does the eyes'. Two ways (vr.scope_view):
 
 - "smartlink" (the default): as the MJOLNIR armour's smart-link pipes the
-  weapon's sight into the helmet's HUD, the zoom shows on the visor. The
-  right stick's click zooms as the game does (its levels, from the last
-  back to none), wherever the weapon is held, and while zoomed a round view
-  is on the visor just above where the aim is (the reticle's place, which
-  stays in sight on what it aims at), vr.smartlink_size across, at the
-  HUD's distance, for both eyes. Its view is the weapon's sight's, drawn
-  from the controller along the aim's line, its field of view the circle's
-  over the magnification, its own reticle in its middle on what the line
-  meets, and the circle faces the head with the world's up. Any weapon that
-  zooms (the rocket launcher too).
+  weapon's sight into the helmet's HUD, the zoom shows on the weapon's
+  display or the visor. The right stick's click zooms as the game does
+  (its levels, from the last back to none), wherever the weapon is held.
+  Its view is the weapon's sight's, drawn from the controller along the
+  aim's line, its own reticle in its middle on what the line meets. While
+  zoomed, the sniper rifle's display on the back of its scope (around the
+  reticle as one sights along the rifle) shows it, as large as the display
+  is, where the eyes see it, for both eyes, in place of its green readout;
+  for another weapon (the pistol, the rocket launcher) a round view is on
+  the visor just above where the aim is (the reticle's place, which stays
+  in sight on what it aims at), vr.smartlink_size across, at the HUD's
+  distance, for both eyes, facing the head with the world's up. Its field
+  of view is the display's or the circle's over the magnification. Any
+  weapon that zooms.
 
 - "eye": a scope magnifies the view within it, as a real one does, when it
   is raised to an eye: drawn from the scope's eyepiece along the aim, shown
@@ -33,13 +37,13 @@ does the eyes'. Two ways (vr.scope_view):
 
 The view in the scope is as many times larger as the game's zoom
 magnifies (2 and 8 for the sniper rifle, whose HUD says "10x"; 2 for the
-pistol), as the lens is seen from the eye (or the smart-link's circle from
-between the eyes): its field of view is the angle the lens spans from the
-eye over the magnification, so the image is that much larger than the
-world about it, wherever the eye is. The view shows the zoom as the HUD
+pistol), as the lens is seen from the eye (or the smart-link's display or
+circle from between the eyes): its field of view is the angle the lens
+spans from the eye over the magnification, so the image is that much
+larger than the world about it, wherever the eye is. The view shows the zoom as the HUD
 labels it; the HUD's zoomed view is not drawn while it shows
-(hud_weapon.c), nor, at the eye, the display on the back of the sniper
-rifle's scope, about the lens at the eye.
+(hud_weapon.c), nor, at the eye or showing it, the display on the back of
+the sniper rifle's scope.
 
 At the eye, a scope is raised when an eye looks through it (behind its
 eyepiece, within its eye relief, near its axis) and it points about where
@@ -107,6 +111,15 @@ forward (degrees), so that all of it is in view, wherever the weapon aims */
 #define SMARTLINK_MOST_ANGLE 28.0f
 /* its view above the aim, its lower edge this far above it (degrees) */
 #define SMARTLINK_GAP 3.0f
+/* on a display, the zoom no taller than this of the display's height */
+#define DISPLAY_ZOOM_MOST 0.3f
+/* the first-person weapon is seen this many times as far from between the
+eyes as it is posed, and as many times as large: the eyes' views of it
+differ half as much as the world's would there (the world's are right: a
+grunt 1.8 m away), so it looks as it would posed there. A layer is drawn
+where it is, and the display's goes where the eyes see the display (found
+against it from behind and from the side, both eyes) */
+#define FIRST_PERSON_SEEN 2.0f
 
 /* a scope: the weapon whose tag this is, the middle of its eyepiece from
 the camera the first-person weapon is posed from (forward, left, up), and
@@ -115,10 +128,12 @@ units, as large at any vr.world_scale as the world is); its eye relief, how
 far behind the eyepiece an eye looks through it, and how far from its axis
 (metres); the smallest half angle (degrees) its lens spans from the eye;
 what the names of the shaders of the display on the back of its scope have
-in them (NULL: none), not drawn while it is raised; and its zoom levels'
-labels, which its lens shows as the game's HUD does (its zoom's sprites:
-the sniper rifle's second level magnifies 8 times, and says "10x"; 0: the
-magnification).
+in them (NULL: none), not drawn while it is raised or shows the zoom
+smart-linked, and that display's middle from the camera (forward, left, up)
+and its width and height, in metres as its eyepiece (0: none); and its
+zoom levels' labels, which its lens shows as the game's HUD does (its
+zoom's sprites: the sniper rifle's second level magnifies 8 times, and says
+"10x"; 0: the magnification).
 The sniper rifle's is a rifle scope, at the eye: its eyepiece the back of
 the scope, where its display is. The pistol's (the smart-linked scope on
 the front of its slide) is a pistol scope, of long eye relief, looked
@@ -129,7 +144,10 @@ behind and the side (debug.vr_test_hands, view*.bmp: the compositor's
 placement; the game's debug lines are not where they should be in the
 eyes). The sniper rifle's display (its zoom's green waveform and dial, a
 hand's width across) is all about the lens at the eye, which shows the zoom
-itself (d3d8_gl.c). */
+itself (d3d8_gl.c); smart-linked, the display shows it: its flat face
+within the rounded frame, found by the view over it, zoomed, its edges on
+the face's in both eyes, from behind and the side, the view where the eyes
+see the display (FIRST_PERSON_SEEN). */
 struct vr_scope_definition
 {
 	char const *name;
@@ -139,13 +157,15 @@ struct vr_scope_definition
 	real off_axis;
 	real smallest_angle;
 	char const *screen;
+	real display[3];
+	real display_size[2];
 	short labels[2];
 };
 
 static struct vr_scope_definition const vr_scope_definitions[] =
 {
-	{ "weapons\\sniper rifle\\sniper rifle", { 0.26f, -0.13f, -0.058f }, 0.025f, 0.12f, 0.07f, 0.0f, "screen", { 2, 10 } },
-	{ "weapons\\pistol\\pistol", { 0.545f, -0.057f, -0.101f }, 0.013f, 0.65f, 0.04f, 6.0f, NULL, { 2, 0 } },
+	{ "weapons\\sniper rifle\\sniper rifle", { 0.26f, -0.13f, -0.058f }, 0.025f, 0.12f, 0.07f, 0.0f, "screen", { 0.26f, -0.150f, -0.071f }, { 0.104f, 0.034f }, { 2, 10 } },
+	{ "weapons\\pistol\\pistol", { 0.545f, -0.057f, -0.101f }, 0.013f, 0.65f, 0.04f, 6.0f, NULL, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f }, { 2, 0 } },
 };
 
 void platform_log(char const *format, ...);
@@ -165,14 +185,15 @@ static struct
 	/* the weapon in hand whose scope was placed last frame, its scope (an
 	index of vr_scope_definitions; NONE, smart-linked, for a weapon not in
 	it), and whether it is raised, to which eye; or whether the smart-link's
-	view is shown (vr.scope_view = "smartlink"), and the zoom level it
-	shows */
+	view is shown (vr.scope_view = "smartlink"), the zoom level it shows,
+	and whether on the display on the back of the scope */
 	long weapon_index;
 	short scope;
 	boolean raised;
 	short eye;
 	boolean smartlink_shown;
 	short smartlink_level;
+	boolean display_shown;
 	/* the zoom: the scope raised as the player's control saw it last, and
 	the level the weapon had as it was lowered */
 	boolean zoomed;
@@ -185,7 +206,7 @@ static struct
 	first aiming at (NONE: not yet) */
 	boolean test_weapons_given;
 	long test_weapons_tick;
-} vr_scope = { NONE, NONE, FALSE, 0, FALSE, NONE, FALSE, NONE, NONE, NONE, FALSE, NONE };
+} vr_scope = { NONE, NONE, FALSE, 0, FALSE, NONE, FALSE, FALSE, NONE, NONE, NONE, FALSE, NONE };
 
 /* the weapon's scope, or NONE */
 static short vr_scope_find(long weapon_index)
@@ -243,13 +264,13 @@ static void vr_scope_camera_view(struct render_camera *camera, struct render_cam
 	*rasterizer_camera = *camera;
 }
 
-/* the camera's up: the world's, square to its forward (else the weapon's,
-looking straight up or down) */
-static void vr_scope_camera_up(struct render_camera *camera, real_vector3d const *fallback)
+/* the camera's up: this one (the world's, or the weapon's), square to its
+forward (else the weapon's, looking straight along it) */
+static void vr_scope_camera_up(struct render_camera *camera, real_vector3d const *up, real_vector3d const *fallback)
 {
 	real along_up;
 
-	camera->up = *global_up3d;
+	camera->up = *up;
 	along_up = dot_product3d(&camera->up, &camera->forward);
 	camera->up.i -= camera->forward.i * along_up;
 	camera->up.j -= camera->forward.j * along_up;
@@ -276,7 +297,7 @@ static boolean vr_scope_warm(struct render_camera *camera, struct render_camera 
 	camera->position.y = (eyes[0].y + eyes[1].y) * 0.5f;
 	camera->position.z = (eyes[0].z + eyes[1].z) * 0.5f;
 	camera->forward = *head_forward;
-	vr_scope_camera_up(camera, fallback_up);
+	vr_scope_camera_up(camera, global_up3d, fallback_up);
 	camera->vertical_field_of_view = WARM_FIELD_OF_VIEW * _pi / 180.0f;
 	vr_scope_camera_view(camera, rasterizer_camera);
 	platform_log("vr scope: its shaders made ready (its view drawn once, unseen)");
@@ -297,15 +318,70 @@ static real vr_scope_label(short scope, short zoom_level, real magnification)
 	return magnification;
 }
 
+/* the smart-link's view on the display on the back of the scope (the
+sniper rifle's): its layer on the display's face, facing back along the
+weapon, up as the weapon's, the display's width and height, seen by both
+eyes as the display is (where they see it, at its depth: nothing doubles;
+FIRST_PERSON_SEEN); the camera's field of view as wide as the display is
+from between the eyes over the magnification, so that the world in it is
+as many times larger as the world about it, and its up the weapon's, as
+the display's (the world in it as level as the world about it, however the
+weapon is tilted). How wide the display is (degrees) and how far (metres).
+FALSE where the eyes are not behind the display (they would see it from
+in front). */
+static boolean vr_scope_display(struct render_camera *camera, struct halo_vr_scope *layer, short scope,
+	struct render_camera const *weapon_camera, real_point3d const *centre, real units, real magnification,
+	real *degrees, real *distance)
+{
+	struct vr_scope_definition const *definition = &vr_scope_definitions[scope];
+	real_vector3d left, from_eyes;
+	real_point3d middle;
+	real f = definition->display[0] / METRES_PER_WORLD_UNIT, l = definition->display[1] / METRES_PER_WORLD_UNIT,
+		u = definition->display[2] / METRES_PER_WORLD_UNIT, width = definition->display_size[0] / METRES_PER_WORLD_UNIT;
+	real tangent;
+
+	cross_product3d(&weapon_camera->up, &weapon_camera->forward, &left);
+	normalize3d(&left);
+	middle.x = weapon_camera->position.x + weapon_camera->forward.i * f + left.i * l + weapon_camera->up.i * u;
+	middle.y = weapon_camera->position.y + weapon_camera->forward.j * f + left.j * l + weapon_camera->up.j * u;
+	middle.z = weapon_camera->position.z + weapon_camera->forward.k * f + left.k * l + weapon_camera->up.k * u;
+	from_eyes.i = middle.x - centre->x;
+	from_eyes.j = middle.y - centre->y;
+	from_eyes.k = middle.z - centre->z;
+	if (dot_product3d(&from_eyes, &weapon_camera->forward) <= 0.0f)
+		return FALSE;
+	/* (where the eyes see it) */
+	middle.x = centre->x + from_eyes.i * FIRST_PERSON_SEEN;
+	middle.y = centre->y + from_eyes.j * FIRST_PERSON_SEEN;
+	middle.z = centre->z + from_eyes.k * FIRST_PERSON_SEEN;
+	width *= FIRST_PERSON_SEEN;
+	*distance = (real)sqrt(magnitude_squared3d(&from_eyes)) * FIRST_PERSON_SEEN / units;
+	if (*distance < NEAREST_EYE)
+		*distance = NEAREST_EYE;
+	tangent = width * 0.5f / (*distance * units);
+	*degrees = 2.0f * (real)atan(tangent) * 180.0f / _pi;
+	camera->vertical_field_of_view = 2.0f * (real)atan(tangent / magnification);
+	vr_scope_camera_up(camera, &weapon_camera->up, &weapon_camera->up);
+	vr_render_world_to_head(&middle, &weapon_camera->forward, &weapon_camera->up, layer->position, layer->forward,
+		layer->up);
+	layer->eye = -1;
+	layer->size = width / units;
+	layer->height = definition->display_size[1] / definition->display_size[0];
+	layer->reticle[0] = layer->reticle[1] = 0.0f;
+	return TRUE;
+}
+
 /* the smart-link's view (vr.scope_view = "smartlink"), while the game is
-zoomed: from the controller along the aim's line, vr.smartlink_size wide over
-the zoom's magnification, its reticle in its middle on what the line meets
-(the reticle's place); its layer as wide at the HUD's distance, just above
-the aim (below it where above would be out of view; held within
-SMARTLINK_MOST_ANGLE of the head's forward), facing the head, up as the
-world's, seen by both eyes: the reticle in the world stays in sight on what
-it aims at, and the view beside it shows that magnified. Unzoomed, not shown
-(its shaders made ready once a map). */
+zoomed: from the controller along the aim's line, its reticle in its middle
+on what the line meets (the reticle's place). With a display on the back of
+the scope (the sniper rifle's), on it (vr_scope_display), in place of what
+it shows. Otherwise vr.smartlink_size wide over the zoom's magnification;
+its layer as wide at the HUD's distance, just above the aim (below it where
+above would be out of view; held within SMARTLINK_MOST_ANGLE of the head's
+forward), facing the head, up as the world's, seen by both eyes: the
+reticle in the world stays in sight on what it aims at, and the view beside
+it shows that magnified. Unzoomed, not shown (its shaders made ready once a
+map). */
 static boolean vr_scope_smartlink(struct render_camera *camera, struct render_camera *rasterizer_camera,
 	long weapon_index, short scope, struct render_camera const *weapon_camera, real_point3d const eyes[2],
 	real_vector3d const *head_forward, real units)
@@ -330,6 +406,7 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 			platform_log("vr scope: smart-link unzoomed");
 		vr_scope.smartlink_shown = FALSE;
 		vr_scope.smartlink_level = NONE;
+		vr_scope.display_shown = FALSE;
 		return vr_scope_warm(camera, rasterizer_camera, eyes, head_forward, &weapon_camera->up);
 	}
 	aim_direction.i = aim.x - centre.x;
@@ -348,10 +425,37 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 	from between the eyes toward that point, which jumps along the line as it
 	crosses an edge (from a turret 12 m away to the hills behind it), and the
 	view with it, by the eyes' parallax (2.4 degrees there, 19 in the view
-	at 8x, over a few frames) */
+	at 8x, over a few frames); on the display, as wide as it is */
 	camera->position = line_origin;
 	camera->forward = line_direction;
-	vr_scope_camera_up(camera, &weapon_camera->up);
+	if (scope != NONE && vr_scope_definitions[scope].display_size[0] > 0.0f)
+	{
+		if (!vr_scope_display(camera, &layer, scope, weapon_camera, &centre, units, magnification, &degrees,
+			&distance))
+		{
+			/* (zoomed, the display seen from in front: nothing shown) */
+			vr_scope.smartlink_shown = TRUE;
+			vr_scope.smartlink_level = zoom_level;
+			vr_scope.display_shown = FALSE;
+			return FALSE;
+		}
+		vr_scope_camera_view(camera, rasterizer_camera);
+		layer.zoom = vr_scope_label(scope, zoom_level, magnification);
+		layer.zoom_height = MIN(PIN(ZOOM_DEGREES / MAX(degrees, 1.0f), ZOOM_LEAST, ZOOM_MOST),
+			DISPLAY_ZOOM_MOST * layer.height);
+		halo_vr_scope(&layer);
+		if (!vr_scope.display_shown || zoom_level != vr_scope.smartlink_level)
+		{
+			platform_log("vr scope: smart-link %s at %gx (level %d, magnified %.1f times) on its display, %.0f "
+				"degrees wide at %.2f m", tag_get_name(object_get(weapon_index)->definition_index), layer.zoom,
+				zoom_level, magnification, degrees, distance);
+		}
+		vr_scope.smartlink_shown = TRUE;
+		vr_scope.smartlink_level = zoom_level;
+		vr_scope.display_shown = TRUE;
+		return TRUE;
+	}
+	vr_scope_camera_up(camera, global_up3d, &weapon_camera->up);
 	camera->vertical_field_of_view = 2.0f * (real)atan(tangent / magnification);
 	vr_scope_camera_view(camera, rasterizer_camera);
 	layer.reticle[0] = layer.reticle[1] = 0.0f;
@@ -401,7 +505,7 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 	}
 	/* (facing back along its own line, up as the world's) */
 	layer_camera.forward = direction;
-	vr_scope_camera_up(&layer_camera, &weapon_camera->up);
+	vr_scope_camera_up(&layer_camera, global_up3d, &weapon_camera->up);
 
 	/* its layer, at the HUD's distance */
 	place.x = centre.x + direction.i * distance * units;
@@ -410,6 +514,7 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 	vr_render_world_to_head(&place, &layer_camera.forward, &layer_camera.up, layer.position, layer.forward, layer.up);
 	layer.eye = -1;
 	layer.size = 2.0f * distance * tangent;
+	layer.height = 1.0f;
 	layer.zoom = vr_scope_label(scope, zoom_level, magnification);
 	layer.zoom_height = PIN(ZOOM_DEGREES / MAX(degrees, 1.0f), ZOOM_LEAST, ZOOM_MOST);
 	halo_vr_scope(&layer);
@@ -422,6 +527,7 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 	}
 	vr_scope.smartlink_shown = TRUE;
 	vr_scope.smartlink_level = zoom_level;
+	vr_scope.display_shown = FALSE;
 	return TRUE;
 }
 
@@ -456,11 +562,13 @@ boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rast
 		vr_scope.scope = NONE;
 		vr_scope.raised = FALSE;
 		vr_scope.smartlink_shown = FALSE;
+		vr_scope.display_shown = FALSE;
 		return FALSE;
 	}
 	if (weapon_index != vr_scope.weapon_index)
 	{
 		vr_scope.raised = FALSE;
+		vr_scope.display_shown = FALSE;
 		vr_scope.weapon_index = weapon_index;
 		vr_scope.scope = scope;
 	}
@@ -470,6 +578,7 @@ boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rast
 			units);
 	}
 	vr_scope.smartlink_shown = FALSE;
+	vr_scope.display_shown = FALSE;
 	definition = &vr_scope_definitions[scope];
 	cross_product3d(&weapon_camera.up, &weapon_camera.forward, &left);
 	normalize3d(&left);
@@ -546,6 +655,7 @@ boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rast
 	layer.eye = eye;
 	layer.size = 2.0f * radius / units;
 	layer.zoom = vr_scope_label(scope, zoom_level, magnification);
+	layer.height = 1.0f;
 	layer.zoom_height = PIN(ZOOM_DEGREES / MAX(lens_degrees, 1.0f), ZOOM_LEAST, ZOOM_MOST);
 	layer.reticle[0] = layer.reticle[1] = 0.0f;
 	halo_vr_scope(&layer);
@@ -566,14 +676,15 @@ boolean vr_scope_shown(void)
 }
 
 /* models.c, as each part of an object's model is drawn: whether this part
-(its shader's tag) is the display on the back of the raised scope, not
-drawn (the weapon's own, in its first-person model, which only the player
-holding it draws) */
+(its shader's tag) is the display on the back of the raised scope, or of
+the scope whose display shows the smart-link's view, not drawn (the
+weapon's own, in its first-person model, which only the player holding it
+draws) */
 boolean vr_scope_hides_part(long object_index, long shader_index)
 {
 	char const *screen, *name;
 
-	if (!vr_scope.raised || object_index == NONE || object_index != vr_scope.weapon_index || vr_scope.scope == NONE ||
+	if (!(vr_scope.raised || vr_scope.display_shown) || object_index == NONE || object_index != vr_scope.weapon_index || vr_scope.scope == NONE ||
 		shader_index == NONE)
 	{
 		return FALSE;

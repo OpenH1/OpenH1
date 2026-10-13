@@ -233,8 +233,9 @@ struct halo_vr_holsters
 /* the magnified view in a weapon's scope (vr.scopes, vr.scope_view,
 port/linux/game/vr_scope.c): raised to an eye, its image on a quad at the
 scope's eyepiece, facing back along the scope, seen by that eye alone;
-smart-linked, on a quad on the visor just above the aim, facing the head,
-seen by both */
+smart-linked, on the display on the back of the sniper rifle's scope,
+facing back along it, or for a weapon without one on a quad on the visor
+just above the aim, facing the head, seen by both */
 struct halo_vr_scope
 {
 	/* the eye (0 left, 1 right; -1 both: the smart-link's) */
@@ -245,6 +246,10 @@ struct halo_vr_scope
 	float forward[3];
 	float up[3];
 	float size;
+	/* how tall, of its width: 1, the square about a round lens or the
+	smart-link's circle; less, the display's rectangle (the image's middle
+	rows) */
+	float height;
 	/* the zoom shown in the lens, as the game's HUD labels the zoom level
 	(0: unzoomed, none shown), and how tall (of the lens's width) */
 	float zoom;
@@ -468,8 +473,9 @@ void halo_vr_scope(const struct halo_vr_scope *scope);
 /* d3d8_gl.c, as it makes the scope's image: the zoom shown in its lens
 (halo_vr_scope's; 0: none), and how tall (of the lens's width) */
 float halo_vr_scope_zoom(float *height);
-/* and whether it is the smart-link's, its reticle's place (halo_vr_scope's) */
-int halo_vr_scope_smartlink(float reticle[2]);
+/* and whether it is the smart-link's, its reticle's place, and how tall
+(halo_vr_scope's: 1, round; less, a display's rectangle) */
+int halo_vr_scope_smartlink(float reticle[2], float *height);
 /* the weapon in hand, for the reload by hand, once a frame; and the reload
 by hand as it is (0 when it is off) */
 void halo_vr_reload_weapon(const struct halo_vr_reload_weapon *weapon);

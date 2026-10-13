@@ -7128,16 +7128,20 @@ edge fading out softly over its last tenth (no line about it, nothing of
 the quad seen), a faint glow of the HUD's blue toward it, and its reticle
 in the HUD's blue on a shadow, where the aim is (vr.c's
 halo_vr_scope_smartlink): fine lines across the view with a gap about the
-aim, bolder near it, and the dot. FALSE if the copy's program cannot be
-made. */
+aim, bolder near it, and the dot. Smart-linked to the display on the back
+of the sniper rifle's scope, the view is the display's rectangle, the
+image's middle rows (halo_vr_scope_smartlink's height), its edge sharp
+within the display's frame on the rifle, its glow only near it, and the
+zoom within the rectangle. FALSE if the copy's program cannot be made. */
 static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 {
 	static GLuint program, sampler;
 	static BOOL failed;
-	static GLint size_location, zoom_location, zoom_cell_location, smartlink_location, reticle_location;
-	float zoom_height, reticle[2];
+	static GLint size_location, zoom_location, zoom_cell_location, smartlink_location, reticle_location,
+		height_location;
+	float zoom_height, reticle[2], height;
 	int zoom = (int)(halo_vr_scope_zoom(&zoom_height) + 0.5f);
-	int smartlink = halo_vr_scope_smartlink(reticle);
+	int smartlink = halo_vr_scope_smartlink(reticle, &height);
 	static const char vertex_source[] =
 		"#version 450 core\n"
 		"void main()\n"
@@ -7157,6 +7161,9 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		radius, right and up) */
 		"uniform int smartlink;\n"
 		"uniform vec2 reticle;\n"
+		/* (how tall, of its width: 1, round; less, a display's rectangle,
+		the middle rows) */
+		"uniform float height;\n"
 		"out vec4 colour;\n"
 		/* the readout's glyphs, 3x5 cells, a bit each, from the top row's
 		left: the digits, then x (lower) */
@@ -7189,10 +7196,14 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		"	float alpha;\n"
 		"	if (smartlink != 0)\n"
 		"	{\n"
-		/* (the HUD's view: a glow toward its edge, which fades out; the
-		reticle's lines from the aim, a gap of 0.04 of the radius about it,
-		bold to 0.18, fine past it, on a shadow) */
-		"		c = mix(c, c * 0.8 + hud * 0.12, smoothstep(0.7, 0.98, r));\n"
+		/* (the HUD's view: a glow toward its edge, which fades out, or on
+		the display a glow only near its edge, which is sharp, r how near
+		it is of the way out from the middle; the reticle's lines from the
+		aim, a gap of 0.04 of the radius about it, bold to 0.18, fine past
+		it, on a shadow) */
+		"		if (height < 1.0)\n"
+		"			r = max(abs(p.x) / radius, abs(p.y) / (radius * height));\n"
+		"		c = mix(c, c * 0.8 + hud * 0.12, height < 1.0 ? smoothstep(0.85, 1.0, r) : smoothstep(0.7, 0.98, r));\n"
 		"		vec2 a = abs(p - reticle * radius);\n"
 		"		float line = min(a.x, a.y), out_along = max(a.x, a.y);\n"
 		"		float gap = step(0.04 * radius, out_along);\n"
@@ -7203,7 +7214,9 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		"		c = mix(c, hud, max(bold, fine) * 0.9);\n"
 		"		float dot_light = clamp(1.6 * pixel + 0.5 - length(p - reticle * radius), 0.0, 1.0);\n"
 		"		c = mix(c, vec3(1.0, 0.35, 0.15), dot_light * 0.8);\n"
-		"		alpha = 1.0 - smoothstep(0.9, 1.0, r);\n"
+		"		alpha = height < 1.0 ?\n"
+		"			clamp(min(radius - abs(p.x), radius * height - abs(p.y)) / 1.5, 0.0, 1.0) :\n"
+		"			1.0 - smoothstep(0.9, 1.0, r);\n"
 		"	}\n"
 		"	else\n"
 		"	{\n"
@@ -7220,10 +7233,11 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		"		alpha = 1.0 - smoothstep(1.0 - 1.5 / radius, 1.0, r);\n"
 		"	}\n"
 		/* the zoom: 5 cells tall, from 0.3 of the radius right of and
-		below the middle; its shadow half a cell down and right */
+		below the middle (of the rectangle's half height below it); its
+		shadow half a cell down and right */
 		"	if (zoom > 0)\n"
 		"	{\n"
-		"		vec2 q = (vec2(p.x, -p.y) - vec2(0.3 * radius)) / zoom_cell;\n"
+		"		vec2 q = (vec2(p.x, -p.y) - vec2(0.3 * radius, 0.3 * radius * height)) / zoom_cell;\n"
 		"		c = mix(c, vec3(0.0), readout(q - vec2(0.5)) * 0.7);\n"
 		"		c = mix(c, hud, readout(q) * 0.9);\n"
 		"	}\n"
@@ -7256,6 +7270,7 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		zoom_cell_location = glGetUniformLocation(program, "zoom_cell");
 		smartlink_location = glGetUniformLocation(program, "smartlink");
 		reticle_location = glGetUniformLocation(program, "reticle");
+		height_location = glGetUniformLocation(program, "height");
 		glGenSamplers(1, &sampler);
 		glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
@@ -7277,6 +7292,7 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 	glUniform1f(zoom_cell_location, fmaxf(floorf((float)size * zoom_height / 5.0f), 1.0f));
 	glUniform1i(smartlink_location, smartlink);
 	glUniform2f(reticle_location, reticle[0], reticle[1]);
+	glUniform1f(height_location, height);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, source);
 	glBindSampler(0, sampler);
