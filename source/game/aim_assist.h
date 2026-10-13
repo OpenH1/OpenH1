@@ -69,6 +69,14 @@ long local_player_aim_assist(
 	real *magnetism_level,
 	real_euler_angles2d *target_angular_position,
 	real_euler_angles2d *target_angular_velocity);
+#ifdef HALO_VR
+long player_aim_assist_target(
+	long player_index,
+	real_point3d const *position,
+	real_vector3d const *direction,
+	real_point3d *point,
+	real *magnetism_level);
+#endif
 
 /* ---------- globals */
 

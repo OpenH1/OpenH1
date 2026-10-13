@@ -637,6 +637,38 @@ long player_aim_projectile(
 	return target_object_index;
 }
 
+#ifdef HALO_VR
+/* port: the VR mode's aim assist for the controller (port/linux/game/
+vr_aim.c): the target the player's magnetism would be drawn to from this
+point along this direction, as local_player_aim_assist finds it (the
+aiming unit's weapon at its zoom): its object (NONE: none), its point, and
+its magnetism level */
+long player_aim_assist_target(
+	long player_index,
+	real_point3d const *position,
+	real_vector3d const *direction,
+	real_point3d *point,
+	real *magnetism_level)
+{
+	struct player_datum *player= player_get(player_index);
+	long aiming_unit_index= unit_get_aiming_unit_index(player->unit_index);
+	struct aim_assist_parameters parameters;
+	struct aim_assist_target target;
+
+	*magnetism_level= 0.f;
+	if (aiming_unit_index==NONE ||
+		!unit_get_aim_assist_parameters(aiming_unit_index, unit_get_zoom_level(aiming_unit_index), &parameters) ||
+		!aim_assist(&parameters, position, direction, aiming_unit_index, player->team_index, &target))
+	{
+		return NONE;
+	}
+	*point= target.position;
+	*magnetism_level= target.magnetism_level;
+
+	return target.object_index;
+}
+#endif
+
 long local_player_aim_assist(
 	short local_player_index,
 	real *autoaim_level,

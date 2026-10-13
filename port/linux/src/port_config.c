@@ -280,6 +280,11 @@ static const struct config_setting config_settings[] =
 	{ "vr.smartlink_size", _config_real, "28.0", "HALO_VR_SMARTLINK_SIZE", _environment_value, _platform_desktop,
 		"With vr.scope_view = \"smartlink\", how wide the zoom's view on the\n"
 		"visor is, in degrees of your view (10 to 45)." },
+	{ "vr.aim_assist", _config_real, "1.0", "HALO_VR_AIM_ASSIST", _environment_value, _platform_desktop,
+		"With vr.aim = \"controller\", the aim assist: near an enemy the game's\n"
+		"magnetism would be drawn to, the aim's turn across it slows, and zoomed,\n"
+		"the aim is drawn gently toward it; how strongly, from 0 (none) to 2 (1:\n"
+		"the default). The bullets' own autoaim is the game's whatever this is." },
 	{ "vr.manual_reload", _config_boolean, "true", "HALO_VR_MANUAL_RELOAD", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", reload by hand: take another magazine from\n"
 		"your left hip with the left grip (the one in the weapon ejects itself,\n"

@@ -347,6 +347,13 @@ int halo_vr_aim_line(float position[3], float forward[3], float *body_yaw);
 this frame (1: it is not shown), told by the game (vr_aim.c): the aim is
 steadied the more, the more it is magnified */
 void halo_vr_aim_zoom(float magnification);
+/* the aim assist (vr.aim_assist), told by the game each frame (vr_aim.c):
+a target near the aim that the game's magnetism would be drawn to (as a
+gamepad's aim is), which it is (another starts anew), how near the aim (its
+magnetism level, 0 to 1), and the direction of its middle from the right
+controller (game axes from the recentred head); NULL, none. The aim is slow
+to leave it, and zoomed, is drawn toward it (vr.c, aim_assist_step) */
+void halo_vr_aim_assist(long target, float level, const float middle[3]);
 /* debug.vr_test_hands holds the controllers (vr_hands.c marks them) */
 int halo_vr_test_hands(void);
 /* debug.vr_test_target: the right controller held by debug.vr_test_hands

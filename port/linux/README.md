@@ -1188,6 +1188,19 @@ vehicle's seat, what the reticle is on is what you hit.
   distance smoothed, so that it does not jump), and the shot goes where
   the line is on at once.
 - Only the aim's direction changes: the netcode sends it as ever.
+- Aim assist (`vr.aim_assist`): near an enemy the game's own aim assist
+  would be drawn to (as it is for a gamepad's stick: within the weapon's
+  magnetism angle and distance), the reticle is slow to leave it: as your
+  hand moves the aim off it, the aim moves less than your hand (half as much
+  at the enemy's middle), never more, and never against your hand, nor on
+  its own with your hand still (but for the zoomed pull below). Following a moving enemy is not slowed.
+  Zoomed, the aim is also drawn gently toward its middle (2 degrees a
+  second at most). The reticle may lag your weapon so by 3 degrees at
+  most, and away from an enemy catches up with it smoothly (no faster than
+  6 degrees a second, more only as your hand moves). The reticle, the
+  smart-link's view and the shot follow the assisted aim; the bullets' own
+  autoaim is the game's, whatever this is. VR Controls' AIM ASSIST: OFF,
+  WEAK, ON or STRONG.
 
 #### Throwing a grenade with the left hand (`vr.grenade_throw = "gesture"`)
 
@@ -1566,7 +1579,7 @@ does.
 
 In the headset, Settings' VR Setup (below About; only there while the
 game plays in VR) sets most of these with the left d-pad: VR Controls
-(the hands, the aim, the gamepad's view, two-handed aiming, the melee
+(the hands, the aim, the gamepad's view, two-handed aiming, the aim assist, the melee
 swing, the holsters, the physical crouch, the scopes (smart-link, at the eye or off), reloading by hand, turning, the vehicles' view and the view as you die) and, from its last row, VR Display (the play position,
 the eye height, the world's scale, the HUD's and the menus' distance and
 size, the resolution and the refresh rate) and, from its last row, its
@@ -1595,6 +1608,7 @@ headset's session is opened with, apply from the next start.
 | `vr.smartlink_size` | `28.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the magnified view on the visor is, in degrees of the view (10 to 45). |
 | `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the left hand takes another magazine from the left hip (the one in the weapon ejecting itself, or the right stick pushed down ejects it) and pushes it in, loaded at once (as a network game's client, after the game's reload time); the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand alone (above, "Throwing a grenade with the left hand"; on foot the left trigger throws nothing); `"both"`, with the left hand or the left trigger; `"button"`, with the left trigger alone. |
+| `vr.aim_assist` | `1.0` | `HALO_VR_AIM_ASSIST` | With `vr.aim = "controller"`: the aim assist (above, "Aiming with the controller"): near an enemy the game's magnetism would be drawn to, the aim is slow to leave it, and zoomed, is drawn gently toward it; how strongly, from `0` (none) to `2`. The bullets' own autoaim is the game's whatever this is. |
 | `vr.two_handed` | `true` | `HALO_VR_TWO_HANDED` | With `vr.aim = "controller"`: a long gun (any but the pistols, the needler, the flag and the ball) is aimed along the line from the right hand to the left while the left grip holds it by the foregrip (pressed within 18 cm of the line ahead of the right hand). The aim turns to that line over 0.15 s, smoothed, and back when the grip is let go. |
 | `vr.hands` | `"arms"` | `HALO_VR_HANDS` | With `vr.aim = "controller"`: each first-person hand where its controller is (the right holding the weapon, its index finger on the trigger as far as the trigger is pulled; the left open, closing as the grip is pulled, and on a long gun's foregrip while it holds it). `"arms"`: the arms reach the hands from the shoulders (`vr.shoulders`). `"floating"`: no arms above the wrists. `"game"`: the game's arms, posed from the weapon in the right hand. A hand whose controller is not tracked is not drawn, nor its arm. In a cinematic seen from the player's head the hands are the controllers' too, acting on nothing (above, "Cinematics seen from your own head"). |
 | `vr.shoulders` | `"0.19, -0.20, -0.07"` | `HALO_VR_SHOULDERS` | With `vr.hands = "arms"`: where each shoulder is from the eyes, in metres: out to its side, up, forward, turned with the body (the holsters' heading: it faces where the head does, follows it past a 40 degree turn, and slowly). From the eyes as they would be with the head level and turned with the body: the shoulders hang from the neck, so a nod or a turn of the head does not move them. |
@@ -1903,6 +1917,29 @@ supersampling costs as above, and multisampling the eye pass
   Warthog's gunner seat (its camera 8 m behind); the grunt with the hand
   0.9 m away red 542 ticks of 547 and killed five times, and the sniper
   rifle's reticle red on it while zoomed.
+- The game's magnetism moves a gamepad's look (`player_control.c`), which
+  the controller does not use: the aim assist is `vr.c`'s
+  (`aim_assist_step`), after the aim is steadied. As the player's control
+  aims, `vr_aim.c` asks the game for the target its magnetism would be
+  drawn to from its eye along the aim (`player_aim_assist_target`,
+  `aim_assist.c`: the weapon's magnetism angle and distance at its zoom,
+  the same targets) and tells vr.c its magnetism level and its middle's
+  direction from the controller. The part of the hand's turn that takes
+  the aim away from the target's middle (less as much of it as follows the
+  target's own turn, and none of a turn toward it) is slowed by half, times
+  the level and `vr.aim_assist` (by 0.8 at most); zoomed, the aim is drawn
+  toward the middle at 2 degrees a second times the same. The aim stays
+  within 3 degrees of the hand's, and away from a target comes back to it
+  over 0.3 s, no faster than 6 degrees a second plus half the hand's turn.
+  The middle, not the point the game's autoaim aims at: that point lies on
+  the line from the game's eye, and seen from the hand it moves as the aim
+  does, which drew the aim off the target. Measured on b30
+  (`debug.vr_test_target = "8 0 grunt free"`), the hand sweeping across a
+  grunt 8 m away at 8 degrees a second: the aim on it 313 frames where the
+  hand was on it 216 (`vr.aim_assist = 2`: 550), never moving against the
+  hand; on a50 with the sniper rifle zoomed, the hand held 0.6 degrees off a
+  grunt's middle 15 m away, the aim drawn to 0.07 degrees of it at 2x and
+  8x, and back with the hand as the zoom ended.
 - With a gamepad (`vr.aim = "gamepad"`) the facing is the game's own, from
   the stick (`player_control.c`), and the netcode sees it as ever; the
   view before the head's turn and move is the facing's yaw and pitch

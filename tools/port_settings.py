@@ -209,8 +209,8 @@ VR_SCREENS = {
     "vr_controls": {
         "screen": "vr_controls_screen",
         "header": ("header_vr_controls", f"{PE}/vr_controls/header_vr_controls"),
-        # (fifteen rows: closer than the others' 28px, the help line lower)
-        "spacing": 19,
+        # (sixteen rows: closer than the others' 28px, the help line lower)
+        "spacing": 18,
         "help_top": 366,
         "rows": [
             ("HANDS:", "vr.hands", VR_HANDS,
@@ -222,6 +222,8 @@ VR_SCREENS = {
              "With a gamepad, the right stick turns and\npitches the view, only turns it, or in steps.", None),
             ("TWO-HANDED AIM:", "vr.two_handed", ON_OFF,
              "The left grip holds a long gun by its foregrip:\nit aims along the line between your hands.", None),
+            ("AIM ASSIST:", "vr.aim_assist", [("OFF", "0"), ("WEAK", "0.5"), ("ON", "1"), ("STRONG", "1.5")],
+             "Near an enemy your aim is slow to leave it, and\nzoomed, it is drawn gently toward it.", None),
             ("SWING TO MELEE:", "vr.melee_gesture", ON_OFF,
              "A hard swing of the right controller melees, as\nB does; with its grip held, a softer one will do.", None),
             ("HOLSTERS:", "vr.holsters", ON_OFF,

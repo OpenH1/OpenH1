@@ -32,6 +32,7 @@ eye, along the same facing.
 #include "ai/ai_script.h"
 #include "cache/cache_files.h"
 #include "camera/director.h"
+#include "game/aim_assist.h"
 #include "game/game.h"
 #include "game/players.h"
 #include "items/weapons.h"
@@ -83,9 +84,11 @@ static struct
 	real_vector3d test_forward;
 	real target_body;
 	real target_shield;
-	/* debug.vr_aim_log: the tick logged last */
+	/* debug.vr_aim_log: the tick logged last, and the aim assist's target's
+	magnetism level */
 	long logged_tick;
-} vr_aim = { NONE, NONE, NONE, { 0.0f, 0.0f, 0.0f }, 0.0f, 0.0f, NONE };
+	real assist_level;
+} vr_aim = { NONE, NONE, NONE, { 0.0f, 0.0f, 0.0f }, 0.0f, 0.0f, NONE, 0.0f };
 
 /* a point in the world as game axes from the recentred head (metres) */
 static void vr_aim_to_head(real_point3d const *point, float local[3])
@@ -164,21 +167,22 @@ static real vr_aim_test_place(long unit_index, real_vector3d *forward, real ahea
 	return 0.0f;
 }
 
-/* debug.vr_test_target: "<metres ahead> [<metres right> [<name>]]", a
-biped whose tag's name has this in it ("grunt" if none) placed before the
-player (TEST_TARGET_SECONDS after they first aim), standing still with no
-mind of its own, facing them, and placed again once it dies; the level's AI
-erased; the right controller held by debug.vr_test_hands points at its
-middle (vr.c), and each hit on it is logged. For automated tests of the
-aim. */
+/* debug.vr_test_target: "<metres ahead> [<metres right> [<name>
+[free]]]", a biped whose tag's name has this in it ("grunt" if none) placed
+before the player (TEST_TARGET_SECONDS after they first aim), standing still
+with no mind of its own, facing them, and placed again once it dies; the
+level's AI erased; the right controller held by debug.vr_test_hands points
+at its middle (vr.c; "free": where debug.vr_test_hands points it), and each
+hit on it is logged. For automated tests of the aim. */
 static void vr_aim_test_target(long unit_index, boolean aiming)
 {
-	char name[64] = "grunt";
+	char name[64] = "grunt", mode[16] = "";
 	real ahead = 0.0f, right = 0.0f;
 	struct biped_datum *target;
 	long now = game_time_get();
 
-	if (sscanf(config_string("debug.vr_test_target"), "%f %f %63s", &ahead, &right, name) < 1 || unit_index == NONE)
+	if (sscanf(config_string("debug.vr_test_target"), "%f %f %63s %15s", &ahead, &right, name, mode) < 1 ||
+		unit_index == NONE)
 	{
 		halo_vr_test_point(NULL);
 		return;
@@ -271,6 +275,11 @@ static void vr_aim_test_target(long unit_index, boolean aiming)
 		vr_aim.target_body = target->object.body_vitality;
 		vr_aim.target_shield = target->object.shield_vitality;
 	}
+	if (!strcmp(mode, "free"))
+	{
+		halo_vr_test_point(NULL);
+		return;
+	}
 	{
 		/* the controller pointed at its middle, from where it is */
 		float position[3], forward[3], centre_local[3], direction[3];
@@ -341,10 +350,38 @@ static void vr_aim_log(real_point3d const *origin, real_vector3d const *directio
 			miss = (real)sqrt(MAX(magnitude_squared3d(&to_point) - along * along, 0.0f)) / units;
 		}
 		platform_log("vr aim: tick %ld, the line meets the world %.2f m out, the controller %.2f m from the game's "
-			"eye, the aim turned %.2f degrees to it, the unit's aim passing %.0f cm from the point; autoaim %.2f%s%s",
-			now, distance / units, (real)sqrt(distance_squared3d(origin, eye)) / units, turned, miss * 100.0f,
-			player_control_get_autoaim_level(0), player_control_get_autoaim_level(0) >= 1.0f ? " (red)" : "", text);
+			"eye, the aim turned %.2f degrees to it, the unit's aim passing %.0f cm from the point; autoaim %.2f%s, "
+			"magnetism %.2f%s", now, distance / units, (real)sqrt(distance_squared3d(origin, eye)) / units, turned,
+			miss * 100.0f, player_control_get_autoaim_level(0), player_control_get_autoaim_level(0) >= 1.0f ? " (red)" :
+			"", vr_aim.assist_level, text);
 	}
+}
+
+/* the aim assist (vr.aim_assist): the target the game's magnetism would be
+drawn to from its eye along the aim, as it is for a gamepad's aim (the
+weapon's magnetism angle and distance, at its zoom: aim_assist.c), told to
+vr.c with the direction of its middle from the controller: the aim is slow
+to leave it and, zoomed, is drawn toward it */
+static void vr_aim_assist(real_point3d const *eye, real_vector3d const *aim, const float position[3])
+{
+	long player_index = local_player_get_player_index(0);
+	real_point3d point;
+	real level = 0.0f;
+	long target = player_index != NONE ? player_aim_assist_target(player_index, eye, aim, &point, &level) : NONE;
+	float local[3], middle[3];
+	int axis;
+
+	vr_aim.assist_level = level;
+	if (target == NONE || level <= 0.0f)
+	{
+		halo_vr_aim_assist(NONE, 0.0f, NULL);
+		return;
+	}
+	vr_aim_target_centre(target, &point);
+	vr_aim_to_head(&point, local);
+	for (axis = 0; axis < 3; axis++)
+		middle[axis] = local[axis] - position[axis];
+	halo_vr_aim_assist(target, level, middle);
 }
 
 /* how many times the smart-link's view on the visor magnifies the aim
@@ -383,6 +420,7 @@ void vr_aim_converge(long unit_index, boolean aiming, real *yaw, real *pitch)
 	if (!aiming || unit_index == NONE || !halo_vr_aim_line(position, forward, &body_yaw) ||
 		!vr_render_aim_hit(position, forward, body_yaw, &origin, &direction, &distance, &units))
 	{
+		halo_vr_aim_assist(NONE, 0.0f, NULL);
 		return;
 	}
 	director_camera_deterministic(unit_index, &eye, &camera_forward);
@@ -403,9 +441,13 @@ void vr_aim_converge(long unit_index, boolean aiming, real *yaw, real *pitch)
 	point.z = origin.z + direction.k * distance;
 	vector_from_points3d(&eye, &point, &aim);
 	if (normalize3d(&aim) <= 0.0f)
+	{
+		halo_vr_aim_assist(NONE, 0.0f, NULL);
 		return;
+	}
 	*yaw = (real)atan2(aim.j, aim.i);
 	*pitch = (real)asin(PIN(aim.k, -1.0f, 1.0f));
+	vr_aim_assist(&eye, &aim, position);
 	vr_aim_log(&origin, &direction, hit, units, &eye, &aim);
 }
 

@@ -270,6 +270,21 @@ changes (frequencies in Hz) */
 #define STEADY_GAIN 0.15f
 #define STEADY_VELOCITY_HZ 1.5f
 #define STEADY_ZOOM_SECONDS 0.1f
+/* the aim assist (vr.aim_assist; aim_assist_step): near a target the
+game's magnetism would be drawn to, the aim's turn away from it (the
+hand's, as far as it does not follow the target) slowed by ASSIST_FRICTION of
+it at the target's full magnetism level, and zoomed, the aim drawn toward it
+at up to ASSIST_PULL degrees a second (both times vr.aim_assist; the turn
+slowed by ASSIST_FRICTION_MOST at most); the aim no more than ASSIST_MOST
+degrees from the hand's, and back to it, away from a target, no faster than
+ASSIST_RETURN_SECONDS would take, nor than ASSIST_RETURN_MOST degrees a
+second, more only by half the hand's own turn */
+#define ASSIST_FRICTION 0.5f
+#define ASSIST_FRICTION_MOST 0.8f
+#define ASSIST_PULL 2.0f
+#define ASSIST_MOST 3.0f
+#define ASSIST_RETURN_SECONDS 0.3f
+#define ASSIST_RETURN_MOST 6.0f
 /* debug.vr_test_shake: a hand's shake, half a slow wander (noise smoothed
 with a cutoff of SHAKE_WANDER_HZ) and half a tremor (SHAKE_TREMOR_HZ) */
 #define SHAKE_WANDER_HZ 1.5f
@@ -327,9 +342,21 @@ static struct
 		float velocity[3];
 		float out[3];
 		float magnification;
+		/* the aim assist's: the aim, assisted, and the target it was drawn
+		to, as the direction of its middle from the controller (OpenXR
+		axes) */
+		float assisted[3];
+		long target;
+		float target_middle[3];
 	} steady, steady_before;
 	unsigned long steady_frame;
 	float steady_zoom;
+	/* this frame's target for the aim assist (halo_vr_aim_assist): which
+	(-1: none), how near the aim (its magnetism level), and the direction of
+	its middle from the controller (OpenXR axes) */
+	long assist_target;
+	float assist_level;
+	float assist_middle[3];
 	/* debug.vr_test_shake: the shake's wander (degrees: yaw, pitch;
 	millimetres: each hand's), the tremor's time and phases, and this
 	frame's turn of the right controller and move of each */
@@ -506,6 +533,8 @@ static struct
 	float test_shake_place;
 	/* debug.vr_aim_log */
 	int aim_log;
+	/* vr.aim_assist: how strong (0: none) */
+	float aim_assist;
 	/* debug.vr_test_head: the head held still, turned left and right by
 	this many degrees over this many seconds, and pitched up this many */
 	int test_head;
@@ -621,6 +650,9 @@ static void settings_read(void)
 	sscanf(config_string("debug.vr_test_shake"), "%f %f", &settings.test_shake, &settings.test_shake_place);
 	settings.test_shake_place *= 0.001f;
 	settings.aim_log = config_boolean("debug.vr_aim_log");
+	settings.aim_assist = (float)config_real("vr.aim_assist");
+	if (settings.aim_assist < 0.0f || settings.aim_assist > 2.0f)
+		settings.aim_assist = settings.aim_assist < 0.0f ? 0.0f : 2.0f;
 	settings.test_head_yaw = 0.0f;
 	settings.test_head_period = 0.0f;
 	settings.test_head_pitch = 0.0f;
@@ -2509,6 +2541,121 @@ static void shake_apply(void)
 	}
 }
 
+/* The aim assist (vr.aim_assist), after the aim is steadied: as the game
+aims, a target near the aim that its magnetism would be drawn to (as a
+gamepad's aim is: halo_vr_aim_assist, vr_aim.c) makes the aim slow to leave
+it (sticky): the hand's turn, less as much of it as follows the target's (as
+it moves, seen from the hand), as it takes the aim away from the target's
+middle (not as it comes to it), slowed by ASSIST_FRICTION, the more the
+nearer the target is to the aim (its magnetism level); and zoomed, the aim
+is drawn gently toward its middle. (Its middle, not the point the game's
+autoaim aims at on it: that point is on the line from the game's eye, and
+seen from the hand it moves as the aim does, so that the aim chased it off
+the target.) The aim may drift off the hand's line so, never more than
+ASSIST_MOST degrees, and away from a target it comes back to it no faster
+than ASSIST_RETURN_MOST degrees a second (and half the hand's own turn,
+which hides it): the aim never moves against the hand, nor without it but
+for the zoomed pull. The reticle, the smart-link's view and the shot all
+follow the assisted aim; the first-person weapon stays in the hand. */
+static void aim_assist_step(const struct aim_steady *before, struct aim_steady *state, float seconds)
+{
+	float offset[3], turn[3], length = 0.0f, along = 0.0f, most = ASSIST_MOST * (float)M_PI / 180.0f;
+	float strength = settings.aim_assist * vr.assist_level;
+	int axis;
+
+	for (axis = 0; axis < 3; axis++)
+	{
+		offset[axis] = before->assisted[axis] - before->out[axis];
+		turn[axis] = state->out[axis] - before->out[axis];
+	}
+	state->target = strength > 0.0f ? vr.assist_target : -1;
+	memcpy(state->target_middle, vr.assist_middle, sizeof(state->target_middle));
+	if (state->target != -1)
+	{
+		float friction = ASSIST_FRICTION * strength, toward[3], hand = 0.0f, with = 0.0f, near = 0.0f, away = 0.0f;
+
+		if (friction > ASSIST_FRICTION_MOST)
+			friction = ASSIST_FRICTION_MOST;
+		/* (the target's turn counts only along the hand's, and no more than
+		it: the hand following a moving target is not slowed, and a still
+		hand's aim stays still) */
+		for (axis = 0; axis < 3; axis++)
+		{
+			hand += turn[axis] * turn[axis];
+			if (before->target == state->target)
+				with += (state->target_middle[axis] - before->target_middle[axis]) * turn[axis];
+		}
+		hand = sqrtf(hand);
+		with = hand > 0.0f ? with / hand : 0.0f;
+		with = with < 0.0f ? 0.0f : with > hand ? hand : with;
+		/* (only as it takes the aim away from the target's middle: coming to
+		it is not slowed, leaving it is) */
+		for (axis = 0; axis < 3; axis++)
+		{
+			toward[axis] = state->target_middle[axis] - (state->out[axis] + offset[axis]);
+			near += toward[axis] * toward[axis];
+		}
+		near = sqrtf(near);
+		for (axis = 0; axis < 3 && near > 1e-5f && hand > 0.0f; axis++)
+			away -= turn[axis] * (1.0f - with / hand) * toward[axis] / near;
+		for (axis = 0; axis < 3 && away > 0.0f; axis++)
+			offset[axis] += toward[axis] / near * away * friction;
+		if (state->magnification > 1.01f && near > 1e-5f)
+		{
+			float step = ASSIST_PULL * (float)M_PI / 180.0f * strength * seconds;
+
+			step = step < near ? step / near : 1.0f;
+			for (axis = 0; axis < 3; axis++)
+				offset[axis] += toward[axis] * step;
+		}
+	}
+	else
+	{
+		float back, hand = 0.0f;
+
+		for (axis = 0; axis < 3; axis++)
+		{
+			length += offset[axis] * offset[axis];
+			hand += turn[axis] * turn[axis];
+		}
+		length = sqrtf(length);
+		back = length / ASSIST_RETURN_SECONDS * seconds;
+		if (back > ASSIST_RETURN_MOST * (float)M_PI / 180.0f * seconds)
+			back = ASSIST_RETURN_MOST * (float)M_PI / 180.0f * seconds;
+		back += 0.5f * sqrtf(hand);
+		for (axis = 0; axis < 3; axis++)
+			offset[axis] *= length > back ? (length - back) / length : 0.0f;
+	}
+	/* (across the aim, and no farther than ASSIST_MOST) */
+	for (axis = 0; axis < 3; axis++)
+		along += offset[axis] * state->out[axis];
+	length = 0.0f;
+	for (axis = 0; axis < 3; axis++)
+	{
+		offset[axis] -= state->out[axis] * along;
+		length += offset[axis] * offset[axis];
+	}
+	length = sqrtf(length);
+	for (axis = 0; axis < 3; axis++)
+	{
+		if (length > most)
+			offset[axis] *= most / length;
+		state->assisted[axis] = state->out[axis] + offset[axis];
+	}
+	normalize(state->assisted);
+}
+
+void halo_vr_aim_assist(long target, float level, const float middle[3])
+{
+	vr.assist_target = middle && level > 0.0f ? target : -1;
+	vr.assist_level = level > 1.0f ? 1.0f : level;
+	if (vr.assist_target != -1)
+	{
+		play_axes(middle, vr.origin_yaw, vr.assist_middle);
+		normalize(vr.assist_middle);
+	}
+}
+
 /* The aim's direction (OpenXR axes), steadied while the smart-link
 magnifies it (halo_vr_aim_zoom), else as it is. Zoomed, the view on the
 visor magnifies the hand's shake as much as the world: steadied by a
@@ -2543,6 +2690,8 @@ static void aim_steady(float forward[3])
 		memcpy(state->raw, forward, sizeof(state->raw));
 		memset(state->velocity, 0, sizeof(state->velocity));
 		memcpy(state->out, forward, sizeof(state->out));
+		memcpy(state->assisted, forward, sizeof(state->assisted));
+		state->target = -1;
 		state->magnification = vr.steady_zoom;
 		return;
 	}
@@ -2560,18 +2709,21 @@ static void aim_steady(float forward[3])
 	if (state->magnification < 1.01f && vr.steady_zoom <= 1.0f)
 	{
 		memcpy(state->out, forward, sizeof(state->out));
-		return;
 	}
-	speed = sqrtf(speed) * 180.0f / (float)M_PI;
-	cutoff = STEADY_HZ / (state->magnification > 1.01f ? state->magnification - 1.0f : 0.01f);
-	if (vr.two_handed_weight > 0.5f)
-		cutoff /= STEADY_TWO_HANDED;
-	cutoff += STEADY_GAIN * speed;
-	t = 1.0f - expf(-2.0f * (float)M_PI * cutoff * seconds);
-	for (axis = 0; axis < 3; axis++)
-		state->out[axis] = before->out[axis] + (forward[axis] - before->out[axis]) * t;
-	normalize(state->out);
-	memcpy(forward, state->out, sizeof(state->out));
+	else
+	{
+		speed = sqrtf(speed) * 180.0f / (float)M_PI;
+		cutoff = STEADY_HZ / (state->magnification > 1.01f ? state->magnification - 1.0f : 0.01f);
+		if (vr.two_handed_weight > 0.5f)
+			cutoff /= STEADY_TWO_HANDED;
+		cutoff += STEADY_GAIN * speed;
+		t = 1.0f - expf(-2.0f * (float)M_PI * cutoff * seconds);
+		for (axis = 0; axis < 3; axis++)
+			state->out[axis] = before->out[axis] + (forward[axis] - before->out[axis]) * t;
+		normalize(state->out);
+	}
+	aim_assist_step(before, state, seconds);
+	memcpy(forward, state->assisted, sizeof(state->assisted));
 }
 
 void halo_vr_aim_zoom(float magnification)
@@ -2870,14 +3022,16 @@ int halo_vr_view(struct halo_vr_view *view)
 		game_axes(v, vr.origin_yaw, view->aim_forward);
 		if (settings.aim_log && settings.test_hand_poses)
 		{
-			float raw[3];
+			float raw[3], along = v[0] * vr.steady.out[0] + v[1] * vr.steady.out[1] + v[2] * vr.steady.out[2];
 
 			weapon_pointing(raw, pointing_up);
 			platform_log("vr aim steady: frame %lu, zoom %.2f (eased %.2f)%s, the controller %.4f %.4f, the aim %.4f "
-				"%.4f (degrees: yaw left, pitch up)", vr.presents, vr.steady_zoom, vr.steady.magnification,
-				vr.two_handed_weight > 0.5f ? ", both hands" : "",
+				"%.4f (degrees: yaw left, pitch up); assist %.2f, the aim %.3f degrees off the steadied", vr.presents,
+				vr.steady_zoom, vr.steady.magnification, vr.two_handed_weight > 0.5f ? ", both hands" : "",
 				atan2f(-raw[0], -raw[2]) * 180.0f / (float)M_PI, asinf(raw[1]) * 180.0f / (float)M_PI,
-				atan2f(-v[0], -v[2]) * 180.0f / (float)M_PI, asinf(v[1]) * 180.0f / (float)M_PI);
+				atan2f(-v[0], -v[2]) * 180.0f / (float)M_PI, asinf(v[1]) * 180.0f / (float)M_PI,
+				vr.steady.target != -1 ? vr.assist_level : 0.0f,
+				acosf(along < 1.0f ? along : 1.0f) * 180.0f / (float)M_PI);
 		}
 	}
 	memcpy(view->weapon_offset, settings.weapon_offset, sizeof(view->weapon_offset));
