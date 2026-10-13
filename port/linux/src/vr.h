@@ -487,6 +487,11 @@ enum
 };
 void halo_vr_weapon_fire(int feel);
 void halo_vr_weapon_charge(float charge);
+/* ... a hit on the player, from that direction (game axes from the
+recentred head), this hard (0 to 1), felt in the hand on its side; and the
+player's shields breaking */
+void halo_vr_hit(const float from[3], float strength);
+void halo_vr_shields_broken(void);
 /* the scopes are on (vr.scopes, with vr.aim = "controller"), and how they
 show their view (vr.scope_view): HALO_VR_SCOPES_EYE raised to an eye, in
 their lens; HALO_VR_SCOPES_SMARTLINK on the visor, as the game zooms; 0 off.

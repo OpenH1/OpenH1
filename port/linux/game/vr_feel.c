@@ -27,6 +27,13 @@ weapon's kind, in place of the gamepad's rumble the game's own firing gives
 as that). Its hand is the weapon's; the left on a long gun's foregrip feels
 it a little. The plasma pistol charging hums in the hand, rising.
 
+A hit on the player (with damage: player_effect_start, where the game shakes
+the view and rumbles the gamepad, and on a network game's client as the
+host's damage is replayed) is felt in the controller on the side it came
+from, from where the head faces, the harder the more damage it did, in
+place of the gamepad's rumble; the shields breaking, a pattern of its own
+in both hands.
+
 All of it is the first local player's, found again each time from the
 player's unit: no object's index is kept from one frame to the next but to
 compare it with the one found.
@@ -55,6 +62,13 @@ however fast the weapon fires; the plasma pistol's charged shot kicks
 RECOIL_CHARGED times its other shots */
 #define RECOIL_MOST 1.6f
 #define RECOIL_CHARGED 3.0f
+/* a hit on the player is felt the more the more damage it did, in full from
+HIT_DAMAGE (the assault rifle's bullet deals 10, the plasma pistol's bolt
+about 17) */
+#define HIT_DAMAGE 40.0f
+
+/* vr_render.c's */
+boolean vr_render_world_direction_to_head(real_vector3d const *direction, float head[3]);
 
 /* each weapon by its tag's name (the first that has this in it; the last
 for any other): its feel in the hands (HALO_VR_FEEL_*), and its kick: how
@@ -105,12 +119,14 @@ static struct
 	effects, each trigger's */
 	long weapon_index;
 	long firing_damage[2];
-	/* the player's unit last frame (NONE: none) */
+	/* the player's unit last frame and whether its shields were down, to
+	feel them break (NONE: none) */
 	long unit_index;
+	boolean shield_depleted;
 	/* the plasma pistol charging: the game's time it began (NONE: not) */
 	long charge_tick;
 	real charge_time;
-} vr_feel = { 0.0f, 0.0f, 0.0f, 0.0f, 40.0f, 0.0f, NONE, { NONE, NONE }, NONE, NONE, 0.0f };
+} vr_feel = { 0.0f, 0.0f, 0.0f, 0.0f, 40.0f, 0.0f, NONE, { NONE, NONE }, NONE, FALSE, NONE, 0.0f };
 
 /* the first player's unit, NONE */
 static long vr_feel_unit(void)
@@ -181,22 +197,50 @@ void vr_feel_weapon_fired(long weapon_index, short trigger_index, long owner_ind
 their gamepad for damage they took (on a network game's client, the
 host's, replayed): TRUE where the VR mode's controllers feel it instead
 (the gamepad's rumble left out): the first player's weapon's own firing,
-felt as it fired */
+felt as it fired, and a hit with damage, felt from where it came */
 boolean vr_feel_damage(long player_index, struct damage_data const *damage, real total_damage)
 {
 	long unit_index = player_get(player_index)->unit_index;
+	real_vector3d from;
+	real_point3d head;
+	real_point3d origin;
+	float head_from[3];
 
 	if (player_get(player_index)->local_player_index != 0 || unit_index == NONE || !halo_vr_weapon_feel())
 		return FALSE;
 	/* (the firing of the weapon in hand: from no one, its trigger's effect) */
-	return damage->owner_object_index == NONE && vr_feel.weapon_index != NONE &&
+	if (damage->owner_object_index == NONE && vr_feel.weapon_index != NONE &&
 		unit_inventory_get_weapon(unit_index, unit_get(unit_index)->unit.current_weapon_index) == vr_feel.weapon_index &&
-		(damage->definition_index == vr_feel.firing_damage[0] || damage->definition_index == vr_feel.firing_damage[1]);
+		(damage->definition_index == vr_feel.firing_damage[0] || damage->definition_index == vr_feel.firing_damage[1]))
+	{
+		return TRUE;
+	}
+	if (total_damage <= 0.0f)
+		return FALSE;
+	/* where it came from: the one who dealt it (as the HUD's indicators
+	have it), else back along the way it pushes */
+	unit_get_head_position(unit_index, &head);
+	if (damage->owner_object_index != NONE && damage->owner_object_index != unit_index &&
+		object_try_and_get(damage->owner_object_index))
+	{
+		object_get_origin(damage->owner_object_index, &origin);
+		vector_from_points3d(&head, &origin, &from);
+	}
+	else
+	{
+		negate_vector3d(&damage->direction, &from);
+	}
+	if (normalize3d(&from) <= 0.0f)
+		set_real_vector3d(&from, 0.0f, 0.0f, 1.0f);
+	if (!vr_render_world_direction_to_head(&from, head_from))
+		return FALSE;
+	halo_vr_hit(head_from, total_damage >= HIT_DAMAGE ? 1.0f : total_damage / HIT_DAMAGE);
+	return TRUE;
 }
 
 /* vr_render.c, once a frame (its time since the last, seconds) before the
-first-person weapon is posed: the kick moved on, the plasma pistol's charge
-told */
+first-person weapon is posed: the kick moved on, the shields watched, the
+plasma pistol's charge told */
 void vr_feel_frame(real seconds)
 {
 	long unit_index = vr_feel_unit();
@@ -228,10 +272,19 @@ void vr_feel_frame(real seconds)
 			vr_feel.angle = vr_feel.speed = 0.0f;
 	}
 
+	/* the shields breaking: the same unit's, down now and not the frame
+	before, alive */
+	if (unit && unit_index == vr_feel.unit_index && !vr_feel.shield_depleted &&
+		TEST_FLAG(unit->object.damage_flags, _object_shield_depleted_bit) &&
+		!TEST_FLAG(unit->object.damage_flags, _object_dead_bit) && halo_vr_weapon_feel())
+	{
+		halo_vr_shields_broken();
+	}
 	/* (another unit, another map: its weapons are others) */
 	if (unit_index != vr_feel.unit_index)
 		vr_feel.weapon_index = NONE;
 	vr_feel.unit_index = unit_index;
+	vr_feel.shield_depleted = unit && TEST_FLAG(unit->object.damage_flags, _object_shield_depleted_bit);
 
 	/* the plasma pistol charging (or charged, held), its charge rising over
 	its trigger's charging time */

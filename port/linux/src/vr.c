@@ -401,6 +401,18 @@ static const struct
 };
 #define WEAPON_FOREGRIP 0.35f
 #define WEAPON_CHARGE_HUM 0.35f
+/* a hit on the player (halo_vr_hit): a pulse and its echo, in the hand on
+the side it came from, from where the head faces (as far to the side as
+it came from: from straight ahead or behind, or from above, in both
+alike), from HIT_LEAST as strong for a graze to full (vr_feel.c's
+HIT_DAMAGE); and the shields breaking (halo_vr_shields_broken), in both
+hands, a crackle of three sharp pulses and a fading rumble, stronger on the
+side of a hit HIT_RECENT_MS before, which broke them */
+static const struct haptic_pulse hit_feel[] = { { 1.0f, 0.05f, 0.0f }, { 0.40f, 0.06f, 0.06f } };
+static const struct haptic_pulse shields_broken_feel[] = { { 1.0f, 0.03f, 0.0f }, { 0.80f, 0.03f, 0.05f },
+	{ 0.60f, 0.03f, 0.10f }, { 0.30f, 0.20f, 0.15f } };
+#define HIT_LEAST 0.35f
+#define HIT_RECENT_MS 300
 /* debug.vr_test_hands: the poses it gives the controllers (enough for a
 swing posed frame by frame), each held this many frames unless it says */
 #define TEST_HANDS_POSES 512
@@ -679,6 +691,10 @@ static struct
 	/* ... and when the last of the reload's or the lift's ends, which the
 	weapons' and the hits' feel (haptic_feel) does not play over */
 	unsigned long haptic_kept_end[2];
+	/* the last hit's side (-1 left to 1 right) and when (GetTickCount), for
+	the shields breaking under it */
+	float hit_side;
+	unsigned long hit_ticks;
 	/* the lift of an overturned vehicle (flip_update): the game's offer
 	(halo_vr_flip) and where the vehicle is (game axes from the recentred
 	head), the offer logged; each grip held, and whether it is the lift's;
@@ -2385,6 +2401,45 @@ void halo_vr_weapon_charge(float charge)
 	if (charge <= 0.0f || !halo_vr_weapon_feel() || amplitude <= 0.0f || (long)(now - vr.haptic_end[1]) < 0)
 		return;
 	host_vr_haptic(1, amplitude, 0.05f);
+}
+
+/* vr_feel.c: the first player hit, from that direction (game axes from the
+recentred head), this hard (0 to 1) */
+void halo_vr_hit(const float from[3], float strength)
+{
+	static const float backwards[3] = { 0.0f, 0.0f, -1.0f };
+	float v[3], forward[3], left[3], across, side;
+
+	if (!halo_vr_weapon_feel() || !vr.views.head.valid)
+		return;
+	/* (how far to its side, of the head's left across the level) */
+	quaternion_rotate(vr.views.head.orientation, backwards, v);
+	game_axes(v, vr.origin_yaw, forward);
+	across = sqrtf(forward[0] * forward[0] + forward[1] * forward[1]);
+	if (across <= 1e-4f)
+		return;
+	left[0] = -forward[1] / across;
+	left[1] = forward[0] / across;
+	left[2] = 0.0f;
+	side = -(from[0] * left[0] + from[1] * left[1] + from[2] * left[2]);
+	side = side < -1.0f ? -1.0f : side > 1.0f ? 1.0f : side;
+	vr.hit_side = side;
+	vr.hit_ticks = GetTickCount();
+	strength = (HIT_LEAST + (1.0f - HIT_LEAST) * strength) * settings.weapon_haptics;
+	haptic_feel(1, HAPTIC_FEEL(hit_feel), strength * (0.5f + 0.5f * side));
+	haptic_feel(0, HAPTIC_FEEL(hit_feel), strength * (0.5f - 0.5f * side));
+}
+
+/* ... and the shields broken, in both hands, the more on the side of the
+hit that broke them */
+void halo_vr_shields_broken(void)
+{
+	float side = GetTickCount() - vr.hit_ticks < HIT_RECENT_MS ? vr.hit_side : 0.0f;
+
+	if (!halo_vr_weapon_feel())
+		return;
+	haptic_feel(1, HAPTIC_FEEL(shields_broken_feel), settings.weapon_haptics * (0.75f + 0.25f * side));
+	haptic_feel(0, HAPTIC_FEEL(shields_broken_feel), settings.weapon_haptics * (0.75f - 0.25f * side));
 }
 
 /* the right index finger on the trigger or off it, once a frame

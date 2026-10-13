@@ -1276,9 +1276,9 @@ void player_effect_start(
 			scale,
 			1.0f);
 #ifdef HALO_VR
-		/* port: the VR mode's controllers feel the player's own firing
-		their own way, not as the gamepad's rumble (port/linux/game/
-		vr_feel.c) */
+		/* port: the VR mode's controllers feel the player's own firing and
+		the hits on the player their own way, not as the gamepad's rumble
+		(port/linux/game/vr_feel.c) */
 		if (!vr_feel_damage(player_index, damage, total_damage))
 #endif
 		rumble_player_impulse(

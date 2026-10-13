@@ -1144,6 +1144,25 @@ boolean vr_render_aim_hit(const float position[3], const float forward[3], real 
 	return TRUE;
 }
 
+/* vr_feel.c: a direction in the world as the recentred head's game axes,
+while the VR mode aims; FALSE else */
+boolean vr_render_world_direction_to_head(real_vector3d const *direction, float head[3])
+{
+	float d[3];
+	real_vector3d turned;
+
+	if (!vr_render.aim_base_valid)
+		return FALSE;
+	d[0] = direction->i;
+	d[1] = direction->j;
+	d[2] = direction->k;
+	yaw_rotate(-vr_render.base_yaw, d, &turned);
+	head[0] = turned.i;
+	head[1] = turned.j;
+	head[2] = turned.k;
+	return TRUE;
+}
+
 /* vr_scope.c: a point and two directions in the world as the recentred
 head's game axes (metres; hand_point's inverse), for vr.c's layers */
 void vr_render_world_to_head(real_point3d const *point, real_vector3d const *forward, real_vector3d const *up,

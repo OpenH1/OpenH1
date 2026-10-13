@@ -1481,7 +1481,7 @@ goes, still gripping (a firm click in the left hand as it seats, and a
 lighter one in the right). The right stick pushed down ejects the magazine
 before you reach, if you like (the same clack). These are firmer than the
 pouch's ticks, and the game's rumble (a weapon's firing goes on a moment
-after it stops) and the weapons' feel ("The weapons' feel",
+after it stops) and the weapons' and the hits' feel ("The weapons' feel",
 below) wait while they play. The rounds are in the weapon the moment
 it is pushed home: the HUD counts them, and the weapon fires at once (your
 hand took the reload's time: the game's own reload, its time and its
@@ -1530,7 +1530,8 @@ leave it.
 #### The weapons' feel (`vr.recoil`, `vr.weapon_haptics`)
 
 Each shot kicks the weapon in your hand and is felt in the controllers,
-each weapon its own way.
+each weapon its own way; a hit on you is felt in the hand on the side it
+came from.
 
 - The kick: the weapon in your right hand (your hand with it, and your left
   on its foregrip) turns up about your hand and comes back a little toward
@@ -1554,13 +1555,25 @@ each weapon its own way.
   while it charges, a hum in your hand, rising until it is charged), the
   needler's ticks, the flamethrower's continuous rumble. It replaces the
   rumble the game gives a gamepad for your own firing.
+- A hit with damage: a pulse and its echo in the hand on the side it came
+  from (from the one who dealt it, else back along the way it pushed), as
+  your head faces: from straight ahead or behind, or from above, in both
+  hands alike. The more damage, the harder, from about a third for a graze
+  to full for 40 points of damage (the assault rifle's bullet deals 10, the
+  plasma pistol's bolt about 17). Your shields breaking are a crackle of
+  three sharp pulses and a fading rumble in both hands, stronger on the
+  side of the hit that broke them. These replace the gamepad's rumble for
+  the hits; the game's other rumble (an explosion nearby that does no
+  damage, a level's scripted one) is as ever.
 - The reload's patterns and the lift's (above, and "Flipping a vehicle")
-  come first: while one plays in a hand, a shot is not felt in that hand.
+  come first: while one plays in a hand, a shot or a hit is not felt in
+  that hand.
 - `vr.recoil` scales the kick and `vr.weapon_haptics` the feel, from 0
-  (none: nor the gamepad's rumble for your firing) to 1 (not in VR
-  Controls).
+  (none: nor the gamepad's rumble for your firing and the hits) to 1 (not
+  in VR Controls).
 - In a network game, a client fires its own weapon at once (it spends its
-  ammunition as it fires), so its kick and feel are at once too.
+  ammunition as it fires), so its kick and feel are at once too; a hit is
+  felt as the host's damage reaches it.
 - Only with `vr.aim = "controller"`. With a gamepad the game's rumble is
   as ever.
 
@@ -1986,7 +1999,7 @@ headset's session is opened with, apply from the next start.
 | `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a magnified view of where the weapon aims shows on the sniper rifle's display, or for the other weapons in a round view on the visor just above the aim, at the HUD's distance (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
 | `vr.smartlink_size` | `28.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the round magnified view on the visor is, in degrees of the view (10 to 45); the sniper rifle's is as large as its display. |
 | `vr.recoil` | `1.0` | `HALO_VR_RECOIL` | With `vr.aim = "controller"`: how far the weapon in your hand kicks as it fires, each its own way, from `0` (none) to `1` (above, "The weapons' feel"). Drawn alone: the aim, the shots and the scopes' views stay where you point. Not in VR Controls. |
-| `vr.weapon_haptics` | `1.0` | `HALO_VR_WEAPON_HAPTICS` | With `vr.aim = "controller"`: how strongly the controllers feel each weapon firing, each its own way, in place of the gamepad's rumble for it, from `0` (none) to `1` (above, "The weapons' feel"). Not in VR Controls. |
+| `vr.weapon_haptics` | `1.0` | `HALO_VR_WEAPON_HAPTICS` | With `vr.aim = "controller"`: how strongly the controllers feel each weapon firing, each its own way, and the hits on you, in the hand on the side they came from, in place of the gamepad's rumble for them, from `0` (none) to `1` (above, "The weapons' feel"). Not in VR Controls. |
 | `vr.vehicle_flip` | `"lift"` | `HALO_VR_VEHICLE_FLIP` | How an overturned vehicle the game offers to flip is flipped (above, "Flipping a vehicle"): `"lift"`, by both hands gripping it low beside it and lifting together, fast (X reloads there); `"button"`, by X, as ever; `"both"`, by either. With `vr.aim = "gamepad"`, by X. Not in VR Controls. |
 | `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the left hand takes another magazine from the left hip (the one in the weapon ejecting itself, or the right stick pushed down ejects it) and pushes it in, loaded at once (as a network game's client, after the game's reload time); the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand alone (above, "Throwing a grenade with the left hand"; on foot the left trigger throws nothing); `"both"`, with the left hand or the left trigger; `"button"`, with the left trigger alone. |
@@ -2459,10 +2472,12 @@ supersampling costs as above, and multisampling the eye pass
   is none but for the plasma pistol's charged shot, and the sniper rifle's
   rumble is lighter than the pistol's), nor does the projectiles' damage
   (the rocket's is in its blast). The damage effect of the player's own
-  firing (that of the weapon in hand, from no one) is not given to the
-  gamepad's rumble (`rumble_player_impulse`). The patterns are played by
-  `src/vr.c` a pulse at a time as each comes due, at the frame (OpenXR's
-  haptics: each pulse replaces the one before).
+  firing (that of the weapon in hand, from no one) and a hit with damage
+  are not given to the gamepad's rumble (`rumble_player_impulse`); the
+  shields breaking is seen as the unit's shields go down, the same unit
+  from frame to frame. The patterns are played by `src/vr.c` a pulse at a
+  time as each comes due, at the frame (OpenXR's haptics: each pulse
+  replaces the one before).
 - The game throws a grenade in an animation: the throw button starts the
   unit's throw animation, its third frame puts the grenade in the unit's
   left hand, and its key frame (the cyborg's with the assault rifle: frame
