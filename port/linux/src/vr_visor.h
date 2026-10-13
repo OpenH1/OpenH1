@@ -26,6 +26,10 @@ struct vr_visor_hud_image
 	none) */
 	float opacity;
 	float glow;
+	/* the glass's look (vr.hud_glass, 0 none to 1): the HUD's light on the
+	glass rather than over the world, the glass's tint in it and in its
+	bloom, and its faint reflection */
+	float glass;
 	/* the HUD's groups each in an image of their own, for the panels
 	(vr.hud_depth); else all in the HUD's */
 	int panels;

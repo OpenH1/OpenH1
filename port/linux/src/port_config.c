@@ -335,9 +335,9 @@ static const struct config_setting config_settings[] =
 	{ "vr.hud", _config_string, "\"visor\"", "HALO_VR_HUD", _environment_value, _platform_desktop,
 		"The HUD: \"visor\" on your helmet's visor, curved about your eyes, its\n"
 		"parts at depths of their own, with its glow, the helmet's rim and the\n"
-		"shields' effects on the glass (vr.hud_depth, vr.hud_lag, vr.hud_glow,\n"
-		"vr.helmet_rim, vr.visor_frame, vr.visor_effects); \"flat\" a flat\n"
-		"screen before your eyes." },
+		"shields' effects on the glass (vr.hud_depth, vr.hud_wrap, vr.hud_lag,\n"
+		"vr.hud_glow, vr.hud_glass, vr.helmet_rim, vr.visor_frame,\n"
+		"vr.visor_effects); \"flat\" a flat screen before your eyes." },
 	{ "vr.hud_distance", _config_real, "2.0", "HALO_VR_HUD_DISTANCE", _environment_value, _platform_desktop,
 		"How far in front of your eyes the HUD is, in metres." },
 	{ "vr.hud_size", _config_real, "60.0", "HALO_VR_HUD_SIZE", _environment_value, _platform_desktop,
@@ -376,6 +376,10 @@ static const struct config_setting config_settings[] =
 		"where the game puts them, to 2)." },
 	{ "vr.hud_glow", _config_real, "0.5", "HALO_VR_HUD_GLOW", _environment_value, _platform_desktop,
 		"With vr.hud = \"visor\", the HUD's glow on the visor (0 none to 1)." },
+	{ "vr.hud_glass", _config_real, "1.0", "HALO_VR_HUD_GLASS", _environment_value, _platform_desktop,
+		"With vr.hud = \"visor\", the HUD as light on the visor's glass: the world\n"
+		"seen through it, the glass's tint in it and its bloom, and its faint\n"
+		"reflection (0 none, as an opaque screen, to 1)." },
 	{ "vr.helmet_rim", _config_real, "1.0", "HALO_VR_HELMET_RIM", _environment_value, _platform_desktop,
 		"With vr.hud = \"visor\", the helmet's faceplate about the visor, at the\n"
 		"edges of your view, in depth (0 none to 1)." },

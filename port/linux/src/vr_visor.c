@@ -36,6 +36,13 @@ The corners' panels follow the visor's curve (vr.hud_wrap): turned out
 toward the edges of the view, where a glance finds them, and bent as the
 visor's brow and chin are (the shields' meter falls away toward its outer
 end), each element as large as ever.
+
+It looks to be on the glass (vr.hud_glass): light on it, the world seen
+through it, the glass's gold in it and its bloom, its faint reflection in
+the glass's other surface (d3d8_gl.c draws it so). But its layers stay
+where they are, at 1.45 to 2.5 m, as a real visor's display is collimated
+beyond the glass: the glass itself is too near for the eyes to cross on it
+or focus there.
 Every panel is placed with the HUD's layer, a moment behind the head. Quad
 layers, which every runtime has (SteamVR on the Steam Frame has no
 cylinders): the compositor gives each its stereo depth, and the HUD's
@@ -118,6 +125,7 @@ static struct
 	float frame;
 	int effects;
 	float glow;
+	float glass;
 	float depth;
 	/* each panel's distance from the HUD's at vr.hud_depth 1 (metres), the
 	tracker's tilt (radians) */
@@ -213,6 +221,7 @@ static void settings_read(void)
 	settings.frame = clamp((float)config_real("vr.visor_frame"), 0.0f, 1.0f);
 	settings.effects = config_boolean("vr.visor_effects");
 	settings.glow = clamp((float)config_real("vr.hud_glow"), 0.0f, 1.0f);
+	settings.glass = clamp((float)config_real("vr.hud_glass"), 0.0f, 1.0f);
 	settings.depth = clamp((float)config_real("vr.hud_depth"), 0.0f, 2.0f);
 	{
 		int index;
@@ -922,6 +931,7 @@ void vr_visor_hud_image(struct vr_visor_hud_image *image)
 	}
 	/* its own light on the glass, brighter as the shields recharge */
 	image->glow = settings.glow * (1.0f + 0.5f * visor.charge * (settings.effects ? 1.0f : 0.0f));
+	image->glass = settings.glass;
 	if (settings.effects && visor.active)
 	{
 		/* coming up: from nothing, with a flicker, as the projector warms */

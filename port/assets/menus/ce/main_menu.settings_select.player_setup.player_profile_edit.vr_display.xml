@@ -152,6 +152,6 @@
 		<string text="How wide the menus are."/>
 		<string text="Of the size the headset recommends: less is\nfaster, more sharper. From the next start."/>
 		<string text="The headset's rate, if it offers it; the game\ndraws a frame each refresh. From the next start."/>
-		<string text="The HUD on your helmet's visor: its depths, its\nlag and glow, the helmet's rim, the shields' energy."/>
+		<string text="The HUD on your helmet's visor: its depths, its\nglass and glow, the helmet's rim, the shields' energy."/>
 	</strings>
 </menus>

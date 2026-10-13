@@ -1481,7 +1481,7 @@ punch, the holsters, the physical crouch, the scopes (smart-link, at the eye or 
 the eye height, the world's scale, the HUD's and the menus' distance and
 size, the resolution and the refresh rate) and, from its last row, its
 visor page (the HUD on the visor or flat, its depth, its wrap along the
-visor, its lag and glow, the
+visor, its lag and glow, its look on the glass, the
 helmet's rim and its depth, the glass's shade, the shields' effects and
 the strength of their energy). OK writes them to
 `config.toml`, and they apply at once, but those marked RESTART:
@@ -1525,6 +1525,7 @@ headset's session is opened with, apply from the next start.
 | `vr.hud_tracker_tilt` | `20.0` | `HALO_VR_HUD_TRACKER_TILT` | How far the motion tracker tilts back, in degrees (-45 to 45). |
 | `vr.hud_wrap` | `1.0` | `HALO_VR_HUD_WRAP` | With `vr.hud = "visor"` and `vr.hud_depth` above `0`: the HUD's corners along the visor's curve, from `0` (where the game puts them, as before) to `2`. At `1` the weapon's panel (its ammunition and the grenades), the shields' and the motion tracker's turn out from the HUD's middle by 7 degrees across and 5 up or down, toward the edges of the view where a glance finds them, and bend as the visor's brow and chin do: falling away toward the sides above (rising, below), by a quarter of the square of their angle across (the shields' meter, from its inner end to its outer, about 3 degrees). The waypoints, the names and the HUD's middle stay where they are. |
 | `vr.hud_glow` | `0.5` | `HALO_VR_HUD_GLOW` | With `vr.hud = "visor"`: the HUD's glow on the glass, from `0` (none) to `1`. |
+| `vr.hud_glass` | `1.0` | `HALO_VR_HUD_GLASS` | With `vr.hud = "visor"`: the HUD as light on the visor's glass, from `0` (none: as before, an opaque screen) to `1`: it covers 40% less of the world behind it than its light (the world shows through it), takes a little of the glass's gold, blooms more widely about its glow in the gold, and the glass's other surface reflects it faintly, blurred, a little below. |
 | `vr.helmet_rim` | `1.0` | `HALO_VR_HELMET_RIM` | With `vr.hud = "visor"`: the helmet's faceplate about the visor, from `0` (none) to `1`: its lip at the very edges of the view, in depth, the brow and the chin, never a frame. |
 | `vr.helmet_rim_depth`, `vr.helmet_rim_reach` | `0.10`, `0.07` | `HALO_VR_HELMET_RIM_DEPTH`, `HALO_VR_HELMET_RIM_REACH` | How far before the eyes the rim's lip is (metres, `0.05` to `0.25`), and how far in from the edges of the view it begins (a fraction of them, `0` to `0.2`): at the defaults, about 2 degrees of each eye's view at its outer edge, its top and its bottom (the log says how much). |
 | `vr.visor_frame` | `0.4` | `HALO_VR_VISOR_FRAME` | With `vr.hud = "visor"`: the glass: the helmet's shadow on it from the brow and the chin, faint at the sides, and its faint gold, from `0` (none) to `1`. |
@@ -1689,6 +1690,22 @@ supersampling costs as above, and multisampling the eye pass
   elements keep their sizes and only move and curve. Quads,
   which every runtime has; the stereo depth is the compositor's, and the
   HUD's pixels never enter the eyes' images, whose depth is the world's.
+  It stays in the compositor's layers, not drawn on the glass in the eyes'
+  images, though it looks to be on the glass (`vr.hud_wrap`,
+  `vr.hud_glass`): a layer is sampled once, at its own resolution (its text
+  and the motion tracker sharp), and reprojected on its own, where in the
+  eyes' images it would be resampled at theirs, reprojected with the world.
+  And its depth is a comfortable one: at the glass's 0.105 m the eyes would
+  have to cross to about 34 degrees and could not focus there (the
+  headset's lenses focus at about arm's length or more), so it is shown
+  as a real helmet's display is collimated, far beyond the glass: from 1.45
+  m (the motion tracker) to 2.5 m (the waypoints), where the eyes fuse it
+  without effort and it never doubles. Its layers are no larger than they
+  were, none of them near (SteamVR drew a line across a near, wide quad:
+  below). The look on the glass is the copy's (`vr_copy_hud_image`): its
+  alpha less than its light, the glass's gold in it and its bloom, its
+  faint reflection (a blurred copy 18 of its pixels below, at a tenth of
+  its light).
   The visor's glass is 0.105 m before the head, on the head exactly
   (the helmet does not lag): the helmet's shadow on it from the brow and
   the chin, the glass a faint gold, and the shields on it, from the

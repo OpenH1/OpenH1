@@ -283,7 +283,7 @@ VR_SCREENS = {
              "The headset's rate, if it offers it; the game\ndraws a frame each refresh. From the next start.",
              None),
             ("HUD AND VISOR...", None, VR_VISOR,
-             "The HUD on your helmet's visor: its depths, its\nlag and glow, the helmet's rim, the shields' energy.",
+             "The HUD on your helmet's visor: its depths, its\nglass and glow, the helmet's rim, the shields' energy.",
              None),
         ],
     },
@@ -293,8 +293,8 @@ VR_SCREENS = {
 VR_SCREENS["vr_visor"] = {
     "screen": "vr_visor_screen",
     "header": ("header_vr_display", f"{PE}/vr_display/header_vr_display"),
-    # (ten rows: closer than VR Display's 28px, the help line lower)
-    "spacing": 26,
+    # (eleven rows: closer than VR Display's 28px, the help line lower)
+    "spacing": 24,
     "help_top": 366,
     "rows": [
         ("HUD:", "vr.hud", [("VISOR", "visor"), ("FLAT", "flat")],
@@ -311,6 +311,9 @@ VR_SCREENS["vr_visor"] = {
         ("HUD GLOW:", "vr.hud_glow",
          [("NONE", "0"), *((f"{round(glow * 100)}%", f"{glow:g}") for glow in (0.25, 0.5, 0.75, 1))],
          "The HUD's glow on the visor's glass.", None),
+        ("HUD ON GLASS:", "vr.hud_glass",
+         [("NONE", "0"), *((f"{round(glass * 100)}%", f"{glass:g}") for glass in (0.25, 0.5, 0.75, 1))],
+         "The HUD as light on the glass: the world through\nit, the glass's tint, its bloom and reflection.", None),
         ("HELMET RIM:", "vr.helmet_rim",
          [("NONE", "0"), *((f"{round(rim * 100)}%", f"{rim:g}") for rim in (0.25, 0.5, 0.75, 1))],
          "The helmet's faceplate about the visor, at the\nedges of your view, in depth.", None),

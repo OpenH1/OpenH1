@@ -6508,14 +6508,19 @@ panel's pixels are directions through its plane, which faces the head from
 where its region of the HUD is, tilted as it is; its region alone is shown,
 turned and bent along the visor's curve as vr_visor.c has it (its wrap).
 The HUD's light glows about it on the glass (a soft ring of its own
-colour), and it flickers as the shields break. FALSE if the copy's program
-cannot be made. */
+colour), and it flickers as the shields break. As light on the glass
+(vr.hud_glass) it covers less of the world behind it than its brightness
+(the world shows through its light), the glass's gold is a little in it
+and more in its bloom, a wider ring about the glow's, and the glass's
+second surface reflects it faintly, blurred, a little below. FALSE if the
+copy's program cannot be made. */
 static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height,
 	const struct vr_visor_hud_image *look, const struct vr_visor_panel *panel)
 {
 	static GLuint program, sampler;
 	static BOOL failed;
 	static GLint size_location, curve_location, angles_location, extent_location, opacity_location, glow_location;
+	static GLint glass_location;
 	static GLint centre_location, right_location, up_location, region_location, wrap_location;
 	static const char vertex_source[] =
 		"#version 450 core\n"
@@ -6533,6 +6538,7 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		"uniform vec2 extent;\n"
 		"uniform float opacity;\n"
 		"uniform float glow;\n"
+		"uniform float glass;\n"
 		/* (a quad's plane: its middle and axes from the head, at a unit's
 		distance, and the HUD's region it shows) */
 		"uniform vec4 centre;\n"
@@ -6571,18 +6577,44 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		"	}\n"
 		"	vec4 c = texture(hud_texture, uv);\n"
 		"	vec4 result = vec4(c.rgb, max(c.r, max(c.g, c.b)));\n"
+		"	vec2 texel = 1.0 / vec2(textureSize(hud_texture, 0));\n"
+		/* (the visor's gold, as the glass has it) */
+		"	const vec3 gold = vec3(1.0, 0.80, 0.52);\n"
+		"	if (glass > 0.0)\n"
+		"	{\n"
+		/* light on the glass: a little of its gold, and the world seen
+		through it (its alpha, what it covers, less than its light) */
+		"		result.rgb *= mix(vec3(1.0), gold, 0.12 * glass);\n"
+		"		result.a *= 1.0 - 0.4 * glass;\n"
+		"	}\n"
 		"	if (glow > 0.0)\n"
 		"	{\n"
-		"		vec2 texel = 1.0 / vec2(textureSize(hud_texture, 0));\n"
-		"		vec3 light = vec3(0.0);\n"
+		"		vec3 light = vec3(0.0), wide = vec3(0.0);\n"
 		"		for (int i = 0; i < 8; i++)\n"
 		"		{\n"
 		"			float a = float(i) * 0.785398 + 0.392699;\n"
 		"			light += texture(hud_texture, uv + vec2(cos(a), sin(a)) * texel * 5.0).rgb;\n"
+		"			if (glass > 0.0)\n"
+		"				wide += texture(hud_texture, uv + vec2(cos(a + 0.392699), sin(a + 0.392699)) * texel * 14.0).rgb;\n"
 		"		}\n"
 		"		light *= glow * 0.11;\n"
+		/* (the bloom, wider, the glass's gold in it) */
+		"		light += wide * glow * glass * 0.09 * mix(vec3(1.0), gold, 0.5);\n"
 		"		result.rgb += light * (1.0 - result.a);\n"
 		"		result.a += max(light.r, max(light.g, light.b)) * (1.0 - result.a);\n"
+		"	}\n"
+		"	if (glass > 0.0)\n"
+		"	{\n"
+		/* its reflection in the glass's other surface: faint, blurred, a
+		little below (light alone: it covers nothing) */
+		"		vec2 ghost = uv - vec2(0.0, 18.0) * texel;\n"
+		"		vec3 reflection = texture(hud_texture, ghost + vec2(2.5, 1.5) * texel).rgb +\n"
+		"			texture(hud_texture, ghost + vec2(-2.5, -1.5) * texel).rgb +\n"
+		"			texture(hud_texture, ghost + vec2(1.5, -2.5) * texel).rgb +\n"
+		"			texture(hud_texture, ghost + vec2(-1.5, 2.5) * texel).rgb;\n"
+		"		if (curve > 0.5 && (ghost.y < region.y || ghost.y > region.w))\n"
+		"			reflection = vec3(0.0);\n"
+		"		result.rgb += reflection * 0.25 * 0.10 * glass * gold;\n"
 		"	}\n"
 		"	colour = result * opacity;\n"
 		"}\n";
@@ -6616,6 +6648,7 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		extent_location = glGetUniformLocation(program, "extent");
 		opacity_location = glGetUniformLocation(program, "opacity");
 		glow_location = glGetUniformLocation(program, "glow");
+		glass_location = glGetUniformLocation(program, "glass");
 		centre_location = glGetUniformLocation(program, "centre");
 		right_location = glGetUniformLocation(program, "right_axis");
 		up_location = glGetUniformLocation(program, "up_axis");
@@ -6643,6 +6676,7 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 	glUniform2f(angles_location, look->half_angles[0], look->half_angles[1]);
 	glUniform1f(opacity_location, look->opacity);
 	glUniform1f(glow_location, look->curve ? look->glow : 0.0f);
+	glUniform1f(glass_location, look->curve ? look->glass : 0.0f);
 	if (panel)
 	{
 		glUniform1f(curve_location, 1.0f);
