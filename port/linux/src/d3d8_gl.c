@@ -259,6 +259,7 @@ long halo_screen_width(void)
 
 #ifdef HALO_VR
 static float vr_text_pixel_scale(void);
+static int vr_drawing_eyes(void);
 #endif
 
 /* the display's pixels for each of the 480 lines (text_hires.c) */
@@ -283,13 +284,15 @@ drawn as the Xbox drew it at 480. "stock" keeps that; "native" measures in
 the display's lines (not supersampling's, which the display scales down;
 "original" resolution scaling draws 480); "highest" measures as "native"
 which models are too small to draw, and draws the others at their most
-detailed level. level: the scale for choosing the level, otherwise for
-whether to draw at all. */
+detailed level; "auto" is "native" in the headset's eyes, which have far more
+lines than a display and are seen close, and "stock" elsewhere. level: the
+scale for choosing the level, otherwise for whether to draw at all. */
 enum
 {
 	_model_detail_stock,
 	_model_detail_native,
 	_model_detail_highest,
+	_model_detail_auto,
 };
 
 static int model_detail = -1;
@@ -298,12 +301,14 @@ static unsigned long model_detail_read_at;
 float halo_model_detail_scale(int level)
 {
 	float display_scale;
+	int detail, eyes = FALSE;
 
 	if (model_detail < 0 || model_detail_read_at != config_changes())
 	{
 		const char *setting = config_string("display.model_detail");
 		int value = !strcmp(setting, "native") ? _model_detail_native :
-			!strcmp(setting, "highest") ? _model_detail_highest : _model_detail_stock;
+			!strcmp(setting, "highest") ? _model_detail_highest :
+			!strcmp(setting, "auto") ? _model_detail_auto : _model_detail_stock;
 
 		model_detail_read_at = config_changes();
 		if (value != model_detail)
@@ -315,12 +320,17 @@ float halo_model_detail_scale(int level)
 		}
 		model_detail = value;
 	}
-	if (model_detail == _model_detail_stock)
+#ifdef HALO_VR
+	eyes = vr_drawing_eyes();
+#endif
+	detail = model_detail == _model_detail_auto ? (eyes ? _model_detail_native : _model_detail_stock) : model_detail;
+	if (detail == _model_detail_stock)
 		return 1.0f;
-	if (model_detail == _model_detail_highest && level)
+	if (detail == _model_detail_highest && level)
 		return 1.0e6f;
 	halo_screen_width();
-	display_scale = screen_scale[1] / screen_supersampling;
+	/* (the eyes' scale is their images' own, which nothing supersamples) */
+	display_scale = eyes ? screen_scale[1] : screen_scale[1] / screen_supersampling;
 	return display_scale > 1.0f ? display_scale : 1.0f;
 }
 
@@ -6962,6 +6972,12 @@ eyes' would start them over twice a frame; 0 in the other passes */
 static float vr_text_pixel_scale(void)
 {
 	return vr_gl.pass == HALO_VR_PASS_EYES && vr_gl.hud_height > 0 ? (float)vr_gl.hud_height / (float)SCREEN_HEIGHT : 0.0f;
+}
+
+/* whether the draws now are the eyes' 3D view (display.model_detail "auto") */
+static int vr_drawing_eyes(void)
+{
+	return vr_gl.pass == HALO_VR_PASS_EYES;
 }
 
 /* the draws from now on into that eye's layer alone (0 left, 1 right), or

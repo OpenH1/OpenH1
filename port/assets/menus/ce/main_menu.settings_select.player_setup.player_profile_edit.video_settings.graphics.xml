@@ -99,7 +99,7 @@
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/model_detail_label" type="text" controller="1" width="300" height="22" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/labels" string_index="7" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="4">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/model_detail_spinner" type="spinner" left="3" top="2" width="147" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="STOCK|NATIVE|HIGHEST" setting="display.model_detail" values="stock|native|highest" font="ui\large_ui" color="#FF2896FF" align="center" text_y="1" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 150 19 156">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/model_detail_spinner" type="spinner" left="3" top="2" width="147" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="AUTO|STOCK|NATIVE|HIGHEST" setting="display.model_detail" values="auto|stock|native|highest" font="ui\large_ui" color="#FF2896FF" align="center" text_y="1" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 150 19 156">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/op_shield_glow" width="512" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/option_bkds" color="#FF2896FF">
@@ -151,7 +151,7 @@
 		<string text="Keep floors and walls sharp at a grazing angle,\nwhich the Xbox did not. 4X costs very little."/>
 		<string text="The size objects' shadows are drawn at: 128 as on\nthe Xbox; larger for smoother, as soft, edges."/>
 		<string text="Light models for each pixel, without the facets\nof the Xbox's lighting for each vertex."/>
-		<string text="Stock picks models' detail by the Xbox's 480 lines;\nnative by this display's; highest, always the best."/>
+		<string text="Stock picks models' detail by the Xbox's 480 lines;\nnative by this display's; auto: native in VR."/>
 		<string text="Shields light their surroundings as they flare,\nin the shield's own color."/>
 		<string text="Light Show: the shield glow three times as far,\nat full from a third of the flare."/>
 	</strings>
