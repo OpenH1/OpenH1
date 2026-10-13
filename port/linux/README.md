@@ -1601,9 +1601,9 @@ throttles (and reverses) as ever, jump brakes.
   with it.
 - The ride is the Ghost's (the view turns with the Warthog, level; the
   vignette), for the Warthog's suspension: its pitch and roll (past 40
-  degrees on b30's beach) reach your eye over half a second, and your eye's
-  height follows its middle smoothly (its climbs at once, its bounce
-  smoothed, never more than 15 cm off).
+  degrees on b30's beach) reach your eye over half a second. Your eye rises
+  and falls with it, which it does with the ground, slowly (under 2 Hz:
+  there is no quick bounce to smooth).
 - The steering is the driver's facing, the game's own (the game turns the
   wheels toward the facing), which is all a network game sends of it.
 - `"look"`: the Warthog steers where the right controller points, as before,
@@ -2324,9 +2324,7 @@ supersampling costs as above, and multisampling the eye pass
   degrees), is the facing's error from the Warthog's heading (with the sign
   of its `vehicle.speed`): `vehicle_update` turns the wheels to that error
   itself (`update_human_jeep_physics` steers the front pair by it and the
-  rear the other way). Its tilt is let in over 0.5 s, and its eye's height
-  is an alpha-beta filter's of its root node's (0.08 and 0.004 a frame),
-  within 15 cm of it.
+  rear the other way). Its tilt is let in over 0.5 s.
 - Where the eye would jump more than 0.1 m (into the seat once seated, back
   to the player's own eye once out, to the game's camera following the
   vehicle or, with `vr.death_view = "game"`, the dead's, and back), it

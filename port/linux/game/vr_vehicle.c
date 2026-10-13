@@ -20,12 +20,12 @@ turned with it alone: the vehicle's pitching and rolling as it hovers (up to
 vehicle's middle, so a fifth of a metre up and down) reach it only slowly
 (VEHICLE_TILT_SECONDS), as a slope's, not its quick wobble.
 
-The Warthog bounces on its suspension far more than a Ghost hovers (its
-pitch past 40 degrees, 35 degrees a second, on b30's beach): its tilt is let
-in more slowly, and the eye's height follows the vehicle's middle as a
-filter tracking its rise and fall (VEHICLE_BOUNCE_*: a climb, steady, it
-follows at once; the suspension's bounce it smooths), never more than
-VEHICLE_BOUNCE_LIMIT from it.
+The Warthog pitches and rolls on its suspension far more than a Ghost
+hovers (its pitch past 40 degrees, 35 degrees a second, on b30's beach):
+its tilt is let in more slowly. Its height is not smoothed: it rises and
+falls with the ground, under 2 Hz (on b30's beach nine tenths of it under 2
+Hz, none above 3: no quick bounce), which a smoothing would only lag, the
+eye sinking into the seat on a climb.
 
 The handles' places, the model's markers for them (a wheel's grips, which
 turn with the model's wheel as the game turns it), are given to src/vr.c each
@@ -69,14 +69,6 @@ boolean vr_seat_seated_shown(void);
 /* the view's heading eased toward the vehicle's (the time constant,
 seconds): the game's ticks, blended, and a hover's wobble about its up */
 #define VEHICLE_HEADING_SECONDS 0.05f
-/* the eye's height (a vehicle_seats entry's bounce): the vehicle's middle's
-tracked (an alpha-beta filter: its height and how fast it rises, corrected
-by VEHICLE_BOUNCE_ALPHA and VEHICLE_BOUNCE_BETA of what each frame tells
-them, at 72 frames a second), never more than VEHICLE_BOUNCE_LIMIT (metres)
-from it */
-#define VEHICLE_BOUNCE_ALPHA 0.08f
-#define VEHICLE_BOUNCE_BETA 0.004f
-#define VEHICLE_BOUNCE_LIMIT 0.15f
 /* the comfort vignette (vr.comfort_vignette) asked for: from nothing as the
 view turns at VIGNETTE_TURN_FROM radians a second to all of it at
 VIGNETTE_TURN_TO, and as the vehicle speeds up or slows (its speed along
@@ -91,8 +83,7 @@ VIGNETTE_SPEEDING_FROM to VIGNETTE_SPEEDING_TO; the more of the two */
 /* the seats ridden first-person: the part of the vehicle's tag name, the
 part of the seat's label, its controls (HALO_VR_SEAT_*), the left and right
 handles' markers (none: NULL), a wheel's node (which its grips turn about),
-the time constant its tilt is let into the eye over (seconds), and whether
-the eye's height is filtered (its bounce) */
+and the time constant its tilt is let into the eye over (seconds) */
 static struct vehicle_seat
 {
 	char const *vehicle;
@@ -101,18 +92,17 @@ static struct vehicle_seat
 	char const *handles[2];
 	char const *wheel;
 	real tilt_seconds;
-	boolean bounce;
 } const vehicle_seats[] =
 {
 	/* (the Ghost's, and the multiplayer maps' ghost_mp: its handles are the
 	Elite driver's hands' markers, where the Chief's hands are too as he
 	drives: the model has none of its own) */
 	{ "vehicles\\ghost\\ghost", "G-driver", HALO_VR_SEAT_BARS, { "left hand elite", "right hand elite" }, NULL,
-		0.3f, FALSE },
+		0.3f },
 	/* (the Warthog's, and the rocket Warthog's: its wheel turns on the model
 	as the game turns its wheels, the grips with it) */
 	{ "warthog\\", "W-driver", HALO_VR_SEAT_WHEEL, { "left hand wheel grip", "right hand wheel grip" },
-		"frame steering wheel", 0.5f, TRUE },
+		"frame steering wheel", 0.5f },
 };
 
 static struct
@@ -130,12 +120,6 @@ static struct
 	real bob_squares;
 	real bob_largest;
 	long bob_frames;
-	/* the eye's height as tracked (world units) and its rise (world units
-	a frame), and what that took out, as the tilt's */
-	real height;
-	real rise;
-	real bounce_squares;
-	real bounce_largest;
 	/* the vehicle's velocity at its last tick (world units a tick), that
 	tick, and its acceleration along the ground then (metres a second
 	squared) */
@@ -202,13 +186,10 @@ boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye,
 	{
 		if (vr_vehicle.vehicle_index != NONE)
 		{
-			platform_log("vr vehicle: the view turns as the player's again; kept from the eye over %ld frames, the "
-				"vehicle's tilt %.1f cm (RMS), %.1f cm at most, its bounce %.1f cm (RMS), %.1f cm at most",
-				vr_vehicle.bob_frames,
+			platform_log("vr vehicle: the view turns as the player's again; the vehicle's tilt kept from the eye "
+				"over %ld frames: %.1f cm (RMS), %.1f cm at most", vr_vehicle.bob_frames,
 				vr_vehicle.bob_frames ? (real)sqrt(vr_vehicle.bob_squares / vr_vehicle.bob_frames) * 100.0f : 0.0f,
-				vr_vehicle.bob_largest * 100.0f,
-				vr_vehicle.bob_frames ? (real)sqrt(vr_vehicle.bounce_squares / vr_vehicle.bob_frames) * 100.0f : 0.0f,
-				vr_vehicle.bounce_largest * 100.0f);
+				vr_vehicle.bob_largest * 100.0f);
 		}
 		vr_vehicle.vehicle_index = NONE;
 		return FALSE;
@@ -257,30 +238,6 @@ boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye,
 		eye->x = level.x + vr_vehicle.tilt.i;
 		eye->y = level.y + vr_vehicle.tilt.j;
 		eye->z = level.z + vr_vehicle.tilt.k;
-		if (seat->bounce)
-		{
-			/* (its height: the vehicle's middle's tracked, its bounce smoothed,
-			its climbs followed) */
-			real limit = VEHICLE_BOUNCE_LIMIT * units, off;
-
-			if (vr_vehicle.vehicle_index != vehicle_index)
-			{
-				vr_vehicle.height = root->position.z;
-				vr_vehicle.rise = 0.0f;
-			}
-			else
-			{
-				real predicted = vr_vehicle.height + vr_vehicle.rise, residual = root->position.z - predicted;
-
-				vr_vehicle.height = predicted + VEHICLE_BOUNCE_ALPHA * residual;
-				vr_vehicle.rise += VEHICLE_BOUNCE_BETA * residual;
-			}
-			off = PIN(vr_vehicle.height - root->position.z, -limit, limit);
-			vr_vehicle.height = root->position.z + off;
-			eye->z += off;
-			vr_vehicle.bounce_squares += off / units * off / units;
-			vr_vehicle.bounce_largest = MAX(vr_vehicle.bounce_largest, (real)fabs(off) / units);
-		}
 	}
 	if (vr_vehicle.vehicle_index != vehicle_index)
 	{
@@ -290,7 +247,6 @@ boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye,
 		vr_vehicle.vehicle_index = vehicle_index;
 		vr_vehicle.heading = heading;
 		vr_vehicle.bob_squares = vr_vehicle.bob_largest = 0.0f;
-		vr_vehicle.bounce_squares = vr_vehicle.bounce_largest = 0.0f;
 		vr_vehicle.bob_frames = 0;
 		vr_vehicle.velocity_tick = NONE;
 		vr_vehicle.speeding = 0.0f;
