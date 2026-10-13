@@ -554,7 +554,6 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	real left = 0.0f, right = 0.0f, up = 0.0f, down = 0.0f, tangent;
 	real aspect;
 	boolean dead;
-	real_point3d game_eye;
 	real_vector3d game_forward = camera->forward;
 	boolean camera_yaw;
 	short eye;

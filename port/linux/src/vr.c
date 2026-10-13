@@ -2141,7 +2141,7 @@ static void grab_update(void)
 	}
 	/* (a tick as the hand gets to a weapon) */
 	if (reach != -1 && reach != vr.grab_reach)
-		host_vr_haptic(1, 0.2f, 0.02f);
+		hand_haptic(1, 0.2f, 0.02f);
 	vr.grab_reach = reach;
 	press_update(able);
 	if (!pressing || reach == -1)
@@ -2159,7 +2159,7 @@ static void grab_update(void)
 		vr.grab_gripped = 1;
 		vr.grab_taken = reach;
 		vr.grab_ticks = GetTickCount();
-		host_vr_haptic(1, 0.5f, 0.05f);
+		hand_haptic(1, 0.5f, 0.05f);
 		platform_log("vr: grab: the grip takes the weapon %lx", (unsigned long)reach);
 	}
 }
@@ -2848,7 +2848,7 @@ void halo_vr_weapon_charge(float charge)
 
 	if (charge <= 0.0f || !halo_vr_weapon_feel() || amplitude <= 0.0f || (long)(now - vr.haptic_end[1]) < 0)
 		return;
-	host_vr_haptic(1, amplitude, 0.05f);
+	hand_haptic(1, amplitude, 0.05f);
 }
 
 /* vr_feel.c: the first player hit, from that direction (game axes from the
