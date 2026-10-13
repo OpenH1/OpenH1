@@ -288,6 +288,10 @@ static const struct config_setting config_settings[] =
 		"magnetism would be drawn to, the aim's turn across it slows, and zoomed,\n"
 		"the aim is drawn gently toward it; how strongly, from 0 (none) to 2 (1:\n"
 		"the default). The bullets' own autoaim is the game's whatever this is." },
+	{ "vr.recoil", _config_real, "1.0", "HALO_VR_RECOIL", _environment_value, _platform_desktop,
+		"With vr.aim = \"controller\", how far the weapon in your hand kicks as\n"
+		"it fires, each its own way (drawn alone: the aim and the shots stay\n"
+		"where you point): from 0 (none) to 1 (the default)." },
 	{ "vr.manual_reload", _config_boolean, "true", "HALO_VR_MANUAL_RELOAD", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", reload by hand: take another magazine from\n"
 		"your left hip with the left grip (the one in the weapon ejects itself,\n"

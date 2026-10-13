@@ -462,6 +462,11 @@ int halo_vr_crouch(void);
 /* the first player's melee landed on something (units.c, as its sound
 plays): a swing's or B's, a knock in the right controller */
 void halo_vr_melee_hit(void);
+/* the weapons' feel (port/linux/game/vr_feel.c): whether it is the VR
+mode's (the controllers aim: vr.aim = "controller"), and how far the
+first-person weapon kicks as it fires (vr.recoil, 0 to 1; 0 without it) */
+int halo_vr_weapon_feel(void);
+float halo_vr_recoil(void);
 /* the scopes are on (vr.scopes, with vr.aim = "controller"), and how they
 show their view (vr.scope_view): HALO_VR_SCOPES_EYE raised to an eye, in
 their lens; HALO_VR_SCOPES_SMARTLINK on the visor, as the game zooms; 0 off.

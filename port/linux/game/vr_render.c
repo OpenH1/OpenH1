@@ -192,6 +192,9 @@ static struct
 	real_point3d test_sound_eye;
 	real_point3d test_sound_position;
 	long test_sound_tick;
+	/* the first-person weapon's camera is placed for a scope's view
+	(vr_render_scope_view): without the shots' kick */
+	boolean unkicked;
 } vr_render;
 
 /* what the first player's view is, as logged (cinematic_log) */
@@ -209,6 +212,9 @@ short vr_render_crosshair_offset[2];
 void vr_render_screen_point_end(void);
 /* vr_scope.c's */
 boolean vr_scope_raised(void);
+/* vr_feel.c's */
+void vr_feel_frame(real seconds);
+void vr_feel_kick(real *rise, real *back);
 /* vr_seat.c's */
 void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_point3d *position);
 void vr_seat_log_camera(real_point3d const *position, real_vector3d const *forward, real_vector3d const *up,
@@ -558,6 +564,7 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	if (!halo_vr_view(view))
 		return FALSE;
 	game_eye = camera->position;
+	vr_feel_frame(view->seconds);
 	vr_render.cinematic_head = cinematic_head();
 	cinematic_log(vr_render.cinematic_head, hands_posed());
 	/* the turn of the stick (and of the aim) while the aim follows the head;
@@ -906,6 +913,38 @@ static void hand_point(const float place[3], real_point3d *point)
 	point->z = vr_render.base_position.z + offset.k * units;
 }
 
+/* the first-person weapon's camera kicked by the shots (vr.recoil,
+vr_feel_kick): turned up about the hand, as a recoil turns a gun about the
+hand holding it, and pushed back along where it pointed */
+static void weapon_kick(struct render_camera *camera, real_point3d const *hand)
+{
+	real_vector3d forward = camera->forward, up = camera->up, offset;
+	real units = vr_render.view.world_units_per_metre;
+	real rise, back, c, s, along, above;
+
+	vr_feel_kick(&rise, &back);
+	if (rise == 0.0f && back == 0.0f)
+		return;
+	c = (real)cos(rise * _pi / 180.0f);
+	s = (real)sin(rise * _pi / 180.0f);
+	camera->forward.i = forward.i * c + up.i * s;
+	camera->forward.j = forward.j * c + up.j * s;
+	camera->forward.k = forward.k * c + up.k * s;
+	camera->up.i = up.i * c - forward.i * s;
+	camera->up.j = up.j * c - forward.j * s;
+	camera->up.k = up.k * c - forward.k * s;
+	/* (the camera's place from the hand turned the same) */
+	vector_from_points3d(hand, &camera->position, &offset);
+	along = dot_product3d(&offset, &forward);
+	above = dot_product3d(&offset, &up);
+	camera->position.x = hand->x + offset.i + along * (camera->forward.i - forward.i) +
+		above * (camera->up.i - up.i) - forward.i * back * units;
+	camera->position.y = hand->y + offset.j + along * (camera->forward.j - forward.j) +
+		above * (camera->up.j - up.j) - forward.j * back * units;
+	camera->position.z = hand->z + offset.k + along * (camera->forward.k - forward.k) +
+		above * (camera->up.k - up.k) - forward.k * back * units;
+}
+
 /* the camera the first-person weapon is posed from (render.c): with the
 controller aiming (or the hands posed in a cinematic from the player's
 head: hands_posed), one placed so that the weapon is in the right controller,
@@ -964,6 +1003,10 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 		camera->position.y = hand.y - (right.j * o[0] + up.j * o[1] + forward.j * o[2]) * units;
 		camera->position.z = hand.z - (right.k * o[0] + up.k * o[1] + forward.k * o[2]) * units;
 	}
+	/* the shots' kick, the drawn weapon's alone: not a scope's view's
+	(vr_render_scope_view), nor while a scope is raised to an eye */
+	if (!vr_render.unkicked && !vr_scope_raised())
+		weapon_kick(camera, &hand);
 	vr_render.weapon_camera = *camera;
 	vr_render.weapon_camera_valid = TRUE;
 	return TRUE;
@@ -1027,6 +1070,7 @@ boolean vr_render_scope_view(struct render_camera *weapon_camera, real_point3d e
 	real *units)
 {
 	struct render_camera camera;
+	boolean placed;
 
 	if (!vr_render.active || !vr_render.view.controller_aim || !halo_vr_aiming() || cinematic_in_progress() ||
 		vr_render.seated_unit_index != NONE)
@@ -1035,7 +1079,10 @@ boolean vr_render_scope_view(struct render_camera *weapon_camera, real_point3d e
 	}
 	csmemset(&camera, 0, sizeof(camera));
 	camera.position = vr_render.head_position;
-	if (!vr_render_weapon_camera(&camera) || !vr_render.weapon_camera_valid)
+	vr_render.unkicked = TRUE;
+	placed = vr_render_weapon_camera(&camera);
+	vr_render.unkicked = FALSE;
+	if (!placed || !vr_render.weapon_camera_valid)
 		return FALSE;
 	*weapon_camera = camera;
 	eyes[0] = vr_render.eye_positions[0];

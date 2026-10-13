@@ -721,6 +721,8 @@ static struct
 	int aim_log;
 	/* vr.aim_assist: how strong (0: none) */
 	float aim_assist;
+	/* vr.recoil: how far the weapon kicks in the hand (0: none, 1) */
+	float recoil;
 	/* debug.vr_test_head: the head held still, turned left and right by
 	this many degrees over this many seconds, and pitched up this many */
 	int test_head;
@@ -844,6 +846,9 @@ static void settings_read(void)
 	settings.aim_assist = (float)config_real("vr.aim_assist");
 	if (settings.aim_assist < 0.0f || settings.aim_assist > 2.0f)
 		settings.aim_assist = settings.aim_assist < 0.0f ? 0.0f : 2.0f;
+	settings.recoil = (float)config_real("vr.recoil");
+	if (settings.recoil < 0.0f || settings.recoil > 1.0f)
+		settings.recoil = settings.recoil < 0.0f ? 0.0f : 1.0f;
 	settings.test_head_yaw = 0.0f;
 	settings.test_head_period = 0.0f;
 	settings.test_head_pitch = 0.0f;
@@ -2268,6 +2273,17 @@ void halo_vr_melee_hit(void)
 	host_vr_haptic(1, MELEE_HIT_AMPLITUDE, MELEE_HIT_SECONDS);
 	if (settings.melee_log)
 		platform_log("vr: melee: it landed");
+}
+
+/* the weapon's feel is the VR mode's: the controllers aim (not a gamepad) */
+int halo_vr_weapon_feel(void)
+{
+	return vr.initialized && settings.controller_aim && (vr.aiming || vr.aimed);
+}
+
+float halo_vr_recoil(void)
+{
+	return halo_vr_weapon_feel() ? settings.recoil : 0.0f;
 }
 
 /* the right index finger on the trigger or off it, once a frame

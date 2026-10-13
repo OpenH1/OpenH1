@@ -245,6 +245,8 @@ boolean vr_reload_automatic(long weapon_index);
 boolean vr_reload_chain(long weapon_index);
 boolean vr_reload_by_hand(long weapon_index);
 void vr_reload_loaded(long weapon_index);
+/* port/linux/game/vr_feel.c's */
+void vr_feel_weapon_fired(long weapon_index, short trigger_index, long owner_index, boolean misfired);
 #endif
 
 /* ---------- constants */
@@ -2817,6 +2819,11 @@ static void weapon_trigger_fire(
 		}
 
 		weapon->weapon.game_time_last_fired= game_time_get();
+#ifdef HALO_VR
+		/* port: the VR mode's kick of the weapon in the hand
+		(port/linux/game/vr_feel.c) */
+		vr_feel_weapon_fired(weapon_index, trigger_index, owner_object_index, misfired);
+#endif
 
 		first_person_weapon_message_from_weapon(weapon_index, misfired ?
 			(trigger_index ? _first_person_weapon_message_secondary_misfire : _first_person_weapon_message_primary_misfire) :

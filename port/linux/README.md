@@ -1526,6 +1526,29 @@ leave it.
   loaded at once.
 - Only on foot, with `vr.aim = "controller"`.
 
+#### The weapon's kick (`vr.recoil`)
+
+Each shot kicks the weapon in your hand, each weapon its own way.
+
+- The kick: the weapon in your right hand (your hand with it, and your left
+  on its foregrip) turns up about your hand and comes back a little toward
+  you, and is where your hand holds it again within about a tenth of a
+  second (the heavy weapons a little longer): the pistol's snap (5 degrees
+  and 1.5 cm at its height), the assault rifle's chatter (1.6 degrees a
+  round, quick), the shotgun's shove (8 degrees, 3.5 cm), the sniper
+  rifle's heavy kick (9 degrees, 3.5 cm), the rocket launcher's push (6 cm
+  back and 4 degrees, slower; the fuel rod gun's alike), the plasma
+  weapons' and the needler's light pulse (1 to 1.5 degrees), the plasma
+  pistol's charged shot three times its own. However fast a weapon fires it
+  kicks no more than 1.6 times a shot's. It is drawn only: the aim is where
+  your controller points, so the reticle, where the shot goes and the
+  smart-link's view do not move with it; while a scope is raised to your
+  eye (`vr.scope_view = "eye"`) the weapon does not kick at all.
+- `vr.recoil` scales it, from 0 (none) to 1 (not in VR Controls).
+- In a network game, a client fires its own weapon at once (it spends its
+  ammunition as it fires), so its kick is at once too.
+- Only with `vr.aim = "controller"`.
+
 #### Flipping a vehicle (`vr.vehicle_flip`)
 
 Where the game offers to flip a vehicle lying on its side or its roof (on
@@ -1947,6 +1970,7 @@ headset's session is opened with, apply from the next start.
 | `vr.scopes` | `true` | `HALO_VR_SCOPES` | With `vr.aim = "controller"`: the zoom magnifies a view of its own, as `vr.scope_view` says (above, "Scopes"). `false`: the game's zoom (nothing is magnified in the headset), whatever `vr.scope_view` is. |
 | `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a magnified view of where the weapon aims shows on the sniper rifle's display, or for the other weapons in a round view on the visor just above the aim, at the HUD's distance (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
 | `vr.smartlink_size` | `28.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the round magnified view on the visor is, in degrees of the view (10 to 45); the sniper rifle's is as large as its display. |
+| `vr.recoil` | `1.0` | `HALO_VR_RECOIL` | With `vr.aim = "controller"`: how far the weapon in your hand kicks as it fires, each its own way, from `0` (none) to `1` (above, "The weapon's kick"). Drawn alone: the aim, the shots and the scopes' views stay where you point. Not in VR Controls. |
 | `vr.vehicle_flip` | `"lift"` | `HALO_VR_VEHICLE_FLIP` | How an overturned vehicle the game offers to flip is flipped (above, "Flipping a vehicle"): `"lift"`, by both hands gripping it low beside it and lifting together, fast (X reloads there); `"button"`, by X, as ever; `"both"`, by either. With `vr.aim = "gamepad"`, by X. Not in VR Controls. |
 | `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the left hand takes another magazine from the left hip (the one in the weapon ejecting itself, or the right stick pushed down ejects it) and pushes it in, loaded at once (as a network game's client, after the game's reload time); the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand alone (above, "Throwing a grenade with the left hand"; on foot the left trigger throws nothing); `"both"`, with the left hand or the left trigger; `"button"`, with the left trigger alone. |
@@ -2401,6 +2425,21 @@ supersampling costs as above, and multisampling the eye pass
   turret, the eye on the turret's axis. The view stays the player's in its
   seat: the game turns a Scorpion toward its driver's facing (vehicles.c),
   so a view turned with the hull would chase its own turn.
+- The weapon's kick (`game/vr_feel.c`): the game tells it of each shot of
+  the first player's weapon in hand as the trigger fires
+  (`weapon_trigger_fire`, which a network game's client runs for its own
+  player's weapon too). The kick is a critically damped spring each shot
+  strikes (its peak the weapon's kick, after a fortieth to a twelfth of a
+  second), moved on once a frame; the first-person weapon's camera
+  (`vr_render_weapon_camera`) is turned up by it about the controller's
+  grip and moved back, so the weapon and the hands posed from it kick
+  together. A scope's view is placed from the camera unkicked
+  (`vr_render_scope_view`). Each weapon's kick is by its tag's
+  name: the firing's damage effects, which kick the flat screen's view and
+  rumble its gamepad, do not say how hard a gun kicks (the camera's impulse
+  is none but for the plasma pistol's charged shot, and the sniper rifle's
+  rumble is lighter than the pistol's), nor does the projectiles' damage
+  (the rocket's is in its blast).
 - The game throws a grenade in an animation: the throw button starts the
   unit's throw animation, its third frame puts the grenade in the unit's
   left hand, and its key frame (the cyborg's with the assault rifle: frame
