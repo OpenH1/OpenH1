@@ -306,6 +306,25 @@ static int instance_create(void)
 	for (index = 0; index < count; index++)
 		extensions[index].type = XR_TYPE_EXTENSION_PROPERTIES;
 	xrEnumerateInstanceExtensionProperties(NULL, count, &count, extensions);
+	/* every extension the runtime offers, with its version, on one line:
+	what a headset's runtime has (foveation, eye tracking, layers) is read
+	from its log, where the runtime's own documentation says less */
+	{
+		size_t size = 64, at = 0;
+		char *text;
+
+		for (index = 0; index < count; index++)
+			size += strlen(extensions[index].extensionName) + 16;
+		if ((text = malloc(size)) != NULL)
+		{
+			text[0] = 0;
+			for (index = 0; index < count; index++)
+				at += (size_t)snprintf(text + at, size - at, "%s%s %u", index ? ", " : "",
+					extensions[index].extensionName, (unsigned)extensions[index].extensionVersion);
+			host_logf(HOST_LOG_INFO, "vr: the runtime's extensions (%u): %s", (unsigned)count, text);
+			free(text);
+		}
+	}
 	if (!extension_listed(extensions, count, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME))
 	{
 		host_logf(HOST_LOG_ERROR, "vr: the OpenXR runtime has no OpenGL binding (XR_KHR_opengl_enable)");
