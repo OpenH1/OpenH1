@@ -27,7 +27,8 @@ the chest, the legs and the feet below the head, as the arms reach from its
 shoulders. Its upper body leans back about the hips as far as keeps what
 the eyes see of it out of their near plane, and the collar's opening out of
 their view (first_person_legs_vr_lean): looking down, the eyes nod forward
-over the chest.
+over the chest. Its neck is a little behind the real one (the armour's
+chest is deeper than a person's).
 */
 
 #include "cseries.h"
@@ -75,6 +76,15 @@ it sank into a funnel) */
 #define FIRST_PERSON_LEGS_LID_UP 0.01f
 
 #ifdef HALO_VR
+/* the VR mode's body: its neck this far behind the top of the real neck
+(world units, along its heading: about 5 cm), the armour's chest being
+deeper than a person's: standing, the front of its chest is then about 10
+cm before the eyes (a person's is about under them), not 15, and the eyes
+nodding over it see past it to the belt sooner. The holster at the right
+hip and the pouch at the left (vr.c's, from the head) are still at the
+hips' sides, about 5 cm short of their front */
+#define FIRST_PERSON_LEGS_VR_BACK 0.016f
+
 /* the VR mode's body leant back from the eyes (first_person_legs_vr_lean):
 its upper body, turned back about its hips in steps of this (radians), no
 farther than this, as far as keeps all of it that either eye sees (within
@@ -646,9 +656,9 @@ static real_matrix4x3 const *first_person_legs_vr_body(
 	}
 
 	/* (all of it turned from the unit's facing to the body's heading about
-	the base of the neck, and that moved under the top of the real neck, at
-	its own height: the body stands where it stands, the head bowing or
-	not) */
+	the base of the neck, and that moved under the top of the real neck, a
+	little behind it (FIRST_PERSON_LEGS_VR_BACK), at its own height: the
+	body stands where it stands, the head bowing or not) */
 	from[0] = to[0];
 	from[1] = to[1];
 	from[2] = to[2];
@@ -660,8 +670,8 @@ static real_matrix4x3 const *first_person_legs_vr_body(
 	to[1].i = -s;
 	to[1].j = c;
 	to[1].k = 0.f;
-	move.i = anchor.x - collar.x;
-	move.j = anchor.y - collar.y;
+	move.i = anchor.x - collar.x - c * FIRST_PERSON_LEGS_VR_BACK;
+	move.j = anchor.y - collar.y - s * FIRST_PERSON_LEGS_VR_BACK;
 	move.k = 0.f;
 	for (index = 0; index < count; index++)
 		first_person_legs_rotate(&first_person_legs_matrices[index], from, to, &collar, &move);

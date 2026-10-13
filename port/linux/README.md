@@ -1394,7 +1394,10 @@ yours is, not where the game's eye is:
 - Its neck is under your head: at the top of your neck, about 10 cm behind
   and 10 cm below your eyes as your head is turned and tilted, so that it
   stays put as you nod and look down, and moves with you as you lean or
-  step about the play space. It stands on the ground as the game has it.
+  step about the play space; its own neck 5 cm behind that, as the armour's
+  chest is deeper than yours: standing, the front of its chest is about
+  10 cm before your eyes (yours is about under them), not 15. It stands on
+  the ground as the game has it.
 - It faces your body's heading, the holsters' (above): where your head
   faces, once your head turns more than 40 degrees from it, and then
   slowly; not where the gun aims. Your arms' shoulders (`vr.shoulders`)
@@ -1411,8 +1414,8 @@ yours is, not where the game's eye is:
   19 cm before them), which would cut into the armour of the chest and
   collar and show it hollow: looking ahead, or down at your belt, it stands
   upright; looking down over the chest, your eyes nod forward over it, and
-  it leans back only as far as needed, about 25 degrees looking 60 degrees
-  down and 45 looking 80 down (up to 50 crouched low, or with a pistol,
+  it leans back only as far as needed, about 20 degrees looking 60 degrees
+  down and 35 looking 80 down (up to 50 crouched low, or with a pistol,
   whose stance holds the chest higher). Nor do your eyes see the opening of
   the collar (no head is drawn, and the top of the neck is a dark pit),
   which a chin would hide. It leans at once as far as needed, and comes
