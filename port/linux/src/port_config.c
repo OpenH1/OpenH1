@@ -293,6 +293,11 @@ static const struct config_setting config_settings[] =
 		"loaded at once (the rocket launcher's tubes from behind your left\n"
 		"shoulder; the shotgun's shells one at a time, without ejecting). An\n"
 		"empty weapon does not reload itself; X reloads as ever." },
+	{ "vr.vehicle_flip", _config_string, "\"lift\"", "HALO_VR_VEHICLE_FLIP", _environment_value, _platform_desktop,
+		"How an overturned vehicle the game offers to flip is flipped: \"lift\"\n"
+		"by both hands, gripping low beside it (below the waist, out toward it,\n"
+		"as a bumper) and lifting together, fast (X reloads there); \"button\" by\n"
+		"X, as ever; \"both\" by either. With vr.aim = \"gamepad\", by X." },
 	{ "vr.two_handed", _config_boolean, "true", "HALO_VR_TWO_HANDED", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", a long gun (not a pistol or the needler)\n"
 		"is aimed with both hands while the left grip holds it by the foregrip:\n"
@@ -827,6 +832,13 @@ static const struct config_setting config_settings[] =
 		"own, the first in hand, for automated tests of the scopes: \"<name>[,\n"
 		"<name>]\", parts of the weapons' tag names (\"sniper rifle, pistol\");\n"
 		"empty none." },
+	{ "debug.vr_test_flip", _config_string, "\"\"", "HALO_VR_TEST_FLIP", _environment_value, _platform_desktop,
+		"Overturn a vehicle before the first VR player 3 s after they first aim,\n"
+		"once a map, the level's AI erased, for automated tests of the lift:\n"
+		"\"<name> [roof|side|upright] [<metres ahead>]\", name a part of the\n"
+		"vehicle's tag name (\"warthog\"), on its roof (by default) or side, or\n"
+		"upright (to enter), its middle as far ahead as puts it within reach (by\n"
+		"default); empty none." },
 	{ "debug.vr_test_target", _config_string, "\"\"", "HALO_VR_TEST_TARGET", _environment_value, _platform_desktop,
 		"Place a still biped before the first VR player 3 s after they first aim\n"
 		"on foot (again 2 s after it dies), the level's AI erased, point the right\n"

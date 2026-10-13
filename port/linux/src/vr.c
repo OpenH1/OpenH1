@@ -247,6 +247,34 @@ static const float reload_pouches[2][4] =
 #define RELOAD_FULL_GAP_MS 90
 #define RELOAD_WELL_REACH 0.07f
 static const float reload_held[3] = { 0.0f, 0.0f, 0.08f };
+/* flipping an overturned vehicle by lifting it (vr.vehicle_flip,
+flip_update): while the game offers the player on foot a flip, a grip
+pulled past FLIP_GRIP_PRESSED with both hands low (FLIP_LOW below the
+recentred eyes: below the waist) and out toward the vehicle (their middle
+FLIP_OUT from the eyes toward it, level) takes hold of it, as of a bumper
+or the frame's edge: the grip is the lift's until it is let go (below
+FLIP_GRIP_RELEASED), whatever else it might have done (a grenade, a
+magazine from the pouch, the holster's weapon, the foregrip, with the other
+grip a recentring). Both hands holding, both lifted FLIP_LIFT_HEIGHT within
+FLIP_LIFT_SECONDS (about 0.7 m/s upward, or faster) flip it: the game's
+action pressed for FLIP_PRESS_FRAMES frames, as X would. A swing does not
+melee while the grips hold, nor for FLIP_NO_MELEE_MS after the lift. The
+hands' heights are kept for FLIP_SAMPLES frames (a power of two: more than
+FLIP_LIFT_SECONDS's frames at 144 Hz) */
+#define FLIP_GRIP_PRESSED 0.6f
+#define FLIP_GRIP_RELEASED 0.3f
+#define FLIP_LOW 0.5f
+#define FLIP_OUT 0.25f
+#define FLIP_LIFT_HEIGHT 0.20f
+#define FLIP_LIFT_SECONDS 0.30f
+#define FLIP_PRESS_FRAMES 6
+#define FLIP_NO_MELEE_MS 500
+#define FLIP_SAMPLES 64
+/* and its states: the hands not both holding; both holding (the grips
+pulled low beside it); lifted (the game's action pressed), until let go */
+#define FLIP_IDLE 0
+#define FLIP_HOLDING 1
+#define FLIP_LIFTED 2
 /* the reload's feel in the hands, each a few pulses (their amplitude, their
 length and their start after the first, seconds), firmer and longer than the
 pouch's ticks (a tick as the hand gets there, a firmer one as it takes one,
@@ -263,6 +291,13 @@ static const struct haptic_pulse reload_seat_feel[] = { { 0.90f, 0.03f, 0.0f }, 
 static const struct haptic_pulse reload_seat_weapon_feel[] = { { 0.50f, 0.03f, 0.0f } };
 static const struct haptic_pulse reload_shell_feel[] = { { 0.70f, 0.025f, 0.0f } };
 static const struct haptic_pulse reload_shell_weapon_feel[] = { { 0.30f, 0.025f, 0.0f } };
+/* and the lift's: a hand taking hold (a tick), both holding (a firmer
+squeeze in each), and the vehicle lifted over (a heavy thump in each, and
+its weight landing) */
+static const struct haptic_pulse flip_hand_feel[] = { { 0.25f, 0.025f, 0.0f } };
+static const struct haptic_pulse flip_hold_feel[] = { { 0.50f, 0.05f, 0.0f } };
+static const struct haptic_pulse flip_lift_feel[] = { { 1.0f, 0.08f, 0.0f }, { 0.6f, 0.06f, 0.11f },
+	{ 0.3f, 0.05f, 0.20f } };
 #define HAPTIC_PULSES 4
 /* a pattern and its count of pulses, for haptic_play */
 #define HAPTIC_FEEL(feel) (feel), (int)(sizeof(feel) / sizeof((feel)[0]))
@@ -522,6 +557,26 @@ static struct
 	int haptic_sent[2];
 	unsigned long haptic_ticks[2];
 	unsigned long haptic_end[2];
+	/* the lift of an overturned vehicle (flip_update): the game's offer
+	(halo_vr_flip) and where the vehicle is (game axes from the recentred
+	head), the offer logged; each grip held, and whether it is the lift's;
+	the lift's state (FLIP_*), the frames the game's action is pressed for
+	it, and when the last one was; the hands' heights kept, and their times */
+	int flip_offered;
+	int flip_offer_logged;
+	int flip_vehicle_known;
+	float flip_vehicle[3];
+	int flip_grip_pressed[2];
+	int flip_grip[2];
+	int flip_state;
+	int flip_press_frames;
+	unsigned long flip_ticks;
+	unsigned int flip_sample;
+	float flip_clock;
+	float flip_held_clock;
+	float flip_times[FLIP_SAMPLES];
+	float flip_heights[2][FLIP_SAMPLES];
+	int flip_heights_valid[FLIP_SAMPLES];
 	float depth_near, depth_far;
 	/* this frame's scope (halo_vr_scope), if it was drawn */
 	int scope_set;
@@ -567,6 +622,10 @@ static struct
 	int scopes;
 	float smartlink_degrees;
 	int manual_reload;
+	/* vr.vehicle_flip: what flips an overturned vehicle, X ("button",
+	"both") and a lift of both hands ("lift", "both") */
+	int flip_button;
+	int flip_lift;
 	/* vr.grenade_throw: the hand throws ("gesture", "both"), and not the
 	left trigger too ("gesture"); debug.vr_throw_log */
 	int throw_gesture;
@@ -691,6 +750,8 @@ static void settings_read(void)
 		settings.smartlink_degrees = settings.smartlink_degrees < SMARTLINK_NARROWEST ? SMARTLINK_NARROWEST :
 			SMARTLINK_WIDEST;
 	settings.manual_reload = config_boolean("vr.manual_reload");
+	settings.flip_lift = strcmp(config_string("vr.vehicle_flip"), "button") != 0;
+	settings.flip_button = !settings.flip_lift || !strcmp(config_string("vr.vehicle_flip"), "both");
 	settings.throw_log = config_boolean("debug.vr_throw_log");
 	settings.melee_log = config_boolean("debug.vr_melee_log");
 	settings.vehicle_first_person = strcmp(config_string("vr.vehicle_view"), "third_person") != 0;
@@ -974,7 +1035,8 @@ static void two_handed_update(float seconds)
 	static const float backwards[3] = { 0.0f, 0.0f, -1.0f };
 	const struct vr_host_pose *right = &vr.views.grip[1], *left = &vr.views.grip[0];
 	int able = settings.two_handed && settings.controller_aim && vr.long_gun && vr.aimed &&
-		right->valid && left->valid && vr.views.aim[1].valid && !vr.reload.held && !vr.reload_grip_taken;
+		right->valid && left->valid && vr.views.aim[1].valid && !vr.reload.held && !vr.reload_grip_taken &&
+		!vr.flip_grip[0];
 	float line[3], pointing[3], along = 0.0f, across = 0.0f, length;
 	int axis;
 
@@ -1230,7 +1292,7 @@ static void throw_update(float seconds)
 
 	able = settings.throw_gesture && settings.controller_aim && vr.aimed && hand->valid &&
 		vr.views.head.valid && !vr.two_handed && vr.input.right_grip <= 0.8f && !vr.reload.held &&
-		!vr.reload_grip_taken;
+		!vr.reload_grip_taken && !vr.flip_grip[0];
 	switch (vr.throw_state)
 	{
 	case THROW_IDLE:
@@ -1246,7 +1308,8 @@ static void throw_update(float seconds)
 		}
 		else if (pressing && settings.throw_log && settings.throw_gesture)
 		{
-			platform_log("vr: throw: the grip taken, holding nothing (%s)", vr.two_handed ? "on the foregrip" :
+			platform_log("vr: throw: the grip taken, holding nothing (%s)", vr.flip_grip[0] ? "lifting a vehicle" :
+				vr.two_handed ? "on the foregrip" :
 				vr.reload.held ? "a magazine taken" : vr.reload_grip_taken ? "the grip at a pouch" :
 				vr.input.right_grip > 0.8f ? "both grips: recentring" : !settings.controller_aim ?
 				"vr.aim is not the controller" : !vr.aimed ? "the aim is the game's" : !hand->valid ?
@@ -1435,7 +1498,8 @@ static void holsters_update(float seconds)
 	struct halo_vr_holsters *h = &vr.holsters;
 	const struct vr_host_pose *hand = &vr.views.grip[1];
 	float v[3], eyes[3], place[3], c, s;
-	int pressed = vr.input.right_grip > HOLSTER_GRIP_PRESSED;
+	/* (not a grip the lift of a vehicle has) */
+	int pressed = vr.input.right_grip > HOLSTER_GRIP_PRESSED && !vr.flip_grip[1];
 	int pressing = pressed && !vr.holster_grip_pressed;
 	int reach = HALO_VR_HOLSTER_NONE, holster, axis;
 
@@ -1737,7 +1801,8 @@ static void reload_update(void)
 	const struct vr_host_pose *right = settings.floating_hands && vr.views.grip[1].valid ? &vr.views.grip[1] :
 		&vr.views.aim[1];
 	float v[3], eyes[3], place[3], stick = vr.input.right_stick[1], hip_distance;
-	int pressed = vr.input.left_grip > RELOAD_GRIP_PRESSED;
+	/* (not a grip the lift of a vehicle has) */
+	int pressed = vr.input.left_grip > RELOAD_GRIP_PRESSED && !vr.flip_grip[0];
 	int pressing = pressed && !vr.reload_grip_pressed;
 	int pouch, in_pouch, near_pouch, axis;
 	unsigned long now = GetTickCount();
@@ -2028,6 +2093,10 @@ static void melee_update(float seconds)
 		guard = "just after a throw or a reload";
 	else if (vr.holster_gripped)
 		guard = "the grip taken at a holster";
+	else if (vr.flip_grip[0] || vr.flip_grip[1])
+		guard = "the hands lifting a vehicle";
+	else if (vr.flip_ticks && now - vr.flip_ticks < FLIP_NO_MELEE_MS)
+		guard = "just after a lift";
 	else if (now - vr.holster_ticks < HOLSTER_NO_MELEE_MS)
 		guard = "just after drawing";
 
@@ -2132,6 +2201,187 @@ static void trigger_touch_update(float seconds)
 		vr.trigger_touch = vr.trigger_touch - step > on ? vr.trigger_touch - step : on;
 }
 
+/* the lift of an overturned vehicle (vr.vehicle_flip; FLIP_* above), once
+a frame, before what else the grips do (the holsters, the reload, the
+foregrip, the throw, the recentring), which leave a grip that is the lift's
+alone */
+static void flip_update(float seconds)
+{
+	static const char *const hands[2] = { "left", "right" };
+	int able = settings.flip_lift && !settings.gamepad_aim && vr.aimed && vr.crouch_able_frame && !vr.menus &&
+		vr.flip_offered && vr.origin_valid && vr.views.head.valid && vr.body_heading_valid;
+	float eyes[3], toward[2], heights[2] = { 0.0f, 0.0f }, out = 0.0f, length;
+	unsigned int sample;
+	int hand, low_out;
+
+	if (vr.flip_press_frames > 0)
+		vr.flip_press_frames--;
+	vr.flip_clock += seconds;
+	if (vr.flip_offered != vr.flip_offer_logged)
+	{
+		platform_log("vr: flip: %s", !vr.flip_offered ? "no flip on offer" : able ?
+			"a flip on offer: both hands low beside it, gripping, then lifted" : settings.flip_lift &&
+			!settings.gamepad_aim ? "a flip on offer, not to lift now" : "a flip on offer, to X");
+		vr.flip_offer_logged = vr.flip_offered;
+	}
+
+	/* toward the vehicle, level, from the eyes (or where the body faces) */
+	body_eyes(eyes);
+	toward[0] = cosf(vr.body_heading);
+	toward[1] = sinf(vr.body_heading);
+	if (vr.flip_vehicle_known)
+	{
+		float to[2] = { vr.flip_vehicle[0] - eyes[0], vr.flip_vehicle[1] - eyes[1] };
+
+		length = sqrtf(to[0] * to[0] + to[1] * to[1]);
+		if (length > 0.05f)
+		{
+			toward[0] = to[0] / length;
+			toward[1] = to[1] / length;
+		}
+	}
+
+	/* both hands: low, and out toward the vehicle (their middle) */
+	for (hand = 0; hand < 2; hand++)
+	{
+		const struct vr_host_pose *grip = &vr.views.grip[hand];
+		float v[3], place[3];
+		int axis;
+
+		if (!grip->valid)
+			continue;
+		for (axis = 0; axis < 3; axis++)
+			v[axis] = grip->position[axis] - vr.origin_position[axis];
+		game_axes(v, vr.origin_yaw, place);
+		heights[hand] = place[2];
+		out += ((place[0] - eyes[0]) * toward[0] + (place[1] - eyes[1]) * toward[1]) * 0.5f;
+	}
+	low_out = vr.views.grip[0].valid && vr.views.grip[1].valid && heights[0] < -FLIP_LOW &&
+		heights[1] < -FLIP_LOW && out > FLIP_OUT;
+
+	/* each grip: taken with both hands so, the lift's until let go (one
+	hand low at the hip, the other up, takes a magazine, draws, as ever) */
+	for (hand = 0; hand < 2; hand++)
+	{
+		float value = hand ? vr.input.right_grip : vr.input.left_grip;
+		int pressing = value > FLIP_GRIP_PRESSED && !vr.flip_grip_pressed[hand];
+
+		if (value > FLIP_GRIP_PRESSED)
+		{
+			vr.flip_grip_pressed[hand] = 1;
+		}
+		else if (value < FLIP_GRIP_RELEASED)
+		{
+			vr.flip_grip_pressed[hand] = 0;
+			vr.flip_grip[hand] = 0;
+		}
+		if (pressing && able && low_out)
+		{
+			vr.flip_grip[hand] = 1;
+			haptic_play(hand, HAPTIC_FEEL(flip_hand_feel));
+			platform_log("vr: flip: the %s hand takes hold, %.2f m below the eyes, the hands %.2f m out toward it",
+				hands[hand], -heights[hand], out);
+		}
+		else if (pressing && able)
+		{
+			platform_log("vr: flip: the %s grip, the hands %.2f and %.2f m below the eyes and %.2f m out toward it: "
+				"not both low and out (%.2f, %.2f)", hands[hand], -heights[0], -heights[1], out, FLIP_LOW, FLIP_OUT);
+		}
+	}
+
+	/* the hands' heights, kept */
+	sample = ++vr.flip_sample & (FLIP_SAMPLES - 1);
+	vr.flip_times[sample] = vr.flip_clock;
+	vr.flip_heights[0][sample] = heights[0];
+	vr.flip_heights[1][sample] = heights[1];
+	vr.flip_heights_valid[sample] = vr.views.grip[0].valid && vr.views.grip[1].valid && seconds > 0.0f;
+
+	switch (vr.flip_state)
+	{
+	case FLIP_IDLE:
+		if (able && vr.flip_grip[0] && vr.flip_grip[1])
+		{
+			vr.flip_state = FLIP_HOLDING;
+			vr.flip_held_clock = vr.flip_clock;
+			haptic_play(0, HAPTIC_FEEL(flip_hold_feel));
+			haptic_play(1, HAPTIC_FEEL(flip_hold_feel));
+			platform_log("vr: flip: both hands hold it");
+		}
+		break;
+	case FLIP_HOLDING:
+		if (!vr.flip_grip[0] || !vr.flip_grip[1] || !able)
+		{
+			platform_log("vr: flip: %s, no lift", !able ? "the flip no longer on offer" : "a hand let go");
+			vr.flip_state = FLIP_IDLE;
+		}
+		else
+		{
+			/* (each hand's rise from its lowest within FLIP_LIFT_SECONDS,
+			since it took hold) */
+			float rise[2] = { 0.0f, 0.0f };
+			unsigned int back;
+
+			for (back = 0; back < FLIP_SAMPLES; back++)
+			{
+				unsigned int k = (vr.flip_sample - back) & (FLIP_SAMPLES - 1);
+
+				if (vr.flip_times[k] < vr.flip_clock - FLIP_LIFT_SECONDS || vr.flip_times[k] < vr.flip_held_clock)
+					break;
+				if (!vr.flip_heights_valid[k])
+					continue;
+				for (hand = 0; hand < 2; hand++)
+				{
+					if (heights[hand] - vr.flip_heights[hand][k] > rise[hand])
+						rise[hand] = heights[hand] - vr.flip_heights[hand][k];
+				}
+			}
+			if (vr.flip_heights_valid[sample] && rise[0] >= FLIP_LIFT_HEIGHT && rise[1] >= FLIP_LIFT_HEIGHT)
+			{
+				vr.flip_state = FLIP_LIFTED;
+				vr.flip_press_frames = FLIP_PRESS_FRAMES;
+				vr.flip_ticks = GetTickCount();
+				haptic_play(0, HAPTIC_FEEL(flip_lift_feel));
+				haptic_play(1, HAPTIC_FEEL(flip_lift_feel));
+				platform_log("vr: flip: lifted, %.2f and %.2f m within %.2f s, held %.2f s: the game's action",
+					rise[0], rise[1], FLIP_LIFT_SECONDS, vr.flip_clock - vr.flip_held_clock);
+			}
+		}
+		break;
+	case FLIP_LIFTED:
+		if (!vr.flip_grip[0] && !vr.flip_grip[1])
+			vr.flip_state = FLIP_IDLE;
+		break;
+	}
+}
+
+/* player_control.c, as the first player's input is read, each frame: the
+game's offer of a flip told, what flips it given, and the lift's press */
+int halo_vr_flip(struct halo_vr_flip *flip)
+{
+	flip->flips = halo_vr_flips();
+	flip->pressed = 0;
+	if (!vr.initialized)
+		return 0;
+	vr.flip_offered = flip->offered;
+	vr.flip_vehicle_known = flip->vehicle_known;
+	memcpy(vr.flip_vehicle, flip->vehicle, sizeof(vr.flip_vehicle));
+	flip->pressed = vr.flip_press_frames > 0;
+	return 1;
+}
+
+/* hud.c and the above: what flips an overturned vehicle now (with
+vr.aim = "gamepad", X: the gamepad plays as on the flat screen) */
+int halo_vr_flips(void)
+{
+	int lift;
+
+	if (!vr.initialized)
+		return HALO_VR_FLIP_BUTTON;
+	settings_read();
+	lift = settings.flip_lift && !settings.gamepad_aim;
+	return (lift ? HALO_VR_FLIP_LIFT : 0) | (settings.flip_button || !lift ? HALO_VR_FLIP_BUTTON : 0);
+}
+
 /* the controllers' turning and recentring, once a frame */
 static void input_update(void)
 {
@@ -2145,6 +2395,7 @@ static void input_update(void)
 	if (seconds > 0.1f)
 		seconds = 0.1f;
 	body_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
+	flip_update(seconds);
 	holsters_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
 	reload_update();
 	haptics_update();
@@ -2187,8 +2438,10 @@ static void input_update(void)
 	{
 		vr.snap_latched = 0;
 	}
-	/* (not while the left hand holds a long gun's foregrip) */
-	if (vr.input.left_grip > 0.8f && vr.input.right_grip > 0.8f && !vr.two_handed)
+	/* (not while the left hand holds a long gun's foregrip, nor while
+	either grip holds a vehicle to lift it) */
+	if (vr.input.left_grip > 0.8f && vr.input.right_grip > 0.8f && !vr.two_handed && !vr.flip_grip[0] &&
+		!vr.flip_grip[1])
 	{
 		vr.recentre_time += seconds;
 		if (vr.recentre_time >= RECENTRE_SECONDS && vr.recentre_time - seconds < RECENTRE_SECONDS)

@@ -1577,6 +1577,17 @@ static void get_local_player_input_blob(
 				{
 					SET_FLAG(input->unit_control_flags, UNIT_CONTROL_PORT_ACTION_ONLY_BIT, TRUE);
 				}
+#ifdef HALO_VR
+				/* port: and the VR mode's flip of an overturned vehicle,
+				by a lift of both hands rather than X (vr.vehicle_flip,
+				port/linux/game/vr_flip.c) */
+				if (local_player_index == 0)
+				{
+					extern void vr_flip_input(long player_index, unsigned long *unit_control_flags);
+
+					vr_flip_input(player_index, &input->unit_control_flags);
+				}
+#endif
 				SET_FLAG(
 					input->unit_control_flags,
 					_unit_control_swap_weapons_bit,

@@ -581,6 +581,28 @@ static void hud_show_action_response(
 	}
 
 	case _player_action_result_flip_vehicle:
+#ifdef HALO_VR
+		/* port: the VR mode's lift flips it (vr.vehicle_flip,
+		port/linux/game/vr_flip.c), not the button the game's prompt names */
+		if (render.local_player_index == 0)
+		{
+			extern boolean vr_flip_prompt(wchar_t const *name, wchar_t *text, long length);
+			long names_index = hud_globals->messaging.alternate_icon_text.index;
+			long name_index = get_object_icon_text_index(player->action_object_index);
+			struct string_list const *names = names_index != NONE ?
+				unicode_string_list_definition_get(names_index) : NULL;
+			wchar_t text[128];
+
+			/* (the vehicle's name, as the game's prompt has it) */
+			if (vr_flip_prompt(names && VALID_INDEX(name_index, names->strings.count) ?
+				unicode_string_list_get_string(names_index, (short)name_index) : NULL, text, NUMBEROF(text)))
+			{
+				hud_enable_custom_state_message(render.local_player_index, TRUE);
+				hud_set_state_text(render.local_player_index, text);
+				return;
+			}
+		}
+#endif
 		hud_set_state_message(
 			render.local_player_index,
 			_hud_message_flip_vehicle);

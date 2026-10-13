@@ -312,6 +312,26 @@ struct halo_vr_reload
 	int hands;
 };
 
+/* flipping an overturned vehicle (vr.vehicle_flip, port/linux/game/
+vr_flip.c): what flips one the game offers to flip, X (the game's action) or
+a lift of both hands from low beside it, which presses the game's action */
+#define HALO_VR_FLIP_BUTTON 1
+#define HALO_VR_FLIP_LIFT 2
+
+struct halo_vr_flip
+{
+	/* told: the game offers the first player a flip (its action would flip
+	a vehicle), and where the vehicle's middle is (game axes from the
+	recentred head, metres; vehicle_known FALSE: not known) */
+	int offered;
+	int vehicle_known;
+	float vehicle[3];
+	/* given: what flips it now (HALO_VR_FLIP_*), and the lift pressing
+	the game's action */
+	int flips;
+	int pressed;
+};
+
 /* ---------- vr.c */
 
 /* the VR build with vr.enabled */
@@ -412,6 +432,12 @@ int halo_vr_scope_smartlink(float reticle[2]);
 by hand as it is (0 when it is off) */
 void halo_vr_reload_weapon(const struct halo_vr_reload_weapon *weapon);
 int halo_vr_reload(struct halo_vr_reload *reload);
+
+/* the flip of an overturned vehicle, once a frame: the offer told, what
+flips it given (0 when the VR mode is not running); and what flips one now
+(HALO_VR_FLIP_*: the button alone when the VR mode is not running) */
+int halo_vr_flip(struct halo_vr_flip *flip);
+int halo_vr_flips(void);
 
 /* the player, for the visor's effects (vr_visor.c) */
 void halo_vr_visor_state(const struct halo_vr_visor_state *state);

@@ -1063,6 +1063,23 @@ boolean vr_render_body_place(const float place[3], const float forward[3], const
 	return TRUE;
 }
 
+/* vr_flip.c: a point of the world as a place from the recentred head (game
+axes, metres), where the last eye pass had the head; FALSE before any */
+boolean vr_render_world_place(real_point3d const *point, float place[3])
+{
+	real units = vr_render.view.world_units_per_metre;
+	real_vector3d offset;
+	real c = (real)cos(vr_render.base_yaw), s = (real)sin(vr_render.base_yaw);
+
+	if (units <= 0.0f)
+		return FALSE;
+	vector_from_points3d(&vr_render.base_position, point, &offset);
+	place[0] = (offset.i * c + offset.j * s) / units;
+	place[1] = (-offset.i * s + offset.j * c) / units;
+	place[2] = offset.k / units;
+	return TRUE;
+}
+
 /* first_person_legs.c: where the player's body is drawn in the eye pass,
 under the real head rather than the game's eye: the top of the neck
 (halo_vr_view's body_neck) in the world, and the body's heading there;

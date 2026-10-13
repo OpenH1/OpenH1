@@ -1104,9 +1104,10 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | The sniper rifle's or the pistol's scope raised to an eye | Look through it, magnified (`vr.scope_view = "eye"`, below) |
 | The left hand gripping at the left hip and pushing what it took into the weapon (the right stick pushed down ejects the magazine first, if you like) | Reload by hand: take another magazine, the one in the weapon ejecting itself, and push it in (`vr.manual_reload`, below) |
 | The left grip held, the left hand drawn back and swung, the grip let go | Throw a grenade where the hand threw it, as hard as it did (`vr.grenade_throw`, below) |
+| Beside an overturned vehicle, both hands low gripping it, then lifted together | Flip it (`vr.vehicle_flip`, below; X reloads there) |
 | Left bumper, right bumper | Flashlight, switch grenade |
 | D-pad (left controller), View, Menu | The menus' d-pad, Back (scoreboard), Start (pause) |
-| Both grips, held | Recentre: the head's place and heading become the player's eye and facing (not while the left hand holds a foregrip) |
+| Both grips, held | Recentre: the head's place and heading become the player's eye and facing (not while the left hand holds a foregrip, nor while the hands hold a vehicle to lift it) |
 | A gamepad's Back (View), held 1 s | Recentre, as both grips do |
 
 Other controllers that SteamVR maps to the Touch layout operate as well
@@ -1445,6 +1446,43 @@ leave it.
   loaded at once.
 - Only on foot, with `vr.aim = "controller"`.
 
+#### Flipping a vehicle (`vr.vehicle_flip`)
+
+Where the game offers to flip a vehicle lying on its side or its roof (on
+foot, beside it, nobody driving it: its prompt), lift it over with both
+hands, as you would take a bumper or the frame's edge: reach both hands low
+toward it (below your waist: about 50 cm below your eyes as recentred,
+standing `vr.player_height`; and out toward the vehicle, their middle at
+least 25 cm before you that way), squeeze both grips (a tick in each hand
+as it takes hold, then a firmer squeeze in both as both hold), and lift
+both together, upward (and a little forward, if you like), fast: 20 cm
+within 0.3 s. That flips it, as X does on the flat screen: the game's
+action, pressed for you (a heavy thump in both hands). The prompt in the
+HUD says "Grip low with both hands and lift to flip Warthog" (naming the
+vehicle, as the game's does). The game flips the
+vehicle as ever: as a network game's client, the host does, as it would for
+X.
+
+- X does not flip it (`vr.vehicle_flip = "lift"`, the default): beside an
+  overturned vehicle the flip outranks everything else X would do there
+  (enter, pick up), so X reloads there instead, as it does where there is
+  nothing else to do. `"both"`: X flips it too, and the prompt is the
+  game's; `"button"`: X alone, as before.
+- One hand, the grips open, or a slow lift (20 cm taking longer than 0.3 s)
+  flips nothing. Let go of either grip and take hold again to try again.
+- The hands' grips there are the lift's until you let go: they take no
+  grenade, no magazine from the left hip, no weapon from the right hip,
+  hold no foregrip, and held together they do not recentre (both grips
+  held elsewhere still recentre, a flip offered or not). A swing does not
+  melee while they hold, nor for half a second after the lift. One hand
+  low at the hip and the other up, as for a magazine, is the pouch's or
+  the holster's as ever.
+- The Warthog and the Ghost turn upright. The game offers the Scorpion's
+  flip too, but its flip does not right the tank, by X as by the lift (on
+  its roof it rocks and stays; on its side it rolls onto its roof).
+- Not with `vr.aim = "gamepad"`: the gamepad's X flips, as on the flat
+  screen.
+
 #### Your body (`display.first_person_legs`)
 
 With LEGS on (Video Setup > FOV and Viewmodels, `display.first_person_legs`;
@@ -1628,6 +1666,7 @@ headset's session is opened with, apply from the next start.
 | `vr.scopes` | `true` | `HALO_VR_SCOPES` | With `vr.aim = "controller"`: the zoom magnifies a view of its own, as `vr.scope_view` says (above, "Scopes"). `false`: the game's zoom (nothing is magnified in the headset), whatever `vr.scope_view` is. |
 | `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a round magnified view of where the weapon aims shows on the visor just above it, at the HUD's distance (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
 | `vr.smartlink_size` | `28.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the magnified view on the visor is, in degrees of the view (10 to 45). |
+| `vr.vehicle_flip` | `"lift"` | `HALO_VR_VEHICLE_FLIP` | How an overturned vehicle the game offers to flip is flipped (above, "Flipping a vehicle"): `"lift"`, by both hands gripping it low beside it and lifting together, fast (X reloads there); `"button"`, by X, as ever; `"both"`, by either. With `vr.aim = "gamepad"`, by X. Not in VR Controls. |
 | `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the left hand takes another magazine from the left hip (the one in the weapon ejecting itself, or the right stick pushed down ejects it) and pushes it in, loaded at once (as a network game's client, after the game's reload time); the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand alone (above, "Throwing a grenade with the left hand"; on foot the left trigger throws nothing); `"both"`, with the left hand or the left trigger; `"button"`, with the left trigger alone. |
 | `vr.aim_assist` | `1.0` | `HALO_VR_AIM_ASSIST` | With `vr.aim = "controller"`: the aim assist (above, "Aiming with the controller"): near an enemy the game's magnetism would be drawn to, the aim is slow to leave it, and zoomed, is drawn gently toward it; how strongly, from `0` (none) to `2`. The bullets' own autoaim is the game's whatever this is. |
@@ -1667,6 +1706,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_death` | `""` | `HALO_VR_TEST_DEATH` | Kill the first player, for automated tests of the view as they die: `"<seconds> [kill\|grenade\|watch]"`, that many seconds after they first aim (a level's clock does not start at 0), once a run, as the script's `unit_kill` does, by a frag grenade's blast half a metre before them (their shields and nearly all their health gone first: the body thrown back), or killed and then the dead camera turned to the nearest living biped, as network co-op's spectating turns it to a teammate. From a second before, the log says how far the view moved and turned each frame, how tinted, dimmed and dark it was, and where the body was from the eye (how far, across and up, in view or not), and each phase's sums (alive, dead, back) with how much of the motion was seen (between frames not in full darkness), and each blink; with `debug.screenshot_directory`, the eyes six times a second from the death to 1.5 s after the player is back (24 times in its first half second). With `debug.vr_test_head = "0"`, the motion the player did not make. |
 | `debug.vr_test_grenades` | `""` | `HALO_VR_TEST_GRENADES` | Give the first VR player these grenades as they first aim, for tests of the grenade held in the hand: `"<frags> <plasma grenades>"`. |
 | `debug.vr_test_finger` | `""` | `HALO_VR_TEST_FINGER` | The right index finger on the weapon's trigger instead of the weapon's own (`game/vr_hands.c`, `trigger_fingers`), for tests: `"<rest> <rest> <rest> <pull> <pull> <pull> [<travel> [<off> <off> <off>]]"`, its curl at each joint from the knuckle at rest, from the idle animation's (less than 0: straighter), and how much more at a full pull (radians), how far back the trigger goes (metres), and its curl off the trigger (the trigger's touch sensing no finger; a test pose's trigger less than 0). |
+| `debug.vr_test_flip` | `""` | `HALO_VR_TEST_FLIP` | Overturn a vehicle before the first player, once a map, 3 s after the player first aims, the level's AI erased (once a second), for automated tests of the lift (`vr.vehicle_flip`): `"<name> [roof\|side\|upright] [<metres ahead>]"`, a part of the vehicle's tag name (`"warthog"`; b30 has the Warthog, b40 the Ghost and the Scorpion too), on its roof (by default) or its left side, or upright (to enter it), broadside, its middle as far ahead as puts it within reach (by default). The log says where, how it lies each second and whether the player is in it (`vr flip: test vehicle's up`), each offer, and each step of the lift (`vr: flip:`). |
 | `debug.vr_test_weapons` | `""` | `HALO_VR_TEST_WEAPONS` | Give the first player these weapons in place of their own, the first in hand, once a map, 2 s after the player first aims (a level's script gives its own as the player takes control), for automated tests of the scopes: `"<name>[, <name>]"`, parts of the weapons' tag names (`"sniper rifle, pistol"`; b30 has no sniper rifle, a50 has both). |
 | `debug.vr_test_target` | `""` | `HALO_VR_TEST_TARGET` | Place a still biped before the first VR player, for automated tests of the aim: `"<metres ahead> [<metres right> [<name> [free\|head]]][; <vehicle>]"`, a biped whose tag's name has this in it (`"grunt"` if none), 3 s after they first aim on foot standing still (a level's drop moves them), on the ground; after a `;`, in a seat of a vehicle whose tag's name has that in it, placed there (`"c gun turret"`: the Shade, on b40, c10 and d20; `"ghost"`, `"banshee"`), or with the name `-`, the vehicle alone, empty; turned left or right as little as puts it in sight, with no mind of its own (the level's AI erased, so that only the player's shots hit it), and again 2 s after it dies. The right controller held by `debug.vr_test_hands` points at its middle (`head`: its head; `free`: where `debug.vr_test_hands` points it), and each hit on it is logged (`vr aim: test target`). |
 | `debug.vr_test_shake` | `""` | `HALO_VR_TEST_SHAKE` | Shake the controllers as a hand does, for automated tests of the aim steadied while zoomed: `"<degrees> [<millimetres>]"`, the right controller turned at random by about this much (RMS: half a slow wander, smoothed noise below 1.5 Hz, half a 9 Hz tremor), both moved by this much. |
@@ -2093,6 +2133,19 @@ supersampling costs as above, and multisampling the eye pass
   game's drop. With `vr.aim = "gamepad"` the weapon, posed from the eye,
   comes down with the head's crouch, and the reticle stays where the aim
   from the game's eye meets the world.
+- The flip of an overturned vehicle (`vr.vehicle_flip`, `src/vr.c`,
+  `game/vr_flip.c`): the game offers it as the player's action result
+  (`players.c`, `player_examine_nearby_vehicle`, each tick on every
+  machine, so a network game's client knows its own offer), which outranks
+  every other. `player_control.c` asks `vr_flip.c` as it reads the
+  player's input: with a flip offered, the lift's press sets the action
+  bit, as X does, so the game, and a client's host, flips it as for X;
+  where only the lift flips, X's action bit becomes the reload bit (the
+  reload the action falls back to where it does nothing else). `vr.c`
+  tells the hands' lift from the controllers' poses, before the holsters,
+  the reload, the foregrip, the throw and the recentring read the grips,
+  which leave alone a grip the lift has. The prompt is the HUD's own state
+  message, our text in place of the map's (`hud.c`).
 - In a vehicle's seat (`vr.vehicle_view = "first_person"`) the eye is in
   the seat, and the player's body is not drawn. The game animates the
   seated body, none of it the player's own motion: getting in sweeps the
