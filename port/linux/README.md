@@ -1987,25 +1987,27 @@ supersampling costs as above, and multisampling the eye pass
   rocket launcher's and the needler's grips still meet the finger a
   little, whatever its curl.
 - Some first-person models have no trigger (the assault rifle's, the
-  sniper rifle's): their animation's index finger hooks round an empty gap
-  under the receiver, ahead of the grip. So one is drawn there
-  (`game/vr_trigger.c`), modelled for each to sit in the crook of the
-  finger (`game/vr_trigger_model.h`, made by `tools/vr_trigger_model.py`):
-  the assault rifle's an MA5B's, the sniper rifle's slimmer, each a
-  curved blade of rounded section, its face crowned where the finger lies,
-  broad where it hangs from the receiver and curling forward to its tip
-  below the finger, out of a low housing on the receiver's underside (202
-  vertices and 312 triangles each). Each is found by its model's tag name
-  as a map is loaded, made once a map as a model part's buffers and drawn
-  just after its weapon's model with the weapon's own shader, from its gun
-  node, as the model is drawn (its lighting, tint and camouflage), the
-  blade's faces sampling a fitting part of the weapon's texture (the
-  trigger the rifle's paints but no face of its model shows; the sniper
-  rifle's receiver's underside), the housing's the receiver's underside.
-  The blade turns back about its top as the finger pulls, its face going
-  back as far as the finger's weapon has its trigger go
-  (`trigger_fingers`); the housing stays. Only for those models (by their
-  tag names): the world's weapons and the third person have none.
+  sniper rifle's, the shotgun's): their animation's index finger hooks
+  round an empty gap under the receiver, ahead of the grip. So one is
+  drawn there (`game/vr_trigger.c`), modelled for each to sit in the crook
+  of the finger (`game/vr_trigger_model.h`, made by
+  `tools/vr_trigger_model.py`): the assault rifle's an MA5B's, the sniper
+  rifle's slimmer, the shotgun's broad and short, inside its own guard,
+  each a curved blade of rounded section, its face crowned where the
+  finger lies, broad where it hangs from the receiver and curling forward
+  to its tip below the finger, out of a low housing on the receiver's
+  underside (202 vertices and 312 triangles each). Each is found by its
+  model's tag name as a map is loaded, made once a map as a model part's
+  buffers and drawn just after its weapon's model with the weapon's own
+  shader, from its gun node, as the model is drawn (its lighting, tint and
+  camouflage), the blade's faces sampling a fitting part of the weapon's
+  texture (the trigger the rifle's paints but no face of its model shows;
+  the sniper rifle's and the shotgun's receiver's underside), the
+  housing's the receiver's underside. The blade turns back about its top
+  as the finger pulls, its face going back as far as the finger's weapon
+  has its trigger go (`trigger_fingers`); the housing stays. Only for
+  those models (by their tag names): the world's weapons and the third
+  person have none.
 - The game throws a grenade in an animation: the throw button starts the
   unit's throw animation, its third frame puts the grenade in the unit's
   left hand, and its key frame (the cyborg's with the assault rifle: frame

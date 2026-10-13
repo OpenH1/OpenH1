@@ -13,7 +13,7 @@ the game's own animation rests in an empty gap under the receiver, ahead of
 the grip, and not one vertex of the model is there. So a trigger is drawn
 there, modelled for each such weapon to sit in the finger's crook
 (vr_trigger_model.h, made by tools/vr_trigger_model.py: the assault rifle's,
-an MA5B's, and the sniper rifle's): a curved blade of rounded section, its
+an MA5B's, the sniper rifle's and the shotgun's): a curved blade of rounded section, its
 front face crowned where the finger lies, broad where it hangs from the
 receiver and curling forward to its tip below the finger, coming out of a
 low housing on the receiver's underside. Each is found by its model's tag
@@ -24,7 +24,7 @@ the weapon is drawn), from the weapon's gun node, so wherever the weapon's
 first-person model is drawn (both eyes; the scopes' pass draws no
 first-person weapon). The blade's faces sample a fitting part of the
 weapon's texture (the trigger the rifle's paints, which no face of its model
-samples; the sniper rifle's receiver's underside); the housing's sample the
+samples; the others' receivers' undersides); the housing's sample the
 receiver's underside as the receiver's own faces do. As the finger pulls,
 the blade turns back about its top, where it comes out of the housing, its
 face going back as far as the finger's weapon has its trigger go

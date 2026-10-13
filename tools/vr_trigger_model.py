@@ -114,7 +114,39 @@ TRIGGERS = [
 		'blade_uv': (0.6150, 0.6550, 0.2580, 0.2840),
 		'receiver_uv': (0.6037, 0.0100, 3.13, 0.2709, 3.12),
 	},
+	{
+		'name': 'shotgun',
+		'title': "the shotgun's",
+		'model': 'weapons\\shotgun\\fp\\fp',
+		'node': 'frame gun',
+		'shader': 'weapons\\shotgun\\shaders\\shotgun gun',
+		# (inside its own guard, under the receiver's underside, up -0.0143,
+		# ahead of the grip's front, forward -0.0966: broad, as the shotgun is,
+		# and short, the finger crossing low, just above the guard's bar: its
+		# face nearly straight behind the finger, its tip curling a little, clear
+		# of the bar as it swings back)
+		'rows': [
+			(-0.0118, -0.09070, 0.00320, 0.00125),
+			(-0.0143, -0.09090, 0.00320, 0.00130),
+			(-0.0160, -0.09110, 0.00280, 0.00135),
+			(-0.0177, -0.09120, 0.00260, 0.00140),
+			(-0.0193, -0.09120, 0.00250, 0.00140),
+			(-0.0208, -0.09110, 0.00240, 0.00140),
+			(-0.0222, -0.09090, 0.00220, 0.00135),
+			(-0.0233, -0.09060, 0.00200, 0.00128),
+			(-0.0241, -0.09040, 0.00180, 0.00120),
+			(-0.0247, -0.09020, 0.00155, 0.00112),
+		],
+		'tip_step': 0.0004, 'tip_scale': 0.6,
+		'bevel': 0.00035, 'crown': 0.00018,
+		'pivot': (-0.0922, -0.0125), 'pull_up': -0.0200,
+		'housing': {'up': -0.0143, 'depth': 0.00050, 'chamfer': 0.00020, 'back': -0.0955, 'front': -0.0880, 'half_width': 0.0025},
+		# (shotgun, 512 x 512: the receiver's underside, dark metal, as the grip)
+		'blade_uv': (0.3000, 0.3800, 0.2900, 0.3070),
+		'receiver_uv': (0.2634, -0.0910, 4.36, 0.29865, 4.19),
+	},
 ]
+
 
 
 def normalize(v):
