@@ -3,8 +3,10 @@ VR_VEHICLE.C
 
 The VR mode's vehicles' seats ridden first-person (HALO_VR;
 vr.ghost_steering, vr.warthog_steering, port/linux/README.md "VR"), for
-vr_render.c: the Ghost's driver seat, steered by its handlebars, and the
-Warthog's, by its wheel; a vehicle_seats entry adds another (a Banshee's).
+vr_render.c: the Ghost's driver seat, steered by its handlebars; the
+Warthog's, by its wheel, its passenger's, and its gunner's, the hands on the
+chaingun's handles; a Banshee's pilot's, steered as it was. A vehicle_seats
+entry adds another.
 
 Once seated (the eye in the seat, as vr_seat.c shows it after the blink
 in), the view turns with the vehicle: its heading is the vehicle's, as each
@@ -83,7 +85,10 @@ VIGNETTE_SPEEDING_FROM to VIGNETTE_SPEEDING_TO; the more of the two */
 /* the seats ridden first-person: the part of the vehicle's tag name, the
 part of the seat's label, its controls (HALO_VR_SEAT_*), the left and right
 handles' markers (none: NULL), a wheel's node (which its grips turn about),
-and the time constant its tilt is let into the eye over (seconds) */
+the time constant its tilt is let into the eye over (seconds), and whether
+it flies: its climbs and dives (its pitch's turn, which the level view does
+not follow, the world streaming past it up or down) count in the comfort
+vignette as its turns do */
 static struct vehicle_seat
 {
 	char const *vehicle;
@@ -92,22 +97,28 @@ static struct vehicle_seat
 	char const *handles[2];
 	char const *wheel;
 	real tilt_seconds;
+	boolean flies;
 } const vehicle_seats[] =
 {
 	/* (the Ghost's, and the multiplayer maps' ghost_mp: its handles are the
 	Elite driver's hands' markers, where the Chief's hands are too as he
 	drives: the model has none of its own) */
 	{ "vehicles\\ghost\\ghost", "G-driver", HALO_VR_SEAT_BARS, { "left hand elite", "right hand elite" }, NULL,
-		0.3f },
+		0.3f, FALSE },
 	/* (the Warthog's, and the rocket Warthog's: its wheel turns on the model
 	as the game turns its wheels, the grips with it) */
 	{ "warthog\\", "W-driver", HALO_VR_SEAT_WHEEL, { "left hand wheel grip", "right hand wheel grip" },
-		"frame steering wheel", 0.5f },
+		"frame steering wheel", 0.5f, FALSE },
 	/* (its passenger: the hands as on foot, the weapon in them) */
-	{ "warthog\\", "W-passenger", HALO_VR_SEAT_RIDE, { NULL, NULL }, NULL, 0.5f },
+	{ "warthog\\", "W-passenger", HALO_VR_SEAT_RIDE, { NULL, NULL }, NULL, 0.5f, FALSE },
 	/* (its gunner: the hands on the chaingun's handles, which turn and
 	pitch with it, the right controller aiming it) */
-	{ "warthog\\", "W-gunner", HALO_VR_SEAT_TURRET, { "gunner left hand", "gunner right hand" }, NULL, 0.5f },
+	{ "warthog\\", "W-gunner", HALO_VR_SEAT_TURRET, { "gunner left hand", "gunner right hand" }, NULL, 0.5f,
+		FALSE },
+	/* (the Banshee's pilot: no handles, the right controller steering it
+	where it points, as it aims a weapon; the ship banks and pitches about
+	the eye, the view level) */
+	{ "vehicles\\banshee\\banshee", "B-driver", HALO_VR_SEAT_RIDE, { NULL, NULL }, NULL, 0.4f, TRUE },
 };
 
 static struct
@@ -125,6 +136,8 @@ static struct
 	real bob_squares;
 	real bob_largest;
 	long bob_frames;
+	/* its forward as drawn last frame (a flier's turn, its pitch's too) */
+	real_vector3d forward;
 	/* the vehicle's velocity at its last tick (world units a tick), that
 	tick, and its acceleration along the ground then (metres a second
 	squared) */
@@ -270,6 +283,15 @@ boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye,
 		long tick = game_time_get();
 		real turn = seconds > 0.0f ? (real)fabs(remainder(vr_vehicle.heading - last_heading, 2.0 * M_PI)) / seconds :
 			0.0f;
+
+		/* (a flier's: how fast its forward turns, up and down too) */
+		if (seat->flies && seconds > 0.0f && vr_vehicle.velocity_tick != NONE)
+		{
+			real along = PIN(dot_product3d(&root->forward, &vr_vehicle.forward), -1.0f, 1.0f);
+
+			turn = MAX(turn, (real)acos(along) / seconds);
+		}
+		vr_vehicle.forward = root->forward;
 		real amount;
 
 		if (vr_vehicle.velocity_tick != NONE && tick != vr_vehicle.velocity_tick)

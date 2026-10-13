@@ -1628,6 +1628,20 @@ the gun; let go and they are where your controllers are. No weapon of your
 own is drawn. The ride is the driver's: the view turns with the Warthog,
 not the turret (which swings before you), level, the vignette.
 
+#### Flying a Banshee
+
+In a Banshee's pilot seat, the ride is the Warthog's: the view turns with
+the Banshee, the horizon level whatever it does (it banks as it turns, past
+30 degrees, and pitches as it climbs and dives: the ship moves about you,
+not the world), your eye held level in it (its tilt let in over 0.4 s), and
+the comfort vignette, which counts its climbs and dives as it counts its
+turns (the level view does not follow them, the world streaming past it up
+or down). It steers where the right controller points, as before, now from
+the Banshee's heading (pointing 30 degrees aside, it turns some 60 degrees a
+second; up and down, it climbs and dives); the left stick throttles, the
+triggers fire its guns. Its cockpit is the game's model (none of its own
+yet). With `vr.aim = "controller"`.
+
 #### Your body (`display.first_person_legs`)
 
 With LEGS on (Video Setup > FOV and Viewmodels, `display.first_person_legs`;
@@ -2353,7 +2367,10 @@ supersampling costs as above, and multisampling the eye pass
   the "gunner left hand" and "gunner right hand" markers, on the chaingun's
   "frame gun" node, the hands held as they are turned, and it aims as the
   controller does on foot (the game's turret follows the gunner's aim at
-  most at its tag's half a turn a second).
+  most at its tag's half a turn a second). A Banshee's pilot's seat is ridden as a
+  passenger's (no handles: the right controller steers it, as the facing
+  the game turns it toward), its tilt let in over 0.4 s; it flies, so the
+  vignette takes the turn of its forward, its pitch's too, as its turn.
 - Where the eye would jump more than 0.1 m (into the seat once seated, back
   to the player's own eye once out, to the game's camera following the
   vehicle or, with `vr.death_view = "game"`, the dead's, and back), it
