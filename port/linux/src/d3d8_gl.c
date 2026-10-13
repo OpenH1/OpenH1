@@ -1985,6 +1985,7 @@ static BOOL bind_targets(BOOL *has_depth)
 {
 	struct render_target_entry *color, *depth;
 	GLuint color_texture;
+	int samples;
 
 #ifdef HALO_VR
 	vr_frame_resume();
@@ -2037,7 +2038,39 @@ static BOOL bind_targets(BOOL *has_depth)
 	}
 	target_height = color ? color->target.gl_height : depth->target.gl_height;
 #endif
-	state_framebuffer(framebuffer_get(color_texture, depth ? depth->target.texture : 0));
+	/* with multisampling, multisampled where either is a screen buffer or
+	is multisampled already */
+	samples = anti_aliasing() == _anti_aliasing_msaa ? anti_aliasing_samples : 0;
+	if (samples && !((color && (color->screen_buffer || color->target.samples)) ||
+		(depth && (depth->screen_buffer || depth->target.samples))))
+	{
+		samples = 0;
+	}
+#ifdef HALO_VR
+	/* (not in the VR mode's passes: the eyes' targets have a layer for each
+	eye, and the HUD and its groups are layers of their own) */
+	if (vr_gl.pass != HALO_VR_PASS_NONE)
+		samples = 0;
+#endif
+	if (color)
+		render_target_multisample(&color->target, samples);
+	if (depth)
+		render_target_multisample(&depth->target, samples);
+	if (samples)
+	{
+		state_framebuffer(framebuffer_find(color ? color->target.multisample : 0,
+			depth ? depth->target.multisample : 0, TRUE));
+		if (color)
+			color->target.unresolved = TRUE;
+		if (depth)
+			depth->target.unresolved = TRUE;
+		target_samples = samples;
+	}
+	else
+	{
+		state_framebuffer(framebuffer_get(color_texture, depth ? depth->target.texture : 0));
+		target_samples = 1;
+	}
 #ifdef HALO_VR
 	framebuffer_views = 1;
 	framebuffer_base = 0;
