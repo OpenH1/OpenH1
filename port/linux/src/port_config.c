@@ -782,7 +782,7 @@ static const struct config_setting config_settings[] =
 		"and the frames the hands take to move to it from the pose before (0:\n"
 		"none; a swing), the head lowered (metres, as a crouch), nodded\n"
 		"about the neck (degrees up) and moved in the room (metres forward\n"
-		"and right), each moved with the hands; poses separated by ';' (16 at\n"
+		"and right), each moved with the hands; poses separated by ';' (512 at\n"
 		"most) in turn.\n"
 		"Empty: the controllers' own." },
 	{ "debug.vr_throw_log", _config_boolean, "false", "HALO_VR_THROW_LOG", _environment_value, _platform_desktop,

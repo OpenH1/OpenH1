@@ -1141,24 +1141,35 @@ of the gun leading) melees, as B does (B still melees too). With the right
 grip held, a softer swing will do. A melee that lands on anything (a body,
 a wall, the ground) knocks the right controller.
 
-- Hard: the hand faster than 3 m/s; with the right grip squeezed, faster
-  than 1.8 m/s. Either for at least 10 cm and 40 ms of the swing (a twitch,
-  or the tracking jumping when it finds the controller again, is none).
+- Hard: the hand faster than 2.6 m/s; with the right grip squeezed, faster
+  than 1.8 m/s. Either for at least 10 cm, 40 ms and three frames of the
+  swing (a twitch, or the tracking jumping when it finds the controller
+  again, is none).
 - One melee a swing: the hand must slow down (below 1 m/s) before the next
   swing melees, and no sooner than 0.6 s after the last.
 - What is not a swing: the hand carried by your body or your head (a quick
-  turn to a new target, a step, crouching: its speed is counted from your
-  head as it moves and turns too), aiming (a sweep to a new target is
-  slower than a whack), and a hand going back toward your body (drawing
-  back, reaching over your shoulder).
-- Nor while your hand is at a holster or within 15 cm of one, reaching for
-  one (heading at it from within 70 cm), while your left hand holds a
-  grenade or a magazine, or for 0.4 s after any of those (drawing a gun,
-  the reload's push, the throw's swing; half a second after a draw).
-- The right grip's other uses: it draws a weapon from a holster (squeezed
-  at one, where a swing never melees) and, with the left grip, recentres
-  (held both for 0.75 s; a whack is far shorter). It closes no hand: the
-  right hand holds the weapon.
+  turn to a new target, a step, crouching: its speed from your head, as it
+  moves and turns too, is less than half its own), aiming (a sweep to a new
+  target is slower than a whack), and, the grip open as it begins, a hand
+  going back toward your body (drawing back, reaching to your hip or over
+  your shoulder for a holster, to grip there).
+- A swing past a holster or through one is a swing, whatever the right
+  grip does. A holster claims your hand only when you squeeze the grip in
+  it, the hand all but still there (slower than 2 m/s, and not in a swing
+  that has melee'd): that is a draw (or a grip on an empty holster), and no
+  swing melees while that grip is held, nor half a second after a draw,
+  nor the swing that brings the drawn weapon out, however long your hand
+  waits there. A grip squeezed by a swing passing through draws nothing,
+  nor does a grip held since before (a draw is a squeeze at the holster).
+  Held through a fast reach to a holster, the grip makes that reach a
+  swing: reach with it open, as a draw is.
+- Nor while your left hand throws a grenade (its swing and its release) or
+  holds a magazine, or for 0.4 s after (the throw's swing, the reload's
+  push). Holding a grenade before the throw does not keep the right hand
+  from meleeing.
+- The right grip's other use: with the left grip, it recentres (held both
+  for 0.75 s; a whack is far shorter). It closes no hand: the right hand
+  holds the weapon.
 - Only on foot, in play (not in a vehicle, the menus or a cinematic), with
   the controllers aiming (not `vr.aim = "gamepad"`). The swing presses the
   game's B, so it melees as B does in a network game too (the host is told
@@ -1276,9 +1287,11 @@ hip's does not: your hand passes by it and rests by it).
   the hip's at your right hip, about 70 cm below your eyes: from about
   20 cm away from either, your hand is there.
 - A gripping hand in the other holster (with nothing in it) does nothing.
-  A swing does not melee while your hand is at a holster or reaching for
-  one, nor for half a second after you draw (drawing is a fast move
-  forward).
+  A squeeze there draws only with the hand all but still: a swing passing
+  through, the grip squeezed or held, draws nothing (and melees: below). A
+  swing does not melee while the grip taken at a holster is held, nor for
+  half a second after you draw, nor as it brings the drawn weapon out
+  (drawing is a fast move forward).
 - Only on foot, with `vr.aim = "controller"`.
 
 #### Scopes (`vr.scopes`, `vr.scope_view`)
@@ -1644,7 +1657,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_turn` | `0.0` | `HALO_VR_TEST_TURN` | Turn the player this many degrees a second, for automated tests without hands. |
 | `debug.vr_test_jitter` | `0.0` | `HALO_VR_TEST_JITTER` | Move the head by up to this many millimetres (and turn it as many hundredths of a degree) at random each frame, as a worn headset moves: for automated tests of what flickers when the view barely moves. |
 | `debug.vr_test_head` | `""` | `HALO_VR_TEST_HEAD` | Hold the head still and level where it is first located (a simulated headset's head wobbles), for automated tests: `"0"`, or `"<degrees> <seconds>"` turns it left and right by as many degrees over as many seconds, smoothly (a sine of the frames' display times); `"<degrees> <seconds> <pitch>"` also pitches it up by as many degrees (less than 0: down), as looking down at the hip's holster. |
-| `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move[, down[, nod[, forward[, right]]]]]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right stick's click (zoom) 2048, the right trigger 65536, the left 131072, the right grip 262144, the right stick pushed down 524288), the right trigger's pull (0 to 1; less than 0, the index finger off the trigger, as when its touch senses none: "The trigger finger"), the head turned (degrees left), the frames the pose lasts (`0`: 288), the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps), the head lowered (metres, as a crouch; moved with the hands: below), nodded (degrees up, about the neck 8 cm behind and 15 cm below the eyes, as a person's lower neck: looking 60 degrees down, the eyes come 9 cm forward and 14 cm down) and moved in the room (metres forward and right, as a lean or a step from where the head was recentred), each with the hands. A pose shorter than 20 frames presses its buttons only as long. Up to 16 poses separated by `;` are taken in turn (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. Below, a grenade throw scripted. |
+| `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move[, down[, nod[, forward[, right]]]]]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right stick's click (zoom) 2048, the right trigger 65536, the left 131072, the right grip 262144, the right stick pushed down 524288), the right trigger's pull (0 to 1; less than 0, the index finger off the trigger, as when its touch senses none: "The trigger finger"), the head turned (degrees left), the frames the pose lasts (`0`: 288), the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps), the head lowered (metres, as a crouch; moved with the hands: below), nodded (degrees up, about the neck 8 cm behind and 15 cm below the eyes, as a person's lower neck: looking 60 degrees down, the eyes come 9 cm forward and 14 cm down) and moved in the room (metres forward and right, as a lean or a step from where the head was recentred), each with the hands. A pose shorter than 20 frames presses its buttons only as long. Up to 512 poses separated by `;` are taken in turn (a pose a frame, of 1 frame moved in 1, poses a path frame by frame: a swing's curve) (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. Below, a grenade throw scripted. |
 | `debug.vr_test_death` | `""` | `HALO_VR_TEST_DEATH` | Kill the first player, for automated tests of the view as they die: `"<seconds> [kill\|grenade\|watch]"`, that many seconds after they first aim (a level's clock does not start at 0), once a run, as the script's `unit_kill` does, by a frag grenade's blast half a metre before them (their shields and nearly all their health gone first: the body thrown back), or killed and then the dead camera turned to the nearest living biped, as network co-op's spectating turns it to a teammate. From a second before, the log says how far the view moved and turned each frame, how tinted, dimmed and dark it was, and where the body was from the eye (how far, across and up, in view or not), and each phase's sums (alive, dead, back) with how much of the motion was seen (between frames not in full darkness), and each blink; with `debug.screenshot_directory`, the eyes six times a second from the death to 1.5 s after the player is back (24 times in its first half second). With `debug.vr_test_head = "0"`, the motion the player did not make. |
 | `debug.vr_test_grenades` | `""` | `HALO_VR_TEST_GRENADES` | Give the first VR player these grenades as they first aim, for tests of the grenade held in the hand: `"<frags> <plasma grenades>"`. |
 | `debug.vr_test_finger` | `""` | `HALO_VR_TEST_FINGER` | The right index finger on the weapon's trigger instead of the weapon's own (`game/vr_hands.c`, `trigger_fingers`), for tests: `"<rest> <rest> <rest> <pull> <pull> <pull> [<travel> [<off> <off> <off>]]"`, its curl at each joint from the knuckle at rest, from the idle animation's (less than 0: straighter), and how much more at a full pull (radians), how far back the trigger goes (metres), and its curl off the trigger (the trigger's touch sensing no finger; a test pose's trigger less than 0). |
