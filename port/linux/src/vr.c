@@ -328,6 +328,21 @@ pulled low beside it); lifted (the game's action pressed), until let go */
 #define FLIP_IDLE 0
 #define FLIP_HOLDING 1
 #define FLIP_LIFTED 2
+/* grabbing the world (vr.grab_world, grab_update): a weapon the game offers
+to pick up is within the right hand's reach with the hand's grip within
+GRAB_REACH (metres) of it (of the line along it, less its thickness), a
+tick of the controller as the hand gets there; the right grip pulled past
+GRAB_GRIP_PRESSED there takes it, the hand all but still (slower than
+GRAB_STILL_SPEED, metres a second: a squeeze in a swing passing by is no
+grab), and not in a holster (a draw: holsters_update). A swing does not
+melee while that grip is held, nor for GRAB_NO_MELEE_MS after. The things
+told are the game's for GRAB_TOLD_FRAMES frames. */
+#define GRAB_REACH 0.20f
+#define GRAB_GRIP_PRESSED 0.6f
+#define GRAB_GRIP_RELEASED 0.3f
+#define GRAB_STILL_SPEED 2.0f
+#define GRAB_NO_MELEE_MS 500
+#define GRAB_TOLD_FRAMES 2
 /* the reload's feel in the hands, each a few pulses (their amplitude, their
 length and their start after the first, seconds), firmer and longer than the
 pouch's ticks (a tick as the hand gets there, a firmer one as it takes one,
@@ -715,6 +730,21 @@ static struct
 	float flip_times[FLIP_SAMPLES];
 	float flip_heights[2][FLIP_SAMPLES];
 	int flip_heights_valid[FLIP_SAMPLES];
+	/* the grab (grab_update): the things told (halo_vr_grab) and when
+	(vr.presents); the weapon the right hand is nearest and how far from
+	its reach, the one it is in reach of (-1 none), whether the right grip
+	was pressed last frame and was taken at a weapon (held since), the
+	weapon taken and not yet told to the game (-1 none), and when the last
+	was taken (GetTickCount) */
+	struct halo_vr_grab grab_told;
+	unsigned long grab_told_at;
+	long grab_nearest;
+	float grab_distance;
+	long grab_reach;
+	int grab_grip_pressed;
+	int grab_gripped;
+	long grab_taken;
+	unsigned long grab_ticks;
 	float depth_near, depth_far;
 	/* this frame's scope (halo_vr_scope), if it was drawn */
 	int scope_set;
@@ -764,6 +794,8 @@ static struct
 	"both") and a lift of both hands ("lift", "both") */
 	int flip_button;
 	int flip_lift;
+	/* vr.grab_world: the hands grab the world (a weapon on the ground) */
+	int grab_world;
 	/* vr.grenade_throw: the hand throws ("gesture", "both"), and not the
 	left trigger too ("gesture"); debug.vr_throw_log */
 	int throw_gesture;
@@ -899,6 +931,7 @@ static void settings_read(void)
 	settings.manual_reload = config_boolean("vr.manual_reload");
 	settings.flip_lift = strcmp(config_string("vr.vehicle_flip"), "button") != 0;
 	settings.flip_button = !settings.flip_lift || !strcmp(config_string("vr.vehicle_flip"), "both");
+	settings.grab_world = config_boolean("vr.grab_world");
 	settings.throw_log = config_boolean("debug.vr_throw_log");
 	settings.melee_log = config_boolean("debug.vr_melee_log");
 	settings.vehicle_first_person = strcmp(config_string("vr.vehicle_view"), "third_person") != 0;
@@ -1096,6 +1129,7 @@ int halo_vr_initialize(void)
 	acquired_clear();
 	vr_visor_initialize(&vr.info);
 	vr.trigger_touch_sensed = -1;
+	vr.grab_nearest = vr.grab_reach = vr.grab_taken = -1;
 	vr.initialized = 1;
 	vr.statistics = config_boolean("debug.gpu_stats");
 	platform_log("vr: %s, eyes %dx%d, %.0f Hz", vr.info.system_name, vr.info.eye_width, vr.info.eye_height,
@@ -1768,6 +1802,133 @@ static void holsters_update(float seconds)
 	}
 }
 
+/* how far a point is from the line between two others (metres) */
+static float segment_distance(const float point[3], const float a[3], const float b[3])
+{
+	float ab[3], ap[3], along = 0.0f, length;
+	int axis;
+
+	for (axis = 0; axis < 3; axis++)
+	{
+		ab[axis] = b[axis] - a[axis];
+		ap[axis] = point[axis] - a[axis];
+	}
+	length = ab[0] * ab[0] + ab[1] * ab[1] + ab[2] * ab[2];
+	if (length > 0.0f)
+	{
+		along = (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / length;
+		along = along < 0.0f ? 0.0f : along > 1.0f ? 1.0f : along;
+	}
+	for (axis = 0; axis < 3; axis++)
+		ap[axis] -= ab[axis] * along;
+	return length3(ap);
+}
+
+/* the grab, once a frame (vr.grab_world; GRAB_* above), after
+holsters_update, whose holsters keep the grip squeezed in them: the weapon
+on offer that the right hand reaches (a tick of its controller as it gets
+there), and its grip there taking it (the game presses its pick-up:
+vr_grab.c) */
+static void grab_update(void)
+{
+	const struct vr_host_pose *hand = &vr.views.grip[1];
+	/* (not a grip the lift of a vehicle has) */
+	int pressed = vr.input.right_grip > GRAB_GRIP_PRESSED && !vr.flip_grip[1];
+	int pressing = pressed && !vr.grab_grip_pressed;
+	int able = settings.grab_world && settings.controller_aim && vr.aimed && vr.crouch_able_frame && !vr.menus &&
+		vr.origin_valid && vr.presents - vr.grab_told_at <= GRAB_TOLD_FRAMES;
+	long reach = -1;
+	int index, axis;
+
+	if (pressed)
+		vr.grab_grip_pressed = 1;
+	else if (vr.input.right_grip < GRAB_GRIP_RELEASED)
+		vr.grab_grip_pressed = 0;
+	if (!vr.grab_grip_pressed)
+		vr.grab_gripped = 0;
+	vr.grab_nearest = -1;
+	vr.grab_distance = 1000.0f;
+	if (able && hand->valid)
+	{
+		float v[3], place[3];
+
+		for (axis = 0; axis < 3; axis++)
+			v[axis] = hand->position[axis] - vr.origin_position[axis];
+		game_axes(v, vr.origin_yaw, place);
+		for (index = 0; index < vr.grab_told.count; index++)
+		{
+			const struct halo_vr_grab_thing *thing = &vr.grab_told.things[index];
+			float distance;
+
+			if (thing->kind != HALO_VR_GRAB_WEAPON)
+				continue;
+			distance = segment_distance(place, thing->ends[0], thing->ends[1]) - thing->radius - GRAB_REACH;
+			if (distance < 0.0f)
+				distance = 0.0f;
+			if (distance < vr.grab_distance)
+			{
+				vr.grab_nearest = thing->object;
+				vr.grab_distance = distance;
+			}
+		}
+		if (vr.grab_nearest != -1 && vr.grab_distance <= 0.0f)
+			reach = vr.grab_nearest;
+	}
+	/* (a tick as the hand gets to a weapon) */
+	if (reach != -1 && reach != vr.grab_reach)
+		host_vr_haptic(1, 0.2f, 0.02f);
+	vr.grab_reach = reach;
+	if (!pressing || reach == -1)
+		return;
+	if (vr.holsters.reach != HALO_VR_HOLSTER_NONE)
+	{
+		platform_log("vr: grab: the grip at a weapon, in a holster too: the holster's");
+	}
+	else if (vr.hand_speed >= GRAB_STILL_SPEED || (vr.melee_swinging && vr.melee_fired))
+	{
+		platform_log("vr: grab: the grip at a weapon at %.1f m/s: a swing passing, not a grab", vr.hand_speed);
+	}
+	else
+	{
+		vr.grab_gripped = 1;
+		vr.grab_taken = reach;
+		vr.grab_ticks = GetTickCount();
+		host_vr_haptic(1, 0.5f, 0.05f);
+		platform_log("vr: grab: the grip takes the weapon %lx", (unsigned long)reach);
+	}
+}
+
+/* player_control.c, as the first player's input is read, each frame: the
+things to grab told, the right hand's reach given, and the weapon its grip
+took (once) */
+int halo_vr_grab(struct halo_vr_grab *grab)
+{
+	grab->enabled = 0;
+	grab->nearest = -1;
+	grab->distance = 1000.0f;
+	grab->taken = -1;
+	if (!vr.initialized)
+		return 0;
+	settings_read();
+	grab->world_units_per_metre = settings.world_scale / METRES_PER_WORLD_UNIT;
+	if (grab->count > HALO_VR_GRAB_THINGS)
+		grab->count = HALO_VR_GRAB_THINGS;
+	vr.grab_told.count = grab->count;
+	memcpy(vr.grab_told.things, grab->things, sizeof(*grab->things) * (size_t)grab->count);
+	vr.grab_told_at = vr.presents;
+	grab->enabled = settings.grab_world && settings.controller_aim && vr.aimed && vr.crouch_able_frame && !vr.menus;
+	if (!grab->enabled)
+	{
+		vr.grab_taken = -1;
+		return 1;
+	}
+	grab->nearest = vr.grab_nearest;
+	grab->distance = vr.grab_distance;
+	grab->taken = vr.grab_taken;
+	vr.grab_taken = -1;
+	return 1;
+}
+
 /* the physical crouch, once a frame (vr.physical_crouch; CROUCH_* above):
 the head low enough below the recentred eyes crouches, and back up near
 them stands; only while the game could crouch the player (on foot, the VR
@@ -2290,6 +2451,10 @@ static void melee_update(float seconds)
 		guard = "just after a lift";
 	else if (now - vr.holster_ticks < HOLSTER_NO_MELEE_MS)
 		guard = "just after drawing";
+	else if (vr.grab_gripped)
+		guard = "the grip taken at a weapon";
+	else if (vr.grab_ticks && now - vr.grab_ticks < GRAB_NO_MELEE_MS)
+		guard = "just after a grab";
 
 	/* the swing: from faster than MELEE_REARM_SPEED until slower again */
 	if (speed < MELEE_REARM_SPEED)
@@ -2869,6 +3034,7 @@ static void input_update(void)
 	body_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
 	flip_update(seconds);
 	holsters_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
+	grab_update();
 	reload_update();
 	haptics_update();
 	/* a swing of the right controller melees (vr.melee_gesture) */

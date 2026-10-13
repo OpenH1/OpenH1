@@ -4060,6 +4060,16 @@ static void player_set_action_result(
 	{
 		set_action = TRUE;
 	}
+#ifdef HALO_VR
+	/* port: the weapons on offer to the first player kept for the VR mode's
+	grab, and the one its right hand reaches for offered before the one
+	nearest the body (port/linux/game/vr_grab.c) */
+	{
+		extern boolean vr_grab_offer(long player_index, short action_result, long object_index, boolean set_action);
+
+		set_action = vr_grab_offer(player_index, action_result, object_index, set_action);
+	}
+#endif
 
 	if (set_action)
 	{

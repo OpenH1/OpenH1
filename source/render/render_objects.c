@@ -385,6 +385,9 @@ real_matrix4x3 const *first_person_legs_node_matrices(long object_index, real_ma
 #ifdef HALO_VR
 /* port: port/linux/game/vr_death.c */
 real_matrix4x3 const *vr_death_body_nodes(long object_index, real_matrix4x3 const *nodes);
+/* port: port/linux/game/vr_grab.c */
+boolean vr_grab_highlight(long object_index, struct render_lighting const *given, struct render_lighting *lighting,
+	struct render_model_effect *model_effect);
 #endif
 /* port: port/linux/game/shield_color.c */
 real_rgb_color const *shield_color_colors(long unit_index, real_rgb_color const *colors);
@@ -558,6 +561,10 @@ static void render_object_list(
 				struct object_definition *definition =
 					object_definition_get(object->definition_index);
 				real level_of_detail_pixels = object_get_level_of_detail_pixels(object_index);
+				struct render_lighting *lighting = data->lighting;
+#ifdef HALO_VR
+				struct render_lighting grab_lighting;
+#endif
 
 				match_assert(
 					"c:\\halo\\SOURCE\\render\\render_objects.c",
@@ -656,6 +663,13 @@ static void render_object_list(
 						}
 					}
 
+#ifdef HALO_VR
+					/* port: a weapon the VR mode's right hand reaches for, lit
+					up as the holsters' weapons are (port/linux/game/
+					vr_grab.c) */
+					if (vr_grab_highlight(object_index, data->lighting, &grab_lighting, &model_effect))
+						lighting = &grab_lighting;
+#endif
 					render_model(
 						definition->object.model.index,
 						level_of_detail_pixels,
@@ -663,7 +677,7 @@ static void render_object_list(
 						object->object.region_permutations,
 						object->object.outgoing_change_colors,
 						object->object.outgoing_function_values,
-						data->lighting,
+						lighting,
 						&object->object.bounding_sphere_center,
 						object->object.bounding_sphere_radius,
 						&model_effect,

@@ -24,7 +24,8 @@ shows on a weapon that is bright already, where a light alone barely
 does; it is the game's own shader, so no new assets. A unit with no
 plasma shield (a marine, a map's own biped) has the light alone. The
 reload by hand lights up its pouch and where the magazine goes the same way
-(vr_reload.c, vr_holster_highlight).
+(vr_reload.c, vr_holster_highlight), and the grab a weapon on the ground the
+right hand reaches for (vr_grab.c, vr_holster_highlight_object).
 */
 
 #ifdef HALO_VR
@@ -115,13 +116,15 @@ boolean vr_render_body_anchor(real_point3d *neck, real *yaw);
 void first_person_legs_vr_back(real_point3d const *anchor, real yaw, real_matrix4x3 *chest, real *back);
 void first_person_legs_vr_hips(real_point3d const *anchor, real yaw, real_point3d *middle, real *side);
 
-/* the highlights drawn in a frame: the stowed weapon's, and the reload's
-(vr_reload.c: its pouch, where the magazine goes) */
+/* the highlights drawn in a frame: the stowed weapon's, the reload's
+(vr_reload.c: its pouch, where the magazine goes), and the weapon on the
+ground the right hand reaches for (vr_grab.c) */
 enum
 {
 	_vr_highlight_holster = 0,
 	_vr_highlight_pouch,
 	_vr_highlight_well,
+	_vr_highlight_grab,
 	NUMBER_OF_VR_HIGHLIGHTS,
 };
 
@@ -292,17 +295,9 @@ boolean vr_holster_plasma_override(real_rgb_color const *colors, real_rgb_color 
 	return FALSE;
 }
 
-/* a model lit up as strong as this (0 to 1) for the unit's player, the
-world's units a metre: the shield's plasma over it (model_effect set to draw
-it, else none), and its light, the unit's, raised toward the highlight's
-colour (the light's, given) */
-static void vr_holster_light_up(short highlight, long unit_index, real strength, real units,
-	struct render_model_effect *model_effect, struct render_lighting *lighting)
+/* a light raised toward the highlight's colour, as strong as this (0 to 1) */
+static void vr_holster_raise_light(real strength, struct render_lighting *lighting)
 {
-	csmemset(model_effect, 0, sizeof(*model_effect));
-	model_effect->type = _render_model_effect_type_none;
-	vr_holster_plasma(highlight, unit_index, strength, units, model_effect);
-	*lighting = *object_get_cached_render_lighting(unit_index, FLT_MAX);
 	if (strength > 0.0f)
 	{
 		real light = strength * HIGHLIGHT_LIGHT;
@@ -315,6 +310,20 @@ static void vr_holster_light_up(short highlight, long unit_index, real strength,
 		lighting->reflection_tint_color.green += (highlight_color.green - lighting->reflection_tint_color.green) * light;
 		lighting->reflection_tint_color.blue += (highlight_color.blue - lighting->reflection_tint_color.blue) * light;
 	}
+}
+
+/* a model lit up as strong as this (0 to 1) for the unit's player, the
+world's units a metre: the shield's plasma over it (model_effect set to draw
+it, else none), and its light, the unit's, raised toward the highlight's
+colour (the light's, given) */
+static void vr_holster_light_up(short highlight, long unit_index, real strength, real units,
+	struct render_model_effect *model_effect, struct render_lighting *lighting)
+{
+	csmemset(model_effect, 0, sizeof(*model_effect));
+	model_effect->type = _render_model_effect_type_none;
+	vr_holster_plasma(highlight, unit_index, strength, units, model_effect);
+	*lighting = *object_get_cached_render_lighting(unit_index, FLT_MAX);
+	vr_holster_raise_light(strength, lighting);
 }
 
 /* vr_reload.c: its pouch (well: where the magazine goes) lit up as the
@@ -362,6 +371,26 @@ static void vr_holster_extent(long weapon_index, real units)
 	platform_log("vr holster: %s: %.2f m long, %.2f m across, its butt %.2f m behind its grip",
 		name, (vr_holster.extent_muzzle - vr_holster.extent_butt) / units,
 		(vr_holster.extent_left - vr_holster.extent_right) / units, -vr_holster.extent_butt / units);
+}
+
+/* vr_grab.c: a weapon in the world that the unit's player's right hand
+reaches for, lit up as the stowed one is as the hand comes (distance: the
+hand's from its reach, metres; 0 within it), the world's units a metre: the
+shield's plasma over it (model_effect's, else left as it is) and its own
+light (given) raised */
+void vr_holster_highlight_object(long unit_index, real distance, real units, struct render_model_effect *model_effect,
+	struct render_lighting *lighting)
+{
+	real strength;
+
+	if (distance <= 0.0f)
+		strength = 1.0f;
+	else if (distance < HIGHLIGHT_DISTANCE)
+		strength = (1.0f - distance / HIGHLIGHT_DISTANCE) * HIGHLIGHT_NEAR;
+	else
+		return;
+	vr_holster_plasma(_vr_highlight_grab, unit_index, strength, units, model_effect);
+	vr_holster_raise_light(strength, lighting);
 }
 
 /* first_person_weapons.c, as the first-person weapon is drawn (flags: its

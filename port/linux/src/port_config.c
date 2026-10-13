@@ -310,6 +310,11 @@ static const struct config_setting config_settings[] =
 		"by both hands, gripping low beside it (below the waist, out toward it,\n"
 		"as a bumper) and lifting together, fast (X reloads there); \"button\" by\n"
 		"X, as ever; \"both\" by either. With vr.aim = \"gamepad\", by X." },
+	{ "vr.grab_world", _config_boolean, "true", "HALO_VR_GRAB_WORLD", _environment_value, _platform_desktop,
+		"With vr.aim = \"controller\", the hands take hold of the world: a weapon\n"
+		"on the ground the game offers to pick up is taken by reaching down to it\n"
+		"with your right hand and gripping (it lights up as your hand comes, and\n"
+		"the controller ticks). false: X alone, which works either way." },
 	{ "vr.two_handed", _config_boolean, "true", "HALO_VR_TWO_HANDED", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", a long gun (not a pistol or the needler)\n"
 		"is aimed with both hands while the left grip holds it by the foregrip:\n"
@@ -920,6 +925,12 @@ static const struct config_setting config_settings[] =
 		"Put the first VR player's eye at \"<x> <y> <z>\" (world units) once they\n"
 		"have been on foot 2 s, once, for automated tests of the head in a wall\n"
 		"(vr.head_in_wall) with debug.vr_test_hands, which logs the test." },
+	{ "debug.vr_test_grab", _config_string, "\"\"", "HALO_VR_TEST_GRAB", _environment_value, _platform_desktop,
+		"Lay a weapon on the ground before the first VR player 3 s after they\n"
+		"first aim, once a map, the level's AI erased, for automated tests of\n"
+		"the grab: \"weapon <name> [<metres ahead> [<metres right>]]\", name a\n"
+		"part of the weapon's tag name (\"plasma rifle\"), 0.5 m ahead and\n"
+		"0.15 m right by default; empty none." },
 	{ "debug.vr_test_target", _config_string, "\"\"", "HALO_VR_TEST_TARGET", _environment_value, _platform_desktop,
 		"Place a still biped before the first VR player 3 s after they first aim\n"
 		"on foot (again 2 s after it dies), the level's AI erased, point the right\n"

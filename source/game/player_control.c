@@ -1602,6 +1602,17 @@ static void get_local_player_input_blob(
 					_unit_control_swap_weapons_bit,
 					effective_buttons[_button_action_reload] >=
 						constants->minimum_weapon_swap_ticks);
+#ifdef HALO_VR
+				/* port: and the VR mode's grab, a weapon on the ground taken
+				by the right hand, as X held (vr.grab_world,
+				port/linux/game/vr_grab.c) */
+				if (local_player_index == 0)
+				{
+					extern void vr_grab_input(long player_index, unsigned long *unit_control_flags);
+
+					vr_grab_input(player_index, &input->unit_control_flags);
+				}
+#endif
 				SET_FLAG(
 					input->unit_control_flags,
 					_unit_control_integrated_light_bit,

@@ -343,6 +343,43 @@ struct halo_vr_flip
 	int pressed;
 };
 
+/* grabbing the world with the hands (vr.grab_world, port/linux/game/
+vr_grab.c): a weapon on the ground the game offers to pick up, the right
+hand reaching to it and gripping takes it (the game's pick-up, as X held) */
+#define HALO_VR_GRAB_THINGS 8
+enum
+{
+	HALO_VR_GRAB_WEAPON = 1,
+};
+
+struct halo_vr_grab_thing
+{
+	/* HALO_VR_GRAB_*, and which (the game's object index, told back as it
+	is taken) */
+	int kind;
+	long object;
+	/* the line along it (its ends: game axes from the recentred head,
+	metres), and how far about that line it is (metres) */
+	float ends[2][3];
+	float radius;
+};
+
+struct halo_vr_grab
+{
+	/* told: the things to grab, this frame */
+	int count;
+	struct halo_vr_grab_thing things[HALO_VR_GRAB_THINGS];
+	/* given: the grab is on (vr.grab_world, the controller aiming, on
+	foot); the weapon the right hand is nearest (its object; -1 none) and
+	how far it is from its reach (metres; 0 within it); and the weapon its
+	grip took since the last call (-1 none); the world's units a metre */
+	int enabled;
+	long nearest;
+	float distance;
+	long taken;
+	float world_units_per_metre;
+};
+
 /* ---------- vr.c */
 
 /* the VR build with vr.enabled */
@@ -520,6 +557,11 @@ flips it given (0 when the VR mode is not running); and what flips one now
 (HALO_VR_FLIP_*: the button alone when the VR mode is not running) */
 int halo_vr_flip(struct halo_vr_flip *flip);
 int halo_vr_flips(void);
+
+/* the grab, once a frame (port/linux/game/vr_grab.c): the things to grab
+told, the right hand's reach and grip given (0 when the VR mode is not
+running) */
+int halo_vr_grab(struct halo_vr_grab *grab);
 
 /* the player, for the visor's effects (vr_visor.c) */
 void halo_vr_visor_state(const struct halo_vr_visor_state *state);
