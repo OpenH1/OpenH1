@@ -1,10 +1,10 @@
 /*
 VR_VEHICLE.C
 
-The VR mode's vehicles steered by their handlebars (HALO_VR;
-vr.ghost_steering, port/linux/README.md "VR"), for vr_render.c: the Ghost's
-driver seat now; a vehicle_bars entry adds another (the Warthog's wheel, the
-Banshee's).
+The VR mode's vehicles' seats ridden first-person (HALO_VR;
+vr.ghost_steering, vr.warthog_steering, port/linux/README.md "VR"), for
+vr_render.c: the Ghost's driver seat, steered by its handlebars, and the
+Warthog's, by its wheel; a vehicle_seats entry adds another (a Banshee's).
 
 Once seated (the eye in the seat, as vr_seat.c shows it after the blink
 in), the view turns with the vehicle: its heading is the vehicle's, as each
@@ -20,13 +20,22 @@ turned with it alone: the vehicle's pitching and rolling as it hovers (up to
 vehicle's middle, so a fifth of a metre up and down) reach it only slowly
 (VEHICLE_TILT_SECONDS), as a slope's, not its quick wobble.
 
-The handles' places, the model's markers for them, are given to src/vr.c
-each frame in the player's axes: it takes them as the grips close by them,
-draws each hand holding its handle on it (halo_vr_view; the first-person
-model, without its weapon, first_person_weapons.c), and steers by the bars
-between the hands (halo_vr_aim): the vehicle turns toward its heading
-turned as the bars ask, as the game turns it toward a driver's facing,
-which is all the netcode sends of it.
+The Warthog bounces on its suspension far more than a Ghost hovers (its
+pitch past 40 degrees, 35 degrees a second, on b30's beach): its tilt is let
+in more slowly, and the eye's height follows the vehicle's middle as a
+filter tracking its rise and fall (VEHICLE_BOUNCE_*: a climb, steady, it
+follows at once; the suspension's bounce it smooths), never more than
+VEHICLE_BOUNCE_LIMIT from it.
+
+The handles' places, the model's markers for them (a wheel's grips, which
+turn with the model's wheel as the game turns it), are given to src/vr.c each
+frame in the player's axes, with how a hand holding one is turned and a
+wheel's axis (from its node to its grips): it takes them as the grips close
+by them, draws each hand holding its handle on it (halo_vr_view; the
+first-person model, without its weapon, first_person_weapons.c), and steers
+by the bars or the wheel between the hands (halo_vr_aim): the vehicle turns
+toward its heading turned as they ask, as the game turns it toward a
+driver's facing, which is all the netcode sends of it.
 
 The switch from the player's own heading to the vehicle's is made as the
 eye moves into the seat, in the blink's dark; getting out, the player keeps
@@ -40,8 +49,12 @@ the vehicle's heading as it was.
 #include "game/game.h"
 #include "objects/objects.h"
 #include "tag_files/tag_files.h"
+#include "models/models.h"
+#include "objects/object_definitions.h"
 #include "units/units.h"
 #include "units/unit_definitions.h"
+#include "units/vehicle_datum.h"
+#include "units/vehicle_definitions.h"
 
 #include "../src/vr.h"
 
@@ -56,9 +69,14 @@ boolean vr_seat_seated_shown(void);
 /* the view's heading eased toward the vehicle's (the time constant,
 seconds): the game's ticks, blended, and a hover's wobble about its up */
 #define VEHICLE_HEADING_SECONDS 0.05f
-/* the eye's shift by the vehicle's tilt (from where it would be in the
-vehicle level) eased in over this time constant (seconds) */
-#define VEHICLE_TILT_SECONDS 0.3f
+/* the eye's height (a vehicle_seats entry's bounce): the vehicle's middle's
+tracked (an alpha-beta filter: its height and how fast it rises, corrected
+by VEHICLE_BOUNCE_ALPHA and VEHICLE_BOUNCE_BETA of what each frame tells
+them, at 72 frames a second), never more than VEHICLE_BOUNCE_LIMIT (metres)
+from it */
+#define VEHICLE_BOUNCE_ALPHA 0.08f
+#define VEHICLE_BOUNCE_BETA 0.004f
+#define VEHICLE_BOUNCE_LIMIT 0.15f
 /* the comfort vignette (vr.comfort_vignette) asked for: from nothing as the
 view turns at VIGNETTE_TURN_FROM radians a second to all of it at
 VIGNETTE_TURN_TO, and as the vehicle speeds up or slows (its speed along
@@ -70,19 +88,31 @@ VIGNETTE_SPEEDING_FROM to VIGNETTE_SPEEDING_TO; the more of the two */
 #define VIGNETTE_SPEEDING_FROM 6.0f
 #define VIGNETTE_SPEEDING_TO 16.0f
 
-/* the vehicles steered by handlebars: the part of the vehicle's tag name,
-the part of the seat's label, and the left and right handles' markers */
-static struct vehicle_bars
+/* the seats ridden first-person: the part of the vehicle's tag name, the
+part of the seat's label, its controls (HALO_VR_SEAT_*), the left and right
+handles' markers (none: NULL), a wheel's node (which its grips turn about),
+the time constant its tilt is let into the eye over (seconds), and whether
+the eye's height is filtered (its bounce) */
+static struct vehicle_seat
 {
 	char const *vehicle;
 	char const *seat;
+	short kind;
 	char const *handles[2];
-} const vehicle_bars[] =
+	char const *wheel;
+	real tilt_seconds;
+	boolean bounce;
+} const vehicle_seats[] =
 {
 	/* (the Ghost's, and the multiplayer maps' ghost_mp: its handles are the
 	Elite driver's hands' markers, where the Chief's hands are too as he
 	drives: the model has none of its own) */
-	{ "vehicles\\ghost\\ghost", "G-driver", { "left hand elite", "right hand elite" } },
+	{ "vehicles\\ghost\\ghost", "G-driver", HALO_VR_SEAT_BARS, { "left hand elite", "right hand elite" }, NULL,
+		0.3f, FALSE },
+	/* (the Warthog's, and the rocket Warthog's: its wheel turns on the model
+	as the game turns its wheels, the grips with it) */
+	{ "warthog\\", "W-driver", HALO_VR_SEAT_WHEEL, { "left hand wheel grip", "right hand wheel grip" },
+		"frame steering wheel", 0.5f, TRUE },
 };
 
 static struct
@@ -100,6 +130,12 @@ static struct
 	real bob_squares;
 	real bob_largest;
 	long bob_frames;
+	/* the eye's height as tracked (world units) and its rise (world units
+	a frame), and what that took out, as the tilt's */
+	real height;
+	real rise;
+	real bounce_squares;
+	real bounce_largest;
 	/* the vehicle's velocity at its last tick (world units a tick), that
 	tick, and its acceleration along the ground then (metres a second
 	squared) */
@@ -108,8 +144,8 @@ static struct
 	real speeding;
 } vr_vehicle = { NONE };
 
-/* the handlebars of the seat the unit is in, if it has any */
-static struct vehicle_bars const *vehicle_bars_find(long unit_index, long *vehicle_index)
+/* the seat the unit is in, if it is ridden first-person */
+static struct vehicle_seat const *vehicle_seat_find(long unit_index, long *vehicle_index)
 {
 	struct unit_datum *unit;
 	struct unit_definition *definition;
@@ -128,12 +164,23 @@ static struct vehicle_bars const *vehicle_bars_find(long unit_index, long *vehic
 		return NULL;
 	seat = TAG_BLOCK_GET_ELEMENT(&definition->unit.seats, unit->unit.parent_seat_index, struct unit_seat);
 	name = tag_get_name(object_get(*vehicle_index)->definition_index);
-	for (index = 0; index < (short)NUMBEROF(vehicle_bars); index++)
+	for (index = 0; index < (short)NUMBEROF(vehicle_seats); index++)
 	{
-		if (name && strstr(name, vehicle_bars[index].vehicle) && strstr(seat->label, vehicle_bars[index].seat))
-			return &vehicle_bars[index];
+		if (name && strstr(name, vehicle_seats[index].vehicle) && strstr(seat->label, vehicle_seats[index].seat))
+			return halo_vr_seat_enabled(vehicle_seats[index].kind) ? &vehicle_seats[index] : NULL;
 	}
 	return NULL;
+}
+
+/* a point (from the eye) or a direction in the world in the player's axes
+(forward, left, up: turned back by the view's heading; metres) */
+static void player_axes(real_vector3d const *v, real heading, real scale, float out[3])
+{
+	real c = (real)cos(heading), s = (real)sin(heading);
+
+	out[0] = (float)((v->i * c + v->j * s) * scale);
+	out[1] = (float)((-v->i * s + v->j * c) * scale);
+	out[2] = (float)(v->k * scale);
 }
 
 /* vr_render.c, each frame the view is drawn from a seat (seated_unit_index,
@@ -144,21 +191,24 @@ units: world units a metre); FALSE leaves the view's heading the player's */
 boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye, real units, real *base_yaw)
 {
 	long vehicle_index = NONE;
-	struct vehicle_bars const *bars;
+	struct vehicle_seat const *seat;
 	real_matrix4x3 const *root;
-	real heading, last_heading, c, s;
-	float handles[2][3];
+	real heading, last_heading;
+	struct halo_vr_seat placed;
+	struct object_marker markers[2];
 	short hand;
 
-	if (!halo_vr_handlebars_enabled() ||
-		(bars = vehicle_bars_find(seated_unit_index, &vehicle_index)) == NULL || !vr_seat_seated_shown())
+	if ((seat = vehicle_seat_find(seated_unit_index, &vehicle_index)) == NULL || !vr_seat_seated_shown())
 	{
 		if (vr_vehicle.vehicle_index != NONE)
 		{
-			platform_log("vr vehicle: the view turns as the player's again; the vehicle's tilt kept from the eye "
-				"over %ld frames: %.1f cm (RMS), %.1f cm at most", vr_vehicle.bob_frames,
+			platform_log("vr vehicle: the view turns as the player's again; kept from the eye over %ld frames, the "
+				"vehicle's tilt %.1f cm (RMS), %.1f cm at most, its bounce %.1f cm (RMS), %.1f cm at most",
+				vr_vehicle.bob_frames,
 				vr_vehicle.bob_frames ? (real)sqrt(vr_vehicle.bob_squares / vr_vehicle.bob_frames) * 100.0f : 0.0f,
-				vr_vehicle.bob_largest * 100.0f);
+				vr_vehicle.bob_largest * 100.0f,
+				vr_vehicle.bob_frames ? (real)sqrt(vr_vehicle.bounce_squares / vr_vehicle.bob_frames) * 100.0f : 0.0f,
+				vr_vehicle.bounce_largest * 100.0f);
 		}
 		vr_vehicle.vehicle_index = NONE;
 		return FALSE;
@@ -172,7 +222,7 @@ boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye,
 		the tilt let in slowly */
 		real_vector3d offset, local, tilt;
 		real hc = (real)cos(heading), hs = (real)sin(heading);
-		real ease = seconds > 0.0f ? 1.0f - (real)exp(-seconds / VEHICLE_TILT_SECONDS) : 0.0f;
+		real ease = seconds > 0.0f ? 1.0f - (real)exp(-seconds / seat->tilt_seconds) : 0.0f;
 		real_point3d level;
 
 		vector_from_points3d(&root->position, eye, &offset);
@@ -207,14 +257,40 @@ boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye,
 		eye->x = level.x + vr_vehicle.tilt.i;
 		eye->y = level.y + vr_vehicle.tilt.j;
 		eye->z = level.z + vr_vehicle.tilt.k;
+		if (seat->bounce)
+		{
+			/* (its height: the vehicle's middle's tracked, its bounce smoothed,
+			its climbs followed) */
+			real limit = VEHICLE_BOUNCE_LIMIT * units, off;
+
+			if (vr_vehicle.vehicle_index != vehicle_index)
+			{
+				vr_vehicle.height = root->position.z;
+				vr_vehicle.rise = 0.0f;
+			}
+			else
+			{
+				real predicted = vr_vehicle.height + vr_vehicle.rise, residual = root->position.z - predicted;
+
+				vr_vehicle.height = predicted + VEHICLE_BOUNCE_ALPHA * residual;
+				vr_vehicle.rise += VEHICLE_BOUNCE_BETA * residual;
+			}
+			off = PIN(vr_vehicle.height - root->position.z, -limit, limit);
+			vr_vehicle.height = root->position.z + off;
+			eye->z += off;
+			vr_vehicle.bounce_squares += off / units * off / units;
+			vr_vehicle.bounce_largest = MAX(vr_vehicle.bounce_largest, (real)fabs(off) / units);
+		}
 	}
 	if (vr_vehicle.vehicle_index != vehicle_index)
 	{
-		platform_log("vr vehicle: %s's handlebars: the view turns with it (from %.0f degrees to its %.0f)",
-			tag_get_name(object_get(vehicle_index)->definition_index), *base_yaw * 57.29578f, heading * 57.29578f);
+		platform_log("vr vehicle: %s's %s seat: the view turns with it (from %.0f degrees to its %.0f)",
+			tag_get_name(object_get(vehicle_index)->definition_index), seat->seat, *base_yaw * 57.29578f,
+			heading * 57.29578f);
 		vr_vehicle.vehicle_index = vehicle_index;
 		vr_vehicle.heading = heading;
 		vr_vehicle.bob_squares = vr_vehicle.bob_largest = 0.0f;
+		vr_vehicle.bounce_squares = vr_vehicle.bounce_largest = 0.0f;
 		vr_vehicle.bob_frames = 0;
 		vr_vehicle.velocity_tick = NONE;
 		vr_vehicle.speeding = 0.0f;
@@ -256,35 +332,85 @@ boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye,
 	}
 	*base_yaw = vr_vehicle.heading;
 
-	/* the handles, from the eye in the player's axes (forward, left, up:
-	turned back by the view's heading), in metres */
-	c = (real)cos(vr_vehicle.heading);
-	s = (real)sin(vr_vehicle.heading);
-	for (hand = 0; hand < 2; hand++)
+	/* the seat for src/vr.c: its handles, from the eye in the player's axes
+	(forward, left, up: turned back by the view's heading), in metres, how a
+	hand holding one is turned, a wheel's axis; the heading the game steers
+	from (the vehicle's at its last tick, not as drawn a tick behind and
+	eased), which way it goes, and its wheels' lock */
+	memset(&placed, 0, sizeof(placed));
+	placed.kind = seat->kind;
+	placed.heading = (float)vr_vehicle.heading;
 	{
-		struct object_marker marker;
+		struct vehicle_datum *vehicle = (struct vehicle_datum *)object_get(vehicle_index);
+		/* (the tag's turn block, vehicles.c's struct vehicle_definition's
+		unknown308 and unknown30c: its wheels' lock left and right, degrees) */
+		real const *turn = (real const *)((char const *)tag_get(VEHICLE_DEFINITION_TAG,
+			object_get(vehicle_index)->definition_index) + 0x308);
+
+		placed.steer_heading = (float)atan2(vehicle->object.forward.j, vehicle->object.forward.i);
+		placed.steer_sign = vehicle->vehicle.speed < 0.0f ? -1.0f : 1.0f;
+		placed.lock[0] = (float)fabs(turn[0]) * 0.017453292f;
+		placed.lock[1] = (float)fabs(turn[1]) * 0.017453292f;
+	}
+	placed.handles_valid = seat->handles[0] != NULL;
+	for (hand = 0; hand < 2 && placed.handles_valid; hand++)
+	{
 		real_vector3d d;
 
-		if (object_get_marker_by_name(vehicle_index, bars->handles[hand], &marker, 1) < 1)
+		if (object_get_marker_by_name(vehicle_index, seat->handles[hand], &markers[hand], 1) < 1)
 		{
 			if (vr_vehicle.handles_found)
-				platform_log("vr vehicle: no \"%s\" marker on the vehicle", bars->handles[hand]);
+				platform_log("vr vehicle: no \"%s\" marker on the vehicle", seat->handles[hand]);
 			vr_vehicle.handles_found = FALSE;
-			return TRUE;
+			placed.handles_valid = FALSE;
+			break;
 		}
-		vector_from_points3d(eye, &marker.matrix.position, &d);
-		handles[hand][0] = (float)((d.i * c + d.j * s) / units);
-		handles[hand][1] = (float)((-d.i * s + d.j * c) / units);
-		handles[hand][2] = (float)(d.k / units);
+		vector_from_points3d(eye, &markers[hand].matrix.position, &d);
+		player_axes(&d, vr_vehicle.heading, 1.0f / units, placed.handles[hand]);
 	}
-	/* (and the heading the game steers from: the vehicle's at its last
-	tick, not as drawn a tick behind and eased) */
+	/* (held along the vehicle, upright; on a wheel, into it, along its rim) */
+	placed.handle_forward[0] = 1.0f;
+	placed.handle_up[2] = 1.0f;
+	if (seat->wheel && placed.handles_valid)
 	{
-		real_vector3d const *forward = &object_get(vehicle_index)->object.forward;
+		short node_index = model_find_node(object_definition_get(object_get(vehicle_index)->definition_index)->object.model.index,
+			seat->wheel);
+		real_point3d const *centre;
+		real_vector3d to_left, to_right, axis, across, up;
 
-		halo_vr_handlebars_place(handles[0], handles[1], (float)vr_vehicle.heading,
-			(float)atan2(forward->j, forward->i));
+		if (node_index == NONE)
+		{
+			if (vr_vehicle.handles_found)
+				platform_log("vr vehicle: no \"%s\" node on the vehicle", seat->wheel);
+			vr_vehicle.handles_found = FALSE;
+			placed.handles_valid = FALSE;
+		}
+		else
+		{
+			/* (its axis: across its grips about its middle, toward the driver) */
+			centre = &object_get_node_matrix(vehicle_index, node_index)->position;
+			vector_from_points3d(centre, &markers[0].matrix.position, &to_left);
+			vector_from_points3d(centre, &markers[1].matrix.position, &to_right);
+			cross_product3d(&to_left, &to_right, &axis);
+			if (normalize3d(&axis) <= 0.0f)
+				axis = root->forward;
+			{
+				real_vector3d to_eye;
+
+				vector_from_points3d(centre, eye, &to_eye);
+				if (dot_product3d(&axis, &to_eye) < 0.0f)
+					axis.i = -axis.i, axis.j = -axis.j, axis.k = -axis.k;
+			}
+			vector_from_points3d(&markers[0].matrix.position, &markers[1].matrix.position, &across);
+			cross_product3d(&axis, &across, &up);
+			normalize3d(&up);
+			player_axes(&axis, vr_vehicle.heading, 1.0f, placed.wheel_axis);
+			axis.i = -axis.i, axis.j = -axis.j, axis.k = -axis.k;
+			player_axes(&axis, vr_vehicle.heading, 1.0f, placed.handle_forward);
+			player_axes(&up, vr_vehicle.heading, 1.0f, placed.handle_up);
+		}
 	}
+	halo_vr_seat_place(&placed);
 	return TRUE;
 }
 

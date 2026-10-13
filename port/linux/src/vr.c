@@ -110,26 +110,41 @@ trigger senses no touch; it comes on and off over TRIGGER_TOUCH_SECONDS */
 #define MELEE_HIT_SECONDS 0.06f
 /* holding both grips this long recentres, or a gamepad's Back (View) */
 #define RECENTRE_SECONDS 0.75f
-/* a vehicle steered by its handlebars (vr.ghost_steering = "handlebars": the
-Ghost's driver seat, port/linux/game/vr_vehicle.c, which places the handles
-each frame and turns the view with the vehicle): each hand takes its handle
-as its grip closes past HANDLEBAR_GRIP_PRESSED within HANDLEBAR_REACH of it
-(metres; the hand is then drawn on it), and lets go below
-HANDLEBAR_GRIP_RELEASED. With both held, the bars' turn (the line between
-the hands, turned about the vehicle's up from straight across, less
-HANDLEBAR_DEADZONE radians: hands are never quite still) asks for a turn of
-HANDLEBAR_TURN_RATE times as many radians a second, HANDLEBAR_TURN_FASTEST
-at most, as a bike's bars do; the facing is the vehicle's heading turned by
-as much as keeps the Ghost turning so (the game turns it toward the facing
-at the lesser of sqrt(2 a e) and e / 2 radians a tick for an error of e,
-a being HANDLEBAR_GHOST_TURN_ACCELERATION, update_alien_scout_physics: held
-off its heading as it turns, the error stays, and so does the turn), and
-pitched as the hands are, from how they pointed as they took hold (within
-HANDLEBAR_PITCH_LIMIT radians). Turned by the bars themselves, the Ghost
-turned as fast as it can, past 100 degrees a second for a 35 degree turn of
-the bars. Let go, the turn and the pitch ease out over
-HANDLEBAR_RELEASE_SECONDS (the time constant): the vehicle holds its
-course. A placing older than HANDLEBAR_PLACED_FRAMES frames is no seat. */
+/* a vehicle's seat ridden first-person (port/linux/game/vr_vehicle.c, which
+places it each frame and turns the view with the vehicle: the stick turns
+nothing there), and its controls (HALO_VR_SEAT_*): a Ghost's handlebars
+(vr.ghost_steering = "handlebars"), a Warthog's wheel (vr.warthog_steering =
+"wheel"), a turret's handles, or none (a passenger's: the hands as on foot).
+Each hand takes its handle as its grip closes past HANDLEBAR_GRIP_PRESSED
+within HANDLEBAR_REACH of it (metres; the hand is then drawn on it), and
+lets go below HANDLEBAR_GRIP_RELEASED; both hands on them are not a
+recentring. With both held:
+- the handlebars' turn (the line between the hands, turned about the
+  vehicle's up from straight across, less HANDLEBAR_DEADZONE radians: hands
+  are never quite still) asks for a turn of HANDLEBAR_TURN_RATE times as
+  many radians a second, HANDLEBAR_TURN_FASTEST at most, as a bike's bars
+  do; the facing is the vehicle's heading turned by as much as keeps the
+  Ghost turning so (the game turns it toward the facing at the lesser of
+  sqrt(2 a e) and e / 2 radians a tick for an error of e, a being
+  HANDLEBAR_GHOST_TURN_ACCELERATION, update_alien_scout_physics: held off
+  its heading as it turns, the error stays, and so does the turn), and
+  pitched as the hands are, from how they pointed as they took hold (within
+  HANDLEBAR_PITCH_LIMIT radians). Turned by the bars themselves, the Ghost
+  turned as fast as it can, past 100 degrees a second for a 35 degree turn
+  of the bars;
+- the wheel's turn (the line between the hands, turned about the wheel's
+  axis from where it was as both took hold, less HANDLEBAR_DEADZONE) turns
+  the vehicle's wheels by a WHEEL_RATIO'th of it, to their lock (the
+  vehicle's tag's, the Warthog's 30 degrees either way): the game turns
+  them to the facing's error itself (vehicle_update, the other way as it
+  reverses), so the facing is the heading turned so (WHEEL_RATIO is a car's
+  steering made quick for arms that do not cross: the Warthog's wheels
+  turn it some 80 degrees a second at speed for 7 of them);
+- a turret's handles steer nothing: the right controller aims it, as it
+  aims a weapon.
+Let go, the turn and the pitch ease out over HANDLEBAR_RELEASE_SECONDS (the
+time constant): the vehicle holds its course. A placing older than
+HANDLEBAR_PLACED_FRAMES frames is no seat. */
 #define HANDLEBAR_GRIP_PRESSED 0.6f
 #define HANDLEBAR_GRIP_RELEASED 0.3f
 #define HANDLEBAR_REACH 0.30f
@@ -141,6 +156,7 @@ course. A placing older than HANDLEBAR_PLACED_FRAMES frames is no seat. */
 #define HANDLEBAR_PITCH_LIMIT 0.6f
 #define HANDLEBAR_RELEASE_SECONDS 0.15f
 #define HANDLEBAR_PLACED_FRAMES 2
+#define WHEEL_RATIO 4.0f
 /* the comfort vignette (vr.comfort_vignette): eased toward what the game
 asks for over VIGNETTE_IN_SECONDS as it grows and VIGNETTE_OUT_SECONDS as it
 falls (time constants), to nothing when the game asks for none */
@@ -423,14 +439,15 @@ static struct
 	float aim_line_forward[3];
 	/* a vehicle's handlebars: when they were placed last (vr.presents), the
 	handles (game axes from the recentred head, metres), each hand's hold,
-	the vehicle's heading as the game has it now, which the bars steer
-	from, the turn and pitch they steer by now (radians: the facing's from
-	that heading), and how the hands pointed as both took hold (their
-	pitch) */
+	the seat as placed (its controls, the vehicle's heading as the game has
+	it now, which the bars and the wheel steer from), the turn and pitch
+	they steer by now (radians: the facing's from that heading), how the
+	hands pointed as both took hold (their pitch), and the line between
+	them then across the wheel's axis */
 	unsigned long bars_placed;
 	int bars_placed_valid;
-	float bars_handles[2][3];
-	float bars_steer_heading;
+	struct halo_vr_seat seat;
+	float bars_wheel_zero[3];
 	int bars_held[2];
 	float bars_turn;
 	float bars_pitch;
@@ -688,8 +705,10 @@ static struct
 	/* debug.vr_melee_log: the swings that did not melee too */
 	int melee_log;
 	int vehicle_first_person;
-	/* vr.ghost_steering = "handlebars", vr.comfort_vignette */
+	/* vr.ghost_steering = "handlebars", vr.warthog_steering = "wheel",
+	vr.comfort_vignette */
 	int handlebars;
+	int wheel;
 	int comfort_vignette;
 	float test_turn;
 	float test_jitter;
@@ -813,6 +832,7 @@ static void settings_read(void)
 	settings.melee_log = config_boolean("debug.vr_melee_log");
 	settings.vehicle_first_person = strcmp(config_string("vr.vehicle_view"), "third_person") != 0;
 	settings.handlebars = strcmp(config_string("vr.ghost_steering"), "look") != 0;
+	settings.wheel = strcmp(config_string("vr.warthog_steering"), "look") != 0;
 	settings.comfort_vignette = config_boolean("vr.comfort_vignette");
 	settings.test_turn = (float)config_real("debug.vr_test_turn") * (float)M_PI / 180.0f;
 	settings.test_jitter = (float)config_real("debug.vr_test_jitter") * 0.001f;
@@ -2444,8 +2464,24 @@ int halo_vr_flips(void)
 /* in a seat steered by handlebars, placed this frame or the last */
 static int handlebars_active(void)
 {
-	return settings.handlebars && settings.controller_aim && vr.bars_placed_valid &&
-		vr.presents - vr.bars_placed <= HANDLEBAR_PLACED_FRAMES;
+	return settings.controller_aim && vr.bars_placed_valid && vr.presents - vr.bars_placed <= HANDLEBAR_PLACED_FRAMES;
+}
+
+/* and steered by its controls (the bars, a wheel), the hands on them
+(drawn on them when held), and both hands holding them */
+static int seat_steers(void)
+{
+	return handlebars_active() && (vr.seat.kind == HALO_VR_SEAT_BARS || vr.seat.kind == HALO_VR_SEAT_WHEEL);
+}
+
+static int seat_hands(void)
+{
+	return handlebars_active() && vr.seat.kind != HALO_VR_SEAT_RIDE && vr.seat.handles_valid;
+}
+
+static int seat_held(void)
+{
+	return seat_hands() && vr.bars_held[0] && vr.bars_held[1];
 }
 
 /* a hand's place (grip), and its pointing's pitch (radians), in the game's
@@ -2465,6 +2501,24 @@ static int bars_hand(int hand, float place[3], float *pitch)
 	game_axes(v, vr.origin_yaw, f);
 	*pitch = asinf(f[2] < -1.0f ? -1.0f : f[2] > 1.0f ? 1.0f : f[2]);
 	return 1;
+}
+
+/* the line between the hands (the left's to the right's), across the
+wheel's axis: in its plane, of length 1 */
+static void wheel_line(float place[2][3], float line[3])
+{
+	const float *n = vr.seat.wheel_axis;
+	float d[3], along, length;
+	int axis;
+
+	for (axis = 0; axis < 3; axis++)
+		d[axis] = place[1][axis] - place[0][axis];
+	along = d[0] * n[0] + d[1] * n[1] + d[2] * n[2];
+	for (axis = 0; axis < 3; axis++)
+		line[axis] = d[axis] - along * n[axis];
+	length = length3(line);
+	for (axis = 0; axis < 3; axis++)
+		line[axis] = length > 0.0f ? line[axis] / length : 0.0f;
 }
 
 /* the facing's turn from the vehicle's heading (radians) that keeps it
@@ -2492,7 +2546,7 @@ static void handlebars_update(float seconds)
 	int hand, both, was_both = vr.bars_held[0] && vr.bars_held[1];
 	float ease = 1.0f - expf(-seconds / HANDLEBAR_RELEASE_SECONDS);
 
-	if (!handlebars_active())
+	if (!seat_hands())
 	{
 		vr.bars_held[0] = vr.bars_held[1] = 0;
 		vr.bars_turn = vr.bars_pitch = 0.0f;
@@ -2506,25 +2560,51 @@ static void handlebars_update(float seconds)
 		if (vr.bars_held[hand] && (grips[hand] < HANDLEBAR_GRIP_RELEASED || !valid))
 		{
 			vr.bars_held[hand] = 0;
-			platform_log("vr: handlebars: the %s hand lets go", hand ? "right" : "left");
+			platform_log("vr: %s: the %s hand lets go", vr.seat.kind == HALO_VR_SEAT_WHEEL ? "wheel" : vr.seat.kind ==
+				HALO_VR_SEAT_TURRET ? "turret" : "handlebars", hand ? "right" : "left");
 		}
 		else if (!vr.bars_held[hand] && valid && grips[hand] > HANDLEBAR_GRIP_PRESSED)
 		{
 			for (axis = 0; axis < 3; axis++)
-				v[axis] = place[hand][axis] - vr.bars_handles[hand][axis];
+				v[axis] = place[hand][axis] - vr.seat.handles[hand][axis];
 			if (length3(v) < HANDLEBAR_REACH)
 			{
 				vr.bars_held[hand] = 1;
 				host_vr_haptic(hand, 0.3f, 0.02f);
-				platform_log("vr: handlebars: the %s hand takes its handle (%.2f m from it)", hand ? "right" : "left",
-					length3(v));
+				platform_log("vr: %s: the %s hand takes its handle (%.2f m from it, at %.2f %.2f %.2f m: forward, left, "
+					"up of the recentred head)", vr.seat.kind == HALO_VR_SEAT_WHEEL ? "wheel" : vr.seat.kind ==
+					HALO_VR_SEAT_TURRET ? "turret" : "handlebars", hand ? "right" : "left", length3(v),
+					vr.seat.handles[hand][0], vr.seat.handles[hand][1], vr.seat.handles[hand][2]);
 			}
 		}
 	}
 	both = vr.bars_held[0] && vr.bars_held[1];
 	if (both && !was_both)
+	{
 		vr.bars_pitch_zero = (pitch[0] + pitch[1]) * 0.5f;
-	if (both)
+		wheel_line(place, vr.bars_wheel_zero);
+	}
+	if (both && vr.seat.kind == HALO_VR_SEAT_WHEEL)
+	{
+		/* (the wheel's turn about its axis from where it was taken hold of,
+		counterclockwise as the driver sees it to the left) */
+		float line[3], c[3], turn, lock;
+
+		wheel_line(place, line);
+		c[0] = vr.bars_wheel_zero[1] * line[2] - vr.bars_wheel_zero[2] * line[1];
+		c[1] = vr.bars_wheel_zero[2] * line[0] - vr.bars_wheel_zero[0] * line[2];
+		c[2] = vr.bars_wheel_zero[0] * line[1] - vr.bars_wheel_zero[1] * line[0];
+		turn = atan2f(c[0] * vr.seat.wheel_axis[0] + c[1] * vr.seat.wheel_axis[1] + c[2] * vr.seat.wheel_axis[2],
+			line[0] * vr.bars_wheel_zero[0] + line[1] * vr.bars_wheel_zero[1] + line[2] * vr.bars_wheel_zero[2]);
+		turn = fabsf(turn) <= HANDLEBAR_DEADZONE ? 0.0f : turn - (turn > 0.0f ? HANDLEBAR_DEADZONE : -HANDLEBAR_DEADZONE);
+		turn /= WHEEL_RATIO;
+		lock = turn > 0.0f ? vr.seat.lock[0] : vr.seat.lock[1];
+		if (fabsf(turn) > lock)
+			turn = turn > 0.0f ? lock : -lock;
+		vr.bars_turn = turn * vr.seat.steer_sign;
+		vr.bars_pitch = 0.0f;
+	}
+	else if (both && vr.seat.kind == HALO_VR_SEAT_BARS)
 	{
 		/* (the bars' turn: the line from the left hand to the right, straight
 		across when it points right, turned left as the right hand comes
@@ -2537,7 +2617,7 @@ static void handlebars_update(float seconds)
 		vr.bars_pitch = tilt < -HANDLEBAR_PITCH_LIMIT ? -HANDLEBAR_PITCH_LIMIT :
 			tilt > HANDLEBAR_PITCH_LIMIT ? HANDLEBAR_PITCH_LIMIT : tilt;
 	}
-	else
+	else if (!both)
 	{
 		/* (let go: the course held, the turn easing out) */
 		vr.bars_turn -= vr.bars_turn * ease;
@@ -2545,32 +2625,23 @@ static void handlebars_update(float seconds)
 	}
 }
 
-void halo_vr_handlebars_place(const float left[3], const float right[3], float heading, float steer_heading)
+void halo_vr_seat_place(const struct halo_vr_seat *seat)
 {
 	if (!vr.initialized)
 		return;
-	vr.bars_steer_heading = steer_heading;
-	memcpy(vr.bars_handles[0], left, sizeof(vr.bars_handles[0]));
-	memcpy(vr.bars_handles[1], right, sizeof(vr.bars_handles[1]));
+	if (seat->kind != vr.seat.kind || !handlebars_active())
+		vr.bars_held[0] = vr.bars_held[1] = 0;
+	vr.seat = *seat;
 	vr.bars_placed = vr.presents;
 	vr.bars_placed_valid = 1;
 	/* (the view, the aim and the hands turn with the vehicle) */
-	vr.body_yaw = heading;
+	vr.body_yaw = seat->heading;
 }
 
-int halo_vr_handlebars(int held[2], float handles[2][3])
+int halo_vr_seat_enabled(int kind)
 {
-	if (!vr.initialized || !handlebars_active())
-		return 0;
-	held[0] = vr.bars_held[0];
-	held[1] = vr.bars_held[1];
-	memcpy(handles, vr.bars_handles, sizeof(vr.bars_handles));
-	return 1;
-}
-
-int halo_vr_handlebars_enabled(void)
-{
-	return vr.initialized && settings.handlebars && settings.controller_aim;
+	return vr.initialized && settings.controller_aim &&
+		(kind == HALO_VR_SEAT_BARS ? settings.handlebars : kind == HALO_VR_SEAT_WHEEL ? settings.wheel : 1);
 }
 
 /* the comfort vignette, once a frame (VIGNETTE_* above) */
@@ -2664,7 +2735,7 @@ static void input_update(void)
 	/* (not while the left hand holds a long gun's foregrip, nor while
 	either grip holds a vehicle to lift it, nor on a Ghost's handlebars) */
 	if (vr.input.left_grip > 0.8f && vr.input.right_grip > 0.8f && !vr.two_handed && !vr.flip_grip[0] &&
-		!vr.flip_grip[1] && !handlebars_active())
+		!vr.flip_grip[1] && !seat_steers() && !seat_held())
 	{
 		vr.recentre_time += seconds;
 		if (vr.recentre_time >= RECENTRE_SECONDS && vr.recentre_time - seconds < RECENTRE_SECONDS)
@@ -3684,25 +3755,25 @@ int halo_vr_view(struct halo_vr_view *view)
 	view->left_grip = vr.input.left_grip;
 	/* (on a vehicle's handlebars: each hand holding its handle on it, along
 	the vehicle (the player's axes are turned with it), its fingers about it) */
-	view->handlebars = handlebars_active() && view->floating_hands && view->controller_aim;
+	view->handlebars = seat_hands() && view->floating_hands && view->controller_aim;
 	if (view->handlebars)
 	{
-		static const float along[3] = { 1.0f, 0.0f, 0.0f }, upright[3] = { 0.0f, 0.0f, 1.0f };
+		const float *along = vr.seat.handle_forward, *upright = vr.seat.handle_up;
 
 		if (vr.bars_held[1])
 		{
-			memcpy(view->right_grip_position, vr.bars_handles[1], sizeof(view->right_grip_position));
-			memcpy(view->hand_forward, along, sizeof(along));
-			memcpy(view->hand_up, upright, sizeof(upright));
+			memcpy(view->right_grip_position, vr.seat.handles[1], sizeof(view->right_grip_position));
+			memcpy(view->hand_forward, along, sizeof(view->hand_forward));
+			memcpy(view->hand_up, upright, sizeof(view->hand_up));
 			view->right_trigger = 1.0f;
 			view->right_trigger_touch = 1.0f;
 		}
 		if (vr.bars_held[0])
 		{
 			view->left_hand_valid = 1;
-			memcpy(view->left_grip_position, vr.bars_handles[0], sizeof(view->left_grip_position));
-			memcpy(view->left_hand_forward, along, sizeof(along));
-			memcpy(view->left_hand_up, upright, sizeof(upright));
+			memcpy(view->left_grip_position, vr.seat.handles[0], sizeof(view->left_grip_position));
+			memcpy(view->left_hand_forward, along, sizeof(view->left_hand_forward));
+			memcpy(view->left_hand_up, upright, sizeof(view->left_hand_up));
 			view->left_grip = 1.0f;
 		}
 	}
@@ -3762,18 +3833,18 @@ int halo_vr_aim(float current_yaw, int long_gun, float *yaw, float *pitch)
 	/* on a vehicle's handlebars: where the bars point, from between the
 	handles, along the vehicle's heading (the view's) turned and pitched as
 	the bars are; let go, the turn easing out, and no line (no reticle) */
-	if (handlebars_active())
+	if (seat_steers())
 	{
 		/* (from the vehicle's heading as the game has it, not the view's,
 		eased after it: the turn is the game's error) */
-		float turn = remainderf(vr.bars_steer_heading - vr.body_yaw, 2.0f * (float)M_PI) + vr.bars_turn;
+		float turn = remainderf(vr.seat.steer_heading - vr.body_yaw, 2.0f * (float)M_PI) + vr.bars_turn;
 
 		if (vr.bars_held[0] && vr.bars_held[1])
 		{
 			int axis;
 
 			for (axis = 0; axis < 3; axis++)
-				vr.aim_line_position[axis] = (vr.bars_handles[0][axis] + vr.bars_handles[1][axis]) * 0.5f;
+				vr.aim_line_position[axis] = (vr.seat.handles[0][axis] + vr.seat.handles[1][axis]) * 0.5f;
 			vr.aim_line_forward[0] = cosf(vr.bars_pitch) * cosf(turn);
 			vr.aim_line_forward[1] = cosf(vr.bars_pitch) * sinf(turn);
 			vr.aim_line_forward[2] = sinf(vr.bars_pitch);

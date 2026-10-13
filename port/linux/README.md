@@ -1156,6 +1156,7 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | D-pad (left controller), View, Menu | The menus' d-pad, Back (scoreboard), Start (pause) |
 | Both grips, held | Recentre: the head's place and heading become the player's eye and facing (not while the left hand holds a foregrip, nor while the hands hold a vehicle to lift it, nor on a Ghost's handlebars) |
 | Both grips on a Ghost's handles, turned as a bike's | Steer it, its guns aiming where the bars point (`vr.ghost_steering`, below) |
+| Both grips on a Warthog's wheel, turned as a car's | Steer it (`vr.warthog_steering`, below) |
 | A gamepad's Back (View), held 1 s | Recentre, as both grips do |
 
 Other controllers that SteamVR maps to the Touch layout operate as well
@@ -1571,8 +1572,42 @@ jump brakes (the Ghost has no boost).
   steers so as a client too.
 - `"look"`: the Ghost steers and aims where the right controller points, as
   any other vehicle does, and the view turns with the stick, not the Ghost.
-- Only with `vr.aim = "controller"`; other vehicles are as before (the
-  Warthog's wheel and the Banshee are to come).
+- Only with `vr.aim = "controller"`; the Warthog's driver seat is steered
+  by its wheel (below); other vehicles are as before (the Banshee is to
+  come).
+
+#### Driving a Warthog by its wheel (`vr.warthog_steering`)
+
+In a Warthog's driver seat, take its wheel with both hands and turn it as a
+car's: the Warthog's wheels turn, and it turns as they do. The left stick
+throttles (and reverses) as ever, jump brakes.
+
+- Take hold: squeeze each grip with the hand near its side of the wheel
+  (within 30 cm of the wheel's grips: about 70 cm before your eyes and 25 cm
+  below them, 29 cm apart), a tick in that hand; from then on that hand is
+  drawn on the wheel, closed about its rim, and turns with it.
+- Steer: with both hands on, turn the wheel (the line from your left hand
+  to your right, turned about the wheel's axis from where it was as you took
+  hold) and the Warthog's front wheels turn a quarter as far, to their
+  lock (30 degrees either way: the wheel turned 120 degrees), the rear ones
+  the other way, as the game steers them; how fast it turns is its speed's
+  doing, as a car's: at 20 m/s, 10 degrees of its wheels (40 of yours)
+  turn it some 80 degrees a second. Reversing, it turns the other way, as a
+  car does. 2 degrees of your wheel either way are straight.
+- Let go of either grip and the wheel comes back straight over a few tenths
+  of a second: the Warthog holds its course.
+- The model's wheel turns as the game turns the Warthog's wheels (its
+  "frame steering wheel", by the game's steering animation), and your hands
+  with it.
+- The ride is the Ghost's (the view turns with the Warthog, level; the
+  vignette), for the Warthog's suspension: its pitch and roll (past 40
+  degrees on b30's beach) reach your eye over half a second, and your eye's
+  height follows its middle smoothly (its climbs at once, its bounce
+  smoothed, never more than 15 cm off).
+- The steering is the driver's facing, the game's own (the game turns the
+  wheels toward the facing), which is all a network game sends of it.
+- `"look"`: the Warthog steers where the right controller points, as before,
+  the view turned by the stick. Only with `vr.aim = "controller"`.
 
 #### Your body (`display.first_person_legs`)
 
@@ -1765,6 +1800,7 @@ headset's session is opened with, apply from the next start.
 | `vr.hands` | `"arms"` | `HALO_VR_HANDS` | With `vr.aim = "controller"`: each first-person hand where its controller is (the right holding the weapon, its index finger on the trigger as far as the trigger is pulled; the left open, closing as the grip is pulled, and on a long gun's foregrip while it holds it). `"arms"`: the arms reach the hands from the shoulders (`vr.shoulders`). `"floating"`: no arms above the wrists. `"game"`: the game's arms, posed from the weapon in the right hand. A hand whose controller is not tracked is not drawn, nor its arm. In a cinematic seen from the player's head the hands are the controllers' too, acting on nothing (above, "Cinematics seen from your own head"). |
 | `vr.shoulders` | `"0.19, -0.20, -0.07"` | `HALO_VR_SHOULDERS` | With `vr.hands = "arms"`: where each shoulder is from the eyes, in metres: out to its side, up, forward, turned with the body (the holsters' heading: it faces where the head does, follows it past a 40 degree turn, and slowly). From the eyes as they would be with the head level and turned with the body: the shoulders hang from the neck, so a nod or a turn of the head does not move them. |
 | `vr.vehicle_view` | `"first_person"` | `HALO_VR_VEHICLE_VIEW` | `"first_person"`: in a vehicle's seat, the view is from the seated player's head, level with the horizon. `"third_person"`: the game's camera following the vehicle. |
+| `vr.warthog_steering` | `"wheel"` | `HALO_VR_WARTHOG_STEERING` | With `vr.aim = "controller"`, in a Warthog's driver seat: `"wheel"`, grip its wheel and turn it to steer, the view turning with the Warthog ("Driving a Warthog by its wheel"); `"look"`, it steers where the right controller points, the view turned by the stick. |
 | `vr.ghost_steering` | `"handlebars"` | `HALO_VR_GHOST_STEERING` | With `vr.aim = "controller"`, in a Ghost's driver seat: `"handlebars"`, grip its handles and turn them to steer, the view turning with the Ghost ("Driving a Ghost by its handlebars"); `"look"`, it steers and aims where the right controller points, the view turned by the stick. |
 | `vr.comfort_vignette` | `true` | `HALO_VR_COMFORT_VIGNETTE` | The edges of the view dim a little while the view turns fast with a Ghost steered by its handlebars, or it speeds up or slows hard. |
 | `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, the eye stays put in the vehicle, riding with it but not with the body climbing in and out, a turret's turning or flinches, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
@@ -2278,6 +2314,19 @@ supersampling costs as above, and multisampling the eye pass
   `src/d3d8_gl.c`) multiplies each eye's image by a dimming beyond 50
   degrees from that eye's own middle (30 at its strongest) over 22
   degrees, by 65% at most, eased in over 0.12 s and out over 0.4 s.
+  The Warthog's driver seat is the same seat (`vehicle_seats` in
+  `vr_vehicle.c`, `struct halo_vr_seat`), steered by its wheel: the handles
+  are its "left hand wheel grip" and "right hand wheel grip" markers, on
+  its "frame steering wheel" node, which the game's steering animation
+  turns; the wheel's axis is the cross of its grips about that node, toward
+  the driver; the wheel's turn is the hands' line's about it from where it
+  was as both took hold, and a quarter of it, to the tag's lock (30
+  degrees), is the facing's error from the Warthog's heading (with the sign
+  of its `vehicle.speed`): `vehicle_update` turns the wheels to that error
+  itself (`update_human_jeep_physics` steers the front pair by it and the
+  rear the other way). Its tilt is let in over 0.5 s, and its eye's height
+  is an alpha-beta filter's of its root node's (0.08 and 0.004 a frame),
+  within 15 cm of it.
 - Where the eye would jump more than 0.1 m (into the seat once seated, back
   to the player's own eye once out, to the game's camera following the
   vehicle or, with `vr.death_view = "game"`, the dead's, and back), it

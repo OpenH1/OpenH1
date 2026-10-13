@@ -105,10 +105,11 @@ struct halo_vr_view
 	/* vr.gamepad_view = "camera": the view is pitched with the facing too
 	(before the head's turn), as the flat screen's camera is */
 	int gamepad_pitch;
-	/* in a seat steered by handlebars (vr.ghost_steering): the hands are on
-	them, each hand that holds its handle placed there (its grip's place and
-	its pointing the handle's, upright along the vehicle, its fingers closed
-	about it), the other where its controller is */
+	/* in a vehicle's seat with handles (vr_vehicle.c: a Ghost's handlebars, a
+	Warthog's wheel, its turret's handles): the hands are on them, each hand
+	that holds its handle placed there (its grip's place and its pointing the
+	handle's, its fingers closed about it), the other where its controller
+	is, and no weapon drawn */
 	int handlebars;
 	/* the HUD on the visor (vr.hud = "visor"): curved about the eyes, laid
 	out in angles, hud_half_angles across and up (radians); its camera
@@ -368,17 +369,42 @@ the world; 0 without it. The game aims from its own eye at where this line
 meets the world (port/linux/game/vr_aim.c), so that the shot goes where the
 reticle is, not along a line beside it. */
 int halo_vr_aim_line(float position[3], float forward[3], float *body_yaw);
-/* a vehicle steered by its handlebars (vr.ghost_steering = "handlebars";
-port/linux/game/vr_vehicle.c): whether that is on; each frame in a seat
-steered so, the handles' places (game axes from the recentred head,
-metres) and the heading the view turns with the vehicle (radians, the
-world's: the turn of the player's axes, which the stick turns on foot); and
-whether the player is on them, with which hand holding its handle (each
-hand is drawn on its handle). The bars steer from steer_heading, the
-vehicle's as the game has it this tick (the view's is eased after it). */
-int halo_vr_handlebars_enabled(void);
-void halo_vr_handlebars_place(const float left[3], const float right[3], float heading, float steer_heading);
-int halo_vr_handlebars(int held[2], float handles[2][3]);
+/* a vehicle's seat ridden first-person (port/linux/game/vr_vehicle.c),
+placed each frame: its controls (HALO_VR_SEAT_*: none, a passenger's or a
+gunner's hands as on foot; a Ghost's handlebars, a Warthog's wheel, which
+steer; a turret's handles, which the hands hold as it aims where the right
+controller points), the handles' places (left, right: the game's axes from
+the recentred head, metres; handles_valid FALSE: none) and how a hand
+holding one is turned (its forward and up, the player's axes), a wheel's
+axis (toward the driver), the heading the view turns with the vehicle
+(radians, the world's: the turn of the player's axes, which the stick turns
+on foot), the vehicle's as the game has it this tick (the view's is eased
+after it), which the controls steer from, -1 while it reverses (a wheel
+turns it the other way), else 1, and its wheels' lock (radians, left and
+right). Whether vr.c rides and steers such a seat (vr.ghost_steering,
+vr.warthog_steering, vr.aim) */
+enum
+{
+	HALO_VR_SEAT_RIDE,
+	HALO_VR_SEAT_BARS,
+	HALO_VR_SEAT_WHEEL,
+	HALO_VR_SEAT_TURRET,
+};
+struct halo_vr_seat
+{
+	int kind;
+	int handles_valid;
+	float handles[2][3];
+	float handle_forward[3];
+	float handle_up[3];
+	float wheel_axis[3];
+	float heading;
+	float steer_heading;
+	float steer_sign;
+	float lock[2];
+};
+int halo_vr_seat_enabled(int kind);
+void halo_vr_seat_place(const struct halo_vr_seat *seat);
 /* the smart-link's view on the visor magnifies the aim this many times
 this frame (1: it is not shown), told by the game (vr_aim.c): the aim is
 steadied the more, the more it is magnified */

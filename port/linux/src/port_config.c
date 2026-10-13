@@ -327,6 +327,12 @@ static const struct config_setting config_settings[] =
 		"handles with both hands and turn them as a bike's, the view turning with\n"
 		"the Ghost and its guns aiming where the bars point; \"look\" it steers and\n"
 		"aims where the right controller points, the view turned by the stick." },
+	{ "vr.warthog_steering", _config_string, "\"wheel\"", "HALO_VR_WARTHOG_STEERING", _environment_value,
+		_platform_desktop,
+		"Driving a Warthog with vr.aim = \"controller\": \"wheel\" grip its wheel\n"
+		"with both hands and turn it, the view turning with the Warthog;\n"
+		"\"look\" it steers where the right controller points, the view turned\n"
+		"by the stick." },
 	{ "vr.comfort_vignette", _config_boolean, "true", "HALO_VR_COMFORT_VIGNETTE", _environment_value, _platform_desktop,
 		"The edges of your view dim a little while the view turns fast with a\n"
 		"vehicle you steer by its handlebars (vr.ghost_steering), or it speeds\n"
