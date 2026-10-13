@@ -251,7 +251,8 @@ ticks its controller, a tick each HOLSTER_NEAR_SLOWEST seconds at that
 distance down to each HOLSTER_NEAR_FASTEST at the reach, and stronger (as
 strong as holster_near_amplitude says, there and at the reach), until the
 tick of the reach. Not the hip's, which the hand passes and rests by, and
-which the eyes find. */
+which the eyes find. Nor while the hand aims (holster_near_aiming): a long
+gun held close, the hand up by the shoulder, is not a reach for it. */
 #define HOLSTER_NEAR_DISTANCE 0.30f
 #define HOLSTER_NEAR_SLOWEST 0.25f
 #define HOLSTER_NEAR_FASTEST 0.06f
@@ -1569,6 +1570,16 @@ static void body_eyes(float eyes[3])
 	body_place(head, forward, up, neck, eyes);
 }
 
+/* the right hand aiming its weapon, not reaching for the shoulder's holster:
+the left hand on its foregrip, the trigger pulled at all, or the index
+finger on it where the trigger senses a finger (a reach is made with the
+finger off it) */
+static int holster_near_aiming(void)
+{
+	return vr.two_handed || vr.input.right_trigger > 0.05f ||
+		(vr.trigger_touch_sensed == 1 && vr.input.right_trigger_touch > 0);
+}
+
 /* the holsters, once a frame (vr.holsters; HOLSTER_* above): where they
 are on the body, the right hand reaching into one (a tick of its
 controller), and its grip there drawing the stowed weapon */
@@ -1637,7 +1648,7 @@ static void holsters_update(float seconds)
 	if (reach != h->reach && reach != HALO_VR_HOLSTER_NONE && reach == vr.holster_stowed)
 		host_vr_haptic(1, 0.2f, 0.02f);
 	if (reach == HALO_VR_HOLSTER_NONE && vr.holster_stowed == HALO_VR_HOLSTER_BACK &&
-		h->distance[HALO_VR_HOLSTER_BACK] < HOLSTER_NEAR_DISTANCE)
+		h->distance[HALO_VR_HOLSTER_BACK] < HOLSTER_NEAR_DISTANCE && !holster_near_aiming())
 	{
 		float near = 1.0f - h->distance[HALO_VR_HOLSTER_BACK] / HOLSTER_NEAR_DISTANCE;
 
