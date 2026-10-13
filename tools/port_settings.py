@@ -293,13 +293,18 @@ VR_SCREENS = {
 VR_SCREENS["vr_visor"] = {
     "screen": "vr_visor_screen",
     "header": ("header_vr_display", f"{PE}/vr_display/header_vr_display"),
-    "spacing": 28,
+    # (ten rows: closer than VR Display's 28px, the help line lower)
+    "spacing": 26,
+    "help_top": 366,
     "rows": [
         ("HUD:", "vr.hud", [("VISOR", "visor"), ("FLAT", "flat")],
          "On your helmet's visor, curved about your eyes,\nor a flat screen before them.", None),
         ("HUD DEPTH:", "vr.hud_depth",
          [("NONE", "0"), *((f"{depth:g}X", f"{depth:g}") for depth in (0.5, 0.75, 1, 1.25, 1.5, 2))],
          "How far apart in depth the HUD's parts are: the\ntracker nearest, the waypoints farthest.", None),
+        ("HUD WRAP:", "vr.hud_wrap",
+         [("NONE", "0"), *((f"{round(wrap * 100)}%", f"{wrap:g}") for wrap in (0.5, 1, 1.5, 2))],
+         "The HUD's corners turned out along the visor's\ncurve, toward the edges of your view.", None),
         ("HUD LAG:", "vr.hud_lag",
          [("NONE", "0"), *((f"{round(lag * 1000)} MS", f"{lag:g}") for lag in (0.02, 0.03, 0.05, 0.08, 0.12))],
          "How far the HUD trails your head's turns.", None),

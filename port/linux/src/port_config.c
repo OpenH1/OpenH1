@@ -369,6 +369,11 @@ static const struct config_setting config_settings[] =
 		_platform_desktop,
 		"With vr.hud = \"visor\" and vr.hud_depth, how far the motion tracker\n"
 		"tilts back, in degrees (-45 to 45)." },
+	{ "vr.hud_wrap", _config_real, "1.0", "HALO_VR_HUD_WRAP", _environment_value, _platform_desktop,
+		"With vr.hud = \"visor\" and vr.hud_depth, the HUD's corners along the\n"
+		"visor's curve: the weapon's, the shields' and the motion tracker's panels\n"
+		"turned out toward the edges of your view, bending as the visor does (0\n"
+		"where the game puts them, to 2)." },
 	{ "vr.hud_glow", _config_real, "0.5", "HALO_VR_HUD_GLOW", _environment_value, _platform_desktop,
 		"With vr.hud = \"visor\", the HUD's glow on the visor (0 none to 1)." },
 	{ "vr.helmet_rim", _config_real, "1.0", "HALO_VR_HELMET_RIM", _environment_value, _platform_desktop,

@@ -47,6 +47,11 @@ struct vr_visor_panel
 	float half_size[2];
 	/* metres from the middle of the head */
 	float distance;
+	/* along the visor's curve (vr.hud_wrap): its region turned across and
+	up (radians), and bent, its angle up less by this times the square of
+	its angle across (the angles from the HUD's middle; 0 for the world's
+	panel) */
+	float wrap[3];
 };
 
 /* the helmet's rim (vr.helmet_rim): the faceplate's lip about the visor,

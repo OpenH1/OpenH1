@@ -6505,7 +6505,8 @@ On the visor (vr_visor.c) the copy curves it about the eyes: each of the
 layer's pixels is a direction from the head, whose angles across and up are
 where it is in the HUD (a cylinder layer is in angles across already). A
 panel's pixels are directions through its plane, which faces the head from
-where its region of the HUD is, tilted as it is; its region alone is shown.
+where its region of the HUD is, tilted as it is; its region alone is shown,
+turned and bent along the visor's curve as vr_visor.c has it (its wrap).
 The HUD's light glows about it on the glass (a soft ring of its own
 colour), and it flickers as the shields break. FALSE if the copy's program
 cannot be made. */
@@ -6515,7 +6516,7 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 	static GLuint program, sampler;
 	static BOOL failed;
 	static GLint size_location, curve_location, angles_location, extent_location, opacity_location, glow_location;
-	static GLint centre_location, right_location, up_location, region_location;
+	static GLint centre_location, right_location, up_location, region_location, wrap_location;
 	static const char vertex_source[] =
 		"#version 450 core\n"
 		"void main()\n"
@@ -6538,6 +6539,8 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		"uniform vec4 right_axis;\n"
 		"uniform vec4 up_axis;\n"
 		"uniform vec4 region;\n"
+		/* (its turn across and up along the visor's curve, and its bend) */
+		"uniform vec4 wrap;\n"
 		"out vec4 colour;\n"
 		"void main()\n"
 		"{\n"
@@ -6556,6 +6559,8 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		"		{\n"
 		"			vec3 d = normalize(centre.xyz + right_axis.xyz * s.x + up_axis.xyz * s.y);\n"
 		"			angles = vec2(atan(d.x, -d.z), atan(d.y, length(d.xz)));\n"
+		"			angles.x -= wrap.x;\n"
+		"			angles.y += wrap.z * angles.x * angles.x - wrap.y;\n"
 		"		}\n"
 		"		uv = vec2(0.5, 0.5) + vec2(0.5, -0.5) * angles / half_angles;\n"
 		"		if (uv.x < region.x || uv.y < region.y || uv.x > region.z || uv.y > region.w)\n"
@@ -6615,6 +6620,7 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		right_location = glGetUniformLocation(program, "right_axis");
 		up_location = glGetUniformLocation(program, "up_axis");
 		region_location = glGetUniformLocation(program, "region");
+		wrap_location = glGetUniformLocation(program, "wrap");
 		/* (nothing past the HUD's edges, where the curve and the glow reach) */
 		glGenSamplers(1, &sampler);
 		glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -6645,10 +6651,12 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		vr_uniform3(right_location, panel->right);
 		vr_uniform3(up_location, panel->up);
 		glUniform4fv(region_location, 1, panel->region);
+		vr_uniform3(wrap_location, panel->wrap);
 	}
 	else
 	{
 		static const float ahead[3] = { 0.0f, 0.0f, -1.0f }, across[3] = { 1.0f, 0.0f, 0.0f }, up[3] = { 0.0f, 1.0f, 0.0f };
+		static const float straight[3] = { 0.0f, 0.0f, 0.0f };
 
 		glUniform1f(curve_location, (GLfloat)look->curve);
 		glUniform2f(extent_location, look->extent[0], look->extent[1]);
@@ -6656,6 +6664,7 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		vr_uniform3(right_location, across);
 		vr_uniform3(up_location, up);
 		glUniform4fv(region_location, 1, none);
+		vr_uniform3(wrap_location, straight);
 	}
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, source);

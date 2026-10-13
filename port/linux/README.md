@@ -1480,7 +1480,8 @@ game plays in VR) sets most of these with the left d-pad: VR Controls
 punch, the holsters, the physical crouch, the scopes (smart-link, at the eye or off), reloading by hand, turning, the vehicles' view and the view as you die) and, from its last row, VR Display (the play position,
 the eye height, the world's scale, the HUD's and the menus' distance and
 size, the resolution and the refresh rate) and, from its last row, its
-visor page (the HUD on the visor or flat, its depth, lag and glow, the
+visor page (the HUD on the visor or flat, its depth, its wrap along the
+visor, its lag and glow, the
 helmet's rim and its depth, the glass's shade, the shields' effects and
 the strength of their energy). OK writes them to
 `config.toml`, and they apply at once, but those marked RESTART:
@@ -1522,6 +1523,7 @@ headset's session is opened with, apply from the next start.
 | `vr.hud_depth` | `1.0` | `HALO_VR_HUD_DEPTH` | With `vr.hud = "visor"`: how far apart in depth the HUD's parts are, times their own distances from the HUD's (the four below), from `0` (all at `vr.hud_distance`, one layer) to `2`. Never nearer than 1 m. |
 | `vr.hud_depth_tracker`, `vr.hud_depth_status`, `vr.hud_depth_weapon`, `vr.hud_depth_world` | `-0.55`, `-0.35`, `-0.25`, `0.5` | `HALO_VR_HUD_DEPTH_TRACKER`, `HALO_VR_HUD_DEPTH_STATUS`, `HALO_VR_HUD_DEPTH_WEAPON`, `HALO_VR_HUD_DEPTH_WORLD` | The distances from the HUD's (metres, at `vr.hud_depth` 1; nearer less than 0) of the motion tracker; the shields and the health; the weapon, its ammunition and the grenades; and the waypoints and the players' names. At the defaults: 1.45, 1.65, 1.75 and 2.5 m, the rest of the HUD (the crosshair, the messages) 2 m. |
 | `vr.hud_tracker_tilt` | `20.0` | `HALO_VR_HUD_TRACKER_TILT` | How far the motion tracker tilts back, in degrees (-45 to 45). |
+| `vr.hud_wrap` | `1.0` | `HALO_VR_HUD_WRAP` | With `vr.hud = "visor"` and `vr.hud_depth` above `0`: the HUD's corners along the visor's curve, from `0` (where the game puts them, as before) to `2`. At `1` the weapon's panel (its ammunition and the grenades), the shields' and the motion tracker's turn out from the HUD's middle by 7 degrees across and 5 up or down, toward the edges of the view where a glance finds them, and bend as the visor's brow and chin do: falling away toward the sides above (rising, below), by a quarter of the square of their angle across (the shields' meter, from its inner end to its outer, about 3 degrees). The waypoints, the names and the HUD's middle stay where they are. |
 | `vr.hud_glow` | `0.5` | `HALO_VR_HUD_GLOW` | With `vr.hud = "visor"`: the HUD's glow on the glass, from `0` (none) to `1`. |
 | `vr.helmet_rim` | `1.0` | `HALO_VR_HELMET_RIM` | With `vr.hud = "visor"`: the helmet's faceplate about the visor, from `0` (none) to `1`: its lip at the very edges of the view, in depth, the brow and the chin, never a frame. |
 | `vr.helmet_rim_depth`, `vr.helmet_rim_reach` | `0.10`, `0.07` | `HALO_VR_HELMET_RIM_DEPTH`, `HALO_VR_HELMET_RIM_REACH` | How far before the eyes the rim's lip is (metres, `0.05` to `0.25`), and how far in from the edges of the view it begins (a fraction of them, `0` to `0.2`): at the defaults, about 2 degrees of each eye's view at its outer edge, its top and its bottom (the log says how much). |
@@ -1678,7 +1680,13 @@ supersampling costs as above, and multisampling the eye pass
   quad of its own (four more layers, `VR_SWAPCHAIN_PANEL`), its region of
   the HUD curved in its image as the HUD is, at its own distance, placed
   with the HUD's layer: from the head, each element is where it was, only
-  nearer or farther, and the waypoints stay on what they mark. Quads,
+  nearer or farther, and the waypoints stay on what they mark. The
+  corners' panels follow the visor's curve (`vr.hud_wrap`): each is turned
+  out from the HUD's middle toward its own corner, and its region bent
+  (its angle up less by its bend times the square of its angle across, as
+  the brow falls away), the panel's quad placed and sized for the turned
+  and bent region and the copy undoing both for each pixel, so that its
+  elements keep their sizes and only move and curve. Quads,
   which every runtime has; the stereo depth is the compositor's, and the
   HUD's pixels never enter the eyes' images, whose depth is the world's.
   The visor's glass is 0.105 m before the head, on the head exactly

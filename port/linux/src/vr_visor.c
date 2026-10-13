@@ -32,6 +32,10 @@ that each element is where it was in the HUD seen from the middle of the
 head, only nearer or farther: the motion tracker nearest, tilted back as a
 console is, the shields and the weapon's panels before the HUD's middle,
 the waypoints and the players' names beyond it, toward the world they mark.
+The corners' panels follow the visor's curve (vr.hud_wrap): turned out
+toward the edges of the view, where a glance finds them, and bent as the
+visor's brow and chin are (the shields' meter falls away toward its outer
+end), each element as large as ever.
 Every panel is placed with the HUD's layer, a moment behind the head. Quad
 layers, which every runtime has (SteamVR on the Steam Frame has no
 cylinders): the compositor gives each its stereo depth, and the HUD's
@@ -119,6 +123,7 @@ static struct
 	tracker's tilt (radians) */
 	float panel_offset[VR_PANEL_COUNT];
 	float tracker_tilt;
+	float wrap;
 	float rim, rim_depth, rim_reach;
 	float energy;
 } settings = { (unsigned long)-1 };
@@ -144,6 +149,15 @@ static const struct
 #define TRACKER_PANEL 3
 /* the most a panel tilts (radians), for its image's size */
 #define TILT_MOST 0.8f
+/* the corners' panels along the visor's curve (vr.hud_wrap, at 1): turned
+outward from the HUD's middle by these angles across and up or down
+(radians), and bent as the visor's brow and chin are, falling away (or
+rising, below) toward the sides by this much of the square of their angle
+across (radians for a radian squared); the most of vr.hud_wrap */
+#define WRAP_ACROSS (7.0f * (float)M_PI / 180.0f)
+#define WRAP_UP (5.0f * (float)M_PI / 180.0f)
+#define WRAP_BEND 0.25f
+#define WRAP_MOST 2.0f
 
 static struct
 {
@@ -207,6 +221,7 @@ static void settings_read(void)
 			settings.panel_offset[index] = clamp((float)config_real(panel_layout[index].offset), -1.0f, 2.0f);
 	}
 	settings.tracker_tilt = clamp((float)config_real("vr.hud_tracker_tilt"), -45.0f, 45.0f) * (float)M_PI / 180.0f;
+	settings.wrap = clamp((float)config_real("vr.hud_wrap"), 0.0f, WRAP_MOST);
 	settings.rim = clamp((float)config_real("vr.helmet_rim"), 0.0f, 1.0f);
 	settings.rim_depth = clamp((float)config_real("vr.helmet_rim_depth"), 0.05f, 0.25f);
 	settings.rim_reach = clamp((float)config_real("vr.helmet_rim_reach"), 0.0f, 0.2f);
@@ -537,10 +552,37 @@ static void normalize(float v[3])
 	}
 }
 
+/* how a panel follows the visor's curve (vr.hud_wrap): its turn across and
+up from where the game has it, and its bend (vr_visor_panel's wrap). The
+waypoints' and the names' panel is the world's, and stays on what it
+marks; the others are the corners', each turned toward its own. */
+static void panel_wrap(int index, float wrap, float out[3])
+{
+	const float *region = panel_layout[index].region;
+	float across = region[0] + region[2] < 1.0f ? -1.0f : 1.0f, up = region[1] + region[3] < 1.0f ? 1.0f : -1.0f;
+
+	out[0] = out[1] = out[2] = 0.0f;
+	if (panel_layout[index].group == HALO_VR_HUD_GROUP_WORLD)
+		return;
+	out[0] = across * wrap * WRAP_ACROSS;
+	out[1] = up * wrap * WRAP_UP;
+	out[2] = up * wrap * WRAP_BEND;
+}
+
+/* the direction of a point of the HUD (its angles across and up) on a
+panel that follows the visor's curve (panel_wrap): turned, then bent, its
+angle up less (or more, below) by the bend times the square of its angle
+across, as the visor's brow falls away toward the sides; the copy (d3d8_gl.c)
+undoes it */
+static void wrapped_direction(float across, float up, const float wrap[3], float out[3])
+{
+	angles_direction(across + wrap[0], up + wrap[1] - wrap[2] * across * across, out);
+}
+
 /* a panel's plane, for the HUD's half angles (radians), its distance
-(metres), vr.hud_depth and its tilt (radians) */
+(metres), vr.hud_depth, its tilt (radians) and vr.hud_wrap */
 static void panel_geometry(int index, const float half_angles[2], float distance, float depth, float tilt,
-	struct vr_visor_panel *panel)
+	float wrap, struct vr_visor_panel *panel)
 {
 	static const float world_up[3] = { 0.0f, 1.0f, 0.0f };
 	const float *region = panel_layout[index].region;
@@ -550,10 +592,11 @@ static void panel_geometry(int index, const float half_angles[2], float distance
 	memset(panel, 0, sizeof(*panel));
 	panel->group = panel_layout[index].group;
 	memcpy(panel->region, region, sizeof(panel->region));
+	panel_wrap(index, wrap, panel->wrap);
 	/* its middle, facing the head, tilted back (its top farther) */
 	across = (region[0] + region[2] - 1.0f) * half_angles[0];
 	up = (1.0f - region[1] - region[3]) * half_angles[1];
-	angles_direction(across, up, panel->centre);
+	wrapped_direction(across, up, panel->wrap, panel->centre);
 	cross(panel->centre, world_up, panel->right);
 	normalize(panel->right);
 	cross(panel->right, panel->centre, panel->up);
@@ -570,7 +613,8 @@ static void panel_geometry(int index, const float half_angles[2], float distance
 
 			u = edge == 0 ? region[0] : edge == 1 ? region[2] : region[0] + (region[2] - region[0]) * f;
 			v = edge == 2 ? region[1] : edge == 3 ? region[3] : region[1] + (region[3] - region[1]) * f;
-			angles_direction((2.0f * u - 1.0f) * half_angles[0], (1.0f - 2.0f * v) * half_angles[1], direction);
+			wrapped_direction((2.0f * u - 1.0f) * half_angles[0], (1.0f - 2.0f * v) * half_angles[1], panel->wrap,
+				direction);
 			denominator = dot(direction, normal);
 			if (fabsf(denominator) < 1e-4f)
 				continue;
@@ -607,8 +651,8 @@ void vr_visor_panel_sizes(int width[VR_PANEL_COUNT], int height[VR_PANEL_COUNT])
 		width[index] = height[index] = 0;
 		if (!settings.visor)
 			continue;
-		/* (the most the tilt and the region's curve may take) */
-		panel_geometry(index, half_angles, 2.0f, 1.0f, index == TRACKER_PANEL ? TILT_MOST : 0.0f, &panel);
+		/* (the most the tilt, the region's curve and its bend may take) */
+		panel_geometry(index, half_angles, 2.0f, 1.0f, index == TRACKER_PANEL ? TILT_MOST : 0.0f, WRAP_MOST, &panel);
 		width[index] = ((int)(2.0f * panel.half_size[0] * density) + 15) & ~15;
 		height[index] = ((int)(2.0f * panel.half_size[1] * density) + 15) & ~15;
 		if (width[index] > 2048)
@@ -627,7 +671,7 @@ int vr_visor_panels(struct vr_visor_panel panels[VR_PANEL_COUNT])
 		return 0;
 	for (index = 0; index < VR_PANEL_COUNT; index++)
 		panel_geometry(index, visor.half_angles, visor.distance, settings.depth,
-			index == TRACKER_PANEL ? settings.tracker_tilt : 0.0f, &panels[index]);
+			index == TRACKER_PANEL ? settings.tracker_tilt : 0.0f, settings.wrap, &panels[index]);
 	return 1;
 }
 
