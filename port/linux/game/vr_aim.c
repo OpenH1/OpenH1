@@ -43,6 +43,7 @@ eye, along the same facing.
 #include "units/biped_definitions.h"
 #include "units/bipeds.h"
 #include "units/units.h"
+#include "units/vehicle_definitions.h"
 
 #include "../src/vr.h"
 
@@ -63,6 +64,9 @@ a few centimetres from the reticle anyway */
 player first aims, and again this many after it dies */
 #define TEST_TARGET_SECONDS 3
 #define TEST_TARGET_AGAIN_SECONDS 2
+/* the aim assist's target's body tested for being in sight from the
+controller at this many points, from its pelvis to its head */
+#define VR_AIM_SIGHT_POINTS 9
 
 void platform_log(char const *format, ...);
 char const *config_string(char const *name);
@@ -75,20 +79,25 @@ void vr_render_world_to_head(real_point3d const *point, real_vector3d const *for
 
 static struct
 {
-	/* debug.vr_test_target: the target placed (NONE: none, or it died),
+	/* debug.vr_test_target: the target placed (NONE: none, or it died; a
+	unit: a biped, or an empty vehicle), the vehicle it sits in (NONE: none),
 	the tick the player first aimed at, the tick the next is placed at, and
 	the target's vitality last tick */
 	long target_index;
+	long vehicle_index;
 	long first_aim_tick;
 	long place_tick;
 	real_vector3d test_forward;
+	real_point3d test_position;
 	real target_body;
 	real target_shield;
 	/* debug.vr_aim_log: the tick logged last, and the aim assist's target's
 	magnetism level */
 	long logged_tick;
 	real assist_level;
-} vr_aim = { NONE, NONE, NONE, { 0.0f, 0.0f, 0.0f }, 0.0f, 0.0f, NONE, 0.0f };
+	long assist_target_index;
+	short assist_sight;
+} vr_aim = { NONE, NONE, NONE, NONE, { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f }, 0.0f, 0.0f, NONE, 0.0f, NONE, 0 };
 
 /* a point in the world as game axes from the recentred head (metres) */
 static void vr_aim_to_head(real_point3d const *point, float local[3])
@@ -99,17 +108,40 @@ static void vr_aim_to_head(real_point3d const *point, float local[3])
 }
 
 /* the middle of a biped's autoaim pill (its body, as the game's autoaim
-sees it) */
-static void vr_aim_target_centre(long biped_index, real_point3d *centre)
+sees it; head: its top, the head), or of another object's bounding sphere */
+static void vr_aim_target_point(long object_index, boolean head, real_point3d *point)
 {
 	real_point3d base;
 	real_vector3d height;
-	real width;
+	real width, along = head ? 1.0f : 0.5f;
 
-	biped_get_autoaim_pill(biped_index, &base, &height, &width);
-	centre->x = base.x + height.i * 0.5f;
-	centre->y = base.y + height.j * 0.5f;
-	centre->z = base.z + height.k * 0.5f;
+	if (!biped_try_and_get(object_index))
+	{
+		*point = object_get(object_index)->object.bounding_sphere_center;
+		return;
+	}
+	biped_get_autoaim_pill(object_index, &base, &height, &width);
+	point->x = base.x + height.i * along;
+	point->y = base.y + height.j * along;
+	point->z = base.z + height.k * along;
+}
+
+/* debug.vr_test_target: the first tag of this group whose name has this
+text in it, else NONE */
+static long vr_aim_test_tag(tag group, char const *text)
+{
+	struct tag_iterator iterator;
+	long tag_index;
+
+	tag_iterator_new(&iterator, group);
+	for (tag_index = tag_iterator_next(&iterator); tag_index != NONE; tag_index = tag_iterator_next(&iterator))
+	{
+		char const *tag_name = tag_get_name(tag_index);
+
+		if (tag_name && strstr(tag_name, text))
+			return tag_index;
+	}
+	return NONE;
 }
 
 /* debug.vr_test_target's place: ahead and right of the player along
@@ -168,21 +200,31 @@ static real vr_aim_test_place(long unit_index, real_vector3d *forward, real ahea
 }
 
 /* debug.vr_test_target: "<metres ahead> [<metres right> [<name>
-[free]]]", a biped whose tag's name has this in it ("grunt" if none) placed
-before the player (TEST_TARGET_SECONDS after they first aim), standing still
-with no mind of its own, facing them, and placed again once it dies; the
+[free|head]]][; <vehicle>]", a biped whose tag's name has this in it
+("grunt" if none) placed before the player (TEST_TARGET_SECONDS after they
+first aim on foot, standing still), standing still with no mind of its own,
+facing them, and placed again once it dies; after a ';', in a seat of a
+vehicle whose tag's name has that in it, placed there (with the name "-",
+the vehicle alone, empty); the
 level's AI erased; the right controller held by debug.vr_test_hands points
-at its middle (vr.c; "free": where debug.vr_test_hands points it), and each
-hit on it is logged. For automated tests of the aim. */
+at its middle (vr.c; "head": at its head; "free": where debug.vr_test_hands
+points it), and each hit on it is logged. For automated tests of the aim. */
 static void vr_aim_test_target(long unit_index, boolean aiming)
 {
-	char name[64] = "grunt", mode[16] = "";
+	char text[256], name[64] = "grunt", mode[16] = "", *vehicle_name;
 	real ahead = 0.0f, right = 0.0f;
-	struct biped_datum *target;
+	struct unit_datum *target;
 	long now = game_time_get();
 
-	if (sscanf(config_string("debug.vr_test_target"), "%f %f %63s %15s", &ahead, &right, name, mode) < 1 ||
-		unit_index == NONE)
+	snprintf(text, sizeof(text), "%s", config_string("debug.vr_test_target"));
+	vehicle_name = strchr(text, ';');
+	if (vehicle_name)
+	{
+		*vehicle_name++ = 0;
+		while (*vehicle_name == ' ')
+			vehicle_name++;
+	}
+	if (sscanf(text, "%f %f %63s %15s", &ahead, &right, name, mode) < 1 || unit_index == NONE)
 	{
 		halo_vr_test_point(NULL);
 		return;
@@ -191,13 +233,34 @@ static void vr_aim_test_target(long unit_index, boolean aiming)
 	{
 		/* (a new map, or a revert) */
 		vr_aim.first_aim_tick = vr_aim.place_tick = NONE;
-		vr_aim.target_index = NONE;
+		vr_aim.target_index = vr_aim.vehicle_index = NONE;
 	}
-	if (vr_aim.first_aim_tick == NONE && aiming)
+	if (!aiming && vr_aim.target_index == NONE && vr_aim.place_tick != NONE && vr_aim.place_tick > now)
 	{
+		/* (not aiming before it is placed, a cinematic: counted again
+		after it) */
+		vr_aim.first_aim_tick = vr_aim.place_tick = NONE;
+	}
+	if (aiming && object_get(unit_index)->object.parent_object_index == NONE && vr_aim.target_index == NONE &&
+		(vr_aim.first_aim_tick == NONE || (vr_aim.place_tick != NONE && vr_aim.place_tick > now &&
+		distance_squared3d(&vr_aim.test_position, &object_get(unit_index)->object.position) > 0.01f)))
+	{
+		/* (counted again while the level moves the player: a drop from a
+		Pelican) */
 		vr_aim.first_aim_tick = now;
 		vr_aim.place_tick = now + TEST_TARGET_SECONDS * TICKS_PER_SECOND;
-		player_control_get_facing_direction(0, &vr_aim.test_forward);
+		vr_aim.test_position = object_get(unit_index)->object.position;
+		{
+			/* (along the body's heading, the stick's turn, not where the hand
+			happens to aim) */
+			float position[3], forward[3];
+			real body_yaw;
+
+			if (halo_vr_aim_line(position, forward, &body_yaw))
+				set_real_vector3d(&vr_aim.test_forward, (real)cos(body_yaw), (real)sin(body_yaw), 0.0f);
+			else
+				player_control_get_facing_direction(0, &vr_aim.test_forward);
+		}
 	}
 	if (vr_aim.place_tick != NONE || vr_aim.target_index != NONE)
 	{
@@ -207,49 +270,80 @@ static void vr_aim_test_target(long unit_index, boolean aiming)
 		if ((now - vr_aim.first_aim_tick) % TICKS_PER_SECOND == 0 && now >= vr_aim.place_tick)
 			ai_scripting_erase_all();
 	}
-	target = vr_aim.target_index != NONE ? biped_try_and_get(vr_aim.target_index) : NULL;
+	target = vr_aim.target_index != NONE ? unit_try_and_get(vr_aim.target_index) : NULL;
 	if (vr_aim.target_index != NONE && (!target || TEST_FLAG(target->object.damage_flags, _object_dead_bit)))
 	{
 		platform_log("vr aim: test target %s at tick %ld", target ? "killed" : "gone", now);
-		vr_aim.target_index = NONE;
+		/* (and its vehicle, if it had one: another comes with the next) */
+		if (vr_aim.vehicle_index != NONE && vr_aim.vehicle_index != vr_aim.target_index &&
+			object_try_and_get_and_verify_type(vr_aim.vehicle_index, _object_mask_vehicle))
+		{
+			object_delete(vr_aim.vehicle_index);
+		}
+		vr_aim.target_index = vr_aim.vehicle_index = NONE;
 		vr_aim.place_tick = now + TEST_TARGET_AGAIN_SECONDS * TICKS_PER_SECOND;
 		target = NULL;
 	}
 	if (!target && vr_aim.place_tick != NONE && now >= vr_aim.place_tick)
 	{
-		struct tag_iterator iterator;
 		struct object_placement_data placement;
-		struct unit_datum *unit = unit_get(unit_index);
 		real_vector3d forward;
 		/* (the world's metres: a world unit is 10 feet) */
 		real units = 1.0f / 3.048f;
 		real turn;
-		long tag_index;
+		boolean vehicle = vehicle_name && *vehicle_name;
+		long tag_index = strcmp(name, "-") ? vr_aim_test_tag(BIPED_DEFINITION_TAG, name) : NONE;
+		long vehicle_tag_index = vehicle ? vr_aim_test_tag(VEHICLE_DEFINITION_TAG, vehicle_name) : NONE;
 
 		vr_aim.place_tick = NONE;
-		tag_iterator_new(&iterator, BIPED_DEFINITION_TAG);
-		for (tag_index = tag_iterator_next(&iterator); tag_index != NONE; tag_index = tag_iterator_next(&iterator))
-		{
-			char const *tag_name = tag_get_name(tag_index);
-
-			if (tag_name && strstr(tag_name, name))
-				break;
-		}
 		forward = vr_aim.test_forward;
 		forward.k = 0.0f;
-		if (tag_index == NONE || normalize3d(&forward) <= 0.0f)
+		if ((strcmp(name, "-") && tag_index == NONE) || (vehicle && vehicle_tag_index == NONE) ||
+			(tag_index == NONE && vehicle_tag_index == NONE) || normalize3d(&forward) <= 0.0f)
 		{
-			platform_log("vr aim: no test target \"%s\" in this map", name);
+			platform_log("vr aim: no test target \"%s\"%s%s in this map", name, vehicle ? " in " : "",
+				vehicle ? vehicle_name : "");
 			return;
 		}
-		object_placement_data_new(&placement, tag_index, NONE);
+		object_placement_data_new(&placement, vehicle ? vehicle_tag_index : tag_index, NONE);
 		turn = vr_aim_test_place(unit_index, &forward, ahead * units, right * units, &placement.position);
 		placement.forward.i = -forward.i;
 		placement.forward.j = -forward.j;
 		placement.forward.k = 0.0f;
 		placement.up = *global_up3d;
+		/* (a vehicle a little above the ground, which it settles onto, as
+		vr_seat.c's test brings one: the Shade's middle is its origin) */
+		if (vehicle)
+			placement.position.z += 0.2f;
 		vr_aim.target_index = object_new(&placement);
-		target = vr_aim.target_index != NONE ? biped_try_and_get(vr_aim.target_index) : NULL;
+		if (vehicle && vr_aim.target_index != NONE)
+		{
+			/* the vehicle placed, and the biped in the first of its seats it
+			can take, as a level's script loads one (vehicle_load_magic) */
+			vr_aim.vehicle_index = vr_aim.target_index;
+			if (tag_index != NONE)
+			{
+				struct unit_definition *definition =
+					unit_definition_get(object_get(vr_aim.vehicle_index)->definition_index);
+				short seat_index;
+
+				placement.definition_index = tag_index;
+				vr_aim.target_index = object_new(&placement);
+				for (seat_index = 0; vr_aim.target_index != NONE && seat_index < definition->unit.seats.count;
+					seat_index++)
+				{
+					if (unit_can_enter_seat(vr_aim.target_index, vr_aim.vehicle_index, seat_index, NULL) &&
+						unit_enter_seat(vr_aim.target_index, vr_aim.vehicle_index, seat_index))
+					{
+						platform_log("vr aim: test target seated in %s's seat %d (%s)",
+							tag_get_name(vehicle_tag_index), seat_index,
+							TAG_BLOCK_GET_ELEMENT(&definition->unit.seats, seat_index, struct unit_seat)->label);
+						break;
+					}
+				}
+			}
+		}
+		target = vr_aim.target_index != NONE ? unit_try_and_get(vr_aim.target_index) : NULL;
 		if (!target)
 		{
 			if (vr_aim.target_index != NONE)
@@ -261,7 +355,7 @@ static void vr_aim_test_target(long unit_index, boolean aiming)
 		vr_aim.target_body = target->object.body_vitality;
 		vr_aim.target_shield = target->object.shield_vitality;
 		platform_log("vr aim: test target %s placed at tick %ld, %.1f m ahead and %.1f m right (turned %.0f degrees "
-			"left to be in sight)", tag_get_name(tag_index), now, ahead, right, turn);
+			"left to be in sight)", tag_get_name(target->definition_index), now, ahead, right, turn);
 	}
 	if (!target)
 	{
@@ -281,13 +375,14 @@ static void vr_aim_test_target(long unit_index, boolean aiming)
 		return;
 	}
 	{
-		/* the controller pointed at its middle, from where it is */
+		/* the controller pointed at its middle (or its head), from where it
+		is */
 		float position[3], forward[3], centre_local[3], direction[3];
 		real_point3d centre;
 		real yaw;
 		int axis;
 
-		vr_aim_target_centre(vr_aim.target_index, &centre);
+		vr_aim_target_point(vr_aim.target_index, !strcmp(mode, "head"), &centre);
 		if (!halo_vr_aim_line(position, forward, &yaw))
 			return;
 		vr_aim_to_head(&centre, centre_local);
@@ -308,8 +403,8 @@ static void vr_aim_log(real_point3d const *origin, real_vector3d const *directio
 {
 	long now = game_time_get();
 	real turned = (real)acos(PIN(dot_product3d(direction, aim), -1.0f, 1.0f)) * 180.0f / _pi;
-	struct biped_datum *target = vr_aim.target_index != NONE ? biped_try_and_get(vr_aim.target_index) : NULL;
-	char text[160] = "";
+	struct unit_datum *target = vr_aim.target_index != NONE ? unit_try_and_get(vr_aim.target_index) : NULL;
+	char text[200] = "", meets[80] = "the structure";
 
 	if (now == vr_aim.logged_tick || !config_boolean("debug.vr_aim_log"))
 		return;
@@ -318,9 +413,13 @@ static void vr_aim_log(real_point3d const *origin, real_vector3d const *directio
 	{
 		real_point3d centre;
 		real_vector3d to_target;
-		real from_aim, from_line;
+		real from_aim, from_line, head_from_aim;
 
-		vr_aim_target_centre(vr_aim.target_index, &centre);
+		vr_aim_target_point(vr_aim.target_index, TRUE, &centre);
+		vector_from_points3d(eye, &centre, &to_target);
+		normalize3d(&to_target);
+		head_from_aim = (real)acos(PIN(dot_product3d(&to_target, aim), -1.0f, 1.0f)) * 180.0f / _pi;
+		vr_aim_target_point(vr_aim.target_index, FALSE, &centre);
 		vector_from_points3d(eye, &centre, &to_target);
 		normalize3d(&to_target);
 		from_aim = (real)acos(PIN(dot_product3d(&to_target, aim), -1.0f, 1.0f)) * 180.0f / _pi;
@@ -328,7 +427,7 @@ static void vr_aim_log(real_point3d const *origin, real_vector3d const *directio
 		normalize3d(&to_target);
 		from_line = (real)acos(PIN(dot_product3d(&to_target, direction), -1.0f, 1.0f)) * 180.0f / _pi;
 		snprintf(text, sizeof(text), "; the target's middle %.2f degrees from the game's aim, %.2f from the "
-			"controller's line", from_aim, from_line);
+			"controller's line, its head %.2f from the game's aim", from_aim, from_line, head_from_aim);
 	}
 	{
 		/* where the unit aims now (its aiming vector, the game's facing of
@@ -349,39 +448,135 @@ static void vr_aim_log(real_point3d const *origin, real_vector3d const *directio
 			along = dot_product3d(&to_point, &unit->unit.aiming_vector);
 			miss = (real)sqrt(MAX(magnitude_squared3d(&to_point) - along * along, 0.0f)) / units;
 		}
-		platform_log("vr aim: tick %ld, the line meets the world %.2f m out, the controller %.2f m from the game's "
+		{
+			/* what the controller's line meets (the reticle's test) */
+			struct collision_result collision;
+			real_vector3d vector;
+			long ignore_index = player_index != NONE && player_get(player_index)->unit_index != NONE ?
+				object_get_ultimate_parent(player_get(player_index)->unit_index) : NONE;
+
+			scale_vector3d(direction, distance + 0.1f, &vector);
+			if (global_current_collision_user_depth < MAXIMUM_COLLISION_USER_STACK_DEPTH)
+			{
+				global_current_collision_users[global_current_collision_user_depth++] = _collision_user_ui;
+				if (collision_test_vector(_collision_test_for_line_of_sight_flags | FLAG(_collision_test_objects_bipeds_bit),
+					origin, &vector, ignore_index, &collision) && collision.type == _collision_result_object)
+				{
+					char const *object_name = tag_get_name(object_get(collision.object_index)->definition_index);
+					char const *last = object_name ? strrchr(object_name, '\\') : NULL;
+
+					snprintf(meets, sizeof(meets), "%s", last ? last + 1 : object_name ? object_name : "an object");
+				}
+				--global_current_collision_user_depth;
+			}
+		}
+		platform_log("vr aim: tick %ld, the line meets the world (%s) %.2f m out, the controller %.2f m from the game's "
 			"eye, the aim turned %.2f degrees to it, the unit's aim passing %.0f cm from the point; autoaim %.2f%s, "
-			"magnetism %.2f%s", now, distance / units, (real)sqrt(distance_squared3d(origin, eye)) / units, turned,
-			miss * 100.0f, player_control_get_autoaim_level(0), player_control_get_autoaim_level(0) >= 1.0f ? " (red)" :
-			"", vr_aim.assist_level, text);
+			"magnetism %.2f (%s, %d of %d points of it in sight)%s", now, meets, distance / units,
+			(real)sqrt(distance_squared3d(origin, eye)) / units, turned, miss * 100.0f,
+			player_control_get_autoaim_level(0), player_control_get_autoaim_level(0) >= 1.0f ? " (red)" : "",
+			vr_aim.assist_level, vr_aim.assist_target_index == NONE ? "none" :
+			vr_aim.assist_target_index == vr_aim.target_index ? "the test target" : "another", vr_aim.assist_sight,
+			VR_AIM_SIGHT_POINTS, text);
 	}
+}
+
+/* whether a point of the aim assist's target is in sight from the
+controller: nothing between them but the target itself (or what it holds),
+not the vehicle it sits in (the game's own test counts that as clear, as the
+gunner's: aim_assist_clear_line_of_sight), the world, or another object */
+static boolean vr_aim_in_sight(real_point3d const *from, real_point3d const *point, long target_index,
+	long ignore_index)
+{
+	struct collision_result collision;
+	real_vector3d vector;
+	boolean hit;
+	long object_index;
+
+	if (global_current_collision_user_depth >= MAXIMUM_COLLISION_USER_STACK_DEPTH)
+		return FALSE;
+	vector_from_points3d(from, point, &vector);
+	global_current_collision_users[global_current_collision_user_depth++] = _collision_user_aim_assist;
+	hit = collision_test_vector(_collision_test_for_line_of_sight_flags | FLAG(_collision_test_objects_bipeds_bit),
+		from, &vector, ignore_index, &collision);
+	--global_current_collision_user_depth;
+	if (!hit)
+		return TRUE;
+	if (collision.type != _collision_result_object)
+		return FALSE;
+	for (object_index = collision.object_index; object_index != NONE && object_index != target_index;
+		object_index = object_get(object_index)->object.parent_object_index)
+	{
+	}
+	return object_index == target_index;
 }
 
 /* the aim assist (vr.aim_assist): the target the game's magnetism would be
 drawn to from its eye along the aim, as it is for a gamepad's aim (the
-weapon's magnetism angle and distance, at its zoom: aim_assist.c), told to
-vr.c with the direction of its middle from the controller: the aim is slow
-to leave it and, zoomed, is drawn toward it */
-static void vr_aim_assist(real_point3d const *eye, real_vector3d const *aim, const float position[3])
+weapon's magnetism angle and distance, at its zoom: aim_assist.c; only ever
+a biped: a vehicle's or a turret's occupant, not the vehicle, and an empty
+vehicle is none), told to vr.c with the directions from the controller of
+its middle (how it moves) and of the part of its body in sight from the
+controller (its autoaim pill's axis, from its pelvis to its head, at
+VR_AIM_SIGHT_POINTS points: of a Shade's gunner, the head over the gun, not
+its middle behind it): the aim is slow to leave that part and, zoomed, is
+drawn toward its nearest point. None of it in sight, no target. */
+static void vr_aim_assist(real_point3d const *eye, real_vector3d const *aim, real_point3d const *origin,
+	const float position[3])
 {
 	long player_index = local_player_get_player_index(0);
-	real_point3d point;
-	real level = 0.0f;
+	real_point3d point, base;
+	real_vector3d height;
+	real level = 0.0f, width, lowest = 2.0f, highest = -1.0f;
 	long target = player_index != NONE ? player_aim_assist_target(player_index, eye, aim, &point, &level) : NONE;
-	float local[3], middle[3];
+	long ignore_index;
+	float local[3], middle[3], low[3], high[3];
+	short sample;
 	int axis;
 
 	vr_aim.assist_level = level;
-	if (target == NONE || level <= 0.0f)
+	vr_aim.assist_target_index = target;
+	vr_aim.assist_sight = 0;
+	if (target == NONE || level <= 0.0f || !biped_try_and_get(target))
 	{
-		halo_vr_aim_assist(NONE, 0.0f, NULL);
+		halo_vr_aim_assist(NONE, 0.0f, NULL, NULL, NULL);
 		return;
 	}
-	vr_aim_target_centre(target, &point);
-	vr_aim_to_head(&point, local);
-	for (axis = 0; axis < 3; axis++)
-		middle[axis] = local[axis] - position[axis];
-	halo_vr_aim_assist(target, level, middle);
+	ignore_index = player_get(player_index)->unit_index != NONE ?
+		object_get_ultimate_parent(player_get(player_index)->unit_index) : NONE;
+	biped_get_autoaim_pill(target, &base, &height, &width);
+	for (sample = 0; sample < VR_AIM_SIGHT_POINTS; sample++)
+	{
+		real t = (real)sample / (real)(VR_AIM_SIGHT_POINTS - 1);
+
+		point.x = base.x + height.i * t;
+		point.y = base.y + height.j * t;
+		point.z = base.z + height.k * t;
+		if (vr_aim_in_sight(origin, &point, target, ignore_index))
+		{
+			lowest = MIN(lowest, t);
+			highest = MAX(highest, t);
+			vr_aim.assist_sight++;
+		}
+	}
+	if (!vr_aim.assist_sight)
+	{
+		halo_vr_aim_assist(NONE, 0.0f, NULL, NULL, NULL);
+		return;
+	}
+	for (sample = 0; sample < 3; sample++)
+	{
+		real t = sample == 0 ? 0.5f : sample == 1 ? lowest : highest;
+		float *direction = sample == 0 ? middle : sample == 1 ? low : high;
+
+		point.x = base.x + height.i * t;
+		point.y = base.y + height.j * t;
+		point.z = base.z + height.k * t;
+		vr_aim_to_head(&point, local);
+		for (axis = 0; axis < 3; axis++)
+			direction[axis] = local[axis] - position[axis];
+	}
+	halo_vr_aim_assist(target, level, middle, low, high);
 }
 
 /* how many times the smart-link's view on the visor magnifies the aim
@@ -420,7 +615,7 @@ void vr_aim_converge(long unit_index, boolean aiming, real *yaw, real *pitch)
 	if (!aiming || unit_index == NONE || !halo_vr_aim_line(position, forward, &body_yaw) ||
 		!vr_render_aim_hit(position, forward, body_yaw, &origin, &direction, &distance, &units))
 	{
-		halo_vr_aim_assist(NONE, 0.0f, NULL);
+		halo_vr_aim_assist(NONE, 0.0f, NULL, NULL, NULL);
 		return;
 	}
 	director_camera_deterministic(unit_index, &eye, &camera_forward);
@@ -442,12 +637,12 @@ void vr_aim_converge(long unit_index, boolean aiming, real *yaw, real *pitch)
 	vector_from_points3d(&eye, &point, &aim);
 	if (normalize3d(&aim) <= 0.0f)
 	{
-		halo_vr_aim_assist(NONE, 0.0f, NULL);
+		halo_vr_aim_assist(NONE, 0.0f, NULL, NULL, NULL);
 		return;
 	}
 	*yaw = (real)atan2(aim.j, aim.i);
 	*pitch = (real)asin(PIN(aim.k, -1.0f, 1.0f));
-	vr_aim_assist(&eye, &aim, position);
+	vr_aim_assist(&eye, &aim, &origin, position);
 	vr_aim_log(&origin, &direction, hit, units, &eye, &aim);
 }
 

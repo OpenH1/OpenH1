@@ -350,10 +350,12 @@ void halo_vr_aim_zoom(float magnification);
 /* the aim assist (vr.aim_assist), told by the game each frame (vr_aim.c):
 a target near the aim that the game's magnetism would be drawn to (as a
 gamepad's aim is), which it is (another starts anew), how near the aim (its
-magnetism level, 0 to 1), and the direction of its middle from the right
-controller (game axes from the recentred head); NULL, none. The aim is slow
-to leave it, and zoomed, is drawn toward it (vr.c, aim_assist_step) */
-void halo_vr_aim_assist(long target, float level, const float middle[3]);
+magnetism level, 0 to 1), and the directions from the right controller (game
+axes from the recentred head) of its middle (how it moves) and of the ends
+of the part of its body in sight from the controller (low, high: from its
+pelvis toward its head); NULL, none. The aim is slow to leave that part, and
+zoomed, is drawn toward its nearest point (vr.c, aim_assist_step) */
+void halo_vr_aim_assist(long target, float level, const float middle[3], const float low[3], const float high[3]);
 /* debug.vr_test_hands holds the controllers (vr_hands.c marks them) */
 int halo_vr_test_hands(void);
 /* debug.vr_test_target: the right controller held by debug.vr_test_hands

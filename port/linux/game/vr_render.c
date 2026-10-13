@@ -825,20 +825,19 @@ boolean vr_render_scope_view(struct render_camera *weapon_camera, real_point3d e
 
 /* vr_scope.c, before the eye pass: where the reticle is, the aim meeting
 the world (as vr_render_crosshairs draws it, at its smoothed distance from
-the frame before, else the world's now); FALSE without the controller's aim */
-boolean vr_render_scope_aim(real_point3d *point)
+the frame before, else the world's now), and the aim's line it is on (from
+the right controller along the aim); FALSE without the controller's aim */
+boolean vr_render_scope_aim(real_point3d *point, real_point3d *origin, real_vector3d *direction)
 {
-	real_point3d origin;
-	real_vector3d direction;
 	real distance;
 
-	if (!vr_render.active || !vr_render.view.controller_aim || !aim_line(&origin, &direction))
+	if (!vr_render.active || !vr_render.view.controller_aim || !aim_line(origin, direction))
 		return FALSE;
 	distance = vr_render.crosshair_distance_valid && vr_render.crosshair_inverse_distance > 0.0f ?
-		1.0f / vr_render.crosshair_inverse_distance : aim_distance(&origin, &direction);
-	point->x = origin.x + direction.i * distance;
-	point->y = origin.y + direction.j * distance;
-	point->z = origin.z + direction.k * distance;
+		1.0f / vr_render.crosshair_inverse_distance : aim_distance(origin, direction);
+	point->x = origin->x + direction->i * distance;
+	point->y = origin->y + direction->j * distance;
+	point->z = origin->z + direction->k * distance;
 	return TRUE;
 }
 

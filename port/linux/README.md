@@ -1205,8 +1205,14 @@ vehicle's seat, what the reticle is on is what you hit.
   hand moves the aim off it, the aim moves less than your hand (half as much
   at the enemy's middle), never more, and never against your hand, nor on
   its own with your hand still (but for the zoomed pull below). Following a moving enemy is not slowed.
-  Zoomed, the aim is also drawn gently toward its middle (2 degrees a
-  second at most). The reticle may lag your weapon so by 3 degrees at
+  Zoomed, the aim is also drawn gently toward it (1 degree a second at
+  most). "It" is the part of the enemy you can see from your weapon,
+  nearest where you aim, from its hips to its head: aimed at a head, the
+  aim stays on the head. An enemy in a vehicle or on a turret (a Shade's
+  gunner, a Ghost's driver) is the target, never the vehicle, and the
+  vehicle's body is no part of it: over a Shade's gun you are held on the
+  gunner's head, not drawn down onto the turret; a Banshee's pilot, out of
+  sight in its cockpit, is no target, nor is an empty vehicle. The reticle may lag your weapon so by 3 degrees at
   most, and away from an enemy catches up with it smoothly (no faster than
   6 degrees a second, more only as your hand moves). The reticle, the
   smart-link's view and the shot follow the assisted aim; the bullets' own
@@ -1662,9 +1668,9 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_grenades` | `""` | `HALO_VR_TEST_GRENADES` | Give the first VR player these grenades as they first aim, for tests of the grenade held in the hand: `"<frags> <plasma grenades>"`. |
 | `debug.vr_test_finger` | `""` | `HALO_VR_TEST_FINGER` | The right index finger on the weapon's trigger instead of the weapon's own (`game/vr_hands.c`, `trigger_fingers`), for tests: `"<rest> <rest> <rest> <pull> <pull> <pull> [<travel> [<off> <off> <off>]]"`, its curl at each joint from the knuckle at rest, from the idle animation's (less than 0: straighter), and how much more at a full pull (radians), how far back the trigger goes (metres), and its curl off the trigger (the trigger's touch sensing no finger; a test pose's trigger less than 0). |
 | `debug.vr_test_weapons` | `""` | `HALO_VR_TEST_WEAPONS` | Give the first player these weapons in place of their own, the first in hand, once a map, 2 s after the player first aims (a level's script gives its own as the player takes control), for automated tests of the scopes: `"<name>[, <name>]"`, parts of the weapons' tag names (`"sniper rifle, pistol"`; b30 has no sniper rifle, a50 has both). |
-| `debug.vr_test_target` | `""` | `HALO_VR_TEST_TARGET` | Place a still biped before the first VR player, for automated tests of the aim: `"<metres ahead> [<metres right> [<name>]]"`, a biped whose tag's name has this in it (`"grunt"` if none), 3 s after they first aim, on the ground, turned left or right as little as puts it in sight, with no mind of its own (the level's AI erased, so that only the player's shots hit it), and again 2 s after it dies. The right controller held by `debug.vr_test_hands` points at its middle, and each hit on it is logged (`vr aim: test target`). |
+| `debug.vr_test_target` | `""` | `HALO_VR_TEST_TARGET` | Place a still biped before the first VR player, for automated tests of the aim: `"<metres ahead> [<metres right> [<name> [free\|head]]][; <vehicle>]"`, a biped whose tag's name has this in it (`"grunt"` if none), 3 s after they first aim on foot standing still (a level's drop moves them), on the ground; after a `;`, in a seat of a vehicle whose tag's name has that in it, placed there (`"c gun turret"`: the Shade, on b40, c10 and d20; `"ghost"`, `"banshee"`), or with the name `-`, the vehicle alone, empty; turned left or right as little as puts it in sight, with no mind of its own (the level's AI erased, so that only the player's shots hit it), and again 2 s after it dies. The right controller held by `debug.vr_test_hands` points at its middle (`head`: its head; `free`: where `debug.vr_test_hands` points it), and each hit on it is logged (`vr aim: test target`). |
 | `debug.vr_test_shake` | `""` | `HALO_VR_TEST_SHAKE` | Shake the controllers as a hand does, for automated tests of the aim steadied while zoomed: `"<degrees> [<millimetres>]"`, the right controller turned at random by about this much (RMS: half a slow wander, smoothed noise below 1.5 Hz, half a 9 Hz tremor), both moved by this much. |
-| `debug.vr_aim_log` | `false` | `HALO_VR_AIM_LOG` | Log the controller's aim once a tick: where its line meets the world, how far the game's aim was turned to meet it there from the game's eye, how far from that point the unit's aim passes, and whether the reticle is red (with `debug.vr_test_target`, how far the target's middle is from both); with `debug.vr_test_hands`, each frame, the controller's direction and the aim's, steadied (`vr aim steady`). |
+| `debug.vr_aim_log` | `false` | `HALO_VR_AIM_LOG` | Log the controller's aim once a tick: where its line meets the world (and what: the structure, or the object's tag), how far the game's aim was turned to meet it there from the game's eye, how far from that point the unit's aim passes, whether the reticle is red, and the aim assist's target's magnetism level and how many of 9 points of its body are in sight from the controller (with `debug.vr_test_target`, how far the target's middle is from both, and its head from the game's aim); with `debug.vr_test_hands`, each frame, the controller's direction and the aim's, steadied (`vr aim steady`). |
 | `debug.vr_throw_log` | `false` | `HALO_VR_THROW_LOG` | Log each step of a grenade thrown with the left hand (`vr.grenade_throw`): the grip taken (or why it holds nothing), the swing (or why a fast hand was none), the release's speed, power and direction, and the game's throw: when it began, its animations held or moved on to their release, and the grenade's place and speed. |
 | `debug.vr_melee_log` | `false` | `HALO_VR_MELEE_LOG` | Log the right hand's swings that did not melee (`vr.melee_gesture`) too: how fast and how far each went, and why it was none (too slow, a holster, a throw, a reload, the tracking jumping). Each melee by a swing is logged whatever this is. |
 | `debug.vr_test_weapon` | `""` | `HALO_VR_TEST_WEAPON` | Put a weapon in the first player's hand, for automated tests of the reload by hand: `"<text> <seconds>"`, that many seconds into the level the player's weapons are taken and a new one is in hand, the first of the map's whose tag name has the text in it (`"shotgun 15"` on d20, `"rocket 15"` on b30). |
@@ -1941,15 +1947,35 @@ supersampling costs as above, and multisampling the eye pass
   `aim_assist.c`: the weapon's magnetism angle and distance at its zoom,
   the same targets) and tells vr.c its magnetism level and its middle's
   direction from the controller. The part of the hand's turn that takes
-  the aim away from the target's middle (less as much of it as follows the
-  target's own turn, and none of a turn toward it) is slowed by half, times
+  the aim away from the target (less as much of it as follows the target's
+  own turn, and none of a turn toward it) is slowed by half, times
   the level and `vr.aim_assist` (by 0.8 at most); zoomed, the aim is drawn
-  toward the middle at 2 degrees a second times the same. The aim stays
+  toward it at 1 degree a second times the same. The aim stays
   within 3 degrees of the hand's, and away from a target comes back to it
   over 0.3 s, no faster than 6 degrees a second plus half the hand's turn.
-  The middle, not the point the game's autoaim aims at: that point lies on
-  the line from the game's eye, and seen from the hand it moves as the aim
-  does, which drew the aim off the target. Measured on b30
+  Not the point the game's autoaim aims at: that point lies on the line
+  from the game's eye, and seen from the hand it moves as the aim does,
+  which drew the aim off the target. Nor the target's middle, as it was:
+  of a Shade's gunner that is behind the turret's gun, and zoomed the aim
+  was drawn down off the head onto the turret (the user's "locks on the
+  turret instead of the grunt"). Now `vr_aim.c` tests the target's autoaim
+  pill (its pelvis to its head) at 9 points for being in sight from the
+  controller (nothing between but the target itself: not the vehicle it
+  sits in, which the game's own test counts as clear for its gunner), and
+  tells vr.c the part in sight; the aim is held to, and drawn to, its
+  nearest point (so not slowed along the body, nor drawn along it), and
+  the target's middle is only how it moves. None of it in sight, no target.
+  The game's own choice of target was right: only ever a biped, a vehicle's
+  occupant found within it, never the vehicle; its bullets' autoaim is left
+  as it is. Measured with `debug.vr_test_target = "<metres> 0 grunt head;
+  c gun turret"` (a grunt in a Shade's seat, the hand pointed at its head):
+  on c10 with the pistol at 2x, the aim was drawn from the head to the
+  middle (2.6 degrees, the view centred on the turret's gun) before, held
+  within 0.2 degree of the head after (5 of the 9 points in sight); on b40
+  with the sniper rifle at 8x, 1.95 degrees off the head (40 cm at 12 m)
+  before, 0.04 to 0.36 after. An Elite on a Ghost: held on its head, all of
+  it in sight; on a Banshee: none in sight, no target; an empty Ghost or
+  Shade: no target. Measured on b30
   (`debug.vr_test_target = "8 0 grunt free"`), the hand sweeping across a
   grunt 8 m away at 8 degrees a second: the aim on it 313 frames where the
   hand was on it 216 (`vr.aim_assist = 2`: 550), never moving against the
@@ -2164,10 +2190,16 @@ supersampling costs as above, and multisampling the eye pass
   game's a frame; confirm it on a Steam Frame.
 - The smart-link's view (`vr.scope_view = "smartlink"`, `vr_scope.c`) is
   that pass too, while the game is zoomed (the player's zoom level, which
-  the game's own click and unzooms set): from between the eyes toward where
-  the aim meets the world (the reticle's point, at its smoothed distance
-  from the frame before: `vr_render_scope_aim`), its field of view
-  `vr.smartlink_size` over the zoom's magnification, up as the world's.
+  the game's own click and unzooms set): the weapon's sight's, from the
+  right controller along the aim's line (`vr_render_scope_aim`), its field
+  of view `vr.smartlink_size` over the zoom's magnification, up as the
+  world's: its middle is on what the line meets, however far. From between
+  the eyes toward that point, as it was, it swung by the eyes' parallax
+  each time the line crossed an edge and the point jumped along it (a
+  Shade 12 m away against hills 200 m behind: 2.4 degrees over a few
+  frames, 19 in the view at 8x); along the line it turns only as the aim
+  does (on b40's Shade, swept across at 8x: no more than the aim, in any
+  frame).
   Its image (the same copy, with the HUD's reticle in its middle, on the
   aim, and a soft edge) is on the same quad layer, for both eyes,
   `vr.hud_distance` from the middle of the eyes, just above the aim (its

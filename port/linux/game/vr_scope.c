@@ -19,11 +19,11 @@ does the eyes'. Two ways (vr.scope_view):
   back to none), wherever the weapon is held, and while zoomed a round view
   is on the visor just above where the aim is (the reticle's place, which
   stays in sight on what it aims at), vr.smartlink_size across, at the
-  HUD's distance, for both eyes. Its view is drawn from between the eyes
-  toward the reticle's place, its field of view the circle's over the
-  magnification, its own reticle in its middle, and the circle faces the
-  head with the world's up. Any weapon that zooms (the rocket launcher
-  too).
+  HUD's distance, for both eyes. Its view is the weapon's sight's, drawn
+  from the controller along the aim's line, its field of view the circle's
+  over the magnification, its own reticle in its middle on what the line
+  meets, and the circle faces the head with the world's up. Any weapon that
+  zooms (the rocket launcher too).
 
 - "eye": a scope magnifies the view within it, as a real one does, when it
   is raised to an eye: drawn from the scope's eyepiece along the aim, shown
@@ -158,7 +158,7 @@ boolean vr_render_scope_view(struct render_camera *weapon_camera, real_point3d e
 	real *units);
 void vr_render_world_to_head(real_point3d const *point, real_vector3d const *forward, real_vector3d const *up,
 	float position[3], float head_forward[3], float head_up[3]);
-boolean vr_render_scope_aim(real_point3d *point);
+boolean vr_render_scope_aim(real_point3d *point, real_point3d *origin, real_vector3d *direction);
 
 static struct
 {
@@ -298,9 +298,9 @@ static real vr_scope_label(short scope, short zoom_level, real magnification)
 }
 
 /* the smart-link's view (vr.scope_view = "smartlink"), while the game is
-zoomed: from between the eyes toward where the aim meets the world (the
-reticle's place), vr.smartlink_size wide over the zoom's magnification, its
-reticle in its middle; its layer as wide at the HUD's distance, just above
+zoomed: from the controller along the aim's line, vr.smartlink_size wide over
+the zoom's magnification, its reticle in its middle on what the line meets
+(the reticle's place); its layer as wide at the HUD's distance, just above
 the aim (below it where above would be out of view; held within
 SMARTLINK_MOST_ANGLE of the head's forward), facing the head, up as the
 world's, seen by both eyes: the reticle in the world stays in sight on what
@@ -312,8 +312,8 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 {
 	struct halo_vr_scope layer;
 	struct render_camera layer_camera;
-	real_point3d centre, aim, place;
-	real_vector3d direction, aim_direction;
+	real_point3d centre, aim, place, line_origin;
+	real_vector3d direction, aim_direction, line_direction;
 	real degrees, distance, tangent, magnification = 1.0f, angle;
 	short zoom_level = player_control_get_zoom_level(0);
 	float view_degrees, view_distance;
@@ -324,7 +324,7 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 	centre.z = (eyes[0].z + eyes[1].z) * 0.5f;
 	if (zoom_level != NONE)
 		magnification = weapon_get_zoom_magnification(weapon_index, zoom_level);
-	if (zoom_level == NONE || magnification <= 0.0f || !vr_render_scope_aim(&aim))
+	if (zoom_level == NONE || magnification <= 0.0f || !vr_render_scope_aim(&aim, &line_origin, &line_direction))
 	{
 		if (vr_scope.smartlink_shown)
 			platform_log("vr scope: smart-link unzoomed");
@@ -343,10 +343,14 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 	distance = view_distance;
 	tangent = (real)tan(degrees * 0.5f * _pi / 180.0f);
 
-	/* its view: from between the eyes toward where the aim is, its reticle
-	in its middle */
-	camera->position = centre;
-	camera->forward = aim_direction;
+	/* its view: the weapon's sight's, from the controller along the aim's
+	line, its reticle in its middle on what the line meets, however far: not
+	from between the eyes toward that point, which jumps along the line as it
+	crosses an edge (from a turret 12 m away to the hills behind it), and the
+	view with it, by the eyes' parallax (2.4 degrees there, 19 in the view
+	at 8x, over a few frames) */
+	camera->position = line_origin;
+	camera->forward = line_direction;
 	vr_scope_camera_up(camera, &weapon_camera->up);
 	camera->vertical_field_of_view = 2.0f * (real)atan(tangent / magnification);
 	vr_scope_camera_view(camera, rasterizer_camera);

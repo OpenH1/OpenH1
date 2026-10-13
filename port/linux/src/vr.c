@@ -307,7 +307,7 @@ ASSIST_RETURN_SECONDS would take, nor than ASSIST_RETURN_MOST degrees a
 second, more only by half the hand's own turn */
 #define ASSIST_FRICTION 0.5f
 #define ASSIST_FRICTION_MOST 0.8f
-#define ASSIST_PULL 2.0f
+#define ASSIST_PULL 1.0f
 #define ASSIST_MOST 3.0f
 #define ASSIST_RETURN_SECONDS 0.3f
 #define ASSIST_RETURN_MOST 6.0f
@@ -383,6 +383,11 @@ static struct
 	long assist_target;
 	float assist_level;
 	float assist_middle[3];
+	/* and the ends of the part of it in sight from the controller, along its
+	body (OpenXR axes): the aim is held to, and drawn to, the nearest point
+	of it */
+	float assist_low[3];
+	float assist_high[3];
 	/* debug.vr_test_shake: the shake's wander (degrees: yaw, pitch;
 	millimetres: each hand's), the tremor's time and phases, and this
 	frame's turn of the right controller and move of each */
@@ -2643,11 +2648,16 @@ static void shake_apply(void)
 /* The aim assist (vr.aim_assist), after the aim is steadied: as the game
 aims, a target near the aim that its magnetism would be drawn to (as a
 gamepad's aim is: halo_vr_aim_assist, vr_aim.c) makes the aim slow to leave
-it (sticky): the hand's turn, less as much of it as follows the target's (as
-it moves, seen from the hand), as it takes the aim away from the target's
-middle (not as it comes to it), slowed by ASSIST_FRICTION, the more the
-nearer the target is to the aim (its magnetism level); and zoomed, the aim
-is drawn gently toward its middle. (Its middle, not the point the game's
+it (sticky): the hand's turn, less as much of it as follows the target's
+(its middle's, as it moves, seen from the hand), as it takes the aim away
+from the target (not as it comes to it, nor along its body), slowed by
+ASSIST_FRICTION, the more the nearer the target is to the aim (its magnetism
+level); and zoomed, the aim is drawn gently toward it. "The target" is the
+point of the part of its body in sight from the hand (from its pelvis to its
+head: of a Shade's gunner, the head over the gun) nearest the aim: a head
+aimed at stays a head, and the aim is not drawn off it to a middle hidden
+behind the turret it sits in (vr_aim.c finds the part in sight: none of it,
+a Banshee's pilot in its cockpit, no target). (Not the point the game's
 autoaim aims at on it: that point is on the line from the game's eye, and
 seen from the hand it moves as the aim does, so that the aim chased it off
 the target.) The aim may drift off the hand's line so, never more than
@@ -2687,11 +2697,28 @@ static void aim_assist_step(const struct aim_steady *before, struct aim_steady *
 		hand = sqrtf(hand);
 		with = hand > 0.0f ? with / hand : 0.0f;
 		with = with < 0.0f ? 0.0f : with > hand ? hand : with;
-		/* (only as it takes the aim away from the target's middle: coming to
-		it is not slowed, leaving it is) */
+		/* (only as it takes the aim away from the target, the nearest point
+		of the part of its body in sight: coming to it is not slowed, leaving
+		it is, nor moving along it, from its feet to its head) */
+		{
+			float span[3], from[3], length_squared = 0.0f, t = 0.0f;
+
+			for (axis = 0; axis < 3; axis++)
+			{
+				span[axis] = vr.assist_high[axis] - vr.assist_low[axis];
+				from[axis] = state->out[axis] + offset[axis] - vr.assist_low[axis];
+				length_squared += span[axis] * span[axis];
+				t += from[axis] * span[axis];
+			}
+			t = length_squared > 1e-10f ? t / length_squared : 0.0f;
+			t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+			for (axis = 0; axis < 3; axis++)
+				toward[axis] = vr.assist_low[axis] + span[axis] * t;
+			normalize(toward);
+		}
 		for (axis = 0; axis < 3; axis++)
 		{
-			toward[axis] = state->target_middle[axis] - (state->out[axis] + offset[axis]);
+			toward[axis] -= state->out[axis] + offset[axis];
 			near += toward[axis] * toward[axis];
 		}
 		near = sqrtf(near);
@@ -2744,14 +2771,18 @@ static void aim_assist_step(const struct aim_steady *before, struct aim_steady *
 	normalize(state->assisted);
 }
 
-void halo_vr_aim_assist(long target, float level, const float middle[3])
+void halo_vr_aim_assist(long target, float level, const float middle[3], const float low[3], const float high[3])
 {
-	vr.assist_target = middle && level > 0.0f ? target : -1;
+	vr.assist_target = middle && low && high && level > 0.0f ? target : -1;
 	vr.assist_level = level > 1.0f ? 1.0f : level;
 	if (vr.assist_target != -1)
 	{
 		play_axes(middle, vr.origin_yaw, vr.assist_middle);
 		normalize(vr.assist_middle);
+		play_axes(low, vr.origin_yaw, vr.assist_low);
+		normalize(vr.assist_low);
+		play_axes(high, vr.origin_yaw, vr.assist_high);
+		normalize(vr.assist_high);
 	}
 }
 
