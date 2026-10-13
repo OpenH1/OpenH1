@@ -64,8 +64,14 @@ though they aim nothing (cinematic_head).
 
 #include "../src/vr.h"
 #include "vr_hands.h"
+#include "cache/cache_files.h"
+#include "tag_files/tag_groups.h"
+#include "sound/game_sound.h"
+#include "sound/sound_definitions.h"
+#include "scenario/scenario.h"
 
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 /* the union of the eyes' fields of view, a little wider (the eyes are
@@ -163,6 +169,29 @@ static struct
 	boolean aim_base_valid;
 	long aim_base_unit_index;
 	long aim_base_tick;
+	/* the sounds' listener (vr_render_listener), from the last frame drawn:
+	how far the view's eye was moved from the game's (the crouch, a
+	vehicle's seat, the death's held eye; world units), the heading and
+	pitch the head was turned by (the heading the camera's own, as it is
+	when the listener is placed: a cinematic's), and the game's tick then */
+	boolean listener_valid;
+	real_vector3d listener_eye_offset;
+	boolean listener_camera_yaw;
+	real listener_yaw;
+	real listener_pitch;
+	long listener_tick;
+	/* debug.vr_audio_log: the listener placed for this frame, and the
+	frames logged; debug.vr_test_sound: where its sound plays, and when it
+	played last (the game's ticks) */
+	boolean listener_placed;
+	real_point3d listener_position;
+	real_vector3d listener_forward;
+	real_vector3d listener_up;
+	unsigned long listener_frames;
+	boolean test_sound_placed;
+	real_point3d test_sound_eye;
+	real_point3d test_sound_position;
+	long test_sound_tick;
 } vr_render;
 
 /* what the first player's view is, as logged (cinematic_log) */
@@ -197,6 +226,10 @@ void vr_death_camera(real_point3d const *position, real_vector3d const *forward,
 	real half_across, real half_up);
 real render_interpolation_fraction(void);
 void platform_log(char const *format, ...);
+char const *config_string(char const *name);
+int config_boolean(char const *name);
+static void listener_log(struct render_camera const *camera, real_point3d const *game_eye,
+	real_vector3d const *game_forward);
 
 /* ---------- maths */
 
@@ -508,6 +541,9 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	real left = 0.0f, right = 0.0f, up = 0.0f, down = 0.0f, tangent;
 	real aspect;
 	boolean dead;
+	real_point3d game_eye;
+	real_vector3d game_forward = camera->forward;
+	boolean camera_yaw;
 	short eye;
 
 	vr_render.active = FALSE;
@@ -521,8 +557,8 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	cinematic_log(vr_render.cinematic_head, hands_posed());
 	/* the turn of the stick (and of the aim) while the aim follows the head;
 	else (a cinematic, the main menu's scene) the camera's own heading */
-	base_yaw = cinematic_in_progress() || !halo_vr_aiming() ?
-		(real)atan2(camera->forward.j, camera->forward.i) : view->body_yaw;
+	camera_yaw = cinematic_in_progress() || !halo_vr_aiming();
+	base_yaw = camera_yaw ? (real)atan2(camera->forward.j, camera->forward.i) : view->body_yaw;
 	/* in a vehicle's seat (vr.vehicle_view): the eye is the seat's (where
 	the seated player's head is, as the frame poses it between ticks, or
 	held still in the vehicle: vr.seat_motion), and the view is level and
@@ -541,6 +577,7 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 		lift = vr_render.crouch_lift = vr_render.crouch_blended = 0.0f;
 		vr_render.crouch_valid = vr_render.crouch_physical = FALSE;
 	}
+	game_eye = camera->position;
 	camera->position.z += lift;
 	/* dead (vr.death_view = "face", "still"): the eye held where the player
 	died, and the view turned as the player turns it, not the game's dead
@@ -560,6 +597,10 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 		&base_yaw);
 	vr_render.base_position = camera->position;
 	vr_render.base_yaw = base_yaw;
+	vector_from_points3d(&game_eye, &camera->position, &vr_render.listener_eye_offset);
+	vr_render.listener_camera_yaw = camera_yaw && base_yaw == (real)atan2(game_forward.j, game_forward.i);
+	vr_render.listener_yaw = base_yaw;
+	vr_render.listener_tick = game_time_get();
 	vr_render.aim_base_valid = halo_vr_aiming() && !cinematic_in_progress() && !dead &&
 		local_player_get_player_index(0) != NONE;
 	if (vr_render.aim_base_valid)
@@ -586,6 +627,8 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 			vr_render.aim_up = camera->up;
 	}
 	pitch = view_pitch();
+	vr_render.listener_pitch = pitch;
+	vr_render.listener_valid = TRUE;
 	view_rotate(base_yaw, pitch, view->head_forward, &camera->forward);
 	view_rotate(base_yaw, pitch, view->head_up, &camera->up);
 	view_rotate(base_yaw, pitch, view->head_position, &offset);
@@ -669,6 +712,157 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	vr_render.infinite = FALSE;
 	vr_render.projection_valid = FALSE;
 	vr_render.active = TRUE;
+	listener_log(camera, &game_eye, &game_forward);
+	vr_render.listener_placed = FALSE;
+	return TRUE;
+}
+
+/* a view's yaw (left), pitch (up) and roll (right) in degrees, for the logs */
+static void view_angles(real_vector3d const *forward, real_vector3d const *up, real angles[3])
+{
+	real_vector3d level_up, right;
+	real along = forward->k;
+
+	level_up.i = -forward->i * along;
+	level_up.j = -forward->j * along;
+	level_up.k = 1.0f - forward->k * along;
+	if (normalize3d(&level_up) <= 0.0f)
+		level_up = *up;
+	cross_product3d(forward, &level_up, &right);
+	angles[0] = (real)atan2(forward->j, forward->i) * 180.0f / (real)M_PI;
+	angles[1] = (real)asin(PIN(forward->k, -1.0f, 1.0f)) * 180.0f / (real)M_PI;
+	angles[2] = (real)atan2(dot_product3d(up, &right), dot_product3d(up, &level_up)) * 180.0f / (real)M_PI;
+}
+
+/* debug.vr_test_sound, "<text> <seconds>[ <distance> <degrees>]": the
+map's first sound whose tag name has the text in it, played again every so
+many seconds at a point held in the world, distance world units (default 2)
+from where the game's eye was at the first (again if it is carried a tenth
+of a unit away from there: a level's ride in, the landing), turned degrees
+left of the heading the view had (default 0: ahead), for automated tests of
+the listener (port/linux/README.md, "VR") */
+static void listener_test_sound(real_point3d const *eye)
+{
+	struct tag_iterator iterator;
+	struct sound_location location;
+	char text[64];
+	real seconds, distance = 2.0f, degrees = 0.0f, yaw;
+	long tag_index, tick = game_time_get();
+
+	if (sscanf(config_string("debug.vr_test_sound"), "%63s %f %f %f", text, &seconds, &distance, &degrees) < 2 ||
+		seconds <= 0.0f)
+	{
+		return;
+	}
+	/* (placed again if the player is carried away from it) */
+	if (!vr_render.test_sound_placed || tick < vr_render.test_sound_tick ||
+		distance_squared3d(eye, &vr_render.test_sound_eye) > 0.1f * 0.1f)
+	{
+		vr_render.test_sound_eye = *eye;
+		yaw = vr_render.listener_yaw + degrees * (real)M_PI / 180.0f;
+		vr_render.test_sound_position.x = eye->x + distance * (real)cos(yaw);
+		vr_render.test_sound_position.y = eye->y + distance * (real)sin(yaw);
+		vr_render.test_sound_position.z = eye->z;
+		vr_render.test_sound_placed = TRUE;
+		vr_render.test_sound_tick = tick - (long)(seconds * TICKS_PER_SECOND);
+	}
+	if (tick - vr_render.test_sound_tick < (long)(seconds * TICKS_PER_SECOND))
+		return;
+	vr_render.test_sound_tick = tick;
+	tag_iterator_new(&iterator, SOUND_DEFINITION_TAG);
+	while ((tag_index = tag_iterator_next(&iterator)) != NONE)
+	{
+		char const *name = tag_get_name(tag_index);
+
+		if (name && strstr(name, text))
+			break;
+	}
+	if (tag_index == NONE)
+	{
+		platform_log("vr test sound: no sound in this map named with \"%s\"", text);
+		return;
+	}
+	memset(&location, 0, sizeof(location));
+	location.position = vr_render.test_sound_position;
+	location.forward = *global_forward3d;
+	scenario_location_from_point(&location.game_location, &location.position);
+	unattached_impulse_sound_new(tag_index, &location, 1.0f);
+	platform_log("vr test sound: tick %ld: %s at %.3f %.3f %.3f", tick, tag_get_name(tag_index),
+		location.position.x, location.position.y, location.position.z);
+}
+
+/* debug.vr_audio_log: each frame, the listener placed before it was
+drawn against the head it was drawn from, and the game's camera (the
+body's heading), which the listener is not */
+static void listener_log(struct render_camera const *camera, real_point3d const *game_eye,
+	real_vector3d const *game_forward)
+{
+	real head[3], listener[3];
+
+	if (!config_boolean("debug.vr_audio_log"))
+		return;
+	vr_render.listener_frames++;
+	view_angles(&camera->forward, &camera->up, head);
+	if (!vr_render.listener_placed)
+	{
+		platform_log("vr audio: frame %lu tick %ld: head yaw %.2f pitch %.2f roll %.2f at %.3f %.3f %.3f; "
+			"no listener placed (the game's camera)", vr_render.listener_frames, game_time_get(), head[0], head[1],
+			head[2], camera->position.x, camera->position.y, camera->position.z);
+		return;
+	}
+	view_angles(&vr_render.listener_forward, &vr_render.listener_up, listener);
+	platform_log("vr audio: frame %lu tick %ld: head yaw %.2f pitch %.2f roll %.2f at %.3f %.3f %.3f; "
+		"listener yaw %.2f pitch %.2f roll %.2f at %.3f %.3f %.3f (%.1f mm from the head); game camera yaw %.2f "
+		"at %.3f %.3f %.3f", vr_render.listener_frames, game_time_get(), head[0], head[1], head[2],
+		camera->position.x, camera->position.y, camera->position.z, listener[0], listener[1], listener[2],
+		vr_render.listener_position.x, vr_render.listener_position.y, vr_render.listener_position.z,
+		(real)sqrt(distance_squared3d(&vr_render.listener_position, &camera->position)) * 1000.0f /
+			vr_render.view.world_units_per_metre,
+		(real)atan2(game_forward->j, game_forward->i) * 180.0f / (real)M_PI, game_eye->x, game_eye->y, game_eye->z);
+}
+
+/* sound_manager.c (refresh_listener): the first player's sounds are heard
+from the head, as it is seen from. Placed: from the game's eye (eye: its
+camera at the tick, which the flat screen hears from, the sounds being where
+their objects are at the tick: from the view's eye between ticks, a sound
+carried along, the player's own, would sway against the head), moved as the
+view's eye is moved from the game's (the crouch, a vehicle's seat, the
+death's held eye: as the last frame drawn moved it), and by the head's
+place in the room. Turned as the head is (its yaw, pitch and roll), turned
+by the heading the view is: the stick's turn, or where the view has the
+camera's heading (a cinematic, the main menu's scene), the camera's as it
+is now (eye_forward: a cut turns it at once). The head is this frame's, as
+located when it began (halo_vr_head), not the last frame's: the listener is
+placed before the frame is drawn. FALSE without a VR frame, or before one is
+drawn on this map: the game's camera, as on the flat screen. */
+boolean vr_render_listener(real_point3d const *eye, real_vector3d const *eye_forward, real_point3d *position,
+	real_vector3d *forward, real_vector3d *up)
+{
+	float head_forward[3], head_up[3], head_position[3];
+	real_vector3d offset;
+	real units = vr_render.view.world_units_per_metre;
+	long tick = game_time_get();
+	real yaw = vr_render.listener_yaw;
+
+	if (!vr_render.listener_valid || tick < vr_render.listener_tick ||
+		tick - vr_render.listener_tick > TICKS_PER_SECOND ||
+		!halo_vr_head(head_forward, head_up, head_position))
+	{
+		return FALSE;
+	}
+	if (vr_render.listener_camera_yaw)
+		yaw = (real)atan2(eye_forward->j, eye_forward->i);
+	view_rotate(yaw, vr_render.listener_pitch, head_forward, forward);
+	view_rotate(yaw, vr_render.listener_pitch, head_up, up);
+	view_rotate(yaw, vr_render.listener_pitch, head_position, &offset);
+	position->x = eye->x + vr_render.listener_eye_offset.i + offset.i * units;
+	position->y = eye->y + vr_render.listener_eye_offset.j + offset.j * units;
+	position->z = eye->z + vr_render.listener_eye_offset.k + offset.k * units;
+	vr_render.listener_placed = TRUE;
+	vr_render.listener_position = *position;
+	vr_render.listener_forward = *forward;
+	vr_render.listener_up = *up;
+	listener_test_sound(eye);
 	return TRUE;
 }
 

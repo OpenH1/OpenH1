@@ -31,7 +31,9 @@ buffer, so streams still drain at their real rate.
 
 audio.volume sets the master volume (default 1.0); audio.reverb = false
 turns the reverb off; audio.enabled = false skips opening a device
-(port_config.c).
+(port_config.c). For automated tests, debug.audio_record records the mix to a
+WAV file and debug.audio_log logs the 3D voices' places and gains (record,
+voices_log).
 */
 
 #include "platform.h"
@@ -1255,12 +1257,104 @@ static void limit(float *output, unsigned long frames)
 	}
 }
 
+/* ---------- recording
+
+debug.audio_record: the mix as it plays, to a WAV file of 16-bit stereo at
+the output rate, its sizes written again each second, so that a test that
+stops the game mid-run still leaves a whole file. On the mixer's thread (the
+device's or the clock's); opened before either starts (audio_start). */
+
+static FILE *record_file;
+static unsigned long record_frames;
+
+static void record_sizes(void)
+{
+	unsigned long bytes = record_frames * OUTPUT_CHANNELS * 2;
+	unsigned char size[4];
+	long end = ftell(record_file);
+
+	size[0] = (unsigned char)(bytes + 36);
+	size[1] = (unsigned char)((bytes + 36) >> 8);
+	size[2] = (unsigned char)((bytes + 36) >> 16);
+	size[3] = (unsigned char)((bytes + 36) >> 24);
+	fseek(record_file, 4, SEEK_SET);
+	fwrite(size, 1, 4, record_file);
+	size[0] = (unsigned char)bytes;
+	size[1] = (unsigned char)(bytes >> 8);
+	size[2] = (unsigned char)(bytes >> 16);
+	size[3] = (unsigned char)(bytes >> 24);
+	fseek(record_file, 40, SEEK_SET);
+	fwrite(size, 1, 4, record_file);
+	fseek(record_file, end, SEEK_SET);
+	fflush(record_file);
+}
+
+static void record_open(void)
+{
+	static const unsigned char header[44] =
+	{
+		'R', 'I', 'F', 'F', 36, 0, 0, 0, 'W', 'A', 'V', 'E',
+		'f', 'm', 't', ' ', 16, 0, 0, 0, 1, 0, OUTPUT_CHANNELS, 0,
+		OUTPUT_RATE & 0xff, (OUTPUT_RATE >> 8) & 0xff, (OUTPUT_RATE >> 16) & 0xff, 0,
+		(OUTPUT_RATE * OUTPUT_CHANNELS * 2) & 0xff, ((OUTPUT_RATE * OUTPUT_CHANNELS * 2) >> 8) & 0xff,
+		((OUTPUT_RATE * OUTPUT_CHANNELS * 2) >> 16) & 0xff, 0,
+		OUTPUT_CHANNELS * 2, 0, 16, 0,
+		'd', 'a', 't', 'a', 0, 0, 0, 0,
+	};
+	const char *path = config_string("debug.audio_record");
+
+	if (!path || !path[0])
+		return;
+	record_file = fopen(path, "wb");
+	if (!record_file)
+	{
+		platform_log("audio: cannot record to %s", path);
+		return;
+	}
+	fwrite(header, 1, sizeof(header), record_file);
+	fflush(record_file);
+	platform_log("audio: recording to %s", path);
+}
+
+static void record(const float *output, unsigned long frames)
+{
+	short samples[MIX_CHUNK_FRAMES * OUTPUT_CHANNELS];
+	unsigned long index, count = frames * OUTPUT_CHANNELS;
+
+	if (!record_file)
+		return;
+	if (count > MIX_CHUNK_FRAMES * OUTPUT_CHANNELS)
+		count = MIX_CHUNK_FRAMES * OUTPUT_CHANNELS;
+	for (index = 0; index < count; index++)
+	{
+		float sample = output[index] * 32767.0f;
+
+		samples[index] = (short)(sample > 32767.0f ? 32767.0f : (sample < -32768.0f ? -32768.0f : sample));
+	}
+	fwrite(samples, sizeof(short), count, record_file);
+	if ((record_frames + frames) / OUTPUT_RATE != record_frames / OUTPUT_RATE)
+	{
+		record_frames += frames;
+		record_sizes();
+	}
+	else
+	{
+		record_frames += frames;
+	}
+}
+
+/* debug.audio_log: the time the mixes took (nanoseconds) and the frames
+they mixed, since the log last said */
+static Uint64 mix_nanoseconds;
+static unsigned long mix_frames;
+
 static void mix(float *output, unsigned long frames)
 {
 	struct sdl_stream *stream;
 	DSI3DL2LISTENER properties;
 	BOOL enabled = reverb_enabled, changed = FALSE;
 	unsigned long serial = 0;
+	Uint64 started = SDL_GetTicksNS();
 
 	memset(output, 0, frames * OUTPUT_CHANNELS * sizeof(float));
 	memset(reverb.send, 0, frames * sizeof(float));
@@ -1288,6 +1382,9 @@ static void mix(float *output, unsigned long frames)
 	/* the players' voices (voice_audio.c), dry, under the limiter */
 	voice_audio_mix(output, frames);
 	limit(output, frames);
+	record(output, frames);
+	mix_nanoseconds += SDL_GetTicksNS() - started;
+	mix_frames += frames;
 }
 
 /* ---------- output */
@@ -1360,6 +1457,7 @@ static void audio_start(void)
 	resampler_initialize();
 	resampler_phases_initialize();
 	reverb_initialize();
+	record_open();
 
 	if (config_boolean("audio.enabled") && platform_sdl_initialize())
 	{
@@ -1684,9 +1782,60 @@ ULONG WINAPI IDirectSound_Release(LPDIRECTSOUND sound)
 	return direct_sound.reference_count ? --direct_sound.reference_count : 0;
 }
 
+/* debug.audio_log: each 3D voice playing (a sound placed in the world),
+where it is from the listener and its gains, as the mixer has them now */
+static void voices_log(void)
+{
+	static Uint64 logged_at;
+	struct sdl_stream *stream;
+	Uint64 now = SDL_GetTicks();
+
+	if (now - logged_at < 200)
+		return;
+	logged_at = now;
+	/* (what the mixing costs: its time over the time it mixed; and where
+	the recording is) */
+	if (mix_frames)
+	{
+		char recorded[48] = "";
+
+		if (record_file)
+			snprintf(recorded, sizeof(recorded), "; %.2f s recorded", (double)record_frames / OUTPUT_RATE);
+		platform_log("audio: mixing took %.2f%% of the time it mixed%s", 100.0 *
+			(double)mix_nanoseconds / ((double)mix_frames * 1.0e9 / OUTPUT_RATE), recorded);
+		mix_nanoseconds = 0;
+		mix_frames = 0;
+	}
+	pthread_mutex_lock(&mixer_lock);
+	for (stream = streams; stream; stream = stream->next)
+	{
+		float offset[3], right_axis[3], left, right, room, direct_lowpass, room_lowpass;
+		int axis;
+
+		if (!stream->has_3d || stream->mode == DS3DMODE_DISABLE || stream->paused || !stream->packet_count)
+			continue;
+		for (axis = 0; axis < 3; axis++)
+		{
+			offset[axis] = stream->position[axis] -
+				(stream->mode == DS3DMODE_HEADRELATIVE ? 0.0f : listener.position[axis]);
+		}
+		right_axis[0] = listener.top[1] * listener.front[2] - listener.top[2] * listener.front[1];
+		right_axis[1] = listener.top[2] * listener.front[0] - listener.top[0] * listener.front[2];
+		right_axis[2] = listener.top[0] * listener.front[1] - listener.top[1] * listener.front[0];
+		voice_gains(stream, &left, &right, &room, &direct_lowpass, &room_lowpass);
+		platform_log("audio: voice %p: %.2f m ahead, %.2f right, %.2f up (minimum distance %.2f m); gains left %.1f "
+			"dB, right %.1f dB", (void *)stream, dot3(offset, listener.front) * listener.distance_factor,
+			dot3(offset, right_axis) * listener.distance_factor, dot3(offset, listener.top) * listener.distance_factor,
+			stream->minimum_distance * listener.distance_factor,
+			left > 0.0f ? 20.0f * log10f(left) : -999.0f, right > 0.0f ? 20.0f * log10f(right) : -999.0f);
+	}
+	pthread_mutex_unlock(&mixer_lock);
+}
+
 VOID WINAPI DirectSoundDoWork(void)
 {
 	static unsigned long volume_read_at = (unsigned long)-1;
+	static BOOL log_voices;
 
 	/* (audio.volume and audio.reverb read again when the settings change: on
 	the game's thread, not the mixer's, whose lock the config's file I/O
@@ -1696,7 +1845,10 @@ VOID WINAPI DirectSoundDoWork(void)
 		volume_read_at = config_changes();
 		master_volume = (float)config_real("audio.volume");
 		reverb_enabled = config_boolean("audio.reverb");
+		log_voices = config_boolean("debug.audio_log");
 	}
+	if (log_voices)
+		voices_log();
 	streams_complete_finished();
 }
 

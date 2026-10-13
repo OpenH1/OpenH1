@@ -250,6 +250,12 @@ void dsound_port_set_channel_stereo_position(short virtual_channel_index, boolea
 	real distance, real minimum_distance, real distance_fade, real occlusion, real obstruction,
 	boolean attenuate_direct_path);
 
+#ifdef HALO_VR
+/* port: the VR mode's listener, the head (port/linux/game/vr_render.c) */
+boolean vr_render_listener(real_point3d const *eye, real_vector3d const *eye_forward, real_point3d *position,
+	real_vector3d *forward, real_vector3d *up);
+#endif
+
 /* ---------- constants */
 
 enum
@@ -391,6 +397,17 @@ struct sound_listener
 	real_matrix4x3 matrix;
 	real_vector3d velocity;
 };
+
+#ifdef HALO_VR
+/* port: in the VR mode, the first player's listener is the head
+(refresh_listener), and the game's camera it would have been, which the
+sounds placed about the listener are about (sound_vr_relative) */
+static struct
+{
+	boolean head;
+	real_matrix4x3 camera;
+} sound_vr_listener;
+#endif
 
 struct sound_channel_datum
 {
@@ -3445,6 +3462,34 @@ static void refresh_sounds(
 	return;
 }
 
+#ifdef HALO_VR
+/* port: a sound placed about the listener (a looping sound's details: a
+bird, a gust, at random about it) is about the game's camera, the body,
+while the listener is the head (refresh_listener): it is placed in the
+head's view from there, so that it stays where it is as the head turns, as
+the others do, not turning with it */
+static void sound_vr_relative(
+	struct sound_location *location)
+{
+	struct sound_listener *listener = listener_get(0);
+	real_point3d world;
+	real_vector3d vector;
+
+	if (!sound_vr_listener.head || !listener->valid)
+	{
+		return;
+	}
+	matrix4x3_transform_point(&sound_vr_listener.camera, &location->position, &world);
+	matrix4x3_inverse_transform_point(&listener->matrix, &world, &location->position);
+	matrix4x3_transform_normal(&sound_vr_listener.camera, &location->forward, &vector);
+	matrix4x3_inverse_transform_normal(&listener->matrix, &vector, &location->forward);
+	matrix4x3_transform_vector(&sound_vr_listener.camera, &location->translational_velocity, &vector);
+	matrix4x3_inverse_transform_vector(&listener->matrix, &vector, &location->translational_velocity);
+
+	return;
+}
+#endif
+
 static void update_channels(
 	void)
 {
@@ -3525,6 +3570,20 @@ static void update_channels(
 					break;
 
 				case _sound_spatialization_mode_relative:
+#ifdef HALO_VR
+					{
+						struct sound_location location = sound->source.location;
+
+						sound_vr_relative(&location);
+						sound_manager_globals.platform_definition->set_channel_location(
+							channel_index,
+							TRUE,
+							&location,
+							0.f,
+							0.f,
+							FALSE);
+					}
+#else
 					sound_manager_globals.platform_definition->set_channel_location(
 						channel_index,
 						TRUE,
@@ -3532,6 +3591,7 @@ static void update_channels(
 						0.f,
 						0.f,
 						FALSE);
+#endif
 					break;
 
 				default:
@@ -3583,6 +3643,16 @@ static void update_channels(
 					/* fall through */
 
 				case _sound_spatialization_mode_relative:
+#ifdef HALO_VR
+					/* port: (about the body, not the head: sound_vr_relative) */
+					if (sound->source.spatialization_mode == _sound_spatialization_mode_relative)
+					{
+						struct sound_location location = sound->source.location;
+
+						sound_vr_relative(&location);
+						relative_position = location.position;
+					}
+#endif
 					{
 						real minimum_distance =
 							sound_definition_get_minimum_distance(
@@ -3905,6 +3975,34 @@ static void refresh_listener(
 				&camera->position,
 				&camera->forward,
 				&camera->up);
+#ifdef HALO_VR
+			/* port: in the VR mode, the first player hears from the head as it
+			is tracked, its place and its turn (yaw, pitch and roll), each
+			frame, not from the game's camera, which the head looks about from
+			(vr_render_listener) */
+			if (local_player_index == 0)
+			{
+				real_point3d head_position;
+				real_vector3d head_forward;
+				real_vector3d head_up;
+
+				sound_vr_listener.camera = listener->matrix;
+				sound_vr_listener.head = vr_render_listener(
+					&camera->position,
+					&camera->forward,
+					&head_position,
+					&head_forward,
+					&head_up);
+				if (sound_vr_listener.head)
+				{
+					matrix4x3_from_point_and_vectors(
+						&listener->matrix,
+						&head_position,
+						&head_forward,
+						&head_up);
+				}
+			}
+#endif
 			matrix4x3_inverse_transform_vector(
 				&listener->matrix,
 				&camera->velocity,
@@ -3913,6 +4011,12 @@ static void refresh_listener(
 		else
 		{
 			listener->valid = FALSE;
+#ifdef HALO_VR
+			if (local_player_index == 0)
+			{
+				sound_vr_listener.head = FALSE;
+			}
+#endif
 		}
 	}
 

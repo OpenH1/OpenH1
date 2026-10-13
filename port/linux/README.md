@@ -428,6 +428,8 @@ the setting for one start of the game. It has priority over the file.
 | `debug.touch_targets` | `false` | `HALO_TOUCH_TARGETS` | Outlines the tap targets of the menus (item green, value blue, list slot yellow, legend button red, the band beside the slots of a list orange, keys of the on-screen keyboard white), marks where the last finger went down and the last tap landed for 3 seconds, and logs each tap with the target that it hit (for a value, also where it splits into previous and next): to judge the accuracy of touch. |
 | `debug.network_latency`, `debug.network_loss`, `debug.network_corrupt`, `debug.network_corrupt_stream`, `debug.network_corrupt_after` | `0` | `HALO_NETWORK_LATENCY`, `HALO_NETWORK_LOSS`, `HALO_NETWORK_CORRUPT`, `HALO_NETWORK_CORRUPT_STREAM`, `HALO_NETWORK_CORRUPT_AFTER` | The game holds all the data that it receives for this number of milliseconds, ignores this percentage of the datagrams, and damages this percentage of the datagrams it receives, and this percentage of its reads of streams, at random (bytes changed, cut short, stretched or replaced), from this many seconds after the start. Use the first two to test the netcode as on the internet, and the others to test that nothing another machine sends can crash the game (a damaged stream is closed, so a little goes a long way; a host's messages to its own client are damaged too, so start damaging once the game has started). |
 | `debug.voice_test` | `false` | `HALO_VOICE_TEST` | Automatic tests of voice chat: a tone replaces the microphone, and each voice that the game hears is written to the log once each second. |
+| `debug.audio_log` | `false` | `HALO_AUDIO_LOG` | Write to the log, five times a second, each sound placed in the world that plays: where it is from the listener (metres ahead, right and up), its gain in each ear, and the time the mixing takes. |
+| `debug.audio_record` | `""` | `HALO_AUDIO_RECORD` | Record the game's sound as it plays (with a device or without) to this WAV file, 48 kHz 16-bit stereo, for automatic tests. Empty: none. |
 | `debug.telnet_console`, `debug.telnet_console_port` | `false`, `2323` | `HALO_TELNET_CONSOLE`, `HALO_TELNET_CONSOLE_PORT` | The game listens on 127.0.0.1, on this port, for a script console (connect with telnet). The console has no password, so only this computer can reach it. |
 | `debug.profile_record`, `debug.profile_record_when`, `debug.profile_memory` | `false`, `"start"`, `256` | `HALO_PROFILE_RECORD`, `HALO_PROFILE_RECORD_WHEN`, `HALO_PROFILE_MEMORY` | Profiling builds only (`configure.py --profile`). Record without a command; `"start"` records from the first frame until the first map change, `"game"` records each game outside the main menu. Memory is 4–1024 MB. Numbered `profile_<stamp>_<role>.part<n>.json` files remain in `profiles/` after recording. Refer to "Profiling builds" in the main README. |
 
@@ -1844,6 +1846,36 @@ controller 1 (each stick pushed furthest wins). In a vehicle the view is
 as `vr.vehicle_view` says, and the vehicle steers and aims where the stick
 does.
 
+#### Sound from your head
+
+You hear from where your head is, as you see from there: the world's
+sounds are placed about your head as it is tracked, its place and its turn
+(left and right, up and down, and its tilt), each frame, not about the
+game's camera (the body's facing, which on the flat screen moves only at
+the game's 30 ticks a second). Turn your head and a Hunter behind you comes
+round to your side; lean and a sound beside you is nearer one ear. A sound
+from the world moves smoothly from ear to ear as your head turns: each
+sound's place is given to the mixer each frame, a few millimetres being
+enough to move it (on the flat screen, 15 cm), and the mixer ramps it across
+each 10 ms it mixes, with no step.
+
+- From where: the game's eye at its tick (as on the flat screen: the
+  sounds are where their objects are at the tick, and the player's own,
+  carried along, stay put about the head), moved as the view's eye is from
+  it (your head's crouch, a vehicle's seat, the death's held eye) and by
+  your head's place in the room. Turned as your head is this frame (as it
+  is located when the frame begins, before it is drawn).
+- The sounds placed about the listener rather than in the world (a
+  looping sound's details: a bird, a gust, at random about you) are about
+  your body, not your head: they stay where they are as your head turns.
+- Only the first player's, in the headset; on the flat screen, and played
+  flat (`vr.enabled = false`), the sound is the flat game's.
+- `debug.vr_audio_log` logs, each frame, where the sounds were heard from
+  against the head the frame was drawn from; `debug.audio_log`, each sound
+  in the world playing (where it is from your head, and its gains);
+  `debug.audio_record` records the mix to a WAV file; `debug.vr_test_sound`
+  plays a sound held in the world (below).
+
 ### Settings
 
 In the headset, Settings' VR Setup (below About; only there while the
@@ -1925,6 +1957,8 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_shake` | `""` | `HALO_VR_TEST_SHAKE` | Shake the controllers as a hand does, for automated tests of the aim steadied while zoomed: `"<degrees> [<millimetres>]"`, the right controller turned at random by about this much (RMS: half a slow wander, smoothed noise below 1.5 Hz, half a 9 Hz tremor), both moved by this much. |
 | `debug.vr_aim_log` | `false` | `HALO_VR_AIM_LOG` | Log the controller's aim once a tick: where its line meets the world (and what: the structure, or the object's tag), how far the game's aim was turned to meet it there from the game's eye, how far from that point the unit's aim passes, whether the reticle is red, and the aim assist's target's magnetism level and how many of 9 points of its body are in sight from the controller (with `debug.vr_test_target`, how far the target's middle is from both, and its head from the game's aim); with `debug.vr_test_hands`, each frame, the controller's direction and the aim's, steadied (`vr aim steady`). |
 | `debug.vr_throw_log` | `false` | `HALO_VR_THROW_LOG` | Log each step of a grenade thrown with the left hand (`vr.grenade_throw`): the grip taken (or why it holds nothing), the swing (or why a fast hand was none), the release's speed, power and direction, and the game's throw: when it began, its animations held or moved on to their release, and the grenade's place and speed. |
+| `debug.vr_audio_log` | `false` | `HALO_VR_AUDIO_LOG` | Log, each frame, where the sounds were heard from (the listener: its yaw, pitch, roll and place) against the head the frame was drawn from, and the game's camera ("Sound from your head"). |
+| `debug.vr_test_sound` | `""` | `HALO_VR_TEST_SOUND` | Play a sound of the map's at a point held in the world, for automated tests of the listener: `"<text> <seconds>[ <distance> <degrees>]"`, the first sound whose tag name has the text in it, again every so many seconds, so many world units (2) from the player's eye, turned so many degrees left of the view's heading (0: ahead); placed again if the player is carried a tenth of a unit away (a level's ride in). |
 | `debug.vr_melee_log` | `false` | `HALO_VR_MELEE_LOG` | Log the right hand's swings that did not melee (`vr.melee_gesture`) too: how fast and how far each went, and why it was none (too slow, a holster, a throw, a reload, the tracking jumping). Each melee by a swing is logged whatever this is. |
 | `debug.vr_test_weapon` | `""` | `HALO_VR_TEST_WEAPON` | Put a weapon in the first player's hand, for automated tests of the reload by hand: `"<text> <seconds>"`, that many seconds into the level the player's weapons are taken and a new one is in hand, the first of the map's whose tag name has the text in it (`"shotgun 15"` on d20, `"rocket 15"` on b30). |
 | `debug.vr_test_seat` | `""` | `HALO_VR_TEST_SEAT` | Get into a vehicle's seat and out again, for automated tests of the view in a seat: `"<label> <seconds> [<seconds seated>]"`, the first player gets into the seat whose label has this text in it (`"gunner"`, `"W-driver"`, `"GT-gunner"`: the Shade) that many seconds into the level, as the action button does, in a vehicle of the kind made before them three seconds earlier (one found in the level, else of a kind the map has a tag for: `"G-driver"` makes a Ghost on b30, whose Ghosts come later; standing at the seat's entrance from two seconds earlier), and out again after as many seconds seated (10 by default). From a second before, the log says how far the view moved and turned each frame (and its heading and roll, the vehicle's heading, pitch and roll, the comfort vignette and the frame's time: degrees, seconds), how dark a blink made it, and each phase's sums (on foot, entering, seated, exiting) with how much of the motion was seen (not in a blink's full darkness), and each blink: with `debug.vr_test_head = "0"`, the motion the player did not make. |
@@ -2480,8 +2514,9 @@ supersampling costs as above, and multisampling the eye pass
   it, looking at it. With `"face"` and `"still"` the eye is held instead
   where it was the frame before (`vr_seat.c`'s, in a vehicle's seat too),
   and the view's heading is the player's, as the stick turns it: the game's
-  camera is the director's as ever (the sounds' listener, what is drawn
-  about it), but not the view. The dead body is not the player's unit any
+  camera is the director's as ever (what is drawn about it), but not the
+  view, nor the sounds' listener, which is the head in the view ("Sound
+  from your head"). The dead body is not the player's unit any
   more, so the game draws it whatever the camera; while its head is within
   0.6 m of the eye it is drawn shrunk into its neck (`render_objects.c`,
   from 0.3 m), and while any of its nodes is within 0.55 m the view is
@@ -2613,6 +2648,25 @@ supersampling costs as above, and multisampling the eye pass
   lagged by 1.2 degrees at most and was within 0.1 degree of the hand
   0.25 s after it stopped; at 2x, 0.7 degrees and 0.06 s. How it feels in
   the hand is the Steam Frame's to say.
+- The sounds' listener (`game/vr_render.c`, `vr_render_listener`): the game
+  places each sound in its listener's view each frame (`sound_manager.c`,
+  `update_channels`), the listener built from the game's camera at the
+  tick (`refresh_listener`: `observer_get_camera`, not interpolated), and
+  the mixer (`src/dsound_sdl.c`) pans each voice from the place it is
+  given, its own listener at the origin. In the VR mode the first player's
+  listener is the head: the tick's camera, moved by the view's eye's move
+  from the game's eye in the last frame drawn and by the head's place, and
+  turned by the head as located when the frame began (`halo_vr_head`,
+  sound being placed before the frame is drawn) and by the view's heading
+  (the camera's own as it is then, in a cinematic). The places are resent
+  to the mixer as they move 6 mm (`sound_dsound_xbox.c`, 15 cm on the flat
+  screen), and the mixer ramps each voice's gains over each mix (512
+  frames). Measured on b30 with `debug.vr_test_head = "90 16"` and the
+  controllers held still: the listener's yaw, pitch and roll were the
+  drawn head's within 0.03 degree each frame (3,700 frames), and on foot its
+  place too, while the game's camera did not turn; in the skipped ride in,
+  whose frames are many ticks apart, the tick's listener led the
+  interpolated view by up to 2.7 m, as the flat game's does.
 - The visibility tests (the lens flares') are counted by the pixel shaders'
   atomic counters, as on ES, not by queries: Vulkan counts a query in a
   multiview pass in as many slots as views, which Zink does not allow for,

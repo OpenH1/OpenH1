@@ -3623,6 +3623,31 @@ void halo_vr_depth_written(void)
 
 /* ---------- the views */
 
+/* The head as located when the frame began (frame_begin, for the frame's
+display), before halo_vr_view locates it again for the draws: the sounds'
+listener is placed before the frame is drawn (sound_manager.c,
+refresh_listener; vr_render.c, vr_render_listener), and this frame's head is
+a frame newer than the last one drawn. */
+int halo_vr_head(float forward[3], float up[3], float position[3])
+{
+	static const float ahead[3] = { 0.0f, 0.0f, -1.0f };
+	static const float above[3] = { 0.0f, 1.0f, 0.0f };
+	float v[3], offset[3];
+	int axis;
+
+	if (!vr.frame || !vr.views.eye[0].valid || !vr.views.eye[1].valid)
+		return 0;
+	quaternion_rotate(vr.views.eye[0].orientation, ahead, v);
+	game_axes(v, vr.origin_yaw, forward);
+	quaternion_rotate(vr.views.eye[0].orientation, above, v);
+	game_axes(v, vr.origin_yaw, up);
+	for (axis = 0; axis < 3; axis++)
+		offset[axis] = (vr.views.eye[0].position[axis] + vr.views.eye[1].position[axis]) * 0.5f -
+			vr.origin_position[axis];
+	game_axes(offset, vr.origin_yaw, position);
+	return 1;
+}
+
 int halo_vr_view(struct halo_vr_view *view)
 {
 	const struct vr_host_pose *head;

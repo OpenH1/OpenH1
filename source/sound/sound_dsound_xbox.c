@@ -61,6 +61,19 @@ enum sound_channel_state
 /* deferred DirectSound parameters are only resubmitted when they change by more than epsilon */
 #define realcmp_epsilon(a, b, epsilon) (fabs((a)-(b))<(epsilon))
 
+/* port: a channel's place, in the listener's view, is resubmitted as it
+moves this far (world units). In the VR mode the listener is the head
+(sound_manager.c, refresh_listener), and a turn of the head moves a near
+sound a little each frame: the flat screen's 15 cm stepped its pan (one 3 m
+away every 3 degrees of the turn, one 1 m away every 9), a few millimetres
+do not. */
+#ifdef HALO_VR
+int halo_vr_running(void);
+#define DSOUND_POSITION_EPSILON (halo_vr_running() ? 0.002f : 0.05f)
+#else
+#define DSOUND_POSITION_EPSILON 0.05f
+#endif
+
 /* our world is right-handed with +z up, DirectSound is left-handed with +y up */
 #define DSOUND_POINT3D(p) ((p).x), ((p).z), ((p).y)
 #define DSOUND_VECTOR3D(v) ((v).i), ((v).k), ((v).j)
@@ -2347,9 +2360,9 @@ static void dsound_channel_set_location(
 		}
 	}
 
-	if (!realcmp_epsilon(location->position.x, channel->position.x, 0.05f) ||
-		!realcmp_epsilon(location->position.y, channel->position.y, 0.05f) ||
-		!realcmp_epsilon(location->position.z, channel->position.z, 0.05f) ||
+	if (!realcmp_epsilon(location->position.x, channel->position.x, DSOUND_POSITION_EPSILON) ||
+		!realcmp_epsilon(location->position.y, channel->position.y, DSOUND_POSITION_EPSILON) ||
+		!realcmp_epsilon(location->position.z, channel->position.z, DSOUND_POSITION_EPSILON) ||
 		!dsound_globals.initialized)
 	{
 		HRESULT result= IDirectSoundStream_SetPosition(

@@ -793,6 +793,13 @@ static const struct config_setting config_settings[] =
 	{ "debug.voice_test", _config_boolean, "false", "HALO_VOICE_TEST", _environment_set_is_true, _platform_all,
 		"Voice chat's automated tests: a tone instead of the microphone, and\n"
 		"each voice heard logged once a second." },
+	{ "debug.audio_log", _config_boolean, "false", "HALO_AUDIO_LOG", _environment_value, _platform_desktop,
+		"Log the sounds placed in the world playing, five times a second: where\n"
+		"each is from the listener (metres ahead, right and up), its gain in\n"
+		"each ear, and the time the mixing takes." },
+	{ "debug.audio_record", _config_string, "\"\"", "HALO_AUDIO_RECORD", _environment_value, _platform_desktop,
+		"Record the game's sound, as it plays (with or without a device), to\n"
+		"this WAV file (48 kHz, 16-bit stereo), for automated tests; empty none." },
 
 #ifdef HALO_VR
 	{ "debug.vr_force_render", _config_boolean, "false", "HALO_VR_FORCE_RENDER", _environment_value, _platform_desktop,
@@ -907,6 +914,17 @@ static const struct config_setting config_settings[] =
 		"how far from that point the unit's aim passes, whether the reticle is\n"
 		"red, and the aim assist's target; with debug.vr_test_hands, the controller's direction and the\n"
 		"aim's, steadied, each frame." },
+	{ "debug.vr_audio_log", _config_boolean, "false", "HALO_VR_AUDIO_LOG", _environment_value, _platform_desktop,
+		"Log, each VR frame, where the sounds were heard from (the listener: its\n"
+		"yaw, pitch, roll and place) against the head the frame was drawn from,\n"
+		"and the game's camera." },
+	{ "debug.vr_test_sound", _config_string, "\"\"", "HALO_VR_TEST_SOUND", _environment_value, _platform_desktop,
+		"Play a sound of the map's at a point held in the world, for automated\n"
+		"tests of the listener: \"<text> <seconds>[ <distance> <degrees>]\", the\n"
+		"first sound whose tag name has the text in it, again every so many\n"
+		"seconds, so many world units (2) from the player's eye (placed again\n"
+		"if it is carried a tenth of a unit away), turned so many degrees left\n"
+		"of the view's heading (0: ahead); empty none." },
 #endif
 	{ "debug.null_renderer", _config_boolean, "false", "HALO_NULL_RENDERER", _environment_set_is_true, _platform_all,
 		"Run without a window, drawing nothing." },

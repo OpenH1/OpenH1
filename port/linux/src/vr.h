@@ -357,6 +357,10 @@ int halo_vr_frame_clock(float *seconds);
 /* the views, located again as late as possible (just before the frame's
 draws); 0 without a VR frame */
 int halo_vr_view(struct halo_vr_view *view);
+/* the head as located when the frame began, as halo_vr_view has it
+(head_forward, head_up, head_position): the sounds' listener (sound_manager.c,
+vr_render.c), placed before the frame is drawn; 0 without a VR frame */
+int halo_vr_head(float forward[3], float up[3], float position[3]);
 /* the player's aim on foot follows the head or the right controller (1,
 and yaw, pitch: the game's facing); 2 when the VR mode aims but the facing
 stays the game's (vr.aim = "gamepad"); 0 when it does not (no VR frame, a
