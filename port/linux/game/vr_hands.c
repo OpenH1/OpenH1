@@ -98,8 +98,8 @@ static const struct trigger_finger
 {
 	/* (each fitted to its weapon's first-person model as the game poses it,
 	the finger's mesh against the model's: resting against the trigger (the
-	pistol's; the assault rifle's, the sniper rifle's and the shotgun's,
-	drawn) or where one would be, following it back, never into the weapon. From the idle animation's finger, which hooks
+	pistol's; the assault rifle's, the sniper rifle's, the shotgun's and the
+	flamethrower's, drawn) or where one would be, following it back, never into the weapon. From the idle animation's finger, which hooks
 	round a trigger's place on most weapons, but on the pistol runs along its
 	trigger's side, into the frame, and on the Covenant's wraps into the
 	front of the grip. Off the trigger, each joint of the finger is laid
@@ -127,9 +127,12 @@ static const struct trigger_finger
 	follow it back) */
 	{ "weapons\\sniper rifle\\", { -0.225f, -0.05f, -0.12f }, { 0.0f, 0.06f, 0.08f }, 0.005f,
 		{ -0.25f, -0.91f, -1.195f } },
-	/* (no trigger in its model: the finger lies in the gap where one would
-	be) */
-	{ "weapons\\flamethrower\\", { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.20f, 0.20f }, 0.005f,
+	/* (the flamethrower's: the idle animation's finger hooks under the front
+	of its handle round the trigger vr_trigger.c draws there, which is shaped
+	to it, curled a little at the knuckle to rest on its face, and curls more
+	at the middle and the tip as it pulls; the trigger slides back and up
+	along the finger, as its curls turn it sideways more than back) */
+	{ "weapons\\flamethrower\\", { 0.10f, 0.0f, 0.0f }, { 0.0f, 0.20f, 0.20f }, 0.005f,
 		{ -0.25f, -0.905f, -1.19f } },
 	/* (the rocket launcher's: straightened at the knuckle and the tip and
 	curled at the middle, its finger lies flat along the front of the grip,

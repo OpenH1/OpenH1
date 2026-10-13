@@ -52,7 +52,8 @@ import os
 # (forward, up; None: its middle at the receiver's underside, the second
 # row) and the height of the finger on its face (which goes back by the
 # finger's travel there); the housing (its top, depth, chamfer, back, front
-# and half width); the texture: the blade's (across its width, down its
+# and half width, and its pitch where the underside rises forward: turned
+# up about its front); the texture: the blade's (across its width, down its
 # length) and the receiver's underside's mapping (u at forward x0 and per
 # forward, v at the middle and per left).
 TRIGGERS = [
@@ -144,6 +145,48 @@ TRIGGERS = [
 		# (shotgun, 512 x 512: the receiver's underside, dark metal, as the grip)
 		'blade_uv': (0.3000, 0.3800, 0.2900, 0.3070),
 		'receiver_uv': (0.2634, -0.0910, 4.36, 0.29865, 4.19),
+	},
+	{
+		'name': 'flamethrower',
+		'title': "the flamethrower's",
+		'model': 'weapons\\flamethrower\\fp\\fp',
+		'node': 'frame gun',
+		'shader': 'weapons\\flamethrower\\shaders\\ft gun',
+		# (no receiver over it: the hand holds a slanted bar, the handle, its
+		# underside rising forward, and the finger hooks under its front end.
+		# So the trigger comes out of the handle's underside just behind its
+		# front, raked forward and curving forward more as it goes down, so that
+		# the finger's middle lies on its face where the finger crosses it (its
+		# first bone, which only turns the finger sideways, clear above), its
+		# tip below the finger, between the middle finger's front and the
+		# finger, broad and stout as the flamethrower is)
+		'rows': [
+			(-0.0040, 0.01940, 0.00200, 0.00170),
+			(-0.0062, 0.02090, 0.00200, 0.00180),
+			(-0.0080, 0.02230, 0.00240, 0.00190),
+			(-0.0095, 0.02360, 0.00280, 0.00190),
+			(-0.0108, 0.02480, 0.00260, 0.00190),
+			(-0.0120, 0.02600, 0.00240, 0.00180),
+			(-0.0131, 0.02710, 0.00220, 0.00170),
+			(-0.0141, 0.02810, 0.00200, 0.00160),
+			(-0.0149, 0.02900, 0.00180, 0.00140),
+			(-0.0156, 0.03010, 0.00160, 0.00120),
+		],
+		'tip_step': 0.0005, 'tip_scale': 0.6,
+		'bevel': 0.00040, 'crown': 0.00018,
+		# (a pin behind and below the finger, about on its face's normal there:
+		# the blade slides back and up along the finger, 5.6 degrees at a full
+		# pull, its top into the handle; turned back about a pin above, its face
+		# would leave the finger, whose curls turn it sideways more than back)
+		'pivot': (0.0100, -0.0278), 'pull_up': -0.0110,
+		# (along the handle's underside, which rises forward 24 degrees)
+		'housing': {'up': -0.00565, 'depth': 0.00040, 'chamfer': 0.00020, 'back': 0.0176, 'front': 0.0206, 'half_width': 0.0024,
+			'pitch': 0.4205},
+		# (flamethrower, 512 x 512: a bar of the frame, dark metal as the handle's
+		# underside is, along its length; the housing as the handle's underside
+		# maps it)
+		'blade_uv': (0.3090, 0.3240, 0.0940, 0.2190),
+		'receiver_uv': (0.2731, 0.0254, 1.236, 0.04475, 1.23),
 	},
 ]
 
@@ -275,10 +318,19 @@ def housing(spec):
 	# lower face inset by the chamfer
 	outer = [(x0, -y), (x1, -y), (x1, y), (x0, y)]
 	inner = [(x0 + c, -y + c), (x1 - c, -y + c), (x1 - c, y - c), (x0 + c, y - c)]
+	# (on an underside that rises forward, turned up about its front by the
+	# pitch: its faces' texture as the turned faces lie)
+	pitch = h.get('pitch', 0.0)
+	cp, sp = math.cos(pitch), math.sin(pitch)
+	def turned(p):
+		x, z = p[0] - x1, p[2] - h['up']
+		return (x1 + cp * x - sp * z, p[1], h['up'] + sp * x + cp * z)
 	vertices, triangles = [], []
 	def quad(points, normal):
 		base = len(vertices)
+		normal = normalize((cp * normal[0] - sp * normal[2], normal[1], sp * normal[0] + cp * normal[2]))
 		for p in points:
+			p = turned(p)
 			vertices.append((p, normal, texcoord(p[0], p[1]), 1))
 		triangles.extend([(base, base + 1, base + 2), (base, base + 2, base + 3)])
 	# the lower face (seen from below: wound as the model's outside faces are)

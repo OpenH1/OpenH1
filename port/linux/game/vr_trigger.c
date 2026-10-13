@@ -13,7 +13,8 @@ the game's own animation rests in an empty gap under the receiver, ahead of
 the grip, and not one vertex of the model is there. So a trigger is drawn
 there, modelled for each such weapon to sit in the finger's crook
 (vr_trigger_model.h, made by tools/vr_trigger_model.py: the assault rifle's,
-an MA5B's, the sniper rifle's and the shotgun's): a curved blade of rounded section, its
+an MA5B's, the sniper rifle's, the shotgun's and the flamethrower's, out of
+its handle's underside): a curved blade of rounded section, its
 front face crowned where the finger lies, broad where it hangs from the
 receiver and curling forward to its tip below the finger, coming out of a
 low housing on the receiver's underside. Each is found by its model's tag
@@ -296,9 +297,11 @@ void vr_trigger_draw(
 	relative[0] = relative[1];
 	/* the blade turned back about its top, its face at the finger's height
 	as far back as the finger pulls it (about the left axis: the tip back,
-	toward the grip) */
+	toward the grip); or, its pivot below the finger (the flamethrower's),
+	the other way, its face going back and up along the finger, which on that
+	weapon cannot curl back to follow a face turned away from it */
 	angle = vr_hands_trigger_travel() / (definition->pivot_up - definition->pull_up);
-	if (angle > 0.0f)
+	if (angle != 0.0f)
 	{
 		cosine = (real)cos(angle);
 		sine = (real)sin(angle);

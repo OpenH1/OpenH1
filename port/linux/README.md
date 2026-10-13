@@ -2627,12 +2627,13 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   rocket launcher's finger lies flat along the front of its grip, off its
   corner, with no room for a trigger.
 - Some first-person models have no trigger (the assault rifle's, the
-  sniper rifle's, the shotgun's): their animation's index finger hooks
+  sniper rifle's, the shotgun's, the flamethrower's): their animation's index finger hooks
   round an empty gap under the receiver, ahead of the grip. So one is
   drawn there (`game/vr_trigger.c`), modelled for each to sit in the crook
   of the finger (`game/vr_trigger_model.h`, made by
   `tools/vr_trigger_model.py`): the assault rifle's an MA5B's, the sniper
   rifle's slimmer, the shotgun's broad and short, inside its own guard,
+  the flamethrower's stout, raked forward out of its handle's underside,
   each a curved blade of rounded section, its face crowned where the
   finger lies, broad where it hangs from the receiver and curling forward
   to its tip below the finger, out of a low housing on the receiver's
@@ -2642,10 +2643,13 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   shader, from its gun node, as the model is drawn (its lighting, tint and
   camouflage), the blade's faces sampling a fitting part of the weapon's
   texture (the trigger the rifle's paints but no face of its model shows;
-  the sniper rifle's and the shotgun's receiver's underside), the
+  the sniper rifle's and the shotgun's receiver's underside; a bar of the
+  flamethrower's frame), the
   housing's the receiver's underside. The blade turns back about its top
   as the finger pulls, its face going back as far as the finger's weapon
-  has its trigger go (`trigger_fingers`); the housing stays. Only for
+  has its trigger go (`trigger_fingers`); the flamethrower's, its pin
+  below the finger, slides back and up along it instead; the housing
+  stays. Only for
   those models (by their tag names): the world's weapons and the third
   person have none.
 - The vehicles' models were made for the game's camera following them: the
