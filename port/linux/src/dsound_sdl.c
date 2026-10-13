@@ -20,7 +20,8 @@ resampling) and applies:
 	  environment's HF reference: a sound behind a wall is muffled.
 3D voices also send to an I3DL2 reverb of the environment the listener is in
 (reverb). Doppler and cones are not modelled. A look-ahead limiter keeps the
-sum under full scale (limit).
+sum under full scale (limit). In the VR mode, with vr.hrtf, a mono 3D voice
+goes to each ear through a model of a head instead of the pan (hrtf).
 
 Packets the mixer has finished are completed from DirectSoundDoWork, which
 the game calls every frame, and from Flush, never from the audio thread:
@@ -64,6 +65,24 @@ voices_log).
 #define RESAMPLER_KAISER_BETA 6.5
 #define RESAMPLER_MAXIMUM_STRETCH 2
 #define RESAMPLER_HISTORY 128
+
+/* the HRTF (hrtf): the frames a voice keeps for its ears' delays, the head's
+radius (metres) and the speed of sound (metres a second), the head shadow's
+alpha over all directions (hrtf_initialize), the distance within which a
+sound's direction fades out (world units), the pinna's notch (its frequency
+from below the ears to above them, its depth and its Q) and the shadow of
+the pinna behind (its frequency and its depth) */
+#define HRTF_FRAMES 64
+#define HRTF_HEAD_RADIUS 0.0875f
+#define HRTF_SPEED_OF_SOUND 343.0f
+#define HRTF_DIFFUSE_ALPHA 1.03f
+#define HRTF_NEAR 0.25f
+#define HRTF_NOTCH_LOW 6000.0f
+#define HRTF_NOTCH_HIGH 11000.0f
+#define HRTF_NOTCH_DECIBELS -10.0f
+#define HRTF_NOTCH_Q 2.0f
+#define HRTF_REAR_FREQUENCY 2500.0f
+#define HRTF_REAR_DEPTH 0.55f
 #if defined(__GNUC__) || defined(__clang__)
 #define RESAMPLER_ALIGNED __attribute__((aligned(16)))
 #else
@@ -78,6 +97,22 @@ struct voice_packet
 	short *samples;           /* interleaved, source channel count */
 	unsigned long frames;
 	BOOL finished;            /* played out by the mixer, not yet completed */
+};
+
+/* a mono 3D voice's way to each ear through the HRTF (hrtf_place), which
+the mixer ramps from one mix to the next as it does the gains */
+struct hrtf_parameters
+{
+	/* each ear's delay (frames; left, right), and its head shadow, a one-pole
+	one-zero filter's zero (its pole is the same for all: hrtf) */
+	float delay[2];
+	float shadow_b0[2], shadow_b1[2];
+	/* the pinna's notch (a peaking filter's b0, b1, b2, a1, a2) at its
+	frequency, and how much of the high frequencies a sound behind loses
+	(0 to 1) */
+	float notch[5];
+	float notch_frequency;
+	float rear;
 };
 
 struct sdl_stream
@@ -146,6 +181,18 @@ struct sdl_stream
 	/* the direct path's low pass, for each channel, and the room send's */
 	float direct_lowpass[2];
 	float room_lowpass;
+	/* through the HRTF (hrtf): the parameters the mixer is ramping from, the
+	voice's last HRTF_FRAMES frames as the ears take them (its direct path's,
+	notched; how many were written), and the filters' states: the rear's low
+	pass, the notch's last two inputs and outputs, each ear's shadow's last
+	input and output */
+	BOOL hrtf_on;
+	struct hrtf_parameters hrtf_current;
+	float hrtf_frames[HRTF_FRAMES];
+	unsigned long hrtf_written;
+	float hrtf_rear;
+	float hrtf_notch[4];
+	float hrtf_shadow[2][2];
 };
 
 static pthread_mutex_t mixer_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -164,6 +211,8 @@ static struct
 } listener = { { 0, 0, 0 }, { 0, 0, 1 }, { 0, 1, 0 }, 1.0f, 1.0f };
 
 static float master_volume = 1.0f;
+/* vr.hrtf, in the VR mode (DirectSoundDoWork) */
+static BOOL hrtf_enabled = FALSE;
 
 /* the I3DL2 listener properties (SetI3DL2Listener), which the reverb models:
 DirectSound's defaults until the game sets an environment, their room level
@@ -341,11 +390,145 @@ static float distance_attenuation(const struct sdl_stream *stream, float distanc
 	return minimum / (minimum + rolloff_factor * (distance - minimum));
 }
 
-/* the gains of a 3D voice to the left and right, and the room rolloff's
-attenuation of its room send */
-static void spatialize(const struct sdl_stream *stream, float *left, float *right, float *room)
+/* ---------- the HRTF
+
+In the VR mode (vr.hrtf), a mono 3D voice reaches each ear as it would a
+head's, from its direction (the listener's: the head as it is tracked,
+sound_manager.c refresh_listener), rather than panned between them: a
+sound behind or above is told from one ahead or below, on headphones or the
+headset's speakers. Not a measured HRTF (which would need a dataset of a
+head's, and a convolution for each voice and ear) but a model of a head's
+(Brown and Duda, "A structural model for binaural sound synthesis", 1998),
+a few filters a voice, its parameters from the direction:
+	- each ear its own delay, from the time the sound takes around a sphere
+	  of a head's size (Woodworth's), to the far ear up to 0.66 ms later;
+	- each ear the head's shadow, a one-pole one-zero shelf above about 1
+	  kHz, from 6 dB louder facing the sound to 20 dB quieter in the shadow
+	  (Brown and Duda's), the louder and quieter about what a sound from
+	  everywhere has (the diffuse field: HRTF_DIFFUSE_ALPHA), so that over
+	  all directions the sound is no brighter nor duller than panned;
+	- the pinna's notch, its frequency rising with the sound from below the
+	  ears (6 kHz) to above them (11 kHz), as a pinna's first notch does
+	  (it is what tells up from down);
+	- a sound behind loses some of its high frequencies (the pinna's shadow,
+	  up to 7 dB above 2.5 kHz).
+A sound close to the head (within HRTF_NEAR) fades to the middle, as the pan
+centres one within its minimum distance. The parameters are ramped across
+each mix, as the gains are: a turn of the head moves the sound smoothly
+from ear to ear, with no step. */
+
+static struct
 {
-	float offset[3], right_axis[3], distance, attenuation, pan, side, ahead;
+	/* the head shadow's pole (a1 of y = b0 x + b1 x' - a1 y', the same for
+	every direction) and the bilinear transform's constant over the pole;
+	the rear's low pass's coefficient */
+	float shadow_a1;
+	float shadow_k;
+	float rear_lowpass;
+} hrtf;
+
+static void hrtf_initialize(void)
+{
+	/* Brown and Duda's pole, 2c/a, lowered by the diffuse field's alpha:
+	the shadow over the diffuse field's (H(alpha) / H(alpha_diffuse)) */
+	float pole = 2.0f * HRTF_SPEED_OF_SOUND / (HRTF_HEAD_RADIUS * HRTF_DIFFUSE_ALPHA);
+
+	hrtf.shadow_k = 1.0f / tanf(pole / (2.0f * OUTPUT_RATE));
+	hrtf.shadow_a1 = (1.0f - hrtf.shadow_k) / (1.0f + hrtf.shadow_k);
+	hrtf.rear_lowpass = expf(-2.0f * 3.14159265f * HRTF_REAR_FREQUENCY / OUTPUT_RATE);
+}
+
+/* the HRTF's parameters for a sound right, up and ahead of the head, as
+far away (world units) */
+static void hrtf_place(float right, float up, float ahead, float distance, struct hrtf_parameters *parameters)
+{
+	float strength = distance < HRTF_NEAR ? distance / HRTF_NEAR : 1.0f;
+	float lateral = 0.0f, rise = 0.0f, front = 1.0f, delay[2], elevation, frequency, a, w, alpha, a0;
+	int ear;
+
+	if (distance > 1.0e-4f)
+	{
+		lateral = right / distance;
+		rise = up / distance;
+		front = ahead / distance;
+	}
+	for (ear = 0; ear < 2; ear++)
+	{
+		/* the angle from the ear's axis: Brown and Duda's alpha, 2 facing
+		the sound, 0.1 at 150 degrees from it */
+		float cosine = ear ? lateral : -lateral;
+		float theta = acosf(cosine < -1.0f ? -1.0f : (cosine > 1.0f ? 1.0f : cosine));
+		float shadow = 1.0f + strength *
+			((1.05f + 0.95f * cosf(theta * (180.0f / 150.0f))) / HRTF_DIFFUSE_ALPHA - 1.0f);
+
+		parameters->shadow_b0[ear] = (1.0f + shadow * hrtf.shadow_k) / (1.0f + hrtf.shadow_k);
+		parameters->shadow_b1[ear] = (1.0f - shadow * hrtf.shadow_k) / (1.0f + hrtf.shadow_k);
+		/* Woodworth's: the way around the head to the ear */
+		delay[ear] = theta < 0.5f * 3.14159265f ? 1.0f - cosf(theta) : theta - 0.5f * 3.14159265f + 1.0f;
+	}
+	/* (the nearer ear at no delay) */
+	for (ear = 0; ear < 2; ear++)
+	{
+		parameters->delay[ear] = strength * (delay[ear] - (delay[0] < delay[1] ? delay[0] : delay[1])) *
+			(HRTF_HEAD_RADIUS / HRTF_SPEED_OF_SOUND) * OUTPUT_RATE;
+	}
+	/* the notch, from 30 degrees below to 60 above (RBJ's peaking filter) */
+	elevation = asinf(rise < -1.0f ? -1.0f : (rise > 1.0f ? 1.0f : rise)) * (180.0f / 3.14159265f);
+	elevation = (elevation + 30.0f) / 90.0f;
+	frequency = HRTF_NOTCH_LOW + (HRTF_NOTCH_HIGH - HRTF_NOTCH_LOW) *
+		(elevation < 0.0f ? 0.0f : (elevation > 1.0f ? 1.0f : elevation));
+	a = powf(10.0f, strength * HRTF_NOTCH_DECIBELS / 40.0f);
+	w = 2.0f * 3.14159265f * frequency / OUTPUT_RATE;
+	alpha = sinf(w) / (2.0f * HRTF_NOTCH_Q);
+	a0 = 1.0f + alpha / a;
+	parameters->notch[0] = (1.0f + alpha * a) / a0;
+	parameters->notch[1] = -2.0f * cosf(w) / a0;
+	parameters->notch[2] = (1.0f - alpha * a) / a0;
+	parameters->notch[3] = parameters->notch[1];
+	parameters->notch[4] = (1.0f - alpha / a) / a0;
+	parameters->notch_frequency = frequency;
+	parameters->rear = front < 0.0f ? -front * strength * HRTF_REAR_DEPTH : 0.0f;
+}
+
+/* the frame of the voice's written ones delay frames before the last
+(at least 1: one frame each side of it is read), interpolated (Catmull-Rom) */
+static float hrtf_read(const float *frames, unsigned long written, float delay)
+{
+	unsigned long whole = (unsigned long)delay;
+	unsigned long at = written - 1 - whole;
+	float t = delay - (float)whole;
+	float newer = frames[(at + 1) % HRTF_FRAMES];
+	float x0 = frames[at % HRTF_FRAMES];
+	float x1 = frames[(at - 1) % HRTF_FRAMES];
+	float older = frames[(at - 2) % HRTF_FRAMES];
+
+	return x0 + 0.5f * t * (x1 - newer + t * (2.0f * newer - 5.0f * x0 + 4.0f * x1 - older +
+		t * (3.0f * (x0 - x1) + older - newer)));
+}
+
+/* parameters moved on by step (a frame's share of a ramp) */
+static void hrtf_step(struct hrtf_parameters *parameters, const struct hrtf_parameters *step)
+{
+	int index;
+
+	for (index = 0; index < 2; index++)
+	{
+		parameters->delay[index] += step->delay[index];
+		parameters->shadow_b0[index] += step->shadow_b0[index];
+		parameters->shadow_b1[index] += step->shadow_b1[index];
+	}
+	for (index = 0; index < 5; index++)
+		parameters->notch[index] += step->notch[index];
+	parameters->rear += step->rear;
+}
+
+/* the gains of a 3D voice to the left and right, and the room rolloff's
+attenuation of its room send; through the HRTF (hrtf_on: a mono voice in
+the VR mode, vr.hrtf), its gain to each ear and its way there (hrtf_out) */
+static void spatialize(const struct sdl_stream *stream, float *left, float *right, float *room,
+	BOOL *hrtf_on, struct hrtf_parameters *hrtf_out)
+{
+	float offset[3], right_axis[3], distance, attenuation, pan, side, ahead, up;
 	int axis;
 
 	if (stream->mode == DS3DMODE_HEADRELATIVE)
@@ -353,6 +536,7 @@ static void spatialize(const struct sdl_stream *stream, float *left, float *righ
 		for (axis = 0; axis < 3; axis++)
 			offset[axis] = stream->position[axis];
 		side = offset[0];
+		up = offset[1];
 		ahead = offset[2];
 	}
 	else
@@ -364,6 +548,7 @@ static void spatialize(const struct sdl_stream *stream, float *left, float *righ
 		right_axis[1] = listener.top[2] * listener.front[0] - listener.top[0] * listener.front[2];
 		right_axis[2] = listener.top[0] * listener.front[1] - listener.top[1] * listener.front[0];
 		side = dot3(offset, right_axis);
+		up = dot3(offset, listener.top);
 		ahead = dot3(offset, listener.front);
 	}
 	/* in the game's units, those of the minimum and maximum distances: the
@@ -387,6 +572,14 @@ static void spatialize(const struct sdl_stream *stream, float *left, float *righ
 		*left = cosf(angle) * 1.41421356f * 0.70710678f;
 		*right = sinf(angle) * 1.41421356f * 0.70710678f;
 	}
+	/* or through the HRTF, each ear at the pan's gain in the middle (-3
+	dB), the head's filters doing the rest */
+	*hrtf_on = hrtf_enabled && stream->channels == 1;
+	if (*hrtf_on)
+	{
+		hrtf_place(side, up, ahead, distance, hrtf_out);
+		*left = *right = 0.70710678f;
+	}
 	*left *= attenuation * gain_from_millibels(stream->direct);
 	*right *= attenuation * gain_from_millibels(stream->direct);
 }
@@ -394,18 +587,20 @@ static void spatialize(const struct sdl_stream *stream, float *left, float *righ
 /* the voice's gains to the left and right, and to the reverb (only 3D voices
 send to it, as their I3DL2 mix bin did on the Xbox), with the coefficients of
 the low passes of its direct path (3D voices: obstruction and occlusion
-muffle it) and of the send */
+muffle it) and of the send; a 3D voice through the HRTF (hrtf_on) has its
+way to each ear too (hrtf_out) */
 static void voice_gains(const struct sdl_stream *stream, float *left, float *right, float *room,
-	float *direct_lowpass, float *room_lowpass)
+	float *direct_lowpass, float *room_lowpass, BOOL *hrtf_on, struct hrtf_parameters *hrtf_out)
 {
 	*room = 0.0f;
 	*direct_lowpass = 0.0f;
 	*room_lowpass = 0.0f;
+	*hrtf_on = FALSE;
 	if (stream->has_3d && stream->mode != DS3DMODE_DISABLE)
 	{
 		float rolloff, cosine = frequency_cosine(environment.flHFReference);
 
-		spatialize(stream, left, right, &rolloff);
+		spatialize(stream, left, right, &rolloff, hrtf_on, hrtf_out);
 		if (stream->direct_hf < stream->direct)
 			*direct_lowpass = lowpass_coefficient(gain_from_millibels(stream->direct_hf - stream->direct), cosine);
 		if (reverb_enabled)
@@ -700,6 +895,11 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	unsigned long frame;
 	/* (a stereo voice panned towards its sound: voice_gains) */
 	BOOL positioned = stream->channels == 2 && stream->stereo_positioned;
+	/* (through the HRTF: its parameters, now and a frame's step of their
+	ramp, and its filters' states, here as the low passes' are) */
+	BOOL hrtf_on;
+	struct hrtf_parameters target_hrtf, hrtf_now, hrtf_ramp;
+	float hrtf_rear, hrtf_notch[4], hrtf_shadow[2][2];
 
 	if (stream->paused || !stream->packet_count || !stream->sample_rate)
 		return;
@@ -718,7 +918,17 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		resampler_reset(stream);
 		stream->gains_valid = FALSE;
 	}
-	voice_gains(stream, &target_left, &target_right, &target_room, &target_direct_lowpass, &target_room_lowpass);
+	voice_gains(stream, &target_left, &target_right, &target_room, &target_direct_lowpass, &target_room_lowpass,
+		&hrtf_on, &target_hrtf);
+	if (hrtf_on && (!stream->gains_valid || !stream->hrtf_on))
+	{
+		stream->hrtf_current = target_hrtf;
+		memset(stream->hrtf_frames, 0, sizeof(stream->hrtf_frames));
+		stream->hrtf_rear = 0.0f;
+		memset(stream->hrtf_notch, 0, sizeof(stream->hrtf_notch));
+		memset(stream->hrtf_shadow, 0, sizeof(stream->hrtf_shadow));
+	}
+	stream->hrtf_on = hrtf_on;
 	if (!stream->gains_valid)
 	{
 		stream->current_left = target_left;
@@ -745,6 +955,24 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	ramp_room = (target_room - room) / (float)frames;
 	ramp_direct_lowpass = (target_direct_lowpass - direct_lowpass) / (float)frames;
 	ramp_room_lowpass = (target_room_lowpass - room_lowpass) / (float)frames;
+	if (hrtf_on)
+	{
+		int index;
+
+		hrtf_now = stream->hrtf_current;
+		for (index = 0; index < 2; index++)
+		{
+			hrtf_ramp.delay[index] = (target_hrtf.delay[index] - hrtf_now.delay[index]) / (float)frames;
+			hrtf_ramp.shadow_b0[index] = (target_hrtf.shadow_b0[index] - hrtf_now.shadow_b0[index]) / (float)frames;
+			hrtf_ramp.shadow_b1[index] = (target_hrtf.shadow_b1[index] - hrtf_now.shadow_b1[index]) / (float)frames;
+		}
+		for (index = 0; index < 5; index++)
+			hrtf_ramp.notch[index] = (target_hrtf.notch[index] - hrtf_now.notch[index]) / (float)frames;
+		hrtf_ramp.rear = (target_hrtf.rear - hrtf_now.rear) / (float)frames;
+		hrtf_rear = stream->hrtf_rear;
+		memcpy(hrtf_notch, stream->hrtf_notch, sizeof(hrtf_notch));
+		memcpy(hrtf_shadow, stream->hrtf_shadow, sizeof(hrtf_shadow));
+	}
 
 	for (frame = 0; frame < frames; frame++)
 	{
@@ -831,7 +1059,37 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 		}
 		direct_state[0] = sample_left;
 		direct_state[1] = sample_right;
-		if (stream->channels == 1)
+		if (hrtf_on)
+		{
+			/* through the HRTF: behind, the high frequencies taken off; the
+			pinna's notch; then each ear its own delay and the head's shadow */
+			float x = sample_left, notched;
+			int ear;
+
+			hrtf_rear = flush_denormal(x + hrtf.rear_lowpass * (hrtf_rear - x));
+			x -= hrtf_now.rear * (x - hrtf_rear);
+			notched = hrtf_now.notch[0] * x + hrtf_now.notch[1] * hrtf_notch[0] + hrtf_now.notch[2] * hrtf_notch[1] -
+				hrtf_now.notch[3] * hrtf_notch[2] - hrtf_now.notch[4] * hrtf_notch[3];
+			notched = flush_denormal(notched);
+			hrtf_notch[1] = hrtf_notch[0];
+			hrtf_notch[0] = x;
+			hrtf_notch[3] = hrtf_notch[2];
+			hrtf_notch[2] = notched;
+			stream->hrtf_frames[stream->hrtf_written % HRTF_FRAMES] = notched;
+			stream->hrtf_written++;
+			for (ear = 0; ear < 2; ear++)
+			{
+				float heard = hrtf_read(stream->hrtf_frames, stream->hrtf_written, 1.0f + hrtf_now.delay[ear]);
+				float shadowed = flush_denormal(hrtf_now.shadow_b0[ear] * heard +
+					hrtf_now.shadow_b1[ear] * hrtf_shadow[ear][0] - hrtf.shadow_a1 * hrtf_shadow[ear][1]);
+
+				hrtf_shadow[ear][0] = heard;
+				hrtf_shadow[ear][1] = shadowed;
+				output[frame * 2 + ear] += shadowed * (ear ? right : left);
+			}
+			hrtf_step(&hrtf_now, &hrtf_ramp);
+		}
+		else if (stream->channels == 1)
 		{
 			output[frame * 2] += sample_left * left;
 			output[frame * 2 + 1] += sample_left * right;
@@ -868,6 +1126,13 @@ static void mix_voice(struct sdl_stream *stream, float *output, float *send, uns
 	stream->direct_lowpass[0] = direct_state[0];
 	stream->direct_lowpass[1] = direct_state[1];
 	stream->room_lowpass = room_state;
+	if (hrtf_on)
+	{
+		stream->hrtf_current = target_hrtf;
+		stream->hrtf_rear = hrtf_rear;
+		memcpy(stream->hrtf_notch, hrtf_notch, sizeof(hrtf_notch));
+		memcpy(stream->hrtf_shadow, hrtf_shadow, sizeof(hrtf_shadow));
+	}
 	stream->current_left = target_left;
 	stream->current_right = target_right;
 	stream->current_room = target_room;
@@ -1457,6 +1722,7 @@ static void audio_start(void)
 	resampler_initialize();
 	resampler_phases_initialize();
 	reverb_initialize();
+	hrtf_initialize();
 	record_open();
 
 	if (config_boolean("audio.enabled") && platform_sdl_initialize())
@@ -1801,8 +2067,9 @@ static void voices_log(void)
 
 		if (record_file)
 			snprintf(recorded, sizeof(recorded), "; %.2f s recorded", (double)record_frames / OUTPUT_RATE);
-		platform_log("audio: mixing took %.2f%% of the time it mixed%s", 100.0 *
-			(double)mix_nanoseconds / ((double)mix_frames * 1.0e9 / OUTPUT_RATE), recorded);
+		platform_log("audio: mixing took %.2f%% of the time it mixed (the HRTF %s)%s", 100.0 *
+			(double)mix_nanoseconds / ((double)mix_frames * 1.0e9 / OUTPUT_RATE), hrtf_enabled ? "on" : "off",
+			recorded);
 		mix_nanoseconds = 0;
 		mix_frames = 0;
 	}
@@ -1810,6 +2077,9 @@ static void voices_log(void)
 	for (stream = streams; stream; stream = stream->next)
 	{
 		float offset[3], right_axis[3], left, right, room, direct_lowpass, room_lowpass;
+		BOOL hrtf_on;
+		struct hrtf_parameters parameters;
+		char heard[160] = "";
 		int axis;
 
 		if (!stream->has_3d || stream->mode == DS3DMODE_DISABLE || stream->paused || !stream->packet_count)
@@ -1822,20 +2092,39 @@ static void voices_log(void)
 		right_axis[0] = listener.top[1] * listener.front[2] - listener.top[2] * listener.front[1];
 		right_axis[1] = listener.top[2] * listener.front[0] - listener.top[0] * listener.front[2];
 		right_axis[2] = listener.top[0] * listener.front[1] - listener.top[1] * listener.front[0];
-		voice_gains(stream, &left, &right, &room, &direct_lowpass, &room_lowpass);
+		voice_gains(stream, &left, &right, &room, &direct_lowpass, &room_lowpass, &hrtf_on, &parameters);
+		if (hrtf_on)
+		{
+			/* (the shadows' gains at the highest frequencies: (b0 - b1) /
+			(1 - a1)) */
+			snprintf(heard, sizeof(heard), "; HRTF: the right ear %+.0f us after the left, high frequencies left "
+				"%+.1f dB, right %+.1f dB, notch %.0f Hz, behind %+.1f dB",
+				(parameters.delay[1] - parameters.delay[0]) * 1.0e6f / OUTPUT_RATE,
+				20.0f * log10f((parameters.shadow_b0[0] - parameters.shadow_b1[0]) / (1.0f - hrtf.shadow_a1)),
+				20.0f * log10f((parameters.shadow_b0[1] - parameters.shadow_b1[1]) / (1.0f - hrtf.shadow_a1)),
+				parameters.notch_frequency, 20.0f * log10f(1.0f - parameters.rear * (1.0f - (1.0f - hrtf.rear_lowpass) /
+				(1.0f + hrtf.rear_lowpass))));
+		}
 		platform_log("audio: voice %p: %.2f m ahead, %.2f right, %.2f up (minimum distance %.2f m); gains left %.1f "
-			"dB, right %.1f dB", (void *)stream, dot3(offset, listener.front) * listener.distance_factor,
+			"dB, right %.1f dB%s", (void *)stream, dot3(offset, listener.front) * listener.distance_factor,
 			dot3(offset, right_axis) * listener.distance_factor, dot3(offset, listener.top) * listener.distance_factor,
 			stream->minimum_distance * listener.distance_factor,
-			left > 0.0f ? 20.0f * log10f(left) : -999.0f, right > 0.0f ? 20.0f * log10f(right) : -999.0f);
+			left > 0.0f ? 20.0f * log10f(left) : -999.0f, right > 0.0f ? 20.0f * log10f(right) : -999.0f, heard);
 	}
 	pthread_mutex_unlock(&mixer_lock);
 }
+
+#ifdef HALO_VR
+int halo_vr_running(void);
+#endif
 
 VOID WINAPI DirectSoundDoWork(void)
 {
 	static unsigned long volume_read_at = (unsigned long)-1;
 	static BOOL log_voices;
+#ifdef HALO_VR
+	static BOOL hrtf_setting;
+#endif
 
 	/* (audio.volume and audio.reverb read again when the settings change: on
 	the game's thread, not the mixer's, whose lock the config's file I/O
@@ -1846,7 +2135,14 @@ VOID WINAPI DirectSoundDoWork(void)
 		master_volume = (float)config_real("audio.volume");
 		reverb_enabled = config_boolean("audio.reverb");
 		log_voices = config_boolean("debug.audio_log");
+#ifdef HALO_VR
+		hrtf_setting = config_boolean("vr.hrtf");
+#endif
 	}
+#ifdef HALO_VR
+	/* (the HRTF in the VR mode alone: on the flat screen, the pan) */
+	hrtf_enabled = hrtf_setting && halo_vr_running();
+#endif
 	if (log_voices)
 		voices_log();
 	streams_complete_finished();

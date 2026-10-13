@@ -428,7 +428,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.touch_targets` | `false` | `HALO_TOUCH_TARGETS` | Outlines the tap targets of the menus (item green, value blue, list slot yellow, legend button red, the band beside the slots of a list orange, keys of the on-screen keyboard white), marks where the last finger went down and the last tap landed for 3 seconds, and logs each tap with the target that it hit (for a value, also where it splits into previous and next): to judge the accuracy of touch. |
 | `debug.network_latency`, `debug.network_loss`, `debug.network_corrupt`, `debug.network_corrupt_stream`, `debug.network_corrupt_after` | `0` | `HALO_NETWORK_LATENCY`, `HALO_NETWORK_LOSS`, `HALO_NETWORK_CORRUPT`, `HALO_NETWORK_CORRUPT_STREAM`, `HALO_NETWORK_CORRUPT_AFTER` | The game holds all the data that it receives for this number of milliseconds, ignores this percentage of the datagrams, and damages this percentage of the datagrams it receives, and this percentage of its reads of streams, at random (bytes changed, cut short, stretched or replaced), from this many seconds after the start. Use the first two to test the netcode as on the internet, and the others to test that nothing another machine sends can crash the game (a damaged stream is closed, so a little goes a long way; a host's messages to its own client are damaged too, so start damaging once the game has started). |
 | `debug.voice_test` | `false` | `HALO_VOICE_TEST` | Automatic tests of voice chat: a tone replaces the microphone, and each voice that the game hears is written to the log once each second. |
-| `debug.audio_log` | `false` | `HALO_AUDIO_LOG` | Write to the log, five times a second, each sound placed in the world that plays: where it is from the listener (metres ahead, right and up), its gain in each ear, and the time the mixing takes. |
+| `debug.audio_log` | `false` | `HALO_AUDIO_LOG` | Write to the log, five times a second, each sound placed in the world that plays: where it is from the listener (metres ahead, right and up), its gain in each ear (in VR, the HRTF's delays and filters too), and the time the mixing takes. |
 | `debug.audio_record` | `""` | `HALO_AUDIO_RECORD` | Record the game's sound as it plays (with a device or without) to this WAV file, 48 kHz 16-bit stereo, for automatic tests. Empty: none. |
 | `debug.telnet_console`, `debug.telnet_console_port` | `false`, `2323` | `HALO_TELNET_CONSOLE`, `HALO_TELNET_CONSOLE_PORT` | The game listens on 127.0.0.1, on this port, for a script console (connect with telnet). The console has no password, so only this computer can reach it. |
 | `debug.profile_record`, `debug.profile_record_when`, `debug.profile_memory` | `false`, `"start"`, `256` | `HALO_PROFILE_RECORD`, `HALO_PROFILE_RECORD_WHEN`, `HALO_PROFILE_MEMORY` | Profiling builds only (`configure.py --profile`). Record without a command; `"start"` records from the first frame until the first map change, `"game"` records each game outside the main menu. Memory is 4–1024 MB. Numbered `profile_<stamp>_<role>.part<n>.json` files remain in `profiles/` after recording. Refer to "Profiling builds" in the main README. |
@@ -1846,7 +1846,7 @@ controller 1 (each stick pushed furthest wins). In a vehicle the view is
 as `vr.vehicle_view` says, and the vehicle steers and aims where the stick
 does.
 
-#### Sound from your head
+#### Sound from your head (`vr.hrtf`)
 
 You hear from where your head is, as you see from there: the world's
 sounds are placed about your head as it is tracked, its place and its turn
@@ -1868,13 +1868,24 @@ each 10 ms it mixes, with no step.
 - The sounds placed about the listener rather than in the world (a
   looping sound's details: a bird, a gust, at random about you) are about
   your body, not your head: they stay where they are as your head turns.
+- The HRTF (`vr.hrtf`, the default): each sound reaches each ear as it
+  would your head's, not panned between them: a little later at the far ear
+  (up to 0.66 ms, the way around a head), duller there and brighter at the
+  near ear (the head's shadow, above about 1 kHz), a notch of the pinna's
+  that rises with the sound from below your ears (6 kHz) to above them (11
+  kHz), and a sound behind duller (up to 7 dB above 2.5 kHz). It is a model
+  of a head (Brown and Duda's), not one measured: it needs no dataset, and
+  costs a few filters a sound. Over all directions a sound is as bright as
+  panned. Behind and before, above and below are best told apart by turning
+  your head, which the listener now follows. `false`: panned left and right,
+  as on the flat screen (from your head all the same).
 - Only the first player's, in the headset; on the flat screen, and played
   flat (`vr.enabled = false`), the sound is the flat game's.
 - `debug.vr_audio_log` logs, each frame, where the sounds were heard from
   against the head the frame was drawn from; `debug.audio_log`, each sound
-  in the world playing (where it is from your head, and its gains);
-  `debug.audio_record` records the mix to a WAV file; `debug.vr_test_sound`
-  plays a sound held in the world (below).
+  in the world playing (where it is from your head, its gains, and the
+  HRTF's delays and filters); `debug.audio_record` records the mix to a
+  WAV file; `debug.vr_test_sound` plays a sound held in the world (below).
 
 ### Settings
 
@@ -1943,6 +1954,7 @@ headset's session is opened with, apply from the next start.
 | `vr.visor_effects` | `true` | `HALO_VR_VISOR_EFFECTS` | With `vr.hud = "visor"`: the shields on the glass: their energy across it (the armour's own, below, "The HUD on the visor") as they are hit and as they recharge, rising to their level and flashing as they are full; its rim pulses red while they are low or gone (or while the health is low without them), giving way to their energy as they recharge; the HUD flickers as they break, and comes up as you take control. |
 | `vr.visor_energy` | `1.0` | `HALO_VR_VISOR_ENERGY` | With `vr.visor_effects`: how strong the shields' energy on the glass is, from `0` (none) to `2`. |
 | `vr.menu_distance`, `vr.menu_width` | `2.5`, `2.6` | `HALO_VR_MENU_DISTANCE`, `HALO_VR_MENU_WIDTH` | The menus' distance and width, in metres. |
+| `vr.hrtf` | `true` | `HALO_VR_HRTF` | Hear the world's sounds as your ears would, on headphones or the headset's speakers, from their direction about your head: the time and the shadow of your head between your ears, and the tones your ears give a sound from above, below and behind (a model of a head's HRTF, "Sound from your head"). `false`: panned left and right, as on the flat screen. |
 | `debug.vr_force_render` | `false` | `HALO_VR_FORCE_RENDER` | Draw the frames while the runtime says not to (the headset not worn), to measure them. |
 | `debug.vr_test_turn` | `0.0` | `HALO_VR_TEST_TURN` | Turn the player this many degrees a second, for automated tests without hands. |
 | `debug.vr_test_jitter` | `0.0` | `HALO_VR_TEST_JITTER` | Move the head by up to this many millimetres (and turn it as many hundredths of a degree) at random each frame, as a worn headset moves: for automated tests of what flickers when the view barely moves. |
@@ -2667,6 +2679,22 @@ supersampling costs as above, and multisampling the eye pass
   place too, while the game's camera did not turn; in the skipped ride in,
   whose frames are many ticks apart, the tick's listener led the
   interpolated view by up to 2.7 m, as the flat game's does.
+- The HRTF (`vr.hrtf`, `src/dsound_sdl.c`, `hrtf_place`) is Brown and
+  Duda's structural model: for each mono 3D voice a high-shelf of the
+  pinna's shadow behind, a peaking notch (RBJ's), a 64-frame delay line,
+  and for each ear a delay read from it (Catmull-Rom) and a one-pole
+  one-zero head shadow, all ramped over each mix. Measured as above, with a
+  sound 3 m away level with the head (`debug.vr_test_sound`,
+  `debug.audio_log`, `debug.audio_record`): 90 degrees to the left, the
+  right ear 0.63 ms later, the high frequencies 5.7 dB up at the left ear
+  and 13 to 20 dB down at the right; behind, 5.3 dB less above 2.5 kHz and
+  the ears all but alike; 40 degrees above, the notch at 10 kHz (7.7 kHz
+  level). In the recorded mix the level between the ears above 3 kHz
+  followed the head's turn from -12 to +10 dB, smoothly. Panned
+  (`vr.hrtf = false`), the same sound (within its minimum distance, 9 m,
+  so drawn to the middle) was at most 7.7 dB louder in one ear, with no
+  delay. The mixing took 4.1% of a core of a DGX Spark (2.5% panned, 2.2%
+  on the flat screen): the Steam Frame's cores are to be measured.
 - The visibility tests (the lens flares') are counted by the pixel shaders'
   atomic counters, as on ES, not by queries: Vulkan counts a query in a
   multiview pass in as many slots as views, which Zink does not allow for,

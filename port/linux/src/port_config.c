@@ -446,6 +446,12 @@ static const struct config_setting config_settings[] =
 		"How far in front of you the menus are, in metres." },
 	{ "vr.menu_width", _config_real, "2.6", "HALO_VR_MENU_WIDTH", _environment_value, _platform_desktop,
 		"How wide the menus are, in metres." },
+	{ "vr.hrtf", _config_boolean, "true", "HALO_VR_HRTF", _environment_value, _platform_desktop,
+		"Hear the world's sounds as your ears would, on headphones or the\n"
+		"headset's speakers: each from its direction by the time and the\n"
+		"shadow of your head between your ears, and the tones your ears give\n"
+		"a sound from above, below and behind (a model of a head's, HRTF);\n"
+		"false pans them left and right, as on the flat screen." },
 
 #endif
 	{ "input.touch_controls", _config_string, "\"auto\"", "HALO_TOUCH_CONTROLS", _environment_value, _platform_android | _platform_web,
@@ -796,7 +802,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.audio_log", _config_boolean, "false", "HALO_AUDIO_LOG", _environment_value, _platform_desktop,
 		"Log the sounds placed in the world playing, five times a second: where\n"
 		"each is from the listener (metres ahead, right and up), its gain in\n"
-		"each ear, and the time the mixing takes." },
+		"each ear (and in the VR mode the HRTF's delays and filters), and the\n"
+		"time the mixing takes." },
 	{ "debug.audio_record", _config_string, "\"\"", "HALO_AUDIO_RECORD", _environment_value, _platform_desktop,
 		"Record the game's sound, as it plays (with or without a device), to\n"
 		"this WAV file (48 kHz, 16-bit stereo), for automated tests; empty none." },
