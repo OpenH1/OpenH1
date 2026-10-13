@@ -1609,6 +1609,15 @@ throttles (and reverses) as ever, jump brakes.
 - `"look"`: the Warthog steers where the right controller points, as before,
   the view turned by the stick. Only with `vr.aim = "controller"`.
 
+In a Warthog's passenger seat, your hands are as on foot, the weapon in your
+right hand (a passenger shoots as ever, CE's passenger's aim reaching 90
+degrees either side), and the ride is the driver's: the view turns with the
+Warthog, level, your eye held level in it, the vignette. The game turns a
+passenger's facing as the Warthog tilts (as the flat screen's camera tilts
+with it): the VR mode's, taken in the world, is turned back first, so the
+shot goes where the reticle is however the Warthog leans. Whatever
+`vr.warthog_steering` is (with `vr.aim = "controller"`).
+
 #### Your body (`display.first_person_legs`)
 
 With LEGS on (Video Setup > FOV and Viewmodels, `display.first_person_legs`;
@@ -2324,7 +2333,12 @@ supersampling costs as above, and multisampling the eye pass
   degrees), is the facing's error from the Warthog's heading (with the sign
   of its `vehicle.speed`): `vehicle_update` turns the wheels to that error
   itself (`update_human_jeep_physics` steers the front pair by it and the
-  rear the other way). Its tilt is let in over 0.5 s.
+  rear the other way). Its tilt is let in over 0.5 s. Its passenger's seat
+  is ridden so too (`HALO_VR_SEAT_RIDE`: no handles, the hands as on foot).
+  The game takes the facing of a seat without the third-person camera bit
+  (the passenger's) as turned with the vehicle's tilt
+  (`player_aiming_vector_from_facing`): `vr_vehicle_facing` turns the VR
+  mode's facing back by that turn's inverse first (`player_control.c`).
 - Where the eye would jump more than 0.1 m (into the seat once seated, back
   to the player's own eye once out, to the game's camera following the
   vehicle or, with `vr.death_view = "game"`, the dead's, and back), it

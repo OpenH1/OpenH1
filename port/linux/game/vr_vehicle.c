@@ -103,6 +103,8 @@ static struct vehicle_seat
 	as the game turns its wheels, the grips with it) */
 	{ "warthog\\", "W-driver", HALO_VR_SEAT_WHEEL, { "left hand wheel grip", "right hand wheel grip" },
 		"frame steering wheel", 0.5f },
+	/* (its passenger: the hands as on foot, the weapon in them) */
+	{ "warthog\\", "W-passenger", HALO_VR_SEAT_RIDE, { NULL, NULL }, NULL, 0.5f },
 };
 
 static struct
@@ -368,6 +370,56 @@ boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye,
 	}
 	halo_vr_seat_place(&placed);
 	return TRUE;
+}
+
+/* player_control.c, each update of the first local player's facing as the
+VR mode aims (yaw, pitch: in the world): in a vehicle's seat whose camera
+does not follow the vehicle (the Warthog's passenger's), the game takes the
+facing as the vehicle tilts (players.c, player_aiming_vector_from_facing:
+turned from the world's up to the vehicle's, as the flat screen's camera
+tilts with it), so it is turned back first: the shot goes where the reticle
+is, the vehicle tilted or not */
+void vr_vehicle_facing(long unit_index, real *yaw, real *pitch)
+{
+	struct unit_datum *unit;
+	struct object_datum *vehicle;
+	struct unit_definition *definition;
+	real_matrix4x3 rotation;
+	real_vector3d facing, turned;
+
+	if (unit_index == NONE || (unit = unit_get(unit_index))->object.parent_object_index == NONE ||
+		unit->unit.parent_seat_index == NONE)
+	{
+		return;
+	}
+	vehicle = object_get(unit->object.parent_object_index);
+	if (vehicle->object.type != _object_type_vehicle)
+		return;
+	definition = unit_definition_get(vehicle->definition_index);
+	if (unit->unit.parent_seat_index >= definition->unit.seats.count ||
+		TEST_FLAG(TAG_BLOCK_GET_ELEMENT(&definition->unit.seats, unit->unit.parent_seat_index,
+		struct unit_seat)->flags, _unit_seat_third_person_camera_bit))
+	{
+		return;
+	}
+	/* (the game's turn, as players.c makes it: forward across the vehicle's
+	up and the world's right, up the vehicle's) */
+	cross_product3d(&vehicle->object.up, global_right3d, &rotation.forward);
+	if (normalize3d(&rotation.forward) == 0.0f)
+	{
+		cross_product3d(&vehicle->object.up, global_down3d, &rotation.forward);
+		normalize3d(&rotation.forward);
+	}
+	matrix4x3_rotation_from_vectors(&rotation, &rotation.forward, &vehicle->object.up);
+	facing.i = (real)(cos(*pitch) * cos(*yaw));
+	facing.j = (real)(cos(*pitch) * sin(*yaw));
+	facing.k = (real)sin(*pitch);
+	/* (its inverse: the transpose) */
+	turned.i = dot_product3d(&facing, &rotation.forward);
+	turned.j = dot_product3d(&facing, &rotation.left);
+	turned.k = dot_product3d(&facing, &rotation.up);
+	*yaw = (real)atan2(turned.j, turned.i);
+	*pitch = (real)asin(PIN(turned.k, -1.0f, 1.0f));
 }
 
 #endif

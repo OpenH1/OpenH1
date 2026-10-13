@@ -138,6 +138,11 @@ static struct
 	char seat_label[32];
 	real enter_seconds;
 	real seated_seconds;
+	/* and whether someone drives the vehicle the player is in (for a seat
+	that does not: "drive"), the driver made for it, and the vehicle */
+	boolean drive;
+	long driver_index;
+	long driven_index;
 	/* the game's time (ticks) the test got in, and whether it got out */
 	long entered_time;
 	boolean brought;
@@ -392,12 +397,17 @@ static void vr_seat_read_settings(void)
 	char const *setting = config_string("debug.vr_test_seat");
 
 	vr_seat.checked = TRUE;
+	char drive[16] = "";
+
 	vr_seat.seated_seconds = 10.0f;
-	if (sscanf(setting, "%31s %f %f", vr_seat.seat_label, &vr_seat.enter_seconds, &vr_seat.seated_seconds) >= 2)
+	vr_seat.driver_index = NONE;
+	if (sscanf(setting, "%31s %f %f %15s", vr_seat.seat_label, &vr_seat.enter_seconds, &vr_seat.seated_seconds,
+		drive) >= 2)
 	{
 		vr_seat.testing = TRUE;
-		platform_log("vr seat test: the \"%s\" seat %.1f s in, for %.1f s", vr_seat.seat_label,
-			vr_seat.enter_seconds, vr_seat.seated_seconds);
+		vr_seat.drive = !strcmp(drive, "drive");
+		platform_log("vr seat test: the \"%s\" seat %.1f s in, for %.1f s%s", vr_seat.seat_label,
+			vr_seat.enter_seconds, vr_seat.seated_seconds, vr_seat.drive ? ", someone else driving" : "");
 	}
 }
 
@@ -536,6 +546,102 @@ static void vr_seat_test_enter(long unit_index)
 	}
 }
 
+/* "drive": someone of the player's kind in the driver's seat of the
+vehicle the player rode in (a seat that does not drive), driving it as a
+player would (unit_control, as players.c gives a player's input): full
+throttle, straight for TEST_DRIVE_STRAIGHT seconds, then by turns left,
+straight, right and straight, each TEST_DRIVE_TURN_SECONDS, its facing
+TEST_DRIVE_TURN off the vehicle's heading as it turns; and out with the
+player */
+#define TEST_DRIVE_STRAIGHT 3.0f
+#define TEST_DRIVE_TURN_SECONDS 2.0f
+#define TEST_DRIVE_TURN 0.12f
+struct unit_control_data
+{
+	char animation_state;
+	char aiming_speed;
+	word control_flags;
+	short weapon_index;
+	short grenade_index;
+	short zoom_level;
+	short pad;
+	real_vector3d throttle;
+	real primary_trigger;
+	real_vector3d facing_vector;
+	real_vector3d aiming_vector;
+	real_vector3d looking_vector;
+};
+
+static short vr_seat_phase(long unit_index);
+
+static void vr_seat_test_drive(long unit_index, long time)
+{
+	struct object_datum *unit = object_get(unit_index);
+	long vehicle_index = unit->object.parent_object_index;
+
+	if (!vr_seat.drive)
+		return;
+	if (vr_seat.driver_index != NONE && (!object_try_and_get(vr_seat.driver_index) || vr_seat.exited ||
+		vehicle_index != vr_seat.driven_index))
+	{
+		/* (out with the player: the driver made for the test goes) */
+		if (object_try_and_get(vr_seat.driver_index))
+			object_delete(vr_seat.driver_index);
+		platform_log("vr seat test: frame %ld: the driver gone", vr_seat.frame);
+		vr_seat.driver_index = NONE;
+		vr_seat.drive = FALSE;
+		return;
+	}
+	if (vehicle_index == NONE || vr_seat_phase(unit_index) != _seat_phase_seated)
+		return;
+	if (vr_seat.driver_index == NONE)
+	{
+		struct unit_definition *definition = unit_definition_get(object_get(vehicle_index)->definition_index);
+		struct object_placement_data data;
+		short seat_index;
+
+		for (seat_index = 0; seat_index < definition->unit.seats.count; seat_index++)
+		{
+			if (unit_seat_is_driver(vehicle_index, seat_index))
+				break;
+		}
+		object_placement_data_new(&data, unit->definition_index, NONE);
+		data.position = object_get(vehicle_index)->object.position;
+		data.position.z += 1.0f;
+		vr_seat.driver_index = seat_index < definition->unit.seats.count ? object_new(&data) : NONE;
+		if (vr_seat.driver_index == NONE || !unit_enter_seat(vr_seat.driver_index, vehicle_index, seat_index))
+		{
+			platform_log("vr seat test: no one could drive");
+			if (vr_seat.driver_index != NONE)
+				object_delete(vr_seat.driver_index);
+			vr_seat.driver_index = NONE;
+			vr_seat.drive = FALSE;
+			return;
+		}
+		vr_seat.driven_index = vehicle_index;
+		platform_log("vr seat test: frame %ld: someone drives, in seat %d", vr_seat.frame, seat_index);
+	}
+	{
+		struct unit_control_data control;
+		real_vector3d const *forward = &object_get(vehicle_index)->object.forward;
+		real seconds = (real)(time - vr_seat.entered_time) / TICKS_PER_SECOND - 2.0f;
+		long part = seconds < TEST_DRIVE_STRAIGHT ? 1 : (long)((seconds - TEST_DRIVE_STRAIGHT) / TEST_DRIVE_TURN_SECONDS) & 3;
+		real turn = part == 0 ? TEST_DRIVE_TURN : part == 2 ? -TEST_DRIVE_TURN : 0.0f;
+		real heading = (real)atan2(forward->j, forward->i) + turn;
+
+		memset(&control, 0, sizeof(control));
+		control.animation_state = _unit_animation_state_in_combat;
+		control.weapon_index = NONE;
+		control.grenade_index = NONE;
+		control.zoom_level = NONE;
+		control.throttle.i = seconds < 0.0f ? 0.0f : 1.0f;
+		control.facing_vector.i = (real)cos(heading);
+		control.facing_vector.j = (real)sin(heading);
+		control.aiming_vector = control.looking_vector = control.facing_vector;
+		unit_control(vr_seat.driver_index, &control);
+	}
+}
+
 /* each frame: gets in and out on time */
 void vr_seat_test_update(void)
 {
@@ -574,6 +680,8 @@ void vr_seat_test_update(void)
 		else
 			platform_log("vr seat test: could not get out of the seat");
 	}
+	if (vr_seat.entered)
+		vr_seat_test_drive(unit_index, time);
 }
 
 /* the first player's phase: on foot, getting in, seated or getting out */

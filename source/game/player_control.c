@@ -840,6 +840,15 @@ static void handle_one_player_input(
 
 				vr_reload_update(player->unit_index, vr_aim == 1);
 			}
+			/* (in a vehicle's seat whose facing the game turns with the
+			vehicle, the facing in the world turned back so: port/linux/game/
+			vr_vehicle.c) */
+			if (local_player_index == 0 && vr_aim == 1)
+			{
+				extern void vr_vehicle_facing(long unit_index, real *yaw, real *pitch);
+
+				vr_vehicle_facing(player->unit_index, &vr_yaw, &vr_pitch);
+			}
 			if (vr_aim == 1)
 			{
 				while (vr_yaw < 0.f)
