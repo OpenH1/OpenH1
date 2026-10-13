@@ -105,6 +105,9 @@ static struct vehicle_seat
 		"frame steering wheel", 0.5f },
 	/* (its passenger: the hands as on foot, the weapon in them) */
 	{ "warthog\\", "W-passenger", HALO_VR_SEAT_RIDE, { NULL, NULL }, NULL, 0.5f },
+	/* (its gunner: the hands on the chaingun's handles, which turn and
+	pitch with it, the right controller aiming it) */
+	{ "warthog\\", "W-gunner", HALO_VR_SEAT_TURRET, { "gunner left hand", "gunner right hand" }, NULL, 0.5f },
 };
 
 static struct
@@ -326,9 +329,15 @@ boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye,
 		vector_from_points3d(eye, &markers[hand].matrix.position, &d);
 		player_axes(&d, vr_vehicle.heading, 1.0f / units, placed.handles[hand]);
 	}
-	/* (held along the vehicle, upright; on a wheel, into it, along its rim) */
+	/* (held along the vehicle, upright; a turret's, as its handles are turned;
+	on a wheel, into it, along its rim) */
 	placed.handle_forward[0] = 1.0f;
 	placed.handle_up[2] = 1.0f;
+	if (seat->kind == HALO_VR_SEAT_TURRET && placed.handles_valid)
+	{
+		player_axes(&markers[1].matrix.forward, vr_vehicle.heading, 1.0f, placed.handle_forward);
+		player_axes(&markers[1].matrix.up, vr_vehicle.heading, 1.0f, placed.handle_up);
+	}
 	if (seat->wheel && placed.handles_valid)
 	{
 		short node_index = model_find_node(object_definition_get(object_get(vehicle_index)->definition_index)->object.model.index,
