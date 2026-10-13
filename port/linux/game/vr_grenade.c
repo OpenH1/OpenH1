@@ -219,7 +219,7 @@ boolean vr_grenade_first_person_throw(long unit_index)
 	if (!vr_grenade_hand_throw(unit_index, &throw_state) || !throw_state.hands)
 		return TRUE;
 	if (throw_state.log)
-		platform_log("vr grenade: the first-person weapon stays in the right hand");
+		platform_log("vr grenade: the first-person weapon stays in the %s hand", halo_vr_left_handed() ? "left" : "right");
 	return FALSE;
 }
 
@@ -314,12 +314,14 @@ void vr_grenade_draw(unsigned long flags)
 	{
 		real_matrix4x3 hand;
 		real units;
+		/* (a left-hander's in the right hand, whose palm is to its left) */
+		real right = halo_vr_left_handed() ? -HELD_RIGHT : HELD_RIGHT;
 
 		if (!vr_render_left_hand(&hand, &units))
 			return;
-		hand.position.x += (hand.forward.i * HELD_FORWARD - hand.left.i * HELD_RIGHT + hand.up.i * HELD_UP) * units;
-		hand.position.y += (hand.forward.j * HELD_FORWARD - hand.left.j * HELD_RIGHT + hand.up.j * HELD_UP) * units;
-		hand.position.z += (hand.forward.k * HELD_FORWARD - hand.left.k * HELD_RIGHT + hand.up.k * HELD_UP) * units;
+		hand.position.x += (hand.forward.i * HELD_FORWARD - hand.left.i * right + hand.up.i * HELD_UP) * units;
+		hand.position.y += (hand.forward.j * HELD_FORWARD - hand.left.j * right + hand.up.j * HELD_UP) * units;
+		hand.position.z += (hand.forward.k * HELD_FORWARD - hand.left.k * right + hand.up.k * HELD_UP) * units;
 		vr_grenade.drawn = hand;
 		vr_grenade.drawn_valid = TRUE;
 	}

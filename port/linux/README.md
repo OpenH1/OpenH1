@@ -1173,11 +1173,13 @@ weapon in your left hand, and all that the right hand does above the left
 does, and the other way round: the left trigger fires, its touch lays the
 index finger on it, the left controller aims (the reticle, the shot, the
 smart-link's view, a scope raised to your left eye) and swings to melee, and
-the left grip draws from the holsters. The right hand holds a long gun's
-foregrip, takes the magazines and pushes them in, and throws the grenades
-(the right trigger with `vr.grenade_throw = "both"`). The haptics are
-swapped with the hands, the game's rumble too (the weapon's in the left
-controller).
+the left grip draws from the holsters, which are on your left (a long gun
+over your left shoulder, a pistol at your left hip). The right hand holds a
+long gun's foregrip, takes magazines from your right hip (the rocket
+launcher's tubes from behind your right shoulder) and pushes them in, and
+throws the grenades (the right trigger with `vr.grenade_throw = "both"`). The
+haptics are swapped with the hands, the game's rumble too (the weapon's in
+the left controller).
 
 - The first-person weapon and both hands are drawn mirrored, a left hand
   holding a left-handed weapon (the game's models are right-handed): the
@@ -2081,7 +2083,7 @@ headset's session is opened with, apply from the next start.
 | `vr.refresh_rate` | `90.0` | `HALO_VR_REFRESH_RATE` | The refresh rate to ask the runtime for. `0`: the runtime's. When the runtime refuses it or gives another, the log lists the rates the display has (`vr: the display's refresh rates: ...`). |
 | `vr.aim` | `"controller"` | `HALO_VR_AIM` | `"controller"`: the right controller aims and holds the weapon. `"head"`: the head aims. `"gamepad"`: a gamepad aims and plays, as on the flat screen, and the head looks about freely (above, "With a gamepad"). |
 | `vr.gamepad_view` | `"camera"` | `HALO_VR_GAMEPAD_VIEW` | With `vr.aim = "gamepad"`: `"camera"`, the stick turns and pitches the view as the flat screen's camera, the head's turn on top (the most like the Xbox game, and the most likely to make you sick); `"level"`, it turns the view smoothly, and its pitch moves only the reticle; `"snap"`, the view turns a step of `vr.snap_turn_angle` each time the aim is more than that from it, and its pitch moves only the reticle. |
-| `vr.dominant_hand` | `"right"` | `HALO_VR_DOMINANT_HAND` | The hand that holds the weapon: `"right"`, or `"left"`: the weapon in the left controller, drawn mirrored with both hands, the left trigger firing, the right hand on the foregrip, at the magazines and throwing, the haptics swapped with the hands (above, "Left-handed"). Not with `vr.aim = "gamepad"`. |
+| `vr.dominant_hand` | `"right"` | `HALO_VR_DOMINANT_HAND` | The hand that holds the weapon: `"right"`, or `"left"`: the weapon in the left controller, drawn mirrored with both hands, the left trigger firing, the right hand on the foregrip, at the magazines (at the right hip) and throwing, the holsters on the left, the haptics swapped with the hands (above, "Left-handed"). Not with `vr.aim = "gamepad"`. |
 | `vr.weapon_offset` | `"0.15, -0.22, 0.30"` | `HALO_VR_WEAPON_OFFSET` | With `vr.hands = "game"`: where the weapon's grip is from the eye that the game poses it for, in metres: right, up, forward. |
 | `vr.depth` | `false` | `HALO_VR_DEPTH` | `true`: give the runtime the eyes' depth too (`XR_KHR_composition_layer_depth`), for its reprojection. SteamVR on the Steam Frame cannot make a depth swapchain for an OpenGL session yet. |
 | `vr.melee_gesture` | `true` | `HALO_VR_MELEE_GESTURE` | A swing of the right controller melees, as B does: a hard one in any direction, or a softer one with the right grip held ("Meleeing with a swing"). |

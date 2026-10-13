@@ -154,7 +154,7 @@
 	</strings>
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/vr_display/help_strings">
 		<string text=""/>
-		<string text="The hand that holds the weapon. Left: the weapon\nand your hands mirrored."/>
+		<string text="The hand that holds the weapon. Left: mirrored,\nthe holsters at your left, the magazines at your right."/>
 		<string text="Seated: your eyes where they are when you\nrecentre. From the next time the game starts."/>
 		<string text="Standing, the height of your eyes above the\nfloor."/>
 		<string text="How large the world looks: more than 1 makes it\nlarger, and you smaller in it."/>

@@ -202,8 +202,8 @@ void vr_holster_update(long unit_index, boolean aiming)
 		{
 			char const *name = tag_get_name(object_get(weapon_index)->definition_index);
 
-			platform_log("vr holster: %s at the %s", name ? name : "a weapon",
-				holster == HALO_VR_HOLSTER_BACK ? "right shoulder" : "right hip");
+			platform_log("vr holster: %s at the %s %s", name ? name : "a weapon",
+				halo_vr_left_handed() ? "left" : "right", holster == HALO_VR_HOLSTER_BACK ? "shoulder" : "hip");
 		}
 		vr_holster.weapon_index = weapon_index;
 		vr_holster.holster = holster;

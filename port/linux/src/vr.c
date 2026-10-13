@@ -233,7 +233,8 @@ metres a second) and not in a swing that melee'd: a grip squeezed by a
 swing passing through is no draw. The hand's swing does not melee while
 that grip is held, nor for HOLSTER_NO_MELEE_MS after a draw, nor the swing
 that brings the drawn weapon out of its holster, however long the hand
-waits there (drawing a gun is a fast move forward). */
+waits there (drawing a gun is a fast move forward). A left-hander's are
+mirrored, over the left shoulder and at the left hip (hand_left). */
 static const float holster_places[HALO_VR_HOLSTERS][4] =
 {
 	{ 0.0f, 0.0f, 0.0f, 0.0f },
@@ -284,7 +285,9 @@ gets to the pouch. With nothing to take, the left controller ticks twice,
 weakly (RELOAD_FULL_*): full. Let go below RELOAD_GRIP_RELEASED,
 the one held is dropped; brought within RELOAD_WELL_REACH of where it goes
 in, it is pushed home. It is held RELOAD_HELD from the grip along the hand's
-axes (forward, left, up): its top, which goes in, above the fist. */
+axes (forward, left, up): its top, which goes in, above the fist. A
+left-hander's pouches are mirrored, at the right hip and behind the right
+shoulder (hand_left). */
 static const float reload_pouches[2][4] =
 {
 	{ 0.06f, 0.22f, -0.66f, 0.18f },
@@ -1261,9 +1264,10 @@ the poses as each frame locates them and the triggers, the grips and the
 trigger's touch as they are read, so that all that follows has the weapon's
 hand where it had the right: the aim, the trigger finger, the melee swing,
 the holsters', the scope's zoom, and the other hand the foregrip's, the
-magazines', the grenades'. The haptics go back to the hand they are for
-(hand_haptic), and the first-person weapon and hands are drawn mirrored
-(port/linux/game/vr_render.c). The buttons and the sticks
+magazines', the grenades'. What is on the body is mirrored where it is
+placed (hand_left: the holsters, the pouches), the haptics go back to the
+hand they are for (hand_haptic), and the first-person weapon and hands are
+drawn mirrored (port/linux/game/vr_render.c). The buttons and the sticks
 stay where they are, as the game's prompts name them (A, B, X, Y, the
 bumpers, the d-pad, View and Menu). debug.vr_test_hands mirrors its poses
 (test_hands_apply). */
@@ -1317,6 +1321,13 @@ static int hand_controller(int hand)
 static void hand_haptic(int hand, float amplitude, float seconds)
 {
 	host_vr_haptic(hand_controller(hand), amplitude, seconds);
+}
+
+/* a place on the body's left (metres; a right-hander's, as holster_places
+and reload_pouches have them) where it is for the dominant hand */
+static float hand_left(float left)
+{
+	return settings.left_handed ? -left : left;
 }
 
 /* both hands on a long gun, once a frame: the left hand takes the foregrip
@@ -1830,9 +1841,10 @@ static void holsters_update(float seconds)
 	for (holster = HALO_VR_HOLSTER_BACK; holster < HALO_VR_HOLSTERS; holster++)
 	{
 		const float *p = holster_places[holster];
+		float left = hand_left(p[1]);
 
-		h->place[holster][0] = eyes[0] + p[0] * c - p[1] * s;
-		h->place[holster][1] = eyes[1] + p[0] * s + p[1] * c;
+		h->place[holster][0] = eyes[0] + p[0] * c - left * s;
+		h->place[holster][1] = eyes[1] + p[0] * s + left * c;
 		h->place[holster][2] = eyes[2] + p[2];
 	}
 	/* the right hand in one */
@@ -2262,11 +2274,11 @@ static float reload_pouch_distance(int pouch, float yaw, const float eyes[3], fl
 {
 	const struct vr_host_pose *hand = &vr.views.grip[0];
 	const float *p = reload_pouches[pouch];
-	float v[3], place[3], c = cosf(yaw), s = sinf(yaw), distance;
+	float v[3], place[3], c = cosf(yaw), s = sinf(yaw), left = hand_left(p[1]), distance;
 	int axis;
 
-	middle[0] = eyes[0] + p[0] * c - p[1] * s;
-	middle[1] = eyes[1] + p[0] * s + p[1] * c;
+	middle[0] = eyes[0] + p[0] * c - left * s;
+	middle[1] = eyes[1] + p[0] * s + left * c;
 	middle[2] = eyes[2] + p[2];
 	if (!hand->valid || !vr.views.aim[0].valid)
 		return 1000.0f;
@@ -2479,7 +2491,8 @@ static void reload_update(void)
 		vr.reload_grip_waiting = 0;
 		hand_haptic(0, 0.35f, 0.03f);
 		platform_log("vr: reload: %s%s taken from the %s%s", articles[r->kind], names[r->kind],
-			pouch ? "left shoulder" : "left hip", pressing ? "" : " (the grip closed by it)");
+			pouch ? (settings.left_handed ? "right shoulder" : "left shoulder") :
+			settings.left_handed ? "right hip" : "left hip", pressing ? "" : " (the grip closed by it)");
 		/* (the magazine in the weapon out as the new one is taken, as the
 		right stick would have: the weapon is drawn without it, and does not
 		fire until the new one is in) */

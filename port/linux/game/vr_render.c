@@ -1368,21 +1368,46 @@ boolean vr_render_right_hand(real_matrix4x3 *hand, real *units)
 
 /* vr_holster.c: a place on the body (game axes from the recentred head,
 metres) with directions there, in the world, during the eye pass with the
-controller aiming; and the world's units a metre. FALSE otherwise */
+controller aiming; and the world's units a metre. FALSE otherwise. A
+left-hander's (halo_vr_left_handed), whose places on the body are on the
+other side (vr.c's), has the directions, a right-hander's, mirrored across
+the body, and the matrix too (left-handed: its left the mirror's): a model
+posed from its forward and up alone is turned as the mirror has it, one
+from the matrix mirrored */
 boolean vr_render_body_place(const float place[3], const float forward[3], const float up[3], real_matrix4x3 *matrix,
 	real *units)
 {
 	real_vector3d f, u;
 	real_point3d position;
+	float mirrored[2][3];
 
 	if (!vr_render.active || !vr_render.view.controller_aim || !halo_vr_aiming())
 		return FALSE;
+	if (halo_vr_left_handed())
+	{
+		/* (across the body: its heading's left) */
+		real heading = body_heading();
+		float across[3] = { -(float)sin(heading), (float)cos(heading), 0.0f };
+		float along_forward = forward[0] * across[0] + forward[1] * across[1];
+		float along_up = up[0] * across[0] + up[1] * across[1];
+		short axis;
+
+		for (axis = 0; axis < 3; axis++)
+		{
+			mirrored[0][axis] = forward[axis] - 2.0f * along_forward * across[axis];
+			mirrored[1][axis] = up[axis] - 2.0f * along_up * across[axis];
+		}
+		forward = mirrored[0];
+		up = mirrored[1];
+	}
 	yaw_rotate(vr_render.base_yaw, forward, &f);
 	yaw_rotate(vr_render.base_yaw, up, &u);
 	if (normalize3d(&f) <= 0.0f || normalize3d(&u) <= 0.0f)
 		return FALSE;
 	hand_point(place, &position);
 	matrix4x3_from_point_and_vectors(matrix, &position, &f, &u);
+	if (halo_vr_left_handed())
+		negate_vector3d(&matrix->left, &matrix->left);
 	*units = vr_render.view.world_units_per_metre;
 	return TRUE;
 }

@@ -261,7 +261,8 @@ VR_SCREENS = {
         "help_top": 366,
         "rows": [
             ("DOMINANT HAND:", "vr.dominant_hand", [("RIGHT", "right"), ("LEFT", "left")],
-             "The hand that holds the weapon. Left: the weapon\nand your hands mirrored.", None),
+             "The hand that holds the weapon. Left: mirrored,\nthe holsters at your left, the magazines at your right.",
+             None),
             (f"POSITION {RESTART}:", "vr.height", [("SEATED", "seated"), ("STANDING", "standing")],
              "Seated: your eyes where they are when you\nrecentre. From the next time the game starts.", None),
             ("EYE HEIGHT:", "vr.player_height",

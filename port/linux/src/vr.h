@@ -476,8 +476,10 @@ int halo_vr_test_hands(void);
 /* a left-hander's controllers (vr.dominant_hand = "left", the controllers
 aiming or the head): the left one holds the weapon. All this file says of
 the right hand (the right controller's poses, its trigger, its grip) is the
-left's then, and of the left hand the right's; and the first-person weapon
-and hands are drawn mirrored (vr_render.c), as the game's are right-handed */
+left's then, and of the left hand the right's; what is on the body is on
+its other side (the holsters at the left shoulder and hip, the pouches at
+the right); and the first-person weapon and hands are drawn mirrored
+(vr_render.c), as the game's are right-handed */
 int halo_vr_left_handed(void);
 /* debug.vr_test_target: the right controller held by debug.vr_test_hands
 points along this (game axes from the recentred head: at the target the

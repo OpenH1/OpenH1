@@ -798,12 +798,17 @@ void vr_reload_draw(unsigned long flags)
 		return;
 	}
 	/* in the left hand, its top (where it goes in) held_offset from the
-	grip, as it would be in a weapon pointing where the hand points */
+	grip, as it would be in a weapon pointing where the hand points (a
+	left-hander's, in the right hand, mirrored about it, as the weapon it
+	goes into is: vr_hands.c) */
 	if (reload.held && vr_render_left_hand(&frame, &units))
 	{
 		real_matrix4x3 magazine_frame;
 		real_point3d held;
 		float const *o = reload.held_offset;
+
+		if (halo_vr_left_handed())
+			negate_vector3d(&frame.left, &frame.left);
 
 		held.x = frame.position.x + (frame.forward.i * o[0] + frame.left.i * o[1] + frame.up.i * o[2]) * units;
 		held.y = frame.position.y + (frame.forward.j * o[0] + frame.left.j * o[1] + frame.up.j * o[2]) * units;
