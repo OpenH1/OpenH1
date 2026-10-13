@@ -63,6 +63,8 @@ camera (vr_render.c), and in the eye pass (render.c).
 const char *config_string(char const *name);
 unsigned long config_changes(void);
 void platform_log(char const *format, ...);
+/* vr_cabin.c's */
+short vr_cabin_seat_eye(long seated_unit_index, real_point3d *eye);
 /* d3d8_gl.c's, vr.c's */
 void halo_vr_eye_tint(float red, float green, float blue);
 float halo_vr_vignette(float fov[2][4]);
@@ -126,6 +128,9 @@ static struct
 	real_point3d frozen_local;
 	boolean anchored;
 	real_point3d anchor_local;
+	/* the cabin of the seat (vr_cabin.c: the eye its, not the head's), else
+	NONE */
+	short cabin;
 	/* the blink: darkening toward the jump, and how dark (0 to 1) */
 	boolean blinking;
 	real darkness;
@@ -284,6 +289,20 @@ void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_poin
 			else
 				unit_get_head_position(seated_unit_index, &desired);
 		}
+		/* (once seated, where the seat has a cabin, the eye is its: where the
+		cabin is drawn about it; another cabin's, as its view changes, is
+		blinked to) */
+		if (source != _seat_source_getting_in)
+		{
+			short cabin = vr_cabin_seat_eye(seated_unit_index, &desired);
+
+			if (cabin != vr_seat.cabin)
+			{
+				vr_seat.cabin = cabin;
+				vr_seat.anchored = FALSE;
+				vr_seat.seat_serial++;
+			}
+		}
 	}
 	else
 	{
@@ -291,6 +310,7 @@ void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_poin
 		vr_seat.seat_index = NONE;
 		vr_seat.anchored = FALSE;
 		vr_seat.frozen = FALSE;
+		vr_seat.cabin = NONE;
 		source = director_get_perspective(0) == _director_perspective_first_person ?
 			_seat_source_first_person : _seat_source_game;
 	}

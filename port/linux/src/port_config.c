@@ -333,6 +333,12 @@ static const struct config_setting config_settings[] =
 		"with both hands and turn it, the view turning with the Warthog;\n"
 		"\"look\" it steers where the right controller points, the view turned\n"
 		"by the stick." },
+	{ "vr.scorpion_view", _config_string, "\"hatch\"", "HALO_VR_SCORPION_VIEW", _environment_value,
+		_platform_desktop,
+		"Driving a Scorpion with vr.vehicle_view = \"first_person\": \"hatch\" you\n"
+		"stand in the turret's hatch, seeing all about over the hull, the turret\n"
+		"aiming where you aim; \"inside\" you sit in the driver's compartment at\n"
+		"the front of the hull, seeing out through its vision blocks." },
 	{ "vr.comfort_vignette", _config_boolean, "true", "HALO_VR_COMFORT_VIGNETTE", _environment_value, _platform_desktop,
 		"The edges of your view dim a little while the view turns fast with a\n"
 		"vehicle you steer by its handlebars (vr.ghost_steering), or it speeds\n"

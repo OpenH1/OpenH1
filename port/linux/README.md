@@ -1655,6 +1655,27 @@ second; up and down, it climbs and dives); the left stick throttles, the
 triggers fire its guns. Its cockpit is the game's model (none of its own
 yet). With `vr.aim = "controller"`.
 
+
+#### Driving a Scorpion (`vr.scorpion_view`)
+
+The Scorpion's model is a closed hull, made for the game's camera following
+it: its driver's head is in the hatch's lid, over an empty slot. So the
+eye is put where it belongs, and what the model lacks is drawn about it, with
+the Scorpion's own textures and lighting:
+
+- `"hatch"` (the default): you stand in the turret's hatch, a cupola ring
+  about you with its lid open, the eye above the turret on its axis, so that
+  it does not swing as the turret turns under it. You see all about, over
+  the hull; the turret aims where you aim.
+- `"inside"`: you sit in the driver's compartment at the front of the hull,
+  under the front plate: walls, the hatch above you, a seat, the steering
+  levers and an instrument panel, and vision blocks across the front, which
+  you see out through.
+
+In both, the view stays yours, level and turned by your head and the stick:
+the Scorpion turns toward where you aim as you drive it, as it does under
+the game's camera, so the hull turns under you, not the view with it.
+
 #### Your body (`display.first_person_legs`)
 
 With LEGS on (Video Setup > FOV and Viewmodels, `display.first_person_legs`;
@@ -1848,6 +1869,7 @@ headset's session is opened with, apply from the next start.
 | `vr.vehicle_view` | `"first_person"` | `HALO_VR_VEHICLE_VIEW` | `"first_person"`: in a vehicle's seat, the view is from the seated player's head, level with the horizon. `"third_person"`: the game's camera following the vehicle. |
 | `vr.warthog_steering` | `"wheel"` | `HALO_VR_WARTHOG_STEERING` | With `vr.aim = "controller"`, in a Warthog's driver seat: `"wheel"`, grip its wheel and turn it to steer, the view turning with the Warthog ("Driving a Warthog by its wheel"); `"look"`, it steers where the right controller points, the view turned by the stick. |
 | `vr.ghost_steering` | `"handlebars"` | `HALO_VR_GHOST_STEERING` | With `vr.aim = "controller"`, in a Ghost's driver seat: `"handlebars"`, grip its handles and turn them to steer, the view turning with the Ghost ("Driving a Ghost by its handlebars"); `"look"`, it steers and aims where the right controller points, the view turned by the stick. |
+| `vr.scorpion_view` | `"hatch"` | `HALO_VR_SCORPION_VIEW` | With `vr.vehicle_view = "first_person"`, in a Scorpion's driver seat: `"hatch"`, you stand in the turret's hatch, the eye above the turret on its axis, seeing all about over the hull; `"inside"`, you sit in the driver's compartment at the front of the hull, seeing out through its vision blocks ("Driving a Scorpion"). |
 | `vr.comfort_vignette` | `true` | `HALO_VR_COMFORT_VIGNETTE` | The edges of the view dim a little while the view turns fast with a Ghost steered by its handlebars, or it speeds up or slows hard. |
 | `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, the eye stays put in the vehicle, riding with it but not with the body climbing in and out, a turret's turning or flinches, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
 | `vr.death_view` | `"face"` | `HALO_VR_DEATH_VIEW` | As you die: `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |
@@ -2250,6 +2272,23 @@ supersampling costs as above, and multisampling the eye pass
   has its trigger go (`trigger_fingers`); the housing stays. Only for
   those models (by their tag names): the world's weapons and the third
   person have none.
+- The vehicles' models were made for the game's camera following them: the
+  Scorpion's is a closed hull, its driver's head in the hatch's lid over
+  an empty slot. For a seat of a vehicle's model, and one of its views
+  where the vehicle has a setting for it, a cabin (`game/vr_cabin.c`,
+  `game/vr_cabin_model.h`, made by `tools/vr_cabin_model.py`) puts the eye
+  where it belongs (vr_seat.c takes it, and blinks to another as the view
+  changes) and draws about it what the model lacks: meshes made once a map
+  as a model part's buffers, each drawn from a node of the model with one
+  of its own shaders just after the model is drawn (`render_objects.c`),
+  for the vehicle the first player is seated in alone, their texture
+  coordinates stored as the model's are (divided by its base map scale).
+  The Scorpion's: inside, a driver's compartment ahead of the slot, under
+  the front plate, its vision blocks open (the hull's own faces about it
+  face out and are not drawn from inside); the hatch, a cupola ring on the
+  turret, the eye on the turret's axis. The view stays the player's in its
+  seat: the game turns a Scorpion toward its driver's facing (vehicles.c),
+  so a view turned with the hull would chase its own turn.
 - The game throws a grenade in an animation: the throw button starts the
   unit's throw animation, its third frame puts the grenade in the unit's
   left hand, and its key frame (the cyborg's with the assault rifle: frame

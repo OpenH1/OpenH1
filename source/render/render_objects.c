@@ -259,6 +259,13 @@ short structure_visibility_find_objects(
 extern boolean debug_objects;
 extern short debug_rasterizer_light_count;
 
+#ifdef HALO_VR
+/* port/linux/game/vr_cabin.c */
+void vr_cabin_draw(long object_index, long model_index, real_matrix4x3 const *node_matrices,
+	real_rgb_color const *change_colors, real const *function_values, struct render_lighting const *lighting,
+	struct render_model_effect const *model_effect);
+#endif
+
 /* ---------- globals */
 
 boolean render_shadows = TRUE;
@@ -663,6 +670,19 @@ static void render_object_list(
 						object_index,
 						object->object.forced_shader_permutation_index,
 						data->no_planar_fog ? FLAG(_render_model_no_planar_fog_bit) : 0);
+#ifdef HALO_VR
+					/* port: the VR mode's cabin about the first player's seat,
+					what the vehicle's model lacks for the view from it, drawn as
+					the model was (port/linux/game/vr_cabin.c) */
+					vr_cabin_draw(
+						object_index,
+						definition->object.model.index,
+						node_matrices,
+						object->object.outgoing_change_colors,
+						object->object.outgoing_function_values,
+						data->lighting,
+						&model_effect);
+#endif
 
 					if (debug_objects)
 					{

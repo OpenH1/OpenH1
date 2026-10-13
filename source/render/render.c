@@ -179,6 +179,10 @@ void vr_render_scope_end(void);
 (port/linux/game/vr_trigger.c), made as a map is loaded */
 void vr_trigger_initialize_for_new_map(void);
 void vr_trigger_dispose_from_old_map(void);
+/* the cabins drawn about a vehicle's seat (port/linux/game/vr_cabin.c),
+made as a map is loaded */
+void vr_cabin_initialize_for_new_map(void);
+void vr_cabin_dispose_from_old_map(void);
 
 static boolean render_vr_eye_pass;
 static boolean render_vr_scope_pass;
@@ -211,6 +215,9 @@ void render_initialize_for_new_map(
 	/* port: the VR mode's trigger on the assault rifle's first-person model
 	(port/linux/game/vr_trigger.c) */
 	vr_trigger_initialize_for_new_map();
+	/* port: the VR mode's cabins about a vehicle's seat
+	(port/linux/game/vr_cabin.c) */
+	vr_cabin_initialize_for_new_map();
 #endif
 }
 
@@ -219,6 +226,7 @@ void render_dispose_from_old_map(
 {
 #ifdef HALO_VR
 	vr_trigger_dispose_from_old_map();
+	vr_cabin_dispose_from_old_map();
 #endif
 	render_objects_dispose_from_old_map();
 }
