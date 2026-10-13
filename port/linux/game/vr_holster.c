@@ -43,10 +43,14 @@ reload by hand lights up its pouch and where the magazine goes the same way
 #include "tag_files/tag_files.h"
 #include "units/units.h"
 
+#include "object_mesh.h"
+
 #include "../src/vr.h"
 
 #include <float.h>
 #include <math.h>
+#include <stdio.h>
+#include <string.h>
 
 /* the stowed weapon lights up, the hand from its holster's reach nearer
 than this (metres): the shield's plasma over it in this colour (at the
@@ -63,6 +67,26 @@ splits them apart into shards */
 #define HIGHLIGHT_PLASMA_OFFSET 0.02f
 /* drawn at its finest detail */
 #define HOLSTERED_DETAIL_PIXELS 1000.0f
+/* a long gun slung across the back of the body drawn (first_person_legs.c):
+on its side, its right side against the back, SLING_CLEARANCE (metres)
+behind the farthest back of the upper body, its middle (half way from its
+butt to its muzzle) at the middle of the back, at the foot of the chest,
+its butt up over the right shoulder and its barrel down across the back to
+the left, SLING_ANGLE (radians) from the chest's up: the assault rifle's
+butt just above the shoulder, where the hand reaches over the shoulder for
+it, a long one's (the sniper rifle's, the rocket launcher's) behind the
+head and its muzzle by the left thigh. Without its model's mesh, its butt,
+muzzle and right side as far as these from its grip (metres) */
+#define SLING_CLEARANCE 0.02f
+#define SLING_ANGLE 0.52f
+#define SLING_BUTT_UNKNOWN 0.30f
+#define SLING_MUZZLE_UNKNOWN 0.50f
+#define SLING_SIDE_UNKNOWN 0.05f
+/* a weapon at the hip: where the right hand reaches for it (vr.c's
+holster), but no nearer the hips of the body drawn than HIP_CLEARANCE
+(metres) beside them: a wide one (the needler, 20 cm across) is moved out
+until its inner side is */
+#define HIP_CLEARANCE 0.02f
 
 enum
 {
@@ -86,6 +110,10 @@ void platform_log(char const *format, ...);
 boolean vr_render_long_gun(long weapon_index);
 boolean vr_render_body_place(const float place[3], const float forward[3], const float up[3], real_matrix4x3 *matrix,
 	real *units);
+boolean vr_render_body_anchor(real_point3d *neck, real *yaw);
+/* first_person_legs.c's */
+void first_person_legs_vr_back(real_point3d const *anchor, real yaw, real_matrix4x3 *chest, real *back);
+void first_person_legs_vr_hips(real_point3d const *anchor, real yaw, real_point3d *middle, real *side);
 
 /* the highlights drawn in a frame: the stowed weapon's, and the reload's
 (vr_reload.c: its pouch, where the magazine goes) */
@@ -114,7 +142,17 @@ static struct
 		real_rgb_color colors[4];
 		real offset;
 	} plasma[NUMBER_OF_VR_HIGHLIGHTS];
-} vr_holster = { NONE, HALO_VR_HOLSTER_NONE, NONE };
+	/* the stowed weapon's extent from its grip, for its definition (NONE:
+	none yet; and its tag's name: another map's may have its index): where
+	its butt and its muzzle are, its right side and its left (world units),
+	along its own axes */
+	long extent_definition_index;
+	char extent_name[128];
+	real extent_butt;
+	real extent_muzzle;
+	real extent_right;
+	real extent_left;
+} vr_holster = { NONE, HALO_VR_HOLSTER_NONE, NONE, { { { 0.0f } } }, NONE, "", 0.0f, 0.0f, 0.0f, 0.0f };
 
 /* the weapon the switch would take up: the next one carried after the one
 held */
@@ -288,6 +326,44 @@ void vr_holster_highlight(boolean well, long unit_index, real strength, real uni
 		lighting);
 }
 
+/* the stowed weapon's extent from its grip, along its own axes (its
+model's mesh, once for each of its kind: the mesh kept is the body's, read
+again after), in the world's units (units a metre) */
+static void vr_holster_extent(long weapon_index, real units)
+{
+	long definition_index = object_get(weapon_index)->definition_index;
+	char const *name = tag_get_name(definition_index);
+	struct object_mesh const *mesh;
+	long index;
+
+	if (!name)
+		name = "";
+	if (definition_index == vr_holster.extent_definition_index && !strcmp(name, vr_holster.extent_name))
+		return;
+	vr_holster.extent_definition_index = definition_index;
+	snprintf(vr_holster.extent_name, sizeof(vr_holster.extent_name), "%s", name);
+	vr_holster.extent_butt = -SLING_BUTT_UNKNOWN * units;
+	vr_holster.extent_muzzle = SLING_MUZZLE_UNKNOWN * units;
+	vr_holster.extent_right = -SLING_SIDE_UNKNOWN * units;
+	vr_holster.extent_left = SLING_SIDE_UNKNOWN * units;
+	mesh = object_mesh_get(weapon_index);
+	if (!mesh || mesh->vertex_count <= 0)
+		return;
+	vr_holster.extent_butt = vr_holster.extent_muzzle = vr_holster.extent_right = vr_holster.extent_left = 0.0f;
+	for (index = 0; index < mesh->vertex_count; index++)
+	{
+		real_point3d const *p = &mesh->vertices[index].position;
+
+		vr_holster.extent_butt = MIN(vr_holster.extent_butt, p->x);
+		vr_holster.extent_muzzle = MAX(vr_holster.extent_muzzle, p->x);
+		vr_holster.extent_right = MIN(vr_holster.extent_right, p->y);
+		vr_holster.extent_left = MAX(vr_holster.extent_left, p->y);
+	}
+	platform_log("vr holster: %s: %.2f m long, %.2f m across, its butt %.2f m behind its grip",
+		name, (vr_holster.extent_muzzle - vr_holster.extent_butt) / units,
+		(vr_holster.extent_left - vr_holster.extent_right) / units, -vr_holster.extent_butt / units);
+}
+
 /* first_person_weapons.c, as the first-person weapon is drawn (flags: its
 model's): the stowed weapon in its holster, lit up as the right hand comes
 to it */
@@ -311,9 +387,10 @@ void vr_holster_draw(unsigned long flags)
 	model = model_definition_get(model_index);
 	if (model->nodes.count <= 0 || model->nodes.count > MAXIMUM_NODES_PER_MODEL)
 		return;
-	/* along the body: a long gun across the back, its grip up at the
-	shoulder and its muzzle down to the left, its top away from the back; a
-	pistol muzzle down, its grip back, its top forward */
+	/* along the body: a long gun across the back (where the body's
+	is not drawn, as in a cinematic), its grip up at the shoulder and its
+	muzzle down to the left, its top away from the back; a pistol muzzle
+	down, its grip back, its top forward */
 	c = (real)cos(holsters.body_yaw);
 	s = (real)sin(holsters.body_yaw);
 	if (vr_holster.holster == HALO_VR_HOLSTER_BACK)
@@ -338,6 +415,70 @@ void vr_holster_draw(unsigned long flags)
 	}
 	if (!vr_render_body_place(holsters.place[vr_holster.holster], forward, up, &holstered, &units))
 		return;
+	if (vr_holster.holster == HALO_VR_HOLSTER_BACK)
+	{
+		real_point3d neck;
+		real yaw;
+
+		/* (a long gun slung across the back of the body as it is drawn:
+		on its side, clear of its armour behind the shoulders, leaning
+		back with it as it leans back from the eyes; drawn at the grab's
+		place, over the right shoulder, it lay through the shoulder and the
+		collar, as far as 19 cm into them. Where the hand reaches for it
+		stays over the shoulder: vr.c's holster) */
+		if (vr_render_body_anchor(&neck, &yaw))
+		{
+			real_matrix4x3 chest;
+			real back, middle, across = (real)sin(SLING_ANGLE), down = (real)cos(SLING_ANGLE);
+
+			vr_holster_extent(vr_holster.weapon_index, units);
+			first_person_legs_vr_back(&neck, yaw, &chest, &back);
+			/* (the barrel down to the left, the left side out, the top
+			up to the left) */
+			holstered.forward.i = chest.left.i * across - chest.up.i * down;
+			holstered.forward.j = chest.left.j * across - chest.up.j * down;
+			holstered.forward.k = chest.left.k * across - chest.up.k * down;
+			holstered.left.i = -chest.forward.i;
+			holstered.left.j = -chest.forward.j;
+			holstered.left.k = -chest.forward.k;
+			cross_product3d(&holstered.forward, &holstered.left, &holstered.up);
+			/* (its right side SLING_CLEARANCE behind the back, its middle
+			at the back's) */
+			middle = (vr_holster.extent_butt + vr_holster.extent_muzzle) * 0.5f;
+			back += vr_holster.extent_right - SLING_CLEARANCE * units;
+			holstered.position.x = chest.position.x + chest.forward.i * back - holstered.forward.i * middle;
+			holstered.position.y = chest.position.y + chest.forward.j * back - holstered.forward.j * middle;
+			holstered.position.z = chest.position.z + chest.forward.k * back - holstered.forward.k * middle;
+		}
+	}
+	else
+	{
+		real_point3d neck, hips;
+		real yaw, side;
+
+		/* (out beside the hips of the body as it is drawn, if it was in
+		them: its left side, toward them, HIP_CLEARANCE from their right
+		side, level along the heading's left) */
+		if (vr_render_body_anchor(&neck, &yaw))
+		{
+			real_vector3d left, offset;
+			real inner, beside;
+
+			vr_holster_extent(vr_holster.weapon_index, units);
+			first_person_legs_vr_hips(&neck, yaw, &hips, &side);
+			left.i = -(real)sin(yaw);
+			left.j = (real)cos(yaw);
+			left.k = 0.0f;
+			vector_from_points3d(&hips, &holstered.position, &offset);
+			inner = dot_product3d(&offset, &left) + vr_holster.extent_left;
+			beside = side - HIP_CLEARANCE * units;
+			if (inner > beside)
+			{
+				holstered.position.x -= left.i * (inner - beside);
+				holstered.position.y -= left.j * (inner - beside);
+			}
+		}
+	}
 	model_get_node_matrices(model, node_matrices, &holstered.position, &holstered.forward, &holstered.up);
 
 	/* the highlight, rising as the hand comes, full within reach: the

@@ -103,6 +103,34 @@ surface, so many points at most are weighed (those that can come that near) */
 #define FIRST_PERSON_LEGS_NECK_BEHIND 0.09f
 #define FIRST_PERSON_LEGS_UPRIGHT_SPEED 1.0f
 #define FIRST_PERSON_LEGS_LEAN_POINTS 8192
+/* the VR mode's body's chest as it was drawn last (first_person_legs_vr_back,
+for the long gun slung across its back: vr_holster.c): its frame
+(at the foot of the chest, up along it to the neck, left across the
+shoulders) from the top of the real neck in the body's heading's axes
+(world units: forward, left, up), and how far before the frame's middle its
+back is (the farthest back of its upper body: negative); and its hips (for
+the hip's holster): their middle from the top of the real neck, and how far
+left of it their right side is (negative). Before any is drawn, the Master
+Chief's standing upright (the chest about 5 cm behind and 32 cm below the
+top of the real neck, the back 29 cm behind it; the hips 66 cm below it,
+their right side 22 cm right of their middle) */
+static struct
+{
+	real_point3d origin;
+	real_vector3d forward, left, up;
+	real back;
+	real_point3d hips;
+	real hips_side;
+} first_person_legs_vr_chest =
+{
+	{ -0.047f / 3.048f, 0.0f, -0.321f / 3.048f },
+	{ 1.0f, 0.0f, 0.0f },
+	{ 0.0f, 1.0f, 0.0f },
+	{ 0.0f, 0.0f, 1.0f },
+	-0.294f / 3.048f,
+	{ -0.049f / 3.048f, 0.0f, -0.660f / 3.048f },
+	-0.22f / 3.048f,
+};
 #endif
 
 static real_matrix4x3 first_person_legs_matrices[FIRST_PERSON_LEGS_MAXIMUM_NODES];
@@ -567,6 +595,135 @@ static void first_person_legs_vr_lean(
 	}
 }
 
+/* the VR mode's body's chest as it is drawn (chest: its node, the neck's
+parent; neck; hips: the root, the pelvis; the top of the real neck, and the
+heading's forward and left there), and how far its back is behind it, and
+its hips' right side: first_person_legs_vr_chest */
+static void first_person_legs_vr_chest_note(
+	long object_index,
+	struct model const *model,
+	long count,
+	short chest,
+	short neck,
+	short hips,
+	real_point3d const *anchor,
+	real_vector3d const *forward,
+	real_vector3d const *left)
+{
+	struct object_mesh const *mesh = object_mesh_get(object_index);
+	real_matrix4x3 skin[FIRST_PERSON_LEGS_MAXIMUM_NODES];
+	boolean upper[FIRST_PERSON_LEGS_MAXIMUM_NODES];
+	real_point3d const *origin = &first_person_legs_matrices[chest].position;
+	real_point3d const *middle = &first_person_legs_matrices[hips].position;
+	real_vector3d up, across, ahead, offset;
+	real along, back = 0.0f, side = 0.0f;
+	long index;
+
+	vector_from_points3d(origin, &first_person_legs_matrices[neck].position, &up);
+	if (!mesh || mesh->node_count < count || normalize3d(&up) <= 0.0f)
+		return;
+	across = *left;
+	along = dot_product3d(&across, &up);
+	across.i -= up.i * along;
+	across.j -= up.j * along;
+	across.k -= up.k * along;
+	if (normalize3d(&across) <= 0.0f)
+		return;
+	cross_product3d(&across, &up, &ahead);
+	for (index = 0; index < count; index++)
+	{
+		struct model_node const *node = TAG_BLOCK_GET_ELEMENT(&model->nodes, index, struct model_node);
+
+		/* (the upper body as drawn: not the legs, nor the head and arms
+		folded away) */
+		upper[index] = node->parent_node_index != NONE && !first_person_legs_node(node->name) &&
+			first_person_legs_matrices[index].scale > 0.01f;
+		matrix4x3_multiply(&first_person_legs_matrices[index], &mesh->inverse[index], &skin[index]);
+	}
+	for (index = 0; index < mesh->vertex_count; index++)
+	{
+		struct object_mesh_vertex const *vertex = &mesh->vertices[index];
+		real_point3d p;
+
+		if (vertex->nodes[0] >= count || (!upper[vertex->nodes[0]] && vertex->nodes[0] != hips))
+			continue;
+		matrix4x3_transform_point(&skin[vertex->nodes[0]], &vertex->position, &p);
+		if (vertex->nodes[0] == hips)
+		{
+			/* (the hips' right side, level) */
+			vector_from_points3d(middle, &p, &offset);
+			along = dot_product3d(&offset, left);
+			if (along < side)
+				side = along;
+			continue;
+		}
+		vector_from_points3d(origin, &p, &offset);
+		along = dot_product3d(&offset, &ahead);
+		if (along < back)
+			back = along;
+	}
+	/* (from the top of the real neck, in the heading's axes) */
+	vector_from_points3d(anchor, origin, &offset);
+	first_person_legs_vr_chest.origin.x = dot_product3d(&offset, forward);
+	first_person_legs_vr_chest.origin.y = dot_product3d(&offset, left);
+	first_person_legs_vr_chest.origin.z = offset.k;
+	first_person_legs_vr_chest.forward.i = dot_product3d(&ahead, forward);
+	first_person_legs_vr_chest.forward.j = dot_product3d(&ahead, left);
+	first_person_legs_vr_chest.forward.k = ahead.k;
+	first_person_legs_vr_chest.left.i = dot_product3d(&across, forward);
+	first_person_legs_vr_chest.left.j = dot_product3d(&across, left);
+	first_person_legs_vr_chest.left.k = across.k;
+	first_person_legs_vr_chest.up.i = dot_product3d(&up, forward);
+	first_person_legs_vr_chest.up.j = dot_product3d(&up, left);
+	first_person_legs_vr_chest.up.k = up.k;
+	first_person_legs_vr_chest.back = back;
+	vector_from_points3d(anchor, middle, &offset);
+	first_person_legs_vr_chest.hips.x = dot_product3d(&offset, forward);
+	first_person_legs_vr_chest.hips.y = dot_product3d(&offset, left);
+	first_person_legs_vr_chest.hips.z = offset.k;
+	first_person_legs_vr_chest.hips_side = side;
+}
+
+/* vr_holster.c: the chest of the player's body as it was drawn last, from where the top of the real neck is now and the body's heading
+(world yaw): its frame (at the foot of the chest, forward, left and up
+along it) in the world, and how far before the frame's middle its back is
+(world units, negative); the Master Chief's standing upright before it is
+drawn (display.first_person_legs off) */
+void first_person_legs_vr_back(real_point3d const *anchor, real yaw, real_matrix4x3 *chest, real *back)
+{
+	real c = (real)cos(yaw), s = (real)sin(yaw);
+	real_point3d const *o = &first_person_legs_vr_chest.origin;
+	real_vector3d const *f = &first_person_legs_vr_chest.forward, *u = &first_person_legs_vr_chest.up;
+
+	chest->scale = 1.0f;
+	chest->position.x = anchor->x + o->x * c - o->y * s;
+	chest->position.y = anchor->y + o->x * s + o->y * c;
+	chest->position.z = anchor->z + o->z;
+	chest->forward.i = f->i * c - f->j * s;
+	chest->forward.j = f->i * s + f->j * c;
+	chest->forward.k = f->k;
+	chest->up.i = u->i * c - u->j * s;
+	chest->up.j = u->i * s + u->j * c;
+	chest->up.k = u->k;
+	cross_product3d(&chest->up, &chest->forward, &chest->left);
+	*back = first_person_legs_vr_chest.back;
+}
+
+/* vr_holster.c: the hips of the player's body as they were drawn last,
+from where the top of the real neck is now and the body's heading (world
+yaw): their middle in the world, and how far left of it their right side is
+(world units, negative) */
+void first_person_legs_vr_hips(real_point3d const *anchor, real yaw, real_point3d *middle, real *side)
+{
+	real c = (real)cos(yaw), s = (real)sin(yaw);
+	real_point3d const *h = &first_person_legs_vr_chest.hips;
+
+	middle->x = anchor->x + h->x * c - h->y * s;
+	middle->y = anchor->y + h->x * s + h->y * c;
+	middle->z = anchor->z + h->z;
+	*side = first_person_legs_vr_chest.hips_side;
+}
+
 /* the pose to draw the body with in the VR mode, the head's place and the
 body's heading the real ones (vr_render_body_anchor); NULL: the game's
 (no eye pass, a body without a spine, a neck and upper arms named) */
@@ -679,6 +836,14 @@ static real_matrix4x3 const *first_person_legs_vr_body(
 	clear of the eyes) */
 	first_person_legs_vr_lean(object_index, model, count, &first_person_legs_matrices[pelvis].position,
 		&first_person_legs_matrices[head].position, &to[0], &to[1]);
+	/* (and its chest's frame and back noted, as drawn, for the long gun
+	slung across it, and its hips' side, for the pistol at the hip) */
+	if (TAG_BLOCK_GET_ELEMENT(&model->nodes, neck, struct model_node)->parent_node_index != NONE)
+	{
+		first_person_legs_vr_chest_note(object_index, model, count,
+			TAG_BLOCK_GET_ELEMENT(&model->nodes, neck, struct model_node)->parent_node_index, neck, pelvis, &anchor,
+			&to[0], &to[1]);
+	}
 	return first_person_legs_matrices;
 }
 #endif

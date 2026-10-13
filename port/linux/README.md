@@ -1342,6 +1342,19 @@ hip's does not: your hand passes by it and rests by it).
 - The shoulder's holster is behind and just above your right shoulder,
   the hip's at your right hip, about 70 cm below your eyes: from about
   20 cm away from either, your hand is there.
+- The long gun is slung across the back of your body drawn (below, "Your
+  body"), as a sling holds a rifle: on its side, about 2 cm behind the
+  farthest back of the armour, its middle at the middle of the back, its
+  butt up over the right shoulder and its barrel down across the back to
+  the left, 30 degrees from upright; it leans back with your body as you
+  look down. The assault rifle's butt is just above the shoulder, a long
+  gun's (the sniper rifle's, the rocket launcher's) behind your head, its
+  muzzle by your left thigh. Where your hand reaches for it stays over the
+  shoulder. The weapon at the hip is where your hand reaches, but beside
+  your body's hips: a wide one (the needler) is moved out until it is
+  about 2 cm clear of them. (Drawn at the reach's own place, a long gun lay
+  through the shoulder and the collar, up to 19 cm into them, and a big one
+  rose through the shoulder beside your head.)
 - A gripping hand in the other holster (with nothing in it) does nothing.
   A squeeze there draws only with the hand all but still: a swing passing
   through, the grip squeezed or held, draws nothing (and melees: below). A
