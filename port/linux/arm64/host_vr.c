@@ -136,6 +136,14 @@ static struct
 	int has_refresh_rate;
 	int want_depth, has_depth;
 	int has_cylinder;
+	/* the eyes' gaze (XR_EXT_eye_gaze_interaction), for the foveation
+	(vr.foveation = "eye"): asked for, the runtime has the extension, its
+	system tracks the eyes; its action and space, and whether it was ever
+	tracked (logged once) */
+	int want_eye_gaze, has_eye_gaze;
+	XrAction gaze_action;
+	XrSpace gaze_space;
+	int gaze_tracked;
 } vr;
 
 static const char *result_name(XrResult result)
@@ -361,6 +369,11 @@ static int instance_create(void)
 	{
 		enabled[enabled_count++] = XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME;
 		vr.has_cylinder = 1;
+	}
+	if (vr.want_eye_gaze && extension_listed(extensions, count, XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME))
+	{
+		enabled[enabled_count++] = XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME;
+		vr.has_eye_gaze = 1;
 	}
 	free(extensions);
 
@@ -692,6 +705,32 @@ static int actions_create(void)
 	}
 	bindings_suggest("/interaction_profiles/oculus/touch_controller", touch_bindings,
 		(int)(sizeof(touch_bindings) / sizeof(touch_bindings[0])));
+	/* the eyes' gaze, a pose of its own profile's */
+	if (vr.has_eye_gaze)
+	{
+		XrActionCreateInfo action = { XR_TYPE_ACTION_CREATE_INFO };
+		XrActionSuggestedBinding suggested = { 0 };
+		XrInteractionProfileSuggestedBinding suggestion = { XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING };
+
+		action.actionType = XR_ACTION_TYPE_POSE_INPUT;
+		strcpy(action.actionName, "eye_gaze");
+		strcpy(action.localizedActionName, "Eye gaze");
+		if (xrCreateAction(vr.action_set, &action, &vr.gaze_action) == XR_SUCCESS &&
+			xrStringToPath(vr.instance, "/interaction_profiles/ext/eye_gaze_interaction",
+				&suggestion.interactionProfile) == XR_SUCCESS &&
+			xrStringToPath(vr.instance, "/user/eyes_ext/input/gaze_ext/pose", &suggested.binding) == XR_SUCCESS)
+		{
+			suggested.action = vr.gaze_action;
+			suggestion.countSuggestedBindings = 1;
+			suggestion.suggestedBindings = &suggested;
+			if (!check(xrSuggestInteractionProfileBindings(vr.instance, &suggestion), "the eyes' gaze's binding"))
+				vr.has_eye_gaze = 0;
+		}
+		else
+		{
+			vr.has_eye_gaze = 0;
+		}
+	}
 	attach.countActionSets = 1;
 	attach.actionSets = &vr.action_set;
 	if (!check(xrAttachSessionActionSets(vr.session, &attach), "xrAttachSessionActionSets"))
@@ -706,6 +745,15 @@ static int actions_create(void)
 		xrCreateActionSpace(vr.session, &space, &vr.aim_spaces[hand]);
 		space.action = vr.actions[_action_grip_pose];
 		xrCreateActionSpace(vr.session, &space, &vr.grip_spaces[hand]);
+	}
+	if (vr.has_eye_gaze)
+	{
+		XrActionSpaceCreateInfo space = { XR_TYPE_ACTION_SPACE_CREATE_INFO };
+
+		space.action = vr.gaze_action;
+		space.poseInActionSpace.orientation.w = 1.0f;
+		if (!check(xrCreateActionSpace(vr.session, &space, &vr.gaze_space), "the eyes' gaze's space"))
+			vr.has_eye_gaze = 0;
 	}
 	return 1;
 }
@@ -743,6 +791,7 @@ int host_vr_initialize(struct vr_host_info *info)
 {
 	XrViewConfigurationView views[2] = { { XR_TYPE_VIEW_CONFIGURATION_VIEW }, { XR_TYPE_VIEW_CONFIGURATION_VIEW } };
 	XrSystemProperties properties = { XR_TYPE_SYSTEM_PROPERTIES };
+	XrSystemEyeGazeInteractionPropertiesEXT eye_gaze = { XR_TYPE_SYSTEM_EYE_GAZE_INTERACTION_PROPERTIES_EXT };
 	XrReferenceSpaceCreateInfo space = { XR_TYPE_REFERENCE_SPACE_CREATE_INFO };
 	uint32_t count = 0;
 	int width, height;
@@ -750,10 +799,25 @@ int host_vr_initialize(struct vr_host_info *info)
 	if (vr.session)
 		return 1;
 	vr.want_depth = info->depth;
+	vr.want_eye_gaze = info->eye_gaze;
 	if (!runtime_load() || !instance_create() || !session_create())
 		return 0;
+	if (vr.has_eye_gaze)
+		properties.next = &eye_gaze;
 	if (xrGetSystemProperties(vr.instance, vr.system, &properties) == XR_SUCCESS)
 		snprintf(info->system_name, sizeof(info->system_name), "%s", properties.systemName);
+	if (vr.has_eye_gaze)
+	{
+		/* (a runtime may have the extension for a headset without eye
+		tracking: its system says) */
+		host_logf(HOST_LOG_INFO, "vr: the eyes' gaze (XR_EXT_eye_gaze_interaction): %s",
+			eye_gaze.supportsEyeGazeInteraction ? "the system tracks it" : "the system does not track it");
+		vr.has_eye_gaze = eye_gaze.supportsEyeGazeInteraction != XR_FALSE;
+	}
+	else if (vr.want_eye_gaze)
+	{
+		host_logf(HOST_LOG_INFO, "vr: the runtime has no eyes' gaze (XR_EXT_eye_gaze_interaction)");
+	}
 	if (!check(xrEnumerateViewConfigurationViews(vr.instance, vr.system, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
 		2, &count, views), "xrEnumerateViewConfigurationViews"))
 	{
@@ -811,6 +875,7 @@ int host_vr_initialize(struct vr_host_info *info)
 	}
 	if (!actions_create())
 		return 0;
+	info->eye_gaze = vr.has_eye_gaze;
 	info->refresh_rate = 0.0f;
 	if (vr.has_refresh_rate)
 	{
@@ -1008,6 +1073,24 @@ int host_vr_locate(struct vr_host_views *views)
 		if (xrLocateSpace(vr.grip_spaces[hand], vr.play_space, vr.frame.predictedDisplayTime, &location) == XR_SUCCESS)
 			pose_from_xr(&location.pose, (location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0,
 				&views->grip[hand]);
+	}
+	/* the eyes' gaze, in the head's space: valid only while the eyes are
+	tracked (a blink, the eyes lost, the user's permission not given) */
+	views->gaze.valid = 0;
+	if (vr.has_eye_gaze)
+	{
+		XrSpaceLocation gaze = { XR_TYPE_SPACE_LOCATION };
+
+		if (xrLocateSpace(vr.gaze_space, vr.view_space, vr.frame.predictedDisplayTime, &gaze) == XR_SUCCESS)
+		{
+			pose_from_xr(&gaze.pose, (gaze.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) &&
+				(gaze.locationFlags & XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT), &views->gaze);
+			if (views->gaze.valid && !vr.gaze_tracked)
+			{
+				host_logf(HOST_LOG_INFO, "vr: the eyes' gaze is tracked");
+				vr.gaze_tracked = 1;
+			}
+		}
 	}
 	return 1;
 }

@@ -348,6 +348,19 @@ static void sample(struct xgpu_text *text, const struct nv2a_pixel_shader_key *k
 			);
 		break;
 	case _xgpu_sampler_2d_layered:
+		if (xgpu_foveated)
+		{
+			/* foveated: the view's layer, an inset's through its fovea_sample
+			(fovea_layer) */
+			xgpu_text_append(text, "texture(tex%d, fovea_layer((%s).xy * texture_scale[%d].xy, %s, textureSize(tex%d, 0))"
+				SAMPLE_BIAS ")", stage, coordinates, stage, key->multiview == XGPU_MULTIVIEW_RIGHT_EYE ?
+					"2 + int(gl_ViewID_OVR)" : key->multiview ? "int(gl_ViewID_OVR)" : "0", stage
+#ifdef HALO_GLES
+				, stage
+#endif
+				);
+			break;
+		}
 		/* the VR mode's eye pass: the eye's own layer (in a draw into one
 		layer, that eye's), drawn upside down (d3d8_gl.c, vr_flip_rows) */
 		xgpu_text_append(text, "texture(tex%d, vec3((%s).xy * texture_scale[%d].xy * vec2(1.0, -1.0) + vec2(0.0, 1.0), %s)"
@@ -619,7 +632,7 @@ char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
 	}
 #endif
 	xgpu_text_append(&text, SHADER_VERSION);
-	if (key->multiview == XGPU_MULTIVIEW_EYES)
+	if (key->multiview == XGPU_MULTIVIEW_EYES || (key->multiview && xgpu_foveated))
 		xgpu_text_append(&text, "#extension GL_OVR_multiview2 : require\n");
 #ifndef HALO_GLES
 	if (key->count_samples)
@@ -644,6 +657,27 @@ char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
 		XGPU_PIXEL_UNIFORMS);
 	for (stage = 0; stage < 4; stage++)
 		xgpu_text_append(&text, "uniform %s tex%d;\n", sampler_declaration(key->sampler_type[stage]), stage);
+	if (xgpu_foveated && (key->sampler_type[0] == _xgpu_sampler_2d_layered ||
+		key->sampler_type[1] == _xgpu_sampler_2d_layered || key->sampler_type[2] == _xgpu_sampler_2d_layered ||
+		key->sampler_type[3] == _xgpu_sampler_2d_layered))
+	{
+		/* (xgpu.h, xgpu_foveated) a point of the screen (0 to 1 from the top
+		left of a layered target of this size) in this layer: in an inset's,
+		where its view put it, or, where the inset does not reach, in the
+		whole eye's layer (the edges of a blur, a distortion); the layer's
+		rows upside down (d3d8_gl.c, vr_flip_rows) */
+		xgpu_text_append(&text,
+			"uniform vec4 fovea_sample[4];\n"
+			"vec3 fovea_layer(vec2 uv, int layer, ivec3 size)\n"
+			"{\n"
+			"	vec2 inset = uv * fovea_sample[layer].xy + fovea_sample[layer].zw / vec2(size.xy);\n"
+			"	if (all(greaterThanEqual(inset, vec2(0.0))) && all(lessThanEqual(inset, vec2(1.0))))\n"
+			"		uv = inset;\n"
+			"	else\n"
+			"		layer &= ~1;\n"
+			"	return vec3(uv.x, 1.0 - uv.y, float(layer));\n"
+			"}\n");
+	}
 	if (key->source_blend)
 		xgpu_text_append(&text, "uniform vec4 blend_constant;\n");
 	if (key->per_pixel_lighting)
@@ -767,7 +801,12 @@ char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
 		xgpu_text_append(&text, "\tresult = vec4(t0.rgb, 1.0);\n");
 	if (config_boolean("debug.gpu_debug_flat"))
 		xgpu_text_append(&text, "\tresult = xD0.a > 0.0 ? vec4(xD0.rgb, 1.0) : vec4(1.0, 0.0, 1.0, 1.0);\n");
-	if (key->count_samples)
+	if (key->count_samples && key->multiview == XGPU_MULTIVIEW_EYES && xgpu_foveated)
+	{
+		/* (foveated: the whole eyes' layers alone, as unfoveated eyes) */
+		xgpu_text_append(&text, "\tif ((gl_ViewID_OVR & 1u) == 0u)\n\t\tatomicCounterIncrement(visible_samples);\n");
+	}
+	else if (key->count_samples)
 		xgpu_text_append(&text, "\tatomicCounterIncrement(visible_samples);\n");
 	if (key->source_blend)
 	{

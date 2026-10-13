@@ -2091,6 +2091,8 @@ headset's session is opened with, apply from the next start.
 | `vr.swap_sticks` | `"auto"` | `HALO_VR_SWAP_STICKS` | `"yes"`: the right stick moves (its click crouches) and the left turns (its click zooms, pushed down it ejects the magazine); `"no"`: as they are; `"auto"`: swapped with `vr.dominant_hand = "left"`. Not with `vr.aim = "gamepad"`. |
 | `vr.weapon_offset` | `"0.15, -0.22, 0.30"` | `HALO_VR_WEAPON_OFFSET` | With `vr.hands = "game"`: where the weapon's grip is from the eye that the game poses it for, in metres: right, up, forward. |
 | `vr.depth` | `false` | `HALO_VR_DEPTH` | `true`: give the runtime the eyes' depth too (`XR_KHR_composition_layer_depth`), for its reprojection. SteamVR on the Steam Frame cannot make a depth swapchain for an OpenGL session yet. |
+| `vr.foveation` | `"eye"` | `HALO_VR_FOVEATION` | Foveated rendering (below, "How it operates"): each eye's image at its full resolution in an inset where you look, and at less about it, which draws half of the eyes' pixels (at the default `vr.foveation_inset`). `"eye"`: the inset follows the eyes, where the runtime tracks them (`XR_EXT_eye_gaze_interaction`; else as `"fixed"`); `"fixed"`: it stays in the middle of each eye's view; `"off"`: all of each image at full resolution. Not in VR Display; from the next start. |
+| `vr.foveation_inset` | `0.5` | `HALO_VR_FOVEATION_INSET` | With `vr.foveation`: how much of each eye's image across and up is the inset (from `0.3` to `0.8`), at the image's resolution; about it, the image is drawn at this much of it (`0.5`: half across and up). Smaller is faster. From the next start. |
 | `vr.melee_gesture` | `true` | `HALO_VR_MELEE_GESTURE` | A swing of the right controller melees, as B does: a hard one in any direction, or a softer one with the right grip held ("Meleeing with a swing"). |
 | `vr.holsters` | `true` | `HALO_VR_HOLSTERS` | With `vr.aim = "controller"`: the weapon you carry but do not hold is on your body, and the right hand reaching there and gripping draws it (above, "Holsters"). Y switches weapons as ever. |
 | `vr.physical_crouch` | `true` | `HALO_VR_PHYSICAL_CROUCH` | The head crouching crouches the player: about 0.35 m below the standing eyes (`vr.height = "standing"`), or 0.25 m below the recentred ones (seated), and standing within 0.07 m of that stands (above, "Crouching"). The left stick's click crouches as ever. |
@@ -2160,6 +2162,8 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_seat` | `""` | `HALO_VR_TEST_SEAT` | Get into a vehicle's seat and out again, for automated tests of the view in a seat: `"<label> <seconds> [<seconds seated>]"`, the first player gets into the seat whose label has this text in it (`"gunner"`, `"W-driver"`, `"GT-gunner"`: the Shade) that many seconds into the level, as the action button does, in a vehicle of the kind made before them three seconds earlier (one found in the level, else of a kind the map has a tag for: `"G-driver"` makes a Ghost on b30, whose Ghosts come later; standing at the seat's entrance from two seconds earlier), and out again after as many seconds seated (10 by default). From a second before, the log says how far the view moved and turned each frame (and its heading and roll, the vehicle's heading, pitch and roll, the comfort vignette and the frame's time: degrees, seconds), how dark a blink made it, and each phase's sums (on foot, entering, seated, exiting) with how much of the motion was seen (not in a blink's full darkness), and each blink: with `debug.vr_test_head = "0"`, the motion the player did not make. |
 | `debug.vr_test_head_wall` | `""` | `HALO_VR_TEST_HEAD_WALL` | Put the first player's eye at `"<x> <y> <z>"` (world units) once they have been on foot 2 s, once a run, for automated tests of the head in a wall (`vr.head_in_wall`): `debug.vr_test_hands` then leans the head into the world from a known place, and logs, as the head moves and the fade changes, where the game's eye is and where the view looks, how far the head is from it, how far past the world it is, how near the world is ahead (within the near plane and 6 cm), and how dark the view is to be and is; and once the unit's collision radius and the near plane. |
 | `debug.vr_test_fov` | `""` | `HALO_VR_TEST_FOV` | Each eye's field of view instead of the runtime's, for automated tests of what the edges of a wide view show: `"<outward> <inward> <up> <down>[ <cant>]"`, in degrees from the eye's axis, each eye turned outward by `<cant>` degrees (as canted displays are; the game's 3D view assumes the eyes look the same way, so only the visor and the helmet's rim are right with it). |
+| `debug.vr_test_gaze` | `""` | `HALO_VR_TEST_GAZE` | The eyes' gaze instead of the runtime's, for automated tests of the foveation (`vr.foveation = "eye"`): `"<right> <up>[ <seconds>]"`, in degrees from the head's forward; with `<seconds>`, it jumps to the opposite and back every so many seconds, as the eyes do. |
+| `debug.vr_foveation_show` | `false` | `HALO_VR_FOVEATION_SHOW` | With `vr.foveation`: tint red what is drawn at the periphery's resolution (fully about the inset, partly in its blend), to see the inset. |
 | `debug.vr_gpu_time` | `false` | `HALO_VR_GPU_TIME` | With `debug.gpu_stats`, log the GPU's time for each frame too, waiting for it at the present (which costs the overlap of the GPU and the game, and lets the GPU's clock drop: an upper bound). |
 
 `debug.test_input = "pad"` (`HALO_TEST_INPUT=pad`) puts the gamepad mode
@@ -2241,6 +2245,13 @@ the default scale leaves about 3 ms, so there is no anti-aliasing:
 supersampling costs as above, and multisampling the eye pass
 (`GL_OVR_multiview_multisampled_render_to_texture`, which Zink offers) cost
 15 ms a frame at 2 samples, and drew the multi-pass shaders wrongly.
+Foveated (`vr.foveation`, the default; below), half of the eyes' pixels
+are drawn. On a DGX Spark (b30's first area, the game frozen, the GPU's
+time from the eye pass to the present by a timer query, the least of
+300-frame spans: the GPU was shared) the eye pass went from 11.6 to 7.8 ms
+a frame with 3456x3456 eyes, and from 5.6 to 4.7 ms with 1728x1728 eyes,
+where NVIDIA's GPU spends less of its time on pixels than the Steam Frame's
+does; making the eye images from the four layers cost 0.2 ms more there.
 
 ### How it operates
 
@@ -2268,6 +2279,45 @@ supersampling costs as above, and multisampling the eye pass
   b30's horizon, and, depth-clamped, a10's Pillar of Autumn showed its far
   side over its near hull.) The screen's other render targets have a
   layer for each eye. Draws in screen space are the same in both eyes.
+- Foveated (`vr.foveation`, the default), the eye pass draws four views
+  in the same draws (`GL_OVR_multiview2`; `src/d3d8_gl.c`, "foveation"),
+  each `vr.foveation_inset` of an eye's image across and up (864x864 of
+  1728x1728 by default): for each eye the whole of it, at that fraction of
+  its resolution, and an inset of it, at its full resolution, about where
+  the eyes look. Each eye's vertices move to its two views as they moved to
+  its one, the inset's magnified about its place, so the game's work and
+  its draws are as before; half of the eyes' pixels are drawn (as many as
+  one eye's), and the GPU drops what is outside an inset before it shades
+  it. The screen's targets have four layers, each layer drawn as its view
+  is, and sampled at the point that the layer has (where an inset does not
+  reach, as at the edge of a blur, from the whole eye's layer). The present
+  makes each eye's image from its two layers (`vr_fovea_composite`): the
+  whole eye's magnified (bilinear), and over it the inset, on the image's
+  own pixels (its place snaps to whole pixels, so that as it moves, nothing
+  in it crawls), blended in over 15% of its side from its edges (none at
+  the image's own edges), the blend's corners round and its ends smoothed,
+  so that no edge shows where the detail changes; the eyes' tint, the
+  helmet's rim and the visor's glass are drawn after, into the images, at
+  their full resolution. The inset follows the gaze
+  (`XR_EXT_eye_gaze_interaction`, in the head's space, projected into each
+  eye's view as its image was drawn: both eyes' insets on the same place in
+  the world), smoothed: after a saccade (a jump of 3 degrees or more) over
+  12 ms, otherwise over 80 ms, so that the eyes' drift and the tracker's
+  noise do not move it; lost (a blink), it stays 0.3 s, then returns to the
+  middle over 0.5 s. Without eye tracking it is in the middle of each eye's
+  view (where the lens's axis is). The visibility tests (lens flares) count
+  the whole eyes' layers alone, as before, so a flare is as bright in the
+  inset as out of it; the eyes' depth is not submitted (`vr.depth`) while
+  foveated. The Steam Frame's OpenGL is Zink, on Turnip, which has no GL
+  extension for the GPU's variable rate shading or its fragment density
+  maps (Mesa 25.2: no `GL_EXT_fragment_shading_rate`), and OpenXR's own
+  foveation (`XR_FB_foveation`, `XR_META_foveation_eye_tracked`, which
+  Valve lists for the Frame) is for Vulkan swapchains: the views are what
+  draws the periphery at less. The log says what the runtime offers
+  (`vr: the runtime's extensions`), what the driver has (`vr: the driver's
+  shading rate and foveation extensions`), the foveation (`vr: foveation
+  by ...`), and when the eyes are first tracked (`vr: the eyes' gaze is
+  tracked`).
 - The HUD and the menus are drawn into a target of their own, which is
   copied each frame into a layer: in front of the head in a game, in
   front of the place of the last recentring in the menus. The HUD's camera

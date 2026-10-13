@@ -71,6 +71,9 @@ struct vr_host_info
 	int standing;
 	float refresh_rate_wanted; /* 0: the runtime's choice */
 	int depth; /* in: submit the eyes' depth; out: the runtime takes it */
+	/* in: track the eyes' gaze (XR_EXT_eye_gaze_interaction); out: the
+	runtime and its system do */
+	int eye_gaze;
 	/* out */
 	int recommended_width, recommended_height;
 	int image_count[VR_SWAPCHAIN_COUNT];
@@ -103,6 +106,10 @@ struct vr_host_views
 	struct vr_host_pose head;
 	struct vr_host_pose aim[2]; /* the controllers' pointing poses */
 	struct vr_host_pose grip[2];
+	/* the eyes' gaze (vr_host_info's eye_gaze), in the head's space (its -z
+	where the eyes look; OpenXR's view space), valid while they are
+	tracked */
+	struct vr_host_pose gaze;
 };
 
 struct vr_host_input

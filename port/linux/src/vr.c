@@ -497,6 +497,22 @@ second, more only by half the hand's own turn */
 with a cutoff of SHAKE_WANDER_HZ) and half a tremor (SHAKE_TREMOR_HZ) */
 #define SHAKE_WANDER_HZ 1.5f
 #define SHAKE_TREMOR_HZ 9.0f
+/* vr.foveation: the inset's part of each eye's image across (and the
+periphery's resolution), by default and at least and most. The inset
+follows the gaze over FOVEA_FOLLOW_SECONDS (a time constant) after a move of
+FOVEA_SACCADE_DEGREES or more (a saccade: there before the eyes see again),
+over FOVEA_SETTLE_SECONDS after smaller ones (the eyes' drift and the
+tracker's noise, which would move it for nothing); with the gaze lost (a
+blink), it stays FOVEA_LOST_SECONDS, then returns to the middle of the view
+over FOVEA_RETURN_SECONDS */
+#define FOVEA_INSET 0.5f
+#define FOVEA_INSET_SMALLEST 0.3f
+#define FOVEA_INSET_LARGEST 0.8f
+#define FOVEA_SACCADE_DEGREES 3.0f
+#define FOVEA_FOLLOW_SECONDS 0.012f
+#define FOVEA_SETTLE_SECONDS 0.08f
+#define FOVEA_LOST_SECONDS 0.3f
+#define FOVEA_RETURN_SECONDS 0.5f
 
 static struct
 {
@@ -783,6 +799,17 @@ static struct
 	struct vr_host_layers pending_layers;
 	int pending;
 	int attempted;
+	/* vr.foveation (halo_vr_foveation): 0 off, 1 fixed, 2 by the eyes'
+	gaze (from the runtime, or debug.vr_test_gaze); the inset's part of
+	the eyes; the gaze followed (tangents right and up from the head's
+	forward), the frame it was last followed in, the seconds it has been
+	lost, and whether it was ever seen */
+	int foveation;
+	float foveation_inset;
+	float fovea_gaze[2];
+	unsigned long fovea_frame;
+	float fovea_lost;
+	int fovea_seen;
 	/* debug.gpu_stats: the frames' timing */
 	int statistics;
 	Uint64 frame_start, wait_start;
@@ -871,6 +898,12 @@ static struct
 	up, down) and its turn outward (degrees), instead of the runtime's */
 	int test_fov;
 	float test_fov_angles[5];
+	/* debug.vr_test_gaze: the eyes' gaze (degrees right and up from the
+	head's forward), and the seconds after which it jumps to the opposite
+	and back (0: never) */
+	int test_gaze;
+	float test_gaze_angles[2];
+	float test_gaze_period;
 	int two_handed;
 	int floating_hands;
 	int arms;
@@ -1003,6 +1036,9 @@ static void settings_read(void)
 	settings.test_fov = sscanf(config_string("debug.vr_test_fov"), "%f %f %f %f %f", &settings.test_fov_angles[0],
 		&settings.test_fov_angles[1], &settings.test_fov_angles[2], &settings.test_fov_angles[3],
 		&settings.test_fov_angles[4]) >= 4;
+	settings.test_gaze_period = 0.0f;
+	settings.test_gaze = sscanf(config_string("debug.vr_test_gaze"), "%f %f %f", &settings.test_gaze_angles[0],
+		&settings.test_gaze_angles[1], &settings.test_gaze_period) >= 2;
 	settings.two_handed = config_boolean("vr.two_handed");
 	settings.floating_hands = strcmp(config_string("vr.hands"), "game") != 0;
 	settings.arms = settings.floating_hands && strcmp(config_string("vr.hands"), "floating") != 0;
@@ -1163,6 +1199,14 @@ int halo_vr_initialize(void)
 	vr.info.standing = settings.standing;
 	vr.info.refresh_rate_wanted = (float)config_real("vr.refresh_rate");
 	vr.info.depth = config_boolean("vr.depth");
+	/* (decided as the session is made: the eyes' targets are sized for it,
+	d3d8_gl.c) */
+	vr.foveation = !strcmp(config_string("vr.foveation"), "off") ? 0 :
+		!strcmp(config_string("vr.foveation"), "fixed") ? 1 : 2;
+	vr.foveation_inset = (float)config_real("vr.foveation_inset");
+	if (!(vr.foveation_inset >= FOVEA_INSET_SMALLEST && vr.foveation_inset <= FOVEA_INSET_LARGEST))
+		vr.foveation_inset = FOVEA_INSET;
+	vr.info.eye_gaze = vr.foveation == 2 && !settings.test_gaze;
 	if (!host_vr_initialize(&vr.info))
 	{
 		platform_log("vr: OpenXR is not available; playing flat");
@@ -1178,6 +1222,8 @@ int halo_vr_initialize(void)
 	vr.statistics = config_boolean("debug.gpu_stats");
 	platform_log("vr: %s, eyes %dx%d, %.0f Hz", vr.info.system_name, vr.info.eye_width, vr.info.eye_height,
 		vr.info.refresh_rate);
+	if (vr.foveation == 2 && !vr.info.eye_gaze && !settings.test_gaze)
+		vr.foveation = 1;
 	return 1;
 }
 
@@ -3259,6 +3305,128 @@ float halo_vr_vignette(float fov[2][4])
 		return 0.0f;
 	memcpy(fov, vr.views.fov, sizeof(vr.views.fov));
 	return vr.vignette;
+}
+
+/* ---------- foveation (vr.foveation; d3d8_gl.c draws it) */
+
+float halo_vr_foveation_inset(void)
+{
+	return vr.initialized && vr.foveation ? vr.foveation_inset : 0.0f;
+}
+
+const char *halo_vr_foveation_name(void)
+{
+	return !vr.initialized || !vr.foveation ? "off" : vr.foveation == 1 ? "fixed (the middle of each eye's view)" :
+		settings.test_gaze ? "the eyes' gaze (debug.vr_test_gaze)" : "the eyes' gaze (XR_EXT_eye_gaze_interaction)";
+}
+
+/* the gaze followed, once a frame: where the runtime (or the test) says the
+eyes look, smoothed; the middle without it */
+static void fovea_follow(void)
+{
+	float seconds = vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : vr.views.display_period;
+	float target[2], constant, moved;
+	int valid = 0;
+
+	if (settings.test_gaze)
+	{
+		float sign = settings.test_gaze_period > 0.0f &&
+			((long)(vr.test_head_seconds / settings.test_gaze_period) & 1) ? -1.0f : 1.0f;
+
+		target[0] = tanf(sign * settings.test_gaze_angles[0] * (float)M_PI / 180.0f);
+		target[1] = tanf(sign * settings.test_gaze_angles[1] * (float)M_PI / 180.0f);
+		valid = 1;
+	}
+	else if (vr.views.gaze.valid)
+	{
+		static const float forward[3] = { 0.0f, 0.0f, -1.0f };
+		float d[3];
+
+		quaternion_rotate(vr.views.gaze.orientation, forward, d);
+		if (d[2] < -0.1f)
+		{
+			target[0] = d[0] / -d[2];
+			target[1] = d[1] / -d[2];
+			valid = 1;
+		}
+	}
+	if (valid && !vr.fovea_seen)
+	{
+		vr.fovea_gaze[0] = target[0];
+		vr.fovea_gaze[1] = target[1];
+		vr.fovea_seen = 1;
+	}
+	if (valid)
+	{
+		vr.fovea_lost = 0.0f;
+		moved = atanf(sqrtf((target[0] - vr.fovea_gaze[0]) * (target[0] - vr.fovea_gaze[0]) +
+			(target[1] - vr.fovea_gaze[1]) * (target[1] - vr.fovea_gaze[1]))) * 180.0f / (float)M_PI;
+		constant = moved >= FOVEA_SACCADE_DEGREES ? FOVEA_FOLLOW_SECONDS : FOVEA_SETTLE_SECONDS;
+	}
+	else
+	{
+		vr.fovea_lost += seconds;
+		if (vr.fovea_lost < FOVEA_LOST_SECONDS)
+			return;
+		target[0] = target[1] = 0.0f;
+		constant = FOVEA_RETURN_SECONDS;
+	}
+	if (seconds > 0.0f)
+	{
+		float t = 1.0f - expf(-seconds / constant);
+
+		vr.fovea_gaze[0] += (target[0] - vr.fovea_gaze[0]) * t;
+		vr.fovea_gaze[1] += (target[1] - vr.fovea_gaze[1]) * t;
+	}
+}
+
+int halo_vr_foveation(float centres[2][2])
+{
+	float inverse[4], head[4], direction[3], d[3];
+	int eye;
+
+	if (!vr.initialized || !vr.foveation || !vr.frame)
+		return 0;
+	if (vr.foveation == 2 && vr.fovea_frame != vr.presents)
+	{
+		vr.fovea_frame = vr.presents;
+		fovea_follow();
+	}
+	/* the gaze from the head, then in each eye (as its image was drawn:
+	its own turn and field of view) */
+	direction[0] = vr.foveation == 2 ? vr.fovea_gaze[0] : 0.0f;
+	direction[1] = vr.foveation == 2 ? vr.fovea_gaze[1] : 0.0f;
+	direction[2] = -1.0f;
+	for (eye = 0; eye < 2; eye++)
+	{
+		const float *fov = vr.views.fov[eye];
+		float u, v;
+
+		if (vr.foveation == 2 && vr.views.head.valid && vr.views.eye[eye].valid)
+		{
+			/* (the eye's turn from the head's: their inverse) */
+			inverse[0] = -vr.views.eye[eye].orientation[0];
+			inverse[1] = -vr.views.eye[eye].orientation[1];
+			inverse[2] = -vr.views.eye[eye].orientation[2];
+			inverse[3] = vr.views.eye[eye].orientation[3];
+			quaternion_multiply(inverse, vr.views.head.orientation, head);
+			quaternion_rotate(head, direction, d);
+		}
+		else
+		{
+			memcpy(d, direction, sizeof(d));
+		}
+		if (d[2] > -0.1f || fov[1] <= fov[0] || fov[2] <= fov[3])
+		{
+			centres[eye][0] = centres[eye][1] = 0.5f;
+			continue;
+		}
+		u = (d[0] / -d[2] - fov[0]) / (fov[1] - fov[0]);
+		v = (fov[2] - d[1] / -d[2]) / (fov[2] - fov[3]);
+		centres[eye][0] = u < 0.0f ? 0.0f : u > 1.0f ? 1.0f : u;
+		centres[eye][1] = v < 0.0f ? 0.0f : v > 1.0f ? 1.0f : v;
+	}
+	return vr.foveation;
 }
 
 /* the controllers' turning and recentring, once a frame */

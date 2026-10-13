@@ -255,6 +255,16 @@ static const struct config_setting config_settings[] =
 	{ "vr.depth", _config_boolean, "false", "HALO_VR_DEPTH", _environment_value, _platform_desktop,
 		"Give the runtime the eyes' depth too, for its reprojection (SteamVR on\n"
 		"the Steam Frame cannot take it yet)." },
+	{ "vr.foveation", _config_string, "\"eye\"", "HALO_VR_FOVEATION", _environment_value, _platform_desktop,
+		"Foveated rendering: full detail where you look, half (vr.foveation_inset)\n"
+		"about it, which is faster: \"eye\" the inset follows the eyes where the\n"
+		"headset tracks them (else as \"fixed\"), \"fixed\" it stays in the\n"
+		"middle of each eye's view, \"off\" all at full detail. From the next start." },
+	{ "vr.foveation_inset", _config_real, "0.5", "HALO_VR_FOVEATION_INSET", _environment_value,
+		_platform_desktop,
+		"With vr.foveation: how much of each eye's image across (and up) is at full\n"
+		"detail, from 0.3 to 0.8, which is also the detail about it (0.5: half).\n"
+		"Smaller is faster. From the next start." },
 	{ "vr.melee_gesture", _config_boolean, "true", "HALO_VR_MELEE_GESTURE", _environment_value, _platform_desktop,
 		"A swing of the right controller melees, as B does: a hard one in any\n"
 		"direction, or a softer one with the right grip held." },
@@ -859,6 +869,14 @@ static const struct config_setting config_settings[] =
 		"(a simulated headset's wobbles): \"0\", or \"<degrees> <seconds>\" turns it\n"
 		"left and right by as many degrees over as many seconds, and a third\n"
 		"number pitches it up by as many degrees (less than 0: down); empty none." },
+	{ "debug.vr_test_gaze", _config_string, "\"\"", "HALO_VR_TEST_GAZE", _environment_value, _platform_desktop,
+		"The eyes' gaze, instead of the runtime's, for automated tests of the\n"
+		"foveation (vr.foveation = \"eye\"): \"<right> <up>[ <seconds>]\", degrees from\n"
+		"the head's forward, jumping to the opposite and back every <seconds>." },
+	{ "debug.vr_foveation_show", _config_boolean, "false", "HALO_VR_FOVEATION_SHOW", _environment_value,
+		_platform_desktop,
+		"With vr.foveation: tint red what is drawn at the periphery's detail alone\n"
+		"(its blend with the inset partly), to see the inset." },
 	{ "debug.vr_test_fov", _config_string, "\"\"", "HALO_VR_TEST_FOV", _environment_value, _platform_desktop,
 		"Each VR eye's field of view, instead of the runtime's, for automated tests\n"
 		"of the edges of a wide view: \"<outward> <inward> <up> <down>[ <cant>]\",\n"

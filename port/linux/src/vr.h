@@ -664,5 +664,14 @@ presented, all of each, before the helmet's rim; each call multiplies it
 further (vr_seat.c's blinks, vr_death.c's dimming: the game's screen flash
 covers its viewport alone, which the eyes' images reach past) */
 void halo_vr_eye_tint(float red, float green, float blue);
+/* the foveation (vr.foveation): the inset's part of each eye's image across
+and up, which is the periphery's resolution too (0: off), as the session
+was made, and what places the inset (for the log); and this frame's inset
+middles, in each eye's image (0 to 1 from its top left), with 1 (fixed:
+the middle of each eye's view) or 2 (the eyes' gaze, smoothed), or 0 (off,
+or no frame) */
+float halo_vr_foveation_inset(void);
+const char *halo_vr_foveation_name(void);
+int halo_vr_foveation(float centres[2][2]);
 
 #endif

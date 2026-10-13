@@ -121,6 +121,18 @@ enum
 	correction (the crosshairs: halo_vr_draw_eye) */
 	XGPU_MULTIVIEW_RIGHT_EYE,
 };
+/* The VR mode's eye pass is foveated (vr.foveation, d3d8_gl.c): its targets
+have four layers, two for each eye (layer 2 eye + 0, the whole eye at the
+periphery's resolution; 2 eye + 1, the inset about the gaze at full
+resolution, as large in pixels). XGPU_MULTIVIEW_EYES then draws all four
+(eye_correction[VIEW >> 1], then fovea_view[VIEW] scales and moves the
+inset's views), XGPU_MULTIVIEW_LEFT_EYE and XGPU_MULTIVIEW_RIGHT_EYE that
+eye's two (its visibility tests are counted by the pixel shaders instead),
+and a layered target is sampled in an inset's layer through
+fovea_sample[layer] (its pixels from the whole eye's), from the whole eye's
+layer where the inset does not have the point. Set before the first VR
+shader is made. */
+extern int xgpu_foveated;
 char *nv2a_vertex_shader_to_glsl(const DWORD *instructions, unsigned long instruction_count,
 	unsigned long packed_attribute_mask, const struct nv2a_vertex_lighting *lighting, int multiview);
 
@@ -132,7 +144,8 @@ enum
 	_xgpu_sampler_2d,
 	_xgpu_sampler_3d,
 	_xgpu_sampler_cube,
-	/* a 2-layer render target (the VR mode's eye pass): the view's layer */
+	/* a 2-layer render target (the VR mode's eye pass; 4 foveated,
+	xgpu_foveated): the view's layer */
 	_xgpu_sampler_2d_layered,
 };
 
@@ -264,7 +277,7 @@ struct xgpu_render_target
 	unsigned long written;
 
 	/* 2: a texture array, a layer for each eye, drawn into with multiview
-	(the VR mode's eye pass, d3d8_gl.c); else 1 */
+	(the VR mode's eye pass, d3d8_gl.c); 4 foveated (xgpu_foveated); else 1 */
 	int layers;
 };
 

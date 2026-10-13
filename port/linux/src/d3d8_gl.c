@@ -435,6 +435,11 @@ struct program_entry
 	GLint screen_correction;
 	GLint screen_points;
 	unsigned long eye_serial;
+	/* foveated (xgpu.h): its views' and layers' insets, and
+	vr_gl.fovea_serial when they were last set */
+	GLint fovea_view;
+	GLint fovea_sample;
+	unsigned long fovea_serial;
 
 	/* the vertex constants c[0..constant_count) the program uses; with
 	consecutive locations, a changed range is uploaded by itself */
@@ -498,8 +503,10 @@ struct framebuffer_entry
 	GLuint depth;
 	/* color and depth are multisampled renderbuffers, not textures */
 	BOOL renderbuffers;
-	/* the layers it attaches (framebuffer_views) */
+	/* the layers it attaches (framebuffer_views), from this one
+	(framebuffer_base) */
 	int views;
+	int base;
 	GLuint framebuffer;
 };
 
@@ -695,6 +702,9 @@ projection. The HUD pass draws the HUD, the menus and everything else into
 the quad layer's image, over transparent black. The game draws both in its
 640x480 screen, each at its image's scale. */
 
+/* (xgpu.h; vr_gl_initialize sets it) */
+int xgpu_foveated;
+
 #ifdef HALO_VR
 #include "vr.h"
 #include "vr_host.h"
@@ -703,6 +713,13 @@ the quad layer's image, over transparent black. The game draws both in its
 #ifndef GL_DEPTH_CLAMP
 #define GL_DEPTH_CLAMP 0x864F
 #endif
+#ifndef GL_MAX_VIEWS_OVR
+#define GL_MAX_VIEWS_OVR 0x9631
+#endif
+
+/* vr.foveation: the blend from the inset to the periphery about it, as
+wide as this part of the inset's smaller side (vr_fovea_composite) */
+#define FOVEA_BLEND 0.15f
 
 static struct
 {
@@ -712,8 +729,27 @@ static struct
 	int hud_width, hud_height;
 	/* the back buffer in the eye pass: the swapchain's image (the HUD pass
 	draws into a target of its own, copied into the HUD's image at the
-	present) */
+	present); foveated, the four layers it is made from at the present
+	(vr_fovea_composite), the swapchain's image after it */
 	struct render_target_entry eye_target;
+	GLuint eye_image;
+	/* vr.foveation (xgpu.h, xgpu_foveated): the eye pass's back buffer, 4
+	layers of fovea_width x fovea_height (layer 2 eye + 0 the whole eye,
+	2 eye + 1 its inset, as many of the eye image's pixels), each eye's
+	inset's top left in its image's pixels from its top left this frame,
+	and what the shaders are given: each view's magnification and offset
+	(of its clip position, for the viewport and target bound: fovea_view)
+	and each layer's (of a point of a target sampled, in its pixels from its
+	top left: fovea_sample), and a serial of their changes. debug.vr_
+	foveation_show tints the periphery */
+	BOOL foveated;
+	int fovea_width, fovea_height;
+	GLuint fovea_texture;
+	int fovea_corners[2][2];
+	float fovea_view[4][4];
+	float fovea_sample[4][4];
+	unsigned long fovea_serial;
+	BOOL fovea_show;
 	BOOL eyes_drawn, hud_drawn;
 	/* the scope pass (vr.scopes): the 640x480 screen at the scale that
 	makes 480 lines its square image's, its view in the middle 480x480
@@ -787,8 +823,9 @@ static void vr_timing(int mark)
 				vr_gl.spans[0] / vr_gl.timed, vr_gl.spans[1] / vr_gl.timed, vr_gl.spans[2] / vr_gl.timed);
 			if (vr_gl.gpu_frames)
 			{
-				platform_log("vr: the GPU's time a frame: %.2f ms, worst %.2f ms (%dx%d eyes)",
-					vr_gl.gpu_milliseconds / vr_gl.gpu_frames, vr_gl.gpu_worst, vr_gl.eye_width, vr_gl.eye_height);
+				platform_log("vr: the GPU's time a frame: %.2f ms, worst %.2f ms (%dx%d eyes%s)",
+					vr_gl.gpu_milliseconds / vr_gl.gpu_frames, vr_gl.gpu_worst, vr_gl.eye_width, vr_gl.eye_height,
+					vr_gl.foveated ? ", foveated" : "");
 			}
 			vr_gl.gpu_milliseconds = vr_gl.gpu_worst = 0.0;
 			vr_gl.gpu_frames = 0;
@@ -1500,12 +1537,13 @@ static struct render_target_entry *render_target_get(const D3DSurface *surface)
 		kind = _render_target_screen;
 #ifdef HALO_VR
 		/* in the eye pass the back buffer is the eyes' swapchain image, and
-		the screen's other targets have a layer for each eye */
+		the screen's other targets have a layer for each eye (foveated, two:
+		xgpu.h) */
 		if (vr_gl.pass == HALO_VR_PASS_EYES)
 		{
 			if (!depth && surface->Data == device.back_buffer.Data)
 				return &vr_gl.eye_target;
-			layers = 2;
+			layers = xgpu_foveated ? 4 : 2;
 		}
 #endif
 	}
@@ -1595,9 +1633,11 @@ struct xgpu_render_target *xgpu_render_target_find(unsigned long data)
 	return best ? &best->target : NULL;
 }
 
-/* the layers the next framebuffer_find attaches: 1, 2 (multiview), or -1
-or -2 for the first or second layer of 2-layer textures alone */
+/* the layers the next framebuffer_find attaches: 1, 2 or 4 (multiview,
+from layer framebuffer_base), or -1 or -2 for the first or second layer of
+2-layer textures alone */
 static int framebuffer_views = 1;
+static int framebuffer_base = 0;
 
 /* the framebuffer of these textures, or with renderbuffers, of these
 multisampled renderbuffers (render_target_multisample) */
@@ -1611,7 +1651,7 @@ static GLuint framebuffer_find(GLuint color, GLuint depth, BOOL renderbuffers)
 	for (link = &framebuffers; (entry = *link) != NULL; link = &entry->next)
 	{
 		if (entry->color == color && entry->depth == depth && entry->renderbuffers == renderbuffers &&
-			entry->views == framebuffer_views)
+			entry->views == framebuffer_views && entry->base == framebuffer_base)
 		{
 			*link = entry->next;
 			entry->next = framebuffers;
@@ -1624,6 +1664,7 @@ static GLuint framebuffer_find(GLuint color, GLuint depth, BOOL renderbuffers)
 	entry->depth = depth;
 	entry->renderbuffers = renderbuffers;
 	entry->views = framebuffer_views;
+	entry->base = framebuffer_base;
 	glGenFramebuffers(1, &entry->framebuffer);
 	glBindFramebuffer(GL_FRAMEBUFFER, entry->framebuffer);
 	if (renderbuffers)
@@ -1638,9 +1679,11 @@ static GLuint framebuffer_find(GLuint color, GLuint depth, BOOL renderbuffers)
 	{
 		/* both eyes' layers, each draw drawing into both */
 		if (color)
-			glFramebufferTextureMultiviewOVR(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, color, 0, 0, framebuffer_views);
+			glFramebufferTextureMultiviewOVR(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, color, 0, framebuffer_base,
+				framebuffer_views);
 		if (depth)
-			glFramebufferTextureMultiviewOVR(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, depth, 0, 0, framebuffer_views);
+			glFramebufferTextureMultiviewOVR(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, depth, 0, framebuffer_base,
+				framebuffer_views);
 	}
 	else if (framebuffer_views < 0)
 	{
@@ -1779,6 +1822,61 @@ static void vr_flip_rows(GLint *y, GLint height)
 	if (vr_gl.multiview || vr_gl.left_eye || vr_gl.right_eye)
 		*y = (GLint)target_height - *y - height;
 }
+
+/* Foveated (xgpu.h), each view's magnification and offset of its clip
+positions (x, y, as the eye pass draws them, upside down): the whole eyes'
+the identity; an inset's, its part of the eye at the eye image's pixels.
+A target's pixel q (from its top left, at the eye pass's scale) is the eye
+image's q s (s: its pixels over the layer's), the inset's q s - c (c: the
+inset's top left, vr_gl.fovea_corners), so that the inset is drawn exactly
+on the eye image's pixels wherever it is (as the gaze moves, nothing in it
+crawls). For the viewport v (x, y its first row, width, height) of a
+target h high (the clip origin upper left: rows from the first),
+	x' = s x + (s - 1 + 2 ((s - 1) v.x - c.x) / v.width) w,
+	y' = s y + (1 - s - 2 ((1 - s) (h - v.y) + c.y) / v.height) w.
+A viewport not the whole target would clip the inset's view to its own
+rectangle (the eye pass's always is: the log says if one is not). */
+static void vr_fovea_views(void)
+{
+	const GLint *viewport = gl_state.viewport;
+	float views[4][4];
+	int view;
+
+	if (!vr_gl.foveated || viewport[2] <= 0 || viewport[3] <= 0)
+		return;
+	if (viewport[0] != 0 || viewport[1] != 0 || viewport[3] != (GLint)target_height)
+	{
+		static BOOL said;
+
+		if (!said)
+			platform_log("vr: foveated: a draw into part of its target (%d %d %d %d of %lu rows): its insets are clipped",
+				(int)viewport[0], (int)viewport[1], (int)viewport[2], (int)viewport[3], target_height);
+		said = TRUE;
+	}
+	for (view = 0; view < 4; view++)
+	{
+		float sx = (float)vr_gl.eye_width / (float)vr_gl.fovea_width;
+		float sy = (float)vr_gl.eye_height / (float)vr_gl.fovea_height;
+		const int *corner = vr_gl.fovea_corners[view >> 1];
+
+		if (!(view & 1))
+		{
+			views[view][0] = views[view][1] = 1.0f;
+			views[view][2] = views[view][3] = 0.0f;
+			continue;
+		}
+		views[view][0] = sx;
+		views[view][1] = sy;
+		views[view][2] = sx - 1.0f + 2.0f * ((sx - 1.0f) * (float)viewport[0] - (float)corner[0]) / (float)viewport[2];
+		views[view][3] = 1.0f - sy - 2.0f * ((1.0f - sy) * ((float)target_height - (float)viewport[1]) +
+			(float)corner[1]) / (float)viewport[3];
+	}
+	if (memcmp(views, vr_gl.fovea_view, sizeof(views)))
+	{
+		memcpy(vr_gl.fovea_view, views, sizeof(views));
+		vr_gl.fovea_serial++;
+	}
+}
 #endif
 
 /* the pixel edge of a coordinate in a target's units, at its scale:
@@ -1842,11 +1940,21 @@ static BOOL bind_targets(BOOL *has_depth)
 		depth = NULL;
 	vr_gl.left_eye = framebuffer_views > 1 && (vr_gl.visibility_test || vr_gl.eye_alone == 0);
 	vr_gl.right_eye = framebuffer_views > 1 && !vr_gl.left_eye && vr_gl.eye_alone == 1;
-	if (vr_gl.left_eye)
+	vr_gl.multiview = framebuffer_views > 1 && !vr_gl.left_eye && !vr_gl.right_eye;
+	if (framebuffer_views == 4 && (vr_gl.left_eye || vr_gl.right_eye))
+	{
+		/* foveated: that eye's two layers (xgpu.h) */
+		framebuffer_base = vr_gl.right_eye ? 2 : 0;
+		framebuffer_views = 2;
+	}
+	else if (vr_gl.left_eye)
+	{
 		framebuffer_views = -1;
-	if (vr_gl.right_eye)
+	}
+	else if (vr_gl.right_eye)
+	{
 		framebuffer_views = -2;
-	vr_gl.multiview = framebuffer_views > 1;
+	}
 	if (vr_gl.multiview || vr_gl.left_eye || vr_gl.right_eye)
 		vr_gl.eyes_drawn = TRUE;
 	if (vr_gl.pass == HALO_VR_PASS_HUD && color && color->target.data == device.back_buffer.Data)
@@ -1861,6 +1969,7 @@ static BOOL bind_targets(BOOL *has_depth)
 	state_framebuffer(framebuffer_get(color_texture, depth ? depth->target.texture : 0));
 #ifdef HALO_VR
 	framebuffer_views = 1;
+	framebuffer_base = 0;
 #endif
 	*has_depth = depth != NULL;
 	return TRUE;
@@ -3224,6 +3333,9 @@ static struct program_entry *program_get(GLuint vertex_shader, GLuint fragment_s
 	entry->screen_correction = glGetUniformLocation(entry->program, "screen_correction");
 	entry->screen_points = glGetUniformLocation(entry->program, "screen_points");
 	entry->eye_serial = (unsigned long)-1;
+	entry->fovea_view = glGetUniformLocation(entry->program, "fovea_view");
+	entry->fovea_sample = glGetUniformLocation(entry->program, "fovea_sample");
+	entry->fovea_serial = (unsigned long)-1;
 	for (stage = 0; stage < D3DTSS_MAXSTAGES; stage++)
 	{
 		char name[8];
@@ -4229,6 +4341,18 @@ static struct program_entry *prepare_draw(BOOL immediate)
 		if (entry->screen_points >= 0)
 			glUniform1f(entry->screen_points, vr_gl.screen_points ? 1.0f : 0.0f);
 		entry->eye_serial = vr_gl.eye_serial;
+	}
+	if (entry->fovea_view >= 0 || entry->fovea_sample >= 0)
+	{
+		vr_fovea_views();
+		if (entry->fovea_serial != vr_gl.fovea_serial)
+		{
+			if (entry->fovea_view >= 0)
+				glUniform4fv(entry->fovea_view, 4, &vr_gl.fovea_view[0][0]);
+			if (entry->fovea_sample >= 0)
+				glUniform4fv(entry->fovea_sample, 4, &vr_gl.fovea_sample[0][0]);
+			entry->fovea_serial = vr_gl.fovea_serial;
+		}
 	}
 #endif
 
@@ -6266,6 +6390,272 @@ static void visibility_copy_batch(void)
 
 int host_gl_has_extension(const char *name);
 
+/* ---------- foveation (vr.foveation; xgpu.h, xgpu_foveated)
+
+The eye pass draws, in the same draws, four views at a fraction of each
+eye's image's size (vr.foveation_inset, by default half across and up):
+for each eye the whole of it (its periphery's detail), and the inset about
+where the eyes look (the gaze, XR_EXT_eye_gaze_interaction, smoothed; or the
+middle of the view) at the eye image's own resolution, as many pixels. At
+the default, half of the eyes' pixels are drawn (as many as one eye's), and
+the game's work is the same: no draw is made twice, each vertex is moved to
+four views as it was to two (GL_OVR_multiview2, which also gives the inset
+views of what is outside them for nothing: the GPU clips it). The present
+makes the eye images from them (vr_fovea_composite): the inset where it is,
+the periphery about it, magnified (bilinear), and a wide blend between
+them (FOVEA_BLEND of the inset's side) whose ends are smoothed, so that no
+edge shows where the detail changes; the rest of the present (the tint,
+the rim, the visor) draws into the eye images at their full resolution.
+
+Zink (the Steam Frame's OpenGL, on Turnip) has no GL extension for the
+GPU's own variable rate shading (VK_KHR_fragment_shading_rate) nor for a
+fragment density map (Qualcomm's GL_QCOM_texture_foveated is its
+proprietary driver's), and OpenXR's foveation (XR_FB_foveation and its
+kin) is applied by the runtime to Vulkan swapchains (or GL ES ones with
+Qualcomm's extension): for this OpenGL game, the views are what lowers the
+periphery's resolution. The log says which of those the driver has. */
+
+/* the GL extensions that foveate, for the log */
+static void vr_fovea_extensions(void)
+{
+	static const char *const names[] =
+	{
+		"GL_EXT_fragment_shading_rate", "GL_EXT_fragment_shading_rate_attachment", "GL_NV_shading_rate_image",
+		"GL_QCOM_texture_foveated", "GL_QCOM_texture_foveated2", "GL_QCOM_framebuffer_foveated",
+	};
+	char text[256] = "";
+	size_t at = 0, index;
+	GLint views = 0;
+
+	for (index = 0; index < sizeof(names) / sizeof(names[0]); index++)
+	{
+		if (host_gl_has_extension(names[index]) && at < sizeof(text))
+			at += (size_t)snprintf(text + at, sizeof(text) - at, "%s%s", at ? ", " : "", names[index]);
+	}
+	glGetIntegerv(GL_MAX_VIEWS_OVR, &views);
+	platform_log("vr: the driver's shading rate and foveation extensions: %s; GL_OVR_multiview2 up to %d views",
+		at ? text : "none", (int)views);
+}
+
+/* the eye pass's back buffer: the four layers (foveated), or the eyes'
+swapchain image */
+static void vr_eye_target(BOOL foveated)
+{
+	struct xgpu_render_target *target = &vr_gl.eye_target.target;
+	int width = foveated ? vr_gl.fovea_width : vr_gl.eye_width;
+	int height = foveated ? vr_gl.fovea_height : vr_gl.eye_height;
+
+	target->texture = foveated ? vr_gl.fovea_texture : vr_gl.eye_image;
+	target->scale[0] = (float)width / 640.0f;
+	target->scale[1] = (float)height / (float)SCREEN_HEIGHT;
+	target->gl_width = (unsigned long)width;
+	target->gl_height = (unsigned long)height;
+	target->layers = foveated ? 4 : 2;
+}
+
+static void vr_fovea_initialize(void)
+{
+	float inset = halo_vr_foveation_inset();
+	GLint views = 0;
+
+	vr_fovea_extensions();
+	if (inset <= 0.0f)
+	{
+		platform_log("vr: foveation off (vr.foveation)");
+		return;
+	}
+	glGetIntegerv(GL_MAX_VIEWS_OVR, &views);
+	if (views < 4 || !SAMPLE_COUNTING)
+	{
+		/* (four views; the visibility tests counted by the pixel shaders,
+		as a multiview draw cannot be queried) */
+		platform_log("vr: no foveation: the driver draws %d views at once%s", (int)views,
+			SAMPLE_COUNTING ? "" : ", and has no atomic counters");
+		return;
+	}
+	vr_gl.fovea_width = (int)((float)vr_gl.eye_width * inset + 0.5f) & ~1;
+	vr_gl.fovea_height = (int)((float)vr_gl.eye_height * inset + 0.5f) & ~1;
+	glGenTextures(1, &vr_gl.fovea_texture);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, vr_gl.fovea_texture);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, vr_gl.fovea_width, vr_gl.fovea_height, 4, 0, GL_BGRA,
+		GL_UNSIGNED_BYTE, NULL);
+	xgpu_gl_state_invalidate();
+	vr_gl.foveated = TRUE;
+	xgpu_foveated = 1;
+	vr_gl.fovea_show = config_boolean("debug.vr_foveation_show");
+	vr_gl.fovea_corners[0][0] = vr_gl.fovea_corners[1][0] = (vr_gl.eye_width - vr_gl.fovea_width) / 2;
+	vr_gl.fovea_corners[0][1] = vr_gl.fovea_corners[1][1] = (vr_gl.eye_height - vr_gl.fovea_height) / 2;
+	platform_log("vr: foveation by %s: full detail in %dx%d of each eye's %dx%d, %.0f%% about it: "
+		"4 views of %dx%d, %.0f%% of the eyes' pixels", halo_vr_foveation_name(), vr_gl.fovea_width,
+		vr_gl.fovea_height, vr_gl.eye_width, vr_gl.eye_height, inset * 100.0f, vr_gl.fovea_width, vr_gl.fovea_height,
+		100.0f * 2.0f * (float)vr_gl.fovea_width * (float)vr_gl.fovea_height /
+			((float)vr_gl.eye_width * (float)vr_gl.eye_height));
+}
+
+/* this frame's insets, where halo_vr_foveation says, on whole pixels of
+the eye images, within them */
+static void vr_fovea_place(void)
+{
+	float centres[2][2], samples[4][4];
+	int eye;
+
+	if (!halo_vr_foveation(centres))
+		centres[0][0] = centres[0][1] = centres[1][0] = centres[1][1] = 0.5f;
+	for (eye = 0; eye < 2; eye++)
+	{
+		int x = (int)floorf(centres[eye][0] * (float)vr_gl.eye_width - (float)vr_gl.fovea_width * 0.5f + 0.5f);
+		int y = (int)floorf(centres[eye][1] * (float)vr_gl.eye_height - (float)vr_gl.fovea_height * 0.5f + 0.5f);
+
+		vr_gl.fovea_corners[eye][0] = x < 0 ? 0 : x > vr_gl.eye_width - vr_gl.fovea_width ?
+			vr_gl.eye_width - vr_gl.fovea_width : x;
+		vr_gl.fovea_corners[eye][1] = y < 0 ? 0 : y > vr_gl.eye_height - vr_gl.fovea_height ?
+			vr_gl.eye_height - vr_gl.fovea_height : y;
+		samples[eye * 2][0] = samples[eye * 2][1] = 1.0f;
+		samples[eye * 2][2] = samples[eye * 2][3] = 0.0f;
+		samples[eye * 2 + 1][0] = (float)vr_gl.eye_width / (float)vr_gl.fovea_width;
+		samples[eye * 2 + 1][1] = (float)vr_gl.eye_height / (float)vr_gl.fovea_height;
+		samples[eye * 2 + 1][2] = -(float)vr_gl.fovea_corners[eye][0];
+		samples[eye * 2 + 1][3] = -(float)vr_gl.fovea_corners[eye][1];
+	}
+	if (memcmp(samples, vr_gl.fovea_sample, sizeof(samples)))
+	{
+		memcpy(vr_gl.fovea_sample, samples, sizeof(samples));
+		vr_gl.fovea_serial++;
+	}
+	/* (the views' anew, for the next draw's viewport) */
+	memset(vr_gl.fovea_view, 0, sizeof(vr_gl.fovea_view));
+}
+
+/* the eye images from the four layers: in each pixel the periphery's
+(bilinear), and the inset's (its own pixel) blended over it within the
+inset, fully FOVEA_BLEND of its side in from its edges (not those at the
+image's own edges), the blend's corners round; then the eye pass's back
+buffer is the eye images again, for the rest of the present */
+static void vr_fovea_composite(void)
+{
+	static GLuint program;
+	static BOOL failed;
+	static GLint inset_location, open_location, image_location, show_location;
+	static const char vertex_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"layout(num_views = 2) in;\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+		"	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+		"}\n";
+	static const char fragment_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"uniform sampler2DArray fovea;\n"
+		/* each eye's inset: its top left (the image's pixels from its top
+		left) and size; 1 where its left, top, right or bottom edge is the
+		image's */
+		"uniform vec4 inset[2];\n"
+		"uniform vec4 open[2];\n"
+		/* the image's size, the blend's width (pixels) */
+		"uniform vec4 image;\n"
+		"uniform float show;\n"
+		"out vec4 colour;\n"
+		"void main()\n"
+		"{\n"
+		"	int eye = int(gl_ViewID_OVR);\n"
+		"	vec2 p = gl_FragCoord.xy;\n"
+		"	vec2 point = vec2(p.x, image.y - p.y);\n"
+		"	vec4 r = inset[eye];\n"
+		"	vec4 d = vec4(point - r.xy, r.xy + r.zw - point) + open[eye] * 1.0e6;\n"
+		"	vec2 e = clamp(1.0 - min(d.xy, d.zw) / image.z, 0.0, 1.0);\n"
+		"	float w = 1.0 - smoothstep(0.0, 1.0, length(e));\n"
+		"	colour = texture(fovea, vec3(p / image.xy, float(2 * eye)));\n"
+		"	if (w > 0.0)\n"
+		"	{\n"
+		"		ivec2 texel = ivec2(p) - ivec2(int(r.x), int(image.y - r.y - r.w));\n"
+		"		colour = mix(colour, texelFetch(fovea, ivec3(texel, 2 * eye + 1), 0), w);\n"
+		"	}\n"
+		"	colour.gb *= mix(1.0, mix(0.55, 1.0, w), show);\n"
+		"}\n";
+	float insets[2][4], open[2][4], image[4] = { 0.0f };
+	int eye;
+
+	if (!vr_gl.foveated)
+		return;
+	if (failed || !vr_gl.eyes_drawn || !vr_gl.eye_image)
+	{
+		vr_eye_target(FALSE);
+		return;
+	}
+	if (!program)
+	{
+		GLuint vertex = xgpu_compile_shader(GL_VERTEX_SHADER, vertex_source, "VR foveation vertex");
+		GLuint fragment = xgpu_compile_shader(GL_FRAGMENT_SHADER, fragment_source, "VR foveation pixel");
+		GLint status = 0;
+
+		program = glCreateProgram();
+		glAttachShader(program, vertex);
+		glAttachShader(program, fragment);
+		glLinkProgram(program);
+		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		if (!vertex || !fragment || !status)
+		{
+			platform_log("vr: cannot make the foveation's program; the eyes show nothing");
+			failed = TRUE;
+			vr_eye_target(FALSE);
+			return;
+		}
+		glUseProgram(program);
+		glUniform1i(glGetUniformLocation(program, "fovea"), 0);
+		inset_location = glGetUniformLocation(program, "inset");
+		open_location = glGetUniformLocation(program, "open");
+		image_location = glGetUniformLocation(program, "image");
+		show_location = glGetUniformLocation(program, "show");
+	}
+	for (eye = 0; eye < 2; eye++)
+	{
+		const int *corner = vr_gl.fovea_corners[eye];
+
+		insets[eye][0] = (float)corner[0];
+		insets[eye][1] = (float)corner[1];
+		insets[eye][2] = (float)vr_gl.fovea_width;
+		insets[eye][3] = (float)vr_gl.fovea_height;
+		open[eye][0] = corner[0] <= 0 ? 1.0f : 0.0f;
+		open[eye][1] = corner[1] <= 0 ? 1.0f : 0.0f;
+		open[eye][2] = corner[0] + vr_gl.fovea_width >= vr_gl.eye_width ? 1.0f : 0.0f;
+		open[eye][3] = corner[1] + vr_gl.fovea_height >= vr_gl.eye_height ? 1.0f : 0.0f;
+	}
+	image[0] = (float)vr_gl.eye_width;
+	image[1] = (float)vr_gl.eye_height;
+	image[2] = FOVEA_BLEND * (float)(vr_gl.fovea_width < vr_gl.fovea_height ? vr_gl.fovea_width : vr_gl.fovea_height);
+	framebuffer_views = 2;
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(vr_gl.eye_image, 0));
+	framebuffer_views = 1;
+	glViewport(0, 0, vr_gl.eye_width, vr_gl.eye_height);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glUseProgram(program);
+	glUniform4fv(inset_location, 2, &insets[0][0]);
+	glUniform4fv(open_location, 2, &open[0][0]);
+	glUniform4fv(image_location, 1, image);
+	glUniform1f(show_location, vr_gl.fovea_show ? 1.0f : 0.0f);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, vr_gl.fovea_texture);
+	glBindSampler(0, 0);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	xgpu_gl_state_invalidate();
+	vr_eye_target(FALSE);
+}
+
 static void vr_gl_initialize(void)
 {
 	int stage;
@@ -6323,6 +6713,7 @@ static void vr_gl_initialize(void)
 		if (!SAMPLE_COUNTING)
 			platform_log("vr: no atomic counters: the visibility tests are drawn in the left eye alone");
 	}
+	vr_fovea_initialize();
 	vr_gl.ready = TRUE;
 	/* the screen becomes the menus' 640x480 at the HUD's scale (the device
 	is still being made: halo_screen_commit would leave its surfaces) */
@@ -6356,13 +6747,18 @@ void halo_vr_pass(int pass)
 
 		if (image)
 		{
-			if (vr_gl.eye_target.target.texture != image)
+			if (vr_gl.eye_image != image)
 			{
 				glBindTexture(GL_TEXTURE_2D_ARRAY, image);
 				glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_SRGB_DECODE_EXT, GL_SKIP_DECODE_EXT);
 			}
+			vr_gl.eye_image = image;
 			vr_gl.eye_target.target.data = device.back_buffer.Data;
-			vr_gl.eye_target.target.texture = image;
+			/* (foveated, its four layers, made into the image at the
+			present) */
+			vr_eye_target(vr_gl.foveated);
+			if (vr_gl.foveated)
+				vr_fovea_place();
 			vr_gl.eye_target.last_rendered = device.frame + 1;
 			screen_scale[0] = vr_gl.eye_target.target.scale[0];
 			screen_scale[1] = vr_gl.eye_target.target.scale[1];
@@ -7751,13 +8147,14 @@ static void vr_draw_rim(void)
 		distance_location = glGetUniformLocation(program, "distance");
 		reach_location = glGetUniformLocation(program, "reach");
 	}
-	/* the eyes' depth (as vr_copy_depth finds it) */
+	/* the eyes' depth (as vr_copy_depth finds it; foveated, none: it is
+	not the eye image's) */
 	scale[0] = screen_scale[0];
 	scale[1] = screen_scale[1];
 	vr_gl.pass = HALO_VR_PASS_EYES;
 	screen_scale[0] = vr_gl.eye_target.target.scale[0];
 	screen_scale[1] = vr_gl.eye_target.target.scale[1];
-	depth = render_target_get(&device.depth_buffer);
+	depth = vr_gl.foveated ? NULL : render_target_get(&device.depth_buffer);
 	vr_gl.pass = pass;
 	screen_scale[0] = scale[0];
 	screen_scale[1] = scale[1];
@@ -8031,6 +8428,16 @@ static void vr_copy_depth(void)
 
 	if (!vr_gl.eyes_drawn || !halo_vr_depth_wanted())
 		return;
+	if (vr_gl.foveated)
+	{
+		/* (the depth buffer is the four layers', not the eye images') */
+		static BOOL said;
+
+		if (!said)
+			platform_log("vr: foveated: the eyes' depth is not submitted (vr.depth)");
+		said = TRUE;
+		return;
+	}
 	scale[0] = screen_scale[0];
 	scale[1] = screen_scale[1];
 	vr_gl.pass = HALO_VR_PASS_EYES;
@@ -8105,6 +8512,9 @@ static void vr_present(BOOL screenshot)
 	GLuint hud_image = 0;
 
 	vr_timing(3);
+	/* foveated, the eyes' images made from the inset and the periphery,
+	which the rest draws into */
+	vr_fovea_composite();
 	/* the eyes' tint (a blink, the dead's), then the helmet's rim and the
 	visor's glass in the eyes (not in the menus: vr_visor.c), the rim's depth
 	with theirs */

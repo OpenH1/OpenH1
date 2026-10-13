@@ -391,7 +391,19 @@ char *nv2a_vertex_shader_to_glsl(const DWORD *instructions, unsigned long instru
 #else
 	xgpu_text_append(&text, "#version 450 core\n");
 #endif
-	if (multiview == XGPU_MULTIVIEW_EYES)
+	if (multiview && xgpu_foveated)
+	{
+		/* foveated (xgpu.h, xgpu_foveated): both eyes' two layers, or one
+		eye's, in one draw */
+		xgpu_text_append(&text,
+			"#extension GL_OVR_multiview2 : require\n"
+			"layout(num_views = %d) in;\n"
+			"#define VIEW (%s + int(gl_ViewID_OVR))\n"
+			"#define EYE (VIEW >> 1)\n"
+			"uniform vec4 fovea_view[4];\n",
+			multiview == XGPU_MULTIVIEW_EYES ? 4 : 2, multiview == XGPU_MULTIVIEW_RIGHT_EYE ? "2" : "0");
+	}
+	else if (multiview == XGPU_MULTIVIEW_EYES)
 	{
 		/* both eyes in one draw: each eye's clip position is a fixed
 		transform of the centre view's, for the projection the game has set
@@ -411,6 +423,8 @@ char *nv2a_vertex_shader_to_glsl(const DWORD *instructions, unsigned long instru
 		/* the right eye's alone (the crosshairs) */
 		xgpu_text_append(&text, "#define VIEW 1\n");
 	}
+	if (multiview && !xgpu_foveated)
+		xgpu_text_append(&text, "#define EYE VIEW\n");
 	if (multiview)
 		xgpu_text_append(&text, "uniform mat4 eye_correction[2];\nuniform vec4 screen_correction[2];\n"
 			"uniform float screen_points;\n");
@@ -560,12 +574,12 @@ char *nv2a_vertex_shader_to_glsl(const DWORD *instructions, unsigned long instru
 		/* (a point the game projected itself is drawn in screen space,
 		whether or not the program divides by w) */
 		xgpu_text_append(&text, "\tif (screen_points != 0.0)\n\t\tclip_captured = false;\n");
-		xgpu_text_append(&text, "\tif (clip_captured)\n\t\tclip_position = eye_correction[VIEW] * clip_position;\n");
+		xgpu_text_append(&text, "\tif (clip_captured)\n\t\tclip_position = eye_correction[EYE] * clip_position;\n");
 		/* except where the game projected a point itself (lens flares,
 		sprites: vr_render_screen_point), which moves to each eye in the
 		screen by a scale and offset; else none */
-		xgpu_text_append(&text, "\telse\n\t\toPos.xy = oPos.xy * screen_correction[VIEW].xy + "
-			"screen_correction[VIEW].zw * oPos.w;\n");
+		xgpu_text_append(&text, "\telse\n\t\toPos.xy = oPos.xy * screen_correction[EYE].xy + "
+			"screen_correction[EYE].zw * oPos.w;\n");
 	}
 	xgpu_text_append(&text,
 		"\t/* undo the screen-space conversion done with c[-38] and c[-37] */\n"
@@ -610,6 +624,14 @@ char *nv2a_vertex_shader_to_glsl(const DWORD *instructions, unsigned long instru
 		images), the game's targets at the top: the eye pass draws upside
 		down (d3d8_gl.c, vr_flip_rows) */
 		xgpu_text_append(&text, "\tgl_Position.y = -gl_Position.y;\n");
+	}
+	if (multiview && xgpu_foveated)
+	{
+		/* an inset's view: its part of the eye magnified to fill its layer
+		(the whole eye's views: the identity), points with it */
+		xgpu_text_append(&text,
+			"\tgl_Position.xy = gl_Position.xy * fovea_view[VIEW].xy + fovea_view[VIEW].zw * gl_Position.w;\n"
+			"\toPts.x *= fovea_view[VIEW].x;\n");
 	}
 	xgpu_text_append(&text,
 #ifdef HALO_GLES
