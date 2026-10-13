@@ -136,6 +136,12 @@ this list to generate the guest's entry points */
 	X(glBeginQuery) \
 	X(glEndQuery) \
 	X(glGetQueryObjectuiv)
+/* entry points of extensions, which a driver may lack: loaded where the
+context has the extension, never required (gl_functions.c). On ES 3.0 and
+3.1 these stand in for glDrawElementsBaseVertex */
+#define GL_OPTIONAL_FUNCTIONS(X) \
+	X(glDrawElementsBaseVertexEXT) \
+	X(glDrawElementsBaseVertexOES)
 /* ANDROID_GL_FUNCTIONS_END */
 #else
 /* OpenGL 4.5 core; tools/android_gl_stubs.py --desktop reads this list for
