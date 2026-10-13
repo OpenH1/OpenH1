@@ -240,6 +240,25 @@ static const float reload_pouches[2][4] =
 #define RELOAD_FULL_GAP_MS 90
 #define RELOAD_WELL_REACH 0.07f
 static const float reload_held[3] = { 0.0f, 0.0f, 0.08f };
+/* the reload's feel in the hands, each a few pulses (their amplitude, their
+length and their start after the first, seconds), firmer and longer than the
+pouch's ticks (a tick as the hand gets there, a firmer one as it takes one,
+two weak ones: full): the magazine ejecting, in the weapon's hand (a clack,
+then the magazine sliding out); pushed home, a firm click in the hand
+pushing it, settling, and a lighter one in the weapon's; each of the
+shotgun's shells, a shorter click in each */
+struct haptic_pulse
+{
+	float amplitude, seconds, start;
+};
+static const struct haptic_pulse reload_eject_feel[] = { { 0.55f, 0.025f, 0.0f }, { 0.30f, 0.045f, 0.06f } };
+static const struct haptic_pulse reload_seat_feel[] = { { 0.90f, 0.03f, 0.0f }, { 0.40f, 0.04f, 0.045f } };
+static const struct haptic_pulse reload_seat_weapon_feel[] = { { 0.50f, 0.03f, 0.0f } };
+static const struct haptic_pulse reload_shell_feel[] = { { 0.70f, 0.025f, 0.0f } };
+static const struct haptic_pulse reload_shell_weapon_feel[] = { { 0.30f, 0.025f, 0.0f } };
+#define HAPTIC_PULSES 4
+/* a pattern and its count of pulses, for haptic_play */
+#define HAPTIC_FEEL(feel) (feel), (int)(sizeof(feel) / sizeof((feel)[0]))
 /* debug.vr_test_hands: the poses it gives the controllers, each held this
 many frames unless it says */
 #define TEST_HANDS_POSES 16
@@ -472,6 +491,13 @@ static struct
 	int reload_grip_waiting;
 	int reload_in_pouch;
 	unsigned long reload_full_tick;
+	/* each hand's haptic pattern playing (haptic_play): its pulses, how many
+	have been sent, when it began and when it ends (GetTickCount) */
+	struct haptic_pulse haptic_pulses[2][HAPTIC_PULSES];
+	int haptic_count[2];
+	int haptic_sent[2];
+	unsigned long haptic_ticks[2];
+	unsigned long haptic_end[2];
 	float depth_near, depth_far;
 	/* this frame's scope (halo_vr_scope), if it was drawn */
 	int scope_set;
@@ -1617,6 +1643,42 @@ static float reload_pouch_distance(int pouch, float yaw, const float eyes[3], fl
 	return distance < 0.0f ? 0.0f : distance;
 }
 
+/* the patterns' pulses that are due, once a frame */
+static void haptics_update(void)
+{
+	unsigned long now = GetTickCount();
+	int hand;
+
+	for (hand = 0; hand < 2; hand++)
+	{
+		while (vr.haptic_sent[hand] < vr.haptic_count[hand] &&
+			now - vr.haptic_ticks[hand] >= (unsigned long)(vr.haptic_pulses[hand][vr.haptic_sent[hand]].start * 1000.0f))
+		{
+			const struct haptic_pulse *pulse = &vr.haptic_pulses[hand][vr.haptic_sent[hand]++];
+
+			host_vr_haptic(hand, pulse->amplitude, pulse->seconds);
+		}
+	}
+}
+
+/* a hand's haptic pattern, its first pulse now and the others as they
+come due (haptics_update); one played over another takes its place. Until
+it ends the game's rumble leaves that hand alone (halo_vr_rumble): a pulse
+sent after one replaces it, and the game's rumble goes on a moment after a
+weapon stops firing, as a magazine is emptied and ejected */
+static void haptic_play(int hand, const struct haptic_pulse *pulses, int count)
+{
+	if (count > HAPTIC_PULSES)
+		count = HAPTIC_PULSES;
+	memcpy(vr.haptic_pulses[hand], pulses, sizeof(*pulses) * (size_t)count);
+	vr.haptic_count[hand] = count;
+	vr.haptic_sent[hand] = 0;
+	vr.haptic_ticks[hand] = GetTickCount();
+	vr.haptic_end[hand] = vr.haptic_ticks[hand] +
+		(unsigned long)((pulses[count - 1].start + pulses[count - 1].seconds) * 1000.0f);
+	haptics_update();
+}
+
 /* the reload by hand, once a frame (vr.manual_reload; RELOAD_* above):
 after holsters_update, before two_handed_update and throw_update, which
 leave the left grip to it when it is pressed at a pouch. The right stick
@@ -1703,7 +1765,7 @@ static void reload_update(void)
 			if (r->kind != HALO_VR_RELOAD_SHELL && !r->ejected && w->can_reload)
 			{
 				r->ejected = 1;
-				host_vr_haptic(1, 0.4f, 0.04f);
+				haptic_play(1, HAPTIC_FEEL(reload_eject_feel));
 			}
 			platform_log("vr: reload: eject: %s", r->kind == HALO_VR_RELOAD_SHELL ? "the shotgun takes shells, not a magazine" :
 				r->ejected && w->can_reload ? (r->kind == HALO_VR_RELOAD_TUBE ? "the tubes out" : "the magazine out") :
@@ -1763,7 +1825,7 @@ static void reload_update(void)
 		if (r->kind != HALO_VR_RELOAD_SHELL && !r->ejected)
 		{
 			r->ejected = 1;
-			host_vr_haptic(1, 0.4f, 0.04f);
+			haptic_play(1, HAPTIC_FEEL(reload_eject_feel));
 			platform_log("vr: reload: eject: the %s out, as the new %s taken", names[r->kind],
 				r->kind == HALO_VR_RELOAD_TUBE ? "ones are" : "one is");
 		}
@@ -1810,8 +1872,16 @@ static void reload_update(void)
 		r->held = 0;
 		r->ejected = 0;
 		r->inserted++;
-		host_vr_haptic(0, 0.6f, 0.05f);
-		host_vr_haptic(1, 0.4f, 0.04f);
+		if (r->kind == HALO_VR_RELOAD_SHELL)
+		{
+			haptic_play(0, HAPTIC_FEEL(reload_shell_feel));
+			haptic_play(1, HAPTIC_FEEL(reload_shell_weapon_feel));
+		}
+		else
+		{
+			haptic_play(0, HAPTIC_FEEL(reload_seat_feel));
+			haptic_play(1, HAPTIC_FEEL(reload_seat_weapon_feel));
+		}
 		platform_log("vr: reload: the %s pushed home (%.3f m off)", names[r->kind], r->well_distance);
 	}
 }
@@ -2044,6 +2114,7 @@ static void input_update(void)
 	body_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
 	holsters_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
 	reload_update();
+	haptics_update();
 	/* a swing of the right controller melees (vr.melee_gesture) */
 	melee_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
 	trigger_touch_update(vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : seconds);
@@ -3265,11 +3336,14 @@ void halo_vr_gamepad(void *gamepad)
 
 void halo_vr_rumble(float left, float right)
 {
+	unsigned long now = GetTickCount();
+
 	if (!vr.initialized)
 		return;
-	if (left > 0.01f)
+	/* (not over a hand's own pattern while it plays: haptic_play) */
+	if (left > 0.01f && (long)(now - vr.haptic_end[0]) >= 0)
 		host_vr_haptic(0, left, 0.1f);
-	if (right > 0.01f)
+	if (right > 0.01f && (long)(now - vr.haptic_end[1]) >= 0)
 		host_vr_haptic(1, right, 0.1f);
 }
 #endif

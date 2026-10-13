@@ -1375,10 +1375,13 @@ Reload as you would a real gun: reach to your left hip with your left hand
 and squeeze the left grip to take a magazine (a tick as your hand gets
 there, a firmer one as you take it), whenever the weapon has room for one
 and rounds to fill it: the magazine in the weapon ejects itself as you take
-the new one (a buzz in the right hand; the weapon is empty now, and does
-not fire). Push it into the weapon where it goes, still gripping (a knock
-in both hands). The right stick pushed down ejects the magazine before you
-reach, if you like (the same buzz). The rounds are in the weapon the moment
+the new one (a clack and the magazine sliding out, in the right hand; the
+weapon is empty now, and does not fire). Push it into the weapon where it
+goes, still gripping (a firm click in the left hand as it seats, and a
+lighter one in the right). The right stick pushed down ejects the magazine
+before you reach, if you like (the same clack). These are firmer than the
+pouch's ticks, and the game's rumble (a weapon's firing goes on a moment
+after it stops) waits while they play. The rounds are in the weapon the moment
 it is pushed home: the HUD counts them, and the weapon fires at once (your
 hand took the reload's time: the game's own reload, its time and its
 animation, is not run). The ammunition is the game's, as a reload by X
@@ -1399,7 +1402,7 @@ leave it.
 - The shotgun is fed a shell at a time, with nothing to eject: take a shell
   from your hip whenever it has room, and push it in at the loading port,
   under the receiver ahead of the grip. Each shell is loaded as it goes
-  in, one round (on the flat screen the game loads to full).
+  in (a short click in each hand), one round (on the flat screen the game loads to full).
 - The rocket launcher: the right stick ejects its tubes, and new ones are
   behind your left shoulder (where your left hand reaches over it, as the
   right one does for a long gun).
