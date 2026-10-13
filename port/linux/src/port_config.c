@@ -764,7 +764,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.vr_test_hands", _config_string, "\"\"", "HALO_VR_TEST_HANDS", _environment_value, _platform_desktop,
 		"Hold the VR controllers still, for automated tests without hands:\n"
 		"\"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons\n"
-		"[, trigger[, head[, frames[, move[, down]]]]]]]\", the left and right hands in\n"
+		"[, trigger[, head[, frames[, move[, down[, nod[, forward[, right]]]]]]]]]]\",\n"
+		"the left and right hands in\n"
 		"metres right, up and forward from the recentred head and degrees of yaw\n"
 		"(left), pitch (up) and roll (right), the left grip's pull (0 to 1), the\n"
 		"buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the\n"
@@ -773,8 +774,10 @@ static const struct config_setting config_settings[] =
 		"0: the finger off it, as the trigger's touch senses), the head\n"
 		"turned (degrees left), the frames the pose lasts (0: 288)\n"
 		"and the frames the hands take to move to it from the pose before (0:\n"
-		"none; a swing), and the head lowered (metres, as a crouch; moved\n"
-		"with the hands); poses separated by ';' (16 at most) in turn.\n"
+		"none; a swing), the head lowered (metres, as a crouch), nodded\n"
+		"about the neck (degrees up) and moved in the room (metres forward\n"
+		"and right), each moved with the hands; poses separated by ';' (16 at\n"
+		"most) in turn.\n"
 		"Empty: the controllers' own." },
 	{ "debug.vr_throw_log", _config_boolean, "false", "HALO_VR_THROW_LOG", _environment_value, _platform_desktop,
 		"Log each step of a grenade thrown with the left hand (vr.grenade_throw):\n"

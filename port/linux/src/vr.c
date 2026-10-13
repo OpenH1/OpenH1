@@ -251,8 +251,12 @@ pressed for the first frames of the pose */
 #define TEST_HANDS_LEFT_TRIGGER (1 << 17)
 #define TEST_HANDS_RIGHT_GRIP (1 << 18)
 /* and its numbers in each pose */
-#define TEST_HANDS_NUMBERS 19
+#define TEST_HANDS_NUMBERS 22
 #define TEST_HANDS_RIGHT_STICK_DOWN (1 << 19)
+/* and where the head nods about, as a person's does: the lower neck, so far
+behind and below the eyes (metres) */
+#define TEST_HEAD_NECK_BACK 0.08f
+#define TEST_HEAD_NECK_DOWN 0.15f
 
 static struct
 {
@@ -462,8 +466,9 @@ static struct
 	up, forward from the recentred head; degrees of yaw left, pitch up, roll
 	right), the left grip's pull, the buttons pressed, the right trigger's
 	pull, the head's turn (degrees left), the frames it lasts, the frames the
-	hands take to move to it from the pose before, and the head lowered
-	(metres); the poses' frames in all */
+	hands take to move to it from the pose before, the head lowered (metres),
+	nodded about the neck (degrees up) and moved in the room (metres forward
+	and right); the poses' frames in all */
 	int test_hand_poses;
 	float test_hands[TEST_HANDS_POSES][TEST_HANDS_NUMBERS];
 	unsigned long test_hands_frames;
@@ -471,7 +476,7 @@ static struct
 
 /* debug.vr_test_hands: "lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch
 rroll[, grip[, buttons[, trigger[, head yaw[, frames[, move frames[, head
-down]]]]]]]",
+down[, head pitch[, head forward[, head right]]]]]]]]]]",
 poses separated by ';', each lasting its frames (TEST_HANDS_FRAMES if 0) */
 static void test_hands_read(const char *text)
 {
@@ -496,9 +501,11 @@ static void test_hands_read(const char *text)
 				*c = ' ';
 		}
 		pose[12] = pose[13] = pose[14] = pose[15] = pose[16] = pose[17] = pose[18] = 0.0f;
-		count = sscanf(numbers, "%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f", &pose[0], &pose[1],
-			&pose[2], &pose[3], &pose[4], &pose[5], &pose[6], &pose[7], &pose[8], &pose[9], &pose[10], &pose[11],
-			&pose[12], &pose[13], &pose[14], &pose[15], &pose[16], &pose[17], &pose[18]);
+		pose[19] = pose[20] = pose[21] = 0.0f;
+		count = sscanf(numbers, "%f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f %f", &pose[0],
+			&pose[1], &pose[2], &pose[3], &pose[4], &pose[5], &pose[6], &pose[7], &pose[8], &pose[9], &pose[10],
+			&pose[11], &pose[12], &pose[13], &pose[14], &pose[15], &pose[16], &pose[17], &pose[18], &pose[19],
+			&pose[20], &pose[21]);
 		if (count >= 12)
 		{
 			if (pose[16] < 1.0f)
@@ -2257,16 +2264,42 @@ static void test_hands_apply(void)
 		}
 	}
 	{
-		/* the head lowered, as a crouch (with the hands, over the move
-		frames) */
+		/* the head nodded about the neck, moved in the room and lowered, as
+		a crouch (with the hands, over the move frames) */
 		struct vr_host_pose *poses[3] = { &vr.views.eye[0], &vr.views.eye[1], &vr.views.head };
-		float down = pose[18];
-		int which;
+		float t = pose[17] >= 1.0f && (float)frame < pose[17] ? (float)(frame + 1) / pose[17] : 1.0f;
+		float down = before[18] + (pose[18] - before[18]) * t;
+		float pitch = (before[19] + (pose[19] - before[19]) * t) * (float)M_PI / 180.0f;
+		float local[3] = { before[21] + (pose[21] - before[21]) * t, 0.0f,
+			-(before[20] + (pose[20] - before[20]) * t) };
+		float heading[4] = { 0.0f, sinf(vr.origin_yaw * 0.5f), 0.0f, cosf(vr.origin_yaw * 0.5f) };
+		float neck[3], right[3], nod[4], moved_by[3], v[3], turned[3];
+		static const float x_axis[3] = { 1.0f, 0.0f, 0.0f };
+		int which, axis;
 
-		if (pose[17] >= 1.0f && (float)frame < pose[17])
-			down = before[18] + (pose[18] - before[18]) * (float)(frame + 1) / pose[17];
+		/* (about the head's own right, through the neck behind and below
+		the eyes as the head is turned) */
+		v[0] = 0.0f;
+		v[1] = -TEST_HEAD_NECK_DOWN;
+		v[2] = TEST_HEAD_NECK_BACK;
+		quaternion_rotate(vr.views.head.orientation, v, neck);
+		quaternion_rotate(vr.views.head.orientation, x_axis, right);
+		for (axis = 0; axis < 3; axis++)
+			neck[axis] += vr.views.head.position[axis];
+		for (axis = 0; axis < 3; axis++)
+			nod[axis] = right[axis] * sinf(pitch * 0.5f);
+		nod[3] = cosf(pitch * 0.5f);
+		quaternion_rotate(heading, local, moved_by);
 		for (which = 0; which < 3; which++)
+		{
+			for (axis = 0; axis < 3; axis++)
+				v[axis] = poses[which]->position[axis] - neck[axis];
+			quaternion_rotate(nod, v, turned);
+			for (axis = 0; axis < 3; axis++)
+				poses[which]->position[axis] = neck[axis] + turned[axis] + moved_by[axis];
+			quaternion_multiply(nod, poses[which]->orientation, poses[which]->orientation);
 			poses[which]->position[1] -= down;
+		}
 	}
 	if (frame < TEST_HANDS_PRESS_FRAMES)
 	{
