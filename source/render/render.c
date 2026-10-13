@@ -166,6 +166,7 @@ boolean vr_render_hud_camera(struct render_camera *camera);
 void vr_render_hud_end(void);
 boolean vr_render_weapon_camera(struct render_camera *camera);
 void vr_render_crosshairs(void);
+void vr_render_world_marks(void);
 void vr_seat_blink_draw(void);
 void vr_death_draw(void);
 /* the view in a raised scope, or the smart-link's on the visor while zoomed
@@ -509,6 +510,9 @@ static void render_window(
 			vr_death_draw();
 			/* the crosshairs where the aim meets the world, in the eyes */
 			vr_render_crosshairs();
+			/* the teammates' triangles, the players' names and the
+			waypoints over what they mark, in the eyes */
+			vr_render_world_marks();
 		}
 		else
 #endif

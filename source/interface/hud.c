@@ -115,6 +115,11 @@ symbols in this file:
 #include "units/units.h"
 #ifdef HALO_VR
 #include "../../port/linux/src/vr.h"
+/* port/linux/game/vr_render.c: the marks over the world (the teammates'
+triangles, the players' names, the waypoints on the screen) drawn in the eyes
+over what they mark, not in the HUD's layer */
+boolean vr_render_world_marks_drawn(void);
+boolean vr_render_world_mark(real_point3d const *point, real x, real y);
 #endif
 
 /* ---------- constants */
@@ -969,6 +974,11 @@ static void hud_draw_friendly_indicator(
 			clip.x1 = 1.0f;
 			clip.y0 = (1.0f - fade) * 0.5f;
 			clip.y1 = 1.0f;
+#ifdef HALO_VR
+			/* port: in VR, drawn in each eye over the teammate */
+			if (!vr_render_world_mark(&head_position, (real)position.x, (real)position.y))
+				return;
+#endif
 			interface_draw_bitmap(
 				bitmap,
 				&position,
@@ -1189,6 +1199,11 @@ static void hud_draw_player_name(
 		return;
 	x = (short)fast_ftol(screen_position.x) - render.camera.viewport_bounds.x0;
 	y = (short)fast_ftol(screen_position.y) - render.camera.viewport_bounds.y0;
+#ifdef HALO_VR
+	/* port: in VR, drawn in each eye over the player's head */
+	if (!vr_render_world_mark(&head_position, (real)x, (real)y))
+		return;
+#endif
 	if (indicator)
 	{
 		struct bitmap_data *bitmap = bitmap_group_get_bitmap_from_sequence(
@@ -1430,6 +1445,12 @@ void hud_draw_screen(
 		of its own (port/linux/src/vr_visor.c) */
 		halo_vr_hud_group(HALO_VR_HUD_GROUP_WORLD);
 #endif
+#ifdef HALO_VR
+		/* port: in VR, drawn in the eyes over what they mark
+		(hud_draw_vr_world_marks), unless the eyes were not drawn */
+		if (!vr_render_world_marks_drawn())
+#endif
+		{
 		if ((!game_engine_running() || game_engine_display_team_indicators()) &&
 			!cinematic_in_progress())
 		{
@@ -1439,6 +1460,7 @@ void hud_draw_screen(
 		/* port: players' names above their heads, in multiplayer and network co-op */
 		if ((game_engine_running() || network_coop_active()) && !cinematic_in_progress())
 			hud_draw_player_names();
+		}
 #ifdef HALO_VR
 		halo_vr_hud_group(HALO_VR_HUD_GROUP_CENTRE);
 #endif
@@ -1533,6 +1555,35 @@ void hud_draw_vr_crosshairs(
 			rasterizer_hud_end();
 		}
 	}
+
+	return;
+}
+
+/* the marks over the world alone, as hud_draw_screen would draw them, for
+port/linux/game/vr_render.c to draw in the eyes, each over what it marks
+(vr_render_world_mark): the teammates' triangles, the players' names and
+the waypoints on the screen */
+void hud_draw_vr_world_marks(
+	void)
+{
+	long player_index = local_player_get_player_index(render.local_player_index);
+	director_perspective perspective = director_get_perspective(render.local_player_index);
+
+	if (player_index == NONE || cinematic_in_progress())
+		return;
+	rasterizer_hud_begin();
+	if (!game_engine_running() || game_engine_display_team_indicators())
+		hud_draw_players();
+	if (game_engine_running() || network_coop_active())
+		hud_draw_player_names();
+	/* (the waypoints on the screen: those off it stay at the HUD's edge,
+	hud_nav_points.c) */
+	if (hud_scripted_globals->show_hud && perspective != _director_perspective_neutral &&
+		perspective != _director_perspective_scripted && player_get(player_index)->unit_index != NONE)
+	{
+		hud_render_nav_points(render.local_player_index);
+	}
+	rasterizer_hud_end();
 
 	return;
 }

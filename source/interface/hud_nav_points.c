@@ -124,6 +124,11 @@ symbols in this file:
 #include "scenario/scenario_definitions.h"
 #include "units/units.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
+#ifdef HALO_VR
+/* port/linux/game/vr_render.c: a waypoint on the screen drawn in the eyes
+over what it marks, not in the HUD's layer */
+boolean vr_render_world_waypoint(real_point3d const *point, boolean on_screen, real x, real y);
+#endif
 
 /* ---------- constants */
 
@@ -796,6 +801,20 @@ void custom_render_nav_point(
 		"c:\\halo\\SOURCE\\interface\\hud_nav_points.c",
 		615,
 		waypoint_type!=NONE);
+
+#ifdef HALO_VR
+	/* port: in VR, a waypoint on the screen is drawn in each eye over what it
+	marks, one off it at the HUD's edge as ever (vr_render_world_waypoint) */
+	if (!vr_render_world_waypoint(
+		position,
+		waypoint_type!=_waypoint_off_screen,
+		(real)(short)(long)screen_position.x,
+		(real)(short)(long)screen_position.y))
+	{
+		match_assert_stack_frame("c:\\halo\\SOURCE\\interface\\hud_nav_points.c", 675);
+		return;
+	}
+#endif
 
 	{
 		long bitmap_group_index = hud_globals->waypoint.arrow_bitmap.index;

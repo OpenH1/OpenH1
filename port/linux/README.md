@@ -1899,7 +1899,7 @@ headset's session is opened with, apply from the next start.
 | `vr.hud_distance`, `vr.hud_size` | `2.0`, `60.0` | `HALO_VR_HUD_DISTANCE`, `HALO_VR_HUD_SIZE` | The HUD's distance in front of the eyes (metres) and width (degrees of the view). On the visor, the radius of its curve and the angle that it spans. |
 | `vr.hud_lag` | `0.03` | `HALO_VR_HUD_LAG` | With `vr.hud = "visor"`: how far the HUD trails the head's turns, as the time constant of its smoothing in seconds (up to `0.2`), never more than 1.5 degrees behind. `0`: the HUD turns with the head exactly. |
 | `vr.hud_depth` | `1.0` | `HALO_VR_HUD_DEPTH` | With `vr.hud = "visor"`: how far apart in depth the HUD's parts are, times their own distances from the HUD's (the four below), from `0` (all at `vr.hud_distance`, one layer) to `2`. Never nearer than 1 m. |
-| `vr.hud_depth_tracker`, `vr.hud_depth_status`, `vr.hud_depth_weapon`, `vr.hud_depth_world` | `-0.55`, `-0.35`, `-0.25`, `0.5` | `HALO_VR_HUD_DEPTH_TRACKER`, `HALO_VR_HUD_DEPTH_STATUS`, `HALO_VR_HUD_DEPTH_WEAPON`, `HALO_VR_HUD_DEPTH_WORLD` | The distances from the HUD's (metres, at `vr.hud_depth` 1; nearer less than 0) of the motion tracker; the shields and the health; the weapon, its ammunition and the grenades; and the waypoints and the players' names. At the defaults: 1.45, 1.65, 1.75 and 2.5 m, the rest of the HUD (the crosshair, the messages) 2 m. |
+| `vr.hud_depth_tracker`, `vr.hud_depth_status`, `vr.hud_depth_weapon`, `vr.hud_depth_world` | `-0.55`, `-0.35`, `-0.25`, `0.5` | `HALO_VR_HUD_DEPTH_TRACKER`, `HALO_VR_HUD_DEPTH_STATUS`, `HALO_VR_HUD_DEPTH_WEAPON`, `HALO_VR_HUD_DEPTH_WORLD` | The distances from the HUD's (metres, at `vr.hud_depth` 1; nearer less than 0) of the motion tracker; the shields and the health; the weapon, its ammunition and the grenades; and the waypoints off the screen, at its edge (those on it, the teammates' triangles and the players' names are drawn in the eyes, over what they mark: below, "How it operates"). At the defaults: 1.45, 1.65, 1.75 and 2.5 m, the rest of the HUD (the crosshair, the messages) 2 m. |
 | `vr.hud_tracker_tilt` | `20.0` | `HALO_VR_HUD_TRACKER_TILT` | How far the motion tracker tilts back, in degrees (-45 to 45). |
 | `vr.hud_wrap` | `1.0` | `HALO_VR_HUD_WRAP` | With `vr.hud = "visor"` and `vr.hud_depth` above `0`: the HUD's corners along the visor's curve, from `0` (where the game puts them, as before) to `2`. At `1` the weapon's panel (its ammunition and the grenades), the shields' and the motion tracker's turn out from the HUD's middle by 7 degrees across and 5 up or down, toward the edges of the view where a glance finds them, and bend as the visor's brow and chin do: falling away toward the sides above (rising, below), by a quarter of the square of their angle across (the shields' meter, from its inner end to its outer, about 3 degrees). The waypoints, the names and the HUD's middle stay where they are. |
 | `vr.hud_glow` | `0.5` | `HALO_VR_HUD_GLOW` | With `vr.hud = "visor"`: the HUD's glow on the glass, from `0` (none) to `1`. |
@@ -2060,7 +2060,7 @@ supersampling costs as above, and multisampling the eye pass
   mark, and the reticle where the head aims. The HUD's parts have depths
   of their own (`vr.hud_depth`): its draws are grouped by the anchor the
   game places each element by (`hud_draw.c`; `hud.c` holds the waypoints
-  and the players' names, and the messages, to groups of their own), each
+  at the HUD's edge, and the messages, to groups of their own), each
   group but the middle's drawn into a target of its own and shown on a
   quad of its own (four more layers, `VR_SWAPCHAIN_PANEL`), its region of
   the HUD curved in its image as the HUD is, at its own distance, placed
@@ -2150,7 +2150,26 @@ supersampling costs as above, and multisampling the eye pass
   the compositor showed it with at the pose of the display while it moved
   the eyes' images to that: it swam against the world as the head moved,
   stepped by the layer's pixels, and at the layer's 2 metres the eyes saw
-  it doubled against what it aimed at.
+  it doubled against what it aimed at. So are the marks the HUD puts over
+  the world (`vr_render_world_marks`): the triangles over the player's
+  teammates, the players' names above their heads and the waypoints on the
+  screen (the campaign's, a multiplayer game's flags, ball and hill), each
+  drawn at the end of the eye pass in each eye over what it marks, at its
+  depth, as large as in the layer; the game projects each and draws it as
+  ever, and a screen correction for each mark moves it there in each eye
+  (`vr_render_world_mark`), in a draw for each eye (drawn in both at once,
+  the right eye's triangles lost their tops). In the layer (the world's
+  panel, 2.5 m before the head at the defaults) a teammate's triangle
+  flickered over them in a network game: at the layer's distance, the eyes
+  saw it doubled against a teammate 15 m away (about a degree and a quarter
+  apart), it trailed the head's turns with the layer and stepped by the
+  HUD's pixels while the teammate moved smoothly, and the glass's
+  reflection and the hits' bands (`vr.hud_glass`, `vr.hud_react`) touched
+  it. A waypoint off the screen stays at the HUD's edge, in its layer; in a
+  frame without the eyes all are in the layer, as before. The eye pass
+  draws its text (the names, the waypoints' distances) rasterized for the
+  HUD's pixels (`halo_screen_pixel_scale`), as large as it is drawn there,
+  so the glyphs are not made again for each pass.
 - The runtime paces the game (`xrWaitFrame`). A frame ends when the next
   starts, because SteamVR's `xrEndFrame` waits for the GPU. The views are
   located again just before the frame's draws. The game's ticks are

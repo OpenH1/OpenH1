@@ -113,6 +113,8 @@ void hud_draw_screen(
 #ifdef HALO_VR
 void hud_draw_vr_crosshairs(
 	void);
+void hud_draw_vr_world_marks(
+	void);
 #endif
 
 /* ---------- prototypes/HUD_NAV_POINTS.C */

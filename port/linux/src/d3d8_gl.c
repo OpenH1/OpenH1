@@ -248,10 +248,18 @@ long halo_screen_width(void)
 	return screen_width;
 }
 
+#ifdef HALO_VR
+static float vr_text_pixel_scale(void);
+#endif
+
 /* the display's pixels for each of the 480 lines (text_hires.c) */
 float halo_screen_pixel_scale(void)
 {
 	halo_screen_width();
+#ifdef HALO_VR
+	if (vr_text_pixel_scale() > 0.0f)
+		return vr_text_pixel_scale();
+#endif
 	return screen_scale[1];
 }
 
@@ -6436,6 +6444,15 @@ void halo_vr_sky(int sky)
 		glEnable(GL_DEPTH_CLAMP);
 	else
 		glDisable(GL_DEPTH_CLAMP);
+}
+
+/* the text the eye pass draws (the players' names, the waypoints' distances:
+vr_render.c's marks over the world) is rasterized for the HUD's pixels, as large as it is
+drawn there (text_hires.c): its glyphs are for one scale at a time, and the
+eyes' would start them over twice a frame; 0 in the other passes */
+static float vr_text_pixel_scale(void)
+{
+	return vr_gl.pass == HALO_VR_PASS_EYES && vr_gl.hud_height > 0 ? (float)vr_gl.hud_height / (float)SCREEN_HEIGHT : 0.0f;
 }
 
 /* the draws from now on into that eye's layer alone (0 left, 1 right), or

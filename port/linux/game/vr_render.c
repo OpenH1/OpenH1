@@ -71,6 +71,9 @@ though they aim nothing (cinematic_head).
 /* the union of the eyes' fields of view, a little wider (the eyes are
 apart, and the culling's planes start at the centre) */
 #define UNION_MARGIN 1.03f
+/* the waypoints drawn in the eyes in a frame (vr_render_world_waypoint), at
+most */
+#define WORLD_WAYPOINTS_MAXIMUM 64
 /* the crosshairs in the eyes (vr_render_crosshairs): where the aim meets
 the world, no farther than this (world units) nor nearer than this, the
 distance's changes smoothed over this time constant (seconds) */
@@ -126,6 +129,14 @@ static struct
 	boolean crosshairs_drawn;
 	boolean crosshair_distance_valid;
 	real crosshair_inverse_distance;
+	/* the marks the HUD puts over the world (vr_render_world_marks) are
+	being drawn in the eyes, and were this frame (not in the HUD's layer) */
+	boolean marks_drawing;
+	boolean marks_drawn;
+	/* the points of the waypoints drawn in the eyes this frame (the HUD's
+	pass leaves them out) */
+	real_point3d waypoints[WORLD_WAYPOINTS_MAXIMUM];
+	short waypoint_count;
 	/* the physical crouch (crouch_lift): the unit whose crouch is
 	followed, the tick it was last read at, its crouch at the last two ticks
 	(blended as the camera is), whether the crouch is the head's, and this
@@ -1341,6 +1352,7 @@ boolean vr_render_hud_to_screen(struct render_camera const *camera, real_point3d
 void vr_render_hud_end(void)
 {
 	vr_hud.curved = FALSE;
+	vr_render.marks_drawn = FALSE;
 }
 
 /* the camera the HUD is drawn from (in place of the window's): where the
@@ -1512,6 +1524,132 @@ void vr_render_crosshairs(void)
 	halo_vr_draw_eye(-1);
 	vr_render_screen_point_end();
 	vr_render.crosshairs_drawn = TRUE;
+}
+
+/* render.c, at the end of the eye pass, after the crosshairs: the marks the
+HUD puts over the world, the triangles over the player's teammates, the
+players' names above their heads (hud.c) and the waypoints on the screen
+(hud_nav_points.c: the campaign's, a multiplayer game's flags, ball and
+hill), drawn in each eye over what they mark, as large as in the HUD's
+layer. In that layer (on the visor its world panel,
+2.5 m before the head at the defaults: vr_visor.c) a teammate's triangle was
+at the layer's distance, not the teammate's: looking at a teammate 15 m away, the eyes saw
+it doubled, about a degree and a quarter apart, and it trailed the head's
+turns with the layer and moved in steps of the HUD's pixels, while the
+teammate under it moved smoothly with the world; it flickered over them. The
+game places each mark itself, at a point of the screen it projects
+(vr_render_world_mark), as it does in the HUD's pass; here each eye's screen
+correction moves what it draws about that point to where the point is in
+that eye (no rounding to the screen's pixels), at the HUD's size. Only where
+the eyes are drawn (in a frame without them, they are in the layer as
+before), and not in cinematics, as in the HUD's pass. */
+void vr_render_world_marks(void)
+{
+	struct halo_vr_view *view = &vr_render.view;
+	short eye;
+
+	if (!vr_render.active || view->hud_tangent <= 0.0f)
+		return;
+	vr_render.marks_drawing = TRUE;
+	vr_render.waypoint_count = 0;
+	/* (each eye in a draw of its own, as the crosshairs: drawn in both at
+	once, the right eye's triangles lost their tops) */
+	for (eye = 0; eye < 2; eye++)
+	{
+		halo_vr_draw_eye(eye);
+		hud_draw_vr_world_marks();
+	}
+	halo_vr_draw_eye(-1);
+	vr_render.marks_drawing = FALSE;
+	vr_render_screen_point_end();
+	vr_render.marks_drawn = TRUE;
+}
+
+/* hud.c, in the HUD's pass: the marks over the world were drawn in the eyes
+this frame, and are not drawn in the HUD's layer */
+boolean vr_render_world_marks_drawn(void)
+{
+	return vr_render.marks_drawn;
+}
+
+/* hud.c: a mark over the world at this point (world units), which the game
+draws about this point of its screen (the viewport's pixels, from its top
+left), as it projected the point: in the eye pass, what it draws next moves
+to the point in each eye, as large as in the HUD's layer. FALSE if the point
+is behind an eye (nothing to draw); TRUE, and nothing done, in the HUD's
+pass. */
+boolean vr_render_world_mark(real_point3d const *point, real x, real y)
+{
+	struct halo_vr_view *view = &vr_render.view;
+	float corrections[2][4];
+	real width, height, aspect;
+	short eye, i;
+
+	if (!vr_render.marks_drawing)
+		return TRUE;
+	width = (real)(render.camera.viewport_bounds.x1 - render.camera.viewport_bounds.x0);
+	height = (real)(render.camera.viewport_bounds.y1 - render.camera.viewport_bounds.y0);
+	if (width <= 0.0f || height <= 0.0f)
+		return FALSE;
+	aspect = width / height;
+	for (eye = 0; eye < 2; eye++)
+	{
+		double m[4][4];
+		real clip[4], screen_x, screen_y, scale_x, scale_y;
+		const float *fov = view->fov[eye];
+
+		frustum_clip_transform(&vr_render.eyes[eye], m);
+		for (i = 0; i < 4; i++)
+			clip[i] = (real)(m[i][0] * point->x + m[i][1] * point->y + m[i][2] * point->z + m[i][3]);
+		if (clip[3] <= 0.0f || fov[1] <= fov[0] || fov[2] <= fov[3])
+			return FALSE;
+		/* (the game's screen: x = ((ndc + 1) width - 1) / 2, y from the
+		top; the HUD's layer's size, as the crosshairs') */
+		screen_x = ((clip[0] / clip[3] + 1.0f) * width - 1.0f) * 0.5f;
+		screen_y = ((1.0f - clip[1] / clip[3]) * height - 1.0f) * 0.5f;
+		scale_x = 2.0f * view->hud_tangent * aspect / (fov[1] - fov[0]);
+		scale_y = 2.0f * view->hud_tangent / (fov[2] - fov[3]);
+		corrections[eye][0] = (float)scale_x;
+		corrections[eye][1] = (float)scale_y;
+		corrections[eye][2] = (float)(screen_x - scale_x * x);
+		corrections[eye][3] = (float)(screen_y - scale_y * y);
+	}
+	halo_vr_set_screen_corrections(corrections);
+	return TRUE;
+}
+
+/* hud_nav_points.c: a waypoint at this point, on the screen (else at its
+edge, pointing to it) and drawn about this point of the game's screen (as
+vr_render_world_mark): whether to draw it now. In the eye pass, those on
+the screen, each over its point (vr_render_world_mark); in the HUD's pass,
+the others, at the edge of the HUD as ever. */
+boolean vr_render_world_waypoint(real_point3d const *point, boolean on_screen, real x, real y)
+{
+	short index;
+
+	if (vr_render.marks_drawing)
+	{
+		if (!on_screen || vr_render.waypoint_count >= WORLD_WAYPOINTS_MAXIMUM)
+			return FALSE;
+		if (!vr_render_world_mark(point, x, y))
+			return FALSE;
+		/* (each eye's draw sees it again) */
+		for (index = 0; index < vr_render.waypoint_count; index++)
+		{
+			if (!memcmp(&vr_render.waypoints[index], point, sizeof(*point)))
+				return TRUE;
+		}
+		vr_render.waypoints[vr_render.waypoint_count++] = *point;
+		return TRUE;
+	}
+	if (!vr_render.marks_drawn)
+		return TRUE;
+	for (index = 0; index < vr_render.waypoint_count; index++)
+	{
+		if (!memcmp(&vr_render.waypoints[index], point, sizeof(*point)))
+			return FALSE;
+	}
+	return TRUE;
 }
 
 /* the eyes' transforms for the projection set last (vr_render.centre):
