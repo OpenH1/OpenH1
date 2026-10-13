@@ -227,8 +227,8 @@ struct halo_vr_holsters
 /* the magnified view in a weapon's scope (vr.scopes, vr.scope_view,
 port/linux/game/vr_scope.c): raised to an eye, its image on a quad at the
 scope's eyepiece, facing back along the scope, seen by that eye alone;
-smart-linked, on a quad on the visor where the aim is, facing the head, seen
-by both */
+smart-linked, on a quad on the visor just above the aim, facing the head,
+seen by both */
 struct halo_vr_scope
 {
 	/* the eye (0 left, 1 right; -1 both: the smart-link's) */
@@ -244,8 +244,8 @@ struct halo_vr_scope
 	float zoom;
 	float zoom_height;
 	/* the smart-link's: where its reticle (the aim) is, right of and above
-	the view's middle, as fractions of its radius (it is held in view where
-	the aim is not) */
+	the view's middle, as fractions of its radius (its middle: the view is
+	drawn toward the aim, beside it) */
 	float reticle[2];
 };
 

@@ -1092,7 +1092,7 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | Left stick | Move (click: crouch) |
 | Head | Crouch: crouch in the room, and the game crouches (`vr.physical_crouch`) |
 | Right stick, left and right | Turn: in steps (`vr.turn = "snap"`) or smoothly (`"smooth"`) |
-| Right stick click | Zoom: on the visor, where the weapon aims (`vr.scope_view = "smartlink"`), or a raised scope's magnification (`"eye"`): below |
+| Right stick click | Zoom: on the visor, beside where the weapon aims (`vr.scope_view = "smartlink"`), or a raised scope's magnification (`"eye"`): below |
 | Head | Look |
 | Right controller | Aim: it holds the weapon, and the reticle shows where it points (`vr.aim = "controller"`). With `vr.aim = "head"`, the head aims and the reticle stays in the middle of the view. |
 | Left controller | The left hand, where the controller is; the left grip closes it (`vr.hands`). The right index finger lies off the right trigger until your finger touches it, then rests on it and pulls with it ("The trigger finger", below). |
@@ -1302,13 +1302,13 @@ on your visor: you never bring a scope to your eye.
   grenade, a switch of weapons.
 - While zoomed, a round magnified view is on the visor, seen by both eyes,
   at the HUD's distance (`vr.hud_distance`), about 28 degrees across
-  (`vr.smartlink_size`), its middle where the weapon aims (the reticle's
-  place), so that what is there is magnified there and lines up with the
-  world about it: held low or out to the side, the weapon still zooms on
-  what it points at. Where the aim is more than 28 degrees from where you
-  look, the view stays at that edge of your view, its reticle moved toward
-  the aim (to its own edge at most). The rest of your view never zooms nor
-  moves.
+  (`vr.smartlink_size`), just above where the weapon aims, its lower edge 3
+  degrees above the reticle: the reticle stays in sight on what it aims at,
+  and the view shows that magnified, its own reticle in its middle on the
+  same point. Held low or out to the side, the weapon still zooms on what
+  it points at. Aiming high in your view, where the view above would be out
+  of it, it is below the aim instead; it stays within 28 degrees of where
+  you look. The rest of your view never zooms nor moves.
 - It has a reticle of the HUD's blue (lines across it with a gap about the
   aim, bolder near it, a faint red dot where the shot goes), the zoom small
   below and right of its middle as the game's HUD labels it ("2x",
@@ -1604,7 +1604,7 @@ headset's session is opened with, apply from the next start.
 | `vr.holsters` | `true` | `HALO_VR_HOLSTERS` | With `vr.aim = "controller"`: the weapon you carry but do not hold is on your body, and the right hand reaching there and gripping draws it (above, "Holsters"). Y switches weapons as ever. |
 | `vr.physical_crouch` | `true` | `HALO_VR_PHYSICAL_CROUCH` | The head crouching crouches the player: about 0.35 m below the standing eyes (`vr.height = "standing"`), or 0.25 m below the recentred ones (seated), and standing within 0.07 m of that stands (above, "Crouching"). The left stick's click crouches as ever. |
 | `vr.scopes` | `true` | `HALO_VR_SCOPES` | With `vr.aim = "controller"`: the zoom magnifies a view of its own, as `vr.scope_view` says (above, "Scopes"). `false`: the game's zoom (nothing is magnified in the headset), whatever `vr.scope_view` is. |
-| `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a round magnified view shows on the visor where the weapon aims, at the HUD's distance (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
+| `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a round magnified view of where the weapon aims shows on the visor just above it, at the HUD's distance (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
 | `vr.smartlink_size` | `28.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the magnified view on the visor is, in degrees of the view (10 to 45). |
 | `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the left hand takes another magazine from the left hip (the one in the weapon ejecting itself, or the right stick pushed down ejects it) and pushes it in, loaded at once (as a network game's client, after the game's reload time); the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand alone (above, "Throwing a grenade with the left hand"; on foot the left trigger throws nothing); `"both"`, with the left hand or the left trigger; `"button"`, with the left trigger alone. |
@@ -2145,14 +2145,20 @@ supersampling costs as above, and multisampling the eye pass
   that pass too, while the game is zoomed (the player's zoom level, which
   the game's own click and unzooms set): from between the eyes toward where
   the aim meets the world (the reticle's point, at its smoothed distance
-  from the frame before: `vr_render_scope_aim`), held within 28 degrees of
-  the head's forward, its field of view `vr.smartlink_size` over the zoom's
-  magnification, up as the world's. Its image (the same copy, with the
-  HUD's reticle where the aim is and a soft edge) is on the same quad layer,
-  for both eyes, `vr.hud_distance` from the middle of the eyes along the
-  same line, facing back along it, as wide as `vr.smartlink_size` there,
-  and up as the view: from between the eyes, what it shows is where it
-  shows it, magnified about its middle. The layer is over the eyes' images
+  from the frame before: `vr_render_scope_aim`), its field of view
+  `vr.smartlink_size` over the zoom's magnification, up as the world's.
+  Its image (the same copy, with the HUD's reticle in its middle, on the
+  aim, and a soft edge) is on the same quad layer, for both eyes,
+  `vr.hud_distance` from the middle of the eyes, just above the aim (its
+  lower edge 3 degrees above the reticle; below it where above would be
+  more than 28 degrees from the head's forward), held within 28 degrees of
+  the head's forward, facing back toward the eyes, as wide as
+  `vr.smartlink_size` there, up as the world's. Over the aim, as it was,
+  the window hid the reticle in the world and what it was on; beside it,
+  the reticle stays on the target and the window shows the same point
+  magnified (screenshots on b30 with the pistol at 2x: above reads best;
+  up and right covered the HUD's shields, and to the right crowded the
+  weapon). The layer is over the eyes' images
   and under the HUD's panels, as the eye's is; the HUD's zoomed view is not
   drawn while it shows (`hud_weapon.c`, `vr_scope_shown`), and its shaders
   are made ready as the eye's are, the first time a weapon that zooms is in

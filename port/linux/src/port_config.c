@@ -273,7 +273,8 @@ static const struct config_setting config_settings[] =
 		_platform_desktop,
 		"With vr.scopes: \"smartlink\", the right stick's click zooms as the game\n"
 		"does, whatever the weapon's place, and the zoom shows on the visor, a\n"
-		"round magnified view where the weapon aims (vr.smartlink_size wide);\n"
+		"round magnified view of where the weapon aims, just above it\n"
+		"(vr.smartlink_size wide);\n"
 		"\"eye\", the sniper rifle's and the pistol's scopes magnify the view\n"
 		"within their lens as you raise them to an eye, and only then (the\n"
 		"click changes the magnification); \"off\", as vr.scopes = false." },
