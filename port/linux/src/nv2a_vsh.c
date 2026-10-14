@@ -302,6 +302,33 @@ BOOL nv2a_vertex_shader_lighting(const DWORD *instructions, unsigned long instru
 	{
 		return FALSE;
 	}
+	/* the world position the clip position's x is computed from (with c[-96],
+	the first row of the world's projection), for the enhanced dynamic
+	lights: a temporary (the skinned position) */
+	lighting->world_found = FALSE;
+	for (index = 0; index < count; index++)
+	{
+		const DWORD *instruction = instructions + index * 4;
+		unsigned long mac = field(instruction, 1, 21, 4);
+		struct operand_fields a, b;
+
+		operand_fields(instruction, 'A', &a);
+		operand_fields(instruction, 'B', &b);
+		/* (written to the position's temporary, r12, or through the output
+		register) */
+		if ((mac == _mac_dp4 || mac == _mac_dph) &&
+			((field(instruction, 3, 20, 4) == 12 && (field(instruction, 3, 24, 4) & 0x8)) ||
+				((field(instruction, 3, 12, 4) & 0x8) && field(instruction, 3, 11, 1) &&
+					field(instruction, 3, 3, 8) == 0 && !field(instruction, 3, 2, 1))) &&
+			b.mux == _mux_constant && !field(instruction, 3, 1, 1) &&
+			field(instruction, 1, 13, 8) == XGPU_VERTEX_CONSTANT_BIAS - 96 && light_temporary(&a, FALSE))
+		{
+			lighting->world_found = TRUE;
+			lighting->world_instruction = index;
+			lighting->world_register = a.index;
+			break;
+		}
+	}
 	lighting->lights = 1;
 	lighting->normal_register = distant_register[0];
 	lighting->normal_instruction = distant[0] < distant[1] ? distant[0] : distant[1];
@@ -432,8 +459,10 @@ char *nv2a_vertex_shader_to_glsl(const DWORD *instructions, unsigned long instru
 	/* (the pixel shader's model_lighting; the normal's length in w) */
 	if (lighting)
 		xgpu_text_append(&text, "out vec4 xWorldNormal;\n");
-	if (lighting && lighting->lights == 2)
+	if (lighting && (lighting->lights == 2 || lighting->world_found || lighting->lights == XGPU_ENVIRONMENT_LIGHTING))
 		xgpu_text_append(&text, "out vec3 xWorldPosition;\n");
+	if (lighting && lighting->lights == XGPU_ENVIRONMENT_LIGHTING)
+		xgpu_text_append(&text, "out vec3 xWorldBinormal;\nout vec3 xWorldTangent;\n");
 	for (index = 0; index < XGPU_VERTEX_ATTRIBUTE_COUNT; index++)
 	{
 		if (packed_attribute_mask & (1UL << index))
@@ -463,6 +492,13 @@ char *nv2a_vertex_shader_to_glsl(const DWORD *instructions, unsigned long instru
 		"\tint a0 = 0;\n"
 		"\tvec4 A, B, C, mac, ilu;\n");
 	xgpu_text_append(&text, "\tvec4 clip_position = vec4(0.0);\n\tbool clip_captured = false;\n");
+	/* a structure's vertices are in the world: as they are (the enhanced
+	dynamic lights, XGPU_ENVIRONMENT_LIGHTING) */
+	if (lighting && lighting->lights == XGPU_ENVIRONMENT_LIGHTING)
+	{
+		xgpu_text_append(&text, "\txWorldPosition = v0.xyz;\n\txWorldNormal = vec4(v1.xyz, 1.0);\n"
+			"\txWorldBinormal = v2.xyz;\n\txWorldTangent = v3.xyz;\n");
+	}
 
 	for (index = 0; index < instruction_count; index++)
 	{
@@ -481,13 +517,15 @@ char *nv2a_vertex_shader_to_glsl(const DWORD *instructions, unsigned long instru
 
 		xgpu_text_append(&text, "\t/* %lu */\n", index);
 		/* the lighting's normal and position, before the program reuses them */
-		if (lighting && index == lighting->normal_instruction)
+		if (lighting && lighting->lights != XGPU_ENVIRONMENT_LIGHTING && index == lighting->normal_instruction)
 		{
 			xgpu_text_append(&text, "\txWorldNormal = vec4(r%lu.xyz, length(r%lu.xyz));\n",
 				lighting->normal_register, lighting->normal_register);
 		}
 		if (lighting && lighting->lights == 2 && index == lighting->position_instruction)
 			xgpu_text_append(&text, "\txWorldPosition = r%lu.xyz;\n", lighting->position_register);
+		else if (lighting && lighting->lights == 1 && lighting->world_found && index == lighting->world_instruction)
+			xgpu_text_append(&text, "\txWorldPosition = r%lu.xyz;\n", lighting->world_register);
 		xgpu_text_append(&text, "\tA = "); operand(&text, instruction, 'A', relative); xgpu_text_append(&text, ";\n");
 		xgpu_text_append(&text, "\tB = "); operand(&text, instruction, 'B', relative); xgpu_text_append(&text, ";\n");
 		xgpu_text_append(&text, "\tC = "); operand(&text, instruction, 'C', relative); xgpu_text_append(&text, ";\n");

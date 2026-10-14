@@ -185,6 +185,11 @@ symbols in this file:
 #include "units/units.h"
 #include "cache/cache_files.h" /* port: (tag_iterator: light_port_glow_definition_get) */
 void shield_glow_update(void); /* port: port/linux/game/shield_glow.c */
+/* port: port/linux/game/dynamic_lights.c (display.dynamic_lights) */
+void dynamic_lights_note(long rasterizer_light_index, long flags, real cone_scale, real cone_offset,
+	real_point3d const *tick_position);
+boolean dynamic_lights_first_person(long weapon_index, real_point3d *position);
+void dynamic_lights_submit(void);
 
 /* port: port/linux/src (halo.log) */
 void platform_log(const char *format, ...);
@@ -463,6 +468,8 @@ static void light_get_bounding_sphere(
 	long light_index,
 	real_point3d *position,
 	real *radius);
+static boolean light_port_lights_structure(
+	struct point_light_definition const *definition);
 static void light_port_drawn_center(
 	struct light_datum const *light,
 	real_point3d *center);
@@ -1041,6 +1048,7 @@ void lights_preprocess_scene(
 		real intensity;
 		real inverse_intensity;
 		real lens_flare_scale = 1.0f;
+		boolean projectile_lights;
 
 		render_debug_light(scene_light_handle);
 		object = light->object_index != NONE
@@ -1139,15 +1147,23 @@ void lights_preprocess_scene(
 			}
 		}
 
+		/* port: with the enhanced dynamic lights, a projectile's light that
+		is only its lens flare's (a plasma bolt's, a needle's: the game lights
+		nothing with them) lights too, by its tag's color and radius
+		(port/linux/game/dynamic_lights.c) */
+		projectile_lights = !TEST_FLAG(light->flags, _point_light_dynamic_bit) && object &&
+			object->object.type == _object_type_projectile && halo_dynamic_lights_enhanced();
 		if (light->color.red != 0.0f
 			|| light->color.green != 0.0f
 			|| light->color.blue != 0.0f)
 		{
-			if (TEST_FLAG(light->flags, _point_light_dynamic_bit))
+			if (TEST_FLAG(light->flags, _point_light_dynamic_bit) || projectile_lights)
 			{
 				light->radius = (definition->radius_modifier_lower_bound * inverse_intensity
 					+ definition->radius_modifier_upper_bound * intensity)
 					* definition->radius;
+				if (projectile_lights)
+					light->radius = definition->radius;
 				/* port: a glow's radius is as set (light_port_glow_set) */
 				if (TEST_FLAG(light->flags, _point_light_port_glow_bit))
 					light->radius = light->intensity_scale;
@@ -1182,20 +1198,30 @@ void lights_preprocess_scene(
 					tick, a tick ahead of the object drawn, and would step
 					along behind a bolt; it is drawn on the marker as drawn
 					(light->position, which the units' illumination reads, is
-					kept) */
-					if (object && light->parent_light_index == NONE)
+					kept). With the enhanced dynamic lights, a muzzle flash's
+					on the first-person weapon (port/linux/game/dynamic_lights.c) */
+					if (object)
 					{
-						struct object_marker drawn;
-
-						if (object_get_marker_by_name(
-							light->object_index,
-							object_get_attachment_marker_name(light->object_index, light->attachment_marker_index),
-							&drawn,
-							1) > 0)
+						if (light->parent_light_index == NONE)
 						{
-							light_parameters.position = drawn.matrix.position;
-							light_parameters.forward = drawn.matrix.forward;
-							light_parameters.up = drawn.matrix.up;
+							struct object_marker drawn;
+
+							if (object_get_marker_by_name(
+								light->object_index,
+								object_get_attachment_marker_name(light->object_index, light->attachment_marker_index),
+								&drawn,
+								1) > 0)
+							{
+								light_parameters.position = drawn.matrix.position;
+								light_parameters.forward = drawn.matrix.forward;
+								light_parameters.up = drawn.matrix.up;
+							}
+						}
+						else if (object->object.type == _object_type_weapon
+							&& object->object.parent_object_index != NONE
+							&& halo_dynamic_lights_enhanced())
+						{
+							dynamic_lights_first_person(light->object_index, &light_parameters.position);
 						}
 					}
 
@@ -1238,6 +1264,35 @@ void lights_preprocess_scene(
 					light->rasterizer_light_index = rasterizer_light_submit(
 						&light_parameters);
 					debug_rasterizer_light_count = light->rasterizer_light_index + 1;
+					/* port: what the enhanced dynamic lights need of it: its
+					cone (as rasterizer_set_model_lighting_point_light's), a
+					bolt's glow, and whether the structure is lit by the
+					game's own pass (light_port_lights_structure) */
+					if (light->rasterizer_light_index != NONE && halo_dynamic_lights_enhanced())
+					{
+						real cone_scale = 0.0f;
+						real cone_offset = 1.0f;
+						long flags = 0;
+
+						if (definition->runtime_cosine_falloff_angle != -1.0f)
+						{
+							cone_scale = 1.0f / (definition->runtime_cosine_falloff_angle -
+								definition->runtime_cosine_cutoff_angle);
+							cone_offset = -(cone_scale * definition->runtime_cosine_cutoff_angle);
+						}
+						if (!light_port_lights_structure(definition))
+							flags |= HALO_DYNAMIC_LIGHT_MODELS_ONLY;
+						/* (a plasma bolt's: a projectile with no model; a
+						needle's or a grenade's own body would hide its glow's
+						middle) */
+						if (object && object->object.type == _object_type_projectile)
+						{
+							flags |= HALO_DYNAMIC_LIGHT_PROJECTILE;
+							if (object_definition_get(object->definition_index)->object.model.index == NONE)
+								flags |= HALO_DYNAMIC_LIGHT_HALO;
+						}
+						dynamic_lights_note(light->rasterizer_light_index, flags, cone_scale, cone_offset, &light->position);
+					}
 				}
 			}
 			else
@@ -1340,6 +1395,9 @@ void lights_preprocess_scene(
 	}
 	lights_globals.queued_lens_flare_count = 0;
 	rasterizer_lights_end();
+	/* port: the frame's lights to the renderer (display.dynamic_lights) */
+	if (halo_dynamic_lights_enhanced())
+		dynamic_lights_submit();
 	profile_exit(lights_section);
 
 	return;
@@ -1859,6 +1917,15 @@ static void light_port_drawn_center(
 	center->z += drawn->z - light->position.z;
 }
 
+/* port: whether the enhanced dynamic lights light the structure with this
+light (display.dynamic_lights, port/linux/game/dynamic_lights.c): all but a
+spotlight's (a flashlight's, a lamp's), whose gel the game's own pass draws */
+static boolean light_port_lights_structure(
+	struct point_light_definition const *definition)
+{
+	return definition->cutoff_angle >= _pi / 2;
+}
+
 void lights_render_diffuse(
 	void)
 {
@@ -1876,7 +1943,11 @@ void lights_render_diffuse(
 				lights_globals.scene_point_lights[light_index]);
 
 			if (TEST_FLAG(light->flags, _point_light_dynamic_bit)
-				&& light->rasterizer_light_index != NONE)
+				&& light->rasterizer_light_index != NONE
+				/* port: not a light the enhanced dynamic lights light the
+				structure with, in its lightmap pass */
+				&& !(halo_dynamic_lights_enhanced()
+					&& light_port_lights_structure(light_definition_get(light->definition_index))))
 			{
 				boolean skip_clusters = TEST_FLAG(light->flags,
 						_point_light_attached_to_first_person_weapon_bit)

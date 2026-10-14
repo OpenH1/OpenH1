@@ -633,6 +633,13 @@ static const struct config_setting config_settings[] =
 	{ "display.shield_glow_intensity", _config_string, "\"default\"", "HALO_SHIELD_GLOW_INTENSITY", _environment_value, _platform_all,
 		"How far the shield glow reaches: \"default\" or \"light_show\" (three\n"
 		"times as far, and at full strength from a third of the flare)." },
+	{ "display.dynamic_lights", _config_string, "\"classic\"", "HALO_DYNAMIC_LIGHTS", _environment_value, _platform_desktop,
+		"The light of plasma bolts, needles, rockets, muzzle flashes and\n"
+		"explosions: \"classic\" (the game's own) or \"enhanced\": for each pixel\n"
+		"of the walls and models, through the walls' bump maps, gliding with\n"
+		"the bolt between ticks, brighter in its core and fading softly, with\n"
+		"a glow about each plasma bolt, and lighting your own weapon and hands.\n"
+		"Desktop OpenGL only (not OpenGL ES: there, classic)." },
 	{ "display.shield_color", _config_string, "\"default\"", "HALO_SHIELD_COLOR", _environment_value, _platform_all,
 		"Your energy shield's color, as this machine draws it: \"default\" (the\n"
 		"shield's own) or a multiplayer armor color: white, black, red, blue,\n"
@@ -1046,6 +1053,14 @@ static const struct config_setting config_settings[] =
 		"Comma-separated ids of vertex shaders not to draw with." },
 	{ "debug.gpu_dump_shaders", _config_string, "\"\"", "HALO_GPU_DUMP_SHADERS", _environment_value, _platform_all,
 		"A folder to write the generated GLSL to; empty none." },
+	{ "debug.dynamic_lights_look", _config_string, "\"\"", "HALO_DYNAMIC_LIGHTS_LOOK", _environment_value, _platform_all,
+		"The enhanced dynamic lights' look, for tuning it: up to eight numbers,\n"
+		"the lights' brightness, core, spill past white and wrap on models, the\n"
+		"glow's size (of the light's radius), brightness, softness (world\n"
+		"units) and least size; empty: the defaults." },
+	{ "debug.dynamic_lights_log", _config_boolean, "false", "HALO_DYNAMIC_LIGHTS_LOG", _environment_value, _platform_all,
+		"Log where the first projectile's light is drawn each frame (the\n"
+		"enhanced dynamic lights)." },
 	{ "debug.gpu_debug_expression", _config_string, "\"\"", "HALO_GPU_DEBUG_EXPR", _environment_value, _platform_all,
 		"A GLSL expression every pixel shader shows instead of its result." },
 	{ "debug.gpu_debug_texture0", _config_boolean, "false", "HALO_GPU_DEBUG_T0", _environment_set_is_true, _platform_all,

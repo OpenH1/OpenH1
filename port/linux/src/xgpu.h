@@ -92,7 +92,18 @@ struct nv2a_vertex_lighting
 	unsigned long normal_instruction, normal_register;
 	/* (with the point lights only) */
 	unsigned long position_instruction, position_register;
+	/* the world position the program projects to the screen (the
+	temporary its clip position is computed from, before the instruction
+	given), for the enhanced dynamic lights (display.dynamic_lights): with
+	the point lights, the same as theirs; world_found FALSE if none */
+	BOOL world_found;
+	unsigned long world_instruction, world_register;
 };
+
+/* the lights value of a structure's (the environment's) lightmap pass lit
+by the enhanced dynamic lights: its vertices' world position, normal,
+binormal and tangent (v0 to v3) handed on as they are */
+#define XGPU_ENVIRONMENT_LIGHTING 3
 
 /* finds them in a model lighting program, checking that it lights its
 diffuse color as nv2a_psh.c does for each pixel; FALSE if it does not */
@@ -193,6 +204,13 @@ struct nv2a_pixel_shader_key
 	blend of a constant color factor with a constant alpha one, as the
 	meters' (shader_transparent_meter) */
 	unsigned char source_blend;
+	/* the enhanced dynamic lights (display.dynamic_lights, d3d8_gl.c) added
+	for each pixel: XGPU_DYNAMIC_LIGHTS_ENVIRONMENT to a structure's lightmap
+	pass (into the light the textures are then multiplied by, the bump map
+	in texture 0), XGPU_DYNAMIC_LIGHTS_MODEL to a model's lighting lit for
+	each pixel in place of its two point lights; 0 none */
+	unsigned char dynamic_lights;
+	unsigned char pad[3];
 };
 
 char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key);
@@ -225,6 +243,55 @@ uniform space): [0] c[-82] (the translucency in z), [1] to [11] c[-79] to
 c[-69] (rasterizer_set_model_lighting's two point lights, two distant
 lights and the ambient light) */
 #define XGPU_MODEL_LIGHT_COUNT 12
+
+/* ---------- enhanced dynamic lights
+
+display.dynamic_lights "enhanced" (d3d8_gl.c, halo_dynamic_lights_set):
+the frame's dynamic lights (up to the game's 128 a window) light the
+structure's lightmap pass and the models lit for each pixel, each pixel by
+the lights near it alone. A grid about the camera, its cells boxes in the
+world (eye-independent: the VR mode's eyes share it), holds for each cell a
+128-bit mask of the lights whose spheres reach it (an integer 3D texture at
+XGPU_DYNAMIC_LIGHTS_UNIT); the lights are a uniform block at
+XGPU_DYNAMIC_LIGHTS_BINDING. The cells grow away from the camera: a cell's
+index along each axis is log2(1 + |offset| / XGPU_DYNAMIC_LIGHTS_CELL) times
+that axis's scale, from the middle, so that the grid reaches
+XGPU_DYNAMIC_LIGHTS_REACH world units each way with small cells near the
+camera, where lights are seen large. Desktop OpenGL only. */
+#define XGPU_DYNAMIC_LIGHTS_MAXIMUM 128
+#define XGPU_DYNAMIC_LIGHTS_GRID_X 32
+#define XGPU_DYNAMIC_LIGHTS_GRID_Y 32
+#define XGPU_DYNAMIC_LIGHTS_GRID_Z 16
+#define XGPU_DYNAMIC_LIGHTS_CELL 0.5f
+#define XGPU_DYNAMIC_LIGHTS_REACH 128.0f
+/* the largest soft core of a light's falloff, world units (nv2a_psh.c) */
+#define XGPU_DYNAMIC_LIGHTS_CORE 0.6
+#define XGPU_DYNAMIC_LIGHTS_UNIT 12
+#define XGPU_DYNAMIC_LIGHTS_BINDING 1
+enum
+{
+	XGPU_DYNAMIC_LIGHTS_ENVIRONMENT = 1,
+	XGPU_DYNAMIC_LIGHTS_MODEL,
+};
+
+/* the uniform block, as std140 lays it out: [0] the grid's middle (the
+camera) and the light count, [1] each axis's cells a doubling of the offset
+and 1 / XGPU_DYNAMIC_LIGHTS_CELL, [2] the look (nv2a_psh.c); then each
+light's position and 1 / radius (less than 0: models only, the structure
+lit by the game's own pass: a spotlight's gel), its color (linear, the
+look's brightness in it) and its cone's offset, its cone's axis and scale
+(omni: 0, 0 and an offset of 1) */
+struct xgpu_dynamic_lights_block
+{
+	float grid[3][4];
+	float position[XGPU_DYNAMIC_LIGHTS_MAXIMUM][4];
+	float color[XGPU_DYNAMIC_LIGHTS_MAXIMUM][4];
+	float cone[XGPU_DYNAMIC_LIGHTS_MAXIMUM][4];
+};
+
+/* the GLSL of the block, the grid and the functions that light by them
+(nv2a_psh.c) */
+void xgpu_dynamic_lights_glsl(struct xgpu_text *text);
 
 /* ---------- textures */
 

@@ -498,6 +498,9 @@ static void render_window(
 		structure_render_detail_objects();
 		rasterizer_transparent_geometry_draw(FALSE);
 		rasterizer_transparent_geometry_stop();
+		/* port: the plasma bolts' lights' glows (display.dynamic_lights,
+		port/linux/src/d3d8_gl.c) */
+		halo_dynamic_lights_halos_draw();
 		structure_render_fog_screen();
 #ifdef HALO_VR
 		if (render_vr_scope_pass)
