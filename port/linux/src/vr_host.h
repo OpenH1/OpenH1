@@ -2,7 +2,7 @@
 VR_HOST.H
 
 What the VR mode (HALO_VR, vr.c) asks of OpenXR, which the host does
-(port/linux/arm64/host_vr.c): the session, the swapchains, the frame loop,
+(port/linux/host/host_vr.c): the session, the swapchains, the frame loop,
 the poses and the controllers. On the Linux arm64 build the game is guest
 code with 32-bit pointers that cannot call OpenXR, whose structures hold
 64-bit pointers and handles, so these structures hold only 32-bit integers

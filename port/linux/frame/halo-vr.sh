@@ -9,7 +9,7 @@
 # - MESA_GL_VERSION_OVERRIDE, MESA_GLSL_VERSION_OVERRIDE: Steam starts its
 #   games with Mesa capped at GL 4.3 (and GLSL 430), where the GL 4.5
 #   context the VR build's renderer asks for fails (EGL_BAD_MATCH). The
-#   game removes both itself as it starts (port/linux/arm64/host_main.c),
+#   game removes both itself as it starts (port/linux/host/host_main.c),
 #   so they need nothing here.
 # - mesa_glthread: Mesa's GL thread, which the game asks for (true) unless
 #   it is set.

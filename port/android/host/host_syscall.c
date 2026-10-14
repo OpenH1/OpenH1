@@ -33,7 +33,7 @@ Per call:
   mask of rt_sigprocmask (8 bytes), f_owner_ex;
 - memory mappings must stay below 4 GB (host_memory.c);
 - the standard output and error streams go to logcat (on Android; on Linux
-  arm64, port/linux/arm64, they are the process's);
+  arm64, port/linux/host, they are the process's);
 - process exit, and calls that have no meaning for the guest (signal
   handlers, which the host owns), are answered here;
 - a call the guest's interface has but the host does not perform returns

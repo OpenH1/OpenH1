@@ -42,7 +42,7 @@ tools/frame_package.py and frame_install.sh, with its launcher and its
 checksums; no release has a VR build, and the desktop one would replace
 its executable) */
 #elif defined(__aarch64__)
-/* the 64-bit ARM build (port/linux/arm64) */
+/* the 64-bit ARM build (port/linux/host) */
 #define UPDATE_PLATFORM "linux-arm64"
 #elif defined(__x86_64__)
 /* (none yet: the 64-bit x86 build, a guest as the 64-bit ARM build is, will

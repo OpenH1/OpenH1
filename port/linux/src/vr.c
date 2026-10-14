@@ -2,7 +2,7 @@
 VR.C
 
 The VR mode's platform side (HALO_VR; vr.h, port/linux/README.md "VR"): the
-OpenXR session through the host (vr_host.h, port/linux/arm64/host_vr.c),
+OpenXR session through the host (vr_host.h, port/linux/host/host_vr.c),
 the frame loop, the head's pose in the game's axes, the controllers as a
 gamepad, turning and recentring, the left hand's grenade throw, the
 holsters and the reload by hand.

@@ -10,7 +10,7 @@ paths instead of the app's, and the host is a Linux executable instead of an
 app's library:
 
 - build/<name>/halo: the host (port/android/host, with
-  port/linux/arm64/host_main.c as its entry point), with the guest image
+  port/linux/host/host_main.c as its entry point), with the guest image
   inside it;
 - build/<name>/libSDL3.so.0: SDL3, next to the executable, which finds
   it there (an rpath of $ORIGIN), as few distributions have SDL3 yet, and
@@ -38,13 +38,13 @@ from .linux_build import (MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, SDL_RPA
 from .ninja_syntax import Writer, escape
 
 # the desktop host's own files (its entry point, SDL's desktop functions, VR)
-PORT_DIR = Path("port/linux/arm64")
+PORT_DIR = Path("port/linux/host")
 ANDROID_DIR = Path("port/android")
 LINUX_DIR = Path("port/linux")
 # the system's OpenGL ES, EGL and OpenGL headers (libgles-dev, libegl-dev and
 # libgl-dev on Debian and Ubuntu, mesa on Arch Linux)
 GL_HEADERS = Path("/usr/include")
-# The Khronos OpenXR headers, for the VR build's host (port/linux/arm64/host_vr.c),
+# The Khronos OpenXR headers, for the VR build's host (port/linux/host/host_vr.c),
 # downloaded by the VR build when it is configured, as the OpenXR SDK has them
 # (Apache-2.0 OR MIT). The host loads the OpenXR runtime itself, so the build
 # needs no OpenXR package.
