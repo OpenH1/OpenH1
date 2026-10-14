@@ -157,25 +157,40 @@ SDL_VIDEO_DRIVER=x11 HALO_EXIT_AFTER=60 HALO_VR_TEST_HEAD=0 \
 	tools/vr_test/steamvr_driver.sh /tmp/steamvr-test --capture /tmp/frames 450 build/linux_x86_64/halo
 ```
 
-`steamvr_driver.sh` builds the driver (into `build/steamvr_driver`, with
-OpenVR's `openvr_driver.h` of its v2.15.6 release and Khronos's Vulkan
-headers v1.4.309, downloaded and checked against their SHA-256; OpenVR's
-license is BSD's, Vulkan's headers Apache's or MIT's), makes the folder
-given SteamVR's configuration (`xdg/openvr/openvrpaths.vrpath` naming the
-driver, `config/steamvr.vrsettings` forcing it, `logs/`, and a `home` whose
-`.steam` links to the user's, which SteamVR's launchers need), runs the
-command with `HOME`, `XDG_CONFIG_HOME` and `XR_RUNTIME_JSON` set for it, and
-then stops SteamVR. It never touches the user's SteamVR settings, and it
-refuses to start while SteamVR is running (it stops SteamVR when the command
-ends).
+`steamvr_driver.sh` builds the driver (into `build/steamvr_driver`, or
+`HALOTEST_BUILD`, with OpenVR's `openvr_driver.h` of its v2.15.6 release and
+Khronos's Vulkan headers v1.4.309, each file downloaded from the release's
+commit and checked against its SHA-256 on every run, so that one left
+partial is downloaded again; the driver is built again when its source, the
+headers or the compiler change; OpenVR's license is BSD's, Vulkan's headers
+Apache's or MIT's; `steamvr_driver.sh --build` only builds it, without
+SteamVR), makes the folder given SteamVR's configuration
+(`xdg/openvr/openvrpaths.vrpath` naming the driver, `config/steamvr.vrsettings`
+forcing it, `logs/`, and a `home` whose `.steam` links to the user's
+`root`, `sdk32`, `sdk64`, `bin32` and `bin64`, which SteamVR's launchers
+need), runs the command with `HOME`, `XDG_CONFIG_HOME` and `XR_RUNTIME_JSON`
+set for it, and then stops SteamVR. SteamVR's settings and its logs are the
+folder's: the user's SteamVR settings are neither read nor changed. It is
+not a sandbox: SteamVR runs from the user's Steam folder, through those
+links, and may write logs and caches there (Steam's own, its runtime's and
+its web helper's). It refuses to start while SteamVR is running. However it
+ends (the command's end, Ctrl-C, SIGTERM or SIGHUP, an error), it stops the
+command and the SteamVR processes started for it (those whose `HOME` is the
+folder's: never the user's own SteamVR).
 
 - `--capture <dir> <every>` writes each layer of every `<every>`th frame,
   both eyes side by side, as `steamvr<frame>_layer<n>.pam` (RGBA): layer 0
   is the game's eyes, layer 1 SteamVR's system layer (the game's quad
-  layers, as SteamVR draws them; transparent elsewhere). The driver reads
-  them back through a Vulkan device of its own; a captured frame holds
-  SteamVR's server up for a fifth of a second (the game's next frames are
-  late).
+  layers, as SteamVR draws them; transparent elsewhere). Only layers of
+  RGBA8 or BGRA8 (sRGB or not) are captured, BGRA's swizzled; another
+  format is skipped, with a line in `vrserver.txt`. The driver reads them
+  back through a Vulkan device of its own, which must be the GPU SteamVR
+  made the images on: OpenVR does not tell a driver which that is, so the
+  driver logs each Vulkan device with its UUID and takes the one given as
+  `driver_halotest`'s `vulkanDeviceUUID` setting (or
+  `HALOTEST_VULKAN_DEVICE_UUID`), else the only one that can import the
+  images, else the first discrete GPU. A captured frame holds SteamVR's
+  server up for a fifth of a second (the game's next frames are late).
 - Every 450 frames the driver logs SteamVR's frame timing in
   `<folder>/logs/vrserver.txt` (`halotest: timing`): its compositor's CPU
   time (in driver direct mode it measures no GPU time of its own), the

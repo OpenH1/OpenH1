@@ -10,8 +10,9 @@ Vulkan images (IVRIPCResourceManagerClient): the application's eyes, and
 SteamVR's system layer (its overlays, an OpenXR application's quad layers
 among them) over them. The driver paces them at its refresh rate and drops
 them, but every captureEvery frames writes each layer, both eyes side by
-side, to captureDirectory as a PAM file (RGBA), read back through a Vulkan
-device of its own; and every 450 frames it logs SteamVR's frame timing
+side, to captureDirectory as a PAM file (RGBA; layers of RGBA8 or BGRA8
+only), read back through a Vulkan device of its own, on SteamVR's GPU
+(vulkanDeviceUUID, below); and every 450 frames it logs SteamVR's frame timing
 (GetFrameTimings) to vrserver.txt. The headset is still, at a standing
 height (but for a tenth of a millimetre of sway, without which SteamVR puts
 it into standby), with 1512x1680 eyes (SteamVR's null driver's) at 90 Hz,
@@ -26,6 +27,7 @@ tools/vr_test/README.md.
 #include <vulkan/vulkan.h>
 
 #include <fcntl.h>
+#include <strings.h>
 #include <unistd.h>
 
 #include <chrono>
@@ -64,8 +66,15 @@ double seconds_now()
 IVRIPCResourceManagerClient *resources;
 
 /* ---------- the frames' capture: SteamVR's shared images, imported into a
-Vulkan device of the driver's own and copied to the host as PPM files
-(driver_halotest's captureDirectory and captureEvery settings) */
+Vulkan device of the driver's own and copied to the host as PAM files
+(driver_halotest's captureDirectory and captureEvery settings).
+
+The images can be imported only on the GPU SteamVR made them on, which
+OpenVR does not tell a driver: the device is the one whose
+VkPhysicalDeviceIDProperties::deviceUUID is driver_halotest's
+vulkanDeviceUUID setting (or HALOTEST_VULKAN_DEVICE_UUID; 32 hexadecimal
+digits), else the only one that can import them, else the first discrete
+GPU among them. Each device and its UUID is logged. */
 
 struct capture
 {
@@ -76,7 +85,53 @@ struct capture
 	VkQueue queue;
 	uint32_t family;
 	VkCommandPool pool;
+	char wanted_uuid[64];
 } vk;
+
+/* the device's queue family that can copy (graphics and compute imply
+transfer), or UINT32_MAX */
+uint32_t transfer_family(VkPhysicalDevice physical)
+{
+	VkQueueFamilyProperties families[16];
+	uint32_t count = 16, index;
+
+	vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, families);
+	for (index = 0; index < count; index++)
+	{
+		if (families[index].queueCount &&
+			(families[index].queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT | VK_QUEUE_TRANSFER_BIT)))
+		{
+			return index;
+		}
+	}
+	return UINT32_MAX;
+}
+
+int device_has_extension(VkPhysicalDevice physical, const char *name)
+{
+	VkExtensionProperties *extensions;
+	uint32_t count = 0, index;
+	int found = 0;
+
+	if (vkEnumerateDeviceExtensionProperties(physical, nullptr, &count, nullptr) != VK_SUCCESS || !count)
+		return 0;
+	extensions = new VkExtensionProperties[count];
+	if (vkEnumerateDeviceExtensionProperties(physical, nullptr, &count, extensions) >= 0)
+	{
+		for (index = 0; index < count && !found; index++)
+			found = !strcmp(extensions[index].extensionName, name);
+	}
+	delete[] extensions;
+	return found;
+}
+
+void uuid_text(const uint8_t uuid[VK_UUID_SIZE], char text[2 * VK_UUID_SIZE + 1])
+{
+	unsigned index;
+
+	for (index = 0; index < VK_UUID_SIZE; index++)
+		snprintf(text + 2 * index, 3, "%02x", uuid[index]);
+}
 
 int capture_initialize()
 {
@@ -85,46 +140,101 @@ int capture_initialize()
 	VkDeviceQueueCreateInfo queue = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
 	VkDeviceCreateInfo device = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	VkCommandPoolCreateInfo pool = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
-	const char *extensions[] = { VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME };
-	uint32_t count = 1;
+	const char *extensions[2] = { VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME };
+	VkPhysicalDevice physicals[16];
+	uint32_t count = 16, index, candidates = 0, chosen = UINT32_MAX, discrete = UINT32_MAX, first = UINT32_MAX;
 	float priority = 1.0f;
+	VkResult result;
 
 	if (vk.tried)
 		return vk.ready;
 	vk.tried = 1;
 	application.apiVersion = VK_API_VERSION_1_1;
 	instance.pApplicationInfo = &application;
-	if (vkCreateInstance(&instance, nullptr, &vk.instance) != VK_SUCCESS ||
-		vkEnumeratePhysicalDevices(vk.instance, &count, &vk.physical) < 0 || !count)
+	if ((result = vkCreateInstance(&instance, nullptr, &vk.instance)) != VK_SUCCESS)
 	{
-		DriverLog("halotest: capture: no Vulkan device\n");
+		DriverLog("halotest: capture: no Vulkan 1.1 instance (%d)\n", (int)result);
 		return 0;
 	}
-	vk.family = 0;
+	result = vkEnumeratePhysicalDevices(vk.instance, &count, physicals);
+	if ((result != VK_SUCCESS && result != VK_INCOMPLETE) || !count)
+	{
+		DriverLog("halotest: capture: no Vulkan device (%d)\n", (int)result);
+		return 0;
+	}
+	for (index = 0; index < count; index++)
+	{
+		VkPhysicalDeviceIDProperties identity = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES };
+		VkPhysicalDeviceProperties2 properties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2 };
+		char uuid[2 * VK_UUID_SIZE + 1];
+		int usable;
+
+		properties.pNext = &identity;
+		vkGetPhysicalDeviceProperties2(physicals[index], &properties);
+		uuid_text(identity.deviceUUID, uuid);
+		usable = device_has_extension(physicals[index], VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME) &&
+			transfer_family(physicals[index]) != UINT32_MAX;
+		DriverLog("halotest: capture: Vulkan device %u: %s, UUID %s%s\n", index, properties.properties.deviceName, uuid,
+			usable ? "" : " (cannot import SteamVR's images)");
+		if (!usable)
+			continue;
+		candidates++;
+		if (first == UINT32_MAX)
+			first = index;
+		if (discrete == UINT32_MAX && properties.properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+			discrete = index;
+		if (vk.wanted_uuid[0] && !strcasecmp(vk.wanted_uuid, uuid))
+			chosen = index;
+	}
+	if (vk.wanted_uuid[0] && chosen == UINT32_MAX)
+	{
+		DriverLog("halotest: capture: no Vulkan device that can import images has the UUID %s (vulkanDeviceUUID)\n",
+			vk.wanted_uuid);
+		return 0;
+	}
+	if (chosen == UINT32_MAX)
+		chosen = discrete != UINT32_MAX ? discrete : first;
+	if (chosen == UINT32_MAX)
+	{
+		DriverLog("halotest: capture: no Vulkan device can import SteamVR's images (VK_KHR_external_memory_fd)\n");
+		return 0;
+	}
+	if (candidates > 1 && !vk.wanted_uuid[0])
+	{
+		DriverLog("halotest: capture: %u Vulkan devices could be SteamVR's: device %u taken; if it is not the one "
+			"SteamVR's compositor uses (vrcompositor.txt), set driver_halotest's vulkanDeviceUUID\n", candidates, chosen);
+	}
+	vk.physical = physicals[chosen];
+	vk.family = transfer_family(vk.physical);
 	queue.queueFamilyIndex = vk.family;
 	queue.queueCount = 1;
 	queue.pQueuePriorities = &priority;
 	device.queueCreateInfoCount = 1;
 	device.pQueueCreateInfos = &queue;
-	device.enabledExtensionCount = 2;
+	device.enabledExtensionCount = 1;
+	if (device_has_extension(vk.physical, VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME))
+		extensions[device.enabledExtensionCount++] = VK_EXT_EXTERNAL_MEMORY_DMA_BUF_EXTENSION_NAME;
 	device.ppEnabledExtensionNames = extensions;
-	if (vkCreateDevice(vk.physical, &device, nullptr, &vk.device) != VK_SUCCESS)
+	if ((result = vkCreateDevice(vk.physical, &device, nullptr, &vk.device)) != VK_SUCCESS)
 	{
-		device.enabledExtensionCount = 1;
-		if (vkCreateDevice(vk.physical, &device, nullptr, &vk.device) != VK_SUCCESS)
-		{
-			DriverLog("halotest: capture: cannot make a Vulkan device\n");
-			return 0;
-		}
+		DriverLog("halotest: capture: cannot make a Vulkan device (%d)\n", (int)result);
+		return 0;
 	}
 	vkGetDeviceQueue(vk.device, vk.family, 0, &vk.queue);
 	pool.queueFamilyIndex = vk.family;
 	pool.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	vkCreateCommandPool(vk.device, &pool, nullptr, &vk.pool);
+	if ((result = vkCreateCommandPool(vk.device, &pool, nullptr, &vk.pool)) != VK_SUCCESS)
+	{
+		DriverLog("halotest: capture: cannot make a command pool (%d)\n", (int)result);
+		vkDestroyDevice(vk.device, nullptr);
+		vk.device = VK_NULL_HANDLE;
+		return 0;
+	}
 	vk.ready = 1;
 	return 1;
 }
 
+/* a memory type of those allowed with the properties wanted, or UINT32_MAX */
 uint32_t memory_type(uint32_t bits, VkMemoryPropertyFlags wanted)
 {
 	VkPhysicalDeviceMemoryProperties properties;
@@ -136,11 +246,35 @@ uint32_t memory_type(uint32_t bits, VkMemoryPropertyFlags wanted)
 		if ((bits & (1u << index)) && (properties.memoryTypes[index].propertyFlags & wanted) == wanted)
 			return index;
 	}
-	return 0;
+	return UINT32_MAX;
+}
+
+/* the formats captured: 4 bytes a pixel, in RGBA's order or BGRA's
+(swizzled); others are skipped */
+enum pixel_order
+{
+	_pixel_order_none,
+	_pixel_order_rgba,
+	_pixel_order_bgra,
+};
+
+pixel_order format_order(uint32_t format)
+{
+	switch (format)
+	{
+	case VK_FORMAT_R8G8B8A8_UNORM:
+	case VK_FORMAT_R8G8B8A8_SRGB:
+		return _pixel_order_rgba;
+	case VK_FORMAT_B8G8R8A8_UNORM:
+	case VK_FORMAT_B8G8R8A8_SRGB:
+		return _pixel_order_bgra;
+	}
+	return _pixel_order_none;
 }
 
 /* the shared images imported so far: each once (its file descriptor can
-be had once), kept until its swap texture set goes */
+be had once), kept until its swap texture set goes; each holds a
+reference (RefResource) of the driver's */
 struct imported_image
 {
 	SharedTextureHandle_t handle;
@@ -164,7 +298,8 @@ void imported_release(SharedTextureHandle_t handle)
 	}
 }
 
-/* one shared image's pixels (RGBA8), into pixels (width * height * 4) */
+/* one shared image's pixels (format_order's), into pixels (width * height *
+4) as RGBA */
 int capture_image(SharedTextureHandle_t handle, uint32_t format, uint32_t width, uint32_t height, unsigned char *pixels)
 {
 	VkExternalMemoryImageCreateInfo external = { VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO };
@@ -184,15 +319,17 @@ int capture_image(SharedTextureHandle_t handle, uint32_t format, uint32_t width,
 	VkBuffer buffer = VK_NULL_HANDLE;
 	VkCommandBuffer commands = VK_NULL_HANDLE;
 	VkResult result;
+	pixel_order order = format_order(format);
 	uint64_t ipc = 0;
-	int fd = -1, success = 0;
+	int fd = -1, success = 0, referenced = 0;
 	off_t size;
 	void *mapped;
+	size_t bytes = (size_t)width * height * 4, at;
 
 	struct imported_image *cached = nullptr;
 	int index;
 
-	if (!resources || !capture_initialize())
+	if (order == _pixel_order_none || !resources || !capture_initialize())
 		return 0;
 	for (index = 0; index < 64 && !cached; index++)
 	{
@@ -211,11 +348,17 @@ int capture_image(SharedTextureHandle_t handle, uint32_t format, uint32_t width,
 	}
 	if (!cached)
 		return 0;
-	if (!resources->RefResource(handle, &ipc) || !resources->ReceiveSharedFd(ipc, &fd) || fd < 0)
+	if (!resources->RefResource(handle, &ipc))
+	{
+		DriverLog("halotest: capture: no reference to the shared image\n");
+		return 0;
+	}
+	referenced = 1;
+	if (!resources->ReceiveSharedFd(ipc, &fd) || fd < 0)
 	{
 		DriverLog("halotest: capture: no file descriptor for the shared image\n");
-		resources->UnrefResource(handle);
-		return 0;
+		fd = -1;
+		goto done;
 	}
 	size = lseek(fd, 0, SEEK_END);
 	lseek(fd, 0, SEEK_SET);
@@ -235,6 +378,7 @@ int capture_image(SharedTextureHandle_t handle, uint32_t format, uint32_t width,
 	if ((result = vkCreateImage(vk.device, &create, nullptr, &image)) != VK_SUCCESS)
 	{
 		DriverLog("halotest: capture: vkCreateImage %d\n", (int)result);
+		image = VK_NULL_HANDLE;
 		goto done;
 	}
 	vkGetImageMemoryRequirements(vk.device, image, &requirements);
@@ -245,34 +389,68 @@ int capture_image(SharedTextureHandle_t handle, uint32_t format, uint32_t width,
 	allocate.pNext = &import;
 	allocate.allocationSize = size > 0 ? (VkDeviceSize)size : requirements.size;
 	allocate.memoryTypeIndex = memory_type(requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-	if ((result = vkAllocateMemory(vk.device, &allocate, nullptr, &memory)) != VK_SUCCESS)
+	if (allocate.memoryTypeIndex == UINT32_MAX)
+		allocate.memoryTypeIndex = memory_type(requirements.memoryTypeBits, 0);
+	if (allocate.memoryTypeIndex == UINT32_MAX ||
+		(result = vkAllocateMemory(vk.device, &allocate, nullptr, &memory)) != VK_SUCCESS)
 	{
-		DriverLog("halotest: capture: importing the image's memory (%lld bytes, %lld wanted): %d\n", (long long)size,
-			(long long)requirements.size, (int)result);
+		DriverLog("halotest: capture: importing the image's memory (%lld bytes, %lld wanted): %d (another GPU's? "
+			"vulkanDeviceUUID)\n", (long long)size, (long long)requirements.size,
+			allocate.memoryTypeIndex == UINT32_MAX ? 0 : (int)result);
+		memory = VK_NULL_HANDLE;
 		goto done;
 	}
 	fd = -1; /* (the memory owns it) */
-	vkBindImageMemory(vk.device, image, memory, 0);
+	if ((result = vkBindImageMemory(vk.device, image, memory, 0)) != VK_SUCCESS)
+	{
+		DriverLog("halotest: capture: vkBindImageMemory %d\n", (int)result);
+		goto done;
+	}
 	cached->handle = handle;
 	cached->image = image;
 	cached->memory = memory;
 copy:
-	buffer_create.size = (VkDeviceSize)width * height * 4;
+	buffer_create.size = (VkDeviceSize)bytes;
 	buffer_create.usage = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	vkCreateBuffer(vk.device, &buffer_create, nullptr, &buffer);
+	if ((result = vkCreateBuffer(vk.device, &buffer_create, nullptr, &buffer)) != VK_SUCCESS)
+	{
+		DriverLog("halotest: capture: vkCreateBuffer %d\n", (int)result);
+		buffer = VK_NULL_HANDLE;
+		goto done;
+	}
 	vkGetBufferMemoryRequirements(vk.device, buffer, &requirements);
 	allocate = { VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO };
 	allocate.allocationSize = requirements.size;
 	allocate.memoryTypeIndex = memory_type(requirements.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
-	vkAllocateMemory(vk.device, &allocate, nullptr, &host_memory);
-	vkBindBufferMemory(vk.device, buffer, host_memory, 0);
+	if (allocate.memoryTypeIndex == UINT32_MAX ||
+		(result = vkAllocateMemory(vk.device, &allocate, nullptr, &host_memory)) != VK_SUCCESS)
+	{
+		DriverLog("halotest: capture: no host memory for the copy (%d)\n",
+			allocate.memoryTypeIndex == UINT32_MAX ? 0 : (int)result);
+		host_memory = VK_NULL_HANDLE;
+		goto done;
+	}
+	if ((result = vkBindBufferMemory(vk.device, buffer, host_memory, 0)) != VK_SUCCESS)
+	{
+		DriverLog("halotest: capture: vkBindBufferMemory %d\n", (int)result);
+		goto done;
+	}
 	command_allocate.commandPool = vk.pool;
 	command_allocate.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	command_allocate.commandBufferCount = 1;
-	vkAllocateCommandBuffers(vk.device, &command_allocate, &commands);
+	if ((result = vkAllocateCommandBuffers(vk.device, &command_allocate, &commands)) != VK_SUCCESS)
+	{
+		DriverLog("halotest: capture: vkAllocateCommandBuffers %d\n", (int)result);
+		commands = VK_NULL_HANDLE;
+		goto done;
+	}
 	begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	vkBeginCommandBuffer(commands, &begin);
+	if ((result = vkBeginCommandBuffer(commands, &begin)) != VK_SUCCESS)
+	{
+		DriverLog("halotest: capture: vkBeginCommandBuffer %d\n", (int)result);
+		goto done;
+	}
 	/* (the compositor leaves its images in the general layout, or one whose
 	contents the transition keeps on this driver) */
 	barrier.srcAccessMask = VK_ACCESS_MEMORY_WRITE_BIT;
@@ -288,17 +466,37 @@ copy:
 	region.imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 };
 	region.imageExtent = { width, height, 1 };
 	vkCmdCopyImageToBuffer(commands, image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &region);
-	vkEndCommandBuffer(commands);
+	if ((result = vkEndCommandBuffer(commands)) != VK_SUCCESS)
+	{
+		DriverLog("halotest: capture: vkEndCommandBuffer %d\n", (int)result);
+		goto done;
+	}
 	submit.commandBufferCount = 1;
 	submit.pCommandBuffers = &commands;
-	vkQueueSubmit(vk.queue, 1, &submit, VK_NULL_HANDLE);
-	vkQueueWaitIdle(vk.queue);
-	if (vkMapMemory(vk.device, host_memory, 0, VK_WHOLE_SIZE, 0, &mapped) == VK_SUCCESS)
+	if ((result = vkQueueSubmit(vk.queue, 1, &submit, VK_NULL_HANDLE)) != VK_SUCCESS ||
+		(result = vkQueueWaitIdle(vk.queue)) != VK_SUCCESS)
 	{
-		memcpy(pixels, mapped, (size_t)width * height * 4);
-		vkUnmapMemory(vk.device, host_memory);
-		success = 1;
+		DriverLog("halotest: capture: the copy: %d\n", (int)result);
+		goto done;
 	}
+	if ((result = vkMapMemory(vk.device, host_memory, 0, VK_WHOLE_SIZE, 0, &mapped)) != VK_SUCCESS)
+	{
+		DriverLog("halotest: capture: vkMapMemory %d\n", (int)result);
+		goto done;
+	}
+	memcpy(pixels, mapped, bytes);
+	vkUnmapMemory(vk.device, host_memory);
+	if (order == _pixel_order_bgra)
+	{
+		for (at = 0; at < bytes; at += 4)
+		{
+			unsigned char blue = pixels[at];
+
+			pixels[at] = pixels[at + 2];
+			pixels[at + 2] = blue;
+		}
+	}
+	success = 1;
 done:
 	if (commands)
 		vkFreeCommandBuffers(vk.device, vk.pool, 1, &commands);
@@ -308,19 +506,20 @@ done:
 		vkFreeMemory(vk.device, host_memory, nullptr);
 	if (!cached || cached->handle != handle)
 	{
-		/* (the import failed) */
+		/* (the import failed: the reference taken for it goes) */
 		if (image)
 			vkDestroyImage(vk.device, image, nullptr);
 		if (memory)
 			vkFreeMemory(vk.device, memory, nullptr);
-		resources->UnrefResource(handle);
+		if (referenced)
+			resources->UnrefResource(handle);
 	}
 	if (fd >= 0)
 		close(fd);
 	return success;
 }
 
-/* both eyes' images side by side, as a PAM (RGBA) */
+/* both eyes' images (RGBA) side by side, as a PAM */
 void capture_write(const char *path, unsigned char *const eyes[2], uint32_t width, uint32_t height)
 {
 	FILE *file = fopen(path, "wb");
@@ -329,7 +528,10 @@ void capture_write(const char *path, unsigned char *const eyes[2], uint32_t widt
 	int eye;
 
 	if (!file)
+	{
+		DriverLog("halotest: capture: cannot write %s\n", path);
 		return;
+	}
 	row = new unsigned char[(size_t)width * 2 * 4];
 	fprintf(file, "P7\nWIDTH %u\nHEIGHT %u\nDEPTH 4\nMAXVAL 255\nTUPLTYPE RGB_ALPHA\nENDHDR\n", width * 2, height);
 	for (y = 0; y < height; y++)
@@ -342,7 +544,8 @@ void capture_write(const char *path, unsigned char *const eyes[2], uint32_t widt
 		fwrite(row, 1, (size_t)width * 2 * 4, file);
 	}
 	delete[] row;
-	fclose(file);
+	if (fclose(file) != 0)
+		DriverLog("halotest: capture: writing %s failed\n", path);
 }
 
 class hmd : public ITrackedDeviceServerDriver, public IVRDisplayComponent, public IVRDriverDirectModeComponent
@@ -361,6 +564,7 @@ public:
 	int layers = 0, layer_count = 0, layers_logged = 0;
 	char capture_directory[512] = "";
 	int capture_every = 0;
+	int formats_skipped_logged = 0;
 
 	EVRInitError Activate(uint32_t object) override
 	{
@@ -436,6 +640,8 @@ public:
 				{
 					for (image = 0; image < 3; image++)
 					{
+						if (!sets[which].handles[image])
+							continue;
 						if (vk.ready)
 							imported_release(sets[which].handles[image]);
 						resources->UnrefResource(sets[which].handles[image]);
@@ -506,7 +712,12 @@ public:
 		if (presents % 450 == 0)
 			timing_log();
 		if (capture_every > 0 && capture_directory[0] && presents % (uint64_t)capture_every == 0)
+		{
+			/* (the swap texture sets not changed meanwhile) */
+			std::lock_guard<std::mutex> guard(lock);
+
 			capture_frame();
+		}
 	}
 	/* SteamVR's timing of the last 90 frames: its compositor's (in driver
 	direct mode it measures no GPU time of its own), and the GPU's for all
@@ -555,6 +766,16 @@ public:
 			if (!eyes[0] || !eyes[1] || eyes[0]->width != eyes[1]->width || eyes[0]->height != eyes[1]->height ||
 				eyes[0]->width < 64)
 			{
+				continue;
+			}
+			if (format_order(eyes[0]->format) == _pixel_order_none || format_order(eyes[1]->format) == _pixel_order_none)
+			{
+				if (!formats_skipped_logged)
+				{
+					DriverLog("halotest: capture: layer %d skipped: format %u, %u (only RGBA8 and BGRA8, sRGB or not, "
+						"are captured)\n", layer, eyes[0]->format, eyes[1]->format);
+					formats_skipped_logged = 1;
+				}
 				continue;
 			}
 			for (eye = 0; eye < 2; eye++)
@@ -671,12 +892,15 @@ public:
 		VRSettings()->GetString("driver_halotest", "captureDirectory", headset.capture_directory,
 			sizeof(headset.capture_directory));
 		headset.capture_every = VRSettings()->GetInt32("driver_halotest", "captureEvery");
+		VRSettings()->GetString("driver_halotest", "vulkanDeviceUUID", vk.wanted_uuid, sizeof(vk.wanted_uuid));
 		/* (or from the environment SteamVR's server starts in: the first
 		OpenVR or OpenXR application's) */
 		if (getenv("HALOTEST_CAPTURE_DIRECTORY"))
 			snprintf(headset.capture_directory, sizeof(headset.capture_directory), "%s", getenv("HALOTEST_CAPTURE_DIRECTORY"));
 		if (getenv("HALOTEST_CAPTURE_EVERY"))
 			headset.capture_every = atoi(getenv("HALOTEST_CAPTURE_EVERY"));
+		if (getenv("HALOTEST_VULKAN_DEVICE_UUID"))
+			snprintf(vk.wanted_uuid, sizeof(vk.wanted_uuid), "%s", getenv("HALOTEST_VULKAN_DEVICE_UUID"));
 		DriverLog("halotest: capture every %d frames to \"%s\"\n", headset.capture_every, headset.capture_directory);
 		VRServerDriverHost()->TrackedDeviceAdded("halotest-hmd", TrackedDeviceClass_HMD, &headset);
 		return VRInitError_None;
