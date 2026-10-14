@@ -1,0 +1,7 @@
+{
+	"alwaysActivate": false,
+	"name": "halotest",
+	"directory": "",
+	"resourceOnly": false,
+	"hmd_presence": ["*.*"]
+}

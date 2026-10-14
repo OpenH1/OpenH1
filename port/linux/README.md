@@ -1337,7 +1337,7 @@ Wayland, an RTX 4090 with NVIDIA 615.78, `steamxr_linux64.json`, October
   `SteamVR/OpenXR 2.18.3`, its system `SteamVR/OpenXR : null`, and its EGL
   context (OpenGL 4.5, config 24, under XWayland) meets the runtime's
   requirements (OpenGL 4.3 to 4.6).
-- The session does not open: `xrCreateSession` fails
+- With the null driver the session does not open: `xrCreateSession` fails
   (`XR_ERROR_RUNTIME_FAILURE`) and the game plays flat. SteamVR's compositor
   on Linux shows a headset only in direct mode, on a display of its own,
   even the null driver's: it looks for one through RandR and Vulkan's
@@ -1346,28 +1346,47 @@ Wayland, an RTX 4090 with NVIDIA 615.78, `steamxr_linux64.json`, October
   desktop (`wp_drm_lease_device_v1`), and with none, stops (`CHmdWindowSDL:
   VR requires direct mode`, `VRInitError_Compositor_CannotDRMLeaseDisplay`
   in `vrcompositor.txt`). It opens no window on the desktop for the null
-  headset. So a session with SteamVR on x86-64 needs a headset (its display
-  is the one SteamVR takes), or a driver of its own that receives the frames
-  itself (driver direct mode, as streamed headsets' drivers do).
+  headset, and a virtual display (`IVRVirtualDisplay`) does not change that.
+- A driver whose headset takes the frames itself, in driver direct mode
+  (`IVRDriverDirectModeComponent`, as streamed headsets' drivers do), needs
+  no display: `tools/vr_test/steamvr_driver.sh` (`tools/vr_test/README.md`)
+  runs SteamVR with such a driver of the tests', in a configuration folder
+  of its own. With it the game's session opens and reaches FOCUSED. SteamVR
+  asks the driver for 2268x2520 swap images (its 150% of the driver's
+  1512x1680) and recommends the game 1852x2056 eyes. Each frame comes to the
+  driver as two layers: the game's eyes as it drew them, and SteamVR's
+  system layer, where SteamVR draws the game's quad layers (the visor's HUD
+  panels, which SteamVR's OpenXR runtime makes overlays) over a clear
+  image. A headset that holds perfectly still goes into standby after some
+  seconds, and the game's session to VISIBLE and SYNCHRONIZED, its frames no
+  longer shown: the driver sways it by a tenth of a millimetre.
 
-So what was checked on x86-64 is the game's side, with
-`tools/vr_test/openxr_stub_runtime.c` (`tools/vr_test/README.md`): a
-runtime that offers what SteamVR does (EGL's binding, no cylinder layers),
-at the null driver's 1512x1680 eyes and 90 Hz, and paces the frames without
-composing them. On it, a10 (the cryo bay, from the start) and b30 (the
-beach, the assault rifle in the right hand, the HUD on the visor) play in
-stereo, with the head and hands posed by `debug.vr_test_head` and
-`debug.vr_test_hands`. Their frames (`debug.gpu_stats`, the head turning,
-fixed foveation, a release build):
+What was measured on x86-64, an RTX 4090, the head turning, fixed
+foveation, a release build, 90 Hz (11.1 ms a frame):
 
-| Level | The game's time a frame (CPU) | Its draws of the eyes (CPU) | The GPU's time a frame (`debug.vr_gpu_time`) | Late frames |
-| --- | --- | --- | --- | --- |
-| a10 | 1.9 to 2.0 ms | 1.6 ms | 3.4 to 3.6 ms | 0 of 300 |
-| b30 | 4.1 to 4.3 ms | 3.4 to 3.7 ms | 4.2 ms (4.2 ms at 2268x2520 eyes) | 0 of 300 |
+- With SteamVR and the test driver, at 1852x2056 eyes. The game's CPU time
+  includes `xrEndFrame`'s 2.5 ms; SteamVR's "ApplicationTime" is its own
+  measure of the game's frame (`vrcompositor.txt`); its compositor, in
+  driver direct mode, takes 0.1 ms of CPU and measures no GPU time of its
+  own (`GetFrameTimings`); "Total GPU" is the GPU's time for all of a frame.
 
-of the 11.1 ms a frame at 90 Hz: the game keeps 90 Hz on an RTX 4090 with
-room to spare. SteamVR's compositor's own time, and a headset's latency,
-are not in these.
+  | Level | The game's time a frame (CPU) | SteamVR's ApplicationTime (CPU / GPU) | Total GPU | Late frames |
+  | --- | --- | --- | --- | --- |
+  | a10 | 4.5 ms | 2.4 / 6.0 ms | 5.6 to 7.1 ms | 0 of 300, none dropped or reprojected |
+  | b30 | 6.6 to 6.8 ms | 4.6 / 8.1 ms | 8.4 to 9.5 ms | 0 of 300, none dropped or reprojected |
+
+- With `tools/vr_test/openxr_stub_runtime.c` (`tools/vr_test/README.md`), a
+  runtime that offers what SteamVR does (EGL's binding, no cylinder layers)
+  but composes nothing, at the null driver's 1512x1680 eyes, the game's own
+  time (`debug.gpu_stats`; the GPU's with `debug.vr_gpu_time`):
+
+  | Level | The game's time a frame (CPU) | Its draws of the eyes (CPU) | The GPU's time a frame | Late frames |
+  | --- | --- | --- | --- | --- |
+  | a10 | 1.9 to 2.0 ms | 1.6 ms | 3.4 to 3.6 ms | 0 of 300 |
+  | b30 | 4.1 to 4.3 ms | 3.4 to 3.7 ms | 4.2 ms (4.2 ms at 2268x2520 eyes) | 0 of 300 |
+
+The game keeps 90 Hz on an RTX 4090 with room to spare. A headset's own
+latency and its display are not in these.
 
 ### Controls
 

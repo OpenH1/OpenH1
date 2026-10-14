@@ -30,6 +30,7 @@ What they show and what they do not:
 | `montage.py`, `triplet.py` | Contact sheets of a scan |
 | `openxr_probe.c` | What an OpenXR runtime offers the game: its extensions, the GL binding the game would take, its headset (port/linux/README.md, "SteamVR on a desktop PC") |
 | `openxr_stub_runtime.c` | A stand-in runtime for a desktop without a headset or Monado: below |
+| `steamvr_driver.sh`, `steamvr_driver/` | SteamVR without a headset: an OpenVR driver of the tests', and the script that runs SteamVR with it, below |
 
 ## Set up
 
@@ -139,3 +140,45 @@ XR_RUNTIME_JSON=$PWD/build/openxr_stub_runtime.json SDL_VIDEO_DRIVER=x11 \
 and `XR_STUB_CYLINDER=1` (offer cylinder layers, as Monado does) change the
 headset. The screenshots are each eye (`eyes*.bmp`), the HUD's image
 (`hud*.bmp`) and the eyes with the HUD's layers over them (`view*.bmp`).
+
+## SteamVR without a headset: the test driver
+
+SteamVR on Linux shows a headset only in direct mode, on a display of its
+own: its null driver does not open a session on a desktop
+(port/linux/README.md, "SteamVR on a desktop PC"). `steamvr_driver/` is an
+OpenVR driver whose headset takes the frames itself, in driver direct mode,
+as a streamed headset's driver does, so SteamVR needs no display: the game
+plays through SteamVR's own runtime and compositor. The headset is still,
+standing, with 1512x1680 eyes at 90 Hz and no controllers (the test hooks
+pose the head and hands, as with Monado).
+
+```sh
+SDL_VIDEO_DRIVER=x11 HALO_EXIT_AFTER=60 HALO_VR_TEST_HEAD=0 \
+	tools/vr_test/steamvr_driver.sh /tmp/steamvr-test --capture /tmp/frames 450 build/linux_x86_64/halo
+```
+
+`steamvr_driver.sh` builds the driver (into `build/steamvr_driver`, with
+OpenVR's `openvr_driver.h` of its v2.15.6 release and Khronos's Vulkan
+headers v1.4.309, downloaded and checked against their SHA-256; OpenVR's
+license is BSD's, Vulkan's headers Apache's or MIT's), makes the folder
+given SteamVR's configuration (`xdg/openvr/openvrpaths.vrpath` naming the
+driver, `config/steamvr.vrsettings` forcing it, `logs/`, and a `home` whose
+`.steam` links to the user's, which SteamVR's launchers need), runs the
+command with `HOME`, `XDG_CONFIG_HOME` and `XR_RUNTIME_JSON` set for it, and
+then stops SteamVR. It never touches the user's SteamVR settings, and it
+refuses to start while SteamVR is running (it stops SteamVR when the command
+ends).
+
+- `--capture <dir> <every>` writes each layer of every `<every>`th frame,
+  both eyes side by side, as `steamvr<frame>_layer<n>.pam` (RGBA): layer 0
+  is the game's eyes, layer 1 SteamVR's system layer (the game's quad
+  layers, as SteamVR draws them; transparent elsewhere). The driver reads
+  them back through a Vulkan device of its own; a captured frame holds
+  SteamVR's server up for a fifth of a second (the game's next frames are
+  late).
+- Every 450 frames the driver logs SteamVR's frame timing in
+  `<folder>/logs/vrserver.txt` (`halotest: timing`): its compositor's CPU
+  time (in driver direct mode it measures no GPU time of its own), the
+  GPU's for all of the frame, dropped and reprojected frames.
+  `vrcompositor.txt` has SteamVR's own summary of the game's time
+  (`Game Info`).
