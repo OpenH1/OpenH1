@@ -326,7 +326,7 @@ def config_check(tmp_path):
     for name in ("port_config.c", "port_config.h"):
         shutil.copy(root / "port/linux/src" / name, stubs / name)
     program = tmp_path / "config_check"
-    subprocess.run([compiler, "-DHALO_VR=1", "-DHALO_ARM64_GUEST=1", f"-I{stubs}",
+    subprocess.run([compiler, "-DHALO_VR=1", "-DHALO_GUEST=1", f"-I{stubs}",
                     f"-I{root}/port/third_party/tomlc17", "-o", str(program), str(stubs / "port_config.c"),
                     str(root / "tools/config_check.c"), str(root / "port/third_party/tomlc17/tomlc17.c"),
                     "-lpthread"], check=True, capture_output=True)
@@ -469,7 +469,7 @@ def test_config_has_each_section_once(tmp_path):
         shutil.copy(root / "port/linux/src" / name, stubs / name)
     (tmp_path / "main.c").write_text(CONFIG_PROGRAM)
     program = tmp_path / "config_program"
-    subprocess.run([compiler, "-DHALO_ANDROID=1", "-DHALO_ARM64_GUEST=1", f"-I{stubs}",
+    subprocess.run([compiler, "-DHALO_ANDROID=1", "-DHALO_GUEST=1", f"-I{stubs}",
                     f"-I{root}/port/third_party/tomlc17", "-o", str(program),
                     str(tmp_path / "main.c"), str(stubs / "port_config.c"),
                     str(root / "port/third_party/tomlc17/tomlc17.c"), "-lpthread"], check=True)
