@@ -1288,11 +1288,19 @@ tools/frame_install.sh <frame>
 
 The game's GL context is either EGL's or GLX's, chosen before its window
 opens from what the runtime offers (`host_vr_probe`): EGL's, through
-`XR_MNDX_egl_enable`, where it has that (Monado, SteamVR on the Frame),
-else GLX's, through `XR_KHR_opengl_enable`'s Xlib binding, which needs
-SDL's X11 video driver: under Wayland, start the game with
+`XR_MNDX_egl_enable`, where it has that (Monado, SteamVR 2.18 on the Frame and
+on x86-64), else GLX's, through `XR_KHR_opengl_enable`'s Xlib binding, which
+needs SDL's X11 video driver: under Wayland, start the game with
 `SDL_VIDEO_DRIVER=x11` (XWayland), else it says so in its log and plays
-flat.
+flat. The window stays hidden while the headset shows the game; if the
+session cannot be made after all (no headset, the runtime's compositor
+failing), the game says so in its log, shows the window and plays flat in
+it.
+
+On SDL's X11 driver, the EGL context's window has no alpha: SDL makes the
+window with the screen's default (24-bit) visual before it chooses the EGL
+config, and NVIDIA's EGL makes no window surface for it from a config with
+alpha (`Could not create GLES window surface`, and the game had no window).
 
 `tools/vr_test/openxr_probe.c` loads a runtime as the game does and lists
 its extensions, the binding the game would take, and whether it has a
@@ -1302,16 +1310,18 @@ without it, the probe goes on to `xrCreateInstance` and `xrGetSystem`
 (which start SteamVR's server), and `--egl-session` to a session with
 EGL's binding.
 
-What it found with SteamVR 2.18.3 on x86-64 Linux (CachyOS, an RTX 4090,
-`steamxr_linux64.json`, October 2026), with no headset connected:
+What it found with SteamVR 2.18.3 on x86-64 Linux (CachyOS, KDE Plasma on
+Wayland, an RTX 4090 with NVIDIA 615.78, `steamxr_linux64.json`, October
+2026), with no headset connected:
 
-- The runtime offers 40 extensions, `XR_KHR_opengl_enable` (12) and
+- The runtime offers 41 extensions, `XR_KHR_opengl_enable` (12) and
   `XR_MNDX_egl_enable` (2) among them, so the game takes EGL's binding
   there as on the Frame. It also offers `XR_FB_display_refresh_rate`,
   `XR_KHR_composition_layer_depth`, `XR_EXT_eye_gaze_interaction`,
   `XR_VALVE_frame_controller_interaction` and `XR_MND_headless`, but not
-  `XR_KHR_composition_layer_cylinder`. Listing them needs neither SteamVR
-  running nor a headset.
+  `XR_KHR_composition_layer_cylinder`: the visor's HUD is a quad, curved in
+  its image (`vr_visor.c`). Listing them needs neither SteamVR running nor a
+  headset.
 - Without a headset `xrCreateInstance` fails (`XR_ERROR_RUNTIME_FAILURE`),
   not `xrGetSystem`: the runtime starts `vrserver`, which refuses the
   connection (`VRInitError_Driver_WirelessHmdNotConnected` in
@@ -1321,16 +1331,43 @@ What it found with SteamVR 2.18.3 on x86-64 Linux (CachyOS, an RTX 4090,
   `"steamvr": { "forcedDriver": "null" }`), which a configuration folder of
   its own can hold without changing the user's: an `openvrpaths.vrpath`
   in `$XDG_CONFIG_HOME/openvr` naming that folder as `config` (and a `log`
-  folder), with `XDG_CONFIG_HOME` set for the probe alone. With it, the
-  instance is `SteamVR/OpenXR 2.18.3` and the system `SteamVR/OpenXR :
-  null`, and an OpenGL 4.5 context on EGL meets the runtime's requirements
-  (OpenGL 4.3 to 4.6). The session (`xrCreateSession`) still fails without
-  a display: SteamVR's compositor opens the null headset's window, which
-  needs an X11 display or a Wayland compositor with DRM leases
-  (`VRInitError_Compositor_CannotConnectToDisplayServer`,
-  `VRInitError_Compositor_CannotDRMLeaseDisplay` in `vrcompositor.txt`).
-  So the session has not been opened with SteamVR on x86-64 yet; that
-  needs a headset, or the null driver with its window on a desktop.
+  folder), with `XDG_CONFIG_HOME` set for the game alone (and `HOME` with
+  links to `~/.steam`'s `root`, `sdk32`, `sdk64`, `bin32` and `bin64`, which
+  SteamVR's launchers look for there). With it, the game's instance is
+  `SteamVR/OpenXR 2.18.3`, its system `SteamVR/OpenXR : null`, and its EGL
+  context (OpenGL 4.5, config 24, under XWayland) meets the runtime's
+  requirements (OpenGL 4.3 to 4.6).
+- The session does not open: `xrCreateSession` fails
+  (`XR_ERROR_RUNTIME_FAILURE`) and the game plays flat. SteamVR's compositor
+  on Linux shows a headset only in direct mode, on a display of its own,
+  even the null driver's: it looks for one through RandR and Vulkan's
+  display extensions (`VK_EXT_direct_mode_display`,
+  `VK_EXT_acquire_xlib_display`), or, under Wayland, leases one from the
+  desktop (`wp_drm_lease_device_v1`), and with none, stops (`CHmdWindowSDL:
+  VR requires direct mode`, `VRInitError_Compositor_CannotDRMLeaseDisplay`
+  in `vrcompositor.txt`). It opens no window on the desktop for the null
+  headset. So a session with SteamVR on x86-64 needs a headset (its display
+  is the one SteamVR takes), or a driver of its own that receives the frames
+  itself (driver direct mode, as streamed headsets' drivers do).
+
+So what was checked on x86-64 is the game's side, with
+`tools/vr_test/openxr_stub_runtime.c` (`tools/vr_test/README.md`): a
+runtime that offers what SteamVR does (EGL's binding, no cylinder layers),
+at the null driver's 1512x1680 eyes and 90 Hz, and paces the frames without
+composing them. On it, a10 (the cryo bay, from the start) and b30 (the
+beach, the assault rifle in the right hand, the HUD on the visor) play in
+stereo, with the head and hands posed by `debug.vr_test_head` and
+`debug.vr_test_hands`. Their frames (`debug.gpu_stats`, the head turning,
+fixed foveation, a release build):
+
+| Level | The game's time a frame (CPU) | Its draws of the eyes (CPU) | The GPU's time a frame (`debug.vr_gpu_time`) | Late frames |
+| --- | --- | --- | --- | --- |
+| a10 | 1.9 to 2.0 ms | 1.6 ms | 3.4 to 3.6 ms | 0 of 300 |
+| b30 | 4.1 to 4.3 ms | 3.4 to 3.7 ms | 4.2 ms (4.2 ms at 2268x2520 eyes) | 0 of 300 |
+
+of the 11.1 ms a frame at 90 Hz: the game keeps 90 Hz on an RTX 4090 with
+room to spare. SteamVR's compositor's own time, and a headset's latency,
+are not in these.
 
 ### Controls
 
