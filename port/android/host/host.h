@@ -102,10 +102,14 @@ void host_low_unmap(void *address, size_t size);
 /* 1 if [address, address + size) was handed out by host_low_map or is one of
 the fixed ranges; takes no lock, so signal handlers may call it */
 int host_low_owns(uintptr_t address, size_t size);
-/* the guest's mmap/munmap/mprotect/madvise/mremap (host_syscall.c) */
+/* the guest's mmap/munmap/mprotect/madvise (host_syscall.c) */
 long host_guest_mmap(uint64_t address, uint64_t size, int protection, int flags, int fd, int64_t offset);
 long host_guest_munmap(uint64_t address, uint64_t size);
 long host_guest_mprotect(uint64_t address, uint64_t size, int protection);
+long host_guest_madvise(uint64_t address, uint64_t size, int advice);
+/* memory_watch_forget (also the guest's): the pages were remapped or
+reprotected */
+void host_memory_watch_forget(uint32_t address, uint32_t size);
 
 /* the SIGSEGV, SIGBUS and SIGILL handlers: the write tracking's faults, and
 a report of any other (host_memory.c); the main thread calls it first */
