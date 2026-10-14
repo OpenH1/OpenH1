@@ -463,6 +463,9 @@ static void light_get_bounding_sphere(
 	long light_index,
 	real_point3d *position,
 	real *radius);
+static void light_port_drawn_center(
+	struct light_datum const *light,
+	real_point3d *center);
 
 /* ---------- globals */
 
@@ -1173,6 +1176,29 @@ void lights_preprocess_scene(
 						0x1F0,
 						light->color.blue >=0.0f && light->color.blue <=1.0f);
 
+					/* port: where the object is drawn, between ticks
+					(port/linux/game/render_interpolation.c): an attachment's
+					light is placed on its marker as the object moves, at each
+					tick, a tick ahead of the object drawn, and would step
+					along behind a bolt; it is drawn on the marker as drawn
+					(light->position, which the units' illumination reads, is
+					kept) */
+					if (object && light->parent_light_index == NONE)
+					{
+						struct object_marker drawn;
+
+						if (object_get_marker_by_name(
+							light->object_index,
+							object_get_attachment_marker_name(light->object_index, light->attachment_marker_index),
+							&drawn,
+							1) > 0)
+						{
+							light_parameters.position = drawn.matrix.position;
+							light_parameters.forward = drawn.matrix.forward;
+							light_parameters.up = drawn.matrix.up;
+						}
+					}
+
 					if (light->parent_light_index == NONE)
 					{
 						boolean adjusted = FALSE;
@@ -1812,6 +1838,27 @@ static void light_get_bounding_sphere(
 	return;
 }
 
+/* port: a light's sphere for the structure's passes moved with it to where
+it is drawn (lights_preprocess_scene: its rasterizer light's position) */
+static void light_port_drawn_center(
+	struct light_datum const *light,
+	real_point3d *center)
+{
+	real_point3d const *drawn;
+
+	/* (not one on the first-person weapon: its light is moved there, its
+	passes' sphere left where the game gathers its surfaces) */
+	if (light->rasterizer_light_index < 0 || light->rasterizer_light_index >= rasterizer_lights.light_count ||
+		TEST_FLAG(light->flags, _point_light_attached_to_first_person_weapon_bit))
+	{
+		return;
+	}
+	drawn = &rasterizer_lights.lights[light->rasterizer_light_index].position;
+	center->x += drawn->x - light->position.x;
+	center->y += drawn->y - light->position.y;
+	center->z += drawn->z - light->position.z;
+}
+
 void lights_render_diffuse(
 	void)
 {
@@ -1853,6 +1900,7 @@ void lights_render_diffuse(
 					FALSE,
 					&center,
 					&radius);
+				light_port_drawn_center(light, &center);
 				structure_render_diffuse_light(
 					light->rasterizer_light_index,
 					&center,
@@ -1910,6 +1958,7 @@ void lights_render_specular(
 					FALSE,
 					&center,
 					&radius);
+				light_port_drawn_center(light, &center);
 				structure_render_specular_light(
 					light->rasterizer_light_index,
 					&center,
