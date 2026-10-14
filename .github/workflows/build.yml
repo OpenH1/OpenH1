@@ -217,6 +217,11 @@ jobs:
       - name: Release
         run: python3 tools/ci_build.py linux_x86_64 release
 
+      # the VR build (OpenXR: SteamVR, Monado), a download of its own: the
+      # flat build has no VR mode, and the VR one starts the runtime
+      - name: VR release
+        run: python3 tools/ci_build.py linux_x86_64 release --vr
+
       - name: Test
         run: python3 -m pytest -q tools/test_host_units.py tools/test_guest_image_check.py tools/test_check_host_imports.py
 
@@ -233,6 +238,12 @@ jobs:
         with:
           name: halo-linux-x86_64-release
           path: dist/halo-linux-x86_64-release
+          retention-days: 3
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halo-linux-x86_64-vr-release
+          path: dist/halo-linux-x86_64-vr-release
           retention-days: 3
 
   android:

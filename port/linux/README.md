@@ -470,7 +470,8 @@ updates.
 
 The 64-bit ARM build downloads `halo-linux-arm64-release.zip` (or
 `-debug.zip`), not the x86 build. The 64-bit x86 build downloads
-`halo-linux-x86_64-release.zip` (or `-debug.zip`).
+`halo-linux-x86_64-release.zip` (or `-debug.zip`), and its VR build
+`halo-linux-x86_64-vr-release.zip` ("VR").
 
 ## Frame rate
 
@@ -1208,24 +1209,31 @@ As "How it operates" under "64-bit ARM", with these differences:
 
 ## VR
 
-`python3 configure.py --vr`, then `ninja linux_arm64`, builds the 64-bit
-ARM game with a VR mode: the game plays in an OpenXR headset, in stereo,
-with the head tracked in 6 degrees of freedom. It was made on a Steam Frame
-with SteamVR. The VR build draws with desktop OpenGL 4.5
-(`--linux-arm64-gl=desktop`, which `--vr` implies); it needs no OpenXR
-package, as it loads the active runtime itself (or a
-`libopenxr_loader.so.1` where there is one). Configuring it downloads the
-OpenXR SDK's four headers (to `build/linux_arm64/third_party/openxr`,
-checked against their SHA-256 in `tools/linux_guest_build.py`).
+`python3 configure.py --vr`, then `ninja linux_arm64` or `ninja
+linux_x86_64`, builds the 64-bit ARM or 64-bit x86 game with a VR mode: the
+game plays in an OpenXR headset, in stereo, with the head tracked in 6
+degrees of freedom. It was made on a Steam Frame with SteamVR. The VR build
+draws with desktop OpenGL 4.5 (`--linux-arm64-gl=desktop`, which `--vr`
+implies; the 64-bit x86 build always does); it needs no OpenXR package, as it
+loads the active runtime itself (or a `libopenxr_loader.so.1` where there is
+one). Configuring it downloads the OpenXR SDK's four headers (to
+`build/<build>/third_party/openxr`, checked against their SHA-256 in
+`tools/linux_guest_build.py`).
 
-To play, start SteamVR, then start `build/linux_arm64/halo` (from a
-terminal of the headset's desktop session, or as a non-Steam game in
-Steam). Without a runtime or a headset the game plays flat, in its window.
-`vr.enabled = false` (or `HALO_VR=0`) plays flat too.
+To play, start SteamVR, then start `halo` (from a terminal of the headset's
+desktop session, or as a non-Steam game in Steam). Without a runtime or a
+headset the game plays flat, in its window. `vr.enabled = false` (or
+`HALO_VR=0`) plays flat too.
 
-The VR build doesn't update itself (`update.auto` has no effect): the
-releases it would update to have no VR mode. Install a new VR build with
-`tools/frame_install.sh` (below), or by hand.
+On a PC, the releases have the 64-bit x86 VR build,
+`halo-linux-x86_64-vr-release.zip`, beside the flat one (`tools/ci_build.py
+linux_x86_64 release --vr`): unpack it to a folder of its own, with the
+maps ("Start the game"). It updates itself to the release's VR build, never
+to the flat one. The flat build has no VR mode, and the VR build starts the
+runtime (SteamVR's server) whenever it starts, so it is a download of its
+own. On the Steam Frame the VR build doesn't update itself (`update.auto` has
+no effect): install a new one with `tools/frame_install.sh` (below), or by
+hand.
 
 ### Steam Frame
 

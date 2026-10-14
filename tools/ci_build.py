@@ -6,6 +6,7 @@
     python tools/ci_build.py android release
     python tools/ci_build.py linux_arm64 release   (on a 64-bit ARM computer)
     python tools/ci_build.py linux_x86_64 release  (on a 64-bit x86 computer)
+    python tools/ci_build.py linux_x86_64 release --vr
     python tools/ci_build.py linux profile
     python tools/ci_build.py web release
 
@@ -18,6 +19,11 @@ configure.py --profile, so that the profiling build is built too. CI_COMPILER_LA
 passed on as --compiler-launcher. A build of the main branch gets the run's
 number (HALO_BUILD_NUMBER), which its release is named after and the
 self-updater compares (and the web site's version.json names).
+
+--vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md)
+into dist/halo-linux-x86_64-vr-<config>/, a build of its own, which updates
+to the release's VR build. Only for linux_x86_64: the 64-bit ARM VR build is
+the Steam Frame's package (tools/frame_package.py).
 
 The web build (port/web/README.md) needs Emscripten (emcc on the PATH, as
 emsdk_env.sh puts it); dist/halo-web-<config>/ is the whole site, which a
@@ -63,7 +69,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("platform", choices=sorted(OUTPUTS))
     parser.add_argument("config", choices=["debug", "release", "profile"])
+    parser.add_argument("--vr", action="store_true", help="the VR build (linux_x86_64 only)")
     args = parser.parse_args()
+    if args.vr and args.platform != "linux_x86_64":
+        parser.error("--vr is for linux_x86_64 only")
 
     configure = [sys.executable, "configure.py", "--portable"]
     if args.config == "release":
@@ -72,6 +81,8 @@ def main() -> int:
         configure += ["--lto=off", "--pgo=off"]
     if args.config == "profile":
         configure.append("--profile")
+    if args.vr:
+        configure.append("--vr")
     launcher = os.environ.get("CI_COMPILER_LAUNCHER")
     if launcher:
         configure += ["--compiler-launcher", launcher]
@@ -106,7 +117,8 @@ def main() -> int:
 
     # (halo-linux-arm64-release and halo-linux-x86_64-release, the names the
     # self-updater asks for: the target's first underscore only)
-    dist = ROOT / "dist" / f"halo-{args.platform.replace('_', '-', 1)}-{args.config}"
+    # (and halo-linux-x86_64-vr-release, which the VR build asks for)
+    dist = ROOT / "dist" / f"halo-{args.platform.replace('_', '-', 1)}{'-vr' if args.vr else ''}-{args.config}"
     if dist.exists():
         shutil.rmtree(dist)
     dist.mkdir(parents=True)

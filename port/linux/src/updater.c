@@ -36,11 +36,15 @@ debug>.zip); a build without one never looks for updates */
 worker) */
 #elif defined(_WIN32)
 #define UPDATE_PLATFORM "windows"
+#elif defined(HALO_VR) && defined(__x86_64__)
+/* the 64-bit x86 VR build, which releases have beside the flat one
+(tools/ci_build.py --vr): it updates to itself, never to the flat build */
+#define UPDATE_PLATFORM "linux-x86_64-vr"
 #elif defined(HALO_VR)
-/* (none: the VR build is installed and updated as a package of its own,
-tools/frame_package.py and frame_install.sh, with its launcher and its
-checksums; no release has a VR build, and the desktop one would replace
-its executable) */
+/* (none: the 64-bit ARM VR build is installed and updated as a package of
+its own, tools/frame_package.py and frame_install.sh, with its launcher and
+its checksums; no release has it, and the desktop one would replace its
+executable) */
 #elif defined(__aarch64__)
 /* the 64-bit ARM build (port/linux/host) */
 #define UPDATE_PLATFORM "linux-arm64"
