@@ -324,7 +324,7 @@ def config_check(tmp_path):
     (stubs / "SDL3").mkdir(parents=True)
     (stubs / "SDL3" / "SDL.h").write_text("const char *SDL_GetBasePath(void);\n")
     (stubs / "platform.h").write_text("void platform_log(const char *format, ...);\n")
-    for name in ("port_config.c", "port_config.h"):
+    for name in ("port_config.c", "port_config.h", "install_layout.h"):
         shutil.copy(root / "port/linux/src" / name, stubs / name)
     program = tmp_path / "config_check"
     subprocess.run([compiler, "-DHALO_VR=1", "-DHALO_GUEST=1", f"-I{stubs}",
@@ -466,7 +466,7 @@ def test_config_has_each_section_once(tmp_path):
     (stubs / "SDL3" / "SDL.h").write_text("")
     (stubs / "platform.h").write_text("void platform_log(const char *format, ...);\n")
     # (beside the stubs, which it then includes instead of the platform layer's)
-    for name in ("port_config.c", "port_config.h"):
+    for name in ("port_config.c", "port_config.h", "install_layout.h"):
         shutil.copy(root / "port/linux/src" / name, stubs / name)
     (tmp_path / "main.c").write_text(CONFIG_PROGRAM)
     program = tmp_path / "config_program"

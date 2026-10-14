@@ -42,6 +42,7 @@ host_update_executable_path
 host_update_replace_file
 host_update_delete_file
 host_update_make_directory
+host_update_make_executable
 host_update_launch
 host_gl_map_results
 host_gl_read_results

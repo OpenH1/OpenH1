@@ -19,6 +19,7 @@ The log is the standard error stream.
 */
 
 #include "host.h"
+#include "install_layout.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
@@ -81,12 +82,12 @@ static int environment_passes(const char *entry)
 #define MAIN_STACK_SIZE (16 * 1024 * 1024)
 
 /* the thread that runs the game: the guest's environment, the image, the
-debugging settings of config.toml (next to the executable, as the game
-reads it), and the guest's main; never returns normally */
+debugging settings of config.toml (where the game reads it:
+port/linux/src/install_layout.c, compiled into the host too), and the
+guest's main; never returns normally */
 static void *game_main(void *unused)
 {
 	struct host_environment environment = { { 0 }, 0 };
-	const char *base = SDL_GetBasePath();
 	char zone[64];
 	char path[1024];
 	char **entry;
@@ -102,7 +103,7 @@ static void *game_main(void *unused)
 
 	if (host_load_image(halo_guest_image_start, (size_t)(halo_guest_image_end - halo_guest_image_start)) != 0)
 		host_fatal("cannot load the game image");
-	snprintf(path, sizeof(path), "%sconfig.toml", base ? base : "");
+	snprintf(path, sizeof(path), "%sconfig.toml", install_config_folder());
 	host_apply_debug_settings(path, NULL);
 	host_run_guest_main(host_make_boot(&environment, "halo"));
 }

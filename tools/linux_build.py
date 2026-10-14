@@ -252,9 +252,11 @@ def march_flag(sln: Any) -> str:
 # starts on other Linux systems than the one that built it, the Steam Deck's
 # among them: it is compiled and linked against Debian 11's glibc 2.31, not
 # the build machine's (an executable asks for the glibc version it was built
-# with, or older), and it brings its own SDL3, libSDL3.so.0 beside the
-# executable, which finds it there (an rpath of $ORIGIN), as few
-# distributions have a 32-bit SDL3. tools/linux_sysroot.py downloads the
+# with, or older), and it brings its own SDL3, libSDL3.so.0, as few
+# distributions have a 32-bit SDL3: beside the executable in the build and
+# the flat release, in lib/opence in the release's tree (bin/opence;
+# tools/linux_package.py), which the executable finds with an rpath of
+# $ORIGIN:$ORIGIN/../lib/opence. tools/linux_sysroot.py downloads the
 # system root and SDL's source, and tools/linux_sysroot.cmake builds SDL
 # against it.
 SYSROOT_SCRIPT = Path("tools/linux_sysroot.py")
@@ -271,11 +273,13 @@ SDL_OPTIONS = [
     "-DSDL_WAYLAND_LIBDECOR_SHARED=ON", "-DSDL_IBUS=OFF", "-DSDL_HIDAPI_LIBUSB=OFF", "-DSDL_JACK=OFF",
     "-DSDL_SNDIO=OFF", "-DSDL_LIBURING=OFF", "-DSDL_FRIBIDI=OFF", "-DSDL_LIBTHAI=OFF", "-DSDL_X11_XTEST=OFF",
 ]
-# (the linker's options for the executable that loads the SDL beside it:
-# DT_RPATH rather than DT_RUNPATH, as it comes before LD_LIBRARY_PATH, which
-# Steam sets for the games it starts, so that the SDL beside the executable
-# is the one loaded, whatever other SDL that path holds)
-SDL_RPATH_LDFLAGS = ["'-Wl,-rpath,$$ORIGIN'", "-Wl,--disable-new-dtags"]
+# (the linker's options for the executable that loads the SDL it brings:
+# beside it in a build and the flat release, in ../lib/opence in the
+# release's tree (tools/linux_package.py); DT_RPATH rather than DT_RUNPATH,
+# as it comes before LD_LIBRARY_PATH, which Steam sets for the games it
+# starts, so that the SDL the release brings is the one loaded, whatever
+# other SDL that path holds; a package without lib/opence gets the system's)
+SDL_RPATH_LDFLAGS = ["'-Wl,-rpath,$$ORIGIN:$$ORIGIN/../lib/opence'", "-Wl,--disable-new-dtags"]
 
 
 def sdl3_rule(n: Writer, sln: Any, *, name: str, description: str, source: Path, sdl_build: Path, log_dir: Path,

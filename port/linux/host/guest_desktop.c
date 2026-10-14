@@ -75,6 +75,7 @@ int host_update_executable_path(char *path, int size);
 int host_update_replace_file(const char *path, const char *new_path, const char *old_path);
 void host_update_delete_file(const char *path);
 int host_update_make_directory(const char *path);
+int host_update_make_executable(const char *path);
 int host_update_launch(const char *path);
 
 /* ---------- general */
@@ -206,7 +207,46 @@ void SDL_WaitThread(SDL_Thread *handle, int *status)
 	free(thread);
 }
 
+/* (the self-updater's check, updater.c: its few bytes stay, as the thread
+can end before or after this) */
+void SDL_DetachThread(SDL_Thread *handle)
+{
+	struct guest_sdl_thread *thread = (struct guest_sdl_thread *)handle;
+
+	if (thread)
+		pthread_detach(thread->thread);
+}
+
 /* ---------- files: an SDL_IOStream is a stdio FILE */
+
+/* the whole file, with a NUL after it as SDL's has, or NULL; SDL_free()
+frees it (the self-updater's, updater.c) */
+void *SDL_LoadFile(const char *path, size_t *size)
+{
+	FILE *file = fopen(path, "rb");
+	char *data = NULL;
+	long length;
+
+	if (!file)
+		return NULL;
+	if (fseek(file, 0, SEEK_END) == 0 && (length = ftell(file)) >= 0 && fseek(file, 0, SEEK_SET) == 0)
+	{
+		data = malloc((size_t)length + 1);
+		if (data && fread(data, 1, (size_t)length, file) == (size_t)length)
+		{
+			data[length] = 0;
+			if (size)
+				*size = (size_t)length;
+		}
+		else
+		{
+			free(data);
+			data = NULL;
+		}
+	}
+	fclose(file);
+	return data;
+}
 
 SDL_IOStream *SDL_IOFromFile(const char *path, const char *mode)
 {
@@ -877,6 +917,11 @@ void update_delete_file(const char *path)
 int update_make_directory(const char *path)
 {
 	return host_update_make_directory(path);
+}
+
+int update_make_executable(const char *path)
+{
+	return host_update_make_executable(path);
 }
 
 int update_launch(const char *path)
