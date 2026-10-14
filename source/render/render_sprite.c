@@ -91,6 +91,10 @@ symbols in this file:
 #include "tag_files/tag_groups.h"
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
 #include "view_fov.h" /* port: port/linux/game/view_fov.c */
+#ifdef HALO_VR
+/* port: port/linux/game/vr_render.c's: the VR mode's eye pass */
+boolean vr_render_eye_pass(void);
+#endif
 
 /* ---------- constants */
 
@@ -899,6 +903,27 @@ static void build_sprite_compute_basis(
 		basis->left.i = 0.f;
 		basis->left.j = 1.f;
 		basis->left.k = 0.f;
+#ifdef HALO_VR
+		{
+			/* port: in the VR mode's eyes, facing the centre of the head and
+			upright in the world, not parallel to the view's plane and upright
+			in it: the view's plane turns and rolls with the head, and turned
+			the sprites with it (port/linux/game/vr_render.c) */
+			real_vector3d direction = *(real_vector3d const *)origin;
+			real_vector3d right;
+
+			if (vr_render_eye_pass() && normalize3d(&direction) > 0.f)
+			{
+				cross_product3d(&direction, &build_sprite_globals.viewer_space_world_up, &right);
+				if (normalize3d(&right) > 0.01f)
+				{
+					basis->forward = right;
+					cross_product3d(&right, &direction, &basis->left);
+					normalize3d(&basis->left);
+				}
+			}
+		}
+#endif
 	}
 	else if (mode == _build_sprite_parallel)
 	{
