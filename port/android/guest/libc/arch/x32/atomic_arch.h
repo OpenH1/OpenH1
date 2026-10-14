@@ -1,11 +1,5 @@
 /* plain compiler atomics; the arch's inline assembly assumes 64-bit
 pointers in its register operands */
-#define a_ll a_ll
-static inline int a_ll(volatile int *p)
-{
-	return __atomic_load_n(p, __ATOMIC_ACQUIRE);
-}
-
 #define a_cas a_cas
 static inline int a_cas(volatile int *p, int t, int s)
 {
