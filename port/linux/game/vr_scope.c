@@ -337,8 +337,11 @@ static real vr_scope_window_seconds(void)
 /* the smart-link's window (vr.scope_view = "smartlink"), while the game is
 zoomed: a flat 16:9 window vr.smartlink_size wide, its middle on the reticle
 (the point the aim meets, at the reticle's smoothed distance), facing the
-head, up as the world's (upright to the eyes): each eye sees it where it
-sees the reticle, at its depth. d3d8_gl.c draws it into the eyes'
+eyes (square to the line from between them to that point), up as the
+world's: each eye sees it where it sees the reticle, at its depth, and the
+head's turn and tilt do not move it nor turn it in the world (only the
+head's place does, a little), and it is level with the horizon, as the view
+in it is. d3d8_gl.c draws it into the eyes'
 images, over the weapon in hand (vr.scope_gun), under the HUD. Its view is
 the weapon's sight's, from the controller along the aim's line, as wide as
 the quad is from between the eyes over the magnification, its own reticle
@@ -508,9 +511,10 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 	camera->vertical_field_of_view = 2.0f * (real)atan(tangent * (1.0f + glow) / magnification);
 	vr_scope_camera_view(camera, rasterizer_camera);
 
-	/* its quad, on the reticle, facing the head (square to its forward, up
-	as the world's: upright to the eyes, however the weapon is held) */
-	layer_camera.forward = *head_forward;
+	/* its quad, on the reticle, facing back along the line from between the
+	eyes to it, up as the world's: the head's turn and tilt leave it as it
+	is in the world, level with the horizon, however the weapon is held */
+	layer_camera.forward = aim_direction;
 	vr_scope_camera_up(&layer_camera, &weapon_camera->up);
 	vr_render_world_to_head(&aim, &layer_camera.forward, &layer_camera.up, layer.position, layer.forward, layer.up);
 	layer.eye = -1;

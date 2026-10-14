@@ -51,7 +51,7 @@ the view while the crouch is the head's: the head has already come down.
 /* the scope's image (vr.scopes), square: about as many pixels as the eye's
 image has over the lens (a lens of 28 degrees, an eye of 1728 lines over
 about 100), or two thirds as many as it has over the smart-link's window
-(90 degrees: the window is drawn into the eyes, filtered), times
+(70 degrees: the window is drawn into the eyes, filtered), times
 vr.resolution_scale, within these */
 #define SCOPE_IMAGE_SIZE 480
 #define SCOPE_WINDOW_IMAGE_SIZE 1024
@@ -894,11 +894,13 @@ static struct
 	float weapon_haptics;
 	float recoil;
 	/* debug.vr_test_head: the head held still, turned left and right by
-	this many degrees over this many seconds, and pitched up this many */
+	this many degrees over this many seconds, pitched up this many and
+	rolled this many to the right */
 	int test_head;
 	float test_head_yaw;
 	float test_head_period;
 	float test_head_pitch;
+	float test_head_roll;
 	/* debug.vr_test_fov: each eye's field of view (degrees: outward, inward,
 	up, down) and its turn outward (degrees), instead of the runtime's */
 	int test_fov;
@@ -1037,8 +1039,9 @@ static void settings_read(void)
 	settings.test_head_yaw = 0.0f;
 	settings.test_head_period = 0.0f;
 	settings.test_head_pitch = 0.0f;
-	settings.test_head = sscanf(config_string("debug.vr_test_head"), "%f %f %f", &settings.test_head_yaw,
-		&settings.test_head_period, &settings.test_head_pitch) >= 1;
+	settings.test_head_roll = 0.0f;
+	settings.test_head = sscanf(config_string("debug.vr_test_head"), "%f %f %f %f", &settings.test_head_yaw,
+		&settings.test_head_period, &settings.test_head_pitch, &settings.test_head_roll) >= 1;
 	settings.test_fov_angles[4] = 0.0f;
 	settings.test_fov = sscanf(config_string("debug.vr_test_fov"), "%f %f %f %f %f", &settings.test_fov_angles[0],
 		&settings.test_fov_angles[1], &settings.test_fov_angles[2], &settings.test_fov_angles[3],
@@ -3691,6 +3694,15 @@ static void test_head_apply(void)
 		float pitch[4] = { sinf(half), 0.0f, 0.0f, cosf(half) };
 
 		quaternion_multiply(turn, pitch, turn);
+	}
+	if (settings.test_head_roll != 0.0f)
+	{
+		/* (about the head's own forward, after its pitch: the right ear
+		down) */
+		float half = -settings.test_head_roll * (float)M_PI / 180.0f * 0.5f;
+		float roll[4] = { 0.0f, 0.0f, sinf(half), cosf(half) };
+
+		quaternion_multiply(turn, roll, turn);
 	}
 	v[0] = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 	v[1] = v[2] = 0.0f;

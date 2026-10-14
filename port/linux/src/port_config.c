@@ -309,7 +309,7 @@ static const struct config_setting config_settings[] =
 		"\"eye\", the sniper rifle's and the pistol's scopes magnify the view\n"
 		"within their lens as you raise them to an eye, and only then (the\n"
 		"click changes the magnification); \"off\", as vr.scopes = false." },
-	{ "vr.smartlink_size", _config_real, "90.0", "HALO_VR_SMARTLINK_SIZE", _environment_value, _platform_desktop,
+	{ "vr.smartlink_size", _config_real, "70.0", "HALO_VR_SMARTLINK_SIZE", _environment_value, _platform_desktop,
 		"With vr.scope_view = \"smartlink\", how wide the zoom's window about\n"
 		"the reticle is, in degrees of your view (30 to 100; it is 16:9)." },
 	{ "vr.scope_gun", _config_string, "\"hidden\"", "HALO_VR_SCOPE_GUN", _environment_value, _platform_desktop,
