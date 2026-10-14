@@ -259,6 +259,9 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     libc_internal = guest_dir / "libc_internal"
     gl_include = guest_dir / "gl_include"
     arch = PORT_DIR / "guest" / "libc" / "arch" / "arm64_32"
+    # what every guest architecture shares: the system call interface the
+    # host translates (port/android/include/halo_guest_syscall.h)
+    arch_generic = PORT_DIR / "guest" / "libc" / "arch" / "generic"
     semantics_header = Path("build/linux/halo_msvc_semantics.h")
     platform_semantics_header = Path("build/linux/platform_msvc_semantics.h")
     prefix_header = LINUX_DIR / "include" / "halo_linux_prefix.h"
@@ -282,7 +285,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
         command="cp $in $out && sed -n -e s/__NR_/SYS_/p < $in >> $out",
         description=f"{label} MUSL $out",
     )
-    n.build(outputs=syscall_h, rule=f"{prefix}_syscall_h", inputs=arch / "bits" / "syscall.h.in")
+    n.build(outputs=syscall_h, rule=f"{prefix}_syscall_h", inputs=arch_generic / "bits" / "syscall.h.in")
     n.rule(
         name=f"{prefix}_version_h",
         command=f"echo '#define VERSION \"{MUSL_VERSION}\"' > $out",
@@ -361,7 +364,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     )
 
     libc_includes = [
-        f"-isystem {libc_include}", f"-isystem {arch}", f"-isystem {musl_dir}/arch/generic",
+        f"-isystem {libc_include}", f"-isystem {arch}", f"-isystem {arch_generic}",
+        f"-isystem {musl_dir}/arch/generic",
         f"-isystem {musl_dir}/include",
     ]
     guest_abi = " ".join(abi_flags + configuration_defines(sln))
@@ -386,7 +390,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     # musl
     musl_cflags = " ".join([
         guest_abi, "-std=c99", "-ffreestanding", "-fno-common", "-D_XOPEN_SOURCE=700", "-w",
-        f"-I{arch}", f"-I{musl_dir}/arch/generic", f"-I{libc_internal}",
+        f"-I{arch}", f"-I{arch_generic}", f"-I{musl_dir}/arch/generic", f"-I{libc_internal}",
         f"-I{PORT_DIR}/guest/libc/src_include", f"-I{musl_dir}/src/include",
         f"-I{musl_dir}/src/internal", f"-I{libc_include}", f"-I{musl_dir}/include",
     ])
@@ -483,7 +487,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     runtime_internal_cflags = " ".join([
         guest_abi, "-std=c99", "-ffreestanding", "-fno-common", "-D_XOPEN_SOURCE=700", "-D_GNU_SOURCE",
         f"-I{PORT_DIR}/guest/runtime", f"-I{PORT_DIR}/include",
-        f"-I{arch}", f"-I{musl_dir}/arch/generic", f"-I{libc_internal}",
+        f"-I{arch}", f"-I{arch_generic}", f"-I{musl_dir}/arch/generic", f"-I{libc_internal}",
         f"-I{PORT_DIR}/guest/libc/src_include", f"-I{musl_dir}/src/include",
         f"-I{musl_dir}/src/internal", f"-I{libc_include}", f"-I{musl_dir}/include",
     ])
