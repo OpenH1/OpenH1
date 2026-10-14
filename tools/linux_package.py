@@ -2,7 +2,7 @@
 """Lays out the Linux release (tools/ci_build.py), and zips it:
 
     python tools/linux_package.py tree <folder>    (the tree of build/linux's build)
-    python tools/linux_package.py zip dist/halo-linux-x86-release halo-linux-x86-release.zip
+    python tools/linux_package.py zip dist/halo-linux-i686-release halo-linux-i686-release.zip
 
 The release is a tree laid out as a Unix prefix is, which a package manager
 can copy to /usr (or /opt/<name>) as it is, and which a player unpacks

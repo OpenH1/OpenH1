@@ -96,12 +96,12 @@ To see the glibc version that a build needs, enter
 
 Enter `build/linux/halo`.
 
-The release (`halo-linux-x86-release.zip`) is a folder laid out as a Unix
+The release (`halo-linux-i686-release.zip`) is a folder laid out as a Unix
 prefix is (refer to "Packaging"). Unpack it into a folder, and enter
 `bin/opence` in that folder. That folder is the game's folder: the game
 keeps `config.toml` and `maps/` there.
 
-To play on a Steam Deck, unpack `halo-linux-x86-release.zip` into a folder
+To play on a Steam Deck, unpack `halo-linux-i686-release.zip` into a folder
 (in Desktop Mode), and add `bin/opence` to Steam as a non-Steam game ("Add a
 Game" in the Games menu of Steam). The game then starts in Game Mode as
 well. Refer to "Steam Deck".
@@ -466,7 +466,7 @@ newer, the game does nothing.
 If the latest release is newer, the game asks: "Do you want to update?"
 
 - Select "Yes" to update. The game downloads the release for this platform
-  (`halo-linux-x86-release.zip`), replaces its files and starts the new
+  (`halo-linux-i686-release.zip`), replaces its files and starts the new
   version. The old files get the extension `.old`. The new version deletes
   them.
 - Select "No" to continue. The game asks again at the next start.
@@ -490,7 +490,7 @@ Earlier releases were flat: `halo`, `libSDL3.so.0`, `brokers.txt` and the
 licenses in one folder. Their updaters cannot
 change. They install only the files at the top of a zip, and they download
 `halo-linux-release.zip`. So the releases still have
-`halo-linux-release.zip`: the same build as `halo-linux-x86-release.zip`,
+`halo-linux-release.zip`: the same build as `halo-linux-i686-release.zip`,
 laid out flat. An update from a flat release thus occurs in two steps:
 
 1. The old game installs the new build, flat, as before.
@@ -503,12 +503,12 @@ laid out flat. An update from a flat release thus occurs in two steps:
 
 Delete the script `halo` when no shortcut starts it. A flat release that
 you unpacked yourself can be replaced the same way: unpack
-`halo-linux-x86-release.zip` into its folder, delete the files that the
+`halo-linux-i686-release.zip` into its folder, delete the files that the
 list above names, and start `bin/opence`.
 
 ## Packaging
 
-The release (`halo-linux-x86-release.zip`) is laid out as a Unix prefix is,
+The release (`halo-linux-i686-release.zip`) is laid out as a Unix prefix is,
 so a package can copy its folders to `/usr` (or `/opt/opence`) as they are:
 
 | Path | Contents |
@@ -574,7 +574,7 @@ The 64-bit ARM build downloads `halo-linux-arm64-release.zip` (or
 `-debug.zip`), not the x86 build. The 64-bit x86 build downloads
 `halo-linux-x86_64-release.zip` (or `-debug.zip`), and its VR build
 `halo-linux-x86_64-vr-release.zip` ("VR"). These are trees as
-`halo-linux-x86-release.zip` is (`bin/opence`, `lib/opence/libSDL3.so.0`,
+`halo-linux-i686-release.zip` is (`bin/opence`, `lib/opence/libSDL3.so.0`,
 `share/`), and have no flat zip: no release had them flat.
 
 ## Frame rate

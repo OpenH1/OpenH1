@@ -113,3 +113,18 @@ def test_names_agree():
     assert entry["Icon"] == linux_package.NAME
     assert entry["StartupWMClass"] == linux_package.NAME
     assert sorted(linux_package.ICONS.glob(f"{linux_package.NAME}-48.png"))
+
+
+def test_asset_names_agree():
+    """the 32-bit x86 tree's zip is the one its self-updater asks for (halo-linux-i686-<flavor>.zip), and the flat
+    one keeps the name the updaters of the releases before the tree ask for (halo-linux-<flavor>.zip)"""
+    updater = (ROOT / "port/linux/src/updater.c").read_text()
+    platforms = re.findall(r'#define UPDATE_PLATFORM "([^"]+)"', updater)
+    assert "linux-i686" in platforms and "linux" not in platforms
+    assert '#define UPDATE_ASSET "halo-" UPDATE_PLATFORM "-" HALO_BUILD_FLAVOR ".zip"' in updater
+    ci_build = (ROOT / "tools/ci_build.py").read_text()
+    assert 'f"halo-linux-i686-{args.config}", linux_package.stage_tree' in ci_build
+    assert 'f"halo-linux-{args.config}", linux_package.stage_flat' in ci_build
+    workflow = (ROOT / ".github/workflows/build.yml").read_text()
+    for config in ("debug", "release"):
+        assert f"name: halo-linux-i686-{config}" in workflow and f"name: halo-linux-{config}" in workflow

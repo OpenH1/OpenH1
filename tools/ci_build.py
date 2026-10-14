@@ -26,7 +26,7 @@ to the release's VR build. Only for linux_x86_64: the 64-bit ARM VR build is
 the Steam Frame's package (tools/frame_package.py).
 
 A Linux build is the release's tree (tools/linux_package.py: bin/opence,
-lib/opence, share/...), dist/halo-linux-x86-<config>/ for the 32-bit x86
+lib/opence, share/...), dist/halo-linux-i686-<config>/ for the 32-bit x86
 build (with the same build laid out flat, dist/halo-linux-<config>/, for
 the self-updaters of the releases before the tree), and
 dist/halo-linux-arm64-<config>/, dist/halo-linux-x86_64[-vr]-<config>/
@@ -132,13 +132,13 @@ def main() -> int:
         # the release's tree (and, for the 32-bit x86 build, the same build
         # flat for the updaters of the releases before the tree:
         # tools/linux_package.py; SDL's license with the others), named as
-        # the self-updater asks: halo-linux-x86-release,
+        # the self-updater asks: halo-linux-i686-release,
         # halo-linux-arm64-release, halo-linux-x86_64-release and
         # halo-linux-x86_64-vr-release
         executable, library, sdl_license = (ROOT / output for output in outputs)
         notices.append((sdl_license, sdl_license.name))
         if args.platform == "linux":
-            stages = [(f"halo-linux-x86-{args.config}", linux_package.stage_tree),
+            stages = [(f"halo-linux-i686-{args.config}", linux_package.stage_tree),
                       (f"halo-linux-{args.config}", linux_package.stage_flat)]
         else:
             # (the target's first underscore only)

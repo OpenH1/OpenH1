@@ -19,7 +19,7 @@ builds of the latest release:
 
 | Platform | Release | Debug |
 | --- | --- | --- |
-| Linux | [halo-linux-x86-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-x86-release.zip) | [halo-linux-x86-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-x86-debug.zip) |
+| Linux | [halo-linux-i686-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-i686-release.zip) | [halo-linux-i686-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-i686-debug.zip) |
 | Linux arm64 | [halo-linux-arm64-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-arm64-release.zip) | [halo-linux-arm64-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-arm64-debug.zip) |
 | Linux x86-64 | [halo-linux-x86_64-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-x86_64-release.zip) | [halo-linux-x86_64-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-x86_64-debug.zip) |
 | Windows | [halo-windows-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-windows-release.zip) | [halo-windows-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-windows-debug.zip) |

@@ -100,14 +100,14 @@ jobs:
       # the release's tree (bin/opence, lib/, share/: tools/linux_package.py)
       - uses: actions/upload-artifact@v4
         with:
-          name: halo-linux-x86-debug
-          path: dist/halo-linux-x86-debug
+          name: halo-linux-i686-debug
+          path: dist/halo-linux-i686-debug
           retention-days: 3
 
       - uses: actions/upload-artifact@v4
         with:
-          name: halo-linux-x86-release
-          path: dist/halo-linux-x86-release
+          name: halo-linux-i686-release
+          path: dist/halo-linux-i686-release
           retention-days: 3
 
       # the same builds flat, for the self-updaters of the releases before
@@ -541,7 +541,7 @@ jobs:
         run: |
           tag="build-$GITHUB_RUN_NUMBER"
           subject="$(printf '%s' "${MESSAGE:-manual run}" | head -n 1)"
-          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Linux, download halo-linux-x86-release.zip. halo-linux-release.zip is the same build laid out as before, for the updaters of older builds.\n' \
+          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Linux, download halo-linux-i686-release.zip. halo-linux-release.zip is the same build laid out as before, for the updaters of older builds.\n' \
             "$subject" "$COMMIT_URL" "$RUN_URL" > notes.md
           gh release create "$tag" release/*.zip --target "$GITHUB_SHA" --latest \
             --title "Build $GITHUB_RUN_NUMBER (${GITHUB_SHA:0:7})" --notes-file notes.md
@@ -668,7 +668,7 @@ jobs:
             title="Build failed"; color=15548997
           fi
           latest="$SERVER/$REPOSITORY/releases/latest"
-          downloads="[Linux]($latest/download/halo-linux-x86-release.zip) · [Linux arm64]($latest/download/halo-linux-arm64-release.zip) · [Linux x86-64]($latest/download/halo-linux-x86_64-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [Android]($latest/download/halo-android-release.zip) · [Web]($SITE_URL) ([all builds]($latest))"
+          downloads="[Linux]($latest/download/halo-linux-i686-release.zip) · [Linux arm64]($latest/download/halo-linux-arm64-release.zip) · [Linux x86-64]($latest/download/halo-linux-x86_64-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [Android]($latest/download/halo-android-release.zip) · [Web]($SITE_URL) ([all builds]($latest))"
           if [ -n "$RELEASE_TAG" ]; then
             release="[$RELEASE_TAG]($SERVER/$REPOSITORY/releases/tag/$RELEASE_TAG)"
             if [ "$PAGES" = success ]; then

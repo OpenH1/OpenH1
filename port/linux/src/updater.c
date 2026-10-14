@@ -25,7 +25,7 @@ The system side (the HTTPS download, the files, starting the new game) is
 update.h's: posix_update.c on Linux, win32_update.c on Windows.
 
 On Linux the release is a tree (bin/opence, lib/opence, share/...:
-install_layout.c, tools/linux_package.py), halo-linux-x86-<flavor>.zip, and
+install_layout.c, tools/linux_package.py), halo-linux-i686-<flavor>.zip, and
 the game's folder is its root. A game a package manager installed, or one
 in a folder the player cannot write to, never looks for updates: its
 package manager updates it. The releases before the tree were flat (halo,
@@ -69,7 +69,7 @@ executable) */
 #else
 /* the 32-bit x86 build's tree; halo-linux-<flavor>.zip is the same build
 flat, for the updaters of the releases before the tree */
-#define UPDATE_PLATFORM "linux-x86"
+#define UPDATE_PLATFORM "linux-i686"
 #endif
 
 #ifdef UPDATE_PLATFORM
