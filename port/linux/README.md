@@ -495,6 +495,9 @@ Other things the game moves once a tick are drawn between ticks as well:
 
 - The motion tracker's sweep (and a custom blip's pulse) moves in each
   frame. The blips are still taken once a tick, as on the Xbox.
+- A waypoint (nav point) over an object stays over the object as it is
+  drawn, an ally or a vehicle on the move too (in VR as well, where the
+  waypoint is drawn in the world).
 
 The direction of the view is an exception. The game reads the mouse and the
 sticks in each frame. In first person, on foot, each frame points the view
