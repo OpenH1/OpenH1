@@ -319,7 +319,7 @@ static const struct config_setting config_settings[] =
 		"front of the window." },
 	{ "vr.vehicle_climb", _config_boolean, "true", "HALO_VR_VEHICLE_CLIMB", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", a vehicle with holds (the Scorpion, the\n"
-		"Warthog, the Ghost, the Banshee) is climbed with the hands:\n"
+		"Warthog, the Ghost, the Banshee, the Shade) is climbed with the hands:\n"
 		"grip a hold and pull, the view moving as the hands pull it; lowered\n"
 		"into a hatch by its rim, pulled to a seat by its holds, or both hands\n"
 		"on a gun's handles, you are in the seat, and pulled or pushed out by\n"

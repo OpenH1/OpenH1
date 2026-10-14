@@ -280,6 +280,27 @@ static struct vr_climb_hold const vr_climb_banshee_holds[] =
 		NULL },
 };
 
+/* the Shade: two handles at the back of its gun (in the gunner's marker's
+axes, which turn with it), both held the seat, pulled up by them and its
+seat's sides; out by the seat's sides (by the seated hips), pushed down on */
+static struct vr_climb_seat const vr_climb_shade_seats[] =
+{
+	{ "GT-gunner", _climb_enter_pull, "gunner", { -0.056f, 0.0f, 0.250f }, { 0.0f }, 0.0f, 0.30f / METRES_PER_WORLD_UNIT,
+		0.35f / METRES_PER_WORLD_UNIT, TRUE, FALSE },
+};
+
+static struct vr_climb_hold const vr_climb_shade_holds[] =
+{
+	{ { { 0.120f, 0.090f, 0.070f }, { 0.120f, 0.090f, 0.070f } }, 0.05f, CLIMB_HOLD_FOOT | CLIMB_HOLD_HANDLE, 0,
+		"gunner" },
+	{ { { 0.120f, -0.090f, 0.070f }, { 0.120f, -0.090f, 0.070f } }, 0.05f, CLIMB_HOLD_FOOT | CLIMB_HOLD_HANDLE, 0,
+		"gunner" },
+	{ { { -0.120f, 0.140f, 0.060f }, { 0.040f, 0.150f, 0.060f } }, 0.05f, CLIMB_HOLD_FOOT | CLIMB_HOLD_SEATED, 0,
+		"gunner" },
+	{ { { -0.120f, -0.140f, 0.060f }, { 0.040f, -0.150f, 0.060f } }, 0.05f, CLIMB_HOLD_FOOT | CLIMB_HOLD_SEATED, 0,
+		"gunner" },
+};
+
 static struct vr_climb_vehicle const vr_climb_vehicles[] =
 {
 	{ "vehicles\\scorpion\\scorpion", vr_climb_scorpion_seats, NUMBEROF(vr_climb_scorpion_seats),
@@ -290,6 +311,8 @@ static struct vr_climb_vehicle const vr_climb_vehicles[] =
 		vr_climb_ghost_holds, NUMBEROF(vr_climb_ghost_holds) },
 	{ "vehicles\\banshee\\banshee", vr_climb_banshee_seats, NUMBEROF(vr_climb_banshee_seats),
 		vr_climb_banshee_holds, NUMBEROF(vr_climb_banshee_holds) },
+	{ "vehicles\\c gun turret\\c gun turret", vr_climb_shade_seats, NUMBEROF(vr_climb_shade_seats),
+		vr_climb_shade_holds, NUMBEROF(vr_climb_shade_holds) },
 };
 
 static struct
