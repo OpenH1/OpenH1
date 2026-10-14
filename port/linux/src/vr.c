@@ -489,13 +489,16 @@ at up to ASSIST_PULL degrees a second (both times vr.aim_assist; the turn
 slowed by ASSIST_FRICTION_MOST at most); the aim no more than ASSIST_MOST
 degrees from the hand's, and back to it, away from a target, no faster than
 ASSIST_RETURN_SECONDS would take, nor than ASSIST_RETURN_MOST degrees a
-second, more only by half the hand's own turn */
+second, more only by half the hand's own turn; with the left hand on a long
+gun's foregrip (vr.two_handed), all of it ASSIST_TWO_HANDED stronger, as a
+braced gun is steadier on its target */
 #define ASSIST_FRICTION 0.5f
 #define ASSIST_FRICTION_MOST 0.8f
 #define ASSIST_PULL 1.0f
 #define ASSIST_MOST 3.0f
 #define ASSIST_RETURN_SECONDS 0.3f
 #define ASSIST_RETURN_MOST 6.0f
+#define ASSIST_TWO_HANDED 0.5f
 /* debug.vr_test_shake: a hand's shake, half a slow wander (noise smoothed
 with a cutoff of SHAKE_WANDER_HZ) and half a tremor (SHAKE_TREMOR_HZ) */
 #define SHAKE_WANDER_HZ 1.5f
@@ -4110,7 +4113,7 @@ follow the assisted aim; the first-person weapon stays in the hand. */
 static void aim_assist_step(const struct aim_steady *before, struct aim_steady *state, float seconds)
 {
 	float offset[3], turn[3], length = 0.0f, along = 0.0f, most = ASSIST_MOST * (float)M_PI / 180.0f;
-	float strength = settings.aim_assist * vr.assist_level;
+	float strength = settings.aim_assist * vr.assist_level * (1.0f + ASSIST_TWO_HANDED * vr.two_handed);
 	int axis;
 
 	for (axis = 0; axis < 3; axis++)
