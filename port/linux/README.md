@@ -432,6 +432,8 @@ the setting for one start of the game. It has priority over the file.
 | `debug.voice_test` | `false` | `HALO_VOICE_TEST` | Automatic tests of voice chat: a tone replaces the microphone, and each voice that the game hears is written to the log once each second. |
 | `debug.audio_log` | `false` | `HALO_AUDIO_LOG` | Write to the log, five times a second, each sound placed in the world that plays: where it is from the listener (metres ahead, right and up), its gain in each ear (in VR, the HRTF's delays and filters too), and the time the mixing takes. |
 | `debug.audio_record` | `""` | `HALO_AUDIO_RECORD` | Record the game's sound as it plays (with a device or without) to this WAV file, 48 kHz 16-bit stereo, for automatic tests. Empty: none. |
+| `debug.sample_seconds` | `0.0` | `HALO_SAMPLE` | 64-bit ARM only. The host writes to the log, this often in seconds, where each game thread is: its program counter and frame chain, to find where the game spends its time or stops. `0`: never. |
+| `debug.memory_watch` | `true` | none (the host reads the file) | 64-bit ARM only. `true`: the host notices the game's writes to cached textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. |
 | `debug.telnet_console`, `debug.telnet_console_port` | `false`, `2323` | `HALO_TELNET_CONSOLE`, `HALO_TELNET_CONSOLE_PORT` | The game listens on 127.0.0.1, on this port, for a script console (connect with telnet). The console has no password, so only this computer can reach it. |
 | `debug.profile_record`, `debug.profile_record_when`, `debug.profile_memory` | `false`, `"start"`, `256` | `HALO_PROFILE_RECORD`, `HALO_PROFILE_RECORD_WHEN`, `HALO_PROFILE_MEMORY` | Profiling builds only (`configure.py --profile`). Record without a command; `"start"` records from the first frame until the first map change, `"game"` records each game outside the main menu. Memory is 4–1024 MB. Numbered `profile_<stamp>_<role>.part<n>.json` files remain in `profiles/` after recording. Refer to "Profiling builds" in the main README. |
 
@@ -1105,7 +1107,10 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
   `HALO_GUEST` (and `HALO_ARM64_GUEST`, `HALO_GUEST_MACHO`) and `HALO_GLES`,
   not `HALO_ANDROID`.
 - The host is the Android host (`port/android/host`) as a Linux executable.
-  `host/host_main.c` replaces its `host_main.c`. The executable contains
+  `host/host_main.c` replaces its `host_main.c` and `host_touch.c`; what
+  both entry points do is in its `host_common.c`. The host's log is the
+  standard error stream, as is the report of a crash (the registers and
+  the frame chain). The executable contains
   the guest image (`host/guest_image.S`). The guest gets the variables of
   the environment that it reads (the `HALO_` settings, `HOME`, the XDG
   folders), so the `HALO_` settings operate.
