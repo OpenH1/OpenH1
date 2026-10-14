@@ -6818,10 +6818,14 @@ static void vr_gl_initialize(void)
 	if (!host_gl_has_extension("GL_OVR_multiview2") || !glFramebufferTextureMultiviewOVR)
 	{
 		platform_log("vr: the driver has no GL_OVR_multiview2; playing flat");
+		platform_video_vr_unavailable();
 		return;
 	}
 	if (!halo_vr_initialize())
+	{
+		platform_video_vr_unavailable();
 		return;
+	}
 	halo_vr_eye_size(&vr_gl.eye_width, &vr_gl.eye_height);
 	halo_vr_hud_size(&vr_gl.hud_width, &vr_gl.hud_height);
 	vr_gl.scope_size = halo_vr_scope_size();

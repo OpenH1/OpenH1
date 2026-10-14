@@ -97,6 +97,20 @@ int host_sdl_set_window_size(uint32_t window, int width, int height)
 	return object && SDL_SetWindowSize(object, width, height) ? 1 : 0;
 }
 
+int host_sdl_show_window(uint32_t window)
+{
+	SDL_Window *object = window_of(window);
+
+	return object && SDL_ShowWindow(object) ? 1 : 0;
+}
+
+int host_sdl_set_window_resizable(uint32_t window, int resizable)
+{
+	SDL_Window *object = window_of(window);
+
+	return object && SDL_SetWindowResizable(object, resizable != 0) ? 1 : 0;
+}
+
 void host_sdl_destroy_window(uint32_t window)
 {
 	SDL_Window *object = window_of(window);

@@ -895,6 +895,23 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	return TRUE;
 }
 
+#ifdef HALO_VR
+/* the VR build's window, made hidden for the headset (platform_video_
+initialize), shown as a build without VR shows it when there is no VR
+session after all (vr_gl_initialize): the game then plays flat in it */
+void platform_video_vr_unavailable(void)
+{
+	if (!platform_window || !(SDL_GetWindowFlags(platform_window) & SDL_WINDOW_HIDDEN) ||
+		config_boolean("debug.hidden_window"))
+	{
+		return;
+	}
+	SDL_SetWindowResizable(platform_window, true);
+	SDL_ShowWindow(platform_window);
+	platform_display_apply();
+}
+#endif
+
 /* display.mode, display.resolution (fullscreen's display mode),
 display.window_size (when it changes: the window can be resized) and
 display.vsync, as Settings has written them; display.resolution_scaling

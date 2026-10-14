@@ -84,6 +84,10 @@ void platform_video_drawable_size(int *width, int *height);
 /* the window's mode and size and V-Sync, from config.toml as Settings has
 just written it (the main thread's) */
 void platform_display_apply(void);
+#ifdef HALO_VR
+/* the VR build's hidden window shown, to play flat in: no VR session */
+void platform_video_vr_unavailable(void);
+#endif
 void platform_video_swap(void);
 /* frames between the 30 Hz ticks at the display's refresh rate, unless
 display.interpolation is false (port/linux/game/render_interpolation.c) */

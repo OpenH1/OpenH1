@@ -37,6 +37,8 @@ int host_sdl_set_window_fullscreen_mode(unsigned int window, unsigned int displa
 	float refresh_rate);
 void host_sdl_get_window_size(unsigned int window, int *width, int *height);
 int host_sdl_set_window_size(unsigned int window, int width, int height);
+int host_sdl_show_window(unsigned int window);
+int host_sdl_set_window_resizable(unsigned int window, int resizable);
 void host_sdl_destroy_window(unsigned int window);
 int host_sdl_warp_mouse_in_window(unsigned int window, float x, float y);
 int host_sdl_has_screen_keyboard_support(void);
@@ -398,6 +400,16 @@ bool SDL_GetWindowSize(SDL_Window *window, int *width, int *height)
 bool SDL_SetWindowSize(SDL_Window *window, int width, int height)
 {
 	return host_sdl_set_window_size(WINDOW(window), width, height) != 0;
+}
+
+bool SDL_ShowWindow(SDL_Window *window)
+{
+	return host_sdl_show_window(WINDOW(window)) != 0;
+}
+
+bool SDL_SetWindowResizable(SDL_Window *window, bool resizable)
+{
+	return host_sdl_set_window_resizable(WINDOW(window), resizable) != 0;
 }
 
 void SDL_DestroyWindow(SDL_Window *window)
