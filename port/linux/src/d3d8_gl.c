@@ -8845,9 +8845,10 @@ static void vr_draw_scope_window(GLuint depth_texture, int depth_layers)
 		"{\n"
 		"	int eye = int(gl_ViewID_OVR);\n"
 		"	vec2 f = gl_FragCoord.xy / image;\n"
-		/* (the eye pass's rows from the top of the view) */
+		/* (the eye images' rows from the bottom of the view, as OpenXR's GL
+		images are: the first row the view's lowest) */
 		"	vec4 t = fov[eye];\n"
-		"	vec3 ray = vec3(mix(t.x, t.y, f.x), mix(t.z, t.w, f.y), -1.0);\n"
+		"	vec3 ray = vec3(mix(t.x, t.y, f.x), mix(t.w, t.z, f.y), -1.0);\n"
 		"	vec3 n = cross(right[eye].xyz, up[eye].xyz);\n"
 		"	float facing = dot(ray, n);\n"
 		"	if (abs(facing) < 1.0e-6)\n"
@@ -8859,8 +8860,7 @@ static void vr_draw_scope_window(GLuint depth_texture, int depth_layers)
 		"	vec2 q = vec2(dot(d, right[eye].xyz) / half_size.x, dot(d, up[eye].xyz) / half_size.y);\n"
 		"	if (abs(q.x) > 1.0 || abs(q.y) > 1.0)\n"
 		"		discard;\n"
-		/* (the image's rows from the top, as OpenXR's GL images: vr_copy_scope) */
-		"	vec4 c = texture(window_texture, vec2(0.5 + 0.5 * q.x, 0.5 - 0.5 * q.y * height));\n"
+		"	vec4 c = texture(window_texture, vec2(0.5 + 0.5 * q.x, 0.5 + 0.5 * q.y * height));\n"
 		"	if (gun != 0)\n"
 		"	{\n"
 		"		float z = texture(depth_texture, vec3(f, float(layers == 4 ? 2 * eye : eye))).r;\n"
@@ -8918,8 +8918,7 @@ static void vr_draw_scope_window(GLuint depth_texture, int depth_layers)
 		gun = 0;
 	for (eye = 0; eye < 2; eye++)
 	{
-		/* (left, right, then up, down: from the top of the view, as the
-		eye pass's rows run) */
+		/* (left, right, up, down) */
 		fov_rows[eye][0] = window.fov[eye][0];
 		fov_rows[eye][1] = window.fov[eye][1];
 		fov_rows[eye][2] = window.fov[eye][2];
