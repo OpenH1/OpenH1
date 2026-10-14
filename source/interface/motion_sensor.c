@@ -109,6 +109,12 @@ symbols in this file:
 #include "units/units.h"
 #include "units/vehicles.h"
 
+#ifdef HALO_VR
+/* port/linux/game/vr_death.c: as the player is back from the VR mode's
+death cam, the HUD boots: the motion sensor comes up after the shields */
+real vr_death_hud_boot(short part);
+#endif
+
 /* ---------- constants */
 
 enum
@@ -654,6 +660,10 @@ static void render_motion_sensor(
 	{
 		goto render_motion_sensor_done;
 	}
+#ifdef HALO_VR
+	if (vr_death_hud_boot(1) <= 0.0f)
+		goto render_motion_sensor_done;
+#endif
 
 	player = get_motion_sensor_data(local_player_index);
 	relative_scale =

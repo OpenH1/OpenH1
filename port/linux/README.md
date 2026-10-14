@@ -1980,7 +1980,31 @@ keeps the game's view, with no hands floating in it.
 
 #### Dying (`vr.death_view`)
 
-When you die, the view stays where your head was: you look about from there
+With `vr.death_view = "crt"` (the default), dying is your helmet's feed
+switching, in the language of the smart-link's window:
+
+- As you die, two frames of the shields' alarm (static, red), then the
+  helmet's view collapses as a CRT switches off: to a bright line of the
+  HUD's blue through the middle of your view, the line to a point, dark
+  (about a quarter of a second).
+- In the dark the view cuts to a death cam: a vantage fixed in the world
+  about 3 m from your body, to its side (behind and to the side of where
+  you faced, where the body is in sight and the vantage clear of walls:
+  the 8 directions about the body are tried, then nearer), your eyes at
+  standing height above the ground under the body, facing it. Your head
+  looks about from there as ever. Its feed switches on (a point, a line,
+  the whole view, a little interference settling) and shows as a feed: a
+  faint blue tint, scan lines, its edges darkened.
+- Turning (the right stick) moves the vantage 45 degrees about the body,
+  in a quick cut (off and on); it is put again so if the body goes out of
+  its sight or slides away.
+- As the game brings you back (the checkpoint, or a multiplayer game's
+  respawn), the feed switches off, the helmet's view switches on, and the
+  HUD boots over a second: the shield meter charges from empty, the motion
+  sensor comes up, the ammo counts up.
+
+The other values keep the views before it. With `"face"`, when you die,
+the view stays where your head was: you look about from there
 as ever, and nothing else moves or turns it but a blink. Your body
 falls before and under you (look down), drawn as the others see it, and the
 world dims and reddens. Just before the game reverts to the last checkpoint
@@ -2173,8 +2197,8 @@ headset's session is opened with, apply from the next start.
 | `vr.scorpion_view` | `"hatch"` | `HALO_VR_SCORPION_VIEW` | With `vr.vehicle_view = "first_person"`, in a Scorpion's driver seat: `"hatch"`, you stand in the turret's hatch, the eye above the turret on its axis, seeing all about over the hull; `"inside"`, you sit in the driver's compartment at the front of the hull, seeing out through its vision blocks ("Driving a Scorpion"). |
 | `vr.comfort_vignette` | `true` | `HALO_VR_COMFORT_VIGNETTE` | The edges of the view dim a little while the view turns fast with a Ghost steered by its handlebars, or it speeds up or slows hard. |
 | `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, the eye stays put in the vehicle, riding with it but not with the body climbing in and out, a turret's turning or flinches, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
-| `vr.death_view` | `"face"` | `HALO_VR_DEATH_VIEW` | As you die: `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |
-| `vr.head_in_wall` | `"off"` | `HALO_VR_HEAD_IN_WALL` | Your head leaned or stepped into a wall or a pillar, or through it: `"off"` (the default), you see through it, as a black view is worse; `"fade"`, the view fades to black as your eyes go in (where the wall before them comes within 25 cm, black at 20 cm, just short of the game's near plane; black once they are in it or past it) and back as they come out, the HUD saying to step back, a scope showing nothing; not in a vehicle's seat (above, "Your head in a wall"). |
+| `vr.death_view` | `"crt"` | `HALO_VR_DEATH_VIEW` | As you die: `"crt"`, the helmet's view switches off as a CRT does and cuts to a death cam, a feed from beside your body (the right stick moves it about the body), until the game brings you back and the HUD boots (above, "Dying"); `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |
+| `vr.head_in_wall` | `"fade"` | `HALO_VR_HEAD_IN_WALL` | Your head leaned or stepped into a wall or a pillar, or through it: `"fade"`, the view fades to black as your eyes go in (where the wall before them comes within 25 cm, black at 20 cm, just short of the game's near plane; black once they are in it or past it) and back as they come out, the HUD saying to step back, a scope showing nothing; not in a vehicle's seat (above, "Your head in a wall"). `"off"`: you see through it. |
 | `vr.turn` | `"snap"` | `HALO_VR_TURN` | `"snap"` or `"smooth"` (with `vr.aim = "gamepad"`, `vr.gamepad_view` instead). |
 | `vr.snap_turn_angle` | `30.0` | `HALO_VR_SNAP_TURN_ANGLE` | Degrees of each snap turn. |
 | `vr.smooth_turn_speed` | `150.0` | `HALO_VR_SMOOTH_TURN_SPEED` | Degrees each second of smooth turning. |

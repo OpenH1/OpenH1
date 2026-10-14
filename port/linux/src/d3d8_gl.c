@@ -8512,11 +8512,173 @@ edges (by the margin of the union of their views), so a flash left those
 edges lit. */
 static float vr_tint[3] = { 1.0f, 1.0f, 1.0f };
 
+/* the death's feed this frame (port/linux/game/vr_death.c, vr.death_view =
+"crt"): how collapsed each eye's view is (to a line through its middle,
+then the line to a point), how bright as it collapses, the shields' alarm
+(static, red), whether it is the death cam's feed, and its interference;
+drawn at the present (vr_draw_feed), then none */
+static BOOL vr_feed_set;
+static float vr_feed[8];
+
+void halo_vr_eye_feed(float squash, float shrink, float bright, float noise, float red, float look, float interference)
+{
+	vr_feed_set = TRUE;
+	vr_feed[0] = squash;
+	vr_feed[1] = shrink;
+	vr_feed[2] = bright;
+	vr_feed[3] = noise;
+	vr_feed[4] = red;
+	vr_feed[5] = look;
+	vr_feed[6] = interference;
+}
+
 void halo_vr_eye_tint(float red, float green, float blue)
 {
 	vr_tint[0] *= red;
 	vr_tint[1] *= green;
 	vr_tint[2] *= blue;
+}
+
+/* The death's feed (halo_vr_eye_feed) in both eyes' images (multiview),
+before the tint and the helmet's rim: each eye's view collapsed about its
+middle as a CRT switches off (squashed to a bright line of the HUD's blue,
+the line shrunk to a point, the rest dark) or opened so as it switches on;
+the shields' alarm's static (bands offset, noise) and red; and the death
+cam's feed: a faint blue tint, scan lines, its edges darkened, interference
+settling. The images are copied first (the pass reads them), and written
+as they are encoded, as the rim is. */
+static void vr_draw_feed(void)
+{
+	static GLuint program, copy, sampler;
+	static int copy_width, copy_height;
+	static BOOL failed;
+	static GLint crt_location, look_location, image_location;
+	static const char vertex_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"layout(num_views = 2) in;\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+		"	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+		"}\n";
+	static const char fragment_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"uniform sampler2DArray eyes;\n"
+		/* (squash, shrink, bright, noise; red, the feed's look,
+		interference, a seed; the image's size) */
+		"uniform vec4 crt;\n"
+		"uniform vec4 look;\n"
+		"uniform vec2 image;\n"
+		"out vec4 colour;\n"
+		"float hash(vec2 v)\n"
+		"{\n"
+		"	return fract(sin(dot(v, vec2(12.9898, 78.233))) * 43758.5453);\n"
+		"}\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = gl_FragCoord.xy, c = image * 0.5, d = p - c;\n"
+		"	float hh = max(c.y * (1.0 - crt.x), 1.5), hw = c.x * (1.0 - crt.y);\n"
+		"	float n = max(crt.w, look.z * 0.6);\n"
+		"	float band = hash(vec2(floor(p.y / (image.y / 32.0)), look.w));\n"
+		"	float offset = n * step(0.65, band) * (band - 0.82) * 0.12 * image.x;\n"
+		"	vec2 s = vec2(p.x + offset, c.y + d.y * c.y / hh);\n"
+		"	vec3 col = texture(eyes, vec3(s / image, float(gl_ViewID_OVR))).rgb;\n"
+		"	col += n * 0.25 * (hash(p + vec2(look.w)) - 0.5);\n"
+		"	col = mix(col, vec3(1.0, 0.16, 0.12), look.x * 0.35);\n"
+		"	if (look.y > 0.5)\n"
+		"	{\n"
+		"		col *= vec3(0.92, 1.0, 1.08);\n"
+		"		col *= 1.0 - 0.07 * (0.5 + 0.5 * sin(p.y * 3.14159 / 3.0));\n"
+		"		col *= 1.0 - 0.35 * clamp((length(d) / c.y - 0.55) / 0.6, 0.0, 1.0);\n"
+		"	}\n"
+		"	vec3 white = vec3(0.45, 0.72, 1.0) * 0.4 + 0.6;\n"
+		"	bool inside = abs(d.y) <= hh && abs(d.x) <= hw;\n"
+		"	col = inside ? mix(col, white, crt.z) : vec3(0.0);\n"
+		"	float glow = !inside && abs(d.x) <= hw ? exp(-(abs(d.y) - hh) / 6.0) * crt.z * 0.6 : 0.0;\n"
+		"	colour = vec4(clamp(col + white * glow, 0.0, 1.0), 1.0);\n"
+		"}\n";
+	static unsigned long seed;
+	GLuint eyes = vr_gl.eye_target.target.texture;
+
+	if (!vr_feed_set)
+		return;
+	vr_feed_set = FALSE;
+	if (failed || !vr_gl.eyes_drawn || !eyes)
+		return;
+#ifdef HALO_GLES
+	if (!xgpu_capabilities.copy_image)
+		return;
+#endif
+	if (!program)
+	{
+		GLuint vertex = xgpu_compile_shader(GL_VERTEX_SHADER, vertex_source, "VR feed vertex");
+		GLuint fragment = xgpu_compile_shader(GL_FRAGMENT_SHADER, fragment_source, "VR feed pixel");
+		GLint status = 0;
+
+		program = glCreateProgram();
+		glAttachShader(program, vertex);
+		glAttachShader(program, fragment);
+		glLinkProgram(program);
+		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		if (!vertex || !fragment || !status)
+		{
+			platform_log("vr: cannot make the death feed's program; the death cam switches without it");
+			failed = TRUE;
+			return;
+		}
+		glUseProgram(program);
+		glUniform1i(glGetUniformLocation(program, "eyes"), 0);
+		crt_location = glGetUniformLocation(program, "crt");
+		look_location = glGetUniformLocation(program, "look");
+		image_location = glGetUniformLocation(program, "image");
+		glGenSamplers(1, &sampler);
+		glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
+	if (!copy || copy_width != vr_gl.eye_width || copy_height != vr_gl.eye_height)
+	{
+		if (copy)
+			glDeleteTextures(1, &copy);
+		glGenTextures(1, &copy);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, copy);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
+		/* (the eyes' encoded values, as plain RGBA: sampled as they are) */
+		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, vr_gl.eye_width, vr_gl.eye_height, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+			NULL);
+		copy_width = vr_gl.eye_width;
+		copy_height = vr_gl.eye_height;
+	}
+	glCopyImageSubData(eyes, GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, copy, GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, vr_gl.eye_width,
+		vr_gl.eye_height, 2);
+	framebuffer_views = 2;
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(eyes, 0));
+	framebuffer_views = 1;
+	glViewport(0, 0, vr_gl.eye_width, vr_gl.eye_height);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	glDisable(GL_FRAMEBUFFER_SRGB);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+	glUseProgram(program);
+	vr_feed[7] = (float)(++seed % 97);
+	glUniform4fv(crt_location, 1, &vr_feed[0]);
+	glUniform4fv(look_location, 1, &vr_feed[4]);
+	glUniform2f(image_location, (float)vr_gl.eye_width, (float)vr_gl.eye_height);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, copy);
+	glBindSampler(0, sampler);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glBindSampler(0, 0);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	xgpu_gl_state_invalidate();
 }
 
 /* the comfort vignette (halo_vr_vignette): the eyes' images dimmed toward
@@ -9052,6 +9214,7 @@ static void vr_present(BOOL screenshot)
 	/* the eyes' tint (a blink, the dead's), then the helmet's rim and the
 	visor's glass in the eyes (not in the menus: vr_visor.c), the rim's depth
 	with theirs */
+	vr_draw_feed();
 	vr_draw_tint();
 	vr_draw_vignette();
 	vr_draw_rim();

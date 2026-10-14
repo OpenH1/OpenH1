@@ -87,6 +87,15 @@ symbols in this file:
 #include "units/unit_definitions.h"
 #include "units/units.h"
 
+#ifdef HALO_VR
+/* port/linux/game/vr_death.c: as the player is back from the VR mode's
+death cam, the HUD boots: the shield meter charges from empty */
+real vr_death_hud_boot(short part);
+#define HUD_UNIT_SHIELD_BOOT vr_death_hud_boot(0)
+#else
+#define HUD_UNIT_SHIELD_BOOT 1.0f
+#endif
+
 /* ---------- constants */
 
 enum
@@ -981,7 +990,7 @@ void hud_render_unit_interface(
 							{
 								boolean first_meter = overcharge_index == 0;
 								real shield_vitality = PIN(
-									hud_unit->object.shield_vitality - (real)overcharge_index,
+									hud_unit->object.shield_vitality * HUD_UNIT_SHIELD_BOOT - (real)overcharge_index,
 									0.0f,
 									1.0f);
 								real last_shield_vitality = PIN(

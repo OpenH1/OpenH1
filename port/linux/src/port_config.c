@@ -396,8 +396,11 @@ static const struct config_setting config_settings[] =
 		"The edges of your view dim a little while the view turns fast with a\n"
 		"vehicle you steer by its handlebars (vr.ghost_steering), or it speeds\n"
 		"up or slows hard." },
-	{ "vr.death_view", _config_string, "\"face\"", "HALO_VR_DEATH_VIEW", _environment_value, _platform_desktop,
-		"As you die: \"face\" the view stays where your head was, the world\n"
+	{ "vr.death_view", _config_string, "\"crt\"", "HALO_VR_DEATH_VIEW", _environment_value, _platform_desktop,
+		"As you die: \"crt\" the helmet's view switches off as a CRT does and\n"
+		"cuts to a death cam, a feed from beside your body (the right stick\n"
+		"moves it about the body), until the game brings you back and the HUD\n"
+		"boots; \"face\" the view stays where your head was, the world\n"
 		"dimmed and reddened, your body falling before you, and turns to it\n"
 		"in a blink if it lands out of sight, until the game brings you back\n"
 		"from the dark; \"still\" the same, never turned; \"game\" the game's\n"
