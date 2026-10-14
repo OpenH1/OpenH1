@@ -8,7 +8,10 @@ zero-extended, whatever the registers held before. x32_boundary_guest.c,
 linked into a flat image at IMAGE_BASE with the guest's import stubs
 (tools/guest_arch.py), is called here as host_call_guest calls guest code,
 on a stack below 4 GB, with integer arguments whose registers' upper halves
-are garbage; the host functions it imports check what they are given.
+are garbage; the host functions it imports check what they are given. The
+data the pointers point at, and the stack, lie above 2 GB, as the Xbox
+window and the pools do: there a sign-extended pointer differs from a
+zero-extended one.
 tools/test_host_units.py builds and runs it on x86-64; exits nonzero on a
 failure.
 
@@ -23,9 +26,10 @@ Usage: x32_boundary_test image.bin entry_offset table_offset
 #include <sys/mman.h>
 
 #define IMAGE_BASE 0x60000000ULL
-#define STACK_BASE 0x61000000ULL
+#define STACK_BASE 0x91000000ULL
 #define STACK_SIZE 0x100000ULL
-#define DATA ((char *)(uintptr_t)0x60100000ULL)
+#define DATA_BASE 0x90100000ULL
+#define DATA ((char *)(uintptr_t)DATA_BASE)
 
 static int failures;
 static uint64_t entry;
@@ -83,7 +87,7 @@ int main(int argc, char **argv)
 	pthread_attr_t attributes;
 	pthread_t thread;
 	void **table;
-	void *stack;
+	void *stack, *data;
 
 	if (argc != 4)
 		return 2;
@@ -94,7 +98,10 @@ int main(int argc, char **argv)
 		MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
 	stack = mmap((void *)(uintptr_t)STACK_BASE, STACK_SIZE, PROT_READ | PROT_WRITE,
 		MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
-	if (image != (void *)(uintptr_t)IMAGE_BASE || stack != (void *)(uintptr_t)STACK_BASE)
+	data = mmap((void *)(uintptr_t)DATA_BASE, 0x1000, PROT_READ | PROT_WRITE,
+		MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0);
+	if (image != (void *)(uintptr_t)IMAGE_BASE || stack != (void *)(uintptr_t)STACK_BASE ||
+		data != (void *)(uintptr_t)DATA_BASE)
 	{
 		printf("cannot map below 4 GB\n");
 		return 2;
