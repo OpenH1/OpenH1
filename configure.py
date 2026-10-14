@@ -97,6 +97,11 @@ parser.add_argument(
     help="the renderer of `ninja linux_arm64`: OpenGL ES 3 (the default, as on Android) or desktop OpenGL 4.5",
 )
 parser.add_argument(
+    "--linux-x86-64-cc",
+    type=str,
+    help="clang (with the x32 target) for `ninja linux_x86_64`, the 64-bit x86 Linux build (default: clang)",
+)
+parser.add_argument(
     "--vr",
     action="store_true",
     help="the VR mode (OpenXR) in `ninja linux_arm64`, with the desktop OpenGL renderer; "
@@ -128,6 +133,7 @@ sln = SimpleNamespace(
     android_guest_cc=args.android_guest_cc,
     linux_arm64_cc=args.linux_arm64_cc,
     linux_arm64_gl=args.linux_arm64_gl,
+    linux_x86_64_cc=args.linux_x86_64_cc,
     port_vr=args.vr,
     web_emcc=args.web_emcc,
 )
@@ -181,9 +187,10 @@ n.build(
 n.newline()
 
 # the build for this computer, where it could be generated (the Windows
-# build is left out when SDL cannot be fetched, for instance)
+# build is left out when SDL cannot be fetched, for instance): on 64-bit x86
+# Linux the x86 build, not the guest build (linux_x86_64)
 native_guest = native_linux_guest()
-default = "windows" if is_windows() else native_guest.name if native_guest else "linux"
+default = "windows" if is_windows() else native_guest.name if native_guest and native_guest.default else "linux"
 if f"\nbuild {default}: " in out.getvalue():
     n.comment("Default rule: the build for this computer")
     n.default(default)
