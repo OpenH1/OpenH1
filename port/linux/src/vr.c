@@ -487,17 +487,14 @@ hand's, as far as it does not follow the target) slowed by ASSIST_FRICTION of
 it at the target's full magnetism level, and zoomed, the aim drawn toward it
 at up to ASSIST_PULL degrees a second (both times vr.aim_assist; the turn
 slowed by ASSIST_FRICTION_MOST at most); the aim no more than ASSIST_MOST
-degrees from the hand's, and back to it, away from a target, no faster than
-ASSIST_RETURN_SECONDS would take, nor than ASSIST_RETURN_MOST degrees a
-second, more only by half the hand's own turn; with the left hand on a long
+degrees from the hand's, and back to it, away from a target, by half the
+hand's own turn (a still hand's aim stays still); with the left hand on a long
 gun's foregrip (vr.two_handed), all of it ASSIST_TWO_HANDED stronger, as a
 braced gun is steadier on its target */
 #define ASSIST_FRICTION 0.5f
 #define ASSIST_FRICTION_MOST 0.8f
 #define ASSIST_PULL 1.0f
 #define ASSIST_MOST 3.0f
-#define ASSIST_RETURN_SECONDS 0.3f
-#define ASSIST_RETURN_MOST 6.0f
 #define ASSIST_TWO_HANDED 0.5f
 /* debug.vr_test_shake: a hand's shake, half a slow wander (noise smoothed
 with a cutoff of SHAKE_WANDER_HZ) and half a tremor (SHAKE_TREMOR_HZ) */
@@ -4105,10 +4102,10 @@ a Banshee's pilot in its cockpit, no target). (Not the point the game's
 autoaim aims at on it: that point is on the line from the game's eye, and
 seen from the hand it moves as the aim does, so that the aim chased it off
 the target.) The aim may drift off the hand's line so, never more than
-ASSIST_MOST degrees, and away from a target it comes back to it no faster
-than ASSIST_RETURN_MOST degrees a second (and half the hand's own turn,
-which hides it): the aim never moves against the hand, nor without it but
-for the zoomed pull. The reticle, the smart-link's view and the shot all
+ASSIST_MOST degrees, and away from a target it comes back to it by half the
+hand's own turn, which hides it: the aim never moves against the hand, nor
+without it but for the zoomed pull (with the hand still, a target lost, as
+a reload, a melee or a kill loses it, leaves the aim where it was). The reticle, the smart-link's view and the shot all
 follow the assisted aim; the first-person weapon stays in the hand. */
 static void aim_assist_step(const struct aim_steady *before, struct aim_steady *state, float seconds)
 {
@@ -4116,10 +4113,18 @@ static void aim_assist_step(const struct aim_steady *before, struct aim_steady *
 	float strength = settings.aim_assist * vr.assist_level * (1.0f + ASSIST_TWO_HANDED * vr.two_handed);
 	int axis;
 
-	for (axis = 0; axis < 3; axis++)
+	/* (the offset on the plane square to the aim, as the angle between
+	them: taken as their difference, each frame's normalising shrank it, and
+	a still hand's aim crept back toward its line) */
 	{
-		offset[axis] = before->assisted[axis] - before->out[axis];
-		turn[axis] = state->out[axis] - before->out[axis];
+		float cosine = before->assisted[0] * before->out[0] + before->assisted[1] * before->out[1] +
+			before->assisted[2] * before->out[2];
+
+		for (axis = 0; axis < 3; axis++)
+		{
+			offset[axis] = cosine > 0.5f ? before->assisted[axis] / cosine - before->out[axis] : 0.0f;
+			turn[axis] = state->out[axis] - before->out[axis];
+		}
 	}
 	state->target = strength > 0.0f ? vr.assist_target : -1;
 	memcpy(state->target_middle, vr.assist_middle, sizeof(state->target_middle));
@@ -4189,10 +4194,9 @@ static void aim_assist_step(const struct aim_steady *before, struct aim_steady *
 			hand += turn[axis] * turn[axis];
 		}
 		length = sqrtf(length);
-		back = length / ASSIST_RETURN_SECONDS * seconds;
-		if (back > ASSIST_RETURN_MOST * (float)M_PI / 180.0f * seconds)
-			back = ASSIST_RETURN_MOST * (float)M_PI / 180.0f * seconds;
-		back += 0.5f * sqrtf(hand);
+		/* (only as the hand turns: a still hand's aim stays still, whatever
+		the weapon's animations or the target do) */
+		back = 0.5f * sqrtf(hand);
 		for (axis = 0; axis < 3; axis++)
 			offset[axis] *= length > back ? (length - back) / length : 0.0f;
 	}
@@ -4258,7 +4262,13 @@ static void aim_steady(float forward[3])
 		vr.steady_before.valid = vr.steady.valid && vr.steady_frame + 1 == vr.presents;
 		vr.steady_frame = vr.presents;
 	}
-	if (!before->valid || seconds <= 0.0f || seconds > 0.1f)
+	/* (a long frame, a hitch as an animation or a sound is first loaded,
+	is taken as 0.1 s: not a reset, which put the aim back on the hand's
+	line at once, the steadying's lag and the assist's offset gone, so that
+	the reticle jumped by up to ASSIST_MOST with the hand still) */
+	if (seconds > 0.1f)
+		seconds = 0.1f;
+	if (!before->valid || seconds <= 0.0f)
 	{
 		state->valid = 1;
 		memcpy(state->raw, forward, sizeof(state->raw));
