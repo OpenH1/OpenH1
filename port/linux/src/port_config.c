@@ -317,6 +317,11 @@ static const struct config_setting config_settings[] =
 		"where it crosses the zoom's window: \"hidden\" the window is over it,\n"
 		"\"ghost\" it shows faintly through the window, \"visible\" it is in\n"
 		"front of the window." },
+	{ "vr.vehicle_climb", _config_boolean, "true", "HALO_VR_VEHICLE_CLIMB", _environment_value, _platform_desktop,
+		"With vr.aim = \"controller\", a vehicle with holds (the Scorpion) is\n"
+		"climbed with the hands: grip a hold and pull, the view moving as the\n"
+		"hands pull it; lowered into its hatch by the rim, you are in its seat,\n"
+		"and from the seat, pulled up by the rim, out. X works as ever." },
 	{ "vr.vehicle_zoom", _config_string, "\"2 4\"", "HALO_VR_VEHICLE_ZOOM", _environment_value, _platform_desktop,
 		"With vr.scope_view = \"smartlink\", in a vehicle's seat that aims its\n"
 		"weapon (the Scorpion's driver, a turret's gunner), seen from the seat:\n"

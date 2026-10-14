@@ -764,6 +764,11 @@ static struct
 	float flip_vehicle[3];
 	int flip_grip_pressed[2];
 	int flip_grip[2];
+	/* climbing a vehicle by its holds (halo_vr_climb): each hand's grip
+	held on a hold (the climb's alone), and each hand at a hold (its grip
+	the climb's when taken), as the game last told them */
+	int climb_grip[2];
+	int climb_near[2];
 	int flip_state;
 	int flip_press_frames;
 	unsigned long flip_ticks;
@@ -1403,6 +1408,9 @@ static float hand_left(float left)
 	return settings.left_handed ? -left : left;
 }
 
+/* a hand's grip is the climb's: holding a hold, or at one (halo_vr_climb) */
+#define CLIMB_BUSY(hand) (vr.climb_grip[hand] || vr.climb_near[hand])
+
 /* both hands on a long gun, once a frame: the left hand takes the foregrip
 (its grip pressed near the line ahead of the right hand) and lets it go, and
 the line between the hands is smoothed */
@@ -1412,7 +1420,7 @@ static void two_handed_update(float seconds)
 	const struct vr_host_pose *right = &vr.views.grip[1], *left = &vr.views.grip[0];
 	int able = settings.two_handed && settings.controller_aim && vr.long_gun && vr.aimed &&
 		right->valid && left->valid && vr.views.aim[1].valid && !vr.reload.held && !vr.reload_grip_taken &&
-		!vr.flip_grip[0];
+		!vr.flip_grip[0] && !CLIMB_BUSY(0);
 	float line[3], pointing[3], along = 0.0f, across = 0.0f, length;
 	int axis;
 
@@ -1668,7 +1676,7 @@ static void throw_update(float seconds)
 
 	able = settings.throw_gesture && settings.controller_aim && vr.aimed && hand->valid &&
 		vr.views.head.valid && !vr.two_handed && vr.input.right_grip <= 0.8f && !vr.reload.held &&
-		!vr.reload_grip_taken && !vr.flip_grip[0];
+		!vr.reload_grip_taken && !vr.flip_grip[0] && !CLIMB_BUSY(0);
 	switch (vr.throw_state)
 	{
 	case THROW_IDLE:
@@ -1885,7 +1893,7 @@ static void holsters_update(float seconds)
 	const struct vr_host_pose *hand = &vr.views.grip[1];
 	float v[3], eyes[3], place[3], c, s;
 	/* (not a grip the lift of a vehicle has) */
-	int pressed = vr.input.right_grip > HOLSTER_GRIP_PRESSED && !vr.flip_grip[1];
+	int pressed = vr.input.right_grip > HOLSTER_GRIP_PRESSED && !vr.flip_grip[1] && !CLIMB_BUSY(1);
 	int pressing = pressed && !vr.holster_grip_pressed;
 	int reach = HALO_VR_HOLSTER_NONE, holster, axis;
 
@@ -2109,7 +2117,7 @@ static void grab_update(void)
 {
 	const struct vr_host_pose *hand = &vr.views.grip[1];
 	/* (not a grip the lift of a vehicle has) */
-	int pressed = vr.input.right_grip > GRAB_GRIP_PRESSED && !vr.flip_grip[1];
+	int pressed = vr.input.right_grip > GRAB_GRIP_PRESSED && !vr.flip_grip[1] && !CLIMB_BUSY(1);
 	int pressing = pressed && !vr.grab_grip_pressed;
 	int able = settings.grab_world && settings.controller_aim && vr.aimed && vr.crouch_able_frame && !vr.menus &&
 		vr.origin_valid && vr.presents - vr.grab_told_at <= GRAB_TOLD_FRAMES;
@@ -2424,6 +2432,130 @@ int halo_vr_cockpit_window(struct halo_vr_cockpit_window *window, struct halo_vr
 	return 1;
 }
 
+/* climbing a vehicle by its holds (vr.vehicle_climb: port/linux/game/
+vr_climb.c), once a frame, told the holds near (lines: game axes from the
+recentred head, metres, and their reach): a grip taken with the hand within
+a hold's reach holds it (a tick in the hand; a light one as a hand comes to
+a hold), until let go; while a hand holds, the eye moves against its
+motion (both: their mean), as a climber's body moves under the hands that
+pull it: moved. CLIMB_GRIP_* the grip's pull taken and let go. */
+#define CLIMB_GRIP_PRESSED 0.6f
+#define CLIMB_GRIP_RELEASED 0.35f
+#define CLIMB_NEAR 0.05f
+static struct
+{
+	int pressed[2];
+	int hold[2];
+	float last[2][3];
+	int near[2];
+} climb;
+
+static float climb_distance(const float p[3], const float ends[2][3], float radius)
+{
+	float d[3], e[3], t, len2 = 0.0f, dist2 = 0.0f;
+	int axis;
+
+	for (axis = 0; axis < 3; axis++)
+	{
+		e[axis] = ends[1][axis] - ends[0][axis];
+		len2 += e[axis] * e[axis];
+	}
+	t = 0.0f;
+	if (len2 > 1e-9f)
+		t = ((p[0] - ends[0][0]) * e[0] + (p[1] - ends[0][1]) * e[1] + (p[2] - ends[0][2]) * e[2]) / len2;
+	t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+	for (axis = 0; axis < 3; axis++)
+	{
+		d[axis] = p[axis] - (ends[0][axis] + e[axis] * t);
+		dist2 += d[axis] * d[axis];
+	}
+	return sqrtf(dist2) - radius;
+}
+
+int halo_vr_climb(struct halo_vr_climb *c)
+{
+	static const char *const hands[2] = { "left", "right" };
+	int hand, holding = 0, axis;
+
+	c->moved[0] = c->moved[1] = c->moved[2] = 0.0f;
+	for (hand = 0; hand < 2; hand++)
+	{
+		const struct vr_host_pose *grip = &vr.views.grip[hand];
+		float value = hand ? vr.input.right_grip : vr.input.left_grip;
+		float place[3], v[3], best = 1e9f;
+		int index, nearest = -1;
+
+		c->held[hand] = -1;
+		c->nearest[hand] = -1;
+		c->distance[hand] = 1e9f;
+		if (vr.initialized && grip->valid && vr.origin_valid)
+		{
+			for (axis = 0; axis < 3; axis++)
+				v[axis] = grip->position[axis] - vr.origin_position[axis];
+			game_axes(v, vr.origin_yaw, place);
+			memcpy(c->hand[hand], place, sizeof(place));
+		}
+		if (!vr.initialized || !grip->valid || !vr.origin_valid || c->count <= 0 || vr.menus)
+		{
+			vr.climb_grip[hand] = vr.climb_near[hand] = 0;
+			climb.near[hand] = 0;
+			continue;
+		}
+		for (index = 0; index < c->count && index < HALO_VR_CLIMB_HOLDS; index++)
+		{
+			float d = climb_distance(place, (const float (*)[3])c->ends[index], c->radius[index]);
+
+			if (d < best)
+			{
+				best = d;
+				nearest = index;
+			}
+		}
+		c->nearest[hand] = nearest;
+		c->distance[hand] = best;
+		/* (a light tick as the hand comes to a hold) */
+		if (best <= 0.0f && !climb.near[hand])
+			hand_haptic(hand, 0.2f, 0.02f);
+		climb.near[hand] = best <= 0.0f;
+		vr.climb_near[hand] = best <= CLIMB_NEAR;
+		if (value > CLIMB_GRIP_PRESSED && !climb.pressed[hand])
+		{
+			climb.pressed[hand] = 1;
+			if (best <= 0.0f)
+			{
+				vr.climb_grip[hand] = 1;
+				climb.hold[hand] = nearest;
+				memcpy(climb.last[hand], place, sizeof(place));
+				hand_haptic(hand, 0.55f, 0.05f);
+				platform_log("vr: climb: the %s hand takes hold %d", hands[hand_controller(hand)], nearest);
+			}
+		}
+		else if (value < CLIMB_GRIP_RELEASED)
+		{
+			climb.pressed[hand] = 0;
+			if (vr.climb_grip[hand])
+				platform_log("vr: climb: the %s hand lets go", hands[hand_controller(hand)]);
+			vr.climb_grip[hand] = 0;
+		}
+		if (vr.climb_grip[hand])
+		{
+			c->held[hand] = climb.hold[hand];
+			for (axis = 0; axis < 3; axis++)
+			{
+				c->moved[axis] -= place[axis] - climb.last[hand][axis];
+				climb.last[hand][axis] = place[axis];
+			}
+			holding++;
+		}
+	}
+	if (holding == 2)
+	{
+		for (axis = 0; axis < 3; axis++)
+			c->moved[axis] *= 0.5f;
+	}
+	return holding;
+}
+
 void halo_vr_scope_readout(float *range, int *rounds_loaded, int *rounds_carried)
 {
 	*range = vr.scope.range;
@@ -2577,7 +2709,7 @@ static void reload_update(void)
 		&vr.views.aim[1];
 	float v[3], eyes[3], place[3], stick = vr.input.right_stick[1], hip_distance;
 	/* (not a grip the lift of a vehicle has) */
-	int pressed = vr.input.left_grip > RELOAD_GRIP_PRESSED && !vr.flip_grip[0];
+	int pressed = vr.input.left_grip > RELOAD_GRIP_PRESSED && !vr.flip_grip[0] && !CLIMB_BUSY(0);
 	int pressing = pressed && !vr.reload_grip_pressed;
 	int pouch, in_pouch, near_pouch, axis;
 	unsigned long now = GetTickCount();
@@ -2871,6 +3003,8 @@ static void melee_update(float seconds)
 		guard = "the grip taken at a holster";
 	else if (vr.flip_grip[0] || vr.flip_grip[1])
 		guard = "the hands lifting a vehicle";
+	else if (vr.climb_grip[0] || vr.climb_grip[1])
+		guard = "the hands climbing a vehicle";
 	else if (vr.flip_ticks && now - vr.flip_ticks < FLIP_NO_MELEE_MS)
 		guard = "just after a lift";
 	else if (now - vr.holster_ticks < HOLSTER_NO_MELEE_MS)
@@ -3646,7 +3780,7 @@ static void input_update(void)
 	/* (not while the left hand holds a long gun's foregrip, nor while
 	either grip holds a vehicle to lift it, nor on a Ghost's handlebars) */
 	if (vr.input.left_grip > 0.8f && vr.input.right_grip > 0.8f && !vr.two_handed && !vr.flip_grip[0] &&
-		!vr.flip_grip[1] && !seat_steers() && !seat_held())
+		!vr.flip_grip[1] && !CLIMB_BUSY(0) && !CLIMB_BUSY(1) && !seat_steers() && !seat_held())
 	{
 		vr.recentre_time += seconds;
 		if (vr.recentre_time >= RECENTRE_SECONDS && vr.recentre_time - seconds < RECENTRE_SECONDS)

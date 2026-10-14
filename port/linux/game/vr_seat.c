@@ -84,12 +84,17 @@ short vr_cabin_seat_eye(long seated_unit_index, real_point3d *eye);
 boolean vr_cabin_feed(short index);
 /* vr.c's */
 void halo_vr_body_turn(float radians);
+/* vr_climb.c's */
+boolean vr_climb_entering(real_point3d *eye);
+boolean vr_climb_exiting(void);
+boolean vr_climb_active(void);
 /* vr_render.c's */
 real vr_render_view_yaw(void);
 /* d3d8_gl.c's, vr.c's */
 void halo_vr_eye_tint(float red, float green, float blue);
 float halo_vr_vignette(float fov[2][4]);
 void halo_vr_comfort_vignette(float amount);
+void halo_vr_test_face(float yaw);
 void halo_vr_test_screenshot(void);
 
 #define METRES_PER_WORLD_UNIT 3.048f
@@ -214,6 +219,9 @@ static struct
 	real ride_turned;
 	real ride_turn_seconds;
 	real ride_seconds;
+	/* got in by the hands (vr_climb.c): the ride straight to the cockpit's
+	eye from where the hands had the eye */
+	boolean ride_direct;
 
 	boolean checked;
 	/* debug.vr_test_seat: the seat's label's text, when to get in and for
@@ -226,6 +234,9 @@ static struct
 	that does not: "drive"), the driver made for it, and the vehicle */
 	boolean drive;
 	long driver_index;
+	/* "climb": brought and stood at its entrance facing it, the hands to
+	get in and out (vr_climb.c), not the test */
+	boolean climb;
 	long driven_index;
 	/* the game's time (ticks) the test got in, and whether it got out */
 	long entered_time;
@@ -419,9 +430,12 @@ static void feed_ride(long unit_index, long vehicle_index, real_point3d const *w
 		real_matrix4x3 const *hull = object_get_node_matrix(vehicle_index, 0);
 		real climb = animation_state == _unit_state_entering_seat ? remaining / 30.0f : 0.0f;
 
+		real_point3d climbed;
+
 		vr_seat.feed_serial = vr_seat.seat_serial;
 		vr_seat.feed_vehicle_index = vehicle_index;
-		vehicle_to_local(vehicle_index, was, &vr_seat.ride_local);
+		vr_seat.ride_direct = vr_climb_entering(&climbed);
+		vehicle_to_local(vehicle_index, vr_seat.ride_direct ? &climbed : was, &vr_seat.ride_local);
 		vr_seat.ride_velocity.i = vr_seat.ride_velocity.j = vr_seat.ride_velocity.k = 0.0f;
 		vr_seat.ride_frames = MAX(remaining, 1);
 		vr_seat.ride_turn = yaw_difference(vr_render_view_yaw(), (real)atan2(hull->forward.j, hull->forward.i));
@@ -438,7 +452,7 @@ static void feed_ride(long unit_index, long vehicle_index, real_point3d const *w
 		on) */
 		real t = 1.0f - PIN((real)remaining / (real)vr_seat.ride_frames, 0.0f, 1.0f);
 
-		w = t * t * (3.0f - 2.0f * t);
+		w = vr_seat.ride_direct ? 1.0f : t * t * (3.0f - 2.0f * t);
 	}
 	else if (unit_index != NONE && animation_state == _unit_state_exiting_seat)
 	{
@@ -452,7 +466,8 @@ static void feed_ride(long unit_index, long vehicle_index, real_point3d const *w
 			feed_stage_set(_feed_off, 0.0f);
 		}
 		t = 1.0f - PIN((real)remaining / (real)vr_seat.ride_frames, 0.0f, 1.0f);
-		w = 1.0f - t * t * (3.0f - 2.0f * t);
+		/* (out by the hands: the eye where they hold it, from the seat's) */
+		w = vr_climb_exiting() ? 1.0f : 1.0f - t * t * (3.0f - 2.0f * t);
 	}
 	else if (unit_index == NONE)
 	{
@@ -607,7 +622,8 @@ void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_poin
 			vr_seat.feed_stage = _feed_none;
 	}
 	else if (vr_seat.feed_stage != _feed_none && seat_still() && vr_seat.feed_vehicle_index != NONE &&
-		object_try_and_get(vr_seat.feed_vehicle_index) && !ride_arrived(vr_seat.feed_vehicle_index, position))
+		object_try_and_get(vr_seat.feed_vehicle_index) && !ride_arrived(vr_seat.feed_vehicle_index, position) &&
+		!vr_climb_exiting() && !vr_climb_active())
 	{
 		/* (out of a feed cockpit's seat: the eye rides on to where the
 		player stands, from the body's head's path, the cockpit about it
@@ -633,7 +649,7 @@ void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_poin
 
 	/* a blink where the eye would jump: it darkens with the eye held where
 	it was, moves in the dark, and lightens */
-	if (vr_seat.shown_valid && !vr_seat.blinking &&
+	if (vr_seat.shown_valid && !vr_seat.blinking && !vr_climb_active() &&
 		(source != vr_seat.source || vr_seat.seat_serial != vr_seat.shown_serial))
 	{
 		real_point3d from;
@@ -695,6 +711,12 @@ then */
 boolean vr_seat_seated_shown(void)
 {
 	return vr_seat.shown_valid && vr_seat.source == _seat_source_seated && vr_seat.anchored;
+}
+
+/* vr_climb.c: in a feed cockpit, the display woken (the eye in it) */
+boolean vr_seat_feed_in(void)
+{
+	return vr_seat.feed_stage == _feed_in && vr_seat_seated_shown();
 }
 
 /* vr_cabin.c: the feed cockpit the eye rides out of once the body is out
@@ -783,6 +805,7 @@ static void vr_seat_read_settings(void)
 	{
 		vr_seat.testing = TRUE;
 		vr_seat.drive = !strcmp(drive, "drive");
+		vr_seat.climb = !strcmp(drive, "climb");
 		platform_log("vr seat test: the \"%s\" seat %.1f s in, for %.1f s%s", vr_seat.seat_label,
 			vr_seat.enter_seconds, vr_seat.seated_seconds, vr_seat.drive ? ", someone else driving" : "");
 	}
@@ -892,6 +915,22 @@ static void vr_seat_test_approach(long unit_index)
 	if (vehicle_index != NONE &&
 		unit_get_seat_entrance_point(unit_index, vehicle_index, seat_index, &entrance, &seat_point, NULL))
 	{
+		/* (to climb: 25 cm nearer it than the entrance, toward the track guard.s
+		edge, facing the vehicle's middle) */
+		if (vr_seat.climb)
+		{
+			real_point3d const *middle = &object_get(vehicle_index)->object.position;
+			real_vector3d toward;
+
+			vector_from_points3d(&entrance, middle, &toward);
+			toward.k = 0.0f;
+			if (normalize3d(&toward) > 0.0f)
+			{
+				entrance.x += toward.i * 0.25f / METRES_PER_WORLD_UNIT;
+				entrance.y += toward.j * 0.25f / METRES_PER_WORLD_UNIT;
+			}
+			halo_vr_test_face((float)atan2(middle->y - entrance.y, middle->x - entrance.x));
+		}
 		object_set_position(unit_index, &entrance, NULL, NULL);
 	}
 }
@@ -1042,7 +1081,7 @@ void vr_seat_test_update(void)
 		vr_seat.approached = TRUE;
 		vr_seat_test_approach(unit_index);
 	}
-	if (!vr_seat.entered && time >= (long)(vr_seat.enter_seconds * TICKS_PER_SECOND))
+	if (!vr_seat.entered && !vr_seat.climb && time >= (long)(vr_seat.enter_seconds * TICKS_PER_SECOND))
 	{
 		vr_seat.entered = TRUE;
 		vr_seat.entered_time = time;

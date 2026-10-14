@@ -760,7 +760,12 @@ boolean vr_grab_highlight(long object_index, struct render_lighting const *given
 {
 	long player_index = local_player_get_player_index(0);
 	long unit_index;
+	extern boolean vr_climb_highlight(long object_index, struct render_lighting const *given,
+		struct render_lighting *lighting, struct render_model_effect *model_effect);
 
+	/* (a vehicle a hand comes to a hold of: vr_climb.c) */
+	if (halo_vr_running() && vr_climb_highlight(object_index, given, lighting, model_effect))
+		return TRUE;
 	if (object_index == NONE || object_index != vr_grab.nearest || !vr_grab.enabled || !given || player_index == NONE ||
 		!halo_vr_running())
 	{

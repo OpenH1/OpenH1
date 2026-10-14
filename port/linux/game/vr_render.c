@@ -609,6 +609,14 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	vr_vehicle.c) */
 	vr_vehicle_view(vr_render.seated_unit_index, view->seconds, &camera->position, view->world_units_per_metre,
 		&base_yaw);
+	/* (the eye moved by the hands climbing a vehicle: vr_climb.c) */
+	{
+		extern void vr_climb_eye(long seated_unit_index, boolean aiming, real base_yaw, real units, real seconds,
+			real_point3d *eye);
+
+		vr_climb_eye(vr_render.seated_unit_index, halo_vr_aiming() && !cinematic_in_progress() && !dead &&
+			view->controller_aim, base_yaw, view->world_units_per_metre, view->seconds, &camera->position);
+	}
 	vr_render.base_position = camera->position;
 	vr_render.base_yaw = base_yaw;
 	vector_from_points3d(&game_eye, &camera->position, &vr_render.listener_eye_offset);

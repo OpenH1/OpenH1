@@ -317,6 +317,26 @@ struct halo_vr_cockpit_display
 	int second_carried;
 };
 
+/* climbing a vehicle by its holds (vr.vehicle_climb, port/linux/game/
+vr_climb.c): told the holds near (each a line: its ends, game axes from the
+recentred head, metres, and how far about it a hand takes it); given each
+hand's hold (-1 none), the nearest hold to each hand and how far it is
+(metres beyond its reach; 0 or less within it), and how far the eye moves
+this frame by the hands (game axes, metres: against the holding hands'
+motion) */
+#define HALO_VR_CLIMB_HOLDS 24
+struct halo_vr_climb
+{
+	int count;
+	float ends[HALO_VR_CLIMB_HOLDS][2][3];
+	float radius[HALO_VR_CLIMB_HOLDS];
+	int held[2];
+	int nearest[2];
+	float distance[2];
+	float moved[3];
+	float hand[2][3];
+};
+
 /* d3d8_gl.c: the display as each eye sees it, in the eye's space (as
 halo_vr_scope_window's): the axis's point, its up, the way to the display's
 middle and its right, and the eye's field of view (tangents) */
@@ -639,6 +659,9 @@ int halo_vr_scope_window(struct halo_vr_scope_window *window);
 /* a feed cockpit's display (NULL: none this frame); for d3d8_gl.c, as each
 eye sees it, and what it shows */
 void halo_vr_cockpit_display(const struct halo_vr_cockpit_display *display);
+/* vr_climb.c, once a frame: the holds near told, the hands' holds and the
+eye's move given; how many hands hold */
+int halo_vr_climb(struct halo_vr_climb *climb);
 int halo_vr_cockpit_window(struct halo_vr_cockpit_window *window, struct halo_vr_cockpit_display *display);
 void halo_vr_scope_readout(float *range, int *rounds_loaded, int *rounds_carried);
 void halo_vr_scope_animation(float *opened_seconds, float *closing, float *switched_seconds);
