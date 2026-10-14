@@ -2019,8 +2019,9 @@ the revert, the respawn and what the netcode sends are the game's.
 Your head moves in the room apart from your body in the game, which the
 game moves and keeps off the walls (its eye stays some 0.6 m from them).
 Lean or step into a wall, a rock or a pillar and your eyes would go into it,
-and see through it: the level's far side, and what is behind. With
-`"fade"` (the default) the view fades to black as your eyes go in, over the
+and see through it: the level's far side, and what is behind. That is the
+default (`"off"`): a view going black in play is worse than the peek. With
+`"fade"` the view fades to black as your eyes go in, over the
 last few centimetres, and comes back as you lean or step out (over a
 quarter of a second). The HUD stays, saying to step back, and a scope shows
 nothing meanwhile (it would see through the wall too).
@@ -2173,7 +2174,7 @@ headset's session is opened with, apply from the next start.
 | `vr.comfort_vignette` | `true` | `HALO_VR_COMFORT_VIGNETTE` | The edges of the view dim a little while the view turns fast with a Ghost steered by its handlebars, or it speeds up or slows hard. |
 | `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, the eye stays put in the vehicle, riding with it but not with the body climbing in and out, a turret's turning or flinches, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
 | `vr.death_view` | `"face"` | `HALO_VR_DEATH_VIEW` | As you die: `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |
-| `vr.head_in_wall` | `"fade"` | `HALO_VR_HEAD_IN_WALL` | Your head leaned or stepped into a wall or a pillar, or through it: `"fade"`, the view fades to black as your eyes go in (where the wall before them comes within 25 cm, black at 20 cm, just short of the game's near plane; black once they are in it or past it) and back as they come out, the HUD saying to step back, a scope showing nothing; not in a vehicle's seat (above, "Your head in a wall"). `"off"`: you see through it. |
+| `vr.head_in_wall` | `"off"` | `HALO_VR_HEAD_IN_WALL` | Your head leaned or stepped into a wall or a pillar, or through it: `"off"` (the default), you see through it, as a black view is worse; `"fade"`, the view fades to black as your eyes go in (where the wall before them comes within 25 cm, black at 20 cm, just short of the game's near plane; black once they are in it or past it) and back as they come out, the HUD saying to step back, a scope showing nothing; not in a vehicle's seat (above, "Your head in a wall"). |
 | `vr.turn` | `"snap"` | `HALO_VR_TURN` | `"snap"` or `"smooth"` (with `vr.aim = "gamepad"`, `vr.gamepad_view` instead). |
 | `vr.snap_turn_angle` | `30.0` | `HALO_VR_SNAP_TURN_ANGLE` | Degrees of each snap turn. |
 | `vr.smooth_turn_speed` | `150.0` | `HALO_VR_SMOOTH_TURN_SPEED` | Degrees each second of smooth turning. |

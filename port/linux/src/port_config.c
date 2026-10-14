@@ -402,7 +402,7 @@ static const struct config_setting config_settings[] =
 		"in a blink if it lands out of sight, until the game brings you back\n"
 		"from the dark; \"still\" the same, never turned; \"game\" the game's\n"
 		"camera pulling away from the body." },
-	{ "vr.head_in_wall", _config_string, "\"fade\"", "HALO_VR_HEAD_IN_WALL", _environment_value, _platform_desktop,
+	{ "vr.head_in_wall", _config_string, "\"off\"", "HALO_VR_HEAD_IN_WALL", _environment_value, _platform_desktop,
 		"Your head leaned or stepped into a wall or a pillar, or through it:\n"
 		"\"fade\" the view fades to black as your eyes go in, and back as\n"
 		"they come out, the HUD saying to step back; \"off\" you see through\n"
