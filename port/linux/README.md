@@ -1188,11 +1188,18 @@ The game data, the settings, the saved games, the controls and system link
 are the same as on x86. Linux arm64, x86 Linux, Windows and Android
 machines can play in the same game.
 
+What this build and the 64-bit x86 one (the guest builds) do not have yet,
+as the guest reaches SDL only through the host's imports
+(`host/host_imports.list`), which do not include what they need: the
+Screenshot key (`controls.screenshot`; `debug.screenshot_every` does
+operate), the window's icon, and the names of gamepads in the log.
+
 ### Requirements
 
 - Python and ninja.
-- clang with the `arm64_32` target (clang 22 operates), `ld.lld` and
-  `llvm-ar`. The option `--linux-arm64-cc` of `configure.py` selects a
+- clang with the `arm64_32` target (clang 22 operates), `ld.lld`,
+  `llvm-ar` and `llvm-objdump` (with which the build checks the guest
+  image, `tools/guest_image_check.py`). The option `--linux-arm64-cc` of `configure.py` selects a
   different clang.
 - The OpenGL ES and EGL headers (`libgles-dev` and `libegl-dev` on Debian
   and Ubuntu), and for the desktop OpenGL renderer (`--vr`) the OpenGL
@@ -1201,7 +1208,8 @@ machines can play in the same game.
 - CMake, and the development files that SDL3 uses for X11, Wayland and
   sound. Refer to the SDL documentation, or to the `linux-arm64` job in
   `.github/workflows/build.yml`.
-- A network connection for the first build. `configure.py` downloads musl
+- A network connection for the first build. `configure.py`, for which
+  this is the default build of a 64-bit ARM computer, downloads musl
   1.2.5 (checked against its SHA-256) and SDL 3.4.16 to
   `build/linux_arm64/third_party`. SDL is built with the options of the
   portable x86 build (`SDL_OPTIONS` in `tools/linux_build.py`).
@@ -1279,9 +1287,13 @@ is x87's 80-bit one where this build's is a `double`, as MSVC's is.
 - CMake, and the development files that SDL3 uses for X11, Wayland and
   sound, as for the 64-bit ARM build. Refer to the `linux-x86_64` job in
   `.github/workflows/build.yml`.
-- A network connection for the first build. `configure.py` downloads musl
-  1.2.5 (checked against its SHA-256) and SDL 3.4.16 to
-  `build/linux_x86_64/third_party`.
+- A network connection for the first build. As this is not the default
+  build of an x86 computer, `configure.py` generates it only when asked:
+  `python3 configure.py --linux-x86-64` (or with `--linux-x86-64-cc` or
+  `--vr`) downloads musl 1.2.5 (checked against its SHA-256) and SDL
+  3.4.16 to `build/linux_x86_64/third_party`, and later runs of
+  `configure.py` take them from there. Without them, `ninja linux_x86_64`
+  stops and says so; `configure.py` alone downloads nothing for it.
 
 To start the game: the 64-bit OpenGL libraries of GLVND (`libOpenGL.so.0`,
 `libEGL.so.1`), which Mesa and NVIDIA's driver use. The release builds of
@@ -1303,14 +1315,21 @@ As "How it operates" under "64-bit ARM", with these differences:
   reach 2 GB or more. The Xbox memory above it is reached through
   registers, and its addresses compute with 32-bit wraparound, as on the
   Xbox.
+- As the image is not above the Xbox memory, the Xbox memory is the x86
+  build's 512 MB (`0x80000000` to `0xA0000000`), with its 256 MB texture
+  cache and 16 MB sound cache, which Custom Edition maps need
+  (`halo_port_capacity.h`). The 64-bit ARM build and Android have 128 MB,
+  with the Xbox's caches.
 - The guest calls the host's functions through import stubs that jump
   through a table of 64-bit addresses. The host's functions read pointer
   arguments as 64-bit registers, and x32 code passes them zero-extended,
   which `tools/test_host_units.py` tests (`x32_boundary_test.c`). The host
   passes the guest its own arguments zero-extended in turn
-  (`host_call_guest`). An argument after the sixth is on the stack, where
-  the guest may write only 4 bytes of a pointer: such an argument is a
-  32-bit or 64-bit integer, never a pointer (`tools/check_host_imports.py`).
+  (`host_call_guest`). An argument after the sixth is on the stack, in an
+  8-byte slot, where clang's x32 code also writes a pointer zero-extended;
+  as only the registers are tested, such an argument is kept a 32-bit or
+  64-bit integer, never a pointer (`tools/check_host_imports.py`), and the
+  OpenGL stubs extend a pointer there themselves.
 - The thread pointer (`%fs`) belongs to the host's glibc. The guest's
   thread-local variables are emulated, and the build stops if the image
   uses `%fs` or `%gs`, or has thread-local storage
