@@ -1172,6 +1172,13 @@ real vr_render_scope_range(void)
 	return distance >= CROSSHAIR_FARTHEST ? 0.0f : distance / vr_render.view.world_units_per_metre;
 }
 
+/* vr_seat.c: the way the head looks this frame, in the world (its yaw:
+the play space's turn and the head's own in it) */
+real vr_render_view_yaw(void)
+{
+	return vr_render.view.body_yaw + (real)atan2(vr_render.view.head_forward[1], vr_render.view.head_forward[0]);
+}
+
 /* vr_scope.c: the time from the last frame's display to this one's
 (seconds) */
 real vr_render_frame_seconds(void)
@@ -1541,6 +1548,11 @@ vehicle neither (with its cabin: vr_cabin.c), which the sight looks out of
 from the controller, inside the Scorpion's compartment or its turret */
 boolean vr_render_hides_object(long object_index)
 {
+	extern boolean vr_cabin_hides_attached(long object_index);
+
+	/* (in a feed cockpit, what is attached to its vehicle: vr_cabin.c) */
+	if (vr_render.active && vr_cabin_hides_attached(object_index))
+		return TRUE;
 	if (vr_render.scope_pass && vr_render.seated_unit_index != NONE)
 	{
 		return object_index == vr_render.seated_unit_index ||

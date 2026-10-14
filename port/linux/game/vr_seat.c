@@ -25,17 +25,20 @@ the director cuts between those cameras in the VR mode (director.c) rather
 than flying between them for a second.
 
 A feed cockpit (vr_cabin.c: the Scorpion's, vr.scorpion_view = "feed"),
-with vr.seat_motion = "still", is got into through the hatch over it: the
-eye held where the player stood as the body climbs in, then one blink to
-HATCH_HEIGHT straight above the cockpit's eye (standing at the hatch on
-the hull, looking down into it), a moment there, and straight down into the
-seat at a constant speed over HATCH_DROP_SECONDS (no turn, the comfort
-vignette light); then the grate slides down over the display's opening,
-the world is seen through its bars a moment, and the feed washes over the
-opening, top to bottom (d3d8_gl.c), the bars gone with it. Getting out,
-the reverse as the body climbs out: the feed washes back to the world
-through the bars, the grate lifts, the eye rises straight up out of the
-hatch, and one blink to where the player stands.
+with vr.seat_motion = "still", is got into and out of in the first person,
+with no break: the eye rides the body through the game's own animations,
+climbing onto the tank and down into the driver's place, and the cockpit is
+there about it as it comes in. The eye follows the animated head's path
+smoothed (critically damped over RIDE_SECONDS: the climb's bumps gone),
+drawn toward the cockpit's eye as the animation goes on (at its end, the
+cockpit's eye), never the head's turn: the player's own head keeps its
+pitch and roll. As the body climbs in, the play space turns with it (eased
+over the climb, no faster than RIDE_TURN_MOST) so that the player faces the
+display as they sit; the comfort vignette is light while the eye moves
+faster than walking (RIDE_WALKING). Seated, the display wakes: the grate
+closes over its opening and the feed washes over it. Getting out, the
+display collapses dark as the body starts to climb, and the eye rides the
+body up and out and down beside the tank, on to where the player stands.
 
 debug.vr_test_seat seats the first player in the nearest vehicle's seat
 whose label has the given text in it ("gunner", "driver", ...), standing at
@@ -78,7 +81,11 @@ unsigned long config_changes(void);
 void platform_log(char const *format, ...);
 /* vr_cabin.c's */
 short vr_cabin_seat_eye(long seated_unit_index, real_point3d *eye);
-boolean vr_cabin_hatched(short index);
+boolean vr_cabin_feed(short index);
+/* vr.c's */
+void halo_vr_body_turn(float radians);
+/* vr_render.c's */
+real vr_render_view_yaw(void);
 /* d3d8_gl.c's, vr.c's */
 void halo_vr_eye_tint(float red, float green, float blue);
 float halo_vr_vignette(float fov[2][4]);
@@ -93,14 +100,19 @@ this */
 #define BLINK_DISTANCE 0.1f
 #define BLINK_DARKENING_SECONDS 0.1f
 #define BLINK_LIGHTENING_SECONDS 0.15f
-/* a feed cockpit's hatch: the eye this far above the cockpit's (world
-units: 1.2 m), and each stage's seconds (as _hatch_* below: at the top, the
-drop, the grate closing, the world through its bars, the feed's wash; out:
-the wash back, the grate lifting, the rise); the comfort vignette as strong
-as this as the eye drops or rises */
-#define HATCH_HEIGHT (1.2f / METRES_PER_WORLD_UNIT)
-#define HATCH_DROP_SECONDS 0.5f
-#define HATCH_VIGNETTE 0.45f
+/* a feed cockpit's ride in and out: the eye's path smoothed over this
+(seconds: a critically damped spring's time) and no faster than this
+(metres a second: the game slides the body to the climb's start, 2 m in a
+tenth of a second), done once within this of
+where it goes (world units: 1 cm); the play space turned no faster than this
+(radians a second); the comfort vignette from this speed of the eye (metres
+a second: walking), as strong as this at its most */
+#define RIDE_SECONDS 0.12f
+#define RIDE_FASTEST 3.0f
+#define RIDE_CLOSE (0.01f / METRES_PER_WORLD_UNIT)
+#define RIDE_TURN_MOST (45.0f / DEGREES_PER_RADIAN)
+#define RIDE_WALKING 1.4f
+#define RIDE_VIGNETTE 0.45f
 
 /* where the eye is: the game's first-person camera, another of the game's
 (following a vehicle, the dead's), the seated head (vr.seat_motion =
@@ -114,33 +126,30 @@ enum
 	_seat_source_seated
 };
 
-/* a feed cockpit's hatch: the stages of getting in, then of getting out
-(the eye at the top of the hatch the last, until the player is out) */
+/* a feed cockpit: the eye riding in, the display's stages as it wakes, in,
+the display collapsing as the body climbs out, the eye riding out */
 enum
 {
-	_hatch_none,
-	_hatch_top,
-	_hatch_drop,
-	_hatch_grate,
-	_hatch_bars,
-	_hatch_wash,
-	_hatch_in,
-	_hatch_unwash,
-	_hatch_lift,
-	_hatch_rise,
-	_hatch_out,
-	NUMBER_OF_HATCH_STAGES
+	_feed_none,
+	_feed_riding_in,
+	_feed_grate,
+	_feed_bars,
+	_feed_wash,
+	_feed_in,
+	_feed_off,
+	_feed_riding_out,
+	NUMBER_OF_FEED_STAGES
 };
 
-static char const *const hatch_stage_names[NUMBER_OF_HATCH_STAGES] =
+static char const *const feed_stage_names[NUMBER_OF_FEED_STAGES] =
 {
-	"none", "at the top", "dropping in", "the grate closing", "the world through its bars", "the feed washing over",
-	"in", "the feed washing back", "the grate lifting", "rising out", "out at the top",
+	"none", "riding in", "the grate closing", "the world through its bars", "the feed washing over", "in",
+	"the display going dark", "riding out",
 };
 
-static real const hatch_stage_seconds[NUMBER_OF_HATCH_STAGES] =
+static real const feed_stage_seconds[NUMBER_OF_FEED_STAGES] =
 {
-	0.0f, 0.35f, HATCH_DROP_SECONDS, 0.45f, 0.4f, 0.7f, 0.0f, 0.35f, 0.3f, HATCH_DROP_SECONDS, 0.0f,
+	0.0f, 0.0f, 0.12f, 0.08f, 0.2f, 0.0f, 0.25f, 0.0f,
 };
 
 enum
@@ -188,15 +197,23 @@ static struct
 	boolean blinking;
 	real darkness;
 	long blinks;
-	/* a feed cockpit's hatch: the stage, the seconds in it, and the seat
-	(its count) it is for */
-	short hatch_stage;
-	real hatch_seconds;
-	long hatch_serial;
-	/* and its vehicle and the cockpit's eye in it (the eye goes on out of
-	the hatch once the body is out of the seat) */
-	long hatch_vehicle_index;
-	real_point3d hatch_eye_local;
+	/* a feed cockpit: the stage, the seconds in it, the seat (its count)
+	it is for, its vehicle and cabin; the eye riding in or out, in the
+	vehicle, and its speed (world units a second); the body's animation's
+	frames as it began, the play space's turn to make and made so far, and
+	the seconds it is made over (the climb's, or longer: RIDE_TURN_MOST) */
+	short feed_stage;
+	real feed_seconds;
+	long feed_serial;
+	long feed_vehicle_index;
+	short feed_cabin;
+	real_point3d ride_local;
+	real_vector3d ride_velocity;
+	short ride_frames;
+	real ride_turn;
+	real ride_turned;
+	real ride_turn_seconds;
+	real ride_seconds;
 
 	boolean checked;
 	/* debug.vr_test_seat: the seat's label's text, when to get in and for
@@ -280,84 +297,207 @@ static void shown_position(real_point3d *position)
 		*position = vr_seat.shown;
 }
 
-static void hatch_stage_set(short stage, real seconds)
+static void feed_stage_set(short stage, real seconds)
 {
-	if (stage != vr_seat.hatch_stage)
+	if (stage != vr_seat.feed_stage)
 	{
-		platform_log("vr seat: hatch: %s (frame %ld)", hatch_stage_names[stage], vr_seat.frame);
-		vr_seat.hatch_stage = stage;
+		platform_log("vr seat: feed: %s (frame %ld)", feed_stage_names[stage], vr_seat.frame);
+		vr_seat.feed_stage = stage;
 	}
-	vr_seat.hatch_seconds = seconds;
+	vr_seat.feed_seconds = seconds;
 }
 
 /* how far a stage has gone (0 to 1) */
-static real hatch_progress(void)
+static real feed_progress(void)
 {
-	real length = hatch_stage_seconds[vr_seat.hatch_stage];
+	real length = feed_stage_seconds[vr_seat.feed_stage];
 
-	return length > 0.0f ? PIN(vr_seat.hatch_seconds / length, 0.0f, 1.0f) : 1.0f;
+	return length > 0.0f ? PIN(vr_seat.feed_seconds / length, 0.0f, 1.0f) : 1.0f;
 }
 
-/* how high above the cockpit's eye the eye is at the hatch's stage (0 to
-1 of HATCH_HEIGHT): the drop and the rise at a constant speed */
-static real hatch_height(void)
+/* the display's timed stages moved on */
+static void feed_stages(real seconds)
 {
-	switch (vr_seat.hatch_stage)
+	vr_seat.feed_seconds += seconds;
+	while ((vr_seat.feed_stage == _feed_grate || vr_seat.feed_stage == _feed_bars || vr_seat.feed_stage == _feed_wash) &&
+		vr_seat.feed_seconds >= feed_stage_seconds[vr_seat.feed_stage])
 	{
-	case _hatch_top:
-	case _hatch_out:
-		return 1.0f;
-	case _hatch_drop:
-		return 1.0f - hatch_progress();
-	case _hatch_rise:
-		return hatch_progress();
-	default:
-		return 0.0f;
+		feed_stage_set(vr_seat.feed_stage + 1, vr_seat.feed_seconds - feed_stage_seconds[vr_seat.feed_stage]);
 	}
 }
 
-/* each frame in a feed cockpit's seat (its seat's count: a new one starts
-at the top), the seconds since the last, whether the body climbs out, and
-whether the eye is moving in a blink (the stages wait): the stage moved on */
-static void hatch_update(long serial, boolean exiting, boolean blinking, real seconds)
+/* the eye riding toward a place in the vehicle (the head's path, the
+cockpit's eye, where the player stands): critically damped over
+RIDE_SECONDS (no overshoot, no step); the comfort vignette while it moves
+faster than walking */
+static void ride_toward(real_point3d const *target, real seconds)
 {
-	if (serial != vr_seat.hatch_serial || vr_seat.hatch_stage == _hatch_none)
+	real omega = 2.0f / RIDE_SECONDS, x = omega * seconds;
+	real decay = 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
+	real *position = &vr_seat.ride_local.x, *velocity = &vr_seat.ride_velocity.i;
+	real const *goal = &target->x;
+	real_point3d was = vr_seat.ride_local;
+	real_vector3d step;
+	real speed, moved;
+	short axis;
+
+	for (axis = 0; axis < 3; axis++)
 	{
-		vr_seat.hatch_serial = serial;
-		hatch_stage_set(_hatch_top, 0.0f);
+		real change = position[axis] - goal[axis];
+		real temp = (velocity[axis] + omega * change) * seconds;
+
+		velocity[axis] = (velocity[axis] - omega * temp) * decay;
+		position[axis] = goal[axis] + (change + temp) * decay;
 	}
-	if (blinking)
+	/* (no faster than RIDE_FASTEST: a jump of the body's becomes a glide) */
+	vector_from_points3d(&was, &vr_seat.ride_local, &step);
+	moved = (real)sqrt(magnitude_squared3d(&step));
+	if (seconds > 0.0f && moved > RIDE_FASTEST / METRES_PER_WORLD_UNIT * seconds)
+	{
+		real scale = RIDE_FASTEST / METRES_PER_WORLD_UNIT * seconds / moved;
+
+		vr_seat.ride_local.x = was.x + step.i * scale;
+		vr_seat.ride_local.y = was.y + step.j * scale;
+		vr_seat.ride_local.z = was.z + step.k * scale;
+		vr_seat.ride_velocity.i = step.i * scale / seconds;
+		vr_seat.ride_velocity.j = step.j * scale / seconds;
+		vr_seat.ride_velocity.k = step.k * scale / seconds;
+	}
+	speed = (real)sqrt(magnitude_squared3d(&vr_seat.ride_velocity)) * METRES_PER_WORLD_UNIT;
+	if (speed > RIDE_WALKING)
+		halo_vr_comfort_vignette(MIN(RIDE_VIGNETTE, (speed - RIDE_WALKING) * 0.25f));
+}
+
+/* the play space turned on toward the turn to make (eased over its
+seconds) */
+static void ride_turn(real seconds)
+{
+	real t, wanted;
+
+	if (vr_seat.ride_turn == 0.0f)
 		return;
-	/* (debug.vr_test_seat: a 72 Hz headset's frame each frame, as its
-	screenshots slow the game, so that each step shows in them) */
-	if (vr_seat.testing)
-		seconds = 1.0f / 72.0f;
-	if (exiting && vr_seat.hatch_stage < _hatch_unwash)
-	{
-		/* (getting out from wherever getting in had come to: back up from
-		there, the eye's height kept) */
-		real height = hatch_height();
+	vr_seat.ride_seconds += seconds;
+	t = vr_seat.ride_turn_seconds > 0.0f ? PIN(vr_seat.ride_seconds / vr_seat.ride_turn_seconds, 0.0f, 1.0f) : 1.0f;
+	wanted = vr_seat.ride_turn * t * t * (3.0f - 2.0f * t);
+	halo_vr_body_turn(wanted - vr_seat.ride_turned);
+	vr_seat.ride_turned = wanted;
+}
 
-		if (vr_seat.hatch_stage >= _hatch_wash)
-			hatch_stage_set(_hatch_unwash, vr_seat.hatch_stage == _hatch_wash ?
-				(1.0f - hatch_progress()) * hatch_stage_seconds[_hatch_unwash] : 0.0f);
-		else if (vr_seat.hatch_stage >= _hatch_grate)
-			hatch_stage_set(_hatch_lift, 0.0f);
-		else
-			hatch_stage_set(_hatch_rise, height * hatch_stage_seconds[_hatch_rise]);
-	}
-	vr_seat.hatch_seconds += seconds;
-	while (vr_seat.hatch_stage != _hatch_in && vr_seat.hatch_stage != _hatch_out &&
-		vr_seat.hatch_seconds >= hatch_stage_seconds[vr_seat.hatch_stage])
+/* the turn (radians) from a yaw to another, the shorter way */
+static real yaw_difference(real from, real to)
+{
+	real d = (real)fmod(to - from, 2.0 * 3.14159265);
+
+	if (d > 3.14159265f)
+		d -= 2.0f * 3.14159265f;
+	if (d < -3.14159265f)
+		d += 2.0f * 3.14159265f;
+	return d;
+}
+
+/* each frame in a feed cockpit's seat (or riding out of it once the body is
+out: unit_index NONE), from where the eye was, the head's place and the
+cockpit's eye (in the world), the vehicle, and the seconds since the last
+frame: the eye's place (eye) */
+static void feed_ride(long unit_index, long vehicle_index, real_point3d const *was, real_point3d const *head,
+	real_point3d const *cockpit_eye, real_point3d *eye, real seconds)
+{
+	real_point3d target, head_local, cockpit_local;
+	short animation_state = NONE, remaining = 0;
+	real w = 1.0f;
+
+	/* (the frame's time, as the body's animation goes on: the path
+	follows it at any rate of frames) */
+	seconds = PIN(seconds, 0.0f, 0.1f);
+	if (unit_index != NONE)
+		remaining = unit_get_animation_frames_remaining(unit_index, &animation_state);
+	if (vr_seat.feed_stage == _feed_none || vr_seat.feed_serial != vr_seat.seat_serial)
 	{
-		hatch_stage_set(vr_seat.hatch_stage + 1, vr_seat.hatch_seconds - hatch_stage_seconds[vr_seat.hatch_stage]);
+		/* (getting in: the ride from where the eye was, and the play space's
+		turn to face the hull's front as the body sits: over the climb, no
+		faster than RIDE_TURN_MOST at the eased turn's fastest) */
+		real_matrix4x3 const *hull = object_get_node_matrix(vehicle_index, 0);
+		real climb = animation_state == _unit_state_entering_seat ? remaining / 30.0f : 0.0f;
+
+		vr_seat.feed_serial = vr_seat.seat_serial;
+		vr_seat.feed_vehicle_index = vehicle_index;
+		vehicle_to_local(vehicle_index, was, &vr_seat.ride_local);
+		vr_seat.ride_velocity.i = vr_seat.ride_velocity.j = vr_seat.ride_velocity.k = 0.0f;
+		vr_seat.ride_frames = MAX(remaining, 1);
+		vr_seat.ride_turn = yaw_difference(vr_render_view_yaw(), (real)atan2(hull->forward.j, hull->forward.i));
+		vr_seat.ride_turned = vr_seat.ride_seconds = 0.0f;
+		vr_seat.ride_turn_seconds = MAX(climb, 1.5f * (real)fabs(vr_seat.ride_turn) / RIDE_TURN_MOST);
+		feed_stage_set(_feed_riding_in, 0.0f);
+		platform_log("vr seat: feed: the play space to turn %.0f degrees over %.2f s", vr_seat.ride_turn * DEGREES_PER_RADIAN,
+			vr_seat.ride_turn_seconds);
 	}
-	if (vr_seat.hatch_stage == _hatch_drop || vr_seat.hatch_stage == _hatch_rise)
-		halo_vr_comfort_vignette(HATCH_VIGNETTE);
-	/* (debug.vr_test_seat, with debug.screenshot_directory: the eyes every
-	sixth frame through the hatch's stages, for strips of them) */
-	if (vr_seat.testing && vr_seat.hatch_stage != _hatch_in && vr_seat.frame % 6 == 0)
-		halo_vr_test_screenshot();
+	vehicle_to_local(vehicle_index, cockpit_eye, &cockpit_local);
+	if (unit_index != NONE && animation_state == _unit_state_entering_seat)
+	{
+		/* (in: the head's path, drawn to the cockpit's eye as the climb goes
+		on) */
+		real t = 1.0f - PIN((real)remaining / (real)vr_seat.ride_frames, 0.0f, 1.0f);
+
+		w = t * t * (3.0f - 2.0f * t);
+	}
+	else if (unit_index != NONE && animation_state == _unit_state_exiting_seat)
+	{
+		/* (out: from the cockpit's eye to the head's path as the climb goes
+		on; the display collapsing) */
+		real t;
+
+		if (vr_seat.feed_stage < _feed_off)
+		{
+			vr_seat.ride_frames = MAX(remaining, 1);
+			feed_stage_set(_feed_off, 0.0f);
+		}
+		t = 1.0f - PIN((real)remaining / (real)vr_seat.ride_frames, 0.0f, 1.0f);
+		w = 1.0f - t * t * (3.0f - 2.0f * t);
+	}
+	else if (unit_index == NONE)
+	{
+		w = 0.0f;
+		if (vr_seat.feed_stage < _feed_riding_out)
+			feed_stage_set(_feed_riding_out, 0.0f);
+	}
+	else if (vr_seat.feed_stage == _feed_riding_in)
+	{
+		/* (seated: the display wakes once the eye is in) */
+		feed_stage_set(_feed_grate, 0.0f);
+	}
+	vehicle_to_local(vehicle_index, head, &head_local);
+	target.x = head_local.x + (cockpit_local.x - head_local.x) * w;
+	target.y = head_local.y + (cockpit_local.y - head_local.y) * w;
+	target.z = head_local.z + (cockpit_local.z - head_local.z) * w;
+	ride_toward(&target, seconds);
+	ride_turn(seconds);
+	feed_stages(seconds);
+	vehicle_from_local(vehicle_index, &vr_seat.ride_local, eye);
+	if (vr_seat.testing)
+	{
+		platform_log("vr seat: ride: frame %ld %s: head %.3f %.3f %.3f eye %.3f %.3f %.3f m (in the vehicle), %.2f m/s, "
+			"turned %.1f of %.1f degrees", vr_seat.frame, feed_stage_names[vr_seat.feed_stage],
+			head_local.x * METRES_PER_WORLD_UNIT, head_local.y * METRES_PER_WORLD_UNIT, head_local.z * METRES_PER_WORLD_UNIT,
+			vr_seat.ride_local.x * METRES_PER_WORLD_UNIT, vr_seat.ride_local.y * METRES_PER_WORLD_UNIT,
+			vr_seat.ride_local.z * METRES_PER_WORLD_UNIT,
+			(real)sqrt(magnitude_squared3d(&vr_seat.ride_velocity)) * METRES_PER_WORLD_UNIT,
+			vr_seat.ride_turned * DEGREES_PER_RADIAN, vr_seat.ride_turn * DEGREES_PER_RADIAN);
+		/* (with debug.screenshot_directory: the eyes every third frame as
+		it rides and the display wakes, for strips of them) */
+		if (vr_seat.feed_stage != _feed_in && vr_seat.frame % 3 == 0)
+			halo_vr_test_screenshot();
+	}
+}
+
+/* whether the eye has ridden out to where the player stands (in the
+vehicle: the place's) */
+static boolean ride_arrived(long vehicle_index, real_point3d const *place)
+{
+	real_point3d local;
+
+	vehicle_to_local(vehicle_index, place, &local);
+	return distance3d(&local, &vr_seat.ride_local) < RIDE_CLOSE &&
+		magnitude_squared3d(&vr_seat.ride_velocity) * METRES_PER_WORLD_UNIT * METRES_PER_WORLD_UNIT < 0.01f;
 }
 
 /* each VR frame (vr_render.c), the eye's place before the head's offset:
@@ -400,6 +540,24 @@ void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_poin
 			source = _seat_source_head;
 			unit_get_head_position(seated_unit_index, &desired);
 		}
+		else if (vr_cabin_feed(vr_cabin_seat_eye(seated_unit_index, &desired)))
+		{
+			/* (a feed cockpit: the eye rides the body in and out, the cockpit
+			about it: feed_ride) */
+			real_point3d head, cockpit_eye = desired, was;
+
+			if (vr_seat.shown_valid)
+				shown_position(&was);
+			else
+				was = *position;
+			unit_get_head_position(seated_unit_index, &head);
+			source = _seat_source_seated;
+			vr_seat.cabin = vr_cabin_seat_eye(seated_unit_index, &cockpit_eye);
+			feed_ride(seated_unit_index, vehicle_index, &was, &head, &cockpit_eye, &desired, seconds);
+			vr_seat.feed_cabin = vr_seat.cabin;
+			vr_seat.anchored = TRUE;
+			vr_seat.shown_serial = vr_seat.seat_serial;
+		}
 		else if (!vr_seat.anchored && unit->unit.animation.state == _unit_state_entering_seat)
 		{
 			/* getting in: the eye stays where it was as the body climbs in
@@ -434,7 +592,7 @@ void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_poin
 		/* (once seated, where the seat has a cabin, the eye is its: where the
 		cabin is drawn about it; another cabin's, as its view changes, is
 		blinked to) */
-		if (source != _seat_source_getting_in)
+		if (source != _seat_source_getting_in && vr_seat.feed_stage == _feed_none)
 		{
 			short cabin = vr_cabin_seat_eye(seated_unit_index, &desired);
 
@@ -445,38 +603,19 @@ void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_poin
 				vr_seat.seat_serial++;
 			}
 		}
-		/* (a feed cockpit, the eye held still: in and out by its hatch, the
-		eye above the cockpit's as the stage has it, straight up in the
-		vehicle) */
-		if (source == _seat_source_seated && seat_still() && vr_cabin_hatched(vr_seat.cabin))
-		{
-			real_point3d local;
-
-			hatch_update(vr_seat.seat_serial, unit->unit.animation.state == _unit_state_exiting_seat,
-				vr_seat.blinking || vr_seat.darkness > 0.0f || vr_seat.seat_serial != vr_seat.shown_serial, seconds);
-			vehicle_to_local(vehicle_index, &desired, &local);
-			vr_seat.hatch_vehicle_index = vehicle_index;
-			vr_seat.hatch_eye_local = local;
-			local.z += hatch_height() * HATCH_HEIGHT;
-			vehicle_from_local(vehicle_index, &local, &desired);
-		}
-		else
-		{
-			vr_seat.hatch_stage = _hatch_none;
-		}
+		if (source != _seat_source_seated || !seat_still() || !vr_cabin_feed(vr_seat.cabin))
+			vr_seat.feed_stage = _feed_none;
 	}
-	else if (vr_seat.hatch_stage >= _hatch_unwash && vr_seat.hatch_stage < _hatch_out && seat_still() &&
-		vr_seat.hatch_vehicle_index != NONE && object_try_and_get(vr_seat.hatch_vehicle_index))
+	else if (vr_seat.feed_stage != _feed_none && seat_still() && vr_seat.feed_vehicle_index != NONE &&
+		object_try_and_get(vr_seat.feed_vehicle_index) && !ride_arrived(vr_seat.feed_vehicle_index, position))
 	{
-		/* (out of a feed cockpit's seat before the eye is out of its hatch:
-		on up and out, in the vehicle, the cockpit still about it; then the
-		blink to where the player stands) */
-		real_point3d local = vr_seat.hatch_eye_local;
+		/* (out of a feed cockpit's seat: the eye rides on to where the
+		player stands, from the body's head's path, the cockpit about it
+		until it is out; then the first person's, with no jump) */
+		real_point3d stand = *position;
 
-		vehicle_index = vr_seat.hatch_vehicle_index;
-		hatch_update(vr_seat.hatch_serial, TRUE, vr_seat.blinking || vr_seat.darkness > 0.0f, seconds);
-		local.z += hatch_height() * HATCH_HEIGHT;
-		vehicle_from_local(vehicle_index, &local, &desired);
+		vehicle_index = vr_seat.feed_vehicle_index;
+		feed_ride(NONE, vehicle_index, &stand, &stand, &stand, &desired, seconds);
 		source = _seat_source_seated;
 	}
 	else
@@ -486,8 +625,8 @@ void vr_seat_eye(long seated_unit_index, boolean aiming, real seconds, real_poin
 		vr_seat.anchored = FALSE;
 		vr_seat.frozen = FALSE;
 		vr_seat.cabin = NONE;
-		vr_seat.hatch_stage = _hatch_none;
-		vr_seat.hatch_vehicle_index = NONE;
+		vr_seat.feed_stage = _feed_none;
+		vr_seat.feed_vehicle_index = NONE;
 		source = director_get_perspective(0) == _director_perspective_first_person ?
 			_seat_source_first_person : _seat_source_game;
 	}
@@ -558,42 +697,44 @@ boolean vr_seat_seated_shown(void)
 	return vr_seat.shown_valid && vr_seat.source == _seat_source_seated && vr_seat.anchored;
 }
 
-/* vr_cabin.c: the feed cockpit the eye is getting out of once the body is
-out of its seat (its cabin's index, and the vehicle), else NONE */
-short vr_seat_hatch_cabin(long *vehicle_index)
+/* vr_cabin.c: the feed cockpit the eye rides out of once the body is out
+of its seat (its cabin's index, and the vehicle), else NONE */
+short vr_seat_feed_cabin(long *vehicle_index)
 {
-	if (vr_seat.hatch_stage == _hatch_none || vr_seat.hatch_vehicle_index == NONE || !vr_seat_seated_shown())
+	if (vr_seat.feed_stage == _feed_none || vr_seat.feed_vehicle_index == NONE || !vr_seat_seated_shown())
 		return NONE;
-	*vehicle_index = vr_seat.hatch_vehicle_index;
-	return vr_seat.cabin;
+	*vehicle_index = vr_seat.feed_vehicle_index;
+	return vr_seat.feed_cabin;
 }
 
-/* vr_cabin.c: in a feed cockpit (its hatch's stages: the eye shown in its
-seat), how far its grate has closed over the display's opening (0 open, 1
-closed) and how far the feed has washed over it (0 the world, 1 the feed);
-FALSE out of one */
-boolean vr_seat_hatch(real *grate, real *wash)
+/* vr_cabin.c: in a feed cockpit (the eye riding in, seated, or riding
+out), how far its grate has closed over the display's opening (0 open, 1
+closed), how far the feed has washed over it (0 the world, 1 the feed), and
+how far it has gone dark (0 on, 1 dark: as the body climbs out; as the eye
+rides in, the world is seen through its opening as it is); FALSE out of
+one */
+boolean vr_seat_feed(real *grate, real *wash, real *off)
 {
-	short stage = vr_seat.hatch_stage;
+	short stage = vr_seat.feed_stage;
 	real t;
 
 	*grate = *wash = 0.0f;
-	if (stage == _hatch_none || !vr_seat_seated_shown())
+	*off = 1.0f;
+	if (stage == _feed_none || !vr_seat_seated_shown())
 		return FALSE;
-	t = hatch_progress();
-	t = t * t * (3.0f - 2.0f * t);
-	if (stage == _hatch_grate)
-		*grate = t;
-	else if (stage == _hatch_lift)
-		*grate = 1.0f - t;
-	else if (stage >= _hatch_bars && stage <= _hatch_unwash)
+	t = feed_progress();
+	if (stage == _feed_grate)
+		*grate = t * t * (3.0f - 2.0f * t);
+	else if (stage >= _feed_bars && stage <= _feed_in)
 		*grate = 1.0f;
-	if (stage == _hatch_wash)
-		*wash = hatch_progress();
-	else if (stage == _hatch_unwash)
-		*wash = 1.0f - hatch_progress();
-	else if (stage == _hatch_in)
+	if (stage == _feed_wash)
+		*wash = t;
+	else if (stage >= _feed_in)
 		*wash = 1.0f;
+	if (stage >= _feed_riding_in && stage <= _feed_in)
+		*off = 0.0f;
+	else if (stage == _feed_off)
+		*off = t;
 	return TRUE;
 }
 

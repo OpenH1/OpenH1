@@ -261,6 +261,7 @@ extern short debug_rasterizer_light_count;
 
 #ifdef HALO_VR
 /* port/linux/game/vr_cabin.c */
+boolean vr_cabin_hides_model(long object_index);
 void vr_cabin_draw(long object_index, long model_index, real_matrix4x3 const *node_matrices,
 	real_rgb_color const *change_colors, real const *function_values, struct render_lighting const *lighting,
 	struct render_model_effect const *model_effect);
@@ -674,6 +675,9 @@ static void render_object_list(
 					vr_grab.c) */
 					if (vr_grab_highlight(object_index, data->lighting, &grab_lighting, &model_effect))
 						lighting = &grab_lighting;
+					/* port: not the vehicle about the eye in a feed cockpit
+					(its cockpit is drawn below: port/linux/game/vr_cabin.c) */
+					if (!vr_cabin_hides_model(object_index))
 #endif
 					render_model(
 						definition->object.model.index,

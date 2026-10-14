@@ -9232,16 +9232,22 @@ static void vr_draw_feed(void)
 vr_cabin.c, vr.c's halo_vr_cockpit_window) in both eyes' images
 (multiview), after the foveation's composite and before the smart-link's
 window (which opens within it): the cockpit's opening, which each eye sees
-the world through, where each eye's ray meets the curved wall it is in,
-given the feed's look as the smart-link's window has it: a faint blue tint,
-scan lines, its edges darkened, a thin line of the HUD's blue about it with
-heavier corners, and the readout along its bottom (the zoom, the range, the
-rounds of the vehicle's weapon and its second's). It washes over the
-opening from its top down as the grate closes (wash 0 to 1: a bright line
-sweeping down, interference about it, the world through the bars above it
-and the feed below; the readout typed last), and back up as it opens. What
-is nearer than the opening (the hands) is left as it is. The images are
-copied first (the pass reads them), and written as they are encoded. */
+the world through, where each eye's ray meets the curved wall it is in (a
+cylinder about the eye: the opening all the way round it, its half angle
+180 degrees, or a part of one), given the feed's look as the smart-link's
+window has it: a faint blue tint, scan lines, its edges darkened, a thin
+line of the HUD's blue about it with heavier corners. All the way round, it
+is panels between the ribs every 45 degrees (none ahead nor behind): the
+front one's from 45
+degrees left to 45 right, with the readout along its bottom (the zoom, the
+range, the rounds of the vehicle's weapon and its second's), and about it
+the hull cameras', a little dimmer, labelled L HULL, R HULL and REAR. The
+feed washes over the opening from its top down as the grate closes (wash 0
+to 1: a bright line sweeping down, interference about it, the world above
+it and the feed below; the readout typed last); dark (off), it collapses as
+a screen switched off. What is nearer than the opening (the hands, the
+ribs) is left as it is. The images are copied first (the pass reads them),
+and written as they are encoded. */
 #define COCKPIT_TEXT_LENGTH 44
 static void vr_draw_cockpit_display(GLuint depth_texture, int depth_layers)
 {
@@ -9288,8 +9294,21 @@ static void vr_draw_cockpit_display(GLuint depth_texture, int depth_layers)
 		"}\n"
 		/* (the smart-link's glyphs: 3x5 cells from the top row's left, the
 		digits, then X, R, A, N, G, E, M, O, /, ., - and a space) */
-		"const int glyphs[22] = int[22](31599, 11415, 29671, 29647, 23497, 31183, 31215, 29257, 31727,\n"
-		"	31695, 2728, 27565, 11245, 27501, 14699, 31143, 24557, 11114, 4772, 2, 448, 0);\n"
+		"const int glyphs[25] = int[25](31599, 11415, 29671, 29647, 23497, 31183, 31215, 29257, 31727,\n"
+		"	31695, 2728, 27565, 11245, 27501, 14699, 31143, 24557, 11114, 4772, 2, 448, 0, 18727, 23533, 23407);\n"
+		/* (the hull cameras' labels: L HULL, R HULL, REAR; L, H and U after
+		the space) */
+		"const int labels[18] = int[18](22, 21, 23, 24, 22, 22, 11, 21, 23, 24, 22, 22, 11, 15, 12, 11, -1, -1);\n"
+		"float label_lit(vec2 q, int which, float typed)\n"
+		"{\n"
+		"	if (q.x < 0.0 || q.y < 0.0 || q.y >= 5.0)\n"
+		"		return 0.0;\n"
+		"	ivec2 cell = ivec2(floor(q));\n"
+		"	int glyph = cell.x / 4, column = cell.x - glyph * 4, count = which == 2 ? 4 : 6;\n"
+		"	if (glyph >= count || float(glyph) >= typed || column > 2)\n"
+		"		return 0.0;\n"
+		"	return float((glyphs[labels[which * 6 + glyph]] >> (14 - cell.y * 3 - column)) & 1);\n"
+		"}\n"
 		"float line_lit(vec2 q, float typed)\n"
 		"{\n"
 		"	if (q.x < 0.0 || q.y < 0.0 || q.y >= 5.0)\n"
@@ -9317,53 +9336,87 @@ static void vr_draw_cockpit_display(GLuint depth_texture, int depth_layers)
 		"	if (s <= 0.0)\n"
 		"		discard;\n"
 		"	vec3 rel = ray * s - c;\n"
-		"	vec2 q = vec2(atan(dot(rel, right[eye].xyz), dot(rel, forward[eye].xyz)) / shape.y, dot(rel, u) / shape.z);\n"
-		"	vec2 aq = abs(q);\n"
-		/* (its frame's line stands a little outside the opening) */
-		"	float px = 1.5 * length(vec2(dFdx(q.y), dFdy(q.y)));\n"
-		"	if (aq.x > 1.0 + 6.0 * px * shape.z / (shape.x * shape.y) || aq.y > 1.0 + 6.0 * px)\n"
+		"	float angle = atan(dot(rel, right[eye].xyz), dot(rel, forward[eye].xyz));\n"
+		"	float v = dot(rel, u) / shape.z;\n"
+		"	float av = abs(v);\n"
+		"	float px = 1.5 * length(vec2(dFdx(v), dFdy(v)));\n"
+		"	if (abs(angle) > shape.y + 6.0 * px * shape.z / shape.x || av > 1.0 + 6.0 * px)\n"
 		"		discard;\n"
 		"	if (depth_map.x > 0.0)\n"
 		"	{\n"
 		"		float z = texture(depth_texture, vec3(f, float(layers == 4 ? 2 * eye : eye))).r;\n"
-		"		if (z < depth_map.x * (1.0 - depth_map.y / (0.85 * s)))\n"
+		"		if (z < depth_map.x * (1.0 - depth_map.y / (0.96 * s)))\n"
 		"			discard;\n"
 		"	}\n"
 		"	vec3 hud = vec3(0.45, 0.72, 1.0), white = mix(hud, vec3(1.0), 0.6);\n"
-		/* the wash: its line from the top (q.y 1) down to the bottom (-1);
-		washed below it; interference about it */
+		"	float pi = 3.14159265, ad = abs(angle);\n"
+		"	float centre = ad < 0.25 * pi ? 0.0 : ad < 0.5 * pi ? 0.375 * pi : ad < 0.75 * pi ? 0.625 * pi : pi;\n"
+		"	float halfw = ad < 0.25 * pi || ad >= 0.75 * pi ? 0.25 * pi : 0.125 * pi;\n"
+		"	float lx = (ad - centre) / halfw;\n"
+		"	if (shape.y < pi - 0.01)\n"
+		"	{\n"
+		"		centre = 0.0;\n"
+		"		halfw = shape.y;\n"
+		"		lx = angle / shape.y;\n"
+		"	}\n"
+		"	float alx = abs(lx);\n"
+		"	bool front = ad < 0.25 * pi || shape.y < pi - 0.01;\n"
 		"	float line_y = 1.0 - 2.0 * wash.x;\n"
-		"	float washed = wash.x >= 1.0 ? 1.0 : smoothstep(line_y + 0.02, line_y - 0.02, q.y);\n"
-		"	float near_line = wash.x < 1.0 ? exp(-abs(q.y - line_y) / 0.08) : 0.0;\n"
-		"	float band = hash(vec2(floor((q.y + 1.0) * 24.0), wash.y));\n"
+		"	float washed = wash.x >= 1.0 ? 1.0 : smoothstep(line_y + 0.02, line_y - 0.02, v);\n"
+		"	float near_line = wash.x < 1.0 ? exp(-abs(v - line_y) / 0.08) : 0.0;\n"
+		"	float band = hash(vec2(floor((v + 1.0) * 24.0), wash.y));\n"
 		"	float offset = near_line * step(0.6, band) * (band - 0.8) * 0.04 * image.x;\n"
 		"	vec3 col = texture(eyes, vec3((gl_FragCoord.xy + vec2(offset, 0.0)) / image, float(eye))).rgb;\n"
 		"	vec3 world = texture(eyes, vec3(f, float(eye))).rgb;\n"
 		"	col += near_line * 0.15 * (hash(gl_FragCoord.xy + vec2(wash.y)) - 0.5);\n"
-		"	float edge = min(1.0 - aq.x * 1.0, 1.0 - aq.y);\n"
-		"	vec3 feed = col * vec3(0.92, 1.0, 1.08);\n"
+		"	float edge = min((1.0 - alx) * halfw * shape.x / shape.z, 1.0 - av);\n"
+		"	vec3 feed = col * vec3(0.92, 1.0, 1.08) * (front ? 1.0 : 0.78);\n"
 		"	feed *= 1.0 - 0.07 * (0.5 + 0.5 * sin(gl_FragCoord.y * 3.14159 / 3.0));\n"
 		"	feed *= 0.6 + 0.4 * smoothstep(0.0, 0.12, edge);\n"
 		"	vec3 result = mix(world, feed, washed);\n"
-		/* the sweep's line */
-		"	float sweep = wash.x > 0.0 && wash.x < 1.0 ? exp(-abs(q.y - line_y) / 0.006) : 0.0;\n"
+		"	float sweep = wash.x > 0.0 && wash.x < 1.0 ? exp(-abs(v - line_y) / 0.006) : 0.0;\n"
 		"	result = mix(result, white, sweep * 0.9);\n"
-		/* the frame: its line, heavier at the corners, as the feed comes */
-		"	float outside = max(aq.x - 1.0, aq.y - 1.0);\n"
+		"	float outside = max((alx - 1.0) * halfw * shape.x / shape.z, av - 1.0);\n"
 		"	float frame = (1.0 - smoothstep(0.0, 2.0 * px, abs(outside - 2.0 * px))) * 0.7;\n"
-		"	float corner = step(0.93, aq.x) * step(0.85, aq.y);\n"
+		"	float corner = step(1.0 - 0.07 * shape.z / (halfw * shape.x), alx) * step(0.85, av);\n"
 		"	frame = max(frame, corner * (1.0 - smoothstep(0.0, 3.0 * px, abs(outside - 3.0 * px))));\n"
-		"	result = mix(result, hud, frame * clamp(wash.x * 3.0, 0.0, 1.0));\n"
-		/* the readout along the bottom, typed last */
-		"	float cell = 0.016;\n"
-		"	float aspect = shape.z / (shape.x * shape.y);\n"
-		"	int count = 0;\n"
-		"	for (int i = 0; i < 44; i++)\n"
-		"		count += text[i] >= 0 ? 1 : 0;\n"
-		"	vec2 g = vec2(q.x / (cell * aspect) + float(count * 4 - 1) * 0.5, (-0.86 - q.y) / cell);\n"
-		"	float typed = floor(clamp((wash.x - 0.7) / 0.3, 0.0, 1.0) * float(count) + 0.5);\n"
-		"	result = mix(result, vec3(0.0), line_lit(g - vec2(0.5, 0.5), typed) * 0.7 * washed);\n"
-		"	result = mix(result, hud, line_lit(g, typed) * 0.95 * washed);\n"
+		"	result = mix(result, hud, frame * clamp(wash.x * 3.0, 0.0, 1.0) * (front ? 1.0 : 0.7));\n"
+		"	float cell = 0.0038 / shape.z;\n"
+		"	float across = 0.0038 / shape.x;\n"
+		"	float typed_part = clamp((wash.x - 0.7) / 0.3, 0.0, 1.0);\n"
+		"	if (front)\n"
+		"	{\n"
+		"		int count = 0;\n"
+		"		for (int i = 0; i < 44; i++)\n"
+		"			count += text[i] >= 0 ? 1 : 0;\n"
+		"		vec2 g = vec2(angle / across + float(count * 4 - 1) * 0.5, (-1.0 + 0.045 / shape.z + 5.0 * cell - v) / cell);\n"
+		"		float typed = floor(typed_part * float(count) + 0.5);\n"
+		"		result = mix(result, vec3(0.0), line_lit(g - vec2(0.5, 0.5), typed) * 0.7 * washed);\n"
+		"		result = mix(result, hud, line_lit(g, typed) * 0.95 * washed);\n"
+		"	}\n"
+		"	else\n"
+		"	{\n"
+		"		int which = ad >= 0.75 * pi ? 2 : angle < 0.0 ? 0 : 1;\n"
+		"		int count = which == 2 ? 4 : 6;\n"
+		"		vec2 g = vec2((ad - centre) * sign(angle) / across + float(count * 4 - 1) * 0.5, (-1.0 + 0.045 / shape.z + 5.0 * cell - v) / cell);\n"
+		"		if (which == 2)\n"
+		"			g.x = (angle >= 0.0 ? angle - pi : angle + pi) / across + float(count * 4 - 1) * 0.5;\n"
+		"		float lit = label_lit(g, which, floor(typed_part * float(count) + 0.5));\n"
+		"		float shadow = label_lit(g - vec2(0.5, 0.5), which, floor(typed_part * float(count) + 0.5));\n"
+		"		result = mix(result, vec3(0.0), shadow * 0.6 * washed);\n"
+		"		result = mix(result, hud * 0.85, lit * 0.9 * washed);\n"
+		"	}\n"
+		"	float off = shape.w;\n"
+		"	if (off > 0.0)\n"
+		"	{\n"
+		"		float open_half = max(1.0 - smoothstep(0.0, 0.7, off), 0.004);\n"
+		"		float shown = step(av, open_half) * step(alx, 1.0);\n"
+		"		float line = (1.0 - smoothstep(0.0, 0.02, abs(av - open_half))) * step(alx, 1.0 - smoothstep(0.7, 1.0, off));\n"
+		"		result = mix(vec3(0.01), result, shown * (1.0 - smoothstep(0.85, 1.0, off)));\n"
+		"		result = mix(result, white, line * (1.0 - smoothstep(0.9, 1.0, off)) * step(0.05, off));\n"
+		"		if (alx > 1.0 || av > 1.0)\n"
+		"			result = mix(result, vec3(0.01), off);\n"
+		"	}\n"
 		"	colour = vec4(clamp(result, 0.0, 1.0), 1.0);\n"
 		"}\n";
 	static unsigned long seed;
@@ -9375,7 +9428,7 @@ static void vr_draw_cockpit_display(GLuint depth_texture, int depth_layers)
 	GLuint eyes = vr_gl.eye_target.target.texture;
 	int eye, index;
 
-	if (failed || !vr_gl.eyes_drawn || !eyes || !halo_vr_cockpit_window(&window, &display) || display.wash <= 0.0f)
+	if (failed || !vr_gl.eyes_drawn || !eyes || !halo_vr_cockpit_window(&window, &display))
 		return;
 #ifdef HALO_GLES
 	if (!xgpu_capabilities.copy_image)
@@ -9482,7 +9535,7 @@ static void vr_draw_cockpit_display(GLuint depth_texture, int depth_layers)
 	glUniform4fv(right_location, 2, right[0]);
 	glUniform4fv(fov_location, 2, fov_rows[0]);
 	{
-		float shape[4] = { display.radius, display.half_angle, display.half_height, 0.0f };
+		float shape[4] = { display.radius, display.half_angle, display.half_height, display.off };
 
 		glUniform4fv(shape_location, 1, shape);
 	}

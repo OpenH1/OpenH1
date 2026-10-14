@@ -3436,6 +3436,14 @@ static void vignette_update(float seconds)
 		vr.vignette = 0.0f;
 }
 
+/* the play space turned (port/linux/game/vr_seat.c: getting into a feed
+cockpit, so as to face its display), as the stick turns it */
+void halo_vr_body_turn(float radians)
+{
+	if (vr.initialized)
+		vr.body_yaw += radians;
+}
+
 void halo_vr_comfort_vignette(float amount)
 {
 	vr.vignette_asked = amount < 0.0f ? 0.0f : amount > 1.0f ? 1.0f : amount;

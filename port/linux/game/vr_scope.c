@@ -172,7 +172,7 @@ boolean vr_render_scope_view(struct render_camera *weapon_camera, real_point3d e
 	real *units);
 void vr_render_world_to_head(real_point3d const *point, real_vector3d const *forward, real_vector3d const *up,
 	float position[3], float head_forward[3], float head_up[3]);
-boolean vr_seat_hatch(real *grate, real *wash);
+boolean vr_seat_feed(real *grate, real *wash, real *off);
 boolean vr_render_scope_seat_view(real_point3d eyes[2], real_vector3d *head_forward, real *units);
 boolean vr_render_scope_aim(real_point3d *point, real_point3d *origin, real_vector3d *direction);
 real vr_render_scope_range(void);
@@ -667,9 +667,9 @@ static boolean vr_scope_seat(struct render_camera *camera, struct render_camera 
 	/* (in a feed cockpit, the window within its display: 85 degrees across
 	and 40 high) */
 	{
-		real grate, wash;
+		real grate, wash, off;
 
-		vr_scope.window_degrees_most = vr_seat_hatch(&grate, &wash) ? FEED_WINDOW_DEGREES : 0.0f;
+		vr_scope.window_degrees_most = vr_seat_feed(&grate, &wash, &off) ? FEED_WINDOW_DEGREES : 0.0f;
 	}
 	return vr_scope_smartlink(camera, rasterizer_camera, weapon_index, NONE, zoom_level, magnification, &seat_camera,
 		eyes, &head_forward, units);

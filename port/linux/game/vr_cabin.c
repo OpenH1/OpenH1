@@ -21,19 +21,21 @@ the model as the model is drawn:
   at the front of the hull, under the front plate, the driver seated in it,
   with vision blocks in its front, which the world is seen through (the
   hull's own faces about it face out, and are not drawn from inside);
-- the Scorpion's commander (vr.scorpion_view = "hatch", the default): the eye
+- the Scorpion's commander (vr.scorpion_view = "hatch"): the eye
   above the turret, on its axis, so that it does not swing as the turret
   turns, a cupola ring with its lid open about it on the turret.
 - the Scorpion's driver in the feed cockpit (vr.scorpion_view = "feed", the
-  default): a closed compartment inside the hull, which the eye comes down
-  into through a hatch in its ceiling and rises out of (vr_seat.c). Its
+  default): a closed compartment inside the hull, which the eye rides into
+  and out of with the body's climb (vr_seat.c); about the eye in it the
+  vehicle is not drawn (vr_cabin_hides_model): only the world is seen
+  through the display, and not the armour the eye passes through. Its
   front wall curves gently about the eye, and the display is an opening in
   it, 85 degrees across and 40 high, which each eye sees the world through
   at its own place, as through a window: the world at its true size and
   depth. A grate of bars slides down over it once the eye is in, then the
   feed washes over the opening (d3d8_gl.c, vr.c's halo_vr_cockpit_display:
   the smart-link's look, its frame and readouts), and the bars are gone;
-  getting out, the reverse. Below it, on a holotable on the dash, the tank
+  getting out, it collapses dark as a screen switched off. Below it, on a holotable on the dash, the tank
   itself: its own model drawn a hand's length long with the shields' glow,
   its turret posed as the tank's is (turning to where the gun aims), tilted
   as the hull is from level.
@@ -90,12 +92,14 @@ const char *config_string(char const *name);
 void platform_log(char const *format, ...);
 /* vr_seat.c's */
 boolean vr_seat_seated_shown(void);
-boolean vr_seat_hatch(real *grate, real *wash);
-short vr_seat_hatch_cabin(long *vehicle_index);
+boolean vr_seat_feed(real *grate, real *wash, real *off);
+boolean vr_seat_shown(real_point3d *position);
+short vr_seat_feed_cabin(long *vehicle_index);
 /* vr_render.c's */
 void vr_render_world_to_head(real_point3d const *point, real_vector3d const *forward, real_vector3d const *up,
 	float position[3], float head_forward[3], float head_up[3]);
 real vr_render_scope_range(void);
+boolean vr_render_scope_pass(void);
 /* vr_holster.c's */
 void vr_holster_hologram(long unit_index, real units, struct render_model_effect *model_effect,
 	struct render_lighting *lighting);
@@ -104,9 +108,12 @@ void halo_vr_cockpit_display(const struct halo_vr_cockpit_display *display);
 
 /* a model's shader's tag group */
 #define SHADER_MODEL_TAG 'soso'
+/* the vehicle not drawn about an eye within this of a feed cockpit's box
+(world units: 15 cm) */
+#define FEED_HIDE_MARGIN (0.15f / METRES_PER_WORLD_UNIT)
 /* a feed cockpit's grate, open: lifted this far into the ceiling (world
 units) */
-#define GRATE_TRAVEL 0.200f
+#define GRATE_TRAVEL 0.300f
 /* the hologram drawn as a model this many pixels across would be (its
 level of detail) */
 #define HOLOGRAM_DETAIL_PIXELS 400.0f
@@ -424,6 +431,9 @@ static void hologram_draw(long object_index, long model_index, struct vr_cabin_m
 
 /* ---------- public code */
 
+static boolean eye_in_cockpit(long *vehicle_index);
+boolean vr_cabin_feed(short index);
+
 /* render.c, as a map is loaded: each cabin's vehicle's model, and its
 buffers, if the map has it */
 void vr_cabin_initialize_for_new_map(void)
@@ -490,7 +500,11 @@ void vr_cabin_draw(
 		return;
 	index = cabin_find(player_get(player_index)->unit_index, &vehicle_index);
 	if (index == NONE)
-		index = vr_seat_hatch_cabin(&vehicle_index);
+		index = vr_seat_feed_cabin(&vehicle_index);
+	/* (a feed cockpit, only about an eye in it: the eye riding in and out
+	sees the vehicle, not the cockpit within it, from outside) */
+	if (index != NONE && vr_cabin_feed(index) && !eye_in_cockpit(&vehicle_index))
+		return;
 	if (index == NONE || vehicle_index != object_index || vr_cabins[index].model_index != model_index)
 		return;
 	definition = &vr_cabin_models[index];
@@ -508,9 +522,9 @@ void vr_cabin_draw(
 		gone once the feed has washed over the opening) */
 		if (mesh_index == definition->grate_mesh)
 		{
-			real grate, wash;
+			real grate, wash, off;
 
-			if (!vr_seat_hatch(&grate, &wash) || wash >= 1.0f || grate <= 0.0f)
+			if (!vr_seat_feed(&grate, &wash, &off) || wash >= 1.0f || grate <= 0.0f)
 				continue;
 			lift = (1.0f - grate) * GRATE_TRAVEL;
 		}
@@ -556,13 +570,13 @@ static short cabin_shown(long *vehicle_index)
 		return NONE;
 	index = cabin_find(player_get(player_index)->unit_index, vehicle_index);
 	if (index == NONE)
-		index = vr_seat_hatch_cabin(vehicle_index);
+		index = vr_seat_feed_cabin(vehicle_index);
 	return index;
 }
 
-/* vr_seat.c: whether the cabin has a hatch the eye comes in and goes out
-by (a feed cockpit's: its display) */
-boolean vr_cabin_hatched(short index)
+/* vr_seat.c: whether the cabin is a feed cockpit (its display), which the
+eye rides into and out of */
+boolean vr_cabin_feed(short index)
 {
 	return index >= 0 && index < NUMBER_OF_CABINS && vr_cabin_models[index].display[2] > 0.0f;
 }
@@ -582,11 +596,11 @@ void vr_cabin_display_frame(void)
 	real_vector3d forward, up;
 	long vehicle_index = NONE;
 	short index = cabin_shown(&vehicle_index);
-	real grate, wash, units;
+	real grate, wash, off, units;
 	struct unit_datum *vehicle;
 	long weapon_index;
 
-	if (index == NONE || !vr_cabin_hatched(index) || !vr_seat_hatch(&grate, &wash) || wash <= 0.0f)
+	if (index == NONE || !vr_cabin_feed(index) || !vr_seat_feed(&grate, &wash, &off) || !eye_in_cockpit(&vehicle_index))
 	{
 		halo_vr_cockpit_display(NULL);
 		return;
@@ -608,6 +622,7 @@ void vr_cabin_display_frame(void)
 	display.half_angle = definition->display[3] * 3.14159265f / 180.0f;
 	display.half_height = (definition->display[5] - definition->display[4]) * 0.5f * units * METRES_PER_WORLD_UNIT;
 	display.wash = wash;
+	display.off = off;
 	display.range = vr_render_scope_range();
 	display.rounds_loaded = display.rounds_carried = display.second_loaded = display.second_carried = -1;
 	vehicle = unit_get(vehicle_index);
@@ -629,6 +644,48 @@ void vr_cabin_display_frame(void)
 		}
 	}
 	halo_vr_cockpit_display(&display);
+}
+
+/* the eye (this frame's) in the cockpit shown or within FEED_HIDE_MARGIN
+of it (its box: the cabin's inside), and the cockpit's vehicle; FALSE else */
+static boolean eye_in_cockpit(long *vehicle_index)
+{
+	struct vr_cabin_model const *definition;
+	real_matrix4x3 skinning, inverse;
+	real_point3d eye, local;
+	short index = cabin_shown(vehicle_index);
+
+	if (index == NONE || !vr_cabin_feed(index) || !vr_seat_shown(&eye))
+		return FALSE;
+	definition = &vr_cabin_models[index];
+	node_skinning(vr_cabins[index].model_index, object_get_node_matrix(*vehicle_index, 0), 0, &skinning);
+	matrix4x3_inverse(&skinning, &inverse);
+	matrix4x3_transform_point(&inverse, &eye, &local);
+	return local.x > definition->inside[0] - FEED_HIDE_MARGIN && local.x < definition->inside[3] + FEED_HIDE_MARGIN &&
+		local.y > definition->inside[1] - FEED_HIDE_MARGIN && local.y < definition->inside[4] + FEED_HIDE_MARGIN &&
+		local.z > definition->inside[2] - FEED_HIDE_MARGIN && local.z < definition->inside[5] + FEED_HIDE_MARGIN;
+}
+
+/* render_objects.c: whether this object's model is not drawn, the eye in a
+feed cockpit (or coming within FEED_HIDE_MARGIN of it): its vehicle, which
+the eye is inside (from inside, its armour's plates are seen through the
+display's opening, and the eye would pass through them as it comes in; the
+cockpit, drawn after its model, stays), and what is attached to the vehicle
+(hidden altogether: vr_render_hides_object); the eye pass's alone */
+boolean vr_cabin_hides_model(long object_index)
+{
+	long vehicle_index = NONE;
+
+	return object_index != NONE && !vr_render_scope_pass() && eye_in_cockpit(&vehicle_index) &&
+		object_index == vehicle_index;
+}
+
+boolean vr_cabin_hides_attached(long object_index)
+{
+	long vehicle_index = NONE;
+
+	return object_index != NONE && !vr_render_scope_pass() && eye_in_cockpit(&vehicle_index) &&
+		object_index != vehicle_index && object_get_ultimate_parent(object_index) == vehicle_index;
 }
 
 #endif

@@ -1914,37 +1914,48 @@ eye is put where it belongs, and what the model lacks is drawn about it, with
 the game's own textures and lighting:
 
 - `"feed"` (the default): you drive from a closed cockpit inside the hull,
-  the world on a wide display before you, as UNSC vehicles run on camera
+  the world on a display all the way round you, as UNSC vehicles run on camera
   feeds. The cockpit is a frame of reference that stays still about you as
   the tank moves, a defence against motion sickness. Its walls are the
   Pelican's troop bay's gunmetal panels (the Scorpion's own in a map without
   the Pelican), and in it are a dash, the two steering levers, side consoles
   and a seat.
-  - The display is the opening in the cockpit's curved front wall, about 85
-    degrees across and 40 high, so the world in it is at its true size and
-    depth in each eye, as through a window, with the feed's look over it: a
-    faint blue tint, scan lines, its edges darkened, a frame of the HUD's
-    blue, and along its bottom the zoom, the range to where you aim and the
-    cannon's rounds. The reticle is where you aim, as always; the turret
-    turns to it. The right stick's click opens the 2x and 4x window within
-    the display (`vr.vehicle_zoom`).
+  - The display wraps all the way round you: the cockpit is round, and the
+    display is the opening in its wall, from 20 degrees below your eyes to
+    45 above, so you can turn your head and look out any way. The world in
+    it is at its true size and depth in each eye, as through a window, with
+    the feed's look over it: a faint blue tint, scan lines, its edges
+    darkened, a frame of the HUD's blue. Ribs every 45 degrees (but ahead
+    and behind) mark its panels, the cockpit's still frame with the floor,
+    the dash and the levers. The front panel, from 45 degrees left to 45
+    right, is the main one: along its bottom the zoom, the range to where
+    you aim and the cannon's rounds. The others are the hull cameras, a
+    little dimmer, labelled L HULL, R HULL and REAR. The reticle is where
+    you aim, as always; the turret turns to it. The right stick's click
+    opens the 2x and 4x window within the front panel (`vr.vehicle_zoom`).
   - On a holotable under the display, the tank itself: the Scorpion's own
     model a hand's length long, glowing in the HUD's blue, its turret turned
     as the real one is (at a glance, which way the gun points against the
     hull you sit in), tilted as the hull is from level.
-  - Getting in: as you climb in (the X button), the view holds still; one
-    blink, and you stand at the hatch on the hull, looking down into the
-    cockpit; then you drop straight down through the hatch into the seat,
-    1.2 m in half a second at a constant speed, with no turn (the edges of
-    the view dim a little: `vr.comfort_vignette`). A grate of bars slides
-    down over the display's opening, and for a moment you see the world
-    through its bars; then the feed washes over it from the top down, a
-    bright line sweeping the opening, and the bars are gone. Getting out,
-    the reverse: the feed washes back to the world through the bars, the
-    grate lifts, you rise straight up out of the hatch, and one blink to the
-    ground beside the tank.
-  - With `vr.seat_motion = "head"`, there is no hatch: the eye is where the
-    game puts the driver's head, as in the other views.
+  - Getting in and out is in the first person, with no break: as you climb
+    in (the X button), your view rides the body through the game's own
+    climb onto the tank and down into the driver's place, and the cockpit is
+    there about you as you come down into it. The ride follows the body's
+    head smoothed (the climb's bumps gone, no faster than 3 m/s: where the
+    game slides the body to the climb's start, the view glides), never its
+    head's turn: your own head keeps its pitch and roll. As you climb, the
+    play space turns with you, eased and no faster than 45 degrees a
+    second, so that you face the display as you sit. The edges of the view
+    dim a little while it moves faster than walking (`vr.comfort_vignette`).
+    The tank's armour is not drawn about you once you are within 15 cm of the
+    cockpit, so you do not see through its plates as you pass, and from inside
+    only the world is seen through the display, as a hull camera's. Seated,
+    the display wakes: a grate of bars slides down over it, and the feed
+    washes over it from the top down (0.4 s). Getting out, the display
+    collapses dark as the body starts to climb, and the view rides it up and
+    out and down beside the tank, to where you stand.
+  - With `vr.seat_motion = "head"`, the view is where the game puts the
+    driver's head, as in the other views.
 - `"hatch"`: you stand in the turret's hatch, a cupola ring
   about you with its lid open, the eye above the turret on its axis, so that
   it does not swing as the turret turns under it. You see all about, over
@@ -2304,7 +2315,7 @@ headset's session is opened with, apply from the next start.
 | `vr.vehicle_view` | `"first_person"` | `HALO_VR_VEHICLE_VIEW` | `"first_person"`: in a vehicle's seat, the view is from the seated player's head, level with the horizon. `"third_person"`: the game's camera following the vehicle. |
 | `vr.warthog_steering` | `"wheel"` | `HALO_VR_WARTHOG_STEERING` | With `vr.aim = "controller"`, in a Warthog's driver seat: `"wheel"`, grip its wheel and turn it to steer, the view turning with the Warthog ("Driving a Warthog by its wheel"); `"look"`, it steers where the right controller points, the view turned by the stick. |
 | `vr.ghost_steering` | `"handlebars"` | `HALO_VR_GHOST_STEERING` | With `vr.aim = "controller"`, in a Ghost's driver seat: `"handlebars"`, grip its handles and turn them to steer, the view turning with the Ghost ("Driving a Ghost by its handlebars"); `"look"`, it steers and aims where the right controller points, the view turned by the stick. |
-| `vr.scorpion_view` | `"feed"` | `HALO_VR_SCORPION_VIEW` | With `vr.vehicle_view = "first_person"`, in a Scorpion's driver seat: `"feed"`, you drop in through a hatch into a closed cockpit inside the hull and see the world on a wide curved display (true to size, the zoom within it), the tank's hologram on the dash; `"hatch"`, you stand in the turret's hatch, the eye above the turret on its axis, seeing all about over the hull; `"inside"`, you sit in the driver's compartment at the front of the hull, seeing out through its vision blocks ("Driving a Scorpion"). |
+| `vr.scorpion_view` | `"feed"` | `HALO_VR_SCORPION_VIEW` | With `vr.vehicle_view = "first_person"`, in a Scorpion's driver seat: `"feed"`, you ride the body's climb in (and out), in the first person, into a closed cockpit inside the hull and see the world on a display all the way round you (true to size; the zoom within its front), the tank's hologram on the dash; `"hatch"`, you stand in the turret's hatch, the eye above the turret on its axis, seeing all about over the hull; `"inside"`, you sit in the driver's compartment at the front of the hull, seeing out through its vision blocks ("Driving a Scorpion"). |
 | `vr.comfort_vignette` | `true` | `HALO_VR_COMFORT_VIGNETTE` | The edges of the view dim a little while the view turns fast with a Ghost steered by its handlebars, or it speeds up or slows hard. |
 | `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, the eye stays put in the vehicle, riding with it but not with the body climbing in and out, a turret's turning or flinches, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
 | `vr.death_view` | `"crt"` | `HALO_VR_DEATH_VIEW` | As you die: `"crt"`, the helmet's view switches off as a CRT does and cuts to a death cam, a feed from beside your body (the right stick moves it about the body), until the game brings you back and the HUD boots (above, "Dying"); `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |

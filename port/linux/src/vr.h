@@ -296,7 +296,8 @@ feed's look over it. The axis at the display's middle height, the way to the
 display's middle from it and the axis's up (game axes from the recentred
 head, metres), the wall's radius, the display's half angle about the axis
 (radians) and its half height (metres); how far the feed has washed over it
-(0: the world through the opening, as it is; 1: all the feed); the range
+(0: the world through the opening, as it is; 1: all the feed) and how far
+it has gone dark (0 on; 1 dark, as a screen switched off); the range
 where the aim meets the world (metres; 0: nothing in range) and the rounds of
 the vehicle's weapon and its second (-1: none) */
 struct halo_vr_cockpit_display
@@ -308,6 +309,7 @@ struct halo_vr_cockpit_display
 	float half_angle;
 	float half_height;
 	float wash;
+	float off;
 	float range;
 	int rounds_loaded;
 	int rounds_carried;
