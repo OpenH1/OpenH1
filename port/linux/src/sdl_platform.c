@@ -826,7 +826,15 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (halo_vr_enabled() && host_vr_probe() != VR_BINDING_NONE)
 	{
 		if (host_vr_probe() == VR_BINDING_EGL)
+		{
 			SDL_SetHint(SDL_HINT_VIDEO_FORCE_EGL, "1");
+			/* no alpha in the window's framebuffer, which the game only ever
+			blits its colour to: SDL's X11 driver makes the window with the
+			default visual (24 bits) before it chooses the EGL config, and
+			NVIDIA's EGL makes no window surface from a config with alpha (a
+			32-bit visual) for it */
+			SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
+		}
 		platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
 			SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
 	}
