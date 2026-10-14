@@ -21,6 +21,32 @@ the current context whatever its API and window system (EGL or GLX).
 #include <dlfcn.h>
 #include <string.h>
 
+#if defined(HALO_DESKTOP_GL) && defined(HALO_VR)
+#include "vr_host.h"
+
+/* the VR build's GLX context (host_vr_probe: a runtime without
+XR_MNDX_egl_enable): an entry point the GL library does not export is
+GLX's to give, not EGL's, which has no context then */
+static void *glx_resolve(const char *name)
+{
+	static void *(*get_proc_address)(const unsigned char *);
+	static int looked;
+
+	if (!looked)
+	{
+		/* (GLVND's libGLX, through the libGL that SDL's X11 driver loads) */
+		void *glx = dlopen("libGL.so.1", RTLD_NOW | RTLD_GLOBAL);
+
+		if (!glx)
+			glx = dlopen("libGLX.so.0", RTLD_NOW | RTLD_GLOBAL);
+		if (glx)
+			get_proc_address = (void *(*)(const unsigned char *))dlsym(glx, "glXGetProcAddressARB");
+		looked = 1;
+	}
+	return get_proc_address ? get_proc_address((const unsigned char *)name) : NULL;
+}
+#endif
+
 void *host_gl_resolve(const char *name)
 {
 	static void *library;
@@ -41,6 +67,10 @@ void *host_gl_resolve(const char *name)
 #endif
 	if (library)
 		function = dlsym(library, name);
+#if defined(HALO_DESKTOP_GL) && defined(HALO_VR)
+	if (!function && host_vr_probe() == VR_BINDING_GLX)
+		return glx_resolve(name);
+#endif
 	if (!function)
 		function = (void *)eglGetProcAddress(name);
 	return function;
