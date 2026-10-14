@@ -3,11 +3,15 @@ HOST_VR.C
 
 OpenXR for the VR mode (HALO_VR; port/linux/src/vr_host.h, port/linux/src/
 vr.c). The game draws with OpenGL through SDL's context, which OpenXR takes
-through XR_KHR_opengl_enable: with an EGL context (SDL_VIDEO_FORCE_EGL, as
-vr.c asks) through XR_MNDX_egl_enable's binding, else through GLX's. The
-swapchains' images are then GL textures the game draws into directly: the
-eyes are one 2-layer texture array, which the renderer draws both of at once
-with GL_OVR_multiview2 (d3d8_gl.c).
+through XR_KHR_opengl_enable. Which context that is, is decided before the
+window is made (host_vr_probe, from the runtime's extensions): an EGL
+context (SDL_VIDEO_FORCE_EGL, sdl_platform.c) through XR_MNDX_egl_enable's
+binding where the runtime offers it (Monado; SteamVR 2.18 on the Steam Frame
+and on x86-64), else a GLX context through XR_KHR_opengl_enable's Xlib
+binding, which needs SDL's X11 video driver. The swapchains' images are
+then GL textures the game draws into directly: the eyes are one 2-layer
+texture array, which the renderer draws both of at once with
+GL_OVR_multiview2 (d3d8_gl.c).
 
 The runtime is loaded without the OpenXR loader, which few distributions
 package: as the loader does, from the active runtime's manifest
@@ -26,6 +30,7 @@ layers. Tested with SteamVR on a Steam Frame.
 #include "vr_host.h"
 
 #include <EGL/egl.h>
+#include <SDL3/SDL.h>
 #include <X11/Xlib.h>
 #include <dlfcn.h>
 #include <limits.h>
@@ -131,7 +136,9 @@ static struct
 	XrPath hands[2];
 	XrSpace aim_spaces[2];
 	XrSpace grip_spaces[2];
-	int has_egl_binding;
+	/* host_vr_probe's: done, and the binding it chose (VR_BINDING_*) */
+	int probed;
+	int binding;
 	int has_frame_controller;
 	int has_refresh_rate;
 	int want_depth, has_depth;
@@ -206,6 +213,8 @@ static int runtime_load(void)
 	XrNegotiateLoaderInfo loader = { 0 };
 	XrNegotiateRuntimeRequest request = { 0 };
 
+	if (get_instance_proc_address)
+		return 1;
 	/* the loader, where there is one */
 	vr.library = dlopen("libopenxr_loader.so.1", RTLD_NOW | RTLD_LOCAL);
 	if (vr.library)
@@ -281,6 +290,15 @@ static int functions_load(XrInstance instance)
 	return success;
 }
 
+/* the functions there are before an instance (the others the loader
+reports as errors when asked for without one) */
+static void global_functions_load(void)
+{
+	get_instance_proc_address(XR_NULL_HANDLE, "xrEnumerateInstanceExtensionProperties",
+		(PFN_xrVoidFunction *)&xrEnumerateInstanceExtensionProperties);
+	get_instance_proc_address(XR_NULL_HANDLE, "xrCreateInstance", (PFN_xrVoidFunction *)&xrCreateInstance);
+}
+
 /* ---------- the instance and session */
 
 static int extension_listed(const XrExtensionProperties *extensions, uint32_t count, const char *name)
@@ -295,6 +313,65 @@ static int extension_listed(const XrExtensionProperties *extensions, uint32_t co
 	return 0;
 }
 
+/* the binding the session will take (host_vr_probe) */
+static int binding_choose(void)
+{
+	XrExtensionProperties *extensions;
+	uint32_t count = 0, index;
+	int opengl, egl;
+	const char *driver;
+
+	if (!runtime_load())
+		return VR_BINDING_NONE;
+	global_functions_load();
+	if (!xrEnumerateInstanceExtensionProperties ||
+		xrEnumerateInstanceExtensionProperties(NULL, 0, &count, NULL) != XR_SUCCESS ||
+		!(extensions = calloc(count ? count : 1, sizeof(*extensions))))
+	{
+		host_logf(HOST_LOG_ERROR, "vr: the OpenXR runtime cannot list its extensions");
+		return VR_BINDING_NONE;
+	}
+	for (index = 0; index < count; index++)
+		extensions[index].type = XR_TYPE_EXTENSION_PROPERTIES;
+	if (xrEnumerateInstanceExtensionProperties(NULL, count, &count, extensions) != XR_SUCCESS)
+		count = 0;
+	opengl = extension_listed(extensions, count, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME);
+	egl = extension_listed(extensions, count, XR_MNDX_EGL_ENABLE_EXTENSION_NAME);
+	free(extensions);
+	if (!opengl)
+	{
+		host_logf(HOST_LOG_ERROR, "vr: the OpenXR runtime has no OpenGL binding (XR_KHR_opengl_enable)");
+		return VR_BINDING_NONE;
+	}
+	if (egl)
+	{
+		host_logf(HOST_LOG_INFO, "vr: the runtime takes an EGL context (XR_MNDX_egl_enable)");
+		return VR_BINDING_EGL;
+	}
+	/* GLX's binding, whose context SDL makes only with its X11 driver (under
+	Wayland, X11 is XWayland's) */
+	driver = SDL_GetCurrentVideoDriver();
+	if (!driver || strcmp(driver, "x11"))
+	{
+		host_logf(HOST_LOG_ERROR, "vr: the OpenXR runtime has no XR_MNDX_egl_enable, so it takes OpenGL only "
+			"through GLX, which needs SDL's X11 video driver, not %s: start the game with SDL_VIDEO_DRIVER=x11 "
+			"to play in VR", driver ? driver : "none");
+		return VR_BINDING_NONE;
+	}
+	host_logf(HOST_LOG_INFO, "vr: the runtime has no XR_MNDX_egl_enable: it takes a GLX context");
+	return VR_BINDING_GLX;
+}
+
+int host_vr_probe(void)
+{
+	if (!vr.probed)
+	{
+		vr.binding = binding_choose();
+		vr.probed = 1;
+	}
+	return vr.binding;
+}
+
 static int instance_create(void)
 {
 	XrExtensionProperties *extensions;
@@ -304,7 +381,7 @@ static int instance_create(void)
 	XrInstanceCreateInfo create = { XR_TYPE_INSTANCE_CREATE_INFO };
 	XrInstanceProperties properties = { XR_TYPE_INSTANCE_PROPERTIES };
 
-	functions_load(XR_NULL_HANDLE);
+	global_functions_load();
 	if (!xrEnumerateInstanceExtensionProperties || !xrCreateInstance ||
 		xrEnumerateInstanceExtensionProperties(NULL, 0, &count, NULL) != XR_SUCCESS)
 	{
@@ -340,11 +417,8 @@ static int instance_create(void)
 		return 0;
 	}
 	enabled[enabled_count++] = XR_KHR_OPENGL_ENABLE_EXTENSION_NAME;
-	if (extension_listed(extensions, count, XR_MNDX_EGL_ENABLE_EXTENSION_NAME))
-	{
+	if (vr.binding == VR_BINDING_EGL)
 		enabled[enabled_count++] = XR_MNDX_EGL_ENABLE_EXTENSION_NAME;
-		vr.has_egl_binding = 1;
-	}
 	if (extension_listed(extensions, count, "XR_VALVE_frame_controller_interaction"))
 	{
 		enabled[enabled_count++] = "XR_VALVE_frame_controller_interaction";
@@ -398,7 +472,68 @@ static int instance_create(void)
 	return 1;
 }
 
-/* the binding of the current GL context */
+/* the GLX binding of the current GLX context (session_create): 0, with
+what is missing logged, if there is none */
+static int glx_binding(XrGraphicsBindingOpenGLXlibKHR *xlib)
+{
+	/* (GLX from the GL library SDL's X11 driver loaded; XFree from Xlib,
+	which that loads) */
+	void *gl = dlopen("libGL.so.1", RTLD_NOW | RTLD_GLOBAL), *x11 = dlopen("libX11.so.6", RTLD_NOW | RTLD_GLOBAL);
+	Display *(*current_display)(void) = gl ? (Display *(*)(void))dlsym(gl, "glXGetCurrentDisplay") : NULL;
+	GLXContext (*current_context)(void) = gl ? (GLXContext (*)(void))dlsym(gl, "glXGetCurrentContext") : NULL;
+	GLXDrawable (*current_drawable)(void) = gl ? (GLXDrawable (*)(void))dlsym(gl, "glXGetCurrentDrawable") : NULL;
+	int (*query_context)(Display *, GLXContext, int, int *) =
+		gl ? (int (*)(Display *, GLXContext, int, int *))dlsym(gl, "glXQueryContext") : NULL;
+	GLXFBConfig *(*choose)(Display *, int, const int *, int *) =
+		gl ? (GLXFBConfig *(*)(Display *, int, const int *, int *))dlsym(gl, "glXChooseFBConfig") : NULL;
+	int (*config_attribute)(Display *, GLXFBConfig, int, int *) =
+		gl ? (int (*)(Display *, GLXFBConfig, int, int *))dlsym(gl, "glXGetFBConfigAttrib") : NULL;
+	int (*x_free)(void *) = x11 ? (int (*)(void *))dlsym(x11, "XFree") : NULL;
+	int id = 0, screen = 0, count = 0, visual = 0;
+	int attributes[] = { 0x8013 /* GLX_FBCONFIG_ID */, 0, 0 };
+	GLXFBConfig *configs;
+
+	if (!gl || !current_display || !current_context || !current_drawable || !query_context || !choose ||
+		!config_attribute)
+	{
+		host_logf(HOST_LOG_ERROR, "vr: the runtime takes a GLX context (no XR_MNDX_egl_enable), but %s",
+			!gl ? "there is no libGL.so.1" : "libGL.so.1 lacks a GLX function");
+		return 0;
+	}
+	if (!current_context() || !(xlib->xDisplay = current_display()))
+	{
+		host_logf(HOST_LOG_ERROR, "vr: the runtime takes a GLX context (no XR_MNDX_egl_enable), "
+			"but none is current%s", eglGetCurrentContext() != EGL_NO_CONTEXT ? " (an EGL context is)" : "");
+		return 0;
+	}
+	xlib->glxContext = current_context();
+	xlib->glxDrawable = current_drawable();
+	if (query_context(xlib->xDisplay, xlib->glxContext, 0x8013, &id) != 0 ||
+		query_context(xlib->xDisplay, xlib->glxContext, 0x800C /* GLX_SCREEN */, &screen) != 0)
+	{
+		host_logf(HOST_LOG_ERROR, "vr: cannot read the GLX context's config");
+		return 0;
+	}
+	attributes[1] = id;
+	configs = choose(xlib->xDisplay, screen, attributes, &count);
+	if (configs && count > 0)
+	{
+		xlib->glxFBConfig = configs[0];
+		config_attribute(xlib->xDisplay, configs[0], 0x800B /* GLX_VISUAL_ID */, &visual);
+		xlib->visualid = (uint32_t)visual;
+	}
+	if (configs && x_free)
+		x_free(configs);
+	if (!xlib->glxFBConfig)
+	{
+		host_logf(HOST_LOG_ERROR, "vr: no GLX config of the context's (id %d)", id);
+		return 0;
+	}
+	host_logf(HOST_LOG_INFO, "vr: GLX binding (config %d, visual 0x%x)", id, (unsigned)visual);
+	return 1;
+}
+
+/* the binding of the current GL context (host_vr_probe's) */
 static int session_create(void)
 {
 	XrSystemGetInfo system = { XR_TYPE_SYSTEM_GET_INFO };
@@ -413,12 +548,17 @@ static int session_create(void)
 	if (xrGetOpenGLGraphicsRequirementsKHR)
 		xrGetOpenGLGraphicsRequirementsKHR(vr.instance, vr.system, &requirements);
 
-	if (vr.has_egl_binding && eglGetCurrentContext() != EGL_NO_CONTEXT)
+	if (vr.binding == VR_BINDING_EGL)
 	{
 		EGLint config_id = 0, count = 0;
 		EGLint attributes[] = { EGL_CONFIG_ID, 0, EGL_NONE };
 		EGLConfig config = NULL;
 
+		if (eglGetCurrentContext() == EGL_NO_CONTEXT)
+		{
+			host_logf(HOST_LOG_ERROR, "vr: the runtime takes an EGL context (XR_MNDX_egl_enable), but none is current");
+			return 0;
+		}
 		egl.getProcAddress = (PFN_xrEglGetProcAddressMNDX)eglGetProcAddress;
 		egl.display = eglGetCurrentDisplay();
 		egl.context = eglGetCurrentContext();
@@ -431,40 +571,9 @@ static int session_create(void)
 	}
 	else
 	{
-		void *gl = dlopen("libGL.so.1", RTLD_NOW | RTLD_GLOBAL);
-		Display *(*current_display)(void) = gl ? (Display *(*)(void))dlsym(gl, "glXGetCurrentDisplay") : NULL;
-		GLXContext (*current_context)(void) = gl ? (GLXContext (*)(void))dlsym(gl, "glXGetCurrentContext") : NULL;
-		GLXDrawable (*current_drawable)(void) = gl ? (GLXDrawable (*)(void))dlsym(gl, "glXGetCurrentDrawable") : NULL;
-		int (*query_context)(Display *, GLXContext, int, int *) =
-			gl ? (int (*)(Display *, GLXContext, int, int *))dlsym(gl, "glXQueryContext") : NULL;
-		GLXFBConfig *(*choose)(Display *, int, const int *, int *) =
-			gl ? (GLXFBConfig *(*)(Display *, int, const int *, int *))dlsym(gl, "glXChooseFBConfig") : NULL;
-		int (*config_attribute)(Display *, GLXFBConfig, int, int *) =
-			gl ? (int (*)(Display *, GLXFBConfig, int, int *))dlsym(gl, "glXGetFBConfigAttrib") : NULL;
-		int id = 0, screen = 0, count = 0, visual = 0;
-		int attributes[] = { 0x8013 /* GLX_FBCONFIG_ID */, 0, 0 };
-		GLXFBConfig *configs;
-
-		if (!current_context || !current_context())
-		{
-			host_logf(HOST_LOG_ERROR, "vr: no current EGL or GLX context");
+		if (!glx_binding(&xlib))
 			return 0;
-		}
-		xlib.xDisplay = current_display();
-		xlib.glxContext = current_context();
-		xlib.glxDrawable = current_drawable();
-		query_context(xlib.xDisplay, xlib.glxContext, 0x8013, &id);
-		query_context(xlib.xDisplay, xlib.glxContext, 0x800C /* GLX_SCREEN */, &screen);
-		attributes[1] = id;
-		configs = choose(xlib.xDisplay, screen, attributes, &count);
-		if (configs && count)
-		{
-			xlib.glxFBConfig = configs[0];
-			config_attribute(xlib.xDisplay, configs[0], 0x800B /* GLX_VISUAL_ID */, &visual);
-			xlib.visualid = (uint32_t)visual;
-		}
 		create.next = &xlib;
-		host_logf(HOST_LOG_INFO, "vr: GLX binding");
 	}
 	create.systemId = vr.system;
 	return check(xrCreateSession(vr.instance, &create, &vr.session), "xrCreateSession");
@@ -800,7 +909,7 @@ int host_vr_initialize(struct vr_host_info *info)
 		return 1;
 	vr.want_depth = info->depth;
 	vr.want_eye_gaze = info->eye_gaze;
-	if (!runtime_load() || !instance_create() || !session_create())
+	if (!host_vr_probe() || !instance_create() || !session_create())
 		return 0;
 	if (vr.has_eye_gaze)
 		properties.next = &eye_gaze;

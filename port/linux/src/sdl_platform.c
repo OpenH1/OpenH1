@@ -17,6 +17,7 @@ and the debug keyboard that the game's console reads.
 #include "xiso.h"
 #ifdef HALO_VR
 #include "vr.h"
+#include "vr_host.h"
 #endif
 #include "touch_input.h"
 
@@ -818,11 +819,14 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	(void)height;
 	platform_window_size_setting(&platform_window_width, &platform_window_height);
 #ifdef HALO_VR
-	if (halo_vr_enabled())
+	/* the context the OpenXR runtime takes (host_vr_probe, logging why where
+	there is none: the game then plays flat, in its window): an EGL context
+	where it offers XR_MNDX_egl_enable, else SDL's own on X11, GLX's; in a
+	window that stays hidden: the headset shows the game (vr.c) */
+	if (halo_vr_enabled() && host_vr_probe() != VR_BINDING_NONE)
 	{
-		/* an EGL context, which OpenXR takes through XR_MNDX_egl_enable, in a
-		window that stays hidden: the headset shows the game (vr.c) */
-		SDL_SetHint(SDL_HINT_VIDEO_FORCE_EGL, "1");
+		if (host_vr_probe() == VR_BINDING_EGL)
+			SDL_SetHint(SDL_HINT_VIDEO_FORCE_EGL, "1");
 		platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
 			SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
 	}

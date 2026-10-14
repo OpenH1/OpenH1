@@ -2330,10 +2330,13 @@ does; making the eye images from the four layers cost 0.2 ms more there.
 ### How it operates
 
 - The host opens the OpenXR session on SDL's EGL context
-  (`XR_KHR_opengl_enable` with `XR_MNDX_egl_enable`;
-  `host/host_vr.c`). The guest gets the swapchains' GL textures, the
-  views and the controllers through `src/vr_host.h`, whose structures
-  hold only 32-bit values.
+  (`XR_KHR_opengl_enable` with `XR_MNDX_egl_enable`; `host/host_vr.c`),
+  or on its GLX context where the runtime has no `XR_MNDX_egl_enable`,
+  which needs SDL's X11 video driver (`SDL_VIDEO_DRIVER=x11` under
+  Wayland). The runtime's extensions decide which, before the window
+  opens (`host_vr_probe`). The guest gets the swapchains' GL textures,
+  the views and the controllers through `src/vr_host.h`, whose
+  structures hold only 32-bit values.
 - The game draws its 3D view once a frame, from the centre of the head,
   with a field of view that covers both eyes (`game/vr_render.c`): the
   culling and the game's work are those of one view. That view has the

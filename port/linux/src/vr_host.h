@@ -33,6 +33,15 @@ enum
 	VR_SWAPCHAIN_IMAGES = 4,
 };
 
+/* the GL binding the runtime's session takes the game's context through
+(host_vr_probe) */
+enum
+{
+	VR_BINDING_NONE = 0,
+	VR_BINDING_EGL, /* XR_MNDX_egl_enable: an EGL context (SDL_VIDEO_FORCE_EGL) */
+	VR_BINDING_GLX, /* XR_KHR_opengl_enable's Xlib binding: a GLX context, on SDL's X11 video driver */
+};
+
 /* the controllers' buttons (struct vr_host_input) */
 enum
 {
@@ -170,8 +179,15 @@ struct vr_host_layers
 	float scope_size;
 };
 
-/* after the GL context is made and current (on its thread); 0 if there is
-no OpenXR runtime, headset or GL binding */
+/* after SDL_Init and before the window is made: loads the runtime and
+reads its extensions (without starting it, nor asking for a headset), and
+says which binding its session will take, VR_BINDING_EGL where it offers
+XR_MNDX_egl_enable, else VR_BINDING_GLX; VR_BINDING_NONE if there is no
+runtime, it has no OpenGL binding, or GLX's is needed but SDL's video driver
+is not X11 (the reason is logged) */
+int host_vr_probe(void);
+/* after the GL context is made and current (on its thread), of the kind
+host_vr_probe said; 0 if there is no OpenXR runtime, headset or GL binding */
 int host_vr_initialize(struct vr_host_info *info);
 /* waits for the runtime's next frame and begins it; 0 if the session is
 not running (no frame is begun) */
