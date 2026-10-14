@@ -392,9 +392,12 @@ static const struct config_setting config_settings[] =
 		"with both hands and turn it, the view turning with the Warthog;\n"
 		"\"look\" it steers where the right controller points, the view turned\n"
 		"by the stick." },
-	{ "vr.scorpion_view", _config_string, "\"hatch\"", "HALO_VR_SCORPION_VIEW", _environment_value,
+	{ "vr.scorpion_view", _config_string, "\"feed\"", "HALO_VR_SCORPION_VIEW", _environment_value,
 		_platform_desktop,
-		"Driving a Scorpion with vr.vehicle_view = \"first_person\": \"hatch\" you\n"
+		"Driving a Scorpion with vr.vehicle_view = \"first_person\": \"feed\" you\n"
+		"drop in through a hatch into a closed cockpit inside the hull, the world\n"
+		"on a wide curved display before you (the tank's feed: true to size, the\n"
+		"zoom within it) and the tank's hologram on the dash; \"hatch\" you\n"
 		"stand in the turret's hatch, seeing all about over the hull, the turret\n"
 		"aiming where you aim; \"inside\" you sit in the driver's compartment at\n"
 		"the front of the hull, seeing out through its vision blocks." },

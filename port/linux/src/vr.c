@@ -2366,6 +2366,64 @@ int halo_vr_scope_window(struct halo_vr_scope_window *window)
 	return 1;
 }
 
+/* a feed cockpit's display this frame (port/linux/game/vr_cabin.c), none
+until it is told again */
+static int cockpit_set;
+static struct halo_vr_cockpit_display cockpit;
+
+void halo_vr_cockpit_display(const struct halo_vr_cockpit_display *display)
+{
+	cockpit_set = display != NULL;
+	if (display)
+		cockpit = *display;
+}
+
+/* the display from the recentred head's game axes to the play space, then
+into each eye's space as the eyes were drawn (as the smart-link's window) */
+int halo_vr_cockpit_window(struct halo_vr_cockpit_window *window, struct halo_vr_cockpit_display *display)
+{
+	float position[3], forward[3], up[3], right[3], along;
+	int axis, eye;
+
+	if (!vr.initialized || !cockpit_set || !vr.views.eye[0].valid || !vr.views.eye[1].valid)
+		return 0;
+	*display = cockpit;
+	play_axes(cockpit.position, vr.origin_yaw, position);
+	for (axis = 0; axis < 3; axis++)
+		position[axis] += vr.origin_position[axis];
+	play_axes(cockpit.forward, vr.origin_yaw, forward);
+	play_axes(cockpit.up, vr.origin_yaw, up);
+	normalize(up);
+	along = up[0] * forward[0] + up[1] * forward[1] + up[2] * forward[2];
+	for (axis = 0; axis < 3; axis++)
+		forward[axis] -= up[axis] * along;
+	normalize(forward);
+	/* (right: forward x up, OpenXR's axes being right-handed) */
+	right[0] = forward[1] * up[2] - forward[2] * up[1];
+	right[1] = forward[2] * up[0] - forward[0] * up[2];
+	right[2] = forward[0] * up[1] - forward[1] * up[0];
+	for (eye = 0; eye < 2; eye++)
+	{
+		const struct vr_host_pose *pose = &vr.views.eye[eye];
+		float inverse[4], from_eye[3];
+
+		inverse[0] = -pose->orientation[0];
+		inverse[1] = -pose->orientation[1];
+		inverse[2] = -pose->orientation[2];
+		inverse[3] = pose->orientation[3];
+		for (axis = 0; axis < 3; axis++)
+			from_eye[axis] = position[axis] - pose->position[axis];
+		quaternion_rotate(inverse, from_eye, window->centre[eye]);
+		quaternion_rotate(inverse, up, window->up[eye]);
+		quaternion_rotate(inverse, forward, window->forward[eye]);
+		quaternion_rotate(inverse, right, window->right[eye]);
+		memcpy(window->fov[eye], vr.views.fov[eye], sizeof(window->fov[eye]));
+	}
+	window->near_z = vr.depth_near;
+	window->far_z = vr.depth_far;
+	return 1;
+}
+
 void halo_vr_scope_readout(float *range, int *rounds_loaded, int *rounds_carried)
 {
 	*range = vr.scope.range;

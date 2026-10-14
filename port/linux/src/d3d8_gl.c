@@ -8681,6 +8681,287 @@ static void vr_draw_feed(void)
 	xgpu_gl_state_invalidate();
 }
 
+/* A feed cockpit's display (vr.scorpion_view = "feed": port/linux/game/
+vr_cabin.c, vr.c's halo_vr_cockpit_window) in both eyes' images
+(multiview), after the foveation's composite and before the smart-link's
+window (which opens within it): the cockpit's opening, which each eye sees
+the world through, where each eye's ray meets the curved wall it is in,
+given the feed's look as the smart-link's window has it: a faint blue tint,
+scan lines, its edges darkened, a thin line of the HUD's blue about it with
+heavier corners, and the readout along its bottom (the zoom, the range, the
+rounds of the vehicle's weapon and its second's). It washes over the
+opening from its top down as the grate closes (wash 0 to 1: a bright line
+sweeping down, interference about it, the world through the bars above it
+and the feed below; the readout typed last), and back up as it opens. What
+is nearer than the opening (the hands) is left as it is. The images are
+copied first (the pass reads them), and written as they are encoded. */
+#define COCKPIT_TEXT_LENGTH 44
+static void vr_draw_cockpit_display(GLuint depth_texture, int depth_layers)
+{
+	static GLuint program, copy, sampler;
+	static int copy_width, copy_height;
+	static BOOL failed;
+	static GLint centre_location, up_location, forward_location, right_location, fov_location, shape_location,
+		image_location, wash_location, text_location, depth_location, layers_location;
+	static const char vertex_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"layout(num_views = 2) in;\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+		"	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+		"}\n";
+	static const char fragment_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"uniform sampler2DArray eyes;\n"
+		"uniform sampler2DArray depth_texture;\n"
+		/* each eye's: the wall's axis's point, its up, the way to the
+		display's middle and its right (its space), its field of view
+		(tangents: left, right, up, down); the wall's radius, the display's
+		half angle (radians) and half height (metres); the image's size; the
+		wash (0 to 1) and a seed; the readout's glyphs (-1 past its end); the
+		depth's mapping (0: none) and layers (4: foveated) */
+		"uniform vec4 centre[2];\n"
+		"uniform vec4 up[2];\n"
+		"uniform vec4 forward[2];\n"
+		"uniform vec4 right[2];\n"
+		"uniform vec4 fov[2];\n"
+		"uniform vec4 shape;\n"
+		"uniform vec2 image;\n"
+		"uniform vec2 wash;\n"
+		"uniform int text[44];\n"
+		"uniform vec2 depth_map;\n"
+		"uniform int layers;\n"
+		"out vec4 colour;\n"
+		"float hash(vec2 v)\n"
+		"{\n"
+		"	return fract(sin(dot(v, vec2(12.9898, 78.233))) * 43758.5453);\n"
+		"}\n"
+		/* (the smart-link's glyphs: 3x5 cells from the top row's left, the
+		digits, then X, R, A, N, G, E, M, O, /, ., - and a space) */
+		"const int glyphs[22] = int[22](31599, 11415, 29671, 29647, 23497, 31183, 31215, 29257, 31727,\n"
+		"	31695, 2728, 27565, 11245, 27501, 14699, 31143, 24557, 11114, 4772, 2, 448, 0);\n"
+		"float line_lit(vec2 q, float typed)\n"
+		"{\n"
+		"	if (q.x < 0.0 || q.y < 0.0 || q.y >= 5.0)\n"
+		"		return 0.0;\n"
+		"	ivec2 cell = ivec2(floor(q));\n"
+		"	int glyph = cell.x / 4, column = cell.x - glyph * 4;\n"
+		"	if (glyph >= 44 || float(glyph) >= typed || column > 2 || text[glyph] < 0)\n"
+		"		return 0.0;\n"
+		"	return float((glyphs[text[glyph]] >> (14 - cell.y * 3 - column)) & 1);\n"
+		"}\n"
+		"void main()\n"
+		"{\n"
+		"	int eye = int(gl_ViewID_OVR);\n"
+		"	vec2 f = gl_FragCoord.xy / image;\n"
+		"	vec4 t = fov[eye];\n"
+		"	vec3 ray = vec3(mix(t.x, t.y, f.x), mix(t.w, t.z, f.y), -1.0);\n"
+		"	vec3 u = up[eye].xyz, c = centre[eye].xyz;\n"
+		/* (where the ray leaves the wall's cylinder: the eye is inside it) */
+		"	vec3 rp = ray - dot(ray, u) * u, op = -c - dot(-c, u) * u;\n"
+		"	float a = dot(rp, rp), b = 2.0 * dot(op, rp), k = dot(op, op) - shape.x * shape.x;\n"
+		"	float disc = b * b - 4.0 * a * k;\n"
+		"	if (a < 1.0e-9 || disc < 0.0)\n"
+		"		discard;\n"
+		"	float s = (-b + sqrt(disc)) / (2.0 * a);\n"
+		"	if (s <= 0.0)\n"
+		"		discard;\n"
+		"	vec3 rel = ray * s - c;\n"
+		"	vec2 q = vec2(atan(dot(rel, right[eye].xyz), dot(rel, forward[eye].xyz)) / shape.y, dot(rel, u) / shape.z);\n"
+		"	vec2 aq = abs(q);\n"
+		/* (its frame's line stands a little outside the opening) */
+		"	float px = 1.5 * length(vec2(dFdx(q.y), dFdy(q.y)));\n"
+		"	if (aq.x > 1.0 + 6.0 * px * shape.z / (shape.x * shape.y) || aq.y > 1.0 + 6.0 * px)\n"
+		"		discard;\n"
+		"	if (depth_map.x > 0.0)\n"
+		"	{\n"
+		"		float z = texture(depth_texture, vec3(f, float(layers == 4 ? 2 * eye : eye))).r;\n"
+		"		if (z < depth_map.x * (1.0 - depth_map.y / (0.85 * s)))\n"
+		"			discard;\n"
+		"	}\n"
+		"	vec3 hud = vec3(0.45, 0.72, 1.0), white = mix(hud, vec3(1.0), 0.6);\n"
+		/* the wash: its line from the top (q.y 1) down to the bottom (-1);
+		washed below it; interference about it */
+		"	float line_y = 1.0 - 2.0 * wash.x;\n"
+		"	float washed = wash.x >= 1.0 ? 1.0 : smoothstep(line_y + 0.02, line_y - 0.02, q.y);\n"
+		"	float near_line = wash.x < 1.0 ? exp(-abs(q.y - line_y) / 0.08) : 0.0;\n"
+		"	float band = hash(vec2(floor((q.y + 1.0) * 24.0), wash.y));\n"
+		"	float offset = near_line * step(0.6, band) * (band - 0.8) * 0.04 * image.x;\n"
+		"	vec3 col = texture(eyes, vec3((gl_FragCoord.xy + vec2(offset, 0.0)) / image, float(eye))).rgb;\n"
+		"	vec3 world = texture(eyes, vec3(f, float(eye))).rgb;\n"
+		"	col += near_line * 0.15 * (hash(gl_FragCoord.xy + vec2(wash.y)) - 0.5);\n"
+		"	float edge = min(1.0 - aq.x * 1.0, 1.0 - aq.y);\n"
+		"	vec3 feed = col * vec3(0.92, 1.0, 1.08);\n"
+		"	feed *= 1.0 - 0.07 * (0.5 + 0.5 * sin(gl_FragCoord.y * 3.14159 / 3.0));\n"
+		"	feed *= 0.6 + 0.4 * smoothstep(0.0, 0.12, edge);\n"
+		"	vec3 result = mix(world, feed, washed);\n"
+		/* the sweep's line */
+		"	float sweep = wash.x > 0.0 && wash.x < 1.0 ? exp(-abs(q.y - line_y) / 0.006) : 0.0;\n"
+		"	result = mix(result, white, sweep * 0.9);\n"
+		/* the frame: its line, heavier at the corners, as the feed comes */
+		"	float outside = max(aq.x - 1.0, aq.y - 1.0);\n"
+		"	float frame = (1.0 - smoothstep(0.0, 2.0 * px, abs(outside - 2.0 * px))) * 0.7;\n"
+		"	float corner = step(0.93, aq.x) * step(0.85, aq.y);\n"
+		"	frame = max(frame, corner * (1.0 - smoothstep(0.0, 3.0 * px, abs(outside - 3.0 * px))));\n"
+		"	result = mix(result, hud, frame * clamp(wash.x * 3.0, 0.0, 1.0));\n"
+		/* the readout along the bottom, typed last */
+		"	float cell = 0.016;\n"
+		"	float aspect = shape.z / (shape.x * shape.y);\n"
+		"	int count = 0;\n"
+		"	for (int i = 0; i < 44; i++)\n"
+		"		count += text[i] >= 0 ? 1 : 0;\n"
+		"	vec2 g = vec2(q.x / (cell * aspect) + float(count * 4 - 1) * 0.5, (-0.86 - q.y) / cell);\n"
+		"	float typed = floor(clamp((wash.x - 0.7) / 0.3, 0.0, 1.0) * float(count) + 0.5);\n"
+		"	result = mix(result, vec3(0.0), line_lit(g - vec2(0.5, 0.5), typed) * 0.7 * washed);\n"
+		"	result = mix(result, hud, line_lit(g, typed) * 0.95 * washed);\n"
+		"	colour = vec4(clamp(result, 0.0, 1.0), 1.0);\n"
+		"}\n";
+	static unsigned long seed;
+	struct halo_vr_cockpit_window window;
+	struct halo_vr_cockpit_display display;
+	float fov_rows[2][4], centre[2][4], up[2][4], forward[2][4], right[2][4];
+	GLint text[COCKPIT_TEXT_LENGTH];
+	char line[COCKPIT_TEXT_LENGTH + 1], range_text[16], rounds_text[24], second_text[24];
+	GLuint eyes = vr_gl.eye_target.target.texture;
+	int eye, index;
+
+	if (failed || !vr_gl.eyes_drawn || !eyes || !halo_vr_cockpit_window(&window, &display) || display.wash <= 0.0f)
+		return;
+#ifdef HALO_GLES
+	if (!xgpu_capabilities.copy_image)
+		return;
+#endif
+	if (!program)
+	{
+		GLuint vertex = xgpu_compile_shader(GL_VERTEX_SHADER, vertex_source, "VR cockpit display vertex");
+		GLuint fragment = xgpu_compile_shader(GL_FRAGMENT_SHADER, fragment_source, "VR cockpit display pixel");
+		GLint status = 0;
+
+		program = glCreateProgram();
+		glAttachShader(program, vertex);
+		glAttachShader(program, fragment);
+		glLinkProgram(program);
+		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		if (!vertex || !fragment || !status)
+		{
+			platform_log("vr: cannot make the cockpit display's program; the opening shows the world as it is");
+			failed = TRUE;
+			return;
+		}
+		glUseProgram(program);
+		glUniform1i(glGetUniformLocation(program, "eyes"), 0);
+		glUniform1i(glGetUniformLocation(program, "depth_texture"), 1);
+		centre_location = glGetUniformLocation(program, "centre");
+		up_location = glGetUniformLocation(program, "up");
+		forward_location = glGetUniformLocation(program, "forward");
+		right_location = glGetUniformLocation(program, "right");
+		fov_location = glGetUniformLocation(program, "fov");
+		shape_location = glGetUniformLocation(program, "shape");
+		image_location = glGetUniformLocation(program, "image");
+		wash_location = glGetUniformLocation(program, "wash");
+		text_location = glGetUniformLocation(program, "text");
+		depth_location = glGetUniformLocation(program, "depth_map");
+		layers_location = glGetUniformLocation(program, "layers");
+		glGenSamplers(1, &sampler);
+		glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
+	if (!copy || copy_width != vr_gl.eye_width || copy_height != vr_gl.eye_height)
+	{
+		if (copy)
+			glDeleteTextures(1, &copy);
+		glGenTextures(1, &copy);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, copy);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
+		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, vr_gl.eye_width, vr_gl.eye_height, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+			NULL);
+		copy_width = vr_gl.eye_width;
+		copy_height = vr_gl.eye_height;
+	}
+	/* the readout: the zoom (1x: the feed), the range, the rounds (as
+	glyphs: the smart-link's table) */
+	if (display.range > 0.0f && display.range < 999.9f)
+		snprintf(range_text, sizeof(range_text), "%05.1f", display.range);
+	else
+		snprintf(range_text, sizeof(range_text), "---.-");
+	rounds_text[0] = second_text[0] = 0;
+	if (display.rounds_loaded >= 0)
+		snprintf(rounds_text, sizeof(rounds_text), "   AMMO %d/%d", display.rounds_loaded,
+			display.rounds_carried < 0 ? 0 : display.rounds_carried);
+	if (display.second_loaded >= 0)
+		snprintf(second_text, sizeof(second_text), "   MG %d/%d", display.second_loaded,
+			display.second_carried < 0 ? 0 : display.second_carried);
+	snprintf(line, sizeof(line), "1X   RANGE %s%s%s", range_text, rounds_text, second_text);
+	for (index = 0; index < COCKPIT_TEXT_LENGTH; index++)
+	{
+		static const char letters[] = "XRANGEMO/.- ";
+		char letter = index < (int)strlen(line) ? line[index] : 0;
+		const char *found = letter ? strchr(letters, letter) : NULL;
+
+		text[index] = letter >= '0' && letter <= '9' ? letter - '0' : found ? 10 + (GLint)(found - letters) : -1;
+	}
+	for (eye = 0; eye < 2; eye++)
+	{
+		memcpy(fov_rows[eye], window.fov[eye], sizeof(fov_rows[eye]));
+		memcpy(centre[eye], window.centre[eye], sizeof(window.centre[eye]));
+		memcpy(up[eye], window.up[eye], sizeof(window.up[eye]));
+		memcpy(forward[eye], window.forward[eye], sizeof(window.forward[eye]));
+		memcpy(right[eye], window.right[eye], sizeof(window.right[eye]));
+		centre[eye][3] = up[eye][3] = forward[eye][3] = right[eye][3] = 0.0f;
+	}
+	glCopyImageSubData(eyes, GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, copy, GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, vr_gl.eye_width,
+		vr_gl.eye_height, 2);
+	framebuffer_views = 2;
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(eyes, 0));
+	framebuffer_views = 1;
+	glViewport(0, 0, vr_gl.eye_width, vr_gl.eye_height);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	glDisable(GL_FRAMEBUFFER_SRGB);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+	glUseProgram(program);
+	glUniform4fv(centre_location, 2, centre[0]);
+	glUniform4fv(up_location, 2, up[0]);
+	glUniform4fv(forward_location, 2, forward[0]);
+	glUniform4fv(right_location, 2, right[0]);
+	glUniform4fv(fov_location, 2, fov_rows[0]);
+	{
+		float shape[4] = { display.radius, display.half_angle, display.half_height, 0.0f };
+
+		glUniform4fv(shape_location, 1, shape);
+	}
+	glUniform2f(image_location, (float)vr_gl.eye_width, (float)vr_gl.eye_height);
+	glUniform2f(wash_location, display.wash, (float)(++seed % 97));
+	glUniform1iv(text_location, COCKPIT_TEXT_LENGTH, text);
+	/* (the depth of a point d away, as the world's is mapped: far / (far -
+	near) (1 - near / d)) */
+	glUniform2f(depth_location, depth_texture && window.far_z > window.near_z ?
+		window.far_z / (window.far_z - window.near_z) : 0.0f, window.near_z);
+	glUniform1i(layers_location, depth_layers);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, depth_texture);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glBindSampler(1, 0);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, copy);
+	glBindSampler(0, sampler);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glBindSampler(0, 0);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	xgpu_gl_state_invalidate();
+}
+
 /* the comfort vignette (halo_vr_vignette): the eyes' images dimmed toward
 the edges of each eye's view, beyond VIGNETTE_CLEAR_DEGREES (less
 VIGNETTE_CLOSING_DEGREES at its strongest) from the eye's own middle (where
@@ -9172,6 +9453,8 @@ static void vr_present(BOOL screenshot)
 	/* foveated, the eyes' images made from the inset and the periphery,
 	which the rest draws into */
 	vr_fovea_composite();
+	/* a feed cockpit's display, under the smart-link's window */
+	vr_draw_cockpit_display(eye_depth ? eye_depth->target.texture : 0, eye_depth ? eye_depth->target.layers : 0);
 	/* the scope's view: the smart-link's window drawn into the eyes, or
 	the lens's image for its layer */
 	vr_gl.scope_image = 0;

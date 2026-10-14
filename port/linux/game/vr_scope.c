@@ -115,6 +115,9 @@ at arm's length), opening and closing over these (seconds) */
 /* its magnification eased from one level to another over this (seconds) */
 #define WINDOW_RAMP_SECONDS 0.2f
 #define WINDOW_CLOSE_SECONDS 0.1f
+/* the smart-link's window in a feed cockpit (vr_cabin.c): no wider than
+this (degrees), to be within its display (40 degrees high: 16:9) */
+#define FEED_WINDOW_DEGREES 62.0f
 /* a seat's zoom levels (vr.vehicle_zoom): no more than these */
 #define MAXIMUM_SEAT_LEVELS 4
 
@@ -169,6 +172,7 @@ boolean vr_render_scope_view(struct render_camera *weapon_camera, real_point3d e
 	real *units);
 void vr_render_world_to_head(real_point3d const *point, real_vector3d const *forward, real_vector3d const *up,
 	float position[3], float head_forward[3], float head_up[3]);
+boolean vr_seat_hatch(real *grate, real *wash);
 boolean vr_render_scope_seat_view(real_point3d eyes[2], real_vector3d *head_forward, real *units);
 boolean vr_render_scope_aim(real_point3d *point, real_point3d *origin, real_vector3d *direction);
 real vr_render_scope_range(void);
@@ -216,6 +220,9 @@ static struct
 	player's control saw it last, and its zoom level (NONE: unzoomed) */
 	long seat_weapon_index;
 	short seat_level;
+	/* the smart-link window's widest in the seat (degrees; 0: as
+	vr.smartlink_size): within a feed cockpit's display */
+	real window_degrees_most;
 	/* the game's tick the scope's pass was first drawn at in this map, to
 	make its shaders (NONE: not yet) */
 	long warmed_tick;
@@ -224,7 +231,7 @@ static struct
 	boolean test_weapons_given;
 	long test_weapons_tick;
 } vr_scope = { NONE, NONE, FALSE, 0, FALSE, NONE, -1.0f, 0.0f, 0.0f, 0.0f, NONE, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-	FALSE, NONE, NONE, NONE, NONE, NONE, FALSE, NONE };
+	FALSE, NONE, NONE, NONE, NONE, 0.0f, NONE, FALSE, NONE };
 
 /* the weapon's scope, or NONE */
 static short vr_scope_find(long weapon_index)
@@ -559,6 +566,8 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 	distance (as it opens or closes, that much of it), 16:9, and its glow
 	about it */
 	halo_vr_smartlink_view(&view_degrees, &view_distance);
+	if (vr_scope.window_degrees_most > 0.0f && view_degrees > vr_scope.window_degrees_most)
+		view_degrees = vr_scope.window_degrees_most;
 	tangent = (real)tan(view_degrees * 0.5f * _pi / 180.0f) * MAX(vr_scope.window_size, 0.005f);
 	half_width = distance * tangent;
 	glow = WINDOW_GLOW;
@@ -655,6 +664,13 @@ static boolean vr_scope_seat(struct render_camera *camera, struct render_camera 
 	csmemset(&seat_camera, 0, sizeof(seat_camera));
 	seat_camera.forward = head_forward;
 	seat_camera.up = *global_up3d;
+	/* (in a feed cockpit, the window within its display: 85 degrees across
+	and 40 high) */
+	{
+		real grate, wash;
+
+		vr_scope.window_degrees_most = vr_seat_hatch(&grate, &wash) ? FEED_WINDOW_DEGREES : 0.0f;
+	}
 	return vr_scope_smartlink(camera, rasterizer_camera, weapon_index, NONE, zoom_level, magnification, &seat_camera,
 		eyes, &head_forward, units);
 }
@@ -680,6 +696,7 @@ boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rast
 		weapon_definition_get(object_get(weapon_index)->definition_index)->weapon.zoom_level_count > 0;
 
 	halo_vr_scope(NULL);
+	vr_scope.window_degrees_most = 0.0f;
 	if (weapon_index == NONE && vr_scope_seat(camera, rasterizer_camera))
 		return TRUE;
 	if ((scope == NONE && !smartlink) || !vr_render_scope_view(&weapon_camera, eyes, &head_forward, &units))

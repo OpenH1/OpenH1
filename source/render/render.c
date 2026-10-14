@@ -178,6 +178,8 @@ the eyes' */
 boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rasterizer_camera);
 void vr_render_scope_begin(void);
 void vr_render_scope_end(void);
+/* port/linux/game/vr_cabin.c: a feed cockpit's display, told to vr.c */
+void vr_cabin_display_frame(void);
 /* the trigger drawn on the assault rifle's first-person model
 (port/linux/game/vr_trigger.c), made as a map is loaded */
 void vr_trigger_initialize_for_new_map(void);
@@ -767,6 +769,7 @@ static void render_vr_player_frame(
 	{
 		struct render_window scope_window = *window;
 
+		vr_cabin_display_frame();
 		/* (none with the head in a wall: the scope, at the eye or the hand,
 		would see through it as the faded eyes do not:
 		port/linux/game/vr_headwall.c) */
