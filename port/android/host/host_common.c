@@ -20,6 +20,7 @@ writes with neither locks nor stdio.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
@@ -225,6 +226,14 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 	host's environment) */
 	if (getenv("HALO_SAMPLE"))
 		sample_seconds = atof(getenv("HALO_SAMPLE"));
+	if (getenv("HALO_MEMORY_WATCH") && *getenv("HALO_MEMORY_WATCH"))
+	{
+		/* ("0", "false", "no" and "off" are false, as for the game's settings) */
+		const char *value = getenv("HALO_MEMORY_WATCH");
+
+		memory_watch = !(!strcmp(value, "0") || !strcasecmp(value, "false") || !strcasecmp(value, "no") ||
+			!strcasecmp(value, "off"));
+	}
 	if (sample_seconds > 0.0)
 	{
 		char text[32];
