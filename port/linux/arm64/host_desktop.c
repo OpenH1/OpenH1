@@ -29,11 +29,6 @@ void host_sdl_get_base_path(char *buffer, uint32_t size)
 	SDL_strlcpy(buffer, path ? path : "", size);
 }
 
-int64_t host_sdl_ticks_ns(void)
-{
-	return (int64_t)SDL_GetTicksNS();
-}
-
 void host_sdl_pump_events(void)
 {
 	SDL_PumpEvents();

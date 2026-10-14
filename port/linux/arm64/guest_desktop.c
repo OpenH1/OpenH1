@@ -29,7 +29,6 @@ and its structures copied field by field where they hold pointers.
 /* ---------- the host's half (host_desktop.c, host_imports.list) */
 
 void host_sdl_get_base_path(char *buffer, unsigned int size);
-long long host_sdl_ticks_ns(void);
 void host_sdl_pump_events(void);
 int host_sdl_push_event(const void *event);
 long long host_sdl_get_window_flags(unsigned int window);
@@ -85,11 +84,6 @@ const char *SDL_GetBasePath(void)
 	if (!path[0])
 		host_sdl_get_base_path(path, sizeof(path));
 	return path;
-}
-
-Uint64 SDL_GetTicksNS(void)
-{
-	return (Uint64)host_sdl_ticks_ns();
 }
 
 void SDL_DelayPrecise(Uint64 nanoseconds)

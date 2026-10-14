@@ -142,6 +142,11 @@ int64_t host_sdl_ticks(void)
 	return (int64_t)SDL_GetTicks();
 }
 
+int64_t host_sdl_ticks_ns(void)
+{
+	return (int64_t)SDL_GetTicksNS();
+}
+
 int64_t host_sdl_thread_id(void)
 {
 	return (int64_t)SDL_GetCurrentThreadID();
