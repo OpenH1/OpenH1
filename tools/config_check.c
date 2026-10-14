@@ -2,13 +2,14 @@
 CONFIG_CHECK.C
 
 port/linux/src/port_config.c on its own, for tools/test_linux_port.py's
-tests of config.toml: built with stand-ins for SDL and the platform layer
-(the test writes them), the file in the folder given.
+tests of config.toml: built with stand-ins for SDL, the platform layer
+(the test writes them) and install_layout.c, the file in the folder given.
 
     config_check <folder> get <setting>          prints its value
     config_check <folder> write <setting> <value>
 */
 
+#include "install_layout.h"
 #include "port_config.h"
 
 #include <stdarg.h>
@@ -17,8 +18,8 @@ tests of config.toml: built with stand-ins for SDL and the platform layer
 
 static char folder[1024];
 
-/* (SDL's: the executable's folder, which holds config.toml) */
-const char *SDL_GetBasePath(void)
+/* (install_layout.c's: the folder of config.toml) */
+const char *install_config_folder(void)
 {
 	return folder;
 }

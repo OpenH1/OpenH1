@@ -505,6 +505,11 @@ int host_update_make_directory(const char *path)
 	return update_make_directory(path);
 }
 
+int host_update_make_executable(const char *path)
+{
+	return update_make_executable(path);
+}
+
 int host_update_launch(const char *path)
 {
 	return update_launch(path);

@@ -25,6 +25,13 @@ into dist/halo-linux-x86_64-vr-<config>/, a build of its own, which updates
 to the release's VR build. Only for linux_x86_64: the 64-bit ARM VR build is
 the Steam Frame's package (tools/frame_package.py).
 
+A Linux build is the release's tree (tools/linux_package.py: bin/opence,
+lib/opence, share/...), dist/halo-linux-x86-<config>/ for the 32-bit x86
+build (with the same build laid out flat, dist/halo-linux-<config>/, for
+the self-updaters of the releases before the tree), and
+dist/halo-linux-arm64-<config>/, dist/halo-linux-x86_64[-vr]-<config>/
+for the others.
+
 The web build (port/web/README.md) needs Emscripten (emcc on the PATH, as
 emsdk_env.sh puts it); dist/halo-web-<config>/ is the whole site, which a
 static host serves as it is: the workflow publishes the release build's to
@@ -38,13 +45,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+import linux_package
+
 ROOT = Path(__file__).resolve().parent.parent
 
 # what each port's build leaves, and what goes into dist/
 OUTPUTS = {
     # (and the SDL3 the portable build and the desktop guest builds bring,
     # tools/linux_build.py and tools/linux_guest_build.py, with its zlib
-    # license, as the release carries the other libraries')
+    # license, as the release carries the other libraries'; laid out by
+    # tools/linux_package.py)
     "linux": ["build/linux/halo", "build/linux/libSDL3.so.0", "build/linux/SDL3-LICENSE.txt"],
     "linux_arm64": ["build/linux_arm64/halo", "build/linux_arm64/libSDL3.so.0",
                     "build/linux_arm64/SDL3-LICENSE.txt"],
@@ -115,10 +125,34 @@ def main() -> int:
         run(["ninja", args.platform])
         outputs = OUTPUTS[args.platform]
 
-    # (halo-linux-arm64-release and halo-linux-x86_64-release, the names the
-    # self-updater asks for: the target's first underscore only)
-    # (and halo-linux-x86_64-vr-release, which the VR build asks for)
-    dist = ROOT / "dist" / f"halo-{args.platform.replace('_', '-', 1)}{'-vr' if args.vr else ''}-{args.config}"
+    # the licences of what the build carries (tools/linux_package.py)
+    notices = linux_package.notices(args.platform)
+
+    if args.platform.startswith("linux"):
+        # the release's tree (and, for the 32-bit x86 build, the same build
+        # flat for the updaters of the releases before the tree:
+        # tools/linux_package.py; SDL's license with the others), named as
+        # the self-updater asks: halo-linux-x86-release,
+        # halo-linux-arm64-release, halo-linux-x86_64-release and
+        # halo-linux-x86_64-vr-release
+        executable, library, sdl_license = (ROOT / output for output in outputs)
+        notices.append((sdl_license, sdl_license.name))
+        if args.platform == "linux":
+            stages = [(f"halo-linux-x86-{args.config}", linux_package.stage_tree),
+                      (f"halo-linux-{args.config}", linux_package.stage_flat)]
+        else:
+            # (the target's first underscore only)
+            stages = [(f"halo-{args.platform.replace('_', '-', 1)}{'-vr' if args.vr else ''}-{args.config}",
+                       linux_package.stage_tree)]
+        for name, stage in stages:
+            dist = ROOT / "dist" / name
+            if dist.exists():
+                shutil.rmtree(dist)
+            stage(dist, executable, library, notices)
+            print(f"{', '.join(outputs)} -> {dist.relative_to(ROOT)}", flush=True)
+        return 0
+
+    dist = ROOT / "dist" / f"halo-{args.platform}-{args.config}"
     if dist.exists():
         shutil.rmtree(dist)
     dist.mkdir(parents=True)
@@ -138,29 +172,8 @@ def main() -> int:
         for pdb in [ROOT / "build/windows/halo.pdb", *sorted((ROOT / "build/windows/third_party").glob("SDL3-*/lib/x86/SDL3.pdb"))]:
             shutil.copy2(pdb, symbols)
             print(f"{pdb.relative_to(ROOT)} -> {symbols.relative_to(ROOT)}", flush=True)
-    # the disc image readers (port/linux/src/xiso.c, and the Android app's
-    # XisoExtractor.java) follow extract-xiso, whose license asks binaries
-    # to carry its notice
-    shutil.copy2(ROOT / "port/third_party/extract-xiso/LICENSE.TXT", dist / "extract-xiso-LICENSE.txt")
-    if args.platform != "web":
-        # internet play's DTLS with browsers, and the Linux self-updater's TLS
-        # (port/third_party/mbedtls), whose Apache license asks the same
-        shutil.copy2(ROOT / "port/third_party/mbedtls/LICENSE", dist / "mbedtls-LICENSE.txt")
-    # internet play's UPnP (port/third_party/miniupnpc), in every build,
-    # whose BSD license asks binaries to carry its notice
-    shutil.copy2(ROOT / "port/third_party/miniupnpc/LICENSE", dist / "miniupnpc-LICENSE.txt")
-    # the text's fonts (port/assets/fonts), embedded in every build, whose
-    # SIL Open Font License asks each copy to carry it
-    shutil.copy2(ROOT / "port/assets/fonts/Overpass-OFL.txt", dist / "Overpass-OFL.txt")
-    # the menus' XML parser (port/third_party/expat), in every build, whose
-    # MIT license asks copies to carry its notice
-    shutil.copy2(ROOT / "port/third_party/expat/COPYING", dist / "expat-COPYING.txt")
-    # voice chat's codec (port/third_party/opus), in every build, whose BSD
-    # license asks binaries to carry its notice
-    shutil.copy2(ROOT / "port/third_party/opus/COPYING", dist / "opus-COPYING.txt")
-    # voice chat's speaker icons (port/assets/icons/lucide, drawn into the
-    # menus' bitmaps), whose ISC license asks copies to carry its notice
-    shutil.copy2(ROOT / "port/assets/icons/lucide/LICENSE", dist / "lucide-LICENSE.txt")
+    for source, name in notices:
+        shutil.copy2(source, dist / name)
     # internet play's MQTT brokers, a file beside the game (network.brokers_file;
     # Android's APK has its own copy)
     if args.platform != "android":
