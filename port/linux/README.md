@@ -2300,6 +2300,10 @@ the default scale leaves about 3 ms, so there is no anti-aliasing:
 supersampling costs as above, and multisampling the eye pass
 (`GL_OVR_multiview_multisampled_render_to_texture`, which Zink offers) cost
 15 ms a frame at 2 samples, and drew the multi-pass shaders wrongly.
+So the eyes' alpha-tested surfaces (b30's foliage, a10's grates and
+fences, decals with holes) are tested once a pixel, and crawl as the head
+moves: multisampling's coverage of their samples by alpha ("Anti-aliasing"
+in "What operates"; alpha to coverage) needs multisampled eyes.
 Foveated (`vr.foveation`, the default; below), half of the eyes' pixels
 are drawn. On a DGX Spark (b30's first area, the game frozen, the GPU's
 time from the eye pass to the present by a timer query, the least of
