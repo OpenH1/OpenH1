@@ -29,6 +29,7 @@ What they show and what they do not:
 | `flicker_scan.sh`, `flickscan.py` | Flicker scan of levels, at once |
 | `montage.py`, `triplet.py` | Contact sheets of a scan |
 | `openxr_probe.c` | What an OpenXR runtime offers the game: its extensions, the GL binding the game would take, its headset (port/linux/README.md, "SteamVR on a desktop PC") |
+| `openxr_stub_runtime.c` | A stand-in runtime for a desktop without a headset or Monado: below |
 
 ## Set up
 
@@ -112,3 +113,29 @@ out.bmp` show them.
 Baselines, the head still for 75 s, the mean flickering pixels each frame
 (October 2026): a10 203, a30 277, a50 17, b30 305, b40 222, c10 55, c20
 142, c40 171, d20 309, d40 391.
+
+## Without Docker: the stub runtime
+
+`openxr_stub_runtime.c` is an OpenXR runtime of a few hundred lines that the
+game loads as it loads any (`XR_RUNTIME_JSON`), on the computer's own
+desktop and GPU: a headset that is always worn and still, standing, with no
+controllers, whose frames are paced at its refresh rate and dropped. It
+offers what SteamVR 2.18 offers the game (EGL's binding,
+`XR_KHR_composition_layer_depth`, no cylinder layers), so it checks the
+game's side of a session where SteamVR cannot open one (with no headset:
+port/linux/README.md, "SteamVR on a desktop PC"): its GL context's binding,
+its swapchains, its drawing, its screenshots and its time a frame. It
+composes nothing, so it says nothing of a compositor's time. Its comment says
+how to build it; then, from the root of the repository:
+
+```sh
+XR_RUNTIME_JSON=$PWD/build/openxr_stub_runtime.json SDL_VIDEO_DRIVER=x11 \
+	HALO_SCREENSHOT_DIR=/tmp/shots HALO_SCREENSHOT_EVERY=450 HALO_GPU_STATS=1 HALO_VR_TEST_HEAD=0 \
+	HALO_VR_TEST_HANDS="-0.15 -0.3 0.35 0 0 0, 0.18 -0.25 0.35 0 0 0, 0.8" \
+	HALO_EXIT_AFTER=60 build/linux_x86_64/halo
+```
+
+`XR_STUB_EYE_SIZE` (1512x1680, SteamVR's null driver's), `XR_STUB_FPS` (90)
+and `XR_STUB_CYLINDER=1` (offer cylinder layers, as Monado does) change the
+headset. The screenshots are each eye (`eyes*.bmp`), the HUD's image
+(`hud*.bmp`) and the eyes with the HUD's layers over them (`view*.bmp`).
