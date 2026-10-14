@@ -511,6 +511,10 @@ Other things the game moves once a tick are drawn between ticks as well:
 - A contrail's head (a rocket's exhaust, a needle's or a plasma bolt's
   trail) stays on the projectile in the frames between ticks, where it
   stayed behind until the next tick.
+- An object's animated glows and colours (a weapon's charge or heat, a
+  vehicle's lights, a shield's flare: the values and change colours its
+  shaders read) and a unit's active camouflage change between ticks, as
+  its pose does.
 
 The direction of the view is an exception. The game reads the mouse and the
 sticks in each frame. In first person, on foot, each frame points the view

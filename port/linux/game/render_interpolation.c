@@ -9,9 +9,11 @@ The ports draw at the display's refresh rate instead, and every frame shows
 the world between the last two ticks: after each tick the camera, every
 object's node matrices and the first-person weapon's pose are kept, and a
 frame blends the previous and the latest by how far the game clock has run
-into the next tick. That puts what is drawn one tick (33 ms) behind the
-simulation, the usual price of interpolation. (A Catmull-Rom spline would
-also need the tick after the pair it spans: two ticks behind.)
+into the next tick, and so are what an object's shaders read (its function
+values and change colors) and a unit's active camouflage. That puts what is
+drawn one tick (33 ms) behind the simulation, the usual price of
+interpolation. (A Catmull-Rom spline would also need the tick after the pair
+it spans: two ticks behind.)
 
 Rotations are blended as quaternions (normalised lerp, taking the shorter
 way round), positions and scales linearly. Anything that moves further than
@@ -123,6 +125,12 @@ struct interpolated_object
 	/* ... the two snapshots' rotations, found when first blended */
 	struct interpolation_rotation *rotations;
 	boolean rotations_valid[2];
+	/* the two snapshots' function values, change colors and (a unit's)
+	active camouflage, by snapshot, and [2] their blend drawn this frame */
+	real function_values[3][NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS];
+	real_rgb_color change_colors[3][NUMBER_OF_OBJECT_CHANGE_COLORS];
+	real camouflage[3][2];
+	long values_blended_frame;
 };
 
 struct interpolated_camera
@@ -507,6 +515,20 @@ void render_interpolation_tick(void)
 		record->tick = interpolation_tick;
 		record->has_previous = continuing;
 		record->blended_frame = NONE;
+		memcpy(record->function_values[record->latest], object->object.outgoing_function_values,
+			sizeof(record->function_values[0]));
+		memcpy(record->change_colors[record->latest], object->object.outgoing_change_colors,
+			sizeof(record->change_colors[0]));
+		record->camouflage[record->latest][0] = 0.0f;
+		record->camouflage[record->latest][1] = 0.0f;
+		if (TEST_FLAG(_object_mask_unit, object->object.type))
+		{
+			struct unit_datum *unit = (struct unit_datum *)object;
+
+			record->camouflage[record->latest][0] = unit->unit.active_camouflage;
+			record->camouflage[record->latest][1] = unit->unit.active_camouflage_super_amount;
+		}
+		record->values_blended_frame = NONE;
 		if (iterator.index == interpolation_from.object_index)
 		{
 			/* the tick before's snapshot: this one's, moved to the place */
@@ -526,6 +548,12 @@ void render_interpolation_tick(void)
 				previous[node_index].position.z += offset.k;
 			}
 			record->rotations_valid[record->latest ^ 1] = FALSE;
+			memcpy(record->function_values[record->latest ^ 1], record->function_values[record->latest],
+				sizeof(record->function_values[0]));
+			memcpy(record->change_colors[record->latest ^ 1], record->change_colors[record->latest],
+				sizeof(record->change_colors[0]));
+			memcpy(record->camouflage[record->latest ^ 1], record->camouflage[record->latest],
+				sizeof(record->camouflage[0]));
 			record->has_previous = TRUE;
 		}
 	}
@@ -662,6 +690,85 @@ real_matrix4x3 *render_interpolation_object_node_matrices(long object_index)
 		record->blended_frame = interpolation_frame;
 	}
 	return record->nodes + 2 * record->node_capacity;
+}
+
+/* ---------- what objects are drawn with */
+
+/* An object's function values (a weapon's charge or heat, a vehicle's
+speed, a shield's flare: what its shaders' animations and glows read), its
+change colors and a unit's active camouflage, which the tick computes: the
+blend of the last two ticks', as its pose is, rather than a step a tick */
+static struct interpolated_object *render_interpolation_object_values(long object_index)
+{
+	struct interpolated_object *record;
+	long absolute_index;
+
+	if (!interpolation_rendering || !interpolated_objects || object_index == NONE)
+		return NULL;
+	absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index);
+	if (absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+		return NULL;
+	record = &interpolated_objects[absolute_index];
+	if (record->object_index != object_index || record->tick != interpolation_tick || !record->has_previous)
+		return NULL;
+	if (record->values_blended_frame != interpolation_frame)
+	{
+		short previous = record->latest ^ 1, latest = record->latest;
+		short index;
+
+		for (index = 0; index < NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS; index++)
+		{
+			record->function_values[2][index] = lerp(record->function_values[previous][index],
+				record->function_values[latest][index], interpolation_fraction);
+		}
+		for (index = 0; index < NUMBER_OF_OBJECT_CHANGE_COLORS; index++)
+		{
+			real_rgb_color const *a = &record->change_colors[previous][index];
+			real_rgb_color const *b = &record->change_colors[latest][index];
+
+			record->change_colors[2][index].red = lerp(a->red, b->red, interpolation_fraction);
+			record->change_colors[2][index].green = lerp(a->green, b->green, interpolation_fraction);
+			record->change_colors[2][index].blue = lerp(a->blue, b->blue, interpolation_fraction);
+		}
+		for (index = 0; index < 2; index++)
+		{
+			record->camouflage[2][index] = lerp(record->camouflage[previous][index],
+				record->camouflage[latest][index], interpolation_fraction);
+		}
+		record->values_blended_frame = interpolation_frame;
+	}
+	return record;
+}
+
+real const *render_interpolation_object_function_values(long object_index)
+{
+	struct interpolated_object *record = render_interpolation_object_values(object_index);
+
+	return record ? record->function_values[2] : object_get(object_index)->object.outgoing_function_values;
+}
+
+real_rgb_color const *render_interpolation_object_change_colors(long object_index)
+{
+	struct interpolated_object *record = render_interpolation_object_values(object_index);
+
+	return record ? record->change_colors[2] : object_get(object_index)->object.outgoing_change_colors;
+}
+
+/* ... and how much it is camouflaged (super_amount: the camouflage's
+super amount) */
+real render_interpolation_unit_camouflage(long unit_index, real *super_amount)
+{
+	struct interpolated_object *record = render_interpolation_object_values(unit_index);
+	struct unit_datum *unit;
+
+	if (record)
+	{
+		*super_amount = record->camouflage[2][1];
+		return record->camouflage[2][0];
+	}
+	unit = unit_get(unit_index);
+	*super_amount = unit->unit.active_camouflage_super_amount;
+	return unit->unit.active_camouflage;
 }
 
 /* a point that moves with the object's root node (its bounding sphere's
