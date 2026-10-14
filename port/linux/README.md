@@ -491,6 +491,11 @@ Each frame shows the world between the last two ticks
 Thus the frames are one tick (33 ms) after the calculation. The calculation
 does not change.
 
+Other things the game moves once a tick are drawn between ticks as well:
+
+- The motion tracker's sweep (and a custom blip's pulse) moves in each
+  frame. The blips are still taken once a tick, as on the Xbox.
+
 The direction of the view is an exception. The game reads the mouse and the
 sticks in each frame. In first person, on foot, each frame points the view
 where the player aims at that time (`display.direct_camera`). Thus the view

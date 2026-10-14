@@ -796,8 +796,11 @@ void motion_sensor_draw_screen(
 void motion_sensor_tick(
 	void)
 {
+	/* port: the sweep moves on in each frame drawn between the ticks, at
+	the game's time of the frame (port/linux/game/render_interpolation.c),
+	not a step a tick; the blips are still taken once a tick (below) */
 	real sweep_time = (real)fmod(
-		(real)game_time_get() * (1.0f / TICKS_PER_SECOND),
+		render_interpolation_game_time_sec(game_time_get()),
 		2.1f);
 
 	if (sweep_time < 2.0375f)
@@ -1118,8 +1121,9 @@ static void render_blip(
 		blip_draw_size = blip_size_get(blip_size_type);
 		if (blip_type == _blip_type_custom)
 		{
+			/* port: (pulsing in each frame drawn, as the sweep moves) */
 			pulse_scale = (real)(
-				(sin((real)game_time_get() * 0.104719733f) + 1.0) *
+				(sin(render_interpolation_game_time_sec(game_time_get()) * TICKS_PER_SECOND * 0.104719733f) + 1.0) *
 					(1.0 / 3.0) +
 				1.0);
 		}
