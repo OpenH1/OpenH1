@@ -28,6 +28,7 @@ What they show and what they do not:
 | `vr_run.sh` | Starts one run |
 | `flicker_scan.sh`, `flickscan.py` | Flicker scan of levels, at once |
 | `montage.py`, `triplet.py` | Contact sheets of a scan |
+| `openxr_probe.c` | What an OpenXR runtime offers the game: its extensions, the GL binding the game would take, its headset (port/linux/README.md, "SteamVR on a desktop PC") |
 
 ## Set up
 

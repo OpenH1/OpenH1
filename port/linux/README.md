@@ -1196,6 +1196,54 @@ tools/frame_install.sh <frame>
   `~/apps/halo-vr/halo-vr.log`, the previous run's in `halo-vr.log.prev`;
   its log is `debug.txt` beside the maps.
 
+### SteamVR on a desktop PC
+
+The game's GL context is either EGL's or GLX's, chosen before its window
+opens from what the runtime offers (`host_vr_probe`): EGL's, through
+`XR_MNDX_egl_enable`, where it has that (Monado, SteamVR on the Frame),
+else GLX's, through `XR_KHR_opengl_enable`'s Xlib binding, which needs
+SDL's X11 video driver: under Wayland, start the game with
+`SDL_VIDEO_DRIVER=x11` (XWayland), else it says so in its log and plays
+flat.
+
+`tools/vr_test/openxr_probe.c` loads a runtime as the game does and lists
+its extensions, the binding the game would take, and whether it has a
+headset; its comment says how to build it.
+`openxr_probe --extensions-only <manifest>` does not start the runtime;
+without it, the probe goes on to `xrCreateInstance` and `xrGetSystem`
+(which start SteamVR's server), and `--egl-session` to a session with
+EGL's binding.
+
+What it found with SteamVR 2.18.3 on x86-64 Linux (CachyOS, an RTX 4090,
+`steamxr_linux64.json`, October 2026), with no headset connected:
+
+- The runtime offers 40 extensions, `XR_KHR_opengl_enable` (12) and
+  `XR_MNDX_egl_enable` (2) among them, so the game takes EGL's binding
+  there as on the Frame. It also offers `XR_FB_display_refresh_rate`,
+  `XR_KHR_composition_layer_depth`, `XR_EXT_eye_gaze_interaction`,
+  `XR_VALVE_frame_controller_interaction` and `XR_MND_headless`, but not
+  `XR_KHR_composition_layer_cylinder`. Listing them needs neither SteamVR
+  running nor a headset.
+- Without a headset `xrCreateInstance` fails (`XR_ERROR_RUNTIME_FAILURE`),
+  not `xrGetSystem`: the runtime starts `vrserver`, which refuses the
+  connection (`VRInitError_Driver_WirelessHmdNotConnected` in
+  `vrserver.txt`, the Frame's `vrlink` driver having no headset).
+- SteamVR's null driver gives a headset to test with. It is a setting
+  (`steamvr.vrsettings`: `"driver_null": { "enable": true }` and
+  `"steamvr": { "forcedDriver": "null" }`), which a configuration folder of
+  its own can hold without changing the user's: an `openvrpaths.vrpath`
+  in `$XDG_CONFIG_HOME/openvr` naming that folder as `config` (and a `log`
+  folder), with `XDG_CONFIG_HOME` set for the probe alone. With it, the
+  instance is `SteamVR/OpenXR 2.18.3` and the system `SteamVR/OpenXR :
+  null`, and an OpenGL 4.5 context on EGL meets the runtime's requirements
+  (OpenGL 4.3 to 4.6). The session (`xrCreateSession`) still fails without
+  a display: SteamVR's compositor opens the null headset's window, which
+  needs an X11 display or a Wayland compositor with DRM leases
+  (`VRInitError_Compositor_CannotConnectToDisplayServer`,
+  `VRInitError_Compositor_CannotDRMLeaseDisplay` in `vrcompositor.txt`).
+  So the session has not been opened with SteamVR on x86-64 yet; that
+  needs a headset, or the null driver with its window on a desktop.
+
 ### Controls
 
 The Steam Frame's controllers are the halves of an Xbox controller:
@@ -2334,9 +2382,9 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   or on its GLX context where the runtime has no `XR_MNDX_egl_enable`,
   which needs SDL's X11 video driver (`SDL_VIDEO_DRIVER=x11` under
   Wayland). The runtime's extensions decide which, before the window
-  opens (`host_vr_probe`). The guest gets the swapchains' GL textures,
-  the views and the controllers through `src/vr_host.h`, whose
-  structures hold only 32-bit values.
+  opens (`host_vr_probe`; "SteamVR on a desktop PC", above). The guest
+  gets the swapchains' GL textures, the views and the controllers
+  through `src/vr_host.h`, whose structures hold only 32-bit values.
 - The game draws its 3D view once a frame, from the centre of the head,
   with a field of view that covers both eyes (`game/vr_render.c`): the
   culling and the game's work are those of one view. That view has the
