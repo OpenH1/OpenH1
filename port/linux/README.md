@@ -1908,32 +1908,46 @@ yet). With `vr.aim = "controller"`.
 
 #### Climbing into a vehicle (`vr.vehicle_climb`)
 
-With the controller aiming, a vehicle with holds, the Scorpion for now, can
-be climbed with your hands, as in a climbing game: the hands pull and the
-world follows them, which is felt as your own motion. X still gets you in
-hands-free.
+With the controller aiming, the Scorpion and the Warthog can be climbed with
+your hands, as in a climbing game: the hands pull and the world follows them,
+which is felt as your own motion. X still gets you in hands-free, into any
+vehicle; one without holds (the Wraith, a dropship) is got into with X alone.
 
-- The Scorpion's holds are where a Spartan would grab: each track guard's
-  outer edge (at about 1.6 m), a rail along the middle of its top, a rail at
-  the foot of the hull's side, the hull's top edge, and the rim of the hatch
-  over the driver's cockpit. As a hand comes within reach of one, the tank
-  lights up (as the holsters' weapons do) and the controller ticks.
+- Each vehicle's holds are where a Spartan would grab. As a hand comes
+  within reach of one, the vehicle lights up (as the holsters' weapons do)
+  and the controller ticks.
 - Grip to take a hold (a firmer tick). While a hand holds, your view moves
   against the hand's motion, 1:1 in every direction: pull down and you rise,
   pull toward you and you move forward. Either hand, or both; hand over hand
-  works. Let go of both and the view comes back to your body gently, at
-  walking pace (from high on the tank, across and then down).
-- At the hatch, take the rim and lower yourself (raise your hands): as you
-  come down to the rim your view is drawn toward the middle of the opening,
-  and 30 cm below the rim you are in the driver's seat, as X would put you,
-  your view carried on into the cockpit and turned to face the display.
-- Out: take the rim overhead from the seat and pull yourself up; 30 cm above
-  the rim you are out of the seat, as X would take you out, still where your
-  hands hold you. Let go, and you come down beside the tank.
+  works. The weapon in your hand is not drawn while a hand holds. Let go of
+  both and the view comes back to your body gently, at walking pace (from
+  high on a vehicle, across and then down).
+- Got in, your view glides on into the seat (no faster than 0.8 m/s), and
+  turns to face the vehicle's front as it does (no faster than 45 degrees a
+  second), with no blink.
+- The Scorpion: each track guard's outer edge (at about 1.6 m), a rail
+  along the middle of its top, a rail at the foot of the hull's side, the
+  hull's top edge, and the rim of the hatch over the driver's cockpit. Take
+  the rim and lower yourself (raise your hands): as you come down to the rim
+  your view is drawn toward the middle of the opening, and 30 cm below the
+  rim you are in the driver's seat, your view carried on into the cockpit
+  and turned to face the display. Out: take the rim overhead from the seat
+  and pull yourself up; 30 cm above it you are out.
+- The Warthog's driver and passenger: the windscreen's corner post, the
+  side's top edge and the seat's back, by each seat. Take one and pull
+  yourself in: within 60 cm of the seat your view is drawn to it, and within
+  25 cm you are in it. Out: take the post or the side's edge and push
+  yourself up and over it; 35 cm from where you sat you are out.
+- The Warthog's gunner: the tailgate's top edge and the bed's sides climb
+  you up into the bed; both hands on the chaingun's handles, near where the
+  gunner stands, and you are on the gun (your hands stay on its handles).
+  Out: let go of the handles, take the bed's side and push yourself up and
+  over it.
 - Your view's climb is the view's alone, as your head moving in the room is:
   your body stays on the ground beside the vehicle (others see it standing)
-  until you are in the seat, and your view goes no farther than 4 m from it.
-  Only what X would do reaches the game, so it plays in a network game.
+  until you are in the seat, and your hands pull your view no farther than
+  4 m from it. Only what X would do reaches the game, so it plays in a
+  network game.
 
 #### Driving a Scorpion (`vr.scorpion_view`)
 
@@ -2330,7 +2344,7 @@ headset's session is opened with, apply from the next start.
 | `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a wide magnified window opens about the reticle, at its depth (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
 | `vr.smartlink_size` | `70.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the zoom's window is, in degrees of the view (30 to 100); it is 16:9. |
 | `vr.scope_gun` | `"hidden"` | `HALO_VR_SCOPE_GUN` | With `vr.scope_view = "smartlink"`: how the weapon in your hand shows where it crosses the zoom's window: `"hidden"`, the window over it (no barrel in the view); `"ghost"`, faintly through the window (a fifth); `"visible"`, in front of the window. Not in VR Controls. |
-| `vr.vehicle_climb` | `true` | `HALO_VR_VEHICLE_CLIMB` | With `vr.aim = "controller"`: a vehicle with holds (the Scorpion) is climbed with the hands: grip a hold and pull, the view moving against the hands; lowered into its hatch by the rim you are in its seat, and pulled up out of it by the rim, out ("Climbing into a vehicle"). X works as ever. |
+| `vr.vehicle_climb` | `true` | `HALO_VR_VEHICLE_CLIMB` | With `vr.aim = "controller"`: a vehicle with holds (the Scorpion, the Warthog) is climbed with the hands: grip a hold and pull, the view moving against the hands; lowered into a hatch by its rim, pulled to a seat by its holds, or with both hands on a gun's handles, you are in the seat, and pulled or pushed out of it by its holds, out ("Climbing into a vehicle"). X works as ever. |
 | `vr.vehicle_zoom` | `"2 4"` | `HALO_VR_VEHICLE_ZOOM` | With `vr.scope_view = "smartlink"`, in a vehicle's seat whose weapon you aim, seen from the seat: the magnifications the right stick's click steps through in the zoom's window, then none (up to 4, each more than 1; `""`: the click does nothing there, as before). A vehicle's weapon with zoom levels of its own (none in the game's maps) has those. Not in VR Controls. |
 | `vr.recoil` | `1.0` | `HALO_VR_RECOIL` | With `vr.aim = "controller"`: how far the weapon in your hand kicks as it fires, each its own way, from `0` (none) to `1` (above, "The weapons' feel"). Drawn alone: the aim, the shots and the scopes' views stay where you point. Not in VR Controls. |
 | `vr.weapon_haptics` | `1.0` | `HALO_VR_WEAPON_HAPTICS` | With `vr.aim = "controller"`: how strongly the controllers feel each weapon firing, each its own way, and the hits on you, in the hand on the side they came from, in place of the gamepad's rumble for them, from `0` (none) to `1` (above, "The weapons' feel"). Not in VR Controls. |

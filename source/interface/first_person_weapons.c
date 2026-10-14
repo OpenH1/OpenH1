@@ -401,6 +401,9 @@ boolean vr_render_eye_pass(void);
 /* and the hands on a vehicle's handlebars, without the weapon, from its
 seat (port/linux/game/vr_vehicle.c) */
 boolean vr_render_handlebar_hands(void);
+/* port/linux/game/vr_climb.c's: a hand holds a vehicle's hold, climbing
+it */
+boolean vr_climb_hands_hold(void);
 /* port/linux/game/vr_reload.c's */
 void vr_reload_weapon_nodes(long model_index, long weapon_index, struct real_matrix4x3 *node_matrices);
 void vr_reload_draw(unsigned long flags);
@@ -561,8 +564,10 @@ void first_person_weapon_draw(
 
 					if (first_person_weapon->weapon_node_remapping_table_valid &&
 #ifdef HALO_VR
-						/* port: on a vehicle's handlebars, the hands alone */
+						/* port: on a vehicle's handlebars, the hands alone; and
+						climbing a vehicle by its holds */
 						!(render.local_player_index==0 && vr_render_handlebar_hands()) &&
+						!(render.local_player_index==0 && vr_climb_hands_hold()) &&
 #endif
 						weapon_definition->weapon.interface_definition.first_person_model.index!=NONE)
 					{

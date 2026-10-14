@@ -2478,6 +2478,7 @@ int halo_vr_climb(struct halo_vr_climb *c)
 	int hand, holding = 0, axis;
 
 	c->moved[0] = c->moved[1] = c->moved[2] = 0.0f;
+	c->frame = vr.presents;
 	for (hand = 0; hand < 2; hand++)
 	{
 		const struct vr_host_pose *grip = &vr.views.grip[hand];
@@ -3476,7 +3477,7 @@ static void handlebars_update(float seconds)
 			platform_log("vr: %s: the %s hand lets go", vr.seat.kind == HALO_VR_SEAT_WHEEL ? "wheel" : vr.seat.kind ==
 				HALO_VR_SEAT_TURRET ? "turret" : "handlebars", side ? "right" : "left");
 		}
-		else if (!vr.bars_held[hand] && valid && grips[hand] > HANDLEBAR_GRIP_PRESSED)
+		else if (!vr.bars_held[hand] && valid && grips[hand] > HANDLEBAR_GRIP_PRESSED && !vr.climb_grip[hand])
 		{
 			for (axis = 0; axis < 3; axis++)
 				v[axis] = place[hand][axis] - vr.seat.handles[side][axis];

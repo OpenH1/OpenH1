@@ -323,7 +323,8 @@ recentred head, metres, and how far about it a hand takes it); given each
 hand's hold (-1 none), the nearest hold to each hand and how far it is
 (metres beyond its reach; 0 or less within it), and how far the eye moves
 this frame by the hands (game axes, metres: against the holding hands'
-motion) */
+motion); and each hand's place (game axes from the recentred head, metres)
+and the frame (presented: debug.vr_test_hands poses by it) */
 #define HALO_VR_CLIMB_HOLDS 24
 struct halo_vr_climb
 {
@@ -335,6 +336,7 @@ struct halo_vr_climb
 	float distance[2];
 	float moved[3];
 	float hand[2][3];
+	unsigned long frame;
 };
 
 /* d3d8_gl.c: the display as each eye sees it, in the eye's space (as
