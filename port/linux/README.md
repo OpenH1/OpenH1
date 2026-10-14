@@ -1398,10 +1398,11 @@ opens from what the runtime offers (`host_vr_probe`): EGL's, through
 on x86-64), else GLX's, through `XR_KHR_opengl_enable`'s Xlib binding, which
 needs SDL's X11 video driver: under Wayland, start the game with
 `SDL_VIDEO_DRIVER=x11` (XWayland), else it says so in its log and plays
-flat. The window stays hidden while the headset shows the game; if the
-session cannot be made after all (no headset, the runtime's compositor
-failing), the game says so in its log, shows the window and plays flat in
-it.
+flat. (GLX's binding has not been tried on a headset: every runtime tried
+so far offers EGL's.) The window stays hidden while the headset shows the
+game; if the session cannot be made after all (no headset, the runtime's
+compositor failing), the game says so in its log, shows the window and
+plays flat in it.
 
 On SDL's X11 driver, the EGL context's window has no alpha: SDL makes the
 window with the screen's default (24-bit) visual before it chooses the EGL
@@ -1409,8 +1410,9 @@ config, and NVIDIA's EGL makes no window surface for it from a config with
 alpha (`Could not create GLES window surface`, and the game had no window).
 
 `tools/vr_test/openxr_probe.c` loads a runtime as the game does and lists
-its extensions, the binding the game would take, and whether it has a
-headset; its comment says how to build it.
+its extensions, the binding the game would take (GLX's only on SDL's X11
+driver, which the probe cannot see), and whether it has a headset; its
+comment says how to build it.
 `openxr_probe --extensions-only <manifest>` does not start the runtime;
 without it, the probe goes on to `xrCreateInstance` and `xrGetSystem`
 (which start SteamVR's server), and `--egl-session` to a session with
@@ -1439,9 +1441,10 @@ Wayland, an RTX 4090 with NVIDIA 615.78, `steamxr_linux64.json`, October
   in `$XDG_CONFIG_HOME/openvr` naming that folder as `config` (and a `log`
   folder), with `XDG_CONFIG_HOME` set for the game alone (and `HOME` with
   links to `~/.steam`'s `root`, `sdk32`, `sdk64`, `bin32` and `bin64`, which
-  SteamVR's launchers look for there). With it, the game's instance is
-  `SteamVR/OpenXR 2.18.3`, its system `SteamVR/OpenXR : null`, and its EGL
-  context (OpenGL 4.5, config 24, under XWayland) meets the runtime's
+  SteamVR's launchers look for there: SteamVR still runs from the user's
+  Steam folder, and may write its logs and caches there). With it, the
+  game's instance is `SteamVR/OpenXR 2.18.3`, its system
+  `SteamVR/OpenXR : null`, and its EGL context (OpenGL 4.5, config 24, under XWayland) meets the runtime's
   requirements (OpenGL 4.3 to 4.6).
 - With the null driver the session does not open: `xrCreateSession` fails
   (`XR_ERROR_RUNTIME_FAILURE`) and the game plays flat. SteamVR's compositor
@@ -1456,8 +1459,10 @@ Wayland, an RTX 4090 with NVIDIA 615.78, `steamxr_linux64.json`, October
 - A driver whose headset takes the frames itself, in driver direct mode
   (`IVRDriverDirectModeComponent`, as streamed headsets' drivers do), needs
   no display: `tools/vr_test/steamvr_driver.sh` (`tools/vr_test/README.md`)
-  runs SteamVR with such a driver of the tests', in a configuration folder
-  of its own. With it the game's session opens and reaches FOCUSED. SteamVR
+  runs SteamVR with such a driver of the tests', with settings and logs in
+  a configuration folder of its own (the user's SteamVR settings untouched;
+  Steam's own folder may get logs and caches), and stops what it started
+  however it ends. With it the game's session opens and reaches FOCUSED. SteamVR
   asks the driver for 2268x2520 swap images (its 150% of the driver's
   1512x1680) and recommends the game 1852x2056 eyes. Each frame comes to the
   driver as two layers: the game's eyes as it drew them, and SteamVR's

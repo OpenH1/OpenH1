@@ -25,9 +25,9 @@ context. Settings, from the environment:
 	XR_STUB_FPS=<Hz>                    the refresh rate (90)
 	XR_STUB_CYLINDER=1                  offer XR_KHR_composition_layer_cylinder
 
-A 64-bit host library, built with the headers the VR build downloads
-(tools/linux_guest_build.py, fetch_openxr_headers), from the root of the
-repository:
+A 64-bit host library, built with the headers the VR build downloads into
+build/linux_x86_64/third_party/openxr (configure.py --vr; or fetched there
+alone, as openxr_probe.c's comment says), from the root of the repository:
 
 	cc -O2 -shared -fPIC -I build/linux_x86_64/third_party/openxr \
 		tools/vr_test/openxr_stub_runtime.c -o build/openxr_stub_runtime.so

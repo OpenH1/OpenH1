@@ -19,13 +19,14 @@ default display without a surface (the game's has its window's), with
 libEGL.so.1 loaded at run time. The exit status is 0 when the runtime was
 loaded and listed its extensions.
 
-A 64-bit host tool, built with the headers the VR build downloads
-(tools/linux_guest_build.py, fetch_openxr_headers), from the root of the
-repository:
+A 64-bit host tool, built with the headers the VR build downloads into
+build/linux_x86_64/third_party/openxr (configure.py --vr; or fetched there
+alone, tools/linux_guest_build.py's fetch_openxr_headers), from the root of
+the repository:
 
 	python3 -c 'from pathlib import Path; from tools.linux_guest_build import fetch_openxr_headers; \
-		fetch_openxr_headers(Path("build/openxr"))'
-	cc -O1 -I build/openxr tools/vr_test/openxr_probe.c -o build/openxr_probe -ldl
+		fetch_openxr_headers(Path("build/linux_x86_64/third_party/openxr"))'
+	cc -O1 -I build/linux_x86_64/third_party/openxr tools/vr_test/openxr_probe.c -o build/openxr_probe -ldl
 
 (EGL's header from libegl-dev or Mesa; the probe needs no EGL library but
 for --egl-session.)
@@ -305,6 +306,11 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	extensions = calloc(count ? count : 1, sizeof(*extensions));
+	if (!extensions)
+	{
+		printf("extensions: out of memory for %u\n", (unsigned)count);
+		return 1;
+	}
 	for (extension = 0; extension < count; extension++)
 		extensions[extension].type = XR_TYPE_EXTENSION_PROPERTIES;
 	if ((result = enumerate(NULL, count, &count, extensions)) != XR_SUCCESS)
@@ -322,8 +328,11 @@ int main(int argc, char **argv)
 	free(extensions);
 	printf("%s: %s\n%s: %s\n", XR_KHR_OPENGL_ENABLE, has_opengl ? "yes" : "no", XR_MNDX_EGL_ENABLE,
 		has_egl ? "yes" : "no");
+	/* (GLX's binding is the game's only on SDL's X11 video driver,
+	host_vr.c's binding_choose: under Wayland, SDL_VIDEO_DRIVER=x11) */
 	printf("binding: %s\n", !has_opengl ? "none (no OpenGL)" : has_egl ? "EGL (XrGraphicsBindingEGLMNDX)" :
-		"GLX (XrGraphicsBindingOpenGLXlibKHR)");
+		"GLX (XrGraphicsBindingOpenGLXlibKHR), which the game takes only on SDL's X11 video driver "
+		"(SDL_VIDEO_DRIVER=x11; else it plays flat)");
 	if (extensions_only)
 		return 0;
 
