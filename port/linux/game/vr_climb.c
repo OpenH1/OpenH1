@@ -18,13 +18,13 @@ stays where it stood beside the vehicle (no farther than CLIMB_FARTHEST from
 it), and only what X would do reaches the game. A seat is got into by one of
 two rules:
 
-- By its hatch (the Scorpion's): lowered by the rim (the eye drawn across
-  toward the opening's middle as it comes down to its plane,
-  CLIMB_FUNNEL_SPEED, so that a hand anywhere on the rim brings it in), the
-  eye in the opening this far from the rim's plane (the seat's enter), the
-  game's seat entry happens, as X's (unit_enter_seat). Out: from the seat,
-  the rim glows; holding it, the eye rises as the hands pull down, and past
-  the seat's exit above the rim the game's exit happens, as X's
+- By its hatch (the Scorpion's, the Banshee's cockpit): lowered by the rim
+  (the eye drawn across toward the opening's middle as it comes down to its
+  plane, CLIMB_FUNNEL_SPEED, so that a hand anywhere on the rim brings it
+  in), the eye in the opening this far from the rim's plane (the seat's
+  enter), the game's seat entry happens, as X's (unit_enter_seat). Out: from
+  the seat, the rim glows; holding it, the eye rises as the hands pull down,
+  and past the seat's exit above the rim the game's exit happens, as X's
   (unit_try_and_exit_seat).
 - By a pull toward it (the Warthog's seats, the Ghost's saddle, a gun's):
   holding a hold of the seat's (the frame by a Warthog's seat, the Ghost's
@@ -258,6 +258,28 @@ static struct vr_climb_hold const vr_climb_ghost_holds[] =
 	{ { { 0.120f, -0.170f, 0.370f }, { 0.450f, -0.180f, 0.360f } }, 0.04f, CLIMB_HOLD_FOOT | CLIMB_HOLD_ENTRY, 0, NULL },
 };
 
+/* the Banshee: its tail booms' tops, from behind, the hull's edges beside
+the cockpit and the cockpit's sills (vr_cabin.c's, at the seated pilot's
+shoulders): lowered in by them, the eye 12 cm above the sills (the seated
+eye 17 cm above them); out 35 cm above them */
+static struct vr_climb_seat const vr_climb_banshee_seats[] =
+{
+	{ "B-driver", _climb_enter_hatch, NULL, { 0.131f, 0.0f, 0.920f }, { -0.120f, -0.165f, 0.260f, 0.165f }, 0.865f,
+		0.12f / METRES_PER_WORLD_UNIT, 0.35f / METRES_PER_WORLD_UNIT, FALSE, FALSE },
+};
+
+static struct vr_climb_hold const vr_climb_banshee_holds[] =
+{
+	{ { { -1.000f, 0.270f, 0.950f }, { -0.450f, 0.270f, 0.890f } }, 0.05f, CLIMB_HOLD_FOOT, NONE, NULL },
+	{ { { -1.000f, -0.270f, 0.950f }, { -0.450f, -0.270f, 0.890f } }, 0.05f, CLIMB_HOLD_FOOT, NONE, NULL },
+	{ { { -0.300f, 0.220f, 0.810f }, { 0.200f, 0.220f, 0.810f } }, 0.04f, CLIMB_HOLD_FOOT | CLIMB_HOLD_ENTRY, 0, NULL },
+	{ { { -0.300f, -0.220f, 0.810f }, { 0.200f, -0.220f, 0.810f } }, 0.04f, CLIMB_HOLD_FOOT | CLIMB_HOLD_ENTRY, 0,
+		NULL },
+	{ { { -0.120f, 0.190f, 0.875f }, { 0.260f, 0.190f, 0.875f } }, 0.04f, CLIMB_HOLD_SEATED | CLIMB_HOLD_ENTRY, 0, NULL },
+	{ { { -0.120f, -0.190f, 0.875f }, { 0.260f, -0.190f, 0.875f } }, 0.04f, CLIMB_HOLD_SEATED | CLIMB_HOLD_ENTRY, 0,
+		NULL },
+};
+
 static struct vr_climb_vehicle const vr_climb_vehicles[] =
 {
 	{ "vehicles\\scorpion\\scorpion", vr_climb_scorpion_seats, NUMBEROF(vr_climb_scorpion_seats),
@@ -266,6 +288,8 @@ static struct vr_climb_vehicle const vr_climb_vehicles[] =
 		vr_climb_warthog_holds, NUMBEROF(vr_climb_warthog_holds) },
 	{ "vehicles\\ghost\\ghost", vr_climb_ghost_seats, NUMBEROF(vr_climb_ghost_seats),
 		vr_climb_ghost_holds, NUMBEROF(vr_climb_ghost_holds) },
+	{ "vehicles\\banshee\\banshee", vr_climb_banshee_seats, NUMBEROF(vr_climb_banshee_seats),
+		vr_climb_banshee_holds, NUMBEROF(vr_climb_banshee_holds) },
 };
 
 static struct
