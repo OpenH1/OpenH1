@@ -508,6 +508,9 @@ Other things the game moves once a tick are drawn between ticks as well:
   tick where the object is drawn, rather than in 30 clumps a second at its
   place of the tick. A one-time effect's burst (an impact, an explosion)
   is made at once, as before.
+- A contrail's head (a rocket's exhaust, a needle's or a plasma bolt's
+  trail) stays on the projectile in the frames between ticks, where it
+  stayed behind until the next tick.
 
 The direction of the view is an exception. The game reads the mouse and the
 sticks in each frame. In first person, on foot, each frame points the view
