@@ -29,6 +29,10 @@ void render_interpolation_first_person(short local_player_index, struct real_mat
 float render_interpolation_game_time_sec(long ticks);
 float render_interpolation_ticks_behind(void);
 float render_interpolation_ticks_left(long ticks_left);
+struct new_particle_data;
+unsigned char render_interpolation_particle_later(struct new_particle_data const *data, long object_index,
+	short node_index, float fraction);
+void render_interpolation_particles_due(void);
 
 /* the port's menus' screen for one of ui.map's, by name, else the name
 (port/linux/game/menu_tags.c) */

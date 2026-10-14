@@ -21,8 +21,10 @@ too far for one tick: two snapshots of different poses (a model swapped,
 another weapon's skeleton, a pose left from seconds before) blended node by
 node stretch vertices across the screen.
 
-Particles, contrails and other effects already move every frame
-(game_frame), so they need nothing here.
+Particles, contrails and other effects move every frame (game_frame), and
+read the drawn pose of what they hang off. A stream of particles from an
+object, made in the tick, is held back to be made through the frames between
+the ticks (render_interpolation_particle_later).
 
 An object the distributed netcode moves to where the host has it
 (port/linux/game/network_objects.c) is drawn gliding there over a few ticks
@@ -39,6 +41,7 @@ with their unit, and with what it rides.
 #include "camera/director.h"
 #include "camera/observer.h"
 #include "cutscene/cinematics.h"
+#include "effects/particles.h"
 #include "game/game.h"
 #include "game/players.h"
 #include "render/render_cameras.h"
@@ -83,6 +86,9 @@ vehicle is corrected by (3 and 4 world units), short of a snap */
 /* a camera cut: a jump or turn no player or scripted camera makes in 33 ms */
 #define CAMERA_CUT_DISTANCE 3.0f
 #define CAMERA_CUT_COSINE 0.5f
+/* particles held back to be made between the ticks
+(render_interpolation_particle_later) */
+#define MAXIMUM_LATER_PARTICLES 512
 
 /* ---------- structures */
 
@@ -132,6 +138,19 @@ struct interpolated_camera
 	real_vector3d correction_pending;
 };
 
+/* a particle held back */
+struct later_particle
+{
+	struct new_particle_data data;
+	long object_index;
+	short node_index;
+	/* where on the node it was made */
+	real_point3d node_position;
+	/* made from this tick's frames on, this far into it */
+	long tick;
+	real fraction;
+};
+
 struct interpolated_first_person
 {
 	long tick;
@@ -157,6 +176,8 @@ static long interpolation_tick;
 static long interpolation_frame;
 static boolean interpolation_rendering;
 static real interpolation_fraction = 1.0f;
+static struct later_particle later_particles[MAXIMUM_LATER_PARTICLES];
+static short later_particle_count;
 
 /* ---------- blending */
 
@@ -533,6 +554,8 @@ void render_interpolation_reset(void)
 			interpolated_objects[index].object_index = NONE;
 	}
 	memset(interpolated_cameras, 0, sizeof(interpolated_cameras));
+	/* (the particles held back are the last map's) */
+	later_particle_count = 0;
 	for (index = 0; index < MAXIMUM_LOCAL_PLAYERS; index++)
 	{
 		interpolated_first_person[index].node_count = 0;
@@ -997,6 +1020,86 @@ void render_interpolation_first_person(
 			interpolation_fraction,
 			&blended);
 		matrix4x3_multiply(&camera_matrix, &blended, &node_matrices[node_index]);
+	}
+}
+
+/* ---------- particles */
+
+/* An effect's particles are made in the tick for all of the tick's time
+(effects.c), at once and at the emitter's place as the tick begins: a
+stream from an object (a looping effect's: a vehicle's exhaust, a wreck's
+smoke) came in clumps 30 times a second, from a moving object each a tick's
+motion behind the last, which the object drawn between the ticks then moved
+away from. Such a particle, the nth of a tick's count, is held back for that
+part of the tick and made in the first frame drawn that far into the tick
+after, where the emitter is drawn then: a stream, from the emitter as it is
+seen. */
+
+/* (effects.c, in the tick) the particle data (its position in the world)
+from the object's node, made this part of the way into the tick's time:
+TRUE as it is held back to be made then (particle_new), FALSE to be made
+now (frames are not drawn between the ticks, the object is not drawn
+between two poses, too many are held) */
+boolean render_interpolation_particle_later(
+	struct new_particle_data const *data,
+	long object_index,
+	short node_index,
+	real fraction)
+{
+	struct interpolated_object *record;
+	struct later_particle *later;
+	long absolute_index;
+
+	if (!halo_interpolation_enabled() || !interpolated_objects || object_index == NONE ||
+		!(fraction > 0.0f && fraction < 1.0f) || later_particle_count >= MAXIMUM_LATER_PARTICLES)
+	{
+		return FALSE;
+	}
+	absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index);
+	if (absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+		return FALSE;
+	record = &interpolated_objects[absolute_index];
+	if (record->object_index != object_index || !record->has_previous ||
+		node_index < 0 || node_index >= record->node_count)
+	{
+		return FALSE;
+	}
+	later = &later_particles[later_particle_count++];
+	later->data = *data;
+	later->object_index = object_index;
+	later->node_index = node_index;
+	/* (the tick's node: object_get_node_matrix gives it in the tick) */
+	matrix4x3_inverse_transform_point(object_get_node_matrix(object_index, node_index), &data->position,
+		&later->node_position);
+	/* (the tick's frames come after render_interpolation_tick) */
+	later->tick = interpolation_tick + 1;
+	later->fraction = fraction;
+	return TRUE;
+}
+
+/* (particles.c, each frame before the particles move) the particles held
+back that this frame has reached, made on their emitters as drawn */
+void render_interpolation_particles_due(void)
+{
+	short index = 0;
+
+	while (index < later_particle_count)
+	{
+		struct later_particle *later = &later_particles[index];
+
+		if (interpolation_rendering && (interpolation_tick < later->tick ||
+			(interpolation_tick == later->tick && interpolation_fraction < later->fraction)))
+		{
+			index++;
+			continue;
+		}
+		if (object_try_and_get(later->object_index))
+		{
+			matrix4x3_transform_point(object_get_node_matrix(later->object_index, later->node_index),
+				&later->node_position, &later->data.position);
+		}
+		particle_new(&later->data);
+		*later = later_particles[--later_particle_count];
 	}
 }
 

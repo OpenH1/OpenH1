@@ -503,6 +503,11 @@ Other things the game moves once a tick are drawn between ticks as well:
   is random once a tick, as on the Xbox; between ticks it moves from one
   tick's place to the next's. In VR the view does not shake (refer to
   "How it operates" in "VR").
+- A moving object's streams of particles (a looping effect's: a
+  vehicle's exhaust, a wreck's smoke and sparks) are made through each
+  tick where the object is drawn, rather than in 30 clumps a second at its
+  place of the tick. A one-time effect's burst (an impact, an explosion)
+  is made at once, as before.
 
 The direction of the view is an exception. The game reads the mouse and the
 sticks in each frame. In first person, on foot, each frame points the view

@@ -2163,7 +2163,29 @@ static void effect_generate_particles(
 					data.dont_draw_third_person =
 						particles->camera_mode == _effect_camera_mode_first_person_only;
 
-					particle_new(&data);
+					/* port: a stream of particles left in the world by an
+					object's node (a looping effect's, whose events come one
+					after another, or an event's spread over its time, not the
+					burst at a one-time effect's start or end): the nth of the
+					tick's count made that part of the way into the frames
+					drawn between this tick and the next, where the node is
+					drawn then, not all at the tick's place
+					(port/linux/game/render_interpolation.c) */
+					if (TEST_FLAG(particles->flags, _effect_particle_attached_bit) ||
+						instance->node_designator == NONE ||
+						TEST_FLAG(instance->node_designator, _effect_location_first_person_bit) ||
+						(!TEST_FLAG(effect->header.flags, _effect_loop_bit) &&
+							(last_event_fraction < 0.0f ||
+								particles->distribution_function == _effect_particle_distribution_function_start ||
+								particles->distribution_function == _effect_particle_distribution_function_end)) ||
+						!render_interpolation_particle_later(
+							&data,
+							effect->object_index,
+							instance->node_designator,
+							(real)instance_particle_index / count_delta))
+					{
+						particle_new(&data);
+					}
 				}
 			}
 
