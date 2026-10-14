@@ -46,6 +46,13 @@ typedef struct
 #define DS3DMODE_HEADRELATIVE 0x00000001
 #define DS3DMODE_DISABLE 0x00000002
 
+/* the settings and the log (debug.audio_record: none), and SDL's clock
+(the mix's time, debug.audio_log) */
+typedef unsigned long long Uint64;
+#define config_string(name) ""
+#define platform_log(...) ((void)0)
+#define SDL_GetTicksNS() 0ull
+
 /* the players' voices (voice_audio.c): none */
 static void voice_audio_mix(float *output, unsigned long frames)
 {

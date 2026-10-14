@@ -62,7 +62,7 @@ typedef void (*LPFNXMEDIAOBJECTCALLBACK)(void *, void *, unsigned long);
                  "XMEDIAPACKET_STATUS_FAILURE", "XMEDIAPACKET_STATUS_PENDING"]:
         # These SDK status expressions include casts, unlike integer capacities.
         text += next(line for line in statuses.splitlines() if line.startswith("#define " + name + " ")) + "\n"
-    for name in ["MAXIMUM_STREAM_PACKETS", "RESAMPLER_HISTORY"]:
+    for name in ["MAXIMUM_STREAM_PACKETS", "RESAMPLER_HISTORY", "HRTF_FRAMES"]:
         text += f"#define {name} {constant(backend, name)}\n"
     for name in ["MAXIMUM_SOUND_CHANNELS", "NUMBER_OF_SOUND_CHANNEL_TYPES"]:
         text += f"#define {name} {constant(game, name)}\n"
@@ -77,6 +77,6 @@ typedef struct _DSCAPS DSCAPS;
     text += structure(read("source/sound/sound_environment_definitions.h"), "sound_environment_definition") + "\n"
     for name in ["sound_virtual_channel", "sound_channel", "dsound_globals"]:
         text += structure(game, name) + "\n"
-    for name in ["voice_packet", "sdl_stream"]:
+    for name in ["voice_packet", "hrtf_parameters", "sdl_stream"]:
         text += structure(backend, name) + "\n"
     return text
