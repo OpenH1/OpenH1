@@ -1137,6 +1137,30 @@ boolean vr_render_scope_aim(real_point3d *point, real_point3d *origin, real_vect
 	return TRUE;
 }
 
+/* vr_scope.c: how far the aim's line meets the world now, from the right
+controller (metres; 0: nothing within CROSSHAIR_FARTHEST) */
+real vr_render_scope_range(void)
+{
+	real_point3d origin;
+	real_vector3d direction;
+	real distance;
+
+	if (!vr_render.active || !vr_render.view.controller_aim || vr_render.view.world_units_per_metre <= 0.0f ||
+		!aim_line(&origin, &direction))
+	{
+		return 0.0f;
+	}
+	distance = aim_distance(&origin, &direction);
+	return distance >= CROSSHAIR_FARTHEST ? 0.0f : distance / vr_render.view.world_units_per_metre;
+}
+
+/* vr_scope.c: the time from the last frame's display to this one's
+(seconds) */
+real vr_render_frame_seconds(void)
+{
+	return vr_render.view.seconds;
+}
+
 /* vr_aim.c, as the player's control aims, before this frame is drawn: the
 right controller's line as vr.c aims along it now (halo_vr_aim_line: game
 axes from the recentred head, metres, and the stick's turn) in the world,

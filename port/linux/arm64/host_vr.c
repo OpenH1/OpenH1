@@ -1317,22 +1317,18 @@ void host_vr_frame_end(const struct vr_host_layers *layers)
 		/* the scope's magnified view at its eyepiece, over the world (the
 		weapon about it included), for the eye that looks through it alone:
 		the other sees the scope's body, as it would; or the smart-link's on
-		the visor, or on the display on the back of the sniper rifle's
-		scope, for both. Premultiplied, its lens round in the square image,
-		or the display's rectangle its middle rows */
-		int rows = (int)(vr.swapchain_height[VR_SWAPCHAIN_SCOPE] * layers->scope_height + 0.5f);
-
+		the visor, for both. Premultiplied, its lens round in the square
+		image */
 		scope.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
 		scope.space = vr.play_space;
 		scope.eyeVisibility = layers->scope_eye < 0 ? XR_EYE_VISIBILITY_BOTH :
 			layers->scope_eye ? XR_EYE_VISIBILITY_RIGHT : XR_EYE_VISIBILITY_LEFT;
 		scope.subImage.swapchain = vr.swapchains[VR_SWAPCHAIN_SCOPE];
 		scope.subImage.imageRect.extent.width = vr.swapchain_width[VR_SWAPCHAIN_SCOPE];
-		scope.subImage.imageRect.offset.y = (vr.swapchain_height[VR_SWAPCHAIN_SCOPE] - rows) / 2;
-		scope.subImage.imageRect.extent.height = rows > 0 ? rows : 1;
+		scope.subImage.imageRect.extent.height = vr.swapchain_height[VR_SWAPCHAIN_SCOPE];
 		pose_to_xr(&layers->scope_pose, &scope.pose);
 		scope.size.width = layers->scope_size;
-		scope.size.height = layers->scope_size * layers->scope_height;
+		scope.size.height = layers->scope_size;
 		submitted[count++] = (const XrCompositionLayerBaseHeader *)&scope;
 	}
 	/* the HUD's panels behind its layer (farther), then the layer, then

@@ -82,8 +82,8 @@ symbols in this file:
 
 #ifdef HALO_VR
 /* port/linux/game/vr_scope.c: a scope's view is shown in the VR mode,
-raised to an eye or smart-linked (on the sniper rifle's display, or on the
-visor), showing the zoom (port/linux/src/d3d8_gl.c): the zoomed view's
+raised to an eye or smart-linked (a window about the reticle), showing
+the zoom (port/linux/src/d3d8_gl.c): the zoomed view's
 elements (the zoom's crosshairs, the readout with its arc and the side
 panel's waveform; the range ticks; the sniper's target distance and
 elevation at the reticle) are not drawn, which would float beside it */
