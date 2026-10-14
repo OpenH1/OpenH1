@@ -258,6 +258,8 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *reserved)
 {
 	(void)vm;
 	(void)reserved;
+	/* (before main: what the reservation finds goes to logcat too) */
+	host_log_set_sink(log_to_logcat);
 	host_memory_reserve_early();
 	return JNI_VERSION_1_6;
 }

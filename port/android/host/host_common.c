@@ -24,17 +24,25 @@ writes with neither locks nor stdio.
 #include <sys/mman.h>
 #include <time.h>
 #include <unistd.h>
+#ifdef __ANDROID__
+#include <android/log.h>
+#endif
 
 /* ---------- logging and termination */
 
-/* until the host's main sets one: the standard error stream */
+/* until the host sets one: the standard error stream, or on Android (whose
+app has none) logcat */
 static void default_sink(int priority, const char *line)
 {
+#ifdef __ANDROID__
+	__android_log_write(priority, "halo", line);
+#else
 	size_t length = strlen(line);
 
 	(void)priority;
 	if (write(2, line, length) < 0 || write(2, "\n", 1) < 0)
 		return;
+#endif
 }
 
 static host_log_sink log_sink = default_sink;
