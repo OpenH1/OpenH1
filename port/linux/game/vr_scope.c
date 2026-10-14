@@ -22,7 +22,10 @@ does the eyes'. Two ways (vr.scope_view):
   vr.scope_gun). Its view is the weapon's sight's, drawn from the
   controller along the aim's line, its field of view the window's over the
   magnification, its own reticle in its middle on what the line meets. Any
-  weapon that zooms (the pistol, the rocket launcher too).
+  weapon that zooms (the pistol, the rocket launcher too). In a vehicle's
+  seat that aims the vehicle's weapon (the Scorpion's driver, a turret's
+  gunner), seen from the seat (vr.vehicle_view = "first_person"), the
+  click zooms the same window about that seat's reticle (vr_scope_seat).
 
 - "eye": a scope magnifies the view within it, as a real one does, when it
   is raised to an eye: drawn from the scope's eyepiece along the aim, shown
@@ -73,6 +76,7 @@ headset.
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 /* raised: an eye behind the eyepiece, within the scope's eye relief and
@@ -111,6 +115,8 @@ at arm's length), opening and closing over these (seconds) */
 /* its magnification eased from one level to another over this (seconds) */
 #define WINDOW_RAMP_SECONDS 0.2f
 #define WINDOW_CLOSE_SECONDS 0.1f
+/* a seat's zoom levels (vr.vehicle_zoom): no more than these */
+#define MAXIMUM_SEAT_LEVELS 4
 
 /* a scope: the weapon whose tag this is, the middle of its eyepiece from
 the camera the first-person weapon is posed from (forward, left, up), and
@@ -163,6 +169,7 @@ boolean vr_render_scope_view(struct render_camera *weapon_camera, real_point3d e
 	real *units);
 void vr_render_world_to_head(real_point3d const *point, real_vector3d const *forward, real_vector3d const *up,
 	float position[3], float head_forward[3], float head_up[3]);
+boolean vr_render_scope_seat_view(real_point3d eyes[2], real_vector3d *head_forward, real *units);
 boolean vr_render_scope_aim(real_point3d *point, real_point3d *origin, real_vector3d *direction);
 real vr_render_scope_range(void);
 real vr_render_frame_seconds(void);
@@ -205,6 +212,10 @@ static struct
 	boolean zoomed;
 	long remembered_weapon_index;
 	short remembered_level;
+	/* in a vehicle's seat: the vehicle's weapon the seat aims as the
+	player's control saw it last, and its zoom level (NONE: unzoomed) */
+	long seat_weapon_index;
+	short seat_level;
 	/* the game's tick the scope's pass was first drawn at in this map, to
 	make its shaders (NONE: not yet) */
 	long warmed_tick;
@@ -213,7 +224,7 @@ static struct
 	boolean test_weapons_given;
 	long test_weapons_tick;
 } vr_scope = { NONE, NONE, FALSE, 0, FALSE, NONE, -1.0f, 0.0f, 0.0f, 0.0f, NONE, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f,
-	FALSE, NONE, NONE, NONE, FALSE, NONE };
+	FALSE, NONE, NONE, NONE, NONE, NONE, FALSE, NONE };
 
 /* the weapon's scope, or NONE */
 static short vr_scope_find(long weapon_index)
@@ -256,6 +267,63 @@ static long vr_scope_weapon(void)
 	if (unit->object.parent_object_index != NONE || TEST_FLAG(unit->object.damage_flags, _object_dead_bit))
 		return NONE;
 	return unit_inventory_get_weapon(unit_index, unit->unit.current_weapon_index);
+}
+
+/* in a vehicle's seat, the first player alive, with the scopes smart-linked:
+the vehicle's weapon if the seat aims it (the player is the vehicle's
+gunner: the Scorpion's driver, a turret's or the Warthog's gunner); else
+NONE. (The seated player holds no weapon of their own there, so the game's
+zoom does nothing: none of the vehicles' weapons has zoom levels.) */
+static long vr_scope_seat_weapon(void)
+{
+	long player_index = local_player_get_player_index(0);
+	long unit_index, vehicle_index;
+	struct unit_datum *unit, *vehicle;
+
+	if (player_index == NONE || halo_vr_scopes() != HALO_VR_SCOPES_SMARTLINK || cinematic_in_progress())
+		return NONE;
+	unit_index = player_get(player_index)->unit_index;
+	if (unit_index == NONE)
+		return NONE;
+	unit = unit_get(unit_index);
+	vehicle_index = unit->object.parent_object_index;
+	if (vehicle_index == NONE || TEST_FLAG(unit->object.damage_flags, _object_dead_bit) ||
+		!TEST_FLAG(_object_mask_unit, object_get(vehicle_index)->object.type))
+	{
+		return NONE;
+	}
+	vehicle = unit_get(vehicle_index);
+	if (vehicle->unit.gunner_object_index != unit_index)
+		return NONE;
+	return unit_inventory_get_weapon(vehicle_index, vehicle->unit.current_weapon_index);
+}
+
+/* a seat's zoom levels' magnifications, from the first: the vehicle's
+weapon's own, else vr.vehicle_zoom's ("2 4"; "" none); how many */
+static short vr_scope_seat_levels(long weapon_index, real magnifications[MAXIMUM_SEAT_LEVELS])
+{
+	struct weapon_definition const *definition = weapon_definition_get(object_get(weapon_index)->definition_index);
+	char const *text;
+	short count = 0;
+
+	if (definition->weapon.zoom_level_count > 0)
+	{
+		for (count = 0; count < definition->weapon.zoom_level_count && count < MAXIMUM_SEAT_LEVELS; count++)
+			magnifications[count] = weapon_get_zoom_magnification(weapon_index, count);
+		return count;
+	}
+	for (text = config_string("vr.vehicle_zoom"); *text && count < MAXIMUM_SEAT_LEVELS; )
+	{
+		char *end;
+		real magnification = (real)strtod(text, &end);
+
+		if (end == text)
+			break;
+		text = end;
+		if (magnification > 1.0f)
+			magnifications[count++] = MIN(magnification, 20.0f);
+	}
+	return count;
 }
 
 /* the scope's camera's view: the middle 480x480 of the screen, which
@@ -353,15 +421,14 @@ WINDOW_CLOSE_SECONDS; from one level to the next its magnification eases,
 with a flicker. Unzoomed and closed, not shown (its
 shaders made ready once a map). */
 static boolean vr_scope_smartlink(struct render_camera *camera, struct render_camera *rasterizer_camera,
-	long weapon_index, short scope, struct render_camera const *weapon_camera, real_point3d const eyes[2],
-	real_vector3d const *head_forward, real units)
+	long weapon_index, short scope, short zoom_level, real magnification, struct render_camera const *weapon_camera,
+	real_point3d const eyes[2], real_vector3d const *head_forward, real units)
 {
 	struct halo_vr_scope layer;
 	struct render_camera layer_camera;
 	real_point3d centre, aim, line_origin;
 	real_vector3d aim_direction, line_direction;
-	real distance, tangent, magnification = 1.0f, half_width, glow;
-	short zoom_level = player_control_get_zoom_level(0);
+	real distance, tangent, half_width, glow;
 	float view_degrees, view_distance;
 	boolean zoomed, aimed;
 
@@ -369,8 +436,6 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 	centre.x = (eyes[0].x + eyes[1].x) * 0.5f;
 	centre.y = (eyes[0].y + eyes[1].y) * 0.5f;
 	centre.z = (eyes[0].z + eyes[1].z) * 0.5f;
-	if (zoom_level != NONE)
-		magnification = weapon_get_zoom_magnification(weapon_index, zoom_level);
 	zoomed = zoom_level != NONE && magnification > 0.0f;
 	aimed = vr_render_scope_aim(&aim, &line_origin, &line_direction);
 
@@ -553,6 +618,47 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 	return TRUE;
 }
 
+/* the smart-link's window in a vehicle's seat that aims the vehicle's
+weapon (vr_scope_seat_weapon), seen from the seat (vr.vehicle_view =
+"first_person"): as on foot, about the reticle VR draws for the seat, the
+right controller's line meeting the world (which the seat's weapon turns
+to: the Scorpion's turret, a gun turret), at the seat's zoom level
+(vr_scope_zoom steps it), its readouts the vehicle weapon's rounds (the
+Scorpion's shells; none for a plasma weapon's charge). The game's zoom is
+not changed (the seated player holds no weapon that zooms): the view alone
+is magnified, as the netcode sees. TRUE as its view is drawn (or its
+shaders made: vr_scope_warm). */
+static boolean vr_scope_seat(struct render_camera *camera, struct render_camera *rasterizer_camera)
+{
+	struct render_camera seat_camera;
+	real_point3d eyes[2];
+	real_vector3d head_forward;
+	real units, magnifications[MAXIMUM_SEAT_LEVELS], magnification = 1.0f;
+	long weapon_index = vr_scope_seat_weapon();
+	short count, zoom_level = vr_scope.seat_level;
+
+	if (weapon_index == NONE || weapon_index != vr_scope.seat_weapon_index ||
+		!vr_render_scope_seat_view(eyes, &head_forward, &units))
+	{
+		vr_scope.seat_level = NONE;
+		return FALSE;
+	}
+	count = vr_scope_seat_levels(weapon_index, magnifications);
+	if (zoom_level != NONE && zoom_level < count)
+		magnification = magnifications[zoom_level];
+	else
+		zoom_level = NONE;
+	vr_scope.weapon_index = weapon_index;
+	vr_scope.scope = NONE;
+	/* (no weapon in hand: up as the world's, and the head's forward where
+	the aim has no direction) */
+	csmemset(&seat_camera, 0, sizeof(seat_camera));
+	seat_camera.forward = head_forward;
+	seat_camera.up = *global_up3d;
+	return vr_scope_smartlink(camera, rasterizer_camera, weapon_index, NONE, zoom_level, magnification, &seat_camera,
+		eyes, &head_forward, units);
+}
+
 /* render.c, before the eye pass (after vr_render_camera): whether the
 scope's view is drawn, and if so, its camera (both the render's and the
 rasterizer's, from the window's): its view the middle 480x480 of the screen.
@@ -574,6 +680,8 @@ boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rast
 		weapon_definition_get(object_get(weapon_index)->definition_index)->weapon.zoom_level_count > 0;
 
 	halo_vr_scope(NULL);
+	if (weapon_index == NONE && vr_scope_seat(camera, rasterizer_camera))
+		return TRUE;
 	if ((scope == NONE && !smartlink) || !vr_render_scope_view(&weapon_camera, eyes, &head_forward, &units))
 	{
 		if (vr_scope.raised)
@@ -594,8 +702,10 @@ boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rast
 	}
 	if (smartlink)
 	{
-		return vr_scope_smartlink(camera, rasterizer_camera, weapon_index, scope, &weapon_camera, eyes, &head_forward,
-			units);
+		zoom_level = player_control_get_zoom_level(0);
+		magnification = zoom_level != NONE ? weapon_get_zoom_magnification(weapon_index, zoom_level) : 1.0f;
+		return vr_scope_smartlink(camera, rasterizer_camera, weapon_index, scope, zoom_level, magnification,
+			&weapon_camera, eyes, &head_forward, units);
 	}
 	vr_scope.smartlink_shown = FALSE;
 	definition = &vr_scope_definitions[scope];
@@ -812,6 +922,30 @@ short vr_scope_zoom(long unit_index, long weapon_index, short zoom_level, boolea
 
 	if (vr_scope_test_weapons(unit_index, aiming))
 		return NONE;
+	/* in a vehicle's seat that aims its weapon: the seat's level, which the
+	click steps through, from the last to none (the game's is left as it
+	is: no weapon of the player's zooms there) */
+	{
+		long seat_weapon_index = vr_scope_seat_weapon();
+
+		if (seat_weapon_index != vr_scope.seat_weapon_index)
+			vr_scope.seat_level = NONE;
+		vr_scope.seat_weapon_index = seat_weapon_index;
+		if (seat_weapon_index != NONE && aiming && pressed)
+		{
+			real magnifications[MAXIMUM_SEAT_LEVELS];
+			short count = vr_scope_seat_levels(seat_weapon_index, magnifications);
+
+			vr_scope.seat_level = vr_scope.seat_level == NONE ? (count > 0 ? 0 : NONE) :
+				vr_scope.seat_level + 1 < count ? vr_scope.seat_level + 1 : NONE;
+			platform_log("vr scope: %s's seat zoom level %d of %d",
+				tag_get_name(object_get(seat_weapon_index)->definition_index), vr_scope.seat_level, count);
+		}
+		else if (!aiming)
+		{
+			vr_scope.seat_level = NONE;
+		}
+	}
 	if (!aiming || weapon_index == NONE || unit_index == NONE || weapon_index != vr_scope_weapon() ||
 		vr_scope_find(weapon_index) == NONE || halo_vr_scopes() != HALO_VR_SCOPES_EYE)
 	{

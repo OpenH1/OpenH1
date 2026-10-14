@@ -1507,6 +1507,19 @@ on your visor: you never bring a scope to your eye.
   quarter of a second once you stop. The reticle, the magnified view and
   the shot all follow the steadied aim: the shot goes where the reticle
   shows, and the weapon in your hand stays where your hand is.
+- In a vehicle's seat whose weapon you aim, seen from the seat
+  (`vr.vehicle_view = "first_person"`): the Scorpion's driver (either
+  `vr.scorpion_view`), and the same in any seat that makes you the
+  vehicle's gunner (a turret's, the Warthog's gun). There you hold no weapon of your own
+  and the vehicles' weapons have no zoom, so the game's click does nothing,
+  on the flat screen too. In the headset the click zooms the same window
+  about the seat's reticle, where the right controller aims (the turret
+  turns to it): 2x, then 4x, then none (`vr.vehicle_zoom`), its readouts
+  the range and the Scorpion's shells; none for a plasma weapon. It is the
+  view alone: the game is not zoomed (nothing changes for the shot, the aim
+  assist or the network). The sight looks out of the vehicle: its view does
+  not show the vehicle, nor the Scorpion's compartment or hatch, and the
+  window is drawn over them. Getting out unzooms it.
 
 ##### At the eye (`vr.scope_view = "eye"`)
 
@@ -2181,6 +2194,7 @@ headset's session is opened with, apply from the next start.
 | `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a wide magnified window opens about the reticle, at its depth (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
 | `vr.smartlink_size` | `70.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the zoom's window is, in degrees of the view (30 to 100); it is 16:9. |
 | `vr.scope_gun` | `"hidden"` | `HALO_VR_SCOPE_GUN` | With `vr.scope_view = "smartlink"`: how the weapon in your hand shows where it crosses the zoom's window: `"hidden"`, the window over it (no barrel in the view); `"ghost"`, faintly through the window (a fifth); `"visible"`, in front of the window. Not in VR Controls. |
+| `vr.vehicle_zoom` | `"2 4"` | `HALO_VR_VEHICLE_ZOOM` | With `vr.scope_view = "smartlink"`, in a vehicle's seat whose weapon you aim, seen from the seat: the magnifications the right stick's click steps through in the zoom's window, then none (up to 4, each more than 1; `""`: the click does nothing there, as before). A vehicle's weapon with zoom levels of its own (none in the game's maps) has those. Not in VR Controls. |
 | `vr.recoil` | `1.0` | `HALO_VR_RECOIL` | With `vr.aim = "controller"`: how far the weapon in your hand kicks as it fires, each its own way, from `0` (none) to `1` (above, "The weapons' feel"). Drawn alone: the aim, the shots and the scopes' views stay where you point. Not in VR Controls. |
 | `vr.weapon_haptics` | `1.0` | `HALO_VR_WEAPON_HAPTICS` | With `vr.aim = "controller"`: how strongly the controllers feel each weapon firing, each its own way, and the hits on you, in the hand on the side they came from, in place of the gamepad's rumble for them, from `0` (none) to `1` (above, "The weapons' feel"). Not in VR Controls. |
 | `vr.vehicle_flip` | `"lift"` | `HALO_VR_VEHICLE_FLIP` | How an overturned vehicle the game offers to flip is flipped (above, "Flipping a vehicle"): `"lift"`, by both hands gripping it low beside it and lifting together, fast (X reloads there); `"button"`, by X, as ever; `"both"`, by either. With `vr.aim = "gamepad"`, by X. Not in VR Controls. |

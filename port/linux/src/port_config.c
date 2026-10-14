@@ -317,6 +317,12 @@ static const struct config_setting config_settings[] =
 		"where it crosses the zoom's window: \"hidden\" the window is over it,\n"
 		"\"ghost\" it shows faintly through the window, \"visible\" it is in\n"
 		"front of the window." },
+	{ "vr.vehicle_zoom", _config_string, "\"2 4\"", "HALO_VR_VEHICLE_ZOOM", _environment_value, _platform_desktop,
+		"With vr.scope_view = \"smartlink\", in a vehicle's seat that aims its\n"
+		"weapon (the Scorpion's driver, a turret's gunner), seen from the seat:\n"
+		"the magnifications the right stick's click steps through, in the\n"
+		"zoom's window about the reticle, then none (up to 4; \"\": none). A\n"
+		"vehicle's weapon with zoom levels of its own has those." },
 	{ "vr.aim_assist", _config_real, "1.0", "HALO_VR_AIM_ASSIST", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", the aim assist: near an enemy the game's\n"
 		"magnetism would be drawn to, the aim's turn across it slows, and zoomed,\n"
