@@ -11,7 +11,8 @@ physics keeps it off the walls). From inside a wall the view sees through
 it: the level's far side, the void about it, and what is beyond, which is
 disorienting and an unfair peek.
 
-With vr.head_in_wall = "fade" (the default), each frame on foot the line
+With vr.head_in_wall = "fade" (off by default: a black view is worse than
+seeing through the wall), each frame on foot the line
 from the game's eye (where the game knows the player can be) to the eyes'
 middle, and on by a few centimetres (the eyes' small sphere), is tested
 against the world as the game tests a line of sight (the level's
@@ -138,7 +139,7 @@ static boolean head_in_wall_fades(void)
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
-		fades = strcmp(config_string("vr.head_in_wall"), "off") != 0;
+		fades = strcmp(config_string("vr.head_in_wall"), "fade") == 0;
 	}
 	return fades;
 }

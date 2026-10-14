@@ -1186,6 +1186,16 @@ void set_window_camera_values(
 			player_effect_get_camera_effect_matrix(
 				window->local_player_index,
 				&effect_matrix);
+#ifdef HALO_VR
+			/* port: in the VR mode the view is the head's, and a view the
+			game shakes or knocks (firing, explosions, hits, a scripted
+			quake) that the head does not sickens: the effect is taken (its
+			timers run down, the rumble with it) and not shown, and the eyes
+			start from the camera unmoved (vr_render_camera); the hands feel
+			the hits their own way (vr_feel.c) */
+			if (halo_vr_frame_active())
+				effect_matrix = *global_identity4x3;
+#endif
 			matrix4x3_from_point_and_vectors(
 				&view_matrix,
 				&observer->position,

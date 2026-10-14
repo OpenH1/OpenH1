@@ -568,7 +568,7 @@ world position the vertex program hands on and the same constants
 terms, clamped where the programs clamp them. The diffuse alpha, which the
 programs write apart (0, or planar fog's), is kept. */
 
-static void model_lighting(struct xgpu_text *text, BOOL point_lights)
+static void model_lighting(struct xgpu_text *text, BOOL point_lights, BOOL dynamic_lights)
 {
 	int light;
 
@@ -587,10 +587,12 @@ static void model_lighting(struct xgpu_text *text, BOOL point_lights)
 		"\tfloat facing = dot(n, -model_lights[7].xyz);\n"
 		"\tvec3 light = model_lights[11].xyz + max(max(facing, -facing * model_lights[0].z), 0.0) * model_lights[8].xyz +\n"
 		"\t\tmax(dot(n, -model_lights[9].xyz), 0.0) * model_lights[10].xyz;\n",
-		XGPU_MODEL_LIGHT_COUNT, point_lights ? "in vec3 xWorldPosition;\n" : "");
+		XGPU_MODEL_LIGHT_COUNT, point_lights || dynamic_lights ? "in vec3 xWorldPosition;\n" : "");
 	/* each point light: its position and 1 / radius squared, its cone's axis
-	and falloff scale, its color and falloff offset */
-	for (light = 0; point_lights && light < 2; light++)
+	and falloff scale, its color and falloff offset (none with the enhanced
+	dynamic lights, which light the model in their place: the same lights
+	among the rest) */
+	for (light = 0; point_lights && !dynamic_lights && light < 2; light++)
 	{
 		int first = 1 + light * 3;
 
@@ -606,6 +608,93 @@ static void model_lighting(struct xgpu_text *text, BOOL point_lights)
 			first, first, first + 1, first + 1, first + 2, first + 2);
 	}
 	xgpu_text_append(text, "\treturn clamp(light, 0.0, 1.0);\n}\n");
+}
+
+/* ---------- enhanced dynamic lights
+
+display.dynamic_lights "enhanced" (xgpu.h): the lights near a pixel, found
+in its grid cell, light it, in linear space: the light a pixel had (the
+lightmap's, the model's ambient and distant lights), taken out of the
+display's gamma, gets the dynamic light added under a soft shoulder that
+never passes white (the framebuffer holds no more), so that a light's core
+comes up bright and its color fades softly outward instead of clipping to a
+flat disc. Each light falls off as a small sphere's light does, as the
+inverse square of the distance with a soft core (1 / (1 + d^2 / c^2), d the
+distance, c the light's radius over the square root of the look's core, and
+no more than XGPU_DYNAMIC_LIGHTS_CORE: an explosion's light, reaching ten
+world units, is bright about it, not over all it reaches), windowed smoothly
+to nothing at the radius, so that its pool is crisp in the middle and has no
+edge. The light's color and radius are its
+tag's (the game's art), its color taken out of gamma and scaled by the
+look's brightness; past white, a little of a channel spills into the others
+(the look's spill), as a bright light's core goes white-hot. The structure
+is lit through its bump map (its tangent space: the normal map's red along
+the tangent, green along the binormal), the light's facing taken off toward
+the surface's own horizon so that a bump never lights a face turned away;
+models through their normal, a little wrapped (the look's wrap) as the
+game's soft lights are. */
+void xgpu_dynamic_lights_glsl(struct xgpu_text *text)
+{
+	xgpu_text_append(text,
+		"layout(std140, binding = %d) uniform dynamic_lights_block\n"
+		"{\n"
+		"\tvec4 dynamic_light_grid[3];\n"
+		"\tvec4 dynamic_light_position[%d];\n"
+		"\tvec4 dynamic_light_color[%d];\n"
+		"\tvec4 dynamic_light_cone[%d];\n"
+		"};\n"
+		"layout(binding = %d) uniform highp usampler3D dynamic_light_cells;\n"
+		"vec3 dynamic_light_sum(vec3 p, vec3 n, vec3 surface_normal, bool environment)\n"
+		"{\n"
+		"\tvec3 offset = p - dynamic_light_grid[0].xyz;\n"
+		"\tvec3 cell = sign(offset) * log2(1.0 + abs(offset) * dynamic_light_grid[1].w) * dynamic_light_grid[1].xyz +\n"
+		"\t\tvec3(%d.0, %d.0, %d.0);\n"
+		"\tuvec4 mask = texelFetch(dynamic_light_cells, clamp(ivec3(floor(cell)), ivec3(0), ivec3(%d, %d, %d)), 0);\n"
+		"\tvec3 sum = vec3(0.0);\n"
+		"\tfor (int word = 0; word < 4; word++)\n"
+		"\t{\n"
+		"\t\tuint bits = mask[word];\n"
+		"\t\twhile (bits != 0u)\n"
+		"\t\t{\n"
+		"\t\t\tint light = word * 32 + findLSB(bits);\n"
+		"\t\t\tbits &= bits - 1u;\n"
+		"\t\t\tvec4 position = dynamic_light_position[light];\n"
+		"\t\t\tif (environment && position.w < 0.0)\n"
+		"\t\t\t\tcontinue;\n"
+		"\t\t\tvec3 to_light = position.xyz - p;\n"
+		"\t\t\tfloat distance_squared = dot(to_light, to_light);\n"
+		"\t\t\tfloat x2 = distance_squared * position.w * position.w;\n"
+		"\t\t\tif (x2 >= 1.0)\n"
+		"\t\t\t\tcontinue;\n"
+		"\t\t\tvec3 l = to_light * inversesqrt(max(distance_squared, 1.0e-8));\n"
+		"\t\t\tfloat window = 1.0 - x2 * x2;\n"
+		"\t\t\tfloat core = max(dynamic_light_grid[2].y * position.w * position.w, %.4f);\n"
+		"\t\t\tfloat falloff = window * window / (1.0 + distance_squared * core);\n"
+		"\t\t\tfloat facing = environment ?\n"
+		"\t\t\t\tmax(dot(n, l), 0.0) * clamp(dot(surface_normal, l) * 4.0 + 0.5, 0.0, 1.0) :\n"
+		"\t\t\t\tclamp((dot(n, l) + dynamic_light_grid[2].w) / (1.0 + dynamic_light_grid[2].w), 0.0, 1.0);\n"
+		"\t\t\tvec4 cone = dynamic_light_cone[light];\n"
+		"\t\t\tvec4 color = dynamic_light_color[light];\n"
+		"\t\t\tfloat spot = clamp(dot(l, -cone.xyz) * cone.w + color.w, 0.0, 1.0);\n"
+		"\t\t\tsum += color.rgb * (falloff * facing * spot);\n"
+		"\t\t}\n"
+		"\t}\n"
+		"\treturn sum;\n"
+		"}\n"
+		/* the light a pixel had (in the display's gamma) and the dynamic
+		light added (linear), under the shoulder */
+		"vec3 dynamic_light_add(vec3 base, vec3 light)\n"
+		"{\n"
+		"\tlight += vec3(max(max(light.r, max(light.g, light.b)) - 1.0, 0.0) * dynamic_light_grid[2].z);\n"
+		"\tvec3 had = pow(clamp(base, 0.0, 1.0), vec3(2.2));\n"
+		"\tvec3 room = max(1.0 - had, vec3(1.0e-3));\n"
+		"\treturn pow(had + room * (1.0 - exp(-light / room)), vec3(1.0 / 2.2));\n"
+		"}\n",
+		XGPU_DYNAMIC_LIGHTS_BINDING, XGPU_DYNAMIC_LIGHTS_MAXIMUM, XGPU_DYNAMIC_LIGHTS_MAXIMUM, XGPU_DYNAMIC_LIGHTS_MAXIMUM,
+		XGPU_DYNAMIC_LIGHTS_UNIT,
+		XGPU_DYNAMIC_LIGHTS_GRID_X / 2, XGPU_DYNAMIC_LIGHTS_GRID_Y / 2, XGPU_DYNAMIC_LIGHTS_GRID_Z / 2,
+		XGPU_DYNAMIC_LIGHTS_GRID_X - 1, XGPU_DYNAMIC_LIGHTS_GRID_Y - 1, XGPU_DYNAMIC_LIGHTS_GRID_Z - 1,
+		1.0 / (XGPU_DYNAMIC_LIGHTS_CORE * XGPU_DYNAMIC_LIGHTS_CORE));
 }
 
 char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
@@ -680,8 +769,12 @@ char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
 	}
 	if (key->source_blend)
 		xgpu_text_append(&text, "uniform vec4 blend_constant;\n");
+	if (key->dynamic_lights)
+		xgpu_dynamic_lights_glsl(&text);
+	if (key->dynamic_lights == XGPU_DYNAMIC_LIGHTS_ENVIRONMENT)
+		xgpu_text_append(&text, "in vec3 xWorldPosition;\nin vec4 xWorldNormal;\nin vec3 xWorldBinormal;\nin vec3 xWorldTangent;\n");
 	if (key->per_pixel_lighting)
-		model_lighting(&text, key->per_pixel_lighting == 2);
+		model_lighting(&text, key->per_pixel_lighting == 2, key->dynamic_lights == XGPU_DYNAMIC_LIGHTS_MODEL);
 	xgpu_text_append(&text,
 		"float signed_byte(float x)\n"
 		"{\n"
@@ -698,11 +791,23 @@ char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
 		"\tvec4 v1 = xD1;\n"
 		"\tvec4 t0 = vec4(0.0), t1 = vec4(0.0), t2 = vec4(0.0), t3 = vec4(0.0);\n"
 		"\tfloat dot0 = 0.0, dot1 = 0.0, dot2 = 0.0, dot3 = 0.0;\n");
-	if (key->per_pixel_lighting)
+	if (key->per_pixel_lighting && key->dynamic_lights == XGPU_DYNAMIC_LIGHTS_MODEL)
+	{
+		xgpu_text_append(&text,
+			"\t{\n"
+			"\t\tvec3 n = xWorldNormal.xyz * inversesqrt(max(dot(xWorldNormal.xyz, xWorldNormal.xyz), 1.0e-24));\n"
+			"\t\tv0.rgb = dynamic_light_add(model_lighting(), dynamic_light_sum(xWorldPosition, n, n, false));\n"
+			"\t}\n");
+	}
+	else if (key->per_pixel_lighting)
 		xgpu_text_append(&text, "\tv0.rgb = model_lighting();\n");
 
 	for (stage = 0; stage < 4; stage++)
 		texture_stage(&text, key, stage);
+	/* (the bump map's texel, which the combiners may overwrite: the enhanced
+	dynamic lights read it after them) */
+	if (key->dynamic_lights == XGPU_DYNAMIC_LIGHTS_ENVIRONMENT)
+		xgpu_text_append(&text, "\tvec3 dynamic_light_bump = t0.rgb;\n");
 
 	/* the fog register: rgb is the fog color, alpha the fog factor */
 	if (key->fog_enable)
@@ -766,6 +871,22 @@ char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key)
 		xgpu_text_append(&text, ";\n\tvec4 result = vec4(fA * fB + (1.0 - fA) * fC + fD, fG);\n");
 	}
 
+	if (key->dynamic_lights == XGPU_DYNAMIC_LIGHTS_ENVIRONMENT)
+	{
+		/* the lightmap pass's light, before the textures multiply it: the
+		dynamic lights added, by the bump map's normal (texture 0, unsigned:
+		0.5 is level) in the vertex's tangent space, times the material's
+		color (the final combiner's constant, as the game's own pass) */
+		xgpu_text_append(&text,
+			"\t{\n"
+			"\t\tvec3 surface_normal = normalize(xWorldNormal.xyz);\n"
+			"\t\tvec3 bump = %s;\n"
+			"\t\tvec3 n = normalize(xWorldTangent * bump.x + xWorldBinormal * bump.y + surface_normal * max(bump.z, 0.05));\n"
+			"\t\tresult.rgb = dynamic_light_add(result.rgb,\n"
+			"\t\t\tdynamic_light_sum(xWorldPosition, n, surface_normal, true) * pow(ps_final_c0.rgb, vec3(2.2)));\n"
+			"\t}\n",
+			key->sampler_type[0] == _xgpu_sampler_2d ? "dynamic_light_bump * 2.0 - 1.0" : "vec3(0.0, 0.0, 1.0)");
+	}
 	if (key->coverage_alpha)
 		xgpu_text_append(&text, "\tresult.a = mix(1.0, result.a, t0.g);\n");
 	if (key->alpha_test_function)

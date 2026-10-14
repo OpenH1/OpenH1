@@ -383,6 +383,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.model_detail` | `"auto"` | `HALO_MODEL_DETAIL` | Which level of detail (of up to five) each model is drawn at. The game measures a model by its size in the lines of its 480-line screen, at any resolution, so at 1440 lines a model three times larger than the levels were made for is drawn as the Xbox drew it. `"stock"`: as on the Xbox. `"native"`: measured in the lines of the display (not supersampling's), so more detail is kept at a distance at high resolutions, and small far models that the Xbox left out are drawn. `"highest"`: measured as `"native"` for which models are drawn, and those drawn at their most detailed level. `"auto"`: `"native"` in the headset's eyes in VR, which have several times a display's lines and are seen close, and `"stock"` on a display. Models whose map gives one level (the trees and rocks of b30) do not change. On Android, which draws 480 lines, `"native"` is `"stock"`. |
 | `display.shield_glow` | `false` | `HALO_SHIELD_GLOW` | `true`: as a unit's energy shield flares (hit, charging, falling), it lights what is around it and itself, as a plasma bolt does, in the shield shader's own color (a Spartan's gold, an Elite's blue), rising and falling with the flare seen on the body. An ordinary dynamic light of the game's, drawn with a light definition the map has (`shield_glow.c`). Up to 8 units near the camera. |
 | `display.shield_glow_intensity` | `default` | `HALO_SHIELD_GLOW_INTENSITY` | The shield glow's reach and brightness: `default`, or `light_show` (three times as far, and at full strength from a third of the flare: a light is no brighter than full). The units glowing are those near any local player's camera, so each of a split screen's views has the same. |
+| `display.dynamic_lights` | `"classic"` | `HALO_DYNAMIC_LIGHTS` | The light of plasma bolts, needles, muzzle flashes, grenades and explosions. `"classic"`: the game's own. `"enhanced"`: the structure and the models are lit for each pixel by the lights near each pixel (a grid of the lights about the camera, not a cap of two lights an object), the structure through its bump maps; in linear light, falling off as the inverse square of the distance with a soft core, to nothing at the light tag's radius, under a soft shoulder that never clips (a light's color and radius are its tag's); placed where the objects are drawn between ticks; lighting the first-person weapon and hands; with a soft glow about each plasma bolt in flight (a projectile with no model). Bolts and needles light too (the game draws only their lens flares). Desktop OpenGL only: the x86 Linux and Windows builds and the VR build (flat too); not OpenGL ES (the arm64 build without VR, Android, the web), where it is `classic`. The structure's spotlights (a flashlight's gel) keep the game's own pass. Refer to "Dynamic lights" under "VR". |
 | `audio.enabled` | `true` | `HALO_NO_AUDIO=1` sets `false` | `false`: no audio device. The sound continues without output. |
 | `audio.volume` | `1.0` | `HALO_VOLUME` | The master volume. |
 | `audio.music_volume` | `1.0` | `HALO_MUSIC_VOLUME` | The music's volume, of the master volume. |
@@ -442,6 +443,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.skip_cinematics` | `false` | `HALO_SKIP_CINEMATICS` | Skip each cinematic of a local game: as the skip button does where the level lets it be skipped, else run at sixteen times its speed (`main_skip`), so that a test reaches play in seconds (b30's opening, which cannot be skipped, in about 100 frames rather than 2,400). |
 | `debug.menu_open` | `""` | `HALO_MENU_OPEN` | Start on this screen of the menus (`main_menu/settings_select/...`, as `port/assets/menus` names it), a player profile being edited, to look at it. |
 | `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with a GLSL expression (for example `t0.rgb`). |
+| `debug.dynamic_lights_look`, `debug.dynamic_lights_log` | `""`, `false` | `HALO_DYNAMIC_LIGHTS_LOOK`, `HALO_DYNAMIC_LIGHTS_LOG` | Tools for the enhanced dynamic lights: up to eight numbers in place of their look's (the lights' brightness, `1.7`; their core's inverse square in radii, `12`; the spill past white, `0.18`; the wrap on models, `0.25`; the glow's size in the light's radius, `0.22`, its brightness, `1.2`, its softness against what it meets in world units, `0.12`, and its least size, `0.035`), and a log of where the first projectile's light is drawn each frame beside where the game placed it at the tick, and once a second how many lights there are. |
 | `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link (`game/network_test.c`); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it. Refer to `NETCODE.md`. |
 | `debug.touch_targets` | `false` | `HALO_TOUCH_TARGETS` | Outlines the tap targets of the menus (item green, value blue, list slot yellow, legend button red, the band beside the slots of a list orange, keys of the on-screen keyboard white), marks where the last finger went down and the last tap landed for 3 seconds, and logs each tap with the target that it hit (for a value, also where it splits into previous and next): to judge the accuracy of touch. |
 | `debug.network_latency`, `debug.network_loss`, `debug.network_corrupt`, `debug.network_corrupt_stream`, `debug.network_corrupt_after` | `0` | `HALO_NETWORK_LATENCY`, `HALO_NETWORK_LOSS`, `HALO_NETWORK_CORRUPT`, `HALO_NETWORK_CORRUPT_STREAM`, `HALO_NETWORK_CORRUPT_AFTER` | The game holds all the data that it receives for this number of milliseconds, ignores this percentage of the datagrams, and damages this percentage of the datagrams it receives, and this percentage of its reads of streams, at random (bytes changed, cut short, stretched or replaced), from this many seconds after the start. Use the first two to test the netcode as on the internet, and the others to test that nothing another machine sends can crash the game (a damaged stream is closed, so a little goes a long way; a host's messages to its own client are damaged too, so start damaging once the game has started). |
@@ -608,6 +610,31 @@ Each frame shows the world between the last two ticks
 
 Thus the frames are one tick (33 ms) after the calculation. The calculation
 does not change.
+
+Other things the game moves once a tick are drawn between ticks as well:
+
+- The motion tracker's sweep (and a custom blip's pulse) moves in each
+  frame. The blips are still taken once a tick, as on the Xbox.
+- A waypoint (nav point) over an object stays over the object as it is
+  drawn, an ally or a vehicle on the move too (in VR as well, where the
+  waypoint is drawn in the world).
+- The screen's flashes (a hit, a teleport) and a level's fades, and the
+  camera's shake and knock, follow their curves in each frame. The shake
+  is random once a tick, as on the Xbox; between ticks it moves from one
+  tick's place to the next's. In VR the view does not shake (refer to
+  "How it operates" in "VR").
+- A moving object's streams of particles (a looping effect's: a
+  vehicle's exhaust, a wreck's smoke and sparks) are made through each
+  tick where the object is drawn, rather than in 30 clumps a second at its
+  place of the tick. A one-time effect's burst (an impact, an explosion)
+  is made at once, as before.
+- A contrail's head (a rocket's exhaust, a needle's or a plasma bolt's
+  trail) stays on the projectile in the frames between ticks, where it
+  stayed behind until the next tick.
+- An object's animated glows and colours (a weapon's charge or heat, a
+  vehicle's lights, a shield's flare: the values and change colours its
+  shaders read) and a unit's active camouflage change between ticks, as
+  its pose does.
 
 The direction of the view is an exception. The game reads the mouse and the
 sticks in each frame. In first person, on foot, each frame points the view
@@ -1851,6 +1878,19 @@ on your visor: you never bring a scope to your eye.
   quarter of a second once you stop. The reticle, the magnified view and
   the shot all follow the steadied aim: the shot goes where the reticle
   shows, and the weapon in your hand stays where your hand is.
+- In a vehicle's seat whose weapon you aim, seen from the seat
+  (`vr.vehicle_view = "first_person"`): the Scorpion's driver (either
+  `vr.scorpion_view`), and the same in any seat that makes you the
+  vehicle's gunner (a turret's, the Warthog's gun). There you hold no weapon of your own
+  and the vehicles' weapons have no zoom, so the game's click does nothing,
+  on the flat screen too. In the headset the click zooms the same window
+  about the seat's reticle, where the right controller aims (the turret
+  turns to it): 2x, then 4x, then none (`vr.vehicle_zoom`), its readouts
+  the range and the Scorpion's shells; none for a plasma weapon. It is the
+  view alone: the game is not zoomed (nothing changes for the shot, the aim
+  assist or the network). The sight looks out of the vehicle: its view does
+  not show the vehicle, nor the Scorpion's compartment or hatch, and the
+  window is drawn over them. Getting out unzooms it.
 
 ##### At the eye (`vr.scope_view = "eye"`)
 
@@ -2210,14 +2250,86 @@ triggers fire its guns. Its cockpit is the game's model (none of its own
 yet). With `vr.aim = "controller"`.
 
 
+#### Climbing into a vehicle (`vr.vehicle_climb`)
+
+With the controller aiming, a vehicle with holds, the Scorpion for now, can
+be climbed with your hands, as in a climbing game: the hands pull and the
+world follows them, which is felt as your own motion. X still gets you in
+hands-free.
+
+- The Scorpion's holds are where a Spartan would grab: each track guard's
+  outer edge (at about 1.6 m), a rail along the middle of its top, a rail at
+  the foot of the hull's side, the hull's top edge, and the rim of the hatch
+  over the driver's cockpit. As a hand comes within reach of one, the tank
+  lights up (as the holsters' weapons do) and the controller ticks.
+- Grip to take a hold (a firmer tick). While a hand holds, your view moves
+  against the hand's motion, 1:1 in every direction: pull down and you rise,
+  pull toward you and you move forward. Either hand, or both; hand over hand
+  works. Let go of both and the view comes back to your body gently, at
+  walking pace (from high on the tank, across and then down).
+- At the hatch, take the rim and lower yourself (raise your hands): as you
+  come down to the rim your view is drawn toward the middle of the opening,
+  and 30 cm below the rim you are in the driver's seat, as X would put you,
+  your view carried on into the cockpit and turned to face the display.
+- Out: take the rim overhead from the seat and pull yourself up; 30 cm above
+  the rim you are out of the seat, as X would take you out, still where your
+  hands hold you. Let go, and you come down beside the tank.
+- Your view's climb is the view's alone, as your head moving in the room is:
+  your body stays on the ground beside the vehicle (others see it standing)
+  until you are in the seat, and your view goes no farther than 4 m from it.
+  Only what X would do reaches the game, so it plays in a network game.
+
 #### Driving a Scorpion (`vr.scorpion_view`)
 
 The Scorpion's model is a closed hull, made for the game's camera following
 it: its driver's head is in the hatch's lid, over an empty slot. So the
 eye is put where it belongs, and what the model lacks is drawn about it, with
-the Scorpion's own textures and lighting:
+the game's own textures and lighting:
 
-- `"hatch"` (the default): you stand in the turret's hatch, a cupola ring
+- `"feed"` (the default): you drive from a closed cockpit inside the hull,
+  the world on a display all the way round you, as UNSC vehicles run on camera
+  feeds. The cockpit is a frame of reference that stays still about you as
+  the tank moves, a defence against motion sickness. Its walls are the
+  Pelican's troop bay's gunmetal panels (the Scorpion's own in a map without
+  the Pelican), and in it are a dash, the two steering levers, side consoles
+  and a seat.
+  - The display wraps all the way round you: the cockpit is round, and the
+    display is the opening in its wall, from 20 degrees below your eyes to
+    45 above, so you can turn your head and look out any way. The world in
+    it is at its true size and depth in each eye, as through a window, with
+    the feed's look over it: a faint blue tint, scan lines, its edges
+    darkened, a frame of the HUD's blue. Ribs every 45 degrees (but ahead
+    and behind) mark its panels, the cockpit's still frame with the floor,
+    the dash and the levers. The front panel, from 45 degrees left to 45
+    right, is the main one: along its bottom the zoom, the range to where
+    you aim and the cannon's rounds. The others are the hull cameras, a
+    little dimmer, labelled L HULL, R HULL and REAR. The reticle is where
+    you aim, as always; the turret turns to it. The right stick's click
+    opens the 2x and 4x window within the front panel (`vr.vehicle_zoom`).
+  - On a holotable under the display, the tank itself: the Scorpion's own
+    model a hand's length long, glowing in the HUD's blue, its turret turned
+    as the real one is (at a glance, which way the gun points against the
+    hull you sit in), tilted as the hull is from level.
+  - Getting in and out is in the first person, with no break: as you climb
+    in (the X button), your view rides the body through the game's own
+    climb onto the tank and down into the driver's place, and the cockpit is
+    there about you as you come down into it. The ride follows the body's
+    head smoothed (the climb's bumps gone, no faster than 3 m/s: where the
+    game slides the body to the climb's start, the view glides), never its
+    head's turn: your own head keeps its pitch and roll. As you climb, the
+    play space turns with you, eased and no faster than 45 degrees a
+    second, so that you face the display as you sit. The edges of the view
+    dim a little while it moves faster than walking (`vr.comfort_vignette`).
+    The tank's armour is not drawn about you once you are within 15 cm of the
+    cockpit, so you do not see through its plates as you pass, and from inside
+    only the world is seen through the display, as a hull camera's. Seated,
+    the display wakes: a grate of bars slides down over it, and the feed
+    washes over it from the top down (0.4 s). Getting out, the display
+    collapses dark as the body starts to climb, and the view rides it up and
+    out and down beside the tank, to where you stand.
+  - With `vr.seat_motion = "head"`, the view is where the game puts the
+    driver's head, as in the other views.
+- `"hatch"`: you stand in the turret's hatch, a cupola ring
   about you with its lid open, the eye above the turret on its axis, so that
   it does not swing as the turret turns under it. You see all about, over
   the hull; the turret aims where you aim.
@@ -2226,7 +2338,7 @@ the Scorpion's own textures and lighting:
   levers and an instrument panel, and vision blocks across the front, which
   you see out through.
 
-In both, the view stays yours, level and turned by your head and the stick:
+In each, the view stays yours, level and turned by your head and the stick:
 the Scorpion turns toward where you aim as you drive it, as it does under
 the game's camera, so the hull turns under you, not the view with it.
 
@@ -2324,7 +2436,31 @@ keeps the game's view, with no hands floating in it.
 
 #### Dying (`vr.death_view`)
 
-When you die, the view stays where your head was: you look about from there
+With `vr.death_view = "crt"` (the default), dying is your helmet's feed
+switching, in the language of the smart-link's window:
+
+- As you die, two frames of the shields' alarm (static, red), then the
+  helmet's view collapses as a CRT switches off: to a bright line of the
+  HUD's blue through the middle of your view, the line to a point, dark
+  (about a quarter of a second).
+- In the dark the view cuts to a death cam: a vantage fixed in the world
+  about 3 m from your body, to its side (behind and to the side of where
+  you faced, where the body is in sight and the vantage clear of walls:
+  the 8 directions about the body are tried, then nearer), your eyes at
+  standing height above the ground under the body, facing it. Your head
+  looks about from there as ever. Its feed switches on (a point, a line,
+  the whole view, a little interference settling) and shows as a feed: a
+  faint blue tint, scan lines, its edges darkened.
+- Turning (the right stick) moves the vantage 45 degrees about the body,
+  in a quick cut (off and on); it is put again so if the body goes out of
+  its sight or slides away.
+- As the game brings you back (the checkpoint, or a multiplayer game's
+  respawn), the feed switches off, the helmet's view switches on, and the
+  HUD boots over a second: the shield meter charges from empty, the motion
+  sensor comes up, the ammo counts up.
+
+The other values keep the views before it. With `"face"`, when you die,
+the view stays where your head was: you look about from there
 as ever, and nothing else moves or turns it but a blink. Your body
 falls before and under you (look down), drawn as the others see it, and the
 world dims and reddens. Just before the game reverts to the last checkpoint
@@ -2363,8 +2499,9 @@ the revert, the respawn and what the netcode sends are the game's.
 Your head moves in the room apart from your body in the game, which the
 game moves and keeps off the walls (its eye stays some 0.6 m from them).
 Lean or step into a wall, a rock or a pillar and your eyes would go into it,
-and see through it: the level's far side, and what is behind. With
-`"fade"` (the default) the view fades to black as your eyes go in, over the
+and see through it: the level's far side, and what is behind. That is the
+default (`"off"`): a view going black in play is worse than the peek. With
+`"fade"` the view fades to black as your eyes go in, over the
 last few centimetres, and comes back as you lean or step out (over a
 quarter of a second). The HUD stays, saying to step back, and a scope shows
 nothing meanwhile (it would see through the wall too).
@@ -2463,6 +2600,43 @@ each 10 ms it mixes, with no step.
   HRTF's delays and filters); `debug.audio_record` records the mix to a
   WAV file; `debug.vr_test_sound` plays a sound held in the world (below).
 
+#### Dynamic lights (`display.dynamic_lights`)
+
+With `display.dynamic_lights = "enhanced"` (Video Setup > Graphics >
+Dynamic Lights, on the flat screen too), the lights of plasma bolts,
+needles, muzzle flashes, grenades and explosions are drawn for each pixel:
+
+- A bolt's light glides with it. The game places a light attached to an
+  object at each tick, and the objects are drawn between ticks; each light
+  is now drawn on its object's marker as drawn, in both modes. A plasma
+  grenade thrown on a50, frame by frame at 72 Hz: its light moved 0.139
+  world units each frame in flight, where the tick's position moved 0.333
+  every third frame and stood still between (`debug.dynamic_lights_log`).
+- Bolts and needles light what they pass. On the Xbox their lights are their
+  lens flares' only (`weapons\plasma rifle\bolt`, `weapons\needler\needle
+  flare`: not dynamic); enhanced, each lights by its tag's color and radius.
+- The structure is lit for each pixel through its bump map, the models
+  through their normals, and the first-person weapon and hands by the
+  lights near them where they are, in your hand (the game lit them by your
+  body's two nearest lights): your own muzzle flash, which is moved to the
+  first-person weapon's muzzle, your grenade, the bolts passing.
+- No light is left out: each pixel takes the lights of its cell of the grid,
+  as many as the game draws (128 a window).
+- A glow is drawn about each plasma bolt in flight (a projectile with no
+  model: a needle's or a grenade's own body would hide its middle), sized
+  and colored by its light, in both eyes at its depth (both eyes in one
+  draw), fading as it nears what is behind it.
+- The light is added in linear light under a soft shoulder: a light's core
+  comes up bright and fades softly outward, never clipping to a flat
+  disc. An explosion (its tag's radius 10 world units) is bright about it,
+  not over everything it reaches.
+
+Its cost, on spark (`HALO_GPU_STATS=1 HALO_VR_GPU_TIME=1`, 1728 x 1728 eyes,
+foveated, a50 with the plasma rifle firing in bursts): the GPU's time a
+frame 0.97 ms enhanced, 0.93 ms classic, over 70 s. A pixel's cost grows
+with the lights that reach it, not with the frame's; the Steam Frame's GPU,
+several times slower, is to be measured.
+
 ### Settings
 
 In the headset, Settings' VR Setup (below About; only there while the
@@ -2500,24 +2674,26 @@ headset's session is opened with, apply from the next start.
 | `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a wide magnified window opens about the reticle, at its depth (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
 | `vr.smartlink_size` | `70.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the zoom's window is, in degrees of the view (30 to 100); it is 16:9. |
 | `vr.scope_gun` | `"hidden"` | `HALO_VR_SCOPE_GUN` | With `vr.scope_view = "smartlink"`: how the weapon in your hand shows where it crosses the zoom's window: `"hidden"`, the window over it (no barrel in the view); `"ghost"`, faintly through the window (a fifth); `"visible"`, in front of the window. Not in VR Controls. |
+| `vr.vehicle_climb` | `true` | `HALO_VR_VEHICLE_CLIMB` | With `vr.aim = "controller"`: a vehicle with holds (the Scorpion) is climbed with the hands: grip a hold and pull, the view moving against the hands; lowered into its hatch by the rim you are in its seat, and pulled up out of it by the rim, out ("Climbing into a vehicle"). X works as ever. |
+| `vr.vehicle_zoom` | `"2 4"` | `HALO_VR_VEHICLE_ZOOM` | With `vr.scope_view = "smartlink"`, in a vehicle's seat whose weapon you aim, seen from the seat: the magnifications the right stick's click steps through in the zoom's window, then none (up to 4, each more than 1; `""`: the click does nothing there, as before). A vehicle's weapon with zoom levels of its own (none in the game's maps) has those. Not in VR Controls. |
 | `vr.recoil` | `1.0` | `HALO_VR_RECOIL` | With `vr.aim = "controller"`: how far the weapon in your hand kicks as it fires, each its own way, from `0` (none) to `1` (above, "The weapons' feel"). Drawn alone: the aim, the shots and the scopes' views stay where you point. Not in VR Controls. |
 | `vr.weapon_haptics` | `1.0` | `HALO_VR_WEAPON_HAPTICS` | With `vr.aim = "controller"`: how strongly the controllers feel each weapon firing, each its own way, and the hits on you, in the hand on the side they came from, in place of the gamepad's rumble for them, from `0` (none) to `1` (above, "The weapons' feel"). Not in VR Controls. |
 | `vr.vehicle_flip` | `"lift"` | `HALO_VR_VEHICLE_FLIP` | How an overturned vehicle the game offers to flip is flipped (above, "Flipping a vehicle"): `"lift"`, by both hands gripping it low beside it and lifting together, fast (X reloads there); `"button"`, by X, as ever; `"both"`, by either. With `vr.aim = "gamepad"`, by X. Not in VR Controls. |
 | `vr.grab_world` | `true` | `HALO_VR_GRAB_WORLD` | With `vr.aim = "controller"`: the hands take hold of the world (above, "Picking up a weapon by hand", "Pressing a control by hand"): a weapon on the ground the game offers is taken by reaching down to it with the right hand and gripping; a control the game offers to activate is pressed by pushing either hand into it. `false`: X alone, which works either way. Not in VR Controls. |
 | `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the left hand takes another magazine from the left hip (the one in the weapon ejecting itself, or the right stick pushed down ejects it) and pushes it in, loaded at once (as a network game's client, after the game's reload time); the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand alone (above, "Throwing a grenade with the left hand"; on foot the left trigger throws nothing); `"both"`, with the left hand or the left trigger; `"button"`, with the left trigger alone. |
-| `vr.aim_assist` | `1.0` | `HALO_VR_AIM_ASSIST` | With `vr.aim = "controller"`: the aim assist (above, "Aiming with the controller"): near an enemy the game's magnetism would be drawn to, the aim is slow to leave it, and zoomed, is drawn gently toward it; how strongly, from `0` (none) to `2`. Zoomed, it reaches as far as the zoom's and is as wide as unzoomed (the flat game narrows it by the zoom's magnification, as its whole view is magnified; in the headset only a window is). The bullets' own autoaim is the game's whatever this is. |
+| `vr.aim_assist` | `1.0` | `HALO_VR_AIM_ASSIST` | With `vr.aim = "controller"`: the aim assist (above, "Aiming with the controller"): near an enemy the game's magnetism would be drawn to, the aim is slow to leave it, and zoomed, is drawn gently toward it; how strongly, from `0` (none) to `2`. Zoomed, it reaches as far as the zoom's and is as wide as unzoomed (the flat game narrows it by the zoom's magnification, as its whole view is magnified; in the headset only a window is). The bullets' own autoaim is the game's whatever this is. With the left hand on a long gun's foregrip, half as strong again. The aim never moves while your hand is still but for that zoomed pull: away from a target it comes back to your hand's line only as your hand turns (not on its own as a reload, a melee or a kill loses the target), and a long frame (a hitch) does not reset it. |
 | `vr.two_handed` | `true` | `HALO_VR_TWO_HANDED` | With `vr.aim = "controller"`: a long gun (any but the pistols, the needler, the flag and the ball) is aimed along the line from the right hand to the left while the left grip holds it by the foregrip (pressed within 18 cm of the line ahead of the right hand). The aim turns to that line over 0.15 s, smoothed, and back when the grip is let go. |
 | `vr.hands` | `"arms"` | `HALO_VR_HANDS` | With `vr.aim = "controller"`: each first-person hand where its controller is (the right holding the weapon, its index finger on the trigger as far as the trigger is pulled; the left open, closing as the grip is pulled, and on a long gun's foregrip while it holds it). `"arms"`: the arms reach the hands from the shoulders (`vr.shoulders`). `"floating"`: no arms above the wrists. `"game"`: the game's arms, posed from the weapon in the right hand. A hand whose controller is not tracked is not drawn, nor its arm. In a cinematic seen from the player's head the hands are the controllers' too, acting on nothing (above, "Cinematics seen from your own head"). |
 | `vr.shoulders` | `"0.19, -0.20, -0.07"` | `HALO_VR_SHOULDERS` | With `vr.hands = "arms"`: where each shoulder is from the eyes, in metres: out to its side, up, forward, turned with the body (the holsters' heading: it faces where the head does, follows it past a 40 degree turn, and slowly). From the eyes as they would be with the head level and turned with the body: the shoulders hang from the neck, so a nod or a turn of the head does not move them. |
 | `vr.vehicle_view` | `"first_person"` | `HALO_VR_VEHICLE_VIEW` | `"first_person"`: in a vehicle's seat, the view is from the seated player's head, level with the horizon. `"third_person"`: the game's camera following the vehicle. |
 | `vr.warthog_steering` | `"wheel"` | `HALO_VR_WARTHOG_STEERING` | With `vr.aim = "controller"`, in a Warthog's driver seat: `"wheel"`, grip its wheel and turn it to steer, the view turning with the Warthog ("Driving a Warthog by its wheel"); `"look"`, it steers where the right controller points, the view turned by the stick. |
 | `vr.ghost_steering` | `"handlebars"` | `HALO_VR_GHOST_STEERING` | With `vr.aim = "controller"`, in a Ghost's driver seat: `"handlebars"`, grip its handles and turn them to steer, the view turning with the Ghost ("Driving a Ghost by its handlebars"); `"look"`, it steers and aims where the right controller points, the view turned by the stick. |
-| `vr.scorpion_view` | `"hatch"` | `HALO_VR_SCORPION_VIEW` | With `vr.vehicle_view = "first_person"`, in a Scorpion's driver seat: `"hatch"`, you stand in the turret's hatch, the eye above the turret on its axis, seeing all about over the hull; `"inside"`, you sit in the driver's compartment at the front of the hull, seeing out through its vision blocks ("Driving a Scorpion"). |
+| `vr.scorpion_view` | `"feed"` | `HALO_VR_SCORPION_VIEW` | With `vr.vehicle_view = "first_person"`, in a Scorpion's driver seat: `"feed"`, you ride the body's climb in (and out), in the first person, into a closed cockpit inside the hull and see the world on a display all the way round you (true to size; the zoom within its front), the tank's hologram on the dash; `"hatch"`, you stand in the turret's hatch, the eye above the turret on its axis, seeing all about over the hull; `"inside"`, you sit in the driver's compartment at the front of the hull, seeing out through its vision blocks ("Driving a Scorpion"). |
 | `vr.comfort_vignette` | `true` | `HALO_VR_COMFORT_VIGNETTE` | The edges of the view dim a little while the view turns fast with a Ghost steered by its handlebars, or it speeds up or slows hard. |
 | `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, the eye stays put in the vehicle, riding with it but not with the body climbing in and out, a turret's turning or flinches, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
-| `vr.death_view` | `"face"` | `HALO_VR_DEATH_VIEW` | As you die: `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |
-| `vr.head_in_wall` | `"fade"` | `HALO_VR_HEAD_IN_WALL` | Your head leaned or stepped into a wall or a pillar, or through it: `"fade"`, the view fades to black as your eyes go in (where the wall before them comes within 25 cm, black at 20 cm, just short of the game's near plane; black once they are in it or past it) and back as they come out, the HUD saying to step back, a scope showing nothing; not in a vehicle's seat (above, "Your head in a wall"). `"off"`: you see through it. |
+| `vr.death_view` | `"crt"` | `HALO_VR_DEATH_VIEW` | As you die: `"crt"`, the helmet's view switches off as a CRT does and cuts to a death cam, a feed from beside your body (the right stick moves it about the body), until the game brings you back and the HUD boots (above, "Dying"); `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |
+| `vr.head_in_wall` | `"off"` | `HALO_VR_HEAD_IN_WALL` | Your head leaned or stepped into a wall or a pillar, or through it: `"off"` (the default), you see through it, as a black view is worse; `"fade"`, the view fades to black as your eyes go in (where the wall before them comes within 25 cm, black at 20 cm, just short of the game's near plane; black once they are in it or past it) and back as they come out, the HUD saying to step back, a scope showing nothing; not in a vehicle's seat (above, "Your head in a wall"). |
 | `vr.turn` | `"snap"` | `HALO_VR_TURN` | `"snap"` or `"smooth"` (with `vr.aim = "gamepad"`, `vr.gamepad_view` instead). |
 | `vr.snap_turn_angle` | `30.0` | `HALO_VR_SNAP_TURN_ANGLE` | Degrees of each snap turn. |
 | `vr.smooth_turn_speed` | `150.0` | `HALO_VR_SMOOTH_TURN_SPEED` | Degrees each second of smooth turning. |
@@ -2868,6 +3044,14 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   the game as the headset shows them (read when the last frame's work
   ended, they were 9 to 19 ms apart at 72 Hz, and what moved fast
   juddered).
+- The view does not shake. The game shakes and knocks a player's camera
+  (firing, explosions, hits, a level's scripted quake:
+  `player_effect_get_camera_effect_matrix`), and the eyes were placed from
+  that camera: the view moved by up to a few centimetres that the head did
+  not move, which sickens. In VR the effect is still taken (its timers run,
+  and the gamepad's rumble with them) but does not move the camera
+  (`main.c`, `set_window_camera_values`). The hits are felt in the
+  controllers (below), and the screen's flashes are drawn.
 - The player's facing follows the right controller (or the head). Thus
   the netcode sees a normal player's aim. The first-person weapon is
   posed from a camera behind the controller, and drawn in both eyes as
@@ -3433,6 +3617,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
 | Graphics | Direct3D 8 on OpenGL 4.5 core through SDL3 (`src/d3d8_gl.c`). The port translates the NV2A vertex shaders and register combiners to GLSL. It decodes all the Xbox texture formats. The vertex and index buffers come from a GL copy of the Xbox memory. |
 | High-res HUD | The HUD is drawn from high-res assets: redraws at 8x the size of the maps' bitmaps (4x for the largest), in `port/assets/hud`. They cover the meters, counters, panels and their outlines, the motion sensor, reticles, waypoints and scopes, but no bitmap with English text. `tools/hud_assets.py` makes them from the SVG redraws (the weapons' reticles from those of the PC HUD sheet that match the Xbox's exactly, the sniper rifle's 2x and 10x set in Overpass), and the build embeds them in the executable. When the game uploads one of those bitmaps, `src/hud_hires.c` gives the high-res texture in its place, if the bitmap's pixels are those of the English maps: another language's maps keep their own. The game sizes and places the HUD from its tags as before. `display.high_res_hud = false` turns this off. |
 | High-res text | The menus' and HUD's text is drawn with Overpass (`port/assets/fonts`, SIL Open Font License) in place of the maps' bitmap fonts, which are Interstate. `src/text_hires.c` rasterizes each glyph with stb_truetype (`port/third_party/stb`) at the resolution the game draws at, into an atlas that a placeholder bitmap of the game stands for. The game lays the text out from its font tags as before: each font is as tall as its tag's capitals, and narrowed where the tag's letters are narrower than the Xbox maps' (the fonts of a Custom Edition `loc.map`), so that its letters do not run into each other. The menus' titles (the screens' headers and the main menu's items) are pictures of text in the maps, so they are drawn as the high-res HUD is: `tools/title_assets.py` sets each one again in OpenCE, Roger White's public-domain Newtown respaced to match the maps' commercial title typeface (`tools/title_font.py`), at 4x the bitmap's size over its own plate or glow, each letter placed where the map's letter is, in `port/assets/titles`. The postgame carnage report's title is set over a hand-made SVG redraw of its panel (`port/assets/titles/svg`) instead. The A, B, X and Y button icons beside the menus' key labels and in their text ("Press A to Join") are drawn from hand-made SVG redraws at 8x the size of the maps' bitmaps (`port/assets/buttons`, made by `tools/button_assets.py`), in the same sizes and places. `display.high_res_text = false` turns it off. |
+| Dynamic lights | `display.dynamic_lights = "enhanced"` (`src/d3d8_gl.c`, `src/nv2a_psh.c`, `game/dynamic_lights.c`): the frame's lights are a uniform block, and a 32 x 32 x 16 grid about the camera, its cells growing with the distance (out to 128 world units each way), a 128-bit mask of the lights that reach each cell (an integer 3D texture). The structure's lightmap pass and the models' per-pixel lighting (`display.per_pixel_lighting`'s, which this turns on) add the lights of their cell for each pixel, in place of the game's pass over the structure for each light and its two lights for each model. The vertex shaders hand on the world position: a model program's skinned position before it is projected, a structure's vertex as it is. The glows are a camera-facing quad each, projected as the game's programs are, faded against the scene's depth, sampled with the target drawn into without it. |
 | Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_gl.c`, `src/xgpu_post.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). Their programs are built when the setting is chosen. Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (`gl_SampleMask`, not on Android). |
 | Sound | Xbox DirectSound on SDL3 audio (`src/dsound_sdl.c`): PCM and Xbox ADPCM, mixed at 48 kHz, with volume, pitch, mix bins, distance, stereo pan, occlusion and obstruction. There is no Doppler effect, no cones and no reverb. |
 | Input | XInput on SDL3 (`src/xinput_sdl.c`): keyboard, mouse, gamepads with rumble, and the debug keyboard for the console. |
@@ -3536,13 +3721,14 @@ Other changes:
 | `sound/sound_manager.c`, `interface/hud.c`, `game/game_engine.c` | The music's and the other sounds' volumes; the HUD's and the scoreboard's settings are read again when Settings changes them. |
 | `rasterizer/xbox/rasterizer_xbox_shadows.c` | With larger shadow maps (`display.shadow_resolution`), the blur's taps stay half a texel apart, and more passes widen it to cover the same part of the map as on the Xbox. |
 | `rasterizer/rasterizer.c` | The 128 KB of vertices of the debug display of a model's vertices are static, not on the stack: the compiler inlines the function in `render_model`, and the Windows build probed the stack a page at a time for every model drawn. |
-| `render/render.c` | The 3D view of each window is antialiased before the HUD is drawn (`display.anti_aliasing`). |
+| `render/render.c` | The 3D view of each window is antialiased before the HUD is drawn (`display.anti_aliasing`). The projectiles' lights' glows are drawn after the transparent geometry (`display.dynamic_lights`). |
 | `models/models.c` | A model's size, which chooses its level of detail and whether it is drawn, is scaled as `display.model_detail` says (`halo_model_detail_scale`, `src/d3d8_gl.c`). |
 | `interface/hud.c` | In multiplayer, players' names are drawn above their heads (`display.player_names`, `display.player_name_scale`). |
 | `rasterizer/rasterizer_text.c`, `text/draw_string.c` | Text is drawn from an atlas of the fonts' glyphs, rasterized at the resolution the game draws at (`src/text_hires.c`), when the font has every character of the string. Text can be drawn scaled about a point (`rasterizer_text_set_scale`), as the players' names are. Each glyph's advance is centred on the font tag character's, so the layout is the same, and a glyph is cut at a text box only where the font tag's character visibly was. |
 | `interface/first_person_weapons.c` | The first-person hands are drawn with the unit's shield modifier shader, as its body is (`display.viewmodel_shield`). |
 | `render/render_objects.c`, `objects/objects.c` | In first person, your own body is drawn from the waist down with the pose `first_person_legs.c` makes (`display.first_person_legs`); the waist it found and the mesh `object_mesh.c` read are forgotten on a new map. |
 | `objects/object_lights.c` | Glows the port lights itself (`shield_glow.c`): dynamic lights attached to an object's node, colored and sized each frame by their maker, drawn with a light definition the map has. |
+| `objects/object_lights.c`, `rasterizer/xbox/rasterizer_xbox_environment.c` | A light attached to an object is drawn where the object is drawn between ticks (its marker as drawn), not where the tick placed it: it no longer steps behind a bolt at 30 Hz (the light's own position, which the units' illumination reads, is kept). With `display.dynamic_lights = "enhanced"`, the frame's lights go to the renderer (`game/dynamic_lights.c`), a projectile's light that is only its lens flare's lights too, a muzzle flash's is moved to the first-person weapon, the structure's own pass for each light is left to the lightmap pass (but spotlights'), which tells the renderer when it is drawn. |
 | `render/render_objects.c`, `interface/first_person_weapons.c`, `rasterizer/xbox/rasterizer_xbox_plasma_energy.c` | A local player's shield plasma is drawn in the chosen armor color (`display.shield_color`, `shield_color.c`), on the body and on the first-person arms; in the VR build, the plasma over the weapon in its holster in its highlight's color, close to the weapon (`vr_holster.c`). |
 | `render/render_sprite.c` | In the VR mode's eyes, sprites that face the viewer (smoke, explosions, sparks, glows) face the centre of the head and stay upright in the world, where they were parallel to the view's plane and rolled with the head (`vr_render_eye_pass`). |
 | `rasterizer/xbox/rasterizer_xbox_text.c`, `rasterizer/rasterizer_text.c` | The characters of a string are one draw, not a draw each (and a second for the drop shadow). The batch is drawn early before a character is cached and before the high-res glyph atlas starts over (`src/text_hires.c`). |

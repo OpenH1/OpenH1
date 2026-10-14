@@ -322,6 +322,17 @@ static const struct config_setting config_settings[] =
 		"where it crosses the zoom's window: \"hidden\" the window is over it,\n"
 		"\"ghost\" it shows faintly through the window, \"visible\" it is in\n"
 		"front of the window." },
+	{ "vr.vehicle_climb", _config_boolean, "true", "HALO_VR_VEHICLE_CLIMB", _environment_value, _platform_desktop,
+		"With vr.aim = \"controller\", a vehicle with holds (the Scorpion) is\n"
+		"climbed with the hands: grip a hold and pull, the view moving as the\n"
+		"hands pull it; lowered into its hatch by the rim, you are in its seat,\n"
+		"and from the seat, pulled up by the rim, out. X works as ever." },
+	{ "vr.vehicle_zoom", _config_string, "\"2 4\"", "HALO_VR_VEHICLE_ZOOM", _environment_value, _platform_desktop,
+		"With vr.scope_view = \"smartlink\", in a vehicle's seat that aims its\n"
+		"weapon (the Scorpion's driver, a turret's gunner), seen from the seat:\n"
+		"the magnifications the right stick's click steps through, in the\n"
+		"zoom's window about the reticle, then none (up to 4; \"\": none). A\n"
+		"vehicle's weapon with zoom levels of its own has those." },
 	{ "vr.aim_assist", _config_real, "1.0", "HALO_VR_AIM_ASSIST", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", the aim assist: near an enemy the game's\n"
 		"magnetism would be drawn to, the aim's turn across it slows, and zoomed,\n"
@@ -391,9 +402,12 @@ static const struct config_setting config_settings[] =
 		"with both hands and turn it, the view turning with the Warthog;\n"
 		"\"look\" it steers where the right controller points, the view turned\n"
 		"by the stick." },
-	{ "vr.scorpion_view", _config_string, "\"hatch\"", "HALO_VR_SCORPION_VIEW", _environment_value,
+	{ "vr.scorpion_view", _config_string, "\"feed\"", "HALO_VR_SCORPION_VIEW", _environment_value,
 		_platform_desktop,
-		"Driving a Scorpion with vr.vehicle_view = \"first_person\": \"hatch\" you\n"
+		"Driving a Scorpion with vr.vehicle_view = \"first_person\": \"feed\" you\n"
+		"climb in, in the first person, to a round cockpit inside the hull, the\n"
+		"world on a display all the way round you (the tank's feed: true to size,\n"
+		"the zoom within its front) and the tank's hologram on the dash; \"hatch\" you\n"
 		"stand in the turret's hatch, seeing all about over the hull, the turret\n"
 		"aiming where you aim; \"inside\" you sit in the driver's compartment at\n"
 		"the front of the hull, seeing out through its vision blocks." },
@@ -401,13 +415,16 @@ static const struct config_setting config_settings[] =
 		"The edges of your view dim a little while the view turns fast with a\n"
 		"vehicle you steer by its handlebars (vr.ghost_steering), or it speeds\n"
 		"up or slows hard." },
-	{ "vr.death_view", _config_string, "\"face\"", "HALO_VR_DEATH_VIEW", _environment_value, _platform_desktop,
-		"As you die: \"face\" the view stays where your head was, the world\n"
+	{ "vr.death_view", _config_string, "\"crt\"", "HALO_VR_DEATH_VIEW", _environment_value, _platform_desktop,
+		"As you die: \"crt\" the helmet's view switches off as a CRT does and\n"
+		"cuts to a death cam, a feed from beside your body (the right stick\n"
+		"moves it about the body), until the game brings you back and the HUD\n"
+		"boots; \"face\" the view stays where your head was, the world\n"
 		"dimmed and reddened, your body falling before you, and turns to it\n"
 		"in a blink if it lands out of sight, until the game brings you back\n"
 		"from the dark; \"still\" the same, never turned; \"game\" the game's\n"
 		"camera pulling away from the body." },
-	{ "vr.head_in_wall", _config_string, "\"fade\"", "HALO_VR_HEAD_IN_WALL", _environment_value, _platform_desktop,
+	{ "vr.head_in_wall", _config_string, "\"off\"", "HALO_VR_HEAD_IN_WALL", _environment_value, _platform_desktop,
 		"Your head leaned or stepped into a wall or a pillar, or through it:\n"
 		"\"fade\" the view fades to black as your eyes go in, and back as\n"
 		"they come out, the HUD saying to step back; \"off\" you see through\n"
@@ -626,6 +643,13 @@ static const struct config_setting config_settings[] =
 	{ "display.shield_glow_intensity", _config_string, "\"default\"", "HALO_SHIELD_GLOW_INTENSITY", _environment_value, _platform_all,
 		"How far the shield glow reaches: \"default\" or \"light_show\" (three\n"
 		"times as far, and at full strength from a third of the flare)." },
+	{ "display.dynamic_lights", _config_string, "\"classic\"", "HALO_DYNAMIC_LIGHTS", _environment_value, _platform_desktop,
+		"The light of plasma bolts, needles, rockets, muzzle flashes and\n"
+		"explosions: \"classic\" (the game's own) or \"enhanced\": for each pixel\n"
+		"of the walls and models, through the walls' bump maps, gliding with\n"
+		"the bolt between ticks, brighter in its core and fading softly, with\n"
+		"a glow about each plasma bolt, and lighting your own weapon and hands.\n"
+		"Desktop OpenGL only (not OpenGL ES: there, classic)." },
 	{ "display.shield_color", _config_string, "\"default\"", "HALO_SHIELD_COLOR", _environment_value, _platform_all,
 		"Your energy shield's color, as this machine draws it: \"default\" (the\n"
 		"shield's own) or a multiplayer armor color: white, black, red, blue,\n"
@@ -1045,6 +1069,14 @@ static const struct config_setting config_settings[] =
 		"Comma-separated ids of vertex shaders not to draw with." },
 	{ "debug.gpu_dump_shaders", _config_string, "\"\"", "HALO_GPU_DUMP_SHADERS", _environment_value, _platform_all,
 		"A folder to write the generated GLSL to; empty none." },
+	{ "debug.dynamic_lights_look", _config_string, "\"\"", "HALO_DYNAMIC_LIGHTS_LOOK", _environment_value, _platform_all,
+		"The enhanced dynamic lights' look, for tuning it: up to eight numbers,\n"
+		"the lights' brightness, core, spill past white and wrap on models, the\n"
+		"glow's size (of the light's radius), brightness, softness (world\n"
+		"units) and least size; empty: the defaults." },
+	{ "debug.dynamic_lights_log", _config_boolean, "false", "HALO_DYNAMIC_LIGHTS_LOG", _environment_value, _platform_all,
+		"Log where the first projectile's light is drawn each frame (the\n"
+		"enhanced dynamic lights)." },
 	{ "debug.gpu_debug_expression", _config_string, "\"\"", "HALO_GPU_DEBUG_EXPR", _environment_value, _platform_all,
 		"A GLSL expression every pixel shader shows instead of its result." },
 	{ "debug.gpu_debug_texture0", _config_boolean, "false", "HALO_GPU_DEBUG_T0", _environment_set_is_true, _platform_all,

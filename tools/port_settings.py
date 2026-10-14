@@ -101,6 +101,9 @@ SCREENS = {
              "Shields light their surroundings as they flare,\nin the shield's own color.", None),
             ("GLOW INTENSITY:", "display.shield_glow_intensity", [("DEFAULT", "default"), ("LIGHT SHOW", "light_show")],
              "Light Show: the shield glow three times as far,\nat full from a third of the flare.", None),
+            ("DYNAMIC LIGHTS:", "display.dynamic_lights", [("CLASSIC", "classic"), ("ENHANCED", "enhanced")],
+             "Enhanced: plasma, flashes and blasts light each\npixel, gliding with the bolt, a glow about it.",
+             "desktop"),
         ],
     },
     "mouse_settings": {
@@ -368,7 +371,7 @@ _graphics = {"display.high_res_hud", "display.high_res_text", "display.anti_alia
              "display.anisotropic_filtering",
              "display.shadow_resolution", "display.per_pixel_lighting",
              "display.shield_glow", "display.shield_glow_intensity",
-             "display.model_detail"}
+             "display.dynamic_lights", "display.model_detail"}
 SCREENS["video_settings/graphics"] = {
     "screen": "graphics_settings_screen", "header": _video["header"], "spacing": 30,
     "same_place": ["anti_aliasing_android"],

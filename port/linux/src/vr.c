@@ -487,15 +487,15 @@ hand's, as far as it does not follow the target) slowed by ASSIST_FRICTION of
 it at the target's full magnetism level, and zoomed, the aim drawn toward it
 at up to ASSIST_PULL degrees a second (both times vr.aim_assist; the turn
 slowed by ASSIST_FRICTION_MOST at most); the aim no more than ASSIST_MOST
-degrees from the hand's, and back to it, away from a target, no faster than
-ASSIST_RETURN_SECONDS would take, nor than ASSIST_RETURN_MOST degrees a
-second, more only by half the hand's own turn */
+degrees from the hand's, and back to it, away from a target, by half the
+hand's own turn (a still hand's aim stays still); with the left hand on a long
+gun's foregrip (vr.two_handed), all of it ASSIST_TWO_HANDED stronger, as a
+braced gun is steadier on its target */
 #define ASSIST_FRICTION 0.5f
 #define ASSIST_FRICTION_MOST 0.8f
 #define ASSIST_PULL 1.0f
 #define ASSIST_MOST 3.0f
-#define ASSIST_RETURN_SECONDS 0.3f
-#define ASSIST_RETURN_MOST 6.0f
+#define ASSIST_TWO_HANDED 0.5f
 /* debug.vr_test_shake: a hand's shake, half a slow wander (noise smoothed
 with a cutoff of SHAKE_WANDER_HZ) and half a tremor (SHAKE_TREMOR_HZ) */
 #define SHAKE_WANDER_HZ 1.5f
@@ -764,6 +764,11 @@ static struct
 	float flip_vehicle[3];
 	int flip_grip_pressed[2];
 	int flip_grip[2];
+	/* climbing a vehicle by its holds (halo_vr_climb): each hand's grip
+	held on a hold (the climb's alone), and each hand at a hold (its grip
+	the climb's when taken), as the game last told them */
+	int climb_grip[2];
+	int climb_near[2];
 	int flip_state;
 	int flip_press_frames;
 	unsigned long flip_ticks;
@@ -1403,6 +1408,9 @@ static float hand_left(float left)
 	return settings.left_handed ? -left : left;
 }
 
+/* a hand's grip is the climb's: holding a hold, or at one (halo_vr_climb) */
+#define CLIMB_BUSY(hand) (vr.climb_grip[hand] || vr.climb_near[hand])
+
 /* both hands on a long gun, once a frame: the left hand takes the foregrip
 (its grip pressed near the line ahead of the right hand) and lets it go, and
 the line between the hands is smoothed */
@@ -1412,7 +1420,7 @@ static void two_handed_update(float seconds)
 	const struct vr_host_pose *right = &vr.views.grip[1], *left = &vr.views.grip[0];
 	int able = settings.two_handed && settings.controller_aim && vr.long_gun && vr.aimed &&
 		right->valid && left->valid && vr.views.aim[1].valid && !vr.reload.held && !vr.reload_grip_taken &&
-		!vr.flip_grip[0];
+		!vr.flip_grip[0] && !CLIMB_BUSY(0);
 	float line[3], pointing[3], along = 0.0f, across = 0.0f, length;
 	int axis;
 
@@ -1668,7 +1676,7 @@ static void throw_update(float seconds)
 
 	able = settings.throw_gesture && settings.controller_aim && vr.aimed && hand->valid &&
 		vr.views.head.valid && !vr.two_handed && vr.input.right_grip <= 0.8f && !vr.reload.held &&
-		!vr.reload_grip_taken && !vr.flip_grip[0];
+		!vr.reload_grip_taken && !vr.flip_grip[0] && !CLIMB_BUSY(0);
 	switch (vr.throw_state)
 	{
 	case THROW_IDLE:
@@ -1885,7 +1893,7 @@ static void holsters_update(float seconds)
 	const struct vr_host_pose *hand = &vr.views.grip[1];
 	float v[3], eyes[3], place[3], c, s;
 	/* (not a grip the lift of a vehicle has) */
-	int pressed = vr.input.right_grip > HOLSTER_GRIP_PRESSED && !vr.flip_grip[1];
+	int pressed = vr.input.right_grip > HOLSTER_GRIP_PRESSED && !vr.flip_grip[1] && !CLIMB_BUSY(1);
 	int pressing = pressed && !vr.holster_grip_pressed;
 	int reach = HALO_VR_HOLSTER_NONE, holster, axis;
 
@@ -2109,7 +2117,7 @@ static void grab_update(void)
 {
 	const struct vr_host_pose *hand = &vr.views.grip[1];
 	/* (not a grip the lift of a vehicle has) */
-	int pressed = vr.input.right_grip > GRAB_GRIP_PRESSED && !vr.flip_grip[1];
+	int pressed = vr.input.right_grip > GRAB_GRIP_PRESSED && !vr.flip_grip[1] && !CLIMB_BUSY(1);
 	int pressing = pressed && !vr.grab_grip_pressed;
 	int able = settings.grab_world && settings.controller_aim && vr.aimed && vr.crouch_able_frame && !vr.menus &&
 		vr.origin_valid && vr.presents - vr.grab_told_at <= GRAB_TOLD_FRAMES;
@@ -2366,6 +2374,188 @@ int halo_vr_scope_window(struct halo_vr_scope_window *window)
 	return 1;
 }
 
+/* a feed cockpit's display this frame (port/linux/game/vr_cabin.c), none
+until it is told again */
+static int cockpit_set;
+static struct halo_vr_cockpit_display cockpit;
+
+void halo_vr_cockpit_display(const struct halo_vr_cockpit_display *display)
+{
+	cockpit_set = display != NULL;
+	if (display)
+		cockpit = *display;
+}
+
+/* the display from the recentred head's game axes to the play space, then
+into each eye's space as the eyes were drawn (as the smart-link's window) */
+int halo_vr_cockpit_window(struct halo_vr_cockpit_window *window, struct halo_vr_cockpit_display *display)
+{
+	float position[3], forward[3], up[3], right[3], along;
+	int axis, eye;
+
+	if (!vr.initialized || !cockpit_set || !vr.views.eye[0].valid || !vr.views.eye[1].valid)
+		return 0;
+	*display = cockpit;
+	play_axes(cockpit.position, vr.origin_yaw, position);
+	for (axis = 0; axis < 3; axis++)
+		position[axis] += vr.origin_position[axis];
+	play_axes(cockpit.forward, vr.origin_yaw, forward);
+	play_axes(cockpit.up, vr.origin_yaw, up);
+	normalize(up);
+	along = up[0] * forward[0] + up[1] * forward[1] + up[2] * forward[2];
+	for (axis = 0; axis < 3; axis++)
+		forward[axis] -= up[axis] * along;
+	normalize(forward);
+	/* (right: forward x up, OpenXR's axes being right-handed) */
+	right[0] = forward[1] * up[2] - forward[2] * up[1];
+	right[1] = forward[2] * up[0] - forward[0] * up[2];
+	right[2] = forward[0] * up[1] - forward[1] * up[0];
+	for (eye = 0; eye < 2; eye++)
+	{
+		const struct vr_host_pose *pose = &vr.views.eye[eye];
+		float inverse[4], from_eye[3];
+
+		inverse[0] = -pose->orientation[0];
+		inverse[1] = -pose->orientation[1];
+		inverse[2] = -pose->orientation[2];
+		inverse[3] = pose->orientation[3];
+		for (axis = 0; axis < 3; axis++)
+			from_eye[axis] = position[axis] - pose->position[axis];
+		quaternion_rotate(inverse, from_eye, window->centre[eye]);
+		quaternion_rotate(inverse, up, window->up[eye]);
+		quaternion_rotate(inverse, forward, window->forward[eye]);
+		quaternion_rotate(inverse, right, window->right[eye]);
+		memcpy(window->fov[eye], vr.views.fov[eye], sizeof(window->fov[eye]));
+	}
+	window->near_z = vr.depth_near;
+	window->far_z = vr.depth_far;
+	return 1;
+}
+
+/* climbing a vehicle by its holds (vr.vehicle_climb: port/linux/game/
+vr_climb.c), once a frame, told the holds near (lines: game axes from the
+recentred head, metres, and their reach): a grip taken with the hand within
+a hold's reach holds it (a tick in the hand; a light one as a hand comes to
+a hold), until let go; while a hand holds, the eye moves against its
+motion (both: their mean), as a climber's body moves under the hands that
+pull it: moved. CLIMB_GRIP_* the grip's pull taken and let go. */
+#define CLIMB_GRIP_PRESSED 0.6f
+#define CLIMB_GRIP_RELEASED 0.35f
+#define CLIMB_NEAR 0.05f
+static struct
+{
+	int pressed[2];
+	int hold[2];
+	float last[2][3];
+	int near[2];
+} climb;
+
+static float climb_distance(const float p[3], const float ends[2][3], float radius)
+{
+	float d[3], e[3], t, len2 = 0.0f, dist2 = 0.0f;
+	int axis;
+
+	for (axis = 0; axis < 3; axis++)
+	{
+		e[axis] = ends[1][axis] - ends[0][axis];
+		len2 += e[axis] * e[axis];
+	}
+	t = 0.0f;
+	if (len2 > 1e-9f)
+		t = ((p[0] - ends[0][0]) * e[0] + (p[1] - ends[0][1]) * e[1] + (p[2] - ends[0][2]) * e[2]) / len2;
+	t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+	for (axis = 0; axis < 3; axis++)
+	{
+		d[axis] = p[axis] - (ends[0][axis] + e[axis] * t);
+		dist2 += d[axis] * d[axis];
+	}
+	return sqrtf(dist2) - radius;
+}
+
+int halo_vr_climb(struct halo_vr_climb *c)
+{
+	static const char *const hands[2] = { "left", "right" };
+	int hand, holding = 0, axis;
+
+	c->moved[0] = c->moved[1] = c->moved[2] = 0.0f;
+	for (hand = 0; hand < 2; hand++)
+	{
+		const struct vr_host_pose *grip = &vr.views.grip[hand];
+		float value = hand ? vr.input.right_grip : vr.input.left_grip;
+		float place[3], v[3], best = 1e9f;
+		int index, nearest = -1;
+
+		c->held[hand] = -1;
+		c->nearest[hand] = -1;
+		c->distance[hand] = 1e9f;
+		if (vr.initialized && grip->valid && vr.origin_valid)
+		{
+			for (axis = 0; axis < 3; axis++)
+				v[axis] = grip->position[axis] - vr.origin_position[axis];
+			game_axes(v, vr.origin_yaw, place);
+			memcpy(c->hand[hand], place, sizeof(place));
+		}
+		if (!vr.initialized || !grip->valid || !vr.origin_valid || c->count <= 0 || vr.menus)
+		{
+			vr.climb_grip[hand] = vr.climb_near[hand] = 0;
+			climb.near[hand] = 0;
+			continue;
+		}
+		for (index = 0; index < c->count && index < HALO_VR_CLIMB_HOLDS; index++)
+		{
+			float d = climb_distance(place, (const float (*)[3])c->ends[index], c->radius[index]);
+
+			if (d < best)
+			{
+				best = d;
+				nearest = index;
+			}
+		}
+		c->nearest[hand] = nearest;
+		c->distance[hand] = best;
+		/* (a light tick as the hand comes to a hold) */
+		if (best <= 0.0f && !climb.near[hand])
+			hand_haptic(hand, 0.2f, 0.02f);
+		climb.near[hand] = best <= 0.0f;
+		vr.climb_near[hand] = best <= CLIMB_NEAR;
+		if (value > CLIMB_GRIP_PRESSED && !climb.pressed[hand])
+		{
+			climb.pressed[hand] = 1;
+			if (best <= 0.0f)
+			{
+				vr.climb_grip[hand] = 1;
+				climb.hold[hand] = nearest;
+				memcpy(climb.last[hand], place, sizeof(place));
+				hand_haptic(hand, 0.55f, 0.05f);
+				platform_log("vr: climb: the %s hand takes hold %d", hands[hand_controller(hand)], nearest);
+			}
+		}
+		else if (value < CLIMB_GRIP_RELEASED)
+		{
+			climb.pressed[hand] = 0;
+			if (vr.climb_grip[hand])
+				platform_log("vr: climb: the %s hand lets go", hands[hand_controller(hand)]);
+			vr.climb_grip[hand] = 0;
+		}
+		if (vr.climb_grip[hand])
+		{
+			c->held[hand] = climb.hold[hand];
+			for (axis = 0; axis < 3; axis++)
+			{
+				c->moved[axis] -= place[axis] - climb.last[hand][axis];
+				climb.last[hand][axis] = place[axis];
+			}
+			holding++;
+		}
+	}
+	if (holding == 2)
+	{
+		for (axis = 0; axis < 3; axis++)
+			c->moved[axis] *= 0.5f;
+	}
+	return holding;
+}
+
 void halo_vr_scope_readout(float *range, int *rounds_loaded, int *rounds_carried)
 {
 	*range = vr.scope.range;
@@ -2519,7 +2709,7 @@ static void reload_update(void)
 		&vr.views.aim[1];
 	float v[3], eyes[3], place[3], stick = vr.input.right_stick[1], hip_distance;
 	/* (not a grip the lift of a vehicle has) */
-	int pressed = vr.input.left_grip > RELOAD_GRIP_PRESSED && !vr.flip_grip[0];
+	int pressed = vr.input.left_grip > RELOAD_GRIP_PRESSED && !vr.flip_grip[0] && !CLIMB_BUSY(0);
 	int pressing = pressed && !vr.reload_grip_pressed;
 	int pouch, in_pouch, near_pouch, axis;
 	unsigned long now = GetTickCount();
@@ -2813,6 +3003,8 @@ static void melee_update(float seconds)
 		guard = "the grip taken at a holster";
 	else if (vr.flip_grip[0] || vr.flip_grip[1])
 		guard = "the hands lifting a vehicle";
+	else if (vr.climb_grip[0] || vr.climb_grip[1])
+		guard = "the hands climbing a vehicle";
 	else if (vr.flip_ticks && now - vr.flip_ticks < FLIP_NO_MELEE_MS)
 		guard = "just after a lift";
 	else if (now - vr.holster_ticks < HOLSTER_NO_MELEE_MS)
@@ -3378,6 +3570,14 @@ static void vignette_update(float seconds)
 		vr.vignette = 0.0f;
 }
 
+/* the play space turned (port/linux/game/vr_seat.c: getting into a feed
+cockpit, so as to face its display), as the stick turns it */
+void halo_vr_body_turn(float radians)
+{
+	if (vr.initialized)
+		vr.body_yaw += radians;
+}
+
 void halo_vr_comfort_vignette(float amount)
 {
 	vr.vignette_asked = amount < 0.0f ? 0.0f : amount > 1.0f ? 1.0f : amount;
@@ -3580,7 +3780,7 @@ static void input_update(void)
 	/* (not while the left hand holds a long gun's foregrip, nor while
 	either grip holds a vehicle to lift it, nor on a Ghost's handlebars) */
 	if (vr.input.left_grip > 0.8f && vr.input.right_grip > 0.8f && !vr.two_handed && !vr.flip_grip[0] &&
-		!vr.flip_grip[1] && !seat_steers() && !seat_held())
+		!vr.flip_grip[1] && !CLIMB_BUSY(0) && !CLIMB_BUSY(1) && !seat_steers() && !seat_held())
 	{
 		vr.recentre_time += seconds;
 		if (vr.recentre_time >= RECENTRE_SECONDS && vr.recentre_time - seconds < RECENTRE_SECONDS)
@@ -4102,21 +4302,29 @@ a Banshee's pilot in its cockpit, no target). (Not the point the game's
 autoaim aims at on it: that point is on the line from the game's eye, and
 seen from the hand it moves as the aim does, so that the aim chased it off
 the target.) The aim may drift off the hand's line so, never more than
-ASSIST_MOST degrees, and away from a target it comes back to it no faster
-than ASSIST_RETURN_MOST degrees a second (and half the hand's own turn,
-which hides it): the aim never moves against the hand, nor without it but
-for the zoomed pull. The reticle, the smart-link's view and the shot all
+ASSIST_MOST degrees, and away from a target it comes back to it by half the
+hand's own turn, which hides it: the aim never moves against the hand, nor
+without it but for the zoomed pull (with the hand still, a target lost, as
+a reload, a melee or a kill loses it, leaves the aim where it was). The reticle, the smart-link's view and the shot all
 follow the assisted aim; the first-person weapon stays in the hand. */
 static void aim_assist_step(const struct aim_steady *before, struct aim_steady *state, float seconds)
 {
 	float offset[3], turn[3], length = 0.0f, along = 0.0f, most = ASSIST_MOST * (float)M_PI / 180.0f;
-	float strength = settings.aim_assist * vr.assist_level;
+	float strength = settings.aim_assist * vr.assist_level * (1.0f + ASSIST_TWO_HANDED * vr.two_handed);
 	int axis;
 
-	for (axis = 0; axis < 3; axis++)
+	/* (the offset on the plane square to the aim, as the angle between
+	them: taken as their difference, each frame's normalising shrank it, and
+	a still hand's aim crept back toward its line) */
 	{
-		offset[axis] = before->assisted[axis] - before->out[axis];
-		turn[axis] = state->out[axis] - before->out[axis];
+		float cosine = before->assisted[0] * before->out[0] + before->assisted[1] * before->out[1] +
+			before->assisted[2] * before->out[2];
+
+		for (axis = 0; axis < 3; axis++)
+		{
+			offset[axis] = cosine > 0.5f ? before->assisted[axis] / cosine - before->out[axis] : 0.0f;
+			turn[axis] = state->out[axis] - before->out[axis];
+		}
 	}
 	state->target = strength > 0.0f ? vr.assist_target : -1;
 	memcpy(state->target_middle, vr.assist_middle, sizeof(state->target_middle));
@@ -4186,10 +4394,9 @@ static void aim_assist_step(const struct aim_steady *before, struct aim_steady *
 			hand += turn[axis] * turn[axis];
 		}
 		length = sqrtf(length);
-		back = length / ASSIST_RETURN_SECONDS * seconds;
-		if (back > ASSIST_RETURN_MOST * (float)M_PI / 180.0f * seconds)
-			back = ASSIST_RETURN_MOST * (float)M_PI / 180.0f * seconds;
-		back += 0.5f * sqrtf(hand);
+		/* (only as the hand turns: a still hand's aim stays still, whatever
+		the weapon's animations or the target do) */
+		back = 0.5f * sqrtf(hand);
 		for (axis = 0; axis < 3; axis++)
 			offset[axis] *= length > back ? (length - back) / length : 0.0f;
 	}
@@ -4255,7 +4462,13 @@ static void aim_steady(float forward[3])
 		vr.steady_before.valid = vr.steady.valid && vr.steady_frame + 1 == vr.presents;
 		vr.steady_frame = vr.presents;
 	}
-	if (!before->valid || seconds <= 0.0f || seconds > 0.1f)
+	/* (a long frame, a hitch as an animation or a sound is first loaded,
+	is taken as 0.1 s: not a reset, which put the aim back on the hand's
+	line at once, the steadying's lag and the assist's offset gone, so that
+	the reticle jumped by up to ASSIST_MOST with the hand still) */
+	if (seconds > 0.1f)
+		seconds = 0.1f;
+	if (!before->valid || seconds <= 0.0f)
 	{
 		state->valid = 1;
 		memcpy(state->raw, forward, sizeof(state->raw));

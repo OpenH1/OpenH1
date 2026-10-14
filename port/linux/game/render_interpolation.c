@@ -9,9 +9,11 @@ The ports draw at the display's refresh rate instead, and every frame shows
 the world between the last two ticks: after each tick the camera, every
 object's node matrices and the first-person weapon's pose are kept, and a
 frame blends the previous and the latest by how far the game clock has run
-into the next tick. That puts what is drawn one tick (33 ms) behind the
-simulation, the usual price of interpolation. (A Catmull-Rom spline would
-also need the tick after the pair it spans: two ticks behind.)
+into the next tick, and so are what an object's shaders read (its function
+values and change colors) and a unit's active camouflage. That puts what is
+drawn one tick (33 ms) behind the simulation, the usual price of
+interpolation. (A Catmull-Rom spline would also need the tick after the pair
+it spans: two ticks behind.)
 
 Rotations are blended as quaternions (normalised lerp, taking the shorter
 way round), positions and scales linearly. Anything that moves further than
@@ -21,8 +23,10 @@ too far for one tick: two snapshots of different poses (a model swapped,
 another weapon's skeleton, a pose left from seconds before) blended node by
 node stretch vertices across the screen.
 
-Particles, contrails and other effects already move every frame
-(game_frame), so they need nothing here.
+Particles, contrails and other effects move every frame (game_frame), and
+read the drawn pose of what they hang off. A stream of particles from an
+object, made in the tick, is held back to be made through the frames between
+the ticks (render_interpolation_particle_later).
 
 An object the distributed netcode moves to where the host has it
 (port/linux/game/network_objects.c) is drawn gliding there over a few ticks
@@ -39,6 +43,8 @@ with their unit, and with what it rides.
 #include "camera/director.h"
 #include "camera/observer.h"
 #include "cutscene/cinematics.h"
+#include "effects/particles.h"
+#include "game/game.h"
 #include "game/players.h"
 #include "render/render_cameras.h"
 #include "units/units.h"
@@ -82,6 +88,9 @@ vehicle is corrected by (3 and 4 world units), short of a snap */
 /* a camera cut: a jump or turn no player or scripted camera makes in 33 ms */
 #define CAMERA_CUT_DISTANCE 3.0f
 #define CAMERA_CUT_COSINE 0.5f
+/* particles held back to be made between the ticks
+(render_interpolation_particle_later) */
+#define MAXIMUM_LATER_PARTICLES 512
 
 /* ---------- structures */
 
@@ -116,6 +125,12 @@ struct interpolated_object
 	/* ... the two snapshots' rotations, found when first blended */
 	struct interpolation_rotation *rotations;
 	boolean rotations_valid[2];
+	/* the two snapshots' function values, change colors and (a unit's)
+	active camouflage, by snapshot, and [2] their blend drawn this frame */
+	real function_values[3][NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS];
+	real_rgb_color change_colors[3][NUMBER_OF_OBJECT_CHANGE_COLORS];
+	real camouflage[3][2];
+	long values_blended_frame;
 };
 
 struct interpolated_camera
@@ -129,6 +144,19 @@ struct interpolated_camera
 	/* its player's unit (or what it rides) corrected: as an object's */
 	real_vector3d correction;
 	real_vector3d correction_pending;
+};
+
+/* a particle held back */
+struct later_particle
+{
+	struct new_particle_data data;
+	long object_index;
+	short node_index;
+	/* where on the node it was made */
+	real_point3d node_position;
+	/* made from this tick's frames on, this far into it */
+	long tick;
+	real fraction;
 };
 
 struct interpolated_first_person
@@ -156,6 +184,8 @@ static long interpolation_tick;
 static long interpolation_frame;
 static boolean interpolation_rendering;
 static real interpolation_fraction = 1.0f;
+static struct later_particle later_particles[MAXIMUM_LATER_PARTICLES];
+static short later_particle_count;
 
 /* ---------- blending */
 
@@ -485,6 +515,20 @@ void render_interpolation_tick(void)
 		record->tick = interpolation_tick;
 		record->has_previous = continuing;
 		record->blended_frame = NONE;
+		memcpy(record->function_values[record->latest], object->object.outgoing_function_values,
+			sizeof(record->function_values[0]));
+		memcpy(record->change_colors[record->latest], object->object.outgoing_change_colors,
+			sizeof(record->change_colors[0]));
+		record->camouflage[record->latest][0] = 0.0f;
+		record->camouflage[record->latest][1] = 0.0f;
+		if (TEST_FLAG(_object_mask_unit, object->object.type))
+		{
+			struct unit_datum *unit = (struct unit_datum *)object;
+
+			record->camouflage[record->latest][0] = unit->unit.active_camouflage;
+			record->camouflage[record->latest][1] = unit->unit.active_camouflage_super_amount;
+		}
+		record->values_blended_frame = NONE;
 		if (iterator.index == interpolation_from.object_index)
 		{
 			/* the tick before's snapshot: this one's, moved to the place */
@@ -504,6 +548,12 @@ void render_interpolation_tick(void)
 				previous[node_index].position.z += offset.k;
 			}
 			record->rotations_valid[record->latest ^ 1] = FALSE;
+			memcpy(record->function_values[record->latest ^ 1], record->function_values[record->latest],
+				sizeof(record->function_values[0]));
+			memcpy(record->change_colors[record->latest ^ 1], record->change_colors[record->latest],
+				sizeof(record->change_colors[0]));
+			memcpy(record->camouflage[record->latest ^ 1], record->camouflage[record->latest],
+				sizeof(record->camouflage[0]));
 			record->has_previous = TRUE;
 		}
 	}
@@ -532,6 +582,8 @@ void render_interpolation_reset(void)
 			interpolated_objects[index].object_index = NONE;
 	}
 	memset(interpolated_cameras, 0, sizeof(interpolated_cameras));
+	/* (the particles held back are the last map's) */
+	later_particle_count = 0;
 	for (index = 0; index < MAXIMUM_LOCAL_PLAYERS; index++)
 	{
 		interpolated_first_person[index].node_count = 0;
@@ -638,6 +690,104 @@ real_matrix4x3 *render_interpolation_object_node_matrices(long object_index)
 		record->blended_frame = interpolation_frame;
 	}
 	return record->nodes + 2 * record->node_capacity;
+}
+
+/* ---------- what objects are drawn with */
+
+/* An object's function values (a weapon's charge or heat, a vehicle's
+speed, a shield's flare: what its shaders' animations and glows read), its
+change colors and a unit's active camouflage, which the tick computes: the
+blend of the last two ticks', as its pose is, rather than a step a tick */
+static struct interpolated_object *render_interpolation_object_values(long object_index)
+{
+	struct interpolated_object *record;
+	long absolute_index;
+
+	if (!interpolation_rendering || !interpolated_objects || object_index == NONE)
+		return NULL;
+	absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index);
+	if (absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+		return NULL;
+	record = &interpolated_objects[absolute_index];
+	if (record->object_index != object_index || record->tick != interpolation_tick || !record->has_previous)
+		return NULL;
+	if (record->values_blended_frame != interpolation_frame)
+	{
+		short previous = record->latest ^ 1, latest = record->latest;
+		short index;
+
+		for (index = 0; index < NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS; index++)
+		{
+			record->function_values[2][index] = lerp(record->function_values[previous][index],
+				record->function_values[latest][index], interpolation_fraction);
+		}
+		for (index = 0; index < NUMBER_OF_OBJECT_CHANGE_COLORS; index++)
+		{
+			real_rgb_color const *a = &record->change_colors[previous][index];
+			real_rgb_color const *b = &record->change_colors[latest][index];
+
+			record->change_colors[2][index].red = lerp(a->red, b->red, interpolation_fraction);
+			record->change_colors[2][index].green = lerp(a->green, b->green, interpolation_fraction);
+			record->change_colors[2][index].blue = lerp(a->blue, b->blue, interpolation_fraction);
+		}
+		for (index = 0; index < 2; index++)
+		{
+			record->camouflage[2][index] = lerp(record->camouflage[previous][index],
+				record->camouflage[latest][index], interpolation_fraction);
+		}
+		record->values_blended_frame = interpolation_frame;
+	}
+	return record;
+}
+
+real const *render_interpolation_object_function_values(long object_index)
+{
+	struct interpolated_object *record = render_interpolation_object_values(object_index);
+
+	return record ? record->function_values[2] : object_get(object_index)->object.outgoing_function_values;
+}
+
+real_rgb_color const *render_interpolation_object_change_colors(long object_index)
+{
+	struct interpolated_object *record = render_interpolation_object_values(object_index);
+
+	return record ? record->change_colors[2] : object_get(object_index)->object.outgoing_change_colors;
+}
+
+/* ... and how much it is camouflaged (super_amount: the camouflage's
+super amount) */
+real render_interpolation_unit_camouflage(long unit_index, real *super_amount)
+{
+	struct interpolated_object *record = render_interpolation_object_values(unit_index);
+	struct unit_datum *unit;
+
+	if (record)
+	{
+		*super_amount = record->camouflage[2][1];
+		return record->camouflage[2][0];
+	}
+	unit = unit_get(unit_index);
+	*super_amount = unit->unit.active_camouflage_super_amount;
+	return unit->unit.active_camouflage;
+}
+
+/* a point that moves with the object's root node (its bounding sphere's
+centre: a nav point over it), from where the last tick left it to where the
+object is drawn this frame; left as it is when the object is drawn as the
+tick left it */
+void render_interpolation_object_point(long object_index, real_point3d *point)
+{
+	real_matrix4x3 const *drawn = render_interpolation_object_node_matrices(object_index);
+	real_matrix4x3 const *nodes;
+	real_point3d local;
+
+	if (!drawn)
+		return;
+	/* (as of the last tick: object_get_node_matrices gives the drawn pose
+	while a frame is drawn) */
+	nodes = (real_matrix4x3 const *)object_header_block_get(object_index, &object_get(object_index)->object.node_matrices);
+	matrix4x3_inverse_transform_point(&nodes[0], point, &local);
+	matrix4x3_transform_point(&drawn[0], &local, point);
 }
 
 /* ---------- corrections */
@@ -980,6 +1130,86 @@ void render_interpolation_first_person(
 	}
 }
 
+/* ---------- particles */
+
+/* An effect's particles are made in the tick for all of the tick's time
+(effects.c), at once and at the emitter's place as the tick begins: a
+stream from an object (a looping effect's: a vehicle's exhaust, a wreck's
+smoke) came in clumps 30 times a second, from a moving object each a tick's
+motion behind the last, which the object drawn between the ticks then moved
+away from. Such a particle, the nth of a tick's count, is held back for that
+part of the tick and made in the first frame drawn that far into the tick
+after, where the emitter is drawn then: a stream, from the emitter as it is
+seen. */
+
+/* (effects.c, in the tick) the particle data (its position in the world)
+from the object's node, made this part of the way into the tick's time:
+TRUE as it is held back to be made then (particle_new), FALSE to be made
+now (frames are not drawn between the ticks, the object is not drawn
+between two poses, too many are held) */
+boolean render_interpolation_particle_later(
+	struct new_particle_data const *data,
+	long object_index,
+	short node_index,
+	real fraction)
+{
+	struct interpolated_object *record;
+	struct later_particle *later;
+	long absolute_index;
+
+	if (!halo_interpolation_enabled() || !interpolated_objects || object_index == NONE ||
+		!(fraction > 0.0f && fraction < 1.0f) || later_particle_count >= MAXIMUM_LATER_PARTICLES)
+	{
+		return FALSE;
+	}
+	absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index);
+	if (absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+		return FALSE;
+	record = &interpolated_objects[absolute_index];
+	if (record->object_index != object_index || !record->has_previous ||
+		node_index < 0 || node_index >= record->node_count)
+	{
+		return FALSE;
+	}
+	later = &later_particles[later_particle_count++];
+	later->data = *data;
+	later->object_index = object_index;
+	later->node_index = node_index;
+	/* (the tick's node: object_get_node_matrix gives it in the tick) */
+	matrix4x3_inverse_transform_point(object_get_node_matrix(object_index, node_index), &data->position,
+		&later->node_position);
+	/* (the tick's frames come after render_interpolation_tick) */
+	later->tick = interpolation_tick + 1;
+	later->fraction = fraction;
+	return TRUE;
+}
+
+/* (particles.c, each frame before the particles move) the particles held
+back that this frame has reached, made on their emitters as drawn */
+void render_interpolation_particles_due(void)
+{
+	short index = 0;
+
+	while (index < later_particle_count)
+	{
+		struct later_particle *later = &later_particles[index];
+
+		if (interpolation_rendering && (interpolation_tick < later->tick ||
+			(interpolation_tick == later->tick && interpolation_fraction < later->fraction)))
+		{
+			index++;
+			continue;
+		}
+		if (object_try_and_get(later->object_index))
+		{
+			matrix4x3_transform_point(object_get_node_matrix(later->object_index, later->node_index),
+				&later->node_position, &later->data.position);
+		}
+		particle_new(&later->data);
+		*later = later_particles[--later_particle_count];
+	}
+}
+
 /* ---------- time */
 
 /* game time for animated shaders, continuous between ticks: the time of
@@ -992,4 +1222,25 @@ real render_interpolation_game_time_sec(long ticks)
 		return (real)ticks * (1.0f / TICKS_PER_SECOND);
 	time = ((real)ticks - 1.0f + interpolation_fraction) * (1.0f / TICKS_PER_SECOND);
 	return time > 0.0f ? time : 0.0f;
+}
+
+/* how many ticks the frame drawn is behind the game's time: the part of a
+tick still to run to the last tick's (as the objects, above), none when
+frames are not drawn between ticks */
+real render_interpolation_ticks_behind(void)
+{
+	return interpolation_rendering ? 1.0f - interpolation_fraction : 0.0f;
+}
+
+/* a timer that the frames count down by the ticks each ran (by
+game_time_get_elapsed(), after reading it: the screen's flash, the camera's
+impulse and shake), read before this frame's count as it stands at the time
+of the frame drawn: what is left after this frame's ticks, and the part of a
+tick the frame is behind them. When frames are not drawn between ticks, as
+it is (before this frame's ticks), as the game read it. */
+real render_interpolation_ticks_left(long ticks_left)
+{
+	if (!interpolation_rendering)
+		return (real)ticks_left;
+	return (real)(ticks_left - game_time_get_elapsed()) + 1.0f - interpolation_fraction;
 }

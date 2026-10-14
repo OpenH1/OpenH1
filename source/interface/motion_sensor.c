@@ -109,6 +109,12 @@ symbols in this file:
 #include "units/units.h"
 #include "units/vehicles.h"
 
+#ifdef HALO_VR
+/* port/linux/game/vr_death.c: as the player is back from the VR mode's
+death cam, the HUD boots: the motion sensor comes up after the shields */
+real vr_death_hud_boot(short part);
+#endif
+
 /* ---------- constants */
 
 enum
@@ -654,6 +660,10 @@ static void render_motion_sensor(
 	{
 		goto render_motion_sensor_done;
 	}
+#ifdef HALO_VR
+	if (vr_death_hud_boot(1) <= 0.0f)
+		goto render_motion_sensor_done;
+#endif
 
 	player = get_motion_sensor_data(local_player_index);
 	relative_scale =
@@ -786,8 +796,11 @@ void motion_sensor_draw_screen(
 void motion_sensor_tick(
 	void)
 {
+	/* port: the sweep moves on in each frame drawn between the ticks, at
+	the game's time of the frame (port/linux/game/render_interpolation.c),
+	not a step a tick; the blips are still taken once a tick (below) */
 	real sweep_time = (real)fmod(
-		(real)game_time_get() * (1.0f / TICKS_PER_SECOND),
+		render_interpolation_game_time_sec(game_time_get()),
 		2.1f);
 
 	if (sweep_time < 2.0375f)
@@ -1108,8 +1121,9 @@ static void render_blip(
 		blip_draw_size = blip_size_get(blip_size_type);
 		if (blip_type == _blip_type_custom)
 		{
+			/* port: (pulsing in each frame drawn, as the sweep moves) */
 			pulse_scale = (real)(
-				(sin((real)game_time_get() * 0.104719733f) + 1.0) *
+				(sin(render_interpolation_game_time_sec(game_time_get()) * TICKS_PER_SECOND * 0.104719733f) + 1.0) *
 					(1.0 / 3.0) +
 				1.0);
 		}

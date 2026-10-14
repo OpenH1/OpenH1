@@ -125,6 +125,7 @@ enum
 	_vr_highlight_pouch,
 	_vr_highlight_well,
 	_vr_highlight_grab,
+	_vr_highlight_hologram,
 	NUMBER_OF_VR_HIGHLIGHTS,
 };
 
@@ -324,6 +325,30 @@ static void vr_holster_light_up(short highlight, long unit_index, real strength,
 	vr_holster_plasma(highlight, unit_index, strength, units, model_effect);
 	*lighting = *object_get_cached_render_lighting(unit_index, FLT_MAX);
 	vr_holster_raise_light(strength, lighting);
+}
+
+/* vr_cabin.c: the tank's hologram in a feed cockpit, drawn dark and lit by
+the shields' glow of the unit's (its plasma, close about its edges), the
+world's units a metre */
+#define HOLOGRAM_LIGHT 0.12f
+#define HOLOGRAM_PLASMA_OFFSET 0.004f
+void vr_holster_hologram(long unit_index, real units, struct render_model_effect *model_effect,
+	struct render_lighting *lighting)
+{
+	csmemset(model_effect, 0, sizeof(*model_effect));
+	model_effect->type = _render_model_effect_type_none;
+	*lighting = *object_get_cached_render_lighting(unit_index, FLT_MAX);
+	if (vr_holster_plasma(_vr_highlight_hologram, unit_index, 1.0f, units, model_effect))
+		vr_holster.plasma[_vr_highlight_hologram].offset = HOLOGRAM_PLASMA_OFFSET * units;
+	/* (its own light dimmed, and toward the HUD's blue) */
+	lighting->ambient_color.red = highlight_color.red * HOLOGRAM_LIGHT;
+	lighting->ambient_color.green = highlight_color.green * HOLOGRAM_LIGHT;
+	lighting->ambient_color.blue = highlight_color.blue * HOLOGRAM_LIGHT;
+	lighting->reflection_tint_color.red = lighting->ambient_color.red;
+	lighting->reflection_tint_color.green = lighting->ambient_color.green;
+	lighting->reflection_tint_color.blue = lighting->ambient_color.blue;
+	lighting->distant_light_count = 0;
+	lighting->point_light_count = 0;
 }
 
 /* vr_reload.c: its pouch (well: where the magazine goes) lit up as the

@@ -21,6 +21,15 @@ shaders (its textures, its lighting), so that it reads as the same vehicle:
 - the Scorpion's commander, in the turret's hatch (vr.scorpion_view =
   "hatch"): the eye above the turret, on its axis, so that it does not swing
   as the turret turns; a cupola ring with its lid open, on the turret.
+- the Scorpion's driver in the feed cockpit (vr.scorpion_view = "feed"): a
+  closed compartment inside the hull, under a hatch in its ceiling (the eye
+  comes down through it: vr_seat.c), its front wall curved about the eye
+  with the display's opening in it, 85 degrees across and 40 high, which
+  the world is seen through as through a window (d3d8_gl.c draws the feed's
+  look over it); a grate of bars that slides down over the opening (its own
+  mesh, which vr_cabin.c moves), a dash under it with a holotable, where the
+  tank's hologram stands (vr_cabin.c), the steering levers, side consoles
+  and a seat.
 
 The faces are flat, as the models' are (each face its own vertices), and
 seen from inside the cabin (their outsides toward the eye). Each samples a
@@ -283,6 +292,125 @@ def scorpion_inside():
 	return {'eye': eye, 'meshes': [walls, fittings]}
 
 
+
+# the feed cockpit's surfaces: the Pelican's troop bay's (vehicles\\pelican\\
+# shaders\\pelican_bay: pelican_bay, 512 x 512: gunmetal panels, bolts, a
+# grating, a padded seat, machinery), where the map has the Pelican, else
+# the Scorpion's own
+PELICAN_BAY = 'vehicles\\pelican\\shaders\\pelican_bay'
+FEED_PELICAN = {'walls': PELICAN_BAY, 'fittings': PELICAN_BAY, 'grate': PELICAN_BAY,
+	'front': (0.580, 0.010, 0.980, 0.290), 'wall': (0.580, 0.010, 0.980, 0.290), 'ceiling': (0.720, 0.680, 0.900, 0.780),
+	'floor': (0.500, 0.200, 0.680, 0.780), 'dark': (0.800, 0.820, 0.890, 0.890), 'well': (0.020, 0.965, 0.220, 0.995),
+	'dash_top': (0.720, 0.680, 0.900, 0.780), 'dash_face': (0.370, 0.160, 0.480, 0.330), 'table': (0.800, 0.820, 0.890, 0.890),
+	'chevron': (0.020, 0.965, 0.220, 0.995), 'console': (0.740, 0.300, 0.970, 0.650), 'console_top': (0.580, 0.010, 0.980, 0.290),
+	'grip': (0.040, 0.280, 0.180, 0.480), 'seat': (0.040, 0.280, 0.180, 0.480), 'bar': (0.800, 0.820, 0.890, 0.890)}
+FEED_SCORPION = {'walls': 'vehicles\\scorpion\\shaders\\hull_darkened',
+	'fittings': 'vehicles\\scorpion\\shaders\\hull_non_reflective', 'grate': 'vehicles\\scorpion\\shaders\\hull_darkened',
+	'front': SCORPION_PLATE_WIDE, 'wall': SCORPION_PLATE_WIDE, 'ceiling': SCORPION_PLATE, 'floor': SCORPION_DARK,
+	'dark': SCORPION_DARK, 'well': SCORPION_DARK, 'dash_top': SCORPION_PLATE, 'dash_face': SCORPION_SWITCHES,
+	'table': SCORPION_HATCH, 'chevron': SCORPION_PLATE, 'console': SCORPION_FUSES, 'console_top': SCORPION_SWITCHES,
+	'grip': SCORPION_PLATE, 'seat': SCORPION_DARK, 'bar': SCORPION_DARK}
+
+
+def scorpion_feed(surfaces):
+	"""the feed cockpit: a round compartment about the eye at the driver's
+	place, its wall a cylinder about the eye's upright, the display's opening
+	all the way round it from 20 degrees below the eye to 45 above, which the
+	world is seen through (the eye rides in and out with the body's climb:
+	vr_seat.c); ribs every 45 degrees across the opening (the panels' seams:
+	the front panel's, from 45 degrees left to 45 right, and the hull
+	cameras' about it), a ceiling over it, the floor, a dash before the eye
+	with the holotable, the steering levers, side consoles and a seat within
+	it; the grate (the last mesh) over the front panel as it is closed
+	(vr_cabin.c lifts it above the ceiling, GRATE_TRAVEL up)"""
+	S = surfaces
+	eye = (0.465, 0.200, 0.520)
+	cx, cy, r = eye[0], eye[1], 0.200
+	z0, z1 = 0.200, 0.730
+	bottom = eye[2] - r * math.tan(math.radians(20.0))
+	top = eye[2] + r * math.tan(math.radians(45.0))
+	segments, half = 32, 180.0
+	dash = 0.400
+	walls = Mesh('frame hull', S['walls'])
+	fittings = Mesh('frame hull', S['fittings'])
+	grate = Mesh('frame hull', S['grate'])
+
+	def arc(a, radius=r):
+		return (cx + radius * math.cos(math.radians(a)), cy + radius * math.sin(math.radians(a)))
+
+	angles = [-180.0 + 360.0 * k / segments for k in range(segments + 1)]
+	for k in range(segments):
+		a0, a1 = angles[k], angles[k + 1]
+		(xa, ya), (xb, yb) = arc(a0), arc(a1)
+		u0 = S['front'][0] + (S['front'][2] - S['front'][0]) * (k % 4) / 4
+		u1 = S['front'][0] + (S['front'][2] - S['front'][0]) * (k % 4 + 1) / 4
+		for za, zb in ((z0, bottom), (top, z1)):
+			v0 = S['front'][1] + (S['front'][3] - S['front'][1]) * (z1 - zb) / (z1 - z0)
+			v1 = S['front'][1] + (S['front'][3] - S['front'][1]) * (z1 - za) / (z1 - z0)
+			walls.face([(xa, ya, za), (xb, yb, za), (xb, yb, zb), (xa, ya, zb)], eye, (u0, v0, u1, v1))
+		# (the opening's reveal: its sill and lintel, a little deep)
+		(xc, yc), (xd, yd) = arc(a0, r + 0.012), arc(a1, r + 0.012)
+		fittings.face([(xa, ya, bottom), (xb, yb, bottom), (xd, yd, bottom), (xc, yc, bottom)], eye, S['dark'])
+		fittings.face([(xa, ya, top), (xb, yb, top), (xd, yd, top), (xc, yc, top)], eye, S['dark'])
+	# the floor and the ceiling
+	ring = [arc(a) for a in angles[:-1]]
+	walls.face([(x, y, z0) for x, y in ring], eye, S['floor'])
+	walls.face([(x, y, z1) for x, y in ring], eye, S['ceiling'])
+	# the ribs across the opening, every 45 degrees but ahead and behind (the
+	# panels' seams: the front panel from 45 degrees left to 45 right, the
+	# rear one as wide behind), a little within it
+	for k in range(8):
+		if k in (0, 4):
+			continue
+		xr, yr = arc(-180.0 + 45.0 * k, r - 0.012)
+		fittings.bar((xr, yr, bottom - 0.004), (xr, yr, top + 0.004), 0.004, S['dark'])
+	# the dash before the eye: its top from its edge to the wall, its face
+	# down to the knees
+	edge = 0.545
+	reach = math.degrees(math.acos((edge - cx) / r))
+	front = [arc(-reach + 2 * reach * k / 12) for k in range(13)]
+	fittings.face([(edge, front[0][1], dash)] + [(x, y, dash) for x, y in front] + [(edge, front[-1][1], dash)], eye,
+		S['dash_top'])
+	fittings.face([(edge, front[0][1], 0.300), (edge, front[-1][1], 0.300), (edge, front[-1][1], dash),
+		(edge, front[0][1], dash)], eye, S['dash_face'])
+	# the holotable on the dash, ahead of the eye: an eight-sided pedestal
+	tx, ty, tr, th = 0.630, 0.200, 0.030, 0.008
+	table = [(tx + tr * math.cos(math.pi * k / 4 + math.pi / 8), ty + tr * math.sin(math.pi * k / 4 + math.pi / 8)) for k in range(8)]
+	for k in range(8):
+		(xa, ya), (xb, yb) = table[k], table[(k + 1) % 8]
+		fittings.face([(xa, ya, dash), (xb, yb, dash), (xb, yb, dash + th), (xa, ya, dash + th)],
+			((xa + xb) / 2 + (xa + xb - 2 * tx), (ya + yb) / 2 + (ya + yb - 2 * ty), dash + th / 2), S['dark'])
+	fittings.face([(x, y, dash + th) for x, y in table], (tx, ty, 1.0), S['table'])
+	# the hull's chevron on it, pointing forward (the hologram's frame)
+	fittings.face([(tx + 0.028, ty, dash + th + 0.001), (tx + 0.019, ty + 0.009, dash + th + 0.001),
+		(tx + 0.019, ty - 0.009, dash + th + 0.001)], (tx, ty, 1.0), S['chevron'])
+	# the side consoles, a box each side of the knees
+	for ya, yb, yf in ((0.030, 0.070, 'Y'), (0.330, 0.370, 'y')):
+		fittings.box((0.400, ya, 0.300), (0.540, yb, 0.420), {'x': S['dark'], 'X': S['dark'], 'y': S['console'],
+			'Y': S['console'], 'z': S['dark'], 'Z': S['console_top']}, faces='xX' + yf + 'Z')
+	# the steering levers: from the floor before the dash, back to the hands
+	for y in (0.105, 0.295):
+		fittings.bar((0.515, y, z0), (0.480, y, 0.360), 0.007, S['dark'])
+		fittings.bar((0.480, y - 0.006, 0.360), (0.470, y - 0.006, 0.405), 0.012, S['grip'])
+	# the seat: its pan, its back
+	fittings.box((0.360, 0.080, 0.300), (0.460, 0.320, 0.330), S['seat'], faces='XyYZ')
+	fittings.face([(0.367, 0.085, 0.330), (0.367, 0.315, 0.330), (0.350, 0.315, 0.470), (0.350, 0.085, 0.470)], eye, S['seat'])
+	# the grate over the front panel, closed: rails along it and bars down
+	# it every 7.5 degrees, just within the opening
+	gr = r - 0.004
+	for k in range(12):
+		a0, a1 = -45.0 + 90.0 * k / 12, -45.0 + 90.0 * (k + 1) / 12
+		(xc, yc), (xd, yd) = arc(a0, gr), arc(a1, gr)
+		for zc in (bottom + 0.004, bottom + (top - bottom) / 3, bottom + 2 * (top - bottom) / 3, top - 0.004):
+			grate.bar((xc, yc, zc), (xd, yd, zc), 0.003, S['bar'])
+	for k in range(1, 12):
+		xc, yc = arc(-45.0 + 90.0 * k / 12, gr)
+		grate.bar((xc, yc, bottom), (xc, yc, top), 0.0025, S['bar'])
+	return {'eye': eye, 'meshes': [walls, fittings, grate], 'grate': 2,
+		'inside': (cx - r, cy - r, z0, cx + r, cy + r, z1),
+		'display': (cx, cy, r, half, bottom, top), 'hologram': (tx, ty, dash + th + 0.002, 0.070)}
+
+
 def scorpion_hatch():
 	"""the commander's place: the eye on the turret's axis (its rotator's node,
 	at forward -0.72), a third of a metre above the turret's roof (up 1.337),
@@ -426,6 +554,14 @@ CABINS = [
 		'base_map_scale': SCORPION_BASE_MAP_SCALE,
 		'model': 'vehicles\\scorpion\\scorpion', 'seat': 'scorpion-driver', 'setting': 'vr.scorpion_view', 'view': 'hatch',
 		'make': scorpion_hatch},
+	{'name': 'scorpion_feed', 'title': "the Scorpion's driver, in the feed cockpit (the Pelican's bay's surfaces)",
+		'base_map_scale': SCORPION_BASE_MAP_SCALE,
+		'model': 'vehicles\\scorpion\\scorpion', 'seat': 'scorpion-driver', 'setting': 'vr.scorpion_view', 'view': 'feed',
+		'make': lambda: scorpion_feed(FEED_PELICAN)},
+	{'name': 'scorpion_feed_own', 'title': "the Scorpion's driver, in the feed cockpit (its own surfaces: no Pelican in the map)",
+		'base_map_scale': SCORPION_BASE_MAP_SCALE,
+		'model': 'vehicles\\scorpion\\scorpion', 'seat': 'scorpion-driver', 'setting': 'vr.scorpion_view', 'view': 'feed',
+		'make': lambda: scorpion_feed(FEED_SCORPION)},
 	{'name': 'banshee_cockpit', 'title': "the Banshee's pilot", 'model': 'vehicles\\banshee\\banshee',
 		'base_map_scale': BANSHEE_BASE_MAP_SCALE, 'seat': 'B-driver', 'make': banshee_cockpit},
 ]
@@ -478,7 +614,12 @@ struct vr_cabin_model_mesh
 
 /* a cabin: the vehicle's model and the seat's label it is for, the setting
 choosing its view and the value for this one (NULL, NULL: always), the eye
-(in the model's space) and its meshes */
+(in the model's space) and its meshes; a feed cockpit's display (else all
+0): the axis its wall curves about (forward, left), its radius, the display's
+half angle about it (degrees) and its bottom and top (up); its grate's mesh
+(else -1), and its hologram's place on the holotable (its middle's foot)
+and length; the box the cockpit is (the least and the most forward, left
+and up: the vehicle is not drawn about an eye in it) */
 struct vr_cabin_model
 {
 	char const *model_name;
@@ -488,6 +629,10 @@ struct vr_cabin_model
 	real eye[3];
 	struct vr_cabin_model_mesh const *meshes;
 	short mesh_count;
+	real display[6];
+	short grate_mesh;
+	real hologram[4];
+	real inside[6];
 };
 
 /* the most vertices and triangles of any mesh (for the buffers they are
@@ -528,7 +673,8 @@ MESH_ENTRY = '''\t{ "%(node)s", "%(shader)s", vr_cabin_%(name)s_vertices, NUMBER
 \t\tvr_cabin_%(name)s_triangles, NUMBEROF(vr_cabin_%(name)s_triangles) / 3 },'''
 
 ENTRY = '''\t{ "%(model)s", "%(seat)s", %(setting)s, %(view)s, { %(ex)s, %(ey)s, %(ez)s },
-\t\tvr_cabin_%(name)s_meshes, NUMBEROF(vr_cabin_%(name)s_meshes) },'''
+\t\tvr_cabin_%(name)s_meshes, NUMBEROF(vr_cabin_%(name)s_meshes),
+\t\t{ %(display)s }, %(grate)d, { %(hologram)s }, { %(inside)s } },'''
 
 
 def f(x):
@@ -560,7 +706,9 @@ def header(cabins):
 		table.append(ENTRY % {'model': c_string(spec['model']), 'seat': spec['seat'],
 			'setting': '"%s"' % spec['setting'] if spec.get('setting') else 'NULL',
 			'view': '"%s"' % spec['view'] if spec.get('view') else 'NULL', 'ex': f(e[0]), 'ey': f(e[1]), 'ez': f(e[2]),
-			'name': spec['name']})
+			'name': spec['name'], 'display': ', '.join(f(x) for x in cabin.get('display', (0,) * 6)),
+			'grate': cabin.get('grate', -1), 'hologram': ', '.join(f(x) for x in cabin.get('hologram', (0,) * 4)),
+			'inside': ', '.join(f(x) for x in cabin.get('inside', (0,) * 6))})
 	return HEADER % {'cabins': ''.join(parts), 'table': '\n'.join(table),
 		'maximum_vertices': max(len(m.vertices) for m in all_meshes),
 		'maximum_triangles': max(len(m.triangles) for m in all_meshes),

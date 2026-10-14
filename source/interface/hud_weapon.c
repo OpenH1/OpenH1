@@ -88,6 +88,9 @@ elements (the zoom's crosshairs, the readout with its arc and the side
 panel's waveform; the range ticks; the sniper's target distance and
 elevation at the reticle) are not drawn, which would float beside it */
 boolean vr_scope_shown(void);
+/* port/linux/game/vr_death.c: the HUD booting as the player is back from
+the death cam (the ammo counting up) */
+real vr_death_hud_boot(short part);
 #define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) ((zoomed_layout) && vr_scope_shown())
 #else
 #define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) FALSE
@@ -1667,6 +1670,12 @@ static void render_weapon_hud(
 
 		number_values[0] = weapon_state->magazines[0].rounds_remaining;
 		number_values[1] = weapon_state->magazines[0].rounds_loaded;
+#ifdef HALO_VR
+		/* (back from the VR mode's death cam: the ammo counts up as the HUD
+		boots, port/linux/game/vr_death.c) */
+		number_values[0] = (short)(number_values[0] * vr_death_hud_boot(2) + 0.5f);
+		number_values[1] = (short)(number_values[1] * vr_death_hud_boot(2) + 0.5f);
+#endif
 		number_values[2] = (short)(weapon_state->heat * 255.0f);
 		number_values[3] = (short)((1.0f - weapon_state->age) * 100.0f);
 		number_values[4] = weapon_state->magazines[1].rounds_remaining;

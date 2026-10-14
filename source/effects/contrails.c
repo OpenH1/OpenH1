@@ -97,7 +97,10 @@ enum
 {
 	_contrail_point_new_bit = 0,
 	_contrail_point_transitioning_bit,
-	_contrail_point_expired_bit
+	_contrail_point_expired_bit,
+	/* port: a head point on the marker until the next emission
+	(contrails_update) */
+	_contrail_point_provisional_bit
 };
 
 enum
@@ -135,6 +138,10 @@ enum
 
 static void contrail_next_frame(
 	struct contrail_datum *contrail);
+static void contrail_remove_provisional_points(
+	long contrail_index);
+static void contrail_add_provisional_points(
+	long contrail_index);
 static short contrail_compute_new_point_count(
 	long contrail_index,
 	real dt);
@@ -405,6 +412,7 @@ void contrails_update(
 
 		contrail_verify(contrail_index);
 		contrail->expired_dt = 0.0f;
+		contrail_remove_provisional_points(contrail_index);
 
 		if (contrail->object_index != NONE)
 		{
@@ -426,10 +434,17 @@ void contrails_update(
 
 			if (active)
 			{
+				short new_point_count = contrail_compute_new_point_count(contrail_index, point_dt);
+
 				contrail_add_points(
 					contrail_index,
-					contrail_compute_new_point_count(contrail_index, point_dt),
+					new_point_count,
 					TRUE);
+				/* port: in a frame that emitted none (drawn between the ticks,
+				the marker moving on from the last point), a head point where
+				the marker is drawn, so the trail stays on its object */
+				if (!new_point_count)
+					contrail_add_provisional_points(contrail_index);
 			}
 		}
 
@@ -499,6 +514,9 @@ void contrail_owner_collision(
 {
 	struct contrail_datum *contrail = contrail_get(contrail_index);
 	struct contrail_definition *definition = contrail_definition_get(contrail->definition_index);
+
+	/* port: (the last points from the last real point) */
+	contrail_remove_provisional_points(contrail_index);
 
 	if (TEST_FLAG(contrail->flags, _contrail_active_bit))
 	{
@@ -752,6 +770,64 @@ static void contrail_next_frame(
 			definition->first_sequence_index,
 			definition->sequence_count + definition->first_sequence_index);
 		contrail->frame_index = 0;
+	}
+
+	return;
+}
+
+/* port: The contrails emit on the first frame after each tick, at their
+markers as drawn then; in the frames after, drawn between the ticks
+(port/linux/game/render_interpolation.c), the object moved on and the
+trail's head stayed behind, catching up at each tick. In those frames each
+of the contrail's trails has a head point on its marker as drawn, made
+anew each frame (the next emission's points start from the last real one
+as before). */
+static void contrail_remove_provisional_points(
+	long contrail_index)
+{
+	struct contrail_datum *contrail = contrail_get(contrail_index);
+	short instance_index;
+
+	for (instance_index = 0; instance_index < MAXIMUM_CONTRAIL_INSTANCES; instance_index++)
+	{
+		long contrail_point_index = contrail->first_contrail_point_indices[instance_index];
+
+		if (contrail_point_index != NONE &&
+			TEST_FLAG(contrail_point_get(contrail_point_index)->flags, _contrail_point_provisional_bit))
+		{
+			contrail->first_contrail_point_indices[instance_index] =
+				contrail_point_get(contrail_point_index)->next_contrail_point_index;
+			contrail->contrail_point_counts[instance_index]--;
+			datum_delete(contrail_point_data, contrail_point_index);
+		}
+	}
+
+	return;
+}
+
+static void contrail_add_provisional_points(
+	long contrail_index)
+{
+	struct contrail_datum *contrail = contrail_get(contrail_index);
+	long first_contrail_point_indices[MAXIMUM_CONTRAIL_INSTANCES];
+	short instance_index;
+
+	if (!halo_interpolation_enabled())
+		return;
+
+	csmemcpy(first_contrail_point_indices, contrail->first_contrail_point_indices, sizeof(first_contrail_point_indices));
+	/* (none where the marker is on the last point) */
+	contrail_add_points(contrail_index, 1, FALSE);
+	for (instance_index = 0; instance_index < MAXIMUM_CONTRAIL_INSTANCES; instance_index++)
+	{
+		long contrail_point_index = contrail->first_contrail_point_indices[instance_index];
+
+		if (contrail_point_index != first_contrail_point_indices[instance_index])
+		{
+			struct contrail_point_datum *contrail_point = contrail_point_get(contrail_point_index);
+
+			SET_FLAG(contrail_point->flags, _contrail_point_provisional_bit, TRUE);
+		}
 	}
 
 	return;

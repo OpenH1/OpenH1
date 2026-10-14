@@ -609,6 +609,14 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	vr_vehicle.c) */
 	vr_vehicle_view(vr_render.seated_unit_index, view->seconds, &camera->position, view->world_units_per_metre,
 		&base_yaw);
+	/* (the eye moved by the hands climbing a vehicle: vr_climb.c) */
+	{
+		extern void vr_climb_eye(long seated_unit_index, boolean aiming, real base_yaw, real units, real seconds,
+			real_point3d *eye);
+
+		vr_climb_eye(vr_render.seated_unit_index, halo_vr_aiming() && !cinematic_in_progress() && !dead &&
+			view->controller_aim, base_yaw, view->world_units_per_metre, view->seconds, &camera->position);
+	}
 	vr_render.base_position = camera->position;
 	vr_render.base_yaw = base_yaw;
 	vector_from_points3d(&game_eye, &camera->position, &vr_render.listener_eye_offset);
@@ -1119,6 +1127,24 @@ boolean vr_render_scope_view(struct render_camera *weapon_camera, real_point3d e
 	return TRUE;
 }
 
+/* vr_scope.c, before the eye pass, in a vehicle's seat seen from it
+(vr.vehicle_view = "first_person"), the right controller aiming: each eye
+and the head's forward in the world, and the world's units a metre; FALSE
+else */
+boolean vr_render_scope_seat_view(real_point3d eyes[2], real_vector3d *head_forward, real *units)
+{
+	if (!vr_render.active || !vr_render.view.controller_aim || !halo_vr_aiming() || cinematic_in_progress() ||
+		vr_render.seated_unit_index == NONE)
+	{
+		return FALSE;
+	}
+	eyes[0] = vr_render.eye_positions[0];
+	eyes[1] = vr_render.eye_positions[1];
+	view_rotate(vr_render.base_yaw, view_pitch(), vr_render.view.head_forward, head_forward);
+	*units = vr_render.view.world_units_per_metre;
+	return TRUE;
+}
+
 /* vr_scope.c, before the eye pass: where the reticle is, the aim meeting
 the world (as vr_render_crosshairs draws it, at its smoothed distance from
 the frame before, else the world's now), and the aim's line it is on (from
@@ -1152,6 +1178,13 @@ real vr_render_scope_range(void)
 	}
 	distance = aim_distance(&origin, &direction);
 	return distance >= CROSSHAIR_FARTHEST ? 0.0f : distance / vr_render.view.world_units_per_metre;
+}
+
+/* vr_seat.c: the way the head looks this frame, in the world (its yaw:
+the play space's turn and the head's own in it) */
+real vr_render_view_yaw(void)
+{
+	return vr_render.view.body_yaw + (real)atan2(vr_render.view.head_forward[1], vr_render.view.head_forward[0]);
 }
 
 /* vr_scope.c: the time from the last frame's display to this one's
@@ -1518,9 +1551,21 @@ void vr_render_end(void)
 
 /* the object is the player's unit, which the eye pass views its vehicle
 from the head of: not drawn, as a first-person player's is not
-(render_objects.c) */
+(render_objects.c); in the scope's pass from a seat (vr_scope.c), its
+vehicle neither (with its cabin: vr_cabin.c), which the sight looks out of
+from the controller, inside the Scorpion's compartment or its turret */
 boolean vr_render_hides_object(long object_index)
 {
+	extern boolean vr_cabin_hides_attached(long object_index);
+
+	/* (in a feed cockpit, what is attached to its vehicle: vr_cabin.c) */
+	if (vr_render.active && vr_cabin_hides_attached(object_index))
+		return TRUE;
+	if (vr_render.scope_pass && vr_render.seated_unit_index != NONE)
+	{
+		return object_index == vr_render.seated_unit_index ||
+			object_index == object_get(vr_render.seated_unit_index)->object.parent_object_index;
+	}
 	return vr_render.active && object_index == vr_render.seated_unit_index;
 }
 

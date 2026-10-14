@@ -12,6 +12,8 @@ the platform layer reads the display.interpolation setting */
 struct observer_result;
 struct render_camera;
 struct real_matrix4x3;
+union real_point3d;
+union real_rgb_color;
 int halo_interpolation_enabled(void);
 float game_time_get_tick_fraction(void);
 void render_interpolation_tick(void);
@@ -20,11 +22,21 @@ void render_interpolation_frame_begin(void);
 void render_interpolation_frame_end(void);
 float render_interpolation_fraction(void);
 struct real_matrix4x3 *render_interpolation_object_node_matrices(long object_index);
+void render_interpolation_object_point(long object_index, union real_point3d *point);
+float const *render_interpolation_object_function_values(long object_index);
+union real_rgb_color const *render_interpolation_object_change_colors(long object_index);
+float render_interpolation_unit_camouflage(long unit_index, float *super_amount);
 struct observer_result const *render_interpolation_camera(short local_player_index,
 	struct observer_result const *observer);
 void render_interpolation_first_person(short local_player_index, struct real_matrix4x3 *node_matrices,
 	short node_count, struct render_camera const *camera);
 float render_interpolation_game_time_sec(long ticks);
+float render_interpolation_ticks_behind(void);
+float render_interpolation_ticks_left(long ticks_left);
+struct new_particle_data;
+unsigned char render_interpolation_particle_later(struct new_particle_data const *data, long object_index,
+	short node_index, float fraction);
+void render_interpolation_particles_due(void);
 
 /* the port's menus' screen for one of ui.map's, by name, else the name
 (port/linux/game/menu_tags.c) */
@@ -69,6 +81,8 @@ void halo_vertex_shader_lighting(unsigned long handle);
 /* display.anti_aliasing's pass over a window's 3D view, before the HUD and
 menus (source/render/render.c): the window's bounds on the screen */
 void halo_screen_anti_alias(short x0, short y0, short x1, short y1);
+/* the enhanced dynamic lights (display.dynamic_lights) */
+#include "halo_dynamic_lights.h"
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
 

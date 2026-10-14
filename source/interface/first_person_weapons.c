@@ -533,14 +533,24 @@ void first_person_weapon_draw(
 					struct animation_graph *animation_graph= animation_graph_definition_get(
 						weapon_definition->weapon.interface_definition.first_person_animations.index);
 					struct render_lighting *lighting= object_get_cached_render_lighting(unit_index, FLT_MAX);
+					/* port: the weapon's and the arms' function values and
+					change colors, and the camouflage, between the last two
+					ticks', as the world's objects are drawn
+					(port/linux/game/render_interpolation.c) */
+					real const *weapon_function_values= render_interpolation_object_function_values(first_person_weapon->weapon_index);
+					real_rgb_color const *weapon_change_colors= render_interpolation_object_change_colors(first_person_weapon->weapon_index);
+					real const *unit_function_values= render_interpolation_object_function_values(unit_index);
+					real_rgb_color const *unit_change_colors= render_interpolation_object_change_colors(unit_index);
+					real camouflage_super_amount;
+					real active_camouflage= render_interpolation_unit_camouflage(unit_index, &camouflage_super_amount);
 
 					model_effect.modifier_shader= NULL;
 					if (TEST_FLAG(unit->unit.flags, _unit_active_camouflaged_bit) ||
-						unit->unit.active_camouflage>0.0f)
+						active_camouflage>0.0f)
 					{
 						model_effect.type= _render_model_effect_type_active_camouflage;
-						model_effect.intensity= unit->unit.active_camouflage;
-						model_effect.parameter= unit->unit.active_camouflage_super_amount;
+						model_effect.intensity= active_camouflage;
+						model_effect.parameter= camouflage_super_amount;
 						model_effect.source_object_index= unit_index;
 						model_effect.source_object_centroid= render.camera.position;
 					}
@@ -579,8 +589,8 @@ void first_person_weapon_draw(
 							0.0f,
 							model_node_matrices,
 							NULL,
-							weapon->object.outgoing_change_colors,
-							weapon->object.outgoing_function_values,
+							weapon_change_colors,
+							weapon_function_values,
 							lighting,
 							&render.camera.position,
 							0.0f,
@@ -597,8 +607,8 @@ void first_person_weapon_draw(
 							vr_trigger_draw(
 								weapon_definition->weapon.interface_definition.first_person_model.index,
 								model_node_matrices,
-								weapon->object.outgoing_change_colors,
-								weapon->object.outgoing_function_values,
+								weapon_change_colors,
+								weapon_function_values,
 								lighting,
 								&model_effect,
 								first_person_weapon->weapon_index,
@@ -624,8 +634,8 @@ void first_person_weapon_draw(
 							{
 								model_effect.modifier_shader= modifier_shader;
 								model_effect.modifier_animation.colors= shield_color_colors(unit_index,
-									unit->object.outgoing_change_colors);
-								model_effect.modifier_animation.values= unit->object.outgoing_function_values;
+									unit_change_colors);
+								model_effect.modifier_animation.values= unit_function_values;
 							}
 						}
 					}
@@ -644,8 +654,8 @@ void first_person_weapon_draw(
 							0.0f,
 							model_node_matrices,
 							NULL,
-							unit->object.outgoing_change_colors,
-							unit->object.outgoing_function_values,
+							unit_change_colors,
+							unit_function_values,
 							lighting,
 							&render.camera.position,
 							0.0f,

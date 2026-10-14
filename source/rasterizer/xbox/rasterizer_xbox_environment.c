@@ -1040,6 +1040,7 @@ void _rasterizer_environment_lightmap_end(
 void _rasterizer_environment_lightmaps_end(
 	void)
 {
+	halo_dynamic_lights_environment(0); /* port: port/linux/src/d3d8_gl.c */
 	rasterizer_profile_end(_rasterizer_profile_environment_lightmaps);
 	return;
 }
@@ -1053,6 +1054,7 @@ void _rasterizer_environment_lightmaps_begin(
 		global_d3d_device);
 
 	rasterizer_profile_begin(_rasterizer_profile_environment_lightmaps);
+	halo_dynamic_lights_environment(1); /* port: port/linux/src/d3d8_gl.c (display.dynamic_lights) */
 	if ((rasterizer_debug_options.drawing_mode == _rasterizer_drawing_mode_normal ||
 		rasterizer_debug_options.drawing_mode == _rasterizer_drawing_mode_bump_color ||
 		rasterizer_debug_options.drawing_mode == _rasterizer_drawing_mode_bump_edge ||

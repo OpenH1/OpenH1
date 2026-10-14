@@ -267,7 +267,8 @@ the desktop guest builds' desktop renderer (tools/linux_guest_build.py) */
 	X(glUniformMatrix4fv) \
 	X(glFramebufferTextureLayer) \
 	X(glCopyBufferSubData) \
-	X(glBindBufferRange)
+	X(glBindBufferRange) \
+	X(glTexSubImage3D)
 /* extensions a driver may lack, resolved without failing (gl_functions.c):
 the VR mode's multiview */
 #define GL_OPTIONAL_FUNCTIONS(X) \
@@ -514,6 +515,7 @@ pointers, sees the declarations without these aliases */
 #define glFramebufferTextureLayer halo_glFramebufferTextureLayer
 #define glFramebufferTextureMultiviewOVR halo_glFramebufferTextureMultiviewOVR
 #define glCopyBufferSubData halo_glCopyBufferSubData
+#define glTexSubImage3D halo_glTexSubImage3D
 #define glBindBufferRange halo_glBindBufferRange
 
 #endif

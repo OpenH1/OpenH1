@@ -1008,6 +1008,11 @@ void particles_update(
 
 	profile_enter(particles_update_section);
 
+	/* port: the particles of a stream from an object held back from the
+	tick, made as the frames drawn between the ticks reach them
+	(port/linux/game/render_interpolation.c) */
+	render_interpolation_particles_due();
+
 	{
 		long tick;
 

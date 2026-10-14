@@ -289,6 +289,68 @@ struct halo_vr_scope_window
 	float far_z;
 };
 
+/* a feed cockpit's display (vr.scorpion_view = "feed", port/linux/game/
+vr_cabin.c): an opening in the cockpit's front wall, which curves about an
+upright axis behind the eye, the world seen through it; d3d8_gl.c draws the
+feed's look over it. The axis at the display's middle height, the way to the
+display's middle from it and the axis's up (game axes from the recentred
+head, metres), the wall's radius, the display's half angle about the axis
+(radians) and its half height (metres); how far the feed has washed over it
+(0: the world through the opening, as it is; 1: all the feed) and how far
+it has gone dark (0 on; 1 dark, as a screen switched off); the range
+where the aim meets the world (metres; 0: nothing in range) and the rounds of
+the vehicle's weapon and its second (-1: none) */
+struct halo_vr_cockpit_display
+{
+	float position[3];
+	float forward[3];
+	float up[3];
+	float radius;
+	float half_angle;
+	float half_height;
+	float wash;
+	float off;
+	float range;
+	int rounds_loaded;
+	int rounds_carried;
+	int second_loaded;
+	int second_carried;
+};
+
+/* climbing a vehicle by its holds (vr.vehicle_climb, port/linux/game/
+vr_climb.c): told the holds near (each a line: its ends, game axes from the
+recentred head, metres, and how far about it a hand takes it); given each
+hand's hold (-1 none), the nearest hold to each hand and how far it is
+(metres beyond its reach; 0 or less within it), and how far the eye moves
+this frame by the hands (game axes, metres: against the holding hands'
+motion) */
+#define HALO_VR_CLIMB_HOLDS 24
+struct halo_vr_climb
+{
+	int count;
+	float ends[HALO_VR_CLIMB_HOLDS][2][3];
+	float radius[HALO_VR_CLIMB_HOLDS];
+	int held[2];
+	int nearest[2];
+	float distance[2];
+	float moved[3];
+	float hand[2][3];
+};
+
+/* d3d8_gl.c: the display as each eye sees it, in the eye's space (as
+halo_vr_scope_window's): the axis's point, its up, the way to the display's
+middle and its right, and the eye's field of view (tangents) */
+struct halo_vr_cockpit_window
+{
+	float centre[2][3];
+	float up[2][3];
+	float forward[2][3];
+	float right[2][3];
+	float fov[2][4];
+	float near_z;
+	float far_z;
+};
+
 /* the reload by hand (vr.manual_reload, port/linux/game/vr_reload.c): the
 right stick pushed down ejects the magazine (or the rocket launcher's
 tubes), the left hand takes another from its pouch on the body and pushes
@@ -594,6 +656,13 @@ int halo_vr_scope_smartlink(float reticle[2]);
 the eyes see it (halo_vr_scope_window); its range and rounds; and how the
 weapon in hand shows over it (vr.scope_gun: 0 hidden, 1 ghost, 2 visible) */
 int halo_vr_scope_window(struct halo_vr_scope_window *window);
+/* a feed cockpit's display (NULL: none this frame); for d3d8_gl.c, as each
+eye sees it, and what it shows */
+void halo_vr_cockpit_display(const struct halo_vr_cockpit_display *display);
+/* vr_climb.c, once a frame: the holds near told, the hands' holds and the
+eye's move given; how many hands hold */
+int halo_vr_climb(struct halo_vr_climb *climb);
+int halo_vr_cockpit_window(struct halo_vr_cockpit_window *window, struct halo_vr_cockpit_display *display);
 void halo_vr_scope_readout(float *range, int *rounds_loaded, int *rounds_carried);
 void halo_vr_scope_animation(float *opened_seconds, float *closing, float *switched_seconds);
 int halo_vr_scope_gun(void);

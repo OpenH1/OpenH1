@@ -27,6 +27,7 @@ Conventions carried over from the Xbox:
 #include <SDL3/SDL.h>
 #endif
 #include "halo_ui_pointer.h"
+#include "halo_dynamic_lights.h"
 #include "port_config.h"
 #include "main/console.h"
 
@@ -3268,11 +3269,14 @@ static BOOL words_equal(const void *a, const void *b, unsigned long size)
 	return difference == 0;
 }
 
-/* lit: the shader that hands the lighting's normal and position on
-(vertex_shader_object lit_shader); multiview: XGPU_MULTIVIEW_*, the VR
-mode's eyes */
-static GLuint vertex_shader_get(struct vertex_shader_object *program, BOOL immediate, BOOL lit, int multiview)
+/* lighting: for the shader that hands the lighting's normal and position on
+(vertex_shader_object lit_shader: a model lighting program's own, or a
+structure's lightmap pass's, XGPU_ENVIRONMENT_LIGHTING), else NULL;
+multiview: XGPU_MULTIVIEW_*, the VR mode's eyes */
+static GLuint vertex_shader_get(struct vertex_shader_object *program, BOOL immediate,
+	const struct nv2a_vertex_lighting *lighting, int multiview)
 {
+	BOOL lit = lighting != NULL;
 	int variant = (immediate ? 1 : 0) + multiview * 2;
 	GLuint *shader = lit ? &program->lit_shader[variant] : &program->shader[variant];
 	unsigned char tried = (unsigned char)(1 << (variant + (lit ? 2 : 0)));
@@ -3280,7 +3284,7 @@ static GLuint vertex_shader_get(struct vertex_shader_object *program, BOOL immed
 	if (!*shader && !(program->shaders_tried & tried))
 	{
 		char *source = nv2a_vertex_shader_to_glsl(program->instructions, program->instruction_count,
-			immediate ? 0 : device.vertex_shader->packed_mask, lit ? &program->lighting : NULL, multiview);
+			immediate ? 0 : device.vertex_shader->packed_mask, lighting, multiview);
 
 		program->shaders_tried |= tried;
 		*shader = xgpu_compile_shader(GL_VERTEX_SHADER, source, "vertex");
@@ -4322,9 +4326,485 @@ static void draw_flush(void)
 #endif
 }
 
+/* ---------- enhanced dynamic lights
+
+display.dynamic_lights "enhanced" (xgpu.h; the game's side is
+port/linux/game/dynamic_lights.c): each frame the game hands over its
+dynamic lights (halo_dynamic_lights_set), placed where the drawn objects are
+(between ticks), and the structure's lightmap pass and the models lit for
+each pixel add them for each pixel (nv2a_psh.c), in place of the game's own
+passes over the structure for each light and its two lights for each
+object's vertices. A grid about the camera says which lights reach each of
+its cells (xgpu.h), so a pixel weighs only the lights near it: a frame's
+lights cost what lights each pixel, not their number. A plasma bolt's light
+(a projectile with no model) also has a glow drawn about it
+(halo_dynamic_lights_halos_draw).
+"classic", the default: none of this, the game's own lighting. Desktop
+OpenGL only (layout bindings: GLSL 4.20). */
+#ifndef HALO_GLES
+static struct
+{
+	unsigned long read_at;
+	BOOL enhanced;
+	/* the look: [0] the lights' brightness, the core (1 / (1 + core x^2)),
+	the spill past white, the models' wrap; [1] the glow's size (of the
+	light's radius), brightness, softness against what it meets (world
+	units), its least size (debug.dynamic_lights_look; nv2a_psh.c) */
+	float look[2][4];
+	/* the lights this frame (0: none: drawn as classic) */
+	int count;
+	/* the game's lightmap pass is being drawn (halo_dynamic_lights_environment) */
+	BOOL environment;
+	BOOL failed;
+	GLuint block, cells;
+	struct xgpu_dynamic_lights_block data;
+	GLuint mask[XGPU_DYNAMIC_LIGHTS_GRID_Z][XGPU_DYNAMIC_LIGHTS_GRID_Y][XGPU_DYNAMIC_LIGHTS_GRID_X][4];
+	/* the glows: each one's middle and size, its color (the display's) */
+	int halo_count;
+	float halos[XGPU_DYNAMIC_LIGHTS_MAXIMUM * 2][4];
+	float camera_right[3], camera_up[3];
+	/* the world's projection (c[-96] to c[-93]), the screen conversion (c[-38],
+	c[-37]) and the viewport's, as the structure's lightmap pass began (the
+	window's 3D view: later draws, and the sky before, set others) */
+	float projection[6][4];
+	float viewport_scale[4], viewport_offset[4];
+	/* their programs: drawn into 1, 2 and 4 layers */
+	GLuint halo_programs[3];
+	BOOL halo_failed[3];
+	GLuint depth_sampler;
+} dynamic_lights;
+
+static void dynamic_lights_read_settings(void)
+{
+	static const float defaults[2][4] = { { 1.7f, 12.0f, 0.18f, 0.25f }, { 0.22f, 1.2f, 0.12f, 0.035f } };
+	const char *look;
+
+	if (dynamic_lights.read_at == config_changes() && dynamic_lights.read_at)
+		return;
+	dynamic_lights.read_at = config_changes();
+	dynamic_lights.enhanced = !strcmp(config_string("display.dynamic_lights"), "enhanced");
+	memcpy(dynamic_lights.look, defaults, sizeof(defaults));
+	look = config_string("debug.dynamic_lights_look");
+	if (look && *look)
+	{
+		float *values = &dynamic_lights.look[0][0];
+		int index;
+
+		for (index = 0; index < 8 && *look; index++)
+		{
+			char *end;
+			float value = (float)strtod(look, &end);
+
+			if (end == look)
+				break;
+			values[index] = value;
+			look = end;
+		}
+	}
+}
+
+/* whether the game is to light with the enhanced dynamic lights (it then
+hands them over, and leaves the structure to them) */
+int halo_dynamic_lights_enhanced(void)
+{
+	dynamic_lights_read_settings();
+	return dynamic_lights.enhanced && !dynamic_lights.failed && device.gl_ready;
+}
+
+/* a grid cell's index along an axis for an offset from the middle (xgpu.h) */
+static int dynamic_lights_cell(float offset, float scale, int count)
+{
+	float cell = log2f(1.0f + fabsf(offset) * (1.0f / XGPU_DYNAMIC_LIGHTS_CELL)) * scale;
+	int index = (int)floorf(offset < 0.0f ? (float)(count / 2) - cell : (float)(count / 2) + cell);
+
+	return index < 0 ? 0 : index >= count ? count - 1 : index;
+}
+
+/* the frame's lights (the game's dynamic_lights.c): where they are, as the
+objects are drawn; the camera's position and axes (the glows face it) */
+void halo_dynamic_lights_set(const struct halo_dynamic_light *lights, int count, const float camera[3],
+	const float right[3], const float up[3])
+{
+	static const int sizes[3] = { XGPU_DYNAMIC_LIGHTS_GRID_X, XGPU_DYNAMIC_LIGHTS_GRID_Y, XGPU_DYNAMIC_LIGHTS_GRID_Z };
+	float scales[3];
+	int index, axis;
+
+	dynamic_lights.count = 0;
+	dynamic_lights.halo_count = 0;
+	if (!halo_dynamic_lights_enhanced())
+		return;
+	if (count > XGPU_DYNAMIC_LIGHTS_MAXIMUM)
+		count = XGPU_DYNAMIC_LIGHTS_MAXIMUM;
+	if (!dynamic_lights.block)
+	{
+		glGenBuffers(1, &dynamic_lights.block);
+		glBindBuffer(GL_UNIFORM_BUFFER, dynamic_lights.block);
+		glBufferData(GL_UNIFORM_BUFFER, sizeof(dynamic_lights.data), NULL, GL_DYNAMIC_DRAW);
+		glGenTextures(1, &dynamic_lights.cells);
+		glActiveTexture(GL_TEXTURE0 + XGPU_DYNAMIC_LIGHTS_UNIT);
+		glBindTexture(GL_TEXTURE_3D, dynamic_lights.cells);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAX_LEVEL, 0);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexImage3D(GL_TEXTURE_3D, 0, GL_RGBA32UI, XGPU_DYNAMIC_LIGHTS_GRID_X, XGPU_DYNAMIC_LIGHTS_GRID_Y,
+			XGPU_DYNAMIC_LIGHTS_GRID_Z, 0, GL_RGBA_INTEGER, GL_UNSIGNED_INT, NULL);
+		glBindBufferBase(GL_UNIFORM_BUFFER, XGPU_DYNAMIC_LIGHTS_BINDING, dynamic_lights.block);
+		xgpu_gl_state_invalidate();
+		if (glGetError() != GL_NO_ERROR)
+		{
+			platform_log("GPU: the enhanced dynamic lights' buffers could not be made: classic lights");
+			dynamic_lights.failed = TRUE;
+			return;
+		}
+	}
+	for (axis = 0; axis < 3; axis++)
+	{
+		scales[axis] = (float)(sizes[axis] / 2) / log2f(1.0f + XGPU_DYNAMIC_LIGHTS_REACH / XGPU_DYNAMIC_LIGHTS_CELL);
+		dynamic_lights.data.grid[0][axis] = camera[axis];
+		dynamic_lights.data.grid[1][axis] = scales[axis];
+		dynamic_lights.camera_right[axis] = right[axis];
+		dynamic_lights.camera_up[axis] = up[axis];
+	}
+	dynamic_lights.data.grid[0][3] = (float)count;
+	dynamic_lights.data.grid[1][3] = 1.0f / XGPU_DYNAMIC_LIGHTS_CELL;
+	memcpy(dynamic_lights.data.grid[2], dynamic_lights.look[0], sizeof(dynamic_lights.look[0]));
+	memset(dynamic_lights.mask, 0, sizeof(dynamic_lights.mask));
+	for (index = 0; index < count; index++)
+	{
+		const struct halo_dynamic_light *light = &lights[index];
+		int first[3], last[3], x, y, z;
+		float brightness = dynamic_lights.look[0][0];
+
+		if (!(light->radius > 0.0f))
+			continue;
+		dynamic_lights.data.position[index][0] = light->position[0];
+		dynamic_lights.data.position[index][1] = light->position[1];
+		dynamic_lights.data.position[index][2] = light->position[2];
+		dynamic_lights.data.position[index][3] = (light->flags & HALO_DYNAMIC_LIGHT_MODELS_ONLY ? -1.0f : 1.0f) /
+			light->radius;
+		for (axis = 0; axis < 3; axis++)
+		{
+			/* (linear: the display's gamma out) */
+			dynamic_lights.data.color[index][axis] = powf(light->color[axis], 2.2f) * brightness;
+			dynamic_lights.data.cone[index][axis] = light->axis[axis];
+			first[axis] = dynamic_lights_cell(light->position[axis] - light->radius - camera[axis], scales[axis],
+				sizes[axis]);
+			last[axis] = dynamic_lights_cell(light->position[axis] + light->radius - camera[axis], scales[axis],
+				sizes[axis]);
+		}
+		dynamic_lights.data.color[index][3] = light->cone_offset;
+		dynamic_lights.data.cone[index][3] = light->cone_scale;
+		for (z = first[2]; z <= last[2]; z++)
+			for (y = first[1]; y <= last[1]; y++)
+				for (x = first[0]; x <= last[0]; x++)
+					dynamic_lights.mask[z][y][x][index >> 5] |= 1u << (index & 31);
+		if ((light->flags & HALO_DYNAMIC_LIGHT_HALO) && dynamic_lights.halo_count < XGPU_DYNAMIC_LIGHTS_MAXIMUM)
+		{
+			float *halo = dynamic_lights.halos[dynamic_lights.halo_count * 2];
+			float size = light->radius * dynamic_lights.look[1][0];
+
+			halo[0] = light->position[0];
+			halo[1] = light->position[1];
+			halo[2] = light->position[2];
+			halo[3] = size > dynamic_lights.look[1][3] ? size : dynamic_lights.look[1][3];
+			halo[4] = light->color[0] * dynamic_lights.look[1][1];
+			halo[5] = light->color[1] * dynamic_lights.look[1][1];
+			halo[6] = light->color[2] * dynamic_lights.look[1][1];
+			halo[7] = 0.0f;
+			dynamic_lights.halo_count++;
+		}
+	}
+	if (!count)
+		return;
+	glBindBuffer(GL_UNIFORM_BUFFER, dynamic_lights.block);
+	glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(dynamic_lights.data), &dynamic_lights.data);
+	glBindBufferBase(GL_UNIFORM_BUFFER, XGPU_DYNAMIC_LIGHTS_BINDING, dynamic_lights.block);
+	glActiveTexture(GL_TEXTURE0 + XGPU_DYNAMIC_LIGHTS_UNIT);
+	glBindTexture(GL_TEXTURE_3D, dynamic_lights.cells);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	glTexSubImage3D(GL_TEXTURE_3D, 0, 0, 0, 0, XGPU_DYNAMIC_LIGHTS_GRID_X, XGPU_DYNAMIC_LIGHTS_GRID_Y,
+		XGPU_DYNAMIC_LIGHTS_GRID_Z, GL_RGBA_INTEGER, GL_UNSIGNED_INT, dynamic_lights.mask);
+	glActiveTexture(GL_TEXTURE0);
+	xgpu_gl_state_invalidate();
+	dynamic_lights.count = count;
+}
+
+/* the game draws the structure's lightmap pass (rasterizer_xbox_environment.c);
+as it begins, the world's projection is the 3D view's (the glows' then) */
+void halo_dynamic_lights_environment(int drawing)
+{
+	dynamic_lights.environment = drawing != 0;
+	if (drawing)
+	{
+		memcpy(dynamic_lights.projection[0], device.constants[0], 4 * sizeof(dynamic_lights.projection[0]));
+		memcpy(dynamic_lights.projection[4], device.constants[XGPU_VERTEX_CONSTANT_BIAS - 38], sizeof(dynamic_lights.projection[0]));
+		memcpy(dynamic_lights.projection[5], device.constants[XGPU_VERTEX_CONSTANT_BIAS - 37], sizeof(dynamic_lights.projection[0]));
+		memcpy(dynamic_lights.viewport_scale, device.viewport_scale, sizeof(dynamic_lights.viewport_scale));
+		memcpy(dynamic_lights.viewport_offset, device.viewport_offset, sizeof(dynamic_lights.viewport_offset));
+	}
+}
+
+/* the frame's draws are lit by the enhanced dynamic lights */
+static BOOL dynamic_lights_active(void)
+{
+	return dynamic_lights.count > 0 && dynamic_lights.enhanced;
+}
+
+/* a glow's program, drawn into this many layers (1: the screen's target, 2
+the VR mode's eyes, 4 its eyes foveated): the camera-facing quad of each
+light about its middle, projected as the game's vertex programs project
+(nv2a_vsh.c's conversion, each eye's correction, the inset's view), its
+light round and soft, fading out as it nears what is behind it and gone
+behind what is before it, against the depth the scene was drawn with
+(sampled: the target is drawn into without its depth) */
+static GLuint dynamic_lights_halo_program(int layers)
+{
+	struct xgpu_text vertex = { 0 }, fragment = { 0 };
+	int slot = layers == 1 ? 0 : layers == 2 ? 1 : 2;
+	GLuint vertex_shader, fragment_shader;
+
+	if (dynamic_lights.halo_programs[slot] || dynamic_lights.halo_failed[slot])
+		return dynamic_lights.halo_programs[slot];
+	dynamic_lights.halo_failed[slot] = TRUE;
+	xgpu_text_append(&vertex, "#version 450 core\n");
+	xgpu_text_append(&fragment, "#version 450 core\n");
+	if (layers > 1)
+	{
+		xgpu_text_append(&vertex, "#extension GL_OVR_multiview2 : require\nlayout(num_views = %d) in;\n"
+			"#define VIEW int(gl_ViewID_OVR)\n#define EYE (VIEW%s)\nuniform mat4 eye_correction[2];\n%s",
+			layers, layers == 4 ? " >> 1" : "", layers == 4 ? "uniform vec4 fovea_view[4];\n" : "");
+		xgpu_text_append(&fragment, "#extension GL_OVR_multiview2 : require\n"
+			"layout(binding = 0) uniform highp sampler2DArray scene_depth;\n");
+	}
+	else
+	{
+		xgpu_text_append(&fragment, "layout(binding = 0) uniform highp sampler2D scene_depth;\n");
+	}
+	xgpu_text_append(&vertex,
+		"uniform vec4 c[6];\n"
+		"uniform vec4 viewport_scale;\n"
+		"uniform vec4 viewport_offset;\n"
+		"uniform float screen_offset;\n"
+		"uniform vec4 halos[%d];\n"
+		"uniform vec4 camera_axes[2];\n"
+		"out vec2 corner;\n"
+		"out vec3 color;\n"
+		"out float depth;\n"
+		"const vec2 corners[6] = vec2[6](vec2(-1.0, -1.0), vec2(1.0, -1.0), vec2(1.0, 1.0), vec2(-1.0, -1.0),\n"
+		"\tvec2(1.0, 1.0), vec2(-1.0, 1.0));\n"
+		"void main()\n"
+		"{\n"
+		"\tint halo = gl_VertexID / 6;\n"
+		"\tvec4 middle = halos[halo * 2];\n"
+		"\tcorner = corners[gl_VertexID - halo * 6];\n"
+		"\tcolor = halos[halo * 2 + 1].rgb;\n"
+		"\tvec3 world = middle.xyz + (camera_axes[0].xyz * corner.x + camera_axes[1].xyz * corner.y) * middle.w;\n"
+		"\tvec4 clip = vec4(dot(world, c[0].xyz) + c[0].w, dot(world, c[1].xyz) + c[1].w,\n"
+		"\t\tdot(world, c[2].xyz) + c[2].w, dot(world, c[3].xyz) + c[3].w);\n"
+		"\tdepth = clip.w;\n"
+		"%s"
+		"\tvec3 scale = vec3(viewport_scale.x != 0.0 ? viewport_scale.x : 1.0,\n"
+		"\t\tviewport_scale.y != 0.0 ? viewport_scale.y : 1.0, viewport_scale.z != 0.0 ? viewport_scale.z : 1.0);\n"
+		"\tgl_Position = vec4((clip.xyz * c[4].xyz + (c[5].xyz + vec3(0.5 + screen_offset, 0.5, 0.0) -\n"
+		"\t\tviewport_offset.xyz) * clip.w) / scale, clip.w);\n"
+		"%s%s"
+		"}\n",
+		XGPU_DYNAMIC_LIGHTS_MAXIMUM * 2,
+		layers > 1 ? "\tclip = eye_correction[EYE] * clip;\n" : "",
+		layers > 1 ? "\tgl_Position.y = -gl_Position.y;\n" : "",
+		layers == 4 ? "\tgl_Position.xy = gl_Position.xy * fovea_view[VIEW].xy + fovea_view[VIEW].zw * gl_Position.w;\n" :
+			"");
+	xgpu_text_append(&fragment,
+		/* the depth buffer's value for a distance from the camera: alpha +
+		beta / distance (beta less than 0: nearer, less); and the softness,
+		world units */
+		"uniform vec4 depth_parameters;\n"
+		"in vec2 corner;\n"
+		"in vec3 color;\n"
+		"in float depth;\n"
+		"layout(location = 0) out vec4 fragment_color;\n"
+		"void main()\n"
+		"{\n"
+		"\tfloat r2 = dot(corner, corner);\n"
+		"\tif (r2 >= 1.0)\n"
+		"\t\tdiscard;\n"
+		"\tfloat scene = texelFetch(scene_depth, %s, 0).r;\n"
+		"\tfloat away = scene - depth_parameters.x;\n"
+		"\tfloat distance = away * depth_parameters.y > 0.0 ? depth_parameters.y / away : 1.0e9;\n"
+		"\tfloat fade = scene >= 1.0 ? 1.0 : clamp((distance - depth) / depth_parameters.z, 0.0, 1.0);\n"
+		/* a wide soft glow, and a small hot core */
+		"\tfloat glow = (exp(-3.0 * r2) - 0.0498) * 0.6 + exp(-24.0 * r2) * 0.8;\n"
+		"\tfragment_color = vec4(color * (glow * fade * fade), 0.0);\n"
+		"}\n",
+		layers > 1 ? "ivec3(ivec2(gl_FragCoord.xy), int(gl_ViewID_OVR))" : "ivec2(gl_FragCoord.xy)");
+	vertex_shader = xgpu_compile_shader(GL_VERTEX_SHADER, vertex.buffer, "dynamic light glow vertex");
+	fragment_shader = xgpu_compile_shader(GL_FRAGMENT_SHADER, fragment.buffer, "dynamic light glow pixel");
+	free(vertex.buffer);
+	free(fragment.buffer);
+	if (vertex_shader && fragment_shader)
+		dynamic_lights.halo_programs[slot] = xgpu_link_program(vertex_shader, fragment_shader, "dynamic light glow");
+	if (dynamic_lights.halo_programs[slot])
+		dynamic_lights.halo_failed[slot] = FALSE;
+	return dynamic_lights.halo_programs[slot];
+}
+
+/* the glows of the frame's bolts' lights, into the 3D view, after its
+transparent geometry (source/render/render.c): added to what is there */
+void halo_dynamic_lights_halos_draw(void)
+{
+	struct render_target_entry *color, *depth;
+	GLuint program, framebuffer;
+	int layers;
+	float c[6][4], depth_parameters[4];
+
+	if (!dynamic_lights_active() || !dynamic_lights.halo_count || !device.gl_ready)
+		return;
+#ifdef HALO_VR
+	vr_frame_resume();
+	/* (the eyes' pass, or the flat screen's; not the HUD's, nor a scope's) */
+	if (vr_gl.pass != HALO_VR_PASS_NONE && vr_gl.pass != HALO_VR_PASS_EYES)
+		return;
+#endif
+	color = render_target_get(device.render_target);
+	depth = render_target_get(device.depth_stencil);
+	if (!color || !depth || !depth->target.depth || color->target.layers != depth->target.layers)
+		return;
+	layers = (int)color->target.layers;
+	program = dynamic_lights_halo_program(layers);
+	if (!program)
+		return;
+	/* the depth the scene was drawn with, in its texture */
+	if (depth->target.samples)
+		render_target_resolve(&depth->target);
+#ifdef HALO_VR
+	if (layers > 1)
+		vr_fovea_views();
+	framebuffer_views = layers;
+	framebuffer_base = 0;
+#endif
+	if (color->target.samples)
+	{
+		framebuffer = framebuffer_find(color->target.multisample, 0, TRUE);
+		color->target.unresolved = TRUE;
+	}
+	else
+	{
+		framebuffer = framebuffer_get(color->target.texture, 0);
+	}
+#ifdef HALO_VR
+	framebuffer_views = 1;
+#endif
+	/* the world's projection and the screen conversion, as the lights were
+	set; the depth for a distance, from two points ahead */
+	memcpy(c, dynamic_lights.projection, sizeof(c));
+	{
+		float forward[3], z[2], w[2], a, b, scale_z, near_z, far_z;
+		int point, axis;
+
+		/* (the camera's forward: the projection's w row) */
+		for (axis = 0; axis < 3; axis++)
+			forward[axis] = c[3][axis];
+		for (point = 0; point < 2; point++)
+		{
+			float t = point ? 64.0f : 1.0f;
+			float length = sqrtf(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]);
+			float p[3];
+
+			for (axis = 0; axis < 3; axis++)
+				p[axis] = dynamic_lights.data.grid[0][axis] + forward[axis] / (length > 0.0f ? length : 1.0f) * t;
+			z[point] = c[2][0] * p[0] + c[2][1] * p[1] + c[2][2] * p[2] + c[2][3];
+			w[point] = c[3][0] * p[0] + c[3][1] * p[1] + c[3][2] * p[2] + c[3][3];
+		}
+		b = (z[0] / w[0] - z[1] / w[1]) / (1.0f / w[0] - 1.0f / w[1]);
+		a = z[0] / w[0] - b / w[0];
+		scale_z = dynamic_lights.viewport_scale[2] != 0.0f ? dynamic_lights.viewport_scale[2] : 1.0f;
+		near_z = gl_state.depth_range[0] >= 0.0f && gl_state.depth_range[0] <= 1.0f ? gl_state.depth_range[0] : 0.0f;
+		far_z = gl_state.depth_range[1] >= 0.0f && gl_state.depth_range[1] <= 1.0f ? gl_state.depth_range[1] : 1.0f;
+		depth_parameters[0] = near_z + (far_z - near_z) * (a * c[4][2] + c[5][2] - dynamic_lights.viewport_offset[2]) /
+			scale_z;
+		depth_parameters[1] = (far_z - near_z) * b * c[4][2] / scale_z;
+		depth_parameters[2] = dynamic_lights.look[1][2];
+		depth_parameters[3] = 0.0f;
+	}
+
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+	glUseProgram(program);
+	glUniform4fv(glGetUniformLocation(program, "c"), 6, c[0]);
+	glUniform4fv(glGetUniformLocation(program, "viewport_scale"), 1, dynamic_lights.viewport_scale);
+	glUniform4fv(glGetUniformLocation(program, "viewport_offset"), 1, dynamic_lights.viewport_offset);
+	glUniform1f(glGetUniformLocation(program, "screen_offset"), (float)UI_OFFSET);
+	glUniform4fv(glGetUniformLocation(program, "halos"), dynamic_lights.halo_count * 2, dynamic_lights.halos[0]);
+	{
+		float axes[2][4];
+
+		memcpy(axes[0], dynamic_lights.camera_right, sizeof(dynamic_lights.camera_right));
+		memcpy(axes[1], dynamic_lights.camera_up, sizeof(dynamic_lights.camera_up));
+		axes[0][3] = axes[1][3] = 0.0f;
+		glUniform4fv(glGetUniformLocation(program, "camera_axes"), 2, axes[0]);
+	}
+	glUniform4fv(glGetUniformLocation(program, "depth_parameters"), 1, depth_parameters);
+#ifdef HALO_VR
+	if (layers > 1)
+	{
+		glUniformMatrix4fv(glGetUniformLocation(program, "eye_correction"), 2, GL_TRUE, &vr_gl.eye_transforms[0][0]);
+		if (layers == 4)
+			glUniform4fv(glGetUniformLocation(program, "fovea_view"), 4, &vr_gl.fovea_view[0][0]);
+	}
+#endif
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(layers > 1 ? GL_TEXTURE_2D_ARRAY : GL_TEXTURE_2D, depth->target.texture);
+	/* (its own sampler: no comparison, as a shadow map's has, nor filter) */
+	if (!dynamic_lights.depth_sampler)
+	{
+		glGenSamplers(1, &dynamic_lights.depth_sampler);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
+	glBindSampler(0, dynamic_lights.depth_sampler);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_SCISSOR_TEST);
+	glDepthMask(GL_FALSE);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_ONE, GL_ONE);
+	glBindVertexArray(device.vertex_array);
+	glDrawArrays(GL_TRIANGLES, 0, dynamic_lights.halo_count * 6);
+	xgpu_gl_state_invalidate();
+}
+#else
+int halo_dynamic_lights_enhanced(void)
+{
+	return FALSE;
+}
+
+void halo_dynamic_lights_set(const struct halo_dynamic_light *lights, int count, const float camera[3],
+	const float right[3], const float up[3])
+{
+	(void)lights;
+	(void)count;
+	(void)camera;
+	(void)right;
+	(void)up;
+}
+
+void halo_dynamic_lights_environment(int drawing)
+{
+	(void)drawing;
+}
+
+void halo_dynamic_lights_halos_draw(void)
+{
+}
+#endif
+
 /* display.per_pixel_lighting: the model lighting programs' draws are lit for
 each pixel (nv2a_psh.c model_lighting), from shaders of their own; read
-again when a setting changes */
+again when a setting changes. The enhanced dynamic lights light models for
+each pixel too, whatever it says. */
 static BOOL per_pixel_lighting(void)
 {
 	static unsigned long read_at = (unsigned long)-1;
@@ -4335,7 +4815,7 @@ static BOOL per_pixel_lighting(void)
 		read_at = config_changes();
 		enabled = config_boolean("display.per_pixel_lighting") != 0;
 	}
-	return enabled;
+	return enabled || halo_dynamic_lights_enhanced();
 }
 
 /* the vertex constant register of each of the per-pixel lighting's
@@ -4419,7 +4899,13 @@ static struct program_entry *prepare_draw(BOOL immediate)
 	if (program->lighting.lights && !program->lighting_failed && per_pixel_lighting())
 	{
 		key.per_pixel_lighting = (unsigned char)program->lighting.lights;
-		entry = program_get(vertex_shader_get(program, immediate, TRUE, key.multiview), fragment_shader_get(&key));
+#ifndef HALO_GLES
+		/* (the enhanced dynamic lights in the two point lights' place) */
+		if (dynamic_lights_active() && program->lighting.world_found)
+			key.dynamic_lights = XGPU_DYNAMIC_LIGHTS_MODEL;
+#endif
+		entry = program_get(vertex_shader_get(program, immediate, &program->lighting, key.multiview),
+			fragment_shader_get(&key));
 		if (!entry)
 		{
 			/* drawn as the vertex shader lights it instead (not at all,
@@ -4428,10 +4914,31 @@ static struct program_entry *prepare_draw(BOOL immediate)
 				"lit for each vertex", program->id);
 			program->lighting_failed = TRUE;
 			key.per_pixel_lighting = 0;
+			key.dynamic_lights = 0;
 		}
 	}
+#ifndef HALO_GLES
+	else if (dynamic_lights.environment && dynamic_lights_active() && !immediate && !program->lighting_failed &&
+		(device.vertex_shader->packed_mask & 0xe) == 0xe)
+	{
+		/* a structure's lightmap pass: its normal, binormal and tangent are
+		packed (rasterizer_xbox_vertex_shaders_initialize.c's declaration) */
+		static const struct nv2a_vertex_lighting environment = { XGPU_ENVIRONMENT_LIGHTING };
+
+		key.dynamic_lights = XGPU_DYNAMIC_LIGHTS_ENVIRONMENT;
+		entry = program_get(vertex_shader_get(program, immediate, &environment, key.multiview),
+			fragment_shader_get(&key));
+		if (!entry)
+		{
+			platform_log("GPU: vertex shader %lu cannot be lit by the dynamic lights (refer to the shader log "
+				"above): lit by the game's own passes", program->id);
+			program->lighting_failed = TRUE;
+			key.dynamic_lights = 0;
+		}
+	}
+#endif
 	if (!entry)
-		entry = program_get(vertex_shader_get(program, immediate, FALSE, key.multiview), fragment_shader_get(&key));
+		entry = program_get(vertex_shader_get(program, immediate, NULL, key.multiview), fragment_shader_get(&key));
 #ifdef HALO_VR
 	if (vr_gl.multiview && vr_gl.statistics && !program->projects)
 	{
@@ -6802,7 +7309,15 @@ static void vr_fovea_composite(void)
 	glUniform1f(show_location, vr_gl.fovea_show ? 1.0f : 0.0f);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D_ARRAY, vr_gl.fovea_texture);
-	glBindSampler(0, 0);
+	/* (its own sampler: no comparison, as a shadow map's has, nor filter) */
+	if (!dynamic_lights.depth_sampler)
+	{
+		glGenSamplers(1, &dynamic_lights.depth_sampler);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
+	glBindSampler(0, dynamic_lights.depth_sampler);
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	xgpu_gl_state_invalidate();
@@ -7371,7 +7886,15 @@ static GLuint vr_light_map(const struct vr_visor_hud_image *look)
 	glBindTexture(GL_TEXTURE_2D_ARRAY, vr_gl.eye_target.target.texture);
 	glBindSampler(0, sampler);
 	glDrawArrays(GL_TRIANGLES, 0, 3);
-	glBindSampler(0, 0);
+	/* (its own sampler: no comparison, as a shadow map's has, nor filter) */
+	if (!dynamic_lights.depth_sampler)
+	{
+		glGenSamplers(1, &dynamic_lights.depth_sampler);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
+	glBindSampler(0, dynamic_lights.depth_sampler);
 	glDisable(GL_BLEND);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	xgpu_gl_state_invalidate();
@@ -7661,7 +8184,15 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 	glBindTexture(GL_TEXTURE_2D, source);
 	glBindSampler(0, sampler);
 	glDrawArrays(GL_TRIANGLES, 0, 3);
-	glBindSampler(0, 0);
+	/* (its own sampler: no comparison, as a shadow map's has, nor filter) */
+	if (!dynamic_lights.depth_sampler)
+	{
+		glGenSamplers(1, &dynamic_lights.depth_sampler);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
+	glBindSampler(0, dynamic_lights.depth_sampler);
 	glBindSampler(1, 0);
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, 0);
@@ -8032,7 +8563,15 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 	glBindTexture(GL_TEXTURE_2D, source);
 	glBindSampler(0, sampler);
 	glDrawArrays(GL_TRIANGLES, 0, 3);
-	glBindSampler(0, 0);
+	/* (its own sampler: no comparison, as a shadow map's has, nor filter) */
+	if (!dynamic_lights.depth_sampler)
+	{
+		glGenSamplers(1, &dynamic_lights.depth_sampler);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
+	glBindSampler(0, dynamic_lights.depth_sampler);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	return TRUE;
 }
@@ -8516,11 +9055,515 @@ edges (by the margin of the union of their views), so a flash left those
 edges lit. */
 static float vr_tint[3] = { 1.0f, 1.0f, 1.0f };
 
+/* the death's feed this frame (port/linux/game/vr_death.c, vr.death_view =
+"crt"): how collapsed each eye's view is (to a line through its middle,
+then the line to a point), how bright as it collapses, the shields' alarm
+(static, red), whether it is the death cam's feed, and its interference;
+drawn at the present (vr_draw_feed), then none */
+static BOOL vr_feed_set;
+static float vr_feed[8];
+
+void halo_vr_eye_feed(float squash, float shrink, float bright, float noise, float red, float look, float interference)
+{
+	vr_feed_set = TRUE;
+	vr_feed[0] = squash;
+	vr_feed[1] = shrink;
+	vr_feed[2] = bright;
+	vr_feed[3] = noise;
+	vr_feed[4] = red;
+	vr_feed[5] = look;
+	vr_feed[6] = interference;
+}
+
 void halo_vr_eye_tint(float red, float green, float blue)
 {
 	vr_tint[0] *= red;
 	vr_tint[1] *= green;
 	vr_tint[2] *= blue;
+}
+
+/* The death's feed (halo_vr_eye_feed) in both eyes' images (multiview),
+before the tint and the helmet's rim: each eye's view collapsed about its
+middle as a CRT switches off (squashed to a bright line of the HUD's blue,
+the line shrunk to a point, the rest dark) or opened so as it switches on;
+the shields' alarm's static (bands offset, noise) and red; and the death
+cam's feed: a faint blue tint, scan lines, its edges darkened, interference
+settling. The images are copied first (the pass reads them), and written
+as they are encoded, as the rim is. */
+static void vr_draw_feed(void)
+{
+	static GLuint program, copy, sampler;
+	static int copy_width, copy_height;
+	static BOOL failed;
+	static GLint crt_location, look_location, image_location;
+	static const char vertex_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"layout(num_views = 2) in;\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+		"	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+		"}\n";
+	static const char fragment_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"uniform sampler2DArray eyes;\n"
+		/* (squash, shrink, bright, noise; red, the feed's look,
+		interference, a seed; the image's size) */
+		"uniform vec4 crt;\n"
+		"uniform vec4 look;\n"
+		"uniform vec2 image;\n"
+		"out vec4 colour;\n"
+		"float hash(vec2 v)\n"
+		"{\n"
+		"	return fract(sin(dot(v, vec2(12.9898, 78.233))) * 43758.5453);\n"
+		"}\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = gl_FragCoord.xy, c = image * 0.5, d = p - c;\n"
+		"	float hh = max(c.y * (1.0 - crt.x), 1.5), hw = c.x * (1.0 - crt.y);\n"
+		"	float n = max(crt.w, look.z * 0.6);\n"
+		"	float band = hash(vec2(floor(p.y / (image.y / 32.0)), look.w));\n"
+		"	float offset = n * step(0.65, band) * (band - 0.82) * 0.12 * image.x;\n"
+		"	vec2 s = vec2(p.x + offset, c.y + d.y * c.y / hh);\n"
+		"	vec3 col = texture(eyes, vec3(s / image, float(gl_ViewID_OVR))).rgb;\n"
+		"	col += n * 0.25 * (hash(p + vec2(look.w)) - 0.5);\n"
+		"	col = mix(col, vec3(1.0, 0.16, 0.12), look.x * 0.35);\n"
+		"	if (look.y > 0.5)\n"
+		"	{\n"
+		"		col *= vec3(0.92, 1.0, 1.08);\n"
+		"		col *= 1.0 - 0.07 * (0.5 + 0.5 * sin(p.y * 3.14159 / 3.0));\n"
+		"		col *= 1.0 - 0.35 * clamp((length(d) / c.y - 0.55) / 0.6, 0.0, 1.0);\n"
+		"	}\n"
+		"	vec3 white = vec3(0.45, 0.72, 1.0) * 0.4 + 0.6;\n"
+		"	bool inside = abs(d.y) <= hh && abs(d.x) <= hw;\n"
+		"	col = inside ? mix(col, white, crt.z) : vec3(0.0);\n"
+		"	float glow = !inside && abs(d.x) <= hw ? exp(-(abs(d.y) - hh) / 6.0) * crt.z * 0.6 : 0.0;\n"
+		"	colour = vec4(clamp(col + white * glow, 0.0, 1.0), 1.0);\n"
+		"}\n";
+	static unsigned long seed;
+	GLuint eyes = vr_gl.eye_target.target.texture;
+
+	if (!vr_feed_set)
+		return;
+	vr_feed_set = FALSE;
+	if (failed || !vr_gl.eyes_drawn || !eyes)
+		return;
+#ifdef HALO_GLES
+	if (!xgpu_capabilities.copy_image)
+		return;
+#endif
+	if (!program)
+	{
+		GLuint vertex = xgpu_compile_shader(GL_VERTEX_SHADER, vertex_source, "VR feed vertex");
+		GLuint fragment = xgpu_compile_shader(GL_FRAGMENT_SHADER, fragment_source, "VR feed pixel");
+		GLint status = 0;
+
+		program = glCreateProgram();
+		glAttachShader(program, vertex);
+		glAttachShader(program, fragment);
+		glLinkProgram(program);
+		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		if (!vertex || !fragment || !status)
+		{
+			platform_log("vr: cannot make the death feed's program; the death cam switches without it");
+			failed = TRUE;
+			return;
+		}
+		glUseProgram(program);
+		glUniform1i(glGetUniformLocation(program, "eyes"), 0);
+		crt_location = glGetUniformLocation(program, "crt");
+		look_location = glGetUniformLocation(program, "look");
+		image_location = glGetUniformLocation(program, "image");
+		glGenSamplers(1, &sampler);
+		glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
+	if (!copy || copy_width != vr_gl.eye_width || copy_height != vr_gl.eye_height)
+	{
+		if (copy)
+			glDeleteTextures(1, &copy);
+		glGenTextures(1, &copy);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, copy);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
+		/* (the eyes' encoded values, as plain RGBA: sampled as they are) */
+		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, vr_gl.eye_width, vr_gl.eye_height, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+			NULL);
+		copy_width = vr_gl.eye_width;
+		copy_height = vr_gl.eye_height;
+	}
+	glCopyImageSubData(eyes, GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, copy, GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, vr_gl.eye_width,
+		vr_gl.eye_height, 2);
+	framebuffer_views = 2;
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(eyes, 0));
+	framebuffer_views = 1;
+	glViewport(0, 0, vr_gl.eye_width, vr_gl.eye_height);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	glDisable(GL_FRAMEBUFFER_SRGB);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+	glUseProgram(program);
+	vr_feed[7] = (float)(++seed % 97);
+	glUniform4fv(crt_location, 1, &vr_feed[0]);
+	glUniform4fv(look_location, 1, &vr_feed[4]);
+	glUniform2f(image_location, (float)vr_gl.eye_width, (float)vr_gl.eye_height);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, copy);
+	glBindSampler(0, sampler);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	/* (its own sampler: no comparison, as a shadow map's has, nor filter) */
+	if (!dynamic_lights.depth_sampler)
+	{
+		glGenSamplers(1, &dynamic_lights.depth_sampler);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
+	glBindSampler(0, dynamic_lights.depth_sampler);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	xgpu_gl_state_invalidate();
+}
+
+/* A feed cockpit's display (vr.scorpion_view = "feed": port/linux/game/
+vr_cabin.c, vr.c's halo_vr_cockpit_window) in both eyes' images
+(multiview), after the foveation's composite and before the smart-link's
+window (which opens within it): the cockpit's opening, which each eye sees
+the world through, where each eye's ray meets the curved wall it is in (a
+cylinder about the eye: the opening all the way round it, its half angle
+180 degrees, or a part of one), given the feed's look as the smart-link's
+window has it: a faint blue tint, scan lines, its edges darkened, a thin
+line of the HUD's blue about it with heavier corners. All the way round, it
+is panels between the ribs every 45 degrees (none ahead nor behind): the
+front one's from 45
+degrees left to 45 right, with the readout along its bottom (the zoom, the
+range, the rounds of the vehicle's weapon and its second's), and about it
+the hull cameras', a little dimmer, labelled L HULL, R HULL and REAR. The
+feed washes over the opening from its top down as the grate closes (wash 0
+to 1: a bright line sweeping down, interference about it, the world above
+it and the feed below; the readout typed last); dark (off), it collapses as
+a screen switched off. What is nearer than the opening (the hands, the
+ribs) is left as it is. The images are copied first (the pass reads them),
+and written as they are encoded. */
+#define COCKPIT_TEXT_LENGTH 44
+static void vr_draw_cockpit_display(GLuint depth_texture, int depth_layers)
+{
+	static GLuint program, copy, sampler;
+	static int copy_width, copy_height;
+	static BOOL failed;
+	static GLint centre_location, up_location, forward_location, right_location, fov_location, shape_location,
+		image_location, wash_location, text_location, depth_location, layers_location;
+	static const char vertex_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"layout(num_views = 2) in;\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+		"	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+		"}\n";
+	static const char fragment_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"uniform sampler2DArray eyes;\n"
+		"uniform sampler2DArray depth_texture;\n"
+		/* each eye's: the wall's axis's point, its up, the way to the
+		display's middle and its right (its space), its field of view
+		(tangents: left, right, up, down); the wall's radius, the display's
+		half angle (radians) and half height (metres); the image's size; the
+		wash (0 to 1) and a seed; the readout's glyphs (-1 past its end); the
+		depth's mapping (0: none) and layers (4: foveated) */
+		"uniform vec4 centre[2];\n"
+		"uniform vec4 up[2];\n"
+		"uniform vec4 forward[2];\n"
+		"uniform vec4 right[2];\n"
+		"uniform vec4 fov[2];\n"
+		"uniform vec4 shape;\n"
+		"uniform vec2 image;\n"
+		"uniform vec2 wash;\n"
+		"uniform int text[44];\n"
+		"uniform vec2 depth_map;\n"
+		"uniform int layers;\n"
+		"out vec4 colour;\n"
+		"float hash(vec2 v)\n"
+		"{\n"
+		"	return fract(sin(dot(v, vec2(12.9898, 78.233))) * 43758.5453);\n"
+		"}\n"
+		/* (the smart-link's glyphs: 3x5 cells from the top row's left, the
+		digits, then X, R, A, N, G, E, M, O, /, ., - and a space) */
+		"const int glyphs[25] = int[25](31599, 11415, 29671, 29647, 23497, 31183, 31215, 29257, 31727,\n"
+		"	31695, 2728, 27565, 11245, 27501, 14699, 31143, 24557, 11114, 4772, 2, 448, 0, 18727, 23533, 23407);\n"
+		/* (the hull cameras' labels: L HULL, R HULL, REAR; L, H and U after
+		the space) */
+		"const int labels[18] = int[18](22, 21, 23, 24, 22, 22, 11, 21, 23, 24, 22, 22, 11, 15, 12, 11, -1, -1);\n"
+		"float label_lit(vec2 q, int which, float typed)\n"
+		"{\n"
+		"	if (q.x < 0.0 || q.y < 0.0 || q.y >= 5.0)\n"
+		"		return 0.0;\n"
+		"	ivec2 cell = ivec2(floor(q));\n"
+		"	int glyph = cell.x / 4, column = cell.x - glyph * 4, count = which == 2 ? 4 : 6;\n"
+		"	if (glyph >= count || float(glyph) >= typed || column > 2)\n"
+		"		return 0.0;\n"
+		"	return float((glyphs[labels[which * 6 + glyph]] >> (14 - cell.y * 3 - column)) & 1);\n"
+		"}\n"
+		"float line_lit(vec2 q, float typed)\n"
+		"{\n"
+		"	if (q.x < 0.0 || q.y < 0.0 || q.y >= 5.0)\n"
+		"		return 0.0;\n"
+		"	ivec2 cell = ivec2(floor(q));\n"
+		"	int glyph = cell.x / 4, column = cell.x - glyph * 4;\n"
+		"	if (glyph >= 44 || float(glyph) >= typed || column > 2 || text[glyph] < 0)\n"
+		"		return 0.0;\n"
+		"	return float((glyphs[text[glyph]] >> (14 - cell.y * 3 - column)) & 1);\n"
+		"}\n"
+		"void main()\n"
+		"{\n"
+		"	int eye = int(gl_ViewID_OVR);\n"
+		"	vec2 f = gl_FragCoord.xy / image;\n"
+		"	vec4 t = fov[eye];\n"
+		"	vec3 ray = vec3(mix(t.x, t.y, f.x), mix(t.w, t.z, f.y), -1.0);\n"
+		"	vec3 u = up[eye].xyz, c = centre[eye].xyz;\n"
+		/* (where the ray leaves the wall's cylinder: the eye is inside it) */
+		"	vec3 rp = ray - dot(ray, u) * u, op = -c - dot(-c, u) * u;\n"
+		"	float a = dot(rp, rp), b = 2.0 * dot(op, rp), k = dot(op, op) - shape.x * shape.x;\n"
+		"	float disc = b * b - 4.0 * a * k;\n"
+		"	if (a < 1.0e-9 || disc < 0.0)\n"
+		"		discard;\n"
+		"	float s = (-b + sqrt(disc)) / (2.0 * a);\n"
+		"	if (s <= 0.0)\n"
+		"		discard;\n"
+		"	vec3 rel = ray * s - c;\n"
+		"	float angle = atan(dot(rel, right[eye].xyz), dot(rel, forward[eye].xyz));\n"
+		"	float v = dot(rel, u) / shape.z;\n"
+		"	float av = abs(v);\n"
+		"	float px = 1.5 * length(vec2(dFdx(v), dFdy(v)));\n"
+		"	if (abs(angle) > shape.y + 6.0 * px * shape.z / shape.x || av > 1.0 + 6.0 * px)\n"
+		"		discard;\n"
+		"	if (depth_map.x > 0.0)\n"
+		"	{\n"
+		"		float z = texture(depth_texture, vec3(f, float(layers == 4 ? 2 * eye : eye))).r;\n"
+		"		if (z < depth_map.x * (1.0 - depth_map.y / (0.96 * s)))\n"
+		"			discard;\n"
+		"	}\n"
+		"	vec3 hud = vec3(0.45, 0.72, 1.0), white = mix(hud, vec3(1.0), 0.6);\n"
+		"	float pi = 3.14159265, ad = abs(angle);\n"
+		"	float centre = ad < 0.25 * pi ? 0.0 : ad < 0.5 * pi ? 0.375 * pi : ad < 0.75 * pi ? 0.625 * pi : pi;\n"
+		"	float halfw = ad < 0.25 * pi || ad >= 0.75 * pi ? 0.25 * pi : 0.125 * pi;\n"
+		"	float lx = (ad - centre) / halfw;\n"
+		"	if (shape.y < pi - 0.01)\n"
+		"	{\n"
+		"		centre = 0.0;\n"
+		"		halfw = shape.y;\n"
+		"		lx = angle / shape.y;\n"
+		"	}\n"
+		"	float alx = abs(lx);\n"
+		"	bool front = ad < 0.25 * pi || shape.y < pi - 0.01;\n"
+		"	float line_y = 1.0 - 2.0 * wash.x;\n"
+		"	float washed = wash.x >= 1.0 ? 1.0 : smoothstep(line_y + 0.02, line_y - 0.02, v);\n"
+		"	float near_line = wash.x < 1.0 ? exp(-abs(v - line_y) / 0.08) : 0.0;\n"
+		"	float band = hash(vec2(floor((v + 1.0) * 24.0), wash.y));\n"
+		"	float offset = near_line * step(0.6, band) * (band - 0.8) * 0.04 * image.x;\n"
+		"	vec3 col = texture(eyes, vec3((gl_FragCoord.xy + vec2(offset, 0.0)) / image, float(eye))).rgb;\n"
+		"	vec3 world = texture(eyes, vec3(f, float(eye))).rgb;\n"
+		"	col += near_line * 0.15 * (hash(gl_FragCoord.xy + vec2(wash.y)) - 0.5);\n"
+		"	float edge = min((1.0 - alx) * halfw * shape.x / shape.z, 1.0 - av);\n"
+		"	vec3 feed = col * vec3(0.92, 1.0, 1.08) * (front ? 1.0 : 0.78);\n"
+		"	feed *= 1.0 - 0.07 * (0.5 + 0.5 * sin(gl_FragCoord.y * 3.14159 / 3.0));\n"
+		"	feed *= 0.6 + 0.4 * smoothstep(0.0, 0.12, edge);\n"
+		"	vec3 result = mix(world, feed, washed);\n"
+		"	float sweep = wash.x > 0.0 && wash.x < 1.0 ? exp(-abs(v - line_y) / 0.006) : 0.0;\n"
+		"	result = mix(result, white, sweep * 0.9);\n"
+		"	float outside = max((alx - 1.0) * halfw * shape.x / shape.z, av - 1.0);\n"
+		"	float frame = (1.0 - smoothstep(0.0, 2.0 * px, abs(outside - 2.0 * px))) * 0.7;\n"
+		"	float corner = step(1.0 - 0.07 * shape.z / (halfw * shape.x), alx) * step(0.85, av);\n"
+		"	frame = max(frame, corner * (1.0 - smoothstep(0.0, 3.0 * px, abs(outside - 3.0 * px))));\n"
+		"	result = mix(result, hud, frame * clamp(wash.x * 3.0, 0.0, 1.0) * (front ? 1.0 : 0.7));\n"
+		"	float cell = 0.0038 / shape.z;\n"
+		"	float across = 0.0038 / shape.x;\n"
+		"	float typed_part = clamp((wash.x - 0.7) / 0.3, 0.0, 1.0);\n"
+		"	if (front)\n"
+		"	{\n"
+		"		int count = 0;\n"
+		"		for (int i = 0; i < 44; i++)\n"
+		"			count += text[i] >= 0 ? 1 : 0;\n"
+		"		vec2 g = vec2(angle / across + float(count * 4 - 1) * 0.5, (-1.0 + 0.045 / shape.z + 5.0 * cell - v) / cell);\n"
+		"		float typed = floor(typed_part * float(count) + 0.5);\n"
+		"		result = mix(result, vec3(0.0), line_lit(g - vec2(0.5, 0.5), typed) * 0.7 * washed);\n"
+		"		result = mix(result, hud, line_lit(g, typed) * 0.95 * washed);\n"
+		"	}\n"
+		"	else\n"
+		"	{\n"
+		"		int which = ad >= 0.75 * pi ? 2 : angle < 0.0 ? 0 : 1;\n"
+		"		int count = which == 2 ? 4 : 6;\n"
+		"		vec2 g = vec2((ad - centre) * sign(angle) / across + float(count * 4 - 1) * 0.5, (-1.0 + 0.045 / shape.z + 5.0 * cell - v) / cell);\n"
+		"		if (which == 2)\n"
+		"			g.x = (angle >= 0.0 ? angle - pi : angle + pi) / across + float(count * 4 - 1) * 0.5;\n"
+		"		float lit = label_lit(g, which, floor(typed_part * float(count) + 0.5));\n"
+		"		float shadow = label_lit(g - vec2(0.5, 0.5), which, floor(typed_part * float(count) + 0.5));\n"
+		"		result = mix(result, vec3(0.0), shadow * 0.6 * washed);\n"
+		"		result = mix(result, hud * 0.85, lit * 0.9 * washed);\n"
+		"	}\n"
+		"	float off = shape.w;\n"
+		"	if (off > 0.0)\n"
+		"	{\n"
+		"		float open_half = max(1.0 - smoothstep(0.0, 0.7, off), 0.004);\n"
+		"		float shown = step(av, open_half) * step(alx, 1.0);\n"
+		"		float line = (1.0 - smoothstep(0.0, 0.02, abs(av - open_half))) * step(alx, 1.0 - smoothstep(0.7, 1.0, off));\n"
+		"		result = mix(vec3(0.01), result, shown * (1.0 - smoothstep(0.85, 1.0, off)));\n"
+		"		result = mix(result, white, line * (1.0 - smoothstep(0.9, 1.0, off)) * step(0.05, off));\n"
+		"		if (alx > 1.0 || av > 1.0)\n"
+		"			result = mix(result, vec3(0.01), off);\n"
+		"	}\n"
+		"	colour = vec4(clamp(result, 0.0, 1.0), 1.0);\n"
+		"}\n";
+	static unsigned long seed;
+	struct halo_vr_cockpit_window window;
+	struct halo_vr_cockpit_display display;
+	float fov_rows[2][4], centre[2][4], up[2][4], forward[2][4], right[2][4];
+	GLint text[COCKPIT_TEXT_LENGTH];
+	char line[COCKPIT_TEXT_LENGTH + 1], range_text[16], rounds_text[24], second_text[24];
+	GLuint eyes = vr_gl.eye_target.target.texture;
+	int eye, index;
+
+	if (failed || !vr_gl.eyes_drawn || !eyes || !halo_vr_cockpit_window(&window, &display))
+		return;
+#ifdef HALO_GLES
+	if (!xgpu_capabilities.copy_image)
+		return;
+#endif
+	if (!program)
+	{
+		GLuint vertex = xgpu_compile_shader(GL_VERTEX_SHADER, vertex_source, "VR cockpit display vertex");
+		GLuint fragment = xgpu_compile_shader(GL_FRAGMENT_SHADER, fragment_source, "VR cockpit display pixel");
+		GLint status = 0;
+
+		program = glCreateProgram();
+		glAttachShader(program, vertex);
+		glAttachShader(program, fragment);
+		glLinkProgram(program);
+		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		if (!vertex || !fragment || !status)
+		{
+			platform_log("vr: cannot make the cockpit display's program; the opening shows the world as it is");
+			failed = TRUE;
+			return;
+		}
+		glUseProgram(program);
+		glUniform1i(glGetUniformLocation(program, "eyes"), 0);
+		glUniform1i(glGetUniformLocation(program, "depth_texture"), 1);
+		centre_location = glGetUniformLocation(program, "centre");
+		up_location = glGetUniformLocation(program, "up");
+		forward_location = glGetUniformLocation(program, "forward");
+		right_location = glGetUniformLocation(program, "right");
+		fov_location = glGetUniformLocation(program, "fov");
+		shape_location = glGetUniformLocation(program, "shape");
+		image_location = glGetUniformLocation(program, "image");
+		wash_location = glGetUniformLocation(program, "wash");
+		text_location = glGetUniformLocation(program, "text");
+		depth_location = glGetUniformLocation(program, "depth_map");
+		layers_location = glGetUniformLocation(program, "layers");
+		glGenSamplers(1, &sampler);
+		glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
+	if (!copy || copy_width != vr_gl.eye_width || copy_height != vr_gl.eye_height)
+	{
+		if (copy)
+			glDeleteTextures(1, &copy);
+		glGenTextures(1, &copy);
+		glBindTexture(GL_TEXTURE_2D_ARRAY, copy);
+		glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
+		glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGBA8, vr_gl.eye_width, vr_gl.eye_height, 2, 0, GL_RGBA, GL_UNSIGNED_BYTE,
+			NULL);
+		copy_width = vr_gl.eye_width;
+		copy_height = vr_gl.eye_height;
+	}
+	/* the readout: the zoom (1x: the feed), the range, the rounds (as
+	glyphs: the smart-link's table) */
+	if (display.range > 0.0f && display.range < 999.9f)
+		snprintf(range_text, sizeof(range_text), "%05.1f", display.range);
+	else
+		snprintf(range_text, sizeof(range_text), "---.-");
+	rounds_text[0] = second_text[0] = 0;
+	if (display.rounds_loaded >= 0)
+		snprintf(rounds_text, sizeof(rounds_text), "   AMMO %d/%d", display.rounds_loaded,
+			display.rounds_carried < 0 ? 0 : display.rounds_carried);
+	if (display.second_loaded >= 0)
+		snprintf(second_text, sizeof(second_text), "   MG %d/%d", display.second_loaded,
+			display.second_carried < 0 ? 0 : display.second_carried);
+	snprintf(line, sizeof(line), "1X   RANGE %s%s%s", range_text, rounds_text, second_text);
+	for (index = 0; index < COCKPIT_TEXT_LENGTH; index++)
+	{
+		static const char letters[] = "XRANGEMO/.- ";
+		char letter = index < (int)strlen(line) ? line[index] : 0;
+		const char *found = letter ? strchr(letters, letter) : NULL;
+
+		text[index] = letter >= '0' && letter <= '9' ? letter - '0' : found ? 10 + (GLint)(found - letters) : -1;
+	}
+	for (eye = 0; eye < 2; eye++)
+	{
+		memcpy(fov_rows[eye], window.fov[eye], sizeof(fov_rows[eye]));
+		memcpy(centre[eye], window.centre[eye], sizeof(window.centre[eye]));
+		memcpy(up[eye], window.up[eye], sizeof(window.up[eye]));
+		memcpy(forward[eye], window.forward[eye], sizeof(window.forward[eye]));
+		memcpy(right[eye], window.right[eye], sizeof(window.right[eye]));
+		centre[eye][3] = up[eye][3] = forward[eye][3] = right[eye][3] = 0.0f;
+	}
+	glCopyImageSubData(eyes, GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, copy, GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, vr_gl.eye_width,
+		vr_gl.eye_height, 2);
+	framebuffer_views = 2;
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(eyes, 0));
+	framebuffer_views = 1;
+	glViewport(0, 0, vr_gl.eye_width, vr_gl.eye_height);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	glDisable(GL_FRAMEBUFFER_SRGB);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+	glUseProgram(program);
+	glUniform4fv(centre_location, 2, centre[0]);
+	glUniform4fv(up_location, 2, up[0]);
+	glUniform4fv(forward_location, 2, forward[0]);
+	glUniform4fv(right_location, 2, right[0]);
+	glUniform4fv(fov_location, 2, fov_rows[0]);
+	{
+		float shape[4] = { display.radius, display.half_angle, display.half_height, display.off };
+
+		glUniform4fv(shape_location, 1, shape);
+	}
+	glUniform2f(image_location, (float)vr_gl.eye_width, (float)vr_gl.eye_height);
+	glUniform2f(wash_location, display.wash, (float)(++seed % 97));
+	glUniform1iv(text_location, COCKPIT_TEXT_LENGTH, text);
+	/* (the depth of a point d away, as the world's is mapped: far / (far -
+	near) (1 - near / d)) */
+	glUniform2f(depth_location, depth_texture && window.far_z > window.near_z ?
+		window.far_z / (window.far_z - window.near_z) : 0.0f, window.near_z);
+	glUniform1i(layers_location, depth_layers);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, depth_texture);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glBindSampler(1, 0);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, copy);
+	glBindSampler(0, sampler);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glBindSampler(0, 0);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	xgpu_gl_state_invalidate();
 }
 
 /* the comfort vignette (halo_vr_vignette): the eyes' images dimmed toward
@@ -8790,7 +9833,15 @@ static void vr_copy_depth(void)
 	glBindTexture(GL_TEXTURE_2D_ARRAY, depth->target.texture);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glBindSampler(0, 0);
+	/* (its own sampler: no comparison, as a shadow map's has, nor filter) */
+	if (!dynamic_lights.depth_sampler)
+	{
+		glGenSamplers(1, &dynamic_lights.depth_sampler);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
+	glBindSampler(0, dynamic_lights.depth_sampler);
 	glDrawArrays(GL_TRIANGLES, 0, 3);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 	xgpu_gl_state_invalidate();
@@ -8968,7 +10019,15 @@ static void vr_draw_scope_window(GLuint depth_texture, int depth_layers)
 	glBindTexture(GL_TEXTURE_2D, vr_gl.scope_window_texture);
 	glBindSampler(0, sampler);
 	glDrawArrays(GL_TRIANGLES, 0, 3);
-	glBindSampler(0, 0);
+	/* (its own sampler: no comparison, as a shadow map's has, nor filter) */
+	if (!dynamic_lights.depth_sampler)
+	{
+		glGenSamplers(1, &dynamic_lights.depth_sampler);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_COMPARE_MODE, GL_NONE);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+		glSamplerParameteri(dynamic_lights.depth_sampler, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	}
+	glBindSampler(0, dynamic_lights.depth_sampler);
 	glDisable(GL_BLEND);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -9014,6 +10073,8 @@ static void vr_present(BOOL screenshot)
 	/* foveated, the eyes' images made from the inset and the periphery,
 	which the rest draws into */
 	vr_fovea_composite();
+	/* a feed cockpit's display, under the smart-link's window */
+	vr_draw_cockpit_display(eye_depth ? eye_depth->target.texture : 0, eye_depth ? eye_depth->target.layers : 0);
 	/* the scope's view: the smart-link's window drawn into the eyes, or
 	the lens's image for its layer */
 	vr_gl.scope_image = 0;
@@ -9056,6 +10117,7 @@ static void vr_present(BOOL screenshot)
 	/* the eyes' tint (a blink, the dead's), then the helmet's rim and the
 	visor's glass in the eyes (not in the menus: vr_visor.c), the rim's depth
 	with theirs */
+	vr_draw_feed();
 	vr_draw_tint();
 	vr_draw_vignette();
 	vr_draw_rim();
