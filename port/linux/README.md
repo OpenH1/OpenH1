@@ -1908,10 +1908,11 @@ yet). With `vr.aim = "controller"`.
 
 #### Climbing into a vehicle (`vr.vehicle_climb`)
 
-With the controller aiming, the Scorpion and the Warthog can be climbed with
-your hands, as in a climbing game: the hands pull and the world follows them,
-which is felt as your own motion. X still gets you in hands-free, into any
-vehicle; one without holds (the Wraith, a dropship) is got into with X alone.
+With the controller aiming, the Scorpion, the Warthog and the Ghost can be
+climbed with your hands, as in a climbing game: the hands pull and the world
+follows them, which is felt as your own motion. X still gets you in hands-
+free, into any vehicle; one without holds (the Wraith, a dropship) is got into
+with X alone.
 
 - Each vehicle's holds are where a Spartan would grab. As a hand comes
   within reach of one, the vehicle lights up (as the holsters' weapons do)
@@ -1943,6 +1944,12 @@ vehicle; one without holds (the Wraith, a dropship) is got into with X alone.
   gunner stands, and you are on the gun (your hands stay on its handles).
   Out: let go of the handles, take the bed's side and push yourself up and
   over it.
+- The Ghost: its handlebars and the cowl's edges above them. Take them and
+  pull yourself toward the saddle: within 60 cm your view is drawn into it,
+  and within 25 cm you are on it, the handlebars yours to steer by. Out:
+  with both hands on the handlebars, push off them (past 10 cm of slack,
+  your view moves back as your hands push); 25 cm back you are off, still
+  holding them, until you let go.
 - Your view's climb is the view's alone, as your head moving in the room is:
   your body stays on the ground beside the vehicle (others see it standing)
   until you are in the seat, and your hands pull your view no farther than
@@ -2344,7 +2351,7 @@ headset's session is opened with, apply from the next start.
 | `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a wide magnified window opens about the reticle, at its depth (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
 | `vr.smartlink_size` | `70.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the zoom's window is, in degrees of the view (30 to 100); it is 16:9. |
 | `vr.scope_gun` | `"hidden"` | `HALO_VR_SCOPE_GUN` | With `vr.scope_view = "smartlink"`: how the weapon in your hand shows where it crosses the zoom's window: `"hidden"`, the window over it (no barrel in the view); `"ghost"`, faintly through the window (a fifth); `"visible"`, in front of the window. Not in VR Controls. |
-| `vr.vehicle_climb` | `true` | `HALO_VR_VEHICLE_CLIMB` | With `vr.aim = "controller"`: a vehicle with holds (the Scorpion, the Warthog) is climbed with the hands: grip a hold and pull, the view moving against the hands; lowered into a hatch by its rim, pulled to a seat by its holds, or with both hands on a gun's handles, you are in the seat, and pulled or pushed out of it by its holds, out ("Climbing into a vehicle"). X works as ever. |
+| `vr.vehicle_climb` | `true` | `HALO_VR_VEHICLE_CLIMB` | With `vr.aim = "controller"`: a vehicle with holds (the Scorpion, the Warthog, the Ghost) is climbed with the hands: grip a hold and pull, the view moving against the hands; lowered into a hatch by its rim, pulled to a seat by its holds, or with both hands on a gun's handles, you are in the seat, and pulled or pushed out of it by its holds (the Ghost: pushed off its handlebars), out ("Climbing into a vehicle"). X works as ever. |
 | `vr.vehicle_zoom` | `"2 4"` | `HALO_VR_VEHICLE_ZOOM` | With `vr.scope_view = "smartlink"`, in a vehicle's seat whose weapon you aim, seen from the seat: the magnifications the right stick's click steps through in the zoom's window, then none (up to 4, each more than 1; `""`: the click does nothing there, as before). A vehicle's weapon with zoom levels of its own (none in the game's maps) has those. Not in VR Controls. |
 | `vr.recoil` | `1.0` | `HALO_VR_RECOIL` | With `vr.aim = "controller"`: how far the weapon in your hand kicks as it fires, each its own way, from `0` (none) to `1` (above, "The weapons' feel"). Drawn alone: the aim, the shots and the scopes' views stay where you point. Not in VR Controls. |
 | `vr.weapon_haptics` | `1.0` | `HALO_VR_WEAPON_HAPTICS` | With `vr.aim = "controller"`: how strongly the controllers feel each weapon firing, each its own way, and the hits on you, in the hand on the side they came from, in place of the gamepad's rumble for them, from `0` (none) to `1` (above, "The weapons' feel"). Not in VR Controls. |

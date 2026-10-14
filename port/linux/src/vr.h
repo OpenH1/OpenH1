@@ -323,8 +323,11 @@ recentred head, metres, and how far about it a hand takes it); given each
 hand's hold (-1 none), the nearest hold to each hand and how far it is
 (metres beyond its reach; 0 or less within it), and how far the eye moves
 this frame by the hands (game axes, metres: against the holding hands'
-motion); and each hand's place (game axes from the recentred head, metres)
-and the frame (presented: debug.vr_test_hands poses by it) */
+motion); and each hand's place (game axes from the recentred head, metres),
+whether both hands hold the seat's own handles (halo_vr_seat_place: they
+steer), and told, whether a hand whose grip is held takes a hold within
+reach as a press would (grab: the handles it pushed off); and the frame
+(presented: debug.vr_test_hands poses by it) */
 #define HALO_VR_CLIMB_HOLDS 24
 struct halo_vr_climb
 {
@@ -336,6 +339,8 @@ struct halo_vr_climb
 	float distance[2];
 	float moved[3];
 	float hand[2][3];
+	int seat_held;
+	int grab;
 	unsigned long frame;
 };
 

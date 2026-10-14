@@ -26,13 +26,17 @@ two rules:
   the rim glows; holding it, the eye rises as the hands pull down, and past
   the seat's exit above the rim the game's exit happens, as X's
   (unit_try_and_exit_seat).
-- By a pull toward it (the Warthog's seats, a gun's): holding a hold of the
-  seat's (the frame by a Warthog's seat), within CLIMB_PULL_REACH of where
-  the seated eye is, the eye is drawn toward it (CLIMB_FUNNEL_SPEED), and
-  within the seat's enter of it, the game's seat entry happens. A gun's seat
-  asks for both hands on its handles. Out: from the seat, holding a hold the
-  seat offers (the Warthog's frame, its bed's sides), the eye moved past the
-  seat's exit from where it sat, the game's exit happens.
+- By a pull toward it (the Warthog's seats, the Ghost's saddle, a gun's):
+  holding a hold of the seat's (the frame by a Warthog's seat, the Ghost's
+  handlebars), within CLIMB_PULL_REACH of where the seated eye is, the eye
+  is drawn toward it (CLIMB_FUNNEL_SPEED), and within the seat's enter of
+  it, the game's seat entry happens. A gun's seat asks for both hands on its
+  handles. Out: from the seat, holding a hold the seat offers (the Warthog's
+  frame, its bed's sides), the eye moved past the seat's exit from where it
+  sat, the game's exit happens. A seat whose handles steer it (the Ghost's
+  bars) is got out of by pushing off them: both hands on them, the eye moves
+  against them beyond CLIMB_PUSH_SLACK of their move, and the hands go on
+  holding them, out.
 
 Got in, the eye glides from where the hands had it to the seat's
 (CLIMB_SEAT_SPEED; a feed cockpit's ride carries it instead: vr_seat.c),
@@ -102,6 +106,9 @@ a second, seconds) */
 #define CLIMB_SEAT_SPEED (0.8f / METRES_PER_WORLD_UNIT)
 #define CLIMB_SEAT_EASE 0.25f
 #define CLIMB_SEAT_SLOWEST (0.1f / METRES_PER_WORLD_UNIT)
+/* pushing off handles that steer: the hands' move that is theirs alone, before
+the eye moves against it (metres) */
+#define CLIMB_PUSH_SLACK 0.10f
 
 /* a hold: a line on the vehicle (its ends, in its model's space, or in a
 marker's axes from the marker: world units forward, left, up), how far about
@@ -127,7 +134,8 @@ a hatch's opening (forward and left, from and to) and its rim's height, how
 near the seat it is got into (a hatch: the eye this far above the rim's plane,
 below it less than 0; a pull: this near the seated eye) and how far it is got
 out (a hatch: this far above the rim; else this far from where it sat; world
-units), and whether both hands on its handles get it */
+units), whether both hands on its handles get it, and whether it is got out
+of by pushing off its handles (they steer, seated) */
 enum
 {
 	_climb_enter_hatch,
@@ -145,6 +153,7 @@ struct vr_climb_seat
 	real enter;
 	real exit;
 	boolean handles;
+	boolean push;
 };
 
 /* a vehicle's: its model's tag name, its seats and its holds */
@@ -166,7 +175,7 @@ across; in 30 cm below the rim, out 30 cm above it */
 static struct vr_climb_seat const vr_climb_scorpion_seats[] =
 {
 	{ "scorpion-driver", _climb_enter_hatch, NULL, { 0.465f, 0.200f, 0.750f }, { 0.345f, 0.080f, 0.585f, 0.320f },
-		0.750f, -0.30f / METRES_PER_WORLD_UNIT, 0.30f / METRES_PER_WORLD_UNIT, FALSE },
+		0.750f, -0.30f / METRES_PER_WORLD_UNIT, 0.30f / METRES_PER_WORLD_UNIT, FALSE, FALSE },
 };
 
 static struct vr_climb_hold const vr_climb_scorpion_holds[] =
@@ -199,11 +208,11 @@ and the side's edge, the bed's sides and tailgate, pushed down on */
 static struct vr_climb_seat const vr_climb_warthog_seats[] =
 {
 	{ "W-driver", _climb_enter_pull, NULL, { -0.071f, 0.154f, 0.628f }, { 0.0f }, 0.0f, 0.25f / METRES_PER_WORLD_UNIT,
-		0.35f / METRES_PER_WORLD_UNIT, FALSE },
+		0.35f / METRES_PER_WORLD_UNIT, FALSE, FALSE },
 	{ "W-passenger", _climb_enter_pull, NULL, { -0.002f, -0.160f, 0.784f }, { 0.0f }, 0.0f,
-		0.25f / METRES_PER_WORLD_UNIT, 0.35f / METRES_PER_WORLD_UNIT, FALSE },
+		0.25f / METRES_PER_WORLD_UNIT, 0.35f / METRES_PER_WORLD_UNIT, FALSE, FALSE },
 	{ "W-gunner", _climb_enter_pull, "gunner", { 0.080f, -0.030f, 0.291f }, { 0.0f }, 0.0f,
-		0.30f / METRES_PER_WORLD_UNIT, 0.35f / METRES_PER_WORLD_UNIT, TRUE },
+		0.30f / METRES_PER_WORLD_UNIT, 0.35f / METRES_PER_WORLD_UNIT, TRUE, FALSE },
 };
 
 #define CLIMB_HOLD_BY_SEAT (CLIMB_HOLD_FOOT | CLIMB_HOLD_ENTRY | CLIMB_HOLD_SEATED)
@@ -228,12 +237,35 @@ static struct vr_climb_hold const vr_climb_warthog_holds[] =
 		"gunner right hand" },
 };
 
+/* the Ghost: its handlebars (the Elite driver's hands' markers, where the
+Chief's hands are too as he drives) and the cowl's back and side edges above
+them (the bars are low: 85 cm from the ground), pulled to into the saddle;
+out, pushed off the bars (they steer, seated) */
+static struct vr_climb_seat const vr_climb_ghost_seats[] =
+{
+	{ "G-driver", _climb_enter_pull, NULL, { -0.086f, 0.0f, 0.362f }, { 0.0f }, 0.0f, 0.25f / METRES_PER_WORLD_UNIT,
+		0.25f / METRES_PER_WORLD_UNIT, FALSE, TRUE },
+};
+
+static struct vr_climb_hold const vr_climb_ghost_holds[] =
+{
+	{ { { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f } }, 0.05f, CLIMB_HOLD_FOOT | CLIMB_HOLD_ENTRY | CLIMB_HOLD_HANDLE, 0,
+		"left hand elite" },
+	{ { { 0.0f, 0.0f, 0.0f }, { 0.0f, 0.0f, 0.0f } }, 0.05f, CLIMB_HOLD_FOOT | CLIMB_HOLD_ENTRY | CLIMB_HOLD_HANDLE, 0,
+		"right hand elite" },
+	{ { { 0.070f, 0.120f, 0.405f }, { 0.070f, -0.120f, 0.405f } }, 0.04f, CLIMB_HOLD_FOOT | CLIMB_HOLD_ENTRY, 0, NULL },
+	{ { { 0.120f, 0.170f, 0.370f }, { 0.450f, 0.180f, 0.360f } }, 0.04f, CLIMB_HOLD_FOOT | CLIMB_HOLD_ENTRY, 0, NULL },
+	{ { { 0.120f, -0.170f, 0.370f }, { 0.450f, -0.180f, 0.360f } }, 0.04f, CLIMB_HOLD_FOOT | CLIMB_HOLD_ENTRY, 0, NULL },
+};
+
 static struct vr_climb_vehicle const vr_climb_vehicles[] =
 {
 	{ "vehicles\\scorpion\\scorpion", vr_climb_scorpion_seats, NUMBEROF(vr_climb_scorpion_seats),
 		vr_climb_scorpion_holds, NUMBEROF(vr_climb_scorpion_holds) },
 	{ "vehicles\\warthog\\warthog", vr_climb_warthog_seats, NUMBEROF(vr_climb_warthog_seats),
 		vr_climb_warthog_holds, NUMBEROF(vr_climb_warthog_holds) },
+	{ "vehicles\\ghost\\ghost", vr_climb_ghost_seats, NUMBEROF(vr_climb_ghost_seats),
+		vr_climb_ghost_holds, NUMBEROF(vr_climb_ghost_holds) },
 };
 
 static struct
@@ -260,6 +292,13 @@ static struct
 	vehicle (its root node's frame) */
 	boolean seating;
 	real_point3d seat_local;
+	/* pushing off a seat's handles: where the hands' middle was as they
+	took them (metres, the game's axes from the recentred head) */
+	boolean pushing;
+	float push_from[3];
+	/* a hand whose grip is held takes a hold within reach (the handles
+	pushed off, held on as the seat is left) */
+	boolean grab;
 } vr_climb = { NONE, NONE };
 
 static boolean vr_climb_enabled(void)
@@ -402,7 +441,8 @@ static void vr_climb_reset(void)
 	vr_climb.holding = 0;
 	vr_climb.nearest = 1e9f;
 	vr_climb.vehicle_index = NONE;
-	vr_climb.entering = vr_climb.exiting = vr_climb.left = vr_climb.seating = FALSE;
+	vr_climb.entering = vr_climb.exiting = vr_climb.left = vr_climb.seating = vr_climb.pushing = FALSE;
+	vr_climb.grab = FALSE;
 }
 
 /* the hold the hand holds (the told holds' index, else less than 0) is the
@@ -494,8 +534,8 @@ void vr_climb_eye(long seated_unit_index, boolean aiming, real base_yaw, real un
 
 	/* the holds told to vr.c, as the eye is placed now (the recentred
 	head's place in the world: the eye with its offset): on foot, those
-	offered on foot; seated, the seat's; none as the eye glides into a
-	seat */
+	offered on foot; seated, the seat's (and pushed off its handles, as the
+	seat is left, those); none as the eye glides into a seat */
 	csmemset(&climb, 0, sizeof(climb));
 	origin.x = base.x + vr_climb.offset.i;
 	origin.y = base.y + vr_climb.offset.j;
@@ -507,7 +547,8 @@ void vr_climb_eye(long seated_unit_index, boolean aiming, real base_yaw, real un
 			struct vr_climb_hold const *hold = &table->holds[index];
 			short end;
 
-			if (seated_in ? hold->seat != seat || !(hold->flags & CLIMB_HOLD_SEATED) :
+			if (seated_in ? hold->seat != seat || !(hold->flags & CLIMB_HOLD_SEATED) &&
+				!(vr_climb.exiting && table->seats[seat].push && (hold->flags & CLIMB_HOLD_HANDLE)) :
 				!(hold->flags & CLIMB_HOLD_FOOT))
 			{
 				continue;
@@ -531,7 +572,10 @@ void vr_climb_eye(long seated_unit_index, boolean aiming, real base_yaw, real un
 			climb.count++;
 		}
 	}
+	climb.grab = vr_climb.grab;
 	vr_climb.holding = (short)halo_vr_climb(&climb);
+	if (vr_climb.holding)
+		vr_climb.grab = FALSE;
 	if (!vr_climb.holding && !vr_climb.exiting)
 		vr_climb.left = FALSE;
 	/* (debug.vr_test_seat "... climb": the holds where they are from the
@@ -589,11 +633,12 @@ void vr_climb_eye(long seated_unit_index, boolean aiming, real base_yaw, real un
 				halo_vr_test_screenshot();
 		}
 		platform_log("vr: climb: tick %ld (frame %lu): %d hands hold (%d %d), nearest %.2f %.2f m, eye offset %.3f %.3f %.3f m, "
-			"hands %.2f %.2f %.2f and %.2f %.2f %.2f%s",
+			"hands %.2f %.2f %.2f and %.2f %.2f %.2f%s%s%s",
 			game_time_get(), climb.frame, vr_climb.holding, climb.held[0], climb.held[1], climb.distance[0], climb.distance[1],
 			vr_climb.offset.i / units, vr_climb.offset.j / units, vr_climb.offset.k / units, climb.hand[0][0],
 			climb.hand[0][1], climb.hand[0][2], climb.hand[1][0], climb.hand[1][1], climb.hand[1][2],
-			vr_climb.seating ? ", seating" : "");
+			vr_climb.seating ? ", seating" : "", climb.seat_held ? ", on the seat's handles" : "",
+			vr_climb.pushing ? ", pushing" : "");
 	}
 	vr_climb.nearest = MIN(climb.distance[0], climb.distance[1]);
 
@@ -629,11 +674,36 @@ void vr_climb_eye(long seated_unit_index, boolean aiming, real base_yaw, real un
 			platform_log("vr: climb: the eye in %s's seat", tag_get_name(object_get(vehicle_index)->definition_index));
 		}
 	}
+	else if (seated_in && table->seats[seat].push && climb.seat_held && !vr_climb.holding && !vr_climb.exiting)
+	{
+		/* (on handles that steer: pushed off them, beyond their slack, the eye
+		moves against them, as it does against holds) */
+		float mean[3], d[3], length;
+		real beyond, x, y;
+		short axis;
+
+		for (axis = 0; axis < 3; axis++)
+			mean[axis] = (climb.hand[0][axis] + climb.hand[1][axis]) * 0.5f;
+		if (!vr_climb.pushing)
+		{
+			vr_climb.pushing = TRUE;
+			memcpy(vr_climb.push_from, mean, sizeof(mean));
+		}
+		for (axis = 0; axis < 3; axis++)
+			d[axis] = mean[axis] - vr_climb.push_from[axis];
+		length = sqrtf(d[0] * d[0] + d[1] * d[1] + d[2] * d[2]);
+		beyond = length > CLIMB_PUSH_SLACK ? (length - CLIMB_PUSH_SLACK) / length : 0.0f;
+		yaw_turn(base_yaw, -d[0] * beyond, -d[1] * beyond, &x, &y);
+		vr_climb.offset.i = x * units;
+		vr_climb.offset.j = y * units;
+		vr_climb.offset.k = -d[2] * beyond * units;
+	}
 	else
 	{
 		/* the eye moved by the hands (against them), or back down to the
 		body at walking pace as they let go (seated, straight back to the
 		seat's place) */
+		vr_climb.pushing = FALSE;
 		yaw_turn(base_yaw, climb.moved[0], climb.moved[1], &moved_x, &moved_y);
 		vr_climb.offset.i += moved_x * units;
 		vr_climb.offset.j += moved_y * units;
@@ -756,7 +826,8 @@ void vr_climb_eye(long seated_unit_index, boolean aiming, real base_yaw, real un
 
 	/* in: lowered into a hatch past its plane, pulled within reach of a
 	seat's eye, the game's seat entry (X's); out: risen out of a hatch,
-	moved off a seat by its holds, the game's exit (X's) */
+	moved off a seat by its holds, pushed off its handles, the game's exit
+	(X's) */
 	if (table && vehicle_index != NONE)
 	{
 		real_matrix4x3 inverse;
@@ -810,17 +881,21 @@ void vr_climb_eye(long seated_unit_index, boolean aiming, real base_yaw, real un
 			struct vr_climb_seat const *from = &table->seats[seat];
 			boolean out;
 
-			if (from->rule == _climb_enter_hatch)
+			if (from->push)
+				out = vr_climb.pushing && magnitude_squared3d(&vr_climb.offset) > from->exit * from->exit;
+			else if (from->rule == _climb_enter_hatch)
 				out = vr_climb.holding && local.z > from->rim + from->exit;
 			else
 				out = vr_climb.holding && magnitude_squared3d(&vr_climb.offset) > from->exit * from->exit;
 			if (out && unit_try_and_exit_seat(unit_index))
 			{
-				platform_log("vr: climb: %s %s's seat (%s)", from->rule == _climb_enter_hatch ?
-					"risen out of the hatch, out of" : "climbed out of",
+				platform_log("vr: climb: %s %s's seat (%s)", from->push ? "pushed off the handles, out of" :
+					from->rule == _climb_enter_hatch ? "risen out of the hatch, out of" : "climbed out of",
 					tag_get_name(object_get(vehicle_index)->definition_index), from->label);
 				vr_climb.exiting = TRUE;
 				vr_climb.left = TRUE;
+				vr_climb.grab = from->push;
+				vr_climb.pushing = FALSE;
 			}
 		}
 	}

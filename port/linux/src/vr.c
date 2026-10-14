@@ -2472,12 +2472,15 @@ static float climb_distance(const float p[3], const float ends[2][3], float radi
 	return sqrtf(dist2) - radius;
 }
 
+static int seat_held(void);
+
 int halo_vr_climb(struct halo_vr_climb *c)
 {
 	static const char *const hands[2] = { "left", "right" };
 	int hand, holding = 0, axis;
 
 	c->moved[0] = c->moved[1] = c->moved[2] = 0.0f;
+	c->seat_held = seat_held();
 	c->frame = vr.presents;
 	for (hand = 0; hand < 2; hand++)
 	{
@@ -2519,7 +2522,7 @@ int halo_vr_climb(struct halo_vr_climb *c)
 			hand_haptic(hand, 0.2f, 0.02f);
 		climb.near[hand] = best <= 0.0f;
 		vr.climb_near[hand] = best <= CLIMB_NEAR;
-		if (value > CLIMB_GRIP_PRESSED && !climb.pressed[hand])
+		if (value > CLIMB_GRIP_PRESSED && (!climb.pressed[hand] || (c->grab && !vr.climb_grip[hand])))
 		{
 			climb.pressed[hand] = 1;
 			if (best <= 0.0f)
