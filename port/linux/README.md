@@ -498,6 +498,11 @@ Other things the game moves once a tick are drawn between ticks as well:
 - A waypoint (nav point) over an object stays over the object as it is
   drawn, an ally or a vehicle on the move too (in VR as well, where the
   waypoint is drawn in the world).
+- The screen's flashes (a hit, a teleport) and a level's fades, and the
+  camera's shake and knock, follow their curves in each frame. The shake
+  is random once a tick, as on the Xbox; between ticks it moves from one
+  tick's place to the next's. In VR the view does not shake (refer to
+  "How it operates" in "VR").
 
 The direction of the view is an exception. The game reads the mouse and the
 sticks in each frame. In first person, on foot, each frame points the view
@@ -2600,6 +2605,14 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   the game as the headset shows them (read when the last frame's work
   ended, they were 9 to 19 ms apart at 72 Hz, and what moved fast
   juddered).
+- The view does not shake. The game shakes and knocks a player's camera
+  (firing, explosions, hits, a level's scripted quake:
+  `player_effect_get_camera_effect_matrix`), and the eyes were placed from
+  that camera: the view moved by up to a few centimetres that the head did
+  not move, which sickens. In VR the effect is still taken (its timers run,
+  and the gamepad's rumble with them) but does not move the camera
+  (`main.c`, `set_window_camera_values`). The hits are felt in the
+  controllers (below), and the screen's flashes are drawn.
 - The player's facing follows the right controller (or the head). Thus
   the netcode sees a normal player's aim. The first-person weapon is
   posed from a camera behind the controller, and drawn in both eyes as

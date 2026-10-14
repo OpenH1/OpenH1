@@ -27,6 +27,8 @@ struct observer_result const *render_interpolation_camera(short local_player_ind
 void render_interpolation_first_person(short local_player_index, struct real_matrix4x3 *node_matrices,
 	short node_count, struct render_camera const *camera);
 float render_interpolation_game_time_sec(long ticks);
+float render_interpolation_ticks_behind(void);
+float render_interpolation_ticks_left(long ticks_left);
 
 /* the port's menus' screen for one of ui.map's, by name, else the name
 (port/linux/game/menu_tags.c) */

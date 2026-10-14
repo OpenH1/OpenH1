@@ -39,6 +39,7 @@ with their unit, and with what it rides.
 #include "camera/director.h"
 #include "camera/observer.h"
 #include "cutscene/cinematics.h"
+#include "game/game.h"
 #include "game/players.h"
 #include "render/render_cameras.h"
 #include "units/units.h"
@@ -1011,4 +1012,25 @@ real render_interpolation_game_time_sec(long ticks)
 		return (real)ticks * (1.0f / TICKS_PER_SECOND);
 	time = ((real)ticks - 1.0f + interpolation_fraction) * (1.0f / TICKS_PER_SECOND);
 	return time > 0.0f ? time : 0.0f;
+}
+
+/* how many ticks the frame drawn is behind the game's time: the part of a
+tick still to run to the last tick's (as the objects, above), none when
+frames are not drawn between ticks */
+real render_interpolation_ticks_behind(void)
+{
+	return interpolation_rendering ? 1.0f - interpolation_fraction : 0.0f;
+}
+
+/* a timer that the frames count down by the ticks each ran (by
+game_time_get_elapsed(), after reading it: the screen's flash, the camera's
+impulse and shake), read before this frame's count as it stands at the time
+of the frame drawn: what is left after this frame's ticks, and the part of a
+tick the frame is behind them. When frames are not drawn between ticks, as
+it is (before this frame's ticks), as the game read it. */
+real render_interpolation_ticks_left(long ticks_left)
+{
+	if (!interpolation_rendering)
+		return (real)ticks_left;
+	return (real)(ticks_left - game_time_get_elapsed()) + 1.0f - interpolation_fraction;
 }
