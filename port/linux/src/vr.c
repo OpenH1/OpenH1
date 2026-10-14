@@ -50,14 +50,17 @@ the view while the crouch is the head's: the head has already come down.
 #define HUD_HEIGHT 960
 /* the scope's image (vr.scopes), square: about as many pixels as the eye's
 image has over the lens (a lens of 28 degrees, an eye of 1728 lines over
-about 100), times vr.resolution_scale, within these */
+about 100), or two thirds as many as it has over the smart-link's window
+(70 degrees: the window is drawn into the eyes, filtered), times
+vr.resolution_scale, within these */
 #define SCOPE_IMAGE_SIZE 480
+#define SCOPE_WINDOW_IMAGE_SIZE 1024
 #define SCOPE_IMAGE_SMALLEST 256
-#define SCOPE_IMAGE_LARGEST 768
-/* the smart-link's view on the visor (vr.smartlink_size): no narrower nor
-wider than these (degrees) */
-#define SMARTLINK_NARROWEST 10.0f
-#define SMARTLINK_WIDEST 45.0f
+#define SCOPE_IMAGE_LARGEST 1536
+/* the smart-link's window about the reticle (vr.smartlink_size): no
+narrower nor wider than these (degrees) */
+#define SMARTLINK_NARROWEST 30.0f
+#define SMARTLINK_WIDEST 100.0f
 /* a world unit is 10 feet */
 #define METRES_PER_WORLD_UNIT 3.048f
 /* a melee by the right hand's swing (vr.melee_gesture), in any direction:
@@ -849,10 +852,12 @@ static struct
 	int melee_gesture;
 	int holsters;
 	int physical_crouch;
-	/* vr.scopes and vr.scope_view: HALO_VR_SCOPES_*, 0 off; and the
-	smart-link's view, how wide (degrees, vr.smartlink_size) */
+	/* vr.scopes and vr.scope_view: HALO_VR_SCOPES_*, 0 off; the smart-link's
+	window, how wide (degrees, vr.smartlink_size), and how the weapon in hand
+	shows over it (vr.scope_gun: 0 hidden, 1 ghost, 2 visible) */
 	int scopes;
 	float smartlink_degrees;
+	int scope_gun;
 	int manual_reload;
 	/* vr.vehicle_flip: what flips an overturned vehicle, X ("button",
 	"both") and a lift of both hands ("lift", "both") */
@@ -889,11 +894,13 @@ static struct
 	float weapon_haptics;
 	float recoil;
 	/* debug.vr_test_head: the head held still, turned left and right by
-	this many degrees over this many seconds, and pitched up this many */
+	this many degrees over this many seconds, pitched up this many and
+	rolled this many to the right */
 	int test_head;
 	float test_head_yaw;
 	float test_head_period;
 	float test_head_pitch;
+	float test_head_roll;
 	/* debug.vr_test_fov: each eye's field of view (degrees: outward, inward,
 	up, down) and its turn outward (degrees), instead of the runtime's */
 	int test_fov;
@@ -1002,6 +1009,8 @@ static void settings_read(void)
 	if (settings.smartlink_degrees < SMARTLINK_NARROWEST || settings.smartlink_degrees > SMARTLINK_WIDEST)
 		settings.smartlink_degrees = settings.smartlink_degrees < SMARTLINK_NARROWEST ? SMARTLINK_NARROWEST :
 			SMARTLINK_WIDEST;
+	settings.scope_gun = !strcmp(config_string("vr.scope_gun"), "visible") ? 2 :
+		!strcmp(config_string("vr.scope_gun"), "ghost") ? 1 : 0;
 	settings.manual_reload = config_boolean("vr.manual_reload");
 	settings.flip_lift = strcmp(config_string("vr.vehicle_flip"), "button") != 0;
 	settings.flip_button = !settings.flip_lift || !strcmp(config_string("vr.vehicle_flip"), "both");
@@ -1030,8 +1039,9 @@ static void settings_read(void)
 	settings.test_head_yaw = 0.0f;
 	settings.test_head_period = 0.0f;
 	settings.test_head_pitch = 0.0f;
-	settings.test_head = sscanf(config_string("debug.vr_test_head"), "%f %f %f", &settings.test_head_yaw,
-		&settings.test_head_period, &settings.test_head_pitch) >= 1;
+	settings.test_head_roll = 0.0f;
+	settings.test_head = sscanf(config_string("debug.vr_test_head"), "%f %f %f %f", &settings.test_head_yaw,
+		&settings.test_head_period, &settings.test_head_pitch, &settings.test_head_roll) >= 1;
 	settings.test_fov_angles[4] = 0.0f;
 	settings.test_fov = sscanf(config_string("debug.vr_test_fov"), "%f %f %f %f %f", &settings.test_fov_angles[0],
 		&settings.test_fov_angles[1], &settings.test_fov_angles[2], &settings.test_fov_angles[3],
@@ -1191,7 +1201,8 @@ int halo_vr_initialize(void)
 	vr.info.visor_width = vr.info.visor_height = 0;
 	vr_visor_panel_sizes(vr.info.panel_width, vr.info.panel_height);
 	{
-		int size = (int)(SCOPE_IMAGE_SIZE * vr.info.scale / 16.0f + 0.5f) * 16;
+		int size = (int)((settings.scopes == HALO_VR_SCOPES_SMARTLINK ? SCOPE_WINDOW_IMAGE_SIZE : SCOPE_IMAGE_SIZE) *
+			vr.info.scale / 16.0f + 0.5f) * 16;
 
 		vr.info.scope_size = size < SCOPE_IMAGE_SMALLEST ? SCOPE_IMAGE_SMALLEST :
 			size > SCOPE_IMAGE_LARGEST ? SCOPE_IMAGE_LARGEST : size;
@@ -2293,12 +2304,86 @@ float halo_vr_scope_zoom(float *height)
 	return vr.scope_set ? vr.scope.zoom : 0.0f;
 }
 
-int halo_vr_scope_smartlink(float reticle[2], float *height)
+int halo_vr_scope_smartlink(float reticle[2])
 {
 	reticle[0] = vr.scope.reticle[0];
 	reticle[1] = vr.scope.reticle[1];
-	*height = vr.scope.height;
 	return vr.scope_set && vr.scope.eye < 0;
+}
+
+/* the window from the recentred head's game axes to the play space (as the
+scope's quad is placed, halo_vr_present), then into each eye's space as
+the eyes were drawn: the window is drawn into their images, where each
+sees it */
+int halo_vr_scope_window(struct halo_vr_scope_window *window)
+{
+	float position[3], back[3], up[3], right[3], g[3], along;
+	int axis, eye;
+
+	if (!vr.scope_set || vr.scope.eye >= 0 || vr.scope.window[0] <= 0.0f || !vr.views.eye[0].valid ||
+		!vr.views.eye[1].valid)
+	{
+		return 0;
+	}
+	play_axes(vr.scope.position, vr.origin_yaw, position);
+	for (axis = 0; axis < 3; axis++)
+	{
+		position[axis] += vr.origin_position[axis];
+		g[axis] = -vr.scope.forward[axis];
+	}
+	play_axes(g, vr.origin_yaw, back);
+	play_axes(vr.scope.up, vr.origin_yaw, up);
+	normalize(back);
+	along = up[0] * back[0] + up[1] * back[1] + up[2] * back[2];
+	for (axis = 0; axis < 3; axis++)
+		up[axis] -= back[axis] * along;
+	normalize(up);
+	right[0] = up[1] * back[2] - up[2] * back[1];
+	right[1] = up[2] * back[0] - up[0] * back[2];
+	right[2] = up[0] * back[1] - up[1] * back[0];
+	for (eye = 0; eye < 2; eye++)
+	{
+		const struct vr_host_pose *pose = &vr.views.eye[eye];
+		float inverse[4], from_eye[3];
+
+		inverse[0] = -pose->orientation[0];
+		inverse[1] = -pose->orientation[1];
+		inverse[2] = -pose->orientation[2];
+		inverse[3] = pose->orientation[3];
+		for (axis = 0; axis < 3; axis++)
+			from_eye[axis] = position[axis] - pose->position[axis];
+		quaternion_rotate(inverse, from_eye, window->centre[eye]);
+		quaternion_rotate(inverse, right, window->right[eye]);
+		quaternion_rotate(inverse, up, window->up[eye]);
+		memcpy(window->fov[eye], vr.views.fov[eye], sizeof(window->fov[eye]));
+	}
+	window->half[0] = vr.scope.size * 0.5f;
+	window->half[1] = vr.scope.size * 0.5f * vr.scope.height;
+	window->window[0] = vr.scope.window[0];
+	window->window[1] = vr.scope.window[1] / vr.scope.height;
+	window->near_z = vr.depth_near;
+	window->far_z = vr.depth_far;
+	return 1;
+}
+
+void halo_vr_scope_readout(float *range, int *rounds_loaded, int *rounds_carried)
+{
+	*range = vr.scope.range;
+	*rounds_loaded = vr.scope.rounds_loaded;
+	*rounds_carried = vr.scope.rounds_carried;
+}
+
+void halo_vr_scope_animation(float *opened_seconds, float *closing, float *switched_seconds)
+{
+	*opened_seconds = vr.scope.opened_seconds;
+	*closing = vr.scope.closing;
+	*switched_seconds = vr.scope.switched_seconds;
+}
+
+int halo_vr_scope_gun(void)
+{
+	settings_read();
+	return settings.scope_gun;
 }
 
 /* a point along a pose's axes from its position (OpenXR axes; along:
@@ -3610,6 +3695,15 @@ static void test_head_apply(void)
 
 		quaternion_multiply(turn, pitch, turn);
 	}
+	if (settings.test_head_roll != 0.0f)
+	{
+		/* (about the head's own forward, after its pitch: the right ear
+		down) */
+		float half = -settings.test_head_roll * (float)M_PI / 180.0f * 0.5f;
+		float roll[4] = { 0.0f, 0.0f, sinf(half), cosf(half) };
+
+		quaternion_multiply(turn, roll, turn);
+	}
 	v[0] = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
 	v[1] = v[2] = 0.0f;
 	quaternion_rotate(turn, v, half_ipd);
@@ -4336,7 +4430,6 @@ void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn)
 			pending->scope = 1;
 			pending->scope_eye = vr.scope.eye;
 			pending->scope_size = vr.scope.size;
-			pending->scope_height = vr.scope.height;
 		}
 		if (pending->projection && !vr.menus && vr_visor_enabled())
 		{

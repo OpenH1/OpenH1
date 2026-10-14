@@ -233,9 +233,8 @@ struct halo_vr_holsters
 /* the magnified view in a weapon's scope (vr.scopes, vr.scope_view,
 port/linux/game/vr_scope.c): raised to an eye, its image on a quad at the
 scope's eyepiece, facing back along the scope, seen by that eye alone;
-smart-linked, on the display on the back of the sniper rifle's scope,
-facing back along it, or for a weapon without one on a quad on the visor
-just above the aim, facing the head, seen by both */
+smart-linked, a window about the reticle, at its distance, facing back along
+the aim from between the eyes, drawn into both eyes' images (d3d8_gl.c) */
 struct halo_vr_scope
 {
 	/* the eye (0 left, 1 right; -1 both: the smart-link's) */
@@ -246,10 +245,6 @@ struct halo_vr_scope
 	float forward[3];
 	float up[3];
 	float size;
-	/* how tall, of its width: 1, the square about a round lens or the
-	smart-link's circle; less, the display's rectangle (the image's middle
-	rows) */
-	float height;
 	/* the zoom shown in the lens, as the game's HUD labels the zoom level
 	(0: unzoomed, none shown), and how tall (of the lens's width) */
 	float zoom;
@@ -258,6 +253,40 @@ struct halo_vr_scope
 	the view's middle, as fractions of its radius (its middle: the view is
 	drawn toward the aim, beside it) */
 	float reticle[2];
+	/* the smart-link's window: the quad's height of its width (size: the
+	window and the glow about it; the image's square holds the quad in its
+	middle rows), and the window's half width and half height within it (of
+	the quad's half width; 0: no window);
+	how far the aim meets the world from the weapon (metres; 0: nothing in
+	range); the rounds in the weapon and carried besides (-1: none to show) */
+	float height;
+	float window[2];
+	float range;
+	int rounds_loaded;
+	int rounds_carried;
+	/* its animation: how far it has opened (its eased progress, 0 to 1:
+	the smart-link connecting), how far it has closed (0 to 1; 0: not
+	closing), and the seconds since the zoom last changed level while open */
+	float opened_seconds;
+	float closing;
+	float switched_seconds;
+};
+
+/* d3d8_gl.c: the smart-link's window as each eye sees it, in the eye's
+space (OpenXR's view space: x right, y up, z back; metres): its middle, its
+right and up, the quad's half width and half height, and the eye's field of
+view (tangents: left, right, up, down); the window within the quad (of the
+quad's half width and half height); and the eyes' depth range (metres) */
+struct halo_vr_scope_window
+{
+	float centre[2][3];
+	float right[2][3];
+	float up[2][3];
+	float half[2];
+	float fov[2][4];
+	float window[2];
+	float near_z;
+	float far_z;
 };
 
 /* the reload by hand (vr.manual_reload, port/linux/game/vr_reload.c): the
@@ -559,9 +588,15 @@ void halo_vr_scope(const struct halo_vr_scope *scope);
 /* d3d8_gl.c, as it makes the scope's image: the zoom shown in its lens
 (halo_vr_scope's; 0: none), and how tall (of the lens's width) */
 float halo_vr_scope_zoom(float *height);
-/* and whether it is the smart-link's, its reticle's place, and how tall
-(halo_vr_scope's: 1, round; less, a display's rectangle) */
-int halo_vr_scope_smartlink(float reticle[2], float *height);
+/* and whether it is the smart-link's, its reticle's place (halo_vr_scope's) */
+int halo_vr_scope_smartlink(float reticle[2]);
+/* whether this frame's scope is the smart-link's window, and if so where
+the eyes see it (halo_vr_scope_window); its range and rounds; and how the
+weapon in hand shows over it (vr.scope_gun: 0 hidden, 1 ghost, 2 visible) */
+int halo_vr_scope_window(struct halo_vr_scope_window *window);
+void halo_vr_scope_readout(float *range, int *rounds_loaded, int *rounds_carried);
+void halo_vr_scope_animation(float *opened_seconds, float *closing, float *switched_seconds);
+int halo_vr_scope_gun(void);
 /* the weapon in hand, for the reload by hand, once a frame; and the reload
 by hand as it is (0 when it is off) */
 void halo_vr_reload_weapon(const struct halo_vr_reload_weapon *weapon);

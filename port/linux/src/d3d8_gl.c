@@ -830,6 +830,9 @@ static struct
 	float scope_scale;
 	BOOL scope_drawn;
 	GLuint scope_image;
+	/* the smart-link's window's image (vr_copy_scope's, as the scope's),
+	drawn into the eyes' images: not a layer */
+	GLuint scope_window_texture;
 	/* the HUD's groups (vr.h's HALO_VR_HUD_GROUP_*, halo_vr_hud_group): the
 	one drawn into, and whether the anchors choose it; while the HUD has
 	panels (vr_visor.c, vr.hud_depth), each group but the centre's is drawn
@@ -7711,26 +7714,40 @@ lens's size: vr_scope.c), below and right of the middle between the posts,
 as the game's HUD labels it ("2x", "10x"; vr.c's halo_vr_scope_zoom), as
 a scope's display shows it, in the HUD's blue with a shadow: the flat game's zoom readout,
 in the HUD's layer, would float beside the lens (hud_weapon.c leaves it
-out while a scope is raised). The smart-link's view on the visor
-(vr.scope_view = "smartlink") is the HUD's, not a lens: no field stop, its
-edge fading out softly over its last tenth (no line about it, nothing of
-the quad seen), a faint glow of the HUD's blue toward it, and its reticle
-in the HUD's blue on a shadow, where the aim is (vr.c's
-halo_vr_scope_smartlink): fine lines across the view with a gap about the
-aim, bolder near it, and the dot. Smart-linked to the display on the back
-of the sniper rifle's scope, the view is the display's rectangle, the
-image's middle rows (halo_vr_scope_smartlink's height), its edge sharp
-within the display's frame on the rifle, its glow only near it, and the
-zoom within the rectangle. FALSE if the copy's program cannot be made. */
+out while a scope is raised).
+
+The smart-link's window (vr.scope_view = "smartlink") is the weapon's sight
+fed into the HUD: the image's middle rows are its quad (vr.c's
+halo_vr_scope_window), the window within it and a soft glow of the HUD's
+blue about it, nothing past that. The view in the window is the feed's: a
+faint blue tint, fine scan lines and its edges darkened inside; a thin line
+of the HUD's blue about it, heavier at the corners; the sight over it in
+the HUD's blue: a fine crosshair across the window with a gap about the
+aim, range ticks along it (across and down), a ring and a faint lit dot at
+the aim; and a readout along its bottom edge (clear of the HUD's panels),
+on a shadow: the zoom ("2X", "10X"), the range to what the aim meets
+("RANGE 015.2"; "---.-" past the reticle's farthest) and the rounds loaded
+and carried ("AMMO 4/24"), in the 3x5 cells of the zoom's readout. As it
+opens (vr_scope.c grows it and pushes its view in), a bright line sweeps
+down it and interference (bands offset, a little noise) settles, the sight
+and the readout (typed) last; a change of the zoom's level flickers it
+briefly; and as it closes it switches off as a CRT does, collapsing to a
+bright line through the aim and that to a point. FALSE if the copy's
+program cannot be made. */
+#define SCOPE_TEXT_LENGTH 28
 static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 {
 	static GLuint program, sampler;
 	static BOOL failed;
-	static GLint size_location, zoom_location, zoom_cell_location, smartlink_location, reticle_location,
-		height_location;
-	float zoom_height, reticle[2], height;
+	static GLint size_location, zoom_location, zoom_cell_location, smartlink_location, window_location,
+		height_location, text_location, text_cell_location, animation_location;
+	float zoom_height, reticle[2], range, animation[4] = { 0.0f };
 	int zoom = (int)(halo_vr_scope_zoom(&zoom_height) + 0.5f);
-	int smartlink = halo_vr_scope_smartlink(reticle, &height);
+	int smartlink = halo_vr_scope_smartlink(reticle);
+	int rounds_loaded, rounds_carried, index;
+	struct halo_vr_scope_window window;
+	GLint text[SCOPE_TEXT_LENGTH];
+	char line[SCOPE_TEXT_LENGTH + 1], range_text[16], rounds_text[16];
 	static const char vertex_source[] =
 		"#version 450 core\n"
 		"void main()\n"
@@ -7746,20 +7763,28 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		pixels) */
 		"uniform int zoom;\n"
 		"uniform float zoom_cell;\n"
-		/* (the smart-link's, and its reticle's place: fractions of the
-		radius, right and up) */
+		/* (the smart-link's window: its half width and half height, of the
+		image's half width; the quad's height of its width; the readouts'
+		glyphs, -1 past their ends, and their cells' size, pixels) */
 		"uniform int smartlink;\n"
-		"uniform vec2 reticle;\n"
-		/* (how tall, of its width: 1, round; less, a display's rectangle,
-		the middle rows) */
+		"uniform vec2 window;\n"
 		"uniform float height;\n"
+		"uniform int text[28];\n"
+		"uniform float text_cell;\n"
+		/* (its animation: the seconds since it began to open, how far it
+		has closed, the seconds since its level changed) */
+		"uniform vec4 animation;\n"
 		"out vec4 colour;\n"
-		/* the readout's glyphs, 3x5 cells, a bit each, from the top row's
-		left: the digits, then x (lower) */
-		"const int glyphs[11] = int[11](31599, 11415, 29671, 29647, 23497, 31183, 31215, 29257, 31727,\n"
-		"	31695, 2728);\n"
-		/* whether the readout lights the cell q (cells from its top left,
-		down the display) */
+		"float hash(vec2 v)\n"
+		"{\n"
+		"	return fract(sin(dot(v, vec2(12.9898, 78.233))) * 43758.5453);\n"
+		"}\n"
+		/* the readouts' glyphs, 3x5 cells, a bit each, from the top row's
+		left: the digits, then X, R, A, N, G, E, M, O, /, ., - and a space */
+		"const int glyphs[22] = int[22](31599, 11415, 29671, 29647, 23497, 31183, 31215, 29257, 31727,\n"
+		"	31695, 2728, 27565, 11245, 27501, 14699, 31143, 24557, 11114, 4772, 2, 448, 0);\n"
+		/* whether the zoom's readout lights the cell q (cells from its top
+		left, down the display) */
 		"float readout(vec2 q)\n"
 		"{\n"
 		"	if (q.x < 0.0 || q.y < 0.0 || q.y >= 5.0)\n"
@@ -7770,6 +7795,31 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		"		return 0.0;\n"
 		"	int code = glyph == count - 1 ? glyphs[10] : glyphs[count == 3 && glyph == 0 ? zoom / 10 : zoom % 10];\n"
 		"	return float((code >> (14 - cell.y * 3 - column)) & 1);\n"
+		"}\n"
+		/* whether the window's readout lights the cell q (as many of its
+		glyphs as are typed) */
+		"float line_lit(vec2 q, float typed)\n"
+		"{\n"
+		"	if (q.x < 0.0 || q.y < 0.0 || q.y >= 5.0)\n"
+		"		return 0.0;\n"
+		"	ivec2 cell = ivec2(floor(q));\n"
+		"	int glyph = cell.x / 4, column = cell.x - glyph * 4;\n"
+		"	if (glyph >= 28 || float(glyph) >= typed || column > 2 || text[glyph] < 0)\n"
+		"		return 0.0;\n"
+		"	return float((glyphs[text[glyph]] >> (14 - cell.y * 3 - column)) & 1);\n"
+		"}\n"
+		/* (how long it is, in glyphs) */
+		"int line_length()\n"
+		"{\n"
+		"	int n = 0;\n"
+		"	for (int i = 0; i < 28; i++)\n"
+		"		n += text[i] >= 0 ? 1 : 0;\n"
+		"	return n;\n"
+		"}\n"
+		/* (how much a line half w wide lights, d from it: pixels) */
+		"float stroke(float d, float w)\n"
+		"{\n"
+		"	return clamp(w + 0.5 - abs(d), 0.0, 1.0);\n"
 		"}\n"
 		"void main()\n"
 		"{\n"
@@ -7785,48 +7835,110 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		"	float alpha;\n"
 		"	if (smartlink != 0)\n"
 		"	{\n"
-		/* (the HUD's view: a glow toward its edge, which fades out, or on
-		the display a glow only near its edge, which is sharp, r how near
-		it is of the way out from the middle; the reticle's lines from the
-		aim, a gap of 0.04 of the radius about it, bold to 0.18, fine past
-		it, on a shadow) */
-		"		if (height < 1.0)\n"
-		"			r = max(abs(p.x) / radius, abs(p.y) / (radius * height));\n"
-		"		c = mix(c, c * 0.8 + hud * 0.12, height < 1.0 ? smoothstep(0.85, 1.0, r) : smoothstep(0.7, 0.98, r));\n"
-		"		vec2 a = abs(p - reticle * radius);\n"
-		"		float line = min(a.x, a.y), out_along = max(a.x, a.y);\n"
-		"		float gap = step(0.04 * radius, out_along);\n"
-		"		float bold = clamp(1.2 * pixel + 0.5 - line, 0.0, 1.0) * gap * (1.0 - step(0.18 * radius, out_along));\n"
-		"		float fine = clamp(0.5 * pixel + 0.5 - line, 0.0, 1.0) * gap * 0.6;\n"
-		"		float shadow = clamp(2.2 * pixel + 0.5 - line, 0.0, 1.0) * gap * (1.0 - step(0.18 * radius, out_along));\n"
-		"		c = mix(c, vec3(0.0), shadow * 0.45);\n"
-		"		c = mix(c, hud, max(bold, fine) * 0.9);\n"
-		"		float dot_light = clamp(1.6 * pixel + 0.5 - length(p - reticle * radius), 0.0, 1.0);\n"
+		/* the window, w its half extents (pixels); t how far it has opened
+		(its size and magnification follow it: vr_scope.c) */
+		"		vec2 w = window * radius;\n"
+		"		vec2 a = abs(p);\n"
+		"		float t = animation.x;\n"
+		"		float thin = max(0.6 * size / 1024.0, 0.5);\n"
+		"		vec3 white = mix(hud, vec3(1.0), 0.6);\n"
+		/* switching off, as a CRT does: the feed collapses to a bright line
+		through the aim (the image squashed into it), then the line to a
+		point, and is gone; brighter only as it is thin */
+		"		if (animation.y > 0.0)\n"
+		"		{\n"
+		"			float squash = smoothstep(0.0, 0.6, animation.y);\n"
+		"			float shrink = smoothstep(0.6, 1.0, animation.y);\n"
+		"			float hh = max(w.y * (1.0 - squash), thin), hw = w.x * (1.0 - shrink);\n"
+		"			float e = clamp(min(hw - a.x, hh - a.y) / thin + 1.0, 0.0, 1.0);\n"
+		"			vec2 s = vec2(p.x, clamp(p.y * w.y / hh, -w.y, w.y)) + vec2(size * 0.5);\n"
+		"			c = texture(scope_texture, vec2(0.125 + 0.75 * s.x / size, 1.0 - s.y / size)).rgb;\n"
+		"			c = mix(c * vec3(0.92, 1.0, 1.08), white, pow(squash, 3.0) * 0.9);\n"
+		"			colour = vec4(c * e, e);\n"
+		"			return;\n"
+		"		}\n"
+		/* connecting, as it opens: a bright line sweeps down it and
+		interference (bands offset, a little noise) settles, as the zoom's
+		change of level flickers; the sight and the readouts (typed) last */
+		"		float corners = 1.0;\n"
+		"		vec2 wf = w;\n"
+		"		float scan = t;\n"
+		"		float scan_y = w.y - 2.0 * w.y * scan;\n"
+		"		float noise = max(1.0 - t, 0.6 * (1.0 - clamp(animation.z / 0.12, 0.0, 1.0)));\n"
+		"		float tick_of = floor(t * 12.0) + 7.0 * floor(animation.z * 60.0);\n"
+		"		float band = hash(vec2(floor((p.y + w.y) / (0.09 * w.y)), tick_of));\n"
+		"		float offset = noise * step(0.7, band) * (band - 0.85) * 0.15 * w.x;\n"
+		"		c = texture(scope_texture, vec2(0.125 + 0.75 * (gl_FragCoord.x + offset) / size, uv.y)).rgb;\n"
+		"		c += noise * 0.08 * (hash(gl_FragCoord.xy + vec2(tick_of)) - 0.5);\n"
+		"		float inside = min(wf.x - a.x, wf.y - a.y);\n"
+		/* the feed: tinted, scan lines (about 180 down the window), the
+		edges darkened inside */
+		"		c *= vec3(0.92, 1.0, 1.08);\n"
+		"		c *= 1.0 - 0.06 * (0.5 + 0.5 * sin(gl_FragCoord.y * 3.14159 * 180.0 / w.y));\n"
+		"		c *= 0.55 + 0.45 * pow(clamp(inside / (0.12 * w.x), 0.0, 1.0), 0.6);\n"
+		/* the crosshair across the window, a gap about the aim; range ticks
+		along it (across both ways, down below the aim), every 0.075 of the
+		half width, every other longer; the ring and the dot at the aim */
+		"		float gap = 0.035 * w.x;\n"
+		"		float text_top = -w.y + 0.03 * w.x + 5.0 * text_cell;\n"
+		"		float sight = max(stroke(p.y, thin) * step(gap, a.x),\n"
+		"			stroke(p.x, thin) * step(gap, a.y) * step(text_top + 2.0 * text_cell, p.y));\n"
+		"		float spacing = 0.075 * w.x;\n"
+		"		float k = floor(a.x / spacing + 0.5);\n"
+		"		float tick = k >= 1.0 ? stroke(a.x - k * spacing, thin) *\n"
+		"			step(a.y, (mod(k, 2.0) < 0.5 ? 0.018 : 0.010) * w.x) : 0.0;\n"
+		"		float kd = floor(-p.y / spacing + 0.5);\n"
+		"		tick = max(tick, kd >= 1.0 ? stroke(-p.y - kd * spacing, thin) *\n"
+		"			step(a.x, (mod(kd, 2.0) < 0.5 ? 0.018 : 0.010) * w.x) : 0.0);\n"
+		"		float ring = stroke(length(p) - 0.018 * w.x, 1.4 * thin);\n"
+		"		float last = clamp((t - 0.75) / 0.25, 0.0, 1.0);\n"
+		"		sight = max(max(sight, tick), ring) * step(0.0, inside - 0.02 * w.x) * last;\n"
+		"		c = mix(c, vec3(0.0), sight * 0.35);\n"
+		"		c = mix(c, hud, sight * 0.85);\n"
+		"		float dot_light = clamp(1.6 * pixel + 0.5 - length(p), 0.0, 1.0) * last;\n"
 		"		c = mix(c, vec3(1.0, 0.35, 0.15), dot_light * 0.8);\n"
-		"		alpha = height < 1.0 ?\n"
-		"			clamp(min(radius - abs(p.x), radius * height - abs(p.y)) / 1.5, 0.0, 1.0) :\n"
-		"			1.0 - smoothstep(0.9, 1.0, r);\n"
+		/* the readout, one line about the middle along the bottom edge
+		inside (clear of the HUD's panels above), on its shadow */
+		"		int count = line_length();\n"
+		"		vec2 q = vec2(p.x / text_cell + float(count * 4 - 1) * 0.5, (text_top - p.y) / text_cell);\n"
+		"		float typed = floor(last * float(count) + 0.5);\n"
+		"		c = mix(c, vec3(0.0), line_lit(q - vec2(0.5, 0.5), typed) * 0.7 * step(0.0, inside));\n"
+		"		c = mix(c, hud, line_lit(q, typed) * 0.95);\n"
+		/* the feed; the sweep's line over it */
+		"		alpha = inside > 0.0 ? 1.0 : 0.0;\n"
+		"		c *= alpha;\n"
+		"		float sweep = scan > 0.0 && scan < 1.0 && inside > 0.0 ?\n"
+		"			max(stroke(p.y - scan_y, thin * 1.5), 0.5 * exp(-abs(p.y - scan_y) / (0.012 * w.y))) : 0.0;\n"
+		"		c = mix(c, white, sweep);\n"
+		"		alpha = max(alpha, sweep);\n"
+		/* its line, heavier at the corners; the glow outside it */
+		"		float corner = step(wf.x - 0.06 * w.x, a.x) * step(wf.y - 0.06 * w.x, a.y);\n"
+		"		float edge = corners > 0.0 ?\n"
+		"			max(stroke(inside, thin * 1.5) * 0.6, stroke(inside + thin * 1.5, thin * 3.0) * corner) : 0.0;\n"
+		"		float glow = inside < 0.0 ? 0.35 * corners * exp(inside / (0.012 * w.x)) : 0.0;\n"
+		"		c = mix(c, hud, edge);\n"
+		"		alpha = max(alpha, edge);\n"
+		"		c += hud * glow * (1.0 - alpha);\n"
+		"		alpha = max(alpha, glow * 0.6);\n"
+		"		colour = vec4(c, alpha);\n"
+		"		return;\n"
 		"	}\n"
-		"	else\n"
-		"	{\n"
-		"		c *= 1.0 - smoothstep(0.86, 0.97, r);\n"
+		"	c *= 1.0 - smoothstep(0.86, 0.97, r);\n"
 		/* the reticle: lines' half widths (pixels), the posts from 0.5 of
 		the radius out */
-		"		vec2 a = abs(p);\n"
-		"		float fine = clamp(0.6 * pixel + 0.5 - min(a.x, a.y), 0.0, 1.0);\n"
-		"		float post = clamp(2.5 * pixel + 0.5 - min(a.x, a.y), 0.0, 1.0) *\n"
-		"			step(0.5 * radius, max(a.x, a.y));\n"
-		"		c = mix(c, vec3(0.0), max(fine * 0.85, post));\n"
-		"		float dot_light = clamp(1.6 * pixel + 0.5 - length(p), 0.0, 1.0);\n"
-		"		c = mix(c, vec3(1.0, 0.35, 0.15), dot_light * 0.8);\n"
-		"		alpha = 1.0 - smoothstep(1.0 - 1.5 / radius, 1.0, r);\n"
-		"	}\n"
+		"	vec2 a = abs(p);\n"
+		"	float fine = clamp(0.6 * pixel + 0.5 - min(a.x, a.y), 0.0, 1.0);\n"
+		"	float post = clamp(2.5 * pixel + 0.5 - min(a.x, a.y), 0.0, 1.0) *\n"
+		"		step(0.5 * radius, max(a.x, a.y));\n"
+		"	c = mix(c, vec3(0.0), max(fine * 0.85, post));\n"
+		"	float dot_light = clamp(1.6 * pixel + 0.5 - length(p), 0.0, 1.0);\n"
+		"	c = mix(c, vec3(1.0, 0.35, 0.15), dot_light * 0.8);\n"
+		"	alpha = 1.0 - smoothstep(1.0 - 1.5 / radius, 1.0, r);\n"
 		/* the zoom: 5 cells tall, from 0.3 of the radius right of and
-		below the middle (of the rectangle's half height below it); its
-		shadow half a cell down and right */
+		below the middle; its shadow half a cell down and right */
 		"	if (zoom > 0)\n"
 		"	{\n"
-		"		vec2 q = (vec2(p.x, -p.y) - vec2(0.3 * radius, 0.3 * radius * height)) / zoom_cell;\n"
+		"		vec2 q = (vec2(p.x, -p.y) - vec2(0.3 * radius)) / zoom_cell;\n"
 		"		c = mix(c, vec3(0.0), readout(q - vec2(0.5)) * 0.7);\n"
 		"		c = mix(c, hud, readout(q) * 0.9);\n"
 		"	}\n"
@@ -7858,13 +7970,36 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		zoom_location = glGetUniformLocation(program, "zoom");
 		zoom_cell_location = glGetUniformLocation(program, "zoom_cell");
 		smartlink_location = glGetUniformLocation(program, "smartlink");
-		reticle_location = glGetUniformLocation(program, "reticle");
+		window_location = glGetUniformLocation(program, "window");
 		height_location = glGetUniformLocation(program, "height");
+		text_location = glGetUniformLocation(program, "text");
+		text_cell_location = glGetUniformLocation(program, "text_cell");
+		animation_location = glGetUniformLocation(program, "animation");
 		glGenSamplers(1, &sampler);
 		glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 		glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
+	smartlink = smartlink && halo_vr_scope_window(&window);
+	/* the window's readout: the zoom, the range, the rounds (as glyphs:
+	the copy's table) */
+	halo_vr_scope_readout(&range, &rounds_loaded, &rounds_carried);
+	if (range > 0.0f && range < 999.9f)
+		snprintf(range_text, sizeof(range_text), "%05.1f", range);
+	else
+		snprintf(range_text, sizeof(range_text), "---.-");
+	rounds_text[0] = 0;
+	if (rounds_loaded >= 0)
+		snprintf(rounds_text, sizeof(rounds_text), "   AMMO %d/%d", rounds_loaded, rounds_carried < 0 ? 0 : rounds_carried);
+	snprintf(line, sizeof(line), "%dX   RANGE %s%s", zoom < 0 ? 0 : zoom > 99 ? 99 : zoom, range_text, rounds_text);
+	for (index = 0; index < SCOPE_TEXT_LENGTH; index++)
+	{
+		static const char letters[] = "XRANGEMO/.- ";
+		char letter = index < (int)strlen(line) ? line[index] : 0;
+		const char *found = letter ? strchr(letters, letter) : NULL;
+
+		text[index] = letter >= '0' && letter <= '9' ? letter - '0' : found ? 10 + (GLint)(found - letters) : -1;
 	}
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(image, 0));
 	glViewport(0, 0, size, size);
@@ -7880,8 +8015,15 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 	glUniform1i(zoom_location, zoom < 0 ? 0 : zoom > 99 ? 99 : zoom);
 	glUniform1f(zoom_cell_location, fmaxf(floorf((float)size * zoom_height / 5.0f), 1.0f));
 	glUniform1i(smartlink_location, smartlink);
-	glUniform2f(reticle_location, reticle[0], reticle[1]);
-	glUniform1f(height_location, height);
+	glUniform2f(window_location, smartlink ? window.window[0] : 0.0f,
+		smartlink ? window.window[1] * window.half[1] / window.half[0] : 0.0f);
+	glUniform1f(height_location, smartlink ? window.half[1] / window.half[0] : 1.0f);
+	glUniform1iv(text_location, SCOPE_TEXT_LENGTH, text);
+	halo_vr_scope_animation(&animation[0], &animation[1], &animation[2]);
+	glUniform4fv(animation_location, 1, animation);
+	/* (the readout about 1.8% of the window's width tall) */
+	glUniform1f(text_cell_location, smartlink ? fmaxf(floorf((float)size * window.window[0] * 0.0036f + 0.5f), 1.0f) :
+		1.0f);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, source);
 	glBindSampler(0, sampler);
@@ -8651,6 +8793,184 @@ static void vr_copy_depth(void)
 	halo_vr_depth_written();
 }
 
+/* The smart-link's window (vr_scope.c, vr_copy_scope's image) drawn into
+both eyes' images (multiview), where each eye's ray meets its quad (vr.c's
+halo_vr_scope_window: at the reticle's depth, so that each eye sees it about
+the reticle), after the foveation's composite and before the tint, the
+helmet's rim and the visor: over the world and the weapon in hand, under the
+HUD's layer. Where the weapon in hand is (the eyes' depth nearer than
+SCOPE_GUN_METRES: the first-person weapon and the hands), vr.scope_gun: the
+window over it ("hidden"), the weapon a fifth through it ("ghost"), or the
+weapon in front of it ("visible"). Blended as the rim is (the eyes' images'
+encoded values, premultiplied). */
+#define SCOPE_GUN_METRES 1.2f
+static void vr_draw_scope_window(GLuint depth_texture, int depth_layers)
+{
+	static GLuint program, sampler;
+	static BOOL failed;
+	static GLint centre_location, right_location, up_location, half_location, fov_location, height_location,
+		image_location, gun_location, gun_depth_location, layers_location;
+	static const char vertex_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"layout(num_views = 2) in;\n"
+		"void main()\n"
+		"{\n"
+		"	vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));\n"
+		"	gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);\n"
+		"}\n";
+	static const char fragment_source[] =
+		"#version 450 core\n"
+		"#extension GL_OVR_multiview2 : require\n"
+		"uniform sampler2D window_texture;\n"
+		"uniform sampler2DArray depth_texture;\n"
+		/* each eye's: the quad's middle, right and up (its space), its
+		field of view (tangents: left, right, up, down); the quad's half
+		width and height (metres), its height of its width in the image; the
+		eye's image's size; how the weapon shows (0 hidden, 1 ghost, 2
+		visible), the depth nearer than which it is, the depth's layers (4:
+		foveated, the periphery's) */
+		"uniform vec4 centre[2];\n"
+		"uniform vec4 right[2];\n"
+		"uniform vec4 up[2];\n"
+		"uniform vec4 fov[2];\n"
+		"uniform vec2 half_size;\n"
+		"uniform float height;\n"
+		"uniform vec2 image;\n"
+		"uniform int gun;\n"
+		"uniform float gun_depth;\n"
+		"uniform int layers;\n"
+		"out vec4 colour;\n"
+		"void main()\n"
+		"{\n"
+		"	int eye = int(gl_ViewID_OVR);\n"
+		"	vec2 f = gl_FragCoord.xy / image;\n"
+		/* (the eye images' rows from the bottom of the view, as OpenXR's GL
+		images are: the first row the view's lowest) */
+		"	vec4 t = fov[eye];\n"
+		"	vec3 ray = vec3(mix(t.x, t.y, f.x), mix(t.w, t.z, f.y), -1.0);\n"
+		"	vec3 n = cross(right[eye].xyz, up[eye].xyz);\n"
+		"	float facing = dot(ray, n);\n"
+		"	if (abs(facing) < 1.0e-6)\n"
+		"		discard;\n"
+		"	float along = dot(centre[eye].xyz, n) / facing;\n"
+		"	if (along <= 0.0)\n"
+		"		discard;\n"
+		"	vec3 d = ray * along - centre[eye].xyz;\n"
+		"	vec2 q = vec2(dot(d, right[eye].xyz) / half_size.x, dot(d, up[eye].xyz) / half_size.y);\n"
+		"	if (abs(q.x) > 1.0 || abs(q.y) > 1.0)\n"
+		"		discard;\n"
+		"	vec4 c = texture(window_texture, vec2(0.5 + 0.5 * q.x, 0.5 + 0.5 * q.y * height));\n"
+		"	if (gun != 0)\n"
+		"	{\n"
+		"		float z = texture(depth_texture, vec3(f, float(layers == 4 ? 2 * eye : eye))).r;\n"
+		"		if (z < gun_depth)\n"
+		"			c *= gun == 1 ? 0.8 : 0.0;\n"
+		"	}\n"
+		"	colour = c;\n"
+		"}\n";
+	struct halo_vr_scope_window window;
+	float fov_rows[2][4], centre[2][4], right[2][4], up[2][4];
+	int gun = halo_vr_scope_gun(), eye;
+
+	if (failed || !vr_gl.eyes_drawn || !vr_gl.eye_target.target.texture || !vr_gl.scope_window_texture ||
+		!halo_vr_scope_window(&window))
+	{
+		return;
+	}
+	if (!program)
+	{
+		GLuint vertex = xgpu_compile_shader(GL_VERTEX_SHADER, vertex_source, "VR scope window vertex");
+		GLuint fragment = xgpu_compile_shader(GL_FRAGMENT_SHADER, fragment_source, "VR scope window pixel");
+		GLint status = 0;
+
+		program = glCreateProgram();
+		glAttachShader(program, vertex);
+		glAttachShader(program, fragment);
+		glLinkProgram(program);
+		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		if (!vertex || !fragment || !status)
+		{
+			platform_log("vr: cannot make the scope window's program; no smart-link window is shown");
+			failed = TRUE;
+			return;
+		}
+		glUseProgram(program);
+		glUniform1i(glGetUniformLocation(program, "window_texture"), 0);
+		glUniform1i(glGetUniformLocation(program, "depth_texture"), 1);
+		centre_location = glGetUniformLocation(program, "centre");
+		right_location = glGetUniformLocation(program, "right");
+		up_location = glGetUniformLocation(program, "up");
+		fov_location = glGetUniformLocation(program, "fov");
+		half_location = glGetUniformLocation(program, "half_size");
+		height_location = glGetUniformLocation(program, "height");
+		image_location = glGetUniformLocation(program, "image");
+		gun_location = glGetUniformLocation(program, "gun");
+		gun_depth_location = glGetUniformLocation(program, "gun_depth");
+		layers_location = glGetUniformLocation(program, "layers");
+		glGenSamplers(1, &sampler);
+		glSamplerParameteri(sampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+	}
+	if (!depth_texture)
+		gun = 0;
+	for (eye = 0; eye < 2; eye++)
+	{
+		/* (left, right, up, down) */
+		fov_rows[eye][0] = window.fov[eye][0];
+		fov_rows[eye][1] = window.fov[eye][1];
+		fov_rows[eye][2] = window.fov[eye][2];
+		fov_rows[eye][3] = window.fov[eye][3];
+		memcpy(centre[eye], window.centre[eye], sizeof(window.centre[eye]));
+		memcpy(right[eye], window.right[eye], sizeof(window.right[eye]));
+		memcpy(up[eye], window.up[eye], sizeof(window.up[eye]));
+		centre[eye][3] = right[eye][3] = up[eye][3] = 0.0f;
+	}
+	framebuffer_views = 2;
+	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(vr_gl.eye_target.target.texture, 0));
+	framebuffer_views = 1;
+	glViewport(0, 0, vr_gl.eye_width, vr_gl.eye_height);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_CULL_FACE);
+	glDisable(GL_STENCIL_TEST);
+	glDisable(GL_POLYGON_OFFSET_FILL);
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_FALSE);
+	glUseProgram(program);
+	glUniform4fv(centre_location, 2, centre[0]);
+	glUniform4fv(right_location, 2, right[0]);
+	glUniform4fv(up_location, 2, up[0]);
+	glUniform4fv(fov_location, 2, fov_rows[0]);
+	glUniform2f(half_location, window.half[0], window.half[1]);
+	glUniform1f(height_location, window.half[1] / window.half[0]);
+	glUniform2f(image_location, (float)vr_gl.eye_width, (float)vr_gl.eye_height);
+	glUniform1i(gun_location, gun);
+	/* (the depth of a point SCOPE_GUN_METRES away, as the world's depth is
+	mapped: 0 near, 1 far) */
+	glUniform1f(gun_depth_location, window.far_z > window.near_z && SCOPE_GUN_METRES > window.near_z ?
+		window.far_z / (window.far_z - window.near_z) * (1.0f - window.near_z / SCOPE_GUN_METRES) : 0.0f);
+	glUniform1i(layers_location, depth_layers);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, depth_texture);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+	glBindSampler(1, 0);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, vr_gl.scope_window_texture);
+	glBindSampler(0, sampler);
+	glDrawArrays(GL_TRIANGLES, 0, 3);
+	glBindSampler(0, 0);
+	glDisable(GL_BLEND);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	xgpu_gl_state_invalidate();
+}
+
 /* a test's screenshot of this frame (as debug.screenshot_every's, into
 debug.screenshot_directory: port/linux/game/vr_death.c's) */
 static BOOL vr_screenshot_wanted;
@@ -8664,13 +8984,71 @@ void halo_vr_test_screenshot(void)
 OpenXR's GL images (the eyes were drawn so), and the frame ended */
 static void vr_present(BOOL screenshot)
 {
-	struct render_target_entry *hud = NULL;
+	struct render_target_entry *hud = NULL, *eye_depth = NULL;
 	GLuint hud_image = 0;
 
 	vr_timing(3);
+	/* the eyes' depth as drawn (foveated, the four layers'), for the
+	smart-link's window */
+	if (vr_gl.eyes_drawn)
+	{
+		int pass = vr_gl.pass;
+		float scale[2];
+
+		scale[0] = screen_scale[0];
+		scale[1] = screen_scale[1];
+		vr_gl.pass = HALO_VR_PASS_EYES;
+		screen_scale[0] = vr_gl.eye_target.target.scale[0];
+		screen_scale[1] = vr_gl.eye_target.target.scale[1];
+		eye_depth = render_target_get(&device.depth_buffer);
+		vr_gl.pass = pass;
+		screen_scale[0] = scale[0];
+		screen_scale[1] = scale[1];
+		if (eye_depth && eye_depth->target.layers != (vr_gl.foveated ? 4 : 2))
+			eye_depth = NULL;
+	}
 	/* foveated, the eyes' images made from the inset and the periphery,
 	which the rest draws into */
 	vr_fovea_composite();
+	/* the scope's view: the smart-link's window drawn into the eyes, or
+	the lens's image for its layer */
+	vr_gl.scope_image = 0;
+	if (vr_gl.scope_drawn && vr_gl.eyes_drawn)
+	{
+		struct render_target_entry *scope;
+		struct halo_vr_scope_window window;
+		int pass = vr_gl.pass;
+		float scale[2];
+		GLuint image;
+
+		scale[0] = screen_scale[0];
+		scale[1] = screen_scale[1];
+		vr_gl.pass = HALO_VR_PASS_SCOPE;
+		screen_scale[0] = screen_scale[1] = vr_gl.scope_scale;
+		scope = render_target_get(&device.back_buffer);
+		vr_gl.pass = pass;
+		screen_scale[0] = scale[0];
+		screen_scale[1] = scale[1];
+		if (scope && halo_vr_scope_window(&window))
+		{
+			if (!vr_gl.scope_window_texture)
+			{
+				glGenTextures(1, &vr_gl.scope_window_texture);
+				glBindTexture(GL_TEXTURE_2D, vr_gl.scope_window_texture);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, vr_gl.scope_size, vr_gl.scope_size, 0, GL_RGBA,
+					GL_UNSIGNED_BYTE, NULL);
+				xgpu_gl_state_invalidate();
+			}
+			if (vr_copy_scope(scope->target.texture, vr_gl.scope_window_texture, vr_gl.scope_size))
+				vr_draw_scope_window(eye_depth ? eye_depth->target.texture : 0, eye_depth ? eye_depth->target.layers : 0);
+		}
+		else if (scope && (image = halo_vr_image(VR_SWAPCHAIN_SCOPE)) != 0 &&
+			vr_copy_scope(scope->target.texture, image, vr_gl.scope_size))
+		{
+			vr_gl.scope_image = image;
+		}
+	}
 	/* the eyes' tint (a blink, the dead's), then the helmet's rim and the
 	visor's glass in the eyes (not in the menus: vr_visor.c), the rim's depth
 	with theirs */
@@ -8695,29 +9073,6 @@ static void vr_present(BOOL screenshot)
 		hud_image = halo_vr_image(VR_SWAPCHAIN_HUD);
 		if (!hud_image || !vr_copy_hud(hud, hud_image))
 			hud_image = 0;
-	}
-	/* the scope's view, with the eyes */
-	vr_gl.scope_image = 0;
-	if (vr_gl.scope_drawn && vr_gl.eyes_drawn)
-	{
-		struct render_target_entry *scope;
-		int pass = vr_gl.pass;
-		float scale[2];
-		GLuint image;
-
-		scale[0] = screen_scale[0];
-		scale[1] = screen_scale[1];
-		vr_gl.pass = HALO_VR_PASS_SCOPE;
-		screen_scale[0] = screen_scale[1] = vr_gl.scope_scale;
-		scope = render_target_get(&device.back_buffer);
-		vr_gl.pass = pass;
-		screen_scale[0] = scale[0];
-		screen_scale[1] = scale[1];
-		if (scope && (image = halo_vr_image(VR_SWAPCHAIN_SCOPE)) != 0 &&
-			vr_copy_scope(scope->target.texture, image, vr_gl.scope_size))
-		{
-			vr_gl.scope_image = image;
-		}
 	}
 	vr_gl.pass = HALO_VR_PASS_NONE;
 	vr_gl.multiview = FALSE;

@@ -1205,7 +1205,7 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | Left stick | Move (click: crouch) |
 | Head | Crouch: crouch in the room, and the game crouches (`vr.physical_crouch`) |
 | Right stick, left and right | Turn: in steps (`vr.turn = "snap"`) or smoothly (`"smooth"`) |
-| Right stick click | Zoom: on the sniper rifle's display, or on the visor beside where the weapon aims (`vr.scope_view = "smartlink"`), or a raised scope's magnification (`"eye"`): below |
+| Right stick click | Zoom: a window about the reticle (`vr.scope_view = "smartlink"`), or a raised scope's magnification (`"eye"`): below |
 | Head | Look |
 | Right controller | Aim: it holds the weapon, and the reticle shows where it points (`vr.aim = "controller"`). With `vr.aim = "head"`, the head aims and the reticle stays in the middle of the view. |
 | Left controller | The left hand, where the controller is; the left grip closes it (`vr.hands`). The right index finger lies off the right trigger until your finger touches it, then rests on it and pulls with it ("The trigger finger", below). |
@@ -1480,8 +1480,7 @@ ways (`vr.scope_view`; VR Controls' SCOPES: SMART-LINK, AT THE EYE or OFF).
 
 As the MJOLNIR armour's smart-link pipes the weapon's sight into the
 helmet's HUD (the pistol's scope is a "smart-linked scope"), the zoom shows
-on the sniper rifle's own display, or on your visor: you never bring a
-scope to your eye.
+on your visor: you never bring a scope to your eye.
 
 - The right stick's click zooms as on the flat screen, wherever you hold
   the weapon: it steps through the weapon's levels and from the last
@@ -1489,36 +1488,31 @@ scope to your eye.
   the flat screen, then none; the pistol 2x, then none; the rocket
   launcher's too). What unzooms the game unzooms it: a hit, a reload, a
   grenade, a switch of weapons.
-- The sniper rifle's zoom shows on the display on the back of its scope
-  (the dark rectangle that shows the zoom's green dial and waveform, around
-  the reticle as you sight along the rifle): while zoomed, the display is
-  the scope, a live view magnified 2 or 8 times, filling the display within
-  its frame, where the display is and at its depth for both eyes, in place
-  of the green readout. Its middle is where the weapon aims, with a reticle
-  of the HUD's blue on it, the zoom ("2x", "10x") small in its lower right.
-  It is as many times larger as the world about it (it shows more as you
-  bring the rifle closer), and it turns with the rifle: the world in it is
-  as level as the world around it, however you tilt the rifle. Seen from
-  in front, nothing shows; the green readout comes back as you unzoom.
-  There is no window on the visor with it.
-- The pistol and the rocket launcher have no display: while zoomed, a round
-  magnified view is on the visor, seen by both eyes,
-  at the HUD's distance (`vr.hud_distance`), about 28 degrees across
-  (`vr.smartlink_size`), just above where the weapon aims, its lower edge 3
-  degrees above the reticle: the reticle stays in sight on what it aims at,
-  and the view shows that magnified, its own reticle in its middle on the
-  same point. Held low or out to the side, the weapon still zooms on what
-  it points at. Aiming high in your view, where the view above would be out
-  of it, it is below the aim instead; it stays within 28 degrees of where
-  you look. The rest of your view never zooms nor moves.
-- It has a reticle of the HUD's blue (lines across it with a gap about the
-  aim, bolder near it, a faint red dot where the shot goes), the zoom small
-  below and right of its middle as the game's HUD labels it ("2x",
-  "10x"), and a soft edge, fading out with a faint glow of the HUD's blue,
-  no line about it (on the rifle's display, a sharp edge within its frame).
-  The flat game's zoomed view (its "2x" and "10x" with their dial, the
-  range ticks, the sniper rifle's target distance and elevation by the
-  reticle) is not drawn.
+- While zoomed, a wide 16:9 window opens about the reticle, the weapon's
+  sight fed into the HUD: about 70 degrees across (`vr.smartlink_size`),
+  its middle on the reticle and at the reticle's depth (each eye sees it
+  where it sees the reticle), facing you and level with the horizon. It
+  stays where the weapon aims: turning or tilting your head does not move
+  or turn it. It shows where the
+  weapon aims, magnified (2 or 8 times the world about it), and the rest of
+  your view stays the world, unmagnified. It is drawn over the weapon in
+  your hand (`vr.scope_gun`: or the weapon faintly through it, or in front
+  of it) and under the HUD.
+- In it: a faint blue tint and scan lines, its edges darkened, a thin line
+  of the HUD's blue about it with heavier corners and a soft glow outside;
+  a fine crosshair across it with range ticks and a gap at the aim, a ring
+  and a faint red dot where the shot goes; and along its bottom edge the
+  zoom, the range to what the aim meets and the rounds ("2X   RANGE 014.1
+  AMMO 4/8"). The flat game's zoomed view (its "2x" and "10x" with their
+  dial, the range ticks, the sniper's target distance) is not drawn.
+- As you zoom, it opens out from the reticle over about 0.18 s and the view
+  in it pushes in from the world's size to the zoom's with it (one motion),
+  a bright line sweeping down it and a little interference settling, the
+  sight and the readout last. From 2x to 10x the view eases in over 0.2 s
+  with a brief flicker. Unzoomed, it shrinks back and switches off as a CRT
+  does (about 0.1 s), to a line through the reticle and a point. With
+  `debug.screenshot_every = 1` (the game slowed by the screenshots) these
+  step a 72 Hz frame each frame, so that each shows.
 - While zoomed, the aim is steadied, the more the more it magnifies (and
   more still with your left hand on a long gun's foregrip): your hand's
   small shake and slow sway are damped, while a deliberate swing passes
@@ -2172,15 +2166,16 @@ headset's session is opened with, apply from the next start.
 | `vr.holsters` | `true` | `HALO_VR_HOLSTERS` | With `vr.aim = "controller"`: the weapon you carry but do not hold is on your body, and the right hand reaching there and gripping draws it (above, "Holsters"). Y switches weapons as ever. |
 | `vr.physical_crouch` | `true` | `HALO_VR_PHYSICAL_CROUCH` | The head crouching crouches the player: about 0.35 m below the standing eyes (`vr.height = "standing"`), or 0.25 m below the recentred ones (seated), and standing within 0.07 m of that stands (above, "Crouching"). The left stick's click crouches as ever. |
 | `vr.scopes` | `true` | `HALO_VR_SCOPES` | With `vr.aim = "controller"`: the zoom magnifies a view of its own, as `vr.scope_view` says (above, "Scopes"). `false`: the game's zoom (nothing is magnified in the headset), whatever `vr.scope_view` is. |
-| `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a magnified view of where the weapon aims shows on the sniper rifle's display, or for the other weapons in a round view on the visor just above the aim, at the HUD's distance (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
-| `vr.smartlink_size` | `28.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the round magnified view on the visor is, in degrees of the view (10 to 45); the sniper rifle's is as large as its display. |
+| `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a wide magnified window opens about the reticle, at its depth (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
+| `vr.smartlink_size` | `70.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the zoom's window is, in degrees of the view (30 to 100); it is 16:9. |
+| `vr.scope_gun` | `"hidden"` | `HALO_VR_SCOPE_GUN` | With `vr.scope_view = "smartlink"`: how the weapon in your hand shows where it crosses the zoom's window: `"hidden"`, the window over it (no barrel in the view); `"ghost"`, faintly through the window (a fifth); `"visible"`, in front of the window. Not in VR Controls. |
 | `vr.recoil` | `1.0` | `HALO_VR_RECOIL` | With `vr.aim = "controller"`: how far the weapon in your hand kicks as it fires, each its own way, from `0` (none) to `1` (above, "The weapons' feel"). Drawn alone: the aim, the shots and the scopes' views stay where you point. Not in VR Controls. |
 | `vr.weapon_haptics` | `1.0` | `HALO_VR_WEAPON_HAPTICS` | With `vr.aim = "controller"`: how strongly the controllers feel each weapon firing, each its own way, and the hits on you, in the hand on the side they came from, in place of the gamepad's rumble for them, from `0` (none) to `1` (above, "The weapons' feel"). Not in VR Controls. |
 | `vr.vehicle_flip` | `"lift"` | `HALO_VR_VEHICLE_FLIP` | How an overturned vehicle the game offers to flip is flipped (above, "Flipping a vehicle"): `"lift"`, by both hands gripping it low beside it and lifting together, fast (X reloads there); `"button"`, by X, as ever; `"both"`, by either. With `vr.aim = "gamepad"`, by X. Not in VR Controls. |
 | `vr.grab_world` | `true` | `HALO_VR_GRAB_WORLD` | With `vr.aim = "controller"`: the hands take hold of the world (above, "Picking up a weapon by hand", "Pressing a control by hand"): a weapon on the ground the game offers is taken by reaching down to it with the right hand and gripping; a control the game offers to activate is pressed by pushing either hand into it. `false`: X alone, which works either way. Not in VR Controls. |
 | `vr.manual_reload` | `true` | `HALO_VR_MANUAL_RELOAD` | With `vr.aim = "controller"`: reload by hand (above, "Reloading by hand"): the left hand takes another magazine from the left hip (the one in the weapon ejecting itself, or the right stick pushed down ejects it) and pushes it in, loaded at once (as a network game's client, after the game's reload time); the shotgun's shells one at a time; an empty weapon does not reload itself. X reloads as ever. |
 | `vr.grenade_throw` | `"gesture"` | `HALO_VR_GRENADE_THROW` | With `vr.aim = "controller"`: `"gesture"`, a grenade is thrown by throwing it with the left hand alone (above, "Throwing a grenade with the left hand"; on foot the left trigger throws nothing); `"both"`, with the left hand or the left trigger; `"button"`, with the left trigger alone. |
-| `vr.aim_assist` | `1.0` | `HALO_VR_AIM_ASSIST` | With `vr.aim = "controller"`: the aim assist (above, "Aiming with the controller"): near an enemy the game's magnetism would be drawn to, the aim is slow to leave it, and zoomed, is drawn gently toward it; how strongly, from `0` (none) to `2`. The bullets' own autoaim is the game's whatever this is. |
+| `vr.aim_assist` | `1.0` | `HALO_VR_AIM_ASSIST` | With `vr.aim = "controller"`: the aim assist (above, "Aiming with the controller"): near an enemy the game's magnetism would be drawn to, the aim is slow to leave it, and zoomed, is drawn gently toward it; how strongly, from `0` (none) to `2`. Zoomed, it reaches as far as the zoom's and is as wide as unzoomed (the flat game narrows it by the zoom's magnification, as its whole view is magnified; in the headset only a window is). The bullets' own autoaim is the game's whatever this is. |
 | `vr.two_handed` | `true` | `HALO_VR_TWO_HANDED` | With `vr.aim = "controller"`: a long gun (any but the pistols, the needler, the flag and the ball) is aimed along the line from the right hand to the left while the left grip holds it by the foregrip (pressed within 18 cm of the line ahead of the right hand). The aim turns to that line over 0.15 s, smoothed, and back when the grip is let go. |
 | `vr.hands` | `"arms"` | `HALO_VR_HANDS` | With `vr.aim = "controller"`: each first-person hand where its controller is (the right holding the weapon, its index finger on the trigger as far as the trigger is pulled; the left open, closing as the grip is pulled, and on a long gun's foregrip while it holds it). `"arms"`: the arms reach the hands from the shoulders (`vr.shoulders`). `"floating"`: no arms above the wrists. `"game"`: the game's arms, posed from the weapon in the right hand. A hand whose controller is not tracked is not drawn, nor its arm. In a cinematic seen from the player's head the hands are the controllers' too, acting on nothing (above, "Cinematics seen from your own head"). |
 | `vr.shoulders` | `"0.19, -0.20, -0.07"` | `HALO_VR_SHOULDERS` | With `vr.hands = "arms"`: where each shoulder is from the eyes, in metres: out to its side, up, forward, turned with the body (the holsters' heading: it faces where the head does, follows it past a 40 degree turn, and slowly). From the eyes as they would be with the head level and turned with the body: the shoulders hang from the neck, so a nod or a turn of the head does not move them. |
@@ -2218,7 +2213,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_force_render` | `false` | `HALO_VR_FORCE_RENDER` | Draw the frames while the runtime says not to (the headset not worn), to measure them. |
 | `debug.vr_test_turn` | `0.0` | `HALO_VR_TEST_TURN` | Turn the player this many degrees a second, for automated tests without hands. |
 | `debug.vr_test_jitter` | `0.0` | `HALO_VR_TEST_JITTER` | Move the head by up to this many millimetres (and turn it as many hundredths of a degree) at random each frame, as a worn headset moves: for automated tests of what flickers when the view barely moves. |
-| `debug.vr_test_head` | `""` | `HALO_VR_TEST_HEAD` | Hold the head still and level where it is first located (a simulated headset's head wobbles), for automated tests: `"0"`, or `"<degrees> <seconds>"` turns it left and right by as many degrees over as many seconds, smoothly (a sine of the frames' display times); `"<degrees> <seconds> <pitch>"` also pitches it up by as many degrees (less than 0: down), as looking down at the hip's holster. |
+| `debug.vr_test_head` | `""` | `HALO_VR_TEST_HEAD` | Hold the head still and level where it is first located (a simulated headset's head wobbles), for automated tests: `"0"`, or `"<degrees> <seconds>"` turns it left and right by as many degrees over as many seconds, smoothly (a sine of the frames' display times); `"<degrees> <seconds> <pitch>"` also pitches it up by as many degrees (less than 0: down), as looking down at the hip's holster; `"<degrees> <seconds> <pitch> <roll>"` also rolls it by as many degrees to the right (the right ear down). |
 | `debug.vr_test_hands` | `""` | `HALO_VR_TEST_HANDS` | Hold the controllers still, for automated tests without hands: `"lx ly lz lyaw lpitch lroll, rx ry rz ryaw rpitch rroll[, grip[, buttons[, trigger[, head[, frames[, move[, down[, nod[, forward[, right[, stick x[, stick y[, right grip]]]]]]]]]]]]]"`, the left and right hands in metres right, up and forward from the recentred head and degrees of yaw (left), pitch (up) and roll (right) (a hand 10 metres or more out is not tracked), the left grip's pull (0 to 1), the buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the right stick's click (zoom) 2048, the right trigger 65536, the left 131072, the right grip 262144, the right stick pushed down 524288), the right trigger's pull (0 to 1; less than 0, the index finger off the trigger, as when its touch senses none: "The trigger finger"), the head turned (degrees left), the frames the pose lasts (`0`: 288), the frames the hands take to move to it from the pose before, a step a frame (`0`: none; a swing, as fast as its steps), the head lowered (metres, as a crouch; moved with the hands: below), nodded (degrees up, about the neck 8 cm behind and 15 cm below the eyes, as a person's lower neck: looking 60 degrees down, the eyes come 9 cm forward and 14 cm down) and moved in the room (metres forward and right, as a lean or a step from where the head was recentred), each with the hands, and the left stick (right and forward, -1 to 1: driving) and the right grip's pull (0 to 1: a vehicle's handlebars) through the pose. A pose shorter than 20 frames presses its buttons only as long. Up to 512 poses separated by `;` are taken in turn (a pose a frame, of 1 frame moved in 1, poses a path frame by frame: a swing's curve) (the log says from which frame). With the hands posed, a cross marks each controller's grip and a line where it points, and white lines the arms' bones. With `vr.dominant_hand = "left"` the poses are a left-hander's, mirrored: the right hand is the weapon's, held by the left controller where the mirror puts it (right and left, yaw and roll, the head's turn and its move across, all the other way), the left hand the right controller, and the trigger, the grips, the stick and the stick's clicks are those of the controllers and sticks that do what they name (the left trigger, the turn's stick's click on the left stick), so a test of the right hand plays as a left-hander's. Below, a grenade throw scripted. |
 | `debug.vr_test_death` | `""` | `HALO_VR_TEST_DEATH` | Kill the first player, for automated tests of the view as they die: `"<seconds> [kill\|grenade\|watch]"`, that many seconds after they first aim (a level's clock does not start at 0), once a run, as the script's `unit_kill` does, by a frag grenade's blast half a metre before them (their shields and nearly all their health gone first: the body thrown back), or killed and then the dead camera turned to the nearest living biped, as network co-op's spectating turns it to a teammate. From a second before, the log says how far the view moved and turned each frame, how tinted, dimmed and dark it was, and where the body was from the eye (how far, across and up, in view or not), and each phase's sums (alive, dead, back) with how much of the motion was seen (between frames not in full darkness), and each blink; with `debug.screenshot_directory`, the eyes six times a second from the death to 1.5 s after the player is back (24 times in its first half second). With `debug.vr_test_head = "0"`, the motion the player did not make. |
 | `debug.vr_test_grenades` | `""` | `HALO_VR_TEST_GRENADES` | Give the first VR player these grenades as they first aim, for tests of the grenade held in the hand: `"<frags> <plasma grenades>"`. |
@@ -3003,19 +2998,18 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   frames, 19 in the view at 8x); along the line it turns only as the aim
   does (on b40's Shade, swept across at 8x: no more than the aim, in any
   frame).
-  Its image (the same copy, with the HUD's reticle in its middle, on the
-  aim, and a soft edge) is on the same quad layer, for both eyes,
-  `vr.hud_distance` from the middle of the eyes, just above the aim (its
-  lower edge 3 degrees above the reticle; below it where above would be
-  more than 28 degrees from the head's forward), held within 28 degrees of
-  the head's forward, facing back toward the eyes, as wide as
-  `vr.smartlink_size` there, up as the world's. Over the aim, as it was,
-  the window hid the reticle in the world and what it was on; beside it,
-  the reticle stays on the target and the window shows the same point
-  magnified (screenshots on b30 with the pistol at 2x: above reads best;
-  up and right covered the HUD's shields, and to the right crowded the
-  weapon). The layer is over the eyes' images
-  and under the HUD's panels, as the eye's is; the HUD's zoomed view is not
+  Its image (the same copy: the window, its sight and readout, its glow,
+  and its animation, the image's middle rows) is not a layer: `d3d8_gl.c`
+  draws it into both eyes' images after the foveation's composite, where
+  each eye's ray meets the window's quad (`halo_vr_scope_window`: through
+  the reticle's point, at its smoothed distance, facing back along the line
+  from between the eyes to it, up as the world's), so that each eye sees it about the reticle, at its depth, over
+  the world and the weapon in hand and under the helmet's rim, the visor
+  and the HUD's layer. Where the eyes' depth is nearer than 1.2 m (the
+  first-person weapon and the hands; foveated, the periphery's depth),
+  `vr.scope_gun` lets the weapon through (a fifth, or all of it). Its image
+  is 1024 pixels square at `vr.resolution_scale = 1` (480 for the eye's
+  lens). The HUD's zoomed view is not
   drawn while it shows (`hud_weapon.c`, `vr_scope_shown`), and its shaders
   are made ready as the eye's are, the first time a weapon that zooms is in
   hand in a map. On spark (a50's start, standing still, the pistol zoomed
@@ -3023,26 +3017,6 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   GPU's time, about 0.1 ms in 1 (b30's fight varies far more from run to
   run); the pass is the eye's, as large, whose 0.5 to 1.3 ms on b30 is the
   better guide. Confirm it on a Steam Frame.
-- The sniper rifle's smart-link view is on the display on the back of its
-  scope (`vr_scope_display`; the scope table's display, its shaders the
-  ones whose names have "screen" in them, not drawn while it shows): the
-  same pass, from the same line, its field of view as wide as the display
-  is from between the eyes over the magnification, up as the rifle's (the
-  display turns with it: the world in it is level with the world about
-  it, however the rifle is canted). The copy keeps the image's middle rows
-  as the display's rectangle (its height over its width, `halo_vr_scope`'s
-  `height`, a sub-image of the square swapchain's image and a quad as
-  tall), its edge sharp; the quad is on the display, facing back along the
-  rifle, for both eyes. The first-person weapon is seen twice as far from
-  between the eyes as it is posed, and twice as large: the eyes' views of
-  it differ half as much as the world's would there (the world's are
-  right: a grunt 1.8 m away differs by the 63 mm the eyes are apart), so
-  the quad, which the runtime draws where it is, goes where the eyes see
-  the display (`FIRST_PERSON_SEEN`); placed where the rifle is posed it
-  fitted one eye and missed the other by about 7 degrees. The display's
-  middle and size were found against it, both eyes, from behind and from
-  the side. Unzoomed, or with the eyes in front of the display, it is not
-  drawn.
 - Zoomed, the smart-link's view magnifies the hand's shake as much as the
   world (2 and 8 times). The aim is steadied while it shows (`vr.c`,
   `aim_steady`; the game tells vr.c the magnification, `vr_aim.c`): a

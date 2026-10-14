@@ -307,17 +307,20 @@ static const struct config_setting config_settings[] =
 	{ "vr.scope_view", _config_string, "\"smartlink\"", "HALO_VR_SCOPE_VIEW", _environment_value,
 		_platform_desktop,
 		"With vr.scopes: \"smartlink\", the right stick's click zooms as the game\n"
-		"does, whatever the weapon's place, and the zoom shows where the weapon\n"
-		"aims, magnified: the sniper rifle's on the display on the back of its\n"
-		"scope, the others' in a round view on the visor just above the aim\n"
+		"does, whatever the weapon's place, and the zoom shows as a wide window\n"
+		"about the reticle, at its depth, magnifying where the weapon aims\n"
 		"(vr.smartlink_size wide);\n"
 		"\"eye\", the sniper rifle's and the pistol's scopes magnify the view\n"
 		"within their lens as you raise them to an eye, and only then (the\n"
 		"click changes the magnification); \"off\", as vr.scopes = false." },
-	{ "vr.smartlink_size", _config_real, "28.0", "HALO_VR_SMARTLINK_SIZE", _environment_value, _platform_desktop,
-		"With vr.scope_view = \"smartlink\", how wide the zoom's round view on\n"
-		"the visor is, in degrees of your view (10 to 45); the sniper rifle's\n"
-		"shows on its display, as large as the display is." },
+	{ "vr.smartlink_size", _config_real, "70.0", "HALO_VR_SMARTLINK_SIZE", _environment_value, _platform_desktop,
+		"With vr.scope_view = \"smartlink\", how wide the zoom's window about\n"
+		"the reticle is, in degrees of your view (30 to 100; it is 16:9)." },
+	{ "vr.scope_gun", _config_string, "\"hidden\"", "HALO_VR_SCOPE_GUN", _environment_value, _platform_desktop,
+		"With vr.scope_view = \"smartlink\", how the weapon in your hand shows\n"
+		"where it crosses the zoom's window: \"hidden\" the window is over it,\n"
+		"\"ghost\" it shows faintly through the window, \"visible\" it is in\n"
+		"front of the window." },
 	{ "vr.aim_assist", _config_real, "1.0", "HALO_VR_AIM_ASSIST", _environment_value, _platform_desktop,
 		"With vr.aim = \"controller\", the aim assist: near an enemy the game's\n"
 		"magnetism would be drawn to, the aim's turn across it slows, and zoomed,\n"

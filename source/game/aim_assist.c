@@ -641,8 +641,12 @@ long player_aim_projectile(
 /* port: the VR mode's aim assist for the controller (port/linux/game/
 vr_aim.c): the target the player's magnetism would be drawn to from this
 point along this direction, as local_player_aim_assist finds it (the
-aiming unit's weapon at its zoom): its object (NONE: none), its point, and
-its magnetism level */
+aiming unit's weapon at its zoom, but its angles unzoomed: the flat game
+narrows them by the zoom's magnification as the whole view is magnified,
+and the VR mode's zoom magnifies a window of its own, not the aim, so that
+zoomed the assist would be half as wide at 2x and an eighth at 8x; the
+zoom's longer reach is kept): its object (NONE: none), its point, and its
+magnetism level */
 long player_aim_assist_target(
 	long player_index,
 	real_point3d const *position,
@@ -652,16 +656,28 @@ long player_aim_assist_target(
 {
 	struct player_datum *player= player_get(player_index);
 	long aiming_unit_index= unit_get_aiming_unit_index(player->unit_index);
+	short zoom_level= aiming_unit_index!=NONE ? unit_get_zoom_level(aiming_unit_index) : NONE;
 	struct aim_assist_parameters parameters;
 	struct aim_assist_target target;
 
 	*magnetism_level= 0.f;
 	if (aiming_unit_index==NONE ||
-		!unit_get_aim_assist_parameters(aiming_unit_index, unit_get_zoom_level(aiming_unit_index), &parameters) ||
-		!aim_assist(&parameters, position, direction, aiming_unit_index, player->team_index, &target))
+		!unit_get_aim_assist_parameters(aiming_unit_index, zoom_level, &parameters))
 	{
 		return NONE;
 	}
+	if (zoom_level!=NONE)
+	{
+		struct unit_datum *unit= unit_get(aiming_unit_index);
+		long weapon_index= unit_inventory_get_weapon(aiming_unit_index, unit->unit.current_weapon_index);
+		real magnification= weapon_index!=NONE ? weapon_get_zoom_magnification(weapon_index, zoom_level) : 1.f;
+
+		parameters.autoaim_angle*= magnification;
+		parameters.magnetism_angle*= magnification;
+		parameters.deviation_angle*= magnification;
+	}
+	if (!aim_assist(&parameters, position, direction, aiming_unit_index, player->team_index, &target))
+		return NONE;
 	*point= target.position;
 	*magnetism_level= target.magnetism_level;
 
