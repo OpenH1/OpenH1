@@ -5,7 +5,8 @@ System calls on behalf of the guest's musl runtime (its syscall_arch.h
 sends every call here).
 
 Most calls pass straight through: the guest's pointers are valid host
-addresses, and its integer arguments arrive properly extended to 64 bits.
+addresses (with the base register, once the base is added: host.h), and its
+integer arguments arrive properly extended to 64 bits.
 The exceptions are
 
 - structures whose ILP32 layout differs from the kernel's: timespec and
@@ -51,7 +52,47 @@ struct guest_iovec
 	uint32_t length;
 };
 
-#define GUEST(type, value) ((type)(uintptr_t)(uint32_t)(value))
+#define GUEST(type, value) ((type)host_pointer((uint32_t)(value)))
+
+#ifdef HALO_GUEST_BASE
+/* the arguments of the calls passed straight through that are pointers, a
+bit for each */
+static unsigned int pointer_arguments(long long number)
+{
+	switch (number)
+	{
+	case SYS_getcwd:
+	case SYS_chdir:
+	case SYS_pipe2:
+	case SYS_getrandom:
+	case SYS_uname:
+		return 1 << 0;
+	case SYS_read:
+	case SYS_openat:
+	case SYS_pread64:
+	case SYS_pwrite64:
+	case SYS_getdents64:
+	case SYS_unlinkat:
+	case SYS_mkdirat:
+	case SYS_fchmodat:
+	case SYS_faccessat:
+	case SYS_fstat:
+	case SYS_getrlimit:
+		return 1 << 1;
+	case SYS_renameat:
+	case SYS_renameat2:
+		return 1 << 1 | 1 << 3;
+	case SYS_readlinkat:
+	case SYS_newfstatat:
+	case SYS_rt_sigprocmask:
+		return 1 << 1 | 1 << 2;
+	case SYS_prlimit64:
+		return 1 << 2 | 1 << 3;
+	default:
+		return 0;
+	}
+}
+#endif
 
 static int timespec_in(uint64_t address, struct timespec *result)
 {
@@ -290,7 +331,7 @@ long long host_syscall(long long number, long long a, long long b, long long c,
 	case SYS_madvise:
 		if ((uint64_t)a + (uint64_t)b > 0x100000000ULL)
 			return -EINVAL;
-		return result_of(syscall(SYS_madvise, a, b, c));
+		return result_of(syscall(SYS_madvise, host_address((uint32_t)a), b, c));
 	case SYS_mremap:
 	case SYS_brk:
 		/* musl then falls back to mmap and copying */
@@ -376,7 +417,26 @@ long long host_syscall(long long number, long long a, long long b, long long c,
 	case SYS_umask:
 	case SYS_flock:
 	case SYS_membarrier:
+#ifdef HALO_GUEST_BASE
+	{
+		long long arguments[6] = { a, b, c, d, e, f };
+		unsigned int pointers = pointer_arguments(number);
+		int index;
+
+		/* (fcntl's locks take a struct flock) */
+		if (number == SYS_fcntl && (b == F_GETLK || b == F_SETLK || b == F_SETLKW))
+			pointers = 1 << 2;
+		for (index = 0; index < 6; index++)
+		{
+			if (pointers & (1u << index))
+				arguments[index] = (long long)(uintptr_t)host_pointer((uint32_t)arguments[index]);
+		}
+		return result_of(syscall(number, arguments[0], arguments[1], arguments[2], arguments[3], arguments[4],
+			arguments[5]));
+	}
+#else
 		return result_of(syscall(number, a, b, c, d, e, f));
+#endif
 
 	default:
 		host_logf(HOST_LOG_WARN, "guest system call %lld is not supported", number);

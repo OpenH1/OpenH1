@@ -103,6 +103,12 @@ parser.add_argument(
     "refer to \"VR\" in port/linux/README.md",
 )
 parser.add_argument(
+    "--guest-base",
+    action="store_true",
+    help="the Linux arm64 and Android builds' guest memory at a base the host chooses (a base register, "
+    "tools/guest_base_register.py) instead of the fixed low 4 GB",
+)
+parser.add_argument(
     "--web-emcc",
     type=str,
     help="Emscripten's emcc for `ninja web` (default: emcc on the PATH, then EMSDK's or ~/emsdk's)",
@@ -129,6 +135,7 @@ sln = SimpleNamespace(
     linux_arm64_cc=args.linux_arm64_cc,
     linux_arm64_gl=args.linux_arm64_gl,
     port_vr=args.vr,
+    guest_base=args.guest_base,
     web_emcc=args.web_emcc,
 )
 

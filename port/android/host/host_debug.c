@@ -68,7 +68,7 @@ static void sample_handler(int signal_number, siginfo_t *information, void *cont
 	(void)information;
 	length = snprintf(line, sizeof(line), "sample tid %d: pc %llx lr %llx", gettid(),
 		(unsigned long long)registers->pc, (unsigned long long)registers->regs[30]);
-	for (depth = 0; depth < 12 && fp && fp < 0x100000000ULL && !(fp & 7) && host_low_owns(fp, 16); depth++)
+	for (depth = 0; depth < 12 && fp && host_in_guest(fp) && !(fp & 7) && host_low_owns(fp, 16); depth++)
 	{
 		const uint64_t *frame = (const uint64_t *)fp;
 

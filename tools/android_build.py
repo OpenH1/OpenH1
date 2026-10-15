@@ -228,6 +228,16 @@ def _musl_sources(musl_dir: Path = MUSL_DIR) -> List[Path]:
     return sources
 
 
+def host_memory_sources(sources: List[Path], base_register: bool) -> List[Path]:
+    """The host's sources (port/android/host) for its guest's memory: the
+    fixed low ranges (host_memory.c), or with the base register its own
+    memory manager and the entry into guest code."""
+    if base_register:
+        return [source for source in sources if source.name != "host_memory.c"] + [
+            PORT_DIR / "host" / "host_enter.S"]
+    return [source for source in sources if source.name != "host_memory_base.c"]
+
+
 def android_configure_inputs() -> List[Path]:
     return [Path(__file__), SDL_ANDROID_MOUSE_PATCH, PORT_DIR / "guest" / "runtime", PORT_DIR / "host",
             LINUX_DIR / "src", *hud_configure_inputs()]
@@ -588,10 +598,14 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     n.variable("android_host_cc", str(host_cc))
     n.variable("android_ndk_bin", str(ndk_bin))
 
+    # (configure.py --guest-base: the guest's memory at a base the host
+    # chooses, tools/guest_base_register.py, instead of the fixed low ranges)
+    base_register = getattr(sln, "guest_base", False)
     guest = generate_guest_image(
         n, sln, config, prefix="android", label="ANDROID", build=BUILD, third_party=THIRD_PARTY,
         guest_cc=guest_cc, gl_headers=sysroot_include, ar="$android_ndk_bin/llvm-ar", ld="$android_ndk_bin/ld.lld",
-        builtins="$$($android_host_cc -print-libgcc-file-name)", asm_target="aarch64-linux-android")
+        builtins="$$($android_host_cc -print-libgcc-file-name)", asm_target="aarch64-linux-android",
+        base_register=base_register)
     image = guest["image"]
     host_table_c = guest["host_table_c"]
     sdl_build = BUILD / "sdl3-build"
@@ -630,9 +644,9 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     host_cflags = " ".join([
         "-O2", "-g", "-fPIC", "-Wall", "-Wno-unused-function", "-D_GNU_SOURCE",
         f"-I{PORT_DIR}/include", f"-I{PORT_DIR}/host", f"-I{SDL_DIR}/include", f"-I{LINUX_DIR}/src",
-        f"-I{TOML_DIR}",
+        f"-I{TOML_DIR}", *(["-DHALO_GUEST_BASE=1"] if base_register else []),
     ])
-    host_sources = sorted((PORT_DIR / "host").glob("*.c")) + [
+    host_sources = host_memory_sources(sorted((PORT_DIR / "host").glob("*.c")), base_register) + [
         LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",
         # the app reads debug.sample_seconds from config.toml (host_main.c)
         TOML_DIR / "tomlc17.c",

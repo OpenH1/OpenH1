@@ -24,7 +24,8 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .android_build import GUEST_ABI_FLAGS, SDL_TAG, TOML_DIR, fetch_third_party, generate_guest_image
+from .android_build import (GUEST_ABI_FLAGS, SDL_TAG, TOML_DIR, fetch_third_party, generate_guest_image,
+                            host_memory_sources)
 from .linux_sysroot import download
 from .linux_build import (MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, compile_launcher, miniupnpc_sources,
                           updater_defines)
@@ -121,6 +122,12 @@ def generate_linux_arm64_build(n: Writer, sln: Any) -> None:
         abi_flags.append("-DHALO_VR=1")
         host_defines.append("-DHALO_VR=1")
 
+    # (configure.py --guest-base: the guest's memory at a base the host
+    # chooses, tools/guest_base_register.py, instead of the low 4 GB)
+    base_register = getattr(sln, "guest_base", False)
+    if base_register:
+        host_defines.append("-DHALO_GUEST_BASE=1")
+
     n.comment("64-bit ARM Linux build (ninja linux_arm64); see port/linux/README.md")
     n.variable("linux_arm64_guest_cc", cc)
     n.variable("linux_arm64_cc", cc)
@@ -131,7 +138,9 @@ def generate_linux_arm64_build(n: Writer, sln: Any) -> None:
         builtins="$$($linux_arm64_cc -print-libgcc-file-name)", asm_target="aarch64-linux-gnu",
         abi_flags=abi_flags, extra_runtime=[PORT_DIR / "guest_desktop.c"],
         extra_imports=[PORT_DIR / "host_imports.list", *([PORT_DIR / "vr_imports.list"] if vr else [])],
-        updater_cflags=updater_defines(getattr(sln, "port_release", False)), desktop_gl=desktop_gl)
+        extra_prototypes=[PORT_DIR / "guest_desktop.c", *([LINUX_DIR / "src" / "vr_host.h"] if vr else [])],
+        updater_cflags=updater_defines(getattr(sln, "port_release", False)), desktop_gl=desktop_gl,
+        base_register=base_register)
 
     # ---------- SDL3, built from the same source as the guest's headers
 
@@ -165,7 +174,8 @@ def generate_linux_arm64_build(n: Writer, sln: Any) -> None:
     ])
     # (the app's own: its entry point, and the touch controls through Java)
     android_only = {"host_main.c", "host_touch.c"}
-    host_sources = [source for source in sorted((ANDROID_DIR / "host").glob("*.c")) if source.name not in android_only]
+    host_sources = [source for source in host_memory_sources(sorted((ANDROID_DIR / "host").glob("*.c")), base_register)
+                    if source.name not in android_only]
     host_sources += [
         PORT_DIR / "host_main.c", PORT_DIR / "host_desktop.c",
         LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",

@@ -376,6 +376,11 @@ If the addresses are not available, the game shows a message, and writes
 the mappings below 4 GB to `memory_map.txt` in the data folder and to the
 log.
 
+A build with `configure.py --guest-base` needs no fixed addresses: the
+guest's 4 GB are wherever the host can reserve them, and each guest address
+is an offset from a base register, which every memory access of the guest
+adds (`tools/guest_base_register.py`, `host/host_memory_base.c`).
+
 To test the reclaim on any device, set a system property before you start
 the game. The app then puts a stand-in for ART's large object space over
 the fixed addresses:
@@ -487,7 +492,9 @@ assembly of the port is necessary:
   height of the screen (larger on a tablet than on a phone), never smaller
   than a finger.
 - Kernels with 16 KB pages (a developer option of Android 15) do not
-  operate. The Xbox memory uses 4 KB pages.
+  operate. The Xbox memory uses 4 KB pages. A build with
+  `configure.py --guest-base` keeps the guest's 4 KB pages on larger ones
+  (`host/host_memory_base.c`), but it was not tested on Android.
 - The x86 Android emulator runs the app through its ARM translation. The
   translation cannot deliver the page faults that the renderer uses to
   notice changed textures and vertices. On the emulator the app compares

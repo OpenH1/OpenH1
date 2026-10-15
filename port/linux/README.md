@@ -1143,6 +1143,12 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
   x86 build does (`src/posix_trace_marker.c`, under "The platform layer"
   below): on the Steam Frame, its markers took the game from the headset's
   72 Hz to about 50 frames a second.
+- The guest's memory is the low 4 GB of the process. With
+  `configure.py --guest-base`, it is at a base that the host chooses: each
+  guest address is an offset from a base register, which every memory
+  access of the guest adds (`tools/guest_base_register.py`;
+  `android/host/host_memory_base.c`). Then the guest's 4 KB pages also
+  operate on a kernel with 16 KB pages.
 
 ## VR
 
