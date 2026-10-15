@@ -76,7 +76,7 @@ KHRONOS_URLS = [
 # the guest of the Linux arm64 build (the base register is added by
 # generate_guest_image); Apple's clang otherwise notes that its macOS
 # sysroot is not the watchOS target's, which the guest does not use
-MACOS_GUEST_ABI_FLAGS = [*LINUX_ARM64_GUEST_ABI_FLAGS, "-Wno-incompatible-sysroot"]
+MACOS_GUEST_ABI_FLAGS = [*LINUX_ARM64_GUEST_ABI_FLAGS, "-Wno-incompatible-sysroot", "-DHALO_METAL"]
 
 # the host's frameworks: Metal and its layer (port/macos/host_metal.m,
 # xgpu_metal.m)
@@ -151,9 +151,11 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
         n, sln, config, prefix="macos", label="MACOS", build=BUILD, third_party=THIRD_PARTY,
         guest_cc=cc, gl_headers=KHRONOS_DIR.resolve(), ar=ar, ld=ld,
         builtins="", asm_target="aarch64-linux-gnu",
-        abi_flags=MACOS_GUEST_ABI_FLAGS, extra_runtime=[ARM64_DIR / "guest_desktop.c"],
-        extra_imports=[ARM64_DIR / "host_imports.list"], extra_prototypes=[ARM64_DIR / "guest_desktop.c"],
-        base_register=True)
+        abi_flags=MACOS_GUEST_ABI_FLAGS, extra_runtime=[ARM64_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
+        extra_imports=[ARM64_DIR / "host_imports.list", PORT_DIR / "host_imports.list"],
+        extra_prototypes=[ARM64_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
+        # (the null renderer's window: guest_metal.c)
+        base_register=True, link_flags="--wrap=Direct3D_CreateDevice")
 
     # ---------- SDL3, built from the same source as the guest's headers
 
@@ -194,7 +196,7 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
                     if source.name not in HOST_EXCLUDED]
     host_sources += [
         ARM64_DIR / "host_main.c", ARM64_DIR / "host_desktop.c",
-        *sorted(PORT_DIR.glob("*.c")),
+        *sorted(source for source in PORT_DIR.glob("*.c") if not source.name.startswith("guest_")),
         LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",
         TOML_DIR / "tomlc17.c",
     ]

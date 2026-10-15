@@ -1,0 +1,4 @@
+# Host functions the macOS guest imports beyond the Linux arm64 guest's
+# (port/linux/arm64/host_imports.list): declared in guest_metal.c, defined
+# in host_metal.m. tools/android_imports.py generates the stubs.
+host_metal_window_open

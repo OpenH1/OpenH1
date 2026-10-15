@@ -763,6 +763,16 @@ or last resized: platform_display_apply */
 static long platform_window_width = -1, platform_window_height = -1;
 #endif
 
+#ifdef HALO_METAL
+/* port/macos/host_metal.m: the window drawn with Metal, from the main
+thread; nonzero on success */
+int host_metal_window_open(unsigned int window);
+/* the window's kind of drawing */
+#define PLATFORM_WINDOW_DRAWING SDL_WINDOW_METAL
+#else
+#define PLATFORM_WINDOW_DRAWING SDL_WINDOW_OPENGL
+#endif
+
 BOOL platform_video_initialize(unsigned long width, unsigned long height)
 {
 	int version;
@@ -772,7 +782,9 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (!platform_sdl_initialize())
 		return FALSE;
 
-#ifdef HALO_GLES
+#ifdef HALO_METAL
+	/* (no OpenGL: the window's layer is Metal's, drawn by the host) */
+#elif defined(HALO_GLES)
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
@@ -781,6 +793,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
 #endif
+#ifndef HALO_METAL
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
@@ -792,6 +805,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 #endif
 	if (config_boolean("debug.gl_debug"))
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+#endif
 #if !defined(HALO_ANDROID) && !defined(_WIN32)
 	/* Mesa's GL thread: the renderer makes thousands of GL calls a frame
 	and never waits for their results, so handing them to a thread of
@@ -829,7 +843,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	else
 #endif
 	platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
-		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+		PLATFORM_WINDOW_DRAWING | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
 		(config_boolean("debug.hidden_window") ? SDL_WINDOW_HIDDEN : 0) |
 		(platform_fullscreen_setting() ? SDL_WINDOW_FULLSCREEN : 0));
 #endif
@@ -854,6 +868,17 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 #endif
 	platform_fullscreen_requested = platform_fullscreen_setting();
 	platform_fullscreen_kind_apply();
+#endif
+#ifdef HALO_METAL
+	if (!host_metal_window_open((unsigned int)(uintptr_t)platform_window))
+	{
+		platform_log("cannot draw the window with Metal");
+		return FALSE;
+	}
+	platform_event_thread = SDL_GetCurrentThreadID();
+	platform_mouse_capture(TRUE);
+	(void)version;
+	return TRUE;
 #endif
 	platform_gl_context = SDL_GL_CreateContext(platform_window);
 #ifdef HALO_GLES

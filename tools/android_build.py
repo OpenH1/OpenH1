@@ -248,7 +248,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
                          asm_target: str, abi_flags: List[str] = GUEST_ABI_FLAGS,
                          extra_runtime: List[Path] = [], extra_imports: List[Path] = [],
                          extra_prototypes: List[Path] = [], updater_cflags: str = "", desktop_gl: bool = False,
-                         base_register: bool = False) -> Dict[str, Path]:
+                         base_register: bool = False, link_flags: str = "") -> Dict[str, Path]:
     """The guest image (build/halo_guest.elf) and the host's import table, for
     the builds that run the game as ILP32 AArch64 code: Android, and Linux
     arm64 (tools/linux_arm64_build.py). The caller sets ${prefix}_guest_cc to
@@ -264,7 +264,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     builds a guest whose memory lies at any base the host chooses
     (tools/guest_base_register.py) rather than in the low 4 GB;
     extra_prototypes are then the files that declare extra_imports' functions,
-    whose pointer arguments the import stubs translate."""
+    whose pointer arguments the import stubs translate. link_flags are more
+    of the image's linker options."""
     musl_dir = third_party / f"musl-{MUSL_VERSION}"
     sdl_dir = third_party / "SDL3"
     guest_dir = build / "guest"
@@ -543,8 +544,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     linker_script = PORT_DIR / "guest" / "guest.ld"
     n.rule(
         name=f"{prefix}_guest_link",
-        command=(f"{ld} -m aarch64linux -static -nostdlib -T {linker_script} "
-                 f"-Map $out.map -o $out @$out.rsp {libguestc} "
+        command=(f"{ld} -m aarch64linux -static -nostdlib -T {linker_script} {link_flags}"
+                 f"{' ' if link_flags else ''}-Map $out.map -o $out @$out.rsp {libguestc} "
                  f"{builtins}"),
         description=f"{label} LINK $out",
         rspfile="$out.rsp",
