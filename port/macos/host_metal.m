@@ -90,12 +90,16 @@ static struct
 	int queue[PRESENT_IMAGES];
 	int queued;
 	BOOL frames_seen;
+	BOOL unpaced;
 
 	/* pacing, since the last log */
 	double stats_interval, stats_since;
 	uint32_t ticks, frames_presented, idle_presented, skipped, waits, dropped;
 	_Atomic uint32_t shown, late, intervals;
 	_Atomic uint64_t interval_sum_us, interval_minimum_us, interval_maximum_us;
+	/* the presentations' GPU time */
+	_Atomic uint64_t present_gpu_ns;
+	_Atomic uint32_t present_buffers;
 	double last_presented;
 } presentation = {
 	.lock = PTHREAD_MUTEX_INITIALIZER,
@@ -125,6 +129,17 @@ id<MTLTexture> host_metal_present_acquire(uint32_t width, uint32_t height)
 		}
 		if (found >= 0)
 			break;
+		/* (HALO_METAL_UNPACED: the oldest queued is dropped at once, so that
+		the game draws as fast as the GPU and the render thread can: a
+		measure of their work at their full speed) */
+		if (presentation.unpaced && presentation.queued)
+		{
+			found = presentation.queue[0];
+			memmove(presentation.queue, presentation.queue + 1, sizeof(int) * (size_t)(presentation.queued - 1));
+			presentation.queued--;
+			presentation.dropped++;
+			break;
+		}
 		presentation.waits++;
 		clock_gettime(CLOCK_REALTIME, &until);
 		until.tv_nsec += PRESENT_WAIT_MAXIMUM_NS;
@@ -235,20 +250,23 @@ static void pacing_log(double now)
 		"metal: %.1f s: %u refreshes (%.1f Hz), %u presented (%u frames, %u cleared), %u on screen (%.1f a second), "
 		"intervals %.2f ms mean, %.2f min, %.2f max, %u late; %u refreshes without a new frame, %u waits for an image, "
 		"%u frames dropped; "
-		"drawable %ux%u; frames %u, draws %u, passes %u",
+		"drawable %ux%u, presentation's GPU %.3f ms a refresh; frames %u, draws %u, passes %u",
 		seconds, presentation.ticks, presentation.ticks / seconds, presentation.frames_presented + presentation.idle_presented,
 		presentation.frames_presented, presentation.idle_presented, shown, shown / seconds,
 		intervals ? (double)sum / 1000.0 / intervals : 0.0,
 		atomic_exchange(&presentation.interval_minimum_us, 0) / 1000.0,
 		atomic_exchange(&presentation.interval_maximum_us, 0) / 1000.0, atomic_exchange(&presentation.late, 0),
 		presentation.skipped, presentation.waits, presentation.dropped, presentation.drawable_width, presentation.drawable_height,
+		atomic_load(&presentation.present_buffers) ? atomic_exchange(&presentation.present_gpu_ns, 0) / 1e6 /
+			atomic_exchange(&presentation.present_buffers, 0) : 0.0,
 		statistics.frames, statistics.draws, statistics.passes);
 	if (statistics.frames)
 		host_logf(HOST_LOG_INFO,
-			"metal: a frame: GPU %.2f ms (%u command buffers), render thread CPU %.2f ms, %.1f draws, %.1f passes, "
+			"metal: a frame: GPU busy %.2f ms (%.0f%% of the time); its command buffers' GPU time %.2f ms (%u), render thread CPU %.2f ms, %.1f draws, %.1f passes, "
 			"%.1f ordered uploads, %.1f copies of a target drawn into; the last played in %.2f ms, its stream %u KB "
 			"(the most %u KB); the game waited %u times (%.1f ms); textures made %u, made again %u, images %u, "
 			"%.1f MB read; pipelines made %u (%u from the archive, %.1f ms)",
+			statistics.gpu_busy_seconds * 1000.0 / statistics.frames, statistics.gpu_busy_seconds * 100.0 / seconds,
 			statistics.gpu_seconds * 1000.0 / statistics.frames, statistics.command_buffers,
 			statistics.render_cpu_seconds * 1000.0 / statistics.frames, (double)statistics.draws / statistics.frames,
 			(double)statistics.passes / statistics.frames, (double)statistics.uploads_ordered / statistics.frames,
@@ -354,6 +372,14 @@ static void pacing_log(double now)
 			presented(shown.presentedTime);
 		}];
 		[buffer presentDrawable:drawable];
+		[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+			if (done.GPUEndTime > done.GPUStartTime)
+			{
+				xgpu_metal_gpu_interval(done.GPUStartTime, done.GPUEndTime);
+				atomic_fetch_add(&presentation.present_gpu_ns, (uint64_t)((done.GPUEndTime - done.GPUStartTime) * 1e9));
+				atomic_fetch_add(&presentation.present_buffers, 1);
+			}
+		}];
 		if (index >= 0)
 		{
 			[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
@@ -528,6 +554,7 @@ int host_metal_window_open(uint32_t window)
 
 	SDL_AddEventWatch(window_event, NULL);
 	presentation.stats_interval = stats ? atof(stats) : 0.0;
+	presentation.unpaced = getenv("HALO_METAL_UNPACED") && atoi(getenv("HALO_METAL_UNPACED"));
 	presentation.stats_since = seconds_now();
 	atomic_store(&presentation.active, 1);
 	if (pthread_create(&thread, NULL, presentation_thread, (__bridge_retained void *)[HaloDisplayLinkTarget new]) != 0)

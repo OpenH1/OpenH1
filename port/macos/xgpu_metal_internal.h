@@ -18,6 +18,8 @@ What the Metal backend (xgpu_metal.m) and the window's presentation
 xgpu_metal_initialize) */
 id<MTLDevice> xgpu_metal_device(void);
 id<MTLCommandQueue> xgpu_metal_queue(void);
+/* a command buffer's GPU start and end, counted in the GPU's busy time */
+void xgpu_metal_gpu_interval(double start, double end);
 /* a texture's Metal texture (nil for none) */
 id<MTLTexture> xgpu_metal_texture(uint32_t texture);
 

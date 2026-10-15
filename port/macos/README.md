@@ -185,14 +185,43 @@ Until frames come, each refresh clears the drawable and presents it.
 `HALO_METAL_STATS=<seconds>` logs the pacing that often: the link's
 refreshes, the frames and clears presented, how many drawables reached the
 screen and the intervals between them, the frames that waited for an
-image or were dropped. A second line gives a frame's mean costs: the GPU's
-time on its command buffers, the render thread's CPU time, its draws,
-passes, uploads in the frame's order and copies of a target drawn into;
+image or were dropped, and the presentation's GPU time. A second line
+gives a frame's mean costs: the time the GPU was busy (with the game's
+command buffers or the presentation's: the union of their times, which
+overlap) and its share of the time, the GPU's time on the frame's command
+buffers, the render thread's CPU time, its draws, passes, uploads in the
+frame's order and copies of a target drawn into;
 the last frame's time to play (from its first record to its end, the wait
 for a presentation image included) and its bytes in the stream (and the
 most of any frame); the game's waits for the host (the frames in flight,
 or room in the ring); the textures and images made, and made again, and
 the bytes read for them; the pipelines made, and those from the archive.
+
+### The GPU's time
+
+Apple's GPUs run as slowly as the frames allow: with the game paced by
+the display, the GPU's clock is lowered until it is busy most of each
+frame (on an A18 Pro, about 87% of it, whatever the frame draws), so the
+GPU's time a frame says little about the work. To measure the work:
+
+- `HALO_METAL_UNPACED=1`: a frame does not wait for a presentation image
+  (the oldest queued is dropped), so the game draws as fast as the GPU and
+  the render thread can, and the GPU runs at its full clock: the GPU's
+  busy time a frame is then the work's.
+- `HALO_METAL_PASSES=<seconds>`: a frame that often is timed pass by pass,
+  with the GPU's timestamps at each encoder's stages, and logged with each
+  pass's targets (their handles, size, formats and samples), load and store
+  actions (`L`oad, `C`lear, `D`on't care; `S`tore, `R`esolve, `B`oth),
+  draws and clears. The stages of passes overlap on the GPU, so a pass's
+  span includes others'. `HALO_METAL_PASSES_SPLIT=1` makes each draw of
+  those frames a pass of its own, logged with its shaders, blend, depth,
+  viewport and textures (size, format, levels, filters and anisotropy).
+- `HALO_METAL_CAPTURE=<frame>:<file>.gputrace` (with `MTL_CAPTURE_ENABLED=1`)
+  writes that frame and the next, the first's presentation included, as a
+  GPU trace document for Xcode (its shader profiler and counters).
+- Instruments' Metal System Trace
+  (`xcrun xctrace record --template 'Metal System Trace' --launch -- build/macos/halo`)
+  shows the GPU's performance states and the window server's work.
 
 ### The backend (`xgpu_metal.m`)
 

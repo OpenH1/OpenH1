@@ -466,6 +466,9 @@ struct xgpu_metal_statistics
 	render thread's CPU time between frames' ends */
 	double gpu_seconds;
 	uint32_t command_buffers;
+	/* the time the GPU was busy with any command buffer, the
+	presentation's included (they overlap) */
+	double gpu_busy_seconds;
 	double render_cpu_seconds;
 };
 void xgpu_metal_statistics(struct xgpu_metal_statistics *statistics);

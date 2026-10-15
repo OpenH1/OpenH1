@@ -38,6 +38,8 @@ Ranges that cannot be wrapped are copied into the upload ring.
 #include <errno.h>
 #include <float.h>
 #include <pthread.h>
+#include <stdatomic.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -465,6 +467,228 @@ static uint64_t recording_serial(void)
 	return metal.command_serial;
 }
 
+/* ---------- the passes' GPU times and frame captures
+
+HALO_METAL_PASSES=<seconds>: a frame that often is timed pass by pass, with
+the GPU's timestamps at each encoder's stages, and logged with each pass's
+targets, load and store actions and draws. HALO_METAL_CAPTURE=<frame>:<path>
+(with MTL_CAPTURE_ENABLED=1) writes that frame and the next, the
+presentation of the first included, as a GPU trace document. */
+
+#define PROFILE_PASSES 256
+
+struct profile_pass
+{
+	const char *what;
+	uint32_t color, depth;
+	uint32_t color_format, depth_format, width, height, samples;
+	/* colour, depth, stencil (Metal's actions; -1: none) */
+	int8_t loads[3], stores[3];
+	uint32_t draws, clears;
+	/* (HALO_METAL_PASSES_SPLIT: the draw's pipeline and textures) */
+	char detail[256];
+};
+
+static struct
+{
+	double interval, last;
+	/* 0: none; 1: this frame is timed; 2: its command buffers are being
+	done */
+	_Atomic int state;
+	id<MTLCounterSampleBuffer> samples;
+	uint32_t count;
+	int32_t current;
+	struct profile_pass passes[PROFILE_PASSES];
+	MTLTimestamp cpu_start, gpu_start;
+	uint64_t first_serial;
+	double buffer_seconds;
+	uint32_t buffers;
+	uint64_t frame;
+
+	/* each draw of a timed frame a pass of its own */
+	BOOL split;
+
+	uint64_t capture_frame;
+	NSString *capture_path;
+	BOOL capturing;
+} profile = { .current = -1 };
+
+static void profile_initialize(void)
+{
+	const char *passes = getenv("HALO_METAL_PASSES"), *capture = getenv("HALO_METAL_CAPTURE");
+
+	profile.interval = passes ? atof(passes) : 0.0;
+	profile.split = getenv("HALO_METAL_PASSES_SPLIT") && atoi(getenv("HALO_METAL_PASSES_SPLIT"));
+	if (profile.interval > 0.0)
+	{
+		MTLCounterSampleBufferDescriptor *descriptor = [MTLCounterSampleBufferDescriptor new];
+		NSError *error = nil;
+
+		for (id<MTLCounterSet> set in metal.device.counterSets)
+		{
+			if ([set.name isEqualToString:MTLCommonCounterSetTimestamp])
+				descriptor.counterSet = set;
+		}
+		descriptor.sampleCount = PROFILE_PASSES * 4;
+		descriptor.storageMode = MTLStorageModeShared;
+		profile.samples = descriptor.counterSet && [metal.device supportsCounterSampling:MTLCounterSamplingPointAtStageBoundary] ?
+			[metal.device newCounterSampleBufferWithDescriptor:descriptor error:&error] : nil;
+		if (!profile.samples)
+		{
+			host_logf(HOST_LOG_ERROR, "metal: no timestamps at the GPU's stages: %s",
+				error ? error.localizedDescription.UTF8String : "not supported");
+			profile.interval = 0.0;
+		}
+	}
+	if (capture && strchr(capture, ':'))
+	{
+		profile.capture_frame = strtoull(capture, NULL, 10);
+		profile.capture_path = @(strchr(capture, ':') + 1);
+	}
+}
+
+static void profile_frame_begin(uint64_t frame)
+{
+	double now = seconds_now();
+
+	if (profile.capture_path && frame == profile.capture_frame)
+	{
+		MTLCaptureDescriptor *descriptor = [MTLCaptureDescriptor new];
+		NSError *error = nil;
+
+		descriptor.captureObject = metal.device;
+		descriptor.destination = MTLCaptureDestinationGPUTraceDocument;
+		descriptor.outputURL = [NSURL fileURLWithPath:profile.capture_path];
+		profile.capturing = [[MTLCaptureManager sharedCaptureManager] startCaptureWithDescriptor:descriptor error:&error];
+		host_logf(HOST_LOG_INFO, "metal: capturing frames %llu and %llu into %s%s%s", (unsigned long long)frame,
+			(unsigned long long)frame + 1, profile.capture_path.UTF8String, profile.capturing ? "" : ": ",
+			profile.capturing ? "" : error.localizedDescription.UTF8String);
+	}
+	if (profile.interval <= 0.0 || atomic_load(&profile.state) != 0 || now - profile.last < profile.interval)
+		return;
+	profile.count = 0;
+	profile.current = -1;
+	profile.frame = frame;
+	profile.buffer_seconds = 0.0;
+	profile.buffers = 0;
+	/* (the command buffer being recorded, if any, is this frame's) */
+	profile.first_serial = metal.command_buffer ? metal.command_serial : metal.command_serial + 1;
+	[metal.device sampleTimestamps:&profile.cpu_start gpuTimestamp:&profile.gpu_start];
+	atomic_store(&profile.state, 1);
+}
+
+/* a pass of the frame timed: its index (-1: none) */
+static int32_t profile_pass_add(const char *what)
+{
+	struct profile_pass *pass;
+
+	if (atomic_load(&profile.state) != 1 || profile.count >= PROFILE_PASSES)
+		return -1;
+	pass = &profile.passes[profile.count];
+	memset(pass, 0, sizeof(*pass));
+	memset(pass->loads, -1, sizeof(pass->loads));
+	memset(pass->stores, -1, sizeof(pass->stores));
+	pass->what = what;
+	return (int32_t)profile.count++;
+}
+
+/* a blit encoder, timed when the frame is */
+static id<MTLBlitCommandEncoder> blit_encoder(const char *what)
+{
+	int32_t index = profile_pass_add(what);
+	MTLBlitPassDescriptor *descriptor;
+
+	if (index < 0)
+		return [command_buffer() blitCommandEncoder];
+	descriptor = [MTLBlitPassDescriptor blitPassDescriptor];
+	descriptor.sampleBufferAttachments[0].sampleBuffer = profile.samples;
+	descriptor.sampleBufferAttachments[0].startOfEncoderSampleIndex = (NSUInteger)index * 4;
+	descriptor.sampleBufferAttachments[0].endOfEncoderSampleIndex = (NSUInteger)index * 4 + 1;
+	return [command_buffer() blitCommandEncoderWithDescriptor:descriptor];
+}
+
+static char action_letter(int action, BOOL store)
+{
+	if (action < 0)
+		return '-';
+	if (store)
+		return action == MTLStoreActionStore ? 'S' : action == MTLStoreActionDontCare ? 'D' :
+			action == MTLStoreActionMultisampleResolve ? 'R' : action == MTLStoreActionStoreAndMultisampleResolve ? 'B' : '?';
+	return action == MTLLoadActionLoad ? 'L' : action == MTLLoadActionClear ? 'C' : action == MTLLoadActionDontCare ? 'D' : '?';
+}
+
+/* the timed frame's passes, logged (its last command buffer is done) */
+static void profile_log(void)
+{
+	NSData *data = [profile.samples resolveCounterRange:NSMakeRange(0, profile.count * 4)];
+	const MTLCounterResultTimestamp *samples = data.bytes;
+	MTLTimestamp cpu, gpu;
+	double scale, first = 0.0, last = 0.0, previous_end = 0.0;
+	double vertex_sum = 0.0, fragment_sum = 0.0;
+	uint32_t index;
+
+	[metal.device sampleTimestamps:&cpu gpuTimestamp:&gpu];
+	/* (nanoseconds a GPU tick) */
+	scale = gpu > profile.gpu_start ? (double)(cpu - profile.cpu_start) / (double)(gpu - profile.gpu_start) : 1.0;
+	for (index = 0; data && index < profile.count; index++)
+	{
+		const struct profile_pass *pass = &profile.passes[index];
+		uint64_t values[4];
+		double start = 0.0, end = 0.0, vertex = 0.0, fragment = 0.0;
+		int part;
+
+		for (part = 0; part < 4; part++)
+			values[part] = samples[index * 4 + part].timestamp;
+		for (part = 0; part < 4; part++)
+		{
+			double value;
+
+			if (values[part] == MTLCounterErrorValue || !values[part] || (!pass->width && part >= 2))
+				continue;
+			value = (double)(values[part] - profile.gpu_start) * scale / 1e6;
+			if (part % 2 == 0 && (start == 0.0 || value < start))
+				start = value;
+			if (part % 2 == 1 && value > end)
+				end = value;
+		}
+		if (pass->width)
+		{
+			if (values[1] > values[0] && values[0] != MTLCounterErrorValue && values[1] != MTLCounterErrorValue)
+				vertex = (double)(values[1] - values[0]) * scale / 1e6;
+			if (values[3] > values[2] && values[2] != MTLCounterErrorValue && values[3] != MTLCounterErrorValue)
+				fragment = (double)(values[3] - values[2]) * scale / 1e6;
+		}
+		else
+		{
+			fragment = end > start ? end - start : 0.0;
+		}
+		vertex_sum += vertex;
+		fragment_sum += fragment;
+		if (first == 0.0 || (start > 0.0 && start < first))
+			first = start;
+		if (end > last)
+			last = end;
+		host_logf(HOST_LOG_INFO,
+			"metal: pass %2u %-7s %4ux%-4u t%u/%u fmt %2u/%2u x%u load %c%c%c store %c%c%c draws %3u clears %2u: "
+			"at %7.3f ms, %6.3f long (vertex %6.3f, fragment %6.3f), %6.3f after the last",
+			index, pass->what, pass->width, pass->height, pass->color, pass->depth, pass->color_format, pass->depth_format, pass->samples,
+			action_letter(pass->loads[0], NO), action_letter(pass->loads[1], NO), action_letter(pass->loads[2], NO),
+			action_letter(pass->stores[0], YES), action_letter(pass->stores[1], YES), action_letter(pass->stores[2], YES),
+			pass->draws, pass->clears, start, end - start, vertex, fragment, previous_end > 0.0 ? start - previous_end : 0.0);
+		if (pass->detail[0])
+			host_logf(HOST_LOG_INFO, "metal:    %s", pass->detail);
+		if (end > 0.0)
+			previous_end = end;
+	}
+	host_logf(HOST_LOG_INFO,
+		"metal: frame %llu timed: %u passes from %.3f to %.3f ms (%.3f ms); stages' sums: vertex %.3f, fragment %.3f; "
+		"its %u command buffers %.3f ms",
+		(unsigned long long)profile.frame, profile.count, first, last, last - first, vertex_sum, fragment_sum,
+		profile.buffers, profile.buffer_seconds * 1000.0);
+	profile.last = seconds_now();
+	atomic_store(&profile.state, 0);
+}
+
 static void encoder_end(void)
 {
 	if (metal.encoder)
@@ -474,6 +698,7 @@ static void encoder_end(void)
 		[metal.encoder endEncoding];
 		metal.encoder = nil;
 		metal.visibility_entry = -1;
+		profile.current = -1;
 	}
 }
 
@@ -492,10 +717,16 @@ static uint64_t command_buffer_commit(void (^completed)(void))
 				done.error.localizedDescription.UTF8String);
 		if (done.GPUEndTime > done.GPUStartTime)
 		{
+			xgpu_metal_gpu_interval(done.GPUStartTime, done.GPUEndTime);
 			pthread_mutex_lock(&metal.statistics_lock);
 			metal.statistics.gpu_seconds += done.GPUEndTime - done.GPUStartTime;
 			metal.statistics.command_buffers++;
 			pthread_mutex_unlock(&metal.statistics_lock);
+			if (atomic_load(&profile.state) && serial >= profile.first_serial)
+			{
+				profile.buffer_seconds += done.GPUEndTime - done.GPUStartTime;
+				profile.buffers++;
+			}
 		}
 		if (completed)
 			completed();
@@ -620,6 +851,7 @@ int xgpu_metal_initialize(const struct xgpu_metal_options *options)
 	metal.buffers_used = [NSMutableArray new];
 	metal.visibility_entry = -1;
 	archive_open();
+	profile_initialize();
 	metal.archived = [NSMutableArray new];
 	metal.archive_queue = dispatch_queue_create("OpenCE pipeline archive", DISPATCH_QUEUE_SERIAL);
 
@@ -688,6 +920,23 @@ void xgpu_metal_capabilities(struct xgpu_metal_capabilities *capabilities)
 	capabilities->border_colors = 1;
 	capabilities->base_vertex = 1;
 	capabilities->fill_modes = 1;
+}
+
+/* the GPU's time on a command buffer, of the game's or the presentation's:
+the time the GPU was busy with any is their union (they overlap: the GPU
+begins one before the last is done) */
+void xgpu_metal_gpu_interval(double start, double end)
+{
+	static double busy_until;
+
+	pthread_mutex_lock(&metal.statistics_lock);
+	if (start < busy_until)
+		start = busy_until;
+	if (end > start)
+		metal.statistics.gpu_busy_seconds += end - start;
+	if (end > busy_until)
+		busy_until = end;
+	pthread_mutex_unlock(&metal.statistics_lock);
 }
 
 void xgpu_metal_statistics(struct xgpu_metal_statistics *statistics)
@@ -889,7 +1138,7 @@ void xgpu_metal_texture_make_levels(uint32_t texture)
 	if (!metal.in_frame)
 		xgpu_metal_frame_begin();
 	pass_end();
-	blit = [command_buffer() blitCommandEncoder];
+	blit = blit_encoder("levels");
 	[blit generateMipmapsForTexture:entry->texture];
 	[blit endEncoding];
 	entry->used = recording_serial();
@@ -908,7 +1157,7 @@ void xgpu_metal_texture_copy(uint32_t source, uint32_t destination)
 	if (!metal.in_frame)
 		xgpu_metal_frame_begin();
 	pass_end();
-	blit = [command_buffer() blitCommandEncoder];
+	blit = blit_encoder("copy");
 	[blit copyFromTexture:from->texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
 		sourceSize:MTLSizeMake(width, height, 1) toTexture:to->texture destinationSlice:0 destinationLevel:0
 		destinationOrigin:MTLOriginMake(0, 0, 0)];
@@ -965,7 +1214,7 @@ void xgpu_metal_texture_upload(uint32_t texture, uint32_t level, uint32_t layer,
 		if (!buffer)
 			return;
 		pass_end();
-		blit = [command_buffer() blitCommandEncoder];
+		blit = blit_encoder("upload");
 		[blit copyFromBuffer:buffer sourceOffset:offset sourceBytesPerRow:bytes_per_row
 			sourceBytesPerImage:entry->description.type == XGPU_METAL_TEXTURE_3D ? bytes_per_image : 0
 			sourceSize:MTLSizeMake(width, height, depth) toTexture:entry->texture destinationSlice:layer
@@ -1227,7 +1476,7 @@ void xgpu_metal_buffer_write(uint32_t buffer, uint32_t offset, const void *data,
 	if (!source_buffer_object)
 		return;
 	pass_end();
-	blit = [command_buffer() blitCommandEncoder];
+	blit = blit_encoder("buffer");
 	[blit copyFromBuffer:source_buffer_object sourceOffset:source_offset toBuffer:object destinationOffset:offset size:size];
 	[blit endEncoding];
 	metal.buffers_used[buffer - 1] = @(recording_serial());
@@ -1276,6 +1525,7 @@ void xgpu_metal_frame_begin(void)
 	metal.slot = slot;
 	metal.in_frame = YES;
 	metal.dirty = _dirty_all;
+	profile_frame_begin(metal.frame_number);
 	if (metal.frame_number > FRAMES_IN_FLIGHT)
 		xgpu_metal_frame_wait(metal.slots[(metal.frame_number - FRAMES_IN_FLIGHT) % FRAME_SLOTS].fence);
 }
@@ -1312,6 +1562,7 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 	uint64_t number;
 	struct texture_entry *picture = texture_get(present);
 	id<MTLTexture> image = nil;
+	BOOL timed;
 
 	if (!metal.in_frame)
 		xgpu_metal_frame_begin();
@@ -1327,14 +1578,28 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 		id<MTLBlitCommandEncoder> blit;
 
 		image = host_metal_present_acquire(picture->description.width, picture->description.height);
-		blit = [command_buffer() blitCommandEncoder];
+		blit = blit_encoder("present");
 		[blit copyFromTexture:picture->texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
 			sourceSize:MTLSizeMake(picture->description.width, picture->description.height, 1) toTexture:image
 			destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
 		[blit endEncoding];
 		picture->used = recording_serial();
 	}
-	slot->fence = command_buffer_commit(entries ? ^{ visibility_publish(slot, entries, number); } : nil);
+	timed = atomic_load(&profile.state) == 1;
+	if (timed)
+		atomic_store(&profile.state, 2);
+	slot->fence = command_buffer_commit(entries || timed ? ^{
+		if (entries)
+			visibility_publish(slot, entries, number);
+		if (timed)
+			profile_log();
+	} : nil);
+	if (profile.capturing && number == profile.capture_frame + 1)
+	{
+		[[MTLCaptureManager sharedCaptureManager] stopCapture];
+		profile.capturing = NO;
+		host_logf(HOST_LOG_INFO, "metal: captured into %s", profile.capture_path.UTF8String);
+	}
 	if (image)
 		host_metal_present_queue(image);
 	metal.in_frame = NO;
@@ -1509,6 +1774,41 @@ static id<MTLRenderCommandEncoder> encoder(void)
 		pass.visibilityResultBuffer = slot->visibility_buffers[index];
 		metal.visibility_pass = (int32_t)index;
 	}
+	profile.current = profile_pass_add("render");
+	if (profile.current >= 0)
+	{
+		struct profile_pass *timed = &profile.passes[profile.current];
+		MTLRenderPassSampleBufferAttachmentDescriptor *samples = pass.sampleBufferAttachments[0];
+
+		samples.sampleBuffer = profile.samples;
+		samples.startOfVertexSampleIndex = (NSUInteger)profile.current * 4;
+		samples.endOfVertexSampleIndex = (NSUInteger)profile.current * 4 + 1;
+		samples.startOfFragmentSampleIndex = (NSUInteger)profile.current * 4 + 2;
+		samples.endOfFragmentSampleIndex = (NSUInteger)profile.current * 4 + 3;
+		timed->color = color ? metal.color : 0;
+		timed->depth = depth ? metal.depth : 0;
+		timed->width = metal.target_width;
+		timed->height = metal.target_height;
+		timed->color_format = color ? color->description.format : 0;
+		timed->depth_format = depth ? depth->description.format : 0;
+		timed->samples = metal.multisampled && ((color && color->multisampled) || (depth && depth->multisampled)) ?
+			(color && color->multisampled ? color->description.samples : depth->description.samples) : 1;
+		if (color)
+		{
+			timed->loads[0] = (int8_t)pass.colorAttachments[0].loadAction;
+			timed->stores[0] = (int8_t)pass.colorAttachments[0].storeAction;
+		}
+		if (depth)
+		{
+			timed->loads[1] = (int8_t)pass.depthAttachment.loadAction;
+			timed->stores[1] = (int8_t)pass.depthAttachment.storeAction;
+			if (pass.stencilAttachment.texture)
+			{
+				timed->loads[2] = (int8_t)pass.stencilAttachment.loadAction;
+				timed->stores[2] = (int8_t)pass.stencilAttachment.storeAction;
+			}
+		}
+	}
 	metal.encoder = [command_buffer() renderCommandEncoderWithDescriptor:pass];
 	/* (the clears are done: the pass goes on from what it stores) */
 	metal.color_load = metal.depth_load = metal.stencil_load = MTLLoadActionLoad;
@@ -1674,6 +1974,8 @@ void xgpu_metal_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t p
 		[render setFragmentBytes:&parameters length:sizeof(parameters) atIndex:0];
 		[render drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
 		statistics_add(&metal.statistics.clears_as_quads, 1);
+		if (profile.current >= 0)
+			profile.passes[profile.current].clears++;
 	}
 	if (metal.visibility_active && metal.visibility_entry >= 0)
 		[render setVisibilityResultMode:MTLVisibilityResultModeCounting
@@ -2121,6 +2423,34 @@ static BOOL draw_state_apply(id<MTLRenderCommandEncoder> render)
 	return YES;
 }
 
+/* (HALO_METAL_PASSES_SPLIT) */
+static void profile_draw_describe(struct profile_pass *pass, uint32_t primitive, uint32_t count)
+{
+	size_t used;
+	int index;
+	id<MTLFunction> vertex = shader_function(metal.pipeline.vertex_shader);
+	id<MTLFunction> pixel = shader_function(metal.pipeline.pixel_shader);
+
+	used = (size_t)snprintf(pass->detail, sizeof(pass->detail),
+		"%s %s prim %u x%u blend %u(%u,%u) mask %x depth %u/%u stencil %u viewport %dx%d scissor %dx%d",
+		vertex ? vertex.name.UTF8String : "-", pixel ? pixel.name.UTF8String : "-", primitive, count,
+		metal.pipeline.blend, metal.pipeline.blend_source, metal.pipeline.blend_destination, metal.pipeline.color_mask,
+		metal.pipeline.depth_test, metal.pipeline.depth_write, metal.pipeline.stencil_test, metal.dynamic.viewport[2],
+		metal.dynamic.viewport[3], metal.dynamic.scissor[2], metal.dynamic.scissor[3]);
+	for (index = 0; index < XGPU_METAL_TEXTURE_STAGE_COUNT && used < sizeof(pass->detail); index++)
+	{
+		struct texture_entry *entry = texture_get(metal.stage_textures[index]);
+		const struct xgpu_metal_sampler *sampler = &metal.stage_samplers[index];
+
+		if (!entry)
+			continue;
+		used += (size_t)snprintf(pass->detail + used, sizeof(pass->detail) - used, " t%d %ux%u f%u l%u (%u%u%u a%u)",
+			index, entry->description.width, entry->description.height, entry->description.format,
+			(unsigned)entry->texture.mipmapLevelCount, sampler->min_filter, sampler->mag_filter, sampler->mip_filter,
+			sampler->max_anisotropy);
+	}
+}
+
 void xgpu_metal_draw(uint32_t primitive, uint32_t count, uint32_t first_vertex, int32_t base_vertex,
 	struct xgpu_metal_source indices)
 {
@@ -2166,6 +2496,16 @@ void xgpu_metal_draw(uint32_t primitive, uint32_t count, uint32_t first_vertex, 
 		[render drawPrimitives:primitive_types[primitive] vertexStart:first_vertex vertexCount:count];
 	}
 	statistics_add(&metal.statistics.draws, 1);
+	if (profile.current >= 0)
+	{
+		profile.passes[profile.current].draws++;
+		if (profile.split)
+		{
+			profile_draw_describe(&profile.passes[profile.current], primitive, count);
+			encoder_end();
+			metal.dirty = _dirty_all;
+		}
+	}
 }
 
 /* ---------- visibility tests */
@@ -2233,7 +2573,7 @@ int xgpu_metal_read_pixels(uint32_t texture, uint32_t level, uint32_t layer, uin
 	row_size = width * (depth && format->stencil ? 4 : format->bytes);
 	buffer = [metal.device newBufferWithLength:(NSUInteger)row_size * height options:MTLResourceStorageModeShared];
 	pass_end();
-	blit = [command_buffer() blitCommandEncoder];
+	blit = blit_encoder("read");
 	[blit copyFromTexture:entry->texture sourceSlice:layer sourceLevel:level sourceOrigin:MTLOriginMake(x, y, 0)
 		sourceSize:MTLSizeMake(width, height, 1) toBuffer:buffer destinationOffset:0
 		destinationBytesPerRow:row_size destinationBytesPerImage:(NSUInteger)row_size * height
