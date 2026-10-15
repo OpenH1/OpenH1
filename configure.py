@@ -115,6 +115,12 @@ parser.add_argument(
     help="clang (with the arm64_32 target, as Apple's has) for `ninja macos`, the macOS build (default: clang)",
 )
 parser.add_argument(
+    "--macos-guest-cc",
+    type=str,
+    help="clang for the macOS build's guest alone (default: --macos-cc's): Homebrew's LLVM "
+    "(/opt/homebrew/opt/llvm/bin/clang) is new enough for the profiles in pgo/, which Xcode's clang is not",
+)
+parser.add_argument(
     "--macos-bundle-id",
     type=str,
     help="the macOS app's bundle identifier (default: io.github.opencommunityedition.opence, after the "
@@ -148,6 +154,7 @@ sln = SimpleNamespace(
     linux_arm64_gl=args.linux_arm64_gl,
     port_vr=args.vr,
     macos_cc=args.macos_cc,
+    macos_guest_cc=args.macos_guest_cc,
     macos_bundle_id=args.macos_bundle_id,
     guest_base=args.guest_base,
     web_emcc=args.web_emcc,
