@@ -1150,6 +1150,48 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
   `android/host/host_memory_base.c`). Then the guest's 4 KB pages also
   operate on a kernel with 16 KB pages.
 
+### The renderer's command stream
+
+The renderer's backend can run on the 64-bit host instead of in the guest.
+The game's renderer is in two halves (`src/xgpu_backend.h`): a front end
+that knows the Xbox's Direct3D, and a backend that drives the GPU. Built
+with `HALO_RENDER_STREAM`, the front end's calls go to a command stream
+instead of a backend in the guest (`src/xgpu_stream.h`). The guest writes
+each call as a record into a ring in its own memory
+(`src/xgpu_stream_encode.c`), and one host call each frame hands the frame
+over. A thread of the host plays the records into a backend of the host:
+Metal on macOS, later the OpenGL backend for the Steam Frame
+(`android/host/host_render_stream.c`, whose `host_render_backend` is the
+table of a backend's functions). It does so while the game goes on to the
+next frame, so the GPU driver's work leaves the game's thread, and no GL
+call crosses from the guest to the host.
+
+- The records hold only fixed-width integers and floats, alike in the
+  ILP32 guest and the 64-bit host. Guest data in them is a guest address,
+  which the host reads in place.
+- Data that the game rewrites before the GPU reads it is copied into the
+  ring: streamed vertices, indices, immediate mode, constants, uniforms,
+  the mirror's writes, the dynamic lights. Data too large for the ring (an
+  eighth of it) is copied into a buffer of its own, which is freed when
+  the host is done with it. Textures and palettes are read where they are,
+  as on the Xbox, whose GPU reads the game's memory a frame behind.
+- Pipeline keys and vertex layouts are sent once, then named by a
+  number. Draw states, textures and vertex inputs are sent when they
+  change. A busy frame is a few MB, most of it streamed vertices.
+- The game waits only when the ring (32 MB) is full, or when two frames
+  are not done yet: the GPU draws one frame while the host's thread plays
+  the next, and the game writes the third.
+- The calls whose answer the front end needs now are answered without a
+  wait. The capabilities and the VR mode's sizes are answered once, at
+  start-up. A pipeline that cannot be made is reported a frame later. The
+  visibility tests' counts are written into the guest's memory by the
+  host. A screenshot waits for the frame's end.
+- In the VR mode, the host submits the frame to OpenXR as it plays the
+  frame's last record: the moment to take the newest head pose.
+
+No build uses it yet: the Metal backend on macOS is the first.
+`tools/test_render_stream.py` tests the stream with a backend of its own.
+
 ## VR
 
 `python3 configure.py --vr`, then `ninja linux_arm64`, builds the 64-bit
