@@ -20,6 +20,11 @@ is a quad drawn through a clear pipeline. Uploads into a texture the GPU may sti
 blits in the command buffer's order (they end the encoder; the pass goes on
 with "load"); into one it cannot, they write the texture at once.
 
+Presentation. A frame's picture (the back buffer's texture) is given to the
+presentation (host_metal.m) and the back buffer takes another texture, the
+picture's kept as its previous: what draws or reads the back buffer before
+a clear of the whole of it copies that in first (texture_contents).
+
 Guest data. A guest range read in place is wrapped in a buffer over the
 readable host pages around it, up to a granule of 4 MB, and the buffer is
 kept until the guest maps those pages again (xgpu_metal_guest_remapped: a
@@ -204,6 +209,10 @@ struct texture_entry
 	struct xgpu_metal_texture_description description;
 	/* the last command buffer that read or wrote it */
 	uint64_t used;
+	/* a back buffer given to the presentation (xgpu_metal_frame_end): its
+	pictures, which texture (another) has yet to be given, unless a clear of
+	the whole of it comes first */
+	id<MTLTexture> previous;
 	uint8_t present;
 };
 
@@ -356,6 +365,10 @@ static struct
 	uint32_t draw_uniforms_size;
 	struct xgpu_metal_source streams[XGPU_METAL_STREAM_COUNT];
 	float constant_attributes[16][4];
+
+	/* an image for the presentation that a picture is copied into (a
+	target of levels or layers) */
+	id<MTLTexture> present_copy;
 
 	/* the command stream's ring, wrapped */
 	id<MTLBuffer> stream_ring;
@@ -997,10 +1010,13 @@ static struct texture_entry *texture_get(uint32_t texture)
 	return texture && texture < TEXTURE_MAXIMUM && metal.textures[texture].present ? &metal.textures[texture] : NULL;
 }
 
+static void texture_contents(struct texture_entry *entry);
+
 id<MTLTexture> xgpu_metal_texture(uint32_t texture)
 {
 	struct texture_entry *entry = texture_get(texture);
 
+	texture_contents(entry);
 	return entry ? entry->texture : nil;
 }
 
@@ -1105,6 +1121,7 @@ uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *
 	}
 	entry->description = *description;
 	entry->used = 0;
+	entry->previous = nil;
 	entry->present = 1;
 	return handle;
 }
@@ -1119,6 +1136,7 @@ void xgpu_metal_texture_destroy(uint32_t texture)
 	/* (the command buffers that use it keep it until they are done) */
 	entry->texture = nil;
 	entry->multisampled = nil;
+	entry->previous = nil;
 	entry->present = 0;
 	for (stage = 0; stage < XGPU_METAL_TEXTURE_STAGE_COUNT; stage++)
 	{
@@ -1138,6 +1156,7 @@ void xgpu_metal_texture_make_levels(uint32_t texture)
 		return;
 	if (!metal.in_frame)
 		xgpu_metal_frame_begin();
+	texture_contents(entry);
 	pass_end();
 	blit = blit_encoder("levels");
 	[blit generateMipmapsForTexture:entry->texture];
@@ -1153,6 +1172,8 @@ void xgpu_metal_texture_copy(uint32_t source, uint32_t destination)
 
 	if (!from || !to || from->texture.pixelFormat != to->texture.pixelFormat)
 		return;
+	texture_contents(from);
+	texture_contents(to);
 	width = from->texture.width < to->texture.width ? from->texture.width : to->texture.width;
 	height = from->texture.height < to->texture.height ? from->texture.height : to->texture.height;
 	if (!metal.in_frame)
@@ -1174,6 +1195,28 @@ static void statistics_add(uint32_t *counter, uint32_t amount)
 	pthread_mutex_unlock(&metal.statistics_lock);
 }
 
+/* a back buffer given to the presentation at the last frame's end: the
+pictures it had, copied into the texture in its place before anything but
+a clear of the whole of it uses it */
+static void texture_contents(struct texture_entry *entry)
+{
+	id<MTLBlitCommandEncoder> blit;
+
+	if (!entry || !entry->previous)
+		return;
+	if (!metal.in_frame)
+		xgpu_metal_frame_begin();
+	/* (not pass_end: the clears waiting for the pass's start still wait,
+	for the targets they are of) */
+	encoder_end();
+	blit = blit_encoder("restore");
+	[blit copyFromTexture:entry->previous toTexture:entry->texture];
+	[blit endEncoding];
+	entry->previous = nil;
+	entry->used = recording_serial();
+	statistics_add(&metal.statistics.pictures_restored, 1);
+}
+
 /* (the ring: below) */
 static id<MTLBuffer> ring_buffer(struct xgpu_metal_source source, NSUInteger *offset);
 
@@ -1188,6 +1231,7 @@ void xgpu_metal_texture_upload(uint32_t texture, uint32_t level, uint32_t layer,
 
 	if (!entry || !width || !height)
 		return;
+	texture_contents(entry);
 	format = format_get(entry->description.format);
 	if (!depth)
 		depth = 1;
@@ -1500,6 +1544,7 @@ uint64_t xgpu_metal_fence(void)
 
 /* ---------- frames */
 
+
 void xgpu_metal_frame_begin(void)
 {
 	struct frame_slot *slot;
@@ -1571,19 +1616,58 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 	slot = metal.slot;
 	entries = slot->visibility_entries;
 	number = slot->number;
-	if (picture && host_metal_window_active())
+	if (picture && host_metal_window_active() && (picture->texture.textureType != MTLTextureType2D ||
+		picture->texture.mipmapLevelCount != 1))
 	{
-		/* the picture, copied into one of the presentation's images (the
-		next frame may draw into the texture before the display shows
-		this one) */
+		/* (a target of levels or layers: its first, copied into an image of
+		the presentation's) */
 		id<MTLBlitCommandEncoder> blit;
 
-		image = host_metal_present_acquire(picture->description.width, picture->description.height);
+		texture_contents(picture);
+		if (!metal.present_copy || metal.present_copy.width != picture->description.width ||
+			metal.present_copy.height != picture->description.height)
+		{
+			MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+				width:picture->description.width height:picture->description.height mipmapped:NO];
+
+			descriptor.usage = MTLTextureUsageShaderRead;
+			descriptor.storageMode = MTLStorageModePrivate;
+			metal.present_copy = [metal.device newTextureWithDescriptor:descriptor];
+		}
+		image = metal.present_copy;
 		blit = blit_encoder("present");
 		[blit copyFromTexture:picture->texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
 			sourceSize:MTLSizeMake(picture->description.width, picture->description.height, 1) toTexture:image
 			destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
 		[blit endEncoding];
+		picture->used = recording_serial();
+		metal.present_copy = host_metal_present_exchange(image);
+	}
+	else if (picture && host_metal_window_active())
+	{
+		/* the picture is the back buffer's texture, given to the
+		presentation: the next frame draws into another (the one the
+		presentation gives back, no longer shown). A copy of the picture
+		into one of the presentation's would be a pass over the whole of
+		both. That frame finds the pictures of this one where it does not
+		clear the whole of it first (texture_contents) */
+		id<MTLTexture> next;
+
+		texture_contents(picture);
+		image = picture->texture;
+		next = host_metal_present_exchange(image);
+		if (!next)
+		{
+			MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:image.pixelFormat
+				width:image.width height:image.height mipmapped:NO];
+
+			descriptor.usage = image.usage;
+			descriptor.storageMode = image.storageMode;
+			descriptor.swizzle = image.swizzle;
+			next = [metal.device newTextureWithDescriptor:descriptor];
+		}
+		picture->previous = image;
+		picture->texture = next;
 		picture->used = recording_serial();
 	}
 	timed = atomic_load(&profile.state) == 1;
@@ -1722,6 +1806,15 @@ static id<MTLRenderCommandEncoder> encoder(void)
 		return nil;
 	if (!metal.in_frame)
 		xgpu_metal_frame_begin();
+	/* (a back buffer given to the presentation: its pictures, unless this
+	pass clears the whole of it, or resolves into the whole of it) */
+	if (color && color->previous)
+	{
+		if (metal.color_load == MTLLoadActionClear || (color->multisampled && metal.multisampled))
+			color->previous = nil;
+		else
+			texture_contents(color);
+	}
 	serial = recording_serial();
 	pass = [MTLRenderPassDescriptor renderPassDescriptor];
 	if (color)
@@ -2245,6 +2338,7 @@ void xgpu_metal_set_texture(uint32_t stage, uint32_t texture, const struct xgpu_
 		return;
 	if (metal.stage_textures[stage] != texture)
 	{
+		texture_contents(texture_get(texture));
 		metal.stage_textures[stage] = texture;
 		metal.dirty |= _dirty_textures;
 	}
@@ -2569,6 +2663,7 @@ int xgpu_metal_read_pixels(uint32_t texture, uint32_t level, uint32_t layer, uin
 
 	if (!entry || !width || !height)
 		return 0;
+	texture_contents(entry);
 	format = format_get(entry->description.format);
 	if (format->compressed)
 		return 0;

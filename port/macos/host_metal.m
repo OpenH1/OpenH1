@@ -17,10 +17,10 @@ drawable, and the thread draws the oldest frame queued (letterboxed to the
 frame's shape) into it and presents it. A ProMotion display's rate follows
 the frames, up to its highest (120 Hz); a fixed one's is its own. A frame's
 picture is copied into one of three presentation images when the frame
-ends (host_metal_present_acquire): the game's next frame may draw into its
-back buffer before the display shows this one. The images are the pacing:
-with all three queued or on screen, the next frame waits, so the game runs
-no faster than the display shows frames.
+ends (host_metal_present_exchange): the back buffer's texture itself, whose
+place the image it replaces takes for the next frame (xgpu_metal.m). The
+images are the pacing: with all three queued or on screen, the next frame
+waits, so the game runs no faster than the display shows frames.
 
 Until frames come (the null renderer draws none), each refresh clears the
 drawable and presents it, so that the window shows the display's pacing.
@@ -113,9 +113,10 @@ int host_metal_window_active(void)
 
 /* ---------- the presentation images */
 
-id<MTLTexture> host_metal_present_acquire(uint32_t width, uint32_t height)
+id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture)
 {
 	int index, found = -1;
+	id<MTLTexture> replaced;
 
 	pthread_mutex_lock(&presentation.lock);
 	for (;;)
@@ -161,19 +162,13 @@ id<MTLTexture> host_metal_present_acquire(uint32_t width, uint32_t height)
 			break;
 		}
 	}
-	if (!presentation.images[found] || presentation.images[found].width != width ||
-		presentation.images[found].height != height)
-	{
-		MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
-			width:width height:height mipmapped:NO];
-
-		descriptor.usage = MTLTextureUsageShaderRead;
-		descriptor.storageMode = MTLStorageModePrivate;
-		presentation.images[found] = [xgpu_metal_device() newTextureWithDescriptor:descriptor];
-	}
+	replaced = presentation.images[found];
+	presentation.images[found] = picture;
 	presentation.image_states[found] = _image_queued;
 	pthread_mutex_unlock(&presentation.lock);
-	return presentation.images[found];
+	return replaced && replaced.width == picture.width && replaced.height == picture.height &&
+		replaced.pixelFormat == picture.pixelFormat && replaced.usage == picture.usage &&
+		replaced.storageMode == picture.storageMode ? replaced : nil;
 }
 
 void host_metal_present_queue(id<MTLTexture> image)
@@ -263,14 +258,15 @@ static void pacing_log(double now)
 	if (statistics.frames)
 		host_logf(HOST_LOG_INFO,
 			"metal: a frame: GPU busy %.2f ms (%.0f%% of the time); its command buffers' GPU time %.2f ms (%u), render thread CPU %.2f ms, %.1f draws, %.1f passes, "
-			"%.1f ordered uploads, %.1f copies of a target drawn into; the last played in %.2f ms, its stream %u KB "
+			"%.1f ordered uploads, %.1f copies of a target drawn into, %.1f pictures restored; the last played in %.2f ms, its stream %u KB "
 			"(the most %u KB); the game waited %u times (%.1f ms); textures made %u, made again %u, images %u, "
 			"%.1f MB read; pipelines made %u (%u from the archive, %.1f ms)",
 			statistics.gpu_busy_seconds * 1000.0 / statistics.frames, statistics.gpu_busy_seconds * 100.0 / seconds,
 			statistics.gpu_seconds * 1000.0 / statistics.frames, statistics.command_buffers,
 			statistics.render_cpu_seconds * 1000.0 / statistics.frames, (double)statistics.draws / statistics.frames,
 			(double)statistics.passes / statistics.frames, (double)statistics.uploads_ordered / statistics.frames,
-			(double)statistics.feedback_copies / statistics.frames, ring ? ring->decode_nanoseconds / 1e6 : 0.0,
+			(double)statistics.feedback_copies / statistics.frames,
+			(double)statistics.pictures_restored / statistics.frames, ring ? ring->decode_nanoseconds / 1e6 : 0.0,
 			ring ? ring->frame_bytes / 1024 : 0, ring ? ring->frame_bytes_most / 1024 : 0, waits - waits_before,
 			(wait_nanoseconds - wait_nanoseconds_before) / 1e6, textures.made, textures.remade, textures.images,
 			textures.bytes / 1048576.0, statistics.pipelines_made, statistics.pipelines_from_archive,

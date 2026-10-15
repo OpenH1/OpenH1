@@ -376,7 +376,10 @@ void xgpu_metal_texture_upload(uint32_t texture, uint32_t level, uint32_t layer,
 
 /* frames: begin waits while two frames are in flight */
 void xgpu_metal_frame_begin(void);
-/* ends the frame (presenting a texture, 0 none) and returns its fence */
+/* ends the frame (presenting a texture, 0 none: with a window, a 2D
+target's texture itself is given to the presentation, and the target has
+another, which has its pictures where they are used before a clear of the
+whole of it) and returns its fence */
 uint64_t xgpu_metal_frame_end(uint32_t present);
 /* the last frame the GPU has finished (any thread) */
 uint64_t xgpu_metal_frame_completed(void);
@@ -459,6 +462,9 @@ struct xgpu_metal_statistics
 	uint32_t uploads_direct, uploads_ordered;
 	/* copies of a target being drawn, for a draw that samples it */
 	uint32_t feedback_copies;
+	/* back buffers given to the presentation whose pictures a frame used
+	before clearing them (copied back) */
+	uint32_t pictures_restored;
 	uint32_t guest_buffers_made, guest_bytes_copied;
 	uint64_t ring_bytes;
 	double pipeline_seconds;

@@ -27,10 +27,12 @@ id<MTLTexture> xgpu_metal_texture(uint32_t texture);
 
 /* a window shows the frames presented */
 int host_metal_window_active(void);
-/* one of the presentation's images, width by height (BGRA8), to copy a
-frame's picture into: waits while every image is queued or on screen, so
-that the game runs no faster than the display shows its frames */
-id<MTLTexture> host_metal_present_acquire(uint32_t width, uint32_t height);
+/* takes a frame's picture (a texture the frame drew) as one of the
+presentation's images, in the place of one neither queued nor on screen:
+waits while there is none, so that the game runs no faster than the display
+shows its frames. Returns the image it replaces, for the next frame to draw
+into, where that is of the picture's size and format (else nil) */
+id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture);
 /* the image is shown at the display's next refresh after those queued
 before it (after the command buffers committed before this call: the
 frame's must be) */

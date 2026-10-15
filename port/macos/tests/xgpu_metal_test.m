@@ -1520,6 +1520,50 @@ static void test_stream_emitter(void)
 
 /* ---------- the window */
 
+/* a frame's picture given to the presentation (with a window only): the
+next frame draws into another texture, which has the pictures of the last
+where a frame draws or reads before it clears the whole of it */
+static void test_handover(void)
+{
+	uint32_t target = target_make(XGPU_METAL_FORMAT_BGRA8, SIZE, SIZE, 0);
+	float red[4] = { 1, 0, 0, 1 }, blue[4] = { 0, 0, 1, 1 };
+	struct xgpu_metal_pipeline pipeline;
+	struct xgpu_metal_statistics statistics;
+
+	begin("handover");
+	pipeline_default(&pipeline, 0);
+	frame_begin(target, 0);
+	xgpu_metal_clear(NULL, 0, CLEAR_COLOR, red, 0, 0);
+	xgpu_metal_frame_wait(xgpu_metal_frame_end(target));
+	/* drawn into without a clear: on the last frame's picture */
+	frame_begin(target, 0);
+	xgpu_metal_set_pipeline(&pipeline);
+	draw_rectangle(0, 0, SIZE / 2, SIZE, 0.5f, 0xff00ff00);
+	xgpu_metal_frame_wait(xgpu_metal_frame_end(target));
+	statistics_take(&statistics);
+	CHECK(statistics.pictures_restored == 1, "the picture restored once: %u", statistics.pictures_restored);
+	/* read before anything is drawn: the last frame's picture */
+	xgpu_metal_frame_begin();
+	read_target(target);
+	CHECK(pixel(4, 30) == 0xff00ff00 && pixel(60, 30) == 0xffff0000, "the last two frames' pictures: %08x %08x",
+		pixel(4, 30), pixel(60, 30));
+	xgpu_metal_frame_wait(xgpu_metal_frame_end(target));
+	/* cleared whole: nothing restored */
+	frame_begin(target, 0);
+	xgpu_metal_clear(NULL, 0, CLEAR_COLOR, blue, 0, 0);
+	xgpu_metal_set_pipeline(&pipeline);
+	draw_rectangle(0, 0, 8, 8, 0.5f, 0xff00ff00);
+	xgpu_metal_frame_wait(xgpu_metal_frame_end(target));
+	statistics_take(&statistics);
+	CHECK(statistics.pictures_restored == 1, "the reads' restore only: %u", statistics.pictures_restored);
+	xgpu_metal_frame_begin();
+	read_target(target);
+	CHECK(pixel(4, 4) == 0xff00ff00 && pixel(30, 30) == 0xff0000ff, "the cleared frame: %08x %08x", pixel(4, 4),
+		pixel(30, 30));
+	xgpu_metal_frame_wait(xgpu_metal_frame_end(target));
+	xgpu_metal_texture_destroy(target);
+}
+
 static int window_run(double seconds, int resize)
 {
 	SDL_Window *window;
@@ -1630,7 +1674,9 @@ static int window_run(double seconds, int resize)
 		}
 	}
 	printf("window: %u frames in %.1f s\n", frame, CACurrentMediaTime() - start);
-	return 0;
+	test_handover();
+	printf("%d checks, %d failed\n", checks, failures);
+	return failures ? 1 : 0;
 }
 
 int main(int argc, char *argv[])

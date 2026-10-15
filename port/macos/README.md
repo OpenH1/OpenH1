@@ -171,10 +171,13 @@ Presentation has a thread of its own, run by a `CAMetalDisplayLink`: at
 each refresh of the display, the link hands over a drawable, and the
 thread draws the oldest frame queued into it, letterboxed to the frame's
 shape, and presents it. A ProMotion display's rate follows the frames, up
-to its highest; a fixed display's is its own. A frame's picture is copied
-into one of three presentation images when the frame ends (the next frame
-may draw into the back buffer before the display shows this one). These
-images pace the game: with all three queued or on screen, the next frame
+to its highest; a fixed display's is its own. When a frame ends, its
+back buffer's texture becomes one of three presentation images, and the
+back buffer takes the texture of one the display has done with for the
+next frame (a copy would be a pass over the whole of both). A frame that
+draws into the back buffer or reads it before it clears the whole of it
+finds the last frame's picture there: it is copied in first (rare: the
+game clears it at each frame's start). These images pace the game: with all three queued or on screen, the next frame
 waits, so the game runs no faster than the display shows frames. When the
 display takes no frames for 100 ms (the window minimized, or between the
 desktop and fullscreen), the oldest queued frame is dropped instead, so
@@ -190,7 +193,8 @@ gives a frame's mean costs: the time the GPU was busy (with the game's
 command buffers or the presentation's: the union of their times, which
 overlap) and its share of the time, the GPU's time on the frame's command
 buffers, the render thread's CPU time, its draws, passes, uploads in the
-frame's order and copies of a target drawn into;
+frame's order, copies of a target drawn into, and pictures copied back
+into the back buffer;
 the last frame's time to play (from its first record to its end, the wait
 for a presentation image included) and its bytes in the stream (and the
 most of any frame); the game's waits for the host (the frames in flight,
@@ -335,7 +339,9 @@ second run checks that every pipeline comes from the archive.
 `build/macos/xgpu_metal_test --window 15 --resize` opens a window, draws
 frames as fast as the presentation takes them, resizes it, makes it
 fullscreen, and logs the rate (with `HALO_METAL_STATS=3`, the
-presentation's own log).
+presentation's own log); then it checks the back buffer given to the
+presentation: the next frame's picture drawn on the last's, read before a
+draw, and cleared.
 
 ## Find problems
 
