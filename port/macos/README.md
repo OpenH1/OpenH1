@@ -5,8 +5,10 @@ Intel). On such a Mac, `ninja` without a target builds it.
 
 | Result | Item |
 | --- | --- |
-| `build/macos/halo` | The game, an arm64 executable |
+| `build/macos/Halo.app` | The app (refer to "The app"), signed ad hoc |
+| `build/macos/halo` | The game, an arm64 executable, for development |
 | `build/macos/libSDL3.0.dylib` | SDL 3.4.16, without OpenGL. The game finds it next to the executable. |
+| `build/macos/Halo.dmg` | A disk image of the app (`ninja macos_dmg`) |
 | `build/macos/xgpu_metal_test` | The Metal backend's tests (`ninja macos_metal_test`) |
 
 The game draws with Metal (refer to "Metal"): the menus, the multiplayer
@@ -26,17 +28,136 @@ maps and the campaign. It was tested on an Apple A18 Pro with macOS 27.
 
 ## Start the game
 
+Open `build/macos/Halo.app` (from Finder, or `open build/macos/Halo.app`).
+The first time, it asks for the maps folder of the Xbox game (refer to
+"The app").
+
+For development, the executable runs without the app as on Linux:
+
 ```sh
 HALO_DATA_ROOT=/path/to/folder/with/maps build/macos/halo
 ```
 
-The game data, the settings and system link are as on Linux (refer to
+The game data, the settings and system link are then as on Linux (refer to
 [port/linux/README.md](../linux/README.md)): `config.toml` is next to the
 executable, `HALO_DATA_ROOT` (`paths.data`) is the folder that holds
 `maps/`, and the saved games go to `~/.local/share/halo-linux`
 (`HALO_SAVE_ROOT`, `paths.saves`). To play a game without a person at it,
 use the network tests (`HALO_NETWORK_TEST=host:bloodgulch`;
 [port/linux/NETCODE.md](../linux/NETCODE.md)).
+
+## The app
+
+`ninja macos` makes `build/macos/Halo.app` (`tools/macos_app.py`), named
+as the other desktop builds are (`halo.exe`, the window's title "Halo"):
+
+| Item | What |
+| --- | --- |
+| `Contents/MacOS/halo` | The executable (its rpaths: `@executable_path`, and `@executable_path/../Frameworks` in the app) |
+| `Contents/Frameworks/libSDL3.0.dylib` | SDL |
+| `Contents/Resources/opence-icon.icns` | The icon, from `port/assets/icon` (`tools/app_icon.py` writes `port/macos/opence-icon.icns`) |
+| `Contents/Resources/brokers.txt` | Internet play's brokers, copied beside `config.toml` at each start |
+| `Contents/Resources/Credits.html` | The About panel's text: the build |
+| `Contents/Info.plist` | Below |
+
+`Info.plist`:
+
+- `CFBundleIdentifier`: `io.github.opencommunityedition.opence`
+  (`configure.py --macos-bundle-id`), the reverse-DNS name of the
+  project's GitHub organisation's pages, a domain it has. macOS keeps the
+  app's permissions (the microphone, the local network) by it.
+- `CFBundleShortVersionString` and `CFBundleVersion`: the build's number
+  (`HALO_BUILD_NUMBER`, a release's; 0 for a local build), as the game
+  names itself ("OpenCE macOS | build N").
+- `LSApplicationCategoryType` `public.app-category.games` and
+  `LSSupportsGameMode`: macOS turns Game Mode on while the game is
+  fullscreen (the processor and the GPU for the game, Bluetooth's lower
+  latency for controllers and headphones; the menu bar shows its icon).
+- `GCSupportsControllerUserInteraction`, `NSHighResolutionCapable`,
+  `LSMinimumSystemVersion` 14.4 (`os_sync_wait_on_address`;
+  `CAMetalDisplayLink` is 14.0), `NSMicrophoneUsageDescription` (voice
+  chat), `NSLocalNetworkUsageDescription` (system link), and the project's
+  disclaimer as its copyright.
+
+When its executable runs inside the app, the host (`host_app.m`) does what
+a Mac app does, before the game starts:
+
+- **Folders.** `~/Library/Application Support/OpenCE` is the folder of
+  `config.toml` (`SDL_GetBasePath` for the game), the data root (`maps`,
+  `custom_maps`, `debug.txt`) and the saves (`saves`). The host's log (and
+  the game's lines) goes to `~/Library/Logs/OpenCE/halo.log`, the previous
+  start's to `halo.previous.log` (Console shows them), unless the error
+  output is a terminal. The Metal archive is in `~/Library/Caches/OpenCE`.
+  `HALO_DATA_ROOT` and `HALO_SAVE_ROOT`, and `paths.data` and `paths.saves`
+  in `config.toml`, still choose other folders.
+- **The maps.** The players supply them. Without a maps folder, an open
+  panel asks for the Xbox game's (a short explanation in it). The folder is
+  checked: `ui.map` must be an Xbox cache file (the PC version's and Custom
+  Edition's are refused, with the reason), and a folder that lacks some of
+  the disc's 23 maps can be used once the player agrees. It is kept as a
+  bookmark (`maps.bookmark`), which finds the folder again when it is moved
+  or renamed, and the data root's `maps` is a symbolic link to it, made
+  again at each start. A `maps` folder of the data root's own (not a link)
+  is used as it is. The panel's tests:
+  `HALO_MAPS_PANEL_ANSWER=<folder>;<folder>...` (or `cancel`) answers each
+  showing of the panel with the next one, and each alert with its first
+  button.
+- **The window.** Its place and size, and whether it was fullscreen, are
+  kept in `window.plist`; the next start opens it fullscreen or not
+  (`HALO_FULLSCREEN`, unless the environment has it) and puts the window
+  where it was (once it is a window).
+- **Menus.** SDL's: About, Hide, Quit (Cmd-Q quits as closing the window
+  does; before the game starts, at once), and the Window menu with Toggle
+  Full Screen (Cmd-Ctrl-F). The window has the native fullscreen button.
+
+### Signing
+
+The app is signed with the hardened runtime and
+`port/macos/halo.entitlements`:
+
+- `com.apple.security.cs.allow-jit`: the host writes the game's code (the
+  guest image) into memory and makes it executable. Under the hardened
+  runtime, `mprotect` to read and execute of written memory is allowed but
+  the process is killed (`SIGKILL`, code signing) when it runs it. The
+  loader (`port/android/host/host_loader.c`) maps the code's pages with
+  `MAP_JIT` instead, which needs only `allow-jit`.
+  `allow-unsigned-executable-memory` (any memory made executable) works
+  too, but is wider. `MAP_JIT` cannot be mapped at a fixed address
+  (`EINVAL`), so the code's pages are unmapped from the guest's reservation
+  and mapped again at the same address. The code is written with
+  `pthread_jit_write_protect_np(0)`; every thread runs it.
+- `com.apple.security.device.audio-input`: voice chat's microphone.
+
+`ninja macos` signs the app ad hoc (`codesign -s -`). Ad hoc signatures
+have no team, and the hardened runtime's library validation refuses a
+library of another team (or none: "mapping process and mapped file
+(non-platform) have different Team IDs"), so the ad hoc app also has
+`com.apple.security.cs.disable-library-validation`; one signed with a
+Developer ID does not.
+
+To sign the app with a Developer ID, notarize it and make its disk image
+(with the Apple account's Developer ID Application certificate in the
+keychain):
+
+```sh
+xcrun notarytool store-credentials opence --apple-id <apple-id> --team-id <team>   # once
+python3 tools/macos_app.py notarize --identity "Developer ID Application: <name> (<team>)" \
+    --keychain-profile opence
+```
+
+It signs the app (with a secure timestamp), sends it to the notary
+service, staples its ticket to it, makes `build/macos/Halo.dmg`, signs,
+notarizes and staples that too, and checks both with `spctl`.
+`python3 tools/macos_app.py sign --identity ...` only signs the app.
+
+### The release build and the disk image
+
+`python3 configure.py --release`, then `ninja macos_dmg`:
+`build/macos/Halo.dmg` holds the app and a link to Applications. The
+profiles of profile-guided optimisation (`pgo/`) need clang 22 or later,
+and Xcode's is older: `--macos-guest-cc=/opt/homebrew/opt/llvm/bin/clang`
+builds the guest (where the profile is used) with Homebrew's LLVM, which
+has the `arm64_32` target too.
 
 ## How it operates
 
@@ -346,8 +467,9 @@ draw, and cleared.
 
 ## Find problems
 
-- The log goes to the terminal; the game's own log is `debug.txt` in the
-  data folder.
+- The log goes to the terminal (the app's, to
+  `~/Library/Logs/OpenCE/halo.log`); the game's own log is `debug.txt` in
+  the data folder.
 - A crash prints the registers, the guest's base and the frame chain. The
   guest's addresses are the low 32 bits:
   `llvm-symbolizer --obj=build/macos/halo_guest.elf 0x<address>`.
@@ -361,6 +483,4 @@ draw, and cleared.
   polygons' fill (lines instead).
 - A pipeline's shaders are compiled the first time a draw needs them, on
   the render thread.
-- No app bundle, signature or notarization yet; the executable runs from
-  the build folder.
 - The self-updater and the Discord invites are not set up for macOS.
