@@ -40,6 +40,10 @@ drawables reached the screen.
 #include "host.h"
 #undef host_page_size
 #include "xgpu_metal_internal.h"
+#if __has_include("host_render_stream.h")
+#include "host_render_stream.h"
+#include "xgpu_metal_stream.h"
+#endif
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_metal.h>
@@ -432,6 +436,9 @@ int host_metal_initialize(void)
 	if (result)
 	{
 		host_memory_remapped = xgpu_metal_guest_remapped;
+#if __has_include("host_render_stream.h")
+		host_render_stream_set_backend(xgpu_metal_stream_backend());
+#endif
 	}
 	return result;
 }

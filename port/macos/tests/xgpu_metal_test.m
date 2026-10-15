@@ -26,6 +26,11 @@ and checks them.
 #undef host_page_size
 #include "xgpu_metal.h"
 #include "xgpu_metal_internal.h"
+#if __has_include("host_render_stream.h")
+#include "host_render_stream.h"
+#include "xgpu_metal_stream.h"
+#define TEST_STREAM 1
+#endif
 
 #include <SDL3/SDL.h>
 #include <math.h>
@@ -76,6 +81,13 @@ void *host_sdl_handle_get(uint32_t handle, int type)
 
 int host_memory_readable_extent(uint32_t address, uint32_t size, uint32_t limit_start, uint32_t limit_end,
 	uint32_t *start, uint32_t *end);
+
+#ifdef TEST_STREAM
+void host_render_stream_set_backend(const struct host_render_backend *backend)
+{
+	(void)backend;
+}
+#endif
 
 /* host_metal.m */
 int host_metal_initialize(void);
@@ -952,6 +964,246 @@ static void test_frames(void)
 
 /* ---------- the command stream's table */
 
+#ifdef TEST_STREAM
+/* xgpu_backend.h's values (its header is the guest's: it does not compile
+on the host) */
+enum
+{
+	XGPU_CLEAR_RED = 1, XGPU_CLEAR_GREEN = 2, XGPU_CLEAR_BLUE = 4, XGPU_CLEAR_ALPHA = 8,
+	XGPU_CLEAR_COLOR = 16, XGPU_CLEAR_DEPTH = 32, XGPU_CLEAR_STENCIL = 64,
+};
+enum
+{
+	XGPU_POINTS, XGPU_LINES, XGPU_LINE_LOOP, XGPU_LINE_STRIP, XGPU_TRIANGLES, XGPU_TRIANGLE_STRIP,
+	XGPU_TRIANGLE_FAN,
+};
+enum
+{
+	XGPU_VERTEX_FLOAT4 = 4, XGPU_VERTEX_COLOR = 5,
+};
+
+static int stream_shaders(void *context, const struct xgpu_stream_pipeline_define *definition,
+	const struct xgpu_stream_vertex_program *program, uint32_t *vertex, uint32_t *pixel)
+{
+	(void)context;
+	(void)definition;
+	(void)program;
+	*vertex = vertex_shader;
+	*pixel = pixel_shader;
+	return 1;
+}
+
+/* writes a record into the ring at *position (4-byte aligned, inline data
+16) and returns it */
+static void *ring_put(unsigned char *ring, uint32_t *position, const void *record, uint32_t size)
+{
+	void *at = ring + *position;
+
+	memcpy(at, record, size);
+	*position = (*position + size + 15) & ~15u;
+	return at;
+}
+
+static void test_stream_table(void)
+{
+	const struct host_render_backend *backend = xgpu_metal_stream_backend();
+	struct xgpu_metal_stream_shaders shaders = { NULL, stream_shaders };
+	static volatile uint32_t visibility[XGPU_STREAM_VISIBILITY_SLOTS];
+	struct xgpu_stream_capabilities capabilities;
+	struct xgpu_stream_target_create create = { 0, 1, SIZE, SIZE, 0, 1, { 0, 0 } };
+	struct xgpu_stream_target_create create_depth = { 0, 2, SIZE, SIZE, 1, 1, { 0, 0 } };
+	struct xgpu_stream_set_targets targets = { 0, 1, 2, -1, 1, 0, 1 };
+	struct xgpu_stream_pipeline_define definition;
+	struct xgpu_stream_dynamic_state dynamic;
+	struct xgpu_stream_draw_uniforms uniforms;
+	struct host_render_vertex_input input;
+	struct host_render_texture_stage stages[4];
+	struct xgpu_stream_layout_define *layout;
+	struct xgpu_stream_mirror_write mirror;
+	struct xgpu_stream_draw draw;
+	struct xgpu_stream_draw_indices *draw_indices;
+	struct xgpu_stream_draw_indexed draw_indexed;
+	struct xgpu_stream_draw_immediate immediate;
+	struct xgpu_stream_visibility_end visibility_end;
+	struct xgpu_stream_read_target read;
+	struct vertex quad[6], fan[4], indexed[4];
+	unsigned char *ring;
+	uint32_t ring_size = 1u << 20, position = 0;
+	uint16_t indices[6] = { 0, 1, 2, 2, 1, 3 }, indices_from_one[6] = { 1, 2, 3, 3, 2, 4 };
+	float attributes[16][4], immediate_vertices[4][2][4];
+	/* a clear record and its rectangle */
+	union
+	{
+		struct xgpu_stream_clear clear;
+		unsigned char bytes[sizeof(struct xgpu_stream_clear) + sizeof(int32_t[4])];
+	} clear;
+	int index;
+
+	begin("the command stream's table");
+	/* the ring in the guest's memory (as the stream's is) */
+	ring = (unsigned char *)host_address(GUEST_START + 0x100000);
+	mmap(ring, ring_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
+	xgpu_metal_stream_set_shaders(&shaders);
+	backend->open(NULL, ring, ring_size, visibility);
+	backend->initialize(NULL, &capabilities);
+	CHECK(capabilities.largest_target >= 8192 && capabilities.most_samples >= 4 && capabilities.bgra_vertex_colors &&
+		capabilities.base_vertex, "the capabilities: %d, %d samples", capabilities.largest_target,
+		capabilities.most_samples);
+	backend->target_create(NULL, &create);
+	backend->target_create(NULL, &create_depth);
+	backend->set_targets(NULL, &targets);
+	memset(&clear, 0, sizeof(clear));
+	clear.clear.flags = XGPU_CLEAR_COLOR | XGPU_CLEAR_RED | XGPU_CLEAR_GREEN | XGPU_CLEAR_BLUE | XGPU_CLEAR_ALPHA |
+		XGPU_CLEAR_DEPTH;
+	clear.clear.color[3] = 1.0f;
+	clear.clear.depth = 1.0f;
+	backend->clear(NULL, &clear.clear);
+	clear.clear.count = 1;
+	clear.clear.rectangles[0][0] = 48;
+	clear.clear.rectangles[0][1] = 48;
+	clear.clear.rectangles[0][2] = 16;
+	clear.clear.rectangles[0][3] = 16;
+	clear.clear.color[2] = 1.0f;
+	backend->clear(NULL, &clear.clear);
+
+	/* a pipeline: colour BGRA8, depth D24S8, the depth tested */
+	memset(&definition, 0, sizeof(definition));
+	definition.key.color_mask = 15;
+	definition.key.color_format = 1;
+	definition.key.depth_format = 2;
+	definition.key.depth_test = 1;
+	definition.key.depth_function = XGPU_COMPARE_LESS_EQUAL;
+	definition.key.samples = 1;
+	CHECK(backend->pipeline(NULL, 5, &definition), "the pipeline is made");
+	memset(&dynamic, 0, sizeof(dynamic));
+	dynamic.viewport[2] = dynamic.viewport[3] = SIZE;
+	dynamic.scissor[2] = dynamic.scissor[3] = SIZE;
+	dynamic.depth_range[1] = 1.0f;
+	memset(&uniforms, 0, sizeof(uniforms));
+	/* (the test's pixel shader reads its tint from the uniforms' start) */
+	uniforms.viewport_scale[0] = uniforms.viewport_scale[1] = uniforms.viewport_scale[2] = uniforms.viewport_scale[3] = 1.0f;
+	backend->draw_state(NULL, &dynamic, &uniforms, 1);
+	memset(stages, 0, sizeof(stages));
+	backend->set_textures(NULL, stages);
+
+	/* the layout: position (FLOAT4) in register 0, colour (D3DCOLOR) in 3;
+	register 9 (the uv) unfed */
+	layout = calloc(1, sizeof(*layout) + 2 * sizeof(struct xgpu_stream_vertex_element));
+	layout->id = 1;
+	layout->element_count = 2;
+	layout->elements[0] = (struct xgpu_stream_vertex_element){ 0, 0, XGPU_VERTEX_FLOAT4, 16, 0 };
+	layout->elements[1] = (struct xgpu_stream_vertex_element){ 3, 0, XGPU_VERTEX_COLOR, 4, 16 };
+	memset(&input, 0, sizeof(input));
+	input.layout = layout;
+	input.present = 1;
+	rectangle_vertices(quad, 0, 0, 16, 16, 0.5f, 0xffff0000);
+	input.streams[0].segment = -1;
+	input.streams[0].data = guest_address(ring_put(ring, &position, quad, sizeof(quad)));
+	input.streams[0].bytes = sizeof(quad);
+	input.streams[0].stride = sizeof(struct vertex);
+	backend->set_vertices(NULL, &input);
+	draw = (struct xgpu_stream_draw){ 0, XGPU_TRIANGLES, 6 };
+	backend->visibility_begin(NULL);
+	backend->draw(NULL, &draw);
+	visibility_end = (struct xgpu_stream_visibility_end){ 0, 3, 1.0f, 1, 1 };
+	backend->visibility_end(NULL, &visibility_end);
+
+	/* a fan, made into triangles */
+	rectangle_vertices(quad, 16, 0, 32, 16, 0.5f, 0xff00ff00);
+	fan[0] = quad[0];
+	fan[1] = quad[1];
+	fan[2] = quad[5];
+	fan[3] = quad[2];
+	input.streams[0].data = guest_address(ring_put(ring, &position, fan, sizeof(fan)));
+	input.streams[0].bytes = sizeof(fan);
+	backend->set_vertices(NULL, &input);
+	draw = (struct xgpu_stream_draw){ 0, XGPU_TRIANGLE_FAN, 4 };
+	backend->draw(NULL, &draw);
+
+	/* inline indices */
+	rectangle_vertices(quad, 32, 0, 48, 16, 0.5f, 0xff0000ff);
+	indexed[0] = quad[0];
+	indexed[1] = quad[1];
+	indexed[2] = quad[2];
+	indexed[3] = quad[5];
+	input.streams[0].data = guest_address(ring_put(ring, &position, indexed, sizeof(indexed)));
+	input.streams[0].bytes = sizeof(indexed);
+	backend->set_vertices(NULL, &input);
+	{
+		unsigned char record[sizeof(struct xgpu_stream_draw_indices)];
+
+		draw_indices = (struct xgpu_stream_draw_indices *)record;
+		draw_indices->primitive = XGPU_TRIANGLES;
+		draw_indices->count = 6;
+		draw_indices->indices = guest_address(ring_put(ring, &position, indices, sizeof(indices)));
+		backend->draw_indices(NULL, draw_indices);
+	}
+
+	/* vertices and indices from the mirror's segment 1 */
+	rectangle_vertices(quad, 0, 16, 16, 32, 0.5f, 0xffffff00);
+	indexed[0] = quad[0];
+	indexed[1] = quad[1];
+	indexed[2] = quad[2];
+	indexed[3] = quad[5];
+	mirror = (struct xgpu_stream_mirror_write){ 0, 1, 0x1000, sizeof(indexed), 1,
+		guest_address(ring_put(ring, &position, indexed, sizeof(indexed))) };
+	backend->mirror_write(NULL, &mirror);
+	/* (the indices count from the vertex before the quad's: minimum 1, the
+	quad's first vertex the streams' first) */
+	mirror = (struct xgpu_stream_mirror_write){ 0, 1, 0x2000, sizeof(indices_from_one), 1,
+		guest_address(ring_put(ring, &position, indices_from_one, sizeof(indices_from_one))) };
+	backend->mirror_write(NULL, &mirror);
+	input.streams[0].segment = 1;
+	input.streams[0].offset = 0x1000;
+	backend->set_vertices(NULL, &input);
+	draw_indexed = (struct xgpu_stream_draw_indexed){ 0, XGPU_TRIANGLES, 6, 1, 1, 0x2000, 0, 0 };
+	backend->draw_indexed(NULL, &draw_indexed);
+
+	/* immediate mode: registers 0 (position) and 3 (colour) written, two
+	triangles of a strip; the colour a float4 here */
+	for (index = 0; index < 4; index++)
+	{
+		float x = index & 1 ? 0.0f : -0.5f, y = index & 2 ? 0.0f : 0.5f;
+
+		immediate_vertices[index][0][0] = x;
+		immediate_vertices[index][0][1] = y;
+		immediate_vertices[index][0][2] = 0.5f;
+		immediate_vertices[index][0][3] = 1.0f;
+		immediate_vertices[index][1][0] = 1.0f;
+		immediate_vertices[index][1][1] = 0.0f;
+		immediate_vertices[index][1][2] = 1.0f;
+		immediate_vertices[index][1][3] = 1.0f;
+	}
+	memset(attributes, 0, sizeof(attributes));
+	immediate = (struct xgpu_stream_draw_immediate){ 0, XGPU_TRIANGLE_STRIP, 4, (1 << 0) | (1 << 3), 0,
+		guest_address(ring_put(ring, &position, immediate_vertices, sizeof(immediate_vertices))), 0, 0 };
+	backend->draw_immediate(NULL, &immediate, (const float (*)[4])attributes);
+
+	backend->present(NULL, 1);
+	backend->frame_end(NULL);
+	backend->wait(NULL, backend->fence(NULL));
+
+	/* (the pixels go to guest memory) */
+	read = (struct xgpu_stream_read_target){ 0, 1, -1, 0, GUEST_START + 0x200000, SIZE * SIZE * 4, 0 };
+	mmap((void *)host_address(read.pixels), SIZE * SIZE * 4, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED,
+		-1, 0);
+	CHECK(backend->read_target(NULL, &read), "read the target");
+	memcpy(pixels, (void *)host_address(read.pixels), sizeof(pixels));
+	CHECK(pixel(8, 8) == 0xffff0000, "drawn from inline vertices: %08x", pixel(8, 8));
+	CHECK(pixel(24, 8) == 0xff00ff00 && pixel(17, 14) == 0xff00ff00 && pixel(30, 1) == 0xff00ff00,
+		"a fan: %08x %08x %08x", pixel(24, 8), pixel(17, 14), pixel(30, 1));
+	CHECK(pixel(40, 8) == 0xff0000ff, "inline indices: %08x", pixel(40, 8));
+	CHECK(pixel(8, 24) == 0xffffff00, "the mirror's vertices and indices: %08x", pixel(8, 24));
+	CHECK(pixel(20, 20) == 0xffff00ff, "immediate mode: %08x", pixel(20, 20));
+	CHECK(pixel(56, 56) == 0xff0000ff && pixel(60, 30) == 0xff000000, "the clears: %08x %08x", pixel(56, 56),
+		pixel(60, 30));
+	CHECK(visibility[3] == 256, "the visibility count for the guest: %u", visibility[3]);
+	free(layout);
+	backend->target_delete(NULL, 1);
+	backend->target_delete(NULL, 2);
+}
+#endif
+
 /* ---------- the window */
 
 static int window_run(double seconds, int resize)
@@ -1131,6 +1383,11 @@ int main(int argc, char *argv[])
 		test_texture_kinds();
 		test_guest_memory();
 		test_frames();
+#ifdef TEST_STREAM
+		test_stream_table();
+#else
+		printf("(the command stream's table: not built, its header is not in the tree)\n");
+#endif
 		/* the archive: the second run makes nothing that the first added */
 		{
 			struct xgpu_metal_statistics totals;
