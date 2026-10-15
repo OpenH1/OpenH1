@@ -16,7 +16,7 @@ which Direct3D maintains. The shader written here inverts that transform to
 hand OpenGL a clip-space position again.
 */
 
-#include "xgpu.h"
+#include "xgpu_gl.h"
 #include "xgpu_shader.h"
 
 #include <stdio.h>
@@ -92,7 +92,7 @@ static const char vertex_prologue[] =
 	"uniform vec4 viewport_scale;\n"
 	"uniform vec4 viewport_offset;\n"
 	"uniform float point_size;\n"
-	/* columns the menus shift by to center on a wide screen (d3d8_gl.c) */
+	/* columns the menus shift by to center on a wide screen (d3d8_device.c) */
 	"uniform float screen_offset;\n"
 	"out vec4 xD0;\n"
 	"out vec4 xD1;\n"
@@ -158,7 +158,7 @@ char *xgpu_glsl_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 	{
 		/* both eyes in one draw: each eye's clip position is a fixed
 		transform of the centre view's, for the projection the game has set
-		(d3d8_gl.c, halo_vr_set_eye_transforms) */
+		(xgpu_gl.c, halo_vr_set_eye_transforms) */
 		xgpu_text_append(&text,
 			"#extension GL_OVR_multiview2 : require\n"
 			"layout(num_views = 2) in;\n"
@@ -366,7 +366,7 @@ char *xgpu_glsl_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 	{
 		/* the eyes' images have their first row at the bottom (OpenXR's GL
 		images), the game's targets at the top: the eye pass draws upside
-		down (d3d8_gl.c, vr_flip_rows) */
+		down (xgpu_gl.c, vr_flip_rows) */
 		xgpu_text_append(&text, "\tgl_Position.y = -gl_Position.y;\n");
 	}
 	if (multiview && options->foveated)
@@ -649,7 +649,7 @@ static void sample(struct xgpu_text *text, const struct xgpu_pixel_program *prog
 			break;
 		}
 		/* the VR mode's eye pass: the eye's own layer (in a draw into one
-		layer, that eye's), drawn upside down (d3d8_gl.c, vr_flip_rows) */
+		layer, that eye's), drawn upside down (xgpu_gl.c, vr_flip_rows) */
 		xgpu_text_append(text, "texture(tex%d, vec3((%s).xy * texture_scale[%d].xy * vec2(1.0, -1.0) + vec2(0.0, 1.0), %s)",
 			stage, coordinates, stage, program->multiview == XGPU_MULTIVIEW_EYES ? "float(gl_ViewID_OVR)" :
 				program->multiview == XGPU_MULTIVIEW_RIGHT_EYE ? "1.0" : "0.0");
@@ -1040,7 +1040,7 @@ char *xgpu_glsl_pixel_shader(const struct xgpu_pixel_program *program, const str
 		left of a layered target of this size) in this layer: in an inset's,
 		where its view put it, or, where the inset does not reach, in the
 		whole eye's layer (the edges of a blur, a distortion); the layer's
-		rows upside down (d3d8_gl.c, vr_flip_rows) */
+		rows upside down (xgpu_gl.c, vr_flip_rows) */
 		xgpu_text_append(&text,
 			"uniform vec4 fovea_sample[4];\n"
 			"vec3 fovea_layer(vec2 uv, int layer, ivec3 size)\n"

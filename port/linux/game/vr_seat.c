@@ -90,7 +90,7 @@ boolean vr_climb_exiting(void);
 boolean vr_climb_active(void);
 /* vr_render.c's */
 real vr_render_view_yaw(void);
-/* d3d8_gl.c's, vr.c's */
+/* d3d8_device.c's, xgpu_gl.c's, vr.c's */
 void halo_vr_eye_tint(float red, float green, float blue);
 float halo_vr_vignette(float fov[2][4]);
 void halo_vr_comfort_vignette(float amount);
@@ -785,7 +785,7 @@ real vr_seat_darkness(void)
 }
 
 /* the eye pass, after the game's screen flash (render.c): the blink's
-darkness over both eyes, all of each (d3d8_gl.c's tint, as they are
+darkness over both eyes, all of each (xgpu_gl.c's tint, as they are
 presented; the HUD's layer stays lit) */
 void vr_seat_blink_draw(void)
 {

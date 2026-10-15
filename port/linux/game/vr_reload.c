@@ -136,7 +136,7 @@ boolean vr_render_left_hand(real_matrix4x3 *hand, real *units);
 boolean vr_render_right_hand(real_matrix4x3 *hand, real *units);
 boolean vr_render_body_place(const float place[3], const float forward[3], const float up[3], real_matrix4x3 *matrix,
 	real *units);
-/* d3d8_gl.c's */
+/* d3d8_device.c's */
 void halo_vr_test_screenshot(void);
 /* vr_holster.c's */
 void vr_holster_highlight(boolean well, long unit_index, real strength, real units,

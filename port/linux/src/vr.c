@@ -1216,7 +1216,7 @@ int halo_vr_initialize(void)
 	vr.info.refresh_rate_wanted = (float)config_real("vr.refresh_rate");
 	vr.info.depth = config_boolean("vr.depth");
 	/* (decided as the session is made: the eyes' targets are sized for it,
-	d3d8_gl.c) */
+	d3d8_device.c) */
 	vr.foveation = !strcmp(config_string("vr.foveation"), "off") ? 0 :
 		!strcmp(config_string("vr.foveation"), "fixed") ? 1 : 2;
 	vr.foveation_inset = (float)config_real("vr.foveation_inset");
@@ -3596,7 +3596,7 @@ float halo_vr_vignette(float fov[2][4])
 	return vr.vignette;
 }
 
-/* ---------- foveation (vr.foveation; d3d8_gl.c draws it) */
+/* ---------- foveation (vr.foveation; xgpu_gl.c draws it) */
 
 float halo_vr_foveation_inset(void)
 {

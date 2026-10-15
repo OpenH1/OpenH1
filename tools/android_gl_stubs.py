@@ -20,7 +20,7 @@ With --desktop, the list is gl.h's desktop OpenGL one and the prototypes come
 from the Khronos glcorearb.h: the Linux arm64 build's desktop renderer
 (tools/linux_arm64_build.py). Its two functions that hand the host a pointer
 it cannot use, or give the guest one it cannot, have guest replacements:
-glMapBufferRange maps nothing (d3d8_gl.c reads the visibility results through
+glMapBufferRange maps nothing (xgpu_gl.c reads the visibility results through
 host_gl_read_buffer instead), and glDebugMessageCallback installs the host's
 logger, the guest's callback being guest code.
 

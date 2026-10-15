@@ -19,7 +19,7 @@ scale (a window made fullscreen) or a full atlas starts it over.
 #include "text_hires.h"
 #include "platform.h"
 #include "port_config.h"
-#include "xgpu.h"
+#include "xgpu_gl.h"
 
 #include <math.h>
 #include <stdio.h>

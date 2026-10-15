@@ -22,7 +22,7 @@ high-res HUD's are (hud_hires.c).
 #include "menu_files.h"
 #include "platform.h"
 #include "port_config.h"
-#include "xgpu.h"
+#include "xgpu_gl.h"
 #ifdef HALO_VR
 #include "vr.h"
 #endif

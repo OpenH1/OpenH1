@@ -14,7 +14,7 @@ A cached texture stays valid until any page it was read from is written;
 memory_watch.c detects that by write-protecting the pages.
 */
 
-#include "xgpu.h"
+#include "xgpu_gl.h"
 #include "hud_hires.h"
 #include "menu_files.h"
 #include "text_hires.h"
@@ -211,7 +211,7 @@ unsigned long xgpu_texture_face_size(const struct xgpu_texture_description *desc
 	return size;
 }
 
-/* whether the size is one D3DDevice_GetDeviceCaps allows (d3d8_gl.c): up
+/* whether the size is one D3DDevice_GetDeviceCaps allows (d3d8_device.c): up
 to 4096 by 4096, and 512 each way for a volume */
 static BOOL texture_size_supported(const struct xgpu_texture_description *description)
 {

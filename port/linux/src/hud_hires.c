@@ -11,7 +11,7 @@ levels, though a game draws only some (the scopes' only when zoomed), and
 the titles of the menus shown, about 3 MB each (11 MB for the carnage
 report's, a whole panel), and their button icons, about 0.3 MB each (5.3
 MB for the message icons' sheet).
-They are drawn with linear filtering and their mip levels (d3d8_gl.c,
+They are drawn with linear filtering and their mip levels (xgpu_gl.c,
 configure_sampler), as they are larger than they appear.
 
 The embedded PNGs are the ones tools/hud_assets.py, title_assets.py and
@@ -23,7 +23,7 @@ zlib (port/third_party/zlib).
 #include "hud_hires.h"
 #include "platform.h"
 #include "port_config.h"
-#include "xgpu.h"
+#include "xgpu_gl.h"
 
 #include "zlib_prefixed.h"
 

@@ -2557,7 +2557,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   side over its near hull.) The screen's other render targets have a
   layer for each eye. Draws in screen space are the same in both eyes.
 - Foveated (`vr.foveation`, the default), the eye pass draws four views
-  in the same draws (`GL_OVR_multiview2`; `src/d3d8_gl.c`, "foveation"),
+  in the same draws (`GL_OVR_multiview2`; `src/xgpu_gl.c`, "foveation"),
   each `vr.foveation_inset` of an eye's image across and up (864x864 of
   1728x1728 by default): for each eye the whole of it, at that fraction of
   its resolution, and an inset of it, at its full resolution, about where
@@ -3063,7 +3063,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   drawn there without its weapon (the arms alone), each hand holding its
   handle placed on it as the controller would be, upright along the Ghost,
   its fingers closed. The comfort vignette (`vr_draw_vignette`,
-  `src/d3d8_gl.c`) multiplies each eye's image by a dimming beyond 50
+  `src/xgpu_gl.c`) multiplies each eye's image by a dimming beyond 50
   degrees from that eye's own middle (30 at its strongest) over 22
   degrees, by 65% at most, eased in over 0.12 s and out over 0.4 s.
   The Warthog's driver seat is the same seat (`vehicle_seats` in
@@ -3210,7 +3210,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   does (on b40's Shade, swept across at 8x: no more than the aim, in any
   frame).
   Its image (the same copy: the window, its sight and readout, its glow,
-  and its animation, the image's middle rows) is not a layer: `d3d8_gl.c`
+  and its animation, the image's middle rows) is not a layer: `xgpu_gl.c`
   draws it into both eyes' images after the foveation's composite, where
   each eye's ray meets the window's quad (`halo_vr_scope_window`: through
   the reticle's point, at its smoothed distance, facing back along the line
@@ -3307,11 +3307,11 @@ does; making the eye images from the four layers cost 0.2 ms more there.
 | Area | Status |
 | --- | --- |
 | Game code | All 466 C files of the game. The changes are in "Game source changes". |
-| Graphics | Direct3D 8 on OpenGL 4.5 core through SDL3 (`src/d3d8_gl.c`). The port translates the NV2A vertex shaders and register combiners to GLSL. It decodes all the Xbox texture formats. The vertex and index buffers come from a GL copy of the Xbox memory. |
+| Graphics | Direct3D 8 on OpenGL 4.5 core through SDL3. A front end (`src/d3d8_device.c`) keeps the Direct3D state and turns each draw into a description that any graphics API can draw (`src/xgpu_backend.h`: the pipeline's key, the textures and targets it binds, the draw's ranges, all plain data); the OpenGL backend (`src/xgpu_gl.c`) draws them, building the pipeline for a key once and keeping it. The port translates the NV2A vertex shaders and register combiners into a description of their operations (`src/xgpu_shader.h`), which `src/xgpu_glsl.c` writes as GLSL. It decodes all the Xbox texture formats. The vertex and index buffers come from a GL copy of the Xbox memory. |
 | High-res HUD | The HUD is drawn from high-res assets: redraws at 8x the size of the maps' bitmaps (4x for the largest), in `port/assets/hud`. They cover the meters, counters, panels and their outlines, the motion sensor, reticles, waypoints and scopes, but no bitmap with English text. `tools/hud_assets.py` makes them from the SVG redraws (the weapons' reticles from those of the PC HUD sheet that match the Xbox's exactly, the sniper rifle's 2x and 10x set in Overpass), and the build embeds them in the executable. When the game uploads one of those bitmaps, `src/hud_hires.c` gives the high-res texture in its place, if the bitmap's pixels are those of the English maps: another language's maps keep their own. The game sizes and places the HUD from its tags as before. `display.high_res_hud = false` turns this off. |
 | High-res text | The menus' and HUD's text is drawn with Overpass (`port/assets/fonts`, SIL Open Font License) in place of the maps' bitmap fonts, which are Interstate. `src/text_hires.c` rasterizes each glyph with stb_truetype (`port/third_party/stb`) at the resolution the game draws at, into an atlas that a placeholder bitmap of the game stands for. The game lays the text out from its font tags as before: each font is as tall as its tag's capitals, and narrowed where the tag's letters are narrower than the Xbox maps' (the fonts of a Custom Edition `loc.map`), so that its letters do not run into each other. The menus' titles (the screens' headers and the main menu's items) are pictures of text in the maps, so they are drawn as the high-res HUD is: `tools/title_assets.py` sets each one again in OpenCE, Roger White's public-domain Newtown respaced to match the maps' commercial title typeface (`tools/title_font.py`), at 4x the bitmap's size over its own plate or glow, each letter placed where the map's letter is, in `port/assets/titles`. The postgame carnage report's title is set over a hand-made SVG redraw of its panel (`port/assets/titles/svg`) instead. The A, B, X and Y button icons beside the menus' key labels and in their text ("Press A to Join") are drawn from hand-made SVG redraws at 8x the size of the maps' bitmaps (`port/assets/buttons`, made by `tools/button_assets.py`), in the same sizes and places. `display.high_res_text = false` turns it off. |
-| Dynamic lights | `display.dynamic_lights = "enhanced"` (`src/d3d8_gl.c`, `src/xgpu_glsl.c`, `game/dynamic_lights.c`): the frame's lights are a uniform block, and a 32 x 32 x 16 grid about the camera, its cells growing with the distance (out to 128 world units each way), a 128-bit mask of the lights that reach each cell (an integer 3D texture). The structure's lightmap pass and the models' per-pixel lighting (`display.per_pixel_lighting`'s, which this turns on) add the lights of their cell for each pixel, in place of the game's pass over the structure for each light and its two lights for each model. The vertex shaders hand on the world position: a model program's skinned position before it is projected, a structure's vertex as it is. The glows are a camera-facing quad each, projected as the game's programs are, faded against the scene's depth, sampled with the target drawn into without it. |
-| Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_gl.c`, `src/xgpu_post.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). Their programs are built when the setting is chosen. Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (`gl_SampleMask`, not on Android). |
+| Dynamic lights | `display.dynamic_lights = "enhanced"` (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_glsl.c`, `game/dynamic_lights.c`): the frame's lights are a uniform block, and a 32 x 32 x 16 grid about the camera, its cells growing with the distance (out to 128 world units each way), a 128-bit mask of the lights that reach each cell (an integer 3D texture). The structure's lightmap pass and the models' per-pixel lighting (`display.per_pixel_lighting`'s, which this turns on) add the lights of their cell for each pixel, in place of the game's pass over the structure for each light and its two lights for each model. The vertex shaders hand on the world position: a model program's skinned position before it is projected, a structure's vertex as it is. The glows are a camera-facing quad each, projected as the game's programs are, faded against the scene's depth, sampled with the target drawn into without it. |
+| Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_post.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). Their programs are built when the setting is chosen. Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (`gl_SampleMask`, not on Android). |
 | Sound | Xbox DirectSound on SDL3 audio (`src/dsound_sdl.c`): PCM and Xbox ADPCM, mixed at 48 kHz, with volume, pitch, mix bins, distance, stereo pan, occlusion and obstruction. There is no Doppler effect, no cones and no reverb. |
 | Input | XInput on SDL3 (`src/xinput_sdl.c`): keyboard, mouse, gamepads with rumble, and the debug keyboard for the console. |
 | Files | The Win32 file functions and the MSVC file functions on POSIX, with the translation of Xbox paths. |
@@ -3362,7 +3362,7 @@ definition. Without this check, the linker gives the reference the address
 - `src/halo_linker_common.c` gives weak storage for some globals of the
   January link, and for `fast_ftol_C` and `main_crash`.
 - `main/d3d_intimacy.cpp` reads a private structure of the Xbox Direct3D.
-  The Linux build does not use this file. `src/d3d8_gl.c` gives
+  The Linux build does not use this file. `src/d3d8_device.c` gives
   `d3d_find_flipcount`.
 - The build returns small structures and unions in registers
   (`-freg-struct-return`), as on Win32.
@@ -3376,6 +3376,24 @@ definition. Without this check, the linker gives the reference the address
   changes nothing (measured: the same frame times and power either way).
   `HALO_GPU_TRACE_MARKERS=1` lets the driver write them, to capture with
   gpuvis.
+
+### The renderer
+
+The game draws through the Xbox's Direct3D 8. The renderer has two halves,
+so that a second graphics API (Metal, then Vulkan) needs a backend and no
+second copy of what the Xbox's states mean:
+
+| File | Contents |
+| --- | --- |
+| `src/d3d8_device.c` | The front end: the `D3DDevice_*` functions and the device's state. It finds the render targets by the Xbox surface's address and numbers them, keeps the vertex shaders and declarations, the visibility tests' slots, the screen's size and scale, the mirror's pages and the VR mode's passes. For each draw it fills a pipeline key, the dynamic state, the textures bound and the draw's range. |
+| `src/xgpu_backend.h` | What passes between the halves. It holds no Xbox value and no GL one. Each call is plain data: targets are numbers, guest data is a guest address and a size, and the backend keeps no pointer into the front end's memory. A few calls are answered at once (a texture's description, whether a pipeline's shaders build, a visibility test's count, a screenshot's pixels); the header says how each could wait for the frame's end. So the calls of a frame could go to another thread or to the 64-bit host as one stream. |
+| `src/xgpu_gl.c` | The OpenGL backend (OpenGL 4.5, OpenGL ES 3.0 to 3.2, WebGL 2), with `src/xgpu_gl.h`. It keeps a pipeline for each key: the program and the GL state, made the first time a draw needs it. It holds the targets, the stream buffers, the mirror's buffers and the visibility queries or counters. In the VR mode it holds the eyes' images and the HUD's, and composes the frame for OpenXR. |
+| `src/xgpu_shader.h` | The vertex programs and pixel shaders, decoded once: `src/nv2a_vsh.c` decodes the NV2A vertex microcode, `src/nv2a_psh.c` the texture stages and register combiners. |
+| `src/xgpu_glsl.c` | Writes GLSL 4.50 or ESSL 3.00 and 3.10 from the decoded programs. |
+
+The texture cache (`src/xbox_textures.c`) and the high-res replacements
+(`src/hud_hires.c`, `src/text_hires.c`, `src/menu_files.c`) still make GL
+textures themselves.
 
 ### Game source changes
 
@@ -3414,7 +3432,7 @@ Other changes:
 | `rasterizer/xbox/rasterizer_xbox_shadows.c` | With larger shadow maps (`display.shadow_resolution`), the blur's taps stay half a texel apart, and more passes widen it to cover the same part of the map as on the Xbox. |
 | `rasterizer/rasterizer.c` | The 128 KB of vertices of the debug display of a model's vertices are static, not on the stack: the compiler inlines the function in `render_model`, and the Windows build probed the stack a page at a time for every model drawn. |
 | `render/render.c` | The 3D view of each window is antialiased before the HUD is drawn (`display.anti_aliasing`). The projectiles' lights' glows are drawn after the transparent geometry (`display.dynamic_lights`). |
-| `models/models.c` | A model's size, which chooses its level of detail and whether it is drawn, is scaled as `display.model_detail` says (`halo_model_detail_scale`, `src/d3d8_gl.c`). |
+| `models/models.c` | A model's size, which chooses its level of detail and whether it is drawn, is scaled as `display.model_detail` says (`halo_model_detail_scale`, `src/d3d8_device.c`). |
 | `interface/hud.c` | In multiplayer, players' names are drawn above their heads (`display.player_names`, `display.player_name_scale`). |
 | `rasterizer/rasterizer_text.c`, `text/draw_string.c` | Text is drawn from an atlas of the fonts' glyphs, rasterized at the resolution the game draws at (`src/text_hires.c`), when the font has every character of the string. Text can be drawn scaled about a point (`rasterizer_text_set_scale`), as the players' names are. Each glyph's advance is centred on the font tag character's, so the layout is the same, and a glyph is cut at a text box only where the font tag's character visibly was. |
 | `interface/first_person_weapons.c` | The first-person hands are drawn with the unit's shield modifier shader, as its body is (`display.viewmodel_shield`). |

@@ -7,7 +7,7 @@ through XR_KHR_opengl_enable: with an EGL context (SDL_VIDEO_FORCE_EGL, as
 vr.c asks) through XR_MNDX_egl_enable's binding, else through GLX's. The
 swapchains' images are then GL textures the game draws into directly: the
 eyes are one 2-layer texture array, which the renderer draws both of at once
-with GL_OVR_multiview2 (d3d8_gl.c).
+with GL_OVR_multiview2 (xgpu_gl.c).
 
 The runtime is loaded without the OpenXR loader, which few distributions
 package: as the loader does, from the active runtime's manifest
