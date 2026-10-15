@@ -239,10 +239,26 @@ struct xgpu_texture_description
 	BOOL hires_point_threshold; /* ... whose red holds discrete segment data */
 };
 
+/* (xbox_texture_decode.c) */
 void xgpu_texture_describe(DWORD format_word, DWORD size_word, struct xgpu_texture_description *description);
 /* bytes of one face, mip levels included (cube faces are padded) */
 unsigned long xgpu_texture_face_size(const struct xgpu_texture_description *description);
 unsigned long xgpu_texture_level_offset(const struct xgpu_texture_description *description, unsigned long level);
 unsigned long xgpu_texture_level_pitch(const struct xgpu_texture_description *description, unsigned long level);
+/* bytes of a level (all of a volume's slices), and a level's width, height
+or depth from the first level's */
+unsigned long xgpu_texture_level_size(const struct xgpu_texture_description *description, unsigned long level);
+unsigned long xgpu_texture_level_dimension(unsigned long base, unsigned long level);
+/* the size is one D3DDevice_GetDeviceCaps allows (d3d8_device.c) */
+BOOL xgpu_texture_size_supported(const struct xgpu_texture_description *description);
+/* a level of a texture that is not compressed (a volume's slices one after
+another), from its texels at source, as 32-bit BGRA (a DWORD each: ARGB),
+rows from the first; FALSE when out of memory. palette: a P8 texture's 256
+D3DCOLORs (NULL: grey) */
+BOOL xgpu_texture_decode_level(const struct xgpu_texture_description *description, unsigned long level,
+	const unsigned char *source, const D3DCOLOR *palette, DWORD *destination);
+/* a level of a DXT texture, as xgpu_texture_decode_level */
+void xgpu_texture_decode_dxt(const struct xgpu_texture_description *description, unsigned long level,
+	const unsigned char *source, DWORD *destination);
 
 #endif
