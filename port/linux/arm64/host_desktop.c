@@ -22,9 +22,20 @@ Only integers, floats, strings and flat structures cross, as in host_sdl.c.
 
 /* ---------- general */
 
+#ifdef __APPLE__
+/* port/macos/host_app.m */
+const char *host_app_settings_folder(void);
+#endif
+
+/* the executable's folder, where the game finds config.toml; the macOS
+app's settings folder in Application Support (its bundle is read-only) */
 void host_sdl_get_base_path(char *buffer, uint32_t size)
 {
+#ifdef __APPLE__
+	const char *path = host_app_settings_folder() ? host_app_settings_folder() : SDL_GetBasePath();
+#else
 	const char *path = SDL_GetBasePath();
+#endif
 
 	SDL_strlcpy(buffer, path ? path : "", size);
 }

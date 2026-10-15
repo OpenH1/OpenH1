@@ -1742,6 +1742,8 @@ static void main_native_build_label(char *label, size_t capacity)
 	platform = "Android";
 	#elif defined(HALO_WINDOWS)
 	platform = "Windows";
+	#elif defined(HALO_METAL)
+	platform = "macOS"; /* port: the macOS build, Linux arm64's guest */
 	#else
 	platform = "Linux";
 	#endif

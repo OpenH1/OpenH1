@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+Halo.app's entitlements under the hardened runtime (tools/macos_app.py signs
+the app with them; port/macos/README.md, "The app"):
+
+- allow-jit: the game is a guest image whose code the host loads at start
+  and makes executable (port/android/host/host_loader.c): in MAP_JIT memory,
+  the narrowest way the hardened runtime allows. Without it the process is
+  killed when it runs the code; allow-unsigned-executable-memory would also
+  work, for any memory.
+- audio-input: the microphone, for voice chat in network games (the
+  hardened runtime refuses it otherwise; Info.plist's
+  NSMicrophoneUsageDescription is what macOS asks the player with).
+
+Signed ad hoc (the local build), the app also gets disable-library-validation,
+so that it loads its ad hoc signed SDL; a Developer ID signature does not
+need it (tools/macos_app.py, sign_app).
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+</dict>
+</plist>
