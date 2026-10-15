@@ -13,6 +13,12 @@ The guest is the Linux desktop build of the game, so it finds the game data,
 the saves and config.toml as the x86 build does (port/linux/README.md): it
 gets the part of this process's environment that it reads (the HALO_
 settings, HOME, the XDG folders), and /proc/self/exe is this executable.
+
+The macOS build (tools/macos_build.py, port/macos) uses this file too. There
+the guest's memory lies at a base the host chooses (HALO_GUEST_BASE), its
+system calls are translated to Darwin's (port/macos/host_syscall.c), and
+the game runs on the process's main thread, which Cocoa's windows and
+events need, after moving it onto a stack in guest memory.
 */
 
 #include "host.h"
@@ -85,9 +91,19 @@ void host_exit(int code)
 	_exit(code);
 }
 
+#ifdef __APPLE__
+/* port/macos/host_syscall.c */
+int host_linux_errno(int error);
+#endif
+
 int host_errno(void)
 {
+#ifdef __APPLE__
+	/* (the guest's errno values are Linux's) */
+	return host_linux_errno(errno);
+#else
 	return errno;
+#endif
 }
 
 /* the app's folders (host_imports.list); the desktop guest finds its own */
@@ -270,10 +286,35 @@ static void *game_main(void *unused)
 	host_run_guest_main(make_boot(&environment));
 }
 
+#ifdef __APPLE__
+static void game_main_on_stack(void *unused)
+{
+	game_main(unused);
+}
+#endif
+
 int main(int argc, char *argv[])
 {
 	(void)argc;
 	(void)argv;
+#ifdef __APPLE__
+	{
+		/* Cocoa's windows and events belong to the main thread, and the
+		game's main thread is the one that makes its window and pumps its
+		events: the game runs here, on a stack in guest memory (with a
+		guard page at its bottom) */
+		char *stack;
+
+		host_install_signal_handlers();
+		stack = host_low_map(MAIN_STACK_SIZE, PROT_READ | PROT_WRITE);
+		if (!stack)
+			host_fatal("cannot allocate the game's stack");
+		mprotect(stack, host_page_size(), PROT_NONE);
+		host_debug_thread_started();
+		host_run_on_stack(game_main_on_stack, NULL, stack + MAIN_STACK_SIZE);
+		host_fatal("the game returned");
+	}
+#endif
 	/* Mesa's GL thread, as the x86 build asks for it (sdl_platform.c): the
 	guest's environment is its own copy, so the guest's request cannot reach
 	the driver, which reads this process's. An explicit setting stays. */

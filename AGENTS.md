@@ -1,7 +1,7 @@
 # Notes for agents
 
 This repository ports the Halo: Combat Evolved decompilation (Xbox build
-01.01.14.2342, `cachebeta.exe`) to Linux, Windows, Android and the web. The game's C
+01.01.14.2342, `cachebeta.exe`) to Linux, Windows, Android, macOS and the web. The game's C
 sources are the decompilation; the port adds a platform layer that
 implements the Xbox APIs the game calls, and features the Xbox game did not
 have (a new netcode, internet play, the PC version's menus, Custom Edition
@@ -21,11 +21,12 @@ end.
 | `port/include/xdk/` | Stand-ins for the Xbox SDK's headers (declarations only) |
 | `port/windows/` | The Windows build's own files (`win32_*.c`, headers) |
 | `port/android/` | The Android app: the guest runtime, the host library (`host/`), the Java app (`app/`), host imports (`host_imports.list`) |
+| `port/macos/` | The macOS host's own files: Darwin's system calls for the guest (`host_syscall.c`), the renderer's place (`host_renderer.c`); the rest is `port/android/host` and `port/linux/arm64` |
 | `port/web/` | The web build: its runtime (`src/`: entry, sockets inside the page, memory watch), the page and its service worker (`site/`), the SDL port, tests |
 | `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), icons, network brokers |
 | `port/third_party/` | Vendored libraries, each with a README naming its upstream, version and checksum |
 | `port/tools/` | Stand-alone tools (`cache_file_report.c`) |
-| `tools/` | Build scripts (`linux_build.py`, `windows_build.py`, `android_build.py`, `web_build.py`, `ci_build.py`, `web_serve.py`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`) and tests |
+| `tools/` | Build scripts (`linux_build.py`, `windows_build.py`, `android_build.py`, `macos_build.py`, `web_build.py`, `ci_build.py`, `web_serve.py`), the guest's base register (`guest_base_register.py`, measured by `base_register_bench/`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`) and tests |
 | `docs/` | Longer design notes (`custom_edition_caches.md`) |
 | `pgo/` | Profile-guided optimisation profiles |
 | `assets/` | Game data for local runs (gitignored: `maps/`, `custom_maps/`) |
@@ -39,6 +40,7 @@ ninja linux                    # build/linux/halo
 ninja android                  # the Android guest image and native libraries
 ninja android_apk              # the APK (Gradle)
 ninja web                      # build/web/site (Emscripten: port/web/README.md)
+ninja macos                    # build/macos/halo, on Apple silicon (port/macos/README.md)
 ninja windows                  # on Windows only
 python tools/ci_build.py linux release   # what CI builds
 ```
@@ -57,6 +59,14 @@ python tools/ci_build.py linux release   # what CI builds
   and only the SDL functions `guest_sdl.c` bridges. Run `ninja android`
   after changing anything it compiles: `port/linux/src`, `port/linux/game`,
   `port/android`, `source/`, the build scripts.
+- macOS: the guest of the Linux arm64 build, with its memory at a base the
+  host chooses (`tools/guest_base_register.py`: every guest memory access
+  adds `x21`, and `x21` and `x22` are reserved). Guest code built for it
+  must not write those registers. Its system calls are translated to
+  Darwin's (`port/macos/host_syscall.c`). Run `ninja macos` after changing
+  what it compiles (as for Android). No renderer yet: run it with
+  `HALO_NULL_RENDERER=1`. `configure.py --guest-base` gives the Linux arm64
+  and Android builds the base register too.
 - Web: the game is `wasm32` (also ILP32), run on a Web Worker; calls must
   match their callee's type exactly (the link fails on a mismatch), and
   WebGL 2 is ES 3.0. Run `ninja web` after changing what it compiles (as
@@ -68,8 +78,8 @@ python tools/ci_build.py linux release   # what CI builds
 | --- | --- | --- |
 | `HALO_ANDROID` | Android | The app: its display, input, files and lifecycle |
 | `HALO_GLES` | Android, web | The OpenGL ES renderer |
-| `HALO_ARM64_GUEST` | Android | The guest's ABI (ILP32 AArch64) |
-| `HALO_GUEST_BASE` | `--guest-base` | The guest's memory at a base register (`tools/guest_base_register.py`): host addresses are base plus offset (`port/android/host/host.h`) |
+| `HALO_ARM64_GUEST` | Android, Linux arm64, macOS | The guest's ABI (ILP32 AArch64) |
+| `HALO_GUEST_BASE` | macOS, `--guest-base` | The guest's memory at a base register (`tools/guest_base_register.py`): host addresses are base plus offset (`port/android/host/host.h`) |
 | `HALO_WEB` | Web | The browser: its frames, storage, sockets and WebGL 2's limits (with `HALO_GLES`, not `HALO_ANDROID`) |
 | `HALO_WINDOWS` | Windows (`halo_windows_prefix.h`) | The Windows build |
 | `HALO_RELEASE` | `--release` | No assertions checked |
@@ -216,6 +226,7 @@ as documentation of file formats, never copied.
 | [port/linux/NETCODE.md](port/linux/NETCODE.md) | The distributed netcode, network versions, joining a game in progress, map sharing, transport, testing |
 | [port/windows/README.md](port/windows/README.md) | The Windows build, its headers, inline functions, crash reports |
 | [port/android/README.md](port/android/README.md) | The Android build, the guest and host, touch controls, Android settings, finding problems |
+| [port/macos/README.md](port/macos/README.md) | The macOS build, the guest's memory at a base register, 16 KB pages, Darwin's system calls |
 | [port/web/README.md](port/web/README.md) | The web build, the page, the game data in the browser, limits, how it operates, hosting on GitHub Pages |
 | [port/include/xdk/README.md](port/include/xdk/README.md) | How the SDK declarations were written and are checked |
 | [docs/custom_edition_caches.md](docs/custom_edition_caches.md) | Loading and converting Custom Edition maps, and the evidence for each layout |

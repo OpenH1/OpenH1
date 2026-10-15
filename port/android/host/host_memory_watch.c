@@ -23,10 +23,26 @@ a host with larger pages a write marks a little more than it touched.
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
+#ifdef __APPLE__
+#include <sys/ucontext.h>
+#else
 #include <ucontext.h>
+#endif
 #include <unistd.h>
 
 /* the registers in a signal's context */
+#ifdef __APPLE__
+#define CONTEXT_PC(context) ((ucontext_t *)(context))->uc_mcontext->__ss.__pc
+#define CONTEXT_SP(context) ((ucontext_t *)(context))->uc_mcontext->__ss.__sp
+#define CONTEXT_FP(context) ((ucontext_t *)(context))->uc_mcontext->__ss.__fp
+#define CONTEXT_LR(context) ((ucontext_t *)(context))->uc_mcontext->__ss.__lr
+/* x0-x28, then fp and lr */
+static uint64_t context_register(void *context, int index)
+{
+	return index < 29 ? ((ucontext_t *)context)->uc_mcontext->__ss.__x[index] :
+		index == 29 ? CONTEXT_FP(context) : CONTEXT_LR(context);
+}
+#else
 #define CONTEXT_REGISTERS(context) ((struct sigcontext *)&((ucontext_t *)(context))->uc_mcontext)
 #define CONTEXT_PC(context) CONTEXT_REGISTERS(context)->pc
 #define CONTEXT_SP(context) CONTEXT_REGISTERS(context)->sp
@@ -36,6 +52,7 @@ static uint64_t context_register(void *context, int index)
 {
 	return CONTEXT_REGISTERS(context)->regs[index];
 }
+#endif
 
 /* the tracking's pages: the host's under page protection; the hashing's
 (WATCH_HASH_PAGE_SIZE) otherwise */
@@ -182,6 +199,11 @@ static void segv_handler(int signal_number, siginfo_t *information, void *contex
 
 static void bus_handler(int signal_number, siginfo_t *information, void *context)
 {
+#ifdef __APPLE__
+	/* (macOS raises SIGBUS for a write to a read-only page) */
+	if (host_memory_watch_fault((uintptr_t)information->si_addr))
+		return;
+#endif
 	report_crash(signal_number, information, context);
 	chain(&previous_bus, signal_number, information, context);
 }

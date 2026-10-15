@@ -17,13 +17,37 @@ symbolize against build/android/halo_guest.elf (llvm-symbolizer
 #include <stdlib.h>
 #include <string.h>
 #include <sys/syscall.h>
+#ifdef __APPLE__
+#include <sys/ucontext.h>
+#else
 #include <ucontext.h>
+#endif
 #include <unistd.h>
 
 #define MAXIMUM_THREADS 64
 #define SAMPLE_SIGNAL SIGURG
 
-static pid_t guest_threads[MAXIMUM_THREADS];
+#ifdef __APPLE__
+/* (macOS: threads are named by their pthread_t, interrupted by
+pthread_kill; the registers are in the context's mcontext) */
+typedef pthread_t thread_id;
+#define current_thread() pthread_self()
+#define CONTEXT_PC(context) ((const ucontext_t *)(context))->uc_mcontext->__ss.__pc
+#define CONTEXT_LR(context) ((const ucontext_t *)(context))->uc_mcontext->__ss.__lr
+#define CONTEXT_FP(context) ((const ucontext_t *)(context))->uc_mcontext->__ss.__fp
+#define THREAD_FORMAT "%p"
+#define THREAD_VALUE(thread) ((void *)(thread))
+#else
+typedef pid_t thread_id;
+#define current_thread() gettid()
+#define CONTEXT_PC(context) ((const struct sigcontext *)&((const ucontext_t *)(context))->uc_mcontext)->pc
+#define CONTEXT_LR(context) ((const struct sigcontext *)&((const ucontext_t *)(context))->uc_mcontext)->regs[30]
+#define CONTEXT_FP(context) ((const struct sigcontext *)&((const ucontext_t *)(context))->uc_mcontext)->regs[29]
+#define THREAD_FORMAT "%d"
+#define THREAD_VALUE(thread) (thread)
+#endif
+
+static thread_id guest_threads[MAXIMUM_THREADS];
 static pthread_mutex_t threads_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void host_debug_thread_started(void)
@@ -35,7 +59,7 @@ void host_debug_thread_started(void)
 	{
 		if (!guest_threads[index])
 		{
-			guest_threads[index] = gettid();
+			guest_threads[index] = current_thread();
 			break;
 		}
 	}
@@ -44,7 +68,7 @@ void host_debug_thread_started(void)
 
 void host_debug_thread_exited(void)
 {
-	pid_t self = gettid();
+	thread_id self = current_thread();
 	int index;
 
 	pthread_mutex_lock(&threads_lock);
@@ -58,16 +82,14 @@ void host_debug_thread_exited(void)
 
 static void sample_handler(int signal_number, siginfo_t *information, void *context)
 {
-	const ucontext_t *ucontext = context;
-	const struct sigcontext *registers = (const struct sigcontext *)&ucontext->uc_mcontext;
 	char line[512];
 	int length, depth;
-	uint64_t fp = registers->regs[29];
+	uint64_t fp = CONTEXT_FP(context);
 
 	(void)signal_number;
 	(void)information;
-	length = snprintf(line, sizeof(line), "sample tid %d: pc %llx lr %llx", gettid(),
-		(unsigned long long)registers->pc, (unsigned long long)registers->regs[30]);
+	length = snprintf(line, sizeof(line), "sample tid " THREAD_FORMAT ": pc %llx lr %llx", THREAD_VALUE(current_thread()),
+		(unsigned long long)CONTEXT_PC(context), (unsigned long long)CONTEXT_LR(context));
 	for (depth = 0; depth < 12 && fp && host_in_guest(fp) && !(fp & 7) && host_low_owns(fp, 16); depth++)
 	{
 		const uint64_t *frame = (const uint64_t *)fp;
@@ -86,7 +108,7 @@ static void *sampler(void *context)
 
 	for (;;)
 	{
-		pid_t threads[MAXIMUM_THREADS];
+		thread_id threads[MAXIMUM_THREADS];
 		int index;
 
 		sleep(seconds);
@@ -96,7 +118,11 @@ static void *sampler(void *context)
 		for (index = 0; index < MAXIMUM_THREADS; index++)
 		{
 			if (threads[index])
+#ifdef __APPLE__
+				pthread_kill(threads[index], SAMPLE_SIGNAL);
+#else
 				syscall(SYS_tgkill, getpid(), threads[index], SAMPLE_SIGNAL);
+#endif
 		}
 	}
 	return NULL;
