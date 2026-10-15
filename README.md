@@ -69,7 +69,7 @@ Each platform has its own instructions:
 | Linux arm64 VR (OpenXR headsets such as the Steam Frame) | [port/linux/README.md](port/linux/README.md#vr) |
 | Windows (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/windows/README.md](port/windows/README.md) |
 | Android (arm64 app, OpenGL ES 3, SDL3) | [port/android/README.md](port/android/README.md) |
-| macOS (Apple silicon executable, SDL3; no renderer yet) | [port/macos/README.md](port/macos/README.md) |
+| macOS (Apple silicon: Halo.app, Metal) | [port/macos/README.md](port/macos/README.md) |
 | Web (WebAssembly, WebGL 2, SDL3; desktop Chrome, Edge and Firefox) | [port/web/README.md](port/web/README.md) |
 
 The Linux README also gives the controls, the settings and the multiplayer
@@ -111,7 +111,7 @@ To build the game:
 | `ninja linux_arm64` (on 64-bit ARM Linux) | `build/linux_arm64/halo` and `libSDL3.so.0` |
 | `ninja windows` (on Windows) | `build/windows/halo.exe` and `SDL3.dll` |
 | `ninja android_apk` | `port/android/app/build/outputs/apk/debug/app-debug.apk` |
-| `ninja macos` (on a Mac with Apple silicon) | `build/macos/halo` and `libSDL3.0.dylib` |
+| `ninja macos` (on a Mac with Apple silicon) | `build/macos/Halo.app` (and `halo` with `libSDL3.0.dylib`, for development); `ninja macos_dmg`: `Halo.dmg` |
 | `ninja web` | `build/web/site/`, the web site (`python tools/web_serve.py` serves it) |
 
 If you enter `ninja` without a target, ninja builds the game for the
