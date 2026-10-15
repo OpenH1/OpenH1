@@ -167,14 +167,17 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
         return
     config: Dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
     cc = getattr(sln, "macos_cc", None) or "clang"
+    # (the guest's may be another clang: one that reads the profiles of
+    # profile-guided optimisation, which the host does not use)
+    guest_cc = getattr(sln, "macos_guest_cc", None) or cc
 
     n.comment("macOS build (ninja macos); see port/macos/README.md")
-    n.variable("macos_guest_cc", cc)
+    n.variable("macos_guest_cc", guest_cc)
     n.variable("macos_cc", cc)
 
     guest = generate_guest_image(
         n, sln, config, prefix="macos", label="MACOS", build=BUILD, third_party=THIRD_PARTY,
-        guest_cc=cc, gl_headers=KHRONOS_DIR.resolve(), ar=ar, ld=ld,
+        guest_cc=guest_cc, gl_headers=KHRONOS_DIR.resolve(), ar=ar, ld=ld,
         builtins="", asm_target="aarch64-linux-gnu",
         abi_flags=MACOS_GUEST_ABI_FLAGS, extra_runtime=[ARM64_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
         extra_imports=[ARM64_DIR / "host_imports.list", PORT_DIR / "host_imports.list"],
