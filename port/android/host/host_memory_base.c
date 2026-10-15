@@ -254,6 +254,36 @@ int host_memory_window_protection(uintptr_t address)
 	return protection < 0 ? PROT_NONE : protection;
 }
 
+void (*host_memory_remapped)(uint32_t address, uint32_t size);
+
+int host_memory_readable_extent(uint32_t address, uint32_t size, uint32_t limit_start, uint32_t limit_end,
+	uint32_t *start, uint32_t *end)
+{
+	uint64_t first = address & ~((uint64_t)page_size - 1);
+	uint64_t last = round_up((uint64_t)address + (size ? size : 1), page_size);
+	uint64_t lower = round_up(limit_start, page_size), upper = limit_end & ~((uint64_t)page_size - 1);
+	uint64_t page;
+	int readable = 1;
+
+	if (!reserved || first < lower || last > upper)
+		return 0;
+	pthread_mutex_lock(&memory_lock);
+	for (page = first; page < last && readable; page += page_size)
+		readable = host_page_protection(page) >= 0 && (host_page_protection(page) & PROT_READ);
+	if (readable)
+	{
+		while (first > lower && host_page_protection(first - page_size) >= 0 &&
+			(host_page_protection(first - page_size) & PROT_READ))
+			first -= page_size;
+		while (last < upper && host_page_protection(last) >= 0 && (host_page_protection(last) & PROT_READ))
+			last += page_size;
+	}
+	pthread_mutex_unlock(&memory_lock);
+	*start = (uint32_t)first;
+	*end = (uint32_t)last;
+	return readable;
+}
+
 /* a host page of the window, the image's range or the null pages, which are
 never handed out */
 static int host_page_fixed(uint64_t address)
@@ -307,7 +337,11 @@ static int update(uint64_t address, uint64_t size, int protection, int reprotect
 			/* nothing of it mapped: its memory goes back, and its address
 			space too unless it is one of the fixed ranges */
 			if (before >= 0)
+			{
 				mmap(host, page_size, PROT_NONE, MAP_PRIVATE | MAP_ANON | MAP_NORESERVE | MAP_FIXED, -1, 0);
+				if (host_memory_remapped)
+					host_memory_remapped((uint32_t)host_page, (uint32_t)page_size);
+			}
 			if (!host_page_fixed(host_page))
 				page_used[host_page / page_size] = 0;
 		}
@@ -320,6 +354,8 @@ static int update(uint64_t address, uint64_t size, int protection, int reprotect
 				host)
 				return -host_errno_value();
 			page_used[host_page / page_size] = 1;
+			if (host_memory_remapped)
+				host_memory_remapped((uint32_t)host_page, (uint32_t)page_size);
 		}
 		else
 		{

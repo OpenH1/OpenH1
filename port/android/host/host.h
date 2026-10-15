@@ -135,6 +135,17 @@ void host_memory_watch_forget(uint32_t address, uint32_t size);
 of the Xbox window's host page at that address, which the write tracking
 puts back */
 int host_memory_window_protection(uintptr_t address);
+#ifdef HALO_GUEST_BASE
+/* (host_memory_base.c) the run of readable host pages about a guest range,
+inside [limit_start, limit_end): sets *start and *end (guest addresses) and
+returns 1, or returns 0 if the range is not all readable */
+int host_memory_readable_extent(uint32_t address, uint32_t size, uint32_t limit_start, uint32_t limit_end,
+	uint32_t *start, uint32_t *end);
+/* (host_memory_base.c) called, if set, as host pages of the guest are
+mapped afresh or unmapped (guest addresses), with the memory's lock held: a
+GPU buffer made over them would still see the old pages (port/macos's) */
+extern void (*host_memory_remapped)(uint32_t address, uint32_t size);
+#endif
 
 /* ---------- entering guest code (host_thread.c) */
 

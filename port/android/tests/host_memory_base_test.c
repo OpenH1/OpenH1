@@ -152,6 +152,46 @@ static void test_fixed(void)
 		-EINVAL);
 }
 
+/* what a GPU buffer over guest memory needs (port/macos/xgpu_metal.m): the
+readable run of host pages about a range, and a word when pages are
+mapped again */
+static uint32_t remapped_address, remapped_size, remapped_count;
+
+static void remapped(uint32_t address, uint32_t size)
+{
+	remapped_address = address;
+	remapped_size = size;
+	remapped_count++;
+}
+
+static void test_gpu_ranges(void)
+{
+	uint32_t address = 0x40800000, page = (uint32_t)host_page_size(), start = 0, end = 0;
+
+	CHECK(host_guest_mmap(address, 4 * page, PROT_READ | PROT_WRITE, MAP_PRIVATE_ | MAP_ANONYMOUS_ | MAP_FIXED_NOREPLACE_,
+		-1, 0) == address);
+	/* the run about a range inside it, up to the limits */
+	CHECK(host_memory_readable_extent(address + page + 16, 64, address - 0x100000, address + 0x100000, &start, &end));
+	CHECK(start == address && end == address + 4 * page);
+	CHECK(host_memory_readable_extent(address + page, 64, address + page, address + 3 * page, &start, &end));
+	CHECK(start == address + page && end == address + 3 * page);
+	/* not readable: a page with no access, or past the mapping */
+	CHECK(host_guest_mprotect(address + 3 * page, page, PROT_NONE) == 0);
+	CHECK(!host_memory_readable_extent(address + 3 * page, 16, address, address + 0x100000, &start, &end));
+	CHECK(host_memory_readable_extent(address, 16, address, address + 0x100000, &start, &end) &&
+		end == address + 3 * page);
+	CHECK(!host_memory_readable_extent(address + 4 * page, 16, address, address + 0x100000, &start, &end));
+	/* mapped afresh and unmapped: told, a host page at a time */
+	host_memory_remapped = remapped;
+	remapped_count = 0;
+	CHECK(host_guest_mmap(address + page, page, PROT_READ | PROT_WRITE, MAP_PRIVATE_ | MAP_ANONYMOUS_ | MAP_FIXED_,
+		-1, 0) == address + page);
+	CHECK(remapped_count == 1 && remapped_address == address + page && remapped_size == page);
+	CHECK(host_guest_munmap(address, 4 * page) == 0);
+	CHECK(remapped_count == 5 && remapped_address == address + 3 * page);
+	host_memory_remapped = NULL;
+}
+
 /* the host's own allocations (stacks, the boot block) */
 static void test_host_allocations(void)
 {
@@ -172,6 +212,7 @@ int main(void)
 	test_anonymous();
 	test_window_pages();
 	test_fixed();
+	test_gpu_ranges();
 	test_host_allocations();
 	if (failures)
 		printf("%d failures\n", failures);
