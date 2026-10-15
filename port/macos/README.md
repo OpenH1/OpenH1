@@ -9,11 +9,8 @@ Intel). On such a Mac, `ninja` without a target builds it.
 | `build/macos/libSDL3.0.dylib` | SDL 3.4.16, without OpenGL. The game finds it next to the executable. |
 | `build/macos/xgpu_metal_test` | The Metal backend's tests (`ninja macos_metal_test`) |
 
-The renderer is Metal's (refer to "Metal"), but the game does not draw
-through it yet. Until it does, the game runs with the null renderer
-(`HALO_NULL_RENDERER=1`): it plays, but shows nothing, or with
-`HALO_METAL_WINDOW=1` a window that the host clears at each of the
-display's refreshes. It was tested on an Apple A18 Pro with macOS 27.
+The game draws with Metal (refer to "Metal"): the menus, the multiplayer
+maps and the campaign. It was tested on an Apple A18 Pro with macOS 27.
 
 ## Requirements
 
@@ -30,10 +27,8 @@ display's refreshes. It was tested on an Apple A18 Pro with macOS 27.
 ## Start the game
 
 ```sh
-HALO_NULL_RENDERER=1 HALO_DATA_ROOT=/path/to/folder/with/maps build/macos/halo
+HALO_DATA_ROOT=/path/to/folder/with/maps build/macos/halo
 ```
-
-With `HALO_METAL_WINDOW=1` (`debug.metal_window`) the window opens too.
 
 The game data, the settings and system link are as on Linux (refer to
 [port/linux/README.md](../linux/README.md)): `config.toml` is next to the
@@ -141,20 +136,26 @@ memory (`host_run_on_stack`). The other threads are made as on Linux.
 
 ### Renderer
 
-The guest still contains the OpenGL ES renderer (`src/d3d8_gl.c`), but the
-host gives it no OpenGL: `host_renderer.c` makes each OpenGL entry point
-stop the game with a message. SDL is built without OpenGL. The renderer
-of this build is Metal's, in the host (below).
+The guest has the renderer's front end (`src/d3d8_device.c`) and, in place
+of a backend, the command stream's encoder (`src/xgpu_stream_encode.c`,
+built with `HALO_RENDER_STREAM`); the OpenGL backend (`src/xgpu_gl.c`,
+`src/xgpu_post.c`) is not built into it. The host gives it no OpenGL:
+`host_renderer.c` makes each OpenGL entry point stop the game with a
+message, and SDL is built without OpenGL. The renderer of this build is
+Metal's, in the host (below).
 
 ## Metal
 
 The renderer's backend for macOS is Metal, in the host: Metal is a 64-bit
 API, and the game is a 32-bit guest. The game's renderer (its front end,
-in the guest) will write each frame as a command stream into its memory,
-and the host's render thread plays it into the backend
-(`port/android/host/host_render_stream.c`, the backend's table in
-`xgpu_metal_stream.m`) while the game simulates the next frame. That
-wiring comes next; what is here is all that does not wait for it.
+in the guest) writes each frame as a command stream into its memory
+("The renderer's command stream" in
+[port/linux/README.md](../linux/README.md)), and the host's render thread
+plays it into the backend (`port/android/host/host_render_stream.c`, the
+backend's table in `xgpu_metal_stream.m`) while the game simulates the next
+frame. The shaders are the MSL emitter's (`port/linux/src/xgpu_msl.c`) and
+the Xbox's textures are decoded as the OpenGL backend decodes them
+(`port/linux/src/xbox_texture_decode.c`), both built into the host.
 
 ### The window and presentation (`host_metal.m`)
 
@@ -179,30 +180,38 @@ display takes no frames for 100 ms (the window minimized, or between the
 desktop and fullscreen), the oldest queued frame is dropped instead, so
 that the game goes on.
 
-Until frames come, as with the null renderer and `debug.metal_window`,
-each refresh clears the drawable and presents it.
+Until frames come, each refresh clears the drawable and presents it.
 
 `HALO_METAL_STATS=<seconds>` logs the pacing that often: the link's
 refreshes, the frames and clears presented, how many drawables reached the
 screen and the intervals between them, the frames that waited for an
-image or were dropped.
+image or were dropped. A second line gives a frame's mean costs: the GPU's
+time on its command buffers, the render thread's CPU time, its draws,
+passes, uploads in the frame's order and copies of a target drawn into;
+the last frame's time to play (from its first record to its end, the wait
+for a presentation image included) and its bytes in the stream (and the
+most of any frame); the game's waits for the host (the frames in flight,
+or room in the ring); the textures and images made, and made again, and
+the bytes read for them; the pipelines made, and those from the archive.
 
 ### The backend (`xgpu_metal.m`)
 
 `xgpu_metal.h` declares its functions; `xgpu_metal_stream.m` makes them the
-command stream's backend table (it is built where
-`port/android/host/host_render_stream.h` is). They run on one thread, the
-render thread.
+command stream's backend table. They run on one thread, the render thread.
 
 - **Pipelines.** A render pipeline state is made for what Metal bakes into
   one (the shaders, the vertex layout, blend, the write mask, the targets'
   formats and samples) and kept by that; depth-stencil states by the depth
   and stencil part. Culling, winding, the fill mode, depth bias and depth
-  clamping are the encoder's state. New pipelines are added to a binary
+  clamping are the encoder's state. Pipelines are made from a binary
   archive (`~/Library/Caches/OpenCE/metal_pipelines.bin`, or
-  `HALO_METAL_ARCHIVE`), saved from the render thread once no pipeline has
-  been added for 3 seconds (the game ends its process without warning);
-  the next run makes its pipelines from it.
+  `HALO_METAL_ARCHIVE`) where it has them. Once no new pipeline has been
+  made for 3 seconds (the game ends its process without warning), the
+  archive is written again, on a queue of its own, of every pipeline made
+  or found this run that writes a colour: a new archive each time, as
+  Metal's archiver cannot write one that was read or written and has had
+  pipelines added since (it reports a stage missing). Pipelines of the old
+  archive that the run did not make are not kept.
 - **Shaders** are MSL functions (`xgpu_metal_shader_create`), compiled
   with `newLibraryWithSource` and safe maths. Where a draw's shaders read
   what is set in `xgpu_metal_bindings.h`, the one place the MSL emitter
@@ -212,8 +221,10 @@ render thread.
   an `[[attribute(n)]]`), the streams, a texture and a sampler for each
   stage.
 - **Samplers** are kept by their description. Metal's samplers have no LOD
-  bias (the shader applies it) and three border colours (another is the
-  emitter's to blend in).
+  bias (the shader applies it) and three border colours: for another (the
+  motion tracker's `0x46000000`), the sampler clamps to the edge and the
+  pixel shader mixes the colour in where the coordinates leave the
+  texture, a variant of the pipeline's shaders.
 - **Textures** in the Xbox formats Metal has: BGRA8 (and X8R8G8B8, its
   alpha read as 1 by a swizzle), R5G6B5, A1R5G5B5, X1R5G5B5, A4R4G4B4 (read
   through ABGR4 by a swizzle), L8, A8, A8L8, DXT1 to DXT5 (BC1 to BC3), and
@@ -229,8 +240,8 @@ render thread.
   over: when the guest maps pages again, `host_memory_base.c` says so
   (`host_memory_remapped`), and the buffers over them go. The command
   stream's ring is one buffer too, so its inline data is drawn in place.
-- **Passes.** Each change of targets ends the render command encoder; the
-  next draw or clear begins one, with load actions "load", or "clear" for an
+- **Passes.** Each change of targets ends the render command encoder (the
+  same targets again keep it); the next draw or clear begins one, with load actions "load", or "clear" for an
   attachment that a clear of the whole of it came first for. Other clears
   are quads drawn through a clear pipeline (of the channels cleared).
 - **Visibility tests** count samples in a visibility result buffer, one for
@@ -241,6 +252,40 @@ render thread.
 - **Frames.** Each frame is a command buffer; at most two frames are in
   flight, and each has a fence (the serial of its last command buffer).
 
+### The command stream's table (`xgpu_metal_stream.m`)
+
+- **Shaders.** A pipeline's shaders are made by `xgpu_metal_shaders.c`: the
+  stream's vertex program and pixel program (the shader intermediate
+  form's bytes) become the host's structures, and the MSL emitter writes
+  them, its functions named after their source's hash (the archive tells
+  functions apart by their names). They are made for the pipeline's key
+  and for what only a draw knows: the inputs its layout feeds as
+  unnormalized shorts (read as integers) and the stages whose border colour
+  the shader draws. The emitter's uniforms are made from the front end's,
+  the blend colour, the per-pixel lighting's lights (vertex constants) and
+  the stages' border colours. The emitter's sources are built into the host
+  beside a stand-in for the platform header (`xgpu_metal_platform.h`;
+  `tools/macos_build.py` copies them to `build/macos/host/shared`).
+  `HALO_METAL_SHADERS=<folder>` writes each shader's MSL there; the pixel
+  shaders' debugging settings are read from their environment variables
+  (`HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_T0`, `HALO_GPU_DEBUG_FLAT`).
+- **Textures** (`xgpu_metal_textures.c`). An Xbox texture is found by its
+  header's Data, Format and Size (and a palettized one's palette, and a
+  Custom Edition map's channel order), read from the guest's memory and
+  decoded as the OpenGL backend does (`xbox_texture_decode.c`): DXT as BC1
+  to BC3, the rest to BGRA. Its pages are write-protected (the write
+  tracking, `host_memory_watch.c`, safe from the render thread), and it is
+  read again once any of them has been written; a texture whose memory the
+  game has let go of is not read. The high-res replacements (the HUD's,
+  the menus' art, the high-res text) are images: the guest keeps their
+  pixels (`src/xgpu_images.c`) and the stream names them; the host makes a
+  texture of each, and its mip levels, again when its serial changes.
+- **A draw that samples its own target** (Metal cannot sample an attachment
+  of the pass) samples a copy, made again once the target has been drawn
+  into since, as the web build's OpenGL does.
+- **Fans and line loops** (the game draws fans in immediate mode) are made
+  into lists.
+
 ### Tests
 
 `ninja macos_metal_test`, then `python3 -m pytest -q tools/test_macos_metal.py`,
@@ -249,8 +294,12 @@ channel alone), a textured quad with the vertex constants and the draw's
 uniforms, every format, the pipeline cache, the winding, visibility tests,
 multisampling, the order of uploads, cubes, arrays and volumes, guest
 memory read in place and mapped again, frames in flight, and the command
-stream's table where its header is. Each draws with shaders written in the
-test, reads the pixels back and checks them. With `--archive file`, a
+stream's table. Each draws with shaders written in the test, reads the
+pixels back and checks them; and through the table, with the MSL emitter's
+shaders made from a vertex program and a pixel program written as the
+stream's bytes: an Xbox texture in the guest's memory (swizzled), read
+again once written, an image, and a border colour Metal has and one it has
+not. With `--archive file`, a
 second run checks that every pipeline comes from the archive.
 `build/macos/xgpu_metal_test --window 15 --resize` opens a window, draws
 frames as fast as the presentation takes them, resizes it, makes it
@@ -268,8 +317,12 @@ presentation's own log).
 
 ## Limits
 
-- The game does not draw through the Metal renderer yet: it runs with the
-  null renderer.
+- Not drawn yet: display.anti_aliasing's FXAA and SMAA passes, the
+  enhanced dynamic lights, a render target's mip levels drawn one by one
+  (the water's ripple map: its first level is sampled), points drawn as
+  polygons' fill (lines instead).
+- A pipeline's shaders are compiled the first time a draw needs them, on
+  the render thread.
 - No app bundle, signature or notarization yet; the executable runs from
   the build folder.
 - The self-updater and the Discord invites are not set up for macOS.

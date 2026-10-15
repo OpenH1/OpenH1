@@ -1189,8 +1189,15 @@ call crosses from the guest to the host.
 - In the VR mode, the host submits the frame to OpenXR as it plays the
   frame's last record: the moment to take the newest head pose.
 
-No build uses it yet: the Metal backend on macOS is the first.
-`tools/test_render_stream.py` tests the stream with a backend of its own.
+- Textures are the host's to read and cache, as the OpenGL backend's
+  cache does (the decoding, `src/xbox_texture_decode.c`, is shared). The
+  high-res replacements (the HUD's, the menus' art, the high-res text) are
+  images: their pixels in the game's memory (`src/xgpu_images.c`), which a
+  texture stage names in the Xbox texture's place.
+
+The macOS build uses it, with the Metal backend (port/macos/README.md,
+"Metal"). `tools/test_render_stream.py` tests the stream with a backend of
+its own.
 
 ## VR
 

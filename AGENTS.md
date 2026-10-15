@@ -21,7 +21,7 @@ end.
 | `port/include/xdk/` | Stand-ins for the Xbox SDK's headers (declarations only) |
 | `port/windows/` | The Windows build's own files (`win32_*.c`, headers) |
 | `port/android/` | The Android app: the guest runtime, the host library (`host/`), the Java app (`app/`), host imports (`host_imports.list`) |
-| `port/macos/` | The macOS host's own files: Darwin's system calls for the guest (`host_syscall.c`), the Metal renderer's backend (`xgpu_metal.m`, its bindings `xgpu_metal_bindings.h`, the command stream's table `xgpu_metal_stream.m`), the window and its presentation (`host_metal.m`), their tests (`tests/`); the rest is `port/android/host` and `port/linux/arm64` |
+| `port/macos/` | The macOS host's own files: Darwin's system calls for the guest (`host_syscall.c`), the Metal renderer's backend (`xgpu_metal.m`, its bindings `xgpu_metal_bindings.h`, the command stream's table `xgpu_metal_stream.m`, the MSL emitter's shaders `xgpu_metal_shaders.c`, the textures `xgpu_metal_textures.c`), the window and its presentation (`host_metal.m`), their tests (`tests/`); the rest is `port/android/host` and `port/linux/arm64` |
 | `port/web/` | The web build: its runtime (`src/`: entry, sockets inside the page, memory watch), the page and its service worker (`site/`), the SDL port, tests |
 | `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), icons, network brokers |
 | `port/third_party/` | Vendored libraries, each with a README naming its upstream, version and checksum |
@@ -65,8 +65,11 @@ python tools/ci_build.py linux release   # what CI builds
   must not write those registers. Its system calls are translated to
   Darwin's (`port/macos/host_syscall.c`). Run `ninja macos` after changing
   what it compiles (as for Android). The renderer is Metal's, in the host
-  (`port/macos/xgpu_metal.m`), which the game does not draw through yet: run
-  it with `HALO_NULL_RENDERER=1` (`HALO_METAL_WINDOW=1` shows the window).
+  (`port/macos/xgpu_metal.m`): the guest writes its frames as the command
+  stream (`HALO_RENDER_STREAM`, without the OpenGL backend), and the host
+  builds the MSL emitter and the Xbox's texture decoding from
+  `port/linux/src` (`tools/macos_build.py`, `SHARED_SOURCES`) beside a
+  stand-in for `platform.h`: they may use only what it declares.
   `configure.py --guest-base` gives the Linux arm64 and Android builds the
   base register too.
 - Web: the game is `wasm32` (also ILP32), run on a Web Worker; calls must
@@ -87,6 +90,7 @@ python tools/ci_build.py linux release   # what CI builds
 | `HALO_RELEASE` | `--release` | No assertions checked |
 | `HALO_PROFILE` | `--profile` | The profiling build; a normal build must be unchanged by it |
 | `HALO_METAL` | macOS | The window is Metal's, drawn by the host (`port/macos/host_metal.m`), not OpenGL's |
+| `HALO_RENDER_STREAM` | macOS | The renderer's backend is the host's: the front end's calls are a command stream (`port/linux/src/xgpu_stream_encode.c`), the high-res replacements images (`xgpu_images.c`) |
 
 `HALO_LINUX` and `HALO_CUSTOM_EDITION` are **not** defined by any build:
 code guarded by them compiles to nothing. Custom Edition support is a
