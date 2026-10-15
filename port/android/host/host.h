@@ -131,6 +131,12 @@ int host_memory_watch_fault(uintptr_t address);
 /* memory_watch_forget (host_memory_watch.c): the pages of a range of the
 window (guest addresses) count as written and are no longer watched */
 void host_memory_watch_forget(uint32_t address, uint32_t size);
+/* memory_watch_protect, _generation and _serial (host_memory_watch.c), for
+the host's texture cache too (port/macos/xgpu_metal_textures.c: any
+thread) */
+void host_memory_watch_protect(uint32_t address, uint32_t size);
+uint32_t host_memory_watch_generation(uint32_t address, uint32_t size);
+uint32_t host_memory_watch_serial(void);
 /* (host_memory.c or host_memory_base.c) the protection the guest asked for
 of the Xbox window's host page at that address, which the write tracking
 puts back */

@@ -14,6 +14,13 @@ caught, and the tracking compares page contents instead
 The guest names its ranges with guest addresses (host.h); the pages
 protected are the host's (4 KB on Linux and Android, 16 KB on macOS), so on
 a host with larger pages a write marks a little more than it touched.
+
+The renderer's texture cache can be on the host's render thread
+(port/macos/xgpu_metal_textures.c), which protects pages and reads their
+generations while the guest runs and writes them: a page's state (its
+protection and generation) changes under a lock, which the fault handler
+takes too (it is held only around those few stores and an mprotect, which
+cannot fault).
 */
 
 #include "host.h"
@@ -111,6 +118,24 @@ static void *page_address(uint64_t page)
 	return (void *)host_address((uint32_t)(HALO_GUEST_WINDOW_BASE + page * host_page_size()));
 }
 
+/* the pages' state */
+static volatile int page_lock;
+
+static void pages_lock(void)
+{
+	while (__atomic_exchange_n(&page_lock, 1, __ATOMIC_ACQUIRE))
+	{
+		while (__atomic_load_n(&page_lock, __ATOMIC_RELAXED))
+			;
+	}
+}
+
+static void pages_unlock(void)
+{
+	__atomic_store_n(&page_lock, 0, __ATOMIC_RELEASE);
+}
+
+/* (pages_lock held) */
 static void mark_written(uint64_t page)
 {
 	void *address = page_address(page);
@@ -127,9 +152,18 @@ int host_memory_watch_fault(uintptr_t address)
 	if (!watch_active || watch_hashing || !host_in_guest(address))
 		return 0;
 	guest = address - host_guest_base;
-	if (!in_window(guest) || !page_protected[watch_page(guest)])
+	if (!in_window(guest))
 		return 0;
+	pages_lock();
+	if (!page_protected[watch_page(guest)])
+	{
+		pages_unlock();
+		/* (another thread marked it written between the fault and here: the
+		write goes ahead, if the page is one the guest may write) */
+		return (host_memory_window_protection(address) & PROT_WRITE) != 0;
+	}
 	mark_written(watch_page(guest));
+	pages_unlock();
 	return 1;
 }
 
@@ -266,6 +300,7 @@ void host_memory_watch_protect(uint32_t address, uint32_t size)
 		watch_hash_protect(hashes(), (uint32_t)first, (uint32_t)last);
 		return;
 	}
+	pages_lock();
 	for (page = first; page <= last; page++)
 	{
 		if (!page_protected[page])
@@ -274,6 +309,7 @@ void host_memory_watch_protect(uint32_t address, uint32_t size)
 			mprotect(page_address(page), host_page_size(), PROT_READ);
 		}
 	}
+	pages_unlock();
 }
 
 uint32_t host_memory_watch_serial(void)
@@ -317,11 +353,13 @@ void host_memory_watch_prepare_write(uint32_t address, uint32_t size)
 	last = watch_page((uint64_t)address + size - 1);
 	if (last >= watch_page_count())
 		last = watch_page_count() - 1;
+	pages_lock();
 	for (page = first; page <= last; page++)
 	{
 		if (page_protected[page])
 			mark_written(page);
 	}
+	pages_unlock();
 }
 
 /* memory_watch_forget: the pages of a range were remapped or reprotected, so
@@ -337,11 +375,13 @@ void host_memory_watch_forget(uint32_t address, uint32_t size)
 		watch_hash_forget(hashes(), (uint32_t)first, (uint32_t)last);
 		return;
 	}
+	pages_lock();
 	for (page = first; page <= last; page++)
 	{
 		page_protected[page] = 0;
 		page_generation[page] = __sync_add_and_fetch(&current_generation, 1);
 	}
+	pages_unlock();
 }
 
 /* memory_watch_begin_frame: pages may be hashed again; nothing under page
