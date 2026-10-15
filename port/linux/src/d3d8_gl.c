@@ -6,10 +6,10 @@ The Xbox Direct3D 8 device, implemented with OpenGL 4.5.
 The game drives the device through the XDK's inline functions, which keep
 the "simple" render states in D3D__RenderState and call into this file for
 everything else. At each draw the full state is read back from there and
-translated: the vertex program decoded once per shader (nv2a_vsh.c) and
-written as GLSL (xgpu_glsl.c), the pixel shader - texture stages and register
-combiners, 57 render states - into GLSL once per combination (nv2a_psh.c),
-and the rest into GL state.
+translated: the vertex program decoded once per shader (nv2a_vsh.c), the
+pixel shader - texture stages and register combiners, 57 render states -
+once per combination (nv2a_psh.c), each written as GLSL (xgpu_glsl.c), and
+the rest into GL state.
 
 Conventions carried over from the Xbox:
 - Clip space is D3D's (depth 0..1, y down in window space). glClipControl
@@ -1892,7 +1892,7 @@ static unsigned long target_height;
 /* The eye pass draws upside down (its vertex shaders flip y, xgpu_glsl.c),
 as OpenXR's GL images have their first row at the bottom where the game's
 targets have it at the top: the rows of its rectangles count from the
-other end, and its layered targets are sampled upside down (nv2a_psh.c). */
+other end, and its layered targets are sampled upside down (xgpu_glsl.c). */
 static void vr_flip_rows(GLint *y, GLint height)
 {
 	if (vr_gl.multiview || vr_gl.left_eye || vr_gl.right_eye)
@@ -3289,6 +3289,9 @@ static const struct xgpu_glsl_options *glsl_options(void)
 	options.es = FALSE;
 #endif
 	options.foveated = xgpu_foveated != 0;
+	options.debug_expression = config_string("debug.gpu_debug_expression");
+	options.debug_texture0 = config_boolean("debug.gpu_debug_texture0") != 0;
+	options.debug_flat = config_boolean("debug.gpu_debug_flat") != 0;
 	return &options;
 }
 
@@ -3341,6 +3344,7 @@ static GLuint fragment_shader_get(const struct nv2a_pixel_shader_key *key)
 	unsigned long hash, index;
 	struct fragment_entry **bucket;
 	struct fragment_entry *entry;
+	struct xgpu_pixel_program program;
 	char *source;
 
 	for (index = 0; index < RECENT_FRAGMENT_COUNT; index++)
@@ -3361,7 +3365,8 @@ static GLuint fragment_shader_get(const struct nv2a_pixel_shader_key *key)
 	entry = calloc(1, sizeof(*entry));
 	entry->hash = hash;
 	entry->key = *key;
-	source = nv2a_pixel_shader_to_glsl(key);
+	nv2a_pixel_program_decode(key, &program);
+	source = xgpu_glsl_pixel_shader(&program, glsl_options());
 	entry->shader = xgpu_compile_shader(GL_FRAGMENT_SHADER, source, "pixel");
 	if (debug_settings.dump_shaders)
 	{
@@ -4353,7 +4358,7 @@ display.dynamic_lights "enhanced" (xgpu.h; the game's side is
 port/linux/game/dynamic_lights.c): each frame the game hands over its
 dynamic lights (halo_dynamic_lights_set), placed where the drawn objects are
 (between ticks), and the structure's lightmap pass and the models lit for
-each pixel add them for each pixel (nv2a_psh.c), in place of the game's own
+each pixel add them for each pixel (xgpu_glsl.c), in place of the game's own
 passes over the structure for each light and its two lights for each
 object's vertices. A grid about the camera says which lights reach each of
 its cells (xgpu.h), so a pixel weighs only the lights near it: a frame's
@@ -4370,7 +4375,7 @@ static struct
 	/* the look: [0] the lights' brightness, the core (1 / (1 + core x^2)),
 	the spill past white, the models' wrap; [1] the glow's size (of the
 	light's radius), brightness, softness against what it meets (world
-	units), its least size (debug.dynamic_lights_look; nv2a_psh.c) */
+	units), its least size (debug.dynamic_lights_look; xgpu_glsl.c) */
 	float look[2][4];
 	/* the lights this frame (0: none: drawn as classic) */
 	int count;
@@ -4823,7 +4828,7 @@ void halo_dynamic_lights_halos_draw(void)
 #endif
 
 /* display.per_pixel_lighting: the model lighting programs' draws are lit for
-each pixel (nv2a_psh.c model_lighting), from shaders of their own; read
+each pixel (xgpu_glsl.c model_lighting), from shaders of their own; read
 again when a setting changes. The enhanced dynamic lights light models for
 each pixel too, whatever it says. */
 static BOOL per_pixel_lighting(void)

@@ -3,7 +3,8 @@ XGPU_SHADER.H
 
 The shader intermediate form: the NV2A's programs decoded once, every bit
 field resolved, for the emitters to write in a shading language (GLSL and
-ESSL: xgpu_glsl.c). nv2a_vsh.c decodes vertex programs.
+ESSL: xgpu_glsl.c). nv2a_vsh.c decodes vertex programs, nv2a_psh.c pixel
+shaders.
 
 The form is the hardware's own operations, typed: these programs have no
 control flow, a few dozen kinds of operation, and each kind has a spelling
@@ -108,5 +109,152 @@ struct xgpu_vertex_program
 program header, four each) */
 void nv2a_vertex_program_decode(const DWORD *instructions, unsigned long instruction_count,
 	struct xgpu_vertex_program *program);
+
+/* ---------- pixel programs
+
+A pixel shader runs in three parts: texture stages 0-3 fetch t0-t3, some of
+them from the result of an earlier stage; up to eight general combiner
+stages compute A*B, C*D and their sum or mux on the registers and write them
+back; the final combiner computes rgb = A*B + (1-A)*C + D, alpha = G. */
+
+/* the texture stages' modes (PSTextureModes), as the hardware numbers them */
+enum
+{
+	XGPU_TEXTURE_NONE, XGPU_TEXTURE_PROJECT2D, XGPU_TEXTURE_PROJECT3D, XGPU_TEXTURE_CUBEMAP, XGPU_TEXTURE_PASSTHRU,
+	XGPU_TEXTURE_CLIPPLANE, XGPU_TEXTURE_BUMPENVMAP, XGPU_TEXTURE_BUMPENVMAP_LUMINANCE, XGPU_TEXTURE_BRDF,
+	XGPU_TEXTURE_DOT_ST, XGPU_TEXTURE_DOT_ZW, XGPU_TEXTURE_DOT_REFLECT_DIFFUSE, XGPU_TEXTURE_DOT_REFLECT_SPECULAR,
+	XGPU_TEXTURE_DOT_STR_3D, XGPU_TEXTURE_DOT_STR_CUBE, XGPU_TEXTURE_DEPENDENT_AR, XGPU_TEXTURE_DEPENDENT_GB,
+	XGPU_TEXTURE_DOT_PRODUCT, XGPU_TEXTURE_DOT_REFLECT_SPECULAR_CONSTANT,
+};
+
+/* how a dot product stage maps its input texel (PSDotMapping) */
+enum
+{
+	XGPU_DOT_ZERO_TO_ONE, XGPU_DOT_MINUS_ONE_TO_ONE_D3D, XGPU_DOT_MINUS_ONE_TO_ONE_GL, XGPU_DOT_MINUS_ONE_TO_ONE,
+	XGPU_DOT_HILO_ONE, XGPU_DOT_HILO_HEMISPHERE_D3D, XGPU_DOT_HILO_HEMISPHERE_GL, XGPU_DOT_HILO_HEMISPHERE,
+};
+
+struct xgpu_texture_stage
+{
+	/* XGPU_TEXTURE_*: as PSTextureModes declares it, and as it runs (none
+	where the stage would sample and has no texture) */
+	unsigned char declared_mode, mode;
+	/* _xgpu_sampler_* (xgpu.h) */
+	unsigned char sampler;
+	/* the stage whose texel a dependent or dot product stage reads
+	(PSInputTexture), and the stage before it, which a bump environment
+	stage reads (-1 for stage 0) */
+	unsigned char input;
+	signed char previous;
+	/* XGPU_DOT_*: how a dot product stage maps its input */
+	unsigned char dot_mapping;
+	/* a clip plane stage's comparisons: bit n set, component n kept where
+	it is at least 0, else where it is less (PSCompareMode) */
+	unsigned char compare;
+	/* channels (bit 0 alpha ... bit 3 blue) whose texels are signed
+	(D3DTSS_COLORSIGN), and the texel discarded where its alpha is 0
+	(D3DTSS_ALPHAKILL) */
+	unsigned char color_sign, alpha_kill;
+};
+
+/* the combiners' registers, as the hardware numbers them */
+enum
+{
+	XGPU_REGISTER_ZERO = 0, XGPU_REGISTER_C0 = 1, XGPU_REGISTER_C1 = 2, XGPU_REGISTER_FOG = 3,
+	XGPU_REGISTER_V0 = 4, XGPU_REGISTER_V1 = 5,
+	XGPU_REGISTER_T0 = 8, XGPU_REGISTER_T1 = 9, XGPU_REGISTER_T2 = 10, XGPU_REGISTER_T3 = 11,
+	XGPU_REGISTER_R0 = 12, XGPU_REGISTER_R1 = 13,
+	/* the final combiner's alone */
+	XGPU_REGISTER_V1R0_SUM = 14, XGPU_REGISTER_EF_PRODUCT = 15,
+};
+
+/* a general combiner input's mapping */
+enum
+{
+	XGPU_MAP_UNSIGNED_IDENTITY, XGPU_MAP_UNSIGNED_INVERT, XGPU_MAP_EXPAND_NORMAL, XGPU_MAP_EXPAND_NEGATE,
+	XGPU_MAP_HALFBIAS_NORMAL, XGPU_MAP_HALFBIAS_NEGATE, XGPU_MAP_SIGNED_IDENTITY, XGPU_MAP_SIGNED_NEGATE,
+};
+
+/* a combiner output's mapping */
+enum
+{
+	XGPU_OUTPUT_IDENTITY, XGPU_OUTPUT_BIAS, XGPU_OUTPUT_SHIFT_LEFT_1, XGPU_OUTPUT_SHIFT_LEFT_1_BIAS,
+	XGPU_OUTPUT_SHIFT_LEFT_2, XGPU_OUTPUT_SHIFT_LEFT_2_BIAS, XGPU_OUTPUT_SHIFT_RIGHT_1, XGPU_OUTPUT_SHIFT_RIGHT_1_BIAS,
+};
+
+struct xgpu_combiner_input
+{
+	/* XGPU_REGISTER_* */
+	unsigned char reg;
+	/* its alpha (else its rgb, or its blue in an alpha portion) */
+	unsigned char alpha;
+	/* XGPU_MAP_* (the final combiner's: invert or not) */
+	unsigned char mapping;
+};
+
+/* the rgb or alpha portion of a general combiner stage */
+struct xgpu_combiner_portion
+{
+	struct xgpu_combiner_input inputs[4];
+	/* A.B and C.D as dot products (rgb only), and the sum a mux by r0's
+	alpha */
+	unsigned char ab_dot, cd_dot, mux;
+	/* XGPU_OUTPUT_* (a left shift by 2 with the bias, and the right
+	shift's bias, as identity: the translator never handled them) */
+	unsigned char output_mapping;
+	/* the registers written (XGPU_REGISTER_ZERO: none), and A.B or C.D's
+	blue copied into its register's alpha (rgb only) */
+	unsigned char ab, cd, sum;
+	unsigned char ab_blue_to_alpha, cd_blue_to_alpha;
+};
+
+struct xgpu_combiner_stage
+{
+	/* [0] rgb, [1] alpha */
+	struct xgpu_combiner_portion portions[2];
+	/* the stage's C0 and C1 among the eight (the same for every stage
+	unless PSCombinerCount makes them unique) */
+	unsigned char c0, c1;
+};
+
+struct xgpu_final_combiner
+{
+	/* written (else the result is r0) */
+	unsigned char present;
+	/* A to G (mapping: XGPU_MAP_UNSIGNED_IDENTITY or _INVERT) */
+	struct xgpu_combiner_input inputs[7];
+	/* the V1 + R0 sum clamped, and each of its terms inverted */
+	unsigned char clamp_sum, invert_v1, invert_r0;
+};
+
+struct xgpu_pixel_program
+{
+	struct xgpu_texture_stage stages[4];
+	unsigned long combiner_count;
+	struct xgpu_combiner_stage combiners[8];
+	/* the muxes read r0's alpha's high bit (else its low bit) */
+	unsigned char mux_msb;
+	struct xgpu_final_combiner final;
+	/* fog: enabled, and its D3DFOG_* table mode */
+	unsigned char fog, fog_mode;
+	/* the alpha test's D3DCMP_* function (0: none), and in a multisampled
+	target, its samples a pixel (coverage in proportion to alpha) */
+	unsigned long alpha_test;
+	unsigned char alpha_test_samples;
+	/* the draw's features, as nv2a_pixel_shader_key has them (xgpu.h):
+	samples counted for a visibility test, the HUD meters' coverage alpha,
+	their thresholds read at level 0 (texture 0), per-pixel model lighting
+	(its lights), the enhanced dynamic lights (XGPU_DYNAMIC_LIGHTS_*), the
+	views drawn (XGPU_MULTIVIEW_*), the source blend factor applied here
+	(1 to 4) */
+	unsigned char count_samples, coverage_alpha, point_threshold, per_pixel_lighting, dynamic_lights, multiview;
+	unsigned char source_blend;
+};
+
+struct nv2a_pixel_shader_key;
+
+/* decodes a pixel shader key (xgpu.h): the combiner render states, texture
+modes and the draw's other pixel state */
+void nv2a_pixel_program_decode(const struct nv2a_pixel_shader_key *key, struct xgpu_pixel_program *program);
 
 #endif

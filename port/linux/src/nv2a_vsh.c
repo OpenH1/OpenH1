@@ -183,7 +183,7 @@ the skinned position, r10 (by 12); in 27, of a single node, the normal is
 r3 (by 5). They are taken as the first instruction that lights by them
 reads them: in 9 the normal before instruction 19, in 10 and 17 the normal
 before 24 and the position before 19, in 27 the normal before 7. A program
-is taken only where its lighting is the sum nv2a_psh.c computes for each
+is taken only where its lighting is the sum xgpu_glsl.c computes for each
 pixel (the diffuse color written once, by the sum; both distant lights by
 one normal; the translucency; each point light by one position, its cone
 by its axis reversed) and the registers keep the same normal and position

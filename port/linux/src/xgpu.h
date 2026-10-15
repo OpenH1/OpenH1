@@ -2,10 +2,9 @@
 XGPU.H
 
 Internals shared by the OpenGL implementation of the Xbox Direct3D API:
-the NV2A vertex program decoder (nv2a_vsh.c), the pixel shader translator
-(nv2a_psh.c), the GLSL emitter (xgpu_glsl.c), texture decoding
-(xbox_textures.c), guest memory write tracking (memory_watch.c) and the
-device itself (d3d8_gl.c).
+the NV2A shader decoders (nv2a_vsh.c, nv2a_psh.c) and the GLSL emitter
+(xgpu_glsl.c), texture decoding (xbox_textures.c), guest memory write
+tracking (memory_watch.c) and the device itself (d3d8_gl.c).
 */
 
 #ifndef __HALO_LINUX_XGPU_H
@@ -109,18 +108,22 @@ binormal and tangent (v0 to v3) handed on as they are */
 struct xgpu_vertex_program;
 
 /* finds them in a model lighting program (decoded: xgpu_shader.h), checking
-that it lights its diffuse color as nv2a_psh.c does for each pixel; FALSE if
+that it lights its diffuse color as xgpu_glsl.c does for each pixel; FALSE if
 it does not */
 BOOL nv2a_vertex_shader_lighting(const struct xgpu_vertex_program *program, struct nv2a_vertex_lighting *lighting);
 
 /* what the GLSL is written for (xgpu_glsl.c): its #version ("450 core",
 "300 es", "310 es"); OpenGL ES (default precisions, clip control done in the
-vertex shader); the VR mode's foveated eye pass (xgpu_foveated) */
+vertex shader, the samplers' LOD bias a uniform); the VR mode's foveated eye
+pass (xgpu_foveated); and the pixel shaders' debugging settings
+(debug.gpu_debug_expression, debug.gpu_debug_texture0, debug.gpu_debug_flat) */
 struct xgpu_glsl_options
 {
 	const char *version;
 	BOOL es;
 	BOOL foveated;
+	const char *debug_expression;
+	BOOL debug_texture0, debug_flat;
 };
 
 /* GLSL for a decoded NV2A vertex program (xgpu_shader.h), written for
@@ -226,29 +229,11 @@ struct nv2a_pixel_shader_key
 	unsigned char pad[3];
 };
 
-char *nv2a_pixel_shader_to_glsl(const struct nv2a_pixel_shader_key *key);
+struct xgpu_pixel_program;
 
-#ifdef HALO_GLES
-/* ES samplers have no LOD bias of their own */
-#define XGPU_PIXEL_UNIFORMS_ES "uniform vec4 texture_lod_bias;\n"
-#else
-#define XGPU_PIXEL_UNIFORMS_ES ""
-#endif
-
-/* the combiner registers that live in uniforms rather than in the program:
-C0/C1 of each stage and the final combiner, and texture constants */
-#define XGPU_PIXEL_UNIFORMS \
-	"uniform vec4 ps_c0[8];\n" \
-	"uniform vec4 ps_c1[8];\n" \
-	"uniform vec4 ps_final_c0;\n" \
-	"uniform vec4 ps_final_c1;\n" \
-	"uniform vec4 fog_color;\n" \
-	"uniform vec4 fog_parameters;\n" \
-	"uniform float alpha_reference;\n" \
-	"uniform vec4 bump_matrix[4];\n" \
-	"uniform vec4 bump_luminance[4];\n" \
-	"uniform vec4 texture_scale[4];\n" \
-	XGPU_PIXEL_UNIFORMS_ES
+/* GLSL for a decoded pixel shader (xgpu_shader.h), written for options.
+Returns a malloc'd string. */
+char *xgpu_glsl_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_glsl_options *options);
 
 /* the vertex constants the per-pixel model lighting reads, in a uniform of
 their own (the vertex shader's 192 would pass OpenGL ES's least fragment
@@ -277,7 +262,7 @@ camera, where lights are seen large. Desktop OpenGL only. */
 #define XGPU_DYNAMIC_LIGHTS_GRID_Z 16
 #define XGPU_DYNAMIC_LIGHTS_CELL 0.5f
 #define XGPU_DYNAMIC_LIGHTS_REACH 128.0f
-/* the largest soft core of a light's falloff, world units (nv2a_psh.c) */
+/* the largest soft core of a light's falloff, world units (xgpu_glsl.c) */
 #define XGPU_DYNAMIC_LIGHTS_CORE 0.6
 #define XGPU_DYNAMIC_LIGHTS_UNIT 12
 #define XGPU_DYNAMIC_LIGHTS_BINDING 1
@@ -289,7 +274,7 @@ enum
 
 /* the uniform block, as std140 lays it out: [0] the grid's middle (the
 camera) and the light count, [1] each axis's cells a doubling of the offset
-and 1 / XGPU_DYNAMIC_LIGHTS_CELL, [2] the look (nv2a_psh.c); then each
+and 1 / XGPU_DYNAMIC_LIGHTS_CELL, [2] the look (xgpu_glsl.c); then each
 light's position and 1 / radius (less than 0: models only, the structure
 lit by the game's own pass: a spotlight's gel), its color (linear, the
 look's brightness in it) and its cone's offset, its cone's axis and scale
@@ -303,7 +288,7 @@ struct xgpu_dynamic_lights_block
 };
 
 /* the GLSL of the block, the grid and the functions that light by them
-(nv2a_psh.c) */
+(xgpu_glsl.c) */
 void xgpu_dynamic_lights_glsl(struct xgpu_text *text);
 
 /* ---------- textures */
