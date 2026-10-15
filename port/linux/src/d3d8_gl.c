@@ -6,9 +6,10 @@ The Xbox Direct3D 8 device, implemented with OpenGL 4.5.
 The game drives the device through the XDK's inline functions, which keep
 the "simple" render states in D3D__RenderState and call into this file for
 everything else. At each draw the full state is read back from there and
-translated: the vertex program into GLSL once per shader (nv2a_vsh.c), the
-pixel shader - texture stages and register combiners, 57 render states -
-into GLSL once per combination (nv2a_psh.c), and the rest into GL state.
+translated: the vertex program decoded once per shader (nv2a_vsh.c) and
+written as GLSL (xgpu_glsl.c), the pixel shader - texture stages and register
+combiners, 57 render states - into GLSL once per combination (nv2a_psh.c),
+and the rest into GL state.
 
 Conventions carried over from the Xbox:
 - Clip space is D3D's (depth 0..1, y down in window space). glClipControl
@@ -22,6 +23,7 @@ Conventions carried over from the Xbox:
 */
 
 #include "xgpu.h"
+#include "xgpu_shader.h"
 #include "sdl_platform.h"
 #ifdef HALO_VR
 #include <SDL3/SDL.h>
@@ -414,7 +416,9 @@ struct vertex_shader_object
 {
 	unsigned long signature;
 	unsigned long id;
-	DWORD *instructions;
+	/* the program (xgpu_shader.h), decoded as the shader is made; NULL
+	for a shader without one */
+	struct xgpu_vertex_program *program;
 	unsigned long instruction_count;
 	struct vertex_element elements[XGPU_VERTEX_ATTRIBUTE_COUNT];
 	unsigned long element_count;
@@ -443,9 +447,6 @@ struct vertex_shader_object
 	and 2 and 3): one that failed stays 0 and is not compiled again at each
 	draw */
 	unsigned char shaders_tried;
-	/* the program projects through clip space (its multiview variant moves
-	it to each eye), as opposed to drawing in screen space */
-	BOOL projects;
 };
 
 /* ---------- programs */
@@ -1888,7 +1889,7 @@ static float target_scale[2] = { 1.0f, 1.0f };
 /* the bound targets' rows: the eye pass draws upside down (vr_flip_rows) */
 static unsigned long target_height;
 
-/* The eye pass draws upside down (its vertex shaders flip y, nv2a_vsh.c),
+/* The eye pass draws upside down (its vertex shaders flip y, xgpu_glsl.c),
 as OpenXR's GL images have their first row at the bottom where the game's
 targets have it at the top: the rows of its rectangles count from the
 other end, and its layered targets are sampled upside down (nv2a_psh.c). */
@@ -3143,8 +3144,13 @@ HRESULT WINAPI D3DDevice_CreateVertexShader(CONST DWORD *declaration, CONST DWOR
 	{
 		/* header: program type in the low word, instruction count in the high */
 		object->instruction_count = function[0] >> 16;
-		object->instructions = malloc(object->instruction_count * 4 * sizeof(DWORD));
-		memcpy(object->instructions, function + 1, object->instruction_count * 4 * sizeof(DWORD));
+		object->program = malloc(sizeof(*object->program));
+		if (!object->program)
+		{
+			free(object);
+			return E_OUTOFMEMORY;
+		}
+		nv2a_vertex_program_decode(function + 1, object->instruction_count, object->program);
 	}
 	parse_declaration(object, declaration);
 	/* odd values are FVF codes; programmable shader handles are even */
@@ -3169,9 +3175,9 @@ void halo_vertex_shader_lighting(unsigned long handle)
 {
 	struct vertex_shader_object *object = vertex_shader_from_handle((DWORD)handle);
 
-	if (!object || !object->instructions)
+	if (!object || !object->program)
 		return;
-	if (!nv2a_vertex_shader_lighting(object->instructions, object->instruction_count, &object->lighting))
+	if (!nv2a_vertex_shader_lighting(object->program, &object->lighting))
 	{
 		memset(&object->lighting, 0, sizeof(object->lighting));
 		platform_log("GPU: vertex shader %lu is not lit as the pixel shader would light it: lit for each vertex",
@@ -3269,6 +3275,23 @@ static BOOL words_equal(const void *a, const void *b, unsigned long size)
 	return difference == 0;
 }
 
+/* what the GLSL is written for (xgpu_glsl.c): this context's language, and
+the VR mode's foveation once it is chosen (vr_gl_initialize) */
+static const struct xgpu_glsl_options *glsl_options(void)
+{
+	static struct xgpu_glsl_options options;
+
+#ifdef HALO_GLES
+	options.version = xgpu_capabilities.shading_language;
+	options.es = TRUE;
+#else
+	options.version = "450 core";
+	options.es = FALSE;
+#endif
+	options.foveated = xgpu_foveated != 0;
+	return &options;
+}
+
 /* lighting: for the shader that hands the lighting's normal and position on
 (vertex_shader_object lit_shader: a model lighting program's own, or a
 structure's lightmap pass's, XGPU_ENVIRONMENT_LIGHTING), else NULL;
@@ -3283,13 +3306,11 @@ static GLuint vertex_shader_get(struct vertex_shader_object *program, BOOL immed
 
 	if (!*shader && !(program->shaders_tried & tried))
 	{
-		char *source = nv2a_vertex_shader_to_glsl(program->instructions, program->instruction_count,
-			immediate ? 0 : device.vertex_shader->packed_mask, lighting, multiview);
+		char *source = xgpu_glsl_vertex_shader(program->program, immediate ? 0 : device.vertex_shader->packed_mask,
+			lighting, multiview, glsl_options());
 
 		program->shaders_tried |= tried;
 		*shader = xgpu_compile_shader(GL_VERTEX_SHADER, source, "vertex");
-		if (multiview)
-			program->projects = strstr(source, "clip_captured = true") != NULL;
 		if (debug_settings.dump_shaders)
 		{
 			char path[512];
@@ -4834,7 +4855,7 @@ static struct program_entry *prepare_draw(BOOL immediate)
 	BOOL has_depth = FALSE;
 	int stage;
 
-	if (!device.gl_ready || !program || !device.vertex_shader || !program->instructions)
+	if (!device.gl_ready || !program || !device.vertex_shader || !program->program)
 	{
 		stats.skipped_no_program++;
 		return NULL;
@@ -4940,7 +4961,7 @@ static struct program_entry *prepare_draw(BOOL immediate)
 	if (!entry)
 		entry = program_get(vertex_shader_get(program, immediate, NULL, key.multiview), fragment_shader_get(&key));
 #ifdef HALO_VR
-	if (vr_gl.multiview && vr_gl.statistics && !program->projects)
+	if (vr_gl.multiview && vr_gl.statistics && !program->program->projects)
 	{
 		/* debug.gpu_stats: the eye pass's draws in screen space, the same in
 		both eyes (each program once, and the game's function that drew) */

@@ -2,7 +2,8 @@
 XGPU.H
 
 Internals shared by the OpenGL implementation of the Xbox Direct3D API:
-the NV2A shader translators (nv2a_vsh.c, nv2a_psh.c), texture decoding
+the NV2A vertex program decoder (nv2a_vsh.c), the pixel shader translator
+(nv2a_psh.c), the GLSL emitter (xgpu_glsl.c), texture decoding
 (xbox_textures.c), guest memory write tracking (memory_watch.c) and the
 device itself (d3d8_gl.c).
 */
@@ -105,13 +106,25 @@ by the enhanced dynamic lights: its vertices' world position, normal,
 binormal and tangent (v0 to v3) handed on as they are */
 #define XGPU_ENVIRONMENT_LIGHTING 3
 
-/* finds them in a model lighting program, checking that it lights its
-diffuse color as nv2a_psh.c does for each pixel; FALSE if it does not */
-BOOL nv2a_vertex_shader_lighting(const DWORD *instructions, unsigned long instruction_count,
-	struct nv2a_vertex_lighting *lighting);
+struct xgpu_vertex_program;
 
-/* GLSL for an NV2A vertex program (the instruction words after the program
-header). Attributes whose bit is set in packed_attribute_mask are fed as
+/* finds them in a model lighting program (decoded: xgpu_shader.h), checking
+that it lights its diffuse color as nv2a_psh.c does for each pixel; FALSE if
+it does not */
+BOOL nv2a_vertex_shader_lighting(const struct xgpu_vertex_program *program, struct nv2a_vertex_lighting *lighting);
+
+/* what the GLSL is written for (xgpu_glsl.c): its #version ("450 core",
+"300 es", "310 es"); OpenGL ES (default precisions, clip control done in the
+vertex shader); the VR mode's foveated eye pass (xgpu_foveated) */
+struct xgpu_glsl_options
+{
+	const char *version;
+	BOOL es;
+	BOOL foveated;
+};
+
+/* GLSL for a decoded NV2A vertex program (xgpu_shader.h), written for
+options. Attributes whose bit is set in packed_attribute_mask are fed as
 NORMPACKED3 32-bit integers and unpacked in the shader. With lighting (else
 NULL), the normal and world position go to the pixel shader too, which
 lights the diffuse color for each pixel (nv2a_pixel_shader_key
@@ -144,8 +157,8 @@ fovea_sample[layer] (its pixels from the whole eye's), from the whole eye's
 layer where the inset does not have the point. Set before the first VR
 shader is made. */
 extern int xgpu_foveated;
-char *nv2a_vertex_shader_to_glsl(const DWORD *instructions, unsigned long instruction_count,
-	unsigned long packed_attribute_mask, const struct nv2a_vertex_lighting *lighting, int multiview);
+char *xgpu_glsl_vertex_shader(const struct xgpu_vertex_program *program, unsigned long packed_attribute_mask,
+	const struct nv2a_vertex_lighting *lighting, int multiview, const struct xgpu_glsl_options *options);
 
 /* ---------- pixel shaders */
 
