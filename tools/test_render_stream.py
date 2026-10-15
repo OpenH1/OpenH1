@@ -7,10 +7,12 @@ as with the base register), and again with ThreadSanitizer where the
 compiler has it.
 
 The encoder implements the renderer's interface (xgpu_backend.h, with
-xgpu.h and xgpu_shader.h); the test copies those headers next to a
-stand-in for the guest's platform.h (port/android/tests/render_stream).
-They are taken from port/linux/src, or from the folder in
-HALO_RENDER_INTERFACE (a checkout of the renderer split's)."""
+xgpu.h and xgpu_shader.h); the test copies those headers, and the encoder
+itself (whose quoted includes would otherwise find port/linux/src's
+platform.h first), next to a stand-in for the guest's platform.h
+(port/android/tests/render_stream). The headers are taken from
+port/linux/src, or from the folder in HALO_RENDER_INTERFACE (a checkout of
+the renderer split's)."""
 import os
 import platform
 import shutil
@@ -46,7 +48,7 @@ def build(cc, headers, binary, flags):
          f"-I{headers}", f"-I{ROOT / 'port' / 'linux' / 'src'}", f"-I{ROOT / 'port' / 'android' / 'host'}",
          f"-I{ROOT / 'port' / 'android' / 'include'}",
          str(ROOT / "port" / "android" / "tests" / "host_render_stream_test.c"),
-         str(ROOT / "port" / "linux" / "src" / "xgpu_stream_encode.c"),
+         str(headers / "xgpu_stream_encode.c"),
          str(ROOT / "port" / "android" / "host" / "host_render_stream.c"),
          "-o", str(binary), "-lpthread"],
         check=True,
@@ -67,6 +69,7 @@ def test_render_stream(tmp_path, sanitizer):
     headers.mkdir()
     for name in INTERFACE_HEADERS:
         shutil.copy(folder / name, headers / name)
+    shutil.copy(ROOT / "port" / "linux" / "src" / "xgpu_stream_encode.c", headers / "xgpu_stream_encode.c")
     shutil.copy(ROOT / "port" / "android" / "tests" / "render_stream" / "platform.h", headers / "platform.h")
     binary = tmp_path / "host_render_stream_test"
     flags = [f"-fsanitize={sanitizer}"] if sanitizer else []
