@@ -1,0 +1,730 @@
+/*
+XGPU_STREAM.H
+
+The renderer's command stream: a frame's backend calls (xgpu_backend.h)
+written by the game as plain data into a ring in its own memory, and
+played back by a backend on the 64-bit host, on a thread of its own, while
+the game goes on to the next frame. On the Linux arm64 build, Android and
+macOS the game is ILP32 guest code: one host call a frame hands the frame
+over instead of a crossing for each GL call, the backend's driver work
+leaves the game's thread, and in the VR mode the host can take the newest
+head pose just before it submits.
+
+Both sides include this file, so it holds only fixed-width integers and
+floats, laid out alike by the guest's ILP32 compiler and the host's LP64
+one: every field is 4 bytes or smaller and aligned to its size, every
+record a multiple of 4 bytes (the sizes are checked at the end). The
+interface's own structures cannot cross as they are: unsigned long and
+DWORD are 4 bytes in the guest and 8 on the host.
+
+The guest writes (xgpu_stream_encode.c), the host reads
+(port/android/host/host_render_stream.c, which calls the backend's
+functions: host_render_stream.h). Guest data is a guest address: the
+host's view of it is host_address(address) (port/android/host/host.h). Data
+the game rewrites while the frame waits (streamed vertices, indices,
+immediate mode, constants, uniforms, mirror writes, the lights) is copied
+into the ring after its record ("inline": its address is in the ring);
+what is too large for the ring (more than an eighth of it) is copied into
+a buffer of its own in guest memory, which the guest frees once the host
+has released the record. Textures and palettes are read where they are, as
+the Xbox's GPU reads them; their changes are the write tracking's
+(memory_watch.c). Refer to "The renderer's command stream" in
+port/linux/README.md.
+*/
+
+#ifndef __HALO_XGPU_STREAM_H
+#define __HALO_XGPU_STREAM_H
+
+#include <stdint.h>
+
+#define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
+#define XGPU_STREAM_VERSION 1
+
+/* ---------- the ring
+
+The guest's: a header and the ring's bytes, both in guest memory, the bytes
+aligned to XGPU_STREAM_RING_ALIGNMENT and a power of two in size (so that a
+Metal backend can wrap them in one buffer without copying:
+newBufferWithBytesNoCopy). Positions are running counts of bytes written
+since the stream began, modulo 2^32: byte position p is at buffer + (p &
+(size - 1)). The guest writes records from committed on, at most to
+released + size; it publishes them with host_render_stream_submit, which
+also counts the frames; the host releases bytes once the GPU is done with
+the work that read them (the backend's fence). */
+
+#define XGPU_STREAM_RING_ALIGNMENT 0x4000u
+/* records and inline data: records start at 4 bytes, inline data at 16
+(vertex data's alignment in every API) */
+#define XGPU_STREAM_RECORD_ALIGNMENT 4u
+#define XGPU_STREAM_DATA_ALIGNMENT 16u
+
+struct xgpu_stream_ring
+{
+	/* XGPU_STREAM_MAGIC, XGPU_STREAM_VERSION, sizeof(struct xgpu_stream_ring) */
+	uint32_t magic, version, header_size;
+	/* the ring's bytes: guest address and size (a power of two) */
+	uint32_t buffer, size;
+	/* the most frames submitted and not yet retired (the GPU done with
+	them): 2, the frame the host draws and the one the game writes */
+	uint32_t frames_in_flight;
+	/* the host's answers, in guest memory the guest allocates:
+	visibility: XGPU_STREAM_VISIBILITY_SLOTS counts (uint32_t), the latest
+	known for each slot; pipelines: XGPU_STREAM_PIPELINES states (uint8_t,
+	XGPU_STREAM_PIPELINE_*) of the pipeline ids */
+	uint32_t visibility, pipelines;
+
+	/* the guest's (written before each host_render_stream_submit, read by
+	the host in it) */
+	uint32_t committed;
+	uint32_t frames_submitted;
+
+	/* the host's (read by the guest with acquire loads) */
+	uint32_t released;
+	uint32_t frames_retired;
+	/* positions decoded; nonzero after a malformed record (then the host
+	decodes no more: XGPU_STREAM_ERROR_*) and where it was */
+	uint32_t decoded;
+	uint32_t error, error_position;
+
+	/* statistics: the guest's (bytes of the last frame, the most a frame
+	has had, VERTICES records sent again for a draw in a later submit)
+	and the host's (the times and nanoseconds the guest waited for room, a
+	frame to retire or a synchronous record; nanoseconds the last frame
+	took to play, the backend's calls included) */
+	uint32_t frame_bytes, frame_bytes_most;
+	uint32_t vertices_again;
+	uint32_t waits, wait_nanoseconds;
+	uint32_t decode_nanoseconds;
+	uint32_t pad[3];
+};
+
+enum
+{
+	XGPU_STREAM_ERROR_NONE,
+	XGPU_STREAM_ERROR_RECORD,   /* an unknown type, or a size too small for it */
+	XGPU_STREAM_ERROR_BOUNDS,   /* a record past committed, or inline data outside its record */
+	XGPU_STREAM_ERROR_ID,       /* a pipeline or layout id out of range or never defined */
+};
+
+/* host_render_stream_submit's flags */
+enum
+{
+	/* the records end a frame (after XGPU_STREAM_FRAME_END): returns once
+	no more than frames_in_flight frames are unretired */
+	XGPU_STREAM_SUBMIT_FRAME = 1,
+	/* returns once the host has played the records and the GPU has done
+	their work: a synchronous record's answer is written, data it named in
+	place may change again */
+	XGPU_STREAM_SUBMIT_SYNC = 2,
+};
+
+#define XGPU_STREAM_VISIBILITY_SLOTS 4096
+#define XGPU_STREAM_PIPELINES 16384
+#define XGPU_STREAM_LAYOUTS 4096
+
+/* a pipeline id's state, written by the host when the backend first makes
+it (the front end's lighting fallback reads it from the next frame) */
+enum
+{
+	XGPU_STREAM_PIPELINE_UNKNOWN,
+	XGPU_STREAM_PIPELINE_MADE,
+	XGPU_STREAM_PIPELINE_FAILED,
+};
+
+/* ---------- records
+
+Each starts with a word: its type in the low 8 bits, its size in bytes
+(header and inline data included, a multiple of 4) in the high 24. A
+record's inline data follows its fixed part, at the next 16-byte aligned
+ring position, and lies inside the record. A record never wraps: one that
+would not fit before the ring's end is preceded by XGPU_STREAM_SKIP of size
+0, which skips to the end (any other SKIP skips its size).
+
+Records named "synchronous" are submitted with XGPU_STREAM_SUBMIT_SYNC and
+carry the guest address of their answer (reply). */
+
+#define XGPU_STREAM_HEADER(type, size) ((uint32_t)(type) | ((uint32_t)(size) << 8))
+#define XGPU_STREAM_HEADER_TYPE(header) ((header) & 0xffu)
+#define XGPU_STREAM_HEADER_SIZE(header) ((header) >> 8)
+#define XGPU_STREAM_RECORD_MAXIMUM 0xfffffcu
+
+enum
+{
+	XGPU_STREAM_SKIP,
+	/* the backend's life */
+	XGPU_STREAM_INITIALIZE,            /* synchronous: xgpu_stream_capabilities */
+	XGPU_STREAM_INVALIDATE,
+	XGPU_STREAM_FLUSH,
+	XGPU_STREAM_ANTI_ALIASING_PREPARE,
+	XGPU_STREAM_ANTI_ALIAS,
+	/* render targets */
+	XGPU_STREAM_TARGET_CREATE,
+	XGPU_STREAM_TARGET_DELETE,
+	XGPU_STREAM_TARGET_MULTISAMPLE,
+	XGPU_STREAM_TARGET_RESOLVE,
+	XGPU_STREAM_SET_TARGETS,
+	XGPU_STREAM_CLEAR,
+	XGPU_STREAM_CLEAR_TARGET,
+	XGPU_STREAM_READ_TARGET,           /* synchronous */
+	/* textures */
+	XGPU_STREAM_SET_TEXTURES,
+	/* pipelines */
+	XGPU_STREAM_CONSTANTS,
+	XGPU_STREAM_VERTEX_PROGRAM,
+	XGPU_STREAM_VERTEX_LIGHTING,
+	XGPU_STREAM_PIPELINE_DEFINE,
+	XGPU_STREAM_PIPELINE,
+	XGPU_STREAM_DRAW_STATE,
+	/* vertices and draws */
+	XGPU_STREAM_MIRROR_WRITE,
+	XGPU_STREAM_LAYOUT_DEFINE,
+	XGPU_STREAM_VERTICES,
+	XGPU_STREAM_DRAW,
+	XGPU_STREAM_DRAW_INDICES,
+	XGPU_STREAM_DRAW_INDEXED,
+	XGPU_STREAM_DRAW_IMMEDIATE,
+	/* visibility tests */
+	XGPU_STREAM_VISIBILITY_BEGIN,
+	XGPU_STREAM_VISIBILITY_END,
+	XGPU_STREAM_VISIBILITY_FRAME,
+	/* frames */
+	XGPU_STREAM_PRESENT,
+	XGPU_STREAM_FRAME_END,
+	/* the enhanced dynamic lights */
+	XGPU_STREAM_DYNAMIC_LIGHTS_PREPARE,
+	XGPU_STREAM_DYNAMIC_LIGHTS_UPLOAD,
+	XGPU_STREAM_DYNAMIC_LIGHTS_HALOS,
+	/* the VR mode */
+	XGPU_STREAM_VR_SUPPORTED,          /* synchronous: uint32_t */
+	XGPU_STREAM_VR_INITIALIZE,         /* synchronous: xgpu_stream_vr_info, in and out */
+	XGPU_STREAM_VR_EYES,
+	XGPU_STREAM_VR_PASS,
+	XGPU_STREAM_VR_GROUPS_RESET,
+	XGPU_STREAM_VR_TIMING,
+	XGPU_STREAM_VR_COMPOSE,
+	XGPU_STREAM_VR_SUBMIT,
+	XGPU_STREAM_RECORD_TYPES,
+};
+
+/* a record of no more than its header: SKIP, INVALIDATE, FLUSH,
+VISIBILITY_BEGIN, VISIBILITY_FRAME, FRAME_END, DYNAMIC_LIGHTS_PREPARE,
+VR_GROUPS_RESET */
+struct xgpu_stream_record
+{
+	uint32_t header;
+};
+
+/* a record of one value: ANTI_ALIASING_PREPARE (smaa), TARGET_DELETE,
+TARGET_RESOLVE, PRESENT (the back buffer's target), VR_PASS, VR_TIMING
+(mark), PIPELINE (the id, XGPU_STREAM_PIPELINE_DEFINE's) */
+struct xgpu_stream_value
+{
+	uint32_t header;
+	uint32_t value;
+};
+
+/* ---------- the backend's life */
+
+/* INITIALIZE's answer: xgpu_backend_capabilities, and the backend's own
+(the enhanced dynamic lights can be made: xgpu_backend_dynamic_lights_prepare) */
+struct xgpu_stream_capabilities
+{
+	int32_t largest_target;
+	int32_t most_samples;
+	int32_t most_anisotropy;
+	uint8_t sample_counting, bgra_vertex_colors, base_vertex, sample_mask;
+	uint8_t mixed_constant_blend, dynamic_lights, dynamic_lights_preparable, pad;
+};
+
+struct xgpu_stream_reply_record
+{
+	uint32_t header;
+	/* where the answer goes (guest address) */
+	uint32_t reply;
+};
+
+struct xgpu_stream_anti_alias
+{
+	uint32_t header;
+	uint32_t target;
+	uint32_t smaa;
+	int32_t corners[4];
+};
+
+/* ---------- render targets */
+
+struct xgpu_stream_target_create
+{
+	uint32_t header;
+	uint32_t target;
+	uint32_t width, height;
+	uint8_t depth, layers, pad[2];
+};
+
+struct xgpu_stream_target_multisample
+{
+	uint32_t header;
+	uint32_t target;
+	int32_t samples;
+};
+
+struct xgpu_stream_set_targets
+{
+	uint32_t header;
+	uint32_t color, depth;
+	/* vr.h's HALO_VR_HUD_GROUP_* or -1; the layers drawn at once (1, 2, 4,
+	or -1, -2 one layer alone) from base; their multisampled attachments' samples */
+	int8_t hud_group, views;
+	uint8_t base, samples;
+};
+
+/* the rectangles (left, top, width, height) follow, count of them */
+struct xgpu_stream_clear
+{
+	uint32_t header;
+	uint32_t flags;
+	float color[4];
+	float depth;
+	uint32_t stencil;
+	uint32_t count;
+	int32_t rectangles[][4];
+};
+
+struct xgpu_stream_clear_target
+{
+	uint32_t header;
+	uint32_t target;
+	float color[4];
+};
+
+/* synchronous: the host writes the target's (or its layer's, -1 none)
+pixels as BGRA rows from its first into pixels (guest memory of
+width * height * 4 bytes, as the target was made), then the reply */
+struct xgpu_stream_read_target
+{
+	uint32_t header;
+	uint32_t target;
+	int32_t layer;
+	uint32_t raw;
+	uint32_t pixels, size;
+	/* (guest address of a uint32_t: 1 written, 0 failed) */
+	uint32_t reply;
+};
+
+/* ---------- textures */
+
+/* xgpu_backend.h's struct xgpu_sampler, which is these fields */
+struct xgpu_stream_sampler
+{
+	uint8_t minify, mip, magnify;
+	uint8_t address[3];
+	uint8_t pad[2];
+	float lod_bias;
+	uint32_t first_level;
+	uint32_t anisotropy;
+	uint32_t border_color;
+};
+
+#define XGPU_STREAM_MIP_LEVELS 16
+
+/* a stage's xgpu_texture_source; resource_format and resource_size are
+the texture header's Format and Size words as they were when the call was
+made (the header is at resource) */
+struct xgpu_stream_texture_stage
+{
+	uint8_t source, sampler_type, sampled;
+	/* the level_targets and level_written that follow it in the record
+	(rendered_levels of them, at most XGPU_STREAM_MIP_LEVELS) */
+	uint8_t level_count;
+	uint32_t resource, palette;
+	uint32_t resource_format, resource_size;
+	uint32_t target, drawn;
+	uint32_t data, width, height, levels, rendered_levels;
+	struct xgpu_stream_sampler sampler;
+};
+
+struct xgpu_stream_texture_level
+{
+	uint32_t target, written;
+};
+
+/* the stages whose bits are set in changed follow, in order, each an
+xgpu_stream_texture_stage and its level_count levels; the others are as
+they were */
+struct xgpu_stream_set_textures
+{
+	uint32_t header;
+	uint32_t changed;
+};
+
+/* ---------- pipelines */
+
+/* the vertex constants first .. first + count, count vec4s following */
+struct xgpu_stream_constants
+{
+	uint32_t header;
+	uint32_t first, count;
+	float values[][4];
+};
+
+/* the bytes of struct xgpu_vertex_instruction (xgpu_shader.h, all
+unsigned char: alike on both sides), count of them, following */
+#define XGPU_STREAM_VERTEX_INSTRUCTION_SIZE 36
+#define XGPU_STREAM_VERTEX_PROGRAM_MAXIMUM 136
+
+struct xgpu_stream_vertex_program
+{
+	uint32_t header;
+	/* the vertex shader's number (for the logs); its microcode's hash
+	(low word first), the key's vertex_program */
+	uint32_t id;
+	uint32_t hash[2];
+	uint32_t instruction_count;
+	uint32_t projects;
+	uint8_t instructions[][XGPU_STREAM_VERTEX_INSTRUCTION_SIZE];
+};
+
+/* xgpu.h's struct nv2a_vertex_lighting */
+struct xgpu_stream_vertex_lighting
+{
+	uint32_t header;
+	uint32_t hash[2];
+	int32_t lights;
+	uint32_t normal_instruction, normal_register;
+	uint32_t position_instruction, position_register;
+	uint32_t world_found, world_instruction, world_register;
+};
+
+/* xgpu.h's struct nv2a_pixel_shader_key */
+#define XGPU_STREAM_COMBINER_STATES 57
+
+struct xgpu_stream_pixel_key
+{
+	uint32_t combiner_state[XGPU_STREAM_COMBINER_STATES];
+	uint32_t texture_modes;
+	uint8_t sampler_type[4];
+	uint8_t alpha_kill[4];
+	uint8_t color_sign[4];
+	uint32_t alpha_test_function;
+	uint8_t fog_enable, fog_table_mode, count_samples, coverage_alpha;
+	uint8_t point_threshold, per_pixel_lighting, alpha_test_samples, multiview;
+	uint8_t source_blend, dynamic_lights, pad[3];
+};
+
+/* xgpu_backend.h's struct xgpu_pipeline_key */
+struct xgpu_stream_pipeline_key
+{
+	uint32_t vertex_program[2];
+	uint32_t packed_attributes;
+	uint32_t stencil_read_mask, stencil_write_mask;
+	uint8_t immediate, lighting, views;
+	uint8_t blend, blend_source, blend_destination, blend_operation;
+	uint8_t color_mask;
+	uint8_t depth_test, depth_function, depth_write;
+	uint8_t stencil_test, stencil_function, stencil_fail, stencil_depth_fail, stencil_pass;
+	uint8_t cull, front_counter_clockwise, cull_front;
+	uint8_t fill, depth_bias;
+	uint8_t color_format, depth_format, samples;
+	struct xgpu_stream_pixel_key pixel;
+};
+
+/* xgpu_shader.h's struct xgpu_pixel_program: its parts of unsigned chars
+alone (alike on both sides) as their bytes, its unsigned longs as 32 bits */
+#define XGPU_STREAM_TEXTURE_STAGE_SIZE 9
+#define XGPU_STREAM_COMBINER_STAGE_SIZE 44
+#define XGPU_STREAM_FINAL_COMBINER_SIZE 25
+
+struct xgpu_stream_pixel_program
+{
+	uint8_t stages[4][XGPU_STREAM_TEXTURE_STAGE_SIZE];
+	uint8_t mux_msb;
+	uint8_t final[XGPU_STREAM_FINAL_COMBINER_SIZE];
+	uint8_t fog, fog_mode;
+	uint32_t combiner_count;
+	uint8_t combiners[8][XGPU_STREAM_COMBINER_STAGE_SIZE];
+	uint32_t alpha_test;
+	uint8_t alpha_test_samples;
+	uint8_t count_samples, coverage_alpha, point_threshold, per_pixel_lighting, dynamic_lights, multiview;
+	uint8_t source_blend;
+};
+
+/* a pipeline key the guest numbered (from 1, below XGPU_STREAM_PIPELINES),
+sent once; XGPU_STREAM_PIPELINE names it from then on. With its pixel
+shader decoded (nv2a_pixel_program_decode), so that the host needs no NV2A
+decoding. */
+struct xgpu_stream_pipeline_define
+{
+	uint32_t header;
+	uint32_t id;
+	struct xgpu_stream_pipeline_key key;
+	struct xgpu_stream_pixel_program pixel_program;
+};
+
+/* xgpu_backend.h's struct xgpu_dynamic_state */
+struct xgpu_stream_dynamic_state
+{
+	int32_t viewport[4];
+	int32_t scissor[4];
+	float depth_range[2];
+	uint32_t stencil_reference;
+	float blend_color[4];
+	float depth_bias[2];
+};
+
+/* xgpu_backend.h's struct xgpu_draw_uniforms (floats alone: alike on both
+sides) */
+struct xgpu_stream_draw_uniforms
+{
+	float viewport_scale[4];
+	float viewport_offset[4];
+	float point_size;
+	float ps_c0[8][4];
+	float ps_c1[8][4];
+	float ps_final_c0[4];
+	float ps_final_c1[4];
+	float fog_color[4];
+	float fog_parameters[4];
+	float alpha_reference;
+	float bump_matrix[4][4];
+	float bump_luminance[4][4];
+	float texture_scale[4][4];
+	float screen_offset;
+	float texture_lod_bias[4];
+};
+
+/* xgpu_backend_draw_state: what changed since the last follows, the
+dynamic state (XGPU_STREAM_DRAW_DYNAMIC), then the uniforms' pieces that
+changed (XGPU_STREAM_DRAW_UNIFORMS: the uniforms as 16-byte pieces, the
+last of 12, those whose bits are set in pieces, low word first, in order);
+a call that changes neither sends nothing */
+enum
+{
+	XGPU_STREAM_DRAW_DYNAMIC = 1,
+	XGPU_STREAM_DRAW_UNIFORMS = 2,
+};
+
+#define XGPU_STREAM_UNIFORM_PIECES ((sizeof(struct xgpu_stream_draw_uniforms) + 15) / 16)
+
+struct xgpu_stream_draw_state
+{
+	uint32_t header;
+	uint32_t parts;
+	uint32_t uniforms_serial;
+	uint32_t pieces[2];
+};
+
+/* ---------- vertices and draws */
+
+/* inline: data is in the ring */
+struct xgpu_stream_mirror_write
+{
+	uint32_t header;
+	uint32_t segment, offset, size;
+	uint32_t unused;
+	uint32_t data;
+};
+
+/* xgpu_backend.h's struct xgpu_vertex_element */
+struct xgpu_stream_vertex_element
+{
+	uint8_t reg, stream, format, bytes;
+	uint16_t offset;
+};
+
+/* a vertex layout the guest numbered (from 1, below XGPU_STREAM_LAYOUTS):
+xgpu_vertex_input's declaration, elements and packed mask, sent once */
+struct xgpu_stream_layout_define
+{
+	uint32_t header;
+	uint32_t id;
+	uint32_t declaration;
+	uint32_t element_count;
+	uint32_t packed_mask;
+	struct xgpu_stream_vertex_element elements[];
+};
+
+struct xgpu_stream_vertex_stream
+{
+	/* the mirror's segment and the offset in it, or -1 and the vertices
+	(inline) at data, bytes of them */
+	int32_t segment;
+	uint32_t offset;
+	uint32_t data;
+	uint32_t bytes;
+	uint32_t stride;
+};
+
+/* xgpu_backend_set_vertices: the layout, then an xgpu_stream_vertex_stream
+for each stream present (bits of streams, in order), then the values of
+the inputs that changed of those no stream feeds (bits of attributes, a
+vec4 each, in order); then the streamed vertices' data, inline. A draw is
+in the same submit as the VERTICES record whose data it reads (the guest
+sends the record again before a draw in a later submit), so the data is
+the backend's until the fence after that draw. */
+struct xgpu_stream_vertices
+{
+	uint32_t header;
+	uint32_t layout;
+	uint16_t streams, attributes;
+};
+
+struct xgpu_stream_draw
+{
+	uint32_t header;
+	uint32_t primitive;
+	uint32_t count;
+};
+
+/* the indices (inline) at indices, count of them (16 bits each) */
+struct xgpu_stream_draw_indices
+{
+	uint32_t header;
+	uint32_t primitive;
+	uint32_t count;
+	uint32_t indices;
+};
+
+/* indices from the mirror's segment at offset, or (segment -1) inline at
+indices, temporary if the front end made them for this draw alone (a
+backend that keeps index arrays must not keep them) */
+struct xgpu_stream_draw_indexed
+{
+	uint32_t header;
+	uint32_t primitive;
+	uint32_t count;
+	uint32_t minimum;
+	int32_t segment;
+	uint32_t offset;
+	uint32_t indices;
+	uint32_t temporary;
+};
+
+/* immediate mode: count vertices of the registers written (bits of
+written), a vec4 each in register order (inline at vertices: no room for
+those not written); the values of the registers not written that changed
+(bits of attributes, a vec4 each following); the indices (inline, 0
+none) */
+struct xgpu_stream_draw_immediate
+{
+	uint32_t header;
+	uint32_t primitive;
+	uint32_t count;
+	uint16_t written, attributes;
+	uint32_t vertices;
+	uint32_t indices, index_count;
+};
+
+/* ---------- visibility tests */
+
+struct xgpu_stream_visibility_end
+{
+	uint32_t header;
+	uint32_t slot;
+	float area;
+	int32_t views;
+	int32_t samples;
+};
+
+/* ---------- the enhanced dynamic lights */
+
+/* xgpu.h's struct xgpu_dynamic_lights_block (floats alone) */
+#define XGPU_STREAM_DYNAMIC_LIGHTS_MAXIMUM 128
+
+struct xgpu_stream_dynamic_lights_block
+{
+	float grid[3][4];
+	float position[XGPU_STREAM_DYNAMIC_LIGHTS_MAXIMUM][4];
+	float color[XGPU_STREAM_DYNAMIC_LIGHTS_MAXIMUM][4];
+	float cone[XGPU_STREAM_DYNAMIC_LIGHTS_MAXIMUM][4];
+};
+
+/* the block's lights past count are zero; the cells (inline) at cells,
+size bytes */
+struct xgpu_stream_dynamic_lights_upload
+{
+	uint32_t header;
+	uint32_t count;
+	uint32_t cells, size;
+	struct xgpu_stream_dynamic_lights_block block;
+};
+
+/* xgpu_backend.h's struct xgpu_dynamic_lights_halos but its halos, which
+follow (count * 2 vec4s) */
+struct xgpu_stream_dynamic_lights_halos
+{
+	uint32_t header;
+	uint32_t color, depth;
+	int32_t layers;
+	int32_t count;
+	float camera_right[3], camera_up[3];
+	float projection[6][4];
+	float viewport_scale[4], viewport_offset[4];
+	float camera[3];
+	float softness;
+	float screen_offset;
+	float halos[][4];
+};
+
+/* ---------- the VR mode */
+
+/* xgpu_backend.h's struct xgpu_vr_info (ints alone), in and out */
+struct xgpu_stream_vr_info
+{
+	int32_t eye_width, eye_height;
+	int32_t hud_width, hud_height;
+	int32_t scope_size;
+	int32_t statistics;
+	int32_t foveated;
+	int32_t fovea_width, fovea_height;
+};
+
+struct xgpu_stream_vr_eyes
+{
+	uint32_t header;
+	uint32_t eye_target;
+	uint32_t image;
+};
+
+/* xgpu_backend.h's struct xgpu_vr_frame */
+struct xgpu_stream_vr_frame
+{
+	int32_t eyes_drawn, hud_drawn, scope_drawn;
+	uint32_t eye_target, eye_depth, scope, hud;
+	int32_t eye_depth_layers;
+};
+
+/* VR_COMPOSE and VR_SUBMIT (screenshot: VR_SUBMIT's alone) */
+struct xgpu_stream_vr_frame_record
+{
+	uint32_t header;
+	struct xgpu_stream_vr_frame frame;
+	uint32_t screenshot;
+};
+
+/* ---------- the layouts' sizes, alike on both sides */
+
+#define XGPU_STREAM_ASSERT_SIZE(type, size) _Static_assert(sizeof(type) == (size), #type "'s size")
+
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_ring, 96);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_capabilities, 20);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_set_targets, 16);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_clear, 36);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_sampler, 24);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_texture_stage, 72);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pixel_key, 264);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pipeline_key, 308);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pixel_program, 432);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pipeline_define, 748);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_dynamic_state, 68);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_draw_uniforms, 572);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vertex_element, 6);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_layout_define, 20);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vertex_stream, 20);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vertices, 12);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_draw_immediate, 28);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_dynamic_lights_block, 6192);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_dynamic_lights_halos, 192);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_info, 36);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_frame_record, 40);
+
+#endif

@@ -114,6 +114,16 @@ the visibility tests' results, port/linux/src/xgpu.h) */
 int host_gl_map_results(unsigned int buffer, unsigned int size);
 void host_gl_read_results(void *data, unsigned int size);
 
+/* ---------- the renderer's command stream (port/linux/src/xgpu_stream.h,
+port/android/host/host_render_stream.h): the ring at the guest address
+ring opened (0, or -1: the host has no renderer for it); its records to
+the header's committed handed over (XGPU_STREAM_SUBMIT_*); a wait until
+the host has released up to position; the stream ended */
+int host_render_stream_open(unsigned int ring);
+void host_render_stream_submit(unsigned int flags);
+void host_render_stream_wait(unsigned int position);
+void host_render_stream_close(void);
+
 /* ---------- Android */
 
 /* the storage directories the port uses, copied into buffer */
