@@ -7,6 +7,15 @@ the guest addresses it was linked at (in the low 4 GB, or at the guest's
 base: host.h). The image starts with a
 struct halo_guest_header naming its import table, which is filled with the
 host functions of the same names.
+
+On macOS the code is mapped for just-in-time compilation (MAP_JIT): under
+the hardened runtime of a signed app, memory that was written cannot be made
+executable with mprotect (the process is killed when it runs it), unless the
+app has the entitlement for unsigned executable memory, which allows it for
+all memory. MAP_JIT memory needs only com.apple.security.cs.allow-jit
+(port/macos/halo.entitlements). It cannot be mapped at a fixed address, so
+the code's pages are unmapped from the guest's reservation first and mapped
+again at the same address.
 */
 
 #include "host.h"
@@ -42,6 +51,10 @@ typedef struct
 #endif
 #include <string.h>
 #include <sys/mman.h>
+#ifdef __APPLE__
+#include <pthread.h>
+#include <stdlib.h>
+#endif
 
 struct host_guest_image host_image;
 
@@ -49,6 +62,40 @@ static void missing_import(void)
 {
 	host_fatal("the guest called a host function that is not available");
 }
+
+#ifdef __APPLE__
+/* the code at address made executable through MAP_JIT memory; 0 if it
+cannot be, and the pages are left as they were */
+static int code_map_jit(void *address, size_t size)
+{
+	void *copy = malloc(size);
+	void *mapped;
+
+	if (!copy)
+		return 0;
+	memcpy(copy, address, size);
+	munmap(address, size);
+	mapped = mmap(address, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+	if (mapped != address)
+	{
+		if (mapped != MAP_FAILED)
+			munmap(mapped, size);
+		/* (the reservation's hole filled again) */
+		mapped = mmap(address, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
+		if (mapped == address)
+			memcpy(address, copy, size);
+		free(copy);
+		return 0;
+	}
+	/* written with this thread's writes allowed; every thread executes it
+	(the default of each thread) */
+	pthread_jit_write_protect_np(0);
+	memcpy(address, copy, size);
+	pthread_jit_write_protect_np(1);
+	free(copy);
+	return 1;
+}
+#endif
 
 int host_load_image(const void *file, size_t size)
 {
@@ -140,8 +187,18 @@ int host_load_image(const void *file, size_t size)
 		uint64_t start = segment->p_vaddr & ~(page - 1);
 		uint64_t end = (segment->p_vaddr + segment->p_memsz + page - 1) & ~(page - 1);
 
-		if (segment->p_type == PT_LOAD && (segment->p_flags & PF_X))
-			mprotect((void *)host_address((uint32_t)start), end - start, PROT_READ | PROT_EXEC);
+		if (segment->p_type != PT_LOAD || !(segment->p_flags & PF_X))
+			continue;
+#ifdef __APPLE__
+		if (code_map_jit((void *)host_address((uint32_t)start), end - start))
+			continue;
+		host_logf(HOST_LOG_WARN, "cannot map the code for JIT; making it executable with mprotect");
+#endif
+		if (mprotect((void *)host_address((uint32_t)start), end - start, PROT_READ | PROT_EXEC) != 0)
+		{
+			host_logf(HOST_LOG_ERROR, "cannot make the game's code executable");
+			return -1;
+		}
 	}
 	__builtin___clear_cache((char *)host_address((uint32_t)low), (char *)host_address((uint32_t)low) + (high - low));
 	return 0;
