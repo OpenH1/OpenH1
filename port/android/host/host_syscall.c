@@ -14,7 +14,9 @@ with the host's number, or with the C library's function.
 Per call:
 
 - most take integers, strings and buffers, which pass unchanged: the
-  guest's pointers are valid host addresses (zero-extended), and the kernel
+  guest's pointers are valid host addresses (zero-extended; with the base
+  register, once the base is added: host.h, and pointer_arguments for the
+  calls passed through), and the kernel
   reads an int argument from the low 32 bits of its register on every
   architecture, so a negative int (AT_FDCWD) arrives correctly;
 - constants that are the same on every host architecture (AT_, SEEK_,
@@ -152,7 +154,7 @@ SAME(EOPNOTSUPP);
 SAME(ETIMEDOUT);
 #undef SAME
 
-#define GUEST(type, value) ((type)(uintptr_t)(uint32_t)(value))
+#define GUEST(type, value) ((type)host_pointer((uint32_t)(value)))
 
 static long result_of(long value)
 {
@@ -600,6 +602,40 @@ static long guest_futex(uint64_t address, int operation, uint32_t value, uint64_
 
 /* ---------- dispatch */
 
+#ifdef HALO_GUEST_BASE
+/* the arguments of the calls passed straight through (passthrough_number)
+that are pointers, a bit for each */
+static unsigned int pointer_arguments(long long number)
+{
+	switch (number)
+	{
+	case GUEST_SYS_getcwd:
+	case GUEST_SYS_chdir:
+	case GUEST_SYS_getrandom:
+	case GUEST_SYS_uname:
+		return 1 << 0;
+	case GUEST_SYS_read:
+	case GUEST_SYS_pread64:
+	case GUEST_SYS_pwrite64:
+	case GUEST_SYS_getdents64:
+	case GUEST_SYS_unlinkat:
+	case GUEST_SYS_mkdirat:
+	case GUEST_SYS_fchmodat:
+	case GUEST_SYS_faccessat:
+		return 1 << 1;
+	case GUEST_SYS_renameat2:
+		return 1 << 1 | 1 << 3;
+	case GUEST_SYS_readlinkat:
+	case GUEST_SYS_rt_sigprocmask:
+		return 1 << 1 | 1 << 2;
+	case GUEST_SYS_prlimit64:
+		return 1 << 2 | 1 << 3;
+	default:
+		return 0;
+	}
+}
+#endif
+
 /* the host's number for a guest call whose arguments the host's kernel
 takes as they are (integers, strings, buffers, and the structures and
 constants that are the same everywhere), or -1 */
@@ -850,7 +886,23 @@ long long host_syscall(long long number, long long a, long long b, long long c,
 		long host_number = passthrough_number(number);
 
 		if (host_number >= 0)
+		{
+#ifdef HALO_GUEST_BASE
+			long long arguments[6] = { a, b, c, d, e, f };
+			unsigned int pointers = pointer_arguments(number);
+			int index;
+
+			for (index = 0; index < 6; index++)
+			{
+				if (pointers & (1u << index))
+					arguments[index] = (long long)(uintptr_t)host_pointer((uint32_t)arguments[index]);
+			}
+			return result_of(syscall(host_number, arguments[0], arguments[1], arguments[2], arguments[3],
+				arguments[4], arguments[5]));
+#else
 			return result_of(syscall(host_number, a, b, c, d, e, f));
+#endif
+		}
 		host_logf(HOST_LOG_WARN, "guest system call %lld is not supported", number);
 		return -ENOSYS;
 	}

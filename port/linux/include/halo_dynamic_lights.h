@@ -3,13 +3,13 @@ HALO_DYNAMIC_LIGHTS.H
 
 The enhanced dynamic lights (display.dynamic_lights): what the game
 (port/linux/game/dynamic_lights.c, source/objects/object_lights.c) hands the
-renderer (port/linux/src/d3d8_gl.c).
+renderer (port/linux/src/d3d8_device.c).
 */
 
 #ifndef HALO_DYNAMIC_LIGHTS_H
 #define HALO_DYNAMIC_LIGHTS_H
 
-/* display.dynamic_lights "enhanced" (port/linux/src/d3d8_gl.c, the game's
+/* display.dynamic_lights "enhanced" (port/linux/src/d3d8_device.c, the game's
 side port/linux/game/dynamic_lights.c): a frame's dynamic light, where it
 is drawn, its radius, its color (the game's, 0 to 1) and its cone (the
 model lighting's: an axis, scale and offset; omni: 0, 0 and 1) */

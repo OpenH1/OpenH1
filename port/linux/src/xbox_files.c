@@ -88,7 +88,7 @@ const char *platform_data_root(void)
 				if (slash)
 					*slash = '\0';
 			}
-#if !defined(_WIN32) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(_WIN32) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
 			/* on Linux, the game's folder (the release's root, above its
 			bin/), or ~/.local/share/halo-linux when the game is installed
 			(install_layout.c) */

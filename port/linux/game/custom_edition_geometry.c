@@ -727,8 +727,9 @@ them. Its uncompressed vertices (cache_file_formats.c checked their size and
 place) stay where they are. */
 /* geometry the renderer draws from: in the Xbox's contiguous memory, as the
 game's own vertex and index buffers are (physical_memory_map.c), which the
-renderer keeps on the GPU (d3d8_gl.c's mirror: anything outside it is sent
-again at every draw); in the game's heap when that memory is spent */
+renderer keeps on the GPU (its mirror, d3d8_device.c and xgpu_gl.c:
+anything outside it is sent again at every draw); in the game's heap when
+that memory is spent */
 static void *geometry_allocate(
 	unsigned long size,
 	boolean *contiguous)

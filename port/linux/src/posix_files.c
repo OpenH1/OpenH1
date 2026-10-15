@@ -16,6 +16,13 @@ the host ABI and _FILE_OFFSET_BITS=64.
 
 #include "posix.h"
 
+#ifdef __APPLE__
+/* (the macOS host's struct stat, port/macos) */
+#define st_atim st_atimespec
+#define st_mtim st_mtimespec
+#define st_ctim st_ctimespec
+#endif
+
 static void split64(unsigned long long value, posix_ulong *low, posix_ulong *high)
 {
 	*low = (posix_ulong)(value & 0xffffffffULL);

@@ -2,8 +2,9 @@
 HOST_LOADER.C
 
 Loads the guest image: a statically linked ELF executable of ILP32 code
-(see tools/android_build.py) whose segments are copied to the addresses it
-was linked at, below 4 GB. On AArch64 hosts it is a 64-bit AArch64 ELF file
+(see tools/android_build.py) whose segments are copied to the guest
+addresses it was linked at (in the low 4 GB, or at the guest's base:
+host.h). On AArch64 hosts it is a 64-bit AArch64 ELF file
 (arm64_32 code); on x86-64 hosts a 32-bit x86-64 one (x32). The image starts
 with a struct halo_guest_header naming its import table, which is filled
 with the host functions of the same names.
@@ -12,15 +13,77 @@ The file is checked before anything is mapped (host_image_validate), and
 its header, import table and names before they are used
 (host_image_validate_imports): every offset, size and address must lie in
 the file and in the range the host reserves for the image.
+
+On macOS the code is mapped for just-in-time compilation (MAP_JIT): under
+the hardened runtime of a signed app, memory that was written cannot be made
+executable with mprotect (the process is killed when it runs it), unless the
+app has the entitlement for unsigned executable memory, which allows it for
+all memory. MAP_JIT memory needs only com.apple.security.cs.allow-jit
+(port/macos/halo.entitlements). It cannot be mapped at a fixed address, so
+the code's pages are unmapped from the guest's reservation first and mapped
+again at the same address.
 */
 
 #include "host.h"
 
+#ifdef __APPLE__
+/* (macOS has no elf.h: the little of it the loader reads) */
+#define EI_NIDENT 16
+#define ELFMAG "\177ELF"
+#define SELFMAG 4
+#define EI_CLASS 4
+#define EI_DATA 5
+#define ELFCLASS32 1
+#define ELFCLASS64 2
+#define ELFDATA2LSB 1
+#define EV_CURRENT 1
+#define ET_EXEC 2
+#define PT_LOAD 1
+#define PT_DYNAMIC 2
+#define PT_INTERP 3
+#define PF_X 1
+
+typedef struct
+{
+	unsigned char e_ident[EI_NIDENT];
+	uint16_t e_type, e_machine;
+	uint32_t e_version;
+	uint64_t e_entry, e_phoff, e_shoff;
+	uint32_t e_flags;
+	uint16_t e_ehsize, e_phentsize, e_phnum, e_shentsize, e_shnum, e_shstrndx;
+} Elf64_Ehdr;
+
+typedef struct
+{
+	uint32_t p_type, p_flags;
+	uint64_t p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_align;
+} Elf64_Phdr;
+
+typedef struct
+{
+	unsigned char e_ident[EI_NIDENT];
+	uint16_t e_type, e_machine;
+	uint32_t e_version;
+	uint32_t e_entry, e_phoff, e_shoff;
+	uint32_t e_flags;
+	uint16_t e_ehsize, e_phentsize, e_phnum, e_shentsize, e_shnum, e_shstrndx;
+} Elf32_Ehdr;
+
+typedef struct
+{
+	uint32_t p_type, p_offset, p_vaddr, p_paddr, p_filesz, p_memsz, p_flags, p_align;
+} Elf32_Phdr;
+#else
 #include <elf.h>
+#endif
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
+#ifdef __APPLE__
+#include <pthread.h>
+#include <stdlib.h>
+#endif
 
 /* more than the guest has (its own, the POSIX and the GL imports) */
 #define IMPORTS_MAXIMUM 16384
@@ -45,6 +108,40 @@ static void missing_import(void)
 {
 	host_fatal("the guest called a host function that is not available");
 }
+
+#ifdef __APPLE__
+/* the code at address made executable through MAP_JIT memory; 0 if it
+cannot be, and the pages are left as they were */
+static int code_map_jit(void *address, size_t size)
+{
+	void *copy = malloc(size);
+	void *mapped;
+
+	if (!copy)
+		return 0;
+	memcpy(copy, address, size);
+	munmap(address, size);
+	mapped = mmap(address, size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANON | MAP_JIT, -1, 0);
+	if (mapped != address)
+	{
+		if (mapped != MAP_FAILED)
+			munmap(mapped, size);
+		/* (the reservation's hole filled again) */
+		mapped = mmap(address, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED, -1, 0);
+		if (mapped == address)
+			memcpy(address, copy, size);
+		free(copy);
+		return 0;
+	}
+	/* written with this thread's writes allowed; every thread executes it
+	(the default of each thread) */
+	pthread_jit_write_protect_np(0);
+	memcpy(address, copy, size);
+	pthread_jit_write_protect_np(1);
+	free(copy);
+	return 1;
+}
+#endif
 
 /* ---------- the ELF file */
 
@@ -283,6 +380,9 @@ int host_load_image(const void *file, size_t size)
 	struct host_image_layout layout;
 	const struct halo_guest_header *header;
 	uint64_t low, high;
+	/* (the host's pages, 16 KB on macOS, which mapping and protection
+	work in; the image's are 4 KB) */
+	uint64_t page = host_page_size();
 	uint64_t *table;
 	const char *name;
 	uint32_t count, index;
@@ -290,12 +390,15 @@ int host_load_image(const void *file, size_t size)
 
 	if (host_image_validate(file, size, HOST_IMAGE_CLASS, HOST_IMAGE_MACHINE, &layout) != 0)
 		return -1;
-	low = layout.low;
-	high = layout.high;
+	low = layout.low & ~(page - 1);
+	high = (layout.high + page - 1) & ~(page - 1);
+	if (low != layout.low || high > 0x100000000ULL)
+		return fail("spans %llx-%llx, not whole pages of this host's", (unsigned long long)layout.low,
+			(unsigned long long)layout.high);
 	if (host_memory_initialize((uint32_t)low, (uint32_t)(high - low)) != 0)
 		return -1;
-	if (mmap((void *)(uintptr_t)low, high - low, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED,
-		-1, 0) != (void *)(uintptr_t)low)
+	if (mmap((void *)host_address((uint32_t)low), high - low, PROT_READ | PROT_WRITE,
+		MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0) != (void *)host_address((uint32_t)low))
 	{
 		return fail("range %llx-%llx cannot be mapped", (unsigned long long)low, (unsigned long long)high);
 	}
@@ -303,21 +406,22 @@ int host_load_image(const void *file, size_t size)
 	{
 		const struct host_image_segment *segment = &layout.segments[index];
 
-		memcpy((void *)(uintptr_t)segment->address, (const char *)file + segment->offset, segment->file_size);
+		memcpy((void *)host_address((uint32_t)segment->address), (const char *)file + segment->offset,
+			segment->file_size);
 	}
 
-	if (host_image_validate_imports((const uint8_t *)(uintptr_t)low, (uint32_t)low, (uint32_t)high, &layout,
+	if (host_image_validate_imports((const uint8_t *)host_address((uint32_t)low), (uint32_t)low, (uint32_t)high, &layout,
 		&count) != 0)
 	{
 		return -1;
 	}
-	header = (const struct halo_guest_header *)(uintptr_t)low;
+	header = host_pointer((uint32_t)low);
 	host_image.header = header;
 	host_image.base = (uint32_t)low;
 	host_image.end = (uint32_t)high;
 
-	table = (uint64_t *)(uintptr_t)header->import_table;
-	name = (const char *)(uintptr_t)header->import_names;
+	table = host_pointer(header->import_table);
+	name = host_pointer(header->import_names);
 	for (index = 0; index < count; index++)
 	{
 		void *function = host_resolve_import(name);
@@ -340,12 +444,19 @@ int host_load_image(const void *file, size_t size)
 	for (index = 0; index < layout.segment_count; index++)
 	{
 		const struct host_image_segment *segment = &layout.segments[index];
-		uint64_t start = segment->address & ~0xfffULL;
-		uint64_t end = (segment->address + segment->memory_size + 0xfff) & ~0xfffULL;
+		uint64_t start = segment->address & ~(page - 1);
+		uint64_t end = (segment->address + segment->memory_size + page - 1) & ~(page - 1);
 
-		if (segment->flags & PF_X)
-			mprotect((void *)(uintptr_t)start, end - start, PROT_READ | PROT_EXEC);
+		if (!(segment->flags & PF_X))
+			continue;
+#ifdef __APPLE__
+		if (code_map_jit((void *)host_address((uint32_t)start), end - start))
+			continue;
+		host_logf(HOST_LOG_WARN, "cannot map the code for JIT; making it executable with mprotect");
+#endif
+		if (mprotect((void *)host_address((uint32_t)start), end - start, PROT_READ | PROT_EXEC) != 0)
+			return fail("code cannot be made executable");
 	}
-	__builtin___clear_cache((char *)(uintptr_t)low, (char *)(uintptr_t)high);
+	__builtin___clear_cache((char *)host_address((uint32_t)low), (char *)host_address((uint32_t)low) + (high - low));
 	return 0;
 }

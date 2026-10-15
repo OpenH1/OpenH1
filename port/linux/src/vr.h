@@ -3,8 +3,8 @@ VR.H
 
 The VR mode (HALO_VR; port/linux/README.md, "VR"): what the game's code
 (port/linux/game/vr_render.c, render.c, player_control.c), the renderer
-(d3d8_gl.c) and the input (xinput_sdl.c) ask of vr.c. Plain C types only:
-the game's code includes it as well as the platform layer.
+(d3d8_device.c, xgpu_gl.c) and the input (xinput_sdl.c) ask of vr.c. Plain C
+types only: the game's code includes it as well as the platform layer.
 
 The game draws one view from the centre of the head, its field of view the
 union of both eyes', and the renderer draws each of its draws into both eyes
@@ -18,7 +18,7 @@ Game axes: forward, left, up (the game's x, y, z at a yaw of 0).
 #ifndef __HALO_VR_H
 #define __HALO_VR_H
 
-/* the renderer's passes (d3d8_gl.c, halo_vr_pass) */
+/* the renderer's passes (d3d8_device.c, halo_vr_pass) */
 enum
 {
 	HALO_VR_PASS_NONE = 0, /* not drawing a VR frame: the flat window */
@@ -234,7 +234,7 @@ struct halo_vr_holsters
 port/linux/game/vr_scope.c): raised to an eye, its image on a quad at the
 scope's eyepiece, facing back along the scope, seen by that eye alone;
 smart-linked, a window about the reticle, at its distance, facing back along
-the aim from between the eyes, drawn into both eyes' images (d3d8_gl.c) */
+the aim from between the eyes, drawn into both eyes' images (xgpu_gl.c) */
 struct halo_vr_scope
 {
 	/* the eye (0 left, 1 right; -1 both: the smart-link's) */
@@ -272,7 +272,7 @@ struct halo_vr_scope
 	float switched_seconds;
 };
 
-/* d3d8_gl.c: the smart-link's window as each eye sees it, in the eye's
+/* xgpu_gl.c: the smart-link's window as each eye sees it, in the eye's
 space (OpenXR's view space: x right, y up, z back; metres): its middle, its
 right and up, the quad's half width and half height, and the eye's field of
 view (tangents: left, right, up, down); the window within the quad (of the
@@ -291,7 +291,7 @@ struct halo_vr_scope_window
 
 /* a feed cockpit's display (vr.scorpion_view = "feed", port/linux/game/
 vr_cabin.c): an opening in the cockpit's front wall, which curves about an
-upright axis behind the eye, the world seen through it; d3d8_gl.c draws the
+upright axis behind the eye, the world seen through it; xgpu_gl.c draws the
 feed's look over it. The axis at the display's middle height, the way to the
 display's middle from it and the axis's up (game axes from the recentred
 head, metres), the wall's radius, the display's half angle about the axis
@@ -323,7 +323,11 @@ recentred head, metres, and how far about it a hand takes it); given each
 hand's hold (-1 none), the nearest hold to each hand and how far it is
 (metres beyond its reach; 0 or less within it), and how far the eye moves
 this frame by the hands (game axes, metres: against the holding hands'
-motion) */
+motion); and each hand's place (game axes from the recentred head, metres),
+whether both hands hold the seat's own handles (halo_vr_seat_place: they
+steer), and told, whether a hand whose grip is held takes a hold within
+reach as a press would (grab: the handles it pushed off); and the frame
+(presented: debug.vr_test_hands poses by it) */
 #define HALO_VR_CLIMB_HOLDS 24
 struct halo_vr_climb
 {
@@ -335,9 +339,12 @@ struct halo_vr_climb
 	float distance[2];
 	float moved[3];
 	float hand[2][3];
+	int seat_held;
+	int grab;
+	unsigned long frame;
 };
 
-/* d3d8_gl.c: the display as each eye sees it, in the eye's space (as
+/* xgpu_gl.c: the display as each eye sees it, in the eye's space (as
 halo_vr_scope_window's): the axis's point, its up, the way to the display's
 middle and its right, and the eye's field of view (tangents) */
 struct halo_vr_cockpit_window
@@ -647,7 +654,7 @@ void halo_vr_smartlink_view(float *degrees, float *distance);
 /* this frame's scope, drawn into its image (the scope pass): shown where
 it says at the present; NULL, none */
 void halo_vr_scope(const struct halo_vr_scope *scope);
-/* d3d8_gl.c, as it makes the scope's image: the zoom shown in its lens
+/* xgpu_gl.c, as it makes the scope's image: the zoom shown in its lens
 (halo_vr_scope's; 0: none), and how tall (of the lens's width) */
 float halo_vr_scope_zoom(float *height);
 /* and whether it is the smart-link's, its reticle's place (halo_vr_scope's) */
@@ -656,7 +663,7 @@ int halo_vr_scope_smartlink(float reticle[2]);
 the eyes see it (halo_vr_scope_window); its range and rounds; and how the
 weapon in hand shows over it (vr.scope_gun: 0 hidden, 1 ghost, 2 visible) */
 int halo_vr_scope_window(struct halo_vr_scope_window *window);
-/* a feed cockpit's display (NULL: none this frame); for d3d8_gl.c, as each
+/* a feed cockpit's display (NULL: none this frame); for xgpu_gl.c, as each
 eye sees it, and what it shows */
 void halo_vr_cockpit_display(const struct halo_vr_cockpit_display *display);
 /* vr_climb.c, once a frame: the holds near told, the hands' holds and the
@@ -691,14 +698,14 @@ void halo_vr_visor_state(const struct halo_vr_visor_state *state);
 /* the HUD's draws from now on are of this group (HALO_VR_HUD_GROUP_*), or
 (HALO_VR_HUD_BY_ANCHOR) of the group of the anchor of the element drawn
 (halo_vr_hud_anchor: hud_draw.c tells the hud_anchor of each element it
-places, 0 to 4). d3d8_gl.c draws each group into an image of its own, for
+places, 0 to 4). xgpu_gl.c draws each group into an image of its own, for
 the HUD's panels (vr_visor.c, vr.hud_depth); the frame starts with
 HALO_VR_HUD_GROUP_CENTRE */
 #define HALO_VR_HUD_BY_ANCHOR (-1)
 void halo_vr_hud_group(int group);
 void halo_vr_hud_anchor(int corner);
 
-/* the platform layer's (d3d8_gl.c, xinput_sdl.c) */
+/* the platform layer's (d3d8_device.c, xinput_sdl.c) */
 /* opens the session once the GL context is current; 0 if VR cannot run */
 int halo_vr_initialize(void);
 void halo_vr_eye_size(int *width, int *height);
@@ -730,12 +737,12 @@ recentres */
 void halo_vr_gamepad_back(int held);
 
 /* the eyes' depth: the projection's range (vr_render.c, in metres) and
-that this frame's is in its swapchain (d3d8_gl.c) */
+that this frame's is in its swapchain (xgpu_gl.c) */
 void halo_vr_depth_range(float near_metres, float far_metres);
 int halo_vr_depth_wanted(void);
 void halo_vr_depth_written(void);
 
-/* ---------- d3d8_gl.c */
+/* ---------- d3d8_device.c, xgpu_gl.c */
 
 void halo_vr_pass(int pass);
 /* row-major 4x4s: an eye's clip position from the centre view's, for the

@@ -24,12 +24,18 @@ With --desktop, the list is gl.h's desktop OpenGL one and the prototypes come
 from the Khronos glcorearb.h: the desktop guest builds' desktop renderer
 (tools/linux_guest_build.py). Its two functions that hand the host a pointer
 it cannot use, or give the guest one it cannot, have guest replacements:
-glMapBufferRange maps nothing (d3d8_gl.c reads the visibility results through
+glMapBufferRange maps nothing (xgpu_gl.c reads the visibility results through
 host_gl_read_buffer instead), and glDebugMessageCallback installs the host's
 logger, the guest's callback being guest code.
 
-Usage: android_gl_stubs.py --arch NAME gl.h gl32.h gl2ext.h output.c imports.list
-       android_gl_stubs.py --arch NAME --desktop gl.h glcorearb.h output.c imports.list
+With --base-register, the guest's memory lies at a base in x21
+(tools/guest_base_register.py): pointer arguments go to the host as host
+addresses (base plus offset; NULL stays NULL), except those that are
+offsets into the bound buffer (OFFSET_ARGUMENTS), which xgpu_gl.c always
+binds.
+
+Usage: android_gl_stubs.py --arch NAME [--base-register] gl.h gl32.h gl2ext.h output.c imports.list
+       android_gl_stubs.py --arch NAME [--base-register] --desktop gl.h glcorearb.h output.c imports.list
 """
 
 import re
@@ -39,6 +45,13 @@ from guest_arch import GUEST_ARCHES
 
 WIDE_TYPES = {"GLsizeiptr", "GLintptr", "GLint64", "GLuint64", "GLint64EXT", "GLuint64EXT"}
 FLOAT_TYPES = {"GLfloat", "GLclampf", "GLdouble", "GLclampd", "float", "double"}
+# the "pointer" arguments that are offsets into the buffer bound to
+# GL_ARRAY_BUFFER or GL_ELEMENT_ARRAY_BUFFER, by function and position
+OFFSET_ARGUMENTS = {
+    "glVertexAttribPointer": 5, "glVertexAttribIPointer": 4, "glDrawElements": 3,
+    "glDrawElementsBaseVertex": 3, "glDrawElementsBaseVertexEXT": 3, "glDrawElementsBaseVertexOES": 3,
+    "glDrawRangeElements": 5, "glDrawElementsInstanced": 3,
+}
 
 
 def android_functions(gl_header: str, marker: str = "ANDROID_GL_FUNCTIONS"):
@@ -77,6 +90,11 @@ def main():
         sys.exit(__doc__)
     arch = GUEST_ARCHES[arguments[1]]
     arguments = arguments[2:]
+    base_register = arguments[0] == "--base-register"
+    if base_register:
+        if arch.base_register_flags is None:
+            sys.exit(f"the {arch.name} guest has no base register")
+        arguments = arguments[1:]
     desktop = arguments[0] == "--desktop"
     if desktop:
         gl_header, glcorearb, output, imports = arguments[1:5]
@@ -96,6 +114,22 @@ def main():
         "void host_gl_get_string(unsigned int name, int index, char *buffer, unsigned int size);",
         "",
     ]
+    if base_register:
+        out += [
+            "static inline unsigned long long host_address(const void *pointer)",
+            "{",
+            "\tunsigned long long base;",
+            "",
+            '\t__asm__("mov %0, x21" : "=r"(base));',
+            "\treturn pointer ? base + (unsigned int)pointer : 0;",
+            "}",
+            "",
+        ]
+    # a guest pointer as the host's: its address, or as it is
+    def wide_pointer(argument):
+        if base_register:
+            return f"host_address({argument})"
+        return f"(unsigned long long)(unsigned int){argument}"
     table = []
     import_names = []
     for name in functions:
@@ -125,6 +159,8 @@ def main():
             # an array of pointers: widen each to a host pointer
             import_names.append("hostgl_glShaderSource")
             out += [
+                "void hostgl_glShaderSource(GLuint shader, GLsizei count, unsigned long long strings, "
+                "unsigned long long lengths);" if base_register else
                 "void hostgl_glShaderSource(GLuint shader, GLsizei count, const unsigned long long *strings, "
                 "const GLint *lengths);",
                 "static void GL_APIENTRY guest_glShaderSource(GLuint shader, GLsizei count, "
@@ -136,8 +172,9 @@ def main():
                 "\tif (count > 16)",
                 "\t\tcount = 16;",
                 "\tfor (index = 0; index < count; index++)",
-                "\t\twide[index] = (unsigned long long)(unsigned int)strings[index];",
-                "\thostgl_glShaderSource(shader, count, wide, lengths);",
+                f"\t\twide[index] = {wide_pointer('strings[index]')};",
+                f"\thostgl_glShaderSource(shader, count, {wide_pointer('wide')}, {wide_pointer('lengths')});"
+                if base_register else "\thostgl_glShaderSource(shader, count, wide, lengths);",
                 "}",
                 "",
             ]
@@ -191,10 +228,14 @@ def main():
             # size)
             on_stack = integer_index >= arch.integer_registers
             integer_index += 1
-            if is_pointer:
-                if on_stack:
+            if is_pointer and base_register and OFFSET_ARGUMENTS.get(name) == index:
+                # (an offset: as it is)
+                host_params.append("unsigned long long")
+                call_args.append(f"(unsigned long long)(unsigned int){arg}")
+            elif is_pointer:
+                if on_stack or base_register:
                     host_params.append("unsigned long long")
-                    call_args.append(f"(unsigned long long)(unsigned int){arg}")
+                    call_args.append(wide_pointer(arg))
                 else:
                     host_params.append(ptype)
                     call_args.append(arg)

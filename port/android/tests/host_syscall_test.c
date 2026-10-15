@@ -120,11 +120,6 @@ static void *low_alloc(size_t size)
 	return result;
 }
 
-static uint32_t guest_address(const void *pointer)
-{
-	return (uint32_t)(uintptr_t)pointer;
-}
-
 static char *low_string(const char *text)
 {
 	char *result = low_alloc(strlen(text) + 1);

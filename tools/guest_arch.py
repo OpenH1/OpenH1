@@ -69,6 +69,11 @@ class GuestArch:
     # pointer, which belongs to the host, looks like (regular expressions,
     # tools/guest_image_check.py, matched ignoring case)
     thread_pointer_instructions: Tuple[str, ...]
+    # the code generation of a guest built for a base register
+    # (tools/guest_base_register.py, configure.py --guest-base): its memory
+    # wherever the host reserves it rather than in the low 4 GB; None for an
+    # architecture the rewrite does not know
+    base_register_flags: Optional[Tuple[str, ...]] = None
 
     def assembler_target(self, environment: str) -> str:
         """the triple the guest's assembly is assembled with, for the
@@ -128,6 +133,10 @@ ARM64_32 = GuestArch(
     zlib_flags=("-U__ARM_FEATURE_CRC32",),
     compiler_headers=False,
     thread_pointer_instructions=(r"\btpidr(ro)?_el0\b",),
+    # x21 holds the base, x22 is the rewrite's scratch register (and
+    # full-width jump tables: the rewrite moves code too far apart for the
+    # compressed ones' byte offsets)
+    base_register_flags=("-ffixed-x21", "-ffixed-x22", "-mllvm", "-aarch64-enable-compress-jump-tables=false"),
 )
 
 # x86-64 with 32-bit pointers: clang's x32 target (x86_64-linux-gnux32),

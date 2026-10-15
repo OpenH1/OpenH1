@@ -5,8 +5,8 @@ The enhanced dynamic lights (Video Setup > Graphics > Dynamic Lights,
 display.dynamic_lights "enhanced"; "classic", the default, is the game's
 own). The lights the game attaches to projectiles (plasma bolts, needles,
 rockets), muzzle flashes and explosions are drawn by the renderer
-(port/linux/src/d3d8_gl.c, nv2a_psh.c) for each pixel of the structure and
-of the models, through the structure's bump maps, with a softer, brighter
+(port/linux/src/d3d8_device.c, xgpu_gl.c, xgpu_glsl.c) for each pixel of
+the structure and of the models, through the structure's bump maps, with a softer, brighter
 falloff in linear light, and the projectiles' lights have a glow drawn about
 them. This is the game's side: each frame (lights_preprocess_scene), the
 lights it submits to the rasterizer, with what the renderer needs of each

@@ -51,7 +51,8 @@ def test_host_arch(tmp_path):
 
 def test_host_memory(tmp_path):
     run_test(tmp_path, "host_memory_test",
-             [TESTS / "host_memory_test.c", HOST / "host_arch.c", HOST / "host_watch_hash.c"])
+             [TESTS / "host_memory_test.c", HOST / "host_arch.c", HOST / "host_memory_watch.c",
+              HOST / "host_watch_hash.c"])
 
 
 def test_x32_boundary(tmp_path):

@@ -1,0 +1,105 @@
+/*
+XGPU_MSL.H
+
+Metal Shading Language from the shader intermediate form (xgpu_shader.h),
+for the Metal backend (the native macOS app): xgpu_msl.c. The programs are
+the GLSL emitter's (xgpu_glsl.c), spelled for Metal and its conventions:
+
+- clip space is Direct3D's (z 0 to 1, the first row at the top): the
+  position is the one the game's programs mean, nothing flipped;
+- vertex attributes come through a vertex descriptor ([[stage_in]]): the
+  attributes a program reads, at [[attribute(n)]] for v<n>. A D3DCOLOR is
+  MTLVertexFormatUChar4Normalized_BGRA (the shader reads it as RGBA, as
+  GL_BGRA gives it); NORMPACKED3 is MTLVertexFormatUInt, unpacked here; the
+  unnormalized shorts (D3DVSDT_SHORT1-4) are MTLVertexFormatShort1-4, read
+  as integers and converted here (Metal converts no integer format to
+  float); everything else is read as float4, the missing components 0, 0,
+  0, 1. An attribute the program reads that the declaration lacks is the
+  device's (D3DDevice_SetVertexData4f, 0, 0, 0, 1 at first): a buffer with
+  MTLVertexStepFunctionConstant;
+- the vertex constants (192 float4) are buffer XGPU_MSL_BUFFER_CONSTANTS of
+  the vertex stage (setVertexBytes: 3 KB); the draw's other values, struct
+  xgpu_msl_uniforms, buffer XGPU_MSL_BUFFER_UNIFORMS of both stages
+  (setVertexBytes and setFragmentBytes);
+- a texture and a sampler for each stage, [[texture(n)]] and [[sampler(n)]];
+  Metal samplers have no LOD bias, so D3DTSS_MIPMAPLODBIAS is the lookup's
+  (texture_lod_bias, as on OpenGL ES);
+- border colors Metal cannot hold (it has transparent black, opaque black
+  and opaque white; the motion tracker's is 0x46000000): the sampler clamps
+  to the edge, and the shader mixes the stage's color in where the
+  coordinates leave the texture (xgpu_msl_options border);
+- the VR mode's views are not (the Mac app is flat): a key's multiview is
+  drawn as none, a layered render target as its first layer.
+*/
+
+#ifndef __HALO_LINUX_XGPU_MSL_H
+#define __HALO_LINUX_XGPU_MSL_H
+
+/* the buffers' indices (the vertex streams are 0 to 15, the vertex
+descriptor's), the dynamic lights' cells' texture's */
+#define XGPU_MSL_BUFFER_CONSTANTS 16
+#define XGPU_MSL_BUFFER_UNIFORMS 17
+#define XGPU_MSL_BUFFER_DYNAMIC_LIGHTS 18
+#define XGPU_MSL_BUFFER_SAMPLES 19
+#define XGPU_MSL_TEXTURE_DYNAMIC_LIGHTS 4
+
+/* the draw's values both stages read, laid out alike in C and in Metal
+(float4s, and floats in fours): d3d8_gl.c's draw uniforms, the per-pixel
+lighting's model lights, the blend color the source factor takes in the
+shader, and each stage's border color */
+struct xgpu_msl_uniforms
+{
+	float viewport_scale[4];
+	float viewport_offset[4];
+	float point_size, screen_offset, alpha_reference, unused;
+	float ps_c0[8][4];
+	float ps_c1[8][4];
+	float ps_final_c0[4];
+	float ps_final_c1[4];
+	float fog_color[4];
+	float fog_parameters[4];
+	float bump_matrix[4][4];
+	float bump_luminance[4][4];
+	float texture_scale[4][4];
+	/* each stage's (x stage 0 ... w stage 3) */
+	float texture_lod_bias[4];
+	float blend_constant[4];
+	/* each stage's border color (RGBA, 0 to 1), and whether its sampler
+	filters linearly (1) or takes the nearest texel (0), for the stages
+	whose border the shader draws (xgpu_msl_options border) */
+	float texture_border[4][4];
+	float texture_border_linear[4];
+	float model_lights[XGPU_MODEL_LIGHT_COUNT][4];
+};
+
+/* what the Metal Shading Language is written for (xgpu_msl.c):
+- count_samples: the pixel shaders of a visibility test count their samples
+  themselves, an atomic counter at buffer XGPU_MSL_BUFFER_SAMPLES (else the
+  backend counts with a visibility result buffer, and the shaders do
+  nothing);
+- border: for each stage, the axes (bit 0 u, 1 v, 2 w) whose border color
+  the shader draws (its sampler clamping to the edge) where the sampler
+  cannot: part of the pipeline, as the pixel key is;
+- the pixel shaders' debugging settings, as the GLSL's. */
+struct xgpu_msl_options
+{
+	BOOL count_samples;
+	unsigned char border[4];
+	const char *debug_expression;
+	BOOL debug_texture0, debug_flat;
+};
+
+/* the vertex program (xgpu_shader.h) as a Metal vertex function,
+xgpu_vertex: packed_attribute_mask's attributes are NORMPACKED3,
+integer_attribute_mask's unnormalized shorts; with lighting (else NULL), the
+normal and world position go to the pixel shader too, as the GLSL's. Returns
+a malloc'd string. */
+char *xgpu_msl_vertex_shader(const struct xgpu_vertex_program *program, unsigned long packed_attribute_mask,
+	unsigned long integer_attribute_mask, const struct nv2a_vertex_lighting *lighting,
+	const struct xgpu_msl_options *options);
+
+/* the pixel program (xgpu_shader.h) as a Metal fragment function,
+xgpu_fragment. Returns a malloc'd string. */
+char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_msl_options *options);
+
+#endif

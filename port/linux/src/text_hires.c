@@ -19,7 +19,12 @@ scale (a window made fullscreen) or a full atlas starts it over.
 #include "text_hires.h"
 #include "platform.h"
 #include "port_config.h"
-#include "xgpu.h"
+#ifdef HALO_RENDER_STREAM
+/* (the renderer's backend is on the host: the pictures are images) */
+#include "xgpu_images.h"
+#else
+#include "xgpu_gl.h"
+#endif
 
 #include <math.h>
 #include <stdio.h>
@@ -69,7 +74,7 @@ static float atlas_scale;   /* the pixels per unit its glyphs have */
 static int pack_x, pack_y, pack_row_height;
 static int dirty_top = ATLAS_SIZE, dirty_bottom;
 static unsigned long placeholder_data, placeholder_width, placeholder_height;
-static GLuint atlas_texture;
+static unsigned int atlas_texture;
 
 /* tag names compared as the game does, ignoring case (and without the POSIX
 strcasecmp, which the Windows build has not) */
@@ -307,6 +312,18 @@ unsigned int text_hires_atlas_texture(unsigned long data)
 {
 	if (!data || data != placeholder_data || !atlas)
 		return 0;
+#ifdef HALO_RENDER_STREAM
+	/* (the host reads the atlas where it is, again once it has changed) */
+	if (!atlas_texture)
+		atlas_texture = xgpu_image_create(atlas, ATLAS_SIZE, ATLAS_SIZE, 1, XGPU_IMAGE_COVERAGE, FALSE);
+	if (dirty_top < dirty_bottom)
+	{
+		xgpu_image_changed(atlas_texture);
+		dirty_top = ATLAS_SIZE;
+		dirty_bottom = 0;
+	}
+	return atlas_texture;
+#else
 	if (!atlas_texture)
 	{
 		glGenTextures(1, &atlas_texture);
@@ -344,4 +361,5 @@ unsigned int text_hires_atlas_texture(unsigned long data)
 		}
 	}
 	return atlas_texture;
+#endif
 }

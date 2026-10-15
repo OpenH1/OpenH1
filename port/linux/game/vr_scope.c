@@ -9,7 +9,7 @@ On the flat screen the game zooms by narrowing the whole view. In the
 headset the eyes' view is the head's and cannot narrow: the zoom magnifies
 a view of its own instead, and the rest of the view stays as it was. Its
 view is drawn before the eyes' (render.c's scope pass) into an image of its
-own (d3d8_gl.c), which the compositor shows on a quad layer (vr.c,
+own (xgpu_gl.c), which the compositor shows on a quad layer (vr.c,
 host_vr.c), which the runtime reprojects to the head's latest pose as it
 does the eyes'. Two ways (vr.scope_view):
 
@@ -18,7 +18,7 @@ does the eyes'. Two ways (vr.scope_view):
   right stick's click zooms as the game does (its levels, from the last
   back to none), wherever the weapon is held, and while zoomed a 16:9
   window vr.smartlink_size wide is about the reticle, at its depth, facing
-  the head, drawn into both eyes' images over the weapon in hand (d3d8_gl.c,
+  the head, drawn into both eyes' images over the weapon in hand (xgpu_gl.c,
   vr.scope_gun). Its view is the weapon's sight's, drawn from the
   controller along the aim's line, its field of view the window's over the
   magnification, its own reticle in its middle on what the line meets. Any
@@ -94,7 +94,7 @@ distance from the axis times LOWER_MARGIN */
 angle the lens spans */
 #define NEAREST_EYE 0.02f
 /* the scope's view, its 480 lines in the middle of the 640x480 screen
-(d3d8_gl.c copies those into its image) */
+(xgpu_gl.c copies those into its image) */
 #define SCOPE_VIEW_LEFT 80
 #define SCOPE_VIEW_RIGHT 560
 /* the zoom shown in the lens this tall as the eye sees it (degrees), and
@@ -142,7 +142,7 @@ behind and the side (debug.vr_test_hands, view*.bmp: the compositor's
 placement; the game's debug lines are not where they should be in the
 eyes). The sniper rifle's display (its zoom's green waveform and dial, a
 hand's width across) is all about the lens at the eye, which shows the zoom
-itself (d3d8_gl.c). */
+itself (xgpu_gl.c). */
 struct vr_scope_definition
 {
 	char const *name;
@@ -334,7 +334,7 @@ static short vr_scope_seat_levels(long weapon_index, real magnifications[MAXIMUM
 }
 
 /* the scope's camera's view: the middle 480x480 of the screen, which
-d3d8_gl.c copies into its image; the rasterizer's camera the same */
+xgpu_gl.c copies into its image; the rasterizer's camera the same */
 static void vr_scope_camera_view(struct render_camera *camera, struct render_camera *rasterizer_camera)
 {
 	camera->mirrored = FALSE;
@@ -416,13 +416,13 @@ eyes (square to the line from between them to that point), up as the
 world's: each eye sees it where it sees the reticle, at its depth, and the
 head's turn and tilt do not move it nor turn it in the world (only the
 head's place does, a little), and it is level with the horizon, as the view
-in it is. d3d8_gl.c draws it into the eyes'
+in it is. xgpu_gl.c draws it into the eyes'
 images, over the weapon in hand (vr.scope_gun), under the HUD. Its view is
 the weapon's sight's, from the controller along the aim's line, as wide as
 the quad is from between the eyes over the magnification, its own reticle
 in its middle on what the line meets. As the game zooms it opens out from
 the reticle over WINDOW_OPEN_SECONDS, the view in it pushing in from the
-world's size to the zoom's as it grows (its feed connecting: d3d8_gl.c);
+world's size to the zoom's as it grows (its feed connecting: xgpu_gl.c);
 as it unzooms it shrinks back as its feed switches off, over
 WINDOW_CLOSE_SECONDS; from one level to the next its magnification eases,
 with a flicker. Unzoomed and closed, not shown (its
@@ -446,7 +446,7 @@ static boolean vr_scope_smartlink(struct render_camera *camera, struct render_ca
 	zoomed = zoom_level != NONE && magnification > 0.0f;
 	aimed = vr_render_scope_aim(&aim, &line_origin, &line_direction);
 
-	/* opening as the game zooms (its feed connecting: d3d8_gl.c), closing
+	/* opening as the game zooms (its feed connecting: xgpu_gl.c), closing
 	over WINDOW_CLOSE_SECONDS as it unzooms (at the level it showed), a
 	flicker as the level changes; always at its whole size and
 	magnification */

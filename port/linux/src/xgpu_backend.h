@@ -1,0 +1,575 @@
+/*
+XGPU_BACKEND.H
+
+The renderer's two halves and what passes between them. The front end
+(d3d8_device.c) is the Xbox Direct3D 8 device: it keeps the game's states
+and knows what they mean, and describes each draw in terms of no API: a
+pipeline key (everything a pipeline object bakes in: shaders, vertex
+layout, blend, depth and stencil, raster state, the targets' formats), the
+dynamic state no API bakes in (viewport, scissor, depth range, stencil
+reference, blend color, depth bias), the resources bound and the draw's
+range. A backend (xgpu_gl.c: OpenGL, OpenGL ES and WebGL) makes the GPU
+do it. One backend is built into an executable; the
+functions here are its.
+
+Nothing here holds an Xbox value or a GL one: the front end translates the
+game's D3D states into these, each backend into its API's. And every call
+is plain data, so that a frame's calls can be written into a command
+stream and played back elsewhere (the 64-bit host, a thread of its own):
+resources are small integers (render targets numbered by the front end),
+guest data is a guest address and a size (vertices, indices, textures are
+read from guest memory by the backend), structures are passed by value in
+effect (arrays and structures are the call's: the backend keeps no pointer
+into the front end's), and nothing is
+returned that the front end needs within the frame, but for the few calls
+marked "answered now" (each says how it could wait). Refer to "The
+renderer" in port/linux/README.md.
+*/
+
+#ifndef __HALO_LINUX_XGPU_BACKEND_H
+#define __HALO_LINUX_XGPU_BACKEND_H
+
+#include "xgpu.h"
+
+struct xgpu_vertex_program;
+
+/* a render target, numbered by the front end from 1 (0: none) */
+typedef unsigned int xgpu_target;
+
+/* ---------- what the backend can do (xgpu_backend_initialize) */
+
+struct xgpu_backend_capabilities
+{
+	/* the largest target each way (texture and renderbuffer), the most
+	samples a pixel, the most anisotropy (0 until the backend is ready) */
+	long largest_target;
+	int most_samples;
+	long most_anisotropy;
+	/* visibility tests counted by the pixel shaders (atomic counters)
+	rather than by queries */
+	BOOL sample_counting;
+	/* vertex streams' D3DCOLOR elements read as the Xbox has them (BGRA);
+	else streamed with their bytes swapped (OpenGL ES), never from the
+	mirror */
+	BOOL bgra_vertex_colors;
+	/* indexed draws from the mirror (a base vertex for them) */
+	BOOL base_vertex;
+	/* an alpha test covering a multisampled pixel's samples in proportion
+	to alpha (a sample mask) */
+	BOOL sample_mask;
+	/* a blend mixing a constant color factor with a constant alpha one
+	(else the pixel shader applies the source factor: WebGL) */
+	BOOL mixed_constant_blend;
+	/* the enhanced dynamic lights (display.dynamic_lights) */
+	BOOL dynamic_lights;
+	/* a draw can sample the target it draws into, as it was (else a copy
+	of it: WebGL, xgpu_texture_source's drawn) */
+	BOOL sample_drawn_target;
+};
+
+extern struct xgpu_backend_capabilities xgpu_backend_capabilities;
+
+/* ---------- the backend's life
+
+xgpu_backend_initialize: the window's context exists (answered as the
+device is made: the capabilities). xgpu_backend_invalidate: something drew behind the
+backend's back (the state it remembers setting is unknown). */
+
+void xgpu_backend_initialize(void);
+void xgpu_backend_invalidate(void);
+/* the commands so far to the GPU (D3DDevice_KickPushBuffer) */
+void xgpu_backend_flush(void);
+/* display.anti_aliasing's FXAA or SMAA passes, made now (logged if they do
+not build); and the passes run over a target's corners (x0, y0, x1, y1 in
+its pixels from row 0) */
+void xgpu_backend_anti_aliasing_prepare(BOOL smaa);
+void xgpu_backend_anti_alias(xgpu_target target, BOOL smaa, const long corners[4]);
+
+/* ---------- render targets
+
+The front end finds a target by the Xbox surface it is (its address, its
+size, its kind: the screen's, a shadow map, the VR mode's layered eye
+targets) and numbers it; the backend makes its storage from its
+description, and frees it. A target can be multisampled: drawn into a
+multisampled attachment, resolved into its texture before anything reads
+it. */
+
+struct xgpu_target_description
+{
+	/* its size in pixels; a depth and stencil target (else color); its
+	layers (1; 2 for the VR mode's eyes, a layer each, drawn into with
+	multiview; 4 foveated: xgpu_foveated) */
+	unsigned long width, height;
+	BOOL depth;
+	int layers;
+};
+
+void xgpu_backend_target_create(xgpu_target target, const struct xgpu_target_description *description);
+void xgpu_backend_target_delete(xgpu_target target);
+/* the target drawn into with these samples a pixel (0: none, its own
+texture); and its multisampled pixels into its texture */
+void xgpu_backend_target_multisample(xgpu_target target, int samples);
+void xgpu_backend_target_resolve(xgpu_target target);
+
+/* draws go to color and depth from now on (0 for none), color's VR HUD
+group's target instead where hud_group is one (vr.h's HALO_VR_HUD_GROUP_*,
+else -1); views: the layers drawn at once from layer base (1, or 2 or 4 with
+multiview), or -1 or -2 the first or second layer alone; samples: into
+their multisampled attachments (0: their textures) */
+void xgpu_backend_set_targets(xgpu_target color, int hud_group, xgpu_target depth, int views, int base, int samples);
+
+/* clears the bound targets' rectangles (left, top from the first row,
+width, height, in their pixels; count of them): XGPU_CLEAR_* */
+enum
+{
+	XGPU_CLEAR_RED = 1, XGPU_CLEAR_GREEN = 2, XGPU_CLEAR_BLUE = 4, XGPU_CLEAR_ALPHA = 8,
+	XGPU_CLEAR_COLOR = 16, XGPU_CLEAR_DEPTH = 32, XGPU_CLEAR_STENCIL = 64,
+};
+void xgpu_backend_clear(unsigned long flags, const float color[4], float depth, unsigned long stencil,
+	const long (*rectangles)[4], unsigned long count);
+/* a target cleared whole to color, outside any draw */
+void xgpu_backend_clear_target(xgpu_target target, const float color[4]);
+
+/* a target's pixels (a layer of a layered one, or -1) as BGRA rows from
+its first, malloc'd (raw: as the API reads them, BGRA or not: the key's
+screenshot, as before). Answered now; a screenshot can wait for the
+frame's end. */
+unsigned char *xgpu_backend_read_target(xgpu_target target, int layer, BOOL raw);
+
+/* ---------- textures */
+
+/* how a texture is sampled */
+enum
+{
+	XGPU_TEXTURE_KIND_2D, XGPU_TEXTURE_KIND_3D, XGPU_TEXTURE_KIND_CUBE, XGPU_TEXTURE_KIND_2D_ARRAY,
+};
+
+/* an Xbox texture's description as its cache has it (its levels, and
+whether a high-res replacement is drawn in its place: text_hires.c,
+menu_files.c, hud_hires.c), the texture made or refreshed from guest memory
+now (xbox_textures.c). Answered now: the replacements are found by the
+texture's address, which the front end could do itself once the
+replacements' bookkeeping leaves their GL textures (a later step). */
+void xgpu_backend_texture_describe(DWORD resource, DWORD palette, struct xgpu_texture_description *description,
+	int *kind);
+
+enum
+{
+	XGPU_FILTER_NONE, XGPU_FILTER_POINT, XGPU_FILTER_LINEAR, XGPU_FILTER_ANISOTROPIC,
+};
+
+enum
+{
+	XGPU_ADDRESS_WRAP, XGPU_ADDRESS_MIRROR, XGPU_ADDRESS_CLAMP, XGPU_ADDRESS_BORDER,
+};
+
+/* a sampler (zeroed, then filled: compared whole) */
+struct xgpu_sampler
+{
+	/* XGPU_FILTER_*: minification, between mip levels (none: no mip
+	levels), magnification */
+	unsigned char minify, mip, magnify;
+	/* XGPU_ADDRESS_* */
+	unsigned char address[3];
+	unsigned char pad[2];
+	float lod_bias;
+	/* the most detailed level sampled */
+	unsigned long first_level;
+	unsigned long anisotropy;
+	/* ARGB, 8 bits each */
+	unsigned long border_color;
+};
+
+/* what a stage samples */
+enum
+{
+	XGPU_SOURCE_NONE,
+	/* an Xbox texture: its header's guest address, its palette's (0 none) */
+	XGPU_SOURCE_TEXTURE,
+	/* a render target; with mip levels (levels more than 0), its levels'
+	targets (each the written serial it has: copied again when it
+	changes), the levels past them made from the last; drawn: the target
+	the draw draws into (a backend that cannot sample it samples a copy) */
+	XGPU_SOURCE_TARGET,
+};
+
+#define XGPU_MIP_LEVELS 16
+
+struct xgpu_texture_source
+{
+	unsigned char source;
+	/* how its shader samples it (_xgpu_sampler_*: xgpu.h) */
+	unsigned char sampler_type;
+	/* bound for a stage that samples nothing (the pixel shader's dot
+	product stage) */
+	unsigned char sampled;
+	unsigned char pad;
+	DWORD resource, palette;
+	/* (and the target's written serial) */
+	xgpu_target target, drawn;
+	unsigned long written;
+	unsigned long data, width, height, levels, rendered_levels;
+	xgpu_target level_targets[XGPU_MIP_LEVELS];
+	unsigned long level_written[XGPU_MIP_LEVELS];
+	struct xgpu_sampler sampler;
+};
+
+void xgpu_backend_set_textures(const struct xgpu_texture_source stages[4]);
+
+/* ---------- pipelines */
+
+/* the vertex constants c[first .. first + count) (hardware registers: c[-96]
+is 0) set to values, as the game sets them; the backend keeps them, and
+uploads to each program only what changed since it last had them */
+void xgpu_backend_set_constants(unsigned long first, const float (*values)[4], unsigned long count);
+
+/* the vertex constant register of each of the per-pixel lighting's
+(XGPU_MODEL_LIGHT_COUNT): c[-82], then c[-79] to c[-69] */
+#define XGPU_MODEL_LIGHT_REGISTER(light) ((unsigned long)(XGPU_VERTEX_CONSTANT_BIAS + ((light) ? -80 + (light) : -82)))
+
+/* the uniforms a draw sets besides the vertex constants, converted from
+the render and texture stage states */
+struct xgpu_draw_uniforms
+{
+	float viewport_scale[4];
+	float viewport_offset[4];
+	float point_size;
+	float ps_c0[8][4];
+	float ps_c1[8][4];
+	float ps_final_c0[4];
+	float ps_final_c1[4];
+	float fog_color[4];
+	float fog_parameters[4];
+	float alpha_reference;
+	float bump_matrix[4][4];
+	float bump_luminance[4][4];
+	float texture_scale[4][4];
+	float screen_offset;
+	float texture_lod_bias[4];
+};
+
+/* ---------- the pipeline key's values */
+
+enum
+{
+	XGPU_COMPARE_NEVER, XGPU_COMPARE_LESS, XGPU_COMPARE_EQUAL, XGPU_COMPARE_LESS_EQUAL, XGPU_COMPARE_GREATER,
+	XGPU_COMPARE_NOT_EQUAL, XGPU_COMPARE_GREATER_EQUAL, XGPU_COMPARE_ALWAYS,
+};
+
+enum
+{
+	XGPU_BLEND_ZERO, XGPU_BLEND_ONE, XGPU_BLEND_SOURCE_COLOR, XGPU_BLEND_ONE_MINUS_SOURCE_COLOR,
+	XGPU_BLEND_SOURCE_ALPHA, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA, XGPU_BLEND_DESTINATION_ALPHA,
+	XGPU_BLEND_ONE_MINUS_DESTINATION_ALPHA, XGPU_BLEND_DESTINATION_COLOR, XGPU_BLEND_ONE_MINUS_DESTINATION_COLOR,
+	XGPU_BLEND_SOURCE_ALPHA_SATURATE, XGPU_BLEND_CONSTANT_COLOR, XGPU_BLEND_ONE_MINUS_CONSTANT_COLOR,
+	XGPU_BLEND_CONSTANT_ALPHA, XGPU_BLEND_ONE_MINUS_CONSTANT_ALPHA,
+};
+
+enum
+{
+	XGPU_BLEND_ADD, XGPU_BLEND_SUBTRACT, XGPU_BLEND_REVERSE_SUBTRACT, XGPU_BLEND_MIN, XGPU_BLEND_MAX,
+};
+
+enum
+{
+	XGPU_STENCIL_KEEP, XGPU_STENCIL_ZERO, XGPU_STENCIL_REPLACE, XGPU_STENCIL_INCREMENT_CLAMP,
+	XGPU_STENCIL_DECREMENT_CLAMP, XGPU_STENCIL_INVERT, XGPU_STENCIL_INCREMENT_WRAP, XGPU_STENCIL_DECREMENT_WRAP,
+};
+
+enum
+{
+	XGPU_FILL_SOLID, XGPU_FILL_LINES, XGPU_FILL_POINTS,
+};
+
+/* the color write mask's bits */
+enum
+{
+	XGPU_WRITE_RED = 1, XGPU_WRITE_GREEN = 2, XGPU_WRITE_BLUE = 4, XGPU_WRITE_ALPHA = 8,
+};
+
+/* the targets' formats */
+enum
+{
+	XGPU_FORMAT_NONE, XGPU_FORMAT_BGRA8, XGPU_FORMAT_D24S8,
+};
+
+/* the vertex shader's lighting variant: none, a model lighting program's
+for each pixel (its lights: 1 the ambient and distant lights, 2 the point
+lights too), a structure's lightmap pass's for the enhanced dynamic lights */
+enum
+{
+	XGPU_LIGHTING_NONE, XGPU_LIGHTING_MODEL, XGPU_LIGHTING_MODEL_POINT, XGPU_LIGHTING_ENVIRONMENT,
+};
+
+/* ---------- the pipeline key
+
+Zeroed before it is filled (keys are hashed and compared whole). */
+
+struct xgpu_pipeline_key
+{
+	/* the vertex program (its microcode's hash: xgpu_shader.h), drawn from
+	immediate mode's registers (all floats) or from streams with these
+	attributes packed (NORMPACKED3), lit as XGPU_LIGHTING_*, into these
+	views (XGPU_MULTIVIEW_*: xgpu.h) */
+	unsigned long long vertex_program;
+	unsigned long packed_attributes;
+	/* (the stencil masks tested and written: below) */
+	unsigned long stencil_read_mask, stencil_write_mask;
+	unsigned char immediate, lighting, views;
+	/* blend: enabled, the source and destination factors (XGPU_BLEND_*) and
+	the operation, and the channels written (XGPU_WRITE_*) */
+	unsigned char blend, blend_source, blend_destination, blend_operation;
+	unsigned char color_mask;
+	/* depth: tested (XGPU_COMPARE_*), written */
+	unsigned char depth_test, depth_function, depth_write;
+	/* stencil: tested, the operations where the stencil test fails, where
+	the depth test does, and where both pass (XGPU_STENCIL_*), and the masks
+	(above) */
+	unsigned char stencil_test, stencil_function, stencil_fail, stencil_depth_fail, stencil_pass;
+	/* raster: culled; the front faces' winding where the Xbox's screen has
+	them (rows from the top), counter-clockwise or not, and the front faces
+	culled (else the back); filled (XGPU_FILL_*); depth biased (the bias is
+	dynamic) */
+	unsigned char cull, front_counter_clockwise, cull_front;
+	unsigned char fill, depth_bias;
+	/* the targets: their formats (XGPU_FORMAT_*) and samples a pixel */
+	unsigned char color_format, depth_format, samples;
+	unsigned char pad[2];
+	/* the pixel shader */
+	struct nv2a_pixel_shader_key pixel;
+};
+
+/* ---------- dynamic state */
+
+struct xgpu_dynamic_state
+{
+	/* the viewport and the scissor rectangle in the targets' pixels (left,
+	top from the first row, width, height), the depth range */
+	long viewport[4];
+	long scissor[4];
+	float depth_range[2];
+	/* the stencil test's reference; the blend color (RGBA, 0 to 1); the
+	depth bias, its slope factor and its offset in the depth's units */
+	unsigned long stencil_reference;
+	float blend_color[4];
+	float depth_bias[2];
+};
+
+/* a vertex program the keys name (by its hash), as the game makes it (id:
+the vertex shader's number, for the logs), and where a model lighting
+program has its normal and position (nv2a_vertex_shader_lighting), for its
+per-pixel lighting */
+void xgpu_backend_vertex_program(unsigned long id, const struct xgpu_vertex_program *program);
+void xgpu_backend_vertex_lighting(unsigned long long program, const struct nv2a_vertex_lighting *lighting);
+
+/* makes the pipeline of a key the draws' from now on, made the first time;
+FALSE if its shaders do not build. Answered now (a draw lit for each pixel
+falls back to the vertex's lighting when its shaders fail); it could wait:
+the backend would fall back itself and say so for the frames after. */
+BOOL xgpu_backend_pipeline(const struct xgpu_pipeline_key *key);
+/* the pipeline's state, the dynamic state and the uniforms (converted
+anew when uniforms_serial changes) set for the draws that follow */
+void xgpu_backend_draw_state(const struct xgpu_dynamic_state *dynamic, const struct xgpu_draw_uniforms *uniforms,
+	unsigned long uniforms_serial);
+
+/* ---------- vertices and draws */
+
+/* a vertex declaration's element formats */
+enum
+{
+	XGPU_VERTEX_NONE_FORMAT,
+	XGPU_VERTEX_FLOAT1, XGPU_VERTEX_FLOAT2, XGPU_VERTEX_FLOAT3, XGPU_VERTEX_FLOAT4,
+	/* 4 bytes, BGRA, 0 to 1 */
+	XGPU_VERTEX_COLOR,
+	XGPU_VERTEX_SHORT1, XGPU_VERTEX_SHORT2, XGPU_VERTEX_SHORT3, XGPU_VERTEX_SHORT4,
+	/* signed, -1 to 1 */
+	XGPU_VERTEX_NORMSHORT1, XGPU_VERTEX_NORMSHORT2, XGPU_VERTEX_NORMSHORT3, XGPU_VERTEX_NORMSHORT4,
+	/* unsigned bytes, 0 to 1 */
+	XGPU_VERTEX_BYTE1, XGPU_VERTEX_BYTE2, XGPU_VERTEX_BYTE3, XGPU_VERTEX_BYTE4,
+	/* 11, 11 and 10 bits in a 32-bit integer, unpacked by the vertex shader */
+	XGPU_VERTEX_PACKED3,
+	/* three floats read as the Xbox's two and a w (FLOAT2H) */
+	XGPU_VERTEX_FLOAT2H,
+};
+
+struct xgpu_vertex_element
+{
+	unsigned char reg;
+	unsigned char stream;
+	/* XGPU_VERTEX_*, and its bytes */
+	unsigned char format;
+	unsigned char bytes;
+	unsigned short offset;
+};
+
+/* the contiguous window's mirror (d3d8_device.c): guest memory held in the
+backend's buffers, a segment of XGPU_MIRROR_SEGMENT_SIZE bytes each, written
+by the page from guest memory (unused: no draw yet has read the pages) */
+#define XGPU_MIRROR_SEGMENT_SIZE 0x400000UL
+void xgpu_backend_mirror_write(unsigned long segment, unsigned long offset, unsigned long size, const void *data,
+	BOOL unused);
+
+/* the vertices a draw reads: its declaration (a number the backend may
+cache its layout by: the vertex shader's, the front end's; its elements and
+the inputs fed NORMPACKED3), each stream's vertices (from the draw's first:
+in the mirror's segment at offset, or segment -1 and streamed from guest
+memory at data, bytes of them), and the values of the inputs no stream
+feeds */
+struct xgpu_vertex_input
+{
+	unsigned long declaration;
+	unsigned long element_count;
+	struct xgpu_vertex_element elements[XGPU_VERTEX_ATTRIBUTE_COUNT];
+	unsigned long packed_mask;
+	struct
+	{
+		BOOL present;
+		long segment;
+		unsigned long offset;
+		unsigned long data;
+		unsigned long bytes;
+		unsigned long stride;
+	} streams[16];
+	float attributes[XGPU_VERTEX_ATTRIBUTE_COUNT][4];
+};
+
+void xgpu_backend_set_vertices(const struct xgpu_vertex_input *input);
+
+/* primitives (the Xbox's quads made triangles by the front end) */
+enum
+{
+	XGPU_POINTS, XGPU_LINES, XGPU_LINE_LOOP, XGPU_LINE_STRIP, XGPU_TRIANGLES, XGPU_TRIANGLE_STRIP,
+	XGPU_TRIANGLE_FAN,
+};
+
+/* draws count vertices; or indices, uploaded, of the vertices from the
+streams' first; or an indexed draw whose indices are vertices from minimum
+on (the streams' first), from the mirror (segment 0 or more) or streamed
+from guest memory (temporary: the front end's, made for this draw, which a
+backend keeping index arrays drawn again and again must not keep: WebGL's,
+which has no base vertex) */
+void xgpu_backend_draw(int primitive, unsigned long count);
+void xgpu_backend_draw_indices(int primitive, const WORD *indices, unsigned long count);
+void xgpu_backend_draw_indexed(int primitive, const WORD *indices, unsigned long count, unsigned long minimum,
+	long segment, unsigned long offset, BOOL temporary);
+/* immediate mode: count vertices of all 16 registers (four floats each),
+the registers written (a bit each), the others' values (attributes); the
+quads' triangles' indices when there are some */
+void xgpu_backend_draw_immediate(int primitive, const float *vertices, unsigned long count, unsigned long written,
+	const float (*attributes)[4], const WORD *indices, unsigned long index_count);
+
+/* ---------- visibility (occlusion) tests
+
+A test counts the samples its draws pass into a slot; the result is in the
+game's pixels: the front end gives the target's pixels for each of the
+game's (area), the views drawn at once (the VR mode's eyes) and the samples
+a pixel, which the backend divides by as its way of counting needs. */
+
+#define XGPU_VISIBILITY_TEST_SLOTS 4096
+
+void xgpu_backend_visibility_begin(void);
+void xgpu_backend_visibility_end(unsigned long slot, float area, int views, int samples);
+/* the latest count known for the slot (0: none yet). Answered now; it
+could wait: the counts are a frame or more old already (the GPU's), and a
+backend elsewhere would write them into guest memory the front end reads
+(only OpenGL ES 3.0's queries, read as soon as each is available, would
+then be read once a frame) */
+UINT xgpu_backend_visibility_result(unsigned long slot);
+
+/* ---------- frames */
+
+/* the end of a frame's commands: the flat screen's (the back buffer,
+letterboxed into the window, then the window shown; the visibility tests
+copied out first) */
+void xgpu_backend_visibility_frame(void);
+void xgpu_backend_present(xgpu_target back_buffer);
+/* after either present: textures, streamed data and counters for the
+next frame */
+void xgpu_backend_frame_end(void);
+
+/* ---------- enhanced dynamic lights (display.dynamic_lights)
+
+The front end works out which lights reach which of the grid's cells
+(xgpu.h); the backend holds the block and the cells, and draws the
+glows. */
+
+/* the block and cells made, the first time; FALSE if they cannot be
+(answered now; it could wait: the lights would be classic from the next
+frame on) */
+BOOL xgpu_backend_dynamic_lights_prepare(void);
+void xgpu_backend_dynamic_lights_upload(const struct xgpu_dynamic_lights_block *block, const void *cells);
+
+/* the glows: each one's middle and size, its color, two vec4 each; the
+camera's right and up; the world's projection (c[-96] to c[-93]) and the
+screen conversion (c[-38], c[-37]) and the viewport's, as the structure's
+lightmap pass began; the camera's position; the glow's softness against
+what it meets (world units); the menus' screen offset */
+struct xgpu_dynamic_lights_halos
+{
+	int count;
+	float halos[XGPU_DYNAMIC_LIGHTS_MAXIMUM * 2][4];
+	float camera_right[3], camera_up[3];
+	float projection[6][4];
+	float viewport_scale[4], viewport_offset[4];
+	float camera[3];
+	float softness;
+	float screen_offset;
+};
+
+void xgpu_backend_dynamic_lights_halos(xgpu_target color, xgpu_target depth, int layers,
+	const struct xgpu_dynamic_lights_halos *halos);
+
+/* ---------- the VR mode (HALO_VR; vr.h): the backend's part
+
+The front end keeps the passes (vr.h's HALO_VR_PASS_*) and which views a
+draw goes to; the backend holds the eyes' images and the foveated layers,
+the HUD groups' targets, the eye corrections (halo_vr_set_eye_transforms),
+and composes the frame for OpenXR at the present (xgpu_gl.c). */
+
+/* in: the eyes', HUD's and scope's sizes, debug.gpu_stats; out: the eye
+pass foveated (vr.foveation: xgpu_foveated) and its layers' size, the
+visibility tests counted in the pixel shaders */
+struct xgpu_vr_info
+{
+	int eye_width, eye_height;
+	int hud_width, hud_height;
+	int scope_size;
+	BOOL statistics;
+	BOOL foveated;
+	int fovea_width, fovea_height;
+};
+
+/* the backend can draw both eyes at once (FALSE: playing flat, logged).
+Both answered as the device is made, before any frame. */
+BOOL xgpu_backend_vr_supported(void);
+void xgpu_backend_vr_initialize(struct xgpu_vr_info *info);
+/* the eye pass begins: the eyes' target (eye_target, the back buffer's in
+the eye pass) is drawn into this frame: the eyes' swapchain image (image,
+OpenXR's), or foveated, the four layers made into it at the present */
+void xgpu_backend_vr_eyes(xgpu_target eye_target, unsigned int image);
+/* a pass begins (HALO_VR_PASS_*) */
+void xgpu_backend_vr_pass(int pass);
+/* the HUD's groups' targets (xgpu_backend_set_targets' hud_group) are
+cleared as each is first drawn into in a frame: from now on */
+void xgpu_backend_vr_groups_reset(void);
+/* debug.gpu_stats: a frame's marks (vr_timing) */
+void xgpu_backend_vr_timing(int mark);
+
+/* the present: compose (the fovea's layers into the eyes' images, the
+cockpit display, the scope's view, the feed, tint, vignette, rim and visor,
+the eyes' depth, the HUD and its panels into their images), then submit the
+frame to OpenXR; the targets each pass drew (NULL if it did not) */
+struct xgpu_vr_frame
+{
+	BOOL eyes_drawn, hud_drawn, scope_drawn;
+	/* the HUD has panels (vr_visor.c): its groups' targets copied into
+	their images */
+	BOOL hud_panels;
+	xgpu_target eye_target, eye_depth, scope, hud;
+	int eye_depth_layers;
+};
+
+void xgpu_backend_vr_compose(const struct xgpu_vr_frame *frame);
+void xgpu_backend_vr_submit(const struct xgpu_vr_frame *frame, BOOL screenshot);
+
+#endif

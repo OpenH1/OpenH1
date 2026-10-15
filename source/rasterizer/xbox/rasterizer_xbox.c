@@ -1279,7 +1279,7 @@ void rasterizer_set_model_skinning(
 	{
 		/* port: the VR mode's left-hander's first-person weapon and hands
 		are mirrored, their nodes' axes left-handed (port/linux/game/
-		vr_hands.c): their triangles wound the other way (d3d8_gl.c), until
+		vr_hands.c): their triangles wound the other way (d3d8_device.c), until
 		the next model's nodes or the model's end */
 		extern int halo_vr_left_handed(void);
 		extern void halo_vr_mirrored_draws(int mirrored);
@@ -2426,7 +2426,7 @@ void _rasterizer_frame_end(
 
 /* The native ports can change the width of the screen between frames (F11
 switches the desktop builds between fullscreen at the display's shape and a
-640x480 window: halo_screen_commit, port/linux/src/d3d8_gl.c, which resizes
+640x480 window: halo_screen_commit, port/linux/src/d3d8_device.c, which resizes
 the back buffer). The screen and the title-safe frame follow, as set up in
 rasterizer_initialize, and so do the textures the game made of the back
 buffer and its copy. */

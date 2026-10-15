@@ -108,7 +108,7 @@ UNUSED = {
     "hud/bitmaps/combined/hud_ammo_meters.svg",
 }
 # how each redraw's texels are written, by its PC bitmap's format (as the
-# Xbox decodes that format: xbox_textures.c, convert_texel): AY8 is its one
+# Xbox decodes that format: xbox_texture_decode.c, convert_texel): AY8 is its one
 # value in every channel (the HUD blends premultiplied), A8Y8 grey and alpha,
 # A8 white with alpha, Y8 grey and opaque, colour formats as drawn; DXT ones
 # as drawn with the colour carried into the transparent texels, as theirs is
@@ -275,7 +275,7 @@ def decode_dxt(kind: str, data: bytes, width: int, height: int) -> np.ndarray:
 
 
 def decode_bitmap(bitmap: dict) -> np.ndarray:
-    """An Xbox HUD bitmap's level 0 as RGBA, as xbox_textures.c decodes it."""
+    """An Xbox HUD bitmap's level 0 as RGBA, as xbox_texture_decode.c decodes it."""
     width, height, kind = bitmap["width"], bitmap["height"], FORMATS[bitmap["format"]]
     pixels = np.frombuffer(bitmap["pixels"][:level0_size(bitmap)], np.uint8)
     if kind.startswith("dxt"):
@@ -733,7 +733,7 @@ def coverage(alpha: np.ndarray) -> np.ndarray:
     outline (covered texels next to uncovered ones) the share their alpha has
     of their brightest neighbour's. The meter shader reads only blue and
     alpha; the game eases the meter's darkening of what is behind it by this
-    (port/linux/src/nv2a_psh.c, coverage_alpha), which on the Xbox stopped at
+    (port/linux/src/xgpu_glsl.c, coverage_alpha), which on the Xbox stopped at
     its point-sampled texels' edges, and filtered would leave a dark fringe."""
     from scipy import ndimage
 

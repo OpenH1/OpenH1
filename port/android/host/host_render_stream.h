@@ -1,0 +1,173 @@
+/*
+HOST_RENDER_STREAM.H
+
+The host's half of the renderer's command stream (port/linux/src/xgpu_stream.h):
+a render thread that plays the guest's records into a backend on the host
+(Metal on macOS; the OpenGL backend, moved to the host, on the Steam
+Frame), and the guest's imports that hand it the frames
+(host_render_stream.c).
+
+A backend is a table of functions, one for each kind of record, called on
+the render thread in the records' order. Most take the record itself, in
+place in the ring (4-byte aligned, valid during the call); guest addresses
+in it are the host's at host_address() / host_pointer() (host.h). The
+render thread keeps what the records change piece by piece (the textures'
+stages, the vertex input, the draw state, the pipelines' keys) and hands
+the backend the whole of it. An entry left NULL is skipped (a synchronous
+record's answer is then zeros).
+
+Inline data (in the ring, or in a buffer of its own when too large for it)
+stays as it is until the backend's fence after it has been waited for: the
+backend can draw from it in place, without a copy (the ring is one range
+of host memory: ring and ring_size, given at open). That holds for the
+vertex input's streamed data too, which the draws after set_vertices read:
+the guest sends it again before a draw that a fence could come between.
+What a backend keeps for later draws and frames (constants, uniforms, the
+lights, mirror writes into its segments) it copies during the call. Data
+named in place (textures, palettes, a synchronous record's) is the game's
+and can change at any time, as on the Xbox.
+*/
+
+#ifndef __HALO_HOST_RENDER_STREAM_H
+#define __HALO_HOST_RENDER_STREAM_H
+
+#include <stdint.h>
+
+#include "xgpu_stream.h"
+
+/* the vertex input a draw reads: its layout (as LAYOUT_DEFINE made it),
+the streams present (bits of present) and the values of the inputs no
+stream feeds (all 16, the last values sent) */
+struct host_render_vertex_input
+{
+	const struct xgpu_stream_layout_define *layout;
+	uint32_t present;
+	struct xgpu_stream_vertex_stream streams[16];
+	float attributes[16][4];
+};
+
+/* a stage's texture source and its levels */
+struct host_render_texture_stage
+{
+	struct xgpu_stream_texture_stage stage;
+	struct xgpu_stream_texture_level levels[XGPU_STREAM_MIP_LEVELS];
+};
+
+struct host_render_backend
+{
+	void *context;
+
+	/* the stream begins: the ring's host address and size (to wrap in a
+	GPU buffer: inline data's host address less ring is its offset), and
+	where the visibility tests' counts go (the backend writes slot s's
+	latest count to visibility[s] whenever it learns it, from any thread) */
+	void (*open)(void *context, void *ring, uint32_t ring_size, volatile uint32_t *visibility);
+
+	/* the GPU's progress: fence marks the work recorded so far and sends
+	it to the GPU (Metal: commits the command buffer; GL: glFenceSync and
+	a flush), returning a number that grows; wait returns once the GPU has
+	done the work of that fence and those before. Called on the render
+	thread at each frame's end, and whenever the guest waits for room. */
+	uint64_t (*fence)(void *context);
+	void (*wait)(void *context, uint64_t fence);
+
+	void (*initialize)(void *context, struct xgpu_stream_capabilities *capabilities);
+	void (*invalidate)(void *context);
+	void (*flush)(void *context);
+	void (*anti_aliasing_prepare)(void *context, uint32_t smaa);
+	void (*anti_alias)(void *context, const struct xgpu_stream_anti_alias *record);
+
+	void (*target_create)(void *context, const struct xgpu_stream_target_create *record);
+	void (*target_delete)(void *context, uint32_t target);
+	void (*target_multisample)(void *context, const struct xgpu_stream_target_multisample *record);
+	void (*target_resolve)(void *context, uint32_t target);
+	void (*set_targets)(void *context, const struct xgpu_stream_set_targets *record);
+	void (*clear)(void *context, const struct xgpu_stream_clear *record);
+	void (*clear_target)(void *context, const struct xgpu_stream_clear_target *record);
+	/* pixels: host_pointer(record->pixels), record->size bytes; returns
+	nonzero if written */
+	int (*read_target)(void *context, const struct xgpu_stream_read_target *record);
+
+	void (*set_textures)(void *context, const struct host_render_texture_stage stages[4]);
+
+	void (*set_constants)(void *context, const struct xgpu_stream_constants *record);
+	void (*vertex_program)(void *context, const struct xgpu_stream_vertex_program *record);
+	void (*vertex_lighting)(void *context, const struct xgpu_stream_vertex_lighting *record);
+	/* a pipeline id's key, as it is defined (the backend may make it
+	now, or at its first use) */
+	void (*pipeline_define)(void *context, const struct xgpu_stream_pipeline_define *record);
+	/* the pipeline the draws use from now on; nonzero if it is made (its
+	state goes back to the guest: XGPU_STREAM_PIPELINE_*) */
+	int (*pipeline)(void *context, uint32_t id, const struct xgpu_stream_pipeline_define *definition);
+	/* the latest of each, whichever changed */
+	void (*draw_state)(void *context, const struct xgpu_stream_dynamic_state *dynamic,
+		const struct xgpu_stream_draw_uniforms *uniforms, uint32_t uniforms_serial);
+
+	void (*mirror_write)(void *context, const struct xgpu_stream_mirror_write *record);
+	void (*set_vertices)(void *context, const struct host_render_vertex_input *input);
+	void (*draw)(void *context, const struct xgpu_stream_draw *record);
+	void (*draw_indices)(void *context, const struct xgpu_stream_draw_indices *record);
+	void (*draw_indexed)(void *context, const struct xgpu_stream_draw_indexed *record);
+	/* attributes: the 16 registers' values outside the vertices (the last
+	immediate draws sent: set_vertices' are its own) */
+	void (*draw_immediate)(void *context, const struct xgpu_stream_draw_immediate *record,
+		const float (*attributes)[4]);
+
+	void (*visibility_begin)(void *context);
+	void (*visibility_end)(void *context, const struct xgpu_stream_visibility_end *record);
+	void (*visibility_frame)(void *context);
+
+	void (*present)(void *context, uint32_t back_buffer);
+	void (*frame_end)(void *context);
+
+	/* nonzero if the block and cells are made */
+	int (*dynamic_lights_prepare)(void *context);
+	void (*dynamic_lights_upload)(void *context, const struct xgpu_stream_dynamic_lights_upload *record);
+	void (*dynamic_lights_halos)(void *context, const struct xgpu_stream_dynamic_lights_halos *record);
+
+	int (*vr_supported)(void *context);
+	void (*vr_initialize)(void *context, struct xgpu_stream_vr_info *info);
+	void (*vr_eyes)(void *context, const struct xgpu_stream_vr_eyes *record);
+	void (*vr_pass)(void *context, int32_t pass);
+	void (*vr_groups_reset)(void *context);
+	void (*vr_timing)(void *context, int32_t mark);
+	void (*vr_compose)(void *context, const struct xgpu_stream_vr_frame *frame);
+	/* the frame to OpenXR: the place to take the newest head pose */
+	void (*vr_submit)(void *context, const struct xgpu_stream_vr_frame *frame, uint32_t screenshot);
+};
+
+/* the backend the streams play into: set by the platform's host before
+the guest starts (macOS: the Metal backend). Without one,
+host_render_stream_open fails and the guest keeps its own renderer. */
+void host_render_stream_set_backend(const struct host_render_backend *backend);
+
+/* ---------- the guest's imports (guest_host.h) */
+
+/* the stream at the guest's ring header (xgpu_stream_ring): checks it,
+starts the render thread; 0, or -1 (no backend, a header of another
+version, a ring the wrong size or out of place) */
+int host_render_stream_open(uint32_t ring);
+/* the records up to the header's committed are written: XGPU_STREAM_SUBMIT_* */
+void host_render_stream_submit(uint32_t flags);
+/* returns once the host has released up to position */
+void host_render_stream_wait(uint32_t position);
+/* ends the render thread after the records submitted (at exit) */
+void host_render_stream_close(void);
+
+/* the guest's ring header while a stream is open, else NULL: its
+statistics, for the host's logs (read as they are, racing with their
+writers) */
+const struct xgpu_stream_ring *host_render_stream_ring(void);
+
+/* ---------- for tests: the decoder alone, on the calling thread
+
+Plays the records of [from, to) of a ring (the header's buffer and size)
+into the backend; returns the position reached (to, or where a malformed
+record stopped it, with ring->error set). */
+struct host_render_decoder;
+struct host_render_decoder *host_render_decoder_new(const struct host_render_backend *backend,
+	struct xgpu_stream_ring *ring);
+uint32_t host_render_decode(struct host_render_decoder *decoder, uint32_t from, uint32_t to);
+void host_render_decoder_free(struct host_render_decoder *decoder);
+
+#endif

@@ -3,7 +3,7 @@ SDL_PLATFORM.C
 
 The SDL3 window, OpenGL context and event loop behind the Linux build.
 
-The window is created with the Direct3D device (d3d8_gl.c) on the game's
+The window is created with the Direct3D device (d3d8_device.c) on the game's
 main thread, which is also the only thread that pumps events. Keyboard and
 mouse state gathered here feeds the controller emulation in xinput_sdl.c
 and the debug keyboard that the game's console reads.
@@ -517,7 +517,7 @@ static BOOL platform_window_fullscreen(void)
 		height >= (int)(mode->h * mode->pixel_density + 0.5f);
 }
 
-/* the size in pixels the game draws its picture at (d3d8_gl.c): the
+/* the size in pixels the game draws its picture at (d3d8_device.c): the
 window's, the display's while fullscreen, or display.resolution's while
 fullscreen (either kind) where the display has room for it; before the
 window opens, what it will be. FALSE where display.resolution_scaling is
@@ -767,6 +767,16 @@ or last resized: platform_display_apply */
 static long platform_window_width = -1, platform_window_height = -1;
 #endif
 
+#ifdef HALO_METAL
+/* port/macos/host_metal.m: the window drawn with Metal, from the main
+thread; nonzero on success */
+int host_metal_window_open(unsigned int window);
+/* the window's kind of drawing */
+#define PLATFORM_WINDOW_DRAWING SDL_WINDOW_METAL
+#else
+#define PLATFORM_WINDOW_DRAWING SDL_WINDOW_OPENGL
+#endif
+
 BOOL platform_video_initialize(unsigned long width, unsigned long height)
 {
 	int version;
@@ -777,7 +787,9 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (!platform_sdl_initialize())
 		return FALSE;
 
-#ifdef HALO_GLES
+#ifdef HALO_METAL
+	/* (no OpenGL: the window's layer is Metal's, drawn by the host) */
+#elif defined(HALO_GLES)
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
@@ -786,6 +798,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
 #endif
+#ifndef HALO_METAL
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
@@ -797,6 +810,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 #endif
 	if (config_boolean("debug.gl_debug"))
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+#endif
 #if !defined(HALO_ANDROID) && !defined(_WIN32)
 	/* Mesa's GL thread: the renderer makes thousands of GL calls a frame
 	and never waits for their results, so handing them to a thread of
@@ -818,7 +832,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	/* fullscreen (either kind) unless display.mode is the window, which F11
 	switches to and from: display.window_size, whatever shape the fullscreen
 	picture has. The game draws at the size platform_screen_mode gives
-	(d3d8_gl.c). */
+	(d3d8_device.c). */
 	(void)width;
 	(void)height;
 	platform_window_size_setting(&platform_window_width, &platform_window_height);
@@ -845,7 +859,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	else
 #endif
 	platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
-		SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+		PLATFORM_WINDOW_DRAWING | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
 		(config_boolean("debug.hidden_window") ? SDL_WINDOW_HIDDEN : 0) |
 		(platform_fullscreen_setting() ? SDL_WINDOW_FULLSCREEN : 0));
 #endif
@@ -870,6 +884,17 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 #endif
 	platform_fullscreen_requested = platform_fullscreen_setting();
 	platform_fullscreen_kind_apply();
+#endif
+#ifdef HALO_METAL
+	if (!host_metal_window_open((unsigned int)(uintptr_t)platform_window))
+	{
+		platform_log("cannot draw the window with Metal");
+		return FALSE;
+	}
+	platform_event_thread = SDL_GetCurrentThreadID();
+	platform_mouse_capture(TRUE);
+	(void)version;
+	return TRUE;
 #endif
 	platform_gl_context = SDL_GL_CreateContext(platform_window);
 #ifdef HALO_GLES
@@ -1788,7 +1813,7 @@ int platform_binding_capture_poll(int *input)
 
 /* While a menu is up the mouse is released, its pointer shows (centered when
 the menu opens) and its motion, clicks and wheel go to the menus
-(halo_ui_pointer_update, d3d8_gl.c) instead of the controller and the aim. */
+(halo_ui_pointer_update, d3d8_device.c) instead of the controller and the aim. */
 void platform_ui_pointer_set_active(BOOL active)
 {
 	if (!platform_window || (active != FALSE) == (input_state.ui_pointer != FALSE))
@@ -1919,7 +1944,7 @@ static void screen_keyboard_update(void)
 /* ---------- the menus' pointer (the touchscreen)
 
 While a menu is up, taps and drags go to the menus (touch_input.c,
-halo_ui_pointer_update in d3d8_gl.c). */
+halo_ui_pointer_update in d3d8_device.c). */
 void platform_ui_pointer_set_active(BOOL active)
 {
 	pthread_mutex_lock(&input_lock);

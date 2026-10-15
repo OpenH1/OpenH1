@@ -1,0 +1,84 @@
+"""Runs the C tests of the renderer's command stream (port/linux/src/xgpu_stream.h):
+the guest's encoder (port/linux/src/xgpu_stream_encode.c) and the host's
+decoder and render thread (port/android/host/host_render_stream.c), built
+together with the build machine's C compiler on a 64-bit Linux or macOS
+host (the test reserves 8 GB of address space for a guest window at a base,
+as with the base register), and again with ThreadSanitizer where the
+compiler has it.
+
+The encoder implements the renderer's interface (xgpu_backend.h, with
+xgpu.h and xgpu_shader.h); the test copies those headers, and the encoder
+itself (whose quoted includes would otherwise find port/linux/src's
+platform.h first), next to a stand-in for the guest's platform.h
+(port/android/tests/render_stream). The headers are taken from
+port/linux/src, or from the folder in HALO_RENDER_INTERFACE (a checkout of
+the renderer split's)."""
+import os
+import platform
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+INTERFACE_HEADERS = ("xgpu.h", "xgpu_backend.h", "xgpu_shader.h")
+
+
+def compiler():
+    for name in ("clang", "cc", "gcc"):
+        path = shutil.which(name)
+        if path:
+            return path
+    return None
+
+
+def interface_folder():
+    folder = Path(os.environ.get("HALO_RENDER_INTERFACE", ROOT / "port" / "linux" / "src"))
+    if all((folder / name).exists() for name in INTERFACE_HEADERS):
+        return folder
+    return None
+
+
+def build(cc, headers, binary, flags):
+    subprocess.run(
+        [cc, "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-O1", "-g", *flags, "-D_GNU_SOURCE", "-D_DARWIN_C_SOURCE",
+         "-DHALO_GUEST_BASE=1", "-DHALO_RENDER_STREAM=1", "-DXGPU_STREAM_TEST=1",
+         f"-I{headers}", f"-I{ROOT / 'port' / 'linux' / 'src'}", f"-I{ROOT / 'port' / 'android' / 'host'}",
+         f"-I{ROOT / 'port' / 'android' / 'include'}",
+         str(ROOT / "port" / "android" / "tests" / "host_render_stream_test.c"),
+         str(headers / "xgpu_stream_encode.c"),
+         str(ROOT / "port" / "android" / "host" / "host_render_stream.c"),
+         "-o", str(binary), "-lpthread"],
+        check=True,
+    )
+
+
+@pytest.mark.parametrize("sanitizer", [None, "thread"])
+def test_render_stream(tmp_path, sanitizer):
+    cc = compiler()
+    if not cc:
+        pytest.skip("no C compiler")
+    if sys.platform not in ("linux", "darwin") or platform.architecture()[0] != "64bit":
+        pytest.skip("needs a 64-bit Linux or macOS host")
+    folder = interface_folder()
+    if not folder:
+        pytest.skip("the renderer's interface (xgpu_backend.h) is not there yet")
+    headers = tmp_path / "headers"
+    headers.mkdir()
+    for name in INTERFACE_HEADERS:
+        shutil.copy(folder / name, headers / name)
+    shutil.copy(ROOT / "port" / "linux" / "src" / "xgpu_stream_encode.c", headers / "xgpu_stream_encode.c")
+    shutil.copy(ROOT / "port" / "android" / "tests" / "render_stream" / "platform.h", headers / "platform.h")
+    binary = tmp_path / "host_render_stream_test"
+    flags = [f"-fsanitize={sanitizer}"] if sanitizer else []
+    try:
+        build(cc, headers, binary, flags)
+    except subprocess.CalledProcessError:
+        if sanitizer:
+            pytest.skip(f"the compiler cannot build with -fsanitize={sanitizer}")
+        raise
+    result = subprocess.run([str(binary)], capture_output=True, text=True, timeout=900)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "ThreadSanitizer" not in result.stderr, result.stderr

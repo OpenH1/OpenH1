@@ -90,7 +90,7 @@ boolean vr_climb_exiting(void);
 boolean vr_climb_active(void);
 /* vr_render.c's */
 real vr_render_view_yaw(void);
-/* d3d8_gl.c's, vr.c's */
+/* d3d8_device.c's, xgpu_gl.c's, vr.c's */
 void halo_vr_eye_tint(float red, float green, float blue);
 float halo_vr_vignette(float fov[2][4]);
 void halo_vr_comfort_vignette(float amount);
@@ -234,9 +234,11 @@ static struct
 	that does not: "drive"), the driver made for it, and the vehicle */
 	boolean drive;
 	long driver_index;
-	/* "climb": brought and stood at its entrance facing it, the hands to
-	get in and out (vr_climb.c), not the test */
+	/* "climb [<metres>]": brought and stood this much nearer it than its
+	entrance (0.25 m), facing it, the hands to get in and out (vr_climb.c),
+	not the test */
 	boolean climb;
+	real climb_nearer;
 	long driven_index;
 	/* the game's time (ticks) the test got in, and whether it got out */
 	long entered_time;
@@ -713,10 +715,16 @@ boolean vr_seat_seated_shown(void)
 	return vr_seat.shown_valid && vr_seat.source == _seat_source_seated && vr_seat.anchored;
 }
 
-/* vr_climb.c: in a feed cockpit, the display woken (the eye in it) */
-boolean vr_seat_feed_in(void)
+/* vr_climb.c: the eye in the seat (in a feed cockpit, the display woken) */
+boolean vr_seat_in(void)
 {
-	return vr_seat.feed_stage == _feed_in && vr_seat_seated_shown();
+	return vr_seat_seated_shown() && (vr_seat.feed_stage == _feed_none || vr_seat.feed_stage == _feed_in);
+}
+
+/* vr_climb.c: a feed cockpit's ride carries the eye (in, seated or out) */
+boolean vr_seat_feed_riding(void)
+{
+	return vr_seat.feed_stage != _feed_none;
 }
 
 /* vr_cabin.c: the feed cockpit the eye rides out of once the body is out
@@ -777,7 +785,7 @@ real vr_seat_darkness(void)
 }
 
 /* the eye pass, after the game's screen flash (render.c): the blink's
-darkness over both eyes, all of each (d3d8_gl.c's tint, as they are
+darkness over both eyes, all of each (xgpu_gl.c's tint, as they are
 presented; the HUD's layer stays lit) */
 void vr_seat_blink_draw(void)
 {
@@ -800,8 +808,9 @@ static void vr_seat_read_settings(void)
 
 	vr_seat.seated_seconds = 10.0f;
 	vr_seat.driver_index = NONE;
-	if (sscanf(setting, "%31s %f %f %15s", vr_seat.seat_label, &vr_seat.enter_seconds, &vr_seat.seated_seconds,
-		drive) >= 2)
+	vr_seat.climb_nearer = 0.25f;
+	if (sscanf(setting, "%31s %f %f %15s %f", vr_seat.seat_label, &vr_seat.enter_seconds, &vr_seat.seated_seconds,
+		drive, &vr_seat.climb_nearer) >= 2)
 	{
 		vr_seat.testing = TRUE;
 		vr_seat.drive = !strcmp(drive, "drive");
@@ -915,8 +924,8 @@ static void vr_seat_test_approach(long unit_index)
 	if (vehicle_index != NONE &&
 		unit_get_seat_entrance_point(unit_index, vehicle_index, seat_index, &entrance, &seat_point, NULL))
 	{
-		/* (to climb: 25 cm nearer it than the entrance, toward the track guard.s
-		edge, facing the vehicle's middle) */
+		/* (to climb: nearer it than the entrance, 25 cm (toward the Scorpion's
+		track guard's edge) unless told, facing the vehicle's middle) */
 		if (vr_seat.climb)
 		{
 			real_point3d const *middle = &object_get(vehicle_index)->object.position;
@@ -926,8 +935,8 @@ static void vr_seat_test_approach(long unit_index)
 			toward.k = 0.0f;
 			if (normalize3d(&toward) > 0.0f)
 			{
-				entrance.x += toward.i * 0.25f / METRES_PER_WORLD_UNIT;
-				entrance.y += toward.j * 0.25f / METRES_PER_WORLD_UNIT;
+				entrance.x += toward.i * vr_seat.climb_nearer / METRES_PER_WORLD_UNIT;
+				entrance.y += toward.j * vr_seat.climb_nearer / METRES_PER_WORLD_UNIT;
 			}
 			halo_vr_test_face((float)atan2(middle->y - entrance.y, middle->x - entrance.x));
 		}

@@ -11,7 +11,7 @@ and on x86-64), else a GLX context through XR_KHR_opengl_enable's Xlib
 binding, which needs SDL's X11 video driver. The swapchains' images are
 then GL textures the game draws into directly: the eyes are one 2-layer
 texture array, which the renderer draws both of at once with
-GL_OVR_multiview2 (d3d8_gl.c).
+GL_OVR_multiview2 (xgpu_gl.c).
 
 The runtime is loaded without the OpenXR loader, which few distributions
 package: as the loader does, from the active runtime's manifest

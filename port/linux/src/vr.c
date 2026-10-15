@@ -1216,7 +1216,7 @@ int halo_vr_initialize(void)
 	vr.info.refresh_rate_wanted = (float)config_real("vr.refresh_rate");
 	vr.info.depth = config_boolean("vr.depth");
 	/* (decided as the session is made: the eyes' targets are sized for it,
-	d3d8_gl.c) */
+	d3d8_device.c) */
 	vr.foveation = !strcmp(config_string("vr.foveation"), "off") ? 0 :
 		!strcmp(config_string("vr.foveation"), "fixed") ? 1 : 2;
 	vr.foveation_inset = (float)config_real("vr.foveation_inset");
@@ -2472,12 +2472,16 @@ static float climb_distance(const float p[3], const float ends[2][3], float radi
 	return sqrtf(dist2) - radius;
 }
 
+static int seat_held(void);
+
 int halo_vr_climb(struct halo_vr_climb *c)
 {
 	static const char *const hands[2] = { "left", "right" };
 	int hand, holding = 0, axis;
 
 	c->moved[0] = c->moved[1] = c->moved[2] = 0.0f;
+	c->seat_held = seat_held();
+	c->frame = vr.presents;
 	for (hand = 0; hand < 2; hand++)
 	{
 		const struct vr_host_pose *grip = &vr.views.grip[hand];
@@ -2518,7 +2522,7 @@ int halo_vr_climb(struct halo_vr_climb *c)
 			hand_haptic(hand, 0.2f, 0.02f);
 		climb.near[hand] = best <= 0.0f;
 		vr.climb_near[hand] = best <= CLIMB_NEAR;
-		if (value > CLIMB_GRIP_PRESSED && !climb.pressed[hand])
+		if (value > CLIMB_GRIP_PRESSED && (!climb.pressed[hand] || (c->grab && !vr.climb_grip[hand])))
 		{
 			climb.pressed[hand] = 1;
 			if (best <= 0.0f)
@@ -3476,7 +3480,7 @@ static void handlebars_update(float seconds)
 			platform_log("vr: %s: the %s hand lets go", vr.seat.kind == HALO_VR_SEAT_WHEEL ? "wheel" : vr.seat.kind ==
 				HALO_VR_SEAT_TURRET ? "turret" : "handlebars", side ? "right" : "left");
 		}
-		else if (!vr.bars_held[hand] && valid && grips[hand] > HANDLEBAR_GRIP_PRESSED)
+		else if (!vr.bars_held[hand] && valid && grips[hand] > HANDLEBAR_GRIP_PRESSED && !vr.climb_grip[hand])
 		{
 			for (axis = 0; axis < 3; axis++)
 				v[axis] = place[hand][axis] - vr.seat.handles[side][axis];
@@ -3592,7 +3596,7 @@ float halo_vr_vignette(float fov[2][4])
 	return vr.vignette;
 }
 
-/* ---------- foveation (vr.foveation; d3d8_gl.c draws it) */
+/* ---------- foveation (vr.foveation; xgpu_gl.c draws it) */
 
 float halo_vr_foveation_inset(void)
 {

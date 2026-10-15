@@ -39,6 +39,7 @@ void host_logf(int priority, const char *format, ...) __attribute__((format(prin
 void host_log(int priority, const char *text);
 /* guest services also used inside the host (host_main.c) */
 void host_exit(int code) __attribute__((noreturn));
+void host_abort(const char *reason) __attribute__((noreturn));
 int host_errno(void);
 
 /* logs, shows the message to the player and terminates */
@@ -74,12 +75,54 @@ host_memory_watch_use_hashes). hashes_reason, if not NULL, says why the host
 must use page hashes whatever the setting. */
 void host_apply_debug_settings(const char *path, const char *hashes_reason);
 
-/* ---------- guest memory (host_memory.c)
+/* ---------- the guest's addresses
 
-All memory the guest can address lies below 4 GB. The host reserves the
+A guest address is 32 bits. Without the base register it is the host
+address itself: the guest's memory lies in the low 4 GB of the process.
+With it (HALO_GUEST_BASE: tools/guest_base_register.py, for macOS, whose
+processes have no low 4 GB, and as an option on Linux and Android), the
+guest's 4 GB lie at host_guest_base, a multiple of 4 GB the host chooses
+(host_memory_base.c), and a guest address is the offset from it: the low
+32 bits of the host address. */
+
+#ifdef HALO_GUEST_BASE
+extern uintptr_t host_guest_base;
+#else
+#define host_guest_base ((uintptr_t)0)
+#endif
+
+/* the host address of a guest address, 0 included */
+static inline uintptr_t host_address(uint32_t address)
+{
+	return host_guest_base + address;
+}
+
+/* a guest pointer as the host's (NULL for 0) */
+static inline void *host_pointer(uint32_t address)
+{
+	return address ? (void *)host_address(address) : NULL;
+}
+
+/* the guest address of a host address in the guest's memory */
+static inline uint32_t guest_address(const void *pointer)
+{
+	return (uint32_t)(uintptr_t)pointer;
+}
+
+/* whether a host address lies in the guest's memory */
+static inline int host_in_guest(uintptr_t address)
+{
+	return address - host_guest_base < 0x100000000ULL;
+}
+
+/* ---------- guest memory (host_memory.c; host_memory_base.c with the base
+register)
+
+All memory the guest can address lies in its 4 GB. The host reserves the
 Xbox window and the image's range at start-up, and hands out pages for
 everything else (the guest's malloc arenas, thread stacks, anonymous
-mappings) from pools of address space it reserves below 4 GB on demand. */
+mappings) from pools of address space it reserves there on demand. The
+functions that take or return a pointer take or return host addresses. */
 
 /* reserves the fixed ranges (the Xbox window and the image's) as early as
 the process allows: from JNI_OnLoad, before the Java side of the game's
@@ -96,15 +139,20 @@ void host_memory_report_low_mappings(FILE *file);
 faults (host_watch_hash.h), for when the app cannot receive its own
 SIGSEGV (ARM translation). Call before the guest starts. */
 void host_memory_watch_use_hashes(void);
-/* page-granular allocations below 4 GB; NULL on failure */
+/* the host's page size (4 KB on Linux and Android without the base
+register, which needs it: the Xbox window's pages; 16 KB on macOS) */
+size_t host_page_size(void);
+/* page-granular allocations in the guest's memory; NULL on failure */
 void *host_low_map(size_t size, int protection);
 void host_low_unmap(void *address, size_t size);
 /* 1 if [address, address + size) lies in a pool (host_low_map's) or one of
 the fixed ranges. Not whether it can be read: those hold reserved and
 PROT_NONE pages too (host_arch_read_memory tells that). */
 int host_low_owns(uintptr_t address, size_t size);
-/* the guest's mmap/munmap/mprotect/madvise (host_syscall.c): only on the
-pools, the fixed ranges and the ranges the guest mapped itself; -errno */
+/* the guest's mmap/munmap/mprotect/madvise (host_syscall.c), with guest
+addresses and Linux's flags: only on the pools, the fixed ranges and the
+ranges the guest mapped itself; mmap returns the guest address, each
+-errno on failure */
 long host_guest_mmap(uint64_t address, uint64_t size, int protection, int flags, int fd, int64_t offset);
 long host_guest_munmap(uint64_t address, uint64_t size);
 long host_guest_mprotect(uint64_t address, uint64_t size, int protection);
@@ -196,6 +244,33 @@ or a test's), and the walk stops where it fails. Returns how many. */
 int host_arch_walk_frames(uint64_t fp, int (*read)(uintptr_t address, void *buffer, size_t size),
 	uint64_t *returns, int maximum);
 
+
+/* ---------- the write tracking (host_memory_watch.c) */
+
+/* a write to a write-protected page of the Xbox window, at that host
+address: the tracking unprotects it; 1 if it was one */
+int host_memory_watch_fault(uintptr_t address);
+/* memory_watch_protect, _generation and _serial, for the host's texture
+cache too (port/macos/xgpu_metal_textures.c: any thread) */
+void host_memory_watch_protect(uint32_t address, uint32_t size);
+uint32_t host_memory_watch_generation(uint32_t address, uint32_t size);
+uint32_t host_memory_watch_serial(void);
+/* (host_memory.c or host_memory_base.c) the protection the guest asked for
+of the Xbox window's host page at that address, which the write tracking
+puts back */
+int host_memory_window_protection(uintptr_t address);
+#ifdef HALO_GUEST_BASE
+/* (host_memory_base.c) the run of readable host pages about a guest range,
+inside [limit_start, limit_end): sets *start and *end (guest addresses) and
+returns 1, or returns 0 if the range is not all readable */
+int host_memory_readable_extent(uint32_t address, uint32_t size, uint32_t limit_start, uint32_t limit_end,
+	uint32_t *start, uint32_t *end);
+/* (host_memory_base.c) called, if set, as host pages of the guest are
+mapped afresh or unmapped (guest addresses), with the memory's lock held: a
+GPU buffer made over them would still see the old pages (port/macos's) */
+extern void (*host_memory_remapped)(uint32_t address, uint32_t size);
+#endif
+
 /* ---------- entering guest code (host_thread.c) */
 
 /* calls the guest function at address with up to four 32-bit arguments on
@@ -203,6 +278,14 @@ this thread, which must have been made by host_native_thread_create (giving
 the thread a guest struct pthread first if it has none); returns the
 guest's w0 */
 uint32_t host_call_guest(uint32_t function, uint32_t a, uint32_t b, uint32_t c, uint32_t d);
+#ifdef HALO_GUEST_BASE
+/* host_enter.S: calls the guest code at the host address function with x21
+set to base and the four arguments zero-extended; returns its w0 */
+uint32_t host_enter_guest(uintptr_t function, uintptr_t base, uint32_t a, uint32_t b, uint32_t c, uint32_t d);
+/* host_enter.S: calls function(argument) on the stack whose top is
+stack_top (for a thread whose own stack is outside the guest's memory) */
+void host_run_on_stack(void (*function)(void *), void *argument, void *stack_top);
+#endif
 /* starts a thread running function(argument) with its stack in guest
 memory, so that it can call guest code; the stack is freed after it exits.
 Returns 0 or an errno value */

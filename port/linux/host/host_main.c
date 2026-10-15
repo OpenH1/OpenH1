@@ -16,6 +16,13 @@ the saves and config.toml as the x86 build does (port/linux/README.md): it
 gets the part of this process's environment that it reads (the HALO_
 settings, HOME, the XDG folders), and /proc/self/exe is this executable.
 The log is the standard error stream.
+
+The macOS build (tools/macos_build.py, port/macos) uses this file too. There
+the guest's memory lies at a base the host chooses (HALO_GUEST_BASE), its
+system calls are translated to Darwin's (port/macos/host_syscall.c), its
+config.toml is in the app's settings folder (port/macos/host_app.m), and
+the game runs on the process's main thread, which Cocoa's windows and
+events need, after moving it onto a stack in guest memory.
 */
 
 #include "host.h"
@@ -25,6 +32,9 @@ The log is the standard error stream.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __APPLE__
+#include <sys/mman.h>
+#endif
 #include <sys/uio.h>
 #include <unistd.h>
 
@@ -33,6 +43,16 @@ extern const unsigned char halo_guest_image_start[];
 extern const unsigned char halo_guest_image_end[];
 
 extern char **environ;
+
+#ifdef __APPLE__
+/* port/macos/host_metal.m: the Metal backend, 1 if there is a Metal
+device */
+int host_metal_initialize(void);
+/* port/macos/host_app.m: the app's folders, maps and window, when the
+executable runs inside Halo.app */
+void host_app_start(void);
+const char *host_app_settings_folder(void);
+#endif
 
 /* ---------- the log: the standard error stream */
 
@@ -103,15 +123,55 @@ static void *game_main(void *unused)
 
 	if (host_load_image(halo_guest_image_start, (size_t)(halo_guest_image_end - halo_guest_image_start)) != 0)
 		host_fatal("cannot load the game image");
+#ifdef __APPLE__
+	{
+		/* (the app's in its settings folder, else beside the executable,
+		where the game reads it) */
+		const char *base = host_app_settings_folder() ? host_app_settings_folder() : SDL_GetBasePath();
+
+		snprintf(path, sizeof(path), "%sconfig.toml", base ? base : "");
+	}
+#else
 	snprintf(path, sizeof(path), "%sconfig.toml", install_config_folder());
+#endif
 	host_apply_debug_settings(path, NULL);
 	host_run_guest_main(host_make_boot(&environment, "halo"));
 }
+
+#ifdef __APPLE__
+static void game_main_on_stack(void *unused)
+{
+	game_main(unused);
+}
+#endif
 
 int main(int argc, char *argv[])
 {
 	(void)argc;
 	(void)argv;
+#ifdef __APPLE__
+	{
+		/* Cocoa's windows and events belong to the main thread, and the
+		game's main thread is the one that makes its window and pumps its
+		events: the game runs here, on a stack in guest memory (with a
+		guard page at its bottom) */
+		char *stack;
+
+		host_log_set_sink(log_to_stderr);
+		host_app_start();
+		host_install_signal_handlers();
+		host_signal_stack_install();
+		/* (the renderer's backend, before the game asks for it) */
+		host_metal_initialize();
+		stack = host_low_map(MAIN_STACK_SIZE, PROT_READ | PROT_WRITE);
+		if (!stack)
+			host_fatal("cannot allocate the game's stack");
+		mprotect(stack, host_page_size(), PROT_NONE);
+		host_debug_thread_started();
+		host_run_on_stack(game_main_on_stack, NULL, stack + MAIN_STACK_SIZE);
+		host_fatal("the game returned");
+	}
+#endif
 	/* Mesa's GL thread, as the x86 build asks for it (sdl_platform.c): the
 	guest's environment is its own copy, so the guest's request cannot reach
 	the driver, which reads this process's. An explicit setting stays. */

@@ -97,9 +97,19 @@ void host_exit(int code)
 	_exit(code);
 }
 
+#ifdef __APPLE__
+/* port/macos/host_syscall.c */
+int host_linux_errno(int error);
+#endif
+
 int host_errno(void)
 {
+#ifdef __APPLE__
+	/* (the guest's errno values are Linux's) */
+	return host_linux_errno(errno);
+#else
 	return errno;
+#endif
 }
 
 /* ---------- the guest's environment */

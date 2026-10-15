@@ -24,7 +24,21 @@ halo_guest.elf (llvm-symbolizer --obj=build/android/halo_guest.elf 0x...).
 #define MAXIMUM_THREADS 64
 #define SAMPLE_SIGNAL SIGURG
 
-static pid_t guest_threads[MAXIMUM_THREADS];
+#ifdef __APPLE__
+/* (macOS: threads are named by their pthread_t, interrupted by
+pthread_kill) */
+typedef pthread_t thread_id;
+#define current_thread() pthread_self()
+#define THREAD_FORMAT "%p"
+#define THREAD_VALUE(thread) ((void *)(thread))
+#else
+typedef pid_t thread_id;
+#define current_thread() gettid()
+#define THREAD_FORMAT "%d"
+#define THREAD_VALUE(thread) (thread)
+#endif
+
+static thread_id guest_threads[MAXIMUM_THREADS];
 static pthread_mutex_t threads_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void host_debug_thread_started(void)
@@ -37,7 +51,7 @@ void host_debug_thread_started(void)
 	{
 		if (!guest_threads[index])
 		{
-			guest_threads[index] = gettid();
+			guest_threads[index] = current_thread();
 			break;
 		}
 	}
@@ -51,7 +65,7 @@ void host_debug_thread_started(void)
 
 void host_debug_thread_exited(void)
 {
-	pid_t self = gettid();
+	thread_id self = current_thread();
 	int index;
 
 	pthread_mutex_lock(&threads_lock);
@@ -77,8 +91,8 @@ static void sample_handler(int signal_number, siginfo_t *information, void *cont
 	(void)signal_number;
 	(void)information;
 	host_arch_context(context, &pc, &sp, &fp, &lr);
-	length = snprintf(line, sizeof(line), "sample tid %d: pc %llx lr %llx", (int)gettid(),
-		(unsigned long long)pc, (unsigned long long)lr);
+	length = snprintf(line, sizeof(line), "sample tid " THREAD_FORMAT ": pc %llx lr %llx",
+		THREAD_VALUE(current_thread()), (unsigned long long)pc, (unsigned long long)lr);
 	count = host_arch_walk_frames(fp, host_arch_read_memory, returns, (int)(sizeof(returns) / sizeof(returns[0])));
 	for (index = 0; index < count && length > 0 && (size_t)length < sizeof(line); index++)
 		length += snprintf(line + length, sizeof(line) - length, " %llx", (unsigned long long)returns[index]);
@@ -95,7 +109,7 @@ static void *sampler(void *context)
 	(void)context;
 	for (;;)
 	{
-		pid_t threads[MAXIMUM_THREADS];
+		thread_id threads[MAXIMUM_THREADS];
 		struct timespec remaining = sample_interval;
 		int index;
 
@@ -107,7 +121,11 @@ static void *sampler(void *context)
 		for (index = 0; index < MAXIMUM_THREADS; index++)
 		{
 			if (threads[index])
+#ifdef __APPLE__
+				pthread_kill(threads[index], SAMPLE_SIGNAL);
+#else
 				syscall(SYS_tgkill, getpid(), threads[index], SAMPLE_SIGNAL);
+#endif
 		}
 	}
 	return NULL;

@@ -1,0 +1,69 @@
+/*
+XGPU_METAL_STREAM.H
+
+The Metal backend as the command stream's backend table
+(xgpu_metal_stream.m; port/android/host/host_render_stream.h).
+*/
+
+#ifndef __HALO_MACOS_XGPU_METAL_STREAM_H
+#define __HALO_MACOS_XGPU_METAL_STREAM_H
+
+#include <stdint.h>
+
+struct host_render_backend;
+struct xgpu_stream_draw_uniforms;
+struct xgpu_stream_pipeline_define;
+struct xgpu_stream_sampler;
+struct xgpu_stream_vertex_lighting;
+struct xgpu_stream_vertex_program;
+
+/* the table (made once; xgpu_metal_initialize first) */
+const struct host_render_backend *xgpu_metal_stream_backend(void);
+
+/* what a pipeline's shaders depend on besides its definition, known only
+at a draw: the inputs its vertex layout feeds as integers (unnormalized
+shorts: bit n, input n; none in immediate mode), and for each texture
+stage the axes (bit 0 u, 1 v, 2 w) whose border colour the pixel shader
+draws, the sampler's being one Metal does not have */
+struct xgpu_metal_stream_variant
+{
+	uint16_t integer_attributes;
+	uint8_t border[4];
+	uint8_t pad[2];
+};
+
+/* the draw's values the uniforms are made of: the front end's uniforms,
+the blend colour, the 192 vertex constants (the per-pixel lighting's lights
+are some of them) and the four stages' samplers (their border colours) */
+struct xgpu_metal_stream_uniform_inputs
+{
+	const struct xgpu_stream_draw_uniforms *uniforms;
+	const float *blend_color;
+	const float (*constants)[4];
+	const struct xgpu_stream_sampler *samplers;
+};
+
+/* Where a pipeline's shaders come from: make sets the MSL functions
+(xgpu_metal_shader_create's handles) for the pipeline's vertex program in
+its key's variant and the draw's, and its pixel program in the draw's, and
+returns nonzero; program is the vertex program's record (NULL if none was
+sent), lighting a model lighting program's (NULL if none). uniforms writes
+the bytes both stages read as their uniforms (at most size) and returns
+how many; NULL: the front end's uniforms as they are. The MSL emitter's
+(xgpu_metal_shaders.c); tests give their own. */
+struct xgpu_metal_stream_shaders
+{
+	void *context;
+	int (*make)(void *context, const struct xgpu_stream_pipeline_define *definition,
+		const struct xgpu_stream_vertex_program *program, const struct xgpu_stream_vertex_lighting *lighting,
+		const struct xgpu_metal_stream_variant *variant, uint32_t *vertex_shader, uint32_t *pixel_shader);
+	uint32_t (*uniforms)(void *context, const struct xgpu_metal_stream_uniform_inputs *inputs, void *bytes,
+		uint32_t size);
+};
+
+void xgpu_metal_stream_set_shaders(const struct xgpu_metal_stream_shaders *shaders);
+
+/* the MSL emitter's provider (xgpu_metal_shaders.c) */
+const struct xgpu_metal_stream_shaders *xgpu_metal_shaders(void);
+
+#endif

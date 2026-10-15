@@ -20,6 +20,9 @@ just unmapped. So nothing is read through a pointer: each record is copied
 by process_vm_readv on this process, which fails with EFAULT instead of
 faulting. It takes no lock and touches only the caller's buffer, so it is
 async-signal-safe; where a sandbox refuses the call the walk finds nothing.
+On macOS (AArch64 only, port/macos) the registers are Darwin's thread state
+and the copy is Mach's vm_read_overwrite, which fails as process_vm_readv
+does.
 */
 
 #include "host.h"
@@ -27,12 +30,65 @@ async-signal-safe; where a sandbox refuses the call the walk finds nothing.
 #include <errno.h>
 #include <signal.h>
 #include <stdio.h>
+#ifdef __APPLE__
+/* (Mach's host_page_size is not host.h's) */
+#define host_page_size mach_host_page_size
+#include <mach/mach.h>
+#undef host_page_size
+#include <sys/ucontext.h>
+#else
 #include <sys/syscall.h>
 #include <sys/uio.h>
 #include <ucontext.h>
+#endif
 #include <unistd.h>
 
-#if defined(__aarch64__)
+#if defined(__APPLE__) && defined(__aarch64__)
+
+void host_arch_context(const void *ucontext, uint64_t *pc, uint64_t *sp, uint64_t *fp, uint64_t *lr)
+{
+	const struct __darwin_arm_thread_state64 *state = &((const ucontext_t *)ucontext)->uc_mcontext->__ss;
+
+	*pc = state->__pc;
+	*sp = state->__sp;
+	*fp = state->__fp;
+	*lr = state->__lr;
+}
+
+/* x0 to x28, fp and lr, four a line, then sp, pc and cpsr */
+int host_arch_register_line(const void *ucontext, int line, char *buffer, size_t size)
+{
+	const struct __darwin_arm_thread_state64 *state = &((const ucontext_t *)ucontext)->uc_mcontext->__ss;
+	uint64_t registers[31];
+	int first = line * 4, index;
+
+	if (line < 0 || line > 8)
+		return 0;
+	if (line == 8)
+	{
+		snprintf(buffer, size, "  sp  %016llx pc  %016llx cpsr %08x", (unsigned long long)state->__sp,
+			(unsigned long long)state->__pc, (unsigned)state->__cpsr);
+		return 1;
+	}
+	for (index = 0; index < 29; index++)
+		registers[index] = state->__x[index];
+	registers[29] = state->__fp;
+	registers[30] = state->__lr;
+	if (first + 3 < 31)
+	{
+		snprintf(buffer, size, "  x%-2d %016llx %016llx %016llx %016llx", first,
+			(unsigned long long)registers[first], (unsigned long long)registers[first + 1],
+			(unsigned long long)registers[first + 2], (unsigned long long)registers[first + 3]);
+	}
+	else
+	{
+		snprintf(buffer, size, "  x%-2d %016llx %016llx %016llx", first, (unsigned long long)registers[first],
+			(unsigned long long)registers[first + 1], (unsigned long long)registers[first + 2]);
+	}
+	return 1;
+}
+
+#elif defined(__aarch64__)
 
 static const struct sigcontext *registers_of(const void *ucontext)
 {
@@ -125,6 +181,21 @@ int host_arch_register_line(const void *ucontext, int line, char *buffer, size_t
 #error "the host's registers are not known for this architecture"
 #endif
 
+#ifdef __APPLE__
+int host_arch_read_memory(uintptr_t address, void *buffer, size_t size)
+{
+	vm_size_t copied = 0;
+
+	if (!size)
+		return 1;
+	if (address + size < address)
+		return 0;
+	if (vm_read_overwrite(mach_task_self(), (vm_address_t)address, size, (vm_address_t)buffer,
+		&copied) != KERN_SUCCESS)
+		return 0;
+	return copied == size;
+}
+#else
 int host_arch_read_memory(uintptr_t address, void *buffer, size_t size)
 {
 	struct iovec local = { buffer, size };
@@ -139,6 +210,7 @@ int host_arch_read_memory(uintptr_t address, void *buffer, size_t size)
 	copied = syscall(SYS_process_vm_readv, (long)getpid(), &local, 1L, &remote, 1L, 0L);
 	return copied == (long)size;
 }
+#endif
 
 int host_arch_walk_frames(uint64_t fp, int (*read)(uintptr_t address, void *buffer, size_t size),
 	uint64_t *returns, int maximum)

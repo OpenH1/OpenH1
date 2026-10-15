@@ -35,6 +35,12 @@ void host_fatal(const char *format, ...)
 	abort();
 }
 
+/* (the loader's pages: Linux's 4 KB, as the images' segments are aligned) */
+size_t host_page_size(void)
+{
+	return 4096;
+}
+
 int host_memory_initialize(uint32_t base, uint32_t size)
 {
 	(void)base;

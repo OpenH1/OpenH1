@@ -1000,7 +1000,7 @@ void render_model(
 	}
 
 	/* port: the model measured as display.model_detail says
-	(halo_model_detail_scale, port/linux/src/d3d8_gl.c): stock, in the lines
+	(halo_model_detail_scale, port/linux/src/d3d8_device.c): stock, in the lines
 	of the 480-line screen */
 	if (level_of_detail_pixels*halo_model_detail_scale(FALSE)>=model->detail_cutoff_pixels[0] ||
 		TEST_FLAG(flags, _render_model_shadow_bit))

@@ -499,13 +499,13 @@ static void render_window(
 		rasterizer_transparent_geometry_draw(FALSE);
 		rasterizer_transparent_geometry_stop();
 		/* port: the plasma bolts' lights' glows (display.dynamic_lights,
-		port/linux/src/d3d8_gl.c) */
+		port/linux/src/d3d8_device.c) */
 		halo_dynamic_lights_halos_draw();
 		structure_render_fog_screen();
 #ifdef HALO_VR
 		if (render_vr_scope_pass)
 		{
-			/* the scope's own reticle is drawn over its image (d3d8_gl.c) */
+			/* the scope's own reticle is drawn over its image (xgpu_gl.c) */
 		}
 		else if (render_vr_eye_pass)
 		{
@@ -744,7 +744,7 @@ static void render_vr_hud(
 	parameters.camera = camera;
 	render_camera_build_frustum(&parameters.camera, NULL, &parameters.frustum, TRUE);
 	parameters.rasterizer_target = _render_target_primary;
-	/* (the HUD pass began over transparent black: d3d8_gl.c) */
+	/* (the HUD pass began over transparent black: d3d8_device.c, xgpu_gl.c) */
 	parameters.suppress_clear = TRUE;
 	parameters.window_index = render.window_index;
 	rasterizer_window_begin(&parameters);

@@ -62,9 +62,7 @@ static void *stack_allocate(size_t size, void **mapping, size_t *mapping_size)
 
 static int on_guest_stack(void)
 {
-	uint64_t sp = (uint64_t)__builtin_frame_address(0);
-
-	return sp < 0x100000000ULL;
+	return host_in_guest((uintptr_t)__builtin_frame_address(0));
 }
 
 /* ---------- the signal handlers' stacks */
@@ -134,18 +132,28 @@ is the guest's 32-bit one (w0, eax). */
 
 typedef uint32_t (*guest_function)(uint64_t, uint64_t, uint64_t, uint64_t);
 
+/* calls the guest function at that guest address */
+static uint32_t enter_guest(uint32_t function, uint32_t a, uint32_t b, uint32_t c, uint32_t d)
+{
+#ifdef HALO_GUEST_BASE
+	return host_enter_guest(host_address(function), host_guest_base, a, b, c, d);
+#else
+	return ((guest_function)(uintptr_t)function)(a, b, c, d);
+#endif
+}
+
 uint32_t host_call_guest(uint32_t function, uint32_t a, uint32_t b, uint32_t c, uint32_t d)
 {
 	if (!on_guest_stack())
 		host_fatal("guest code called on a thread without a guest stack");
 	if (!guest_tp)
-		((guest_function)(uintptr_t)host_image.header->thread_attach)(0, 0, 0, 0);
-	return ((guest_function)(uintptr_t)function)(a, b, c, d);
+		enter_guest(host_image.header->thread_attach, 0, 0, 0, 0);
+	return enter_guest(function, a, b, c, d);
 }
 
 void host_run_guest_main(uint32_t boot)
 {
-	((void (*)(uint64_t))(uintptr_t)host_image.header->start)(boot);
+	enter_guest(host_image.header->start, boot, 0, 0, 0);
 	host_fatal("the guest returned from __guest_start");
 }
 
@@ -207,7 +215,7 @@ static void *thread_main(void *context)
 	/* (a thread the guest made has let its struct pthread go by now; one
 	of the host's that ran guest code, the audio thread, has it still) */
 	if (guest_tp)
-		((guest_function)(uintptr_t)host_image.header->thread_detach)(0, 0, 0, 0);
+		enter_guest(host_image.header->thread_detach, 0, 0, 0, 0);
 	host_debug_thread_exited();
 	host_signal_stack_remove();
 	guest_tp = 0;

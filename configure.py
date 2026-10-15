@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # root build script: writes build.ninja for the native ports (Linux, Windows,
-# Android) and the web port
+# Android, macOS) and the web port
 
 import argparse
 import io
@@ -14,6 +14,7 @@ from tools import ninja_syntax
 from tools.android_build import android_configure_inputs, generate_android_build
 from tools.linux_guest_build import generate_linux_guest_builds, linux_guest_configure_inputs, native_linux_guest
 from tools.linux_build import check_profile_options, generate_linux_build, linux_configure_inputs
+from tools.macos_build import generate_macos_build, is_macos_arm64, macos_configure_inputs
 from tools.web_build import generate_web_build, web_configure_inputs
 from tools.windows_build import generate_windows_build, windows_configure_inputs
 
@@ -115,6 +116,29 @@ parser.add_argument(
     "refer to \"VR\" in port/linux/README.md",
 )
 parser.add_argument(
+    "--guest-base",
+    action="store_true",
+    help="the Linux arm64 and Android builds' guest memory at a base the host chooses (a base register, "
+    "tools/guest_base_register.py) instead of the fixed low 4 GB; the macOS build always has it",
+)
+parser.add_argument(
+    "--macos-cc",
+    type=str,
+    help="clang (with the arm64_32 target, as Apple's has) for `ninja macos`, the macOS build (default: clang)",
+)
+parser.add_argument(
+    "--macos-guest-cc",
+    type=str,
+    help="clang for the macOS build's guest alone (default: --macos-cc's): Homebrew's LLVM "
+    "(/opt/homebrew/opt/llvm/bin/clang) is new enough for the profiles in pgo/, which Xcode's clang is not",
+)
+parser.add_argument(
+    "--macos-bundle-id",
+    type=str,
+    help="the macOS app's bundle identifier (default: io.github.opencommunityedition.opence, after the "
+    "project's GitHub organisation); macOS keeps the app's permissions (the microphone, the local network) by it",
+)
+parser.add_argument(
     "--web-emcc",
     type=str,
     help="Emscripten's emcc for `ninja web` (default: emcc on the PATH, then EMSDK's or ~/emsdk's)",
@@ -143,6 +167,10 @@ sln = SimpleNamespace(
     linux_x86_64=args.linux_x86_64,
     linux_x86_64_cc=args.linux_x86_64_cc,
     port_vr=args.vr,
+    macos_cc=args.macos_cc,
+    macos_guest_cc=args.macos_guest_cc,
+    macos_bundle_id=args.macos_bundle_id,
+    guest_base=args.guest_base,
     web_emcc=args.web_emcc,
 )
 
@@ -170,6 +198,7 @@ generate_linux_build(n, sln)
 generate_android_build(n, sln)
 generate_linux_guest_builds(n, sln)
 generate_windows_build(n, sln)
+generate_macos_build(n, sln)
 generate_web_build(n, sln)
 
 n.comment("Reconfigure on change")
@@ -189,6 +218,7 @@ n.build(
         *android_configure_inputs(),
         *linux_guest_configure_inputs(),
         *windows_configure_inputs(),
+        *macos_configure_inputs(),
         *web_configure_inputs(),
     ],
 )
@@ -196,9 +226,11 @@ n.newline()
 
 # the build for this computer, where it could be generated (the Windows
 # build is left out when SDL cannot be fetched, for instance): on 64-bit x86
-# Linux the x86 build, not the guest build (linux_x86_64)
+# Linux the x86 build, not the guest build (linux_x86_64); on a Mac with Apple
+# silicon the macOS build
 native_guest = native_linux_guest()
-default = "windows" if is_windows() else native_guest.name if native_guest and native_guest.default else "linux"
+default = ("windows" if is_windows() else native_guest.name if native_guest and native_guest.default
+           else "macos" if is_macos_arm64() else "linux")
 if f"\nbuild {default}: " in out.getvalue():
     n.comment("Default rule: the build for this computer")
     n.default(default)

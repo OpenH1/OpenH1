@@ -1282,6 +1282,61 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
   x86 build does (`src/posix_trace_marker.c`, under "The platform layer"
   below): on the Steam Frame, its markers took the game from the headset's
   72 Hz to about 50 frames a second.
+- The guest's memory is the low 4 GB of the process. With
+  `configure.py --guest-base`, it is at a base that the host chooses: each
+  guest address is an offset from a base register, which every memory
+  access of the guest adds (`tools/guest_base_register.py`;
+  `android/host/host_memory_base.c`). Then the guest's 4 KB pages also
+  operate on a kernel with 16 KB pages.
+
+### The renderer's command stream
+
+The renderer's backend can run on the 64-bit host instead of in the guest.
+The game's renderer is in two halves (`src/xgpu_backend.h`): a front end
+that knows the Xbox's Direct3D, and a backend that drives the GPU. Built
+with `HALO_RENDER_STREAM`, the front end's calls go to a command stream
+instead of a backend in the guest (`src/xgpu_stream.h`). The guest writes
+each call as a record into a ring in its own memory
+(`src/xgpu_stream_encode.c`), and one host call each frame hands the frame
+over. A thread of the host plays the records into a backend of the host:
+Metal on macOS, later the OpenGL backend for the Steam Frame
+(`android/host/host_render_stream.c`, whose `host_render_backend` is the
+table of a backend's functions). It does so while the game goes on to the
+next frame, so the GPU driver's work leaves the game's thread, and no GL
+call crosses from the guest to the host.
+
+- The records hold only fixed-width integers and floats, alike in the
+  ILP32 guest and the 64-bit host. Guest data in them is a guest address,
+  which the host reads in place.
+- Data that the game rewrites before the GPU reads it is copied into the
+  ring: streamed vertices, indices, immediate mode, constants, uniforms,
+  the mirror's writes, the dynamic lights. Data too large for the ring (an
+  eighth of it) is copied into a buffer of its own, which is freed when
+  the host is done with it. Textures and palettes are read where they are,
+  as on the Xbox, whose GPU reads the game's memory a frame behind.
+- Pipeline keys and vertex layouts are sent once, then named by a
+  number. Draw states, textures and vertex inputs are sent when they
+  change. A busy frame is a few MB, most of it streamed vertices.
+- The game waits only when the ring (32 MB) is full, or when two frames
+  are not done yet: the GPU draws one frame while the host's thread plays
+  the next, and the game writes the third.
+- The calls whose answer the front end needs now are answered without a
+  wait. The capabilities and the VR mode's sizes are answered once, at
+  start-up. A pipeline that cannot be made is reported a frame later. The
+  visibility tests' counts are written into the guest's memory by the
+  host. A screenshot waits for the frame's end.
+- In the VR mode, the host submits the frame to OpenXR as it plays the
+  frame's last record: the moment to take the newest head pose.
+
+- Textures are the host's to read and cache, as the OpenGL backend's
+  cache does (the decoding, `src/xbox_texture_decode.c`, is shared). The
+  high-res replacements (the HUD's, the menus' art, the high-res text) are
+  images: their pixels in the game's memory (`src/xgpu_images.c`), which a
+  texture stage names in the Xbox texture's place.
+
+The macOS build uses it, with the Metal backend (port/macos/README.md,
+"Metal"). `tools/test_render_stream.py` tests the stream with a backend of
+its own.
 
 ## 64-bit x86
 
@@ -2256,32 +2311,62 @@ yet). With `vr.aim = "controller"`.
 
 #### Climbing into a vehicle (`vr.vehicle_climb`)
 
-With the controller aiming, a vehicle with holds, the Scorpion for now, can
-be climbed with your hands, as in a climbing game: the hands pull and the
-world follows them, which is felt as your own motion. X still gets you in
-hands-free.
+With the controller aiming, the Scorpion, the Warthog, the Ghost, the Banshee
+and the Shade can be climbed with your hands, as in a climbing game: the
+hands pull and the world follows them, which is felt as your own motion. X
+still gets you in hands-free, into any vehicle; one without holds (the
+Wraith, a dropship) is got into with X alone.
 
-- The Scorpion's holds are where a Spartan would grab: each track guard's
-  outer edge (at about 1.6 m), a rail along the middle of its top, a rail at
-  the foot of the hull's side, the hull's top edge, and the rim of the hatch
-  over the driver's cockpit. As a hand comes within reach of one, the tank
-  lights up (as the holsters' weapons do) and the controller ticks.
+- Each vehicle's holds are where a Spartan would grab. As a hand comes
+  within reach of one, the vehicle lights up (as the holsters' weapons do)
+  and the controller ticks.
 - Grip to take a hold (a firmer tick). While a hand holds, your view moves
   against the hand's motion, 1:1 in every direction: pull down and you rise,
   pull toward you and you move forward. Either hand, or both; hand over hand
-  works. Let go of both and the view comes back to your body gently, at
-  walking pace (from high on the tank, across and then down).
-- At the hatch, take the rim and lower yourself (raise your hands): as you
-  come down to the rim your view is drawn toward the middle of the opening,
-  and 30 cm below the rim you are in the driver's seat, as X would put you,
-  your view carried on into the cockpit and turned to face the display.
-- Out: take the rim overhead from the seat and pull yourself up; 30 cm above
-  the rim you are out of the seat, as X would take you out, still where your
-  hands hold you. Let go, and you come down beside the tank.
+  works. The weapon in your hand is not drawn while a hand holds. Let go of
+  both and the view comes back to your body gently, at walking pace (from
+  high on a vehicle, across and then down).
+- Got in, your view glides on into the seat (no faster than 0.8 m/s), and
+  turns to face the vehicle's front as it does (no faster than 45 degrees a
+  second), with no blink.
+- The Scorpion: each track guard's outer edge (at about 1.6 m), a rail
+  along the middle of its top, a rail at the foot of the hull's side, the
+  hull's top edge, and the rim of the hatch over the driver's cockpit. Take
+  the rim and lower yourself (raise your hands): as you come down to the rim
+  your view is drawn toward the middle of the opening, and 30 cm below the
+  rim you are in the driver's seat, your view carried on into the cockpit
+  and turned to face the display. Out: take the rim overhead from the seat
+  and pull yourself up; 30 cm above it you are out.
+- The Warthog's driver and passenger: the windscreen's corner post, the
+  side's top edge and the seat's back, by each seat. Take one and pull
+  yourself in: within 60 cm of the seat your view is drawn to it, and within
+  25 cm you are in it. Out: take the post or the side's edge and push
+  yourself up and over it; 35 cm from where you sat you are out.
+- The Warthog's gunner: the tailgate's top edge and the bed's sides climb
+  you up into the bed; both hands on the chaingun's handles, near where the
+  gunner stands, and you are on the gun (your hands stay on its handles).
+  Out: let go of the handles, take the bed's side and push yourself up and
+  over it.
+- The Ghost: its handlebars and the cowl's edges above them. Take them and
+  pull yourself toward the saddle: within 60 cm your view is drawn into it,
+  and within 25 cm you are on it, the handlebars yours to steer by. Out:
+  with both hands on the handlebars, push off them (past 10 cm of slack,
+  your view moves back as your hands push); 25 cm back you are off, still
+  holding them, until you let go.
+- The Banshee: its tail booms' tops, the hull's edges beside the cockpit,
+  and the cockpit's sills. Come over the cockpit and lower yourself into it,
+  as into the Scorpion's hatch; 12 cm above the sills you are in the pilot's
+  seat. Out: take the sills and push yourself up; 35 cm above them you are
+  out.
+- The Shade: two handles at the back of its gun, and its seat's sides. Pull
+  yourself up by them; both hands on the handles, near the seat, and you are
+  on the gun. Out: take the seat's sides by your hips and push yourself up
+  and off.
 - Your view's climb is the view's alone, as your head moving in the room is:
   your body stays on the ground beside the vehicle (others see it standing)
-  until you are in the seat, and your view goes no farther than 4 m from it.
-  Only what X would do reaches the game, so it plays in a network game.
+  until you are in the seat, and your hands pull your view no farther than
+  4 m from it. Only what X would do reaches the game, so it plays in a
+  network game.
 
 #### Driving a Scorpion (`vr.scorpion_view`)
 
@@ -2678,7 +2763,7 @@ headset's session is opened with, apply from the next start.
 | `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a wide magnified window opens about the reticle, at its depth (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
 | `vr.smartlink_size` | `70.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the zoom's window is, in degrees of the view (30 to 100); it is 16:9. |
 | `vr.scope_gun` | `"hidden"` | `HALO_VR_SCOPE_GUN` | With `vr.scope_view = "smartlink"`: how the weapon in your hand shows where it crosses the zoom's window: `"hidden"`, the window over it (no barrel in the view); `"ghost"`, faintly through the window (a fifth); `"visible"`, in front of the window. Not in VR Controls. |
-| `vr.vehicle_climb` | `true` | `HALO_VR_VEHICLE_CLIMB` | With `vr.aim = "controller"`: a vehicle with holds (the Scorpion) is climbed with the hands: grip a hold and pull, the view moving against the hands; lowered into its hatch by the rim you are in its seat, and pulled up out of it by the rim, out ("Climbing into a vehicle"). X works as ever. |
+| `vr.vehicle_climb` | `true` | `HALO_VR_VEHICLE_CLIMB` | With `vr.aim = "controller"`: a vehicle with holds (the Scorpion, the Warthog, the Ghost, the Banshee, the Shade) is climbed with the hands: grip a hold and pull, the view moving against the hands; lowered into a hatch by its rim, pulled to a seat by its holds, or with both hands on a gun's handles, you are in the seat, and pulled or pushed out of it by its holds (the Ghost: pushed off its handlebars), out ("Climbing into a vehicle"). X works as ever. |
 | `vr.vehicle_zoom` | `"2 4"` | `HALO_VR_VEHICLE_ZOOM` | With `vr.scope_view = "smartlink"`, in a vehicle's seat whose weapon you aim, seen from the seat: the magnifications the right stick's click steps through in the zoom's window, then none (up to 4, each more than 1; `""`: the click does nothing there, as before). A vehicle's weapon with zoom levels of its own (none in the game's maps) has those. Not in VR Controls. |
 | `vr.recoil` | `1.0` | `HALO_VR_RECOIL` | With `vr.aim = "controller"`: how far the weapon in your hand kicks as it fires, each its own way, from `0` (none) to `1` (above, "The weapons' feel"). Drawn alone: the aim, the shots and the scopes' views stay where you point. Not in VR Controls. |
 | `vr.weapon_haptics` | `1.0` | `HALO_VR_WEAPON_HAPTICS` | With `vr.aim = "controller"`: how strongly the controllers feel each weapon firing, each its own way, and the hits on you, in the hand on the side they came from, in place of the gamepad's rumble for them, from `0` (none) to `1` (above, "The weapons' feel"). Not in VR Controls. |
@@ -2868,7 +2953,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   side over its near hull.) The screen's other render targets have a
   layer for each eye. Draws in screen space are the same in both eyes.
 - Foveated (`vr.foveation`, the default), the eye pass draws four views
-  in the same draws (`GL_OVR_multiview2`; `src/d3d8_gl.c`, "foveation"),
+  in the same draws (`GL_OVR_multiview2`; `src/xgpu_gl.c`, "foveation"),
   each `vr.foveation_inset` of an eye's image across and up (864x864 of
   1728x1728 by default): for each eye the whole of it, at that fraction of
   its resolution, and an inset of it, at its full resolution, about where
@@ -3374,7 +3459,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   drawn there without its weapon (the arms alone), each hand holding its
   handle placed on it as the controller would be, upright along the Ghost,
   its fingers closed. The comfort vignette (`vr_draw_vignette`,
-  `src/d3d8_gl.c`) multiplies each eye's image by a dimming beyond 50
+  `src/xgpu_gl.c`) multiplies each eye's image by a dimming beyond 50
   degrees from that eye's own middle (30 at its strongest) over 22
   degrees, by 65% at most, eased in over 0.12 s and out over 0.4 s.
   The Warthog's driver seat is the same seat (`vehicle_seats` in
@@ -3521,7 +3606,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   does (on b40's Shade, swept across at 8x: no more than the aim, in any
   frame).
   Its image (the same copy: the window, its sight and readout, its glow,
-  and its animation, the image's middle rows) is not a layer: `d3d8_gl.c`
+  and its animation, the image's middle rows) is not a layer: `xgpu_gl.c`
   draws it into both eyes' images after the foveation's composite, where
   each eye's ray meets the window's quad (`halo_vr_scope_window`: through
   the reticle's point, at its smoothed distance, facing back along the line
@@ -3618,11 +3703,11 @@ does; making the eye images from the four layers cost 0.2 ms more there.
 | Area | Status |
 | --- | --- |
 | Game code | All 466 C files of the game. The changes are in "Game source changes". |
-| Graphics | Direct3D 8 on OpenGL 4.5 core through SDL3 (`src/d3d8_gl.c`). The port translates the NV2A vertex shaders and register combiners to GLSL. It decodes all the Xbox texture formats. The vertex and index buffers come from a GL copy of the Xbox memory. |
+| Graphics | Direct3D 8 on OpenGL 4.5 core through SDL3. A front end (`src/d3d8_device.c`) keeps the Direct3D state and turns each draw into a description that any graphics API can draw (`src/xgpu_backend.h`: the pipeline's key, the textures and targets it binds, the draw's ranges, all plain data); the OpenGL backend (`src/xgpu_gl.c`) draws them, building the pipeline for a key once and keeping it. The port translates the NV2A vertex shaders and register combiners into a description of their operations (`src/xgpu_shader.h`), which `src/xgpu_glsl.c` writes as GLSL. It decodes all the Xbox texture formats. The vertex and index buffers come from a GL copy of the Xbox memory. |
 | High-res HUD | The HUD is drawn from high-res assets: redraws at 8x the size of the maps' bitmaps (4x for the largest), in `port/assets/hud`. They cover the meters, counters, panels and their outlines, the motion sensor, reticles, waypoints and scopes, but no bitmap with English text. `tools/hud_assets.py` makes them from the SVG redraws (the weapons' reticles from those of the PC HUD sheet that match the Xbox's exactly, the sniper rifle's 2x and 10x set in Overpass), and the build embeds them in the executable. When the game uploads one of those bitmaps, `src/hud_hires.c` gives the high-res texture in its place, if the bitmap's pixels are those of the English maps: another language's maps keep their own. The game sizes and places the HUD from its tags as before. `display.high_res_hud = false` turns this off. |
 | High-res text | The menus' and HUD's text is drawn with Overpass (`port/assets/fonts`, SIL Open Font License) in place of the maps' bitmap fonts, which are Interstate. `src/text_hires.c` rasterizes each glyph with stb_truetype (`port/third_party/stb`) at the resolution the game draws at, into an atlas that a placeholder bitmap of the game stands for. The game lays the text out from its font tags as before: each font is as tall as its tag's capitals, and narrowed where the tag's letters are narrower than the Xbox maps' (the fonts of a Custom Edition `loc.map`), so that its letters do not run into each other. The menus' titles (the screens' headers and the main menu's items) are pictures of text in the maps, so they are drawn as the high-res HUD is: `tools/title_assets.py` sets each one again in OpenCE, Roger White's public-domain Newtown respaced to match the maps' commercial title typeface (`tools/title_font.py`), at 4x the bitmap's size over its own plate or glow, each letter placed where the map's letter is, in `port/assets/titles`. The postgame carnage report's title is set over a hand-made SVG redraw of its panel (`port/assets/titles/svg`) instead. The A, B, X and Y button icons beside the menus' key labels and in their text ("Press A to Join") are drawn from hand-made SVG redraws at 8x the size of the maps' bitmaps (`port/assets/buttons`, made by `tools/button_assets.py`), in the same sizes and places. `display.high_res_text = false` turns it off. |
-| Dynamic lights | `display.dynamic_lights = "enhanced"` (`src/d3d8_gl.c`, `src/nv2a_psh.c`, `game/dynamic_lights.c`): the frame's lights are a uniform block, and a 32 x 32 x 16 grid about the camera, its cells growing with the distance (out to 128 world units each way), a 128-bit mask of the lights that reach each cell (an integer 3D texture). The structure's lightmap pass and the models' per-pixel lighting (`display.per_pixel_lighting`'s, which this turns on) add the lights of their cell for each pixel, in place of the game's pass over the structure for each light and its two lights for each model. The vertex shaders hand on the world position: a model program's skinned position before it is projected, a structure's vertex as it is. The glows are a camera-facing quad each, projected as the game's programs are, faded against the scene's depth, sampled with the target drawn into without it. |
-| Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_gl.c`, `src/xgpu_post.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). Their programs are built when the setting is chosen. Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (`gl_SampleMask`, not on Android). |
+| Dynamic lights | `display.dynamic_lights = "enhanced"` (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_glsl.c`, `game/dynamic_lights.c`): the frame's lights are a uniform block, and a 32 x 32 x 16 grid about the camera, its cells growing with the distance (out to 128 world units each way), a 128-bit mask of the lights that reach each cell (an integer 3D texture). The structure's lightmap pass and the models' per-pixel lighting (`display.per_pixel_lighting`'s, which this turns on) add the lights of their cell for each pixel, in place of the game's pass over the structure for each light and its two lights for each model. The vertex shaders hand on the world position: a model program's skinned position before it is projected, a structure's vertex as it is. The glows are a camera-facing quad each, projected as the game's programs are, faded against the scene's depth, sampled with the target drawn into without it. |
+| Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_post.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). Their programs are built when the setting is chosen. Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (`gl_SampleMask`, not on Android). |
 | Sound | Xbox DirectSound on SDL3 audio (`src/dsound_sdl.c`): PCM and Xbox ADPCM, mixed at 48 kHz, with volume, pitch, mix bins, distance, stereo pan, occlusion and obstruction. There is no Doppler effect, no cones and no reverb. |
 | Input | XInput on SDL3 (`src/xinput_sdl.c`): keyboard, mouse, gamepads with rumble, and the debug keyboard for the console. |
 | Files | The Win32 file functions and the MSVC file functions on POSIX, with the translation of Xbox paths. |
@@ -3673,7 +3758,7 @@ definition. Without this check, the linker gives the reference the address
 - `src/halo_linker_common.c` gives weak storage for some globals of the
   January link, and for `fast_ftol_C` and `main_crash`.
 - `main/d3d_intimacy.cpp` reads a private structure of the Xbox Direct3D.
-  The Linux build does not use this file. `src/d3d8_gl.c` gives
+  The Linux build does not use this file. `src/d3d8_device.c` gives
   `d3d_find_flipcount`.
 - The build returns small structures and unions in registers
   (`-freg-struct-return`), as on Win32.
@@ -3687,6 +3772,24 @@ definition. Without this check, the linker gives the reference the address
   changes nothing (measured: the same frame times and power either way).
   `HALO_GPU_TRACE_MARKERS=1` lets the driver write them, to capture with
   gpuvis.
+
+### The renderer
+
+The game draws through the Xbox's Direct3D 8. The renderer has two halves,
+so that a second graphics API (Metal, then Vulkan) needs a backend and no
+second copy of what the Xbox's states mean:
+
+| File | Contents |
+| --- | --- |
+| `src/d3d8_device.c` | The front end: the `D3DDevice_*` functions and the device's state. It finds the render targets by the Xbox surface's address and numbers them, keeps the vertex shaders and declarations, the visibility tests' slots, the screen's size and scale, the mirror's pages and the VR mode's passes. For each draw it fills a pipeline key, the dynamic state, the textures bound and the draw's range. |
+| `src/xgpu_backend.h` | What passes between the halves. It holds no Xbox value and no GL one. Each call is plain data: targets are numbers, guest data is a guest address and a size, and the backend keeps no pointer into the front end's memory. A few calls are answered at once (a texture's description, whether a pipeline's shaders build, a visibility test's count, a screenshot's pixels); the header says how each could wait for the frame's end. So the calls of a frame could go to another thread or to the 64-bit host as one stream. |
+| `src/xgpu_gl.c` | The OpenGL backend (OpenGL 4.5, OpenGL ES 3.0 to 3.2, WebGL 2), with `src/xgpu_gl.h`. It keeps a pipeline for each key: the program and the GL state, made the first time a draw needs it. It holds the targets, the stream buffers, the mirror's buffers and the visibility queries or counters. In the VR mode it holds the eyes' images and the HUD's, and composes the frame for OpenXR. |
+| `src/xgpu_shader.h` | The vertex programs and pixel shaders, decoded once: `src/nv2a_vsh.c` decodes the NV2A vertex microcode, `src/nv2a_psh.c` the texture stages and register combiners. |
+| `src/xgpu_glsl.c` | Writes GLSL 4.50 or ESSL 3.00 and 3.10 from the decoded programs. |
+
+The texture cache (`src/xbox_textures.c`) and the high-res replacements
+(`src/hud_hires.c`, `src/text_hires.c`, `src/menu_files.c`) still make GL
+textures themselves.
 
 ### Game source changes
 
@@ -3726,7 +3829,7 @@ Other changes:
 | `rasterizer/xbox/rasterizer_xbox_shadows.c` | With larger shadow maps (`display.shadow_resolution`), the blur's taps stay half a texel apart, and more passes widen it to cover the same part of the map as on the Xbox. |
 | `rasterizer/rasterizer.c` | The 128 KB of vertices of the debug display of a model's vertices are static, not on the stack: the compiler inlines the function in `render_model`, and the Windows build probed the stack a page at a time for every model drawn. |
 | `render/render.c` | The 3D view of each window is antialiased before the HUD is drawn (`display.anti_aliasing`). The projectiles' lights' glows are drawn after the transparent geometry (`display.dynamic_lights`). |
-| `models/models.c` | A model's size, which chooses its level of detail and whether it is drawn, is scaled as `display.model_detail` says (`halo_model_detail_scale`, `src/d3d8_gl.c`). |
+| `models/models.c` | A model's size, which chooses its level of detail and whether it is drawn, is scaled as `display.model_detail` says (`halo_model_detail_scale`, `src/d3d8_device.c`). |
 | `interface/hud.c` | In multiplayer, players' names are drawn above their heads (`display.player_names`, `display.player_name_scale`). |
 | `rasterizer/rasterizer_text.c`, `text/draw_string.c` | Text is drawn from an atlas of the fonts' glyphs, rasterized at the resolution the game draws at (`src/text_hires.c`), when the font has every character of the string. Text can be drawn scaled about a point (`rasterizer_text_set_scale`), as the players' names are. Each glyph's advance is centred on the font tag character's, so the layout is the same, and a glyph is cut at a text box only where the font tag's character visibly was. |
 | `interface/first_person_weapons.c` | The first-person hands are drawn with the unit's shield modifier shader, as its body is (`display.viewmodel_shield`). |

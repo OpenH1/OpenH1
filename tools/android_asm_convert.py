@@ -9,7 +9,10 @@ symbol decoration and relocation operators are Darwin-specific. This script
 rewrites them for the ELF assembler, so the objects can be linked by ld.lld
 into an image that the Android loader maps into the low 4 GB of the process.
 
-Usage: android_asm_convert.py input.s output.s
+With --base-register, the result is also rewritten for a guest whose memory
+lies at a base the host chooses (tools/guest_base_register.py).
+
+Usage: android_asm_convert.py [--base-register] input.s output.s
 """
 
 import re
@@ -255,17 +258,27 @@ class Converter:
 
 
 def main():
-    if len(sys.argv) != 3:
+    arguments = sys.argv[1:]
+    base_register = bool(arguments) and arguments[0] == "--base-register"
+    if base_register:
+        arguments = arguments[1:]
+    if len(arguments) != 2:
         print(__doc__)
         sys.exit(2)
-    with open(sys.argv[1], "r", encoding="utf-8", errors="surrogateescape") as f:
+    with open(arguments[0], "r", encoding="utf-8", errors="surrogateescape") as f:
         lines = f.read().split("\n")
     try:
         result = Converter(lines).run()
+        if base_register:
+            from guest_base_register import BaseRegisterError, rewrite
+            try:
+                result = "\n".join(rewrite(result.split("\n"))[0])
+            except BaseRegisterError as e:
+                raise ConvertError(f"base register: {e}") from None
     except ConvertError as e:
-        print(f"{sys.argv[1]}: {e}", file=sys.stderr)
+        print(f"{arguments[0]}: {e}", file=sys.stderr)
         sys.exit(1)
-    with open(sys.argv[2], "w", encoding="utf-8", errors="surrogateescape") as f:
+    with open(arguments[1], "w", encoding="utf-8", errors="surrogateescape") as f:
         f.write(result)
 
 

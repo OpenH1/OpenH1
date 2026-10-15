@@ -79,6 +79,7 @@ Each platform has its own instructions:
 | Linux arm64 VR (OpenXR headsets such as the Steam Frame) | [port/linux/README.md](port/linux/README.md#vr) |
 | Windows (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/windows/README.md](port/windows/README.md) |
 | Android (arm64 app, OpenGL ES 3, SDL3) | [port/android/README.md](port/android/README.md) |
+| macOS (Apple silicon: Halo.app, Metal) | [port/macos/README.md](port/macos/README.md) |
 | Web (WebAssembly, WebGL 2, SDL3; desktop Chrome, Edge and Firefox) | [port/web/README.md](port/web/README.md) |
 
 The Linux README also gives the controls, the settings and the multiplayer
@@ -121,6 +122,7 @@ To build the game:
 | `ninja linux_x86_64` (on 64-bit x86 Linux, after `python configure.py --linux-x86-64`) | `build/linux_x86_64/halo` and `libSDL3.so.0` |
 | `ninja windows` (on Windows) | `build/windows/halo.exe` and `SDL3.dll` |
 | `ninja android_apk` | `port/android/app/build/outputs/apk/debug/app-debug.apk` |
+| `ninja macos` (on a Mac with Apple silicon) | `build/macos/Halo.app` (and `halo` with `libSDL3.0.dylib`, for development); `ninja macos_dmg`: `Halo.dmg` |
 | `ninja web` | `build/web/site/`, the web site (`python tools/web_serve.py` serves it) |
 
 If you enter `ninja` without a target, ninja builds the game for the
@@ -142,6 +144,7 @@ Give these options to `configure.py`:
 | `--pgo=off` | No profile-guided optimization. |
 | `--pgo=train` | Records a new optimization profile. Refer to "Optimization profiles". |
 | `--profile` | A profiling build. It records CPU times. Refer to "Profiling builds". |
+| `--guest-base` | The Linux arm64 and Android builds put the guest's memory at a base that the host chooses, not in the low 4 GB (a base register: `tools/guest_base_register.py`). The 64-bit x86 build has none: with it, `ninja linux_x86_64` stops with the reason. |
 | `--web-emcc PATH` | The Emscripten `emcc` for `ninja web` (else the one on the PATH, or `~/emsdk`'s). |
 
 Without `--portable`, the Linux and Windows builds use all the instructions

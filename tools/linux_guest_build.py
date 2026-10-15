@@ -42,7 +42,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from .android_build import (GUEST_ARCH_SCRIPT, MUSL_VERSION, SDL_TAG, TOML_DIR, fetch_third_party,
-                            generate_guest_image)
+                            generate_guest_image, host_memory_sources)
 from .guest_arch import ARM64_32, X32, GuestArch
 from .linux_sysroot import download
 from .linux_build import (MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, SDL_RPATH_LDFLAGS, compile_launcher,
@@ -234,6 +234,14 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     if vr:
         guest_defines.append("-DHALO_VR=1")
         host_defines.append("-DHALO_VR=1")
+    # (configure.py --guest-base: the guest's memory at a base the host
+    # chooses, tools/guest_base_register.py, instead of the low 4 GB; for an
+    # architecture that has one, GuestArch.base_register_flags)
+    base_register = bool(getattr(sln, "guest_base", False))
+    if base_register:
+        if target.arch.base_register_flags is None:
+            raise RuntimeError(f"--guest-base: the {target.arch.name} guest has no base register")
+        host_defines.append("-DHALO_GUEST_BASE=1")
 
     n.comment(f"{target.title} build (ninja {target.name}); see port/linux/README.md")
     n.variable(f"{prefix}_guest_cc", cc)
@@ -244,7 +252,9 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         guest_cc=cc, gl_headers=GL_HEADERS, ar="llvm-ar", ld="ld.lld", objdump="llvm-objdump", builtins_cc=f"${prefix}_cc",
         environment="gnu", platform_defines=guest_defines, extra_runtime=[PORT_DIR / "guest_desktop.c"],
         extra_imports=[PORT_DIR / "host_imports.list", *([PORT_DIR / "vr_imports.list"] if vr else [])],
-        updater_cflags=updater_defines(getattr(sln, "port_release", False)), desktop_gl=desktop_gl)
+        extra_prototypes=[PORT_DIR / "guest_desktop.c", *([LINUX_DIR / "src" / "vr_host.h"] if vr else [])],
+        updater_cflags=updater_defines(getattr(sln, "port_release", False)), desktop_gl=desktop_gl,
+        base_register=base_register)
 
     # ---------- SDL3, built from the same source as the guest's headers
 
@@ -274,7 +284,8 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     ])
     # (the app's own: its entry point, and the touch controls through Java)
     android_only = {"host_main.c", "host_touch.c"}
-    host_sources = [source for source in sorted((ANDROID_DIR / "host").glob("*.c")) if source.name not in android_only]
+    host_sources = [source for source in host_memory_sources(sorted((ANDROID_DIR / "host").glob("*.c")), base_register)
+                    if source.name not in android_only]
     host_sources += [
         PORT_DIR / "host_main.c", PORT_DIR / "host_desktop.c",
         LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",

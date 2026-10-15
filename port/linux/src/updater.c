@@ -46,9 +46,9 @@ that name it), and deletes the flat files the tree has moved.
 /* the release's build that this one updates to (halo-<platform>-<release|
 debug>.zip; on Linux, the release's tree); a build without one never looks
 for updates */
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#if defined(HALO_ANDROID) || defined(HALO_WEB) || defined(HALO_MACOS)
 /* (none: the Android app updates itself, the site through its service
-worker) */
+worker; the macOS app is replaced by its disk image) */
 #elif defined(_WIN32)
 #define UPDATE_PLATFORM "windows"
 #elif defined(HALO_VR) && defined(__x86_64__)
