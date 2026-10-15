@@ -12,10 +12,11 @@ waits for the frame two before it, and takes that frame's place in the
 three sets of per-frame resources: the upload ring's chunks and the
 visibility result buffer.
 
-Passes. set_targets ends the render command encoder; the next draw or clear
-begins one, with load actions "load", or "clear" for an attachment that a
-clear of the whole of it came first for. Any other clear is a quad drawn
-through a clear pipeline. Uploads into a texture the GPU may still read are
+Passes. set_targets ends the render command encoder (not for the same
+targets: the pass, or the clears waiting for its start, go on); the next
+draw or clear begins one, with load actions "load", or "clear" for an
+attachment that a clear of the whole of it came first for. Any other clear
+is a quad drawn through a clear pipeline. Uploads into a texture the GPU may still read are
 blits in the command buffer's order (they end the encoder; the pass goes on
 with "load"); into one it cannot, they write the texture at once.
 
@@ -1650,8 +1651,11 @@ void xgpu_metal_set_targets(uint32_t color, uint32_t color_level, uint32_t color
 
 	if (!metal.in_frame)
 		xgpu_metal_frame_begin();
-	/* (the same targets: the pass goes on) */
-	if (metal.encoder && metal.color == (color_entry ? color : 0) && metal.color_level == color_level &&
+	/* (the same targets: the pass goes on, or the clears of whole
+	attachments waiting for it to begin still wait: a pass of its own for
+	them would store the targets, and the next would load them again) */
+	if ((metal.encoder || metal.color_load == MTLLoadActionClear || metal.depth_load == MTLLoadActionClear ||
+		metal.stencil_load == MTLLoadActionClear) && metal.color == (color_entry ? color : 0) && metal.color_level == color_level &&
 		metal.color_layer == color_layer && metal.depth == (depth_entry ? depth : 0) &&
 		metal.multisampled == (multisampled != 0))
 		return;

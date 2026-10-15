@@ -270,9 +270,11 @@ command stream's backend table. They run on one thread, the render thread.
   (`host_memory_remapped`), and the buffers over them go. The command
   stream's ring is one buffer too, so its inline data is drawn in place.
 - **Passes.** Each change of targets ends the render command encoder (the
-  same targets again keep it); the next draw or clear begins one, with load actions "load", or "clear" for an
-  attachment that a clear of the whole of it came first for. Other clears
-  are quads drawn through a clear pipeline (of the channels cleared).
+  same targets again keep it, and keep the clears waiting for its start);
+  the next draw or clear begins one, with load actions "load", or "clear"
+  for an attachment that a clear of the whole of it came first for. Other
+  clears are quads drawn through a clear pipeline (of the channels
+  cleared).
 - **Visibility tests** count samples in a visibility result buffer, one for
   each pass (Apple's GPUs zero the first results an earlier pass counted
   into a buffer when a later pass counts into the same one), and the counts
