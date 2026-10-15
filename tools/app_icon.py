@@ -10,7 +10,10 @@
 - opence-icon-render.png, the helmet alone on transparency (1024x1024, the same
   framing): the Android app's launcher icon;
 - opence-icon.png again: the web page's icons (port/web/site/icons), its tab's,
-  the installed web app's and the home screen's.
+  the installed web app's and the home screen's;
+- the render on the background's gradient, in the rounded square of macOS's
+  icons (port/macos/opence-icon.icns): the macOS app's icon, which Finder and
+  the Dock show (tools/macos_build.py puts it in Halo.app).
 
 The launcher icon is an adaptive one (Android 8 and later): the render as its
 foreground layer, the background's gradient as its background layer, and the
@@ -25,10 +28,13 @@ icon's definition (mipmap-anydpi-v26/ic_launcher.xml) and background
 changes. Needs Pillow and NumPy.
 """
 
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 ARTWORK = ROOT / "port/assets/icon"
@@ -48,6 +54,13 @@ WINDOWS_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
 # manifest's (192, 512)
 WEB_ICONS = ROOT / "port/web/site/icons"
 WEB_SIZES = [32, 180, 192, 512]
+# macOS's icon: Apple's grid for app icons (macOS 11 and later), a rounded
+# square of 824 pixels in a canvas of 1024, its corners' radius 185.4, with a
+# drop shadow below it; the .icns holds every size from it, 16 to 1024
+MACOS_ICON = ROOT / "port/macos/opence-icon.icns"
+MACOS_CANVAS = 1024
+MACOS_SQUARE = 824
+MACOS_RADIUS = 185.4
 
 
 def background_gradient(icon: Image.Image, render: Image.Image) -> tuple:
@@ -99,6 +112,47 @@ def web_icons(icon: Image.Image) -> None:
     print(f"{WEB_ICONS.relative_to(ROOT)}: {', '.join(str(size) for size in WEB_SIZES)}")
 
 
+def macos_icon(render: Image.Image, top: tuple, bottom: tuple) -> None:
+    """the render over the background's gradient, filling the rounded
+    square as the picture fills the other icons, with Apple's shadow"""
+    scale = 4
+    square = MACOS_SQUARE
+    offset = (MACOS_CANVAS - square) // 2
+    rows = np.linspace(0.0, 1.0, square)[:, None]
+    gradient = np.array(top, dtype=np.float64) * (1.0 - rows) + np.array(bottom, dtype=np.float64) * rows
+    body = np.empty((square, square, 4), dtype=np.uint8)
+    body[..., :3] = np.round(gradient[:, None, :]).astype(np.uint8)
+    body[..., 3] = 255
+    picture = Image.fromarray(body, "RGBA")
+    picture.alpha_composite(render.resize((square, square), Image.LANCZOS))
+    # the shape, drawn larger and reduced for smooth edges
+    mask = Image.new("L", (square * scale, square * scale), 0)
+    ImageDraw.Draw(mask).rounded_rectangle((0, 0, square * scale - 1, square * scale - 1),
+                                           radius=round(MACOS_RADIUS * scale), fill=255)
+    mask = mask.resize((square, square), Image.LANCZOS)
+    picture.putalpha(mask)
+    canvas = Image.new("RGBA", (MACOS_CANVAS, MACOS_CANVAS), (0, 0, 0, 0))
+    shadow = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+    shadow.paste(Image.new("RGBA", (square, square), (0, 0, 0, 128)), (offset, offset + 12), mask)
+    canvas.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(14)))
+    canvas.alpha_composite(picture, (offset, offset))
+    MACOS_ICON.parent.mkdir(parents=True, exist_ok=True)
+    if shutil.which("iconutil"):
+        # macOS's own writer: every size, the small ones too (Pillow writes
+        # 16 and 32 only at twice their size)
+        with tempfile.TemporaryDirectory() as temporary:
+            iconset = Path(temporary) / "icon.iconset"
+            iconset.mkdir()
+            for size in (16, 32, 128, 256, 512):
+                for factor, suffix in ((1, ""), (2, "@2x")):
+                    canvas.resize((size * factor, size * factor), Image.LANCZOS).save(
+                        iconset / f"icon_{size}x{size}{suffix}.png")
+            subprocess.run(["iconutil", "-c", "icns", str(iconset), "-o", str(MACOS_ICON)], check=True)
+    else:
+        canvas.save(MACOS_ICON)
+    print(f"{MACOS_ICON.relative_to(ROOT)}: 16 to {MACOS_CANVAS}")
+
+
 def main() -> None:
     icon = Image.open(ICON).convert("RGBA")
     render = Image.open(RENDER).convert("RGBA")
@@ -143,6 +197,7 @@ def main() -> None:
         '    <monochrome android:drawable="@mipmap/ic_launcher_monochrome" />\n'
         "</adaptive-icon>\n", encoding="utf-8")
     print("background #{:02X}{:02X}{:02X} to #{:02X}{:02X}{:02X}".format(*top, *bottom))
+    macos_icon(render, top, bottom)
 
 
 if __name__ == "__main__":
