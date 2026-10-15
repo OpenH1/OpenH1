@@ -9,5 +9,5 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libpulse-dev libpipewire-0.3-dev libasound2-dev libudev-dev libdbus-1-dev libdecor-0-dev \
     && curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh && bash /tmp/llvm.sh 22 \
     && apt-get install -y --no-install-recommends lld-22 llvm-22 \
-    && for t in clang clang++ ld.lld llvm-ar llvm-objcopy llvm-symbolizer llvm-profdata llvm-nm llvm-readelf; do ln -sf /usr/bin/$t-22 /usr/local/bin/$t; done \
+    && for t in clang clang++ ld.lld llvm-ar llvm-objcopy llvm-objdump llvm-symbolizer llvm-profdata llvm-nm llvm-readelf; do ln -sf /usr/bin/$t-22 /usr/local/bin/$t; done \
     && rm -rf /var/lib/apt/lists/*
