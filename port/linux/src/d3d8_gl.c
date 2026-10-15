@@ -24,6 +24,7 @@ Conventions carried over from the Xbox:
 
 #include "xgpu.h"
 #include "xgpu_shader.h"
+#include "xgpu_backend.h"
 #include "sdl_platform.h"
 #ifdef HALO_VR
 #include <SDL3/SDL.h>
@@ -1806,8 +1807,10 @@ samples a depth buffer as a texture (the game's copy of the depth buffer's
 memory is a target of its own), so a depth buffer is resolved only when it
 stops being multisampled. */
 
-/* the samples a pixel of the bound targets: their renderbuffers' (or 1) */
+/* the samples a pixel of the bound targets: their renderbuffers' (or 1);
+and whether they have a color target (bind_targets) */
 static int target_samples = 1;
+static BOOL target_has_color;
 
 /* the multisampled pixels of a target drawn into since into its texture */
 static void render_target_resolve(struct xgpu_render_target *target)
@@ -2081,6 +2084,7 @@ static BOOL bind_targets(BOOL *has_depth)
 	framebuffer_base = 0;
 #endif
 	*has_depth = depth != NULL;
+	target_has_color = color != NULL;
 	return TRUE;
 }
 
@@ -4073,215 +4077,406 @@ static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale
 #endif
 }
 
-static GLenum stencil_operation(DWORD operation)
+/* ---------- the pipeline key and dynamic state (xgpu_backend.h)
+
+The front end's description of a draw's fixed-function state, from the
+game's render states: the key holds what a pipeline object bakes in, the
+dynamic state the rest. The Xbox's values are GL's enumerants, but the
+description is neither's. */
+
+static unsigned char compare_function(DWORD function)
 {
-	/* Xbox stencil operations are the GL enumerants, plus 0 for ZERO */
-	return operation ? (GLenum)operation : GL_ZERO;
+	/* (0, as a render state left at zero, never passes, as GL_NEVER) */
+	if (function >= D3DCMP_NEVER && function <= D3DCMP_ALWAYS)
+		return (unsigned char)(XGPU_COMPARE_NEVER + (function - D3DCMP_NEVER));
+	return function ? XGPU_COMPARE_ALWAYS : XGPU_COMPARE_NEVER;
 }
 
-static GLenum blend_equation(DWORD operation)
+static unsigned char blend_factor(DWORD factor)
+{
+	switch (factor)
+	{
+	case D3DBLEND_ZERO: return XGPU_BLEND_ZERO;
+	case D3DBLEND_SRCCOLOR: return XGPU_BLEND_SOURCE_COLOR;
+	case D3DBLEND_INVSRCCOLOR: return XGPU_BLEND_ONE_MINUS_SOURCE_COLOR;
+	case D3DBLEND_SRCALPHA: return XGPU_BLEND_SOURCE_ALPHA;
+	case D3DBLEND_INVSRCALPHA: return XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA;
+	case D3DBLEND_DESTALPHA: return XGPU_BLEND_DESTINATION_ALPHA;
+	case D3DBLEND_INVDESTALPHA: return XGPU_BLEND_ONE_MINUS_DESTINATION_ALPHA;
+	case D3DBLEND_DESTCOLOR: return XGPU_BLEND_DESTINATION_COLOR;
+	case D3DBLEND_INVDESTCOLOR: return XGPU_BLEND_ONE_MINUS_DESTINATION_COLOR;
+	case D3DBLEND_SRCALPHASAT: return XGPU_BLEND_SOURCE_ALPHA_SATURATE;
+	case D3DBLEND_CONSTANTCOLOR: return XGPU_BLEND_CONSTANT_COLOR;
+	case D3DBLEND_INVCONSTANTCOLOR: return XGPU_BLEND_ONE_MINUS_CONSTANT_COLOR;
+	case D3DBLEND_CONSTANTALPHA: return XGPU_BLEND_CONSTANT_ALPHA;
+	case D3DBLEND_INVCONSTANTALPHA: return XGPU_BLEND_ONE_MINUS_CONSTANT_ALPHA;
+	default: return XGPU_BLEND_ONE;
+	}
+}
+
+static unsigned char blend_operation(DWORD operation)
 {
 	switch (operation)
 	{
-	case D3DBLENDOP_SUBTRACT: return GL_FUNC_SUBTRACT;
+	case D3DBLENDOP_SUBTRACT: return XGPU_BLEND_SUBTRACT;
 	case D3DBLENDOP_REVSUBTRACT:
-	case D3DBLENDOP_REVSUBTRACTSIGNED: return GL_FUNC_REVERSE_SUBTRACT;
-	case D3DBLENDOP_MIN: return GL_MIN;
-	case D3DBLENDOP_MAX: return GL_MAX;
+	case D3DBLENDOP_REVSUBTRACTSIGNED: return XGPU_BLEND_REVERSE_SUBTRACT;
+	case D3DBLENDOP_MIN: return XGPU_BLEND_MIN;
+	case D3DBLENDOP_MAX: return XGPU_BLEND_MAX;
+	/* (and the signed add, which the NV2A has and GL has not) */
+	default: return XGPU_BLEND_ADD;
+	}
+}
+
+static unsigned char stencil_operation(DWORD operation)
+{
+	switch (operation)
+	{
+	case D3DSTENCILOP_ZERO: return XGPU_STENCIL_ZERO;
+	case D3DSTENCILOP_REPLACE: return XGPU_STENCIL_REPLACE;
+	case D3DSTENCILOP_INCRSAT: return XGPU_STENCIL_INCREMENT_CLAMP;
+	case D3DSTENCILOP_DECRSAT: return XGPU_STENCIL_DECREMENT_CLAMP;
+	case D3DSTENCILOP_INVERT: return XGPU_STENCIL_INVERT;
+	case D3DSTENCILOP_INCR: return XGPU_STENCIL_INCREMENT_WRAP;
+	case D3DSTENCILOP_DECR: return XGPU_STENCIL_DECREMENT_WRAP;
+	default: return XGPU_STENCIL_KEEP;
+	}
+}
+
+/* the draw's fixed-function state into its pipeline key (the shaders' and
+the targets' parts are the caller's) and its dynamic state; has_depth: the
+targets have a depth buffer */
+static void pipeline_state_describe(BOOL has_depth, struct xgpu_pipeline_key *key, struct xgpu_dynamic_state *dynamic)
+{
+	DWORD *rs = D3D__RenderState;
+	DWORD write = rs[D3DRS_COLORWRITEENABLE];
+
+	dynamic->viewport[0] = target_pixel((float)device.viewport.X, 0);
+	dynamic->viewport[1] = target_pixel((float)device.viewport.Y, 1);
+	dynamic->viewport[2] = target_pixel((float)(device.viewport.X + device.viewport.Width), 0) - dynamic->viewport[0];
+	dynamic->viewport[3] = target_pixel((float)(device.viewport.Y + device.viewport.Height), 1) - dynamic->viewport[1];
+	/* the game never issues a scissor rectangle, and the NV2A scissor register
+	defaults to the viewport, so fragment clipping follows the viewport: this is
+	what keeps a split-screen window's geometry from bleeding across the divider */
+	memcpy(dynamic->scissor, dynamic->viewport, sizeof(dynamic->scissor));
+	dynamic->depth_range[0] = device.viewport.MinZ;
+	dynamic->depth_range[1] = device.viewport.MaxZ;
+
+	key->depth_test = has_depth && rs[D3DRS_ZENABLE];
+	if (key->depth_test)
+		key->depth_function = compare_function(rs[D3DRS_ZFUNC]);
+	key->depth_write = key->depth_test && rs[D3DRS_ZWRITEENABLE];
+
+	key->stencil_test = has_depth && rs[D3DRS_STENCILENABLE];
+	if (key->stencil_test)
+	{
+		key->stencil_function = compare_function(rs[D3DRS_STENCILFUNC]);
+		key->stencil_read_mask = rs[D3DRS_STENCILMASK];
+		key->stencil_fail = stencil_operation(rs[D3DRS_STENCILFAIL]);
+		key->stencil_depth_fail = stencil_operation(rs[D3DRS_STENCILZFAIL]);
+		key->stencil_pass = stencil_operation(rs[D3DRS_STENCILPASS]);
+		key->stencil_write_mask = rs[D3DRS_STENCILWRITEMASK];
+		dynamic->stencil_reference = rs[D3DRS_STENCILREF];
+	}
+
+	key->blend = rs[D3DRS_ALPHABLENDENABLE] != 0;
+	if (key->blend)
+	{
+		/* (a constant factor the pixel shader applies: source_blend_in_shader) */
+		key->blend_source = key->pixel.source_blend ? XGPU_BLEND_ONE : blend_factor(rs[D3DRS_SRCBLEND]);
+		key->blend_destination = blend_factor(rs[D3DRS_DESTBLEND]);
+		key->blend_operation = blend_operation(rs[D3DRS_BLENDOP]);
+		color_to_vec4(rs[D3DRS_BLENDCOLOR], dynamic->blend_color);
+	}
+	key->color_mask = (unsigned char)(((write & D3DCOLORWRITEENABLE_RED) ? XGPU_WRITE_RED : 0) |
+		((write & D3DCOLORWRITEENABLE_GREEN) ? XGPU_WRITE_GREEN : 0) |
+		((write & D3DCOLORWRITEENABLE_BLUE) ? XGPU_WRITE_BLUE : 0) |
+		((write & D3DCOLORWRITEENABLE_ALPHA) ? XGPU_WRITE_ALPHA : 0));
+
+	/* the cull mode names the winding to discard; FRONTFACE names the
+	front winding */
+	key->cull = rs[D3DRS_CULLMODE] != D3DCULL_NONE;
+	if (key->cull)
+	{
+		key->front_counter_clockwise = rs[D3DRS_FRONTFACE] == D3DFRONT_CCW;
+#ifdef HALO_VR
+		/* (the other way about for a mirrored model: halo_vr_mirrored_draws) */
+		if (vr_gl.mirrored)
+			key->front_counter_clockwise = !key->front_counter_clockwise;
+#endif
+		key->cull_front = rs[D3DRS_CULLMODE] == rs[D3DRS_FRONTFACE];
+	}
+	key->fill = rs[D3DRS_FILLMODE] == D3DFILL_WIREFRAME ? XGPU_FILL_LINES :
+		rs[D3DRS_FILLMODE] == D3DFILL_POINT ? XGPU_FILL_POINTS : XGPU_FILL_SOLID;
+
+	/* D3DRS_ZBIAS is expressed in these states (D3DDevice_SetRenderState_ZBias) */
+	key->depth_bias = rs[D3DRS_SOLIDOFFSETENABLE] != 0;
+	if (key->depth_bias)
+	{
+		dynamic->depth_bias[0] = dword_to_float(rs[D3DRS_POLYGONOFFSETZSLOPESCALE]);
+		dynamic->depth_bias[1] = dword_to_float(rs[D3DRS_POLYGONOFFSETZOFFSET]);
+	}
+}
+
+/* ---------- the GL pipeline cache
+
+A pipeline for each pipeline key, made the first time: the program its
+shaders link to (shared by the keys that differ in fixed-function state
+alone: program_get) and the GL values of its fixed-function state, applied
+through the state cache at each draw. */
+
+struct gl_pipeline
+{
+	struct gl_pipeline *next;
+	unsigned long hash;
+	struct xgpu_pipeline_key key;
+	/* NULL: its program does not compile or link */
+	struct program_entry *program;
+	GLenum depth_function, stencil_function, stencil_operations[3];
+	GLenum blend_source, blend_destination, blend_equation;
+	GLenum front_face, cull_face, polygon_mode;
+};
+
+#define PIPELINE_BUCKETS 1024
+
+static struct gl_pipeline *pipeline_buckets[PIPELINE_BUCKETS];
+
+typedef char pipeline_key_size_assert[sizeof(struct xgpu_pipeline_key) % 4 == 0 ? 1 : -1];
+
+static GLenum gl_compare_function(unsigned char function)
+{
+	static const GLenum functions[] =
+	{
+		GL_NEVER, GL_LESS, GL_EQUAL, GL_LEQUAL, GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_ALWAYS,
+	};
+
+	return functions[function & 7];
+}
+
+static GLenum gl_blend_factor(unsigned char factor)
+{
+	static const GLenum factors[] =
+	{
+		GL_ZERO, GL_ONE, GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_DST_ALPHA,
+		GL_ONE_MINUS_DST_ALPHA, GL_DST_COLOR, GL_ONE_MINUS_DST_COLOR, GL_SRC_ALPHA_SATURATE, GL_CONSTANT_COLOR,
+		GL_ONE_MINUS_CONSTANT_COLOR, GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA,
+	};
+
+	return factor < sizeof(factors) / sizeof(factors[0]) ? factors[factor] : GL_ONE;
+}
+
+static GLenum gl_blend_equation(unsigned char operation)
+{
+	switch (operation)
+	{
+	case XGPU_BLEND_SUBTRACT: return GL_FUNC_SUBTRACT;
+	case XGPU_BLEND_REVERSE_SUBTRACT: return GL_FUNC_REVERSE_SUBTRACT;
+	case XGPU_BLEND_MIN: return GL_MIN;
+	case XGPU_BLEND_MAX: return GL_MAX;
 	default: return GL_FUNC_ADD;
 	}
 }
 
-static void apply_raster_state(BOOL has_depth)
+static GLenum gl_stencil_operation(unsigned char operation)
 {
-	DWORD *rs = D3D__RenderState;
-	DWORD write = rs[D3DRS_COLORWRITEENABLE];
+	static const GLenum operations[] =
+	{
+		GL_KEEP, GL_ZERO, GL_REPLACE, GL_INCR, GL_DECR, GL_INVERT, GL_INCR_WRAP, GL_DECR_WRAP,
+	};
+
+	return operations[operation & 7];
+}
+
+/* the pipeline of a key, made the first time; program and lighting: the
+vertex shader object it draws with, and the lighting its shader hands on
+(nv2a_vertex_lighting; NULL none) */
+static struct gl_pipeline *gl_pipeline_get(const struct xgpu_pipeline_key *key, struct vertex_shader_object *program,
+	const struct nv2a_vertex_lighting *lighting)
+{
+	static struct gl_pipeline *last;
+	struct gl_pipeline **bucket, *pipeline;
+	unsigned long hash;
+
+	/* (consecutive draws mostly share their pipeline) */
+	if (last && words_equal(&last->key, key, sizeof(*key)))
+		return last;
+	hash = hash_words(key, sizeof(*key));
+	bucket = &pipeline_buckets[hash % PIPELINE_BUCKETS];
+	for (pipeline = *bucket; pipeline; pipeline = pipeline->next)
+	{
+		if (pipeline->hash == hash && words_equal(&pipeline->key, key, sizeof(*key)))
+		{
+			last = pipeline;
+			return pipeline;
+		}
+	}
+	pipeline = calloc(1, sizeof(*pipeline));
+	pipeline->hash = hash;
+	pipeline->key = *key;
+	pipeline->program = program_get(vertex_shader_get(program, key->immediate, lighting, key->views),
+		fragment_shader_get(&key->pixel));
+	pipeline->depth_function = gl_compare_function(key->depth_function);
+	pipeline->stencil_function = gl_compare_function(key->stencil_function);
+	pipeline->stencil_operations[0] = gl_stencil_operation(key->stencil_fail);
+	pipeline->stencil_operations[1] = gl_stencil_operation(key->stencil_depth_fail);
+	pipeline->stencil_operations[2] = gl_stencil_operation(key->stencil_pass);
+	pipeline->blend_source = gl_blend_factor(key->blend_source);
+	pipeline->blend_destination = gl_blend_factor(key->blend_destination);
+	pipeline->blend_equation = gl_blend_equation(key->blend_operation);
+	pipeline->front_face = key->front_counter_clockwise ? GL_CCW : GL_CW;
+#ifdef HALO_GLES
+	/* the vertex shader flips y in clip space, which (unlike desktop
+	GL's upper-left clip origin) also flips the winding */
+	pipeline->front_face = pipeline->front_face == GL_CW ? GL_CCW : GL_CW;
+#endif
+	/* (as does the VR mode's eye pass: drawn upside down, vr_flip_rows) */
+	if (key->views != XGPU_MULTIVIEW_NONE)
+		pipeline->front_face = pipeline->front_face == GL_CW ? GL_CCW : GL_CW;
+	pipeline->cull_face = key->cull_front ? GL_FRONT : GL_BACK;
+#ifndef HALO_GLES
+	pipeline->polygon_mode = key->fill == XGPU_FILL_LINES ? GL_LINE : key->fill == XGPU_FILL_POINTS ? GL_POINT : GL_FILL;
+#endif
+	pipeline->next = *bucket;
+	*bucket = pipeline;
+	last = pipeline;
+	return pipeline;
+}
+
+/* a pipeline's fixed-function state and the draw's dynamic state, set
+through the state cache */
+static void gl_pipeline_apply(const struct gl_pipeline *pipeline, const struct xgpu_dynamic_state *dynamic)
+{
+	const struct xgpu_pipeline_key *key = &pipeline->key;
 	GLint viewport[4];
 	GLint scissor[4];
 	float depth_range[2];
-	unsigned char color_mask;
-	BOOL depth_test = has_depth && rs[D3DRS_ZENABLE];
+	int index;
 
-	viewport[0] = target_pixel((float)device.viewport.X, 0);
-	viewport[1] = target_pixel((float)device.viewport.Y, 1);
-	viewport[2] = target_pixel((float)(device.viewport.X + device.viewport.Width), 0) - viewport[0];
-	viewport[3] = target_pixel((float)(device.viewport.Y + device.viewport.Height), 1) - viewport[1];
+	for (index = 0; index < 4; index++)
+	{
+		viewport[index] = (GLint)dynamic->viewport[index];
+		scissor[index] = (GLint)dynamic->scissor[index];
+	}
 #ifdef HALO_VR
 	vr_flip_rows(&viewport[1], viewport[3]);
+	vr_flip_rows(&scissor[1], scissor[3]);
 #endif
 	if (memcmp(gl_state.viewport, viewport, sizeof(viewport)))
 	{
 		memcpy(gl_state.viewport, viewport, sizeof(viewport));
 		glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 	}
-	/* the game never issues a scissor rectangle, and the NV2A scissor register
-	defaults to the viewport, so fragment clipping follows the viewport: this is
-	what keeps a split-screen window's geometry from bleeding across the divider */
 	/* (glScissor takes the corner and the size, as glViewport does) */
-	memcpy(scissor, viewport, sizeof(scissor));
 	if (memcmp(gl_state.scissor, scissor, sizeof(scissor)))
 	{
 		memcpy(gl_state.scissor, scissor, sizeof(scissor));
 		glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
 	}
 	state_enable(&gl_state.scissor_test, GL_SCISSOR_TEST, scissor[2] > 0 && scissor[3] > 0);
-	depth_range[0] = device.viewport.MinZ;
-	depth_range[1] = device.viewport.MaxZ;
+	depth_range[0] = dynamic->depth_range[0];
+	depth_range[1] = dynamic->depth_range[1];
 	if (memcmp(gl_state.depth_range, depth_range, sizeof(depth_range)))
 	{
 		memcpy(gl_state.depth_range, depth_range, sizeof(depth_range));
 		glDepthRange(depth_range[0], depth_range[1]);
 	}
 
-	state_enable(&gl_state.depth_test, GL_DEPTH_TEST, depth_test);
-	if (depth_test)
+	state_enable(&gl_state.depth_test, GL_DEPTH_TEST, key->depth_test);
+	if (key->depth_test && gl_state.depth_function != pipeline->depth_function)
 	{
-		GLenum function = rs[D3DRS_ZFUNC] ? (GLenum)rs[D3DRS_ZFUNC] : GL_NEVER;
-
-		if (gl_state.depth_function != function)
-		{
-			gl_state.depth_function = function;
-			glDepthFunc(function);
-		}
+		gl_state.depth_function = pipeline->depth_function;
+		glDepthFunc(pipeline->depth_function);
 	}
+	if (gl_state.depth_mask != key->depth_write)
 	{
-		unsigned char mask = depth_test && rs[D3DRS_ZWRITEENABLE] ? 1 : 0;
-
-		if (gl_state.depth_mask != mask)
-		{
-			gl_state.depth_mask = mask;
-			glDepthMask(mask ? GL_TRUE : GL_FALSE);
-		}
+		gl_state.depth_mask = key->depth_write;
+		glDepthMask(key->depth_write ? GL_TRUE : GL_FALSE);
 	}
 
-	state_enable(&gl_state.stencil_test, GL_STENCIL_TEST, has_depth && rs[D3DRS_STENCILENABLE]);
-	if (has_depth && rs[D3DRS_STENCILENABLE])
+	state_enable(&gl_state.stencil_test, GL_STENCIL_TEST, key->stencil_test);
+	if (key->stencil_test)
 	{
-		GLenum function = rs[D3DRS_STENCILFUNC] ? (GLenum)rs[D3DRS_STENCILFUNC] : GL_NEVER;
-		GLenum operations[3];
-
-		if (gl_state.stencil_function != function || gl_state.stencil_reference != (GLint)rs[D3DRS_STENCILREF] ||
-			gl_state.stencil_value_mask != rs[D3DRS_STENCILMASK])
+		if (gl_state.stencil_function != pipeline->stencil_function ||
+			gl_state.stencil_reference != (GLint)dynamic->stencil_reference ||
+			gl_state.stencil_value_mask != (GLuint)key->stencil_read_mask)
 		{
-			gl_state.stencil_function = function;
-			gl_state.stencil_reference = (GLint)rs[D3DRS_STENCILREF];
-			gl_state.stencil_value_mask = rs[D3DRS_STENCILMASK];
-			glStencilFunc(function, (GLint)rs[D3DRS_STENCILREF], rs[D3DRS_STENCILMASK]);
+			gl_state.stencil_function = pipeline->stencil_function;
+			gl_state.stencil_reference = (GLint)dynamic->stencil_reference;
+			gl_state.stencil_value_mask = (GLuint)key->stencil_read_mask;
+			glStencilFunc(pipeline->stencil_function, (GLint)dynamic->stencil_reference, (GLuint)key->stencil_read_mask);
 		}
-		operations[0] = stencil_operation(rs[D3DRS_STENCILFAIL]);
-		operations[1] = stencil_operation(rs[D3DRS_STENCILZFAIL]);
-		operations[2] = stencil_operation(rs[D3DRS_STENCILPASS]);
-		if (memcmp(gl_state.stencil_operations, operations, sizeof(operations)))
+		if (memcmp(gl_state.stencil_operations, pipeline->stencil_operations, sizeof(pipeline->stencil_operations)))
 		{
-			memcpy(gl_state.stencil_operations, operations, sizeof(operations));
-			glStencilOp(operations[0], operations[1], operations[2]);
+			memcpy(gl_state.stencil_operations, pipeline->stencil_operations, sizeof(pipeline->stencil_operations));
+			glStencilOp(pipeline->stencil_operations[0], pipeline->stencil_operations[1],
+				pipeline->stencil_operations[2]);
 		}
-		if (gl_state.stencil_write_mask != rs[D3DRS_STENCILWRITEMASK])
+		if (gl_state.stencil_write_mask != (GLuint)key->stencil_write_mask)
 		{
-			gl_state.stencil_write_mask = rs[D3DRS_STENCILWRITEMASK];
-			glStencilMask(rs[D3DRS_STENCILWRITEMASK]);
+			gl_state.stencil_write_mask = (GLuint)key->stencil_write_mask;
+			glStencilMask((GLuint)key->stencil_write_mask);
 		}
 	}
 
-	state_enable(&gl_state.blend, GL_BLEND, rs[D3DRS_ALPHABLENDENABLE] != 0);
-	if (rs[D3DRS_ALPHABLENDENABLE])
+	state_enable(&gl_state.blend, GL_BLEND, key->blend);
+	if (key->blend)
 	{
-		GLenum equation = blend_equation(rs[D3DRS_BLENDOP]);
-		float blend_color[4];
-
-		/* (a constant factor the pixel shader applies: source_blend_in_shader) */
-		GLenum source = source_blend_in_shader() ? GL_ONE : (GLenum)rs[D3DRS_SRCBLEND];
-
-		if (gl_state.blend_source != source ||
-			gl_state.blend_destination != (GLenum)rs[D3DRS_DESTBLEND])
+		if (gl_state.blend_source != pipeline->blend_source || gl_state.blend_destination != pipeline->blend_destination)
 		{
-			gl_state.blend_source = source;
-			gl_state.blend_destination = (GLenum)rs[D3DRS_DESTBLEND];
+			gl_state.blend_source = pipeline->blend_source;
+			gl_state.blend_destination = pipeline->blend_destination;
 			glBlendFunc(gl_state.blend_source, gl_state.blend_destination);
 		}
-		if (gl_state.blend_equation != equation)
+		if (gl_state.blend_equation != pipeline->blend_equation)
 		{
-			gl_state.blend_equation = equation;
-			glBlendEquation(equation);
+			gl_state.blend_equation = pipeline->blend_equation;
+			glBlendEquation(pipeline->blend_equation);
 		}
-		color_to_vec4(rs[D3DRS_BLENDCOLOR], blend_color);
-		if (memcmp(gl_state.blend_color, blend_color, sizeof(blend_color)))
+		if (memcmp(gl_state.blend_color, dynamic->blend_color, sizeof(dynamic->blend_color)))
 		{
-			memcpy(gl_state.blend_color, blend_color, sizeof(blend_color));
-			glBlendColor(blend_color[0], blend_color[1], blend_color[2], blend_color[3]);
+			memcpy(gl_state.blend_color, dynamic->blend_color, sizeof(dynamic->blend_color));
+			glBlendColor(dynamic->blend_color[0], dynamic->blend_color[1], dynamic->blend_color[2],
+				dynamic->blend_color[3]);
 		}
 	}
-	color_mask = (unsigned char)(((write & D3DCOLORWRITEENABLE_RED) ? 1 : 0) | ((write & D3DCOLORWRITEENABLE_GREEN) ? 2 : 0) |
-		((write & D3DCOLORWRITEENABLE_BLUE) ? 4 : 0) | ((write & D3DCOLORWRITEENABLE_ALPHA) ? 8 : 0));
-	if (gl_state.color_mask != color_mask)
+	if (gl_state.color_mask != key->color_mask)
 	{
-		gl_state.color_mask = color_mask;
-		glColorMask((color_mask & 1) != 0, (color_mask & 2) != 0, (color_mask & 4) != 0, (color_mask & 8) != 0);
+		gl_state.color_mask = key->color_mask;
+		glColorMask((key->color_mask & XGPU_WRITE_RED) != 0, (key->color_mask & XGPU_WRITE_GREEN) != 0,
+			(key->color_mask & XGPU_WRITE_BLUE) != 0, (key->color_mask & XGPU_WRITE_ALPHA) != 0);
 	}
 
-	/* the cull mode names the winding to discard; FRONTFACE names the
-	front winding */
-	state_enable(&gl_state.cull_face, GL_CULL_FACE, rs[D3DRS_CULLMODE] != D3DCULL_NONE);
-	if (rs[D3DRS_CULLMODE] != D3DCULL_NONE)
+	state_enable(&gl_state.cull_face, GL_CULL_FACE, key->cull);
+	if (key->cull)
 	{
-#ifdef HALO_GLES
-		/* the vertex shader flips y in clip space, which (unlike desktop
-		GL's upper-left clip origin) also flips the winding */
-		GLenum front_face = rs[D3DRS_FRONTFACE] == D3DFRONT_CCW ? GL_CW : GL_CCW;
-#else
-		GLenum front_face = rs[D3DRS_FRONTFACE] == D3DFRONT_CCW ? GL_CCW : GL_CW;
-#endif
-#ifdef HALO_VR
-		/* (as does the eye pass's) */
-		if (vr_gl.multiview || vr_gl.left_eye || vr_gl.right_eye)
-			front_face = front_face == GL_CW ? GL_CCW : GL_CW;
-		/* (and a mirrored model's) */
-		if (vr_gl.mirrored)
-			front_face = front_face == GL_CW ? GL_CCW : GL_CW;
-#endif
-		GLenum cull_mode = rs[D3DRS_CULLMODE] == rs[D3DRS_FRONTFACE] ? GL_FRONT : GL_BACK;
-
-		if (gl_state.front_face != front_face)
+		if (gl_state.front_face != pipeline->front_face)
 		{
-			gl_state.front_face = front_face;
-			glFrontFace(front_face);
+			gl_state.front_face = pipeline->front_face;
+			glFrontFace(pipeline->front_face);
 		}
-		if (gl_state.cull_mode != cull_mode)
+		if (gl_state.cull_mode != pipeline->cull_face)
 		{
-			gl_state.cull_mode = cull_mode;
-			glCullFace(cull_mode);
+			gl_state.cull_mode = pipeline->cull_face;
+			glCullFace(pipeline->cull_face);
 		}
 	}
 #ifndef HALO_GLES
 	/* ES draws filled polygons only (wireframe is a debug mode) */
+	if (gl_state.polygon_mode != pipeline->polygon_mode)
 	{
-		GLenum polygon_mode = rs[D3DRS_FILLMODE] == D3DFILL_WIREFRAME ? GL_LINE :
-			rs[D3DRS_FILLMODE] == D3DFILL_POINT ? GL_POINT : GL_FILL;
-
-		if (gl_state.polygon_mode != polygon_mode)
-		{
-			gl_state.polygon_mode = polygon_mode;
-			glPolygonMode(GL_FRONT_AND_BACK, polygon_mode);
-		}
+		gl_state.polygon_mode = pipeline->polygon_mode;
+		glPolygonMode(GL_FRONT_AND_BACK, pipeline->polygon_mode);
 	}
 #endif
 
-	/* D3DRS_ZBIAS is expressed in these states (D3DDevice_SetRenderState_ZBias) */
-	state_enable(&gl_state.offset_fill, GL_POLYGON_OFFSET_FILL, rs[D3DRS_SOLIDOFFSETENABLE] != 0);
+	state_enable(&gl_state.offset_fill, GL_POLYGON_OFFSET_FILL, key->depth_bias);
 #ifndef HALO_GLES
-	state_enable(&gl_state.offset_line, GL_POLYGON_OFFSET_LINE, rs[D3DRS_SOLIDOFFSETENABLE] != 0);
+	state_enable(&gl_state.offset_line, GL_POLYGON_OFFSET_LINE, key->depth_bias);
 #endif
-	if (rs[D3DRS_SOLIDOFFSETENABLE])
+	if (key->depth_bias && memcmp(gl_state.polygon_offset, dynamic->depth_bias, sizeof(dynamic->depth_bias)))
 	{
-		float offset[2];
-
-		offset[0] = dword_to_float(rs[D3DRS_POLYGONOFFSETZSLOPESCALE]);
-		offset[1] = dword_to_float(rs[D3DRS_POLYGONOFFSETZOFFSET]);
-		if (memcmp(gl_state.polygon_offset, offset, sizeof(offset)))
-		{
-			memcpy(gl_state.polygon_offset, offset, sizeof(offset));
-			glPolygonOffset(offset[0], offset[1]);
-		}
+		memcpy(gl_state.polygon_offset, dynamic->depth_bias, sizeof(dynamic->depth_bias));
+		glPolygonOffset(dynamic->depth_bias[0], dynamic->depth_bias[1]);
 	}
 }
 
@@ -4855,6 +5050,9 @@ static struct program_entry *prepare_draw(BOOL immediate)
 {
 	struct vertex_shader_object *program = current_program();
 	struct nv2a_pixel_shader_key key;
+	struct xgpu_pipeline_key pipeline_key;
+	struct xgpu_dynamic_state dynamic;
+	struct gl_pipeline *pipeline;
 	struct program_entry *entry;
 	struct draw_uniforms uniforms;
 	BOOL has_depth = FALSE;
@@ -4894,7 +5092,6 @@ static struct program_entry *prepare_draw(BOOL immediate)
 		stats.skipped_no_target++;
 		return NULL;
 	}
-	apply_raster_state(has_depth);
 	for (stage = 0; stage < D3DTSS_MAXSTAGES; stage++)
 	{
 		key.alpha_kill[stage] = D3D__TextureState[stage][D3DTSS_ALPHAKILL] == D3DTALPHAKILL_ENABLE;
@@ -4921,7 +5118,19 @@ static struct program_entry *prepare_draw(BOOL immediate)
 	key.multiview = vr_gl.multiview ? XGPU_MULTIVIEW_EYES : vr_gl.left_eye ? XGPU_MULTIVIEW_LEFT_EYE :
 		vr_gl.right_eye ? XGPU_MULTIVIEW_RIGHT_EYE : XGPU_MULTIVIEW_NONE;
 #endif
-	entry = NULL;
+	/* the pipeline: the shaders, the fixed-function state, the targets */
+	memset(&pipeline_key, 0, sizeof(pipeline_key));
+	memset(&dynamic, 0, sizeof(dynamic));
+	pipeline_key.pixel = key;
+	pipeline_state_describe(has_depth, &pipeline_key, &dynamic);
+	pipeline_key.vertex_program = program->program->hash;
+	pipeline_key.packed_attributes = immediate ? 0 : device.vertex_shader->packed_mask;
+	pipeline_key.immediate = immediate != 0;
+	pipeline_key.views = key.multiview;
+	pipeline_key.color_format = target_has_color ? XGPU_FORMAT_BGRA8 : XGPU_FORMAT_NONE;
+	pipeline_key.depth_format = has_depth ? XGPU_FORMAT_D24S8 : XGPU_FORMAT_NONE;
+	pipeline_key.samples = (unsigned char)target_samples;
+	pipeline = NULL;
 	if (program->lighting.lights && !program->lighting_failed && per_pixel_lighting())
 	{
 		key.per_pixel_lighting = (unsigned char)program->lighting.lights;
@@ -4930,9 +5139,10 @@ static struct program_entry *prepare_draw(BOOL immediate)
 		if (dynamic_lights_active() && program->lighting.world_found)
 			key.dynamic_lights = XGPU_DYNAMIC_LIGHTS_MODEL;
 #endif
-		entry = program_get(vertex_shader_get(program, immediate, &program->lighting, key.multiview),
-			fragment_shader_get(&key));
-		if (!entry)
+		pipeline_key.pixel = key;
+		pipeline_key.lighting = program->lighting.lights == 2 ? XGPU_LIGHTING_MODEL_POINT : XGPU_LIGHTING_MODEL;
+		pipeline = gl_pipeline_get(&pipeline_key, program, &program->lighting);
+		if (!pipeline->program)
 		{
 			/* drawn as the vertex shader lights it instead (not at all,
 			were it to fail too) */
@@ -4941,6 +5151,7 @@ static struct program_entry *prepare_draw(BOOL immediate)
 			program->lighting_failed = TRUE;
 			key.per_pixel_lighting = 0;
 			key.dynamic_lights = 0;
+			pipeline = NULL;
 		}
 	}
 #ifndef HALO_GLES
@@ -4952,19 +5163,26 @@ static struct program_entry *prepare_draw(BOOL immediate)
 		static const struct nv2a_vertex_lighting environment = { XGPU_ENVIRONMENT_LIGHTING };
 
 		key.dynamic_lights = XGPU_DYNAMIC_LIGHTS_ENVIRONMENT;
-		entry = program_get(vertex_shader_get(program, immediate, &environment, key.multiview),
-			fragment_shader_get(&key));
-		if (!entry)
+		pipeline_key.pixel = key;
+		pipeline_key.lighting = XGPU_LIGHTING_ENVIRONMENT;
+		pipeline = gl_pipeline_get(&pipeline_key, program, &environment);
+		if (!pipeline->program)
 		{
 			platform_log("GPU: vertex shader %lu cannot be lit by the dynamic lights (refer to the shader log "
 				"above): lit by the game's own passes", program->id);
 			program->lighting_failed = TRUE;
 			key.dynamic_lights = 0;
+			pipeline = NULL;
 		}
 	}
 #endif
-	if (!entry)
-		entry = program_get(vertex_shader_get(program, immediate, NULL, key.multiview), fragment_shader_get(&key));
+	if (!pipeline)
+	{
+		pipeline_key.pixel = key;
+		pipeline_key.lighting = XGPU_LIGHTING_NONE;
+		pipeline = gl_pipeline_get(&pipeline_key, program, NULL);
+	}
+	entry = pipeline->program;
 #ifdef HALO_VR
 	if (vr_gl.multiview && vr_gl.statistics && !program->program->projects)
 	{
@@ -4990,6 +5208,7 @@ static struct program_entry *prepare_draw(BOOL immediate)
 		gl_check_errors("program");
 		return NULL;
 	}
+	gl_pipeline_apply(pipeline, &dynamic);
 	gl_check_errors("state");
 	if (immediate)
 		stats.immediate_draws++;
