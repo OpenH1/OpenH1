@@ -1038,12 +1038,6 @@ static const struct config_setting config_settings[] =
 #endif
 	{ "debug.null_renderer", _config_boolean, "false", "HALO_NULL_RENDERER", _environment_set_is_true, _platform_all,
 		"Run without a window, drawing nothing." },
-#ifdef HALO_METAL
-	{ "debug.metal_window", _config_boolean, "false", "HALO_METAL_WINDOW", _environment_set_is_true, _platform_all,
-		"With the null renderer, open the window anyway, drawn with Metal: it\n"
-		"shows the display's refreshes, each cleared and presented (the Metal\n"
-		"renderer's groundwork, until it draws the game)." },
-#endif
 	{ "debug.gl_debug", _config_boolean, "false", "HALO_GL_DEBUG", _environment_set_is_true, _platform_all,
 		"Report OpenGL errors in the log." },
 	{ "debug.skip_cinematics", _config_boolean, "false", "HALO_SKIP_CINEMATICS", _environment_set_is_true, _platform_all,

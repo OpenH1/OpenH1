@@ -16,9 +16,9 @@ wherever the host reserves them (port/android/host/host_memory_base.c).
 - build/macos/xgpu_metal_test (ninja macos_metal_test): the Metal backend's
   tests (port/macos/tests).
 
-The renderer is Metal's (port/macos/xgpu_metal.m), in the host; until the
-game draws through it, run the game with the null renderer. Refer to
-port/macos/README.md.
+The renderer is Metal's (port/macos/xgpu_metal.m), in the host: the guest
+writes its frames as the renderer's command stream (HALO_RENDER_STREAM).
+Refer to port/macos/README.md.
 """
 
 import hashlib
@@ -47,9 +47,9 @@ SDL_DIR = THIRD_PARTY / "SDL3"
 MACOS_MINIMUM = "14.4"
 
 # The Khronos OpenGL ES headers, for the guest's declarations only: the
-# guest's renderer (port/linux/src/d3d8_gl.c) is compiled as on Linux arm64,
-# but the macOS host gives it no OpenGL (port/macos/host_renderer.c), and
-# the game runs with the null renderer until the Metal backend comes.
+# guest's platform code that names OpenGL is compiled as on Linux arm64, but
+# the macOS host gives it no OpenGL (port/macos/host_renderer.c): the
+# renderer is Metal's, in the host.
 # (OpenGL-Registry and EGL-Registry, Apache-2.0 / MIT)
 KHRONOS_DIR = THIRD_PARTY / "khronos"
 KHRONOS_HEADERS = {
@@ -76,7 +76,12 @@ KHRONOS_URLS = [
 # the guest of the Linux arm64 build (the base register is added by
 # generate_guest_image); Apple's clang otherwise notes that its macOS
 # sysroot is not the watchOS target's, which the guest does not use
-MACOS_GUEST_ABI_FLAGS = [*LINUX_ARM64_GUEST_ABI_FLAGS, "-Wno-incompatible-sysroot", "-DHALO_METAL"]
+MACOS_GUEST_ABI_FLAGS = [*LINUX_ARM64_GUEST_ABI_FLAGS, "-Wno-incompatible-sysroot", "-DHALO_METAL",
+                         "-DHALO_RENDER_STREAM"]
+# (the renderer's backend is the host's, through the command stream:
+# port/linux/src/xgpu_stream_encode.c in place of the OpenGL backend and its
+# anti-aliasing passes)
+MACOS_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c"]
 
 # the host's frameworks: Metal and its layer (port/macos/host_metal.m,
 # xgpu_metal.m)
@@ -161,8 +166,7 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
         abi_flags=MACOS_GUEST_ABI_FLAGS, extra_runtime=[ARM64_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
         extra_imports=[ARM64_DIR / "host_imports.list", PORT_DIR / "host_imports.list"],
         extra_prototypes=[ARM64_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
-        # (the null renderer's window: guest_metal.c)
-        base_register=True, link_flags="--wrap=Direct3D_CreateDevice")
+        base_register=True, excluded_platform_sources=MACOS_GUEST_EXCLUDED)
 
     # ---------- SDL3, built from the same source as the guest's headers
 

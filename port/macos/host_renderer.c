@@ -2,20 +2,19 @@
 HOST_RENDERER.C
 
 The OpenGL services the guest's renderer would ask the host for, which
-macOS does not have. The guest's renderer (port/linux/src/d3d8_gl.c) draws
-with OpenGL ES through the host (port/android/host/host_gl.c) elsewhere;
-on macOS the renderer is Metal's, in the host (xgpu_metal.m, host_metal.m),
-which the game does not draw through yet. Until then the game runs with
-the null renderer (debug.null_renderer), which calls none of these, and
-every OpenGL entry point the guest imports resolves to the loader's "not
-available" stub.
+macOS does not have. The guest's renderer draws with OpenGL ES through the
+host (port/android/host/host_gl.c) elsewhere; on macOS its backend is
+Metal's, in the host (xgpu_metal.m, host_metal.m), which the guest's frames
+reach as the command stream: the guest has no OpenGL backend and calls none
+of these, and every OpenGL entry point the guest imports resolves to the
+loader's "not available" stub.
 */
 
 #include "host.h"
 
 static void no_renderer(void)
 {
-	host_fatal("this build has no renderer yet: run it with HALO_NULL_RENDERER=1");
+	host_fatal("the macOS build has no OpenGL (its renderer is Metal's)");
 }
 
 void *host_gl_resolve(const char *name)

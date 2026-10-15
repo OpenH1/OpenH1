@@ -1336,6 +1336,11 @@ void xgpu_metal_set_targets(uint32_t color, uint32_t color_level, uint32_t color
 
 	if (!metal.in_frame)
 		xgpu_metal_frame_begin();
+	/* (the same targets: the pass goes on) */
+	if (metal.encoder && metal.color == (color_entry ? color : 0) && metal.color_level == color_level &&
+		metal.color_layer == color_layer && metal.depth == (depth_entry ? depth : 0) &&
+		metal.multisampled == (multisampled != 0))
+		return;
 	pass_end();
 	metal.color = color_entry ? color : 0;
 	metal.color_level = color_level;

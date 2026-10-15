@@ -23,7 +23,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 from .linux_build import (LINUX_PROFILE, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL_MATH_DIR, STB_VORBIS_SOURCE, XDK_INCLUDE,
                           compile_launcher, configuration_defines, game_defines_and_includes, game_sources,
@@ -248,7 +248,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
                          asm_target: str, abi_flags: List[str] = GUEST_ABI_FLAGS,
                          extra_runtime: List[Path] = [], extra_imports: List[Path] = [],
                          extra_prototypes: List[Path] = [], updater_cflags: str = "", desktop_gl: bool = False,
-                         base_register: bool = False, link_flags: str = "") -> Dict[str, Path]:
+                         base_register: bool = False, link_flags: str = "",
+                         excluded_platform_sources: Iterable[str] = ()) -> Dict[str, Path]:
     """The guest image (build/halo_guest.elf) and the host's import table, for
     the builds that run the game as ILP32 AArch64 code: Android, and Linux
     arm64 (tools/linux_arm64_build.py). The caller sets ${prefix}_guest_cc to
@@ -265,7 +266,9 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     (tools/guest_base_register.py) rather than in the low 4 GB;
     extra_prototypes are then the files that declare extra_imports' functions,
     whose pointer arguments the import stubs translate. link_flags are more
-    of the image's linker options."""
+    of the image's linker options. excluded_platform_sources are files of
+    port/linux/src the guest does not build (the OpenGL backend, for a guest
+    whose renderer is on the host)."""
     musl_dir = third_party / f"musl-{MUSL_VERSION}"
     sdl_dir = third_party / "SDL3"
     guest_dir = build / "guest"
@@ -473,7 +476,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     ])
     guest_host_only = {"memory_watch.c"}  # replaced by guest_memory_watch.c
     for source in sorted((LINUX_DIR / "src").glob("*.c")):
-        if source.name.startswith("posix_") or source.name in guest_host_only:
+        if source.name.startswith("posix_") or source.name in guest_host_only or \
+                source.name in excluded_platform_sources:
             continue
         if source.name == "updater.c" and updater_cflags:
             objects.append(guest_object(source, f"{platform_cflags} {updater_cflags}"))
