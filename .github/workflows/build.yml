@@ -141,7 +141,7 @@ jobs:
             software-properties-common git python3 ninja-build cmake make pkg-config ccache zip \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
             libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libgles-dev \
-            libgl-dev libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
+            libgl-dev libopengl-dev libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
             libudev-dev libdbus-1-dev libdecor-0-dev
           curl -fsSL https://apt.llvm.org/llvm.sh -o llvm.sh
           bash llvm.sh 22 && rm llvm.sh
@@ -205,7 +205,7 @@ jobs:
             software-properties-common git python3 python3-pytest ninja-build cmake make pkg-config ccache zip \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
             libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libgles-dev \
-            libgl-dev libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
+            libgl-dev libopengl-dev libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
             libudev-dev libdbus-1-dev libdecor-0-dev
           curl -fsSL https://apt.llvm.org/llvm.sh -o llvm.sh
           bash llvm.sh 22 && rm llvm.sh

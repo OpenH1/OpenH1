@@ -1234,7 +1234,8 @@ operate), the window's icon, and the names of gamepads in the log.
   different clang.
 - The OpenGL ES and EGL headers (`libgles-dev` and `libegl-dev` on Debian
   and Ubuntu), and for the desktop OpenGL renderer (`--vr`) the OpenGL
-  headers (`libgl-dev`). Without them, `ninja linux_arm64` stops and names
+  headers (`libgl-dev`) and GLVND's OpenGL library, which the host links
+  (`libopengl-dev`). Without the headers, `ninja linux_arm64` stops and names
   the missing headers.
 - CMake, and the development files that SDL3 uses for X11, Wayland and
   sound. Refer to the SDL documentation, or to the `linux-arm64` job in
@@ -1368,7 +1369,9 @@ is x87's 80-bit one where this build's is a `double`, as MSVC's is.
   of `configure.py` selects a different clang. The kernel's own x32
   support is not needed: the guest never calls the kernel itself.
 - The OpenGL, OpenGL ES and EGL headers (`libgl-dev`, `libgles-dev` and
-  `libegl-dev` on Debian and Ubuntu, `mesa` on Arch Linux). Without them,
+  `libegl-dev` on Debian and Ubuntu, `mesa` on Arch Linux), and GLVND's
+  OpenGL library, which the host links (`libopengl-dev`; Arch's
+  `libglvnd`). Without the headers,
   `ninja linux_x86_64` stops and names the missing headers.
 - CMake, and the development files that SDL3 uses for X11, Wayland and
   sound, as for the 64-bit ARM build. Refer to the `linux-x86_64` job in
