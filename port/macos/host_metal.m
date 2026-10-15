@@ -513,6 +513,9 @@ int host_metal_window_open(uint32_t window)
 	presentation.layer.device = xgpu_metal_device();
 	presentation.layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
 	presentation.layer.framebufferOnly = YES;
+	/* (the presentation writes every pixel, alpha 1: the window server
+	need not draw what is behind the window, nor blend the window over it) */
+	presentation.layer.opaque = YES;
 	presentation.layer.maximumDrawableCount = 3;
 	SDL_GetWindowSizeInPixels(object, &width, &height);
 	atomic_store(&presentation.pixel_width, (uint32_t)width);

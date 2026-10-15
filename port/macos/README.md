@@ -163,7 +163,8 @@ The guest makes its window with `SDL_WINDOW_METAL` (`sdl_platform.c`, with
 `HALO_METAL`) and hands it to the host (`host_metal_window_open`, an import
 of `host_imports.list`), on the main thread, which Cocoa's views need. The
 host takes SDL's view and its `CAMetalLayer` (BGRA8, the window's pixels:
-Retina's, resized with the window and in fullscreen), and brings the
+Retina's, resized with the window and in fullscreen; opaque, so that the
+window server neither draws what is behind it nor blends it), and brings the
 window to the front (a window behind others shows nothing, and the
 drawables presented to it never reach the screen).
 
