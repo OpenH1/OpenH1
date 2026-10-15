@@ -87,6 +87,7 @@ python -m pytest -q tools/harness tools/test_touch_menu.py   # the engine's func
 python -m pytest -q tools/test_linux_port.py                # the build, the maps' checks (needs assets/maps)
 python -m pytest -q tools/test_cache_file_formats.py tools/test_bmp_files.py tools/test_profile.py
 python -m pytest -q tools/test_guest_base_register.py tools/test_host_memory_base.py  # the base register
+python tools/base_register_bench/run.py                     # the base register's cost (Linux arm64, macOS)
 python tools/test_touch_layout.py                           # the Android touch layout (JDK 17+)
 python tools/test_light_storage.py
 python tools/test_death_timing.py
