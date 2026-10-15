@@ -291,10 +291,14 @@ static struct
 	struct xgpu_metal_options options;
 	uint32_t page_size;
 
-	/* the binary archive, and whether pipelines were added to it */
+	/* the binary archive read at the start, which pipelines are made from;
+	the descriptions of the pipelines made or found this run, which the
+	archive is written of; whether any are new; the queue writing it */
 	id<MTLBinaryArchive> archive;
 	NSString *archive_path;
+	NSMutableArray<MTLRenderPipelineDescriptor *> *archived;
 	BOOL archive_changed;
+	dispatch_queue_t archive_queue;
 	/* when a pipeline was last added to it */
 	double archive_changed_at;
 
@@ -536,26 +540,48 @@ static void archive_open(void)
 	}
 }
 
-static void archive_save(void)
+/* writes the archive of the pipelines made or found this run, on the
+archive's queue (wait: and waits for it). It is a new archive each time:
+one that has been written, or read from a file, and has had pipelines
+added since is written without some of their stages (Metal's archiver
+says so, and the archive is not written). The pipelines of the archive
+read at the start that this run has not made are not kept. */
+static void archive_save(BOOL wait)
 {
-	NSString *temporary;
-	NSError *error = nil;
+	NSArray<MTLRenderPipelineDescriptor *> *pipelines;
+	NSString *path = metal.archive_path;
+	id<MTLDevice> device = metal.device;
+	void (^save)(void);
 
-	if (!metal.archive || !metal.archive_path || !metal.archive_changed)
+	if (!metal.archive_queue || !path || !metal.archive_changed)
 		return;
-	[[NSFileManager defaultManager] createDirectoryAtPath:[metal.archive_path stringByDeletingLastPathComponent]
-		withIntermediateDirectories:YES attributes:nil error:nil];
-	/* (written beside it, then put in its place: the archive read at the
-	start may be mapped from the file) */
-	temporary = [metal.archive_path stringByAppendingString:@".new"];
-	if (![metal.archive serializeToURL:[NSURL fileURLWithPath:temporary] error:&error] ||
-		rename(temporary.fileSystemRepresentation, metal.archive_path.fileSystemRepresentation) != 0)
-	{
-		metal_log(HOST_LOG_WARN, @"cannot write the pipeline archive %@: %@", metal.archive_path,
-			error ? error.localizedDescription : @(strerror(errno)));
-		return;
-	}
 	metal.archive_changed = NO;
+	pipelines = [metal.archived copy];
+	save = ^{
+		MTLBinaryArchiveDescriptor *descriptor = [MTLBinaryArchiveDescriptor new];
+		NSString *temporary = [path stringByAppendingString:@".new"];
+		id<MTLBinaryArchive> archive;
+		NSError *error = nil;
+
+		archive = [device newBinaryArchiveWithDescriptor:descriptor error:&error];
+		for (MTLRenderPipelineDescriptor *pipeline in pipelines)
+		{
+			if (archive && ![archive addRenderPipelineFunctionsWithDescriptor:pipeline error:&error])
+				break;
+		}
+		[[NSFileManager defaultManager] createDirectoryAtPath:[path stringByDeletingLastPathComponent]
+			withIntermediateDirectories:YES attributes:nil error:nil];
+		/* (written beside it, then put in its place: the archive read at the
+		start may be mapped from the file) */
+		if (!archive || error || ![archive serializeToURL:[NSURL fileURLWithPath:temporary] error:&error] ||
+			rename(temporary.fileSystemRepresentation, path.fileSystemRepresentation) != 0)
+			metal_log(HOST_LOG_WARN, @"cannot write the pipeline archive %@: %@", path,
+				error ? error.localizedDescription : @(strerror(errno)));
+	};
+	if (wait)
+		dispatch_sync(metal.archive_queue, save);
+	else
+		dispatch_async(metal.archive_queue, save);
 }
 
 int xgpu_metal_initialize(const struct xgpu_metal_options *options)
@@ -587,6 +613,8 @@ int xgpu_metal_initialize(const struct xgpu_metal_options *options)
 	metal.buffers_used = [NSMutableArray new];
 	metal.visibility_entry = -1;
 	archive_open();
+	metal.archived = [NSMutableArray new];
+	metal.archive_queue = dispatch_queue_create("OpenCE pipeline archive", DISPATCH_QUEUE_SERIAL);
 
 	library = [metal.device newLibraryWithSource:clear_source options:nil error:&error];
 	if (!library)
@@ -637,7 +665,7 @@ void xgpu_metal_shutdown(void)
 	if (metal.command_buffer)
 		xgpu_metal_frame_wait(command_buffer_commit(nil));
 	xgpu_metal_frame_wait(metal.command_serial);
-	archive_save();
+	archive_save(YES);
 }
 
 void xgpu_metal_capabilities(struct xgpu_metal_capabilities *capabilities)
@@ -1306,7 +1334,7 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 	/* (the game ends the process without warning: the archive is saved
 	once no pipeline has been added for a few seconds) */
 	if (metal.archive_changed && seconds_now() - metal.archive_changed_at > 3.0)
-		archive_save();
+		archive_save(NO);
 	statistics_add(&metal.statistics.frames, 1);
 	return slot->fence;
 }
@@ -1743,7 +1771,7 @@ static id<MTLRenderPipelineState> pipeline_state_get(const struct xgpu_metal_pip
 			descriptor.stencilAttachmentPixelFormat = descriptor.depthAttachmentPixelFormat;
 	}
 	/* from the archive where it has the pipeline's binaries; else made,
-	and added to it */
+	and the archive written again with it */
 	if (metal.archive)
 	{
 		descriptor.binaryArchives = @[metal.archive];
@@ -1756,18 +1784,10 @@ static id<MTLRenderPipelineState> pipeline_state_get(const struct xgpu_metal_pip
 	if (!state)
 	{
 		state = [metal.device newRenderPipelineStateWithDescriptor:descriptor error:&error];
-		if (state && metal.archive)
+		if (state)
 		{
-			NSError *archive_error = nil;
-
-			if ([metal.archive addRenderPipelineFunctionsWithDescriptor:descriptor error:&archive_error])
-			{
-				metal.archive_changed = YES;
-				metal.archive_changed_at = seconds_now();
-			}
-			else
-				metal_log(HOST_LOG_WARN, @"cannot add a pipeline to the archive: %@",
-					archive_error.localizedDescription);
+			metal.archive_changed = YES;
+			metal.archive_changed_at = seconds_now();
 		}
 	}
 	if (!state)
@@ -1775,6 +1795,10 @@ static id<MTLRenderPipelineState> pipeline_state_get(const struct xgpu_metal_pip
 		metal_log(HOST_LOG_ERROR, @"cannot make a pipeline: %@", error.localizedDescription);
 		return nil;
 	}
+	/* (not one that writes no colour, which Metal makes without its
+	fragment stage: the archiver cannot write it) */
+	if (key.color_format && key.color_mask)
+		[metal.archived addObject:[descriptor copy]];
 	metal.pipelines[data] = state;
 	metal.pipeline_state_key = key;
 	pthread_mutex_lock(&metal.statistics_lock);
