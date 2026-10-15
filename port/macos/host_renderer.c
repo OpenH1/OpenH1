@@ -1,12 +1,14 @@
 /*
 HOST_RENDERER.C
 
-The renderer's host services on macOS: none yet. The guest's renderer
-(port/linux/src/d3d8_gl.c) draws with OpenGL ES through the host
-(port/android/host/host_gl.c), which macOS does not get; its Metal backend
-comes later. Until then the game runs with the null renderer
-(debug.null_renderer), which calls none of these, and every OpenGL entry
-point the guest imports resolves to the loader's "not available" stub.
+The OpenGL services the guest's renderer would ask the host for, which
+macOS does not have. The guest's renderer (port/linux/src/d3d8_gl.c) draws
+with OpenGL ES through the host (port/android/host/host_gl.c) elsewhere;
+on macOS the renderer is Metal's, in the host (xgpu_metal.m, host_metal.m),
+which the game does not draw through yet. Until then the game runs with
+the null renderer (debug.null_renderer), which calls none of these, and
+every OpenGL entry point the guest imports resolves to the loader's "not
+available" stub.
 */
 
 #include "host.h"

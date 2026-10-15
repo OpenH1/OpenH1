@@ -12,10 +12,13 @@ wherever the host reserves them (port/android/host/host_memory_base.c).
   port/linux/arm64/host_main.c as its entry point and port/macos for
   Darwin's system calls), with the guest image inside it;
 - build/macos/libSDL3.0.dylib: SDL3, built from source without OpenGL, next
-  to the executable, which finds it there (an rpath of @executable_path).
+  to the executable, which finds it there (an rpath of @executable_path);
+- build/macos/xgpu_metal_test (ninja macos_metal_test): the Metal backend's
+  tests (port/macos/tests).
 
-There is no renderer yet (a Metal one comes later): run the game with the
-null renderer. Refer to port/macos/README.md.
+The renderer is Metal's (port/macos/xgpu_metal.m), in the host; until the
+game draws through it, run the game with the null renderer. Refer to
+port/macos/README.md.
 """
 
 import hashlib
@@ -74,6 +77,10 @@ KHRONOS_URLS = [
 # generate_guest_image); Apple's clang otherwise notes that its macOS
 # sysroot is not the watchOS target's, which the guest does not use
 MACOS_GUEST_ABI_FLAGS = [*LINUX_ARM64_GUEST_ABI_FLAGS, "-Wno-incompatible-sysroot"]
+
+# the host's frameworks: Metal and its layer (port/macos/host_metal.m,
+# xgpu_metal.m)
+MACOS_FRAMEWORKS = "-framework Metal -framework QuartzCore -framework Foundation -framework AppKit"
 
 # (port/android/host's: those of the Android app alone, the fixed low
 # memory and Linux's system calls, which port/macos and host_memory_base.c
@@ -180,8 +187,9 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
         "-O2", "-g", "-Wall", "-Wno-unused-function", "-D_DARWIN_C_SOURCE", "-DHALO_GUEST_BASE=1",
         f"-mmacosx-version-min={MACOS_MINIMUM}",
         f"-I{ANDROID_DIR}/include", f"-I{ANDROID_DIR}/host", f"-I{SDL_DIR}/include", f"-I{LINUX_DIR}/src",
-        f"-I{TOML_DIR}", f"-I{ANDROID_DIR}/guest/libc/arch/arm64_32",
+        f"-I{TOML_DIR}", f"-I{ANDROID_DIR}/guest/libc/arch/arm64_32", f"-I{PORT_DIR}",
     ])
+    objc_cflags = f"{host_cflags} -fobjc-arc"
     host_sources = [source for source in sorted((ANDROID_DIR / "host").glob("*.[cS]"))
                     if source.name not in HOST_EXCLUDED]
     host_sources += [
@@ -195,6 +203,13 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
         obj = host_obj_dir / (source.name + ".o")
         n.build(outputs=obj, rule="macos_host_cc", inputs=source, variables={"cflags": host_cflags})
         host_objects.append(obj)
+    # the Metal renderer and the window's presentation (Objective-C)
+    metal_objects: List[Path] = []
+    for source in sorted(PORT_DIR.glob("*.m")):
+        obj = host_obj_dir / (source.name + ".o")
+        n.build(outputs=obj, rule="macos_host_cc", inputs=source, variables={"cflags": objc_cflags})
+        metal_objects.append(obj)
+    host_objects += metal_objects
     miniupnpc_cflags = " ".join([host_cflags, f"-I{MINIUPNPC_DIR / 'include'}", f"-I{MINIUPNPC_DIR / 'src'}",
                                  *MINIUPNPC_DEFINES])
     for source in [LINUX_DIR / "src" / "posix_upnp.c", *miniupnpc_sources()]:
@@ -230,7 +245,7 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     n.rule(
         name="macos_host_link",
         command=(f"$macos_cc -mmacosx-version-min={MACOS_MINIMUM} -o $out $in -L{sdl_build} -lSDL3 "
-                 "-Wl,-rpath,@executable_path"),
+                 f"{MACOS_FRAMEWORKS} -Wl,-rpath,@executable_path"),
         description="MACOS LINK $out",
     )
     n.build(outputs=output, rule="macos_host_link", inputs=host_objects, implicit=[libsdl])
@@ -240,4 +255,13 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     brokers = BUILD / "brokers.txt"
     n.build(outputs=brokers, rule="macos_copy", inputs=Path("port/assets/network/brokers.txt"))
     n.build(outputs="macos", rule="phony", inputs=[output, staged_sdl, brokers])
+
+    # ---------- the Metal backend's tests (python3 tools/test_macos_metal.py)
+
+    test_obj = host_obj_dir / "tests" / "xgpu_metal_test.m.o"
+    n.build(outputs=test_obj, rule="macos_host_cc", inputs=PORT_DIR / "tests" / "xgpu_metal_test.m",
+            variables={"cflags": objc_cflags})
+    test = BUILD / "xgpu_metal_test"
+    n.build(outputs=test, rule="macos_host_link", inputs=[test_obj, *metal_objects], implicit=[libsdl])
+    n.build(outputs="macos_metal_test", rule="phony", inputs=[test, staged_sdl])
     n.newline()

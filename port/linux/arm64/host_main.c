@@ -94,6 +94,9 @@ void host_exit(int code)
 #ifdef __APPLE__
 /* port/macos/host_syscall.c */
 int host_linux_errno(int error);
+/* port/macos/host_metal.m: the Metal backend, 1 if there is a Metal
+device */
+int host_metal_initialize(void);
 #endif
 
 int host_errno(void)
@@ -306,6 +309,8 @@ int main(int argc, char *argv[])
 		char *stack;
 
 		host_install_signal_handlers();
+		/* (the renderer's backend, before the game asks for it) */
+		host_metal_initialize();
 		stack = host_low_map(MAIN_STACK_SIZE, PROT_READ | PROT_WRITE);
 		if (!stack)
 			host_fatal("cannot allocate the game's stack");
