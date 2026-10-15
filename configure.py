@@ -115,6 +115,12 @@ parser.add_argument(
     help="clang (with the arm64_32 target, as Apple's has) for `ninja macos`, the macOS build (default: clang)",
 )
 parser.add_argument(
+    "--macos-bundle-id",
+    type=str,
+    help="the macOS app's bundle identifier (default: io.github.opencommunityedition.opence, after the "
+    "project's GitHub organisation); macOS keeps the app's permissions (the microphone, the local network) by it",
+)
+parser.add_argument(
     "--web-emcc",
     type=str,
     help="Emscripten's emcc for `ninja web` (default: emcc on the PATH, then EMSDK's or ~/emsdk's)",
@@ -142,6 +148,7 @@ sln = SimpleNamespace(
     linux_arm64_gl=args.linux_arm64_gl,
     port_vr=args.vr,
     macos_cc=args.macos_cc,
+    macos_bundle_id=args.macos_bundle_id,
     guest_base=args.guest_base,
     web_emcc=args.web_emcc,
 )

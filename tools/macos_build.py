@@ -13,6 +13,10 @@ wherever the host reserves them (port/android/host/host_memory_base.c).
   Darwin's system calls), with the guest image inside it;
 - build/macos/libSDL3.0.dylib: SDL3, built from source without OpenGL, next
   to the executable, which finds it there (an rpath of @executable_path);
+- build/macos/Halo.app: the app, the executable and SDL in a bundle (where
+  the executable finds SDL in Contents/Frameworks, its other rpath), signed
+  ad hoc with the hardened runtime (tools/macos_app.py); build/macos/Halo.dmg
+  (ninja macos_dmg), a disk image of it;
 - build/macos/xgpu_metal_test (ninja macos_metal_test): the Metal backend's
   tests (port/macos/tests).
 
@@ -23,6 +27,7 @@ Refer to port/macos/README.md.
 
 import hashlib
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -83,6 +88,11 @@ MACOS_GUEST_ABI_FLAGS = [*LINUX_ARM64_GUEST_ABI_FLAGS, "-Wno-incompatible-sysroo
 # anti-aliasing passes)
 MACOS_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c"]
 
+# the app's bundle identifier (configure.py --macos-bundle-id): the
+# project's GitHub organisation's pages, the reverse-DNS name of a domain it
+# has (as Flathub names apps without a domain of their own)
+MACOS_BUNDLE_ID = "io.github.opencommunityedition.opence"
+
 # the host's frameworks: Metal and its layer (port/macos/host_metal.m,
 # xgpu_metal.m)
 MACOS_FRAMEWORKS = "-framework Metal -framework QuartzCore -framework Foundation -framework AppKit"
@@ -98,6 +108,9 @@ HOST_EXCLUDED = {"host_main.c", "host_touch.c", "host_memory.c", "host_syscall.c
 SHARED_SOURCES = ["xgpu.h", "xgpu_backend.h", "xgpu_shader.h", "xgpu_msl.h", "xgpu_msl.c", "xgpu_text.c",
                   "xbox_texture_decode.c"]
 SHARED_USERS = {"xgpu_metal_shaders.c", "xgpu_metal_textures.c"}
+# the app's start (its folders, maps and window), which the Metal tests do
+# without
+APP_SOURCES = {"host_app.m"}
 
 
 def is_macos_arm64() -> bool:
@@ -251,7 +264,10 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     for source in sorted(PORT_DIR.glob("*.m")):
         obj = host_obj_dir / (source.name + ".o")
         n.build(outputs=obj, rule="macos_host_cc", inputs=source, variables={"cflags": objc_cflags})
-        metal_objects.append(obj)
+        if source.name in APP_SOURCES:
+            host_objects.append(obj)
+        else:
+            metal_objects.append(obj)
     host_objects += metal_objects
     miniupnpc_cflags = " ".join([host_cflags, f"-I{MINIUPNPC_DIR / 'include'}", f"-I{MINIUPNPC_DIR / 'src'}",
                                  *MINIUPNPC_DEFINES])
@@ -288,7 +304,7 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     n.rule(
         name="macos_host_link",
         command=(f"$macos_cc -mmacosx-version-min={MACOS_MINIMUM} -o $out $in -L{sdl_build} -lSDL3 "
-                 f"{MACOS_FRAMEWORKS} -Wl,-rpath,@executable_path"),
+                 f"{MACOS_FRAMEWORKS} -Wl,-rpath,@executable_path -Wl,-rpath,@executable_path/../Frameworks"),
         description="MACOS LINK $out",
     )
     n.build(outputs=output, rule="macos_host_link", inputs=host_objects, implicit=[libsdl])
@@ -297,7 +313,32 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     # internet play's MQTT brokers, a file beside the game (network.brokers_file)
     brokers = BUILD / "brokers.txt"
     n.build(outputs=brokers, rule="macos_copy", inputs=Path("port/assets/network/brokers.txt"))
-    n.build(outputs="macos", rule="phony", inputs=[output, staged_sdl, brokers])
+
+    # ---------- the app (tools/macos_app.py), and its disk image
+
+    app = BUILD / "Halo.app"
+    app_executable = app / "Contents" / "MacOS" / "halo"
+    icon = PORT_DIR / "opence-icon.icns"
+    build_number = os.environ.get("HALO_BUILD_NUMBER", "0")
+    bundle_id = getattr(sln, "macos_bundle_id", None) or MACOS_BUNDLE_ID
+    n.rule(
+        name="macos_app",
+        command=(f"$python tools/macos_app.py bundle --app {app} --executable {output} --sdl {libsdl} "
+                 f"--icon {icon} --resource {brokers} --bundle-id {bundle_id} "
+                 f"--build {build_number if build_number.isdigit() else 0} "
+                 f"--flavor {'release' if getattr(sln, 'port_release', False) else 'debug'} "
+                 f"--minimum {MACOS_MINIMUM} > {BUILD}/app.log"),
+        description=f"MACOS APP {app}",
+    )
+    n.build(outputs=app_executable, rule="macos_app", inputs=[output, libsdl, brokers],
+            implicit=[icon, PORT_DIR / "halo.entitlements", Path("tools/macos_app.py")])
+    n.build(outputs="macos_app", rule="phony", inputs=[app_executable])
+    dmg = BUILD / "Halo.dmg"
+    n.rule(name="macos_dmg", command=f"$python tools/macos_app.py dmg --app {app} --output $out > {BUILD}/dmg.log",
+           description=f"MACOS DMG $out")
+    n.build(outputs=dmg, rule="macos_dmg", inputs=[app_executable])
+    n.build(outputs="macos_dmg", rule="phony", inputs=[dmg])
+    n.build(outputs="macos", rule="phony", inputs=[output, staged_sdl, brokers, app_executable])
 
     # ---------- the Metal backend's tests (python3 tools/test_macos_metal.py)
 

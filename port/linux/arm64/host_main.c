@@ -97,6 +97,10 @@ int host_linux_errno(int error);
 /* port/macos/host_metal.m: the Metal backend, 1 if there is a Metal
 device */
 int host_metal_initialize(void);
+/* port/macos/host_app.m: the app's folders, maps and window, when the
+executable runs inside Halo.app */
+void host_app_start(void);
+const char *host_app_settings_folder(void);
 #endif
 
 int host_errno(void)
@@ -235,10 +239,15 @@ static uint32_t make_boot(const struct environment *environment)
 }
 
 /* debug.sample_seconds from config.toml (next to the executable, as the
-game reads it), as text for the sampler, or 0 */
+game reads it; the app's in its settings folder), as text for the sampler,
+or 0 */
 static int config_sample_seconds(char *text, size_t size)
 {
+#ifdef __APPLE__
+	const char *base = host_app_settings_folder() ? host_app_settings_folder() : SDL_GetBasePath();
+#else
 	const char *base = SDL_GetBasePath();
+#endif
 	char path[1024];
 	toml_result_t result;
 	int found = 0;
@@ -308,6 +317,7 @@ int main(int argc, char *argv[])
 		guard page at its bottom) */
 		char *stack;
 
+		host_app_start();
 		host_install_signal_handlers();
 		/* (the renderer's backend, before the game asks for it) */
 		host_metal_initialize();
