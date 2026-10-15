@@ -2,33 +2,34 @@
 XGPU_METAL_BINDINGS.H
 
 Where the Metal backend (xgpu_metal.m) binds what a draw's shaders read: the
-argument table indices the MSL emitter (port/linux/src/xgpu_msl.c) writes in
-its [[buffer(n)]], [[texture(n)]] and [[sampler(n)]] attributes. They are
-kept here alone, so that the two agree by changing one file. Plain #defines,
-usable from C, Objective-C and MSL.
-
-Until the emitter's layout is settled these are the backend's choice.
+argument table indices of the MSL emitter's (port/linux/src/xgpu_msl.h)
+[[buffer(n)]], [[texture(n)]] and [[sampler(n)]] attributes, and of the
+vertex descriptor's buffers. Plain #defines, usable from C, Objective-C and
+MSL. xgpu_metal_shaders.c checks that they are the emitter's.
 */
 
 #ifndef __HALO_MACOS_XGPU_METAL_BINDINGS_H
 #define __HALO_MACOS_XGPU_METAL_BINDINGS_H
 
-/* the vertex constants, 192 float4 (3 KB: setVertexBytes) */
-#define XGPU_METAL_BUFFER_VERTEX_CONSTANTS 0
-#define XGPU_METAL_VERTEX_CONSTANT_COUNT 192
-/* the draw's other uniforms (struct xgpu_draw_uniforms, as the front end
-writes it), bound to both stages (setVertexBytes, setFragmentBytes) */
-#define XGPU_METAL_BUFFER_DRAW_UNIFORMS 1
-/* (the VR mode's uniforms, should the macOS app ever draw both eyes) */
-#define XGPU_METAL_BUFFER_VIEW_UNIFORMS 2
-/* the values of the inputs no stream feeds, 16 float4 (setVertexBytes),
-read by the vertex descriptor at a constant step: the shaders read every
-input as [[attribute(n)]] whether a stream feeds it or not */
-#define XGPU_METAL_BUFFER_CONSTANT_ATTRIBUTES 13
 /* the vertex streams: stream n is buffer XGPU_METAL_BUFFER_STREAM(n), and
 attribute n of the vertex descriptor is [[attribute(n)]] */
 #define XGPU_METAL_STREAM_COUNT 16
-#define XGPU_METAL_BUFFER_STREAM(stream) (14 + (stream))
+#define XGPU_METAL_BUFFER_STREAM(stream) (stream)
+/* the vertex constants, 192 float4 (3 KB: setVertexBytes;
+XGPU_MSL_BUFFER_CONSTANTS) */
+#define XGPU_METAL_BUFFER_VERTEX_CONSTANTS 16
+#define XGPU_METAL_VERTEX_CONSTANT_COUNT 192
+/* the draw's other uniforms (the emitter's struct xgpu_msl_uniforms), bound
+to both stages (setVertexBytes, setFragmentBytes; XGPU_MSL_BUFFER_UNIFORMS) */
+#define XGPU_METAL_BUFFER_DRAW_UNIFORMS 17
+/* (18 and 19: the emitter's enhanced dynamic lights and sample counter,
+which the macOS app does not use) */
+/* the values of the inputs no stream feeds, 16 float4 (setVertexBytes),
+read by the vertex descriptor at a constant step: the shaders read every
+input as [[attribute(n)]] whether a stream feeds it or not */
+#define XGPU_METAL_BUFFER_CONSTANT_ATTRIBUTES 20
+/* (the VR mode's uniforms, should the macOS app ever draw both eyes) */
+#define XGPU_METAL_BUFFER_VIEW_UNIFORMS 21
 
 /* texture stage n samples texture n with sampler n */
 #define XGPU_METAL_TEXTURE_STAGE(stage) (stage)

@@ -329,7 +329,21 @@ struct xgpu_stream_sampler
 
 /* a stage's xgpu_texture_source; resource_format and resource_size are
 the texture header's Format and Size words as they were when the call was
-made (the header is at resource) */
+made (the header is at resource). For an Xbox texture (XGPU_SOURCE_TEXTURE)
+target is the channels its texels are sampled from: 0 as they are, else
+0x100 and two bits for each of red, green, blue and alpha (red's lowest),
+the channel of the texels it is taken from (a Custom Edition map's model
+masks and meters: xbox_textures.c).
+
+A stage may instead draw an image (XGPU_STREAM_SOURCE_IMAGE: a high-res
+replacement for the Xbox texture, xgpu_images.h): resource is its number,
+resource_format its pixels' kind (XGPU_IMAGE_*: RGBA, 4 bytes each, or a
+byte of a white pixel's coverage each), resource_size a serial that
+changes with its pixels (no two images have the same), data its first
+level's pixels, width by height, rows from the first; the host makes its
+levels (levels of them) from the first. */
+#define XGPU_STREAM_SOURCE_IMAGE 3
+
 struct xgpu_stream_texture_stage
 {
 	uint8_t source, sampler_type, sampled;

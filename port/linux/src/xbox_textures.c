@@ -13,9 +13,18 @@ converted to 32-bit BGRA on upload.
 
 A cached texture stays valid until any page it was read from is written;
 memory_watch.c detects that by write-protecting the pages.
+
+Where the renderer's backend is on the host (HALO_RENDER_STREAM), the host
+caches the textures (port/macos/xgpu_metal_textures.c), and here are only
+the replacements, as images (xgpu_images.h), and the Custom Edition channel
+orders, which the command stream hands it.
 */
 
+#ifdef HALO_RENDER_STREAM
+#include "xgpu_images.h"
+#else
 #include "xgpu_gl.h"
+#endif
 #include "hud_hires.h"
 #include "menu_files.h"
 #include "text_hires.h"
@@ -29,6 +38,7 @@ memory_watch.c detects that by write-protecting the pages.
 #include <stdlib.h>
 #include <string.h>
 
+#ifndef HALO_RENDER_STREAM
 #ifndef GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
 #define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83f1
 #define GL_COMPRESSED_RGBA_S3TC_DXT3_EXT 0x83f2
@@ -89,6 +99,7 @@ static void texture_dump(GLenum target, const struct xgpu_texture_description *d
 	}
 	free(pixels);
 }
+#endif
 #endif
 
 /* ---------- Custom Edition channel orders
@@ -184,6 +195,17 @@ void halo_custom_edition_texels_forget(void)
 	custom_edition_texel_capacity = 0;
 }
 
+#ifdef HALO_RENDER_STREAM
+unsigned long xgpu_texture_channels(unsigned long address)
+{
+	unsigned char order = custom_edition_texels_order(address);
+	const unsigned char *sources = custom_edition_channel_sources[order];
+
+	if (order == _custom_edition_channels_xbox)
+		return 0;
+	return 0x100 | sources[0] | (sources[1] << 2) | (sources[2] << 4) | ((unsigned long)sources[3] << 6);
+}
+#else
 static void upload(GLuint texture, GLenum target, const struct xgpu_texture_description *description,
 	const unsigned char *base, const D3DCOLOR *palette, unsigned char channel_order)
 {
@@ -607,3 +629,121 @@ void xgpu_texture_cache_begin_frame(void)
 		}
 	}
 }
+#endif
+
+#ifdef HALO_RENDER_STREAM
+/* ---------- the replacements, where the renderer is on the host
+
+What texture_entry_result finds for the OpenGL cache: the high-res text's
+atlas, a menu's art, a high-res HUD texture for a placeholder bitmap, or
+for the bitmap whose pixels these are. Which HUD texture stands for a
+bitmap's pixels is found again whenever they change (the write tracking),
+for each texture by its Data, Format and Size. */
+
+#define REPLACEMENT_BUCKET_COUNT 1024
+
+struct replacement_entry
+{
+	struct replacement_entry *next;
+	DWORD data, format_word, size_word;
+	/* the high-res HUD texture (hud_hires.h), or -1 */
+	long override;
+	/* its pages' newest generation when it was found, and the memory
+	watch serial as of which that is known (as texture_entry's) */
+	unsigned long generation, watched_serial;
+};
+
+static struct replacement_entry *replacement_buckets[REPLACEMENT_BUCKET_COUNT];
+
+static long replacement_override(const DWORD *resource, const struct xgpu_texture_description *description)
+{
+	DWORD data = resource[1], format_word = resource[3], size_word = resource[4];
+	unsigned long hash = ((unsigned long)data * 2654435761UL ^ (unsigned long)format_word * 2246822519UL ^
+		(unsigned long)size_word * 3266489917UL) >> 20;
+	struct replacement_entry **bucket = &replacement_buckets[hash % REPLACEMENT_BUCKET_COUNT];
+	struct replacement_entry *entry;
+	unsigned long address, size, generation, watch_serial = memory_watch_serial();
+
+	if (description->format == 0x0b || description->cube_map || description->depth > 1 ||
+		!xgpu_texture_size_supported(description))
+		return -1;
+	for (entry = *bucket; entry; entry = entry->next)
+	{
+		if (entry->data == data && entry->format_word == format_word && entry->size_word == size_word)
+			break;
+	}
+	if (!entry)
+	{
+		entry = calloc(1, sizeof(*entry));
+		if (!entry)
+			return -1;
+		entry->data = data;
+		entry->format_word = format_word;
+		entry->size_word = size_word;
+		entry->override = -1;
+		entry->next = *bucket;
+		*bucket = entry;
+	}
+	if (entry->watched_serial && entry->watched_serial == watch_serial)
+		return entry->override;
+	address = (unsigned long)PLATFORM_PHYSICAL_TO_VIRTUAL(data);
+	size = xgpu_texture_face_size(description);
+	generation = memory_watch_generation(address, size);
+	if (!entry->generation || generation > entry->generation)
+	{
+		unsigned long levels;
+
+		/* protect first, so a write racing with the search is noticed */
+		memory_watch_protect(address, size);
+		entry->generation = memory_watch_generation(address, size);
+		if (!entry->generation)
+			entry->generation = 1;
+		entry->override = hud_hires_override_find(address, description->width, description->height,
+			description->levels > 1 ? xgpu_texture_level_offset(description, 1) : size);
+		if (entry->override >= 0 && !hud_hires_override_texture(entry->override, &levels))
+			entry->override = -1;
+	}
+	entry->watched_serial = watch_serial;
+	return entry->override;
+}
+
+unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_description *description)
+{
+	const DWORD *header = (const DWORD *)resource;
+	unsigned long levels;
+	unsigned int image;
+	long override;
+
+	/* (the high-res text's atlas, for its placeholder bitmap: text_hires.h) */
+	if ((image = text_hires_atlas_texture(header[1])) != 0)
+	{
+		description->levels = 1;
+		return image;
+	}
+	/* (a menu's bitmap: menu_files.h) */
+	if ((image = menu_art_texture(header[1], &levels)) != 0)
+	{
+		description->levels = levels;
+		description->hires = TRUE;
+		return image;
+	}
+	/* (a high-res texture drawn for some sprites, for the placeholder the
+	game draws them from: hud_hires.h) */
+	if ((image = hud_hires_placeholder_texture(header[1], &levels)) != 0)
+	{
+		description->levels = levels;
+		description->hires = TRUE;
+		return image;
+	}
+	override = replacement_override(header, description);
+	if (override >= 0 && (image = hud_hires_override_texture(override, &levels)) != 0)
+	{
+		description->levels = levels;
+		description->hires = TRUE;
+		description->hires_coverage = hud_hires_override_coverage(override);
+		description->hires_point_threshold = hud_hires_override_point_threshold(override);
+		return image;
+	}
+	return 0;
+}
+#endif

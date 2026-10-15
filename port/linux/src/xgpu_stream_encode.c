@@ -25,6 +25,7 @@ inputs no stream feeds only when they change.
 #ifdef HALO_RENDER_STREAM
 
 #include "xgpu_backend.h"
+#include "xgpu_images.h"
 #include "xgpu_shader.h"
 #include "xgpu_stream.h"
 
@@ -749,11 +750,13 @@ void xgpu_backend_texture_describe(DWORD resource, DWORD palette, struct xgpu_te
 	const D3DBaseTexture *header = INTERFACE_POINTER(resource);
 
 	(void)palette;
-	/* (the high-res replacements are not found here: their bookkeeping is
-	still the OpenGL backend's) */
 	xgpu_texture_describe(header->Format, header->Size, description);
 	*kind = description->cube_map ? XGPU_TEXTURE_KIND_CUBE : description->depth > 1 ? XGPU_TEXTURE_KIND_3D :
 		XGPU_TEXTURE_KIND_2D;
+	/* (a high-res replacement's levels, and what it is) */
+#ifndef XGPU_STREAM_TEST
+	xgpu_texture_replacement(resource, description);
+#endif
 }
 
 static void texture_stage_describe(const struct xgpu_texture_source *source, struct xgpu_stream_texture_stage *stage,
@@ -767,13 +770,6 @@ static void texture_stage_describe(const struct xgpu_texture_source *source, str
 	stage->sampled = source->sampled;
 	stage->resource = (uint32_t)source->resource;
 	stage->palette = (uint32_t)source->palette;
-	if (source->source == XGPU_SOURCE_TEXTURE && source->resource)
-	{
-		const D3DBaseTexture *header = INTERFACE_POINTER(source->resource);
-
-		stage->resource_format = (uint32_t)header->Format;
-		stage->resource_size = (uint32_t)header->Size;
-	}
 	stage->target = source->target;
 	stage->drawn = source->drawn;
 	stage->data = (uint32_t)source->data;
@@ -795,6 +791,39 @@ static void texture_stage_describe(const struct xgpu_texture_source *source, str
 	stage->sampler.first_level = (uint32_t)source->sampler.first_level;
 	stage->sampler.anisotropy = (uint32_t)source->sampler.anisotropy;
 	stage->sampler.border_color = (uint32_t)source->sampler.border_color;
+	if (source->source == XGPU_SOURCE_TEXTURE && source->resource)
+	{
+		const D3DBaseTexture *header = INTERFACE_POINTER(source->resource);
+#ifndef XGPU_STREAM_TEST
+		struct xgpu_texture_description description;
+		const struct xgpu_image *image;
+		unsigned int number;
+
+		/* (a high-res replacement drawn in its place: its image) */
+		xgpu_texture_describe(header->Format, header->Size, &description);
+		number = xgpu_texture_replacement(source->resource, &description);
+		if ((image = xgpu_image_get(number)) != NULL)
+		{
+			stage->source = XGPU_STREAM_SOURCE_IMAGE;
+			stage->resource = number;
+			stage->resource_format = (uint32_t)image->format;
+			stage->resource_size = (uint32_t)image->serial;
+			stage->data = STREAM_ADDRESS(image->pixels);
+			stage->width = (uint32_t)image->width;
+			stage->height = (uint32_t)image->height;
+			stage->levels = (uint32_t)image->levels;
+			stage->palette = 0;
+		}
+		else
+#endif
+		{
+			stage->resource_format = (uint32_t)header->Format;
+			stage->resource_size = (uint32_t)header->Size;
+#ifndef XGPU_STREAM_TEST
+			stage->target = (uint32_t)xgpu_texture_channels((unsigned long)PLATFORM_PHYSICAL_TO_VIRTUAL(header->Data));
+#endif
+		}
+	}
 }
 
 void xgpu_backend_set_textures(const struct xgpu_texture_source stages[4])
@@ -1502,6 +1531,10 @@ void xgpu_backend_frame_end(void)
 		return;
 	record(XGPU_STREAM_FRAME_END, sizeof(struct xgpu_stream_record));
 	commit(XGPU_STREAM_SUBMIT_FRAME);
+#ifndef XGPU_STREAM_TEST
+	/* (the deleted images' pixels freed once no frame in flight reads them) */
+	xgpu_images_frame_end();
+#endif
 }
 
 /* ---------- enhanced dynamic lights */

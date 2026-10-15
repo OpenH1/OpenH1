@@ -438,6 +438,7 @@ int host_metal_initialize(void)
 		host_memory_remapped = xgpu_metal_guest_remapped;
 #if __has_include("host_render_stream.h")
 		host_render_stream_set_backend(xgpu_metal_stream_backend());
+		xgpu_metal_stream_set_shaders(xgpu_metal_shaders());
 #endif
 	}
 	return result;

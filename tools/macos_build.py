@@ -87,6 +87,13 @@ MACOS_FRAMEWORKS = "-framework Metal -framework QuartzCore -framework Foundation
 # replace, and the OpenGL ES services)
 HOST_EXCLUDED = {"host_main.c", "host_touch.c", "host_memory.c", "host_syscall.c", "host_gl.c"}
 
+# the renderer's parts the host builds from port/linux/src (the MSL
+# emitter, the Xbox's texture decoding), and port/macos's files that use
+# them
+SHARED_SOURCES = ["xgpu.h", "xgpu_backend.h", "xgpu_shader.h", "xgpu_msl.h", "xgpu_msl.c", "xgpu_text.c",
+                  "xbox_texture_decode.c"]
+SHARED_USERS = {"xgpu_metal_shaders.c", "xgpu_metal_textures.c"}
+
 
 def is_macos_arm64() -> bool:
     return sys.platform == "darwin" and platform.machine().lower() == "arm64"
@@ -196,7 +203,8 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
                     if source.name not in HOST_EXCLUDED]
     host_sources += [
         ARM64_DIR / "host_main.c", ARM64_DIR / "host_desktop.c",
-        *sorted(source for source in PORT_DIR.glob("*.c") if not source.name.startswith("guest_")),
+        *sorted(source for source in PORT_DIR.glob("*.c")
+                if not source.name.startswith("guest_") and source.name not in SHARED_USERS),
         LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",
         TOML_DIR / "tomlc17.c",
     ]
@@ -205,6 +213,35 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
         obj = host_obj_dir / (source.name + ".o")
         n.build(outputs=obj, rule="macos_host_cc", inputs=source, variables={"cflags": host_cflags})
         host_objects.append(obj)
+    # the renderer's shared parts in the host, copied beside a stand-in for
+    # the guest's platform.h (xgpu_metal_platform.h), which their quoted
+    # includes would otherwise find in port/linux/src, and the files of
+    # port/macos that use them; the XDK's enumerations and texture format
+    # words for the stand-in (xdk_enums.h)
+    shared_dir = BUILD / "host" / "shared"
+    n.rule(name="macos_shared_copy", command="cp $in $out", description="MACOS SHARED $out")
+    xdk = Path("port/include/xdk")
+    n.rule(name="macos_xdk_enums",
+           command=(f"(sed -n '/^\\/\\* ---------- enumerations/,/^\\/\\* ---------- structures and unions/p' "
+                    f"{xdk / 'xdk_pdb.h'} | sed '$$d' && "
+                    f"grep -E '^#define D3D(FORMAT|SIZE|TEXTURE)_' {xdk / 'xdk_d3d8.h'}) > $out"),
+           description="MACOS SHARED $out")
+    shared_copies: List[Path] = []
+    for name in SHARED_SOURCES:
+        n.build(outputs=shared_dir / name, rule="macos_shared_copy", inputs=LINUX_DIR / "src" / name)
+        shared_copies.append(shared_dir / name)
+    n.build(outputs=shared_dir / "platform.h", rule="macos_shared_copy", inputs=PORT_DIR / "xgpu_metal_platform.h")
+    n.build(outputs=shared_dir / "xdk_enums.h", rule="macos_xdk_enums", inputs=[xdk / "xdk_pdb.h", xdk / "xdk_d3d8.h"])
+    shared_copies += [shared_dir / "platform.h", shared_dir / "xdk_enums.h"]
+    shared_cflags = f"-I{shared_dir} {host_cflags}"
+    shared_objects: List[Path] = []
+    for source in [shared_dir / name for name in SHARED_SOURCES if name.endswith(".c")] + \
+            [PORT_DIR / name for name in sorted(SHARED_USERS)]:
+        obj = host_obj_dir / "shared" / (source.name + ".o")
+        n.build(outputs=obj, rule="macos_host_cc", inputs=source, order_only=shared_copies,
+                variables={"cflags": shared_cflags})
+        shared_objects.append(obj)
+    host_objects += shared_objects
     # the Metal renderer and the window's presentation (Objective-C)
     metal_objects: List[Path] = []
     for source in sorted(PORT_DIR.glob("*.m")):
@@ -264,6 +301,6 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     n.build(outputs=test_obj, rule="macos_host_cc", inputs=PORT_DIR / "tests" / "xgpu_metal_test.m",
             variables={"cflags": objc_cflags})
     test = BUILD / "xgpu_metal_test"
-    n.build(outputs=test, rule="macos_host_link", inputs=[test_obj, *metal_objects], implicit=[libsdl])
+    n.build(outputs=test, rule="macos_host_link", inputs=[test_obj, *metal_objects, *shared_objects], implicit=[libsdl])
     n.build(outputs="macos_metal_test", rule="phony", inputs=[test, staged_sdl])
     n.newline()

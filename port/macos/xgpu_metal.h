@@ -114,6 +114,10 @@ enum
 	here (Apple's GPUs have no 24-bit depth); D16 */
 	XGPU_METAL_FORMAT_D24S8,
 	XGPU_METAL_FORMAT_D16,
+	/* the high-res replacements' pictures: bytes red, green, blue, alpha;
+	and a byte each, white's coverage (read as 1, 1, 1, the byte) */
+	XGPU_METAL_FORMAT_RGBA8,
+	XGPU_METAL_FORMAT_COVERAGE,
 	XGPU_METAL_FORMAT_COUNT
 };
 
@@ -142,6 +146,10 @@ struct xgpu_metal_texture_description
 	/* a 3D texture's depth, an array's layers (a cube has 6 faces) */
 	uint16_t depth_or_layers;
 	uint16_t levels;
+	/* the channels sampled: 0 the format's, else 0x100 and two bits for
+	each of red, green, blue and alpha (red's lowest), the format's channel
+	each is taken from (a Custom Edition map's: xgpu_stream.h) */
+	uint16_t channels;
 };
 
 /* ---------- samplers */
@@ -351,6 +359,13 @@ uint32_t xgpu_metal_shader_create(const char *source, size_t size, const char *e
 uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *description);
 /* (after the frames in flight that use it) */
 void xgpu_metal_texture_destroy(uint32_t texture);
+/* makes its levels past the first from the first, in the frame's order */
+void xgpu_metal_texture_make_levels(uint32_t texture);
+/* copies a texture's first level and layer into another's (as much of it
+as both have; the same format), in the frame's order: the pass drawing
+into it ends first, so that a draw can sample what was drawn before it
+(Metal cannot sample a texture its pass draws into) */
+void xgpu_metal_texture_copy(uint32_t source, uint32_t destination);
 /* writes a region of a level and layer (a cube's face, a 3D texture's
 slices z to z + depth); bytes_per_row is a compressed format's row of
 blocks. Ordered with the frame's draws: draws before it see the old texels,
@@ -442,6 +457,8 @@ struct xgpu_metal_statistics
 	uint32_t frames, passes, draws, clears_as_quads, clears_as_loads;
 	uint32_t pipelines_made, pipelines_from_archive, depth_stencil_states_made, samplers_made;
 	uint32_t uploads_direct, uploads_ordered;
+	/* copies of a target being drawn, for a draw that samples it */
+	uint32_t feedback_copies;
 	uint32_t guest_buffers_made, guest_bytes_copied;
 	uint64_t ring_bytes;
 	double pipeline_seconds;

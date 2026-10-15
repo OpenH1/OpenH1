@@ -82,6 +82,28 @@ void *host_sdl_handle_get(uint32_t handle, int type)
 int host_memory_readable_extent(uint32_t address, uint32_t size, uint32_t limit_start, uint32_t limit_end,
 	uint32_t *start, uint32_t *end);
 
+/* the write tracking (host_memory_watch.c): nothing is protected here; a
+test says its texels changed by counting a generation */
+static uint32_t watch_generation = 1;
+
+void host_memory_watch_protect(uint32_t address, uint32_t size)
+{
+	(void)address;
+	(void)size;
+}
+
+uint32_t host_memory_watch_generation(uint32_t address, uint32_t size)
+{
+	(void)address;
+	(void)size;
+	return watch_generation;
+}
+
+uint32_t host_memory_watch_serial(void)
+{
+	return watch_generation;
+}
+
 #ifdef TEST_STREAM
 void host_render_stream_set_backend(const struct host_render_backend *backend)
 {
@@ -808,12 +830,33 @@ static size_t guest_page;
 /* readable or not, by host page */
 static unsigned char guest_mapped[GUEST_SIZE / 0x4000];
 
+/* host.h's host_page_size (Mach has one by that name too: renamed above),
+which the textures' cache asks */
+size_t guest_host_page_size(void) __asm__("_host_page_size");
+
+size_t guest_host_page_size(void)
+{
+	return (size_t)getpagesize();
+}
+
+/* the contiguous memory test_stream_emitter maps (its textures) */
+#define CONTIGUOUS 0x80000000u
+#define CONTIGUOUS_MAPPED 0x10000u
+static int contiguous_mapped;
+
 int host_memory_readable_extent(uint32_t address, uint32_t size, uint32_t limit_start, uint32_t limit_end,
 	uint32_t *start, uint32_t *end)
 {
 	uint64_t first = address & ~(uint64_t)(guest_page - 1);
 	uint64_t last = ((uint64_t)address + size + guest_page - 1) & ~(uint64_t)(guest_page - 1);
 	uint64_t page;
+
+	if (contiguous_mapped && address >= CONTIGUOUS && (uint64_t)address + size <= CONTIGUOUS + CONTIGUOUS_MAPPED)
+	{
+		*start = first > limit_start ? (uint32_t)first : limit_start;
+		*end = last < limit_end ? (uint32_t)last : limit_end;
+		return 1;
+	}
 
 	if (first < GUEST_START || last > GUEST_START + GUEST_SIZE || first < limit_start || last > limit_end)
 		return 0;
@@ -979,15 +1022,18 @@ enum
 };
 enum
 {
-	XGPU_VERTEX_FLOAT4 = 4, XGPU_VERTEX_COLOR = 5,
+	XGPU_VERTEX_FLOAT2 = 2, XGPU_VERTEX_FLOAT4 = 4, XGPU_VERTEX_COLOR = 5,
 };
 
 static int stream_shaders(void *context, const struct xgpu_stream_pipeline_define *definition,
-	const struct xgpu_stream_vertex_program *program, uint32_t *vertex, uint32_t *pixel)
+	const struct xgpu_stream_vertex_program *program, const struct xgpu_stream_vertex_lighting *lighting,
+	const struct xgpu_metal_stream_variant *variant, uint32_t *vertex, uint32_t *pixel)
 {
 	(void)context;
 	(void)definition;
 	(void)program;
+	(void)lighting;
+	(void)variant;
 	*vertex = vertex_shader;
 	*pixel = pixel_shader;
 	return 1;
@@ -1007,7 +1053,7 @@ static void *ring_put(unsigned char *ring, uint32_t *position, const void *recor
 static void test_stream_table(void)
 {
 	const struct host_render_backend *backend = xgpu_metal_stream_backend();
-	struct xgpu_metal_stream_shaders shaders = { NULL, stream_shaders };
+	struct xgpu_metal_stream_shaders shaders = { NULL, stream_shaders, NULL };
 	static volatile uint32_t visibility[XGPU_STREAM_VISIBILITY_SLOTS];
 	struct xgpu_stream_capabilities capabilities;
 	struct xgpu_stream_target_create create = { 0, 1, SIZE, SIZE, 0, 1, { 0, 0 } };
@@ -1202,6 +1248,269 @@ static void test_stream_table(void)
 	backend->target_delete(NULL, 1);
 	backend->target_delete(NULL, 2);
 }
+
+/* ---------- the MSL emitter's shaders and the Xbox's textures, through the table
+
+A pipeline made by the emitter's provider (xgpu_metal_shaders.c) from a
+vertex program and a pixel program written here as the stream's bytes (the
+intermediate form's structures, field by field: xgpu_shader.h), drawing a
+texture's texels: an Xbox texture in the guest's memory (swizzled
+A8R8G8B8), read again when its pages are written; an image (a high-res
+replacement's RGBA); and a border colour Metal has not (the motion
+tracker's), which the shader draws. */
+
+/* a vertex program instruction's bytes (struct xgpu_vertex_instruction):
+mac, ilu, operands a, b, c (file, index, swizzle, negate), relative, the
+units' masks and temporaries, the output's mask, is_register, register,
+address, from_ilu, writes_output, captures_clip, last */
+#define INSTRUCTION_SIZE 36
+
+static void instruction_move(unsigned char *instruction, int input, int output, int last)
+{
+	memset(instruction, 0, INSTRUCTION_SIZE);
+	instruction[0] = 1;        /* XGPU_MAC_MOV */
+	instruction[2] = 2;        /* a: XGPU_VERTEX_INPUT */
+	instruction[3] = (unsigned char)input;
+	instruction[4] = 0;
+	instruction[5] = 1;
+	instruction[6] = 2;
+	instruction[7] = 3;
+	instruction[28] = 0xf;     /* the output's mask: x, y, z, w */
+	instruction[29] = 1;
+	instruction[30] = (unsigned char)output;
+	instruction[33] = 1;
+	instruction[35] = (unsigned char)last;
+}
+
+/* the Xbox's 4x4 swizzled texel (x, y): x's bits are 0 and 2, y's 1 and 3 */
+static uint32_t swizzled(uint32_t x, uint32_t y)
+{
+	return (x & 1) | ((y & 1) << 1) | ((x & 2) << 1) | ((y & 2) << 2);
+}
+
+static void test_stream_emitter(void)
+{
+	const struct host_render_backend *backend = xgpu_metal_stream_backend();
+	struct xgpu_stream_target_create create = { 0, 11, SIZE, SIZE, 0, 1, { 0, 0 } };
+	struct xgpu_stream_set_targets targets = { 0, 11, 0, -1, 1, 0, 0 };
+	struct xgpu_stream_pipeline_define definition;
+	struct xgpu_stream_dynamic_state dynamic;
+	struct xgpu_stream_draw_uniforms uniforms;
+	struct host_render_vertex_input input;
+	struct host_render_texture_stage stages[4];
+	struct xgpu_stream_layout_define *layout;
+	struct xgpu_stream_draw draw;
+	struct xgpu_stream_read_target read;
+	unsigned char program_record[sizeof(struct xgpu_stream_vertex_program) + 3 * INSTRUCTION_SIZE];
+	struct xgpu_stream_vertex_program *program = (struct xgpu_stream_vertex_program *)program_record;
+	unsigned char *ring = (unsigned char *)host_address(GUEST_START + 0x100000);
+	uint32_t *texture_header, *texels, *image;
+	uint32_t position = 0x80000, x, y;
+	unsigned char *combiner;
+	/* corners at the pixels' edges (the emitter adds the half pixel), uv
+	from u0 to u1 */
+	struct vertex corners[4];
+	struct vertex quad[6];
+	union
+	{
+		struct xgpu_stream_clear clear;
+		unsigned char bytes[sizeof(struct xgpu_stream_clear) + sizeof(int32_t[4])];
+	} clear;
+
+	begin("the emitter's shaders and the Xbox's textures through the table");
+	xgpu_metal_stream_set_shaders(xgpu_metal_shaders());
+	/* the texture and the image in the contiguous memory */
+	mmap((void *)host_address(CONTIGUOUS), CONTIGUOUS_MAPPED, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON | MAP_FIXED,
+		-1, 0);
+	contiguous_mapped = 1;
+	texture_header = (uint32_t *)host_address(CONTIGUOUS + 0x1000);
+	texels = (uint32_t *)host_address(CONTIGUOUS + 0x2000);
+	image = (uint32_t *)host_address(CONTIGUOUS + 0x3000);
+	/* Common, Data (physical), Lock, Format (2D, A8R8G8B8 swizzled, one
+	level, 4x4), Size (0: swizzled) */
+	texture_header[0] = 0x00040001;
+	texture_header[1] = 0x2000;
+	texture_header[2] = 0;
+	texture_header[3] = (2u << 4) | (0x06u << 8) | (1u << 16) | (2u << 20) | (2u << 24);
+	texture_header[4] = 0;
+	/* red, green above blue, white */
+	for (y = 0; y < 4; y++)
+	{
+		for (x = 0; x < 4; x++)
+			texels[swizzled(x, y)] = y < 2 ? (x < 2 ? 0xffff0000u : 0xff00ff00u) : (x < 2 ? 0xff0000ffu : 0xffffffffu);
+	}
+	/* the image: 2x2, RGBA bytes: magenta, cyan, yellow, grey */
+	image[0] = 0xffff00ffu;
+	image[1] = 0xffffff00u;
+	image[2] = 0xff00ffffu;
+	image[3] = 0xff808080u;
+
+	backend->target_create(NULL, &create);
+	backend->set_targets(NULL, &targets);
+	memset(&clear, 0, sizeof(clear));
+	clear.clear.flags = XGPU_CLEAR_COLOR | XGPU_CLEAR_RED | XGPU_CLEAR_GREEN | XGPU_CLEAR_BLUE | XGPU_CLEAR_ALPHA;
+	backend->clear(NULL, &clear.clear);
+
+	/* the vertex program: oPos = v0, oD0 = v3, oT0 = v9 */
+	memset(program_record, 0, sizeof(program_record));
+	program->header = XGPU_STREAM_HEADER(XGPU_STREAM_VERTEX_PROGRAM, sizeof(program_record));
+	program->id = 1;
+	program->hash[0] = 0x12345678;
+	program->hash[1] = 0x9abcdef0;
+	program->instruction_count = 3;
+	instruction_move(program->instructions[0], 0, 0, 0);
+	instruction_move(program->instructions[1], 3, 1, 0);
+	instruction_move(program->instructions[2], 9, 7, 1);
+	backend->vertex_program(NULL, program);
+
+	/* the pixel program: stage 0 PROJECT2D of a 2D texture; one combiner
+	stage, r0 = t0 * 1 (rgb and alpha); no final combiner: the result is r0 */
+	memset(&definition, 0, sizeof(definition));
+	definition.id = 9;
+	definition.key.vertex_program[0] = program->hash[0];
+	definition.key.vertex_program[1] = program->hash[1];
+	definition.key.color_mask = 15;
+	definition.key.color_format = 1;
+	definition.key.samples = 1;
+	definition.pixel_program.stages[0][0] = 1;
+	definition.pixel_program.stages[0][1] = 1;
+	definition.pixel_program.stages[0][2] = 1;
+	definition.pixel_program.stages[0][4] = 0xff;
+	for (x = 1; x < 4; x++)
+		definition.pixel_program.stages[x][4] = (unsigned char)(x - 1);
+	definition.pixel_program.combiner_count = 1;
+	combiner = definition.pixel_program.combiners[0];
+	/* (a portion: inputs A-D, register, alpha and mapping each; then
+	ab_dot, cd_dot, mux, output_mapping, ab, cd, sum, the blue copies) */
+	combiner[0] = 8;           /* rgb: A = t0 */
+	combiner[3] = 0;           /* B = zero, inverted: 1 */
+	combiner[5] = 1;
+	combiner[16] = 12;         /* AB to r0 */
+	combiner[21 + 0] = 8;      /* alpha: A = t0's alpha */
+	combiner[21 + 1] = 1;
+	combiner[21 + 5] = 1;
+	combiner[21 + 16] = 12;
+	backend->pipeline_define(NULL, &definition);
+	CHECK(backend->pipeline(NULL, 9, &definition), "the emitter's pipeline is made");
+
+	memset(&dynamic, 0, sizeof(dynamic));
+	dynamic.viewport[2] = dynamic.viewport[3] = SIZE;
+	dynamic.scissor[2] = dynamic.scissor[3] = SIZE;
+	dynamic.depth_range[1] = 1.0f;
+	memset(&uniforms, 0, sizeof(uniforms));
+	/* (the screen conversion the emitter undoes: pixels from the top left) */
+	uniforms.viewport_scale[0] = SIZE / 2.0f;
+	uniforms.viewport_scale[1] = -SIZE / 2.0f;
+	uniforms.viewport_scale[2] = uniforms.viewport_scale[3] = 1.0f;
+	uniforms.viewport_offset[0] = uniforms.viewport_offset[1] = SIZE / 2.0f;
+	uniforms.point_size = 1.0f;
+	for (x = 0; x < 4; x++)
+		uniforms.texture_scale[x][0] = uniforms.texture_scale[x][1] = uniforms.texture_scale[x][2] =
+			uniforms.texture_scale[x][3] = 1.0f;
+	backend->draw_state(NULL, &dynamic, &uniforms, 2);
+
+	layout = calloc(1, sizeof(*layout) + 3 * sizeof(struct xgpu_stream_vertex_element));
+	layout->id = 2;
+	layout->element_count = 3;
+	layout->elements[0] = (struct xgpu_stream_vertex_element){ 0, 0, XGPU_VERTEX_FLOAT4, 16, 0 };
+	layout->elements[1] = (struct xgpu_stream_vertex_element){ 3, 0, XGPU_VERTEX_COLOR, 4, 16 };
+	layout->elements[2] = (struct xgpu_stream_vertex_element){ 9, 0, XGPU_VERTEX_FLOAT2, 8, 20 };
+	memset(&input, 0, sizeof(input));
+	input.layout = layout;
+	input.present = 1;
+	input.streams[0].segment = -1;
+	input.streams[0].stride = sizeof(struct vertex);
+
+#define QUAD(u0, u1) do { \
+		corners[0] = (struct vertex){ -0.5f, -0.5f, 0.5f, 1.0f, 0xffffffffu, (u0), (u0) }; \
+		corners[1] = (struct vertex){ SIZE - 0.5f, -0.5f, 0.5f, 1.0f, 0xffffffffu, (u1), (u0) }; \
+		corners[2] = (struct vertex){ -0.5f, SIZE - 0.5f, 0.5f, 1.0f, 0xffffffffu, (u0), (u1) }; \
+		corners[3] = (struct vertex){ SIZE - 0.5f, SIZE - 0.5f, 0.5f, 1.0f, 0xffffffffu, (u1), (u1) }; \
+		quad[0] = corners[0]; quad[1] = corners[1]; quad[2] = corners[2]; \
+		quad[3] = corners[2]; quad[4] = corners[1]; quad[5] = corners[3]; \
+		input.streams[0].data = guest_address(ring_put(ring, &position, quad, sizeof(quad))); \
+		input.streams[0].bytes = sizeof(quad); \
+		backend->set_vertices(NULL, &input); \
+		draw = (struct xgpu_stream_draw){ 0, XGPU_TRIANGLES, 6 }; \
+		backend->draw(NULL, &draw); \
+	} while (0)
+#define READ() do { \
+		backend->present(NULL, 11); \
+		backend->frame_end(NULL); \
+		backend->wait(NULL, backend->fence(NULL)); \
+		read = (struct xgpu_stream_read_target){ 0, 11, -1, 0, GUEST_START + 0x200000, SIZE * SIZE * 4, 0 }; \
+		CHECK(backend->read_target(NULL, &read), "read the target"); \
+		memcpy(pixels, (void *)host_address(read.pixels), sizeof(pixels)); \
+	} while (0)
+
+	/* the Xbox texture, point sampled, clamped */
+	memset(stages, 0, sizeof(stages));
+	stages[0].stage.source = 1;      /* XGPU_SOURCE_TEXTURE */
+	stages[0].stage.sampler_type = 1;
+	stages[0].stage.sampled = 1;
+	stages[0].stage.resource = CONTIGUOUS + 0x1000;
+	stages[0].stage.resource_format = texture_header[3];
+	stages[0].stage.resource_size = 0;
+	stages[0].stage.sampler.minify = stages[0].stage.sampler.magnify = 1;
+	stages[0].stage.sampler.address[0] = stages[0].stage.sampler.address[1] = stages[0].stage.sampler.address[2] = 2;
+	backend->set_textures(NULL, stages);
+	QUAD(0.0f, 1.0f);
+	READ();
+	CHECK(pixel(8, 8) == 0xffff0000u && pixel(56, 8) == 0xff00ff00u && pixel(8, 56) == 0xff0000ffu &&
+		pixel(56, 56) == 0xffffffffu, "the Xbox texture, unswizzled: %08x %08x %08x %08x", pixel(8, 8), pixel(56, 8),
+		pixel(8, 56), pixel(56, 56));
+
+	/* its texels written (the write tracking says so): read again */
+	texels[swizzled(0, 0)] = 0xffffff00u;
+	watch_generation++;
+	backend->set_targets(NULL, &targets);
+	QUAD(0.0f, 1.0f);
+	READ();
+	CHECK(pixel(4, 4) == 0xffffff00u && pixel(20, 20) == 0xffff0000u, "the texture read again once written: %08x %08x",
+		pixel(4, 4), pixel(20, 20));
+
+	/* an image in its place (RGBA) */
+	stages[0].stage.source = XGPU_STREAM_SOURCE_IMAGE;
+	stages[0].stage.resource = 7;
+	stages[0].stage.resource_format = 0;
+	stages[0].stage.resource_size = 1;
+	stages[0].stage.data = CONTIGUOUS + 0x3000;
+	stages[0].stage.width = stages[0].stage.height = 2;
+	stages[0].stage.levels = 1;
+	backend->set_textures(NULL, stages);
+	backend->set_targets(NULL, &targets);
+	QUAD(0.0f, 1.0f);
+	READ();
+	CHECK(pixel(8, 8) == 0xffff00ffu && pixel(56, 8) == 0xff00ffffu && pixel(8, 56) == 0xffffff00u &&
+		near(pixel(56, 56), 0xff808080u, 1), "the image, its RGBA: %08x %08x %08x %08x", pixel(8, 8), pixel(56, 8),
+		pixel(8, 56), pixel(56, 56));
+
+	/* the Xbox texture's border: Metal's opaque black, then the motion
+	tracker's colour (0x46000000), which the shader draws */
+	stages[0].stage.source = 1;
+	stages[0].stage.resource = CONTIGUOUS + 0x1000;
+	stages[0].stage.resource_format = texture_header[3];
+	stages[0].stage.resource_size = 0;
+	stages[0].stage.sampler.address[0] = stages[0].stage.sampler.address[1] = 3;
+	stages[0].stage.sampler.border_color = 0xff000000u;
+	backend->set_textures(NULL, stages);
+	backend->set_targets(NULL, &targets);
+	QUAD(-1.0f, 2.0f);
+	READ();
+	CHECK(pixel(4, 4) == 0xff000000u && pixel(32, 32) == 0xffffffffu, "a border colour Metal has: %08x %08x",
+		pixel(4, 4), pixel(32, 32));
+	stages[0].stage.sampler.border_color = 0x46000000u;
+	backend->set_textures(NULL, stages);
+	backend->set_targets(NULL, &targets);
+	QUAD(-1.0f, 2.0f);
+	READ();
+	CHECK(pixel(4, 4) == 0x46000000u && pixel(60, 60) == 0x46000000u && pixel(32, 32) == 0xffffffffu,
+		"the motion tracker's border colour: %08x %08x %08x", pixel(4, 4), pixel(60, 60), pixel(32, 32));
+#undef QUAD
+#undef READ
+	free(layout);
+	backend->target_delete(NULL, 11);
+}
 #endif
 
 /* ---------- the window */
@@ -1385,6 +1694,7 @@ int main(int argc, char *argv[])
 		test_frames();
 #ifdef TEST_STREAM
 		test_stream_table();
+		test_stream_emitter();
 #else
 		printf("(the command stream's table: not built, its header is not in the tree)\n");
 #endif

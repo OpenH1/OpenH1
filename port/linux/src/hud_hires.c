@@ -23,7 +23,12 @@ zlib (port/third_party/zlib).
 #include "hud_hires.h"
 #include "platform.h"
 #include "port_config.h"
+#ifdef HALO_RENDER_STREAM
+/* (the renderer's backend is on the host: the pictures are images) */
+#include "xgpu_images.h"
+#else
 #include "xgpu_gl.h"
+#endif
 
 #include "zlib_prefixed.h"
 
@@ -330,13 +335,19 @@ unsigned int hud_hires_png_texture(const void *png, unsigned long size, unsigned
 {
 	unsigned long width = 0, height = 0, largest;
 	unsigned char *pixels = png_decode(png, size, &width, &height);
+#ifndef HALO_RENDER_STREAM
 	GLuint texture;
+#endif
 
 	if (!pixels)
 		return 0;
 	*levels = 1;
 	for (largest = width > height ? width : height; largest > 1; largest >>= 1)
 		(*levels)++;
+#ifdef HALO_RENDER_STREAM
+	/* (the host makes its levels) */
+	return xgpu_image_create(pixels, width, height, *levels, XGPU_IMAGE_RGBA, TRUE);
+#else
 	glGenTextures(1, &texture);
 	glBindTexture(GL_TEXTURE_2D, texture);
 	xgpu_gl_state_invalidate();
@@ -348,6 +359,7 @@ unsigned int hud_hires_png_texture(const void *png, unsigned long size, unsigned
 	xgpu_gl_state_invalidate();
 	free(pixels);
 	return texture;
+#endif
 }
 
 unsigned int hud_hires_override_texture(long asset, unsigned long *levels)

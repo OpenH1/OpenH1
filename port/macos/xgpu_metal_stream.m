@@ -12,16 +12,17 @@ pipelines' definitions, the vertex programs, the shaders made for each
 pipeline; the vertex layout of the last set_vertices. A draw's pipeline is
 the pipeline's fixed-function part with that layout's attributes.
 
-Not here yet, waiting on other parts:
-- shaders: the MSL emitter (xgpu_msl.c) makes them. Until it is wired, a
-  provider (xgpu_metal_stream_set_shaders) gives each pipeline its two
-  functions; without one, every pipeline fails, as the stream reports to the
-  front end.
-- textures read from the Xbox's memory (a stage's resource): they need the
-  Xbox's texture decoding (swizzle, palettes) on the host (the split's
-  deferred step). Stages that sample a render target work.
-- the enhanced dynamic lights, anti-aliasing's passes and the VR mode: no
-  entries (the stream skips them).
+A pipeline's shaders come from a provider (xgpu_metal_stream_set_shaders:
+the MSL emitter's, xgpu_metal_shaders.c; tests give their own), made for
+the pipeline's key and the draw's variant (the inputs read as integers, the
+border colours the shader draws), as are the uniforms both stages read. The
+stages' textures are the cache's (xgpu_metal_textures.c), looked at again
+at a draw once a stage has changed or a watched page has been written; a
+stage that samples the target the draw draws into samples a copy of it.
+
+Not here: the enhanced dynamic lights, anti-aliasing's passes and the VR
+mode (no entries: the stream skips them), and a render target's mip levels
+drawn one by one (its first level is sampled).
 
 The interface's values (xgpu_backend.h: the primitives, the clear's parts,
 the samplers' filters and addresses, the vertex elements' formats) are read
@@ -39,6 +40,7 @@ by the functions under "the interface's values".
 #include "host_render_stream.h"
 #include "xgpu_metal_internal.h"
 #include "xgpu_metal_stream.h"
+#include "xgpu_metal_textures.h"
 
 #include <string.h>
 
@@ -54,13 +56,17 @@ struct stream_target
 {
 	uint32_t texture;
 	struct xgpu_metal_texture_description description;
+	/* counts the draws and clears into it */
+	uint32_t written;
 };
 
 struct stream_pipeline
 {
 	/* XGPU_STREAM_PIPELINE_* */
 	uint8_t state;
+	/* the shaders, made for this variant of the draw's */
 	uint32_t vertex_shader, pixel_shader;
+	struct xgpu_metal_stream_variant variant;
 };
 
 static struct
@@ -69,12 +75,35 @@ static struct
 	uint32_t ring_size;
 	NSMutableDictionary<NSNumber *, NSValue *> *targets;
 	uint32_t segments[MIRROR_SEGMENT_MAXIMUM];
-	NSMutableDictionary<NSNumber *, NSData *> *vertex_programs;
+	NSMutableDictionary<NSNumber *, NSData *> *vertex_programs, *vertex_lightings;
 	struct stream_pipeline pipelines[XGPU_STREAM_PIPELINES];
 	struct xgpu_metal_stream_shaders shaders;
-	/* the draws' pipeline (without its attributes) and layout; and the
-	layout of immediate mode's draws */
+	/* the draws' pipeline (without its attributes and shaders), its number
+	and definition, and its layout; and the layout of immediate mode's
+	draws */
 	struct xgpu_metal_pipeline pipeline;
+	uint32_t pipeline_id;
+	const struct xgpu_stream_pipeline_define *definition;
+	/* the inputs the layout feeds as integers; the stages' axes whose
+	border colour the shader draws (xgpu_metal_stream_variant) */
+	uint16_t integer_attributes;
+	uint8_t border[4];
+	/* what the uniforms are made of (the provider's uniforms), and whether
+	it changed since they were made */
+	struct xgpu_stream_draw_uniforms uniforms;
+	float constants[XGPU_METAL_VERTEX_CONSTANT_COUNT][4];
+	float blend_color[4];
+	struct xgpu_stream_sampler samplers[4];
+	BOOL uniforms_dirty;
+	/* the stages as set; set since they were bound, and the write
+	tracking's serial then; a target's copy bound (checked at each draw) */
+	struct xgpu_stream_texture_stage stages[4];
+	BOOL textures_dirty, feedback_bound;
+	uint32_t textures_serial;
+	/* the copy of a target drawn into that a draw samples: of which
+	texture, as of which of its draws */
+	uint32_t feedback, feedback_target, feedback_written;
+	struct xgpu_metal_texture_description feedback_description;
 	struct xgpu_metal_vertex_attribute attributes[16];
 	uint16_t strides[XGPU_METAL_STREAM_COUNT];
 	struct xgpu_metal_source streams[XGPU_METAL_STREAM_COUNT];
@@ -87,7 +116,13 @@ static struct
 
 void xgpu_metal_stream_set_shaders(const struct xgpu_metal_stream_shaders *shaders)
 {
+	uint32_t index;
+
 	stream.shaders = *shaders;
+	/* (the pipelines are made again by these) */
+	for (index = 0; index < XGPU_STREAM_PIPELINES; index++)
+		stream.pipelines[index].state = XGPU_STREAM_PIPELINE_UNKNOWN;
+	stream.uniforms_dirty = YES;
 }
 
 /* ---------- the interface's values */
@@ -119,17 +154,42 @@ enum
 	_filter_none, _filter_point, _filter_linear, _filter_anisotropic,
 };
 
-static void sampler_convert(const struct xgpu_stream_sampler *from, struct xgpu_metal_sampler *to)
+/* a border colour Metal's samplers have (ARGB) */
+static BOOL border_metal(uint32_t color)
+{
+	return color == 0 || color == 0xff000000u || color == 0xffffffffu;
+}
+
+/* the axes (bit 0 u, 1 v, 2 w) whose border colour the shader draws */
+static uint8_t border_axes(const struct xgpu_stream_sampler *sampler)
+{
+	uint8_t axes = 0;
+	int axis;
+
+	if (border_metal(sampler->border_color))
+		return 0;
+	for (axis = 0; axis < 3; axis++)
+	{
+		if (sampler->address[axis] == XGPU_METAL_ADDRESS_BORDER)
+			axes |= (uint8_t)(1u << axis);
+	}
+	return axes;
+}
+
+/* the sampler; axes: those whose border the shader draws, clamped to the
+edge here */
+static void sampler_convert(const struct xgpu_stream_sampler *from, uint8_t axes, struct xgpu_metal_sampler *to)
 {
 	memset(to, 0, sizeof(*to));
 	to->min_filter = from->minify >= _filter_linear ? XGPU_METAL_FILTER_LINEAR : XGPU_METAL_FILTER_POINT;
 	to->mag_filter = from->magnify >= _filter_linear ? XGPU_METAL_FILTER_LINEAR : XGPU_METAL_FILTER_POINT;
 	to->mip_filter = from->mip == _filter_none ? XGPU_METAL_MIP_NONE :
 		from->mip == _filter_point ? XGPU_METAL_MIP_POINT : XGPU_METAL_MIP_LINEAR;
-	to->address_u = from->address[0];
-	to->address_v = from->address[1];
-	to->address_w = from->address[2];
-	/* (the others are the emitter's to blend in) */
+	to->address_u = (axes & 1) ? XGPU_METAL_ADDRESS_CLAMP : from->address[0];
+	to->address_v = (axes & 2) ? XGPU_METAL_ADDRESS_CLAMP : from->address[1];
+	to->address_w = (axes & 4) ? XGPU_METAL_ADDRESS_CLAMP : from->address[2];
+	/* (the others are the shader's to blend in, where it can: a cube's or a
+	layered target's are transparent black) */
 	to->border = from->border_color == 0xff000000u ? XGPU_METAL_BORDER_OPAQUE_BLACK :
 		from->border_color == 0xffffffffu ? XGPU_METAL_BORDER_OPAQUE_WHITE : XGPU_METAL_BORDER_TRANSPARENT_BLACK;
 	to->max_anisotropy = (uint8_t)(from->minify == _filter_anisotropic && from->anisotropy > 1 ?
@@ -168,6 +228,7 @@ static void target_forget(uint32_t target)
 	xgpu_metal_texture_destroy(entry->texture);
 	free(entry);
 	[stream.targets removeObjectForKey:@(target)];
+	stream.textures_dirty = YES;
 }
 
 static void target_make(uint32_t target, const struct xgpu_metal_texture_description *description)
@@ -180,6 +241,7 @@ static void target_make(uint32_t target, const struct xgpu_metal_texture_descrip
 	entry->description = *description;
 	entry->texture = xgpu_metal_texture_create(description);
 	stream.targets[@(target)] = [NSValue valueWithPointer:entry];
+	stream.textures_dirty = YES;
 }
 
 static void stream_target_create(void *context, const struct xgpu_stream_target_create *record)
@@ -224,6 +286,8 @@ static void stream_set_targets(void *context, const struct xgpu_stream_set_targe
 	(void)context;
 	stream.color = record->color;
 	stream.depth = record->depth;
+	/* (whether a stage samples the target drawn into) */
+	stream.textures_dirty = YES;
 	stream.samples = record->samples;
 	/* (the macOS app draws no VR views: views and hud_group are the VR
 	mode's) */
@@ -234,6 +298,8 @@ static void stream_set_targets(void *context, const struct xgpu_stream_set_targe
 static void stream_clear(void *context, const struct xgpu_stream_clear *record)
 {
 	(void)context;
+	if (target_get(stream.color))
+		target_get(stream.color)->written++;
 	xgpu_metal_clear((const int32_t (*)[4])record->rectangles, record->count, clear_parts(record->flags), record->color,
 		record->depth, record->stencil);
 }
@@ -241,6 +307,8 @@ static void stream_clear(void *context, const struct xgpu_stream_clear *record)
 static void stream_clear_target(void *context, const struct xgpu_stream_clear_target *record)
 {
 	(void)context;
+	if (target_get(record->target))
+		target_get(record->target)->written++;
 	xgpu_metal_set_targets(target_texture(record->target), 0, 0, 0, 0);
 	xgpu_metal_clear(NULL, 0, XGPU_METAL_CLEAR_COLOR | XGPU_METAL_CLEAR_CHANNELS, record->color, 1.0f, 0);
 	xgpu_metal_set_targets(target_texture(stream.color), 0, 0, target_texture(stream.depth), stream.samples != 0);
@@ -270,37 +338,132 @@ enum
 	_source_none, _source_texture, _source_target,
 };
 
+/* xgpu.h's _xgpu_sampler_* */
+enum
+{
+	_xgpu_sampler_none, _xgpu_sampler_2d, _xgpu_sampler_3d, _xgpu_sampler_cube, _xgpu_sampler_2d_layered,
+};
+
 static void stream_set_textures(void *context, const struct host_render_texture_stage stages[4])
 {
-	static BOOL told;
 	int index;
 
 	(void)context;
 	for (index = 0; index < 4; index++)
 	{
 		const struct xgpu_stream_texture_stage *stage = &stages[index].stage;
+		uint8_t axes = 0;
+
+		stream.stages[index] = *stage;
+		/* (the shader draws the border of a 2D or 3D texture's sampler) */
+		if (stage->source != _source_none && stage->sampler_type != _xgpu_sampler_cube &&
+			stage->sampler_type != _xgpu_sampler_2d_layered)
+			axes = border_axes(&stage->sampler);
+		stream.border[index] = axes;
+		if (memcmp(&stream.samplers[index], &stage->sampler, sizeof(stage->sampler)))
+		{
+			stream.samplers[index] = stage->sampler;
+			stream.uniforms_dirty = YES;
+		}
+	}
+	stream.textures_dirty = YES;
+}
+
+/* a copy of a target the draw draws into, which it samples (Metal cannot
+sample an attachment of the pass): copied again once the target has been
+drawn into since (as the web build's OpenGL does: xgpu_gl.c feedback_copy) */
+static uint32_t feedback_copy(struct stream_target *target)
+{
+	if (target->description.format != XGPU_METAL_FORMAT_BGRA8)
+		return target->texture;
+	if (!stream.feedback || stream.feedback_description.width != target->description.width ||
+		stream.feedback_description.height != target->description.height)
+	{
+		struct xgpu_metal_texture_description description = target->description;
+
+		if (stream.feedback)
+			xgpu_metal_texture_destroy(stream.feedback);
+		description.type = XGPU_METAL_TEXTURE_2D;
+		description.usage = XGPU_METAL_USAGE_SAMPLED | XGPU_METAL_USAGE_TARGET;
+		description.samples = 0;
+		description.depth_or_layers = 1;
+		description.levels = 1;
+		stream.feedback = xgpu_metal_texture_create(&description);
+		stream.feedback_description = description;
+		stream.feedback_target = 0;
+	}
+	if (stream.feedback && (stream.feedback_target != target->texture || stream.feedback_written != target->written))
+	{
+		xgpu_metal_texture_copy(target->texture, stream.feedback);
+		stream.feedback_target = target->texture;
+		stream.feedback_written = target->written;
+	}
+	return stream.feedback ? stream.feedback : target->texture;
+}
+
+/* the stages' textures and samplers for a draw: the textures are looked up
+again where a stage changed or a watched page has been written since (the
+textures' cache makes them again from pages written since), and a target the
+draw draws into is copied */
+static void textures_bind(void)
+{
+	uint32_t serial = host_memory_watch_serial(), index;
+
+	if (!stream.textures_dirty && serial == stream.textures_serial && !stream.feedback_bound)
+		return;
+	stream.textures_dirty = NO;
+	stream.textures_serial = serial;
+	stream.feedback_bound = NO;
+	for (index = 0; index < 4; index++)
+	{
+		const struct xgpu_stream_texture_stage *stage = &stream.stages[index];
 		struct xgpu_metal_sampler sampler;
 		uint32_t texture = 0;
 
-		sampler_convert(&stage->sampler, &sampler);
+		sampler_convert(&stage->sampler, stream.border[index], &sampler);
 		if (stage->source == _source_target)
-			texture = target_texture(stage->target);
-		else if (stage->source == _source_texture && !told)
 		{
-			host_logf(HOST_LOG_WARN, "metal: textures in the Xbox's memory are not drawn yet (their decoding is the "
-				"front end's next step)");
-			told = YES;
+			struct stream_target *target = stage->target ? target_get(stage->target) : NULL;
+
+			if (target)
+			{
+				texture = target->texture;
+				/* (drawn into by this draw: its copy, checked at each draw) */
+				if (stage->drawn == stage->target && stage->target == stream.color)
+				{
+					texture = feedback_copy(target);
+					stream.feedback_bound = YES;
+				}
+			}
 		}
-		xgpu_metal_set_texture((uint32_t)index, texture, &sampler);
+		else if (stage->source == _source_texture || stage->source == XGPU_STREAM_SOURCE_IMAGE)
+		{
+			texture = xgpu_metal_textures_get(stage);
+		}
+		xgpu_metal_set_texture(index, texture, &sampler);
 	}
 }
 
 /* ---------- pipelines */
 
+/* the per-pixel lighting's lights' registers (xgpu_backend.h's
+XGPU_MODEL_LIGHT_REGISTER: c[-82], c[-79] to c[-69]) */
+#define MODEL_LIGHT_FIRST (96 - 82)
+#define MODEL_LIGHT_LAST (96 - 69)
+
 static void stream_set_constants(void *context, const struct xgpu_stream_constants *record)
 {
+	uint32_t count = record->count;
+
 	(void)context;
-	xgpu_metal_set_vertex_constants(record->first, record->count, &record->values[0][0]);
+	if (record->first >= XGPU_METAL_VERTEX_CONSTANT_COUNT)
+		return;
+	if (count > XGPU_METAL_VERTEX_CONSTANT_COUNT - record->first)
+		count = XGPU_METAL_VERTEX_CONSTANT_COUNT - record->first;
+	memcpy(stream.constants[record->first], record->values, (size_t)count * sizeof(stream.constants[0]));
+	if (record->first <= MODEL_LIGHT_LAST && record->first + count > MODEL_LIGHT_FIRST)
+		stream.uniforms_dirty = YES;
+	xgpu_metal_set_vertex_constants(record->first, count, &record->values[0][0]);
 }
 
 static void stream_vertex_program(void *context, const struct xgpu_stream_vertex_program *record)
@@ -311,6 +474,51 @@ static void stream_vertex_program(void *context, const struct xgpu_stream_vertex
 	stream.vertex_programs[@(hash)] = [NSData dataWithBytes:record length:XGPU_STREAM_HEADER_SIZE(record->header)];
 }
 
+static void stream_vertex_lighting(void *context, const struct xgpu_stream_vertex_lighting *record)
+{
+	uint64_t hash = record->hash[0] | ((uint64_t)record->hash[1] << 32);
+
+	(void)context;
+	stream.vertex_lightings[@(hash)] = [NSData dataWithBytes:record length:sizeof(*record)];
+}
+
+static void stream_pipeline_define(void *context, const struct xgpu_stream_pipeline_define *record)
+{
+	(void)context;
+	/* (a number defined again is another pipeline) */
+	if (record->id && record->id < XGPU_STREAM_PIPELINES)
+		stream.pipelines[record->id].state = XGPU_STREAM_PIPELINE_UNKNOWN;
+	if (record->id == stream.pipeline_id)
+		stream.pipeline_id = 0;
+}
+
+/* a pipeline's shaders for a variant of the draw's: made by the provider
+if the pipeline has none for it; 0 if they cannot be */
+static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_stream_pipeline_define *definition,
+	const struct xgpu_metal_stream_variant *variant)
+{
+	const struct xgpu_stream_pipeline_key *key = &definition->key;
+	uint64_t hash = key->vertex_program[0] | ((uint64_t)key->vertex_program[1] << 32);
+	NSData *program, *lighting;
+
+	if (entry->state == XGPU_STREAM_PIPELINE_MADE && !memcmp(&entry->variant, variant, sizeof(*variant)))
+		return 1;
+	if (entry->state == XGPU_STREAM_PIPELINE_FAILED || !stream.shaders.make)
+		return 0;
+	program = stream.vertex_programs[@(hash)];
+	lighting = stream.vertex_lightings[@(hash)];
+	entry->variant = *variant;
+	if (stream.shaders.make(stream.shaders.context, definition, program ? program.bytes : NULL,
+		lighting ? lighting.bytes : NULL, variant, &entry->vertex_shader, &entry->pixel_shader) && entry->vertex_shader)
+	{
+		entry->state = XGPU_STREAM_PIPELINE_MADE;
+		return 1;
+	}
+	/* (one that fails is not tried again for every draw) */
+	entry->state = XGPU_STREAM_PIPELINE_FAILED;
+	return 0;
+}
+
 static int stream_pipeline(void *context, uint32_t id, const struct xgpu_stream_pipeline_define *definition)
 {
 	struct stream_pipeline *entry;
@@ -318,24 +526,26 @@ static int stream_pipeline(void *context, uint32_t id, const struct xgpu_stream_
 	struct xgpu_metal_pipeline *pipeline = &stream.pipeline;
 
 	(void)context;
+	stream.pipeline_id = 0;
 	if (!id || id >= XGPU_STREAM_PIPELINES)
 		return 0;
 	entry = &stream.pipelines[id];
+	/* (made at first in the variant the draws have now, to tell the guest
+	whether it can be) */
 	if (entry->state == XGPU_STREAM_PIPELINE_UNKNOWN)
 	{
-		uint64_t hash = key->vertex_program[0] | ((uint64_t)key->vertex_program[1] << 32);
-		NSData *program = stream.vertex_programs[@(hash)];
+		struct xgpu_metal_stream_variant variant;
 
-		entry->state = XGPU_STREAM_PIPELINE_FAILED;
-		if (stream.shaders.make && stream.shaders.make(stream.shaders.context, definition,
-			program ? program.bytes : NULL, &entry->vertex_shader, &entry->pixel_shader) && entry->vertex_shader)
-			entry->state = XGPU_STREAM_PIPELINE_MADE;
+		memset(&variant, 0, sizeof(variant));
+		variant.integer_attributes = key->immediate ? 0 : stream.integer_attributes;
+		memcpy(variant.border, stream.border, sizeof(variant.border));
+		pipeline_shaders(entry, definition, &variant);
 	}
 	if (entry->state != XGPU_STREAM_PIPELINE_MADE)
 		return 0;
+	stream.pipeline_id = id;
+	stream.definition = definition;
 	memset(pipeline, 0, sizeof(*pipeline));
-	pipeline->vertex_shader = entry->vertex_shader;
-	pipeline->pixel_shader = entry->pixel_shader;
 	pipeline->blend = key->blend;
 	pipeline->blend_source = key->blend_source;
 	pipeline->blend_destination = key->blend_destination;
@@ -367,13 +577,46 @@ static void stream_draw_state(void *context, const struct xgpu_stream_dynamic_st
 {
 	(void)context;
 	if (dynamic)
+	{
 		xgpu_metal_set_dynamic_state((const struct xgpu_metal_dynamic_state *)dynamic);
+		if (memcmp(stream.blend_color, dynamic->blend_color, sizeof(stream.blend_color)))
+		{
+			memcpy(stream.blend_color, dynamic->blend_color, sizeof(stream.blend_color));
+			stream.uniforms_dirty = YES;
+		}
+	}
 	if (uniforms && (!stream.uniforms_set || uniforms_serial != stream.uniforms_serial))
 	{
-		xgpu_metal_set_draw_uniforms(uniforms, sizeof(*uniforms));
+		stream.uniforms = *uniforms;
 		stream.uniforms_serial = uniforms_serial;
 		stream.uniforms_set = YES;
+		stream.uniforms_dirty = YES;
 	}
+}
+
+/* the uniforms both stages read, made again where what they are made of
+changed */
+static void uniforms_update(void)
+{
+	struct xgpu_metal_stream_uniform_inputs inputs;
+	unsigned char bytes[4096];
+	uint32_t size;
+
+	if (!stream.uniforms_dirty || !stream.uniforms_set)
+		return;
+	stream.uniforms_dirty = NO;
+	if (!stream.shaders.uniforms)
+	{
+		xgpu_metal_set_draw_uniforms(&stream.uniforms, sizeof(stream.uniforms));
+		return;
+	}
+	inputs.uniforms = &stream.uniforms;
+	inputs.blend_color = stream.blend_color;
+	inputs.constants = (const float (*)[4])stream.constants;
+	inputs.samplers = stream.samplers;
+	size = stream.shaders.uniforms(stream.shaders.context, &inputs, bytes, sizeof(bytes));
+	if (size)
+		xgpu_metal_set_draw_uniforms(bytes, size);
 }
 
 /* ---------- vertices */
@@ -413,7 +656,7 @@ static struct xgpu_metal_source ring_source(uint32_t address, uint32_t size)
 
 static void stream_set_vertices(void *context, const struct host_render_vertex_input *input)
 {
-	uint32_t fed = 0, index;
+	uint32_t fed = 0, integers = 0, index;
 
 	(void)context;
 	memset(stream.attributes, 0, sizeof(stream.attributes));
@@ -431,8 +674,13 @@ static void stream_set_vertices(void *context, const struct host_render_vertex_i
 			stream.attributes[element->reg].offset = element->offset;
 			if (stream.attributes[element->reg].format != XGPU_METAL_ATTRIBUTE_NONE)
 				fed |= 1u << element->reg;
+			/* (unnormalized shorts are read as integers, which the shader
+			converts) */
+			if (element->format >= XGPU_METAL_ATTRIBUTE_SHORT1 && element->format <= XGPU_METAL_ATTRIBUTE_SHORT4)
+				integers |= 1u << element->reg;
 		}
 	}
+	stream.integer_attributes = (uint16_t)integers;
 	/* (every other input, from its value) */
 	for (index = 0; index < 16; index++)
 	{
@@ -461,19 +709,37 @@ static void stream_set_vertices(void *context, const struct host_render_vertex_i
 	memcpy(stream.constant_attributes, input->attributes, sizeof(stream.constant_attributes));
 }
 
-/* the pipeline and layout for a draw: set_vertices's, or immediate mode's */
-static void draw_prepare(const struct xgpu_metal_vertex_attribute *attributes, const uint16_t *strides,
-	const struct xgpu_metal_source *streams, const float (*constants)[4])
+/* the pipeline and layout for a draw: set_vertices's, or immediate mode's
+(integers: the inputs read as integers); NO if it cannot be drawn */
+static BOOL draw_prepare(const struct xgpu_metal_vertex_attribute *attributes, const uint16_t *strides,
+	const struct xgpu_metal_source *streams, const float (*constants)[4], uint16_t integers)
 {
 	struct xgpu_metal_pipeline pipeline = stream.pipeline;
+	struct xgpu_metal_stream_variant variant;
+	struct stream_pipeline *entry;
 	uint32_t index;
 
+	if (!stream.pipeline_id || !stream.definition)
+		return NO;
+	entry = &stream.pipelines[stream.pipeline_id];
+	memset(&variant, 0, sizeof(variant));
+	variant.integer_attributes = stream.definition->key.immediate ? 0 : integers;
+	memcpy(variant.border, stream.border, sizeof(variant.border));
+	if (!pipeline_shaders(entry, stream.definition, &variant))
+		return NO;
+	pipeline.vertex_shader = entry->vertex_shader;
+	pipeline.pixel_shader = entry->pixel_shader;
+	uniforms_update();
+	textures_bind();
+	if (target_get(stream.color))
+		target_get(stream.color)->written++;
 	memcpy(pipeline.attributes, attributes, sizeof(pipeline.attributes));
 	memcpy(pipeline.strides, strides, sizeof(pipeline.strides));
 	xgpu_metal_set_pipeline(&pipeline);
 	for (index = 0; index < XGPU_METAL_STREAM_COUNT; index++)
 		xgpu_metal_set_stream(index, streams[index]);
 	xgpu_metal_set_constant_attributes(constants);
+	return YES;
 }
 
 /* draws count vertices (indices: 16-bit at data, or NULL for 0 to count),
@@ -528,7 +794,9 @@ static void draw_converted(uint32_t primitive, uint32_t count, const uint16_t *i
 static void stream_draw(void *context, const struct xgpu_stream_draw *record)
 {
 	(void)context;
-	draw_prepare(stream.attributes, stream.strides, stream.streams, (const float (*)[4])stream.constant_attributes);
+	if (!draw_prepare(stream.attributes, stream.strides, stream.streams, (const float (*)[4])stream.constant_attributes,
+		stream.integer_attributes))
+		return;
 	draw_converted(record->primitive, record->count, NULL, (struct xgpu_metal_source){ XGPU_METAL_SOURCE_NONE, 0, 0, 0 }, 0);
 }
 
@@ -539,7 +807,9 @@ static void stream_draw_indices(void *context, const struct xgpu_stream_draw_ind
 	(void)context;
 	if (source.kind == XGPU_METAL_SOURCE_NONE)
 		return;
-	draw_prepare(stream.attributes, stream.strides, stream.streams, (const float (*)[4])stream.constant_attributes);
+	if (!draw_prepare(stream.attributes, stream.strides, stream.streams, (const float (*)[4])stream.constant_attributes,
+		stream.integer_attributes))
+		return;
 	draw_converted(record->primitive, record->count, host_pointer(record->indices), source, 0);
 }
 
@@ -567,7 +837,9 @@ static void stream_draw_indexed(void *context, const struct xgpu_stream_draw_ind
 	}
 	if (source.kind == XGPU_METAL_SOURCE_NONE)
 		return;
-	draw_prepare(stream.attributes, stream.strides, stream.streams, (const float (*)[4])stream.constant_attributes);
+	if (!draw_prepare(stream.attributes, stream.strides, stream.streams, (const float (*)[4])stream.constant_attributes,
+		stream.integer_attributes))
+		return;
 	/* (the streams start at vertex minimum) */
 	draw_converted(record->primitive, record->count, indices, source, -(int32_t)record->minimum);
 }
@@ -606,7 +878,8 @@ static void stream_draw_immediate(void *context, const struct xgpu_stream_draw_i
 	streams[0] = ring_source(record->vertices, size);
 	if (streams[0].kind == XGPU_METAL_SOURCE_NONE)
 		return;
-	draw_prepare(layout, strides, streams, attributes);
+	if (!draw_prepare(layout, strides, streams, attributes, 0))
+		return;
 	if (record->indices && record->index_count)
 		draw_converted(record->primitive, record->index_count, host_pointer(record->indices),
 			ring_source(record->indices, record->index_count * 2), 0);
@@ -641,6 +914,7 @@ static void stream_frame_end(void *context)
 	(void)context;
 	xgpu_metal_frame_end(target_texture(stream.back_buffer));
 	stream.back_buffer = 0;
+	xgpu_metal_textures_frame_end();
 }
 
 static void stream_open(void *context, void *ring, uint32_t ring_size, volatile uint32_t *visibility)
@@ -691,6 +965,7 @@ const struct host_render_backend *xgpu_metal_stream_backend(void)
 	{
 		stream.targets = [NSMutableDictionary new];
 		stream.vertex_programs = [NSMutableDictionary new];
+		stream.vertex_lightings = [NSMutableDictionary new];
 		backend.open = stream_open;
 		backend.fence = stream_fence;
 		backend.wait = stream_wait;
@@ -705,6 +980,8 @@ const struct host_render_backend *xgpu_metal_stream_backend(void)
 		backend.set_textures = stream_set_textures;
 		backend.set_constants = stream_set_constants;
 		backend.vertex_program = stream_vertex_program;
+		backend.vertex_lighting = stream_vertex_lighting;
+		backend.pipeline_define = stream_pipeline_define;
 		backend.pipeline = stream_pipeline;
 		backend.draw_state = stream_draw_state;
 		backend.mirror_write = stream_mirror_write;

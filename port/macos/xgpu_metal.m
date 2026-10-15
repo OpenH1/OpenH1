@@ -114,6 +114,8 @@ static const struct format_information formats[XGPU_METAL_FORMAT_COUNT] = {
 	[XGPU_METAL_FORMAT_DXT5] = { MTLPixelFormatBC3_RGBA, 16, 1, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
 	[XGPU_METAL_FORMAT_D24S8] = { MTLPixelFormatDepth32Float_Stencil8, 8, 0, 1, 1, SWIZZLE(Red, Green, Blue, Alpha), 0 },
 	[XGPU_METAL_FORMAT_D16] = { MTLPixelFormatDepth16Unorm, 2, 0, 1, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
+	[XGPU_METAL_FORMAT_RGBA8] = { MTLPixelFormatRGBA8Unorm, 4, 0, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
+	[XGPU_METAL_FORMAT_COVERAGE] = { MTLPixelFormatR8Unorm, 1, 0, 0, 0, SWIZZLE(One, One, One, Red), 1 },
 };
 
 static const struct format_information *format_get(uint32_t format)
@@ -780,7 +782,17 @@ uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *
 		/* (written by the CPU where the GPU is not reading it) */
 		descriptor.storageMode = MTLStorageModeShared;
 	}
-	if (format->swizzled)
+	if (description->channels & 0x100)
+	{
+		/* (each channel taken from another of the format's) */
+		const MTLTextureSwizzle from[4] = { format->swizzle.red, format->swizzle.green, format->swizzle.blue,
+			format->swizzle.alpha };
+
+		descriptor.swizzle = (MTLTextureSwizzleChannels){ from[description->channels & 3],
+			from[(description->channels >> 2) & 3], from[(description->channels >> 4) & 3],
+			from[(description->channels >> 6) & 3] };
+	}
+	else if (format->swizzled)
 		descriptor.swizzle = format->swizzle;
 	entry = &metal.textures[handle];
 	entry->texture = [metal.device newTextureWithDescriptor:descriptor];
@@ -828,6 +840,46 @@ void xgpu_metal_texture_destroy(uint32_t texture)
 		if (metal.stage_textures[stage] == texture)
 			metal.stage_textures[stage] = 0;
 	}
+}
+
+static void statistics_add(uint32_t *counter, uint32_t amount);
+
+void xgpu_metal_texture_make_levels(uint32_t texture)
+{
+	struct texture_entry *entry = texture_get(texture);
+	id<MTLBlitCommandEncoder> blit;
+
+	if (!entry || entry->texture.mipmapLevelCount < 2)
+		return;
+	if (!metal.in_frame)
+		xgpu_metal_frame_begin();
+	pass_end();
+	blit = [command_buffer() blitCommandEncoder];
+	[blit generateMipmapsForTexture:entry->texture];
+	[blit endEncoding];
+	entry->used = recording_serial();
+}
+
+void xgpu_metal_texture_copy(uint32_t source, uint32_t destination)
+{
+	struct texture_entry *from = texture_get(source), *to = texture_get(destination);
+	id<MTLBlitCommandEncoder> blit;
+	NSUInteger width, height;
+
+	if (!from || !to || from->texture.pixelFormat != to->texture.pixelFormat)
+		return;
+	width = from->texture.width < to->texture.width ? from->texture.width : to->texture.width;
+	height = from->texture.height < to->texture.height ? from->texture.height : to->texture.height;
+	if (!metal.in_frame)
+		xgpu_metal_frame_begin();
+	pass_end();
+	blit = [command_buffer() blitCommandEncoder];
+	[blit copyFromTexture:from->texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
+		sourceSize:MTLSizeMake(width, height, 1) toTexture:to->texture destinationSlice:0 destinationLevel:0
+		destinationOrigin:MTLOriginMake(0, 0, 0)];
+	[blit endEncoding];
+	from->used = to->used = recording_serial();
+	statistics_add(&metal.statistics.feedback_copies, 1);
 }
 
 static void statistics_add(uint32_t *counter, uint32_t amount)
