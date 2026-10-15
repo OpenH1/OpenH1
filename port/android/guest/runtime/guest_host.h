@@ -109,6 +109,10 @@ void host_gl_buffer_write(unsigned int target, unsigned int offset, unsigned int
 the GPU to finish the work last fenced for a slot */
 void host_gl_fence_frame(unsigned int slot);
 void host_gl_wait_frame(unsigned int slot);
+/* (the Linux arm64 build's desktop OpenGL, port/linux/arm64/host_imports.list:
+the visibility tests' results, port/linux/src/xgpu.h) */
+int host_gl_map_results(unsigned int buffer, unsigned int size);
+void host_gl_read_results(void *data, unsigned int size);
 
 /* ---------- Android */
 

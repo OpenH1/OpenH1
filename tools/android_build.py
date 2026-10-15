@@ -237,7 +237,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
                          third_party: Path, guest_cc: str, gl_headers: Path, ar: str, ld: str, builtins: str,
                          asm_target: str, abi_flags: List[str] = GUEST_ABI_FLAGS,
                          extra_runtime: List[Path] = [], extra_imports: List[Path] = [],
-                         updater_cflags: str = "", desktop_gl: bool = False) -> Dict[str, Path]:
+                         extra_prototypes: List[Path] = [], updater_cflags: str = "", desktop_gl: bool = False,
+                         base_register: bool = False) -> Dict[str, Path]:
     """The guest image (build/halo_guest.elf) and the host's import table, for
     the builds that run the game as ILP32 AArch64 code: Android, and Linux
     arm64 (tools/linux_arm64_build.py). The caller sets ${prefix}_guest_cc to
@@ -249,7 +250,11 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     self-updater's defines (port/linux/src/updater.c), for a guest that has
     it. desktop_gl gives the guest desktop OpenGL's entry points (from
     gl_headers' GL/glcorearb.h) in place of OpenGL ES's, for a guest without
-    HALO_GLES (the Linux arm64 build's desktop renderer)."""
+    HALO_GLES (the Linux arm64 build's desktop renderer). base_register
+    builds a guest whose memory lies at any base the host chooses
+    (tools/guest_base_register.py) rather than in the low 4 GB;
+    extra_prototypes are then the files that declare extra_imports' functions,
+    whose pointer arguments the import stubs translate."""
     musl_dir = third_party / f"musl-{MUSL_VERSION}"
     sdl_dir = third_party / "SDL3"
     guest_dir = build / "guest"
@@ -264,6 +269,13 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     prefix_header = LINUX_DIR / "include" / "halo_linux_prefix.h"
     image = build / "halo_guest.elf"
     python = "$python"
+    base_flag = " --base-register" if base_register else ""
+    if base_register:
+        # x21 holds the base, x22 is the rewrite's scratch register
+        # (and full-width jump tables: the rewrite moves code too far apart
+        # for the compressed ones' byte offsets)
+        abi_flags = [*abi_flags, "-ffixed-x21", "-ffixed-x22", "-DHALO_GUEST_BASE=1",
+                     "-mllvm", "-aarch64-enable-compress-jump-tables=false"]
 
     # ---------- generated headers and sources
 
@@ -305,10 +317,10 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     guest_gl_c = gen_dir / "guest_gl.c"
     gl_imports = gen_dir / "gl_imports.list"
     if desktop_gl:
-        gl_stubs_command = (f"{python} tools/android_gl_stubs.py --desktop {LINUX_DIR}/src/gl.h "
+        gl_stubs_command = (f"{python} tools/android_gl_stubs.py{base_flag} --desktop {LINUX_DIR}/src/gl.h "
                             f"{gl_headers}/GL/glcorearb.h {guest_gl_c} {gl_imports}")
     else:
-        gl_stubs_command = (f"{python} tools/android_gl_stubs.py {LINUX_DIR}/src/gl.h {gl_headers}/GLES3/gl32.h "
+        gl_stubs_command = (f"{python} tools/android_gl_stubs.py{base_flag} {LINUX_DIR}/src/gl.h {gl_headers}/GLES3/gl32.h "
                             f"{gl_headers}/GLES2/gl2ext.h {guest_gl_c} {gl_imports}")
     n.rule(
         name=f"{prefix}_gl_stubs",
@@ -322,7 +334,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     posix_imports = gen_dir / "posix_imports.list"
     n.rule(
         name=f"{prefix}_posix_stubs",
-        command=f"{python} tools/android_posix_stubs.py {LINUX_DIR}/src/posix.h {guest_posix_c} {posix_imports}",
+        command=(f"{python} tools/android_posix_stubs.py{base_flag} {LINUX_DIR}/src/posix.h {guest_posix_c} "
+                 f"{posix_imports}"),
         description=f"{label} POSIX STUBS",
     )
     n.build(outputs=[guest_posix_c, posix_imports], rule=f"{prefix}_posix_stubs",
@@ -331,14 +344,18 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     imports_s = gen_dir / "imports.s"
     host_table_c = build / "host" / "host_import_table.c"
     host_imports_list = PORT_DIR / "host_imports.list"
+    # (with the base register, the stubs translate the pointer arguments
+    # the prototypes name)
+    prototypes = [PORT_DIR / "guest" / "runtime" / "guest_host.h", *extra_prototypes]
+    prototype_flags = "".join(f" --prototypes {path}" for path in prototypes) if base_register else ""
     n.rule(
         name=f"{prefix}_imports",
-        command=f"{python} tools/android_imports.py --host-table {host_table_c} {imports_s} $in",
+        command=f"{python} tools/android_imports.py{base_flag}{prototype_flags} --host-table {host_table_c} {imports_s} $in",
         description=f"{label} IMPORTS",
     )
     n.build(outputs=[imports_s, host_table_c], rule=f"{prefix}_imports",
             inputs=[host_imports_list, *extra_imports, posix_imports, gl_imports],
-            implicit=[Path("tools/android_imports.py")])
+            implicit=[Path("tools/android_imports.py"), *(prototypes if base_register else [])])
 
     generated_headers = [*xdk_headers(), alltypes, syscall_h, version_h, gl_stamp,
                          semantics_header, platform_semantics_header]
@@ -348,7 +365,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     n.rule(
         name=f"{prefix}_guest_cc",
         command=(f"{compile_launcher(sln)}${prefix}_guest_cc -MMD -MF $out.d $cflags -S $in -o $out.darwin.s && "
-                 f"{python} tools/android_asm_convert.py $out.darwin.s $out.s && "
+                 f"{python} tools/android_asm_convert.py{base_flag} $out.darwin.s $out.s && "
                  f"${prefix}_guest_cc --target={asm_target} -c $out.s -o $out"),
         description=f"{label} CC $out",
         depfile="$out.d",
@@ -367,6 +384,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, prefix:
     guest_abi = " ".join(abi_flags + configuration_defines(sln))
     guest_code = " ".join(GUEST_CODE_FLAGS)
     tool_implicit = [Path("tools/android_asm_convert.py"), *generated_headers]
+    if base_register:
+        tool_implicit.append(Path("tools/guest_base_register.py"))
     # profile-guided optimisation with the Linux build's profile (committed,
     # or trained by the Linux build with --pgo=train): the game and platform
     # code are the same, and functions that differ simply go without

@@ -12,14 +12,66 @@ Usage: android_imports.py [--host-table table.c] output.s list...
 With --host-table, also writes the host's name-to-function table for the
 names in the lists (OpenGL names, which the host resolves at run time, are
 not part of it).
+
+With --base-register, the guest's memory lies at a base in x21
+(tools/guest_base_register.py), and each stub turns the pointer arguments
+of its function into host addresses (base plus offset; NULL stays NULL)
+before the branch. The --prototypes files (C declarations, such as
+port/android/guest/runtime/guest_host.h) say which arguments are pointers.
+The OpenGL and posix imports (hostgl_, hostposix_) are called from
+generated C wrappers that translate their own.
+
+Usage: android_imports.py [--base-register --prototypes header ...]
+       [--host-table table.c] output.s list...
 """
 
+import re
 import sys
+
+INTEGER_REGISTER_COUNT = 8
+FLOAT_TYPES = ("float", "double")
+
+
+def pointer_arguments(paths):
+    """{name: [integer register numbers of its pointer arguments]} for the
+    functions the files declare."""
+    result = {}
+    for path in paths:
+        text = open(path, encoding="utf-8").read()
+        text = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
+        text = re.sub(r"//[^\n]*", "", text)
+        for name, params in re.findall(r"\b(\w+)\s*\(([^;{}()]*)\)\s*(?:__attribute__\s*\(\([^;]*?\)\))?\s*;", text):
+            params = " ".join(params.split())
+            registers, integer = [], 0
+            if params not in ("", "void"):
+                for param in params.split(","):
+                    param = param.strip()
+                    if "*" in param:
+                        if integer >= INTEGER_REGISTER_COUNT:
+                            raise SystemExit(f"{name}: a pointer argument on the stack")
+                        registers.append(integer)
+                        integer += 1
+                    elif re.match(r"^(const\s+)?(float|double)\b", param):
+                        continue
+                    else:
+                        integer += 1
+            result[name] = registers
+    return result
 
 
 def main():
     arguments = sys.argv[1:]
     host_table = None
+    base_register = False
+    prototype_files = []
+    while arguments[0] in ("--base-register", "--prototypes"):
+        if arguments[0] == "--base-register":
+            base_register = True
+            arguments = arguments[1:]
+        else:
+            prototype_files.append(arguments[1])
+            arguments = arguments[2:]
+    pointers = pointer_arguments(prototype_files) if base_register else {}
     if arguments[0] == "--host-table":
         host_table = arguments[1]
         arguments = arguments[2:]
@@ -38,6 +90,17 @@ def main():
             f"\t.type {name},%function",
             "\t.p2align 2",
             f"{name}:",
+        ]
+        if base_register and not name.startswith(("hostgl_", "hostposix_")) and name != "host_gl_debug_output":
+            if name not in pointers:
+                raise SystemExit(f"{name}: no prototype in the --prototypes files")
+            for register in pointers[name]:
+                out += [
+                    f"\tcbz w{register}, 1{register}f",
+                    f"\tadd x{register}, x21, w{register}, uxtw",
+                    f"1{register}:",
+                ]
+        out += [
             f"\tadrp x16, __host_import_table+{offset}",
             f"\tldr x16, [x16, :lo12:__host_import_table+{offset}]",
             "\tbr x16",
