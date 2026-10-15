@@ -462,6 +462,11 @@ struct xgpu_metal_statistics
 	uint32_t guest_buffers_made, guest_bytes_copied;
 	uint64_t ring_bytes;
 	double pipeline_seconds;
+	/* the GPU's time on the command buffers completed, and their count; the
+	render thread's CPU time between frames' ends */
+	double gpu_seconds;
+	uint32_t command_buffers;
+	double render_cpu_seconds;
 };
 void xgpu_metal_statistics(struct xgpu_metal_statistics *statistics);
 

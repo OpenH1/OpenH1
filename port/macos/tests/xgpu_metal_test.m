@@ -109,6 +109,11 @@ void host_render_stream_set_backend(const struct host_render_backend *backend)
 {
 	(void)backend;
 }
+
+const struct xgpu_stream_ring *host_render_stream_ring(void)
+{
+	return NULL;
+}
 #endif
 
 /* host_metal.m */

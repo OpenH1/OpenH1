@@ -40,10 +40,9 @@ drawables reached the screen.
 #include "host.h"
 #undef host_page_size
 #include "xgpu_metal_internal.h"
-#if __has_include("host_render_stream.h")
 #include "host_render_stream.h"
 #include "xgpu_metal_stream.h"
-#endif
+#include "xgpu_metal_textures.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_metal.h>
@@ -225,8 +224,13 @@ static void pacing_log(double now)
 	uint64_t sum = atomic_exchange(&presentation.interval_sum_us, 0);
 	uint32_t intervals = atomic_exchange(&presentation.intervals, 0);
 	struct xgpu_metal_statistics statistics;
+	struct xgpu_metal_texture_statistics textures;
+	const struct xgpu_stream_ring *ring = host_render_stream_ring();
+	static uint32_t waits_before, wait_nanoseconds_before;
+	uint32_t waits = ring ? ring->waits : 0, wait_nanoseconds = ring ? ring->wait_nanoseconds : 0;
 
 	xgpu_metal_statistics(&statistics);
+	xgpu_metal_textures_statistics(&textures);
 	host_logf(HOST_LOG_INFO,
 		"metal: %.1f s: %u refreshes (%.1f Hz), %u presented (%u frames, %u cleared), %u on screen (%.1f a second), "
 		"intervals %.2f ms mean, %.2f min, %.2f max, %u late; %u refreshes without a new frame, %u waits for an image, "
@@ -239,6 +243,22 @@ static void pacing_log(double now)
 		atomic_exchange(&presentation.interval_maximum_us, 0) / 1000.0, atomic_exchange(&presentation.late, 0),
 		presentation.skipped, presentation.waits, presentation.dropped, presentation.drawable_width, presentation.drawable_height,
 		statistics.frames, statistics.draws, statistics.passes);
+	if (statistics.frames)
+		host_logf(HOST_LOG_INFO,
+			"metal: a frame: GPU %.2f ms (%u command buffers), render thread CPU %.2f ms, %.1f draws, %.1f passes, "
+			"%.1f ordered uploads, %.1f copies of a target drawn into; the last played in %.2f ms, its stream %u KB "
+			"(the most %u KB); the game waited %u times (%.1f ms); textures made %u, made again %u, images %u, "
+			"%.1f MB read; pipelines made %u (%u from the archive, %.1f ms)",
+			statistics.gpu_seconds * 1000.0 / statistics.frames, statistics.command_buffers,
+			statistics.render_cpu_seconds * 1000.0 / statistics.frames, (double)statistics.draws / statistics.frames,
+			(double)statistics.passes / statistics.frames, (double)statistics.uploads_ordered / statistics.frames,
+			(double)statistics.feedback_copies / statistics.frames, ring ? ring->decode_nanoseconds / 1e6 : 0.0,
+			ring ? ring->frame_bytes / 1024 : 0, ring ? ring->frame_bytes_most / 1024 : 0, waits - waits_before,
+			(wait_nanoseconds - wait_nanoseconds_before) / 1e6, textures.made, textures.remade, textures.images,
+			textures.bytes / 1048576.0, statistics.pipelines_made, statistics.pipelines_from_archive,
+			statistics.pipeline_seconds * 1000.0);
+	waits_before = waits;
+	wait_nanoseconds_before = wait_nanoseconds;
 	presentation.stats_since = now;
 	presentation.ticks = presentation.frames_presented = presentation.idle_presented = 0;
 	presentation.skipped = presentation.waits = presentation.dropped = 0;
@@ -436,10 +456,8 @@ int host_metal_initialize(void)
 	if (result)
 	{
 		host_memory_remapped = xgpu_metal_guest_remapped;
-#if __has_include("host_render_stream.h")
 		host_render_stream_set_backend(xgpu_metal_stream_backend());
 		xgpu_metal_stream_set_shaders(xgpu_metal_shaders());
-#endif
 	}
 	return result;
 }

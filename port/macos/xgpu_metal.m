@@ -490,6 +490,13 @@ static uint64_t command_buffer_commit(void (^completed)(void))
 		if (done.status == MTLCommandBufferStatusError)
 			host_logf(HOST_LOG_ERROR, "metal: a command buffer failed: %s",
 				done.error.localizedDescription.UTF8String);
+		if (done.GPUEndTime > done.GPUStartTime)
+		{
+			pthread_mutex_lock(&metal.statistics_lock);
+			metal.statistics.gpu_seconds += done.GPUEndTime - done.GPUStartTime;
+			metal.statistics.command_buffers++;
+			pthread_mutex_unlock(&metal.statistics_lock);
+		}
 		if (completed)
 			completed();
 		completed_update(serial);
@@ -1336,6 +1343,20 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 	if (metal.archive_changed && seconds_now() - metal.archive_changed_at > 3.0)
 		archive_save(NO);
 	statistics_add(&metal.statistics.frames, 1);
+	{
+		/* (the render thread's CPU time since the last frame's end) */
+		static double last;
+		struct timespec now;
+		double seconds;
+
+		clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now);
+		seconds = (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
+		pthread_mutex_lock(&metal.statistics_lock);
+		if (last > 0.0)
+			metal.statistics.render_cpu_seconds += seconds - last;
+		pthread_mutex_unlock(&metal.statistics_lock);
+		last = seconds;
+	}
 	return slot->fence;
 }
 

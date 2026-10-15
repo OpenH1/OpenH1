@@ -839,6 +839,11 @@ void host_render_stream_wait(uint32_t position)
 	pthread_mutex_unlock(&render.lock);
 }
 
+const struct xgpu_stream_ring *host_render_stream_ring(void)
+{
+	return render.running ? render.ring : NULL;
+}
+
 void host_render_stream_close(void)
 {
 	if (!render.running)

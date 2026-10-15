@@ -154,6 +154,11 @@ void host_render_stream_wait(uint32_t position);
 /* ends the render thread after the records submitted (at exit) */
 void host_render_stream_close(void);
 
+/* the guest's ring header while a stream is open, else NULL: its
+statistics, for the host's logs (read as they are, racing with their
+writers) */
+const struct xgpu_stream_ring *host_render_stream_ring(void);
+
 /* ---------- for tests: the decoder alone, on the calling thread
 
 Plays the records of [from, to) of a ring (the header's buffer and size)
