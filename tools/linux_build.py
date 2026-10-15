@@ -297,7 +297,10 @@ def sdl3_rule(n: Writer, sln: Any, *, name: str, description: str, source: Path,
     options = SDL_OPTIONS + ([f"-DCMAKE_C_COMPILER_LAUNCHER={launcher}"] if launcher else [])
     n.rule(
         name=name,
-        command=(f"cmake -S {source} -B {sdl_build} -G Ninja --fresh "
+        # (a fresh configure, as CMake 3.24's --fresh does, also with the
+        # older CMake of Ubuntu 22.04, which builds the arm64 releases)
+        command=(f"rm -rf {sdl_build}/CMakeCache.txt {sdl_build}/CMakeFiles && "
+                 f"cmake -S {source} -B {sdl_build} -G Ninja "
                  + "".join(f"{argument} " for argument in cmake_args)
                  + f"-DCMAKE_C_COMPILER={cc} {' '.join(options)} > {log_dir}/sdl3-configure.log && "
                  f"ninja -C {sdl_build} > {log_dir}/sdl3-build.log"
