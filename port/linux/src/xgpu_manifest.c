@@ -832,6 +832,10 @@ void xgpu_manifest_note_textures(const struct xgpu_texture_source *stages)
 		to->source = from->source;
 		to->sampler_type = from->sampler_type;
 		memcpy(to->address, from->sampler.address, sizeof(to->address));
+		/* (w addresses a 3D texture alone: in another, what earlier draws
+		left) */
+		if (to->sampler_type != _xgpu_sampler_3d)
+			to->address[2] = 0;
 		if (from->source != XGPU_SOURCE_NONE && (to->address[0] == XGPU_ADDRESS_BORDER ||
 			to->address[1] == XGPU_ADDRESS_BORDER || to->address[2] == XGPU_ADDRESS_BORDER))
 		{

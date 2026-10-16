@@ -2125,7 +2125,9 @@ static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale
 
 		texture_scale[stage][0] = texture_scale[stage][1] = 1.0f;
 		texture_scale[stage][2] = texture_scale[stage][3] = 1.0f;
-		if (!texture || !texture->Data || mode == 0 || mode == 0x04 || mode == 0x05 || mode == 0x11)
+		/* (a stage that does not sample: a texture an earlier draw left there
+		is not the draw's; DOT_ZW, 0x0a, computes the depth alone) */
+		if (!texture || !texture->Data || mode == 0 || mode == 0x04 || mode == 0x05 || mode == 0x0a || mode == 0x11)
 		{
 			key->sampler_type[stage] = mode == 0x11 ? _xgpu_sampler_2d : _xgpu_sampler_none;
 			source->source = XGPU_SOURCE_NONE;
@@ -2700,6 +2702,147 @@ static BOOL per_pixel_lighting(void)
 	return enabled || halo_dynamic_lights_enhanced();
 }
 
+/* the combiner portions whose results nothing after reads cleared (what
+an earlier draw left in a portion the draw's code did not set, which no
+later stage nor the final combiner reads): one program, one key. A
+register's colour and alpha are live apart (bit 0 and bit 1); a portion
+reads its inputs' (an alpha portion reads the blue of an input not marked
+alpha), and writes its destinations' colour (and alpha too, a blue copied
+to alpha) or alpha; a mux reads r0's alpha */
+#define LIVE_RGB 1
+#define LIVE_ALPHA 2
+
+static void live_input(unsigned char *live, unsigned long input, BOOL alpha_portion)
+{
+	unsigned long reg = input & 0x0f;
+
+	live[reg] |= (input & 0x10) ? LIVE_ALPHA : alpha_portion ? LIVE_RGB : LIVE_RGB;
+}
+
+static void dead_portions_clear(DWORD *state)
+{
+	unsigned char live[16];
+	int count = (int)(state[D3DRS_PSCOMBINERCOUNT] & 0xff), stage, input;
+	DWORD final_abcd = state[D3DRS_PSFINALCOMBINERINPUTSABCD], final_efg = state[D3DRS_PSFINALCOMBINERINPUTSEFG];
+
+	memset(live, 0, sizeof(live));
+	if (count > 8)
+		count = 8;
+	if (!final_abcd && !final_efg)
+	{
+		live[XGPU_REGISTER_R0] = LIVE_RGB | LIVE_ALPHA;
+	}
+	else
+	{
+		for (input = 0; input < 7; input++)
+		{
+			unsigned long byte = input < 4 ? (final_abcd >> (24 - 8 * input)) & 0xff :
+				(final_efg >> (24 - 8 * (input - 4))) & 0xff;
+
+			if (input < 4 && (byte & 0x0f) == XGPU_REGISTER_V1R0_SUM)
+			{
+				live[XGPU_REGISTER_V1] |= LIVE_RGB | LIVE_ALPHA;
+				live[XGPU_REGISTER_R0] |= LIVE_RGB | LIVE_ALPHA;
+			}
+			else if (input < 4 && (byte & 0x0f) == XGPU_REGISTER_EF_PRODUCT)
+			{
+				/* (E and F are read below) */
+			}
+			else
+			{
+				live_input(live, byte, input == 6);
+			}
+		}
+	}
+	for (stage = count - 1; stage >= 0; stage--)
+	{
+		unsigned char before[16];
+		int portion;
+
+		memcpy(before, live, sizeof(before));
+		/* (what the stage writes is not live before it, unless it reads it) */
+		for (portion = 0; portion < 2; portion++)
+		{
+			BOOL alpha = portion == 1;
+			DWORD *inputs = &state[(alpha ? D3DRS_PSALPHAINPUTS0 : D3DRS_PSRGBINPUTS0) + stage];
+			DWORD *outputs = &state[(alpha ? D3DRS_PSALPHAOUTPUTS0 : D3DRS_PSRGBOUTPUTS0) + stage];
+			unsigned long flags = *outputs >> 12;
+			unsigned long ab = (*outputs >> 4) & 0x0f, cd = *outputs & 0x0f, sum = (*outputs >> 8) & 0x0f;
+			unsigned char channel = alpha ? LIVE_ALPHA : LIVE_RGB;
+			BOOL ab_alpha = !alpha && (flags & 0x80), cd_alpha = !alpha && (flags & 0x40);
+			BOOL used = (ab && ((live[ab] & channel) || (ab_alpha && (live[ab] & LIVE_ALPHA)))) ||
+				(cd && ((live[cd] & channel) || (cd_alpha && (live[cd] & LIVE_ALPHA)))) ||
+				(sum && (live[sum] & channel));
+
+			if (!used)
+			{
+				*inputs = 0;
+				*outputs = 0;
+				continue;
+			}
+			if (ab)
+				before[ab] &= (unsigned char)~(channel | (ab_alpha ? LIVE_ALPHA : 0));
+			if (cd)
+				before[cd] &= (unsigned char)~(channel | (cd_alpha ? LIVE_ALPHA : 0));
+			if (sum)
+				before[sum] &= (unsigned char)~channel;
+		}
+		for (portion = 0; portion < 2; portion++)
+		{
+			BOOL alpha = portion == 1;
+			DWORD inputs = state[(alpha ? D3DRS_PSALPHAINPUTS0 : D3DRS_PSRGBINPUTS0) + stage];
+			DWORD outputs = state[(alpha ? D3DRS_PSALPHAOUTPUTS0 : D3DRS_PSRGBOUTPUTS0) + stage];
+
+			if (!outputs)
+				continue;
+			for (input = 0; input < 4; input++)
+				live_input(before, (inputs >> (24 - 8 * input)) & 0xff, alpha);
+			if ((outputs >> 12) & 0x04)
+				before[XGPU_REGISTER_R0] |= LIVE_ALPHA;
+		}
+		before[XGPU_REGISTER_ZERO] = 0;
+		memcpy(live, before, sizeof(live));
+	}
+}
+
+/* a texture stage's fields only its mode reads (what earlier draws left in
+the others): the stage it depends on (PSINPUTTEXTURE: the dependent and
+dot product modes), its dot product's mapping (PSDOTMAPPING: the dot
+product modes), its clip plane's comparisons (PSCOMPAREMODE) */
+static BOOL stage_mode_reads_input(unsigned long mode)
+{
+	return mode >= 0x08 && mode <= 0x12;
+}
+
+static void unread_stage_fields_clear(DWORD *state, DWORD texture_modes)
+{
+	DWORD input = state[D3DRS_PSINPUTTEXTURE], mapping = state[D3DRS_PSDOTMAPPING];
+	DWORD compare = state[D3DRS_PSCOMPAREMODE];
+	unsigned long modes[4];
+	int stage;
+
+	for (stage = 0; stage < 4; stage++)
+		modes[stage] = (texture_modes >> (5 * stage)) & 0x1f;
+	if (!stage_mode_reads_input(modes[2]))
+		input &= ~(1UL << 16);
+	/* (a diffuse reflection at stage 2 reads stage 3's input too) */
+	if (!stage_mode_reads_input(modes[3]) && modes[2] != 0x0b)
+		input &= ~(3UL << 20);
+	for (stage = 1; stage < 4; stage++)
+	{
+		if (!stage_mode_reads_input(modes[stage]))
+			mapping &= ~(7UL << ((stage - 1) * 4));
+	}
+	for (stage = 0; stage < 4; stage++)
+	{
+		if (modes[stage] != 0x05)
+			compare &= ~(0xfUL << (4 * stage));
+	}
+	state[D3DRS_PSINPUTTEXTURE] = input;
+	state[D3DRS_PSDOTMAPPING] = mapping;
+	state[D3DRS_PSCOMPAREMODE] = compare;
+}
+
 /* the draw's description to the backend: its textures, its targets, its
 pipeline (shaders and fixed-function state), its dynamic state and its
 uniforms; FALSE if it is not drawn */
@@ -2736,7 +2879,18 @@ static BOOL prepare_draw(BOOL immediate)
 	memset(&key.combiner_state[D3DRS_PSCONSTANT0_0], 0, 16 * sizeof(DWORD));
 	key.combiner_state[D3DRS_PSFINALCOMBINERCONSTANT0] = 0;
 	key.combiner_state[D3DRS_PSFINALCOMBINERCONSTANT1] = 0;
+	/* nor are the stages past the combiner count (what earlier draws left
+	in them): one program, one key */
+	for (stage = (int)(D3D__RenderState[D3DRS_PSCOMBINERCOUNT] & 0xff); stage < 8; stage++)
+	{
+		key.combiner_state[D3DRS_PSALPHAINPUTS0 + stage] = 0;
+		key.combiner_state[D3DRS_PSALPHAOUTPUTS0 + stage] = 0;
+		key.combiner_state[D3DRS_PSRGBINPUTS0 + stage] = 0;
+		key.combiner_state[D3DRS_PSRGBOUTPUTS0 + stage] = 0;
+	}
+	dead_portions_clear(key.combiner_state);
 	key.texture_modes = D3D__RenderState[D3DRS_PSTEXTUREMODES];
+	unread_stage_fields_clear(key.combiner_state, key.texture_modes);
 	/* the textures before the targets: a render target the draw samples
 	has its multisampled pixels resolved by the backend, and the back buffer
 	can be both sampled and drawn into */
