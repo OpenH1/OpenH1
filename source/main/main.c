@@ -683,6 +683,8 @@ typedef char screenshot_and_framerate_globals_size_assert[
 	sizeof(struct _screenshot_and_framerate_globals) == 0x38B ? 1 : -1];
 
 void network_test_update(boolean main_menu_loaded, real seconds);
+/* port: port/linux/src/port_config.c */
+double config_real(const char *name);
 #ifdef HALO_VR
 void vr_seat_test_update(void);
 void vr_death_test_update(void);
@@ -2455,6 +2457,22 @@ static boolean main_framerate_throttle_enabled(
 	return rasterizer_globals.framerate_throttle;
 }
 
+/* port: debug.frame_time, the seconds each frame runs (0: as measured) */
+static real main_frame_time_fixed(
+	void)
+{
+	static boolean checked;
+	static real seconds;
+
+	if (!checked)
+	{
+		checked = TRUE;
+		seconds = (real)config_real("debug.frame_time");
+		seconds = PIN(seconds, 0.0f, 1.0f);
+	}
+	return seconds;
+}
+
 /* The native ports draw a frame whenever the display can show one, paced
 by vsync, and frames fall between the 30 Hz ticks
 (port/linux/game/render_interpolation.c): no vertical blank throttle, and
@@ -2485,7 +2503,13 @@ static void main_update_time_unthrottled(
 		seconds_elapsed = vr_seconds;
 #endif
 
-	if (main_globals.movie)
+	/* port: each frame the same time (debug.frame_time), for the
+	determinism check */
+	if (main_frame_time_fixed() > 0.0f)
+	{
+		seconds_elapsed = main_frame_time_fixed();
+	}
+	else if (main_globals.movie)
 	{
 		seconds_elapsed = main_globals.recording_dt;
 	}
@@ -2727,7 +2751,13 @@ static void main_update_time(
 			0.001000000047497451f;
 	}
 
-	if (main_globals.movie)
+	/* port: each frame the same time (debug.frame_time), for the
+	determinism check */
+	if (main_frame_time_fixed() > 0.0f)
+	{
+		seconds_elapsed = main_frame_time_fixed();
+	}
+	else if (main_globals.movie)
 	{
 		seconds_elapsed = main_globals.recording_dt;
 	}

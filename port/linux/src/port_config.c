@@ -875,7 +875,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.test_input", _config_string, "\"\"", "HALO_TEST_INPUT", _environment_value, _platform_all,
 		"\"bot:<seed>\" plays controller 1 with a scripted pattern (automated\n"
 		"network tests); \"look:<seed>\" stands still, only turning and looking\n"
-		"up and down; \"pad\" turns, looks, fires, throws, holds Back and walks in\n"
+		"up and down; \"walk:<seed>\" plays as \"bot\" without turning (the same\n"
+		"input each tick at any frame rate); \"pad\" turns, looks, fires, throws, holds Back and walks in\n"
 		"turn, logging each (the VR mode's vr.aim = \"gamepad\"); empty for none." },
 	{ "debug.update_answer", _config_string, "\"\"", "HALO_UPDATE_ANSWER", _environment_value, _platform_desktop,
 		"The answer to the new version question, for automated tests: \"yes\",\n"
@@ -901,6 +902,10 @@ static const struct config_setting config_settings[] =
 		"state too, counted as logged from 1, to <log>.<count>.bin (and its first\n"
 		"frame to <log>.<count>.bmp), to find where two runs' game states differ;\n"
 		"0 none." },
+	{ "debug.frame_time", _config_real, "0.0", "HALO_FRAME_TIME", _environment_value, _platform_all,
+		"Seconds of game time each frame runs, whatever time it took, so that two\n"
+		"runs of the same input run the same frames (the determinism check); 0\n"
+		"the time each frame took." },
 	{ "debug.audio_log", _config_boolean, "false", "HALO_AUDIO_LOG", _environment_value, _platform_desktop,
 		"Log the sounds placed in the world playing, five times a second: where\n"
 		"each is from the listener (metres ahead, right and up), its gain in\n"

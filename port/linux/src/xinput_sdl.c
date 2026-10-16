@@ -642,7 +642,9 @@ network tests (port/linux/game/network_test.c), different for each seed:
 it walks and strafes in circles, turns, fires every few seconds, jumps now
 and then and throws a grenade every seven seconds; "look:<seed>" stands
 still, only turning and looking up and down (where remote players aim and
-whether they stand) */
+whether they stand); "walk:<seed>" plays as "bot" but never turns (its
+input is then the same each tick at any frame rate: a turn is the stick's
+rate over each frame's time) */
 static int test_input_holding_action;
 static Uint64 test_input_holding_action_since;
 
@@ -718,11 +720,27 @@ static void test_pad_gamepad(XINPUT_GAMEPAD *pad)
 	test_input_back = p->back;
 }
 
+/* the scripted player's clock: the game's ticks while a game runs, so that
+two runs of the same game play it alike (the determinism check,
+debug.determinism_log), a tick's input the same however many frames draw it;
+else the time since startup */
+long game_time_get(void);
+unsigned char game_time_initialized(void);
+unsigned char game_in_progress(void);
+
+static double test_input_seconds(void)
+{
+	if (game_time_initialized() && game_in_progress())
+		return (double)game_time_get() / 30.0;
+	return (double)SDL_GetTicks() / 1000.0;
+}
+
 static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 {
 	static int checked;
 	static int seed = -1;
 	static int looking;
+	static int walking;
 	static int pad_test;
 	double t;
 
@@ -739,6 +757,11 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 		{
 			seed = atoi(setting + 5);
 			looking = 1;
+		}
+		else if (!strncmp(setting, "walk:", 5))
+		{
+			seed = atoi(setting + 5);
+			walking = 1;
 		}
 		else if (!strcmp(setting, "pad"))
 		{
@@ -760,7 +783,7 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 			pad->bAnalogButtons[XINPUT_GAMEPAD_X] = 255;
 		return;
 	}
-	t = (double)SDL_GetTicks() / 1000.0 + seed * 1.7;
+	t = test_input_seconds() + seed * 1.7;
 	if (looking)
 	{
 		pad->sThumbRX = (SHORT)(sin(t * 0.5) * 14000.0);
@@ -769,7 +792,8 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	}
 	pad->sThumbLY = (SHORT)(sin(t * 0.9) * 32000.0);
 	pad->sThumbLX = (SHORT)(cos(t * 0.6 + seed) * 20000.0);
-	pad->sThumbRX = (SHORT)(sin(t * 0.4) * 14000.0);
+	if (!walking)
+		pad->sThumbRX = (SHORT)(sin(t * 0.4) * 14000.0);
 	if (fmod(t, 3.0) < 0.3)
 		pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] = 255;
 	if (fmod(t, 5.0) < 0.1)
