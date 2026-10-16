@@ -485,7 +485,8 @@ int host_metal_window_open(uint32_t window)
 	MTLSamplerDescriptor *sampler;
 	NSError *error = nil;
 	pthread_t thread;
-	int width = 0, height = 0;
+	pthread_attr_t attributes;
+	int width = 0, height = 0, created;
 	const char *stats = getenv("HALO_METAL_STATS");
 
 	if (!object || presentation.window || !host_metal_initialize())
@@ -548,7 +549,13 @@ int host_metal_window_open(uint32_t window)
 	presentation.unpaced = getenv("HALO_METAL_UNPACED") && atoi(getenv("HALO_METAL_UNPACED"));
 	presentation.stats_since = seconds_now();
 	atomic_store(&presentation.active, 1);
-	if (pthread_create(&thread, NULL, presentation_thread, (__bridge_retained void *)[HaloDisplayLinkTarget new]) != 0)
+	/* (the display's deadlines are each refresh's: the scheduler runs it
+	first, as it does the main threads of apps in front) */
+	pthread_attr_init(&attributes);
+	pthread_attr_set_qos_class_np(&attributes, QOS_CLASS_USER_INTERACTIVE, 0);
+	created = pthread_create(&thread, &attributes, presentation_thread, (__bridge_retained void *)[HaloDisplayLinkTarget new]);
+	pthread_attr_destroy(&attributes);
+	if (created != 0)
 	{
 		atomic_store(&presentation.active, 0);
 		host_logf(HOST_LOG_ERROR, "metal: cannot start the presentation thread");

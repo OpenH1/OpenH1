@@ -289,7 +289,8 @@ window server neither draws what is behind it nor blends it), and brings the
 window to the front (a window behind others shows nothing, and the
 drawables presented to it never reach the screen).
 
-Presentation has a thread of its own, run by a `CAMetalDisplayLink`: at
+Presentation has a thread of its own (at the user-interactive QoS, as the
+render thread is), run by a `CAMetalDisplayLink`: at
 each refresh of the display, the link hands over a drawable, and the
 thread draws the oldest frame queued into it, letterboxed to the frame's
 shape, and presents it. A ProMotion display's rate follows the frames, up

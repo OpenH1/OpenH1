@@ -739,6 +739,22 @@ static void *render_thread(void *argument)
 	return NULL;
 }
 
+/* the render thread; on macOS, at the QoS of an app's user interface: each
+frame is the display's (pthread_attr_set_qos_class_np) */
+static int render_thread_start(void)
+{
+	pthread_attr_t attributes;
+	int result;
+
+	pthread_attr_init(&attributes);
+#ifdef __APPLE__
+	pthread_attr_set_qos_class_np(&attributes, QOS_CLASS_USER_INTERACTIVE, 0);
+#endif
+	result = pthread_create(&render.thread, &attributes, render_thread, NULL);
+	pthread_attr_destroy(&attributes);
+	return result;
+}
+
 int host_render_stream_open(uint32_t ring_address)
 {
 	const struct host_render_backend *backend = render_backend;
@@ -772,7 +788,7 @@ int host_render_stream_open(uint32_t ring_address)
 	render.stopping = 0;
 	if (backend->open)
 		backend->open(backend->context, host_pointer(ring->buffer), ring->size, host_pointer(ring->visibility));
-	if (pthread_create(&render.thread, NULL, render_thread, NULL))
+	if (render_thread_start())
 	{
 		host_render_decoder_free(render.decoder);
 		render.decoder = NULL;
