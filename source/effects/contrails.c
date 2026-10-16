@@ -191,7 +191,12 @@ real contrail_scale_random_value(
 		flags,
 		flag_bit + 1);
 
-	return real_local_random_range(0.0f, range) + minimum;
+	/* port: the frames' seed (random_math_port_begin_cosmetic) */
+	boolean ticking = random_math_port_begin_cosmetic();
+	real random = real_local_random_range(0.0f, range);
+
+	random_math_port_end_cosmetic(ticking);
+	return random + minimum;
 }
 
 void contrails_initialize(
@@ -766,9 +771,13 @@ static void contrail_next_frame(
 			sequence_index,
 			struct bitmap_group_sequence)->bitmap_count)
 	{
+		/* port: the frames' seed (random_math_port_begin_cosmetic) */
+		boolean ticking = random_math_port_begin_cosmetic();
+
 		contrail->sequence_index = local_random_range(
 			definition->first_sequence_index,
 			definition->sequence_count + definition->first_sequence_index);
+		random_math_port_end_cosmetic(ticking);
 		contrail->frame_index = 0;
 	}
 
@@ -955,11 +964,17 @@ static void contrail_add_points(
 							FLAG(_contrail_point_transitioning_bit);
 						contrail_point->state_index = NONE;
 						contrail_point->density = contrail->density;
-						local_random_vector_in_cone3d(
-							&marker->matrix.forward,
-							0.0f,
-							point_velocity_cone_angle,
-							&direction);
+						{
+							/* port: the frames' seed (random_math_port_begin_cosmetic) */
+							boolean ticking = random_math_port_begin_cosmetic();
+
+							local_random_vector_in_cone3d(
+								&marker->matrix.forward,
+								0.0f,
+								point_velocity_cone_angle,
+								&direction);
+							random_math_port_end_cosmetic(ticking);
+						}
 						contrail_point->position = marker->matrix.position;
 						scenario_location_from_point(
 							&contrail_point->location,

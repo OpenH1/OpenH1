@@ -87,7 +87,7 @@ struct random_math_globals
 
 /* port: port/linux/game/determinism_log.c */
 extern boolean determinism_log_seeds;
-void determinism_log_seed_taken(boolean local, void const *site);
+void determinism_log_seed_taken(boolean local, boolean frames, void const *site);
 
 static real_vector3d *
 direction3d_from_table(
@@ -143,7 +143,7 @@ unsigned long *get_global_random_seed_address(
 		"you should not be using global random(); use local random() instead");
 	/* port: the taker logged (debug.determinism_log) */
 	if (determinism_log_seeds)
-		determinism_log_seed_taken(FALSE, __builtin_return_address(0));
+		determinism_log_seed_taken(FALSE, FALSE, __builtin_return_address(0));
 	return &random_math_globals.global_random_seed;
 }
 
@@ -160,7 +160,7 @@ unsigned long *get_global_local_random_seed_address(
 {
 	/* port: the taker logged (debug.determinism_log) */
 	if (determinism_log_seeds)
-		determinism_log_seed_taken(TRUE, __builtin_return_address(0));
+		determinism_log_seed_taken(TRUE, !random_math_port_ticking, __builtin_return_address(0));
 	if (!random_math_port_ticking)
 		return &frame_local_random_seed;
 	return &random_math_globals.global_local_random_seed;
@@ -179,6 +179,25 @@ void random_math_port_set_local_seeds(
 {
 	random_math_globals.global_local_random_seed= seed;
 	frame_local_random_seed= ~seed;
+}
+
+/* port: randomness that is only seen (the contrails) takes the frames' local
+seed even in a tick: how many points a contrail adds in a tick depends on
+where the frames moved it, so the game's local seed would move with the
+frame rate; returns whether a tick runs, for random_math_port_end_cosmetic */
+boolean random_math_port_begin_cosmetic(
+	void)
+{
+	boolean ticking= random_math_port_ticking;
+
+	random_math_port_ticking= FALSE;
+	return ticking;
+}
+
+void random_math_port_end_cosmetic(
+	boolean ticking)
+{
+	random_math_port_ticking= ticking;
 }
 
 /* port: the seeds, for the determinism log, without taking them */

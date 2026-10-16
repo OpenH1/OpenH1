@@ -148,6 +148,7 @@ void determinism_log_game_state_allocation(
 /* a taker of a seed (random_math.c): its call site */
 void determinism_log_seed_taken(
 	boolean local,
+	boolean frames,
 	void const *site)
 {
 	struct determinism_takers *takers;
@@ -165,7 +166,9 @@ void determinism_log_seed_taken(
 		}
 		return;
 	}
-	takers = &determinism_log.takers[(local ? 1 : 0) + (determinism_log.in_tick ? 0 : 2)];
+	/* (frames: the frames' local seed, taken in a tick too by what is only
+	seen: random_math_port_begin_cosmetic) */
+	takers = &determinism_log.takers[(local ? 1 : 0) + (determinism_log.in_tick && !frames ? 0 : 2)];
 	if (takers->count < MAXIMUM_DETERMINISM_SITES)
 		takers->sites[takers->count] = (unsigned long)site;
 	takers->count++;

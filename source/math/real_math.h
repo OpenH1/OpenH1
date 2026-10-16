@@ -845,6 +845,8 @@ unsigned long *get_global_local_random_seed_address(void);
 /* port: random_math.c's */
 void random_math_port_set_ticking(boolean ticking);
 void random_math_port_set_local_seeds(unsigned long seed);
+boolean random_math_port_begin_cosmetic(void);
+void random_math_port_end_cosmetic(boolean ticking);
 void random_seed_debug_log(
 	boolean log);
 void random_math_initialize(
