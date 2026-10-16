@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
 from .guest_arch import ARM64_32, GuestArch
+from .guest_toolchain import LLVM_VERSION, guest_toolchain
 from .linux_build import (LINUX_PROFILE, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL_MATH_DIR, STB_VORBIS_SOURCE, XDK_INCLUDE,
                           compile_launcher, configuration_defines, game_defines_and_includes, game_sources,
                           miniupnpc_sources, musl_math_sources, opus_cflags, opus_sources, pgo_mode, pgo_profile,
@@ -38,6 +39,7 @@ from .ninja_syntax import Writer
 
 PORT_DIR = Path("port/android")
 GUEST_ARCH_SCRIPT = Path("tools/guest_arch.py")
+GUEST_TOOLCHAIN_SCRIPT = Path("tools/guest_toolchain.py")
 LINUX_DIR = Path("port/linux")
 BUILD = Path("build/android")
 THIRD_PARTY = BUILD / "third_party"
@@ -260,7 +262,7 @@ def host_memory_sources(sources: List[Path], base_register: bool) -> List[Path]:
 
 
 def android_configure_inputs() -> List[Path]:
-    return [Path(__file__), GUEST_ARCH_SCRIPT, SDL_ANDROID_MOUSE_PATCH, PORT_DIR / "guest" / "runtime", PORT_DIR / "host",
+    return [Path(__file__), GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, SDL_ANDROID_MOUSE_PATCH, PORT_DIR / "guest" / "runtime", PORT_DIR / "host",
             LINUX_DIR / "src", *hud_configure_inputs()]
 
 
@@ -663,7 +665,16 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     sysroot_include = toolchain / "sysroot" / "usr" / "include"
     host_cc = toolchain / "bin" / f"aarch64-linux-android{ANDROID_API}-clang"
     ndk_bin = toolchain / "bin"
-    guest_cc = getattr(sln, "android_guest_cc", None) or "clang"
+    # the guest's compiler and tools: --android-guest-cc, else the pinned
+    # LLVM's (tools/guest_toolchain.py, configure.py --guest-llvm); with
+    # --android-guest-cc or --guest-llvm=system, the NDK's tools
+    explicit_cc = getattr(sln, "android_guest_cc", None)
+    try:
+        toolchain = guest_toolchain(sln, explicit_cc)
+    except (RuntimeError, OSError) as error:
+        print(f"Android build disabled: no LLVM {LLVM_VERSION} for the guest ({error})", file=sys.stderr)
+        return
+    guest_cc = toolchain.cc if toolchain else explicit_cc or "clang"
 
     n.comment("Android build (ninja android); see port/android/README.md")
     n.variable("android_guest_cc", guest_cc)
@@ -675,8 +686,9 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     base_register = getattr(sln, "guest_base", False)
     guest = generate_guest_image(
         n, sln, config, arch=ARM64_32, prefix="android", label="ANDROID", build=BUILD, third_party=THIRD_PARTY,
-        guest_cc=guest_cc, gl_headers=sysroot_include, ar="$android_ndk_bin/llvm-ar", ld="$android_ndk_bin/ld.lld",
-        objdump="$android_ndk_bin/llvm-objdump", builtins_cc="$android_host_cc", environment="android", platform_defines=ANDROID_DEFINES,
+        guest_cc=guest_cc, gl_headers=sysroot_include, ar=toolchain.ar if toolchain else "$android_ndk_bin/llvm-ar",
+        ld=toolchain.ld if toolchain else "$android_ndk_bin/ld.lld",
+        objdump=toolchain.objdump if toolchain else "$android_ndk_bin/llvm-objdump", builtins_cc="$android_host_cc", environment="android", platform_defines=ANDROID_DEFINES,
         extra_imports=[PORT_DIR / "android_imports.list"], base_register=base_register)
     image = guest["image"]
     host_table_c = guest["host_table_c"]

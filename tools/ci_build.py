@@ -14,9 +14,10 @@ Builds are portable (any x86-64 processor; any ARMv8.0 one for
 linux_arm64 and android), so they run on other computers. Debug builds skip link-time and profile-guided optimisation,
 which only make the build slower; release builds use both, as a local
 release build does (profile-guided optimisation needs clang 22 or later,
-and is skipped with an older one). A profile build is a debug build with
+and is skipped with an older one; the guests' compiler is the pinned LLVM
+22 that configure.py downloads, tools/guest_toolchain.py). A profile build is a debug build with
 configure.py --profile, so that the profiling build is built too. CI_COMPILER_LAUNCHER (ccache, say) is
-passed on as --compiler-launcher. A build of the main branch gets the run's
+passed on as --compiler-launcher, and CI_GUEST_LLVM_CACHE as --guest-llvm-cache. A build of the main branch gets the run's
 number (HALO_BUILD_NUMBER), which its release is named after and the
 self-updater compares (and the web site's version.json names).
 
@@ -100,6 +101,11 @@ def main() -> int:
     launcher = os.environ.get("CI_COMPILER_LAUNCHER")
     if launcher:
         configure += ["--compiler-launcher", launcher]
+    # the folder the guests' pinned LLVM is kept in (tools/guest_toolchain.py),
+    # which the workflow caches
+    llvm_cache = os.environ.get("CI_GUEST_LLVM_CACHE")
+    if llvm_cache:
+        configure += ["--guest-llvm-cache", llvm_cache]
     # a build of main knows its number, which names its release (build-<n>),
     # for the self-updater (port/linux/src/updater.c, and the Android app);
     # other builds have none, and never look for updates

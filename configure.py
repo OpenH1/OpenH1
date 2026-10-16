@@ -12,6 +12,7 @@ from types import SimpleNamespace
 
 from tools import ninja_syntax
 from tools.android_build import android_configure_inputs, generate_android_build
+from tools.guest_toolchain import LLVM_VERSION, default_cache
 from tools.linux_guest_build import generate_linux_guest_builds, linux_guest_configure_inputs, native_linux_guest
 from tools.linux_build import check_profile_options, generate_linux_build, linux_configure_inputs
 from tools.macos_build import generate_macos_build, is_macos_arm64, macos_configure_inputs
@@ -77,6 +78,22 @@ parser.add_argument(
     help="profile-guided optimisation from this profile instead",
 )
 parser.add_argument(
+    "--guest-llvm",
+    metavar="pinned|system|FOLDER",
+    default="pinned",
+    help="the guests' compiler, linker and LLVM tools (the Android, Linux arm64 and x86-64, and macOS builds' "
+    f"guest images): pinned (the default) downloads LLVM {LLVM_VERSION}'s release for this computer once (about "
+    "1.5 GB, checked against its SHA-256) into --guest-llvm-cache; system takes clang, ld.lld, llvm-ar and "
+    "llvm-objdump from the PATH (and the NDK's, or Homebrew's on macOS); a FOLDER is an LLVM installation (its "
+    "bin/). A build's own compiler (--linux-arm64-cc, --linux-x86-64-cc, --android-guest-cc, --macos-cc, "
+    "--macos-guest-cc) is used instead. The hosts are built with the system's compiler",
+)
+parser.add_argument(
+    "--guest-llvm-cache",
+    metavar="FOLDER",
+    help=f"where --guest-llvm=pinned keeps LLVM (default: {default_cache()})",
+)
+parser.add_argument(
     "--android-ndk",
     type=str,
     help="Android NDK for `ninja android` (default: ANDROID_NDK_HOME, or the newest under the Android SDK)",
@@ -84,12 +101,13 @@ parser.add_argument(
 parser.add_argument(
     "--android-guest-cc",
     type=str,
-    help="clang with the arm64_32 target for the Android guest (default: clang)",
+    help="clang with the arm64_32 target for the Android guest (default: --guest-llvm's)",
 )
 parser.add_argument(
     "--linux-arm64-cc",
     type=str,
-    help="clang (with the arm64_32 target) for `ninja linux_arm64`, the 64-bit ARM Linux build (default: clang)",
+    help="clang (with the arm64_32 target) for `ninja linux_arm64`, the 64-bit ARM Linux build, its guest and its "
+    "host (default: --guest-llvm's for the guest, clang for the host)",
 )
 parser.add_argument(
     "--linux-arm64-gl",
@@ -107,7 +125,8 @@ parser.add_argument(
 parser.add_argument(
     "--linux-x86-64-cc",
     type=str,
-    help="clang (with the x32 target) for `ninja linux_x86_64`, the 64-bit x86 Linux build (default: clang)",
+    help="clang (with the x32 target) for `ninja linux_x86_64`, the 64-bit x86 Linux build, its guest and its host "
+    "(default: --guest-llvm's for the guest, clang for the host)",
 )
 parser.add_argument(
     "--vr",
@@ -124,13 +143,14 @@ parser.add_argument(
 parser.add_argument(
     "--macos-cc",
     type=str,
-    help="clang (with the arm64_32 target, as Apple's has) for `ninja macos`, the macOS build (default: clang)",
+    help="clang for `ninja macos`, the macOS build: its host, and its guest unless --macos-guest-cc (default: clang "
+    "for the host, --guest-llvm's for the guest)",
 )
 parser.add_argument(
     "--macos-guest-cc",
     type=str,
-    help="clang for the macOS build's guest alone (default: --macos-cc's): Homebrew's LLVM "
-    "(/opt/homebrew/opt/llvm/bin/clang) is new enough for the profiles in pgo/, which Xcode's clang is not",
+    help="clang (with the arm64_32 target) for the macOS build's guest alone (default: --macos-cc's, else "
+    "--guest-llvm's)",
 )
 parser.add_argument(
     "--macos-bundle-id",
@@ -161,6 +181,8 @@ sln = SimpleNamespace(
     port_pgo=args.pgo,
     port_pgo_profile=args.pgo_profile,
     android_ndk=args.android_ndk,
+    guest_llvm=args.guest_llvm,
+    guest_llvm_cache=args.guest_llvm_cache,
     android_guest_cc=args.android_guest_cc,
     linux_arm64_cc=args.linux_arm64_cc,
     linux_arm64_gl=args.linux_arm64_gl,

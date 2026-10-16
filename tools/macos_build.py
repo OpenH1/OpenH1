@@ -36,8 +36,10 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .android_build import GUEST_ARCH_SCRIPT, SDL_TAG, TOML_DIR, fetch_third_party, generate_guest_image
+from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, SDL_TAG, TOML_DIR, fetch_third_party,
+                            generate_guest_image)
 from .guest_arch import ARM64_32
+from .guest_toolchain import LLVM_VERSION, guest_toolchain
 from .linux_build import MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, compile_launcher, miniupnpc_sources
 from .linux_sysroot import download
 from .ninja_syntax import Writer
@@ -130,7 +132,7 @@ def is_macos_arm64() -> bool:
 
 
 def macos_configure_inputs() -> List[Path]:
-    return [Path(__file__), GUEST_ARCH_SCRIPT, PORT_DIR, LINUX_HOST_DIR]
+    return [Path(__file__), GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, PORT_DIR, LINUX_HOST_DIR]
 
 
 def fetch_khronos_headers(khronos_dir: Path = KHRONOS_DIR) -> None:
@@ -166,9 +168,23 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     if not is_macos_arm64():
         n.comment("macOS build: only on a Mac with Apple silicon")
         return
-    ld = _tool("ld.lld")
-    ar = _tool("llvm-ar")
-    objdump = _tool("llvm-objdump")
+    cc = getattr(sln, "macos_cc", None) or "clang"
+    # the guest's compiler and tools: --macos-guest-cc's, else --macos-cc's,
+    # else the pinned LLVM's (tools/guest_toolchain.py, configure.py
+    # --guest-llvm), which reads the profiles in pgo/ (Xcode's clang is too
+    # old for them); with a compiler of the build's own or
+    # --guest-llvm=system, ld.lld, llvm-ar and llvm-objdump from the PATH or
+    # Homebrew
+    explicit_cc = getattr(sln, "macos_guest_cc", None) or getattr(sln, "macos_cc", None)
+    try:
+        toolchain = guest_toolchain(sln, explicit_cc)
+    except (RuntimeError, OSError) as error:
+        print(f"macOS build disabled: no LLVM {LLVM_VERSION} for the guest ({error})", file=sys.stderr)
+        return
+    if toolchain:
+        guest_cc, ld, ar, objdump = toolchain.cc, toolchain.ld, toolchain.ar, toolchain.objdump
+    else:
+        guest_cc, ld, ar, objdump = explicit_cc or cc, _tool("ld.lld"), _tool("llvm-ar"), _tool("llvm-objdump")
     if not ld or not ar or not objdump:
         n.comment("macOS build: needs ld.lld, llvm-ar and llvm-objdump (brew install llvm lld)")
         return
@@ -179,10 +195,6 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
         print(f"macOS build disabled: cannot fetch musl, SDL3 or the OpenGL ES headers ({error})", file=sys.stderr)
         return
     config: Dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
-    cc = getattr(sln, "macos_cc", None) or "clang"
-    # (the guest's may be another clang: one that reads the profiles of
-    # profile-guided optimisation, which the host does not use)
-    guest_cc = getattr(sln, "macos_guest_cc", None) or cc
 
     n.comment("macOS build (ninja macos); see port/macos/README.md")
     n.variable("macos_guest_cc", guest_cc)

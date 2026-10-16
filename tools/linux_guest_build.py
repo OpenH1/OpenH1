@@ -41,9 +41,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .android_build import (GUEST_ARCH_SCRIPT, MUSL_VERSION, SDL_TAG, TOML_DIR, fetch_third_party,
-                            generate_guest_image, host_memory_sources)
+from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, MUSL_VERSION, SDL_TAG, TOML_DIR,
+                            fetch_third_party, generate_guest_image, host_memory_sources)
 from .guest_arch import ARM64_32, X32, GuestArch
+from .guest_toolchain import LLVM_VERSION, guest_toolchain
 from .linux_sysroot import download
 from .linux_build import (MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, SDL_RPATH_LDFLAGS, compile_launcher,
                           miniupnpc_sources, sdl3_rule, updater_defines)
@@ -135,7 +136,7 @@ def native_linux_guest() -> Optional[LinuxGuest]:
 
 
 def linux_guest_configure_inputs() -> List[Path]:
-    return [Path(__file__), GUEST_ARCH_SCRIPT, PORT_DIR]
+    return [Path(__file__), GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, PORT_DIR]
 
 
 def generate_linux_guest_builds(n: Writer, sln: Any) -> None:
@@ -202,7 +203,11 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     build = Path("build") / target.name
     sdl_dir = third_party / "SDL3"
     openxr_dir = third_party / "openxr"
-    cc = getattr(sln, f"{prefix}_cc", None) or "clang"
+    # the host's compiler: the build's own (--<name>-cc), or the system's; the
+    # guest's: the build's own too, else the pinned LLVM's
+    # (tools/guest_toolchain.py, configure.py --guest-llvm)
+    explicit_cc = getattr(sln, f"{prefix}_cc", None)
+    cc = explicit_cc or "clang"
     # the renderer: OpenGL ES 3 (HALO_GLES, as on Android), or desktop OpenGL
     # 4.5 (the x86-64 build's, --linux-arm64-gl=desktop, and the VR build's:
     # the OpenXR runtime takes a desktop GL context)
@@ -226,6 +231,11 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
             fetch_openxr_headers(openxr_dir)
         except (RuntimeError, OSError) as error:
             raise RuntimeError(f"cannot fetch the OpenXR headers ({error})") from error
+    try:
+        toolchain = guest_toolchain(sln, explicit_cc)
+    except (RuntimeError, OSError) as error:
+        raise RuntimeError(f"no LLVM {LLVM_VERSION} for the guest ({error})") from error
+    guest_cc = toolchain.cc if toolchain else cc
     config: Dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
     # the guest's and the host's code paths: the desktop's (no HALO_ANDROID),
     # the renderer's and VR's
@@ -244,12 +254,14 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         host_defines.append("-DHALO_GUEST_BASE=1")
 
     n.comment(f"{target.title} build (ninja {target.name}); see port/linux/README.md")
-    n.variable(f"{prefix}_guest_cc", cc)
+    n.variable(f"{prefix}_guest_cc", guest_cc)
     n.variable(f"{prefix}_cc", cc)
 
     guest = generate_guest_image(
         n, sln, config, arch=target.arch, prefix=prefix, label=label, build=build, third_party=third_party,
-        guest_cc=cc, gl_headers=GL_HEADERS, ar="llvm-ar", ld="ld.lld", objdump="llvm-objdump", builtins_cc=f"${prefix}_cc",
+        guest_cc=guest_cc, gl_headers=GL_HEADERS, ar=toolchain.ar if toolchain else "llvm-ar",
+        ld=toolchain.ld if toolchain else "ld.lld", objdump=toolchain.objdump if toolchain else "llvm-objdump",
+        builtins_cc=f"${prefix}_cc",
         environment="gnu", platform_defines=guest_defines, extra_runtime=[PORT_DIR / "guest_desktop.c"],
         extra_imports=[PORT_DIR / "host_imports.list", *([PORT_DIR / "vr_imports.list"] if vr else [])],
         extra_prototypes=[PORT_DIR / "guest_desktop.c", *([LINUX_DIR / "src" / "vr_host.h"] if vr else [])],

@@ -70,3 +70,14 @@ def test_compiler_that_cannot_run_is_this_target_unavailable(tree, capsys):
     # (only the stopping target: nothing of the build written halfway)
     builds = [line for line in text.splitlines() if line.startswith("build ")]
     assert builds == ["build linux_x86_64: linux_x86_64_unavailable"], text
+
+
+def test_pinned_llvm_that_cannot_be_fetched_is_this_target_unavailable(tree, capsys, monkeypatch):
+    def unavailable(sln, explicit_cc):
+        assert explicit_cc is None
+        raise RuntimeError("no network")
+    monkeypatch.setattr(linux_guest_build, "guest_toolchain", unavailable)
+    text, err = generate(capsys, linux_x86_64=True)
+    assert "(linux_x86_64) unavailable" in err and "no network" in err
+    builds = [line for line in text.splitlines() if line.startswith("build ")]
+    assert builds == ["build linux_x86_64: linux_x86_64_unavailable"], text
