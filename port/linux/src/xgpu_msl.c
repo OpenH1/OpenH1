@@ -929,7 +929,7 @@ static void dot_input(struct xgpu_text *text, const struct xgpu_texture_stage *s
 	switch (stage->dot_mapping)
 	{
 	case XGPU_DOT_ZERO_TO_ONE: xgpu_text_append(text, "t%d.rgb", stage->input); break;
-	case XGPU_DOT_MINUS_ONE_TO_ONE_D3D: xgpu_text_append(text, "((t%d.rgb * 255.0 - 128.0) / 127.0)", stage->input); break;
+	case XGPU_DOT_MINUS_ONE_TO_ONE_D3D: xgpu_text_append(text, "((t%d.rgb * 255.0 - 128.0) * (1.0 / 127.0))", stage->input); break;
 	case XGPU_DOT_MINUS_ONE_TO_ONE: xgpu_text_append(text, "signed_bytes(t%d.rgb)", stage->input); break;
 	default: xgpu_text_append(text, "(t%d.rgb * 2.0 - 1.0)", stage->input); break;
 	}
@@ -986,7 +986,7 @@ static void texture_stage(struct xgpu_text *text, const struct xgpu_pixel_progra
 	case XGPU_TEXTURE_PROJECT3D:
 		if (!read)
 			break;
-		snprintf(coordinates, sizeof(coordinates), "float4(in.xT%d.xyz / (in.xT%d.w != 0.0 ? in.xT%d.w : 1.0), 1.0)",
+		snprintf(coordinates, sizeof(coordinates), "float4(fast::divide(in.xT%d.xyz, float3(in.xT%d.w != 0.0 ? in.xT%d.w : 1.0)), 1.0)",
 			stage, stage, stage);
 		xgpu_text_append(text, "\tt%d = ", stage);
 		sample(text, program, stage, coordinates, options);
@@ -1102,7 +1102,7 @@ static void texture_stage(struct xgpu_text *text, const struct xgpu_pixel_progra
 			xgpu_text_append(text, "\t\tfloat3 e = float3(in.xT1.w, in.xT2.w, in.xT3.w);\n");
 		else
 			xgpu_text_append(text, "\t\tfloat3 e = u.ps_c0[0].xyz;\n");
-		xgpu_text_append(text, "\t\tfloat3 r = 2.0 * n * dot(n, e) / max(dot(n, n), 1.0e-20) - e;\n\t\tt%d = ", stage);
+		xgpu_text_append(text, "\t\tfloat3 r = fast::divide(2.0 * n * dot(n, e), float3(max(dot(n, n), 1.0e-20))) - e;\n\t\tt%d = ", stage);
 		sample(text, program, stage, "float4(r, 1.0)", options);
 		xgpu_text_append(text, ";\n\t}\n");
 		break;
@@ -1273,7 +1273,7 @@ static const char pixel_functions[] =
 	"static inline float signed_byte(float x)\n"
 	"{\n"
 	"\tfloat b = floor(x * 255.0 + 0.5);\n"
-	"\treturn (b >= 128.0 ? b - 256.0 : b) / 127.0;\n"
+	"\treturn (b >= 128.0 ? b - 256.0 : b) * (1.0 / 127.0);\n"
 	"}\n"
 	"static inline float3 signed_bytes(float3 x)\n"
 	"{\n"
@@ -1414,8 +1414,8 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 		else if (program->fog_mode == D3DFOG_EXP2)
 			xgpu_text_append(&text, "\tfloat fog_factor = exp(-(u.fog_parameters.z * in.xFog) * (u.fog_parameters.z * in.xFog));\n");
 		else if (program->fog_mode == D3DFOG_LINEAR)
-			xgpu_text_append(&text, "\tfloat fog_factor = (u.fog_parameters.y - in.xFog) / "
-				"max(u.fog_parameters.y - u.fog_parameters.x, 1.0e-6);\n");
+			xgpu_text_append(&text, "\tfloat fog_factor = fast::divide(u.fog_parameters.y - in.xFog, "
+				"max(u.fog_parameters.y - u.fog_parameters.x, 1.0e-6));\n");
 		else
 			xgpu_text_append(&text, "\tfloat fog_factor = in.xFog;\n");
 		xgpu_text_append(&text, "\tfloat4 fog = float4(u.fog_color.rgb, saturate(fog_factor));\n");

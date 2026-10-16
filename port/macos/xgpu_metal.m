@@ -920,7 +920,11 @@ static MTLCompileOptions *compile_options(void)
 {
 	MTLCompileOptions *options = [MTLCompileOptions new];
 
-	/* (no fast maths: the GLSL emitted for the other backends has none) */
+	/* (safe maths, as the GLSL emitted for the other backends: but the
+	shaders' divides whose last bit does not matter are fast::divide, or a
+	multiply by a reciprocal, which safe maths would make correctly rounded
+	IEEE divides of about 25 instructions each: xgpu_msl.c,
+	xgpu_metal_combiner.c) */
 	if (@available(macOS 15.0, *))
 		options.mathMode = MTLMathModeSafe;
 	else
