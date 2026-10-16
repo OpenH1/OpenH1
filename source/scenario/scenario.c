@@ -342,20 +342,20 @@ void scenario_frame_update(
 {
 	/* A frame was a tick on the Xbox; the native builds draw several frames
 	per tick (port/linux/game/render_interpolation.c), and the wind steps
-	its random walk once an update: step it once per 30 Hz tick of game
-	time. */
-	static real leftover_ticks = 0.f;
-	long ticks;
-
-	leftover_ticks += delta_time * TICKS_PER_SECOND;
-	ticks = (long)leftover_ticks;
-	leftover_ticks -= (real)ticks;
-	for (ticks = MIN(ticks, 4); ticks > 0; ticks--)
-	{
-		wind_update();
-	}
+	its random walk once an update: it steps once a tick, at the tick's end
+	(game_tick, scenario_tick_update), as the Xbox's frame came after its
+	tick. (Counted from the frames' time, it stepped a frame later or
+	sooner by the frame rate, and the ticks' antennas swung with it.) */
+	(void)delta_time;
 
 	return;
+}
+
+/* port: the wind's step of the tick (game.c's game_tick) */
+void scenario_tick_update(
+	void)
+{
+	wind_update();
 }
 
 void scenario_unload(

@@ -394,6 +394,9 @@ void game_tick(
 	profile_scope(game_tick_players_after_section, players_update_after_game();)
 	profile_scope(game_tick_hud_section, hud_update();)
 	profile_scope(game_tick_player_effect_section, player_effect_update();)
+	/* port: the wind's step, once a tick (scenario.c: it stepped by the
+	frames' time) */
+	scenario_tick_update();
 	/* port: and at its end, before the frame draws the lights */
 	game_state_check_data_arrays();
 	lights_port_recover();
