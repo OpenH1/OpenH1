@@ -62,7 +62,7 @@ python tools/render_manifest.py stats port/assets/render/manifest.txt <recording
 
 The manifest is the stock maps'. A map the manifest does not know (a Custom
 Edition map) has its shaders and pipelines made as it loads instead: with
-`display.prepare_shaders`, the map's first frame, and
+`display.prepare_shaders` (on by default), the map's first frame, and
 the first of each of its structures, is drawn first through every shader
 its tags hold, in each way the game's code draws them
 (`port/linux/game/render_enumerate.c`): every material of the structure, in

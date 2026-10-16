@@ -607,8 +607,8 @@ draw, and cleared.
   enhanced dynamic lights, a render target's mip levels drawn one by one
   (the water's ripple map: its first level is sampled), points drawn as
   polygons' fill (lines instead).
-- Without `display.prepare_shaders` (off until the enumeration is
-  complete), a pipeline is made the first time a draw needs it, which the
-  draw waits for (the shaders are the library's or specialised: no MSL is
-  compiled); later runs find it in the archive.
+- With `display.prepare_shaders` off (it is on by default), a pipeline is
+  made the first time a draw needs it, which the draw waits for (the shaders
+  are the library's or specialised: no MSL is compiled); later runs find it
+  in the archive.
 - The self-updater and the Discord invites are not set up for macOS.
