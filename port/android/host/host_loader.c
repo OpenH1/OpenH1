@@ -426,8 +426,6 @@ int host_load_image(const void *file, size_t size)
 	{
 		void *function = host_resolve_import(name);
 
-		if (!function && !strncmp(name, "hostgl_", 7))
-			function = host_gl_resolve(name + 7);
 		if (!function)
 		{
 			host_logf(HOST_LOG_WARN, "guest import %s is not available", name);

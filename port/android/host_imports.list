@@ -28,10 +28,6 @@ host_sdl_create_window
 host_sdl_window_size_in_pixels
 host_sdl_set_relative_mouse
 host_sdl_gl_set_attribute
-host_sdl_gl_create_context
-host_sdl_gl_make_current
-host_sdl_gl_set_swap_interval
-host_sdl_gl_swap_window
 host_sdl_poll_event
 host_sdl_set_clipboard_text
 host_sdl_get_clipboard_text
@@ -53,12 +49,6 @@ host_sdl_resume_audio_stream_device
 host_sdl_get_audio_stream_data
 host_sdl_get_audio_stream_available
 host_sdl_destroy_audio_stream
-host_gl_get_string
-host_gl_has_extension
-host_gl_read_buffer
-host_gl_buffer_write
-host_gl_fence_frame
-host_gl_wait_frame
 host_render_stream_open
 host_render_stream_submit
 host_render_stream_wait

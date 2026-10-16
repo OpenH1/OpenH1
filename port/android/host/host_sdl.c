@@ -181,30 +181,6 @@ int host_sdl_gl_set_attribute(int attribute, int value)
 	return SDL_GL_SetAttribute((SDL_GLAttr)attribute, value);
 }
 
-uint32_t host_sdl_gl_create_context(uint32_t window)
-{
-	SDL_Window *object = host_sdl_handle_get(window, _handle_window);
-
-	return object ? host_sdl_handle_new(_handle_context, SDL_GL_CreateContext(object)) : 0;
-}
-
-int host_sdl_gl_make_current(uint32_t window, uint32_t context)
-{
-	return SDL_GL_MakeCurrent(host_sdl_handle_get(window, _handle_window), host_sdl_handle_get(context, _handle_context));
-}
-
-int host_sdl_gl_set_swap_interval(int interval)
-{
-	return SDL_GL_SetSwapInterval(interval);
-}
-
-int host_sdl_gl_swap_window(uint32_t window)
-{
-	SDL_Window *object = host_sdl_handle_get(window, _handle_window);
-
-	return object ? SDL_GL_SwapWindow(object) : 0;
-}
-
 /* ---------- events */
 
 int host_sdl_poll_event(void *event)

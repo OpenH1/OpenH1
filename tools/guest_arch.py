@@ -6,8 +6,7 @@ as the game's data formats require, in a 64-bit process - are Android
 Everything about the guest that depends on its processor is described here,
 once per architecture, and read by the guest image's graph
 (generate_guest_image in tools/android_build.py) and by its generators:
-tools/android_imports.py (the stubs that call the host) and
-tools/android_gl_stubs.py (the OpenGL entry points).
+tools/android_imports.py (the stubs that call the host).
 
 This module imports nothing from the build scripts, so that the generators,
 which ninja runs as scripts, can import it too.
@@ -183,8 +182,7 @@ X32 = GuestArch(
     integer_registers=6,
     # (each argument on the stack has an 8-byte slot in either ABI; clang's
     # x32 code writes a pointer there zero-extended, all 8 bytes, but the
-    # stubs do not rely on it and pass a pointer there as a 64-bit value
-    # that they extend themselves, tools/android_gl_stubs.py)
+    # imports never take a pointer there: tools/check_host_imports.py)
     packed_stack_arguments=False,
     zlib_flags=(),
     # (SSE's xmmintrin.h, which Opus uses as on the x86 build)

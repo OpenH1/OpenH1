@@ -269,7 +269,7 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         environment="gnu", platform_defines=guest_defines, extra_runtime=[PORT_DIR / "guest_desktop.c"],
         extra_imports=[PORT_DIR / "host_imports.list", *([PORT_DIR / "vr_imports.list"] if vr else [])],
         extra_prototypes=[PORT_DIR / "guest_desktop.c", *([LINUX_DIR / "src" / "vr_host.h"] if vr else [])],
-        updater_cflags=updater_defines(getattr(sln, "port_release", False)), desktop_gl=desktop_gl,
+        updater_cflags=updater_defines(getattr(sln, "port_release", False)),
         base_register=base_register, excluded_platform_sources=RENDER_STREAM_GUEST_EXCLUDED)
 
     # ---------- SDL3, built from the same source as the guest's headers

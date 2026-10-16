@@ -54,12 +54,6 @@ void *host_resolve_import(const char *name)
 	return NULL;
 }
 
-void *host_gl_resolve(const char *name)
-{
-	(void)name;
-	return NULL;
-}
-
 /* ---------- checking */
 
 static int failures;

@@ -67,10 +67,6 @@ unsigned int host_sdl_create_window(const char *title, int width, int height, lo
 void host_sdl_window_size_in_pixels(unsigned int window, int *width, int *height);
 int host_sdl_set_relative_mouse(unsigned int window, int enabled);
 int host_sdl_gl_set_attribute(int attribute, int value);
-unsigned int host_sdl_gl_create_context(unsigned int window);
-int host_sdl_gl_make_current(unsigned int window, unsigned int context);
-int host_sdl_gl_set_swap_interval(int interval);
-int host_sdl_gl_swap_window(unsigned int window);
 int host_sdl_poll_event(void *event);
 int host_sdl_set_clipboard_text(const char *text);
 void host_sdl_get_clipboard_text(char *buffer, unsigned int size);
@@ -96,26 +92,6 @@ int host_sdl_resume_audio_stream_device(unsigned int stream);
 int host_sdl_get_audio_stream_data(unsigned int stream, void *data, int length);
 int host_sdl_get_audio_stream_available(unsigned int stream);
 void host_sdl_destroy_audio_stream(unsigned int stream);
-
-/* ---------- OpenGL ES */
-
-/* copies glGetString(name) (or glGetStringi when index >= 0) */
-void host_gl_get_string(unsigned int name, int index, char *buffer, unsigned int size);
-/* nonzero if the context supports the named extension */
-int host_gl_has_extension(const char *name);
-/* copies size bytes at offset of a GL buffer object into data, waiting for
-the GPU's writes to it */
-void host_gl_read_buffer(unsigned int buffer, unsigned int offset, unsigned int size, void *data);
-/* unsynchronized write into the buffer bound to target */
-void host_gl_buffer_write(unsigned int target, unsigned int offset, unsigned int size, const void *data);
-/* fences the GPU work queued so far as that of ring slot `slot`; waits for
-the GPU to finish the work last fenced for a slot */
-void host_gl_fence_frame(unsigned int slot);
-void host_gl_wait_frame(unsigned int slot);
-/* (a Linux guest's desktop OpenGL, port/linux/host/host_imports.list:
-the visibility tests' results, port/linux/src/xgpu.h) */
-int host_gl_map_results(unsigned int buffer, unsigned int size);
-void host_gl_read_results(void *data, unsigned int size);
 
 /* ---------- the renderer's command stream (port/linux/src/xgpu_stream.h,
 port/android/host/host_render_stream.h): the ring at the guest address

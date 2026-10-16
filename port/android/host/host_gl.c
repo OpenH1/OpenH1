@@ -1,94 +1,21 @@
 /*
 HOST_GL.C
 
-OpenGL ES for the guest. Its generated entry points (guest_gl.c) import
-hostgl_<function>, resolved here to the driver's function; the arguments
-already have host types by then. Only strings need copying back.
-
-The Linux builds can instead give the guest desktop OpenGL 4.5
-(HALO_DESKTOP_GL, tools/linux_guest_build.py: the x86-64 build's renderer,
-and the arm64 build's with --linux-arm64-gl=desktop or --vr): the entry
-points are then desktop GL's, from GLVND's libOpenGL. This file's own calls
-are the same functions in either API, which the host links from libGLESv2,
-or from libOpenGL for desktop GL: GLVND's entry points, which dispatch to
-the current context whatever its API and window system (EGL or GLX).
+OpenGL services of the host's OpenGL backend (port/linux/host/
+host_gl_stream.c, xgpu_gl.c built into the host): an extension looked for,
+a buffer read back, the ring of stream buffers' fences and writes. They are
+the same functions in either API, which the host links from libGLESv2 (the
+OpenGL ES builds: Android, the arm64 build), or from GLVND's libOpenGL for
+desktop OpenGL 4.5 (HALO_DESKTOP_GL: the x86-64 build's renderer, and the
+arm64 build's with --linux-arm64-gl=desktop or --vr): GLVND's entry points,
+which dispatch to the current context whatever its API and window system
+(EGL or GLX).
 */
 
 #include "host.h"
 
-#include <EGL/egl.h>
 #include <GLES3/gl32.h>
-#include <dlfcn.h>
 #include <string.h>
-
-#if defined(HALO_DESKTOP_GL) && defined(HALO_VR)
-#include "vr_host.h"
-
-/* the VR build's GLX context (host_vr_probe: a runtime without
-XR_MNDX_egl_enable): an entry point the GL library does not export is
-GLX's to give, not EGL's, which has no context then */
-static void *glx_resolve(const char *name)
-{
-	static void *(*get_proc_address)(const unsigned char *);
-	static int looked;
-
-	if (!looked)
-	{
-		/* (GLVND's libGLX, through the libGL that SDL's X11 driver loads) */
-		void *glx = dlopen("libGL.so.1", RTLD_NOW | RTLD_GLOBAL);
-
-		if (!glx)
-			glx = dlopen("libGLX.so.0", RTLD_NOW | RTLD_GLOBAL);
-		if (glx)
-			get_proc_address = (void *(*)(const unsigned char *))dlsym(glx, "glXGetProcAddressARB");
-		looked = 1;
-	}
-	return get_proc_address ? get_proc_address((const unsigned char *)name) : NULL;
-}
-#endif
-
-void *host_gl_resolve(const char *name)
-{
-	static void *library;
-	void *function = NULL;
-
-	if (!library)
-#ifdef __ANDROID__
-		library = dlopen("libGLESv3.so", RTLD_NOW | RTLD_GLOBAL);
-#elif defined(HALO_DESKTOP_GL)
-	{
-		library = dlopen("libOpenGL.so.0", RTLD_NOW | RTLD_GLOBAL);
-		if (!library)
-			library = dlopen("libGL.so.1", RTLD_NOW | RTLD_GLOBAL);
-	}
-#else
-		/* Linux arm64 (port/linux/host): ES 3 is in libGLESv2 */
-		library = dlopen("libGLESv2.so.2", RTLD_NOW | RTLD_GLOBAL);
-#endif
-	if (library)
-		function = dlsym(library, name);
-#if defined(HALO_DESKTOP_GL) && defined(HALO_VR)
-	if (!function && host_vr_probe() == VR_BINDING_GLX)
-		return glx_resolve(name);
-#endif
-	if (!function)
-		function = (void *)eglGetProcAddress(name);
-	return function;
-}
-
-void host_gl_get_string(uint32_t name, int index, char *buffer, uint32_t size)
-{
-	const GLubyte *text = index >= 0 ? glGetStringi(name, (GLuint)index) : glGetString(name);
-
-	if (!size)
-		return;
-	buffer[0] = 0;
-	if (text)
-	{
-		strncpy(buffer, (const char *)text, size - 1);
-		buffer[size - 1] = 0;
-	}
-}
 
 int host_gl_has_extension(const char *name)
 {
@@ -183,43 +110,4 @@ void host_gl_buffer_write(uint32_t target, uint32_t offset, uint32_t size, const
 	}
 	memcpy(mapping, data, size);
 	glUnmapBuffer(target);
-}
-
-/* ---------- desktop OpenGL (HALO_DESKTOP_GL) */
-
-/* debug.gl_debug: the guest's glDebugMessageCallback (guest_gl.c) asks for
-this logger instead, its own callback being guest code the driver cannot
-call */
-static void GL_APIENTRY host_gl_debug_message(GLenum origin, GLenum type, GLuint id, GLenum severity,
-	GLsizei length, const GLchar *message, const void *user)
-{
-	(void)origin; (void)id; (void)length; (void)user;
-	if (severity != GL_DEBUG_SEVERITY_NOTIFICATION)
-		host_logf(HOST_LOG_WARN, "GL %s: %s", type == GL_DEBUG_TYPE_ERROR ? "error" : "debug", message);
-}
-
-void host_gl_debug_output(void)
-{
-	glDebugMessageCallback(host_gl_debug_message, NULL);
-}
-
-/* The desktop renderer's visibility test results are a query buffer the GPU
-writes as each test completes, which the CPU reads through a persistent
-mapping (xgpu_gl.c): the mapping is a host address the guest cannot use, so
-the host keeps it, and each frame copies the results into guest memory. */
-static const volatile void *results_mapping;
-
-int host_gl_map_results(uint32_t buffer, uint32_t size)
-{
-	/* (GL_MAP_PERSISTENT_BIT and GL_MAP_COHERENT_BIT, desktop GL's names) */
-	glBindBuffer(GL_COPY_READ_BUFFER, buffer);
-	results_mapping = glMapBufferRange(GL_COPY_READ_BUFFER, 0, size, GL_MAP_READ_BIT | 0x0040 | 0x0080);
-	glBindBuffer(GL_COPY_READ_BUFFER, 0);
-	return results_mapping != NULL;
-}
-
-void host_gl_read_results(void *data, uint32_t size)
-{
-	if (results_mapping)
-		memcpy(data, (const void *)results_mapping, size);
 }

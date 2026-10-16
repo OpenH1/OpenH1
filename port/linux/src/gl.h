@@ -26,8 +26,8 @@ Windows it is __stdcall too, and SDL would include windows.h without it) */
 #pragma pop_macro("APIENTRY")
 
 #ifdef HALO_GLES
-/* OpenGL ES 3.2 (port/android/README.md); tools/android_gl_stubs.py reads
-this list to generate the guest's entry points */
+/* OpenGL ES 3.2: the web's (WebGL 2), and the host's OpenGL ES backend
+(port/linux/host/host_gl_stream.c) */
 /* ANDROID_GL_FUNCTIONS_BEGIN */
 #define GL_FUNCTIONS(X) \
 	X(glGetString) \
@@ -144,8 +144,8 @@ context has the extension, never required (gl_functions.c). On ES 3.0 and
 	X(glDrawElementsBaseVertexOES)
 /* ANDROID_GL_FUNCTIONS_END */
 #else
-/* OpenGL 4.5 core; tools/android_gl_stubs.py --desktop reads this list for
-the desktop guest builds' desktop renderer (tools/linux_guest_build.py) */
+/* OpenGL 4.5 core: the x86 and Windows builds', and the host's desktop
+OpenGL backend (port/linux/host/host_gl_stream.c) */
 /* DESKTOP_GL_FUNCTIONS_BEGIN */
 #define GL_FUNCTIONS(X) \
 	X(glGetString) \

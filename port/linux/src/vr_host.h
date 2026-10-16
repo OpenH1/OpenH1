@@ -189,17 +189,13 @@ int host_vr_probe(void);
 /* after the GL context is made and current (on its thread), of the kind
 host_vr_probe said; 0 if there is no OpenXR runtime, headset or GL binding */
 int host_vr_initialize(struct vr_host_info *info);
-/* waits for the runtime's next frame and begins it; 0 if the session is
-not running (no frame is begun) */
+/* waits for the runtime's next frame (which the host's render thread begins
+and ends as it draws it: port/linux/host/host_vr_render.h); 0 if the
+session is not running (no frame is waited for) */
 int host_vr_frame_wait(struct vr_host_views *views);
 /* the views, head and controllers at the frame's display time */
 int host_vr_locate(struct vr_host_views *views);
 int host_vr_input(struct vr_host_input *input);
-/* the swapchain's next image (an index into vr_host_info's images), or -1 */
-int host_vr_acquire(int swapchain);
-void host_vr_release(int swapchain);
-/* ends the frame host_vr_frame_wait began */
-void host_vr_frame_end(const struct vr_host_layers *layers);
 void host_vr_haptic(int hand, float amplitude, float seconds);
 
 #endif

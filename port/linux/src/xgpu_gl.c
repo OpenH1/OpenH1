@@ -175,13 +175,13 @@ static struct program_entry *program_buckets[PROGRAM_BUCKETS];
 
 /* ---------- the device */
 
-#if defined(HALO_GLES) || defined(HALO_GUEST) || defined(XGPU_GL_HOST)
+#if defined(HALO_GLES) || defined(XGPU_GL_HOST)
 /* Mobile drivers (Mali) keep every orphaned copy of a buffer until the GPU
 is done with it, so a large buffer orphaned each frame costs its size per
 frame in flight and more. Instead each frame streams into the next of a few
 smaller buffers, reusing one only once the GPU has finished the frame that
 last used it (host_gl_wait_frame). A busy frame streams about 5 MB of
-vertices. A Linux guest's desktop renderer, and the host's, stream so too:
+vertices. The host's desktop renderer streams so too:
 on Zink (Turnip), as on Mali, a glBufferSubData for each draw costs much
 more than the unsynchronized write the ring allows (host_gl_buffer_write). */
 #define XGPU_STREAM_RING
@@ -285,9 +285,6 @@ struct gl_device
 		unsigned long count;
 	} visibility_batches[2];
 	unsigned long visibility_batch;
-#ifdef HALO_GUEST
-	GLuint visibility_results_copy[VISIBILITY_TEST_SLOTS];
-#endif
 	/* a pipeline flush every flush_every draws (draw_flush), 0 never */
 	unsigned long flush_every;
 	unsigned long flush_draws;
@@ -1389,15 +1386,8 @@ void xgpu_backend_initialize(void)
 	glBindBuffer(GL_QUERY_BUFFER, device.visibility_results_buffer);
 	glBufferStorage(GL_QUERY_BUFFER, VISIBILITY_TEST_SLOTS * sizeof(GLuint), NULL,
 		GL_MAP_READ_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
-#ifdef HALO_GUEST
-	/* the mapping would be a host address: the host keeps it and copies the
-	results into guest memory after each frame (D3DDevice_Present) */
-	if (host_gl_map_results(device.visibility_results_buffer, VISIBILITY_TEST_SLOTS * sizeof(GLuint)))
-		device.visibility_results = device.visibility_results_copy;
-#else
 	device.visibility_results = glMapBufferRange(GL_QUERY_BUFFER, 0, VISIBILITY_TEST_SLOTS * sizeof(GLuint),
 		GL_MAP_READ_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
-#endif
 	if (device.visibility_results)
 	{
 		glGenQueries(VISIBILITY_TEST_SLOTS, device.visibility_batches[0].queries);
@@ -4606,10 +4596,6 @@ static void frame_end_buffers(void)
 #else
 	device.stream_offset = STREAM_BUFFER_SIZE; /* orphan next frame */
 	device.index_offset = INDEX_BUFFER_SIZE;
-#endif
-#if defined(HALO_GUEST) && !defined(HALO_GLES)
-	if (device.visibility_results)
-		host_gl_read_results(device.visibility_results_copy, sizeof(device.visibility_results_copy));
 #endif
 }
 

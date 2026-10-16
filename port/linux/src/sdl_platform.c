@@ -30,7 +30,10 @@ and the debug keyboard that the game's console reads.
 #endif
 
 static SDL_Window *platform_window;
+#ifndef HALO_RENDER_STREAM
+/* (the game's own renderer's; else the host has it) */
 static SDL_GLContext platform_gl_context;
+#endif
 static SDL_ThreadID platform_event_thread;
 static BOOL platform_sdl_started = FALSE;
 /* the game's window was asked for (platform_video_initialize): without one
@@ -919,6 +922,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	(void)version;
 	return TRUE;
 #endif
+#ifndef HALO_RENDER_STREAM
 	platform_gl_context = SDL_GL_CreateContext(platform_window);
 #ifdef HALO_GLES
 	/* ES 3.2 where the driver has it, otherwise the renderer makes do with
@@ -945,6 +949,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	platform_mouse_capture(TRUE);
 #endif
 	return TRUE;
+#endif
 }
 
 #ifdef HALO_VR
@@ -993,7 +998,7 @@ void platform_display_apply(void)
 #endif
 #ifdef PLATFORM_HOST_GL
 	host_gl_window((unsigned int)(uintptr_t)platform_window, config_boolean("display.vsync") ? 1 : 0);
-#else
+#elif !defined(HALO_METAL)
 	SDL_GL_SetSwapInterval(config_boolean("display.vsync") ? 1 : 0);
 #endif
 }
@@ -1051,7 +1056,7 @@ void platform_video_swap(void)
 	Uint64 interval, now;
 
 #endif
-#ifdef PLATFORM_HOST_GL
+#ifdef HALO_RENDER_STREAM
 	/* (the host shows the frame, on its render thread: here it is paced) */
 #else
 	SDL_GL_SwapWindow(platform_window);

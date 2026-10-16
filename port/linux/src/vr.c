@@ -1276,21 +1276,12 @@ static void acquired_clear(void)
 
 unsigned int halo_vr_image(int swapchain)
 {
-	int index;
-
 	if (!vr.frame || swapchain < 0 || swapchain >= VR_SWAPCHAIN_COUNT)
 		return 0;
-#ifdef HALO_RENDER_STREAM
 	/* (the host acquires the images, as it draws: port/linux/host/
 	host_gl_vr.c; here they are only said to be) */
 	vr.acquired[swapchain] = 0;
 	return 1;
-#endif
-	index = host_vr_acquire(swapchain);
-	if (index < 0 || index >= vr.info.image_count[swapchain])
-		return 0;
-	vr.acquired[swapchain] = index;
-	return vr.info.images[swapchain][index];
 }
 
 static void recentre(void)
@@ -4534,9 +4525,6 @@ static int frame_begin(void)
 	vr.attempted = 1;
 	if (vr.pending)
 	{
-#ifndef HALO_RENDER_STREAM
-		host_vr_frame_end(&vr.pending_layers);
-#endif
 		acquired_clear();
 		vr.pending = 0;
 	}
@@ -4598,12 +4586,9 @@ int halo_vr_frame_waited(void)
 	return vr.frame;
 }
 
-/* The frame is ended (xrEndFrame) only when the next begins, as the game
-starts drawing it: SteamVR's xrEndFrame waits for the GPU to finish the
-frame, and in the meantime the game updates (input, ticks, sounds). Where
-the renderer is the host's (HALO_RENDER_STREAM), its render thread begins
-and ends the frame as it plays it, with these layers (xgpu_stream.h's
-VR_SUBMIT), while the game goes on. */
+/* The frame's layers, which the host's render thread ends the frame with as
+it plays the frame (xgpu_stream.h's VR_SUBMIT), while the game goes on: it
+begins and ends the runtime's frames, the game waits for them. */
 void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn)
 {
 	struct vr_host_layers *pending = &vr.pending_layers;
@@ -4618,7 +4603,6 @@ void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn)
 	vr.crouch_able = 0;
 	if (!vr.frame)
 		return;
-#ifdef HALO_RENDER_STREAM
 	/* (the host ends the frame with these layers, leaving out those whose
 	image it did not acquire or draw: every image taken as acquired, the
 	eyes' depth as written: port/linux/host/host_gl_vr.c) */
@@ -4629,7 +4613,6 @@ void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn)
 			vr.acquired[swapchain] = 0;
 		vr.depth_written = 1;
 	}
-#endif
 	memset(pending, 0, sizeof(*pending));
 	if (vr.views.should_render)
 	{

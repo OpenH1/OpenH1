@@ -271,7 +271,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
                          objdump: str, builtins_cc: str, environment: str, platform_defines: List[str],
                          extra_runtime: Optional[List[Path]] = None, extra_imports: Optional[List[Path]] = None,
                          extra_prototypes: Optional[List[Path]] = None, updater_cflags: str = "",
-                         desktop_gl: bool = False, base_register: bool = False, link_flags: str = "",
+                         base_register: bool = False, link_flags: str = "",
                          excluded_platform_sources: Iterable[str] = ()) -> Dict[str, Path]:
     """The guest image (build/halo_guest.elf) and the host's import table, for
     the builds that run the game as ILP32 code of the architecture arch
@@ -287,17 +287,16 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     desktop's). extra_runtime are more guest runtime sources, and
     extra_imports more lists of the host functions they import;
     updater_cflags are the desktop self-updater's defines
-    (port/linux/src/updater.c), for a guest that has it. desktop_gl gives the
-    guest desktop OpenGL's entry points (from gl_headers' GL/glcorearb.h) in
-    place of OpenGL ES's, for a guest without HALO_GLES (the desktop guest
-    builds' desktop renderer). base_register builds a guest whose memory lies
+    (port/linux/src/updater.c), for a guest that has it (the guests' renderer
+    is the host's, through the command stream: no OpenGL entry points).
+    base_register builds a guest whose memory lies
     at any base the host chooses (tools/guest_base_register.py) rather than
     in the low 4 GB, for an architecture that has one
     (GuestArch.base_register_flags); extra_prototypes are then the files that
     declare extra_imports' functions, whose pointer arguments the import
     stubs translate. link_flags are more of the image's linker options.
     excluded_platform_sources are files of port/linux/src the guest does not
-    build (the OpenGL backend, for a guest whose renderer is on the host)."""
+    build (the OpenGL backend: the renderer is the host's)."""
     extra_runtime = extra_runtime or []
     extra_imports = extra_imports or []
     extra_prototypes = extra_prototypes or []
@@ -363,22 +362,6 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     )
     n.build(outputs=gl_stamp, rule=f"{prefix}_gl_include")
 
-    guest_gl_c = gen_dir / "guest_gl.c"
-    gl_imports = gen_dir / "gl_imports.list"
-    if desktop_gl:
-        gl_stubs_command = (f"{python} tools/android_gl_stubs.py --arch {arch.name}{base_flag} --desktop "
-                            f"{LINUX_DIR}/src/gl.h {gl_headers}/GL/glcorearb.h {guest_gl_c} {gl_imports}")
-    else:
-        gl_stubs_command = (f"{python} tools/android_gl_stubs.py --arch {arch.name}{base_flag} {LINUX_DIR}/src/gl.h "
-                            f"{gl_headers}/GLES3/gl32.h {gl_headers}/GLES2/gl2ext.h {guest_gl_c} {gl_imports}")
-    n.rule(
-        name=f"{prefix}_gl_stubs",
-        command=gl_stubs_command,
-        description=f"{label} GL STUBS",
-    )
-    n.build(outputs=[guest_gl_c, gl_imports], rule=f"{prefix}_gl_stubs",
-            implicit=[Path("tools/android_gl_stubs.py"), GUEST_ARCH_SCRIPT, LINUX_DIR / "src" / "gl.h"])
-
     guest_posix_c = gen_dir / "guest_posix.c"
     posix_imports = gen_dir / "posix_imports.list"
     n.rule(
@@ -414,7 +397,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     n.build(outputs=imports_checked, rule=f"{prefix}_import_check",
             implicit=[Path("tools/check_host_imports.py"), *check_host_imports.inputs()])
     n.build(outputs=[imports_s, host_table_c], rule=f"{prefix}_imports",
-            inputs=[host_imports_list, *extra_imports, posix_imports, gl_imports],
+            inputs=[host_imports_list, *extra_imports, posix_imports],
             implicit=[Path("tools/android_imports.py"), GUEST_ARCH_SCRIPT, imports_checked,
                       *(prototypes if base_register else [])])
 
@@ -590,7 +573,6 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
             objects.append(guest_object(source, runtime_cflags))
     for source in extra_runtime:
         objects.append(guest_object(source, runtime_cflags))
-    objects.append(guest_object(guest_gl_c, runtime_cflags))
     objects.append(guest_object(guest_posix_c, runtime_cflags))
     imports_o = obj_dir / "gen" / "imports.o"
     n.build(outputs=imports_o, rule=f"{prefix}_guest_as", inputs=imports_s)

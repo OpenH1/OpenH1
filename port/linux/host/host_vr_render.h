@@ -22,6 +22,11 @@ void host_vr_render_thread(void);
 /* (the render thread) the oldest frame waited for and not yet begun,
 begun, unless one is already; 1 if one is begun */
 int host_vr_frame_begin(void);
+/* (the render thread) the swapchain's next image (an index into
+vr_host_info's images), or -1; released; the frame begun ended */
+int host_vr_acquire(int swapchain);
+void host_vr_release(int swapchain);
+void host_vr_frame_end(const struct vr_host_layers *layers);
 /* the session's images and sizes, as host_vr_initialize made them (NULL
 before) */
 const struct vr_host_info *host_vr_info(void);

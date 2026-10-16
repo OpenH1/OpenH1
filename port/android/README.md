@@ -364,9 +364,13 @@ build machine.
 - Gives the audio callback of SDL to a thread with a guest stack
   (`host/host_sdl.c`).
 - Does the calls of the guest: system calls (`host/host_syscall.c`), SDL
-  (`host/host_sdl.c`), OpenGL ES (`host/host_gl.c`), and the file, socket,
-  UPnP and DTLS functions of `port/linux/src/posix_*.c` (DTLS with Mbed TLS,
-  for internet play with browsers: `posix_dtls.c`).
+  (`host/host_sdl.c`), and the file, socket, UPnP and DTLS functions of
+  `port/linux/src/posix_*.c` (DTLS with Mbed TLS, for internet play with
+  browsers: `posix_dtls.c`).
+- Draws the game's frames, which the guest writes as the renderer's command
+  stream, with the OpenGL ES backend on a thread of its own
+  (`port/linux/host/host_gl_stream.c`; "The renderer's command stream" in
+  [port/linux/README.md](../linux/README.md#the-renderers-command-stream)).
 
 The guest calls the host through stubs (`tools/android_imports.py`, with the
 instructions of `import_stub` in `tools/guest_arch.py`). The two ABIs use
@@ -376,8 +380,7 @@ app's own (its folders, gesture edges and touch controls).
 `tools/check_host_imports.py` checks the lists against their declarations,
 and that every argument has a register on each host (on x86-64, six for
 integers and pointers: a later one may be an integer, never a pointer).
-`tools/android_gl_stubs.py` makes the OpenGL ES stubs from
-`port/linux/src/gl.h`. `tools/android_posix_stubs.py` makes the stubs of the
+`tools/android_posix_stubs.py` makes the stubs of the
 `posix_*` functions, which copy the `errno` of the host.
 
 ### The fixed addresses

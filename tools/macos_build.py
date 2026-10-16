@@ -92,7 +92,7 @@ MACOS_GUEST_DEFINES = ["-DHALO_GLES=1", "-DHALO_MACOS=1", "-DHALO_METAL", "-DHAL
 # (the renderer's backend is the host's, through the command stream:
 # port/linux/src/xgpu_stream_encode.c in place of the OpenGL backend and its
 # anti-aliasing passes)
-MACOS_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c"]
+MACOS_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c", "xgpu_glsl.c", "gl_functions.c"]
 
 # the app's bundle identifier (configure.py --macos-bundle-id): the
 # project's GitHub organisation's pages, the reverse-DNS name of a domain it

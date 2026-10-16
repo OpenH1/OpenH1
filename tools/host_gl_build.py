@@ -29,7 +29,7 @@ HOST_GL_SOURCES = ["host_gl_stream.c", "host_gl_textures.c"]
 HOST_GL_VR_SHARED = ["vr.h", "vr_host.h", "vr_visor.h"]
 HOST_GL_VR_SOURCES = ["host_gl_vr.c"]
 # (the guest's renderer, then: none of its own)
-RENDER_STREAM_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c"]
+RENDER_STREAM_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c", "xgpu_glsl.c", "gl_functions.c"]
 
 
 def host_gl_renderer(n: Writer, prefix: str, label: str, build: Path, host_cc: str, host_cflags: str,

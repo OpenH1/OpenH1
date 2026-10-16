@@ -330,6 +330,5 @@ uint32_t host_sdl_handle_new(int type, void *object);
 void *host_sdl_handle_get(uint32_t handle, int type);
 void host_sdl_handle_free(uint32_t handle);
 
-void *host_gl_resolve(const char *name);
 
 #endif

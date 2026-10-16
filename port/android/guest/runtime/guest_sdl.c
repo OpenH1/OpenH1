@@ -18,9 +18,6 @@ type that carries no pointer, which covers all the platform layer reads.
 
 #include "guest_host.h"
 
-/* guest/runtime/guest_gl.c (generated) */
-SDL_FunctionPointer guest_gl_get_proc_address(const char *name);
-
 bool SDL_Init(SDL_InitFlags flags)
 {
 	return host_sdl_init(flags) != 0;
@@ -136,31 +133,6 @@ bool SDL_SetWindowRelativeMouseMode(SDL_Window *window, bool enabled)
 bool SDL_GL_SetAttribute(SDL_GLAttr attribute, int value)
 {
 	return host_sdl_gl_set_attribute((int)attribute, value) != 0;
-}
-
-SDL_GLContext SDL_GL_CreateContext(SDL_Window *window)
-{
-	return (SDL_GLContext)host_sdl_gl_create_context((unsigned int)window);
-}
-
-bool SDL_GL_MakeCurrent(SDL_Window *window, SDL_GLContext context)
-{
-	return host_sdl_gl_make_current((unsigned int)window, (unsigned int)context) != 0;
-}
-
-bool SDL_GL_SetSwapInterval(int interval)
-{
-	return host_sdl_gl_set_swap_interval(interval) != 0;
-}
-
-bool SDL_GL_SwapWindow(SDL_Window *window)
-{
-	return host_sdl_gl_swap_window((unsigned int)window) != 0;
-}
-
-SDL_FunctionPointer SDL_GL_GetProcAddress(const char *name)
-{
-	return guest_gl_get_proc_address(name);
 }
 
 /* ---------- events */
