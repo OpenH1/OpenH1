@@ -311,8 +311,17 @@ it (the window opens before the game draws).
 
 `HALO_METAL_STATS=<seconds>` logs the pacing that often: the link's
 refreshes, the frames and clears presented, how many drawables reached the
-screen and the intervals between them, the frames that waited for an
-image or were dropped, and the presentation's GPU time. A second line
+screen and the intervals between them; the refreshes without a new frame,
+by what the render thread was doing then (waiting for the GPU to finish a
+frame, for an image, playing the stream, or waiting for the game's); the
+link's callbacks more than a refresh and a half after the last (with every
+drawable still to reach the screen or some free, after another such, after
+a slow callback, and whether the link's target time skipped a refresh too
+or the callback came late for the next), and the slowest callback; the
+frames that waited for an image or were dropped, those that reached the
+screen after the link's target, and those whose presentation ended on the
+GPU within a millisecond of it (and the least time to spare); and the
+presentation's GPU time and its wait from commit to the GPU's start. A second line
 gives a frame's mean costs: the time the GPU was busy (with the game's
 command buffers or the presentation's: the union of their times, which
 overlap) and its share of the time, the GPU's time on the frame's command

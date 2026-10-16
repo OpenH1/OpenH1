@@ -455,12 +455,21 @@ uint64_t xgpu_metal_frame_completed(void)
 	return completed;
 }
 
+static _Atomic int frame_waiting;
+
 void xgpu_metal_frame_wait(uint64_t fence)
 {
 	pthread_mutex_lock(&metal.completed_lock);
+	atomic_store(&frame_waiting, 1);
 	while (metal.completed < fence)
 		pthread_cond_wait(&metal.completed_condition, &metal.completed_lock);
+	atomic_store(&frame_waiting, 0);
 	pthread_mutex_unlock(&metal.completed_lock);
+}
+
+int xgpu_metal_frame_waiting(void)
+{
+	return atomic_load(&frame_waiting);
 }
 
 /* the command buffer being recorded, begun if there is none */

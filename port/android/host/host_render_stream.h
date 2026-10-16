@@ -158,6 +158,8 @@ void host_render_stream_close(void);
 statistics, for the host's logs (read as they are, racing with their
 writers) */
 const struct xgpu_stream_ring *host_render_stream_ring(void);
+/* the render thread is playing the stream (1), or waits for more (0) */
+int host_render_stream_playing(void);
 
 /* ---------- for tests: the decoder alone, on the calling thread
 

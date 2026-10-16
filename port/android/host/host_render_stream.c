@@ -20,6 +20,7 @@ thread plays N + 1 and the game writes N + 2.
 #include "host_render_stream.h"
 
 #include <pthread.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -679,6 +680,13 @@ static void stream_failed(void)
 	pthread_cond_broadcast(&render.done);
 }
 
+static _Atomic int render_playing;
+
+int host_render_stream_playing(void)
+{
+	return atomic_load(&render_playing);
+}
+
 static void *render_thread(void *argument)
 {
 	(void)argument;
@@ -701,7 +709,9 @@ static void *render_thread(void *argument)
 			pthread_mutex_unlock(&render.lock);
 			if (!render.frame_started)
 				render.frame_started = monotonic_nanoseconds();
+			atomic_store(&render_playing, 1);
 			reached = host_render_decode(render.decoder, from, to);
+			atomic_store(&render_playing, 0);
 			frame_ended = render.decoder->frame_ended;
 			if (frame_ended)
 			{

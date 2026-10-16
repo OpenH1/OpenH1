@@ -90,17 +90,40 @@ static struct
 	int queue[PRESENT_IMAGES];
 	int queued;
 	BOOL frames_seen;
+	/* a frame waits for an image (host_metal_present_exchange) */
+	_Atomic int image_waiting;
 	BOOL unpaced;
 
 	/* pacing, since the last log */
 	double stats_interval, stats_since;
 	uint32_t ticks, frames_presented, idle_presented, skipped, waits, dropped;
+	/* the refreshes without a new frame by what the render thread was doing:
+	waiting for the GPU to finish a frame, for an image, playing the stream,
+	or waiting for the game's */
+	uint32_t skipped_gpu, skipped_image, skipped_playing, skipped_game;
 	_Atomic uint32_t shown, late, intervals;
 	_Atomic uint64_t interval_sum_us, interval_minimum_us, interval_maximum_us;
-	/* the presentations' GPU time */
-	_Atomic uint64_t present_gpu_ns;
-	_Atomic uint32_t present_buffers;
+	/* the presentations' GPU time, their wait from commit to the GPU's
+	start, and those shown after the refresh the link drew them for */
+	_Atomic uint64_t present_gpu_ns, present_queued_ns, present_queued_most_ns;
+	_Atomic uint32_t present_buffers, missed;
+	/* presentations whose GPU work ended after their target time less a
+	millisecond (the display's latch), and the least slack */
+	_Atomic uint32_t present_gpu_late;
+	_Atomic int64_t present_slack_least_us;
 	double last_presented;
+	/* the link's callbacks more than 1.5 refreshes after the last: with
+	every drawable still to reach the screen, with some free, and those
+	right after another such */
+	double last_tick, last_target;
+	/* of those, the ones whose target time skipped a refresh too (the link's
+	choice), and those for the next refresh (delivered late) */
+	uint32_t gaps_target_skipped, gaps_delivered_late;
+	uint32_t gaps_starved, gaps_free, gaps_following, gaps_after_slow;
+	/* the last callback's time from its start to its return, and the most */
+	double last_callback_seconds, callback_most_seconds;
+	BOOL last_gap;
+	_Atomic int drawables_pending;
 } presentation = {
 	.lock = PTHREAD_MUTEX_INITIALIZER,
 	.freed = PTHREAD_COND_INITIALIZER,
@@ -142,6 +165,7 @@ id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture)
 			break;
 		}
 		presentation.waits++;
+		atomic_store(&presentation.image_waiting, 1);
 		clock_gettime(CLOCK_REALTIME, &until);
 		until.tv_nsec += PRESENT_WAIT_MAXIMUM_NS;
 		if (until.tv_nsec >= 1000000000L)
@@ -162,6 +186,7 @@ id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture)
 			break;
 		}
 	}
+	atomic_store(&presentation.image_waiting, 0);
 	replaced = presentation.images[found];
 	presentation.images[found] = picture;
 	presentation.image_states[found] = _image_queued;
@@ -203,12 +228,15 @@ static double seconds_now(void)
 	return CACurrentMediaTime();
 }
 
-static void presented(double when)
+static void presented(double when, double target)
 {
 	double previous = presentation.last_presented;
 
 	if (when <= 0.0)
 		return;
+	/* (a refresh's tolerance: the times are the display's) */
+	if (target > 0.0 && when > target + 0.001)
+		atomic_fetch_add(&presentation.missed, 1);
 	presentation.last_presented = when;
 	atomic_fetch_add(&presentation.shown, 1);
 	if (previous > 0.0)
@@ -238,22 +266,32 @@ static void pacing_log(double now)
 	const struct xgpu_stream_ring *ring = host_render_stream_ring();
 	static uint32_t waits_before, wait_nanoseconds_before;
 	uint32_t waits = ring ? ring->waits : 0, wait_nanoseconds = ring ? ring->wait_nanoseconds : 0;
+	uint32_t buffers = atomic_exchange(&presentation.present_buffers, 0);
 
 	xgpu_metal_statistics(&statistics);
 	xgpu_metal_textures_statistics(&textures);
 	host_logf(HOST_LOG_INFO,
 		"metal: %.1f s: %u refreshes (%.1f Hz), %u presented (%u frames, %u cleared), %u on screen (%.1f a second), "
-		"intervals %.2f ms mean, %.2f min, %.2f max, %u late; %u refreshes without a new frame, %u waits for an image, "
-		"%u frames dropped; "
-		"drawable %ux%u, presentation's GPU %.3f ms a refresh; frames %u, draws %u, passes %u",
+		"intervals %.2f ms mean, %.2f min, %.2f max, %u late; %u refreshes without a new frame (the GPU %u, an image %u, "
+		"playing %u, the game %u), %u callbacks late (drawables all pending %u, some free %u; after another %u, after a slow one %u, target skipped %u, delivered late %u; the slowest %.2f ms), %u waits for an image, "
+		"%u frames dropped, %u shown after their refresh; "
+		"%u ended on the GPU within 1 ms of their target (the least slack %.2f ms); "
+		"drawable %ux%u, presentation's GPU %.3f ms a refresh, queued %.3f ms (the most %.3f); frames %u, draws %u, passes %u",
 		seconds, presentation.ticks, presentation.ticks / seconds, presentation.frames_presented + presentation.idle_presented,
 		presentation.frames_presented, presentation.idle_presented, shown, shown / seconds,
 		intervals ? (double)sum / 1000.0 / intervals : 0.0,
 		atomic_exchange(&presentation.interval_minimum_us, 0) / 1000.0,
 		atomic_exchange(&presentation.interval_maximum_us, 0) / 1000.0, atomic_exchange(&presentation.late, 0),
-		presentation.skipped, presentation.waits, presentation.dropped, presentation.drawable_width, presentation.drawable_height,
-		atomic_load(&presentation.present_buffers) ? atomic_exchange(&presentation.present_gpu_ns, 0) / 1e6 /
-			atomic_exchange(&presentation.present_buffers, 0) : 0.0,
+		presentation.skipped, presentation.skipped_gpu, presentation.skipped_image, presentation.skipped_playing,
+		presentation.skipped_game, presentation.gaps_starved + presentation.gaps_free, presentation.gaps_starved,
+		presentation.gaps_free, presentation.gaps_following, presentation.gaps_after_slow, presentation.gaps_target_skipped,
+		presentation.gaps_delivered_late,
+		presentation.callback_most_seconds * 1000.0, presentation.waits, presentation.dropped, atomic_exchange(&presentation.missed, 0),
+		atomic_exchange(&presentation.present_gpu_late, 0), atomic_exchange(&presentation.present_slack_least_us, 1000000) / 1000.0,
+		presentation.drawable_width, presentation.drawable_height,
+		buffers ? atomic_exchange(&presentation.present_gpu_ns, 0) / 1e6 / buffers : 0.0,
+		buffers ? atomic_exchange(&presentation.present_queued_ns, 0) / 1e6 / buffers : 0.0,
+		atomic_exchange(&presentation.present_queued_most_ns, 0) / 1e6,
 		statistics.frames, statistics.draws, statistics.passes);
 	if (statistics.frames)
 		host_logf(HOST_LOG_INFO,
@@ -276,6 +314,10 @@ static void pacing_log(double now)
 	presentation.stats_since = now;
 	presentation.ticks = presentation.frames_presented = presentation.idle_presented = 0;
 	presentation.skipped = presentation.waits = presentation.dropped = 0;
+	presentation.gaps_starved = presentation.gaps_free = presentation.gaps_following = presentation.gaps_after_slow = 0;
+	presentation.gaps_target_skipped = presentation.gaps_delivered_late = 0;
+	presentation.callback_most_seconds = 0.0;
+	presentation.skipped_gpu = presentation.skipped_image = presentation.skipped_playing = presentation.skipped_game = 0;
 }
 
 /* ---------- each refresh */
@@ -287,6 +329,19 @@ static void pacing_log(double now)
 
 - (void)metalDisplayLink:(CAMetalDisplayLink *)link needsUpdate:(CAMetalDisplayLinkUpdate *)update
 {
+	double start = seconds_now();
+
+	[self refresh:update];
+	presentation.last_callback_seconds = seconds_now() - start;
+	if (presentation.last_callback_seconds > presentation.callback_most_seconds)
+		presentation.callback_most_seconds = presentation.last_callback_seconds;
+	(void)link;
+}
+
+- (void)refresh:(CAMetalDisplayLinkUpdate *)update
+{
+	CAMetalDisplayLink *link = presentation.link;
+
 	@autoreleasepool
 	{
 		id<CAMetalDrawable> drawable = update.drawable;
@@ -295,12 +350,35 @@ static void pacing_log(double now)
 		id<MTLCommandBuffer> buffer;
 		id<MTLRenderCommandEncoder> encoder;
 		id<MTLTexture> image = nil;
-		double now = seconds_now();
+		double now = seconds_now(), target = update.targetPresentationTimestamp, committed;
 		int index = -1;
 		BOOL idle;
 
 		(void)link;
 		presentation.ticks++;
+		if (presentation.last_tick > 0.0 && presentation.refresh_rate > 0.0f &&
+			now - presentation.last_tick > 1.5 / presentation.refresh_rate)
+		{
+			if (atomic_load(&presentation.drawables_pending) >= (int)presentation.layer.maximumDrawableCount - 1)
+				presentation.gaps_starved++;
+			else
+				presentation.gaps_free++;
+			if (presentation.last_gap)
+				presentation.gaps_following++;
+			if (presentation.last_callback_seconds > 1.0 / presentation.refresh_rate)
+				presentation.gaps_after_slow++;
+			if (update.targetPresentationTimestamp - presentation.last_target > 1.5 / presentation.refresh_rate)
+				presentation.gaps_target_skipped++;
+			else
+				presentation.gaps_delivered_late++;
+			presentation.last_gap = YES;
+		}
+		else
+		{
+			presentation.last_gap = NO;
+		}
+		presentation.last_tick = now;
+		presentation.last_target = update.targetPresentationTimestamp;
 		if (presentation.stats_interval > 0.0 && now - presentation.stats_since >= presentation.stats_interval)
 			pacing_log(now);
 		/* (a new size is the next drawable's) */
@@ -325,6 +403,14 @@ static void pacing_log(double now)
 		{
 			/* (the frame shown stays: nothing new to present) */
 			presentation.skipped++;
+			if (xgpu_metal_frame_waiting())
+				presentation.skipped_gpu++;
+			else if (atomic_load(&presentation.image_waiting))
+				presentation.skipped_image++;
+			else if (host_render_stream_playing())
+				presentation.skipped_playing++;
+			else
+				presentation.skipped_game++;
 			return;
 		}
 
@@ -356,16 +442,32 @@ static void pacing_log(double now)
 			[encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
 		}
 		[encoder endEncoding];
+		atomic_fetch_add(&presentation.drawables_pending, 1);
 		[drawable addPresentedHandler:^(id<MTLDrawable> shown) {
-			presented(shown.presentedTime);
+			atomic_fetch_sub(&presentation.drawables_pending, 1);
+			presented(shown.presentedTime, target);
 		}];
 		[buffer presentDrawable:drawable];
+		committed = seconds_now();
 		[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
 			if (done.GPUEndTime > done.GPUStartTime)
 			{
+				uint64_t queued = done.GPUStartTime > committed ? (uint64_t)((done.GPUStartTime - committed) * 1e9) : 0;
+
 				xgpu_metal_gpu_interval(done.GPUStartTime, done.GPUEndTime);
 				atomic_fetch_add(&presentation.present_gpu_ns, (uint64_t)((done.GPUEndTime - done.GPUStartTime) * 1e9));
+				atomic_fetch_add(&presentation.present_queued_ns, queued);
+				if (queued > atomic_load(&presentation.present_queued_most_ns))
+					atomic_store(&presentation.present_queued_most_ns, queued);
 				atomic_fetch_add(&presentation.present_buffers, 1);
+				{
+					int64_t slack = (int64_t)((target - done.GPUEndTime) * 1e6);
+
+					if (slack < 1000)
+						atomic_fetch_add(&presentation.present_gpu_late, 1);
+					if (slack < atomic_load(&presentation.present_slack_least_us))
+						atomic_store(&presentation.present_slack_least_us, slack);
+				}
 			}
 		}];
 		if (index >= 0)
@@ -548,6 +650,7 @@ int host_metal_window_open(uint32_t window)
 	presentation.stats_interval = stats ? atof(stats) : 0.0;
 	presentation.unpaced = getenv("HALO_METAL_UNPACED") && atoi(getenv("HALO_METAL_UNPACED"));
 	presentation.stats_since = seconds_now();
+	atomic_store(&presentation.present_slack_least_us, 1000000);
 	atomic_store(&presentation.active, 1);
 	/* (the display's deadlines are each refresh's: the scheduler runs it
 	first, as it does the main threads of apps in front) */

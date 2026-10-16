@@ -114,6 +114,11 @@ const struct xgpu_stream_ring *host_render_stream_ring(void)
 {
 	return NULL;
 }
+
+int host_render_stream_playing(void)
+{
+	return 0;
+}
 #endif
 
 /* host_metal.m */
