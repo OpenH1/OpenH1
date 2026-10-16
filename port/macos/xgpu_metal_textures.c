@@ -28,6 +28,7 @@ levels from the first.
 #include "xgpu.h"
 #include "xgpu_stream.h"
 #include "host.h"
+#include "host_render_record.h"
 #include "xgpu_metal.h"
 #include "xgpu_metal_textures.h"
 
@@ -285,6 +286,13 @@ static uint32_t xbox_texture_get(const struct xgpu_stream_texture_stage *stage)
 
 	if (!readable(stage->resource, 5 * sizeof(uint32_t)))
 		return 0;
+	/* (what is read of the guest's memory, for a recording) */
+	if (host_render_record_active)
+	{
+		host_render_record_note(stage->resource, 5 * sizeof(uint32_t));
+		if (palette && ((stage->resource_format & D3DFORMAT_FORMAT_MASK) >> D3DFORMAT_FORMAT_SHIFT) == FORMAT_PALETTIZED)
+			host_render_record_note(stage->palette, 256 * sizeof(D3DCOLOR));
+	}
 	entry = xbox_entry_find(stage, palette);
 
 	if (!entry || !entry->texture)
@@ -303,6 +311,8 @@ static uint32_t xbox_texture_get(const struct xgpu_stream_texture_stage *stage)
 		entry->generation = host_memory_watch_generation(entry->address, entry->size);
 		if (!entry->generation)
 			entry->generation = 1;
+		if (host_render_record_active)
+			host_render_record_note(entry->address, entry->size);
 		xbox_texture_upload(entry, palette);
 	}
 	entry->watched_serial = serial;
@@ -372,6 +382,8 @@ static uint32_t image_get(const struct xgpu_stream_texture_stage *stage)
 			return 0;
 	}
 	entry->format_word = stage->resource_size;
+	if (host_render_record_active)
+		host_render_record_note(stage->data, width * height * (stage->resource_format == _image_coverage ? 1 : 4));
 	xgpu_metal_texture_upload(entry->texture, 0, 0, 0, 0, 0, width, height, 1, pixels,
 		width * (stage->resource_format == _image_coverage ? 1 : 4), 0);
 	if (stage->levels > 1)

@@ -12,6 +12,8 @@ writes with neither locks nor stdio.
 */
 
 #include "host.h"
+#include "host_render_record.h"
+#include "host_render_stream.h"
 #include "tomlc17.h"
 
 #include <SDL3/SDL.h>
@@ -90,6 +92,10 @@ void host_abort(const char *reason)
 void host_exit(int code)
 {
 	host_logf(HOST_LOG_INFO, "the game exited (%d)", code);
+	/* (a recording of the render stream ends with the records submitted:
+	host_render_record.h) */
+	if (host_render_record_active)
+		host_render_stream_close();
 	/* (what the host itself printed: the guest's output does not go
 	through the host's stdio, host_syscall.c) */
 	fflush(stdout);

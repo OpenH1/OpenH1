@@ -17,6 +17,7 @@ thread plays N + 1 and the game writes N + 2.
 */
 
 #include "host.h"
+#include "host_render_record.h"
 #include "host_render_stream.h"
 
 #include <pthread.h>
@@ -553,6 +554,13 @@ uint32_t host_render_decode(struct host_render_decoder *decoder, uint32_t from, 
 		{
 			error = XGPU_STREAM_ERROR_RECORD;
 		}
+		else if (host_render_record_active)
+		{
+			/* (recorded, or the replay's memory restored: host_render_record.h) */
+			host_render_record_before(ring, position, start, type, size);
+			error = decode_record(decoder, start, type, size);
+			host_render_record_after();
+		}
 		else
 		{
 			error = decode_record(decoder, start, type, size);
@@ -798,6 +806,7 @@ int host_render_stream_open(uint32_t ring_address)
 	render.stopping = 0;
 	if (backend->open)
 		backend->open(backend->context, host_pointer(ring->buffer), ring->size, host_pointer(ring->visibility));
+	host_render_record_start(ring);
 	if (render_thread_start())
 	{
 		host_render_decoder_free(render.decoder);
@@ -879,6 +888,7 @@ void host_render_stream_close(void)
 	pthread_cond_signal(&render.work);
 	pthread_mutex_unlock(&render.lock);
 	pthread_join(render.thread, NULL);
+	host_render_record_stop();
 	host_render_decoder_free(render.decoder);
 	render.decoder = NULL;
 	render.running = 0;

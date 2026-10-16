@@ -63,6 +63,10 @@ struct xgpu_metal_stream_shaders
 
 void xgpu_metal_stream_set_shaders(const struct xgpu_metal_stream_shaders *shaders);
 
+/* a target's picture written to path as a PNG; nonzero if written (the
+render thread: host_render_record.h's shooter) */
+int xgpu_metal_stream_shot(uint32_t target, const char *path);
+
 /* the MSL emitter's provider (xgpu_metal_shaders.c) */
 const struct xgpu_metal_stream_shaders *xgpu_metal_shaders(void);
 

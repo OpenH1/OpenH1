@@ -145,6 +145,8 @@ python -m pytest -q tools/test_linux_package.py tools/test_install_layout.py   #
 python -m pytest -q tools/test_guest_base_register.py tools/test_host_memory_base.py  # the base register
 python -m pytest -q tools/test_macos_metal.py               # the Metal backend (ninja macos_metal_test first)
 python -m pytest -q tools/test_macos_app.py                 # the macOS app's Info.plist, entitlements, signature
+build/macos/halo_replay <recording> --shots <dir>           # a recorded render stream replayed (ninja macos_replay;
+                                                            # HALO_RENDER_RECORD: port/macos/README.md)
 python tools/base_register_bench/run.py                     # the base register's cost (Linux arm64, macOS)
 python tools/test_touch_layout.py                           # the Android touch layout (JDK 17+)
 python tools/test_light_storage.py

@@ -50,7 +50,10 @@ def build(cc, headers, binary, flags):
          str(ROOT / "port" / "android" / "tests" / "host_render_stream_test.c"),
          str(headers / "xgpu_stream_encode.c"),
          str(ROOT / "port" / "android" / "host" / "host_render_stream.c"),
-         "-o", str(binary), "-lpthread"],
+         str(ROOT / "port" / "android" / "host" / "host_render_record.c"),
+         "-o", str(binary), "-lpthread",
+         # (the recording's blocks are compressed with Apple's libcompression)
+         *(["-lcompression"] if sys.platform == "darwin" else [])],
         check=True,
     )
 

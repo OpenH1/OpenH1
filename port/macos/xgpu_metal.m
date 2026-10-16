@@ -981,6 +981,7 @@ uint32_t xgpu_metal_shader_create(const char *source, size_t size, const char *e
 	id<MTLLibrary> library;
 	id<MTLFunction> function;
 	NSError *error = nil;
+	double start;
 
 	if (!text || metal.shader_count + 1 >= SHADER_MAXIMUM)
 		return 0;
@@ -988,6 +989,7 @@ uint32_t xgpu_metal_shader_create(const char *source, size_t size, const char *e
 	existing = metal.shader_handles[key];
 	if (existing)
 		return existing.unsignedIntValue;
+	start = seconds_now();
 	options = [MTLCompileOptions new];
 	/* (no fast maths: the GLSL emitted for the other backends has none) */
 	if (@available(macOS 15.0, *))
@@ -996,6 +998,10 @@ uint32_t xgpu_metal_shader_create(const char *source, size_t size, const char *e
 		options.fastMathEnabled = NO;
 	library = [metal.device newLibraryWithSource:text options:options error:&error];
 	function = library ? [library newFunctionWithName:name] : nil;
+	pthread_mutex_lock(&metal.statistics_lock);
+	metal.statistics.shaders_compiled++;
+	metal.statistics.shader_seconds += seconds_now() - start;
+	pthread_mutex_unlock(&metal.statistics_lock);
 	if (!function)
 	{
 		metal_log(HOST_LOG_ERROR, @"cannot compile %@: %@", name, error ? error.localizedDescription : @"no such function");

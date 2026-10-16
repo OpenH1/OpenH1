@@ -360,6 +360,53 @@ GPU's time a frame says little about the work. To measure the work:
   (`xcrun xctrace record --template 'Metal System Trace' --launch -- build/macos/halo`)
   shows the GPU's performance states and the window server's work.
 
+### Recording the stream, and replaying it (`halo_replay`)
+
+The renderer's work can be recorded once and replayed in seconds, without
+the game: the same frames every time, no maps, no lobby, no guest.
+
+- `HALO_RENDER_RECORD=<file>` records every record the render thread plays
+  (`port/android/host/host_render_record.c`, the host's, in every build),
+  with the guest memory each one reads through guest addresses at the moment
+  it is played: inline data too large for the ring, and what the backend
+  reads in place, which the textures' cache names as it reads it (the Xbox
+  textures' headers, palettes and texels, the images' pixels). Memory is
+  stored by its content's hash, each content once; the file is written in
+  blocks that a thread of its own compresses (LZ4, Apple's libcompression;
+  on other hosts the blocks are stored as they are). Its format is the
+  recorder's and the tool's alone (`HOST_RENDER_RECORD_VERSION`), not the
+  stream's. Record with `HALO_METAL_UNPACED=1`: a paced window the display
+  does not show (behind another app, on another space) waits 100 ms a frame.
+- `HALO_RENDER_SHOTS=<folder>` and `HALO_RENDER_SHOT_FRAMES=<frames>`
+  (`600,1500`, `100-900/100`) write those frames' back buffers, as each is
+  presented, to `<folder>/frame_<n>.png` (frames counted from the stream's
+  start). The replay writes its shots the same way.
+- `ninja macos_replay` makes `build/macos/halo_replay`:
+
+```sh
+build/macos/halo_replay <file> [--frames a-b] [--window] [--unpaced] [--shots dir]
+    [--shot-frames list] [--loop N] [--cold] [--archive path] [--hitch ms] [--quiet]
+build/macos/halo_replay --compare <shots> <shots>
+```
+
+  It reserves the guest's 4 GB as the host does, writes the records into
+  the ring where they were and submits them as the encoder did, and the same
+  render thread, decoder and Metal backend play them; before each record,
+  the memory it reads is put back, and pages that changed count as written
+  for the textures' cache. Offscreen by default (`--window`: paced by the
+  display unless `--unpaced`). `--frames a-b` measures those frames (the
+  ones before are played unmeasured, as the state is theirs); `--loop N`
+  plays it all N times in one process (shots in `dir/loop<n>`); `--cold`
+  runs in a throwaway app of a new bundle id, which Metal gives a shader
+  cache of its own, with an empty pipeline archive (both removed after);
+  the archive is otherwise `<file>.pipelines`. Each measured frame prints
+  its interval (render thread, frame end to frame end), the render thread's
+  CPU, the GPU time completed in it (a frame or two late), its draws, the
+  pipelines made and the MSL functions compiled, with their times; then
+  the percentiles and the hitches (over `--hitch`, 12.5 ms by default, and
+  twice the median; shot frames, which wait for their PNG, are not
+  counted). `--compare` compares two shot folders pixel by pixel.
+
 ### The backend (`xgpu_metal.m`)
 
 `xgpu_metal.h` declares its functions; `xgpu_metal_stream.m` makes them the

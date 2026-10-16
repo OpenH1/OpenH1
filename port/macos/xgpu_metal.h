@@ -468,6 +468,10 @@ struct xgpu_metal_statistics
 	uint32_t guest_buffers_made, guest_bytes_copied;
 	uint64_t ring_bytes;
 	double pipeline_seconds;
+	/* MSL functions compiled (xgpu_metal_shader_create, a source not seen
+	before in this run), and the time it took */
+	uint32_t shaders_compiled;
+	double shader_seconds;
 	/* the GPU's time on the command buffers completed, and their count; the
 	render thread's CPU time between frames' ends */
 	double gpu_seconds;

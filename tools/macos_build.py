@@ -99,7 +99,7 @@ MACOS_BUNDLE_ID = "io.github.opencommunityedition.opence"
 
 # the host's frameworks: Metal and its layer (port/macos/host_metal.m,
 # xgpu_metal.m)
-MACOS_FRAMEWORKS = "-framework Metal -framework QuartzCore -framework Foundation -framework AppKit"
+MACOS_FRAMEWORKS = "-framework Metal -framework QuartzCore -framework Foundation -framework AppKit -framework ImageIO -lcompression"
 
 # (port/android/host's: those of the Android app alone, the fixed low
 # memory and Linux's system calls, which port/macos and host_memory_base.c
@@ -356,6 +356,20 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     n.build(outputs=test_obj, rule="macos_host_cc", inputs=PORT_DIR / "tests" / "xgpu_metal_test.m",
             variables={"cflags": objc_cflags})
     test = BUILD / "xgpu_metal_test"
-    n.build(outputs=test, rule="macos_host_link", inputs=[test_obj, *metal_objects, *shared_objects], implicit=[libsdl])
+    # (the textures' cache names what it reads to the render stream's recording)
+    record_obj = host_obj_dir / "host_render_record.c.o"
+    n.build(outputs=test, rule="macos_host_link", inputs=[test_obj, record_obj, *metal_objects, *shared_objects],
+            implicit=[libsdl])
     n.build(outputs="macos_metal_test", rule="phony", inputs=[test, staged_sdl])
+
+    # ---------- the command stream's replay (port/macos/tools/halo_replay.m)
+
+    replay_obj = host_obj_dir / "tools" / "halo_replay.m.o"
+    n.build(outputs=replay_obj, rule="macos_host_cc", inputs=PORT_DIR / "tools" / "halo_replay.m",
+            variables={"cflags": objc_cflags})
+    replay_host = [host_obj_dir / "host_render_stream.c.o", record_obj]
+    replay = BUILD / "halo_replay"
+    n.build(outputs=replay, rule="macos_host_link", inputs=[replay_obj, *replay_host, *metal_objects, *shared_objects],
+            implicit=[libsdl])
+    n.build(outputs="macos_replay", rule="phony", inputs=[replay, staged_sdl])
     n.newline()

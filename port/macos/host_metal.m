@@ -40,6 +40,7 @@ drawables reached the screen.
 #include "host.h"
 #undef host_page_size
 #include "xgpu_metal_internal.h"
+#include "host_render_record.h"
 #include "host_render_stream.h"
 #include "xgpu_metal_stream.h"
 #include "xgpu_metal_textures.h"
@@ -574,8 +575,15 @@ int host_metal_initialize(void)
 		host_memory_remapped = xgpu_metal_guest_remapped;
 		host_render_stream_set_backend(xgpu_metal_stream_backend());
 		xgpu_metal_stream_set_shaders(xgpu_metal_shaders());
+		host_render_record_set_shooter(xgpu_metal_stream_shot);
 	}
 	return result;
+}
+
+/* (the replay's: port/macos/tools/halo_replay.m) */
+void host_metal_set_unpaced(int unpaced)
+{
+	presentation.unpaced = unpaced ? YES : NO;
 }
 
 /* (a host import: the guest's sdl_platform.c, on the main thread) */

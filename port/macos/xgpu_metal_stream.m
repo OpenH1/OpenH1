@@ -32,6 +32,7 @@ by the functions under "the interface's values".
 #if __has_include("host_render_stream.h")
 
 #import <Foundation/Foundation.h>
+#import <ImageIO/ImageIO.h>
 
 /* (host.h's host_page_size is Mach's too: not used here) */
 #define host_page_size host_page_size_of_guest_memory
@@ -328,6 +329,48 @@ static int stream_read_target(void *context, const struct xgpu_stream_read_targe
 		return 0;
 	return xgpu_metal_read_pixels(entry->texture, 0, record->layer > 0 ? (uint32_t)record->layer : 0, 0, 0, width, height,
 		host_pointer(record->pixels), width * 4);
+}
+
+/* a target's picture as a PNG (host_render_record.h's shots: a frame's back
+buffer as it is presented); its pixels' alpha is not written */
+int xgpu_metal_stream_shot(uint32_t target, const char *path)
+{
+	struct stream_target *entry = target_get(target);
+	uint32_t width, height;
+	unsigned char *pixels;
+	int written = 0;
+
+	if (!entry || entry->description.format != XGPU_METAL_FORMAT_BGRA8)
+		return 0;
+	width = entry->description.width;
+	height = entry->description.height;
+	pixels = malloc((size_t)width * height * 4);
+	if (!pixels)
+		return 0;
+	if (xgpu_metal_read_pixels(entry->texture, 0, 0, 0, 0, width, height, pixels, width * 4))
+	{
+		CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
+		CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, pixels, (size_t)width * height * 4, NULL);
+		CGImageRef image = CGImageCreate(width, height, 8, 32, width * 4, space,
+			kCGBitmapByteOrder32Little | (CGBitmapInfo)kCGImageAlphaNoneSkipFirst, provider, NULL, false,
+			kCGRenderingIntentDefault);
+		NSURL *url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path]];
+		CGImageDestinationRef destination = CGImageDestinationCreateWithURL((__bridge CFURLRef)url, CFSTR("public.png"), 1,
+			NULL);
+
+		if (destination && image)
+		{
+			CGImageDestinationAddImage(destination, image, NULL);
+			written = CGImageDestinationFinalize(destination) ? 1 : 0;
+		}
+		if (destination)
+			CFRelease(destination);
+		CGImageRelease(image);
+		CGDataProviderRelease(provider);
+		CGColorSpaceRelease(space);
+	}
+	free(pixels);
+	return written;
 }
 
 /* ---------- textures */
