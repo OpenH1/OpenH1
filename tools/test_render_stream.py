@@ -48,7 +48,7 @@ def build(cc, headers, binary, flags):
          f"-I{headers}", f"-I{ROOT / 'port' / 'linux' / 'src'}", f"-I{ROOT / 'port' / 'android' / 'host'}",
          f"-I{ROOT / 'port' / 'android' / 'include'}",
          str(ROOT / "port" / "android" / "tests" / "host_render_stream_test.c"),
-         str(headers / "xgpu_stream_encode.c"),
+         str(headers / "xgpu_stream_encode.c"), str(headers / "xgpu_stream_describe.c"),
          str(ROOT / "port" / "android" / "host" / "host_render_stream.c"),
          str(ROOT / "port" / "android" / "host" / "host_render_record.c"),
          "-o", str(binary), "-lpthread",
@@ -72,7 +72,8 @@ def test_render_stream(tmp_path, sanitizer):
     headers.mkdir()
     for name in INTERFACE_HEADERS:
         shutil.copy(folder / name, headers / name)
-    shutil.copy(ROOT / "port" / "linux" / "src" / "xgpu_stream_encode.c", headers / "xgpu_stream_encode.c")
+    for name in ("xgpu_stream_encode.c", "xgpu_stream_describe.c"):
+        shutil.copy(ROOT / "port" / "linux" / "src" / name, headers / name)
     shutil.copy(ROOT / "port" / "android" / "tests" / "render_stream" / "platform.h", headers / "platform.h")
     binary = tmp_path / "host_render_stream_test"
     flags = [f"-fsanitize={sanitizer}"] if sanitizer else []

@@ -539,6 +539,15 @@ struct xgpu_vr_info
 	int fovea_width, fovea_height;
 };
 
+/* waits until the shaders and pipelines of the draws so far are made, where
+the backend makes them apart from the draws (a map's, drawn through every
+shader as it starts: port/linux/game/render_enumerate.c), and returns the
+seconds waited; 0 where each is made at its draw */
+double xgpu_backend_prepared(void);
+/* the draws from now until xgpu_backend_prepared are made for their shaders
+and pipelines alone (not seen: the frame's own window draws over them) */
+void xgpu_backend_prepare(void);
+
 /* the backend can draw both eyes at once (FALSE: playing flat, logged).
 Both answered as the device is made, before any frame. */
 BOOL xgpu_backend_vr_supported(void);

@@ -90,6 +90,8 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_DYNAMIC_LIGHTS_UPLOAD] = sizeof(struct xgpu_stream_dynamic_lights_upload),
 	[XGPU_STREAM_DYNAMIC_LIGHTS_HALOS] = sizeof(struct xgpu_stream_dynamic_lights_halos),
 	[XGPU_STREAM_VR_SUPPORTED] = sizeof(struct xgpu_stream_reply_record),
+	[XGPU_STREAM_PREPARED] = sizeof(struct xgpu_stream_reply_record),
+	[XGPU_STREAM_PREPARE] = sizeof(struct xgpu_stream_record),
 	[XGPU_STREAM_VR_INITIALIZE] = sizeof(struct xgpu_stream_reply_record),
 	[XGPU_STREAM_VR_EYES] = sizeof(struct xgpu_stream_vr_eyes),
 	[XGPU_STREAM_VR_PASS] = sizeof(struct xgpu_stream_value),
@@ -478,6 +480,16 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 			(uint32_t)halos->count * 32 > size - sizeof(*halos))
 			return XGPU_STREAM_ERROR_RECORD;
 		CALL(dynamic_lights_halos, halos);
+		break;
+	}
+	case XGPU_STREAM_PREPARE:
+		CALL0(prepare);
+		break;
+	case XGPU_STREAM_PREPARED:
+	{
+		uint32_t milliseconds = backend->prepared ? backend->prepared(context) : 0;
+
+		answer(((const struct xgpu_stream_reply_record *)start)->reply, &milliseconds, sizeof(milliseconds));
 		break;
 	}
 	case XGPU_STREAM_VR_SUPPORTED:

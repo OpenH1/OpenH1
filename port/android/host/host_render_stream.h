@@ -126,6 +126,13 @@ struct host_render_backend
 	void (*dynamic_lights_halos)(void *context, const struct xgpu_stream_dynamic_lights_halos *record);
 
 	int (*vr_supported)(void *context);
+	/* PREPARED: waits until the shaders and pipelines of the draws so far are
+	made (where the backend makes them apart from its draws), and returns
+	the milliseconds waited (NULL: 0) */
+	uint32_t (*prepared)(void *context);
+	/* PREPARE: the draws until PREPARED are for their shaders and pipelines
+	alone (not seen) */
+	void (*prepare)(void *context);
 	void (*vr_initialize)(void *context, struct xgpu_stream_vr_info *info);
 	void (*vr_eyes)(void *context, const struct xgpu_stream_vr_eyes *record);
 	void (*vr_pass)(void *context, int32_t pass);

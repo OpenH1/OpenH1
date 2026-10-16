@@ -26,6 +26,7 @@ Conventions carried over from the Xbox:
 #include "xgpu.h"
 #include "xgpu_shader.h"
 #include "xgpu_backend.h"
+#include "xgpu_manifest.h"
 #include "sdl_platform.h"
 #include "halo_ui_pointer.h"
 #include "halo_dynamic_lights.h"
@@ -1841,6 +1842,8 @@ HRESULT WINAPI D3DDevice_CreateVertexShader(CONST DWORD *declaration, CONST DWOR
 		}
 		nv2a_vertex_program_decode(function + 1, object->instruction_count, object->program);
 		xgpu_backend_vertex_program(object->id, object->program);
+		xgpu_manifest_note_vertex_program(object->program->hash, (const uint32_t *)(function + 1),
+			object->instruction_count);
 	}
 	parse_declaration(object, declaration);
 	/* odd values are FVF codes; programmable shader handles are even */
@@ -2212,6 +2215,7 @@ static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale
 		source->sampled = TRUE;
 	}
 	xgpu_backend_set_textures(sources);
+	xgpu_manifest_note_textures(sources);
 }
 
 /* ---------- the pipeline key and dynamic state (xgpu_backend.h)
@@ -2850,6 +2854,7 @@ static BOOL prepare_draw(BOOL immediate)
 		stats.immediate_draws++;
 	else
 		stats.draws++;
+	xgpu_manifest_note_pipeline(&pipeline_key);
 	draw_uniforms_update((const float (*)[4])texture_scale);
 	xgpu_backend_draw_state(&dynamic, &draw_uniforms, draw_uniforms_serial);
 	return TRUE;
@@ -3227,6 +3232,7 @@ static void setup_streams(unsigned long first, unsigned long count)
 	}
 	memcpy(input.attributes, device.attributes, sizeof(input.attributes));
 	xgpu_backend_set_vertices(&input);
+	xgpu_manifest_note_vertices(&input);
 }
 
 static int primitive_kind(D3DPRIMITIVETYPE type)
@@ -3290,6 +3296,7 @@ void WINAPI D3DDevice_DrawVertices(D3DPRIMITIVETYPE primitive_type, UINT start_v
 		return;
 	trace_draw("draw", primitive_type, vertex_count, NULL);
 	setup_streams(start_vertex, vertex_count);
+	xgpu_manifest_record_draw(0, 0);
 	if (primitive_type == D3DPT_QUADLIST)
 	{
 		unsigned long count;
@@ -3321,6 +3328,7 @@ void WINAPI D3DDevice_DrawIndexedVertices(D3DPRIMITIVETYPE primitive_type, UINT 
 	trace_draw("indexed", primitive_type, vertex_count, NULL);
 	/* (the streams from the base vertex on: index i is vertex base + i) */
 	setup_streams(device.base_vertex_index + minimum, maximum - minimum + 1);
+	xgpu_manifest_record_draw(0, 0);
 	if (mirrored)
 	{
 		/* the attributes start at vertex minimum */
@@ -3378,6 +3386,7 @@ void WINAPI D3DDevice_End(void)
 	if (!count || !prepare_draw(TRUE))
 		return;
 	trace_draw("immediate", type, count, device.immediate_vertices);
+	xgpu_manifest_record_draw(1, device.immediate_written);
 	if (type == D3DPT_QUADLIST)
 		indices = quad_indices(NULL, count, &index_count);
 	xgpu_backend_draw_immediate(type == D3DPT_QUADLIST ? XGPU_TRIANGLES : primitive_kind(type), device.immediate_vertices,

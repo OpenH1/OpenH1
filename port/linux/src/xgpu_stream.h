@@ -203,12 +203,15 @@ enum
 	XGPU_STREAM_VR_TIMING,
 	XGPU_STREAM_VR_COMPOSE,
 	XGPU_STREAM_VR_SUBMIT,
+	/* the shaders and pipelines made */
+	XGPU_STREAM_PREPARED,              /* synchronous: uint32_t, the milliseconds waited */
+	XGPU_STREAM_PREPARE,
 	XGPU_STREAM_RECORD_TYPES,
 };
 
 /* a record of no more than its header: SKIP, INVALIDATE, FLUSH,
 VISIBILITY_BEGIN, VISIBILITY_FRAME, FRAME_END, DYNAMIC_LIGHTS_PREPARE,
-VR_GROUPS_RESET */
+VR_GROUPS_RESET, PREPARE */
 struct xgpu_stream_record
 {
 	uint32_t header;

@@ -1,0 +1,934 @@
+/*
+XGPU_MANIFEST.C
+
+The renderer's manifest (xgpu_manifest.h): its text, read and written, and
+the front end's recorder.
+*/
+
+#include "xgpu_manifest.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#ifndef XGPU_MANIFEST_READER_ONLY
+#include "xgpu.h"
+#include "xgpu_backend.h"
+#include "xgpu_stream_describe.h"
+#include "port_config.h"
+#endif
+
+/* ---------- the fields */
+
+uint64_t xgpu_manifest_hash(const void *data, size_t size, uint64_t hash)
+{
+	const unsigned char *bytes = data;
+	size_t index;
+
+	for (index = 0; index < size; index++)
+		hash = (hash ^ bytes[index]) * 1099511628211ULL;
+	return hash;
+}
+
+/* a field of a key: its name, place, the size of each value (1 or 4
+bytes), how many, and whether it is written in hex */
+struct field
+{
+	const char *name;
+	size_t offset;
+	unsigned char size, count, hex;
+};
+
+#define KEY_FIELD(name, member, size, count, hex) \
+	{ name, offsetof(struct xgpu_stream_pipeline_key, member), size, count, hex }
+#define PIXEL_FIELD(name, member, size, count, hex) \
+	{ name, offsetof(struct xgpu_stream_pixel_key, member), size, count, hex }
+
+static const struct field key_fields[] = {
+	KEY_FIELD("pa", packed_attributes, 4, 1, 1),
+	KEY_FIELD("im", immediate, 1, 1, 0),
+	KEY_FIELD("li", lighting, 1, 1, 0),
+	KEY_FIELD("vw", views, 1, 1, 0),
+	KEY_FIELD("bl", blend, 1, 4, 0),
+	KEY_FIELD("cm", color_mask, 1, 1, 0),
+	KEY_FIELD("dt", depth_test, 1, 3, 0),
+	KEY_FIELD("st", stencil_test, 1, 5, 0),
+	KEY_FIELD("sm", stencil_read_mask, 4, 2, 0),
+	KEY_FIELD("cu", cull, 1, 3, 0),
+	KEY_FIELD("fi", fill, 1, 1, 0),
+	KEY_FIELD("db", depth_bias, 1, 1, 0),
+	KEY_FIELD("fm", color_format, 1, 3, 0),
+};
+
+static const struct field pixel_fields[] = {
+	PIXEL_FIELD("tm", texture_modes, 4, 1, 1),
+	PIXEL_FIELD("sa", sampler_type, 1, 4, 0),
+	PIXEL_FIELD("ak", alpha_kill, 1, 4, 0),
+	PIXEL_FIELD("sg", color_sign, 1, 4, 0),
+	PIXEL_FIELD("at", alpha_test_function, 4, 1, 0),
+	PIXEL_FIELD("fe", fog_enable, 1, 1, 0),
+	PIXEL_FIELD("ft", fog_table_mode, 1, 1, 0),
+	PIXEL_FIELD("cn", count_samples, 1, 1, 0),
+	PIXEL_FIELD("ca", coverage_alpha, 1, 1, 0),
+	PIXEL_FIELD("pt", point_threshold, 1, 1, 0),
+	PIXEL_FIELD("pl", per_pixel_lighting, 1, 1, 0),
+	PIXEL_FIELD("as", alpha_test_samples, 1, 1, 0),
+	PIXEL_FIELD("mv", multiview, 1, 1, 0),
+	PIXEL_FIELD("sb", source_blend, 1, 1, 0),
+	PIXEL_FIELD("dl", dynamic_lights, 1, 1, 0),
+};
+
+#define FIELD_COUNT(fields) (sizeof(fields) / sizeof((fields)[0]))
+
+#ifndef XGPU_MANIFEST_READER_ONLY
+static uint32_t field_value(const unsigned char *base, const struct field *field, int index)
+{
+	const unsigned char *at = base + field->offset + (size_t)index * field->size;
+	uint32_t value;
+
+	if (field->size == 1)
+		return *at;
+	memcpy(&value, at, sizeof(value));
+	return value;
+}
+#endif
+
+static void field_set(unsigned char *base, const struct field *field, int index, uint32_t value)
+{
+	unsigned char *at = base + field->offset + (size_t)index * field->size;
+
+	if (field->size == 1)
+		*at = (unsigned char)value;
+	else
+		memcpy(at, &value, sizeof(value));
+}
+
+#ifndef XGPU_MANIFEST_READER_ONLY
+static uint64_t draw_vertex_program(const struct xgpu_manifest_draw *draw)
+{
+	return draw->key.vertex_program[0] | ((uint64_t)draw->key.vertex_program[1] << 32);
+}
+#endif
+
+static uint64_t pixel_hash(const struct xgpu_stream_pixel_key *pixel)
+{
+	return xgpu_manifest_hash(pixel, sizeof(*pixel), XGPU_MANIFEST_HASH_START);
+}
+
+#ifndef XGPU_MANIFEST_READER_ONLY
+
+/* a growing line */
+struct text
+{
+	char *buffer;
+	size_t length, capacity;
+};
+
+static void text_add(struct text *text, const char *format, ...)
+{
+	va_list arguments;
+	int written;
+
+	for (;;)
+	{
+		size_t room = text->capacity - text->length;
+
+		va_start(arguments, format);
+		written = text->buffer ? vsnprintf(text->buffer + text->length, room, format, arguments) : -1;
+		va_end(arguments);
+		if (written >= 0 && (size_t)written < room)
+		{
+			text->length += (size_t)written;
+			return;
+		}
+		{
+			size_t capacity = text->capacity ? text->capacity * 2 : 1024;
+			char *buffer;
+
+			while (written >= 0 && capacity < text->length + (size_t)written + 1)
+				capacity *= 2;
+			buffer = realloc(text->buffer, capacity);
+			if (!buffer)
+				return;
+			text->buffer = buffer;
+			text->capacity = capacity;
+		}
+	}
+}
+
+static void fields_write(struct text *text, const void *structure, const struct field *fields, size_t count)
+{
+	size_t index;
+	int value;
+
+	for (index = 0; index < count; index++)
+	{
+		text_add(text, " %s=", fields[index].name);
+		for (value = 0; value < fields[index].count; value++)
+		{
+			uint32_t number = field_value(structure, &fields[index], value);
+
+			text_add(text, fields[index].hex ? "%s0x%lx" : "%s%lu", value ? "," : "", (unsigned long)number);
+		}
+	}
+}
+
+static void hash_write(struct text *text, uint64_t hash)
+{
+	text_add(text, "%08lx%08lx", (unsigned long)(uint32_t)(hash >> 32), (unsigned long)(uint32_t)hash);
+}
+
+static void pixel_write(struct text *text, const struct xgpu_stream_pixel_key *pixel)
+{
+	int index, written = 0;
+
+	text_add(text, "p ");
+	hash_write(text, pixel_hash(pixel));
+	text_add(text, " cs=");
+	for (index = 0; index < XGPU_STREAM_COMBINER_STATES; index++)
+	{
+		if (pixel->combiner_state[index])
+		{
+			text_add(text, "%s%d:0x%lx", written ? "," : "", index, (unsigned long)pixel->combiner_state[index]);
+			written = 1;
+		}
+	}
+	fields_write(text, pixel, pixel_fields, FIELD_COUNT(pixel_fields));
+	text_add(text, "\n");
+}
+
+static void draw_write(struct text *text, const struct xgpu_manifest_draw *draw)
+{
+	uint32_t index;
+	int stream, first = 1;
+
+	text_add(text, "d vp=");
+	hash_write(text, draw_vertex_program(draw));
+	fields_write(text, &draw->key, key_fields, FIELD_COUNT(key_fields));
+	text_add(text, " px=");
+	hash_write(text, pixel_hash(&draw->key.pixel));
+	if (draw->key.immediate)
+	{
+		text_add(text, " i=0x%lx", (unsigned long)draw->immediate_written);
+	}
+	else
+	{
+		text_add(text, " l=");
+		for (index = 0; index < draw->element_count; index++)
+		{
+			const struct xgpu_manifest_element *element = &draw->elements[index];
+
+			text_add(text, "%s%u.%u.%u.%u.%u", index ? "/" : "", element->reg, element->stream, element->format,
+				element->bytes, element->offset);
+		}
+		text_add(text, " w=");
+		for (stream = 0; stream < XGPU_MANIFEST_STREAMS; stream++)
+		{
+			if (draw->strides[stream])
+			{
+				text_add(text, "%s%d:%u", first ? "" : ",", stream, draw->strides[stream]);
+				first = 0;
+			}
+		}
+	}
+	text_add(text, " t=");
+	for (stream = 0; stream < 4; stream++)
+	{
+		const struct xgpu_manifest_stage *stage = &draw->stages[stream];
+
+		text_add(text, "%s%u.%u.%u.%u.%u.0x%lx", stream ? "/" : "", stage->source, stage->sampler_type,
+			stage->address[0], stage->address[1], stage->address[2], (unsigned long)stage->border_color);
+	}
+	text_add(text, "\n");
+}
+
+static void vertex_program_write(struct text *text, const struct xgpu_manifest_vertex_program *program)
+{
+	uint32_t index;
+
+	text_add(text, "v ");
+	hash_write(text, program->hash);
+	text_add(text, " %lu ", (unsigned long)program->instruction_count);
+	for (index = 0; index < program->instruction_count * 4; index++)
+		text_add(text, "%08lx", (unsigned long)program->words[index]);
+	text_add(text, "\n");
+}
+
+#endif
+
+/* ---------- reading */
+
+/* the pixel keys read, by their hash, until the draws are matched */
+struct pixel_entry
+{
+	uint64_t hash;
+	struct xgpu_stream_pixel_key key;
+};
+
+struct reader
+{
+	struct xgpu_manifest *manifest;
+	struct pixel_entry *pixels;
+	uint32_t pixel_count, pixel_capacity, draw_capacity, program_capacity, shader_capacity;
+	/* the draws' pixel keys' hashes, matched at the end */
+	uint64_t *draw_pixels;
+	char *error;
+	size_t error_size;
+	unsigned long line;
+};
+
+static int fail(struct reader *reader, const char *what)
+{
+	if (reader->error && reader->error_size)
+		snprintf(reader->error, reader->error_size, "line %lu: %s", reader->line, what);
+	return 0;
+}
+
+static int hex_digit(int c)
+{
+	return c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'f' ? c - 'a' + 10 : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+}
+
+/* digits hex digits at text into value; the text after, or NULL */
+static const char *hex_read(const char *text, int digits, uint64_t *value)
+{
+	int index;
+
+	*value = 0;
+	for (index = 0; index < digits; index++)
+	{
+		int digit = hex_digit((unsigned char)text[index]);
+
+		if (digit < 0)
+			return NULL;
+		*value = (*value << 4) | (uint64_t)digit;
+	}
+	return text + digits;
+}
+
+/* a number (decimal, or hex after 0x) at text, which ends at one of ends
+or the line's end; the text after it, or NULL */
+static const char *number_read(const char *text, uint32_t *value)
+{
+	char *end;
+	unsigned long number;
+
+	if (!*text || *text == ' ' || *text == '\n')
+		return NULL;
+	number = strtoul(text, &end, 0);
+	if (end == text || number > 0xffffffffUL)
+		return NULL;
+	*value = (uint32_t)number;
+	return end;
+}
+
+/* name=value,value... into the fields; the text after, or NULL */
+static const char *fields_read(const char *text, void *structure, const struct field *fields, size_t count)
+{
+	size_t index, length;
+	int value;
+	const char *equals = strchr(text, '=');
+
+	if (!equals)
+		return NULL;
+	length = (size_t)(equals - text);
+	for (index = 0; index < count; index++)
+	{
+		if (strlen(fields[index].name) == length && !memcmp(fields[index].name, text, length))
+			break;
+	}
+	if (index == count)
+		return NULL;
+	text = equals + 1;
+	for (value = 0; value < fields[index].count; value++)
+	{
+		uint32_t number;
+
+		if (value && *text++ != ',')
+			return NULL;
+		if (!(text = number_read(text, &number)))
+			return NULL;
+		if (fields[index].size == 1 && number > 0xff)
+			return NULL;
+		field_set(structure, &fields[index], value, number);
+	}
+	return text;
+}
+
+static int grow(void **array, uint32_t *capacity, uint32_t count, size_t size)
+{
+	void *larger;
+	uint32_t wanted;
+
+	if (count < *capacity)
+		return 1;
+	wanted = *capacity ? *capacity * 2 : 256;
+	larger = realloc(*array, (size_t)wanted * size);
+	if (!larger)
+		return 0;
+	*array = larger;
+	*capacity = wanted;
+	return 1;
+}
+
+static int vertex_program_read(struct reader *reader, const char *text)
+{
+	struct xgpu_manifest *manifest = reader->manifest;
+	struct xgpu_manifest_vertex_program *program;
+	uint64_t value;
+	uint32_t count, index;
+
+	if (!grow((void **)&manifest->vertex_programs, &reader->program_capacity, manifest->vertex_program_count,
+		sizeof(*manifest->vertex_programs)))
+	{
+		return fail(reader, "out of memory");
+	}
+	program = &manifest->vertex_programs[manifest->vertex_program_count];
+	memset(program, 0, sizeof(*program));
+	if (!(text = hex_read(text, 16, &program->hash)) || *text++ != ' ' || !(text = number_read(text, &count)) ||
+		*text++ != ' ' || count > XGPU_MANIFEST_MICROCODE_WORDS / 4)
+	{
+		return fail(reader, "a vertex program's hash and size");
+	}
+	program->instruction_count = count;
+	for (index = 0; index < count * 4; index++)
+	{
+		if (!(text = hex_read(text, 8, &value)))
+			return fail(reader, "a vertex program's microcode");
+		program->words[index] = (uint32_t)value;
+	}
+	manifest->vertex_program_count++;
+	return 1;
+}
+
+static int pixel_read(struct reader *reader, const char *text)
+{
+	struct pixel_entry *entry;
+
+	if (!grow((void **)&reader->pixels, &reader->pixel_capacity, reader->pixel_count, sizeof(*reader->pixels)))
+		return fail(reader, "out of memory");
+	entry = &reader->pixels[reader->pixel_count];
+	memset(entry, 0, sizeof(*entry));
+	if (!(text = hex_read(text, 16, &entry->hash)) || strncmp(text, " cs=", 4))
+		return fail(reader, "a pixel key's hash");
+	text += 4;
+	while (*text && *text != ' ' && *text != '\n')
+	{
+		uint32_t index, value;
+
+		if (!(text = number_read(text, &index)) || *text++ != ':' || index >= XGPU_STREAM_COMBINER_STATES ||
+			!(text = number_read(text, &value)))
+		{
+			return fail(reader, "a pixel key's combiner states");
+		}
+		entry->key.combiner_state[index] = value;
+		if (*text == ',')
+			text++;
+	}
+	while (*text == ' ')
+	{
+		if (!(text = fields_read(text + 1, &entry->key, pixel_fields, FIELD_COUNT(pixel_fields))))
+			return fail(reader, "a pixel key's field");
+	}
+	if (pixel_hash(&entry->key) != entry->hash)
+		return fail(reader, "a pixel key that is not its hash's");
+	reader->pixel_count++;
+	return 1;
+}
+
+/* a draw, or (shader) a vertex shader: a draw's vertex program and layout
+alone */
+static int draw_read(struct reader *reader, const char *text, int shader)
+{
+	struct xgpu_manifest *manifest = reader->manifest;
+	struct xgpu_manifest_draw *draw;
+	uint64_t value, unused;
+	uint32_t number;
+
+	if (shader)
+	{
+		if (!grow((void **)&manifest->vertex_shaders, &reader->shader_capacity, manifest->vertex_shader_count,
+			sizeof(*manifest->vertex_shaders)))
+		{
+			return fail(reader, "out of memory");
+		}
+		draw = &manifest->vertex_shaders[manifest->vertex_shader_count];
+	}
+	else
+	{
+		if (!grow((void **)&manifest->draws, &reader->draw_capacity, manifest->draw_count, sizeof(*manifest->draws)) ||
+			!(reader->draw_pixels = realloc(reader->draw_pixels, (size_t)reader->draw_capacity * sizeof(uint64_t))))
+		{
+			return fail(reader, "out of memory");
+		}
+		draw = &manifest->draws[manifest->draw_count];
+	}
+	memset(draw, 0, sizeof(*draw));
+	if (strncmp(text, "vp=", 3) || !(text = hex_read(text + 3, 16, &value)))
+		return fail(reader, "a draw's vertex program");
+	draw->key.vertex_program[0] = (uint32_t)value;
+	draw->key.vertex_program[1] = (uint32_t)(value >> 32);
+	while (*text == ' ')
+	{
+		text++;
+		if (!strncmp(text, "px=", 3))
+		{
+			if (shader || !(text = hex_read(text + 3, 16, shader ? &unused : &reader->draw_pixels[manifest->draw_count])))
+				return fail(reader, "a draw's pixel key");
+		}
+		else if (!strncmp(text, "i=", 2))
+		{
+			if (!(text = number_read(text + 2, &draw->immediate_written)))
+				return fail(reader, "a draw's immediate registers");
+		}
+		else if (!strncmp(text, "l=", 2))
+		{
+			text += 2;
+			while (*text && *text != ' ' && *text != '\n')
+			{
+				struct xgpu_manifest_element *element;
+				uint32_t parts[5];
+				int part;
+
+				if (draw->element_count >= XGPU_MANIFEST_ATTRIBUTES)
+					return fail(reader, "a draw's layout");
+				for (part = 0; part < 5; part++)
+				{
+					if ((part && *text++ != '.') || !(text = number_read(text, &parts[part])))
+						return fail(reader, "a draw's layout");
+				}
+				if (parts[0] >= XGPU_MANIFEST_ATTRIBUTES || parts[1] >= XGPU_MANIFEST_STREAMS || parts[2] > 0xff ||
+					parts[3] > 0xff || parts[4] > 0xffff)
+				{
+					return fail(reader, "a draw's layout");
+				}
+				element = &draw->elements[draw->element_count++];
+				element->reg = (uint8_t)parts[0];
+				element->stream = (uint8_t)parts[1];
+				element->format = (uint8_t)parts[2];
+				element->bytes = (uint8_t)parts[3];
+				element->offset = (uint16_t)parts[4];
+				if (*text == '/')
+					text++;
+			}
+		}
+		else if (!strncmp(text, "w=", 2))
+		{
+			text += 2;
+			while (*text && *text != ' ' && *text != '\n')
+			{
+				uint32_t stride;
+
+				if (!(text = number_read(text, &number)) || *text++ != ':' || !(text = number_read(text, &stride)) ||
+					number >= XGPU_MANIFEST_STREAMS || stride > 0xffff)
+				{
+					return fail(reader, "a draw's strides");
+				}
+				draw->strides[number] = (uint16_t)stride;
+				if (*text == ',')
+					text++;
+			}
+		}
+		else if (!strncmp(text, "t=", 2))
+		{
+			int stage, part;
+
+			text += 2;
+			for (stage = 0; stage < 4; stage++)
+			{
+				uint32_t parts[6];
+
+				for (part = 0; part < 6; part++)
+				{
+					if ((part && *text++ != '.') || !(text = number_read(text, &parts[part])) || (part < 5 && parts[part] > 0xff))
+						return fail(reader, "a draw's texture stages");
+				}
+				draw->stages[stage].source = (uint8_t)parts[0];
+				draw->stages[stage].sampler_type = (uint8_t)parts[1];
+				draw->stages[stage].address[0] = (uint8_t)parts[2];
+				draw->stages[stage].address[1] = (uint8_t)parts[3];
+				draw->stages[stage].address[2] = (uint8_t)parts[4];
+				draw->stages[stage].border_color = parts[5];
+				if (stage < 3 && *text++ != '/')
+					return fail(reader, "a draw's texture stages");
+			}
+		}
+		else if (!(text = fields_read(text, &draw->key, key_fields, FIELD_COUNT(key_fields))))
+		{
+			return fail(reader, "a draw's field");
+		}
+	}
+	if (*text && *text != '\n')
+		return fail(reader, "a draw's end");
+	if (shader)
+		manifest->vertex_shader_count++;
+	else
+		manifest->draw_count++;
+	return 1;
+}
+
+static int pixel_compare(const void *a, const void *b)
+{
+	uint64_t left = ((const struct pixel_entry *)a)->hash, right = ((const struct pixel_entry *)b)->hash;
+
+	return left < right ? -1 : left > right;
+}
+
+int xgpu_manifest_read(const char *path, struct xgpu_manifest *manifest, char *error, size_t error_size)
+{
+	struct reader reader;
+	FILE *file = fopen(path, "r");
+	char *line = NULL;
+	size_t capacity = 0;
+	int ok = 1, versioned = 0;
+	uint32_t index;
+
+	memset(manifest, 0, sizeof(*manifest));
+	memset(&reader, 0, sizeof(reader));
+	reader.manifest = manifest;
+	reader.error = error;
+	reader.error_size = error_size;
+	if (!file)
+		return fail(&reader, "cannot open the file");
+	for (;;)
+	{
+		size_t length = 0;
+		int c;
+
+		/* (a line of any length) */
+		while ((c = fgetc(file)) != EOF && c != '\n')
+		{
+			if (length + 2 > capacity)
+			{
+				char *larger = realloc(line, capacity = capacity ? capacity * 2 : 4096);
+
+				if (!larger)
+				{
+					ok = fail(&reader, "out of memory");
+					break;
+				}
+				line = larger;
+			}
+			line[length++] = (char)c;
+		}
+		if (!ok || (c == EOF && !length))
+			break;
+		if (!line && !(line = malloc(capacity = 4096)))
+		{
+			ok = fail(&reader, "out of memory");
+			break;
+		}
+		line[length] = 0;
+		reader.line++;
+		if (!length || line[0] == '#')
+			continue;
+		if (!strncmp(line, "manifest ", 9))
+		{
+			if (atoi(line + 9) != XGPU_MANIFEST_VERSION)
+			{
+				ok = fail(&reader, "another version of the manifest");
+				break;
+			}
+			versioned = 1;
+		}
+		else if (!versioned)
+			ok = fail(&reader, "no version first");
+		else if (!strncmp(line, "v ", 2))
+			ok = vertex_program_read(&reader, line + 2);
+		else if (!strncmp(line, "p ", 2))
+			ok = pixel_read(&reader, line + 2);
+		else if (!strncmp(line, "d ", 2))
+			ok = draw_read(&reader, line + 2, 0);
+		else if (!strncmp(line, "s ", 2))
+			ok = draw_read(&reader, line + 2, 1);
+		else
+			ok = fail(&reader, "an unknown record");
+		if (!ok || c == EOF)
+			break;
+	}
+	fclose(file);
+	free(line);
+	/* each draw's pixel key */
+	if (ok)
+	{
+		qsort(reader.pixels, reader.pixel_count, sizeof(*reader.pixels), pixel_compare);
+		for (index = 0; index < manifest->draw_count && ok; index++)
+		{
+			struct pixel_entry probe, *found;
+
+			probe.hash = reader.draw_pixels[index];
+			found = bsearch(&probe, reader.pixels, reader.pixel_count, sizeof(*reader.pixels), pixel_compare);
+			if (!found)
+			{
+				reader.line = 0;
+				ok = fail(&reader, "a draw's pixel key is not in the manifest");
+				break;
+			}
+			manifest->draws[index].key.pixel = found->key;
+		}
+	}
+	free(reader.pixels);
+	free(reader.draw_pixels);
+	if (!ok)
+		xgpu_manifest_free(manifest);
+	return ok;
+}
+
+void xgpu_manifest_free(struct xgpu_manifest *manifest)
+{
+	free(manifest->vertex_programs);
+	free(manifest->draws);
+	free(manifest->vertex_shaders);
+	memset(manifest, 0, sizeof(*manifest));
+}
+
+const struct xgpu_manifest_vertex_program *xgpu_manifest_vertex_program(const struct xgpu_manifest *manifest,
+	uint64_t hash)
+{
+	uint32_t index;
+
+	for (index = 0; index < manifest->vertex_program_count; index++)
+	{
+		if (manifest->vertex_programs[index].hash == hash)
+			return &manifest->vertex_programs[index];
+	}
+	return NULL;
+}
+
+/* ---------- the recorder */
+
+#ifndef XGPU_MANIFEST_READER_ONLY
+
+/* a set of 64-bit hashes (0 is never one: it is made 1) */
+struct hash_set
+{
+	uint64_t *slots;
+	uint32_t count, capacity;
+};
+
+/* adds hash; 1 if it was not there */
+static int hash_set_add(struct hash_set *set, uint64_t hash)
+{
+	uint32_t index;
+
+	if (!hash)
+		hash = 1;
+	if ((set->count + 1) * 2 > set->capacity)
+	{
+		struct hash_set larger;
+		uint32_t old;
+
+		larger.capacity = set->capacity ? set->capacity * 2 : 1024;
+		larger.count = 0;
+		larger.slots = calloc(larger.capacity, sizeof(uint64_t));
+		if (!larger.slots)
+			return 0;
+		for (old = 0; old < set->capacity; old++)
+		{
+			if (set->slots[old])
+				hash_set_add(&larger, set->slots[old]);
+		}
+		free(set->slots);
+		*set = larger;
+	}
+	for (index = (uint32_t)hash & (set->capacity - 1); set->slots[index]; index = (index + 1) & (set->capacity - 1))
+	{
+		if (set->slots[index] == hash)
+			return 0;
+	}
+	set->slots[index] = hash;
+	set->count++;
+	return 1;
+}
+
+static struct
+{
+	/* -1 not read yet, 0 off, 1 on */
+	int state;
+	FILE *file;
+	struct xgpu_manifest_vertex_program *programs;
+	uint32_t program_count, program_capacity;
+	struct hash_set written_programs, written_pixels, draws;
+	/* the next draw's */
+	struct xgpu_stream_pipeline_key key;
+	int have_key;
+	struct xgpu_manifest_stage stages[4];
+	uint32_t element_count;
+	struct xgpu_manifest_element elements[XGPU_MANIFEST_ATTRIBUTES];
+	uint16_t strides[XGPU_MANIFEST_STREAMS];
+	struct text text;
+	unsigned long recorded;
+} recorder = { -1 };
+
+int xgpu_manifest_recording(void)
+{
+	if (recorder.state < 0)
+	{
+		const char *path = config_string("debug.render_manifest");
+
+		recorder.state = 0;
+		if (path && *path)
+		{
+			recorder.file = fopen(path, "a");
+			if (!recorder.file)
+			{
+				platform_log("GPU: cannot write the renderer's manifest to %s", path);
+				return 0;
+			}
+			fseek(recorder.file, 0, SEEK_END);
+			if (ftell(recorder.file) == 0)
+				fprintf(recorder.file, "# the renderer's manifest, recorded (xgpu_manifest.h)\nmanifest %d\n",
+					XGPU_MANIFEST_VERSION);
+			fflush(recorder.file);
+			platform_log("GPU: recording the draws' shaders and pipelines to %s", path);
+			recorder.state = 1;
+		}
+	}
+	return recorder.state > 0;
+}
+
+void xgpu_manifest_note_vertex_program(unsigned long long hash, const uint32_t *words, unsigned long instruction_count)
+{
+	struct xgpu_manifest_vertex_program *program;
+	uint32_t index;
+
+	if (!xgpu_manifest_recording() || instruction_count > XGPU_MANIFEST_MICROCODE_WORDS / 4)
+		return;
+	for (index = 0; index < recorder.program_count; index++)
+	{
+		if (recorder.programs[index].hash == hash)
+			return;
+	}
+	if (recorder.program_count == recorder.program_capacity)
+	{
+		uint32_t capacity = recorder.program_capacity ? recorder.program_capacity * 2 : 64;
+		struct xgpu_manifest_vertex_program *larger = realloc(recorder.programs, capacity * sizeof(*larger));
+
+		if (!larger)
+			return;
+		recorder.programs = larger;
+		recorder.program_capacity = capacity;
+	}
+	program = &recorder.programs[recorder.program_count++];
+	memset(program, 0, sizeof(*program));
+	program->hash = hash;
+	program->instruction_count = (uint32_t)instruction_count;
+	memcpy(program->words, words, instruction_count * 4 * sizeof(uint32_t));
+}
+
+void xgpu_manifest_note_textures(const struct xgpu_texture_source *stages)
+{
+	int index;
+
+	if (recorder.state <= 0)
+		return;
+	memset(recorder.stages, 0, sizeof(recorder.stages));
+	for (index = 0; index < 4; index++)
+	{
+		const struct xgpu_texture_source *from = &stages[index];
+		struct xgpu_manifest_stage *to = &recorder.stages[index];
+
+		to->source = from->source;
+		to->sampler_type = from->sampler_type;
+		memcpy(to->address, from->sampler.address, sizeof(to->address));
+		if (from->source != XGPU_SOURCE_NONE && (to->address[0] == XGPU_ADDRESS_BORDER ||
+			to->address[1] == XGPU_ADDRESS_BORDER || to->address[2] == XGPU_ADDRESS_BORDER))
+		{
+			to->border_color = (uint32_t)from->sampler.border_color;
+		}
+	}
+}
+
+void xgpu_manifest_note_pipeline(const struct xgpu_pipeline_key *key)
+{
+	if (recorder.state <= 0)
+		return;
+	xgpu_stream_pipeline_key_describe(key, &recorder.key);
+	recorder.have_key = 1;
+}
+
+void xgpu_manifest_note_vertices(const struct xgpu_vertex_input *input)
+{
+	unsigned long index;
+
+	if (recorder.state <= 0)
+		return;
+	recorder.element_count = 0;
+	memset(recorder.elements, 0, sizeof(recorder.elements));
+	memset(recorder.strides, 0, sizeof(recorder.strides));
+	for (index = 0; index < input->element_count && index < XGPU_MANIFEST_ATTRIBUTES; index++)
+	{
+		const struct xgpu_vertex_element *from = &input->elements[index];
+		struct xgpu_manifest_element *to = &recorder.elements[recorder.element_count++];
+
+		to->reg = from->reg;
+		to->stream = from->stream;
+		to->format = from->format;
+		to->bytes = from->bytes;
+		to->offset = from->offset;
+		if (from->stream < XGPU_MANIFEST_STREAMS && input->streams[from->stream].present)
+			recorder.strides[from->stream] = (uint16_t)input->streams[from->stream].stride;
+	}
+}
+
+static void record_write(void)
+{
+	if (recorder.text.length)
+	{
+		fwrite(recorder.text.buffer, 1, recorder.text.length, recorder.file);
+		fflush(recorder.file);
+		recorder.text.length = 0;
+	}
+}
+
+void xgpu_manifest_note(const char *text)
+{
+	if (recorder.state <= 0)
+		return;
+	fprintf(recorder.file, "# %s\n", text);
+	fflush(recorder.file);
+}
+
+void xgpu_manifest_record_draw(int immediate, unsigned long written)
+{
+	struct xgpu_manifest_draw draw;
+	uint64_t hash, program;
+	uint32_t index;
+
+	if (recorder.state <= 0 || !recorder.have_key)
+		return;
+	memset(&draw, 0, sizeof(draw));
+	draw.key = recorder.key;
+	if (immediate)
+	{
+		draw.immediate_written = (uint32_t)written;
+	}
+	else
+	{
+		draw.element_count = recorder.element_count;
+		memcpy(draw.elements, recorder.elements, sizeof(draw.elements));
+		memcpy(draw.strides, recorder.strides, sizeof(draw.strides));
+	}
+	memcpy(draw.stages, recorder.stages, sizeof(draw.stages));
+	hash = xgpu_manifest_hash(&draw, sizeof(draw), XGPU_MANIFEST_HASH_START);
+	if (!hash_set_add(&recorder.draws, hash))
+		return;
+	/* (the vertex program and the pixel key first, once) */
+	program = draw_vertex_program(&draw);
+	if (hash_set_add(&recorder.written_programs, program))
+	{
+		for (index = 0; index < recorder.program_count; index++)
+		{
+			if (recorder.programs[index].hash == program)
+				vertex_program_write(&recorder.text, &recorder.programs[index]);
+		}
+	}
+	if (hash_set_add(&recorder.written_pixels, pixel_hash(&draw.key.pixel)))
+		pixel_write(&recorder.text, &draw.key.pixel);
+	draw_write(&recorder.text, &draw);
+	record_write();
+	recorder.recorded++;
+}
+
+#endif

@@ -7575,3 +7575,13 @@ void xgpu_backend_vr_submit(const struct xgpu_vr_frame *frame, BOOL screenshot)
 	(void)screenshot;
 }
 #endif
+
+/* (the driver makes each shader and pipeline at its draw) */
+double xgpu_backend_prepared(void)
+{
+	return 0.0;
+}
+
+void xgpu_backend_prepare(void)
+{
+}
