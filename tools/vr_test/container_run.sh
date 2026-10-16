@@ -27,8 +27,13 @@ else
 fi
 [ -f /out/config.in.toml ] && cp /out/config.in.toml config.toml
 env XR_RUNTIME_JSON=/usr/local/share/openxr/1/openxr_monado.json SDL_VIDEO_DRIVER=offscreen SDL_AUDIO_DRIVER=dummy HALO_NO_AUDIO=1 \
-	HALO_UPDATE_ANSWER=no HALO_NET_ONLINE=0 HALO_VR_FORCE_RENDER=1 HALO_EXIT_AFTER=$secs "$@" ./${HALO_BIN:-halo} > /out/game.log 2>&1
+	HALO_UPDATE_ANSWER=no HALO_VR_FORCE_RENDER=1 HALO_EXIT_AFTER=$secs "$@" HALO_NET_ONLINE=false ./${HALO_BIN:-halo} > /out/game.log 2>&1
 status=$?
 cp config.toml debug.txt /out/ 2>/dev/null
 [ -d /tmp/.local/share/halo-linux ] && { rm -rf /out/save; cp -a /tmp/.local/share/halo-linux /out/save; }
+if [ -f debug.txt ] && grep -n 'EXCEPTION' debug.txt >&2; then
+	echo "VR run failed: EXCEPTION in debug.txt" >&2
+	[ "$status" -ne 0 ] || status=1
+fi
 echo "exit $status"
+exit "$status"

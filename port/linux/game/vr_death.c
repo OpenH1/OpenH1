@@ -102,7 +102,7 @@ long config_integer(char const *name);
 unsigned long config_changes(void);
 void platform_log(char const *format, ...);
 /* vr.c's, d3d8_device.c's, xgpu_gl.c's */
-int halo_vr_aiming(void);
+int halo_vr_aimed(void);
 void halo_vr_test_screenshot(void);
 void halo_vr_eye_tint(float red, float green, float blue);
 /* vr_seat.c's, vr_render.c's, render_interpolation.c's */
@@ -1151,9 +1151,10 @@ void vr_death_test_update(void)
 	}
 	unit_index = first_player_unit();
 	time = game_time_get();
+	/* this hook runs before player_control aims in the current frame */
 	if (vr_death.start_tick == NONE || time < vr_death.start_tick)
 	{
-		if (unit_index != NONE && halo_vr_aiming() && !cinematic_in_progress())
+		if (unit_index != NONE && halo_vr_aimed() && !cinematic_in_progress())
 		{
 			vr_death.start_tick = time;
 			platform_log("vr death test: the first player aims, %.1f s into the level", (real)time / TICKS_PER_SECOND);

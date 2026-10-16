@@ -734,6 +734,7 @@ not of the head */
 void halo_vr_menus(int active);
 /* the aim follows the head: the controller's magnetism leaves it alone */
 int halo_vr_aiming(void);
+int halo_vr_aimed(void);
 /* the aim is the gamepad's (vr.aim = "gamepad"), magnetism and all */
 int halo_vr_gamepad_aiming(void);
 /* whether a gamepad's Back (View) is held, each poll: held a second, it

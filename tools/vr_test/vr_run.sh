@@ -28,4 +28,5 @@ exec timeout $((secs + 120)) docker run --rm --gpus all -e NVIDIA_DRIVER_CAPABIL
 	-e HALO_BIN=${HALO_BIN:-halo} -e XRT_COMPOSITOR_NULL_FPS=${XRT_COMPOSITOR_NULL_FPS:-72} \
 	-e XRT_COMPOSITOR_NULL_VIEW_SIZE=${XRT_COMPOSITOR_NULL_VIEW_SIZE:-1728} \
 	-u $(id -u):$(id -g) -v "$game":/game:ro -v "$maps":/maps:ro -v "$out":/out \
+	-v "$repo/tools/vr_test/container_run.sh":/usr/local/bin/halo-vr-run:ro \
 	${HALO_XRTEST_IMAGE:-halo-xrtest-monado:latest} halo-vr-run ${SLOT:-$(($$ % 1000))} "$map" $secs "$@"

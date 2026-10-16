@@ -5100,6 +5100,12 @@ int halo_vr_aiming(void)
 	return vr.aiming;
 }
 
+/* test hooks run before this frame aims: the last completed frame */
+int halo_vr_aimed(void)
+{
+	return vr.aimed;
+}
+
 int halo_vr_gamepad_aiming(void)
 {
 	return vr.aiming && settings.gamepad_aim;
