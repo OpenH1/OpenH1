@@ -681,6 +681,13 @@ static struct
 	uint32_t frames_taken;
 	uint64_t latch, period;
 	struct frame_pacing_costs costs;
+	/* (the render thread's) when the frame played was ready, if the
+	backend said (host_render_stream_frame_ready); when each of the last
+	frames was submitted (by the frames submitted, and played, since the
+	stream opened), for the time it waited for the render thread */
+	uint64_t frame_ready;
+	uint64_t frame_submitted[8];
+	uint32_t frames_committed, frames_played;
 	/* a function to run on the render thread once the records before it
 	are played (host_render_stream_call), and the calls run so far */
 	void (*call)(void *argument);
@@ -809,9 +816,20 @@ static void *render_thread(void *argument)
 			frame_ended = render.decoder->frame_ended;
 			if (frame_ended)
 			{
+				uint64_t ready = render.frame_ready ? render.frame_ready : monotonic_nanoseconds();
+				uint64_t submitted, input = render.decoder->frame_input;
+
+				/* (a frame's cost is its own work: the game's, and the render
+				thread's once it is free; not its wait for the thread, playing
+				or showing the frame before, which the frame's start in time
+				avoids) */
 				pthread_mutex_lock(&render.lock);
-				frame_pacing_cost_add(&render.costs, render.decoder->frame_input, monotonic_nanoseconds());
+				submitted = render.frame_submitted[++render.frames_played % 8];
+				if (input && submitted > input && render.frame_started > submitted)
+					input += render.frame_started - submitted;
+				frame_pacing_cost_add(&render.costs, input, ready);
 				pthread_mutex_unlock(&render.lock);
+				render.frame_ready = 0;
 				render.ring->decode_nanoseconds = (uint32_t)(monotonic_nanoseconds() - render.frame_started);
 				render.frame_started = 0;
 			}
@@ -939,6 +957,11 @@ void host_render_stream_display_latched(uint64_t latch, uint64_t period)
 	render.latch = latch;
 	render.period = period;
 	pthread_mutex_unlock(&render.lock);
+}
+
+void host_render_stream_frame_ready(void)
+{
+	render.frame_ready = monotonic_nanoseconds();
 }
 
 void host_render_stream_frame_shown(uint64_t input, uint64_t shown)
@@ -1072,6 +1095,8 @@ void host_render_stream_submit(uint32_t flags)
 		return;
 	pthread_mutex_lock(&render.lock);
 	render.committed = __atomic_load_n(&ring->committed, __ATOMIC_ACQUIRE);
+	if (flags & XGPU_STREAM_SUBMIT_FRAME)
+		render.frame_submitted[++render.frames_committed % 8] = monotonic_nanoseconds();
 	pthread_cond_signal(&render.work);
 	while (!ring->error)
 	{

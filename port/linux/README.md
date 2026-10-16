@@ -1359,7 +1359,12 @@ no host, draw with the OpenGL backend in the game):
 - The guest makes the window (`src/sdl_platform.c`) and hands it to the
   host (`host_gl_window`): the host makes the OpenGL context, which is
   current on its render thread. That thread draws and shows the frames.
-  The guest paces them (`display.max_fps`), after each frame's records.
+  With vsync the display paces them (`src/frame_pacing.h`), as the Metal
+  backend's: the render thread waits for each frame's swap to be done (with
+  vsync, as the refresh that shows it begins), the frame is taken by the
+  display then, and the game starts each frame its budget before the next
+  refresh's latch, with at most one frame waiting. Without vsync the guest
+  paces them (`display.max_fps`), after each frame's records.
 - The front end calls `xgpu_backend_set_textures` and
   `xgpu_backend_draw_state` before every draw, and the stream sends them
   only when they change. In the backend they do more: the textures are

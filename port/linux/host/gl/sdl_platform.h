@@ -11,7 +11,8 @@ host's (port/linux/host/host_gl_stream.c).
 
 /* the window's drawable size in pixels */
 void platform_video_drawable_size(int *width, int *height);
-/* the frame shown (the guest paces the frames: sdl_platform.c) */
+/* the frame shown (with vsync, paced by the display: host_gl_stream.c;
+without, the guest paces the frames: sdl_platform.c) */
 void platform_video_swap(void);
 
 #endif

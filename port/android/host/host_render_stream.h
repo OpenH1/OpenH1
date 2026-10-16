@@ -207,6 +207,10 @@ its refreshes are period apart: the game then starts each frame its
 budget before the latch it is for (frame_pacing_start_time) */
 void host_render_stream_display_latched(uint64_t latch, uint64_t period);
 void host_render_stream_frame_shown(uint64_t input, uint64_t shown);
+/* (the render thread, as it plays a frame's records) the frame is ready
+for the display now: its cost (frame_pacing_cost_add) ends here, not as its
+records end (a backend that then waits for the display to take it) */
+void host_render_stream_frame_ready(void);
 /* the input to screen times since the last call: median and 95th
 percentile in milliseconds; returns how many */
 uint32_t host_render_stream_latency(float *median, float *high);

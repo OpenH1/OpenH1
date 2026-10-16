@@ -44,12 +44,15 @@ are the host's cache's (host_gl_textures.c), found by the stage's record.
 #include "xgpu_shader.h"
 #include "sdl_platform.h"
 #include "port_config.h"
+#include "frame_pacing.h"
 
 #include <SDL3/SDL.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* the interface's pieces the stream carries as their bytes, alike here */
 _Static_assert(sizeof(struct xgpu_vertex_instruction) == XGPU_STREAM_VERTEX_INSTRUCTION_SIZE, "vertex instruction");
@@ -84,6 +87,10 @@ static struct
 	set */
 	volatile int interval;
 	int interval_set;
+	/* the display's refresh rate as the window was handed over (0 unknown);
+	a frame presented, swapped as it ends (window_swap) */
+	float refresh_rate;
+	BOOL swap_wanted;
 
 	/* the guest's visibility counts; the slots that have had a test */
 	volatile uint32_t *visibility;
@@ -136,6 +143,7 @@ static const struct
 } settings[] =
 {
 	{ "debug.gl_debug", "HALO_GL_DEBUG", "false", TRUE },
+	{ "debug.gpu_stats", "HALO_GPU_STATS", "false", TRUE },
 	{ "debug.gpu_flush_draws", "HALO_GPU_FLUSH_DRAWS", "-1", FALSE },
 	{ "debug.gpu_dump_shaders", "HALO_GPU_DUMP_SHADERS", "", FALSE },
 	{ "debug.gpu_debug_expression", "HALO_GPU_DEBUG_EXPR", "", FALSE },
@@ -195,10 +203,149 @@ static void interval_apply(void)
 		host_logf(HOST_LOG_WARN, "gl: cannot set the swap interval %d: %s", interval, SDL_GetError());
 }
 
+/* ---------- pacing by the display (frame_pacing.h)
+
+With vsync (display.vsync: the guest's swap interval) the game's frames are
+paced by the display, as the Metal backend's are (host_render_stream.c,
+display_wait): the render thread waits for the GPU to have drawn a frame
+(its cost ends there: host_render_stream_frame_ready), swaps it, then waits
+for the GPU to have done the swap, which with vsync is done as the refresh
+that shows it begins (as near to the display's latch as OpenGL tells; a
+driver that does it earlier still holds the next swap until a buffer is
+free). The frame is taken then, and on screen; the next refresh's latch is
+a period later: the display's refresh rate's, or where SDL does not know
+it, the shortest time between those of the last DISPLAY_INTERVALS frames.
+The frame presented is swapped as its last record (FRAME_END) is played,
+when its input's time is known. Without vsync the guest paces the frames (display.max_fps), and in
+the VR mode the headset does (no frame is swapped to the window). */
+
+#define DISPLAY_INTERVALS 32
+#define DISPLAY_LOG_SECONDS 5
+
+static struct
+{
+	BOOL paced;
+	uint64_t last_swapped;
+	uint64_t intervals[DISPLAY_INTERVALS];
+	unsigned int next_interval;
+	/* debug.gpu_stats: the frames swapped and their intervals since */
+	int statistics;
+	uint64_t log_since, interval_sum, interval_least, interval_most;
+	uint32_t swapped, late;
+} display = { .statistics = -1 };
+
+static uint64_t monotonic_nanoseconds(void)
+{
+	struct timespec now;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (uint64_t)now.tv_sec * 1000000000u + (uint64_t)now.tv_nsec;
+}
+
+static void display_log(uint64_t now)
+{
+	float median, high;
+	uint32_t frames = host_render_stream_latency(&median, &high);
+	double seconds = (double)(now - display.log_since) / 1e9;
+
+	if (frames)
+		host_logf(HOST_LOG_INFO, "gl: input to screen (the frame's input read to its swap done): %.1f ms median, "
+			"%.1f ms 95th percentile, %u frames", median, high, frames);
+	if (display.swapped)
+		host_logf(HOST_LOG_INFO, "gl: %.1f s: %u frames swapped (%.1f a second), intervals %.2f ms mean, %.2f min, "
+			"%.2f max, %u over 1.5 refreshes", seconds, display.swapped, display.swapped / seconds,
+			(double)display.interval_sum / 1e6 / display.swapped, (double)display.interval_least / 1e6,
+			(double)display.interval_most / 1e6, display.late);
+	display.log_since = now;
+	display.swapped = display.late = 0;
+	display.interval_sum = display.interval_most = 0;
+	display.interval_least = UINT64_MAX;
+}
+
+/* waits for the GPU to have done what it has been given */
+static void gpu_wait(void)
+{
+	GLsync sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+
+	if (!sync)
+		return;
+	glClientWaitSync(sync, GL_SYNC_FLUSH_COMMANDS_BIT, FRAME_PACING_WAIT_MAXIMUM_NS);
+	glDeleteSync(sync);
+}
+
+/* the frame's swap done: taken by the display, and the latch after it */
+static void display_swapped(void)
+{
+	uint64_t now, nominal = gl.refresh_rate > 0.0f ? (uint64_t)(1e9f / gl.refresh_rate) : 16666667u, period = 0;
+	unsigned int index;
+
+	gpu_wait();
+	now = monotonic_nanoseconds();
+	if (display.last_swapped)
+	{
+		uint64_t interval = now - display.last_swapped;
+
+		/* (a frame a refresh or more late is no measure of the period) */
+		if (interval > nominal / 2 && interval < nominal * 3 / 2)
+			display.intervals[display.next_interval++ % DISPLAY_INTERVALS] = interval;
+		display.swapped++;
+		display.interval_sum += interval;
+		if (interval < display.interval_least)
+			display.interval_least = interval;
+		if (interval > display.interval_most)
+			display.interval_most = interval;
+		if (interval >= nominal * 3 / 2)
+			display.late++;
+	}
+	display.last_swapped = now;
+	for (index = 0; index < DISPLAY_INTERVALS && gl.refresh_rate <= 0.0f; index++)
+	{
+		if (display.intervals[index] && (!period || display.intervals[index] < period))
+			period = display.intervals[index];
+	}
+	host_render_stream_display_latched(now, period ? period : nominal);
+	host_render_stream_frame_shown(host_render_stream_frame_input(), now);
+	host_render_stream_frame_taken();
+	if (display.statistics < 0)
+	{
+		display.statistics = config_boolean("debug.gpu_stats");
+		display.log_since = now;
+		display.interval_least = UINT64_MAX;
+	}
+	if (display.statistics && now - display.log_since >= DISPLAY_LOG_SECONDS * 1000000000ull)
+		display_log(now);
+}
+
+/* (xgpu_gl.c's present: swapped at the frame's end) */
 void platform_video_swap(void)
 {
+	gl.swap_wanted = TRUE;
+}
+
+static void window_swap(void)
+{
+	BOOL paced;
+
 	interval_apply();
+	/* (paced by the display with vsync: the guest's interval) */
+	paced = gl.interval != 0;
+	if (paced != display.paced)
+	{
+		display.paced = paced;
+		display.last_swapped = 0;
+		memset(display.intervals, 0, sizeof(display.intervals));
+		host_render_stream_display_paced(paced);
+		if (paced)
+			host_logf(HOST_LOG_INFO, "gl: the frames paced by the display (%.2f Hz)", gl.refresh_rate);
+	}
+	if (paced)
+	{
+		gpu_wait();
+		host_render_stream_frame_ready();
+	}
 	SDL_GL_SwapWindow(gl.window);
+	if (paced)
+		display_swapped();
 }
 
 /* ---------- the window (a host import: the guest's sdl_platform.c) */
@@ -286,6 +433,12 @@ int host_gl_window(uint32_t window, int interval)
 	SDL_GL_MakeCurrent(object, NULL);
 	gl.window = object;
 	gl.interval_set = -2;
+	{
+		SDL_DisplayID display_id = SDL_GetDisplayForWindow(object);
+		const SDL_DisplayMode *mode = display_id ? SDL_GetCurrentDisplayMode(display_id) : NULL;
+
+		gl.refresh_rate = mode && mode->refresh_rate > 0.0f ? mode->refresh_rate : 0.0f;
+	}
 #ifdef __ANDROID__
 	SDL_AddEventWatch(lifecycle_watch, NULL);
 #endif
@@ -857,6 +1010,12 @@ static void stream_frame_end(void *context)
 	(void)context;
 	xgpu_backend_frame_end();
 	visibility_answer();
+	if (gl.swap_wanted)
+	{
+		gl.swap_wanted = FALSE;
+		window_swap();
+		xgpu_gl_state_invalidate();
+	}
 }
 
 /* ---------- the enhanced dynamic lights */
