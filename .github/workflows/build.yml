@@ -9,7 +9,7 @@ name: Build
 #   downloads, caches) is paid once;
 # - compiles go through ccache, whose cache carries over from run to run, so
 #   a commit only recompiles what it changed; downloads (SDL, musl, Gradle,
-#   the Linux build's system root) are cached too;
+#   the Linux build's system root, the guests' pinned LLVM) are cached too;
 # - a newer push to the same branch cancels a run still going;
 # - pushes that only change documentation do not build;
 # - Windows, whose minutes cost twice Linux's, builds only Windows;
@@ -43,6 +43,10 @@ env:
   CCACHE_DIR: ${{ github.workspace }}/.ccache
   CCACHE_BASEDIR: ${{ github.workspace }}
   CCACHE_MAXSIZE: 1G
+  # (the guests' pinned LLVM, tools/guest_toolchain.py, which configure.py
+  # downloads: kept in the workspace, where actions/cache finds it in a
+  # container job too)
+  CI_GUEST_LLVM_CACHE: .cache/llvm
 
 jobs:
   linux:
@@ -126,8 +130,9 @@ jobs:
 
   linux-arm64:
     # Ubuntu 22.04 (glibc 2.35, so the build starts on older distributions
-    # too) on GitHub's 64-bit ARM runner, with clang 22 from apt.llvm.org (the
-    # guest's arm64_32 target) and the development files SDL3 builds with.
+    # too) on GitHub's 64-bit ARM runner, with its clang for the host and the
+    # development files SDL3 builds with; the guest's compiler (arm64_32) is
+    # the pinned LLVM configure.py downloads.
     runs-on: ubuntu-24.04-arm
     container: ubuntu:22.04
     timeout-minutes: 40
@@ -137,16 +142,12 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl gnupg lsb-release \
-            software-properties-common git python3 ninja-build cmake make pkg-config ccache zip \
+          apt-get install -y --no-install-recommends ca-certificates git python3 ninja-build cmake make \
+            pkg-config ccache zip clang \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
             libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libgles-dev \
             libgl-dev libopengl-dev libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
             libudev-dev libdbus-1-dev libdecor-0-dev
-          curl -fsSL https://apt.llvm.org/llvm.sh -o llvm.sh
-          bash llvm.sh 22 && rm llvm.sh
-          apt-get install -y --no-install-recommends lld-22 llvm-22
-          for tool in clang ld.lld llvm-ar llvm-objdump; do ln -sf "/usr/bin/$tool-22" "/usr/local/bin/$tool"; done
 
       - uses: actions/checkout@v4
 
@@ -161,6 +162,12 @@ jobs:
         with:
           path: build/linux_arm64/third_party
           key: linux-arm64-third-party-${{ hashFiles('tools/android_build.py', 'port/android/patches/**') }}
+
+      # the guests' LLVM, which configure.py fetches (tools/guest_toolchain.py)
+      - uses: actions/cache@v4
+        with:
+          path: .cache/llvm
+          key: guest-llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/guest_toolchain.py') }}
 
       - name: Debug
         run: python3 tools/ci_build.py linux_arm64 debug
@@ -186,9 +193,9 @@ jobs:
   linux-x86_64:
     # The 64-bit x86 guest build (ninja linux_x86_64: the game as x32 code in
     # a 64-bit host), made as the 64-bit ARM one is: Ubuntu 22.04 (glibc 2.35,
-    # so the build starts on older distributions too) with clang 22 from
-    # apt.llvm.org (the guest's x32 target) and the development files SDL3
-    # builds with; and the tests of the guest's call boundary and image
+    # so the build starts on older distributions too) with its clang for the
+    # host and the development files SDL3 builds with, the guest's compiler
+    # (x32) the pinned LLVM; and the tests of the guest's call boundary and image
     # checks, which need this processor.
     runs-on: ubuntu-24.04
     container: ubuntu:22.04
@@ -201,18 +208,12 @@ jobs:
           DEBIAN_FRONTEND: noninteractive
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ca-certificates curl gnupg lsb-release \
-            software-properties-common git python3 python3-pytest ninja-build cmake make pkg-config ccache zip \
+          apt-get install -y --no-install-recommends ca-certificates git python3 python3-pytest ninja-build \
+            cmake make pkg-config ccache zip clang \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
             libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libgles-dev \
             libgl-dev libopengl-dev libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
             libudev-dev libdbus-1-dev libdecor-0-dev
-          curl -fsSL https://apt.llvm.org/llvm.sh -o llvm.sh
-          bash llvm.sh 22 && rm llvm.sh
-          apt-get install -y --no-install-recommends lld-22 llvm-22
-          for tool in clang ld.lld llvm-ar llvm-objdump llvm-objcopy llvm-nm; do
-            ln -sf "/usr/bin/$tool-22" "/usr/local/bin/$tool"
-          done
 
       - uses: actions/checkout@v4
 
@@ -228,6 +229,12 @@ jobs:
           path: build/linux_x86_64/third_party
           key: linux-x86_64-third-party-${{ hashFiles('tools/android_build.py', 'port/android/patches/**') }}
 
+      # the guests' LLVM, which configure.py fetches (tools/guest_toolchain.py)
+      - uses: actions/cache@v4
+        with:
+          path: .cache/llvm
+          key: guest-llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/guest_toolchain.py') }}
+
       - name: Debug
         run: python3 tools/ci_build.py linux_x86_64 debug
 
@@ -239,8 +246,11 @@ jobs:
       - name: VR release
         run: python3 tools/ci_build.py linux_x86_64 release --vr
 
+      # (with the guests' LLVM on the PATH: clang, ld.lld and LLVM's tools)
       - name: Test
-        run: python3 -m pytest -q tools/test_host_units.py tools/test_guest_image_check.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_guest_layout.py tools/test_linux_guest_build.py
+        run: |
+          PATH="$(python3 tools/guest_toolchain.py --cache "$CI_GUEST_LLVM_CACHE"):$PATH"
+          python3 -m pytest -q tools/test_host_units.py tools/test_guest_image_check.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_guest_layout.py tools/test_linux_guest_build.py tools/test_guest_toolchain.py
 
       - name: Compile cache
         run: ccache --show-stats
@@ -264,7 +274,8 @@ jobs:
           retention-days: 3
 
   android:
-    # The runner image has the Android SDK and NDK, a JDK and CMake.
+    # The runner image has the Android SDK and NDK, a JDK and CMake; the
+    # guest's compiler is the pinned LLVM configure.py downloads.
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
@@ -290,6 +301,12 @@ jobs:
         with:
           path: build/android/third_party
           key: android-third-party-${{ hashFiles('tools/android_build.py', 'port/android/patches/**') }}
+
+      # the guests' LLVM, which configure.py fetches (tools/guest_toolchain.py)
+      - uses: actions/cache@v4
+        with:
+          path: .cache/llvm
+          key: guest-llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/guest_toolchain.py') }}
 
       - uses: actions/cache@v4
         with:
