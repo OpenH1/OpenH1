@@ -1,0 +1,97 @@
+"""tools/determinism_compare.py on logs written here, as the game writes
+them (port/linux/game/determinism_log.c)"""
+
+import struct
+import subprocess
+import sys
+from pathlib import Path
+
+TOOL = Path(__file__).resolve().parent / "determinism_compare.py"
+
+
+def write_log(path, ticks, frames=None, local_takers=None):
+    lines = ["alloc 0 0 16 header", "alloc 1 10 64 objects"]
+    for index, (number, state) in enumerate(ticks):
+        lines.append(f"a {state:08x} 00000001")
+        lines.append(f"t {number} g 00000001 l 00000002 h {state:08x}")
+        lines.append("G 2: 88001000*2")
+        if local_takers and index in local_takers:
+            lines.append(f"l 1: {local_takers[index]}")
+        for frame in (frames or {}).get(index, []):
+            lines.append(f"f {number} 0 {frame}")
+    path.write_text("\n".join(lines) + "\n")
+
+
+def run(*args):
+    result = subprocess.run([sys.executable, str(TOOL), *map(str, args)], capture_output=True, text=True)
+    return result.returncode, result.stdout
+
+
+def test_alike(tmp_path):
+    ticks = [(1, 10), (2, 11), (2, 12), (3, 13)]
+    write_log(tmp_path / "a.txt", ticks, {1: ["aa"]})
+    write_log(tmp_path / "b.txt", ticks, {1: ["aa"]})
+    status, out = run(tmp_path / "a.txt", tmp_path / "b.txt")
+    assert status == 0
+    assert "4 ticks alike" in out and "all alike" in out
+
+
+def test_first_difference_in_order(tmp_path):
+    # (tick 2 twice, as after a checkpoint is loaded: the second differs)
+    write_log(tmp_path / "a.txt", [(1, 10), (2, 11), (2, 12), (3, 13)])
+    write_log(tmp_path / "b.txt", [(1, 10), (2, 11), (2, 99), (3, 13)])
+    status, out = run(tmp_path / "a.txt", tmp_path / "b.txt")
+    assert status == 1
+    assert "first difference at tick 2, the 3th logged" in out
+    assert "differs in 1 allocations: header" in out
+
+
+def test_frames_and_takers(tmp_path):
+    ticks = [(1, 10), (2, 11)]
+    write_log(tmp_path / "a.txt", ticks, {1: ["aa"]}, {0: "88002000"})
+    write_log(tmp_path / "b.txt", ticks, {1: ["bb"]}, {0: "88003000"})
+    status, out = run(tmp_path / "a.txt", tmp_path / "b.txt")
+    assert status == 1
+    assert "between ticks differ" in out
+    # --simulation compares neither the frames nor the takers between ticks
+    status, out = run(tmp_path / "a.txt", tmp_path / "b.txt", "--simulation")
+    assert status == 0, out
+
+
+def pool(blocks, magic):
+    """an objects' memory pool with blocks of 0x200 bytes, each object's
+    magic number given"""
+    base_address = 0x1000
+    data = bytearray(0x38 + 0x200 * len(blocks) + 0x100)
+    first = base_address if blocks else 0
+    struct.pack_into("<4s", data, 0, b"loop")
+    struct.pack_into("<LLLLL", data, 36, base_address, len(data) - 0x38, 0, first, 0)
+    for index in range(len(blocks)):
+        offset = 0x38 + 0x200 * index
+        address = base_address + 0x200 * index
+        following = address + 0x200 if index + 1 < len(blocks) else 0
+        struct.pack_into("<LlLLLL", data, offset, 0x68656164, 0x200, 0, following, 0, 0x7461696C)
+        struct.pack_into("<L", data, offset + 0x18, blocks[index])
+        struct.pack_into("<l", data, offset + 0x18 + 8, magic[index])
+    return bytes(data)
+
+
+def test_dump_leaves_out_the_objects_marks(tmp_path):
+    write_log(tmp_path / "a.txt", [(1, 10)])
+    a = pool([0xE24300CF, 0xEA0D0899], [5, 6])
+    b = bytearray(pool([0xE24300CF, 0xEA0D0899], [9, 9]))
+    # (the free space after the last block differs too)
+    b[-4:] = b"\xff\xff\xff\xff"
+    header = bytes(16)
+    lines = (tmp_path / "a.txt").read_text().replace("alloc 1 10 64 objects", f"alloc 1 10 {len(a)} objects")
+    (tmp_path / "a.txt").write_text(lines)
+    (tmp_path / "a.bin").write_bytes(header + a)
+    (tmp_path / "b.bin").write_bytes(header + bytes(b))
+    status, out = run(tmp_path / "a.txt", tmp_path / "a.txt", "--dump", tmp_path / "a.bin", tmp_path / "b.bin")
+    assert status == 0, out
+    # a field that is the game's differs
+    b[0x38 + 0x200 + 0x18 + 0x20] = 1
+    (tmp_path / "b.bin").write_bytes(header + bytes(b))
+    status, out = run(tmp_path / "a.txt", tmp_path / "a.txt", "--dump", tmp_path / "a.bin", tmp_path / "b.bin")
+    assert status == 1
+    assert "block 1 of 512 bytes, tag ea0d0899, +20 in it" in out

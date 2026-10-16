@@ -85,6 +85,10 @@ struct random_math_globals
 
 /* ---------- prototypes */
 
+/* port: port/linux/game/determinism_log.c */
+extern boolean determinism_log_seeds;
+void determinism_log_seed_taken(boolean local, void const *site);
+
 static real_vector3d *
 direction3d_from_table(
 	real_vector3d *result,
@@ -137,13 +141,28 @@ unsigned long *get_global_random_seed_address(
 		56,
 		!game_engine_running() || !random_math_globals.global_random_seed_lock,
 		"you should not be using global random(); use local random() instead");
+	/* port: the taker logged (debug.determinism_log) */
+	if (determinism_log_seeds)
+		determinism_log_seed_taken(FALSE, __builtin_return_address(0));
 	return &random_math_globals.global_random_seed;
 }
 
 unsigned long *get_global_local_random_seed_address(
 	void)
 {
+	/* port: the taker logged (debug.determinism_log) */
+	if (determinism_log_seeds)
+		determinism_log_seed_taken(TRUE, __builtin_return_address(0));
 	return &random_math_globals.global_local_random_seed;
+}
+
+/* port: the seeds, for the determinism log, without taking them */
+void random_math_port_seeds(
+	unsigned long *global_seed,
+	unsigned long *local_seed)
+{
+	*global_seed= random_math_globals.global_random_seed;
+	*local_seed= random_math_globals.global_local_random_seed;
 }
 
 void

@@ -124,6 +124,8 @@ symbols in this file:
 #include "cluster_partitions.h"
 /* port: object_bounds_cache.c's */
 void object_bounds_cache_invalidate(void);
+/* port: port/linux/game/determinism_log.c */
+void determinism_log_game_state_allocation(char const *name, void const *address, long size);
 
 void platform_log(const char *format, ...);
 
@@ -561,6 +563,8 @@ void *game_state_malloc(
 
 	pointer = (byte *)game_state_globals.base_address+game_state_globals.cpu_allocation_size;
 	game_state_globals.cpu_allocation_size+= size;
+	/* port: (debug.determinism_log) */
+	determinism_log_game_state_allocation(name, pointer, size);
 
 	crc_checksum_buffer((unsigned long *)&game_state_globals.allocation_size_checksum, &size, sizeof(size));
 
@@ -582,6 +586,8 @@ void *game_state_gpu_malloc(
 
 	game_state_globals.gpu_allocation_size+= size;
 	pointer = (byte *)game_state_globals.base_address-game_state_globals.gpu_allocation_size+GAME_STATE_SIZE;
+	/* port: (debug.determinism_log) */
+	determinism_log_game_state_allocation(name, pointer, size);
 
 	crc_checksum_buffer((unsigned long *)&game_state_globals.allocation_size_checksum, &size, sizeof(size));
 

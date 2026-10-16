@@ -78,6 +78,9 @@ symbols in this file:
 #include "profile_sections.h" /* port: port/linux/include/profile_sections.h */
 /* port/linux/game/network_distributed.c's */
 void network_distributed_tick(void);
+/* port: port/linux/game/determinism_log.c */
+void determinism_log_tick_begin(void);
+void determinism_log_tick_end(long tick);
 
 /* port: the tick loop's steps, timed in the profiling build */
 PROFILE_SECTION(game_time_network_distributed_tick_section, "network_distributed_tick")
@@ -478,12 +481,15 @@ void game_time_update(
 
 					for (update_index = 0; update_index < server_updates; update_index++)
 					{
+						/* port: (debug.determinism_log) */
+						determinism_log_tick_begin();
 						game_tick();
 						profile_scope(game_time_render_interpolation_tick_section, render_interpolation_tick();)
 						game_time_globals->server_time++;
 						game_time_globals->local_time++;
 						/* the distributed netcode's per-tick state */
 						profile_scope(game_time_network_distributed_tick_section, network_distributed_tick();)
+						determinism_log_tick_end(game_time_globals->server_time);
 					}
 				}
 

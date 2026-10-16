@@ -149,15 +149,25 @@ long system_unique_identifiers_equal(
 	return FALSE;
 }
 
+/* port: port/linux/game/determinism_log.c */
+extern boolean determinism_log_seeds;
+void determinism_log_clock_read(void const *site);
+
 unsigned long system_milliseconds(
 	void)
 {
+	/* port: a read in a tick logged (debug.determinism_log) */
+	if (determinism_log_seeds)
+		determinism_log_clock_read(__builtin_return_address(0));
 	return GetTickCount();
 }
 
 unsigned long system_seconds(
 	void)
 {
+	/* port: (as above) */
+	if (determinism_log_seeds)
+		determinism_log_clock_read(__builtin_return_address(0));
 	return time(NULL);
 }
 

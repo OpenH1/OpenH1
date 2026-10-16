@@ -3671,6 +3671,10 @@ void xgpu_write_bmp(const char *name, const unsigned char *pixels, unsigned long
 	fclose(file);
 }
 
+/* the determinism check's hash of each frame (port/linux/game/determinism_log.c) */
+int determinism_log_frames(void);
+void determinism_log_frame(unsigned char const *pixels, long width, long height);
+
 static void write_screenshot(struct render_target_entry *target)
 {
 	unsigned long width = target->target.pixel_width, height = target->target.pixel_height;
@@ -4046,6 +4050,17 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 		xgpu_backend_visibility_frame();
 		if (screenshot_every > 0 && device.frame % (unsigned long)screenshot_every == 0)
 			write_screenshot(back_buffer);
+		if (determinism_log_frames())
+		{
+			unsigned char *pixels = xgpu_backend_read_target(back_buffer->target.number, -1, FALSE);
+
+			if (pixels)
+			{
+				determinism_log_frame(pixels, (long)back_buffer->target.pixel_width,
+					(long)back_buffer->target.pixel_height);
+				free(pixels);
+			}
+		}
 #ifndef HALO_GUEST
 		if (platform_screenshot_take_request())
 			write_key_screenshot(back_buffer);

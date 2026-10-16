@@ -892,6 +892,15 @@ static const struct config_setting config_settings[] =
 	{ "debug.voice_test", _config_boolean, "false", "HALO_VOICE_TEST", _environment_set_is_true, _platform_all,
 		"Voice chat's automated tests: a tone instead of the microphone, and\n"
 		"each voice heard logged once a second." },
+	{ "debug.determinism_log", _config_string, "\"\"", "HALO_DETERMINISM_LOG", _environment_value, _platform_all,
+		"A file to write a line a tick to: a hash of the game state, the random\n"
+		"seeds and every taker of a seed by its call site, to compare two runs\n"
+		"of the same input (tools/determinism_compare.py); empty for none." },
+	{ "debug.determinism_dump", _config_integer, "0", "HALO_DETERMINISM_DUMP", _environment_value, _platform_all,
+		"With debug.determinism_log, the tick after which to write the game\n"
+		"state too, counted as logged from 1, to <log>.<count>.bin (and its first\n"
+		"frame to <log>.<count>.bmp), to find where two runs' game states differ;\n"
+		"0 none." },
 	{ "debug.audio_log", _config_boolean, "false", "HALO_AUDIO_LOG", _environment_value, _platform_desktop,
 		"Log the sounds placed in the world playing, five times a second: where\n"
 		"each is from the listener (metres ahead, right and up), its gain in\n"
