@@ -709,6 +709,12 @@ static void debug_check_pointer_overrun(
 	return;
 }
 
+/* port: the fill's own seed. The game's local seed took a value for every
+two bytes of every allocation, so how much the game allocated (the frames
+drawn, the files read) moved everything the seed picks after (the decals,
+the effects, the weapons' idle poses). */
+static unsigned long debug_memory_fill_seed = 0x2a3b4c5d;
+
 static void debug_memory_fill_with_random(
 	void *pointer,
 	unsigned long size)
@@ -724,11 +730,11 @@ static void debug_memory_fill_with_random(
 		current < (byte *)pointer + size - 1;
 		current += sizeof(word))
 	{
-		*(word *)current = local_random();
+		*(word *)current = seed_random(&debug_memory_fill_seed);
 	}
 	if (size & 1)
 	{
-		((byte *)pointer)[size - 1] = (byte)local_random();
+		((byte *)pointer)[size - 1] = (byte)seed_random(&debug_memory_fill_seed);
 	}
 
 	return;
