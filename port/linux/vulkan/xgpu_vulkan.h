@@ -1,0 +1,411 @@
+/*
+XGPU_VULKAN.H
+
+The Vulkan backend's core (xgpu_vulkan.c): the device, its memory, the
+images, samplers and pipelines the command stream's draws need, and the
+commands that draw them, in the stream's order. It runs in the host, on the
+render thread that plays each frame's records (one thread: none of these
+functions may be called from two at once, but where a comment says so); the
+command stream's table is xgpu_vulkan_stream.c's, the guest's textures
+xgpu_vulkan_textures.c's, the window host_vulkan.c's.
+
+The core:
+- loads the Vulkan loader itself (libvulkan.so.1) and its functions
+  through vkGetInstanceProcAddr, so that the host links with no Vulkan
+  library;
+- draws with dynamic rendering (Vulkan 1.3): a pass begins at the first
+  draw or clear after the targets change, loading what they hold, and ends
+  where something must be done outside one (a copy, an upload ordered
+  between draws, a readback, the end of a submission); every image is in
+  the GENERAL layout, and the end of a pass is a barrier for what comes
+  after;
+- caches pipelines by their whole description (shaders, vertex layout,
+  fixed-function state, the targets' formats), made through a
+  VkPipelineCache that is saved to a file at exit and read at the next
+  start; and samplers by theirs;
+- writes what a draw reads that the game rewrites (streamed vertices and
+  indices, the vertex constants, the uniforms, uploads' texels) into an
+  upload ring, a host-visible buffer reused once the GPU is done with the
+  submissions that read it;
+- counts visibility tests' samples with occlusion queries, read once the
+  frame's submissions are done.
+
+Submissions are numbered by a timeline semaphore: xgpu_vulkan_fence ends the
+work recorded so far and returns its number, xgpu_vulkan_wait waits for it.
+*/
+
+#ifndef __HALO_LINUX_XGPU_VULKAN_H
+#define __HALO_LINUX_XGPU_VULKAN_H
+
+#include <stddef.h>
+#include <stdint.h>
+
+#define VK_NO_PROTOTYPES
+#include <vulkan/vulkan_core.h>
+
+/* ---------- the core's life */
+
+struct xgpu_vulkan_options
+{
+	/* the instance extensions the window's surface needs (SDL's), count of
+	them; and the surface made for the instance (NULL: no window, the
+	frames are not shown: SDL's offscreen driver, the tests) */
+	const char *const *instance_extensions;
+	uint32_t instance_extension_count;
+	VkSurfaceKHR (*surface_create)(VkInstance instance, void *context);
+	void *surface_context;
+	/* the pipeline cache's file (NULL: none) */
+	const char *cache_path;
+	/* the validation layers (VK_LAYER_KHRONOS_validation) and their
+	messages logged */
+	int validation;
+};
+
+/* 1 on success: a device that has what the backend needs (logged if not) */
+int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options);
+/* saves the pipeline cache and lets go of everything */
+void xgpu_vulkan_shutdown(void);
+
+/* what the front end's descriptions can ask of the device */
+struct xgpu_vulkan_capabilities
+{
+	uint32_t largest_target;
+	/* the most samples a target may have (a power of 2) */
+	uint32_t samples;
+	uint32_t anisotropy;
+	/* border colours of any colour (VK_EXT_custom_border_color): else the
+	shader draws them (xgpu_spirv_options border) */
+	int custom_border_colors;
+	/* the vertex formats of 16-bit integers converted to float
+	(R16*_SSCALED): else the shader converts them */
+	int scaled_shorts;
+	/* DXT textures uploaded as they are (BC1 to BC3): else decoded */
+	int block_compression;
+	/* pixel shaders can write storage buffers (the visibility tests' counts
+	in the shader) */
+	int fragment_stores;
+};
+void xgpu_vulkan_capabilities(struct xgpu_vulkan_capabilities *capabilities);
+
+/* ---------- images
+
+The game's render targets and textures. A target can be multisampled: it
+is then two images, its texture and its multisampled attachment, resolved
+into the texture (xgpu_vulkan_image_resolve) before anything reads it. */
+
+enum
+{
+	XGPU_VULKAN_IMAGE_2D, XGPU_VULKAN_IMAGE_3D, XGPU_VULKAN_IMAGE_CUBE, XGPU_VULKAN_IMAGE_2D_ARRAY,
+};
+
+enum
+{
+	XGPU_VULKAN_FORMAT_NONE,
+	/* 32-bit BGRA: the targets, and the textures decoded (D3DCOLOR texels) */
+	XGPU_VULKAN_FORMAT_BGRA8,
+	/* depth and stencil (D24S8, else D32S8 where the device has no D24S8) */
+	XGPU_VULKAN_FORMAT_D24S8,
+	/* DXT1 (BC1, its 1-bit alpha), DXT2 and 3 (BC2), DXT4 and 5 (BC3) */
+	XGPU_VULKAN_FORMAT_DXT1,
+	XGPU_VULKAN_FORMAT_DXT3,
+	XGPU_VULKAN_FORMAT_DXT5,
+	/* the high-res replacements' pictures: bytes red, green, blue, alpha;
+	and a byte each, white's coverage (read as 1, 1, 1, the byte) */
+	XGPU_VULKAN_FORMAT_RGBA8,
+	XGPU_VULKAN_FORMAT_COVERAGE,
+	/* four 32-bit unsigned integers (the enhanced dynamic lights' cells) */
+	XGPU_VULKAN_FORMAT_RGBA32_UINT,
+	XGPU_VULKAN_FORMAT_COUNT
+};
+
+/* an image's usage (bits) */
+enum
+{
+	XGPU_VULKAN_USAGE_SAMPLED = 1,
+	/* drawn into */
+	XGPU_VULKAN_USAGE_TARGET = 2,
+};
+
+struct xgpu_vulkan_image_description
+{
+	/* XGPU_VULKAN_IMAGE_*, XGPU_VULKAN_FORMAT_*, XGPU_VULKAN_USAGE_*, its
+	samples a pixel (0 or 1: one) */
+	uint8_t type, format, usage, samples;
+	uint32_t width, height;
+	/* a 3D image's depth, an array's layers (a cube's are 6) */
+	uint32_t depth_or_layers;
+	uint32_t levels;
+	/* the channels sampled: 0 the format's, else 0x100 and two bits for each
+	of red, green, blue and alpha (red's lowest), the format's channel each
+	is taken from (a Custom Edition map's: xgpu_stream.h) */
+	uint32_t channels;
+};
+
+struct xgpu_vulkan_image;
+
+/* NULL if it cannot be made (logged) */
+struct xgpu_vulkan_image *xgpu_vulkan_image_create(const struct xgpu_vulkan_image_description *description);
+/* (after the work recorded so far that uses it) */
+void xgpu_vulkan_image_destroy(struct xgpu_vulkan_image *image);
+const struct xgpu_vulkan_image_description *xgpu_vulkan_image_description(const struct xgpu_vulkan_image *image);
+/* writes a region of a level and layer (a cube's face, a 3D image's slices
+z to z + depth); bytes_per_row is a compressed format's row of blocks. In
+the stream's order: draws recorded before it see the old texels, draws after
+it the new ones. */
+void xgpu_vulkan_image_upload(struct xgpu_vulkan_image *image, uint32_t level, uint32_t layer, uint32_t x, uint32_t y,
+	uint32_t z, uint32_t width, uint32_t height, uint32_t depth, const void *data, uint32_t bytes_per_row,
+	uint32_t bytes_per_image);
+/* its levels past from from level from - 1, each from the one before
+(linear), in the stream's order */
+void xgpu_vulkan_image_make_levels(struct xgpu_vulkan_image *image, uint32_t from);
+/* copies a level and layer of one image into a level and layer of another
+of the same format (as much as both have), in the stream's order */
+void xgpu_vulkan_image_copy(struct xgpu_vulkan_image *source, uint32_t source_level, uint32_t source_layer,
+	struct xgpu_vulkan_image *destination, uint32_t destination_level, uint32_t destination_layer);
+/* a multisampled image's samples resolved into an image of one (colour:
+averaged; depth and stencil: the first sample), in the stream's order */
+void xgpu_vulkan_image_resolve(struct xgpu_vulkan_image *multisampled, struct xgpu_vulkan_image *image);
+/* reads a layer's first level as rows of 4-byte pixels (BGRA8 images:
+BGRA) from the first, after the work recorded so far: waits for the GPU
+(screenshots, tests); 1 on success */
+int xgpu_vulkan_read_pixels(struct xgpu_vulkan_image *image, uint32_t layer, void *pixels, uint32_t bytes_per_row);
+
+/* ---------- samplers */
+
+enum
+{
+	XGPU_VULKAN_FILTER_POINT, XGPU_VULKAN_FILTER_LINEAR,
+};
+
+/* the mip filter: none (the first level alone), nearest level, between
+levels */
+enum
+{
+	XGPU_VULKAN_MIP_NONE, XGPU_VULKAN_MIP_POINT, XGPU_VULKAN_MIP_LINEAR,
+};
+
+enum
+{
+	XGPU_VULKAN_ADDRESS_WRAP, XGPU_VULKAN_ADDRESS_MIRROR, XGPU_VULKAN_ADDRESS_CLAMP, XGPU_VULKAN_ADDRESS_BORDER,
+};
+
+/* zeroed before it is filled (it is compared whole) */
+struct xgpu_vulkan_sampler_description
+{
+	uint8_t minify, magnify, mip;
+	uint8_t address[3];
+	/* 1 for none */
+	uint8_t anisotropy;
+	uint8_t pad;
+	float lod_bias;
+	/* the most detailed level sampled */
+	float min_lod;
+	/* ARGB, 8 bits each (address border) */
+	uint32_t border_color;
+};
+
+/* the sampler of a description, made the first time; VK_NULL_HANDLE if it
+cannot be */
+VkSampler xgpu_vulkan_sampler(const struct xgpu_vulkan_sampler_description *description);
+
+/* ---------- shaders and pipelines */
+
+/* a shader module of SPIR-V words (count of them): the same for the same
+words; VK_NULL_HANDLE if it cannot be made (logged) */
+VkShaderModule xgpu_vulkan_shader(const uint32_t *words, size_t count);
+
+/* the vertex inputs' bindings: the 16 streams', and the one of the inputs
+no stream feeds (a vec4 each, every vertex the same) */
+#define XGPU_VULKAN_BINDING_CONSTANT 16
+#define XGPU_VULKAN_BINDINGS 17
+
+struct xgpu_vulkan_attribute
+{
+	/* VkFormat (VK_FORMAT_UNDEFINED: not read), its binding and offset */
+	uint32_t format;
+	uint8_t binding, pad;
+	uint16_t offset;
+};
+
+/* the primitives' kinds the pipeline draws (its topology's class: the
+topology itself is the draw's) */
+enum
+{
+	XGPU_VULKAN_CLASS_POINTS, XGPU_VULKAN_CLASS_LINES, XGPU_VULKAN_CLASS_TRIANGLES,
+};
+
+/* What a pipeline bakes in: the shaders, the vertex layout and the
+pipeline key's fixed-function fields (xgpu_backend.h's XGPU_* values,
+named as struct xgpu_pipeline_key names them), and the targets' formats
+(XGPU_VULKAN_FORMAT_*) and samples. Zeroed before it is filled (it is
+hashed and compared whole). */
+struct xgpu_vulkan_pipeline_description
+{
+	VkShaderModule vertex_shader, pixel_shader;
+	struct xgpu_vulkan_attribute attributes[16];
+	uint16_t strides[XGPU_VULKAN_BINDINGS];
+	uint8_t primitive_class;
+	uint8_t blend, blend_source, blend_destination, blend_operation;
+	uint8_t color_mask;
+	uint8_t depth_test, depth_function, depth_write;
+	uint8_t stencil_test, stencil_function, stencil_fail, stencil_depth_fail, stencil_pass;
+	uint8_t stencil_read_mask, stencil_write_mask;
+	/* raster: the Xbox screen's front winding (rows from the top, as
+	Vulkan's framebuffers have them) */
+	uint8_t cull, front_counter_clockwise, cull_front;
+	uint8_t fill, depth_bias;
+	uint8_t color_format, depth_format, samples;
+	/* the pixel shader writes the sample mask, or counts samples (early
+	fragment tests): nothing to the pipeline but its key */
+	uint8_t pad[3];
+};
+
+/* the pipeline of a description, made the first time; VK_NULL_HANDLE if it
+cannot be */
+VkPipeline xgpu_vulkan_pipeline(const struct xgpu_vulkan_pipeline_description *description);
+
+/* ---------- data the GPU reads */
+
+/* a buffer range */
+struct xgpu_vulkan_range
+{
+	VkBuffer buffer;
+	VkDeviceSize offset;
+};
+
+/* size bytes of the upload ring for the work recorded from now on, aligned
+to alignment (a power of 2): where to write them, and their range; NULL if
+the ring cannot have them */
+void *xgpu_vulkan_upload(uint32_t size, uint32_t alignment, struct xgpu_vulkan_range *range);
+
+/* a buffer of the backend's that draws read (the mirror's segments): NULL
+if it cannot be made */
+struct xgpu_vulkan_buffer;
+struct xgpu_vulkan_buffer *xgpu_vulkan_buffer_create(uint32_t size);
+/* its handle, for a draw recorded now (which then reads it) */
+VkBuffer xgpu_vulkan_buffer_handle(struct xgpu_vulkan_buffer *buffer);
+/* its bytes, as the CPU last wrote them */
+const void *xgpu_vulkan_buffer_contents(const struct xgpu_vulkan_buffer *buffer);
+/* writes into it: in the stream's order (draws recorded before it read the
+old bytes), or, unused (no work the GPU still has reads those bytes), at
+once */
+void xgpu_vulkan_buffer_write(struct xgpu_vulkan_buffer *buffer, uint32_t offset, const void *data, uint32_t size,
+	int unused);
+
+/* ---------- drawing */
+
+/* draws go to a colour image and a depth image (NULL for none) from now
+on; their layer (a layered target's) */
+void xgpu_vulkan_set_targets(struct xgpu_vulkan_image *color, struct xgpu_vulkan_image *depth, uint32_t layer);
+
+/* the clears' parts: the interface's XGPU_CLEAR_* (the colour's channels
+are cleared where their bits are set) */
+enum
+{
+	XGPU_VULKAN_CLEAR_RED = 1, XGPU_VULKAN_CLEAR_GREEN = 2, XGPU_VULKAN_CLEAR_BLUE = 4, XGPU_VULKAN_CLEAR_ALPHA = 8,
+	XGPU_VULKAN_CLEAR_COLOR = 16, XGPU_VULKAN_CLEAR_DEPTH = 32, XGPU_VULKAN_CLEAR_STENCIL = 64,
+	XGPU_VULKAN_CLEAR_CHANNELS = 15,
+};
+
+/* rectangles (left, top, width, height in the targets' pixels; none:
+nothing, as OpenGL's) of the parts XGPU_VULKAN_CLEAR_* of the bound
+targets */
+void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t parts, const float color[4], float depth,
+	uint32_t stencil);
+
+/* the dynamic state (struct xgpu_dynamic_state), in the targets' pixels */
+struct xgpu_vulkan_dynamic_state
+{
+	int32_t viewport[4];
+	int32_t scissor[4];
+	float depth_range[2];
+	uint32_t stencil_reference;
+	float blend_color[4];
+	/* the slope factor and the offset in the depth's units */
+	float depth_bias[2];
+};
+
+/* a stage's texture: its image (NULL: none, a stand-in of its kind is
+sampled) and how it is sampled (XGPU_VULKAN_IMAGE_*, the shader's), and its
+sampler */
+struct xgpu_vulkan_texture
+{
+	struct xgpu_vulkan_image *image;
+	uint8_t kind;
+	VkSampler sampler;
+};
+
+enum
+{
+	XGPU_VULKAN_TOPOLOGY_POINTS, XGPU_VULKAN_TOPOLOGY_LINES, XGPU_VULKAN_TOPOLOGY_LINE_STRIP,
+	XGPU_VULKAN_TOPOLOGY_TRIANGLES, XGPU_VULKAN_TOPOLOGY_TRIANGLE_STRIP, XGPU_VULKAN_TOPOLOGY_TRIANGLE_FAN,
+};
+
+/* a draw: its pipeline, topology and dynamic state; its vertices' bindings
+(those of bindings' bits) and indices (16-bit; buffer VK_NULL_HANDLE: none);
+the vertex constants and uniforms (ranges of the upload ring, or another
+buffer's, at most 64 KB each); the stages' textures; and the count of
+vertices or indices, the first index and the offset added to each index */
+struct xgpu_vulkan_draw
+{
+	VkPipeline pipeline;
+	uint8_t topology;
+	const struct xgpu_vulkan_dynamic_state *dynamic;
+	uint32_t bindings;
+	struct xgpu_vulkan_range vertices[XGPU_VULKAN_BINDINGS];
+	struct xgpu_vulkan_range indices;
+	struct xgpu_vulkan_range constants, uniforms;
+	struct xgpu_vulkan_texture textures[4];
+	uint32_t count, first_index;
+	int32_t vertex_offset;
+};
+
+void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw);
+
+/* ---------- visibility tests */
+
+/* the draws between begin and end count their samples (each sample that
+passes the tests) for the test's slot (0 to 4095), which end names; the
+count is known once the frame's work is done */
+void xgpu_vulkan_visibility_begin(void);
+/* area: the samples a pixel of the game's is, which the count written for
+the game is divided by */
+void xgpu_vulkan_visibility_end(uint32_t slot, float area);
+/* where each slot's latest count is written, divided by its area (a count
+of the game's pixels, as the game reads it; any thread) */
+void xgpu_vulkan_set_visibility_output(volatile uint32_t *counts);
+#define XGPU_VULKAN_VISIBILITY_SLOTS 4096
+
+/* ---------- submissions and frames */
+
+/* the number of the submission the work recorded from now on goes in:
+what was uploaded for an earlier one is not read by this one (the ring's
+bytes are reused once that one is done) */
+uint64_t xgpu_vulkan_serial(void);
+
+/* ends the work recorded so far and submits it; returns its number, which
+grows */
+uint64_t xgpu_vulkan_fence(void);
+/* returns once the GPU has done the submission of that number and those
+before (the visibility tests' counts of the frames they end are written) */
+void xgpu_vulkan_wait(uint64_t fence);
+
+/* the window's size in pixels changed (any thread): the swapchain is made
+again */
+void xgpu_vulkan_window_resized(uint32_t width, uint32_t height);
+
+/* the frame's end: its last work submitted, and (with a window) an image
+shown, letterboxed into the window (NULL: none) */
+void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *present);
+
+/* statistics since the last call */
+struct xgpu_vulkan_statistics
+{
+	uint32_t frames, submissions, passes, draws, clears, clears_as_draws;
+	uint32_t pipelines_made, samplers_made, uploads_ordered, uploads_early;
+	uint64_t ring_bytes;
+	double pipeline_seconds;
+};
+void xgpu_vulkan_statistics(struct xgpu_vulkan_statistics *statistics);
+
+#endif

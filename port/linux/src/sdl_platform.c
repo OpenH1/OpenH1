@@ -776,10 +776,15 @@ thread; nonzero on success */
 int host_metal_window_open(unsigned int window);
 /* the window's kind of drawing */
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_METAL
+#elif defined(HALO_VULKAN)
+/* port/linux/vulkan/host_vulkan.c: the window drawn with Vulkan by the
+host; nonzero on success */
+int host_vulkan_window_open(unsigned int window);
+#define PLATFORM_WINDOW_DRAWING SDL_WINDOW_VULKAN
 #else
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_OPENGL
 #endif
-#if defined(HALO_RENDER_STREAM) && !defined(HALO_METAL)
+#if defined(HALO_RENDER_STREAM) && !defined(HALO_METAL) && !defined(HALO_VULKAN)
 /* port/linux/host/host_gl_stream.c: the window drawn with OpenGL by the
 host, whose render thread has the context (the renderer's backend is the
 host's), at a swap interval (vsync 1, or 0); asked again, the interval
@@ -798,8 +803,8 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (!platform_sdl_initialize())
 		return FALSE;
 
-#ifdef HALO_METAL
-	/* (no OpenGL: the window's layer is Metal's, drawn by the host) */
+#if defined(HALO_METAL) || defined(HALO_VULKAN)
+	/* (no OpenGL: the window is Metal's or Vulkan's, drawn by the host) */
 #elif defined(HALO_GLES)
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
@@ -809,7 +814,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
 #endif
-#ifndef HALO_METAL
+#if !defined(HALO_METAL) && !defined(HALO_VULKAN)
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
@@ -873,6 +878,19 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		PLATFORM_WINDOW_DRAWING | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
 		(config_boolean("debug.hidden_window") ? SDL_WINDOW_HIDDEN : 0) |
 		(platform_fullscreen_setting() ? SDL_WINDOW_FULLSCREEN : 0));
+#ifdef HALO_VULKAN
+	/* (a video driver that draws no window with Vulkan, as SDL's offscreen
+	one where the device has no headless surfaces: a window the host draws
+	without showing) */
+	if (!platform_window)
+	{
+		platform_log("SDL_CreateWindow with Vulkan failed (%s): the frames are drawn and not shown", SDL_GetError());
+		platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
+			SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY |
+			(config_boolean("debug.hidden_window") ? SDL_WINDOW_HIDDEN : 0) |
+			(platform_fullscreen_setting() ? SDL_WINDOW_FULLSCREEN : 0));
+	}
+#endif
 #endif
 	if (!platform_window)
 	{
@@ -896,12 +914,20 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	platform_fullscreen_requested = platform_fullscreen_setting();
 	platform_fullscreen_kind_apply();
 #endif
+#if defined(HALO_METAL) || defined(HALO_VULKAN)
 #ifdef HALO_METAL
 	if (!host_metal_window_open((unsigned int)(uintptr_t)platform_window))
 	{
 		platform_log("cannot draw the window with Metal");
 		return FALSE;
 	}
+#else
+	if (!host_vulkan_window_open((unsigned int)(uintptr_t)platform_window))
+	{
+		platform_log("cannot draw the window with Vulkan");
+		return FALSE;
+	}
+#endif
 	platform_event_thread = SDL_GetCurrentThreadID();
 	platform_mouse_capture(TRUE);
 	(void)version;
@@ -998,7 +1024,7 @@ void platform_display_apply(void)
 #endif
 #ifdef PLATFORM_HOST_GL
 	host_gl_window((unsigned int)(uintptr_t)platform_window, config_boolean("display.vsync") ? 1 : 0);
-#elif !defined(HALO_METAL)
+#elif !defined(HALO_METAL) && !defined(HALO_VULKAN)
 	SDL_GL_SetSwapInterval(config_boolean("display.vsync") ? 1 : 0);
 #endif
 }

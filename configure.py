@@ -129,6 +129,13 @@ parser.add_argument(
     "(default: --guest-llvm's for the guest, clang for the host)",
 )
 parser.add_argument(
+    "--linux-vulkan",
+    action="store_true",
+    help="generate `ninja linux_vulkan`, the 64-bit x86 Linux build with the Vulkan renderer (on the host, through "
+    "the renderer's command stream), on a 64-bit x86 Linux computer: configure.py then downloads its musl, SDL3 and "
+    "Vulkan headers (once, to build/linux_vulkan/third_party); refer to port/linux/vulkan/README.md",
+)
+parser.add_argument(
     "--vr",
     action="store_true",
     help="the VR mode (OpenXR) in `ninja linux_arm64` and `ninja linux_x86_64`, with the desktop OpenGL renderer; "
@@ -188,6 +195,7 @@ sln = SimpleNamespace(
     linux_arm64_gl=args.linux_arm64_gl,
     linux_x86_64=args.linux_x86_64,
     linux_x86_64_cc=args.linux_x86_64_cc,
+    linux_vulkan=args.linux_vulkan,
     port_vr=args.vr,
     macos_cc=args.macos_cc,
     macos_guest_cc=args.macos_guest_cc,
