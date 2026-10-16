@@ -318,11 +318,14 @@ char *xgpu_glsl_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 		/* (a point the game projected itself is drawn in screen space,
 		whether or not the program divides by w) */
 		xgpu_text_append(&text, "\tif (screen_points != 0.0)\n\t\tclip_captured = false;\n");
-		xgpu_text_append(&text, "\tif (clip_captured)\n\t\tclip_position = eye_correction[EYE] * clip_position;\n");
+		/* Keep the captured position independent of the eye. NVIDIA's OVR
+		multiview compiler otherwise reuses the left eye's modified value
+		when it evaluates the right eye (tools/vr_test/gl_multiview.c). */
+		xgpu_text_append(&text, "\tvec4 eye_clip_position = eye_correction[EYE] * clip_position;\n");
 		/* except where the game projected a point itself (lens flares,
 		sprites: vr_render_screen_point), which moves to each eye in the
 		screen by a scale and offset; else none */
-		xgpu_text_append(&text, "\telse\n\t\toPos.xy = oPos.xy * screen_correction[EYE].xy + "
+		xgpu_text_append(&text, "\tif (!clip_captured)\n\t\toPos.xy = oPos.xy * screen_correction[EYE].xy + "
 			"screen_correction[EYE].zw * oPos.w;\n");
 	}
 	xgpu_text_append(&text,
@@ -341,8 +344,8 @@ char *xgpu_glsl_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 	xgpu_text_append(&text,
 		"\tvec4 position;\n"
 		"\tif (clip_captured)\n"
-		"\t\tposition = vec4((clip_position.xyz * c[%d].xyz + (c[%d].xyz + vec3(0.5 + screen_offset, 0.5, 0.0)\n"
-		"\t\t\t- viewport_offset.xyz) * clip_position.w) / scale, clip_position.w);\n"
+		"\t\tposition = vec4((%s.xyz * c[%d].xyz + (c[%d].xyz + vec3(0.5 + screen_offset, 0.5, 0.0)\n"
+		"\t\t\t- viewport_offset.xyz) * %s.w) / scale, %s.w);\n"
 		"\telse\n"
 		"\t{\n"
 		"\t\tvec3 ndc = (vec3(oPos.xy + vec2(0.5 + screen_offset, 0.5), oPos.z) - viewport_offset.xyz) / scale;\n"
@@ -361,7 +364,10 @@ char *xgpu_glsl_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 		"\tif (!(abs(position.w) > 0.0))\n"
 		"\t\tposition = vec4(0.0, 0.0, 0.0, -1.0);\n"
 		"\tgl_Position = position;\n",
-		XGPU_VERTEX_CONSTANT_BIAS - 38, XGPU_VERTEX_CONSTANT_BIAS - 37);
+		multiview ? "eye_clip_position" : "clip_position",
+		XGPU_VERTEX_CONSTANT_BIAS - 38, XGPU_VERTEX_CONSTANT_BIAS - 37,
+		multiview ? "eye_clip_position" : "clip_position",
+		multiview ? "eye_clip_position" : "clip_position");
 	if (multiview)
 	{
 		/* the eyes' images have their first row at the bottom (OpenXR's GL

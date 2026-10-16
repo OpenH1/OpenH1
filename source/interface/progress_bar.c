@@ -173,6 +173,7 @@ symbols in this file:
 
 #include "interface/progress_bar.h"
 #include "cache/cache_files.h"
+#include "cache/texture_cache.h" /* port: preparation stand-in texture */
 /* The January object retains out-of-line copies of the D3D and D3DX inline
  * wrappers.  The stock XDK definitions of D3DINLINE (static __forceinline) and
  * D3DXINLINE (_inline) reproduce every one of them, including
@@ -184,6 +185,7 @@ symbols in this file:
 #include <xtl.h>
 #include "rasterizer/xbox/rasterizer_xbox.h"
 #include "rasterizer/xbox/rasterizer_xbox_pixel_shader.h"
+#include "rasterizer/xbox/rasterizer_xbox_vertex_shaders.h" /* port: loading-screen preparation */
 
 #include "interface/progress_bar_internal.h"
 
@@ -1990,6 +1992,119 @@ static void this_is_awful(
 	return;
 }
 
+/* port: shared by the loading screen and its unseen preparation draws. */
+static void progress_bar_shader_definitions(void)
+{
+	csmemset(&blur_shader, 0, sizeof(struct pixel_shader_definition));
+	blur_shader.texture_modes= 0x8421;
+	blur_shader.combiner_count= 3;
+	blur_shader.rgb_inputs[0]= 0x08a009a0;
+	blur_shader.rgb_outputs[0]= 0x00000c00;
+	blur_shader.rgb_inputs[1]= 0x0aa00ba0;
+	blur_shader.rgb_outputs[1]= 0x00000d00;
+	blur_shader.rgb_inputs[2]= 0x0ca00da0;
+	blur_shader.rgb_outputs[2]= 0x00000c00;
+	blur_shader.alpha_inputs[0]= 0x14200000;
+	blur_shader.alpha_outputs[0]= 0x000000c0;
+	blur_shader.final_combiner_inputs_abcd= 0x0000000c;
+	blur_shader.final_combiner_inputs_efg= 0x00001c00;
+
+	csmemset(&regular_shader, 0, sizeof(struct pixel_shader_definition));
+	regular_shader.texture_modes= 0x21;
+	regular_shader.combiner_count= 1;
+	regular_shader.rgb_inputs[0]= 0x08040000;
+	regular_shader.rgb_outputs[0]= 0x000000c0;
+	regular_shader.alpha_inputs[0]= 0x14190000;
+	regular_shader.alpha_outputs[0]= 0x000000c0;
+	regular_shader.final_combiner_inputs_abcd= 0x200c0000;
+	regular_shader.final_combiner_inputs_efg= 0x00001c00;
+}
+
+static void progress_bar_draw_state(void)
+{
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ALPHABLENDENABLE, TRUE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_DESTBLEND, D3DBLEND_ONE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_CULLMODE, D3DCULL_NONE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ZENABLE, FALSE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_LIGHTING, FALSE);
+}
+
+static void progress_bar_blur_textures(D3DBaseTexture *texture)
+{
+	long stage;
+
+	for (stage= 0; stage<4; stage++)
+	{
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_MIPFILTER, D3DTEXF_POINT);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
+		IDirect3DDevice8_SetTexture(global_d3d_device, stage, texture);
+	}
+}
+
+static void progress_bar_mask_state(void)
+{
+	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 1, D3DTSS_BORDERCOLOR, 0x05050505);
+	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 1, D3DTSS_ADDRESSU, D3DTADDRESS_BORDER);
+	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 1, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
+}
+
+/* port: loading-screen pipelines, without its sounds, time, captures or
+texture allocation. The caller has the normal mono color/depth formats.
+The viewport and render targets remain the caller's. */
+static void progress_bar_prepare_draw(void *data)
+{
+	D3DBaseTexture *texture = data;
+	D3DXMATRIX saved_screen_transform = progress_bar_globals.screen_transform;
+	real_rgb_color color = { 0.5f, 0.5f, 0.5f };
+	long stage;
+
+	progress_bar_shader_definitions();
+	progress_bar_draw_state();
+	/* The loading screen follows the interface. Keep the states observed
+	there even when preparation follows the world's scope pass instead:
+	vertex fog, RGB writes, and no alpha rejection or first-person stencil. */
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_FOGENABLE, TRUE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_FOGTABLEMODE, D3DFOG_NONE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ALPHATESTENABLE, FALSE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_STENCILENABLE, FALSE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_BLENDOP, D3DBLENDOP_ADD);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_COLORWRITEENABLE,
+		D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN | D3DCOLORWRITEENABLE_BLUE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_FILLMODE, D3DFILL_SOLID);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ZBIAS, 0);
+	for (stage = 0; stage < 4; stage++)
+	{
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_ALPHAKILL, D3DTALPHAKILL_DISABLE);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_COLORSIGN, 0);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_ADDRESSW, D3DTADDRESS_WRAP);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_BORDERCOLOR, 0);
+	}
+	IDirect3DDevice8_SetVertexShader(global_d3d_device, vertex_shader_table[4].handle);
+	D3DXMatrixPerspectiveLH(&progress_bar_globals.screen_transform, 0.64f, 0.48f, 1.f, 1000.f);
+	progress_bar_blur_textures(texture);
+	IDirect3DDevice8_SetPixelShaderProgram(global_d3d_device, (D3DPIXELSHADERDEF *)&blur_shader);
+	draw_fade_layer(0.f, 0.f, 0.9f);
+	progress_bar_mask_state();
+	IDirect3DDevice8_SetPixelShaderProgram(global_d3d_device, (D3DPIXELSHADERDEF *)&regular_shader);
+	draw_initial_layer(&color, 0.5f);
+	progress_bar_globals.screen_transform = saved_screen_transform;
+}
+
+void progress_bar_port_enumerate(struct bitmap_data const *bitmap)
+{
+	D3DBaseTexture *texture;
+
+	if (!bitmap || vertex_shader_table[4].handle == NONE)
+		return;
+	texture = _texture_cache_bitmap_get_hardware_format((struct bitmap_data *)bitmap, TRUE, TRUE);
+	if (texture)
+		halo_gpu_draw_preserved(progress_bar_prepare_draw, texture);
+}
+
 static void progress_bar_render(
 	real progress)
 {
@@ -2030,12 +2145,7 @@ static void progress_bar_render(
 	IDirect3DDevice8_SetTransform(global_d3d_device, D3DTS_WORLD, &progress_bar_globals.world);
 	IDirect3DDevice8_SetTransform(global_d3d_device, D3DTS_VIEW, &progress_bar_globals.view);
 	IDirect3DDevice8_SetTransform(global_d3d_device, D3DTS_PROJECTION, &progress_bar_globals.projection);
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ALPHABLENDENABLE, TRUE);
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_DESTBLEND, D3DBLEND_ONE);
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_CULLMODE, D3DCULL_NONE);
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ZENABLE, FALSE);
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_LIGHTING, FALSE);
+	progress_bar_draw_state(); /* port: shared with preparation */
 	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 0, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
 	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 0, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
 	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 0, D3DTSS_MIPFILTER, D3DTEXF_POINT);
@@ -2057,15 +2167,7 @@ static void progress_bar_render(
 	IDirect3DDevice8_SetPixelShaderProgram(global_d3d_device, (D3DPIXELSHADERDEF *)&blur_shader);
 	IDirect3DDevice8_GetBackBuffer(global_d3d_device, -1, 0, &back_buffer);
 	this_is_awful(&back_buffer_texture, back_buffer);
-	for (stage= 0; stage<4; stage++)
-	{
-		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
-		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
-		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_MIPFILTER, D3DTEXF_POINT);
-		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
-		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
-		IDirect3DDevice8_SetTexture(global_d3d_device, stage, &back_buffer_texture);
-	}
+	progress_bar_blur_textures(&back_buffer_texture); /* port: shared with preparation */
 	/* (back_buffer_texture has what it needs of the surface; the
 	reference IDirect3DDevice8_GetBackBuffer gave is given back) */
 	IDirect3DSurface8_Release(back_buffer);
@@ -2076,9 +2178,7 @@ static void progress_bar_render(
 		draw_fade_layer(0.f, 0.f, 0.9f - (progress - 0.9f)*9.f);
 	IDirect3DDevice8_SetTexture(global_d3d_device, 0, (D3DBaseTexture *)progress_bar_mode.texture0);
 	IDirect3DDevice8_SetTexture(global_d3d_device, 1, (D3DBaseTexture *)progress_bar_mode.texture1);
-	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 1, D3DTSS_BORDERCOLOR, 0x05050505);
-	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 1, D3DTSS_ADDRESSU, D3DTADDRESS_BORDER);
-	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 1, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
+	progress_bar_mask_state(); /* port: shared with preparation */
 	IDirect3DDevice8_SetPixelShaderProgram(global_d3d_device, (D3DPIXELSHADERDEF *)&regular_shader);
 	draw_initial_layer(&color, progress);
 	for (stage= 0; stage<4; stage++)
@@ -2146,12 +2246,7 @@ static void progress_bar_make_stuff_ready(
 	progress_bar_load_loading_texture(&progress_bar_mode.texture0);
 	progress_bar_create_noise_texture();
 	progress_bar_create_mask_texture();
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ALPHABLENDENABLE, TRUE);
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_DESTBLEND, D3DBLEND_ONE);
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_CULLMODE, D3DCULL_NONE);
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ZENABLE, FALSE);
-	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_LIGHTING, FALSE);
+	progress_bar_draw_state(); /* port: shared with preparation */
 	IDirect3DDevice8_SetTexture(global_d3d_device, 0, (D3DBaseTexture *)progress_bar_mode.texture0);
 	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 0, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
 	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 0, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
@@ -2159,29 +2254,7 @@ static void progress_bar_make_stuff_ready(
 	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 0, D3DTSS_ADDRESSU, D3DTADDRESS_CLAMP);
 	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 0, D3DTSS_ADDRESSV, D3DTADDRESS_CLAMP);
 
-	csmemset(&blur_shader, 0, sizeof(struct pixel_shader_definition));
-	blur_shader.texture_modes= 0x8421;
-	blur_shader.combiner_count= 3;
-	blur_shader.rgb_inputs[0]= 0x08a009a0;
-	blur_shader.rgb_outputs[0]= 0x00000c00;
-	blur_shader.rgb_inputs[1]= 0x0aa00ba0;
-	blur_shader.rgb_outputs[1]= 0x00000d00;
-	blur_shader.rgb_inputs[2]= 0x0ca00da0;
-	blur_shader.rgb_outputs[2]= 0x00000c00;
-	blur_shader.alpha_inputs[0]= 0x14200000;
-	blur_shader.alpha_outputs[0]= 0x000000c0;
-	blur_shader.final_combiner_inputs_abcd= 0x0000000c;
-	blur_shader.final_combiner_inputs_efg= 0x00001c00;
-
-	csmemset(&regular_shader, 0, sizeof(struct pixel_shader_definition));
-	regular_shader.texture_modes= 0x21;
-	regular_shader.combiner_count= 1;
-	regular_shader.rgb_inputs[0]= 0x08040000;
-	regular_shader.rgb_outputs[0]= 0x000000c0;
-	regular_shader.alpha_inputs[0]= 0x14190000;
-	regular_shader.alpha_outputs[0]= 0x000000c0;
-	regular_shader.final_combiner_inputs_abcd= 0x200c0000;
-	regular_shader.final_combiner_inputs_efg= 0x00001c00;
+	progress_bar_shader_definitions(); /* port: shared with preparation */
 
 	wave_format.wfx.wFormatTag= WAVE_FORMAT_XBOX_ADPCM;
 	wave_format.wfx.wBitsPerSample= 4;

@@ -2,7 +2,11 @@
 HOST_VR.C
 
 OpenXR for the VR mode (HALO_VR; port/linux/src/vr_host.h, port/linux/src/
-vr.c). The game draws with OpenGL through SDL's context, which OpenXR takes
+vr.c). With HALO_VULKAN the runtime creates the Vulkan instance and device
+through XR_KHR_vulkan_enable2 and owns the swapchains' VkImages. These
+handles stay on the host (host_vr_vulkan.h), outside the guest's ABI.
+
+With OpenGL the game draws through SDL's context, which OpenXR takes
 through XR_KHR_opengl_enable. Which context that is, is decided before the
 window is made (host_vr_probe, from the runtime's extensions): an EGL
 context (SDL_VIDEO_FORCE_EGL, sdl_platform.c) through XR_MNDX_egl_enable's
@@ -18,12 +22,18 @@ package: as the loader does, from the active runtime's manifest
 ($XDG_CONFIG_HOME/openxr/1/active_runtime.json, then /etc/xdg), through
 xrNegotiateLoaderRuntimeInterface. A libopenxr_loader.so.1 next to the
 executable or on the system is used instead where there is one, for its API
-layers. Tested with SteamVR on a Steam Frame.
+layers. The OpenGL binding has been tested with SteamVR on a Steam Frame;
+the Vulkan binding with Monado on Linux.
 */
 
+#ifdef HALO_VULKAN
+#define XR_USE_GRAPHICS_API_VULKAN
+#include "host_vr_vulkan.h"
+#else
 #define XR_USE_PLATFORM_EGL
 #define XR_USE_PLATFORM_XLIB
 #define XR_USE_GRAPHICS_API_OPENGL
+#endif
 #define XR_NO_PROTOTYPES
 
 #include "host.h"
@@ -31,9 +41,11 @@ layers. Tested with SteamVR on a Steam Frame.
 #include "host_vr_render.h"
 #include "vr_host.h"
 
+#ifndef HALO_VULKAN
 #include <EGL/egl.h>
-#include <SDL3/SDL.h>
 #include <X11/Xlib.h>
+#include <SDL3/SDL.h>
+#endif
 #include <dlfcn.h>
 #include <limits.h>
 #include <math.h>
@@ -44,10 +56,12 @@ layers. Tested with SteamVR on a Steam Frame.
 #include <time.h>
 #include <unistd.h>
 
+#ifndef HALO_VULKAN
 /* GLX's types, without its header (which would want the desktop GL one) */
 typedef struct __GLXcontextRec *GLXContext;
 typedef struct __GLXFBConfigRec *GLXFBConfig;
 typedef XID GLXDrawable;
+#endif
 
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
@@ -77,6 +91,7 @@ typedef XID GLXDrawable;
 	X(xrLocateViews) \
 	X(xrEnumerateSwapchainFormats) \
 	X(xrCreateSwapchain) \
+	X(xrDestroySwapchain) \
 	X(xrEnumerateSwapchainImages) \
 	X(xrAcquireSwapchainImage) \
 	X(xrWaitSwapchainImage) \
@@ -101,7 +116,24 @@ typedef XID GLXDrawable;
 XR_FUNCTIONS(XR_DECLARE)
 #undef XR_DECLARE
 static PFN_xrGetInstanceProcAddr get_instance_proc_address;
+#ifdef HALO_VULKAN
+static PFN_xrGetVulkanGraphicsRequirements2KHR xrGetVulkanGraphicsRequirements2KHR;
+static PFN_xrCreateVulkanInstanceKHR xrCreateVulkanInstanceKHR;
+static PFN_xrGetVulkanGraphicsDevice2KHR xrGetVulkanGraphicsDevice2KHR;
+static PFN_xrCreateVulkanDeviceKHR xrCreateVulkanDeviceKHR;
+
+static struct
+{
+	XrGraphicsRequirementsVulkan2KHR requirements;
+	XrGraphicsBindingVulkan2KHR binding;
+	XrSwapchainImageVulkan2KHR *images[VR_SWAPCHAIN_COUNT];
+	VkFormat formats[VR_SWAPCHAIN_COUNT];
+	VkFormat depth_format;
+	int prepared;
+} vulkan;
+#else
 static PFN_xrGetOpenGLGraphicsRequirementsKHR xrGetOpenGLGraphicsRequirementsKHR;
+#endif
 
 /* the actions (action_names, bindings) */
 enum
@@ -134,6 +166,8 @@ static struct
 	int swapchain_width[VR_SWAPCHAIN_COUNT];
 	int swapchain_height[VR_SWAPCHAIN_COUNT];
 	int acquired[VR_SWAPCHAIN_COUNT];
+	/* An acquired image is not usable until xrWaitSwapchainImage succeeds. */
+	int waiting[VR_SWAPCHAIN_COUNT];
 	XrActionSet action_set;
 	XrAction actions[NUMBER_OF_ACTIONS];
 	XrPath hands[2];
@@ -341,8 +375,12 @@ static int binding_choose(void)
 {
 	XrExtensionProperties *extensions;
 	uint32_t count = 0, index;
+#ifdef HALO_VULKAN
+	int enabled;
+#else
 	int opengl, egl;
 	const char *driver;
+#endif
 
 	if (!runtime_load())
 		return VR_BINDING_NONE;
@@ -358,6 +396,17 @@ static int binding_choose(void)
 		extensions[index].type = XR_TYPE_EXTENSION_PROPERTIES;
 	if (xrEnumerateInstanceExtensionProperties(NULL, count, &count, extensions) != XR_SUCCESS)
 		count = 0;
+#ifdef HALO_VULKAN
+	enabled = extension_listed(extensions, count, XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);
+	free(extensions);
+	if (!enabled)
+	{
+		host_logf(HOST_LOG_ERROR, "vr: the OpenXR runtime has no Vulkan binding (XR_KHR_vulkan_enable2)");
+		return VR_BINDING_NONE;
+	}
+	host_logf(HOST_LOG_INFO, "vr: the runtime takes Vulkan (XR_KHR_vulkan_enable2)");
+	return VR_BINDING_VULKAN;
+#else
 	opengl = extension_listed(extensions, count, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME);
 	egl = extension_listed(extensions, count, XR_MNDX_EGL_ENABLE_EXTENSION_NAME);
 	free(extensions);
@@ -383,6 +432,7 @@ static int binding_choose(void)
 	}
 	host_logf(HOST_LOG_INFO, "vr: the runtime has no XR_MNDX_egl_enable: it takes a GLX context");
 	return VR_BINDING_GLX;
+#endif
 }
 
 int host_vr_probe(void)
@@ -404,16 +454,25 @@ static int instance_create(void)
 	XrInstanceCreateInfo create = { XR_TYPE_INSTANCE_CREATE_INFO };
 	XrInstanceProperties properties = { XR_TYPE_INSTANCE_PROPERTIES };
 
+	if (vr.instance)
+		return 1;
 	global_functions_load();
 	if (!xrEnumerateInstanceExtensionProperties || !xrCreateInstance ||
 		xrEnumerateInstanceExtensionProperties(NULL, 0, &count, NULL) != XR_SUCCESS)
 	{
 		return 0;
 	}
-	extensions = calloc(count, sizeof(*extensions));
+	extensions = calloc(count ? count : 1, sizeof(*extensions));
+	if (!extensions)
+		return 0;
 	for (index = 0; index < count; index++)
 		extensions[index].type = XR_TYPE_EXTENSION_PROPERTIES;
-	xrEnumerateInstanceExtensionProperties(NULL, count, &count, extensions);
+	if (!check(xrEnumerateInstanceExtensionProperties(NULL, count, &count, extensions),
+		"xrEnumerateInstanceExtensionProperties"))
+	{
+		free(extensions);
+		return 0;
+	}
 	/* every extension the runtime offers, with its version, on one line:
 	what a headset's runtime has (foveation, eye tracking, layers) is read
 	from its log, where the runtime's own documentation says less */
@@ -433,6 +492,14 @@ static int instance_create(void)
 			free(text);
 		}
 	}
+#ifdef HALO_VULKAN
+	if (!extension_listed(extensions, count, XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME))
+	{
+		free(extensions);
+		return 0;
+	}
+	enabled[enabled_count++] = XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME;
+#else
 	if (!extension_listed(extensions, count, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME))
 	{
 		host_logf(HOST_LOG_ERROR, "vr: the OpenXR runtime has no OpenGL binding (XR_KHR_opengl_enable)");
@@ -442,6 +509,7 @@ static int instance_create(void)
 	enabled[enabled_count++] = XR_KHR_OPENGL_ENABLE_EXTENSION_NAME;
 	if (vr.binding == VR_BINDING_EGL)
 		enabled[enabled_count++] = XR_MNDX_EGL_ENABLE_EXTENSION_NAME;
+#endif
 	if (extension_listed(extensions, count, "XR_VALVE_frame_controller_interaction"))
 	{
 		enabled[enabled_count++] = "XR_VALVE_frame_controller_interaction";
@@ -484,8 +552,22 @@ static int instance_create(void)
 		return 0;
 	if (!functions_load(vr.instance))
 		return 0;
+#ifdef HALO_VULKAN
+#define XR_VULKAN_LOAD(name) \
+	if (get_instance_proc_address(vr.instance, #name, (PFN_xrVoidFunction *)&name) != XR_SUCCESS || !name) \
+	{ \
+		host_logf(HOST_LOG_ERROR, "vr: no %s", #name); \
+		return 0; \
+	}
+	XR_VULKAN_LOAD(xrGetVulkanGraphicsRequirements2KHR)
+	XR_VULKAN_LOAD(xrCreateVulkanInstanceKHR)
+	XR_VULKAN_LOAD(xrGetVulkanGraphicsDevice2KHR)
+	XR_VULKAN_LOAD(xrCreateVulkanDeviceKHR)
+#undef XR_VULKAN_LOAD
+#else
 	get_instance_proc_address(vr.instance, "xrGetOpenGLGraphicsRequirementsKHR",
 		(PFN_xrVoidFunction *)&xrGetOpenGLGraphicsRequirementsKHR);
+#endif
 	if (xrGetInstanceProperties(vr.instance, &properties) == XR_SUCCESS)
 	{
 		host_logf(HOST_LOG_INFO, "vr: %s %u.%u.%u", properties.runtimeName,
@@ -495,6 +577,7 @@ static int instance_create(void)
 	return 1;
 }
 
+#ifndef HALO_VULKAN
 /* the GLX binding of the current GLX context (session_create): 0, with
 what is missing logged, if there is none */
 static int glx_binding(XrGraphicsBindingOpenGLXlibKHR *xlib)
@@ -602,14 +685,73 @@ static int session_create(void)
 	return check(xrCreateSession(vr.instance, &create, &vr.session), "xrCreateSession");
 }
 
+#else
+/* Vulkan's device exists before the guest asks to create the session. */
+static int session_create(void)
+{
+	XrSessionCreateInfo create = { XR_TYPE_SESSION_CREATE_INFO };
+
+	if (!vulkan.prepared || !vulkan.binding.device)
+	{
+		host_logf(HOST_LOG_ERROR, "vr: the Vulkan device was not bound before the session");
+		return 0;
+	}
+	create.next = &vulkan.binding;
+	create.systemId = vr.system;
+	return check(xrCreateSession(vr.instance, &create, &vr.session), "xrCreateSession (Vulkan)");
+}
+#endif
+
 static int swapchain_create(int which, int width, int height, int layers, struct vr_host_info *info)
 {
 	int64_t formats[64];
 	uint32_t format_count = 0, format_index;
 	XrSwapchainCreateInfo create = { XR_TYPE_SWAPCHAIN_CREATE_INFO };
+#ifndef HALO_VULKAN
 	XrSwapchainImageOpenGLKHR images[VR_SWAPCHAIN_IMAGES];
+#endif
 	uint32_t count = 0, index;
 
+#ifdef HALO_VULKAN
+	/* Request both attachment and transfer usage: the backend can draw
+	directly or copy its resolved targets into the runtime's images. */
+	{
+		/* Encoded game values are copied unchanged. An UNORM runtime image
+		would treat those values as linear light, so require sRGB as GL does. */
+		static const int64_t color_formats[] = { VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB };
+		int preference;
+
+		create.usageFlags = which == VR_SWAPCHAIN_DEPTH ? XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT :
+			XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+		create.usageFlags |= XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
+		if (!check(xrEnumerateSwapchainFormats(vr.session, 64, &format_count, formats),
+			"xrEnumerateSwapchainFormats") || format_count > 64)
+			return 0;
+		for (preference = 1; preference >= 0; preference--)
+		{
+			for (format_index = 0; format_index < format_count; format_index++)
+			{
+				if (formats[format_index] == color_formats[preference])
+					create.format = formats[format_index];
+			}
+		}
+		if (which == VR_SWAPCHAIN_DEPTH)
+		{
+			create.format = 0;
+			for (format_index = 0; format_index < format_count; format_index++)
+			{
+				if (formats[format_index] == vulkan.depth_format)
+					create.format = formats[format_index];
+			}
+		}
+		if (!create.format)
+		{
+			host_logf(HOST_LOG_ERROR, "vr: no supported Vulkan %s swapchain format",
+				which == VR_SWAPCHAIN_DEPTH ? "depth" : "color");
+			return 0;
+		}
+	}
+#else
 	/* sRGB, the only colour formats SteamVR offers: the renderer writes and
 	reads its values as they are (no GL_FRAMEBUFFER_SRGB, no decoding), and
 	the compositor shows them as the sRGB values they already are */
@@ -638,6 +780,8 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 		if (!create.format)
 			return 0;
 	}
+
+#endif
 	create.sampleCount = 1;
 	create.width = (uint32_t)width;
 	create.height = (uint32_t)height;
@@ -646,6 +790,23 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 	create.mipCount = 1;
 	if (!check(xrCreateSwapchain(vr.session, &create, &vr.swapchains[which]), "xrCreateSwapchain"))
 		return 0;
+#ifdef HALO_VULKAN
+	if (!check(xrEnumerateSwapchainImages(vr.swapchains[which], 0, &count, NULL),
+		"xrEnumerateSwapchainImages (count)") || !count || count > INT_MAX)
+		goto failed;
+	vulkan.images[which] = calloc(count, sizeof(*vulkan.images[which]));
+	if (!vulkan.images[which])
+		goto failed;
+	for (index = 0; index < count; index++)
+		vulkan.images[which][index].type = XR_TYPE_SWAPCHAIN_IMAGE_VULKAN2_KHR;
+	if (!check(xrEnumerateSwapchainImages(vr.swapchains[which], count, &count,
+		(XrSwapchainImageBaseHeader *)vulkan.images[which]), "xrEnumerateSwapchainImages (Vulkan)"))
+		goto failed;
+	vulkan.formats[which] = (VkFormat)create.format;
+	info->image_count[which] = (int)count;
+	/* The guest sends swapchain indices, never Vulkan handles. */
+	memset(info->images[which], 0, sizeof(info->images[which]));
+#else
 	for (index = 0; index < VR_SWAPCHAIN_IMAGES; index++)
 	{
 		images[index].type = XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR;
@@ -659,10 +820,19 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 	info->image_count[which] = (int)count;
 	for (index = 0; index < count; index++)
 		info->images[which][index] = images[index].image;
+#endif
 	vr.swapchain_width[which] = width;
 	vr.swapchain_height[which] = height;
 	vr.acquired[which] = -1;
 	return 1;
+#ifdef HALO_VULKAN
+failed:
+	free(vulkan.images[which]);
+	vulkan.images[which] = NULL;
+	xrDestroySwapchain(vr.swapchains[which]);
+	vr.swapchains[which] = XR_NULL_HANDLE;
+	return 0;
+#endif
 }
 
 /* ---------- the controllers */
@@ -928,8 +1098,13 @@ static int initialize(struct vr_host_info *info)
 	uint32_t count = 0;
 	int width, height;
 
-	if (vr.session)
+	if (vr.info_made)
+	{
+		*info = vr.info;
 		return 1;
+	}
+	if (vr.session)
+		return 0;
 	vr.want_depth = info->depth;
 	vr.want_eye_gaze = info->eye_gaze;
 	if (!host_vr_probe() || !instance_create() || !session_create())
@@ -944,7 +1119,7 @@ static int initialize(struct vr_host_info *info)
 		tracking: its system says) */
 		host_logf(HOST_LOG_INFO, "vr: the eyes' gaze (XR_EXT_eye_gaze_interaction): %s",
 			eye_gaze.supportsEyeGazeInteraction ? "the system tracks it" : "the system does not track it");
-		vr.has_eye_gaze = eye_gaze.supportsEyeGazeInteraction != XR_FALSE;
+		vr.has_eye_gaze = vr.want_eye_gaze && eye_gaze.supportsEyeGazeInteraction != XR_FALSE;
 	}
 	else if (vr.want_eye_gaze)
 	{
@@ -972,7 +1147,7 @@ static int initialize(struct vr_host_info *info)
 	{
 		return 0;
 	}
-	info->depth = vr.has_depth && swapchain_create(VR_SWAPCHAIN_DEPTH, info->eye_width, info->eye_height, 2, info);
+	info->depth = vr.want_depth && vr.has_depth && swapchain_create(VR_SWAPCHAIN_DEPTH, info->eye_width, info->eye_height, 2, info);
 	if (info->visor_width > 0 && info->visor_height > 0 &&
 		!swapchain_create(VR_SWAPCHAIN_VISOR, info->visor_width, info->visor_height, 1, info))
 	{
@@ -1007,7 +1182,7 @@ static int initialize(struct vr_host_info *info)
 	}
 	if (!actions_create())
 		return 0;
-	info->eye_gaze = vr.has_eye_gaze;
+	info->eye_gaze = vr.want_eye_gaze && vr.has_eye_gaze;
 	info->refresh_rate = 0.0f;
 	if (vr.has_refresh_rate)
 	{
@@ -1408,32 +1583,49 @@ int host_vr_acquire(int swapchain)
 {
 	XrSwapchainImageAcquireInfo acquire = { XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO };
 	XrSwapchainImageWaitInfo wait = { XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO };
+	XrResult result;
 	uint32_t index;
+	double started = 0.0;
 
 	if (swapchain < 0 || swapchain >= VR_SWAPCHAIN_COUNT || !vr.swapchains[swapchain])
 		return -1;
-	if (vr.acquired[swapchain] >= 0)
+	if (vr.acquired[swapchain] >= 0 && !vr.waiting[swapchain])
 		return vr.acquired[swapchain];
 	if (timing.enabled < 0)
 		timing.enabled = getenv("HALO_VR_TIMING") != NULL;
 	if (timing.enabled)
-		timing.acquire -= seconds_now();
-	if (!check(xrAcquireSwapchainImage(vr.swapchains[swapchain], &acquire, &index), "xrAcquireSwapchainImage"))
-		return -1;
+		started = seconds_now();
+	if (vr.acquired[swapchain] < 0)
+	{
+		if (!check(xrAcquireSwapchainImage(vr.swapchains[swapchain], &acquire, &index), "xrAcquireSwapchainImage"))
+			goto failed;
+		vr.acquired[swapchain] = (int)index;
+		vr.waiting[swapchain] = 1;
+	}
 	wait.timeout = 1000000000; /* (a second: a lost runtime must not hang the game) */
-	if (!check(xrWaitSwapchainImage(vr.swapchains[swapchain], &wait), "xrWaitSwapchainImage"))
-		return -1;
-	vr.acquired[swapchain] = (int)index;
+	result = xrWaitSwapchainImage(vr.swapchains[swapchain], &wait);
+	/* A timeout is a positive result, but the image is still the runtime's.
+	Keep this acquisition and wait for it again before drawing or releasing. */
+	if (result == XR_TIMEOUT_EXPIRED)
+		goto failed;
+	if (!check(result, "xrWaitSwapchainImage"))
+		goto failed;
+	vr.waiting[swapchain] = 0;
 	if (timing.enabled)
-		timing.acquire += seconds_now();
-	return (int)index;
+		timing.acquire += seconds_now() - started;
+	return vr.acquired[swapchain];
+failed:
+	if (timing.enabled)
+		timing.acquire += seconds_now() - started;
+	return -1;
 }
 
 void host_vr_release(int swapchain)
 {
 	XrSwapchainImageReleaseInfo release = { XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO };
 
-	if (swapchain < 0 || swapchain >= VR_SWAPCHAIN_COUNT || !vr.swapchains[swapchain] || vr.acquired[swapchain] < 0)
+	if (swapchain < 0 || swapchain >= VR_SWAPCHAIN_COUNT || !vr.swapchains[swapchain] ||
+		vr.acquired[swapchain] < 0 || vr.waiting[swapchain])
 		return;
 	xrReleaseSwapchainImage(vr.swapchains[swapchain], &release);
 	vr.acquired[swapchain] = -1;
@@ -1637,3 +1829,154 @@ void host_vr_haptic(int hand, float amplitude, float seconds)
 	vibration.frequency = XR_FREQUENCY_UNSPECIFIED;
 	xrApplyHapticFeedback(vr.session, &info, (const XrHapticBaseHeader *)&vibration);
 }
+
+#ifdef HALO_VULKAN
+/* ---------- the Vulkan device and runtime images (host only) */
+
+int host_vr_vulkan_requested(void)
+{
+	return vr.probed && vr.binding == VR_BINDING_VULKAN;
+}
+
+int host_vr_vulkan_prepare(void)
+{
+	XrSystemGetInfo system = { XR_TYPE_SYSTEM_GET_INFO };
+
+	if (vulkan.prepared)
+		return 1;
+	/* The device is made before the guest supplies its settings. Enable
+	the optional extensions here; initialize uses only the ones requested. */
+	vr.want_depth = vr.want_eye_gaze = 1;
+	if (host_vr_probe() != VR_BINDING_VULKAN || !instance_create())
+		goto failed;
+	system.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
+	if (!check(xrGetSystem(vr.instance, &system, &vr.system), "xrGetSystem (is the headset on?)"))
+		goto failed;
+	vulkan.requirements.type = XR_TYPE_GRAPHICS_REQUIREMENTS_VULKAN2_KHR;
+	if (!check(xrGetVulkanGraphicsRequirements2KHR(vr.instance, vr.system, &vulkan.requirements),
+		"xrGetVulkanGraphicsRequirements2KHR"))
+		goto failed;
+	host_logf(HOST_LOG_INFO, "vr: Vulkan minimum %u.%u, highest tested %u.%u",
+		(unsigned)XR_VERSION_MAJOR(vulkan.requirements.minApiVersionSupported),
+		(unsigned)XR_VERSION_MINOR(vulkan.requirements.minApiVersionSupported),
+		(unsigned)XR_VERSION_MAJOR(vulkan.requirements.maxApiVersionSupported),
+		(unsigned)XR_VERSION_MINOR(vulkan.requirements.maxApiVersionSupported));
+	vulkan.prepared = 1;
+	return 1;
+failed:
+	host_vr_vulkan_shutdown();
+	return 0;
+}
+
+VkResult host_vr_vulkan_create_instance(PFN_vkGetInstanceProcAddr get_proc,
+	const VkInstanceCreateInfo *create, const VkAllocationCallbacks *allocator, VkInstance *instance)
+{
+	XrVulkanInstanceCreateInfoKHR xr = { XR_TYPE_VULKAN_INSTANCE_CREATE_INFO_KHR };
+	VkResult result = VK_ERROR_INITIALIZATION_FAILED;
+	uint32_t version = create->pApplicationInfo ? create->pApplicationInfo->apiVersion : VK_API_VERSION_1_0;
+	XrVersion requested = XR_MAKE_VERSION(VK_VERSION_MAJOR(version), VK_VERSION_MINOR(version),
+		VK_VERSION_PATCH(version));
+
+	*instance = VK_NULL_HANDLE;
+	if (!vulkan.prepared)
+		return result;
+	if (requested < vulkan.requirements.minApiVersionSupported)
+	{
+		host_logf(HOST_LOG_ERROR, "vr: the runtime requires a newer Vulkan version than the backend requests");
+		return VK_ERROR_INCOMPATIBLE_DRIVER;
+	}
+	xr.systemId = vr.system;
+	xr.pfnGetInstanceProcAddr = get_proc;
+	xr.vulkanCreateInfo = create;
+	xr.vulkanAllocator = allocator;
+	if (!check(xrCreateVulkanInstanceKHR(vr.instance, &xr, instance, &result), "xrCreateVulkanInstanceKHR"))
+		return VK_ERROR_INITIALIZATION_FAILED;
+	return result;
+}
+
+VkPhysicalDevice host_vr_vulkan_physical_device(VkInstance instance)
+{
+	XrVulkanGraphicsDeviceGetInfoKHR get = { XR_TYPE_VULKAN_GRAPHICS_DEVICE_GET_INFO_KHR };
+	VkPhysicalDevice physical = VK_NULL_HANDLE;
+
+	if (!vulkan.prepared)
+		return VK_NULL_HANDLE;
+	get.systemId = vr.system;
+	get.vulkanInstance = instance;
+	if (!check(xrGetVulkanGraphicsDevice2KHR(vr.instance, &get, &physical), "xrGetVulkanGraphicsDevice2KHR"))
+		return VK_NULL_HANDLE;
+	return physical;
+}
+
+VkResult host_vr_vulkan_create_device(PFN_vkGetInstanceProcAddr get_proc, VkPhysicalDevice physical,
+	const VkDeviceCreateInfo *create, const VkAllocationCallbacks *allocator, VkDevice *device)
+{
+	XrVulkanDeviceCreateInfoKHR xr = { XR_TYPE_VULKAN_DEVICE_CREATE_INFO_KHR };
+	VkResult result = VK_ERROR_INITIALIZATION_FAILED;
+
+	*device = VK_NULL_HANDLE;
+	if (!vulkan.prepared)
+		return result;
+	xr.systemId = vr.system;
+	xr.pfnGetInstanceProcAddr = get_proc;
+	xr.vulkanPhysicalDevice = physical;
+	xr.vulkanCreateInfo = create;
+	xr.vulkanAllocator = allocator;
+	if (!check(xrCreateVulkanDeviceKHR(vr.instance, &xr, device, &result), "xrCreateVulkanDeviceKHR"))
+		return VK_ERROR_INITIALIZATION_FAILED;
+	return result;
+}
+
+void host_vr_vulkan_bind(VkInstance instance, VkPhysicalDevice physical, VkDevice device,
+	uint32_t queue_family, uint32_t queue_index)
+{
+	vulkan.binding.type = XR_TYPE_GRAPHICS_BINDING_VULKAN2_KHR;
+	vulkan.binding.instance = instance;
+	vulkan.binding.physicalDevice = physical;
+	vulkan.binding.device = device;
+	vulkan.binding.queueFamilyIndex = queue_family;
+	vulkan.binding.queueIndex = queue_index;
+}
+
+VkImage host_vr_vulkan_image(int swapchain, int index)
+{
+	if (swapchain < 0 || swapchain >= VR_SWAPCHAIN_COUNT || index < 0 ||
+		index >= vr.info.image_count[swapchain] || !vulkan.images[swapchain])
+		return VK_NULL_HANDLE;
+	return vulkan.images[swapchain][index].image;
+}
+
+VkFormat host_vr_vulkan_format(int swapchain)
+{
+	if (swapchain < 0 || swapchain >= VR_SWAPCHAIN_COUNT || !vulkan.images[swapchain])
+		return VK_FORMAT_UNDEFINED;
+	return vulkan.formats[swapchain];
+}
+
+void host_vr_vulkan_set_depth_format(VkFormat format)
+{
+	vulkan.depth_format = format;
+}
+
+void host_vr_vulkan_shutdown(void)
+{
+	int index;
+
+	if (vr.session && xrDestroySession)
+		xrDestroySession(vr.session);
+	if (vr.instance && xrDestroyInstance)
+		xrDestroyInstance(vr.instance);
+	for (index = 0; index < VR_SWAPCHAIN_COUNT; index++)
+	{
+		free(vulkan.images[index]);
+		vr.swapchains[index] = XR_NULL_HANDLE;
+		vr.acquired[index] = -1;
+		vr.waiting[index] = 0;
+	}
+	memset(&vulkan, 0, sizeof(vulkan));
+	vr.session = XR_NULL_HANDLE;
+	vr.instance = XR_NULL_HANDLE;
+	vr.system = XR_NULL_SYSTEM_ID;
+	vr.info_made = vr.running = vr.frame_begun = 0;
+}
+#endif

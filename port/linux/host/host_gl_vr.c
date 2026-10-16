@@ -1,10 +1,9 @@
 /*
 HOST_GL_VR.C
 
-The VR mode of the OpenGL backend in the host (HALO_VR with XGPU_GL_HOST:
-the renderer's command stream played on the host's render thread,
-host_gl_stream.c): the VR records' entries (xgpu_stream.h, "the VR mode"),
-and what xgpu_gl.c's composition asks of the game's VR mode (vr.h's and
+The VR records shared by the host renderers (HALO_VR; host_vr_stream.h):
+the records' entries (xgpu_stream.h, "the VR mode"),
+and what the renderer's composition asks of the game's VR mode (vr.h's and
 vr_visor.h's functions, the guest's vr.c and vr_visor.c), answered as the
 records said, and of OpenXR, which it calls here on the render thread
 (host_vr_render.h).
@@ -28,6 +27,7 @@ submitted with the eyes moved.
 
 #include "host.h"
 #include "host_render_stream.h"
+#include "host_vr_stream.h"
 #include "host_gl_renderer.h"
 #include "host_vr_render.h"
 #include "xgpu_backend.h"
@@ -83,6 +83,8 @@ static struct
 	/* debug.gpu_stats (VR_INITIALIZE's) */
 	BOOL statistics;
 } vr_frame;
+
+static const struct host_vr_renderer *renderer;
 
 /* ---------- the late latch */
 
@@ -586,7 +588,7 @@ unsigned int halo_vr_image(int swapchain)
 	if (index < 0 || index >= info->image_count[swapchain])
 		return 0;
 	vr_frame.acquired |= 1u << swapchain;
-	return info->images[swapchain][index];
+	return renderer->image(swapchain, index);
 }
 
 /* the frame ended with the game's layers, less those not acquired or not
@@ -710,7 +712,7 @@ void xgpu_write_bmp(const char *name, const unsigned char *pixels, unsigned long
 static int stream_vr_supported(void *context)
 {
 	(void)context;
-	return xgpu_backend_vr_supported() != FALSE;
+	return renderer->supported() != FALSE;
 }
 
 static void stream_vr_initialize(void *context, struct xgpu_stream_vr_info *wire)
@@ -729,14 +731,11 @@ static void stream_vr_initialize(void *context, struct xgpu_stream_vr_info *wire
 	info.scope_size = wire->scope_size;
 	info.statistics = wire->statistics != 0;
 	vr_frame.statistics = info.statistics;
-	xgpu_backend_vr_initialize(&info);
+	renderer->initialize(&info);
 	wire->foveated = info.foveated != 0;
 	wire->fovea_width = info.fovea_width;
 	wire->fovea_height = info.fovea_height;
-	wire->sample_counting = xgpu_backend_capabilities.sample_counting != 0;
-	/* (the shaders are written for the foveated eye pass: as the front
-	end's xgpu_foveated, which it sets from this answer) */
-	xgpu_foveated = info.foveated ? 1 : 0;
+	wire->sample_counting = renderer->sample_counting() != FALSE;
 }
 
 static void stream_vr_eyes(void *context, const struct xgpu_stream_vr_eyes *record)
@@ -747,25 +746,25 @@ static void stream_vr_eyes(void *context, const struct xgpu_stream_vr_eyes *reco
 	memcpy(vr_frame.centres, record->centres, sizeof(vr_frame.centres));
 	latch_take(record);
 	/* (the game's image is the host's to acquire) */
-	xgpu_backend_vr_eyes(record->eye_target, halo_vr_image(VR_SWAPCHAIN_EYES));
+	renderer->eyes(record->eye_target, halo_vr_image(VR_SWAPCHAIN_EYES));
 }
 
 static void stream_vr_pass(void *context, int32_t pass)
 {
 	(void)context;
-	xgpu_backend_vr_pass(pass);
+	renderer->pass(pass);
 }
 
 static void stream_vr_groups_reset(void *context)
 {
 	(void)context;
-	xgpu_backend_vr_groups_reset();
+	renderer->groups_reset();
 }
 
 static void stream_vr_timing(void *context, int32_t mark)
 {
 	(void)context;
-	xgpu_backend_vr_timing(mark);
+	renderer->timing(mark);
 }
 
 static void frame_convert(const struct xgpu_stream_vr_frame *wire, struct xgpu_vr_frame *frame)
@@ -796,7 +795,7 @@ static void stream_vr_compose(void *context, const struct xgpu_stream_vr_frame *
 
 	(void)context;
 	frame_convert(wire, &frame);
-	xgpu_backend_vr_compose(&frame);
+	renderer->compose(&frame);
 }
 
 static void stream_vr_submit(void *context, const struct xgpu_stream_vr_submit *record)
@@ -809,7 +808,7 @@ static void stream_vr_submit(void *context, const struct xgpu_stream_vr_submit *
 	vr_frame.submitted = FALSE;
 	screenshot_number = record->shot;
 	/* (halo_vr_present, above, ends the frame) */
-	xgpu_backend_vr_submit(&frame, record->record.screenshot != 0);
+	renderer->submit(&frame, record->record.screenshot != 0);
 	vr_frame.submit = NULL;
 	vr_frame.submitted = FALSE;
 	vr_frame.frame = FALSE;
@@ -838,7 +837,7 @@ static void stream_vr_eye_transforms(void *context, const struct xgpu_stream_vr_
 	}
 	if (latch.moved && which == _latch_held)
 		latch.held_drawn = TRUE;
-	halo_vr_set_eye_transforms((const float (*)[16])latch.transforms);
+	renderer->eye_transforms((const float (*)[16])latch.transforms);
 }
 
 static void stream_vr_screen_corrections(void *context, const struct xgpu_stream_vr_screen_corrections *record)
@@ -849,29 +848,30 @@ static void stream_vr_screen_corrections(void *context, const struct xgpu_stream
 	memcpy(corrections, record->corrections, sizeof(corrections));
 	if (latch.moved && record->point[3] > 0.0f)
 		screen_corrections_make(record->point, record->viewport, corrections);
-	halo_vr_set_screen_corrections((const float (*)[4])corrections);
+	renderer->screen_corrections((const float (*)[4])corrections);
 }
 
 static void stream_vr_sky(void *context, int32_t sky)
 {
 	(void)context;
-	halo_vr_sky(sky);
+	renderer->sky(sky);
 }
 
 static void stream_vr_eye_feed(void *context, const float feed[7])
 {
 	(void)context;
-	halo_vr_eye_feed(feed[0], feed[1], feed[2], feed[3], feed[4], feed[5], feed[6]);
+	renderer->eye_feed(feed[0], feed[1], feed[2], feed[3], feed[4], feed[5], feed[6]);
 }
 
 static void stream_vr_eye_tint(void *context, const float tint[3])
 {
 	(void)context;
-	halo_vr_eye_tint(tint[0], tint[1], tint[2]);
+	renderer->eye_tint(tint[0], tint[1], tint[2]);
 }
 
-void host_gl_vr_backend(struct host_render_backend *backend)
+void host_vr_stream_backend(struct host_render_backend *backend, const struct host_vr_renderer *operations)
 {
+	renderer = operations;
 	backend->vr_supported = stream_vr_supported;
 	backend->vr_initialize = stream_vr_initialize;
 	backend->vr_eyes = stream_vr_eyes;
@@ -889,4 +889,46 @@ void host_gl_vr_backend(struct host_render_backend *backend)
 	/* (OpenXR's calls that use the context from now on on the render
 	thread: host_vr_render.h) */
 	host_vr_render_thread();
+}
+
+/* OpenGL supplies only its rendering operations; frame timing, poses and
+layer submission above are the same for every host backend. */
+static void gl_initialize(struct xgpu_vr_info *info)
+{
+	xgpu_backend_vr_initialize(info);
+	xgpu_foveated = info->foveated ? 1 : 0;
+}
+
+static BOOL gl_sample_counting(void)
+{
+	return xgpu_backend_capabilities.sample_counting;
+}
+
+static unsigned int gl_image(int swapchain, int index)
+{
+	return host_vr_info()->images[swapchain][index];
+}
+
+void host_gl_vr_backend(struct host_render_backend *backend)
+{
+	static const struct host_vr_renderer gl =
+	{
+		.supported = xgpu_backend_vr_supported,
+		.initialize = gl_initialize,
+		.sample_counting = gl_sample_counting,
+		.eyes = xgpu_backend_vr_eyes,
+		.pass = xgpu_backend_vr_pass,
+		.groups_reset = xgpu_backend_vr_groups_reset,
+		.timing = xgpu_backend_vr_timing,
+		.compose = xgpu_backend_vr_compose,
+		.submit = xgpu_backend_vr_submit,
+		.eye_transforms = halo_vr_set_eye_transforms,
+		.screen_corrections = halo_vr_set_screen_corrections,
+		.sky = halo_vr_sky,
+		.eye_feed = halo_vr_eye_feed,
+		.eye_tint = halo_vr_eye_tint,
+		.image = gl_image,
+	};
+
+	host_vr_stream_backend(backend, &gl);
 }

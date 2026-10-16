@@ -9,12 +9,16 @@ each:
   streams (its NORMPACKED3 inputs), unlit, lit for the enhanced dynamic
   lights and lit for each pixel; and from streams with its other inputs
   unnormalized shorts;
-- every captured pixel shader key, flat (the VR mode's views drawn as none),
-  and again counting its samples in the shader (where it is a visibility
+- every captured pixel shader key, and again counting its samples in the shader (where it is a visibility
   test's) and drawing its border colors in the shader (where it samples a 2D
   or 3D texture);
 - `msl_corpus`'s programs made up to use every part of the intermediate form
-  (`tools/msl_corpus/synthetic.c`).
+  (`tools/msl_corpus/synthetic.c`), plus layered texture lookups in each
+  stage with projected, bump-offset and dependent coordinates.
+
+Every program is checked flat, for both eyes, and for either eye alone,
+with and without the foveated insets. The visibility tests also check the
+indexed storage buffer counter and exclusion of the inset views.
 
 Identical modules are written once; `index.txt` names each variant's file.
 The captures are what the renderer's test capture writes

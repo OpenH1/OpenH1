@@ -343,6 +343,18 @@ extern int xgpu_foveated;
 wide as this part of the inset's smaller side (vr_fovea_composite) */
 #define FOVEA_BLEND 0.15f
 
+/* Timer queries are optional and never make the render thread wait. */
+#define VR_GPU_TIME_FRAMES 32
+#ifndef GL_TIMESTAMP
+#define GL_TIMESTAMP 0x8E28
+#endif
+#ifndef GL_QUERY_COUNTER_BITS
+#define GL_QUERY_COUNTER_BITS 0x8864
+#endif
+static void (GLAPIENTRY *vr_query_counter)(GLuint, GLenum);
+static void (GLAPIENTRY *vr_query_result)(GLuint, GLenum, GLuint64 *);
+static void (GLAPIENTRY *vr_query_bits)(GLenum, GLenum, GLint *);
+
 static struct
 {
 	BOOL ready;
@@ -412,9 +424,67 @@ static struct
 	unsigned long timed;
 	/* debug.vr_gpu_time: the GPU's time for each frame */
 	BOOL gpu_time;
+	GLuint gpu_queries[VR_GPU_TIME_FRAMES][2];
+	BOOL gpu_query_used[VR_GPU_TIME_FRAMES];
+	int gpu_query_bits, gpu_query_current;
+	BOOL gpu_query_active, gpu_query_armed;
 	double gpu_milliseconds, gpu_worst;
 	unsigned long gpu_frames;
 } vr_gl;
+
+static void vr_gpu_time_begin(void)
+{
+	int index;
+
+	if (!vr_gl.gpu_time || !vr_gl.gpu_query_armed || vr_gl.gpu_query_active)
+		return;
+	vr_gl.gpu_query_armed = FALSE;
+	for (index = 0; index < VR_GPU_TIME_FRAMES && vr_gl.gpu_query_used[index]; index++)
+		;
+	if (index == VR_GPU_TIME_FRAMES)
+		return;
+	vr_query_counter(vr_gl.gpu_queries[index][0], GL_TIMESTAMP);
+	vr_gl.gpu_query_used[index] = TRUE;
+	vr_gl.gpu_query_current = index;
+	vr_gl.gpu_query_active = TRUE;
+}
+
+static void vr_gpu_time_end(void)
+{
+	vr_gl.gpu_query_armed = FALSE;
+	if (!vr_gl.gpu_query_active)
+		return;
+	vr_query_counter(vr_gl.gpu_queries[vr_gl.gpu_query_current][1], GL_TIMESTAMP);
+	vr_gl.gpu_query_active = FALSE;
+}
+
+static void vr_gpu_time_read(void)
+{
+	int index;
+
+	for (index = 0; index < VR_GPU_TIME_FRAMES; index++)
+	{
+		GLuint available[2] = { 0, 0 };
+		GLuint64 start, end, mask;
+		double milliseconds;
+
+		if (!vr_gl.gpu_query_used[index])
+			continue;
+		glGetQueryObjectuiv(vr_gl.gpu_queries[index][0], GL_QUERY_RESULT_AVAILABLE, &available[0]);
+		glGetQueryObjectuiv(vr_gl.gpu_queries[index][1], GL_QUERY_RESULT_AVAILABLE, &available[1]);
+		if (!available[0] || !available[1])
+			continue;
+		vr_query_result(vr_gl.gpu_queries[index][0], GL_QUERY_RESULT, &start);
+		vr_query_result(vr_gl.gpu_queries[index][1], GL_QUERY_RESULT, &end);
+		mask = vr_gl.gpu_query_bits >= 64 ? ~(GLuint64)0 : ((GLuint64)1 << vr_gl.gpu_query_bits) - 1;
+		milliseconds = (double)((end - start) & mask) * 1e-6;
+		vr_gl.gpu_milliseconds += milliseconds;
+		if (milliseconds > vr_gl.gpu_worst)
+			vr_gl.gpu_worst = milliseconds;
+		vr_gl.gpu_frames++;
+		vr_gl.gpu_query_used[index] = FALSE;
+	}
+}
 
 /* the frame's marks: the last present's end (then the game updates, and
 waits for the runtime's frame), the eye pass begun, the HUD pass begun
@@ -424,6 +494,8 @@ static void vr_timing(int mark)
 	if (!vr_gl.statistics)
 		return;
 	vr_gl.marks[mark] = SDL_GetTicksNS();
+	if (mark == 0)
+		vr_gl.gpu_query_armed = vr_gl.gpu_time;
 	if (mark == 3 && vr_gl.marks[0] && vr_gl.marks[1] > vr_gl.marks[0] && vr_gl.marks[2] > vr_gl.marks[1])
 	{
 		vr_gl.spans[0] += (double)(vr_gl.marks[1] - vr_gl.marks[0]) * 1e-6;
@@ -435,8 +507,9 @@ static void vr_timing(int mark)
 				vr_gl.spans[0] / vr_gl.timed, vr_gl.spans[1] / vr_gl.timed, vr_gl.spans[2] / vr_gl.timed);
 			if (vr_gl.gpu_frames)
 			{
-				platform_log("vr: the GPU's time a frame: %.2f ms, worst %.2f ms (%dx%d eyes%s)",
-					vr_gl.gpu_milliseconds / vr_gl.gpu_frames, vr_gl.gpu_worst, vr_gl.eye_width, vr_gl.eye_height,
+				platform_log("vr: elapsed render GPU timeline per frame: %.2f ms, worst %.2f ms (%lu samples, %dx%d eyes%s)",
+					vr_gl.gpu_milliseconds / vr_gl.gpu_frames, vr_gl.gpu_worst, vr_gl.gpu_frames,
+					vr_gl.eye_width, vr_gl.eye_height,
 					vr_gl.foveated ? ", foveated" : "");
 			}
 			vr_gl.gpu_milliseconds = vr_gl.gpu_worst = 0.0;
@@ -1074,6 +1147,9 @@ static void render_target_resolve(struct gl_target *target)
 
 	if (!target->unresolved)
 		return;
+#ifdef HALO_VR
+	vr_gpu_time_begin();
+#endif
 	target->unresolved = FALSE;
 	/* (both found first: making a framebuffer binds it) */
 	read = target->depth ? framebuffer_find(0, target->multisample, TRUE) :
@@ -1265,6 +1341,9 @@ void xgpu_backend_clear_target(xgpu_target number, const float color[4])
 {
 	struct gl_target *target = gl_target(number);
 
+#ifdef HALO_VR
+	vr_gpu_time_begin();
+#endif
 	glBindFramebuffer(GL_FRAMEBUFFER, framebuffer_get(target->texture, 0));
 	glDisable(GL_SCISSOR_TEST);
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
@@ -2269,6 +2348,9 @@ static GLuint mip_composite_get(const struct xgpu_texture_source *source)
 	}
 	if (!changed)
 		return composite->texture;
+#ifdef HALO_VR
+	vr_gpu_time_begin();
+#endif
 	composite->rendered_levels = rendered_levels;
 	for (level = 0; level < rendered_levels; level++)
 	{
@@ -3991,12 +4073,18 @@ static GLenum primitive_mode(int primitive)
 
 void xgpu_backend_draw(int primitive, unsigned long count)
 {
+#ifdef HALO_VR
+	vr_gpu_time_begin();
+#endif
 	glDrawArrays(primitive_mode(primitive), 0, (GLsizei)count);
 	gl_check_errors("draw");
 }
 
 void xgpu_backend_draw_indices(int primitive, const WORD *indices, unsigned long count)
 {
+#ifdef HALO_VR
+	vr_gpu_time_begin();
+#endif
 	glDrawElements(primitive_mode(primitive), (GLsizei)count, GL_UNSIGNED_SHORT,
 		(const void *)index_upload(indices, count * sizeof(WORD)));
 	gl_check_errors("draw");
@@ -4139,6 +4227,9 @@ void xgpu_backend_draw_indexed(int primitive, const WORD *indices, unsigned long
 {
 	unsigned long index;
 
+#ifdef HALO_VR
+	vr_gpu_time_begin();
+#endif
 	if (segment >= 0)
 	{
 		/* the attributes start at vertex minimum */
@@ -4189,6 +4280,9 @@ void xgpu_backend_draw_immediate(int primitive, const float *vertices, unsigned 
 	pointers start at its beginning) */
 	unsigned long first_vertex = 0;
 
+#ifdef HALO_VR
+	vr_gpu_time_begin();
+#endif
 #ifdef HALO_WEB
 	vertex_array_cache_bind(NULL);
 #endif
@@ -4377,6 +4471,9 @@ void xgpu_backend_clear(unsigned long flags, const float color[4], float depth, 
 	GLbitfield mask = 0;
 	unsigned long index;
 
+#ifdef HALO_VR
+	vr_gpu_time_begin();
+#endif
 	if (flags & XGPU_CLEAR_COLOR)
 	{
 		glColorMask((flags & XGPU_CLEAR_RED) != 0, (flags & XGPU_CLEAR_GREEN) != 0, (flags & XGPU_CLEAR_BLUE) != 0,
@@ -4944,6 +5041,23 @@ void xgpu_backend_vr_initialize(struct xgpu_vr_info *info)
 	vr_gl.scope_size = info->scope_size;
 	vr_gl.statistics = info->statistics;
 	vr_gl.gpu_time = vr_gl.statistics && config_boolean("debug.vr_gpu_time");
+	if (vr_gl.gpu_time)
+	{
+#ifndef HALO_GLES
+		vr_query_counter = (void (GLAPIENTRY *)(GLuint, GLenum))SDL_GL_GetProcAddress("glQueryCounter");
+		vr_query_result = (void (GLAPIENTRY *)(GLuint, GLenum, GLuint64 *))SDL_GL_GetProcAddress("glGetQueryObjectui64v");
+		vr_query_bits = (void (GLAPIENTRY *)(GLenum, GLenum, GLint *))SDL_GL_GetProcAddress("glGetQueryiv");
+		if (vr_query_counter && vr_query_result && vr_query_bits)
+			vr_query_bits(GL_TIMESTAMP, GL_QUERY_COUNTER_BITS, &vr_gl.gpu_query_bits);
+#endif
+		if (vr_gl.gpu_query_bits > 0)
+			glGenQueries(VR_GPU_TIME_FRAMES * 2, &vr_gl.gpu_queries[0][0]);
+		else
+		{
+			platform_log("vr: this GL context has no GPU timestamps; GPU duration unavailable");
+			vr_gl.gpu_time = FALSE;
+		}
+	}
 	/* the eyes' images are sRGB (the only colour formats SteamVR offers),
 	holding the game's values as they are: sampling them must not decode
 	them, and the samplers override the textures' own setting */
@@ -5054,6 +5168,31 @@ void halo_vr_set_screen_corrections(const float corrections[2][4])
 	}
 }
 
+/* A submitted layer, premultiplied over grey, for the same screenshot
+checks as the eyes. The separate HUD panels need their own pictures. */
+static void vr_write_layer_screenshot(const char *name, GLuint image, int width, int height)
+{
+	unsigned char *pixels;
+	int index, channel;
+
+	if (!image || width <= 0 || height <= 0 || !(pixels = read_target(image, -1, width, height)))
+		return;
+	for (index = 0; index < width * height; index++)
+	{
+		unsigned char *pixel = pixels + index * 4;
+
+		for (channel = 0; channel < 3; channel++)
+		{
+			int value = pixel[channel] + (255 - pixel[3]) * 96 / 255;
+
+			pixel[channel] = (unsigned char)(value > 255 ? 255 : value);
+		}
+		pixel[3] = 0xff;
+	}
+	xgpu_write_bmp(name, pixels, width, height, TRUE);
+	free(pixels);
+}
+
 /* debug.screenshot_every in VR: both eyes side by side (eyes<frame>.bmp),
 the HUD over grey (hud<frame>.bmp), and both eyes as the headset shows them,
 the layers over them as the frame submitted them (view<frame>.bmp: the
@@ -5067,6 +5206,20 @@ static void vr_write_screenshots(struct gl_target *hud, GLuint hud_image)
 
 	if (!*config_string("debug.screenshot_directory"))
 		return;
+	vr_write_layer_screenshot("hud-layer", hud_image, vr_gl.hud_width, vr_gl.hud_height);
+	{
+		int panel;
+
+		for (panel = 0; panel < VR_PANEL_COUNT; panel++)
+		{
+			int panel_width, panel_height;
+			char name[32];
+
+			halo_vr_panel_size(panel, &panel_width, &panel_height);
+			snprintf(name, sizeof(name), "panel%d", panel);
+			vr_write_layer_screenshot(name, vr_gl.panel_images[panel], panel_width, panel_height);
+		}
+	}
 	if (vr_gl.eyes_drawn && vr_gl.eye_target.target.texture)
 	{
 		unsigned char *left = read_target(vr_gl.eye_target.target.texture, 0, width, height);
@@ -7559,23 +7712,13 @@ void xgpu_backend_vr_compose(const struct xgpu_vr_frame *frame)
 void xgpu_backend_vr_submit(const struct xgpu_vr_frame *frame, BOOL screenshot)
 {
 	xgpu_gl_state_invalidate();
+	/* Arm after the last present, start at the first clear or draw after
+	the runtime's frame wait, and include this frame's composition. */
+	vr_gpu_time_end();
 	/* (the GPU starts on the frame while the game updates: halo_vr_present) */
 	glFlush();
 	if (vr_gl.gpu_time)
-	{
-		/* debug.vr_gpu_time: the driver submits a frame's work at the flush
-		(Zink records it until then), so waiting for it to finish from here
-		times the GPU's work on the frame, at the cost of the overlap */
-		Uint64 start = SDL_GetTicksNS();
-		double milliseconds;
-
-		glFinish();
-		milliseconds = (double)(SDL_GetTicksNS() - start) * 1e-6;
-		vr_gl.gpu_milliseconds += milliseconds;
-		if (milliseconds > vr_gl.gpu_worst)
-			vr_gl.gpu_worst = milliseconds;
-		vr_gl.gpu_frames++;
-	}
+		vr_gpu_time_read();
 	halo_vr_present(vr_gl.eyes_drawn, vr_gl.hud_image != 0, vr_gl.scope_image != 0);
 	if (screenshot)
 		vr_write_screenshots(frame->hud ? gl_target(frame->hud) : NULL, vr_gl.hud_image);

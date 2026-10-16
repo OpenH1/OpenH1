@@ -5,8 +5,9 @@ The SPIR-V emitter's corpus (port/linux/src/xgpu_spirv.c): every captured
 vertex program in every variant the Vulkan backend draws, and every captured
 pixel shader key, written as SPIR-V modules, one .spv file each, for
 spirv-val to check (check.sh). Identical modules are written once
-(index.txt names each variant's file). The variants are msl_corpus's
-(tools/msl_corpus), and so are the made-up programs (its synthetic.c).
+(index.txt names each variant's file). The variants include the flat and VR views, with and without foveation.
+The made-up programs are msl_corpus's (tools/msl_corpus/synthetic.c), plus
+layered texture lookups in each stage.
 
   spirv_corpus <capture dir> <out dir>
 
@@ -145,6 +146,34 @@ static void emit(const char *name, const char *what, BOOL made, struct xgpu_spir
 	free(module->words);
 }
 
+/* every view mode, with and without the per-eye insets */
+static void vertex_program(const char *base, const char *what, const struct xgpu_vertex_program *program,
+	unsigned long packed, unsigned long shorts, const struct nv2a_vertex_lighting *lighting)
+{
+	struct xgpu_spirv_options options;
+	struct xgpu_spirv_module module;
+	char name[128], variant[192];
+	int mode, foveated;
+	BOOL made;
+
+	memset(&options, 0, sizeof(options));
+	for (mode = XGPU_MULTIVIEW_NONE; mode <= XGPU_MULTIVIEW_RIGHT_EYE; mode++)
+	{
+		for (foveated = 0; foveated <= 1; foveated++)
+		{
+			options.multiview = mode;
+			options.foveated = foveated;
+			if (!mode && !foveated)
+				snprintf(name, sizeof(name), "%s", base);
+			else
+				snprintf(name, sizeof(name), "%s-view%d-fovea%d", base, mode, foveated);
+			snprintf(variant, sizeof(variant), "%s view %d foveated %d", what, mode, foveated);
+			made = xgpu_spirv_vertex_shader(program, packed, shorts, lighting, &options, &module);
+			emit(name, variant, made, &module);
+		}
+	}
+}
+
 /* ---------- vertex programs: immediate mode (all floats) and streams
 (their NORMPACKED3 inputs), unlit, the structures' lighting for the
 enhanced dynamic lights, the model lighting for each pixel; and streams with
@@ -153,12 +182,10 @@ layout does) */
 
 static void vertex(const char *file, const DWORD *words, unsigned long count, unsigned long packed)
 {
-	static const struct xgpu_spirv_options options = { 0 };
 	struct xgpu_vertex_program program;
 	struct nv2a_vertex_lighting lighting, environment;
-	struct xgpu_spirv_module module;
 	char base[64], name[96], what[160];
-	BOOL lit, made;
+	BOOL lit;
 	int immediate, light;
 
 	snprintf(base, sizeof(base), "%.*s", (int)(strchr(file, '.') ? strchr(file, '.') - file : (long)strlen(file)), file);
@@ -177,14 +204,12 @@ static void vertex(const char *file, const DWORD *words, unsigned long count, un
 				continue;
 			snprintf(name, sizeof(name), "%s-%s-light%d", base, immediate ? "immediate" : "streams", light);
 			snprintf(what, sizeof(what), "%s packed %#lx lighting %d", file, immediate ? 0 : packed, l ? l->lights : 0);
-			made = xgpu_spirv_vertex_shader(&program, immediate ? 0 : packed, 0, l, &options, &module);
-			emit(name, what, made, &module);
+			vertex_program(name, what, &program, immediate ? 0 : packed, 0, l);
 		}
 	}
 	snprintf(name, sizeof(name), "%s-shorts", base);
 	snprintf(what, sizeof(what), "%s packed %#lx shorts %#lx", file, packed, 0xffffUL & ~packed);
-	made = xgpu_spirv_vertex_shader(&program, packed, 0xffffUL & ~packed, NULL, &options, &module);
-	emit(name, what, made, &module);
+	vertex_program(name, what, &program, packed, 0xffffUL & ~packed, NULL);
 }
 
 /* ---------- pixel shader keys */
@@ -224,15 +249,16 @@ static void key_from_guest(const unsigned char *bytes, struct nv2a_pixel_shader_
 /* a pixel program as the Vulkan backend draws it: its visibility tests
 counted by occlusion queries, and by the shader; the border drawn by the
 sampler, and by the shader on each stage that samples a 2D or 3D texture */
-static void pixel_program(const char *base, const char *what, const struct xgpu_pixel_program *program)
+static void pixel_variant(const char *base, const char *what, const struct xgpu_pixel_program *program, BOOL foveated)
 {
 	struct xgpu_spirv_options options;
 	struct xgpu_spirv_module module;
-	char name[96], variant[160];
+	char name[128], variant[192];
 	int stage, border = 0;
 	BOOL made;
 
 	memset(&options, 0, sizeof(options));
+	options.foveated = foveated;
 	made = xgpu_spirv_pixel_shader(program, &options, &module);
 	emit(base, what, made, &module);
 	if (program->count_samples)
@@ -262,7 +288,51 @@ static void pixel_program(const char *base, const char *what, const struct xgpu_
 	}
 }
 
-/* a captured key, flat (the VR mode's views drawn as none) */
+/* every key in all the views the Vulkan backend can draw */
+static void pixel_program(const char *base, const char *what, const struct xgpu_pixel_program *program)
+{
+	struct xgpu_pixel_program variant = *program;
+	char name[96], description[160];
+	int mode, foveated;
+
+	for (mode = XGPU_MULTIVIEW_NONE; mode <= XGPU_MULTIVIEW_RIGHT_EYE; mode++)
+	{
+		variant.multiview = (unsigned char)mode;
+		for (foveated = 0; foveated <= 1; foveated++)
+		{
+			if (!mode && !foveated)
+				snprintf(name, sizeof(name), "%s", base);
+			else
+				snprintf(name, sizeof(name), "%s-view%d-fovea%d", base, mode, foveated);
+			snprintf(description, sizeof(description), "%s view %d foveated %d", what, mode, foveated);
+			pixel_variant(name, description, &variant, foveated);
+		}
+	}
+}
+
+/* the effects which read an eye target: every texture stage, projected,
+bump-offset and dependent coordinates, with visibility tests as well */
+static void layered_pixel_programs(void)
+{
+	static const unsigned char modes[] = { XGPU_TEXTURE_PROJECT2D, XGPU_TEXTURE_BUMPENVMAP, XGPU_TEXTURE_DEPENDENT_AR };
+	struct xgpu_pixel_program program;
+	char name[64];
+	int stage, mode;
+
+	for (stage = 0; stage < 4; stage++)
+	{
+		for (mode = 0; mode < (int)sizeof(modes); mode++)
+		{
+			synthetic_base(&program);
+			synthetic_stage(&program, stage, modes[mode], _xgpu_sampler_2d_layered);
+			program.count_samples = 1;
+			snprintf(name, sizeof(name), "synthetic-layered-stage%d-mode%d", stage, modes[mode]);
+			pixel_program(name, name, &program);
+		}
+	}
+}
+
+/* a captured key, checked in every view mode */
 static void pixel(const char *file, const unsigned char *bytes)
 {
 	struct nv2a_pixel_shader_key key;
@@ -271,7 +341,6 @@ static void pixel(const char *file, const unsigned char *bytes)
 
 	snprintf(base, sizeof(base), "%.*s", (int)(strchr(file, '.') - file), file);
 	key_from_guest(bytes, &key);
-	key.multiview = XGPU_MULTIVIEW_NONE;
 	nv2a_pixel_program_decode(&key, &program);
 	pixel_program(base, file, &program);
 }
@@ -283,16 +352,11 @@ static void synthetic_pixel(const char *name, const struct xgpu_pixel_program *p
 
 static void synthetic_vertex(const char *name, const struct xgpu_vertex_program *program)
 {
-	static const struct xgpu_spirv_options options = { 0 };
-	struct xgpu_spirv_module module;
 	char variant[96];
-	BOOL made;
 
-	made = xgpu_spirv_vertex_shader(program, 0, 0, NULL, &options, &module);
-	emit(name, name, made, &module);
+	vertex_program(name, name, program, 0, 0, NULL);
 	snprintf(variant, sizeof(variant), "%s-streams", name);
-	made = xgpu_spirv_vertex_shader(program, 0x5, 0x60, NULL, &options, &module);
-	emit(variant, "packed 0x5, shorts 0x60", made, &module);
+	vertex_program(variant, "packed 0x5, shorts 0x60", program, 0x5, 0x60, NULL);
 }
 
 int main(int argc, char **argv)
@@ -346,6 +410,7 @@ int main(int argc, char **argv)
 		free(data);
 	}
 	synthetic_pixel_programs(synthetic_pixel);
+	layered_pixel_programs();
 	synthetic_vertex_programs(synthetic_vertex);
 	fclose(index_file);
 	printf("%lu modules written to %s, %lu variants the same as one of them\n", written, out_dir, same);

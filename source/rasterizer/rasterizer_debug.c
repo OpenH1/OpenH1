@@ -509,6 +509,33 @@ void rasterizer_debug_draw(
 	return;
 }
 
+/* port: the map's preparation draws each kind of debug geometry. Keep its
+queue apart from the frame's, whose geometry must survive the unseen draws
+(port/linux/game/render_enumerate.c). */
+void rasterizer_debug_port_enumerate(void)
+{
+	struct rasterizer_debug_data saved = debug_data;
+	struct rasterizer_debug_primitive triangles[1], lines[1], blended[2];
+	real_point3d points[3] = { { 0.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f } };
+	real_argb_color color = { 1.0f, 1.0f, 1.0f, 1.0f };
+	short opaque;
+
+	if (!debug_data.initialized || !rasterizer_debug_options.draw_debug_geometry)
+		return;
+	debug_data.opaque_triangles = triangles;
+	debug_data.opaque_lines = lines;
+	debug_data.non_opaque_primitives = blended;
+	rasterizer_debug_begin();
+	for (opaque = 0; opaque < 2; opaque++)
+	{
+		color.alpha = opaque ? 1.0f : 0.5f;
+		rasterizer_debug_line(&points[0], &points[1], &color);
+		rasterizer_debug_triangle(&points[0], &points[1], &points[2], &color);
+	}
+	rasterizer_debug_draw();
+	debug_data = saved;
+}
+
 void rasterizer_debug_line_shaded(
 	real_point3d const *p0,
 	real_point3d const *p1,

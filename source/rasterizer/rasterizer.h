@@ -850,6 +850,8 @@ void rasterizer_debug_dispose(
 	void);
 void rasterizer_debug_draw(
 	void);
+/* port: prepare the debug draws without changing the frame's queue */
+void rasterizer_debug_port_enumerate(void);
 void rasterizer_debug_line_shaded(
 	real_point3d const *p0,
 	real_point3d const *p1,

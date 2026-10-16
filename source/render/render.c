@@ -177,6 +177,8 @@ boolean vr_headwall_faded(void);
 own: the eye pass's state (the clusters seen, the lights, the scene) is then
 the eyes' */
 boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rasterizer_camera);
+/* port: its mono pipelines prepared at map load too (vr_scope.c) */
+void vr_scope_enumerate_camera(struct render_camera *camera, struct render_camera *rasterizer_camera);
 void vr_render_scope_begin(void);
 void vr_render_scope_end(void);
 /* port/linux/game/vr_cabin.c: a feed cockpit's display, told to vr.c */
@@ -587,8 +589,12 @@ static void render_window(
 	render_camera_debug_frustum(&render.camera, &render.frustum);
 	render_debug();
 	editor_render();
+	/* port: prepare debug geometry too (port/linux/game/render_enumerate.c) */
+	render_enumerate_debug();
 	rasterizer_debug_draw();
 	}
+	/* port: the loading transition too (port/linux/game/render_enumerate.c) */
+	render_enumerate_loading_screen();
 	rasterizer_window_end();
 	profile_render_window_end();
 
@@ -706,15 +712,13 @@ static void render_player_frame(
 	starts: its first frame drawn first, unseen, through every shader its
 	tags hold, in each fog (port/linux/game/render_enumerate.c), before any
 	window of it (a mirror's) is drawn; through a mirror's window where the
-	frame draws one, below (not the VR mode's eyes'); not in the VR mode's
-	scope's view, which draws less than the eyes' */
-	if (
+	frame draws one, below (not the VR mode's eyes'). The scope's mono
+	pipelines have an enumeration of their own. */
+	if (render_enumerate_begin(main_get_window_count() == 1
 #ifdef HALO_VR
-		!render_vr_scope_pass &&
-#endif
-		render_enumerate_begin(main_get_window_count() == 1
-#ifdef HALO_VR
-			&& !render_vr_eye_pass
+			&& !render_vr_eye_pass && !render_vr_scope_pass, render_vr_scope_pass
+#else
+			, FALSE
 #endif
 			))
 	{
@@ -838,6 +842,20 @@ static void render_vr_player_frame(
 		struct render_window scope_window = *window;
 
 		vr_cabin_display_frame();
+		/* port: prepare the scope before play, even if the first weapon
+		has none. The loading transition also uses this mono format. */
+		if (halo_vr_scope_size() > 0 && render_enumerate_pending(TRUE))
+		{
+			struct render_window prepare_window = eye_window;
+
+			vr_scope_enumerate_camera(&prepare_window.render_camera, &prepare_window.rasterizer_camera);
+			vr_render_scope_begin();
+			render_vr_scope_pass = TRUE;
+			halo_vr_pass(HALO_VR_PASS_SCOPE);
+			render_player_frame(&prepare_window, NULL);
+			render_vr_scope_pass = FALSE;
+			vr_render_scope_end();
+		}
 		/* (none with the head in a wall: the scope, at the eye or the hand,
 		would see through it as the faded eyes do not:
 		port/linux/game/vr_headwall.c) */

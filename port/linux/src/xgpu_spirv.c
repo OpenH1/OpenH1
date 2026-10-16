@@ -37,7 +37,7 @@ enum
 	OP_NAME = 5, OP_EXTENSION = 10, OP_EXT_INST_IMPORT = 11, OP_EXT_INST = 12, OP_MEMORY_MODEL = 14,
 	OP_ENTRY_POINT = 15, OP_EXECUTION_MODE = 16, OP_CAPABILITY = 17,
 	OP_TYPE_VOID = 19, OP_TYPE_BOOL = 20, OP_TYPE_INT = 21, OP_TYPE_FLOAT = 22, OP_TYPE_VECTOR = 23,
-	OP_TYPE_IMAGE = 25, OP_TYPE_SAMPLED_IMAGE = 27, OP_TYPE_ARRAY = 28, OP_TYPE_STRUCT = 30, OP_TYPE_POINTER = 32,
+	OP_TYPE_IMAGE = 25, OP_TYPE_SAMPLED_IMAGE = 27, OP_TYPE_ARRAY = 28, OP_TYPE_RUNTIME_ARRAY = 29, OP_TYPE_STRUCT = 30, OP_TYPE_POINTER = 32,
 	OP_TYPE_FUNCTION = 33,
 	OP_CONSTANT_TRUE = 41, OP_CONSTANT_FALSE = 42, OP_CONSTANT = 43, OP_CONSTANT_COMPOSITE = 44,
 	OP_FUNCTION = 54, OP_FUNCTION_END = 56, OP_VARIABLE = 59, OP_LOAD = 61, OP_STORE = 62, OP_ACCESS_CHAIN = 65,
@@ -68,14 +68,14 @@ enum
 
 enum
 {
-	DECORATION_BLOCK = 2, DECORATION_ARRAY_STRIDE = 6, DECORATION_BUILT_IN = 11, DECORATION_INVARIANT = 18,
+	DECORATION_BLOCK = 2, DECORATION_ARRAY_STRIDE = 6, DECORATION_BUILT_IN = 11, DECORATION_FLAT = 14, DECORATION_INVARIANT = 18,
 	DECORATION_NON_WRITABLE = 24, DECORATION_LOCATION = 30, DECORATION_BINDING = 33, DECORATION_DESCRIPTOR_SET = 34,
 	DECORATION_OFFSET = 35, DECORATION_NO_CONTRACTION = 42,
 };
 
 enum
 {
-	BUILT_IN_POSITION = 0, BUILT_IN_POINT_SIZE = 1, BUILT_IN_SAMPLE_MASK = 20,
+	BUILT_IN_POSITION = 0, BUILT_IN_POINT_SIZE = 1, BUILT_IN_SAMPLE_MASK = 20, BUILT_IN_VIEW_INDEX = 4440,
 };
 
 enum
@@ -86,7 +86,7 @@ enum
 
 enum
 {
-	CAPABILITY_SHADER = 1, CAPABILITY_IMAGE_QUERY = 50,
+	CAPABILITY_SHADER = 1, CAPABILITY_IMAGE_QUERY = 50, CAPABILITY_MULTIVIEW = 4439,
 	EXECUTION_MODEL_VERTEX = 0, EXECUTION_MODEL_FRAGMENT = 4,
 	EXECUTION_MODE_ORIGIN_UPPER_LEFT = 7, EXECUTION_MODE_EARLY_FRAGMENT_TESTS = 9,
 	DIM_2D = 1, DIM_3D = 2, DIM_CUBE = 3,
@@ -137,7 +137,7 @@ struct module
 	unsigned int t_void, t_bool, t_int, t_uint, t_float;
 	unsigned int t_v2, t_v3, t_v4, t_iv2, t_iv3, t_iv4, t_uv4, t_bv2, t_bv3, t_bv4;
 	/* the uniform blocks' variables (0 until declared) */
-	unsigned int constants, uniforms, dynamic_lights, dynamic_light_cells, samples;
+	unsigned int constants, uniforms, dynamic_lights, dynamic_light_cells, samples, view_index;
 };
 
 static void words_push(struct module *m, struct words *words, unsigned int word)
@@ -799,9 +799,10 @@ static unsigned int block_array(struct module *m, unsigned int count)
 /* struct xgpu_spirv_uniforms' members, in order */
 enum
 {
-	U_VIEWPORT_SCALE, U_VIEWPORT_OFFSET, U_POINT_SIZE, U_SCREEN_OFFSET, U_ALPHA_REFERENCE, U_UNUSED,
+	U_VIEWPORT_SCALE, U_VIEWPORT_OFFSET, U_POINT_SIZE, U_SCREEN_OFFSET, U_ALPHA_REFERENCE, U_SCREEN_POINTS,
 	U_PS_C0, U_PS_C1, U_PS_FINAL_C0, U_PS_FINAL_C1, U_FOG_COLOR, U_FOG_PARAMETERS, U_BUMP_MATRIX, U_BUMP_LUMINANCE,
 	U_TEXTURE_SCALE, U_BLEND_CONSTANT, U_TEXTURE_BORDER, U_TEXTURE_BORDER_LINEAR, U_MODEL_LIGHTS,
+	U_EYE_CORRECTION, U_SCREEN_CORRECTION, U_FOVEA_VIEW, U_FOVEA_SAMPLE, U_VISIBILITY_COUNTER,
 	U_COUNT,
 };
 
@@ -811,7 +812,7 @@ static void declare_uniforms(struct module *m)
 	{
 		offsetof(struct xgpu_spirv_uniforms, viewport_scale), offsetof(struct xgpu_spirv_uniforms, viewport_offset),
 		offsetof(struct xgpu_spirv_uniforms, point_size), offsetof(struct xgpu_spirv_uniforms, screen_offset),
-		offsetof(struct xgpu_spirv_uniforms, alpha_reference), offsetof(struct xgpu_spirv_uniforms, unused),
+		offsetof(struct xgpu_spirv_uniforms, alpha_reference), offsetof(struct xgpu_spirv_uniforms, screen_points),
 		offsetof(struct xgpu_spirv_uniforms, ps_c0), offsetof(struct xgpu_spirv_uniforms, ps_c1),
 		offsetof(struct xgpu_spirv_uniforms, ps_final_c0), offsetof(struct xgpu_spirv_uniforms, ps_final_c1),
 		offsetof(struct xgpu_spirv_uniforms, fog_color), offsetof(struct xgpu_spirv_uniforms, fog_parameters),
@@ -819,6 +820,9 @@ static void declare_uniforms(struct module *m)
 		offsetof(struct xgpu_spirv_uniforms, texture_scale), offsetof(struct xgpu_spirv_uniforms, blend_constant),
 		offsetof(struct xgpu_spirv_uniforms, texture_border), offsetof(struct xgpu_spirv_uniforms, texture_border_linear),
 		offsetof(struct xgpu_spirv_uniforms, model_lights),
+		offsetof(struct xgpu_spirv_uniforms, eye_correction), offsetof(struct xgpu_spirv_uniforms, screen_correction),
+		offsetof(struct xgpu_spirv_uniforms, fovea_view), offsetof(struct xgpu_spirv_uniforms, fovea_sample),
+		offsetof(struct xgpu_spirv_uniforms, visibility_counter),
 	};
 	unsigned int members[U_COUNT], block;
 	int member;
@@ -827,13 +831,15 @@ static void declare_uniforms(struct module *m)
 	{
 		switch (member)
 		{
-		case U_POINT_SIZE: case U_SCREEN_OFFSET: case U_ALPHA_REFERENCE: case U_UNUSED:
+		case U_POINT_SIZE: case U_SCREEN_OFFSET: case U_ALPHA_REFERENCE: case U_SCREEN_POINTS: case U_VISIBILITY_COUNTER:
 			members[member] = m->t_float;
 			break;
-		case U_PS_C0: case U_PS_C1: members[member] = block_array(m, 8); break;
+		case U_PS_C0: case U_PS_C1: case U_EYE_CORRECTION: members[member] = block_array(m, 8); break;
 		case U_BUMP_MATRIX: case U_BUMP_LUMINANCE: case U_TEXTURE_SCALE: case U_TEXTURE_BORDER:
+		case U_FOVEA_VIEW: case U_FOVEA_SAMPLE:
 			members[member] = block_array(m, 4);
 			break;
+		case U_SCREEN_CORRECTION: members[member] = block_array(m, 2); break;
 		case U_MODEL_LIGHTS: members[member] = block_array(m, XGPU_MODEL_LIGHT_COUNT); break;
 		default: members[member] = m->t_v4; break;
 		}
@@ -853,7 +859,7 @@ vec4 */
 static unsigned int uniform(struct module *m, int member, int element)
 {
 	unsigned int operands[3], pointer;
-	BOOL scalar = member >= U_POINT_SIZE && member <= U_UNUSED;
+	BOOL scalar = (member >= U_POINT_SIZE && member <= U_SCREEN_POINTS) || member == U_VISIBILITY_COUNTER;
 	unsigned int type = scalar ? m->t_float : m->t_v4;
 	int count = 2;
 
@@ -863,6 +869,65 @@ static unsigned int uniform(struct module *m, int member, int element)
 		operands[count++] = constant_int(m, element);
 	pointer = op(m, OP_ACCESS_CHAIN, type_pointer(m, STORAGE_UNIFORM, type), count, operands);
 	return load(m, type, pointer);
+}
+
+/* a vec4 array member indexed by an int value */
+static unsigned int uniform_index(struct module *m, int member, unsigned int index)
+{
+	unsigned int operands[3], pointer;
+
+	operands[0] = m->uniforms;
+	operands[1] = constant_int(m, member);
+	operands[2] = index;
+	pointer = op(m, OP_ACCESS_CHAIN, type_pointer(m, STORAGE_UNIFORM, m->t_v4), 3, operands);
+	return load(m, m->t_v4, pointer);
+}
+
+/* ViewIndex is relative to the attachment view's first layer, as GL's
+ViewID is. The one-eye foveated pass has two views of its own. */
+static void declare_views(struct module *m, int multiview, BOOL foveated, BOOL fragment)
+{
+	unsigned int capability = CAPABILITY_MULTIVIEW;
+
+	if (multiview != XGPU_MULTIVIEW_EYES && !(multiview && foveated))
+		return;
+	instruction(m, SECTION_CAPABILITIES, OP_CAPABILITY, 1, &capability);
+	m->view_index = variable(m, m->t_int, STORAGE_INPUT, "gl_ViewIndex");
+	decorate1(m, m->view_index, DECORATION_BUILT_IN, BUILT_IN_VIEW_INDEX);
+	if (fragment)
+		decorate(m, m->view_index, DECORATION_FLAT, 0, NULL);
+}
+
+static unsigned int view_number(struct module *m, int multiview, BOOL foveated)
+{
+	unsigned int view;
+
+	if (!multiview)
+		return constant_int(m, 0);
+	if (!foveated)
+		return multiview == XGPU_MULTIVIEW_EYES ? load(m, m->t_int, m->view_index) :
+			constant_int(m, multiview == XGPU_MULTIVIEW_RIGHT_EYE ? 1 : 0);
+	view = load(m, m->t_int, m->view_index);
+	if (multiview == XGPU_MULTIVIEW_RIGHT_EYE)
+		view = op2(m, OP_I_ADD, m->t_int, view, constant_int(m, 2));
+	return view;
+}
+
+/* eye_correction[eye] * position, from its column-major vec4 columns */
+static unsigned int eye_position(struct module *m, unsigned int eye, unsigned int position)
+{
+	unsigned int column = op2(m, OP_I_MUL, m->t_int, eye, constant_int(m, 4));
+	unsigned int result = 0;
+	int component;
+
+	for (component = 0; component < 4; component++)
+	{
+		unsigned int index = component ? op2(m, OP_I_ADD, m->t_int, column, constant_int(m, component)) : column;
+		unsigned int part = fscale(m, 4, uniform_index(m, U_EYE_CORRECTION, index), extract(m, position, component));
+
+		result = component ? fadd(m, 4, result, part) : part;
+	}
+	return result;
 }
 
 /* c[index] (a constant index, or an int value: dynamic) */
@@ -1390,17 +1455,17 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 	unsigned int position_out, point_size_out, color_outs[6], fog_out;
 	unsigned int world_normal_out = 0, world_position_out = 0, world_binormal_out = 0, world_tangent_out = 0;
 	unsigned int world_normal = 0, world_position = 0;
-	unsigned int clip_position = 0;
+	unsigned int clip_position = 0, view = 0, screen_points = 0;
 	BOOL environment = lighting && lighting->lights == XGPU_ENVIRONMENT_LIGHTING;
 	BOOL clip_captured = FALSE;
 	unsigned int one = 0;
 	int slot;
 
-	(void)options;
 	module_begin(&m, EXECUTION_MODEL_VERTEX);
 	inputs = vertex_inputs(program, lighting);
 	declare_constants(&m);
 	declare_uniforms(&m);
+	declare_views(&m, options->multiview, options->foveated, FALSE);
 
 	/* the attributes read */
 	for (index = 0; index < XGPU_VERTEX_ATTRIBUTE_COUNT; index++)
@@ -1547,11 +1612,30 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 		}
 	}
 
+	if (options->multiview)
+	{
+		unsigned int eye, correction, corrected;
+		static const unsigned int xy_zw[4] = { 4, 5, 2, 3 };
+		static const unsigned int zw[2] = { 2, 3 };
+
+		view = view_number(&m, options->multiview, options->foveated);
+		eye = options->foveated ? op2(&m, OP_SHIFT_RIGHT_ARITHMETIC, m.t_int, view, constant_int(&m, 1)) : view;
+		if (clip_captured)
+			clip_position = eye_position(&m, eye, clip_position);
+		/* A point projected by the game follows its screen correction even
+		when the vertex program captured a clip position. */
+		screen_points = compare(&m, OP_F_UNORD_NOT_EQUAL, uniform(&m, U_SCREEN_POINTS, -1), constant_float(&m, 0.0f));
+		correction = uniform_index(&m, U_SCREEN_CORRECTION, eye);
+		corrected = fadd(&m, 2, fmul(&m, 2, xy(&m, state.position), xy(&m, correction)),
+			fscale(&m, 2, shuffle(&m, 2, correction, correction, zw), extract(&m, state.position, 3)));
+		state.position = shuffle(&m, 4, state.position, corrected, xy_zw);
+	}
+
 	/* the clip position (xgpu_glsl.c: the conversion done with c[-38] and
 	c[-37] undone, pixel centres at half-integers, a w of zero behind the
 	camera) */
 	{
-		unsigned int scale_parts[3], scale, viewport_scale, viewport_offset, screen_offset, position, w;
+		unsigned int scale_parts[3], scale, viewport_scale, viewport_offset, screen_offset, position = 0, w;
 		int component;
 
 		viewport_scale = uniform(&m, U_VIEWPORT_SCALE, -1);
@@ -1580,9 +1664,9 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 				offset), xyz(&m, viewport_offset)), w));
 			position = vec4_of(&m, fdiv(&m, 3, sum, scale), w);
 		}
-		else
+		if (!clip_captured || options->multiview)
 		{
-			unsigned int shift_parts[2], ndc_parts[2], ndc;
+			unsigned int shift_parts[2], ndc_parts[2], ndc, screen_position;
 
 			shift_parts[0] = fadd(&m, 1, constant_float(&m, 0.5f), screen_offset);
 			shift_parts[1] = constant_float(&m, 0.5f);
@@ -1591,7 +1675,8 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 			ndc = op(&m, OP_COMPOSITE_CONSTRUCT, m.t_v3, 2, ndc_parts);
 			ndc = fdiv(&m, 3, fsub(&m, 3, ndc, xyz(&m, viewport_offset)), scale);
 			w = extract(&m, state.position, 3);
-			position = vec4_of(&m, fscale(&m, 3, ndc, w), w);
+			screen_position = vec4_of(&m, fscale(&m, 3, ndc, w), w);
+			position = clip_captured ? select_n(&m, 4, screen_points, screen_position, position) : screen_position;
 		}
 		/* (a w of zero, or not a number: behind the camera) */
 		w = extract(&m, position, 3);
@@ -1599,6 +1684,17 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 			ext1(&m, GLSL_F_ABS, m.t_float, w), constant_float(&m, 0.0f))), constant_v4(&m, 0.0f, 0.0f, 0.0f, -1.0f), position);
 		/* Vulkan's rows from the top of the framebuffer, y down (xgpu_spirv.h) */
 		position = op3(&m, OP_COMPOSITE_INSERT, m.t_v4, fneg(&m, 1, extract(&m, position, 1)), position, 1);
+		if (options->multiview && options->foveated)
+		{
+			static const unsigned int zw[2] = { 2, 3 }, xy_zw[4] = { 4, 5, 2, 3 };
+			unsigned int correction = uniform_index(&m, U_FOVEA_VIEW, view);
+			unsigned int corrected = fadd(&m, 2, fmul(&m, 2, xy(&m, position), xy(&m, correction)),
+				fscale(&m, 2, shuffle(&m, 2, correction, correction, zw), extract(&m, position, 3)));
+
+			position = shuffle(&m, 4, position, corrected, xy_zw);
+			state.outputs[OUT_PTS] = op3(&m, OP_COMPOSITE_INSERT, m.t_v4,
+				fmul(&m, 1, extract(&m, state.outputs[OUT_PTS], 0), extract(&m, correction, 0)), state.outputs[OUT_PTS], 0);
+		}
 		store(&m, position_out, position);
 	}
 	store(&m, point_size_out, extract(&m, state.outputs[OUT_PTS], 0));
@@ -1724,11 +1820,36 @@ static unsigned int sample(struct module *m, struct pixel_state *state, int stag
 		uv = fmul(m, 2, xy(m, coordinates), xy(m, uniform(m, U_TEXTURE_SCALE, stage)));
 	if (sampler == _xgpu_sampler_2d_layered)
 	{
-		/* (flat: a layered target is its first layer) */
-		unsigned int parts[2];
+		unsigned int parts[2], layer = view_number(m, state->program->multiview, state->options->foveated);
 
+		if (state->options->foveated)
+		{
+			static const unsigned int zw[2] = { 2, 3 };
+			unsigned int correction = uniform_index(m, U_FOVEA_SAMPLE, layer);
+			unsigned int raw = op(m, OP_IMAGE, type_sampled_image(m, DIM_2D, TRUE, FALSE, FALSE), 1, &image);
+			unsigned int size = op1(m, OP_CONVERT_S_TO_F, m->t_v3, image_size(m, raw, m->t_iv3));
+			unsigned int inset = fadd(m, 2, fmul(m, 2, uv, xy(m, correction)),
+				fdiv(m, 2, shuffle(m, 2, correction, correction, zw), xy(m, size)));
+			unsigned int inside = 0;
+			int axis;
+
+			/* Outside an inset, a blur or distortion reads the whole eye's
+			layer. All target rows start at the top, including the eyes. */
+			for (axis = 0; axis < 2; axis++)
+			{
+				unsigned int value = extract(m, inset, axis);
+				unsigned int within = op2(m, OP_LOGICAL_AND, m->t_bool,
+					compare(m, OP_F_ORD_GREATER_THAN_EQUAL, value, constant_float(m, 0.0f)),
+					compare(m, OP_F_ORD_LESS_THAN_EQUAL, value, constant_float(m, 1.0f)));
+
+				inside = axis ? op2(m, OP_LOGICAL_AND, m->t_bool, inside, within) : within;
+			}
+			uv = select_n(m, 2, inside, inset, uv);
+			layer = op3(m, OP_SELECT, m->t_int, inside, layer,
+				op2(m, OP_BITWISE_AND, m->t_int, layer, constant_int(m, ~1)));
+		}
 		parts[0] = uv;
-		parts[1] = constant_float(m, 0.0f);
+		parts[1] = op1(m, OP_CONVERT_S_TO_F, m->t_float, layer);
 		texel = op2(m, OP_IMAGE_SAMPLE_IMPLICIT_LOD, m->t_v4, image, op(m, OP_COMPOSITE_CONSTRUCT, m->t_v3, 2, parts));
 	}
 	else
@@ -2504,6 +2625,7 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 	state.options = options;
 	module_begin(&m, EXECUTION_MODEL_FRAGMENT);
 	declare_uniforms(&m);
+	declare_views(&m, program->multiview, options->foveated, TRUE);
 	if (program->dynamic_lights)
 		declare_dynamic_lights(&m);
 	for (stage = 0; stage < 4; stage++)
@@ -2520,7 +2642,10 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 	}
 	if (count_samples)
 	{
-		unsigned int block = type_struct(&m, 1, &m.t_uint);
+		unsigned int array = type1(&m, OP_TYPE_RUNTIME_ARRAY, m.t_uint), block;
+
+		decorate1(&m, array, DECORATION_ARRAY_STRIDE, 4);
+		block = type_struct(&m, 1, &array);
 
 		decorate(&m, block, DECORATION_BLOCK, 0, NULL);
 		member_decorate(&m, block, 0, DECORATION_OFFSET, 0);
@@ -2705,11 +2830,21 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 
 		operands[0] = m.samples;
 		operands[1] = constant_int(&m, 0);
-		pointer = op(&m, OP_ACCESS_CHAIN, type_pointer(&m, STORAGE_STORAGE_BUFFER, m.t_uint), 2, operands);
+		operands[2] = op1(&m, OP_CONVERT_F_TO_S, m.t_int, uniform(&m, U_VISIBILITY_COUNTER, -1));
+		pointer = op(&m, OP_ACCESS_CHAIN, type_pointer(&m, STORAGE_STORAGE_BUFFER, m.t_uint), 3, operands);
 		operands[0] = pointer;
 		operands[1] = constant_uint(&m, SCOPE_DEVICE);
 		operands[2] = constant_uint(&m, 0);
 		operands[3] = constant_uint(&m, 1);
+		if (program->multiview == XGPU_MULTIVIEW_EYES && options->foveated)
+		{
+			unsigned int inset = op2(&m, OP_BITWISE_AND, m.t_int,
+				view_number(&m, program->multiview, TRUE), constant_int(&m, 1));
+
+			/* Count the whole eyes alone, as an unfoveated visibility test. */
+			operands[3] = op3(&m, OP_SELECT, m.t_uint,
+				compare(&m, OP_I_EQUAL, inset, constant_int(&m, 0)), constant_uint(&m, 1), constant_uint(&m, 0));
+		}
 		op(&m, OP_ATOMIC_I_ADD, m.t_uint, 4, operands);
 	}
 	result = saturate(&m, 4, result);

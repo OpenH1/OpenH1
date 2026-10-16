@@ -14,7 +14,8 @@ The core:
   through vkGetInstanceProcAddr, so that the host links with no Vulkan
   library;
 - draws with dynamic rendering (Vulkan 1.3): a pass begins at the first
-  draw or clear after the targets change, loading what they hold, and ends
+  draw or clear after the targets change, loading what they hold unless
+  the first operation clears the whole attachment, and ends
   where something must be done outside one (a copy, an upload ordered
   between draws, a readback, the end of a submission); every image is in
   the GENERAL layout, and the end of a pass is a barrier for what comes
@@ -59,6 +60,14 @@ struct xgpu_vulkan_options
 	/* the validation layers (VK_LAYER_KHRONOS_validation) and their
 	messages logged */
 	int validation;
+	/* OpenXR owns device selection and augments device creation. NULL for
+	the desktop path. These callbacks run before the render thread starts. */
+	VkResult (*create_instance)(PFN_vkGetInstanceProcAddr, const VkInstanceCreateInfo *,
+		const VkAllocationCallbacks *, VkInstance *);
+	VkPhysicalDevice (*choose_physical)(VkInstance);
+	VkResult (*create_device)(PFN_vkGetInstanceProcAddr, VkPhysicalDevice, const VkDeviceCreateInfo *,
+		const VkAllocationCallbacks *, VkDevice *);
+	void (*device_ready)(VkInstance, VkPhysicalDevice, VkDevice, uint32_t, uint32_t);
 };
 
 /* 1 on success: a device that has what the backend needs (logged if not) */
@@ -84,6 +93,10 @@ struct xgpu_vulkan_capabilities
 	/* pixel shaders can write storage buffers (the visibility tests' counts
 	in the shader) */
 	int fragment_stores;
+	uint32_t multiview_views;
+	int depth_clamp;
+	/* Timestamp queries on the selected graphics queue. */
+	int gpu_timestamps;
 };
 void xgpu_vulkan_capabilities(struct xgpu_vulkan_capabilities *capabilities);
 
@@ -115,6 +128,7 @@ enum
 	XGPU_VULKAN_FORMAT_COVERAGE,
 	/* four 32-bit unsigned integers (the enhanced dynamic lights' cells) */
 	XGPU_VULKAN_FORMAT_RGBA32_UINT,
+	XGPU_VULKAN_FORMAT_RGBA16F,
 	XGPU_VULKAN_FORMAT_COUNT
 };
 
@@ -257,12 +271,14 @@ struct xgpu_vulkan_pipeline_description
 	uint8_t color_format, depth_format, samples;
 	/* the pixel shader writes the sample mask, or counts samples (early
 	fragment tests): nothing to the pipeline but its key */
-	uint8_t pad[3];
+	uint8_t view_mask, depth_clamp, pad;
 };
 
 /* the pipeline of a description, made the first time; VK_NULL_HANDLE if it
 cannot be */
 VkPipeline xgpu_vulkan_pipeline(const struct xgpu_vulkan_pipeline_description *description);
+/* cumulative driver pipeline creation requests, including failed ones */
+uint64_t xgpu_vulkan_pipeline_count(void);
 
 /* ---------- data the GPU reads */
 
@@ -297,6 +313,14 @@ void xgpu_vulkan_buffer_write(struct xgpu_vulkan_buffer *buffer, uint32_t offset
 /* draws go to a colour image and a depth image (NULL for none) from now
 on; their layer (a layered target's) */
 void xgpu_vulkan_set_targets(struct xgpu_vulkan_image *color, struct xgpu_vulkan_image *depth, uint32_t layer);
+/* views is 1, 2 or 4, relative to the image view's first layer. */
+void xgpu_vulkan_set_target_views(struct xgpu_vulkan_image *color, struct xgpu_vulkan_image *depth,
+	uint32_t layer, uint32_t views);
+/* Copy to a runtime image of the matching channel order or exact depth
+format. It enters and leaves in COLOR_ATTACHMENT_OPTIMAL (colour) or
+DEPTH_STENCIL_ATTACHMENT_OPTIMAL (depth); OpenXR owns its lifetime. */
+void xgpu_vulkan_image_to_runtime(struct xgpu_vulkan_image *source, VkImage destination,
+	uint32_t layers);
 
 /* the clears' parts: the interface's XGPU_CLEAR_* (the colour's channels
 are cleared where their bits are set) */
@@ -368,6 +392,11 @@ void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw);
 passes the tests) for the test's slot (0 to 4095), which end names; the
 count is known once the frame's work is done */
 void xgpu_vulkan_visibility_begin(void);
+/* VR counts only peripheral views in its pixel shaders. Slots are local
+ to a frame until its submission completes; no draw waits for a readback. */
+void xgpu_vulkan_visibility_count_samples(int enabled);
+uint32_t xgpu_vulkan_visibility_counter(void);
+VkFormat xgpu_vulkan_depth_format(void);
 /* area: the samples a pixel of the game's is, which the count written for
 the game is divided by */
 void xgpu_vulkan_visibility_end(uint32_t slot, float area);
@@ -388,6 +417,15 @@ uint64_t xgpu_vulkan_serial(void);
 
 /* ends the work recorded so far and submits it; returns its number, which
 grows */
+/* A frame's elapsed render GPU timeline, including uploads/composition.
+Begin arms the first GPU command, excluding the runtime's frame wait.
+Read returns one completed interval in milliseconds, without waiting; an
+unsupported queue or a full query ring omits the sample. Begin/end must
+run on the renderer's thread, with end before the frame's fence. */
+void xgpu_vulkan_gpu_time_begin(void);
+void xgpu_vulkan_gpu_time_end(void);
+int xgpu_vulkan_gpu_time_read(double *milliseconds);
+
 uint64_t xgpu_vulkan_fence(void);
 /* returns once the GPU has done the submission of that number and those
 before (the visibility tests' counts of the frames they end are written) */
@@ -406,6 +444,8 @@ struct xgpu_vulkan_statistics
 {
 	uint32_t frames, submissions, passes, draws, clears, clears_as_draws;
 	uint32_t pipelines_made, samplers_made, uploads_ordered, uploads_early;
+	/* load actions for colour, depth and stencil (each aspect counted) */
+	uint32_t attachment_loads, attachment_clears;
 	uint64_t ring_bytes;
 	double pipeline_seconds;
 };

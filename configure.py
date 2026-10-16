@@ -99,6 +99,12 @@ parser.add_argument(
     help="Android NDK for `ninja android` (default: ANDROID_NDK_HOME, or the newest under the Android SDK)",
 )
 parser.add_argument(
+    "--android-vulkan",
+    action="store_true",
+    help="draw the Android build with Vulkan instead of OpenGL ES (ninja android/android_apk); "
+    "requires a Vulkan 1.3 phone driver; refer to port/linux/vulkan/README.md",
+)
+parser.add_argument(
     "--android-guest-cc",
     type=str,
     help="clang with the arm64_32 target for the Android guest (default: --guest-llvm's)",
@@ -131,14 +137,15 @@ parser.add_argument(
 parser.add_argument(
     "--linux-vulkan",
     action="store_true",
-    help="generate `ninja linux_vulkan`, the 64-bit x86 Linux build with the Vulkan renderer (on the host, through "
-    "the renderer's command stream), on a 64-bit x86 Linux computer: configure.py then downloads its musl, SDL3 and "
+    help="generate `ninja linux_vulkan`, the 64-bit ARM or x86 Linux build with the Vulkan renderer (on the host, "
+    "through the renderer's command stream), on the computer's architecture: configure.py downloads its musl, SDL3 and "
     "Vulkan headers (once, to build/linux_vulkan/third_party); refer to port/linux/vulkan/README.md",
 )
 parser.add_argument(
     "--vr",
     action="store_true",
-    help="the VR mode (OpenXR) in `ninja linux_arm64` and `ninja linux_x86_64`, with the desktop OpenGL renderer; "
+    help="the VR mode (OpenXR) in `ninja linux_arm64` and `ninja linux_x86_64` with desktop OpenGL, "
+    "and `ninja linux_vulkan` with Vulkan (also give --linux-vulkan); "
     "refer to \"VR\" in port/linux/README.md",
 )
 parser.add_argument(
@@ -191,6 +198,7 @@ sln = SimpleNamespace(
     guest_llvm=args.guest_llvm,
     guest_llvm_cache=args.guest_llvm_cache,
     android_guest_cc=args.android_guest_cc,
+    android_vulkan=args.android_vulkan,
     linux_arm64_cc=args.linux_arm64_cc,
     linux_arm64_gl=args.linux_arm64_gl,
     linux_x86_64=args.linux_x86_64,

@@ -40,6 +40,10 @@ void progress_bar_display(
 boolean progress_bar_is_stuff_ready(
 	void);
 
+/* port: prepare the loading-screen draws in a mono window with depth. */
+struct bitmap_data;
+void progress_bar_port_enumerate(struct bitmap_data const *bitmap);
+
 /* ---------- globals */
 
 /* ---------- public code */

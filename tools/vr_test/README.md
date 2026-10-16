@@ -91,6 +91,43 @@ To act without hands (port/linux/README.md, "Settings" under "VR"):
 
 Runs of 5 at once are fine on a DGX Spark.
 
+## VR transitions
+
+`scenarios.py` checks the holsters, return to the main menu, a manual reload,
+physical crouching, death and a cinematic on the stock maps. Each case must
+reach its expected events in the log, capture an eye image, return zero and
+have no EXCEPTION. Vulkan validation messages and reported pipeline preparation
+misses also fail the case. It uses the same `vr_run.sh` with either renderer:
+
+```sh
+python3 -m pip install Pillow
+python3 tools/vr_test/scenarios.py --game build/linux_arm64 --maps ~/maps --out /tmp/vr-gl-evidence
+python3 tools/vr_test/scenarios.py --game build/linux_vulkan --maps ~/maps --out /tmp/vr-vulkan-evidence
+```
+
+`--case holsters` selects one case (repeat the option for several).
+`--env HALO_VR_FOVEATION=off` changes a setting. For renderer image comparisons,
+use `--env HALO_FRAME_TIME=0.0138888889` on both runs so each frame advances
+the same simulation time; compare matching frame numbers and check the event
+ticks too. Internet play is always off.
+Runs are sequential, with a fixed test head. These are functional checks:
+screenshots read the GPU back and the fixed head and hands suppress late latching,
+so use separate runs for frame timing and pose age. The screenshots include `eyes<frame>.bmp` (both eyes), `hud<frame>.bmp`
+(the base HUD target), `hud-layer<frame>.bmp` and `panel0<frame>.bmp` through
+the last panel (the curved layers submitted to the runtime, over gray).
+The base HUD can be empty when the HUD is on separate panels. Both backends
+write these layers through the existing screenshot settings. The evidence folder
+keeps each command's settings, the host binary's hash (and guest ELF's when
+available), event checks, logs and
+lossless PNGs; temporary run folders and BMPs are removed. Keep the evidence
+outside the repository. A failed event check is a failure even if the game
+exits normally.
+
+`vr_run.sh` mounts this checkout's `container_run.sh` into the container,
+so runner fixes do not require rebuilding the Monado image. The runner
+preserves the game's exit status, and an EXCEPTION in `debug.txt` fails the
+run even if the game returned zero.
+
 ## Flicker scan
 
 ```sh
@@ -197,3 +234,29 @@ folder's: never the user's own SteamVR).
   GPU's for all of the frame, dropped and reprojected frames.
   `vrcompositor.txt` has SteamVR's own summary of the game's time
   (`Game Info`).
+
+
+## Multiview shader regression
+
+`gl_multiview.c` checks the production GLSL emitter without game data or
+OpenXR. Two authored vertex programs draw a triangle into two and four
+views; both eye transforms must produce exactly the pixels of an
+independent matrix-only GLSL shader. The projected program caught an
+NVIDIA OVR multiview compiler error: modifying the captured clip position
+in place made the right eye reuse the left eye's transformed position.
+Keeping the captured position unchanged fixes both that case and the
+game's projected shaders.
+
+Build beside the configured ARM64 host's SDL3 (or use `build/linux_x86_64`
+for an x86 host), with a native compiler and desktop OpenGL headers:
+
+    tools/vr_test/build_gl_multiview.sh build/gl-multiview build/linux_arm64
+    HALO_NET_ONLINE=false SDL_VIDEO_DRIVER=offscreen SDL_AUDIO_DRIVER=dummy \
+        LD_LIBRARY_PATH=build/linux_arm64 build/gl-multiview/gl_multiview
+
+Run where SDL's offscreen driver has GPU acceleration, such as the Monado
+container above with NVIDIA's graphics libraries exposed. The test returns
+77 if `GL_OVR_multiview2` is unavailable, and fails on a shader error, empty
+draw, incorrect centroid, or any pixel disagreement. It covers direct and
+projected positions, two matrix cases, and two/four views; no screenshots,
+recordings, maps, or headset are needed.

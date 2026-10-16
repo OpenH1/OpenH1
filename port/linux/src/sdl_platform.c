@@ -842,7 +842,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		if (scale < 1)
 			scale = 1;
 		platform_window = SDL_CreateWindow("Halo", (int)(width * scale), (int)(height * scale),
-			SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN);
+			PLATFORM_WINDOW_DRAWING | SDL_WINDOW_FULLSCREEN);
 	}
 #else
 	/* fullscreen (either kind) unless display.mode is the window, which F11
@@ -870,7 +870,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 			SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
 		}
 		platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
-			SDL_WINDOW_OPENGL | SDL_WINDOW_HIDDEN);
+			PLATFORM_WINDOW_DRAWING | SDL_WINDOW_HIDDEN);
 	}
 	else
 #endif
