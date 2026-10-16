@@ -735,6 +735,19 @@ struct sound_channel_datum sound_channels[MAXIMUM_SOUND_CHANNELS];
 boolean loud_dialog_hack;
 boolean debug_looping_sound;
 
+/* port: the sounds' own random seed (their permutations, pitches, detail
+sounds' places and times). The game's local seed took them as the sound
+manager played, by the clock and the mixer's progress, and moved everything
+the seed picks after; a sound's choices reach nothing in the game (its
+scripts and dialogue time sounds by their longest permutation). */
+static unsigned long sound_random_seed = 0x736F756E;
+
+unsigned long *sound_random_seed_address(
+	void)
+{
+	return &sound_random_seed;
+}
+
 static real const sound_pitch_range_fade_time = 0.5f;
 static real const sound_inaudible_fade_out_time = 2.f;
 static real const sound_inaudible_fade_back_in_time = 0.5f;
@@ -1633,8 +1646,9 @@ static long update_potentially_audible_looping_sound(
 					real pitch_lower_bound =
 						definition->random_pitch_bounds.lower;
 
+					/* port: the sounds' seed */
 					sound->pitch = real_seed_random_range(
-						get_global_local_random_seed_address(),
+						sound_random_seed_address(),
 						pitch_lower_bound,
 						pitch_upper_bound);
 				}
@@ -1813,8 +1827,9 @@ static real sound_scale_random_value(
 	real upper_bound_modifier,
 	real scale)
 {
+	/* port: the sounds' seed */
 	real base = real_seed_random_range(
-		get_global_local_random_seed_address(),
+		sound_random_seed_address(),
 		base_lower_bound,
 		base_upper_bound);
 
@@ -2457,7 +2472,6 @@ long sound_new_impulse(
 	long sound_index = NONE;
 	struct sound_definition *definition = sound_definition_get(definition_index);
 	real scale = source->scale;
-
 	match_assert(
 		"c:\\halo\\SOURCE\\sound\\sound_manager.c",
 		0x240,
@@ -2504,8 +2518,9 @@ long sound_new_impulse(
 		{
 			if (source->scale != 0.f || definition->zero_gain_modifier != 0.f)
 			{
+				/* port: the sounds' seed */
 				real random = real_seed_random(
-					get_global_local_random_seed_address());
+					sound_random_seed_address());
 
 				if (random > sound_scale_value(
 					definition->skip_fraction,
@@ -3213,7 +3228,9 @@ static void process_looping_sounds(
 					lower_scale = definition->scale_lower_bound.detail_period;
 					period_upper_bound = detail->period_bounds.upper;
 					period_lower_bound = detail->period_bounds.lower;
-					period = real_local_random_range(
+					/* port: the sounds' seed */
+					period = real_seed_random_range(
+						sound_random_seed_address(),
 						period_lower_bound,
 						period_upper_bound);
 
@@ -4049,7 +4066,9 @@ static void detail_sound_random_offset(
 	struct looping_sound_detail const *detail,
 	real_vector3d *offset)
 {
-	real distance = real_local_random_range(
+	/* port: the sounds' seed, here and below */
+	real distance = real_seed_random_range(
+		sound_random_seed_address(),
 		detail->distance_bounds.lower,
 		detail->distance_bounds.upper);
 
@@ -4057,10 +4076,12 @@ static void detail_sound_random_offset(
 	{
 		real_euler_angles2d angles;
 
-		angles.pitch = real_local_random_range(
+		angles.pitch = real_seed_random_range(
+			sound_random_seed_address(),
 			detail->phi_bounds.lower,
 			detail->phi_bounds.upper);
-		angles.yaw = real_local_random_range(
+		angles.yaw = real_seed_random_range(
+			sound_random_seed_address(),
 			detail->theta_bounds.lower,
 			detail->theta_bounds.upper);
 		vector3d_from_euler_angles2d(offset, &angles);
