@@ -1230,10 +1230,13 @@ operate), the window's icon, and the names of gamepads in the log.
 ### Requirements
 
 - Python and ninja.
-- clang with the `arm64_32` target (clang 22 operates), `ld.lld`,
-  `llvm-ar` and `llvm-objdump` (with which the build checks the guest
-  image, `tools/guest_image_check.py`). The option `--linux-arm64-cc` of `configure.py` selects a
-  different clang.
+- clang for the host. The guest is compiled, linked and checked
+  (`tools/guest_image_check.py`) with LLVM 22.1.8, which `configure.py`
+  downloads the first time (approximately 1.5 GB) to `~/.cache/opence`.
+  Refer to "The guests' compiler" in [README.md](../../README.md#the-guests-compiler).
+  The option `--linux-arm64-cc` of `configure.py` selects a different clang
+  for the host and the guest, which then needs the `arm64_32` target,
+  `ld.lld`, `llvm-ar` and `llvm-objdump`.
 - The OpenGL ES and EGL headers (`libgles-dev` and `libegl-dev` on Debian
   and Ubuntu), and for the desktop OpenGL renderer (`--vr`) the OpenGL
   headers (`libgl-dev`) and GLVND's OpenGL library, which the host links
@@ -1366,10 +1369,15 @@ is x87's 80-bit one where this build's is a `double`, as MSVC's is.
 ### Requirements
 
 - Python and ninja.
-- clang with the x32 target (`x86_64-linux-gnux32`; clang 22 operates),
-  `ld.lld`, `llvm-ar` and `llvm-objdump`. The option `--linux-x86-64-cc`
-  of `configure.py` selects a different clang. The kernel's own x32
-  support is not needed: the guest never calls the kernel itself.
+- clang for the host. The guest is compiled for x32
+  (`x86_64-linux-gnux32`), linked and checked with LLVM 22.1.8, which
+  `configure.py` downloads the first time (approximately 1.5 GB) to
+  `~/.cache/opence`. Refer to "The guests' compiler" in
+  [README.md](../../README.md#the-guests-compiler). The option
+  `--linux-x86-64-cc` of `configure.py` selects a different clang for the
+  host and the guest, which then needs the x32 target, `ld.lld`, `llvm-ar`
+  and `llvm-objdump`. The kernel's own x32 support is not needed: the
+  guest never calls the kernel itself.
 - The OpenGL, OpenGL ES and EGL headers (`libgl-dev`, `libgles-dev` and
   `libegl-dev` on Debian and Ubuntu, `mesa` on Arch Linux), and GLVND's
   OpenGL library, which the host links (`libopengl-dev`; Arch's

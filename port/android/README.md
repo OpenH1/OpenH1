@@ -21,9 +21,12 @@ continuous aiming, while releasing capture restores normal pointer behavior.
 You do not need the Xbox SDK. You need the tools of the Linux build (Python,
 ninja) and these items:
 
-- A clang with the `arm64_32` target, for example the clang of the system.
-  The option `--android-guest-cc` of `configure.py` selects a different
-  compiler.
+- Nothing for the guest: it is compiled with LLVM 22.1.8, which
+  `configure.py` downloads the first time (approximately 1.5 GB) to
+  `~/.cache/opence`. Refer to "The guests' compiler" in
+  [README.md](../../README.md#the-guests-compiler). The option
+  `--android-guest-cc` of `configure.py` selects a different compiler (a
+  clang with the `arm64_32` target), with the NDK's linker and tools.
 - The Android NDK. `configure.py` looks for it in `ANDROID_NDK_HOME`, then
   in `$ANDROID_HOME/ndk`, `~/Android/Sdk/ndk` and `/opt/android-sdk/ndk`.
   The option `--android-ndk` selects a different NDK.

@@ -144,12 +144,33 @@ Give these options to `configure.py`:
 | `--pgo=off` | No profile-guided optimization. |
 | `--pgo=train` | Records a new optimization profile. Refer to "Optimization profiles". |
 | `--profile` | A profiling build. It records CPU times. Refer to "Profiling builds". |
+| `--guest-llvm=system`, `--guest-llvm=FOLDER` | The guest builds (Linux arm64 and x86-64, Android, macOS) compile the guest with clang and the LLVM tools on the PATH, or with the LLVM in FOLDER, not with the pinned LLVM. Refer to "The guests' compiler". |
+| `--guest-llvm-cache FOLDER` | The folder for the pinned LLVM (else `~/.cache/opence`, on macOS `~/Library/Caches/opence`). |
 | `--guest-base` | The Linux arm64 and Android builds put the guest's memory at a base that the host chooses, not in the low 4 GB (a base register: `tools/guest_base_register.py`). The 64-bit x86 build has none: with it, `ninja linux_x86_64` stops with the reason. |
 | `--web-emcc PATH` | The Emscripten `emcc` for `ninja web` (else the one on the PATH, or `~/emsdk`'s). |
 
 Without `--portable`, the Linux and Windows builds use all the instructions
 of the processor that builds them (`-march=native`). Such a build does not
 always start on a different computer.
+
+### The guests' compiler
+
+The Linux arm64 and x86-64, Android and macOS builds compile the game as a
+guest image (`arm64_32` or `x32` code). On all computers, the guest is
+compiled and linked by the same LLVM: release 22.1.8 from
+[LLVM's releases](https://github.com/llvm/llvm-project/releases), for
+64-bit x86 Linux, 64-bit ARM Linux and macOS on Apple silicon. The first
+`configure.py` downloads it (approximately 1.5 GB, checked against its
+SHA-256) and keeps clang, `ld.lld` and the LLVM tools that the builds use
+(approximately 700 MB) in `~/.cache/opence` (on macOS
+`~/Library/Caches/opence`, or the folder of `--guest-llvm-cache`). The
+version and the checksums are in `tools/guest_toolchain.py`. The hosts
+use the compiler of the system.
+
+A compiler that you give for a build (`--linux-arm64-cc`,
+`--linux-x86-64-cc`, `--android-guest-cc`, `--macos-cc`,
+`--macos-guest-cc`) is used instead, with the LLVM tools on the PATH, as
+with `--guest-llvm=system`.
 
 ### Optimization profiles
 
@@ -159,7 +180,8 @@ The builds use profiles of the game to optimize the code:
 - `pgo/halo_windows.profdata` for Windows.
 
 The profiles need clang 22 or later. With an older clang, the builds do not
-use the profiles.
+use the profiles. The guest builds' pinned LLVM (refer to "The guests'
+compiler") reads them on all platforms.
 
 To record a new profile:
 

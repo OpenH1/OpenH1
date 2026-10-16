@@ -68,6 +68,14 @@ python tools/ci_build.py linux release   # what CI builds
   as the guest left it. Run `ninja android`
   after changing anything it compiles: `port/linux/src`, `port/linux/game`,
   `port/android`, `source/`, the build scripts.
+- The guest builds (Android, Linux arm64 and x86-64, macOS) compile, link
+  and check the guest with one pinned LLVM release (`tools/guest_toolchain.py`:
+  `LLVM_VERSION` and each computer's archive's SHA-256), which
+  `configure.py` downloads once into the user's cache (`--guest-llvm-cache`),
+  not the build folder; the hosts use the system's compiler. A build's own
+  compiler option, or `--guest-llvm=system`, uses the PATH's (and the
+  NDK's, Homebrew's) instead. `python tools/guest_toolchain.py` prints its
+  `bin/`, for the guests' tests.
 - Linux x86-64 and arm64: the same guest and host as Android, with the
   desktop's code paths (`tools/linux_guest_build.py`); the guest is `x32`
   on x86-64 (desktop OpenGL), `arm64_32` on AArch64. What is particular
@@ -141,6 +149,7 @@ python -m pytest -q tools/test_cache_file_formats.py tools/test_bmp_files.py too
 python -m pytest -q tools/test_host_watch_hash.py tools/test_host_units.py tools/test_check_host_imports.py tools/test_host_syscall.py  # the guests' host
 python -m pytest -q tools/test_guest_image_check.py         # the guest images' checks (x86-64)
 python -m pytest -q tools/test_guest_layout.py tools/test_linux_guest_build.py  # the guests' memory layout, the guest builds' configure
+python -m pytest -q tools/test_guest_toolchain.py         # the guests' pinned LLVM: its archives, what is kept of them
 python -m pytest -q tools/test_linux_package.py tools/test_install_layout.py   # the Linux release's layout
 python -m pytest -q tools/test_guest_base_register.py tools/test_host_memory_base.py  # the base register
 python -m pytest -q tools/test_macos_metal.py               # the Metal backend (ninja macos_metal_test first)

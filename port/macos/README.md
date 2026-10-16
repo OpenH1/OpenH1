@@ -17,10 +17,15 @@ maps and the campaign. It was tested on an Apple A18 Pro with macOS 27.
 ## Requirements
 
 - macOS 14.4 or later, on Apple silicon.
-- Xcode's clang (it has the `arm64_32` target), Python and ninja.
-- `ld.lld` and `llvm-ar`: `brew install llvm lld`. `configure.py` finds them
-  on the `PATH` or in Homebrew's folders. The option `--macos-cc` of
-  `configure.py` selects a different clang.
+- Xcode's clang (for the host), Python and ninja. The option `--macos-cc`
+  of `configure.py` selects a different clang.
+- The guest is compiled with LLVM 22.1.8, which `configure.py` downloads
+  the first time (approximately 1.5 GB) to `~/Library/Caches/opence`. Refer
+  to "The guests' compiler" in [README.md](../../README.md#the-guests-compiler).
+  With `--macos-guest-cc` (or `--macos-cc`, or `--guest-llvm=system`), the
+  guest is compiled with that clang instead, and `configure.py` needs
+  `ld.lld`, `llvm-ar` and `llvm-objdump` on the `PATH` or in Homebrew's
+  folders (`brew install llvm lld`).
 - CMake, for SDL3.
 - A network connection for the first build. `configure.py` downloads musl
   1.2.5, SDL 3.4.16 and the Khronos OpenGL ES headers (declarations only,
@@ -156,10 +161,9 @@ notarizes and staples that too, and checks both with `spctl`.
 
 `python3 configure.py --release`, then `ninja macos_dmg`:
 `build/macos/Halo.dmg` holds the app and a link to Applications. The
-profiles of profile-guided optimisation (`pgo/`) need clang 22 or later,
-and Xcode's is older: `--macos-guest-cc=/opt/homebrew/opt/llvm/bin/clang`
-builds the guest (where the profile is used) with Homebrew's LLVM, which
-has the `arm64_32` target too.
+guest, where the profile of profile-guided optimisation (`pgo/`) is used,
+is compiled with the pinned LLVM 22, which reads the profile. The host
+does not use the profile, and Xcode's clang builds it.
 
 ## How it operates
 
