@@ -19,6 +19,9 @@ struct host_render_backend;
 /* the backend's table (port/android/host/host_render_stream.h), the
 streams' from the window's handing over on (host_gl_window) */
 const struct host_render_backend *host_gl_stream_backend(void);
+/* (HALO_VR: host_gl_vr.c) the VR mode's entries in it, and OpenXR's calls
+that use the context made on the render thread from now on */
+void host_gl_vr_backend(struct host_render_backend *backend);
 
 /* the GL texture of a texture stage's Xbox texture or image, read or made
 again as needed (0: none); *target receives GL_TEXTURE_2D etc. */

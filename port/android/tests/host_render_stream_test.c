@@ -799,8 +799,11 @@ static void test_vr_pass(void *context, int32_t pass)
 	text_printf(&actual, "vr pass %d\n", pass);
 }
 
-static void test_vr_submit(void *context, const struct xgpu_stream_vr_frame *frame, uint32_t screenshot)
+static void test_vr_submit(void *context, const struct xgpu_stream_vr_submit *record)
 {
+	const struct xgpu_stream_vr_frame *frame = &record->record.frame;
+	uint32_t screenshot = record->record.screenshot;
+
 	(void)context;
 	text_printf(&actual, "vr submit %d %u %u %u\n", frame->eyes_drawn, frame->eye_target, frame->hud, screenshot);
 }

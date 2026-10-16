@@ -33,6 +33,12 @@ inputs no stream feeds only when they change.
 #if !defined(HALO_METAL) && !defined(XGPU_STREAM_TEST)
 #include "sdl_platform.h"
 #endif
+#ifdef HALO_VR
+#include "vr.h"
+#include "vr_visor.h"
+
+#include <stddef.h>
+#endif
 
 #include <stdint.h>
 #include <stdio.h>
@@ -44,6 +50,8 @@ int host_render_stream_open(unsigned int ring);
 void host_render_stream_submit(unsigned int flags);
 void host_render_stream_wait(unsigned int position);
 void host_render_stream_close(void);
+
+void xgpu_stream_encode_close(void);
 
 /* the guest address of guest memory; guest memory at one of the
 interface's addresses (DWORD, unsigned long); and at one of the stream's
@@ -556,6 +564,11 @@ void xgpu_backend_initialize(void)
 		return;
 	}
 	stream.open = TRUE;
+#if !defined(HALO_METAL) && !defined(XGPU_STREAM_TEST)
+	/* (as the game exits, on its thread, the frames submitted played: the
+	last one shown, the VR mode's ended, their screenshots written) */
+	atexit(xgpu_stream_encode_close);
+#endif
 
 	initialize = record(XGPU_STREAM_INITIALIZE, sizeof(*initialize));
 	initialize->reply = STREAM_ADDRESS(&stream.replies->capabilities);
@@ -1595,12 +1608,21 @@ void xgpu_backend_vr_initialize(struct xgpu_vr_info *info)
 	wire->foveated = info->foveated;
 	wire->fovea_width = info->fovea_width;
 	wire->fovea_height = info->fovea_height;
+	wire->sample_counting = xgpu_backend_capabilities.sample_counting;
+#ifdef HALO_VR
+	wire->foveation_inset = halo_vr_foveation_inset();
+	snprintf(wire->foveation_name, sizeof(wire->foveation_name), "%s", halo_vr_foveation_name());
+#else
+	wire->foveation_inset = 0.0f;
+	wire->foveation_name[0] = 0;
+#endif
 	record_body = record(XGPU_STREAM_VR_INITIALIZE, sizeof(*record_body));
 	record_body->reply = STREAM_ADDRESS(wire);
 	synchronous();
 	info->foveated = wire->foveated;
 	info->fovea_width = wire->fovea_width;
 	info->fovea_height = wire->fovea_height;
+	xgpu_backend_capabilities.sample_counting = wire->sample_counting != 0;
 }
 
 void xgpu_backend_vr_eyes(xgpu_target eye_target, unsigned int image)
@@ -1612,6 +1634,12 @@ void xgpu_backend_vr_eyes(xgpu_target eye_target, unsigned int image)
 	record_body = record(XGPU_STREAM_VR_EYES, sizeof(*record_body));
 	record_body->eye_target = eye_target;
 	record_body->image = image;
+	record_body->foveation = 0;
+#ifdef HALO_VR
+	/* (where the backend asks, foveated: xgpu_gl.c's vr_fovea_place) */
+	if (xgpu_foveated)
+		record_body->foveation = halo_vr_foveation(record_body->centres);
+#endif
 }
 
 void xgpu_backend_vr_pass(int pass)
@@ -1632,32 +1660,185 @@ void xgpu_backend_vr_timing(int mark)
 		record_value(XGPU_STREAM_VR_TIMING, (uint32_t)mark);
 }
 
-static void vr_frame_record(uint32_t type, const struct xgpu_vr_frame *frame, BOOL screenshot)
+/* (VR_SUBMIT's: the rest is the caller's) */
+static struct xgpu_stream_vr_frame_record *vr_frame_record(uint32_t type, const struct xgpu_vr_frame *frame,
+	BOOL screenshot)
 {
 	struct xgpu_stream_vr_frame_record *record_body;
 
 	if (!stream.open)
-		return;
-	record_body = record(type, sizeof(*record_body));
+		return NULL;
+	record_body = record(type, type == XGPU_STREAM_VR_SUBMIT ? sizeof(struct xgpu_stream_vr_submit) : sizeof(*record_body));
 	record_body->frame.eyes_drawn = frame->eyes_drawn;
 	record_body->frame.hud_drawn = frame->hud_drawn;
 	record_body->frame.scope_drawn = frame->scope_drawn;
+	record_body->frame.hud_panels = frame->hud_panels;
 	record_body->frame.eye_target = frame->eye_target;
 	record_body->frame.eye_depth = frame->eye_depth;
 	record_body->frame.scope = frame->scope;
 	record_body->frame.hud = frame->hud;
 	record_body->frame.eye_depth_layers = frame->eye_depth_layers;
 	record_body->screenshot = screenshot ? 1 : 0;
+	return record_body;
 }
+
+#ifdef HALO_VR
+_Static_assert(sizeof(struct vr_host_layers) == XGPU_STREAM_VR_LAYERS_WORDS * 4, "VR layers");
+_Static_assert(sizeof(struct vr_host_pose) == XGPU_STREAM_VR_POSE_WORDS * 4, "VR pose");
+_Static_assert(sizeof(struct halo_vr_scope_window) == XGPU_STREAM_VR_SCOPE_WINDOW_WORDS * 4, "VR scope window");
+_Static_assert(sizeof(struct halo_vr_cockpit_window) == XGPU_STREAM_VR_COCKPIT_WINDOW_WORDS * 4, "VR cockpit window");
+_Static_assert(sizeof(struct halo_vr_cockpit_display) == XGPU_STREAM_VR_COCKPIT_DISPLAY_WORDS * 4,
+	"VR cockpit display");
+_Static_assert(sizeof(struct vr_visor_hud_image) == XGPU_STREAM_VR_HUD_IMAGE_WORDS * 4, "VR HUD image");
+_Static_assert(sizeof(struct vr_visor_panel) == XGPU_STREAM_VR_PANEL_WORDS * 4, "VR panel");
+_Static_assert(offsetof(struct vr_visor_image, noise_texture) == XGPU_STREAM_VR_VISOR_IMAGE_WORDS * 4, "VR visor image");
+_Static_assert(sizeof(struct vr_visor_rim) == XGPU_STREAM_VR_RIM_WORDS * 4, "VR rim");
+
+/* what the composition will ask of vr.c and vr_visor.c, as they answer now
+(xgpu_stream.h's VR_STATE) */
+static void vr_state_record(void)
+{
+	struct xgpu_stream_vr_state *record_body = record(XGPU_STREAM_VR_STATE, sizeof(*record_body));
+	struct halo_vr_scope_window window;
+	struct halo_vr_cockpit_window cockpit;
+	struct halo_vr_cockpit_display display;
+	struct vr_visor_hud_image hud;
+	struct vr_visor_panel panels[VR_PANEL_COUNT];
+	struct vr_visor_image visor;
+	struct vr_visor_rim rim;
+	int loaded = 0, carried = 0;
+
+	memset((unsigned char *)record_body + sizeof(record_body->header), 0, sizeof(*record_body) - sizeof(record_body->header));
+	record_body->scope_zoom = halo_vr_scope_zoom(&record_body->scope_zoom_height);
+	if (halo_vr_scope_smartlink(record_body->scope_reticle))
+		record_body->answered |= XGPU_STREAM_VR_STATE_SMARTLINK;
+	if (halo_vr_scope_window(&window))
+	{
+		record_body->answered |= XGPU_STREAM_VR_STATE_SCOPE_WINDOW;
+		memcpy(record_body->scope_window, &window, sizeof(window));
+	}
+	halo_vr_scope_readout(&record_body->scope_range, &loaded, &carried);
+	record_body->scope_rounds_loaded = loaded;
+	record_body->scope_rounds_carried = carried;
+	halo_vr_scope_animation(&record_body->scope_animation[0], &record_body->scope_animation[1],
+		&record_body->scope_animation[2]);
+	record_body->scope_gun = halo_vr_scope_gun();
+	if (halo_vr_cockpit_window(&cockpit, &display))
+	{
+		record_body->answered |= XGPU_STREAM_VR_STATE_COCKPIT;
+		memcpy(record_body->cockpit_window, &cockpit, sizeof(cockpit));
+		memcpy(record_body->cockpit_display, &display, sizeof(display));
+	}
+	record_body->vignette = halo_vr_vignette(record_body->vignette_fov);
+	vr_visor_hud_image(&hud);
+	memcpy(record_body->hud_image, &hud, sizeof(hud));
+	if (vr_visor_panels(panels))
+	{
+		record_body->answered |= XGPU_STREAM_VR_STATE_PANELS;
+		memcpy(record_body->panels, panels, sizeof(panels));
+	}
+	vr_visor_image(&visor);
+	memcpy(record_body->visor_image, &visor, sizeof(record_body->visor_image));
+	record_body->visor_noise[0] = STREAM_ADDRESS(visor.noise_texture[0]);
+	record_body->visor_noise[1] = STREAM_ADDRESS(visor.noise_texture[1]);
+	record_body->visor_time = visor.time;
+	if (vr_visor_rim(&rim))
+	{
+		record_body->answered |= XGPU_STREAM_VR_STATE_RIM;
+		memcpy(record_body->rim, &rim, sizeof(rim));
+	}
+	if (halo_vr_depth_wanted())
+		record_body->answered |= XGPU_STREAM_VR_STATE_DEPTH;
+	if (halo_vr_frame_waited())
+		record_body->answered |= XGPU_STREAM_VR_STATE_FRAME;
+}
+#endif
 
 void xgpu_backend_vr_compose(const struct xgpu_vr_frame *frame)
 {
+#ifdef HALO_VR
+	if (stream.open)
+		vr_state_record();
+#endif
 	vr_frame_record(XGPU_STREAM_VR_COMPOSE, frame, FALSE);
 }
 
 void xgpu_backend_vr_submit(const struct xgpu_vr_frame *frame, BOOL screenshot)
 {
-	vr_frame_record(XGPU_STREAM_VR_SUBMIT, frame, screenshot);
+	struct xgpu_stream_vr_submit *submit;
+#ifdef HALO_VR
+	struct vr_host_layers layers;
+	struct vr_host_pose head;
+#endif
+
+	if (!stream.open)
+		return;
+	/* (the layers made as the guest's backend has them made as it submits,
+	every image taken as acquired: the host leaves out those it has not) */
+#ifdef HALO_VR
+	halo_vr_present(frame->eyes_drawn, frame->hud_drawn, frame->scope_drawn);
+#endif
+	submit = (struct xgpu_stream_vr_submit *)vr_frame_record(XGPU_STREAM_VR_SUBMIT, frame, screenshot);
+	submit->waited = 0;
+#ifdef XGPU_STREAM_TEST
+	submit->shot = 0;
+#else
+	submit->shot = (uint32_t)xgpu_screenshot_number();
+#endif
+	memset(submit->layers, 0, sizeof(submit->layers));
+	memset(submit->head, 0, sizeof(submit->head));
+#ifdef HALO_VR
+	if (halo_vr_submitted(&layers, &head))
+	{
+		submit->waited = 1;
+		memcpy(submit->layers, &layers, sizeof(layers));
+		memcpy(submit->head, &head, sizeof(head));
+	}
+#endif
 }
+
+#ifdef HALO_VR
+/* (vr.h: what vr.c sets in the backend as it draws, in its place among the
+records) */
+static void vr_values_record(uint32_t type, const float *values, uint32_t count)
+{
+	struct xgpu_stream_vr_values *record_body;
+
+	if (!stream.open)
+		return;
+	record_body = record(type, (uint32_t)(sizeof(*record_body) + count * sizeof(float)));
+	memcpy(record_body->values, values, count * sizeof(float));
+}
+
+void halo_vr_set_eye_transforms(const float transforms[2][16])
+{
+	vr_values_record(XGPU_STREAM_VR_EYE_TRANSFORMS, &transforms[0][0], 32);
+}
+
+void halo_vr_set_screen_corrections(const float corrections[2][4])
+{
+	vr_values_record(XGPU_STREAM_VR_SCREEN_CORRECTIONS, &corrections[0][0], 8);
+}
+
+void halo_vr_sky(int sky)
+{
+	if (stream.open)
+		record_value(XGPU_STREAM_VR_SKY, (uint32_t)sky);
+}
+
+void halo_vr_eye_feed(float squash, float shrink, float bright, float noise, float red, float look, float interference)
+{
+	const float feed[7] = { squash, shrink, bright, noise, red, look, interference };
+
+	vr_values_record(XGPU_STREAM_VR_EYE_FEED, feed, 7);
+}
+
+void halo_vr_eye_tint(float red, float green, float blue)
+{
+	const float tint[3] = { red, green, blue };
+
+	vr_values_record(XGPU_STREAM_VR_EYE_TINT, tint, 3);
+}
+#endif
 
 #endif

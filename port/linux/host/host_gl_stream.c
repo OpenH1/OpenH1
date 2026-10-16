@@ -69,7 +69,7 @@ _Static_assert(D3DRS_PS_MAX == XGPU_STREAM_COMBINER_STATES, "combiner states");
 queue holds fewer) */
 #define FENCES 128
 
-/* (xgpu.h: the VR mode's foveated eye pass; flat here) */
+/* (xgpu.h: the VR mode's foveated eye pass, host_gl_vr.c) */
 int xgpu_foveated;
 
 static struct
@@ -142,6 +142,7 @@ static const struct
 	{ "debug.gpu_debug_texture0", "HALO_GPU_DEBUG_T0", "false", TRUE },
 	{ "debug.gpu_debug_flat", "HALO_GPU_DEBUG_FLAT", "false", TRUE },
 	{ "debug.screenshot_directory", "HALO_SCREENSHOT_DIR", "", FALSE },
+	{ "debug.texture_log", "HALO_TEXTURE_LOG", "false", TRUE },
 	{ "debug.vr_gpu_time", "HALO_VR_GPU_TIME", "false", FALSE },
 	{ "debug.vr_foveation_show", "HALO_VR_FOVEATION_SHOW", "false", FALSE },
 };
@@ -848,7 +849,8 @@ static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_
 
 const struct host_render_backend *host_gl_stream_backend(void)
 {
-	static const struct host_render_backend backend =
+	static int made;
+	static struct host_render_backend backend =
 	{
 		.open = stream_open,
 		.fence = stream_fence,
@@ -889,5 +891,10 @@ const struct host_render_backend *host_gl_stream_backend(void)
 		.dynamic_lights_halos = stream_dynamic_lights_halos,
 	};
 
+#ifdef HALO_VR
+	if (!made)
+		host_gl_vr_backend(&backend);
+#endif
+	made = 1;
 	return &backend;
 }

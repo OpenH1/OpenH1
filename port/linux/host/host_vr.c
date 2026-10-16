@@ -27,6 +27,8 @@ layers. Tested with SteamVR on a Steam Frame.
 #define XR_NO_PROTOTYPES
 
 #include "host.h"
+#include "host_render_stream.h"
+#include "host_vr_render.h"
 #include "vr_host.h"
 
 #include <EGL/egl.h>
@@ -35,6 +37,7 @@ layers. Tested with SteamVR on a Steam Frame.
 #include <dlfcn.h>
 #include <limits.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -151,7 +154,27 @@ static struct
 	XrAction gaze_action;
 	XrSpace gaze_space;
 	int gaze_tracked;
+	/* the session's images and sizes (host_vr_info) */
+	struct vr_host_info info;
+	int info_made;
 } vr;
+
+/* OpenXR's calls that use the GL context on the render thread
+(host_vr_render.h): a frame has been waited for (vr.frame is one's: the
+views are located for it: located); the frames waited for on the game's thread and
+not yet begun on the render thread (their states, oldest first), and the
+one begun */
+#define WAITED_FRAMES 4
+
+static struct
+{
+	int on;
+	int located;
+	pthread_mutex_t lock;
+	XrFrameState waited[WAITED_FRAMES];
+	int first, count;
+	XrFrameState begun;
+} render_thread = { .lock = PTHREAD_MUTEX_INITIALIZER };
 
 static const char *result_name(XrResult result)
 {
@@ -896,7 +919,7 @@ static void timing_frame(void)
 
 /* ---------- the public functions */
 
-int host_vr_initialize(struct vr_host_info *info)
+static int initialize(struct vr_host_info *info)
 {
 	XrViewConfigurationView views[2] = { { XR_TYPE_VIEW_CONFIGURATION_VIEW }, { XR_TYPE_VIEW_CONFIGURATION_VIEW } };
 	XrSystemProperties properties = { XR_TYPE_SYSTEM_PROPERTIES };
@@ -1039,6 +1062,66 @@ int host_vr_initialize(struct vr_host_info *info)
 		(info->panel_width[0] > 0) + (info->panel_width[1] > 0) + (info->panel_width[2] > 0) + (info->panel_width[3] > 0),
 		space.referenceSpaceType == XR_REFERENCE_SPACE_TYPE_STAGE ? "stage" : "local",
 		vr.has_cylinder ? ", cylinder layers" : "");
+	vr.info = *info;
+	vr.info_made = 1;
+	return 1;
+}
+
+struct initialize_call
+{
+	struct vr_host_info *info;
+	int result;
+};
+
+static void initialize_called(void *argument)
+{
+	struct initialize_call *call = argument;
+
+	call->result = initialize(call->info);
+}
+
+int host_vr_initialize(struct vr_host_info *info)
+{
+	struct initialize_call call;
+
+	if (!render_thread.on)
+		return initialize(info);
+	/* (where the GL context is current) */
+	call.info = info;
+	call.result = 0;
+	host_render_stream_call(initialize_called, &call);
+	return call.result;
+}
+
+void host_vr_render_thread(void)
+{
+	render_thread.on = 1;
+}
+
+const struct vr_host_info *host_vr_info(void)
+{
+	return vr.info_made ? &vr.info : NULL;
+}
+
+int host_vr_frame_begin(void)
+{
+	XrFrameBeginInfo begin = { XR_TYPE_FRAME_BEGIN_INFO };
+
+	if (vr.frame_begun)
+		return 1;
+	pthread_mutex_lock(&render_thread.lock);
+	if (!render_thread.count)
+	{
+		pthread_mutex_unlock(&render_thread.lock);
+		return 0;
+	}
+	render_thread.begun = render_thread.waited[render_thread.first];
+	render_thread.first = (render_thread.first + 1) % WAITED_FRAMES;
+	render_thread.count--;
+	pthread_mutex_unlock(&render_thread.lock);
+	if (!check(xrBeginFrame(vr.session, &begin), "xrBeginFrame"))
+		return 0;
+	vr.frame_begun = 1;
 	return 1;
 }
 
@@ -1114,15 +1197,34 @@ int host_vr_frame_wait(struct vr_host_views *views)
 		nanosleep(&pause, NULL);
 		return 0;
 	}
-	if (vr.frame_begun)
+	if (vr.frame_begun && !render_thread.on)
 		return 1;
 	vr.frame.type = XR_TYPE_FRAME_STATE;
 	vr.frame.next = NULL;
 	if (!check(xrWaitFrame(vr.session, &wait, &vr.frame), "xrWaitFrame"))
 		return 0;
-	if (!check(xrBeginFrame(vr.session, &begin), "xrBeginFrame"))
-		return 0;
-	vr.frame_begun = 1;
+	if (render_thread.on)
+	{
+		/* (begun by the render thread as it draws the frame:
+		host_vr_frame_begin) */
+		pthread_mutex_lock(&render_thread.lock);
+		if (render_thread.count == WAITED_FRAMES)
+		{
+			host_logf(HOST_LOG_WARN, "vr: a frame waited for was never begun");
+			render_thread.first = (render_thread.first + 1) % WAITED_FRAMES;
+			render_thread.count--;
+		}
+		render_thread.waited[(render_thread.first + render_thread.count) % WAITED_FRAMES] = vr.frame;
+		render_thread.count++;
+		pthread_mutex_unlock(&render_thread.lock);
+		render_thread.located = 1;
+	}
+	else
+	{
+		if (!check(xrBeginFrame(vr.session, &begin), "xrBeginFrame"))
+			return 0;
+		vr.frame_begun = 1;
+	}
 	views->should_render = vr.frame.shouldRender ? 1 : 0;
 	views->focused = vr.state == XR_SESSION_STATE_FOCUSED;
 	views->display_period = (float)(vr.frame.predictedDisplayPeriod * 1e-9);
@@ -1153,7 +1255,7 @@ int host_vr_locate(struct vr_host_views *views)
 	uint32_t count = 0;
 	int eye, hand, valid;
 
-	if (!vr.frame_begun)
+	if (!(render_thread.on ? render_thread.located : vr.frame_begun))
 		return 0;
 	locate.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
 	locate.displayTime = vr.frame.predictedDisplayTime;
@@ -1492,7 +1594,7 @@ void host_vr_frame_end(const struct vr_host_layers *layers)
 		visor.size.height = layers->visor_size[1];
 		submitted[count++] = (const XrCompositionLayerBaseHeader *)&visor;
 	}
-	end.displayTime = vr.frame.predictedDisplayTime;
+	end.displayTime = render_thread.on ? render_thread.begun.predictedDisplayTime : vr.frame.predictedDisplayTime;
 	end.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
 	end.layerCount = count;
 	end.layers = submitted;

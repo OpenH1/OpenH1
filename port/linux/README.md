@@ -1366,6 +1366,21 @@ The macOS build uses it, with the Metal backend (port/macos/README.md,
   drawn into since are resolved, the pipeline chosen is applied and the
   constants set since are uploaded. Where the stream left one out, the
   host makes the call again in its place.
+- The VR mode (`--vr --render-stream`): OpenXR's calls that use the GL
+  context (the session made, the swapchains' images acquired and released,
+  the frame begun and ended) are made on the render thread
+  (`host/host_vr.c`, `host/host_gl_vr.c`); the game's thread waits for the
+  runtime's frames and locates the head and hands, as before. What the
+  frame's composition reads of `src/vr.c` and `src/vr_visor.c` (the scope,
+  a cockpit's display, the vignette, the visor, the rim) comes as a record
+  before it, as do the gaze for the foveation and the layers the game
+  submits; what `vr.c` sets as the frame is drawn (the eyes' transforms, the
+  sky, the feed, the tint) are records in their order. The host ends each
+  frame as it plays its last record. The screenshots of the eyes, the HUD
+  and the scope are the host's; the view's (the layers composed over the
+  eyes, `vr_visor_composite`) is not written.
+- At exit the guest has the host play the frames submitted (the last one
+  shown, the VR mode's ended).
 - The visibility tests' counts are what the GPU has written by the end of
   the frame the host plays. The game's next frame reads them while the
   host plays its frames, so they can be a frame older or newer than those

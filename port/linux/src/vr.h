@@ -493,6 +493,10 @@ int halo_vr_enabled(void);
 int halo_vr_running(void);
 /* a VR frame is begun and is to be drawn */
 int halo_vr_frame_active(void);
+/* whether a frame of the runtime's is being drawn (waited for and not yet
+presented), without waiting for one: the renderer's command stream tells
+the host (xgpu_stream_encode.c) */
+int halo_vr_frame_waited(void);
 /* begins the VR frame before the game's clock is read (main.c): 1 and the
 seconds from the last frame's display to this one's when it did */
 int halo_vr_frame_clock(float *seconds);

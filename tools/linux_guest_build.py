@@ -83,6 +83,9 @@ HOST_GL_SHARED = ["xgpu.h", "xgpu_backend.h", "xgpu_shader.h", "xgpu_gl.h", "gl.
                   "xgpu_post.c", "xgpu_text.c", "gl_functions.c", "xbox_texture_decode.c"]
 HOST_GL_STAND_INS = ["platform.h", "sdl_platform.h", "port_config.h"]
 HOST_GL_SOURCES = ["host_gl_stream.c", "host_gl_textures.c"]
+# (and the VR mode's: its headers, and the records' entries)
+HOST_GL_VR_SHARED = ["vr.h", "vr_host.h", "vr_visor.h"]
+HOST_GL_VR_SOURCES = ["host_gl_vr.c"]
 # (the guest's renderer, then: none of its own)
 RENDER_STREAM_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c"]
 
@@ -352,7 +355,7 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         n.build(outputs=obj, rule=host_cc, inputs=source,
                 variables={"cflags": f"{mbedtls_cflags} -I{MBEDTLS_DIR / 'library'} -w"})
         host_objects.append(obj)
-    host_objects += host_gl_renderer(n, prefix, label, build, host_cc, host_cflags, desktop_gl)
+    host_objects += host_gl_renderer(n, prefix, label, build, host_cc, host_cflags, desktop_gl, vr)
     table_obj = host_obj_dir / "host_import_table.c.o"
     n.build(outputs=table_obj, rule=host_cc, inputs=guest["host_table_c"],
             variables={"cflags": host_cflags})
@@ -392,15 +395,17 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
 
 
 def host_gl_renderer(n: Writer, prefix: str, label: str, build: Path, host_cc: str, host_cflags: str,
-                     desktop_gl: bool) -> List[Path]:
+                     desktop_gl: bool, vr: bool) -> List[Path]:
     """The OpenGL backend in the host (port/linux/host/host_gl_stream.c), for
     the renderer's command stream: the backend's files of port/linux/src
     (HOST_GL_SHARED) copied beside the host's stand-ins for the guest's
     headers (port/linux/host/gl), and the XDK's enumerations and texture
     format words for them (xdk_enums.h, as tools/macos_build.py makes it);
-    its anti-aliasing's SMAA data and zlib. Every desktop guest's host has
-    it (its import, host_gl_window, is every desktop guest's); the guest
-    uses it when built with --render-stream. Returns the objects."""
+    its anti-aliasing's SMAA data and zlib; with vr, its VR mode
+    (host_gl_vr.c, with vr.h's and vr_visor.h's structures). Every desktop
+    guest's host has it (its import, host_gl_window, is every desktop
+    guest's); the guest uses it when built with --render-stream. Returns the
+    objects."""
     shared_dir = build / "host" / "gl"
     obj_dir = build / "host" / "obj" / "gl"
     n.rule(name=f"{prefix}_gl_copy", command="cp $in $out", description=f"{label} HOST GL $out")
@@ -411,7 +416,7 @@ def host_gl_renderer(n: Writer, prefix: str, label: str, build: Path, host_cc: s
                     f"grep -E '^#define D3D(FORMAT|SIZE|TEXTURE)_|^#define D3DTSS_MAXSTAGES ' {xdk / 'xdk_d3d8.h'}) > $out"),
            description=f"{label} HOST GL $out")
     copies: List[Path] = []
-    for name in HOST_GL_SHARED:
+    for name in HOST_GL_SHARED + (HOST_GL_VR_SHARED if vr else []):
         n.build(outputs=shared_dir / name, rule=f"{prefix}_gl_copy", inputs=LINUX_DIR / "src" / name)
         copies.append(shared_dir / name)
     for name in HOST_GL_STAND_INS:
@@ -421,12 +426,12 @@ def host_gl_renderer(n: Writer, prefix: str, label: str, build: Path, host_cc: s
             inputs=[xdk / "xdk_pdb.h", xdk / "xdk_d3d8.h"])
     copies.append(shared_dir / "xdk_enums.h")
     # (the renderer's own code paths: the host's, OpenGL ES's or desktop
-    # OpenGL's, not yet the VR mode's)
-    cflags = " ".join([f"-I{shared_dir}", host_cflags, f"-I{ZLIB_DIR}", "-DXGPU_GL_HOST=1", "-UHALO_VR",
+    # OpenGL's, and the VR mode's as the host's defines say)
+    cflags = " ".join([f"-I{shared_dir}", host_cflags, f"-I{ZLIB_DIR}", "-DXGPU_GL_HOST=1",
                        *([] if desktop_gl else ["-DHALO_GLES=1"])])
     objects: List[Path] = []
     for source in [shared_dir / name for name in HOST_GL_SHARED if name.endswith(".c")] + \
-            [PORT_DIR / name for name in HOST_GL_SOURCES]:
+            [PORT_DIR / name for name in HOST_GL_SOURCES + (HOST_GL_VR_SOURCES if vr else [])]:
         obj = obj_dir / (source.name + ".o")
         n.build(outputs=obj, rule=host_cc, inputs=source, order_only=copies, variables={"cflags": cflags})
         objects.append(obj)

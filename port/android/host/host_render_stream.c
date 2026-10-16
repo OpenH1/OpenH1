@@ -118,7 +118,13 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_VR_GROUPS_RESET] = sizeof(struct xgpu_stream_record),
 	[XGPU_STREAM_VR_TIMING] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_VR_COMPOSE] = sizeof(struct xgpu_stream_vr_frame_record),
-	[XGPU_STREAM_VR_SUBMIT] = sizeof(struct xgpu_stream_vr_frame_record),
+	[XGPU_STREAM_VR_SUBMIT] = sizeof(struct xgpu_stream_vr_submit),
+	[XGPU_STREAM_VR_STATE] = sizeof(struct xgpu_stream_vr_state),
+	[XGPU_STREAM_VR_EYE_TRANSFORMS] = sizeof(struct xgpu_stream_vr_values) + 32 * sizeof(float),
+	[XGPU_STREAM_VR_SCREEN_CORRECTIONS] = sizeof(struct xgpu_stream_vr_values) + 8 * sizeof(float),
+	[XGPU_STREAM_VR_SKY] = sizeof(struct xgpu_stream_value),
+	[XGPU_STREAM_VR_EYE_FEED] = sizeof(struct xgpu_stream_vr_values) + 7 * sizeof(float),
+	[XGPU_STREAM_VR_EYE_TINT] = sizeof(struct xgpu_stream_vr_values) + 3 * sizeof(float),
 };
 
 struct host_render_decoder *host_render_decoder_new(const struct host_render_backend *backend,
@@ -554,12 +560,26 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 		CALL(vr_compose, &((const struct xgpu_stream_vr_frame_record *)start)->frame);
 		break;
 	case XGPU_STREAM_VR_SUBMIT:
-	{
-		const struct xgpu_stream_vr_frame_record *submit = (const void *)start;
-
-		CALL(vr_submit, &submit->frame, submit->screenshot);
+		CALL(vr_submit, (const void *)start);
 		break;
-	}
+	case XGPU_STREAM_VR_STATE:
+		CALL(vr_state, (const void *)start);
+		break;
+	case XGPU_STREAM_VR_EYE_TRANSFORMS:
+		CALL(vr_eye_transforms, (const float (*)[16])((const struct xgpu_stream_vr_values *)start)->values);
+		break;
+	case XGPU_STREAM_VR_SCREEN_CORRECTIONS:
+		CALL(vr_screen_corrections, (const float (*)[4])((const struct xgpu_stream_vr_values *)start)->values);
+		break;
+	case XGPU_STREAM_VR_SKY:
+		CALL(vr_sky, (int32_t)value->value);
+		break;
+	case XGPU_STREAM_VR_EYE_FEED:
+		CALL(vr_eye_feed, ((const struct xgpu_stream_vr_values *)start)->values);
+		break;
+	case XGPU_STREAM_VR_EYE_TINT:
+		CALL(vr_eye_tint, ((const struct xgpu_stream_vr_values *)start)->values);
+		break;
 	default:
 		return XGPU_STREAM_ERROR_RECORD;
 	}
@@ -661,6 +681,12 @@ static struct
 	uint32_t frames_taken;
 	uint64_t latch, period;
 	struct frame_pacing_costs costs;
+	/* a function to run on the render thread once the records before it
+	are played (host_render_stream_call), and the calls run so far */
+	void (*call)(void *argument);
+	void *call_argument;
+	uint32_t call_position;
+	uint64_t calls_run;
 } render =
 {
 	.lock = PTHREAD_MUTEX_INITIALIZER,
@@ -754,6 +780,19 @@ static void *render_thread(void *argument)
 			if (render.stopping)
 				break;
 			pthread_cond_wait(&render.work, &render.lock);
+			continue;
+		}
+		if (render.call && (int32_t)(render.decoded - render.call_position) >= 0)
+		{
+			void (*function)(void *) = render.call;
+			void *argument = render.call_argument;
+
+			pthread_mutex_unlock(&render.lock);
+			function(argument);
+			pthread_mutex_lock(&render.lock);
+			render.call = NULL;
+			render.calls_run++;
+			pthread_cond_broadcast(&render.done);
 			continue;
 		}
 		if (render.decoded != render.committed)
@@ -1060,6 +1099,35 @@ void host_render_stream_wait(uint32_t position)
 	while (!ring->error && (int32_t)(ring->released - position) < 0)
 		guest_wait(&start);
 	guest_waited(start);
+	pthread_mutex_unlock(&render.lock);
+}
+
+void host_render_stream_call(void (*function)(void *argument), void *argument)
+{
+	uint64_t run;
+
+	if (!render.running)
+	{
+		function(argument);
+		return;
+	}
+	pthread_mutex_lock(&render.lock);
+	while (render.call && !render.ring->error)
+		pthread_cond_wait(&render.done, &render.lock);
+	if (render.ring->error)
+	{
+		/* (no records are played after a malformed one: nor is this) */
+		pthread_mutex_unlock(&render.lock);
+		host_logf(HOST_LOG_ERROR, "render stream: a call for the render thread after the stream failed");
+		return;
+	}
+	render.call = function;
+	render.call_argument = argument;
+	render.call_position = render.committed;
+	run = render.calls_run;
+	pthread_cond_signal(&render.work);
+	while (render.calls_run == run && !render.ring->error)
+		pthread_cond_wait(&render.done, &render.lock);
 	pthread_mutex_unlock(&render.lock);
 }
 

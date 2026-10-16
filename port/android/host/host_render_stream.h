@@ -143,7 +143,17 @@ struct host_render_backend
 	void (*vr_timing)(void *context, int32_t mark);
 	void (*vr_compose)(void *context, const struct xgpu_stream_vr_frame *frame);
 	/* the frame to OpenXR: the place to take the newest head pose */
-	void (*vr_submit)(void *context, const struct xgpu_stream_vr_frame *frame, uint32_t screenshot);
+	void (*vr_submit)(void *context, const struct xgpu_stream_vr_submit *record);
+	/* the game's VR state for the next composition (xgpu_stream.h) */
+	void (*vr_state)(void *context, const struct xgpu_stream_vr_state *record);
+	/* what vr.c sets in the backend as it draws (vr.h): the eyes'
+	transforms (2 row-major 4x4s), the screen's corrections (2 vec4s), the
+	sky's depth clamping, the feed (7 values) and a tint (3) */
+	void (*vr_eye_transforms)(void *context, const float transforms[2][16]);
+	void (*vr_screen_corrections)(void *context, const float corrections[2][4]);
+	void (*vr_sky)(void *context, int32_t sky);
+	void (*vr_eye_feed)(void *context, const float feed[7]);
+	void (*vr_eye_tint)(void *context, const float tint[3]);
 };
 
 /* the backend the streams play into: set by the platform's host before
@@ -165,6 +175,12 @@ void host_render_stream_wait(uint32_t position);
 void host_render_stream_close(void);
 /* tells the backend the process is ending (host_exit) */
 void host_render_stream_exiting(void);
+
+/* runs function(argument) on the render thread, after the records
+submitted so far, and returns once it has (the backend's context is current
+there: OpenXR's session is made so); on the calling thread while no stream
+is open */
+void host_render_stream_call(void (*function)(void *argument), void *argument);
 
 /* the guest's ring header while a stream is open, else NULL: its
 statistics, for the host's logs (read as they are, racing with their

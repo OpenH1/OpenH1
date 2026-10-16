@@ -38,7 +38,7 @@ port/linux/README.md.
 #include <stdint.h>
 
 #define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
-#define XGPU_STREAM_VERSION 1
+#define XGPU_STREAM_VERSION 2
 
 /* ---------- the ring
 
@@ -206,6 +206,14 @@ enum
 	/* the shaders and pipelines made */
 	XGPU_STREAM_PREPARED,              /* synchronous: uint32_t, the milliseconds waited */
 	XGPU_STREAM_PREPARE,
+	/* the VR mode's state its composition reads, and what vr.c sets in the
+	backend as the frame is drawn (vr.h) */
+	XGPU_STREAM_VR_STATE,
+	XGPU_STREAM_VR_EYE_TRANSFORMS,
+	XGPU_STREAM_VR_SCREEN_CORRECTIONS,
+	XGPU_STREAM_VR_SKY,
+	XGPU_STREAM_VR_EYE_FEED,
+	XGPU_STREAM_VR_EYE_TINT,
 	XGPU_STREAM_RECORD_TYPES,
 };
 
@@ -228,7 +236,7 @@ struct xgpu_stream_frame_end
 
 /* a record of one value: ANTI_ALIASING_PREPARE (smaa), TARGET_DELETE,
 TARGET_RESOLVE, PRESENT (the back buffer's target), VR_PASS, VR_TIMING
-(mark), PIPELINE (the id, XGPU_STREAM_PIPELINE_DEFINE's) */
+(mark), PIPELINE (the id, XGPU_STREAM_PIPELINE_DEFINE's), VR_SKY (sky) */
 struct xgpu_stream_value
 {
 	uint32_t header;
@@ -691,9 +699,28 @@ struct xgpu_stream_dynamic_lights_halos
 	float halos[][4];
 };
 
-/* ---------- the VR mode */
+/* ---------- the VR mode
 
-/* xgpu_backend.h's struct xgpu_vr_info (ints alone), in and out */
+The backend composes each frame (the eyes' images, the HUD's and its
+panels', the scope's) and ends it with OpenXR, on the host's render thread:
+OpenXR's calls that use the GL context (the session made, the swapchains'
+images acquired and released, the frame begun and ended) are made there
+(port/linux/host/host_gl_vr.c); the game waits for the runtime's frames and
+locates the views (vr.c). What the composition reads of the game's VR mode
+(vr.h's and vr_visor.h's functions the guest's backend calls) comes in the
+records: VR_STATE before each VR_COMPOSE, the gaze with VR_EYES, the layers
+the game would submit with VR_SUBMIT; and what vr.c sets in the backend as
+it draws (the eyes' transforms and corrections, the sky's depth clamping, the
+feed and the tint) as records of their own, in their order. vr.h's and
+vr_visor.h's structures are of 4-byte fields, alike on both sides, and are
+carried as their words, but the visor image's noise textures (pointers:
+guest addresses here). */
+
+/* xgpu_backend.h's struct xgpu_vr_info (ints alone), in and out; and
+vr.foveation's inset (halo_vr_foveation_inset, 0 off) and its name (for
+the log), in; and out, the visibility tests counted by the pixel shaders
+from now on (xgpu_backend_capabilities' sample_counting, which the VR
+mode's eye pass needs) */
 struct xgpu_stream_vr_info
 {
 	int32_t eye_width, eye_height;
@@ -702,29 +729,118 @@ struct xgpu_stream_vr_info
 	int32_t statistics;
 	int32_t foveated;
 	int32_t fovea_width, fovea_height;
+	float foveation_inset;
+	char foveation_name[64];
+	int32_t sample_counting;
 };
 
+/* the eye pass begins; with its insets' middles where foveated
+(halo_vr_foveation: foveation 0, none this frame) */
 struct xgpu_stream_vr_eyes
 {
 	uint32_t header;
 	uint32_t eye_target;
 	uint32_t image;
+	int32_t foveation;
+	float centres[2][2];
 };
 
 /* xgpu_backend.h's struct xgpu_vr_frame */
 struct xgpu_stream_vr_frame
 {
-	int32_t eyes_drawn, hud_drawn, scope_drawn;
+	int32_t eyes_drawn, hud_drawn, scope_drawn, hud_panels;
 	uint32_t eye_target, eye_depth, scope, hud;
 	int32_t eye_depth_layers;
 };
 
-/* VR_COMPOSE and VR_SUBMIT (screenshot: VR_SUBMIT's alone) */
+/* VR_COMPOSE */
 struct xgpu_stream_vr_frame_record
 {
 	uint32_t header;
 	struct xgpu_stream_vr_frame frame;
 	uint32_t screenshot;
+};
+
+/* vr_host.h's struct vr_host_layers and struct vr_host_pose, in words */
+#define XGPU_STREAM_VR_LAYERS_WORDS 113
+#define XGPU_STREAM_VR_POSE_WORDS 8
+
+/* VR_SUBMIT: the frame record (screenshot: the eyes', HUD's and scope's
+images written, numbered shot); the game waited for a frame of the
+runtime's for it (host_vr_frame_wait: the host begins and ends one), and the
+layers it would submit (halo_vr_present's, with every image taken as
+acquired: the host leaves out those it did not draw) and the head they
+were located with (halo_vr_submitted's) */
+struct xgpu_stream_vr_submit
+{
+	struct xgpu_stream_vr_frame_record record;
+	uint32_t waited;
+	uint32_t shot;
+	uint32_t layers[XGPU_STREAM_VR_LAYERS_WORDS];
+	uint32_t head[XGPU_STREAM_VR_POSE_WORDS];
+};
+
+/* vr.h's and vr_visor.h's structures, in words (the visor image's up to its
+noise textures, which the 64-bit host's lie 4 bytes further, aligned) */
+#define XGPU_STREAM_VR_SCOPE_WINDOW_WORDS 32
+#define XGPU_STREAM_VR_COCKPIT_WINDOW_WORDS 34
+#define XGPU_STREAM_VR_COCKPIT_DISPLAY_WORDS 19
+#define XGPU_STREAM_VR_HUD_IMAGE_WORDS 50
+#define XGPU_STREAM_VR_PANEL_WORDS 20
+#define XGPU_STREAM_VR_VISOR_IMAGE_WORDS 71
+#define XGPU_STREAM_VR_RIM_WORDS 39
+
+/* VR_STATE's answered: the functions whose result says whether there is
+one (XGPU_STREAM_VR_STATE_*: the scope's smart-link, its window, a cockpit's
+display, the HUD's panels, the helmet's rim, the eyes' depth wanted), and
+whether a frame of the runtime's is being drawn (halo_vr_frame_waited: its
+images may be acquired) */
+enum
+{
+	XGPU_STREAM_VR_STATE_SMARTLINK = 1,
+	XGPU_STREAM_VR_STATE_SCOPE_WINDOW = 2,
+	XGPU_STREAM_VR_STATE_COCKPIT = 4,
+	XGPU_STREAM_VR_STATE_PANELS = 8,
+	XGPU_STREAM_VR_STATE_RIM = 16,
+	XGPU_STREAM_VR_STATE_DEPTH = 32,
+	XGPU_STREAM_VR_STATE_FRAME = 64,
+};
+
+/* what the frame's composition asks of vr.c and vr_visor.c (vr.h,
+vr_visor.h), as they answered when the game composed it: the scope's
+(halo_vr_scope_zoom, _smartlink, _window, _readout, _animation, _gun), a
+cockpit's display (halo_vr_cockpit_window), the vignette
+(halo_vr_vignette), the visor's (vr_visor_hud_image, _panels, _image,
+_rim) */
+struct xgpu_stream_vr_state
+{
+	uint32_t header;
+	uint32_t answered;
+	float scope_zoom, scope_zoom_height;
+	float scope_reticle[2];
+	uint32_t scope_window[XGPU_STREAM_VR_SCOPE_WINDOW_WORDS];
+	float scope_range;
+	int32_t scope_rounds_loaded, scope_rounds_carried;
+	float scope_animation[3];
+	int32_t scope_gun;
+	uint32_t cockpit_window[XGPU_STREAM_VR_COCKPIT_WINDOW_WORDS];
+	uint32_t cockpit_display[XGPU_STREAM_VR_COCKPIT_DISPLAY_WORDS];
+	float vignette;
+	float vignette_fov[2][4];
+	uint32_t hud_image[XGPU_STREAM_VR_HUD_IMAGE_WORDS];
+	uint32_t panels[4][XGPU_STREAM_VR_PANEL_WORDS];
+	uint32_t visor_image[XGPU_STREAM_VR_VISOR_IMAGE_WORDS];
+	uint32_t visor_noise[2];
+	float visor_time;
+	uint32_t rim[XGPU_STREAM_VR_RIM_WORDS];
+};
+
+/* halo_vr_set_eye_transforms', halo_vr_set_screen_corrections',
+halo_vr_eye_feed's (7) and halo_vr_eye_tint's (3) values */
+struct xgpu_stream_vr_values
+{
+	uint32_t header;
+	float values[];
 };
 
 /* ---------- the layouts' sizes, alike on both sides */
@@ -751,7 +867,10 @@ XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vertices, 12);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_draw_immediate, 28);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_dynamic_lights_block, 6192);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_dynamic_lights_halos, 192);
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_info, 36);
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_frame_record, 40);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_info, 108);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_eyes, 32);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_frame_record, 44);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_submit, 44 + 8 + 4 * (113 + 8));
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_state, 4 * (2 + 4 + 32 + 3 + 3 + 1 + 34 + 19 + 1 + 8 + 50 + 80 + 71 + 3 + 39));
 
 #endif

@@ -3653,7 +3653,7 @@ void xgpu_write_bmp(const char *name, const unsigned char *pixels, unsigned long
 	char path[512];
 	FILE *file;
 
-	snprintf(path, sizeof(path), "%s/%s%05lu.bmp", directory, name, device.frame);
+	snprintf(path, sizeof(path), "%s/%s%05lu.bmp", directory, name, xgpu_screenshot_number());
 	file = fopen(path, "wb");
 	if (!file)
 		return;
@@ -3674,6 +3674,10 @@ void xgpu_write_bmp(const char *name, const unsigned char *pixels, unsigned long
 /* the determinism check's hash of each frame (port/linux/game/determinism_log.c) */
 int determinism_log_frames(void);
 void determinism_log_frame(unsigned char const *pixels, long width, long height);
+unsigned long xgpu_screenshot_number(void)
+{
+	return device.frame;
+}
 
 static void write_screenshot(struct render_target_entry *target)
 {

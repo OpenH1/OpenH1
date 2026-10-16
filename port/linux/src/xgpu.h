@@ -223,6 +223,9 @@ folder (debug.screenshot_directory): rows from the top, or from the bottom
 (d3d8_device.c) */
 void xgpu_write_bmp(const char *name, const unsigned char *pixels, unsigned long width, unsigned long height,
 	BOOL bottom_up);
+/* the <frame> of this frame's screenshots (where the host writes the VR
+mode's, it is told it: xgpu_stream_encode.c) */
+unsigned long xgpu_screenshot_number(void);
 
 /* ---------- textures */
 

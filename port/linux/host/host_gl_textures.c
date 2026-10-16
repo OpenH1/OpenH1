@@ -23,8 +23,10 @@ first, as the guest's replacements made theirs (hud_hires.c, text_hires.c).
 
 #include "host.h"
 #include "host_gl_renderer.h"
+#include "xgpu_backend.h"
 #include "xgpu_gl.h"
 #include "xgpu_stream.h"
+#include "port_config.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -337,6 +339,11 @@ static GLuint xbox_texture_get(const struct xgpu_stream_texture_stage *stage, GL
 		entry->generation = host_memory_watch_generation(entry->address, entry->size);
 		if (!entry->generation)
 			entry->generation = 1;
+		/* (debug.texture_log, as the guest's cache logs) */
+		if (config_boolean("debug.texture_log"))
+			host_logf(HOST_LOG_INFO, "texture upload %08x fmt %02x %lux%lu size %u gen %u frame %llu", (unsigned)entry->data,
+				(unsigned)entry->description.format, entry->description.width, entry->description.height, entry->size,
+				entry->generation, (unsigned long long)cache.frame);
 		xbox_texture_upload(entry, palette);
 	}
 	entry->watched_serial = serial;
@@ -429,6 +436,24 @@ GLuint host_gl_textures_get(const struct xgpu_stream_texture_stage *stage, GLenu
 	if (stage->source == XGPU_STREAM_SOURCE_IMAGE)
 		return image_get(stage);
 	return stage->resource ? xbox_texture_get(stage, target) : 0;
+}
+
+GLuint xgpu_host_texture_header(unsigned int header, GLenum *target)
+{
+	struct xgpu_stream_texture_stage stage;
+	const uint32_t *words;
+
+	*target = GL_TEXTURE_2D;
+	if (!readable(header, 5 * sizeof(uint32_t)))
+		return 0;
+	/* (its Format and Size words as they are now) */
+	words = host_pointer(header);
+	memset(&stage, 0, sizeof(stage));
+	stage.source = XGPU_SOURCE_TEXTURE;
+	stage.resource = header;
+	stage.resource_format = words[3];
+	stage.resource_size = words[4];
+	return xbox_texture_get(&stage, target);
 }
 
 /* (xgpu_gl.c's, at each frame's end) */

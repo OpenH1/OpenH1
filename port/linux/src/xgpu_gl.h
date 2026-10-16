@@ -109,6 +109,9 @@ cache; *target receives GL_TEXTURE_2D etc. And the decoded pixel program
 of the pipeline being made (xgpu_backend_pipeline), which the stream's
 record of it carries. */
 GLuint xgpu_host_texture_get(int stage, GLenum *target);
+/* (host_gl_textures.c) the GL texture of the Xbox texture whose header is
+at that guest address, as it is now */
+GLuint xgpu_host_texture_header(unsigned int header, GLenum *target);
 void xgpu_host_pixel_program(const struct nv2a_pixel_shader_key *key, struct xgpu_pixel_program *program);
 #else
 /* the GL texture for an Xbox texture header, uploading or refreshing it

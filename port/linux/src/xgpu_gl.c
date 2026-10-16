@@ -5077,11 +5077,18 @@ static void vr_write_screenshots(struct gl_target *hud, GLuint hud_image)
 			}
 			eyes[0] = left;
 			eyes[1] = right;
+#ifdef XGPU_GL_HOST
+			/* (the view's picture is composed by vr_visor.c, which is the
+			guest's: in the host, the images alone) */
+			(void)eyes;
+#else
 			vr_visor_composite(eyes, (int)width, (int)height, &layers, &head, hud_pixels, vr_gl.hud_width,
 				vr_gl.hud_height, panel_pixels, panel_width,
 				panel_height, scope_pixels, vr_gl.scope_size);
+#endif
 			for (panel = 0; panel < VR_PANEL_COUNT; panel++)
 				free(panel_pixels[panel]);
+#ifndef XGPU_GL_HOST
 			for (row = 0; row < height; row++)
 			{
 				memcpy(both + row * width * 8, left + row * width * 4, width * 4);
@@ -5090,6 +5097,7 @@ static void vr_write_screenshots(struct gl_target *hud, GLuint hud_image)
 			for (index = 0; index < width * 2 * height; index++)
 				both[index * 4 + 3] = 0xff;
 			xgpu_write_bmp("view", both, width * 2, height, TRUE);
+#endif
 			/* (the scope's image alone, as it is submitted: over grey where
 			it is transparent) */
 			if (scope_pixels)
@@ -6207,9 +6215,14 @@ static void vr_draw_visor(void)
 	{
 		for (map = 0; map < 2; map++)
 		{
-			struct xgpu_texture_description description;
 			GLenum target = 0;
+#ifdef XGPU_GL_HOST
+			/* (the texture's header's guest address: the host's cache) */
+			GLuint texture = xgpu_host_texture_header((unsigned int)(uintptr_t)look.noise_texture[map], &target);
+#else
+			struct xgpu_texture_description description;
 			GLuint texture = xgpu_texture_get((const DWORD *)look.noise_texture[map], NULL, &target, &description);
+#endif
 
 			if (target == GL_TEXTURE_3D)
 				noise_textures[map] = texture;
