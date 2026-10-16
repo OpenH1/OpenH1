@@ -1075,8 +1075,7 @@ static const struct config_setting config_settings[] =
 		"Make a map's shaders and pipelines while it loads, so that none is made\n"
 		"in play: its first frame (and each structure's) drawn first, unseen,\n"
 		"through every shader its tags hold, in each way the game draws them;\n"
-		"false makes each the first time a draw needs it, which the draw waits for.\n"
-		"(Not yet in the VR build, which makes each at its first draw.)" },
+		"false makes each the first time a draw needs it, which the draw waits for." },
 	{ "debug.render_manifest", _config_string, "\"\"", "HALO_RENDER_MANIFEST", _environment_value, _platform_all,
 		"Record the shaders and pipelines the game draws with into this file (each\n"
 		"new one added to it), for the renderer's manifest\n"

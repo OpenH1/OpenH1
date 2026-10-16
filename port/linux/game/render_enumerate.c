@@ -64,6 +64,8 @@ skipped or made without its sampler.
 #include "cutscene/cinematics.h"
 #include "interface/hud_draw.h"
 #include "interface/hud_weapon.h"
+#include "interface/interface.h"
+#include "interface/ui_widget.h"
 #include "interface/unit_hud_interface_definition.h"
 #include "text/draw_string.h"
 #include "text/font_group.h"
@@ -192,6 +194,9 @@ static struct
 	map), the pass being drawn, the map's own fog */
 	boolean everything;
 	short pass;
+	/* the interface drawn in a pass (not where the VR mode's eyes are
+	drawn), or to draw in the frame's HUD pass (render_enumerate_hud) */
+	boolean interface_drawn, interface_pending;
 	struct render_fog own_fog;
 	unsigned long started;
 	/* (the CPU time the game's thread has spent: halo_thread_cpu_seconds) */
@@ -330,22 +335,14 @@ boolean render_enumerate_has_mirror(void)
 	return enumerate.mirrors && pass_part() != _part_mirror;
 }
 
-boolean render_enumerate_begin(void)
+boolean render_enumerate_begin(boolean mirrors)
 {
 	static int setting = -1;
 	short structure_bsp_index = global_structure_bsp_index_get();
 	boolean everything = FALSE;
 
 	if (setting < 0)
-	{
-#ifdef HALO_VR
-		/* port: not yet in the VR build: the unseen first frame halts in the
-		camera's director there (director.c, no local player for the eyes) */
-		setting = *config_string("debug.render_manifest") != 0;
-#else
 		setting = config_boolean("display.prepare_shaders") || *config_string("debug.render_manifest");
-#endif
-	}
 	if (!setting || structure_bsp_index == NONE || structure_bsp_index >= LONG_BITS)
 		return FALSE;
 	/* (a map's models and effects once; each of its structures once) */
@@ -360,9 +357,10 @@ boolean render_enumerate_begin(void)
 	if (TEST_FLAG(*enumerate.structure_bsps_enumerated, structure_bsp_index))
 		return FALSE;
 	enumerate.everything = everything;
+	enumerate.interface_drawn = FALSE;
 	enumerate.structure_bsp_index = structure_bsp_index;
 	SET_FLAG(*enumerate.structure_bsps_enumerated, structure_bsp_index, TRUE);
-	enumerate.mirrors = structure_visibility_port_has_mirrors();
+	enumerate.mirrors = mirrors && structure_visibility_port_has_mirrors();
 	enumerate.own_fog = render.fog;
 	enumerate.started = system_milliseconds();
 	enumerate.started_cpu = halo_thread_cpu_seconds();
@@ -389,6 +387,7 @@ boolean render_enumerate_next(void)
 		return TRUE;
 	}
 	render.fog = enumerate.own_fog;
+	enumerate.interface_pending = enumerate.everything && !enumerate.interface_drawn;
 	rasterizer_lens_flares_port_truncate(enumerate.lens_flare_count);
 	render_enumerating = FALSE;
 	cpu = halo_thread_cpu_seconds() - enumerate.started_cpu;
@@ -1117,22 +1116,59 @@ static void fonts_draw(void)
 	}
 }
 
+/* a menu's picture, as its widgets draw them (ui_widget.c: every one over
+the plasma, blended by its minimum); the menus are drawn in the frame's
+window, but in the VR mode's HUD pass, after its first frame */
+static void widget_bitmap_draw(void)
+{
+	struct bitmap_data *bitmap = stand_in_bitmap();
+	struct rasterizer_dynamic_screen_geometry_parameters parameters;
+	rectangle2d bounds = { 0, 0, 16, 16 };
+
+	if (!bitmap || interface_get_tag_index(_interface_bitmap_iface_map3) == NONE)
+		return;
+	csmemset(&parameters, 0, sizeof(parameters));
+	draw_bitmap_in_rect(bitmap, &bounds, &bounds, NULL, 0xffffffff, &parameters, FALSE);
+}
+
 void render_enumerate_interface(void)
 {
 	if (!render_enumerating || !enumerate.everything || enumerate.pass != 0 || render.local_player_index == NONE)
 		return;
+	enumerate.interface_drawn = TRUE;
 	rasterizer_hud_begin();
 	unit_huds_draw();
 	hud_weapon_port_enumerate(render.local_player_index);
 	motion_sensor_blips_draw();
 	rasterizer_hud_end();
-	screen_flashes_draw();
 	rasterizer_screen_effect_port_enumerate(stand_in_bitmap());
 	fonts_draw();
+	widget_bitmap_draw();
 	/* (a cinematic's letterbox bar: cinematics.c) */
 	{
 		rectangle2d bar = { 0, 0, 16, 16 };
 
 		draw_quad(&bar, 0xff000000);
 	}
+}
+
+void render_enumerate_screen_flashes(void)
+{
+	if (render_enumerating && enumerate.everything && enumerate.pass == 0)
+		screen_flashes_draw();
+}
+
+/* the VR mode's HUD pass, after the frame's eyes: the interface, where its
+draws are (in the HUD's layer), when the eyes' enumeration had none */
+void render_enumerate_hud(void)
+{
+	if (!enumerate.interface_pending)
+		return;
+	enumerate.interface_pending = FALSE;
+	halo_gpu_prepare(FALSE);
+	render_enumerating = TRUE;
+	enumerate.pass = 0;
+	render_enumerate_interface();
+	render_enumerating = FALSE;
+	halo_gpu_prepared();
 }

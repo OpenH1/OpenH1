@@ -16,7 +16,9 @@ extern boolean render_enumerating;
 /* TRUE as a map's (or a new structure's) first frame is to be drawn so
 first: its window drawn again each time render_enumerate_next says TRUE */
 void render_enumerate_new_map(void);
-boolean render_enumerate_begin(void);
+/* (mirrors: whether the frame draws a mirror's window, which the VR
+mode's eyes and one of several windows do not) */
+boolean render_enumerate_begin(boolean mirrors);
 boolean render_enumerate_next(void);
 /* the window's target (_render_target_*) and whether it has a mirror, for
 the pass being drawn */
@@ -38,6 +40,10 @@ void render_enumerate_lens_flares(void);
 void render_enumerate_decals(void);
 /* (after the interface's: every HUD's, every font's) */
 void render_enumerate_interface(void);
+/* (before the screen flash: every kind of it) */
+void render_enumerate_screen_flashes(void);
+/* (the VR mode's HUD pass: the interface, when the eyes' frame had none) */
+void render_enumerate_hud(void);
 
 /* the renderer's shaders and pipelines all made (port/linux/src/
 d3d8_device.c): the seconds waited */

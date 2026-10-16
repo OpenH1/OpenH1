@@ -532,7 +532,10 @@ static void render_window(
 		}
 		else if (render_vr_eye_pass)
 		{
+			/* port: (port/linux/game/render_enumerate.c) */
+			render_enumerate_lens_flares();
 			rasterizer_lens_flares_draw();
+			render_enumerate_screen_flashes();
 			rasterizer_screen_flash();
 			/* a blink through a jump of the eye (port/linux/game/vr_seat.c) */
 			vr_seat_blink_draw();
@@ -567,6 +570,7 @@ static void render_window(
 		interface_draw_screen();
 		/* port: and every HUD's (port/linux/game/render_enumerate.c) */
 		render_enumerate_interface();
+		render_enumerate_screen_flashes();
 		rasterizer_screen_flash();
 		halo_screen_ui_offset(TRUE);
 		render_ui_widgets(local_player_index, &rasterizer_camera->viewport_bounds);
@@ -701,8 +705,18 @@ static void render_player_frame(
 	/* port: a map's (or a structure's) shaders and pipelines made as it
 	starts: its first frame drawn first, unseen, through every shader its
 	tags hold, in each fog (port/linux/game/render_enumerate.c), before any
-	window of it (a mirror's) is drawn */
-	if (render_enumerate_begin())
+	window of it (a mirror's) is drawn; through a mirror's window where the
+	frame draws one, below (not the VR mode's eyes'); not in the VR mode's
+	scope's view, which draws less than the eyes' */
+	if (
+#ifdef HALO_VR
+		!render_vr_scope_pass &&
+#endif
+		render_enumerate_begin(main_get_window_count() == 1
+#ifdef HALO_VR
+			&& !render_vr_eye_pass
+#endif
+			))
 	{
 		do
 		{
@@ -799,6 +813,9 @@ static void render_vr_hud(
 	if (!bink_playback_in_progress())
 	{
 		interface_draw_screen();
+		/* port: and every HUD's, as the map's first frame was drawn
+		(port/linux/game/render_enumerate.c) */
+		render_enumerate_hud();
 		halo_screen_ui_offset(TRUE);
 		render_ui_widgets(window->local_player_index, &camera.viewport_bounds);
 		halo_screen_ui_offset(FALSE);

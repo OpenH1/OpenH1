@@ -906,6 +906,11 @@ static void set_environment_shader_pixel_shader(
 
 	if (local_pixel_shader_dirty_flag)
 	{
+		/* port: clear the alpha stages this does not write. BUG (original):
+		they kept what the last shader to use pixel_shader left (a
+		transparent shader's stage 4 wrote r0.a and r1.a over this one's) */
+		csmemset(&pixel_shader.alpha_inputs[3], 0, 5*sizeof(pixel_shader.alpha_inputs[0]));
+		csmemset(&pixel_shader.alpha_outputs[3], 0, 5*sizeof(pixel_shader.alpha_outputs[0]));
 		pixel_shader.texture_modes = PS_TEXTUREMODES(
 			PS_TEXTUREMODES_PROJECT2D,
 			PS_TEXTUREMODES_PROJECT2D,
