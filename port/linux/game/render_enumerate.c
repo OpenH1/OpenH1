@@ -337,7 +337,15 @@ boolean render_enumerate_begin(void)
 	boolean everything = FALSE;
 
 	if (setting < 0)
+	{
+#ifdef HALO_VR
+		/* port: not yet in the VR build: the unseen first frame halts in the
+		camera's director there (director.c, no local player for the eyes) */
+		setting = *config_string("debug.render_manifest") != 0;
+#else
 		setting = config_boolean("display.prepare_shaders") || *config_string("debug.render_manifest");
+#endif
+	}
 	if (!setting || structure_bsp_index == NONE || structure_bsp_index >= LONG_BITS)
 		return FALSE;
 	/* (a map's models and effects once; each of its structures once) */
