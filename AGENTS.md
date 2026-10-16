@@ -165,6 +165,7 @@ python -m pytest -q tools/test_web_build.py                 # the web build's gr
 node --test "port/web/tests/*.test.js"                      # the web page's importer and service worker
 node port/web/tests/webrtc_native.mjs chromium firefox      # the native builds' WebRTC with browsers (Playwright)
 python -m pytest -q tools/test_net_compare.py               # net_compare.py's judging of logs, its copies and their processes
+python -m pytest -q tools/test_determinism_compare.py       # determinism_compare.py's reading of the determinism logs
 python tools/net_compare.py --a build/linux/halo --b <other build> --data <game data> --swap
                                                             # two builds in one network game, in step (retail maps: local only)
 ```
@@ -181,6 +182,12 @@ Running the game without a person at it:
   test settings.
 - `debug.exit_after`, `debug.hidden_window`, `debug.null_renderer`,
   `debug.menu_open` (start on one menu screen), `debug.telnet_console`.
+- `debug.determinism_log` (with `debug.frame_time` and a scripted player,
+  `debug.test_input`) logs a hash of the game state each tick and every
+  taker of the random seeds; two runs of the same input, compared by
+  `tools/determinism_compare.py`, part where something besides the input
+  reached the simulation ("Determinism" in `port/linux/README.md`). Keep
+  the simulation's randomness in the ticks and on the game's seeds.
 - Use a virtual display (Xvfb, with `SDL_VIDEO_DRIVER=x11`) for windowed
   runs, never the desktop of the person you work for, and stop only the
   processes you started.

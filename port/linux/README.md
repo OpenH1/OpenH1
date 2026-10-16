@@ -3808,6 +3808,74 @@ The texture cache (`src/xbox_textures.c`) and the high-res replacements
 (`src/hud_hires.c`, `src/text_hires.c`, `src/menu_files.c`) still make GL
 textures themselves.
 
+### Determinism
+
+The game's simulation, its ticks, is a function of the map, the game's
+random seed and the players' input of each tick: the same game played
+again with the same input leaves the same game state after every tick.
+What the game takes from outside the input should be only presentation:
+what is drawn between the ticks, what is heard, what the texture cache has
+loaded. (At different frame rates a10 plays the same; Blood Gulch's
+contrails, which a tick adds points to, still part by the frame rate.)
+
+- Random numbers. The global seed (`random()`, the game's own) is set from
+  the game's seed at a map's start and taken only in the ticks (and once
+  at startup, for the periodic functions' tables). The
+  local seed (`local_random()`, which picks the decals, the effects and
+  the particles) is set from the game's seed at a map's start too, and is
+  two: a taker in a tick takes the ticks' local seed, one between the
+  ticks (the particles moved each frame, the camera's shake, the
+  renderer, the menus) the frames' (`math/random_math.c`), so the ticks'
+  moves only in the ticks and in their order, however many frames are
+  drawn between them. The sounds have a seed of their own
+  (`sound/sound_manager.c`), and the debug allocator's fill another
+  (`cseries/debug_memory.c`): the sound manager picks as the mixer plays,
+  by the clock. A speaker's sound is the one exception: the game picks its
+  permutation at its start, from a seed of the speakers'
+  (`sound/game_sound.c`), as its mouth moves to it.
+- Time. The ticks read only the game's time. The speakers' mouths move in
+  the ticks, from the ticks since the sound began; the wind steps once a
+  tick.
+- What the ticks keep. Not the sound manager's indices, which are the
+  mixer's (a unit's speech, the first-person weapon's sound); a decal is
+  made whether or not the texture cache has its bitmap yet.
+- A new network game's seed is the clock's (`debug.random_seed` fixes it).
+
+The determinism check is `debug.determinism_log`: a line a tick in a file
+of its own, with a hash of the game state as the tick left it (of each of
+its allocations too), the two seeds, every taker of a seed by its call
+site (in the tick, between the ticks, on another thread), the clock's
+readers in the tick, and a hash of each frame drawn. `debug.frame_time` gives each frame the same time, so
+that two runs draw the same frames, and the scripted player
+(`debug.test_input`, `bot:<seed>`) plays on the game's ticks. Two runs,
+compared by `tools/determinism_compare.py`, first differ where something
+besides the input reached the game; it names the takers (from the
+executable's symbols, or the guest image's: `build/linux_arm64/halo_guest.elf`)
+and the allocations, and `debug.determinism_dump` writes the game state at
+a tick for the tool to compare byte by byte (by data array element, by
+object), and that tick's first frame as a BMP. For example, a10 twice:
+
+```sh
+HALO_DETERMINISM_LOG=determinism.txt HALO_FRAME_TIME=0.0166667 HALO_TEST_INPUT=bot:3 \
+    HALO_SKIP_CINEMATICS=1 HALO_EXIT_AFTER=120 ./halo     # with init.txt: map_name levels\a10\a10
+python tools/determinism_compare.py a/determinism.txt b/determinism.txt \
+    --symbols build/linux_arm64/halo_guest.elf
+```
+
+`--simulation` compares only what the ticks do, for two runs at different
+frame rates: not the frames, the takers between the ticks, nor the
+allocations that the frames move (the particles, the decals' vertices,
+the lights, the fog and the sound environment, the motion sensor, the
+first-person weapon posed at the camera, the input as the frames take
+it). With `walk:<seed>`, a scripted player that
+never turns (a turn is the stick's rate over each frame's time, so it is
+the same each tick only at one frame rate), a10 at 60 and at 90 frames a
+second is the same game. Left out of the hash, as they mean nothing
+between their uses: the objects' magic numbers (the collision tests'
+marks, which the frames' tests leave too) and their cached render states'
+indices (the renderer's), and the free space after the objects' last
+block.
+
 ### Game source changes
 
 Five files of the game have changes for clang. These changes do not change
@@ -3864,6 +3932,14 @@ Other changes:
 | `cutscene/cinematics.c` | A scenario's titles (some Custom Edition maps show their name for the whole game) are not drawn over a menu, as the letterbox is not: the screen's overlays are drawn after the players' menus. |
 | `tag_files/tag_groups.h` | `TAG_BLOCK_GET_ELEMENT` returns an element in the block without a call, and calls `tag_block_get_element_with_size` for anything else. |
 | `input/input_xbox.c`, `physics/collision_usage.c` | The clock is read only for a button held, and for collision tests only when their times are shown: a read of the clock is slow in a browser. |
+| `math/random_math.c`, `game/game.c`, `game/game_time.c` | The local seed is set from the game's at a map's start, and is two: the ticks' and the frames' ("Determinism"). The seeds' takers and the game state's allocations go to the determinism check (`game/determinism_log.c`). |
+| `cseries/debug_memory.c` | The debug allocator fills a new allocation from a seed of its own, not the game's local seed. |
+| `networking/network_game_globals.c` | A new network game's seed takes the clock's too, as the local seed is the last map's; `debug.random_seed` sets it. |
+| `render/render.c`, `rasterizer/xbox/rasterizer_xbox_decals.c` | The frames are counted from the map's start, as the game state's caches stamp them: the menus' and the loading's frames, as many as the loading took, made two runs of one game differ. |
+| `scenario/scenario.c` | A location's last field is set, not left as the stack had it. The wind steps once a tick, at the tick's end, not by the frames' time. |
+| `sound/sound_manager.c`, `sound/sound_definitions.c` | The sounds' random choices take a seed of their own. The speakers' mouths are not moved from the mixer's place in the sound. |
+| `sound/game_sound.c`, `units/unit_dialogue.c` | The speakers' mouths move in the ticks, from the permutation the game picks at the speech's start and the ticks since. A unit does not keep the sound manager's index of its speech, and a scripted sound's time ends when it is stopped, whether or not the mixer played it. |
+| `main/main.c` | Each frame can run a set time (`debug.frame_time`). |
 | `effects/decals.c` | A decal is made whether or not the texture cache has its bitmap yet (the bitmap is asked for; drawing the decal loads it). |
 | `interface/first_person_weapons.c` | The first-person weapon's sound's index is kept beside the game state; the weapon's state holds the sound's definition. |
 | `cseries/cseries_windows.c` | The clock's readers in a tick go to the determinism check. |
