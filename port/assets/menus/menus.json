@@ -68,9 +68,11 @@
   "ce/port/main_menu/multiplayer_type_select/server_settings/coop_options/header_coop_options.png",
   "ce/port/main_menu/multiplayer_type_select/server_settings/map_share_options/header_map_share_options.png",
   "ce/port/main_menu/multiplayer_type_select/server_settings/voice_options/header_voice_options.png",
-
   "ce/port/main_menu/settings_select/player_setup/player_profile_edit/vr_controls/header_vr_controls.png",
   "ce/port/main_menu/settings_select/player_setup/player_profile_edit/vr_display/header_vr_display.png",
+  "ce/port/pause/objectives_center__0.png",
+  "ce/port/pause/objectives_left__0.png",
+  "ce/port/pause/objectives_right__0.png",
   "ce/port/pause/pausebox_center__0.png",
   "ce/port/pause/pausebox_center__1.png",
   "ce/port/pause/pausebox_center__2.png",
