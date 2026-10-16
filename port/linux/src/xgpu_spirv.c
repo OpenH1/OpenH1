@@ -1,0 +1,2745 @@
+/*
+XGPU_SPIRV.C
+
+SPIR-V from the shader intermediate form (xgpu_shader.h), for the Vulkan
+backend; the conventions are in xgpu_spirv.h. The programs are the GLSL
+emitter's (xgpu_glsl.c, desktop OpenGL's) operation for operation, each
+spelled as glslang spells the GLSL (its comparisons, its clamps, its
+smeared scalars), so that the driver is handed the same arithmetic and the
+two backends draw alike: where this file says less, xgpu_glsl.c says why.
+
+The words are written directly. A program has no control flow but its
+discards (and the enhanced dynamic lights' loops), so every register is an
+SSA value: a write to part of a register is a new value made of the old one
+and the result (OpVectorShuffle), and the program's values are never
+stored. The module's types and constants are made once each (interned).
+*/
+
+#include "xgpu.h"
+#include "xgpu_shader.h"
+#include "xgpu_spirv.h"
+
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/* ---------- SPIR-V's numbers (the specification's, version 1.3) */
+
+enum
+{
+	SPV_MAGIC = 0x07230203,
+	SPV_VERSION = 0x00010300,
+};
+
+enum
+{
+	OP_NAME = 5, OP_EXTENSION = 10, OP_EXT_INST_IMPORT = 11, OP_EXT_INST = 12, OP_MEMORY_MODEL = 14,
+	OP_ENTRY_POINT = 15, OP_EXECUTION_MODE = 16, OP_CAPABILITY = 17,
+	OP_TYPE_VOID = 19, OP_TYPE_BOOL = 20, OP_TYPE_INT = 21, OP_TYPE_FLOAT = 22, OP_TYPE_VECTOR = 23,
+	OP_TYPE_IMAGE = 25, OP_TYPE_SAMPLED_IMAGE = 27, OP_TYPE_ARRAY = 28, OP_TYPE_STRUCT = 30, OP_TYPE_POINTER = 32,
+	OP_TYPE_FUNCTION = 33,
+	OP_CONSTANT_TRUE = 41, OP_CONSTANT_FALSE = 42, OP_CONSTANT = 43, OP_CONSTANT_COMPOSITE = 44,
+	OP_FUNCTION = 54, OP_FUNCTION_END = 56, OP_VARIABLE = 59, OP_LOAD = 61, OP_STORE = 62, OP_ACCESS_CHAIN = 65,
+	OP_DECORATE = 71, OP_MEMBER_DECORATE = 72,
+	OP_VECTOR_EXTRACT_DYNAMIC = 77, OP_VECTOR_SHUFFLE = 79, OP_COMPOSITE_CONSTRUCT = 80, OP_COMPOSITE_EXTRACT = 81,
+	OP_COMPOSITE_INSERT = 82,
+	OP_IMAGE_SAMPLE_IMPLICIT_LOD = 87, OP_IMAGE_FETCH = 95, OP_IMAGE = 100, OP_IMAGE_QUERY_SIZE_LOD = 103,
+	OP_CONVERT_F_TO_S = 110, OP_CONVERT_S_TO_F = 111, OP_BITCAST = 124,
+	OP_F_NEGATE = 127, OP_I_ADD = 128, OP_F_ADD = 129, OP_I_SUB = 130, OP_F_SUB = 131, OP_I_MUL = 132, OP_F_MUL = 133,
+	OP_F_DIV = 136, OP_VECTOR_TIMES_SCALAR = 142, OP_DOT = 148,
+	OP_LOGICAL_OR = 166, OP_LOGICAL_AND = 167, OP_LOGICAL_NOT = 168, OP_SELECT = 169,
+	OP_I_EQUAL = 170, OP_I_NOT_EQUAL = 171, OP_S_LESS_THAN = 177,
+	OP_F_ORD_EQUAL = 180, OP_F_UNORD_NOT_EQUAL = 183, OP_F_ORD_LESS_THAN = 184, OP_F_ORD_GREATER_THAN = 186,
+	OP_F_ORD_LESS_THAN_EQUAL = 188, OP_F_ORD_GREATER_THAN_EQUAL = 190,
+	OP_SHIFT_RIGHT_ARITHMETIC = 195, OP_SHIFT_LEFT_LOGICAL = 196, OP_BITWISE_AND = 199,
+	OP_FWIDTH = 209, OP_ATOMIC_I_ADD = 234,
+	OP_LOOP_MERGE = 246, OP_SELECTION_MERGE = 247, OP_LABEL = 248, OP_BRANCH = 249, OP_BRANCH_CONDITIONAL = 250,
+	OP_KILL = 252, OP_RETURN = 253,
+};
+
+/* GLSL.std.450's instructions */
+enum
+{
+	GLSL_F_ABS = 4, GLSL_F_SIGN = 6, GLSL_FLOOR = 8, GLSL_FRACT = 10, GLSL_POW = 26, GLSL_EXP = 27, GLSL_EXP2 = 29,
+	GLSL_LOG2 = 30, GLSL_INVERSE_SQRT = 32, GLSL_F_MIN = 37, GLSL_F_MAX = 40, GLSL_F_CLAMP = 43, GLSL_S_CLAMP = 45,
+	GLSL_F_MIX = 46, GLSL_LENGTH = 66, GLSL_NORMALIZE = 69, GLSL_FIND_I_LSB = 73,
+};
+
+enum
+{
+	DECORATION_BLOCK = 2, DECORATION_ARRAY_STRIDE = 6, DECORATION_BUILT_IN = 11, DECORATION_INVARIANT = 18,
+	DECORATION_NON_WRITABLE = 24, DECORATION_LOCATION = 30, DECORATION_BINDING = 33, DECORATION_DESCRIPTOR_SET = 34,
+	DECORATION_OFFSET = 35, DECORATION_NO_CONTRACTION = 42,
+};
+
+enum
+{
+	BUILT_IN_POSITION = 0, BUILT_IN_POINT_SIZE = 1, BUILT_IN_SAMPLE_MASK = 20,
+};
+
+enum
+{
+	STORAGE_UNIFORM_CONSTANT = 0, STORAGE_INPUT = 1, STORAGE_UNIFORM = 2, STORAGE_OUTPUT = 3, STORAGE_FUNCTION = 7,
+	STORAGE_STORAGE_BUFFER = 12,
+};
+
+enum
+{
+	CAPABILITY_SHADER = 1, CAPABILITY_IMAGE_QUERY = 50,
+	EXECUTION_MODEL_VERTEX = 0, EXECUTION_MODEL_FRAGMENT = 4,
+	EXECUTION_MODE_ORIGIN_UPPER_LEFT = 7, EXECUTION_MODE_EARLY_FRAGMENT_TESTS = 9,
+	DIM_2D = 1, DIM_3D = 2, DIM_CUBE = 3,
+	IMAGE_OPERANDS_LOD = 2,
+	SCOPE_DEVICE = 1,
+};
+
+/* ---------- the module being written */
+
+struct words
+{
+	unsigned int *words;
+	unsigned long count, capacity;
+};
+
+/* a type or constant made once: its instruction's words but its result */
+struct interned
+{
+	unsigned long start, count;
+	unsigned int id;
+};
+
+/* the sections a module's instructions go in, in the order the
+specification lays them out */
+enum
+{
+	SECTION_CAPABILITIES, SECTION_EXTENSIONS, SECTION_IMPORTS, SECTION_MEMORY_MODEL, SECTION_ENTRY_POINTS,
+	SECTION_EXECUTION_MODES, SECTION_NAMES, SECTION_DECORATIONS, SECTION_GLOBALS, SECTION_VARIABLES, SECTION_CODE,
+	SECTION_COUNT,
+};
+
+struct module
+{
+	struct words sections[SECTION_COUNT];
+	/* the interned instructions' words (their keys), and where each is */
+	struct words keys;
+	struct interned *interned;
+	unsigned long interned_count, interned_capacity;
+	unsigned int next_id;
+	BOOL failed;
+	/* the entry point's interface (its Input and Output variables) */
+	unsigned int interface[64];
+	int interface_count;
+	/* textures' sizes are asked (the ImageQuery capability) */
+	BOOL image_query;
+
+	unsigned int glsl;
+	unsigned int t_void, t_bool, t_int, t_uint, t_float;
+	unsigned int t_v2, t_v3, t_v4, t_iv2, t_iv3, t_iv4, t_uv4, t_bv2, t_bv3, t_bv4;
+	/* the uniform blocks' variables (0 until declared) */
+	unsigned int constants, uniforms, dynamic_lights, dynamic_light_cells, samples;
+};
+
+static void words_push(struct module *m, struct words *words, unsigned int word)
+{
+	if (words->count == words->capacity)
+	{
+		unsigned long capacity = words->capacity ? words->capacity * 2 : 256;
+		unsigned int *grown = realloc(words->words, capacity * sizeof(*grown));
+
+		if (!grown)
+		{
+			m->failed = TRUE;
+			return;
+		}
+		words->words = grown;
+		words->capacity = capacity;
+	}
+	words->words[words->count++] = word;
+}
+
+static unsigned int id_new(struct module *m)
+{
+	return m->next_id++;
+}
+
+/* an instruction of count operand words into a section */
+static void instruction(struct module *m, int section, unsigned int opcode, int count, const unsigned int *operands)
+{
+	struct words *words = &m->sections[section];
+	int index;
+
+	words_push(m, words, opcode | ((unsigned int)(count + 1) << 16));
+	for (index = 0; index < count; index++)
+		words_push(m, words, operands[index]);
+}
+
+/* a string's words (nul-terminated, padded to a word), after operands */
+static void instruction_string(struct module *m, int section, unsigned int opcode, int count, const unsigned int *operands,
+	const char *string, int trailing_count, const unsigned int *trailing)
+{
+	struct words *words = &m->sections[section];
+	unsigned long length = strlen(string), string_words = length / 4 + 1, index;
+
+	words_push(m, words, opcode | ((unsigned int)(1 + count + string_words + trailing_count) << 16));
+	for (index = 0; index < (unsigned long)count; index++)
+		words_push(m, words, operands[index]);
+	for (index = 0; index < string_words; index++)
+	{
+		unsigned int word = 0;
+		int byte;
+
+		for (byte = 0; byte < 4; byte++)
+		{
+			unsigned long at = index * 4 + byte;
+
+			if (at < length)
+				word |= (unsigned int)(unsigned char)string[at] << (byte * 8);
+		}
+		words_push(m, words, word);
+	}
+	for (index = 0; index < (unsigned long)trailing_count; index++)
+		words_push(m, words, trailing[index]);
+}
+
+/* a type (result first) or a constant (its type, then its result) made
+once: the operands are the instruction's but its result */
+static unsigned int intern(struct module *m, unsigned int opcode, BOOL typed, int count, const unsigned int *operands)
+{
+	unsigned int words[24];
+	unsigned long index;
+	unsigned int id;
+
+	if (count > 22)
+	{
+		m->failed = TRUE;
+		return 0;
+	}
+	words[0] = opcode;
+	memcpy(words + 1, operands, count * sizeof(*operands));
+	for (index = 0; index < m->interned_count; index++)
+	{
+		const struct interned *entry = &m->interned[index];
+
+		if (entry->count == (unsigned long)count + 1 && !memcmp(m->keys.words + entry->start, words, (count + 1) * sizeof(*words)))
+			return entry->id;
+	}
+	if (m->interned_count == m->interned_capacity)
+	{
+		unsigned long capacity = m->interned_capacity ? m->interned_capacity * 2 : 128;
+		struct interned *grown = realloc(m->interned, capacity * sizeof(*grown));
+
+		if (!grown)
+		{
+			m->failed = TRUE;
+			return 0;
+		}
+		m->interned = grown;
+		m->interned_capacity = capacity;
+	}
+	id = id_new(m);
+	m->interned[m->interned_count].start = m->keys.count;
+	m->interned[m->interned_count].count = count + 1;
+	m->interned[m->interned_count].id = id;
+	m->interned_count++;
+	for (index = 0; index <= (unsigned long)count; index++)
+		words_push(m, &m->keys, words[index]);
+	{
+		unsigned int out[24];
+
+		if (typed)
+		{
+			out[0] = operands[0];
+			out[1] = id;
+			memcpy(out + 2, operands + 1, (count - 1) * sizeof(*operands));
+		}
+		else
+		{
+			out[0] = id;
+			memcpy(out + 1, operands, count * sizeof(*operands));
+		}
+		instruction(m, SECTION_GLOBALS, opcode, count + 1, out);
+	}
+	return id;
+}
+
+static unsigned int type0(struct module *m, unsigned int opcode)
+{
+	return intern(m, opcode, FALSE, 0, NULL);
+}
+
+static unsigned int type1(struct module *m, unsigned int opcode, unsigned int a)
+{
+	return intern(m, opcode, FALSE, 1, &a);
+}
+
+static unsigned int type2(struct module *m, unsigned int opcode, unsigned int a, unsigned int b)
+{
+	unsigned int operands[2];
+
+	operands[0] = a;
+	operands[1] = b;
+	return intern(m, opcode, FALSE, 2, operands);
+}
+
+static unsigned int type_vector(struct module *m, unsigned int component, unsigned int count)
+{
+	return type2(m, OP_TYPE_VECTOR, component, count);
+}
+
+static unsigned int type_pointer(struct module *m, unsigned int storage, unsigned int type)
+{
+	return type2(m, OP_TYPE_POINTER, storage, type);
+}
+
+/* a sampled image of a dimension (arrayed or not), its texels float or
+unsigned */
+static unsigned int type_sampled_image(struct module *m, unsigned int dim, BOOL arrayed, BOOL unsigned_texels,
+	BOOL sampled_image)
+{
+	unsigned int operands[7], image;
+
+	operands[0] = unsigned_texels ? m->t_uint : m->t_float;
+	operands[1] = dim;
+	operands[2] = 0;
+	operands[3] = arrayed ? 1 : 0;
+	operands[4] = 0;
+	operands[5] = 1;
+	operands[6] = 0;
+	image = intern(m, OP_TYPE_IMAGE, FALSE, 7, operands);
+	return sampled_image ? type1(m, OP_TYPE_SAMPLED_IMAGE, image) : image;
+}
+
+/* a struct is never interned: each has its own decorations */
+static unsigned int type_struct(struct module *m, int count, const unsigned int *members)
+{
+	unsigned int operands[32];
+	unsigned int id = id_new(m);
+
+	operands[0] = id;
+	memcpy(operands + 1, members, count * sizeof(*members));
+	instruction(m, SECTION_GLOBALS, OP_TYPE_STRUCT, count + 1, operands);
+	return id;
+}
+
+static unsigned int constant_uint(struct module *m, unsigned int value)
+{
+	unsigned int operands[2];
+
+	operands[0] = m->t_uint;
+	operands[1] = value;
+	return intern(m, OP_CONSTANT, TRUE, 2, operands);
+}
+
+static unsigned int constant_int(struct module *m, int value)
+{
+	unsigned int operands[2];
+
+	operands[0] = m->t_int;
+	operands[1] = (unsigned int)value;
+	return intern(m, OP_CONSTANT, TRUE, 2, operands);
+}
+
+static unsigned int constant_float(struct module *m, float value)
+{
+	unsigned int operands[2];
+
+	operands[0] = m->t_float;
+	memcpy(&operands[1], &value, 4);
+	return intern(m, OP_CONSTANT, TRUE, 2, operands);
+}
+
+static unsigned int constant_bool(struct module *m, BOOL value)
+{
+	unsigned int operands[1];
+
+	operands[0] = m->t_bool;
+	return intern(m, value ? OP_CONSTANT_TRUE : OP_CONSTANT_FALSE, TRUE, 1, operands);
+}
+
+/* a vector constant of count floats */
+static unsigned int constant_vector(struct module *m, int count, const float *values)
+{
+	unsigned int operands[5];
+	int index;
+
+	operands[0] = count == 2 ? m->t_v2 : count == 3 ? m->t_v3 : m->t_v4;
+	for (index = 0; index < count; index++)
+		operands[1 + index] = constant_float(m, values[index]);
+	return intern(m, OP_CONSTANT_COMPOSITE, TRUE, count + 1, operands);
+}
+
+static unsigned int constant_v4(struct module *m, float x, float y, float z, float w)
+{
+	float values[4];
+
+	values[0] = x;
+	values[1] = y;
+	values[2] = z;
+	values[3] = w;
+	return constant_vector(m, 4, values);
+}
+
+/* a float smeared over a vector of count (1: the float) */
+static unsigned int constant_splat(struct module *m, int count, float value)
+{
+	float values[4];
+
+	values[0] = values[1] = values[2] = values[3] = value;
+	return count == 1 ? constant_float(m, value) : constant_vector(m, count, values);
+}
+
+static unsigned int vector_type(const struct module *m, int count)
+{
+	return count == 1 ? m->t_float : count == 2 ? m->t_v2 : count == 3 ? m->t_v3 : m->t_v4;
+}
+
+/* ---------- instructions in the function */
+
+/* an instruction with a result: its type, then count operands */
+static unsigned int op(struct module *m, unsigned int opcode, unsigned int type, int count, const unsigned int *operands)
+{
+	unsigned int words[16];
+	unsigned int id = id_new(m);
+
+	words[0] = type;
+	words[1] = id;
+	memcpy(words + 2, operands, count * sizeof(*operands));
+	instruction(m, SECTION_CODE, opcode, count + 2, words);
+	return id;
+}
+
+static unsigned int op1(struct module *m, unsigned int opcode, unsigned int type, unsigned int a)
+{
+	return op(m, opcode, type, 1, &a);
+}
+
+static unsigned int op2(struct module *m, unsigned int opcode, unsigned int type, unsigned int a, unsigned int b)
+{
+	unsigned int operands[2];
+
+	operands[0] = a;
+	operands[1] = b;
+	return op(m, opcode, type, 2, operands);
+}
+
+static unsigned int op3(struct module *m, unsigned int opcode, unsigned int type, unsigned int a, unsigned int b,
+	unsigned int c)
+{
+	unsigned int operands[3];
+
+	operands[0] = a;
+	operands[1] = b;
+	operands[2] = c;
+	return op(m, opcode, type, 3, operands);
+}
+
+/* an instruction without a result */
+static void op_void(struct module *m, unsigned int opcode, int count, const unsigned int *operands)
+{
+	instruction(m, SECTION_CODE, opcode, count, operands);
+}
+
+/* GLSL.std.450's */
+static unsigned int ext(struct module *m, unsigned int instruction_number, unsigned int type, int count, const unsigned int *operands)
+{
+	unsigned int words[8];
+
+	words[0] = m->glsl;
+	words[1] = instruction_number;
+	memcpy(words + 2, operands, count * sizeof(*operands));
+	return op(m, OP_EXT_INST, type, count + 2, words);
+}
+
+static unsigned int ext1(struct module *m, unsigned int instruction_number, unsigned int type, unsigned int a)
+{
+	return ext(m, instruction_number, type, 1, &a);
+}
+
+static unsigned int ext2(struct module *m, unsigned int instruction_number, unsigned int type, unsigned int a, unsigned int b)
+{
+	unsigned int operands[2];
+
+	operands[0] = a;
+	operands[1] = b;
+	return ext(m, instruction_number, type, 2, operands);
+}
+
+static unsigned int ext3(struct module *m, unsigned int instruction_number, unsigned int type, unsigned int a, unsigned int b,
+	unsigned int c)
+{
+	unsigned int operands[3];
+
+	operands[0] = a;
+	operands[1] = b;
+	operands[2] = c;
+	return ext(m, instruction_number, type, 3, operands);
+}
+
+static unsigned int extract(struct module *m, unsigned int vector, unsigned int component)
+{
+	return op2(m, OP_COMPOSITE_EXTRACT, m->t_float, vector, component);
+}
+
+/* components of a vector (or of two: 4 on are the second's) */
+static unsigned int shuffle(struct module *m, int count, unsigned int a, unsigned int b, const unsigned int *components)
+{
+	unsigned int operands[6];
+
+	operands[0] = a;
+	operands[1] = b;
+	memcpy(operands + 2, components, count * sizeof(*components));
+	return op(m, OP_VECTOR_SHUFFLE, vector_type(m, count), count + 2, operands);
+}
+
+/* .xyz, .xy of a vec4 */
+static unsigned int xyz(struct module *m, unsigned int vector)
+{
+	static const unsigned int components[3] = { 0, 1, 2 };
+
+	return shuffle(m, 3, vector, vector, components);
+}
+
+static unsigned int xy(struct module *m, unsigned int vector)
+{
+	static const unsigned int components[2] = { 0, 1 };
+
+	return shuffle(m, 2, vector, vector, components);
+}
+
+static unsigned int construct(struct module *m, int count, const unsigned int *components)
+{
+	return op(m, OP_COMPOSITE_CONSTRUCT, vector_type(m, count), count, components);
+}
+
+static unsigned int construct4(struct module *m, unsigned int x, unsigned int y, unsigned int z, unsigned int w)
+{
+	unsigned int components[4];
+
+	components[0] = x;
+	components[1] = y;
+	components[2] = z;
+	components[3] = w;
+	return construct(m, 4, components);
+}
+
+/* a scalar smeared over count components, as GLSL's vecN(x) */
+static unsigned int splat(struct module *m, int count, unsigned int scalar)
+{
+	unsigned int components[4];
+
+	if (count == 1)
+		return scalar;
+	components[0] = components[1] = components[2] = components[3] = scalar;
+	return construct(m, count, components);
+}
+
+/* a vec4 of a vec3 and a float */
+static unsigned int vec4_of(struct module *m, unsigned int vector3, unsigned int w)
+{
+	unsigned int components[2];
+
+	components[0] = vector3;
+	components[1] = w;
+	return op(m, OP_COMPOSITE_CONSTRUCT, m->t_v4, 2, components);
+}
+
+/* a chosen by a scalar condition, else b, of count components (SPIR-V 1.3's
+OpSelect takes a condition of as many components as its result) */
+static unsigned int select_n(struct module *m, int count, unsigned int condition, unsigned int a, unsigned int b)
+{
+	unsigned int type = vector_type(m, count);
+
+	if (count > 1)
+	{
+		unsigned int conditions[4];
+
+		conditions[0] = conditions[1] = conditions[2] = conditions[3] = condition;
+		condition = op(m, OP_COMPOSITE_CONSTRUCT, count == 2 ? m->t_bv2 : count == 3 ? m->t_bv3 : m->t_bv4, count, conditions);
+	}
+	return op3(m, OP_SELECT, type, condition, a, b);
+}
+
+static unsigned int fadd(struct module *m, int count, unsigned int a, unsigned int b)
+{
+	return op2(m, OP_F_ADD, vector_type(m, count), a, b);
+}
+
+static unsigned int fsub(struct module *m, int count, unsigned int a, unsigned int b)
+{
+	return op2(m, OP_F_SUB, vector_type(m, count), a, b);
+}
+
+static unsigned int fmul(struct module *m, int count, unsigned int a, unsigned int b)
+{
+	return op2(m, OP_F_MUL, vector_type(m, count), a, b);
+}
+
+static unsigned int fdiv(struct module *m, int count, unsigned int a, unsigned int b)
+{
+	return op2(m, OP_F_DIV, vector_type(m, count), a, b);
+}
+
+/* a vector times a float (GLSL's vec * float, scalar first or not) */
+static unsigned int fscale(struct module *m, int count, unsigned int vector, unsigned int scalar)
+{
+	return count == 1 ? fmul(m, 1, vector, scalar) : op2(m, OP_VECTOR_TIMES_SCALAR, vector_type(m, count), vector, scalar);
+}
+
+static unsigned int fneg(struct module *m, int count, unsigned int a)
+{
+	return op1(m, OP_F_NEGATE, vector_type(m, count), a);
+}
+
+static unsigned int fdot(struct module *m, unsigned int a, unsigned int b)
+{
+	return op2(m, OP_DOT, m->t_float, a, b);
+}
+
+static unsigned int fclamp(struct module *m, int count, unsigned int x, float low, float high)
+{
+	return ext3(m, GLSL_F_CLAMP, vector_type(m, count), x, constant_splat(m, count, low), constant_splat(m, count, high));
+}
+
+static unsigned int saturate(struct module *m, int count, unsigned int x)
+{
+	return fclamp(m, count, x, 0.0f, 1.0f);
+}
+
+static unsigned int fmax_scalar(struct module *m, int count, unsigned int x, float value)
+{
+	return ext2(m, GLSL_F_MAX, vector_type(m, count), x, constant_splat(m, count, value));
+}
+
+/* comparisons of floats: a bool */
+static unsigned int compare(struct module *m, unsigned int opcode, unsigned int a, unsigned int b)
+{
+	return op2(m, opcode, m->t_bool, a, b);
+}
+
+/* ---------- blocks */
+
+static unsigned int label(struct module *m)
+{
+	unsigned int id = id_new(m);
+
+	op_void(m, OP_LABEL, 1, &id);
+	return id;
+}
+
+static void label_at(struct module *m, unsigned int id)
+{
+	op_void(m, OP_LABEL, 1, &id);
+}
+
+static void branch(struct module *m, unsigned int target)
+{
+	op_void(m, OP_BRANCH, 1, &target);
+}
+
+static void selection_merge(struct module *m, unsigned int merge)
+{
+	unsigned int operands[2];
+
+	operands[0] = merge;
+	operands[1] = 0;
+	op_void(m, OP_SELECTION_MERGE, 2, operands);
+}
+
+static void branch_conditional(struct module *m, unsigned int condition, unsigned int yes, unsigned int no)
+{
+	unsigned int operands[3];
+
+	operands[0] = condition;
+	operands[1] = yes;
+	operands[2] = no;
+	op_void(m, OP_BRANCH_CONDITIONAL, 3, operands);
+}
+
+/* if (condition) discard; as glslang writes it */
+static void discard_if(struct module *m, unsigned int condition)
+{
+	unsigned int kill = id_new(m), merge = id_new(m);
+
+	selection_merge(m, merge);
+	branch_conditional(m, condition, kill, merge);
+	label_at(m, kill);
+	op_void(m, OP_KILL, 0, NULL);
+	label_at(m, merge);
+}
+
+/* ---------- declarations */
+
+static void name(struct module *m, unsigned int id, const char *string)
+{
+	instruction_string(m, SECTION_NAMES, OP_NAME, 1, &id, string, 0, NULL);
+}
+
+static void decorate(struct module *m, unsigned int id, unsigned int decoration, int count, const unsigned int *values)
+{
+	unsigned int operands[4];
+
+	operands[0] = id;
+	operands[1] = decoration;
+	memcpy(operands + 2, values, count * sizeof(*values));
+	instruction(m, SECTION_DECORATIONS, OP_DECORATE, count + 2, operands);
+}
+
+static void decorate1(struct module *m, unsigned int id, unsigned int decoration, unsigned int value)
+{
+	decorate(m, id, decoration, 1, &value);
+}
+
+static void member_decorate(struct module *m, unsigned int id, unsigned int member, unsigned int decoration, unsigned int value)
+{
+	unsigned int operands[4];
+
+	operands[0] = id;
+	operands[1] = member;
+	operands[2] = decoration;
+	operands[3] = value;
+	instruction(m, SECTION_DECORATIONS, OP_MEMBER_DECORATE, 4, operands);
+}
+
+/* a module-level variable of a type in a storage class */
+static unsigned int variable(struct module *m, unsigned int type, unsigned int storage, const char *variable_name)
+{
+	unsigned int operands[3];
+	unsigned int id = id_new(m);
+
+	operands[0] = type_pointer(m, storage, type);
+	operands[1] = id;
+	operands[2] = storage;
+	instruction(m, SECTION_VARIABLES, OP_VARIABLE, 3, operands);
+	if (variable_name)
+		name(m, id, variable_name);
+	if ((storage == STORAGE_INPUT || storage == STORAGE_OUTPUT) && m->interface_count < 64)
+		m->interface[m->interface_count++] = id;
+	return id;
+}
+
+/* an Input or Output at a location */
+static unsigned int interface_variable(struct module *m, unsigned int type, unsigned int storage, unsigned int location,
+	const char *variable_name)
+{
+	unsigned int id = variable(m, type, storage, variable_name);
+
+	decorate1(m, id, DECORATION_LOCATION, location);
+	return id;
+}
+
+static unsigned int load(struct module *m, unsigned int type, unsigned int pointer)
+{
+	return op1(m, OP_LOAD, type, pointer);
+}
+
+static void store(struct module *m, unsigned int pointer, unsigned int value)
+{
+	unsigned int operands[2];
+
+	operands[0] = pointer;
+	operands[1] = value;
+	op_void(m, OP_STORE, 2, operands);
+}
+
+/* a function's variable (Function storage: declared at the entry block's
+start, which is where SECTION_VARIABLES' function part goes) */
+static unsigned int local(struct module *m, struct words *locals, unsigned int type)
+{
+	unsigned int id = id_new(m);
+
+	words_push(m, locals, OP_VARIABLE | (4u << 16));
+	words_push(m, locals, type_pointer(m, STORAGE_FUNCTION, type));
+	words_push(m, locals, id);
+	words_push(m, locals, STORAGE_FUNCTION);
+	return id;
+}
+
+/* ---------- the uniform blocks */
+
+/* the vertex constants: a block of 192 vec4 */
+static void declare_constants(struct module *m)
+{
+	unsigned int length = constant_uint(m, XGPU_VERTEX_CONSTANT_COUNT);
+	unsigned int array, block;
+
+	array = id_new(m);
+	{
+		unsigned int operands[3];
+
+		operands[0] = array;
+		operands[1] = m->t_v4;
+		operands[2] = length;
+		instruction(m, SECTION_GLOBALS, OP_TYPE_ARRAY, 3, operands);
+	}
+	decorate1(m, array, DECORATION_ARRAY_STRIDE, 16);
+	block = type_struct(m, 1, &array);
+	decorate(m, block, DECORATION_BLOCK, 0, NULL);
+	member_decorate(m, block, 0, DECORATION_OFFSET, 0);
+	name(m, block, "xgpu_constants");
+	m->constants = variable(m, block, STORAGE_UNIFORM, "c");
+	decorate1(m, m->constants, DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_DRAW);
+	decorate1(m, m->constants, DECORATION_BINDING, XGPU_SPIRV_BINDING_CONSTANTS);
+}
+
+/* an array type of count vec4 in a block (std140: a stride of 16) */
+static unsigned int block_array(struct module *m, unsigned int count)
+{
+	unsigned int operands[3];
+	unsigned int array = id_new(m);
+
+	operands[0] = array;
+	operands[1] = m->t_v4;
+	operands[2] = constant_uint(m, count);
+	instruction(m, SECTION_GLOBALS, OP_TYPE_ARRAY, 3, operands);
+	decorate1(m, array, DECORATION_ARRAY_STRIDE, 16);
+	return array;
+}
+
+/* struct xgpu_spirv_uniforms' members, in order */
+enum
+{
+	U_VIEWPORT_SCALE, U_VIEWPORT_OFFSET, U_POINT_SIZE, U_SCREEN_OFFSET, U_ALPHA_REFERENCE, U_UNUSED,
+	U_PS_C0, U_PS_C1, U_PS_FINAL_C0, U_PS_FINAL_C1, U_FOG_COLOR, U_FOG_PARAMETERS, U_BUMP_MATRIX, U_BUMP_LUMINANCE,
+	U_TEXTURE_SCALE, U_BLEND_CONSTANT, U_TEXTURE_BORDER, U_TEXTURE_BORDER_LINEAR, U_MODEL_LIGHTS,
+	U_COUNT,
+};
+
+static void declare_uniforms(struct module *m)
+{
+	static const unsigned long offsets[U_COUNT] =
+	{
+		offsetof(struct xgpu_spirv_uniforms, viewport_scale), offsetof(struct xgpu_spirv_uniforms, viewport_offset),
+		offsetof(struct xgpu_spirv_uniforms, point_size), offsetof(struct xgpu_spirv_uniforms, screen_offset),
+		offsetof(struct xgpu_spirv_uniforms, alpha_reference), offsetof(struct xgpu_spirv_uniforms, unused),
+		offsetof(struct xgpu_spirv_uniforms, ps_c0), offsetof(struct xgpu_spirv_uniforms, ps_c1),
+		offsetof(struct xgpu_spirv_uniforms, ps_final_c0), offsetof(struct xgpu_spirv_uniforms, ps_final_c1),
+		offsetof(struct xgpu_spirv_uniforms, fog_color), offsetof(struct xgpu_spirv_uniforms, fog_parameters),
+		offsetof(struct xgpu_spirv_uniforms, bump_matrix), offsetof(struct xgpu_spirv_uniforms, bump_luminance),
+		offsetof(struct xgpu_spirv_uniforms, texture_scale), offsetof(struct xgpu_spirv_uniforms, blend_constant),
+		offsetof(struct xgpu_spirv_uniforms, texture_border), offsetof(struct xgpu_spirv_uniforms, texture_border_linear),
+		offsetof(struct xgpu_spirv_uniforms, model_lights),
+	};
+	unsigned int members[U_COUNT], block;
+	int member;
+
+	for (member = 0; member < U_COUNT; member++)
+	{
+		switch (member)
+		{
+		case U_POINT_SIZE: case U_SCREEN_OFFSET: case U_ALPHA_REFERENCE: case U_UNUSED:
+			members[member] = m->t_float;
+			break;
+		case U_PS_C0: case U_PS_C1: members[member] = block_array(m, 8); break;
+		case U_BUMP_MATRIX: case U_BUMP_LUMINANCE: case U_TEXTURE_SCALE: case U_TEXTURE_BORDER:
+			members[member] = block_array(m, 4);
+			break;
+		case U_MODEL_LIGHTS: members[member] = block_array(m, XGPU_MODEL_LIGHT_COUNT); break;
+		default: members[member] = m->t_v4; break;
+		}
+	}
+	block = type_struct(m, U_COUNT, members);
+	decorate(m, block, DECORATION_BLOCK, 0, NULL);
+	for (member = 0; member < U_COUNT; member++)
+		member_decorate(m, block, member, DECORATION_OFFSET, (unsigned int)offsets[member]);
+	name(m, block, "xgpu_uniforms");
+	m->uniforms = variable(m, block, STORAGE_UNIFORM, "u");
+	decorate1(m, m->uniforms, DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_DRAW);
+	decorate1(m, m->uniforms, DECORATION_BINDING, XGPU_SPIRV_BINDING_UNIFORMS);
+}
+
+/* a member of the uniforms (an element of an array member): a float or a
+vec4 */
+static unsigned int uniform(struct module *m, int member, int element)
+{
+	unsigned int operands[3], pointer;
+	BOOL scalar = member >= U_POINT_SIZE && member <= U_UNUSED;
+	unsigned int type = scalar ? m->t_float : m->t_v4;
+	int count = 2;
+
+	operands[0] = m->uniforms;
+	operands[1] = constant_int(m, member);
+	if (element >= 0)
+		operands[count++] = constant_int(m, element);
+	pointer = op(m, OP_ACCESS_CHAIN, type_pointer(m, STORAGE_UNIFORM, type), count, operands);
+	return load(m, type, pointer);
+}
+
+/* c[index] (a constant index, or an int value: dynamic) */
+static unsigned int vertex_constant(struct module *m, unsigned int index_id)
+{
+	unsigned int operands[3], pointer;
+
+	operands[0] = m->constants;
+	operands[1] = constant_int(m, 0);
+	operands[2] = index_id;
+	pointer = op(m, OP_ACCESS_CHAIN, type_pointer(m, STORAGE_UNIFORM, m->t_v4), 3, operands);
+	return load(m, m->t_v4, pointer);
+}
+
+/* ---------- the module's beginning and end */
+
+static void module_begin(struct module *m, unsigned int execution_model)
+{
+	static const char glsl_name[] = "GLSL.std.450";
+	unsigned int operands[2];
+
+	(void)execution_model;
+	memset(m, 0, sizeof(*m));
+	m->next_id = 1;
+	operands[0] = CAPABILITY_SHADER;
+	instruction(m, SECTION_CAPABILITIES, OP_CAPABILITY, 1, operands);
+	m->glsl = id_new(m);
+	instruction_string(m, SECTION_IMPORTS, OP_EXT_INST_IMPORT, 1, &m->glsl, glsl_name, 0, NULL);
+	operands[0] = 0; /* Logical */
+	operands[1] = 1; /* GLSL450 */
+	instruction(m, SECTION_MEMORY_MODEL, OP_MEMORY_MODEL, 2, operands);
+	m->t_void = type0(m, OP_TYPE_VOID);
+	m->t_bool = type0(m, OP_TYPE_BOOL);
+	m->t_int = type2(m, OP_TYPE_INT, 32, 1);
+	m->t_uint = type2(m, OP_TYPE_INT, 32, 0);
+	m->t_float = type1(m, OP_TYPE_FLOAT, 32);
+	m->t_v2 = type_vector(m, m->t_float, 2);
+	m->t_v3 = type_vector(m, m->t_float, 3);
+	m->t_v4 = type_vector(m, m->t_float, 4);
+	m->t_iv2 = type_vector(m, m->t_int, 2);
+	m->t_iv3 = type_vector(m, m->t_int, 3);
+	m->t_iv4 = type_vector(m, m->t_int, 4);
+	m->t_uv4 = type_vector(m, m->t_uint, 4);
+	m->t_bv2 = type_vector(m, m->t_bool, 2);
+	m->t_bv3 = type_vector(m, m->t_bool, 3);
+	m->t_bv4 = type_vector(m, m->t_bool, 4);
+}
+
+/* the function "main" begun: its locals go before its first block's
+instructions, which are written apart until the end */
+static unsigned int function_begin(struct module *m)
+{
+	unsigned int operands[4];
+	unsigned int main_id = id_new(m);
+
+	operands[0] = m->t_void;
+	operands[1] = main_id;
+	operands[2] = 0;
+	operands[3] = type1(m, OP_TYPE_FUNCTION, m->t_void);
+	instruction(m, SECTION_CODE, OP_FUNCTION, 4, operands);
+	label(m);
+	return main_id;
+}
+
+static void module_free(struct module *m)
+{
+	int section;
+
+	for (section = 0; section < SECTION_COUNT; section++)
+		free(m->sections[section].words);
+	free(m->keys.words);
+	free(m->interned);
+}
+
+/* the words laid out: the header, the sections, the function (its locals
+after its first label) */
+static BOOL module_end(struct module *m, unsigned int execution_model, unsigned int main_id, const struct words *locals,
+	struct xgpu_spirv_module *out)
+{
+	unsigned long total = 5, at, index;
+	int section;
+	unsigned int operands[2];
+
+	op_void(m, OP_RETURN, 0, NULL);
+	instruction(m, SECTION_CODE, OP_FUNCTION_END, 0, NULL);
+	if (m->image_query)
+	{
+		operands[0] = CAPABILITY_IMAGE_QUERY;
+		instruction(m, SECTION_CAPABILITIES, OP_CAPABILITY, 1, operands);
+	}
+	{
+		unsigned int words[68];
+
+		words[0] = execution_model;
+		words[1] = main_id;
+		instruction_string(m, SECTION_ENTRY_POINTS, OP_ENTRY_POINT, 2, words, "main", m->interface_count, m->interface);
+	}
+	if (execution_model == EXECUTION_MODEL_FRAGMENT)
+	{
+		operands[0] = main_id;
+		operands[1] = EXECUTION_MODE_ORIGIN_UPPER_LEFT;
+		instruction(m, SECTION_EXECUTION_MODES, OP_EXECUTION_MODE, 2, operands);
+	}
+	if (m->failed)
+	{
+		module_free(m);
+		return FALSE;
+	}
+	for (section = 0; section < SECTION_COUNT; section++)
+		total += m->sections[section].count;
+	total += locals->count;
+	out->words = malloc(total * sizeof(*out->words));
+	if (!out->words)
+	{
+		module_free(m);
+		return FALSE;
+	}
+	out->words[0] = SPV_MAGIC;
+	out->words[1] = SPV_VERSION;
+	out->words[2] = 0;
+	out->words[3] = m->next_id;
+	out->words[4] = 0;
+	at = 5;
+	for (section = 0; section < SECTION_COUNT; section++)
+	{
+		const struct words *words = &m->sections[section];
+
+		if (section == SECTION_CODE)
+		{
+			/* OpFunction (5 words), the first OpLabel (2), the locals, the rest */
+			memcpy(out->words + at, words->words, 7 * sizeof(*words->words));
+			at += 7;
+			if (locals->count)
+				memcpy(out->words + at, locals->words, locals->count * sizeof(*locals->words));
+			at += locals->count;
+			for (index = 7; index < words->count; index++)
+				out->words[at++] = words->words[index];
+		}
+		else if (words->count)
+		{
+			memcpy(out->words + at, words->words, words->count * sizeof(*words->words));
+			at += words->count;
+		}
+	}
+	out->count = at;
+	module_free(m);
+	return TRUE;
+}
+
+/* ---------- the position's invariance
+
+GLSL's invariant gl_Position makes the GL driver compute every operation
+the position depends on as written (NVIDIA's: each one "precise", none fused
+into a multiply-add), so that the passes drawing the same surface meet
+exactly. SPIR-V's Invariant decoration does not say how; the operations the
+position's store depends on are decorated NoContraction, as glslang does
+for GLSL's precise, so that both drivers compute it alike. */
+
+/* the operands of an instruction of the code that are ids (the others are
+literals): bit n, the operand after the result (or after the opcode, for an
+instruction without one); and whether it has a result */
+static unsigned int id_operands(unsigned int opcode, unsigned int count, BOOL *has_result)
+{
+	*has_result = TRUE;
+	switch (opcode)
+	{
+	case OP_VECTOR_SHUFFLE: return 3;
+	case OP_COMPOSITE_EXTRACT: return 1;
+	case OP_COMPOSITE_INSERT: return 3;
+	case OP_EXT_INST: return ~0u << 2 | 1;
+	case OP_IMAGE_FETCH: return ~0u << 3 | 3;
+	case OP_STORE: *has_result = FALSE; return 3;
+	case OP_LABEL: return 0;
+	case OP_BRANCH: case OP_BRANCH_CONDITIONAL: case OP_SELECTION_MERGE: case OP_LOOP_MERGE: case OP_KILL: case OP_RETURN:
+	case OP_FUNCTION_END:
+		*has_result = FALSE;
+		return 0;
+	default:
+		(void)count;
+		return ~0u;
+	}
+}
+
+static BOOL contractible(unsigned int opcode)
+{
+	switch (opcode)
+	{
+	case OP_F_ADD: case OP_F_SUB: case OP_F_MUL: case OP_F_DIV: case OP_VECTOR_TIMES_SCALAR: case OP_DOT: case OP_F_NEGATE:
+		return TRUE;
+	default:
+		return FALSE;
+	}
+}
+
+/* the arithmetic the store of value into a variable depends on, decorated
+NoContraction */
+static void precise_dependencies(struct module *m, unsigned int variable_id)
+{
+	const struct words *code = &m->sections[SECTION_CODE];
+	unsigned long *defined, at;
+	unsigned char *needed;
+	unsigned int *stack, stack_count = 0, id;
+
+	defined = calloc(m->next_id, sizeof(*defined));
+	needed = calloc(m->next_id, 1);
+	stack = malloc(m->next_id * sizeof(*stack));
+	if (!defined || !needed || !stack)
+	{
+		m->failed = TRUE;
+		free(defined);
+		free(needed);
+		free(stack);
+		return;
+	}
+	/* (where each result is defined; the value stored, the start) */
+	for (at = 0; at < code->count; at += code->words[at] >> 16)
+	{
+		unsigned int opcode = code->words[at] & 0xffff, length = code->words[at] >> 16;
+		BOOL has_result;
+
+		if (!length)
+			break;
+		id_operands(opcode, length, &has_result);
+		if (opcode == OP_STORE && code->words[at + 1] == variable_id && code->words[at + 2] < m->next_id &&
+			!needed[code->words[at + 2]])
+		{
+			needed[code->words[at + 2]] = 1;
+			stack[stack_count++] = code->words[at + 2];
+		}
+		else if (has_result && opcode != OP_FUNCTION && opcode != OP_LABEL && length >= 3 && code->words[at + 2] < m->next_id)
+		{
+			defined[code->words[at + 2]] = at + 1;
+		}
+	}
+	while (stack_count)
+	{
+		unsigned long where;
+		unsigned int opcode, length, ids, operand;
+
+		id = stack[--stack_count];
+		where = defined[id];
+		if (!where)
+			continue;
+		where--;
+		opcode = code->words[where] & 0xffff;
+		length = code->words[where] >> 16;
+		if (contractible(opcode))
+			decorate(m, id, DECORATION_NO_CONTRACTION, 0, NULL);
+		{
+			BOOL has_result;
+
+			ids = id_operands(opcode, length, &has_result);
+		}
+		for (operand = 3; operand < length; operand++)
+		{
+			unsigned int word = code->words[where + operand];
+
+			if (operand - 3 < 32 && !(ids & (1u << (operand - 3))))
+				continue;
+			if (word < m->next_id && !needed[word])
+			{
+				needed[word] = 1;
+				stack[stack_count++] = word;
+			}
+		}
+	}
+	free(defined);
+	free(needed);
+	free(stack);
+}
+
+/* ---------- vertex programs */
+
+/* where an output register's value goes (else none: the back faces'
+colors, which no pixel shader reads, and the unused) */
+enum
+{
+	OUT_POSITION, OUT_D0, OUT_D1, OUT_FOG, OUT_PTS, OUT_T0, OUT_T1, OUT_T2, OUT_T3, OUT_COUNT,
+};
+
+static int output_slot(unsigned char output)
+{
+	switch (output)
+	{
+	case XGPU_OUTPUT_POSITION: return OUT_POSITION;
+	case XGPU_OUTPUT_DIFFUSE: return OUT_D0;
+	case XGPU_OUTPUT_SPECULAR: return OUT_D1;
+	case XGPU_OUTPUT_FOG: return OUT_FOG;
+	case XGPU_OUTPUT_POINT_SIZE: return OUT_PTS;
+	case XGPU_OUTPUT_TEXTURE0: return OUT_T0;
+	case XGPU_OUTPUT_TEXTURE1: return OUT_T1;
+	case XGPU_OUTPUT_TEXTURE2: return OUT_T2;
+	case XGPU_OUTPUT_TEXTURE3: return OUT_T3;
+	default: return -1;
+	}
+}
+
+/* a register's components written from a value's (mask: bit 3 x ... bit 0 w) */
+static unsigned int write_masked(struct module *m, unsigned int old, unsigned int value, unsigned long mask)
+{
+	unsigned int components[4];
+	int component;
+
+	if ((mask & 15) == 15)
+		return value;
+	for (component = 0; component < 4; component++)
+		components[component] = (mask & (8 >> component)) ? 4 + component : component;
+	return shuffle(m, 4, old, value, components);
+}
+
+/* the program's registers, as SSA values */
+struct vertex_state
+{
+	unsigned int r[12], position, outputs[OUT_COUNT];
+	unsigned int inputs[XGPU_VERTEX_ATTRIBUTE_COUNT];
+	unsigned int a0;
+	unsigned int mac, ilu;
+	unsigned int zero;
+};
+
+static unsigned int vertex_operand(struct module *m, struct vertex_state *state, const struct xgpu_vertex_operand *operand,
+	int relative)
+{
+	unsigned int value, components[4];
+	int component;
+
+	switch (operand->file)
+	{
+	case XGPU_VERTEX_TEMPORARY:
+		/* r12 reads back the position output; past it there are none */
+		if (operand->index == XGPU_VERTEX_POSITION)
+			value = state->position;
+		else if (operand->index < XGPU_VERTEX_POSITION)
+			value = state->r[operand->index];
+		else
+			value = state->zero;
+		break;
+	case XGPU_VERTEX_INPUT:
+		value = operand->index < XGPU_VERTEX_ATTRIBUTE_COUNT ? state->inputs[operand->index] : state->zero;
+		break;
+	case XGPU_VERTEX_CONSTANT:
+		if (relative)
+		{
+			unsigned int sum = op2(m, OP_I_ADD, m->t_int, state->a0, constant_int(m, operand->index));
+
+			value = vertex_constant(m, ext3(m, GLSL_S_CLAMP, m->t_int, sum, constant_int(m, 0),
+				constant_int(m, XGPU_VERTEX_CONSTANT_COUNT - 1)));
+		}
+		else
+		{
+			value = vertex_constant(m, constant_int(m, operand->index));
+		}
+		break;
+	default:
+		value = state->zero;
+		break;
+	}
+	for (component = 0; component < 4; component++)
+		components[component] = operand->swizzle[component] & 3;
+	if (components[0] != 0 || components[1] != 1 || components[2] != 2 || components[3] != 3)
+		value = shuffle(m, 4, value, value, components);
+	if (operand->negate)
+		value = fneg(m, 4, value);
+	return value;
+}
+
+/* the operands a unit's operation reads: bit 0 A, 1 B, 2 C */
+static unsigned int mac_operands(unsigned char mac)
+{
+	switch (mac)
+	{
+	case XGPU_MAC_MOV: case XGPU_MAC_ARL: return 1;
+	case XGPU_MAC_ADD: return 5;
+	case XGPU_MAC_MAD: return 7;
+	case XGPU_MAC_MUL: case XGPU_MAC_DP3: case XGPU_MAC_DPH: case XGPU_MAC_DP4: case XGPU_MAC_DST:
+	case XGPU_MAC_MIN: case XGPU_MAC_MAX: case XGPU_MAC_SLT: case XGPU_MAC_SGE:
+		return 3;
+	default: return 0;
+	}
+}
+
+/* vec4(bvec4): 1.0 where true */
+static unsigned int bools_to_floats(struct module *m, unsigned int bools)
+{
+	return op3(m, OP_SELECT, m->t_v4, bools, constant_splat(m, 4, 1.0f), constant_splat(m, 4, 0.0f));
+}
+
+static unsigned int mac_operation(struct module *m, struct vertex_state *state, unsigned char mac, unsigned int a,
+	unsigned int b, unsigned int c)
+{
+	switch (mac)
+	{
+	case XGPU_MAC_MOV: case XGPU_MAC_ARL: return a;
+	case XGPU_MAC_MUL: return fmul(m, 4, a, b);
+	case XGPU_MAC_ADD: return fadd(m, 4, a, c);
+	case XGPU_MAC_MAD: return fadd(m, 4, fmul(m, 4, a, b), c);
+	case XGPU_MAC_DP3: return splat(m, 4, fdot(m, xyz(m, a), xyz(m, b)));
+	case XGPU_MAC_DPH: return splat(m, 4, fadd(m, 1, fdot(m, xyz(m, a), xyz(m, b)), extract(m, b, 3)));
+	case XGPU_MAC_DP4: return splat(m, 4, fdot(m, a, b));
+	case XGPU_MAC_DST:
+		return construct4(m, constant_float(m, 1.0f), fmul(m, 1, extract(m, a, 1), extract(m, b, 1)), extract(m, a, 2),
+			extract(m, b, 3));
+	case XGPU_MAC_MIN: return ext2(m, GLSL_F_MIN, m->t_v4, a, b);
+	case XGPU_MAC_MAX: return ext2(m, GLSL_F_MAX, m->t_v4, a, b);
+	case XGPU_MAC_SLT: return bools_to_floats(m, op2(m, OP_F_ORD_LESS_THAN, m->t_bv4, a, b));
+	case XGPU_MAC_SGE: return bools_to_floats(m, op2(m, OP_F_ORD_GREATER_THAN_EQUAL, m->t_bv4, a, b));
+	default: return state->zero;
+	}
+}
+
+static unsigned int ilu_operation(struct module *m, struct vertex_state *state, unsigned char ilu, unsigned int c)
+{
+	unsigned int x, r, e;
+
+	if (ilu == XGPU_ILU_MOV)
+		return c;
+	if (ilu == XGPU_ILU_LIT)
+	{
+		/* vec4(1.0, max(s.x, 0.0), s.x > 0.0 ? pow(max(s.y, 0.0), clamp(s.w, ...)) : 0.0, 1.0) */
+		unsigned int sx = extract(m, c, 0), sy = extract(m, c, 1), sw = extract(m, c, 3);
+		unsigned int specular = ext2(m, GLSL_POW, m->t_float, fmax_scalar(m, 1, sy, 0.0f),
+			fclamp(m, 1, sw, (float)-127.9961, (float)127.9961));
+
+		specular = op3(m, OP_SELECT, m->t_float, compare(m, OP_F_ORD_GREATER_THAN, sx, constant_float(m, 0.0f)), specular,
+			constant_float(m, 0.0f));
+		return construct4(m, constant_float(m, 1.0f), fmax_scalar(m, 1, sx, 0.0f), specular, constant_float(m, 1.0f));
+	}
+	if (ilu == XGPU_ILU_NOP || ilu > XGPU_ILU_LIT)
+		return state->zero;
+	x = extract(m, c, 0);
+	switch (ilu)
+	{
+	case XGPU_ILU_RCP:
+		return splat(m, 4, fdiv(m, 1, constant_float(m, 1.0f), x));
+	case XGPU_ILU_RCC:
+		/* (nv2a_rcc) */
+		r = fdiv(m, 1, constant_float(m, 1.0f), x);
+		r = op3(m, OP_SELECT, m->t_float, compare(m, OP_F_ORD_GREATER_THAN, r, constant_float(m, 0.0f)),
+			fclamp(m, 1, r, (float)5.42101e-20, (float)1.884467e+19), fclamp(m, 1, r, (float)-1.884467e+19, (float)-5.42101e-20));
+		return splat(m, 4, r);
+	case XGPU_ILU_RSQ:
+		return splat(m, 4, ext1(m, GLSL_INVERSE_SQRT, m->t_float, ext1(m, GLSL_F_ABS, m->t_float, x)));
+	case XGPU_ILU_EXP:
+		return construct4(m, ext1(m, GLSL_EXP2, m->t_float, ext1(m, GLSL_FLOOR, m->t_float, x)),
+			ext1(m, GLSL_FRACT, m->t_float, x), ext1(m, GLSL_EXP2, m->t_float, x), constant_float(m, 1.0f));
+	case XGPU_ILU_LOG:
+		/* (nv2a_log: zero's answer, else the exponent, the mantissa, the log) */
+		x = ext1(m, GLSL_F_ABS, m->t_float, x);
+		e = ext1(m, GLSL_FLOOR, m->t_float, ext1(m, GLSL_LOG2, m->t_float, x));
+		r = construct4(m, e, fdiv(m, 1, x, ext1(m, GLSL_EXP2, m->t_float, e)), ext1(m, GLSL_LOG2, m->t_float, x),
+			constant_float(m, 1.0f));
+		return select_n(m, 4, compare(m, OP_F_ORD_EQUAL, x, constant_float(m, 0.0f)),
+			constant_v4(m, (float)-1.0e30, 1.0f, (float)-1.0e30, 1.0f), r);
+	default:
+		return state->zero;
+	}
+}
+
+/* the lighting's outputs (the pixel shader's model_lighting) */
+static BOOL lighting_position(const struct nv2a_vertex_lighting *lighting)
+{
+	return lighting && (lighting->lights == 2 || lighting->world_found || lighting->lights == XGPU_ENVIRONMENT_LIGHTING);
+}
+
+/* the inputs a program reads (bit n v<n>) */
+static unsigned long vertex_inputs(const struct xgpu_vertex_program *program, const struct nv2a_vertex_lighting *lighting)
+{
+	unsigned long inputs = 0, index;
+
+	for (index = 0; index < program->instruction_count; index++)
+	{
+		const struct xgpu_vertex_instruction *instruction = &program->instructions[index];
+		unsigned int operands = mac_operands(instruction->mac) |
+			(instruction->ilu != XGPU_ILU_NOP && instruction->ilu <= XGPU_ILU_LIT ? 4 : 0);
+		const struct xgpu_vertex_operand *read[3];
+		int operand;
+
+		read[0] = &instruction->a;
+		read[1] = &instruction->b;
+		read[2] = &instruction->c;
+		for (operand = 0; operand < 3; operand++)
+		{
+			if ((operands & (1 << operand)) && read[operand]->file == XGPU_VERTEX_INPUT &&
+				read[operand]->index < XGPU_VERTEX_ATTRIBUTE_COUNT)
+			{
+				inputs |= 1UL << read[operand]->index;
+			}
+		}
+	}
+	if (lighting && lighting->lights == XGPU_ENVIRONMENT_LIGHTING)
+		inputs |= 0xf;
+	return inputs;
+}
+
+/* unpack_normpacked3: 11, 11 and 10 bits, signed */
+static unsigned int unpack_normpacked3(struct module *m, unsigned int packed)
+{
+	unsigned int x, y, z;
+
+	x = op2(m, OP_SHIFT_RIGHT_ARITHMETIC, m->t_int,
+		op1(m, OP_BITCAST, m->t_int, op2(m, OP_SHIFT_LEFT_LOGICAL, m->t_uint, packed, constant_int(m, 21))), constant_int(m, 21));
+	y = op2(m, OP_SHIFT_RIGHT_ARITHMETIC, m->t_int,
+		op1(m, OP_BITCAST, m->t_int, op2(m, OP_SHIFT_LEFT_LOGICAL, m->t_uint, packed, constant_int(m, 10))), constant_int(m, 21));
+	z = op2(m, OP_SHIFT_RIGHT_ARITHMETIC, m->t_int, op1(m, OP_BITCAST, m->t_int, packed), constant_int(m, 22));
+	return construct4(m, fdiv(m, 1, op1(m, OP_CONVERT_S_TO_F, m->t_float, x), constant_float(m, 1023.0f)),
+		fdiv(m, 1, op1(m, OP_CONVERT_S_TO_F, m->t_float, y), constant_float(m, 1023.0f)),
+		fdiv(m, 1, op1(m, OP_CONVERT_S_TO_F, m->t_float, z), constant_float(m, 511.0f)), constant_float(m, 1.0f));
+}
+
+unsigned long xgpu_spirv_vertex_inputs(const struct xgpu_vertex_program *program, const struct nv2a_vertex_lighting *lighting)
+{
+	return vertex_inputs(program, lighting);
+}
+
+BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigned long packed_attribute_mask,
+	unsigned long integer_attribute_mask, const struct nv2a_vertex_lighting *lighting,
+	const struct xgpu_spirv_options *options, struct xgpu_spirv_module *module)
+{
+	static const char *const output_names[] = { "xD0", "xD1", "xT0", "xT1", "xT2", "xT3" };
+	struct module m;
+	struct words locals = { 0 };
+	struct vertex_state state;
+	unsigned long inputs, index;
+	unsigned int main_id, input_variables[XGPU_VERTEX_ATTRIBUTE_COUNT];
+	unsigned int position_out, point_size_out, color_outs[6], fog_out;
+	unsigned int world_normal_out = 0, world_position_out = 0, world_binormal_out = 0, world_tangent_out = 0;
+	unsigned int world_normal = 0, world_position = 0;
+	unsigned int clip_position = 0;
+	BOOL environment = lighting && lighting->lights == XGPU_ENVIRONMENT_LIGHTING;
+	BOOL clip_captured = FALSE;
+	unsigned int one = 0;
+	int slot;
+
+	(void)options;
+	module_begin(&m, EXECUTION_MODEL_VERTEX);
+	inputs = vertex_inputs(program, lighting);
+	declare_constants(&m);
+	declare_uniforms(&m);
+
+	/* the attributes read */
+	for (index = 0; index < XGPU_VERTEX_ATTRIBUTE_COUNT; index++)
+	{
+		char variable_name[16];
+		unsigned int type;
+
+		input_variables[index] = 0;
+		if (!(inputs & (1UL << index)))
+			continue;
+		type = (packed_attribute_mask & (1UL << index)) ? m.t_uint : (integer_attribute_mask & (1UL << index)) ? m.t_iv4 : m.t_v4;
+		snprintf(variable_name, sizeof(variable_name), "v%lu", index);
+		input_variables[index] = interface_variable(&m, type, STORAGE_INPUT, (unsigned int)index, variable_name);
+	}
+	/* (the position invariant: the passes of a surface meet exactly, as
+	GLSL's invariant gl_Position) */
+	position_out = variable(&m, m.t_v4, STORAGE_OUTPUT, "gl_Position");
+	decorate1(&m, position_out, DECORATION_BUILT_IN, BUILT_IN_POSITION);
+	decorate(&m, position_out, DECORATION_INVARIANT, 0, NULL);
+	point_size_out = variable(&m, m.t_float, STORAGE_OUTPUT, "gl_PointSize");
+	decorate1(&m, point_size_out, DECORATION_BUILT_IN, BUILT_IN_POINT_SIZE);
+	for (slot = 0; slot < 6; slot++)
+		color_outs[slot] = interface_variable(&m, m.t_v4, STORAGE_OUTPUT, XGPU_SPIRV_LOCATION_D0 + slot, output_names[slot]);
+	fog_out = interface_variable(&m, m.t_float, STORAGE_OUTPUT, XGPU_SPIRV_LOCATION_FOG, "xFog");
+	if (lighting)
+		world_normal_out = interface_variable(&m, m.t_v4, STORAGE_OUTPUT, XGPU_SPIRV_LOCATION_WORLD_NORMAL, "xWorldNormal");
+	if (lighting_position(lighting))
+		world_position_out = interface_variable(&m, m.t_v3, STORAGE_OUTPUT, XGPU_SPIRV_LOCATION_WORLD_POSITION, "xWorldPosition");
+	if (environment)
+	{
+		world_binormal_out = interface_variable(&m, m.t_v3, STORAGE_OUTPUT, XGPU_SPIRV_LOCATION_WORLD_BINORMAL, "xWorldBinormal");
+		world_tangent_out = interface_variable(&m, m.t_v3, STORAGE_OUTPUT, XGPU_SPIRV_LOCATION_WORLD_TANGENT, "xWorldTangent");
+	}
+
+	main_id = function_begin(&m);
+	memset(&state, 0, sizeof(state));
+	state.zero = constant_splat(&m, 4, 0.0f);
+	one = constant_v4(&m, 0.0f, 0.0f, 0.0f, 1.0f);
+	for (index = 0; index < XGPU_VERTEX_ATTRIBUTE_COUNT; index++)
+	{
+		if (!input_variables[index])
+			state.inputs[index] = state.zero;
+		else if (packed_attribute_mask & (1UL << index))
+			state.inputs[index] = unpack_normpacked3(&m, load(&m, m.t_uint, input_variables[index]));
+		else if (integer_attribute_mask & (1UL << index))
+			state.inputs[index] = op1(&m, OP_CONVERT_S_TO_F, m.t_v4, load(&m, m.t_iv4, input_variables[index]));
+		else
+			state.inputs[index] = load(&m, m.t_v4, input_variables[index]);
+	}
+	for (index = 0; index < 12; index++)
+		state.r[index] = state.zero;
+	state.position = one;
+	state.outputs[OUT_POSITION] = one;
+	state.outputs[OUT_D0] = state.outputs[OUT_D1] = one;
+	state.outputs[OUT_T0] = state.outputs[OUT_T1] = state.outputs[OUT_T2] = state.outputs[OUT_T3] = one;
+	state.outputs[OUT_FOG] = constant_splat(&m, 4, 1.0f);
+	state.outputs[OUT_PTS] = splat(&m, 4, uniform(&m, U_POINT_SIZE, -1));
+	state.a0 = constant_int(&m, 0);
+	state.mac = state.ilu = state.zero;
+	/* a structure's vertices are in the world: as they are */
+	if (environment)
+	{
+		world_position = xyz(&m, state.inputs[0]);
+		world_normal = vec4_of(&m, xyz(&m, state.inputs[1]), constant_float(&m, 1.0f));
+	}
+	else
+	{
+		if (lighting)
+			world_normal = state.zero;
+		if (lighting_position(lighting))
+			world_position = constant_splat(&m, 3, 0.0f);
+	}
+
+	for (index = 0; index < program->instruction_count; index++)
+	{
+		const struct xgpu_vertex_instruction *instruction = &program->instructions[index];
+		unsigned int operands = mac_operands(instruction->mac) |
+			(instruction->ilu != XGPU_ILU_NOP && instruction->ilu <= XGPU_ILU_LIT ? 4 : 0);
+		unsigned int a = 0, b = 0, c = 0;
+
+		/* the lighting's normal and position, before the program reuses them */
+		if (lighting && !environment && index == lighting->normal_instruction &&
+			lighting->normal_register < XGPU_VERTEX_POSITION)
+		{
+			unsigned int normal = xyz(&m, state.r[lighting->normal_register]);
+
+			world_normal = vec4_of(&m, normal, ext1(&m, GLSL_LENGTH, m.t_float, normal));
+		}
+		if (lighting && lighting->lights == 2 && index == lighting->position_instruction &&
+			lighting->position_register < XGPU_VERTEX_POSITION)
+		{
+			world_position = xyz(&m, state.r[lighting->position_register]);
+		}
+		else if (lighting && lighting->lights == 1 && lighting->world_found && index == lighting->world_instruction &&
+			lighting->world_register < XGPU_VERTEX_POSITION)
+		{
+			world_position = xyz(&m, state.r[lighting->world_register]);
+		}
+		if (operands & 1)
+			a = vertex_operand(&m, &state, &instruction->a, instruction->relative);
+		if (operands & 2)
+			b = vertex_operand(&m, &state, &instruction->b, instruction->relative);
+		if (operands & 4)
+			c = vertex_operand(&m, &state, &instruction->c, instruction->relative);
+		if (instruction->mac != XGPU_MAC_NOP)
+			state.mac = mac_operation(&m, &state, instruction->mac, a, b, c);
+		if (instruction->ilu != XGPU_ILU_NOP)
+			state.ilu = ilu_operation(&m, &state, instruction->ilu, c);
+		/* the screen-space conversion takes the reciprocal of the clip-space
+		position's w (rcc of r12.w); keep the position it converts */
+		if (instruction->captures_clip)
+		{
+			clip_position = state.position;
+			clip_captured = TRUE;
+		}
+
+		/* results are written only after both units have read their inputs */
+		if (instruction->mac == XGPU_MAC_ARL)
+		{
+			state.a0 = op1(&m, OP_CONVERT_F_TO_S, m.t_int, ext1(&m, GLSL_FLOOR, m.t_float,
+				fadd(&m, 1, extract(&m, state.mac, 0), constant_float(&m, (float)0.001))));
+		}
+		else if (instruction->mac != XGPU_MAC_NOP && instruction->mac_mask)
+		{
+			if (instruction->mac_temporary == XGPU_VERTEX_POSITION)
+				state.position = write_masked(&m, state.position, state.mac, instruction->mac_mask);
+			else if (instruction->mac_temporary < XGPU_VERTEX_POSITION)
+				state.r[instruction->mac_temporary] = write_masked(&m, state.r[instruction->mac_temporary], state.mac,
+					instruction->mac_mask);
+		}
+		if (instruction->ilu != XGPU_ILU_NOP && instruction->ilu_mask)
+		{
+			if (instruction->ilu_temporary == XGPU_VERTEX_POSITION)
+				state.position = write_masked(&m, state.position, state.ilu, instruction->ilu_mask);
+			else if (instruction->ilu_temporary < XGPU_VERTEX_POSITION)
+				state.r[instruction->ilu_temporary] = write_masked(&m, state.r[instruction->ilu_temporary], state.ilu,
+					instruction->ilu_mask);
+		}
+		if (instruction->writes_output && (slot = output_slot(instruction->output)) >= 0)
+		{
+			unsigned int *target = slot == OUT_POSITION ? &state.position : &state.outputs[slot];
+
+			*target = write_masked(&m, *target, instruction->output_from_ilu ? state.ilu : state.mac, instruction->output_mask);
+		}
+	}
+
+	/* the clip position (xgpu_glsl.c: the conversion done with c[-38] and
+	c[-37] undone, pixel centres at half-integers, a w of zero behind the
+	camera) */
+	{
+		unsigned int scale_parts[3], scale, viewport_scale, viewport_offset, screen_offset, position, w;
+		int component;
+
+		viewport_scale = uniform(&m, U_VIEWPORT_SCALE, -1);
+		viewport_offset = uniform(&m, U_VIEWPORT_OFFSET, -1);
+		screen_offset = uniform(&m, U_SCREEN_OFFSET, -1);
+		for (component = 0; component < 3; component++)
+		{
+			unsigned int value = extract(&m, viewport_scale, component);
+
+			scale_parts[component] = op3(&m, OP_SELECT, m.t_float,
+				compare(&m, OP_F_UNORD_NOT_EQUAL, value, constant_float(&m, 0.0f)), value, constant_float(&m, 1.0f));
+		}
+		scale = construct(&m, 3, scale_parts);
+		if (clip_captured)
+		{
+			unsigned int offset_parts[3], offset, sum;
+
+			offset_parts[0] = fadd(&m, 1, constant_float(&m, 0.5f), screen_offset);
+			offset_parts[1] = constant_float(&m, 0.5f);
+			offset_parts[2] = constant_float(&m, 0.0f);
+			offset = construct(&m, 3, offset_parts);
+			w = extract(&m, clip_position, 3);
+			sum = fadd(&m, 3, fmul(&m, 3, xyz(&m, clip_position),
+				xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_VERTEX_CONSTANT_BIAS - 38)))),
+				fscale(&m, 3, fsub(&m, 3, fadd(&m, 3, xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_VERTEX_CONSTANT_BIAS - 37))),
+				offset), xyz(&m, viewport_offset)), w));
+			position = vec4_of(&m, fdiv(&m, 3, sum, scale), w);
+		}
+		else
+		{
+			unsigned int shift_parts[2], ndc_parts[2], ndc;
+
+			shift_parts[0] = fadd(&m, 1, constant_float(&m, 0.5f), screen_offset);
+			shift_parts[1] = constant_float(&m, 0.5f);
+			ndc_parts[0] = fadd(&m, 2, xy(&m, state.position), construct(&m, 2, shift_parts));
+			ndc_parts[1] = extract(&m, state.position, 2);
+			ndc = op(&m, OP_COMPOSITE_CONSTRUCT, m.t_v3, 2, ndc_parts);
+			ndc = fdiv(&m, 3, fsub(&m, 3, ndc, xyz(&m, viewport_offset)), scale);
+			w = extract(&m, state.position, 3);
+			position = vec4_of(&m, fscale(&m, 3, ndc, w), w);
+		}
+		/* (a w of zero, or not a number: behind the camera) */
+		w = extract(&m, position, 3);
+		position = select_n(&m, 4, op1(&m, OP_LOGICAL_NOT, m.t_bool, compare(&m, OP_F_ORD_GREATER_THAN,
+			ext1(&m, GLSL_F_ABS, m.t_float, w), constant_float(&m, 0.0f))), constant_v4(&m, 0.0f, 0.0f, 0.0f, -1.0f), position);
+		/* Vulkan's rows from the top of the framebuffer, y down (xgpu_spirv.h) */
+		position = op3(&m, OP_COMPOSITE_INSERT, m.t_v4, fneg(&m, 1, extract(&m, position, 1)), position, 1);
+		store(&m, position_out, position);
+	}
+	store(&m, point_size_out, extract(&m, state.outputs[OUT_PTS], 0));
+	store(&m, color_outs[0], saturate(&m, 4, state.outputs[OUT_D0]));
+	store(&m, color_outs[1], saturate(&m, 4, state.outputs[OUT_D1]));
+	for (slot = 0; slot < 4; slot++)
+		store(&m, color_outs[2 + slot], state.outputs[OUT_T0 + slot]);
+	store(&m, fog_out, extract(&m, state.outputs[OUT_FOG], 0));
+	if (world_normal_out)
+		store(&m, world_normal_out, world_normal);
+	if (world_position_out)
+		store(&m, world_position_out, world_position);
+	if (environment)
+	{
+		store(&m, world_binormal_out, xyz(&m, state.inputs[2]));
+		store(&m, world_tangent_out, xyz(&m, state.inputs[3]));
+	}
+	precise_dependencies(&m, position_out);
+	if (!module_end(&m, EXECUTION_MODEL_VERTEX, main_id, &locals, module))
+	{
+		free(locals.words);
+		return FALSE;
+	}
+	free(locals.words);
+	return TRUE;
+}
+
+/* ---------- pixel programs */
+
+/* the pixel shader's state: the inputs, the registers (SSA values, 0 until
+first needed for the lazily made ones), the textures */
+struct pixel_state
+{
+	const struct xgpu_pixel_program *program;
+	const struct xgpu_spirv_options *options;
+	struct words locals;
+	unsigned int in_d0, in_d1, in_t[4], in_fog, in_world_normal, in_world_position, in_world_binormal, in_world_tangent;
+	unsigned int textures[4];
+	unsigned int v0, v1, t[4], dots[4], r0, r1, fog;
+	unsigned int zero4;
+};
+
+static unsigned int pixel_input(struct module *m, struct pixel_state *state, unsigned int variable_id, unsigned int type)
+{
+	(void)state;
+	return load(m, type, variable_id);
+}
+
+/* signed_byte: a byte's value read as a two's complement byte, over 127 */
+static unsigned int signed_byte(struct module *m, unsigned int x)
+{
+	unsigned int b = ext1(m, GLSL_FLOOR, m->t_float, fadd(m, 1, fmul(m, 1, x, constant_float(m, 255.0f)), constant_float(m, 0.5f)));
+
+	b = op3(m, OP_SELECT, m->t_float, compare(m, OP_F_ORD_GREATER_THAN_EQUAL, b, constant_float(m, 128.0f)),
+		fsub(m, 1, b, constant_float(m, 256.0f)), b);
+	return fdiv(m, 1, b, constant_float(m, 127.0f));
+}
+
+static unsigned int signed_bytes(struct module *m, unsigned int rgb)
+{
+	unsigned int components[3];
+	int component;
+
+	for (component = 0; component < 3; component++)
+		components[component] = signed_byte(m, extract(m, rgb, component));
+	return construct(m, 3, components);
+}
+
+/* the input texel of a dot product stage, mapped per PSDotMapping (a vec3) */
+static unsigned int dot_input(struct module *m, struct pixel_state *state, const struct xgpu_texture_stage *stage)
+{
+	unsigned int rgb = xyz(m, state->t[stage->input & 3]);
+
+	switch (stage->dot_mapping)
+	{
+	case XGPU_DOT_ZERO_TO_ONE:
+		return rgb;
+	case XGPU_DOT_MINUS_ONE_TO_ONE_D3D:
+		return fdiv(m, 3, fsub(m, 3, fscale(m, 3, rgb, constant_float(m, 255.0f)), constant_splat(m, 3, 128.0f)),
+			constant_splat(m, 3, 127.0f));
+	case XGPU_DOT_MINUS_ONE_TO_ONE:
+		return signed_bytes(m, rgb);
+	default:
+		return fsub(m, 3, fscale(m, 3, rgb, constant_float(m, 2.0f)), constant_splat(m, 3, 1.0f));
+	}
+}
+
+/* a texture's sampled image (loaded where it is used) */
+static unsigned int texture_load(struct module *m, struct pixel_state *state, int stage)
+{
+	unsigned char sampler = state->program->stages[stage].sampler;
+	unsigned int type = type_sampled_image(m, sampler == _xgpu_sampler_3d ? DIM_3D : sampler == _xgpu_sampler_cube ? DIM_CUBE : DIM_2D,
+		sampler == _xgpu_sampler_2d_layered, FALSE, TRUE);
+
+	return load(m, type, state->textures[stage]);
+}
+
+/* a texture's first level's size (an ivec2 or ivec3) */
+static unsigned int image_size(struct module *m, unsigned int image, unsigned int type)
+{
+	unsigned int operands[2];
+
+	m->image_query = TRUE;
+	operands[0] = image;
+	operands[1] = constant_int(m, 0);
+	return op(m, OP_IMAGE_QUERY_SIZE_LOD, type, 2, operands);
+}
+
+/* the stage's lookup at coordinates (a vec4); where the shader draws the
+border, the texel mixed with the border color by how much of the lookup's
+footprint is inside the texture along each axis the border is on (xgpu_msl.c
+border_mix: with the nearest texel, all or none; filtered linearly, the half
+texel either side of the edge shares it with the border) */
+static unsigned int sample(struct module *m, struct pixel_state *state, int stage, unsigned int coordinates)
+{
+	unsigned char sampler = state->program->stages[stage].sampler;
+	unsigned int border = state->options->border[stage] & (sampler == _xgpu_sampler_3d ? 7 : 3);
+	unsigned int image = texture_load(m, state, stage), uv, texel;
+
+	if (sampler == _xgpu_sampler_3d || sampler == _xgpu_sampler_cube)
+		uv = xyz(m, coordinates);
+	else
+		uv = fmul(m, 2, xy(m, coordinates), xy(m, uniform(m, U_TEXTURE_SCALE, stage)));
+	if (sampler == _xgpu_sampler_2d_layered)
+	{
+		/* (flat: a layered target is its first layer) */
+		unsigned int parts[2];
+
+		parts[0] = uv;
+		parts[1] = constant_float(m, 0.0f);
+		texel = op2(m, OP_IMAGE_SAMPLE_IMPLICIT_LOD, m->t_v4, image, op(m, OP_COMPOSITE_CONSTRUCT, m->t_v3, 2, parts));
+	}
+	else
+	{
+		texel = op2(m, OP_IMAGE_SAMPLE_IMPLICIT_LOD, m->t_v4, image, uv);
+	}
+	if (border && sampler != _xgpu_sampler_cube && sampler != _xgpu_sampler_2d_layered)
+	{
+		unsigned int size, inside = constant_float(m, 1.0f), linear;
+		int axis;
+
+		{
+			unsigned int raw = op(m, OP_IMAGE, type_sampled_image(m, sampler == _xgpu_sampler_3d ? DIM_3D : DIM_2D, FALSE,
+				FALSE, FALSE), 1, &image);
+
+			size = image_size(m, raw, sampler == _xgpu_sampler_3d ? m->t_iv3 : m->t_iv2);
+			size = op1(m, OP_CONVERT_S_TO_F, sampler == _xgpu_sampler_3d ? m->t_v3 : m->t_v2, size);
+		}
+		linear = op2(m, OP_F_UNORD_NOT_EQUAL, m->t_bool, extract(m, uniform(m, U_TEXTURE_BORDER_LINEAR, -1), stage),
+			constant_float(m, 0.0f));
+		for (axis = 0; axis < 3; axis++)
+		{
+			unsigned int x, extent, nearest, filtered;
+
+			if (!(border & (1u << axis)))
+				continue;
+			x = extract(m, uv, axis);
+			extent = extract(m, size, axis);
+			nearest = op3(m, OP_SELECT, m->t_float, op2(m, OP_LOGICAL_AND, m->t_bool,
+				compare(m, OP_F_ORD_GREATER_THAN_EQUAL, x, constant_float(m, 0.0f)),
+				compare(m, OP_F_ORD_LESS_THAN, x, constant_float(m, 1.0f))), constant_float(m, 1.0f), constant_float(m, 0.0f));
+			filtered = fmul(m, 1, saturate(m, 1, fadd(m, 1, fmul(m, 1, x, extent), constant_float(m, 0.5f))),
+				saturate(m, 1, fadd(m, 1, fmul(m, 1, fsub(m, 1, constant_float(m, 1.0f), x), extent), constant_float(m, 0.5f))));
+			inside = fmul(m, 1, inside, op3(m, OP_SELECT, m->t_float, linear, filtered, nearest));
+		}
+		texel = ext3(m, GLSL_F_MIX, m->t_v4, uniform(m, U_TEXTURE_BORDER, stage), texel, splat(m, 4, inside));
+	}
+	return texel;
+}
+
+/* a vec4 of the parts (floats) */
+static unsigned int vec4_parts(struct module *m, unsigned int x, unsigned int y, unsigned int z, unsigned int w)
+{
+	return construct4(m, x, y, z, w);
+}
+
+static void texture_stage(struct module *m, struct pixel_state *state, int stage)
+{
+	const struct xgpu_pixel_program *program = state->program;
+	const struct xgpu_texture_stage *decoded = &program->stages[stage];
+	unsigned long mode = decoded->mode;
+	unsigned int coordinates, xt = 0;
+	unsigned int one = constant_float(m, 1.0f), zero = constant_float(m, 0.0f);
+
+	if (mode != XGPU_TEXTURE_NONE && state->in_t[stage])
+		xt = pixel_input(m, state, state->in_t[stage], m->t_v4);
+	switch (mode)
+	{
+	case XGPU_TEXTURE_PROJECT2D:
+	case XGPU_TEXTURE_PROJECT3D:
+	{
+		/* vec4(xT.xyz / (xT.w != 0.0 ? xT.w : 1.0), 1.0) */
+		unsigned int w = extract(m, xt, 3);
+
+		w = op3(m, OP_SELECT, m->t_float, compare(m, OP_F_UNORD_NOT_EQUAL, w, zero), w, one);
+		coordinates = vec4_of(m, fdiv(m, 3, xyz(m, xt), splat(m, 3, w)), one);
+		state->t[stage] = sample(m, state, stage, coordinates);
+		if (stage == 0 && program->point_threshold && decoded->sampler == _xgpu_sampler_2d)
+		{
+			/* IDs must not be averaged with another segment or corrupted by
+			low-alpha artwork. Zero marks the atlas's continuous meters. */
+			unsigned int uv = fmul(m, 2, xy(m, coordinates), xy(m, uniform(m, U_TEXTURE_SCALE, 0)));
+			unsigned int image = op(m, OP_IMAGE, type_sampled_image(m, DIM_2D, FALSE, FALSE, FALSE), 1,
+				(unsigned int[]){ texture_load(m, state, 0) });
+			unsigned int size, pixel, threshold, operands[4];
+
+			size = image_size(m, image, m->t_iv2);
+			pixel = op1(m, OP_CONVERT_F_TO_S, m->t_iv2, ext1(m, GLSL_FLOOR, m->t_v2,
+				fmul(m, 2, uv, op1(m, OP_CONVERT_S_TO_F, m->t_v2, size))));
+			{
+				unsigned int zeros[2], last;
+
+				zeros[0] = zeros[1] = constant_int(m, 0);
+				last = op2(m, OP_I_SUB, m->t_iv2, size, op(m, OP_COMPOSITE_CONSTRUCT, m->t_iv2, 2,
+					(unsigned int[]){ constant_int(m, 1), constant_int(m, 1) }));
+				pixel = ext3(m, GLSL_S_CLAMP, m->t_iv2, pixel, op(m, OP_COMPOSITE_CONSTRUCT, m->t_iv2, 2, zeros), last);
+			}
+			operands[0] = image;
+			operands[1] = pixel;
+			operands[2] = IMAGE_OPERANDS_LOD;
+			operands[3] = constant_int(m, 0);
+			threshold = extract(m, op(m, OP_IMAGE_FETCH, m->t_v4, 4, operands), 0);
+			{
+				static const unsigned int rb[4] = { 4, 1, 5, 3 };
+				unsigned int replaced = shuffle(m, 4, state->t[0], splat(m, 2, threshold), rb);
+
+				state->t[0] = select_n(m, 4, compare(m, OP_F_ORD_GREATER_THAN, threshold, zero), replaced, state->t[0]);
+			}
+		}
+		break;
+	}
+	case XGPU_TEXTURE_CUBEMAP:
+		state->t[stage] = sample(m, state, stage, xt);
+		break;
+	case XGPU_TEXTURE_PASSTHRU:
+		state->t[stage] = saturate(m, 4, xt);
+		break;
+	case XGPU_TEXTURE_CLIPPLANE:
+	{
+		int component;
+
+		for (component = 0; component < 4; component++)
+		{
+			unsigned int value = extract(m, xt, component);
+
+			discard_if(m, compare(m, (decoded->compare & (1 << component)) ? OP_F_ORD_GREATER_THAN_EQUAL : OP_F_ORD_LESS_THAN,
+				value, zero));
+		}
+		state->t[stage] = state->zero4;
+		break;
+	}
+	case XGPU_TEXTURE_BUMPENVMAP:
+	case XGPU_TEXTURE_BUMPENVMAP_LUMINANCE:
+	{
+		int input = decoded->previous >= 0 ? decoded->previous : 0;
+		unsigned int d = signed_bytes(m, xyz(m, state->t[input]));
+		unsigned int dx = extract(m, d, 0), dy = extract(m, d, 1);
+		unsigned int matrix = uniform(m, U_BUMP_MATRIX, stage);
+		unsigned int offset[2], texel;
+
+		offset[0] = fadd(m, 1, fmul(m, 1, extract(m, matrix, 0), dx), fmul(m, 1, extract(m, matrix, 2), dy));
+		offset[1] = fadd(m, 1, fmul(m, 1, extract(m, matrix, 1), dx), fmul(m, 1, extract(m, matrix, 3), dy));
+		coordinates = fadd(m, 2, xy(m, xt), construct(m, 2, offset));
+		{
+			unsigned int parts[3];
+
+			parts[0] = coordinates;
+			parts[1] = zero;
+			parts[2] = one;
+			coordinates = op(m, OP_COMPOSITE_CONSTRUCT, m->t_v4, 3, parts);
+		}
+		texel = sample(m, state, stage, coordinates);
+		if (mode == XGPU_TEXTURE_BUMPENVMAP_LUMINANCE)
+		{
+			unsigned int luminance = uniform(m, U_BUMP_LUMINANCE, stage);
+			unsigned int factor = saturate(m, 1, fadd(m, 1, fmul(m, 1, extract(m, luminance, 0), extract(m, state->t[input], 2)),
+				extract(m, luminance, 1)));
+			static const unsigned int rgb_a[4] = { 4, 5, 6, 3 };
+
+			texel = shuffle(m, 4, texel, fscale(m, 3, xyz(m, texel), factor), rgb_a);
+		}
+		state->t[stage] = texel;
+		break;
+	}
+	case XGPU_TEXTURE_DOT_PRODUCT:
+	case XGPU_TEXTURE_DOT_ZW:
+		state->dots[stage] = fdot(m, xyz(m, xt), dot_input(m, state, decoded));
+		state->t[stage] = state->zero4;
+		break;
+	case XGPU_TEXTURE_DOT_ST:
+		state->dots[stage] = fdot(m, xyz(m, xt), dot_input(m, state, decoded));
+		coordinates = vec4_parts(m, stage > 0 ? state->dots[stage - 1] : zero, state->dots[stage], zero, one);
+		state->t[stage] = sample(m, state, stage, coordinates);
+		break;
+	case XGPU_TEXTURE_DOT_REFLECT_DIFFUSE:
+		/* the normal takes its third component from stage 3's dot product */
+		state->dots[stage] = fdot(m, xyz(m, xt), dot_input(m, state, decoded));
+		state->dots[3] = fdot(m, xyz(m, pixel_input(m, state, state->in_t[3], m->t_v4)), dot_input(m, state, &program->stages[3]));
+		coordinates = vec4_parts(m, state->dots[1], state->dots[2], state->dots[3], one);
+		state->t[stage] = sample(m, state, stage, coordinates);
+		break;
+	case XGPU_TEXTURE_DOT_REFLECT_SPECULAR:
+	case XGPU_TEXTURE_DOT_REFLECT_SPECULAR_CONSTANT:
+	{
+		unsigned int n, e, r, parts[3];
+
+		state->dots[stage] = fdot(m, xyz(m, xt), dot_input(m, state, decoded));
+		parts[0] = state->dots[1];
+		parts[1] = state->dots[2];
+		parts[2] = state->dots[3];
+		n = construct(m, 3, parts);
+		if (mode == XGPU_TEXTURE_DOT_REFLECT_SPECULAR)
+		{
+			parts[0] = extract(m, pixel_input(m, state, state->in_t[1], m->t_v4), 3);
+			parts[1] = extract(m, pixel_input(m, state, state->in_t[2], m->t_v4), 3);
+			parts[2] = extract(m, pixel_input(m, state, state->in_t[3], m->t_v4), 3);
+			e = construct(m, 3, parts);
+		}
+		else
+		{
+			e = xyz(m, uniform(m, U_PS_C0, 0));
+		}
+		/* 2.0 * n * dot(n, e) / max(dot(n, n), 1.0e-20) - e */
+		r = fsub(m, 3, fdiv(m, 3, fscale(m, 3, fscale(m, 3, n, constant_float(m, 2.0f)), fdot(m, n, e)),
+			splat(m, 3, fmax_scalar(m, 1, fdot(m, n, n), (float)1.0e-20))), e);
+		state->t[stage] = sample(m, state, stage, vec4_of(m, r, one));
+		break;
+	}
+	case XGPU_TEXTURE_DOT_STR_3D:
+	case XGPU_TEXTURE_DOT_STR_CUBE:
+		state->dots[stage] = fdot(m, xyz(m, xt), dot_input(m, state, decoded));
+		coordinates = vec4_parts(m, state->dots[1], state->dots[2], state->dots[3], one);
+		state->t[stage] = sample(m, state, stage, coordinates);
+		break;
+	case XGPU_TEXTURE_DEPENDENT_AR:
+	{
+		unsigned int texel = state->t[decoded->input & 3];
+
+		coordinates = vec4_parts(m, extract(m, texel, 3), extract(m, texel, 0), zero, one);
+		state->t[stage] = sample(m, state, stage, coordinates);
+		break;
+	}
+	case XGPU_TEXTURE_DEPENDENT_GB:
+	{
+		unsigned int texel = state->t[decoded->input & 3];
+
+		coordinates = vec4_parts(m, extract(m, texel, 1), extract(m, texel, 2), zero, one);
+		state->t[stage] = sample(m, state, stage, coordinates);
+		break;
+	}
+	default:
+		state->t[stage] = state->zero4;
+		break;
+	}
+
+	/* channels the application marked signed (D3DTSS_COLORSIGN: bit 0
+	alpha, then red, green, blue) */
+	if (decoded->color_sign && mode != XGPU_TEXTURE_NONE)
+	{
+		static const unsigned int channels[4] = { 3, 0, 1, 2 };
+		int bit;
+
+		for (bit = 0; bit < 4; bit++)
+		{
+			if (decoded->color_sign & (1 << bit))
+			{
+				state->t[stage] = op3(m, OP_COMPOSITE_INSERT, m->t_v4,
+					signed_byte(m, extract(m, state->t[stage], channels[bit])), state->t[stage], channels[bit]);
+			}
+		}
+	}
+	if (decoded->alpha_kill && mode != XGPU_TEXTURE_NONE)
+		discard_if(m, compare(m, OP_F_ORD_EQUAL, extract(m, state->t[stage], 3), zero));
+}
+
+/* ---------- pixel programs: the combiners */
+
+/* the fog register: rgb the fog color, alpha the fog factor (made the
+first time it is read) */
+static unsigned int fog_register(struct module *m, struct pixel_state *state)
+{
+	const struct xgpu_pixel_program *program = state->program;
+	unsigned int factor, fog, parameters;
+
+	if (state->fog)
+		return state->fog;
+	fog = pixel_input(m, state, state->in_fog, m->t_float);
+	if (!program->fog)
+	{
+		factor = constant_float(m, 1.0f);
+	}
+	else if (program->fog_mode == D3DFOG_EXP)
+	{
+		parameters = uniform(m, U_FOG_PARAMETERS, -1);
+		factor = ext1(m, GLSL_EXP, m->t_float, fmul(m, 1, fneg(m, 1, extract(m, parameters, 2)), fog));
+	}
+	else if (program->fog_mode == D3DFOG_EXP2)
+	{
+		unsigned int density;
+
+		parameters = uniform(m, U_FOG_PARAMETERS, -1);
+		density = fmul(m, 1, extract(m, parameters, 2), fog);
+		factor = ext1(m, GLSL_EXP, m->t_float, fmul(m, 1, fneg(m, 1, density), density));
+	}
+	else if (program->fog_mode == D3DFOG_LINEAR)
+	{
+		unsigned int start, end;
+
+		parameters = uniform(m, U_FOG_PARAMETERS, -1);
+		start = extract(m, parameters, 0);
+		end = extract(m, parameters, 1);
+		factor = fdiv(m, 1, fsub(m, 1, end, fog), fmax_scalar(m, 1, fsub(m, 1, end, start), (float)1.0e-6));
+	}
+	else
+	{
+		factor = fog;
+	}
+	state->fog = vec4_of(m, xyz(m, uniform(m, U_FOG_COLOR, -1)), saturate(m, 1, factor));
+	return state->fog;
+}
+
+/* a register's value (a vec4) for a combiner input; stage < 0 the final
+combiner's */
+static unsigned int register_value(struct module *m, struct pixel_state *state, unsigned long reg, int stage,
+	const struct xgpu_combiner_stage *combiner, unsigned int v1r0_sum, unsigned int ef_product)
+{
+	switch (reg)
+	{
+	case XGPU_REGISTER_C0: return stage < 0 ? uniform(m, U_PS_FINAL_C0, -1) : uniform(m, U_PS_C0, combiner->c0 & 7);
+	case XGPU_REGISTER_C1: return stage < 0 ? uniform(m, U_PS_FINAL_C1, -1) : uniform(m, U_PS_C1, combiner->c1 & 7);
+	case XGPU_REGISTER_FOG: return fog_register(m, state);
+	case XGPU_REGISTER_V0: return state->v0;
+	case XGPU_REGISTER_V1: return state->v1;
+	case XGPU_REGISTER_T0: return state->t[0];
+	case XGPU_REGISTER_T1: return state->t[1];
+	case XGPU_REGISTER_T2: return state->t[2];
+	case XGPU_REGISTER_T3: return state->t[3];
+	case XGPU_REGISTER_R0: return state->r0;
+	case XGPU_REGISTER_R1: return state->r1;
+	case XGPU_REGISTER_V1R0_SUM: return stage < 0 && v1r0_sum ? v1r0_sum : state->zero4;
+	case XGPU_REGISTER_EF_PRODUCT: return stage < 0 && ef_product ? ef_product : state->zero4;
+	default: return state->zero4;
+	}
+}
+
+/* an input's value: a vec3 (rgb) or float (alpha) */
+static unsigned int input_value(struct module *m, unsigned int source, const struct xgpu_combiner_input *input, BOOL alpha_portion)
+{
+	if (alpha_portion)
+		return extract(m, source, input->alpha ? 3 : 2);
+	if (input->alpha)
+		return splat(m, 3, extract(m, source, 3));
+	return xyz(m, source);
+}
+
+static unsigned int combiner_input(struct module *m, struct pixel_state *state, const struct xgpu_combiner_input *input,
+	BOOL alpha_portion, int stage, const struct xgpu_combiner_stage *combiner)
+{
+	int count = alpha_portion ? 1 : 3;
+	unsigned int value = input_value(m, register_value(m, state, input->reg, stage, combiner, 0, 0), input, alpha_portion);
+
+	switch (input->mapping)
+	{
+	case XGPU_MAP_UNSIGNED_IDENTITY:
+		return fmax_scalar(m, count, value, 0.0f);
+	case XGPU_MAP_UNSIGNED_INVERT:
+		return fsub(m, count, constant_splat(m, count, 1.0f), saturate(m, count, value));
+	case XGPU_MAP_EXPAND_NORMAL:
+		return fsub(m, count, fscale(m, count, fmax_scalar(m, count, value, 0.0f), constant_float(m, 2.0f)),
+			constant_splat(m, count, 1.0f));
+	case XGPU_MAP_EXPAND_NEGATE:
+		return fsub(m, count, constant_splat(m, count, 1.0f),
+			fscale(m, count, fmax_scalar(m, count, value, 0.0f), constant_float(m, 2.0f)));
+	case XGPU_MAP_HALFBIAS_NORMAL:
+		return fsub(m, count, fmax_scalar(m, count, value, 0.0f), constant_splat(m, count, 0.5f));
+	case XGPU_MAP_HALFBIAS_NEGATE:
+		return fsub(m, count, constant_splat(m, count, 0.5f), fmax_scalar(m, count, value, 0.0f));
+	case XGPU_MAP_SIGNED_IDENTITY:
+		return value;
+	default:
+		return fneg(m, count, value);
+	}
+}
+
+/* final combiner inputs only have the unsigned identity and invert mappings */
+static unsigned int final_input(struct module *m, struct pixel_state *state, const struct xgpu_combiner_input *input,
+	BOOL alpha_portion, unsigned int v1r0_sum, unsigned int ef_product)
+{
+	int count = alpha_portion ? 1 : 3;
+	unsigned int value = input_value(m, register_value(m, state, input->reg, -1, NULL, v1r0_sum, ef_product), input,
+		alpha_portion);
+
+	if (input->mapping == XGPU_MAP_UNSIGNED_INVERT)
+		return fsub(m, count, constant_splat(m, count, 1.0f), saturate(m, count, value));
+	return saturate(m, count, value);
+}
+
+static unsigned int output_mapping(struct module *m, int count, unsigned char mapping, unsigned int value)
+{
+	switch (mapping)
+	{
+	case XGPU_OUTPUT_BIAS: return fsub(m, count, value, constant_splat(m, count, 0.5f));
+	case XGPU_OUTPUT_SHIFT_LEFT_1: return fscale(m, count, value, constant_float(m, 2.0f));
+	case XGPU_OUTPUT_SHIFT_LEFT_1_BIAS:
+		return fscale(m, count, fsub(m, count, value, constant_splat(m, count, 0.5f)), constant_float(m, 2.0f));
+	case XGPU_OUTPUT_SHIFT_LEFT_2: return fscale(m, count, value, constant_float(m, 4.0f));
+	case XGPU_OUTPUT_SHIFT_RIGHT_1: return fscale(m, count, value, constant_float(m, 0.5f));
+	default: return value;
+	}
+}
+
+/* a destination register written: its rgb (a vec3) or alpha (a float) */
+static void register_write(struct module *m, struct pixel_state *state, unsigned long reg, BOOL alpha, unsigned int value)
+{
+	unsigned int *target;
+
+	switch (reg)
+	{
+	case XGPU_REGISTER_V0: target = &state->v0; break;
+	case XGPU_REGISTER_V1: target = &state->v1; break;
+	case XGPU_REGISTER_T0: target = &state->t[0]; break;
+	case XGPU_REGISTER_T1: target = &state->t[1]; break;
+	case XGPU_REGISTER_T2: target = &state->t[2]; break;
+	case XGPU_REGISTER_T3: target = &state->t[3]; break;
+	case XGPU_REGISTER_R0: target = &state->r0; break;
+	case XGPU_REGISTER_R1: target = &state->r1; break;
+	default: return;
+	}
+	if (alpha)
+	{
+		*target = op3(m, OP_COMPOSITE_INSERT, m->t_v4, value, *target, 3);
+	}
+	else
+	{
+		static const unsigned int rgb[4] = { 4, 5, 6, 3 };
+
+		*target = shuffle(m, 4, *target, value, rgb);
+	}
+}
+
+static void combiner_stage(struct module *m, struct pixel_state *state, int stage)
+{
+	const struct xgpu_pixel_program *program = state->program;
+	const struct xgpu_combiner_stage *combiner = &program->combiners[stage];
+	unsigned int ab[2], cd[2], sum[2];
+	int portion;
+
+	for (portion = 0; portion < 2; portion++)
+	{
+		const struct xgpu_combiner_portion *part = &combiner->portions[portion];
+		BOOL alpha = portion == 1;
+		int count = alpha ? 1 : 3;
+		unsigned int a, b, c, d;
+
+		a = combiner_input(m, state, &part->inputs[0], alpha, stage, combiner);
+		b = combiner_input(m, state, &part->inputs[1], alpha, stage, combiner);
+		c = combiner_input(m, state, &part->inputs[2], alpha, stage, combiner);
+		d = combiner_input(m, state, &part->inputs[3], alpha, stage, combiner);
+		ab[portion] = part->ab_dot && !alpha ? splat(m, 3, fdot(m, a, b)) : fmul(m, count, a, b);
+		cd[portion] = part->cd_dot && !alpha ? splat(m, 3, fdot(m, c, d)) : fmul(m, count, c, d);
+		if (part->mux)
+		{
+			unsigned int r0a = extract(m, state->r0, 3), condition;
+
+			if (program->mux_msb)
+			{
+				condition = compare(m, OP_F_ORD_GREATER_THAN_EQUAL, r0a, constant_float(m, 0.5f));
+			}
+			else
+			{
+				unsigned int bits = op1(m, OP_CONVERT_F_TO_S, m->t_int,
+					fadd(m, 1, fmul(m, 1, r0a, constant_float(m, 255.0f)), constant_float(m, 0.5f)));
+
+				condition = op2(m, OP_I_NOT_EQUAL, m->t_bool, op2(m, OP_BITWISE_AND, m->t_int, bits, constant_int(m, 1)),
+					constant_int(m, 0));
+			}
+			sum[portion] = select_n(m, count, condition, cd[portion], ab[portion]);
+		}
+		else
+		{
+			sum[portion] = fadd(m, count, ab[portion], cd[portion]);
+		}
+		ab[portion] = fclamp(m, count, output_mapping(m, count, part->output_mapping, ab[portion]), -1.0f, 1.0f);
+		cd[portion] = fclamp(m, count, output_mapping(m, count, part->output_mapping, cd[portion]), -1.0f, 1.0f);
+		sum[portion] = fclamp(m, count, output_mapping(m, count, part->output_mapping, sum[portion]), -1.0f, 1.0f);
+	}
+
+	/* write back only after both portions have read their inputs */
+	for (portion = 0; portion < 2; portion++)
+	{
+		const struct xgpu_combiner_portion *part = &combiner->portions[portion];
+		BOOL alpha = portion == 1;
+
+		if (part->ab != XGPU_REGISTER_ZERO)
+		{
+			register_write(m, state, part->ab, alpha, ab[portion]);
+			if (!alpha && part->ab_blue_to_alpha)
+				register_write(m, state, part->ab, TRUE, extract(m, ab[0], 2));
+		}
+		if (part->cd != XGPU_REGISTER_ZERO)
+		{
+			register_write(m, state, part->cd, alpha, cd[portion]);
+			if (!alpha && part->cd_blue_to_alpha)
+				register_write(m, state, part->cd, TRUE, extract(m, cd[0], 2));
+		}
+		if (part->sum != XGPU_REGISTER_ZERO)
+			register_write(m, state, part->sum, alpha, sum[portion]);
+	}
+}
+
+/* ---------- per-pixel model lighting (xgpu_glsl.c model_lighting) */
+
+static unsigned int model_lighting(struct module *m, struct pixel_state *state, BOOL point_lights, BOOL dynamic_lights)
+{
+	unsigned int world_normal = pixel_input(m, state, state->in_world_normal, m->t_v4);
+	unsigned int normal = xyz(m, world_normal), n, facing, light;
+	int index;
+
+	/* n = xWorldNormal.xyz * (xWorldNormal.w * inversesqrt(max(dot(...), 1.0e-24))) */
+	n = fscale(m, 3, normal, fmul(m, 1, extract(m, world_normal, 3), ext1(m, GLSL_INVERSE_SQRT, m->t_float,
+		fmax_scalar(m, 1, fdot(m, normal, normal), (float)1.0e-24))));
+	facing = fdot(m, n, fneg(m, 3, xyz(m, uniform(m, U_MODEL_LIGHTS, 7))));
+	/* light = ml[11].xyz + max(max(facing, -facing * ml[0].z), 0.0) * ml[8].xyz + max(dot(n, -ml[9].xyz), 0.0) * ml[10].xyz */
+	light = fadd(m, 3, fadd(m, 3, xyz(m, uniform(m, U_MODEL_LIGHTS, 11)),
+		fscale(m, 3, xyz(m, uniform(m, U_MODEL_LIGHTS, 8)), fmax_scalar(m, 1, ext2(m, GLSL_F_MAX, m->t_float, facing,
+		fmul(m, 1, fneg(m, 1, facing), extract(m, uniform(m, U_MODEL_LIGHTS, 0), 2))), 0.0f))),
+		fscale(m, 3, xyz(m, uniform(m, U_MODEL_LIGHTS, 10)), fmax_scalar(m, 1,
+		fdot(m, n, fneg(m, 3, xyz(m, uniform(m, U_MODEL_LIGHTS, 9)))), 0.0f)));
+	for (index = 0; point_lights && !dynamic_lights && index < 2; index++)
+	{
+		int first = 1 + index * 3;
+		unsigned int position = pixel_input(m, state, state->in_world_position, m->t_v3);
+		unsigned int first_light = uniform(m, U_MODEL_LIGHTS, first), cone = uniform(m, U_MODEL_LIGHTS, first + 1);
+		unsigned int color = uniform(m, U_MODEL_LIGHTS, first + 2);
+		unsigned int to_light = fsub(m, 3, xyz(m, first_light), position);
+		unsigned int distance_squared = fdot(m, to_light, to_light);
+		unsigned int l = fscale(m, 3, to_light, ext1(m, GLSL_INVERSE_SQRT, m->t_float,
+			fmax_scalar(m, 1, distance_squared, (float)1.0e-12)));
+		unsigned int term;
+
+		/* max(1.0 - d2 * w, 0.0) * clamp(dot(l, n), 0, 1) * clamp(dot(l, -cone.xyz) * cone.w + color.w, 0, 1) * color.xyz */
+		term = fmul(m, 1, fmul(m, 1, fmax_scalar(m, 1, fsub(m, 1, constant_float(m, 1.0f),
+			fmul(m, 1, distance_squared, extract(m, first_light, 3))), 0.0f), saturate(m, 1, fdot(m, l, n))),
+			saturate(m, 1, fadd(m, 1, fmul(m, 1, fdot(m, l, fneg(m, 3, xyz(m, cone))), extract(m, cone, 3)), extract(m, color, 3))));
+		light = fadd(m, 3, light, fscale(m, 3, xyz(m, color), term));
+	}
+	return saturate(m, 3, light);
+}
+
+/* ---------- the enhanced dynamic lights (xgpu_glsl.c xgpu_dynamic_lights_glsl) */
+
+static void declare_dynamic_lights(struct module *m)
+{
+	unsigned int members[4], block, cells_type;
+	int member;
+
+	members[0] = block_array(m, 3);
+	for (member = 1; member < 4; member++)
+		members[member] = block_array(m, XGPU_DYNAMIC_LIGHTS_MAXIMUM);
+	block = type_struct(m, 4, members);
+	decorate(m, block, DECORATION_BLOCK, 0, NULL);
+	member_decorate(m, block, 0, DECORATION_OFFSET, (unsigned int)offsetof(struct xgpu_dynamic_lights_block, grid));
+	member_decorate(m, block, 1, DECORATION_OFFSET, (unsigned int)offsetof(struct xgpu_dynamic_lights_block, position));
+	member_decorate(m, block, 2, DECORATION_OFFSET, (unsigned int)offsetof(struct xgpu_dynamic_lights_block, color));
+	member_decorate(m, block, 3, DECORATION_OFFSET, (unsigned int)offsetof(struct xgpu_dynamic_lights_block, cone));
+	name(m, block, "dynamic_lights_block");
+	m->dynamic_lights = variable(m, block, STORAGE_UNIFORM, "dynamic_lights");
+	decorate1(m, m->dynamic_lights, DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_DRAW);
+	decorate1(m, m->dynamic_lights, DECORATION_BINDING, XGPU_SPIRV_BINDING_DYNAMIC_LIGHTS);
+	cells_type = type_sampled_image(m, DIM_3D, FALSE, TRUE, TRUE);
+	m->dynamic_light_cells = variable(m, cells_type, STORAGE_UNIFORM_CONSTANT, "dynamic_light_cells");
+	decorate1(m, m->dynamic_light_cells, DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_DRAW);
+	decorate1(m, m->dynamic_light_cells, DECORATION_BINDING, XGPU_SPIRV_BINDING_DYNAMIC_LIGHT_CELLS);
+}
+
+/* an element of the block's member (0 grid, 1 position, 2 color, 3 cone):
+a constant index or an int value */
+static unsigned int dynamic_light(struct module *m, int member, unsigned int index_id)
+{
+	unsigned int operands[3], pointer;
+
+	operands[0] = m->dynamic_lights;
+	operands[1] = constant_int(m, member);
+	operands[2] = index_id;
+	pointer = op(m, OP_ACCESS_CHAIN, type_pointer(m, STORAGE_UNIFORM, m->t_v4), 3, operands);
+	return load(m, m->t_v4, pointer);
+}
+
+/* dynamic_light_sum(p, n, surface_normal, environment): the lights of the
+pixel's cell, summed; its loops are SPIR-V's structured loops, its values
+kept in the function's variables */
+static unsigned int dynamic_light_sum(struct module *m, struct pixel_state *state, unsigned int p, unsigned int n,
+	unsigned int surface_normal, BOOL environment)
+{
+	unsigned int grid0 = dynamic_light(m, 0, constant_int(m, 0)), grid1 = dynamic_light(m, 0, constant_int(m, 1));
+	unsigned int offset, cell, mask, cell_index, operands[4];
+	unsigned int sum_variable, word_variable, bits_variable;
+	unsigned int outer_header, outer_condition, outer_body, outer_continue, outer_merge;
+	unsigned int inner_header, inner_condition, inner_body, inner_continue, inner_merge;
+	unsigned int word, bits, light, position, to_light, distance_squared, x2, l, window, core, falloff, facing;
+	unsigned int cone, color, spot, grid2, w;
+
+	/* cell = sign(offset) * log2(1.0 + abs(offset) * grid[1].w) * grid[1].xyz + vec3(16.0, 16.0, 8.0) */
+	offset = fsub(m, 3, p, xyz(m, grid0));
+	cell = fadd(m, 3, fmul(m, 3, fmul(m, 3, ext1(m, GLSL_F_SIGN, m->t_v3, offset),
+		ext1(m, GLSL_LOG2, m->t_v3, fadd(m, 3, constant_splat(m, 3, 1.0f),
+		fscale(m, 3, ext1(m, GLSL_F_ABS, m->t_v3, offset), extract(m, grid1, 3))))), xyz(m, grid1)),
+		constant_vector(m, 3, (const float[]){ (float)(XGPU_DYNAMIC_LIGHTS_GRID_X / 2), (float)(XGPU_DYNAMIC_LIGHTS_GRID_Y / 2),
+		(float)(XGPU_DYNAMIC_LIGHTS_GRID_Z / 2) }));
+	cell_index = ext3(m, GLSL_S_CLAMP, m->t_iv3, op1(m, OP_CONVERT_F_TO_S, m->t_iv3, ext1(m, GLSL_FLOOR, m->t_v3, cell)),
+		op(m, OP_COMPOSITE_CONSTRUCT, m->t_iv3, 3, (unsigned int[]){ constant_int(m, 0), constant_int(m, 0), constant_int(m, 0) }),
+		op(m, OP_COMPOSITE_CONSTRUCT, m->t_iv3, 3, (unsigned int[]){ constant_int(m, XGPU_DYNAMIC_LIGHTS_GRID_X - 1),
+		constant_int(m, XGPU_DYNAMIC_LIGHTS_GRID_Y - 1), constant_int(m, XGPU_DYNAMIC_LIGHTS_GRID_Z - 1) }));
+	{
+		unsigned int sampled = load(m, type_sampled_image(m, DIM_3D, FALSE, TRUE, TRUE), m->dynamic_light_cells);
+		unsigned int image = op(m, OP_IMAGE, type_sampled_image(m, DIM_3D, FALSE, TRUE, FALSE), 1, &sampled);
+
+		operands[0] = image;
+		operands[1] = cell_index;
+		operands[2] = IMAGE_OPERANDS_LOD;
+		operands[3] = constant_int(m, 0);
+		mask = op(m, OP_IMAGE_FETCH, m->t_uv4, 4, operands);
+	}
+	grid2 = dynamic_light(m, 0, constant_int(m, 2));
+
+	sum_variable = local(m, &state->locals, m->t_v3);
+	word_variable = local(m, &state->locals, m->t_int);
+	bits_variable = local(m, &state->locals, m->t_uint);
+	store(m, sum_variable, constant_splat(m, 3, 0.0f));
+	store(m, word_variable, constant_int(m, 0));
+
+	outer_header = id_new(m);
+	outer_condition = id_new(m);
+	outer_body = id_new(m);
+	outer_continue = id_new(m);
+	outer_merge = id_new(m);
+	branch(m, outer_header);
+	label_at(m, outer_header);
+	operands[0] = outer_merge;
+	operands[1] = outer_continue;
+	operands[2] = 0;
+	op_void(m, OP_LOOP_MERGE, 3, operands);
+	branch(m, outer_condition);
+	label_at(m, outer_condition);
+	word = load(m, m->t_int, word_variable);
+	branch_conditional(m, op2(m, OP_S_LESS_THAN, m->t_bool, word, constant_int(m, 4)), outer_body, outer_merge);
+	label_at(m, outer_body);
+	store(m, bits_variable, op2(m, OP_VECTOR_EXTRACT_DYNAMIC, m->t_uint, mask, word));
+
+	inner_header = id_new(m);
+	inner_condition = id_new(m);
+	inner_body = id_new(m);
+	inner_continue = id_new(m);
+	inner_merge = id_new(m);
+	branch(m, inner_header);
+	label_at(m, inner_header);
+	operands[0] = inner_merge;
+	operands[1] = inner_continue;
+	operands[2] = 0;
+	op_void(m, OP_LOOP_MERGE, 3, operands);
+	branch(m, inner_condition);
+	label_at(m, inner_condition);
+	bits = load(m, m->t_uint, bits_variable);
+	branch_conditional(m, op2(m, OP_I_NOT_EQUAL, m->t_bool, bits, constant_uint(m, 0)), inner_body, inner_merge);
+	label_at(m, inner_body);
+	/* light = word * 32 + findLSB(bits); bits &= bits - 1u */
+	light = op2(m, OP_I_ADD, m->t_int, op2(m, OP_I_MUL, m->t_int, word, constant_int(m, 32)),
+		ext1(m, GLSL_FIND_I_LSB, m->t_int, bits));
+	store(m, bits_variable, op2(m, OP_BITWISE_AND, m->t_uint, bits, op2(m, OP_I_SUB, m->t_uint, bits, constant_uint(m, 1))));
+	position = dynamic_light(m, 1, light);
+	w = extract(m, position, 3);
+	if (environment)
+	{
+		unsigned int skip = id_new(m), condition = compare(m, OP_F_ORD_LESS_THAN, w, constant_float(m, 0.0f));
+
+		/* if (environment && position.w < 0.0) continue; */
+		selection_merge(m, skip);
+		branch_conditional(m, condition, inner_continue, skip);
+		label_at(m, skip);
+	}
+	to_light = fsub(m, 3, xyz(m, position), p);
+	distance_squared = fdot(m, to_light, to_light);
+	x2 = fmul(m, 1, fmul(m, 1, distance_squared, w), w);
+	{
+		unsigned int skip = id_new(m), condition = compare(m, OP_F_ORD_GREATER_THAN_EQUAL, x2, constant_float(m, 1.0f));
+
+		/* if (x2 >= 1.0) continue; */
+		selection_merge(m, skip);
+		branch_conditional(m, condition, inner_continue, skip);
+		label_at(m, skip);
+	}
+	l = fscale(m, 3, to_light, ext1(m, GLSL_INVERSE_SQRT, m->t_float, fmax_scalar(m, 1, distance_squared, (float)1.0e-8)));
+	window = fsub(m, 1, constant_float(m, 1.0f), fmul(m, 1, x2, x2));
+	core = fmax_scalar(m, 1, fmul(m, 1, fmul(m, 1, extract(m, grid2, 1), w), w),
+		(float)(1.0 / (XGPU_DYNAMIC_LIGHTS_CORE * XGPU_DYNAMIC_LIGHTS_CORE)));
+	falloff = fdiv(m, 1, fmul(m, 1, window, window), fadd(m, 1, constant_float(m, 1.0f), fmul(m, 1, distance_squared, core)));
+	if (environment)
+	{
+		facing = fmul(m, 1, fmax_scalar(m, 1, fdot(m, n, l), 0.0f),
+			saturate(m, 1, fadd(m, 1, fmul(m, 1, fdot(m, surface_normal, l), constant_float(m, 4.0f)), constant_float(m, 0.5f))));
+	}
+	else
+	{
+		unsigned int wrap = extract(m, grid2, 3);
+
+		facing = saturate(m, 1, fdiv(m, 1, fadd(m, 1, fdot(m, n, l), wrap), fadd(m, 1, constant_float(m, 1.0f), wrap)));
+	}
+	cone = dynamic_light(m, 3, light);
+	color = dynamic_light(m, 2, light);
+	spot = saturate(m, 1, fadd(m, 1, fmul(m, 1, fdot(m, l, fneg(m, 3, xyz(m, cone))), extract(m, cone, 3)), extract(m, color, 3)));
+	store(m, sum_variable, fadd(m, 3, load(m, m->t_v3, sum_variable),
+		fscale(m, 3, xyz(m, color), fmul(m, 1, fmul(m, 1, falloff, facing), spot))));
+	branch(m, inner_continue);
+	label_at(m, inner_continue);
+	branch(m, inner_header);
+	label_at(m, inner_merge);
+	branch(m, outer_continue);
+	label_at(m, outer_continue);
+	store(m, word_variable, op2(m, OP_I_ADD, m->t_int, load(m, m->t_int, word_variable), constant_int(m, 1)));
+	branch(m, outer_header);
+	label_at(m, outer_merge);
+	return load(m, m->t_v3, sum_variable);
+}
+
+/* dynamic_light_add(base, light): the light added to the base under the
+shoulder, in linear space */
+static unsigned int dynamic_light_add(struct module *m, unsigned int base, unsigned int light)
+{
+	unsigned int grid2 = dynamic_light(m, 0, constant_int(m, 2));
+	unsigned int brightest, had, room, gamma;
+
+	brightest = ext2(m, GLSL_F_MAX, m->t_float, extract(m, light, 0), ext2(m, GLSL_F_MAX, m->t_float, extract(m, light, 1),
+		extract(m, light, 2)));
+	light = fadd(m, 3, light, splat(m, 3, fmul(m, 1, fmax_scalar(m, 1, fsub(m, 1, brightest, constant_float(m, 1.0f)), 0.0f),
+		extract(m, grid2, 2))));
+	had = ext2(m, GLSL_POW, m->t_v3, saturate(m, 3, base), constant_splat(m, 3, 2.2f));
+	room = fmax_scalar(m, 3, fsub(m, 3, constant_splat(m, 3, 1.0f), had), (float)1.0e-3);
+	gamma = constant_splat(m, 3, (float)(1.0 / 2.2));
+	return ext2(m, GLSL_POW, m->t_v3, fadd(m, 3, had, fmul(m, 3, room, fsub(m, 3, constant_splat(m, 3, 1.0f),
+		ext1(m, GLSL_EXP, m->t_v3, fdiv(m, 3, fneg(m, 3, light), room))))), gamma);
+}
+
+/* ---------- the whole pixel shader */
+
+static unsigned int comparison_opcode(unsigned long function)
+{
+	switch (function)
+	{
+	case D3DCMP_LESS: return OP_F_ORD_LESS_THAN;
+	case D3DCMP_EQUAL: return OP_F_ORD_EQUAL;
+	case D3DCMP_LESSEQUAL: return OP_F_ORD_LESS_THAN_EQUAL;
+	case D3DCMP_GREATER: return OP_F_ORD_GREATER_THAN;
+	case D3DCMP_NOTEQUAL: return OP_F_UNORD_NOT_EQUAL;
+	case D3DCMP_GREATEREQUAL: return OP_F_ORD_GREATER_THAN_EQUAL;
+	default: return 0;
+	}
+}
+
+/* a stage that samples its texture */
+static BOOL stage_samples(unsigned char mode)
+{
+	switch (mode)
+	{
+	case XGPU_TEXTURE_PROJECT2D:
+	case XGPU_TEXTURE_PROJECT3D:
+	case XGPU_TEXTURE_CUBEMAP:
+	case XGPU_TEXTURE_BUMPENVMAP:
+	case XGPU_TEXTURE_BUMPENVMAP_LUMINANCE:
+	case XGPU_TEXTURE_DOT_ST:
+	case XGPU_TEXTURE_DOT_REFLECT_DIFFUSE:
+	case XGPU_TEXTURE_DOT_REFLECT_SPECULAR:
+	case XGPU_TEXTURE_DOT_REFLECT_SPECULAR_CONSTANT:
+	case XGPU_TEXTURE_DOT_STR_3D:
+	case XGPU_TEXTURE_DOT_STR_CUBE:
+	case XGPU_TEXTURE_DEPENDENT_AR:
+	case XGPU_TEXTURE_DEPENDENT_GB:
+		return TRUE;
+	default:
+		return FALSE;
+	}
+}
+
+BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_spirv_options *options,
+	struct xgpu_spirv_module *module)
+{
+	static const char *const coordinate_names[] = { "xT0", "xT1", "xT2", "xT3" };
+	static const char *const texture_names[] = { "tex0", "tex1", "tex2", "tex3" };
+	const struct xgpu_final_combiner *final = &program->final;
+	struct module m;
+	struct pixel_state state;
+	BOOL environment = program->dynamic_lights == XGPU_DYNAMIC_LIGHTS_ENVIRONMENT;
+	BOOL world_position = (program->per_pixel_lighting && (program->per_pixel_lighting == 2 ||
+		program->dynamic_lights == XGPU_DYNAMIC_LIGHTS_MODEL)) || environment;
+	BOOL count_samples = program->count_samples && options->count_samples;
+	unsigned int comparison = program->alpha_test ? comparison_opcode(program->alpha_test) : 0;
+	BOOL sample_mask = comparison && program->alpha_test_samples && program->alpha_test != D3DCMP_EQUAL &&
+		program->alpha_test != D3DCMP_NOTEQUAL;
+	unsigned int main_id, color_out, sample_mask_out = 0, result, dynamic_light_bump = 0;
+	int stage;
+
+	memset(&state, 0, sizeof(state));
+	state.program = program;
+	state.options = options;
+	module_begin(&m, EXECUTION_MODEL_FRAGMENT);
+	declare_uniforms(&m);
+	if (program->dynamic_lights)
+		declare_dynamic_lights(&m);
+	for (stage = 0; stage < 4; stage++)
+	{
+		unsigned char sampler = program->stages[stage].sampler;
+
+		if (!stage_samples(program->stages[stage].mode))
+			continue;
+		state.textures[stage] = variable(&m, type_sampled_image(&m, sampler == _xgpu_sampler_3d ? DIM_3D :
+			sampler == _xgpu_sampler_cube ? DIM_CUBE : DIM_2D, sampler == _xgpu_sampler_2d_layered, FALSE, TRUE),
+			STORAGE_UNIFORM_CONSTANT, texture_names[stage]);
+		decorate1(&m, state.textures[stage], DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_TEXTURES);
+		decorate1(&m, state.textures[stage], DECORATION_BINDING, stage);
+	}
+	if (count_samples)
+	{
+		unsigned int block = type_struct(&m, 1, &m.t_uint);
+
+		decorate(&m, block, DECORATION_BLOCK, 0, NULL);
+		member_decorate(&m, block, 0, DECORATION_OFFSET, 0);
+		name(&m, block, "visible_samples_block");
+		m.samples = variable(&m, block, STORAGE_STORAGE_BUFFER, "visible_samples");
+		decorate1(&m, m.samples, DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_DRAW);
+		decorate1(&m, m.samples, DECORATION_BINDING, XGPU_SPIRV_BINDING_SAMPLES);
+	}
+
+	/* the inputs */
+	state.in_d0 = interface_variable(&m, m.t_v4, STORAGE_INPUT, XGPU_SPIRV_LOCATION_D0, "xD0");
+	state.in_d1 = interface_variable(&m, m.t_v4, STORAGE_INPUT, XGPU_SPIRV_LOCATION_D1, "xD1");
+	for (stage = 0; stage < 4; stage++)
+		state.in_t[stage] = interface_variable(&m, m.t_v4, STORAGE_INPUT, XGPU_SPIRV_LOCATION_T0 + stage, coordinate_names[stage]);
+	state.in_fog = interface_variable(&m, m.t_float, STORAGE_INPUT, XGPU_SPIRV_LOCATION_FOG, "xFog");
+	if (program->per_pixel_lighting || environment)
+		state.in_world_normal = interface_variable(&m, m.t_v4, STORAGE_INPUT, XGPU_SPIRV_LOCATION_WORLD_NORMAL, "xWorldNormal");
+	if (world_position)
+		state.in_world_position = interface_variable(&m, m.t_v3, STORAGE_INPUT, XGPU_SPIRV_LOCATION_WORLD_POSITION, "xWorldPosition");
+	if (environment)
+	{
+		state.in_world_binormal = interface_variable(&m, m.t_v3, STORAGE_INPUT, XGPU_SPIRV_LOCATION_WORLD_BINORMAL, "xWorldBinormal");
+		state.in_world_tangent = interface_variable(&m, m.t_v3, STORAGE_INPUT, XGPU_SPIRV_LOCATION_WORLD_TANGENT, "xWorldTangent");
+	}
+	color_out = interface_variable(&m, m.t_v4, STORAGE_OUTPUT, 0, "fragment_color");
+	if (sample_mask)
+	{
+		unsigned int operands[3], array = id_new(&m);
+
+		operands[0] = array;
+		operands[1] = m.t_int;
+		operands[2] = constant_uint(&m, 1);
+		instruction(&m, SECTION_GLOBALS, OP_TYPE_ARRAY, 3, operands);
+		sample_mask_out = variable(&m, array, STORAGE_OUTPUT, "gl_SampleMask");
+		decorate1(&m, sample_mask_out, DECORATION_BUILT_IN, BUILT_IN_SAMPLE_MASK);
+	}
+
+	main_id = function_begin(&m);
+	state.zero4 = constant_splat(&m, 4, 0.0f);
+	state.v0 = pixel_input(&m, &state, state.in_d0, m.t_v4);
+	state.v1 = pixel_input(&m, &state, state.in_d1, m.t_v4);
+	for (stage = 0; stage < 4; stage++)
+	{
+		state.t[stage] = state.zero4;
+		state.dots[stage] = constant_float(&m, 0.0f);
+	}
+	if (program->per_pixel_lighting && program->dynamic_lights == XGPU_DYNAMIC_LIGHTS_MODEL)
+	{
+		unsigned int world_normal = pixel_input(&m, &state, state.in_world_normal, m.t_v4), normal = xyz(&m, world_normal);
+		unsigned int n = fscale(&m, 3, normal, ext1(&m, GLSL_INVERSE_SQRT, m.t_float,
+			fmax_scalar(&m, 1, fdot(&m, normal, normal), (float)1.0e-24)));
+		unsigned int lit = model_lighting(&m, &state, program->per_pixel_lighting == 2, TRUE);
+		unsigned int sum = dynamic_light_sum(&m, &state, pixel_input(&m, &state, state.in_world_position, m.t_v3), n, n, FALSE);
+		static const unsigned int rgb[4] = { 4, 5, 6, 3 };
+
+		state.v0 = shuffle(&m, 4, state.v0, dynamic_light_add(&m, lit, sum), rgb);
+	}
+	else if (program->per_pixel_lighting)
+	{
+		static const unsigned int rgb[4] = { 4, 5, 6, 3 };
+
+		state.v0 = shuffle(&m, 4, state.v0, model_lighting(&m, &state, program->per_pixel_lighting == 2, FALSE), rgb);
+	}
+
+	for (stage = 0; stage < 4; stage++)
+		texture_stage(&m, &state, stage);
+	/* (the bump map's texel, which the combiners may overwrite: the enhanced
+	dynamic lights read it after them) */
+	if (environment)
+		dynamic_light_bump = xyz(&m, state.t[0]);
+
+	state.r0 = vec4_of(&m, constant_splat(&m, 3, 0.0f), extract(&m, state.t[0], 3));
+	state.r1 = state.zero4;
+	for (stage = 0; stage < (int)program->combiner_count && stage < 8; stage++)
+		combiner_stage(&m, &state, stage);
+
+	if (!final->present)
+	{
+		result = state.r0;
+	}
+	else
+	{
+		unsigned int ef_product, v1r0_sum, fa, fb, fc, fd, fg;
+
+		ef_product = vec4_of(&m, fmul(&m, 3, final_input(&m, &state, &final->inputs[4], FALSE, 0, 0),
+			final_input(&m, &state, &final->inputs[5], FALSE, 0, 0)), constant_float(&m, 0.0f));
+		v1r0_sum = fadd(&m, 3, final->invert_v1 ? fsub(&m, 3, constant_splat(&m, 3, 1.0f), saturate(&m, 3, xyz(&m, state.v1))) :
+			saturate(&m, 3, xyz(&m, state.v1)), final->invert_r0 ? fsub(&m, 3, constant_splat(&m, 3, 1.0f),
+			saturate(&m, 3, xyz(&m, state.r0))) : saturate(&m, 3, xyz(&m, state.r0)));
+		v1r0_sum = vec4_of(&m, v1r0_sum, constant_float(&m, 0.0f));
+		if (final->clamp_sum)
+			v1r0_sum = saturate(&m, 4, v1r0_sum);
+		fa = final_input(&m, &state, &final->inputs[0], FALSE, v1r0_sum, ef_product);
+		fb = final_input(&m, &state, &final->inputs[1], FALSE, v1r0_sum, ef_product);
+		fc = final_input(&m, &state, &final->inputs[2], FALSE, v1r0_sum, ef_product);
+		fd = final_input(&m, &state, &final->inputs[3], FALSE, v1r0_sum, ef_product);
+		fg = final_input(&m, &state, &final->inputs[6], TRUE, v1r0_sum, ef_product);
+		/* vec4(fA * fB + (1.0 - fA) * fC + fD, fG) */
+		result = vec4_of(&m, fadd(&m, 3, fadd(&m, 3, fmul(&m, 3, fa, fb),
+			fmul(&m, 3, fsub(&m, 3, constant_splat(&m, 3, 1.0f), fa), fc)), fd), fg);
+	}
+
+	if (environment)
+	{
+		/* the lightmap pass's light, before the textures multiply it
+		(xgpu_glsl.c) */
+		unsigned int surface_normal = ext1(&m, GLSL_NORMALIZE, m.t_v3, xyz(&m, pixel_input(&m, &state, state.in_world_normal, m.t_v4)));
+		unsigned int bump, n, sum, lit;
+		static const unsigned int rgb[4] = { 4, 5, 6, 3 };
+
+		if (program->stages[0].sampler == _xgpu_sampler_2d)
+			bump = fsub(&m, 3, fscale(&m, 3, dynamic_light_bump, constant_float(&m, 2.0f)), constant_splat(&m, 3, 1.0f));
+		else
+			bump = constant_vector(&m, 3, (const float[]){ 0.0f, 0.0f, 1.0f });
+		n = ext1(&m, GLSL_NORMALIZE, m.t_v3, fadd(&m, 3, fadd(&m, 3,
+			fscale(&m, 3, pixel_input(&m, &state, state.in_world_tangent, m.t_v3), extract(&m, bump, 0)),
+			fscale(&m, 3, pixel_input(&m, &state, state.in_world_binormal, m.t_v3), extract(&m, bump, 1))),
+			fscale(&m, 3, surface_normal, fmax_scalar(&m, 1, extract(&m, bump, 2), 0.05f))));
+		sum = dynamic_light_sum(&m, &state, pixel_input(&m, &state, state.in_world_position, m.t_v3), n, surface_normal, TRUE);
+		lit = dynamic_light_add(&m, xyz(&m, result), fmul(&m, 3, sum, ext2(&m, GLSL_POW, m.t_v3,
+			xyz(&m, uniform(&m, U_PS_FINAL_C0, -1)), constant_splat(&m, 3, 2.2f))));
+		result = shuffle(&m, 4, result, lit, rgb);
+	}
+	if (program->coverage_alpha)
+	{
+		result = op3(&m, OP_COMPOSITE_INSERT, m.t_v4, ext3(&m, GLSL_F_MIX, m.t_float, constant_float(&m, 1.0f),
+			extract(&m, result, 3), extract(&m, state.t[0], 1)), result, 3);
+	}
+	if (program->alpha_test)
+	{
+		unsigned int alpha = saturate(&m, 1, extract(&m, result, 3));
+
+		if (program->alpha_test == D3DCMP_NEVER)
+		{
+			discard_if(&m, constant_bool(&m, TRUE));
+		}
+		else if (sample_mask)
+		{
+			/* multisampled: the samples covered as alpha passes the reference
+			over the pixel (xgpu_glsl.c) */
+			unsigned int test_alpha = fmul(&m, 1, alpha, constant_float(&m, 255.0f));
+			unsigned int difference = fsub(&m, 1, test_alpha, uniform(&m, U_ALPHA_REFERENCE, -1));
+			unsigned int coverage, samples, operands[2];
+
+			if (comparison == OP_F_ORD_LESS_THAN || comparison == OP_F_ORD_LESS_THAN_EQUAL)
+				difference = fneg(&m, 1, difference);
+			coverage = saturate(&m, 1, fadd(&m, 1, fdiv(&m, 1, difference,
+				fmax_scalar(&m, 1, op1(&m, OP_FWIDTH, m.t_float, test_alpha), 1.0f)), constant_float(&m, 0.5f)));
+			samples = op1(&m, OP_CONVERT_F_TO_S, m.t_int, fadd(&m, 1, fmul(&m, 1, coverage,
+				constant_float(&m, (float)program->alpha_test_samples)), constant_float(&m, 0.5f)));
+			discard_if(&m, op2(&m, OP_I_EQUAL, m.t_bool, samples, constant_int(&m, 0)));
+			operands[0] = sample_mask_out;
+			operands[1] = constant_int(&m, 0);
+			store(&m, op(&m, OP_ACCESS_CHAIN, type_pointer(&m, STORAGE_OUTPUT, m.t_int), 2, operands),
+				op2(&m, OP_I_SUB, m.t_int, op2(&m, OP_SHIFT_LEFT_LOGICAL, m.t_int, constant_int(&m, 1), samples),
+				constant_int(&m, 1)));
+		}
+		else if (comparison)
+		{
+			/* if (!(floor(clamp(result.a, 0.0, 1.0) * 255.0 + 0.5) OP alpha_reference)) discard; */
+			unsigned int value = ext1(&m, GLSL_FLOOR, m.t_float, fadd(&m, 1, fmul(&m, 1, alpha, constant_float(&m, 255.0f)),
+				constant_float(&m, 0.5f)));
+
+			discard_if(&m, op1(&m, OP_LOGICAL_NOT, m.t_bool, compare(&m, comparison, value,
+				uniform(&m, U_ALPHA_REFERENCE, -1))));
+		}
+	}
+	if (options->debug_texture0)
+		result = vec4_of(&m, xyz(&m, state.t[0]), constant_float(&m, 1.0f));
+	if (options->debug_flat)
+	{
+		unsigned int d0 = pixel_input(&m, &state, state.in_d0, m.t_v4);
+
+		result = select_n(&m, 4, compare(&m, OP_F_ORD_GREATER_THAN, extract(&m, d0, 3), constant_float(&m, 0.0f)),
+			vec4_of(&m, xyz(&m, d0), constant_float(&m, 1.0f)), constant_v4(&m, 1.0f, 0.0f, 1.0f, 1.0f));
+	}
+	if (count_samples)
+	{
+		/* samples that pass the depth and stencil tests, as the NV2A's
+		occlusion counter, where the backend counts in the shader */
+		unsigned int operands[4], pointer;
+
+		operands[0] = m.samples;
+		operands[1] = constant_int(&m, 0);
+		pointer = op(&m, OP_ACCESS_CHAIN, type_pointer(&m, STORAGE_STORAGE_BUFFER, m.t_uint), 2, operands);
+		operands[0] = pointer;
+		operands[1] = constant_uint(&m, SCOPE_DEVICE);
+		operands[2] = constant_uint(&m, 0);
+		operands[3] = constant_uint(&m, 1);
+		op(&m, OP_ATOMIC_I_ADD, m.t_uint, 4, operands);
+	}
+	result = saturate(&m, 4, result);
+	if (program->source_blend)
+	{
+		unsigned int blend = uniform(&m, U_BLEND_CONSTANT, -1), factor;
+
+		switch ((program->source_blend - 1) & 3)
+		{
+		case 0: factor = blend; break;
+		case 1: factor = fsub(&m, 4, constant_splat(&m, 4, 1.0f), blend); break;
+		case 2: factor = splat(&m, 4, extract(&m, blend, 3)); break;
+		default: factor = splat(&m, 4, fsub(&m, 1, constant_float(&m, 1.0f), extract(&m, blend, 3))); break;
+		}
+		result = fmul(&m, 4, result, factor);
+	}
+	store(&m, color_out, result);
+	if (count_samples)
+	{
+		unsigned int operands[2];
+
+		operands[0] = main_id;
+		operands[1] = EXECUTION_MODE_EARLY_FRAGMENT_TESTS;
+		instruction(&m, SECTION_EXECUTION_MODES, OP_EXECUTION_MODE, 2, operands);
+	}
+	if (!module_end(&m, EXECUTION_MODEL_FRAGMENT, main_id, &state.locals, module))
+	{
+		free(state.locals.words);
+		return FALSE;
+	}
+	free(state.locals.words);
+	return TRUE;
+}
