@@ -165,7 +165,11 @@ SHA-256) and keeps clang, `ld.lld` and the LLVM tools that the builds use
 (approximately 700 MB) in `~/.cache/opence` (on macOS
 `~/Library/Caches/opence`, or the folder of `--guest-llvm-cache`). The
 version and the checksums are in `tools/guest_toolchain.py`. The hosts
-use the compiler of the system.
+use the compiler of the system. On Linux, the LLVM tools need glibc 2.34
+or later, libstdc++ and zlib; LLVM's `ld.lld` is also linked to
+libxml2.so.2, for Windows links only, which some distributions (Arch,
+CachyOS) no longer have, so a small stand-in for it is written beside the
+tools (`tools/library_stand_in.py`).
 
 A compiler that you give for a build (`--linux-arm64-cc`,
 `--linux-x86-64-cc`, `--android-guest-cc`, `--macos-cc`,

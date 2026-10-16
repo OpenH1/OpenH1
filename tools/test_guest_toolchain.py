@@ -1,8 +1,12 @@
 """Tests of the guest builds' pinned LLVM (tools/guest_toolchain.py): which
 archive each computer takes, what is kept of it and how, and when the
-pinned LLVM is not used."""
+pinned LLVM is not used, and the stand-ins for the libraries its tools
+do not use (tools/library_stand_in.py)."""
 import hashlib
 import io
+import platform
+import shutil
+import subprocess
 import sys
 import tarfile
 from pathlib import Path
@@ -14,7 +18,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from tools import guest_toolchain  # noqa: E402
+from tools import library_stand_in  # noqa: E402
 from tools.guest_toolchain import LLVM_MAJOR, LLVM_VERSION  # noqa: E402
+from tools.library_stand_in import Import  # noqa: E402
 
 TOP = f"LLVM-{LLVM_VERSION}-Linux-X64"
 
@@ -138,3 +144,93 @@ def test_pinned_is_the_default_in_the_cache_asked_for(tmp_path, monkeypatch):
     assert asked == [tmp_path / "c"]
     guest_toolchain.guest_toolchain(SimpleNamespace(guest_llvm="pinned"))
     assert asked[-1] == guest_toolchain.default_cache()
+
+
+ELF_HOST = sys.platform.startswith("linux") and platform.machine() in ("x86_64", "aarch64")
+LIBXML2_IMPORTS = [Import("xmlReadMemory", "LIBXML2_2.6.0", True), Import("xmlFreeDoc", "LIBXML2_2.4.30", True),
+                   Import("xmlFree", "LIBXML2_2.4.30", False)]
+
+
+def host_machine():
+    return {"x86_64": library_stand_in.EM_X86_64, "aarch64": library_stand_in.EM_AARCH64}[platform.machine()]
+
+
+def test_a_stand_in_is_the_same_bytes_each_time():
+    for machine in (library_stand_in.EM_X86_64, library_stand_in.EM_AARCH64):
+        first = library_stand_in.stand_in("libxml2.so.2", machine, LIBXML2_IMPORTS, "stand-in")
+        assert first == library_stand_in.stand_in("libxml2.so.2", machine, LIBXML2_IMPORTS[::-1], "stand-in")
+        assert first[:4] == b"\x7fELF" and len(first) < 4096
+    with pytest.raises(ValueError, match="two versions"):
+        library_stand_in.stand_in("libxml2.so.2", library_stand_in.EM_X86_64,
+                                  [*LIBXML2_IMPORTS, Import("xmlFreeDoc", "LIBXML2_2.6.0", True)], "")
+
+
+def test_the_dependencies_are_read_from_the_program():
+    found = library_stand_in.read_dependencies(Path(sys.executable).resolve())
+    if found is None or not ELF_HOST:
+        pytest.skip("not a glibc Linux computer")
+    assert any(library.startswith("libc.so") for library in found.needed)
+    libc = next(imports for library, imports in found.imports.items() if library.startswith("libc.so"))
+    assert all(found.version.startswith("GLIBC_") for found in libc) and any(found.function for found in libc)
+    assert library_stand_in.read_dependencies(Path(__file__)) is None
+
+
+@pytest.mark.skipif(not ELF_HOST, reason="not a Linux computer of the stand-ins' processors")
+def test_the_loader_takes_a_stand_in(tmp_path):
+    library = tmp_path / "libxml2.so.2"
+    library.write_bytes(library_stand_in.stand_in("libxml2.so.2", host_machine(), LIBXML2_IMPORTS, "no libxml2"))
+    # (its object is the address of its function, its function ends the process)
+    script = ("import ctypes, sys\n"
+              f"lib = ctypes.CDLL({str(library)!r})\n"
+              "free = ctypes.c_void_p.in_dll(lib, 'xmlFree').value\n"
+              "assert free == ctypes.cast(lib.xmlReadMemory, ctypes.c_void_p).value, free\n"
+              "print('loaded', flush=True)\n"
+              "lib.xmlReadMemory()\n")
+    run = subprocess.run([sys.executable, "-I", "-c", script], capture_output=True, text=True)
+    assert (run.returncode, run.stdout, run.stderr) == (1, "loaded\n", "no libxml2\n")
+
+
+@pytest.mark.skipif(not ELF_HOST or not shutil.which("cc"), reason="no C compiler for Linux")
+def test_a_tool_runs_with_the_stand_in_written_beside_it(tmp_path):
+    """a program linked to the versions of libxml2.so.2 (as lld is, with its
+    run path) starts with the stand-in written in its lib/ folder"""
+    built = tmp_path / "built"
+    built.mkdir()
+    (built / "libxml2.so.2").write_bytes(
+        library_stand_in.stand_in("libxml2.so.2", host_machine(), LIBXML2_IMPORTS, "built against"))
+    (built / "tool.c").write_text(
+        "#include <stdio.h>\n"
+        "extern void *xmlReadMemory(void); extern void (*xmlFree)(void *);\n"
+        "int main(int argc, char **argv) {\n"
+        "    puts(\"started\"); fflush(stdout);\n"
+        "    if (argc > 1) xmlFree(0);\n"
+        "    return xmlReadMemory() != 0;\n"
+        "}\n")
+    folder = tmp_path / "llvm"
+    (folder / "bin").mkdir(parents=True)
+    tool = folder / "bin" / "lld"
+    # (-fPIC: its object taken through the GOT, as lld takes it, not copied)
+    subprocess.run(["cc", "-fPIC", "-o", tool, built / "tool.c", built / "libxml2.so.2", "-Wl,-z,now",
+                    "-Wl,--enable-new-dtags,-rpath,$ORIGIN/../lib"], check=True)
+    (folder / "bin" / "ld.lld").symlink_to("lld")
+    found = library_stand_in.read_dependencies(tool)
+    assert "libxml2.so.2" in found.needed and "$ORIGIN/../lib" in found.runpath
+    assert sorted(found.imports["libxml2.so.2"], key=str) == sorted(
+        [item for item in LIBXML2_IMPORTS if item.name in ("xmlReadMemory", "xmlFree")], key=str)
+    # (without it the tool does not start)
+    assert subprocess.run([tool], capture_output=True).returncode == 127
+    assert guest_toolchain.write_stand_ins(folder) == [folder / "lib" / "libxml2.so.2"]
+    assert guest_toolchain.write_stand_ins(folder) == []
+    message = guest_toolchain.STAND_INS["libxml2.so.2"] + "\n"
+    for arguments in ([], ["free"]):
+        run = subprocess.run([tool, *arguments], capture_output=True, text=True)
+        assert (run.returncode, run.stdout, run.stderr) == (1, "started\n", message)
+
+
+def test_the_pinned_lld_starts():
+    """the pinned LLVM's linker, when it is on the PATH (CI's guest tests)"""
+    lld = shutil.which("ld.lld")
+    if lld is None or not (Path(lld).resolve().parent.parent / guest_toolchain.COMPLETE).is_file():
+        pytest.skip("the pinned LLVM is not on the PATH")
+    run = subprocess.run([lld, "--version"], capture_output=True, text=True)
+    assert run.returncode == 0 and LLVM_VERSION in run.stdout, run.stderr

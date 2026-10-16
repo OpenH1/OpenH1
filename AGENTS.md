@@ -159,7 +159,7 @@ python tools/render_enumerate_sweep.py --data <game data>  # every map's enumera
 python -m pytest -q tools/test_host_watch_hash.py tools/test_host_units.py tools/test_check_host_imports.py tools/test_host_syscall.py  # the guests' host
 python -m pytest -q tools/test_guest_image_check.py         # the guest images' checks (x86-64)
 python -m pytest -q tools/test_guest_layout.py tools/test_linux_guest_build.py  # the guests' memory layout, the guest builds' configure
-python -m pytest -q tools/test_guest_toolchain.py         # the guests' pinned LLVM: its archives, what is kept of them
+python -m pytest -q tools/test_guest_toolchain.py         # the guests' pinned LLVM: its archives, what is kept of them, libxml2's stand-in
 python -m pytest -q tools/test_linux_package.py tools/test_install_layout.py   # the Linux release's layout
 python -m pytest -q tools/test_guest_base_register.py tools/test_host_memory_base.py  # the base register
 python -m pytest -q tools/test_macos_metal.py               # the Metal backend (ninja macos_metal_test first)

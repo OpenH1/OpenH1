@@ -12,6 +12,15 @@ tools they use, once, in a folder outside the build folder: the user's
 cache (~/.cache/opence, or ~/Library/Caches/opence on macOS) or
 --guest-llvm-cache's. The hosts keep the system's compiler.
 
+The release's Linux tools need only the C and C++ runtime libraries and
+zlib, which every Linux computer that builds the hosts has, and one more:
+lld is linked to libxml2.so.2, for lld-link's (COFF) manifests, which the
+guests' links never use and which some Linux distributions no longer have
+(Arch's is libxml2.so.16). Its lib/ folder gets a stand-in for it
+(tools/library_stand_in.py), which the tools load before the system's: so
+the same tools run on every Linux computer (with glibc 2.34 or later, the
+release's own need).
+
 --guest-llvm=system uses clang and LLVM's tools on the PATH instead (and the
 NDK's for Android, Homebrew's for macOS), and --guest-llvm=FOLDER the
 LLVM installation in FOLDER (its bin/). A build's own compiler
@@ -38,7 +47,12 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
+if __package__:
+    from . import library_stand_in
+else:  # (run as a script)
+    import library_stand_in
 
 LLVM_VERSION = "22.1.8"
 LLVM_MAJOR = LLVM_VERSION.split(".")[0]
@@ -64,6 +78,12 @@ KEPT_FILES = (
     "bin/llvm-profdata", "bin/llvm-symbolizer", "bin/llvm-nm", "bin/llvm-objcopy",
 )
 KEPT_FOLDERS = (f"lib/clang/{LLVM_MAJOR}/include/",)
+# the libraries the kept tools are linked to and do not use, which a
+# stand-in in lib/ replaces (tools/library_stand_in.py)
+STAND_INS = {
+    "libxml2.so.2": "opence: this LLVM's libxml2 is a stand-in (tools/guest_toolchain.py); "
+                    "lld-link's manifests are not supported",
+}
 # what a complete folder has, last of all (written once the rest is there)
 COMPLETE = "opence-complete"
 TRIES = 3
@@ -174,6 +194,38 @@ def unpack(archive: Path, folder: Path) -> None:
                 target.chmod(0o755 if member.mode & 0o111 else 0o644)
 
 
+def write_stand_ins(folder: Path) -> List[Path]:
+    """the stand-ins (STAND_INS) that the kept tools of folder need and its
+    lib/ lacks, written; the libraries written"""
+    imports: Dict[str, set] = {}
+    machine = 0
+    for tool in sorted((folder / "bin").iterdir()):
+        if tool.is_symlink() or not tool.is_file():
+            continue
+        found = library_stand_in.read_dependencies(tool)
+        if found is None:
+            continue
+        for library in STAND_INS:
+            if library in found.needed:
+                if "$ORIGIN/../lib" not in found.runpath:
+                    raise RuntimeError(f"{tool} does not look for {library} in its lib/ folder")
+                imports.setdefault(library, set()).update(found.imports.get(library, ()))
+                machine = found.machine
+    written = []
+    for library, symbols in sorted(imports.items()):
+        target = folder / "lib" / library
+        data = library_stand_in.stand_in(library, machine, sorted(symbols, key=str), STAND_INS[library])
+        if target.is_file() and target.read_bytes() == data:
+            continue
+        target.parent.mkdir(parents=True, exist_ok=True)
+        partial = target.with_name(target.name + ".part")
+        partial.write_bytes(data)
+        partial.chmod(0o755)
+        partial.replace(target)
+        written.append(target)
+    return written
+
+
 def fetch_llvm(cache: Path) -> Path:
     """the pinned LLVM's folder in cache, downloaded and unpacked the first
     time (configure time); raises RuntimeError if it cannot be"""
@@ -184,6 +236,8 @@ def fetch_llvm(cache: Path) -> Path:
     name, digest = found
     folder = cache / name.replace(".tar.xz", "")
     if (folder / COMPLETE).is_file():
+        # (a folder unpacked before the stand-ins gets them now)
+        write_stand_ins(folder)
         return folder
     cache.mkdir(parents=True, exist_ok=True)
     archive = cache / name
@@ -198,6 +252,7 @@ def fetch_llvm(cache: Path) -> Path:
     unpacking.mkdir()
     try:
         unpack(archive, unpacking)
+        write_stand_ins(unpacking)
         toolchain_in(unpacking)
         (unpacking / COMPLETE).write_text(f"{name} {digest}\n", encoding="utf-8")
         unpacking.rename(folder)
