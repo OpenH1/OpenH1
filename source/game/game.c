@@ -354,6 +354,9 @@ void game_tick(
 	profile_scope(game_tick_cheats_enforce_section, cheats_network_client_enforce();)
 	profile_scope(game_tick_remove_quitting_players_section, remove_quitting_players_from_game();)
 	profile_scope(game_tick_allegiance_section, game_allegiance_update();)
+	/* port: the speakers' mouths, before the units' update eases them shut
+	(game_sound.c; the sound manager moved them in the frames) */
+	game_sound_port_update_mouths();
 	profile_scope(game_tick_units_section, units_update();)
 	/* (the host's actors drive the host's units, which a client of the
 	distributed netcode has from the host: its own would fight the host's

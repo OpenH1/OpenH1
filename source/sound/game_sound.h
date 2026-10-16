@@ -109,4 +109,8 @@ boolean track_object_impulse_sound(
 
 /* ---------- public code */
 
+/* port: each tick, the speakers' mouths (the units' mouth aperture) */
+void game_sound_port_update_mouths(
+	void);
+
 #endif // __GAME_SOUND_H

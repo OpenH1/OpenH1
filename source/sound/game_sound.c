@@ -229,6 +229,144 @@ struct game_sound_globals *game_sound_globals;
 struct data_array *game_looping_sound_data;
 unsigned long combined_pas[BIT_VECTOR_SIZE_IN_LONGS(MAXIMUM_CLUSTERS_PER_STRUCTURE)];
 
+/* port: the speakers' mouths, moved in the ticks (game_sound_port_update_mouths):
+each unit's speech sound, its permutation as the game picked it and the tick
+it began. The sound manager moved them from the mixer's place in the sound,
+by the clock and the mixer, and the mouth moves the unit's nodes. */
+enum
+{
+	MAXIMUM_GAME_SOUND_MOUTHS = 32,
+};
+
+struct game_sound_mouth
+{
+	long unit_index;
+	long definition_index;
+	short pitch_range_index;
+	short permutation_index;
+	long start_time;
+};
+
+static struct game_sound_mouth game_sound_mouths[MAXIMUM_GAME_SOUND_MOUTHS];
+/* (the speakers' own seed, so that a speech sound begun between ticks, a
+network game's, moves nothing else the game picks) */
+static unsigned long game_sound_speech_seed;
+
+static void game_sound_mouths_clear(
+	void)
+{
+	short index;
+
+	for (index = 0; index < MAXIMUM_GAME_SOUND_MOUTHS; index++)
+		game_sound_mouths[index].unit_index = NONE;
+}
+
+/* the game's pick of a speech sound's permutation, given to the sound
+manager for the sound it begins next, and the speaker's mouth to move */
+static void game_sound_speech_begin(
+	long definition_index,
+	long unit_index)
+{
+	struct sound_definition *definition = sound_definition_get(definition_index);
+	struct game_sound_mouth *mouth = NULL;
+	short pitch_range_index;
+	short permutation_index;
+	short index;
+
+	if (!sound_class_get(definition->sound_class)->speech)
+		return;
+	pitch_range_index = sound_definition_find_pitch_range_by_pitch(definition, 1.f, NONE);
+	permutation_index = sound_definition_port_speech_permutation(definition, pitch_range_index,
+		&game_sound_speech_seed);
+	if (permutation_index == NONE)
+		return;
+	sound_port_next_impulse_permutation(pitch_range_index, permutation_index);
+	if (unit_index == NONE || !object_try_and_get_and_verify_type(unit_index, _object_mask_unit))
+		return;
+	/* (the unit's slot, else a free one, else the one that began first) */
+	for (index = 0; index < MAXIMUM_GAME_SOUND_MOUTHS && !mouth; index++)
+	{
+		if (game_sound_mouths[index].unit_index == unit_index)
+			mouth = &game_sound_mouths[index];
+	}
+	for (index = 0; index < MAXIMUM_GAME_SOUND_MOUTHS && !mouth; index++)
+	{
+		if (game_sound_mouths[index].unit_index == NONE)
+			mouth = &game_sound_mouths[index];
+	}
+	if (!mouth)
+	{
+		mouth = &game_sound_mouths[0];
+		for (index = 1; index < MAXIMUM_GAME_SOUND_MOUTHS; index++)
+		{
+			if (game_sound_mouths[index].start_time < mouth->start_time)
+				mouth = &game_sound_mouths[index];
+		}
+	}
+	mouth->unit_index = unit_index;
+	mouth->definition_index = definition_index;
+	mouth->pitch_range_index = pitch_range_index;
+	mouth->permutation_index = permutation_index;
+	mouth->start_time = game_time_get();
+}
+
+/* each tick: the speakers' mouths opened as their permutations' mouth data
+say for the ticks since they began (a tick each), through a linked
+permutation's next */
+void game_sound_port_update_mouths(
+	void)
+{
+	short index;
+
+	for (index = 0; index < MAXIMUM_GAME_SOUND_MOUTHS; index++)
+	{
+		struct game_sound_mouth *mouth = &game_sound_mouths[index];
+		struct sound_definition *definition;
+		struct sound_pitch_range *range;
+		struct sound_permutation *permutation = NULL;
+		short permutation_index;
+		long tick;
+
+		if (mouth->unit_index == NONE)
+			continue;
+		if (!object_try_and_get_and_verify_type(mouth->unit_index, _object_mask_unit))
+		{
+			mouth->unit_index = NONE;
+			continue;
+		}
+		definition = sound_definition_get(mouth->definition_index);
+		if (!VALID_INDEX(mouth->pitch_range_index, definition->pitch_ranges.count))
+		{
+			mouth->unit_index = NONE;
+			continue;
+		}
+		range = TAG_BLOCK_GET_ELEMENT(&definition->pitch_ranges, mouth->pitch_range_index,
+			struct sound_pitch_range);
+		tick = game_time_get() - mouth->start_time;
+		permutation_index = mouth->permutation_index;
+		while (VALID_INDEX(permutation_index, range->permutations.count))
+		{
+			long length;
+
+			permutation = TAG_BLOCK_GET_ELEMENT(&range->permutations, permutation_index,
+				struct sound_permutation);
+			length = MAX(permutation->mouth_data.size, 0);
+			if (tick < length)
+				break;
+			tick -= length;
+			permutation_index = TEST_FLAG(definition->flags, _sound_definition_linked_permutations_bit) ?
+				permutation->next_permutation_index : NONE;
+			permutation = NULL;
+		}
+		if (!permutation)
+		{
+			mouth->unit_index = NONE;
+			continue;
+		}
+		unit_set_mouth_aperture(mouth->unit_index, sound_permutation_get_real_mouth_aperture(permutation, tick));
+	}
+}
+
 /* ---------- public code */
 
 void game_sound_initialize(
@@ -266,6 +404,9 @@ void game_sound_initialize_for_new_map(
 		game_sound_globals->music_looping_sound_index = NONE;
 		game_sound_globals->update_index = 0;
 	}
+	/* port: the speakers' (their seed from the game's) */
+	game_sound_mouths_clear();
+	game_sound_speech_seed = get_random_seed() ^ 0x73706565;
 
 	return;
 }
@@ -286,6 +427,9 @@ void game_sound_clear(
 	void)
 {
 	long looping_sound_index;
+
+	/* port: the speakers' too (their sounds are stopped) */
+	game_sound_mouths_clear();
 
 	for (looping_sound_index = data_next_index(game_looping_sound_data, NONE);
 		looping_sound_index != NONE;
@@ -443,6 +587,9 @@ long object_impulse_sound_new(
 	source.gain = 1.f;
 	attachment_data.node_index = node_index;
 	source.location.game_location.cluster_index = NONE;
+	/* port: a speaker's permutation picked by the game, and its mouth moved
+	in the ticks */
+	game_sound_speech_begin(definition_index, object_index);
 	if (track_object_impulse_sound(object_index, &attachment_data, &source))
 	{
 		source.scale = scale;
@@ -454,6 +601,7 @@ long object_impulse_sound_new(
 			&attachment_data,
 			sizeof(attachment_data));
 	}
+	sound_port_next_impulse_permutation(NONE, NONE);
 
 	return sound_index;
 }
@@ -478,6 +626,8 @@ long unattached_impulse_sound_new(
 	source.scale = scale;
 	source.spatialization_mode = _sound_spatialization_mode_absolute;
 	source.gain = 1.f;
+	/* port: (a speech sound's permutation picked by the game) */
+	game_sound_speech_begin(definition_index, NONE);
 
 	return sound_new_impulse(
 		definition_index,
@@ -502,6 +652,8 @@ long unspatialized_impulse_sound_new(
 	source.spatialization_mode = _sound_spatialization_mode_none;
 	source.scale = scale;
 	source.gain = 1.f;
+	/* port: (a speech sound's permutation picked by the game) */
+	game_sound_speech_begin(definition_index, NONE);
 
 	return sound_new_impulse(
 		definition_index,
@@ -609,12 +761,27 @@ void scripted_sound_stop(
 
 	if (sound_index != NONE)
 	{
+		short index;
+
 		definition = sound_definition_get(sound_index);
-		if (definition->scripting_sound_index != NONE)
+		/* port: and its time ended whether or not the sound manager played
+		it (it plays it if it can be heard and has a channel, by the clock):
+		the scripts wait on the time */
+		if (definition->scripting_sound_index != NONE || definition->scripting_time != NONE)
 		{
-			sound_stop_impulse(definition->scripting_sound_index);
+			if (definition->scripting_sound_index != NONE)
+				sound_stop_impulse(definition->scripting_sound_index);
 			definition->scripting_sound_index = NONE;
 			definition->scripting_time = NONE;
+		}
+		/* port: and its speaker's mouth stops */
+		for (index = 0; index < MAXIMUM_GAME_SOUND_MOUTHS; index++)
+		{
+			if (game_sound_mouths[index].unit_index != NONE &&
+				game_sound_mouths[index].definition_index == sound_index)
+			{
+				game_sound_mouths[index].unit_index = NONE;
+			}
 		}
 	}
 

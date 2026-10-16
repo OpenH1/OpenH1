@@ -227,10 +227,40 @@ real sound_permutation_get_real_mouth_aperture(
 	return 0.f;
 }
 
+/* port: the sound manager's pick (from the sounds' seed, the range's forced
+permutation first) and the game's for its speakers (game_sound.c: from the
+seed given, and never the forced one, which the sound manager leaves when a
+sound misses the cache) */
+static short sound_definition_next_permutation_from_seed(
+	struct sound_definition *definition,
+	short pitch_range_index,
+	short permutation_index,
+	unsigned long *seed,
+	boolean take_forced);
+
 short sound_definition_next_permutation(
 	struct sound_definition *definition,
 	short pitch_range_index,
 	short permutation_index)
+{
+	return sound_definition_next_permutation_from_seed(definition, pitch_range_index, permutation_index,
+		sound_random_seed_address(), TRUE);
+}
+
+short sound_definition_port_speech_permutation(
+	struct sound_definition *definition,
+	short pitch_range_index,
+	unsigned long *seed)
+{
+	return sound_definition_next_permutation_from_seed(definition, pitch_range_index, NONE, seed, FALSE);
+}
+
+static short sound_definition_next_permutation_from_seed(
+	struct sound_definition *definition,
+	short pitch_range_index,
+	short permutation_index,
+	unsigned long *seed,
+	boolean take_forced)
 {
 	struct sound_pitch_range *range;
 	short selected_permutation_index;
@@ -283,7 +313,7 @@ short sound_definition_next_permutation(
 		range->forced_permutation_index = NONE;
 	}
 
-	if (range->forced_permutation_index != NONE)
+	if (take_forced && range->forced_permutation_index != NONE)
 	{
 		selected_permutation_index = range->forced_permutation_index;
 		range->forced_permutation_index = NONE;
@@ -316,9 +346,10 @@ short sound_definition_next_permutation(
 		return permutation->next_permutation_index;
 	}
 
-	/* port: the sounds' seed, here and below */
+	/* port: the seed given (the sounds', or the game's speakers'), here and
+	below */
 	selected_permutation_index = seed_random_range(
-		sound_random_seed_address(),
+		seed,
 		0,
 		range->actual_permutation_count);
 
@@ -335,7 +366,7 @@ short sound_definition_next_permutation(
 				break;
 
 			{
-				real random = real_seed_random(sound_random_seed_address());
+				real random = real_seed_random(seed);
 
 				permutation = TAG_BLOCK_GET_ELEMENT(
 				&range->permutations,

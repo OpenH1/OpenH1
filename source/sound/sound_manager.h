@@ -90,4 +90,10 @@ extern boolean debug_sound;
 
 /* ---------- public code */
 
+/* port: the permutation the next impulse sound plays (the game's pick for
+its speakers, game_sound.c); NONE, NONE for the sound manager's own */
+void sound_port_next_impulse_permutation(
+	short pitch_range_index,
+	short permutation_index);
+
 #endif // __SOUND_MANAGER_H

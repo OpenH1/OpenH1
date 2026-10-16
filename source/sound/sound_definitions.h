@@ -221,5 +221,10 @@ short sound_definition_next_permutation(
 	struct sound_definition *definition,
 	short pitch_range_index,
 	short permutation_index);
+/* port: a speaker's permutation, as the game picks it (game_sound.c) */
+short sound_definition_port_speech_permutation(
+	struct sound_definition *definition,
+	short pitch_range_index,
+	unsigned long *seed);
 
 #endif // __SOUND_DEFINITIONS_H

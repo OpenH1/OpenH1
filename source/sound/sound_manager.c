@@ -748,6 +748,20 @@ unsigned long *sound_random_seed_address(
 	return &sound_random_seed;
 }
 
+/* port: the pitch range and permutation the next impulse sound plays, the
+game's pick for its speakers (game_sound.c's game_sound_speech_begin, whose
+mouths it moves to them); NONE for the sound manager's own */
+static short sound_next_impulse_pitch_range_index = NONE;
+static short sound_next_impulse_permutation_index = NONE;
+
+void sound_port_next_impulse_permutation(
+	short pitch_range_index,
+	short permutation_index)
+{
+	sound_next_impulse_pitch_range_index = pitch_range_index;
+	sound_next_impulse_permutation_index = permutation_index;
+}
+
 static real const sound_pitch_range_fade_time = 0.5f;
 static real const sound_inaudible_fade_out_time = 2.f;
 static real const sound_inaudible_fade_back_in_time = 0.5f;
@@ -2472,6 +2486,12 @@ long sound_new_impulse(
 	long sound_index = NONE;
 	struct sound_definition *definition = sound_definition_get(definition_index);
 	real scale = source->scale;
+	/* port: the game's pick, for this sound only (not a promotion's) */
+	short given_pitch_range_index = sound_next_impulse_pitch_range_index;
+	short given_permutation_index = sound_next_impulse_permutation_index;
+
+	sound_next_impulse_pitch_range_index = NONE;
+	sound_next_impulse_permutation_index = NONE;
 	match_assert(
 		"c:\\halo\\SOURCE\\sound\\sound_manager.c",
 		0x240,
@@ -2578,16 +2598,26 @@ long sound_new_impulse(
 											track_data_size);
 									}
 
-									sound->pitch_range_index =
-										sound_definition_find_pitch_range_by_pitch(
-											definition,
-											sound->pitch,
-											NONE);
-									sound->permutation_index =
-										sound_definition_next_permutation(
-											definition,
-											sound->pitch_range_index,
-											NONE);
+									/* port: the game's pick, if it made one */
+									if (given_permutation_index != NONE &&
+										VALID_INDEX(given_pitch_range_index, definition->pitch_ranges.count))
+									{
+										sound->pitch_range_index = given_pitch_range_index;
+										sound->permutation_index = given_permutation_index;
+									}
+									else
+									{
+										sound->pitch_range_index =
+											sound_definition_find_pitch_range_by_pitch(
+												definition,
+												sound->pitch,
+												NONE);
+										sound->permutation_index =
+											sound_definition_next_permutation(
+												definition,
+												sound->pitch_range_index,
+												NONE);
+									}
 									sound->fade_stop_time = 0;
 									sound->fade_start_time = 0;
 									sound->loop_track_index = NONE;
@@ -3756,15 +3786,11 @@ static void update_channels(
 				update_channel_for_looping_sound(channel_index, fade);
 			}
 
-			if (sound_class_get(definition->sound_class)->speech &&
-				sound->track_proc == track_object_impulse_sound)
-			{
-				game_sound_set_mouth_aperture(
-					sound->source_identifier,
-					sound_permutation_get_real_mouth_aperture(
-						channel->playing_permutation,
-						(long)channel->estimated_tick_time));
-			}
+			/* port: (the speakers' mouths move in the ticks, from the
+			permutations the game picked: game_sound.c's
+			game_sound_port_update_mouths. From the mixer's place in the
+			sound, the clock's and the mixer's, they moved the units' nodes
+			differently from run to run.) */
 		}
 	}
 
