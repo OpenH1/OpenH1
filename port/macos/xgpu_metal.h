@@ -486,6 +486,10 @@ struct xgpu_metal_statistics
 	uint32_t uploads_direct, uploads_ordered;
 	/* copies of a target being drawn, for a draw that samples it */
 	uint32_t feedback_copies;
+	/* passes of small targets put aside (xgpu_metal.m: encoded before the
+	large pass they would have ended), and their targets given another
+	texture for it */
+	uint32_t passes_aside, targets_renamed;
 	/* back buffers given to the presentation whose pictures a frame used
 	before clearing them (copied back) */
 	uint32_t pictures_restored;

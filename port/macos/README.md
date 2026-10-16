@@ -387,7 +387,7 @@ GPU's time a frame says little about the work. To measure the work:
   actions (`L`oad, `C`lear, `D`on't care; `S`tore, `R`esolve, `B`oth),
   draws and clears. The stages of passes overlap on the GPU, so a pass's
   span includes others'. `HALO_METAL_PASSES_SPLIT=1` makes each draw of
-  those frames a pass of its own, logged with its shaders, blend, depth,
+  those frames a pass of its own (up to 1024 a frame), logged with its shaders, blend, depth,
   viewport and textures (size, format, levels, filters and anisotropy).
 - `HALO_METAL_CAPTURE=<frame>:<file>.gputrace` (with `MTL_CAPTURE_ENABLED=1`)
   writes that frame and the next, the first's presentation included, as a
@@ -527,6 +527,22 @@ command stream's backend table. They run on one thread, the render thread.
   for an attachment that a clear of the whole of it came first for. Other
   clears are quads drawn through a clear pipeline (of the channels
   cleared).
+- **Aside passes.** A pass of a small target (a quarter of the open pass's
+  pixels at most, the open one at least 512x512: an object's shadow and its
+  blur, a mip chain) begun while the large pass is open would end it: its
+  colour, depth and stencil stored and loaded again when the game comes back,
+  tens of megabytes at the screen's size each time. Where the small pass
+  draws into nothing the frame's command buffer has written and its draws
+  read nothing it has written (textures, buffers its blits wrote), it is
+  encoded instead into a command buffer of its own enqueued before that one,
+  and the large pass, parked, goes on when the game comes back to its
+  targets. A target that the command buffer's work has read is given another
+  texture first (its contents copied where the pass loads them, or has other
+  levels or layers). The first return in a frame still ends the large pass
+  (a frame drawn in one pass from its start differed from the stock order
+  at a few pixels of some frames; with that break, every shot of the
+  recordings is the same). `HALO_METAL_ASIDE=0`: none. HALO_METAL_STATS
+  counts them.
 - **Visibility tests** count samples in a visibility result buffer, one for
   each pass (Apple's GPUs zero the first results an earlier pass counted
   into a buffer when a later pass counts into the same one), and the counts

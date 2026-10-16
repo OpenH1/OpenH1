@@ -105,6 +105,9 @@ struct texture_entry
 	struct xgpu_metal_texture_description description;
 	/* the last command buffer that read or wrote it */
 	uint64_t used;
+	/* the last command buffer whose own passes or blits wrote it, and whose
+	own draws read it (not those it put aside: the aside passes) */
+	uint64_t main_written, main_sampled;
 	/* a back buffer given to the presentation (xgpu_metal_frame_end): its
 	pictures, which texture (another) has yet to be given, unless a clear of
 	the whole of it comes first */
@@ -226,6 +229,13 @@ static struct
 
 	/* command buffers: serials, the last completed */
 	id<MTLCommandBuffer> command_buffer;
+	/* the aside passes' command buffer, enqueued before the one being
+	recorded */
+	id<MTLCommandBuffer> aside_buffer;
+	/* textures that renamed targets had, kept until the GPU is done with
+	them, to be renamed into again */
+	NSMutableArray<id<MTLTexture>> *aside_spares;
+	NSMutableArray<NSNumber *> *aside_spares_serials;
 	uint64_t command_serial;
 	uint64_t completed;
 	pthread_mutex_t completed_lock;
@@ -242,6 +252,18 @@ static struct
 	/* into the targets' multisampled attachments */
 	BOOL multisampled;
 	id<MTLRenderCommandEncoder> encoder;
+	/* encoder is an aside pass's (on aside_buffer), while the pass it was
+	put aside from waits, parked, with its targets */
+	BOOL aside;
+	/* the frame whose first return to the parked pass ended it */
+	uint64_t aside_frame;
+	struct
+	{
+		id<MTLRenderCommandEncoder> encoder;
+		uint32_t color, color_level, color_layer, depth, target_width, target_height;
+		BOOL multisampled;
+		int32_t visibility_pass, profile_current;
+	} parked;
 	uint32_t target_width, target_height;
 	MTLLoadAction color_load, depth_load, stencil_load;
 	MTLClearColor clear_color;
@@ -273,6 +295,8 @@ static struct
 	/* the backend's buffers (handle - 1) */
 	NSMutableArray<id<MTLBuffer>> *buffers;
 	NSMutableArray<NSNumber *> *buffers_used;
+	/* the command buffer whose blits last wrote each (aside passes) */
+	NSMutableArray<NSNumber *> *buffers_written;
 
 	/* the visibility test going on: its entry in this pass, and its first
 	(its entries get the slot at its end) */
@@ -402,7 +426,7 @@ targets, load and store actions and draws. HALO_METAL_CAPTURE=<frame>:<path>
 (with MTL_CAPTURE_ENABLED=1) writes that frame and the next, the
 presentation of the first included, as a GPU trace document. */
 
-#define PROFILE_PASSES 256
+#define PROFILE_PASSES 1024
 
 struct profile_pass
 {
@@ -520,11 +544,15 @@ static int32_t profile_pass_add(const char *what)
 }
 
 /* a blit encoder, timed when the frame is */
+static void aside_close(void);
+
 static id<MTLBlitCommandEncoder> blit_encoder(const char *what)
 {
-	int32_t index = profile_pass_add(what);
+	int32_t index;
 	MTLBlitPassDescriptor *descriptor;
 
+	aside_close();
+	index = profile_pass_add(what);
 	if (index < 0)
 		return [command_buffer() blitCommandEncoder];
 	descriptor = [MTLBlitPassDescriptor blitPassDescriptor];
@@ -629,6 +657,226 @@ static void encoder_end(void)
 	}
 }
 
+/* ---------- aside passes
+
+A pass of a small target (an object's shadow and its blur, a mip chain)
+begun while a pass of a large one is open would end that pass: its
+targets stored, and loaded again when the game comes back to them, tens
+of megabytes each time at the screen's size, which a tile-based GPU's
+memory pays for. Where the small pass draws into nothing the command
+buffer being recorded has written, and its draws read nothing it has
+written, it goes instead into a command buffer of its own enqueued before
+that one (aside_buffer), and the large pass, parked meanwhile, goes on
+when the game comes back to its targets: the same work, in an order whose
+results are the same. A target the command buffer has read is given
+another texture first (renamed: its contents copied where the pass loads
+them), so that what read it reads what it had. HALO_METAL_ASIDE=0: none. */
+
+/* the open pass's targets this large, and a small target a quarter of
+that at most */
+#define ASIDE_LARGE_PIXELS (512 * 512)
+#define ASIDE_SPARES 64
+
+static void statistics_add(uint32_t *counter, uint32_t amount);
+static struct texture_entry *texture_get(uint32_t texture);
+
+static int aside_enabled = -1;
+
+static id<MTLCommandBuffer> aside_buffer(void)
+{
+	if (!metal.aside_buffer)
+	{
+		metal.aside_buffer = [metal.queue commandBuffer];
+		[metal.aside_buffer enqueue];
+	}
+	return metal.aside_buffer;
+}
+
+/* commits the aside passes (before the command buffer they were put aside
+from) */
+static void aside_buffer_commit(void)
+{
+	if (!metal.aside_buffer)
+		return;
+	[metal.aside_buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+		if (done.status == MTLCommandBufferStatusError)
+			host_logf(HOST_LOG_ERROR, "metal: a command buffer failed: %s",
+				done.error.localizedDescription.UTF8String);
+		if (done.GPUEndTime > done.GPUStartTime)
+		{
+			xgpu_metal_gpu_interval(done.GPUStartTime, done.GPUEndTime);
+			pthread_mutex_lock(&metal.statistics_lock);
+			metal.statistics.gpu_seconds += done.GPUEndTime - done.GPUStartTime;
+			metal.statistics.command_buffers++;
+			pthread_mutex_unlock(&metal.statistics_lock);
+		}
+	}];
+	[metal.aside_buffer commit];
+	metal.aside_buffer = nil;
+}
+
+/* the parked pass made the open one again (its encoder goes on) */
+static void aside_unpark(void)
+{
+	metal.encoder = metal.parked.encoder;
+	metal.color = metal.parked.color;
+	metal.color_level = metal.parked.color_level;
+	metal.color_layer = metal.parked.color_layer;
+	metal.depth = metal.parked.depth;
+	metal.target_width = metal.parked.target_width;
+	metal.target_height = metal.parked.target_height;
+	metal.multisampled = metal.parked.multisampled;
+	metal.visibility_pass = metal.parked.visibility_pass;
+	profile.current = metal.parked.profile_current;
+	metal.parked.encoder = nil;
+	metal.aside = NO;
+	metal.color_load = metal.depth_load = metal.stencil_load = MTLLoadActionLoad;
+	metal.dirty = _dirty_all;
+	/* (no test went on as it was parked; one begun since counts in it from
+	its next draw, as in a pass begun now) */
+	metal.visibility_entry = -1;
+	metal.visibility_pending = metal.visibility_active;
+}
+
+/* ends the aside pass and the pass parked for it: what comes next goes in
+the command buffer's order, on the aside pass's targets */
+static void aside_close(void)
+{
+	uint32_t color, color_level, color_layer, depth, width, height;
+	BOOL multisampled;
+
+	if (!metal.aside)
+		return;
+	encoder_end();
+	color = metal.color;
+	color_level = metal.color_level;
+	color_layer = metal.color_layer;
+	depth = metal.depth;
+	width = metal.target_width;
+	height = metal.target_height;
+	multisampled = metal.multisampled;
+	aside_unpark();
+	encoder_end();
+	metal.color = color;
+	metal.color_level = color_level;
+	metal.color_layer = color_layer;
+	metal.depth = depth;
+	metal.target_width = width;
+	metal.target_height = height;
+	metal.multisampled = multisampled;
+}
+
+/* whether a pass of these targets can be put aside */
+static BOOL aside_possible(struct texture_entry *color, uint32_t color_level, BOOL depth, int multisampled)
+{
+	uint64_t open, small;
+
+	if (aside_enabled < 0)
+		aside_enabled = !getenv("HALO_METAL_ASIDE") || atoi(getenv("HALO_METAL_ASIDE")) != 0;
+	if (!aside_enabled || (!metal.encoder && !metal.aside) || !color || depth || multisampled || color->multisampled ||
+		color->previous || metal.visibility_active || color->main_written == metal.command_serial)
+		return NO;
+	open = metal.aside ? (uint64_t)metal.parked.target_width * metal.parked.target_height :
+		(uint64_t)metal.target_width * metal.target_height;
+	small = (uint64_t)(color->description.width >> color_level) * (color->description.height >> color_level);
+	return open >= ASIDE_LARGE_PIXELS && small * 4 <= open;
+}
+
+/* a buffer source the command buffer's blits have written */
+static BOOL aside_source_written(struct xgpu_metal_source source)
+{
+	return source.kind == XGPU_METAL_SOURCE_BUFFER && source.handle && source.handle <= metal.buffers_written.count &&
+		metal.buffers_written[source.handle - 1].unsignedLongLongValue == metal.command_serial;
+}
+
+/* a draw of the aside pass reads what the command buffer has written: a
+texture, or a buffer of its vertices or indices */
+static BOOL aside_reads_written(struct xgpu_metal_source indices)
+{
+	int index;
+
+	for (index = 0; index < XGPU_METAL_TEXTURE_STAGE_COUNT; index++)
+	{
+		struct texture_entry *entry = texture_get(metal.stage_textures[index]);
+
+		if (entry && entry->main_written == metal.command_serial)
+			return YES;
+	}
+	for (index = 0; index < XGPU_METAL_STREAM_COUNT; index++)
+	{
+		if (aside_source_written(metal.streams[index]))
+			return YES;
+	}
+	return aside_source_written(indices);
+}
+
+/* the target another texture (keep: with its contents, which a pass that
+clears the whole of one level of one layer need not have); NO if none can
+be made */
+static BOOL aside_rename(struct texture_entry *entry, BOOL keep)
+{
+	id<MTLTexture> old = entry->texture, fresh = nil;
+	NSUInteger index;
+
+	for (index = 0; index < metal.aside_spares.count; index++)
+	{
+		id<MTLTexture> spare = metal.aside_spares[index];
+
+		if (metal.aside_spares_serials[index].unsignedLongLongValue <= xgpu_metal_frame_completed() &&
+			spare.width == old.width && spare.height == old.height && spare.depth == old.depth &&
+			spare.pixelFormat == old.pixelFormat && spare.textureType == old.textureType &&
+			spare.mipmapLevelCount == old.mipmapLevelCount && spare.arrayLength == old.arrayLength &&
+			spare.usage == old.usage && spare.storageMode == old.storageMode)
+		{
+			fresh = spare;
+			[metal.aside_spares removeObjectAtIndex:index];
+			[metal.aside_spares_serials removeObjectAtIndex:index];
+			break;
+		}
+	}
+	if (!fresh)
+	{
+		MTLTextureDescriptor *descriptor = [MTLTextureDescriptor new];
+
+		descriptor.textureType = old.textureType;
+		descriptor.pixelFormat = old.pixelFormat;
+		descriptor.width = old.width;
+		descriptor.height = old.height;
+		descriptor.depth = old.depth;
+		descriptor.mipmapLevelCount = old.mipmapLevelCount;
+		descriptor.arrayLength = old.arrayLength;
+		descriptor.sampleCount = old.sampleCount;
+		descriptor.usage = old.usage;
+		descriptor.storageMode = old.storageMode;
+		fresh = [metal.device newTextureWithDescriptor:descriptor];
+		if (!fresh)
+			return NO;
+	}
+	if (keep)
+	{
+		id<MTLBlitCommandEncoder> blit = [aside_buffer() blitCommandEncoder];
+
+		[blit copyFromTexture:old toTexture:fresh];
+		[blit endEncoding];
+	}
+	entry->texture = fresh;
+	entry->main_sampled = 0;
+	if (!metal.aside_spares)
+	{
+		metal.aside_spares = [NSMutableArray new];
+		metal.aside_spares_serials = [NSMutableArray new];
+	}
+	[metal.aside_spares addObject:old];
+	[metal.aside_spares_serials addObject:@(metal.command_serial)];
+	if (metal.aside_spares.count > ASIDE_SPARES)
+	{
+		[metal.aside_spares removeObjectAtIndex:0];
+		[metal.aside_spares_serials removeObjectAtIndex:0];
+	}
+	statistics_add(&metal.statistics.targets_renamed, 1);
+	return YES;
+}
+
 static void pass_end(void);
 static MTLCompileOptions *compile_options(void);
 
@@ -639,6 +887,7 @@ static uint64_t command_buffer_commit(void (^completed)(void))
 	uint64_t serial = metal.command_serial;
 
 	pass_end();
+	aside_buffer_commit();
 	[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
 		if (done.status == MTLCommandBufferStatusError)
 			host_logf(HOST_LOG_ERROR, "metal: a command buffer failed: %s",
@@ -788,6 +1037,7 @@ int xgpu_metal_initialize(const struct xgpu_metal_options *options)
 	metal.texture_search = 1;
 	metal.buffers = [NSMutableArray new];
 	metal.buffers_used = [NSMutableArray new];
+	metal.buffers_written = [NSMutableArray new];
 	metal.visibility_entry = -1;
 	archive_open();
 	profile_initialize();
@@ -1131,6 +1381,7 @@ static void texture_clear_new(id<MTLTexture> texture)
 			pass.colorAttachments[0].storeAction = MTLStoreActionStore;
 			pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
 		}
+		aside_close();
 		[[command_buffer() renderCommandEncoderWithDescriptor:pass] endEncoding];
 	}
 }
@@ -1241,6 +1492,7 @@ uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *
 	if (description->usage & XGPU_METAL_USAGE_TARGET)
 	{
 		texture_clear_new(entry->texture);
+		entry->main_written = recording_serial();
 		if (entry->multisampled)
 			texture_clear_new(entry->multisampled);
 		entry->used = recording_serial();
@@ -1282,7 +1534,7 @@ void xgpu_metal_texture_make_levels(uint32_t texture)
 	blit = blit_encoder("levels");
 	[blit generateMipmapsForTexture:entry->texture];
 	[blit endEncoding];
-	entry->used = recording_serial();
+	entry->used = entry->main_written = recording_serial();
 }
 
 void xgpu_metal_texture_copy(uint32_t source, uint32_t destination)
@@ -1305,7 +1557,7 @@ void xgpu_metal_texture_copy(uint32_t source, uint32_t destination)
 		sourceSize:MTLSizeMake(width, height, 1) toTexture:to->texture destinationSlice:0 destinationLevel:0
 		destinationOrigin:MTLOriginMake(0, 0, 0)];
 	[blit endEncoding];
-	from->used = to->used = recording_serial();
+	from->used = to->used = from->main_sampled = to->main_written = recording_serial();
 	statistics_add(&metal.statistics.feedback_copies, 1);
 }
 
@@ -1334,7 +1586,7 @@ static void texture_contents(struct texture_entry *entry)
 	[blit copyFromTexture:entry->previous toTexture:entry->texture];
 	[blit endEncoding];
 	entry->previous = nil;
-	entry->used = recording_serial();
+	entry->used = entry->main_written = recording_serial();
 	statistics_add(&metal.statistics.pictures_restored, 1);
 }
 
@@ -1386,7 +1638,7 @@ void xgpu_metal_texture_upload(uint32_t texture, uint32_t level, uint32_t layer,
 			sourceSize:MTLSizeMake(width, height, depth) toTexture:entry->texture destinationSlice:layer
 			destinationLevel:level destinationOrigin:MTLOriginMake(x, y, z)];
 		[blit endEncoding];
-		entry->used = recording_serial();
+		entry->used = entry->main_written = recording_serial();
 		statistics_add(&metal.statistics.uploads_ordered, 1);
 	}
 }
@@ -1608,6 +1860,7 @@ uint32_t xgpu_metal_buffer_create(uint32_t size)
 		return 0;
 	[metal.buffers addObject:buffer];
 	[metal.buffers_used addObject:@0];
+	[metal.buffers_written addObject:@0];
 	return (uint32_t)metal.buffers.count;
 }
 
@@ -1645,7 +1898,7 @@ void xgpu_metal_buffer_write(uint32_t buffer, uint32_t offset, const void *data,
 	blit = blit_encoder("buffer");
 	[blit copyFromBuffer:source_buffer_object sourceOffset:source_offset toBuffer:object destinationOffset:offset size:size];
 	[blit endEncoding];
-	metal.buffers_used[buffer - 1] = @(recording_serial());
+	metal.buffers_used[buffer - 1] = metal.buffers_written[buffer - 1] = @(recording_serial());
 	statistics_add(&metal.statistics.uploads_ordered, 1);
 }
 
@@ -1860,7 +2113,48 @@ void xgpu_metal_set_targets(uint32_t color, uint32_t color_level, uint32_t color
 		metal.color_layer == color_layer && metal.depth == (depth_entry ? depth : 0) &&
 		metal.multisampled == (multisampled != 0))
 		return;
-	pass_end();
+	/* (back to the parked pass's targets: it goes on, except the first time
+	in a frame, when it ends there and a pass of its own begins, as it did
+	before passes were put aside: with none of those breaks, a frame drawn
+	in one pass from its start differs from the frame drawn without aside
+	passes at a few pixels of some frames, which the one break keeps
+	identical on the recordings (REPORT); or to another target that can be
+	put aside too; else what is open ends) */
+	if (metal.aside && metal.parked.color == (color_entry ? color : 0) && metal.parked.color_level == color_level &&
+		metal.parked.color_layer == color_layer && metal.parked.depth == (depth_entry ? depth : 0) &&
+		metal.parked.multisampled == (multisampled != 0))
+	{
+		if (metal.aside_frame == metal.frame_number)
+		{
+			encoder_end();
+			aside_unpark();
+			return;
+		}
+		metal.aside_frame = metal.frame_number;
+		aside_close();
+	}
+	else if (aside_possible(color_entry, color_level, depth_entry != NULL, multisampled))
+	{
+		if (metal.aside)
+			encoder_end();
+		else
+		{
+			metal.parked.encoder = metal.encoder;
+			metal.parked.color = metal.color;
+			metal.parked.color_level = metal.color_level;
+			metal.parked.color_layer = metal.color_layer;
+			metal.parked.depth = metal.depth;
+			metal.parked.target_width = metal.target_width;
+			metal.parked.target_height = metal.target_height;
+			metal.parked.multisampled = metal.multisampled;
+			metal.parked.visibility_pass = metal.visibility_pass;
+			metal.parked.profile_current = profile.current;
+			metal.encoder = nil;
+			metal.aside = YES;
+		}
+	}
+	else
+		pass_end();
 	metal.color = color_entry ? color : 0;
 	metal.color_level = color_level;
 	metal.color_layer = color_layer;
@@ -1933,6 +2227,12 @@ static id<MTLRenderCommandEncoder> encoder(void)
 			texture_contents(color);
 	}
 	serial = recording_serial();
+	/* (an aside pass's target that the command buffer's own work has read:
+	another texture, with its contents unless the pass clears them) */
+	if (metal.aside && color && color->main_sampled == serial &&
+		!aside_rename(color, metal.color_load != MTLLoadActionClear || color->texture.mipmapLevelCount > 1 ||
+			color->texture.arrayLength > 1 || color->texture.textureType != MTLTextureType2D))
+		aside_close();
 	pass = [MTLRenderPassDescriptor renderPassDescriptor];
 	if (color)
 	{
@@ -1956,6 +2256,8 @@ static id<MTLRenderCommandEncoder> encoder(void)
 		attachment.loadAction = metal.color_load;
 		attachment.clearColor = metal.clear_color;
 		color->used = serial;
+		if (!metal.aside)
+			color->main_written = serial;
 	}
 	if (depth)
 	{
@@ -1974,6 +2276,7 @@ static id<MTLRenderCommandEncoder> encoder(void)
 			pass.stencilAttachment.storeAction = MTLStoreActionStore;
 		}
 		depth->used = serial;
+		depth->main_written = serial;
 	}
 	/* (a buffer for each pass: those of earlier passes stay as they are) */
 	metal.visibility_pass = -1;
@@ -1988,7 +2291,7 @@ static id<MTLRenderCommandEncoder> encoder(void)
 		pass.visibilityResultBuffer = slot->visibility_buffers[index];
 		metal.visibility_pass = (int32_t)index;
 	}
-	profile.current = profile_pass_add("render");
+	profile.current = profile_pass_add(metal.aside ? "aside" : "render");
 	if (profile.current >= 0)
 	{
 		struct profile_pass *timed = &profile.passes[profile.current];
@@ -2023,7 +2326,9 @@ static id<MTLRenderCommandEncoder> encoder(void)
 			}
 		}
 	}
-	metal.encoder = [command_buffer() renderCommandEncoderWithDescriptor:pass];
+	metal.encoder = [(metal.aside ? aside_buffer() : command_buffer()) renderCommandEncoderWithDescriptor:pass];
+	if (metal.aside)
+		statistics_add(&metal.statistics.passes_aside, 1);
 	/* (the clears are done: the pass goes on from what it stores) */
 	metal.color_load = metal.depth_load = metal.stencil_load = MTLLoadActionLoad;
 	metal.dirty = _dirty_all;
@@ -2039,7 +2344,10 @@ static void pass_end(void)
 	if (!metal.encoder && (metal.color_load == MTLLoadActionClear || metal.depth_load == MTLLoadActionClear ||
 		metal.stencil_load == MTLLoadActionClear))
 		encoder();
-	encoder_end();
+	if (metal.aside)
+		aside_close();
+	else
+		encoder_end();
 }
 
 /* the clear pipeline for the targets and parts */
@@ -2631,7 +2939,11 @@ static BOOL draw_state_apply(id<MTLRenderCommandEncoder> render)
 		struct texture_entry *entry = texture_get(metal.stage_textures[index]);
 
 		if (entry)
+		{
 			entry->used = serial;
+			if (!metal.aside)
+				entry->main_sampled = serial;
+		}
 	}
 	if (dirty & _dirty_streams)
 	{
@@ -2704,6 +3016,8 @@ void xgpu_metal_draw(uint32_t primitive, uint32_t count, uint32_t first_vertex, 
 		refused = YES;
 		return;
 	}
+	if (metal.aside && aside_reads_written(indices))
+		aside_close();
 	render = encoder();
 	if (!render || !draw_state_apply(render))
 	{
