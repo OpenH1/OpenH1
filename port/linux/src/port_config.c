@@ -906,6 +906,10 @@ static const struct config_setting config_settings[] =
 		"Seconds of game time each frame runs, whatever time it took, so that two\n"
 		"runs of the same input run the same frames (the determinism check); 0\n"
 		"the time each frame took." },
+	{ "debug.random_seed", _config_integer, "0", "HALO_RANDOM_SEED", _environment_value, _platform_all,
+		"The random seed of the network games this machine hosts, so that a test\n"
+		"plays the same game again (the spawns, the weapons' spread); 0 a new\n"
+		"one each game, from the clock." },
 	{ "debug.audio_log", _config_boolean, "false", "HALO_AUDIO_LOG", _environment_value, _platform_desktop,
 		"Log the sounds placed in the world playing, five times a second: where\n"
 		"each is from the listener (metres ahead, right and up), its gain in\n"

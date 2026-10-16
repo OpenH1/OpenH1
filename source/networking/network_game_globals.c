@@ -111,8 +111,9 @@ symbols in this file:
 #include "network_game_manager.h"
 #include "network_game_globals.h"
 #include "network_server_manager_internal.h"
-/* port: source/math/random_math.c's */
+/* port: source/math/random_math.c's, port/linux/src/port_config.c's */
 unsigned long get_number_suitable_for_initializing_random_seed(void);
+long config_integer(const char *name);
 
 /* ---------- constants */
 
@@ -786,8 +787,10 @@ boolean create_global_network_game_server(
 	if (global_network_game_server)
 	{
 		/* port: with the clock's too: the local seed is the last map's
-		(game_initialize_for_new_map), the same in every run */
-		network_game_set_random_seed(
+		(game_initialize_for_new_map), the same in every run; or
+		debug.random_seed's, for tests that play one game again */
+		network_game_set_random_seed(config_integer("debug.random_seed") ?
+			(unsigned long)config_integer("debug.random_seed") :
 			seed_random(get_global_local_random_seed_address()) ^ get_number_suitable_for_initializing_random_seed());
 	}
 
