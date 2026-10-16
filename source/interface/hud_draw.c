@@ -655,9 +655,19 @@ static void hud_draw_multitexture_overlay(
 	cos_theta = (real)cos(theta);
 
 	player = player_get(local_player_get_player_index(local_player_index));
-	hud_draw_multitexture_overlay_get_current_weapon_definition(
-		player,
-		&weapon_state);
+	/* port: a player with no unit (a map's first frame, drawn through every
+	HUD before the player has spawned: port/linux/game/render_enumerate.c)
+	has no weapon */
+	if (player->unit_index != NONE)
+	{
+		hud_draw_multitexture_overlay_get_current_weapon_definition(
+			player,
+			&weapon_state);
+	}
+	else
+	{
+		csmemset(&weapon_state, 0, sizeof(weapon_state));
+	}
 
 	for (vertex_index = 0; vertex_index < 4; vertex_index++)
 	{
@@ -810,10 +820,12 @@ static void hud_draw_multitexture_overlay(
 				long unit_index = local_player_get_player_index(local_player_index) == NONE ?
 					NONE :
 					player_get(local_player_get_player_index(local_player_index))->unit_index;
-				real_vector3d direction;
+				real_vector3d direction = *global_forward3d;
 				real_euler_angles2d angles;
 
-				unit_get_aiming_vector(unit_index, &direction);
+				/* port: (nor aim: render_enumerate.c) */
+				if (unit_index != NONE)
+					unit_get_aiming_vector(unit_index, &direction);
 				euler_angles2d_from_vector3d(&angles, &direction);
 				source_value = angles.pitch;
 			}

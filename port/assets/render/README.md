@@ -58,6 +58,58 @@ draw the manifest does not:
 python tools/render_manifest.py stats port/assets/render/manifest.txt <recording>...
 ```
 
+## A map's enumeration
+
+The manifest is the stock maps'. A map the manifest does not know (a Custom
+Edition map) has its shaders and pipelines made as it loads instead: with
+`display.prepare_shaders`, the map's first frame, and
+the first of each of its structures, is drawn first through every shader
+its tags hold, in each way the game's code draws them
+(`port/linux/game/render_enumerate.c`): every material of the structure, in
+each fog, with every light tag's light and every model's shadow; every
+model's every geometry, in each lighting, function and colour the models'
+code tells apart, with its objects' effects (shields, camouflage) and in
+first person; every effect, decal, lens flare, sky, detail object, HUD
+element, font, screen flash and screen effect; a mirror's window where the
+structure has one. The draws are the map's enumeration
+(`xgpu_manifest_enumeration`), which a backend that makes its pipelines
+apart from the draws (macOS's Metal) makes during the loading screen.
+
+The front end makes a draw's keys canonical first, so that what an earlier
+draw left in the device's state is not part of them where the draw does not
+read it: the combiner stages past the combiner count and the portions whose
+results nothing reads, a texture stage's fields its mode does not read, the
+sampler of a stage that samples nothing (`d3d8_device.c`), a 2D texture's
+third address mode (`xgpu_manifest.c`).
+
+### How it is checked
+
+A recording (`debug.render_manifest`) holds the enumeration (the draws
+between `# enumerating` and `# prepared`) and marks each later draw the
+enumeration does not have with a `# missed:` line of the functions it was
+drawn in. Draws are compared as a backend compiles them (the depth, stencil,
+culling, fill and depth bias left out: the Metal backend sets them for each
+draw):
+
+```sh
+python tools/render_manifest.py check --image build/linux_x86_64/halo_guest.elf <recording>...
+```
+
+reports each recording's enumeration and misses, grouped by where they were
+drawn (`--verbose` names the fields in which the nearest enumerated draw
+differs, `--exact` compares whole draws), and exits 1 on a miss.
+`tools/render_enumerate_sweep.py` plays each map of a list (every stock
+map's, the menu's included, by default) offscreen with the scripted player,
+a game for a few cores, and checks the recordings:
+
+```sh
+python tools/render_enumerate_sweep.py --data <the folder of maps/> --seconds 90 --jobs 8
+```
+
+Every stock map's play, the menu's included, has none. The loading screen's draws
+(`render_frame_pregame`), made before the next map is loaded, are no map's:
+with multisampling its progress bar is the manifest's alone.
+
 ## Another backend
 
 A backend reads the manifest with `xgpu_manifest_read` and builds each draw

@@ -44,6 +44,9 @@ typedef char rasterizer_cinematic_screen_effect_parameters_size_assert[
 
 void rasterizer_screen_effects_initialize(
 	void);
+/* port: (rasterizer_cinematics.c) */
+void rasterizer_screen_effect_port_enumerate(
+	struct bitmap_data *map);
 void rasterizer_screen_effects_initialize_for_new_map(
 	void);
 void rasterizer_screen_effects_dispose_from_old_map(

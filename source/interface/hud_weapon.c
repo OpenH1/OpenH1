@@ -59,6 +59,7 @@ symbols in this file:
 #include "game/game.h"
 #include "game/game_globals.h"
 #include "game/players.h"
+#include "cache/cache_files.h" /* port: (hud_weapon_port_enumerate) */
 #include "interface/hud_draw.h"
 #include "interface/hud.h"
 #include "interface/hud_definitions.h"
@@ -2206,4 +2207,118 @@ char *strip_path_name(
 		return name + 1;
 
 	return path;
+}
+
+/* port: every weapon's and grenade's HUD element drawn, each as
+render_weapon_hud and render_grenade_hud draw it, in every state: a map's
+first frame drawn through every shader (port/linux/game/render_enumerate.c) */
+void hud_weapon_port_enumerate(
+	short local_player_index)
+{
+	struct tag_iterator iterator;
+	long hud_index;
+	long element_index;
+
+	tag_iterator_new(&iterator, WEAPON_HUD_INTERFACE_TAG);
+	while ((hud_index = tag_iterator_next(&iterator)) != NONE)
+	{
+		struct weapon_hud_interface_definition *definition = weapon_hud_interface_definition_get(hud_index);
+
+		for (element_index = 0; element_index < definition->statics.count; element_index++)
+		{
+			struct weapon_hud_static_element *element = TAG_BLOCK_GET_ELEMENT(
+				&definition->statics, element_index, struct weapon_hud_static_element);
+
+			if (element->static_element.interface_bitmap.index != NONE)
+			{
+				hud_draw_static_element(local_player_index, &definition->absolute_placement,
+					&element->static_element, 0, 0);
+			}
+		}
+		for (element_index = 0; element_index < definition->meters.count; element_index++)
+		{
+			struct weapon_hud_meter_element *element = TAG_BLOCK_GET_ELEMENT(
+				&definition->meters, element_index, struct weapon_hud_meter_element);
+
+			if (element->meter_element.meter_bitmap.index != NONE)
+			{
+				hud_draw_meter(local_player_index, &definition->absolute_placement, &element->meter_element,
+					128, 128, 0, 0.0f, 0.0f);
+				hud_draw_meter(local_player_index, &definition->absolute_placement, &element->meter_element,
+					128, 128, FLAG(_hud_draw_flashing_bit), 0.0f, 0.0f);
+			}
+		}
+		for (element_index = 0; element_index < definition->numbers.count; element_index++)
+		{
+			struct weapon_hud_number_element *element = TAG_BLOCK_GET_ELEMENT(
+				&definition->numbers, element_index, struct weapon_hud_number_element);
+
+			if (element->number_element.digits)
+			{
+				hud_draw_numbers(local_player_index, &definition->absolute_placement, &element->number_element,
+					12, NONE, 0, 0, 0.0f);
+			}
+		}
+		for (element_index = 0; element_index < definition->overlays.count; element_index++)
+		{
+			struct weapon_hud_overlays_element *element = TAG_BLOCK_GET_ELEMENT(
+				&definition->overlays, element_index, struct weapon_hud_overlays_element);
+
+			if (element->overlays.bitmap.index != NONE)
+			{
+				hud_draw_weapon_overlays(local_player_index, &definition->absolute_placement, &element->overlays,
+					0xffff, 0, 0, FALSE);
+			}
+		}
+		for (element_index = 0; element_index < definition->crosshairs.count; element_index++)
+		{
+			struct weapon_hud_crosshairs_element *element = TAG_BLOCK_GET_ELEMENT(
+				&definition->crosshairs, element_index, struct weapon_hud_crosshairs_element);
+			long item_index;
+
+			if (element->crosshairs.bitmap.index == NONE)
+				continue;
+			for (item_index = 0; item_index < element->crosshairs.items.count; item_index++)
+			{
+				struct weapon_hud_crosshair_item *item = TAG_BLOCK_GET_ELEMENT(
+					&element->crosshairs.items, item_index, struct weapon_hud_crosshair_item);
+				struct bitmap_group *bitmap_group = bitmap_group_get(element->crosshairs.bitmap.index);
+				struct bitmap_data *bitmap = bitmap_group_get_bitmap_from_sequence(
+					element->crosshairs.bitmap.index, item->sequence_index, 0);
+
+				if (bitmap)
+				{
+					hud_draw_bitmap(bitmap, &definition->absolute_placement, &item->placement, NULL, 1.0f, 0.0f,
+						item->colors.color, FALSE, bitmap_group->type == _bitmap_group_type_interface_bitmaps,
+						FALSE);
+				}
+			}
+		}
+	}
+
+	tag_iterator_new(&iterator, GRENADE_HUD_INTERFACE_TAG);
+	while ((hud_index = tag_iterator_next(&iterator)) != NONE)
+	{
+		struct grenade_hud_interface_definition *definition = grenade_hud_interface_definition_get(hud_index);
+
+		if (definition->background.interface_bitmap.index != NONE)
+			hud_draw_static_element(local_player_index, &definition->absolute_placement, &definition->background, 0, 0);
+		if (definition->grenade_count_panel.background.interface_bitmap.index != NONE)
+		{
+			hud_draw_static_element(local_player_index, &definition->absolute_placement,
+				&definition->grenade_count_panel.background, 0, 0);
+		}
+		if (definition->grenade_count_panel.numbers.digits)
+		{
+			hud_draw_numbers(local_player_index, &definition->absolute_placement,
+				&definition->grenade_count_panel.numbers, 2, NONE, 0, 0, 0.0f);
+		}
+		if (definition->overlays.bitmap.index != NONE)
+		{
+			hud_draw_weapon_overlays(local_player_index, &definition->absolute_placement, &definition->overlays,
+				0xffff, 0, 0, FALSE);
+		}
+	}
+
+	return;
 }

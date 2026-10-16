@@ -25,6 +25,10 @@ void weather_particle_system_new(
 	short local_player_index,
 	long definition_index,
 	real scale);
+/* port: (render_enumerate.c) */
+struct shader_effect_definition;
+void weather_particle_systems_port_enumerate(
+	void (*draw)(long bitmap_group_index, struct shader_effect_definition const *shader));
 void weather_particle_systems_render(
 	void);
 

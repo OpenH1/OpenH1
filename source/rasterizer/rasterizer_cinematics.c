@@ -59,6 +59,7 @@ symbols in this file:
 #include "real_math.h"
 #include "rasterizer/common/rasterizer_common.h"
 #include "rasterizer/rasterizer_cinematics.h"
+#include "rasterizer/rasterizer.h" /* port: (rasterizer_screen_effect_port_enumerate) */
 #include "rasterizer/rasterizer_globals_internal.h"
 #include "saved games/game_state.h"
 
@@ -283,12 +284,19 @@ void rasterizer_screen_effect_set_filter(
 	return;
 }
 
+/* port: the parameters drawn are those given, not a cinematic's
+(rasterizer_screen_effect_port_enumerate) */
+static boolean port_screen_effect_parameters_given = FALSE;
+
 struct rasterizer_cinematic_screen_effect_parameters *rasterizer_screen_effect_get_cinematic_parameters(
 	struct rasterizer_cinematic_screen_effect_parameters *parameters)
 {
 	struct rasterizer_cinematic_screen_effect_parameters *result;
 
 	result = parameters;
+	/* port: (not the cinematic's, for rasterizer_screen_effect_port_enumerate's) */
+	if (port_screen_effect_parameters_given)
+		return parameters;
 	if (cinematic_screen_effect_globals && cinematic_screen_effect_globals->has_control)
 	{
 		real convolution_fraction;
@@ -579,3 +587,59 @@ void rasterizer_screen_effect_port_set(
 }
 
 /* ---------- private code */
+
+/* port: the screen effect drawn with every kind of parameters a script or
+a weapon's HUD can give it: each convolution (none, blur, warp; with
+extra passes or not) with and without a mask (not a blur's), with and without light enhancement
+and desaturation (additive or not), each through the mask or not; the
+video effect in each overbright mode, with noise and without; map a bitmap
+for the masks and the video's maps. A map's first frame drawn through
+every shader (port/linux/game/render_enumerate.c) */
+void rasterizer_screen_effect_port_enumerate(
+	struct bitmap_data *map)
+{
+	struct rasterizer_cinematic_screen_effect_parameters parameters;
+	short convolution, extra, mask, light, light_mask, desaturation, additive, desaturation_mask, mode, noise;
+
+	if (!map)
+		return;
+	port_screen_effect_parameters_given = TRUE;
+	for (convolution = 0; convolution < 3; convolution++)
+	for (extra = 0; extra < 1 + (convolution != 0); extra++)
+	for (mask = 0; mask < 1 + (convolution != 1); mask++)
+	for (light = 0; light < 2; light++)
+	for (light_mask = 0; light_mask < 1 + (mask && light); light_mask++)
+	for (desaturation = 0; desaturation < 2; desaturation++)
+	for (additive = 0; additive < 1 + desaturation; additive++)
+	for (desaturation_mask = 0; desaturation_mask < 1 + (mask && desaturation); desaturation_mask++)
+	{
+		csmemset(&parameters, 0, sizeof(parameters));
+		parameters.convolution_type = convolution;
+		parameters.convolution_extra_passes = extra;
+		parameters.convolution_radius = convolution ? 1.0f : 0.0f;
+		parameters.convolution_mask = mask ? map : NULL;
+		parameters.filter_light_enhancement_intensity = light ? 0.5f : 0.0f;
+		parameters.filter_light_enhancement_uses_convolution_mask = (boolean)light_mask;
+		parameters.filter_desaturation_intensity = desaturation ? 0.5f : 0.0f;
+		parameters.filter_desaturation_is_additive = (boolean)additive;
+		parameters.filter_desaturation_uses_convolution_mask = (boolean)desaturation_mask;
+		parameters.filter_desaturation_tint.red = parameters.filter_desaturation_tint.green =
+			parameters.filter_desaturation_tint.blue = 0.5f;
+		rasterizer_screen_effect(&parameters);
+	}
+	for (mode = 0; mode < 3; mode++)
+	for (noise = 0; noise < 2; noise++)
+	{
+		csmemset(&parameters, 0, sizeof(parameters));
+		parameters.video_on = TRUE;
+		parameters.video_overbright_mode = mode;
+		parameters.video_scanline_map = map;
+		parameters.video_noise_map = map;
+		parameters.video_noise_intensity = noise ? 0.5f : 0.0f;
+		parameters.video_noise_map_scale = 1.0f;
+		rasterizer_screen_effect(&parameters);
+	}
+	port_screen_effect_parameters_given = FALSE;
+
+	return;
+}

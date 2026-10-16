@@ -439,10 +439,14 @@ static void render_window(
 #endif
 		rasterizer_lens_flares_submit_occlusion_tests();
 		render_object_shadows();
+		/* port: and every model's (port/linux/game/render_enumerate.c) */
+		render_enumerate_shadows();
 #ifdef HALO_VR
 		}
 #endif
 		lights_render_diffuse();
+		/* port: and every light's */
+		render_enumerate_lights(FALSE);
 
 		rasterizer_decals_begin(_decal_layer_light);
 		for (rendered_cluster_index = 0;
@@ -481,8 +485,11 @@ static void render_window(
 			rasterizer_decals_draw(rendered_cluster_get(rendered_cluster_index)->cluster_index);
 		}
 		rasterizer_decals_end();
+		/* port: and every decal's (port/linux/game/render_enumerate.c) */
+		render_enumerate_decals();
 
 		lights_render_specular();
+		render_enumerate_lights(TRUE);	/* port: (render_enumerate.c) */
 		structure_render_specular_lightmaps();
 		structure_render_reflection_lightmap_masks();
 		structure_render_reflection_mirrors();
@@ -543,6 +550,8 @@ static void render_window(
 		else
 #endif
 		{
+		/* port: (port/linux/game/render_enumerate.c) */
+		render_enumerate_lens_flares();
 		rasterizer_lens_flares_draw();
 		/* port: the 3D view antialiased (display.anti_aliasing), before the
 		HUD and menus are drawn over it (not the VR mode's eye pass: its
@@ -556,6 +565,8 @@ static void render_window(
 				rasterizer_camera->viewport_bounds.y1);
 		}
 		interface_draw_screen();
+		/* port: and every HUD's (port/linux/game/render_enumerate.c) */
+		render_enumerate_interface();
 		rasterizer_screen_flash();
 		halo_screen_ui_offset(TRUE);
 		render_ui_widgets(local_player_index, &rasterizer_camera->viewport_bounds);
@@ -687,6 +698,27 @@ static void render_player_frame(
 		&rasterizer_frustum,
 		TRUE);
 
+	/* port: a map's (or a structure's) shaders and pipelines made as it
+	starts: its first frame drawn first, unseen, through every shader its
+	tags hold, in each fog (port/linux/game/render_enumerate.c), before any
+	window of it (a mirror's) is drawn */
+	if (render_enumerate_begin())
+	{
+		do
+		{
+			/* (a mirror's window is no player's, as below) */
+			render_window(
+				render_enumerate_target() == _render_target_secondary ? NONE : window->local_player_index,
+				camera,
+				&frustum,
+				&window->rasterizer_camera,
+				&rasterizer_frustum,
+				render_enumerate_target(),
+				render_enumerate_has_mirror());
+		}
+		while (render_enumerate_next());
+	}
+
 	if (main_get_window_count() == 1
 #ifdef HALO_VR
 		/* (a mirror's view would need the eyes' mirrored too; the scope's
@@ -728,25 +760,6 @@ static void render_player_frame(
 			rasterizer_profile_enable(TRUE);
 			has_mirror = TRUE;
 		}
-	}
-
-	/* port: a map's (or a structure's) shaders and pipelines made as it
-	starts: its first frame drawn first, unseen, through every shader its
-	tags hold, in each fog (port/linux/game/render_enumerate.c) */
-	if (render_enumerate_begin())
-	{
-		do
-		{
-			render_window(
-				window->local_player_index,
-				camera,
-				&frustum,
-				&window->rasterizer_camera,
-				&rasterizer_frustum,
-				_render_target_primary,
-				FALSE);
-		}
-		while (render_enumerate_next());
 	}
 
 	render_window(

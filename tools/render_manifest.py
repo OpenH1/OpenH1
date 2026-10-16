@@ -7,6 +7,7 @@ what one holds.
     python tools/render_manifest.py merge --replace port/assets/render/manifest.txt <recording>...
     python tools/render_manifest.py stats port/assets/render/manifest.txt [<recording>...]
     python tools/render_manifest.py vertex <manifest to write>
+    python tools/render_manifest.py check [--image <elf>] [--verbose] <recording>...
 
 merge adds the recordings' draws to the manifest (--replace: the manifest is
 made of the recordings alone), keeps each vertex program and pixel key a
@@ -17,6 +18,17 @@ with the manifest's shaders built in should have none). vertex writes the
 game's vertex shaders as the game creates them (its 67 programs' microcode and
 their declarations' layouts, read from the decompilation: no maps, no play),
 v and s records, which a backend's build makes every vertex function from.
+
+check reads recordings of play (one map each) and reports each one's
+enumeration (the draws drawn between "enumerating" and "prepared": the map's
+shaders and pipelines made as it loads, port/linux/game/render_enumerate.c)
+and its misses: the draws of play the enumeration does not have, which the
+recorder writes after a "# missed:" line of the return addresses that made
+them. With --image (the game's or the guest's image), the misses are grouped
+by the functions they were drawn in; --verbose names, for each, the fields
+in which the nearest enumerated draw differs. Draws are compared as a backend
+compiles them (compiled(): not the state set for each draw, as depth and
+stencil), or whole with --exact. It exits 1 if any recording has a miss.
 
 Port/assets/render/README.md says how the committed manifest is made.
 """
@@ -211,6 +223,155 @@ def vertex(arguments):
         for record in sorted(set(records)):
             file.write(record + "\n")
     print(f"{arguments.manifest}: {len(programs)} vertex programs, {len(set(records))} vertex shaders")
+# (xgpu.h's samplers: a cube's and a layered target's borders are not the
+# shader's)
+SAMPLER_CUBE, SAMPLER_2D_LAYERED = 3, 5
+ADDRESS_BORDER = 3
+DYNAMIC_FIELDS = ("dt", "st", "sm", "cu", "fi", "db")
+
+
+def compiled(draw):
+    """what a backend compiles of a draw (the Metal backend's pipeline state
+    key and its shaders' variant, port/macos/xgpu_metal_pipeline.m): the draw
+    without the state its encoder sets for each draw (depth, stencil, culling,
+    fill, depth bias), with the blend's factors only where it blends, and of
+    each texture stage what is sampled and the axes whose border the shader
+    draws (a colour the sampler has not: not black, opaque black or white)"""
+    parts = []
+    for part in draw.split(" ")[1:]:
+        name, _, value = part.partition("=")
+        if name in DYNAMIC_FIELDS:
+            continue
+        if name == "bl" and value.startswith("0,"):
+            value = "0"
+        elif name == "t":
+            stages = []
+            for stage in value.split("/"):
+                source, sampler, u, v, w, border = stage.split(".")
+                axes = 0
+                if source != "0" and int(sampler) not in (SAMPLER_CUBE, SAMPLER_2D_LAYERED) and \
+                        int(border, 16) not in (0, 0xff000000, 0xffffffff):
+                    axes = sum(1 << axis for axis, address in enumerate((u, v, w)) if int(address) == ADDRESS_BORDER)
+                stages.append(f"{source}.{sampler}.{axes}")
+            value = "/".join(stages)
+        parts.append(f"{name}={value}")
+    return "d " + " ".join(parts)
+
+
+def draw_fields(draw):
+    fields = dict(part.split("=", 1) for part in draw.split(" ")[1:])
+    for name in ("l", "t"):
+        if name in fields:
+            for index, value in enumerate(fields.pop(name).split("/")):
+                fields[f"{name}{index}"] = value
+    return fields
+
+
+class Recording:
+    """A recording's enumeration (each "enumerating" to "prepared") and its
+    misses, each with its stack (the return addresses); as what a backend
+    compiles of them unless exact."""
+
+    def __init__(self, path, exact=False):
+        self.path = path
+        self.pixels = {}
+        self.enumerated = set()
+        self.misses = []
+        self.enumerations = 0
+        enumerating, stack = False, None
+        with open(path, encoding="ascii") as file:
+            for line in file:
+                line = line.rstrip("\n")
+                if line.startswith("# enumerating"):
+                    enumerating = True
+                    self.enumerations += 1
+                elif line.startswith("# prepared"):
+                    enumerating = False
+                elif line.startswith("# missed:"):
+                    stack = line.split()[2:]
+                elif line.startswith("p "):
+                    self.pixels[line[2:18]] = line
+                elif line.startswith("d "):
+                    if stack is not None:
+                        self.misses.append((line, stack))
+                        stack = None
+                    elif enumerating:
+                        self.enumerated.add(line)
+        if not exact:
+            self.enumerated = {compiled(d) for d in self.enumerated}
+            seen = set()
+            misses = []
+            for draw, stack in self.misses:
+                draw = compiled(draw)
+                if draw not in self.enumerated and draw not in seen:
+                    seen.add(draw)
+                    misses.append((draw, stack))
+            self.misses = misses
+
+
+def symbolize(image, addresses):
+    """{address: (function, file:line)} for return addresses (each the call's,
+    one byte before)."""
+    import subprocess
+    if not addresses:
+        return {}
+    ordered = sorted(addresses)
+    output = subprocess.run(["addr2line", "-f", "-e", image] + [f"{int(a, 16) - 1:x}" for a in ordered],
+                            capture_output=True, text=True, check=True).stdout.split("\n")
+    names = {}
+    for index, address in enumerate(ordered):
+        function, place = output[2 * index], output[2 * index + 1]
+        names[address] = (function, place.rsplit("/", 1)[-1].split(" ")[0])
+    return names
+
+
+def nearest(draw, enumerated, pixels):
+    """the enumerated draw that differs from draw in fewest fields, and those
+    fields (a pixel key's own, where the keys differ)"""
+    fields = draw_fields(draw)
+    best = None
+    for other in enumerated:
+        other_fields = draw_fields(other)
+        differing = [n for n in sorted(set(fields) | set(other_fields)) if fields.get(n) != other_fields.get(n)]
+        if best is None or len(differing) < len(best[1]):
+            best = (other, differing)
+    if best and "px" in best[1]:
+        mine = dict(f.split("=", 1) for f in pixels.get(fields["px"], "").split(" ")[2:] if "=" in f)
+        theirs = dict(f.split("=", 1) for f in pixels.get(draw_fields(best[0])["px"], "").split(" ")[2:] if "=" in f)
+        best[1].extend(f"px.{n}:{theirs.get(n)}->{mine.get(n)}" for n in sorted(set(mine) | set(theirs))
+                       if mine.get(n) != theirs.get(n))
+    return best
+
+
+def check(arguments):
+    missing = 0
+    for path in arguments.recordings:
+        recording = Recording(path, arguments.exact)
+        pixels = {draw_fields(d)["px"] for d in recording.enumerated}
+        missed_pixels = {draw_fields(d)["px"] for d, _ in recording.misses} - pixels
+        print(f"{path}: {len(recording.enumerated)} draws enumerated ({len(pixels)} pixel keys, "
+              f"{recording.enumerations} enumerations), {len(recording.misses)} missed "
+              f"({len(missed_pixels)} pixel keys not enumerated)")
+        missing += len(recording.misses)
+        if not recording.misses:
+            continue
+        names = {}
+        if arguments.image:
+            names = symbolize(arguments.image, {a for _, stack in recording.misses for a in stack})
+        groups = {}
+        for draw, stack in recording.misses:
+            functions = [names[a][0] if a in names else a for a in stack]
+            # (from the draw's caller out: the device's own frames left out)
+            while functions and functions[0].startswith(("xgpu_", "prepare_draw", "draw_", "D3DDevice_", "record_")):
+                functions.pop(0)
+            groups.setdefault(" < ".join(functions[:arguments.depth]), []).append(draw)
+        for site, draws in sorted(groups.items(), key=lambda item: -len(item[1])):
+            print(f"  {len(draws):4} {site}")
+            if arguments.verbose:
+                for draw in draws[:arguments.verbose]:
+                    other, differing = nearest(draw, recording.enumerated, recording.pixels)
+                    print(f"         differs in {' '.join(differing)}" if other else "         (nothing enumerated)")
+    return 1 if missing else 0
 
 
 def main():
@@ -228,8 +389,15 @@ def main():
     command.add_argument("manifest")
     command.add_argument("recordings", nargs="*")
     command.set_defaults(run=stats)
+    command = commands.add_parser("check")
+    command.add_argument("--image")
+    command.add_argument("--depth", type=int, default=4)
+    command.add_argument("--exact", action="store_true")
+    command.add_argument("--verbose", type=int, nargs="?", const=3, default=0)
+    command.add_argument("recordings", nargs="+")
+    command.set_defaults(run=check)
     arguments = parser.parse_args()
-    arguments.run(arguments)
+    return arguments.run(arguments)
 
 
 if __name__ == "__main__":

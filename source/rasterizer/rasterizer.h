@@ -822,6 +822,15 @@ struct transparent_geometry_group *rasterizer_transparent_geometry_new_group(
 	void);
 struct transparent_geometry_group *rasterizer_transparent_geometry_new_group2(
 	void);
+/* port: (rasterizer_xbox_detail_objects.c) */
+void rasterizer_detail_objects_port_enumerate(
+	void);
+/* port: (rasterizer_xbox_decals.c) */
+void rasterizer_decals_port_enumerate(
+	void);
+/* port: (rasterizer_transparent_geometry.c) */
+void rasterizer_transparent_geometry_flush(
+	long room);
 void rasterizer_transparent_geometry_stop(
 	void);
 void rasterizer_transparent_geometry_dispose(

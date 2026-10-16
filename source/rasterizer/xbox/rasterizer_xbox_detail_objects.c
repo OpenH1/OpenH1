@@ -940,3 +940,38 @@ void rasterizer_detail_objects_dispose(
 }
 
 /* ---------- private code */
+
+/* port: a quad of every detail object collection the scenario has, drawn
+as _rasterizer_detail_objects_draw draws a cell's: a map's first frame
+drawn through every shader (port/linux/game/render_enumerate.c) */
+void rasterizer_detail_objects_port_enumerate(
+	void)
+{
+	struct scenario *scenario = global_scenario_get();
+	long entry_index;
+
+	if (!rasterizer_debug_options.draw_detail_objects || main_get_window_count() > 1 || !local_d3d_vertex_buffer)
+		return;
+	_rasterizer_detail_objects_begin();
+	for (entry_index = 0; entry_index < scenario->detail_object_collection_palette.count; entry_index++)
+	{
+		struct scenario_detail_object_collection_palette_entry *palette_entry = TAG_BLOCK_GET_ELEMENT(
+			&scenario->detail_object_collection_palette,
+			entry_index,
+			struct scenario_detail_object_collection_palette_entry);
+		struct detail_object_collection_definition *collection;
+
+		if (palette_entry->collection.index == NONE)
+			continue;
+		collection = detail_object_collection_definition_get(palette_entry->collection.index);
+		rasterizer_set_texture(0, 0, 1, collection->map.index, 0);
+		if (collection->collection_type != NONE)
+			rasterizer_set_vertex_shader_permutation(0x21, 0xB, collection->collection_type);
+		IDirect3DDevice8_SetVertexData4f(global_d3d_device, 2, 0.0f, 0.0f, 0.0f, 1.0f);
+		IDirect3DDevice8_SetVertexData4f(global_d3d_device, 3, 0.0f, 0.0f, 1.0f, 0.0f);
+		IDirect3DDevice8_DrawVertices(global_d3d_device, D3DPT_QUADLIST, 0, NUMBER_OF_VERTICES_PER_QUADRILATERAL);
+	}
+	_rasterizer_detail_objects_end();
+
+	return;
+}

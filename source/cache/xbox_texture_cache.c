@@ -121,6 +121,7 @@ symbols in this file:
 #include "text/draw_string.h"
 #include <xtl.h>
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
+#include "render_enumerate.h" /* port: port/linux/game/render_enumerate.c */
 
 /* ---------- constants */
 
@@ -994,6 +995,14 @@ void *_texture_cache_bitmap_get_hardware_format(
 	boolean load)
 {
 	void *hardware_format = NULL;
+
+	/* port: a map's first frame, drawn through every shader, waits for each
+	texture it draws with: drawn without it, a draw is skipped or made
+	without its sampler (port/linux/game/render_enumerate.c) */
+	if (render_enumerating && load)
+	{
+		block = TRUE;
+	}
 
 	match_assert(
 		"c:\\halo\\SOURCE\\cache\\xbox_texture_cache.c",

@@ -2013,3 +2013,25 @@ void structure_visibility_compute(
 
 	return;
 }
+
+/* port: whether the structure has a mirror (port/linux/game/render_enumerate.c:
+a map's first frame is drawn through a mirror's window too) */
+boolean structure_visibility_port_has_mirrors(
+	void)
+{
+	struct structure_bsp *structure = global_structure_bsp_get();
+	long cluster_index;
+
+	for (cluster_index = 0; structure && cluster_index < structure->clusters.count; cluster_index++)
+	{
+		struct structure_visibility_cluster *cluster = TAG_BLOCK_GET_ELEMENT(
+			&structure->clusters,
+			(short)cluster_index,
+			struct structure_visibility_cluster);
+
+		if (cluster->mirrors.count > 0)
+			return TRUE;
+	}
+
+	return FALSE;
+}

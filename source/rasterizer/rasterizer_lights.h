@@ -40,6 +40,13 @@ void rasterizer_lens_flares_submit_occlusion_tests(
 	void);
 void rasterizer_lens_flares_draw(
 	void);
+/* port: (render_enumerate.c) */
+long rasterizer_lens_flares_port_count(
+	void);
+void rasterizer_lens_flares_port_truncate(
+	long count);
+void rasterizer_lens_flares_port_enumerate(
+	boolean submit);
 void rasterizer_sun_glow_draw(
 	struct rasterizer_lens_flare_submit_parameters const *flare);
 

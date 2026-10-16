@@ -3017,16 +3017,26 @@ static BOOL prepare_draw(BOOL immediate)
 
 /* the shaders and pipelines of the draws so far made (a map's first
 frame's: port/linux/game/render_enumerate.c); the seconds waited */
-void halo_gpu_prepare(void)
+void halo_gpu_prepare(int new_map)
 {
-	xgpu_manifest_note("enumerating: the draws until \"prepared\" are a map's first frame's, drawn through every shader");
+	xgpu_manifest_enumerating(1, new_map);
 	if (device.gl_ready)
 		xgpu_backend_prepare();
 }
 
+double halo_thread_cpu_seconds(void)
+{
+	struct timespec now;
+
+	if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now) != 0)
+		return 0.0;
+	return (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
+}
+
 double halo_gpu_prepared(void)
 {
-	xgpu_manifest_note("prepared: the draws after are the map's not drawn as it started");
+	xgpu_manifest_enumerating(0, 0);
+	platform_log("GPU: the map's enumeration: %lu draws", (unsigned long)xgpu_manifest_enumeration()->draw_count);
 	return device.gl_ready ? xgpu_backend_prepared() : 0.0;
 }
 

@@ -141,9 +141,18 @@ void xgpu_manifest_note_textures(const struct xgpu_texture_source *stages);
 void xgpu_manifest_note_pipeline(const struct xgpu_pipeline_key *key);
 void xgpu_manifest_note_vertices(const struct xgpu_vertex_input *input);
 void xgpu_manifest_record_draw(int immediate, unsigned long written);
-/* a comment line in the recording (the draws after it are those recorded
-since: a map's play's, after its first frame's) */
+/* a comment line in the recording */
 void xgpu_manifest_note(const char *text);
+/* the draws from now until xgpu_manifest_enumerating(0, 0) are a map's
+enumeration (port/linux/game/render_enumerate.c): new_map starts the map's
+list, else (a new structure of the map) adds to it. Recorded, each draw
+after that the list does not have is written again after a comment line,
+"# missed:" and the return addresses of the stack that made it. */
+void xgpu_manifest_enumerating(int enumerating, int new_map);
+/* the map's enumeration: its draws (pipeline keys, pixel keys, layouts and
+stages, as the stream describes them), and the vertex programs recorded
+(debug.render_manifest; else none: the backend has made them all) */
+const struct xgpu_manifest *xgpu_manifest_enumeration(void);
 
 #endif
 

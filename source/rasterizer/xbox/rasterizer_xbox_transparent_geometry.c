@@ -1880,6 +1880,16 @@ void rasterizer_transparent_geometry_group_draw(
 										secondary_map_active ? PS_TEXTUREMODES_PROJECT2D : PS_TEXTUREMODES_NONE,
 										PS_TEXTUREMODES_NONE,
 										PS_TEXTUREMODES_NONE);
+									/* port: the z-sprite's stream bound here too: the
+									vertex shader reads it either way, and it would
+									otherwise read what an earlier draw left on the
+									stream (unused here, but part of the draw's
+									pipeline: port/linux/game/render_enumerate.c) */
+									IDirect3DDevice8_SetStreamSource(
+										global_d3d_device,
+										1,
+										rasterizer_xbox_transparent_geometry_globals.texcoord_stream,
+										2*sizeof(byte));
 								}
 
 								if (rasterizer_debug_options.draw_environment_fog &&

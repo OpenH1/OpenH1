@@ -21,6 +21,10 @@ void hud_weapon_port_set_script_flags(
 	long flags);
 void scripted_hud_show_crosshair(
 	boolean show);
+/* port: every weapon's and grenade's HUD drawn
+(port/linux/game/render_enumerate.c) */
+void hud_weapon_port_enumerate(
+	short local_player_index);
 
 void hud_fix_weapon_data(
 	short old_local_player_index,

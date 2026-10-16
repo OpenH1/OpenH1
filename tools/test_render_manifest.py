@@ -1,7 +1,8 @@
 """The renderer's manifest (port/linux/src/xgpu_manifest.h): the C reader
 reads what tools/render_manifest.py writes, refuses a pixel key that is not
-its hash's, a merge is the same file however its recordings come, and the
-game's vertex shaders are read from its code."""
+its hash's, a merge is the same file however its recordings come, the
+game's vertex shaders are read from its code, and the check of a map's
+enumeration compares draws as a backend compiles them."""
 import shutil
 import struct
 import subprocess
@@ -162,3 +163,48 @@ def test_vertex_shaders_from_the_code(tmp_path, reader):
     shaders = [line for line in lines if line.startswith("shader ")]
     assert len(shaders) == 67 and all("program found" in line for line in shaders)
     assert "shader 0040b0e2af81b3dc: program found, packed 0xe, elements 7" in shaders
+ENUMERATED = ("d vp=0000000000000001 pa=0x0 im=0 li=0 vw=0 bl=1,4,5,0 cm=7 dt=1,3,1 st=0,0,0,0,0 sm=0,0 "
+              "cu=1,0,0 fi=0 db=0 fm=1,2,1 px=00000000000000aa l=0.0.3.12.0 w=0:12 "
+              "t=1.1.0.0.0.0x0/1.1.3.0.2.0x5050505/0.0.0.0.0.0x0/0.0.0.0.0.0x0")
+
+
+def recording(tmp_path, *after):
+    """a recording: its enumeration (ENUMERATED), then each draw after it
+    marked missed"""
+    lines = ["manifest 1", "# enumerating: the map's", ENUMERATED, "# prepared: the misses"]
+    for draw in after:
+        lines += ["# missed: 70000010 70000020", draw]
+    path = tmp_path / "recording.txt"
+    path.write_text("\n".join(lines) + "\n")
+    return path
+
+
+def check(*arguments):
+    return subprocess.run([sys.executable, str(ROOT / "tools" / "render_manifest.py"), "check", *map(str, arguments)],
+                          capture_output=True, text=True)
+
+
+def test_compiled_leaves_out_what_each_draw_sets():
+    sys.path.insert(0, str(ROOT / "tools"))
+    import render_manifest
+
+    stenciled = ENUMERATED.replace("st=0,0,0,0,0", "st=1,2,0,0,0").replace("dt=1,3,1", "dt=0,0,0")
+    assert render_manifest.compiled(stenciled) == render_manifest.compiled(ENUMERATED)
+    # (a stage's border drawn by the shader: clamped to a colour the sampler has not)
+    assert "t=1.1.0/1.1.1/0.0.0/0.0.0" in render_manifest.compiled(ENUMERATED)
+    unblended = ENUMERATED.replace("bl=1,4,5,0", "bl=0,4,5,0")
+    assert " bl=0 " in render_manifest.compiled(unblended)
+    assert render_manifest.compiled(unblended) == render_manifest.compiled(unblended.replace("bl=0,4,5,0", "bl=0,1,1,0"))
+
+
+def test_check_passes_what_only_the_draw_state_changes(tmp_path):
+    result = check(recording(tmp_path, ENUMERATED.replace("cu=1,0,0", "cu=0,0,0")))
+    assert result.returncode == 0, result.stdout
+    assert "1 draws enumerated" in result.stdout and "0 missed" in result.stdout
+
+
+def test_check_fails_another_program(tmp_path):
+    result = check("--verbose", "1", recording(tmp_path, ENUMERATED.replace("px=00000000000000aa", "px=00000000000000bb")))
+    assert result.returncode == 1
+    assert "1 missed" in result.stdout and "differs in px" in result.stdout
+    assert check("--exact", recording(tmp_path, ENUMERATED.replace("cu=1,0,0", "cu=0,0,0"))).returncode == 1

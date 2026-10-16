@@ -742,6 +742,22 @@ static int hash_set_add(struct hash_set *set, uint64_t hash)
 	return 1;
 }
 
+static int hash_set_has(const struct hash_set *set, uint64_t hash)
+{
+	uint32_t index;
+
+	if (!hash)
+		hash = 1;
+	if (!set->capacity)
+		return 0;
+	for (index = (uint32_t)hash & (set->capacity - 1); set->slots[index]; index = (index + 1) & (set->capacity - 1))
+	{
+		if (set->slots[index] == hash)
+			return 1;
+	}
+	return 0;
+}
+
 static struct
 {
 	/* -1 not read yet, 0 off, 1 on */
@@ -759,7 +775,20 @@ static struct
 	uint16_t strides[XGPU_MANIFEST_STREAMS];
 	struct text text;
 	unsigned long recorded;
+	/* a map's enumeration being drawn (xgpu_manifest_enumerating), its
+	draws so far */
+	int enumerating;
+	struct xgpu_manifest enumeration;
+	uint32_t enumeration_capacity;
+	struct hash_set enumerated, missed;
+	int enumerated_once;
 } recorder = { -1 };
+
+/* the next draw is noted: recorded, or a map's enumeration's */
+static int noting(void)
+{
+	return recorder.state > 0 || recorder.enumerating;
+}
 
 int xgpu_manifest_recording(void)
 {
@@ -821,7 +850,7 @@ void xgpu_manifest_note_textures(const struct xgpu_texture_source *stages)
 {
 	int index;
 
-	if (recorder.state <= 0)
+	if (!noting())
 		return;
 	memset(recorder.stages, 0, sizeof(recorder.stages));
 	for (index = 0; index < 4; index++)
@@ -846,7 +875,7 @@ void xgpu_manifest_note_textures(const struct xgpu_texture_source *stages)
 
 void xgpu_manifest_note_pipeline(const struct xgpu_pipeline_key *key)
 {
-	if (recorder.state <= 0)
+	if (!noting())
 		return;
 	xgpu_stream_pipeline_key_describe(key, &recorder.key);
 	recorder.have_key = 1;
@@ -856,7 +885,7 @@ void xgpu_manifest_note_vertices(const struct xgpu_vertex_input *input)
 {
 	unsigned long index;
 
-	if (recorder.state <= 0)
+	if (!noting())
 		return;
 	recorder.element_count = 0;
 	memset(recorder.elements, 0, sizeof(recorder.elements));
@@ -894,13 +923,86 @@ void xgpu_manifest_note(const char *text)
 	fflush(recorder.file);
 }
 
+/* the functions a draw was made in, from its caller out (each frame's
+return address), as a comment line: a draw recorded outside a map's
+enumeration, a draw the enumeration misses (addr2line -f -e the guest's
+or the game's image names them) */
+static void missed_write(void)
+{
+#if defined(__x86_64__) || defined(__i386__)
+	uintptr_t frame = (uintptr_t)__builtin_frame_address(0);
+	int level;
+
+	fprintf(recorder.file, "# missed:");
+	for (level = 0; level < 24 && frame; level++)
+	{
+		uintptr_t next = *(uintptr_t *)frame;
+		/* (the return address after the saved frame pointer, 8 bytes each in
+		the x32 guest as in the 64-bit ABI) */
+		unsigned long long address = *(unsigned long long *)(frame + sizeof(unsigned long long));
+
+#ifdef __i386__
+		address = *(unsigned long *)(frame + sizeof(unsigned long));
+#endif
+		fprintf(recorder.file, " %llx", address);
+		if (next <= frame || next - frame > 1024 * 1024)
+			break;
+		frame = next;
+	}
+	fprintf(recorder.file, "\n");
+	fflush(recorder.file);
+#endif
+}
+
+static void enumeration_add(const struct xgpu_manifest_draw *draw, uint64_t hash)
+{
+	if (!hash_set_add(&recorder.enumerated, hash))
+		return;
+	if (recorder.enumeration.draw_count == recorder.enumeration_capacity)
+	{
+		uint32_t capacity = recorder.enumeration_capacity ? recorder.enumeration_capacity * 2 : 256;
+		struct xgpu_manifest_draw *larger = realloc(recorder.enumeration.draws, capacity * sizeof(*larger));
+
+		if (!larger)
+			return;
+		recorder.enumeration.draws = larger;
+		recorder.enumeration_capacity = capacity;
+	}
+	recorder.enumeration.draws[recorder.enumeration.draw_count++] = *draw;
+}
+
+void xgpu_manifest_enumerating(int enumerating, int new_map)
+{
+	xgpu_manifest_recording();
+	if (enumerating && new_map)
+	{
+		free(recorder.enumerated.slots);
+		memset(&recorder.enumerated, 0, sizeof(recorder.enumerated));
+		recorder.enumeration.draw_count = 0;
+		free(recorder.missed.slots);
+		memset(&recorder.missed, 0, sizeof(recorder.missed));
+	}
+	recorder.enumerating = enumerating;
+	recorder.enumerated_once = 1;
+	xgpu_manifest_note(enumerating ? "enumerating: the draws until \"prepared\" are a map's enumeration's" :
+		"prepared: a draw after not in the map's enumeration is marked \"missed\"");
+}
+
+const struct xgpu_manifest *xgpu_manifest_enumeration(void)
+{
+	recorder.enumeration.vertex_programs = recorder.programs;
+	recorder.enumeration.vertex_program_count = recorder.program_count;
+	return &recorder.enumeration;
+}
+
 void xgpu_manifest_record_draw(int immediate, unsigned long written)
 {
 	struct xgpu_manifest_draw draw;
 	uint64_t hash, program;
 	uint32_t index;
+	int missed;
 
-	if (recorder.state <= 0 || !recorder.have_key)
+	if (!noting() || !recorder.have_key)
 		return;
 	memset(&draw, 0, sizeof(draw));
 	draw.key = recorder.key;
@@ -916,8 +1018,18 @@ void xgpu_manifest_record_draw(int immediate, unsigned long written)
 	}
 	memcpy(draw.stages, recorder.stages, sizeof(draw.stages));
 	hash = xgpu_manifest_hash(&draw, sizeof(draw), XGPU_MANIFEST_HASH_START);
-	if (!hash_set_add(&recorder.draws, hash))
+	if (recorder.enumerating)
+		enumeration_add(&draw, hash);
+	if (recorder.state <= 0)
 		return;
+	/* (a draw of play that the map's enumeration does not have, recorded
+	again after the stack that made it) */
+	missed = !recorder.enumerating && recorder.enumerated_once && !hash_set_has(&recorder.enumerated, hash) &&
+		hash_set_add(&recorder.missed, hash);
+	if (!hash_set_add(&recorder.draws, hash) && !missed)
+		return;
+	if (missed)
+		missed_write();
 	/* (the vertex program and the pixel key first, once) */
 	program = draw_vertex_program(&draw);
 	if (hash_set_add(&recorder.written_programs, program))

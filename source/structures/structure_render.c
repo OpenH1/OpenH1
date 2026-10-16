@@ -101,6 +101,7 @@ symbols in this file:
 #include "structures/structure_bsp_definitions.h"
 #include "structures/structure_visibility.h"
 #include "tag_files/tag_groups.h"
+#include "render_enumerate.h" /* port: port/linux/game/render_enumerate.c */
 
 /* ---------- constants */
 
@@ -1094,6 +1095,25 @@ void structure_render_shadow(
 	long dynamic_triangles_index;
 
 	profile_enter(render_structure_shadows_section);
+
+	/* port: a map's first frame's shadows cast on every material's
+	surfaces, those the window draws (port/linux/game/render_enumerate.c) */
+	if (render_enumerating)
+	{
+		if (structure_render_globals.environment_triangles_index != NONE)
+		{
+			structure_render_pass(
+				render.environment_surface_indices,
+				render.environment_surface_count,
+				structure_render_globals.environment_triangles_index,
+				NULL,
+				rasterizer_environment_shadow_draw,
+				NULL,
+				NULL);
+		}
+		profile_exit(render_structure_shadows_section);
+		return;
+	}
 
 	surface_count = structure_visibility_build_surfaces(
 		surface_indices,

@@ -85,6 +85,7 @@ symbols in this file:
 #include "shaders/shader_definitions.h"
 #include "structures/structure_bsp_definitions.h"
 #include "tag_files/tag_groups.h"
+#include "cache/cache_files.h" /* port: (weather_particle_systems_port_enumerate) */
 
 /* ---------- constants */
 
@@ -1025,6 +1026,35 @@ static void weather_particle_update_physics(
 		point_from_line3d(&particle->position, seed_random_direction3d(&seed, &random_direction), 0.001f*system->time_delta_sec*TICKS_PER_SECOND, &particle->position);
 	}
 	weather_particle_system_wrap_point(type->box_width, &particle->position, &particle->position);
+
+	return;
+}
+
+/* port: every weather particle type's bitmap and shader, to draw as
+weather_particle_systems_render draws them: a map's first frame drawn
+through every shader (port/linux/game/render_enumerate.c) */
+void weather_particle_systems_port_enumerate(
+	void (*draw)(long bitmap_group_index, struct shader_effect_definition const *shader))
+{
+	struct tag_iterator iterator;
+	long tag_index;
+
+	tag_iterator_new(&iterator, WEATHER_PARTICLE_SYSTEM_DEFINITION_TAG);
+	while ((tag_index = tag_iterator_next(&iterator)) != NONE)
+	{
+		struct weather_particle_system_definition *definition = weather_particle_system_definition_get(tag_index);
+		long type_index;
+
+		for (type_index = 0; type_index < definition->particle_types.count; type_index++)
+		{
+			struct weather_particle_type_definition *type = TAG_BLOCK_GET_ELEMENT(
+				&definition->particle_types,
+				type_index,
+				struct weather_particle_type_definition);
+
+			draw(type->bitmap.index, &type->shader);
+		}
+	}
 
 	return;
 }

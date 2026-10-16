@@ -103,6 +103,7 @@ symbols in this file:
 #include "rasterizer/xbox/rasterizer_xbox.h"
 #include "main/main.h"
 #include "view_fov.h" /* port: port/linux/game/view_fov.c */
+#include "cache/cache_files.h" /* port: (rasterizer_lens_flares_port_enumerate) */
 
 /* ---------- constants */
 
@@ -1261,6 +1262,84 @@ void rasterizer_lens_flares_draw(
 	}
 
 	rasterizer_profile_end(_rasterizer_profile_lens_flares);
+
+	return;
+}
+
+/* port: a map's first frame, drawn through every shader
+(port/linux/game/render_enumerate.c): the frame's lens flares counted, and
+put back to as many (none of the enumeration's left to be drawn in the
+frame's own window); a flare of every lens flare tag submitted before the
+camera, then made visible, as its occlusion test would make it, before the
+lens flares are drawn */
+static long port_enumerated_lens_flare_first = 0;
+static long port_enumerated_lens_flare_count = 0;
+
+long rasterizer_lens_flares_port_count(
+	void)
+{
+	return local_lens_flare_count;
+}
+
+void rasterizer_lens_flares_port_truncate(
+	long count)
+{
+	if (count >= 0 && count < local_lens_flare_count)
+		local_lens_flare_count = count;
+	port_enumerated_lens_flare_count = 0;
+
+	return;
+}
+
+void rasterizer_lens_flares_port_enumerate(
+	boolean submit)
+{
+	long index;
+
+	if (submit)
+	{
+		struct tag_iterator iterator;
+		long tag_index;
+		short queued_index = 0;
+		port_enumerated_lens_flare_first = local_lens_flare_count;
+		tag_iterator_new(&iterator, LENS_FLARE_DEFINITION_TAG);
+		while ((tag_index = tag_iterator_next(&iterator)) != NONE)
+		{
+			struct rasterizer_lens_flare_submit_parameters parameters;
+
+			memset(&parameters, 0, sizeof(parameters));
+			parameters.definition = tag_get(LENS_FLARE_DEFINITION_TAG, tag_index);
+			point_from_line3d(&global_window_parameters.camera.position, &global_window_parameters.camera.forward,
+				2.0f, &parameters.position);
+			/* (facing away: a sun's glow is tested and drawn about a point
+			beyond it, rasterizer_sun_glow_draw) */
+			parameters.compressed_direction = compress_real_vector3d_to_int32_clamp(
+				&global_window_parameters.camera.forward);
+			parameters.compressed_up = compress_real_vector3d_to_int32_clamp(&global_window_parameters.camera.up);
+			parameters.compressed_light_color = 0xffffffff;
+			parameters.light_identifier = NONE;
+			parameters.light_index = NONE;
+			parameters.lens_flare_index = queued_index;
+			parameters.compressed_window_index = (byte)global_window_parameters.window_index;
+			parameters.compressed_light_scale = 0xff;
+			queued_index = (short)((queued_index + 1) % MAXIMUM_QUEUED_LENS_FLARES);
+			rasterizer_lens_flare_submit(&parameters);
+		}
+		port_enumerated_lens_flare_count = local_lens_flare_count - port_enumerated_lens_flare_first;
+	}
+	else
+	{
+		for (index = port_enumerated_lens_flare_first;
+			index < port_enumerated_lens_flare_first + port_enumerated_lens_flare_count && index < local_lens_flare_count;
+			index++)
+		{
+			struct rasterizer_lens_flare_submit_parameters *parameters = lens_flare_parameters_get((short)index);
+
+			if (parameters->internal__occlusion_pixels <= 0)
+				parameters->internal__occlusion_pixels = 1;
+			*lens_flare_occlusion_test_results_get(parameters) = 0xff;
+		}
+	}
 
 	return;
 }
