@@ -1806,8 +1806,8 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 		profile.capturing = NO;
 		host_logf(HOST_LOG_INFO, "metal: captured into %s", profile.capture_path.UTF8String);
 	}
-	if (image)
-		host_metal_present_queue(image);
+	/* (nil: a frame with nothing to show, taken at once) */
+	host_metal_present_queue(image);
 	metal.in_frame = NO;
 	statistics_add(&metal.statistics.frames, 1);
 	{

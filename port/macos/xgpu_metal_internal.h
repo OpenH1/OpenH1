@@ -40,7 +40,8 @@ into, where that is of the picture's size and format (else nil) */
 id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture);
 /* the image is shown at the display's next refresh after those queued
 before it (after the command buffers committed before this call: the
-frame's must be) */
+frame's must be); called once for each frame, nil for a frame with nothing
+to show (its display's pacing, host_render_stream_frame_taken) */
 void host_metal_present_queue(id<MTLTexture> image);
 
 #endif

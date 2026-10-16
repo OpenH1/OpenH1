@@ -171,13 +171,24 @@ statistics, for the host's logs (read as they are, racing with their
 writers) */
 const struct xgpu_stream_ring *host_render_stream_ring(void);
 
-/* ---------- input to screen (frame_pacing.h)
+/* ---------- pacing by the display (frame_pacing.h)
 
-A backend that knows when its frames reach the screen gives each frame's
-time there with its input time (host_render_stream_frame_input, while the
-backend ends the frame): host_render_stream_frame_shown, for
-host_render_stream_latency. Nanoseconds of CLOCK_MONOTONIC, the game's. */
+A backend that shows frames on a display it knows the refreshes of paces
+the game by it: host_render_stream_display_paced(1), and then, for each
+frame it ends, once, host_render_stream_frame_taken when its display takes
+it (shows it, or drops it; at once for a frame it has nothing to show of).
+The game then starts a frame only while at most FRAME_PACING_QUEUED of its
+frames wait for the display. host_render_stream_frame_shown gives the time
+the frame reached the screen with its input time
+(host_render_stream_frame_input, while the backend ends it), for
+host_render_stream_latency: nanoseconds of CLOCK_MONOTONIC, the game's. */
+void host_render_stream_display_paced(int paced);
 uint64_t host_render_stream_frame_input(void);
+void host_render_stream_frame_taken(void);
+/* the display has latched a refresh's frame (taken one or not) at latch;
+its refreshes are period apart: the game then starts each frame its
+budget before the latch it is for (frame_pacing_start_time) */
+void host_render_stream_display_latched(uint64_t latch, uint64_t period);
 void host_render_stream_frame_shown(uint64_t input, uint64_t shown);
 /* the input to screen times since the last call: median and 95th
 percentile in milliseconds; returns how many */

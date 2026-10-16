@@ -120,9 +120,24 @@ int host_render_stream_playing(void)
 	return 0;
 }
 
+void host_render_stream_display_paced(int paced)
+{
+	(void)paced;
+}
+
 uint64_t host_render_stream_frame_input(void)
 {
 	return 0;
+}
+
+void host_render_stream_frame_taken(void)
+{
+}
+
+void host_render_stream_display_latched(uint64_t latch, uint64_t period)
+{
+	(void)latch;
+	(void)period;
 }
 
 void host_render_stream_frame_shown(uint64_t input, uint64_t shown)

@@ -15,8 +15,12 @@ so waits only when the ring is full, more than frames_in_flight frames are
 unretired, or a record is synchronous: the GPU draws frame N while this
 thread plays N + 1 and the game writes N + 2.
 
-Each frame's FRAME_END says when its input was read, for the time from
-then to the frame on screen (frame_pacing.h).
+A backend that shows the frames on a display paces the game by it
+(frame_pacing.h): the game starts a frame only while at most
+FRAME_PACING_QUEUED of its frames wait for the display, and not before the
+budget a frame takes ahead of the display's latch it is for. Each frame's
+FRAME_END says when its input was read, for the time from then to the
+frame on screen.
 */
 
 #include "host.h"
@@ -24,6 +28,16 @@ then to the frame on screen (frame_pacing.h).
 #include "host_render_stream.h"
 #include "frame_pacing.h"
 
+#ifdef __APPLE__
+/* (Mach's host_page_size is another than host.h's) */
+#define host_page_size host_page_size_of_mach
+#include <mach/mach.h>
+#include <mach/mach_time.h>
+#include <mach/thread_policy.h>
+#undef host_page_size
+#endif
+
+#include <errno.h>
 #include <pthread.h>
 #include <stdatomic.h>
 #include <stdlib.h>
@@ -639,6 +653,14 @@ static struct
 	uint32_t frames_unfenced;
 	uint32_t retired_frames;
 	uint64_t frame_started;
+	/* (frame_pacing.h) the backend paces the game by its display; the
+	frames the display has taken (shown, or dropped); its last latch and its
+	refreshes' period (nanoseconds of the game's clock); the frames' costs,
+	their input read to ready for the display */
+	int display_paced;
+	uint32_t frames_taken;
+	uint64_t latch, period;
+	struct frame_pacing_costs costs;
 } render =
 {
 	.lock = PTHREAD_MUTEX_INITIALIZER,
@@ -748,6 +770,9 @@ static void *render_thread(void *argument)
 			frame_ended = render.decoder->frame_ended;
 			if (frame_ended)
 			{
+				pthread_mutex_lock(&render.lock);
+				frame_pacing_cost_add(&render.costs, render.decoder->frame_input, monotonic_nanoseconds());
+				pthread_mutex_unlock(&render.lock);
 				render.ring->decode_nanoseconds = (uint32_t)(monotonic_nanoseconds() - render.frame_started);
 				render.frame_started = 0;
 			}
@@ -827,6 +852,7 @@ int host_render_stream_open(uint32_t ring_address)
 	render.frames_unfenced = 0;
 	render.retired_frames = ring->frames_retired = ring->frames_submitted;
 	ring->released = ring->committed;
+	render.frames_taken = ring->frames_submitted;
 	ring->error = 0;
 	render.stopping = 0;
 	if (backend->open)
@@ -843,13 +869,37 @@ int host_render_stream_open(uint32_t ring_address)
 }
 
 /* (render.lock held) the guest waits for done, counted in its statistics */
-/* ---------- input to screen (frame_pacing.h) */
+/* ---------- pacing by the display (frame_pacing.h) */
 
 static struct frame_pacing_latency latency;
+
+void host_render_stream_display_paced(int paced)
+{
+	pthread_mutex_lock(&render.lock);
+	render.display_paced = paced;
+	pthread_cond_broadcast(&render.done);
+	pthread_mutex_unlock(&render.lock);
+}
 
 uint64_t host_render_stream_frame_input(void)
 {
 	return render.decoder ? render.decoder->frame_input : 0;
+}
+
+void host_render_stream_frame_taken(void)
+{
+	pthread_mutex_lock(&render.lock);
+	render.frames_taken++;
+	pthread_cond_broadcast(&render.done);
+	pthread_mutex_unlock(&render.lock);
+}
+
+void host_render_stream_display_latched(uint64_t latch, uint64_t period)
+{
+	pthread_mutex_lock(&render.lock);
+	render.latch = latch;
+	render.period = period;
+	pthread_mutex_unlock(&render.lock);
 }
 
 void host_render_stream_frame_shown(uint64_t input, uint64_t shown)
@@ -860,6 +910,99 @@ void host_render_stream_frame_shown(uint64_t input, uint64_t shown)
 uint32_t host_render_stream_latency(float *median, float *high)
 {
 	return frame_pacing_latency_take(&latency, median, high);
+}
+
+/* sleeps until a time of CLOCK_MONOTONIC. On Apple's systems a thread's
+timed waits can end tens of milliseconds late (the system coalesces timers:
+5 ms slept 39 on an M1 Max with the person away), but not a time constraint
+thread's: the thread is one while it waits, and standard again after */
+static void sleep_until(uint64_t when)
+{
+#ifdef __APPLE__
+	static mach_timebase_info_data_t timebase;
+	thread_port_t thread = pthread_mach_thread_np(pthread_self());
+	thread_time_constraint_policy_data_t constraint;
+	thread_standard_policy_data_t standard;
+	uint64_t now = monotonic_nanoseconds();
+
+	if (when <= now)
+		return;
+	if (!timebase.denom)
+		mach_timebase_info(&timebase);
+	/* (a refresh's period, a little of it computing, woken within a
+	millisecond: in the time base's units) */
+	constraint.period = (uint32_t)(8333333ull * timebase.denom / timebase.numer);
+	constraint.computation = (uint32_t)(500000ull * timebase.denom / timebase.numer);
+	constraint.constraint = (uint32_t)(1000000ull * timebase.denom / timebase.numer);
+	constraint.preemptible = 1;
+	thread_policy_set(thread, THREAD_TIME_CONSTRAINT_POLICY, (thread_policy_t)&constraint,
+		THREAD_TIME_CONSTRAINT_POLICY_COUNT);
+	mach_wait_until(mach_absolute_time() + (when - now) * timebase.denom / timebase.numer);
+	memset(&standard, 0, sizeof(standard));
+	thread_policy_set(thread, THREAD_STANDARD_POLICY, (thread_policy_t)&standard, THREAD_STANDARD_POLICY_COUNT);
+#else
+	struct timespec until;
+
+	until.tv_sec = (time_t)(when / 1000000000ull);
+	until.tv_nsec = (long)(when % 1000000000ull);
+	while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &until, NULL) == EINTR)
+		;
+#endif
+}
+
+/* (render.lock held) the game waits until the display has taken its frames
+but FRAME_PACING_QUEUED (FRAME_PACING_WAIT_MAXIMUM_NS at most: a display
+that takes none must not stop the game), then until its frame's start
+time, its budget before the latch the frame is for */
+static void display_wait(uint64_t *start)
+{
+	struct timespec until;
+	uint64_t start_time, now;
+
+	if (!render.display_paced)
+		return;
+	clock_gettime(CLOCK_REALTIME, &until);
+	until.tv_sec += (time_t)(FRAME_PACING_WAIT_MAXIMUM_NS / 1000000000ull);
+	until.tv_nsec += (long)(FRAME_PACING_WAIT_MAXIMUM_NS % 1000000000ull);
+	if (until.tv_nsec >= 1000000000L)
+	{
+		until.tv_sec++;
+		until.tv_nsec -= 1000000000L;
+	}
+	while (!render.ring->error && render.display_paced &&
+		!frame_pacing_may_start(render.ring->frames_submitted, render.frames_taken, FRAME_PACING_QUEUED))
+	{
+		if (!*start)
+		{
+			*start = monotonic_nanoseconds();
+			render.ring->waits++;
+		}
+		if (pthread_cond_timedwait(&render.done, &render.lock, &until) == ETIMEDOUT)
+		{
+			/* (the display takes no frames: those it has not taken are
+			counted taken, so that the game goes on) */
+			render.frames_taken = render.ring->frames_submitted - FRAME_PACING_QUEUED;
+			break;
+		}
+	}
+	if (render.ring->error || !render.display_paced)
+		return;
+	start_time = frame_pacing_start_time(render.latch, render.period,
+		render.ring->frames_submitted - render.frames_taken, frame_pacing_budget(&render.costs, render.period));
+	now = monotonic_nanoseconds();
+	/* (a start further off than a few refreshes is a stale latch: the
+	display has stopped) */
+	if (start_time > now && start_time - now < 4 * render.period)
+	{
+		if (!*start)
+		{
+			*start = now;
+			render.ring->waits++;
+		}
+		pthread_mutex_unlock(&render.lock);
+		sleep_until(start_time);
+		pthread_mutex_lock(&render.lock);
+	}
 }
 
 static void guest_wait(uint64_t *start)
@@ -900,6 +1043,8 @@ void host_render_stream_submit(uint32_t flags)
 		else
 			break;
 	}
+	if (flags & XGPU_STREAM_SUBMIT_FRAME)
+		display_wait(&start);
 	guest_waited(start);
 	pthread_mutex_unlock(&render.lock);
 }

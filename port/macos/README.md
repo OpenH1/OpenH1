@@ -301,16 +301,39 @@ each refresh of the display, the link hands over a drawable, and the
 thread draws the oldest frame queued into it, letterboxed to the frame's
 shape, and presents it. A ProMotion display's rate follows the frames, up
 to its highest; a fixed display's is its own. When a frame ends, its
-back buffer's texture becomes one of three presentation images, and the
-back buffer takes the texture of one the display has done with for the
-next frame (a copy would be a pass over the whole of both). A frame that
-draws into the back buffer or reads it before it clears the whole of it
-finds the last frame's picture there: it is copied in first (rare: the
-game clears it at each frame's start). These images pace the game: with all three queued or on screen, the next frame
-waits, so the game runs no faster than the display shows frames. When the
-display takes no frames for 100 ms (the window minimized, or between the
-desktop and fullscreen), the oldest queued frame is dropped instead, so
-that the game goes on.
+back buffer's texture becomes one of two presentation images, and the
+back buffer takes the texture of the other, which the display has done
+with, for the next frame (a copy would be a pass over the whole of both).
+A frame that draws into the back buffer or reads it before it clears the
+whole of it finds the last frame's picture there: it is copied in first
+(rare: the game clears it at each frame's start). When the display takes
+no frames for 100 ms (the window minimized, or between the desktop and
+fullscreen), the oldest queued frame is dropped instead, so that the game
+goes on.
+
+The display paces the game, by the policy every renderer shares
+(`port/linux/src/frame_pacing.h`, in the command stream's host for this
+one): the game starts a frame only while at most one of its frames waits
+for the display, and then not before its budget (the most a frame took
+from its input read to ready for the display, of the last 128, and
+1.5 ms) ahead of the refresh it is for. Each refresh's link callback is
+its latch: the link calls about two refreshes before the frame is on
+screen, and a frame taken later in the callback, nearer the link's
+deadline, missed its refresh (an M1 Max at 120 Hz). So the game reads its
+input as late as it can and still has the frame on screen at the refresh
+it is for: on an M1 Max in Blood Gulch, input to screen went from 55 ms
+(median; 69 ms 95th percentile) to 18 ms (19 to 25 ms) at 120 Hz, and
+from 80 ms (96 ms) to 18 to 31 ms (19 to 38 ms) with the link at 60 Hz,
+with no more frames lost; and each displayed frame's game time steps by
+about a refresh (the spread of the steps 4 ms at 60 Hz, 1.2 ms at
+120 Hz), where three frames in a row had shown nearly the same instant and
+the fourth jumped 50 ms.
+The waits are precise: macOS let ordinary timed waits end tens of
+milliseconds late (5 ms slept 39 with the person away), and the game's
+thread is a time constraint thread while it waits for a frame's start.
+The process is marked latency critical while the window is open.
+`HALO_METAL_RATE=<Hz>` runs the link at that rate (another display's
+pacing tested on this one).
 
 Until frames come, each refresh clears the drawable to black and presents
 it (the window opens before the game draws).

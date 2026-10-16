@@ -16,11 +16,19 @@ its run loop: at each of the display's refreshes the link hands over a
 drawable, and the thread draws the oldest frame queued (letterboxed to the
 frame's shape) into it and presents it. A ProMotion display's rate follows
 the frames, up to its highest (120 Hz); a fixed one's is its own. A frame's
-picture is copied into one of three presentation images when the frame
-ends (host_metal_present_exchange): the back buffer's texture itself, whose
-place the image it replaces takes for the next frame (xgpu_metal.m). The
-images are the pacing: with all three queued or on screen, the next frame
-waits, so the game runs no faster than the display shows frames.
+picture becomes one of two presentation images when the frame ends
+(host_metal_present_exchange): the back buffer's texture itself, whose
+place the image it replaces takes for the next frame (xgpu_metal.m).
+
+The game is paced by the display (frame_pacing.h, in the command stream's
+host): each frame is told taken as the link takes it (or drops it), and
+each refresh's callback is its latch, with the refreshes' period (the least
+interval between the link's targets), so that the game starts each frame
+its budget before the latch it is for, with at most one frame waiting.
+The link calls about two refreshes ahead of the frame on screen; taking
+the frame later in the callback, nearer the link's deadline, missed
+refreshes (measured on an M1 Max at 120 Hz). Each frame's time on screen
+goes back with its input time, for the input to screen statistics.
 
 Until frames come (the null renderer draws none), each refresh clears the
 drawable to black and presents it.
@@ -57,7 +65,7 @@ drawables reached the screen.
 #include <time.h>
 #include <unistd.h>
 
-#define PRESENT_IMAGES 3
+#define PRESENT_IMAGES 2
 /* the longest a frame waits for an image before the oldest queued frame is
 dropped (100 ms: six refreshes at 60 Hz) */
 #define PRESENT_WAIT_MAXIMUM_NS 100000000L
@@ -76,6 +84,12 @@ static struct
 	SDL_MetalView view;
 	CAMetalLayer *layer;
 	CAMetalDisplayLink *link;
+	/* the link's last targets' intervals: its refreshes' period is the
+	least of them (a ProMotion display's rate is the link's) */
+	double target_intervals[32];
+	uint32_t target_interval_next;
+	/* the process's activity: latency critical, not napped */
+	id<NSObject> activity;
 	id<MTLRenderPipelineState> present_pipeline;
 	id<MTLSamplerState> present_sampler;
 	_Atomic int active;
@@ -149,6 +163,7 @@ id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture)
 {
 	int index, found = -1;
 	id<MTLTexture> replaced;
+	BOOL dropped = NO;
 
 	pthread_mutex_lock(&presentation.lock);
 	for (;;)
@@ -171,6 +186,7 @@ id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture)
 			memmove(presentation.queue, presentation.queue + 1, sizeof(int) * (size_t)(presentation.queued - 1));
 			presentation.queued--;
 			presentation.dropped++;
+			dropped = YES;
 			break;
 		}
 		presentation.waits++;
@@ -192,6 +208,7 @@ id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture)
 			memmove(presentation.queue, presentation.queue + 1, sizeof(int) * (size_t)(presentation.queued - 1));
 			presentation.queued--;
 			presentation.dropped++;
+			dropped = YES;
 			break;
 		}
 	}
@@ -200,6 +217,9 @@ id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture)
 	presentation.images[found] = picture;
 	presentation.image_states[found] = _image_queued;
 	pthread_mutex_unlock(&presentation.lock);
+	/* (a frame dropped is taken: the game's pacing, frame_pacing.h) */
+	if (dropped)
+		host_render_stream_frame_taken();
 	return replaced && replaced.width == picture.width && replaced.height == picture.height &&
 		replaced.pixelFormat == picture.pixelFormat && replaced.usage == picture.usage &&
 		replaced.storageMode == picture.storageMode ? replaced : nil;
@@ -208,14 +228,16 @@ id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture)
 void host_metal_present_queue(id<MTLTexture> image)
 {
 	int index;
+	BOOL queued = NO;
 
 	pthread_mutex_lock(&presentation.lock);
-	for (index = 0; index < PRESENT_IMAGES; index++)
+	for (index = 0; image && index < PRESENT_IMAGES; index++)
 	{
 		if (presentation.images[index] == image && presentation.queued < PRESENT_IMAGES)
 		{
 			presentation.queue[presentation.queued++] = index;
 			presentation.frame_input[index] = host_render_stream_frame_input();
+			queued = YES;
 			if (presentation.stats_interval > 0.0)
 				xgpu_metal_compile_totals(&presentation.compiled[index]);
 			presentation.frames_seen = YES;
@@ -223,6 +245,9 @@ void host_metal_present_queue(id<MTLTexture> image)
 		}
 	}
 	pthread_mutex_unlock(&presentation.lock);
+	/* (a frame with nothing to show is taken at once) */
+	if (!queued)
+		host_render_stream_frame_taken();
 }
 
 static void image_release(int index)
@@ -423,9 +448,36 @@ static void pacing_log(double now)
 			presentation.last_gap = NO;
 		}
 		presentation.last_tick = now;
+		if (presentation.last_target > 0.0 && update.targetPresentationTimestamp > presentation.last_target &&
+			update.targetPresentationTimestamp - presentation.last_target < 0.1)
+			presentation.target_intervals[presentation.target_interval_next++ % 32] =
+				update.targetPresentationTimestamp - presentation.last_target;
 		presentation.last_target = update.targetPresentationTimestamp;
 		if (presentation.stats_interval > 0.0 && now - presentation.stats_since >= presentation.stats_interval)
 			pacing_log(now);
+		/* the frame is latched now (the link calls about two refreshes before
+		the frame is on screen; one taken later, nearer the link's deadline,
+		misses its refresh): the game starts each frame to be ready by the
+		next latch (frame_pacing.h) */
+		if (!presentation.unpaced)
+		{
+			struct timespec monotonic;
+			double offset, period = 0.0;
+			uint32_t interval;
+
+			for (interval = 0; interval < 32; interval++)
+			{
+				double each = presentation.target_intervals[interval];
+
+				if (each > 0.0 && (period == 0.0 || each < period))
+					period = each;
+			}
+			if (period == 0.0)
+				period = 1.0 / presentation.refresh_rate;
+			clock_gettime(CLOCK_MONOTONIC, &monotonic);
+			offset = (double)monotonic.tv_sec + monotonic.tv_nsec / 1e9 - seconds_now();
+			host_render_stream_display_latched((uint64_t)((now + offset) * 1e9), (uint64_t)(period * 1e9));
+		}
 		/* (a new size is the next drawable's) */
 		if (width && height && (width != presentation.drawable_width || height != presentation.drawable_height))
 		{
@@ -446,6 +498,8 @@ static void pacing_log(double now)
 		}
 		idle = !presentation.frames_seen;
 		pthread_mutex_unlock(&presentation.lock);
+		if (image)
+			host_render_stream_frame_taken();
 		if (!image && !idle)
 		{
 			/* (the frame shown stays: nothing new to present) */
@@ -557,8 +611,12 @@ static void *presentation_thread(void *context)
 
 		link.delegate = target;
 		/* (a ProMotion display's rate follows the frames, up to its
-		highest) */
-		link.preferredFrameRateRange = CAFrameRateRangeMake(rate < 60.0f ? rate : 30.0f, rate, rate);
+		highest; HALO_METAL_RATE, the link at a rate of its own: the pacing
+		of another display, tested on this one) */
+		if (getenv("HALO_METAL_RATE"))
+			rate = (float)atof(getenv("HALO_METAL_RATE"));
+		link.preferredFrameRateRange = getenv("HALO_METAL_RATE") ? CAFrameRateRangeMake(rate, rate, rate) :
+			CAFrameRateRangeMake(rate < 60.0f ? rate : 30.0f, rate, rate);
 		link.preferredFrameLatency = 1.0f;
 		presentation.link = link;
 		[link addToRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
@@ -710,9 +768,17 @@ int host_metal_window_open(uint32_t window)
 	sampler.magFilter = MTLSamplerMinMagFilterLinear;
 	presentation.present_sampler = [xgpu_metal_device() newSamplerStateWithDescriptor:sampler];
 
+	/* (macOS delays the timers of a process it thinks in the background,
+	by tens of milliseconds: the game's waits for the display's refreshes
+	are each a few milliseconds, frame_pacing.h) */
+	presentation.activity = [[NSProcessInfo processInfo]
+		beginActivityWithOptions:NSActivityUserInitiated | NSActivityLatencyCritical
+		reason:@"The game draws a frame for each of the display's refreshes"];
 	SDL_AddEventWatch(window_event, NULL);
 	presentation.stats_interval = stats ? atof(stats) : 0.0;
 	presentation.unpaced = getenv("HALO_METAL_UNPACED") && atoi(getenv("HALO_METAL_UNPACED"));
+	/* (the game starts each frame as the display takes the last: frame_pacing.h) */
+	host_render_stream_display_paced(!presentation.unpaced);
 	presentation.stats_since = presentation.started = seconds_now();
 	atomic_store(&presentation.present_slack_least_us, 1000000);
 	atomic_store(&presentation.active, 1);
