@@ -69,7 +69,8 @@ struct xgpu_stream_ring
 	uint32_t frames_in_flight;
 	/* the host's answers, in guest memory the guest allocates:
 	visibility: XGPU_STREAM_VISIBILITY_SLOTS counts (uint32_t), the latest
-	known for each slot; pipelines: XGPU_STREAM_PIPELINES states (uint8_t,
+	known for each slot, each at most 0x7fffffff (the game reads them as
+	longs and halts on a negative one: XGPU_VISIBILITY_COUNT_MOST); pipelines: XGPU_STREAM_PIPELINES states (uint8_t,
 	XGPU_STREAM_PIPELINE_*) of the pipeline ids */
 	uint32_t visibility, pipelines;
 

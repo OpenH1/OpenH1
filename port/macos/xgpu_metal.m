@@ -1960,14 +1960,16 @@ static void visibility_publish(struct frame_slot *slot, uint32_t entries, uint64
 	for (entry = 0; entry < entries; entry++)
 	{
 		uint32_t test = slot->visibility_slots[entry];
+		uint64_t samples;
 
 		if (visibility.frames[test] != number)
 		{
 			visibility.frames[test] = number;
 			visibility.samples[test] = 0;
 		}
-		visibility.samples[test] += (uint32_t)((const uint64_t *)
+		samples = visibility.samples[test] + ((const uint64_t *)
 			slot->visibility_buffers[slot->visibility_entry_passes[entry]].contents)[slot->visibility_entry_offsets[entry]];
+		visibility.samples[test] = samples < XGPU_METAL_VISIBILITY_MOST ? (uint32_t)samples : XGPU_METAL_VISIBILITY_MOST;
 		if (metal.visibility_output)
 			metal.visibility_output[test] = visibility.areas[test] > 1.0f ?
 				(uint32_t)((float)visibility.samples[test] / visibility.areas[test] + 0.5f) : visibility.samples[test];

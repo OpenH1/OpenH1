@@ -375,6 +375,9 @@ void xgpu_vulkan_visibility_end(uint32_t slot, float area);
 of the game's pixels, as the game reads it; any thread) */
 void xgpu_vulkan_set_visibility_output(volatile uint32_t *counts);
 #define XGPU_VULKAN_VISIBILITY_SLOTS 4096
+/* the largest count written (the game halts on a negative one:
+xgpu_backend.h, XGPU_VISIBILITY_COUNT_MOST) */
+#define XGPU_VULKAN_VISIBILITY_MOST 0x7fffffffU
 
 /* ---------- submissions and frames */
 

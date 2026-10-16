@@ -154,6 +154,7 @@ python -m pytest -q tools/harness tools/test_touch_menu.py   # the engine's func
 python -m pytest -q tools/test_linux_port.py                # the build, the maps' checks (needs assets/maps)
 python -m pytest -q tools/test_cache_file_formats.py tools/test_bmp_files.py tools/test_profile.py
 python -m pytest -q tools/test_render_manifest.py tools/test_render_stream.py  # the renderer's manifest, the command stream
+python -m pytest -q tools/test_gl_visibility.py           # the OpenGL ES backend's visibility counts (a fake GPU)
 python tools/render_enumerate_sweep.py --data <game data>  # every map's enumeration checked in play (offscreen)
 python -m pytest -q tools/test_host_watch_hash.py tools/test_host_units.py tools/test_check_host_imports.py tools/test_host_syscall.py  # the guests' host
 python -m pytest -q tools/test_guest_image_check.py         # the guest images' checks (x86-64)

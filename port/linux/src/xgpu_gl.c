@@ -193,6 +193,9 @@ more than the unsynchronized write the ring allows (host_gl_buffer_write). */
 #define INDEX_BUFFER_SIZE (8 * 1024 * 1024)
 #endif
 #define VISIBILITY_TEST_SLOTS 4096
+/* (with sample counters) the counter of a frame's tests past the first
+VISIBILITY_TEST_SLOTS */
+#define VISIBILITY_SPARE_COUNTER VISIBILITY_TEST_SLOTS
 /* the visibility tests counted by the pixel shaders (atomic counters), not
 by queries: on ES, and in the VR mode, whose eye pass is a multiview pass,
 where a query counts in as many slots as views in Vulkan, which Zink does
@@ -249,21 +252,31 @@ struct gl_device
 	GLuint visibility_known[VISIBILITY_TEST_SLOTS];
 	BOOL visibility_unread[VISIBILITY_TEST_SLOTS];
 #ifdef XGPU_SAMPLE_COUNTERS
-	/* with atomic counters: one counter per test, used as a ring */
+	/* with atomic counters: a counter for each of a frame's tests, its
+	place in the frame's list (ring_tests), and one more for the tests past
+	the list's end, never read (VISIBILITY_SPARE_COUNTER); and a buffer of
+	zeros they are set to 0 from */
 	GLuint visibility_counters;
-	unsigned long counter_next;
+	GLuint counter_zeros;
 	unsigned long counter_active;
 	/* Reading the counters waits for the draws that counted, which stops
 	the CPU until the GPU has caught up (the game asks at the start of the
 	next frame), halving the frame rate on drivers that queue frames (Zink,
 	Turnip). Instead, at the end of each frame the GPU copies them into the
 	frame's snapshot buffer of the stream ring, and the frame's tests (each
-	a result slot and its counter) are listed with it. Once its fence has
-	passed (two frames on, D3DDevice_Present) the CPU reads the snapshot
-	into counter_values and gives each listed slot its count: a result is
-	the latest count known, as the desktop's query buffer gives. */
+	a result slot) are listed with it; then it sets them to 0 again for the
+	next frame. Once its fence has passed (two frames on, D3DDevice_Present)
+	the CPU reads the snapshot into counter_values and gives each listed
+	slot its count: a result is the latest count known, as the desktop's
+	query buffer gives.
+
+	Only the GPU writes the counters, in its order: a write by the CPU
+	(a mapping, GL_MAP_UNSYNCHRONIZED_BIT) while the copies of the frames
+	still queued read them would leave what those copies read undefined,
+	and every buffer here begins as zeros, not undefined (glBufferData's
+	NULL): a count is only ever the count of a test's draws. */
 	GLuint counter_snapshots[STREAM_BUFFER_RING];
-	unsigned short ring_tests[STREAM_BUFFER_RING][VISIBILITY_TEST_SLOTS][2];
+	unsigned short ring_tests[STREAM_BUFFER_RING][VISIBILITY_TEST_SLOTS];
 	unsigned long ring_test_count[STREAM_BUFFER_RING];
 	GLuint counter_values[VISIBILITY_TEST_SLOTS];
 	GLuint visibility_latest[VISIBILITY_TEST_SLOTS];
@@ -1266,21 +1279,27 @@ void xgpu_backend_clear_target(xgpu_target number, const float color[4])
 SAMPLE_COUNTING) */
 static void sample_counters_create(void)
 {
+	static const GLuint zeros[VISIBILITY_TEST_SLOTS + 1];
 	int ring;
 
 	if (!SAMPLE_COUNTING || device.visibility_counters)
 		return;
 	glGenBuffers(1, &device.visibility_counters);
 	glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, device.visibility_counters);
-	glBufferData(GL_ATOMIC_COUNTER_BUFFER, VISIBILITY_TEST_SLOTS * sizeof(GLuint), NULL, GL_DYNAMIC_DRAW);
+	glBufferData(GL_ATOMIC_COUNTER_BUFFER, sizeof(zeros), zeros, GL_DYNAMIC_COPY);
 	glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, 0);
+	glGenBuffers(1, &device.counter_zeros);
+	glBindBuffer(GL_COPY_READ_BUFFER, device.counter_zeros);
+	glBufferData(GL_COPY_READ_BUFFER, VISIBILITY_TEST_SLOTS * sizeof(GLuint), zeros, GL_STATIC_COPY);
+	glBindBuffer(GL_COPY_READ_BUFFER, 0);
 	glGenBuffers(STREAM_BUFFER_RING, device.counter_snapshots);
 	for (ring = 0; ring < STREAM_BUFFER_RING; ring++)
 	{
 		glBindBuffer(GL_COPY_WRITE_BUFFER, device.counter_snapshots[ring]);
-		glBufferData(GL_COPY_WRITE_BUFFER, VISIBILITY_TEST_SLOTS * sizeof(GLuint), NULL, GL_STREAM_READ);
+		glBufferData(GL_COPY_WRITE_BUFFER, VISIBILITY_TEST_SLOTS * sizeof(GLuint), zeros, GL_STREAM_READ);
 	}
 	glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+	device.counter_active = VISIBILITY_SPARE_COUNTER;
 	xgpu_gl_state_invalidate();
 }
 #endif
@@ -1502,14 +1521,10 @@ void xgpu_backend_visibility_begin(void)
 #ifdef XGPU_SAMPLE_COUNTERS
 	if (SAMPLE_COUNTING)
 	{
-		const GLuint zero = 0;
+		/* the frame's next counter, which is 0 (frame_end_buffers) */
+		unsigned long count = device.ring_test_count[device.buffer_ring];
 
-		device.counter_next = (device.counter_next + 1) % VISIBILITY_TEST_SLOTS;
-		device.counter_active = device.counter_next;
-		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, device.visibility_counters);
-		host_gl_buffer_write(GL_ATOMIC_COUNTER_BUFFER, (unsigned int)(device.counter_active * sizeof(GLuint)),
-			sizeof(zero), &zero);
-		glBindBuffer(GL_ATOMIC_COUNTER_BUFFER, 0);
+		device.counter_active = count < VISIBILITY_TEST_SLOTS ? count : VISIBILITY_SPARE_COUNTER;
 		return;
 	}
 #else
@@ -1540,13 +1555,14 @@ void xgpu_backend_visibility_end(unsigned long index, float area, int views, int
 		unsigned long *count = &device.ring_test_count[device.buffer_ring];
 
 		/* (a slot tested twice in a frame is listed twice: the later
-		counter, resolved after, wins) */
-		if (*count < VISIBILITY_TEST_SLOTS)
+		counter, resolved after, wins; a test begun in an earlier frame,
+		whose counter is now another's, is not listed) */
+		if (device.counter_active == *count && *count < VISIBILITY_TEST_SLOTS)
 		{
-			device.ring_tests[device.buffer_ring][*count][0] = (unsigned short)index;
-			device.ring_tests[device.buffer_ring][*count][1] = (unsigned short)device.counter_active;
+			device.ring_tests[device.buffer_ring][*count] = (unsigned short)index;
 			(*count)++;
 		}
+		device.counter_active = VISIBILITY_SPARE_COUNTER;
 		device.query_pending[index] = TRUE;
 #ifdef HALO_VR
 		/* (a count of the game's pixels, as below: drawn into both eyes,
@@ -1602,7 +1618,7 @@ static GLuint visibility_unscaled(GLuint samples, DWORD index)
 }
 
 #endif
-UINT xgpu_backend_visibility_result(unsigned long index)
+static GLuint visibility_count(unsigned long index)
 {
 	GLuint available = 0, samples = 0;
 
@@ -1650,6 +1666,13 @@ UINT xgpu_backend_visibility_result(unsigned long index)
 		}
 	}
 	return device.visibility_known[index];
+}
+
+UINT xgpu_backend_visibility_result(unsigned long index)
+{
+	GLuint count = visibility_count(index);
+
+	return count < XGPU_VISIBILITY_COUNT_MOST ? count : XGPU_VISIBILITY_COUNT_MOST;
 }
 
 /* ---------- program cache */
@@ -4550,16 +4573,34 @@ static void frame_end_buffers(void)
 #ifdef XGPU_SAMPLE_COUNTERS
 	if (SAMPLE_COUNTING)
 	{
+		unsigned long count = device.ring_test_count[device.buffer_ring];
+		/* (with a test still going on, its counter too: the rest of its
+		draws count into the spare one, and it is not listed) */
+		unsigned long used = device.counter_active < VISIBILITY_TEST_SLOTS ? device.counter_active + 1 : count;
+
+		device.counter_active = VISIBILITY_SPARE_COUNTER;
 		/* this frame's counts, for when the GPU is done with it (the
 		barrier makes the shaders' counter writes visible to the copy,
-		which ES 3.1 does not promise without one) */
-		glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
-		glBindBuffer(GL_COPY_READ_BUFFER, device.visibility_counters);
-		glBindBuffer(GL_COPY_WRITE_BUFFER, device.counter_snapshots[device.buffer_ring]);
-		glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0,
-			VISIBILITY_TEST_SLOTS * sizeof(GLuint));
-		glBindBuffer(GL_COPY_READ_BUFFER, 0);
-		glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+		which ES 3.1 does not promise without one), then its counters
+		set to 0 for the next frame's tests, after the copy */
+		if (used)
+			glMemoryBarrier(GL_BUFFER_UPDATE_BARRIER_BIT);
+		if (count)
+		{
+			glBindBuffer(GL_COPY_READ_BUFFER, device.visibility_counters);
+			glBindBuffer(GL_COPY_WRITE_BUFFER, device.counter_snapshots[device.buffer_ring]);
+			glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0,
+				(GLsizeiptr)(count * sizeof(GLuint)));
+		}
+		if (used)
+		{
+			glBindBuffer(GL_COPY_READ_BUFFER, device.counter_zeros);
+			glBindBuffer(GL_COPY_WRITE_BUFFER, device.visibility_counters);
+			glCopyBufferSubData(GL_COPY_READ_BUFFER, GL_COPY_WRITE_BUFFER, 0, 0,
+				(GLsizeiptr)(used * sizeof(GLuint)));
+			glBindBuffer(GL_COPY_READ_BUFFER, 0);
+			glBindBuffer(GL_COPY_WRITE_BUFFER, 0);
+		}
 	}
 #endif
 #ifdef XGPU_STREAM_RING
@@ -4575,13 +4616,10 @@ static void frame_end_buffers(void)
 
 		/* the GPU has passed that frame's fence: its copy is complete,
 		and the slot is free for this frame's tests */
-		host_gl_read_buffer(device.counter_snapshots[ring], 0, VISIBILITY_TEST_SLOTS * sizeof(GLuint),
-			device.counter_values);
+		host_gl_read_buffer(device.counter_snapshots[ring], 0,
+			(unsigned int)(device.ring_test_count[ring] * sizeof(GLuint)), device.counter_values);
 		for (test = 0; test < device.ring_test_count[ring]; test++)
-		{
-			device.visibility_latest[device.ring_tests[ring][test][0]] =
-				device.counter_values[device.ring_tests[ring][test][1]];
-		}
+			device.visibility_latest[device.ring_tests[ring][test]] = device.counter_values[test];
 		device.ring_test_count[ring] = 0;
 	}
 #endif

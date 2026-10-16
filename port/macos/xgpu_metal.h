@@ -467,6 +467,9 @@ uint64_t xgpu_metal_visibility_result(uint32_t slot, uint32_t *samples);
 count of the game's pixels, as the game reads it (any thread) */
 void xgpu_metal_set_visibility_output(volatile uint32_t *counts);
 #define XGPU_METAL_VISIBILITY_SLOTS 4096
+/* the largest count (the game halts on a negative one: xgpu_backend.h,
+XGPU_VISIBILITY_COUNT_MOST) */
+#define XGPU_METAL_VISIBILITY_MOST 0x7fffffffU
 
 /* commits the work so far (the frame goes on in a new command buffer);
 returns its fence */

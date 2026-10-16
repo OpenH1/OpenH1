@@ -466,10 +466,14 @@ game's (area), the views drawn at once (the VR mode's eyes) and the samples
 a pixel, which the backend divides by as its way of counting needs. */
 
 #define XGPU_VISIBILITY_TEST_SLOTS 4096
+/* the largest count: the game reads one as a long and halts on a negative
+one (rasterizer_xbox_widgets.c, "(occlusion_test_result&0x80000000)==0") */
+#define XGPU_VISIBILITY_COUNT_MOST 0x7fffffffU
 
 void xgpu_backend_visibility_begin(void);
 void xgpu_backend_visibility_end(unsigned long slot, float area, int views, int samples);
-/* the latest count known for the slot (0: none yet). Answered now; it
+/* the latest count known for the slot (0: none yet; at most
+XGPU_VISIBILITY_COUNT_MOST). Answered now; it
 could wait: the counts are a frame or more old already (the GPU's), and a
 backend elsewhere would write them into guest memory the front end reads
 (only OpenGL ES 3.0's queries, read as soon as each is available, would

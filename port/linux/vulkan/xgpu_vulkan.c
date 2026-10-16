@@ -885,12 +885,15 @@ static void queries_publish(uint64_t last)
 		{
 			for (query = 0; query < XGPU_VULKAN_VISIBILITY_SLOTS; query++)
 			{
+				uint64_t count;
+
 				if (!seen[query])
 					continue;
 				/* the count in the game's pixels (as the OpenGL backend's
 				visibility_unscaled) */
-				vk.visibility_output[query] = areas[query] > 1.0f ? (uint32_t)((float)sums[query] / areas[query] + 0.5f) :
-					(uint32_t)sums[query];
+				count = areas[query] > 1.0f ? (uint64_t)((float)sums[query] / areas[query] + 0.5f) : sums[query];
+				vk.visibility_output[query] = count < XGPU_VULKAN_VISIBILITY_MOST ? (uint32_t)count :
+					XGPU_VULKAN_VISIBILITY_MOST;
 			}
 		}
 		frame->count = 0;
