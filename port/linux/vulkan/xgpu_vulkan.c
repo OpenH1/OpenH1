@@ -71,7 +71,7 @@ query pool once its last submission is done.
 	F(vkCmdSetPrimitiveTopology) F(vkCmdBindVertexBuffers) F(vkCmdBindIndexBuffer) F(vkCmdBindDescriptorSets) \
 	F(vkCmdDraw) F(vkCmdDrawIndexed) F(vkCmdClearAttachments) F(vkCmdCopyBuffer) F(vkCmdCopyBufferToImage) \
 	F(vkCmdCopyImageToBuffer) F(vkCmdCopyImage) F(vkCmdBlitImage) F(vkCmdResolveImage) F(vkCmdClearColorImage) \
-	F(vkCmdClearDepthStencilImage) F(vkCmdBeginQuery) F(vkCmdEndQuery)
+	F(vkCmdClearDepthStencilImage) F(vkCmdBeginQuery) F(vkCmdEndQuery) F(vkCmdWriteTimestamp)
 
 #define SWAPCHAIN_FUNCTIONS(F) \
 	F(vkCreateSwapchainKHR) F(vkDestroySwapchainKHR) F(vkGetSwapchainImagesKHR) F(vkAcquireNextImageKHR) \
@@ -101,6 +101,9 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
 /* frames whose visibility tests may be in flight, and the queries a frame
 has (a test can be several, one for each pass it spans) */
 #define QUERY_FRAMES 4
+/* Timestamp intervals may span several submissions; never reuse an
+in-flight pair, and skip samples rather than wait if all pairs are busy. */
+#define GPU_TIME_FRAMES 32
 #define QUERIES_A_FRAME 8192
 /* texture descriptor sets a submission's pool has, before another pool */
 #define SETS_A_POOL 1024
@@ -139,9 +142,9 @@ struct xgpu_vulkan_image
 	VkFormat format;
 	VkImageAspectFlags aspect;
 	struct allocation memory;
-	/* sampled (colour images; NULL for a depth image), and drawn into, a
-	layer each (made at the first draw into the layer) */
-	VkImageView sampled;
+	/* sampled (depth alone for a depth/stencil image), an array's first
+	layer sampled as 2D, and attachment views (made on their first use) */
+	VkImageView sampled, sampled_2d;
 	VkImageView *attachments;
 	uint32_t attachment_count;
 	/* the submission whose recording last used it (draws, copies) */
@@ -197,6 +200,9 @@ struct query_frame
 	/* the slots of tests that drew in no pass (a count of 0) */
 	uint16_t empty[QUERIES_A_FRAME];
 	uint32_t empty_count;
+	uint16_t counter_slots[XGPU_VULKAN_VISIBILITY_SLOTS];
+	float counter_areas[XGPU_VULKAN_VISIBILITY_SLOTS];
+	uint32_t counter_count;
 	/* the submission that ends the frame (0: the frame is being recorded),
 	and the frame's number */
 	uint64_t serial;
@@ -231,7 +237,7 @@ static struct
 	VkPhysicalDeviceMemoryProperties memory_properties;
 	VkDevice device;
 	VkQueue queue;
-	uint32_t queue_family;
+	uint32_t queue_family, timestamp_bits;
 	int validation;
 	uint32_t validation_messages;
 
@@ -281,6 +287,7 @@ static struct
 	struct xgpu_vulkan_image *stand_ins[4];
 
 	VkPipelineCache pipeline_cache;
+	uint64_t pipeline_count;
 	char cache_path[1024];
 	struct pipeline_entry *pipelines[PIPELINE_BUCKETS];
 	struct shader_entry *shaders[SHADER_BUCKETS];
@@ -293,7 +300,7 @@ static struct
 
 	/* the targets bound, and the pass drawing into them */
 	struct xgpu_vulkan_image *color, *depth;
-	uint32_t layer;
+	uint32_t layer, views;
 	int pass_active;
 	uint32_t pass_width, pass_height;
 	/* what the main command buffer has bound in this pass */
@@ -308,12 +315,22 @@ static struct
 	uint64_t frame;
 	struct query_frame query_frames[QUERY_FRAMES];
 	struct query_frame *queries;
-	int test_active;
+	int test_active, sample_counting;
 	/* the current test's queries (indices in queries), and the one begun */
 	uint32_t test_queries[64];
 	uint32_t test_query_count;
+	uint8_t test_query_widths[64];
 	int test_query_open;
 	uint32_t test_number;
+
+	VkQueryPool gpu_time_pool;
+	struct
+	{
+		uint64_t serial;
+		int used;
+	} gpu_times[GPU_TIME_FRAMES];
+	uint32_t gpu_time_current;
+	int gpu_time_active, gpu_time_armed, gpu_time_failed;
 
 	/* the window */
 	VkSurfaceKHR surface;
@@ -688,13 +705,18 @@ static void barrier(VkCommandBuffer commands, VkPipelineStageFlags source_stages
 
 /* the current submission's slot, its command buffers begun: its earlier use
 done first */
+static void gpu_time_start(void);
+
 static void recording_begin(void)
 {
 	struct slot *slot;
 	VkCommandBufferBeginInfo begin;
 
 	if (vk.recording)
+	{
+		gpu_time_start();
 		return;
+	}
 	slot = &vk.slots[vk.serial % SLOTS];
 	if (slot->serial)
 		serial_wait(slot->serial);
@@ -718,6 +740,7 @@ static void recording_begin(void)
 	vk.early_recording = 0;
 	vk.bound_pipeline = VK_NULL_HANDLE;
 	vk.last_texture_valid = 0;
+	gpu_time_start();
 }
 
 /* the early command buffer, begun, after everything submitted before */
@@ -747,6 +770,107 @@ static VkCommandBuffer main_commands(void)
 	recording_begin();
 	pass_end();
 	return vk.slot->main;
+}
+
+/* A timestamp interval begins in the early buffer, before the frame's
+uploads, and ends after the main buffer's rendering and composition. The
+pair belongs to its final submission until that submission completes. */
+void xgpu_vulkan_gpu_time_begin(void)
+{
+	if (vk.capabilities.gpu_timestamps && !vk.gpu_time_failed && !vk.gpu_time_active)
+		vk.gpu_time_armed = 1;
+}
+
+static void gpu_time_start(void)
+{
+	uint32_t index;
+	VkCommandBuffer commands;
+
+	if (!vk.gpu_time_armed)
+		return;
+	/* Consume before early_commands reenters recording_begin. No query is
+	issued during the runtime's frame wait, before actual render work. */
+	vk.gpu_time_armed = 0;
+	if (!vk.gpu_time_pool)
+	{
+		VkQueryPoolCreateInfo create;
+
+		memset(&create, 0, sizeof(create));
+		create.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+		create.queryType = VK_QUERY_TYPE_TIMESTAMP;
+		create.queryCount = GPU_TIME_FRAMES * 2;
+		if (!check(vkCreateQueryPool(vk.device, &create, NULL, &vk.gpu_time_pool), "vkCreateQueryPool (GPU time)"))
+		{
+			vk.gpu_time_failed = 1;
+			return;
+		}
+	}
+	for (index = 0; index < GPU_TIME_FRAMES && vk.gpu_times[index].used; index++)
+		;
+	if (index == GPU_TIME_FRAMES)
+		return;
+	commands = early_commands();
+	vkResetQueryPool(vk.device, vk.gpu_time_pool, index * 2, 2);
+	vkCmdWriteTimestamp(commands, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, vk.gpu_time_pool, index * 2);
+	vk.gpu_times[index].used = 1;
+	vk.gpu_times[index].serial = 0;
+	vk.gpu_time_current = index;
+	vk.gpu_time_active = 1;
+}
+
+void xgpu_vulkan_gpu_time_end(void)
+{
+	VkCommandBuffer commands;
+	uint32_t index;
+
+	vk.gpu_time_armed = 0;
+	if (!vk.gpu_time_active)
+		return;
+	commands = main_commands();
+	index = vk.gpu_time_current;
+	/* Outside the multiview rendering scope: one query, not one per view. */
+	vkCmdWriteTimestamp(commands, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, vk.gpu_time_pool, index * 2 + 1);
+	vk.gpu_times[index].serial = vk.serial;
+	vk.gpu_time_active = 0;
+}
+
+int xgpu_vulkan_gpu_time_read(double *milliseconds)
+{
+	uint64_t done, oldest = UINT64_MAX, results[2][2], mask, elapsed;
+	uint32_t index, found = GPU_TIME_FRAMES;
+	VkResult result;
+
+	if (!milliseconds || !vk.gpu_time_pool)
+		return 0;
+	done = completed_serial();
+	for (index = 0; index < GPU_TIME_FRAMES; index++)
+	{
+		uint64_t serial = vk.gpu_times[index].serial;
+
+		if (vk.gpu_times[index].used && serial && serial <= done && serial < oldest)
+		{
+			oldest = serial;
+			found = index;
+		}
+	}
+	if (found == GPU_TIME_FRAMES)
+		return 0;
+	result = vkGetQueryPoolResults(vk.device, vk.gpu_time_pool, found * 2, 2, sizeof(results), results,
+		sizeof(results[0]), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WITH_AVAILABILITY_BIT);
+	if (result == VK_NOT_READY)
+		return 0;
+	if (!check(result, "vkGetQueryPoolResults (GPU time)"))
+	{
+		vk.gpu_times[found].used = 0;
+		return 0;
+	}
+	if (!results[0][1] || !results[1][1])
+		return 0;
+	mask = vk.timestamp_bits >= 64 ? UINT64_MAX : (UINT64_C(1) << vk.timestamp_bits) - 1;
+	elapsed = (results[1][0] - results[0][0]) & mask;
+	*milliseconds = (double)elapsed * (double)vk.properties.limits.timestampPeriod * 1e-6;
+	vk.gpu_times[found].used = 0;
+	return 1;
 }
 
 /* ---------- the upload ring */
@@ -881,6 +1005,19 @@ static void queries_publish(uint64_t last)
 			free(results);
 			vkResetQueryPool(vk.device, frame->pool, 0, frame->count);
 		}
+		/* The shader counters are in test order: the last test of a slot
+		wins, including a test whose count is zero. */
+		for (query = 0; query < frame->counter_count; query++)
+		{
+			uint32_t slot = frame->counter_slots[query];
+			uint32_t base = (uint32_t)(frame - vk.query_frames) * (XGPU_VULKAN_VISIBILITY_SLOTS + 1);
+
+			if (slot >= XGPU_VULKAN_VISIBILITY_SLOTS)
+				continue;
+			seen[slot] = 1;
+			sums[slot] = ((volatile uint32_t *)vk.samples->mapped)[base + query];
+			areas[slot] = frame->counter_areas[query];
+		}
 		if (vk.visibility_output)
 		{
 			for (query = 0; query < XGPU_VULKAN_VISIBILITY_SLOTS; query++)
@@ -922,6 +1059,9 @@ static struct query_frame *queries_current(void)
 				vk.queries->frame = vk.frame;
 				vk.queries->count = 0;
 				vk.queries->empty_count = 0;
+				vk.queries->counter_count = 0;
+				memset((uint32_t *)vk.samples->mapped + index * (XGPU_VULKAN_VISIBILITY_SLOTS + 1), 0,
+					(XGPU_VULKAN_VISIBILITY_SLOTS + 1) * sizeof(uint32_t));
 				return vk.queries;
 			}
 		}
@@ -948,16 +1088,25 @@ static struct query_frame *queries_current(void)
 /* a query of the current test begun (in a pass) */
 static void test_query_begin(void)
 {
-	struct query_frame *frame = queries_current();
+	struct query_frame *frame;
+	uint32_t views = vk.views ? vk.views : 1;
+	uint32_t index;
 
-	if (!frame || frame->count >= QUERIES_A_FRAME || vk.test_query_count >= 64)
+	if (vk.sample_counting)
 		return;
-	frame->slots[frame->count] = 0xffff;
-	frame->areas[frame->count] = 1.0f;
-	frame->tests[frame->count] = vk.test_number;
+	frame = queries_current();
+	if (!frame || frame->count + views > QUERIES_A_FRAME || vk.test_query_count >= 64)
+		return;
+	for (index = 0; index < views; index++)
+	{
+		frame->slots[frame->count + index] = 0xffff;
+		frame->areas[frame->count + index] = 1.0f;
+		frame->tests[frame->count + index] = vk.test_number;
+	}
+	vk.test_query_widths[vk.test_query_count] = (uint8_t)views;
 	vk.test_queries[vk.test_query_count++] = frame->count;
 	vkCmdBeginQuery(vk.slot->main, frame->pool, frame->count, VK_QUERY_CONTROL_PRECISE_BIT);
-	frame->count++;
+	frame->count += views;
 	vk.test_query_open = 1;
 }
 
@@ -969,13 +1118,29 @@ static void test_query_end(void)
 	vk.test_query_open = 0;
 }
 
+void xgpu_vulkan_visibility_count_samples(int enabled)
+{
+	vk.sample_counting = enabled && vk.capabilities.fragment_stores;
+}
+
+uint32_t xgpu_vulkan_visibility_counter(void)
+{
+	struct query_frame *frame = vk.queries;
+
+	if (!frame)
+		return 0;
+	return (uint32_t)(frame - vk.query_frames) * (XGPU_VULKAN_VISIBILITY_SLOTS + 1) + frame->counter_count;
+}
+
 void xgpu_vulkan_visibility_begin(void)
 {
 	vk.test_active = 1;
 	vk.test_number++;
 	vk.test_query_count = 0;
 	vk.test_query_open = 0;
-	if (vk.pass_active)
+	if (vk.sample_counting)
+		queries_current();
+	else if (vk.pass_active)
 		test_query_begin();
 }
 
@@ -985,6 +1150,18 @@ void xgpu_vulkan_visibility_end(uint32_t slot, float area)
 
 	if (!vk.test_active)
 		return;
+	if (vk.sample_counting)
+	{
+		struct query_frame *frame = vk.queries;
+
+		if (frame && frame->counter_count < XGPU_VULKAN_VISIBILITY_SLOTS)
+		{
+			frame->counter_slots[frame->counter_count] = (uint16_t)slot;
+			frame->counter_areas[frame->counter_count++] = area;
+		}
+		vk.test_active = 0;
+		return;
+	}
 	test_query_end();
 	/* (a test that drew in no pass: its slot's count is 0, as a query
 	that counted nothing) */
@@ -999,8 +1176,13 @@ void xgpu_vulkan_visibility_end(uint32_t slot, float area)
 	}
 	for (index = 0; index < vk.test_query_count; index++)
 	{
-		vk.queries->slots[vk.test_queries[index]] = (uint16_t)slot;
-		vk.queries->areas[vk.test_queries[index]] = area;
+		uint32_t view;
+
+		for (view = 0; view < vk.test_query_widths[index]; view++)
+		{
+			vk.queries->slots[vk.test_queries[index] + view] = (uint16_t)slot;
+			vk.queries->areas[vk.test_queries[index] + view] = area;
+		}
 	}
 	vk.test_active = 0;
 	vk.test_query_count = 0;
@@ -1025,6 +1207,7 @@ static VkFormat vulkan_format(uint8_t format)
 	case XGPU_VULKAN_FORMAT_RGBA8: return VK_FORMAT_R8G8B8A8_UNORM;
 	case XGPU_VULKAN_FORMAT_COVERAGE: return VK_FORMAT_R8_UNORM;
 	case XGPU_VULKAN_FORMAT_RGBA32_UINT: return VK_FORMAT_R32G32B32A32_UINT;
+	case XGPU_VULKAN_FORMAT_RGBA16F: return VK_FORMAT_R16G16B16A16_SFLOAT;
 	default: return VK_FORMAT_UNDEFINED;
 	}
 }
@@ -1055,7 +1238,8 @@ static VkImageView view_make(const struct xgpu_vulkan_image *image, VkImageViewT
 	info.image = image->image;
 	info.viewType = type;
 	info.format = image->format;
-	info.subresourceRange.aspectMask = image->aspect;
+	info.subresourceRange.aspectMask = sampled && (image->aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ?
+		VK_IMAGE_ASPECT_DEPTH_BIT : image->aspect;
 	info.subresourceRange.baseMipLevel = 0;
 	info.subresourceRange.levelCount = sampled ? image->description.levels : 1;
 	info.subresourceRange.baseArrayLayer = first_layer;
@@ -1137,7 +1321,7 @@ struct xgpu_vulkan_image *xgpu_vulkan_image_create(const struct xgpu_vulkan_imag
 		free(image);
 		return NULL;
 	}
-	if (description->samples <= 1 && !(image->aspect & VK_IMAGE_ASPECT_DEPTH_BIT))
+	if (description->samples <= 1)
 	{
 		VkImageViewType type = description->type == XGPU_VULKAN_IMAGE_3D ? VK_IMAGE_VIEW_TYPE_3D :
 			description->type == XGPU_VULKAN_IMAGE_CUBE ? VK_IMAGE_VIEW_TYPE_CUBE :
@@ -1215,6 +1399,11 @@ void xgpu_vulkan_image_destroy(struct xgpu_vulkan_image *image)
 	if (image->sampled)
 	{
 		item.view = image->sampled;
+		garbage_add(&item);
+	}
+	if (image->sampled_2d)
+	{
+		item.view = image->sampled_2d;
 		garbage_add(&item);
 	}
 	for (index = 0; index < image->attachment_count; index++)
@@ -1372,8 +1561,77 @@ void xgpu_vulkan_image_copy(struct xgpu_vulkan_image *source, uint32_t source_le
 	if (!copy.extent.width || !copy.extent.height)
 		return;
 	source->used = destination->used = vk.serial;
+	if (source->aspect & VK_IMAGE_ASPECT_DEPTH_BIT)
+	{
+		copy.srcSubresource.aspectMask = copy.dstSubresource.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+		vkCmdCopyImage(commands, source->image, VK_IMAGE_LAYOUT_GENERAL, destination->image, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+		copy.srcSubresource.aspectMask = copy.dstSubresource.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+	}
 	vkCmdCopyImage(commands, source->image, VK_IMAGE_LAYOUT_GENERAL, destination->image, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
 	transfer_done(commands);
+}
+
+/* OpenXR guarantees this layout after xrWaitSwapchainImage and requires
+it again at release. The copy preserves encoded colour bytes, as GL does
+with FRAMEBUFFER_SRGB disabled, including for the runtime's sRGB images. */
+void xgpu_vulkan_image_to_runtime(struct xgpu_vulkan_image *source, VkImage destination, uint32_t layers)
+{
+	VkCommandBuffer commands;
+	VkImageMemoryBarrier transition;
+	VkImageCopy copy;
+	int depth;
+	VkImageLayout acquired_layout;
+	VkPipelineStageFlags attachment_stages;
+	VkAccessFlags attachment_access;
+
+	if (!source || !destination || !layers)
+		return;
+	depth = (source->aspect & VK_IMAGE_ASPECT_DEPTH_BIT) != 0;
+	acquired_layout = depth ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	attachment_stages = depth ? VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT :
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	attachment_access = depth ? VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT :
+		VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	commands = main_commands();
+	memset(&transition, 0, sizeof(transition));
+	transition.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	transition.srcAccessMask = attachment_access;
+	transition.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	transition.oldLayout = acquired_layout;
+	transition.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	transition.srcQueueFamilyIndex = transition.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	transition.image = destination;
+	transition.subresourceRange.aspectMask = source->aspect;
+	transition.subresourceRange.levelCount = 1;
+	transition.subresourceRange.layerCount = layers;
+	vkCmdPipelineBarrier(commands, attachment_stages, VK_PIPELINE_STAGE_TRANSFER_BIT,
+		0, 0, NULL, 0, NULL, 1, &transition);
+	memset(&copy, 0, sizeof(copy));
+	copy.srcSubresource.aspectMask = copy.dstSubresource.aspectMask = depth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+	copy.srcSubresource.layerCount = copy.dstSubresource.layerCount = layers;
+	copy.extent.width = source->description.width;
+	copy.extent.height = source->description.height;
+	copy.extent.depth = 1;
+	vkCmdCopyImage(commands, source->image, VK_IMAGE_LAYOUT_GENERAL, destination, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+		1, &copy);
+	if (depth)
+	{
+		copy.srcSubresource.aspectMask = copy.dstSubresource.aspectMask = VK_IMAGE_ASPECT_STENCIL_BIT;
+		vkCmdCopyImage(commands, source->image, VK_IMAGE_LAYOUT_GENERAL, destination, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &copy);
+	}
+	transition.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+	transition.dstAccessMask = attachment_access;
+	transition.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	transition.newLayout = acquired_layout;
+	vkCmdPipelineBarrier(commands, VK_PIPELINE_STAGE_TRANSFER_BIT, attachment_stages,
+		0, 0, NULL, 0, NULL, 1, &transition);
+	source->used = vk.serial;
+}
+
+VkFormat xgpu_vulkan_depth_format(void)
+{
+	return vk.depth_format;
 }
 
 void xgpu_vulkan_image_resolve(struct xgpu_vulkan_image *multisampled, struct xgpu_vulkan_image *image)
@@ -1850,6 +2108,7 @@ static VkPipeline pipeline_make(const struct xgpu_vulkan_pipeline_description *d
 
 	memset(&raster, 0, sizeof(raster));
 	raster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+	raster.depthClampEnable = description->depth_clamp && vk.capabilities.depth_clamp;
 	raster.polygonMode = description->fill == 1 ? VK_POLYGON_MODE_LINE : description->fill == 2 ? VK_POLYGON_MODE_POINT :
 		VK_POLYGON_MODE_FILL;
 	raster.cullMode = !description->cull ? VK_CULL_MODE_NONE : description->cull_front ? VK_CULL_MODE_FRONT_BIT :
@@ -1901,6 +2160,7 @@ static VkPipeline pipeline_make(const struct xgpu_vulkan_pipeline_description *d
 
 	memset(&rendering, 0, sizeof(rendering));
 	rendering.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO;
+	rendering.viewMask = description->view_mask;
 	rendering.colorAttachmentCount = color_format != VK_FORMAT_UNDEFINED ? 1 : 0;
 	rendering.pColorAttachmentFormats = &color_format;
 	rendering.depthAttachmentFormat = depth_format;
@@ -1920,8 +2180,14 @@ static VkPipeline pipeline_make(const struct xgpu_vulkan_pipeline_description *d
 	info.pColorBlendState = &blend;
 	info.pDynamicState = &dynamic;
 	info.layout = vk.pipeline_layout;
-	if (!description->vertex_shader || !description->pixel_shader ||
-		!check(vkCreateGraphicsPipelines(vk.device, vk.pipeline_cache, 1, &info, NULL, &pipeline), "vkCreateGraphicsPipelines"))
+	if (description->vertex_shader && description->pixel_shader)
+	{
+		vk.pipeline_count++;
+		if (!check(vkCreateGraphicsPipelines(vk.device, vk.pipeline_cache, 1, &info, NULL, &pipeline),
+			"vkCreateGraphicsPipelines"))
+			pipeline = VK_NULL_HANDLE;
+	}
+	else
 		pipeline = VK_NULL_HANDLE;
 	vk.statistics.pipelines_made++;
 	vk.statistics.pipeline_seconds += seconds_now() - started;
@@ -1958,33 +2224,41 @@ VkPipeline xgpu_vulkan_pipeline(const struct xgpu_vulkan_pipeline_description *d
 	return entry->pipeline;
 }
 
+uint64_t xgpu_vulkan_pipeline_count(void)
+{
+	return vk.pipeline_count;
+}
+
 /* ---------- passes */
 
-static VkImageView attachment_view(struct xgpu_vulkan_image *image, uint32_t layer)
+static VkImageView attachment_view(struct xgpu_vulkan_image *image, uint32_t layer, uint32_t views)
 {
 	uint32_t layers = image->description.type == XGPU_VULKAN_IMAGE_2D_ARRAY ? image->description.depth_or_layers : 1;
+	uint32_t index, count = layers * 4;
 
-	if (layer >= layers)
-		layer = 0;
-	if (layer >= image->attachment_count)
+	if (!views || views > 4 || layer >= layers || views > layers - layer)
+		return VK_NULL_HANDLE;
+	index = layer * 4 + views - 1;
+	if (count > image->attachment_count)
 	{
-		VkImageView *grown = realloc(image->attachments, layers * sizeof(*grown));
+		VkImageView *grown = realloc(image->attachments, count * sizeof(*grown));
 
 		if (!grown)
 			return VK_NULL_HANDLE;
-		memset(grown + image->attachment_count, 0, (layers - image->attachment_count) * sizeof(*grown));
+		memset(grown + image->attachment_count, 0, (count - image->attachment_count) * sizeof(*grown));
 		image->attachments = grown;
-		image->attachment_count = layers;
+		image->attachment_count = count;
 	}
-	if (!image->attachments[layer])
-		image->attachments[layer] = view_make(image, VK_IMAGE_VIEW_TYPE_2D, layer, 1, 0);
-	return image->attachments[layer];
+	if (!image->attachments[index])
+		image->attachments[index] = view_make(image, views > 1 ? VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D,
+			layer, views, 0);
+	return image->attachments[index];
 }
 
 /* the pass drawing into the bound targets, begun */
-static int pass_begin(void)
+static int pass_begin(uint32_t clear_parts, const float clear_color[4], float clear_depth, uint32_t clear_stencil)
 {
-	VkRenderingAttachmentInfo color, depth;
+	VkRenderingAttachmentInfo color, depth, stencil;
 	VkRenderingInfo rendering;
 	struct xgpu_vulkan_image *size_of = vk.color ? vk.color : vk.depth;
 
@@ -1998,13 +2272,18 @@ static int pass_begin(void)
 	rendering.renderArea.extent.width = size_of->description.width;
 	rendering.renderArea.extent.height = size_of->description.height;
 	rendering.layerCount = 1;
+	rendering.viewMask = vk.views > 1 ? (1u << vk.views) - 1 : 0;
 	if (vk.color)
 	{
 		memset(&color, 0, sizeof(color));
 		color.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		color.imageView = attachment_view(vk.color, vk.layer);
+		color.imageView = attachment_view(vk.color, vk.layer, vk.views);
 		color.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		color.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		if (!color.imageView)
+			return 0;
+		color.loadOp = (clear_parts & XGPU_VULKAN_CLEAR_COLOR) ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+		if (clear_parts & XGPU_VULKAN_CLEAR_COLOR)
+			memcpy(color.clearValue.color.float32, clear_color, sizeof(color.clearValue.color.float32));
 		color.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		rendering.colorAttachmentCount = 1;
 		rendering.pColorAttachments = &color;
@@ -2022,13 +2301,31 @@ static int pass_begin(void)
 	{
 		memset(&depth, 0, sizeof(depth));
 		depth.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		depth.imageView = attachment_view(vk.depth, vk.layer);
+		depth.imageView = attachment_view(vk.depth, vk.layer, vk.views);
 		depth.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
-		depth.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		if (!depth.imageView)
+			return 0;
+		depth.loadOp = (clear_parts & XGPU_VULKAN_CLEAR_DEPTH) ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+		depth.clearValue.depthStencil.depth = clear_depth;
+		depth.clearValue.depthStencil.stencil = clear_stencil & 0xff;
 		depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		stencil = depth;
+		stencil.loadOp = (clear_parts & XGPU_VULKAN_CLEAR_STENCIL) ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
 		rendering.pDepthAttachment = &depth;
-		rendering.pStencilAttachment = &depth;
+		rendering.pStencilAttachment = &stencil;
 		vk.depth->used = vk.serial;
+	}
+	if (vk.color)
+	{
+		vk.statistics.attachment_clears += color.loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR;
+		vk.statistics.attachment_loads += color.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD;
+	}
+	if (vk.depth)
+	{
+		vk.statistics.attachment_clears += (depth.loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR) +
+			(stencil.loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR);
+		vk.statistics.attachment_loads += (depth.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD) +
+			(stencil.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD);
 	}
 	vkCmdBeginRendering(vk.slot->main, &rendering);
 	vk.pass_active = 1;
@@ -2052,14 +2349,23 @@ static void pass_end(void)
 	vk.pass_active = 0;
 }
 
-void xgpu_vulkan_set_targets(struct xgpu_vulkan_image *color, struct xgpu_vulkan_image *depth, uint32_t layer)
+void xgpu_vulkan_set_target_views(struct xgpu_vulkan_image *color, struct xgpu_vulkan_image *depth,
+	uint32_t layer, uint32_t views)
 {
-	if (color == vk.color && depth == vk.depth && layer == vk.layer)
+	if (views != 2 && views != 4)
+		views = 1;
+	if (color == vk.color && depth == vk.depth && layer == vk.layer && views == vk.views)
 		return;
 	pass_end();
 	vk.color = color;
 	vk.depth = depth;
 	vk.layer = layer;
+	vk.views = views;
+}
+
+void xgpu_vulkan_set_targets(struct xgpu_vulkan_image *color, struct xgpu_vulkan_image *depth, uint32_t layer)
+{
+	xgpu_vulkan_set_target_views(color, depth, layer, 1);
 }
 
 void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t parts, const float color[4], float depth,
@@ -2067,11 +2373,42 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 {
 	VkClearAttachment attachments[2];
 	VkClearRect *rects;
-	uint32_t attachment_count = 0, rect_count = 0, index;
+	uint32_t attachment_count = 0, rect_count = 0, index, clear_parts = 0;
 
-	if (!pass_begin())
+	if (!count || !rectangles || (!vk.color && !vk.depth))
+		return;
+	/* A full-target clear before a pass needs none of the overwritten
+	attachment's pixels. Keep other aspects, and all stores: later passes
+	may sample the depth or continue drawing over the colour. */
+	if (!vk.pass_active)
+	{
+		struct xgpu_vulkan_image *target = vk.color ? vk.color : vk.depth;
+		uint32_t width = target->description.width, height = target->description.height;
+
+		if (vk.depth && vk.depth->description.width < width)
+			width = vk.depth->description.width;
+		if (vk.depth && vk.depth->description.height < height)
+			height = vk.depth->description.height;
+		for (index = 0; index < count; index++)
+		{
+			int64_t right = (int64_t)rectangles[index][0] + rectangles[index][2];
+			int64_t bottom = (int64_t)rectangles[index][1] + rectangles[index][3];
+
+			if (rectangles[index][0] <= 0 && rectangles[index][1] <= 0 && right >= width && bottom >= height)
+			{
+				if (vk.color && (parts & XGPU_VULKAN_CLEAR_COLOR) &&
+					(parts & XGPU_VULKAN_CLEAR_CHANNELS) == XGPU_VULKAN_CLEAR_CHANNELS)
+					clear_parts |= XGPU_VULKAN_CLEAR_COLOR;
+				if (vk.depth)
+					clear_parts |= parts & (XGPU_VULKAN_CLEAR_DEPTH | XGPU_VULKAN_CLEAR_STENCIL);
+				break;
+			}
+		}
+	}
+	if (!pass_begin(clear_parts, color, depth, stencil))
 		return;
 	vk.statistics.clears++;
+	parts &= ~clear_parts;
 	if ((parts & XGPU_VULKAN_CLEAR_COLOR) && vk.color)
 	{
 		if ((parts & XGPU_VULKAN_CLEAR_CHANNELS) != XGPU_VULKAN_CLEAR_CHANNELS)
@@ -2110,7 +2447,7 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 	for (index = 0; index < count; index++)
 	{
 		int32_t left = rectangles[index][0], top = rectangles[index][1];
-		int32_t right = left + rectangles[index][2], bottom = top + rectangles[index][3];
+		int64_t right = (int64_t)left + rectangles[index][2], bottom = (int64_t)top + rectangles[index][3];
 
 		/* (inside the targets) */
 		if (left < 0)
@@ -2207,6 +2544,14 @@ static VkDescriptorSet texture_set(const struct xgpu_vulkan_texture textures[4])
 
 		images[stage].sampler = texture->sampler ? texture->sampler : vk.stand_in_sampler;
 		images[stage].imageView = image->sampled;
+		if (texture->kind == XGPU_VULKAN_IMAGE_2D && image->description.type == XGPU_VULKAN_IMAGE_2D_ARRAY)
+		{
+			if (!image->sampled_2d)
+				image->sampled_2d = view_make(image, VK_IMAGE_VIEW_TYPE_2D, 0, 1, 1);
+			if (!image->sampled_2d)
+				return VK_NULL_HANDLE;
+			images[stage].imageView = image->sampled_2d;
+		}
 		images[stage].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 		image->used = vk.serial;
 	}
@@ -2252,7 +2597,7 @@ void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw)
 	/* (the texture set first: it may begin the recording) */
 	recording_begin();
 	sets[1] = texture_set(draw->textures);
-	if (!sets[1] || !pass_begin())
+	if (!sets[1] || !pass_begin(0, NULL, 0.0f, 0))
 		return;
 	commands = vk.slot->main;
 	if (vk.bound_pipeline != draw->pipeline)
@@ -2646,7 +2991,14 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image)
 {
 	uint64_t serial;
+	int gpu_time_armed = vk.gpu_time_armed;
 
+	/* VR arms its next interval before this frame's visibility maintenance.
+	Keep that arm for real rendering after the next runtime frame wait. */
+	vk.gpu_time_armed = 0;
+	if (vk.queries && vk.queries->counter_count)
+		barrier(main_commands(), VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_ACCESS_SHADER_WRITE_BIT,
+			VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	/* (the frame's last work, its tests' queries with it: the present's
 	submission, or one of its own) */
 	serial = present(image);
@@ -2667,6 +3019,7 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image)
 	vk.statistics.frames++;
 	completed_serial();
 	garbage_collect();
+	vk.gpu_time_armed = gpu_time_armed;
 }
 
 void xgpu_vulkan_statistics(struct xgpu_vulkan_statistics *statistics)
@@ -2773,7 +3126,9 @@ static int instance_make(const struct xgpu_vulkan_options *options)
 	layers[0] = "VK_LAYER_KHRONOS_validation";
 	info.enabledLayerCount = vk.validation ? 1 : 0;
 	info.ppEnabledLayerNames = layers;
-	if (!check(vkCreateInstance(&info, NULL, &vk.instance), "vkCreateInstance"))
+	if (!check(options->create_instance ?
+		options->create_instance(vkGetInstanceProcAddr, &info, NULL, &vk.instance) :
+		vkCreateInstance(&info, NULL, &vk.instance), "vkCreateInstance"))
 		return 0;
 #define LOAD(name) name = (PFN_##name)vkGetInstanceProcAddr(vk.instance, #name);
 	INSTANCE_FUNCTIONS(LOAD)
@@ -2820,15 +3175,61 @@ static int format_has(VkFormat format, int buffer, VkFormatFeatureFlags features
 	return ((buffer ? properties.bufferFeatures : properties.optimalTilingFeatures) & features) == features;
 }
 
+/* Depth is also read by the scope, cockpit and feedback paths. Attachment
+support alone does not guarantee sampling of a combined depth/stencil format. */
+static int depth_format_choose(void)
+{
+	VkFormatFeatureFlags features = VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
+
+	if (format_has(VK_FORMAT_D24_UNORM_S8_UINT, 0, features))
+		vk.depth_format = VK_FORMAT_D24_UNORM_S8_UINT;
+	else if (format_has(VK_FORMAT_D32_SFLOAT_S8_UINT, 0, features))
+		vk.depth_format = VK_FORMAT_D32_SFLOAT_S8_UINT;
+	else
+	{
+		vk.depth_format = VK_FORMAT_UNDEFINED;
+		host_logf(HOST_LOG_ERROR, "vulkan: %s has no combined depth/stencil format supporting attachments and sampling",
+			vk.properties.deviceName);
+		return 0;
+	}
+	return 1;
+}
+
+static int required_features(const VkPhysicalDeviceFeatures2 *features,
+	const VkPhysicalDeviceVulkan12Features *features12, const VkPhysicalDeviceVulkan13Features *features13)
+{
+	if (!features13->dynamicRendering || !features12->timelineSemaphore || !features12->hostQueryReset)
+	{
+		host_logf(HOST_LOG_ERROR, "vulkan: %s has no dynamic rendering, timeline semaphores or host query reset",
+			vk.properties.deviceName);
+		return 0;
+	}
+	/* Flat rendering and VR's fallback use the actual number of visible
+	samples. Boolean occlusion queries cannot provide those counts. */
+	if (!features->features.occlusionQueryPrecise)
+	{
+		host_logf(HOST_LOG_ERROR, "vulkan: %s has no precise occlusion queries", vk.properties.deviceName);
+		return 0;
+	}
+	return 1;
+}
+
 /* a physical device of Vulkan 1.3 with a graphics queue (that can present to
 the surface, with one) */
-static int physical_choose(void)
+static int physical_choose(const struct xgpu_vulkan_options *options)
 {
 	VkPhysicalDevice devices[16];
 	uint32_t count = 16, index, best_score = 0;
 	int chosen = -1;
 
-	if (!check(vkEnumeratePhysicalDevices(vk.instance, &count, devices), "vkEnumeratePhysicalDevices"))
+	if (options->choose_physical)
+	{
+		devices[0] = options->choose_physical(vk.instance);
+		if (!devices[0])
+			return 0;
+		count = 1;
+	}
+	else if (!check(vkEnumeratePhysicalDevices(vk.instance, &count, devices), "vkEnumeratePhysicalDevices"))
 		return 0;
 	for (index = 0; index < count; index++)
 	{
@@ -2857,6 +3258,7 @@ static int physical_choose(void)
 				best_score = score;
 				chosen = (int)index;
 				vk.queue_family = family;
+				vk.timestamp_bits = families[family].timestampValidBits;
 			}
 			break;
 		}
@@ -2870,19 +3272,23 @@ static int physical_choose(void)
 	vk.physical = devices[chosen];
 	vkGetPhysicalDeviceProperties(vk.physical, &vk.properties);
 	vkGetPhysicalDeviceMemoryProperties(vk.physical, &vk.memory_properties);
+	vk.capabilities.gpu_timestamps = vk.timestamp_bits > 0 && vk.properties.limits.timestampPeriod > 0.0f;
 	return 1;
 }
 
-static int device_make(void)
+static int device_make(const struct xgpu_vulkan_options *options)
 {
 	VkPhysicalDeviceFeatures2 available;
+	VkPhysicalDeviceVulkan11Features available11;
 	VkPhysicalDeviceVulkan12Features available12;
 	VkPhysicalDeviceVulkan13Features available13;
 	VkPhysicalDeviceCustomBorderColorFeaturesEXT available_border;
 	VkPhysicalDeviceNonSeamlessCubeMapFeaturesEXT available_cube, cube;
 	VkPhysicalDeviceFeatures2 features;
-	VkPhysicalDeviceVulkan12Features features12;
-	VkPhysicalDeviceVulkan13Features features13;
+	VkPhysicalDeviceMultiviewFeatures multiview;
+	VkPhysicalDeviceTimelineSemaphoreFeatures timeline;
+	VkPhysicalDeviceHostQueryResetFeatures query_reset;
+	VkPhysicalDeviceDynamicRenderingFeatures rendering;
 	VkPhysicalDeviceCustomBorderColorFeaturesEXT border;
 	VkDeviceQueueCreateInfo queue;
 	VkDeviceCreateInfo info;
@@ -2894,16 +3300,19 @@ static int device_make(void)
 	void **chain;
 
 	memset(&available, 0, sizeof(available));
+	memset(&available11, 0, sizeof(available11));
 	memset(&available12, 0, sizeof(available12));
 	memset(&available13, 0, sizeof(available13));
 	memset(&available_border, 0, sizeof(available_border));
 	available.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
+	available11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES;
 	available12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
 	available13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
 	available_border.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT;
 	memset(&available_cube, 0, sizeof(available_cube));
 	available_cube.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_NON_SEAMLESS_CUBE_MAP_FEATURES_EXT;
-	available.pNext = &available12;
+	available.pNext = &available11;
+	available11.pNext = &available12;
 	available12.pNext = &available13;
 	chain = &available13.pNext;
 	if (custom_border)
@@ -2914,23 +3323,31 @@ static int device_make(void)
 	if (non_seamless)
 		*chain = &available_cube;
 	vkGetPhysicalDeviceFeatures2(vk.physical, &available);
-	if (!available13.dynamicRendering || !available12.timelineSemaphore || !available12.hostQueryReset)
-	{
-		host_logf(HOST_LOG_ERROR, "vulkan: %s has no dynamic rendering, timeline semaphores or host query reset",
-			vk.properties.deviceName);
+	if (!required_features(&available, &available12, &available13) || !depth_format_choose())
 		return 0;
-	}
 
 	memset(&features, 0, sizeof(features));
-	memset(&features12, 0, sizeof(features12));
-	memset(&features13, 0, sizeof(features13));
+	memset(&multiview, 0, sizeof(multiview));
+	memset(&timeline, 0, sizeof(timeline));
+	memset(&query_reset, 0, sizeof(query_reset));
+	memset(&rendering, 0, sizeof(rendering));
 	memset(&border, 0, sizeof(border));
 	features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-	features12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
-	features13.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES;
+	multiview.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES;
+	timeline.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_TIMELINE_SEMAPHORE_FEATURES;
+	query_reset.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_HOST_QUERY_RESET_FEATURES;
+	rendering.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES;
 	border.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_CUSTOM_BORDER_COLOR_FEATURES_EXT;
-	features.pNext = &features12;
-	features12.pNext = &features13;
+	/* OpenXR runtimes may add their own required features. The individual
+	structures let them find ours without mixing a promoted feature with
+	its aggregate Vulkan 1.2 structure (as Monado does for timelines). */
+	features.pNext = &multiview;
+	multiview.pNext = &timeline;
+	timeline.pNext = &query_reset;
+	query_reset.pNext = &rendering;
+	multiview.multiview = available11.multiview;
+	features.features.depthClamp = available.features.depthClamp;
+	vk.capabilities.depth_clamp = available.features.depthClamp;
 	features.features.fillModeNonSolid = available.features.fillModeNonSolid;
 	features.features.samplerAnisotropy = available.features.samplerAnisotropy;
 	features.features.largePoints = available.features.largePoints;
@@ -2938,13 +3355,12 @@ static int device_make(void)
 	features.features.textureCompressionBC = available.features.textureCompressionBC;
 	features.features.fragmentStoresAndAtomics = available.features.fragmentStoresAndAtomics;
 	features.features.shaderImageGatherExtended = VK_FALSE;
-	features12.timelineSemaphore = VK_TRUE;
-	features12.hostQueryReset = VK_TRUE;
-	features13.dynamicRendering = VK_TRUE;
-	features13.synchronization2 = VK_FALSE;
+	timeline.timelineSemaphore = VK_TRUE;
+	query_reset.hostQueryReset = VK_TRUE;
+	rendering.dynamicRendering = VK_TRUE;
 	if (vk.surface)
 		extensions[extension_count++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
-	chain = &features13.pNext;
+	chain = &rendering.pNext;
 	if (custom_border && available_border.customBorderColors && available_border.customBorderColorWithoutFormat)
 	{
 		extensions[extension_count++] = VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME;
@@ -2977,7 +3393,9 @@ static int device_make(void)
 	info.pQueueCreateInfos = &queue;
 	info.enabledExtensionCount = extension_count;
 	info.ppEnabledExtensionNames = extensions;
-	if (!check(vkCreateDevice(vk.physical, &info, NULL, &vk.device), "vkCreateDevice"))
+	if (!check(options->create_device ?
+		options->create_device(vkGetInstanceProcAddr, vk.physical, &info, NULL, &vk.device) :
+		vkCreateDevice(vk.physical, &info, NULL, &vk.device), "vkCreateDevice"))
 		return 0;
 #define LOAD(name) name = (PFN_##name)vkGetDeviceProcAddr(vk.device, #name);
 	DEVICE_FUNCTIONS(LOAD)
@@ -3006,19 +3424,22 @@ static int device_make(void)
 		format_has(VK_FORMAT_R16G16B16A16_SSCALED, 1, VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) &&
 		format_has(VK_FORMAT_R16_SSCALED, 1, VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT);
 	{
+		VkPhysicalDeviceVulkan11Properties properties11;
 		VkPhysicalDeviceVulkan12Properties properties12;
 		VkPhysicalDeviceProperties2 properties;
 
+		memset(&properties11, 0, sizeof(properties11));
 		memset(&properties12, 0, sizeof(properties12));
 		memset(&properties, 0, sizeof(properties));
+		properties11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_PROPERTIES;
 		properties12.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_PROPERTIES;
 		properties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-		properties.pNext = &properties12;
+		properties.pNext = &properties11;
+		properties11.pNext = &properties12;
 		vkGetPhysicalDeviceProperties2(vk.physical, &properties);
+		vk.capabilities.multiview_views = available11.multiview ? properties11.maxMultiviewViewCount : 0;
 		vk.nvidia = properties12.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY;
 	}
-	vk.depth_format = format_has(VK_FORMAT_D24_UNORM_S8_UINT, 0, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT) ?
-		VK_FORMAT_D24_UNORM_S8_UINT : VK_FORMAT_D32_SFLOAT_S8_UINT;
 	host_logf(HOST_LOG_INFO, "vulkan: %s (Vulkan %u.%u.%u, driver %08x)%s%s%s", vk.properties.deviceName,
 		VK_API_VERSION_MAJOR(vk.properties.apiVersion), VK_API_VERSION_MINOR(vk.properties.apiVersion),
 		VK_API_VERSION_PATCH(vk.properties.apiVersion), vk.properties.driverVersion,
@@ -3119,7 +3540,7 @@ static int draw_set_make(void)
 	if (!check(vkAllocateDescriptorSets(vk.device, &allocate, &vk.draw_set), "vkAllocateDescriptorSets"))
 		return 0;
 	vk.lights_block = xgpu_vulkan_buffer_create(6192);
-	vk.samples = xgpu_vulkan_buffer_create(4 * XGPU_VULKAN_VISIBILITY_SLOTS);
+	vk.samples = xgpu_vulkan_buffer_create(4 * (XGPU_VULKAN_VISIBILITY_SLOTS + 1) * QUERY_FRAMES);
 	memset(&description, 0, sizeof(description));
 	description.type = XGPU_VULKAN_IMAGE_3D;
 	description.format = XGPU_VULKAN_FORMAT_RGBA32_UINT;
@@ -3137,11 +3558,11 @@ static int draw_set_make(void)
 	buffers[1].buffer = vk.ring;
 	/* (the uniforms' size: xgpu_spirv.h's struct xgpu_spirv_uniforms, at
 	most) */
-	buffers[1].range = 1024;
+	buffers[1].range = 2048;
 	buffers[2].buffer = vk.lights_block->buffer;
 	buffers[2].range = 6192;
 	buffers[3].buffer = vk.samples->buffer;
-	buffers[3].range = 4 * XGPU_VULKAN_VISIBILITY_SLOTS;
+	buffers[3].range = 4 * (XGPU_VULKAN_VISIBILITY_SLOTS + 1) * QUERY_FRAMES;
 	cells.sampler = vk.stand_in_sampler;
 	cells.imageView = vk.lights_cells->sampled;
 	cells.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -3300,7 +3721,7 @@ int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
 		if (!vk.surface)
 			host_logf(HOST_LOG_WARN, "vulkan: no surface for the window: its frames are not shown");
 	}
-	if (!physical_choose() || !device_make())
+	if (!physical_choose(options) || !device_make(options))
 		return 0;
 	memset(&type, 0, sizeof(type));
 	type.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
@@ -3352,6 +3773,8 @@ int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
 	if (!layouts_make() || !stand_ins_make() || !draw_set_make())
 		return 0;
 	pipeline_cache_make(options->cache_path);
+	if (options->device_ready)
+		options->device_ready(vk.instance, vk.physical, vk.device, vk.queue_family, 0);
 	return 1;
 }
 

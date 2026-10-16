@@ -2,10 +2,10 @@
 HOST_VR_RENDER.H
 
 OpenXR on the host's render thread (host_vr.c), where the renderer's
-backend is the host's (the command stream: host_gl_vr.c). The calls of
-OpenXR that use the GL context (the session made, the swapchains' images
+backend is the host's (the command stream). The calls of
+OpenXR that use the graphics device (the session made, the swapchains' images
 acquired and released, a frame begun and ended) are made on the thread the
-context is current on, the render thread; the game's thread waits for the
+renderer uses, the render thread; the game's thread waits for the
 runtime's frames (host_vr_frame_wait, which then only waits) and locates the
 views and controllers, as before.
 */

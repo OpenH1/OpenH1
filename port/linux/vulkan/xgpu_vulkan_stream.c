@@ -26,8 +26,9 @@ render target sampled with its mip levels (the game's levels drawn one by
 one) samples a composite of them, the levels past them made from the last,
 as OpenGL's mip_composite_get makes it.
 
-Not yet: the enhanced dynamic lights' glows, anti-aliasing's passes and the
-VR mode (the stream skips records with no entry).
+The VR host supplies the eyes' targets and transforms, and consumes their
+images for the OpenXR layers. Not yet: the enhanced dynamic lights' glows
+and anti-aliasing's passes (the stream skips records with no entry).
 */
 
 #include "host.h"
@@ -38,6 +39,9 @@ VR mode (the stream skips records with no entry).
 #include "xgpu_vulkan.h"
 #include "xgpu_vulkan_stream.h"
 #include "xgpu_vulkan_textures.h"
+#ifdef HALO_VR
+#include "host_vulkan_vr.h"
+#endif
 
 #include <stddef.h>
 #include <stdio.h>
@@ -50,7 +54,7 @@ VR mode (the stream skips records with no entry).
 #define PROGRAM_BUCKETS 256
 /* the uniforms' and constants' sizes in the ring: the draw set's ranges
 (xgpu_vulkan.c draw_set_make) */
-#define UNIFORMS_RANGE 1024
+#define UNIFORMS_RANGE 2048
 #define CONSTANTS_RANGE (192 * 16)
 
 _Static_assert(sizeof(struct xgpu_spirv_uniforms) <= UNIFORMS_RANGE, "the uniforms' range");
@@ -104,7 +108,7 @@ struct stream_target
 	struct xgpu_vulkan_image *multisampled;
 	int samples, unresolved;
 	uint32_t width, height, layers;
-	int depth;
+	int depth, borrowed;
 	/* counts the draws and clears into it */
 	uint32_t written;
 };
@@ -114,7 +118,7 @@ struct variant
 {
 	uint16_t integer_attributes;
 	uint8_t border[4];
-	uint8_t pad[2];
+	uint8_t foveated, pad;
 };
 
 struct stream_pipeline
@@ -151,7 +155,8 @@ struct vertex_source
 struct composite
 {
 	struct composite *next;
-	uint32_t data, width, height, levels;
+	uint32_t data, width, height, levels, layers;
+	uint8_t format;
 	struct xgpu_vulkan_image *image;
 	uint32_t rendered_levels;
 	uint32_t level_targets[XGPU_STREAM_MIP_LEVELS], level_written[XGPU_STREAM_MIP_LEVELS];
@@ -210,7 +215,12 @@ static struct
 	float constant_attributes[16][4];
 
 	uint32_t color, depth, samples;
+	uint32_t views, base;
+	int hud_group;
 	uint32_t back_buffer;
+	int preparing, prepared;
+	uint64_t prepare_pipelines;
+	uint32_t pipeline_misses;
 } stream;
 
 /* ---------- vertex programs and lightings, by their hash */
@@ -298,7 +308,8 @@ static void target_forget(uint32_t number)
 
 	if (!target)
 		return;
-	xgpu_vulkan_image_destroy(target->image);
+	if (!target->borrowed)
+		xgpu_vulkan_image_destroy(target->image);
 	xgpu_vulkan_image_destroy(target->multisampled);
 	free(target);
 	stream.targets[number] = NULL;
@@ -363,6 +374,56 @@ static void stream_target_create(void *context, const struct xgpu_stream_target_
 	stream.textures_dirty = 1;
 }
 
+struct xgpu_vulkan_image *xgpu_vulkan_stream_target(uint32_t number)
+{
+	struct stream_target *target = target_get(number);
+
+	target_resolve(target);
+	return target ? target->image : NULL;
+}
+
+void xgpu_vulkan_stream_set_vr_target(uint32_t number, struct xgpu_vulkan_image *image)
+{
+	const struct xgpu_vulkan_image_description *description;
+	struct stream_target *target;
+
+	if (!image || !number)
+		return;
+	description = xgpu_vulkan_image_description(image);
+	target = target_get(number);
+	if (!target)
+	{
+		struct xgpu_stream_target_create record;
+
+		memset(&record, 0, sizeof(record));
+		record.target = number;
+		record.width = description->width;
+		record.height = description->height;
+		record.layers = description->depth_or_layers;
+		stream_target_create(NULL, &record);
+		target = target_get(number);
+	}
+	if (!target)
+		return;
+	if (target->image != image)
+	{
+		if (!target->borrowed)
+			xgpu_vulkan_image_destroy(target->image);
+		target->image = image;
+	}
+	target->borrowed = 1;
+	target->width = description->width;
+	target->height = description->height;
+	target->layers = description->type == XGPU_VULKAN_IMAGE_2D_ARRAY ? description->depth_or_layers : 1;
+	target->written++;
+	stream.textures_dirty = stream.uniforms_dirty = 1;
+}
+
+void xgpu_vulkan_stream_vr_changed(void)
+{
+	stream.uniforms_dirty = stream.textures_dirty = 1;
+}
+
 static void stream_target_delete(void *context, uint32_t target)
 {
 	(void)context;
@@ -413,7 +474,16 @@ static void targets_bind(void)
 			depth->unresolved = 1;
 		}
 	}
-	xgpu_vulkan_set_targets(color_image, depth_image, 0);
+#ifdef HALO_VR
+	if (stream.hud_group >= 0)
+	{
+		struct xgpu_vulkan_image *group = host_vulkan_vr_hud_group(stream.color, stream.hud_group);
+
+		if (group)
+			color_image = group;
+	}
+#endif
+	xgpu_vulkan_set_target_views(color_image, depth_image, stream.base, stream.views);
 }
 
 static void stream_set_targets(void *context, const struct xgpu_stream_set_targets *record)
@@ -422,9 +492,11 @@ static void stream_set_targets(void *context, const struct xgpu_stream_set_targe
 	stream.color = record->color;
 	stream.depth = record->depth;
 	stream.samples = record->samples;
+	stream.views = record->views > 1 ? (uint32_t)record->views : 1;
+	stream.base = record->views == -2 ? 1 : record->base;
+	stream.hud_group = record->hud_group;
 	/* (whether a stage samples the target drawn into) */
 	stream.textures_dirty = 1;
-	/* (flat: the views and hud_group are the VR mode's) */
 	targets_bind();
 }
 
@@ -535,29 +607,34 @@ drawn into since */
 static struct xgpu_vulkan_image *feedback_copy(uint32_t number, struct stream_target *target)
 {
 	const struct xgpu_vulkan_image_description *description;
+	const struct xgpu_vulkan_image_description *source = xgpu_vulkan_image_description(target->image);
 
 	if (target->depth)
 		return target->image;
 	description = stream.feedback ? xgpu_vulkan_image_description(stream.feedback) : NULL;
-	if (!description || description->width != target->width || description->height != target->height)
+	if (!description || description->width != target->width || description->height != target->height ||
+		description->depth_or_layers != target->layers || description->format != source->format)
 	{
 		struct xgpu_vulkan_image_description made;
 
 		xgpu_vulkan_image_destroy(stream.feedback);
 		memset(&made, 0, sizeof(made));
-		made.type = XGPU_VULKAN_IMAGE_2D;
-		made.format = XGPU_VULKAN_FORMAT_BGRA8;
+		made.type = target->layers > 1 ? XGPU_VULKAN_IMAGE_2D_ARRAY : XGPU_VULKAN_IMAGE_2D;
+		made.format = source->format;
 		made.usage = XGPU_VULKAN_USAGE_SAMPLED;
 		made.width = target->width;
 		made.height = target->height;
-		made.depth_or_layers = 1;
+		made.depth_or_layers = target->layers;
 		made.levels = 1;
 		stream.feedback = xgpu_vulkan_image_create(&made);
 		stream.feedback_target = 0;
 	}
 	if (stream.feedback && (stream.feedback_target != number || stream.feedback_written != target->written))
 	{
-		xgpu_vulkan_image_copy(target->image, 0, 0, stream.feedback, 0, 0);
+		uint32_t layer;
+
+		for (layer = 0; layer < target->layers; layer++)
+			xgpu_vulkan_image_copy(target->image, 0, layer, stream.feedback, 0, layer);
 		stream.feedback_target = number;
 		stream.feedback_written = target->written;
 	}
@@ -572,6 +649,9 @@ static struct xgpu_vulkan_image *composite_get(const struct host_render_texture_
 	const struct xgpu_stream_texture_stage *stage = &source->stage;
 	struct composite *composite;
 	uint32_t level, rendered = stage->rendered_levels, levels = stage->levels;
+	struct stream_target *base = target_get(stage->target);
+	uint32_t layers = base ? base->layers : 1;
+	uint8_t format = base ? xgpu_vulkan_image_description(base->image)->format : XGPU_VULKAN_FORMAT_BGRA8;
 	int changed;
 
 	if (levels > XGPU_STREAM_MIP_LEVELS)
@@ -581,7 +661,7 @@ static struct xgpu_vulkan_image *composite_get(const struct host_render_texture_
 	for (composite = stream.composites; composite; composite = composite->next)
 	{
 		if (composite->data == stage->data && composite->width == stage->width && composite->height == stage->height &&
-			composite->levels == levels)
+			composite->levels == levels && composite->layers == layers && composite->format == format)
 			break;
 	}
 	if (!composite)
@@ -595,13 +675,15 @@ static struct xgpu_vulkan_image *composite_get(const struct host_render_texture_
 		composite->width = stage->width;
 		composite->height = stage->height;
 		composite->levels = levels;
+		composite->layers = layers;
+		composite->format = format;
 		memset(&made, 0, sizeof(made));
-		made.type = XGPU_VULKAN_IMAGE_2D;
-		made.format = XGPU_VULKAN_FORMAT_BGRA8;
+		made.type = layers > 1 ? XGPU_VULKAN_IMAGE_2D_ARRAY : XGPU_VULKAN_IMAGE_2D;
+		made.format = format;
 		made.usage = XGPU_VULKAN_USAGE_SAMPLED;
 		made.width = stage->width;
 		made.height = stage->height;
-		made.depth_or_layers = 1;
+		made.depth_or_layers = layers;
 		made.levels = levels ? levels : 1;
 		composite->image = xgpu_vulkan_image_create(&made);
 		composite->rendered_levels = ~0u;
@@ -628,7 +710,12 @@ static struct xgpu_vulkan_image *composite_get(const struct host_render_texture_
 		if (!target)
 			continue;
 		target_resolve(target);
-		xgpu_vulkan_image_copy(target->image, 0, 0, composite->image, level, 0);
+		{
+			uint32_t layer;
+
+			for (layer = 0; layer < target->layers && layer < layers; layer++)
+				xgpu_vulkan_image_copy(target->image, 0, layer, composite->image, level, layer);
+		}
 	}
 	/* levels the game did not render come from the ones it did */
 	if (rendered < composite->levels)
@@ -874,6 +961,9 @@ static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_str
 	lighting = key->lighting == _lighting_none ? NULL : key->lighting == _lighting_environment ? &environment : &model;
 	memset(&options, 0, sizeof(options));
 	memcpy(options.border, variant->border, sizeof(options.border));
+	options.multiview = key->views;
+	options.foveated = variant->foveated;
+	options.count_samples = key->pixel.count_samples != 0;
 	options.debug_texture0 = getenv("HALO_GPU_DEBUG_T0") != NULL;
 	options.debug_flat = getenv("HALO_GPU_DEBUG_FLAT") != NULL;
 	program = malloc(sizeof(*program));
@@ -883,20 +973,20 @@ static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_str
 	entry->inputs = (uint16_t)xgpu_spirv_vertex_inputs(program, lighting);
 	if (xgpu_spirv_vertex_shader(program, packed, integers, lighting, &options, &module))
 	{
-		snprintf(name, sizeof(name), "vs%08x%08x_%lx_%lx_%u", (unsigned)(hash >> 32), (unsigned)hash, packed, integers,
-			key->lighting);
+		snprintf(name, sizeof(name), "vs%08x%08x_%lx_%lx_%u_view%u_fovea%u", (unsigned)(hash >> 32), (unsigned)hash,
+			packed, integers, key->lighting, key->views, variant->foveated);
 		shader_dump(name, &module);
 		entry->vertex_shader = xgpu_vulkan_shader(module.words, module.count);
 		free(module.words);
 	}
 	free(program);
 	pixel_program_convert(&definition->pixel_program, &pixel);
-	/* (flat: the VR mode's views drawn as none) */
-	pixel.multiview = XGPU_MULTIVIEW_NONE;
+
 	if (xgpu_spirv_pixel_shader(&pixel, &options, &module))
 	{
-		snprintf(name, sizeof(name), "ps_%08x_%02x%02x%02x%02x", bytes_hash(&definition->pixel_program,
-			sizeof(definition->pixel_program)), options.border[0], options.border[1], options.border[2], options.border[3]);
+		snprintf(name, sizeof(name), "ps_%08x_%02x%02x%02x%02x_fovea%u", bytes_hash(&definition->pixel_program,
+			sizeof(definition->pixel_program)), options.border[0], options.border[1], options.border[2], options.border[3],
+			variant->foveated);
 		shader_dump(name, &module);
 		entry->pixel_shader = xgpu_vulkan_shader(module.words, module.count);
 		free(module.words);
@@ -917,6 +1007,9 @@ static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_str
 static void variant_current(const struct xgpu_stream_pipeline_key *key, struct variant *variant)
 {
 	memset(variant, 0, sizeof(*variant));
+#ifdef HALO_VR
+	variant->foveated = host_vulkan_vr_foveated() != 0;
+#endif
 	variant->integer_attributes = key->immediate ? 0 : stream.integer_attributes;
 	memcpy(variant->border, stream.border, sizeof(variant->border));
 }
@@ -981,6 +1074,8 @@ static void stream_draw_state(void *context, const struct xgpu_stream_dynamic_st
 	{
 		if (memcmp(stream.dynamic.blend_color, dynamic->blend_color, sizeof(stream.dynamic.blend_color)))
 			stream.uniforms_dirty = 1;
+		if (memcmp(stream.dynamic.viewport, dynamic->viewport, sizeof(stream.dynamic.viewport)))
+			stream.uniforms_dirty = 1;
 		memcpy(&stream.dynamic, dynamic, sizeof(stream.dynamic));
 	}
 	if (uniforms && (!stream.uniforms_set || uniforms_serial != stream.uniforms_serial))
@@ -1020,6 +1115,10 @@ static int uniforms_update(void)
 		to->point_size = from->point_size;
 		to->screen_offset = from->screen_offset;
 		to->alpha_reference = from->alpha_reference;
+#ifdef HALO_VR
+		host_vulkan_vr_uniforms(to, stream.dynamic.viewport);
+#endif
+		to->visibility_counter = (float)xgpu_vulkan_visibility_counter();
 		memcpy(to->ps_c0, from->ps_c0, sizeof(to->ps_c0));
 		memcpy(to->ps_c1, from->ps_c1, sizeof(to->ps_c1));
 		memcpy(to->ps_final_c0, from->ps_final_c0, sizeof(to->ps_final_c0));
@@ -1259,6 +1358,22 @@ static int indices_upload(const struct draw_input *input, struct xgpu_vulkan_dra
 	return 1;
 }
 
+/* A map's enumeration should exercise every native pipeline before play.
+Keep first-use misses visible, including the key and layout that need it. */
+static void pipeline_missed(const struct xgpu_vulkan_pipeline_description *pipeline, uint64_t vertex_program)
+{
+	const struct xgpu_stream_pipeline_key *key = &stream.definition->key;
+
+	stream.pipeline_misses++;
+	host_logf(HOST_LOG_WARN, "vulkan: pipeline missed map preparation: vertex %08x%08x, "
+		"views %u/%u, layout %08x/%08x, key %08x (textures %u, coverage %u, threshold %u), total %u",
+		(unsigned)(vertex_program >> 32), (unsigned)vertex_program, (unsigned)key->views,
+		(unsigned)pipeline->view_mask, bytes_hash(pipeline->attributes, sizeof(pipeline->attributes)),
+		bytes_hash(pipeline->strides, sizeof(pipeline->strides)), bytes_hash(key, sizeof(*key)),
+		(unsigned)key->pixel.texture_modes, (unsigned)key->pixel.coverage_alpha,
+		(unsigned)key->pixel.point_threshold, stream.pipeline_misses);
+}
+
 /* a draw of the current pipeline, made and drawn: its shaders for the
 draw's variant, its pipeline for the vertex layout, its textures and
 uniforms, its vertices and indices; nothing if it cannot be drawn */
@@ -1311,7 +1426,21 @@ static void draw_input(const struct draw_input *input)
 		if ((draw.bindings & (1u << index)) && !(input->present & (1u << index)))
 			return;
 	}
-	draw.pipeline = xgpu_vulkan_pipeline(&pipeline);
+	pipeline.view_mask = stream.views > 1 ? (uint8_t)((1u << stream.views) - 1) : 0;
+	if (target_image(stream.color))
+		pipeline.color_format = xgpu_vulkan_image_description(target_image(stream.color))->format;
+#ifdef HALO_VR
+	pipeline.depth_clamp = host_vulkan_vr_sky() != 0;
+#endif
+	{
+		uint64_t before = xgpu_vulkan_pipeline_count();
+		uint64_t vertex_program = stream.definition->key.vertex_program[0] |
+			((uint64_t)stream.definition->key.vertex_program[1] << 32);
+
+		draw.pipeline = xgpu_vulkan_pipeline(&pipeline);
+		if (!stream.preparing && stream.prepared && xgpu_vulkan_pipeline_count() != before)
+			pipeline_missed(&pipeline, vertex_program);
+	}
 	if (!draw.pipeline)
 		return;
 	draw.topology = primitive_topology(input->primitive);
@@ -1474,6 +1603,7 @@ static void stream_visibility_begin(void *context)
 {
 	(void)context;
 	xgpu_vulkan_visibility_begin();
+	stream.uniforms_dirty = 1;
 }
 
 static void stream_visibility_end(void *context, const struct xgpu_stream_visibility_end *record)
@@ -1481,7 +1611,13 @@ static void stream_visibility_end(void *context, const struct xgpu_stream_visibi
 	(void)context;
 	/* (the count written for the game is of its pixels: divided by the
 	samples one of them is, as the OpenGL backend's) */
-	xgpu_vulkan_visibility_end(record->slot, record->area * (float)(record->samples > 1 ? record->samples : 1));
+#ifdef HALO_VR
+	if (host_vulkan_vr_active() && stream.capabilities.fragment_stores)
+		xgpu_vulkan_visibility_end(record->slot, record->area * (float)(record->views > 1 ? record->views : 1));
+	else
+#endif
+		xgpu_vulkan_visibility_end(record->slot, record->area * (float)(record->samples > 1 ? record->samples : 1));
+	stream.uniforms_dirty = 1;
 }
 
 static void stream_present(void *context, uint32_t back_buffer)
@@ -1496,6 +1632,10 @@ static void stream_frame_end(void *context)
 
 	(void)context;
 	target_resolve(back_buffer);
+#ifdef HALO_VR
+	if (host_vulkan_vr_active())
+		back_buffer = NULL;
+#endif
 	xgpu_vulkan_frame_end(back_buffer ? back_buffer->image : NULL);
 	stream.back_buffer = 0;
 	xgpu_vulkan_textures_frame_end();
@@ -1510,9 +1650,11 @@ static void stream_frame_end(void *context)
 
 			xgpu_vulkan_statistics(&statistics);
 			xgpu_vulkan_textures_statistics(&textures);
-			host_logf(HOST_LOG_INFO, "vulkan: %u frames: %u submissions, %u passes, %u draws, %u clears, %u pipelines made "
+			host_logf(HOST_LOG_INFO, "vulkan: %u frames: %u submissions, %u passes, %u draws, %u clears, %u attachment loads, "
+				"%u attachment clears, %u pipelines made "
 				"(%.1f ms), %u uploads ordered, %u early, %llu ring bytes; textures %u made, %u remade, %u images",
 				statistics.frames, statistics.submissions, statistics.passes, statistics.draws, statistics.clears,
+				statistics.attachment_loads, statistics.attachment_clears,
 				statistics.pipelines_made, statistics.pipeline_seconds * 1000.0, statistics.uploads_ordered,
 				statistics.uploads_early, (unsigned long long)statistics.ring_bytes, textures.made, textures.remade,
 				textures.images);
@@ -1559,6 +1701,26 @@ static void stream_initialize(void *context, struct xgpu_stream_capabilities *ca
 	capabilities->dynamic_lights_preparable = 0;
 }
 
+static void stream_prepare(void *context)
+{
+	(void)context;
+	stream.preparing = 1;
+	stream.prepare_pipelines = xgpu_vulkan_pipeline_count();
+}
+
+static uint32_t stream_prepared(void *context)
+{
+	(void)context;
+	/* Pipeline creation is synchronous here. The reply follows every
+	enumeration draw, including its vertex layout and target format. */
+	host_logf(HOST_LOG_INFO, "vulkan: map preparation made %llu pipelines (%llu total)",
+		(unsigned long long)(xgpu_vulkan_pipeline_count() - stream.prepare_pipelines),
+		(unsigned long long)xgpu_vulkan_pipeline_count());
+	stream.preparing = 0;
+	stream.prepared = 1;
+	return 0;
+}
+
 const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 {
 	static struct host_render_backend backend;
@@ -1595,6 +1757,11 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.visibility_end = stream_visibility_end;
 		backend.present = stream_present;
 		backend.frame_end = stream_frame_end;
+		backend.prepare = stream_prepare;
+		backend.prepared = stream_prepared;
+#ifdef HALO_VR
+		host_vulkan_vr_backend(&backend);
+#endif
 	}
 	return &backend;
 }

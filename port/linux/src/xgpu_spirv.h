@@ -28,7 +28,7 @@ The conventions (SPIR-V 1.3, Vulkan 1.1):
   XGPU_SPIRV_BINDING_CONSTANTS, struct xgpu_spirv_uniforms at
   XGPU_SPIRV_BINDING_UNIFORMS (both stages), the enhanced dynamic lights'
   block and cells (struct xgpu_dynamic_lights_block, a usampler3D) and the
-  visibility tests' counter (a storage buffer of one uint) at theirs;
+  visibility tests' counters (a storage buffer of uints) at theirs;
 - each stage's texture is a combined image sampler at binding n of
   XGPU_SPIRV_SET_TEXTURES; the samplers have D3DTSS_MIPMAPLODBIAS
   (mipLodBias) and the border colors (VK_EXT_custom_border_color), as
@@ -37,8 +37,11 @@ The conventions (SPIR-V 1.3, Vulkan 1.1):
 - the stages hand on, at locations XGPU_SPIRV_LOCATION_*: the colors, the
   texture coordinates, fog, and with lighting the world normal, position,
   binormal and tangent;
-- the VR mode's views are not yet (the Vulkan backend is flat): a key's
-  multiview is drawn as none, a layered render target as its first layer.
+- the VR mode uses Vulkan multiview, with ViewIndex relative to the
+  attachment view's first layer. A draw of one eye uses that eye's layer
+  (its two layers when foveated) as the attachment view. The eyes and all
+  other targets have their first row at the top; unlike OpenXR's OpenGL
+  images, neither the eye positions nor layered texture lookups flip rows.
 */
 
 #ifndef __HALO_LINUX_XGPU_SPIRV_H
@@ -70,7 +73,7 @@ struct xgpu_spirv_uniforms
 {
 	float viewport_scale[4];
 	float viewport_offset[4];
-	float point_size, screen_offset, alpha_reference, unused;
+	float point_size, screen_offset, alpha_reference, screen_points;
 	float ps_c0[8][4];
 	float ps_c1[8][4];
 	float ps_final_c0[4];
@@ -87,6 +90,17 @@ struct xgpu_spirv_uniforms
 	float texture_border[4][4];
 	float texture_border_linear[4];
 	float model_lights[XGPU_MODEL_LIGHT_COUNT][4];
+	/* the clip and screen corrections, as the stream delivers them;
+	the matrices are column-major (four consecutive vec4 columns) */
+	float eye_correction[2][16];
+	float screen_correction[2][4];
+	/* each foveated layer's scale and offset: fovea_view in Vulkan clip
+	space (x/y down from the top left after the y negation), fovea_sample
+	in texture space (its offset in texels). The whole eyes' are identity. */
+	float fovea_view[4][4];
+	float fovea_sample[4][4];
+	/* this draw's counter in the visibility tests' uint storage buffer */
+	float visibility_counter, vr_unused[3];
 };
 
 /* what the SPIR-V is written for (xgpu_spirv.c):
@@ -97,12 +111,17 @@ struct xgpu_spirv_uniforms
   the shader draws (its sampler clamping to the edge) where the sampler
   cannot (no VK_EXT_custom_border_color): part of the pipeline, as the
   pixel key is;
+- multiview: the vertex shader's XGPU_MULTIVIEW_* mode (the pixel
+  program carries its own); foveated: four layers, periphery and inset
+  for each eye, rather than the two eyes alone;
 - the pixel shaders' debugging settings, as the GLSL's. */
 struct xgpu_spirv_options
 {
 	BOOL count_samples;
 	unsigned char border[4];
 	BOOL debug_texture0, debug_flat;
+	int multiview;
+	BOOL foveated;
 };
 
 /* a module's words (SPIR-V's own: 32 bits each), malloc'd, count of them */

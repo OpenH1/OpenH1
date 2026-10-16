@@ -23,6 +23,9 @@ The pipeline cache is $XDG_CACHE_HOME/opence/vulkan_pipelines.bin (or
 #include "host_render_stream.h"
 #include "xgpu_vulkan.h"
 #include "xgpu_vulkan_stream.h"
+#ifdef HALO_VR
+#include "host_vr_vulkan.h"
+#endif
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_vulkan.h>
@@ -66,6 +69,11 @@ static const char *cache_path(char *path, size_t size)
 
 	if (chosen)
 		return *chosen ? chosen : NULL;
+#ifdef __ANDROID__
+	/* The app has no HOME; keep the driver cache in its private cache. */
+	if (!cache || !*cache)
+		cache = SDL_GetAndroidCachePath();
+#endif
 	if (cache && *cache)
 		snprintf(folder, sizeof(folder), "%s/opence", cache);
 	else if (home && *home)
@@ -91,7 +99,25 @@ static const char *cache_path(char *path, size_t size)
 
 static void vulkan_shutdown(void)
 {
+	static int stopped;
+
+	if (stopped)
+		return;
+	stopped = 1;
+	/* host_exit uses _exit, so the backend's exiting hook must also save
+	the cache. Finish the committed stream before touching its device. */
+	host_render_stream_close();
+#ifdef HALO_VR
+	xgpu_vulkan_wait(xgpu_vulkan_fence());
+	host_vr_vulkan_shutdown();
+#endif
 	xgpu_vulkan_shutdown();
+}
+
+static void vulkan_exiting(void *context)
+{
+	(void)context;
+	vulkan_shutdown();
 }
 
 /* (a host import: the guest's sdl_platform.c, on its main thread) */
@@ -100,6 +126,7 @@ int host_vulkan_window_open(uint32_t window)
 	static int opened;
 	SDL_Window *object = host_sdl_handle_get(window, _handle_window);
 	struct xgpu_vulkan_options options;
+	static struct host_render_backend backend;
 	char path[1100];
 	int width = 0, height = 0;
 
@@ -123,14 +150,33 @@ int host_vulkan_window_open(uint32_t window)
 	{
 		host_logf(HOST_LOG_INFO, "vulkan: the window is not one SDL draws with Vulkan: its frames are not shown");
 	}
+#ifdef HALO_VR
+	if (host_vr_vulkan_requested() && host_vr_vulkan_prepare())
+	{
+		/* The headset's runtime chooses the physical device; its images
+		are presented through OpenXR, not the desktop surface. */
+		options.instance_extensions = NULL;
+		options.instance_extension_count = 0;
+		options.surface_create = NULL;
+		options.create_instance = host_vr_vulkan_create_instance;
+		options.choose_physical = host_vr_vulkan_physical_device;
+		options.create_device = host_vr_vulkan_create_device;
+		options.device_ready = host_vr_vulkan_bind;
+	}
+#endif
 	options.cache_path = cache_path(path, sizeof(path));
 	options.validation = getenv("HALO_VULKAN_VALIDATION") && atoi(getenv("HALO_VULKAN_VALIDATION"));
 	if (!xgpu_vulkan_initialize(&options))
 		return 0;
+#ifdef HALO_VR
+	host_vr_vulkan_set_depth_format(xgpu_vulkan_depth_format());
+#endif
 	SDL_GetWindowSizeInPixels(object, &width, &height);
 	xgpu_vulkan_window_resized((uint32_t)width, (uint32_t)height);
 	SDL_AddEventWatch(window_event, NULL);
-	host_render_stream_set_backend(xgpu_vulkan_stream_backend());
+	backend = *xgpu_vulkan_stream_backend();
+	backend.exiting = vulkan_exiting;
+	host_render_stream_set_backend(&backend);
 	atexit(vulkan_shutdown);
 	opened = 1;
 	return 1;

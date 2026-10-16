@@ -928,8 +928,8 @@ static const struct config_setting config_settings[] =
 		"Draw the VR frames while the runtime says not to (the headset not\n"
 		"worn), to measure them." },
 	{ "debug.vr_gpu_time", _config_boolean, "false", "HALO_VR_GPU_TIME", _environment_value, _platform_desktop,
-		"With gpu_stats, also log the GPU's time for each VR frame (waiting for\n"
-		"it each frame, which costs the overlap of the GPU and the game)." },
+		"With gpu_stats, also log elapsed render GPU timelines for VR frames,\n"
+		"read without waiting when the graphics device supports them." },
 	{ "debug.vr_test_turn", _config_real, "0.0", "HALO_VR_TEST_TURN", _environment_value, _platform_desktop,
 		"Turn the VR player this many degrees a second, as the right stick would\n"
 		"(automated tests without hands); 0 none." },

@@ -27,6 +27,7 @@ its first.
 */
 
 #include "xgpu.h"
+#include "xgpu_backend.h"
 #include "xgpu_stream.h"
 #include "host.h"
 #include "xgpu_vulkan.h"
@@ -418,6 +419,22 @@ struct xgpu_vulkan_image *xgpu_vulkan_textures_get(const struct xgpu_stream_text
 	if (stage->source == XGPU_STREAM_SOURCE_IMAGE)
 		return image_get(stage);
 	return stage->resource ? xbox_texture_get(stage) : NULL;
+}
+
+struct xgpu_vulkan_image *xgpu_vulkan_textures_header(uint32_t header)
+{
+	struct xgpu_stream_texture_stage stage;
+	const uint32_t *words;
+
+	if (!readable(header, 5 * sizeof(uint32_t)))
+		return NULL;
+	words = host_pointer(header);
+	memset(&stage, 0, sizeof(stage));
+	stage.source = XGPU_SOURCE_TEXTURE;
+	stage.resource = header;
+	stage.resource_format = words[3];
+	stage.resource_size = words[4];
+	return xbox_texture_get(&stage);
 }
 
 void xgpu_vulkan_textures_frame_end(void)

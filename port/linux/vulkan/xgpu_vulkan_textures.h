@@ -20,6 +20,10 @@ from the guest's memory and made again once its pages have been written,
 or an image's (XGPU_STREAM_SOURCE_IMAGE); NULL if there is none */
 struct xgpu_vulkan_image *xgpu_vulkan_textures_get(const struct xgpu_stream_texture_stage *stage);
 
+/* A texture whose header is named by the VR stream (the visor's plasma
+noise), checked and decoded through the same cache as a draw's stage. */
+struct xgpu_vulkan_image *xgpu_vulkan_textures_header(uint32_t header);
+
 /* a frame has been played: the textures no stage has drawn for a while are
 let go */
 void xgpu_vulkan_textures_frame_end(void);

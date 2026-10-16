@@ -1,6 +1,6 @@
 """Ninja rules for the desktop guest builds: Linux on 64-bit ARM
-(``ninja linux_arm64``) and on 64-bit x86 (``ninja linux_x86_64``, and
-``ninja linux_vulkan``, its Vulkan renderer: port/linux/vulkan/README.md).
+(``ninja linux_arm64``) and on 64-bit x86 (``ninja linux_x86_64``), and
+``ninja linux_vulkan`` on either (port/linux/vulkan/README.md).
 
 The game's data needs 32-bit pointers. Recent 64-bit ARM processors have no
 32-bit mode, and few distributions have 32-bit ARM libraries; 64-bit x86
@@ -20,8 +20,8 @@ Linux executable instead of an app's library:
   it there (an rpath of $ORIGIN), as few distributions have SDL3 yet, and
   its license, SDL3-LICENSE.txt.
 
-Each build is a LinuxGuest in LINUX_GUESTS, generated on a computer of its
-architecture. Its sources (musl and SDL3, and the OpenXR headers for VR) are
+Each OpenGL build is a LinuxGuest in LINUX_GUESTS, generated on a computer
+of its architecture; the Vulkan target uses that computer's guest too. Its sources (musl and SDL3, and the OpenXR headers for VR) are
 downloaded when configure.py generates it, as the Android build's are, and
 only when it is asked for: the 64-bit ARM build, the default build of its
 computers, always; the 64-bit x86 build, which is not, with configure.py
@@ -38,7 +38,7 @@ import platform
 import shlex
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -51,6 +51,7 @@ from .linux_sysroot import download
 from .linux_build import (MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, SDL_RPATH_LDFLAGS, compile_launcher,
                           miniupnpc_sources, sdl3_rule, updater_defines)
 from .ninja_syntax import Writer, escape
+from .vulkan_build import VULKAN_DIR, fetch_vulkan_headers, host_vulkan_renderer
 
 # the desktop host's own files (its entry point, SDL's desktop functions, VR)
 PORT_DIR = Path("port/linux/host")
@@ -74,39 +75,6 @@ OPENXR_HEADERS = {
     "openxr_platform_defines.h": "a458ba5777415f2de518fdcdcc87fcf8651ba0468c9f69a101378672aad80946",
     "openxr_loader_negotiation.h": "ebcca0946b4b738ebee41943b821abe4df518b3a37766e0ce6883bcefce65124",
 }
-
-# The Khronos Vulkan headers, for the Vulkan build's host (port/linux/vulkan),
-# downloaded by that build when it is configured, as Vulkan-Headers has them
-# (Apache-2.0 OR MIT). The host loads the Vulkan loader itself, so the build
-# needs no Vulkan package.
-VULKAN_HEADERS_TAG = "vulkan-sdk-1.4.363.0"
-VULKAN_HEADERS_URLS = [
-    "https://raw.githubusercontent.com/KhronosGroup/Vulkan-Headers/{tag}/include/{name}",
-    "https://cdn.jsdelivr.net/gh/KhronosGroup/Vulkan-Headers@{tag}/include/{name}",
-]
-VULKAN_HEADERS = {
-    "vulkan/vk_platform.h": "a2cd9085c66776845d2524c3b0e73ccf4827ba046aa6f676c4b8ddbed47d6552",
-    "vulkan/vulkan_core.h": "2f64fd6c7c3f342b0e44f039f1c359b7f0e6cfcb71a7dca1cc5156282faa3b51",
-    "vk_video/vulkan_video_codecs_common.h": "d2e7caa396c521d03d491a269572b1d31b925b5127d22fda14199951ebae89f8",
-    "vk_video/vulkan_video_codec_h264std.h": "fded484cef9f90fbbd089e0647268f36e5f4292179fbc5428a2c9e8d7709bbe9",
-    "vk_video/vulkan_video_codec_h264std_decode.h": "37b970c3d80536ad1ac074cfe19b58ee03c3075378e02179e1dc5e4351266821",
-    "vk_video/vulkan_video_codec_h264std_encode.h": "227e092b53c4e7ca1a948ed021704511c1ed16040cd6188ff6703e5ae66db64d",
-    "vk_video/vulkan_video_codec_h265std.h": "0b81f8986ada015ef2e127449eff9d9634899bb59a0a9277a4054e9ec4416c12",
-    "vk_video/vulkan_video_codec_h265std_decode.h": "879a0dd370a1b1ad184638906c52bdfe7d80d639fbc5a5baa8b02d7c5b60b147",
-    "vk_video/vulkan_video_codec_h265std_encode.h": "abb3e72af22e4e0a3dbe5dff7be1b275949388809fb3987830341e8f495ea1c7",
-    "vk_video/vulkan_video_codec_av1std.h": "c75c1d324b97d247aef0008024bc7f3adb98c741ab7f66c882ec38fdacc7ee33",
-    "vk_video/vulkan_video_codec_av1std_decode.h": "7e3a1ce177c12546d410f3179ce1b81f2da7a8eba4f525b29cd563ab4099c0e5",
-    "vk_video/vulkan_video_codec_av1std_encode.h": "8d166b4543260a38347860443b1a59c7a5e86cdb0d0facaf4c704f667de030e3",
-    "vk_video/vulkan_video_codec_vp9std.h": "0a47125865376a3fe7014b69ff6db9d04e30ebf8c4d15664f1d894649ad5c09d",
-    "vk_video/vulkan_video_codec_vp9std_decode.h": "1ceb1a8d0e3370e508cf688a6e57dc314cd82186b60f3cef420ea4b1b483865d",
-}
-VULKAN_DIR = Path("port/linux/vulkan")
-# the renderer's parts the Vulkan build's host builds from port/linux/src (the
-# SPIR-V emitter), beside a stand-in for the guest's platform.h
-# (port/linux/vulkan/xgpu_vulkan_platform.h), as the macOS build's host does
-# (tools/macos_build.py, SHARED_SOURCES); the Xbox's texture decoding is the
-# host OpenGL backend's (HOST_GL_SHARED), which every desktop host has
-VULKAN_SHARED_SOURCES = ["xgpu.h", "xgpu_shader.h", "xgpu_spirv.h", "xgpu_spirv.c"]
 
 # (with the desktop renderer, GLVND's libOpenGL in place of libGLESv2: the
 # host's own OpenGL calls, port/android/host/host_gl.c)
@@ -144,8 +112,6 @@ LINUX_GUESTS = (
                machines=("aarch64", "arm64"), renderer="gles", default=True),
     LinuxGuest(name="linux_x86_64", label="LINUX X86_64", title="64-bit x86 Linux", arch=X32,
                machines=("x86_64", "amd64"), renderer="desktop", default=False),
-    LinuxGuest(name="linux_vulkan", label="LINUX VULKAN", title="64-bit x86 Linux Vulkan", arch=X32,
-               machines=("x86_64", "amd64"), renderer="vulkan", default=False),
 )
 
 
@@ -164,20 +130,6 @@ def fetch_openxr_headers(openxr_dir: Path) -> None:
         header.with_suffix(".tmp").replace(header)
 
 
-def fetch_vulkan_headers(vulkan_dir: Path) -> None:
-    """Download the Vulkan headers into vulkan_dir (configure time, once; a
-    header whose SHA-256 is wrong is downloaded again)."""
-    for name, digest in VULKAN_HEADERS.items():
-        header = vulkan_dir / name
-        if header.is_file() and hashlib.sha256(header.read_bytes()).hexdigest() == digest:
-            continue
-        print(f"Downloading Vulkan-Headers' {name} ({VULKAN_HEADERS_TAG})")
-        header.parent.mkdir(parents=True, exist_ok=True)
-        data = download([url.format(tag=VULKAN_HEADERS_TAG, name=name) for url in VULKAN_HEADERS_URLS], digest)
-        header.with_suffix(".tmp").write_bytes(data)
-        header.with_suffix(".tmp").replace(header)
-
-
 def native_linux_guest() -> Optional[LinuxGuest]:
     """the desktop guest build of this computer, if there is one (whether it
     is the computer's default build is its own, LinuxGuest.default)"""
@@ -188,12 +140,19 @@ def native_linux_guest() -> Optional[LinuxGuest]:
 
 
 def linux_guest_configure_inputs() -> List[Path]:
-    return [Path(__file__), GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, PORT_DIR]
+    return [Path(__file__), GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, PORT_DIR, Path("tools/vulkan_build.py"), VULKAN_DIR]
 
 
 def generate_linux_guest_builds(n: Writer, sln: Any) -> None:
     for target in LINUX_GUESTS:
         generate_linux_guest_build(n, sln, target)
+    # Vulkan uses the computer's guest architecture, in its own build folder
+    # so that both renderers can be built and compared with the same options.
+    native = native_linux_guest()
+    if native:
+        generate_linux_guest_build(n, sln, replace(
+            native, name="linux_vulkan", label="LINUX VULKAN", title=f"{native.title} Vulkan",
+            renderer="vulkan", default=False))
 
 
 def _unavailable(n: Writer, target: LinuxGuest, reason: str, quiet: bool = False) -> None:
@@ -265,7 +224,7 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     # 4.5 (the x86-64 build's, --linux-arm64-gl=desktop, and the VR build's:
     # the OpenXR runtime takes a desktop GL context)
     vulkan = target.renderer == "vulkan"
-    vr = getattr(sln, "port_vr", False) and not vulkan
+    vr = bool(getattr(sln, "port_vr", False))
     # (the Vulkan build: desktop OpenGL's headers and libraries, as the x86-64
     # build's, for the host's OpenGL backend beside the Vulkan one)
     desktop_gl = vr or vulkan or (getattr(sln, f"{prefix}_gl", None) or target.renderer) == "desktop"
@@ -362,7 +321,8 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     host_cflags = " ".join([
         "-O2", "-g", "-fno-omit-frame-pointer", "-fPIC", "-Wall", "-Wno-unused-function", "-D_GNU_SOURCE",
         f"-I{ANDROID_DIR}/include", f"-I{ANDROID_DIR}/host", f"-I{sdl_dir}/include", f"-I{LINUX_DIR}/src",
-        f"-I{TOML_DIR}", f"-I{openxr_dir}", *host_defines,
+        f"-I{TOML_DIR}", f"-I{openxr_dir}", f"-I{PORT_DIR}",
+        *([f"-I{vulkan_headers}"] if vulkan else []), *host_defines,
     ])
     # (the app's own: its entry point, and the touch controls through Java)
     android_only = {"host_main.c", "host_touch.c"}
@@ -406,35 +366,7 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         host_objects.append(obj)
     host_objects += host_gl_renderer(n, prefix, label, build, host_cc, host_cflags, desktop_gl, vr)
     if vulkan:
-        # the Vulkan renderer (port/linux/vulkan), with the renderer's shared
-        # parts copied beside a stand-in for the guest's platform.h, which
-        # their quoted includes would otherwise find in port/linux/src; the
-        # XDK's enumerations and texture format words for the stand-in
-        shared_dir = build / "host" / "shared"
-        n.rule(name=f"{prefix}_vulkan_copy", command="cp $in $out", description=f"{label} SHARED $out")
-        xdk = Path("port/include/xdk")
-        n.rule(name=f"{prefix}_vulkan_xdk_enums",
-               command=(f"(sed -n '/^\\/\\* ---------- enumerations/,/^\\/\\* ---------- structures and unions/p' "
-                        f"{xdk / 'xdk_pdb.h'} | sed '$$d' && "
-                        f"grep -E '^#define D3D(FORMAT|SIZE|TEXTURE)_' {xdk / 'xdk_d3d8.h'}) > $out"),
-               description=f"{label} SHARED $out")
-        shared_copies: List[Path] = []
-        for name in VULKAN_SHARED_SOURCES:
-            n.build(outputs=shared_dir / name, rule=f"{prefix}_vulkan_copy", inputs=LINUX_DIR / "src" / name)
-            shared_copies.append(shared_dir / name)
-        n.build(outputs=shared_dir / "platform.h", rule=f"{prefix}_vulkan_copy",
-                inputs=VULKAN_DIR / "xgpu_vulkan_platform.h")
-        n.build(outputs=shared_dir / "xdk_enums.h", rule=f"{prefix}_vulkan_xdk_enums",
-                inputs=[xdk / "xdk_pdb.h", xdk / "xdk_d3d8.h"])
-        shared_copies += [shared_dir / "platform.h", shared_dir / "xdk_enums.h"]
-        vulkan_cflags = f"-I{shared_dir} -I{VULKAN_DIR} -I{vulkan_headers} {host_cflags}"
-        vulkan_sources = [shared_dir / name for name in VULKAN_SHARED_SOURCES if name.endswith(".c")]
-        vulkan_sources += sorted(source for source in VULKAN_DIR.glob("*.c") if not source.name.startswith("guest_"))
-        for source in vulkan_sources:
-            obj = host_obj_dir / "vulkan" / (source.name + ".o")
-            n.build(outputs=obj, rule=host_cc, inputs=source, order_only=shared_copies,
-                    variables={"cflags": vulkan_cflags})
-            host_objects.append(obj)
+        host_objects += host_vulkan_renderer(n, prefix, label, build, host_cc, host_cflags, vulkan_headers, vr)
     table_obj = host_obj_dir / "host_import_table.c.o"
     n.build(outputs=table_obj, rule=host_cc, inputs=guest["host_table_c"],
             variables={"cflags": host_cflags})

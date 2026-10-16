@@ -1499,6 +1499,16 @@ As "How it operates" under "64-bit ARM", with these differences:
   of the address space to the guest, and calls OpenGL through GLVND's
   `libOpenGL`.
 
+## Vulkan
+
+On 64-bit ARM or x86 Linux, `python3 configure.py --linux-vulkan` and
+`ninja linux_vulkan` build the Vulkan renderer into `build/linux_vulkan`.
+It uses the same architecture and command stream as the computer's OpenGL
+guest build, with its own outputs. Add `--vr` to enable OpenXR through
+`XR_KHR_vulkan_enable2`. The OpenGL targets keep their renderer and can be
+built alongside it. Requirements and limitations are in
+[the Vulkan README](vulkan/README.md).
+
 ## VR
 
 `python3 configure.py --vr`, then `ninja linux_arm64` or `ninja
@@ -2903,7 +2913,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_fov` | `""` | `HALO_VR_TEST_FOV` | Each eye's field of view instead of the runtime's, for automated tests of what the edges of a wide view show: `"<outward> <inward> <up> <down>[ <cant>]"`, in degrees from the eye's axis, each eye turned outward by `<cant>` degrees (as canted displays are; the game's 3D view assumes the eyes look the same way, so only the visor and the helmet's rim are right with it). |
 | `debug.vr_test_gaze` | `""` | `HALO_VR_TEST_GAZE` | The eyes' gaze instead of the runtime's, for automated tests of the foveation (`vr.foveation = "eye"`): `"<right> <up>[ <seconds>]"`, in degrees from the head's forward; with `<seconds>`, it jumps to the opposite and back every so many seconds, as the eyes do. |
 | `debug.vr_foveation_show` | `false` | `HALO_VR_FOVEATION_SHOW` | With `vr.foveation`: tint red what is drawn at the periphery's resolution (fully about the inset, partly in its blend), to see the inset. |
-| `debug.vr_gpu_time` | `false` | `HALO_VR_GPU_TIME` | With `debug.gpu_stats`, log the GPU's time for each frame too, waiting for it at the present (which costs the overlap of the GPU and the game, and lets the GPU's clock drop: an upper bound). |
+| `debug.vr_gpu_time` | `false` | `HALO_VR_GPU_TIME` | With `debug.gpu_stats`, log elapsed render GPU timelines from the first render commands after the runtime's frame wait through composition, read without waiting. This includes GPU stalls and any gaps in command submission, not only GPU busy time. Unavailable when the graphics queue has no timestamp support. |
 
 `debug.test_input = "pad"` (`HALO_TEST_INPUT=pad`) puts the gamepad mode
 through its paces without a gamepad: it turns, looks up and down, fires,
