@@ -427,6 +427,36 @@ static void window_frame_saved(NSWindow *window)
 	window_save_soon();
 }
 
+/* whether the window is fullscreen (either kind), as SDL has it once the
+window rests, kept for the next start: a window only when the player made
+it one (F11, Toggle Full Screen). The Space's own notifications also come
+when the game leaves it for display.mode's fullscreen, which keeps SDL's
+flag, and when the window closes at quit; a NO from those made the next
+start's default (display.mode empty) a window, where display.resolution
+does not apply. */
+static void window_fullscreen_saved(NSWindow *window)
+{
+	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 2), dispatch_get_main_queue(), ^{
+		SDL_Window **windows = SDL_GetWindows(NULL);
+		NSNumber *fullscreen = nil;
+		int index;
+
+		for (index = 0; windows && windows[index]; index++)
+		{
+			if (SDL_GetPointerProperty(SDL_GetWindowProperties(windows[index]), SDL_PROP_WINDOW_COCOA_WINDOW_POINTER,
+				NULL) == (__bridge void *)window)
+			{
+				fullscreen = SDL_GetWindowFlags(windows[index]) & SDL_WINDOW_FULLSCREEN ? @YES : @NO;
+			}
+		}
+		SDL_free(windows);
+		if (!fullscreen || !window.visible || [fullscreen isEqual:window_state[@"fullscreen"]])
+			return;
+		window_state[@"fullscreen"] = fullscreen;
+		window_save_soon();
+	});
+}
+
 /* the last frame, where a screen still shows it */
 static void window_place(NSWindow *window)
 {
@@ -471,8 +501,7 @@ static void window_remember(void)
 
 		if (!is_game_window(window))
 			return;
-		window_state[@"fullscreen"] = @NO;
-		window_save_soon();
+		window_fullscreen_saved(window);
 		dispatch_async(dispatch_get_main_queue(), ^{
 			/* (a game that started fullscreen: the window now) */
 			window_place(window);
@@ -480,10 +509,8 @@ static void window_remember(void)
 		});
 	}];
 	[center addObserverForName:NSWindowDidEnterFullScreenNotification object:nil queue:main usingBlock:^(NSNotification *note) {
-		if (!is_game_window(note.object))
-			return;
-		window_state[@"fullscreen"] = @YES;
-		window_save_soon();
+		if (is_game_window(note.object))
+			window_fullscreen_saved(note.object);
 	}];
 	for (NSNotificationName name in @[ NSWindowDidMoveNotification, NSWindowDidResizeNotification ])
 	{

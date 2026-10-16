@@ -105,7 +105,9 @@ a Mac app does, before the game starts:
 - **The window.** Its place and size, and whether it was fullscreen, are
   kept in `window.plist`; the next start opens it fullscreen or not
   (`HALO_FULLSCREEN`, unless the environment has it) and puts the window
-  where it was (once it is a window).
+  where it was (once it is a window). It is kept as a window only when
+  the player made it one (F11, Toggle Full Screen), not when the game left
+  the Space for `display.mode`'s fullscreen or closed at quit.
 - **Menus.** SDL's: About, Hide, Quit (Cmd-Q quits as closing the window
   does; before the game starts, at once), and the Window menu with Toggle
   Full Screen (Cmd-Ctrl-F). The window has the native fullscreen button.
