@@ -23,7 +23,7 @@ images are the pacing: with all three queued or on screen, the next frame
 waits, so the game runs no faster than the display shows frames.
 
 Until frames come (the null renderer draws none), each refresh clears the
-drawable and presents it, so that the window shows the display's pacing.
+drawable to black and presents it.
 
 HALO_METAL_STATS=<seconds> logs the pacing that often: the link's
 refreshes, the frames presented, the intervals between the times the
@@ -333,17 +333,9 @@ static void pacing_log(double now)
 		pass.colorAttachments[0].texture = drawable.texture;
 		pass.colorAttachments[0].loadAction = MTLLoadActionClear;
 		pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-		if (idle)
-		{
-			/* a slow pulse, so that each refresh's present can be seen */
-			double phase = fmod(now, 4.0) / 4.0;
-
-			pass.colorAttachments[0].clearColor = MTLClearColorMake(0.05, 0.1 + 0.1 * sin(phase * 2.0 * M_PI), 0.2, 1.0);
-		}
-		else
-		{
-			pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
-		}
+		/* (black until the game's first frame: the window opens before the
+		game draws) */
+		pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 		encoder = [buffer renderCommandEncoderWithDescriptor:pass];
 		if (image)
 		{

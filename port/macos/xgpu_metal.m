@@ -1020,6 +1020,58 @@ id<MTLTexture> xgpu_metal_texture(uint32_t texture)
 	return entry ? entry->texture : nil;
 }
 
+/* a new target's first contents, black (depth 1, stencil 0): Apple's GPUs
+give a new private texture none of its own (an M1 Max's read as magenta),
+and the game may present or sample a target before it draws into it (its
+first frame presents the back buffer as the device made it) */
+static void texture_clear_new(id<MTLTexture> texture)
+{
+	MTLPixelFormat format = texture.pixelFormat;
+	BOOL depth = format == MTLPixelFormatDepth32Float_Stencil8 || format == MTLPixelFormatDepth32Float ||
+		format == MTLPixelFormatDepth16Unorm || format == MTLPixelFormatX32_Stencil8;
+	BOOL stencil = format == MTLPixelFormatDepth32Float_Stencil8;
+	NSUInteger slices = texture.textureType == MTLTextureTypeCube ? 6 :
+		texture.textureType == MTLTextureType2DArray ? texture.arrayLength : 1, slice;
+
+	if (texture.textureType == MTLTextureType3D)
+		return;
+	if (!metal.in_frame)
+		xgpu_metal_frame_begin();
+	/* (not pass_end: the clears waiting for the pass's start still wait,
+	for the targets they are of) */
+	encoder_end();
+	for (slice = 0; slice < slices; slice++)
+	{
+		MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+
+		if (depth)
+		{
+			pass.depthAttachment.texture = texture;
+			pass.depthAttachment.slice = slice;
+			pass.depthAttachment.loadAction = MTLLoadActionClear;
+			pass.depthAttachment.storeAction = MTLStoreActionStore;
+			pass.depthAttachment.clearDepth = 1.0;
+			if (stencil)
+			{
+				pass.stencilAttachment.texture = texture;
+				pass.stencilAttachment.slice = slice;
+				pass.stencilAttachment.loadAction = MTLLoadActionClear;
+				pass.stencilAttachment.storeAction = MTLStoreActionStore;
+				pass.stencilAttachment.clearStencil = 0;
+			}
+		}
+		else
+		{
+			pass.colorAttachments[0].texture = texture;
+			pass.colorAttachments[0].slice = slice;
+			pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+			pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+			pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 0.0);
+		}
+		[[command_buffer() renderCommandEncoderWithDescriptor:pass] endEncoding];
+	}
+}
+
 uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *description)
 {
 	const struct format_information *format = format_get(description->format);
@@ -1123,6 +1175,13 @@ uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *
 	entry->used = 0;
 	entry->previous = nil;
 	entry->present = 1;
+	if (description->usage & XGPU_METAL_USAGE_TARGET)
+	{
+		texture_clear_new(entry->texture);
+		if (entry->multisampled)
+			texture_clear_new(entry->multisampled);
+		entry->used = recording_serial();
+	}
 	return handle;
 }
 

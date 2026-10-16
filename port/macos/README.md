@@ -305,7 +305,8 @@ display takes no frames for 100 ms (the window minimized, or between the
 desktop and fullscreen), the oldest queued frame is dropped instead, so
 that the game goes on.
 
-Until frames come, each refresh clears the drawable and presents it.
+Until frames come, each refresh clears the drawable to black and presents
+it (the window opens before the game draws).
 
 `HALO_METAL_STATS=<seconds>` logs the pacing that often: the link's
 refreshes, the frames and clears presented, how many drawables reached the
@@ -387,7 +388,10 @@ command stream's backend table. They run on one thread, the render thread.
   GPUs have no 24-bit depth). An upload writes a texture at once where no
   work the GPU still has reads it, else it is a blit in the frame's order.
   A multisampled target draws into a multisampled attachment resolved into
-  it at each pass's end.
+  it at each pass's end. A new target is cleared when it is made (black;
+  depth 1, stencil 0): Apple's GPUs give a new private texture no contents
+  of their own (an M1 Max's read as magenta), and the game presents its
+  back buffer once, right after it makes its device, before it draws.
 - **Guest data in place.** Guest memory is the host's (unified memory), so
   a range the GPU reads is wrapped in a buffer
   (`newBufferWithBytesNoCopy`) over the readable host pages about it, up to
