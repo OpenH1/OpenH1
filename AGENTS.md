@@ -89,12 +89,12 @@ python tools/ci_build.py linux release   # what CI builds
   builds `linux`, and `linux_x86_64` is generated (its sources
   downloaded) only with `--linux-x86-64`, `--linux-x86-64-cc` or `--vr`,
   or once they are in `build/linux_x86_64/third_party`. Their host, and
-  Android's, always builds the OpenGL backend too
-  (`port/linux/host/host_gl_stream.c`, with `XGPU_GL_HOST`:
-  `tools/host_gl_build.py`), which draws the guest's frames from the
-  renderer's command stream with `configure.py --render-stream`
-  (`HALO_RENDER_STREAM` in the guest, which then has no OpenGL backend): a
-  change to `port/linux/src/xgpu_gl.c` builds in both.
+  Android's, has the OpenGL backend (`port/linux/host/host_gl_stream.c`,
+  with `XGPU_GL_HOST`: `tools/host_gl_build.py`), which draws the guest's
+  frames from the renderer's command stream (`HALO_RENDER_STREAM` in the
+  guest, which has no OpenGL backend); the 32-bit x86, Windows and web
+  builds, with no host, build `port/linux/src/xgpu_gl.c` into the game: a
+  change to it builds in both.
 - macOS: the guest of the Linux arm64 build (`ARM64_32`, with the macOS
   defines: `HALO_MACOS`, `HALO_METAL`, `HALO_RENDER_STREAM`), with its
   memory at a base the host chooses (`tools/guest_base_register.py`: every
@@ -139,7 +139,7 @@ python tools/ci_build.py linux release   # what CI builds
 | `HALO_RELEASE` | `--release` | No assertions checked |
 | `HALO_PROFILE` | `--profile` | The profiling build; a normal build must be unchanged by it |
 | `HALO_METAL` | macOS | The window is Metal's, drawn by the host (`port/macos/host_metal.m`), not OpenGL's |
-| `HALO_RENDER_STREAM` | macOS, `--render-stream` (Linux x86-64 and arm64, Android) | The renderer's backend is the host's: the front end's calls are a command stream (`port/linux/src/xgpu_stream_encode.c`), the high-res replacements images (`xgpu_images.c`) |
+| `HALO_RENDER_STREAM` | macOS, Linux x86-64 and arm64, Android (the guest builds) | The renderer's backend is the host's: the front end's calls are a command stream (`port/linux/src/xgpu_stream_encode.c`), the high-res replacements images (`xgpu_images.c`) |
 | `XGPU_GL_HOST` | the Linux and Android hosts' OpenGL backend (`tools/host_gl_build.py`) | `port/linux/src/xgpu_gl.c` built into the 64-bit host, behind the command stream (`port/linux/host/host_gl_stream.c`): its textures are the host's cache's, its pixel shaders come decoded in the stream |
 
 `HALO_LINUX` and `HALO_CUSTOM_EDITION` are **not** defined by any build:

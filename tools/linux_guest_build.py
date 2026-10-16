@@ -253,11 +253,9 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         if target.arch.base_register_flags is None:
             raise RuntimeError(f"--guest-base: the {target.arch.name} guest has no base register")
         host_defines.append("-DHALO_GUEST_BASE=1")
-    # (configure.py --render-stream: the renderer's backend is the host's,
-    # the guest's frames its command stream, port/linux/src/xgpu_stream.h)
-    render_stream = bool(getattr(sln, "render_stream", False))
-    if render_stream:
-        guest_defines.append("-DHALO_RENDER_STREAM=1")
+    # (the renderer's backend is the host's, the guest's frames its command
+    # stream, port/linux/src/xgpu_stream.h)
+    guest_defines.append("-DHALO_RENDER_STREAM=1")
 
     n.comment(f"{target.title} build (ninja {target.name}); see port/linux/README.md")
     n.variable(f"{prefix}_guest_cc", guest_cc)
@@ -272,7 +270,7 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         extra_imports=[PORT_DIR / "host_imports.list", *([PORT_DIR / "vr_imports.list"] if vr else [])],
         extra_prototypes=[PORT_DIR / "guest_desktop.c", *([LINUX_DIR / "src" / "vr_host.h"] if vr else [])],
         updater_cflags=updater_defines(getattr(sln, "port_release", False)), desktop_gl=desktop_gl,
-        base_register=base_register, excluded_platform_sources=RENDER_STREAM_GUEST_EXCLUDED if render_stream else ())
+        base_register=base_register, excluded_platform_sources=RENDER_STREAM_GUEST_EXCLUDED)
 
     # ---------- SDL3, built from the same source as the guest's headers
 

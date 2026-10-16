@@ -135,13 +135,6 @@ parser.add_argument(
     "refer to \"VR\" in port/linux/README.md",
 )
 parser.add_argument(
-    "--render-stream",
-    action="store_true",
-    help="the renderer of `ninja linux_x86_64` and `ninja linux_arm64` on the host: the game writes its frames as "
-    "the renderer's command stream, which the host's render thread draws with the OpenGL backend "
-    "(port/linux/host/host_gl_stream.c), as the macOS build's host draws them with Metal",
-)
-parser.add_argument(
     "--guest-base",
     action="store_true",
     help="the Linux arm64 and Android builds' guest memory at a base the host chooses (a base register, "
@@ -200,7 +193,6 @@ sln = SimpleNamespace(
     macos_guest_cc=args.macos_guest_cc,
     macos_bundle_id=args.macos_bundle_id,
     guest_base=args.guest_base,
-    render_stream=args.render_stream,
     web_emcc=args.web_emcc,
 )
 

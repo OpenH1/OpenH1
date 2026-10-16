@@ -1345,8 +1345,9 @@ call crosses from the guest to the host.
   texture stage names in the Xbox texture's place.
 
 The macOS build uses it, with the Metal backend (port/macos/README.md,
-"Metal"). The 64-bit Linux builds and Android use it with `configure.py
---render-stream`, with the OpenGL backend in the host:
+"Metal"). The 64-bit Linux builds and Android use it, with the OpenGL
+backend in the host (the 32-bit x86 build, Windows and the web, which have
+no host, draw with the OpenGL backend in the game):
 
 - The host builds `src/xgpu_gl.c` as the guest does (with its GLSL
   emitter, its anti-aliasing passes and the texture decoding), beside
@@ -1366,7 +1367,7 @@ The macOS build uses it, with the Metal backend (port/macos/README.md,
   drawn into since are resolved, the pipeline chosen is applied and the
   constants set since are uploaded. Where the stream left one out, the
   host makes the call again in its place.
-- The VR mode (`--vr --render-stream`): OpenXR's calls that use the GL
+- The VR mode (`--vr`): OpenXR's calls that use the GL
   context (the session made, the swapchains' images acquired and released,
   the frame begun and ended) are made on the render thread
   (`host/host_vr.c`, `host/host_gl_vr.c`); the game's thread waits for the

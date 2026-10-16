@@ -17,7 +17,7 @@ PORT_DIR = Path("port/linux/host")
 LINUX_DIR = Path("port/linux")
 
 # the OpenGL backend the host has, for the renderer's command stream
-# (configure.py --render-stream; port/linux/host/host_gl_stream.c): the
+# (port/linux/host/host_gl_stream.c): the
 # backend's files of port/linux/src, copied beside the host's stand-ins for
 # the guest's headers (port/linux/host/gl), which their quoted includes then
 # find in place of the guest's
@@ -42,7 +42,7 @@ def host_gl_renderer(n: Writer, prefix: str, label: str, build: Path, host_cc: s
     its anti-aliasing's SMAA data and zlib; with vr, its VR mode
     (host_gl_vr.c, with vr.h's and vr_visor.h's structures). Every guest
     build's host has it (its import, host_gl_window, is every guest's); the
-    guest uses it when built with --render-stream. Returns the objects."""
+    guests draw with it. Returns the objects."""
     shared_dir = build / "host" / "gl"
     obj_dir = build / "host" / "obj" / "gl"
     n.rule(name=f"{prefix}_gl_copy", command="cp $in $out", description=f"{label} HOST GL $out")
