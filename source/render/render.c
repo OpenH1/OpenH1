@@ -70,6 +70,7 @@ symbols in this file:
 #include "structure_bsp_definitions.h"
 #include "effects/player_effects.h"
 #include "structures/structure_visibility.h"
+#include "render_enumerate.h" /* port: port/linux/game/render_enumerate.c */
 #include "rasterizer.h"
 #include "rasterizer/rasterizer_lights.h"
 #include "profile.h"
@@ -216,6 +217,9 @@ void render_initialize_for_new_map(
 	/* port: preserve retail's energy-then-two-sided-glass compositing. */
 	models_fix_transparent_part_links();
 	render_objects_initialize_for_new_map();
+	/* port: the new map's shaders and pipelines made at its first frame
+	(port/linux/game/render_enumerate.c) */
+	render_enumerate_new_map();
 #ifdef HALO_VR
 	/* port: the VR mode's trigger on the assault rifle's first-person model
 	(port/linux/game/vr_trigger.c) */
@@ -387,6 +391,9 @@ static void render_window(
 	parameters.fog = render.fog;
 
 	structure_visibility_compute();
+	/* port: a map's first frame drawn through every material's surfaces
+	(port/linux/game/render_enumerate.c) */
+	render_enumerate_structure();
 	player_effect_get_screen_flash(local_player_index, &parameters.screen_flash);
 	rasterizer_window_begin(&parameters);
 
@@ -414,6 +421,8 @@ static void render_window(
 		first_person_weapon_render_update();
 		lights_preprocess_scene();
 		render_objects();
+		/* port: and through every model's parts */
+		render_enumerate_models();
 		structure_render_preprocess();
 		structure_render_lightmaps();
 #ifdef HALO_VR
@@ -484,6 +493,8 @@ static void render_window(
 		render_particles();
 		particle_systems_render();
 		render_contrails_normal();
+		/* port: and every effect's (port/linux/game/render_enumerate.c) */
+		render_enumerate_effects();
 		rasterizer_transparent_geometry_draw(TRUE);
 
 		rasterizer_decals_begin(_decal_layer_water);
@@ -712,6 +723,25 @@ static void render_player_frame(
 			rasterizer_profile_enable(TRUE);
 			has_mirror = TRUE;
 		}
+	}
+
+	/* port: a map's (or a structure's) shaders and pipelines made as it
+	starts: its first frame drawn first, unseen, through every shader its
+	tags hold, in each fog (port/linux/game/render_enumerate.c) */
+	if (render_enumerate_begin())
+	{
+		do
+		{
+			render_window(
+				window->local_player_index,
+				camera,
+				&frustum,
+				&window->rasterizer_camera,
+				&rasterizer_frustum,
+				_render_target_primary,
+				FALSE);
+		}
+		while (render_enumerate_next());
 	}
 
 	render_window(

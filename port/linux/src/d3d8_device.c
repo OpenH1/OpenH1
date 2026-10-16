@@ -2860,6 +2860,21 @@ static BOOL prepare_draw(BOOL immediate)
 	return TRUE;
 }
 
+/* the shaders and pipelines of the draws so far made (a map's first
+frame's: port/linux/game/render_enumerate.c); the seconds waited */
+void halo_gpu_prepare(void)
+{
+	xgpu_manifest_note("enumerating: the draws until \"prepared\" are a map's first frame's, drawn through every shader");
+	if (device.gl_ready)
+		xgpu_backend_prepare();
+}
+
+double halo_gpu_prepared(void)
+{
+	xgpu_manifest_note("prepared: the draws after are the map's not drawn as it started");
+	return device.gl_ready ? xgpu_backend_prepared() : 0.0;
+}
+
 /* ---------- tracing (debug.gpu_trace_frame) */
 
 static BOOL trace_frame(void)
