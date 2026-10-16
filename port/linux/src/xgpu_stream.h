@@ -210,11 +210,20 @@ enum
 };
 
 /* a record of no more than its header: SKIP, INVALIDATE, FLUSH,
-VISIBILITY_BEGIN, VISIBILITY_FRAME, FRAME_END, DYNAMIC_LIGHTS_PREPARE,
+VISIBILITY_BEGIN, VISIBILITY_FRAME, DYNAMIC_LIGHTS_PREPARE,
 VR_GROUPS_RESET, PREPARE */
 struct xgpu_stream_record
 {
 	uint32_t header;
+};
+
+/* FRAME_END: when the game read the frame's input, nanoseconds of its
+monotonic clock (0 unknown; a recording's older FRAME_END is its header
+alone), for the time from it to the frame on screen (frame_pacing.h) */
+struct xgpu_stream_frame_end
+{
+	uint32_t header;
+	uint32_t input_low, input_high;
 };
 
 /* a record of one value: ANTI_ALIASING_PREPARE (smaa), TARGET_DELETE,
@@ -723,6 +732,7 @@ struct xgpu_stream_vr_frame_record
 #define XGPU_STREAM_ASSERT_SIZE(type, size) _Static_assert(sizeof(type) == (size), #type "'s size")
 
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_ring, 96);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_frame_end, 12);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_capabilities, 20);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_set_targets, 16);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_clear, 36);

@@ -327,7 +327,11 @@ or the callback came late for the next), and the slowest callback; the
 frames that waited for an image or were dropped, those that reached the
 screen after the link's target, and those whose presentation ended on the
 GPU within a millisecond of it (and the least time to spare); and the
-presentation's GPU time and its wait from commit to the GPU's start. A second line
+presentation's GPU time and its wait from commit to the GPU's start. A
+line before it gives the input to screen times: from each frame's input
+read (D3DDevice_Present's event pump, which the main loop's input_update
+reads at once) to the frame on screen (the drawable's presented time),
+their median and 95th percentile, in milliseconds and refreshes. A second line
 gives a frame's mean costs: the time the GPU was busy (with the game's
 command buffers or the presentation's: the union of their times, which
 overlap) and its share of the time, the GPU's time on the frame's command

@@ -119,6 +119,23 @@ int host_render_stream_playing(void)
 {
 	return 0;
 }
+
+uint64_t host_render_stream_frame_input(void)
+{
+	return 0;
+}
+
+void host_render_stream_frame_shown(uint64_t input, uint64_t shown)
+{
+	(void)input;
+	(void)shown;
+}
+
+uint32_t host_render_stream_latency(float *median, float *high)
+{
+	*median = *high = 0.0f;
+	return 0;
+}
 #endif
 
 /* host_metal.m */

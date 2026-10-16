@@ -170,6 +170,18 @@ void host_render_stream_exiting(void);
 statistics, for the host's logs (read as they are, racing with their
 writers) */
 const struct xgpu_stream_ring *host_render_stream_ring(void);
+
+/* ---------- input to screen (frame_pacing.h)
+
+A backend that knows when its frames reach the screen gives each frame's
+time there with its input time (host_render_stream_frame_input, while the
+backend ends the frame): host_render_stream_frame_shown, for
+host_render_stream_latency. Nanoseconds of CLOCK_MONOTONIC, the game's. */
+uint64_t host_render_stream_frame_input(void);
+void host_render_stream_frame_shown(uint64_t input, uint64_t shown);
+/* the input to screen times since the last call: median and 95th
+percentile in milliseconds; returns how many */
+uint32_t host_render_stream_latency(float *median, float *high);
 /* the render thread is playing the stream (1), or waits for more (0) */
 int host_render_stream_playing(void);
 

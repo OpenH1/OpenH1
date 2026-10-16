@@ -14,11 +14,15 @@ releases the ring's bytes up to it, retiring the frames it ends. The game
 so waits only when the ring is full, more than frames_in_flight frames are
 unretired, or a record is synchronous: the GPU draws frame N while this
 thread plays N + 1 and the game writes N + 2.
+
+Each frame's FRAME_END says when its input was read, for the time from
+then to the frame on screen (frame_pacing.h).
 */
 
 #include "host.h"
 #include "host_render_record.h"
 #include "host_render_stream.h"
+#include "frame_pacing.h"
 
 #include <pthread.h>
 #include <stdatomic.h>
@@ -48,6 +52,8 @@ struct host_render_decoder
 
 	/* the records played reached a frame's end */
 	int frame_ended;
+	/* the frame being ended's input time (FRAME_END's; 0 unknown) */
+	uint64_t frame_input;
 };
 
 /* the least size of each type's record */
@@ -455,6 +461,13 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 		CALL(present, value->value);
 		break;
 	case XGPU_STREAM_FRAME_END:
+		decoder->frame_input = 0;
+		if (size >= sizeof(struct xgpu_stream_frame_end))
+		{
+			const struct xgpu_stream_frame_end *end = (const void *)start;
+
+			decoder->frame_input = (uint64_t)end->input_high << 32 | end->input_low;
+		}
 		CALL0(frame_end);
 		decoder->frame_ended = 1;
 		break;
@@ -830,6 +843,25 @@ int host_render_stream_open(uint32_t ring_address)
 }
 
 /* (render.lock held) the guest waits for done, counted in its statistics */
+/* ---------- input to screen (frame_pacing.h) */
+
+static struct frame_pacing_latency latency;
+
+uint64_t host_render_stream_frame_input(void)
+{
+	return render.decoder ? render.decoder->frame_input : 0;
+}
+
+void host_render_stream_frame_shown(uint64_t input, uint64_t shown)
+{
+	frame_pacing_latency_add(&latency, input, shown);
+}
+
+uint32_t host_render_stream_latency(float *median, float *high)
+{
+	return frame_pacing_latency_take(&latency, median, high);
+}
+
 static void guest_wait(uint64_t *start)
 {
 	if (!*start)

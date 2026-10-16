@@ -131,6 +131,8 @@ static struct
 	double last_callback_seconds, callback_most_seconds;
 	BOOL last_gap;
 	_Atomic int drawables_pending;
+	/* each queued image's frame's input time (host_render_stream_frame_input) */
+	uint64_t frame_input[PRESENT_IMAGES];
 } presentation = {
 	.lock = PTHREAD_MUTEX_INITIALIZER,
 	.freed = PTHREAD_COND_INITIALIZER,
@@ -213,6 +215,7 @@ void host_metal_present_queue(id<MTLTexture> image)
 		if (presentation.images[index] == image && presentation.queued < PRESENT_IMAGES)
 		{
 			presentation.queue[presentation.queued++] = index;
+			presentation.frame_input[index] = host_render_stream_frame_input();
 			if (presentation.stats_interval > 0.0)
 				xgpu_metal_compile_totals(&presentation.compiled[index]);
 			presentation.frames_seen = YES;
@@ -297,6 +300,16 @@ static void pacing_log(double now)
 
 	xgpu_metal_statistics(&statistics);
 	xgpu_metal_textures_statistics(&textures);
+	{
+		float median, high;
+		uint32_t frames = host_render_stream_latency(&median, &high);
+
+		if (frames)
+			host_logf(HOST_LOG_INFO,
+				"metal: input to screen (the frame's input read to the frame on screen): %.1f ms median, %.1f ms "
+				"95th percentile (%.2f and %.2f refreshes), %u frames", median, high,
+				median * presentation.refresh_rate / 1000.0f, high * presentation.refresh_rate / 1000.0f, frames);
+	}
 	host_logf(HOST_LOG_INFO,
 		"metal: %.1f s: %u refreshes (%.1f Hz), %u presented (%u frames, %u cleared), %u on screen (%.1f a second), "
 		"intervals %.2f ms mean, %.2f min, %.2f max, %u late, %u hitches over 33 ms; %u refreshes without a new frame (the GPU %u, an image %u, "
@@ -384,6 +397,7 @@ static void pacing_log(double now)
 		int index = -1;
 		BOOL idle;
 		struct xgpu_metal_compile_totals compiled = { 0 };
+		uint64_t input = 0;
 
 		(void)link;
 		presentation.ticks++;
@@ -428,6 +442,7 @@ static void pacing_log(double now)
 			presentation.image_states[index] = _image_showing;
 			image = presentation.images[index];
 			compiled = presentation.compiled[index];
+			input = presentation.frame_input[index];
 		}
 		idle = !presentation.frames_seen;
 		pthread_mutex_unlock(&presentation.lock);
@@ -478,6 +493,16 @@ static void pacing_log(double now)
 		[drawable addPresentedHandler:^(id<MTLDrawable> shown) {
 			atomic_fetch_sub(&presentation.drawables_pending, 1);
 			presented(shown.presentedTime, target, image ? &compiled : NULL);
+			if (input && shown.presentedTime > 0.0)
+			{
+				/* (the display's time on the game's clock) */
+				struct timespec monotonic;
+				double offset;
+
+				clock_gettime(CLOCK_MONOTONIC, &monotonic);
+				offset = (double)monotonic.tv_sec + monotonic.tv_nsec / 1e9 - CACurrentMediaTime();
+				host_render_stream_frame_shown(input, (uint64_t)((shown.presentedTime + offset) * 1e9));
+			}
 		}];
 		[buffer presentDrawable:drawable];
 		committed = seconds_now();

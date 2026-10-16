@@ -27,6 +27,7 @@ Conventions carried over from the Xbox:
 #include "xgpu_shader.h"
 #include "xgpu_backend.h"
 #include "xgpu_manifest.h"
+#include "frame_pacing.h"
 #include "sdl_platform.h"
 #include "halo_ui_pointer.h"
 #include "halo_dynamic_lights.h"
@@ -4004,6 +4005,14 @@ static void vr_frame_resume(void)
 }
 #endif
 
+/* when the game read the input of the frame it draws (frame_pacing.h) */
+static uint64_t frame_input_time;
+
+uint64_t d3d_frame_input_time(void)
+{
+	return frame_input_time;
+}
+
 void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destination_rectangle,
 	void *unused, void *unused2)
 {
@@ -4057,6 +4066,14 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 		memset(&stats, 0, sizeof(stats));
 	}
 	platform_pump_events();
+	/* (the next frame's input is what was just pumped: the main loop reads
+	it at once, frame_pacing.h) */
+	{
+		struct timespec now;
+
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		frame_input_time = (uint64_t)now.tv_sec * 1000000000u + (uint64_t)now.tv_nsec;
+	}
 
 	pthread_mutex_lock(&vertical_blank_lock);
 	/* the Xbox keeps at most two frames queued behind its 60 Hz display;

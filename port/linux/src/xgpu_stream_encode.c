@@ -24,6 +24,7 @@ inputs no stream feeds only when they change.
 
 #ifdef HALO_RENDER_STREAM
 
+#include "frame_pacing.h"
 #include "xgpu_backend.h"
 #include "xgpu_images.h"
 #include "xgpu_shader.h"
@@ -1449,9 +1450,17 @@ void xgpu_backend_present(xgpu_target back_buffer)
 
 void xgpu_backend_frame_end(void)
 {
+	struct xgpu_stream_frame_end *record_body;
+	uint64_t input = 0;
+
 	if (!stream.open)
 		return;
-	record(XGPU_STREAM_FRAME_END, sizeof(struct xgpu_stream_record));
+#ifndef XGPU_STREAM_TEST
+	input = d3d_frame_input_time();
+#endif
+	record_body = record(XGPU_STREAM_FRAME_END, sizeof(*record_body));
+	record_body->input_low = (uint32_t)input;
+	record_body->input_high = (uint32_t)(input >> 32);
 	commit(XGPU_STREAM_SUBMIT_FRAME);
 #ifndef XGPU_STREAM_TEST
 	/* (the deleted images' pixels freed once no frame in flight reads them) */
