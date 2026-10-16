@@ -20,7 +20,7 @@ end.
 | `port/linux/include/` | The port's headers: the limits (`halo_port_limits.h`, with `HALO_PORT_NETWORK_VERSION`), capacities (`halo_port_capacity.h`), the prefix header, `halo_linux_source_fixups.h` (port functions the game's sources call) |
 | `port/include/xdk/` | Stand-ins for the Xbox SDK's headers (declarations only) |
 | `port/windows/` | The Windows build's own files (`win32_*.c`, headers) |
-| `port/linux/host/` | The Linux host of the guest builds (`ninja linux_arm64`, `ninja linux_x86_64`), which the macOS build shares: its entry point (`host_main.c`), the desktop's and VR's host functions (`host_desktop.c`, `host_vr.c`) and their import lists, the guest's half of the desktop (`guest_desktop.c`); the rest of the host is Android's (`port/android/host`) |
+| `port/linux/host/` | The Linux host of the guest builds (`ninja linux_arm64`, `ninja linux_x86_64`), which the macOS build shares: its entry point (`host_main.c`), the desktop's and VR's host functions (`host_desktop.c`, `host_vr.c`) and their import lists, the guest's half of the desktop (`guest_desktop.c`), the OpenGL backend in the host for the renderer's command stream (`host_gl_stream.c`, `host_gl_textures.c`, and `gl/`, its stand-ins for the guest's headers); the rest of the host is Android's (`port/android/host`) |
 | `port/android/` | The Android app: the guest runtime, the host library (`host/`, which the Linux and macOS hosts share), the Java app (`app/`), host imports (`host_imports.list`, every guest's; `android_imports.list`, the app's own) |
 | `port/macos/` | The macOS host's own files: Darwin's system calls for the guest (`host_syscall.c`), the Metal renderer's backend (`xgpu_metal.m`, its bindings `xgpu_metal_bindings.h`, the command stream's table `xgpu_metal_stream.m`, the MSL emitter's shaders `xgpu_metal_shaders.c`, the textures `xgpu_metal_textures.c`, the NV2A combiner as one function of function constants `xgpu_metal_combiner.c`, the pipelines' description `xgpu_metal_pipeline.m`, the shader library's build tool `tools/xgpu_metal_prebuild.c`), the window and its presentation (`host_metal.m`), their tests (`tests/`), the app (`host_app.m`: its folders, the maps panel, the window kept; `halo.entitlements`, `opence-icon.icns`); the rest is `port/android/host` and `port/linux/host` |
 | `port/web/` | The web build: its runtime (`src/`: entry, sockets inside the page, memory watch), the page and its service worker (`site/`), the SDL port, tests |
@@ -88,7 +88,10 @@ python tools/ci_build.py linux release   # what CI builds
   configures only on its own processor; `ninja` alone on x86-64 still
   builds `linux`, and `linux_x86_64` is generated (its sources
   downloaded) only with `--linux-x86-64`, `--linux-x86-64-cc` or `--vr`,
-  or once they are in `build/linux_x86_64/third_party`.
+  or once they are in `build/linux_x86_64/third_party`. Their host always
+  builds the OpenGL backend too (`port/linux/host/host_gl_stream.c`, with
+  `XGPU_GL_HOST`), for the renderer's command stream: a change to
+  `port/linux/src/xgpu_gl.c` builds in both.
 - macOS: the guest of the Linux arm64 build (`ARM64_32`, with the macOS
   defines: `HALO_MACOS`, `HALO_METAL`, `HALO_RENDER_STREAM`), with its
   memory at a base the host chooses (`tools/guest_base_register.py`: every
@@ -134,6 +137,7 @@ python tools/ci_build.py linux release   # what CI builds
 | `HALO_PROFILE` | `--profile` | The profiling build; a normal build must be unchanged by it |
 | `HALO_METAL` | macOS | The window is Metal's, drawn by the host (`port/macos/host_metal.m`), not OpenGL's |
 | `HALO_RENDER_STREAM` | macOS | The renderer's backend is the host's: the front end's calls are a command stream (`port/linux/src/xgpu_stream_encode.c`), the high-res replacements images (`xgpu_images.c`) |
+| `XGPU_GL_HOST` | the Linux hosts' OpenGL backend (`tools/linux_guest_build.py`) | `port/linux/src/xgpu_gl.c` built into the 64-bit host, behind the command stream (`port/linux/host/host_gl_stream.c`): its textures are the host's cache's, its pixel shaders come decoded in the stream |
 
 `HALO_LINUX` and `HALO_CUSTOM_EDITION` are **not** defined by any build:
 code guarded by them compiles to nothing. Custom Edition support is a

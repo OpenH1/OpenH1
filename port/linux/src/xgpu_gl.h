@@ -7,6 +7,13 @@ the GLSL emitter (xgpu_glsl.c), the FXAA and SMAA passes
 (xgpu_post.c) - and the texture cache (xbox_textures.c) and the high-res
 replacements (hud_hires.c, text_hires.c, menu_files.c), which still make
 GL textures themselves.
+
+The backend is built into the game (the guest), or into the 64-bit host
+behind the renderer's command stream (XGPU_GL_HOST: port/linux/host/
+host_gl_stream.c plays the stream's records into it, with a stand-in for
+the guest's platform header, port/linux/host/gl). In the host the textures
+are the host's cache's (host_gl_textures.c), and a pipeline's pixel shader
+comes decoded in the stream's record of it.
 */
 
 #ifndef __HALO_LINUX_XGPU_GL_H
@@ -39,8 +46,8 @@ void host_gl_read_buffer(unsigned int buffer, unsigned int offset, unsigned int 
 void host_gl_buffer_write(unsigned int target, unsigned int offset, unsigned int size, const void *data);
 void host_gl_fence_frame(unsigned int slot);
 void host_gl_wait_frame(unsigned int slot);
-#elif defined(HALO_GUEST)
-/* a Linux guest's desktop renderer (port/android/host/host_gl.c) */
+#elif defined(HALO_GUEST) || defined(XGPU_GL_HOST)
+/* a Linux guest's desktop renderer, or the host's (port/android/host/host_gl.c) */
 void host_gl_buffer_write(unsigned int target, unsigned int offset, unsigned int size, const void *data);
 void host_gl_fence_frame(unsigned int slot);
 void host_gl_wait_frame(unsigned int slot);
@@ -95,10 +102,20 @@ struct xgpu_pixel_program;
 Returns a malloc'd string. */
 char *xgpu_glsl_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_glsl_options *options);
 
+#ifdef XGPU_GL_HOST
+/* (port/linux/host/host_gl_stream.c) the GL texture of a stage's texture
+as the stream's record has it (an Xbox texture or an image), from the host's
+cache; *target receives GL_TEXTURE_2D etc. And the decoded pixel program
+of the pipeline being made (xgpu_backend_pipeline), which the stream's
+record of it carries. */
+GLuint xgpu_host_texture_get(int stage, GLenum *target);
+void xgpu_host_pixel_program(const struct nv2a_pixel_shader_key *key, struct xgpu_pixel_program *program);
+#else
 /* the GL texture for an Xbox texture header, uploading or refreshing it
 from guest memory as needed; *target receives GL_TEXTURE_2D etc. */
 GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *target,
 	struct xgpu_texture_description *description);
+#endif
 void xgpu_texture_cache_begin_frame(void);
 
 /* ---------- anti-aliasing

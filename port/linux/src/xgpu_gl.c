@@ -175,15 +175,15 @@ static struct program_entry *program_buckets[PROGRAM_BUCKETS];
 
 /* ---------- the device */
 
-#if defined(HALO_GLES) || defined(HALO_GUEST)
+#if defined(HALO_GLES) || defined(HALO_GUEST) || defined(XGPU_GL_HOST)
 /* Mobile drivers (Mali) keep every orphaned copy of a buffer until the GPU
 is done with it, so a large buffer orphaned each frame costs its size per
 frame in flight and more. Instead each frame streams into the next of a few
 smaller buffers, reusing one only once the GPU has finished the frame that
 last used it (host_gl_wait_frame). A busy frame streams about 5 MB of
-vertices. A Linux guest's desktop renderer streams so too: on Zink (Turnip),
-as on Mali, a glBufferSubData for each draw costs much more than the
-unsynchronized write the ring allows (host_gl_buffer_write). */
+vertices. A Linux guest's desktop renderer, and the host's, stream so too:
+on Zink (Turnip), as on Mali, a glBufferSubData for each draw costs much
+more than the unsynchronized write the ring allows (host_gl_buffer_write). */
 #define XGPU_STREAM_RING
 #define STREAM_BUFFER_SIZE (16 * 1024 * 1024)
 #define INDEX_BUFFER_SIZE (2 * 1024 * 1024)
@@ -1866,7 +1866,11 @@ static GLuint fragment_shader_get(const struct nv2a_pixel_shader_key *key)
 	entry = calloc(1, sizeof(*entry));
 	entry->hash = hash;
 	entry->key = *key;
+#ifdef XGPU_GL_HOST
+	xgpu_host_pixel_program(key, &program);
+#else
 	nv2a_pixel_program_decode(key, &program);
+#endif
 	source = xgpu_glsl_pixel_shader(&program, glsl_options());
 	entry->shader = xgpu_compile_shader(GL_FRAGMENT_SHADER, source, "pixel");
 	if (debug_settings.dump_shaders)
@@ -2318,6 +2322,7 @@ static GLuint feedback_copy(struct gl_target *target, unsigned long written)
 }
 #endif
 
+#ifndef XGPU_GL_HOST
 /* the textures the draw's descriptions found (xgpu_backend_texture_describe,
 for its stages, before xgpu_backend_set_textures binds them): bound as
 found, not looked up again */
@@ -2345,6 +2350,7 @@ void xgpu_backend_texture_describe(DWORD resource, DWORD palette, struct xgpu_te
 	*kind = target == GL_TEXTURE_CUBE_MAP ? XGPU_TEXTURE_KIND_CUBE : target == GL_TEXTURE_3D ? XGPU_TEXTURE_KIND_3D :
 		XGPU_TEXTURE_KIND_2D;
 }
+#endif
 
 void xgpu_backend_set_textures(const struct xgpu_texture_source stages[4])
 {
@@ -2378,6 +2384,11 @@ void xgpu_backend_set_textures(const struct xgpu_texture_source stages[4])
 		}
 		else if (source->source == XGPU_SOURCE_TEXTURE)
 		{
+#ifdef XGPU_GL_HOST
+			/* (the host's cache, by the stage's record: the guest answered the
+			descriptions) */
+			gl_textures[stage] = xgpu_host_texture_get(stage, &gl_targets[stage]);
+#else
 			int found;
 
 			for (found = 0; found < described_count; found++)
@@ -2397,11 +2408,14 @@ void xgpu_backend_set_textures(const struct xgpu_texture_source stages[4])
 				gl_textures[stage] = xgpu_texture_get((const DWORD *)source->resource,
 					(const D3DCOLOR *)source->palette, &gl_targets[stage], &description);
 			}
+#endif
 		}
 		if (source->source != XGPU_SOURCE_NONE)
 			configure_sampler(stage, &source->sampler);
 	}
+#ifndef XGPU_GL_HOST
 	described_count = 0;
+#endif
 #ifdef HALO_GLES
 	/* (a stage the pixel shader does not sample keeps what it had: unbinding
 	it, to bind it again at the next draw that has it, is two calls) */
