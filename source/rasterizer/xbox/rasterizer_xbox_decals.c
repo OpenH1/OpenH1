@@ -455,6 +455,10 @@ void _rasterizer_decal_vertices_unlock(
 void _rasterizer_decals_initialize_for_new_map(
 	void)
 {
+	/* port: the vertex cache's frames counted from the map's start (the
+	cache was flushed at the old map's end), as render.frame_index is
+	(render.c) */
+	local_vertex_cache->tick = 1;
 	return;
 }
 

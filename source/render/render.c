@@ -214,6 +214,11 @@ void render_initialize(
 void render_initialize_for_new_map(
 	void)
 {
+	/* port: the map's frames counted from its start, as the game state's
+	caches stamp them (the objects' render states, the particles): the
+	frames the menus and the loading drew before, as many as the loading
+	took, made two runs of one game differ */
+	render.frame_index = 0;
 	/* port: preserve retail's energy-then-two-sided-glass compositing. */
 	models_fix_transparent_part_links();
 	render_objects_initialize_for_new_map();
