@@ -776,6 +776,14 @@ int host_metal_window_open(unsigned int window);
 #else
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_OPENGL
 #endif
+#if defined(HALO_RENDER_STREAM) && !defined(HALO_METAL)
+/* port/linux/host/host_gl_stream.c: the window drawn with OpenGL by the
+host, whose render thread has the context (the renderer's backend is the
+host's), at a swap interval (vsync 1, or 0); asked again, the interval
+changed; nonzero on success */
+int host_gl_window(unsigned int window, int interval);
+#define PLATFORM_HOST_GL
+#endif
 
 BOOL platform_video_initialize(unsigned long width, unsigned long height)
 {
@@ -896,6 +904,19 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	(void)version;
 	return TRUE;
 #endif
+#ifdef PLATFORM_HOST_GL
+	/* (the host makes the context, with the attributes set above, and
+	draws: the guest calls no OpenGL) */
+	if (!host_gl_window((unsigned int)(uintptr_t)platform_window, config_boolean("display.vsync") ? 1 : 0))
+	{
+		platform_log("cannot draw the window with the host's OpenGL");
+		return FALSE;
+	}
+	platform_event_thread = SDL_GetCurrentThreadID();
+	platform_mouse_capture(TRUE);
+	(void)version;
+	return TRUE;
+#endif
 	platform_gl_context = SDL_GL_CreateContext(platform_window);
 #ifdef HALO_GLES
 	/* ES 3.2 where the driver has it, otherwise the renderer makes do with
@@ -968,7 +989,11 @@ void platform_display_apply(void)
 	if (!platform_window)
 		return;
 #endif
+#ifdef PLATFORM_HOST_GL
+	host_gl_window((unsigned int)(uintptr_t)platform_window, config_boolean("display.vsync") ? 1 : 0);
+#else
 	SDL_GL_SetSwapInterval(config_boolean("display.vsync") ? 1 : 0);
+#endif
 }
 
 void platform_video_drawable_size(int *width, int *height)
@@ -1024,7 +1049,11 @@ void platform_video_swap(void)
 	Uint64 interval, now;
 
 #endif
+#ifdef PLATFORM_HOST_GL
+	/* (the host shows the frame, on its render thread: here it is paced) */
+#else
 	SDL_GL_SwapWindow(platform_window);
+#endif
 #ifdef HALO_WEB
 	web_frame_shown();
 #endif

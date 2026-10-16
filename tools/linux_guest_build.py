@@ -75,7 +75,7 @@ OPENXR_HEADERS = {
 }
 
 # the OpenGL backend the host has, for the renderer's command stream
-# (port/linux/host/host_gl_stream.c): the
+# (configure.py --render-stream; port/linux/host/host_gl_stream.c): the
 # backend's files of port/linux/src, copied beside the host's stand-ins for
 # the guest's headers (port/linux/host/gl), which their quoted includes then
 # find in place of the guest's
@@ -83,6 +83,8 @@ HOST_GL_SHARED = ["xgpu.h", "xgpu_backend.h", "xgpu_shader.h", "xgpu_gl.h", "gl.
                   "xgpu_post.c", "xgpu_text.c", "gl_functions.c", "xbox_texture_decode.c"]
 HOST_GL_STAND_INS = ["platform.h", "sdl_platform.h", "port_config.h"]
 HOST_GL_SOURCES = ["host_gl_stream.c", "host_gl_textures.c"]
+# (the guest's renderer, then: none of its own)
+RENDER_STREAM_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c"]
 
 # (with the desktop renderer, GLVND's libOpenGL in place of libGLESv2: the
 # host's own OpenGL calls, port/android/host/host_gl.c)
@@ -263,6 +265,11 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         if target.arch.base_register_flags is None:
             raise RuntimeError(f"--guest-base: the {target.arch.name} guest has no base register")
         host_defines.append("-DHALO_GUEST_BASE=1")
+    # (configure.py --render-stream: the renderer's backend is the host's,
+    # the guest's frames its command stream, port/linux/src/xgpu_stream.h)
+    render_stream = bool(getattr(sln, "render_stream", False))
+    if render_stream:
+        guest_defines.append("-DHALO_RENDER_STREAM=1")
 
     n.comment(f"{target.title} build (ninja {target.name}); see port/linux/README.md")
     n.variable(f"{prefix}_guest_cc", guest_cc)
@@ -277,7 +284,7 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         extra_imports=[PORT_DIR / "host_imports.list", *([PORT_DIR / "vr_imports.list"] if vr else [])],
         extra_prototypes=[PORT_DIR / "guest_desktop.c", *([LINUX_DIR / "src" / "vr_host.h"] if vr else [])],
         updater_cflags=updater_defines(getattr(sln, "port_release", False)), desktop_gl=desktop_gl,
-        base_register=base_register)
+        base_register=base_register, excluded_platform_sources=RENDER_STREAM_GUEST_EXCLUDED if render_stream else ())
 
     # ---------- SDL3, built from the same source as the guest's headers
 
@@ -392,7 +399,8 @@ def host_gl_renderer(n: Writer, prefix: str, label: str, build: Path, host_cc: s
     headers (port/linux/host/gl), and the XDK's enumerations and texture
     format words for them (xdk_enums.h, as tools/macos_build.py makes it);
     its anti-aliasing's SMAA data and zlib. Every desktop guest's host has
-    it. Returns the objects."""
+    it (its import, host_gl_window, is every desktop guest's); the guest
+    uses it when built with --render-stream. Returns the objects."""
     shared_dir = build / "host" / "gl"
     obj_dir = build / "host" / "obj" / "gl"
     n.rule(name=f"{prefix}_gl_copy", command="cp $in $out", description=f"{label} HOST GL $out")

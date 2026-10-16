@@ -1309,7 +1309,7 @@ instead of a backend in the guest (`src/xgpu_stream.h`). The guest writes
 each call as a record into a ring in its own memory
 (`src/xgpu_stream_encode.c`), and one host call each frame hands the frame
 over. A thread of the host plays the records into a backend of the host:
-Metal on macOS, later the OpenGL backend for the Steam Frame
+Metal on macOS, the OpenGL backend on Linux
 (`android/host/host_render_stream.c`, whose `host_render_backend` is the
 table of a backend's functions). It does so while the game goes on to the
 next frame, so the GPU driver's work leaves the game's thread, and no GL
@@ -1345,8 +1345,36 @@ call crosses from the guest to the host.
   texture stage names in the Xbox texture's place.
 
 The macOS build uses it, with the Metal backend (port/macos/README.md,
-"Metal"). `tools/test_render_stream.py` tests the stream with a backend of
-its own.
+"Metal"). The 64-bit Linux builds use it with `configure.py
+--render-stream`, with the OpenGL backend in the host:
+
+- The host builds `src/xgpu_gl.c` as the guest does (with its GLSL
+  emitter, its anti-aliasing passes and the texture decoding), beside
+  stand-ins for the guest's headers (`host/gl`), with `XGPU_GL_HOST`
+  (`tools/linux_guest_build.py`). `host/host_gl_stream.c` makes, for each
+  record, the backend call that the front end made, and
+  `host/host_gl_textures.c` caches the textures and the images as
+  `src/xbox_textures.c` does in the guest.
+- The guest makes the window (`src/sdl_platform.c`) and hands it to the
+  host (`host_gl_window`): the host makes the OpenGL context, which is
+  current on its render thread. That thread draws and shows the frames.
+  The guest paces them (`display.max_fps`), after each frame's records.
+- The front end calls `xgpu_backend_set_textures` and
+  `xgpu_backend_draw_state` before every draw, and the stream sends them
+  only when they change. In the backend they do more: the textures are
+  looked at again (their memory written since), the multisampled targets
+  drawn into since are resolved, the pipeline chosen is applied and the
+  constants set since are uploaded. Where the stream left one out, the
+  host makes the call again in its place.
+- The visibility tests' counts are what the GPU has written by the end of
+  the frame the host plays. The game's next frame reads them while the
+  host plays its frames, so they can be a frame older or newer than those
+  of the guest's own backend, whose own depend on the frame's pacing
+  (whether the frame waited for `display.max_fps` before it read them).
+  With the same counts, the frames are the same as the guest's backend's.
+
+`tools/test_render_stream.py` tests the stream with a backend of its
+own.
 
 ## 64-bit x86
 

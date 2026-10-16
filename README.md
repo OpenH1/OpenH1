@@ -146,6 +146,7 @@ Give these options to `configure.py`:
 | `--profile` | A profiling build. It records CPU times. Refer to "Profiling builds". |
 | `--guest-llvm=system`, `--guest-llvm=FOLDER` | The guest builds (Linux arm64 and x86-64, Android, macOS) compile the guest with clang and the LLVM tools on the PATH, or with the LLVM in FOLDER, not with the pinned LLVM. Refer to "The guests' compiler". |
 | `--guest-llvm-cache FOLDER` | The folder for the pinned LLVM (else `~/.cache/opence`, on macOS `~/Library/Caches/opence`). |
+| `--render-stream` | The 64-bit Linux builds (`ninja linux_x86_64`, `ninja linux_arm64`) draw on a thread of the host: the game writes its frames as the renderer's command stream, which the host draws with the OpenGL backend, as the macOS build's host draws them with Metal. Refer to "The renderer's command stream" in [port/linux/README.md](port/linux/README.md#the-renderers-command-stream). |
 | `--guest-base` | The Linux arm64 and Android builds put the guest's memory at a base that the host chooses, not in the low 4 GB (a base register: `tools/guest_base_register.py`). The 64-bit x86 build has none: with it, `ninja linux_x86_64` stops with the reason. |
 | `--web-emcc PATH` | The Emscripten `emcc` for `ninja web` (else the one on the PATH, or `~/emsdk`'s). |
 

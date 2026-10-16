@@ -81,3 +81,12 @@ void host_gl_read_results(void *data, uint32_t size)
 	(void)size;
 	no_renderer();
 }
+
+/* (the Linux hosts' OpenGL renderer's window, port/linux/host/
+host_gl_stream.c: the macOS guest's is Metal's) */
+int host_gl_window(uint32_t window, int interval)
+{
+	(void)window;
+	(void)interval;
+	return 0;
+}

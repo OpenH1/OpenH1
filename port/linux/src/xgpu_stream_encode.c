@@ -30,6 +30,9 @@ inputs no stream feeds only when they change.
 #include "xgpu_shader.h"
 #include "xgpu_stream.h"
 #include "xgpu_stream_describe.h"
+#if !defined(HALO_METAL) && !defined(XGPU_STREAM_TEST)
+#include "sdl_platform.h"
+#endif
 
 #include <stdint.h>
 #include <stdio.h>
@@ -1465,6 +1468,11 @@ void xgpu_backend_frame_end(void)
 #ifndef XGPU_STREAM_TEST
 	/* (the deleted images' pixels freed once no frame in flight reads them) */
 	xgpu_images_frame_end();
+#endif
+#if !defined(HALO_METAL) && !defined(XGPU_STREAM_TEST)
+	/* (the frames paced as the OpenGL backend's present paces them,
+	display.max_fps, while the host shows this one: sdl_platform.c) */
+	platform_video_swap();
 #endif
 }
 

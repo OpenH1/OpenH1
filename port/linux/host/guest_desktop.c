@@ -77,6 +77,9 @@ void host_update_delete_file(const char *path);
 int host_update_make_directory(const char *path);
 int host_update_make_executable(const char *path);
 int host_update_launch(const char *path);
+/* (host_gl_stream.c: the window drawn by the host's OpenGL renderer, the
+command stream's: sdl_platform.c) */
+int host_gl_window(unsigned int window, int interval);
 
 /* ---------- general */
 
