@@ -656,12 +656,13 @@ void game_initialize_for_new_map(
 		!game_globals->active);
 
 	set_random_seed(game_globals->options.random_seed);
-	/* port: and the local seed from the game's too. It was the clock's at
-	startup, with whatever the menus and the loading had taken of it since,
-	and it picks the decals, the effects and the particles: a game is the
-	same from the same seed and input. (A new network game's seed is still
-	the clock's, create_global_network_game_server.) */
-	*get_global_local_random_seed_address() = game_globals->options.random_seed ^ 0x6C6F6361;
+	/* port: and the local seeds from the game's too (the ticks' and the
+	frames', random_math.c). It was the clock's at startup, with whatever the
+	menus and the loading had taken of it since, and it picks the decals, the
+	effects and the particles: a game is the same from the same seed and
+	input. (A new network game's seed is still the clock's,
+	create_global_network_game_server.) */
+	random_math_port_set_local_seeds(game_globals->options.random_seed ^ 0x6C6F6361);
 	game_engine_dispose();
 	game_engine_initialize(&game_variant_global);
 	real_math_reset_precision();

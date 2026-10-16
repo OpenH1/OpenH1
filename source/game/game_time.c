@@ -481,14 +481,17 @@ void game_time_update(
 
 					for (update_index = 0; update_index < server_updates; update_index++)
 					{
-						/* port: (debug.determinism_log) */
+						/* port: (debug.determinism_log), and the local seed's
+						takers in the tick take the ticks' (random_math.c) */
 						determinism_log_tick_begin();
+						random_math_port_set_ticking(TRUE);
 						game_tick();
 						profile_scope(game_time_render_interpolation_tick_section, render_interpolation_tick();)
 						game_time_globals->server_time++;
 						game_time_globals->local_time++;
 						/* the distributed netcode's per-tick state */
 						profile_scope(game_time_network_distributed_tick_section, network_distributed_tick();)
+						random_math_port_set_ticking(FALSE);
 						determinism_log_tick_end(game_time_globals->server_time);
 					}
 				}

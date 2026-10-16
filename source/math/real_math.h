@@ -842,6 +842,9 @@ real_vector3d *matrix3x3_transform_vector(real_matrix3x3 const *matrix, real_vec
 
 unsigned long *get_global_random_seed_address(void);
 unsigned long *get_global_local_random_seed_address(void);
+/* port: random_math.c's */
+void random_math_port_set_ticking(boolean ticking);
+void random_math_port_set_local_seeds(unsigned long seed);
 void random_seed_debug_log(
 	boolean log);
 void random_math_initialize(

@@ -147,13 +147,38 @@ unsigned long *get_global_random_seed_address(
 	return &random_math_globals.global_random_seed;
 }
 
+/* port: the frames' local seed: the local seed's takers between the ticks
+(the particles as they move each frame, the camera's shake, the renderer,
+the menus) take this one, so that the game's local seed moves only in the
+ticks, in their order, however many frames were drawn between them
+(game_time.c says when a tick runs) */
+static unsigned long frame_local_random_seed;
+static boolean random_math_port_ticking;
+
 unsigned long *get_global_local_random_seed_address(
 	void)
 {
 	/* port: the taker logged (debug.determinism_log) */
 	if (determinism_log_seeds)
 		determinism_log_seed_taken(TRUE, __builtin_return_address(0));
+	if (!random_math_port_ticking)
+		return &frame_local_random_seed;
 	return &random_math_globals.global_local_random_seed;
+}
+
+/* port: whether a tick runs (game_time.c), and the local seeds set at a
+map's start (game.c) */
+void random_math_port_set_ticking(
+	boolean ticking)
+{
+	random_math_port_ticking= ticking;
+}
+
+void random_math_port_set_local_seeds(
+	unsigned long seed)
+{
+	random_math_globals.global_local_random_seed= seed;
+	frame_local_random_seed= ~seed;
 }
 
 /* port: the seeds, for the determinism log, without taking them */

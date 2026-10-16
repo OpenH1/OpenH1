@@ -35,7 +35,7 @@ TAKER_LABELS = {
     "G": "global seed, in the tick",
     "L": "local seed, in the tick",
     "g": "global seed, between ticks",
-    "l": "local seed, between ticks",
+    "l": "local seed (the frames'), between ticks",
     "o": "either seed, on another thread",
     "C": "clock, read in the tick",
 }
