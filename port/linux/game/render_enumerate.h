@@ -18,7 +18,9 @@ first: its window drawn again each time render_enumerate_next says TRUE */
 void render_enumerate_new_map(void);
 /* (mirrors: whether the frame draws a mirror's window, which the VR
 mode's eyes and one of several windows do not) */
-boolean render_enumerate_begin(boolean mirrors);
+/* The scope's mono view has its own pipelines, prepared before the eyes. */
+boolean render_enumerate_pending(boolean scope);
+boolean render_enumerate_begin(boolean mirrors, boolean scope);
 boolean render_enumerate_next(void);
 /* the window's target (_render_target_*) and whether it has a mirror, for
 the pass being drawn */
@@ -42,6 +44,10 @@ void render_enumerate_decals(void);
 void render_enumerate_interface(void);
 /* (before the screen flash: every kind of it) */
 void render_enumerate_screen_flashes(void);
+/* (before debug geometry: its lines and triangles, opaque and blended) */
+void render_enumerate_debug(void);
+/* (the loading screen's blur and layers, on the ordinary mono target) */
+void render_enumerate_loading_screen(void);
 /* (the VR mode's HUD pass: the interface, when the eyes' frame had none) */
 void render_enumerate_hud(void);
 

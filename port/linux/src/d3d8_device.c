@@ -3015,6 +3015,43 @@ static BOOL prepare_draw(BOOL immediate)
 	return TRUE;
 }
 
+/* Screen-only enumeration changes draw state, not the targets, viewport,
+constants or transforms. Keep the game's current state, including inputs
+whose values immediate draws inherit, around those preparation draws. */
+void halo_gpu_draw_preserved(void (*draw)(void *), void *data)
+{
+	DWORD render_states[D3DRS_MAX], texture_states[D3DTSS_MAXSTAGES][D3DTSS_MAX];
+	D3DBaseTexture *textures[D3DTSS_MAXSTAGES];
+	struct vertex_shader_object *vertex_shader = device.vertex_shader;
+	struct vertex_shader_object *slot_zero = device.program_slots[0];
+	unsigned long address = device.program_address;
+	float attributes[XGPU_VERTEX_ATTRIBUTE_COUNT][4];
+	BOOL immediate_active = device.immediate_active;
+	D3DPRIMITIVETYPE immediate_type = device.immediate_type;
+	unsigned long immediate_written = device.immediate_written, immediate_count = device.immediate_count;
+
+	if (!draw || immediate_active)
+		return;
+	memcpy(render_states, D3D__RenderState, sizeof(render_states));
+	memcpy(texture_states, D3D__TextureState, sizeof(texture_states));
+	memcpy(textures, device.textures, sizeof(textures));
+	memcpy(attributes, device.attributes, sizeof(attributes));
+	draw(data);
+	memcpy(D3D__RenderState, render_states, sizeof(render_states));
+	memcpy(D3D__TextureState, texture_states, sizeof(texture_states));
+	memcpy(device.textures, textures, sizeof(textures));
+	memcpy(device.attributes, attributes, sizeof(attributes));
+	device.vertex_shader = vertex_shader;
+	device.program_slots[0] = slot_zero;
+	device.program_address = address;
+	device.immediate_active = immediate_active;
+	device.immediate_type = immediate_type;
+	device.immediate_written = immediate_written;
+	device.immediate_count = immediate_count;
+	/* Rebind the restored state even if a backend cached the last draw. */
+	xgpu_backend_invalidate();
+}
+
 /* the shaders and pipelines of the draws so far made (a map's first
 frame's: port/linux/game/render_enumerate.c); the seconds waited */
 void halo_gpu_prepare(int new_map)

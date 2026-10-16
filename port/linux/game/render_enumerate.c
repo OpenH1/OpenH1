@@ -65,6 +65,7 @@ skipped or made without its sampler.
 #include "interface/hud_draw.h"
 #include "interface/hud_weapon.h"
 #include "interface/interface.h"
+#include "interface/progress_bar.h"
 #include "interface/ui_widget.h"
 #include "interface/unit_hud_interface_definition.h"
 #include "text/draw_string.h"
@@ -78,6 +79,10 @@ skipped or made without its sampler.
 
 #include "halo_dynamic_lights.h"
 #include "render_enumerate.h"
+#ifdef HALO_VR
+#include "../src/vr.h"
+boolean vr_render_eye_pass(void);
+#endif
 
 #include <string.h>
 
@@ -92,6 +97,7 @@ int config_boolean(char const *name);
 void platform_log(char const *format, ...);
 
 /* (rasterizer_xbox.c's) */
+void rasterizer_set_stencil_mode(long mode);
 enum
 {
 	_planar_fog_off = 0,
@@ -164,6 +170,11 @@ enum
 the structure drawn lit for each pixel by them) */
 #define MAXIMUM_LIGHTINGS 2
 
+/* The first-person model leaves the stencil rejecting its pixels for the
+world after it. It may not be visible in the loading frame yet. Prepare
+both contexts, including when the weapon is hidden or the player is dead. */
+#define NUMBER_OF_STENCIL_CONTEXTS 2
+
 /* a model's every geometry, as many as are told apart */
 #define MAXIMUM_ENUMERATED_GEOMETRIES 1024
 
@@ -187,9 +198,10 @@ static struct
 	structures enumerated since, the one being enumerated and whether it has
 	a mirror */
 	boolean new_map;
-	unsigned long *structure_bsps_enumerated;
+	unsigned long *structure_bsps_enumerated[2];
 	short structure_bsp_index;
 	boolean mirrors;
+	boolean scope;
 	/* this frame's: whether the models and effects are drawn too (a new
 	map), the pass being drawn, the map's own fog */
 	boolean everything;
@@ -207,7 +219,7 @@ static struct
 	/* the pass's lights (rasterizer_light_submit's) */
 	short light_count;
 	long light_indices[MAXIMUM_LIGHTS_PER_WINDOW];
-} enumerate = { TRUE, NULL, NONE };
+} enumerate = { TRUE, { NULL, NULL }, NONE };
 
 /* the maps enumerated (a map is its cache file's checksum and its
 scenario's name), and each one's structures */
@@ -215,15 +227,15 @@ static struct
 {
 	unsigned long checksum;
 	char name[64];
-	unsigned long structure_bsps;
+	unsigned long structure_bsps[2];
 } enumerated_maps[MAXIMUM_ENUMERATED_MAPS];
 static short enumerated_map_count = 0;
 
 /* the map's structures enumerated: a map not seen in this run of the game
 has none */
-static unsigned long *map_structures_enumerated(boolean *seen)
+static unsigned long *map_structures_enumerated(short view)
 {
-	static unsigned long none = 0;
+	static unsigned long none[2] = { 0, 0 };
 	unsigned long checksum = cache_files_get_checksum();
 	char const *name = global_scenario_index != NONE ? tag_get_name(global_scenario_index) : "";
 	short index;
@@ -233,21 +245,20 @@ static unsigned long *map_structures_enumerated(boolean *seen)
 		if (enumerated_maps[index].checksum == checksum && !strncmp(enumerated_maps[index].name, name,
 			sizeof(enumerated_maps[index].name) - 1))
 		{
-			*seen = TRUE;
-			return &enumerated_maps[index].structure_bsps;
+			return &enumerated_maps[index].structure_bsps[view];
 		}
 	}
-	*seen = FALSE;
 	if (enumerated_map_count == MAXIMUM_ENUMERATED_MAPS)
 	{
-		none = 0;
-		return &none;
+		none[view] = 0;
+		return &none[view];
 	}
 	index = enumerated_map_count++;
 	enumerated_maps[index].checksum = checksum;
 	strncpy(enumerated_maps[index].name, name, sizeof(enumerated_maps[index].name) - 1);
-	enumerated_maps[index].structure_bsps = 0;
-	return &enumerated_maps[index].structure_bsps;
+	enumerated_maps[index].structure_bsps[0] = 0;
+	enumerated_maps[index].structure_bsps[1] = 0;
+	return &enumerated_maps[index].structure_bsps[view];
 }
 
 static short pass_fog(void)
@@ -259,12 +270,18 @@ static short pass_fog(void)
 "enhanced") */
 static boolean pass_dynamic_lights(void)
 {
-	return enumerate.pass >= NUMBER_OF_FOGS * NUMBER_OF_PARTS;
+	return enumerate.pass >= NUMBER_OF_FOGS * NUMBER_OF_PARTS * NUMBER_OF_STENCIL_CONTEXTS;
 }
 
 static short passes(void)
 {
-	return (short)((halo_dynamic_lights_enhanced() ? MAXIMUM_LIGHTINGS : 1) * NUMBER_OF_FOGS * NUMBER_OF_PARTS);
+	return (short)((halo_dynamic_lights_enhanced() ? MAXIMUM_LIGHTINGS : 1) * NUMBER_OF_FOGS * NUMBER_OF_PARTS *
+		NUMBER_OF_STENCIL_CONTEXTS);
+}
+
+static boolean pass_stencil_reject(void)
+{
+	return enumerate.pass / (NUMBER_OF_FOGS * NUMBER_OF_PARTS) % NUMBER_OF_STENCIL_CONTEXTS != 0;
 }
 
 static short pass_part(void)
@@ -335,31 +352,40 @@ boolean render_enumerate_has_mirror(void)
 	return enumerate.mirrors && pass_part() != _part_mirror;
 }
 
-boolean render_enumerate_begin(boolean mirrors)
+boolean render_enumerate_pending(boolean scope)
 {
 	static int setting = -1;
 	short structure_bsp_index = global_structure_bsp_index_get();
-	boolean everything = FALSE;
+	short view = scope ? 1 : 0;
 
 	if (setting < 0)
 		setting = config_boolean("display.prepare_shaders") || *config_string("debug.render_manifest");
 	if (!setting || structure_bsp_index == NONE || structure_bsp_index >= LONG_BITS)
 		return FALSE;
-	/* (a map's models and effects once; each of its structures once) */
-	if (enumerate.new_map || !enumerate.structure_bsps_enumerated)
+	if (enumerate.new_map)
 	{
-		boolean seen;
-
-		enumerate.structure_bsps_enumerated = map_structures_enumerated(&seen);
-		everything = !seen;
+		enumerate.structure_bsps_enumerated[0] = NULL;
+		enumerate.structure_bsps_enumerated[1] = NULL;
 		enumerate.new_map = FALSE;
 	}
-	if (TEST_FLAG(*enumerate.structure_bsps_enumerated, structure_bsp_index))
+	if (!enumerate.structure_bsps_enumerated[view])
+		enumerate.structure_bsps_enumerated[view] = map_structures_enumerated(view);
+	return !TEST_FLAG(*enumerate.structure_bsps_enumerated[view], structure_bsp_index);
+}
+
+boolean render_enumerate_begin(boolean mirrors, boolean scope)
+{
+	short structure_bsp_index = global_structure_bsp_index_get();
+	short view = scope ? 1 : 0;
+
+	if (!render_enumerate_pending(scope))
 		return FALSE;
-	enumerate.everything = everything;
+	/* A map's models and effects once, each structure once, in each view. */
+	enumerate.everything = *enumerate.structure_bsps_enumerated[view] == 0;
+	enumerate.scope = scope;
 	enumerate.interface_drawn = FALSE;
 	enumerate.structure_bsp_index = structure_bsp_index;
-	SET_FLAG(*enumerate.structure_bsps_enumerated, structure_bsp_index, TRUE);
+	SET_FLAG(*enumerate.structure_bsps_enumerated[view], structure_bsp_index, TRUE);
 	enumerate.mirrors = mirrors && structure_visibility_port_has_mirrors();
 	enumerate.own_fog = render.fog;
 	enumerate.started = system_milliseconds();
@@ -387,15 +413,22 @@ boolean render_enumerate_next(void)
 		return TRUE;
 	}
 	render.fog = enumerate.own_fog;
-	enumerate.interface_pending = enumerate.everything && !enumerate.interface_drawn;
+	if (!enumerate.scope)
+		enumerate.interface_pending = enumerate.everything && !enumerate.interface_drawn;
 	rasterizer_lens_flares_port_truncate(enumerate.lens_flare_count);
 	render_enumerating = FALSE;
 	cpu = halo_thread_cpu_seconds() - enumerate.started_cpu;
 	/* (the loading screen's end: the shaders and pipelines made) */
 	waited = halo_gpu_prepared();
-	platform_log("render: %s structure %d: its shaders and pipelines made (drawn in %d passes in %lu ms, %.0f ms "
+	/* These draws have reached the host. Advance the texture cache as a
+	completed frame does, so the next view and HUD can load their real
+	bitmaps instead of defaults when this enumeration filled the cache.
+	Never unlock between a draw's texture stages. */
+	texture_cache_idle();
+	platform_log("render: %s structure %d%s: its shaders and pipelines made (drawn in %d passes in %lu ms, %.0f ms "
 		"of the CPU's, %.0f ms waited for the GPU's)", enumerate.everything ? "the map's and its" : "its",
-		enumerate.structure_bsp_index, passes(), system_milliseconds() - enumerate.started, cpu * 1000.0,
+		enumerate.structure_bsp_index, enumerate.scope ? " (scope)" : "", passes(),
+		system_milliseconds() - enumerate.started, cpu * 1000.0,
 		waited * 1000.0);
 	return FALSE;
 }
@@ -805,6 +838,9 @@ void render_enumerate_models(void)
 
 	if (!render_enumerating)
 		return;
+	/* rasterizer_xbox.c: NONE (0) or REJECT (2), as model_end leaves it.
+	This also applies to the structure's draws after these models. */
+	rasterizer_set_stencil_mode(pass_stencil_reject() ? 2 : 0);
 	lights_submit();
 	if (!enumerate.everything)
 		return;
@@ -1155,7 +1191,43 @@ void render_enumerate_interface(void)
 void render_enumerate_screen_flashes(void)
 {
 	if (render_enumerating && enumerate.everything && enumerate.pass == 0)
+	{
 		screen_flashes_draw();
+#ifdef HALO_VR
+		/* The crosshairs use each eye's view mask, unlike the HUD layer. */
+		if (vr_render_eye_pass())
+		{
+			short eye;
+
+			for (eye = 0; eye < 2; eye++)
+			{
+				halo_vr_draw_eye(eye);
+				rasterizer_hud_begin();
+				hud_weapon_port_enumerate_crosshairs();
+				rasterizer_hud_end();
+			}
+			halo_vr_draw_eye(-1);
+		}
+#endif
+	}
+}
+
+void render_enumerate_debug(void)
+{
+	if (render_enumerating && enumerate.everything && enumerate.pass == 0)
+		rasterizer_debug_port_enumerate();
+}
+
+void render_enumerate_loading_screen(void)
+{
+	if (!render_enumerating || !enumerate.everything || enumerate.pass != 0)
+		return;
+#ifdef HALO_VR
+	/* Loading uses the ordinary mono target with depth, as the scope does. */
+	if (vr_render_eye_pass())
+		return;
+#endif
+	progress_bar_port_enumerate(stand_in_bitmap());
 }
 
 /* the VR mode's HUD pass, after the frame's eyes: the interface, where its

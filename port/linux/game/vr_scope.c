@@ -346,6 +346,15 @@ static void vr_scope_camera_view(struct render_camera *camera, struct render_cam
 	*rasterizer_camera = *camera;
 }
 
+/* render.c: prepare the mono scene at map load, even with no scoped weapon
+in hand. The shared enumeration draws every material through this camera. */
+void vr_scope_enumerate_camera(struct render_camera *camera, struct render_camera *rasterizer_camera)
+{
+	camera->vertical_field_of_view = WARM_FIELD_OF_VIEW * _pi / 180.0f;
+	vr_scope_camera_view(camera, rasterizer_camera);
+	vr_scope.warmed_tick = game_time_get();
+}
+
 /* the camera's up: the world's, square to its forward (else the weapon's,
 looking straight up or down) */
 static void vr_scope_camera_up(struct render_camera *camera, real_vector3d const *fallback)

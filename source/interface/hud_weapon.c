@@ -2209,6 +2209,49 @@ char *strip_path_name(
 	return path;
 }
 
+/* port: shared by the HUD layer and each eye during map preparation. */
+static void crosshairs_enumerate(
+	struct weapon_hud_interface_definition *definition)
+{
+	long element_index;
+
+	for (element_index = 0; element_index < definition->crosshairs.count; element_index++)
+	{
+		struct weapon_hud_crosshairs_element *element = TAG_BLOCK_GET_ELEMENT(
+			&definition->crosshairs, element_index, struct weapon_hud_crosshairs_element);
+		long item_index;
+
+		if (element->crosshairs.bitmap.index == NONE)
+			continue;
+		for (item_index = 0; item_index < element->crosshairs.items.count; item_index++)
+		{
+			struct weapon_hud_crosshair_item *item = TAG_BLOCK_GET_ELEMENT(
+				&element->crosshairs.items, item_index, struct weapon_hud_crosshair_item);
+			struct bitmap_group *bitmap_group = bitmap_group_get(element->crosshairs.bitmap.index);
+			struct bitmap_data *bitmap = bitmap_group_get_bitmap_from_sequence(
+				element->crosshairs.bitmap.index, item->sequence_index, 0);
+
+			if (bitmap)
+			{
+				hud_draw_bitmap(bitmap, &definition->absolute_placement, &item->placement, NULL, 1.0f, 0.0f,
+					item->colors.color, FALSE, bitmap_group->type == _bitmap_group_type_interface_bitmaps,
+					FALSE);
+			}
+		}
+	}
+}
+
+/* port: the VR eye pass prepares only the crosshairs in its view masks. */
+void hud_weapon_port_enumerate_crosshairs(void)
+{
+	struct tag_iterator iterator;
+	long hud_index;
+
+	tag_iterator_new(&iterator, WEAPON_HUD_INTERFACE_TAG);
+	while ((hud_index = tag_iterator_next(&iterator)) != NONE)
+		crosshairs_enumerate(weapon_hud_interface_definition_get(hud_index));
+}
+
 /* port: every weapon's and grenade's HUD element drawn, each as
 render_weapon_hud and render_grenade_hud draw it, in every state: a map's
 first frame drawn through every shader (port/linux/game/render_enumerate.c) */
@@ -2270,30 +2313,7 @@ void hud_weapon_port_enumerate(
 					0xffff, 0, 0, FALSE);
 			}
 		}
-		for (element_index = 0; element_index < definition->crosshairs.count; element_index++)
-		{
-			struct weapon_hud_crosshairs_element *element = TAG_BLOCK_GET_ELEMENT(
-				&definition->crosshairs, element_index, struct weapon_hud_crosshairs_element);
-			long item_index;
-
-			if (element->crosshairs.bitmap.index == NONE)
-				continue;
-			for (item_index = 0; item_index < element->crosshairs.items.count; item_index++)
-			{
-				struct weapon_hud_crosshair_item *item = TAG_BLOCK_GET_ELEMENT(
-					&element->crosshairs.items, item_index, struct weapon_hud_crosshair_item);
-				struct bitmap_group *bitmap_group = bitmap_group_get(element->crosshairs.bitmap.index);
-				struct bitmap_data *bitmap = bitmap_group_get_bitmap_from_sequence(
-					element->crosshairs.bitmap.index, item->sequence_index, 0);
-
-				if (bitmap)
-				{
-					hud_draw_bitmap(bitmap, &definition->absolute_placement, &item->placement, NULL, 1.0f, 0.0f,
-						item->colors.color, FALSE, bitmap_group->type == _bitmap_group_type_interface_bitmaps,
-						FALSE);
-				}
-			}
-		}
+		crosshairs_enumerate(definition);
 	}
 
 	tag_iterator_new(&iterator, GRENADE_HUD_INTERFACE_TAG);
