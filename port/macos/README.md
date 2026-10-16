@@ -359,6 +359,15 @@ GPU's time a frame says little about the work. To measure the work:
 - Instruments' Metal System Trace
   (`xcrun xctrace record --template 'Metal System Trace' --launch -- build/macos/halo`)
   shows the GPU's performance states and the window server's work.
+- `python3 tools/gpu_isa.py <file.metal | file.metallib> --entry <function>`
+  shows the machine code a shader compiles to on this Mac, with its counts
+  (instructions by kind, registers, stack): with function constants
+  (`--constants`), or with them written into the source (`--literal`), in
+  a maths mode (`--math safe`, as the backend compiles). It compiles the
+  pipeline here (`port/macos/tools/gpu_isa_harvest.m`), takes the code
+  from a binary archive and disassembles it with applegpu
+  (github.com/dougallj/applegpu, fetched into `~/.cache/gpu_isa`), which
+  decodes the M1 family's GPUs only.
 
 ### Recording the stream, and replaying it (`halo_replay`)
 
