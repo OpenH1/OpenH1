@@ -684,12 +684,18 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     # (configure.py --guest-base: the guest's memory at a base the host
     # chooses, tools/guest_base_register.py, instead of the fixed low ranges)
     base_register = getattr(sln, "guest_base", False)
+    # (configure.py --render-stream: the renderer's backend is the host's, as
+    # the Linux guest builds have it: tools/host_gl_build.py)
+    from .host_gl_build import RENDER_STREAM_GUEST_EXCLUDED, host_gl_renderer
+    render_stream = bool(getattr(sln, "render_stream", False))
     guest = generate_guest_image(
         n, sln, config, arch=ARM64_32, prefix="android", label="ANDROID", build=BUILD, third_party=THIRD_PARTY,
         guest_cc=guest_cc, gl_headers=sysroot_include, ar=toolchain.ar if toolchain else "$android_ndk_bin/llvm-ar",
         ld=toolchain.ld if toolchain else "$android_ndk_bin/ld.lld",
-        objdump=toolchain.objdump if toolchain else "$android_ndk_bin/llvm-objdump", builtins_cc="$android_host_cc", environment="android", platform_defines=ANDROID_DEFINES,
-        extra_imports=[PORT_DIR / "android_imports.list"], base_register=base_register)
+        objdump=toolchain.objdump if toolchain else "$android_ndk_bin/llvm-objdump", builtins_cc="$android_host_cc",
+        environment="android", platform_defines=ANDROID_DEFINES + (["-DHALO_RENDER_STREAM=1"] if render_stream else []),
+        extra_imports=[PORT_DIR / "android_imports.list"], base_register=base_register,
+        excluded_platform_sources=RENDER_STREAM_GUEST_EXCLUDED if render_stream else ())
     image = guest["image"]
     host_table_c = guest["host_table_c"]
     sdl_build = BUILD / "sdl3-build"
@@ -758,6 +764,9 @@ def generate_android_build(n: Writer, sln: Any) -> None:
         n.build(outputs=obj, rule="android_host_cc", inputs=source,
                 variables={"cflags": mbedtls_cflags + (" -w" if source.name != "posix_dtls.c" else "")})
         host_objects.append(obj)
+    # the OpenGL backend for the command stream (OpenGL ES)
+    host_objects += host_gl_renderer(n, "android", "ANDROID", BUILD, "android_host_cc", host_cflags, desktop_gl=False,
+                                     vr=False)
     table_obj = host_obj_dir / "host_import_table.c.o"
     n.build(outputs=table_obj, rule="android_host_cc", inputs=host_table_c, variables={"cflags": host_cflags})
     host_objects.append(table_obj)

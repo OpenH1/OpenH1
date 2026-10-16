@@ -2778,6 +2778,7 @@ The front end works out the frame's lights and the grid's cells; here
 they are a uniform block at XGPU_DYNAMIC_LIGHTS_BINDING and an integer 3D
 texture at XGPU_DYNAMIC_LIGHTS_UNIT, and the glows are drawn. Desktop
 OpenGL only (layout bindings: GLSL 4.20). */
+#ifndef HALO_GLES
 static struct
 {
 	BOOL failed;
@@ -2788,7 +2789,6 @@ static struct
 	GLuint depth_sampler;
 } dynamic_lights;
 
-#ifndef HALO_GLES
 BOOL xgpu_backend_dynamic_lights_prepare(void)
 {
 	if (dynamic_lights.failed)

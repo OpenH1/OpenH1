@@ -1345,7 +1345,7 @@ call crosses from the guest to the host.
   texture stage names in the Xbox texture's place.
 
 The macOS build uses it, with the Metal backend (port/macos/README.md,
-"Metal"). The 64-bit Linux builds use it with `configure.py
+"Metal"). The 64-bit Linux builds and Android use it with `configure.py
 --render-stream`, with the OpenGL backend in the host:
 
 - The host builds `src/xgpu_gl.c` as the guest does (with its GLSL
@@ -1381,6 +1381,11 @@ The macOS build uses it, with the Metal backend (port/macos/README.md,
   eyes, `vr_visor_composite`) is not written.
 - At exit the guest has the host play the frames submitted (the last one
   shown, the VR mode's ended).
+- Android: as the app goes to the background, SDL keeps the GL context of
+  the thread that pumps the events (the game's) and lets the window's
+  surface go: the render thread hands the context to that thread as the app
+  goes, and takes it back as it comes to the front
+  (`host/host_gl_stream.c`).
 - The visibility tests' counts are what the GPU has written by the end of
   the frame the host plays. The game's next frame reads them while the
   host plays its frames, so they can be a frame older or newer than those

@@ -63,5 +63,6 @@ host_render_stream_open
 host_render_stream_submit
 host_render_stream_wait
 host_render_stream_close
+host_gl_window
 
 host_errno

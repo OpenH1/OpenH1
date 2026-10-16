@@ -126,6 +126,11 @@ int host_render_stream_open(unsigned int ring);
 void host_render_stream_submit(unsigned int flags);
 void host_render_stream_wait(unsigned int position);
 void host_render_stream_close(void);
+/* the window drawn by the host's OpenGL backend, whose render thread has
+its context (port/linux/host/host_gl_stream.c; macOS's has none), at a swap
+interval (vsync 1, or 0); asked again, the interval changed; nonzero on
+success */
+int host_gl_window(unsigned int window, int interval);
 
 /* ---------- Android (android_imports.list) */
 

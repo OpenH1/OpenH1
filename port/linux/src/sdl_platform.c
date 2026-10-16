@@ -913,7 +913,9 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		return FALSE;
 	}
 	platform_event_thread = SDL_GetCurrentThreadID();
+#ifndef HALO_ANDROID
 	platform_mouse_capture(TRUE);
+#endif
 	(void)version;
 	return TRUE;
 #endif
