@@ -281,6 +281,10 @@ static const struct config_setting config_settings[] =
 		"With vr.foveation: how much of each eye's image across (and up) is at full\n"
 		"detail, from 0.3 to 0.8, which is also the detail about it (0.5: half).\n"
 		"Smaller is faster. From the next start." },
+	{ "vr.late_latch", _config_boolean, "true", "HALO_VR_LATE_LATCH", _environment_value, _platform_desktop,
+		"Draw each frame from where your head and the weapon's controller are\n"
+		"just before it goes to the headset, not where they were as the game\n"
+		"began it: less lag between a turn of the head and the view." },
 	{ "vr.melee_gesture", _config_boolean, "true", "HALO_VR_MELEE_GESTURE", _environment_value, _platform_desktop,
 		"A swing of the right controller melees, as B does: a hard one in any\n"
 		"direction, or a softer one with the right grip held." },

@@ -1246,7 +1246,8 @@ static void pose_from_xr(const XrPosef *xr, int valid, struct vr_host_pose *pose
 	pose->valid = valid;
 }
 
-int host_vr_locate(struct vr_host_views *views)
+/* the views, head and controllers at the display time, located now */
+static int locate_at(XrTime time, struct vr_host_views *views)
 {
 	XrViewLocateInfo locate = { XR_TYPE_VIEW_LOCATE_INFO };
 	XrViewState state = { XR_TYPE_VIEW_STATE };
@@ -1255,10 +1256,8 @@ int host_vr_locate(struct vr_host_views *views)
 	uint32_t count = 0;
 	int eye, hand, valid;
 
-	if (!(render_thread.on ? render_thread.located : vr.frame_begun))
-		return 0;
 	locate.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-	locate.displayTime = vr.frame.predictedDisplayTime;
+	locate.displayTime = time;
 	locate.space = vr.play_space;
 	if (xrLocateViews(vr.session, &locate, &state, 2, &count, located) != XR_SUCCESS || count != 2)
 		return 0;
@@ -1271,17 +1270,17 @@ int host_vr_locate(struct vr_host_views *views)
 		views->fov[eye][2] = tanf(located[eye].fov.angleUp);
 		views->fov[eye][3] = tanf(located[eye].fov.angleDown);
 	}
-	if (xrLocateSpace(vr.view_space, vr.play_space, vr.frame.predictedDisplayTime, &location) == XR_SUCCESS)
+	if (xrLocateSpace(vr.view_space, vr.play_space, time, &location) == XR_SUCCESS)
 		pose_from_xr(&location.pose, (location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0, &views->head);
 	for (hand = 0; hand < 2; hand++)
 	{
 		location.type = XR_TYPE_SPACE_LOCATION;
 		location.next = NULL;
-		if (xrLocateSpace(vr.aim_spaces[hand], vr.play_space, vr.frame.predictedDisplayTime, &location) == XR_SUCCESS)
+		if (xrLocateSpace(vr.aim_spaces[hand], vr.play_space, time, &location) == XR_SUCCESS)
 			pose_from_xr(&location.pose, (location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0,
 				&views->aim[hand]);
 		location.type = XR_TYPE_SPACE_LOCATION;
-		if (xrLocateSpace(vr.grip_spaces[hand], vr.play_space, vr.frame.predictedDisplayTime, &location) == XR_SUCCESS)
+		if (xrLocateSpace(vr.grip_spaces[hand], vr.play_space, time, &location) == XR_SUCCESS)
 			pose_from_xr(&location.pose, (location.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) != 0,
 				&views->grip[hand]);
 	}
@@ -1292,7 +1291,7 @@ int host_vr_locate(struct vr_host_views *views)
 	{
 		XrSpaceLocation gaze = { XR_TYPE_SPACE_LOCATION };
 
-		if (xrLocateSpace(vr.gaze_space, vr.view_space, vr.frame.predictedDisplayTime, &gaze) == XR_SUCCESS)
+		if (xrLocateSpace(vr.gaze_space, vr.view_space, time, &gaze) == XR_SUCCESS)
 		{
 			pose_from_xr(&gaze.pose, (gaze.locationFlags & XR_SPACE_LOCATION_ORIENTATION_VALID_BIT) &&
 				(gaze.locationFlags & XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT), &views->gaze);
@@ -1304,6 +1303,21 @@ int host_vr_locate(struct vr_host_views *views)
 		}
 	}
 	return 1;
+}
+
+int host_vr_locate(struct vr_host_views *views)
+{
+	if (!(render_thread.on ? render_thread.located : vr.frame_begun))
+		return 0;
+	return locate_at(vr.frame.predictedDisplayTime, views);
+}
+
+/* (the render thread: the frame it draws is the one it began) */
+int host_vr_locate_late(struct vr_host_views *views)
+{
+	if (!render_thread.on || !host_vr_frame_begin())
+		return 0;
+	return locate_at(render_thread.begun.predictedDisplayTime, views);
 }
 
 static int button(int action)

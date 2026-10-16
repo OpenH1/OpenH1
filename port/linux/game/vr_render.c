@@ -63,6 +63,7 @@ though they aim nothing (cinematic_head).
 #include "cache/texture_cache.h"
 
 #include "../src/vr.h"
+#include "../src/xgpu_stream.h"
 #include "vr_hands.h"
 #include "cache/cache_files.h"
 #include "tag_files/tag_groups.h"
@@ -77,6 +78,9 @@ though they aim nothing (cinematic_head).
 /* the union of the eyes' fields of view, a little wider (the eyes are
 apart, and the culling's planes start at the centre) */
 #define UNION_MARGIN 1.03f
+/* and wider by this angle on each side with the late latch (vr.late_latch),
+where the eyes may turn past it before they are drawn (degrees) */
+#define LATCH_MARGIN_DEGREES 2.0f
 /* the waypoints drawn in the eyes in a frame (vr_render_world_waypoint), at
 most */
 #define WORLD_WAYPOINTS_MAXIMUM 64
@@ -115,11 +119,16 @@ static struct
 	real centre[4][4];
 	real projection_depth[4];
 	float transforms[2][16];
+	/* and it is the first-person weapon's (rasterizer_set_frustum_z) */
+	boolean first_person;
 	/* the camera the first-person weapon was posed from this frame
 	(vr_render_weapon_camera), and whether it is in the right controller */
 	boolean weapon_camera_set;
 	boolean weapon_camera_valid;
 	struct render_camera weapon_camera;
+	/* and it is the right controller's (the weapon and the hands move with
+	it: the late latch) */
+	boolean weapon_in_hand;
 	/* and whether the weapon and the hands are drawn mirrored about it, a
 	left-hander's (vr_render_weapon_mirrored) */
 	boolean weapon_mirrored;
@@ -562,6 +571,7 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	vr_render.seated_unit_index = NONE;
 	vr_render.weapon_camera_set = FALSE;
 	vr_render.weapon_camera_valid = FALSE;
+	vr_render.weapon_in_hand = FALSE;
 	vr_render.cinematic_head = FALSE;
 	if (!halo_vr_view(view))
 		return FALSE;
@@ -679,6 +689,17 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 		right = eye ? MAX(right, view->fov[eye][1]) : view->fov[eye][1];
 		up = eye ? MAX(up, view->fov[eye][2]) : view->fov[eye][2];
 		down = eye ? MIN(down, view->fov[eye][3]) : view->fov[eye][3];
+	}
+	if (halo_vr_late_latching())
+	{
+		/* (the eyes drawn turned a little from where the game culls for:
+		halo_vr_latch) */
+		const real margin = LATCH_MARGIN_DEGREES * (real)M_PI / 180.0f, most = 85.0f * (real)M_PI / 180.0f;
+
+		left = (real)tan(MAX((real)atan(left) - margin, -most));
+		right = (real)tan(MIN((real)atan(right) + margin, most));
+		up = (real)tan(MIN((real)atan(up) + margin, most));
+		down = (real)tan(MAX((real)atan(down) - margin, -most));
 	}
 	left *= UNION_MARGIN;
 	right *= UNION_MARGIN;
@@ -1028,6 +1049,7 @@ boolean vr_render_weapon_camera(struct render_camera *camera)
 		weapon_kick(camera, &hand);
 	vr_render.weapon_camera = *camera;
 	vr_render.weapon_camera_valid = TRUE;
+	vr_render.weapon_in_hand = TRUE;
 	return TRUE;
 }
 
@@ -2043,6 +2065,38 @@ boolean vr_render_world_waypoint(real_point3d const *point, boolean on_screen, r
 	return TRUE;
 }
 
+/* an eye's clip transform from its own space (OpenXR's axes: x right, y
+up, z back; metres), row-major, for the late latch (halo_vr_eye_latch):
+the frustum's clip transform (m) from the eye's place in the world. (The
+view's axes are those too: render_camera_build_frustum puts the right, the
+up and the back in view_to_world's forward, left and up.) */
+static void eye_clip_from_eye(const struct render_frustum *frustum, double m[4][4], float out[16])
+{
+	const real_matrix4x3 *view = &frustum->view_to_world;
+	double units = vr_render.view.world_units_per_metre, a[4][4];
+	short i, j, k;
+
+	for (i = 0; i < 3; i++)
+	{
+		for (j = 0; j < 3; j++)
+			a[i][j] = (double)view->n[j][i] * units;
+		a[i][3] = (double)view->n[3][i];
+	}
+	a[3][0] = a[3][1] = a[3][2] = 0.0;
+	a[3][3] = 1.0;
+	for (i = 0; i < 4; i++)
+	{
+		for (j = 0; j < 4; j++)
+		{
+			double sum = 0.0;
+
+			for (k = 0; k < 4; k++)
+				sum += m[i][k] * a[k][j];
+			out[i * 4 + j] = (float)sum;
+		}
+	}
+}
+
 /* the eyes' transforms for the projection set last (vr_render.centre):
 each eye's own (or, for the sky, the eye where the centre is, its view
 turned the same way: the sky is at infinity).
@@ -2062,10 +2116,13 @@ precision. */
 static void eye_transforms_set(void)
 {
 	float transforms[2][16];
+	float clip_from_eye[2][16];
 	double inverse[4][4];
 	short eye, i, j, k;
+	int latch = XGPU_STREAM_VR_LATCH_NONE;
 
 	memset(transforms, 0, sizeof(transforms));
+	memset(clip_from_eye, 0, sizeof(clip_from_eye));
 	if (!vr_render.active || !vr_render.projection_valid || !matrix4_inverse(vr_render.centre, inverse))
 	{
 		for (eye = 0; eye < 2; eye++)
@@ -2087,6 +2144,7 @@ static void eye_transforms_set(void)
 			for (k = 0; k < 4; k++)
 				eye_frustum.projection_matrix[k][2] = vr_render.projection_depth[k];
 			frustum_clip_transform(&eye_frustum, m);
+			eye_clip_from_eye(&eye_frustum, m, clip_from_eye[eye]);
 			for (i = 0; i < 2; i++)
 			{
 				for (j = 0; j < 4; j++)
@@ -2102,18 +2160,30 @@ static void eye_transforms_set(void)
 			transforms[eye][2 * 4 + 2] = 1.0f;
 			transforms[eye][3 * 4 + 3] = 1.0f;
 		}
+		/* what the draws move with in the late latch: the world with the
+		head, the sky (about the eye) with its turn, the first-person weapon
+		and the hands with the controller they are in, else with the head
+		(where they are posed from it: nothing moves them), or the world
+		(the gamepad's, posed from the player's eye) */
+		latch = vr_render.infinite ? XGPU_STREAM_VR_LATCH_SKY : XGPU_STREAM_VR_LATCH_WORLD;
+		if (vr_render.first_person)
+			latch = vr_render.weapon_in_hand ? XGPU_STREAM_VR_LATCH_HELD :
+				vr_render.weapon_camera_valid ? XGPU_STREAM_VR_LATCH_WORLD : XGPU_STREAM_VR_LATCH_NONE;
 	}
 	memcpy(vr_render.transforms, transforms, sizeof(transforms));
+	halo_vr_eye_latch(latch, clip_from_eye);
 	halo_vr_set_eye_transforms(transforms);
 }
 
 /* rasterizer_set_frustum_z: the game has set the projection with this clip
-transform (centre); the renderer gets each eye's from it */
-void vr_render_projection_set(const struct render_frustum *frustum, real centre[4][4])
+transform (centre), the first-person weapon's or not; the renderer gets
+each eye's from it */
+void vr_render_projection_set(const struct render_frustum *frustum, real centre[4][4], boolean first_person)
 {
 	short k;
 
 	vr_render.projection_valid = vr_render.active;
+	vr_render.first_person = first_person;
 	if (vr_render.active)
 	{
 		/* the depth range the eyes' depth is submitted with (the world's:
@@ -2191,6 +2261,7 @@ void vr_render_screen_point(const real clip[4], real width, real height)
 		corrections[eye][2] = (float)(eye_screen[0] - scale[0] * centre_screen[0]);
 		corrections[eye][3] = (float)(eye_screen[1] - scale[1] * centre_screen[1]);
 	}
+	halo_vr_screen_point(clip, width, height);
 	halo_vr_set_screen_corrections(corrections);
 }
 

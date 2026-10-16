@@ -740,6 +740,15 @@ int halo_vr_gamepad_aiming(void);
 recentres */
 void halo_vr_gamepad_back(int held);
 
+/* the poses this frame's eyes are drawn from, for the host's late latch
+(vr_host.h's struct vr_host_latch; with vr.late_latch off, none to move):
+0 if the frame has no views located */
+struct vr_host_latch;
+int halo_vr_latch(struct vr_host_latch *latch);
+/* the late latch is on, and its head the runtime's (vr_render.c culls
+wider for it) */
+int halo_vr_late_latching(void);
+
 /* the eyes' depth: the projection's range (vr_render.c, in metres) and
 that this frame's is in its swapchain (xgpu_gl.c) */
 void halo_vr_depth_range(float near_metres, float far_metres);
@@ -756,6 +765,14 @@ void halo_vr_set_eye_transforms(const float transforms[2][16]);
 from the centre view's (identity: 1, 1, 0, 0), for what the game projects
 to the screen itself (vr_render.c, vr_render_screen_point) */
 void halo_vr_set_screen_corrections(const float corrections[2][4]);
+/* for the late latch (vr.late_latch; xgpu_stream.h), before
+halo_vr_set_eye_transforms: what the projection's draws move with
+(XGPU_STREAM_VR_LATCH_*) and each eye's clip transform from its own space
+(row-major: OpenXR's axes, metres); and before
+halo_vr_set_screen_corrections, the point they are for (its clip position
+in the centre view, w 0 none, in a viewport this wide and high) */
+void halo_vr_eye_latch(int latch, const float clip_from_eye[2][16]);
+void halo_vr_screen_point(const float clip[4], float width, float height);
 /* the draws from now on go into that eye's layer alone (0 left, 1 right),
 or both at once (-1, multiview) */
 void halo_vr_draw_eye(int eye);

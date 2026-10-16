@@ -147,10 +147,11 @@ struct host_render_backend
 	/* the game's VR state for the next composition (xgpu_stream.h) */
 	void (*vr_state)(void *context, const struct xgpu_stream_vr_state *record);
 	/* what vr.c sets in the backend as it draws (vr.h): the eyes'
-	transforms (2 row-major 4x4s), the screen's corrections (2 vec4s), the
-	sky's depth clamping, the feed (7 values) and a tint (3) */
-	void (*vr_eye_transforms)(void *context, const float transforms[2][16]);
-	void (*vr_screen_corrections)(void *context, const float corrections[2][4]);
+	transforms, the screen's corrections (with what the late latch moves them
+	by: xgpu_stream.h), the sky's depth clamping, the feed (7 values) and a
+	tint (3) */
+	void (*vr_eye_transforms)(void *context, const struct xgpu_stream_vr_eye_transforms *record);
+	void (*vr_screen_corrections)(void *context, const struct xgpu_stream_vr_screen_corrections *record);
 	void (*vr_sky)(void *context, int32_t sky);
 	void (*vr_eye_feed)(void *context, const float feed[7]);
 	void (*vr_eye_tint)(void *context, const float tint[3]);

@@ -120,8 +120,8 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_VR_COMPOSE] = sizeof(struct xgpu_stream_vr_frame_record),
 	[XGPU_STREAM_VR_SUBMIT] = sizeof(struct xgpu_stream_vr_submit),
 	[XGPU_STREAM_VR_STATE] = sizeof(struct xgpu_stream_vr_state),
-	[XGPU_STREAM_VR_EYE_TRANSFORMS] = sizeof(struct xgpu_stream_vr_values) + 32 * sizeof(float),
-	[XGPU_STREAM_VR_SCREEN_CORRECTIONS] = sizeof(struct xgpu_stream_vr_values) + 8 * sizeof(float),
+	[XGPU_STREAM_VR_EYE_TRANSFORMS] = sizeof(struct xgpu_stream_vr_eye_transforms),
+	[XGPU_STREAM_VR_SCREEN_CORRECTIONS] = sizeof(struct xgpu_stream_vr_screen_corrections),
 	[XGPU_STREAM_VR_SKY] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_VR_EYE_FEED] = sizeof(struct xgpu_stream_vr_values) + 7 * sizeof(float),
 	[XGPU_STREAM_VR_EYE_TINT] = sizeof(struct xgpu_stream_vr_values) + 3 * sizeof(float),
@@ -566,10 +566,10 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 		CALL(vr_state, (const void *)start);
 		break;
 	case XGPU_STREAM_VR_EYE_TRANSFORMS:
-		CALL(vr_eye_transforms, (const float (*)[16])((const struct xgpu_stream_vr_values *)start)->values);
+		CALL(vr_eye_transforms, (const void *)start);
 		break;
 	case XGPU_STREAM_VR_SCREEN_CORRECTIONS:
-		CALL(vr_screen_corrections, (const float (*)[4])((const struct xgpu_stream_vr_values *)start)->values);
+		CALL(vr_screen_corrections, (const void *)start);
 		break;
 	case XGPU_STREAM_VR_SKY:
 		CALL(vr_sky, (int32_t)value->value);

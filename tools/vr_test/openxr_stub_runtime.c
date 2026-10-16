@@ -5,7 +5,7 @@ A stand-in OpenXR runtime for the VR build, for a computer without a headset
 or a runtime that can open a session there (SteamVR on Linux needs a
 headset's display in direct mode: port/linux/README.md, "SteamVR on a desktop
 PC"). It is a headset that is always worn and still, at a standing height,
-with no controllers: the game draws its eyes, HUD and panels into the
+with no controllers (or two held still, XR_STUB_HANDS): the game draws its eyes, HUD and panels into the
 runtime's swapchains as it would for a real one, and the frames are paced at
 the headset's refresh rate, then dropped. What it shows is the game's side:
 the binding of its GL context, its swapchains, its drawing (the screenshots,
@@ -24,6 +24,19 @@ context. Settings, from the environment:
 	                                    SteamVR's null driver's)
 	XR_STUB_FPS=<Hz>                    the refresh rate (90)
 	XR_STUB_CYLINDER=1                  offer XR_KHR_composition_layer_cylinder
+	XR_STUB_HEAD_TURN="<yaw> <pitch> <right> [<frame>]"
+	                                    from that frame on (100), the head
+	                                    turned left and up (degrees) and moved
+	                                    right (metres)
+	XR_STUB_HANDS=1                     two controllers, held still before the
+	                                    chest, pointing ahead
+	XR_STUB_HAND_TURN="<yaw> <pitch> <right> [<frame>]"
+	                                    the right one turned and moved so
+	XR_STUB_TURN_LATE=1                 the turns located only by a thread
+	                                    other than the one that waits for the
+	                                    frames (the renderer's, as it draws:
+	                                    the late latch), the game's seeing the
+	                                    head and hand still
 
 A 64-bit host library, built with the headers the VR build downloads into
 build/linux_x86_64/third_party/openxr (configure.py --vr; or fetched there
@@ -42,6 +55,7 @@ alone, as openxr_probe.c's comment says), from the root of the repository:
 
 #include <EGL/egl.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -85,6 +99,7 @@ static struct
 #define MAX_SWAPCHAINS 32
 #define MAX_PATHS 512
 #define MAX_EVENTS 8
+#define MAX_ACTIONS 256
 
 struct swapchain
 {
@@ -106,6 +121,27 @@ static struct
 	char *paths[MAX_PATHS];
 	int path_count;
 	uint64_t handles;
+	/* XR_STUB_HEAD_TURN, XR_STUB_HAND_TURN: the head's and the right
+	hand's turn (a quaternion) and move, from which frame, located by which
+	threads; the frames waited for, by which */
+	struct turn
+	{
+		int set;
+		float q[4], move;
+		unsigned long frame;
+	} head_turn, hand_turn;
+	int turn_late;
+	unsigned long frames;
+	pthread_t waiter;
+	/* XR_STUB_HANDS; the actions' names and the action spaces' actions and
+	hands, by their handles' numbers */
+	int hands;
+	char action_names[MAX_ACTIONS][XR_MAX_ACTION_NAME_SIZE];
+	struct
+	{
+		uint64_t action;
+		XrPath hand;
+	} action_spaces[MAX_ACTIONS];
 } stub;
 
 #define INSTANCE ((XrInstance)(uintptr_t)1)
@@ -355,9 +391,16 @@ static XrResult XRAPI_CALL create_reference_space(XrSession session, const XrRef
 static XrResult XRAPI_CALL create_action_space(XrSession session, const XrActionSpaceCreateInfo *info,
 	XrSpace *space)
 {
+	uint64_t number;
+
 	(void)session;
-	(void)info;
 	*space = SPACE(_space_action);
+	number = (uint64_t)(uintptr_t)*space >> 4;
+	if (number < MAX_ACTIONS)
+	{
+		stub.action_spaces[number].action = (uint64_t)(uintptr_t)info->action;
+		stub.action_spaces[number].hand = info->subactionPath;
+	}
 	return XR_SUCCESS;
 }
 
@@ -375,15 +418,70 @@ static float origin_height(XrSpace space)
 	return SPACE_KIND(space) == _space_stage ? 0.0f : 1.7f;
 }
 
+/* a pose turned and moved as XR_STUB_HEAD_TURN (or _HAND_TURN) has it,
+now and on this thread: turned about a point at height above the space's
+origin (the head's middle, the hand's grip) */
+static void turned(const struct turn *turn, XrPosef *pose, float height)
+{
+	const float *q = turn->q;
+	float v[3] = { pose->position.x, pose->position.y - height, pose->position.z }, c[3], cc[3], r[4];
+	const float p[4] = { pose->orientation.x, pose->orientation.y, pose->orientation.z, pose->orientation.w };
+	int axis;
+
+	if (!turn->set || stub.frames < turn->frame || (stub.turn_late && pthread_equal(pthread_self(), stub.waiter)))
+		return;
+	c[0] = q[1] * v[2] - q[2] * v[1];
+	c[1] = q[2] * v[0] - q[0] * v[2];
+	c[2] = q[0] * v[1] - q[1] * v[0];
+	cc[0] = q[1] * c[2] - q[2] * c[1];
+	cc[1] = q[2] * c[0] - q[0] * c[2];
+	cc[2] = q[0] * c[1] - q[1] * c[0];
+	for (axis = 0; axis < 3; axis++)
+		v[axis] += 2.0f * (q[3] * c[axis] + cc[axis]);
+	pose->position.x = v[0] + turn->move;
+	pose->position.y = v[1] + height;
+	pose->position.z = v[2];
+	r[0] = q[3] * p[0] + q[0] * p[3] + q[1] * p[2] - q[2] * p[1];
+	r[1] = q[3] * p[1] - q[0] * p[2] + q[1] * p[3] + q[2] * p[0];
+	r[2] = q[3] * p[2] + q[0] * p[1] - q[1] * p[0] + q[2] * p[3];
+	r[3] = q[3] * p[3] - q[0] * p[0] - q[1] * p[1] - q[2] * p[2];
+	pose->orientation.x = r[0];
+	pose->orientation.y = r[1];
+	pose->orientation.z = r[2];
+	pose->orientation.w = r[3];
+}
+
 static XrResult XRAPI_CALL locate_space(XrSpace space, XrSpace base, XrTime time, XrSpaceLocation *location)
 {
 	(void)time;
 	memset(&location->pose, 0, sizeof(location->pose));
 	location->pose.orientation.w = 1.0f;
 	location->locationFlags = 0;
+	if (SPACE_KIND(space) == _space_action && SPACE_KIND(base) != _space_action && stub.hands)
+	{
+		/* (a hand's pose: grip and aim alike, 1.3 m above the floor, 0.2 m to
+		its side and 0.35 m ahead) */
+		uint64_t number = (uint64_t)(uintptr_t)space >> 4;
+		XrPath hand = number < MAX_ACTIONS ? stub.action_spaces[number].hand : 0;
+		const char *name = hand && hand <= (XrPath)stub.path_count ? stub.paths[hand - 1] : "";
+		int right = !strcmp(name, "/user/hand/right");
+
+		if (strcmp(name, "/user/hand/left") && !right)
+			return XR_SUCCESS;
+		location->pose.position.x = right ? 0.2f : -0.2f;
+		location->pose.position.y = 1.3f - origin_height(base);
+		location->pose.position.z = -0.35f;
+		if (right)
+			turned(&stub.hand_turn, &location->pose, location->pose.position.y);
+		location->locationFlags = XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT |
+			XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT | XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
+		return XR_SUCCESS;
+	}
 	if (SPACE_KIND(space) == _space_action || SPACE_KIND(base) == _space_action)
 		return XR_SUCCESS; /* (no controllers) */
 	location->pose.position.y = origin_height(space) - origin_height(base);
+	if (SPACE_KIND(space) == _space_view && SPACE_KIND(base) != _space_view)
+		turned(&stub.head_turn, &location->pose, location->pose.position.y);
 	location->locationFlags = XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT |
 		XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT | XR_SPACE_LOCATION_POSITION_TRACKED_BIT;
 	return XR_SUCCESS;
@@ -413,6 +511,7 @@ static XrResult XRAPI_CALL locate_views(XrSession session, const XrViewLocateInf
 		views[eye].fov.angleRight = eye ? 0.98f : 0.80f;
 		views[eye].fov.angleUp = 0.92f;
 		views[eye].fov.angleDown = -0.92f;
+		turned(&stub.head_turn, &views[eye].pose, 1.7f - origin_height(info->space));
 	}
 	return XR_SUCCESS;
 }
@@ -545,6 +644,8 @@ static XrResult XRAPI_CALL wait_frame(XrSession session, const XrFrameWaitInfo *
 
 	(void)session;
 	(void)info;
+	stub.waiter = pthread_self();
+	stub.frames++;
 	if (!stub.next_display || stub.next_display < time - period)
 		stub.next_display = time + period;
 	else
@@ -635,8 +736,9 @@ static XrResult XRAPI_CALL create_action_set(XrInstance instance, const XrAction
 static XrResult XRAPI_CALL create_action(XrActionSet set, const XrActionCreateInfo *info, XrAction *action)
 {
 	(void)set;
-	(void)info;
 	*action = (XrAction)(uintptr_t)++stub.handles;
+	if (stub.handles < MAX_ACTIONS)
+		snprintf(stub.action_names[stub.handles], sizeof(stub.action_names[0]), "%s", info->actionName);
 	return XR_SUCCESS;
 }
 
@@ -699,9 +801,10 @@ static XrResult XRAPI_CALL get_vector2f(XrSession session, const XrActionStateGe
 
 static XrResult XRAPI_CALL get_pose(XrSession session, const XrActionStateGetInfo *info, XrActionStatePose *state)
 {
+	uint64_t action = (uint64_t)(uintptr_t)info->action;
+
 	(void)session;
-	(void)info;
-	state->isActive = XR_FALSE;
+	state->isActive = stub.hands && action < MAX_ACTIONS && strstr(stub.action_names[action], "pose") ? XR_TRUE : XR_FALSE;
 	return XR_SUCCESS;
 }
 
@@ -792,10 +895,31 @@ static XrResult XRAPI_CALL get_instance_proc_address(XrInstance instance, const 
 	return XR_ERROR_FUNCTION_UNSUPPORTED;
 }
 
+/* "<yaw> <pitch> <right> [<frame>]": the yaw about the play space's up,
+then the pitch about the pose's right (degrees), the move right (metres),
+from the frame (100) */
+static void turn_read(const char *text, struct turn *turn)
+{
+	float yaw = 0.0f, pitch = 0.0f, half, a[4], b[4];
+
+	turn->frame = 100;
+	turn->set = text && sscanf(text, "%f %f %f %lu", &yaw, &pitch, &turn->move, &turn->frame) >= 1;
+	half = yaw * 3.14159265f / 360.0f;
+	a[0] = 0.0f, a[1] = sinf(half), a[2] = 0.0f, a[3] = cosf(half);
+	half = pitch * 3.14159265f / 360.0f;
+	b[0] = sinf(half), b[1] = 0.0f, b[2] = 0.0f, b[3] = cosf(half);
+	turn->q[0] = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+	turn->q[1] = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+	turn->q[2] = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+	turn->q[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+}
+
 EXPORT XrResult XRAPI_CALL xrNegotiateLoaderRuntimeInterface(const XrNegotiateLoaderInfo *loader,
 	XrNegotiateRuntimeRequest *request)
 {
 	const char *size = getenv("XR_STUB_EYE_SIZE"), *fps = getenv("XR_STUB_FPS"), *cylinder = getenv("XR_STUB_CYLINDER");
+	const char *head_turn = getenv("XR_STUB_HEAD_TURN"), *hand_turn = getenv("XR_STUB_HAND_TURN");
+	const char *turn_late = getenv("XR_STUB_TURN_LATE"), *hands = getenv("XR_STUB_HANDS");
 
 	if (!loader || !request || loader->structType != XR_LOADER_INTERFACE_STRUCT_LOADER_INFO ||
 		request->structType != XR_LOADER_INTERFACE_STRUCT_RUNTIME_REQUEST)
@@ -810,6 +934,10 @@ EXPORT XrResult XRAPI_CALL xrNegotiateLoaderRuntimeInterface(const XrNegotiateLo
 	if (!(stub.fps >= 10.0 && stub.fps <= 500.0))
 		stub.fps = 90.0;
 	stub.cylinder = cylinder && *cylinder == '1';
+	turn_read(head_turn, &stub.head_turn);
+	turn_read(hand_turn, &stub.hand_turn);
+	stub.turn_late = turn_late && *turn_late == '1';
+	stub.hands = hands && *hands == '1';
 	request->runtimeInterfaceVersion = XR_CURRENT_LOADER_RUNTIME_VERSION;
 	request->runtimeApiVersion = XR_MAKE_VERSION(1, 0, 0);
 	request->getInstanceProcAddr = get_instance_proc_address;

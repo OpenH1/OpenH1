@@ -121,6 +121,27 @@ struct vr_host_views
 	struct vr_host_pose gaze;
 };
 
+/* The late latch (vr.late_latch): the poses a frame's eyes are drawn from,
+and those they were located as, which the host's render thread, just before
+it draws the frame, moves to the newest it locates (host_vr_locate_late;
+xgpu_stream.h's VR_EYES) */
+struct vr_host_latch
+{
+	/* the head's newest pose may be taken (not debug.vr_test_head's) */
+	int head;
+	/* the controller the first-person weapon and the hands move with (0
+	the runtime's left, 1 its right), -1 none (debug.vr_test_hands') */
+	int hand;
+	/* when the poses were located: nanoseconds of CLOCK_MONOTONIC */
+	unsigned int located_low, located_high;
+	/* as located: the eyes and the controllers' grips */
+	struct vr_host_pose located_eye[2];
+	struct vr_host_pose located_grip[2];
+	/* the eyes the frame is drawn from (and its layers submitted with):
+	the located ones, moved by vr.c's tests (debug.vr_test_jitter) */
+	struct vr_host_pose eye[2];
+};
+
 struct vr_host_input
 {
 	unsigned int buttons;

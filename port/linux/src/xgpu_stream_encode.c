@@ -1635,10 +1635,20 @@ void xgpu_backend_vr_eyes(xgpu_target eye_target, unsigned int image)
 	record_body->eye_target = eye_target;
 	record_body->image = image;
 	record_body->foveation = 0;
+	record_body->latched = 0;
 #ifdef HALO_VR
 	/* (where the backend asks, foveated: xgpu_gl.c's vr_fovea_place) */
 	if (xgpu_foveated)
 		record_body->foveation = halo_vr_foveation(record_body->centres);
+	{
+		struct vr_host_latch latch;
+
+		if (halo_vr_latch(&latch))
+		{
+			record_body->latched = 1;
+			memcpy(record_body->latch, &latch, sizeof(latch));
+		}
+	}
 #endif
 }
 
@@ -1810,14 +1820,55 @@ static void vr_values_record(uint32_t type, const float *values, uint32_t count)
 	memcpy(record_body->values, values, count * sizeof(float));
 }
 
+_Static_assert(sizeof(struct vr_host_latch) == XGPU_STREAM_VR_LATCH_WORDS * 4, "VR latch");
+
+/* the late latch's for the next eye transforms and screen corrections
+(halo_vr_eye_latch, halo_vr_screen_point) */
+static struct
+{
+	int latch;
+	float clip_from_eye[2][16];
+	float point[4];
+	float viewport[2];
+} vr_latch;
+
+void halo_vr_eye_latch(int latch, const float clip_from_eye[2][16])
+{
+	vr_latch.latch = latch;
+	memcpy(vr_latch.clip_from_eye, clip_from_eye, sizeof(vr_latch.clip_from_eye));
+}
+
+void halo_vr_screen_point(const float clip[4], float width, float height)
+{
+	memcpy(vr_latch.point, clip, sizeof(vr_latch.point));
+	vr_latch.viewport[0] = width;
+	vr_latch.viewport[1] = height;
+}
+
 void halo_vr_set_eye_transforms(const float transforms[2][16])
 {
-	vr_values_record(XGPU_STREAM_VR_EYE_TRANSFORMS, &transforms[0][0], 32);
+	struct xgpu_stream_vr_eye_transforms *record_body;
+
+	if (!stream.open)
+		return;
+	record_body = record(XGPU_STREAM_VR_EYE_TRANSFORMS, sizeof(*record_body));
+	record_body->latch = vr_latch.latch;
+	memcpy(record_body->transforms, transforms, sizeof(record_body->transforms));
+	memcpy(record_body->clip_from_eye, vr_latch.clip_from_eye, sizeof(record_body->clip_from_eye));
+	vr_latch.latch = XGPU_STREAM_VR_LATCH_NONE;
 }
 
 void halo_vr_set_screen_corrections(const float corrections[2][4])
 {
-	vr_values_record(XGPU_STREAM_VR_SCREEN_CORRECTIONS, &corrections[0][0], 8);
+	struct xgpu_stream_vr_screen_corrections *record_body;
+
+	if (!stream.open)
+		return;
+	record_body = record(XGPU_STREAM_VR_SCREEN_CORRECTIONS, sizeof(*record_body));
+	memcpy(record_body->corrections, corrections, sizeof(record_body->corrections));
+	memcpy(record_body->point, vr_latch.point, sizeof(record_body->point));
+	memcpy(record_body->viewport, vr_latch.viewport, sizeof(record_body->viewport));
+	memset(vr_latch.point, 0, sizeof(vr_latch.point));
 }
 
 void halo_vr_sky(int sky)

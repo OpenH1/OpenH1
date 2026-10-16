@@ -2841,9 +2841,11 @@ void rasterizer_set_frustum_z(
 #ifdef HALO_VR
 	{
 		/* the VR mode's eyes, for this projection (port/linux/game/vr_render.c) */
-		extern void vr_render_projection_set(const struct render_frustum *frustum, real centre[4][4]);
+		extern void vr_render_projection_set(const struct render_frustum *frustum, real centre[4][4],
+			boolean first_person);
 
-		vr_render_projection_set(&global_window_parameters.frustum, vertex_constants);
+		vr_render_projection_set(&global_window_parameters.frustum, vertex_constants,
+			z_near != 0.0f && z_near == rasterizer_globals.first_person_weapon_near_clip_distance);
 	}
 #endif
 	IDirect3DDevice8_SetVertexShaderConstant(

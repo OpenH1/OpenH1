@@ -44,6 +44,7 @@ the view while the crouch is the head's: the head has already come down.
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 /* the HUD's and menus' image: the 640x480 screen at twice its size */
 #define HUD_WIDTH 1280
@@ -525,6 +526,8 @@ static struct
 	int frame; /* a frame is begun */
 	unsigned long presents;
 	struct vr_host_views views;
+	/* the views as located last, for the host's late latch (halo_vr_latch) */
+	struct vr_host_latch latch;
 	/* debug.vr_test_head: the head's place, and the time it turns by */
 	int test_head_placed;
 	float test_head_centre[3];
@@ -884,6 +887,8 @@ static struct
 	int handlebars;
 	int wheel;
 	int comfort_vignette;
+	/* vr.late_latch */
+	int late_latch;
 	float test_turn;
 	float test_jitter;
 	/* debug.vr_test_shake: the right controller's shake (degrees, RMS) and
@@ -1026,6 +1031,7 @@ static void settings_read(void)
 	settings.handlebars = strcmp(config_string("vr.ghost_steering"), "look") != 0;
 	settings.wheel = strcmp(config_string("vr.warthog_steering"), "look") != 0;
 	settings.comfort_vignette = config_boolean("vr.comfort_vignette");
+	settings.late_latch = config_boolean("vr.late_latch");
 	settings.test_turn = (float)config_real("debug.vr_test_turn") * (float)M_PI / 180.0f;
 	settings.test_jitter = (float)config_real("debug.vr_test_jitter") * 0.001f;
 	settings.test_shake = settings.test_shake_place = 0.0f;
@@ -4516,6 +4522,21 @@ void halo_vr_aim_zoom(float magnification)
 	vr.steady_zoom = magnification > 1.0f ? magnification : 1.0f;
 }
 
+/* the views and controllers as the runtime located them (before the tests
+move them), and when */
+static void latch_located(void)
+{
+	struct timespec now;
+	unsigned long long nanoseconds;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	nanoseconds = (unsigned long long)now.tv_sec * 1000000000ull + (unsigned long long)now.tv_nsec;
+	vr.latch.located_low = (unsigned int)nanoseconds;
+	vr.latch.located_high = (unsigned int)(nanoseconds >> 32);
+	memcpy(vr.latch.located_eye, vr.views.eye, sizeof(vr.latch.located_eye));
+	memcpy(vr.latch.located_grip, vr.views.grip, sizeof(vr.latch.located_grip));
+}
+
 /* waits for the runtime's next frame and begins it; whether it did now */
 static int frame_begin(void)
 {
@@ -4542,6 +4563,7 @@ static int frame_begin(void)
 	vr.test_head_seconds += vr.views.display_elapsed > 0.0f ? vr.views.display_elapsed : vr.views.display_period;
 	if (host_vr_locate(&vr.views))
 	{
+		latch_located();
 		vr.views_unassigned = 1;
 		test_head_apply();
 		test_fov_apply();
@@ -4714,6 +4736,34 @@ void halo_vr_depth_range(float near_metres, float far_metres)
 	vr.depth_far = far_metres;
 }
 
+/* The late latch (vr.late_latch): the host's render thread locates the
+head and the controllers again just before it draws the frame, and moves
+the eyes' views (and the first-person weapon, with its controller) by as
+much as they have moved since they were located here (xgpu_stream.h). The
+game's work is the frame's as located; the picture is the newest. Not the
+test head's (it is not the runtime's), nor the test hands' or pointing.
+Off, the poses go to the host still, for the time from their locating to
+the frame's submission (debug.gpu_stats). */
+int halo_vr_latch(struct vr_host_latch *latch)
+{
+	if (!vr.frame || !vr.views.should_render || !vr.views.eye[0].valid || !vr.views.eye[1].valid)
+		return 0;
+	*latch = vr.latch;
+	latch->head = settings.late_latch && !settings.test_head;
+	/* (the weapon's controller: the runtime's left for a left-hander,
+	hands_assign) */
+	latch->hand = !settings.late_latch || settings.test_hand_poses || vr.test_point_valid ? -1 :
+		settings.left_handed ? 0 : 1;
+	memcpy(latch->eye, vr.views.eye, sizeof(latch->eye));
+	return 1;
+}
+
+int halo_vr_late_latching(void)
+{
+	settings_read();
+	return settings.late_latch && !settings.test_head;
+}
+
 int halo_vr_depth_wanted(void)
 {
 	return vr.initialized && vr.info.depth && vr.frame;
@@ -4766,6 +4816,7 @@ int halo_vr_view(struct halo_vr_view *view)
 	/* late: the poses the frame is drawn and submitted with */
 	if (host_vr_locate(&vr.views))
 	{
+		latch_located();
 		vr.views_unassigned = 1;
 		test_head_apply();
 		test_fov_apply();

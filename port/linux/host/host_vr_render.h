@@ -27,6 +27,10 @@ vr_host_info's images), or -1; released; the frame begun ended */
 int host_vr_acquire(int swapchain);
 void host_vr_release(int swapchain);
 void host_vr_frame_end(const struct vr_host_layers *layers);
+/* (the render thread) the views, head and controllers at the display time
+of the frame begun, located now (vr_host.h's struct vr_host_latch): 0 if no
+frame is begun or the runtime locates none */
+int host_vr_locate_late(struct vr_host_views *views);
 /* the session's images and sizes, as host_vr_initialize made them (NULL
 before) */
 const struct vr_host_info *host_vr_info(void);

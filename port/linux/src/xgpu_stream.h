@@ -38,7 +38,7 @@ port/linux/README.md.
 #include <stdint.h>
 
 #define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
-#define XGPU_STREAM_VERSION 2
+#define XGPU_STREAM_VERSION 3
 
 /* ---------- the ring
 
@@ -734,8 +734,12 @@ struct xgpu_stream_vr_info
 	int32_t sample_counting;
 };
 
+/* vr_host.h's struct vr_host_latch, in words */
+#define XGPU_STREAM_VR_LATCH_WORDS 52
+
 /* the eye pass begins; with its insets' middles where foveated
-(halo_vr_foveation: foveation 0, none this frame) */
+(halo_vr_foveation: foveation 0, none this frame), and the poses the eyes
+are drawn from for the late latch (halo_vr_latch's; latched 0: none) */
 struct xgpu_stream_vr_eyes
 {
 	uint32_t header;
@@ -743,6 +747,8 @@ struct xgpu_stream_vr_eyes
 	uint32_t image;
 	int32_t foveation;
 	float centres[2][2];
+	uint32_t latched;
+	uint32_t latch[XGPU_STREAM_VR_LATCH_WORDS];
 };
 
 /* xgpu_backend.h's struct xgpu_vr_frame */
@@ -835,12 +841,51 @@ struct xgpu_stream_vr_state
 	uint32_t rim[XGPU_STREAM_VR_RIM_WORDS];
 };
 
-/* halo_vr_set_eye_transforms', halo_vr_set_screen_corrections',
-halo_vr_eye_feed's (7) and halo_vr_eye_tint's (3) values */
+/* halo_vr_eye_feed's (7) and halo_vr_eye_tint's (3) values */
 struct xgpu_stream_vr_values
 {
 	uint32_t header;
 	float values[];
+};
+
+/* The late latch. The host locates the head and the controllers again as
+it begins the eye pass (VR_EYES), and moves what the frame draws by how far
+they have moved since the game located them: the eyes' transforms
+(VR_EYE_TRANSFORMS) for each projection the game sets, by the head's move
+(the world), its turn alone (the sky, drawn about the eye), or the head's
+and the weapon's controller's (the first-person weapon and the hands), and
+the eyes' layers' poses, and the scope's with the weapon. */
+enum
+{
+	XGPU_STREAM_VR_LATCH_NONE = 0,
+	XGPU_STREAM_VR_LATCH_WORLD,
+	XGPU_STREAM_VR_LATCH_SKY,
+	XGPU_STREAM_VR_LATCH_HELD,
+};
+
+/* VR_EYE_TRANSFORMS: halo_vr_set_eye_transforms' (2 row-major 4x4s, the
+centre's clip position to each eye's), what they move with in the late
+latch (XGPU_STREAM_VR_LATCH_*), and each eye's clip transform from its own
+space (row-major: OpenXR's axes, metres) for the projection
+(halo_vr_eye_latch's) */
+struct xgpu_stream_vr_eye_transforms
+{
+	uint32_t header;
+	int32_t latch;
+	float transforms[2][16];
+	float clip_from_eye[2][16];
+};
+
+/* VR_SCREEN_CORRECTIONS: halo_vr_set_screen_corrections' (2 vec4s), and the
+point they are for (halo_vr_screen_point's: its clip position in the
+centre's view, w 0 none, and the viewport's width and height), from which
+the late latch makes them again */
+struct xgpu_stream_vr_screen_corrections
+{
+	uint32_t header;
+	float corrections[2][4];
+	float point[4];
+	float viewport[2];
 };
 
 /* ---------- the layouts' sizes, alike on both sides */
@@ -868,7 +913,9 @@ XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_draw_immediate, 28);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_dynamic_lights_block, 6192);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_dynamic_lights_halos, 192);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_info, 108);
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_eyes, 32);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_eyes, 36 + 4 * 52);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_eye_transforms, 8 + 4 * 64);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_screen_corrections, 4 + 4 * 14);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_frame_record, 44);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_submit, 44 + 8 + 4 * (113 + 8));
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_state, 4 * (2 + 4 + 32 + 3 + 3 + 1 + 34 + 19 + 1 + 8 + 50 + 80 + 71 + 3 + 39));

@@ -1374,8 +1374,9 @@ no host, draw with the OpenGL backend in the game):
   runtime's frames and locates the head and hands, as before. What the
   frame's composition reads of `src/vr.c` and `src/vr_visor.c` (the scope,
   a cockpit's display, the vignette, the visor, the rim) comes as a record
-  before it, as do the gaze for the foveation and the layers the game
-  submits; what `vr.c` sets as the frame is drawn (the eyes' transforms, the
+  before it, as do the gaze for the foveation, the poses the eyes are
+  drawn from (the late latch: "VR", "How it operates") and the layers the
+  game submits; what `vr.c` sets as the frame is drawn (the eyes' transforms, the
   sky, the feed, the tint) are records in their order. The host ends each
   frame as it plays its last record. The screenshots of the eyes, the HUD
   and the scope are the host's; the view's (the layers composed over the
@@ -2822,6 +2823,7 @@ headset's session is opened with, apply from the next start.
 | `vr.depth` | `false` | `HALO_VR_DEPTH` | `true`: give the runtime the eyes' depth too (`XR_KHR_composition_layer_depth`), for its reprojection. SteamVR on the Steam Frame cannot make a depth swapchain for an OpenGL session yet. |
 | `vr.foveation` | `"eye"` | `HALO_VR_FOVEATION` | Foveated rendering (below, "How it operates"): each eye's image at its full resolution in an inset where you look, and at less about it, which draws half of the eyes' pixels (at the default `vr.foveation_inset`). `"eye"`: the inset follows the eyes, where the runtime tracks them (`XR_EXT_eye_gaze_interaction`; else as `"fixed"`); `"fixed"`: it stays in the middle of each eye's view; `"off"`: all of each image at full resolution. Not in VR Display; from the next start. |
 | `vr.foveation_inset` | `0.5` | `HALO_VR_FOVEATION_INSET` | With `vr.foveation`: how much of each eye's image across and up is the inset (from `0.3` to `0.8`), at the image's resolution; about it, the image is drawn at this much of it (`0.5`: half across and up). Smaller is faster. From the next start. |
+| `vr.late_latch` | `true` | `HALO_VR_LATE_LATCH` | The late latch (below, "How it operates"): each frame is drawn from where the head and the weapon's controller are just before it goes to the headset, located again by the renderer's thread, not where they were as the game began the frame; the game's work is the frame's as it was. `false`: as located when the game began it. |
 | `vr.melee_gesture` | `true` | `HALO_VR_MELEE_GESTURE` | A swing of the right controller melees, as B does: a hard one in any direction, or a softer one with the right grip held ("Meleeing with a swing"). |
 | `vr.holsters` | `true` | `HALO_VR_HOLSTERS` | With `vr.aim = "controller"`: the weapon you carry but do not hold is on your body, and the right hand reaching there and gripping draws it (above, "Holsters"). Y switches weapons as ever. |
 | `vr.physical_crouch` | `true` | `HALO_VR_PHYSICAL_CROUCH` | The head crouching crouches the player: about 0.35 m below the standing eyes (`vr.height = "standing"`), or 0.25 m below the recentred ones (seated), and standing within 0.07 m of that stands (above, "Crouching"). The left stick's click crouches as ever. |
@@ -3018,6 +3020,23 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   b30's horizon, and, depth-clamped, a10's Pillar of Autumn showed its far
   side over its near hull.) The screen's other render targets have a
   layer for each eye. Draws in screen space are the same in both eyes.
+- The late latch (`vr.late_latch`, the default): the game locates the
+  head as it begins to draw a frame, and the renderer's thread on the host
+  plays the frame a few milliseconds later. As it begins the eye pass it
+  locates the head and the controllers again, at the frame's display time
+  (`host_vr_locate_late`), and moves what the frame draws by how far they
+  have moved since (`host/host_gl_vr.c`): each eye's 4x4 for each
+  projection (the world's with the head; the sky's, drawn about the eye,
+  with its turn alone; the first-person weapon's and the hands' with the
+  head and the weapon's controller), as the view would have been made from
+  there, and the layers' poses submitted with the eyes. The game's work
+  (its culling, a little wider for it, its aim, sounds and HUD) is the
+  frame's as located; the picture is the newest. The left hand is in the
+  same model as the right, so it moves with the weapon's controller too
+  until the next frame. Not with `debug.vr_test_head` (its head is not the
+  runtime's) nor the right hand with `debug.vr_test_hands`. With
+  `debug.gpu_stats` the host logs the time from the poses' locating to the
+  frame's submission, as the game located them and as latched.
 - Foveated (`vr.foveation`, the default), the eye pass draws four views
   in the same draws (`GL_OVR_multiview2`; `src/xgpu_gl.c`, "foveation"),
   each `vr.foveation_inset` of an eye's image across and up (864x864 of
