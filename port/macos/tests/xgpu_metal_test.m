@@ -1721,6 +1721,7 @@ int main(int argc, char *argv[])
 		}
 		memset(&options, 0, sizeof(options));
 		options.archive_path = archive;
+		options.synchronous = 1;
 		options.guest_extent = host_memory_readable_extent;
 		if (!xgpu_metal_initialize(&options))
 		{

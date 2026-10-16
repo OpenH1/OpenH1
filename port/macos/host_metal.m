@@ -40,6 +40,7 @@ drawables reached the screen.
 #include "host.h"
 #undef host_page_size
 #include "xgpu_metal_internal.h"
+#include "xgpu_metal_pipeline.h"
 #include "host_render_record.h"
 #include "host_render_stream.h"
 #include "xgpu_metal_stream.h"
@@ -96,13 +97,18 @@ static struct
 	BOOL unpaced;
 
 	/* pacing, since the last log */
-	double stats_interval, stats_since;
+	double stats_interval, stats_since, started;
 	uint32_t ticks, frames_presented, idle_presented, skipped, waits, dropped;
 	/* the refreshes without a new frame by what the render thread was doing:
 	waiting for the GPU to finish a frame, for an image, playing the stream,
 	or waiting for the game's */
 	uint32_t skipped_gpu, skipped_image, skipped_playing, skipped_game;
 	_Atomic uint32_t shown, late, intervals;
+	/* (HALO_METAL_STATS) intervals over HITCH_SECONDS; the shaders and
+	pipelines made by the time each queued image's frame ended, and by the
+	time the frame shown last did */
+	_Atomic uint32_t hitches;
+	struct xgpu_metal_compile_totals compiled[PRESENT_IMAGES], compiled_before;
 	_Atomic uint64_t interval_sum_us, interval_minimum_us, interval_maximum_us;
 	/* the presentations' GPU time, their wait from commit to the GPU's
 	start, and those shown after the refresh the link drew them for */
@@ -207,6 +213,8 @@ void host_metal_present_queue(id<MTLTexture> image)
 		if (presentation.images[index] == image && presentation.queued < PRESENT_IMAGES)
 		{
 			presentation.queue[presentation.queued++] = index;
+			if (presentation.stats_interval > 0.0)
+				xgpu_metal_compile_totals(&presentation.compiled[index]);
 			presentation.frames_seen = YES;
 			break;
 		}
@@ -229,7 +237,12 @@ static double seconds_now(void)
 	return CACurrentMediaTime();
 }
 
-static void presented(double when, double target)
+/* a frame on screen this long after the last: a hitch, which
+HALO_METAL_STATS logs with the shaders and pipelines made since the last
+(two refreshes at 60 Hz, a frame missed, are 33.3 ms) */
+#define HITCH_SECONDS 0.033
+
+static void presented(double when, double target, const struct xgpu_metal_compile_totals *compiled)
 {
 	double previous = presentation.last_presented;
 
@@ -253,7 +266,20 @@ static void presented(double when, double target)
 			atomic_store(&presentation.interval_maximum_us, interval);
 		if (presentation.refresh_rate > 0.0f && (double)interval > 1.5e6 / presentation.refresh_rate)
 			atomic_fetch_add(&presentation.late, 1);
+		if (presentation.stats_interval > 0.0 && when - previous > HITCH_SECONDS)
+		{
+			const struct xgpu_metal_compile_totals *now = compiled, *before = &presentation.compiled_before;
+
+			atomic_fetch_add(&presentation.hitches, 1);
+			host_logf(HOST_LOG_INFO, "metal: hitch of %.1f ms at %.2f s: %u shaders compiled (%.1f ms), %u pipelines made "
+				"(%.1f ms) by the frame since the frame before", (when - previous) * 1000.0,
+				when - presentation.started, now->shaders - before->shaders,
+				(now->shader_seconds - before->shader_seconds) * 1000.0, now->pipelines - before->pipelines,
+				(now->pipeline_seconds - before->pipeline_seconds) * 1000.0);
+		}
 	}
+	if (compiled)
+		presentation.compiled_before = *compiled;
 }
 
 static void pacing_log(double now)
@@ -273,7 +299,7 @@ static void pacing_log(double now)
 	xgpu_metal_textures_statistics(&textures);
 	host_logf(HOST_LOG_INFO,
 		"metal: %.1f s: %u refreshes (%.1f Hz), %u presented (%u frames, %u cleared), %u on screen (%.1f a second), "
-		"intervals %.2f ms mean, %.2f min, %.2f max, %u late; %u refreshes without a new frame (the GPU %u, an image %u, "
+		"intervals %.2f ms mean, %.2f min, %.2f max, %u late, %u hitches over 33 ms; %u refreshes without a new frame (the GPU %u, an image %u, "
 		"playing %u, the game %u), %u callbacks late (drawables all pending %u, some free %u; after another %u, after a slow one %u, target skipped %u, delivered late %u; the slowest %.2f ms), %u waits for an image, "
 		"%u frames dropped, %u shown after their refresh; "
 		"%u ended on the GPU within 1 ms of their target (the least slack %.2f ms); "
@@ -283,6 +309,7 @@ static void pacing_log(double now)
 		intervals ? (double)sum / 1000.0 / intervals : 0.0,
 		atomic_exchange(&presentation.interval_minimum_us, 0) / 1000.0,
 		atomic_exchange(&presentation.interval_maximum_us, 0) / 1000.0, atomic_exchange(&presentation.late, 0),
+		atomic_exchange(&presentation.hitches, 0),
 		presentation.skipped, presentation.skipped_gpu, presentation.skipped_image, presentation.skipped_playing,
 		presentation.skipped_game, presentation.gaps_starved + presentation.gaps_free, presentation.gaps_starved,
 		presentation.gaps_free, presentation.gaps_following, presentation.gaps_after_slow, presentation.gaps_target_skipped,
@@ -299,7 +326,7 @@ static void pacing_log(double now)
 			"metal: a frame: GPU busy %.2f ms (%.0f%% of the time); its command buffers' GPU time %.2f ms (%u), render thread CPU %.2f ms, %.1f draws, %.1f passes, "
 			"%.1f ordered uploads, %.1f copies of a target drawn into, %.1f pictures restored; the last played in %.2f ms, its stream %u KB "
 			"(the most %u KB); the game waited %u times (%.1f ms); textures made %u, made again %u, images %u, "
-			"%.1f MB read; pipelines made %u (%u from the archive, %.1f ms)",
+			"%.1f MB read; shaders compiled %u (%.1f ms), %u from the library, %u the combiner's specialised; pipelines made %u (%u from the archive, %.1f ms); %u pipelines made while drawing (not prepared)",
 			statistics.gpu_busy_seconds * 1000.0 / statistics.frames, statistics.gpu_busy_seconds * 100.0 / seconds,
 			statistics.gpu_seconds * 1000.0 / statistics.frames, statistics.command_buffers,
 			statistics.render_cpu_seconds * 1000.0 / statistics.frames, (double)statistics.draws / statistics.frames,
@@ -308,8 +335,10 @@ static void pacing_log(double now)
 			(double)statistics.pictures_restored / statistics.frames, ring ? ring->decode_nanoseconds / 1e6 : 0.0,
 			ring ? ring->frame_bytes / 1024 : 0, ring ? ring->frame_bytes_most / 1024 : 0, waits - waits_before,
 			(wait_nanoseconds - wait_nanoseconds_before) / 1e6, textures.made, textures.remade, textures.images,
-			textures.bytes / 1048576.0, statistics.pipelines_made, statistics.pipelines_from_archive,
-			statistics.pipeline_seconds * 1000.0);
+			textures.bytes / 1048576.0, statistics.shaders_made, statistics.shader_seconds * 1000.0,
+			statistics.shaders_from_library, statistics.shaders_specialised,
+			statistics.pipelines_made, statistics.pipelines_from_archive,
+			statistics.pipeline_seconds * 1000.0, statistics.draws_waiting);
 	waits_before = waits;
 	wait_nanoseconds_before = wait_nanoseconds;
 	presentation.stats_since = now;
@@ -354,6 +383,7 @@ static void pacing_log(double now)
 		double now = seconds_now(), target = update.targetPresentationTimestamp, committed;
 		int index = -1;
 		BOOL idle;
+		struct xgpu_metal_compile_totals compiled = { 0 };
 
 		(void)link;
 		presentation.ticks++;
@@ -397,6 +427,7 @@ static void pacing_log(double now)
 			presentation.queued--;
 			presentation.image_states[index] = _image_showing;
 			image = presentation.images[index];
+			compiled = presentation.compiled[index];
 		}
 		idle = !presentation.frames_seen;
 		pthread_mutex_unlock(&presentation.lock);
@@ -446,7 +477,7 @@ static void pacing_log(double now)
 		atomic_fetch_add(&presentation.drawables_pending, 1);
 		[drawable addPresentedHandler:^(id<MTLDrawable> shown) {
 			atomic_fetch_sub(&presentation.drawables_pending, 1);
-			presented(shown.presentedTime, target);
+			presented(shown.presentedTime, target, image ? &compiled : NULL);
 		}];
 		[buffer presentDrawable:drawable];
 		committed = seconds_now();
@@ -489,24 +520,6 @@ static void pacing_log(double now)
 
 @end
 
-static NSString *const present_source =
-	@"#include <metal_stdlib>\n"
-	"using namespace metal;\n"
-	"struct present_vertex { float4 position [[position]]; float2 coordinates; };\n"
-	"vertex present_vertex halo_present_vertex(uint id [[vertex_id]])\n"
-	"{\n"
-	"\tpresent_vertex out;\n"
-	"\tfloat2 corner = float2(id & 1, id >> 1);\n"
-	"\tout.position = float4(corner.x * 2.0 - 1.0, 1.0 - corner.y * 2.0, 0.0, 1.0);\n"
-	"\tout.coordinates = corner;\n"
-	"\treturn out;\n"
-	"}\n"
-	"fragment float4 halo_present_fragment(present_vertex in [[stage_in]], texture2d<float> picture [[texture(0)]],\n"
-	"\tsampler linear [[sampler(0)]])\n"
-	"{\n"
-	"\treturn float4(picture.sample(linear, in.coordinates).rgb, 1.0);\n"
-	"}\n";
-
 static void *presentation_thread(void *context)
 {
 	HaloDisplayLinkTarget *target = (__bridge_transfer HaloDisplayLinkTarget *)context;
@@ -548,6 +561,24 @@ static bool SDLCALL window_event(void *userdata, SDL_Event *event)
 	return true;
 }
 
+/* the shaders built ahead of time (tools/macos_build.py): the app's
+resource, or the file beside a bare executable (HALO_METAL_LIBRARY: another,
+"" none) */
+static const char *shader_library_path(void)
+{
+	static char path[1024];
+	const char *chosen = getenv("HALO_METAL_LIBRARY");
+	NSString *found;
+
+	if (chosen)
+		return *chosen ? chosen : NULL;
+	found = [[NSBundle mainBundle] pathForResource:@"shaders" ofType:@"metallib"];
+	if (!found)
+		return NULL;
+	snprintf(path, sizeof(path), "%s", found.fileSystemRepresentation);
+	return path;
+}
+
 /* the backend, set up for this process (once; host_main.c, before the
 guest starts, so that the command stream finds it) */
 int host_metal_initialize(void)
@@ -567,6 +598,7 @@ int host_metal_initialize(void)
 		archive = path;
 	}
 	options.archive_path = archive && *archive ? archive : NULL;
+	options.library_path = shader_library_path();
 	options.page_size = (uint32_t)getpagesize();
 	options.guest_extent = host_memory_readable_extent;
 	result = xgpu_metal_initialize(&options);
@@ -637,11 +669,10 @@ int host_metal_window_open(uint32_t window)
 			screen.minimumRefreshInterval < screen.maximumRefreshInterval ? " (variable)" : "");
 	}
 
-	library = [xgpu_metal_device() newLibraryWithSource:present_source options:nil error:&error];
-	descriptor = [MTLRenderPipelineDescriptor new];
+	library = xgpu_metal_fixed_library();
+	descriptor = xgpu_metal_present_descriptor();
 	descriptor.vertexFunction = [library newFunctionWithName:@"halo_present_vertex"];
 	descriptor.fragmentFunction = [library newFunctionWithName:@"halo_present_fragment"];
-	descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatBGRA8Unorm;
 	presentation.present_pipeline = library ? [xgpu_metal_device() newRenderPipelineStateWithDescriptor:descriptor
 		error:&error] : nil;
 	if (!presentation.present_pipeline)
@@ -657,7 +688,7 @@ int host_metal_window_open(uint32_t window)
 	SDL_AddEventWatch(window_event, NULL);
 	presentation.stats_interval = stats ? atof(stats) : 0.0;
 	presentation.unpaced = getenv("HALO_METAL_UNPACED") && atoi(getenv("HALO_METAL_UNPACED"));
-	presentation.stats_since = seconds_now();
+	presentation.stats_since = presentation.started = seconds_now();
 	atomic_store(&presentation.present_slack_least_us, 1000000);
 	atomic_store(&presentation.active, 1);
 	/* (the display's deadlines are each refresh's: the scheduler runs it

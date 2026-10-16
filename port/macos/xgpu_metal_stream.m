@@ -40,6 +40,7 @@ by the functions under "the interface's values".
 #undef host_page_size
 #include "host_render_stream.h"
 #include "xgpu_metal_internal.h"
+#include "xgpu_metal_pipeline.h"
 #include "xgpu_metal_stream.h"
 #include "xgpu_metal_textures.h"
 
@@ -141,12 +142,6 @@ static uint32_t clear_parts(uint32_t flags)
 	return flags & (XGPU_METAL_CLEAR_CHANNELS | XGPU_METAL_CLEAR_COLOR | XGPU_METAL_CLEAR_DEPTH | XGPU_METAL_CLEAR_STENCIL);
 }
 
-/* XGPU_VERTEX_*: XGPU_METAL_ATTRIBUTE_* are the same */
-static uint8_t attribute_format(uint8_t format)
-{
-	return format < XGPU_METAL_ATTRIBUTE_COUNT ? format : XGPU_METAL_ATTRIBUTE_NONE;
-}
-
 /* XGPU_FILTER_NONE, _POINT, _LINEAR, _ANISOTROPIC; XGPU_ADDRESS_WRAP,
 _MIRROR, _CLAMP, _BORDER (XGPU_METAL_ADDRESS_*'s first four); the border
 colour as ARGB */
@@ -154,28 +149,6 @@ enum
 {
 	_filter_none, _filter_point, _filter_linear, _filter_anisotropic,
 };
-
-/* a border colour Metal's samplers have (ARGB) */
-static BOOL border_metal(uint32_t color)
-{
-	return color == 0 || color == 0xff000000u || color == 0xffffffffu;
-}
-
-/* the axes (bit 0 u, 1 v, 2 w) whose border colour the shader draws */
-static uint8_t border_axes(const struct xgpu_stream_sampler *sampler)
-{
-	uint8_t axes = 0;
-	int axis;
-
-	if (border_metal(sampler->border_color))
-		return 0;
-	for (axis = 0; axis < 3; axis++)
-	{
-		if (sampler->address[axis] == XGPU_METAL_ADDRESS_BORDER)
-			axes |= (uint8_t)(1u << axis);
-	}
-	return axes;
-}
 
 /* the sampler; axes: those whose border the shader draws, clamped to the
 edge here */
@@ -196,12 +169,6 @@ static void sampler_convert(const struct xgpu_stream_sampler *from, uint8_t axes
 	to->max_anisotropy = (uint8_t)(from->minify == _filter_anisotropic && from->anisotropy > 1 ?
 		(from->anisotropy > 16 ? 16 : from->anisotropy) : 1);
 	to->min_lod = (float)from->first_level;
-}
-
-/* the targets' formats: XGPU_FORMAT_NONE, _BGRA8, _D24S8 */
-static uint8_t target_format(uint8_t format)
-{
-	return format == 1 ? XGPU_METAL_FORMAT_BGRA8 : format == 2 ? XGPU_METAL_FORMAT_D24S8 : XGPU_METAL_FORMAT_NONE;
 }
 
 /* ---------- targets */
@@ -395,14 +362,9 @@ static void stream_set_textures(void *context, const struct host_render_texture_
 	for (index = 0; index < 4; index++)
 	{
 		const struct xgpu_stream_texture_stage *stage = &stages[index].stage;
-		uint8_t axes = 0;
 
 		stream.stages[index] = *stage;
-		/* (the shader draws the border of a 2D or 3D texture's sampler) */
-		if (stage->source != _source_none && stage->sampler_type != _xgpu_sampler_cube &&
-			stage->sampler_type != _xgpu_sampler_2d_layered)
-			axes = border_axes(&stage->sampler);
-		stream.border[index] = axes;
+		stream.border[index] = xgpu_metal_border_axes(stage->source, stage->sampler_type, &stage->sampler);
 		if (memcmp(&stream.samplers[index], &stage->sampler, sizeof(stage->sampler)))
 		{
 			stream.samplers[index] = stage->sampler;
@@ -588,30 +550,7 @@ static int stream_pipeline(void *context, uint32_t id, const struct xgpu_stream_
 		return 0;
 	stream.pipeline_id = id;
 	stream.definition = definition;
-	memset(pipeline, 0, sizeof(*pipeline));
-	pipeline->blend = key->blend;
-	pipeline->blend_source = key->blend_source;
-	pipeline->blend_destination = key->blend_destination;
-	pipeline->blend_operation = key->blend_operation;
-	pipeline->color_mask = key->color_mask;
-	pipeline->depth_test = key->depth_test;
-	pipeline->depth_function = key->depth_function;
-	pipeline->depth_write = key->depth_write;
-	pipeline->stencil_test = key->stencil_test;
-	pipeline->stencil_function = key->stencil_function;
-	pipeline->stencil_fail = key->stencil_fail;
-	pipeline->stencil_depth_fail = key->stencil_depth_fail;
-	pipeline->stencil_pass = key->stencil_pass;
-	pipeline->stencil_read_mask = (uint8_t)key->stencil_read_mask;
-	pipeline->stencil_write_mask = (uint8_t)key->stencil_write_mask;
-	pipeline->cull = key->cull;
-	pipeline->front_counter_clockwise = key->front_counter_clockwise;
-	pipeline->cull_front = key->cull_front;
-	pipeline->fill = key->fill;
-	pipeline->depth_bias = key->depth_bias;
-	pipeline->color_format = target_format(key->color_format);
-	pipeline->depth_format = target_format(key->depth_format);
-	pipeline->samples = key->samples > 1 ? key->samples : 1;
+	xgpu_metal_pipeline_from_key(key, pipeline);
 	return 1;
 }
 
@@ -699,40 +638,12 @@ static struct xgpu_metal_source ring_source(uint32_t address, uint32_t size)
 
 static void stream_set_vertices(void *context, const struct host_render_vertex_input *input)
 {
-	uint32_t fed = 0, integers = 0, index;
+	uint32_t index;
 
 	(void)context;
-	memset(stream.attributes, 0, sizeof(stream.attributes));
 	memset(stream.strides, 0, sizeof(stream.strides));
-	if (input->layout)
-	{
-		for (index = 0; index < input->layout->element_count; index++)
-		{
-			const struct xgpu_stream_vertex_element *element = &input->layout->elements[index];
-
-			if (element->reg >= 16 || element->stream >= XGPU_METAL_STREAM_COUNT)
-				continue;
-			stream.attributes[element->reg].format = attribute_format(element->format);
-			stream.attributes[element->reg].stream = element->stream;
-			stream.attributes[element->reg].offset = element->offset;
-			if (stream.attributes[element->reg].format != XGPU_METAL_ATTRIBUTE_NONE)
-				fed |= 1u << element->reg;
-			/* (unnormalized shorts are read as integers, which the shader
-			converts) */
-			if (element->format >= XGPU_METAL_ATTRIBUTE_SHORT1 && element->format <= XGPU_METAL_ATTRIBUTE_SHORT4)
-				integers |= 1u << element->reg;
-		}
-	}
-	stream.integer_attributes = (uint16_t)integers;
-	/* (every other input, from its value) */
-	for (index = 0; index < 16; index++)
-	{
-		if (!(fed & (1u << index)))
-		{
-			stream.attributes[index].format = XGPU_METAL_ATTRIBUTE_FLOAT4;
-			stream.attributes[index].stream = XGPU_METAL_STREAM_CONSTANT;
-		}
-	}
+	stream.integer_attributes = xgpu_metal_layout_attributes(input->layout ? input->layout->elements : NULL,
+		input->layout ? input->layout->element_count : 0, stream.attributes);
 	for (index = 0; index < XGPU_METAL_STREAM_COUNT; index++)
 	{
 		const struct xgpu_stream_vertex_stream *source = &input->streams[index];
@@ -893,30 +804,15 @@ static void stream_draw_immediate(void *context, const struct xgpu_stream_draw_i
 	struct xgpu_metal_vertex_attribute layout[16];
 	uint16_t strides[XGPU_METAL_STREAM_COUNT];
 	struct xgpu_metal_source streams[XGPU_METAL_STREAM_COUNT];
-	uint32_t index, written = 0, size;
+	uint32_t written, size;
 
 	(void)context;
-	memset(layout, 0, sizeof(layout));
-	memset(strides, 0, sizeof(strides));
 	memset(streams, 0, sizeof(streams));
 	/* the registers written, a vec4 each, in order; the rest from their
 	values */
-	for (index = 0; index < 16; index++)
-	{
-		layout[index].format = XGPU_METAL_ATTRIBUTE_FLOAT4;
-		if (record->written & (1u << index))
-		{
-			layout[index].stream = 0;
-			layout[index].offset = (uint16_t)(written++ * 16);
-		}
-		else
-		{
-			layout[index].stream = XGPU_METAL_STREAM_CONSTANT;
-		}
-	}
+	written = xgpu_metal_layout_immediate(record->written, layout, strides);
 	if (!written || !record->count)
 		return;
-	strides[0] = (uint16_t)(written * 16);
 	size = record->count * written * 16;
 	streams[0] = ring_source(record->vertices, size);
 	if (streams[0].kind == XGPU_METAL_SOURCE_NONE)
@@ -950,6 +846,24 @@ static void stream_present(void *context, uint32_t back_buffer)
 {
 	(void)context;
 	stream.back_buffer = back_buffer;
+}
+
+static void stream_prepare(void *context)
+{
+	(void)context;
+	xgpu_metal_prepare_begin();
+}
+
+static void stream_exiting(void *context)
+{
+	(void)context;
+	xgpu_metal_exiting();
+}
+
+static uint32_t stream_prepared(void *context)
+{
+	(void)context;
+	return (uint32_t)(xgpu_metal_prepared() * 1000.0 + 0.5);
 }
 
 static void stream_frame_end(void *context)
@@ -1025,6 +939,9 @@ const struct host_render_backend *xgpu_metal_stream_backend(void)
 		backend.vertex_program = stream_vertex_program;
 		backend.vertex_lighting = stream_vertex_lighting;
 		backend.pipeline_define = stream_pipeline_define;
+		backend.prepared = stream_prepared;
+		backend.exiting = stream_exiting;
+		backend.prepare = stream_prepare;
 		backend.pipeline = stream_pipeline;
 		backend.draw_state = stream_draw_state;
 		backend.mirror_write = stream_mirror_write;

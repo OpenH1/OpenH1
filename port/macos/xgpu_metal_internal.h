@@ -18,6 +18,9 @@ What the Metal backend (xgpu_metal.m) and the window's presentation
 xgpu_metal_initialize) */
 id<MTLDevice> xgpu_metal_device(void);
 id<MTLCommandQueue> xgpu_metal_queue(void);
+/* the library of the clears' and the presentation's functions
+(xgpu_metal_fixed_source's) */
+id<MTLLibrary> xgpu_metal_fixed_library(void);
 /* a command buffer's GPU start and end, counted in the GPU's busy time */
 void xgpu_metal_gpu_interval(double start, double end);
 /* the render thread waits for the GPU to finish a frame (xgpu_metal_frame_wait) */

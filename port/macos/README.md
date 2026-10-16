@@ -334,7 +334,10 @@ the last frame's time to play (from its first record to its end, the wait
 for a presentation image included) and its bytes in the stream (and the
 most of any frame); the game's waits for the host (the frames in flight,
 or room in the ring); the textures and images made, and made again, and
-the bytes read for them; the pipelines made, and those from the archive.
+the bytes read for them; the shaders compiled and the time it took; the
+pipelines made, and those from the archive. Each hitch is logged as it
+comes, with the shaders and pipelines the render thread made since the
+frame before it (what the frame may have waited for).
 
 ### The GPU's time
 
@@ -429,15 +432,35 @@ command stream's backend table. They run on one thread, the render thread.
   and stencil part. Culling, winding, the fill mode, depth bias and depth
   clamping are the encoder's state. Pipelines are made from a binary
   archive (`~/Library/Caches/OpenCE/metal_pipelines.bin`, or
-  `HALO_METAL_ARCHIVE`) where it has them. Once no new pipeline has been
-  made for 3 seconds (the game ends its process without warning), the
-  archive is written again, on a queue of its own, of every pipeline made
-  or found this run that writes a colour: a new archive each time, as
-  Metal's archiver cannot write one that was read or written and has had
-  pipelines added since (it reports a stage missing). Pipelines of the old
-  archive that the run did not make are not kept.
-- **Shaders** are MSL functions (`xgpu_metal_shader_create`), compiled
-  with `newLibraryWithSource` and safe maths. Where a draw's shaders read
+  `HALO_METAL_ARCHIVE`) where it has them. None is made on the render
+  thread: each is made on a queue (user-initiated QoS) once its shaders
+  are, during a map's loading screen for the draws it is shown first
+  (`display.prepare_shaders`: the stream's PREPARE and PREPARED records).
+  A draw whose pipeline was not made so waits for it, logged and counted
+  ("made while drawing"): a draw is never skipped. The archive is written,
+  on a background queue, after a map's preparation and as the process
+  ends (host_exit), never in play: a new archive each time, as Metal's
+  archiver cannot write one that was read or written and has had pipelines
+  added since (it reports a stage missing), of every pipeline made or found
+  this run that writes a colour.
+- **Shaders.** The app's library (`Contents/Resources/shaders.metallib`, or
+  `shaders.metallib` beside a bare executable; `HALO_METAL_LIBRARY`) is
+  made when the app is built (`tools/macos_shaders.py`, run by `ninja
+  macos`, no maps needed): every vertex shader the game's code creates, in
+  each form a draw can need (from its layout or in immediate mode, unlit or
+  lit as the settings light it: `tools/render_manifest.py vertex`), the
+  clears' and the presentation's functions, the NV2A combiner as one
+  function whose configuration is function constants
+  (`xgpu_metal_combiner.c`), and the pixel programs of the renderer's
+  manifest (`port/assets/render`) that the combiner cannot draw. A shader is
+  looked up there by its name (its MSL source's hash). A pixel program is
+  the combiner's function specialised for its configuration
+  (`newFunctionWithName:constantValues:`, on the queue: about 0.2 ms, 10 ms
+  the first time on a Mac): Metal's specialisation gives the same machine
+  code as the program's own MSL compiled in the same maths mode. Only a
+  shader the library lacks and the combiner cannot draw (a debugging
+  setting's) is compiled from MSL (`newLibraryWithSource`), on the queue.
+  The library's and the run's shaders use safe maths. Where a draw's shaders read
   what is set in `xgpu_metal_bindings.h`, the one place the MSL emitter
   (`port/linux/src/xgpu_msl.c`) and the backend agree on: the vertex
   constants (`setVertexBytes`), the draw's uniforms (both stages), the
@@ -553,6 +576,8 @@ draw, and cleared.
   enhanced dynamic lights, a render target's mip levels drawn one by one
   (the water's ripple map: its first level is sampled), points drawn as
   polygons' fill (lines instead).
-- A pipeline's shaders are compiled the first time a draw needs them, on
-  the render thread.
+- Without `display.prepare_shaders` (off until the enumeration is
+  complete), a pipeline is made the first time a draw needs it, which the
+  draw waits for (the shaders are the library's or specialised: no MSL is
+  compiled); later runs find it in the archive.
 - The self-updater and the Discord invites are not set up for macOS.

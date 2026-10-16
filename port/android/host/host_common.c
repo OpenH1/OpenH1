@@ -96,6 +96,8 @@ void host_exit(int code)
 	host_render_record.h) */
 	if (host_render_record_active)
 		host_render_stream_close();
+	/* (the backend's pipeline cache written: port/macos/xgpu_metal.m) */
+	host_render_stream_exiting();
 	/* (what the host itself printed: the guest's output does not go
 	through the host's stdio, host_syscall.c) */
 	fflush(stdout);

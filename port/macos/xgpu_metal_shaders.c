@@ -29,6 +29,7 @@ read the game's settings file.
 #include "xgpu_stream.h"
 #include "xgpu_metal.h"
 #include "xgpu_metal_stream.h"
+#include "xgpu_metal_combiner.h"
 
 #include <stddef.h>
 #include <stdio.h>
@@ -166,12 +167,24 @@ static void debug_options(struct xgpu_msl_options *options)
 	options->debug_flat = flat;
 }
 
-/* compiles the emitter's function entry, named after its source's hash:
-the pipeline archive tells functions apart by their names, and a pipeline
-whose two functions have another pipeline's names (all the emitter's have
-one of two) is written without one of its stages, which spoils the
-archive */
-static uint32_t compile(char *source, const char *entry, const char *name)
+/* a source's hash (its function's name) */
+static unsigned long long text_hash(const char *text, size_t size)
+{
+	unsigned long long hash = 14695981039346656037ULL;
+	size_t index;
+
+	for (index = 0; index < size; index++)
+		hash = (hash ^ (unsigned char)text[index]) * 1099511628211ULL;
+	return hash;
+}
+
+/* the emitter's function entry, named after its source's hash (64 bits:
+the name is the source's identity in the app's library of thousands,
+xgpu_metal_shader_create): the pipeline archive tells functions apart by
+their names, and a pipeline whose two functions have another pipeline's
+names (all the emitter's have one of two) is written without one of its
+stages, which spoils the archive */
+static uint32_t compile(char *source, const char *entry, const char *name, const uint32_t *constants)
 {
 	struct xgpu_text text = { 0 };
 	char call[64], renamed[64];
@@ -181,7 +194,7 @@ static uint32_t compile(char *source, const char *entry, const char *name)
 	if (!source)
 		return 0;
 	snprintf(call, sizeof(call), " %s(", entry);
-	snprintf(renamed, sizeof(renamed), "%s_%08x", entry, bytes_hash(source, strlen(source)));
+	snprintf(renamed, sizeof(renamed), "%s_%016llx", entry, text_hash(source, strlen(source)));
 	at = strstr(source, call);
 	if (at)
 	{
@@ -190,7 +203,7 @@ static uint32_t compile(char *source, const char *entry, const char *name)
 		{
 			if (dump_folder())
 				dump(name, text.buffer);
-			shader = xgpu_metal_shader_create(text.buffer, text.length, renamed);
+			shader = xgpu_metal_pixel_shader_create(text.buffer, text.length, renamed, constants);
 		}
 		free(text.buffer);
 	}
@@ -212,6 +225,9 @@ static int shaders_make(void *context, const struct xgpu_stream_pipeline_define 
 	unsigned long packed = key->immediate ? 0 : key->packed_attributes;
 	unsigned long integers = key->immediate ? 0 : variant->integer_attributes;
 	char name[96];
+	struct xgpu_metal_combiner combiner;
+	uint32_t constants[XGPU_METAL_COMBINER_CONSTANTS];
+	int have_constants;
 
 	(void)context;
 	*vertex_shader = *pixel_shader = 0;
@@ -231,12 +247,23 @@ static int shaders_make(void *context, const struct xgpu_stream_pipeline_define 
 	vertex_program_convert(record, program);
 	snprintf(name, sizeof(name), "vs%08x%08x_%lx_%lx_%u", record->hash[1], record->hash[0], packed, integers,
 		key->lighting);
-	*vertex_shader = compile(xgpu_msl_vertex_shader(program, packed, integers, lighting, &options), "xgpu_vertex", name);
+	*vertex_shader = compile(xgpu_msl_vertex_shader(program, packed, integers, lighting, &options), "xgpu_vertex", name,
+		NULL);
 	free(program);
 	pixel_program_convert(&definition->pixel_program, &pixel);
 	snprintf(name, sizeof(name), "ps_%08x_%02x%02x%02x%02x", bytes_hash(&definition->pixel_program,
 		sizeof(definition->pixel_program)), options.border[0], options.border[1], options.border[2], options.border[3]);
-	*pixel_shader = compile(xgpu_msl_pixel_shader(&pixel, &options), "xgpu_fragment", name);
+	/* (one the app's library lacks drawn at once by the combiner's function,
+	specialised for it, where it can: its configuration) */
+	have_constants = xgpu_metal_combiner_draws(&pixel) && !options.debug_expression && !options.debug_texture0 &&
+		!options.debug_flat;
+	if (have_constants)
+	{
+		xgpu_metal_combiner_configure(&pixel, variant->border, &combiner);
+		xgpu_metal_combiner_constants(&combiner, constants);
+	}
+	*pixel_shader = compile(xgpu_msl_pixel_shader(&pixel, &options), "xgpu_fragment", name,
+		have_constants ? constants : NULL);
 	return *vertex_shader && *pixel_shader;
 }
 

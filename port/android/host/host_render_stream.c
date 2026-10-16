@@ -891,6 +891,12 @@ const struct xgpu_stream_ring *host_render_stream_ring(void)
 	return render.running ? render.ring : NULL;
 }
 
+void host_render_stream_exiting(void)
+{
+	if (render_backend && render_backend->exiting)
+		render_backend->exiting(render_backend->context);
+}
+
 void host_render_stream_close(void)
 {
 	if (!render.running)

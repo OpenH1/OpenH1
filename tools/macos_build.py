@@ -111,7 +111,15 @@ HOST_EXCLUDED = {"host_main.c", "host_touch.c", "host_memory.c", "host_syscall.c
 # them
 SHARED_SOURCES = ["xgpu.h", "xgpu_backend.h", "xgpu_shader.h", "xgpu_msl.h", "xgpu_msl.c", "xgpu_text.c",
                   "xbox_texture_decode.c"]
-SHARED_USERS = {"xgpu_metal_shaders.c", "xgpu_metal_textures.c"}
+SHARED_USERS = {"xgpu_metal_shaders.c", "xgpu_metal_textures.c", "xgpu_metal_combiner.c"}
+# the shaders' tool's own (port/macos/tools/xgpu_metal_prebuild.c): the
+# decoders, the stream's descriptions and the manifest's reader, beside the
+# same stand-in
+TOOL_SHARED_SOURCES = ["nv2a_vsh.c", "nv2a_psh.c", "xgpu_stream.h", "xgpu_stream_describe.h", "xgpu_stream_describe.c",
+                       "xgpu_manifest.h", "xgpu_manifest.c"]
+# the renderer's manifest the app's shaders are made from
+# (port/assets/render/README.md)
+RENDER_MANIFEST = Path("port/assets/render/manifest.txt")
 # the app's start (its folders, maps and window), which the Metal tests do
 # without
 APP_SOURCES = {"host_app.m"}
@@ -269,6 +277,23 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
                 variables={"cflags": shared_cflags})
         shared_objects.append(obj)
     host_objects += shared_objects
+    # the shaders' tool
+    tool_objects: List[Path] = []
+    for name in TOOL_SHARED_SOURCES:
+        n.build(outputs=shared_dir / name, rule="macos_shared_copy", inputs=LINUX_DIR / "src" / name)
+    tool_copies = [shared_dir / name for name in TOOL_SHARED_SOURCES]
+    for source in [shared_dir / name for name in TOOL_SHARED_SOURCES if name.endswith(".c")] + \
+            [PORT_DIR / "tools" / "xgpu_metal_prebuild.c"]:
+        obj = host_obj_dir / "tool" / (source.name + ".o")
+        flags = f"-I{PORT_DIR / 'tools'} {shared_cflags}" + (" -DXGPU_MANIFEST_READER_ONLY" if source.name ==
+                                                               "xgpu_manifest.c" else "")
+        n.build(outputs=obj, rule="macos_host_cc", inputs=source, order_only=shared_copies + tool_copies,
+                variables={"cflags": flags})
+        tool_objects.append(obj)
+    obj = host_obj_dir / "tool" / "xgpu_metal_prebuild_script.m.o"
+    n.build(outputs=obj, rule="macos_host_cc", inputs=PORT_DIR / "tools" / "xgpu_metal_prebuild_script.m",
+            variables={"cflags": f"-I{PORT_DIR / 'tools'} {objc_cflags}"})
+    tool_objects.append(obj)
     # the Metal renderer and the window's presentation (Objective-C)
     metal_objects: List[Path] = []
     for source in sorted(PORT_DIR.glob("*.m")):
@@ -279,6 +304,27 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
         else:
             metal_objects.append(obj)
     host_objects += metal_objects
+    # (the shaders' tool: the emitter's and the pipelines' parts of the host)
+    tool = BUILD / "xgpu_metal_prebuild"
+    n.rule(name="macos_tool_link",
+           command=f"$macos_cc -mmacosx-version-min={MACOS_MINIMUM} -o $out $in -framework Metal -framework Foundation",
+           description="MACOS LINK $out")
+    n.build(outputs=tool, rule="macos_tool_link",
+            inputs=[*tool_objects, *(obj for obj in shared_objects if obj.name in (
+                "xgpu_msl.c.o", "xgpu_text.c.o", "xgpu_metal_shaders.c.o", "xgpu_metal_combiner.c.o")),
+                    host_obj_dir / "xgpu_metal_pipeline.m.o"])
+    # the app's shaders, made ahead of time (tools/macos_shaders.py)
+    library = BUILD / "shaders.metallib"
+    n.rule(name="macos_shaders",
+           command=(f"$python tools/macos_shaders.py --tool {tool} --manifest {RENDER_MANIFEST} "
+                    f"--work {BUILD / 'shaders'} --library $out > {BUILD}/shaders.log"),
+           description="MACOS SHADERS $out")
+    n.build(outputs=library, rule="macos_shaders", inputs=[tool],
+            implicit=[Path("tools/macos_shaders.py"), Path("tools/render_manifest.py"),
+                      Path("source/rasterizer/xbox/rasterizer_xbox_vertex_shaders.c"),
+                      Path("source/rasterizer/xbox/rasterizer_xbox_vertex_shaders_initialize.c"),
+                      Path("source/rasterizer/xbox/rasterizer_xbox_vertex_shaders_data.inc")] +
+                     ([RENDER_MANIFEST] if RENDER_MANIFEST.exists() else []))
     miniupnpc_cflags = " ".join([host_cflags, f"-I{MINIUPNPC_DIR / 'include'}", f"-I{MINIUPNPC_DIR / 'src'}",
                                  *MINIUPNPC_DEFINES])
     for source in [LINUX_DIR / "src" / "posix_upnp.c", *miniupnpc_sources()]:
@@ -334,13 +380,13 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     n.rule(
         name="macos_app",
         command=(f"$python tools/macos_app.py bundle --app {app} --executable {output} --sdl {libsdl} "
-                 f"--icon {icon} --resource {brokers} --bundle-id {bundle_id} "
+                 f"--icon {icon} --resource {brokers} --resource {library} --bundle-id {bundle_id} "
                  f"--build {build_number if build_number.isdigit() else 0} "
                  f"--flavor {'release' if getattr(sln, 'port_release', False) else 'debug'} "
                  f"--minimum {MACOS_MINIMUM} > {BUILD}/app.log"),
         description=f"MACOS APP {app}",
     )
-    n.build(outputs=app_executable, rule="macos_app", inputs=[output, libsdl, brokers],
+    n.build(outputs=app_executable, rule="macos_app", inputs=[output, libsdl, brokers, library],
             implicit=[icon, PORT_DIR / "halo.entitlements", Path("tools/macos_app.py")])
     n.build(outputs="macos_app", rule="phony", inputs=[app_executable])
     dmg = BUILD / "Halo.dmg"
@@ -348,7 +394,7 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
            description=f"MACOS DMG $out")
     n.build(outputs=dmg, rule="macos_dmg", inputs=[app_executable])
     n.build(outputs="macos_dmg", rule="phony", inputs=[dmg])
-    n.build(outputs="macos", rule="phony", inputs=[output, staged_sdl, brokers, app_executable])
+    n.build(outputs="macos", rule="phony", inputs=[output, staged_sdl, brokers, library, app_executable])
 
     # ---------- the Metal backend's tests (python3 tools/test_macos_metal.py)
 

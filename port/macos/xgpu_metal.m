@@ -40,8 +40,11 @@ Ranges that cannot be wrapped are copied into the upload ring.
 #include "host.h"
 #undef host_page_size
 #include "xgpu_metal_internal.h"
+#include "xgpu_metal_pipeline.h"
+#include "xgpu_metal_combiner.h"
 
 #include <errno.h>
+#include <os/lock.h>
 #include <float.h>
 #include <pthread.h>
 #include <stdatomic.h>
@@ -85,118 +88,11 @@ static void metal_log(int priority, NSString *format, ...)
 	host_logf(priority, "metal: %s", text.UTF8String);
 }
 
-/* ---------- formats */
+/* ---------- formats and the interface's values (xgpu_metal_pipeline.m) */
 
-struct format_information
+static const struct xgpu_metal_format_information *format_get(uint32_t format)
 {
-	MTLPixelFormat pixel_format;
-	/* bytes a pixel, or a block's (compressed: 4x4 pixels) */
-	uint8_t bytes;
-	uint8_t compressed;
-	uint8_t depth, stencil;
-	MTLTextureSwizzleChannels swizzle;
-	uint8_t swizzled;
-};
-
-#define SWIZZLE(r, g, b, a) { MTLTextureSwizzle##r, MTLTextureSwizzle##g, MTLTextureSwizzle##b, MTLTextureSwizzle##a }
-
-static const struct format_information formats[XGPU_METAL_FORMAT_COUNT] = {
-	[XGPU_METAL_FORMAT_NONE] = { MTLPixelFormatInvalid, 0, 0, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
-	[XGPU_METAL_FORMAT_BGRA8] = { MTLPixelFormatBGRA8Unorm, 4, 0, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
-	[XGPU_METAL_FORMAT_BGRX8] = { MTLPixelFormatBGRA8Unorm, 4, 0, 0, 0, SWIZZLE(Red, Green, Blue, One), 1 },
-	/* (Metal names packed formats from the low bits up: B5G6R5 has red in
-	the top 5 bits, as D3D's R5G6B5) */
-	[XGPU_METAL_FORMAT_R5G6B5] = { MTLPixelFormatB5G6R5Unorm, 2, 0, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
-	[XGPU_METAL_FORMAT_A1R5G5B5] = { MTLPixelFormatBGR5A1Unorm, 2, 0, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
-	[XGPU_METAL_FORMAT_X1R5G5B5] = { MTLPixelFormatBGR5A1Unorm, 2, 0, 0, 0, SWIZZLE(Red, Green, Blue, One), 1 },
-	/* A4R4G4B4 (alpha in the top 4 bits) is read through ABGR4, whose red
-	is the top 4 bits: D3D's alpha, red, green, blue are its red, green,
-	blue, alpha */
-	[XGPU_METAL_FORMAT_A4R4G4B4] = { MTLPixelFormatABGR4Unorm, 2, 0, 0, 0, SWIZZLE(Green, Blue, Alpha, Red), 1 },
-	[XGPU_METAL_FORMAT_L8] = { MTLPixelFormatR8Unorm, 1, 0, 0, 0, SWIZZLE(Red, Red, Red, One), 1 },
-	[XGPU_METAL_FORMAT_A8] = { MTLPixelFormatA8Unorm, 1, 0, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
-	/* A8L8: luminance in the low byte (red), alpha in the high (green) */
-	[XGPU_METAL_FORMAT_A8L8] = { MTLPixelFormatRG8Unorm, 2, 0, 0, 0, SWIZZLE(Red, Red, Red, Green), 1 },
-	[XGPU_METAL_FORMAT_DXT1] = { MTLPixelFormatBC1_RGBA, 8, 1, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
-	[XGPU_METAL_FORMAT_DXT3] = { MTLPixelFormatBC2_RGBA, 16, 1, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
-	[XGPU_METAL_FORMAT_DXT5] = { MTLPixelFormatBC3_RGBA, 16, 1, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
-	[XGPU_METAL_FORMAT_D24S8] = { MTLPixelFormatDepth32Float_Stencil8, 8, 0, 1, 1, SWIZZLE(Red, Green, Blue, Alpha), 0 },
-	[XGPU_METAL_FORMAT_D16] = { MTLPixelFormatDepth16Unorm, 2, 0, 1, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
-	[XGPU_METAL_FORMAT_RGBA8] = { MTLPixelFormatRGBA8Unorm, 4, 0, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
-	[XGPU_METAL_FORMAT_COVERAGE] = { MTLPixelFormatR8Unorm, 1, 0, 0, 0, SWIZZLE(One, One, One, Red), 1 },
-};
-
-static const struct format_information *format_get(uint32_t format)
-{
-	return format < XGPU_METAL_FORMAT_COUNT ? &formats[format] : &formats[XGPU_METAL_FORMAT_NONE];
-}
-
-/* ---------- the interface's values in Metal's */
-
-static const MTLCompareFunction compare_functions[8] = {
-	MTLCompareFunctionNever, MTLCompareFunctionLess, MTLCompareFunctionEqual, MTLCompareFunctionLessEqual,
-	MTLCompareFunctionGreater, MTLCompareFunctionNotEqual, MTLCompareFunctionGreaterEqual, MTLCompareFunctionAlways,
-};
-
-static const MTLBlendFactor blend_factors[15] = {
-	MTLBlendFactorZero, MTLBlendFactorOne, MTLBlendFactorSourceColor, MTLBlendFactorOneMinusSourceColor,
-	MTLBlendFactorSourceAlpha, MTLBlendFactorOneMinusSourceAlpha, MTLBlendFactorDestinationAlpha,
-	MTLBlendFactorOneMinusDestinationAlpha, MTLBlendFactorDestinationColor, MTLBlendFactorOneMinusDestinationColor,
-	MTLBlendFactorSourceAlphaSaturated, MTLBlendFactorBlendColor, MTLBlendFactorOneMinusBlendColor,
-	MTLBlendFactorBlendAlpha, MTLBlendFactorOneMinusBlendAlpha,
-};
-
-static const MTLBlendOperation blend_operations[5] = {
-	MTLBlendOperationAdd, MTLBlendOperationSubtract, MTLBlendOperationReverseSubtract, MTLBlendOperationMin,
-	MTLBlendOperationMax,
-};
-
-static const MTLStencilOperation stencil_operations[8] = {
-	MTLStencilOperationKeep, MTLStencilOperationZero, MTLStencilOperationReplace,
-	MTLStencilOperationIncrementClamp, MTLStencilOperationDecrementClamp, MTLStencilOperationInvert,
-	MTLStencilOperationIncrementWrap, MTLStencilOperationDecrementWrap,
-};
-
-static MTLCompareFunction compare_function(uint32_t value)
-{
-	return value < 8 ? compare_functions[value] : MTLCompareFunctionAlways;
-}
-
-static MTLBlendFactor blend_factor(uint32_t value)
-{
-	return value < 15 ? blend_factors[value] : MTLBlendFactorOne;
-}
-
-static MTLStencilOperation stencil_operation(uint32_t value)
-{
-	return value < 8 ? stencil_operations[value] : MTLStencilOperationKeep;
-}
-
-static MTLVertexFormat vertex_format(uint32_t format)
-{
-	static const MTLVertexFormat vertex_formats[] = {
-		[XGPU_METAL_ATTRIBUTE_FLOAT1] = MTLVertexFormatFloat,
-		[XGPU_METAL_ATTRIBUTE_FLOAT2] = MTLVertexFormatFloat2,
-		[XGPU_METAL_ATTRIBUTE_FLOAT3] = MTLVertexFormatFloat3,
-		[XGPU_METAL_ATTRIBUTE_FLOAT4] = MTLVertexFormatFloat4,
-		[XGPU_METAL_ATTRIBUTE_D3DCOLOR] = MTLVertexFormatUChar4Normalized_BGRA,
-		[XGPU_METAL_ATTRIBUTE_SHORT1] = MTLVertexFormatShort,
-		[XGPU_METAL_ATTRIBUTE_SHORT2] = MTLVertexFormatShort2,
-		[XGPU_METAL_ATTRIBUTE_SHORT3] = MTLVertexFormatShort3,
-		[XGPU_METAL_ATTRIBUTE_SHORT4] = MTLVertexFormatShort4,
-		[XGPU_METAL_ATTRIBUTE_NORMSHORT1] = MTLVertexFormatShortNormalized,
-		[XGPU_METAL_ATTRIBUTE_NORMSHORT2] = MTLVertexFormatShort2Normalized,
-		[XGPU_METAL_ATTRIBUTE_NORMSHORT3] = MTLVertexFormatShort3Normalized,
-		[XGPU_METAL_ATTRIBUTE_NORMSHORT4] = MTLVertexFormatShort4Normalized,
-		[XGPU_METAL_ATTRIBUTE_PBYTE1] = MTLVertexFormatUCharNormalized,
-		[XGPU_METAL_ATTRIBUTE_PBYTE2] = MTLVertexFormatUChar2Normalized,
-		[XGPU_METAL_ATTRIBUTE_PBYTE3] = MTLVertexFormatUChar3Normalized,
-		[XGPU_METAL_ATTRIBUTE_PBYTE4] = MTLVertexFormatUChar4Normalized,
-		[XGPU_METAL_ATTRIBUTE_FLOAT2H] = MTLVertexFormatFloat3,
-		[XGPU_METAL_ATTRIBUTE_PACKED] = MTLVertexFormatUInt,
-	};
-
-	return format < sizeof(vertex_formats) / sizeof(vertex_formats[0]) ? vertex_formats[format] : MTLVertexFormatInvalid;
+	return xgpu_metal_format_information(format);
 }
 
 /* ---------- the backend's state */
@@ -216,20 +112,12 @@ struct texture_entry
 	uint8_t present;
 };
 
+/* a shader: its function, once there is one (made on the making queue:
+nil until then); while it is being made, its group */
 struct shader_entry
 {
 	id<MTLFunction> function;
-};
-
-/* what a render pipeline state is made from: the pipeline's shaders,
-layout, blend and targets (the rest is depth-stencil or encoder state) */
-struct pipeline_state_key
-{
-	uint32_t vertex_shader, pixel_shader;
-	struct xgpu_metal_vertex_attribute attributes[16];
-	uint16_t strides[XGPU_METAL_STREAM_COUNT];
-	uint8_t blend, blend_source, blend_destination, blend_operation, color_mask;
-	uint8_t color_format, depth_format, samples;
+	dispatch_group_t making;
 };
 
 struct depth_stencil_key
@@ -237,11 +125,6 @@ struct depth_stencil_key
 	uint8_t depth_test, depth_function, depth_write;
 	uint8_t stencil_test, stencil_function, stencil_fail, stencil_depth_fail, stencil_pass;
 	uint8_t stencil_read_mask, stencil_write_mask;
-};
-
-struct clear_key
-{
-	uint8_t color_format, depth_format, samples, parts;
 };
 
 struct ring_chunk
@@ -308,6 +191,9 @@ static struct
 	archive is written of; whether any are new; the queue writing it */
 	id<MTLBinaryArchive> archive;
 	NSString *archive_path;
+	/* the app's shader library (nil: none), and the one the clears' and the
+	presentation's functions are in (it, or theirs compiled) */
+	id<MTLLibrary> library, fixed_library;
 	NSMutableArray<MTLRenderPipelineDescriptor *> *archived;
 	BOOL archive_changed;
 	dispatch_queue_t archive_queue;
@@ -319,7 +205,19 @@ static struct
 	struct shader_entry shaders[SHADER_MAXIMUM];
 	uint32_t shader_count;
 	NSMutableDictionary<NSString *, NSNumber *> *shader_handles;
+	/* the pipelines made, by their key; those being made (all under lock) */
 	NSMutableDictionary<NSData *, id<MTLRenderPipelineState>> *pipelines;
+	NSMutableSet<NSData *> *pipelines_making;
+	os_unfair_lock lock;
+	/* the queue shaders and pipelines are made on (user-initiated: a map's,
+	as it loads, or a draw's); the work the loading screen waits for
+	(xgpu_metal_prepared) */
+	dispatch_queue_t making_queue;
+	dispatch_group_t preparing;
+	BOOL preparing_draws;
+	/* the library the combiner's function is in (the app's, or its source
+	compiled where the app has none: the tests) */
+	id<MTLLibrary> combiner_library;
 	NSMutableDictionary<NSData *, id<MTLDepthStencilState>> *depth_stencil_states;
 	NSMutableDictionary<NSData *, id<MTLSamplerState>> *samplers;
 	NSMutableDictionary<NSData *, id<MTLRenderPipelineState>> *clear_pipelines;
@@ -355,7 +253,7 @@ static struct
 	struct xgpu_metal_pipeline pipeline;
 	BOOL have_pipeline;
 	id<MTLRenderPipelineState> pipeline_state;
-	struct pipeline_state_key pipeline_state_key;
+	struct xgpu_metal_pipeline_state_key pipeline_state_key;
 	struct xgpu_metal_dynamic_state dynamic;
 	uint32_t stage_textures[XGPU_METAL_TEXTURE_STAGE_COUNT];
 	struct xgpu_metal_sampler stage_samplers[XGPU_METAL_TEXTURE_STAGE_COUNT];
@@ -397,6 +295,7 @@ static struct
 	uint64_t remap_generation;
 
 	struct xgpu_metal_statistics statistics;
+	struct xgpu_metal_compile_totals compile_totals;
 	pthread_mutex_t statistics_lock;
 } metal = {
 	.completed_lock = PTHREAD_MUTEX_INITIALIZER,
@@ -427,6 +326,11 @@ static double seconds_now(void)
 id<MTLDevice> xgpu_metal_device(void)
 {
 	return metal.device;
+}
+
+id<MTLLibrary> xgpu_metal_fixed_library(void)
+{
+	return metal.fixed_library;
 }
 
 id<MTLCommandQueue> xgpu_metal_queue(void)
@@ -726,6 +630,7 @@ static void encoder_end(void)
 }
 
 static void pass_end(void);
+static MTLCompileOptions *compile_options(void);
 
 /* commits the command buffer being recorded; returns its serial */
 static uint64_t command_buffer_commit(void (^completed)(void))
@@ -762,22 +667,25 @@ static uint64_t command_buffer_commit(void (^completed)(void))
 
 /* ---------- start and end */
 
-static NSString *const clear_source =
-	@"#include <metal_stdlib>\n"
-	"using namespace metal;\n"
-	"struct clear_parameters { float4 rectangle; float4 color; float depth; };\n"
-	"struct clear_vertex { float4 position [[position]]; };\n"
-	"vertex clear_vertex xgpu_clear_vertex(uint id [[vertex_id]], constant clear_parameters &p [[buffer(0)]])\n"
-	"{\n"
-	"\tclear_vertex out;\n"
-	"\tfloat2 corner = float2((id & 1) ? p.rectangle.z : p.rectangle.x, (id & 2) ? p.rectangle.w : p.rectangle.y);\n"
-	"\tout.position = float4(corner, p.depth, 1.0);\n"
-	"\treturn out;\n"
-	"}\n"
-	"fragment float4 xgpu_clear_fragment(constant clear_parameters &p [[buffer(0)]])\n"
-	"{\n"
-	"\treturn p.color;\n"
-	"}\n";
+/* the app's library of the shaders built ahead of time (the renderer's
+manifest's: tools/macos_build.py), which a shader is looked up in by its
+name before it is compiled */
+static void library_open(const char *path)
+{
+	NSError *error = nil;
+
+	if (!path || !*path)
+		return;
+	if (![[NSFileManager defaultManager] fileExistsAtPath:@(path)])
+	{
+		host_logf(HOST_LOG_WARN, "metal: no shader library at %s: each shader is compiled as it is first drawn", path);
+		return;
+	}
+	metal.library = [metal.device newLibraryWithURL:[NSURL fileURLWithPath:@(path)] error:&error];
+	if (!metal.library)
+		metal_log(HOST_LOG_WARN, @"cannot read the shader library %s (%@): each shader is compiled as it is first drawn",
+			path, error.localizedDescription);
+}
 
 static void archive_open(void)
 {
@@ -816,8 +724,10 @@ static void archive_save(BOOL wait)
 
 	if (!metal.archive_queue || !path || !metal.archive_changed)
 		return;
+	os_unfair_lock_lock(&metal.lock);
 	metal.archive_changed = NO;
 	pipelines = [metal.archived copy];
+	os_unfair_lock_unlock(&metal.lock);
 	save = ^{
 		MTLBinaryArchiveDescriptor *descriptor = [MTLBinaryArchiveDescriptor new];
 		NSString *temporary = [path stringByAppendingString:@".new"];
@@ -864,7 +774,13 @@ int xgpu_metal_initialize(const struct xgpu_metal_options *options)
 	metal.page_size = options->page_size ? options->page_size : (uint32_t)getpagesize();
 	metal.archive_path = options->archive_path ? @(options->archive_path) : nil;
 	metal.options.archive_path = NULL;
+	metal.options.library_path = NULL;
 	metal.shader_handles = [NSMutableDictionary new];
+	metal.pipelines_making = [NSMutableSet new];
+	metal.lock = OS_UNFAIR_LOCK_INIT;
+	metal.making_queue = dispatch_queue_create("OpenCE shaders and pipelines", dispatch_queue_attr_make_with_qos_class(
+		DISPATCH_QUEUE_CONCURRENT, QOS_CLASS_USER_INITIATED, 0));
+	metal.preparing = dispatch_group_create();
 	metal.pipelines = [NSMutableDictionary new];
 	metal.depth_stencil_states = [NSMutableDictionary new];
 	metal.samplers = [NSMutableDictionary new];
@@ -876,14 +792,25 @@ int xgpu_metal_initialize(const struct xgpu_metal_options *options)
 	archive_open();
 	profile_initialize();
 	metal.archived = [NSMutableArray new];
-	metal.archive_queue = dispatch_queue_create("OpenCE pipeline archive", DISPATCH_QUEUE_SERIAL);
+	metal.archive_queue = dispatch_queue_create("OpenCE pipeline archive", dispatch_queue_attr_make_with_qos_class(
+		DISPATCH_QUEUE_SERIAL, QOS_CLASS_BACKGROUND, 0));
 
-	library = [metal.device newLibraryWithSource:clear_source options:nil error:&error];
+	library_open(options->library_path);
+	library = metal.library;
+	if (!library || ![library newFunctionWithName:@"xgpu_clear_vertex"])
+		library = [metal.device newLibraryWithSource:xgpu_metal_fixed_source options:nil error:&error];
 	if (!library)
 	{
 		metal_log(HOST_LOG_ERROR, @"the clear shaders: %@", error.localizedDescription);
 		return 0;
 	}
+	metal.fixed_library = library;
+	metal.combiner_library = metal.library && [metal.library newFunctionWithName:@"xgpu_combiner_fragment"] ?
+		metal.library : [metal.device newLibraryWithSource:@(xgpu_metal_combiner_source) options:compile_options()
+		error:&error];
+	if (!metal.combiner_library)
+		metal_log(HOST_LOG_WARN, @"no combiner's function (%@): a program the library lacks is compiled before it is drawn",
+			error.localizedDescription);
 	metal.clear_vertex = [library newFunctionWithName:@"xgpu_clear_vertex"];
 	metal.clear_fragment = [library newFunctionWithName:@"xgpu_clear_fragment"];
 	/* depth written or not, stencil replaced or not */
@@ -930,6 +857,12 @@ void xgpu_metal_shutdown(void)
 	archive_save(YES);
 }
 
+void xgpu_metal_exiting(void)
+{
+	if (metal.ready)
+		archive_save(YES);
+}
+
 void xgpu_metal_capabilities(struct xgpu_metal_capabilities *capabilities)
 {
 	uint32_t samples = 1;
@@ -970,52 +903,163 @@ void xgpu_metal_statistics(struct xgpu_metal_statistics *statistics)
 	pthread_mutex_unlock(&metal.statistics_lock);
 }
 
+void xgpu_metal_compile_totals(struct xgpu_metal_compile_totals *totals)
+{
+	pthread_mutex_lock(&metal.statistics_lock);
+	*totals = metal.compile_totals;
+	pthread_mutex_unlock(&metal.statistics_lock);
+}
+
+static void statistics_add(uint32_t *counter, uint32_t amount);
+
 /* ---------- shaders */
 
-uint32_t xgpu_metal_shader_create(const char *source, size_t size, const char *entry)
+/* the options a shader is compiled with here, as the app's library's are
+(tools/macos_shaders.py, METAL_FLAGS) */
+static MTLCompileOptions *compile_options(void)
 {
-	NSString *text = [[NSString alloc] initWithBytes:source length:size encoding:NSUTF8StringEncoding];
-	NSString *key, *name = @(entry);
-	NSNumber *existing;
-	MTLCompileOptions *options;
-	id<MTLLibrary> library;
-	id<MTLFunction> function;
-	NSError *error = nil;
-	double start;
+	MTLCompileOptions *options = [MTLCompileOptions new];
 
-	if (!text || metal.shader_count + 1 >= SHADER_MAXIMUM)
-		return 0;
-	key = [NSString stringWithFormat:@"%@\n%@", name, text];
-	existing = metal.shader_handles[key];
-	if (existing)
-		return existing.unsignedIntValue;
-	start = seconds_now();
-	options = [MTLCompileOptions new];
 	/* (no fast maths: the GLSL emitted for the other backends has none) */
 	if (@available(macOS 15.0, *))
 		options.mathMode = MTLMathModeSafe;
 	else
 		options.fastMathEnabled = NO;
-	library = [metal.device newLibraryWithSource:text options:options error:&error];
+	return options;
+}
+
+/* compiles a source's function (named entry); nil (logged) if it does not
+compile. Any thread. */
+static id<MTLFunction> function_compile(NSString *text, NSString *name)
+{
+	id<MTLLibrary> library;
+	id<MTLFunction> function;
+	NSError *error = nil;
+	double start = seconds_now(), seconds;
+
+	library = [metal.device newLibraryWithSource:text options:compile_options() error:&error];
 	function = library ? [library newFunctionWithName:name] : nil;
+	seconds = seconds_now() - start;
 	pthread_mutex_lock(&metal.statistics_lock);
-	metal.statistics.shaders_compiled++;
+	metal.statistics.shaders_made++;
+	metal.statistics.shader_seconds += seconds;
+	metal.compile_totals.shaders++;
+	metal.compile_totals.shader_seconds += seconds;
+	pthread_mutex_unlock(&metal.statistics_lock);
+	if (!function)
+		metal_log(HOST_LOG_ERROR, @"cannot compile %@: %@", name, error ? error.localizedDescription : @"no such function");
+	return function;
+}
+
+/* the combiner's function specialised for a program's configuration (any
+thread) */
+static id<MTLFunction> combiner_specialise(const uint32_t constants[XGPU_METAL_COMBINER_CONSTANTS])
+{
+	MTLFunctionConstantValues *values = [MTLFunctionConstantValues new];
+	id<MTLFunction> function;
+	NSError *error = nil;
+	double start = seconds_now();
+	int index;
+
+	for (index = 0; index < XGPU_METAL_COMBINER_CONSTANTS; index++)
+		[values setConstantValue:&constants[index] type:MTLDataTypeUInt atIndex:(NSUInteger)index];
+	function = [metal.combiner_library newFunctionWithName:@"xgpu_combiner_fragment" constantValues:values error:&error];
+	pthread_mutex_lock(&metal.statistics_lock);
+	metal.statistics.shaders_specialised++;
 	metal.statistics.shader_seconds += seconds_now() - start;
 	pthread_mutex_unlock(&metal.statistics_lock);
 	if (!function)
-	{
-		metal_log(HOST_LOG_ERROR, @"cannot compile %@: %@", name, error ? error.localizedDescription : @"no such function");
-		return 0;
-	}
-	metal.shader_count++;
-	metal.shaders[metal.shader_count].function = function;
-	metal.shader_handles[key] = @(metal.shader_count);
-	return metal.shader_count;
+		metal_log(HOST_LOG_ERROR, @"cannot specialise the combiner's function: %@", error.localizedDescription);
+	return function;
 }
 
+uint32_t xgpu_metal_shader_create(const char *source, size_t size, const char *entry)
+{
+	return xgpu_metal_pixel_shader_create(source, size, entry, NULL);
+}
+
+uint32_t xgpu_metal_pixel_shader_create(const char *source, size_t size, const char *entry,
+	const uint32_t *constants)
+{
+	NSString *name = @(entry), *text;
+	NSNumber *existing;
+	struct shader_entry *shader;
+	id<MTLFunction> function;
+	uint32_t handle;
+	/* (a block takes a copy of a structure, not of an array) */
+	struct { uint32_t values[XGPU_METAL_COMBINER_CONSTANTS]; } copied;
+
+	if (metal.shader_count + 1 >= SHADER_MAXIMUM)
+		return 0;
+	/* (an entry's name is its source's: xgpu_metal_shaders.c) */
+	existing = metal.shader_handles[name];
+	if (existing)
+		return existing.unsignedIntValue;
+	handle = ++metal.shader_count;
+	shader = &metal.shaders[handle];
+	metal.shader_handles[name] = @(handle);
+	function = metal.library ? [metal.library newFunctionWithName:name] : nil;
+	if (function)
+	{
+		shader->function = function;
+		statistics_add(&metal.statistics.shaders_from_library, 1);
+		return handle;
+	}
+	/* not in the app's library: made on the making queue, never here. A
+	pixel program is the combiner's function specialised for it (the same
+	machine code as its own source compiled: port/macos/README.md); one it
+	cannot draw (each pixel's lighting, a debugging setting's) is compiled */
+	if (constants && metal.combiner_library)
+	{
+		memcpy(copied.values, constants, sizeof(copied.values));
+		if (metal.options.synchronous)
+		{
+			shader->function = combiner_specialise(copied.values);
+			return handle;
+		}
+		shader->making = dispatch_group_create();
+		dispatch_group_async(shader->making, metal.making_queue, ^{
+			id<MTLFunction> specialised = combiner_specialise(copied.values);
+
+			os_unfair_lock_lock(&metal.lock);
+			metal.shaders[handle].function = specialised;
+			os_unfair_lock_unlock(&metal.lock);
+		});
+	}
+	else
+	{
+		text = [[NSString alloc] initWithBytes:source length:size encoding:NSUTF8StringEncoding];
+		if (!text)
+			return 0;
+		host_logf(HOST_LOG_INFO, "metal: %s is not in the app's library: compiled", entry);
+		if (metal.options.synchronous)
+		{
+			shader->function = function_compile(text, name);
+			return handle;
+		}
+		shader->making = dispatch_group_create();
+		dispatch_group_async(shader->making, metal.making_queue, ^{
+			id<MTLFunction> compiled = function_compile(text, name);
+
+			os_unfair_lock_lock(&metal.lock);
+			metal.shaders[handle].function = compiled;
+			os_unfair_lock_unlock(&metal.lock);
+		});
+	}
+	return handle;
+}
+
+/* a shader's function (nil while it is made; any thread) */
 static id<MTLFunction> shader_function(uint32_t shader)
 {
-	return shader && shader <= metal.shader_count ? metal.shaders[shader].function : nil;
+	id<MTLFunction> function = nil;
+
+	if (!shader || shader > metal.shader_count)
+		return nil;
+	os_unfair_lock_lock(&metal.lock);
+	function = metal.shaders[shader].function;
+	os_unfair_lock_unlock(&metal.lock);
+	return function;
 }
 
 /* ---------- textures */
@@ -1089,7 +1133,7 @@ static void texture_clear_new(id<MTLTexture> texture)
 
 uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *description)
 {
-	const struct format_information *format = format_get(description->format);
+	const struct xgpu_metal_format_information *format = format_get(description->format);
 	MTLTextureDescriptor *descriptor;
 	struct texture_entry *entry;
 	uint32_t handle, tries;
@@ -1219,7 +1263,6 @@ void xgpu_metal_texture_destroy(uint32_t texture)
 	}
 }
 
-static void statistics_add(uint32_t *counter, uint32_t amount);
 
 void xgpu_metal_texture_make_levels(uint32_t texture)
 {
@@ -1299,7 +1342,7 @@ void xgpu_metal_texture_upload(uint32_t texture, uint32_t level, uint32_t layer,
 	uint32_t bytes_per_image)
 {
 	struct texture_entry *entry = texture_get(texture);
-	const struct format_information *format;
+	const struct xgpu_metal_format_information *format;
 	MTLRegion region;
 	uint32_t rows, size;
 
@@ -1762,10 +1805,6 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 	if (image)
 		host_metal_present_queue(image);
 	metal.in_frame = NO;
-	/* (the game ends the process without warning: the archive is saved
-	once no pipeline has been added for a few seconds) */
-	if (metal.archive_changed && seconds_now() - metal.archive_changed_at > 3.0)
-		archive_save(NO);
 	statistics_add(&metal.statistics.frames, 1);
 	{
 		/* (the render thread's CPU time since the last frame's end) */
@@ -1916,7 +1955,7 @@ static id<MTLRenderCommandEncoder> encoder(void)
 	}
 	if (depth)
 	{
-		const struct format_information *format = format_get(depth->description.format);
+		const struct xgpu_metal_format_information *format = format_get(depth->description.format);
 		id<MTLTexture> texture = depth->multisampled && metal.multisampled ? depth->multisampled : depth->texture;
 
 		pass.depthAttachment.texture = texture;
@@ -2003,7 +2042,7 @@ static void pass_end(void)
 static id<MTLRenderPipelineState> clear_pipeline(uint32_t parts)
 {
 	struct texture_entry *color = texture_get(metal.color), *depth = texture_get(metal.depth);
-	struct clear_key key = { 0 };
+	struct xgpu_metal_clear_key key = { 0 };
 	NSData *data;
 	id<MTLRenderPipelineState> state;
 	MTLRenderPipelineDescriptor *descriptor;
@@ -2019,24 +2058,9 @@ static id<MTLRenderPipelineState> clear_pipeline(uint32_t parts)
 	state = metal.clear_pipelines[data];
 	if (state)
 		return state;
-	descriptor = [MTLRenderPipelineDescriptor new];
+	descriptor = xgpu_metal_clear_descriptor(&key);
 	descriptor.vertexFunction = metal.clear_vertex;
 	descriptor.fragmentFunction = metal.clear_fragment;
-	descriptor.rasterSampleCount = key.samples;
-	if (color)
-	{
-		descriptor.colorAttachments[0].pixelFormat = format_get(key.color_format)->pixel_format;
-		descriptor.colorAttachments[0].writeMask = ((key.parts & XGPU_METAL_CLEAR_RED) ? MTLColorWriteMaskRed : 0) |
-			((key.parts & XGPU_METAL_CLEAR_GREEN) ? MTLColorWriteMaskGreen : 0) |
-			((key.parts & XGPU_METAL_CLEAR_BLUE) ? MTLColorWriteMaskBlue : 0) |
-			((key.parts & XGPU_METAL_CLEAR_ALPHA) ? MTLColorWriteMaskAlpha : 0);
-	}
-	if (depth)
-	{
-		descriptor.depthAttachmentPixelFormat = format_get(key.depth_format)->pixel_format;
-		if (format_get(key.depth_format)->stencil)
-			descriptor.stencilAttachmentPixelFormat = descriptor.depthAttachmentPixelFormat;
-	}
 	state = [metal.device newRenderPipelineStateWithDescriptor:descriptor error:&error];
 	if (!state)
 		metal_log(HOST_LOG_ERROR, @"the clear pipeline: %@", error.localizedDescription);
@@ -2166,140 +2190,167 @@ void xgpu_metal_set_pipeline(const struct xgpu_metal_pipeline *pipeline)
 	metal.dirty |= _dirty_pipeline | _dirty_depth_stencil | _dirty_raster | _dirty_streams;
 }
 
+/* work on the making queue once both groups (either NULL) are done */
+static void pipeline_after(dispatch_group_t first, dispatch_group_t second, dispatch_block_t work)
+{
+	if (first)
+		dispatch_group_notify(first, metal.making_queue, ^{
+			pipeline_after(nil, second, work);
+		});
+	else if (second)
+		dispatch_group_notify(second, metal.making_queue, work);
+	else
+		dispatch_async(metal.making_queue, work);
+}
+
+/* makes a pipeline on the making queue (once: none is made twice at once),
+when its shaders are; the draws use it from when it is made (into group,
+if not NULL: the loading screen's, or a draw's waiting for it) */
+static void pipeline_make_later(const struct xgpu_metal_pipeline_state_key *key, dispatch_group_t group)
+{
+	struct xgpu_metal_pipeline_state_key copy = *key;
+	dispatch_group_t vertex_making, pixel_making;
+	NSData *data = [NSData dataWithBytes:key length:sizeof(*key)];
+
+	os_unfair_lock_lock(&metal.lock);
+	if (metal.pipelines[data] || ([metal.pipelines_making containsObject:data] && !group))
+	{
+		os_unfair_lock_unlock(&metal.lock);
+		return;
+	}
+	if ([metal.pipelines_making containsObject:data])
+	{
+		/* (being made: a group waits for it by making it again, which
+		finds it made) */
+		os_unfair_lock_unlock(&metal.lock);
+		dispatch_group_enter(group);
+		dispatch_async(metal.making_queue, ^{
+			pipeline_make_later(&copy, nil);
+			dispatch_group_leave(group);
+		});
+		return;
+	}
+	[metal.pipelines_making addObject:data];
+	vertex_making = key->vertex_shader <= metal.shader_count ? metal.shaders[key->vertex_shader].making : nil;
+	pixel_making = key->pixel_shader <= metal.shader_count ? metal.shaders[key->pixel_shader].making : nil;
+	os_unfair_lock_unlock(&metal.lock);
+	if (group)
+		dispatch_group_enter(group);
+	/* (made once its shaders are: waited for without a thread held) */
+	pipeline_after(vertex_making, pixel_making, ^{
+		MTLRenderPipelineDescriptor *descriptor;
+		id<MTLRenderPipelineState> state = nil;
+		NSError *error = nil;
+		double start;
+
+		start = seconds_now();
+		descriptor = xgpu_metal_pipeline_descriptor(&copy);
+		descriptor.vertexFunction = shader_function(copy.vertex_shader);
+		descriptor.fragmentFunction = shader_function(copy.pixel_shader);
+		if (descriptor.vertexFunction)
+		{
+			if (metal.archive)
+			{
+				descriptor.binaryArchives = @[metal.archive];
+				state = [metal.device newRenderPipelineStateWithDescriptor:descriptor
+					options:MTLPipelineOptionFailOnBinaryArchiveMiss reflection:nil error:&error];
+				if (state)
+					statistics_add(&metal.statistics.pipelines_from_archive, 1);
+				descriptor.binaryArchives = nil;
+				error = nil;
+			}
+			if (!state)
+				state = [metal.device newRenderPipelineStateWithDescriptor:descriptor error:&error];
+			if (!state)
+				metal_log(HOST_LOG_ERROR, @"cannot make a pipeline: %@", error.localizedDescription);
+		}
+		os_unfair_lock_lock(&metal.lock);
+		[metal.pipelines_making removeObject:data];
+		if (state)
+		{
+			metal.pipelines[data] = state;
+			if (xgpu_metal_pipeline_archivable(&copy))
+				[metal.archived addObject:[descriptor copy]];
+			metal.archive_changed = YES;
+		}
+		os_unfair_lock_unlock(&metal.lock);
+		pthread_mutex_lock(&metal.statistics_lock);
+		metal.statistics.pipelines_made++;
+		metal.statistics.pipeline_seconds += seconds_now() - start;
+		metal.compile_totals.pipelines++;
+		metal.compile_totals.pipeline_seconds += seconds_now() - start;
+		pthread_mutex_unlock(&metal.statistics_lock);
+		if (group)
+			dispatch_group_leave(group);
+	});
+}
+
+/* a draw's pipeline state: made (by the loading screen's preparation, or
+an earlier draw); else made on the making queue and waited for (logged and
+counted: one the loading screen did not prepare), as the picture must be
+whole: a draw is never skipped. During a preparation (draws unseen), only
+asked for. Never compiled on this thread. */
 static id<MTLRenderPipelineState> pipeline_state_get(const struct xgpu_metal_pipeline *pipeline)
 {
-	struct pipeline_state_key key;
+	struct xgpu_metal_pipeline_state_key key;
 	NSData *data;
 	id<MTLRenderPipelineState> state;
-	MTLRenderPipelineDescriptor *descriptor;
-	MTLVertexDescriptor *vertex;
-	NSError *error = nil;
-	double start;
-	int index;
+	dispatch_group_t made;
 
-	memset(&key, 0, sizeof(key));
-	key.vertex_shader = pipeline->vertex_shader;
-	key.pixel_shader = pipeline->pixel_shader;
-	memcpy(key.attributes, pipeline->attributes, sizeof(key.attributes));
-	for (index = 0; index < 16; index++)
-	{
-		if (key.attributes[index].format != XGPU_METAL_ATTRIBUTE_NONE &&
-			key.attributes[index].stream < XGPU_METAL_STREAM_COUNT)
-			key.strides[key.attributes[index].stream] = pipeline->strides[key.attributes[index].stream];
-	}
-	key.blend = pipeline->blend;
-	if (key.blend)
-	{
-		key.blend_source = pipeline->blend_source;
-		key.blend_destination = pipeline->blend_destination;
-		key.blend_operation = pipeline->blend_operation;
-	}
-	key.color_mask = pipeline->color_mask;
-	key.color_format = pipeline->color_format;
-	key.depth_format = pipeline->depth_format;
-	key.samples = pipeline->samples > 1 ? pipeline->samples : 1;
+	xgpu_metal_pipeline_state_key_make(pipeline, &key);
 	if (state = metal.pipeline_state, state && !memcmp(&key, &metal.pipeline_state_key, sizeof(key)))
 		return state;
 	data = [NSData dataWithBytes:&key length:sizeof(key)];
+	os_unfair_lock_lock(&metal.lock);
 	state = metal.pipelines[data];
+	os_unfair_lock_unlock(&metal.lock);
+	if (!state && metal.preparing_draws)
+	{
+		pipeline_make_later(&key, metal.preparing);
+		return nil;
+	}
+	if (!state)
+	{
+		if (!metal.options.synchronous)
+		{
+			statistics_add(&metal.statistics.draws_waiting, 1);
+			host_logf(HOST_LOG_WARN, "metal: a pipeline made while drawing (not prepared as the map loaded)");
+		}
+		made = dispatch_group_create();
+		pipeline_make_later(&key, made);
+		dispatch_group_wait(made, DISPATCH_TIME_FOREVER);
+		os_unfair_lock_lock(&metal.lock);
+		state = metal.pipelines[data];
+		os_unfair_lock_unlock(&metal.lock);
+	}
 	if (state)
-	{
 		metal.pipeline_state_key = key;
-		return state;
-	}
-
-	start = seconds_now();
-	descriptor = [MTLRenderPipelineDescriptor new];
-	descriptor.vertexFunction = shader_function(key.vertex_shader);
-	descriptor.fragmentFunction = shader_function(key.pixel_shader);
-	if (!descriptor.vertexFunction)
-		return nil;
-	vertex = [MTLVertexDescriptor vertexDescriptor];
-	for (index = 0; index < 16; index++)
-	{
-		const struct xgpu_metal_vertex_attribute *attribute = &key.attributes[index];
-
-		if (attribute->format == XGPU_METAL_ATTRIBUTE_NONE)
-			continue;
-		if (attribute->stream == XGPU_METAL_STREAM_CONSTANT)
-		{
-			/* (its register's value, the same for every vertex) */
-			vertex.attributes[index].format = MTLVertexFormatFloat4;
-			vertex.attributes[index].offset = (NSUInteger)index * 16;
-			vertex.attributes[index].bufferIndex = XGPU_METAL_BUFFER_CONSTANT_ATTRIBUTES;
-			vertex.layouts[XGPU_METAL_BUFFER_CONSTANT_ATTRIBUTES].stride = 16 * 16;
-			vertex.layouts[XGPU_METAL_BUFFER_CONSTANT_ATTRIBUTES].stepFunction = MTLVertexStepFunctionConstant;
-			vertex.layouts[XGPU_METAL_BUFFER_CONSTANT_ATTRIBUTES].stepRate = 0;
-			continue;
-		}
-		if (attribute->stream >= XGPU_METAL_STREAM_COUNT)
-			continue;
-		vertex.attributes[index].format = vertex_format(attribute->format);
-		vertex.attributes[index].offset = attribute->offset;
-		vertex.attributes[index].bufferIndex = XGPU_METAL_BUFFER_STREAM(attribute->stream);
-		vertex.layouts[XGPU_METAL_BUFFER_STREAM(attribute->stream)].stride =
-			key.strides[attribute->stream] ? key.strides[attribute->stream] : 4;
-	}
-	descriptor.vertexDescriptor = vertex;
-	descriptor.rasterSampleCount = key.samples;
-	if (key.color_format)
-	{
-		MTLRenderPipelineColorAttachmentDescriptor *attachment = descriptor.colorAttachments[0];
-
-		attachment.pixelFormat = format_get(key.color_format)->pixel_format;
-		attachment.writeMask = ((key.color_mask & XGPU_WRITE_RED) ? MTLColorWriteMaskRed : 0) |
-			((key.color_mask & XGPU_WRITE_GREEN) ? MTLColorWriteMaskGreen : 0) |
-			((key.color_mask & XGPU_WRITE_BLUE) ? MTLColorWriteMaskBlue : 0) |
-			((key.color_mask & XGPU_WRITE_ALPHA) ? MTLColorWriteMaskAlpha : 0);
-		attachment.blendingEnabled = key.blend != 0;
-		attachment.sourceRGBBlendFactor = attachment.sourceAlphaBlendFactor = blend_factor(key.blend_source);
-		attachment.destinationRGBBlendFactor = attachment.destinationAlphaBlendFactor =
-			blend_factor(key.blend_destination);
-		attachment.rgbBlendOperation = attachment.alphaBlendOperation =
-			key.blend_operation < 5 ? blend_operations[key.blend_operation] : MTLBlendOperationAdd;
-	}
-	if (key.depth_format)
-	{
-		descriptor.depthAttachmentPixelFormat = format_get(key.depth_format)->pixel_format;
-		if (format_get(key.depth_format)->stencil)
-			descriptor.stencilAttachmentPixelFormat = descriptor.depthAttachmentPixelFormat;
-	}
-	/* from the archive where it has the pipeline's binaries; else made,
-	and the archive written again with it */
-	if (metal.archive)
-	{
-		descriptor.binaryArchives = @[metal.archive];
-		state = [metal.device newRenderPipelineStateWithDescriptor:descriptor
-			options:MTLPipelineOptionFailOnBinaryArchiveMiss reflection:nil error:&error];
-		if (state)
-			statistics_add(&metal.statistics.pipelines_from_archive, 1);
-		error = nil;
-	}
-	if (!state)
-	{
-		state = [metal.device newRenderPipelineStateWithDescriptor:descriptor error:&error];
-		if (state)
-		{
-			metal.archive_changed = YES;
-			metal.archive_changed_at = seconds_now();
-		}
-	}
-	if (!state)
-	{
-		metal_log(HOST_LOG_ERROR, @"cannot make a pipeline: %@", error.localizedDescription);
-		return nil;
-	}
-	/* (not one that writes no colour, which Metal makes without its
-	fragment stage: the archiver cannot write it) */
-	if (key.color_format && key.color_mask)
-		[metal.archived addObject:[descriptor copy]];
-	metal.pipelines[data] = state;
-	metal.pipeline_state_key = key;
-	pthread_mutex_lock(&metal.statistics_lock);
-	metal.statistics.pipelines_made++;
-	metal.statistics.pipeline_seconds += seconds_now() - start;
-	pthread_mutex_unlock(&metal.statistics_lock);
 	return state;
+}
+
+void xgpu_metal_prepare(const struct xgpu_metal_pipeline *pipeline)
+{
+	struct xgpu_metal_pipeline_state_key key;
+
+	xgpu_metal_pipeline_state_key_make(pipeline, &key);
+	pipeline_make_later(&key, metal.preparing);
+}
+
+void xgpu_metal_prepare_begin(void)
+{
+	metal.preparing_draws = YES;
+}
+
+double xgpu_metal_prepared(void)
+{
+	double start = seconds_now();
+
+	metal.preparing_draws = NO;
+	dispatch_group_wait(metal.preparing, DISPATCH_TIME_FOREVER);
+	/* (a safe point: the user's archive written with the map's pipelines,
+	in the background) */
+	archive_save(NO);
+	return seconds_now() - start;
 }
 
 static id<MTLDepthStencilState> depth_stencil_state_get(const struct xgpu_metal_pipeline *pipeline)
@@ -2331,16 +2382,16 @@ static id<MTLDepthStencilState> depth_stencil_state_get(const struct xgpu_metal_
 	if (state)
 		return state;
 	descriptor = [MTLDepthStencilDescriptor new];
-	descriptor.depthCompareFunction = key.depth_test ? compare_function(key.depth_function) : MTLCompareFunctionAlways;
+	descriptor.depthCompareFunction = key.depth_test ? xgpu_metal_compare_function(key.depth_function) : MTLCompareFunctionAlways;
 	descriptor.depthWriteEnabled = key.depth_write != 0;
 	if (key.stencil_test)
 	{
 		MTLStencilDescriptor *stencil = [MTLStencilDescriptor new];
 
-		stencil.stencilCompareFunction = compare_function(key.stencil_function);
-		stencil.stencilFailureOperation = stencil_operation(key.stencil_fail);
-		stencil.depthFailureOperation = stencil_operation(key.stencil_depth_fail);
-		stencil.depthStencilPassOperation = stencil_operation(key.stencil_pass);
+		stencil.stencilCompareFunction = xgpu_metal_compare_function(key.stencil_function);
+		stencil.stencilFailureOperation = xgpu_metal_stencil_operation(key.stencil_fail);
+		stencil.depthFailureOperation = xgpu_metal_stencil_operation(key.stencil_depth_fail);
+		stencil.depthStencilPassOperation = xgpu_metal_stencil_operation(key.stencil_pass);
 		stencil.readMask = key.stencil_read_mask;
 		stencil.writeMask = key.stencil_write_mask;
 		descriptor.frontFaceStencil = stencil;
@@ -2398,7 +2449,7 @@ static id<MTLSamplerState> sampler_get(const struct xgpu_metal_sampler *sampler)
 	descriptor.lodMinClamp = sampler->min_lod;
 	descriptor.lodMaxClamp = sampler->max_lod > 0.0f ? sampler->max_lod : FLT_MAX;
 	if (sampler->compare)
-		descriptor.compareFunction = compare_function(sampler->compare_function);
+		descriptor.compareFunction = xgpu_metal_compare_function(sampler->compare_function);
 	descriptor.supportArgumentBuffers = NO;
 	state = [metal.device newSamplerStateWithDescriptor:descriptor];
 	metal.samplers[data] = state;
@@ -2555,6 +2606,16 @@ static BOOL draw_state_apply(id<MTLRenderCommandEncoder> render)
 			struct texture_entry *entry = texture_get(metal.stage_textures[index]);
 
 			[render setFragmentTexture:entry ? entry->texture : nil atIndex:XGPU_METAL_TEXTURE_STAGE(index)];
+			/* (and at its type's place, as the combiner's function reads it:
+			xgpu_metal_combiner.h) */
+			if (entry && entry->texture.textureType != MTLTextureType2D)
+			{
+				NSUInteger place = entry->texture.textureType == MTLTextureType3D ? XGPU_METAL_COMBINER_TEXTURE_3D :
+					entry->texture.textureType == MTLTextureTypeCube ? XGPU_METAL_COMBINER_TEXTURE_CUBE :
+					XGPU_METAL_COMBINER_TEXTURE_2D_ARRAY;
+
+				[render setFragmentTexture:entry->texture atIndex:place + (NSUInteger)index];
+			}
 			if (metal.stage_sampler_states[index])
 				[render setFragmentSamplerState:metal.stage_sampler_states[index] atIndex:XGPU_METAL_SAMPLER_STAGE(index)];
 		}
@@ -2728,7 +2789,7 @@ int xgpu_metal_read_pixels(uint32_t texture, uint32_t level, uint32_t layer, uin
 	uint32_t width, uint32_t height, void *pixels, uint32_t bytes_per_row)
 {
 	struct texture_entry *entry = texture_get(texture);
-	const struct format_information *format;
+	const struct xgpu_metal_format_information *format;
 	id<MTLBuffer> buffer;
 	id<MTLBlitCommandEncoder> blit;
 	uint32_t row_size, row;

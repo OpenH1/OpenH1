@@ -477,7 +477,7 @@ static void frame_closed(void)
 		measure->draws = statistics.draws;
 		measure->compiles = statistics.pipelines_made;
 		measure->shader_ms = statistics.shader_seconds * 1000.0;
-		measure->shaders = statistics.shaders_compiled;
+		measure->shaders = statistics.shaders_made;
 	}
 	play.last_end = now;
 	play.frame++;
@@ -816,6 +816,17 @@ static int cold_run(int argc, char *argv[])
 	{
 		fprintf(stderr, "halo_replay: cannot make %s\n", app.UTF8String);
 		return 2;
+	}
+	/* (the shaders built ahead of time, as the game's app has them) */
+	if (slash)
+		snprintf(slash + 1, sizeof(source_library) - (size_t)(slash + 1 - source_library), "shaders.metallib");
+	if (slash && [files fileExistsAtPath:@(source_library)])
+	{
+		NSString *resources = [app stringByAppendingPathComponent:@"Contents/Resources"];
+
+		[files createDirectoryAtPath:resources withIntermediateDirectories:YES attributes:nil error:nil];
+		[files copyItemAtPath:@(source_library) toPath:[resources stringByAppendingPathComponent:@"shaders.metallib"]
+			error:nil];
 	}
 	arguments[count++] = (char *)copy.UTF8String;
 	for (index = 1; index < argc; index++)

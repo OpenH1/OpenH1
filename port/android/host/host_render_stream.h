@@ -130,6 +130,9 @@ struct host_render_backend
 	made (where the backend makes them apart from its draws), and returns
 	the milliseconds waited (NULL: 0) */
 	uint32_t (*prepared)(void *context);
+	/* the process is ending (host_exit, on the thread that ends it; NULL:
+	nothing to do): what the backend keeps across runs written */
+	void (*exiting)(void *context);
 	/* PREPARE: the draws until PREPARED are for their shaders and pipelines
 	alone (not seen) */
 	void (*prepare)(void *context);
@@ -160,6 +163,8 @@ void host_render_stream_submit(uint32_t flags);
 void host_render_stream_wait(uint32_t position);
 /* ends the render thread after the records submitted (at exit) */
 void host_render_stream_close(void);
+/* tells the backend the process is ending (host_exit) */
+void host_render_stream_exiting(void);
 
 /* the guest's ring header while a stream is open, else NULL: its
 statistics, for the host's logs (read as they are, racing with their

@@ -318,6 +318,12 @@ struct xgpu_metal_options
 {
 	/* the binary archive's file (NULL: none) */
 	const char *archive_path;
+	/* shaders and pipelines made before the call that wants them returns
+	(the tests): else on the backend's queues */
+	int synchronous;
+	/* the library of the shaders built ahead of time (NULL: none), which
+	xgpu_metal_shader_create looks a function up in before it compiles */
+	const char *library_path;
 	/* the host's page size, which wrapped guest ranges are aligned to
 	(0: the system's) */
 	uint32_t page_size;
@@ -349,11 +355,29 @@ struct xgpu_metal_capabilities
 int xgpu_metal_initialize(const struct xgpu_metal_options *options);
 /* saves the binary archive and lets go of everything */
 void xgpu_metal_shutdown(void);
+/* the process is ending: the binary archive saved (any thread; waits) */
+void xgpu_metal_exiting(void);
 void xgpu_metal_capabilities(struct xgpu_metal_capabilities *capabilities);
 
-/* compiles an MSL function (the source's function named entry); returns
-its handle, the same for the same source and entry, or 0 (logged) */
+/* an MSL function (the source's function named entry, a name only that
+source has): the app's library's; else made on the backend's queues (never
+on the calling thread): a pixel program's with its configuration as the
+combiner's function's constants (xgpu_metal_combiner.h; NULL: one the
+combiner does not draw) is the combiner's specialised for it at once, and
+its own compiled in the background takes its place. Returns its handle,
+the same for the same entry, or 0 */
 uint32_t xgpu_metal_shader_create(const char *source, size_t size, const char *entry);
+uint32_t xgpu_metal_pixel_shader_create(const char *source, size_t size, const char *entry,
+	const uint32_t *constants);
+
+/* a pipeline made on the backend's queues for the draws to come (a map's,
+while it loads); waits until every pipeline prepared so is made, and
+returns the seconds waited */
+void xgpu_metal_prepare(const struct xgpu_metal_pipeline *pipeline);
+/* the draws until xgpu_metal_prepared are made for their pipelines alone
+(not drawn: a map's first frame's, unseen) */
+void xgpu_metal_prepare_begin(void);
+double xgpu_metal_prepared(void);
 
 /* textures: a handle, or 0 (logged) */
 uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *description);
@@ -468,10 +492,6 @@ struct xgpu_metal_statistics
 	uint32_t guest_buffers_made, guest_bytes_copied;
 	uint64_t ring_bytes;
 	double pipeline_seconds;
-	/* MSL functions compiled (xgpu_metal_shader_create, a source not seen
-	before in this run), and the time it took */
-	uint32_t shaders_compiled;
-	double shader_seconds;
 	/* the GPU's time on the command buffers completed, and their count; the
 	render thread's CPU time between frames' ends */
 	double gpu_seconds;
@@ -480,7 +500,22 @@ struct xgpu_metal_statistics
 	presentation's included (they overlap) */
 	double gpu_busy_seconds;
 	double render_cpu_seconds;
+	/* the shaders compiled, and the time it took (the combiner's
+	specialised counted in it); those found in the library instead, those
+	the combiner's function was specialised for; draws not drawn for want of
+	a pipeline (made meanwhile) */
+	uint32_t shaders_made, shaders_from_library, shaders_specialised, draws_waiting;
+	double shader_seconds;
 };
 void xgpu_metal_statistics(struct xgpu_metal_statistics *statistics);
+
+/* the shaders and pipelines made since the start, and the time it took (on
+the render thread): what a late frame waited for (any thread) */
+struct xgpu_metal_compile_totals
+{
+	uint32_t shaders, pipelines;
+	double shader_seconds, pipeline_seconds;
+};
+void xgpu_metal_compile_totals(struct xgpu_metal_compile_totals *totals);
 
 #endif
