@@ -102,21 +102,28 @@ bool SDL_ShowSimpleMessageBox(SDL_MessageBoxFlags flags, const char *title, cons
 use guest_desktop.c's message box bridge) */
 bool SDL_ShowMessageBox(const SDL_MessageBoxData *data, int *buttonid)
 {
-	const char *labels[3] = { NULL, NULL, NULL };
+	char labels[1024];
+	size_t used = 0;
 	int default_index = -1;
 	int index;
 	int chosen;
 
-	if (!data || data->numbuttons < 1 || data->numbuttons > 3)
+	if (!data || !data->buttons || data->numbuttons < 1 || data->numbuttons > 3)
 		return false;
 	for (index = 0; index < data->numbuttons; index++)
 	{
-		labels[index] = data->buttons[index].text;
+		const char *label = data->buttons[index].text ? data->buttons[index].text : "";
+		size_t length = strlen(label) + 1;
+
+		if (length > sizeof(labels) - used)
+			return false;
+		memcpy(labels + used, label, length);
+		used += length;
 		if (data->buttons[index].flags & SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT)
 			default_index = index;
 	}
 	chosen = host_sdl_ask((unsigned int)data->flags, data->title, data->message, default_index,
-		labels[0], labels[1], labels[2]);
+		labels, (unsigned int)used);
 	if (chosen < 0 || chosen >= data->numbuttons)
 		return false;
 	if (buttonid)
