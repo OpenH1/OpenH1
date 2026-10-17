@@ -93,6 +93,9 @@ static struct
 	id<NSObject> activity;
 	id<MTLRenderPipelineState> present_pipeline;
 	id<MTLRenderPipelineState> loading_pipeline;
+	/* All presentation is ordered here, independently of future game work. */
+	id<MTLCommandQueue> command_queue;
+	id<MTLEvent> render_event;
 	struct loading_presentation_frame loading;
 	id<MTLSamplerState> present_sampler;
 	_Atomic int active;
@@ -150,6 +153,7 @@ static struct
 	_Atomic int drawables_pending;
 	/* each queued image's frame's input time (host_render_stream_frame_input) */
 	uint64_t frame_input[PRESENT_IMAGES];
+	uint64_t frame_ready[PRESENT_IMAGES];
 } presentation = {
 	.lock = PTHREAD_MUTEX_INITIALIZER,
 	.freed = PTHREAD_COND_INITIALIZER,
@@ -254,7 +258,7 @@ id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture)
 		replaced.storageMode == picture.storageMode ? replaced : nil;
 }
 
-void host_metal_present_queue(id<MTLTexture> image)
+void host_metal_present_queue(id<MTLTexture> image, uint64_t frame)
 {
 	int index;
 	BOOL queued = NO;
@@ -266,6 +270,7 @@ void host_metal_present_queue(id<MTLTexture> image)
 		{
 			presentation.queue[presentation.queued++] = index;
 			presentation.frame_input[index] = host_render_stream_frame_input();
+			presentation.frame_ready[index] = frame;
 			queued = YES;
 			if (presentation.stats_interval > 0.0)
 				xgpu_metal_compile_totals(&presentation.compiled[index]);
@@ -285,6 +290,36 @@ static void image_release(int index)
 	presentation.image_states[index] = _image_free;
 	pthread_cond_broadcast(&presentation.freed);
 	pthread_mutex_unlock(&presentation.lock);
+}
+
+int host_metal_present_initialize(void)
+{
+	if (presentation.command_queue && presentation.render_event)
+		return 1;
+	presentation.command_queue = [xgpu_metal_device() newCommandQueue];
+	presentation.render_event = [xgpu_metal_device() newEvent];
+	if (!presentation.command_queue || !presentation.render_event)
+	{
+		host_logf(HOST_LOG_ERROR, "metal: could not create the presentation queue and event");
+		return 0;
+	}
+	return 1;
+}
+
+/* The renderer signals before committing its frame, then publishes the image.
+No presentation wait can therefore depend on a future uncommitted frame. */
+void host_metal_present_signal(id<MTLCommandBuffer> buffer, uint64_t frame)
+{
+	[buffer encodeSignalEvent:presentation.render_event value:frame];
+}
+
+id<MTLCommandBuffer> host_metal_present_buffer(uint64_t producer_frame)
+{
+	id<MTLCommandBuffer> buffer = [presentation.command_queue commandBuffer];
+
+	if (producer_frame)
+		[buffer encodeWaitForEvent:presentation.render_event value:producer_frame];
+	return buffer;
 }
 
 /* ---------- pacing */
@@ -325,14 +360,16 @@ static void presented(double when, double target, const struct xgpu_metal_compil
 			atomic_fetch_add(&presentation.late, 1);
 		if (presentation.stats_interval > 0.0 && when - previous > HITCH_SECONDS)
 		{
-			const struct xgpu_metal_compile_totals *now = compiled, *before = &presentation.compiled_before;
-
 			atomic_fetch_add(&presentation.hitches, 1);
-			host_logf(HOST_LOG_INFO, "metal: hitch of %.1f ms at %.2f s: %u shaders compiled (%.1f ms), %u pipelines made "
-				"(%.1f ms) by the frame since the frame before", (when - previous) * 1000.0,
-				when - presentation.started, now->shaders - before->shaders,
-				(now->shader_seconds - before->shader_seconds) * 1000.0, now->pipelines - before->pipelines,
-				(now->pipeline_seconds - before->pipeline_seconds) * 1000.0);
+			if (compiled)
+			{
+				const struct xgpu_metal_compile_totals *now = compiled, *before = &presentation.compiled_before;
+				host_logf(HOST_LOG_INFO, "metal: hitch of %.1f ms at %.2f s: %u shaders compiled (%.1f ms), %u pipelines made "
+					"(%.1f ms) by the frame since the frame before", (when - previous) * 1000.0,
+					when - presentation.started, now->shaders - before->shaders,
+					(now->shader_seconds - before->shader_seconds) * 1000.0, now->pipelines - before->pipelines,
+					(now->pipeline_seconds - before->pipeline_seconds) * 1000.0);
+			}
 		}
 	}
 	if (compiled)
@@ -449,10 +486,10 @@ static void pacing_log(double now)
 		id<MTLRenderCommandEncoder> encoder;
 		id<MTLTexture> image = nil;
 		double now = seconds_now(), target = update.targetPresentationTimestamp, committed;
-		int index = -1;
+		int index = -1, discarded = 0;
 		BOOL idle;
 		struct xgpu_metal_compile_totals compiled = { 0 };
-		uint64_t input = 0;
+		uint64_t input = 0, producer_frame = 0;
 		struct loading_presentation_frame loading_frame;
 
 		(void)link;
@@ -533,6 +570,18 @@ static void pacing_log(double now)
 			loading_frame.serial = ++presentation.loading.serial;
 			loading_presentation_build(&loading_frame);
 		}
+		/* Progress pictures are not sampled by the owned loading scene. Their
+		producer work was committed before queueing; later reuse stays on that
+		same producer queue, so it needs no loading-GPU completion dependency. */
+		if (loading_frame.active)
+		{
+			while (presentation.queued)
+			{
+				presentation.image_states[presentation.queue[--presentation.queued]] = _image_free;
+				discarded++;
+			}
+			pthread_cond_broadcast(&presentation.freed);
+		}
 		if (presentation.queued)
 		{
 			index = presentation.queue[0];
@@ -542,9 +591,12 @@ static void pacing_log(double now)
 			image = presentation.images[index];
 			compiled = presentation.compiled[index];
 			input = presentation.frame_input[index];
+			producer_frame = presentation.frame_ready[index];
 		}
 		idle = !presentation.frames_seen;
 		pthread_mutex_unlock(&presentation.lock);
+		while (discarded-- > 0)
+			host_render_stream_frame_taken();
 		if (image)
 			host_render_stream_frame_taken();
 		if (!image && !idle && !loading_frame.active)
@@ -562,7 +614,7 @@ static void pacing_log(double now)
 			return;
 		}
 
-		buffer = [xgpu_metal_queue() commandBuffer];
+		buffer = host_metal_present_buffer(image ? producer_frame : 0);
 		pass = [MTLRenderPassDescriptor renderPassDescriptor];
 		pass.colorAttachments[0].texture = drawable.texture;
 		pass.colorAttachments[0].loadAction = MTLLoadActionClear;
@@ -637,6 +689,9 @@ static void pacing_log(double now)
 		[buffer presentDrawable:drawable];
 		committed = seconds_now();
 		[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+			if (done.status == MTLCommandBufferStatusError)
+				host_logf(HOST_LOG_ERROR, "metal: a presentation command buffer failed: %s",
+					done.error.localizedDescription.UTF8String);
 			if (done.GPUEndTime > done.GPUStartTime)
 			{
 				uint64_t queued = done.GPUStartTime > committed ? (uint64_t)((done.GPUStartTime - committed) * 1e9) : 0;
@@ -828,6 +883,8 @@ int host_metal_window_open(uint32_t window)
 			screen.minimumRefreshInterval < screen.maximumRefreshInterval ? " (variable)" : "");
 	}
 
+	if (!host_metal_present_initialize())
+		return 0;
 	library = xgpu_metal_fixed_library();
 	descriptor = xgpu_metal_present_descriptor();
 	descriptor.vertexFunction = [library newFunctionWithName:@"halo_present_vertex"];

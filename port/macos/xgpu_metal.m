@@ -1984,7 +1984,7 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 	uint64_t number;
 	struct texture_entry *picture = texture_get(present);
 	id<MTLTexture> image = nil;
-	BOOL timed;
+	BOOL copied = NO, timed;
 
 	if (!metal.in_frame)
 		xgpu_metal_frame_begin();
@@ -2017,7 +2017,7 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 			destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
 		[blit endEncoding];
 		picture->used = recording_serial();
-		metal.present_copy = host_metal_present_exchange(image);
+		copied = YES;
 	}
 	else if (picture && host_metal_window_active())
 	{
@@ -2027,34 +2027,46 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 		into one of the presentation's would be a pass over the whole of
 		both. That frame finds the pictures of this one where it does not
 		clear the whole of it first (texture_contents) */
-		id<MTLTexture> next;
-
 		texture_contents(picture);
 		image = picture->texture;
-		next = host_metal_present_exchange(image);
-		if (!next)
-		{
-			MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:image.pixelFormat
-				width:image.width height:image.height mipmapped:NO];
-
-			descriptor.usage = image.usage;
-			descriptor.storageMode = image.storageMode;
-			descriptor.swizzle = image.swizzle;
-			next = [metal.device newTextureWithDescriptor:descriptor];
-		}
-		picture->previous = image;
-		picture->texture = next;
 		picture->used = recording_serial();
 	}
 	timed = atomic_load(&profile.state) == 1;
 	if (timed)
 		atomic_store(&profile.state, 2);
+	/* Publish GPU work before waiting for a presentation slot. An aside
+	buffer can already hold a queue position ahead of the presentation
+	completion that frees that slot. Waiting first would form a cycle. */
+	if (image)
+		host_metal_present_signal(command_buffer(), number);
 	slot->fence = command_buffer_commit(entries || timed ? ^{
 		if (entries)
 			visibility_publish(slot, entries, number);
 		if (timed)
 			profile_log();
 	} : nil);
+	if (image)
+	{
+		id<MTLTexture> next = host_metal_present_exchange(image);
+
+		if (copied)
+			metal.present_copy = next;
+		else
+		{
+			if (!next)
+			{
+				MTLTextureDescriptor *descriptor = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:image.pixelFormat
+					width:image.width height:image.height mipmapped:NO];
+
+				descriptor.usage = image.usage;
+				descriptor.storageMode = image.storageMode;
+				descriptor.swizzle = image.swizzle;
+				next = [metal.device newTextureWithDescriptor:descriptor];
+			}
+			picture->previous = image;
+			picture->texture = next;
+		}
+	}
 	if (profile.capturing && number == profile.capture_frame + 1)
 	{
 		[[MTLCaptureManager sharedCaptureManager] stopCapture];
@@ -2062,7 +2074,7 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 		host_logf(HOST_LOG_INFO, "metal: captured into %s", profile.capture_path.UTF8String);
 	}
 	/* (nil: a frame with nothing to show, taken at once) */
-	host_metal_present_queue(image);
+	host_metal_present_queue(image, number);
 	metal.in_frame = NO;
 	statistics_add(&metal.statistics.frames, 1);
 	{

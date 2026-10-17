@@ -14,7 +14,7 @@ What the Metal backend (xgpu_metal.m) and the window's presentation
 
 /* ---------- xgpu_metal.m */
 
-/* the device and the queue every command buffer goes to (nil before
+/* the device and the game renderer's producer queue (nil before
 xgpu_metal_initialize) */
 id<MTLDevice> xgpu_metal_device(void);
 id<MTLCommandQueue> xgpu_metal_queue(void);
@@ -38,10 +38,18 @@ waits while there is none, so that the game runs no faster than the display
 shows its frames. Returns the image it replaces, for the next frame to draw
 into, where that is of the picture's size and format (else nil) */
 id<MTLTexture> host_metal_present_exchange(id<MTLTexture> picture);
-/* the image is shown at the display's next refresh after those queued
-before it (after the command buffers committed before this call: the
-frame's must be); called once for each frame, nil for a frame with nothing
-to show (its display's pacing, host_render_stream_frame_taken) */
-void host_metal_present_queue(id<MTLTexture> image);
+/* Set up the presentation queue and event once, after the device exists
+and before presentation starts. Does not open a window. */
+int host_metal_present_initialize(void);
+/* On the presentation thread: zero is owned procedural content, otherwise
+wait for the published image's producer frame on the independent queue. */
+id<MTLCommandBuffer> host_metal_present_buffer(uint64_t producer_frame);
+/* Signal the image's monotonic frame value after its last encoded work,
+then commit the producer buffer before publishing the image below. */
+void host_metal_present_signal(id<MTLCommandBuffer> buffer, uint64_t frame);
+/* The independent presentation queue waits for this image's producer value,
+not later game work. Called once per frame, nil when there is no picture
+(its display's pacing, host_render_stream_frame_taken). */
+void host_metal_present_queue(id<MTLTexture> image, uint64_t frame);
 
 #endif

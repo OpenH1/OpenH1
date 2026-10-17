@@ -1716,6 +1716,134 @@ static int window_run(double seconds, int resize)
 	return failures ? 1 : 0;
 }
 
+static void queue_require(BOOL value, const char *reason)
+{
+	if (!value)
+	{
+		fprintf(stderr, "FAIL %s\n", reason);
+		exit(1);
+	}
+}
+
+static dispatch_semaphore_t queue_completion(id<MTLCommandBuffer> buffer)
+{
+	dispatch_semaphore_t done = dispatch_semaphore_create(0);
+
+	[buffer addCompletedHandler:^(id<MTLCommandBuffer> finished) {
+		queue_require(finished.status == MTLCommandBufferStatusCompleted, "GPU command buffer failed");
+		dispatch_semaphore_signal(done);
+	}];
+	return done;
+}
+
+static void queue_await_completion(dispatch_semaphore_t done)
+{
+	queue_require(dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)) == 0,
+		"GPU completion exceeded five seconds");
+}
+
+static void queue_clear(id<MTLCommandBuffer> buffer, id<MTLTexture> texture, MTLClearColor color)
+{
+	MTLRenderPassDescriptor *pass = [MTLRenderPassDescriptor renderPassDescriptor];
+	id<MTLRenderCommandEncoder> encoder;
+
+	pass.colorAttachments[0].texture = texture;
+	pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+	pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+	pass.colorAttachments[0].clearColor = color;
+	encoder = [buffer renderCommandEncoderWithDescriptor:pass];
+	queue_require(encoder != nil, "render encoder unavailable");
+	[encoder endEncoding];
+}
+
+static void test_presentation_queue(void)
+{
+	id<MTLDevice> device = xgpu_metal_device();
+	id<MTLCommandQueue> game_queue = xgpu_metal_queue();
+	MTLTextureDescriptor *description;
+	id<MTLTexture> texture, loading_target;
+	id<MTLBuffer> readback;
+	id<MTLCommandBuffer> last_producer, last_normal;
+	dispatch_semaphore_t last_done;
+	uint64_t frame;
+
+	test_name = "presentation queue dependencies";
+	queue_require(device != nil, "Metal device unavailable");
+	queue_require(host_metal_present_initialize(), "presentation queue/event unavailable");
+	description = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+		width:2 height:2 mipmapped:NO];
+	description.usage = MTLTextureUsageRenderTarget;
+	description.storageMode = MTLStorageModePrivate;
+	texture = [device newTextureWithDescriptor:description];
+	readback = [device newBufferWithLength:512 options:MTLResourceStorageModeShared];
+	loading_target = [device newTextureWithDescriptor:description];
+	queue_require(texture && readback && loading_target, "test resources unavailable");
+	for (frame = 1; frame <= 3; frame++)
+	{
+		id<MTLCommandBuffer> producer = [game_queue commandBuffer];
+		id<MTLCommandBuffer> aside, blocked, normal, loading;
+		id<MTLBlitCommandEncoder> blit;
+		dispatch_semaphore_t blocked_done, normal_done, loading_done;
+		unsigned char *pixels;
+		unsigned row, column;
+
+		queue_clear(producer, texture, MTLClearColorMake(0, 0, 1, 1));
+		host_metal_present_signal(producer, frame);
+		[producer commit];
+
+		/* A later frame reserves the producer queue without committing. */
+		aside = [game_queue commandBuffer];
+		[aside enqueue];
+		blocked = [game_queue commandBuffer];
+		blocked_done = queue_completion(blocked);
+		[blocked commit];
+
+		normal = host_metal_present_buffer(frame);
+		blit = [normal blitCommandEncoder];
+		[blit copyFromTexture:texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
+			sourceSize:MTLSizeMake(2, 2, 1) toBuffer:readback destinationOffset:0
+			destinationBytesPerRow:256 destinationBytesPerImage:512];
+		[blit endEncoding];
+		normal_done = queue_completion(normal);
+		[normal commit];
+		loading = host_metal_present_buffer(0);
+		queue_clear(loading, loading_target, MTLClearColorMake(1, 0, 0, 1));
+		loading_done = queue_completion(loading);
+		[loading commit];
+		queue_await_completion(loading_done);
+		queue_await_completion(normal_done);
+		queue_require(dispatch_semaphore_wait(blocked_done, DISPATCH_TIME_NOW) != 0,
+			"future uncommitted aside unexpectedly advanced");
+		pixels = readback.contents;
+		for (row = 0; row < 2; row++)
+		{
+			for (column = 0; column < 2; column++)
+			{
+				unsigned char *pixel = pixels + row * 256 + column * 4;
+
+				queue_require(pixel[0] == 0 && pixel[1] == 0 && pixel[2] == 255 && pixel[3] == 255,
+					"GPU consumer read stale producer color");
+			}
+		}
+		[aside commit];
+		queue_await_completion(blocked_done);
+	}
+
+	/* Submit the consumer first to prove that its GPU wait blocks access.
+	The renderer normally commits the producer before publishing its image. */
+	last_producer = [game_queue commandBuffer];
+	host_metal_present_signal(last_producer, 4);
+	last_normal = host_metal_present_buffer(4);
+	queue_clear(last_normal, loading_target, MTLClearColorMake(0, 1, 0, 1));
+	last_done = queue_completion(last_normal);
+	[last_normal commit];
+	queue_require(dispatch_semaphore_wait(last_done, dispatch_time(DISPATCH_TIME_NOW, 50 * NSEC_PER_MSEC)) != 0,
+		"normal buffer crossed unsignaled producer event");
+	[last_producer commit];
+	queue_await_completion(last_done);
+	CHECK(1, "independent presentation, producer fences and exact GPU pixels");
+}
+
 int main(int argc, char *argv[])
 {
 	const char *archive = NULL;
@@ -1760,6 +1888,7 @@ int main(int argc, char *argv[])
 			fprintf(stderr, "no Metal device\n");
 			return 2;
 		}
+		test_presentation_queue();
 		shaders_make();
 		if (!vertex_shader || !pixel_shader)
 		{

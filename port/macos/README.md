@@ -599,7 +599,12 @@ shaders made from a vertex program and a pixel program written as the
 stream's bytes: an Xbox texture in the guest's memory (swizzled), read
 again once written, an image, and a border colour Metal has and one it has
 not. With `--archive file`, a
-second run checks that every pipeline comes from the archive.
+second run checks that every pipeline comes from the archive. A windowless
+GPU test also uses the production presentation queue and event helpers: an
+uncommitted later game buffer must not block an earlier picture or the loading
+draw, and an unsignaled picture event must block its consumer. Exact pixel
+readback checks the producer dependency. This tests GPU ownership and ordering,
+not display cadence. The separate `--window` path does not run this fixture.
 `build/macos/xgpu_metal_test --window 15 --resize` opens a window, draws
 frames as fast as the presentation takes them, resizes it, makes it
 fullscreen, and logs the rate (with `HALO_METAL_STATS=3`, the
