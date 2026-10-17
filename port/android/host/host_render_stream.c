@@ -28,6 +28,9 @@ frame on screen.
 #include "host_render_record.h"
 #include "host_render_stream.h"
 #include "frame_pacing.h"
+#ifdef HALO_VR
+#include "host_vr_render.h"
+#endif
 
 #ifdef __APPLE__
 /* (Mach's host_page_size is another than host.h's) */
@@ -46,6 +49,112 @@ frame on screen.
 #include <time.h>
 
 /* ---------- the decoder */
+
+static uint64_t monotonic_nanoseconds(void);
+static struct
+{
+	const struct host_render_backend *backend;
+	struct loading_presentation_frame frame;
+	uint64_t next;
+	uint64_t costs[8];
+	unsigned cost_index;
+	int servicing, ready;
+} loading;
+
+int host_render_stream_loading_holds(void)
+{
+	return loading.frame.active && !loading.ready;
+}
+
+void host_render_stream_loading_service(void)
+{
+	uint64_t now, interval, completed, maximum, budget, slack, margin;
+	unsigned index;
+
+	if (!loading.frame.active || loading.ready || loading.servicing || !loading.backend || !loading.backend->loading)
+		return;
+	now = monotonic_nanoseconds();
+	if (now < loading.next)
+		return;
+	loading.servicing = 1;
+	loading.frame.elapsed_ns = now - loading.frame.started_ns;
+	loading.frame.serial++;
+	loading_presentation_build(&loading.frame);
+	interval = loading.backend->loading(loading.backend->context, &loading.frame);
+	if (!interval)
+		interval = 16666667ull;
+	loading.next = now + interval;
+	completed = monotonic_nanoseconds();
+	loading.costs[loading.cost_index++ % 8] = completed - now;
+	/* A late callback must leave time for queued work. Spend the spare
+	time before twice its requested service interval, using recent costs
+	to allow for swap jitter. OpenXR requests 1 ms ticket polls here;
+	that interval is not the headset's refresh period. */
+	if (loading.next <= completed)
+	{
+		maximum = 0;
+		for (index = 0; index < 8; index++)
+			if (loading.costs[index] > maximum)
+				maximum = loading.costs[index];
+		budget = interval / 2;
+		/* Leave a quarter interval for a slower swap than recent samples.
+		The desktop driver's measured variation exceeds a millisecond. */
+		margin = interval / 4;
+		if (margin < 1000000ull)
+			margin = 1000000ull;
+		slack = interval * 2 > maximum + margin ? interval * 2 - maximum - margin : 0;
+		if (budget > slack)
+			budget = slack;
+		/* Even a presenter slower than two intervals must not starve
+		preparation. It cannot meet that cadence on this thread. */
+		if (budget < 1000000ull)
+			budget = 1000000ull;
+		loading.next = completed + budget;
+	}
+	loading.servicing = 0;
+}
+
+static void loading_set(const struct host_render_backend *backend, int active)
+{
+	if (active == 2)
+	{
+		loading.ready = 1;
+		loading.frame.ready = 1;
+		host_load_trace("loading.ready", "epoch=%llu serial=%llu",
+			(unsigned long long)loading.frame.epoch, (unsigned long long)loading.frame.serial);
+		if (backend->loading)
+			backend->loading(backend->context, &loading.frame);
+#ifdef HALO_VR
+		host_vr_loading_set(2);
+#endif
+		return;
+	}
+	if (active == (int)loading.frame.active)
+		return;
+	host_load_trace("loading.received", "active=%d", active);
+	loading.backend = backend;
+	loading.frame.active = active;
+	loading.ready = 0;
+	loading.frame.ready = 0;
+	if (active)
+	{
+		loading.frame.epoch++;
+		loading.frame.serial = 0;
+		memset(loading.costs, 0, sizeof(loading.costs));
+		loading.cost_index = 0;
+		loading.frame.started_ns = monotonic_nanoseconds();
+		loading.next = 0;
+	}
+#ifdef HALO_VR
+	host_vr_loading_set(active);
+#endif
+	host_load_trace(active ? "loading.begin" : "loading.end", "epoch=%llu serial=%llu",
+		(unsigned long long)loading.frame.epoch, (unsigned long long)loading.frame.serial);
+	if (active)
+		host_render_stream_loading_service();
+	else if (backend->loading)
+		backend->loading(backend->context, &loading.frame);
+}
 
 struct host_render_decoder
 {
@@ -76,6 +185,7 @@ struct host_render_decoder
 /* the least size of each type's record */
 static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 {
+	[XGPU_STREAM_LOADING] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_SKIP] = sizeof(struct xgpu_stream_record),
 	[XGPU_STREAM_INITIALIZE] = sizeof(struct xgpu_stream_reply_record),
 	[XGPU_STREAM_INVALIDATE] = sizeof(struct xgpu_stream_record),
@@ -195,6 +305,11 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 
 	switch (type)
 	{
+	case XGPU_STREAM_LOADING:
+		if (value->value > 2)
+			return XGPU_STREAM_ERROR_RECORD;
+		loading_set(backend, (int)((const struct xgpu_stream_value *)start)->value);
+		break;
 	case XGPU_STREAM_SKIP:
 		break;
 	case XGPU_STREAM_INITIALIZE:
@@ -675,6 +790,7 @@ uint32_t host_render_decode(struct host_render_decoder *decoder, uint32_t from, 
 		}
 		position += size;
 		__atomic_store_n(&ring->decoded, position, __ATOMIC_RELEASE);
+		host_render_stream_loading_service();
 	}
 	return position;
 }
@@ -822,6 +938,12 @@ static void *render_thread(void *argument)
 	pthread_mutex_lock(&render.lock);
 	for (;;)
 	{
+		if (loading.frame.active)
+		{
+			pthread_mutex_unlock(&render.lock);
+			host_render_stream_loading_service();
+			pthread_mutex_lock(&render.lock);
+		}
 		if (render.ring->error)
 		{
 			stream_failed();
@@ -899,9 +1021,25 @@ static void *render_thread(void *argument)
 		}
 		if (render.stopping)
 			break;
-		pthread_cond_wait(&render.work, &render.lock);
+		if (loading.frame.active)
+		{
+			struct timespec until;
+
+			clock_gettime(CLOCK_REALTIME, &until);
+			until.tv_nsec += 1000000;
+			if (until.tv_nsec >= 1000000000)
+			{
+				until.tv_sec++;
+				until.tv_nsec -= 1000000000;
+			}
+			pthread_cond_timedwait(&render.work, &render.lock, &until);
+		}
+		else
+			pthread_cond_wait(&render.work, &render.lock);
 	}
 	pthread_mutex_unlock(&render.lock);
+	if (loading.frame.active)
+		loading_set(loading.backend, 0);
 	return NULL;
 }
 

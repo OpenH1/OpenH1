@@ -38,6 +38,7 @@ and anti-aliasing's passes (the stream skips records with no entry).
 #include "xgpu_shader.h"
 #include "xgpu_spirv.h"
 #include "xgpu_vulkan.h"
+#include "xgpu_vulkan_loading.h"
 #include "xgpu_vulkan_stream.h"
 #include "xgpu_vulkan_textures.h"
 #ifdef HALO_VR
@@ -221,7 +222,7 @@ static struct
 	uint32_t back_buffer;
 	int preparing, prepared;
 	uint64_t prepare_pipelines;
-	int trace_preparing;
+	int trace_preparing, trace_pipeline_descriptions;
 	struct xgpu_vulkan_statistics trace_statistics;
 	struct xgpu_vulkan_texture_statistics trace_textures;
 	double trace_seconds[4];
@@ -1399,6 +1400,34 @@ static void pipeline_missed(const struct xgpu_vulkan_pipeline_description *pipel
 		(unsigned)key->pixel.point_threshold, stream.pipeline_misses);
 }
 
+/* A native key can depend on backend state absent from the manifest.
+Detailed traces retain every newly compiled description for comparison
+with a later miss in this process; shader handles are process-local. */
+static void pipeline_description_trace(const struct xgpu_vulkan_pipeline_description *pipeline,
+	uint64_t vertex_program, const struct variant *variant)
+{
+	static const char hex[] = "0123456789abcdef";
+	const unsigned char *bytes = (const unsigned char *)pipeline;
+	char description[sizeof(*pipeline) * 2 + 1];
+	size_t index;
+
+	if (!stream.trace_pipeline_descriptions)
+		return;
+	for (index = 0; index < sizeof(*pipeline); index++)
+	{
+		description[index * 2] = hex[bytes[index] >> 4];
+		description[index * 2 + 1] = hex[bytes[index] & 15];
+	}
+	description[sizeof(*pipeline) * 2] = 0;
+	host_logf(HOST_LOG_INFO, "vulkan: pipeline description: preparing=%d vertex=%08x%08x key=%08x "
+		"integers=%x foveated=%u border=%u,%u,%u,%u native=%s", stream.preparing,
+		(unsigned)(vertex_program >> 32), (unsigned)vertex_program,
+		bytes_hash(&stream.definition->key, sizeof(stream.definition->key)),
+		(unsigned)variant->integer_attributes, (unsigned)variant->foveated,
+		(unsigned)variant->border[0], (unsigned)variant->border[1], (unsigned)variant->border[2],
+		(unsigned)variant->border[3], description);
+}
+
 /* a draw of the current pipeline, made and drawn: its shaders for the
 draw's variant, its pipeline for the vertex layout, its textures and
 uniforms, its vertices and indices; nothing if it cannot be drawn */
@@ -1463,9 +1492,24 @@ static void draw_input(const struct draw_input *input)
 		uint64_t vertex_program = stream.definition->key.vertex_program[0] |
 			((uint64_t)stream.definition->key.vertex_program[1] << 32);
 
-		draw.pipeline = xgpu_vulkan_pipeline(&pipeline);
+		if (stream.preparing)
+			(void)xgpu_vulkan_pipeline_prepare(&pipeline);
+		else
+			draw.pipeline = xgpu_vulkan_pipeline(&pipeline);
+		if (xgpu_vulkan_pipeline_count() != before)
+			pipeline_description_trace(&pipeline, vertex_program, &variant);
 		if (!stream.preparing && stream.prepared && xgpu_vulkan_pipeline_count() != before)
 			pipeline_missed(&pipeline, vertex_program);
+	}
+	if (stream.preparing)
+	{
+		/* Preparation needs the pipeline and resident textures. Transient
+		vertex and uniform uploads cannot survive until play, and drawing
+		the enumeration does not make either resource more ready. */
+		traced = preparation_start();
+		textures_bind();
+		preparation_end(0, traced);
+		return;
 	}
 	if (!draw.pipeline)
 		return;
@@ -1669,7 +1713,7 @@ static void stream_visibility_end(void *context, const struct xgpu_stream_visibi
 static void stream_present(void *context, uint32_t back_buffer)
 {
 	(void)context;
-	stream.back_buffer = back_buffer;
+	stream.back_buffer = host_render_stream_loading_holds() ? 0 : back_buffer;
 }
 
 static void stream_frame_end(void *context)
@@ -1682,7 +1726,7 @@ static void stream_frame_end(void *context)
 	if (host_vulkan_vr_active())
 		back_buffer = NULL;
 #endif
-	xgpu_vulkan_frame_end(back_buffer ? back_buffer->image : NULL);
+	xgpu_vulkan_frame_end(back_buffer ? back_buffer->image : NULL, !host_render_stream_loading_holds());
 	stream.back_buffer = 0;
 	xgpu_vulkan_textures_frame_end();
 	if (getenv("HALO_VULKAN_STATS"))
@@ -1749,7 +1793,11 @@ static void stream_initialize(void *context, struct xgpu_stream_capabilities *ca
 
 static void stream_prepare(void *context)
 {
+	const char *detail = getenv("HALO_LOAD_TRACE_DETAIL");
+
 	(void)context;
+	stream.trace_pipeline_descriptions = host_load_trace_enabled() && detail && *detail && strcmp(detail, "0");
+	xgpu_vulkan_preparation_service(host_render_stream_loading_service);
 	stream.preparing = 1;
 	stream.prepare_pipelines = xgpu_vulkan_pipeline_count();
 	stream.trace_preparing = host_load_trace_enabled();
@@ -1761,7 +1809,11 @@ static void stream_prepare(void *context)
 
 static uint32_t stream_prepared(void *context)
 {
+	double started = host_load_trace_clock(CLOCK_MONOTONIC), finished;
+
 	(void)context;
+	xgpu_vulkan_preparation_service(NULL);
+	finished = host_load_trace_clock(CLOCK_MONOTONIC);
 	if (stream.trace_preparing)
 	{
 		struct xgpu_vulkan_statistics now;
@@ -1784,14 +1836,14 @@ static uint32_t stream_prepared(void *context)
 				(unsigned long long)stream.trace_counts[stage], stream.trace_seconds[stage]);
 		stream.trace_preparing = 0;
 	}
-	/* Pipeline creation is synchronous here. The reply follows every
-	enumeration draw, including its vertex layout and target format. */
+	/* Clearing the preparation service drains queued native descriptions.
+	The reply follows compilation of every requested layout and target. */
 	host_logf(HOST_LOG_INFO, "vulkan: map preparation made %llu pipelines (%llu total)",
 		(unsigned long long)(xgpu_vulkan_pipeline_count() - stream.prepare_pipelines),
 		(unsigned long long)xgpu_vulkan_pipeline_count());
 	stream.preparing = 0;
 	stream.prepared = 1;
-	return 0;
+	return started >= 0.0 && finished >= started ? (uint32_t)((finished - started) * 1000.0) : 0;
 }
 
 const struct host_render_backend *xgpu_vulkan_stream_backend(void)
@@ -1829,6 +1881,7 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.visibility_begin = stream_visibility_begin;
 		backend.visibility_end = stream_visibility_end;
 		backend.present = stream_present;
+		backend.loading = xgpu_vulkan_loading;
 		backend.frame_end = stream_frame_end;
 		backend.prepare = stream_prepare;
 		backend.prepared = stream_prepared;

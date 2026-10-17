@@ -1071,6 +1071,7 @@ boolean scenario_switch_structure_bsp(
 		structure_bsp_index < global_scenario->structure_bsp_references.count &&
 		structure_bsp_index < MAXIMUM_STRUCTURE_BSPS_PER_SCENARIO)
 	{
+		halo_loading_begin(); /* port: cover every validated BSP transition before disconnecting */
 		reference = TAG_BLOCK_GET_ELEMENT(
 			&global_scenario->structure_bsp_references,
 			structure_bsp_index,
@@ -1187,6 +1188,7 @@ void scenario_reload_structure_bsp_if_necessary(
 			global_structure_bsp_index,
 			struct scenario_structure_bsp_reference);
 
+		halo_loading_begin(); /* port: keep presentation independent before replacing the old BSP */
 		scenario_structure_bsp_unload(reference);
 		global_structure_bsp_index = NONE;
 		scenario_switch_structure_bsp(scenario_globals->structure_bsp_index);

@@ -22,6 +22,13 @@ static VkImageViewCreateInfo last_view;
 static VkDescriptorImageInfo written_images[4];
 static VkFormatFeatureFlags depth24_features, depth32_features;
 static unsigned int capability_errors;
+static unsigned int ended_queries;
+
+static void VKAPI_CALL fake_end_query(VkCommandBuffer command, VkQueryPool pool, uint32_t query)
+{
+	(void)command; (void)pool; (void)query;
+	ended_queries++;
+}
 
 void host_logf(int priority, const char *format, ...)
 {
@@ -187,6 +194,7 @@ static void reset(void)
 		vk.stand_ins[index] = &stand_in;
 	vkCmdBeginRendering = fake_begin;
 	vkCmdEndRendering = fake_end;
+	vkCmdEndQuery = fake_end_query;
 	vkCmdClearAttachments = fake_clear;
 	vkCmdPipelineBarrier = fake_barrier;
 	vkCreateImageView = fake_view;
@@ -307,6 +315,48 @@ int main(void)
 			}
 		}
 		assert(views_freed == 2);
+	}
+	reset();
+	{
+		struct xgpu_vulkan_image *loading_image = calloc(1, sizeof(*loading_image));
+		struct loading_presentation_frame frame = { 0 };
+		struct query_frame queries = { 0 };
+		unsigned int index;
+		float first_color;
+
+		assert(loading_image);
+		loading_image->description = color_target.description;
+		loading_image->description.type = XGPU_VULKAN_IMAGE_2D;
+		loading_image->description.format = XGPU_VULKAN_FORMAT_BGRA8;
+		loading_image->description.depth_or_layers = 1;
+		loading_image->aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+		vk.loading_image = loading_image;
+		xgpu_vulkan_set_target_views(&color_target, &depth_target, 2, 2);
+		xgpu_vulkan_clear(full, 1, all, color, 0.75f, 3);
+		/* Simulate a game query spanning a preparation wait. Loading
+		passes close it once, never allocate more query segments, and
+		leave the game's target, test and frame number intact. */
+		vk.test_active = vk.test_query_open = 1;
+		vk.test_query_count = 1;
+		vk.test_number = 37;
+		vk.queries = &queries;
+		ended_queries = 0;
+		frame.active = 1;
+		loading_presentation_build(&frame);
+		first_color = frame.rectangles[0].color[0];
+		for (index = 0; index < 128; index++)
+		{
+			frame.elapsed_ns = (uint64_t)index * 16666667;
+			loading_presentation_build(&frame);
+			assert(xgpu_vulkan_loading_draw(&frame, 64, 48, XGPU_VULKAN_FORMAT_BGRA8) == loading_image);
+			assert(vk.color == &color_target && vk.depth == &depth_target && vk.layer == 2 && vk.views == 2);
+			assert(vk.test_active && !vk.test_query_open && vk.test_query_count == 1 && vk.test_number == 37);
+			assert(!vk.statistics.frames && !vk.pass_active && queries.count == 0 && ended_queries == 1);
+		}
+		assert(first_color != frame.rectangles[0].color[0]);
+		frame.active = 0;
+		assert(!xgpu_vulkan_loading_draw(&frame, 0, 0, 0) && !vk.loading_image);
+		vk.queries = NULL;
 	}
 	reset();
 	puts("Vulkan passes: full/partial/aspect clears, multiview and sampled array views passed");

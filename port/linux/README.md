@@ -437,7 +437,7 @@ the setting for one start of the game. It has priority over the file.
 | `crash_reports.upload` | `"ask"` | `HALO_CRASH_REPORTS` | Windows only. `"yes"`: the game sends a report of each crash to the developers. `"no"`: the game sends no reports. `"ask"`: the game asks at the next crash and writes the answer here. Refer to "Crash reports" in [port/windows/README.md](../windows/README.md#crash-reports). |
 | `debug.update_answer` | `""` | `HALO_UPDATE_ANSWER` | The answer to the update question, for automatic tests: `yes`, `no` or `never`. Empty: the game asks. |
 | `debug.update_from` | `""` | `HALO_UPDATE_FROM` | A release's zip file to update to, for tests of updates: the game offers it as a new version without asking GitHub, also when the build has no build number, but not in the version that the update starts. Empty: the game asks GitHub. |
-| `debug.load_trace` | `false` | `HALO_LOAD_TRACE` | Log map loading checkpoints with absolute monotonic wall, thread and process CPU seconds. Subtract timestamps to measure phases; process CPU includes worker threads. |
+| `debug.load_trace` | `false` | `HALO_LOAD_TRACE` | Log map loading checkpoints with absolute monotonic wall, thread and process CPU seconds. Subtract timestamps to measure phases; process CPU includes worker threads. Set `HALO_LOAD_TRACE_DETAIL=1` to add sampled preparation CPU timings and detailed renderer traces; measure final loading times without these extra diagnostics. |
 | `debug.exit_after` | `0.0` | `HALO_EXIT_AFTER` | The game stops after this number of seconds (from when its window opens; with `debug.null_renderer`, or no display, from its first frame). `0`: never. |
 | `debug.screenshot_directory`, `debug.screenshot_every` | `""`, `0` | `HALO_SCREENSHOT_DIR`, `HALO_SCREENSHOT_EVERY` | The game writes each Nth frame to this folder as a BMP file. |
 | `debug.hidden_window`, `debug.null_renderer` | `false` | `HALO_HIDDEN_WINDOW`, `HALO_NULL_RENDERER` | `true`: no visible window, or no graphics. |
@@ -3892,7 +3892,44 @@ The texture cache (`src/xbox_textures.c`) and the high-res replacements
 (`src/hud_hires.c`, `src/text_hires.c`, `src/menu_files.c`) still make GL
 textures themselves.
 
+### Presenting during map loading
+
+Map loading keeps the game thread's activation order. A loading epoch begins
+before the blocking work and presents an animated panel whose resources belong
+to the platform, rather than to the map being replaced. Its animation uses
+monotonic presentation time; it does not advance game ticks or take random
+seeds. Queued rendering is retired before tags or a structure's storage are
+released.
+
+The shared renderer prepares distinct pipeline and texture combinations in
+bounded batches. Vulkan and Metal prepare their pipelines without drawing the
+unseen enumeration or uploading its transient geometry. The host render thread
+services loading presentation between records and while waiting for pipeline
+compilation. Direct OpenGL builds use a separate context for the loading panel;
+the browser and Metal use their independent presentation callbacks.
+
+Vulkan can queue up to 512 owned native pipeline descriptions ahead of one
+compiler worker. The render thread owns the pipeline table and publishes
+completed handles; preparation drains every request before reporting ready.
+Ordinary drawing always waits for an actual pipeline handle.
+
+OpenXR uses the same loading epoch and panel. It submits fresh predicted poses
+in a world-anchored scene while loading and transfers frame ownership back to
+gameplay when its first image is ready. Waiting for the runtime's next frame
+does not stop the render thread from consuming preparation work. Backend
+presentation details do not change the shared map loader or simulation order.
+
 ### Measuring map loading
+
+For a separate visual diagnostic run, set `HALO_LOADING_CAPTURE_DIR` to an
+existing private directory. The GL and Vulkan hosts read back their rendered
+loading image twice per load: after its first frame and after half a second,
+when the load lasts that long. Files are `loading-<epoch>-<serial>.ppm`.
+These are GPU image readbacks; they stall rendering and must never be enabled
+in timing runs. Leave the variable unset for normal operation. OpenXR captures
+show the loading panel's pixels; runtime pose traces and the submitted quad's
+space separately establish its placement. Convert retained evidence to PNG
+and remove temporary captures after inspection.
 
 `HALO_LOAD_TRACE=1` records the map's loading phases, file requests, renderer
 preparation and presentation boundaries. Use the environment variable for a
@@ -3900,6 +3937,20 @@ guest build so both the game and host record their work. Thread CPU times
 belong to the recorded owner; `-1` means that clock is unavailable. Nested
 phase times overlap and must not be added. Detailed per-draw timing can
 materially slow preparation, so compare normal runs too.
+Vulkan's `pipeline_seconds` and published `driver_seconds` sum wall time inside
+driver creation calls. That work overlaps enumeration; the sum is neither
+thread CPU time nor additional loading latency. Worker `driver.begin/end`
+records time the calls, while render-owner `request/published` records track
+their lifetime in the preparation queue.
+
+Each loading epoch's presentation summary includes `actual_boundaries`: the
+gap from the preceding game picture to the first loading picture, the largest
+gap between loading pictures, and the handoff to the first game picture.
+Unproven boundaries are `null`. The conservative bracketing metric remains
+separate: it can include the interval from the first to the second game frame.
+OpenGL, Vulkan and OpenXR timestamps describe swap or submission returns;
+Metal uses drawable presentation times, including callbacks received after
+the loading epoch ends. These timestamps do not all prove physical display.
 
 On Linux, the loading runner starts each map directly, offline, in a private
 directory. It retains logs and JSON evidence and removes its run folders.
@@ -3918,9 +3969,12 @@ read them and verify residency. This describes the OS file cache separately
 from reusable decompressed maps and shader cache files. Each run starts a
 new process. Driver-internal caches may need separate auditing. `--all`
 selects all 24 stock maps. Any exception, malformed trace or reported missed
-pipeline preparation fails the run while keeping its evidence.
+pipeline preparation fails the run while keeping its evidence. `--keep-going`
+continues later runs after a failed launch and still exits with failure;
+cache-state verification failures always stop the measurement.
 
-The default display is offscreen. GL swap returns, Vulkan present returns,
+The default display is offscreen. `--video-driver x11` selects an explicitly
+provided private virtual display for windowed checks. GL swap returns, Vulkan present returns,
 and OpenXR submissions measure application progress, not a physical screen's
 refreshes. Metal's callback also records the drawable's actual presentation
 time. The first game-frame submission is not necessarily the first playable

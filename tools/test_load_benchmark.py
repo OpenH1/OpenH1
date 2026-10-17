@@ -67,6 +67,81 @@ def test_present_gaps_are_separate_per_backend():
     assert presentations["metal.presented"]["maximum_gap_ms"] is None
 
 
+def test_loading_epoch_includes_entry_and_exit_present_gaps():
+    text = (trace("gl.swap.return", 0.9) + trace("loading.begin", 1, "epoch=1 serial=0")
+            + trace("loading.swap.return", 1.1, "epoch=1 serial=1 elapsed_ns=100000000")
+            + trace("loading.swap.return", 1.2, "epoch=1 serial=2 elapsed_ns=200000000")
+            + trace("loading.end", 1.4, "epoch=1 serial=2") + trace("gl.swap.return", 1.5))
+    events, operations = benchmark.parse_trace(text)
+    epoch = benchmark.summarize(events, operations, "a10")["loading_epochs"][0]
+    assert epoch["loading_frame_count"] == 2
+    assert epoch["serials_contiguous"] and epoch["animation_clock_increasing"]
+    assert not epoch["pose_each_frame"]
+    stream = epoch["presentations"]["gl"]
+    assert stream["boundary_samples_complete"]
+    assert stream["maximum_clipped_gap_ms"] == pytest.approx(200)
+    assert stream["maximum_bracketing_gap_ms"] == pytest.approx(300)
+
+
+def test_loading_pose_and_missing_boundaries_are_not_assumed():
+    text = (trace("loading.begin", 1, "epoch=7 serial=0")
+            + trace("loading.pose", 1.01, "epoch=7 serial=1 predicted=100 valid=1")
+            + trace("xr.submit.end", 1.02)
+            + trace("loading.submitted", 1.021, "epoch=7 serial=1 elapsed_ns=100")
+            + trace("loading.pose", 1.03, "epoch=7 serial=3 predicted=100 valid=0")
+            + trace("xr.submit.end", 1.04)
+            + trace("loading.submitted", 1.041, "epoch=7 serial=3 elapsed_ns=100")
+            + trace("loading.end", 1.05, "epoch=7 serial=3")
+            + trace("loading.begin", 2, "epoch=8 serial=0"))
+    events, _ = benchmark.parse_trace(text)
+    epoch, unfinished = benchmark.loading_epochs(events)
+    assert epoch["pose_each_frame"]
+    assert not epoch["pose_valid"]
+    assert not epoch["predicted_time_increasing"]
+    assert not epoch["serials_contiguous"]
+    assert epoch["serials_increasing"]
+    assert epoch["loading_frame_count"] == 2
+    assert not epoch["animation_clock_increasing"]
+    assert epoch["presentations"]["xr"]["maximum_bracketing_gap_ms"] is None
+    assert not unfinished["completed"]
+    assert epoch["world_anchor_stable"] is None
+    assert epoch["world_space_each_frame"] is None
+    assert epoch["head_orientation_max_delta_degrees"] is None
+
+
+@pytest.mark.parametrize("second_anchor,stable", [("0,1,-2", True), ("0,1,-3", False)])
+def test_loading_head_motion_is_independent_of_world_anchor(second_anchor, stable):
+    text = trace("loading.begin", 1, "epoch=1 serial=0")
+    for serial, orientation, position in ((1, "0,0,0,1", "0,1,-2"),
+                                          (2, "0,0.70710678,0,0.70710678", second_anchor)):
+        text += trace("loading.pose", 1 + serial * .01,
+                      f"epoch=1 serial={serial} predicted={serial} valid=1 orientation={orientation}")
+        text += trace("loading.submitted", 1 + serial * .01 + .001,
+                      f"epoch=1 serial={serial} elapsed_ns={serial} world_space=1 "
+                      f"anchor_position={position} anchor_orientation=0,0,0,1")
+    text += trace("loading.end", 1.1, "epoch=1 serial=2")
+    events, _ = benchmark.parse_trace(text)
+    epoch = benchmark.loading_epochs(events)[0]
+    assert epoch["head_orientation_samples"] == 2
+    assert epoch["head_orientation_max_delta_degrees"] == pytest.approx(90)
+    assert epoch["world_space_each_frame"]
+    assert epoch["world_anchor_stable"] is stable
+    assert epoch["world_anchor_unique"] == (1 if stable else 2)
+
+
+def test_metal_loading_callbacks_count_separately_from_game_frames():
+    text = (trace("metal.presented", .9, "display_time=9.9 image=1")
+            + trace("loading.begin", 1, "epoch=1 serial=0")
+            + trace("loading.presented", 1.1, "epoch=1 serial=1 elapsed_ns=100000000 display_time=10.1")
+            + trace("loading.end", 1.2, "epoch=1 serial=1")
+            + trace("metal.presented", 1.3, "display_time=10.3 image=1"))
+    events, _ = benchmark.parse_trace(text)
+    epoch = benchmark.loading_epochs(events)[0]
+    assert epoch["loading_frame_count"] == 1
+    assert epoch["serials_increasing"]
+    assert epoch["presentations"]["metal"]["maximum_bracketing_gap_ms"] == pytest.approx(200)
+
+
 @pytest.mark.parametrize("line", ["LOAD_IO op=read actual=bad", "LOAD_IO op=read elapsed=bad"])
 def test_malformed_io_numbers_fail(line):
     with pytest.raises(ValueError):
@@ -141,6 +216,15 @@ def test_inherited_desktop_driver_cannot_open_user_display(runner, monkeypatch):
     assert runner[-1][0]["env"]["SDL_VIDEO_DRIVER"] == "offscreen"
 
 
+def test_explicit_virtual_display_is_preserved(runner, monkeypatch):
+    runner[0].video_driver = "x11"
+    monkeypatch.setenv("DISPLAY", ":193")
+    execute(runner)
+    env = runner[-1][0]["env"]
+    assert env["SDL_VIDEO_DRIVER"] == "x11" and env["DISPLAY"] == ":193"
+    assert env["HALO_NET_ONLINE"] == "false"
+
+
 def test_explicit_network_join_is_rejected(runner):
     runner[0].env = [("HALO_NETWORK_TEST", "join")]
     with pytest.raises((ValueError, RuntimeError)):
@@ -198,6 +282,45 @@ def test_real_file_warm_and_cold_residency(tmp_path):
 def test_missing_source_cannot_prove_cold_cache(tmp_path):
     with pytest.raises((FileNotFoundError, ValueError, RuntimeError)):
         benchmark.prepare_files([tmp_path / "missing.map"], "cold")
+
+
+def test_warming_later_file_cannot_hide_earlier_page_reclaim(tmp_path, monkeypatch):
+    first, second = tmp_path / "first.map", tmp_path / "second.map"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    calls = []
+    def resident(path):
+        calls.append(path)
+        count = 0 if path == first and calls.count(first) >= 3 else 1
+        return dict(bytes=5, pages=1, resident_pages=count)
+    monkeypatch.setattr(benchmark, "residency", resident)
+    with pytest.raises(RuntimeError, match="warm file-cache residency not verified"):
+        benchmark.prepare_files([first, second], "warm")
+    assert calls == [first, first, second, second, first, second,
+                     first, second, first, second]
+
+
+def test_warm_retry_reads_only_incomplete_files_then_rechecks_every_file(tmp_path, monkeypatch):
+    first, second = tmp_path / "first.map", tmp_path / "second.map"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    calls, reads = [], []
+    original_open = type(first).open
+    def opened(path, *args, **kwargs):
+        reads.append(path)
+        return original_open(path, *args, **kwargs)
+    def resident(path):
+        calls.append(path)
+        count = 0 if path == first and calls.count(first) == 3 else 1
+        return dict(bytes=5, pages=1, resident_pages=count)
+    monkeypatch.setattr(type(first), "open", opened)
+    monkeypatch.setattr(benchmark, "residency", resident)
+    proof = benchmark.prepare_files([first, second], "warm")
+    assert reads == [first, second, first]
+    assert calls == [first, first, second, second, first, second, first, second]
+    assert [item["warm_reads"] for item in proof] == [2, 1]
+    assert [check["resident_pages"] for check in proof[0]["warm_checks"]] == [0, 1]
+    assert all(item["after"]["resident_pages"] == item["after"]["pages"] for item in proof)
 
 
 def test_nonresident_after_warm_prefetch_rejected(tmp_path, monkeypatch):
@@ -372,3 +495,148 @@ def test_main_retains_failed_prime_manifest(tmp_path, monkeypatch):
     assert not manifest["passed"] and not manifest["runs"][0]["passed"]
     assert manifest["runs"][0]["kind"] == "prime"
     assert not work_folders[0].exists()
+
+
+@pytest.mark.parametrize("failure", ["pipeline missed map preparation", "EXCEPTION"])
+def test_keep_going_retains_failures_and_attempts_both_cache_states(tmp_path, monkeypatch, capsys, failure):
+    binary, output = tmp_path / "halo", tmp_path / "out"
+    binary.write_bytes(b"binary")
+    calls = []
+    def fail(args, scenario, work, saves, shaders, destination, **kwargs):
+        calls.append(destination.name)
+        destination.mkdir(parents=True)
+        (saves / "cache000.map").write_bytes(b"cache")
+        (shaders / "pipeline.bin").write_bytes(b"shader")
+        (destination / "result.json").write_text(json.dumps(dict(passed=False, events=[], errors=[failure])))
+        raise RuntimeError(failure)
+    monkeypatch.setattr(benchmark, "run_game", fail)
+    monkeypatch.setattr(benchmark, "prepare_files", lambda paths, state: [])
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(sys, "argv", ["load_benchmark.py", "--halo", str(binary), "--data", str(tmp_path),
+                                     "--out", str(output), "--maps", "a10", "--keep-going"])
+    assert benchmark.main() == 1
+    assert calls == ["prime", "0-cold", "0-warm"]
+    manifest = json.loads((output / "manifest.json").read_text())
+    assert not manifest["passed"]
+    assert all(not run["passed"] and failure in run["error"] for run in manifest["runs"])
+    assert failure in capsys.readouterr().err
+    assert not list(output.glob(".work-*"))
+
+
+def boundary_trace(stream):
+    text = trace("loading.request", .995, "begin") + trace("loading.begin", 1, "epoch=1")
+    if stream == "xr":
+        for when, predicted, layers in ((.99, 1, 5), (1.01, 2, 1), (1.03, 3, 1), (1.05, 4, 5), (1.10, 5, 5)):
+            text += trace("xr.wait.end", when - .002, f"predicted={predicted} render=1")
+            if layers == 1:
+                text += trace("loading.pose", when - .001, f"epoch=1 serial={predicted - 1} predicted={predicted} valid=1")
+            text += trace("xr.submit.end", when, f"predicted={predicted} layers={layers}")
+            if layers == 1:
+                text += trace("loading.submitted", when + .0001, f"epoch=1 serial={predicted - 1} elapsed_ns={predicted}")
+    elif stream == "vulkan":
+        for when in (.99, 1.01, 1.03, 1.05, 1.10):
+            text += trace("vulkan.present.return", when, "result=0 image=1")
+        text += trace("loading.submitted", 1.0101, "epoch=1 serial=1 elapsed_ns=1")
+        text += trace("loading.submitted", 1.0301, "epoch=1 serial=2 elapsed_ns=2")
+    else:
+        for when in (.99, 1.05, 1.10):
+            text += trace("gl.swap.return", when, "paced=1")
+        text += trace("loading.swap.return", 1.01, "epoch=1 serial=1 elapsed_ns=1")
+        text += trace("loading.swap.return", 1.03, "epoch=1 serial=2 elapsed_ns=2")
+    text += trace("loading.ready", 1.04, "epoch=1 serial=2")
+    text += trace("loading.end", 1.051, "epoch=1 serial=2")
+    return text
+
+
+@pytest.mark.parametrize("stream", ["xr", "vulkan", "gl"])
+def test_actual_handoff_excludes_second_game_frame(stream):
+    events, _ = benchmark.parse_trace(boundary_trace(stream))
+    epoch = benchmark.loading_epochs(events)[0]
+    presentation = epoch["presentations"][stream]
+    actual = presentation["actual_boundaries"]
+    assert presentation["maximum_bracketing_gap_ms"] == pytest.approx(50)
+    assert actual["entry_gap_ms"] == pytest.approx(20)
+    assert actual["internal_max_gap_ms"] == pytest.approx(20)
+    assert actual["first_game_handoff_ms"] == pytest.approx(20)
+    assert actual["maximum_transition_gap_ms"] == pytest.approx(20)
+    assert actual["request_to_first_loading_ms"] == pytest.approx(15)
+
+
+def test_xr_nonrenderable_previous_frame_is_not_entry_proof():
+    text = boundary_trace("xr").replace("predicted=1 render=1", "predicted=1 render=0")
+    events, _ = benchmark.parse_trace(text)
+    actual = benchmark.loading_epochs(events)[0]["presentations"]["xr"]["actual_boundaries"]
+    assert actual["entry_gap_ms"] is None
+    assert actual["maximum_transition_gap_ms"] is None
+    assert actual["first_game_handoff_ms"] == pytest.approx(20)
+
+
+@pytest.mark.parametrize("before,after", [
+    ("predicted=2 render=1", "predicted=2 render=0"),
+    ("predicted=2 layers=1", "predicted=2 layers=0"),
+    ("predicted=2 valid=1", "predicted=2 valid=0"),
+])
+def test_xr_loading_marker_without_rendered_layers_is_not_presentation_proof(before, after):
+    events, _ = benchmark.parse_trace(boundary_trace("xr").replace(before, after))
+    actual = benchmark.loading_epochs(events)[0]["presentations"]["xr"]["actual_boundaries"]
+    assert not actual["loading_samples_complete"]
+    assert actual["maximum_transition_gap_ms"] is None
+
+
+def test_missing_readiness_cannot_prove_first_game_handoff():
+    events, _ = benchmark.parse_trace(boundary_trace("vulkan").replace("phase=loading.ready", "phase=unknown"))
+    actual = benchmark.loading_epochs(events)[0]["presentations"]["vulkan"]["actual_boundaries"]
+    assert actual["first_game_handoff_ms"] is None
+
+
+@pytest.mark.parametrize("stream", ["xr", "vulkan"])
+def test_ambiguous_or_failed_loading_present_does_not_prove_cadence(stream):
+    text = boundary_trace(stream)
+    if stream == "xr":
+        text += trace("xr.submit.end", 1.01005, "predicted=2 layers=1")
+    else:
+        text = text.replace(trace("vulkan.present.return", 1.01, "result=0 image=1"),
+                            trace("vulkan.present.return", 1.01, "result=-1 image=1"))
+    events, _ = benchmark.parse_trace(text)
+    actual = benchmark.loading_epochs(events)[0]["presentations"][stream]["actual_boundaries"]
+    assert not actual["loading_samples_complete"]
+    assert actual["internal_max_gap_ms"] is None
+    assert actual["first_game_handoff_ms"] is None
+
+
+def test_vulkan_legacy_unmarked_presents_do_not_prove_game_picture():
+    events, _ = benchmark.parse_trace(boundary_trace("vulkan").replace(" image=1", ""))
+    actual = benchmark.loading_epochs(events)[0]["presentations"]["vulkan"]["actual_boundaries"]
+    assert actual["entry_gap_ms"] is None
+    assert actual["first_game_handoff_ms"] is None
+    assert actual["internal_max_gap_ms"] == pytest.approx(20)
+
+
+def test_vulkan_black_present_is_not_first_game_picture():
+    text = boundary_trace("vulkan") + trace("vulkan.present.return", 1.045, "result=0 image=0")
+    events, _ = benchmark.parse_trace(text)
+    actual = benchmark.loading_epochs(events)[0]["presentations"]["vulkan"]["actual_boundaries"]
+    assert actual["first_game_time"] == pytest.approx(1.05)
+    assert actual["first_game_handoff_ms"] == pytest.approx(20)
+
+
+def test_metal_late_out_of_order_callbacks_use_drawable_time():
+    text = (trace("metal.presented", .9, "display_time=9.98 image=1 input=1")
+            + trace("loading.begin", 1, "epoch=1")
+            + trace("loading.ready", 1.4, "epoch=1 serial=2")
+            + trace("loading.end", 1.5, "epoch=1 serial=2")
+            + trace("metal.presented", 1.6, "display_time=10.04 image=1 input=2")
+            + trace("metal.presented", 2, "display_time=10.02 image=0 input=0")
+            + trace("loading.presented", 2.001, "epoch=1 serial=2 elapsed_ns=2 display_time=10.02")
+            + trace("metal.presented", 3, "display_time=10 image=0 input=0")
+            + trace("loading.presented", 3.001, "epoch=1 serial=1 elapsed_ns=1 display_time=10"))
+    events, _ = benchmark.parse_trace(text)
+    epoch = benchmark.loading_epochs(events)[0]
+    assert epoch["loading_frame_count"] == 2
+    assert epoch["serials_increasing"] and epoch["animation_clock_increasing"]
+    actual = epoch["presentations"]["metal"]["actual_boundaries"]
+    assert actual["clock"] == "drawable_presented_time"
+    assert actual["entry_gap_ms"] == pytest.approx(20)
+    assert actual["internal_max_gap_ms"] == pytest.approx(20)
+    assert actual["first_game_handoff_ms"] == pytest.approx(20)
+    assert actual["request_to_first_loading_ms"] is None

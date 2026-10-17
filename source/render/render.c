@@ -149,6 +149,7 @@ void render_sky(
 struct render_globals render;
 
 static boolean render_invalid_fog_warning_displayed;
+static boolean render_preparing_frame; /* port: enumerate a view without drawing its real picture */
 
 extern short global_screenshot_count;
 
@@ -165,6 +166,7 @@ void vr_render_frustum_bounds(real_rectangle2d *bounds);
 void vr_render_end(void);
 boolean vr_render_hud_camera(struct render_camera *camera);
 void vr_render_hud_end(void);
+void vr_render_prepare_hud(boolean begin); /* port: preserve eye render state around HUD preparation */
 boolean vr_render_weapon_camera(struct render_camera *camera);
 void vr_render_crosshairs(void);
 void vr_render_world_marks(void);
@@ -736,6 +738,13 @@ static void render_player_frame(
 		}
 		while (render_enumerate_next());
 	}
+	if (render_preparing_frame) /* port: all views prepare before presentation changes owners */
+		return;
+	/* port: preparation is part of this render call, before its real picture */
+#ifdef HALO_VR
+	if (!render_vr_eye_pass && !render_vr_scope_pass)
+#endif
+		halo_loading_ready();
 
 	if (main_get_window_count() == 1
 #ifdef HALO_VR
@@ -796,7 +805,8 @@ static void render_player_frame(
 /* the HUD and the menus of a player's window, into the HUD's layer, from
 the camera the layer matches */
 static void render_vr_hud(
-	const struct render_window *window)
+	const struct render_window *window,
+	boolean prepare_only) /* port: prepare the HUD before the first real eye image */
 {
 	struct rasterizer_window_begin_parameters parameters;
 	struct render_camera camera = window->rasterizer_camera;
@@ -816,13 +826,17 @@ static void render_vr_hud(
 	rasterizer_window_begin(&parameters);
 	if (!bink_playback_in_progress())
 	{
-		interface_draw_screen();
+		if (!prepare_only) /* port: preparation visits HUD variants without a live interface picture */
+			interface_draw_screen();
 		/* port: and every HUD's, as the map's first frame was drawn
 		(port/linux/game/render_enumerate.c) */
 		render_enumerate_hud();
-		halo_screen_ui_offset(TRUE);
-		render_ui_widgets(window->local_player_index, &camera.viewport_bounds);
-		halo_screen_ui_offset(FALSE);
+		if (!prepare_only) /* port: real widgets remain in their original draw order */
+		{
+			halo_screen_ui_offset(TRUE);
+			render_ui_widgets(window->local_player_index, &camera.viewport_bounds);
+			halo_screen_ui_offset(FALSE);
+		}
 	}
 	rasterizer_window_end();
 	vr_render_hud_end();
@@ -840,8 +854,11 @@ static void render_vr_player_frame(
 	if (vr_render_camera(&eye_window.render_camera, &eye_window.rasterizer_camera))
 	{
 		struct render_window scope_window = *window;
+		boolean preparing = render_enumerate_pending(FALSE) ||
+			(halo_vr_scope_size() > 0 && render_enumerate_pending(TRUE)); /* port: prepare all view formats together */
 
 		vr_cabin_display_frame();
+		render_preparing_frame = preparing; /* port: enumeration must not acquire a real gameplay frame */
 		/* port: prepare the scope before play, even if the first weapon
 		has none. The loading transition also uses this mono format. */
 		if (halo_vr_scope_size() > 0 && render_enumerate_pending(TRUE))
@@ -856,6 +873,21 @@ static void render_vr_player_frame(
 			render_vr_scope_pass = FALSE;
 			vr_render_scope_end();
 		}
+		/* port: prepare stereo and HUD pipelines while loading still owns
+		presentation, then restore the eye state for the actual picture. */
+		if (preparing)
+		{
+			render_vr_eye_pass = TRUE;
+			halo_vr_pass(HALO_VR_PASS_EYES);
+			render_player_frame(&eye_window, NULL);
+			render_vr_eye_pass = FALSE;
+			halo_vr_pass(HALO_VR_PASS_HUD);
+			vr_render_prepare_hud(TRUE);
+			render_vr_hud(window, TRUE);
+			vr_render_prepare_hud(FALSE);
+		}
+		render_preparing_frame = FALSE;
+		halo_loading_ready(); /* port: all formats are ready before any real scope or eye draw */
 		/* (none with the head in a wall: the scope, at the eye or the hand,
 		would see through it as the faded eyes do not:
 		port/linux/game/vr_headwall.c) */
@@ -877,7 +909,8 @@ static void render_vr_player_frame(
 		/* the HUD's camera starts from the head's */
 		window->rasterizer_camera.position = eye_window.rasterizer_camera.position;
 	}
-	render_vr_hud(window);
+	halo_loading_ready(); /* port: HUD-only frames also finish a loading transition */
+	render_vr_hud(window, FALSE);
 
 	return;
 }

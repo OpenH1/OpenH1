@@ -25,6 +25,13 @@ static inline double host_load_trace_clock(clockid_t clock)
 	return clock_gettime(clock, &value) == 0 ? (double)value.tv_sec + value.tv_nsec / 1e9 : -1.0;
 }
 
+static inline int host_load_trace_detail_enabled(void)
+{
+	const char *value = getenv("HALO_LOAD_TRACE_DETAIL");
+
+	return host_load_trace_enabled() && value && *value && strcmp(value, "0") && strcmp(value, "false");
+}
+
 static inline void host_load_trace(const char *phase, const char *format, ...)
 {
 	double wall, thread, process;

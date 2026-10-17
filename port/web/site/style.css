@@ -160,7 +160,9 @@ button.danger:hover:not(:disabled) { border-color: var(--bad); color: var(--bad)
   gap: 16px;
   color: var(--muted);
   pointer-events: none;
+  background: #070c14;
 }
+.starting canvas { width: min(512px, 100%); height: auto; }
 .spinner {
   width: 36px;
   height: 36px;

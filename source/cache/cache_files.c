@@ -592,6 +592,7 @@ char const *cache_files_map_directory(
 void scenario_tags_unload(
 	void)
 {
+	halo_loading_retire(); /* port: finish borrowed render inputs before releasing map storage */
 	/* port: the high-res HUD forgets this map's bitmaps (port/linux/game/hud_hires_tags.c) */
 	{
 		extern void hud_hires_tags_unloaded(void);
@@ -1476,6 +1477,7 @@ void scenario_structure_bsp_unload(
 {
 	struct cache_file_tag_instance *tag_instance;
 
+	halo_loading_retire(); /* port: finish borrowed BSP buffers before deregistering or reusing them */
 	structure_bsp_header_deregister_vertex_buffers(cache_file_globals.structure_bsp_header);
 	/* port: the buffers a Halo Custom Edition bsp was given
 	(port/linux/game/custom_edition_geometry.c) */

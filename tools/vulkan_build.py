@@ -43,7 +43,7 @@ VULKAN_DIR = Path("port/linux/vulkan")
 # (port/linux/vulkan/xgpu_vulkan_platform.h), as the macOS build's host does
 # (tools/macos_build.py, SHARED_SOURCES); the Xbox's texture decoding is the
 # host OpenGL backend's (HOST_GL_SHARED), which every desktop host has
-VULKAN_SHARED_SOURCES = ["xgpu.h", "xgpu_backend.h", "xgpu_shader.h", "xgpu_spirv.h", "xgpu_spirv.c",
+VULKAN_SHARED_SOURCES = ["xgpu.h", "xgpu_backend.h", "loading_presentation.h", "xgpu_shader.h", "xgpu_spirv.h", "xgpu_spirv.c",
                          "vr.h", "vr_host.h", "vr_visor.h"]
 
 def fetch_vulkan_headers(vulkan_dir: Path) -> None:

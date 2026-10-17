@@ -613,6 +613,14 @@ void xgpu_backend_flush(void)
 	commit(0);
 }
 
+void xgpu_backend_consume(void)
+{
+	if (!stream.open)
+		return;
+	record(XGPU_STREAM_FLUSH, sizeof(struct xgpu_stream_record));
+	synchronous();
+}
+
 void xgpu_backend_anti_aliasing_prepare(BOOL smaa)
 {
 	if (stream.open)
@@ -1579,6 +1587,17 @@ void xgpu_backend_prepare(void)
 		record(XGPU_STREAM_PREPARE, sizeof(struct xgpu_stream_record));
 }
 
+void xgpu_backend_loading(int active)
+{
+	if (!stream.open)
+		return;
+	record_value(XGPU_STREAM_LOADING, (uint32_t)active);
+	/* Readiness travels with the first real picture. Publishing it alone
+	would stop loading presentation while the game builds that picture. */
+	if (active != 2)
+		synchronous();
+}
+
 double xgpu_backend_prepared(void)
 {
 	struct xgpu_stream_reply_record *record_body;
@@ -1873,6 +1892,7 @@ void halo_vr_set_screen_corrections(const float corrections[2][4])
 
 void halo_vr_sky(int sky)
 {
+	halo_gpu_preparation_sky(sky);
 	if (stream.open)
 		record_value(XGPU_STREAM_VR_SKY, (uint32_t)sky);
 }

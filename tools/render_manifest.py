@@ -278,7 +278,7 @@ class Recording:
         self.enumerated = set()
         self.misses = []
         self.enumerations = 0
-        enumerating, stack = False, None
+        enumerating, prepared, stack = False, False, None
         with open(path, encoding="ascii") as file:
             for line in file:
                 line = line.rstrip("\n")
@@ -287,6 +287,7 @@ class Recording:
                     self.enumerations += 1
                 elif line.startswith("# prepared"):
                     enumerating = False
+                    prepared = True
                 elif line.startswith("# missed:"):
                     stack = line.split()[2:]
                 elif line.startswith("p "):
@@ -297,6 +298,11 @@ class Recording:
                         stack = None
                     elif enumerating:
                         self.enumerated.add(line)
+                    elif prepared and line not in self.enumerated:
+                        # Older ARM recordings omitted the missed marker when
+                        # no stack walker was available. A new draw after
+                        # preparation must still be checked.
+                        self.misses.append((line, []))
         if not exact:
             self.enumerated = {compiled(d) for d in self.enumerated}
             seen = set()

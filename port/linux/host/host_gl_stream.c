@@ -39,7 +39,11 @@ are the host's cache's (host_gl_textures.c), found by the stage's record.
 
 #include "host.h"
 #include "host_load_trace.h"
+#include "host_loading_capture.h"
 #include "host_render_stream.h"
+#ifdef HALO_VR
+#include "host_vr_render.h"
+#endif
 #include "host_gl_renderer.h"
 #include "xgpu_backend.h"
 #include "xgpu_shader.h"
@@ -1004,7 +1008,157 @@ static void visibility_answer(void)
 static void stream_present(void *context, uint32_t back_buffer)
 {
 	(void)context;
+	if (host_render_stream_loading_holds())
+		return;
 	xgpu_backend_present(back_buffer);
+}
+
+static uint64_t stream_loading(void *context, const struct loading_presentation_frame *frame)
+{
+	GLint draw_framebuffer, read_framebuffer, scissor[4];
+	GLboolean scissored, mask[4];
+	GLfloat color[4];
+	int width, height;
+	uint32_t index;
+	uint64_t period = gl.refresh_rate > 0.0f ? (uint64_t)(1e9 / gl.refresh_rate) : 16666667ull;
+	uint64_t traced = 0, acquired = 0, cleared = 0, restored = 0;
+#ifdef HALO_VR
+	static GLuint framebuffer;
+	int image = -1;
+	struct vr_host_views views;
+	const struct vr_host_info *info = host_vr_info();
+#endif
+
+	(void)context;
+	if (!frame->active || frame->ready || !gl.current)
+		return period;
+	if (host_load_trace_enabled())
+		traced = SDL_GetTicksNS();
+	SDL_GetWindowSizeInPixels(gl.window, &width, &height);
+#ifdef HALO_VR
+	if (info)
+	{
+		image = host_vr_loading_begin(frame, &views);
+		if (image < 0)
+			return 1000000;
+		width = info->hud_width;
+		height = info->hud_height;
+		if (views.display_period > 0.0f)
+			period = 1000000; /* the runtime producer gates frames; polls never wait for it */
+	}
+#endif
+	if (width <= 0 || height <= 0)
+	{
+#ifdef HALO_VR
+		if (image >= 0)
+			host_vr_loading_end(frame);
+#endif
+		return period;
+	}
+	if (traced)
+		acquired = SDL_GetTicksNS();
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw_framebuffer);
+	glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read_framebuffer);
+	glGetIntegerv(GL_SCISSOR_BOX, scissor);
+	scissored = glIsEnabled(GL_SCISSOR_TEST);
+	glGetBooleanv(GL_COLOR_WRITEMASK, mask);
+	glGetFloatv(GL_COLOR_CLEAR_VALUE, color);
+#ifdef HALO_VR
+	if (image >= 0)
+	{
+		if (!framebuffer)
+			glGenFramebuffers(1, &framebuffer);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+		glFramebufferTexture2D(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+			info->images[VR_SWAPCHAIN_HUD][image], 0);
+	}
+	else
+#endif
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+	glDisable(GL_SCISSOR_TEST);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glClearColor(LOADING_PRESENTATION_RED, LOADING_PRESENTATION_GREEN, LOADING_PRESENTATION_BLUE, 1.0f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	glEnable(GL_SCISSOR_TEST);
+	for (index = 0; index < frame->count; index++)
+	{
+		const struct loading_presentation_rect *rectangle = &frame->rectangles[index];
+
+		glScissor(rectangle->x * width / LOADING_PRESENTATION_WIDTH,
+			(LOADING_PRESENTATION_HEIGHT - rectangle->y - rectangle->height) * height / LOADING_PRESENTATION_HEIGHT,
+			rectangle->width * width / LOADING_PRESENTATION_WIDTH,
+			rectangle->height * height / LOADING_PRESENTATION_HEIGHT);
+		glClearColor(rectangle->color[0], rectangle->color[1], rectangle->color[2], rectangle->color[3]);
+		glClear(GL_COLOR_BUFFER_BIT);
+	}
+	if (traced)
+		cleared = SDL_GetTicksNS();
+	if (host_loading_capture_due(frame) && width <= 16384 && height <= 16384)
+	{
+		unsigned char *pixels = calloc((size_t)width * height, 4);
+		GLint pack_buffer, alignment, row_length, skip_rows, skip_pixels, draw;
+
+		if (pixels)
+		{
+			glGetIntegerv(GL_PIXEL_PACK_BUFFER_BINDING, &pack_buffer);
+			glGetIntegerv(GL_PACK_ALIGNMENT, &alignment);
+			glGetIntegerv(GL_PACK_ROW_LENGTH, &row_length);
+			glGetIntegerv(GL_PACK_SKIP_ROWS, &skip_rows);
+			glGetIntegerv(GL_PACK_SKIP_PIXELS, &skip_pixels);
+			glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw);
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)draw);
+			glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+			glPixelStorei(GL_PACK_ALIGNMENT, 1);
+			glPixelStorei(GL_PACK_ROW_LENGTH, 0);
+			glPixelStorei(GL_PACK_SKIP_ROWS, 0);
+			glPixelStorei(GL_PACK_SKIP_PIXELS, 0);
+			glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+			if (glGetError() == GL_NO_ERROR)
+				host_loading_capture_write(frame, pixels, (uint32_t)width, (uint32_t)height, 1, 0);
+			glBindBuffer(GL_PIXEL_PACK_BUFFER, (GLuint)pack_buffer);
+			glPixelStorei(GL_PACK_ALIGNMENT, alignment);
+			glPixelStorei(GL_PACK_ROW_LENGTH, row_length);
+			glPixelStorei(GL_PACK_SKIP_ROWS, skip_rows);
+			glPixelStorei(GL_PACK_SKIP_PIXELS, skip_pixels);
+			free(pixels);
+		}
+	}
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, (GLuint)draw_framebuffer);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)read_framebuffer);
+	glScissor(scissor[0], scissor[1], scissor[2], scissor[3]);
+	if (!scissored)
+		glDisable(GL_SCISSOR_TEST);
+	glColorMask(mask[0], mask[1], mask[2], mask[3]);
+	glClearColor(color[0], color[1], color[2], color[3]);
+	if (traced)
+		restored = SDL_GetTicksNS();
+#ifdef HALO_VR
+	if (image >= 0)
+	{
+		glFlush();
+		host_vr_loading_end(frame);
+	}
+	else
+#endif
+	{
+		SDL_GL_SwapWindow(gl.window);
+		host_load_trace("loading.swap.return", "epoch=%llu serial=%llu elapsed_ns=%llu",
+			(unsigned long long)frame->epoch, (unsigned long long)frame->serial,
+			(unsigned long long)frame->elapsed_ns);
+	}
+	if (traced)
+	{
+		uint64_t submitted = SDL_GetTicksNS();
+
+		if (submitted - traced > 1000000ull)
+			host_load_trace("loading.gl.slow", "epoch=%llu serial=%llu acquire_ns=%llu "
+				"clear_ns=%llu restore_capture_ns=%llu flush_present_ns=%llu",
+				(unsigned long long)frame->epoch, (unsigned long long)frame->serial,
+				(unsigned long long)(acquired - traced), (unsigned long long)(cleared - acquired),
+				(unsigned long long)(restored - cleared), (unsigned long long)(submitted - restored));
+	}
+	xgpu_gl_state_invalidate();
+	return period;
 }
 
 static void stream_frame_end(void *context)
@@ -1012,6 +1166,8 @@ static void stream_frame_end(void *context)
 	(void)context;
 	xgpu_backend_frame_end();
 	visibility_answer();
+	if (host_render_stream_loading_holds())
+		host_render_stream_frame_taken();
 	if (gl.swap_wanted)
 	{
 		gl.swap_wanted = FALSE;
@@ -1055,6 +1211,18 @@ static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_
 
 /* ---------- the table */
 
+static void stream_prepare(void *context)
+{
+	(void)context;
+	xgpu_backend_prepare();
+}
+
+static uint32_t stream_prepared(void *context)
+{
+	(void)context;
+	return (uint32_t)(xgpu_backend_prepared() * 1000.0);
+}
+
 const struct host_render_backend *host_gl_stream_backend(void)
 {
 	static struct host_render_backend backend =
@@ -1093,6 +1261,9 @@ const struct host_render_backend *host_gl_stream_backend(void)
 		.visibility_frame = stream_visibility_frame,
 		.present = stream_present,
 		.frame_end = stream_frame_end,
+		.loading = stream_loading,
+		.prepare = stream_prepare,
+		.prepared = stream_prepared,
 		.dynamic_lights_prepare = stream_dynamic_lights_prepare,
 		.dynamic_lights_upload = stream_dynamic_lights_upload,
 		.dynamic_lights_halos = stream_dynamic_lights_halos,

@@ -763,6 +763,38 @@ static void test_frame_end(void *context)
 	text_printf(&actual, "frame end\n");
 }
 
+static struct
+{
+	unsigned frames, ready, ended, invalid;
+	int slow;
+	uint64_t serial, elapsed;
+} loading_test;
+
+static uint64_t test_loading(void *context, const struct loading_presentation_frame *frame)
+{
+	(void)context;
+	if (!frame->active)
+		__atomic_add_fetch(&loading_test.ended, 1, __ATOMIC_RELEASE);
+	else if (frame->ready)
+	{
+		if (host_render_stream_loading_holds())
+			__atomic_add_fetch(&loading_test.invalid, 1, __ATOMIC_RELEASE);
+		__atomic_add_fetch(&loading_test.ready, 1, __ATOMIC_RELEASE);
+	}
+	else
+	{
+		if (loading_test.slow)
+			usleep(5000);
+		if (!host_render_stream_loading_holds() || frame->count != LOADING_PRESENTATION_RECTS ||
+			frame->serial <= loading_test.serial || frame->elapsed_ns < loading_test.elapsed)
+			__atomic_add_fetch(&loading_test.invalid, 1, __ATOMIC_RELEASE);
+		loading_test.serial = frame->serial;
+		loading_test.elapsed = frame->elapsed_ns;
+		__atomic_add_fetch(&loading_test.frames, 1, __ATOMIC_RELEASE);
+	}
+	return 1000000;
+}
+
 static void test_dynamic_lights_upload(void *context, const struct xgpu_stream_dynamic_lights_upload *record)
 {
 	(void)context;
@@ -836,6 +868,7 @@ static const struct host_render_backend test_backend =
 	.visibility_end = test_visibility_end,
 	.present = test_present,
 	.frame_end = test_frame_end,
+	.loading = test_loading,
 	.dynamic_lights_upload = test_dynamic_lights_upload,
 	.dynamic_lights_halos = test_dynamic_lights_halos,
 	.vr_supported = test_vr_supported,
@@ -1299,6 +1332,64 @@ static void stream_end(const char *what)
 	CHECK(backend_state.check_failures == 0);
 }
 
+/* The producer can stop completely during loading. Presentation still
+advances; readiness stops it before gameplay reuses the rendering targets. */
+static void test_loading_lifecycle(void)
+{
+	unsigned before, attempt;
+
+	memset(&loading_test, 0, sizeof(loading_test));
+	stream_begin(64u << 10, 2, 0);
+	xgpu_backend_loading(1);
+	for (attempt = 0; attempt < 500 && __atomic_load_n(&loading_test.frames, __ATOMIC_ACQUIRE) < 3; attempt++)
+		usleep(1000);
+	CHECK(__atomic_load_n(&loading_test.frames, __ATOMIC_ACQUIRE) >= 3);
+	xgpu_backend_loading(2);
+	/* The game may spend a whole interval building its first picture.
+	Readiness must stay in that picture's batch while loading continues. */
+	CHECK(__atomic_load_n(&loading_test.ready, __ATOMIC_ACQUIRE) == 0);
+	before = __atomic_load_n(&loading_test.frames, __ATOMIC_ACQUIRE);
+	for (attempt = 0; attempt < 500 && __atomic_load_n(&loading_test.frames, __ATOMIC_ACQUIRE) <= before; attempt++)
+		usleep(1000);
+	CHECK(__atomic_load_n(&loading_test.frames, __ATOMIC_ACQUIRE) > before);
+	xgpu_backend_frame_end();
+	text_printf(&expected, "frame end\n");
+	xgpu_backend_consume();
+	text_printf(&expected, "flush\n");
+	CHECK(__atomic_load_n(&loading_test.ready, __ATOMIC_ACQUIRE) == 1);
+	before = __atomic_load_n(&loading_test.frames, __ATOMIC_ACQUIRE);
+	usleep(10000);
+	CHECK(__atomic_load_n(&loading_test.frames, __ATOMIC_ACQUIRE) == before);
+	xgpu_backend_loading(0);
+	CHECK(__atomic_load_n(&loading_test.ended, __ATOMIC_ACQUIRE) == 1);
+	CHECK(__atomic_load_n(&loading_test.invalid, __ATOMIC_ACQUIRE) == 0);
+	stream_end("loading presentation");
+
+	memset(&loading_test, 0, sizeof(loading_test));
+	stream_begin(64u << 10, 2, 0);
+	xgpu_backend_loading(1);
+	stream_end("loading closed before a game picture");
+	CHECK(__atomic_load_n(&loading_test.ended, __ATOMIC_ACQUIRE) == 1);
+
+	/* A swap longer than its requested period must not turn every queued
+	record into another swap. Loading work still advances in batches. */
+	memset(&loading_test, 0, sizeof(loading_test));
+	loading_test.slow = 1;
+	stream_begin(64u << 10, 2, 0);
+	xgpu_backend_loading(1);
+	before = __atomic_load_n(&loading_test.frames, __ATOMIC_ACQUIRE);
+	for (attempt = 0; attempt < 256; attempt++)
+	{
+		xgpu_backend_invalidate();
+		text_printf(&expected, "invalidate\n");
+	}
+	xgpu_backend_loading(2);
+	CHECK(__atomic_load_n(&loading_test.frames, __ATOMIC_ACQUIRE) - before < 128);
+	CHECK(__atomic_load_n(&loading_test.invalid, __ATOMIC_ACQUIRE) == 0);
+	xgpu_backend_loading(0);
+	stream_end("preparation advances with a slow loading presenter");
+}
+
 /* every kind of call, as the backend should be given it */
 static void test_round_trip(void)
 {
@@ -1641,6 +1732,7 @@ int main(void)
 	test_ring_full(2);
 	test_ring_full(1);
 	test_frames_in_flight();
+	test_loading_lifecycle();
 
 	pthread_mutex_lock(&backend_state.lock);
 	backend_state.stopping = TRUE;

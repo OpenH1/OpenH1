@@ -277,8 +277,14 @@ struct xgpu_vulkan_pipeline_description
 /* the pipeline of a description, made the first time; VK_NULL_HANDLE if it
 cannot be */
 VkPipeline xgpu_vulkan_pipeline(const struct xgpu_vulkan_pipeline_description *description);
-/* cumulative driver pipeline creation requests, including failed ones */
+/* Queue preparation without requiring the handle yet. Nonzero means the
+request was accepted or already ready; PREPARED drains every accepted job. */
+int xgpu_vulkan_pipeline_prepare(const struct xgpu_vulkan_pipeline_description *description);
+/* cumulative distinct native pipeline requests, including failed ones */
 uint64_t xgpu_vulkan_pipeline_count(void);
+/* Render-owner callback while waiting for preparation queue space or results.
+It must not request another pipeline or access the pipeline cache. */
+void xgpu_vulkan_preparation_service(void (*service)(void));
 
 /* ---------- data the GPU reads */
 
@@ -437,7 +443,17 @@ void xgpu_vulkan_window_resized(uint32_t width, uint32_t height);
 
 /* the frame's end: its last work submitted, and (with a window) an image
 shown, letterboxed into the window (NULL: none) */
-void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *present);
+/* A held guest frame still retires its GPU work, but must not replace the
+independent loading image with a blank swapchain presentation. */
+void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *present, int present_window);
+
+/* Loading uses its own image and never advances the game's visibility
+frame. The returned image stays owned by the backend until active becomes
+zero; dimensions/format match the window panel or runtime HUD image. */
+struct loading_presentation_frame;
+struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presentation_frame *frame,
+	uint32_t width, uint32_t height, uint32_t format);
+void xgpu_vulkan_loading_present(struct xgpu_vulkan_image *image);
 
 /* statistics since the last call */
 struct xgpu_vulkan_statistics

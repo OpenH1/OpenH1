@@ -13,7 +13,9 @@ and the debug keyboard that the game's console reads.
 #include "sdl_platform.h"
 #include "gl.h"
 #include "port_config.h"
+#include "xgpu_backend.h"
 #include "load_trace.h"
+#include "loading_presentation.h"
 #include "p2p.h"
 #include "xiso.h"
 #ifdef HALO_VR
@@ -41,6 +43,261 @@ static BOOL platform_sdl_started = FALSE;
 /* the game's window was asked for (platform_video_initialize): without one
 after that, the game runs without a window (platform_pump_events) */
 static BOOL platform_video_tried = FALSE;
+static int loading_presentation_active;
+
+void halo_loading_begin(void)
+{
+	if (!loading_presentation_active && platform_window)
+	{
+		loading_presentation_active = 1;
+		halo_load_trace("loading.request", "begin");
+		xgpu_backend_loading(1);
+	}
+}
+
+void halo_loading_retire(void)
+{
+	/* Loading may already be active while progress frames borrow map data. */
+	xgpu_backend_consume();
+}
+
+void halo_loading_end(void)
+{
+	if (loading_presentation_active)
+	{
+		xgpu_backend_loading(0);
+		loading_presentation_active = 0;
+	}
+}
+
+void halo_loading_ready(void)
+{
+	if (loading_presentation_active == 1)
+	{
+		xgpu_backend_loading(2);
+		loading_presentation_active = 2;
+	}
+}
+
+#if !defined(HALO_RENDER_STREAM) && !defined(HALO_WEB)
+/* The second context owns no game objects. The game keeps drawing only to
+its offscreen targets while this thread owns the window's framebuffer. */
+static struct
+{
+	SDL_GLContext context;
+	SDL_Thread *thread;
+	pthread_mutex_t lock;
+	pthread_cond_t changed;
+	int started, ready, stop, phase, busy, width, height, trace;
+	Uint64 epoch, started_ns, serial, interval_ns;
+} loading_window = { .lock = PTHREAD_MUTEX_INITIALIZER, .changed = PTHREAD_COND_INITIALIZER };
+
+static void platform_loading_trace(const char *phase, Uint64 epoch, Uint64 serial, Uint64 elapsed)
+{
+	struct timespec now;
+	double wall = -1.0;
+
+	if (!loading_window.trace)
+		return;
+	if (clock_gettime(CLOCK_MONOTONIC, &now) == 0)
+		wall = (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
+	load_trace_log("LOAD phase=%s wall=%.6f thread=-1 process=-1 owner=host:%llx "
+		"detail=epoch=%llu serial=%llu elapsed_ns=%llu", phase, wall,
+		(unsigned long long)SDL_GetCurrentThreadID(), (unsigned long long)epoch,
+		(unsigned long long)serial, (unsigned long long)elapsed);
+}
+
+static int platform_loading_thread(void *unused)
+{
+	int current;
+
+	(void)unused;
+	current = SDL_GL_MakeCurrent(platform_window, loading_window.context);
+	if (current)
+		SDL_GL_SetSwapInterval(1);
+	pthread_mutex_lock(&loading_window.lock);
+	loading_window.ready = current ? 1 : -1;
+	pthread_cond_signal(&loading_window.changed);
+	while (current && !loading_window.stop)
+	{
+		struct loading_presentation_frame frame;
+		Uint64 started, interval, elapsed;
+		int width, height;
+		uint32_t index;
+
+		while (!loading_window.phase && !loading_window.stop)
+			pthread_cond_wait(&loading_window.changed, &loading_window.lock);
+		if (loading_window.stop)
+			break;
+		loading_window.busy = 1;
+		width = loading_window.width;
+		height = loading_window.height;
+		interval = loading_window.interval_ns;
+		memset(&frame, 0, sizeof(frame));
+		frame.epoch = loading_window.epoch;
+		frame.started_ns = loading_window.started_ns;
+		frame.serial = ++loading_window.serial;
+		frame.active = 1;
+		pthread_mutex_unlock(&loading_window.lock);
+		started = SDL_GetTicksNS();
+		frame.elapsed_ns = started - frame.started_ns;
+		loading_presentation_build(&frame);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		glDisable(GL_SCISSOR_TEST);
+		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+		glClearColor(LOADING_PRESENTATION_RED, LOADING_PRESENTATION_GREEN, LOADING_PRESENTATION_BLUE, 1.0f);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glEnable(GL_SCISSOR_TEST);
+		for (index = 0; index < frame.count; index++)
+		{
+			const struct loading_presentation_rect *rectangle = &frame.rectangles[index];
+			int x = rectangle->x * width / LOADING_PRESENTATION_WIDTH;
+			int y = rectangle->y * height / LOADING_PRESENTATION_HEIGHT;
+			int right = (rectangle->x + rectangle->width) * width / LOADING_PRESENTATION_WIDTH;
+			int bottom = (rectangle->y + rectangle->height) * height / LOADING_PRESENTATION_HEIGHT;
+
+			glScissor(x, height - bottom, right - x, bottom - y);
+			glClearColor(rectangle->color[0], rectangle->color[1], rectangle->color[2], rectangle->color[3]);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+		SDL_GL_SwapWindow(platform_window);
+		platform_loading_trace("loading.swap.return", frame.epoch, frame.serial, frame.elapsed_ns);
+		/* Drivers without swap pacing still show one update per refresh. */
+		elapsed = SDL_GetTicksNS() - started;
+		if (elapsed < interval)
+			SDL_DelayPrecise(interval - elapsed);
+		pthread_mutex_lock(&loading_window.lock);
+		if (!loading_window.phase || loading_window.stop)
+		{
+			pthread_mutex_unlock(&loading_window.lock);
+			glFinish();
+			pthread_mutex_lock(&loading_window.lock);
+		}
+		loading_window.busy = 0;
+		pthread_cond_broadcast(&loading_window.changed);
+	}
+	pthread_mutex_unlock(&loading_window.lock);
+	if (current)
+		SDL_GL_MakeCurrent(platform_window, NULL);
+	return 0;
+}
+
+static void platform_loading_shutdown(void)
+{
+	if (!loading_window.started)
+		return;
+	pthread_mutex_lock(&loading_window.lock);
+	loading_window.stop = 1;
+	loading_window.phase = 0;
+	pthread_cond_signal(&loading_window.changed);
+	pthread_mutex_unlock(&loading_window.lock);
+	SDL_WaitThread(loading_window.thread, NULL);
+	loading_window.thread = NULL;
+	SDL_GL_DestroyContext(loading_window.context);
+	loading_window.context = NULL;
+	loading_window.started = 0;
+}
+
+static void platform_loading_initialize(void)
+{
+	int shared = 0;
+
+	loading_window.trace = config_boolean("debug.load_trace");
+	SDL_GL_GetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, &shared);
+	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 0);
+	loading_window.context = SDL_GL_CreateContext(platform_window);
+	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, shared);
+	SDL_GL_MakeCurrent(platform_window, platform_gl_context);
+	if (!loading_window.context)
+	{
+		platform_log("loading: cannot create presentation context: %s", SDL_GetError());
+		return;
+	}
+	loading_window.thread = SDL_CreateThread(platform_loading_thread, "loading", NULL);
+	if (!loading_window.thread)
+	{
+		SDL_GL_DestroyContext(loading_window.context);
+		loading_window.context = NULL;
+		platform_log("loading: cannot create presentation thread");
+		return;
+	}
+	loading_window.started = 1;
+	pthread_mutex_lock(&loading_window.lock);
+	while (!loading_window.ready)
+		pthread_cond_wait(&loading_window.changed, &loading_window.lock);
+	pthread_mutex_unlock(&loading_window.lock);
+	if (loading_window.ready < 0)
+	{
+		platform_log("loading: presentation context could not become current");
+		platform_loading_shutdown();
+		return;
+	}
+	atexit(platform_loading_shutdown);
+}
+
+void platform_loading_set(int phase)
+{
+	int width = 0, height = 0, previous;
+	Uint64 interval = 16666667;
+
+	if (!loading_window.started)
+		return;
+	if (phase == 1)
+	{
+		SDL_DisplayID display = SDL_GetDisplayForWindow(platform_window);
+		const SDL_DisplayMode *mode = display ? SDL_GetCurrentDisplayMode(display) : NULL;
+
+		SDL_GetWindowSizeInPixels(platform_window, &width, &height);
+		if (mode && mode->refresh_rate > 0.0f)
+			interval = (Uint64)(1000000000.0 / mode->refresh_rate);
+	}
+	pthread_mutex_lock(&loading_window.lock);
+	previous = loading_window.phase;
+	if (phase == 1 && !loading_window.phase)
+	{
+		loading_window.epoch++;
+		loading_window.started_ns = SDL_GetTicksNS();
+		loading_window.serial = 0;
+		loading_window.width = width > 0 ? width : 640;
+		loading_window.height = height > 0 ? height : 480;
+		loading_window.interval_ns = interval;
+		platform_loading_trace("loading.begin", loading_window.epoch, 0, 0);
+	}
+	if (phase != 2 || loading_window.phase)
+		loading_window.phase = phase;
+	pthread_cond_broadcast(&loading_window.changed);
+	while (!phase && loading_window.busy)
+		pthread_cond_wait(&loading_window.changed, &loading_window.lock);
+	if (!phase && previous)
+		platform_loading_trace("loading.end", loading_window.epoch, loading_window.serial,
+			SDL_GetTicksNS() - loading_window.started_ns);
+	pthread_mutex_unlock(&loading_window.lock);
+}
+
+int platform_loading_active(void)
+{
+	int phase;
+
+	pthread_mutex_lock(&loading_window.lock);
+	phase = loading_window.phase;
+	pthread_mutex_unlock(&loading_window.lock);
+	return phase;
+}
+#elif defined(HALO_WEB)
+void web_loading_set(int phase);
+static int loading_phase;
+
+void platform_loading_set(int phase)
+{
+	loading_phase = phase;
+	web_loading_set(phase);
+}
+
+int platform_loading_active(void)
+{
+	return loading_phase;
+}
+#endif
 
 static struct platform_input_state input_state;
 /* keys pressed since the last read, so a press and release between two
@@ -973,6 +1230,9 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	(void)version;
 	platform_event_thread = SDL_GetCurrentThreadID();
 	platform_log("OpenGL %s on %s", (const char *)glGetString(GL_VERSION), (const char *)glGetString(GL_RENDERER));
+#ifndef HALO_WEB
+	platform_loading_initialize();
+#endif
 #ifndef HALO_ANDROID
 	platform_mouse_capture(TRUE);
 #endif

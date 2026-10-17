@@ -22,6 +22,7 @@ The pipeline cache is $XDG_CACHE_HOME/opence/vulkan_pipelines.bin (or
 #include "host.h"
 #include "host_render_stream.h"
 #include "xgpu_vulkan.h"
+#include "xgpu_vulkan_loading.h"
 #include "xgpu_vulkan_stream.h"
 #ifdef HALO_VR
 #include "host_vr_vulkan.h"
@@ -36,6 +37,15 @@ The pipeline cache is $XDG_CACHE_HOME/opence/vulkan_pipelines.bin (or
 #include <sys/stat.h>
 
 static SDL_Window *vulkan_window;
+
+uint64_t host_vulkan_display_period(void)
+{
+	const SDL_DisplayMode *mode = vulkan_window ?
+		SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(vulkan_window)) : NULL;
+
+	return mode && mode->refresh_rate > 0.0f ?
+		(uint64_t)(1000000000.0 / mode->refresh_rate) : 16666667;
+}
 
 static VkSurfaceKHR surface_create(VkInstance instance, void *context)
 {

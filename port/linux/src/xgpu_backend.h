@@ -79,6 +79,9 @@ void xgpu_backend_initialize(void);
 void xgpu_backend_invalidate(void);
 /* the commands so far to the GPU (D3DDevice_KickPushBuffer) */
 void xgpu_backend_flush(void);
+/* All earlier commands have consumed their CPU resource data. This does
+not advance a game frame or wait for GPU completion. */
+void xgpu_backend_consume(void);
 /* display.anti_aliasing's FXAA or SMAA passes, made now (logged if they do
 not build); and the passes run over a target's corners (x0, y0, x1, y1 in
 its pixels from row 0) */
@@ -551,6 +554,8 @@ double xgpu_backend_prepared(void);
 /* the draws from now until xgpu_backend_prepared are made for their shaders
 and pipelines alone (not seen: the frame's own window draws over them) */
 void xgpu_backend_prepare(void);
+/* The frontend's preparation key includes the VR sky's depth clamp. */
+void halo_gpu_preparation_sky(int sky);
 
 /* the backend can draw both eyes at once (FALSE: playing flat, logged).
 Both answered as the device is made, before any frame. */
@@ -584,5 +589,8 @@ struct xgpu_vr_frame
 
 void xgpu_backend_vr_compose(const struct xgpu_vr_frame *frame);
 void xgpu_backend_vr_submit(const struct xgpu_vr_frame *frame, BOOL screenshot);
+
+/* Acknowledged loading ownership change, before map storage is reused. */
+void xgpu_backend_loading(int active);
 
 #endif

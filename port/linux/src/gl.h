@@ -32,6 +32,9 @@ Windows it is __stdcall too, and SDL would include windows.h without it) */
 #define GL_FUNCTIONS(X) \
 	X(glGetString) \
 	X(glGetIntegerv) \
+	X(glGetBooleanv) \
+	X(glGetFloatv) \
+	X(glIsEnabled) \
 	X(glCopyImageSubData) \
 	X(glGenerateMipmap) \
 	X(glGetError) \
@@ -150,6 +153,9 @@ OpenGL backend (port/linux/host/host_gl_stream.c) */
 #define GL_FUNCTIONS(X) \
 	X(glGetString) \
 	X(glGetIntegerv) \
+	X(glGetBooleanv) \
+	X(glGetFloatv) \
+	X(glIsEnabled) \
 	X(glGetTexImage) \
 	X(glCopyImageSubData) \
 	X(glGenerateMipmap) \
@@ -287,6 +293,9 @@ GL_OPTIONAL_FUNCTIONS(GL_DECLARE_FUNCTION)
 /* call sites use the ordinary names; gl_functions.c, which defines the
 pointers, sees the declarations without these aliases */
 #ifndef GL_FUNCTIONS_DEFINE
+#define glGetBooleanv halo_glGetBooleanv
+#define glGetFloatv halo_glGetFloatv
+#define glIsEnabled halo_glIsEnabled
 #ifdef HALO_GLES
 #define glGetString halo_glGetString
 #define glGetIntegerv halo_glGetIntegerv

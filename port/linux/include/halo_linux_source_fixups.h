@@ -7,9 +7,19 @@ The port's functions that the game's sources call, declared for them.
 #ifndef __HALO_LINUX_SOURCE_FIXUPS_H
 #define __HALO_LINUX_SOURCE_FIXUPS_H
 
+/* map-independent loading presentation (port/linux/src/sdl_platform.c) */
+void halo_loading_begin(void);
+void halo_loading_retire(void);
+void halo_loading_end(void);
+void halo_loading_ready(void);
+
 /* opt-in map loading timestamps (port/linux/src/sdl_platform.c) */
 int halo_load_trace_enabled(void);
 void halo_load_trace(char const *phase, char const *detail);
+/* Preparation batches release texture cache pages only after a complete
+draw and after the render owner has consumed their bytes. */
+void halo_gpu_preparation_checkpoint_set(unsigned long bytes, void (*checkpoint)(void *const *textures));
+void halo_gpu_preparation_loaded(unsigned long bytes);
 
 /* frames between the 30 Hz ticks (port/linux/game/render_interpolation.c);
 the platform layer reads the display.interpolation setting */

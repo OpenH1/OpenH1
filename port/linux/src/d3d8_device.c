@@ -32,6 +32,7 @@ Conventions carried over from the Xbox:
 #include "halo_ui_pointer.h"
 #include "halo_dynamic_lights.h"
 #include "port_config.h"
+#include "halo_linux_source_fixups.h"
 #include "main/console.h"
 
 #include <SDL3/SDL.h>
@@ -524,6 +525,177 @@ struct d3d8_device
 };
 
 static struct d3d8_device device;
+
+/* A preparation draw is needed once for each pipeline, vertex layout and
+texture revision. Geometry mirrors are still refreshed for every range:
+their contents, unlike transient draw uploads, are needed during play. */
+#define PREPARATION_BUCKETS 4096
+struct preparation_key
+{
+	struct xgpu_pipeline_key pipeline;
+	struct xgpu_dynamic_state dynamic;
+	struct xgpu_texture_source textures[4];
+	struct xgpu_vertex_element elements[XGPU_VERTEX_ATTRIBUTE_COUNT];
+	unsigned long strides[16], present, written, primitive, sky;
+	unsigned long color_data, color_format, color_size, depth_data, depth_format, depth_size;
+	unsigned long texture_data[4], texture_format[4], texture_size[4];
+	unsigned long texture_generation[4], palette_generation[4];
+};
+static struct
+{
+	BOOL active, duplicate, trackable;
+	struct preparation_key key;
+	struct preparation_key *entries[PREPARATION_BUCKETS];
+	unsigned long hashes[PREPARATION_BUCKETS];
+	unsigned long draws, duplicates;
+	unsigned long sky;
+	unsigned long loaded_bytes, budget;
+	unsigned long preserved;
+	BOOL trace, sample;
+	unsigned long attempts, sampled_draws;
+	double sampled_seconds[4];
+	void (*checkpoint)(void *const *textures);
+} preparation;
+
+static double preparation_time(void)
+{
+#ifdef CLOCK_THREAD_CPUTIME_ID
+	struct timespec now;
+
+	if (!preparation.sample || clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now) != 0)
+		return -1.0;
+	return (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
+#else
+	return -1.0;
+#endif
+}
+
+static void preparation_time_add(int stage, double started)
+{
+	double now;
+
+	if (started < 0.0)
+		return;
+	now = preparation_time();
+	if (now >= started)
+		preparation.sampled_seconds[stage] += now - started;
+}
+
+void halo_gpu_preparation_checkpoint_set(unsigned long bytes, void (*checkpoint)(void *const *textures))
+{
+	preparation.loaded_bytes = 0;
+	preparation.budget = bytes;
+	preparation.checkpoint = checkpoint;
+}
+
+void halo_gpu_preparation_loaded(unsigned long bytes)
+{
+	if (preparation.active && preparation.loaded_bytes < preparation.budget)
+		preparation.loaded_bytes += bytes;
+}
+
+static void preparation_draw_complete(void)
+{
+	void *textures[4];
+	int stage;
+
+	if (!preparation.active || preparation.preserved || !preparation.checkpoint || !preparation.budget ||
+		preparation.loaded_bytes < preparation.budget)
+		return;
+	/* A stage can remain bound across many draws. Keep those cache blocks
+	touched while releasing older draws' unbound resources. */
+	xgpu_backend_consume();
+	for (stage = 0; stage < 4; stage++)
+		textures[stage] = device.textures[stage];
+	preparation.loaded_bytes = 0;
+	preparation.checkpoint(textures);
+}
+
+void halo_gpu_preparation_sky(int sky)
+{
+	preparation.sky = sky != 0;
+}
+
+static void preparation_clear(void)
+{
+	unsigned long index;
+
+	for (index = 0; index < PREPARATION_BUCKETS; index++)
+	{
+		free(preparation.entries[index]);
+		preparation.entries[index] = NULL;
+	}
+	preparation.draws = preparation.duplicates = 0;
+}
+
+static BOOL preparation_seen(const struct xgpu_pipeline_key *pipeline,
+	const struct xgpu_dynamic_state *dynamic, BOOL immediate, unsigned long primitive)
+{
+	struct preparation_key *key = &preparation.key;
+	const unsigned char *bytes = (const unsigned char *)key;
+	unsigned long index, hash = 2166136261UL, bucket, word;
+
+	if (!preparation.active || !preparation.trackable)
+		return FALSE;
+	key->pipeline = *pipeline;
+	key->dynamic = *dynamic;
+	key->primitive = primitive;
+	key->sky = preparation.sky;
+	if (device.render_target)
+	{
+		key->color_data = device.render_target->Data;
+		key->color_format = device.render_target->Format;
+		key->color_size = device.render_target->Size;
+	}
+	if (device.depth_stencil)
+	{
+		key->depth_data = device.depth_stencil->Data;
+		key->depth_format = device.depth_stencil->Format;
+		key->depth_size = device.depth_stencil->Size;
+	}
+	key->written = immediate ? device.immediate_written : 0;
+	key->present = 0;
+	memset(key->elements, 0, sizeof(key->elements));
+	memset(key->strides, 0, sizeof(key->strides));
+	if (!immediate)
+	{
+		memcpy(key->elements, device.vertex_shader->elements, sizeof(key->elements));
+		for (index = 0; index < 16; index++)
+		{
+			key->strides[index] = device.streams[index].stride;
+			if (device.streams[index].data)
+				key->present |= 1UL << index;
+		}
+	}
+	/* Whole words keep hashing cheaper than the work being avoided. The
+	final mix folds high address and state bits into the bucket number;
+	the full key comparison, not this hash, establishes equality. */
+	for (index = 0; index < sizeof(*key); index += sizeof(word))
+	{
+		memcpy(&word, bytes + index, sizeof(word));
+		hash = (hash ^ word) * 16777619UL;
+	}
+	hash ^= hash >> 16;
+	hash *= 0x85ebca6bUL;
+	hash ^= hash >> 13;
+	bucket = hash % PREPARATION_BUCKETS;
+	preparation.draws++;
+	if (preparation.entries[bucket] && preparation.hashes[bucket] == hash &&
+		!memcmp(preparation.entries[bucket], key, sizeof(*key)))
+	{
+		preparation.duplicates++;
+		return TRUE;
+	}
+	/* A collision replaces the entry: it only repeats preparation. */
+	if (!preparation.entries[bucket])
+		preparation.entries[bucket] = malloc(sizeof(*key));
+	if (preparation.entries[bucket])
+	{
+		*preparation.entries[bucket] = *key;
+		preparation.hashes[bucket] = hash;
+	}
+	return FALSE;
+}
 
 /* the visibility tests are counted by the pixel shaders (the backend's
 way: xgpu_backend_capabilities) */
@@ -2114,6 +2286,11 @@ static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale
 	int stage;
 
 	memset(sources, 0, sizeof(sources));
+	if (preparation.active)
+	{
+		memset(&preparation.key, 0, sizeof(preparation.key));
+		preparation.trackable = TRUE;
+	}
 	for (stage = 0; stage < D3DTSS_MAXSTAGES; stage++)
 	{
 		D3DBaseTexture *texture = device.textures[stage];
@@ -2219,6 +2396,46 @@ static void bind_textures(struct nv2a_pixel_shader_key *key, float texture_scale
 	}
 	xgpu_backend_set_textures(sources);
 	xgpu_manifest_note_textures(sources);
+	if (preparation.active)
+	{
+		memcpy(preparation.key.textures, sources, sizeof(sources));
+		for (stage = 0; stage < D3DTSS_MAXSTAGES; stage++)
+		{
+			D3DBaseTexture *texture = device.textures[stage];
+			struct xgpu_texture_description description;
+			unsigned long address, bytes;
+
+			if (sources[stage].source != XGPU_SOURCE_TEXTURE)
+				continue;
+			xgpu_texture_describe(texture->Format, texture->Size, &description);
+			address = (unsigned long)PLATFORM_PHYSICAL_TO_VIRTUAL(texture->Data);
+			bytes = xgpu_texture_face_size(&description) * (description.cube_map ? 6 : 1);
+			preparation.key.texture_data[stage] = texture->Data;
+			preparation.key.texture_format[stage] = texture->Format;
+			preparation.key.texture_size[stage] = texture->Size;
+			if (!bytes || !platform_is_contiguous((void *)address) ||
+				bytes > PLATFORM_CONTIGUOUS_SIZE - (address - PLATFORM_CONTIGUOUS_BASE))
+			{
+				preparation.trackable = FALSE;
+				continue;
+			}
+			memory_watch_protect(address, bytes);
+			preparation.key.texture_generation[stage] = memory_watch_generation(address, bytes);
+			if (sources[stage].palette)
+			{
+				address = sources[stage].palette;
+				if (!platform_is_contiguous((void *)address) ||
+					256 * sizeof(D3DCOLOR) > PLATFORM_CONTIGUOUS_SIZE - (address - PLATFORM_CONTIGUOUS_BASE))
+					preparation.trackable = FALSE;
+				else
+				{
+					memory_watch_protect(address, 256 * sizeof(D3DCOLOR));
+					preparation.key.palette_generation[stage] =
+						memory_watch_generation(address, 256 * sizeof(D3DCOLOR));
+				}
+			}
+		}
+	}
 }
 
 /* ---------- the pipeline key and dynamic state (xgpu_backend.h)
@@ -2846,7 +3063,7 @@ static void unread_stage_fields_clear(DWORD *state, DWORD texture_modes)
 /* the draw's description to the backend: its textures, its targets, its
 pipeline (shaders and fixed-function state), its dynamic state and its
 uniforms; FALSE if it is not drawn */
-static BOOL prepare_draw(BOOL immediate)
+static BOOL prepare_draw(BOOL immediate, unsigned long primitive)
 {
 	struct vertex_shader_object *program = current_program();
 	struct nv2a_pixel_shader_key key;
@@ -2855,7 +3072,16 @@ static BOOL prepare_draw(BOOL immediate)
 	float texture_scale[4][4];
 	BOOL has_depth = FALSE, chosen = FALSE, ready;
 	int stage;
+	double traced;
 
+	preparation.duplicate = FALSE;
+	preparation.sample = preparation.active && preparation.trace &&
+		((preparation.attempts ^ (preparation.attempts >> 6)) & 63) == 0;
+	if (preparation.active && preparation.trace)
+		preparation.attempts++;
+	if (preparation.sample)
+		preparation.sampled_draws++;
+	traced = preparation_time();
 	if (!device.gl_ready || !program || !device.vertex_shader || !program->program)
 	{
 		stats.skipped_no_program++;
@@ -2894,7 +3120,11 @@ static BOOL prepare_draw(BOOL immediate)
 	/* the textures before the targets: a render target the draw samples
 	has its multisampled pixels resolved by the backend, and the back buffer
 	can be both sampled and drawn into */
+	preparation_time_add(2, traced);
+	traced = preparation_time();
 	bind_textures(&key, texture_scale);
+	preparation_time_add(0, traced);
+	traced = preparation_time();
 	if (!bind_targets(&has_depth))
 	{
 		stats.skipped_no_target++;
@@ -3010,8 +3240,16 @@ static BOOL prepare_draw(BOOL immediate)
 	else
 		stats.draws++;
 	xgpu_manifest_note_pipeline(&pipeline_key);
+	preparation_time_add(2, traced);
+	traced = preparation_time();
+	preparation.duplicate = preparation_seen(&pipeline_key, &dynamic, immediate, primitive);
+	preparation_time_add(1, traced);
+	if (preparation.duplicate)
+		return TRUE;
+	traced = preparation_time();
 	draw_uniforms_update((const float (*)[4])texture_scale);
 	xgpu_backend_draw_state(&dynamic, &draw_uniforms, draw_uniforms_serial);
+	preparation_time_add(2, traced);
 	return TRUE;
 }
 
@@ -3036,6 +3274,7 @@ void halo_gpu_draw_preserved(void (*draw)(void *), void *data)
 	memcpy(texture_states, D3D__TextureState, sizeof(texture_states));
 	memcpy(textures, device.textures, sizeof(textures));
 	memcpy(attributes, device.attributes, sizeof(attributes));
+	preparation.preserved++;
 	draw(data);
 	memcpy(D3D__RenderState, render_states, sizeof(render_states));
 	memcpy(D3D__TextureState, texture_states, sizeof(texture_states));
@@ -3050,12 +3289,26 @@ void halo_gpu_draw_preserved(void (*draw)(void *), void *data)
 	device.immediate_count = immediate_count;
 	/* Rebind the restored state even if a backend cached the last draw. */
 	xgpu_backend_invalidate();
+	preparation.preserved--;
+	preparation_draw_complete();
 }
 
 /* the shaders and pipelines of the draws so far made (a map's first
 frame's: port/linux/game/render_enumerate.c); the seconds waited */
 void halo_gpu_prepare(int new_map)
 {
+	const char *detail = getenv("HALO_LOAD_TRACE_DETAIL");
+
+	preparation_clear();
+	preparation.active = TRUE;
+	preparation.trace = config_boolean("debug.load_trace") && detail &&
+		detail[0] && strcmp(detail, "0") != 0;
+#ifndef CLOCK_THREAD_CPUTIME_ID
+	preparation.trace = FALSE;
+#endif
+	preparation.sample = FALSE;
+	preparation.attempts = preparation.sampled_draws = 0;
+	memset(preparation.sampled_seconds, 0, sizeof(preparation.sampled_seconds));
 	xgpu_manifest_enumerating(1, new_map);
 	if (device.gl_ready)
 		xgpu_backend_prepare();
@@ -3063,15 +3316,35 @@ void halo_gpu_prepare(int new_map)
 
 double halo_thread_cpu_seconds(void)
 {
+#ifdef CLOCK_THREAD_CPUTIME_ID
 	struct timespec now;
 
 	if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now) != 0)
-		return 0.0;
+		return -1.0;
 	return (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
+#else
+	return -1.0;
+#endif
 }
 
 double halo_gpu_prepared(void)
 {
+	if (preparation.trace)
+	{
+		char detail[384];
+
+		snprintf(detail, sizeof(detail), "draws=%lu sampled=%lu textures_cpu=%.6f key_cpu=%.6f "
+			"pipeline_cpu=%.6f geometry_cpu=%.6f", preparation.attempts, preparation.sampled_draws,
+			preparation.sampled_seconds[0], preparation.sampled_seconds[1], preparation.sampled_seconds[2],
+			preparation.sampled_seconds[3]);
+		halo_load_trace("prepare.frontend.sampled", detail);
+	}
+	preparation.active = FALSE;
+	preparation.sample = FALSE;
+	preparation.checkpoint = NULL;
+	preparation.duplicate = FALSE;
+	platform_log("GPU: preparation reused %lu of %lu tracked draws", preparation.duplicates, preparation.draws);
+	preparation_clear();
 	xgpu_manifest_enumerating(0, 0);
 	platform_log("GPU: the map's enumeration: %lu draws", (unsigned long)xgpu_manifest_enumeration()->draw_count);
 	return device.gl_ready ? xgpu_backend_prepared() : 0.0;
@@ -3417,6 +3690,7 @@ static void setup_streams(unsigned long first, unsigned long count)
 	struct vertex_shader_object *declaration = device.vertex_shader;
 	struct xgpu_vertex_input input;
 	unsigned long index;
+	double traced = preparation_time();
 
 	memset(&input, 0, sizeof(input));
 	input.declaration = declaration->id;
@@ -3448,8 +3722,10 @@ static void setup_streams(unsigned long first, unsigned long count)
 		stats.streamed_bytes += bytes;
 	}
 	memcpy(input.attributes, device.attributes, sizeof(input.attributes));
-	xgpu_backend_set_vertices(&input);
+	if (!preparation.duplicate)
+		xgpu_backend_set_vertices(&input);
 	xgpu_manifest_note_vertices(&input);
+	preparation_time_add(3, traced);
 }
 
 static int primitive_kind(D3DPRIMITIVETYPE type)
@@ -3509,10 +3785,15 @@ void WINAPI D3DDevice_SetIndices(D3DIndexBuffer *index_data, UINT base_vertex_in
 
 void WINAPI D3DDevice_DrawVertices(D3DPRIMITIVETYPE primitive_type, UINT start_vertex, UINT vertex_count)
 {
-	if (!vertex_count || !prepare_draw(FALSE))
+	if (!vertex_count || !prepare_draw(FALSE, primitive_type))
 		return;
 	trace_draw("draw", primitive_type, vertex_count, NULL);
 	setup_streams(start_vertex, vertex_count);
+	if (preparation.duplicate)
+	{
+		preparation_draw_complete();
+		return;
+	}
 	xgpu_manifest_record_draw(0, 0);
 	if (primitive_type == D3DPT_QUADLIST)
 	{
@@ -3526,6 +3807,7 @@ void WINAPI D3DDevice_DrawVertices(D3DPRIMITIVETYPE primitive_type, UINT start_v
 	{
 		xgpu_backend_draw(primitive_kind(primitive_type), vertex_count);
 	}
+	preparation_draw_complete();
 }
 
 void WINAPI D3DDevice_DrawIndexedVertices(D3DPRIMITIVETYPE primitive_type, UINT vertex_count, CONST WORD *index_data)
@@ -3535,22 +3817,31 @@ void WINAPI D3DDevice_DrawIndexedVertices(D3DPRIMITIVETYPE primitive_type, UINT 
 	const WORD *source = index_data;
 	long segment = -1;
 	BOOL mirrored;
+	double traced;
 
-	if (!vertex_count || !index_data || !prepare_draw(FALSE))
+	if (!vertex_count || !index_data || !prepare_draw(FALSE, primitive_type))
 		return;
+	traced = preparation_time();
 	/* quads are drawn as triangles, from indices made for the draw */
 	mirrored = primitive_type != D3DPT_QUADLIST && xgpu_backend_capabilities.base_vertex &&
 		mirror_range((unsigned long)index_data, vertex_count * sizeof(WORD), &segment, &index_offset, &generation);
 	index_extent(index_data, vertex_count, generation, mirrored, &minimum, &maximum);
+	preparation_time_add(3, traced);
 	trace_draw("indexed", primitive_type, vertex_count, NULL);
 	/* (the streams from the base vertex on: index i is vertex base + i) */
 	setup_streams(device.base_vertex_index + minimum, maximum - minimum + 1);
+	if (preparation.duplicate)
+	{
+		preparation_draw_complete();
+		return;
+	}
 	xgpu_manifest_record_draw(0, 0);
 	if (mirrored)
 	{
 		/* the attributes start at vertex minimum */
 		xgpu_backend_draw_indexed(primitive_kind(primitive_type), index_data, vertex_count, minimum, segment,
 			index_offset, FALSE);
+		preparation_draw_complete();
 		return;
 	}
 	stats.streamed_bytes += vertex_count * sizeof(WORD);
@@ -3562,6 +3853,7 @@ void WINAPI D3DDevice_DrawIndexedVertices(D3DPRIMITIVETYPE primitive_type, UINT 
 	}
 	xgpu_backend_draw_indexed(primitive_kind(primitive_type), source, count, minimum, -1, 0, indices != NULL);
 	free(indices);
+	preparation_draw_complete();
 }
 
 /* ---------- immediate mode */
@@ -3600,15 +3892,21 @@ void WINAPI D3DDevice_End(void)
 	WORD *indices = NULL;
 
 	device.immediate_active = FALSE;
-	if (!count || !prepare_draw(TRUE))
+	if (!count || !prepare_draw(TRUE, type))
 		return;
 	trace_draw("immediate", type, count, device.immediate_vertices);
+	if (preparation.duplicate)
+	{
+		preparation_draw_complete();
+		return;
+	}
 	xgpu_manifest_record_draw(1, device.immediate_written);
 	if (type == D3DPT_QUADLIST)
 		indices = quad_indices(NULL, count, &index_count);
 	xgpu_backend_draw_immediate(type == D3DPT_QUADLIST ? XGPU_TRIANGLES : primitive_kind(type), device.immediate_vertices,
 		count, device.immediate_written, (const float (*)[4])device.attributes, indices, index_count);
 	free(indices);
+	preparation_draw_complete();
 }
 
 static void set_attribute(INT reg, float a, float b, float c, float d)

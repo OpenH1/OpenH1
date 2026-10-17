@@ -113,7 +113,7 @@ static struct
 	uint32_t color, depth, samples;
 	uint32_t back_buffer;
 	uint32_t uniforms_serial;
-	BOOL uniforms_set;
+	BOOL uniforms_set, preparing;
 } stream;
 
 void xgpu_metal_stream_set_shaders(const struct xgpu_metal_stream_shaders *shaders)
@@ -683,6 +683,16 @@ static BOOL draw_prepare(const struct xgpu_metal_vertex_attribute *attributes, c
 		return NO;
 	pipeline.vertex_shader = entry->vertex_shader;
 	pipeline.pixel_shader = entry->pixel_shader;
+	memcpy(pipeline.attributes, attributes, sizeof(pipeline.attributes));
+	memcpy(pipeline.strides, strides, sizeof(pipeline.strides));
+	if (stream.preparing)
+	{
+		/* Keep resource residency and the complete vertex layout, without
+		allocating transient draw data for an unseen picture. */
+		textures_bind();
+		xgpu_metal_prepare(&pipeline);
+		return NO;
+	}
 	uniforms_update();
 	textures_bind();
 	if (target_get(stream.color))
@@ -851,6 +861,7 @@ static void stream_present(void *context, uint32_t back_buffer)
 static void stream_prepare(void *context)
 {
 	(void)context;
+	stream.preparing = YES;
 	xgpu_metal_prepare_begin();
 }
 
@@ -863,6 +874,7 @@ static void stream_exiting(void *context)
 static uint32_t stream_prepared(void *context)
 {
 	(void)context;
+	stream.preparing = NO;
 	return (uint32_t)(xgpu_metal_prepared() * 1000.0 + 0.5);
 }
 
@@ -954,6 +966,7 @@ const struct host_render_backend *xgpu_metal_stream_backend(void)
 		backend.visibility_end = stream_visibility_end;
 		backend.present = stream_present;
 		backend.frame_end = stream_frame_end;
+		backend.loading = host_metal_loading;
 	}
 	return &backend;
 }

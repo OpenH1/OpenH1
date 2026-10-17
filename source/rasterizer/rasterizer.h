@@ -827,7 +827,7 @@ void rasterizer_detail_objects_port_enumerate(
 	void);
 /* port: (rasterizer_xbox_decals.c) */
 void rasterizer_decals_port_enumerate(
-	void);
+	short stencil_mode);
 /* port: (rasterizer_transparent_geometry.c) */
 void rasterizer_transparent_geometry_flush(
 	long room);

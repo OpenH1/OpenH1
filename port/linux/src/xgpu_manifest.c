@@ -932,8 +932,10 @@ static void missed_write(void)
 #if defined(__x86_64__) || defined(__i386__)
 	uintptr_t frame = (uintptr_t)__builtin_frame_address(0);
 	int level;
+#endif
 
 	fprintf(recorder.file, "# missed:");
+#if defined(__x86_64__) || defined(__i386__)
 	for (level = 0; level < 24 && frame; level++)
 	{
 		uintptr_t next = *(uintptr_t *)frame;
@@ -949,9 +951,9 @@ static void missed_write(void)
 			break;
 		frame = next;
 	}
+#endif
 	fprintf(recorder.file, "\n");
 	fflush(recorder.file);
-#endif
 }
 
 static void enumeration_add(const struct xgpu_manifest_draw *draw, uint64_t hash)

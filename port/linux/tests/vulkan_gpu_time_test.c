@@ -172,7 +172,7 @@ int main(void)
 			vk.queries->counter_count = 1;
 		}
 		xgpu_vulkan_gpu_time_begin();
-		xgpu_vulkan_frame_end(NULL);
+		xgpu_vulkan_frame_end(NULL, 1);
 		assert(!creates && !writes && vk.gpu_time_armed && !vk.gpu_time_active);
 		early_commands();
 		assert(creates == 1 && writes == 1 && !vk.gpu_time_armed && vk.gpu_time_active);
@@ -180,7 +180,7 @@ int main(void)
 	/* An interval already started may span a frame-end submission. */
 	initialize();
 	begin_work();
-	xgpu_vulkan_frame_end(NULL);
+	xgpu_vulkan_frame_end(NULL, 1);
 	assert(writes == 1 && vk.gpu_time_active && !vk.gpu_time_armed);
 
 	initialize();

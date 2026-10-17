@@ -614,6 +614,7 @@ boolean game_is_cooperative(
 boolean game_load(
 	struct game_options *options)
 {
+	halo_loading_begin(); /* port: keep presentation alive while loading */
 #ifdef HALO_PROFILE
 	/* port: the profiling build's recording learns of the map (every map
 	load passes here: main_new_map's and a network game's,
@@ -830,6 +831,8 @@ void game_precache_new_map(
 {
 	long map_status;
 
+	if (blocking)
+		halo_loading_begin(); /* port: the background precache keeps its current game */
 	halo_load_trace("precache.begin", map_name); /* port: loading measurement */
 	if (!cache_files_precache_map_loaded(map_name))
 	{
@@ -924,6 +927,7 @@ void game_precache_new_map(
 void game_dispose_from_old_map(
 	void)
 {
+	halo_loading_begin(); /* port: retire old draws before map storage is reused */
 	halo_load_trace("dispose.begin", NULL); /* port: loading measurement */
 	rasterizer_dispose_from_old_map();
 	game_state_dispose_from_old_map();

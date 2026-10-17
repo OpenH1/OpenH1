@@ -36,6 +36,8 @@ void texture_cache_open(
 	void);
 void texture_cache_idle(
 	void);
+/* port: bounded preparation batches keep currently bound textures live. */
+void texture_cache_preparation_begin(void);
 void texture_cache_return_memory(
 	void);
 void texture_cache_flush(

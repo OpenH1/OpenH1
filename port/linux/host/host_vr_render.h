@@ -14,6 +14,11 @@ views and controllers, as before.
 #define __HALO_HOST_VR_RENDER_H
 
 #include "vr_host.h"
+#include "loading_presentation.h"
+
+void host_vr_loading_set(int active);
+int host_vr_loading_begin(const struct loading_presentation_frame *frame, struct vr_host_views *views);
+void host_vr_loading_end(const struct loading_presentation_frame *frame);
 
 /* from now on: host_vr_initialize runs on the render thread
 (host_render_stream_call), host_vr_frame_wait waits alone, and the render

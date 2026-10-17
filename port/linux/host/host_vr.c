@@ -211,21 +211,53 @@ static struct
 	XrFrameState begun;
 } render_thread = { .lock = PTHREAD_MUTEX_INITIALIZER };
 
-static const char *result_name(XrResult result)
+/* The render owner begins and ends loading frames. A producer waits for
+the next runtime ticket without blocking preparation on the render owner.
+The game receives a snapshot; its simulation clock never advances here. */
+static struct
 {
-	static char text[XR_MAX_RESULT_STRING_SIZE];
+	int active, suspended, presenting, anchored, ready;
+	pthread_t owner;
+	pthread_t waiter;
+	pthread_cond_t changed;
+	int waiter_started, waiter_stop, waiter_request, waiter_busy, waiter_failed;
+	struct vr_host_views views;
+	struct vr_host_pose anchor;
+} loading = { .changed = PTHREAD_COND_INITIALIZER };
 
+static void loading_wait_request(void);
+static void loading_wait_stop(void);
+
+static int loading_guest_views(struct vr_host_views *views)
+{
+	int copied = 0;
+
+	pthread_mutex_lock(&render_thread.lock);
+	if (loading.active && !pthread_equal(pthread_self(), loading.owner))
+	{
+		*views = loading.views;
+		views->display_elapsed = 0.0f;
+		copied = 1;
+	}
+	pthread_mutex_unlock(&render_thread.lock);
+	return copied;
+}
+
+static const char *result_name(XrResult result, char text[XR_MAX_RESULT_STRING_SIZE])
+{
 	if (vr.instance && xrResultToString && xrResultToString(vr.instance, result, text) == XR_SUCCESS)
 		return text;
-	snprintf(text, sizeof(text), "XrResult %d", (int)result);
+	snprintf(text, XR_MAX_RESULT_STRING_SIZE, "XrResult %d", (int)result);
 	return text;
 }
 
 static int check(XrResult result, const char *what)
 {
+	char text[XR_MAX_RESULT_STRING_SIZE];
+
 	if (XR_SUCCEEDED(result))
 		return 1;
-	host_logf(HOST_LOG_ERROR, "vr: %s: %s", what, result_name(result));
+	host_logf(HOST_LOG_ERROR, "vr: %s: %s", what, result_name(result, text));
 	return 0;
 }
 
@@ -962,7 +994,11 @@ static void bindings_suggest(const char *profile, const struct binding *bindings
 		result = xrSuggestInteractionProfileBindings(vr.instance, &suggestion);
 	}
 	if (result != XR_SUCCESS)
-		host_logf(HOST_LOG_WARN, "vr: bindings for %s: %s", profile, result_name(result));
+	{
+		char text[XR_MAX_RESULT_STRING_SIZE];
+
+		host_logf(HOST_LOG_WARN, "vr: bindings for %s: %s", profile, result_name(result, text));
+	}
 }
 
 static int actions_create(void)
@@ -1204,7 +1240,9 @@ static int initialize(struct vr_host_info *info)
 
 			if (result != XR_SUCCESS)
 			{
-				host_logf(HOST_LOG_WARN, "vr: %.0f Hz refused: %s", info->refresh_rate_wanted, result_name(result));
+				char text[XR_MAX_RESULT_STRING_SIZE];
+
+				host_logf(HOST_LOG_WARN, "vr: %.0f Hz refused: %s", info->refresh_rate_wanted, result_name(result, text));
 				refused = 1;
 			}
 		}
@@ -1285,6 +1323,18 @@ int host_vr_frame_begin(void)
 
 	if (vr.frame_begun)
 		return 1;
+	if (loading.active && !loading.presenting)
+	{
+		if (!loading.ready)
+			return 0;
+		/* Transfer the producer's next prediction to the first real
+		picture. Waiting again here would skip a refresh at handoff. */
+		loading.suspended = 1;
+		pthread_mutex_lock(&render_thread.lock);
+		while (!render_thread.count && (loading.waiter_busy || loading.waiter_request) && !loading.waiter_failed)
+			pthread_cond_wait(&loading.changed, &render_thread.lock);
+		pthread_mutex_unlock(&render_thread.lock);
+	}
 	pthread_mutex_lock(&render_thread.lock);
 	if (!render_thread.count)
 	{
@@ -1322,6 +1372,14 @@ static void events_poll(void)
 			}
 			else if (vr.state == XR_SESSION_STATE_STOPPING)
 			{
+				if (loading.active)
+				{
+					loading_wait_stop();
+					loading.presenting = 1;
+					if (host_vr_frame_begin())
+						host_vr_frame_end(NULL);
+					loading.presenting = 0;
+				}
 				xrEndSession(vr.session);
 				vr.running = 0;
 			}
@@ -1361,6 +1419,8 @@ int host_vr_frame_wait(struct vr_host_views *views)
 	XrFrameWaitInfo wait = { XR_TYPE_FRAME_WAIT_INFO };
 	XrFrameBeginInfo begin = { XR_TYPE_FRAME_BEGIN_INFO };
 
+	if (loading_guest_views(views))
+		return 1;
 	views->should_render = 0;
 	if (!vr.session)
 		return 0;
@@ -1486,6 +1546,8 @@ static int locate_at(XrTime time, struct vr_host_views *views)
 
 int host_vr_locate(struct vr_host_views *views)
 {
+	if (loading_guest_views(views))
+		return views->head.valid;
 	if (!(render_thread.on ? render_thread.located : vr.frame_begun))
 		return 0;
 	return locate_at(vr.frame.predictedDisplayTime, views);
@@ -1496,6 +1558,11 @@ int host_vr_locate_late(struct vr_host_views *views)
 {
 	int valid;
 
+	if (loading.active && !loading.presenting && !loading.ready)
+	{
+		*views = loading.views;
+		return views->head.valid;
+	}
 	if (!render_thread.on || !host_vr_frame_begin())
 		return 0;
 	valid = locate_at(render_thread.begun.predictedDisplayTime, views);
@@ -1504,6 +1571,200 @@ int host_vr_locate_late(struct vr_host_views *views)
 		valid ? views->eye[0].orientation[1] : 0.0f, valid ? views->eye[0].orientation[2] : 0.0f,
 		valid ? views->eye[0].orientation[3] : 0.0f);
 	return valid;
+}
+
+static void *loading_wait_thread(void *unused)
+{
+	(void)unused;
+	pthread_mutex_lock(&render_thread.lock);
+	for (;;)
+	{
+		XrFrameWaitInfo wait = { XR_TYPE_FRAME_WAIT_INFO };
+		XrFrameState state = { XR_TYPE_FRAME_STATE };
+		int success;
+
+		while (!loading.waiter_request && !loading.waiter_stop)
+			pthread_cond_wait(&loading.changed, &render_thread.lock);
+		if (!loading.waiter_request)
+			break;
+		loading.waiter_request = 0;
+		loading.waiter_busy = 1;
+		pthread_mutex_unlock(&render_thread.lock);
+		host_load_trace("xr.wait.begin", "loading producer");
+		success = check(xrWaitFrame(vr.session, &wait, &state), "xrWaitFrame (loading)");
+		host_load_trace("xr.wait.end", "predicted=%lld period=%lld render=%d loading=1",
+			(long long)state.predictedDisplayTime, (long long)state.predictedDisplayPeriod, state.shouldRender);
+		pthread_mutex_lock(&render_thread.lock);
+		loading.waiter_busy = 0;
+		loading.waiter_failed = !success;
+		if (success)
+		{
+			render_thread.waited[(render_thread.first + render_thread.count) % WAITED_FRAMES] = state;
+			render_thread.count++;
+		}
+		pthread_cond_broadcast(&loading.changed);
+		if (loading.waiter_stop || !success)
+			break;
+	}
+	pthread_mutex_unlock(&render_thread.lock);
+	return NULL;
+}
+
+static void loading_wait_request(void)
+{
+	if (!loading.active || loading.ready || !vr.running || !vr.session)
+		return;
+	pthread_mutex_lock(&render_thread.lock);
+	if (!loading.waiter_started)
+	{
+		loading.waiter_stop = loading.waiter_failed = 0;
+		if (pthread_create(&loading.waiter, NULL, loading_wait_thread, NULL) == 0)
+			loading.waiter_started = 1;
+		else
+			loading.waiter_failed = 1;
+	}
+	if (loading.waiter_started && !loading.waiter_busy && !loading.waiter_failed && !render_thread.count)
+	{
+		loading.waiter_request = 1;
+		pthread_cond_broadcast(&loading.changed);
+	}
+	pthread_mutex_unlock(&render_thread.lock);
+}
+
+static void loading_wait_stop(void)
+{
+	pthread_mutex_lock(&render_thread.lock);
+	loading.waiter_stop = 1;
+	pthread_cond_broadcast(&loading.changed);
+	pthread_mutex_unlock(&render_thread.lock);
+	if (loading.waiter_started)
+		pthread_join(loading.waiter, NULL);
+	loading.waiter_started = 0;
+}
+
+void host_vr_loading_set(int active)
+{
+	if (!render_thread.on)
+		return;
+	if (active == 2)
+	{
+		/* Ensure a final ticket is in flight before asking the producer
+		to stop. The real frame consumes it through frame_begin. */
+		loading_wait_request();
+		loading.ready = 1;
+		pthread_mutex_lock(&render_thread.lock);
+		loading.waiter_stop = 1;
+		pthread_cond_broadcast(&loading.changed);
+		pthread_mutex_unlock(&render_thread.lock);
+		return;
+	}
+	if (!active)
+	{
+		loading_wait_stop();
+		loading.presenting = 1;
+		if (vr.frame_begun || render_thread.count)
+		{
+			if (host_vr_frame_begin())
+				host_vr_frame_end(NULL);
+		}
+		loading.presenting = 0;
+	}
+	if (active)
+	{
+		memset(&loading.anchor, 0, sizeof(loading.anchor));
+		loading.anchor.orientation[3] = 1.0f;
+		loading.anchor.position[2] = -2.0f;
+		/* A game frame may already have been waited for when its map
+		change begins. End that ticket before the loading frame loop. */
+		loading.presenting = 1;
+		if (vr.frame_begun || render_thread.count)
+		{
+			if (host_vr_frame_begin())
+				host_vr_frame_end(NULL);
+		}
+		loading.presenting = 0;
+	}
+	pthread_mutex_lock(&render_thread.lock);
+	loading.owner = pthread_self();
+	loading.active = active;
+	loading.suspended = loading.anchored = loading.ready = 0;
+	if (!active)
+		vr.last_display_time = 0;
+	pthread_mutex_unlock(&render_thread.lock);
+	if (active)
+		loading_wait_request();
+}
+
+int host_vr_loading_begin(const struct loading_presentation_frame *frame, struct vr_host_views *views)
+{
+	int index;
+
+	memset(views, 0, sizeof(*views));
+	if (!loading.active || loading.suspended || !vr.session)
+		return -1;
+	events_poll();
+	loading_wait_request();
+	pthread_mutex_lock(&render_thread.lock);
+	index = render_thread.count != 0;
+	pthread_mutex_unlock(&render_thread.lock);
+	if (!index)
+		return -1;
+	loading.presenting = 1;
+	if (!host_vr_frame_begin())
+	{
+		loading.presenting = 0;
+		return -1;
+	}
+	views->should_render = render_thread.begun.shouldRender != 0;
+	views->focused = vr.state == XR_SESSION_STATE_FOCUSED;
+	views->display_period = (float)(render_thread.begun.predictedDisplayPeriod * 1e-9);
+	locate_at(render_thread.begun.predictedDisplayTime, views);
+	pthread_mutex_lock(&render_thread.lock);
+	loading.views = *views;
+	pthread_mutex_unlock(&render_thread.lock);
+	if (!loading.anchored && views->head.valid)
+	{
+		const float *q = views->head.orientation;
+
+		loading.anchor = views->head;
+		loading.anchor.position[0] -= 4.0f * (q[0] * q[2] + q[3] * q[1]);
+		loading.anchor.position[1] -= 4.0f * (q[1] * q[2] - q[3] * q[0]);
+		loading.anchor.position[2] -= 2.0f * (1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1]));
+		loading.anchored = 1;
+	}
+	host_load_trace("loading.pose", "epoch=%llu serial=%llu predicted=%lld valid=%d orientation=%.6f,%.6f,%.6f,%.6f",
+		(unsigned long long)frame->epoch, (unsigned long long)frame->serial,
+		(long long)render_thread.begun.predictedDisplayTime, views->head.valid,
+		views->head.orientation[0], views->head.orientation[1], views->head.orientation[2], views->head.orientation[3]);
+	index = views->should_render ? host_vr_acquire(VR_SWAPCHAIN_HUD) : -1;
+	if (index < 0)
+	{
+		host_vr_frame_end(NULL);
+		loading.presenting = 0;
+		loading_wait_request();
+	}
+	return index;
+}
+
+void host_vr_loading_end(const struct loading_presentation_frame *frame)
+{
+	struct vr_host_layers layers;
+
+	memset(&layers, 0, sizeof(layers));
+	layers.hud = 1;
+	layers.hud_pose = loading.anchor;
+	layers.hud_size[0] = 1.6f;
+	layers.hud_size[1] = 0.8f;
+	host_vr_frame_end(&layers);
+	loading.presenting = 0;
+	loading_wait_request();
+	host_load_trace("loading.submitted", "epoch=%llu serial=%llu elapsed_ns=%llu world_space=%d "
+		"anchor_position=%.9g,%.9g,%.9g anchor_orientation=%.9g,%.9g,%.9g,%.9g",
+		(unsigned long long)frame->epoch, (unsigned long long)frame->serial,
+		(unsigned long long)frame->elapsed_ns, !layers.hud_head_locked,
+		layers.hud_pose.position[0], layers.hud_pose.position[1], layers.hud_pose.position[2],
+		layers.hud_pose.orientation[0], layers.hud_pose.orientation[1],
+		layers.hud_pose.orientation[2], layers.hud_pose.orientation[3]);
 }
 
 static int button(int action)
@@ -1975,6 +2236,8 @@ void host_vr_vulkan_shutdown(void)
 {
 	int index;
 
+	if (loading.active)
+		host_vr_loading_set(0);
 	if (vr.session && xrDestroySession)
 		xrDestroySession(vr.session);
 	if (vr.instance && xrDestroyInstance)

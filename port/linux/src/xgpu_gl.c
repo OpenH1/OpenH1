@@ -380,6 +380,7 @@ static struct
 		struct gl_target target;
 	} eye_target;
 	GLuint eye_image;
+	GLuint preparation_image;
 	/* vr.foveation (xgpu.h, xgpu_foveated): the eye pass's back buffer, 4
 	layers of fovea_width x fovea_height (layer 2 eye + 0 the whole eye,
 	2 eye + 1 its inset, as many of the eye image's pixels), each eye's
@@ -960,6 +961,65 @@ static void state_attribute_value(GLuint index, const float *value)
 
 /* ---------- GL helpers */
 
+/* KHR_parallel_shader_compile makes completion queryable without asking for
+the blocking compile/link status. It is a driver hint, not a deadline promise. */
+static void gl_compilation_wait(GLuint object, int program)
+{
+#ifdef XGPU_GL_HOST
+	static int supported = -1;
+	GLint completed = GL_FALSE;
+	Uint64 started, maximum = 0;
+	unsigned polls = 0;
+	int trace = host_load_trace_enabled();
+	void host_render_stream_loading_service(void);
+
+	if (supported < 0)
+	{
+		typedef void (GLAPIENTRY *compiler_threads_function)(GLuint);
+		compiler_threads_function compiler_threads;
+
+		supported = SDL_GL_ExtensionSupported("GL_KHR_parallel_shader_compile") ||
+			SDL_GL_ExtensionSupported("GL_ARB_parallel_shader_compile");
+		compiler_threads = (compiler_threads_function)SDL_GL_GetProcAddress("glMaxShaderCompilerThreadsKHR");
+		if (!compiler_threads)
+			compiler_threads = (compiler_threads_function)SDL_GL_GetProcAddress("glMaxShaderCompilerThreadsARB");
+		if (supported && compiler_threads)
+			compiler_threads(~0u);
+		platform_log("gl: shader compilation completion polling %s", supported ? "available" : "unavailable; driver calls may block presentation");
+	}
+	if (!supported)
+		return;
+	gl_load_trace("gl.completion.begin", "object=%u program=%d", object, program);
+	while (!completed)
+	{
+		started = trace ? SDL_GetTicksNS() : 0;
+		/* COMPLETION_STATUS_KHR and COMPLETION_STATUS_ARB have this value. */
+		if (program)
+			glGetProgramiv(object, 0x91B1, &completed);
+		else
+			glGetShaderiv(object, 0x91B1, &completed);
+		if (trace)
+		{
+			Uint64 elapsed = SDL_GetTicksNS() - started;
+
+			if (elapsed > maximum)
+				maximum = elapsed;
+			polls++;
+		}
+		if (!completed)
+		{
+			host_render_stream_loading_service();
+			SDL_Delay(1);
+		}
+	}
+	gl_load_trace("gl.completion.end", "object=%u program=%d polls=%u maximum_ns=%llu",
+		object, program, polls, (unsigned long long)maximum);
+#else
+	(void)object;
+	(void)program;
+#endif
+}
+
 GLuint xgpu_compile_shader(GLenum type, const char *source, const char *what)
 {
 	GLuint shader = glCreateShader(type);
@@ -968,6 +1028,7 @@ GLuint xgpu_compile_shader(GLenum type, const char *source, const char *what)
 	glShaderSource(shader, 1, &source, NULL);
 	gl_load_trace("gl.compile.begin", "shader=%u type=%u name=%s", shader, type, what);
 	glCompileShader(shader);
+	gl_compilation_wait(shader, FALSE);
 	glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
 	gl_load_trace("gl.compile.end", "shader=%u status=%d", shader, status);
 	if (!status)
@@ -991,6 +1052,7 @@ GLuint xgpu_link_program(GLuint vertex_shader, GLuint fragment_shader, const cha
 	glAttachShader(program, fragment_shader);
 	gl_load_trace("gl.link.begin", "program=%u", program);
 	glLinkProgram(program);
+	gl_compilation_wait(program, TRUE);
 	glGetProgramiv(program, GL_LINK_STATUS, &status);
 	gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 	if (!status)
@@ -1582,6 +1644,11 @@ void xgpu_backend_invalidate(void)
 void xgpu_backend_flush(void)
 {
 	glFlush();
+}
+
+void xgpu_backend_consume(void)
+{
+	/* Texture uploads have already copied the application's bytes. */
 }
 
 void xgpu_backend_anti_aliasing_prepare(BOOL smaa)
@@ -4645,11 +4712,28 @@ void xgpu_backend_visibility_frame(void)
 #endif
 }
 
+#ifndef XGPU_GL_HOST
+void xgpu_backend_loading(int phase)
+{
+	/* The loading context never reads the game's textures. Complete old
+	window work before giving it the default framebuffer. */
+	if (phase == 1 && !platform_loading_active())
+		glFinish();
+	platform_loading_set(phase);
+}
+#endif
+
 void xgpu_backend_present(xgpu_target number)
 {
 	struct gl_target *back_buffer = gl_target(number);
 	int window_width, window_height, width, height, x, y;
 
+#ifndef XGPU_GL_HOST
+	if (platform_loading_active() == 1)
+		return;
+	if (platform_loading_active() == 2)
+		platform_loading_set(0);
+#endif
 	platform_video_drawable_size(&window_width, &window_height);
 	/* letterbox to the back buffer's aspect ratio */
 	width = window_width;
@@ -4903,7 +4987,7 @@ static void vr_fovea_place(void)
 inset, fully FOVEA_BLEND of its side in from its edges (not those at the
 image's own edges), the blend's corners round; then the eye pass's back
 buffer is the eye images again, for the rest of the present */
-static void vr_fovea_composite(void)
+static void vr_fovea_composite(BOOL prepare_only)
 {
 	static GLuint program;
 	static BOOL failed;
@@ -4952,9 +5036,10 @@ static void vr_fovea_composite(void)
 
 	if (!vr_gl.foveated)
 		return;
-	if (failed || !vr_gl.eyes_drawn || !vr_gl.eye_image)
+	if (failed || (!prepare_only && (!vr_gl.eyes_drawn || !vr_gl.eye_image)))
 	{
-		vr_eye_target(FALSE);
+		if (!prepare_only)
+			vr_eye_target(FALSE);
 		return;
 	}
 	if (!program)
@@ -4968,13 +5053,15 @@ static void vr_fovea_composite(void)
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the foveation's program; the eyes show nothing");
 			failed = TRUE;
-			vr_eye_target(FALSE);
+			if (!prepare_only)
+				vr_eye_target(FALSE);
 			return;
 		}
 		glUseProgram(program);
@@ -4984,6 +5071,8 @@ static void vr_fovea_composite(void)
 		image_location = glGetUniformLocation(program, "image");
 		show_location = glGetUniformLocation(program, "show");
 	}
+	if (prepare_only)
+		return;
 	for (eye = 0; eye < 2; eye++)
 	{
 		const int *corner = vr_gl.fovea_corners[eye];
@@ -5049,6 +5138,13 @@ void xgpu_backend_vr_initialize(struct xgpu_vr_info *info)
 
 	vr_gl.eye_width = info->eye_width;
 	vr_gl.eye_height = info->eye_height;
+	/* Preparation has the same two-layer attachment without borrowing an
+	OpenXR image while the loading frame loop owns the runtime. */
+	glGenTextures(1, &vr_gl.preparation_image);
+	glBindTexture(GL_TEXTURE_2D_ARRAY, vr_gl.preparation_image);
+	glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_SRGB8_ALPHA8, info->eye_width, info->eye_height,
+		2, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+	glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAX_LEVEL, 0);
 	vr_gl.hud_width = info->hud_width;
 	vr_gl.hud_height = info->hud_height;
 	vr_gl.scope_size = info->scope_size;
@@ -5111,6 +5207,8 @@ void xgpu_backend_vr_initialize(struct xgpu_vr_info *info)
 
 void xgpu_backend_vr_eyes(xgpu_target number, unsigned int image)
 {
+	if (!image)
+		image = vr_gl.preparation_image;
 	if (vr_gl.eye_image != image)
 	{
 		glBindTexture(GL_TEXTURE_2D_ARRAY, image);
@@ -5160,6 +5258,9 @@ planes' clipping. The rest of the eye pass is clipped as the flat screen
 is. */
 void halo_vr_sky(int sky)
 {
+#ifndef XGPU_GL_HOST
+	halo_gpu_preparation_sky(sky);
+#endif
 	if (!vr_gl.ready)
 		return;
 	if (sky && vr_gl.pass == HALO_VR_PASS_EYES)
@@ -5404,7 +5505,7 @@ brightens and darkens it smoothly, never with each frame's detail. Read by
 the HUD's copy, before which it is made. 0 if there is none. */
 #define VR_LIGHT_WIDTH 64
 #define VR_LIGHT_HEIGHT 52
-static GLuint vr_light_map(const struct vr_visor_hud_image *look)
+static GLuint vr_light_map(const struct vr_visor_hud_image *look, BOOL prepare_only)
 {
 	static GLuint program, sampler, texture;
 	static BOOL failed, filled;
@@ -5454,9 +5555,9 @@ static GLuint vr_light_map(const struct vr_visor_hud_image *look)
 	float rows[6][4];
 	int eye, row;
 
-	if (failed || look->react <= 0.0f || !look->curve)
+	if (failed || (!prepare_only && (look->react <= 0.0f || !look->curve)))
 		return 0;
-	if (!vr_gl.eyes_drawn || !vr_gl.eye_target.target.texture)
+	if (!prepare_only && (!vr_gl.eyes_drawn || !vr_gl.eye_target.target.texture))
 		return filled ? texture : 0;
 	if (!program)
 	{
@@ -5469,6 +5570,7 @@ static GLuint vr_light_map(const struct vr_visor_hud_image *look)
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
@@ -5498,6 +5600,8 @@ static GLuint vr_light_map(const struct vr_visor_hud_image *look)
 		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, VR_LIGHT_WIDTH, VR_LIGHT_HEIGHT, 0, GL_RGBA, GL_HALF_FLOAT, NULL);
 		xgpu_gl_state_invalidate();
 	}
+	if (prepare_only)
+		return 0;
 	for (eye = 0; eye < 2; eye++)
 	{
 		for (row = 0; row < 3; row++)
@@ -5734,6 +5838,7 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
@@ -5850,7 +5955,7 @@ static BOOL vr_copy_hud(struct gl_target *hud, GLuint image)
 	GLuint light;
 
 	vr_visor_hud_image(&look);
-	light = vr_light_map(&look);
+	light = vr_light_map(&look, FALSE);
 	if (!vr_copy_hud_image(hud->texture, image, vr_gl.hud_width, vr_gl.hud_height, &look, NULL, light))
 		return FALSE;
 	/* the panels of the groups drawn */
@@ -5910,15 +6015,14 @@ briefly; and as it closes it switches off as a CRT does, collapsing to a
 bright line through the aim and that to a point. FALSE if the copy's
 program cannot be made. */
 #define SCOPE_TEXT_LENGTH 28
-static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
+static BOOL vr_copy_scope(GLuint source, GLuint image, int size, BOOL prepare_only)
 {
 	static GLuint program, sampler;
 	static BOOL failed;
 	static GLint size_location, zoom_location, zoom_cell_location, smartlink_location, window_location,
 		height_location, text_location, text_cell_location, animation_location;
 	float zoom_height, reticle[2], range, animation[4] = { 0.0f };
-	int zoom = (int)(halo_vr_scope_zoom(&zoom_height) + 0.5f);
-	int smartlink = halo_vr_scope_smartlink(reticle);
+	int zoom, smartlink;
 	int rounds_loaded, rounds_carried, index;
 	struct halo_vr_scope_window window;
 	GLint text[SCOPE_TEXT_LENGTH];
@@ -6133,6 +6237,7 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
@@ -6158,7 +6263,10 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
 		glSamplerParameteri(sampler, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
 	}
-	smartlink = smartlink && halo_vr_scope_window(&window);
+	if (prepare_only)
+		return TRUE;
+	zoom = (int)(halo_vr_scope_zoom(&zoom_height) + 0.5f);
+	smartlink = halo_vr_scope_smartlink(reticle) && halo_vr_scope_window(&window);
 	/* the window's readout: the zoom, the range, the rounds (as glyphs:
 	the copy's table) */
 	halo_vr_scope_readout(&range, &rounds_loaded, &rounds_carried);
@@ -6376,6 +6484,7 @@ static void vr_draw_visor(void)
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
@@ -6622,6 +6731,7 @@ static void vr_draw_rim(void)
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
@@ -6808,6 +6918,7 @@ static void vr_draw_feed(void)
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
@@ -7094,6 +7205,7 @@ static void vr_draw_cockpit_display(GLuint depth_texture, int depth_layers)
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
@@ -7274,6 +7386,7 @@ static void vr_draw_vignette(void)
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
@@ -7355,6 +7468,7 @@ static void vr_draw_tint(void)
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
@@ -7446,6 +7560,7 @@ static void vr_copy_depth(void)
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
@@ -7587,6 +7702,7 @@ static void vr_draw_scope_window(GLuint depth_texture, int depth_layers)
 		glAttachShader(program, fragment);
 		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
+		gl_compilation_wait(program, TRUE);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
 		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
@@ -7692,7 +7808,7 @@ void xgpu_backend_vr_compose(const struct xgpu_vr_frame *frame)
 	vr_gl.hud_image = 0;
 	/* foveated, the eyes' images made from the inset and the periphery,
 	which the rest draws into */
-	vr_fovea_composite();
+	vr_fovea_composite(FALSE);
 	/* a feed cockpit's display, under the smart-link's window */
 	vr_draw_cockpit_display(eye_depth ? eye_depth->texture : 0, eye_depth ? eye_depth->layers : 0);
 	/* the scope's view: the smart-link's window drawn into the eyes, or
@@ -7715,11 +7831,11 @@ void xgpu_backend_vr_compose(const struct xgpu_vr_frame *frame)
 					GL_UNSIGNED_BYTE, NULL);
 				xgpu_gl_state_invalidate();
 			}
-			if (vr_copy_scope(scope->texture, vr_gl.scope_window_texture, vr_gl.scope_size))
+			if (vr_copy_scope(scope->texture, vr_gl.scope_window_texture, vr_gl.scope_size, FALSE))
 				vr_draw_scope_window(eye_depth ? eye_depth->texture : 0, eye_depth ? eye_depth->layers : 0);
 		}
 		else if (scope && (image = halo_vr_image(VR_SWAPCHAIN_SCOPE)) != 0 &&
-			vr_copy_scope(scope->texture, image, vr_gl.scope_size))
+			vr_copy_scope(scope->texture, image, vr_gl.scope_size, FALSE))
 		{
 			vr_gl.scope_image = image;
 		}
@@ -7805,10 +7921,23 @@ void xgpu_backend_vr_submit(const struct xgpu_vr_frame *frame, BOOL screenshot)
 }
 #endif
 
-/* (the driver makes each shader and pipeline at its draw) */
+/* Map draws prepare their own programs. Composition has fixed programs
+too: make these before handing presentation back to the first real frame. */
 double xgpu_backend_prepared(void)
 {
-	return 0.0;
+	Uint64 started = SDL_GetTicksNS();
+
+#ifdef HALO_VR
+	if (vr_gl.ready)
+	{
+		vr_fovea_composite(TRUE);
+		if (vr_gl.scope_size > 0)
+			vr_copy_scope(0, 0, 0, TRUE);
+		vr_light_map(NULL, TRUE);
+		xgpu_gl_state_invalidate();
+	}
+#endif
+	return (double)(SDL_GetTicksNS() - started) * 1e-9;
 }
 
 void xgpu_backend_prepare(void)

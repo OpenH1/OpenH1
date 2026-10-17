@@ -1602,6 +1602,29 @@ static struct
 	real half_angles[2];
 } vr_hud;
 
+/* Preparation needs the ordinary HUD camera state, then returns to the
+same eye pose without updating its animation or controller state again. */
+void vr_render_prepare_hud(boolean begin)
+{
+	static unsigned char saved_render[sizeof(vr_render)];
+	static unsigned char saved_hud[sizeof(vr_hud)];
+	static short saved_crosshair[2];
+
+	if (begin)
+	{
+		memcpy(saved_render, &vr_render, sizeof(vr_render));
+		memcpy(saved_hud, &vr_hud, sizeof(vr_hud));
+		memcpy(saved_crosshair, vr_render_crosshair_offset, sizeof(saved_crosshair));
+		vr_render_end();
+	}
+	else
+	{
+		memcpy(&vr_render, saved_render, sizeof(vr_render));
+		memcpy(&vr_hud, saved_hud, sizeof(vr_hud));
+		memcpy(vr_render_crosshair_offset, saved_crosshair, sizeof(saved_crosshair));
+	}
+}
+
 /* the shader type of a plasma (shader_transparent_plasma: the shields'
 glow on an armour), and its fields after the shader's own
 (rasterizer_xbox_plasma_energy.c reads them so) */

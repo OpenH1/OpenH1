@@ -50,13 +50,20 @@ static struct state {
     unsigned int cache_generation;
     void *render_target;
 } device;
-static unsigned int invalidations, calls;
+static unsigned int invalidations, calls, checkpoints;
+static struct { unsigned long preserved; } preparation;
 static void xgpu_backend_invalidate(void) { invalidations++; }
+static void preparation_draw_complete(void) {
+    assert(!preparation.preserved);
+    assert(device.textures[0] == (D3DBaseTexture *)(uintptr_t)1);
+    checkpoints++;
+}
 """ + function + r"""
 static void prepare(void *data)
 {
     unsigned int stage;
     assert(data == &calls);
+    assert(preparation.preserved == 1);
     calls++;
     memset(D3D__RenderState, 0xee, sizeof(D3D__RenderState));
     memset(D3D__TextureState, 0xdd, sizeof(D3D__TextureState));
@@ -96,7 +103,7 @@ int main(void)
     memcpy(render_states, D3D__RenderState, sizeof(render_states));
     memcpy(texture_states, D3D__TextureState, sizeof(texture_states));
     halo_gpu_draw_preserved(prepare, &calls);
-    assert(calls == 1 && invalidations == 1);
+    assert(calls == 1 && invalidations == 1 && checkpoints == 1);
     assert(!memcmp(&device, &expected, sizeof(device)));
     assert(!memcmp(render_states, D3D__RenderState, sizeof(render_states)));
     assert(!memcmp(texture_states, D3D__TextureState, sizeof(texture_states)));

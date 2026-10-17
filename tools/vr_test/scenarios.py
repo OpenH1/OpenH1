@@ -34,6 +34,19 @@ def hands(*poses):
     return ";".join(poses)
 
 
+def eye_content(picture):
+    """Reject blank or single-eye captures; this is not a geometry comparison."""
+    width, height = picture.size
+    result = []
+    for left, right in ((0, width // 2), (width // 2, width)):
+        eye = picture.crop((left, 0, right, height)).convert("RGB")
+        extrema = eye.getextrema()
+        result.append(dict(extrema=[list(pair) for pair in extrema],
+                           has_content=bool(eye.width and eye.height)
+                           and any(high - low > 8 for low, high in extrema)))
+    return result
+
+
 def cases():
     # A reach is held before squeezing: a fast swing through a holster must
     # not draw. Coordinates are the holster and pouch centres in vr.c.
@@ -81,7 +94,8 @@ def run_case(name, case, args):
     guest = args.game / "halo_guest.elf"
     if guest.exists():
         evidence["guest_sha256"] = hashlib.sha256(guest.read_bytes()).hexdigest()
-    environment = dict(os.environ, HALO_GAME=str(args.game), HALO_MAPS=str(args.maps))
+    environment = {key: value for key, value in os.environ.items() if not key.startswith("HALO_")}
+    environment.update(HALO_GAME=str(args.game), HALO_MAPS=str(args.maps))
     with tempfile.TemporaryDirectory(prefix=f"halo-vr-{name}-") as temporary:
         run = Path(temporary)
         command = [str(ROOT / "tools/vr_test/vr_run.sh"), str(run), map_name, str(seconds)]
@@ -115,11 +129,13 @@ def run_case(name, case, args):
                 picture = original.convert("RGBA")
                 picture.save(images / (path.stem + ".png"))
                 evidence["images"].append({"name": path.stem, "size": list(picture.size),
+                                           "eyes": eye_content(picture) if path.stem.startswith("eyes") else [],
                                            "sha256": hashlib.sha256(picture.tobytes()).hexdigest()})
         evidence["passed"] = (status == 0 and not evidence["exceptions"]
                               and not evidence["validation"] and not evidence["pipeline_misses"]
                               and all(evidence["events"].values())
-                              and any(item["name"].startswith("eyes") for item in evidence["images"]))
+                              and any(item["eyes"] and all(eye["has_content"] for eye in item["eyes"])
+                                      for item in evidence["images"]))
     (destination / "result.json").write_text(json.dumps(evidence, indent=2) + "\n")
     return evidence
 

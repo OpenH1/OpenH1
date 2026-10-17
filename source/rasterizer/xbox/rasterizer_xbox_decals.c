@@ -1081,7 +1081,7 @@ static void rasterizer_decals_port_quad(
 }
 
 void rasterizer_decals_port_enumerate(
-	void)
+	short stencil_mode)
 {
 	/* a definition of each blend function the map's decals have */
 	long blend_definitions[NUMBER_OF_SHADER_FRAMEBUFFER_BLEND_FUNCTIONS];
@@ -1108,6 +1108,8 @@ void rasterizer_decals_port_enumerate(
 		{
 			if (before != NONE && blend_definitions[before] == NONE)
 				continue;
+			/* port: an alpha-tested run leaves stencil rejection enabled */
+			rasterizer_set_stencil_mode(stencil_mode);
 			rasterizer_decals_begin(layer);
 			if (rasterizer_debug_options.drawing_mode == _rasterizer_drawing_mode_normal &&
 				rasterizer_debug_options.draw_environment_decals)
@@ -1125,6 +1127,7 @@ void rasterizer_decals_port_enumerate(
 		}
 	}
 	/* (every definition's bitmap) */
+	rasterizer_set_stencil_mode(stencil_mode); /* port: preserve this preparation context */
 	rasterizer_decals_begin(_decal_layer_primary);
 	tag_iterator_new(&iterator, DECAL_GROUP_TAG);
 	while ((tag_index = tag_iterator_next(&iterator)) != NONE)

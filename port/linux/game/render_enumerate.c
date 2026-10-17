@@ -40,6 +40,7 @@ skipped or made without its sampler.
 #include "objects/light_definitions.h"
 #include "objects/object_definitions.h"
 #include "objects/object_types.h"
+#include "objects/widgets/light_volumes.h"
 #include "rasterizer/rasterizer.h"
 #include "rasterizer/rasterizer_cinematics.h"
 #include "rasterizer/rasterizer_console_vars.h"
@@ -47,6 +48,7 @@ skipped or made without its sampler.
 #include "rasterizer/rasterizer_lights.h"
 #include "rasterizer/rasterizer_model_types.h"
 #include "rasterizer/rasterizer_models.h"
+#include "rasterizer/rasterizer_widgets.h"
 #include "render/render.h"
 #include "scenario/scenario.h"
 #include "scenario/sky_definitions.h"
@@ -82,6 +84,7 @@ skipped or made without its sampler.
 #ifdef HALO_VR
 #include "../src/vr.h"
 boolean vr_render_eye_pass(void);
+void vr_render_sky(boolean sky);
 #endif
 
 #include <string.h>
@@ -398,6 +401,7 @@ boolean render_enumerate_begin(boolean mirrors, boolean scope)
 	fog_set(pass_fog());
 	render_enumerating = TRUE;
 	halo_gpu_prepare(enumerate.everything);
+	texture_cache_preparation_begin();
 	return TRUE;
 }
 
@@ -419,7 +423,8 @@ boolean render_enumerate_next(void)
 	rasterizer_lens_flares_port_truncate(enumerate.lens_flare_count);
 	render_enumerating = FALSE;
 	halo_load_trace("enumerate.draws.end", NULL);
-	cpu = halo_thread_cpu_seconds() - enumerate.started_cpu;
+	cpu = halo_thread_cpu_seconds();
+	cpu = cpu < 0.0 || enumerate.started_cpu < 0.0 ? -1.0 : cpu - enumerate.started_cpu;
 	/* (the loading screen's end: the shaders and pipelines made) */
 	waited = halo_gpu_prepared();
 	halo_load_trace("enumerate.prepared.end", NULL);
@@ -431,7 +436,7 @@ boolean render_enumerate_next(void)
 	platform_log("render: %s structure %d%s: its shaders and pipelines made (drawn in %d passes in %lu ms, %.0f ms "
 		"of the CPU's, %.0f ms waited for the GPU's)", enumerate.everything ? "the map's and its" : "its",
 		enumerate.structure_bsp_index, enumerate.scope ? " (scope)" : "", passes(),
-		system_milliseconds() - enumerate.started, cpu * 1000.0,
+		system_milliseconds() - enumerate.started, cpu < 0.0 ? -1.0 : cpu * 1000.0,
 		waited * 1000.0);
 	return FALSE;
 }
@@ -822,6 +827,11 @@ static void skies_draw(void)
 	long tag_index;
 	short state;
 
+#ifdef HALO_VR
+	/* Match render_sky's infinite-distance transforms and depth clamp.
+	The current camera may not see any sky during preparation. */
+	vr_render_sky(TRUE);
+#endif
 	tag_iterator_new(&iterator, SKY_DEFINITION_TAG);
 	while ((tag_index = tag_iterator_next(&iterator)) != NONE)
 	{
@@ -833,6 +843,9 @@ static void skies_draw(void)
 		for (state = 0; state < (short)NUMBEROF(model_states); state++)
 			model_draw(model_index, state, NULL, 0, FLAG(_render_model_immediate_bit));
 	}
+#ifdef HALO_VR
+	vr_render_sky(FALSE);
+#endif
 }
 
 void render_enumerate_models(void)
@@ -904,6 +917,10 @@ void render_enumerate_shadows(void)
 			break;
 	}
 	rasterizer_environment_shadows_end();
+	/* Shadows leave stencil rejection enabled. The world can also follow
+	a frame with no shadow or first-person weapon, so retain the selected
+	preparation context for the lights and transparent geometry after it. */
+	rasterizer_set_stencil_mode(pass_stencil_reject() ? 2 : 0);
 	rasterizer_debug_options.debug_model_lod = saved_lod;
 }
 
@@ -924,7 +941,7 @@ void render_enumerate_decals(void)
 {
 	if (!render_enumerating || !enumerate.everything || pass_part() != _part_world)
 		return;
-	rasterizer_decals_port_enumerate();
+	rasterizer_decals_port_enumerate(pass_stencil_reject() ? 2 : 0);
 	/* (and every detail object collection's: rasterizer_xbox_detail_objects.c) */
 	rasterizer_detail_objects_port_enumerate();
 }
@@ -972,6 +989,33 @@ static void effect_sprite(long bitmap_group_index, struct shader_effect_definiti
 	build_sprites_end(&data);
 }
 
+/* Light volumes use the widget sprite shader with depth testing, unlike
+lens flares. Their animated objects need not be visible in the first frame. */
+static void light_volumes_draw(void)
+{
+	struct tag_iterator iterator;
+	long tag_index;
+	real_point3d origin;
+
+	point_from_line3d(&render.camera.position, &render.camera.forward, 2.0f, &origin);
+	rasterizer_set_stencil_mode(pass_stencil_reject() ? 2 : 0);
+	tag_iterator_new(&iterator, 'mgs2');
+	while ((tag_index = tag_iterator_next(&iterator)) != NONE)
+	{
+		struct light_volume_definition *definition = light_volume_definition_get(tag_index);
+
+		rasterizer_widget_begin(_widget_type_internal_sprite, FLAG(_rasterizer_widget_z_enable_bit));
+		/* The nonblocking texture API returns true while still loading. */
+		if (!rasterizer_widget_set_texture(0, definition->map.index, definition->sequence_index))
+		{
+			rasterizer_widget_batch_sprites(TRUE);
+			rasterizer_widget_draw_sprite3d(&origin, 0.01f, NULL, 0.0f, 0x80ffffff);
+			rasterizer_widget_batch_sprites(FALSE);
+		}
+		rasterizer_widget_end();
+	}
+}
+
 void render_enumerate_effects(void)
 {
 	struct tag_iterator iterator;
@@ -979,6 +1023,7 @@ void render_enumerate_effects(void)
 
 	if (!render_enumerating || !enumerate.everything || pass_part() == _part_object_effects)
 		return;
+	light_volumes_draw();
 	tag_iterator_new(&iterator, PARTICLE_TAG);
 	while ((tag_index = tag_iterator_next(&iterator)) != NONE)
 	{
@@ -1241,9 +1286,11 @@ void render_enumerate_hud(void)
 		return;
 	enumerate.interface_pending = FALSE;
 	halo_gpu_prepare(FALSE);
+	texture_cache_preparation_begin();
 	render_enumerating = TRUE;
 	enumerate.pass = 0;
 	render_enumerate_interface();
 	render_enumerating = FALSE;
 	halo_gpu_prepared();
+	texture_cache_idle();
 }

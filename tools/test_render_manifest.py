@@ -208,3 +208,39 @@ def test_check_fails_another_program(tmp_path):
     assert result.returncode == 1
     assert "1 missed" in result.stdout and "differs in px" in result.stdout
     assert check("--exact", recording(tmp_path, ENUMERATED.replace("cu=1,0,0", "cu=0,0,0"))).returncode == 1
+
+
+def test_check_finds_miss_without_stack_marker(tmp_path):
+    path = recording(tmp_path, ENUMERATED.replace("st=0,0,0,0,0", "st=1,2,0,0,0"))
+    path.write_text(path.read_text().replace("# missed: 70000010 70000020\n", ""))
+    assert check("--exact", path).returncode == 1
+    assert check(path).returncode == 0
+
+
+def test_missed_marker_without_platform_stack_walker(tmp_path):
+    from test_load_trace import build
+
+    source = (SOURCE / "xgpu_manifest.c").read_text()
+    function = source[source.index("static void missed_write(void)"):source.index("static void enumeration_add(")]
+    source = '''
+#include <stdio.h>
+#include <stdint.h>
+#include <assert.h>
+#include <string.h>
+#undef __x86_64__
+#undef __i386__
+static struct { FILE *file; } recorder;
+''' + function + '''
+int main(void) {
+    char line[64];
+    recorder.file = tmpfile();
+    assert(recorder.file);
+    missed_write();
+    rewind(recorder.file);
+    assert(fgets(line, sizeof(line), recorder.file));
+    assert(!strcmp(line, "# missed:\\n"));
+    fclose(recorder.file);
+    return 0;
+}
+'''
+    subprocess.run([str(build(tmp_path, source))], check=True, timeout=15)

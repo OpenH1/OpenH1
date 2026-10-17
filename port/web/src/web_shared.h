@@ -15,8 +15,8 @@ page finds them with web_state (web_main.c) and knows them by these indices,
 
 enum
 {
-	/* the game's: the frames shown so far (the page says it is loading while
-	they stand still) */
+	/* the game's: frames shown so far; the page keeps the loading overlay
+	until a new frame follows the loading lifecycle's begin */
 	_web_frames_shown = 0,
 	/* the game's, for the touch controls: touch_input.c's _touch_scene_*
 	bits, port 0's rumble (0, or 64 to 255), and the game control on each of
@@ -38,7 +38,9 @@ enum
 	click (app.js), as a request from the game's thread, which reaches the
 	page outside the click, is refused once the player has let it go */
 	_web_mouse_wanted = 48,
-	WEB_SHARED_WORDS = 49,
+	/* low bit: loading; upper bits: epoch, incremented at each begin */
+	_web_loading_state = 49,
+	WEB_SHARED_WORDS = 50,
 };
 
 #define WEB_TOUCH_INPUTS 17

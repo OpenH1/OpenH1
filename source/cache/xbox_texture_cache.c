@@ -369,6 +369,37 @@ void texture_cache_idle(
 	return;
 }
 
+/* port: release an enumeration batch only after its complete draws have
+reached the render owner. A stage bound once for many draws must remain
+live; later texture loads can reuse every other completed draw's pages. */
+static void texture_cache_preparation_checkpoint(void *const *bound)
+{
+	struct data_iterator iterator;
+	struct xbox_texture_cache_texture *texture;
+	short stage;
+
+	texture_cache_idle();
+	data_iterator_new(&iterator, xbox_texture_cache_globals.textures);
+	while ((texture = data_iterator_next(&iterator)) != NULL)
+	{
+		for (stage = 0; stage < 4; stage++)
+		{
+			if (bound[stage] == &texture->hardware_format)
+			{
+				lruv_block_touch(xbox_texture_cache_globals.cache, iterator.datum_index);
+				break;
+			}
+		}
+	}
+}
+
+/* port: leave room for a draw's remaining stages before the next complete
+draw permits a checkpoint. The budget follows the shared cache capacity. */
+void texture_cache_preparation_begin(void)
+{
+	halo_gpu_preparation_checkpoint_set(XBOX_TEXTURE_CACHE_SIZE / 8, texture_cache_preparation_checkpoint);
+}
+
 void texture_cache_bitmap_new(
 	long bitmap_tag_index,
 	struct bitmap_data *bitmap)
@@ -824,6 +855,8 @@ static boolean texture_cache_start_loading_bitmap(
 		long new_texture_index;
 		struct xbox_texture_cache_texture *texture;
 
+		/* port: account for preparation's bounded resource batch. */
+		halo_gpu_preparation_loaded((unsigned long)size);
 		base_address = xbox_texture_cache_globals.base_address +
 			(unsigned long)lruv_block_get_address(
 				xbox_texture_cache_globals.cache,

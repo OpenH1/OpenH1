@@ -603,6 +603,7 @@ async function play() {
         if (kind === 2) showInvite(text);
         if (kind === 3) showFatal(text);
       },
+      haloLoading: (state, frames) => loadingPresentation.update(state, frames, performance.now()),
       onAbort: (what) => showFatal('The game stopped: ' + what),
       onExit: (status) => {
         if (status) showFatal(`The game stopped (status ${status}). The log below says why.`);
@@ -636,32 +637,38 @@ $('canvas').addEventListener('pointerdown', (event) => {
   if (request && request.catch) request.catch(() => {});
 });
 
-// The game counts the frames it shows in its memory (web_state,
-// port/web/src/web_main.c), which the page reads: while the count stands
-// still, the game is starting or loading a map, and the page says so.
+// Explicit worker state replaces guessing a load from a stalled frame count.
+// Atomic shared words remain readable while the game is inside a blocking call.
 let game = null;
+const loadingPresentation = window.HaloLoading.create();
 
 function watchFrames() {
-  let shown = -1;
-  let changed = performance.now();
-  const timer = setInterval(() => {
+  const art = $('loading-art');
+  const context = art.getContext('2d');
+  const draw = (now) => {
     if (gameStopped) {
-      clearInterval(timer);
       $('starting').hidden = true;
       return;
     }
-    if (!game || !game._web_state) return;
-    const now = game.HEAPU32[game._web_state() >> 2];
-    if (now !== shown) {
-      if (shown < 0 && now === 0) return;
-      shown = now;
-      changed = performance.now();
-      $('starting').hidden = true;
-    } else if (performance.now() - changed > 600 && $('starting').hidden) {
-      $('starting-text').textContent = 'Loading…';
-      $('starting').hidden = false;
+    let frames = 0;
+    if (game && game._web_state) {
+      const base = game._web_state() >> 2;
+      frames = Atomics.load(game.HEAPU32, base);
+      loadingPresentation.update(Atomics.load(game.HEAPU32, base + 49), frames, now);
     }
-  }, 200);
+    const frame = loadingPresentation.frame(frames, now, false);
+    $('starting').hidden = !frame.visible;
+    if (frame.visible) {
+      if (frame.epoch) $('starting-text').textContent = 'Loading…';
+      context.clearRect(0, 0, 512, 256);
+      for (const rectangle of frame.rectangles) {
+        context.fillStyle = `rgb(${rectangle.color.map(value => Math.round(value * 255)).join(',')})`;
+        context.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+      }
+    }
+    requestAnimationFrame(draw);
+  };
+  requestAnimationFrame(draw);
 }
 
 $('play').addEventListener('click', play);

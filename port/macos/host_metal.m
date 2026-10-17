@@ -92,6 +92,8 @@ static struct
 	/* the process's activity: latency critical, not napped */
 	id<NSObject> activity;
 	id<MTLRenderPipelineState> present_pipeline;
+	id<MTLRenderPipelineState> loading_pipeline;
+	struct loading_presentation_frame loading;
 	id<MTLSamplerState> present_sampler;
 	_Atomic int active;
 	/* the window's size in pixels, as SDL last reported it */
@@ -156,6 +158,32 @@ static struct
 int host_metal_window_active(void)
 {
 	return atomic_load(&presentation.active);
+}
+
+uint64_t host_metal_loading(void *context, const struct loading_presentation_frame *frame)
+{
+	uint64_t serial;
+	int discarded = 0;
+
+	(void)context;
+	pthread_mutex_lock(&presentation.lock);
+	if (frame->ready && !presentation.loading.ready)
+	{
+		/* Only images queued after readiness can be the first game picture. */
+		while (presentation.queued)
+		{
+			presentation.image_states[presentation.queue[--presentation.queued]] = _image_free;
+			discarded++;
+		}
+		pthread_cond_broadcast(&presentation.freed);
+	}
+	serial = presentation.loading.epoch == frame->epoch ? presentation.loading.serial : 0;
+	presentation.loading = *frame;
+	presentation.loading.serial = serial;
+	pthread_mutex_unlock(&presentation.lock);
+	while (discarded-- > 0)
+		host_render_stream_frame_taken();
+	return presentation.refresh_rate > 0.0f ? (uint64_t)(1e9 / presentation.refresh_rate) : 16666667ull;
 }
 
 /* ---------- the presentation images */
@@ -425,6 +453,7 @@ static void pacing_log(double now)
 		BOOL idle;
 		struct xgpu_metal_compile_totals compiled = { 0 };
 		uint64_t input = 0;
+		struct loading_presentation_frame loading_frame;
 
 		(void)link;
 		presentation.ticks++;
@@ -488,6 +517,22 @@ static void pacing_log(double now)
 			presentation.drawable_height = height;
 		}
 		pthread_mutex_lock(&presentation.lock);
+		loading_frame = presentation.loading;
+		if (loading_frame.ready && presentation.queued)
+		{
+			loading_frame.active = 0;
+			presentation.loading.active = 0;
+		}
+		if (loading_frame.active)
+		{
+			struct timespec monotonic;
+
+			clock_gettime(CLOCK_MONOTONIC, &monotonic);
+			loading_frame.elapsed_ns = (uint64_t)monotonic.tv_sec * 1000000000ull + monotonic.tv_nsec -
+				loading_frame.started_ns;
+			loading_frame.serial = ++presentation.loading.serial;
+			loading_presentation_build(&loading_frame);
+		}
 		if (presentation.queued)
 		{
 			index = presentation.queue[0];
@@ -502,7 +547,7 @@ static void pacing_log(double now)
 		pthread_mutex_unlock(&presentation.lock);
 		if (image)
 			host_render_stream_frame_taken();
-		if (!image && !idle)
+		if (!image && !idle && !loading_frame.active)
 		{
 			/* (the frame shown stays: nothing new to present) */
 			presentation.skipped++;
@@ -524,9 +569,11 @@ static void pacing_log(double now)
 		pass.colorAttachments[0].storeAction = MTLStoreActionStore;
 		/* (black until the game's first frame: the window opens before the
 		game draws) */
-		pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+		pass.colorAttachments[0].clearColor = loading_frame.active ?
+			MTLClearColorMake(LOADING_PRESENTATION_RED, LOADING_PRESENTATION_GREEN,
+				LOADING_PRESENTATION_BLUE, 1.0) : MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 		encoder = [buffer renderCommandEncoderWithDescriptor:pass];
-		if (image)
+		if (image && !loading_frame.active)
 		{
 			/* letterboxed to the frame's shape */
 			double drawable_width = drawable.texture.width, drawable_height = drawable.texture.height;
@@ -544,6 +591,27 @@ static void pacing_log(double now)
 			[encoder setFragmentSamplerState:presentation.present_sampler atIndex:0];
 			[encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
 		}
+		if (loading_frame.active)
+		{
+			uint32_t rectangle_index;
+
+			[encoder setRenderPipelineState:presentation.loading_pipeline];
+			[encoder setViewport:(MTLViewport){0.0, 0.0, drawable.texture.width, drawable.texture.height, 0.0, 1.0}];
+			for (rectangle_index = 0; rectangle_index < loading_frame.count; rectangle_index++)
+			{
+				const struct loading_presentation_rect *rectangle = &loading_frame.rectangles[rectangle_index];
+				float parameters[12] = {0};
+
+				parameters[0] = rectangle->x * (2.0f / LOADING_PRESENTATION_WIDTH) - 1.0f;
+				parameters[1] = 1.0f - rectangle->y * (2.0f / LOADING_PRESENTATION_HEIGHT);
+				parameters[2] = (rectangle->x + rectangle->width) * (2.0f / LOADING_PRESENTATION_WIDTH) - 1.0f;
+				parameters[3] = 1.0f - (rectangle->y + rectangle->height) * (2.0f / LOADING_PRESENTATION_HEIGHT);
+				memcpy(parameters + 4, rectangle->color, sizeof(rectangle->color));
+				[encoder setVertexBytes:parameters length:sizeof(parameters) atIndex:0];
+				[encoder setFragmentBytes:parameters length:sizeof(parameters) atIndex:0];
+				[encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+			}
+		}
 		[encoder endEncoding];
 		atomic_fetch_add(&presentation.drawables_pending, 1);
 		[drawable addPresentedHandler:^(id<MTLDrawable> shown) {
@@ -551,7 +619,11 @@ static void pacing_log(double now)
 			presented(shown.presentedTime, target, image ? &compiled : NULL);
 			host_load_trace("metal.presented", "display_time=%.9f target=%.9f image=%d input=%llu",
 				shown.presentedTime, target, image != nil, (unsigned long long)input);
-			if (input && shown.presentedTime > 0.0)
+			if (loading_frame.active)
+				host_load_trace("loading.presented", "epoch=%llu serial=%llu elapsed_ns=%llu display_time=%.9f",
+					(unsigned long long)loading_frame.epoch, (unsigned long long)loading_frame.serial,
+					(unsigned long long)loading_frame.elapsed_ns, shown.presentedTime);
+			if (!loading_frame.active && input && shown.presentedTime > 0.0)
 			{
 				/* (the display's time on the game's clock) */
 				struct timespec monotonic;
@@ -765,6 +837,15 @@ int host_metal_window_open(uint32_t window)
 	if (!presentation.present_pipeline)
 	{
 		host_logf(HOST_LOG_ERROR, "metal: the presentation's pipeline: %s", error.localizedDescription.UTF8String);
+		return 0;
+	}
+	descriptor = xgpu_metal_present_descriptor();
+	descriptor.vertexFunction = [library newFunctionWithName:@"xgpu_clear_vertex"];
+	descriptor.fragmentFunction = [library newFunctionWithName:@"xgpu_clear_fragment"];
+	presentation.loading_pipeline = [xgpu_metal_device() newRenderPipelineStateWithDescriptor:descriptor error:&error];
+	if (!presentation.loading_pipeline)
+	{
+		host_logf(HOST_LOG_ERROR, "metal: the loading presentation's pipeline: %s", error.localizedDescription.UTF8String);
 		return 0;
 	}
 	sampler = [MTLSamplerDescriptor new];

@@ -27,7 +27,7 @@ from render_enumerate_sweep import STOCK_MAPS
 
 MARKER = re.compile(r"\b(LOAD|LOAD_IO) ")
 FIELDS = re.compile(r"(\w+)=(.*?)(?= \w+=|$)")
-PRESENT_PHASES = ("gl.swap.return", "vulkan.present.return", "metal.presented", "xr.submit.end")
+PRESENT_PHASES = ("gl.swap.return", "loading.swap.return", "vulkan.present.return", "metal.presented", "loading.presented", "xr.submit.end")
 SAFE_SETTINGS = {"HALO_VR", "HALO_PREPARE_SHADERS", "HALO_RANDOM_SEED", "HALO_NO_AUDIO",
                  "HALO_SKIP_CINEMATICS", "HALO_GPU_STATS", "HALO_VULKAN_STATS", "HALO_VULKAN_VALIDATION",
                  "HALO_NO_VSYNC", "HALO_RESOLUTION", "HALO_RESOLUTION_SCALING", "HALO_VR_TIMING",
@@ -106,6 +106,210 @@ def span_between(phase, begin, end):
     return span
 
 
+def loading_boundaries(items, begin, end, epoch, stream):
+    """Match actual presentations; readiness is not itself a presentation."""
+    def positive(fields, name):
+        try:
+            value = float(fields[name])
+            return value if math.isfinite(value) and value > 0 else None
+        except (KeyError, ValueError):
+            return None
+    def phase(name):
+        return [(event, fields) for event, fields in items if event["phase"] == name]
+    def submitted_before(marker, presentations):
+        candidates = [event for event, fields in presentations
+                      if event.get("owner") == marker.get("owner") and event["wall"] <= marker["wall"]]
+        return max(candidates, key=lambda event: event["wall"], default=None)
+
+    ready = [event for event, fields in phase("loading.ready")
+             if fields.get("epoch") == epoch and begin["wall"] <= event["wall"] <= end["wall"]]
+    next_begin = min((event["wall"] for event, fields in phase("loading.begin")
+                      if event["wall"] > begin["wall"]), default=math.inf)
+    loading, presentations, normal = [], [], []
+    complete = True
+    clock = "host_monotonic_submission"
+    if stream == "xr":
+        presentations = phase("xr.submit.end")
+        waits = phase("xr.wait.end")
+        for event, fields in presentations:
+            predictions = [f for e, f in waits if f.get("predicted") == fields.get("predicted")
+                           and e["wall"] <= event["wall"]]
+            if fields.get("predicted") and positive(fields, "layers") and float(fields["layers"]) >= 2 and predictions and predictions[-1].get("render") == "1":
+                normal.append(event["wall"])
+        for marker, fields in phase("loading.submitted"):
+            if fields.get("epoch") != epoch:
+                continue
+            poses = [(e, f) for e, f in phase("loading.pose")
+                     if f.get("epoch") == epoch and f.get("serial") == fields.get("serial")]
+            matches = [(e, f) for e, f in presentations if len(poses) == 1
+                       and poses[0][1].get("predicted")
+                       and e.get("owner") == poses[0][0].get("owner")
+                       and poses[0][0]["wall"] <= e["wall"] <= marker["wall"]
+                       and f.get("predicted") == poses[0][1].get("predicted")]
+            states = [f for e, f in waits if len(matches) == 1
+                      and f.get("predicted") == matches[0][1].get("predicted")
+                      and e["wall"] <= matches[0][0]["wall"]]
+            if len(matches) == 1 and poses[0][1].get("valid") == "1" and positive(matches[0][1], "layers") and states and states[-1].get("render") == "1":
+                loading.append(matches[0][0]["wall"])
+            else:
+                complete = False
+        presentations = [e["wall"] for e, f in presentations]
+    elif stream == "vulkan":
+        presents = phase("vulkan.present.return")
+        all_loading = set()
+        for marker, fields in phase("loading.submitted"):
+            matched = submitted_before(marker, presents)
+            valid = matched is not None and any(e is matched and f.get("result") in ("0", "1000001003")
+                                                for e, f in presents)
+            if matched:
+                all_loading.add(matched["wall"])
+            if fields.get("epoch") == epoch:
+                if valid and matched["wall"] >= begin["wall"]:
+                    loading.append(matched["wall"])
+                else:
+                    complete = False
+        presentations = [e["wall"] for e, f in presents]
+        normal = [e["wall"] for e, f in presents if e["wall"] not in all_loading
+                  and f.get("result") in ("0", "1000001003") and f.get("image") == "1"]
+    elif stream == "gl":
+        loading = [e["wall"] for e, f in phase("loading.swap.return") if f.get("epoch") == epoch]
+        normal = [e["wall"] for e, f in phase("gl.swap.return")]
+        presentations = normal + [e["wall"] for e, f in phase("loading.swap.return")]
+    elif stream == "metal":
+        clock = "drawable_presented_time"
+        # Callbacks can arrive after loading.end or out of display order.
+        # Match their epoch and compare drawable times, never callback wall.
+        markers = phase("loading.presented")
+        all_loading = {positive(f, "display_time") for e, f in markers}
+        for event, fields in markers:
+            if fields.get("epoch") == epoch:
+                value = positive(fields, "display_time")
+                if value is None:
+                    complete = False
+                else:
+                    loading.append(value)
+        for event, fields in phase("metal.presented"):
+            value = positive(fields, "display_time")
+            if value is not None:
+                presentations.append(value)
+                if value not in all_loading and fields.get("image") == "1" and positive(fields, "input"):
+                    normal.append(value)
+        presentations += loading
+    loading.sort()
+    complete = complete and bool(loading) and len(set(loading)) == len(loading)
+    first, last = (loading[0], loading[-1]) if complete else (None, None)
+    prior = max((value for value in presentations if first is not None and value < first), default=None)
+    if prior not in normal:
+        prior = None
+    game = None
+    if complete and ready:
+        game = min((value for value in normal if value > last and
+                    (stream == "metal" or ready[0]["wall"] <= value < next_begin)), default=None)
+    request = max((e["wall"] for e, f in phase("loading.request") if e["wall"] <= begin["wall"]), default=None)
+    def gap(after, before):
+        return 1000 * (after - before) if after is not None and before is not None and after >= before else None
+    entry, handoff = gap(first, prior), gap(game, last)
+    internal = 1000 * max((b - a for a, b in zip(loading, loading[1:])), default=0) if complete else None
+    return dict(clock=clock, loading_samples_complete=complete,
+                prior_game_time=prior, first_loading_time=first, last_loading_time=last, first_game_time=game,
+                entry_gap_ms=entry, internal_max_gap_ms=internal, first_game_handoff_ms=handoff,
+                request_to_first_loading_ms=gap(first, request) if stream != "metal" else None,
+                maximum_transition_gap_ms=max(entry, internal, handoff)
+                if all(value is not None for value in (entry, internal, handoff)) else None)
+
+
+def loading_epochs(events):
+    """Keep presentation proof distinct from game submission and simulation ticks."""
+    result, starts = [], {}
+    items = sorted(((event, dict(FIELDS.findall(event.get("detail", "")))) for event in events),
+                   key=lambda item: item[0]["wall"])
+    for event in events:
+        fields = dict(FIELDS.findall(event.get("detail", "")))
+        if event["phase"] == "loading.begin":
+            starts[(event.get("owner"), fields.get("epoch"))] = event
+        elif event["phase"] == "loading.end":
+            epoch = fields.get("epoch")
+            begin = starts.pop((event.get("owner"), epoch), None)
+            if begin is None:
+                continue
+            first, last = begin["wall"], event["wall"]
+            scoped = [(e, dict(FIELDS.findall(e.get("detail", "")))) for e in events
+                      if first <= e["wall"] <= last]
+            frames = [(e, f) for e, f in items if f.get("epoch") == epoch
+                      and (e["phase"] == "loading.presented" or
+                           first <= e["wall"] <= last and e["phase"] in ("loading.submitted", "loading.swap.return"))]
+            if frames and all(e["phase"] == "loading.presented" for e, f in frames):
+                try:
+                    frames.sort(key=lambda item: float(item[1]["display_time"]))
+                except (KeyError, ValueError):
+                    pass
+            serials = [int(f["serial"]) for e, f in frames if "serial" in f]
+            clocks = [int(f["elapsed_ns"]) for e, f in frames if "elapsed_ns" in f]
+            poses = [f for e, f in scoped if e["phase"] == "loading.pose" and f.get("epoch") == epoch]
+            predictions = [int(f["predicted"]) for f in poses if "predicted" in f]
+            def vector(fields, key, size):
+                try:
+                    value = tuple(float(item) for item in fields[key].split(","))
+                    return value if len(value) == size and all(math.isfinite(item) for item in value) else None
+                except (KeyError, ValueError):
+                    return None
+            orientations = [vector(fields, "orientation", 4) for fields in poses]
+            orientations = [value for value in orientations if value and sum(v * v for v in value) > 0]
+            angles = []
+            if orientations:
+                initial = orientations[0]
+                for value in orientations:
+                    cosine = abs(sum(a * b for a, b in zip(initial, value))) / math.sqrt(
+                        sum(a * a for a in initial) * sum(b * b for b in value))
+                    angles.append(math.degrees(2 * math.acos(min(1.0, cosine))))
+            anchors = [(vector(f, "anchor_position", 3), vector(f, "anchor_orientation", 4)) for e, f in frames]
+            anchors_complete = bool(anchors) and all(position and orientation for position, orientation in anchors)
+            spaces_complete = bool(frames) and all("world_space" in f for e, f in frames)
+            streams = {}
+            for name, phases in (("gl", ("gl.swap.return", "loading.swap.return")),
+                                 ("vulkan", ("vulkan.present.return",)),
+                                 ("metal", ("metal.presented", "loading.presented")), ("xr", ("xr.submit.end",))):
+                times = sorted(e["wall"] for e in events if e["phase"] in phases)
+                if not times:
+                    continue
+                before = [t for t in times if t <= first]
+                after = [t for t in times if t >= last]
+                within = [t for t in times if first < t < last]
+                clipped = [first, *within, last]
+                bracketed = ([before[-1]] if before else []) + within + ([after[0]] if after else [])
+                streams[name] = dict(count=len(within), boundary_samples_complete=bool(before and after),
+                    begin_to_first_ms=1000 * ((within[0] if within else last) - first),
+                    last_to_end_ms=1000 * (last - (within[-1] if within else first)),
+                    maximum_clipped_gap_ms=1000 * max(b - a for a, b in zip(clipped, clipped[1:])),
+                    maximum_bracketing_gap_ms=1000 * max(b - a for a, b in zip(bracketed, bracketed[1:]))
+                    if len(bracketed) > 1 and before and after else None,
+                    actual_boundaries=loading_boundaries(items, begin, event, epoch, name))
+            result.append(dict(epoch=epoch, owner=event.get("owner"), begin=first, end=last, completed=True,
+                loading_frame_count=len(frames), serials=serials, elapsed_ns=clocks,
+                # Service attempts can skip IDs when no runtime ticket is
+                # ready. Only submitted events count as loading frames.
+                serials_increasing=bool(serials) and len(serials) == len(frames)
+                    and all(b > a for a, b in zip(serials, serials[1:])),
+                serials_contiguous=bool(serials) and len(serials) == len(frames)
+                    and all(b == a + 1 for a, b in zip(serials, serials[1:])),
+                animation_clock_increasing=bool(clocks) and len(clocks) == len(frames)
+                    and all(b > a for a, b in zip(clocks, clocks[1:])),
+                pose_count=len(poses), pose_valid=bool(poses) and all(f.get("valid") == "1" for f in poses),
+                head_orientation_samples=len(orientations),
+                head_orientation_unique=len(set(orientations)),
+                head_orientation_max_delta_degrees=max(angles) if angles else None,
+                world_space_each_frame=all(f["world_space"] == "1" for e, f in frames) if spaces_complete else None,
+                world_anchor_stable=len(set(anchors)) == 1 if anchors_complete else None,
+                world_anchor_unique=len(set(anchors)) if anchors_complete else None,
+                pose_each_frame=bool(frames) and [f.get("serial") for f in poses] == [f.get("serial") for e, f in frames],
+                predicted_time_increasing=bool(predictions) and len(predictions) == len(poses)
+                    and all(b > a for a, b in zip(predictions, predictions[1:])),
+                presentations=streams))
+    for (owner, epoch), begin in starts.items():
+        result.append(dict(epoch=epoch, owner=owner, begin=begin["wall"], end=None, completed=False))
+    return result
+
+
 def summarize(events, operations, scenario):
     # Owner IDs prevent interleaved threads from pairing each other's phases.
     # Legacy traces retain wall/process spans but cannot prove thread CPU time.
@@ -138,6 +342,7 @@ def summarize(events, operations, scenario):
                          syscall_ms=1000 * sum(r["syscall"] for r in selected)
                          if selected and all("syscall" in r for r in selected) else None)
     return dict(scenario=scenario, spans=spans, presentations=presentations, io=totals,
+                loading_epochs=loading_epochs(events),
                 events=events, operations=operations)
 
 
@@ -204,7 +409,31 @@ def prepare_files(paths, state):
                 while file.read(1024 * 1024):
                     pass
         after = residency(path)
-        proof.append(dict(path=str(path), before=before, after=after))
+        proof.append(dict(path=str(path), before=before, after_preparation=after, after=after))
+    # Later reads can reclaim an earlier file's pages on a busy machine.
+    # Record a final sweep rather than treating observations minutes apart as
+    # proof of the state at launch. This does not fault any pages into memory.
+    for item in proof:
+        item["after"] = residency(Path(item["path"]))
+    if state == "warm":
+        for item in proof:
+            item["warm_reads"] = 1
+            item["warm_checks"] = [item["after"]]
+        # Reclamation during preparation can undo an earlier read. Retry only
+        # incomplete files, with at most three passes before the measured run.
+        for unused in range(2):
+            missing = [item for item in proof
+                       if item["after"]["resident_pages"] != item["after"]["pages"]]
+            if not missing:
+                break
+            for item in missing:
+                with Path(item["path"]).open("rb") as file:
+                    while file.read(1024 * 1024):
+                        pass
+                item["warm_reads"] += 1
+            for item in proof:
+                item["after"] = residency(Path(item["path"]))
+                item["warm_checks"].append(item["after"])
     # mincore can conservatively report pages resident without permission to
     # inspect their cache state. Such a result is not proof of a cold run.
     if not proof:
@@ -257,7 +486,7 @@ def run_game(args, scenario, work, saves, shaders, destination, cache_proof=None
                            MESA_SHADER_CACHE_DIR=str(shaders / "mesa"), MESA_SHADER_CACHE_DISABLE="false",
                            __GL_SHADER_DISK_CACHE="1",
                            HALO_VULKAN_PIPELINE_CACHE=str(shaders / "vulkan.bin"))
-        environment["SDL_VIDEO_DRIVER"] = "offscreen"
+        environment["SDL_VIDEO_DRIVER"] = getattr(args, "video_driver", "offscreen")
         environment["SDL_AUDIO_DRIVER"] = "dummy"
         environment.pop("SDL_VIDEODRIVER", None)
         environment.pop("SDL_AUDIODRIVER", None)
@@ -308,10 +537,14 @@ def main():
     parser.add_argument("--all", action="store_true", help="all 24 stock maps, including ui")
     parser.add_argument("--seconds", type=float, default=15)
     parser.add_argument("--repeat", type=int, default=1)
+    parser.add_argument("--keep-going", action="store_true",
+                        help="retain failed game runs and attempt remaining cache states; still exit nonzero")
     parser.add_argument("--os-cache", nargs="+", choices=("cold", "warm"), default=["cold", "warm"])
     parser.add_argument("--game-cache", choices=("fresh", "reused"), default="reused")
     parser.add_argument("--shader-cache", choices=("fresh", "reused"), default="reused")
     parser.add_argument("--env", action="append", default=[], metavar="NAME=VALUE")
+    parser.add_argument("--video-driver", choices=("offscreen", "x11"), default="offscreen",
+                        help="x11 uses DISPLAY, which must name a private virtual display")
     args = parser.parse_args()
     args.env = [value.split("=", 1) for value in args.env]
     if any(len(value) != 2 for value in args.env):
@@ -331,7 +564,9 @@ def main():
     args.out.mkdir(parents=True, exist_ok=False)
     manifest = dict(binary=str(args.halo), sha256=hashlib.sha256(args.halo.read_bytes()).hexdigest(),
                     kernel=os.uname().release, machine=os.uname().machine, game_cache=args.game_cache,
-                    shader_cache=args.shader_cache, presentation="offscreen by default; submissions are not display proof",
+                    shader_cache=args.shader_cache, video_driver=args.video_driver,
+                    presentation="virtual display" if args.video_driver == "x11" else
+                        "offscreen; submissions are not display proof",
                     file_cache_scope="requested source map, ui.map, and private decompressed map files only",
                     shader_cache_scope="private disk artifacts; every run starts a new process",
                     passed=False, runs=[])
@@ -352,6 +587,11 @@ def main():
             return result
         except Exception as error:
             record["error"] = str(error)
+            if args.keep_going and (destination / "result.json").exists():
+                result = json.loads((destination / "result.json").read_text())
+                if not result["passed"]:
+                    print(f"FAIL {destination}: {error}", file=sys.stderr, flush=True)
+                    return result
             raise
         finally:
             save_manifest()
@@ -390,14 +630,14 @@ def main():
                         result = recorded_run(scenario, work, saves, shaders, destination, kind="measured",
                                               repeat=repeat, os_cache=state, cache_proof=proof,
                                               shader_artifacts_before=shader_inventory)
-                        print(f"PASS {name} {state} repeat {repeat}: {len(result['events'])} trace events", flush=True)
-        manifest["passed"] = True
+                        print(f"{'PASS' if result['passed'] else 'FAIL'} {name} {state} repeat {repeat}: {len(result['events'])} trace events", flush=True)
+        manifest["passed"] = all(record["passed"] for record in manifest["runs"])
     except Exception as error:
         manifest["error"] = str(error)
         raise
     finally:
         save_manifest()
-    return 0
+    return 0 if manifest["passed"] else 1
 
 
 if __name__ == "__main__":

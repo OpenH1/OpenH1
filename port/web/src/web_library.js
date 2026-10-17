@@ -9,6 +9,11 @@ WebSockets of internet play's brokers.
 */
 
 addToLibrary({
+  // Scalar state can be queued without retaining a pointer into worker memory.
+  web_js_loading__proxy: 'async',
+  web_js_loading: (state, frames) => {
+    if (Module.haloLoading) Module.haloLoading(state >>> 0, frames >>> 0);
+  },
   // Emscripten's clock (clock_gettime, the game's GetTickCount and
   // QueryPerformanceCounter: port/linux/src/xbox_kernel.c) with this
   // thread's time origin read once: reading performance.timeOrigin each time

@@ -26,9 +26,11 @@ query pool once its last submission is done.
 #include "xgpu_vulkan.h"
 #include "host.h"
 #include "host_load_trace.h"
+#include "../src/loading_presentation.h"
 
 #include <dlfcn.h>
 #include <math.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -217,6 +219,7 @@ struct pipeline_entry
 	uint32_t hash;
 	struct xgpu_vulkan_pipeline_description description;
 	VkPipeline pipeline;
+	int pending;
 };
 
 struct shader_entry
@@ -286,6 +289,9 @@ static struct
 	struct xgpu_vulkan_image *lights_cells;
 	VkSampler stand_in_sampler;
 	struct xgpu_vulkan_image *stand_ins[4];
+	/* Presentation owns this image across loading frames, independently
+	of the guest's render targets and map allocations. */
+	struct xgpu_vulkan_image *loading_image;
 
 	VkPipelineCache pipeline_cache;
 	uint64_t pipeline_count;
@@ -2043,7 +2049,172 @@ static uint32_t description_hash(const struct xgpu_vulkan_pipeline_description *
 	return hash;
 }
 
-static VkPipeline pipeline_make(const struct xgpu_vulkan_pipeline_description *description)
+/* Preparation queues owned native descriptions. Shader modules, the device
+and pipeline layout live until shutdown; no job borrows guest/map memory.
+Only the render owner publishes handles and statistics. A full queue, a
+requested handle and PREPARED wait with loading presentation still serviced. */
+/* Enough lookahead for a map's usual variants without blocking the producer
+behind each short burst. Jobs contain descriptions, never vertex/texture data. */
+#define PIPELINE_JOBS 512
+static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description,
+	VkResult *result, double *elapsed);
+static struct
+{
+	pthread_t thread;
+	pthread_mutex_t mutex;
+	pthread_cond_t changed;
+	int started, stop;
+	uint64_t submitted, claimed, completed, published;
+	struct
+	{
+		struct xgpu_vulkan_pipeline_description description;
+		struct pipeline_entry *entry;
+		VkPipeline pipeline;
+		VkResult result;
+		double elapsed;
+	} jobs[PIPELINE_JOBS];
+	void (*service)(void);
+} pipeline_compiler = { .mutex = PTHREAD_MUTEX_INITIALIZER, .changed = PTHREAD_COND_INITIALIZER };
+
+static void *pipeline_compile_worker(void *unused)
+{
+	(void)unused;
+	pthread_mutex_lock(&pipeline_compiler.mutex);
+	for (;;)
+	{
+		uint32_t index;
+
+		while (pipeline_compiler.claimed == pipeline_compiler.submitted && !pipeline_compiler.stop)
+			pthread_cond_wait(&pipeline_compiler.changed, &pipeline_compiler.mutex);
+		if (pipeline_compiler.stop)
+			break;
+		index = (uint32_t)(pipeline_compiler.claimed++ % PIPELINE_JOBS);
+		pthread_mutex_unlock(&pipeline_compiler.mutex);
+		pipeline_compiler.jobs[index].pipeline = pipeline_build(&pipeline_compiler.jobs[index].description,
+			&pipeline_compiler.jobs[index].result, &pipeline_compiler.jobs[index].elapsed);
+		pthread_mutex_lock(&pipeline_compiler.mutex);
+		pipeline_compiler.completed++;
+		pthread_cond_broadcast(&pipeline_compiler.changed);
+	}
+	pthread_mutex_unlock(&pipeline_compiler.mutex);
+	return NULL;
+}
+
+static void pipeline_publish(struct pipeline_entry *entry, VkPipeline pipeline, VkResult result, double elapsed)
+{
+	entry->pipeline = check(result, "vkCreateGraphicsPipelines") ? pipeline : VK_NULL_HANDLE;
+	entry->pending = 0;
+	vk.statistics.pipelines_made++;
+	/* Aggregate driver call wall time, not preparation latency: compilation
+	overlaps enumeration, so adding it to enumeration time double counts. */
+	vk.statistics.pipeline_seconds += elapsed;
+	host_load_trace("vulkan.pipeline.published", "hash=%08x driver_seconds=%.6f", entry->hash, elapsed);
+}
+
+/* Called with the mutex held, only by the render owner. */
+static void pipeline_publish_completed(void)
+{
+	while (pipeline_compiler.published < pipeline_compiler.completed)
+	{
+		uint32_t index = (uint32_t)(pipeline_compiler.published++ % PIPELINE_JOBS);
+
+		pipeline_publish(pipeline_compiler.jobs[index].entry, pipeline_compiler.jobs[index].pipeline,
+			pipeline_compiler.jobs[index].result, pipeline_compiler.jobs[index].elapsed);
+	}
+}
+
+static void pipeline_wait(struct pipeline_entry *entry, int room)
+{
+	pthread_mutex_lock(&pipeline_compiler.mutex);
+	for (;;)
+	{
+		struct timespec deadline;
+
+		pipeline_publish_completed();
+		if (entry ? !entry->pending : room ?
+			pipeline_compiler.submitted - pipeline_compiler.published < PIPELINE_JOBS :
+			pipeline_compiler.submitted == pipeline_compiler.published)
+			break;
+		if (clock_gettime(CLOCK_REALTIME, &deadline) != 0)
+		{
+			pthread_cond_wait(&pipeline_compiler.changed, &pipeline_compiler.mutex);
+			continue;
+		}
+		deadline.tv_nsec += 1000000;
+		if (deadline.tv_nsec >= 1000000000)
+		{
+			deadline.tv_sec++;
+			deadline.tv_nsec -= 1000000000;
+		}
+		pthread_cond_timedwait(&pipeline_compiler.changed, &pipeline_compiler.mutex, &deadline);
+		pipeline_publish_completed();
+		if (pipeline_compiler.service && (entry ? entry->pending : room ?
+			pipeline_compiler.submitted - pipeline_compiler.published >= PIPELINE_JOBS :
+			pipeline_compiler.submitted != pipeline_compiler.published))
+		{
+			pthread_mutex_unlock(&pipeline_compiler.mutex);
+			pipeline_compiler.service();
+			pthread_mutex_lock(&pipeline_compiler.mutex);
+		}
+	}
+	pthread_mutex_unlock(&pipeline_compiler.mutex);
+}
+
+void xgpu_vulkan_preparation_service(void (*service)(void))
+{
+	if (!service)
+		pipeline_wait(NULL, 0);
+	pipeline_compiler.service = service;
+}
+
+static void pipeline_request(struct pipeline_entry *entry)
+{
+	VkResult result;
+	VkPipeline pipeline;
+	double elapsed;
+	uint32_t index;
+
+	vk.pipeline_count++;
+	host_load_trace("vulkan.pipeline.request", "count=%llu hash=%08x",
+		(unsigned long long)vk.pipeline_count, entry->hash);
+	if (pipeline_compiler.service && !pipeline_compiler.started)
+	{
+		pipeline_compiler.stop = 0;
+		if (pthread_create(&pipeline_compiler.thread, NULL, pipeline_compile_worker, NULL) == 0)
+			pipeline_compiler.started = 1;
+	}
+	if (!pipeline_compiler.service || !pipeline_compiler.started)
+	{
+		pipeline = pipeline_build(&entry->description, &result, &elapsed);
+		pipeline_publish(entry, pipeline, result, elapsed);
+		return;
+	}
+	pipeline_wait(NULL, 1);
+	pthread_mutex_lock(&pipeline_compiler.mutex);
+	index = (uint32_t)(pipeline_compiler.submitted % PIPELINE_JOBS);
+	pipeline_compiler.jobs[index].description = entry->description;
+	pipeline_compiler.jobs[index].entry = entry;
+	entry->pending = 1;
+	pipeline_compiler.submitted++;
+	pthread_cond_broadcast(&pipeline_compiler.changed);
+	pthread_mutex_unlock(&pipeline_compiler.mutex);
+}
+
+static void pipeline_compiler_stop(void)
+{
+	if (!pipeline_compiler.started)
+		return;
+	pipeline_wait(NULL, 0);
+	pthread_mutex_lock(&pipeline_compiler.mutex);
+	pipeline_compiler.stop = 1;
+	pthread_cond_signal(&pipeline_compiler.changed);
+	pthread_mutex_unlock(&pipeline_compiler.mutex);
+	pthread_join(pipeline_compiler.thread, NULL);
+	pipeline_compiler.started = 0;
+}
+
+static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description,
+	VkResult *result, double *elapsed)
 {
 	VkPipelineShaderStageCreateInfo stages[2];
 	VkVertexInputBindingDescription bindings[XGPU_VULKAN_BINDINGS];
@@ -2068,7 +2239,7 @@ static VkPipeline pipeline_make(const struct xgpu_vulkan_pipeline_description *d
 	};
 	uint32_t binding_count = 0, attribute_count = 0, index, used = 0;
 	VkPipeline pipeline = VK_NULL_HANDLE;
-	double started = seconds_now();
+	double started;
 
 	memset(stages, 0, sizeof(stages));
 	stages[0].sType = stages[1].sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -2195,28 +2366,28 @@ static VkPipeline pipeline_make(const struct xgpu_vulkan_pipeline_description *d
 	info.layout = vk.pipeline_layout;
 	if (description->vertex_shader && description->pixel_shader)
 	{
-		vk.pipeline_count++;
-		host_load_trace("vulkan.pipeline.begin", "count=%llu", (unsigned long long)vk.pipeline_count);
-		if (!check(vkCreateGraphicsPipelines(vk.device, vk.pipeline_cache, 1, &info, NULL, &pipeline),
-			"vkCreateGraphicsPipelines"))
-			pipeline = VK_NULL_HANDLE;
+		host_load_trace("vulkan.pipeline.driver.begin", "hash=%08x", description_hash(description));
+		started = seconds_now();
+		*result = vkCreateGraphicsPipelines(vk.device, vk.pipeline_cache, 1, &info, NULL, &pipeline);
+		*elapsed = seconds_now() - started;
+		host_load_trace("vulkan.pipeline.driver.end", "hash=%08x result=%d", description_hash(description), *result);
 	}
 	else
-		pipeline = VK_NULL_HANDLE;
-	host_load_trace("vulkan.pipeline.end", "seconds=%.6f", seconds_now() - started);
-	vk.statistics.pipelines_made++;
-	vk.statistics.pipeline_seconds += seconds_now() - started;
+	{
+		*result = VK_ERROR_INITIALIZATION_FAILED;
+		*elapsed = 0.0;
+	}
 	return pipeline;
 }
 
-VkPipeline xgpu_vulkan_pipeline(const struct xgpu_vulkan_pipeline_description *description)
+static struct pipeline_entry *pipeline_find(const struct xgpu_vulkan_pipeline_description *description)
 {
 	static struct pipeline_entry *last;
 	uint32_t hash;
 	struct pipeline_entry **bucket, *entry;
 
 	if (last && !memcmp(&last->description, description, sizeof(*description)))
-		return last->pipeline;
+		return last;
 	hash = description_hash(description);
 	bucket = &vk.pipelines[hash % PIPELINE_BUCKETS];
 	for (entry = *bucket; entry; entry = entry->next)
@@ -2224,18 +2395,36 @@ VkPipeline xgpu_vulkan_pipeline(const struct xgpu_vulkan_pipeline_description *d
 		if (entry->hash == hash && !memcmp(&entry->description, description, sizeof(*description)))
 		{
 			last = entry;
-			return entry->pipeline;
+			return entry;
 		}
 	}
 	entry = calloc(1, sizeof(*entry));
 	if (!entry)
-		return VK_NULL_HANDLE;
+		return NULL;
 	entry->hash = hash;
 	entry->description = *description;
-	entry->pipeline = pipeline_make(description);
 	entry->next = *bucket;
 	*bucket = entry;
 	last = entry;
+	pipeline_request(entry);
+	return entry;
+}
+
+int xgpu_vulkan_pipeline_prepare(const struct xgpu_vulkan_pipeline_description *description)
+{
+	struct pipeline_entry *entry = pipeline_find(description);
+
+	return entry && (entry->pending || entry->pipeline != VK_NULL_HANDLE);
+}
+
+VkPipeline xgpu_vulkan_pipeline(const struct xgpu_vulkan_pipeline_description *description)
+{
+	struct pipeline_entry *entry = pipeline_find(description);
+
+	if (!entry)
+		return VK_NULL_HANDLE;
+	if (entry->pending)
+		pipeline_wait(entry, 0);
 	return entry->pipeline;
 }
 
@@ -2903,6 +3092,7 @@ void xgpu_vulkan_window_resized(uint32_t width, uint32_t height)
 (cleared black), then presented */
 static uint64_t present(struct xgpu_vulkan_image *image)
 {
+	int trace = host_load_trace_detail_enabled();
 	VkSemaphore acquired;
 	VkCommandBuffer commands;
 	VkImageMemoryBarrier transition;
@@ -2924,9 +3114,17 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	}
 	/* (the slot's semaphore free: the recording begun, which waits for the
 	slot's last submission) */
+	if (trace)
+		host_load_trace("vulkan.present.slot.begin", "");
 	commands = main_commands();
+	if (trace)
+		host_load_trace("vulkan.present.slot.end", "");
 	acquired = vk.acquired[vk.serial % SLOTS];
+	if (trace)
+		host_load_trace("vulkan.acquire.begin", "");
 	result = vkAcquireNextImageKHR(vk.device, vk.swapchain, UINT64_MAX, acquired, VK_NULL_HANDLE, &index);
+	if (trace)
+		host_load_trace("vulkan.acquire.end", "result=%d", result);
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
 		vk.swapchain_stale = 1;
@@ -2987,7 +3185,11 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	transition.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 	vkCmdPipelineBarrier(commands, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL,
 		1, &transition);
+	if (trace)
+		host_load_trace("vulkan.present.submit.begin", "");
 	serial = submit(acquired, vk.presentable[index]);
+	if (trace)
+		host_load_trace("vulkan.present.submit.end", "");
 	memset(&info, 0, sizeof(info));
 	info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	info.waitSemaphoreCount = 1;
@@ -2995,8 +3197,12 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	info.swapchainCount = 1;
 	info.pSwapchains = &vk.swapchain;
 	info.pImageIndices = &index;
+	if (trace)
+		host_load_trace("vulkan.queue_present.begin", "");
 	result = vkQueuePresentKHR(vk.queue, &info);
-	host_load_trace("vulkan.present.return", "result=%d", result);
+	if (trace)
+		host_load_trace("vulkan.queue_present.end", "result=%d", result);
+	host_load_trace("vulkan.present.return", "result=%d image=%d", result, image != NULL);
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
 		vk.swapchain_stale = 1;
 	else
@@ -3004,7 +3210,80 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	return serial;
 }
 
-void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image)
+struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presentation_frame *frame,
+	uint32_t width, uint32_t height, uint32_t format)
+{
+	static const float background[4] = { LOADING_PRESENTATION_RED, LOADING_PRESENTATION_GREEN,
+		LOADING_PRESENTATION_BLUE, 1.0f };
+	struct xgpu_vulkan_image_description description;
+	struct xgpu_vulkan_image *color = vk.color, *depth = vk.depth;
+	uint32_t layer = vk.layer, views = vk.views, index;
+	int test_active = vk.test_active;
+	int32_t rectangle[1][4];
+
+	if (!frame || !frame->active)
+	{
+		xgpu_vulkan_image_destroy(vk.loading_image);
+		vk.loading_image = NULL;
+		return NULL;
+	}
+	if (!width || !height || (format != XGPU_VULKAN_FORMAT_BGRA8 && format != XGPU_VULKAN_FORMAT_RGBA8))
+		return NULL;
+	if (vk.loading_image && (vk.loading_image->description.width != width ||
+		vk.loading_image->description.height != height || vk.loading_image->description.format != format))
+	{
+		xgpu_vulkan_image_destroy(vk.loading_image);
+		vk.loading_image = NULL;
+	}
+	if (!vk.loading_image)
+	{
+		memset(&description, 0, sizeof(description));
+		description.type = XGPU_VULKAN_IMAGE_2D;
+		description.format = (uint8_t)format;
+		description.usage = XGPU_VULKAN_USAGE_TARGET | XGPU_VULKAN_USAGE_SAMPLED;
+		description.width = width;
+		description.height = height;
+		description.depth_or_layers = description.levels = 1;
+		vk.loading_image = xgpu_vulkan_image_create(&description);
+		if (!vk.loading_image)
+			return NULL;
+	}
+	/* A loading pass must not contribute samples or advance the game's
+	visibility frame. Ending and restoring the target also restores the
+	next draw's render-pass state; no pipeline or guest buffer is needed. */
+	pass_end();
+	vk.test_active = 0;
+	xgpu_vulkan_set_targets(vk.loading_image, NULL, 0);
+	rectangle[0][0] = rectangle[0][1] = 0;
+	rectangle[0][2] = (int32_t)width;
+	rectangle[0][3] = (int32_t)height;
+	xgpu_vulkan_clear(rectangle, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS, background, 0.0f, 0);
+	for (index = 0; index < frame->count && index < LOADING_PRESENTATION_RECTS; index++)
+	{
+		const struct loading_presentation_rect *source = &frame->rectangles[index];
+
+		rectangle[0][0] = (int32_t)((int64_t)source->x * width / LOADING_PRESENTATION_WIDTH);
+		rectangle[0][1] = (int32_t)((int64_t)source->y * height / LOADING_PRESENTATION_HEIGHT);
+		rectangle[0][2] = (int32_t)((int64_t)source->width * width / LOADING_PRESENTATION_WIDTH);
+		rectangle[0][3] = (int32_t)((int64_t)source->height * height / LOADING_PRESENTATION_HEIGHT);
+		xgpu_vulkan_clear(rectangle, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS, source->color, 0.0f, 0);
+	}
+	pass_end();
+	vk.test_active = test_active;
+	xgpu_vulkan_set_target_views(color, depth, layer, views);
+	return vk.loading_image;
+}
+
+void xgpu_vulkan_loading_present(struct xgpu_vulkan_image *image)
+{
+	pass_end();
+	if (!present(image))
+		xgpu_vulkan_fence();
+	completed_serial();
+	garbage_collect();
+}
+
+void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 {
 	uint64_t serial;
 	int gpu_time_armed = vk.gpu_time_armed;
@@ -3017,7 +3296,7 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image)
 			VK_PIPELINE_STAGE_HOST_BIT, VK_ACCESS_HOST_READ_BIT);
 	/* (the frame's last work, its tests' queries with it: the present's
 	submission, or one of its own) */
-	serial = present(image);
+	serial = present_window ? present(image) : 0;
 	if (!serial)
 	{
 		recording_begin();
@@ -3801,8 +4080,11 @@ int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
 
 void xgpu_vulkan_shutdown(void)
 {
+	pipeline_compiler_stop();
 	if (!vk.device)
 		return;
+	xgpu_vulkan_image_destroy(vk.loading_image);
+	vk.loading_image = NULL;
 	if (vk.recording)
 		xgpu_vulkan_fence();
 	vkDeviceWaitIdle(vk.device);

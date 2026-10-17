@@ -84,6 +84,9 @@ enum
 {
 	XGPU_WRITE_RED = 1, XGPU_WRITE_GREEN = 2, XGPU_WRITE_BLUE = 4, XGPU_WRITE_ALPHA = 8,
 };
+struct loading_presentation_frame;
+uint64_t host_metal_loading(void *context, const struct loading_presentation_frame *frame);
+
 #endif
 
 /* ---------- formats

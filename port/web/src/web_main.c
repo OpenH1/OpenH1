@@ -25,6 +25,7 @@ void web_net_arguments(int count, char **values);
 /* web_library.js: a line for the page (kind 0 a status, 2 an invite link, 3 a
 fatal error) */
 void web_js_post(int kind, const char *text);
+void web_js_loading(unsigned int state, unsigned int frames);
 
 /* ---------- memory
 
@@ -54,6 +55,21 @@ EMSCRIPTEN_KEEPALIVE volatile int32_t *web_state(void)
 void web_frame_shown(void)
 {
 	__atomic_add_fetch(&web_shared[_web_frames_shown], 1, __ATOMIC_RELAXED);
+}
+
+/* Explicit lifecycle state stays visible to the page while this worker is
+blocked in map I/O or WebGL compilation. No simulation state crosses here. */
+void web_loading_set(int active)
+{
+	unsigned int state = (unsigned int)__atomic_load_n(&web_shared[_web_loading_state], __ATOMIC_RELAXED);
+	unsigned int frames;
+
+	if ((state & 1u) == (unsigned int)(active != 0))
+		return;
+	state = active ? ((state + 2u) | 1u) : (state & ~1u);
+	__atomic_store_n(&web_shared[_web_loading_state], (int32_t)state, __ATOMIC_RELEASE);
+	frames = (unsigned int)__atomic_load_n(&web_shared[_web_frames_shown], __ATOMIC_RELAXED);
+	web_js_loading(state, frames);
 }
 
 /* ---------- start */

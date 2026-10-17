@@ -69,6 +69,8 @@ symbols in this file:
 #include "rasterizer/xbox/rasterizer_xbox_pixel_shader.h"
 #include "rasterizer/rasterizer_transparent_geometry.h"
 #include "rasterizer_xbox_water.h"
+#include "render_enumerate.h" /* port: port/linux/game/render_enumerate.c */
+#include "rasterizer_xbox_internal.h" /* port: preserve cached stencil around extra preparation */
 
 /* ---------- constants */
 
@@ -662,10 +664,21 @@ void rasterizer_water_draw(
 		{
 			write_depth = !TEST_FLAG(group->geometry_flags, _rasterizer_geometry_sky_bit) &&
 				!TEST_FLAG(water->flags, _shader_transparent_water_draw_before_fog_bit);
-			if (water_needs_update_flag)
+			/* port: prepare the bumpmap in every material's drawing context;
+			the world's first update must not hide the sky's depth clamp. */
+			if (water_needs_update_flag || render_enumerating)
 			{
+				/* port: an extra preparation draw must not replace the
+				caller's stencil context with the bumpmap's final rejection. */
+				short saved_stencil = render_enumerating ? rasterizer_get_stencil_mode() : NONE;
+
 				rasterizer_water_build_bumpmap(group->shader);
-				water_needs_update_flag = FALSE;
+				if (saved_stencil != NONE)
+					rasterizer_set_stencil_mode(saved_stencil);
+				/* port: preparation can compile without executing the draw;
+				the first real frame still needs to generate its bumpmap. */
+				if (!render_enumerating)
+					water_needs_update_flag = FALSE;
 			}
 
 			if (TEST_FLAG(water->flags, _shader_transparent_water_base_map_alpha_modulates_reflection_bit))

@@ -3,6 +3,8 @@ records cannot split each other. The host's logger also writes whole lines. */
 #ifndef HALO_LOAD_TRACE_H
 #define HALO_LOAD_TRACE_H
 
+void halo_load_trace(char const *phase, char const *detail);
+
 #include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>

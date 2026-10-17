@@ -34,6 +34,7 @@ and can change at any time, as on the Xbox.
 #include <stdint.h>
 
 #include "xgpu_stream.h"
+#include "loading_presentation.h"
 
 /* the vertex input a draw reads: its layout (as LAYOUT_DEFINE made it),
 the streams present (bits of present) and the values of the inputs no
@@ -119,6 +120,8 @@ struct host_render_backend
 
 	void (*present)(void *context, uint32_t back_buffer);
 	void (*frame_end)(void *context);
+	/* Independent loading content; returns its refresh period in ns. */
+	uint64_t (*loading)(void *context, const struct loading_presentation_frame *frame);
 
 	/* nonzero if the block and cells are made */
 	int (*dynamic_lights_prepare)(void *context);
@@ -176,6 +179,9 @@ void host_render_stream_wait(uint32_t position);
 void host_render_stream_close(void);
 /* tells the backend the process is ending (host_exit) */
 void host_render_stream_exiting(void);
+/* Render thread only, also while asynchronous preparation is pending. */
+void host_render_stream_loading_service(void);
+int host_render_stream_loading_holds(void);
 
 /* runs function(argument) on the render thread, after the records
 submitted so far, and returns once it has (the backend's context is current

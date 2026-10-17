@@ -45,7 +45,7 @@ def test_runner_reports_game_failures(tmp_path, game_status, exception, expected
     assert (paths["out"] / "debug.txt").read_text().strip() == environment["FAKE_DEBUG"]
 
 
-@pytest.mark.parametrize("failure", [None, "missing_event", "exception", "validation", "pipeline", "exit", "timeout", "missing_eye"])
+@pytest.mark.parametrize("failure", [None, "missing_event", "exception", "validation", "pipeline", "exit", "timeout", "missing_eye", "blank", "one_eye"])
 def test_scenario_checks_events_and_preserves_evidence(tmp_path, monkeypatch, failure):
     """A normal process exit alone must not certify a VR transition."""
     import importlib.util
@@ -71,7 +71,12 @@ def test_scenario_checks_events_and_preserves_evidence(tmp_path, monkeypatch, fa
         directories.append(directory)
         (directory / "shots").mkdir()
         image_name = "hud144.bmp" if failure == "missing_eye" else "eyes144.bmp"
-        Image.new("RGB", (2, 2), "red").save(directory / "shots" / image_name)
+        picture = Image.new("RGB", (8, 4), "black")
+        if failure != "blank":
+            picture.putpixel((1, 1), (255, 255, 255))
+        if failure not in ("blank", "one_eye"):
+            picture.putpixel((5, 1), (255, 255, 255))
+        picture.save(directory / "shots" / image_name)
         messages = [] if failure == "missing_event" else ["the transition happened"]
         messages += {"exception": ["EXCEPTION: a crash"],
                      "validation": ["vulkan validation: VUID-failure"],

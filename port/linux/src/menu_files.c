@@ -1044,17 +1044,28 @@ static struct
 	int failed;
 } art[MAXIMUM_ART];
 static long art_count;
+static unsigned short art_lookup[MAXIMUM_ART * 2];
+
+/* Most textures are not menu art. Find those without walking every menu
+bitmap for each texture stage of every draw. Entries survive until forget. */
+static unsigned long art_slot(unsigned long data)
+{
+	unsigned long hash = data, slot;
+
+	hash ^= hash >> 16;
+	hash *= 0x85ebca6bUL;
+	hash ^= hash >> 13;
+	slot = hash % (MAXIMUM_ART * 2);
+	while (art_lookup[slot] && art[art_lookup[slot] - 1].data != data)
+		slot = (slot + 1) % (MAXIMUM_ART * 2);
+	return slot;
+}
 
 void halo_menus_art_register(void const *texture, char const *png)
 {
 	unsigned long data = ((const unsigned long *)texture)[1];
-	long index;
-
-	for (index = 0; index < art_count; index++)
-	{
-		if (art[index].data == data)
-			break;
-	}
+	unsigned long slot = art_slot(data);
+	long index = art_lookup[slot] ? art_lookup[slot] - 1 : art_count;
 	if (index == art_count)
 	{
 		if (art_count == MAXIMUM_ART)
@@ -1062,6 +1073,7 @@ void halo_menus_art_register(void const *texture, char const *png)
 			platform_log("menus: more than %d bitmaps; %s is not drawn", MAXIMUM_ART, png);
 			return;
 		}
+		art_lookup[slot] = (unsigned short)(index + 1);
 		art_count++;
 	}
 	else if (art[index].png && !strcmp(art[index].png, png))
@@ -1104,17 +1116,13 @@ void halo_menus_art_forget(void)
 		}
 	}
 	art_count = 0;
+	memset(art_lookup, 0, sizeof(art_lookup));
 }
 
 unsigned int menu_art_texture(unsigned long data, unsigned long *levels)
 {
-	long index;
-
-	for (index = 0; index < art_count; index++)
-	{
-		if (art[index].data == data)
-			break;
-	}
+	unsigned long slot = art_slot(data);
+	long index = art_lookup[slot] ? art_lookup[slot] - 1 : art_count;
 	/* (no png: out of memory registering it) */
 	if (index == art_count || art[index].failed || !art[index].png)
 		return 0;

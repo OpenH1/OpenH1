@@ -2161,6 +2161,7 @@ static void main_save_map_private(
 static void main_switch_to_structure_bsp_private(
 	void)
 {
+	halo_loading_begin(); /* port: keep presentation independent while BSP resources change */
 	scenario_switch_structure_bsp(main_globals.switch_to_structure_bsp_index);
 	main_globals.switch_to_structure_bsp_index = NONE;
 	hud_load(0);
@@ -3460,6 +3461,7 @@ void main_loop(
 #ifndef HALO_WEB
 	boolean render_frame;
 	long connection;
+	boolean loading_game_frame; /* port: only a completed game picture ends loading */
 #endif
 
 	if (!game_in_editor())
@@ -3488,12 +3490,14 @@ static boolean main_loop_iteration(
 {
 	boolean render_frame;
 	long connection;
+	boolean loading_game_frame; /* port: only a completed game picture ends loading */
 
 	do
 #else
 	while (TRUE)
 #endif
 	{
+		loading_game_frame = FALSE; /* port: loading presentation is independent of game frames */
 		if (!game_in_editor())
 		{
 			if (main_globals.switch_to_structure_bsp_index!=NONE)
@@ -3718,6 +3722,8 @@ static boolean main_loop_iteration(
 						load_trace_first_frame = 2;
 					}
 					main_game_render((double)main_globals.seconds_elapsed);
+					halo_loading_ready(); /* port: a picture with no player window has no enumeration handoff */
+					loading_game_frame = TRUE; /* port: preparation is complete for this picture */
 					render_interpolation_frame_end();
 					profile_render_end();
 				}
@@ -3734,6 +3740,8 @@ static boolean main_loop_iteration(
 			if (render_frame && !debug_no_drawing)
 			{
 				profile_scope(main_present_section, main_present_frame();)
+				if (loading_game_frame)
+					halo_loading_end(); /* port: return presentation after the first complete game picture */
 				/* port: submission returned; host traces measure presentation */
 				if (load_trace_first_frame == 2)
 				{
