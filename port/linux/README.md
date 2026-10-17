@@ -437,6 +437,7 @@ the setting for one start of the game. It has priority over the file.
 | `crash_reports.upload` | `"ask"` | `HALO_CRASH_REPORTS` | Windows only. `"yes"`: the game sends a report of each crash to the developers. `"no"`: the game sends no reports. `"ask"`: the game asks at the next crash and writes the answer here. Refer to "Crash reports" in [port/windows/README.md](../windows/README.md#crash-reports). |
 | `debug.update_answer` | `""` | `HALO_UPDATE_ANSWER` | The answer to the update question, for automatic tests: `yes`, `no` or `never`. Empty: the game asks. |
 | `debug.update_from` | `""` | `HALO_UPDATE_FROM` | A release's zip file to update to, for tests of updates: the game offers it as a new version without asking GitHub, also when the build has no build number, but not in the version that the update starts. Empty: the game asks GitHub. |
+| `debug.load_trace` | `false` | `HALO_LOAD_TRACE` | Log map loading checkpoints with absolute monotonic wall, thread and process CPU seconds. Subtract timestamps to measure phases; process CPU includes worker threads. |
 | `debug.exit_after` | `0.0` | `HALO_EXIT_AFTER` | The game stops after this number of seconds (from when its window opens; with `debug.null_renderer`, or no display, from its first frame). `0`: never. |
 | `debug.screenshot_directory`, `debug.screenshot_every` | `""`, `0` | `HALO_SCREENSHOT_DIR`, `HALO_SCREENSHOT_EVERY` | The game writes each Nth frame to this folder as a BMP file. |
 | `debug.hidden_window`, `debug.null_renderer` | `false` | `HALO_HIDDEN_WINDOW`, `HALO_NULL_RENDERER` | `true`: no visible window, or no graphics. |
@@ -3890,6 +3891,42 @@ second copy of what the Xbox's states mean:
 The texture cache (`src/xbox_textures.c`) and the high-res replacements
 (`src/hud_hires.c`, `src/text_hires.c`, `src/menu_files.c`) still make GL
 textures themselves.
+
+### Measuring map loading
+
+`HALO_LOAD_TRACE=1` records the map's loading phases, file requests, renderer
+preparation and presentation boundaries. Use the environment variable for a
+guest build so both the game and host record their work. Thread CPU times
+belong to the recorded owner; `-1` means that clock is unavailable. Nested
+phase times overlap and must not be added. Detailed per-draw timing can
+materially slow preparation, so compare normal runs too.
+
+On Linux, the loading runner starts each map directly, offline, in a private
+directory. It retains logs and JSON evidence and removes its run folders.
+For example, with a guest Vulkan build:
+
+```sh
+python3 tools/load_benchmark.py --halo build/linux_vulkan/halo \
+    --data assets --out /path/on/disk/load-results --maps bloodgulch a10 b30 \
+    --os-cache cold warm --game-cache reused --shader-cache reused
+```
+
+The output directory must be new and on a disk filesystem, not tmpfs. Cold
+runs evict only the requested map, `ui.map` and private decompressed cache
+files, then verify that their pages are absent with `mincore`; warm runs
+read them and verify residency. This describes the OS file cache separately
+from reusable decompressed maps and shader cache files. Each run starts a
+new process. Driver-internal caches may need separate auditing. `--all`
+selects all 24 stock maps. Any exception, malformed trace or reported missed
+pipeline preparation fails the run while keeping its evidence.
+
+The default display is offscreen. GL swap returns, Vulkan present returns,
+and OpenXR submissions measure application progress, not a physical screen's
+refreshes. Metal's callback also records the drawable's actual presentation
+time. The first game-frame submission is not necessarily the first playable
+frame: a skipped cinematic can immediately load another BSP. Presentation
+gaps in the JSON cover the whole run; inspect the map's phase boundaries
+when attributing them to loading.
 
 ### Determinism
 
