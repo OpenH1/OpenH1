@@ -824,3 +824,128 @@ int main(void)
 }
 '''
     subprocess.run([str(build(tmp_path, source))], check=True, timeout=15)
+
+
+def test_progress_bar_shader_does_not_depend_on_previous_map(tmp_path):
+    text = (ROOT / "source/interface/progress_bar.c").read_text()
+    state = text[text.index("static void progress_bar_draw_state(void)\n{"):text.index("static void progress_bar_blur_textures(")]
+    # Both production paths establish this state before drawing; neither can
+    # silently replace its shader with an inherited/fixed-function handle.
+    for start, end in (("static void progress_bar_prepare_draw(void *data)",
+                        "void progress_bar_port_enumerate("),
+                       ("static void progress_bar_render(\n\treal progress)\n{",
+                        "static void progress_bar_create_noise_texture(")):
+        body = text[text.index(start):text.index(end, text.index(start))]
+        assert body.count("progress_bar_draw_state();") == 1
+        assert body.index("progress_bar_draw_state();") < body.index("draw_fade_layer(")
+        assert "SetVertexShader(" not in body
+        if start.startswith("static void progress_bar_render("):
+            assert body.index("rasterizer_set_vertex_shader_permutation(4, 8, 0);") < body.index("progress_bar_draw_state();")
+        else:
+            assert "rasterizer_set_vertex_shader_permutation(" not in body
+    ready = text[text.index("static void progress_bar_make_stuff_ready(\n\tvoid)\n{"):text.index("static void progress_bar_load_loading_texture(\n\tIDirect3DTexture8 **texture)\n{")]
+    assert ready.index("rasterizer_set_vertex_shader_permutation(4, 8, 0);") < ready.index("progress_bar_draw_state();")
+    assert "halo_gpu_draw_preserved(progress_bar_prepare_draw, texture);" in text
+    source = r'''
+#include <assert.h>
+#include <string.h>
+enum { D3DRS_ALPHABLENDENABLE, D3DRS_SRCBLEND, D3DRS_DESTBLEND,
+       D3DRS_CULLMODE, D3DRS_ZENABLE, D3DRS_LIGHTING, STATE_COUNT };
+enum { TRUE = 1, FALSE = 0, D3DBLEND_SRCALPHA = 4,
+       D3DBLEND_ONE = 1, D3DCULL_NONE = 1 };
+static int global_d3d_device;
+static struct { unsigned handle; } vertex_shader_table[66];
+static struct { unsigned shader, states[STATE_COUNT]; } pipeline;
+static void IDirect3DDevice8_SetVertexShader(int device, unsigned handle) {
+    (void)device;
+    /* Production handle zero leaves the preceding shader selected. */
+    if (handle) pipeline.shader = handle;
+}
+static void IDirect3DDevice8_SetRenderState(int device, unsigned state, unsigned value) {
+    (void)device;
+    pipeline.states[state] = value;
+}
+''' + state + r'''
+int main(void) {
+    unsigned expected[STATE_COUNT + 1], previous;
+    vertex_shader_table[4].handle = 104;
+    memset(&pipeline, 0, sizeof(pipeline));
+    progress_bar_draw_state();
+    assert(pipeline.shader == 104);
+    memcpy(expected, &pipeline, sizeof(expected));
+    for (previous = 0; previous < 66; previous++) {
+        memset(&pipeline, 0xff, sizeof(pipeline));
+        pipeline.shader = previous + 100;
+        progress_bar_draw_state();
+        assert(!memcmp(expected, &pipeline, sizeof(expected)));
+    }
+    return 0;
+}
+'''
+    subprocess.run([str(build(tmp_path, source))], check=True, timeout=15)
+
+
+def test_progress_bar_shader_cache_and_preparation_restore(tmp_path):
+    text = (ROOT / "source/rasterizer/xbox/rasterizer_xbox_vertex_shaders_runtime.c").read_text()
+    runtime = text[text.index("struct packed_vertex_shader\n"):text.index("/* ---------- private code */")]
+    source = r'''
+#include <assert.h>
+#include <string.h>
+typedef int boolean;
+typedef unsigned char byte;
+#define NONE -1
+#define TRUE 1
+#define FALSE 0
+#define NUMBER_OF_VERTEX_SHADERS 67
+#define NUMBER_OF_RASTERIZER_VERTEX_TYPES 12
+#define VALID_INDEX(i,n) ((i) >= 0 && (i) < (n))
+#define _error_silent 0
+#define match_assert(file,line,test) assert(test)
+#define match_vassert(file,line,test,...) assert(test)
+#define error(...) assert(0)
+static int global_d3d_device;
+static struct { unsigned handle, instruction_count; } vertex_shader_table[67];
+static struct { int statistics_mode; } rasterizer_debug_options;
+static struct { unsigned vertex_shader_instruction_count; } rasterizer_frame_statistics;
+static unsigned selected, calls;
+static int IDirect3DDevice8_SetVertexShader(int device, unsigned handle) {
+    (void)device;
+    if (handle) selected = handle;
+    calls++;
+    return 0;
+}
+static int IDirect3DDevice8_GetVertexShaderSize(int device, unsigned handle, long *size) {
+    (void)device; (void)handle; *size = 1; return 0;
+}
+static int IDirect3DDevice8_LoadVertexShader(int device, unsigned handle, long offset) {
+    (void)device; (void)handle; (void)offset; assert(0); return -1;
+}
+static int IDirect3DDevice8_SelectVertexShader(int device, unsigned handle, long offset) {
+    (void)device; (void)handle; (void)offset; assert(0); return -1;
+}
+''' + runtime + r'''
+void rasterizer_error(long code, const char *format, ...) {
+    (void)code; (void)format; assert(0);
+}
+int main(void) {
+    unsigned saved, saved_calls;
+    int index;
+    for (index = 0; index < 67; index++) vertex_shader_table[index].handle = index + 100;
+    rasterizer_set_vertex_shader_permutation(65, 6, 0);
+    assert(selected == 165 && vertex_shader_runtime_globals.current_vertex_shader_index == 65);
+    /* Preparation's draw-preserved callback changes only front-end state. */
+    saved = selected;
+    IDirect3DDevice8_SetVertexShader(global_d3d_device, vertex_shader_table[4].handle);
+    assert(selected == 104 && vertex_shader_runtime_globals.current_vertex_shader_index == 65);
+    selected = saved;
+    /* The actual progress path must move the runtime cache with its shader. */
+    rasterizer_set_vertex_shader_permutation(4, 8, 0);
+    assert(selected == 104 && vertex_shader_runtime_globals.current_vertex_shader_index == 4);
+    saved_calls = calls;
+    rasterizer_set_vertex_shader_permutation(65, 6, 0);
+    assert(selected == 165 && calls == saved_calls + 1);
+    assert(vertex_shader_runtime_globals.current_vertex_shader_index == 65);
+    return 0;
+}
+'''
+    subprocess.run([str(build(tmp_path, source))], check=True, timeout=15)

@@ -2022,6 +2022,9 @@ static void progress_bar_shader_definitions(void)
 
 static void progress_bar_draw_state(void)
 {
+	/* port: immediate loading draws must not inherit the previous map's
+	vertex shader. Preparation uses this same interface shader. */
+	IDirect3DDevice8_SetVertexShader(global_d3d_device, vertex_shader_table[4].handle);
 	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ALPHABLENDENABLE, TRUE);
 	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_SRCBLEND, D3DBLEND_SRCALPHA);
 	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_DESTBLEND, D3DBLEND_ONE);
@@ -2083,7 +2086,6 @@ static void progress_bar_prepare_draw(void *data)
 		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_ADDRESSW, D3DTADDRESS_WRAP);
 		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_BORDERCOLOR, 0);
 	}
-	IDirect3DDevice8_SetVertexShader(global_d3d_device, vertex_shader_table[4].handle);
 	D3DXMatrixPerspectiveLH(&progress_bar_globals.screen_transform, 0.64f, 0.48f, 1.f, 1000.f);
 	progress_bar_blur_textures(texture);
 	IDirect3DDevice8_SetPixelShaderProgram(global_d3d_device, (D3DPIXELSHADERDEF *)&blur_shader);
@@ -2145,6 +2147,8 @@ static void progress_bar_render(
 	IDirect3DDevice8_SetTransform(global_d3d_device, D3DTS_WORLD, &progress_bar_globals.world);
 	IDirect3DDevice8_SetTransform(global_d3d_device, D3DTS_VIEW, &progress_bar_globals.view);
 	IDirect3DDevice8_SetTransform(global_d3d_device, D3DTS_PROJECTION, &progress_bar_globals.projection);
+	/* port: keep the rasterizer's shader cache coherent after loading. */
+	rasterizer_set_vertex_shader_permutation(4, 8, 0);
 	progress_bar_draw_state(); /* port: shared with preparation */
 	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 0, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
 	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 0, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
@@ -2163,7 +2167,6 @@ static void progress_bar_render(
 	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 2, D3DTSS_ADDRESSV, D3DTADDRESS_WRAP);
 	IDirect3DDevice8_SetTexture(global_d3d_device, 0, (D3DBaseTexture *)progress_bar_mode.texture0);
 	IDirect3DDevice8_Clear(global_d3d_device, 0, NULL, 0xf0, 0, 1.f, 0);
-	IDirect3DDevice8_SetVertexShader(global_d3d_device, 0);
 	IDirect3DDevice8_SetPixelShaderProgram(global_d3d_device, (D3DPIXELSHADERDEF *)&blur_shader);
 	IDirect3DDevice8_GetBackBuffer(global_d3d_device, -1, 0, &back_buffer);
 	this_is_awful(&back_buffer_texture, back_buffer);
@@ -2246,6 +2249,8 @@ static void progress_bar_make_stuff_ready(
 	progress_bar_load_loading_texture(&progress_bar_mode.texture0);
 	progress_bar_create_noise_texture();
 	progress_bar_create_mask_texture();
+	/* port: keep the rasterizer's shader cache coherent after loading. */
+	rasterizer_set_vertex_shader_permutation(4, 8, 0);
 	progress_bar_draw_state(); /* port: shared with preparation */
 	IDirect3DDevice8_SetTexture(global_d3d_device, 0, (D3DBaseTexture *)progress_bar_mode.texture0);
 	IDirect3DDevice8_SetTextureStageState(global_d3d_device, 0, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
