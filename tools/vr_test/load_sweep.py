@@ -18,8 +18,40 @@ import tempfile
 
 TOOLS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS))
-from load_benchmark import completed_load, parse_trace, prepare_files, scenario_name, summarize
+from load_benchmark import FIELDS, completed_load, parse_trace, prepare_files, scenario_name, summarize
 from render_enumerate_sweep import STOCK_MAPS
+
+
+def runtime_evidence(events, scenario, text):
+    """Reject flat fallback and require a rendered XR frame for the loaded map."""
+    errors = [line for line in text.splitlines() if any(marker in line for marker in
+              ("XR_ERROR_", "OpenXR is not available; playing flat", "halo-host: error: vr:"))]
+    scenario = r"levels\ui\ui" if scenario == "ui" else scenario
+    activation = next((event["wall"] for event in events
+                       if event["phase"] == "main_new_map.begin" and event["detail"] == scenario), None)
+    next_map = min((event["wall"] for event in events if event["phase"] == "main_new_map.begin"
+                    and activation is not None and event["wall"] > activation), default=float("inf"))
+    first = next((event["wall"] for event in events
+                  if event["phase"] == "first_game_frame.begin" and activation is not None
+                  and activation <= event["wall"] < next_map), None)
+    waits, frames = {}, 0
+    for event in sorted(events, key=lambda event: event["wall"]):
+        fields = dict(FIELDS.findall(event["detail"]))
+        predicted = fields.get("predicted")
+        if event["phase"] == "xr.wait.end" and predicted:
+            waits[predicted] = fields.get("render")
+        elif event["phase"] == "xr.submit.end" and first is not None and first <= event["wall"] < next_map:
+            try:
+                layers = int(fields.get("layers", "0"))
+            except ValueError:
+                continue
+            # This sweep uses the default projection plus HUD fixture. Loading
+            # is one world-space quad; scope/panels can add normal layers.
+            if predicted and waits.get(predicted) == "1" and layers >= 2:
+                frames += 1
+    if not frames:
+        errors.append("no rendered OpenXR gameplay submission after the requested map began rendering")
+    return dict(valid=not errors, errors=errors, normal_submissions=frames)
 
 
 def run(args, scenario, work, destination):
@@ -54,8 +86,11 @@ def run(args, scenario, work, destination):
     except ValueError as error:
         events, operations = [], []
         errors.append(str(error))
+    runtime = runtime_evidence(events, scenario, text + "\n" + debug)
+    errors.extend(runtime["errors"])
     result = summarize(events, operations, scenario)
     result.update(exit_status=status, errors=errors, settings=settings, command=command,
+                  vr_runtime=runtime,
                   load_completed=completed_load(events, scenario),
                   passed=status == 0 and not errors and completed_load(events, scenario))
     (destination / "result.json").write_text(json.dumps(result, indent=2) + "\n")
@@ -94,6 +129,7 @@ def main():
         with tempfile.TemporaryDirectory(prefix=".work-", dir=args.out) as temporary:
             work = Path(temporary)
             (work / "shaders").mkdir()
+            prime_passed = False
             for state in ("prime", "cold", "warm"):
                 destination = args.out / name / state
                 record = dict(map=scenario, state=state, passed=False)
@@ -109,6 +145,16 @@ def main():
                         record["shader_inventory"] = [dict(path=str(p.relative_to(work)), bytes=p.stat().st_size,
                                                            sha256=hashlib.sha256(p.read_bytes()).hexdigest()) for p in shaders]
                     result = run(args, scenario, work, destination)
+                    if state == "prime":
+                        prime_passed = result["passed"]
+                    else:
+                        record["priming_valid"] = prime_passed
+                        if not prime_passed:
+                            result["run_passed"] = result["passed"]
+                            result["priming_valid"] = False
+                            result.setdefault("errors", []).append("initial VR cache priming failed")
+                            result["passed"] = False
+                            (destination / "result.json").write_text(json.dumps(result, indent=2) + "\n")
                     record.update(passed=result["passed"], result=str(destination / "result.json"))
                 except Exception as error:
                     record["error"] = str(error)
