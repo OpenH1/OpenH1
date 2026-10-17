@@ -503,6 +503,7 @@ int halo_vr_frame_clock(float *seconds);
 /* the views, located again as late as possible (just before the frame's
 draws); 0 without a VR frame */
 int halo_vr_view(struct halo_vr_view *view);
+int halo_vr_refresh_tracking(struct halo_vr_view *view);
 /* the head as located when the frame began, as halo_vr_view has it
 (head_forward, head_up, head_position): the sounds' listener (sound_manager.c,
 vr_render.c), placed before the frame is drawn; 0 without a VR frame */

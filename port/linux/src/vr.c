@@ -40,6 +40,9 @@ the view while the crouch is the head's: the head has already come down.
 #include "vr_host.h"
 #include "vr_visor.h"
 
+extern int halo_load_trace_enabled(void);
+extern void halo_load_trace(const char *phase, const char *detail);
+
 #include <SDL3/SDL.h>
 #include <math.h>
 #include <stdio.h>
@@ -4798,6 +4801,184 @@ int halo_vr_head(float forward[3], float up[3], float position[3])
 		offset[axis] = (vr.views.eye[0].position[axis] + vr.views.eye[1].position[axis]) * 0.5f -
 			vr.origin_position[axis];
 	game_axes(offset, vr.origin_yaw, position);
+	return 1;
+}
+
+/* Rebase an already-smoothed direction without advancing its filter. */
+static void tracking_direction_move(const float value[3], const float old_forward[3], const float old_up[3],
+	const float forward[3], const float up[3], float out[3])
+{
+	float old_left[3], left[3], along = 0.0f, across = 0.0f, above = 0.0f;
+	int axis;
+
+	if (!memcmp(old_forward, forward, sizeof(float) * 3) && !memcmp(old_up, up, sizeof(float) * 3))
+	{
+		memcpy(out, value, sizeof(float) * 3);
+		return;
+	}
+	for (axis = 0; axis < 3; axis++)
+	{
+		int next = (axis + 1) % 3, last = (axis + 2) % 3;
+
+		old_left[axis] = old_up[next] * old_forward[last] - old_up[last] * old_forward[next];
+		left[axis] = up[next] * forward[last] - up[last] * forward[next];
+		along += value[axis] * old_forward[axis];
+		across += value[axis] * old_left[axis];
+		above += value[axis] * old_up[axis];
+	}
+	for (axis = 0; axis < 3; axis++)
+		out[axis] = along * forward[axis] + across * left[axis] + above * up[axis];
+}
+
+/* Refresh tracking after long preparation, without sampling actions or
+advancing aim/visor filters, presentation counters or the frame clock. */
+int halo_vr_refresh_tracking(struct halo_vr_view *view)
+{
+	struct vr_host_views fresh = vr.views;
+	static const float forward[3] = { 0.0f, 0.0f, -1.0f };
+	static const float up[3] = { 0.0f, 1.0f, 0.0f };
+	float centre[3], offset[3], v[3], inverse[4];
+	float old_hand_forward[3], old_hand_up[3];
+	int eye;
+	struct halo_vr_view before = *view;
+
+	if (!halo_vr_frame_active() || !host_vr_locate(&fresh) ||
+		!fresh.eye[0].valid || !fresh.eye[1].valid)
+		return 0;
+	/* Public hand axes may have been replaced by a vehicle handlebar. */
+	weapon_pointing(v, offset);
+	game_axes(v, vr.origin_yaw, old_hand_forward);
+	game_axes(offset, vr.origin_yaw, old_hand_up);
+	vr.views.head = fresh.head;
+	vr.views.gaze = fresh.gaze;
+	memcpy(vr.views.aim, fresh.aim, sizeof(vr.views.aim));
+	memcpy(vr.views.grip, fresh.grip, sizeof(vr.views.grip));
+	vr.views_unassigned = 1;
+	memcpy(vr.views.eye, fresh.eye, sizeof(vr.views.eye));
+	memcpy(vr.views.fov, fresh.fov, sizeof(vr.views.fov));
+	latch_located();
+	test_head_apply();
+	test_fov_apply();
+	jitter_apply();
+	test_hands_apply(0);
+	hands_assign_views();
+	test_point_apply();
+	shake_apply();
+	quaternion_rotate(vr.views.eye[0].orientation, forward, v);
+	game_axes(v, vr.origin_yaw, view->head_forward);
+	quaternion_rotate(vr.views.eye[0].orientation, up, v);
+	game_axes(v, vr.origin_yaw, view->head_up);
+	/* the head's centre, between the eyes */
+	for (eye = 0; eye < 3; eye++)
+	{
+		centre[eye] = (vr.views.eye[0].position[eye] + vr.views.eye[1].position[eye]) * 0.5f;
+		offset[eye] = centre[eye] - vr.origin_position[eye];
+	}
+	game_axes(offset, vr.origin_yaw, view->head_position);
+	/* each eye from the centre, in the head's axes */
+	inverse[0] = -vr.views.eye[0].orientation[0];
+	inverse[1] = -vr.views.eye[0].orientation[1];
+	inverse[2] = -vr.views.eye[0].orientation[2];
+	inverse[3] = vr.views.eye[0].orientation[3];
+	for (eye = 0; eye < 2; eye++)
+	{
+		float local[3];
+		int axis;
+
+		for (axis = 0; axis < 3; axis++)
+			v[axis] = vr.views.eye[eye].position[axis] - centre[axis];
+		quaternion_rotate(inverse, v, local);
+		game_axes(local, 0.0f, view->eye_offset[eye]);
+		memcpy(view->fov[eye], vr.views.fov[eye], sizeof(view->fov[eye]));
+	}
+	body_place(view->head_position, view->head_forward, view->head_up, view->body_neck, view->body_eyes);
+	if (!view->hud_visor)
+	{
+		memcpy(view->hud_forward, view->head_forward, sizeof(view->hud_forward));
+		memcpy(view->hud_up, view->head_up, sizeof(view->hud_up));
+	}
+	/* the right controller */
+	view->controller_aim = settings.controller_aim && vr.views.aim[1].valid;
+	if (view->controller_aim)
+	{
+		const struct vr_host_pose *hand = &vr.views.aim[1];
+		float pointing_up[3];
+
+		weapon_pointing(v, pointing_up);
+		game_axes(v, vr.origin_yaw, view->hand_forward);
+		game_axes(pointing_up, vr.origin_yaw, view->hand_up);
+		for (eye = 0; eye < 3; eye++)
+			offset[eye] = hand->position[eye] - vr.origin_position[eye];
+		game_axes(offset, vr.origin_yaw, view->hand_position);
+		/* Move the already-smoothed aim with tracking, without another filter step. */
+		if (before.controller_aim)
+			tracking_direction_move(before.aim_forward, old_hand_forward, old_hand_up,
+				view->hand_forward, view->hand_up, view->aim_forward);
+		else
+			memcpy(view->aim_forward, view->hand_forward, sizeof(view->aim_forward));
+	}
+	/* the hands (vr.hands): where the controllers' grips are (else where
+	they point from), and where the left one points */
+	view->left_hand_valid = vr.views.aim[0].valid;
+	if (view->floating_hands && view->controller_aim)
+	{
+		const struct vr_host_pose *grip = vr.views.grip[1].valid ? &vr.views.grip[1] : &vr.views.aim[1];
+
+		for (eye = 0; eye < 3; eye++)
+			offset[eye] = grip->position[eye] - vr.origin_position[eye];
+		game_axes(offset, vr.origin_yaw, view->right_grip_position);
+	}
+	/* (and while it holds a grenade or a magazine, drawn in it whatever the
+	hands) */
+	if (view->left_hand_valid && (view->floating_hands || vr.throw_state != THROW_IDLE || vr.reload.held))
+	{
+		const struct vr_host_pose *hand = &vr.views.aim[0];
+		const struct vr_host_pose *grip = vr.views.grip[0].valid ? &vr.views.grip[0] : hand;
+
+		quaternion_rotate(hand->orientation, forward, v);
+		game_axes(v, vr.origin_yaw, view->left_hand_forward);
+		quaternion_rotate(hand->orientation, up, v);
+		game_axes(v, vr.origin_yaw, view->left_hand_up);
+		for (eye = 0; eye < 3; eye++)
+			offset[eye] = grip->position[eye] - vr.origin_position[eye];
+		game_axes(offset, vr.origin_yaw, view->left_grip_position);
+	}
+	/* (on a vehicle's handlebars: each hand holding its handle on it, along
+	the vehicle (the player's axes are turned with it), its fingers about it) */
+	view->handlebars = before.handlebars && view->controller_aim;
+	if (view->handlebars)
+	{
+		const float *along = vr.seat.handle_forward, *upright = vr.seat.handle_up;
+
+		if (vr.bars_held[1])
+		{
+			memcpy(view->right_grip_position, vr.seat.handles[hand_controller(1)], sizeof(view->right_grip_position));
+			memcpy(view->hand_forward, along, sizeof(view->hand_forward));
+			memcpy(view->hand_up, upright, sizeof(view->hand_up));
+		}
+		if (vr.bars_held[0])
+		{
+			view->left_hand_valid = 1;
+			memcpy(view->left_grip_position, vr.seat.handles[hand_controller(0)], sizeof(view->left_grip_position));
+			memcpy(view->left_hand_forward, along, sizeof(view->left_hand_forward));
+			memcpy(view->left_hand_up, upright, sizeof(view->left_hand_up));
+		}
+	}
+
+	if (halo_load_trace_enabled())
+	{
+		char detail[768];
+
+		snprintf(detail, sizeof(detail),
+			"old_head=%.9g,%.9g,%.9g new_head=%.9g,%.9g,%.9g raw_eye=%.9g,%.9g,%.9g raw_rotation=%.9g,%.9g,%.9g,%.9g latch=%u:%u seconds=%.9g",
+			before.head_position[0], before.head_position[1], before.head_position[2],
+			view->head_position[0], view->head_position[1], view->head_position[2],
+			vr.latch.located_eye[0].position[0], vr.latch.located_eye[0].position[1], vr.latch.located_eye[0].position[2],
+			vr.latch.located_eye[0].orientation[0], vr.latch.located_eye[0].orientation[1],
+			vr.latch.located_eye[0].orientation[2], vr.latch.located_eye[0].orientation[3],
+			vr.latch.located_high, vr.latch.located_low, view->seconds);
+		halo_load_trace("loading.tracking.refresh", detail);
+	}
 	return 1;
 }
 

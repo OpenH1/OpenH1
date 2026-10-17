@@ -552,7 +552,100 @@ static void crouch_log(real lift)
 
 /* turns the window's camera into the VR frame's centre camera (both its
 render and rasterizer cameras); FALSE without a VR frame to draw */
-boolean vr_render_camera(struct render_camera *camera, struct render_camera *rasterizer_camera)
+/* The projection and culling frusta depend only on the current camera/pose. */
+static void camera_frusta(struct render_camera *camera, struct render_camera *rasterizer_camera)
+{
+	struct halo_vr_view *view = &vr_render.view;
+	real left = 0.0f, right = 0.0f, up = 0.0f, down = 0.0f, tangent;
+	real aspect;
+	short eye;
+
+	for (eye = 0; eye < 2; eye++)
+	{
+		left = eye ? MIN(left, view->fov[eye][0]) : view->fov[eye][0];
+		right = eye ? MAX(right, view->fov[eye][1]) : view->fov[eye][1];
+		up = eye ? MAX(up, view->fov[eye][2]) : view->fov[eye][2];
+		down = eye ? MIN(down, view->fov[eye][3]) : view->fov[eye][3];
+	}
+	if (halo_vr_late_latching())
+	{
+		/* (the eyes drawn turned a little from where the game culls for:
+		halo_vr_latch) */
+		const real margin = LATCH_MARGIN_DEGREES * (real)M_PI / 180.0f, most = 85.0f * (real)M_PI / 180.0f;
+
+		left = (real)tan(MAX((real)atan(left) - margin, -most));
+		right = (real)tan(MIN((real)atan(right) + margin, most));
+		up = (real)tan(MIN((real)atan(up) + margin, most));
+		down = (real)tan(MAX((real)atan(down) - margin, -most));
+	}
+	left *= UNION_MARGIN;
+	right *= UNION_MARGIN;
+	up *= UNION_MARGIN;
+	down *= UNION_MARGIN;
+	tangent = MAX(up, -down);
+	camera->vertical_field_of_view = 2.0f * (real)atan(tangent);
+	aspect = (real)(camera->viewport_bounds.x1 - camera->viewport_bounds.x0) /
+		(real)(camera->viewport_bounds.y1 - camera->viewport_bounds.y0);
+	vr_render.bounds.x0 = left / (aspect * tangent);
+	vr_render.bounds.x1 = right / (aspect * tangent);
+	vr_render.bounds.y0 = down / tangent;
+	vr_render.bounds.y1 = up / tangent;
+	camera->mirrored = FALSE;
+	rasterizer_camera->position = camera->position;
+	rasterizer_camera->forward = camera->forward;
+	rasterizer_camera->up = camera->up;
+	rasterizer_camera->vertical_field_of_view = camera->vertical_field_of_view;
+	rasterizer_camera->mirrored = FALSE;
+
+	/* each eye's camera: the centre's, moved along the head's axes across
+	the view (not along it: an eye's depth is then the centre's, which
+	eye_transforms_set relies on; the eyes are side by side, a millimetre or
+	so at most from the plane through the centre across the view) */
+	for (eye = 0; eye < 2; eye++)
+	{
+		struct render_camera eye_camera = *camera;
+		real_rectangle2d eye_bounds;
+		real_vector3d left_axis;
+		real units = view->world_units_per_metre;
+		const float *o = view->eye_offset[eye];
+
+		cross_product3d(&camera->up, &camera->forward, &left_axis);
+		normalize3d(&left_axis);
+		eye_camera.position.x += (left_axis.i * o[1] + camera->up.i * o[2]) * units;
+		eye_camera.position.y += (left_axis.j * o[1] + camera->up.j * o[2]) * units;
+		eye_camera.position.z += (left_axis.k * o[1] + camera->up.k * o[2]) * units;
+		eye_bounds.x0 = view->fov[eye][0] / (aspect * tangent);
+		eye_bounds.x1 = view->fov[eye][1] / (aspect * tangent);
+		eye_bounds.y0 = view->fov[eye][3] / tangent;
+		eye_bounds.y1 = view->fov[eye][2] / tangent;
+		render_camera_build_frustum(&eye_camera, &eye_bounds, &vr_render.eyes[eye], TRUE);
+		vr_render.eye_positions[eye] = eye_camera.position;
+		render_camera_build_frustum(camera, &eye_bounds, &vr_render.eyes_at_centre[eye], TRUE);
+	}
+	{
+		/* the centre view has the game's viewport (480 lines) over the
+		union's height (up - down, in tangents); an eye has its image's
+		height over its own */
+		int eye_width = 0, eye_height = 0;
+		real eye_span = MAX(view->fov[0][2] - view->fov[0][3], view->fov[1][2] - view->fov[1][3]);
+		real viewport_height = (real)(camera->viewport_bounds.y1 - camera->viewport_bounds.y0);
+
+		halo_vr_eye_size(&eye_width, &eye_height);
+		vr_render.level_of_detail_scale = eye_height > 0 && eye_span > 0.0f && viewport_height > 0.0f ?
+			((real)eye_height / eye_span) / (viewport_height / (up - down)) : 1.0f;
+	}
+	vr_render.infinite = FALSE;
+	vr_render.projection_valid = FALSE;
+	vr_render.active = TRUE;
+}
+
+static struct {
+	boolean pending, playing;
+	real_point3d eye;
+	struct render_camera camera;
+} preparation_headwall;
+
+boolean vr_render_camera(struct render_camera *camera, struct render_camera *rasterizer_camera, boolean preparing)
 {
 	struct halo_vr_view *view = &vr_render.view;
 	real_point3d game_eye;
@@ -560,13 +653,11 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	real pitch;
 	real_vector3d offset;
 	real lift;
-	real left = 0.0f, right = 0.0f, up = 0.0f, down = 0.0f, tangent;
-	real aspect;
 	boolean dead;
 	real_vector3d game_forward = camera->forward;
 	boolean camera_yaw;
-	short eye;
 
+	preparation_headwall.pending = FALSE;
 	vr_render.active = FALSE;
 	vr_render.seated_unit_index = NONE;
 	vr_render.weapon_camera_set = FALSE;
@@ -671,8 +762,13 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	/* the head inside a wall, or through it, fades the view: tested from
 	the game's own eye, where the game knows the player can be (on foot
 	alone: vr_headwall.c) */
-	vr_headwall_update(halo_vr_aiming() && !cinematic_in_progress() && !dead, &game_eye, &camera->position,
-		&camera->forward, &camera->up, camera->z_near, view->world_units_per_metre, view->seconds);
+	preparation_headwall.pending = preparing;
+	preparation_headwall.playing = halo_vr_aiming() && !cinematic_in_progress() && !dead;
+	preparation_headwall.eye = game_eye;
+	preparation_headwall.camera = *camera;
+	if (!preparing)
+		vr_headwall_update(preparation_headwall.playing, &game_eye, &camera->position,
+			&camera->forward, &camera->up, camera->z_near, view->world_units_per_metre, view->seconds);
 	vr_seat_log_camera(&camera->position, &camera->forward, &camera->up, view->seconds);
 	vr_death_camera(&camera->position, &camera->forward, &camera->up,
 		(real)atan(MIN(-MIN(view->fov[0][0], view->fov[1][0]), MAX(view->fov[0][1], view->fov[1][1]))),
@@ -683,87 +779,89 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	taken out) */
 	vr_render.crouch_head_drop = vr_render.crouch_blended * offset.k * view->world_units_per_metre;
 
-	for (eye = 0; eye < 2; eye++)
-	{
-		left = eye ? MIN(left, view->fov[eye][0]) : view->fov[eye][0];
-		right = eye ? MAX(right, view->fov[eye][1]) : view->fov[eye][1];
-		up = eye ? MAX(up, view->fov[eye][2]) : view->fov[eye][2];
-		down = eye ? MIN(down, view->fov[eye][3]) : view->fov[eye][3];
-	}
-	if (halo_vr_late_latching())
-	{
-		/* (the eyes drawn turned a little from where the game culls for:
-		halo_vr_latch) */
-		const real margin = LATCH_MARGIN_DEGREES * (real)M_PI / 180.0f, most = 85.0f * (real)M_PI / 180.0f;
-
-		left = (real)tan(MAX((real)atan(left) - margin, -most));
-		right = (real)tan(MIN((real)atan(right) + margin, most));
-		up = (real)tan(MIN((real)atan(up) + margin, most));
-		down = (real)tan(MAX((real)atan(down) - margin, -most));
-	}
-	left *= UNION_MARGIN;
-	right *= UNION_MARGIN;
-	up *= UNION_MARGIN;
-	down *= UNION_MARGIN;
-	tangent = MAX(up, -down);
-	camera->vertical_field_of_view = 2.0f * (real)atan(tangent);
-	aspect = (real)(camera->viewport_bounds.x1 - camera->viewport_bounds.x0) /
-		(real)(camera->viewport_bounds.y1 - camera->viewport_bounds.y0);
-	vr_render.bounds.x0 = left / (aspect * tangent);
-	vr_render.bounds.x1 = right / (aspect * tangent);
-	vr_render.bounds.y0 = down / tangent;
-	vr_render.bounds.y1 = up / tangent;
-	camera->mirrored = FALSE;
-	rasterizer_camera->position = camera->position;
-	rasterizer_camera->forward = camera->forward;
-	rasterizer_camera->up = camera->up;
-	rasterizer_camera->vertical_field_of_view = camera->vertical_field_of_view;
-	rasterizer_camera->mirrored = FALSE;
-
-	/* each eye's camera: the centre's, moved along the head's axes across
-	the view (not along it: an eye's depth is then the centre's, which
-	eye_transforms_set relies on; the eyes are side by side, a millimetre or
-	so at most from the plane through the centre across the view) */
-	for (eye = 0; eye < 2; eye++)
-	{
-		struct render_camera eye_camera = *camera;
-		real_rectangle2d eye_bounds;
-		real_vector3d left_axis;
-		real units = view->world_units_per_metre;
-		const float *o = view->eye_offset[eye];
-
-		cross_product3d(&camera->up, &camera->forward, &left_axis);
-		normalize3d(&left_axis);
-		eye_camera.position.x += (left_axis.i * o[1] + camera->up.i * o[2]) * units;
-		eye_camera.position.y += (left_axis.j * o[1] + camera->up.j * o[2]) * units;
-		eye_camera.position.z += (left_axis.k * o[1] + camera->up.k * o[2]) * units;
-		eye_bounds.x0 = view->fov[eye][0] / (aspect * tangent);
-		eye_bounds.x1 = view->fov[eye][1] / (aspect * tangent);
-		eye_bounds.y0 = view->fov[eye][3] / tangent;
-		eye_bounds.y1 = view->fov[eye][2] / tangent;
-		render_camera_build_frustum(&eye_camera, &eye_bounds, &vr_render.eyes[eye], TRUE);
-		vr_render.eye_positions[eye] = eye_camera.position;
-		render_camera_build_frustum(camera, &eye_bounds, &vr_render.eyes_at_centre[eye], TRUE);
-	}
-	{
-		/* the centre view has the game's viewport (480 lines) over the
-		union's height (up - down, in tangents); an eye has its image's
-		height over its own */
-		int eye_width = 0, eye_height = 0;
-		real eye_span = MAX(view->fov[0][2] - view->fov[0][3], view->fov[1][2] - view->fov[1][3]);
-		real viewport_height = (real)(camera->viewport_bounds.y1 - camera->viewport_bounds.y0);
-
-		halo_vr_eye_size(&eye_width, &eye_height);
-		vr_render.level_of_detail_scale = eye_height > 0 && eye_span > 0.0f && viewport_height > 0.0f ?
-			((real)eye_height / eye_span) / (viewport_height / (up - down)) : 1.0f;
-	}
-	vr_render.infinite = FALSE;
-	vr_render.projection_valid = FALSE;
-	vr_render.active = TRUE;
+	camera_frusta(camera, rasterizer_camera);
 	listener_log(camera, &game_eye, &game_forward);
 	vr_render.listener_placed = FALSE;
 	return TRUE;
 }
+
+/* Keep the one visual camera update, but rebase its head pose after loading.
+The camera's seat/death offsets and the game's original eye remain unchanged. */
+void vr_render_camera_refresh(struct render_camera *camera, struct render_camera *rasterizer_camera)
+{
+	struct halo_vr_view before = vr_render.view;
+	struct render_camera old_camera = *camera;
+	boolean refreshed;
+	real_vector3d old_forward, old_up, old_left, new_forward, new_up, new_left;
+	real_vector3d old_position, new_position, directions[2];
+	real yaw = vr_render.base_yaw, pitch = vr_render.listener_pitch;
+	short direction;
+
+	refreshed = halo_vr_refresh_tracking(&vr_render.view);
+	if (!refreshed)
+		goto headwall;
+	/* An unchanged pose needs no extra floating-point round trip. */
+	if (!memcmp(before.head_forward, vr_render.view.head_forward, sizeof(before.head_forward)) &&
+		!memcmp(before.head_up, vr_render.view.head_up, sizeof(before.head_up)) &&
+		!memcmp(before.head_position, vr_render.view.head_position, sizeof(before.head_position)) &&
+		!memcmp(before.eye_offset, vr_render.view.eye_offset, sizeof(before.eye_offset)) &&
+		!memcmp(before.fov, vr_render.view.fov, sizeof(before.fov)))
+		goto headwall;
+	view_rotate(yaw, pitch, before.head_forward, &old_forward);
+	view_rotate(yaw, pitch, before.head_up, &old_up);
+	view_rotate(yaw, pitch, vr_render.view.head_forward, &new_forward);
+	view_rotate(yaw, pitch, vr_render.view.head_up, &new_up);
+	cross_product3d(&old_up, &old_forward, &old_left);
+	cross_product3d(&new_up, &new_forward, &new_left);
+	directions[0] = camera->forward;
+	directions[1] = camera->up;
+	for (direction = 0; direction < 2; direction++)
+	{
+		real along = dot_product3d(&directions[direction], &old_forward);
+		real left = dot_product3d(&directions[direction], &old_left);
+		real up = dot_product3d(&directions[direction], &old_up);
+		directions[direction].i = along * new_forward.i + left * new_left.i + up * new_up.i;
+		directions[direction].j = along * new_forward.j + left * new_left.j + up * new_up.j;
+		directions[direction].k = along * new_forward.k + left * new_left.k + up * new_up.k;
+	}
+	camera->forward = directions[0];
+	camera->up = directions[1];
+	view_rotate(yaw, pitch, before.head_position, &old_position);
+	view_rotate(yaw, pitch, vr_render.view.head_position, &new_position);
+	camera->position.x += (new_position.i - old_position.i) * before.world_units_per_metre;
+	camera->position.y += (new_position.j - old_position.j) * before.world_units_per_metre;
+	camera->position.z += (new_position.k - old_position.k) * before.world_units_per_metre;
+	vr_render.head_position.x += (new_position.i - old_position.i) * before.world_units_per_metre;
+	vr_render.head_position.y += (new_position.j - old_position.j) * before.world_units_per_metre;
+	vr_render.head_position.z += (new_position.k - old_position.k) * before.world_units_per_metre;
+	vr_render.crouch_head_drop = vr_render.crouch_blended * new_position.k * before.world_units_per_metre;
+	preparation_headwall.camera.position = vr_render.head_position;
+	preparation_headwall.camera.forward = new_forward;
+	preparation_headwall.camera.up = new_up;
+	camera_frusta(camera, rasterizer_camera);
+headwall:
+	if (halo_load_trace_enabled())
+	{
+		char detail[768];
+
+		snprintf(detail, sizeof(detail),
+			"valid=%d old_position=%.9g,%.9g,%.9g new_position=%.9g,%.9g,%.9g old_forward=%.9g,%.9g,%.9g new_forward=%.9g,%.9g,%.9g",
+			refreshed, old_camera.position.x, old_camera.position.y, old_camera.position.z,
+			camera->position.x, camera->position.y, camera->position.z,
+			old_camera.forward.i, old_camera.forward.j, old_camera.forward.k,
+			camera->forward.i, camera->forward.j, camera->forward.k);
+		halo_load_trace("loading.camera.refresh", detail);
+	}
+	/* One collision/fade evaluation, after the first picture's pose is fresh. */
+	if (preparation_headwall.pending)
+	{
+		preparation_headwall.pending = FALSE;
+		vr_headwall_update(preparation_headwall.playing, &preparation_headwall.eye, &preparation_headwall.camera.position,
+			&preparation_headwall.camera.forward, &preparation_headwall.camera.up,
+			preparation_headwall.camera.z_near, before.world_units_per_metre, before.seconds);
+	}
+}
+
 
 /* a view's yaw (left), pitch (up) and roll (right) in degrees, for the logs */
 static void view_angles(real_vector3d const *forward, real_vector3d const *up, real angles[3])

@@ -161,7 +161,8 @@ boolean render_weather_particle_systems_enabled = TRUE;
 #ifdef HALO_VR
 /* the VR mode (port/linux/game/vr_render.c): the 3D view drawn into both
 eyes, without the HUD and menus, which are drawn into their own layer */
-boolean vr_render_camera(struct render_camera *camera, struct render_camera *rasterizer_camera);
+boolean vr_render_camera(struct render_camera *camera, struct render_camera *rasterizer_camera, boolean preparing); /* port: defer headwall until preparation ends */
+void vr_render_camera_refresh(struct render_camera *camera, struct render_camera *rasterizer_camera); /* port: fresh culling after preparation */
 void vr_render_frustum_bounds(real_rectangle2d *bounds);
 void vr_render_end(void);
 boolean vr_render_hud_camera(struct render_camera *camera);
@@ -850,12 +851,12 @@ static void render_vr_player_frame(
 	struct render_window *window)
 {
 	struct render_window eye_window = *window;
+	boolean preparing = render_enumerate_pending(FALSE) ||
+		(halo_vr_scope_size() > 0 && render_enumerate_pending(TRUE)); /* port: prepare all view formats together */
 
-	if (vr_render_camera(&eye_window.render_camera, &eye_window.rasterizer_camera))
+	if (vr_render_camera(&eye_window.render_camera, &eye_window.rasterizer_camera, preparing))
 	{
 		struct render_window scope_window = *window;
-		boolean preparing = render_enumerate_pending(FALSE) ||
-			(halo_vr_scope_size() > 0 && render_enumerate_pending(TRUE)); /* port: prepare all view formats together */
 
 		vr_cabin_display_frame();
 		render_preparing_frame = preparing; /* port: enumeration must not acquire a real gameplay frame */
@@ -887,6 +888,9 @@ static void render_vr_player_frame(
 			vr_render_prepare_hud(FALSE);
 		}
 		render_preparing_frame = FALSE;
+		/* port: preparation may span head motion beyond the late-latch culling margin. */
+		if (preparing)
+			vr_render_camera_refresh(&eye_window.render_camera, &eye_window.rasterizer_camera);
 		halo_loading_ready(); /* port: all formats are ready before any real scope or eye draw */
 		/* (none with the head in a wall: the scope, at the eye or the hand,
 		would see through it as the faded eyes do not:
