@@ -674,6 +674,34 @@ struct replacement_entry
 
 static struct replacement_entry *replacement_buckets[REPLACEMENT_BUCKET_COUNT];
 
+void xgpu_texture_cache_begin_frame(void)
+{
+	unsigned long changed = hud_hires_settings_changed();
+	unsigned long index;
+
+	if (!changed)
+		return;
+	for (index = 0; index < REPLACEMENT_BUCKET_COUNT; index++)
+	{
+		struct replacement_entry *entry;
+
+		for (entry = replacement_buckets[index]; entry; entry = entry->next)
+		{
+			struct xgpu_texture_description description;
+			unsigned long address = (unsigned long)PLATFORM_PHYSICAL_TO_VIRTUAL(entry->data);
+
+			xgpu_texture_describe(entry->format_word, entry->size_word, &description);
+			if (hud_hires_bitmap_affected(address, (long)description.width, (long)description.height, changed))
+			{
+				/* Find the replacement again even when its pixels have not
+				changed. Keep the images used by frames still in flight. */
+				entry->generation = 0;
+				entry->watched_serial = 0;
+			}
+		}
+	}
+}
+
 static long replacement_override(const DWORD *resource, const struct xgpu_texture_description *description)
 {
 	DWORD data = resource[1], format_word = resource[3], size_word = resource[4];

@@ -1489,6 +1489,7 @@ void xgpu_backend_frame_end(void)
 #ifndef XGPU_STREAM_TEST
 	/* (the deleted images' pixels freed once no frame in flight reads them) */
 	xgpu_images_frame_end();
+	xgpu_texture_cache_begin_frame();
 #endif
 #if !defined(HALO_METAL) && !defined(XGPU_STREAM_TEST)
 	/* (the frames paced as the OpenGL backend's present paces them,
