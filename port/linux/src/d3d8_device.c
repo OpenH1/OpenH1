@@ -39,6 +39,7 @@ Conventions carried over from the Xbox:
 
 #include <math.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -546,7 +547,7 @@ static struct
 	BOOL active, duplicate, trackable;
 	struct preparation_key key;
 	struct preparation_key *entries[PREPARATION_BUCKETS];
-	unsigned long hashes[PREPARATION_BUCKETS];
+	uint32_t hashes[PREPARATION_BUCKETS];
 	unsigned long draws, duplicates;
 	unsigned long sky;
 	unsigned long loaded_bytes, budget;
@@ -628,12 +629,44 @@ static void preparation_clear(void)
 	preparation.draws = preparation.duplicates = 0;
 }
 
+/* Independent word chains avoid a serial multiply for every key word.
+The caller still compares the complete key to establish equality. */
+static uint32_t preparation_hash(const unsigned char *bytes, unsigned long size)
+{
+	uint32_t a = 2166136261U, b = 2166136261U + 1U;
+	uint32_t c = 2166136261U + 2U, d = 2166136261U + 3U;
+	uint32_t word, hash;
+	unsigned long index;
+
+	for (index = 0; size - index >= 16; index += 16)
+	{
+		memcpy(&word, bytes + index, 4);
+		a = (a ^ word) * 16777619U;
+		memcpy(&word, bytes + index + 4, 4);
+		b = (b ^ word) * 16777619U;
+		memcpy(&word, bytes + index + 8, 4);
+		c = (c ^ word) * 16777619U;
+		memcpy(&word, bytes + index + 12, 4);
+		d = (d ^ word) * 16777619U;
+	}
+	hash = a ^ ((b << 7) | (b >> 25)) ^ ((c << 13) | (c >> 19)) ^ ((d << 19) | (d >> 13));
+	for (; size - index >= 4; index += 4)
+	{
+		memcpy(&word, bytes + index, 4);
+		hash = (hash ^ word) * 16777619U;
+	}
+	for (; index < size; index++)
+		hash = (hash ^ bytes[index]) * 16777619U;
+	return hash;
+}
+
 static BOOL preparation_seen(const struct xgpu_pipeline_key *pipeline,
 	const struct xgpu_dynamic_state *dynamic, BOOL immediate, unsigned long primitive)
 {
 	struct preparation_key *key = &preparation.key;
 	const unsigned char *bytes = (const unsigned char *)key;
-	unsigned long index, hash = 2166136261UL, bucket, word;
+	unsigned long index, bucket;
+	uint32_t hash;
 
 	if (!preparation.active || !preparation.trackable)
 		return FALSE;
@@ -667,14 +700,8 @@ static BOOL preparation_seen(const struct xgpu_pipeline_key *pipeline,
 				key->present |= 1UL << index;
 		}
 	}
-	/* Whole words keep hashing cheaper than the work being avoided. The
-	final mix folds high address and state bits into the bucket number;
-	the full key comparison, not this hash, establishes equality. */
-	for (index = 0; index < sizeof(*key); index += sizeof(word))
-	{
-		memcpy(&word, bytes + index, sizeof(word));
-		hash = (hash ^ word) * 16777619UL;
-	}
+	/* The final mix folds high address and state bits into the bucket. */
+	hash = preparation_hash(bytes, sizeof(*key));
 	hash ^= hash >> 16;
 	hash *= 0x85ebca6bUL;
 	hash ^= hash >> 13;

@@ -190,6 +190,7 @@ def test_preparation_cache_compares_layout_resources_and_context(tmp_path):
     code = text[text.index("#define PREPARATION_BUCKETS"):text.index("/* the visibility tests are counted")]
     source = r'''
 #include <assert.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -247,6 +248,11 @@ int main(void)
     assert(consumed == 1 && checkpointed == 1);
     assert(!preparation_seen(&pipeline, &dynamic, FALSE, 4));
     assert(preparation_seen(&pipeline, &dynamic, FALSE, 4));
+    /* Force equal stored hash but unequal bytes; never accept a hash alone. */
+    for (index = 0; index < PREPARATION_BUCKETS; index++)
+        if (preparation.entries[index]) preparation.entries[index]->pipeline.state[1]++;
+    assert(!preparation_seen(&pipeline, &dynamic, FALSE, 4));
+    assert(preparation_seen(&pipeline, &dynamic, FALSE, 4));
     declaration.elements[0].format++;
     assert(!preparation_seen(&pipeline, &dynamic, FALSE, 4));
     device.streams[0].data = 16;
@@ -284,7 +290,8 @@ int main(void)
     return 0;
 }
 '''
-    subprocess.run([str(build(tmp_path, source))], check=True, timeout=15)
+    binary = build(tmp_path, source)
+    subprocess.run([str(binary)], check=True, timeout=15)
 
 
 def test_pipeline_worker_presents_during_compile_and_joins(tmp_path):
@@ -777,3 +784,43 @@ int main(void) {
     assert broken != source
     result = subprocess.run([str(build(tmp_path, broken))], capture_output=True)
     assert result.returncode != 0
+
+
+def test_preparation_hash_bounds_and_unaligned_input(tmp_path):
+    text = (ROOT / "port/linux/src/d3d8_device.c").read_text()
+    helper = text[text.index("static uint32_t preparation_hash("):text.index("static BOOL preparation_seen(")]
+    source = r'''
+#include <assert.h>
+#include <stdint.h>
+#include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
+''' + helper + r'''
+int main(void)
+{
+    long page = sysconf(_SC_PAGESIZE);
+    unsigned char *memory = mmap(0, page * 2, PROT_READ | PROT_WRITE,
+        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    unsigned char copy[80];
+    unsigned long size, i;
+    uint32_t expected;
+    assert(memory != MAP_FAILED);
+    assert(mprotect(memory + page, page, PROT_NONE) == 0);
+    for (size = 0; size <= 67; size++)
+    {
+        unsigned char *bytes = memory + page - size;
+        for (i = 0; i < size; i++) bytes[i] = (unsigned char)(i * 31 + 7);
+        memcpy(copy + 1, bytes, size);
+        expected = preparation_hash(copy + 1, size);
+        assert(preparation_hash(bytes, size) == expected);
+        if (size)
+        {
+            copy[size] ^= 1;
+            assert(preparation_hash(copy + 1, size) != expected);
+        }
+    }
+    assert(munmap(memory, page * 2) == 0);
+    return 0;
+}
+'''
+    subprocess.run([str(build(tmp_path, source))], check=True, timeout=15)
