@@ -16,6 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
     ("host_vr_vulkan_test", None),
     ("host_vr_loading_test", None),
     ("host_vr_loading_test", "thread"),
+    ("host_vr_haptics_test", None),
+    ("host_vr_haptics_test", "thread"),
 ])
 def test_runtime_binding_and_image_ownership(tmp_path, name, sanitizer):
     if platform.system() != "Linux":

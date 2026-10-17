@@ -1351,6 +1351,45 @@ int host_vr_frame_begin(void)
 	return 1;
 }
 
+/* The guest input thread can send rumble while the host exits. Publish
+only a running session, and drain its last haptic call before ending or
+destroying it. The action and paths have the same session lifetime. */
+static struct
+{
+	pthread_mutex_t lock;
+	XrSession session;
+	XrAction action;
+	XrPath hands[2];
+} haptics = { .lock = PTHREAD_MUTEX_INITIALIZER };
+
+static void haptics_session_set(int running)
+{
+	pthread_mutex_lock(&haptics.lock);
+	haptics.session = running ? vr.session : XR_NULL_HANDLE;
+	if (running)
+	{
+		haptics.action = vr.actions[_action_haptic];
+		memcpy(haptics.hands, vr.hands, sizeof(haptics.hands));
+	}
+	pthread_mutex_unlock(&haptics.lock);
+}
+
+static void session_begin(void)
+{
+	XrSessionBeginInfo begin = { XR_TYPE_SESSION_BEGIN_INFO };
+
+	begin.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+	vr.running = check(xrBeginSession(vr.session, &begin), "xrBeginSession");
+	haptics_session_set(vr.running);
+}
+
+static void session_end(void)
+{
+	haptics_session_set(0);
+	xrEndSession(vr.session);
+	vr.running = 0;
+}
+
 static void events_poll(void)
 {
 	XrEventDataBuffer event = { XR_TYPE_EVENT_DATA_BUFFER };
@@ -1365,10 +1404,7 @@ static void events_poll(void)
 			host_logf(HOST_LOG_INFO, "vr: session state %d", (int)vr.state);
 			if (vr.state == XR_SESSION_STATE_READY)
 			{
-				XrSessionBeginInfo begin = { XR_TYPE_SESSION_BEGIN_INFO };
-
-				begin.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
-				vr.running = check(xrBeginSession(vr.session, &begin), "xrBeginSession");
+				session_begin();
 			}
 			else if (vr.state == XR_SESSION_STATE_STOPPING)
 			{
@@ -1380,8 +1416,7 @@ static void events_poll(void)
 						host_vr_frame_end(NULL);
 					loading.presenting = 0;
 				}
-				xrEndSession(vr.session);
-				vr.running = 0;
+				session_end();
 			}
 			else if (vr.state == XR_SESSION_STATE_EXITING || vr.state == XR_SESSION_STATE_LOSS_PENDING)
 			{
@@ -2094,14 +2129,19 @@ void host_vr_haptic(int hand, float amplitude, float seconds)
 	XrHapticActionInfo info = { XR_TYPE_HAPTIC_ACTION_INFO };
 	XrHapticVibration vibration = { XR_TYPE_HAPTIC_VIBRATION };
 
-	if (!vr.running || hand < 0 || hand > 1)
+	if (hand < 0 || hand > 1)
 		return;
-	info.action = vr.actions[_action_haptic];
-	info.subactionPath = vr.hands[hand];
-	vibration.amplitude = amplitude;
-	vibration.duration = (XrDuration)(seconds * 1e9f);
-	vibration.frequency = XR_FREQUENCY_UNSPECIFIED;
-	xrApplyHapticFeedback(vr.session, &info, (const XrHapticBaseHeader *)&vibration);
+	pthread_mutex_lock(&haptics.lock);
+	if (haptics.session)
+	{
+		info.action = haptics.action;
+		info.subactionPath = haptics.hands[hand];
+		vibration.amplitude = amplitude;
+		vibration.duration = (XrDuration)(seconds * 1e9f);
+		vibration.frequency = XR_FREQUENCY_UNSPECIFIED;
+		xrApplyHapticFeedback(haptics.session, &info, (const XrHapticBaseHeader *)&vibration);
+	}
+	pthread_mutex_unlock(&haptics.lock);
 }
 
 #ifdef HALO_VULKAN
@@ -2236,6 +2276,7 @@ void host_vr_vulkan_shutdown(void)
 {
 	int index;
 
+	haptics_session_set(0);
 	if (loading.active)
 		host_vr_loading_set(0);
 	if (vr.session && xrDestroySession)
