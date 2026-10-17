@@ -17,6 +17,7 @@ views and controllers, as before.
 #include "loading_presentation.h"
 
 void host_vr_loading_set(int active);
+int host_vr_loading_owned(void);
 int host_vr_loading_begin(const struct loading_presentation_frame *frame, struct vr_host_views *views);
 void host_vr_loading_end(const struct loading_presentation_frame *frame);
 

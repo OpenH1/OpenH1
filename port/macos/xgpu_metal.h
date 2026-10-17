@@ -86,6 +86,7 @@ enum
 };
 struct loading_presentation_frame;
 uint64_t host_metal_loading(void *context, const struct loading_presentation_frame *frame);
+int host_metal_loading_owned(void *context);
 
 #endif
 

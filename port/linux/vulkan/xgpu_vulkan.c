@@ -3210,6 +3210,11 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	return serial;
 }
 
+int xgpu_vulkan_loading_resources(int window)
+{
+	return vk.loading_image && (!window || (vk.surface && vk.swapchain));
+}
+
 struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presentation_frame *frame,
 	uint32_t width, uint32_t height, uint32_t format)
 {

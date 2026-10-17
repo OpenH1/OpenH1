@@ -29,6 +29,16 @@ static void loading_capture(const struct loading_presentation_frame *frame, stru
 	free(pixels);
 }
 
+int xgpu_vulkan_loading_owned(void *context)
+{
+	(void)context;
+#ifdef HALO_VR
+	if (host_vr_info())
+		return host_vr_loading_owned() && xgpu_vulkan_loading_resources(0);
+#endif
+	return xgpu_vulkan_loading_resources(1);
+}
+
 uint64_t xgpu_vulkan_loading(void *context, const struct loading_presentation_frame *frame)
 {
 	struct xgpu_vulkan_image *image;

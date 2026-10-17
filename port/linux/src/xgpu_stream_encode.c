@@ -1598,6 +1598,19 @@ void xgpu_backend_loading(int active)
 		synchronous();
 }
 
+int xgpu_backend_loading_owned(void)
+{
+	struct xgpu_stream_reply_record *record_body;
+
+	if (!stream.open)
+		return 0;
+	record_body = record(XGPU_STREAM_LOADING_OWNED, sizeof(*record_body));
+	record_body->reply = STREAM_ADDRESS(&stream.replies->value);
+	stream.replies->value = 0;
+	synchronous();
+	return stream.replies->value != 0;
+}
+
 double xgpu_backend_prepared(void)
 {
 	struct xgpu_stream_reply_record *record_body;

@@ -122,6 +122,8 @@ struct host_render_backend
 	void (*frame_end)(void *context);
 	/* Independent loading content; returns its refresh period in ns. */
 	uint64_t (*loading)(void *context, const struct loading_presentation_frame *frame);
+	/* Current ownership, independent of the callback's retry interval. */
+	int (*loading_owned)(void *context);
 
 	/* nonzero if the block and cells are made */
 	int (*dynamic_lights_prepare)(void *context);

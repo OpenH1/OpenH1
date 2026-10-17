@@ -1013,6 +1013,18 @@ static void stream_present(void *context, uint32_t back_buffer)
 	xgpu_backend_present(back_buffer);
 }
 
+static int stream_loading_owned(void *context)
+{
+	(void)context;
+	if (!gl.current || !gl.window)
+		return 0;
+#ifdef HALO_VR
+	if (host_vr_info())
+		return host_vr_loading_owned();
+#endif
+	return 1;
+}
+
 static uint64_t stream_loading(void *context, const struct loading_presentation_frame *frame)
 {
 	GLint draw_framebuffer, read_framebuffer, scissor[4];
@@ -1262,6 +1274,7 @@ const struct host_render_backend *host_gl_stream_backend(void)
 		.present = stream_present,
 		.frame_end = stream_frame_end,
 		.loading = stream_loading,
+		.loading_owned = stream_loading_owned,
 		.prepare = stream_prepare,
 		.prepared = stream_prepared,
 		.dynamic_lights_prepare = stream_dynamic_lights_prepare,

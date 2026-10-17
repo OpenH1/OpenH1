@@ -1730,6 +1730,18 @@ void host_vr_loading_set(int active)
 		loading_wait_request();
 }
 
+int host_vr_loading_owned(void)
+{
+	int owned;
+
+	pthread_mutex_lock(&render_thread.lock);
+	owned = render_thread.on && loading.active && !loading.ready && !loading.suspended &&
+		vr.running && vr.session && vr.swapchains[VR_SWAPCHAIN_HUD] &&
+		loading.waiter_started && !loading.waiter_failed && !loading.waiter_stop;
+	pthread_mutex_unlock(&render_thread.lock);
+	return owned;
+}
+
 int host_vr_loading_begin(const struct loading_presentation_frame *frame, struct vr_host_views *views)
 {
 	int index;

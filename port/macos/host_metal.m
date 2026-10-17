@@ -164,6 +164,18 @@ int host_metal_window_active(void)
 	return atomic_load(&presentation.active);
 }
 
+int host_metal_loading_owned(void *context)
+{
+	int owned;
+
+	(void)context;
+	pthread_mutex_lock(&presentation.lock);
+	owned = atomic_load(&presentation.active) && presentation.loading_pipeline &&
+		presentation.loading.active && !presentation.loading.ready;
+	pthread_mutex_unlock(&presentation.lock);
+	return owned;
+}
+
 uint64_t host_metal_loading(void *context, const struct loading_presentation_frame *frame)
 {
 	uint64_t serial;

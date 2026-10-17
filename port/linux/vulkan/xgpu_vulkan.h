@@ -454,6 +454,7 @@ struct loading_presentation_frame;
 struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presentation_frame *frame,
 	uint32_t width, uint32_t height, uint32_t format);
 void xgpu_vulkan_loading_present(struct xgpu_vulkan_image *image);
+int xgpu_vulkan_loading_resources(int window);
 
 /* statistics since the last call */
 struct xgpu_vulkan_statistics

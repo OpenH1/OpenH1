@@ -4713,6 +4713,16 @@ void xgpu_backend_visibility_frame(void)
 }
 
 #ifndef XGPU_GL_HOST
+int xgpu_backend_loading_owned(void)
+{
+#ifdef HALO_WEB
+	/* The browser overlay has no ownership acknowledgement yet. */
+	return 0;
+#else
+	return platform_loading_active() == 1;
+#endif
+}
+
 void xgpu_backend_loading(int phase)
 {
 	/* The loading context never reads the game's textures. Complete old

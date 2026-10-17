@@ -9,6 +9,7 @@ The port's functions that the game's sources call, declared for them.
 
 /* map-independent loading presentation (port/linux/src/sdl_platform.c) */
 void halo_loading_begin(void);
+int halo_loading_owned(void);
 void halo_loading_retire(void);
 void halo_loading_end(void);
 void halo_loading_ready(void);

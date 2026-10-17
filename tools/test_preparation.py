@@ -84,6 +84,7 @@ def test_loading_retirement_repeats_inside_one_epoch(tmp_path):
 #include <assert.h>
 static int platform_window = 1, loading_presentation_active;
 static int epochs, retired, borrowed, storage;
+static int xgpu_backend_loading_owned(void) { return 0; }
 static void halo_load_trace(const char *phase, const char *detail) {
     (void)phase; (void)detail;
 }

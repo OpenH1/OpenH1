@@ -1882,6 +1882,7 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.visibility_end = stream_visibility_end;
 		backend.present = stream_present;
 		backend.loading = xgpu_vulkan_loading;
+		backend.loading_owned = xgpu_vulkan_loading_owned;
 		backend.frame_end = stream_frame_end;
 		backend.prepare = stream_prepare;
 		backend.prepared = stream_prepared;

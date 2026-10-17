@@ -55,6 +55,11 @@ void halo_loading_begin(void)
 	}
 }
 
+int halo_loading_owned(void)
+{
+	return loading_presentation_active == 1 && xgpu_backend_loading_owned();
+}
+
 void halo_loading_retire(void)
 {
 	/* Loading may already be active while progress frames borrow map data. */
