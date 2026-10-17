@@ -73,6 +73,17 @@ The game's log is its output: the terminal on Linux, `halo.log` beside
 Limits: 256 mods, folder names of 63 bytes at most, 262144 files in all, 24
 folders deep under `tags`, and 64 maps in a mod's `maps`.
 
+## Existing loose sound files
+
+`audio.loose_sounds = true` (or `HALO_LOOSE_SOUNDS=1`) still loads sound
+files directly from the data root's `tags/` folder; no `mod.toml` is needed.
+These files take priority over mod packs. `loose_sounds_reload` reads them
+again; `loose_sounds false` reveals a mod pack's sound, or the map's sound
+when no mod replaces it. `loose_sounds true` enables them until the next map,
+which uses the setting again. `mods_enable false` disables mod packs while
+leaving loose sounds enabled. Both commands must be off to hear only the
+map's original sounds.
+
 ## The load order
 
 Every mod in the mods folder is on until you turn it off. The mods load in
@@ -137,7 +148,7 @@ At the console:
 | --- | --- |
 | `mods_list` | Lists the mods in the mods folder in their load order, and which are on, then how many of the map's string lists, bitmaps, sounds and models the mods play. |
 | `mods_reload` | Finds the mods again and reads their files again: a changed file is read again (one that now fails a check leaves what was played before), a new one is played, and the map's tag comes back for a file that is gone. If a sound changed, all sounds stop. It does nothing while `mods_enable false`. |
-| `mods_enable false` | Plays the map's own tags until `mods_enable true` or the next map. |
+| `mods_enable false` | Disables mod packs (loose sounds remain independent) until `mods_enable true` or the next map. |
 
 These commands work in any game, a client's too: they change nothing of the
 game.

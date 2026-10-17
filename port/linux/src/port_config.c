@@ -232,6 +232,13 @@ static const struct config_setting config_settings[] =
 		"The microphone voice chat listens to: a device's name as Settings >\n"
 		"Audio lists it, or \"default\" for the system's (also if it is not found)." },
 
+	{ "audio.loose_sounds", _config_boolean, "false", "HALO_LOOSE_SOUNDS", _environment_value, _platform_all,
+		"For those making sounds: play each of a map's sounds that has a Halo PC\n"
+		"sound tag file of its name under the data root's tags folder\n"
+		"(tags/sound/.../name.sound) from that file. At the console,\n"
+		"loose_sounds_reload reads the files again and loose_sounds false gives\n"
+		"the mod packs' or map's sounds back. Loose files take priority over mods." },
+
 #ifdef HALO_VR
 	/* the VR build's (configure.py --vr; vr.c) */
 	{ "vr.enabled", _config_boolean, "true", "HALO_VR", _environment_value, _platform_desktop,

@@ -59,6 +59,11 @@ void mods_tags_unloaded(void);
 void mods_reload(void);
 void mods_enable(boolean enabled);
 void mods_list(void);
+/* Existing sound-authoring commands and audio.loose_sounds. Loose files
+take priority over mod packs and stay enabled when mods_enable is false. */
+void loose_sounds_reload(void);
+void loose_sounds_enable(boolean enabled);
+boolean loose_sounds_enabled(void);
 /* the Mods menu's (menu_functions.c): the mods played again as it left them */
 void mods_apply(void);
 /* for each group's: whether its update is the console's, to say what it did
@@ -95,6 +100,7 @@ boolean mods_map_loaded(void);
 /* every one of a group's: the map's tags played from the mods' files (or,
 remove_all, none); as the map loads (at_load) nothing plays yet, and
 nothing is said at the console. How many of its tags the mods play */
+/* Loose sounds remain independent of remove_all (which disables packs). */
 long mod_sounds_update(boolean remove_all, boolean at_load);
 void mod_sounds_tags_unloaded(void);
 /* (sound_cache_start_loading_sound) whether a permutation is a mod's,

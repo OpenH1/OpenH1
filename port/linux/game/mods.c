@@ -38,6 +38,7 @@ back until mods_enable true, or until the map changes.
 
 /* the game's (port) */
 char *tag_get_name(long tag_index);
+int config_boolean(char const *key);
 
 #ifdef HALO_RENDER_STREAM
 /* the host consumes queued draws before their textures or models change */
@@ -61,6 +62,7 @@ static struct
 {
 	boolean map_loaded;
 	boolean enabled;
+	boolean loose_sounds_enabled;
 	char map_name[64];
 	unsigned long kept_bytes;
 	/* how many times the mods had been found when they last were here
@@ -254,6 +256,7 @@ void mods_tags_loaded(
 		mods_let_go(FALSE);
 	mods_globals.map_loaded = TRUE;
 	mods_globals.enabled = TRUE;
+	mods_globals.loose_sounds_enabled = config_boolean("audio.loose_sounds") != 0;
 	csstrncpy(mods_globals.map_name, map_name ? map_name : "", sizeof(mods_globals.map_name) - 1);
 	mods_globals.map_name[sizeof(mods_globals.map_name) - 1] = 0;
 	/* (found again, unless the menus of this map just found them: the
@@ -261,7 +264,7 @@ void mods_tags_loaded(
 	if (port_mods_scans() == mods_globals.scans)
 		port_mods_scan();
 	mods_globals.scans = port_mods_scans();
-	if (port_mods_played())
+	if (port_mods_played() || mods_globals.loose_sounds_enabled)
 	{
 		mods_update(FALSE, TRUE);
 	}
@@ -283,6 +286,7 @@ static void mods_let_go(
 	mod_strings_tags_unloaded();
 	mods_globals.map_loaded = FALSE;
 	mods_globals.enabled = FALSE;
+	mods_globals.loose_sounds_enabled = FALSE;
 	mods_globals.map_name[0] = 0;
 	mods_globals.kept_bytes = 0;
 	mods_globals.string_count = 0;
@@ -307,6 +311,45 @@ boolean mods_say(
 	void)
 {
 	return mods_globals.say;
+}
+
+/* The data root's tags folder remains independent of mod packs. Both use
+the same sound decoder and override table, so toggling either restores the
+map's definition before applying the other source. */
+boolean loose_sounds_enabled(
+	void)
+{
+	return mods_globals.loose_sounds_enabled;
+}
+
+void loose_sounds_reload(
+	void)
+{
+	if (!mods_globals.map_loaded)
+		return;
+	if (!mods_globals.loose_sounds_enabled)
+	{
+		console_warning("loose sounds are off (loose_sounds true, or audio.loose_sounds in config.toml)");
+		return;
+	}
+	mods_globals.say = TRUE;
+	mods_globals.sound_count = mod_sounds_update(!mods_globals.enabled, FALSE);
+	mods_globals.say = FALSE;
+
+	return;
+}
+
+void loose_sounds_enable(
+	boolean enabled)
+{
+	if (!mods_globals.map_loaded || enabled == mods_globals.loose_sounds_enabled)
+		return;
+	mods_globals.loose_sounds_enabled = enabled;
+	mods_globals.say = TRUE;
+	mods_globals.sound_count = mod_sounds_update(!mods_globals.enabled, FALSE);
+	mods_globals.say = FALSE;
+
+	return;
 }
 
 /* (the script function mods_reload) */

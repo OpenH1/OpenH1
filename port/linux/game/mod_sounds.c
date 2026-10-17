@@ -6,6 +6,10 @@ tag file of (tags\sound\...\name.sound) is played from that file instead of
 the map, and mods_reload, typed at the console, reads them again: a changed
 file is taken, a removed one gives the map's sound back.
 
+The existing audio.loose_sounds setting and console commands also read
+the data root's tags folder, with priority over mod packs when enabled.
+The same decoder, cache and override table serve both sources.
+
 A tag file is Halo PC's (big-endian, version 4): the sound, the path of its
 promotion sound, its pitch ranges, then each range's permutations, each
 followed by its samples, mouth data and subtitle data. Every count, size and
@@ -61,6 +65,7 @@ char *tag_get_name(long tag_index);
 /* ---------- constants */
 
 /* a sound tag's file: tags\<its name>.sound */
+#define TAG_FILE_FOLDER "d:\\tags\\"
 #define TAG_FILE_EXTENSION ".sound"
 
 /* the sizes of a tag file's sound, pitch range and permutation
@@ -151,6 +156,76 @@ static struct
 } mod_sounds_globals;
 
 /* ---------- private code */
+
+/* the tag file of the sound tag `name`, in the data root's tags folder (an
+Xbox path, which the game's fopen finds there: port/linux/src/xbox_files.c);
+FALSE when the name could reach outside it */
+static boolean tag_file_path(
+	char const *name,
+	char *path,
+	size_t path_size)
+{
+	char const *character;
+
+	if (!name || !*name || strlen(name) + sizeof(TAG_FILE_FOLDER TAG_FILE_EXTENSION) > path_size)
+	{
+		return FALSE;
+	}
+	/* (a name is relative and of the folder: no drive, no parent, no
+	absolute or empty part) */
+	for (character = name; *character; character++)
+	{
+		boolean separator = *character == '\\' || *character == '/';
+
+		if (*character == ':' ||
+			(separator && (character == name || !character[1] || character[1] == '\\' || character[1] == '/')) ||
+			(*character == '.' && character[1] == '.' &&
+				(character == name || character[-1] == '\\' || character[-1] == '/')))
+		{
+			return FALSE;
+		}
+	}
+	sprintf(path, "%s%s%s", TAG_FILE_FOLDER, name, TAG_FILE_EXTENSION);
+
+	return TRUE;
+}
+
+/* the file at `path` in a buffer of the game's allocator, or NULL (no file:
+*missing) */
+static byte *file_read(
+	char const *path,
+	unsigned long *size,
+	boolean *missing)
+{
+	FILE *file = fopen(path, "rb");
+	byte *data = NULL;
+	long length;
+
+	*missing = file == NULL;
+	if (!file)
+	{
+		return NULL;
+	}
+	if (fseek(file, 0, SEEK_END) == 0 &&
+		(length = ftell(file)) >= MOD_TAG_FILE_HEADER_SIZE + SOUND_SIZE &&
+		(unsigned long)length <= MAXIMUM_MOD_TAG_FILE_SIZE &&
+		fseek(file, 0, SEEK_SET) == 0 &&
+		(data = malloc((size_t)length)) != NULL)
+	{
+		if (fread(data, 1, (size_t)length, file) == (size_t)length)
+		{
+			*size = (unsigned long)length;
+		}
+		else
+		{
+			free(data);
+			data = NULL;
+		}
+	}
+	fclose(file);
+
+	return data;
+}
 
 static void mod_sound_free(
 	struct mod_sound *sound)
@@ -786,22 +861,34 @@ long mod_sounds_update(
 		byte *file = NULL;
 		unsigned long file_size = 0;
 		char const *reason = NULL;
+		char path[512];
+		char const *file_path = path;
+		char const *file_owner = "the data root's tags folder";
+		boolean missing = TRUE;
 
 		if (!override)
 		{
 			continue;
 		}
-		if (file_index != NONE)
+		if (loose_sounds_enabled() && tag_file_path(tag_get_name(tag_index), path, sizeof(path)))
 		{
+			file = file_read(path, &file_size, &missing);
+			if (!missing && !file)
+				reason = "it cannot be read or is not the size of a sound tag file";
+		}
+		if (missing && file_index != NONE)
+		{
+			file_path = port_mods_file_path(file_index);
+			file_owner = port_mods_file_mod(file_index);
 			file = mods_tag_file_read(file_index, &file_size, &reason);
-			if (!file)
-			{
-				error(_error_silent, "mods: %s left out: %s", port_mods_file_path(file_index), reason);
-				console_warning("mods: %s.sound of %s left out: %s", tag_get_name(tag_index),
-					port_mods_file_mod(file_index), reason);
-				refused_count++;
-				continue;
-			}
+		}
+		if (!file && reason)
+		{
+			error(_error_silent, "mods: %s left out: %s", file_path, reason);
+			console_warning("mods: %s.sound of %s left out: %s", tag_get_name(tag_index),
+				file_owner, reason);
+			refused_count++;
+			continue;
 		}
 		if (file && override->sound && override->sound->file_size == file_size &&
 			!memcmp(override->sound->file, file, file_size))
@@ -831,9 +918,9 @@ long mod_sounds_update(
 			if (!sound)
 			{
 				/* (one refused leaves what was played before) */
-				error(_error_silent, "mods: %s left out: %s", port_mods_file_path(file_index), reason);
+				error(_error_silent, "mods: %s left out: %s", file_path, reason);
 				console_warning("mods: %s.sound of %s left out: %s", tag_get_name(tag_index),
-					port_mods_file_mod(file_index), reason);
+					file_owner, reason);
 				free(file);
 				refused_count++;
 				continue;

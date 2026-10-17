@@ -3382,7 +3382,7 @@ typedef void (*hs_token_enumerator)(
 
 struct hs_function_table_storage
 {
-	struct hs_function_definition const *functions[418 + 5];
+	struct hs_function_definition const *functions[418 + 7];
 	struct profile_section profile;
 	hs_token_enumerator token_enumerators[18];
 };
@@ -11702,6 +11702,41 @@ static struct hs_function_definition const sv_end_game_definition=
 	0,
 };
 
+/* port: the sounds of tag files played over the map's, for those making
+them (audio.loose_sounds: port/linux/game/mod_sounds.c), at the console */
+void loose_sounds_reload(void);
+void loose_sounds_enable(boolean enabled);
+
+HS_EVALUATE_NO_ARGUMENTS(hs_loose_sounds_reload_evaluate, loose_sounds_reload)
+HS_EVALUATE_VOID_BOOLEAN(hs_loose_sounds_evaluate, loose_sounds_enable)
+
+static struct hs_function_definition const loose_sounds_reload_definition=
+{
+	_hs_type_void,
+	0,
+	"loose_sounds_reload",
+	hs_macro_function_parse,
+	hs_loose_sounds_reload_evaluate,
+	"reads the sound tag files under the data root's tags folder again (all sounds stop if any changed).",
+	NULL,
+	0,
+};
+
+static struct hs_function_definition_with_1_parameter const loose_sounds_definition=
+{
+	{
+		_hs_type_void,
+		0,
+		"loose_sounds",
+		hs_macro_function_parse,
+		hs_loose_sounds_evaluate,
+		"plays the map's sounds from the tags folder's sound tag files, or (false) from mod packs or the map, until the map changes.",
+		NULL,
+		1,
+		{ _hs_type_boolean },
+	},
+};
+
 /* port: the mods' tags played over the map's on this machine
 (the main menu's Mods: port/linux/game/mods.c), at the console */
 void mods_reload(void);
@@ -11751,7 +11786,7 @@ static struct hs_function_definition const mods_list_definition=
 	0,
 };
 
-long const hs_function_table_count= 418 + 5;
+long const hs_function_table_count= 418 + 7;
 
 struct hs_enum_definition const hs_enum_table[]=
 {
@@ -12185,6 +12220,8 @@ struct hs_function_table_storage hs_function_table=
 		&xbox_set_machine_name_definition.definition,
 		&sv_say_definition.definition,
 		&sv_end_game_definition,
+		&loose_sounds_reload_definition,
+		&loose_sounds_definition.definition,
 		&mods_reload_definition,
 		&mods_enable_definition.definition,
 		&mods_list_definition,
@@ -12689,6 +12726,10 @@ static boolean const hs_function_allowed_in_maps[]=
 	/* Halo PC's, for Custom Edition maps */
 	TRUE, /* sv_say */
 	TRUE, /* sv_end_game: the host's */
+
+	/* port: keep the existing sound-authoring command indices */
+	FALSE, /* loose_sounds_reload */
+	FALSE, /* loose_sounds */
 
 	/* the port's, for this machine's mods */
 	FALSE, /* mods_reload */
