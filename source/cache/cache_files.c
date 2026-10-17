@@ -1182,6 +1182,7 @@ long scenario_tags_load(
 	void *tag_cache_base_address;
 	boolean read_complete;
 
+	halo_load_trace("tags.begin", scenario_name); /* port: loading measurement */
 	stripped_scenario_name = tag_name_strip_path(scenario_name);
 	result = NONE;
 	texture_cache_open();
@@ -1216,6 +1217,7 @@ long scenario_tags_load(
 			result = cache_file_globals.tag_header->scenario_tag_index;
 		}
 
+		halo_load_trace("tags.end", scenario_name); /* port: loading measurement */
 		return result;
 	}
 	if (cache_file_open(stripped_scenario_name, &cache_file_globals.header))
@@ -1223,6 +1225,7 @@ long scenario_tags_load(
 		tag_cache_base_address = physical_memory_get_tag_cache_base_address();
 		if (cache_file_header_verify(&cache_file_globals.header, scenario_name, TRUE))
 		{
+			halo_load_trace("tags.read.begin", scenario_name); /* port: loading measurement */
 			csmemset(tag_cache_base_address, 0xCD, 0x01600000);
 			cache_file_read(
 				NONE,
@@ -1236,6 +1239,7 @@ long scenario_tags_load(
 				SwitchToThread();
 			}
 
+			halo_load_trace("tags.read.end", scenario_name); /* port: loading measurement */
 			/* port: tags that did not all read, or whose header cannot be
 			trusted, are not loaded: the map is refused, as one whose header
 			is wrong is, and closed for the next to open */
@@ -1270,6 +1274,7 @@ long scenario_tags_load(
 				return NONE;
 			}
 
+			halo_load_trace("tags.validate.end", scenario_name); /* port: loading measurement */
 			cache_file_globals.tag_header = tag_cache_base_address;
 			match_vassert(
 				"c:\\halo\\SOURCE\\cache\\cache_files.c",
@@ -1331,6 +1336,7 @@ long scenario_tags_load(
 		}
 	}
 
+	halo_load_trace("tags.end", scenario_name); /* port: loading measurement */
 	return result;
 }
 
@@ -1364,6 +1370,7 @@ boolean scenario_structure_bsp_load(
 		return FALSE;
 	}
 
+	halo_load_trace("bsp.read.begin", NULL); /* port: loading measurement */
 	tag_cache_base_address = physical_memory_get_tag_cache_base_address();
 	if (!custom_edition_cache_tags_loaded())
 	{
@@ -1426,6 +1433,7 @@ boolean scenario_structure_bsp_load(
 		}
 	}
 
+	halo_load_trace("bsp.read.end", NULL); /* port: loading measurement */
 	/* port: and checked against its schema, as the map's tags were
 	(port/linux/game/tag_validate.c; a Custom Edition map's too) */
 	if (!tag_validate_structure_bsp(
@@ -1435,6 +1443,7 @@ boolean scenario_structure_bsp_load(
 	{
 		return FALSE;
 	}
+	halo_load_trace("bsp.validate.end", NULL); /* port: loading measurement */
 	/* port: a Halo Custom Edition bsp has no Xbox vertex buffers: its
 	materials' vertices, as checked, are compressed and given buffers
 	(port/linux/game/custom_edition_geometry.c) */
@@ -1458,6 +1467,7 @@ boolean scenario_structure_bsp_load(
 		tag_instance->group_tag==STRUCTURE_BSP_TAG);
 	tag_instance->base_address = cache_file_globals.structure_bsp_header->base_address;
 
+	halo_load_trace("bsp.end", NULL); /* port: loading measurement */
 	return TRUE;
 }
 

@@ -37,6 +37,7 @@ the Vulkan binding with Monado on Linux.
 #define XR_NO_PROTOTYPES
 
 #include "host.h"
+#include "host_load_trace.h"
 #include "host_render_stream.h"
 #include "host_vr_render.h"
 #include "vr_host.h"
@@ -1376,8 +1377,11 @@ int host_vr_frame_wait(struct vr_host_views *views)
 		return 1;
 	vr.frame.type = XR_TYPE_FRAME_STATE;
 	vr.frame.next = NULL;
+	host_load_trace("xr.wait.begin", "runtime");
 	if (!check(xrWaitFrame(vr.session, &wait, &vr.frame), "xrWaitFrame"))
 		return 0;
+	host_load_trace("xr.wait.end", "predicted=%lld period=%lld render=%d",
+		(long long)vr.frame.predictedDisplayTime, (long long)vr.frame.predictedDisplayPeriod, vr.frame.shouldRender);
 	if (render_thread.on)
 	{
 		/* (begun by the render thread as it draws the frame:
@@ -1490,9 +1494,16 @@ int host_vr_locate(struct vr_host_views *views)
 /* (the render thread: the frame it draws is the one it began) */
 int host_vr_locate_late(struct vr_host_views *views)
 {
+	int valid;
+
 	if (!render_thread.on || !host_vr_frame_begin())
 		return 0;
-	return locate_at(render_thread.begun.predictedDisplayTime, views);
+	valid = locate_at(render_thread.begun.predictedDisplayTime, views);
+	host_load_trace("xr.pose.late", "valid=%d predicted=%lld orientation=%.6f,%.6f,%.6f,%.6f", valid,
+		(long long)render_thread.begun.predictedDisplayTime, valid ? views->eye[0].orientation[0] : 0.0f,
+		valid ? views->eye[0].orientation[1] : 0.0f, valid ? views->eye[0].orientation[2] : 0.0f,
+		valid ? views->eye[0].orientation[3] : 0.0f);
+	return valid;
 }
 
 static int button(int action)
@@ -1806,7 +1817,9 @@ void host_vr_frame_end(const struct vr_host_layers *layers)
 	end.layers = submitted;
 	if (timing.enabled > 0)
 		timing.end -= seconds_now();
+	host_load_trace("xr.submit.begin", "predicted=%lld layers=%u", (long long)end.displayTime, count);
 	check(xrEndFrame(vr.session, &end), "xrEndFrame");
+	host_load_trace("xr.submit.end", "predicted=%lld layers=%u", (long long)end.displayTime, count);
 	if (timing.enabled > 0)
 	{
 		timing.end += seconds_now();

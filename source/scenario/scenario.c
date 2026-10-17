@@ -1202,6 +1202,7 @@ boolean scenario_load(
 	char *newline;
 	boolean result = FALSE;
 
+	halo_load_trace("scenario.begin", name); /* port: loading measurement */
 	check_memory_status(scenario_memory_status_attributed, "scenario_load");
 	global_scenario_index = scenario_tags_load(name);
 	if (global_scenario_index != NONE)
@@ -1242,6 +1243,7 @@ missing_tag_loop:
 			goto missing_tag_loop;
 	}
 
+	halo_load_trace("scenario.end", name); /* port: loading measurement */
 	return result;
 }
 

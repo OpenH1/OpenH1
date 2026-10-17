@@ -32,6 +32,7 @@ and anti-aliasing's passes (the stream skips records with no entry).
 */
 
 #include "host.h"
+#include "host_load_trace.h"
 #include "host_render_stream.h"
 #include "xgpu.h"
 #include "xgpu_shader.h"
@@ -220,8 +221,32 @@ static struct
 	uint32_t back_buffer;
 	int preparing, prepared;
 	uint64_t prepare_pipelines;
+	int trace_preparing;
+	struct xgpu_vulkan_statistics trace_statistics;
+	struct xgpu_vulkan_texture_statistics trace_textures;
+	double trace_seconds[4];
+	uint64_t trace_counts[4];
 	uint32_t pipeline_misses;
 } stream;
+
+static double preparation_start(void)
+{
+	return stream.trace_preparing ? host_load_trace_clock(CLOCK_MONOTONIC) : -1.0;
+}
+
+static void preparation_end(int stage, double started)
+{
+	double finished;
+
+	if (started < 0.0)
+		return;
+	finished = host_load_trace_clock(CLOCK_MONOTONIC);
+	if (finished >= started)
+	{
+		stream.trace_seconds[stage] += finished - started;
+		stream.trace_counts[stage]++;
+	}
+}
 
 /* ---------- vertex programs and lightings, by their hash */
 
@@ -1384,6 +1409,7 @@ static void draw_input(const struct draw_input *input)
 	struct stream_pipeline *entry;
 	struct variant variant;
 	uint32_t index, attempt;
+	double traced;
 
 	if (!stream.pipeline_id || !stream.definition || !input->count)
 		return;
@@ -1452,25 +1478,43 @@ static void draw_input(const struct draw_input *input)
 	{
 		uint64_t serial;
 
+		traced = preparation_start();
 		textures_bind();
+		preparation_end(0, traced);
 		serial = xgpu_vulkan_serial();
+		traced = preparation_start();
 		if (!uniforms_update())
+		{
+			preparation_end(1, traced);
 			continue;
+		}
+		preparation_end(1, traced);
+		traced = preparation_start();
 		for (index = 0; index < 16; index++)
 		{
 			if ((draw.bindings & (1u << index)) && !source_range(&input->sources[index], &draw.vertices[index]))
+			{
+				preparation_end(2, traced);
 				return;
+			}
 		}
 		if (draw.bindings & (1u << XGPU_VULKAN_BINDING_CONSTANT))
 		{
 			void *to = xgpu_vulkan_upload(16 * 16, 16, &draw.vertices[XGPU_VULKAN_BINDING_CONSTANT]);
 
 			if (!to)
+			{
+				preparation_end(2, traced);
 				return;
+			}
 			memcpy(to, input->values, 16 * 16);
 		}
 		if (!indices_upload(input, &draw))
+		{
+			preparation_end(2, traced);
 			return;
+		}
+		preparation_end(2, traced);
 		if (serial == xgpu_vulkan_serial())
 			break;
 	}
@@ -1482,7 +1526,9 @@ static void draw_input(const struct draw_input *input)
 	draw.dynamic = &stream.dynamic;
 	if (target_get(stream.color))
 		target_get(stream.color)->written++;
+	traced = preparation_start();
 	xgpu_vulkan_draw(&draw);
+	preparation_end(3, traced);
 }
 
 /* the draws of set_vertices's input */
@@ -1706,11 +1752,38 @@ static void stream_prepare(void *context)
 	(void)context;
 	stream.preparing = 1;
 	stream.prepare_pipelines = xgpu_vulkan_pipeline_count();
+	stream.trace_preparing = host_load_trace_enabled();
+	memset(stream.trace_seconds, 0, sizeof(stream.trace_seconds));
+	memset(stream.trace_counts, 0, sizeof(stream.trace_counts));
+	xgpu_vulkan_statistics_peek(&stream.trace_statistics);
+	xgpu_vulkan_textures_statistics_peek(&stream.trace_textures);
 }
 
 static uint32_t stream_prepared(void *context)
 {
 	(void)context;
+	if (stream.trace_preparing)
+	{
+		struct xgpu_vulkan_statistics now;
+		struct xgpu_vulkan_texture_statistics textures;
+		int stage;
+		static const char *names[4] = { "textures", "uniforms", "vertices_indices", "draw" };
+
+		xgpu_vulkan_statistics_peek(&now);
+		xgpu_vulkan_textures_statistics_peek(&textures);
+		host_load_trace("prepare.vulkan.work", "draws=%u passes=%u submissions=%u ring_bytes=%llu waits=%llu wait_seconds=%.6f",
+			now.draws - stream.trace_statistics.draws, now.passes - stream.trace_statistics.passes,
+			now.submissions - stream.trace_statistics.submissions,
+			(unsigned long long)(now.ring_bytes - stream.trace_statistics.ring_bytes),
+			(unsigned long long)(now.waits - stream.trace_statistics.waits), now.wait_seconds - stream.trace_statistics.wait_seconds);
+		host_load_trace("prepare.vulkan.textures", "made=%u remade=%u images=%u bytes=%llu",
+			textures.made - stream.trace_textures.made, textures.remade - stream.trace_textures.remade,
+			textures.images - stream.trace_textures.images, (unsigned long long)(textures.bytes - stream.trace_textures.bytes));
+		for (stage = 0; stage < 4; stage++)
+			host_load_trace("prepare.vulkan.stage", "stage=%s count=%llu seconds=%.6f", names[stage],
+				(unsigned long long)stream.trace_counts[stage], stream.trace_seconds[stage]);
+		stream.trace_preparing = 0;
+	}
 	/* Pipeline creation is synchronous here. The reply follows every
 	enumeration draw, including its vertex layout and target format. */
 	host_logf(HOST_LOG_INFO, "vulkan: map preparation made %llu pipelines (%llu total)",

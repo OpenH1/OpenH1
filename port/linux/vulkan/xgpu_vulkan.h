@@ -448,7 +448,10 @@ struct xgpu_vulkan_statistics
 	uint32_t attachment_loads, attachment_clears;
 	uint64_t ring_bytes;
 	double pipeline_seconds;
+	uint64_t waits;
+	double wait_seconds;
 };
 void xgpu_vulkan_statistics(struct xgpu_vulkan_statistics *statistics);
+void xgpu_vulkan_statistics_peek(struct xgpu_vulkan_statistics *statistics);
 
 #endif

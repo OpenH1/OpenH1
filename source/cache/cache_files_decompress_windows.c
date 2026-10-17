@@ -1090,6 +1090,25 @@ void cache_copy_end(
 
 	if (decompressor_print_timing)
 		cache_copy_print_timing();
+	/* port: the trace does not use error(), which changes the console and
+	its error suppression state. Keep the existing timing option above. */
+	if (halo_load_trace_enabled())
+	{
+		static char const *const names[NUMBER_OF_DECOMPRESSOR_TIMERS] = {
+			"setup", "read", "write", "zlib", "zlib_during_write",
+			"blocked", "blocked_on_read", "blocked_on_write", "copying"
+		};
+		char detail[128];
+		short timer;
+
+		for (timer = 0; timer < NUMBER_OF_DECOMPRESSOR_TIMERS; timer++)
+		{
+			snprintf(detail, sizeof(detail), "stage=%s seconds=%.6f", names[timer],
+				performance_frequency > 0 ? (double)decompressor_globals.times[timer] / performance_frequency : -1.0);
+			halo_load_trace("decompress.stage", detail);
+		}
+	}
+	halo_load_trace("decompress.end", NULL); /* port: loading measurement */
 
 	return;
 }

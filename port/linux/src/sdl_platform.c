@@ -13,6 +13,7 @@ and the debug keyboard that the game's console reads.
 #include "sdl_platform.h"
 #include "gl.h"
 #include "port_config.h"
+#include "load_trace.h"
 #include "p2p.h"
 #include "xiso.h"
 #ifdef HALO_VR
@@ -25,6 +26,7 @@ and the debug keyboard that the game's console reads.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #if !defined(_WIN32) && !defined(HALO_ANDROID)
 #include <signal.h>
 #endif
@@ -2094,4 +2096,32 @@ void platform_input_read(struct platform_input_state *state, BOOL consume_motion
 		input_state.mouse_wheel = 0;
 	}
 	pthread_mutex_unlock(&input_lock);
+}
+
+/* Absolute times let a host trace use the same monotonic clock. Unsupported
+CPU clocks are -1, never an apparent zero cost. No clocks read when disabled. */
+int halo_load_trace_enabled(void)
+{
+	return config_boolean("debug.load_trace");
+}
+
+void halo_load_trace(char const *phase, char const *detail)
+{
+	struct timespec now;
+	double wall = -1.0, thread = -1.0, process = -1.0;
+
+	if (!config_boolean("debug.load_trace"))
+		return;
+	if (clock_gettime(CLOCK_MONOTONIC, &now) == 0)
+		wall = (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
+#ifdef CLOCK_THREAD_CPUTIME_ID
+	if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &now) == 0)
+		thread = (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
+#endif
+#ifdef CLOCK_PROCESS_CPUTIME_ID
+	if (clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &now) == 0)
+		process = (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
+#endif
+	load_trace_log("LOAD phase=%s wall=%.6f thread=%.6f process=%.6f owner=guest:%llu detail=%s",
+		phase, wall, thread, process, (unsigned long long)SDL_GetCurrentThreadID(), detail ? detail : "");
 }

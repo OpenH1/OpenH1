@@ -388,6 +388,7 @@ boolean render_enumerate_begin(boolean mirrors, boolean scope)
 	SET_FLAG(*enumerate.structure_bsps_enumerated[view], structure_bsp_index, TRUE);
 	enumerate.mirrors = mirrors && structure_visibility_port_has_mirrors();
 	enumerate.own_fog = render.fog;
+	halo_load_trace("enumerate.begin", NULL);
 	enumerate.started = system_milliseconds();
 	enumerate.started_cpu = halo_thread_cpu_seconds();
 	enumerate.pass = 0;
@@ -417,9 +418,11 @@ boolean render_enumerate_next(void)
 		enumerate.interface_pending = enumerate.everything && !enumerate.interface_drawn;
 	rasterizer_lens_flares_port_truncate(enumerate.lens_flare_count);
 	render_enumerating = FALSE;
+	halo_load_trace("enumerate.draws.end", NULL);
 	cpu = halo_thread_cpu_seconds() - enumerate.started_cpu;
 	/* (the loading screen's end: the shaders and pipelines made) */
 	waited = halo_gpu_prepared();
+	halo_load_trace("enumerate.prepared.end", NULL);
 	/* These draws have reached the host. Advance the texture cache as a
 	completed frame does, so the next view and HUD can load their real
 	bitmaps instead of defaults when this enumeration filled the cache.

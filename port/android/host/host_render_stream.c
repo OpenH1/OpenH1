@@ -24,6 +24,7 @@ frame on screen.
 */
 
 #include "host.h"
+#include "host_load_trace.h"
 #include "host_render_record.h"
 #include "host_render_stream.h"
 #include "frame_pacing.h"
@@ -68,6 +69,8 @@ struct host_render_decoder
 	int frame_ended;
 	/* the frame being ended's input time (FRAME_END's; 0 unknown) */
 	uint64_t frame_input;
+	int trace_preparing;
+	struct { uint64_t count; double seconds, maximum; } trace_operations[XGPU_STREAM_RECORD_TYPES];
 };
 
 /* the least size of each type's record */
@@ -516,11 +519,16 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 		break;
 	}
 	case XGPU_STREAM_PREPARE:
+		host_load_trace("prepare.begin", "stream");
 		CALL0(prepare);
 		break;
 	case XGPU_STREAM_PREPARED:
 	{
-		uint32_t milliseconds = backend->prepared ? backend->prepared(context) : 0;
+		uint32_t milliseconds;
+
+		host_load_trace("prepare.wait.begin", "stream");
+		milliseconds = backend->prepared ? backend->prepared(context) : 0;
+		host_load_trace("prepare.end", "wait_ms=%u", milliseconds);
 
 		answer(((const struct xgpu_stream_reply_record *)start)->reply, &milliseconds, sizeof(milliseconds));
 		break;
@@ -599,10 +607,18 @@ uint32_t host_render_decode(struct host_render_decoder *decoder, uint32_t from, 
 		const unsigned char *start = decoder->buffer + offset;
 		uint32_t header, type, size;
 		int error;
+		double trace_start = -1.0;
 
 		header = *(const uint32_t *)start;
 		type = XGPU_STREAM_HEADER_TYPE(header);
 		size = XGPU_STREAM_HEADER_SIZE(header);
+		if (type == XGPU_STREAM_PREPARE)
+		{
+			decoder->trace_preparing = host_load_trace_enabled();
+			memset(decoder->trace_operations, 0, sizeof(decoder->trace_operations));
+		}
+		if (decoder->trace_preparing)
+			trace_start = host_load_trace_clock(CLOCK_MONOTONIC);
 		if (type == XGPU_STREAM_SKIP && !size)
 			size = decoder->size - offset;
 		if (size > available || size > decoder->size - offset)
@@ -623,6 +639,31 @@ uint32_t host_render_decode(struct host_render_decoder *decoder, uint32_t from, 
 		else
 		{
 			error = decode_record(decoder, start, type, size);
+		}
+		if (trace_start >= 0.0 && type < XGPU_STREAM_RECORD_TYPES)
+		{
+			double elapsed = host_load_trace_clock(CLOCK_MONOTONIC) - trace_start;
+
+			if (elapsed >= 0.0)
+			{
+				decoder->trace_operations[type].count++;
+				decoder->trace_operations[type].seconds += elapsed;
+				if (elapsed > decoder->trace_operations[type].maximum)
+					decoder->trace_operations[type].maximum = elapsed;
+			}
+		}
+		if (type == XGPU_STREAM_PREPARED && decoder->trace_preparing)
+		{
+			uint32_t operation;
+
+			decoder->trace_preparing = 0;
+			for (operation = 0; operation < XGPU_STREAM_RECORD_TYPES; operation++)
+			{
+				if (decoder->trace_operations[operation].count)
+					host_load_trace("prepare.operation", "opcode=%u count=%llu seconds=%.6f maximum=%.6f", operation,
+						(unsigned long long)decoder->trace_operations[operation].count,
+						decoder->trace_operations[operation].seconds, decoder->trace_operations[operation].maximum);
+			}
 		}
 		if (error)
 		{

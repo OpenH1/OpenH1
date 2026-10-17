@@ -467,6 +467,11 @@ void xgpu_vulkan_textures_frame_end(void)
 	}
 }
 
+void xgpu_vulkan_textures_statistics_peek(struct xgpu_vulkan_texture_statistics *statistics)
+{
+	*statistics = cache.statistics;
+}
+
 void xgpu_vulkan_textures_statistics(struct xgpu_vulkan_texture_statistics *statistics)
 {
 	*statistics = cache.statistics;

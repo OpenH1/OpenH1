@@ -46,6 +46,7 @@ drawables reached the screen.
 /* (host.h's host_page_size is Mach's too: not used here) */
 #define host_page_size host_page_size_of_guest_memory
 #include "host.h"
+#include "host_load_trace.h"
 #undef host_page_size
 #include "xgpu_metal_internal.h"
 #include "xgpu_metal_pipeline.h"
@@ -548,6 +549,8 @@ static void pacing_log(double now)
 		[drawable addPresentedHandler:^(id<MTLDrawable> shown) {
 			atomic_fetch_sub(&presentation.drawables_pending, 1);
 			presented(shown.presentedTime, target, image ? &compiled : NULL);
+			host_load_trace("metal.presented", "display_time=%.9f target=%.9f image=%d input=%llu",
+				shown.presentedTime, target, image != nil, (unsigned long long)input);
 			if (input && shown.presentedTime > 0.0)
 			{
 				/* (the display's time on the game's clock) */

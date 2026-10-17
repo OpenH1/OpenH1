@@ -30,6 +30,13 @@ Conventions:
 #include "sdl_platform.h"
 #include "port_config.h"
 
+#ifdef XGPU_GL_HOST
+#include "host_load_trace.h"
+#define gl_load_trace host_load_trace
+#else
+#define gl_load_trace(...) ((void)0)
+#endif
+
 #include <SDL3/SDL.h>
 
 #include <math.h>
@@ -959,8 +966,10 @@ GLuint xgpu_compile_shader(GLenum type, const char *source, const char *what)
 	GLint status = 0;
 
 	glShaderSource(shader, 1, &source, NULL);
+	gl_load_trace("gl.compile.begin", "shader=%u type=%u name=%s", shader, type, what);
 	glCompileShader(shader);
 	glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
+	gl_load_trace("gl.compile.end", "shader=%u status=%d", shader, status);
 	if (!status)
 	{
 		char log[4096];
@@ -980,8 +989,10 @@ GLuint xgpu_link_program(GLuint vertex_shader, GLuint fragment_shader, const cha
 
 	glAttachShader(program, vertex_shader);
 	glAttachShader(program, fragment_shader);
+	gl_load_trace("gl.link.begin", "program=%u", program);
 	glLinkProgram(program);
 	glGetProgramiv(program, GL_LINK_STATUS, &status);
+	gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 	if (!status)
 	{
 		char log[4096];
@@ -4955,8 +4966,10 @@ static void vr_fovea_composite(void)
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the foveation's program; the eyes show nothing");
@@ -5454,8 +5467,10 @@ static GLuint vr_light_map(const struct vr_visor_hud_image *look)
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the light map's program; the HUD does not react to the light");
@@ -5717,8 +5732,10 @@ static BOOL vr_copy_hud_image(GLuint source, GLuint image, int width, int height
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the HUD copy's program; no HUD is shown");
@@ -6114,8 +6131,10 @@ static BOOL vr_copy_scope(GLuint source, GLuint image, int size)
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the scope copy's program; no scope is shown");
@@ -6355,8 +6374,10 @@ static void vr_draw_visor(void)
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the visor's program; no visor is shown");
@@ -6599,8 +6620,10 @@ static void vr_draw_rim(void)
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the helmet's rim's program; no rim is drawn");
@@ -6783,8 +6806,10 @@ static void vr_draw_feed(void)
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the death feed's program; the death cam switches without it");
@@ -7067,8 +7092,10 @@ static void vr_draw_cockpit_display(GLuint depth_texture, int depth_layers)
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the cockpit display's program; the opening shows the world as it is");
@@ -7245,8 +7272,10 @@ static void vr_draw_vignette(void)
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the comfort vignette's program; none is drawn");
@@ -7324,8 +7353,10 @@ static void vr_draw_tint(void)
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the eyes' tint's program; no blink or tint is drawn");
@@ -7413,8 +7444,10 @@ static void vr_copy_depth(void)
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the depth copy's program; no depth is submitted");
@@ -7552,8 +7585,10 @@ static void vr_draw_scope_window(GLuint depth_texture, int depth_layers)
 		program = glCreateProgram();
 		glAttachShader(program, vertex);
 		glAttachShader(program, fragment);
+		gl_load_trace("gl.link.begin", "program=%u", program);
 		glLinkProgram(program);
 		glGetProgramiv(program, GL_LINK_STATUS, &status);
+		gl_load_trace("gl.link.end", "program=%u status=%d", program, status);
 		if (!vertex || !fragment || !status)
 		{
 			platform_log("vr: cannot make the scope window's program; no smart-link window is shown");

@@ -36,5 +36,6 @@ struct xgpu_vulkan_texture_statistics
 	uint64_t bytes;
 };
 void xgpu_vulkan_textures_statistics(struct xgpu_vulkan_texture_statistics *statistics);
+void xgpu_vulkan_textures_statistics_peek(struct xgpu_vulkan_texture_statistics *statistics);
 
 #endif

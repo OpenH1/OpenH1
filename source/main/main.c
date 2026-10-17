@@ -743,6 +743,9 @@ boolean debug_frame_rate = FALSE;
 boolean display_framerate = FALSE;
 boolean display_vblank_deltas = FALSE;
 boolean display_precache_progress = FALSE;
+/* port: distinguish the first game frame from loading-screen presents */
+static short load_trace_first_frame;
+static char load_trace_map[256];
 struct _screenshot_and_framerate_globals global_screenshot_count = { 0 };
 boolean debug_render_freeze;
 
@@ -1483,6 +1486,7 @@ boolean main_menu_is_loaded(
 static void main_new_map(
 	struct game_options *options)
 {
+	halo_load_trace("main_new_map.begin", options->map_name); /* port: loading measurement */
 	input_flush();
 	if (game_load(options))
 	{
@@ -1503,6 +1507,11 @@ static void main_new_map(
 		error(_error_immediate, "main_new_map() failed.");
 	}
 	game_initial_pulse();
+	halo_load_trace("main_new_map.initial_pulse.end", options->map_name); /* port: loading measurement */
+	/* port: retain the map name until its first frame is submitted */
+	csstrncpy(load_trace_map, options->map_name, sizeof(load_trace_map) - 1);
+	load_trace_map[sizeof(load_trace_map) - 1] = 0;
+	load_trace_first_frame = 1;
 
 	main_globals.reset_map = FALSE;
 	main_globals.defer_map_change = FALSE;
@@ -3702,6 +3711,12 @@ static boolean main_loop_iteration(
 				{
 					profile_render_start();
 					render_interpolation_frame_begin();
+					/* port: this frame contains game rendering, not just progress */
+					if (load_trace_first_frame == 1)
+					{
+						halo_load_trace("first_game_frame.begin", load_trace_map);
+						load_trace_first_frame = 2;
+					}
 					main_game_render((double)main_globals.seconds_elapsed);
 					render_interpolation_frame_end();
 					profile_render_end();
@@ -3719,6 +3734,12 @@ static boolean main_loop_iteration(
 			if (render_frame && !debug_no_drawing)
 			{
 				profile_scope(main_present_section, main_present_frame();)
+				/* port: submission returned; host traces measure presentation */
+				if (load_trace_first_frame == 2)
+				{
+					halo_load_trace("first_game_frame.submitted", load_trace_map);
+					load_trace_first_frame = 0;
+				}
 			}
 		}
 

@@ -658,6 +658,7 @@ void game_initialize_for_new_map(
 		0x1D2,
 		!game_globals->active);
 
+	halo_load_trace("initialize.begin", NULL); /* port: loading measurement */
 	set_random_seed(game_globals->options.random_seed);
 	/* port: and the local seeds from the game's too (the ticks' and the
 	frames', random_math.c). It was the clock's at startup, with whatever the
@@ -714,6 +715,7 @@ void game_initialize_for_new_map(
 	cheats_initialize_for_new_map();
 
 	game_globals->active = TRUE;
+	halo_load_trace("objects.begin", NULL); /* port: loading measurement */
 	objects_place();
 	if (!game_in_editor())
 		ai_place();
@@ -722,6 +724,7 @@ void game_initialize_for_new_map(
 	network_objects_placed();
 	ui_widgets_safe_to_load(TRUE);
 
+	halo_load_trace("initialize.end", NULL); /* port: loading measurement */
 	return;
 }
 
@@ -827,6 +830,7 @@ void game_precache_new_map(
 {
 	long map_status;
 
+	halo_load_trace("precache.begin", map_name); /* port: loading measurement */
 	if (!cache_files_precache_map_loaded(map_name))
 	{
 		if (cache_files_precache_in_progress() &&
@@ -913,12 +917,14 @@ void game_precache_new_map(
 			player_ui_remember_player1_profile(TRUE);
 	}
 
+	halo_load_trace("precache.end", map_name); /* port: loading measurement */
 	return;
 }
 
 void game_dispose_from_old_map(
 	void)
 {
+	halo_load_trace("dispose.begin", NULL); /* port: loading measurement */
 	rasterizer_dispose_from_old_map();
 	game_state_dispose_from_old_map();
 	cheats_dispose_from_old_map();

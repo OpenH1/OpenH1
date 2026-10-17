@@ -25,6 +25,7 @@ query pool once its last submission is done.
 
 #include "xgpu_vulkan.h"
 #include "host.h"
+#include "host_load_trace.h"
 
 #include <dlfcn.h>
 #include <math.h>
@@ -612,6 +613,7 @@ static void ring_reclaim(void);
 static void serial_wait(uint64_t serial)
 {
 	VkSemaphoreWaitInfo info;
+	double started;
 
 	if (serial <= completed_serial())
 		return;
@@ -620,7 +622,18 @@ static void serial_wait(uint64_t serial)
 	info.semaphoreCount = 1;
 	info.pSemaphores = &vk.timeline;
 	info.pValues = &serial;
+	started = host_load_trace_enabled() ? host_load_trace_clock(CLOCK_MONOTONIC) : -1.0;
 	check(vkWaitSemaphores(vk.device, &info, UINT64_MAX), "vkWaitSemaphores");
+	if (started >= 0.0)
+	{
+		double finished = host_load_trace_clock(CLOCK_MONOTONIC);
+
+		if (finished >= started)
+		{
+			vk.statistics.waits++;
+			vk.statistics.wait_seconds += finished - started;
+		}
+	}
 	completed_serial();
 	garbage_collect();
 	ring_reclaim();
@@ -2183,12 +2196,14 @@ static VkPipeline pipeline_make(const struct xgpu_vulkan_pipeline_description *d
 	if (description->vertex_shader && description->pixel_shader)
 	{
 		vk.pipeline_count++;
+		host_load_trace("vulkan.pipeline.begin", "count=%llu", (unsigned long long)vk.pipeline_count);
 		if (!check(vkCreateGraphicsPipelines(vk.device, vk.pipeline_cache, 1, &info, NULL, &pipeline),
 			"vkCreateGraphicsPipelines"))
 			pipeline = VK_NULL_HANDLE;
 	}
 	else
 		pipeline = VK_NULL_HANDLE;
+	host_load_trace("vulkan.pipeline.end", "seconds=%.6f", seconds_now() - started);
 	vk.statistics.pipelines_made++;
 	vk.statistics.pipeline_seconds += seconds_now() - started;
 	return pipeline;
@@ -2981,6 +2996,7 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	info.pSwapchains = &vk.swapchain;
 	info.pImageIndices = &index;
 	result = vkQueuePresentKHR(vk.queue, &info);
+	host_load_trace("vulkan.present.return", "result=%d", result);
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
 		vk.swapchain_stale = 1;
 	else
@@ -3020,6 +3036,11 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image)
 	completed_serial();
 	garbage_collect();
 	vk.gpu_time_armed = gpu_time_armed;
+}
+
+void xgpu_vulkan_statistics_peek(struct xgpu_vulkan_statistics *statistics)
+{
+	*statistics = vk.statistics;
 }
 
 void xgpu_vulkan_statistics(struct xgpu_vulkan_statistics *statistics)

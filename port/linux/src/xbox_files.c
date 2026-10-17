@@ -22,6 +22,7 @@ matched case-insensitively, like the Xbox's FATX volumes.
 #include "platform.h"
 #include "posix.h"
 #include "port_config.h"
+#include "load_trace.h"
 #include "install_layout.h"
 
 #include <ctype.h>
@@ -31,6 +32,7 @@ matched case-insensitively, like the Xbox's FATX volumes.
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <time.h>
 
 /* ---------- paths */
 
@@ -387,18 +389,45 @@ HANDLE WINAPI CreateFileA(LPCSTR file_name, DWORD desired_access, DWORD share_mo
 
 #define READ_BOUNCE_SIZE 0x40000UL
 
-static ssize_t read_some(struct platform_file *file, void *buffer, size_t count, BOOL positioned,
-	unsigned long long offset)
+/* The per-request record separates time in the kernel from bounce copies.
+Only debug.load_trace reads these clocks. The caller's errno is preserved. */
+static double load_io_now(void)
 {
-	return positioned ?
+	struct timespec now;
+	if (clock_gettime(CLOCK_MONOTONIC, &now) != 0)
+		return -1.0;
+	return (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
+}
+
+static ssize_t read_some(struct platform_file *file, void *buffer, size_t count, BOOL positioned,
+	unsigned long long offset, double *syscall_seconds)
+{
+	double started = syscall_seconds ? load_io_now() : 0.0;
+	ssize_t result = positioned ?
 		pread(file->descriptor, buffer, count, (off_t)offset) :
 		read(file->descriptor, buffer, count);
+	int saved_errno = errno;
+
+	if (syscall_seconds)
+	{
+		double ended = load_io_now();
+
+		if (started >= 0.0 && ended >= started && *syscall_seconds >= 0.0)
+			*syscall_seconds += ended - started;
+		else
+			*syscall_seconds = -1.0;
+	}
+	errno = saved_errno;
+	return result;
 }
 
 static BOOL read_at(struct platform_file *file, LPVOID buffer, DWORD count, LPDWORD bytes_read,
 	BOOL positioned, unsigned long long offset)
 {
 	DWORD total = 0;
+	BOOL tracing = config_boolean("debug.load_trace");
+	double started = tracing ? load_io_now() : 0.0;
+	double syscall_seconds = 0.0;
 	/* The renderer write-protects guest memory it caches (memory_watch.c),
 	and the kernel fails a read() into a protected page instead of
 	faulting. Guest memory is therefore filled through a bounce buffer: the
@@ -420,7 +449,8 @@ static BOOL read_at(struct platform_file *file, LPVOID buffer, DWORD count, LPDW
 
 		if (bounce && wanted > READ_BOUNCE_SIZE)
 			wanted = READ_BOUNCE_SIZE;
-		result = read_some(file, bounce ? staging : (char *)buffer + total, wanted, positioned, offset + total);
+		result = read_some(file, bounce ? staging : (char *)buffer + total, wanted, positioned, offset + total,
+			tracing ? &syscall_seconds : NULL);
 		if (result < 0)
 		{
 			if (errno == EINTR)
@@ -443,6 +473,16 @@ static BOOL read_at(struct platform_file *file, LPVOID buffer, DWORD count, LPDW
 		total += (DWORD)result;
 	}
 	free(staging);
+	if (tracing)
+	{
+		double ended = load_io_now();
+		if (started >= 0.0 && ended >= started && syscall_seconds >= 0.0)
+			load_trace_log("LOAD_IO op=read wall=%.6f elapsed=%.6f syscall=%.6f requested=%lu actual=%lu offset=%llu bounce=%d path=%s",
+				ended, ended - started, syscall_seconds, (unsigned long)count, (unsigned long)total,
+				offset, bounce, file->path);
+		else
+			load_trace_log("LOAD_IO clock unavailable");
+	}
 	if (bytes_read)
 		*bytes_read = total;
 	return TRUE;
@@ -452,6 +492,8 @@ static BOOL write_at(struct platform_file *file, LPCVOID buffer, DWORD count, LP
 	BOOL positioned, unsigned long long offset)
 {
 	DWORD total = 0;
+	BOOL tracing = config_boolean("debug.load_trace");
+	double started = tracing ? load_io_now() : 0.0;
 
 	while (total < count)
 	{
@@ -469,6 +511,15 @@ static BOOL write_at(struct platform_file *file, LPCVOID buffer, DWORD count, LP
 			return FALSE;
 		}
 		total += (DWORD)result;
+	}
+	if (tracing)
+	{
+		double ended = load_io_now();
+		if (started >= 0.0 && ended >= started)
+			load_trace_log("LOAD_IO op=write wall=%.6f elapsed=%.6f requested=%lu actual=%lu offset=%llu path=%s",
+				ended, ended - started, (unsigned long)count, (unsigned long)total, offset, file->path);
+		else
+			load_trace_log("LOAD_IO clock unavailable");
 	}
 	if (bytes_written)
 		*bytes_written = total;

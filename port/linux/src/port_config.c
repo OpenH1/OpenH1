@@ -1076,6 +1076,8 @@ static const struct config_setting config_settings[] =
 		"in play: its first frame (and each structure's) drawn first, unseen,\n"
 		"through every shader its tags hold, in each way the game draws them;\n"
 		"false makes each the first time a draw needs it, which the draw waits for." },
+	{ "debug.load_trace", _config_boolean, "false", "HALO_LOAD_TRACE", _environment_value, _platform_all,
+		"Log map loading checkpoints with monotonic wall, thread and process CPU seconds." },
 	{ "debug.render_manifest", _config_string, "\"\"", "HALO_RENDER_MANIFEST", _environment_value, _platform_all,
 		"Record the shaders and pipelines the game draws with into this file (each\n"
 		"new one added to it), for the renderer's manifest\n"

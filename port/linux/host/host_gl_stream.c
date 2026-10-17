@@ -38,6 +38,7 @@ are the host's cache's (host_gl_textures.c), found by the stage's record.
 */
 
 #include "host.h"
+#include "host_load_trace.h"
 #include "host_render_stream.h"
 #include "host_gl_renderer.h"
 #include "xgpu_backend.h"
@@ -344,6 +345,7 @@ static void window_swap(void)
 		host_render_stream_frame_ready();
 	}
 	SDL_GL_SwapWindow(gl.window);
+	host_load_trace("gl.swap.return", "paced=%d", paced);
 	if (paced)
 		display_swapped();
 }
