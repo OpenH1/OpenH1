@@ -593,5 +593,7 @@ void xgpu_backend_vr_submit(const struct xgpu_vr_frame *frame, BOOL screenshot);
 /* Acknowledged loading ownership change, before map storage is reused. */
 void xgpu_backend_loading(int active);
 int xgpu_backend_loading_owned(void);
+/* Copy the 640 by 480 RGBA loading picture before returning; NULL clears. */
+void xgpu_backend_loading_art(const unsigned char *rgba);
 
 #endif

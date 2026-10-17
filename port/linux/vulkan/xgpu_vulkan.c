@@ -27,6 +27,7 @@ query pool once its last submission is done.
 #include "host.h"
 #include "host_load_trace.h"
 #include "../src/loading_presentation.h"
+#include "../src/loading_art.h"
 
 #include <dlfcn.h>
 #include <math.h>
@@ -292,6 +293,8 @@ static struct
 	/* Presentation owns this image across loading frames, independently
 	of the guest's render targets and map allocations. */
 	struct xgpu_vulkan_image *loading_image;
+	struct xgpu_vulkan_image *loading_art_image;
+	struct loading_art loading_art;
 
 	VkPipelineCache pipeline_cache;
 	uint64_t pipeline_count;
@@ -3215,16 +3218,24 @@ int xgpu_vulkan_loading_resources(int window)
 	return vk.loading_image && (!window || (vk.surface && vk.swapchain));
 }
 
+void xgpu_vulkan_loading_art(void *context, const uint8_t *rgba)
+{
+	(void)context;
+	loading_art_set(&vk.loading_art, rgba);
+}
+
 struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presentation_frame *frame,
 	uint32_t width, uint32_t height, uint32_t format)
 {
 	static const float background[4] = { LOADING_PRESENTATION_RED, LOADING_PRESENTATION_GREEN,
 		LOADING_PRESENTATION_BLUE, 1.0f };
+	static const float black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 	struct xgpu_vulkan_image_description description;
 	struct xgpu_vulkan_image *color = vk.color, *depth = vk.depth;
 	uint32_t layer = vk.layer, views = vk.views, index;
 	int test_active = vk.test_active;
 	int32_t rectangle[1][4];
+	const uint8_t *pixels;
 
 	if (!frame || !frame->active)
 	{
@@ -3253,6 +3264,20 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 		if (!vk.loading_image)
 			return NULL;
 	}
+	pixels = loading_art_render(&vk.loading_art, frame);
+	if (pixels && !vk.loading_art_image)
+	{
+		memset(&description, 0, sizeof(description));
+		description.type = XGPU_VULKAN_IMAGE_2D;
+		description.format = XGPU_VULKAN_FORMAT_RGBA8;
+		description.usage = XGPU_VULKAN_USAGE_SAMPLED;
+		description.width = LOADING_ART_FRAME_WIDTH;
+		description.height = LOADING_ART_FRAME_HEIGHT;
+		description.depth_or_layers = description.levels = 1;
+		vk.loading_art_image = xgpu_vulkan_image_create(&description);
+	}
+	if (!vk.loading_art_image)
+		pixels = NULL;
 	/* A loading pass must not contribute samples or advance the game's
 	visibility frame. Ending and restoring the target also restores the
 	next draw's render-pass state; no pipeline or guest buffer is needed. */
@@ -3262,16 +3287,59 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 	rectangle[0][0] = rectangle[0][1] = 0;
 	rectangle[0][2] = (int32_t)width;
 	rectangle[0][3] = (int32_t)height;
-	xgpu_vulkan_clear(rectangle, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS, background, 0.0f, 0);
-	for (index = 0; index < frame->count && index < LOADING_PRESENTATION_RECTS; index++)
+	xgpu_vulkan_clear(rectangle, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS,
+		pixels ? black : background, 0.0f, 0);
+	if (pixels)
 	{
-		const struct loading_presentation_rect *source = &frame->rectangles[index];
+		VkCommandBuffer commands;
+		VkImageBlit blit;
+		uint32_t fit_width = width;
+		uint32_t fit_height = (uint32_t)((uint64_t)width * LOADING_ART_FRAME_HEIGHT / LOADING_ART_FRAME_WIDTH);
+		uint32_t x, y;
 
-		rectangle[0][0] = (int32_t)((int64_t)source->x * width / LOADING_PRESENTATION_WIDTH);
-		rectangle[0][1] = (int32_t)((int64_t)source->y * height / LOADING_PRESENTATION_HEIGHT);
-		rectangle[0][2] = (int32_t)((int64_t)source->width * width / LOADING_PRESENTATION_WIDTH);
-		rectangle[0][3] = (int32_t)((int64_t)source->height * height / LOADING_PRESENTATION_HEIGHT);
-		xgpu_vulkan_clear(rectangle, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS, source->color, 0.0f, 0);
+		if (fit_height > height)
+		{
+			fit_height = height;
+			fit_width = (uint32_t)((uint64_t)height * LOADING_ART_FRAME_WIDTH / LOADING_ART_FRAME_HEIGHT);
+		}
+		if (!fit_width)
+			fit_width = 1;
+		if (!fit_height)
+			fit_height = 1;
+		x = (width - fit_width) / 2;
+		y = (height - fit_height) / 2;
+		pass_end();
+		xgpu_vulkan_image_upload(vk.loading_art_image, 0, 0, 0, 0, 0,
+			LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, 1, pixels, LOADING_ART_FRAME_WIDTH * 4, 0);
+		commands = main_commands();
+		memset(&blit, 0, sizeof(blit));
+		blit.srcSubresource.aspectMask = blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		blit.srcSubresource.layerCount = blit.dstSubresource.layerCount = 1;
+		blit.srcOffsets[1].x = LOADING_ART_FRAME_WIDTH;
+		blit.srcOffsets[1].y = LOADING_ART_FRAME_HEIGHT;
+		blit.srcOffsets[1].z = 1;
+		blit.dstOffsets[0].x = (int32_t)x;
+		blit.dstOffsets[0].y = (int32_t)y;
+		blit.dstOffsets[1].x = (int32_t)(x + fit_width);
+		blit.dstOffsets[1].y = (int32_t)(y + fit_height);
+		blit.dstOffsets[1].z = 1;
+		vk.loading_art_image->used = vk.loading_image->used = vk.serial;
+		vkCmdBlitImage(commands, vk.loading_art_image->image, VK_IMAGE_LAYOUT_GENERAL,
+			vk.loading_image->image, VK_IMAGE_LAYOUT_GENERAL, 1, &blit, VK_FILTER_LINEAR);
+		transfer_done(commands);
+	}
+	else
+	{
+		for (index = 0; index < frame->count && index < LOADING_PRESENTATION_RECTS; index++)
+		{
+			const struct loading_presentation_rect *source = &frame->rectangles[index];
+
+			rectangle[0][0] = (int32_t)((int64_t)source->x * width / LOADING_PRESENTATION_WIDTH);
+			rectangle[0][1] = (int32_t)((int64_t)source->y * height / LOADING_PRESENTATION_HEIGHT);
+			rectangle[0][2] = (int32_t)((int64_t)source->width * width / LOADING_PRESENTATION_WIDTH);
+			rectangle[0][3] = (int32_t)((int64_t)source->height * height / LOADING_PRESENTATION_HEIGHT);
+			xgpu_vulkan_clear(rectangle, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS, source->color, 0.0f, 0);
+		}
 	}
 	pass_end();
 	vk.test_active = test_active;
@@ -4090,6 +4158,8 @@ void xgpu_vulkan_shutdown(void)
 		return;
 	xgpu_vulkan_image_destroy(vk.loading_image);
 	vk.loading_image = NULL;
+	xgpu_vulkan_image_destroy(vk.loading_art_image);
+	vk.loading_art_image = NULL;
 	if (vk.recording)
 		xgpu_vulkan_fence();
 	vkDeviceWaitIdle(vk.device);

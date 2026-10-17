@@ -968,6 +968,7 @@ const struct host_render_backend *xgpu_metal_stream_backend(void)
 		backend.frame_end = stream_frame_end;
 		backend.loading = host_metal_loading;
 		backend.loading_owned = host_metal_loading_owned;
+		backend.loading_art = host_metal_loading_art;
 	}
 	return &backend;
 }

@@ -3901,6 +3901,14 @@ monotonic presentation time; it does not advance game ticks or take random
 seeds. Queued rendering is retired before tags or a structure's storage are
 released.
 
+The loading panel uses Paul Hontz's redraw of the retail loading picture
+(`port/assets/loading`). Its compressed pixels are embedded in every build,
+decoded once at startup and copied into the presenter's own storage. The
+shared compositor preserves the picture's colors and adds the mask and
+feedback glow at 640 by 480. Each backend presents those same pixels. The
+animation uses elapsed time so it keeps moving during a blocked load; its
+sweep is not a percentage of work completed.
+
 The shared renderer prepares distinct pipeline and texture combinations in
 bounded batches. Vulkan and Metal prepare their pipelines without drawing the
 unseen enumeration or uploading its transient geometry. The host render thread

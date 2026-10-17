@@ -63,6 +63,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height);
 /* Loading owns presentation until phase 2 hands the next game picture back.
 Phase 0 waits until its presenter no longer touches the default framebuffer. */
 void platform_loading_set(int phase);
+void platform_loading_art(const unsigned char *rgba);
 int platform_loading_active(void);
 #ifndef HALO_ANDROID
 BOOL platform_screen_mode(long *width, long *height);

@@ -6,6 +6,7 @@
 struct loading_presentation_frame;
 uint64_t xgpu_vulkan_loading(void *context, const struct loading_presentation_frame *frame);
 int xgpu_vulkan_loading_owned(void *context);
+void xgpu_vulkan_loading_art(void *context, const uint8_t *rgba);
 uint64_t host_vulkan_display_period(void);
 
 #endif

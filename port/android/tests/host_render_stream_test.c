@@ -770,6 +770,21 @@ static struct
 	uint64_t serial, elapsed;
 } loading_test;
 
+static unsigned char loading_art_copy[XGPU_STREAM_LOADING_ART_BYTES];
+static unsigned loading_art_calls;
+static int loading_art_valid;
+
+static void test_loading_art(void *context, const unsigned char *rgba)
+{
+	(void)context;
+	loading_art_calls++;
+	loading_art_valid = rgba != NULL;
+	if (rgba)
+		memcpy(loading_art_copy, rgba, sizeof(loading_art_copy));
+	else
+		memset(loading_art_copy, 0, sizeof(loading_art_copy));
+}
+
 static uint64_t test_loading(void *context, const struct loading_presentation_frame *frame)
 {
 	(void)context;
@@ -869,6 +884,7 @@ static const struct host_render_backend test_backend =
 	.present = test_present,
 	.frame_end = test_frame_end,
 	.loading = test_loading,
+	.loading_art = test_loading_art,
 	.dynamic_lights_upload = test_dynamic_lights_upload,
 	.dynamic_lights_halos = test_dynamic_lights_halos,
 	.vr_supported = test_vr_supported,
@@ -1332,6 +1348,33 @@ static void stream_end(const char *what)
 	CHECK(backend_state.check_failures == 0);
 }
 
+/* The backend must own the inline picture before the synchronous call returns. */
+static void test_loading_art_transfer(void)
+{
+	unsigned char *pixels = malloc(sizeof(loading_art_copy));
+	unsigned index, calls;
+
+	CHECK(pixels != NULL);
+	if (!pixels)
+		return;
+	for (index = 0; index < sizeof(loading_art_copy); index++)
+		pixels[index] = (unsigned char)(index * 37u + index / 251u);
+	calls = loading_art_calls;
+	stream_begin(8u << 20, 2, 0);
+	xgpu_backend_loading_art(pixels);
+	CHECK(loading_art_calls == calls + 1 && loading_art_valid);
+	CHECK(!memcmp(pixels, loading_art_copy, sizeof(loading_art_copy)));
+	memset(pixels, 0xA5, sizeof(loading_art_copy));
+	for (index = 0; index < sizeof(loading_art_copy); index++)
+		CHECK(loading_art_copy[index] == (unsigned char)(index * 37u + index / 251u));
+	xgpu_backend_loading_art(NULL);
+	CHECK(loading_art_calls == calls + 2 && !loading_art_valid);
+	for (index = 0; index < sizeof(loading_art_copy); index++)
+		CHECK(loading_art_copy[index] == 0);
+	stream_end("loading art copied and cleared");
+	free(pixels);
+}
+
 /* The producer can stop completely during loading. Presentation still
 advances; readiness stops it before gameplay reuses the rendering targets. */
 static void test_loading_lifecycle(void)
@@ -1709,6 +1752,37 @@ static void test_malformed(void)
 	CHECK(host_render_decode(decoder, 0, 32) == 16);
 	CHECK(ring->error == XGPU_STREAM_ERROR_BOUNDS);
 
+	/* Reject oversized/legacy counts, missing pixels and extra clear bytes.
+	No malformed record may reach the backend or clear its picture. */
+	{
+		unsigned calls = loading_art_calls;
+		ring->error = 0;
+		buffer[0] = XGPU_STREAM_HEADER(XGPU_STREAM_LOADING_ART, 8);
+		buffer[1] = XGPU_STREAM_LOADING_ART_BYTES + 4;
+		CHECK(host_render_decode(decoder, 0, 8) == 0);
+		CHECK(ring->error == XGPU_STREAM_ERROR_RECORD);
+		ring->error = 0;
+		buffer[1] = 320u * 240u;
+		CHECK(host_render_decode(decoder, 0, 8) == 0);
+		CHECK(ring->error == XGPU_STREAM_ERROR_RECORD);
+		ring->error = 0;
+		buffer[1] = XGPU_STREAM_LOADING_ART_BYTES;
+		CHECK(host_render_decode(decoder, 0, 8) == 0);
+		CHECK(ring->error == XGPU_STREAM_ERROR_RECORD);
+		ring->error = 0;
+		buffer[0] = XGPU_STREAM_HEADER(XGPU_STREAM_LOADING_ART, 12);
+		buffer[1] = 4;
+		buffer[2] = 0;
+		CHECK(host_render_decode(decoder, 0, 12) == 0);
+		CHECK(ring->error == XGPU_STREAM_ERROR_RECORD);
+		ring->error = 0;
+		buffer[1] = 0;
+		buffer[2] = 0;
+		CHECK(host_render_decode(decoder, 0, 12) == 0);
+		CHECK(ring->error == XGPU_STREAM_ERROR_RECORD);
+		CHECK(loading_art_calls == calls);
+	}
+
 	/* a skip to the ring's end, and on from its start */
 	ring->error = 0;
 	buffer[0x10000 / 4 - 2] = XGPU_STREAM_HEADER(XGPU_STREAM_SKIP, 0);
@@ -1732,6 +1806,7 @@ int main(void)
 	test_ring_full(2);
 	test_ring_full(1);
 	test_frames_in_flight();
+	test_loading_art_transfer();
 	test_loading_lifecycle();
 
 	pthread_mutex_lock(&backend_state.lock);

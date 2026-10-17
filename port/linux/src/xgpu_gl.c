@@ -4713,6 +4713,11 @@ void xgpu_backend_visibility_frame(void)
 }
 
 #ifndef XGPU_GL_HOST
+void xgpu_backend_loading_art(const unsigned char *rgba)
+{
+	platform_loading_art(rgba);
+}
+
 int xgpu_backend_loading_owned(void)
 {
 #ifdef HALO_WEB

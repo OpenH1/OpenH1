@@ -1571,6 +1571,8 @@ void progress_bar_initialize(
 	destination_directory[csstrlen(destination_directory) - 1]= 0;
 	CreateDirectoryA(destination_directory, NULL);
 	CopyFileA(source_path, destination_path, TRUE);
+	/* port: give the bundled picture to the independent loading presenter. */
+	halo_loading_art();
 
 	return;
 }

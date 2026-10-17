@@ -54,6 +54,7 @@ drawables reached the screen.
 #include "host_render_stream.h"
 #include "xgpu_metal_stream.h"
 #include "xgpu_metal_textures.h"
+#include "loading_art.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_metal.h>
@@ -67,6 +68,7 @@ drawables reached the screen.
 #include <unistd.h>
 
 #define PRESENT_IMAGES 2
+#define LOADING_UPLOADS 3
 /* the longest a frame waits for an image before the oldest queued frame is
 dropped (100 ms: six refreshes at 60 Hz) */
 #define PRESENT_WAIT_MAXIMUM_NS 100000000L
@@ -97,6 +99,11 @@ static struct
 	id<MTLCommandQueue> command_queue;
 	id<MTLEvent> render_event;
 	struct loading_presentation_frame loading;
+	struct loading_art loading_art;
+	id<MTLTexture> loading_texture;
+	id<MTLBuffer> loading_uploads[LOADING_UPLOADS];
+	BOOL loading_upload_busy[LOADING_UPLOADS];
+	BOOL loading_texture_valid;
 	id<MTLSamplerState> present_sampler;
 	_Atomic int active;
 	/* the window's size in pixels, as SDL last reported it */
@@ -162,6 +169,82 @@ static struct
 int host_metal_window_active(void)
 {
 	return atomic_load(&presentation.active);
+}
+
+void host_metal_loading_art(void *context, const uint8_t *rgba)
+{
+	(void)context;
+	pthread_mutex_lock(&presentation.lock);
+	loading_art_set(&presentation.loading_art, rgba);
+	presentation.loading_texture_valid = NO;
+	pthread_mutex_unlock(&presentation.lock);
+}
+
+static void loading_upload_initialize(void)
+{
+	MTLTextureDescriptor *description;
+	NSUInteger size = LOADING_ART_FRAME_PIXELS * 4;
+	int index;
+
+	description = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
+		width:LOADING_ART_FRAME_WIDTH height:LOADING_ART_FRAME_HEIGHT mipmapped:NO];
+	description.storageMode = MTLStorageModePrivate;
+	description.usage = MTLTextureUsageShaderRead;
+	presentation.loading_texture = [xgpu_metal_device() newTextureWithDescriptor:description];
+	for (index = 0; index < LOADING_UPLOADS; index++)
+		presentation.loading_uploads[index] = [xgpu_metal_device() newBufferWithLength:size
+			options:MTLResourceStorageModeShared | MTLResourceCPUCacheModeWriteCombined];
+}
+
+static id<MTLTexture> loading_upload(id<MTLCommandBuffer> buffer,
+	const struct loading_presentation_frame *frame)
+{
+	id<MTLTexture> texture = nil;
+	id<MTLBuffer> upload = nil;
+	id<MTLBlitCommandEncoder> blit;
+	const uint8_t *pixels;
+	int index;
+
+	pthread_mutex_lock(&presentation.lock);
+	for (index = 0; index < LOADING_UPLOADS; index++)
+	{
+		if (presentation.loading_uploads[index] && !presentation.loading_upload_busy[index])
+			break;
+	}
+	if (presentation.loading_texture && index < LOADING_UPLOADS)
+	{
+		pixels = loading_art_render(&presentation.loading_art, frame);
+		if (pixels)
+		{
+			upload = presentation.loading_uploads[index];
+			memcpy(upload.contents, pixels, LOADING_ART_FRAME_PIXELS * 4);
+			presentation.loading_upload_busy[index] = YES;
+			presentation.loading_texture_valid = YES;
+		}
+		else
+		{
+			presentation.loading_texture_valid = NO;
+		}
+	}
+	if (presentation.loading_texture_valid)
+		texture = presentation.loading_texture;
+	pthread_mutex_unlock(&presentation.lock);
+	if (!upload)
+		return texture;
+	/* Uploads and all sampling share the presentation queue. A later game
+	aside cannot delay them, and CPU writes never reuse an in-flight buffer. */
+	blit = [buffer blitCommandEncoder];
+	[blit copyFromBuffer:upload sourceOffset:0 sourceBytesPerRow:LOADING_ART_FRAME_WIDTH * 4
+		sourceBytesPerImage:0 sourceSize:MTLSizeMake(LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, 1)
+		toTexture:texture destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
+	[blit endEncoding];
+	[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+		(void)done;
+		pthread_mutex_lock(&presentation.lock);
+		presentation.loading_upload_busy[index] = NO;
+		pthread_mutex_unlock(&presentation.lock);
+	}];
+	return texture;
 }
 
 int host_metal_loading_owned(void *context)
@@ -497,6 +580,7 @@ static void pacing_log(double now)
 		id<MTLCommandBuffer> buffer;
 		id<MTLRenderCommandEncoder> encoder;
 		id<MTLTexture> image = nil;
+		id<MTLTexture> loading_image = nil, sampled_image;
 		double now = seconds_now(), target = update.targetPresentationTimestamp, committed;
 		int index = -1, discarded = 0;
 		BOOL idle;
@@ -627,35 +711,38 @@ static void pacing_log(double now)
 		}
 
 		buffer = host_metal_present_buffer(image ? producer_frame : 0);
+		if (loading_frame.active)
+			loading_image = loading_upload(buffer, &loading_frame);
+		sampled_image = loading_image ? loading_image : image;
 		pass = [MTLRenderPassDescriptor renderPassDescriptor];
 		pass.colorAttachments[0].texture = drawable.texture;
 		pass.colorAttachments[0].loadAction = MTLLoadActionClear;
 		pass.colorAttachments[0].storeAction = MTLStoreActionStore;
 		/* (black until the game's first frame: the window opens before the
 		game draws) */
-		pass.colorAttachments[0].clearColor = loading_frame.active ?
+		pass.colorAttachments[0].clearColor = loading_frame.active && !loading_image ?
 			MTLClearColorMake(LOADING_PRESENTATION_RED, LOADING_PRESENTATION_GREEN,
 				LOADING_PRESENTATION_BLUE, 1.0) : MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 		encoder = [buffer renderCommandEncoderWithDescriptor:pass];
-		if (image && !loading_frame.active)
+		if (loading_image || (image && !loading_frame.active))
 		{
 			/* letterboxed to the frame's shape */
 			double drawable_width = drawable.texture.width, drawable_height = drawable.texture.height;
-			double fit_width = drawable_width, fit_height = drawable_width * image.height / image.width;
+			double fit_width = drawable_width, fit_height = drawable_width * sampled_image.height / sampled_image.width;
 
 			if (fit_height > drawable_height)
 			{
 				fit_height = drawable_height;
-				fit_width = drawable_height * image.width / image.height;
+				fit_width = drawable_height * sampled_image.width / sampled_image.height;
 			}
 			[encoder setRenderPipelineState:presentation.present_pipeline];
 			[encoder setViewport:(MTLViewport){ floor((drawable_width - fit_width) / 2.0),
 				floor((drawable_height - fit_height) / 2.0), floor(fit_width), floor(fit_height), 0.0, 1.0 }];
-			[encoder setFragmentTexture:image atIndex:0];
+			[encoder setFragmentTexture:sampled_image atIndex:0];
 			[encoder setFragmentSamplerState:presentation.present_sampler atIndex:0];
 			[encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
 		}
-		if (loading_frame.active)
+		if (loading_frame.active && !loading_image)
 		{
 			uint32_t rectangle_index;
 
@@ -921,6 +1008,7 @@ int host_metal_window_open(uint32_t window)
 	sampler.minFilter = MTLSamplerMinMagFilterLinear;
 	sampler.magFilter = MTLSamplerMinMagFilterLinear;
 	presentation.present_sampler = [xgpu_metal_device() newSamplerStateWithDescriptor:sampler];
+	loading_upload_initialize();
 
 	/* (macOS delays the timers of a process it thinks in the background,
 	by tens of milliseconds: the game's waits for the display's refreshes

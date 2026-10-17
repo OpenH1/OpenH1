@@ -40,6 +40,7 @@ are the host's cache's (host_gl_textures.c), found by the stage's record.
 #include "host.h"
 #include "host_load_trace.h"
 #include "host_loading_capture.h"
+#include "loading_gl.h"
 #include "host_render_stream.h"
 #ifdef HALO_VR
 #include "host_vr_render.h"
@@ -1025,6 +1026,15 @@ static int stream_loading_owned(void *context)
 	return 1;
 }
 
+static struct loading_art stream_loading_picture;
+static struct loading_gl stream_loading_image;
+
+static void stream_loading_art(void *context, const unsigned char *rgba)
+{
+	(void)context;
+	loading_art_set(&stream_loading_picture, rgba);
+}
+
 static uint64_t stream_loading(void *context, const struct loading_presentation_frame *frame)
 {
 	GLint draw_framebuffer, read_framebuffer, scissor[4];
@@ -1032,6 +1042,7 @@ static uint64_t stream_loading(void *context, const struct loading_presentation_
 	GLfloat color[4];
 	int width, height;
 	uint32_t index;
+	const unsigned char *pixels;
 	uint64_t period = gl.refresh_rate > 0.0f ? (uint64_t)(1e9 / gl.refresh_rate) : 16666667ull;
 	uint64_t traced = 0, acquired = 0, cleared = 0, restored = 0;
 #ifdef HALO_VR
@@ -1091,11 +1102,13 @@ static uint64_t stream_loading(void *context, const struct loading_presentation_
 	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 	glClearColor(LOADING_PRESENTATION_RED, LOADING_PRESENTATION_GREEN, LOADING_PRESENTATION_BLUE, 1.0f);
 	glClear(GL_COLOR_BUFFER_BIT);
-	glEnable(GL_SCISSOR_TEST);
+	pixels = loading_art_render(&stream_loading_picture, frame);
+	if (!loading_gl_draw(&stream_loading_image, pixels, width, height))
 	for (index = 0; index < frame->count; index++)
 	{
 		const struct loading_presentation_rect *rectangle = &frame->rectangles[index];
 
+		glEnable(GL_SCISSOR_TEST);
 		glScissor(rectangle->x * width / LOADING_PRESENTATION_WIDTH,
 			(LOADING_PRESENTATION_HEIGHT - rectangle->y - rectangle->height) * height / LOADING_PRESENTATION_HEIGHT,
 			rectangle->width * width / LOADING_PRESENTATION_WIDTH,
@@ -1275,6 +1288,7 @@ const struct host_render_backend *host_gl_stream_backend(void)
 		.frame_end = stream_frame_end,
 		.loading = stream_loading,
 		.loading_owned = stream_loading_owned,
+		.loading_art = stream_loading_art,
 		.prepare = stream_prepare,
 		.prepared = stream_prepared,
 		.dynamic_lights_prepare = stream_dynamic_lights_prepare,

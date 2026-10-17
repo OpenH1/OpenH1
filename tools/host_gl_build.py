@@ -21,7 +21,7 @@ LINUX_DIR = Path("port/linux")
 # backend's files of port/linux/src, copied beside the host's stand-ins for
 # the guest's headers (port/linux/host/gl), which their quoted includes then
 # find in place of the guest's
-HOST_GL_SHARED = ["xgpu.h", "xgpu_backend.h", "loading_presentation.h", "xgpu_shader.h", "xgpu_gl.h", "gl.h", "xgpu_gl.c", "xgpu_glsl.c",
+HOST_GL_SHARED = ["xgpu.h", "xgpu_backend.h", "loading_presentation.h", "loading_art.h", "loading_art_tables.h", "loading_gl.h", "xgpu_shader.h", "xgpu_gl.h", "gl.h", "xgpu_gl.c", "xgpu_glsl.c",
                   "xgpu_post.c", "xgpu_text.c", "gl_functions.c", "xbox_texture_decode.c"]
 HOST_GL_STAND_INS = ["platform.h", "sdl_platform.h", "port_config.h"]
 HOST_GL_SOURCES = ["host_gl_stream.c", "host_gl_textures.c"]
