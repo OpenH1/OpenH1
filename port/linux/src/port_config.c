@@ -145,6 +145,10 @@ static const struct config_setting config_settings[] =
 		"Draw the HUD (meters, counters, panels, motion sensor, reticles,\n"
 		"waypoints, scopes) from the high-res assets (8x the maps' bitmaps);\n"
 		"false draws the maps' own bitmaps." },
+	{ "display.hud_button_style", _config_string, "\"classic\"", "HALO_HUD_BUTTON_STYLE", _environment_value, _platform_all,
+		"High-res gameplay controller buttons: classic uses plain Xbox faces;\n"
+		"gems uses shaded Xbox faces; menu_gems uses the menu's button art.\n"
+		"Requires display.high_res_hud." },
 	{ "display.high_res_text", _config_boolean, "true", "HALO_HIGH_RES_TEXT", _environment_value, _platform_all,
 		"Draw the menus' and HUD's text with the fonts in port/assets/fonts\n"
 		"(Overpass) at the resolution the game draws at, and the menus' titles\n"
@@ -227,12 +231,6 @@ static const struct config_setting config_settings[] =
 		_platform_desktop,
 		"The microphone voice chat listens to: a device's name as Settings >\n"
 		"Audio lists it, or \"default\" for the system's (also if it is not found)." },
-	{ "audio.loose_sounds", _config_boolean, "false", "HALO_LOOSE_SOUNDS", _environment_value, _platform_all,
-		"For those making sounds: play each of a map's sounds that has a Halo PC\n"
-		"sound tag file of its name under the data root's tags folder\n"
-		"(tags/sound/.../name.sound) from that file. At the console,\n"
-		"loose_sounds_reload reads the files again and loose_sounds false gives\n"
-		"the map's sounds back." },
 
 #ifdef HALO_VR
 	/* the VR build's (configure.py --vr; vr.c) */

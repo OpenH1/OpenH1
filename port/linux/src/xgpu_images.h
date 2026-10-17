@@ -50,7 +50,8 @@ const struct xgpu_image *xgpu_image_get(unsigned int image);
 /* a frame is submitted (xgpu_stream_encode.c) */
 void xgpu_images_frame_end(void);
 
-/* (xbox_textures.c) refresh replacement choices after HUD settings change */
+/* (xbox_textures.c) refresh replacement choices after HUD settings change,
+and retire unused generated HUD images */
 void xgpu_texture_cache_begin_frame(void);
 
 /* (xbox_textures.c) the image drawn in place of the Xbox texture whose

@@ -38,6 +38,20 @@ orders, which the command stream hands it.
 #include <stdlib.h>
 #include <string.h>
 
+/* Draws query this for each texture; read the setting only when it changes. */
+static int hud_upscale_enabled(void)
+{
+	static unsigned long read_at = (unsigned long)-1;
+	static int enabled;
+
+	if (read_at != config_changes())
+	{
+		enabled = config_boolean("display.high_res_hud");
+		read_at = config_changes();
+	}
+	return enabled;
+}
+
 #ifndef HALO_RENDER_STREAM
 #ifndef GL_COMPRESSED_RGBA_S3TC_DXT1_EXT
 #define GL_COMPRESSED_RGBA_S3TC_DXT1_EXT 0x83f1
@@ -220,9 +234,12 @@ static void upload(GLuint texture, GLenum target, const struct xgpu_texture_desc
 	decode_compressed = description->compressed && !xgpu_capabilities.s3tc;
 #endif
 #ifdef HALO_WEB
-	/* WebGL's S3TC takes 2D textures whose sides are multiples of 4 */
+	/* WebGL's S3TC takes 2D textures whose sides are multiples of 4; and a
+	texture whose channels are where Halo PC keeps them is decoded, to put
+	them in order (WebGL 2 has no texture swizzle) */
 	decode_compressed |= description->compressed &&
-		(target == GL_TEXTURE_3D || (description->width & 3) || (description->height & 3));
+		(target == GL_TEXTURE_3D || (description->width & 3) || (description->height & 3) ||
+			channel_order != _custom_edition_channels_xbox);
 #endif
 	converted = description->compressed && !decode_compressed ? NULL : malloc(largest * sizeof(DWORD));
 	if (!converted && !(description->compressed && !decode_compressed))
@@ -236,7 +253,8 @@ static void upload(GLuint texture, GLenum target, const struct xgpu_texture_desc
 	/* the channel of the texels each channel is sampled from, set on every
 	upload: a texture object can be reused for other texels (WebGL 2 has no
 	texture swizzle: the converted texels' channels are put in order before
-	they are uploaded instead, and Custom Edition maps do not run there) */
+	they are uploaded instead, below; there it is only mods' textures, as
+	Custom Edition maps do not run there) */
 #ifndef HALO_WEB
 	{
 		GLint channels[4] = { GL_RED, GL_GREEN, GL_BLUE, GL_ALPHA };
@@ -303,14 +321,32 @@ static void upload(GLuint texture, GLenum target, const struct xgpu_texture_desc
 				}
 #ifdef HALO_WEB
 				{
-					/* BGRA (32-bit ARGB words) to the RGBA WebGL takes */
+					/* BGRA (32-bit ARGB words) to the RGBA WebGL takes, each
+					channel from where the texels keep it */
 					unsigned long texel, count = (unsigned long)width * (unsigned long)height * (unsigned long)depth;
 
 					for (texel = 0; texel < count; texel++)
 					{
 						unsigned long value = converted[texel];
 
-						converted[texel] = (value & 0xff00ff00UL) | ((value >> 16) & 0xffUL) | ((value & 0xffUL) << 16);
+						if (channel_order == _custom_edition_channels_xbox)
+						{
+							converted[texel] = (value & 0xff00ff00UL) | ((value >> 16) & 0xffUL) | ((value & 0xffUL) << 16);
+						}
+						else
+						{
+							/* (red, green, blue and alpha, as stored) */
+							unsigned long stored[4];
+							unsigned long channel;
+
+							stored[0] = (value >> 16) & 0xffUL;
+							stored[1] = (value >> 8) & 0xffUL;
+							stored[2] = value & 0xffUL;
+							stored[3] = (value >> 24) & 0xffUL;
+							converted[texel] = 0;
+							for (channel = 0; channel < 4; channel++)
+								converted[texel] |= stored[custom_edition_channel_sources[channel_order][channel]] << (8 * channel);
+						}
 					}
 				}
 #endif
@@ -340,6 +376,9 @@ struct texture_entry
 	unsigned long last_used_frame;
 	/* the high-res HUD texture drawn in its place (hud_hires.h), or -1 */
 	long override;
+	GLuint hud_upscale;
+	unsigned long hud_upscale_levels;
+	BOOL hud_upscale_checked;
 	/* the newest generation of its pages (memory_watch_generation) as of the
 	memory watch serial read before it was found: the same while no watched
 	page has been written since (0: never found) */
@@ -441,6 +480,38 @@ static GLuint texture_entry_result(struct texture_entry *entry, GLenum *target,
 			description->hires_coverage = hud_hires_override_coverage(entry->override);
 			description->hires_point_threshold = hud_hires_override_point_threshold(entry->override);
 			return texture;
+		}
+	}
+	/* These sheets keep the map's art and coordinates. Decode through the
+	 * normal format reader; the HUD module owns only the interpolation. */
+	if (hud_upscale_enabled())
+	{
+		if (!entry->hud_upscale_checked)
+		{
+			long kind = hud_hires_upscale_at(entry->address, entry->description.width, entry->description.height);
+
+			entry->hud_upscale_checked = TRUE;
+			if (entry->size && !entry->description.compressed && entry->target == GL_TEXTURE_2D &&
+				entry->description.format != 0x0b &&
+				entry->description.width <= 256 && entry->description.height <= 256 &&
+				kind &&
+				custom_edition_texels_order(entry->address) == _custom_edition_channels_xbox &&
+				platform_is_contiguous((void *)entry->address) &&
+				platform_is_contiguous((void *)(entry->address + entry->size - 1)))
+			{
+				DWORD *pixels = malloc(entry->description.width * entry->description.height * 4);
+
+				if (pixels && xgpu_texture_decode_level(&entry->description, 0, (const unsigned char *)entry->address, NULL, pixels))
+					entry->hud_upscale = hud_hires_upscale_texture((const unsigned char *)pixels,
+						entry->description.width, entry->description.height, kind, &entry->hud_upscale_levels);
+				free(pixels);
+			}
+		}
+		if (entry->hud_upscale)
+		{
+			description->hires = TRUE;
+			description->levels = entry->hud_upscale_levels;
+			return entry->hud_upscale;
 		}
 	}
 	return entry->texture;
@@ -552,6 +623,13 @@ GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *
 		if (!entry->generation)
 			entry->generation = 1;
 		/* (which bitmap is here may have changed with the pixels) */
+		if (entry->hud_upscale)
+		{
+			glDeleteTextures(1, &entry->hud_upscale);
+			entry->hud_upscale = 0;
+			xgpu_gl_state_invalidate();
+		}
+		entry->hud_upscale_checked = FALSE;
 		entry->override = -1;
 		if (entry->size && !palettized && !entry->description.cube_map && entry->description.depth == 1)
 		{
@@ -637,6 +715,8 @@ void xgpu_texture_cache_begin_frame(void)
 			{
 				*link = entry->next;
 				glDeleteTextures(1, &entry->texture);
+				if (entry->hud_upscale)
+					glDeleteTextures(1, &entry->hud_upscale);
 				xgpu_gl_state_invalidate();
 				texture_drop_serial++;
 				free(entry);
@@ -660,6 +740,7 @@ bitmap's pixels is found again whenever they change (the write tracking),
 for each texture by its Data, Format and Size. */
 
 #define REPLACEMENT_BUCKET_COUNT 1024
+#define REPLACEMENT_IDLE_FRAMES 1800
 
 struct replacement_entry
 {
@@ -667,42 +748,59 @@ struct replacement_entry
 	DWORD data, format_word, size_word;
 	/* the high-res HUD texture (hud_hires.h), or -1 */
 	long override;
+	unsigned int hud_upscale;
+	unsigned long hud_upscale_levels, last_used_frame;
+	BOOL hud_upscale_checked;
 	/* its pages' newest generation when it was found, and the memory
 	watch serial as of which that is known (as texture_entry's) */
 	unsigned long generation, watched_serial;
 };
 
 static struct replacement_entry *replacement_buckets[REPLACEMENT_BUCKET_COUNT];
+static unsigned long replacement_frame;
 
 void xgpu_texture_cache_begin_frame(void)
 {
 	unsigned long changed = hud_hires_settings_changed();
 	unsigned long index;
 
-	if (!changed)
+	replacement_frame++;
+	if (!changed && replacement_frame % 600)
 		return;
 	for (index = 0; index < REPLACEMENT_BUCKET_COUNT; index++)
 	{
-		struct replacement_entry *entry;
+		struct replacement_entry **link = &replacement_buckets[index];
 
-		for (entry = replacement_buckets[index]; entry; entry = entry->next)
+		while (*link)
 		{
+			struct replacement_entry *entry = *link;
 			struct xgpu_texture_description description;
 			unsigned long address = (unsigned long)PLATFORM_PHYSICAL_TO_VIRTUAL(entry->data);
 
-			xgpu_texture_describe(entry->format_word, entry->size_word, &description);
-			if (hud_hires_bitmap_affected(address, (long)description.width, (long)description.height, changed))
+			if (replacement_frame - entry->last_used_frame > REPLACEMENT_IDLE_FRAMES)
 			{
-				/* Find the replacement again even when its pixels have not
-				changed. Keep the images used by frames still in flight. */
-				entry->generation = 0;
-				entry->watched_serial = 0;
+				*link = entry->next;
+				xgpu_image_delete(entry->hud_upscale);
+				free(entry);
+				continue;
 			}
+			if (changed)
+			{
+				xgpu_texture_describe(entry->format_word, entry->size_word, &description);
+				if (hud_hires_bitmap_affected(address, (long)description.width, (long)description.height, changed))
+				{
+					/* Find the replacement again even when its pixels have not
+					changed. Keep the images used by frames still in flight. */
+					entry->generation = 0;
+					entry->watched_serial = 0;
+				}
+			}
+			link = &entry->next;
 		}
 	}
 }
 
-static long replacement_override(const DWORD *resource, const struct xgpu_texture_description *description)
+static struct replacement_entry *replacement_get(const DWORD *resource, const struct xgpu_texture_description *description)
 {
 	DWORD data = resource[1], format_word = resource[3], size_word = resource[4];
 	unsigned long hash = ((unsigned long)data * 2654435761UL ^ (unsigned long)format_word * 2246822519UL ^
@@ -713,7 +811,7 @@ static long replacement_override(const DWORD *resource, const struct xgpu_textur
 
 	if (description->format == 0x0b || description->cube_map || description->depth > 1 ||
 		!xgpu_texture_size_supported(description))
-		return -1;
+		return NULL;
 	for (entry = *bucket; entry; entry = entry->next)
 	{
 		if (entry->data == data && entry->format_word == format_word && entry->size_word == size_word)
@@ -723,7 +821,7 @@ static long replacement_override(const DWORD *resource, const struct xgpu_textur
 	{
 		entry = calloc(1, sizeof(*entry));
 		if (!entry)
-			return -1;
+			return NULL;
 		entry->data = data;
 		entry->format_word = format_word;
 		entry->size_word = size_word;
@@ -731,8 +829,9 @@ static long replacement_override(const DWORD *resource, const struct xgpu_textur
 		entry->next = *bucket;
 		*bucket = entry;
 	}
+	entry->last_used_frame = replacement_frame;
 	if (entry->watched_serial && entry->watched_serial == watch_serial)
-		return entry->override;
+		return entry;
 	address = (unsigned long)PLATFORM_PHYSICAL_TO_VIRTUAL(data);
 	size = xgpu_texture_face_size(description);
 	generation = memory_watch_generation(address, size);
@@ -745,13 +844,16 @@ static long replacement_override(const DWORD *resource, const struct xgpu_textur
 		entry->generation = memory_watch_generation(address, size);
 		if (!entry->generation)
 			entry->generation = 1;
+		xgpu_image_delete(entry->hud_upscale);
+		entry->hud_upscale = 0;
+		entry->hud_upscale_checked = FALSE;
 		entry->override = hud_hires_override_find(address, description->width, description->height,
 			description->levels > 1 ? xgpu_texture_level_offset(description, 1) : size);
 		if (entry->override >= 0 && !hud_hires_override_texture(entry->override, &levels))
 			entry->override = -1;
 	}
 	entry->watched_serial = watch_serial;
-	return entry->override;
+	return entry;
 }
 
 unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_description *description)
@@ -760,6 +862,7 @@ unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_descri
 	unsigned long levels;
 	unsigned int image;
 	long override;
+	struct replacement_entry *entry;
 
 	/* (the high-res text's atlas, for its placeholder bitmap: text_hires.h) */
 	if ((image = text_hires_atlas_texture(header[1])) != 0)
@@ -782,7 +885,10 @@ unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_descri
 		description->hires = TRUE;
 		return image;
 	}
-	override = replacement_override(header, description);
+	entry = replacement_get(header, description);
+	if (!entry)
+		return 0;
+	override = entry->override;
 	if (override >= 0 && (image = hud_hires_override_texture(override, &levels)) != 0)
 	{
 		description->levels = levels;
@@ -790,6 +896,34 @@ unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_descri
 		description->hires_coverage = hud_hires_override_coverage(override);
 		description->hires_point_threshold = hud_hires_override_point_threshold(override);
 		return image;
+	}
+	if (hud_upscale_enabled())
+	{
+		if (!entry->hud_upscale_checked)
+		{
+			unsigned long address = (unsigned long)PLATFORM_PHYSICAL_TO_VIRTUAL(header[1]);
+			unsigned long size = xgpu_texture_face_size(description);
+			long kind = hud_hires_upscale_at(address, description->width, description->height);
+
+			entry->hud_upscale_checked = TRUE;
+			if (kind && size && !description->compressed && description->width <= 256 && description->height <= 256 &&
+				custom_edition_texels_order(address) == _custom_edition_channels_xbox &&
+				platform_is_contiguous((void *)address) && platform_is_contiguous((void *)(address + size - 1)))
+			{
+				DWORD *pixels = malloc(description->width * description->height * 4);
+
+				if (pixels && xgpu_texture_decode_level(description, 0, (const unsigned char *)address, NULL, pixels))
+					entry->hud_upscale = hud_hires_upscale_texture((const unsigned char *)pixels,
+						description->width, description->height, kind, &entry->hud_upscale_levels);
+				free(pixels);
+			}
+		}
+		if (entry->hud_upscale)
+		{
+			description->hires = TRUE;
+			description->levels = entry->hud_upscale_levels;
+			return entry->hud_upscale;
+		}
 	}
 	return 0;
 }

@@ -40,7 +40,10 @@ enum
 	_web_mouse_wanted = 48,
 	/* low bit: loading; upper bits: epoch, incremented at each begin */
 	_web_loading_state = 49,
-	WEB_SHARED_WORDS = 50,
+	/* the page's: the button the player chose in the dialog the game asked
+	for (platform_ask: web_library.js's web_js_ask), -1 while it waits */
+	_web_answer = 50,
+	WEB_SHARED_WORDS = 51,
 };
 
 #define WEB_TOUCH_INPUTS 17
