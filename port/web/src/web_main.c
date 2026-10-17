@@ -18,6 +18,7 @@ game (shell_xbox.c's main, renamed halo_game_main by tools/web_build.py).
 #include <sys/stat.h>
 
 #include "web_shared.h"
+#include "loading_art.h"
 
 int halo_game_main(void);
 /* web_net.c: the arguments, for posix_command_line_argument */
@@ -70,6 +71,62 @@ void web_loading_set(int active)
 	__atomic_store_n(&web_shared[_web_loading_state], (int32_t)state, __ATOMIC_RELEASE);
 	frames = (unsigned int)__atomic_load_n(&web_shared[_web_frames_shown], __ATOMIC_RELAXED);
 	web_js_loading(state, frames);
+}
+
+/* The worker publishes an owned picture. Atomic bytes avoid a C data race
+when the page samples an update; the generation rejects an incomplete copy. */
+static uint8_t loading_pixels[LOADING_ART_BYTES];
+static unsigned int loading_generation, loading_valid;
+
+void web_loading_art(const uint8_t *rgba)
+{
+	unsigned int index;
+
+	__atomic_add_fetch(&loading_generation, 1, __ATOMIC_SEQ_CST);
+	if (rgba)
+	{
+		for (index = 0; index < LOADING_ART_BYTES; index++)
+			__atomic_store_n(&loading_pixels[index], rgba[index], __ATOMIC_RELAXED);
+	}
+	__atomic_store_n(&loading_valid, rgba != NULL, __ATOMIC_RELAXED);
+	__atomic_add_fetch(&loading_generation, 1, __ATOMIC_RELEASE);
+}
+
+/* Called only by the page's main-thread WASM instance. It never enters the
+game worker or shares the compositor's history with it. */
+EMSCRIPTEN_KEEPALIVE const uint8_t *web_loading_picture(unsigned int epoch, double elapsed_ms)
+{
+	static struct loading_art art;
+	static uint8_t rgba[LOADING_ART_BYTES];
+	static unsigned int installed_generation;
+	struct loading_presentation_frame frame;
+	unsigned int generation, valid, index;
+
+	generation = __atomic_load_n(&loading_generation, __ATOMIC_ACQUIRE);
+	if (!(generation & 1u) && generation != installed_generation)
+	{
+		valid = __atomic_load_n(&loading_valid, __ATOMIC_RELAXED);
+		if (valid)
+		{
+			for (index = 0; index < LOADING_ART_BYTES; index++)
+				rgba[index] = __atomic_load_n(&loading_pixels[index], __ATOMIC_RELAXED);
+		}
+		__atomic_thread_fence(__ATOMIC_SEQ_CST);
+		if (generation == __atomic_load_n(&loading_generation, __ATOMIC_ACQUIRE))
+		{
+			loading_art_set(&art, valid ? rgba : NULL);
+			installed_generation = generation;
+		}
+	}
+	memset(&frame, 0, sizeof(frame));
+	frame.epoch = epoch;
+	frame.active = 1;
+	/* RAF supplies finite nonnegative milliseconds; reject invalid values
+before converting to the compositor's unsigned nanoseconds. */
+	if (!(elapsed_ms >= 0.0) || elapsed_ms >= 18446744073709.0)
+		return NULL;
+	frame.elapsed_ns = (uint64_t)(elapsed_ms * 1000000.0);
+	return loading_art_render(&art, &frame);
 }
 
 /* ---------- start */

@@ -16,6 +16,7 @@ and the debug keyboard that the game's console reads.
 #include "xgpu_backend.h"
 #include "load_trace.h"
 #include "loading_presentation.h"
+#include "loading_art.h"
 #include "p2p.h"
 #include "xiso.h"
 #ifdef HALO_VR
@@ -29,6 +30,7 @@ and the debug keyboard that the game's console reads.
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <zlib.h>
 #if !defined(_WIN32) && !defined(HALO_ANDROID)
 #include <signal.h>
 #endif
@@ -44,6 +46,30 @@ static BOOL platform_sdl_started = FALSE;
 after that, the game runs without a window (platform_pump_events) */
 static BOOL platform_video_tried = FALSE;
 static int loading_presentation_active;
+
+extern const unsigned int platform_loading_picture[];
+extern const unsigned long platform_loading_picture_size;
+
+void halo_loading_art(void)
+{
+	unsigned char *pixels;
+	uLongf size = LOADING_ART_BYTES;
+
+	if (!platform_loading_picture_size)
+		return;
+	pixels = malloc(LOADING_ART_BYTES);
+	if (!pixels)
+		return;
+	if (uncompress(pixels, &size, (const unsigned char *)platform_loading_picture,
+		platform_loading_picture_size) == Z_OK && size == LOADING_ART_BYTES)
+	{
+		xgpu_backend_loading_art(pixels);
+		platform_log("loading: using the bundled loading picture");
+	}
+	else
+		platform_log("loading: could not decode the bundled loading picture");
+	free(pixels);
+}
 
 void halo_loading_begin(void)
 {
@@ -85,6 +111,7 @@ void halo_loading_ready(void)
 }
 
 #if !defined(HALO_RENDER_STREAM) && !defined(HALO_WEB)
+#include "loading_gl.h"
 /* The second context owns no game objects. The game keeps drawing only to
 its offscreen targets while this thread owns the window's framebuffer. */
 static struct
@@ -95,6 +122,8 @@ static struct
 	pthread_cond_t changed;
 	int started, ready, stop, phase, busy, width, height, trace;
 	Uint64 epoch, started_ns, serial, interval_ns;
+	struct loading_art art;
+	struct loading_gl image;
 } loading_window = { .lock = PTHREAD_MUTEX_INITIALIZER, .changed = PTHREAD_COND_INITIALIZER };
 
 static void platform_loading_trace(const char *phase, Uint64 epoch, Uint64 serial, Uint64 elapsed)
@@ -129,6 +158,7 @@ static int platform_loading_thread(void *unused)
 		Uint64 started, interval, elapsed;
 		int width, height;
 		uint32_t index;
+		const unsigned char *pixels;
 
 		while (!loading_window.phase && !loading_window.stop)
 			pthread_cond_wait(&loading_window.changed, &loading_window.lock);
@@ -147,24 +177,30 @@ static int platform_loading_thread(void *unused)
 		started = SDL_GetTicksNS();
 		frame.elapsed_ns = started - frame.started_ns;
 		loading_presentation_build(&frame);
+		pixels = loading_art_render(&loading_window.art, &frame);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glDisable(GL_SCISSOR_TEST);
 		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
 		glClearColor(LOADING_PRESENTATION_RED, LOADING_PRESENTATION_GREEN, LOADING_PRESENTATION_BLUE, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
-		glEnable(GL_SCISSOR_TEST);
-		for (index = 0; index < frame.count; index++)
+		/* The fallback remains available when the original picture is unavailable. */
+		if (!loading_gl_draw(&loading_window.image, pixels, width, height))
 		{
-			const struct loading_presentation_rect *rectangle = &frame.rectangles[index];
-			int x = rectangle->x * width / LOADING_PRESENTATION_WIDTH;
-			int y = rectangle->y * height / LOADING_PRESENTATION_HEIGHT;
-			int right = (rectangle->x + rectangle->width) * width / LOADING_PRESENTATION_WIDTH;
-			int bottom = (rectangle->y + rectangle->height) * height / LOADING_PRESENTATION_HEIGHT;
+			for (index = 0; index < frame.count; index++)
+			{
+				const struct loading_presentation_rect *rectangle = &frame.rectangles[index];
+				int x = rectangle->x * width / LOADING_PRESENTATION_WIDTH;
+				int y = rectangle->y * height / LOADING_PRESENTATION_HEIGHT;
+				int right = (rectangle->x + rectangle->width) * width / LOADING_PRESENTATION_WIDTH;
+				int bottom = (rectangle->y + rectangle->height) * height / LOADING_PRESENTATION_HEIGHT;
 
-			glScissor(x, height - bottom, right - x, bottom - y);
-			glClearColor(rectangle->color[0], rectangle->color[1], rectangle->color[2], rectangle->color[3]);
-			glClear(GL_COLOR_BUFFER_BIT);
+				glEnable(GL_SCISSOR_TEST);
+				glScissor(x, height - bottom, right - x, bottom - y);
+				glClearColor(rectangle->color[0], rectangle->color[1], rectangle->color[2], rectangle->color[3]);
+				glClear(GL_COLOR_BUFFER_BIT);
+			}
 		}
+		glDisable(GL_SCISSOR_TEST);
 		SDL_GL_SwapWindow(platform_window);
 		platform_loading_trace("loading.swap.return", frame.epoch, frame.serial, frame.elapsed_ns);
 		/* Drivers without swap pacing still show one update per refresh. */
@@ -182,6 +218,8 @@ static int platform_loading_thread(void *unused)
 		pthread_cond_broadcast(&loading_window.changed);
 	}
 	pthread_mutex_unlock(&loading_window.lock);
+	if (current)
+		loading_gl_dispose(&loading_window.image);
 	if (current)
 		SDL_GL_MakeCurrent(platform_window, NULL);
 	return 0;
@@ -240,6 +278,21 @@ static void platform_loading_initialize(void)
 	atexit(platform_loading_shutdown);
 }
 
+void platform_loading_art(const unsigned char *rgba)
+{
+	int phase;
+
+	pthread_mutex_lock(&loading_window.lock);
+	phase = loading_window.phase;
+	loading_window.phase = 0;
+	while (loading_window.busy)
+		pthread_cond_wait(&loading_window.changed, &loading_window.lock);
+	loading_art_set(&loading_window.art, rgba);
+	loading_window.phase = phase;
+	pthread_cond_broadcast(&loading_window.changed);
+	pthread_mutex_unlock(&loading_window.lock);
+}
+
 void platform_loading_set(int phase)
 {
 	int width = 0, height = 0, previous;
@@ -290,7 +343,13 @@ int platform_loading_active(void)
 }
 #elif defined(HALO_WEB)
 void web_loading_set(int phase);
+void web_loading_art(const unsigned char *rgba);
 static int loading_phase;
+
+void platform_loading_art(const unsigned char *rgba)
+{
+	web_loading_art(rgba);
+}
 
 void platform_loading_set(int phase)
 {

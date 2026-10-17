@@ -124,6 +124,8 @@ struct host_render_backend
 	uint64_t (*loading)(void *context, const struct loading_presentation_frame *frame);
 	/* Current ownership, independent of the callback's retry interval. */
 	int (*loading_owned)(void *context);
+	/* Copy 640x480 RGBA before returning; NULL clears the owned picture. */
+	void (*loading_art)(void *context, const unsigned char *rgba);
 
 	/* nonzero if the block and cells are made */
 	int (*dynamic_lights_prepare)(void *context);

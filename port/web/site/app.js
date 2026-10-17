@@ -645,6 +645,7 @@ const loadingPresentation = window.HaloLoading.create();
 function watchFrames() {
   const art = $('loading-art');
   const context = art.getContext('2d');
+  let pictureCanvas = null, pictureContext = null, pictureData = null;
   const draw = (now) => {
     if (gameStopped) {
       $('starting').hidden = true;
@@ -660,10 +661,28 @@ function watchFrames() {
     $('starting').hidden = !frame.visible;
     if (frame.visible) {
       if (frame.epoch) $('starting-text').textContent = 'Loading…';
-      context.clearRect(0, 0, 512, 256);
-      for (const rectangle of frame.rectangles) {
-        context.fillStyle = `rgb(${rectangle.color.map(value => Math.round(value * 255)).join(',')})`;
-        context.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+      const picture = game && game._web_loading_picture
+        ? game._web_loading_picture(frame.epoch, frame.elapsed_ms) >>> 0 : 0;
+      if (picture && picture + 640 * 480 * 4 <= game.HEAPU8.length) {
+        if (!pictureCanvas) {
+          pictureCanvas = document.createElement('canvas');
+          pictureCanvas.width = 640;
+          pictureCanvas.height = 480;
+          pictureContext = pictureCanvas.getContext('2d');
+          pictureData = pictureContext.createImageData(640, 480);
+        }
+        // ImageData owns a non-shared copy; the C history remains in WASM.
+        pictureData.data.set(game.HEAPU8.subarray(picture, picture + 640 * 480 * 4));
+        pictureContext.putImageData(pictureData, 0, 0);
+        context.fillStyle = '#000';
+        context.fillRect(0, 0, 512, 256);
+        context.drawImage(pictureCanvas, (512 - 256 * 4 / 3) / 2, 0, 256 * 4 / 3, 256);
+      } else {
+        context.clearRect(0, 0, 512, 256);
+        for (const rectangle of frame.rectangles) {
+          context.fillStyle = `rgb(${rectangle.color.map(value => Math.round(value * 255)).join(',')})`;
+          context.fillRect(rectangle.x, rectangle.y, rectangle.width, rectangle.height);
+        }
       }
     }
     requestAnimationFrame(draw);

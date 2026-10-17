@@ -52,6 +52,7 @@ SMAA_FILES = (("SMAA.hlsl", "xgpu_smaa_shader"), ("area_tex.zlib", "xgpu_smaa_ar
               ("search_tex.zlib", "xgpu_smaa_search_texture"))
 # the desktop windows' icon (tools/app_icon.py; port/linux/src/sdl_platform.c)
 WINDOW_ICON = Path("port/assets/icon/opence-icon-256.png")
+LOADING_PICTURE = Path("port/assets/loading/loading.rgba.zlib")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
 
@@ -94,7 +95,8 @@ def hud_asset_inputs() -> List[Path]:
     return [*inputs, *(folder / f"{asset['name']}.png" for folder, asset, _ in textures()),
             *(FONT_ASSETS / name for name in font_files()), *(MENU_ASSETS / name for name in menu_files()),
             *(SMAA_ASSETS / name for name, _ in smaa_files()),
-            *([WINDOW_ICON] if (ROOT / WINDOW_ICON).is_file() else [])]
+            *([WINDOW_ICON] if (ROOT / WINDOW_ICON).is_file() else []),
+            *([LOADING_PICTURE] if (ROOT / LOADING_PICTURE).is_file() else [])]
 
 
 def hud_configure_inputs() -> List[Path]:
@@ -279,6 +281,13 @@ def main() -> None:
     lines.append(f"const unsigned long platform_window_icon_size = {len(data)};")
     lines.append("")
     lines.append("#endif")
+    data = (ROOT / LOADING_PICTURE).read_bytes() if (ROOT / LOADING_PICTURE).is_file() else b""
+    lines.append("")
+    lines.append("const unsigned int platform_loading_picture[] = {")
+    lines.extend(words(data) if data else ["\t0,"])
+    lines.append("};")
+    lines.append(f"const unsigned long platform_loading_picture_size = {len(data)};")
+    lines.append("")
     write_output(Path(sys.argv[1]), lines)
 
 

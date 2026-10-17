@@ -21,6 +21,7 @@ test('startup, explicit epochs, delayed messages and fatal state', () => {
   assert.equal(loading.frame(1, 1, false).visible, false);
   loading.update(3, 10, 100);
   assert.equal(loading.frame(10, 200, false).visible, true);
+  assert.equal(loading.frame(10, 200, false).elapsed_ms, 100);
   assert.notDeepEqual(loading.frame(10, 200, false).rectangles, loading.frame(10, 300, false).rectangles);
   loading.update(2, 10, 300);
   assert.equal(loading.frame(10, 300, false).visible, true);

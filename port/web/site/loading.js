@@ -32,7 +32,8 @@
       },
       frame(frames, now, stopped) {
         const visible = !stopped && (active || (!seen ? frames === 0 : frames === beginFrames));
-        return { visible, epoch, active, rectangles: rectangles(Math.max(0, now - started)) };
+        const elapsed_ms = Math.max(0, now - started);
+        return { visible, epoch, active, elapsed_ms, rectangles: rectangles(elapsed_ms) };
       },
     };
   }

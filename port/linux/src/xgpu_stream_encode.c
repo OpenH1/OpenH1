@@ -1587,6 +1587,20 @@ void xgpu_backend_prepare(void)
 		record(XGPU_STREAM_PREPARE, sizeof(struct xgpu_stream_record));
 }
 
+void xgpu_backend_loading_art(const unsigned char *rgba)
+{
+	struct xgpu_stream_value *body;
+	uint32_t bytes = rgba ? XGPU_STREAM_LOADING_ART_BYTES : 0;
+
+	if (!stream.open)
+		return;
+	body = record(XGPU_STREAM_LOADING_ART, sizeof(*body) + bytes);
+	body->value = bytes;
+	if (bytes)
+		memcpy(body + 1, rgba, bytes);
+	synchronous();
+}
+
 void xgpu_backend_loading(int active)
 {
 	if (!stream.open)

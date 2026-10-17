@@ -428,6 +428,18 @@ def test_direct_loading_handoff_stops_window_writes_and_restarts(tmp_path):
 #include <string.h>
 #include <time.h>
 #include "loading_presentation.h"
+#include "loading_art.h"
+#define LOADING_GL_H
+struct loading_gl { int unused; };
+static int image_draws;
+static int loading_gl_draw(struct loading_gl *image, const unsigned char *pixels, int width, int height)
+{
+    (void)image;
+    assert(width == 640 && height == 480);
+    if (pixels) { assert(pixels[3] == 255); image_draws++; }
+    return pixels != NULL;
+}
+static void loading_gl_dispose(struct loading_gl *image) { (void)image; }
 typedef uint64_t Uint64;
 typedef void *SDL_GLContext;
 typedef struct { pthread_t id; int (*start)(void *); void *data; } SDL_Thread;
@@ -512,9 +524,17 @@ static void wait_for_swap(int before)
 int main(void)
 {
     int before, cycle;
+    static unsigned char rgba[LOADING_ART_BYTES];
     owner = pthread_self();
     platform_loading_initialize();
     assert(loading_window.started && loading_window.ready == 1);
+    memset(rgba, 192, sizeof(rgba));
+    rgba[1] = 64; rgba[2] = 128; rgba[3] = 255; rgba[4] = 96;
+    platform_loading_art(rgba);
+    memset(rgba, 0, sizeof(rgba));
+    assert(loading_window.art.color[0] == 192);
+    assert(loading_window.art.color[1] == 64 && loading_window.art.color[2] == 128);
+    assert(loading_window.art.color[3] == 96);
     for (cycle = 0; cycle < 3; cycle++)
     {
         before = __atomic_load_n(&swaps, __ATOMIC_SEQ_CST);
@@ -536,6 +556,7 @@ int main(void)
     assert(loading_window.epoch == 3);
     platform_loading_shutdown();
     assert(destroyed == 1 && !loading_window.started);
+    assert(image_draws > 0);
     return 0;
 }
 '''

@@ -38,7 +38,8 @@ port/linux/README.md.
 #include <stdint.h>
 
 #define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
-#define XGPU_STREAM_VERSION 5
+#define XGPU_STREAM_VERSION 6
+#define XGPU_STREAM_LOADING_ART_BYTES (640u * 480u * 4u)
 
 /* ---------- the ring
 
@@ -217,6 +218,7 @@ enum
 	XGPU_STREAM_VR_EYE_TINT,
 	XGPU_STREAM_LOADING,
 	XGPU_STREAM_LOADING_OWNED,          /* synchronous: current presenter ownership */
+	XGPU_STREAM_LOADING_ART,            /* value: byte count, followed by owned 640x480 RGBA pixels */
 	XGPU_STREAM_RECORD_TYPES,
 };
 

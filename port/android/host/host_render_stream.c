@@ -187,6 +187,7 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 {
 	[XGPU_STREAM_LOADING] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_LOADING_OWNED] = sizeof(struct xgpu_stream_reply_record),
+	[XGPU_STREAM_LOADING_ART] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_SKIP] = sizeof(struct xgpu_stream_record),
 	[XGPU_STREAM_INITIALIZE] = sizeof(struct xgpu_stream_reply_record),
 	[XGPU_STREAM_INVALIDATE] = sizeof(struct xgpu_stream_record),
@@ -306,6 +307,12 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 
 	switch (type)
 	{
+	case XGPU_STREAM_LOADING_ART:
+		if ((value->value != 0 && value->value != XGPU_STREAM_LOADING_ART_BYTES) ||
+			size - sizeof(*value) != value->value)
+			return XGPU_STREAM_ERROR_RECORD;
+		CALL(loading_art, value->value ? start + sizeof(*value) : NULL);
+		break;
 	case XGPU_STREAM_LOADING_OWNED:
 	{
 		uint32_t owned = host_render_stream_loading_holds() && backend->loading_owned &&

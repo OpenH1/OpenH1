@@ -5,6 +5,7 @@
 #include "host_load_trace.h"
 #include "host_loading_capture.h"
 #include "../src/loading_presentation.h"
+#include "../src/loading_art.h"
 #ifdef HALO_VR
 #include "host_vr_render.h"
 #include "host_vr_vulkan.h"
@@ -80,7 +81,7 @@ uint64_t xgpu_vulkan_loading(void *context, const struct loading_presentation_fr
 		return 1000000;
 	}
 #endif
-	image = xgpu_vulkan_loading_draw(frame, LOADING_PRESENTATION_WIDTH, LOADING_PRESENTATION_HEIGHT,
+	image = xgpu_vulkan_loading_draw(frame, LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT,
 		XGPU_VULKAN_FORMAT_BGRA8);
 	if (image)
 	{
