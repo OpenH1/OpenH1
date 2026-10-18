@@ -99,12 +99,6 @@ parser.add_argument(
     help="Android NDK for `ninja android` (default: ANDROID_NDK_HOME, or the newest under the Android SDK)",
 )
 parser.add_argument(
-    "--android-vulkan",
-    action="store_true",
-    help="draw the Android build with Vulkan instead of OpenGL ES (ninja android/android_apk); "
-    "requires a Vulkan 1.3 phone driver; refer to port/linux/vulkan/README.md",
-)
-parser.add_argument(
     "--android-guest-cc",
     type=str,
     help="clang with the arm64_32 target for the Android guest (default: --guest-llvm's)",
@@ -198,7 +192,6 @@ sln = SimpleNamespace(
     guest_llvm=args.guest_llvm,
     guest_llvm_cache=args.guest_llvm_cache,
     android_guest_cc=args.android_guest_cc,
-    android_vulkan=args.android_vulkan,
     linux_arm64_cc=args.linux_arm64_cc,
     linux_arm64_gl=args.linux_arm64_gl,
     linux_x86_64=args.linux_x86_64,

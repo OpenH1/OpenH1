@@ -4,7 +4,7 @@
 `ninja android_apk` makes an app from it:
 `port/android/app/build/outputs/apk/debug/app-debug.apk`.
 
-The game shows its graphics with OpenGL ES 3 by default. It plays sound through SDL3
+The game shows its graphics with Vulkan 1.3. It plays sound through SDL3
 (AAudio). It accepts input from game controllers, for example a PlayStation
 5 DualSense on Bluetooth, and from the touchscreen (refer to "Controls").
 The app needs Android 9 (API 28) or later. It operates on 64-bit-only
@@ -75,14 +75,12 @@ of the whole `save` folder stops there.
 
 `ninja android` builds only the game image and the native libraries.
 
-`python configure.py --android-vulkan` selects the shared Vulkan renderer
-for these same targets. It needs a Vulkan 1.3 driver (dynamic rendering,
-timeline semaphores and host query reset); it uses the phone's Vulkan
-loader and an SDL Android surface. The pipeline cache is in the app's
-private cache directory. This path is build-checked; rendering, performance
-and activity suspend/resume still need testing on a phone. Configure without
-`--android-vulkan` to return to OpenGL ES. Refer to the renderer's
-[README](../linux/vulkan/README.md).
+The app draws with the shared Vulkan renderer, in the host. It needs a
+Vulkan 1.3 driver (dynamic rendering, timeline semaphores and host query
+reset), which the manifest asks for, so Google Play offers the app only to
+such phones; it uses the phone's Vulkan loader and an SDL Android surface.
+The pipeline cache is in the app's private cache directory. Refer to the
+renderer's [README](../linux/vulkan/README.md).
 
 ## Game data
 

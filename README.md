@@ -95,7 +95,7 @@ Each platform has its own instructions:
 | Linux x86-64 (x86-64 executable, OpenGL 4.5, SDL3; no 32-bit libraries) | [port/linux/README.md](port/linux/README.md#64-bit-x86) |
 | Linux arm64 VR (OpenXR headsets such as the Steam Frame) | [port/linux/README.md](port/linux/README.md#vr) |
 | Windows (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/windows/README.md](port/windows/README.md) |
-| Android (arm64 app, OpenGL ES 3, SDL3) | [port/android/README.md](port/android/README.md) |
+| Android (arm64 app, Vulkan 1.3, SDL3) | [port/android/README.md](port/android/README.md) |
 | macOS (Apple silicon: Halo.app, Metal) | [port/macos/README.md](port/macos/README.md) |
 | Web (WebAssembly, WebGL 2, SDL3; desktop Chrome, Edge and Firefox) | [port/web/README.md](port/web/README.md) |
 
