@@ -497,37 +497,29 @@ Settings menu, Preset shows the rows it chooses at its values as it
 changes, and a row written at the preset's value is commented out again,
 so that choosing Classic or Enhanced there chooses them all.
 
-| Setting | Classic | Enhanced: Windows, x86 Linux, macOS | Enhanced: Android, VR, the web, 64-bit ARM Linux |
-| --- | --- | --- | --- |
-| `display.anti_aliasing` | `"off"` | `"smaa"` | `"off"` |
-| `display.anisotropic_filtering` | `0` | `16` | `4` |
-| `display.shadow_resolution` | `128` | `512` | `256` |
-| `display.per_pixel_lighting` | `false` | `true` | `false` |
-| `display.model_detail` | `"auto"` | `"native"` | `"auto"` |
-| `display.dynamic_lights` | `"classic"` | `"enhanced"` | `"classic"` |
+| Setting | Classic | Enhanced |
+| --- | --- | --- |
+| `display.anti_aliasing` | `"off"` | `"smaa"` |
+| `display.anisotropic_filtering` | `0` | `16` |
+| `display.shadow_resolution` | `128` | `512` |
+| `display.per_pixel_lighting` | `false` | `true` |
+| `display.model_detail` | `"auto"` | `"native"` |
+| `display.dynamic_lights` | `"classic"` | `"enhanced"` |
 
-Enhanced is the default everywhere. On the desktop and the Mac it turns on
-every improvement: SMAA is one pass of fixed cost whatever the scene, where
-multisampling multiplies the work of each of the game's passes;
-anisotropic filtering costs about 0.08 ms a frame at 4x at 1080p. A
-phone, a headset, a browser and the 64-bit ARM computers are held to their
-power and heat (a Pixel 11 Pro draws 2410x1080 at about 90 frames a second
-of its 120, under thermal pressure), so their Enhanced is the sharper
-textures and shadows, which cost next to nothing: no pass over the whole
-screen, and no new pipelines to make as a map loads. Vulkan draws the
-enhanced dynamic lights on Android and in VR, and they can be chosen there
-(Video Setup > Graphics > Dynamic Lights), but they light every pixel of
-the walls and models and multiply the pipelines a map prepares, so they are
-left out of these devices' Enhanced until they are measured on them.
-`"auto"` model detail is `"native"` in the headset's eyes. Classic keeps
-`"auto"` for the same reason: the headset's eyes have many more lines than
+Enhanced is the default, the same on every build: every improvement. SMAA
+is one pass of fixed cost whatever the scene, where multisampling multiplies
+the work of each of the game's passes; anisotropic filtering costs about
+0.08 ms a frame at 4x at 1080p. A phone or a headset that runs hot or short
+of its refresh rate with it can be set lower setting by setting, or with
+Classic. `"auto"` model detail is `"native"` in the headset's eyes. Classic
+keeps `"auto"` for that reason: the headset's eyes have many more lines than
 the Xbox's 480.
 
 A renderer without a feature draws without it, as it does when the setting
 is chosen by hand: Metal (macOS) draws no SMAA and no enhanced dynamic
-lights yet, Vulkan no SMAA, and OpenGL ES (the web, 64-bit ARM Linux) no
-enhanced dynamic lights. The desktop's and the Mac's Enhanced gains them as
-their renderers do.
+lights yet, Vulkan no SMAA or FXAA, and OpenGL ES (the web,
+64-bit ARM Linux) no enhanced dynamic lights. Enhanced gains them as the
+renderers do.
 The preset changes only the drawing: nothing the game simulates or sends.
 The HUD, the text, the field of view, smooth motion and the shield glow
 keep their own settings.

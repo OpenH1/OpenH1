@@ -86,31 +86,17 @@ Ctrl+D, which moving and crouching would press, from the browser) */
 #endif
 
 /* display.graphics = "enhanced": the values it gives the settings it
-chooses (config_graphics), which are their defaults. On the desktop's GPUs
-(Windows, x86 Linux, the Mac) every improvement: SMAA (a pass of fixed cost;
-Metal and Vulkan draw none yet), 16x anisotropic filtering, 512 shadow maps,
-the models' detail by the display's lines and lit for each pixel, the
-enhanced dynamic lights. On a phone's, a headset's, the browser's and 64-bit
-ARM Linux's, held to their power and heat (a Pixel draws 2410x1080 short of
-120 Hz, warm): the sharper textures and shadows, which cost next to nothing;
-no full-screen pass, no new pipelines to make as a map loads (so not the
-enhanced dynamic lights, which Vulkan draws there, until measured there) */
-#if defined(HALO_ANDROID) || defined(HALO_VR) || defined(HALO_WEB) || \
-	(defined(HALO_GUEST) && defined(__aarch64__) && !defined(HALO_MACOS))
-#define GRAPHICS_ANTI_ALIASING "\"off\""
-#define GRAPHICS_ANISOTROPIC_FILTERING "4"
-#define GRAPHICS_SHADOW_RESOLUTION "256"
-#define GRAPHICS_PER_PIXEL_LIGHTING "false"
-#define GRAPHICS_MODEL_DETAIL "\"auto\""
-#define GRAPHICS_DYNAMIC_LIGHTS "\"classic\""
-#else
+chooses (config_graphics), which are their defaults, the same on every
+build: SMAA (Metal and Vulkan draw none yet), 16x anisotropic
+filtering, 512 shadow maps, the models' detail by the display's lines and lit
+for each pixel, the enhanced dynamic lights (Metal and OpenGL ES draw them
+classic) */
 #define GRAPHICS_ANTI_ALIASING "\"smaa\""
 #define GRAPHICS_ANISOTROPIC_FILTERING "16"
 #define GRAPHICS_SHADOW_RESOLUTION "512"
 #define GRAPHICS_PER_PIXEL_LIGHTING "true"
 #define GRAPHICS_MODEL_DETAIL "\"native\""
 #define GRAPHICS_DYNAMIC_LIGHTS "\"enhanced\""
-#endif
 /* (in the comment of each setting it chooses) */
 #define GRAPHICS_CHOOSES "\nCommented out, display.graphics chooses it."
 

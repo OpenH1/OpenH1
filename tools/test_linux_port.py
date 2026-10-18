@@ -395,13 +395,12 @@ def test_config_keeps_an_older_file(config_check):
     assert config_check("get", "vr.hands") == "game"
 
 
-# the settings display.graphics chooses, and their values in Classic, and in
-# Enhanced on the desktop and the Mac, and on a phone, a headset and the web
+# the settings display.graphics chooses, and their values in Classic and in
+# Enhanced (the same on every build)
 GRAPHICS_SETTINGS = ["anti_aliasing", "anisotropic_filtering", "shadow_resolution", "per_pixel_lighting",
                      "model_detail", "dynamic_lights"]
 GRAPHICS_CLASSIC = ["off", "0", "128", "false", "auto", "classic"]
 GRAPHICS_ENHANCED = ["smaa", "16", "512", "true", "native", "enhanced"]
-GRAPHICS_ENHANCED_LIGHT = ["off", "4", "256", "false", "auto", "classic"]
 
 
 def graphics_values(run):
@@ -454,9 +453,8 @@ def test_graphics_preset_keeps_a_setting_set(config_check_mac, monkeypatch):
 
 
 def test_graphics_preset_on_a_headset(config_check):
-    """Enhanced on a phone, a headset, the web and 64-bit ARM Linux: the
-    sharper textures and shadows only; Classic as on the desktop"""
-    assert graphics_values(config_check) == GRAPHICS_ENHANCED_LIGHT
+    """Enhanced and Classic in the VR build: as on the desktop and the Mac"""
+    assert graphics_values(config_check) == GRAPHICS_ENHANCED
     config_check("write", "display.graphics", "classic")
     assert graphics_values(config_check) == GRAPHICS_CLASSIC
 
