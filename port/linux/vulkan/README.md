@@ -113,10 +113,24 @@ compiler does (explicit `Fma`) changed no pixel of Blood Gulch, so it is not
 done: the remaining differences (a few thousand pixels a frame, most by one
 level) are rounding in the shaders.
 
+## The enhanced dynamic lights
+
+`display.dynamic_lights = "enhanced"` draws as the OpenGL backend does. The
+front end's lights block and grid of cells (`xgpu.h`) are the draw set's
+uniform buffer and `R32G32B32A32_UINT` 3D image, written in the stream's
+order: before the submission's draws (no pass ended for them), unless a draw
+recorded in it read the lights, then after it. The lit structure and models
+are the SPIR-V emitter's (`xgpu_glsl.c`'s lights, sum and shoulder, as
+structured loops). The glows are a pass after the transparent geometry: a
+quad about each bolt's light, its vertices in the upload ring, projected with
+the eyes' and the foveated insets' corrections as the game's vertex shaders
+are, into every layer of the target in one multiview pass, without the depth
+attachment, which the pixel shader samples (resolved, where it is
+multisampled) to fade the glow. Their pipeline is prepared with the map's
+enumeration; `HALO_VULKAN_SHADERS` writes their modules as `halo_*.spv`.
+
 ## Not yet
 
-- The enhanced dynamic lights and their halos (the stream's capabilities say
-  so: the game draws the classic lights), and SMAA (the frame is presented
-  without it). MSAA is drawn.
+- SMAA (the frame is presented without it). MSAA is drawn.
 - A clear of some color channels alone is a clear of all of them (logged once;
   none of the menus, Blood Gulch or a10 has one).
