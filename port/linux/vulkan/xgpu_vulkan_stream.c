@@ -27,14 +27,16 @@ one) samples a composite of them, the levels past them made from the last,
 as OpenGL's mip_composite_get makes it.
 
 The VR host supplies the eyes' targets and transforms, and consumes their
-images for the OpenXR layers. Not yet: the enhanced dynamic lights' glows
-and anti-aliasing's passes (the stream skips records with no entry).
+images for the OpenXR layers. The enhanced dynamic lights' block and cells
+are the draw set's, and their glows a pass of their own, as OpenGL's. Not
+yet: anti-aliasing's passes (the stream skips records with no entry).
 */
 
 #include "host.h"
 #include "host_load_trace.h"
 #include "host_render_stream.h"
 #include "xgpu.h"
+#include "xgpu_backend.h"
 #include "xgpu_shader.h"
 #include "xgpu_spirv.h"
 #include "xgpu_vulkan.h"
@@ -45,6 +47,7 @@ and anti-aliasing's passes (the stream skips records with no entry).
 #include "host_vulkan_vr.h"
 #endif
 
+#include <math.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -222,6 +225,10 @@ static struct
 	uint32_t back_buffer;
 	int preparing, prepared;
 	uint64_t prepare_pipelines;
+	/* the dynamic lights' glows' shaders for 1, 2 and 4 layers
+	(halo_shaders) */
+	VkShaderModule halo_vertex[3], halo_pixel[3];
+	int halo_failed[3];
 	int trace_preparing, trace_pipeline_descriptions;
 	struct xgpu_vulkan_statistics trace_statistics;
 	struct xgpu_vulkan_texture_statistics trace_textures;
@@ -1568,6 +1575,7 @@ static void draw_input(const struct draw_input *input)
 	draw.constants = stream.constants_range;
 	draw.uniforms = stream.uniforms_range;
 	draw.dynamic = &stream.dynamic;
+	draw.dynamic_lights = stream.definition->pixel_program.dynamic_lights != 0;
 	if (target_get(stream.color))
 		target_get(stream.color)->written++;
 	traced = preparation_start();
@@ -1687,6 +1695,251 @@ static void stream_draw_immediate(void *context, const struct xgpu_stream_draw_i
 	draw_input(&input);
 }
 
+/* ---------- the enhanced dynamic lights (display.dynamic_lights; xgpu.h)
+
+The front end works out the frame's lights and the grid's cells
+(d3d8_device.c); the block and the cells are the draw set's (xgpu_vulkan.c),
+written in the stream's order, and the glows are drawn here, as the OpenGL
+backend draws them (xgpu_gl.c). */
+
+#define DYNAMIC_LIGHTS_CELLS_SIZE \
+	(XGPU_DYNAMIC_LIGHTS_GRID_X * XGPU_DYNAMIC_LIGHTS_GRID_Y * XGPU_DYNAMIC_LIGHTS_GRID_Z * 16)
+
+_Static_assert(sizeof(struct xgpu_stream_dynamic_lights_block) == sizeof(struct xgpu_dynamic_lights_block),
+	"the dynamic lights' block");
+
+/* a glow's vertex: its light's middle and the glow's size, its color, the
+corner (xgpu_spirv.h) */
+struct halo_vertex
+{
+	float middle[4];
+	float color[4];
+	float corner[2];
+};
+
+static int stream_dynamic_lights_prepare(void *context)
+{
+	(void)context;
+	/* (made with the device: xgpu_vulkan.c draw_set_make) */
+	return 1;
+}
+
+static void stream_dynamic_lights_upload(void *context, const struct xgpu_stream_dynamic_lights_upload *record)
+{
+	const void *cells = host_pointer(record->cells);
+
+	(void)context;
+	if (!cells || record->size != DYNAMIC_LIGHTS_CELLS_SIZE)
+		return;
+	xgpu_vulkan_dynamic_lights_upload(&record->block, sizeof(record->block), cells);
+}
+
+/* a glow's shaders for its layers' slot (0: the screen's target, 1: the VR
+mode's eyes, 2: its eyes foveated), made the first time; 0 if they cannot
+be */
+static int halo_shaders(int slot)
+{
+	static const char *const names[3] = { "halo", "halo_view1", "halo_view1_fovea1" };
+	struct xgpu_spirv_options options;
+	struct xgpu_spirv_module module;
+	char name[32];
+
+	if (stream.halo_vertex[slot] && stream.halo_pixel[slot])
+		return 1;
+	if (stream.halo_failed[slot])
+		return 0;
+	stream.halo_failed[slot] = 1;
+	memset(&options, 0, sizeof(options));
+	options.multiview = slot ? XGPU_MULTIVIEW_EYES : XGPU_MULTIVIEW_NONE;
+	options.foveated = slot == 2;
+	if (xgpu_spirv_halo_vertex_shader(&options, &module))
+	{
+		snprintf(name, sizeof(name), "%s_vertex", names[slot]);
+		shader_dump(name, &module);
+		stream.halo_vertex[slot] = xgpu_vulkan_shader(module.words, module.count);
+		free(module.words);
+	}
+	if (xgpu_spirv_halo_pixel_shader(&options, &module))
+	{
+		snprintf(name, sizeof(name), "%s_pixel", names[slot]);
+		shader_dump(name, &module);
+		stream.halo_pixel[slot] = xgpu_vulkan_shader(module.words, module.count);
+		free(module.words);
+	}
+	if (!stream.halo_vertex[slot] || !stream.halo_pixel[slot])
+	{
+		host_logf(HOST_LOG_WARN, "vulkan: the dynamic lights' glows' shaders cannot be made");
+		return 0;
+	}
+	stream.halo_failed[slot] = 0;
+	return 1;
+}
+
+/* the depth buffer's value for a distance from the camera, alpha + beta /
+distance (beta less than 0: nearer, less), from two points ahead; and the
+softness, world units (xgpu_gl.c's depth_parameters) */
+static void halo_depth_parameters(const struct xgpu_stream_dynamic_lights_halos *record, float parameters[4])
+{
+	const float (*c)[4] = (const float (*)[4])record->projection;
+	float forward[3], z[2], w[2], a, b, scale_z, near_z, far_z, length;
+	int point, axis;
+
+	/* (the camera's forward: the projection's w row) */
+	for (axis = 0; axis < 3; axis++)
+		forward[axis] = c[3][axis];
+	length = sqrtf(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]);
+	for (point = 0; point < 2; point++)
+	{
+		float t = point ? 64.0f : 1.0f;
+		float p[3];
+
+		for (axis = 0; axis < 3; axis++)
+			p[axis] = record->camera[axis] + forward[axis] / (length > 0.0f ? length : 1.0f) * t;
+		z[point] = c[2][0] * p[0] + c[2][1] * p[1] + c[2][2] * p[2] + c[2][3];
+		w[point] = c[3][0] * p[0] + c[3][1] * p[1] + c[3][2] * p[2] + c[3][3];
+	}
+	b = (z[0] / w[0] - z[1] / w[1]) / (1.0f / w[0] - 1.0f / w[1]);
+	a = z[0] / w[0] - b / w[0];
+	scale_z = record->viewport_scale[2] != 0.0f ? record->viewport_scale[2] : 1.0f;
+	near_z = stream.dynamic.depth_range[0] >= 0.0f && stream.dynamic.depth_range[0] <= 1.0f ?
+		stream.dynamic.depth_range[0] : 0.0f;
+	far_z = stream.dynamic.depth_range[1] >= 0.0f && stream.dynamic.depth_range[1] <= 1.0f ?
+		stream.dynamic.depth_range[1] : 1.0f;
+	parameters[0] = near_z + (far_z - near_z) * (a * c[4][2] + c[5][2] - record->viewport_offset[2]) / scale_z;
+	parameters[1] = (far_z - near_z) * b * c[4][2] / scale_z;
+	parameters[2] = record->softness;
+	parameters[3] = 0.0f;
+}
+
+/* the glows of the frame's bolts' lights, into the 3D view, after its
+transparent geometry: added to what is there (not its alpha), into the
+target without its depth, which the shader samples (resolved, where it is
+multisampled), in each of the target's layers (the VR mode's eyes and
+insets, in one multiview pass) */
+static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_dynamic_lights_halos *record)
+{
+	static const float corners[6][2] =
+	{
+		{ -1.0f, -1.0f }, { 1.0f, -1.0f }, { 1.0f, 1.0f }, { -1.0f, -1.0f }, { 1.0f, 1.0f }, { -1.0f, 1.0f },
+	};
+	struct stream_target *color = target_get(record->color), *depth = target_get(record->depth);
+	struct xgpu_vulkan_pipeline_description pipeline;
+	struct xgpu_vulkan_sampler_description sampler;
+	struct xgpu_vulkan_dynamic_state dynamic;
+	struct xgpu_vulkan_draw draw;
+	uint32_t layers = record->layers > 1 ? (uint32_t)record->layers : 1, attempt;
+	int slot = layers == 1 ? 0 : layers == 2 ? 1 : 2, halo, corner;
+	uint64_t before;
+
+	(void)context;
+	if (!color || !depth || color->depth || !depth->depth || record->count <= 0 ||
+		(layers != 1 && layers != 2 && layers != 4) || color->layers != layers || depth->layers != layers ||
+		!halo_shaders(slot))
+		return;
+	memset(&pipeline, 0, sizeof(pipeline));
+	pipeline.vertex_shader = stream.halo_vertex[slot];
+	pipeline.pixel_shader = stream.halo_pixel[slot];
+	pipeline.attributes[XGPU_SPIRV_HALO_MIDDLE].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	pipeline.attributes[XGPU_SPIRV_HALO_MIDDLE].offset = (uint16_t)offsetof(struct halo_vertex, middle);
+	pipeline.attributes[XGPU_SPIRV_HALO_COLOR].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+	pipeline.attributes[XGPU_SPIRV_HALO_COLOR].offset = (uint16_t)offsetof(struct halo_vertex, color);
+	pipeline.attributes[XGPU_SPIRV_HALO_CORNER].format = VK_FORMAT_R32G32_SFLOAT;
+	pipeline.attributes[XGPU_SPIRV_HALO_CORNER].offset = (uint16_t)offsetof(struct halo_vertex, corner);
+	pipeline.strides[0] = (uint16_t)sizeof(struct halo_vertex);
+	pipeline.primitive_class = XGPU_VULKAN_CLASS_TRIANGLES;
+	pipeline.blend = 1;
+	pipeline.blend_source = pipeline.blend_destination = XGPU_BLEND_ONE;
+	pipeline.blend_operation = XGPU_BLEND_ADD;
+	pipeline.color_mask = 7;
+	pipeline.color_format = xgpu_vulkan_image_description(color->image)->format;
+	pipeline.samples = (uint8_t)(color->multisampled ? color->samples : 1);
+	pipeline.view_mask = layers > 1 ? (uint8_t)((1u << layers) - 1) : 0;
+	before = xgpu_vulkan_pipeline_count();
+	if (stream.preparing)
+	{
+		/* (made as the map loads, as the game's pipelines are) */
+		(void)xgpu_vulkan_pipeline_prepare(&pipeline);
+		return;
+	}
+	memset(&draw, 0, sizeof(draw));
+	draw.pipeline = xgpu_vulkan_pipeline(&pipeline);
+	if (stream.prepared && xgpu_vulkan_pipeline_count() != before)
+	{
+		stream.pipeline_misses++;
+		host_logf(HOST_LOG_WARN, "vulkan: pipeline missed map preparation: the dynamic lights' glows, views %u, "
+			"samples %u, total %u", (unsigned)layers, (unsigned)pipeline.samples, stream.pipeline_misses);
+	}
+	if (!draw.pipeline)
+		return;
+	/* the depth the scene was drawn with, in its texture (its own sampler:
+	no filter) */
+	target_resolve(depth);
+	memset(&sampler, 0, sizeof(sampler));
+	sampler.minify = sampler.magnify = XGPU_VULKAN_FILTER_POINT;
+	sampler.mip = XGPU_VULKAN_MIP_NONE;
+	sampler.address[0] = sampler.address[1] = sampler.address[2] = XGPU_VULKAN_ADDRESS_CLAMP;
+	sampler.anisotropy = 1;
+	draw.textures[0].image = depth->image;
+	draw.textures[0].kind = layers > 1 ? XGPU_VULKAN_IMAGE_2D_ARRAY : XGPU_VULKAN_IMAGE_2D;
+	draw.textures[0].sampler = xgpu_vulkan_sampler(&sampler);
+	/* (the viewport and depth range the 3D view was drawn with, and no
+	scissor) */
+	dynamic = stream.dynamic;
+	memset(dynamic.scissor, 0, sizeof(dynamic.scissor));
+	draw.dynamic = &dynamic;
+	draw.topology = XGPU_VULKAN_TOPOLOGY_TRIANGLES;
+	draw.count = (uint32_t)record->count * 6;
+	draw.bindings = 1;
+	/* the glows' corners, the world's projection, the camera's axes and the
+	depth's parameters, and the uniforms, all in the same submission */
+	for (attempt = 0; attempt < 3; attempt++)
+	{
+		uint64_t serial = xgpu_vulkan_serial();
+		struct halo_vertex *vertices = xgpu_vulkan_upload(draw.count * (uint32_t)sizeof(*vertices), 16, &draw.vertices[0]);
+		float (*constants)[4] = xgpu_vulkan_upload(CONSTANTS_RANGE, 256, &draw.constants);
+		struct xgpu_spirv_uniforms *uniforms = xgpu_vulkan_upload(UNIFORMS_RANGE, 256, &draw.uniforms);
+
+		if (!vertices || !constants || !uniforms)
+			return;
+		if (serial != xgpu_vulkan_serial())
+			continue;
+		for (halo = 0; halo < record->count; halo++)
+		{
+			for (corner = 0; corner < 6; corner++)
+			{
+				struct halo_vertex *vertex = &vertices[halo * 6 + corner];
+
+				memcpy(vertex->middle, record->halos[halo * 2], sizeof(vertex->middle));
+				memcpy(vertex->color, record->halos[halo * 2 + 1], sizeof(vertex->color));
+				vertex->corner[0] = corners[corner][0];
+				vertex->corner[1] = corners[corner][1];
+			}
+		}
+		memset(constants, 0, CONSTANTS_RANGE);
+		memcpy(constants[XGPU_SPIRV_HALO_PROJECTION], record->projection, sizeof(record->projection));
+		memcpy(constants[XGPU_SPIRV_HALO_CAMERA_AXES], record->camera_right, sizeof(record->camera_right));
+		memcpy(constants[XGPU_SPIRV_HALO_CAMERA_AXES + 1], record->camera_up, sizeof(record->camera_up));
+		halo_depth_parameters(record, constants[XGPU_SPIRV_HALO_DEPTH]);
+		memset(uniforms, 0, sizeof(*uniforms));
+		memcpy(uniforms->viewport_scale, record->viewport_scale, sizeof(uniforms->viewport_scale));
+		memcpy(uniforms->viewport_offset, record->viewport_offset, sizeof(uniforms->viewport_offset));
+		uniforms->screen_offset = record->screen_offset;
+#ifdef HALO_VR
+		host_vulkan_vr_uniforms(uniforms, dynamic.viewport);
+#endif
+		break;
+	}
+	if (attempt == 3)
+		return;
+	if (color->multisampled)
+		color->unresolved = 1;
+	color->written++;
+	xgpu_vulkan_set_target_views(color->multisampled ? color->multisampled : color->image, NULL, 0, layers);
+	xgpu_vulkan_draw(&draw);
+	/* (the stream's targets again, for what follows) */
+	targets_bind();
+}
+
 /* ---------- visibility tests, frames */
 
 static void stream_visibility_begin(void *context)
@@ -1787,9 +2040,9 @@ static void stream_initialize(void *context, struct xgpu_stream_capabilities *ca
 	capabilities->base_vertex = 1;
 	capabilities->sample_mask = 1;
 	capabilities->mixed_constant_blend = 1;
-	/* (not yet: the enhanced dynamic lights' glows) */
-	capabilities->dynamic_lights = 0;
-	capabilities->dynamic_lights_preparable = 0;
+	/* (the lights' block and cells are made with the device) */
+	capabilities->dynamic_lights = 1;
+	capabilities->dynamic_lights_preparable = 1;
 }
 
 static void stream_prepare(void *context)
@@ -1888,6 +2141,9 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.frame_end = stream_frame_end;
 		backend.prepare = stream_prepare;
 		backend.prepared = stream_prepared;
+		backend.dynamic_lights_prepare = stream_dynamic_lights_prepare;
+		backend.dynamic_lights_upload = stream_dynamic_lights_upload;
+		backend.dynamic_lights_halos = stream_dynamic_lights_halos;
 #ifdef HALO_VR
 		host_vulkan_vr_backend(&backend);
 #endif

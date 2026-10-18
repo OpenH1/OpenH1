@@ -375,11 +375,13 @@ enum
 (those of bindings' bits) and indices (16-bit; buffer VK_NULL_HANDLE: none);
 the vertex constants and uniforms (ranges of the upload ring, or another
 buffer's, at most 64 KB each); the stages' textures; and the count of
-vertices or indices, the first index and the offset added to each index */
+vertices or indices, the first index and the offset added to each index.
+dynamic_lights: its pixel shader reads the enhanced dynamic lights' block
+and cells (xgpu_vulkan_dynamic_lights_upload) */
 struct xgpu_vulkan_draw
 {
 	VkPipeline pipeline;
-	uint8_t topology;
+	uint8_t topology, dynamic_lights;
 	const struct xgpu_vulkan_dynamic_state *dynamic;
 	uint32_t bindings;
 	struct xgpu_vulkan_range vertices[XGPU_VULKAN_BINDINGS];
@@ -391,6 +393,12 @@ struct xgpu_vulkan_draw
 };
 
 void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw);
+
+/* the enhanced dynamic lights' block (struct xgpu_dynamic_lights_block,
+size bytes) and their grid's cells (32 x 32 x 16, four uints each: xgpu.h),
+which the draw set holds (xgpu_spirv.h), in the stream's order: draws
+recorded before it read the old ones, draws after it these */
+void xgpu_vulkan_dynamic_lights_upload(const void *block, uint32_t size, const void *cells);
 
 /* ---------- visibility tests */
 

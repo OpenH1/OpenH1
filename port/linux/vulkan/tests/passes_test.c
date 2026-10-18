@@ -6,7 +6,8 @@ Checks attachment load actions, clears inside a pass, multiview layer
 selection, sampling an array's first layer as a 2D image, and capability
 requirements on devices with optional depth formats or query precision.
 Also checks packed vertex bindings and transfer/submission dependencies,
-and the texture sets a submission reuses.
+the texture sets a submission reuses, and the order of the enhanced dynamic
+lights' uploads among the draws.
 */
 
 #include "../xgpu_vulkan.c"
@@ -324,6 +325,86 @@ static void vertex_input_test(void)
 	bound_vertices = 0;
 	xgpu_vulkan_draw(&draw);
 	assert(bound_vertices == 3);
+	/* A draw that reads the dynamic lights orders their next upload after
+	it; others leave it free to go before the submission's draws. */
+	{
+		static struct xgpu_vulkan_buffer block;
+		static struct xgpu_vulkan_image cells;
+
+		vk.lights_block = &block;
+		vk.lights_cells = &cells;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		assert(block.used == 0 && cells.used == 0);
+		draw.dynamic_lights = 1;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		assert(block.used == vk.serial && cells.used == vk.serial);
+	}
+}
+
+static unsigned int light_copies, light_image_copies;
+static VkCommandBuffer light_commands;
+
+static void VKAPI_CALL fake_copy_lights(VkCommandBuffer command, VkBuffer source, VkBuffer destination,
+	uint32_t count, const VkBufferCopy *regions)
+{
+	(void)source; (void)destination;
+	assert(count == 1 && regions[0].dstOffset == 0 && regions[0].size == 6192);
+	light_commands = command;
+	light_copies++;
+}
+
+static void VKAPI_CALL fake_copy_cells(VkCommandBuffer command, VkBuffer source, VkImage destination,
+	VkImageLayout layout, uint32_t count, const VkBufferImageCopy *regions)
+{
+	(void)source; (void)destination;
+	assert(layout == VK_IMAGE_LAYOUT_GENERAL && count == 1);
+	assert(regions[0].imageExtent.width == 32 && regions[0].imageExtent.height == 32 &&
+		regions[0].imageExtent.depth == 16);
+	assert(regions[0].imageSubresource.baseArrayLayer == 0 && regions[0].imageSubresource.layerCount == 1);
+	assert(command == light_commands);
+	light_image_copies++;
+}
+
+/* The enhanced dynamic lights' block and cells: written before the
+submission's draws where none of them read the lights, in their order
+where one did. */
+static void dynamic_lights_test(void)
+{
+	static struct xgpu_vulkan_buffer block;
+	static struct xgpu_vulkan_image cells;
+	static unsigned char ring[6192 + 32 * 32 * 16 * 16 + 64], data[6192], grid[32 * 32 * 16 * 16];
+
+	reset();
+	vk.slot->main = (VkCommandBuffer)(uintptr_t)1;
+	vk.slot->early = (VkCommandBuffer)(uintptr_t)2;
+	vk.early_recording = 1;
+	vk.ring_mapped = ring;
+	block.size = sizeof(data);
+	block.buffer = (VkBuffer)(uintptr_t)3;
+	cells.description.type = XGPU_VULKAN_IMAGE_3D;
+	cells.description.format = XGPU_VULKAN_FORMAT_RGBA32_UINT;
+	cells.description.width = cells.description.height = 32;
+	cells.description.depth_or_layers = 16;
+	cells.description.levels = 1;
+	cells.aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+	vk.lights_block = &block;
+	vk.lights_cells = &cells;
+	data[0] = 7;
+	grid[sizeof(grid) - 1] = 9;
+	vkCmdCopyBuffer = fake_copy_lights;
+	vkCmdCopyBufferToImage = fake_copy_cells;
+	light_copies = light_image_copies = 0;
+	xgpu_vulkan_dynamic_lights_upload(data, sizeof(data), grid);
+	assert(light_copies == 1 && light_image_copies == 1 && light_commands == vk.slot->early);
+	assert(vk.statistics.uploads_early == 2 && vk.statistics.uploads_ordered == 0);
+	assert(ring[0] == 7 && ring[6192 + sizeof(grid) - 1] == 9);
+	block.used = cells.used = vk.serial;
+	vk.ring_head = 0;
+	xgpu_vulkan_dynamic_lights_upload(data, sizeof(data), grid);
+	assert(light_copies == 2 && light_image_copies == 2 && light_commands == vk.slot->main);
+	assert(vk.statistics.uploads_ordered == 2);
 }
 
 static void VKAPI_CALL fake_copy_buffer(VkCommandBuffer command, VkBuffer source, VkBuffer destination,
@@ -482,6 +563,7 @@ int main(void)
 	capabilities_test();
 	vertex_input_test();
 	uploads_test();
+	dynamic_lights_test();
 	submissions_test();
 	texture_sets_test();
 	reset();

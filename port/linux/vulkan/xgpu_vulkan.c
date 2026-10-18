@@ -3002,6 +3002,9 @@ void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw)
 	vkCmdSetBlendConstants(commands, dynamic->blend_color);
 	vkCmdSetStencilReference(commands, VK_STENCIL_FACE_FRONT_AND_BACK, dynamic->stencil_reference & 0xff);
 	vkCmdSetPrimitiveTopology(commands, topology_of(draw->topology));
+	/* (the lights written after this are written after it: in order) */
+	if (draw->dynamic_lights)
+		vk.lights_block->used = vk.lights_cells->used = vk.serial;
 	sets[0] = vk.draw_set;
 	offsets[0] = (uint32_t)draw->constants.offset;
 	offsets[1] = (uint32_t)draw->uniforms.offset;
@@ -4137,6 +4140,17 @@ static int draw_set_make(void)
 	writes[4].pBufferInfo = &buffers[3];
 	vkUpdateDescriptorSets(vk.device, 5, writes, 0, NULL);
 	return 1;
+}
+
+void xgpu_vulkan_dynamic_lights_upload(const void *block, uint32_t size, const void *cells)
+{
+	if (!vk.lights_block || !vk.lights_cells)
+		return;
+	/* (early, before the submission's draws, unless a draw recorded in it
+	read the lights: xgpu_vulkan_draw) */
+	xgpu_vulkan_buffer_write(vk.lights_block, 0, block, size < vk.lights_block->size ? size : vk.lights_block->size, 0);
+	xgpu_vulkan_image_upload(vk.lights_cells, 0, 0, 0, 0, 0, vk.lights_cells->description.width,
+		vk.lights_cells->description.height, vk.lights_cells->description.depth_or_layers, cells, 0, 0);
 }
 
 /* the stand-ins sampled by a stage with no image: 1 by 1, (0, 0, 0, 1), as
