@@ -26,6 +26,9 @@ name: Build
 # kept. (openh1.com is the landing page, website/, not the web build.)
 on:
   push:
+    # (the 64-bit Windows host's branch, built and tested on its own build
+    # system until it lands: this line stays on that branch only)
+    branches-ignore: [win64]
     paths-ignore:
       - "**.md"
       # (openh1.com, published from website/ by hand: website/README.md)
