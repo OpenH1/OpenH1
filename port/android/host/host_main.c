@@ -177,21 +177,25 @@ static void *game_main(void *unused)
 	host_environment_set(&environment, "HALO_DATA_ROOT", data_root);
 	host_environment_set(&environment, "HALO_SAVE_ROOT", save_root);
 	{
-		/* the game renders 480 lines at the display's aspect ratio
-		(landscape) unless display.screen_width says otherwise (d3d8_device.c) */
+		/* The guest needs the landscape display's pixel dimensions before
+		its window opens; afterwards it queries the drawable itself. */
 		const SDL_DisplayMode *mode;
-		char width[16];
+		char width[16], height[16];
 
 		SDL_InitSubSystem(SDL_INIT_VIDEO);
 		mode = SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
 		if (mode && mode->w > 0 && mode->h > 0)
 		{
-			int longer = mode->w > mode->h ? mode->w : mode->h;
-			int shorter = mode->w > mode->h ? mode->h : mode->w;
+			int pixel_width = (int)(mode->w * mode->pixel_density + 0.5f);
+			int pixel_height = (int)(mode->h * mode->pixel_density + 0.5f);
+			int longer = pixel_width > pixel_height ? pixel_width : pixel_height;
+			int shorter = pixel_width > pixel_height ? pixel_height : pixel_width;
 
-			snprintf(width, sizeof(width), "%d", (480 * longer / shorter) & ~1);
+			snprintf(width, sizeof(width), "%d", longer);
+			snprintf(height, sizeof(height), "%d", shorter);
 			host_environment_set(&environment, "HALO_DISPLAY_WIDTH", width);
-			host_logf(HOST_LOG_INFO, "display %dx%d: rendering %sx480", mode->w, mode->h, width);
+			host_environment_set(&environment, "HALO_DISPLAY_HEIGHT", height);
+			host_logf(HOST_LOG_INFO, "display %dx%d: rendering %sx%s", mode->w, mode->h, width, height);
 		}
 		{
 			/* dp for the touch controls (port/linux/src/touch_input.c): SDL

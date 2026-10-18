@@ -347,6 +347,7 @@ static struct
 	VkSwapchainKHR swapchain;
 	VkFormat swapchain_format;
 	VkExtent2D swapchain_extent;
+	VkSurfaceTransformFlagBitsKHR surface_transform;
 	VkImage swapchain_images[8];
 	uint32_t swapchain_image_count;
 	VkSemaphore acquired[SLOTS], presentable[8];
@@ -758,6 +759,12 @@ static void recording_begin(void)
 	begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 	check(vkBeginCommandBuffer(slot->main, &begin), "vkBeginCommandBuffer");
+	/* A submission can have no early uploads. Its draws still need to
+	wait for prior reads, notably the previous frame's presentation blit
+	from the same color target. The timeline tracks completion for the
+	CPU; signaling it alone does not order the next submission's work. */
+	barrier(slot->main, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
+		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT);
 	vk.recording = 1;
 	vk.early_recording = 0;
 	vk.bound_pipeline = VK_NULL_HANDLE;
@@ -1462,13 +1469,17 @@ static VkCommandBuffer upload_commands(uint64_t used)
 	return early_commands();
 }
 
-/* the barrier after a transfer in the main commands (the early ones end
-with one) */
+/* Main transfers must be visible to draws. Early transfers also need an
+order among themselves: a watched buffer page can be uploaded more than
+once before any draw uses it. */
 static void transfer_done(VkCommandBuffer commands)
 {
 	if (commands == vk.slot->main)
 		barrier(commands, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT,
 			AFTER_STAGES, AFTER_ACCESS);
+	else
+		barrier(commands, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_WRITE_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT);
 }
 
 void xgpu_vulkan_image_upload(struct xgpu_vulkan_image *image, uint32_t level, uint32_t layer, uint32_t x, uint32_t y,
@@ -2216,6 +2227,23 @@ static void pipeline_compiler_stop(void)
 	pipeline_compiler.started = 0;
 }
 
+/* The stream has 16 vertex sources plus constant attributes, but at most
+16 attributes use them. Pack active sources into Vulkan's 16 guaranteed
+bindings; the logical constant source (16) is not a valid device binding
+on GPUs exposing that minimum. Pipelines and draws use the same mapping. */
+static uint32_t vertex_binding(uint32_t used, uint32_t source)
+{
+	uint32_t binding = 0;
+
+	used &= (1u << source) - 1;
+	while (used)
+	{
+		used &= used - 1;
+		binding++;
+	}
+	return binding;
+}
+
 static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description,
 	VkResult *result, double *elapsed)
 {
@@ -2270,11 +2298,13 @@ static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *
 	{
 		if (!(used & (1u << index)))
 			continue;
-		bindings[binding_count].binding = index;
+		bindings[binding_count].binding = vertex_binding(used, index);
 		bindings[binding_count].stride = description->strides[index];
 		bindings[binding_count].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 		binding_count++;
 	}
+	for (index = 0; index < attribute_count; index++)
+		attributes[index].binding = vertex_binding(used, attributes[index].binding);
 	memset(&vertex_input, 0, sizeof(vertex_input));
 	vertex_input.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
 	vertex_input.vertexBindingDescriptionCount = binding_count;
@@ -2715,7 +2745,7 @@ static VkDescriptorSet texture_set(const struct xgpu_vulkan_texture textures[4])
 {
 	VkDescriptorSetAllocateInfo allocate;
 	VkDescriptorImageInfo images[4];
-	VkWriteDescriptorSet write;
+	VkWriteDescriptorSet writes[4];
 	VkDescriptorSet set = VK_NULL_HANDLE;
 	int stage;
 
@@ -2762,14 +2792,19 @@ static VkDescriptorSet texture_set(const struct xgpu_vulkan_texture textures[4])
 		images[stage].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 		image->used = vk.serial;
 	}
-	memset(&write, 0, sizeof(write));
-	write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	write.dstSet = set;
-	write.dstBinding = 0;
-	write.descriptorCount = 4;
-	write.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	write.pImageInfo = images;
-	vkUpdateDescriptorSets(vk.device, 1, &write, 0, NULL);
+	memset(writes, 0, sizeof(writes));
+	/* One write per binding: PowerVR's Android driver does not reliably
+	advance across bindings when one write contains all four descriptors. */
+	for (stage = 0; stage < 4; stage++)
+	{
+		writes[stage].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writes[stage].dstSet = set;
+		writes[stage].dstBinding = stage;
+		writes[stage].descriptorCount = 1;
+		writes[stage].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writes[stage].pImageInfo = &images[stage];
+	}
+	vkUpdateDescriptorSets(vk.device, 4, writes, 0, NULL);
 	memcpy(vk.last_textures, textures, sizeof(vk.last_textures));
 	vk.last_texture_set = set;
 	vk.last_texture_valid = 1;
@@ -2860,7 +2895,8 @@ void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw)
 	for (index = 0; index < XGPU_VULKAN_BINDINGS; index++)
 	{
 		if ((draw->bindings & (1u << index)) && draw->vertices[index].buffer)
-			vkCmdBindVertexBuffers(commands, index, 1, &draw->vertices[index].buffer, &draw->vertices[index].offset);
+			vkCmdBindVertexBuffers(commands, vertex_binding(draw->bindings, index), 1,
+				&draw->vertices[index].buffer, &draw->vertices[index].offset);
 	}
 	if (draw->indices.buffer)
 	{
@@ -3046,7 +3082,10 @@ static int swapchain_make(void)
 	info.imageArrayLayers = 1;
 	info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	info.preTransform = capabilities.currentTransform;
+	/* The final blit does not rotate the frame. Let the compositor apply
+	the display's rotation instead of claiming that it is already drawn. */
+	info.preTransform = (capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) ?
+		VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR : capabilities.currentTransform;
 	info.compositeAlpha = (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) ?
 		VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : (VkCompositeAlphaFlagBitsKHR)(capabilities.supportedCompositeAlpha &
 		-capabilities.supportedCompositeAlpha);
@@ -3079,6 +3118,7 @@ static int swapchain_make(void)
 	for (index = 0; index < vk.swapchain_image_count; index++)
 		vkCreateSemaphore(vk.device, &semaphore, NULL, &vk.presentable[index]);
 	vk.swapchain_stale = 0;
+	vk.surface_transform = capabilities.currentTransform;
 	host_logf(HOST_LOG_INFO, "vulkan: swapchain %ux%u, %u images, present mode %d", vk.swapchain_extent.width,
 		vk.swapchain_extent.height, vk.swapchain_image_count, (int)vk.present_mode);
 	return 1;
@@ -3089,6 +3129,21 @@ void xgpu_vulkan_window_resized(uint32_t width, uint32_t height)
 	vk.window_width = width;
 	vk.window_height = height;
 	vk.swapchain_stale = 1;
+}
+
+static int swapchain_changed(void)
+{
+	VkSurfaceCapabilitiesKHR capabilities;
+
+	if (!check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk.physical, vk.surface, &capabilities),
+		"vkGetPhysicalDeviceSurfaceCapabilitiesKHR"))
+		return 1;
+	/* Android reports SUBOPTIMAL while the compositor rotates an identity
+	swapchain. Recreating the same swapchain cannot improve it. */
+	return capabilities.currentTransform != vk.surface_transform ||
+		(capabilities.currentExtent.width != 0xffffffffu &&
+		(capabilities.currentExtent.width != vk.swapchain_extent.width ||
+		capabilities.currentExtent.height != vk.swapchain_extent.height));
 }
 
 /* the image shown in the window: letterboxed into a swapchain image
@@ -3206,7 +3261,7 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	if (trace)
 		host_load_trace("vulkan.queue_present.end", "result=%d", result);
 	host_load_trace("vulkan.present.return", "result=%d image=%d", result, image != NULL);
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || (result == VK_SUBOPTIMAL_KHR && swapchain_changed()))
 		vk.swapchain_stale = 1;
 	else
 		check(result, "vkQueuePresentKHR");
@@ -3592,7 +3647,7 @@ the surface, with one) */
 static int physical_choose(const struct xgpu_vulkan_options *options)
 {
 	VkPhysicalDevice devices[16];
-	uint32_t count = 16, index, best_score = 0;
+	uint32_t count = 0, index, best_score = 0;
 	int chosen = -1;
 
 	if (options->choose_physical)
@@ -3602,8 +3657,18 @@ static int physical_choose(const struct xgpu_vulkan_options *options)
 			return 0;
 		count = 1;
 	}
-	else if (!check(vkEnumeratePhysicalDevices(vk.instance, &count, devices), "vkEnumeratePhysicalDevices"))
-		return 0;
+	else
+	{
+		/* Query the count before fetching handles. Some Android drivers
+		leave the supplied count unchanged when the array is larger than
+		the device list, so the loader then dereferences unwritten handles. */
+		if (!check(vkEnumeratePhysicalDevices(vk.instance, &count, NULL), "vkEnumeratePhysicalDevices"))
+			return 0;
+		if (count > sizeof(devices) / sizeof(devices[0]))
+			count = sizeof(devices) / sizeof(devices[0]);
+		if (count && !check(vkEnumeratePhysicalDevices(vk.instance, &count, devices), "vkEnumeratePhysicalDevices"))
+			return 0;
+	}
 	for (index = 0; index < count; index++)
 	{
 		VkPhysicalDeviceProperties properties;

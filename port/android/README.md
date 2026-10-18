@@ -238,7 +238,6 @@ These settings are only for Android:
 | --- | --- |
 | `input.touch_aim_assist` | `true` (the default): the touch controls' swipe aiming gets the aim assist of a controller (the aim slows over a target and follows a moving one). `false`: none, as with a mouse; the bullets' own autoaim stays. |
 | `input.touch_controls` | The touch controls in a game. `"auto"` (the default): shown on a touchscreen while no controller is connected. `"on"`: also shown with a controller. `"off"`: never shown. A device without a touchscreen never shows them. The menus take taps in any case. |
-| `display.screen_width` | The number of columns of the 480-line picture. `0` (the default): the shape of the display (1068 on a 20:9 phone). `640`: the 4:3 shape of the Xbox. |
 | `debug.sample_seconds` | Refer to "Find problems". |
 | `debug.memory_watch` | `true` (the default): the app notices the game's writes to textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. Refer to "Limits". |
 
@@ -287,8 +286,9 @@ folder: first make a copy of `maps/` and `save/u`.
 
 ## Widescreen
 
-The game shows 480 lines in the shape of the display, not the 640x480 of
-the Xbox:
+The game renders at the Android surface's native pixel resolution. Its
+camera and HUD use the Xbox's 480 logical lines, widened to the display's
+shape and scaled to those pixels:
 
 - The 3D view is wider. The camera keeps the vertical field of view.
 - The HUD stays at the edges of the screen.
@@ -298,6 +298,10 @@ the Xbox:
   and backgrounds (the pause menu's dim, dialogs, the menus' gradient).
 
 All the ports draw this way.
+
+The old Android-only `display.screen_width` setting is removed. The
+drawable determines both the aspect ratio and the render resolution,
+including after a surface size change.
 
 ## How the port operates
 

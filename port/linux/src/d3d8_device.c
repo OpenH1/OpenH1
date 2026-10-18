@@ -50,17 +50,16 @@ void d3d8_surface_resize(D3DSurface *surface, D3DFORMAT format, unsigned long wi
 
 /* ---------- the screen's width
 
-The Xbox screen is 640x480. The native ports can draw a wider one: 480
-lines, and as many columns as the display's shape gives. On Android that is
-display.screen_width (port_config.c; 640 keeps 4:3); on the desktop, the
-shape of the window (of the display while the game is fullscreen, or of
-display.resolution), and 640 where display.resolution_scaling is "original".
+The Xbox screen is 640x480. The ports keep its 480 logical lines and widen
+the layout to the drawable's shape. On the desktop, display.resolution can
+choose another resolution, and display.resolution_scaling "original" keeps
+640 columns. Android uses the actual drawable's pixels.
 The game's camera derives its horizontal field of view from the viewport, so
 the 3D view simply widens. The menus and full-screen overlays are laid out
 for 640 columns; while they draw (halo_screen_ui_offset), everything shifts
 right to center them.
 
-The desktop also draws at that resolution (platform_screen_mode): render
+The renderer draws at that resolution (platform_screen_mode): render
 targets the size of the screen get that many pixels (screen_scale), and
 viewports, clears and visibility counts are scaled to match, so the game
 still works in its 480 lines; "original" draws 640x480, scaled up at
@@ -165,22 +164,6 @@ static BOOL vr_screen_mode(long *width, float scale[2]);
 
 static void screen_mode_choose(long *width, float scale[2])
 {
-#ifdef HALO_ANDROID
-	/* display.screen_width, or 0 for the display's shape, which the app
-	passes (port/android/host/host_main.c) */
-	const char *display = getenv("HALO_DISPLAY_WIDTH");
-
-	*width = config_integer("display.screen_width");
-	if (*width <= 0)
-		*width = display ? atol(display) : 640;
-	if (*width < 640)
-		*width = 640;
-	if (*width > 1600)
-		*width = 1600;
-	*width &= ~1L;
-	scale[0] = scale[1] = 1.0f;
-	screen_supersampling = 1.0f;
-#else
 	long display_width, display_height;
 
 #ifdef HALO_VR
@@ -223,7 +206,6 @@ static void screen_mode_choose(long *width, float scale[2])
 			}
 		}
 	}
-#endif
 }
 
 long halo_screen_width(void)
@@ -1580,14 +1562,12 @@ long halo_screen_commit(void)
 		screen_width = width;
 		screen_scale[0] = scale[0];
 		screen_scale[1] = scale[1];
-#ifndef HALO_ANDROID
 		if (device.created)
 		{
 			device.presentation.BackBufferWidth = (UINT)width;
 			d3d8_surface_resize(&device.back_buffer, D3DFMT_LIN_A8R8G8B8, (unsigned long)width, SCREEN_HEIGHT);
 			d3d8_surface_resize(&device.depth_buffer, D3DFMT_LIN_D24S8, (unsigned long)width, SCREEN_HEIGHT);
 		}
-#endif
 		/* (the entries of the old size and scale, which nothing finds now) */
 		render_targets_evict();
 	}

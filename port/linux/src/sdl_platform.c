@@ -1007,6 +1007,42 @@ int platform_window_sizes(long *widths, long *heights, int maximum)
 }
 
 #else
+/* Android renders at the surface's pixel size. Before the window opens,
+the host supplies the display's landscape pixel dimensions in the boot
+environment. Keep the last valid size while a surface is unavailable. */
+BOOL platform_screen_mode(long *width, long *height)
+{
+	static long last_width, last_height;
+
+	if (platform_window)
+	{
+		int pixel_width = 0, pixel_height = 0;
+
+		SDL_GetWindowSizeInPixels(platform_window, &pixel_width, &pixel_height);
+		if (pixel_width > 0 && pixel_height > 0)
+		{
+			last_width = pixel_width;
+			last_height = pixel_height;
+		}
+	}
+	else
+	{
+		const char *display_width = getenv("HALO_DISPLAY_WIDTH");
+		const char *display_height = getenv("HALO_DISPLAY_HEIGHT");
+		long pixel_width = display_width ? atol(display_width) : 0;
+		long pixel_height = display_height ? atol(display_height) : 0;
+
+		if (pixel_width > 0 && pixel_height > 0)
+		{
+			last_width = pixel_width;
+			last_height = pixel_height;
+		}
+	}
+	*width = last_width;
+	*height = last_height;
+	return last_width > 0 && last_height > 0;
+}
+
 int platform_display_resolutions(long *widths, long *heights, int maximum)
 {
 	(void)widths;
@@ -1164,12 +1200,13 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 
 #ifdef HALO_ANDROID
 	{
-		int scale = (int)config_integer("display.window_scale");
+		long pixel_width = 0, pixel_height = 0;
 
-		if (scale < 1)
-			scale = 1;
-		platform_window = SDL_CreateWindow("Halo", (int)(width * scale), (int)(height * scale),
-			PLATFORM_WINDOW_DRAWING | SDL_WINDOW_FULLSCREEN);
+		(void)width;
+		(void)height;
+		platform_screen_mode(&pixel_width, &pixel_height);
+		platform_window = SDL_CreateWindow("Halo", (int)pixel_width, (int)pixel_height,
+			PLATFORM_WINDOW_DRAWING | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
 	}
 #else
 	/* fullscreen (either kind) unless display.mode is the window, which F11

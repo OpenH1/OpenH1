@@ -5,6 +5,7 @@ The real Vulkan core over a recording-only Vulkan: no driver or GPU.
 Checks attachment load actions, clears inside a pass, multiview layer
 selection, sampling an array's first layer as a 2D image, and capability
 requirements on devices with optional depth formats or query precision.
+Also checks packed vertex bindings and transfer/submission dependencies.
 */
 
 #include "../xgpu_vulkan.c"
@@ -23,6 +24,9 @@ static VkDescriptorImageInfo written_images[4];
 static VkFormatFeatureFlags depth24_features, depth32_features;
 static unsigned int capability_errors;
 static unsigned int ended_queries;
+static unsigned int barriers, copies, bound_vertices;
+static VkMemoryBarrier last_memory;
+static VkPipelineStageFlags last_source, last_destination;
 
 static void VKAPI_CALL fake_end_query(VkCommandBuffer command, VkQueryPool pool, uint32_t query)
 {
@@ -67,6 +71,11 @@ static void VKAPI_CALL fake_barrier(VkCommandBuffer command, VkPipelineStageFlag
 {
 	(void)command; (void)source; (void)destination; (void)dependency;
 	(void)memory_count; (void)memory; (void)buffer_count; (void)buffers; (void)image_count; (void)images;
+	barriers++;
+	if (memory_count)
+		last_memory = memory[0];
+	last_source = source;
+	last_destination = destination;
 }
 
 static void VKAPI_CALL fake_clear(VkCommandBuffer command, uint32_t attachment_count, const VkClearAttachment *attachments,
@@ -98,9 +107,16 @@ static VkResult VKAPI_CALL fake_allocate(VkDevice device, const VkDescriptorSetA
 static void VKAPI_CALL fake_update(VkDevice device, uint32_t count, const VkWriteDescriptorSet *writes,
 	uint32_t copies, const VkCopyDescriptorSet *copy)
 {
+	uint32_t index;
+
 	(void)device; (void)copies; (void)copy;
-	assert(count == 1 && writes[0].descriptorCount == 4);
-	memcpy(written_images, writes[0].pImageInfo, sizeof(written_images));
+	assert(count == 4);
+	for (index = 0; index < count; index++)
+	{
+		assert(writes[index].dstBinding == index && writes[index].descriptorCount == 1);
+		assert(writes[index].descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
+		written_images[index] = *writes[index].pImageInfo;
+	}
 }
 
 static void VKAPI_CALL fake_format_properties(VkPhysicalDevice physical, VkFormat format, VkFormatProperties *properties)
@@ -202,6 +218,170 @@ static void reset(void)
 	vkUpdateDescriptorSets = fake_update;
 }
 
+static VkResult VKAPI_CALL fake_pipeline(VkDevice device, VkPipelineCache cache, uint32_t count,
+	const VkGraphicsPipelineCreateInfo *info, const VkAllocationCallbacks *allocator, VkPipeline *pipeline)
+{
+	const VkPipelineVertexInputStateCreateInfo *input = info->pVertexInputState;
+	const uint32_t expected[4] = { 1, 0, 2, 2 };
+	uint32_t index;
+
+	(void)device; (void)cache; (void)allocator;
+	assert(count == 1 && input->vertexBindingDescriptionCount == 3 && input->vertexAttributeDescriptionCount == 4);
+	for (index = 0; index < 3; index++)
+		assert(input->pVertexBindingDescriptions[index].binding == index);
+	assert(input->pVertexBindingDescriptions[0].stride == 12);
+	assert(input->pVertexBindingDescriptions[1].stride == 32);
+	assert(input->pVertexBindingDescriptions[2].stride == 0);
+	for (index = 0; index < 4; index++)
+	{
+		assert(input->pVertexAttributeDescriptions[index].location == index);
+		assert(input->pVertexAttributeDescriptions[index].binding == expected[index]);
+		assert(input->pVertexAttributeDescriptions[index].offset == index * 16);
+	}
+	*pipeline = (VkPipeline)(uintptr_t)10;
+	return VK_SUCCESS;
+}
+
+static void VKAPI_CALL fake_bind_vertices(VkCommandBuffer command, uint32_t first, uint32_t count,
+	const VkBuffer *buffers, const VkDeviceSize *offsets)
+{
+	const uint32_t sources[3] = { 3, 15, XGPU_VULKAN_BINDING_CONSTANT };
+
+	(void)command;
+	assert(count == 1 && first == bound_vertices && first < 3);
+	assert(buffers[0] == (VkBuffer)(uintptr_t)(100 + sources[first]));
+	assert(offsets[0] == sources[first] * 16);
+	bound_vertices++;
+}
+
+static void VKAPI_CALL fake_viewport(VkCommandBuffer c, uint32_t first, uint32_t count, const VkViewport *v)
+{ (void)c; (void)first; (void)count; (void)v; }
+static void VKAPI_CALL fake_scissor(VkCommandBuffer c, uint32_t first, uint32_t count, const VkRect2D *r)
+{ (void)c; (void)first; (void)count; (void)r; }
+static void VKAPI_CALL fake_bias(VkCommandBuffer c, float constant, float clamp, float slope)
+{ (void)c; (void)constant; (void)clamp; (void)slope; }
+static void VKAPI_CALL fake_blend(VkCommandBuffer c, const float color[4])
+{ (void)c; (void)color; }
+static void VKAPI_CALL fake_stencil(VkCommandBuffer c, VkStencilFaceFlags face, uint32_t reference)
+{ (void)c; (void)face; (void)reference; }
+static void VKAPI_CALL fake_topology(VkCommandBuffer c, VkPrimitiveTopology topology)
+{ (void)c; (void)topology; }
+static void VKAPI_CALL fake_bind_sets(VkCommandBuffer c, VkPipelineBindPoint point, VkPipelineLayout layout,
+	uint32_t first, uint32_t count, const VkDescriptorSet *sets, uint32_t dynamic_count, const uint32_t *offsets)
+{ (void)c; (void)point; (void)layout; (void)first; (void)count; (void)sets; (void)dynamic_count; (void)offsets; }
+static void VKAPI_CALL fake_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first, uint32_t instance)
+{ (void)c; (void)vertices; (void)instances; (void)first; (void)instance; assert(bound_vertices == 3); }
+
+static void vertex_input_test(void)
+{
+	struct xgpu_vulkan_pipeline_description description = { 0 };
+	struct xgpu_vulkan_draw draw = { 0 };
+	struct xgpu_vulkan_dynamic_state dynamic = { 0 };
+	VkDescriptorPool pool = (VkDescriptorPool)(uintptr_t)1;
+	const uint32_t sources[4] = { 15, 3, XGPU_VULKAN_BINDING_CONSTANT, XGPU_VULKAN_BINDING_CONSTANT };
+	VkResult result;
+	double elapsed;
+	uint32_t index;
+
+	reset();
+	description.vertex_shader = description.pixel_shader = (VkShaderModule)(uintptr_t)1;
+	for (index = 0; index < 4; index++)
+	{
+		description.attributes[index].format = VK_FORMAT_R32G32B32A32_SFLOAT;
+		description.attributes[index].binding = sources[index];
+		description.attributes[index].offset = index * 16;
+		draw.bindings |= 1u << sources[index];
+		draw.vertices[sources[index]].buffer = (VkBuffer)(uintptr_t)(100 + sources[index]);
+		draw.vertices[sources[index]].offset = sources[index] * 16;
+	}
+	description.strides[3] = 12;
+	description.strides[15] = 32;
+	vkCreateGraphicsPipelines = fake_pipeline;
+	draw.pipeline = pipeline_build(&description, &result, &elapsed);
+	assert(draw.pipeline && result == VK_SUCCESS);
+	vk.bound_pipeline = draw.pipeline;
+	dynamic.viewport[2] = 64;
+	dynamic.viewport[3] = 48;
+	draw.dynamic = &dynamic;
+	draw.count = 3;
+	recording.descriptor_pools = &pool;
+	recording.descriptor_pool_count = 1;
+	vkCmdBindVertexBuffers = fake_bind_vertices;
+	vkCmdSetViewport = fake_viewport;
+	vkCmdSetScissor = fake_scissor;
+	vkCmdSetDepthBias = fake_bias;
+	vkCmdSetBlendConstants = fake_blend;
+	vkCmdSetStencilReference = fake_stencil;
+	vkCmdSetPrimitiveTopology = fake_topology;
+	vkCmdBindDescriptorSets = fake_bind_sets;
+	vkCmdDraw = fake_draw;
+	bound_vertices = 0;
+	xgpu_vulkan_draw(&draw);
+	assert(bound_vertices == 3);
+}
+
+static void VKAPI_CALL fake_copy_buffer(VkCommandBuffer command, VkBuffer source, VkBuffer destination,
+	uint32_t count, const VkBufferCopy *regions)
+{
+	(void)command; (void)source; (void)destination;
+	assert(count == 1 && regions[0].dstOffset == 0 && regions[0].size == 16);
+	/* A second write to the same bytes must follow the first's barrier. */
+	assert(barriers == copies);
+	copies++;
+}
+
+static void uploads_test(void)
+{
+	struct xgpu_vulkan_buffer buffer = { 0 };
+	unsigned char ring[64], data[16] = { 1 };
+
+	reset();
+	vk.slot->main = (VkCommandBuffer)(uintptr_t)1;
+	vk.slot->early = (VkCommandBuffer)(uintptr_t)2;
+	vk.early_recording = 1;
+	vk.ring_mapped = ring;
+	buffer.size = sizeof(ring);
+	buffer.buffer = (VkBuffer)(uintptr_t)3;
+	vkCmdCopyBuffer = fake_copy_buffer;
+	barriers = copies = 0;
+	xgpu_vulkan_buffer_write(&buffer, 0, data, sizeof(data), 0);
+	xgpu_vulkan_buffer_write(&buffer, 0, data, sizeof(data), 0);
+	assert(copies == 2 && barriers == 2);
+	assert(last_source == VK_PIPELINE_STAGE_TRANSFER_BIT && last_destination == VK_PIPELINE_STAGE_TRANSFER_BIT);
+	assert(last_memory.srcAccessMask & VK_ACCESS_TRANSFER_WRITE_BIT);
+	assert(last_memory.dstAccessMask & VK_ACCESS_TRANSFER_WRITE_BIT);
+	assert(!memcmp(ring, data, sizeof(data)) && !memcmp(ring + 16, data, sizeof(data)));
+	buffer.used = vk.serial;
+	xgpu_vulkan_buffer_write(&buffer, 0, data, sizeof(data), 0);
+	assert(copies == 3 && barriers == 3 && last_destination == AFTER_STAGES);
+	assert(last_memory.dstAccessMask == AFTER_ACCESS);
+}
+
+static VkResult VKAPI_CALL fake_reset_pool(VkDevice device, VkCommandPool pool, VkCommandPoolResetFlags flags)
+{ (void)device; (void)pool; (void)flags; return VK_SUCCESS; }
+
+static VkResult VKAPI_CALL fake_begin_commands(VkCommandBuffer command, const VkCommandBufferBeginInfo *info)
+{ (void)command; (void)info; return VK_SUCCESS; }
+
+static void submissions_test(void)
+{
+	reset();
+	vk.recording = 0;
+	vkResetCommandPool = fake_reset_pool;
+	vkBeginCommandBuffer = fake_begin_commands;
+	barriers = 0;
+	recording_begin();
+	/* Even without an early command buffer, the next frame cannot write
+	its target while the previous presentation blit still reads it. */
+	assert(barriers == 1 && vk.recording && !vk.early_recording);
+	assert(last_source == VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+	assert(last_destination == VK_PIPELINE_STAGE_ALL_COMMANDS_BIT);
+	assert(last_memory.srcAccessMask == (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT));
+	assert(last_memory.dstAccessMask == (VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT));
+	recording_begin();
+	assert(barriers == 1);
+}
+
 int main(void)
 {
 	static const int32_t full[1][4] = { { 0, 0, 64, 48 } };
@@ -212,6 +392,9 @@ int main(void)
 		XGPU_VULKAN_CLEAR_DEPTH | XGPU_VULKAN_CLEAR_STENCIL;
 
 	capabilities_test();
+	vertex_input_test();
+	uploads_test();
+	submissions_test();
 	reset();
 	xgpu_vulkan_clear(full, 0, all, color, 0.75f, 0x123);
 	assert(!begins && !clears);
@@ -359,6 +542,6 @@ int main(void)
 		vk.queries = NULL;
 	}
 	reset();
-	puts("Vulkan passes: full/partial/aspect clears, multiview and sampled array views passed");
+	puts("Vulkan passes, image views, vertex bindings and synchronization passed");
 	return 0;
 }

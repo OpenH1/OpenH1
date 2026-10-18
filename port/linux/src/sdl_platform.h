@@ -65,9 +65,7 @@ Phase 0 waits until its presenter no longer touches the default framebuffer. */
 void platform_loading_set(int phase);
 void platform_loading_art(const unsigned char *rgba);
 int platform_loading_active(void);
-#ifndef HALO_ANDROID
 BOOL platform_screen_mode(long *width, long *height);
-#endif
 /* Video Setup's resolutions (port/linux/game/menu_tags.c), in pixels: the
 display's modes the game can draw at, largest first, each once, but the
 display's own (Native), and display.resolution's where it is none of them;
