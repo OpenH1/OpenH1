@@ -1,0 +1,1167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenH1 Design Board</title>
+<meta name="description" content="Three directions for the openh1.com landing page, for the owners to choose from before anything is built.">
+<meta name="robots" content="noindex">
+<link rel="icon" href="public/favicon.png" sizes="32x32">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Chakra+Petch:wght@500;600;700&family=Overpass+Mono:wght@400;600&family=Overpass:wght@400;600;700;800;900&family=Share+Tech+Mono&family=VT323&display=swap">
+<style>
+/* =====================================================================
+   The board's own chrome: neutral, so the three directions stand out.
+   ===================================================================== */
+@font-face { font-family: "Overpass Local"; font-weight: 750; src: url("public/fonts/Overpass-750.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "Overpass Local"; font-weight: 900; src: url("public/fonts/Overpass-900.ttf") format("truetype"); font-display: swap; }
+
+:root {
+  color-scheme: light;
+  --bg: #f3f2ee;
+  --surface: #ffffff;
+  --sunk: #ebe9e3;
+  --ink: #16181c;
+  --muted: #5b6068;
+  --line: #d9d6ce;
+  --accent: #3451d1;
+  --wire: #a7a39a;
+  --good: #1f7a4d;
+  --warn: #9a5b00;
+  --shadow: 0 1px 2px rgba(20, 20, 20, .06), 0 8px 24px rgba(20, 20, 20, .06);
+  --ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --ui-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #111215; --surface: #1a1c20; --sunk: #15171a; --ink: #eceef1; --muted: #9ba1aa;
+    --line: #2d3036; --accent: #93a6ff; --wire: #4d5159; --good: #5fd39a; --warn: #f0b45a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111215; --surface: #1a1c20; --sunk: #15171a; --ink: #eceef1; --muted: #9ba1aa;
+  --line: #2d3036; --accent: #93a6ff; --wire: #4d5159; --good: #5fd39a; --warn: #f0b45a;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .25);
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.55 var(--ui); overflow-x: hidden; }
+img { max-width: 100%; }
+a { color: var(--accent); }
+code { font-family: var(--ui-mono); font-size: .88em; }
+
+.page { max-width: 1240px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .page { padding: 0 32px; } }
+
+/* masthead */
+.mast { padding: 56px 0 32px; border-bottom: 1px solid var(--line); }
+.mast .meta { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; color: var(--muted); font-size: 14px; }
+.mast .meta img { width: 28px; height: 28px; border-radius: 6px; }
+.mast h1 { margin: 18px 0 12px; font-size: clamp(32px, 5vw, 52px); line-height: 1.05; letter-spacing: -.02em; max-width: 18ch; }
+.mast p { max-width: 70ch; color: var(--muted); font-size: 18px; margin: 0 0 12px; }
+.toc { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.toc a { text-decoration: none; color: var(--ink); background: var(--surface); border: 1px solid var(--line); padding: 7px 12px; border-radius: 999px; font-size: 14px; }
+.toc a:hover { border-color: var(--accent); }
+
+section.board { padding: 56px 0; border-bottom: 1px solid var(--line); }
+.eyebrow { font: 600 12px/1 var(--ui); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+h2.bh { margin: 0 0 10px; font-size: clamp(26px, 3.4vw, 36px); letter-spacing: -.015em; line-height: 1.1; }
+h3.bh3 { margin: 40px 0 14px; font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.lead { color: var(--muted); max-width: 72ch; margin: 0 0 24px; font-size: 17px; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; box-shadow: var(--shadow); }
+.cols-2 { display: grid; gap: 16px; }
+.cols-3 { display: grid; gap: 16px; }
+@media (min-width: 860px) { .cols-2 { grid-template-columns: 1fr 1fr; } .cols-3 { grid-template-columns: repeat(3, 1fr); } }
+
+.card h4 { margin: 0 0 8px; font-size: 16px; }
+.card p { margin: 0 0 10px; }
+.card p:last-child, .card ul:last-child { margin-bottom: 0; }
+.card ul { margin: 0; padding-left: 18px; }
+.card li + li { margin-top: 4px; }
+.muted { color: var(--muted); }
+.small { font-size: 14px; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { font-size: 13px; padding: 4px 10px; border-radius: 999px; background: var(--sunk); border: 1px solid var(--line); }
+.chip b { font-weight: 600; }
+
+.claims { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); margin: 0; padding: 0; list-style: none; }
+.claims li { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 14px; }
+.claims li span { display: block; color: var(--muted); font: 12px/1.4 var(--ui-mono); margin-top: 3px; }
+
+/* at a glance */
+.glance { display: grid; gap: 16px; }
+@media (min-width: 900px) { .glance { grid-template-columns: repeat(3, 1fr); } }
+.glance a { text-decoration: none; color: inherit; display: block; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
+.glance a:hover { border-color: var(--accent); }
+.glance .thumb { height: 170px; padding: 20px; display: flex; flex-direction: column; justify-content: flex-end; gap: 8px; }
+.glance .info { padding: 16px 20px 20px; }
+.glance .info h4 { margin: 0 0 4px; font-size: 18px; }
+.glance .info p { margin: 0 0 4px; color: var(--muted); font-size: 14px; }
+
+/* direction header */
+.dhead { display: grid; gap: 18px; margin-bottom: 26px; }
+@media (min-width: 900px) { .dhead { grid-template-columns: 1.1fr 1fr; align-items: end; } }
+.dhead .letter { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: var(--ink); color: var(--bg); font-weight: 800; margin-right: 10px; vertical-align: middle; }
+.dhead h2 { display: inline; vertical-align: middle; }
+.dhead .pos { font-size: 19px; margin: 14px 0 0; max-width: 46ch; }
+
+/* swatches */
+.swatches { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.sw { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); background: var(--surface); }
+.sw i { display: block; height: 72px; }
+.sw div { padding: 8px 10px; font-size: 13px; line-height: 1.35; }
+.sw b { display: block; font-weight: 600; }
+.sw code { color: var(--muted); }
+.mode-label { font-size: 13px; color: var(--muted); margin: 14px 0 8px; }
+
+/* type specimens */
+.specs { display: grid; gap: 10px; }
+.spec { display: grid; gap: 4px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; align-items: baseline; }
+@media (min-width: 760px) { .spec { grid-template-columns: 180px 1fr; } }
+.spec .role { font-size: 13px; color: var(--muted); }
+.spec .role b { display: block; color: var(--ink); font-size: 14px; }
+.spec .sample { overflow-wrap: anywhere; }
+
+/* component canvases */
+.canvas-row { display: grid; gap: 16px; align-items: start; margin-top: 16px; }
+@media (min-width: 900px) { .canvas-row { grid-template-columns: 360px minmax(0, 1fr); } }
+.states { display: grid; gap: 18px; }
+.state { display: grid; gap: 8px; justify-items: start; }
+.slabel { font: 600 11px/1 var(--ui); letter-spacing: .14em; text-transform: uppercase; opacity: .65; }
+.snote { margin: 22px 0 0; padding-top: 16px; border-top: 1px solid rgba(127, 127, 127, .3); font-size: 14px; opacity: .85; max-width: 60ch; }
+@container (min-width: 560px) { .states { grid-template-columns: 1fr 1fr; } }
+.canvas { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); container-type: inline-size; }
+.canvas.phone { max-width: 360px; width: 100%; justify-self: center; border-radius: 28px; border-width: 6px; border-color: var(--ink); }
+.cap { font-size: 13px; color: var(--muted); margin: 8px 2px 0; }
+.stack > * + * { margin-top: 16px; }
+
+/* wireframe outline */
+.flow { display: grid; gap: 16px; }
+@media (min-width: 900px) { .flow { grid-template-columns: 1fr 1.15fr; } }
+.wire { display: grid; gap: 6px; counter-reset: w; }
+.wire div { counter-increment: w; border: 1.5px dashed var(--wire); border-radius: 8px; padding: 9px 12px 9px 44px; position: relative; font-size: 14px; background: var(--surface); }
+.wire div::before { content: counter(w); position: absolute; left: 12px; top: 9px; width: 22px; height: 22px; border-radius: 6px; background: var(--sunk); border: 1px solid var(--line); font: 600 12px/20px var(--ui); text-align: center; color: var(--muted); }
+.wire div b { font-weight: 650; }
+.wire div span { color: var(--muted); }
+.wire .tall { padding-top: 22px; padding-bottom: 22px; }
+.wire .cta { border-style: solid; border-color: var(--accent); }
+.legend { font-size: 13px; color: var(--muted); }
+.legend i { display: inline-block; width: 22px; height: 12px; border: 1.5px solid var(--accent); border-radius: 3px; vertical-align: -1px; margin-right: 6px; }
+
+.lines { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.lines li { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.lines li .hl { font-size: 20px; font-weight: 700; line-height: 1.2; }
+.lines li .tl { color: var(--muted); font-size: 14px; margin-top: 4px; }
+
+.note { border-left: 3px solid var(--warn); background: var(--surface); padding: 10px 14px; border-radius: 0 10px 10px 0; font-size: 14px; color: var(--ink); margin-top: 14px; }
+.note b { color: var(--warn); }
+
+table.cmp { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--surface); border-radius: 12px; overflow: hidden; }
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+table.cmp th, table.cmp td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.cmp th { font-weight: 600; background: var(--sunk); }
+table.cmp tr:last-child td { border-bottom: 0; }
+
+.reco { border: 2px solid var(--accent); }
+.qs { counter-reset: q; list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
+.qs li { counter-increment: q; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px 14px 54px; position: relative; }
+.qs li::before { content: counter(q); position: absolute; left: 16px; top: 14px; width: 26px; height: 26px; border-radius: 50%; background: var(--ink); color: var(--bg); font: 700 13px/26px var(--ui); text-align: center; }
+.qs li b { display: block; margin-bottom: 2px; }
+
+.bfoot { padding: 32px 0 56px; color: var(--muted); font-size: 14px; }
+
+/* placeholder for screenshots we don't have: clearly a placeholder */
+.shot { position: relative; display: grid; place-items: center; text-align: center; padding: 18px; aspect-ratio: 16 / 9;
+  background-image: repeating-linear-gradient(135deg, rgba(127,127,127,.16) 0 2px, transparent 2px 12px); }
+.shot span { font: 600 12px/1.45 var(--ui-mono); letter-spacing: .02em; max-width: 34ch; padding: 8px 10px; border-radius: 6px; background: rgba(0,0,0,.55); color: #fff; }
+
+/* =====================================================================
+   Direction A: Spartan HUD (dark only, on purpose)
+   ===================================================================== */
+.A {
+  --a-void: #03070d; --a-hull: #0a1a2e; --a-edge: #1d4f86; --a-shield: #36afff;
+  --a-visor: #f2a93b; --a-signal: #e9f2ff; --a-dim: #8aa2c0;
+  --a-display: "Chakra Petch", "Overpass", system-ui, sans-serif;
+  --a-body: "Overpass", "Overpass Local", system-ui, sans-serif;
+  --a-mono: "Share Tech Mono", ui-monospace, monospace;
+  background: var(--a-void); color: var(--a-signal); font: 400 16px/1.55 var(--a-body);
+}
+.A a { color: var(--a-shield); }
+.A .nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--a-edge); background: rgba(3, 7, 13, .9); }
+.A .brand { display: flex; align-items: center; gap: 10px; font: 700 20px/1 var(--a-display); letter-spacing: .08em; color: var(--a-signal); text-decoration: none; }
+.A .brand img { width: 30px; height: 30px; }
+.A .links { display: none; gap: 22px; font: 600 13px/1 var(--a-display); letter-spacing: .14em; text-transform: uppercase; }
+.A .links a { color: var(--a-dim); text-decoration: none; }
+.A .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 20px; font: 700 14px/1 var(--a-display); letter-spacing: .14em; text-transform: uppercase; text-decoration: none;
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+.A .btn.primary { background: var(--a-visor); color: #120b00; }
+.A .btn.secondary { background: transparent; color: var(--a-shield); box-shadow: inset 0 0 0 2px var(--a-shield); clip-path: none; }
+.A .btn.sm { min-height: 36px; padding: 0 14px; font-size: 12px; }
+.A .btn:focus-visible, .A .btn.focus { clip-path: none; outline: 2px solid var(--a-signal); outline-offset: 3px; }
+.A .status { display: inline-flex; align-items: center; gap: 8px; font: 14px/1 var(--a-mono); color: var(--a-dim); letter-spacing: .06em; text-transform: uppercase; }
+.A .status::before { content: ""; width: 8px; height: 8px; background: var(--a-visor); box-shadow: 0 0 10px var(--a-visor); }
+.A .hero { position: relative; padding: 36px 16px 40px;
+  background:
+    radial-gradient(ellipse 80% 70% at 70% 0%, rgba(54, 175, 255, .2), transparent 70%),
+    repeating-linear-gradient(0deg, rgba(54, 175, 255, .05) 0 1px, transparent 1px 32px),
+    repeating-linear-gradient(90deg, rgba(54, 175, 255, .05) 0 1px, transparent 1px 32px),
+    linear-gradient(180deg, #061427, var(--a-void)); }
+.A .hero-grid { display: grid; gap: 28px; }
+.A .kicker { font: 14px/1.4 var(--a-mono); color: var(--a-shield); letter-spacing: .08em; text-transform: uppercase; margin: 0 0 14px; }
+.A h1 { margin: 0; font: 700 44px/.95 var(--a-display); letter-spacing: .01em; text-transform: uppercase; }
+.A h1 em { font-style: normal; color: var(--a-shield); }
+.A .sub { margin: 16px 0 0; color: #c4d4ea; font-size: 17px; max-width: 54ch; }
+.A .actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 24px 0 14px; }
+.A .viewport { position: relative; border: 1px solid var(--a-edge); background: #050d18; }
+.A .viewport::before, .A .viewport::after { content: ""; position: absolute; width: 22px; height: 22px; border: 2px solid var(--a-shield); pointer-events: none; }
+.A .viewport::before { top: -6px; left: -6px; border-right: 0; border-bottom: 0; }
+.A .viewport::after { bottom: -6px; right: -6px; border-left: 0; border-top: 0; }
+.A .viewport .shot span { background: rgba(3, 7, 13, .8); color: var(--a-shield); }
+.A .readout { display: flex; justify-content: space-between; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--a-edge); font: 12px/1.4 var(--a-mono); color: var(--a-dim); text-transform: uppercase; letter-spacing: .06em; }
+@container (min-width: 720px) {
+  .A .links { display: flex; }
+  .A .nav { padding: 14px 28px; }
+  .A .hero { padding: 64px 28px 64px; }
+  .A .hero-grid { grid-template-columns: 1.05fr 1fr; align-items: center; gap: 40px; }
+  .A h1 { font-size: 76px; }
+}
+.A.pad { padding: 24px 16px; }
+@container (min-width: 720px) { .A.pad { padding: 28px; } }
+.A .fcards { display: grid; gap: 14px; }
+@container (min-width: 620px) { .A .fcards { grid-template-columns: 1fr 1fr; } }
+.A .fcard { position: relative; padding: 20px 20px 18px; background: linear-gradient(180deg, var(--a-hull), #06111f); border: 1px solid var(--a-edge);
+  clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 0 100%); }
+.A .fcard .tag { font: 13px/1 var(--a-mono); color: var(--a-shield); letter-spacing: .1em; }
+.A .fcard h4 { margin: 10px 0 6px; font: 700 22px/1.1 var(--a-display); letter-spacing: .04em; text-transform: uppercase; }
+.A .fcard p { margin: 0; color: #c4d4ea; font-size: 15px; }
+.A .fcard .bar { margin-top: 14px; height: 4px; background: rgba(54, 175, 255, .15); }
+.A .fcard .bar i { display: block; height: 100%; width: 72%; background: var(--a-shield); box-shadow: 0 0 10px var(--a-shield); }
+.A .strip-title { font: 13px/1 var(--a-mono); letter-spacing: .12em; color: var(--a-dim); margin: 0 0 12px; text-transform: uppercase; }
+.A .strip { display: grid; gap: 8px; grid-template-columns: repeat(2, 1fr); }
+@container (min-width: 720px) { .A .strip { grid-template-columns: repeat(6, 1fr); } }
+.A .strip div { border: 1px solid var(--a-edge); padding: 12px; background: rgba(10, 26, 46, .6); }
+.A .strip b { display: block; font: 700 17px/1.1 var(--a-display); letter-spacing: .06em; text-transform: uppercase; }
+.A .strip span { display: block; margin-top: 6px; font: 12px/1.35 var(--a-mono); color: var(--a-dim); text-transform: uppercase; }
+.A.foot { padding: 22px 16px 26px; border-top: 2px solid var(--a-edge); color: var(--a-dim); font-size: 13px; }
+.A.foot .fl { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 10px; font: 600 12px/1 var(--a-display); letter-spacing: .12em; text-transform: uppercase; }
+.A.foot p { margin: 0; max-width: 90ch; }
+@container (min-width: 720px) { .A.foot { padding: 24px 28px 28px; } }
+
+/* =====================================================================
+   Direction B: Open project, everywhere (light and dark)
+   ===================================================================== */
+.B {
+  --b-bg: #fafaf7; --b-surface: #ffffff; --b-ink: #12161c; --b-muted: #586271; --b-line: #e2e5e9;
+  --b-amber: #f5a524; --b-amber-ink: #1a1200; --b-link: #1f6fd1; --b-navy: #0b2545;
+  --b-sans: "Overpass", "Overpass Local", system-ui, sans-serif;
+  --b-mono: "Overpass Mono", ui-monospace, monospace;
+  background: var(--b-bg); color: var(--b-ink); font: 400 16px/1.6 var(--b-sans);
+}
+.B.dark { --b-bg: #0d1117; --b-surface: #151b23; --b-ink: #e8edf3; --b-muted: #94a1b2; --b-line: #263040; --b-link: #6cb2ff; --b-navy: #0b2545; }
+.B a { color: var(--b-link); }
+.B .nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--b-line); }
+.B .brand { display: flex; align-items: center; gap: 10px; font: 800 20px/1 var(--b-sans); color: var(--b-ink); text-decoration: none; letter-spacing: -.01em; }
+.B .brand img { width: 28px; height: 28px; border-radius: 6px; }
+.B .links { display: none; gap: 24px; font-size: 15px; font-weight: 600; }
+.B .links a { color: var(--b-muted); text-decoration: none; }
+.B .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 10px; font: 700 15px/1 var(--b-sans); text-decoration: none; border: 1px solid transparent; }
+.B .btn.primary { background: var(--b-amber); color: var(--b-amber-ink); }
+.B .btn.secondary { background: var(--b-surface); color: var(--b-ink); border-color: var(--b-line); }
+.B .btn.sm { min-height: 36px; padding: 0 12px; font-size: 14px; border-radius: 8px; }
+.B .btn svg { width: 16px; height: 16px; }
+.B .btn:focus-visible, .B .btn.focus { outline: 2px solid var(--b-link); outline-offset: 2px; }
+.B .hero { padding: 36px 16px 40px; }
+.B .hero-grid { display: grid; gap: 28px; }
+.B .eyebrow-b { display: inline-flex; gap: 8px; align-items: center; font: 600 13px/1 var(--b-mono); color: var(--b-muted); padding: 6px 10px; border: 1px solid var(--b-line); border-radius: 999px; background: var(--b-surface); }
+.B .eyebrow-b i { width: 7px; height: 7px; border-radius: 50%; background: var(--b-amber); }
+.B h1 { margin: 16px 0 0; font: 800 38px/1.04 var(--b-sans); letter-spacing: -.025em; }
+.B .sub { margin: 16px 0 0; color: var(--b-muted); font-size: 18px; max-width: 52ch; }
+.B .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 24px 0 12px; }
+.B .soon { font-size: 14px; color: var(--b-muted); }
+.B .soon b { color: var(--b-ink); font-weight: 700; }
+.B .window { border: 1px solid var(--b-line); border-radius: 12px; overflow: hidden; background: var(--b-surface); box-shadow: 0 20px 50px -20px rgba(11, 37, 69, .35); }
+.B .window .bar { display: flex; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--b-line); }
+.B .window .bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--b-line); }
+.B .window .shot { background-color: var(--b-navy); }
+@container (min-width: 720px) {
+  .B .links { display: flex; }
+  .B .nav { padding: 14px 28px; }
+  .B .hero { padding: 64px 28px; }
+  .B .hero-grid { grid-template-columns: 1fr 1.05fr; align-items: center; gap: 44px; }
+  .B h1 { font-size: 56px; }
+}
+.B.pad { padding: 24px 16px; }
+@container (min-width: 720px) { .B.pad { padding: 28px; } }
+.B .fcard { background: var(--b-surface); border: 1px solid var(--b-line); border-radius: 14px; padding: 20px; }
+.B .fcard .tag { font: 600 12px/1 var(--b-mono); letter-spacing: .08em; color: var(--b-muted); text-transform: uppercase; }
+.B .fcard h4 { margin: 10px 0 6px; font: 800 20px/1.2 var(--b-sans); letter-spacing: -.01em; }
+.B .fcard p { margin: 0 0 12px; color: var(--b-muted); font-size: 15px; }
+.B .fcard a { font-weight: 700; font-size: 14px; text-decoration: none; }
+.B .matrix { width: 100%; border-collapse: collapse; font-size: 14px; }
+.B .matrix th, .B .matrix td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--b-line); vertical-align: top; }
+.B .matrix th { font: 600 12px/1.2 var(--b-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--b-muted); }
+.B .matrix td:first-child { font-weight: 800; white-space: nowrap; }
+.B .matrix td { color: var(--b-muted); }
+.B .matrix td:first-child { color: var(--b-ink); }
+.B .matrix .hide-n { display: none; }
+@container (min-width: 620px) { .B .matrix .hide-n { display: table-cell; } }
+.B .stats { display: grid; gap: 1px; background: var(--b-line); border: 1px solid var(--b-line); border-radius: 14px; overflow: hidden; grid-template-columns: 1fr 1fr; }
+@container (min-width: 720px) { .B .stats { grid-template-columns: repeat(4, 1fr); } }
+.B .stats div { background: var(--b-surface); padding: 18px; }
+.B .stats b { display: block; font: 800 34px/1 var(--b-sans); letter-spacing: -.02em; }
+.B .stats span { display: block; margin-top: 8px; font-size: 14px; color: var(--b-muted); }
+.B.foot { padding: 22px 16px 26px; border-top: 1px solid var(--b-line); color: var(--b-muted); font-size: 13px; }
+.B.foot .fl { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 10px; font-weight: 600; font-size: 14px; }
+.B.foot p { margin: 0; max-width: 90ch; }
+@container (min-width: 720px) { .B.foot { padding: 24px 28px 28px; } }
+
+/* =====================================================================
+   Direction C: Game night (dark "basement" and light "flyer")
+   ===================================================================== */
+.C {
+  --c-night: #17121f; --c-panel: #241c30; --c-cream: #f6eedd; --c-tang: #ff6b2c; --c-lemon: #ffd23f; --c-teal: #2ec4b6; --c-ink: #1b1622;
+  --c-text: #f6eedd; --c-muted: #c3b6cf; --c-line: #3a2f48;
+  --c-display: "Archivo", system-ui, sans-serif;
+  --c-body: "Archivo", system-ui, sans-serif;
+  --c-pixel: "VT323", ui-monospace, monospace;
+  background: var(--c-night); color: var(--c-text); font: 400 16px/1.55 var(--c-body); font-stretch: 100%;
+}
+.C.light { --c-text: #1b1622; --c-muted: #5c5066; --c-line: #dccfb6; background: var(--c-cream); }
+.C a { color: var(--c-lemon); }
+.C.light a { color: #b63f0b; }
+.C .nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; }
+.C .brand { display: flex; align-items: center; gap: 10px; font: 900 22px/1 var(--c-display); font-stretch: 125%; color: var(--c-text); text-decoration: none; letter-spacing: -.01em; }
+.C .brand img { width: 32px; height: 32px; border-radius: 8px; transform: rotate(-4deg); box-shadow: 3px 3px 0 var(--c-tang); }
+.C .links { display: none; gap: 22px; font: 700 15px/1 var(--c-body); }
+.C .links a { color: var(--c-muted); text-decoration: none; }
+.C .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 46px; padding: 0 20px; border-radius: 12px; font: 800 16px/1 var(--c-display); font-stretch: 110%; text-decoration: none; border: 2px solid var(--c-ink); }
+.C .btn.primary { background: var(--c-tang); color: var(--c-ink); box-shadow: 4px 4px 0 var(--c-lemon); }
+.C .btn.secondary { background: transparent; color: var(--c-text); border-color: var(--c-text); }
+.C .btn.sm { min-height: 38px; padding: 0 14px; font-size: 14px; box-shadow: 3px 3px 0 var(--c-lemon); }
+.C .btn:focus-visible, .C .btn.focus { outline: 3px solid var(--c-teal); outline-offset: 3px; }
+.C .hero { padding: 28px 16px 40px; position: relative; overflow: hidden; }
+.C .hero::before { content: ""; position: absolute; inset: auto -10% -60% 40%; height: 120%; background: radial-gradient(closest-side, rgba(255, 107, 44, .28), transparent); pointer-events: none; }
+.C .hero-grid { display: grid; gap: 28px; position: relative; }
+.C .pixel { font: 22px/1 var(--c-pixel); color: var(--c-teal); letter-spacing: .02em; }
+.C h1 { margin: 10px 0 0; font: 900 36px/.98 var(--c-display); font-stretch: 125%; letter-spacing: -.02em; }
+.C h1 mark { background: linear-gradient(transparent 74%, var(--c-tang) 74% 90%, transparent 90%); color: inherit; padding: 0 .05em; }
+.C .sub { margin: 16px 0 0; color: var(--c-muted); font-size: 18px; max-width: 50ch; }
+.C .actions { display: flex; flex-wrap: wrap; gap: 14px; margin: 26px 0 0; }
+.C .ticket { background: var(--c-cream); color: var(--c-ink); border-radius: 16px; padding: 18px 20px; transform: rotate(1.5deg); box-shadow: 8px 8px 0 var(--c-teal); position: relative; max-width: 420px; justify-self: center; width: 100%; }
+.C .ticket::before, .C .ticket::after { content: ""; position: absolute; top: 50%; width: 22px; height: 22px; border-radius: 50%; background: var(--c-night); transform: translateY(-50%); }
+.C .ticket::before { left: -11px; } .C .ticket::after { right: -11px; }
+.C .ticket .t-top { font: 22px/1 var(--c-pixel); color: #7a3a14; }
+.C .ticket h5 { margin: 6px 0 10px; font: 900 26px/1 var(--c-display); font-stretch: 120%; }
+.C .ticket dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 0 0 12px; font-size: 14px; }
+.C .ticket dt { font-weight: 800; }
+.C .ticket dd { margin: 0; }
+.C .ticket code { display: block; font: 20px/1.1 var(--c-pixel); background: var(--c-ink); color: var(--c-lemon); padding: 8px 10px; border-radius: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.C .ticket small { display: block; margin-top: 8px; font-size: 12px; color: #5c5066; }
+@container (min-width: 720px) {
+  .C .links { display: flex; }
+  .C .nav { padding: 16px 28px; }
+  .C .hero { padding: 56px 28px 64px; }
+  .C .hero-grid { grid-template-columns: 1.2fr 1fr; align-items: center; gap: 40px; }
+  .C h1 { font-size: 72px; }
+}
+.C.pad { padding: 24px 16px; }
+@container (min-width: 720px) { .C.pad { padding: 28px; } }
+.C .fcards { display: grid; gap: 18px; }
+@container (min-width: 620px) { .C .fcards { grid-template-columns: 1fr 1fr; } }
+.C .fcard { background: var(--c-panel); border: 2px solid var(--c-ink); border-radius: 18px; padding: 20px; box-shadow: 6px 6px 0 var(--c-tang); }
+.C.light .fcard { background: #fffaf0; }
+.C .fcard:nth-child(2) { box-shadow: 6px 6px 0 var(--c-teal); }
+.C .fcard .sticker { display: inline-block; font: 900 12px/1 var(--c-display); font-stretch: 115%; letter-spacing: .06em; text-transform: uppercase; background: var(--c-lemon); color: var(--c-ink); padding: 6px 9px; border-radius: 6px; transform: rotate(-3deg); }
+.C .fcard h4 { margin: 12px 0 6px; font: 900 24px/1.05 var(--c-display); font-stretch: 118%; letter-spacing: -.01em; }
+.C .fcard p { margin: 0; color: var(--c-muted); font-size: 15px; }
+.C .who { font: 900 22px/1.1 var(--c-display); font-stretch: 118%; margin: 0 0 14px; }
+.C .stickers { display: flex; flex-wrap: wrap; gap: 10px; }
+.C .stickers span { font: 800 15px/1 var(--c-display); font-stretch: 110%; padding: 10px 14px; border-radius: 999px; border: 2px solid var(--c-ink); color: var(--c-ink); }
+.C .stickers span:nth-child(6n+1) { background: var(--c-tang); transform: rotate(-2deg); }
+.C .stickers span:nth-child(6n+2) { background: var(--c-lemon); transform: rotate(1.5deg); }
+.C .stickers span:nth-child(6n+3) { background: var(--c-teal); transform: rotate(-1deg); }
+.C .stickers span:nth-child(6n+4) { background: var(--c-cream); transform: rotate(2deg); }
+.C .stickers span:nth-child(6n+5) { background: #c9a7ff; transform: rotate(-1.5deg); }
+.C .stickers span:nth-child(6n+6) { background: var(--c-tang); transform: rotate(1deg); }
+.C .signup { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+.C .signup label { flex-basis: 100%; font-weight: 800; }
+.C .signup input { flex: 1 1 200px; min-height: 46px; border-radius: 12px; border: 2px solid var(--c-ink); padding: 0 14px; font: 16px var(--c-body); background: #fffaf0; color: var(--c-ink); }
+.C.foot { padding: 22px 16px 26px; border-top: 2px dashed var(--c-line); color: var(--c-muted); font-size: 13px; }
+.C.foot .fl { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 10px; font-weight: 800; font-size: 14px; }
+.C.foot p { margin: 0; max-width: 90ch; }
+@container (min-width: 720px) { .C.foot { padding: 24px 28px 28px; } }
+
+@media (prefers-reduced-motion: no-preference) {
+  .A .status::before { animation: blink 2.4s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+}
+</style>
+</head>
+<body>
+
+<header class="mast">
+  <div class="page">
+    <div class="meta">
+      <img src="public/icon.png" alt="" width="28" height="28">
+      <span><b>OpenH1</b> · openh1.com redesign</span>
+      <span>Phase 1: direction</span>
+      <span>October 2026</span>
+    </div>
+    <h1>Three directions for the landing page</h1>
+    <p>Pick one direction (or mix parts of them) before anything gets built. Each has its own audience, look and plan for turning a visitor into someone who stars, watches and shares OpenH1, while there are no downloads to offer yet.</p>
+    <p>Everything a visitor would read here is checked against the repository (README.md, AGENTS.md and the platform READMEs). The screenshot frames are empty on purpose: we don't have real captures yet, and we won't fake any.</p>
+    <nav class="toc" aria-label="Board sections">
+      <a href="#shared">What stays the same</a>
+      <a href="#glance">At a glance</a>
+      <a href="#dir-a">A · Spartan HUD</a>
+      <a href="#dir-b">B · Open project</a>
+      <a href="#dir-c">C · Game night</a>
+      <a href="#compare">Comparison</a>
+      <a href="#reco">Recommendation</a>
+      <a href="#questions">Questions for you</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+<!-- ================================================================ -->
+<section class="board" id="shared">
+  <div class="page">
+    <p class="eyebrow">Common ground</p>
+    <h2 class="bh">What every direction keeps</h2>
+    <p class="lead">These rules hold no matter which look you choose.</p>
+    <div class="cols-3">
+      <div class="card">
+        <h4>Rules for the page</h4>
+        <ul>
+          <li><b>No download buttons yet.</b> A clear “Downloads coming soon” in their place.</li>
+          <li><b>No play-in-browser.</b> The web build isn't a feature for now, so it isn't mentioned.</li>
+          <li><b>No Discord link</b> until OpenH1 has its own server.</li>
+          <li>Static HTML and CSS, almost no JavaScript, fast on a phone, 16px side margins, no sideways scrolling.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>Legal distance</h4>
+        <ul>
+          <li>No Microsoft, Xbox or Halo logos, official art, ring imagery or Xbox green.</li>
+          <li>“Halo: Combat Evolved” only as a plain description of what the port runs.</li>
+          <li>The full disclaimer in every footer: not endorsed or affiliated; Halo is Microsoft's trademark; no game data included.</li>
+          <li>Platforms named in plain text, not with company logos.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>The message, in order</h4>
+        <ol style="margin:0;padding-left:20px">
+          <li>It's the 2001 game, running natively on your machine.</li>
+          <li>It's better than it was: online, co-op, mods, sharper picture.</li>
+          <li>It's real, open and legal: your own disc, built in the open.</li>
+          <li>Here's how to follow it until downloads open.</li>
+        </ol>
+      </div>
+    </div>
+
+    <h3 class="bh3">Claims we can make (each one checked in the repository)</h3>
+    <ul class="claims">
+      <li>Native on macOS (Apple silicon, Metal renderer, macOS 14.4 or later)<span>port/macos/README.md</span></li>
+      <li>Windows, and Linux on x86, x86-64 and 64-bit ARM<span>README.md · port/linux/README.md</span></li>
+      <li>Steam Deck: fills the 16:10 screen, Steam Input, up to 90 Hz on OLED<span>port/linux/README.md “Steam Deck”</span></li>
+      <li>Android: touch controls with gyro aiming, or a controller<span>port/android/README.md</span></li>
+      <li>VR through OpenXR on Linux: SteamVR, Monado, made on a Steam Frame<span>port/linux/README.md “VR”</span></li>
+      <li>VR by hand: reload, holsters, thrown grenades, a Warthog's wheel<span>port/linux/README.md “VR · Controls”</span></li>
+      <li>Vulkan renderer on Linux, Android and VR; OpenGL elsewhere<span>port/linux/vulkan/README.md</span></li>
+      <li>Invite links and a server browser; the project runs no servers<span>port/linux/README.md “Internet play”</span></li>
+      <li>Up to 128 players; up to 4 split screen per machine<span>port/linux/README.md “System link”</span></li>
+      <li>Online co-op campaign; extra enemies scale with the squad<span>port/linux/README.md settings</span></li>
+      <li>Custom Edition maps, downloaded from the other players as you join<span>port/linux/README.md “Map sharing”</span></li>
+      <li>Mods in a folder, switched and ordered in the game's Mods menu<span>docs/mods.md</span></li>
+      <li>Voice chat (push to talk, nearby players) and text chat<span>port/linux/README.md “Voice chat”</span></li>
+      <li>Streamer mode hides offensive words<span>port/linux/README.md “Streamer mode”</span></li>
+      <li>A frame for each display refresh (60, 120, 240 Hz); field of view up to 150°<span>port/linux/README.md “Frame rate”, “Field of view”</span></li>
+      <li>High-res HUD and text, SMAA, FXAA, supersampling, enhanced dynamic lights<span>port/linux/README.md “What operates”</span></li>
+      <li>Any version of the disc; PAL players play with NTSC players<span>README.md “Game data”</span></li>
+      <li>A fork of OpenCE, still compatible with it online<span>README.md</span></li>
+    </ul>
+    <p class="note"><b>Left out on purpose:</b> Mac and VR playing in the same games as Windows, Linux and Android players. The code shares the netcode, but the README only lists Linux, Windows, Android and browsers as playing together. See question 5.</p>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section class="board" id="glance">
+  <div class="page">
+    <p class="eyebrow">Overview</p>
+    <h2 class="bh">At a glance</h2>
+    <p class="lead">Three ways to sell the same project. The details for each follow below.</p>
+    <div class="glance">
+      <a href="#dir-a">
+        <div class="thumb A" style="background:radial-gradient(ellipse 90% 80% at 80% 0%,rgba(54,175,255,.3),transparent 70%),#03070d">
+          <span style="font:14px/1 'Share Tech Mono',monospace;color:#36afff;letter-spacing:.08em">// UNOFFICIAL FAN PORT</span>
+          <span style="font:700 34px/.95 'Chakra Petch',sans-serif;text-transform:uppercase;color:#e9f2ff">Drop in.<br>Anywhere.</span>
+        </div>
+        <div class="info">
+          <h4>A · Spartan HUD</h4>
+          <p>For Halo fans. It feels like the game's own menus, sharpened.</p>
+          <p><b>Main action:</b> Star on GitHub</p>
+        </div>
+      </a>
+      <a href="#dir-b">
+        <div class="thumb B" style="background:#fafaf7;border-bottom:1px solid #e2e5e9">
+          <span style="font:600 13px/1 'Overpass Mono',monospace;color:#586271">Open source · Fork of OpenCE</span>
+          <span style="font:800 28px/1.05 Overpass,sans-serif;letter-spacing:-.02em;color:#12161c">Halo: Combat Evolved, native on Mac, PC, Linux, Android and VR.</span>
+        </div>
+        <div class="info">
+          <h4>B · Open project, everywhere</h4>
+          <p>For the tech and preservation crowd. Calm, factual, credible.</p>
+          <p><b>Main action:</b> Star, then get release alerts</p>
+        </div>
+      </a>
+      <a href="#dir-c">
+        <div class="thumb C" style="background:radial-gradient(closest-side at 80% 90%,rgba(255,107,44,.4),transparent),#17121f">
+          <span style="font:22px/1 VT323,monospace;color:#2ec4b6">&gt; game night, 2001 → now</span>
+          <span style="font:900 32px/.95 Archivo,sans-serif;font-stretch:125%;letter-spacing:-.02em;color:#f6eedd">System link, without the cables.</span>
+        </div>
+        <div class="info">
+          <h4>C · Game night</h4>
+          <p>For lapsed players and their friends. Warm, loud, social.</p>
+          <p><b>Main action:</b> Star and share with your squad</p>
+        </div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- Direction A -->
+<section class="board" id="dir-a">
+  <div class="page">
+    <div class="dhead">
+      <div>
+        <p class="eyebrow">Direction A</p>
+        <span class="letter">A</span><h2 class="bh">Spartan HUD</h2>
+        <p class="pos">Military sci-fi, as if the page were the game's own menu: dark hull, shield-blue edges, visor-gold actions, readouts in a monospaced font.</p>
+      </div>
+      <div class="chips">
+        <span class="chip"><b>For:</b> Halo fans who grew up on the Xbox and PC versions</span>
+        <span class="chip"><b>Feels:</b> switching the console on</span>
+        <span class="chip"><b>Theme:</b> dark only, on purpose</span>
+      </div>
+    </div>
+
+    <div class="cols-2">
+      <div class="card">
+        <h4>Why it would convince</h4>
+        <p>A fan decides in three seconds whether something “feels like Halo”. This page answers that before a single screenshot loads: the colours, the type and the HUD details say it's the real game, done with care. Fans star and share what feels like home.</p>
+      </div>
+      <div class="card">
+        <h4>Watch out for</h4>
+        <p>It sits closest to the official look, so it needs restraint: generic sci-fi only (no ring, no glyphs, no Xbox green, no official fonts). Many fan sites look like this, so it earns less trust from the tech crowd. Dark only, because a light HUD reads as a different product.</p>
+      </div>
+    </div>
+
+    <h3 class="bh3">Palette</h3>
+    <div class="swatches">
+      <div class="sw"><i style="background:#03070d"></i><div><b>Void</b><code>#03070D</code> page</div></div>
+      <div class="sw"><i style="background:#0a1a2e"></i><div><b>Hull</b><code>#0A1A2E</code> panels</div></div>
+      <div class="sw"><i style="background:#1d4f86"></i><div><b>Edge</b><code>#1D4F86</code> borders</div></div>
+      <div class="sw"><i style="background:#36afff"></i><div><b>Shield</b><code>#36AFFF</code> links, focus</div></div>
+      <div class="sw"><i style="background:#f2a93b"></i><div><b>Visor</b><code>#F2A93B</code> main action</div></div>
+      <div class="sw"><i style="background:#e9f2ff"></i><div><b>Signal</b><code>#E9F2FF</code> text</div></div>
+      <div class="sw"><i style="background:#8aa2c0"></i><div><b>Readout</b><code>#8AA2C0</code> secondary text</div></div>
+    </div>
+    <p class="cap">Shield is the game's own menu blue (from the current site). Visor gold comes from the icon. Text on Void passes WCAG AA, and Visor buttons use near-black text.</p>
+
+    <h3 class="bh3">Type</h3>
+    <div class="specs A" style="background:transparent;color:inherit">
+      <div class="spec"><div class="role"><b>Display</b>Chakra Petch 700, capitals</div><div class="sample" style="font:700 40px/1 'Chakra Petch',sans-serif;text-transform:uppercase;color:var(--ink)">Drop in. Anywhere.</div></div>
+      <div class="spec"><div class="role"><b>Body</b>Overpass 400 / 700</div><div class="sample" style="font:400 17px/1.55 Overpass,sans-serif;color:var(--ink)">Overpass is the open font the port already draws its HUD and menu text with, so the site and the game read the same.</div></div>
+      <div class="spec"><div class="role"><b>Readout</b>Share Tech Mono</div><div class="sample" style="font:16px/1.4 'Share Tech Mono',monospace;color:var(--ink);text-transform:uppercase;letter-spacing:.06em">Platform: macOS // Renderer: Metal // Status: downloads coming soon</div></div>
+    </div>
+
+    <h3 class="bh3">Header and hero, desktop</h3>
+    <div class="canvas"><div class="A">
+        <div class="nav">
+          <a class="brand" href="#dir-a"><img src="public/icon.png" alt="" width="30" height="30">OPENH1</a>
+          <div class="links"><a href="#dir-a">Platforms</a><a href="#dir-a">Loadout</a><a href="#dir-a">VR</a><a href="#dir-a">Source</a></div>
+          <a class="btn primary sm" href="https://github.com/OpenH1/OpenH1">★ Star</a>
+        </div>
+        <div class="hero"><div class="hero-grid">
+          <div>
+            <p class="kicker">// Unofficial fan port · Built from the decompilation</p>
+            <h1>Drop in.<br><em>Anywhere.</em></h1>
+            <p class="sub">OpenH1 rebuilds Halo: Combat Evolved from its decompilation to run natively on macOS, Windows, Linux, Android and VR headsets, with online play, co-op and mods. Bring your own Xbox disc.</p>
+            <div class="actions">
+              <a class="btn primary" href="https://github.com/OpenH1/OpenH1">★ Star on GitHub</a>
+              <a class="btn secondary" href="https://github.com/OpenH1/OpenH1">Watch for releases</a>
+            </div>
+            <span class="status">Downloads: coming soon</span>
+          </div>
+          <div class="viewport">
+            <div class="shot"><span>Screenshot needed: a campaign moment at 4K with enhanced lights and the high-res HUD</span></div>
+            <div class="readout"><span>macOS · Metal</span><span>3840 × 2160</span></div>
+          </div>
+        </div></div>
+      </div></div>
+    <div class="canvas-row">
+      <div>
+        <div class="canvas phone"><div class="A">
+          <div class="nav">
+            <a class="brand" href="#dir-a"><img src="public/icon.png" alt="" width="30" height="30">OPENH1</a>
+            <a class="btn primary sm" href="https://github.com/OpenH1/OpenH1">★ Star</a>
+          </div>
+          <div class="hero"><div class="hero-grid">
+            <div>
+              <p class="kicker">// Unofficial fan port</p>
+              <h1>Drop in.<br><em>Anywhere.</em></h1>
+              <p class="sub">OpenH1 rebuilds Halo: Combat Evolved from its decompilation to run natively on macOS, Windows, Linux, Android and VR headsets. Bring your own Xbox disc.</p>
+              <div class="actions">
+                <a class="btn primary" href="https://github.com/OpenH1/OpenH1">★ Star on GitHub</a>
+                <a class="btn secondary" href="https://github.com/OpenH1/OpenH1">Watch for releases</a>
+              </div>
+              <span class="status">Downloads: coming soon</span>
+            </div>
+          </div></div>
+        </div></div>
+        <p class="cap" style="text-align:center">At 360px: nav collapses to the Star button, buttons wrap.</p>
+      </div>
+      <div class="canvas"><div class="A pad">
+        <div class="states">
+          <div class="state"><span class="slabel">Primary</span><a class="btn primary" href="https://github.com/OpenH1/OpenH1">★ Star on GitHub</a></div>
+          <div class="state"><span class="slabel">Secondary</span><a class="btn secondary" href="https://github.com/OpenH1/OpenH1">Watch for releases</a></div>
+          <div class="state"><span class="slabel">Keyboard focus</span><a class="btn primary focus" href="https://github.com/OpenH1/OpenH1">★ Star on GitHub</a></div>
+          <div class="state"><span class="slabel">In place of downloads</span><span class="status">Downloads: coming soon</span></div>
+        </div>
+        <p class="snote">On a phone: one column, the nav keeps only Star, the platform tiles go two across. Every button is at least 44px tall. The amber dot blinks only when the visitor allows motion.</p>
+      </div></div>
+    </div>
+
+    <h3 class="bh3">Feature cards, platform strip and footer</h3>
+    <div class="canvas"><div class="A pad stack">
+      <div class="fcards">
+        <div class="fcard">
+          <span class="tag">02 / ONLINE</span>
+          <h4>No servers to set up</h4>
+          <p>Host a game and send the invite link, or pick a game from the server browser. Up to 128 players, with voice and text chat.</p>
+          <div class="bar"><i></i></div>
+        </div>
+        <div class="fcard">
+          <span class="tag">05 / VR</span>
+          <h4>Reload it by hand</h4>
+          <p>In an OpenXR headset: draw from your holsters, throw grenades with your arm, raise a scope to your eye and steer a Warthog by its wheel.</p>
+          <div class="bar"><i style="width:48%"></i></div>
+        </div>
+      </div>
+      <div>
+        <p class="strip-title">// Deploy to</p>
+        <div class="strip">
+          <div><b>macOS</b><span>Metal · Apple silicon</span></div>
+          <div><b>Windows</b><span>Mouse or controller</span></div>
+          <div><b>Linux</b><span>x86 · x86-64 · ARM</span></div>
+          <div><b>Steam Deck</b><span>16:10 · up to 90 Hz</span></div>
+          <div><b>Android</b><span>Touch · gyro aim</span></div>
+          <div><b>VR</b><span>OpenXR · Steam Frame</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="A foot">
+      <div class="fl"><a href="https://github.com/OpenH1/OpenH1">Source</a><a href="https://github.com/OpenH1/OpenH1/issues">Report a problem</a><a href="#dir-a">Credits</a><a href="#dir-a">Font licences</a></div>
+      <p>OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft Corporation. No game data is included: you need your own copy of the game.</p>
+    </div></div>
+    <p class="cap">The progress bars on the cards are decoration only. If they stay, they must not look like real measurements; the safer choice is to drop them.</p>
+
+    <h3 class="bh3">Conversion strategy</h3>
+    <div class="flow">
+      <div class="card">
+        <h4>Main action: Star on GitHub</h4>
+        <p>Visor gold, in the nav, the hero and the closing band. It is one click for a fan, and stars are what make the project visible on GitHub.</p>
+        <h4 style="margin-top:16px">Secondary</h4>
+        <ul>
+          <li><b>Watch for releases</b>, with a one-line hint (Watch → Custom → Releases) so people hear the day downloads open.</li>
+          <li><b>Read the source</b> for the curious, and <b>Report a problem</b> in the footer.</li>
+        </ul>
+        <h4 style="margin-top:16px">While there are no downloads</h4>
+        <p>A blinking amber “Downloads: coming soon” status, styled like a HUD readout, so it reads as a launch countdown rather than a missing feature.</p>
+      </div>
+      <div>
+        <div class="wire">
+          <div class="cta"><b>Sticky HUD bar</b> <span>icon, wordmark, Platforms, Loadout, VR, Source, ★ Star</span></div>
+          <div class="tall cta"><b>Hero</b> <span>headline, one-line pitch, ★ Star, Watch, “Downloads: coming soon”, screenshot in a HUD frame</span></div>
+          <div><b>Deploy to</b> <span>the six platforms as tiles</span></div>
+          <div class="tall"><b>Gameplay band</b> <span>a 20 to 30 second muted loop or 3 screenshots (needs footage)</span></div>
+          <div class="tall"><b>Loadout</b> <span>6 feature cards: online, co-op, maps, mods, chat, picture</span></div>
+          <div class="tall"><b>VR spotlight</b> <span>hands-on features, Steam Frame, SteamVR, Monado</span></div>
+          <div><b>Bring your own disc</b> <span>3 steps, any version works</span></div>
+          <div><b>Built on</b> <span>OpenCE and the decompilation projects</span></div>
+          <div class="cta"><b>Closing band</b> <span>“Get notified when it drops”: ★ Star + Watch</span></div>
+          <div><b>Footer</b> <span>links and disclaimer</span></div>
+        </div>
+        <p class="legend" style="margin-top:8px"><i></i>Blocks with an action</p>
+      </div>
+    </div>
+
+    <h3 class="bh3">Headlines in this voice</h3>
+    <ul class="lines" style="font-family:'Chakra Petch',sans-serif">
+      <li><div class="hl" style="text-transform:uppercase">Drop in. Anywhere.</div><div class="tl" style="font-family:var(--ui)">The 2001 Xbox game, rebuilt to run natively on Mac, PC, Linux, Android and in VR.</div></li>
+      <li><div class="hl" style="text-transform:uppercase">Your disc. Every screen.</div><div class="tl" style="font-family:var(--ui)">Bring your own copy. OpenH1 brings it to every machine you own.</div></li>
+      <li><div class="hl" style="text-transform:uppercase">The 2001 classic, redeployed.</div><div class="tl" style="font-family:var(--ui)">Online play, co-op, mods and a sharper picture than the Xbox ever had.</div></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- Direction B -->
+<section class="board" id="dir-b">
+  <div class="page">
+    <div class="dhead">
+      <div>
+        <p class="eyebrow">Direction B</p>
+        <span class="letter">B</span><h2 class="bh">Open project, everywhere</h2>
+        <p class="pos">A clean, modern open-source project page, the kind made for a well-loved developer tool: generous space, plain facts, a platform table and real numbers.</p>
+      </div>
+      <div class="chips">
+        <span class="chip"><b>For:</b> tech and preservation crowd, Mac, Linux and Steam Deck players, press, contributors</span>
+        <span class="chip"><b>Feels:</b> calm, precise, trustworthy</span>
+        <span class="chip"><b>Theme:</b> light and dark, both designed</span>
+      </div>
+    </div>
+
+    <div class="cols-2">
+      <div class="card">
+        <h4>Why it would convince</h4>
+        <p>The hard sell isn't excitement (the name does that). It's trust: is this real, is it legal, will it run on my machine? Plain facts, the decompilation's lineage and a visible engineering story win over the people who post links on forums and news sites. Their shares bring the fans.</p>
+      </div>
+      <div class="card">
+        <h4>Watch out for</h4>
+        <p>It's the least emotional of the three, so it leans hard on one great screenshot or clip in the hero. Without one, it can feel like documentation. It also has the most distance from the official look, which is good for legal comfort.</p>
+      </div>
+    </div>
+
+    <h3 class="bh3">Palette</h3>
+    <p class="mode-label">Light (default when the visitor's system is light)</p>
+    <div class="swatches">
+      <div class="sw"><i style="background:#fafaf7"></i><div><b>Paper</b><code>#FAFAF7</code> page</div></div>
+      <div class="sw"><i style="background:#ffffff"></i><div><b>Surface</b><code>#FFFFFF</code> cards</div></div>
+      <div class="sw"><i style="background:#12161c"></i><div><b>Ink</b><code>#12161C</code> text</div></div>
+      <div class="sw"><i style="background:#586271"></i><div><b>Slate</b><code>#586271</code> secondary text</div></div>
+      <div class="sw"><i style="background:#e2e5e9"></i><div><b>Line</b><code>#E2E5E9</code> borders</div></div>
+      <div class="sw"><i style="background:#1f6fd1"></i><div><b>Link</b><code>#1F6FD1</code> links</div></div>
+    </div>
+    <p class="mode-label">Dark (follows the visitor's system)</p>
+    <div class="swatches">
+      <div class="sw"><i style="background:#0d1117"></i><div><b>Night</b><code>#0D1117</code> page</div></div>
+      <div class="sw"><i style="background:#151b23"></i><div><b>Surface</b><code>#151B23</code> cards</div></div>
+      <div class="sw"><i style="background:#e8edf3"></i><div><b>Ink</b><code>#E8EDF3</code> text</div></div>
+      <div class="sw"><i style="background:#94a1b2"></i><div><b>Slate</b><code>#94A1B2</code> secondary text</div></div>
+      <div class="sw"><i style="background:#263040"></i><div><b>Line</b><code>#263040</code> borders</div></div>
+      <div class="sw"><i style="background:#6cb2ff"></i><div><b>Link</b><code>#6CB2FF</code> links</div></div>
+    </div>
+    <p class="mode-label">In both</p>
+    <div class="swatches">
+      <div class="sw"><i style="background:#f5a524"></i><div><b>Visor</b><code>#F5A524</code> main action, dark text</div></div>
+      <div class="sw"><i style="background:#0b2545"></i><div><b>Deep navy</b><code>#0B2545</code> screenshot ground</div></div>
+    </div>
+
+    <h3 class="bh3">Type</h3>
+    <div class="specs">
+      <div class="spec"><div class="role"><b>Display</b>Overpass 800, tight tracking</div><div class="sample" style="font:800 40px/1.05 Overpass,sans-serif;letter-spacing:-.025em">Native on Mac, PC, Linux, Android and VR.</div></div>
+      <div class="spec"><div class="role"><b>Body</b>Overpass 400</div><div class="sample" style="font:400 17px/1.6 Overpass,sans-serif">The same open font the port draws its HUD and menus with, set like a modern project page: large, quiet and easy to read.</div></div>
+      <div class="spec"><div class="role"><b>Mono</b>Overpass Mono 600</div><div class="sample" style="font:600 15px/1.5 'Overpass Mono',monospace">466 C files · 128 players · 0 game files included</div></div>
+    </div>
+
+    <h3 class="bh3">Header and hero, desktop (light)</h3>
+    <div class="canvas"><div class="B">
+        <div class="nav">
+          <a class="brand" href="#dir-b"><img src="public/icon.png" alt="" width="28" height="28">OpenH1</a>
+          <div class="links"><a href="#dir-b">Features</a><a href="#dir-b">Platforms</a><a href="#dir-b">How it works</a><a href="#dir-b">Docs</a></div>
+          <a class="btn secondary sm" href="https://github.com/OpenH1/OpenH1"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .5l2.3 4.7 5.2.8-3.8 3.6.9 5.2L8 12.4l-4.6 2.4.9-5.2L.5 6l5.2-.8z"/></svg>Star</a>
+        </div>
+        <div class="hero"><div class="hero-grid">
+          <div>
+            <span class="eyebrow-b"><i></i>Open source · Fork of OpenCE</span>
+            <h1>Halo: Combat Evolved, native on Mac, PC, Linux, Android and VR.</h1>
+            <p class="sub">A port of the 2001 Xbox game, rebuilt from its decompilation. A Metal renderer on Apple silicon, Vulkan and OpenGL elsewhere, and online play that needs no servers. Bring your own disc.</p>
+            <div class="actions">
+              <a class="btn primary" href="https://github.com/OpenH1/OpenH1"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .5l2.3 4.7 5.2.8-3.8 3.6.9 5.2L8 12.4l-4.6 2.4.9-5.2L.5 6l5.2-.8z"/></svg>Star on GitHub</a>
+              <a class="btn secondary" href="https://github.com/OpenH1/OpenH1">Get release alerts</a>
+            </div>
+            <p class="soon"><b>Downloads coming soon.</b> Watch releases on GitHub to hear first.</p>
+          </div>
+          <div class="window"><div class="bar"><i></i><i></i><i></i></div><div class="shot"><span>Screenshot needed: the macOS app in a window, mid-game, with the high-res HUD</span></div></div>
+        </div></div>
+      </div></div>
+    <div class="canvas-row">
+      <div>
+        <div class="canvas phone"><div class="B">
+          <div class="nav">
+            <a class="brand" href="#dir-b"><img src="public/icon.png" alt="" width="28" height="28">OpenH1</a>
+            <a class="btn secondary sm" href="https://github.com/OpenH1/OpenH1">Star</a>
+          </div>
+          <div class="hero"><div class="hero-grid">
+            <div>
+              <span class="eyebrow-b"><i></i>Open source · Fork of OpenCE</span>
+              <h1>Halo: Combat Evolved, native on Mac, PC, Linux, Android and VR.</h1>
+              <p class="sub">A port of the 2001 Xbox game, rebuilt from its decompilation. Bring your own disc.</p>
+              <div class="actions">
+                <a class="btn primary" href="https://github.com/OpenH1/OpenH1">Star on GitHub</a>
+                <a class="btn secondary" href="https://github.com/OpenH1/OpenH1">Get release alerts</a>
+              </div>
+              <p class="soon"><b>Downloads coming soon.</b></p>
+            </div>
+          </div></div>
+        </div></div>
+        <p class="cap" style="text-align:center">At 360px: the screenshot moves below the buttons.</p>
+      </div>
+      <div class="canvas"><div class="B pad">
+        <div class="states">
+          <div class="state"><span class="slabel">Primary</span><a class="btn primary" href="https://github.com/OpenH1/OpenH1"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .5l2.3 4.7 5.2.8-3.8 3.6.9 5.2L8 12.4l-4.6 2.4.9-5.2L.5 6l5.2-.8z"/></svg>Star on GitHub</a></div>
+          <div class="state"><span class="slabel">Secondary</span><a class="btn secondary" href="https://github.com/OpenH1/OpenH1">Get release alerts</a></div>
+          <div class="state"><span class="slabel">Keyboard focus</span><a class="btn primary focus" href="https://github.com/OpenH1/OpenH1">Star on GitHub</a></div>
+          <div class="state"><span class="slabel">In place of downloads</span><span class="soon"><b>Downloads coming soon.</b> Watch releases to hear first.</span></div>
+        </div>
+        <p class="snote">On a phone: the screenshot follows the buttons, the platform table drops its Notes column, and the numbers sit two by two. Light or dark follows the visitor's system setting.</p>
+      </div></div>
+    </div>
+
+    <h3 class="bh3">The same hero in dark mode</h3>
+    <div class="canvas"><div class="B dark">
+      <div class="nav">
+        <a class="brand" href="#dir-b"><img src="public/icon.png" alt="" width="28" height="28">OpenH1</a>
+        <div class="links"><a href="#dir-b">Features</a><a href="#dir-b">Platforms</a><a href="#dir-b">How it works</a><a href="#dir-b">Docs</a></div>
+        <a class="btn secondary sm" href="https://github.com/OpenH1/OpenH1">Star</a>
+      </div>
+      <div class="hero"><div class="hero-grid">
+        <div>
+          <span class="eyebrow-b"><i></i>Open source · Fork of OpenCE</span>
+          <h1>The 2001 classic, rebuilt from source for today's machines.</h1>
+          <p class="sub">Native on macOS, Windows, Linux, Android and OpenXR headsets, and compatible online with OpenCE.</p>
+          <div class="actions">
+            <a class="btn primary" href="https://github.com/OpenH1/OpenH1">Star on GitHub</a>
+            <a class="btn secondary" href="https://github.com/OpenH1/OpenH1">Get release alerts</a>
+          </div>
+          <p class="soon"><b>Downloads coming soon.</b> Watch releases on GitHub to hear first.</p>
+        </div>
+        <div class="window"><div class="bar"><i></i><i></i><i></i></div><div class="shot"><span>Screenshot needed: Steam Deck in hand, or the VR view from inside a headset</span></div></div>
+      </div></div>
+    </div></div>
+
+    <h3 class="bh3">Feature cards (light and dark), platform table, numbers</h3>
+    <div class="cols-2">
+      <div class="canvas"><div class="B pad">
+        <div class="fcard">
+          <span class="tag">Online</span>
+          <h4>Play online with no servers to set up</h4>
+          <p>Send an invite link or pick a game in the server browser. Each machine moves its own player at once, and the host settles the rest.</p>
+          <a href="https://github.com/OpenH1/OpenH1/blob/master/port/linux/NETCODE.md">How the netcode works →</a>
+        </div>
+      </div></div>
+      <div class="canvas"><div class="B dark pad">
+        <div class="fcard">
+          <span class="tag">Picture</span>
+          <h4>Sharper than it ever was</h4>
+          <p>Any resolution, a frame for each refresh of your display, field of view up to 150°, a high-res HUD and text, SMAA and enhanced dynamic lights.</p>
+          <a href="https://github.com/OpenH1/OpenH1/blob/master/port/linux/README.md">Settings in detail →</a>
+        </div>
+      </div></div>
+    </div>
+    <div class="canvas" style="margin-top:16px"><div class="B pad stack">
+      <table class="matrix">
+        <thead><tr><th scope="col">Platform</th><th scope="col">Renderer</th><th scope="col">Play with</th><th scope="col" class="hide-n">Notes</th></tr></thead>
+        <tbody>
+          <tr><td>macOS</td><td>Metal</td><td>Keyboard, mouse, controller</td><td class="hide-n">Apple silicon, macOS 14.4 or later</td></tr>
+          <tr><td>Windows</td><td>OpenGL 4.5</td><td>Keyboard, mouse, controller</td><td class="hide-n">Updates itself</td></tr>
+          <tr><td>Linux</td><td>OpenGL or Vulkan</td><td>Keyboard, mouse, controller</td><td class="hide-n">x86, x86-64, 64-bit ARM; package-friendly layout</td></tr>
+          <tr><td>Steam Deck</td><td>OpenGL</td><td>Built-in controls</td><td class="hide-n">Fills the 16:10 screen, up to 90 Hz on OLED</td></tr>
+          <tr><td>Android</td><td>OpenGL ES 3 or Vulkan</td><td>Touch with gyro aim, controller</td><td class="hide-n">Android 9 or later, 64-bit</td></tr>
+          <tr><td>VR</td><td>OpenGL or Vulkan, OpenXR</td><td>Motion controllers</td><td class="hide-n">Linux; SteamVR, Monado, Steam Frame</td></tr>
+        </tbody>
+      </table>
+      <div class="stats">
+        <div><b>466</b><span>C files of the decompiled game, compiled with few, marked changes</span></div>
+        <div><b>128</b><span>players in one game, up to 4 per machine</span></div>
+        <div><b>30 Hz → 240</b><span>the world ticks as on Xbox; frames follow your display</span></div>
+        <div><b>0</b><span>game files included. Bring your own disc</span></div>
+      </div>
+    </div>
+    <div class="B foot">
+      <div class="fl"><a href="https://github.com/OpenH1/OpenH1">Source</a><a href="https://github.com/OpenH1/OpenH1/issues">Report a problem</a><a href="https://github.com/OpenH1/OpenH1/releases.atom">Releases feed</a><a href="#dir-b">Font licences</a></div>
+      <p>OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft Corporation. No game data is included: you need your own copy of the game.</p>
+    </div></div>
+
+    <h3 class="bh3">Conversion strategy</h3>
+    <div class="flow">
+      <div class="card">
+        <h4>Main action: Star on GitHub</h4>
+        <p>Amber, the one bright colour on the page. The nav repeats it as a quieter outline button.</p>
+        <h4 style="margin-top:16px">Secondary</h4>
+        <ul>
+          <li><b>Get release alerts</b>: a small panel with two honest ways to hear about downloads, GitHub's Watch → Releases and the releases feed for feed readers. No sign-up, no server.</li>
+          <li><b>Build it yourself</b> for developers, linking to the build steps.</li>
+          <li><b>Contribute</b>: issues and the docs, in the “Built on” section.</li>
+        </ul>
+        <h4 style="margin-top:16px">While there are no downloads</h4>
+        <p>“Downloads coming soon” sits right under the buttons, with the alert option beside it, so the answer to “where's the download?” is also the next step.</p>
+      </div>
+      <div>
+        <div class="wire">
+          <div class="cta"><b>Nav</b> <span>wordmark, Features, Platforms, How it works, Docs, Star</span></div>
+          <div class="tall cta"><b>Hero</b> <span>headline, pitch, Star, Get release alerts, “coming soon”, screenshot in a window</span></div>
+          <div><b>Platform table</b> <span>platform, renderer, controls, notes</span></div>
+          <div class="tall"><b>Features</b> <span>6 cards, each linking to its documentation</span></div>
+          <div class="tall"><b>How it works</b> <span>decompilation → platform layer → Metal, Vulkan, OpenGL; matching results on every machine; the numbers</span></div>
+          <div><b>Bring your own game</b> <span>3 steps, any disc version</span></div>
+          <div><b>Built on the community's work</b> <span>OpenCE, bnunu/halo-1, punpckhdq/halo; how to contribute</span></div>
+          <div class="cta"><b>Closing line</b> <span>“Follow along”: Star + release alerts</span></div>
+          <div><b>Footer</b> <span>links, releases feed, disclaimer</span></div>
+        </div>
+        <p class="legend" style="margin-top:8px"><i></i>Blocks with an action</p>
+      </div>
+    </div>
+
+    <h3 class="bh3">Headlines in this voice</h3>
+    <ul class="lines" style="font-family:Overpass,sans-serif">
+      <li><div class="hl" style="letter-spacing:-.015em">Halo: Combat Evolved, native on Mac, PC, Linux, Android and VR.</div><div class="tl">Rebuilt from its decompilation. Bring your own disc.</div></li>
+      <li><div class="hl" style="letter-spacing:-.015em">The 2001 classic, rebuilt from source for today's machines.</div><div class="tl">Metal on Apple silicon, Vulkan and OpenGL everywhere else.</div></li>
+      <li><div class="hl" style="letter-spacing:-.015em">One port. Six platforms. Your copy of the game.</div><div class="tl">Online play, co-op and mods, built in the open.</div></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<!-- Direction C -->
+<section class="board" id="dir-c">
+  <div class="page">
+    <div class="dhead">
+      <div>
+        <p class="eyebrow">Direction C</p>
+        <span class="letter">C</span><h2 class="bh">Game night</h2>
+        <p class="pos">Nostalgic 2001 LAN party: chunky wide type, sticker colours, an invite ticket. Dark mode is the basement at 2am; light mode is the photocopied flyer.</p>
+      </div>
+      <div class="chips">
+        <span class="chip"><b>For:</b> lapsed players who remember system link, and the friends they'll send it to</span>
+        <span class="chip"><b>Feels:</b> warm, loud, social</span>
+        <span class="chip"><b>Theme:</b> dark “basement” and light “flyer”</span>
+      </div>
+    </div>
+
+    <div class="cols-2">
+      <div class="card">
+        <h4>Why it would convince</h4>
+        <p>The strongest memory people have of this game is playing it with friends. The page sells that: “you can play together again, from anywhere, and nobody has to run a server.” It turns every visitor into a recruiter, which matters more than a star when the goal is a full lobby on launch day.</p>
+      </div>
+      <div class="card">
+        <h4>Watch out for</h4>
+        <p>It undersells the platforms and the engineering, and a playful style can look less trustworthy to the tech crowd. It also needs people in the pictures (a lobby, a co-op moment), which we don't have yet.</p>
+      </div>
+    </div>
+
+    <h3 class="bh3">Palette</h3>
+    <div class="swatches">
+      <div class="sw"><i style="background:#17121f"></i><div><b>Basement</b><code>#17121F</code> dark page</div></div>
+      <div class="sw"><i style="background:#241c30"></i><div><b>Couch</b><code>#241C30</code> dark cards</div></div>
+      <div class="sw"><i style="background:#f6eedd"></i><div><b>Flyer</b><code>#F6EEDD</code> light page, dark text</div></div>
+      <div class="sw"><i style="background:#ff6b2c"></i><div><b>Tangerine</b><code>#FF6B2C</code> main action</div></div>
+      <div class="sw"><i style="background:#ffd23f"></i><div><b>Lemon</b><code>#FFD23F</code> stickers, shadows</div></div>
+      <div class="sw"><i style="background:#2ec4b6"></i><div><b>Teal</b><code>#2EC4B6</code> labels, focus</div></div>
+      <div class="sw"><i style="background:#1b1622"></i><div><b>Ink</b><code>#1B1622</code> outlines, light text</div></div>
+    </div>
+    <p class="cap">Deliberately not green: Xbox green is official trade dress. Buttons are Tangerine with Ink text (contrast about 6:1).</p>
+
+    <h3 class="bh3">Type</h3>
+    <div class="specs">
+      <div class="spec"><div class="role"><b>Display</b>Archivo Expanded 900</div><div class="sample" style="font:900 40px/1 Archivo,sans-serif;font-stretch:125%;letter-spacing:-.02em">Get the squad back together.</div></div>
+      <div class="spec"><div class="role"><b>Body</b>Archivo 400</div><div class="sample" style="font:400 17px/1.55 Archivo,sans-serif">Friendly and sturdy, from the same family as the headlines, so the page stays loud in the headings and easy in the text.</div></div>
+      <div class="spec"><div class="role"><b>Accent</b>VT323, labels only</div><div class="sample" style="font:26px/1 VT323,monospace">&gt; halo://join/3f9a…  connecting…</div></div>
+    </div>
+
+    <h3 class="bh3">Header and hero, desktop (dark “basement”)</h3>
+    <div class="canvas"><div class="C">
+        <div class="nav">
+          <a class="brand" href="#dir-c"><img src="public/icon.png" alt="" width="32" height="32">OpenH1</a>
+          <div class="links"><a href="#dir-c">How it works</a><a href="#dir-c">Modes</a><a href="#dir-c">Who's coming</a><a href="#dir-c">GitHub</a></div>
+          <a class="btn primary sm" href="https://github.com/OpenH1/OpenH1">★ Star</a>
+        </div>
+        <div class="hero"><div class="hero-grid">
+          <div>
+            <div class="pixel">&gt; game night, 2001 → now</div>
+            <h1>System link, <mark>without the cables.</mark></h1>
+            <p class="sub">Send an invite link or pick a game in the server browser. Up to 128 players, co-op campaign, voice chat, and Custom Edition maps that download as you join. No servers to set up.</p>
+            <div class="actions">
+              <a class="btn primary" href="https://github.com/OpenH1/OpenH1">★ Star &amp; watch on GitHub</a>
+              <a class="btn secondary" href="#dir-c">Send this to your squad</a>
+            </div>
+          </div>
+          <div class="ticket" role="img" aria-label="An illustration of an invite: host, mode, players and an invite link">
+            <div class="t-top">ADMIT YOUR WHOLE SQUAD</div>
+            <h5>You're invited</h5>
+            <dl><dt>Host</dt><dd>you, from your couch</dd><dt>Mode</dt><dd>co-op campaign, or 128-player slayer</dd><dt>Server</dt><dd>none needed</dd></dl>
+            <code>halo://join/3f9a0c…e71b</code>
+            <small>Illustration of the real invite link format. Downloads coming soon.</small>
+          </div>
+        </div></div>
+      </div></div>
+    <div class="canvas-row">
+      <div>
+        <div class="canvas phone"><div class="C">
+          <div class="nav">
+            <a class="brand" href="#dir-c"><img src="public/icon.png" alt="" width="32" height="32">OpenH1</a>
+            <a class="btn primary sm" href="https://github.com/OpenH1/OpenH1">★ Star</a>
+          </div>
+          <div class="hero"><div class="hero-grid">
+            <div>
+              <div class="pixel">&gt; game night, 2001 → now</div>
+              <h1>System link, <mark>without the cables.</mark></h1>
+              <p class="sub">Invite links, a server browser, co-op and voice chat. No servers to set up.</p>
+              <div class="actions">
+                <a class="btn primary" href="https://github.com/OpenH1/OpenH1">★ Star &amp; watch</a>
+                <a class="btn secondary" href="#dir-c">Send to your squad</a>
+              </div>
+            </div>
+          </div></div>
+        </div></div>
+        <p class="cap" style="text-align:center">At 360px: the ticket moves below the fold, after the buttons.</p>
+      </div>
+      <div class="canvas"><div class="C pad">
+        <div class="states">
+          <div class="state"><span class="slabel">Primary</span><a class="btn primary" href="https://github.com/OpenH1/OpenH1">★ Star &amp; watch on GitHub</a></div>
+          <div class="state"><span class="slabel">Secondary</span><a class="btn secondary" href="#dir-c">Send this to your squad</a></div>
+          <div class="state"><span class="slabel">Keyboard focus</span><a class="btn primary focus" href="https://github.com/OpenH1/OpenH1">★ Star &amp; watch</a></div>
+          <div class="state"><span class="slabel">In place of downloads</span><span class="pixel">&gt; downloads: coming soon_</span></div>
+        </div>
+        <p class="snote">On a phone: the ticket follows the buttons, stickers wrap, and the tilts stay small so nothing spills sideways. The share button falls back to a plain link without JavaScript.</p>
+      </div></div>
+    </div>
+
+    <h3 class="bh3">Feature cards (light “flyer” mode), who's coming, sign-up idea</h3>
+    <div class="canvas"><div class="C light pad stack">
+      <div class="fcards">
+        <div class="fcard">
+          <span class="sticker">Co-op campaign</span>
+          <h4>Play the campaign together</h4>
+          <p>Play the campaign online with friends. Extra enemies join each squad as more players do, and the host picks the friendly fire rules.</p>
+        </div>
+        <div class="fcard">
+          <span class="sticker">Custom Edition maps</span>
+          <h4>Maps that share themselves</h4>
+          <p>Join a game on a map you don't have and it downloads from the other players, torrent-style, before you drop in.</p>
+        </div>
+      </div>
+      <div>
+        <p class="who">Who's coming?</p>
+        <div class="stickers"><span>Mac</span><span>Windows</span><span>Linux</span><span>Steam Deck</span><span>Android</span><span>VR</span></div>
+      </div>
+      <form class="signup" action="#dir-c" onsubmit="return false">
+        <label for="c-email">Tell me when downloads open <span style="font-weight:400">(idea only: needs your OK, see question 4)</span></label>
+        <input id="c-email" type="email" placeholder="you@example.com" autocomplete="email">
+        <button class="btn primary" type="submit">Notify me</button>
+      </form>
+    </div>
+    <div class="C foot">
+      <div class="fl"><a href="https://github.com/OpenH1/OpenH1">Source</a><a href="https://github.com/OpenH1/OpenH1/issues">Report a problem</a><a href="#dir-c">Credits</a></div>
+      <p>OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft Corporation. No game data is included: you need your own copy of the game.</p>
+    </div></div>
+
+    <h3 class="bh3">Conversion strategy</h3>
+    <div class="flow">
+      <div class="card">
+        <h4>Main action: Star &amp; watch on GitHub</h4>
+        <p>One tangerine button, worded as one step: star it and watch for releases, so you're ready on launch night.</p>
+        <h4 style="margin-top:16px">Secondary</h4>
+        <ul>
+          <li><b>Send this to your squad</b>: copies the page link, or opens the phone's share sheet (about ten lines of JavaScript; the plain link works without it).</li>
+          <li><b>Notify me by email</b>, only if you want a sign-up list. It needs a small form handler and a privacy note, so it's your call.</li>
+        </ul>
+        <h4 style="margin-top:16px">While there are no downloads</h4>
+        <p>The invite ticket carries “Downloads coming soon”, so waiting feels like an event being planned, not a missing button.</p>
+      </div>
+      <div>
+        <div class="wire">
+          <div class="cta"><b>Nav</b> <span>wordmark, How it works, Modes, Who's coming, ★ Star</span></div>
+          <div class="tall cta"><b>Hero</b> <span>headline, pitch, Star &amp; watch, Send to your squad, invite ticket</span></div>
+          <div class="tall"><b>How game night works</b> <span>host → send the link → friends join, in 3 frames</span></div>
+          <div class="tall"><b>Modes</b> <span>co-op campaign, 128-player games, split screen, shared maps, voice chat</span></div>
+          <div><b>Who's coming?</b> <span>platform stickers</span></div>
+          <div><b>Make it yours</b> <span>mods, Custom Edition maps, streamer mode</span></div>
+          <div><b>Bring your own disc</b> <span>any version, PAL and NTSC together</span></div>
+          <div class="cta"><b>Closing band</b> <span>“Save the date”: Star &amp; watch, share, optional email</span></div>
+          <div><b>Footer</b> <span>credits and disclaimer</span></div>
+        </div>
+        <p class="legend" style="margin-top:8px"><i></i>Blocks with an action</p>
+      </div>
+    </div>
+
+    <h3 class="bh3">Headlines in this voice</h3>
+    <ul class="lines" style="font-family:Archivo,sans-serif">
+      <li><div class="hl" style="font-stretch:120%;font-weight:900">System link, without the cables.</div><div class="tl">Invite links and a server browser. No servers to set up.</div></li>
+      <li><div class="hl" style="font-stretch:120%;font-weight:900">Get the squad back together.</div><div class="tl">Co-op campaign and up to 128 players, on the machines you already have.</div></li>
+      <li><div class="hl" style="font-stretch:120%;font-weight:900">The LAN party never ended. It went online.</div><div class="tl">Bring your disc. Bring your friends.</div></li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================================================================ -->
+<section class="board" id="compare">
+  <div class="page">
+    <p class="eyebrow">Side by side</p>
+    <h2 class="bh">Comparison</h2>
+    <div class="tablewrap">
+      <table class="cmp">
+        <thead><tr><th scope="col"></th><th scope="col">A · Spartan HUD</th><th scope="col">B · Open project</th><th scope="col">C · Game night</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Best at</th><td>Instant “this is Halo” feeling</td><td>Trust and credibility</td><td>Getting people to share</td></tr>
+          <tr><th scope="row">Main visitor</th><td>Fans</td><td>Tech crowd, press, contributors</td><td>Lapsed players and friends</td></tr>
+          <tr><th scope="row">Distance from official look</th><td>Smallest; needs care</td><td>Largest</td><td>Large</td></tr>
+          <tr><th scope="row">Needs screenshots to work</th><td>Some</td><td>Yes, one great hero shot</td><td>Yes, social moments</td></tr>
+          <tr><th scope="row">Light and dark</th><td>Dark only</td><td>Both, equal care</td><td>Both, as two moods</td></tr>
+          <tr><th scope="row">JavaScript</th><td>None</td><td>None</td><td>Share button only</td></tr>
+          <tr><th scope="row">Ages well when downloads open</th><td>Yes: the status chip becomes the button</td><td>Yes: a download row joins the table</td><td>Yes: the ticket becomes the button</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<section class="board" id="reco">
+  <div class="page">
+    <p class="eyebrow">Recommendation</p>
+    <h2 class="bh">Build B, dressed in A's colours, with C's game-night section</h2>
+    <div class="card reco">
+      <p><b>Use B's structure and voice.</b> The people who decide whether OpenH1 spreads are the ones who share links on forums and news sites, and they reward plain, checkable facts. B also keeps the most distance from the official look, which protects the project.</p>
+      <p><b>Give its dark mode A's palette</b> (shield blue, visor gold, Overpass), so a fan still feels the game in it. Many players browse in dark mode, and that is where the game's colours feel most at home.</p>
+      <p><b>Borrow C's “How game night works” section</b> for the multiplayer part of the page. Invite links with no servers are the most exciting thing in the project, and C tells that story best.</p>
+      <p class="muted small">Main action throughout: Star on GitHub, with “Get release alerts” as the second step. That's honest and needs no sign-up list until you decide you want one.</p>
+    </div>
+  </div>
+</section>
+
+<section class="board" id="questions">
+  <div class="page">
+    <p class="eyebrow">Your call</p>
+    <h2 class="bh">Questions for you</h2>
+    <ol class="qs">
+      <li><b>Is the helmet icon the final logo?</b> It's close to the game's hero character, which is a legal risk for a front-page mark. An original mark or a wordmark alone would be safer. Do you want options?</li>
+      <li><b>Can we get real screenshots and a short clip?</b> Each direction needs them. The list: a campaign moment at 4K with enhanced lights; the Mac app in a window; Steam Deck in hand; Android with touch controls; a view from inside a VR headset; a busy lobby or server browser; a co-op moment. Who can capture them, and are we allowed to show the game's maps?</li>
+      <li><b>Is linking to GitHub OK while downloads are “coming soon”?</b> The GitHub README already has a download table, so anyone who clicks “Star on GitHub” will find builds. Should the README hide them too, or is “coming soon” on the site just a soft launch?</li>
+      <li><b>Do you want an email sign-up?</b> It's the strongest “notify me”, but it needs a small form handler (on the same Cloudflare account), storage, and a privacy note. Without it, we use GitHub's Watch and the releases feed.</li>
+      <li><b>Can we say Mac and VR players join the same games as everyone else?</b> The README only lists Linux, Windows and Android as playing together. If cross-play is tested, it's a headline-worthy claim.</li>
+      <li><b>Which renderer is the default on Android and in VR?</b> On master, Android starts with OpenGL ES 3 and the VR release draws with OpenGL; Vulkan is a build option for both. The page currently says “OpenGL or Vulkan” to stay accurate.</li>
+      <li><b>Should we name people in the credits?</b> The page thanks OpenCE and the decompilation projects. Do you also want contributors listed, or a link to GitHub's contributor list?</li>
+    </ol>
+  </div>
+</section>
+
+</main>
+
+<footer class="bfoot">
+  <div class="page">
+    <p>Phase 1 design board for openh1.com. Nothing here is built or deployed, and the live page is unchanged. OpenH1 is an unofficial fan project, not endorsed by or affiliated with Microsoft, Xbox Game Studios, Halo Studios or Bungie. Halo is a trademark of Microsoft Corporation. No game data is included.</p>
+  </div>
+</footer>
+
+</body>
+</html>
