@@ -22,10 +22,11 @@ passed on as --compiler-launcher, and CI_GUEST_LLVM_CACHE as --guest-llvm-cache.
 number (HALO_BUILD_NUMBER), which its release is named after and the
 self-updater compares (and the web site's version.json names).
 
---vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md)
-into dist/halo-linux-x86_64-vr-<config>/, a build of its own, which updates
-to the release's VR build. Only for linux_x86_64: the 64-bit ARM VR build is
-the Vulkan one, the Steam Frame's package (tools/frame_package.py).
+--vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md):
+the Vulkan build (ninja linux_vulkan), into
+dist/halo-linux-x86_64-vr-<config>/, a build of its own, which updates to
+the release's VR build. Only for linux_x86_64: the 64-bit ARM VR build is
+the Steam Frame's package (tools/frame_package.py).
 
 A Linux build is the release's tree (tools/linux_package.py: bin/opence,
 lib/opence, share/...), dist/halo-linux-i686-<config>/ for the 32-bit x86
@@ -67,6 +68,9 @@ OUTPUTS = {
                     "build/linux_arm64/SDL3-LICENSE.txt"],
     "linux_x86_64": ["build/linux_x86_64/halo", "build/linux_x86_64/libSDL3.so.0",
                      "build/linux_x86_64/SDL3-LICENSE.txt"],
+    # (the VR build, --vr: the Vulkan one)
+    "linux_vulkan": ["build/linux_vulkan/halo", "build/linux_vulkan/libSDL3.so.0",
+                     "build/linux_vulkan/SDL3-LICENSE.txt"],
     "windows": ["build/windows/halo.exe", "build/windows/SDL3.dll"],
     "macos": ["build/macos/Halo.dmg"],
     "android": [],  # the APK, below
@@ -85,7 +89,7 @@ def run(command, cwd=ROOT):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("platform", choices=sorted(OUTPUTS))
+    parser.add_argument("platform", choices=sorted(name for name in OUTPUTS if name != "linux_vulkan"))
     parser.add_argument("config", choices=["debug", "release", "profile"])
     parser.add_argument("--vr", action="store_true", help="the VR build (linux_x86_64 only)")
     args = parser.parse_args()
@@ -100,8 +104,9 @@ def main() -> int:
     if args.config == "profile":
         configure.append("--profile")
     if args.vr:
+        # (the VR build is the Vulkan one, ninja linux_vulkan, which --vr asks for)
         configure.append("--vr")
-    if args.platform == "linux_x86_64":
+    elif args.platform == "linux_x86_64":
         # (not this computer's default build, which configure.py generates
         # only when asked)
         configure.append("--linux-x86-64")
@@ -139,8 +144,9 @@ def main() -> int:
         run([gradlew, "--console=plain", "-q", f"assemble{variant.capitalize()}"], cwd=ROOT / "port/android")
         outputs = [APKS[variant]]
     else:
-        run(["ninja", "macos_dmg" if args.platform == "macos" else args.platform])
-        outputs = OUTPUTS[args.platform]
+        target = "macos_dmg" if args.platform == "macos" else "linux_vulkan" if args.vr else args.platform
+        run(["ninja", target])
+        outputs = OUTPUTS["linux_vulkan" if args.vr else args.platform]
 
     # the licences of what the build carries (tools/linux_package.py)
     notices = linux_package.notices(args.platform)

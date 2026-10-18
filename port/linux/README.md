@@ -398,7 +398,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.model_detail` | `"auto"` | `HALO_MODEL_DETAIL` | Which level of detail (of up to five) each model is drawn at. The game measures a model by its size in the lines of its 480-line screen, at any resolution, so at 1440 lines a model three times larger than the levels were made for is drawn as the Xbox drew it. `"stock"`: as on the Xbox. `"native"`: measured in the lines of the display (not supersampling's), so more detail is kept at a distance at high resolutions, and small far models that the Xbox left out are drawn. `"highest"`: measured as `"native"` for which models are drawn, and those drawn at their most detailed level. `"auto"`: `"native"` in the headset's eyes in VR, which have several times a display's lines and are seen close, and `"stock"` on a display. Models whose map gives one level (the trees and rocks of b30) do not change. Android renders at its drawable's native resolution, so `"native"` uses those pixels too. |
 | `display.shield_glow` | `false` | `HALO_SHIELD_GLOW` | `true`: as a unit's energy shield flares (hit, charging, falling), it lights what is around it and itself, as a plasma bolt does, in the shield shader's own color (a Spartan's gold, an Elite's blue), rising and falling with the flare seen on the body. An ordinary dynamic light of the game's, drawn with a light definition the map has (`shield_glow.c`). Up to 8 units near the camera. |
 | `display.shield_glow_intensity` | `default` | `HALO_SHIELD_GLOW_INTENSITY` | The shield glow's reach and brightness: `default`, or `light_show` (three times as far, and at full strength from a third of the flare: a light is no brighter than full). The units glowing are those near any local player's camera, so each of a split screen's views has the same. |
-| `display.dynamic_lights` | `"classic"` | `HALO_DYNAMIC_LIGHTS` | The light of plasma bolts, needles, muzzle flashes, grenades and explosions. `"classic"`: the game's own. `"enhanced"`: the structure and the models are lit for each pixel by the lights near each pixel (a grid of the lights about the camera, not a cap of two lights an object), the structure through its bump maps; in linear light, falling off as the inverse square of the distance with a soft core, to nothing at the light tag's radius, under a soft shoulder that never clips (a light's color and radius are its tag's); placed where the objects are drawn between ticks; lighting the first-person weapon and hands; with a soft glow about each plasma bolt in flight (a projectile with no model). Bolts and needles light too (the game draws only their lens flares). Desktop OpenGL only: the x86 Linux and Windows builds and the VR build (flat too); not OpenGL ES (the arm64 build without VR, Android, the web), where it is `classic`. The structure's spotlights (a flashlight's gel) keep the game's own pass. Refer to "Dynamic lights" under "VR". |
+| `display.dynamic_lights` | `"classic"` | `HALO_DYNAMIC_LIGHTS` | The light of plasma bolts, needles, muzzle flashes, grenades and explosions. `"classic"`: the game's own. `"enhanced"`: the structure and the models are lit for each pixel by the lights near each pixel (a grid of the lights about the camera, not a cap of two lights an object), the structure through its bump maps; in linear light, falling off as the inverse square of the distance with a soft core, to nothing at the light tag's radius, under a soft shoulder that never clips (a light's color and radius are its tag's); placed where the objects are drawn between ticks; lighting the first-person weapon and hands; with a soft glow about each plasma bolt in flight (a projectile with no model). Bolts and needles light too (the game draws only their lens flares). Desktop OpenGL only: the x86 Linux, 64-bit x86 Linux and Windows builds; not OpenGL ES (the arm64 build, the web) nor Vulkan yet (Android, the VR build), where it is `classic`. The structure's spotlights (a flashlight's gel) keep the game's own pass. Refer to "Dynamic lights" under "VR". |
 | `audio.enabled` | `true` | `HALO_NO_AUDIO=1` sets `false` | `false`: no audio device. The sound continues without output. |
 | `audio.volume` | `1.0` | `HALO_VOLUME` | The master volume. |
 | `audio.music_volume` | `1.0` | `HALO_MUSIC_VOLUME` | The music's volume, of the master volume. |
@@ -1687,15 +1687,13 @@ built alongside it. Requirements and limitations are in
 
 ## VR
 
-`python3 configure.py --vr`, then `ninja linux_vulkan` on 64-bit ARM or
-`ninja linux_x86_64` on 64-bit x86, builds the game with a VR mode: the
-game plays in an OpenXR headset, in stereo, with the head tracked in 6
-degrees of freedom. It was made on a Steam Frame with SteamVR. The 64-bit
-ARM VR build (the Steam Frame's) draws with Vulkan, through
+`python3 configure.py --vr`, then `ninja linux_vulkan`, builds the 64-bit
+ARM or 64-bit x86 game with a VR mode: the game plays in an OpenXR headset,
+in stereo, with the head tracked in 6 degrees of freedom. It was made on a
+Steam Frame with SteamVR. The VR build draws with Vulkan, through
 `XR_KHR_vulkan_enable2` ([the Vulkan README](vulkan/README.md)); `ninja
-linux_arm64` has no VR mode. The 64-bit x86 VR build draws with desktop
-OpenGL 4.5 (with `--linux-vulkan`, `ninja linux_vulkan` is a Vulkan one
-there too). It needs no OpenXR package, as it
+linux_arm64` and `ninja linux_x86_64`, the OpenGL builds, have no VR mode.
+It needs no OpenXR package, as it
 loads the active runtime itself (or a `libopenxr_loader.so.1` where there is
 one). Configuring it downloads the OpenXR SDK's four headers (to
 `build/<build>/third_party/openxr`, checked against their SHA-256 in
