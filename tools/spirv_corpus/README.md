@@ -14,7 +14,9 @@ each:
   or 3D texture);
 - `msl_corpus`'s programs made up to use every part of the intermediate form
   (`tools/msl_corpus/synthetic.c`), plus layered texture lookups in each
-  stage with projected, bump-offset and dependent coordinates.
+  stage with projected, bump-offset and dependent coordinates;
+- the enhanced dynamic lights' glows (`xgpu_spirv_halo_vertex_shader` and
+  `xgpu_spirv_halo_pixel_shader`), flat, for both eyes and foveated.
 
 Every program is checked flat, for both eyes, and for either eye alone,
 with and without the foveated insets. The visibility tests also check the

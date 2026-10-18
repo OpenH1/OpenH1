@@ -75,7 +75,8 @@ enum
 
 enum
 {
-	BUILT_IN_POSITION = 0, BUILT_IN_POINT_SIZE = 1, BUILT_IN_SAMPLE_MASK = 20, BUILT_IN_VIEW_INDEX = 4440,
+	BUILT_IN_POSITION = 0, BUILT_IN_POINT_SIZE = 1, BUILT_IN_FRAG_COORD = 15, BUILT_IN_SAMPLE_MASK = 20,
+	BUILT_IN_VIEW_INDEX = 4440,
 };
 
 enum
@@ -2877,4 +2878,158 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 	}
 	free(state.locals.words);
 	return TRUE;
+}
+
+/* ---------- the enhanced dynamic lights' glows (xgpu_gl.c
+dynamic_lights_halo_program, its GLSL operation for operation) */
+
+BOOL xgpu_spirv_halo_vertex_shader(const struct xgpu_spirv_options *options, struct xgpu_spirv_module *module)
+{
+	static const unsigned int xy_zw[4] = { 4, 5, 2, 3 }, zw[2] = { 2, 3 };
+	struct module m;
+	struct words locals = { 0 };
+	unsigned int main_id, middle_in, color_in, corner_in, position_out, corner_out, color_out, depth_out, parameters_out;
+	unsigned int middle, corner, world, rows[4], clip, depth, viewport_scale, viewport_offset, scale_parts[3], scale;
+	unsigned int offset_parts[3], w, sum, position, color, view = 0;
+	int component;
+
+	module_begin(&m, EXECUTION_MODEL_VERTEX);
+	declare_constants(&m);
+	declare_uniforms(&m);
+	declare_views(&m, options->multiview, options->foveated, FALSE);
+	middle_in = interface_variable(&m, m.t_v4, STORAGE_INPUT, XGPU_SPIRV_HALO_MIDDLE, "middle");
+	color_in = interface_variable(&m, m.t_v4, STORAGE_INPUT, XGPU_SPIRV_HALO_COLOR, "halo_color");
+	corner_in = interface_variable(&m, m.t_v2, STORAGE_INPUT, XGPU_SPIRV_HALO_CORNER, "halo_corner");
+	position_out = variable(&m, m.t_v4, STORAGE_OUTPUT, "gl_Position");
+	decorate1(&m, position_out, DECORATION_BUILT_IN, BUILT_IN_POSITION);
+	corner_out = interface_variable(&m, m.t_v2, STORAGE_OUTPUT, 0, "corner");
+	color_out = interface_variable(&m, m.t_v3, STORAGE_OUTPUT, 1, "color");
+	depth_out = interface_variable(&m, m.t_float, STORAGE_OUTPUT, 2, "depth");
+	parameters_out = interface_variable(&m, m.t_v4, STORAGE_OUTPUT, 3, "depth_parameters");
+
+	main_id = function_begin(&m);
+	middle = load(&m, m.t_v4, middle_in);
+	corner = load(&m, m.t_v2, corner_in);
+	/* world = middle.xyz + (camera_axes[0].xyz * corner.x + camera_axes[1].xyz * corner.y) * middle.w */
+	world = fadd(&m, 3, xyz(&m, middle), fscale(&m, 3, fadd(&m, 3,
+		fscale(&m, 3, xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_CAMERA_AXES))), extract(&m, corner, 0)),
+		fscale(&m, 3, xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_CAMERA_AXES + 1))), extract(&m, corner, 1))),
+		extract(&m, middle, 3)));
+	for (component = 0; component < 4; component++)
+	{
+		unsigned int row = vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_PROJECTION + component));
+
+		rows[component] = fadd(&m, 1, fdot(&m, world, xyz(&m, row)), extract(&m, row, 3));
+	}
+	clip = construct(&m, 4, rows);
+	depth = rows[3];
+	/* (each eye's correction, as the game's programs have it) */
+	if (options->multiview)
+	{
+		unsigned int eye;
+
+		view = view_number(&m, options->multiview, options->foveated);
+		eye = options->foveated ? op2(&m, OP_SHIFT_RIGHT_ARITHMETIC, m.t_int, view, constant_int(&m, 1)) : view;
+		clip = eye_position(&m, eye, clip);
+	}
+	/* gl_Position = vec4((clip.xyz * c[4].xyz + (c[5].xyz + vec3(0.5 + screen_offset, 0.5, 0.0) -
+	viewport_offset.xyz) * clip.w) / scale, clip.w) */
+	viewport_scale = uniform(&m, U_VIEWPORT_SCALE, -1);
+	viewport_offset = uniform(&m, U_VIEWPORT_OFFSET, -1);
+	for (component = 0; component < 3; component++)
+	{
+		unsigned int value = extract(&m, viewport_scale, component);
+
+		scale_parts[component] = op3(&m, OP_SELECT, m.t_float,
+			compare(&m, OP_F_UNORD_NOT_EQUAL, value, constant_float(&m, 0.0f)), value, constant_float(&m, 1.0f));
+	}
+	scale = construct(&m, 3, scale_parts);
+	offset_parts[0] = fadd(&m, 1, constant_float(&m, 0.5f), uniform(&m, U_SCREEN_OFFSET, -1));
+	offset_parts[1] = constant_float(&m, 0.5f);
+	offset_parts[2] = constant_float(&m, 0.0f);
+	w = extract(&m, clip, 3);
+	sum = fadd(&m, 3, fmul(&m, 3, xyz(&m, clip),
+		xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_PROJECTION + 4)))),
+		fscale(&m, 3, fsub(&m, 3, fadd(&m, 3, xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_PROJECTION + 5))),
+		construct(&m, 3, offset_parts)), xyz(&m, viewport_offset)), w));
+	position = vec4_of(&m, fdiv(&m, 3, sum, scale), w);
+	/* Vulkan's rows from the top of the framebuffer, y down (xgpu_spirv.h) */
+	position = op3(&m, OP_COMPOSITE_INSERT, m.t_v4, fneg(&m, 1, extract(&m, position, 1)), position, 1);
+	if (options->multiview && options->foveated)
+	{
+		unsigned int correction = uniform_index(&m, U_FOVEA_VIEW, view);
+		unsigned int corrected = fadd(&m, 2, fmul(&m, 2, xy(&m, position), xy(&m, correction)),
+			fscale(&m, 2, shuffle(&m, 2, correction, correction, zw), extract(&m, position, 3)));
+
+		position = shuffle(&m, 4, position, corrected, xy_zw);
+	}
+	store(&m, position_out, position);
+	store(&m, corner_out, corner);
+	color = load(&m, m.t_v4, color_in);
+	store(&m, color_out, xyz(&m, color));
+	store(&m, depth_out, depth);
+	store(&m, parameters_out, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_HALO_DEPTH)));
+	return module_end(&m, EXECUTION_MODEL_VERTEX, main_id, &locals, module);
+}
+
+BOOL xgpu_spirv_halo_pixel_shader(const struct xgpu_spirv_options *options, struct xgpu_spirv_module *module)
+{
+	BOOL layered = options->multiview != XGPU_MULTIVIEW_NONE;
+	struct module m;
+	struct words locals = { 0 };
+	unsigned int main_id, scene_depth, frag_coord, corner_in, color_in, depth_in, parameters_in, color_out;
+	unsigned int corner, r2, parameters, coordinates, operands[4], sampled, scene, away, distance, fade, glow, result;
+
+	module_begin(&m, EXECUTION_MODEL_FRAGMENT);
+	declare_views(&m, options->multiview, options->foveated, TRUE);
+	scene_depth = variable(&m, type_sampled_image(&m, DIM_2D, layered, FALSE, TRUE), STORAGE_UNIFORM_CONSTANT, "scene_depth");
+	decorate1(&m, scene_depth, DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_TEXTURES);
+	decorate1(&m, scene_depth, DECORATION_BINDING, 0);
+	frag_coord = variable(&m, m.t_v4, STORAGE_INPUT, "gl_FragCoord");
+	decorate1(&m, frag_coord, DECORATION_BUILT_IN, BUILT_IN_FRAG_COORD);
+	corner_in = interface_variable(&m, m.t_v2, STORAGE_INPUT, 0, "corner");
+	color_in = interface_variable(&m, m.t_v3, STORAGE_INPUT, 1, "color");
+	depth_in = interface_variable(&m, m.t_float, STORAGE_INPUT, 2, "depth");
+	parameters_in = interface_variable(&m, m.t_v4, STORAGE_INPUT, 3, "depth_parameters");
+	decorate(&m, parameters_in, DECORATION_FLAT, 0, NULL);
+	color_out = interface_variable(&m, m.t_v4, STORAGE_OUTPUT, 0, "fragment_color");
+
+	main_id = function_begin(&m);
+	/* float r2 = dot(corner, corner); if (r2 >= 1.0) discard; */
+	corner = load(&m, m.t_v2, corner_in);
+	r2 = fdot(&m, corner, corner);
+	discard_if(&m, compare(&m, OP_F_ORD_GREATER_THAN_EQUAL, r2, constant_float(&m, 1.0f)));
+	/* float scene = texelFetch(scene_depth, ivec2(gl_FragCoord.xy) [, view], 0).r; */
+	coordinates = op1(&m, OP_CONVERT_F_TO_S, m.t_iv2, xy(&m, load(&m, m.t_v4, frag_coord)));
+	if (layered)
+	{
+		operands[0] = coordinates;
+		operands[1] = load(&m, m.t_int, m.view_index);
+		coordinates = op(&m, OP_COMPOSITE_CONSTRUCT, m.t_iv3, 2, operands);
+	}
+	sampled = load(&m, type_sampled_image(&m, DIM_2D, layered, FALSE, TRUE), scene_depth);
+	operands[0] = op(&m, OP_IMAGE, type_sampled_image(&m, DIM_2D, layered, FALSE, FALSE), 1, &sampled);
+	operands[1] = coordinates;
+	operands[2] = IMAGE_OPERANDS_LOD;
+	operands[3] = constant_int(&m, 0);
+	scene = extract(&m, op(&m, OP_IMAGE_FETCH, m.t_v4, 4, operands), 0);
+	/* float away = scene - depth_parameters.x;
+	float distance = away * depth_parameters.y > 0.0 ? depth_parameters.y / away : 1.0e9;
+	float fade = scene >= 1.0 ? 1.0 : clamp((distance - depth) / depth_parameters.z, 0.0, 1.0); */
+	parameters = load(&m, m.t_v4, parameters_in);
+	away = fsub(&m, 1, scene, extract(&m, parameters, 0));
+	distance = op3(&m, OP_SELECT, m.t_float, compare(&m, OP_F_ORD_GREATER_THAN, fmul(&m, 1, away, extract(&m, parameters, 1)),
+		constant_float(&m, 0.0f)), fdiv(&m, 1, extract(&m, parameters, 1), away), constant_float(&m, 1.0e9f));
+	fade = op3(&m, OP_SELECT, m.t_float, compare(&m, OP_F_ORD_GREATER_THAN_EQUAL, scene, constant_float(&m, 1.0f)),
+		constant_float(&m, 1.0f), saturate(&m, 1, fdiv(&m, 1, fsub(&m, 1, distance, load(&m, m.t_float, depth_in)),
+		extract(&m, parameters, 2))));
+	/* a wide soft glow, and a small hot core:
+	float glow = (exp(-3.0 * r2) - 0.0498) * 0.6 + exp(-24.0 * r2) * 0.8; */
+	glow = fadd(&m, 1, fmul(&m, 1, fsub(&m, 1, ext1(&m, GLSL_EXP, m.t_float, fmul(&m, 1, constant_float(&m, -3.0f), r2)),
+		constant_float(&m, 0.0498f)), constant_float(&m, 0.6f)),
+		fmul(&m, 1, ext1(&m, GLSL_EXP, m.t_float, fmul(&m, 1, constant_float(&m, -24.0f), r2)), constant_float(&m, 0.8f)));
+	/* fragment_color = vec4(color * (glow * fade * fade), 0.0); */
+	result = fscale(&m, 3, load(&m, m.t_v3, color_in), fmul(&m, 1, fmul(&m, 1, glow, fade), fade));
+	store(&m, color_out, vec4_of(&m, result, constant_float(&m, 0.0f)));
+	return module_end(&m, EXECUTION_MODEL_FRAGMENT, main_id, &locals, module);
 }

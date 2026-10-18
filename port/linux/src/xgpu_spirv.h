@@ -150,4 +150,29 @@ unsigned long xgpu_spirv_vertex_inputs(const struct xgpu_vertex_program *program
 BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_spirv_options *options,
 	struct xgpu_spirv_module *module);
 
+/* the enhanced dynamic lights' glows (xgpu_gl.c dynamic_lights_halo_program):
+a camera-facing quad about each light, six vertices of a triangle list,
+added to the 3D view and faded against the depth the scene was drawn with.
+The vertices: v<XGPU_SPIRV_HALO_MIDDLE> the light's middle and the glow's
+size, v<XGPU_SPIRV_HALO_COLOR> its color, v<XGPU_SPIRV_HALO_CORNER> the
+corner (-1 or 1 each way). The vertex constants: the world's projection
+and the screen conversion (c[-96] to c[-93], c[-38], c[-37]) at
+XGPU_SPIRV_HALO_PROJECTION, the camera's right and up at
+XGPU_SPIRV_HALO_CAMERA_AXES, and the depth for a distance and the softness
+at XGPU_SPIRV_HALO_DEPTH (xgpu_gl.c's depth_parameters). The uniforms are
+struct xgpu_spirv_uniforms (the viewport's, the screen offset, the eyes' and
+insets' corrections); the scene's depth is texture 0, sampled with
+texelFetch (an array of the views' layers with multiview). options:
+multiview (XGPU_MULTIVIEW_EYES or none) and foveated alone. */
+enum
+{
+	XGPU_SPIRV_HALO_MIDDLE, XGPU_SPIRV_HALO_COLOR, XGPU_SPIRV_HALO_CORNER,
+};
+#define XGPU_SPIRV_HALO_PROJECTION 0
+#define XGPU_SPIRV_HALO_CAMERA_AXES 6
+#define XGPU_SPIRV_HALO_DEPTH 8
+
+BOOL xgpu_spirv_halo_vertex_shader(const struct xgpu_spirv_options *options, struct xgpu_spirv_module *module);
+BOOL xgpu_spirv_halo_pixel_shader(const struct xgpu_spirv_options *options, struct xgpu_spirv_module *module);
+
 #endif

@@ -7,7 +7,8 @@ pixel shader key, written as SPIR-V modules, one .spv file each, for
 spirv-val to check (check.sh). Identical modules are written once
 (index.txt names each variant's file). The variants include the flat and VR views, with and without foveation.
 The made-up programs are msl_corpus's (tools/msl_corpus/synthetic.c), plus
-layered texture lookups in each stage.
+layered texture lookups in each stage; and the enhanced dynamic lights'
+glows, in each of the layers they are drawn into.
 
   spirv_corpus <capture dir> <out dir>
 
@@ -359,6 +360,32 @@ static void synthetic_vertex(const char *name, const struct xgpu_vertex_program 
 	vertex_program(variant, "packed 0x5, shorts 0x60", program, 0x5, 0x60, NULL);
 }
 
+/* the enhanced dynamic lights' glows, as the Vulkan backend draws them into
+1, 2 and 4 layers: the screen's target, the VR mode's eyes, its eyes
+foveated */
+static void halo_programs(void)
+{
+	static const char *const names[3] = { "halo", "halo-view1-fovea0", "halo-view1-fovea1" };
+	struct xgpu_spirv_options options;
+	struct xgpu_spirv_module module;
+	char name[64];
+	int layers;
+	BOOL made;
+
+	for (layers = 0; layers < 3; layers++)
+	{
+		memset(&options, 0, sizeof(options));
+		options.multiview = layers ? XGPU_MULTIVIEW_EYES : XGPU_MULTIVIEW_NONE;
+		options.foveated = layers == 2;
+		snprintf(name, sizeof(name), "%s-vertex", names[layers]);
+		made = xgpu_spirv_halo_vertex_shader(&options, &module);
+		emit(name, "the dynamic lights' glows, vertex", made, &module);
+		snprintf(name, sizeof(name), "%s-pixel", names[layers]);
+		made = xgpu_spirv_halo_pixel_shader(&options, &module);
+		emit(name, "the dynamic lights' glows, pixel", made, &module);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	const char *dir;
@@ -412,6 +439,7 @@ int main(int argc, char **argv)
 	synthetic_pixel_programs(synthetic_pixel);
 	layered_pixel_programs();
 	synthetic_vertex_programs(synthetic_vertex);
+	halo_programs();
 	fclose(index_file);
 	printf("%lu modules written to %s, %lu variants the same as one of them\n", written, out_dir, same);
 	return 0;
