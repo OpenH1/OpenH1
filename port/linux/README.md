@@ -393,12 +393,12 @@ the setting for one start of the game. It has priority over the file.
 | `display.scoreboard_team_layout` | `"teams"` | `HALO_SCOREBOARD_TEAM_LAYOUT` | How the multiplayer scoreboard (hold BACK, or tab) lists a team game's players. `"teams"`: a column for each team, red on the left and blue on the right. `"score"`: all the players in order of score. With more players than fit, the mouse wheel and Page Up / Page Down scroll the scoreboard. |
 | `display.scoreboard_background` | `true` | `HALO_SCOREBOARD_BACKGROUND` | `true`: the multiplayer scoreboard (hold BACK, or tab) has a panel behind its text, for clearer text. |
 | `display.scoreboard_background_color` | `"16, 16, 16, 150"` | `HALO_SCOREBOARD_BACKGROUND_COLOR` | The colour of the scoreboard's panel: `"red, green, blue, alpha"`, each from `0` to `255`. Alpha `0` is see-through, `255` is solid. |
-| `display.anisotropic_filtering` | `4` | `HALO_ANISOTROPIC_FILTERING` | Textures seen at a grazing angle (floors, walls, terrain) are sampled along the angle from finer mip levels, so they stay sharp; the Xbox game asks for none. `0` or `1`: as on the Xbox. `2`, `4`, `8` or `16`: at most that many samples (at most the GPU's); the default, `4`, keeps most of `16`'s sharpness at less cost on slower GPUs. It applies to the textures of the map that have mip levels and are filtered linearly (base, detail, bump and environment maps; lightmaps have no mip levels), not to what the game renders, such as the water's ripples. On Android and the web, only where the GPU has `GL_EXT_texture_filter_anisotropic`. |
+| `display.anisotropic_filtering` | `4` | `HALO_ANISOTROPIC_FILTERING` | Textures seen at a grazing angle (floors, walls, terrain) are sampled along the angle from finer mip levels, so they stay sharp; the Xbox game asks for none. `0` or `1`: as on the Xbox. `2`, `4`, `8` or `16`: at most that many samples (at most the GPU's); the default, `4`, keeps most of `16`'s sharpness at less cost on slower GPUs. It applies to the textures of the map that have mip levels and are filtered linearly (base, detail, bump and environment maps; lightmaps have no mip levels), not to what the game renders, such as the water's ripples. On the web, only where the GPU has `GL_EXT_texture_filter_anisotropic`; with Vulkan (Android), where it has `samplerAnisotropy`. |
 | `display.per_pixel_lighting` | `false` | `HALO_PER_PIXEL_LIGHTING` | `false`: the models (characters, weapons, vehicles, scenery) are lit at each vertex and the light is blended between them, as on the Xbox. The light across a curved surface then shows facets, and a point light that passes close lights only the vertices it reaches. `true`: the models are lit at each pixel by the same lights (the ambient light, two distant lights and two point lights), which changes their look. |
 | `display.model_detail` | `"auto"` | `HALO_MODEL_DETAIL` | Which level of detail (of up to five) each model is drawn at. The game measures a model by its size in the lines of its 480-line screen, at any resolution, so at 1440 lines a model three times larger than the levels were made for is drawn as the Xbox drew it. `"stock"`: as on the Xbox. `"native"`: measured in the lines of the display (not supersampling's), so more detail is kept at a distance at high resolutions, and small far models that the Xbox left out are drawn. `"highest"`: measured as `"native"` for which models are drawn, and those drawn at their most detailed level. `"auto"`: `"native"` in the headset's eyes in VR, which have several times a display's lines and are seen close, and `"stock"` on a display. Models whose map gives one level (the trees and rocks of b30) do not change. Android renders at its drawable's native resolution, so `"native"` uses those pixels too. |
 | `display.shield_glow` | `false` | `HALO_SHIELD_GLOW` | `true`: as a unit's energy shield flares (hit, charging, falling), it lights what is around it and itself, as a plasma bolt does, in the shield shader's own color (a Spartan's gold, an Elite's blue), rising and falling with the flare seen on the body. An ordinary dynamic light of the game's, drawn with a light definition the map has (`shield_glow.c`). Up to 8 units near the camera. |
 | `display.shield_glow_intensity` | `default` | `HALO_SHIELD_GLOW_INTENSITY` | The shield glow's reach and brightness: `default`, or `light_show` (three times as far, and at full strength from a third of the flare: a light is no brighter than full). The units glowing are those near any local player's camera, so each of a split screen's views has the same. |
-| `display.dynamic_lights` | `"classic"` | `HALO_DYNAMIC_LIGHTS` | The light of plasma bolts, needles, muzzle flashes, grenades and explosions. `"classic"`: the game's own. `"enhanced"`: the structure and the models are lit for each pixel by the lights near each pixel (a grid of the lights about the camera, not a cap of two lights an object), the structure through its bump maps; in linear light, falling off as the inverse square of the distance with a soft core, to nothing at the light tag's radius, under a soft shoulder that never clips (a light's color and radius are its tag's); placed where the objects are drawn between ticks; lighting the first-person weapon and hands; with a soft glow about each plasma bolt in flight (a projectile with no model). Bolts and needles light too (the game draws only their lens flares). Desktop OpenGL only: the x86 Linux and Windows builds and the VR build (flat too); not OpenGL ES (the arm64 build without VR, Android, the web), where it is `classic`. The structure's spotlights (a flashlight's gel) keep the game's own pass. Refer to "Dynamic lights" under "VR". |
+| `display.dynamic_lights` | `"classic"` | `HALO_DYNAMIC_LIGHTS` | The light of plasma bolts, needles, muzzle flashes, grenades and explosions. `"classic"`: the game's own. `"enhanced"`: the structure and the models are lit for each pixel by the lights near each pixel (a grid of the lights about the camera, not a cap of two lights an object), the structure through its bump maps; in linear light, falling off as the inverse square of the distance with a soft core, to nothing at the light tag's radius, under a soft shoulder that never clips (a light's color and radius are its tag's); placed where the objects are drawn between ticks; lighting the first-person weapon and hands; with a soft glow about each plasma bolt in flight (a projectile with no model). Bolts and needles light too (the game draws only their lens flares). Desktop OpenGL only: the x86 Linux and Windows builds and the VR build (flat too); not OpenGL ES (the arm64 build without VR, the web) or Vulkan (Android, the Vulkan build), where it is `classic`. The structure's spotlights (a flashlight's gel) keep the game's own pass. Refer to "Dynamic lights" under "VR". |
 | `audio.enabled` | `true` | `HALO_NO_AUDIO=1` sets `false` | `false`: no audio device. The sound continues without output. |
 | `audio.volume` | `1.0` | `HALO_VOLUME` | The master volume. |
 | `audio.music_volume` | `1.0` | `HALO_MUSIC_VOLUME` | The music's volume, of the master volume. |
@@ -1463,7 +1463,7 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
   threads, mutexes, atomic values, files and `SDL_GlobDirectory` itself.
   The host does the windows, the displays, the 2D renderer, the dialogs
   and the downloads of the self-updater (`src/posix_update.c`).
-- The renderer uses OpenGL ES, as on Android.
+- The renderer uses OpenGL ES 3 ("OpenGL ES", below).
 - The host keeps the GPU driver from the kernel's `trace_marker`, as the
   x86 build does (`src/posix_trace_marker.c`, under "The platform layer"
   below): on the Steam Frame, its markers took the game from the headset's
@@ -1474,6 +1474,32 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
   access of the guest adds (`tools/guest_base_register.py`;
   `android/host/host_memory_base.c`). Then the guest's 4 KB pages also
   operate on a kernel with 16 KB pages.
+
+### OpenGL ES
+
+The OpenGL backend (`src/xgpu_gl.c`) with `HALO_GLES`, this build's and
+the web's (WebGL 2), uses OpenGL ES 3.0, and some functions of OpenGL ES
+3.2 if they are available:
+
+- The vertex shaders flip y and change the depth range from 0..1. The front
+  face winding is inverted.
+- BGRA textures go to the GPU as RGBA with a swizzle. If the driver has no
+  S3TC (Mali GPUs), the CPU decodes the DXT textures.
+- The pixel shaders apply the LOD bias of the sampler.
+- The upload changes the byte order of `D3DCOLOR` vertex attributes.
+- Dynamic vertex and index data goes into a ring of three buffers, one for
+  each frame. On Mali, other methods used too much memory.
+- On OpenGL ES 3.2, indexed draws use a base vertex. Before 3.2, the CPU
+  changes the indices.
+- On OpenGL ES 3.1 and later, the visibility tests (lens flares) count
+  samples with an atomic counter, as the NV2A did. OpenGL ES 3.0 tells only
+  if a sample is visible. The GPU copies the counters at the end of each
+  frame, and the CPU reads the copy two frames later, when the frame's fence
+  has passed: a result is the latest count the GPU has finished, as with
+  the query buffer of desktop OpenGL. A read of the counters themselves
+  waits for the GPU, which halved the frame rate on Turnip (Zink).
+  `tools/test_gl_visibility.py` tests them over a fake OpenGL ES whose GPU
+  runs behind the CPU.
 
 ### The renderer's command stream
 
@@ -1521,9 +1547,11 @@ call crosses from the guest to the host.
   texture stage names in the Xbox texture's place.
 
 The macOS build uses it, with the Metal backend (port/macos/README.md,
-"Metal"). The 64-bit Linux builds and Android use it, with the OpenGL
-backend in the host (the 32-bit x86 build, Windows and the web, which have
-no host, draw with the OpenGL backend in the game):
+"Metal"), and Android with the Vulkan backend (`vulkan/`, its
+[README](vulkan/README.md)), as the Vulkan build (`ninja linux_vulkan`)
+can. The 64-bit Linux builds use it with the OpenGL backend in the host
+(the 32-bit x86 build, Windows and the web, which have no host, draw with
+the OpenGL backend in the game):
 
 - The host builds `src/xgpu_gl.c` as the guest does (with its GLSL
   emitter, its anti-aliasing passes and the texture decoding), beside
@@ -1564,11 +1592,6 @@ no host, draw with the OpenGL backend in the game):
   eyes, `vr_visor_composite`) is not written.
 - At exit the guest has the host play the frames submitted (the last one
   shown, the VR mode's ended).
-- Android: as the app goes to the background, SDL keeps the GL context of
-  the thread that pumps the events (the game's) and lets the window's
-  surface go: the render thread hands the context to that thread as the app
-  goes, and takes it back as it comes to the front
-  (`host/host_gl_stream.c`).
 - The visibility tests' counts are what the GPU has written by the end of
   the frame the host plays. The game's next frame reads them while the
   host plays its frames, so they can be a frame older or newer than those
@@ -3983,7 +4006,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
 | High-res HUD | The HUD is drawn from high-res assets: redraws at 8x the size of the maps' bitmaps (4x for the largest), in `port/assets/hud`. They cover the meters, counters, panels and their outlines, the motion sensor, reticles, waypoints and scopes, but no bitmap with English text. `tools/hud_assets.py` makes them from the SVG redraws (the weapons' reticles from those of the PC HUD sheet that match the Xbox's exactly, the sniper rifle's 2x and 10x set in Overpass), and the build embeds them in the executable. When the game uploads one of those bitmaps, `src/hud_hires.c` gives the high-res texture in its place, if the bitmap's pixels are those of the English maps: another language's maps keep their own. The game sizes and places the HUD from its tags as before. `display.high_res_hud = false` turns this off. |
 | High-res text | The menus' and HUD's text is drawn with Overpass (`port/assets/fonts`, SIL Open Font License) in place of the maps' bitmap fonts, which are Interstate. `src/text_hires.c` rasterizes each glyph with stb_truetype (`port/third_party/stb`) at the resolution the game draws at, into an atlas that a placeholder bitmap of the game stands for. The game lays the text out from its font tags as before: each font is as tall as its tag's capitals, and narrowed where the tag's letters are narrower than the Xbox maps' (the fonts of a Custom Edition `loc.map`), so that its letters do not run into each other. The menus' titles (the screens' headers and the main menu's items) are pictures of text in the maps, so they are drawn as the high-res HUD is: `tools/title_assets.py` sets each one again in OpenCE, Roger White's public-domain Newtown respaced to match the maps' commercial title typeface (`tools/title_font.py`), at 4x the bitmap's size over its own plate or glow, each letter placed where the map's letter is, in `port/assets/titles`. The postgame carnage report's title is set over a hand-made SVG redraw of its panel (`port/assets/titles/svg`) instead. The A, B, X and Y button icons beside the menus' key labels and in their text ("Press A to Join") are drawn from hand-made SVG redraws at 8x the size of the maps' bitmaps (`port/assets/buttons`, made by `tools/button_assets.py`), in the same sizes and places. `display.high_res_text = false` turns it off. |
 | Dynamic lights | `display.dynamic_lights = "enhanced"` (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_glsl.c`, `game/dynamic_lights.c`): the frame's lights are a uniform block, and a 32 x 32 x 16 grid about the camera, its cells growing with the distance (out to 128 world units each way), a 128-bit mask of the lights that reach each cell (an integer 3D texture). The structure's lightmap pass and the models' per-pixel lighting (`display.per_pixel_lighting`'s, which this turns on) add the lights of their cell for each pixel, in place of the game's pass over the structure for each light and its two lights for each model. The vertex shaders hand on the world position: a model program's skinned position before it is projected, a structure's vertex as it is. The glows are a camera-facing quad each, projected as the game's programs are, faded against the scene's depth, sampled with the target drawn into without it. |
-| Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_post.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). Their programs are built when the setting is chosen. Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (`gl_SampleMask`, not on Android). |
+| Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_post.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). Their programs are built when the setting is chosen. Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (`gl_SampleMask`, not on OpenGL ES: the arm64 build without VR, the web). |
 | Sound | Xbox DirectSound on SDL3 audio (`src/dsound_sdl.c`): PCM and Xbox ADPCM, mixed at 48 kHz, with volume, pitch, mix bins, distance, stereo pan, occlusion and obstruction. There is no Doppler effect, no cones and no reverb. |
 | Input | XInput on SDL3 (`src/xinput_sdl.c`): keyboard, mouse, gamepads with rumble, and the debug keyboard for the console. |
 | Files | The Win32 file functions and the MSVC file functions on POSIX, with the translation of Xbox paths. |

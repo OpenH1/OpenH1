@@ -42,9 +42,11 @@ VULKAN_DIR = Path("port/linux/vulkan")
 # SPIR-V emitter), beside a stand-in for the guest's platform.h
 # (port/linux/vulkan/xgpu_vulkan_platform.h), as the macOS build's host does
 # (tools/macos_build.py, SHARED_SOURCES); the Xbox's texture decoding is the
-# host OpenGL backend's (HOST_GL_SHARED), which every desktop host has
+# host OpenGL backend's (HOST_GL_SHARED) where the host has one beside it
+# (Linux's), and VULKAN_DECODE_SOURCES where it has none (Android's)
 VULKAN_SHARED_SOURCES = ["xgpu.h", "xgpu_backend.h", "loading_presentation.h", "loading_art.h", "loading_art_tables.h", "xgpu_shader.h", "xgpu_spirv.h", "xgpu_spirv.c",
                          "vr.h", "vr_host.h", "vr_visor.h"]
+VULKAN_DECODE_SOURCES = ["xbox_texture_decode.c"]
 
 def fetch_vulkan_headers(vulkan_dir: Path) -> None:
     """Download the Vulkan headers into vulkan_dir (configure time, once; a
@@ -61,8 +63,12 @@ def fetch_vulkan_headers(vulkan_dir: Path) -> None:
 
 
 def host_vulkan_renderer(n: Writer, prefix: str, label: str, build: Path, host_cc: str,
-                         host_cflags: str, vulkan_headers: Path, vr: bool = False) -> List[Path]:
-    """Build the Vulkan host beside the shared texture/GL support, returning objects."""
+                         host_cflags: str, vulkan_headers: Path, vr: bool = False,
+                         texture_decoding: bool = False) -> List[Path]:
+    """Build the Vulkan host, returning objects. Its texture decoding is the
+    host OpenGL backend's (tools/host_gl_build.py) unless texture_decoding,
+    for a host with no OpenGL backend: then it builds its own
+    (VULKAN_DECODE_SOURCES)."""
     # the Vulkan renderer (port/linux/vulkan), with the renderer's shared
     # parts copied beside a stand-in for the guest's platform.h, which
     # their quoted includes would otherwise find in port/linux/src; the
@@ -78,7 +84,8 @@ def host_vulkan_renderer(n: Writer, prefix: str, label: str, build: Path, host_c
                     f"grep -E '^#define D3D(FORMAT|SIZE|TEXTURE)_' {xdk / 'xdk_d3d8.h'}) > $out"),
            description=f"{label} SHARED $out")
     shared_copies: List[Path] = []
-    for name in VULKAN_SHARED_SOURCES:
+    shared_names = VULKAN_SHARED_SOURCES + (VULKAN_DECODE_SOURCES if texture_decoding else [])
+    for name in shared_names:
         n.build(outputs=shared_dir / name, rule=f"{prefix}_vulkan_copy", inputs=LINUX_DIR / "src" / name)
         shared_copies.append(shared_dir / name)
     n.build(outputs=shared_dir / "platform.h", rule=f"{prefix}_vulkan_copy",
@@ -87,7 +94,7 @@ def host_vulkan_renderer(n: Writer, prefix: str, label: str, build: Path, host_c
             inputs=[xdk / "xdk_pdb.h", xdk / "xdk_d3d8.h"])
     shared_copies += [shared_dir / "platform.h", shared_dir / "xdk_enums.h"]
     vulkan_cflags = f"-I{shared_dir} -I{VULKAN_DIR} -I{vulkan_headers} {host_cflags}"
-    vulkan_sources = [shared_dir / name for name in VULKAN_SHARED_SOURCES if name.endswith(".c")]
+    vulkan_sources = [shared_dir / name for name in shared_names if name.endswith(".c")]
     vr_sources = {"host_vulkan_vr.c", "xgpu_vulkan_vr_shaders.c"}
     vulkan_sources += sorted(source for source in VULKAN_DIR.glob("*.c")
                              if not source.name.startswith("guest_") and (vr or source.name not in vr_sources))

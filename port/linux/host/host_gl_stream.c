@@ -359,50 +359,6 @@ static void window_swap(void)
 
 int gl_functions_load(void);
 
-#ifdef __ANDROID__
-/* Android: the window's surface goes as the app goes to the background, and
-SDL keeps the GL context of the thread that pumps the events, the game's,
-across it (SDL_androidevents.c's backup and restore, between the app's
-events, which it tells event watches of on that thread): the render thread
-hands the context over as the app goes to the background, and takes it back
-as it comes to the front. A context lost in the meantime (SDL makes another)
-is not made again: the game's GL objects went with it. */
-static void context_release(void *argument)
-{
-	(void)argument;
-	glFinish();
-	SDL_GL_MakeCurrent(gl.window, NULL);
-	gl.current = FALSE;
-}
-
-static void context_take(void *argument)
-{
-	(void)argument;
-	gl.current = SDL_GL_MakeCurrent(gl.window, gl.context);
-	if (!gl.current)
-		host_logf(HOST_LOG_ERROR, "gl: the render thread cannot use the OpenGL context again: %s", SDL_GetError());
-	gl.interval_set = -2;
-}
-
-static bool SDLCALL lifecycle_watch(void *user, SDL_Event *event)
-{
-	(void)user;
-	if (event->type == SDL_EVENT_WILL_ENTER_BACKGROUND && gl.current)
-	{
-		host_render_stream_call(context_release, NULL);
-		SDL_GL_MakeCurrent(gl.window, gl.context);
-	}
-	else if (event->type == SDL_EVENT_DID_ENTER_FOREGROUND && !gl.current)
-	{
-		if (SDL_GL_GetCurrentContext() != gl.context)
-			host_logf(HOST_LOG_ERROR, "gl: the OpenGL context was lost in the background");
-		SDL_GL_MakeCurrent(gl.window, NULL);
-		host_render_stream_call(context_take, NULL);
-	}
-	return true;
-}
-#endif
-
 int host_gl_window(uint32_t window, int interval)
 {
 	SDL_Window *object = host_sdl_handle_get(window, _handle_window);
@@ -446,9 +402,6 @@ int host_gl_window(uint32_t window, int interval)
 
 		gl.refresh_rate = mode && mode->refresh_rate > 0.0f ? mode->refresh_rate : 0.0f;
 	}
-#ifdef __ANDROID__
-	SDL_AddEventWatch(lifecycle_watch, NULL);
-#endif
 	host_render_stream_set_backend(host_gl_stream_backend());
 	return 1;
 }
