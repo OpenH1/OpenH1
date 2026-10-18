@@ -9,6 +9,7 @@
     python tools/ci_build.py linux_x86_64 release --vr
     python tools/ci_build.py linux profile
     python tools/ci_build.py web release
+    python tools/ci_build.py macos release         (on a Mac with Apple silicon)
 
 Builds are portable (any x86-64 processor; any ARMv8.0 one for
 linux_arm64 and android), so they run on other computers. Debug builds skip link-time and profile-guided optimisation,
@@ -17,7 +18,7 @@ release build does (profile-guided optimisation needs clang 22 or later,
 and is skipped with an older one; the guests' compiler is the pinned LLVM
 22 that configure.py downloads, tools/guest_toolchain.py). A profile build is a debug build with
 configure.py --profile, so that the profiling build is built too. CI_COMPILER_LAUNCHER (ccache, say) is
-passed on as --compiler-launcher, and CI_GUEST_LLVM_CACHE as --guest-llvm-cache. A build of the main branch gets the run's
+passed on as --compiler-launcher, and CI_GUEST_LLVM_CACHE as --guest-llvm-cache. A build of the master branch gets the run's
 number (HALO_BUILD_NUMBER), which its release is named after and the
 self-updater compares (and the web site's version.json names).
 
@@ -32,6 +33,11 @@ build (with the same build laid out flat, dist/halo-linux-<config>/, for
 the self-updaters of the releases before the tree), and
 dist/halo-linux-arm64-<config>/, dist/halo-linux-x86_64[-vr]-<config>/
 for the others.
+
+The macOS build is the app's disk image (ninja macos_dmg), signed ad hoc
+(tools/macos_app.py), in dist/halo-macos-<config>/ with the notices: the
+disk image keeps the app's modes and links, which the workflow's artifacts
+would lose.
 
 The web build (port/web/README.md) needs Emscripten (emcc on the PATH, as
 emsdk_env.sh puts it); dist/halo-web-<config>/ is the whole site, which a
@@ -62,6 +68,7 @@ OUTPUTS = {
     "linux_x86_64": ["build/linux_x86_64/halo", "build/linux_x86_64/libSDL3.so.0",
                      "build/linux_x86_64/SDL3-LICENSE.txt"],
     "windows": ["build/windows/halo.exe", "build/windows/SDL3.dll"],
+    "macos": ["build/macos/Halo.dmg"],
     "android": [],  # the APK, below
     "web": [],  # the site, below
 }
@@ -106,10 +113,10 @@ def main() -> int:
     llvm_cache = os.environ.get("CI_GUEST_LLVM_CACHE")
     if llvm_cache:
         configure += ["--guest-llvm-cache", llvm_cache]
-    # a build of main knows its number, which names its release (build-<n>),
+    # a build of master knows its number, which names its release (build-<n>),
     # for the self-updater (port/linux/src/updater.c, and the Android app);
     # other builds have none, and never look for updates
-    if os.environ.get("GITHUB_REF") == "refs/heads/main" and os.environ.get("GITHUB_RUN_NUMBER", "").isdigit():
+    if os.environ.get("GITHUB_REF") == "refs/heads/master" and os.environ.get("GITHUB_RUN_NUMBER", "").isdigit():
         os.environ["HALO_BUILD_NUMBER"] = os.environ["GITHUB_RUN_NUMBER"]
         print(f"build number {os.environ['HALO_BUILD_NUMBER']}", flush=True)
     run(configure)
@@ -132,7 +139,7 @@ def main() -> int:
         run([gradlew, "--console=plain", "-q", f"assemble{variant.capitalize()}"], cwd=ROOT / "port/android")
         outputs = [APKS[variant]]
     else:
-        run(["ninja", args.platform])
+        run(["ninja", "macos_dmg" if args.platform == "macos" else args.platform])
         outputs = OUTPUTS[args.platform]
 
     # the licences of what the build carries (tools/linux_package.py)
@@ -182,11 +189,14 @@ def main() -> int:
         for pdb in [ROOT / "build/windows/halo.pdb", *sorted((ROOT / "build/windows/third_party").glob("SDL3-*/lib/x86/SDL3.pdb"))]:
             shutil.copy2(pdb, symbols)
             print(f"{pdb.relative_to(ROOT)} -> {symbols.relative_to(ROOT)}", flush=True)
+    if args.platform == "macos":
+        # (the SDL3 the app carries, built from this source: tools/macos_build.py)
+        notices.append((ROOT / "build/macos/third_party/SDL3/LICENSE.txt", "SDL3-LICENSE.txt"))
     for source, name in notices:
         shutil.copy2(source, dist / name)
     # internet play's MQTT brokers, a file beside the game (network.brokers_file;
-    # Android's APK has its own copy)
-    if args.platform != "android":
+    # Android's APK and the macOS app have their own copies)
+    if args.platform not in ("android", "macos"):
         shutil.copy2(ROOT / "port/assets/network/brokers.txt", dist / "brokers.txt")
     return 0
 

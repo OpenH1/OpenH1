@@ -9,21 +9,51 @@ decompilation is of the Xbox build 2342 (`cachebeta.exe`, SHA-256
 <img width="1289" height="995" alt="The game on Linux" src="https://github.com/user-attachments/assets/0d3ad50f-f8b8-46cf-aef8-e3661da2a7d7" />
 
 OpenH1 is a fork of [OpenCE](https://github.com/OpenCommunityEdition/OpenCE),
-the community's port, and adds its own renderers (Metal on macOS, Vulkan on
-Android), VR and more. It keeps OpenCE's netcode, so players of the two can
+the community's port, and adds a Mac app with its own Metal renderer, a
+Vulkan renderer, VR and more. It keeps OpenCE's netcode, so players of the two can
 play together. OpenCE starts from the decompilation of
 [bnunu/halo-1](https://github.com/bnunu/halo-1), a fork of
 [punpckhdq/halo](https://github.com/punpckhdq/halo).
 
 ## Download
 
-OpenH1 does not publish builds yet. Until it does, build the game: refer to
-"Build the game" below. The builds will be on the
-[Releases](https://github.com/OpenH1/OpenH1/releases) page.
+GitHub Actions builds the game for each commit, and each build of `master`
+that passes on all the platforms is a new release. These links download the
+builds of the latest release:
 
-A build of OpenH1 does not look for updates yet. When the releases start,
-the game will look for a newer release at start-up and ask if you want to
-install it (refer to "Updates" in [port/linux/README.md](port/linux/README.md#updates)).
+| Platform | Release | Debug |
+| --- | --- | --- |
+| macOS (Apple silicon, macOS 14.4 or later) | [halo-macos-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-release.zip) | [halo-macos-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-debug.zip) |
+| Windows | [halo-windows-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-release.zip) | [halo-windows-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-debug.zip) |
+| Linux | [halo-linux-i686-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-i686-release.zip) | [halo-linux-i686-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-i686-debug.zip) |
+| Linux arm64 | [halo-linux-arm64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-release.zip) | [halo-linux-arm64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-debug.zip) |
+| Linux x86-64 | [halo-linux-x86_64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-release.zip) | [halo-linux-x86_64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-debug.zip) |
+| Linux x86-64 VR | [halo-linux-x86_64-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-vr-release.zip) | |
+| Android | [halo-android-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-android-release.zip) | [halo-android-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-android-debug.zip) |
+
+Use the release build to play. The debug build stops at the first failed
+assertion and writes it to the log. Use the debug build to find and report
+problems. The [Releases](https://github.com/OpenH1/OpenH1/releases) page
+keeps the last five releases: if the latest build has a problem, get an
+older build there.
+
+- **macOS:** unzip, open `Halo.dmg` and drag Halo to Applications. The app
+  is not notarized yet, so the first start is refused: open System
+  Settings > Privacy & Security and choose **Open Anyway**.
+- **Windows:** unzip into a folder and start `halo.exe`. The executable is
+  not signed yet, so Windows may say that it protected your PC: choose
+  **More info**, then **Run anyway**.
+- **Linux:** unzip into a folder and start `bin/opence` in it. The folders
+  are laid out as a Unix prefix is (`bin/`, `lib/`, `share/`), for package
+  managers too: refer to "Packaging" in
+  [port/linux/README.md](port/linux/README.md#packaging).
+- **Android:** unzip and install the APK. Refer to
+  [port/android/README.md](port/android/README.md).
+
+The Windows, Linux and Android builds update themselves. At start-up they
+look for a newer release, and ask if you want to install it (refer to
+"Updates" in [port/linux/README.md](port/linux/README.md#updates)). On
+macOS, download the new release.
 
 ## Game data
 

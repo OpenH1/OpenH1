@@ -1,7 +1,7 @@
 name: Build
 
 # Debug and release builds of the native ports (Linux, Linux arm64, Linux
-# x86-64, Windows, Android) and the web port for every pushed commit, uploaded as artifacts.
+# x86-64, Windows, Android, macOS) and the web port for every pushed commit, uploaded as artifacts.
 # tools/ci_build.py does each build; see it for the options.
 #
 # Kept cheap:
@@ -15,11 +15,11 @@ name: Build
 # - Windows, whose minutes cost twice Linux's, builds only Windows;
 # - artifacts are kept for three days.
 #
-# A successful build of main is also published as a GitHub release, the
+# A successful build of master is also published as a GitHub release, the
 # newest marked latest, so that
 # https://github.com/<repository>/releases/latest/download/<file> always
-# gives the latest build; the last five are kept. Its web build is then the
-# site on GitHub Pages (https://openh1.com/, port/web/README.md).
+# gives the latest build (the README's download links); the last five are
+# kept. (openh1.com is the landing page, website/, not the web build.)
 on:
   push:
     paths-ignore:
@@ -431,6 +431,61 @@ jobs:
           path: dist/halo-windows-release-symbols
           retention-days: 3
 
+  macos:
+    # The runner image has Xcode (clang, the Metal compiler), Python and
+    # CMake; the guest's compiler is the pinned LLVM configure.py downloads.
+    # The app is signed ad hoc (tools/macos_app.py): without a Developer ID,
+    # macOS asks the player to allow it once (README, "Download").
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - name: Install the toolchain
+        run: |
+          brew install ninja ccache
+          # (Xcode 26 downloads the Metal compiler apart)
+          xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-macos-${{ github.sha }}
+          restore-keys: ccache-macos-
+
+      # musl, SDL and the OpenGL ES headers, which configure.py fetches
+      - uses: actions/cache@v4
+        with:
+          path: build/macos/third_party
+          key: macos-third-party-${{ hashFiles('tools/macos_build.py', 'tools/android_build.py', 'port/android/patches/**') }}
+
+      # the guests' LLVM, which configure.py fetches (tools/guest_toolchain.py)
+      - uses: actions/cache@v4
+        with:
+          path: .cache/llvm
+          key: guest-llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/guest_toolchain.py') }}
+
+      - name: Debug
+        run: python3 tools/ci_build.py macos debug
+
+      - name: Release
+        run: python3 tools/ci_build.py macos release
+
+      - name: Compile cache
+        run: ccache --show-stats
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halo-macos-debug
+          path: dist/halo-macos-debug
+          retention-days: 3
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halo-macos-release
+          path: dist/halo-macos-release
+          retention-days: 3
+
   web:
     # Emscripten (emsdk, the version below, cached) builds the web port's
     # site (port/web/README.md); the tests check its graph, the page's
@@ -509,13 +564,13 @@ jobs:
           retention-days: 3
 
   release:
-    # The fifteen builds (and the Windows builds' PDBs) as a release, tagged
+    # The builds (and the Windows builds' PDBs) as a release, tagged
     # build-<run number> and marked latest
     # (every file keeps its name from release to release, for the README's
     # latest/download links); then all but the newest five build-* releases
-    # go, tags and all. Only for main, and only when every platform built.
-    needs: [linux, linux-arm64, linux-x86_64, android, windows, web]
-    if: ${{ github.ref == 'refs/heads/main' }}
+    # go, tags and all. Only for master, and only when every platform built.
+    needs: [linux, linux-arm64, linux-x86_64, android, windows, macos, web]
+    if: ${{ github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -560,7 +615,7 @@ jobs:
         run: |
           tag="build-$GITHUB_RUN_NUMBER"
           subject="$(printf '%s' "${MESSAGE:-manual run}" | head -n 1)"
-          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Linux, download halo-linux-i686-release.zip. halo-linux-release.zip is the same build laid out as before, for the updaters of older builds.\n' \
+          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Linux, download halo-linux-i686-release.zip. halo-linux-release.zip is the same build laid out as before, for the updaters of older builds.\n\nOn macOS (Apple silicon, macOS 14.4 or later), download halo-macos-release.zip and open Halo.dmg in it. The app is not notarized yet: the first time, macOS asks to allow it in System Settings, Privacy & Security.\n' \
             "$subject" "$COMMIT_URL" "$RUN_URL" > notes.md
           gh release create "$tag" release/*.zip --target "$GITHUB_SHA" --latest \
             --title "Build $GITHUB_RUN_NUMBER (${GITHUB_SHA:0:7})" --notes-file notes.md
@@ -568,7 +623,8 @@ jobs:
 
       # The Windows builds' executables and PDBs to Sentry, which turns the
       # crash reports of these builds (port/windows/src/win32_crash.c) into
-      # backtraces with function names and lines. Needs the SENTRY_AUTH_TOKEN
+      # backtraces with function names and lines. (OpenH1 has no Sentry
+      # project yet, and its builds send no reports: win32_crash.c.) Needs the SENTRY_AUTH_TOKEN
       # secret: an organization auth token of the Sentry organization, which
       # names the organization and its region itself. The SENTRY_PROJECT
       # variable can name the project (its slug), else the id in the DSN of
@@ -579,7 +635,7 @@ jobs:
         continue-on-error: true
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT || '4512207917744208' }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
           ORG: ${{ vars.SENTRY_ORG }}
           URL: ${{ vars.SENTRY_URL }}
           SENTRY_CLI_VERSION: 2.46.0
@@ -604,46 +660,12 @@ jobs:
             gh release delete "$tag" --cleanup-tag --yes
           done
 
-  pages:
-    # The release's web build to GitHub Pages, which serves it at
-    # https://openh1.com/ (port/web/README.md, "Hosting"). Only
-    # main, only once every platform built and the release is out (the site
-    # and the release are one build), and a deployment is never cancelled
-    # halfway. The repository's Pages source must be GitHub Actions.
-    needs: [release]
-    if: ${{ github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    permissions:
-      pages: write
-      id-token: write
-    concurrency:
-      group: pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: halo-web-release
-          path: site
-
-      - uses: actions/configure-pages@v5
-
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-      - id: deploy
-        uses: actions/deploy-pages@v4
-
   notify:
     # A Discord embed for the run, to the DISCORD_WEBHOOK secret (nothing
     # without it): green when every platform built, red when one did not,
-    # with each platform's result, this run's release (main only), and links
-    # to the latest release's builds and the site.
-    needs: [linux, linux-arm64, linux-x86_64, android, windows, web, release, pages]
+    # with each platform's result, this run's release (master only), and
+    # links to the latest release's builds.
+    needs: [linux, linux-arm64, linux-x86_64, android, windows, macos, web, release]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -656,9 +678,8 @@ jobs:
           LINUX_X86_64: ${{ needs['linux-x86_64'].result }}
           ANDROID: ${{ needs.android.result }}
           WINDOWS: ${{ needs.windows.result }}
+          MACOS: ${{ needs.macos.result }}
           WEB: ${{ needs.web.result }}
-          PAGES: ${{ needs.pages.result }}
-          SITE_URL: https://openh1.com/
           RELEASE_TAG: ${{ needs.release.outputs.tag }}
           SERVER: ${{ github.server_url }}
           REPOSITORY: ${{ github.repository }}
@@ -681,27 +702,24 @@ jobs:
               *) echo "➖ Skipped" ;;
             esac
           }
-          if [ "$LINUX" = success ] && [ "$LINUX_ARM64" = success ] && [ "$LINUX_X86_64" = success ] && [ "$ANDROID" = success ] && [ "$WINDOWS" = success ] && [ "$WEB" = success ]; then
+          if [ "$LINUX" = success ] && [ "$LINUX_ARM64" = success ] && [ "$LINUX_X86_64" = success ] && [ "$ANDROID" = success ] && [ "$WINDOWS" = success ] && [ "$MACOS" = success ] && [ "$WEB" = success ]; then
             title="Build succeeded"; color=5763719
           else
             title="Build failed"; color=15548997
           fi
           latest="$SERVER/$REPOSITORY/releases/latest"
-          downloads="[Linux]($latest/download/halo-linux-i686-release.zip) · [Linux arm64]($latest/download/halo-linux-arm64-release.zip) · [Linux x86-64]($latest/download/halo-linux-x86_64-release.zip) · [Linux x86-64 VR]($latest/download/halo-linux-x86_64-vr-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [Android]($latest/download/halo-android-release.zip) · [Web]($SITE_URL) ([all builds]($latest))"
+          downloads="[Linux]($latest/download/halo-linux-i686-release.zip) · [Linux arm64]($latest/download/halo-linux-arm64-release.zip) · [Linux x86-64]($latest/download/halo-linux-x86_64-release.zip) · [Linux x86-64 VR]($latest/download/halo-linux-x86_64-vr-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [macOS]($latest/download/halo-macos-release.zip) · [Android]($latest/download/halo-android-release.zip) ([all builds]($latest))"
           if [ -n "$RELEASE_TAG" ]; then
             release="[$RELEASE_TAG]($SERVER/$REPOSITORY/releases/tag/$RELEASE_TAG)"
-            if [ "$PAGES" = success ]; then
-              release="$release, on [the site]($SITE_URL)"
-            fi
           else
-            release="None (only a successful build of main makes one)"
+            release="None (only a successful build of master makes one)"
           fi
           subject="$(printf '%s' "${MESSAGE:-manual run}" | head -n 1 | cut -c1-200)"
           jq -n \
             --arg title "$title" --argjson color "$color" --arg url "$RUN_URL" \
             --arg description "[\`${SHA:0:7}\`]($COMMIT_URL) $subject — $ACTOR ($BRANCH)" \
             --arg release "$release" --arg downloads "$downloads" \
-            --arg linux "$(status "$LINUX")" --arg linux_arm64 "$(status "$LINUX_ARM64")" --arg linux_x86_64 "$(status "$LINUX_X86_64")" --arg windows "$(status "$WINDOWS")" --arg android "$(status "$ANDROID")" \
+            --arg linux "$(status "$LINUX")" --arg linux_arm64 "$(status "$LINUX_ARM64")" --arg linux_x86_64 "$(status "$LINUX_X86_64")" --arg windows "$(status "$WINDOWS")" --arg macos "$(status "$MACOS")" --arg android "$(status "$ANDROID")" \
             --arg web "$(status "$WEB")" \
             --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{embeds: [{
@@ -711,6 +729,7 @@ jobs:
                 {name: "Linux arm64", value: $linux_arm64, inline: true},
                 {name: "Linux x86-64", value: $linux_x86_64, inline: true},
                 {name: "Windows", value: $windows, inline: true},
+                {name: "macOS", value: $macos, inline: true},
                 {name: "Android", value: $android, inline: true},
                 {name: "Web", value: $web, inline: true},
                 {name: "Release", value: $release},
