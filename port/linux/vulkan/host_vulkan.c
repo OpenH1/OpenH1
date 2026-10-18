@@ -15,7 +15,7 @@ drawn and read back (screenshots) but not shown.
 
 HALO_VULKAN_VALIDATION=1 turns on the validation layers and logs their
 messages (the layers must be installed, or found through VK_ADD_LAYER_PATH).
-The pipeline cache is $XDG_CACHE_HOME/opence/vulkan_pipelines.bin (or
+The pipeline cache is $XDG_CACHE_HOME/openh1/vulkan_pipelines.bin (or
 ~/.cache's); HALO_VULKAN_PIPELINE_CACHE names another file, or none (empty).
 */
 
@@ -85,9 +85,9 @@ static const char *cache_path(char *path, size_t size)
 		cache = SDL_GetAndroidCachePath();
 #endif
 	if (cache && *cache)
-		snprintf(folder, sizeof(folder), "%s/opence", cache);
+		snprintf(folder, sizeof(folder), "%s/openh1", cache);
 	else if (home && *home)
-		snprintf(folder, sizeof(folder), "%s/.cache/opence", home);
+		snprintf(folder, sizeof(folder), "%s/.cache/openh1", home);
 	else
 		return NULL;
 	{

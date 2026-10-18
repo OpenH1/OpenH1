@@ -19,7 +19,7 @@ name: Build
 # newest marked latest, so that
 # https://github.com/<repository>/releases/latest/download/<file> always
 # gives the latest build; the last five are kept. Its web build is then the
-# site on GitHub Pages (https://halocombatevolved.com/, port/web/README.md).
+# site on GitHub Pages (https://openh1.com/, port/web/README.md).
 on:
   push:
     paths-ignore:
@@ -606,7 +606,7 @@ jobs:
 
   pages:
     # The release's web build to GitHub Pages, which serves it at
-    # https://halocombatevolved.com/ (port/web/README.md, "Hosting"). Only
+    # https://openh1.com/ (port/web/README.md, "Hosting"). Only
     # main, only once every platform built and the release is out (the site
     # and the release are one build), and a deployment is never cancelled
     # halfway. The repository's Pages source must be GitHub Actions.
@@ -658,7 +658,7 @@ jobs:
           WINDOWS: ${{ needs.windows.result }}
           WEB: ${{ needs.web.result }}
           PAGES: ${{ needs.pages.result }}
-          SITE_URL: https://halocombatevolved.com/
+          SITE_URL: https://openh1.com/
           RELEASE_TAG: ${{ needs.release.outputs.tag }}
           SERVER: ${{ github.server_url }}
           REPOSITORY: ${{ github.repository }}

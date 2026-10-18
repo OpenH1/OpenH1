@@ -61,7 +61,7 @@ four multiview views and fragment storage-buffer atomics.
 | Variable | What it does |
 | --- | --- |
 | `HALO_VULKAN_VALIDATION=1` | The validation layers on, their messages logged (the layers must be installed, or found through `VK_ADD_LAYER_PATH`) |
-| `HALO_VULKAN_PIPELINE_CACHE=<file>` | The pipeline cache's file (by default `$XDG_CACHE_HOME/opence/vulkan_pipelines.bin`); empty: none |
+| `HALO_VULKAN_PIPELINE_CACHE=<file>` | The pipeline cache's file (by default `$XDG_CACHE_HOME/openh1/vulkan_pipelines.bin`); empty: none |
 | `HALO_VULKAN_SHADERS=<dir>` | Each shader module written there as it is made (`.spv`) |
 | `HALO_VULKAN_STATS=1` | Every 600 frames, submissions, passes, attachment loads/clears, draws, pipeline creation count/time, upload ring bytes and textures made |
 | `HALO_NO_VSYNC=1` | Presented without waiting for the display (immediate, or mailbox) instead of FIFO |

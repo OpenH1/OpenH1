@@ -7,7 +7,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
-const ORIGIN = 'https://halocombatevolved.com';
+const ORIGIN = 'https://openh1.com';
 
 // a build served by the fake network: version.json and its files
 let served = {};
