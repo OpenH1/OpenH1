@@ -28,6 +28,8 @@ on:
   push:
     paths-ignore:
       - "**.md"
+      # (openh1.com, published from website/ by hand: website/README.md)
+      - "website/**"
   workflow_dispatch:
     inputs:
       profile:
