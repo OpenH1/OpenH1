@@ -907,7 +907,7 @@ int host_metal_initialize(void)
 	memset(&options, 0, sizeof(options));
 	if (!archive && home)
 	{
-		snprintf(path, sizeof(path), "%s/Library/Caches/OpenCE/metal_pipelines.bin", home);
+		snprintf(path, sizeof(path), "%s/Library/Caches/OpenH1/metal_pipelines.bin", home);
 		archive = path;
 	}
 	options.archive_path = archive && *archive ? archive : NULL;

@@ -67,13 +67,13 @@ as the other desktop builds are (`halo.exe`, the window's title "Halo"):
 
 `Info.plist`:
 
-- `CFBundleIdentifier`: `io.github.opencommunityedition.opence`
+- `CFBundleIdentifier`: `com.openh1.openh1`
   (`configure.py --macos-bundle-id`), the reverse-DNS name of the
   project's GitHub organisation's pages, a domain it has. macOS keeps the
   app's permissions (the microphone, the local network) by it.
 - `CFBundleShortVersionString` and `CFBundleVersion`: the build's number
   (`HALO_BUILD_NUMBER`, a release's; 0 for a local build), as the game
-  names itself ("OpenCE macOS | build N").
+  names itself ("OpenH1 macOS | build N").
 - `LSApplicationCategoryType` `public.app-category.games` and
   `LSSupportsGameMode`: macOS turns Game Mode on while the game is
   fullscreen (the processor and the GPU for the game, Bluetooth's lower
@@ -87,12 +87,15 @@ as the other desktop builds are (`halo.exe`, the window's title "Halo"):
 When its executable runs inside the app, the host (`host_app.m`) does what
 a Mac app does, before the game starts:
 
-- **Folders.** `~/Library/Application Support/OpenCE` is the folder of
+- **Folders.** `~/Library/Application Support/OpenH1` is the folder of
   `config.toml` (`SDL_GetBasePath` for the game), the data root (`maps`,
   `custom_maps`, `debug.txt`) and the saves (`saves`). The host's log (and
-  the game's lines) goes to `~/Library/Logs/OpenCE/halo.log`, the previous
+  the game's lines) goes to `~/Library/Logs/OpenH1/halo.log`, the previous
   start's to `halo.previous.log` (Console shows them), unless the error
-  output is a terminal. The Metal archive is in `~/Library/Caches/OpenCE`.
+  output is a terminal. The Metal archive is in `~/Library/Caches/OpenH1`.
+  At the first start without an `OpenH1` folder, the app copies
+  `Application Support/OpenCE` (the folder before the project was OpenH1)
+  to it, and leaves that folder as it was.
   `HALO_DATA_ROOT` and `HALO_SAVE_ROOT`, and `paths.data` and `paths.saves`
   in `config.toml`, still choose other folders.
 - **The maps.** The players supply them. Without a maps folder, an open
@@ -468,7 +471,7 @@ command stream's backend table. They run on one thread, the render thread.
   formats and samples) and kept by that; depth-stencil states by the depth
   and stencil part. Culling, winding, the fill mode, depth bias and depth
   clamping are the encoder's state. Pipelines are made from a binary
-  archive (`~/Library/Caches/OpenCE/metal_pipelines.bin`, or
+  archive (`~/Library/Caches/OpenH1/metal_pipelines.bin`, or
   `HALO_METAL_ARCHIVE`) where it has them. None is made on the render
   thread: each is made on a queue (user-initiated QoS) once its shaders
   are, during a map's loading screen for the draws it is shown first
@@ -621,7 +624,7 @@ draw, and cleared.
 ## Find problems
 
 - The log goes to the terminal (the app's, to
-  `~/Library/Logs/OpenCE/halo.log`); the game's own log is `debug.txt` in
+  `~/Library/Logs/OpenH1/halo.log`); the game's own log is `debug.txt` in
   the data folder.
 - A crash prints the registers, the guest's base and the frame chain. The
   guest's addresses are the low 32 bits:

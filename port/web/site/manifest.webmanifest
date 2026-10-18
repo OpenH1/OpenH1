@@ -1,6 +1,6 @@
 {
-  "name": "OpenCE",
-  "short_name": "OpenCE",
+  "name": "OpenH1",
+  "short_name": "OpenH1",
   "description": "Halo: Combat Evolved in your browser, from your own Xbox disc image.",
   "start_url": "./",
   "scope": "./",

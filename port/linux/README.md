@@ -814,7 +814,7 @@ To join a game, do one of these steps:
 - Accept a Discord invite. Refer to "Discord".
 
 The game also takes the address of the web build's page with an invite
-(`https://halocombatevolved.com/?join=<64 digits>`), as a link.
+(`https://openh1.com/?join=<64 digits>`), as a link.
 
 When the machines connect, the game of the host shows in Multiplayer,
 System Link. Join the game as on a local network. System link on a local

@@ -30,3 +30,6 @@ original/
 
 # CI build outputs (tools/ci_build.py)
 dist/
+
+# the Cloudflare CLI's cache
+/.cloudflare/

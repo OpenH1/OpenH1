@@ -729,9 +729,11 @@ static void crash_uploader(void)
 
 /* ---------- the crashed game */
 
+/* off: the Sentry project above is OpenCE's, and OpenH1 has none of its own
+yet (give it one, then return HALO_BUILD_NUMBER > 0 again) */
 static int crash_reports_enabled(void)
 {
-	return HALO_BUILD_NUMBER > 0 || GetEnvironmentVariableW(L"HALO_CRASH_REPORTS_ANY_BUILD", NULL, 0) > 0;
+	return GetEnvironmentVariableW(L"HALO_CRASH_REPORTS_ANY_BUILD", NULL, 0) > 0;
 }
 
 /* starts this executable again with the option and its arguments, with no

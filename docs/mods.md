@@ -156,7 +156,7 @@ game.
 ### Getting a mod onto each platform
 
 - **Linux, Windows**: put the mod's folder in `mods/` next to `maps/`.
-- **macOS app**: put it in `~/Library/Application Support/OpenCE/mods/`,
+- **macOS app**: put it in `~/Library/Application Support/OpenH1/mods/`,
   next to the app's `maps` link. With `HALO_DATA_ROOT`, use `mods/` in that
   data root instead.
 - **Android**: put it in `mods/` in the app's data folder,

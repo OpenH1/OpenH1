@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OpenH1: Halo: Combat Evolved, ported</title>
+<meta name="description" content="OpenH1 ports Halo: Combat Evolved from its decompilation to macOS, Windows, Linux, Android and VR, with online play, co-op, mods and Custom Edition maps.">
+<meta name="theme-color" content="#02060c">
+<meta property="og:title" content="OpenH1">
+<meta property="og:description" content="Halo: Combat Evolved, ported from its decompilation to macOS, Windows, Linux, Android and VR.">
+<meta property="og:image" content="https://openh1.com/icon.png">
+<meta property="og:url" content="https://openh1.com/">
+<link rel="icon" href="favicon.png" sizes="32x32">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+/* the look of the game's menus (port/web/site/style.css): navy panels with
+   a blue edge, OpenCE (the menus' title font) for titles, Overpass for the
+   rest */
+@font-face { font-family: "OpenCE"; src: url("fonts/OpenCE-Regular.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "Overpass"; font-weight: 750; src: url("fonts/Overpass-750.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "Overpass"; font-weight: 900; src: url("fonts/Overpass-900.ttf") format("truetype"); font-display: swap; }
+
+:root {
+  color-scheme: dark;
+  --ground: #02060c;
+  --navy: #002244;
+  --navy-deep: #000e23;
+  --edge: #2299ff;
+  --edge-bright: #36afff;
+  --edge-dim: #1d4f86;
+  --label: #2896ff;
+  --text: #ffffff;
+  --soft: #c9daf0;
+  --muted: #8ea6c4;
+  --glow: rgba(54, 175, 255, 0.45);
+  --title-font: "OpenCE", "Overpass", system-ui, sans-serif;
+  --body-font: "Overpass", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font: 750 17px/1.55 var(--body-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--edge-bright); }
+a:hover { color: var(--text); }
+
+.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+
+/* ---------- header */
+
+.top {
+  position: sticky; top: 0; z-index: 10;
+  background: rgba(2, 6, 12, 0.85);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--edge-dim);
+}
+.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
+.brand img { width: 36px; height: 36px; }
+/* the wordmark is in Overpass: the title font's 1 reads as an I */
+.brand span { font: 900 24px/1 var(--body-font); letter-spacing: 0.02em; }
+.top nav { display: flex; gap: 22px; }
+.top nav a { color: var(--soft); text-decoration: none; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; }
+.top nav a:hover { color: var(--text); }
+
+/* ---------- hero */
+
+.hero {
+  position: relative; overflow: hidden;
+  padding: 96px 0 88px;
+  background:
+    radial-gradient(ellipse 70% 60% at 50% 0%, rgba(34, 153, 255, 0.22), transparent 70%),
+    linear-gradient(180deg, var(--navy-deep), var(--ground));
+  border-bottom: 2px solid var(--edge-dim);
+  text-align: center;
+}
+.hero img { width: 132px; height: 132px; filter: drop-shadow(0 0 28px var(--glow)); }
+.hero h1 {
+  margin: 18px 0 6px;
+  font: 900 clamp(56px, 11vw, 112px)/1 var(--body-font); letter-spacing: 0.01em;
+  text-shadow: 0 0 24px var(--glow);
+}
+.hero .kicker { margin: 0; color: var(--label); letter-spacing: 0.18em; text-transform: uppercase; font-size: 15px; }
+.hero p.lede { max-width: 640px; margin: 22px auto 0; color: var(--soft); font-size: 19px; }
+
+.actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin-top: 34px; }
+.button {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 13px 26px;
+  font: 900 15px/1 var(--body-font); letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none;
+  color: var(--text);
+  background: linear-gradient(180deg, #0a3a6e, var(--navy));
+  border: 2px solid var(--edge);
+  box-shadow: 0 0 18px var(--glow);
+}
+.button:hover { color: var(--text); border-color: var(--edge-bright); box-shadow: 0 0 26px var(--glow); }
+.button.quiet { background: transparent; border-color: var(--edge-dim); box-shadow: none; color: var(--soft); cursor: default; }
+.button.quiet:hover { border-color: var(--edge-dim); color: var(--soft); box-shadow: none; }
+
+/* ---------- sections */
+
+section { padding: 76px 0; }
+section + section { border-top: 1px solid rgba(29, 79, 134, 0.45); }
+h2 {
+  margin: 0 0 8px;
+  font-family: var(--title-font); font-weight: normal;
+  font-size: clamp(32px, 5vw, 44px); letter-spacing: 0.05em;
+}
+.sub { margin: 0 0 34px; color: var(--muted); max-width: 680px; }
+
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.panel {
+  padding: 22px 22px 20px;
+  background: linear-gradient(180deg, rgba(0, 34, 68, 0.75), rgba(0, 14, 35, 0.75));
+  border: 2px solid var(--edge-dim);
+}
+.panel h3 { margin: 0 0 6px; font: 900 15px/1.3 var(--body-font); letter-spacing: 0.1em; text-transform: uppercase; color: var(--label); }
+.panel p { margin: 0; color: var(--soft); font-size: 16px; }
+
+.platforms .panel h3 { color: var(--text); font-size: 18px; letter-spacing: 0.06em; }
+.platforms .panel .detail { margin-top: 8px; color: var(--muted); font-size: 14px; }
+
+.need {
+  display: grid; gap: 24px; grid-template-columns: 1fr 1fr; align-items: start;
+}
+.need ol { margin: 0; padding-left: 22px; color: var(--soft); }
+.need li + li { margin-top: 8px; }
+
+.credits p { color: var(--soft); max-width: 760px; }
+
+footer {
+  padding: 36px 0 48px;
+  border-top: 2px solid var(--edge-dim);
+  color: var(--muted); font-size: 14px;
+}
+footer .links { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 14px; }
+
+@media (max-width: 720px) {
+  .top nav { gap: 14px; }
+  .top nav a.optional { display: none; }
+  .hero { padding: 64px 0 60px; }
+  .hero img { width: 104px; height: 104px; }
+  section { padding: 56px 0; }
+  .need { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="icon.png" alt="" width="36" height="36"><span>OpenH1</span></a>
+    <nav aria-label="Sections">
+      <a href="#platforms" class="optional">Platforms</a>
+      <a href="#features" class="optional">Features</a>
+      <a href="https://github.com/OpenH1/OpenH1">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="hero">
+    <div class="wrap">
+      <img src="icon.png" alt="" width="132" height="132">
+      <h1>OpenH1</h1>
+      <p class="kicker">Halo: Combat Evolved, ported</p>
+      <p class="lede">The original Xbox game, rebuilt from its decompilation to run natively on
+        macOS, Windows, Linux, Android and in VR, with online play, co-op, mods and Custom Edition maps.</p>
+      <div class="actions">
+        <a class="button" href="https://github.com/OpenH1/OpenH1">View on GitHub</a>
+        <span class="button quiet" aria-disabled="true">Downloads coming soon</span>
+      </div>
+    </div>
+  </div>
+
+  <section id="platforms" class="platforms">
+    <div class="wrap">
+      <h2>Everywhere you play</h2>
+      <p class="sub">One port of the game, built for each system with its own renderer.</p>
+      <div class="grid">
+        <div class="panel">
+          <h3>macOS</h3>
+          <p>A Mac app with a native Metal renderer.</p>
+          <p class="detail">Apple silicon, macOS 14.4 or later</p>
+        </div>
+        <div class="panel">
+          <h3>Windows</h3>
+          <p>Runs as a regular Windows program.</p>
+          <p class="detail">Keyboard and mouse or a controller</p>
+        </div>
+        <div class="panel">
+          <h3>Linux</h3>
+          <p>A portable folder that also suits package managers.</p>
+          <p class="detail">x86, x86-64 and 64-bit ARM</p>
+        </div>
+        <div class="panel">
+          <h3>Android</h3>
+          <p>Touch controls, controllers and a Vulkan renderer.</p>
+          <p class="detail">Phones and tablets</p>
+        </div>
+        <div class="panel">
+          <h3>VR</h3>
+          <p>Play in a headset, with waypoints drawn over what they mark.</p>
+          <p class="detail">Linux with OpenXR: SteamVR or Monado</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features">
+    <div class="wrap">
+      <h2>More than the Xbox had</h2>
+      <p class="sub">The 2001 game as it played on the Xbox, plus what a modern port should have.</p>
+      <div class="grid">
+        <div class="panel">
+          <h3>Online play</h3>
+          <p>Invite friends over the internet or find a game in the server browser. No servers to set up.</p>
+        </div>
+        <div class="panel">
+          <h3>Co-op</h3>
+          <p>Play the campaign together, on a local network or online.</p>
+        </div>
+        <div class="panel">
+          <h3>Custom Edition maps</h3>
+          <p>Play the PC community's maps. A host sends a missing map to players as they join.</p>
+        </div>
+        <div class="panel">
+          <h3>Mods</h3>
+          <p>Drop mods in a folder, then order and switch them in the game's own Mods menu.</p>
+        </div>
+        <div class="panel">
+          <h3>Voice and text chat</h3>
+          <p>Talk or type in network games, with a streamer mode that hides offensive words.</p>
+        </div>
+        <div class="panel">
+          <h3>Sharper picture</h3>
+          <p>Any resolution, a high-resolution HUD and text, anti-aliasing and better lighting.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="start">
+    <div class="wrap need">
+      <div>
+        <h2>Bring your own game</h2>
+        <p class="sub" style="margin-bottom:0">OpenH1 includes none of the game's data. You need your own Xbox disc
+          image of Halo: Combat Evolved, and any version works.</p>
+      </div>
+      <ol>
+        <li>Get OpenH1 for your system. Builds are coming soon. Until then, build it from the
+          <a href="https://github.com/OpenH1/OpenH1">source on GitHub</a>.</li>
+        <li>Start the game and choose your disc image (<code>.iso</code> or <code>.xiso</code>) when it asks.</li>
+        <li>The game copies out its maps once, then you're in.</li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="credits">
+    <div class="wrap">
+      <h2>Built on the community's work</h2>
+      <p>OpenH1 is a fork of <a href="https://github.com/OpenCommunityEdition/OpenCE">OpenCE</a>, the community's
+        port, and stays compatible with it online. Both start from the decompilation of
+        <a href="https://github.com/bnunu/halo-1">bnunu/halo-1</a>, a fork of
+        <a href="https://github.com/punpckhdq/halo">punpckhdq/halo</a>. Thank you to everyone who made them.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="links">
+      <a href="https://github.com/OpenH1/OpenH1">Source</a>
+      <a href="https://github.com/OpenH1/OpenH1/issues">Report a problem</a>
+      <a href="fonts/OpenCE-OFL.txt">Font licences</a>
+    </div>
+    <p>OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox Game Studios,
+      Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft Corporation;
+      Halo © Microsoft Corporation. No game data is included: you need your own copy of the game.</p>
+  </div>
+</footer>
+
+</body>
+</html>

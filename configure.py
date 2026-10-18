@@ -169,8 +169,8 @@ parser.add_argument(
 parser.add_argument(
     "--macos-bundle-id",
     type=str,
-    help="the macOS app's bundle identifier (default: io.github.opencommunityedition.opence, after the "
-    "project's GitHub organisation); macOS keeps the app's permissions (the microphone, the local network) by it",
+    help="the macOS app's bundle identifier (default: com.openh1.openh1, after the "
+    "project's domain); macOS keeps the app's permissions (the microphone, the local network) by it",
 )
 parser.add_argument(
     "--web-emcc",

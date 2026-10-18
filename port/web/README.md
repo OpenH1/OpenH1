@@ -2,10 +2,10 @@
 
 The web build runs the game in a web browser, as WebAssembly. It is the
 same game and platform layer as the Linux build, with the OpenGL ES renderer
-of the Android build drawing through WebGL 2. Play it at
-<https://halocombatevolved.com/>: every build of `main` that passes on all
-platforms is published there (and as `halo-web-release.zip` in the release,
-for your own server).
+of the Android build drawing through WebGL 2. Its site is
+<https://openh1.com/>, once Pages is set up ("Hosting"): every build of
+`main` that passes on all platforms is published there (and as
+`halo-web-release.zip` in the release, for your own server).
 
 The site serves no game data. The page copies the `maps/` folder out of your
 own Xbox disc image of Halo: Combat Evolved into the browser's storage for
@@ -50,7 +50,7 @@ page when mods say they cannot be played together (`web_js_ask`).
 
 The page asks the browser to keep the site's data. A browser that is short
 of space may delete it otherwise; **Settings and data** says which. The
-storage belongs to the site's address: `halocombatevolved.com` and the
+storage belongs to the site's address: `openh1.com` and the
 repository's `github.io` address do not share it.
 
 ## Playing
@@ -104,7 +104,7 @@ WebSockets (EMQX's, HiveMQ's and Mosquitto's: the native builds' first broker
 has none), with everything sealed as between native builds.
 
 **In a room**: under **Play together**, **Create a room** makes a room and
-its link (`https://halocombatevolved.com/?room=<secret>`): send it to your
+its link (`https://openh1.com/?room=<secret>`): send it to your
 friends.
 Everyone who opens it is in the room, and the browsers of a room are as the
 machines of one local network to the game: host a game under Multiplayer and
@@ -369,16 +369,15 @@ halfway. The Discord post has a Web field and the site's address.
 Once, an owner of the organization sets it up:
 
 1. Organization settings → Pages → **Add a verified domain**:
-   `halocombatevolved.com`. Add the TXT record GitHub shows
-   (`_github-pages-challenge-OpenCommunityEdition.halocombatevolved.com`)
-   at the DNS host (Cloudflare) and verify. This also frees the domain from
-   another account's site that still claims it.
+   `openh1.com`. Add the TXT record GitHub shows
+   (`_github-pages-challenge-OpenH1.openh1.com`) at the domain's DNS host
+   and verify.
 2. Repository settings → Pages → Build and deployment → Source: **GitHub
    Actions**.
-3. Repository settings → Pages → Custom domain: `halocombatevolved.com`.
-   The DNS records are there already (the four apex `A` records of GitHub
-   Pages, `www` a `CNAME` to the apex), **DNS only** at Cloudflare, so that
-   GitHub can issue its certificate; then tick **Enforce HTTPS**.
+3. Repository settings → Pages → Custom domain: `openh1.com`. At the DNS
+   host, add the four apex `A` records of GitHub Pages and make `www` a
+   `CNAME` to the apex (not proxied, if the host is Cloudflare, so that
+   GitHub can issue its certificate); then tick **Enforce HTTPS**.
 4. Nothing else: the deployment needs no secret, and the `github-pages`
    environment appears with the first one (give it no required reviewer).
 

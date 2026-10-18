@@ -39,7 +39,7 @@ EXECUTABLE = "halo"
 SDL_LIBRARY = "libSDL3.0.dylib"
 ICON = "opence-icon"
 # what the web page and the README say of the project (port/web/site/index.html)
-COPYRIGHT = ("OpenCE is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
+COPYRIGHT = ("OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
              "Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft "
              "Corporation. No game data is included: you need your own copy of the game.")
 
@@ -52,7 +52,7 @@ def run(*command: str) -> None:
 def info_plist(bundle_id: str, build: int, minimum: str) -> dict:
     """the app's Info.plist. The version is the build's number (that of the
     release it is, HALO_BUILD_NUMBER; 0 for a local build), as the game
-    names itself ("OpenCE macOS | build <n>"). The games category and Game
+    names itself ("OpenH1 macOS | build <n>"). The games category and Game
     Mode's key make macOS turn Game Mode on while the game is fullscreen."""
     version = str(build)
     return {
@@ -82,9 +82,9 @@ def credits_html(build: int, flavor: str) -> str:
     (source/main/main.c)"""
     label = f"build {build} ({flavor})" if build > 0 else f"local build ({flavor})"
     return ("<html><body style=\"font: 11px -apple-system; text-align: center\">"
-            f"<p>OpenCE macOS | {label}</p>"
+            f"<p>OpenH1 macOS | {label}</p>"
             "<p>The Halo: Combat Evolved decompilation (Xbox build 01.01.14.2342), ported.<br>"
-            "<a href=\"https://github.com/OpenCommunityEdition/OpenCE\">github.com/OpenCommunityEdition/OpenCE</a></p>"
+            "<a href=\"https://github.com/OpenH1/OpenH1\">github.com/OpenH1/OpenH1</a></p>"
             "</body></html>\n")
 
 

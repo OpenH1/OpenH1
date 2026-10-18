@@ -95,9 +95,8 @@ MACOS_GUEST_DEFINES = ["-DHALO_GLES=1", "-DHALO_MACOS=1", "-DHALO_METAL", "-DHAL
 MACOS_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c", "xgpu_glsl.c", "gl_functions.c"]
 
 # the app's bundle identifier (configure.py --macos-bundle-id): the
-# project's GitHub organisation's pages, the reverse-DNS name of a domain it
-# has (as Flathub names apps without a domain of their own)
-MACOS_BUNDLE_ID = "io.github.opencommunityedition.opence"
+# reverse-DNS name of the project's domain, openh1.com
+MACOS_BUNDLE_ID = "com.openh1.openh1"
 
 # the host's frameworks: Metal and its layer (port/macos/host_metal.m,
 # xgpu_metal.m)

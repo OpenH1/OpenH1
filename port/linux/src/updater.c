@@ -92,7 +92,7 @@ flat, for the updaters of the releases before the tree */
 #define HALO_BUILD_FLAVOR "release"
 #endif
 
-#define UPDATE_REPOSITORY "OpenCommunityEdition/OpenCE"
+#define UPDATE_REPOSITORY "OpenH1/OpenH1"
 #ifdef _WIN32
 #define PATH_SEPARATOR "\\"
 #else
