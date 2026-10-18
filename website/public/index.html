@@ -3,290 +3,544 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>OpenH1: Halo: Combat Evolved, ported</title>
-<meta name="description" content="OpenH1 ports Halo: Combat Evolved from its decompilation to macOS, Windows, Linux, Android and VR, with online play, co-op, mods and Custom Edition maps.">
-<meta name="theme-color" content="#02060c">
+<title>OpenH1: Halo: Combat Evolved, native on Mac, PC, Linux, Android and VR</title>
+<meta name="description" content="OpenH1 is an unofficial fan port of Halo: Combat Evolved, rebuilt from its decompilation to run natively on macOS, Windows, Linux, Android and VR, with online play, co-op, mods and Custom Edition maps.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#fafaf7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#03070d" media="(prefers-color-scheme: dark)">
 <meta property="og:title" content="OpenH1">
-<meta property="og:description" content="Halo: Combat Evolved, ported from its decompilation to macOS, Windows, Linux, Android and VR.">
+<meta property="og:description" content="Halo: Combat Evolved, rebuilt from its decompilation to run natively on macOS, Windows, Linux, Android and VR.">
 <meta property="og:image" content="https://openh1.com/icon.png">
 <meta property="og:url" content="https://openh1.com/">
 <link rel="icon" href="favicon.png" sizes="32x32">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" href="fonts/Overpass-Latin.woff2" as="font" type="font/woff2" crossorigin>
 <style>
-/* the look of the game's menus (port/web/site/style.css): navy panels with
-   a blue edge, OpenCE (the menus' title font) for titles, Overpass for the
-   rest */
-@font-face { font-family: "OpenCE"; src: url("fonts/OpenCE-Regular.ttf") format("truetype"); font-display: swap; }
-@font-face { font-family: "Overpass"; font-weight: 750; src: url("fonts/Overpass-750.ttf") format("truetype"); font-display: swap; }
-@font-face { font-family: "Overpass"; font-weight: 900; src: url("fonts/Overpass-900.ttf") format("truetype"); font-display: swap; }
+/* Overpass is the open font the game's port draws its HUD and menu text
+   with (port/assets/fonts); these are its Latin web subsets. */
+@font-face { font-family: "Overpass"; font-weight: 400 900; font-display: swap; src: url("fonts/Overpass-Latin.woff2") format("woff2"); }
+@font-face { font-family: "Overpass Mono"; font-weight: 400 700; font-display: swap; src: url("fonts/OverpassMono-Latin.woff2") format("woff2"); }
 
+/* ---------- colours: light by default, the game's menu palette in dark */
 :root {
-  color-scheme: dark;
-  --ground: #02060c;
-  --navy: #002244;
-  --navy-deep: #000e23;
-  --edge: #2299ff;
-  --edge-bright: #36afff;
-  --edge-dim: #1d4f86;
-  --label: #2896ff;
-  --text: #ffffff;
-  --soft: #c9daf0;
-  --muted: #8ea6c4;
-  --glow: rgba(54, 175, 255, 0.45);
-  --title-font: "OpenCE", "Overpass", system-ui, sans-serif;
-  --body-font: "Overpass", system-ui, sans-serif;
+  color-scheme: light;
+  --bg: #fafaf7;
+  --surface: #ffffff;
+  --raise: #f1f2ee;
+  --ink: #12161c;
+  --muted: #556070;
+  --line: #e2e5e9;
+  --link: #1f6fd1;
+  --accent: #f5a524;
+  --accent-hover: #ffb43d;
+  --accent-ink: #1a1200;
+  --mark: #b86e00;
+  --glow: rgba(31, 111, 209, .10);
+  --grid: rgba(18, 22, 28, .045);
+  --shadow: 0 1px 2px rgba(18, 22, 28, .05), 0 12px 32px -12px rgba(11, 37, 69, .18);
+  --sans: "Overpass", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Overpass Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #03070d;
+    --surface: #0a1a2e;
+    --raise: #06111f;
+    --ink: #e9f2ff;
+    --muted: #8ea6c4;
+    --line: #17375c;
+    --link: #36afff;
+    --accent: #f2a93b;
+    --accent-hover: #ffbb55;
+    --accent-ink: #120b00;
+    --mark: #f2a93b;
+    --glow: rgba(54, 175, 255, .20);
+    --grid: rgba(54, 175, 255, .06);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 16px 40px -16px rgba(0, 0, 0, .6);
+  }
 }
 
 * { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 17px/1.6 var(--sans); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+img, video { max-width: 100%; display: block; }
+a { color: var(--link); text-underline-offset: .18em; }
+a:hover { text-decoration-thickness: 2px; }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 3px; border-radius: 4px; }
+code { font: .9em var(--mono); }
+.wrap { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+@media (min-width: 720px) { .wrap { padding: 0 32px; } }
+.skip { position: absolute; left: 16px; top: -60px; z-index: 20; padding: 10px 14px; background: var(--surface); border-radius: 8px; }
+.skip:focus { top: 12px; }
+[hidden] { display: none !important; }
 
-html { scroll-behavior: smooth; }
-
-body {
-  margin: 0;
-  background: var(--ground);
-  color: var(--text);
-  font: 750 17px/1.55 var(--body-font);
-  -webkit-font-smoothing: antialiased;
-}
-
-a { color: var(--edge-bright); }
-a:hover { color: var(--text); }
-
-.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+/* ---------- buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 48px; padding: 0 20px; border-radius: 10px; border: 1px solid transparent;
+  font: 700 16px/1 var(--sans); text-decoration: none; white-space: nowrap; transition: background-color .15s, border-color .15s; }
+.btn svg { width: 17px; height: 17px; flex: none; }
+.btn.primary { background: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { background: var(--accent-hover); }
+.btn.secondary { background: var(--surface); color: var(--ink); border-color: var(--line); }
+.btn.secondary:hover { border-color: var(--muted); }
+.btn.sm { min-height: 40px; padding: 0 14px; font-size: 15px; border-radius: 9px; }
 
 /* ---------- header */
-
-.top {
-  position: sticky; top: 0; z-index: 10;
-  background: rgba(2, 6, 12, 0.85);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--edge-dim);
-}
-.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
-.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
-.brand img { width: 36px; height: 36px; }
-/* the wordmark is in Overpass: the title font's 1 reads as an I */
-.brand span { font: 900 24px/1 var(--body-font); letter-spacing: 0.02em; }
-.top nav { display: flex; gap: 22px; }
-.top nav a { color: var(--soft); text-decoration: none; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; }
-.top nav a:hover { color: var(--text); }
+.top { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; gap: 16px; height: 64px; }
+/* The brand: text for now. When the logo is ready, see website/README.md
+   ("The logo"): one file, logo-mark.svg, goes in front of the wordmark. */
+.brand { display: inline-flex; align-items: center; gap: 10px; color: var(--ink); text-decoration: none; }
+.brand-mark { width: 28px; height: 28px; }
+.wordmark { font: 900 24px/1 var(--sans); letter-spacing: -.02em; }
+.wordmark span { color: var(--mark); }
+.top nav { display: none; gap: 26px; font-size: 15px; font-weight: 600; }
+.top nav a { color: var(--muted); text-decoration: none; }
+.top nav a:hover { color: var(--ink); }
+@media (min-width: 860px) { .top nav { display: flex; } }
 
 /* ---------- hero */
-
-.hero {
-  position: relative; overflow: hidden;
-  padding: 96px 0 88px;
+.hero { position: relative; overflow: hidden; padding: 48px 0 56px; border-bottom: 1px solid var(--line);
   background:
-    radial-gradient(ellipse 70% 60% at 50% 0%, rgba(34, 153, 255, 0.22), transparent 70%),
-    linear-gradient(180deg, var(--navy-deep), var(--ground));
-  border-bottom: 2px solid var(--edge-dim);
-  text-align: center;
+    radial-gradient(ellipse 70% 60% at 85% 0%, var(--glow), transparent 70%),
+    repeating-linear-gradient(0deg, var(--grid) 0 1px, transparent 1px 40px),
+    repeating-linear-gradient(90deg, var(--grid) 0 1px, transparent 1px 40px);
 }
-.hero img { width: 132px; height: 132px; filter: drop-shadow(0 0 28px var(--glow)); }
-.hero h1 {
-  margin: 18px 0 6px;
-  font: 900 clamp(56px, 11vw, 112px)/1 var(--body-font); letter-spacing: 0.01em;
-  text-shadow: 0 0 24px var(--glow);
+.hero-grid { display: grid; gap: 36px; align-items: center; }
+.eyebrow { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font: 600 13px/1.3 var(--mono); }
+.eyebrow::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
+.hero h1 { margin: 20px 0 0; font: 850 clamp(36px, 7.4vw, 64px)/1.03 var(--sans); letter-spacing: -.03em; max-width: 15ch; text-wrap: balance; }
+.lede { margin: 20px 0 0; color: var(--muted); font-size: clamp(18px, 2.2vw, 20px); max-width: 54ch; }
+.actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 28px; }
+.soon { margin: 14px 0 0; color: var(--muted); font-size: 15px; }
+.soon b { color: var(--ink); }
+.readout { margin: 0; padding: 0; list-style: none; display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+.readout li { background: var(--surface); padding: 18px 18px 16px; }
+.readout b { display: block; font: 850 40px/1 var(--sans); letter-spacing: -.02em; }
+.readout span { display: block; margin-top: 8px; color: var(--muted); font-size: 14px; line-height: 1.4; }
+.readout .label { font: 600 11px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+@media (min-width: 900px) {
+  .hero { padding: 88px 0 96px; }
+  .hero-grid { grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 56px; }
 }
-.hero .kicker { margin: 0; color: var(--label); letter-spacing: 0.18em; text-transform: uppercase; font-size: 15px; }
-.hero p.lede { max-width: 640px; margin: 22px auto 0; color: var(--soft); font-size: 19px; }
-
-.actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin-top: 34px; }
-.button {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 13px 26px;
-  font: 900 15px/1 var(--body-font); letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none;
-  color: var(--text);
-  background: linear-gradient(180deg, #0a3a6e, var(--navy));
-  border: 2px solid var(--edge);
-  box-shadow: 0 0 18px var(--glow);
-}
-.button:hover { color: var(--text); border-color: var(--edge-bright); box-shadow: 0 0 26px var(--glow); }
-.button.quiet { background: transparent; border-color: var(--edge-dim); box-shadow: none; color: var(--soft); cursor: default; }
-.button.quiet:hover { border-color: var(--edge-dim); color: var(--soft); box-shadow: none; }
+/* With a picture or clip (media.js fills #hero-media), it spans the hero
+   below the words. */
+.hero-media { margin-top: 48px; }
+.hero.has-media { padding-bottom: 64px; }
+/* on a phone the picture matters more than the numbers */
+@media (max-width: 899px) { .hero.has-media .readout { display: none; } .hero.has-media .hero-media { margin-top: 32px; } }
 
 /* ---------- sections */
+section.band { padding: 72px 0; border-bottom: 1px solid var(--line); scroll-margin-top: 64px; }
+@media (min-width: 900px) { section.band { padding: 104px 0; } }
+.kicker { margin: 0 0 10px; color: var(--mark); font: 700 13px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+h2 { margin: 0; font: 850 clamp(30px, 4.6vw, 46px)/1.08 var(--sans); letter-spacing: -.025em; max-width: 22ch; text-wrap: balance; }
+.sub { margin: 14px 0 40px; color: var(--muted); font-size: 18px; max-width: 62ch; }
 
-section { padding: 76px 0; }
-section + section { border-top: 1px solid rgba(29, 79, 134, 0.45); }
-h2 {
-  margin: 0 0 8px;
-  font-family: var(--title-font); font-weight: normal;
-  font-size: clamp(32px, 5vw, 44px); letter-spacing: 0.05em;
-}
-.sub { margin: 0 0 34px; color: var(--muted); max-width: 680px; }
+/* platforms */
+.platforms { margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line); }
+.platforms li { display: grid; gap: 4px 24px; padding: 18px 0; border-bottom: 1px solid var(--line); }
+.platforms h3 { margin: 0; font: 800 20px/1.3 var(--sans); }
+.platforms p { margin: 0; }
+.platforms .detail { color: var(--muted); font: 500 14px/1.5 var(--mono); }
+@media (min-width: 760px) { .platforms li { grid-template-columns: 170px 1fr minmax(0, .9fr); align-items: baseline; } }
 
-.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
-.panel {
-  padding: 22px 22px 20px;
-  background: linear-gradient(180deg, rgba(0, 34, 68, 0.75), rgba(0, 14, 35, 0.75));
-  border: 2px solid var(--edge-dim);
-}
-.panel h3 { margin: 0 0 6px; font: 900 15px/1.3 var(--body-font); letter-spacing: 0.1em; text-transform: uppercase; color: var(--label); }
-.panel p { margin: 0; color: var(--soft); font-size: 16px; }
+/* feature cards */
+.cards { display: grid; gap: 16px; }
+@media (min-width: 640px) { .cards { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 980px) { .cards { grid-template-columns: repeat(3, 1fr); } }
+.card { display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px; }
+.card .tag { color: var(--muted); font: 600 12px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.card h3 { margin: 12px 0 8px; font: 800 21px/1.25 var(--sans); letter-spacing: -.01em; }
+.card p { margin: 0 0 16px; color: var(--muted); font-size: 16px; }
+.card a { margin-top: auto; font-weight: 700; font-size: 15px; text-decoration: none; }
+.card a:hover { text-decoration: underline; }
 
-.platforms .panel h3 { color: var(--text); font-size: 18px; letter-spacing: 0.06em; }
-.platforms .panel .detail { margin-top: 8px; color: var(--muted); font-size: 14px; }
+/* VR */
+.split { display: grid; gap: 32px; }
+@media (min-width: 900px) { .split { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: 64px; align-items: start; } }
+.split .sub { margin-bottom: 20px; }
+.hands { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; counter-reset: hand; }
+.hands li { counter-increment: hand; display: grid; grid-template-columns: 30px 1fr; gap: 12px; align-items: start; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.hands li::before { content: counter(hand, decimal-leading-zero); color: var(--mark); font: 700 13px/1.9 var(--mono); }
+.hands b { font-weight: 800; }
+.hands span { color: var(--muted); }
 
-.need {
-  display: grid; gap: 24px; grid-template-columns: 1fr 1fr; align-items: start;
-}
-.need ol { margin: 0; padding-left: 22px; color: var(--soft); }
-.need li + li { margin-top: 8px; }
+/* game night */
+.steps { margin: 0; padding: 0; list-style: none; display: grid; gap: 16px; counter-reset: step; }
+@media (min-width: 900px) { .steps { grid-template-columns: repeat(3, 1fr); } }
+.steps li { counter-increment: step; position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 22px 22px 22px; }
+.steps li::before { content: counter(step); display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--accent); color: var(--accent-ink); font: 850 18px/1 var(--sans); margin-bottom: 14px; }
+.steps h3 { margin: 0 0 6px; font: 800 20px/1.25 var(--sans); }
+.steps p { margin: 0; color: var(--muted); font-size: 16px; }
+.invite { display: block; margin-top: 14px; padding: 10px 12px; border-radius: 8px; background: var(--raise); border: 1px dashed var(--line); font: 600 14px/1.3 var(--mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 28px 0 0; padding: 0; list-style: none; }
+.chips li { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); font-weight: 700; font-size: 15px; }
+.together { margin: 24px 0 0; color: var(--muted); max-width: 70ch; }
+.together b { color: var(--ink); }
 
-.credits p { color: var(--soft); max-width: 760px; }
+/* how it works */
+.points { display: grid; gap: 16px; margin-bottom: 32px; }
+@media (min-width: 900px) { .points { grid-template-columns: repeat(3, 1fr); } }
+.points div { border-top: 2px solid var(--accent); padding-top: 16px; }
+.points h3 { margin: 0 0 6px; font: 800 19px/1.3 var(--sans); }
+.points p { margin: 0; color: var(--muted); font-size: 16px; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+@media (min-width: 760px) { .stats { grid-template-columns: repeat(4, 1fr); } }
+.stats div { background: var(--surface); padding: 20px; }
+.stats b { display: block; font: 850 36px/1 var(--sans); letter-spacing: -.02em; }
+.stats span { display: block; margin-top: 8px; color: var(--muted); font-size: 14px; line-height: 1.45; }
 
-footer {
-  padding: 36px 0 48px;
-  border-top: 2px solid var(--edge-dim);
-  color: var(--muted); font-size: 14px;
-}
-footer .links { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 14px; }
+/* bring your own game */
+.byo { display: grid; gap: 28px; }
+@media (min-width: 900px) { .byo { grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; } }
+.byo .sub { margin-bottom: 0; }
+.byo ol { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; counter-reset: byo; }
+.byo li { counter-increment: byo; display: grid; grid-template-columns: 30px 1fr; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.byo li::before { content: counter(byo); color: var(--mark); font: 800 18px/1.4 var(--sans); }
 
-@media (max-width: 720px) {
-  .top nav { gap: 14px; }
-  .top nav a.optional { display: none; }
-  .hero { padding: 64px 0 60px; }
-  .hero img { width: 104px; height: 104px; }
-  section { padding: 56px 0; }
-  .need { grid-template-columns: 1fr; }
-}
+/* follow along */
+.follow { text-align: left; }
+.follow-grid { display: grid; gap: 16px; margin-top: 8px; }
+@media (min-width: 760px) { .follow-grid { grid-template-columns: 1fr 1fr; } }
+.follow .card p { margin-bottom: 18px; }
+.follow .card .btn { align-self: flex-start; margin-top: auto; font-size: 15px; }
+.star-line { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-top: 28px; padding: 20px 22px; border-radius: 14px; background: var(--raise); border: 1px solid var(--line); }
+.star-line p { margin: 0; flex: 1 1 280px; }
+
+/* credits and footer */
+.credits p { max-width: 70ch; color: var(--muted); }
+.credits p b { color: var(--ink); }
+footer { padding: 40px 0 56px; color: var(--muted); font-size: 14px; }
+footer .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+footer .wordmark { font-size: 20px; color: var(--ink); }
+footer nav { display: flex; flex-wrap: wrap; gap: 8px 20px; font-weight: 600; }
+footer p { margin: 0; max-width: 90ch; }
+
+/* ---------- media (filled by media.js from the list at the end of the page) */
+.media-stack { display: grid; gap: 40px; }
+.frame { position: relative; overflow: hidden; border-radius: 14px; border: 1px solid var(--line); background: var(--raise); box-shadow: var(--shadow); }
+.frame img, .frame video { width: 100%; height: 100%; object-fit: cover; }
+figure { margin: 0; }
+figcaption { margin-top: 12px; color: var(--muted); font-size: 15px; }
+
+/* before and after: drag, tap, or use the arrow keys */
+.compare .frame { touch-action: pan-y; cursor: ew-resize; user-select: none; -webkit-user-select: none; }
+.compare-before { position: absolute; inset: 0; clip-path: inset(0 calc(100% - var(--pos, 50%)) 0 0); }
+.compare-line { position: absolute; top: 0; bottom: 0; left: var(--pos, 50%); width: 2px; margin-left: -1px; background: #fff; box-shadow: 0 0 0 1px rgba(0, 0, 0, .25); pointer-events: none; }
+.compare-knob { position: absolute; top: 50%; left: var(--pos, 50%); width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: #fff; color: #12161c; display: grid; place-items: center; box-shadow: 0 2px 10px rgba(0, 0, 0, .35); pointer-events: none; }
+.compare-knob svg { width: 22px; height: 22px; }
+.compare-tag { position: absolute; top: 12px; padding: 5px 10px; border-radius: 6px; background: rgba(3, 7, 13, .72); color: #fff; font: 700 12px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; pointer-events: none; }
+.compare-tag.before { left: 12px; }
+.compare-tag.after { right: 12px; }
+/* the range input carries the keyboard and screen readers; the frame takes
+   the pointer */
+.compare-range { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; pointer-events: none; }
+.compare .frame:has(.compare-range:focus-visible) { outline: 2px solid var(--link); outline-offset: 3px; }
+
+/* looping clip */
+.clip-toggle { position: absolute; right: 12px; bottom: 12px; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 0; border-radius: 999px; background: rgba(3, 7, 13, .72); color: #fff; font: 700 14px/1 var(--sans); cursor: pointer; }
+.clip-toggle svg { width: 14px; height: 14px; }
+
+/* gallery */
+.gallery { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; grid-template-columns: 1fr; }
+@media (min-width: 560px) { .gallery { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 980px) { .gallery { grid-template-columns: repeat(3, 1fr); } }
+.gallery a { display: block; text-decoration: none; color: inherit; }
+.gallery .frame { aspect-ratio: 16 / 9; }
+.gallery a:hover .frame { border-color: var(--muted); }
+.gallery figcaption { font-size: 14px; margin-top: 8px; }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="#"><img src="icon.png" alt="" width="36" height="36"><span>OpenH1</span></a>
+    <a class="brand" href="#main" aria-label="OpenH1, top of page">
+      <!-- LOGO: see website/README.md, "The logo".
+      <img class="brand-mark" src="logo-mark.svg" alt="" width="28" height="28">
+      -->
+      <span class="wordmark">Open<span>H1</span></span>
+    </a>
     <nav aria-label="Sections">
-      <a href="#platforms" class="optional">Platforms</a>
-      <a href="#features" class="optional">Features</a>
-      <a href="https://github.com/OpenH1/OpenH1">GitHub</a>
+      <a href="#platforms">Platforms</a>
+      <a href="#features">Features</a>
+      <a href="#multiplayer">Multiplayer</a>
+      <a href="#vr">VR</a>
+      <a href="#how">How it works</a>
     </nav>
+    <a class="btn secondary sm" href="https://github.com/OpenH1/OpenH1"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .6l2.3 4.6 5.1.8-3.7 3.6.9 5.1L8 12.3l-4.6 2.4.9-5.1L.6 6l5.1-.8z"/></svg>Star</a>
   </div>
 </header>
 
-<main>
-  <div class="hero">
-    <div class="wrap">
-      <img src="icon.png" alt="" width="132" height="132">
-      <h1>OpenH1</h1>
-      <p class="kicker">Halo: Combat Evolved, ported</p>
-      <p class="lede">The original Xbox game, rebuilt from its decompilation to run natively on
-        macOS, Windows, Linux, Android and in VR, with online play, co-op, mods and Custom Edition maps.</p>
-      <div class="actions">
-        <a class="button" href="https://github.com/OpenH1/OpenH1">View on GitHub</a>
-        <span class="button quiet" aria-disabled="true">Downloads coming soon</span>
-      </div>
-    </div>
-  </div>
+<main id="main">
 
-  <section id="platforms" class="platforms">
+  <section class="hero" id="top" aria-labelledby="hero-title">
     <div class="wrap">
-      <h2>Everywhere you play</h2>
-      <p class="sub">One port of the game, built for each system with its own renderer.</p>
-      <div class="grid">
-        <div class="panel">
-          <h3>macOS</h3>
-          <p>A Mac app with a native Metal renderer.</p>
-          <p class="detail">Apple silicon, macOS 14.4 or later</p>
+      <div class="hero-grid">
+        <div>
+          <p class="eyebrow">Unofficial fan port · Built from the decompilation</p>
+          <h1 id="hero-title">Halo: Combat Evolved, native on Mac, PC, Linux, Android and VR.</h1>
+          <p class="lede">The 2001 Xbox game, rebuilt from its decompilation to run natively on the machines you play on today, with online play that needs no servers, co-op, mods and a sharper picture. Bring your own disc.</p>
+          <div class="actions">
+            <a class="btn primary" href="https://github.com/OpenH1/OpenH1"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .6l2.3 4.6 5.1.8-3.7 3.6.9 5.1L8 12.3l-4.6 2.4.9-5.1L.6 6l5.1-.8z"/></svg>Star on GitHub</a>
+            <a class="btn secondary" href="#follow">Get release alerts</a>
+          </div>
+          <p class="soon"><b>Downloads coming soon.</b> A release alert tells you the day they open.</p>
         </div>
-        <div class="panel">
-          <h3>Windows</h3>
-          <p>Runs as a regular Windows program.</p>
-          <p class="detail">Keyboard and mouse or a controller</p>
-        </div>
-        <div class="panel">
-          <h3>Linux</h3>
-          <p>A portable folder that also suits package managers.</p>
-          <p class="detail">x86, x86-64 and 64-bit ARM</p>
-        </div>
-        <div class="panel">
-          <h3>Android</h3>
-          <p>Play with touch controls or a controller.</p>
-          <p class="detail">Phones and tablets</p>
-        </div>
-        <div class="panel">
-          <h3>VR</h3>
-          <p>Play in a headset, with waypoints drawn over what they mark.</p>
-          <p class="detail">Linux with OpenXR: SteamVR or Monado</p>
-        </div>
+        <ul class="readout" aria-label="OpenH1 in numbers">
+          <li><p class="label">Platforms</p><b>6</b><span>each with a native build</span></li>
+          <li><p class="label">Players</p><b>128</b><span>in one game</span></li>
+          <li><p class="label">Split screen</p><b>4</b><span>players on each machine</span></li>
+          <li><p class="label">Servers</p><b>0</b><span>to set up for online play</span></li>
+        </ul>
       </div>
+      <!-- Filled by media.js when the media list names a hero item. -->
+      <div class="hero-media" id="hero-media" hidden></div>
     </div>
   </section>
 
-  <section id="features">
+  <!-- Shown by media.js once the media list has a before/after pair or a clip. -->
+  <section class="band" id="see" aria-labelledby="see-title" hidden>
     <div class="wrap">
-      <h2>More than the Xbox had</h2>
-      <p class="sub">The 2001 game as it played on the Xbox, plus what a modern port should have.</p>
-      <div class="grid">
-        <div class="panel">
-          <h3>Online play</h3>
-          <p>Invite friends over the internet or find a game in the server browser. No servers to set up.</p>
-        </div>
-        <div class="panel">
-          <h3>Co-op</h3>
-          <p>Play the campaign together, on a local network or online.</p>
-        </div>
-        <div class="panel">
-          <h3>Custom Edition maps</h3>
-          <p>Play the PC community's maps. A host sends a missing map to players as they join.</p>
-        </div>
-        <div class="panel">
-          <h3>Mods</h3>
-          <p>Drop mods in a folder, then order and switch them in the game's own Mods menu.</p>
-        </div>
-        <div class="panel">
+      <p class="kicker">See the difference</p>
+      <h2 id="see-title">The game you remember, drawn the way you remember it</h2>
+      <p class="sub" id="see-sub">Drag across each picture, or focus it and use the arrow keys, to compare.</p>
+      <div class="media-stack" id="see-list"></div>
+    </div>
+  </section>
+
+  <section class="band" id="platforms" aria-labelledby="platforms-title">
+    <div class="wrap">
+      <p class="kicker">Platforms</p>
+      <h2 id="platforms-title">Native on every machine you play on</h2>
+      <p class="sub">One port of the game, built for each system. Keyboard and mouse, controllers, touch or your own two hands.</p>
+      <ul class="platforms">
+        <li><h3>macOS</h3><p>A Mac app with its own Metal renderer.</p><p class="detail">Apple silicon · macOS 14.4 or later</p></li>
+        <li><h3>Windows</h3><p>A regular Windows program that keeps itself up to date.</p><p class="detail">Keyboard and mouse, or a controller</p></li>
+        <li><h3>Linux</h3><p>A portable folder that suits package managers too, and updates itself.</p><p class="detail">x86 · x86-64 · 64-bit ARM</p></li>
+        <li><h3>Steam Deck</h3><p>Fills the screen at its own shape, with Steam Input.</p><p class="detail">16:10 · up to 90 Hz on the OLED model</p></li>
+        <li><h3>Android</h3><p>Touch controls with gyro aiming, or a controller. Drawn with Vulkan.</p><p class="detail">Android 9 or later · 64-bit</p></li>
+        <li><h3>VR</h3><p>Play it in an OpenXR headset, drawn with Vulkan.</p><p class="detail">Steam Frame · SteamVR on Linux · Monado</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="band" id="features" aria-labelledby="features-title">
+    <div class="wrap">
+      <p class="kicker">Features</p>
+      <h2 id="features-title">More than the Xbox ever had</h2>
+      <p class="sub">The 2001 game as it played on the Xbox, with what a modern port should have.</p>
+      <div class="cards">
+        <article class="card">
+          <span class="tag">Online</span>
+          <h3>Online play, no servers to set up</h3>
+          <p>Host a game and send the invite link, or find one in the server browser.</p>
+          <a href="https://github.com/OpenH1/OpenH1/blob/master/port/linux/README.md#internet-play">How internet play works <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="card">
+          <span class="tag">Co-op</span>
+          <h3>The campaign, together</h3>
+          <p>Play the campaign online with friends. Each squad of enemies grows as more players join, and the host sets friendly fire.</p>
+          <a href="https://github.com/OpenH1/OpenH1/blob/master/port/linux/README.md#menus">Co-op in the menus <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="card">
+          <span class="tag">Maps</span>
+          <h3>Custom Edition maps that share themselves</h3>
+          <p>Play the PC community's maps. Join a game on a map you don't have and it downloads from the other players.</p>
+          <a href="https://github.com/OpenH1/OpenH1/blob/master/port/linux/README.md#map-sharing">Map sharing <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="card">
+          <span class="tag">Mods</span>
+          <h3>Mods, from the main menu</h3>
+          <p>Texture, sound, text and model packs go in a folder. Switch them on and set their order in the game's Mods menu.</p>
+          <a href="https://github.com/OpenH1/OpenH1/blob/master/docs/mods.md">Making and using mods <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="card">
+          <span class="tag">Chat</span>
           <h3>Voice and text chat</h3>
-          <p>Talk or type in network games, with a streamer mode that hides offensive words.</p>
-        </div>
-        <div class="panel">
-          <h3>Sharper picture</h3>
-          <p>Any resolution, a high-resolution HUD and text, anti-aliasing and better lighting.</p>
-        </div>
+          <p>Push to talk or open mic, with nearby players heard from where they stand. Streamer mode hides offensive words.</p>
+          <a href="https://github.com/OpenH1/OpenH1/blob/master/port/linux/README.md#voice-chat">Voice chat <span aria-hidden="true">→</span></a>
+        </article>
+        <article class="card">
+          <span class="tag">Picture</span>
+          <h3>Sharper than it ever was</h3>
+          <p>Any resolution, a frame for each refresh of your display, a field of view up to 150°, a high-res HUD and text, anti-aliasing and enhanced dynamic lights.</p>
+          <a href="https://github.com/OpenH1/OpenH1/blob/master/port/linux/README.md#frame-rate">Frame rate and more <span aria-hidden="true">→</span></a>
+        </article>
       </div>
     </div>
   </section>
 
-  <section id="start">
-    <div class="wrap need">
+  <section class="band" id="multiplayer" aria-labelledby="multiplayer-title">
+    <div class="wrap">
+      <p class="kicker">Multiplayer</p>
+      <h2 id="multiplayer-title">How game night works</h2>
+      <p class="sub">System link, without the cables. Nobody has to set up a server.</p>
+      <ol class="steps">
+        <li>
+          <h3>Host a game</h3>
+          <p>Choose Create Game, then Internet. Keep it public to list it in the server browser, or make it private for friends with the link.</p>
+        </li>
+        <li>
+          <h3>Send the link</h3>
+          <p>The game puts an invite link on your clipboard. Paste it into any chat.</p>
+          <span class="invite" aria-label="An invite link starts with halo://join/">halo://join/3f9a0c…e71b</span>
+        </li>
+        <li>
+          <h3>Everyone's in</h3>
+          <p>Friends open the link and join. Any Custom Edition map they're missing downloads from the players in the game.</p>
+        </li>
+      </ol>
+      <ul class="chips" aria-label="Multiplayer features">
+        <li>Co-op campaign</li>
+        <li>Up to 128 players</li>
+        <li>4 split screen on each machine</li>
+        <li>Voice and text chat</li>
+        <li>Server browser</li>
+        <li>Streamer mode</li>
+      </ul>
+      <p class="together"><b>Everyone plays together.</b> Every build runs the same netcode, so players on Mac, Windows, Linux, Android and VR join the same games, and so do players of OpenCE, the community port OpenH1 grew from.</p>
+    </div>
+  </section>
+
+  <section class="band" id="vr" aria-labelledby="vr-title">
+    <div class="wrap split">
       <div>
-        <h2>Bring your own game</h2>
-        <p class="sub" style="margin-bottom:0">OpenH1 includes none of the game's data. You need your own Xbox disc
-          image of Halo: Combat Evolved, and any version works.</p>
+        <p class="kicker">VR</p>
+        <h2 id="vr-title">Step inside it, and do it by hand</h2>
+        <p class="sub">Made on a Steam Frame. The game plays in an OpenXR headset in stereo, with your head tracked, and your hands do what the buttons did.</p>
+        <a href="https://github.com/OpenH1/OpenH1/blob/master/port/linux/README.md#vr">Everything VR can do <span aria-hidden="true">→</span></a>
       </div>
-      <ol>
-        <li>Get OpenH1 for your system. Builds are coming soon. Until then, build it from the
-          <a href="https://github.com/OpenH1/OpenH1">source on GitHub</a>.</li>
-        <li>Start the game and choose your disc image (<code>.iso</code> or <code>.xiso</code>) when it asks.</li>
-        <li>The game copies out its maps once, then you're in.</li>
+      <ol class="hands">
+        <li><p style="margin:0"><b>Reload by hand.</b> <span>Take a magazine from your hip and push it in.</span></p></li>
+        <li><p style="margin:0"><b>Draw from holsters.</b> <span>Reach over your shoulder or to your hip for the weapon carried there.</span></p></li>
+        <li><p style="margin:0"><b>Throw grenades.</b> <span>They land where you threw them, as hard as you threw.</span></p></li>
+        <li><p style="margin:0"><b>Raise a scope to your eye.</b> <span>Look through the sniper rifle's or the pistol's, magnified.</span></p></li>
+        <li><p style="margin:0"><b>Drive with your hands.</b> <span>Turn a Warthog's wheel and a Ghost's handlebars.</span></p></li>
+        <li><p style="margin:0"><b>Flip it back over.</b> <span>Lift an overturned vehicle with both hands.</span></p></li>
       </ol>
     </div>
   </section>
 
-  <section class="credits">
+  <section class="band" id="how" aria-labelledby="how-title">
     <div class="wrap">
-      <h2>Built on the community's work</h2>
-      <p>OpenH1 is a fork of <a href="https://github.com/OpenCommunityEdition/OpenCE">OpenCE</a>, the community's
-        port, and stays compatible with it online. Both start from the decompilation of
-        <a href="https://github.com/bnunu/halo-1">bnunu/halo-1</a>, a fork of
-        <a href="https://github.com/punpckhdq/halo">punpckhdq/halo</a>. Thank you to everyone who made them.</p>
+      <p class="kicker">How it works</p>
+      <h2 id="how-title">Built from the game's own code</h2>
+      <p class="sub">OpenH1 compiles the decompiled C source of the Xbox game with few, marked changes, then supplies what the Xbox did: graphics, sound, input, files and networking. Each system gets its own renderer: Metal on the Mac, Vulkan on Android and in VR.</p>
+      <div class="points">
+        <div>
+          <h3>The same results on every machine</h3>
+          <p>Every build does the game's maths the same way, with one shared maths library, so different machines stay in step in a network game.</p>
+        </div>
+        <div>
+          <h3>A new netcode</h3>
+          <p>Each machine moves its own player at once, and the host decides the rest of the game. <a href="https://github.com/OpenH1/OpenH1/blob/master/port/linux/NETCODE.md">Read how</a>.</p>
+        </div>
+        <div>
+          <h3>Smooth at any refresh rate</h3>
+          <p>The world runs at 30 ticks a second, as on the Xbox. OpenH1 draws the frames between ticks at your display's rate: 60, 120 or 240 Hz.</p>
+        </div>
+      </div>
+      <div class="stats">
+        <div><b>466</b><span>C files of the decompiled game</span></div>
+        <div><b>30 Hz</b><span>world, as on the Xbox; frames at your display's rate</span></div>
+        <div><b>150°</b><span>widest field of view</span></div>
+        <div><b>0</b><span>game files included</span></div>
+      </div>
     </div>
   </section>
+
+  <!-- Shown by media.js once the media list has gallery pictures. -->
+  <section class="band" id="gallery" aria-labelledby="gallery-title" hidden>
+    <div class="wrap">
+      <p class="kicker">Gallery</p>
+      <h2 id="gallery-title">In the field</h2>
+      <p class="sub">Select a picture to see it full size.</p>
+      <ul class="gallery" id="gallery-list"></ul>
+    </div>
+  </section>
+
+  <section class="band" id="start" aria-labelledby="start-title">
+    <div class="wrap byo">
+      <div>
+        <p class="kicker">Your copy</p>
+        <h2 id="start-title">Bring your own game</h2>
+        <p class="sub">OpenH1 includes none of the game's data. You need your own Xbox disc image of Halo: Combat Evolved. Any version works, and players of the European version play with players of the North American one.</p>
+      </div>
+      <ol>
+        <li><p style="margin:0">Get OpenH1 for your system. Downloads are coming soon; until then, you can <a href="https://github.com/OpenH1/OpenH1#build-the-game">build it from the source</a>.</p></li>
+        <li><p style="margin:0">Start the game and choose your disc image (<code>.iso</code> or <code>.xiso</code>) when it asks.</p></li>
+        <li><p style="margin:0">The game copies out its maps once, then you're in.</p></li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="band follow" id="follow" aria-labelledby="follow-title">
+    <div class="wrap">
+      <p class="kicker">Follow along</p>
+      <h2 id="follow-title">Hear the day downloads open</h2>
+      <p class="sub">Two ways to get a release alert. Neither needs a sign-up.</p>
+      <div class="follow-grid">
+        <article class="card">
+          <span class="tag">GitHub</span>
+          <h3>Watch for releases</h3>
+          <p>On the project's GitHub page, choose <b>Watch</b>, then <b>Custom</b>, tick <b>Releases</b> and choose <b>Apply</b>. GitHub tells you about each new release.</p>
+          <a class="btn secondary" href="https://github.com/OpenH1/OpenH1">Open OpenH1 on GitHub</a>
+        </article>
+        <article class="card">
+          <span class="tag">Feed</span>
+          <h3>Subscribe to the releases feed</h3>
+          <p>Add the feed to any feed reader to see each release as it comes out.</p>
+          <a class="btn secondary" href="https://github.com/OpenH1/OpenH1/releases.atom">Releases feed</a>
+        </article>
+      </div>
+      <div class="star-line">
+        <p><b>Star the project, too.</b> Stars help other players find OpenH1.</p>
+        <a class="btn primary" href="https://github.com/OpenH1/OpenH1"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .6l2.3 4.6 5.1.8-3.7 3.6.9 5.1L8 12.3l-4.6 2.4.9-5.1L.6 6l5.1-.8z"/></svg>Star on GitHub</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="band credits" id="credits" aria-labelledby="credits-title">
+    <div class="wrap">
+      <p class="kicker">Credits</p>
+      <h2 id="credits-title">Built on the community's work</h2>
+      <p>OpenH1 is a fork of <a href="https://github.com/OpenCommunityEdition/OpenCE">OpenCE</a>, the community's port, and stays compatible with it online. Both start from the decompilation of <a href="https://github.com/bnunu/halo-1">bnunu/halo-1</a>, a fork of <a href="https://github.com/punpckhdq/halo">punpckhdq/halo</a>. Thank you to everyone who made them.</p>
+      <p><b>Found a problem, or want to help?</b> <a href="https://github.com/OpenH1/OpenH1/issues">Open an issue on GitHub</a>.</p>
+    </div>
+  </section>
+
 </main>
 
 <footer>
   <div class="wrap">
-    <div class="links">
-      <a href="https://github.com/OpenH1/OpenH1">Source</a>
-      <a href="https://github.com/OpenH1/OpenH1/issues">Report a problem</a>
-      <a href="fonts/OpenCE-OFL.txt">Font licences</a>
+    <div class="row">
+      <span class="wordmark">Open<span>H1</span></span>
+      <nav aria-label="Footer">
+        <a href="https://github.com/OpenH1/OpenH1">Source</a>
+        <a href="https://github.com/OpenH1/OpenH1/issues">Report a problem</a>
+        <a href="https://github.com/OpenH1/OpenH1/releases.atom">Releases feed</a>
+        <a href="fonts/Overpass-OFL.txt">Font licence</a>
+      </nav>
     </div>
-    <p>OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox Game Studios,
-      Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft Corporation;
-      Halo © Microsoft Corporation. No game data is included: you need your own copy of the game.</p>
+    <p>OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft Corporation; Halo © Microsoft Corporation. No game data is included: you need your own copy of the game.</p>
   </div>
 </footer>
 
+<!-- MEDIA LIST: pictures and clips for the page. Empty lists keep their
+     sections hidden. How to add a before/after pair, a clip or a gallery
+     picture: website/README.md, "Pictures and clips". -->
+<script type="application/json" id="media-data">
+{
+  "hero": "",
+  "compare": [],
+  "video": [],
+  "gallery": []
+}
+</script>
+<script src="media.js" defer></script>
 </body>
 </html>
