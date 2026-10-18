@@ -50,10 +50,11 @@ port/linux/README.md). `HALO_MAPS` names it.
 
 ```sh
 docker run --rm -u $(id -u):$(id -g) -v $PWD:/src -w /src halo-arm64-build \
-	sh -c 'python3 configure.py --vr && ninja linux_arm64'
+	sh -c 'python3 configure.py --vr && ninja linux_vulkan'
 ```
 
-The game is `build/linux_arm64/halo`.
+The game is `build/linux_vulkan/halo`: on 64-bit ARM the VR build is the
+Vulkan one (`ninja linux_arm64` has no VR mode).
 
 ## Run
 
@@ -97,11 +98,10 @@ Runs of 5 at once are fine on a DGX Spark.
 physical crouching, death and a cinematic on the stock maps. Each case must
 reach its expected events in the log, capture an eye image, return zero and
 have no EXCEPTION. Vulkan validation messages and reported pipeline preparation
-misses also fail the case. It uses the same `vr_run.sh` with either renderer:
+misses also fail the case. It uses `vr_run.sh`:
 
 ```sh
 python3 -m pip install Pillow
-python3 tools/vr_test/scenarios.py --game build/linux_arm64 --maps ~/maps --out /tmp/vr-gl-evidence
 python3 tools/vr_test/scenarios.py --game build/linux_vulkan --maps ~/maps --out /tmp/vr-vulkan-evidence
 ```
 

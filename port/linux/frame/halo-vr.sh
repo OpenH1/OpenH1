@@ -6,13 +6,9 @@
 #
 # The environment, as Steam gives it to the game:
 #
-# - MESA_GL_VERSION_OVERRIDE, MESA_GLSL_VERSION_OVERRIDE: Steam starts its
-#   games with Mesa capped at GL 4.3 (and GLSL 430), where the GL 4.5
-#   context the VR build's renderer asks for fails (EGL_BAD_MATCH). The
-#   game removes both itself as it starts (port/linux/host/host_main.c),
-#   so they need nothing here.
-# - mesa_glthread: Mesa's GL thread, which the game asks for (true) unless
-#   it is set.
+# - The game draws with Vulkan (Mesa's Turnip driver for the Frame's
+#   Adreno), which Steam's OpenGL caps (MESA_GL_VERSION_OVERRIDE) do not
+#   touch.
 # - XR_RUNTIME_JSON: an OpenXR runtime's manifest, to use instead of the
 #   active one ($XDG_CONFIG_HOME/openxr/1/active_runtime.json, SteamVR's
 #   on the Frame). Unset: the active runtime.
