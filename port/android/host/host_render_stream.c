@@ -887,6 +887,13 @@ void host_render_stream_set_backend(const struct host_render_backend *backend)
 	render_backend = backend;
 }
 
+void host_render_stream_gpu_completed(void)
+{
+	pthread_mutex_lock(&render.lock);
+	pthread_cond_signal(&render.work);
+	pthread_mutex_unlock(&render.lock);
+}
+
 /* (render.lock held) a fence over what has been played, unless there is
 nothing new */
 static void fence_push(void)
@@ -950,6 +957,8 @@ int host_render_stream_playing(void)
 
 static void *render_thread(void *argument)
 {
+	const struct host_render_backend *backend = render_backend;
+
 	(void)argument;
 	pthread_mutex_lock(&render.lock);
 	for (;;)
@@ -979,6 +988,16 @@ static void *render_thread(void *argument)
 			render.call = NULL;
 			render.calls_run++;
 			pthread_cond_broadcast(&render.done);
+			continue;
+		}
+		/* Release completed work before playing more. While the GPU is busy,
+		keep accepting records instead of blocking in the oldest fence's wait.
+		The completion notification takes render.lock, so it cannot be lost
+		between this query and the condition wait below. */
+		if (render.fence_count && backend->fence_ready &&
+			backend->fence_ready(backend->context, render.fences[render.fence_first].fence))
+		{
+			fence_retire();
 			continue;
 		}
 		if (render.decoded != render.committed)
@@ -1029,9 +1048,10 @@ static void *render_thread(void *argument)
 			fence_push();
 			continue;
 		}
-		else if (render.fence_count)
+		else if (render.fence_count && (!backend->fence_ready || render.stopping))
 		{
-			/* nothing to play: the GPU's oldest work waited for */
+			/* Drain at shutdown; backends without completion notifications
+			still wait here when there is nothing to play. */
 			fence_retire();
 			continue;
 		}

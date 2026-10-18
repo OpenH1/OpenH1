@@ -105,6 +105,10 @@ uint32_t host_memory_watch_serial(void)
 }
 
 #ifdef TEST_STREAM
+void host_render_stream_gpu_completed(void)
+{
+}
+
 void host_render_stream_set_backend(const struct host_render_backend *backend)
 {
 	(void)backend;

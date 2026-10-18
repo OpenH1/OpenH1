@@ -372,7 +372,8 @@ static struct
 	pthread_cond_t changed;
 	pthread_t thread;
 	BOOL stopping;
-	uint64_t fences_made, fences_done;
+	BOOL gpu_held;
+	uint64_t fences_made, fences_done, fence_checked;
 	unsigned gpu_microseconds;
 	struct check pending[CHECKS];
 	uint32_t pending_count;
@@ -480,7 +481,7 @@ static void *gpu_thread(void *argument)
 	pthread_mutex_lock(&backend_state.lock);
 	while (!backend_state.stopping)
 	{
-		if (backend_state.fences_done < backend_state.fences_made)
+		if (!backend_state.gpu_held && backend_state.fences_done < backend_state.fences_made)
 		{
 			uint64_t fence = backend_state.fences_done + 1;
 			uint32_t index;
@@ -500,6 +501,9 @@ static void *gpu_thread(void *argument)
 			backend_state.fence_checks[fence % 256].checks = NULL;
 			backend_state.fences_done = fence;
 			pthread_cond_broadcast(&backend_state.changed);
+			pthread_mutex_unlock(&backend_state.lock);
+			host_render_stream_gpu_completed();
+			pthread_mutex_lock(&backend_state.lock);
 			continue;
 		}
 		pthread_cond_wait(&backend_state.changed, &backend_state.lock);
@@ -541,9 +545,24 @@ static void test_wait(void *context, uint64_t fence)
 {
 	(void)context;
 	pthread_mutex_lock(&backend_state.lock);
+	backend_state.fence_checked = fence;
+	pthread_cond_broadcast(&backend_state.changed);
 	while (backend_state.fences_done < fence)
 		pthread_cond_wait(&backend_state.changed, &backend_state.lock);
 	pthread_mutex_unlock(&backend_state.lock);
+}
+
+static int test_fence_ready(void *context, uint64_t fence)
+{
+	int ready;
+
+	(void)context;
+	pthread_mutex_lock(&backend_state.lock);
+	backend_state.fence_checked = fence;
+	ready = backend_state.fences_done >= fence;
+	pthread_cond_broadcast(&backend_state.changed);
+	pthread_mutex_unlock(&backend_state.lock);
+	return ready;
 }
 
 static void test_initialize(void *context, struct xgpu_stream_capabilities *capabilities)
@@ -1348,6 +1367,75 @@ static void stream_end(const char *what)
 	CHECK(backend_state.check_failures == 0);
 }
 
+/* Bounded waits let a stalled render thread fail the test before the GPU
+is released, instead of hanging the test process. */
+static int wait_for_backend_counter(const uint64_t *counter, uint64_t target)
+{
+	struct timespec until;
+	int reached;
+
+	clock_gettime(CLOCK_REALTIME, &until);
+	until.tv_sec += 2;
+	pthread_mutex_lock(&backend_state.lock);
+	while (*counter < target)
+		if (pthread_cond_timedwait(&backend_state.changed, &backend_state.lock, &until))
+			break;
+	reached = *counter >= target;
+	pthread_mutex_unlock(&backend_state.lock);
+	return reached;
+}
+
+/* New records must be played while an earlier frame is still on the GPU.
+Completion alone must then release the ring, without a new submission. */
+static void test_gpu_overlap(void)
+{
+	const struct xgpu_stream_ring *ring;
+	struct timespec until, now;
+	uint64_t first;
+	uint32_t released;
+
+	stream_begin(64u << 10, 8, 0);
+	ring = xgpu_stream_encode_ring();
+	host_render_stream_wait(ring->committed);
+	released = __atomic_load_n(&ring->released, __ATOMIC_ACQUIRE);
+	pthread_mutex_lock(&backend_state.lock);
+	backend_state.gpu_held = TRUE;
+	first = backend_state.fences_made + 1;
+	pthread_mutex_unlock(&backend_state.lock);
+
+	xgpu_backend_frame_end();
+	text_printf(&expected, "frame end\n");
+	CHECK(wait_for_backend_counter(&backend_state.fence_checked, first));
+	/* The render thread has reached an idle queue with an unfinished fence. */
+	xgpu_backend_invalidate();
+	text_printf(&expected, "invalidate\n");
+	xgpu_backend_frame_end();
+	text_printf(&expected, "frame end\n");
+	CHECK(wait_for_backend_counter(&backend_state.fences_made, first + 1));
+	CHECK(__atomic_load_n(&ring->frames_retired, __ATOMIC_ACQUIRE) == 0);
+	CHECK(__atomic_load_n(&ring->released, __ATOMIC_ACQUIRE) == released);
+
+	pthread_mutex_lock(&backend_state.lock);
+	CHECK(backend_state.fences_done == first - 1);
+	backend_state.gpu_held = FALSE;
+	pthread_cond_broadcast(&backend_state.changed);
+	pthread_mutex_unlock(&backend_state.lock);
+	/* Do not wake the render thread from the guest: only GPU completion
+	can retire these frames while the stream is idle. */
+	clock_gettime(CLOCK_MONOTONIC, &until);
+	until.tv_sec += 2;
+	while (__atomic_load_n(&ring->frames_retired, __ATOMIC_ACQUIRE) < 2)
+	{
+		clock_gettime(CLOCK_MONOTONIC, &now);
+		if (now.tv_sec > until.tv_sec || (now.tv_sec == until.tv_sec && now.tv_nsec >= until.tv_nsec))
+			break;
+		usleep(1000);
+	}
+	CHECK(__atomic_load_n(&ring->frames_retired, __ATOMIC_ACQUIRE) == 2);
+	CHECK(__atomic_load_n(&ring->released, __ATOMIC_ACQUIRE) == ring->committed);
+	stream_end("GPU overlap and idle retirement");
+}
+
 /* The backend must own the inline picture before the synchronous call returns. */
 static void test_loading_art_transfer(void)
 {
@@ -1794,6 +1882,8 @@ static void test_malformed(void)
 
 int main(void)
 {
+	struct host_render_backend asynchronous_backend = test_backend;
+
 	window_make();
 	host_render_stream_set_backend(&test_backend);
 	pthread_create(&backend_state.thread, NULL, gpu_thread, NULL);
@@ -1807,6 +1897,14 @@ int main(void)
 	test_ring_full(1);
 	test_frames_in_flight();
 	test_loading_art_transfer();
+	test_loading_lifecycle();
+
+	asynchronous_backend.fence_ready = test_fence_ready;
+	host_render_stream_set_backend(&asynchronous_backend);
+	test_gpu_overlap();
+	test_ring_full(2);
+	test_ring_full(1);
+	test_frames_in_flight();
 	test_loading_lifecycle();
 
 	pthread_mutex_lock(&backend_state.lock);

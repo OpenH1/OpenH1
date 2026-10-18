@@ -39,6 +39,7 @@ Ranges that cannot be wrapped are copied into the upload ring.
 #define host_page_size host_page_size_of_guest_memory
 #include "host.h"
 #undef host_page_size
+#include "host_render_stream.h"
 #include "xgpu_metal_internal.h"
 #include "xgpu_metal_pipeline.h"
 #include "xgpu_metal_combiner.h"
@@ -371,6 +372,7 @@ static void completed_update(uint64_t serial)
 		metal.completed = serial;
 	pthread_cond_broadcast(&metal.completed_condition);
 	pthread_mutex_unlock(&metal.completed_lock);
+	host_render_stream_gpu_completed();
 }
 
 uint64_t xgpu_metal_frame_completed(void)

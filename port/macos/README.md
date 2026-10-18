@@ -284,6 +284,12 @@ frame. The shaders are the MSL emitter's (`port/linux/src/xgpu_msl.c`) and
 the Xbox's textures are decoded as the OpenGL backend decodes them
 (`port/linux/src/xbox_texture_decode.c`), both built into the host.
 
+When the stream has no records ready, the render thread waits for either
+new records or a GPU completion notification. It can prepare the next
+frame while an earlier frame is on the GPU; completed fences release the
+stream's bytes and retire frames. Shutdown still drains outstanding GPU
+work before closing the stream.
+
 ### The window and presentation (`host_metal.m`)
 
 The guest makes its window with `SDL_WINDOW_METAL` (`sdl_platform.c`, with

@@ -907,6 +907,12 @@ static void stream_wait(void *context, uint64_t fence)
 	xgpu_metal_frame_wait(fence);
 }
 
+static int stream_fence_ready(void *context, uint64_t fence)
+{
+	(void)context;
+	return xgpu_metal_frame_completed() >= fence;
+}
+
 static void stream_initialize(void *context, struct xgpu_stream_capabilities *capabilities)
 {
 	struct xgpu_metal_capabilities metal;
@@ -938,6 +944,7 @@ const struct host_render_backend *xgpu_metal_stream_backend(void)
 		backend.open = stream_open;
 		backend.fence = stream_fence;
 		backend.wait = stream_wait;
+		backend.fence_ready = stream_fence_ready;
 		backend.initialize = stream_initialize;
 		backend.target_create = stream_target_create;
 		backend.target_delete = stream_target_delete;

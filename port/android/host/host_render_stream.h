@@ -71,6 +71,10 @@ struct host_render_backend
 	thread at each frame's end, and whenever the guest waits for room. */
 	uint64_t (*fence)(void *context);
 	void (*wait)(void *context, uint64_t fence);
+	/* Optional, nonblocking completion query. A backend providing it must
+	wake the render thread with host_render_stream_gpu_completed after
+	publishing completion, without holding locks this query acquires. */
+	int (*fence_ready)(void *context, uint64_t fence);
 
 	void (*initialize)(void *context, struct xgpu_stream_capabilities *capabilities);
 	void (*invalidate)(void *context);
@@ -168,6 +172,10 @@ struct host_render_backend
 the guest starts (macOS: the Metal backend). Without one,
 host_render_stream_open fails and the guest keeps its own renderer. */
 void host_render_stream_set_backend(const struct host_render_backend *backend);
+
+/* GPU completion may release ring space even when no more records arrive.
+Called from any thread, after publishing the backend's completed fence. */
+void host_render_stream_gpu_completed(void);
 
 /* ---------- the guest's imports (guest_host.h) */
 
