@@ -25,7 +25,7 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/op_model_detail" x="54" y="265"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/op_shield_glow" x="54" y="289"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/op_shield_glow_intensity" x="54" y="313"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/op_dynamic_lights" x="54" y="337" platform="desktop"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/op_dynamic_lights" x="54" y="337" platform="desktop android"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/button_bar" y="414"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
@@ -141,7 +141,7 @@
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/shield_glow_intensity_spinner" type="spinner" left="3" top="2" width="147" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="DEFAULT|LIGHT SHOW" setting="display.shield_glow_intensity" values="default|light_show" font="ui\large_ui" color="#FF2896FF" align="center" text_y="1" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 150 19 156">
 		<on event="created" run="port setting load"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/op_dynamic_lights" width="512" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/option_bkds" color="#FF2896FF" platform="desktop">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/op_dynamic_lights" width="512" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/option_bkds" color="#FF2896FF" platform="desktop android">
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/dynamic_lights_label"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/dynamic_lights_spinner" x="320" y="1"/>
 	</widget>

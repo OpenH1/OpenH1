@@ -116,7 +116,7 @@ SCREENS = {
              "Light Show: the shield glow three times as far,\nat full from a third of the flare.", None),
             ("DYNAMIC LIGHTS:", "display.dynamic_lights", [("CLASSIC", "classic"), ("ENHANCED", "enhanced")],
              "Enhanced: plasma, flashes and blasts light each\npixel, gliding with the bolt, a glow about it.",
-             "desktop"),
+             "desktop android"),
         ],
     },
     "mouse_settings": {

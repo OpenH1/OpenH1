@@ -93,7 +93,8 @@ the models' detail by the display's lines and lit for each pixel, the
 enhanced dynamic lights. On a phone's, a headset's, the browser's and 64-bit
 ARM Linux's, held to their power and heat (a Pixel draws 2410x1080 short of
 120 Hz, warm): the sharper textures and shadows, which cost next to nothing;
-no full-screen pass, no new pipelines to make as a map loads */
+no full-screen pass, no new pipelines to make as a map loads (so not the
+enhanced dynamic lights, which Vulkan draws there, until measured there) */
 #if defined(HALO_ANDROID) || defined(HALO_VR) || defined(HALO_WEB) || \
 	(defined(HALO_GUEST) && defined(__aarch64__) && !defined(HALO_MACOS))
 #define GRAPHICS_ANTI_ALIASING "\"off\""
@@ -706,13 +707,13 @@ static const struct config_setting config_settings[] =
 		"How far the shield glow reaches: \"default\" or \"light_show\" (three\n"
 		"times as far, and at full strength from a third of the flare)." },
 	{ "display.dynamic_lights", _config_string, GRAPHICS_DYNAMIC_LIGHTS, "HALO_DYNAMIC_LIGHTS", _environment_value,
-		_platform_desktop,
+		_platform_all,
 		"The light of plasma bolts, needles, rockets, muzzle flashes and\n"
 		"explosions: \"classic\" (the game's own) or \"enhanced\": for each pixel\n"
 		"of the walls and models, through the walls' bump maps, gliding with\n"
 		"the bolt between ticks, brighter in its core and fading softly, with\n"
 		"a glow about each plasma bolt, and lighting your own weapon and hands.\n"
-		"Desktop OpenGL only (not OpenGL ES: there, classic)." GRAPHICS_CHOOSES },
+		"Desktop OpenGL and Vulkan (not OpenGL ES nor Metal: there, classic)." GRAPHICS_CHOOSES },
 	{ "display.shield_color", _config_string, "\"default\"", "HALO_SHIELD_COLOR", _environment_value, _platform_all,
 		"Your energy shield's color, as this machine draws it: \"default\" (the\n"
 		"shield's own) or a multiplayer armor color: white, black, red, blue,\n"
