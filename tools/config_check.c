@@ -24,6 +24,14 @@ const char *install_config_folder(void)
 	return folder;
 }
 
+#ifdef HALO_MACOS
+/* (the macOS app's: SDL's base path, its settings folder) */
+const char *SDL_GetBasePath(void)
+{
+	return folder;
+}
+#endif
+
 void platform_log(const char *format, ...)
 {
 	va_list arguments;

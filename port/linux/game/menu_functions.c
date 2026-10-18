@@ -28,7 +28,8 @@ calls them from PC_MENU_FUNCTION_BASE on):
   (OK) writes those changed and applies the window's (the rest follow
   config.toml themselves), "port settings defaults" shows the defaults,
   "port settings help" the help of the row chosen (and Video Setup's
-  Resolution or Window Size, for the display mode shown);
+  Resolution or Window Size, for the display mode shown, and Graphics' rows
+  at the values of the preset chosen, display.graphics);
 - Controls Setup's: the keyboard and mouse's controls, two bindings each,
   shown a group at a time ("controls update menu"); "controls begin
   binding" takes the next key or button pressed for the binding left and
@@ -101,6 +102,7 @@ int config_text(char const *name, char *text, unsigned int size);
 int config_write(char const *name, char const *value);
 int config_boolean(char const *name);
 int config_default(char const *name, char *text, unsigned int size);
+int config_graphics_value(char const *graphics, char const *name, char *text, unsigned int size);
 char const *config_string(char const *name);
 void platform_display_apply(void);
 void platform_binding_capture_begin(void);
@@ -398,6 +400,15 @@ static boolean setting_write(char const *name, char const *value)
 	return FALSE;
 }
 
+/* Graphics' preset spinner, and the preset it showed, since it was made
+(graphics_preset_show) */
+static struct
+{
+	struct widget_instance *spinner;
+	short shown;
+	char const *value;
+} graphics_preset = { NULL, NONE, NULL };
+
 static boolean setting_load(struct widget_instance *widget)
 {
 	struct pc_menu_setting *setting = pc_menu_setting_get(widget->definition_tag_index);
@@ -410,6 +421,12 @@ static boolean setting_load(struct widget_instance *widget)
 	setting->loaded_index = setting_value_index(setting, current);
 	if (setting->loaded_index < (short)widget->parameters.list.number_of_items)
 		widget->parameters.list.selected_index = setting->loaded_index;
+	/* (Graphics' preset: the rows it chooses follow it from here) */
+	if (!strcmp(setting->setting, "display.graphics"))
+	{
+		graphics_preset.spinner = widget;
+		graphics_preset.shown = widget->parameters.list.selected_index;
+	}
 	return TRUE;
 }
 
@@ -1533,17 +1550,19 @@ static void hud_button_style_row_show(struct widget_instance *list)
 	struct widget_instance *row = named(list, "op_hud_button_style", 0);
 	struct pc_menu_setting *setting = hud ? pc_menu_setting_get(hud->definition_tag_index) : NULL;
 	struct widget_instance *child;
-	short index;
+	short index, spacing;
 	boolean visible;
 
-	if (!setting || !row) return;
+	if (!setting || !row || !hud->parent) return;
 	index = hud->parameters.list.selected_index;
 	visible = index >= 0 && index < setting->value_count && !strcmp(setting->values[index], "true");
+	/* (the page's spacing: the row's below the HUD's, neither of which moves) */
+	spacing = row->vertical_offset - hud->parent->vertical_offset;
 	if (row->visible != visible)
 	{
 		for (child = row->next; child; child = child->next)
 			if (!strncmp(child->name, "op_", 3))
-				child->vertical_offset += visible ? 30 : -30;
+				child->vertical_offset += visible ? spacing : -spacing;
 		row->visible = visible;
 	}
 	if (!visible && list->focused_child == row)
@@ -1553,6 +1572,35 @@ static void hud_button_style_row_show(struct widget_instance *list)
 		list->focused_child = hud->parent;
 		list->parameters.list.selected_index = index;
 	}
+}
+
+/* Graphics' preset (display.graphics): Classic or Enhanced chosen (Defaults
+too) shows each row it chooses at the preset's value, which OK writes (and
+port_config.c leaves to the preset); a row changed after is the player's
+own */
+static boolean graphics_preset_row_show(struct widget_instance *spinner, struct pc_menu_setting *setting)
+{
+	char text[300];
+
+	if (config_graphics_value(graphics_preset.value, setting->setting, text, sizeof(text)))
+		spinner->parameters.list.selected_index = setting_value_index(setting, text);
+	return TRUE;
+}
+
+static void graphics_preset_show(struct widget_instance *list)
+{
+	struct widget_instance *spinner = named(list, "graphics_spinner", 0);
+	struct pc_menu_setting *setting = spinner ? pc_menu_setting_get(spinner->definition_tag_index) : NULL;
+	short index;
+
+	if (!setting || spinner != graphics_preset.spinner)
+		return;
+	index = spinner->parameters.list.selected_index;
+	if (index == graphics_preset.shown || index < 0 || index >= setting->value_count)
+		return;
+	graphics_preset.shown = index;
+	graphics_preset.value = setting->values[index];
+	settings_each(screen_of(list), graphics_preset_row_show);
 }
 
 /* ---------- Change Color: the profile's colour, from a list of the
@@ -6330,6 +6378,7 @@ void pc_menu_game_data_function_invoke(
 	{
 		video_rows_show(widget);
 		hud_button_style_row_show(widget);
+		graphics_preset_show(widget);
 		settings_help(widget);
 	}
 	else if (!strcmp(name, "controls update menu"))

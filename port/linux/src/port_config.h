@@ -36,6 +36,10 @@ guest has no SDL_LoadFile) */
 char *config_file_read(const char *path, size_t *size);
 /* a setting's default, as text; 0 if there is no such setting */
 int config_default(const char *name, char *text, size_t size);
+/* the value display.graphics's preset (graphics: "classic", else
+"enhanced") gives a setting it chooses, as text ("16", "smaa"); 0 if it
+does not choose it */
+int config_graphics_value(const char *graphics, const char *name, char *text, size_t size);
 /* how many times config_write has changed a setting: what keeps one reads
 it again when this moves */
 unsigned long config_changes(void);

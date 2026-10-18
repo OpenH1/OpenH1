@@ -10,7 +10,8 @@ and the defaults used instead. A setting the player has not set is written
 commented out at its default ("# vsync = true", CONFIG_DEFAULTS_NOTE), so
 that a newer default reaches it; otherwise the file only gains the settings
 it lacks (config_add_missing) and the lines config_write sets, so that the
-player's edits and comments stay.
+player's edits and comments stay. display.graphics chooses the drawing's
+settings the player has not set (config_graphics).
 */
 
 #include "platform.h"
@@ -84,6 +85,35 @@ Ctrl+D, which moving and crouching would press, from the browser) */
 #define CROUCH_KEYS "\"Left Ctrl, C\""
 #endif
 
+/* display.graphics = "enhanced": the values it gives the settings it
+chooses (config_graphics), which are their defaults. On the desktop's GPUs
+(Windows, x86 Linux, the Mac) every improvement: SMAA (a pass of fixed cost;
+Metal and Vulkan draw none yet), 16x anisotropic filtering, 512 shadow maps,
+the models' detail by the display's lines and lit for each pixel, the
+enhanced dynamic lights. On a phone's, a headset's, the browser's and 64-bit
+ARM Linux's, held to their power and heat (a Pixel draws 2410x1080 short of
+120 Hz, warm): the sharper textures and shadows, which cost next to nothing;
+no full-screen pass, no new pipelines to make as a map loads (so not the
+enhanced dynamic lights, which Vulkan draws there, until measured there) */
+#if defined(HALO_ANDROID) || defined(HALO_VR) || defined(HALO_WEB) || \
+	(defined(HALO_GUEST) && defined(__aarch64__) && !defined(HALO_MACOS))
+#define GRAPHICS_ANTI_ALIASING "\"off\""
+#define GRAPHICS_ANISOTROPIC_FILTERING "4"
+#define GRAPHICS_SHADOW_RESOLUTION "256"
+#define GRAPHICS_PER_PIXEL_LIGHTING "false"
+#define GRAPHICS_MODEL_DETAIL "\"auto\""
+#define GRAPHICS_DYNAMIC_LIGHTS "\"classic\""
+#else
+#define GRAPHICS_ANTI_ALIASING "\"smaa\""
+#define GRAPHICS_ANISOTROPIC_FILTERING "16"
+#define GRAPHICS_SHADOW_RESOLUTION "512"
+#define GRAPHICS_PER_PIXEL_LIGHTING "true"
+#define GRAPHICS_MODEL_DETAIL "\"native\""
+#define GRAPHICS_DYNAMIC_LIGHTS "\"enhanced\""
+#endif
+/* (in the comment of each setting it chooses) */
+#define GRAPHICS_CHOOSES "\nCommented out, display.graphics chooses it."
+
 static const struct config_setting config_settings[] =
 {
 	{ "display.fullscreen", _config_boolean, "true", "HALO_FULLSCREEN", _environment_value, _platform_desktop,
@@ -114,12 +144,20 @@ static const struct config_setting config_settings[] =
 	{ "display.max_fps", _config_integer, "0", "HALO_MAX_FPS", _environment_value, _platform_desktop,
 		"With vsync off, the most frames a second: 0 for twice the display's\n"
 		"refresh rate, -1 for no limit (which can hang some Intel graphics)." },
-	{ "display.anti_aliasing", _config_string, "\"off\"", "HALO_ANTI_ALIASING", _environment_value, _platform_all,
+	{ "display.graphics", _config_string, "\"enhanced\"", "HALO_GRAPHICS", _environment_value, _platform_all,
+		"The 3D view's look: \"classic\" as the Xbox drew it; \"enhanced\" with this\n"
+		"port's improvements together (anti-aliasing, sharper textures and\n"
+		"shadows, models' detail and lighting for each pixel, the enhanced\n"
+		"dynamic lights), each as far as this machine's GPU does it well (on a\n"
+		"phone, a headset, the web and 64-bit ARM Linux, only the textures and\n"
+		"shadows). Each of those settings, set here, wins over it." },
+	{ "display.anti_aliasing", _config_string, GRAPHICS_ANTI_ALIASING, "HALO_ANTI_ALIASING", _environment_value,
+		_platform_all,
 		"Smoothing of jagged edges, which the Xbox did not have: \"off\"; \"fxaa\"\n"
 		"or \"smaa\" smooth the 3D view once it is drawn (the HUD and menus stay\n"
 		"sharp); \"ssaa2x\" draws at twice the resolution each way (four times\n"
 		"the work); \"msaa2x\", \"msaa4x\" or \"msaa8x\" draw with that many samples\n"
-		"a pixel. Android has \"fxaa\" for \"smaa\", and no \"ssaa2x\"." },
+		"a pixel. Android has \"fxaa\" for \"smaa\", and no \"ssaa2x\"." GRAPHICS_CHOOSES },
 	{ "display.interpolation", _config_boolean, "true", "HALO_INTERPOLATION", _environment_value, _platform_all,
 		"Draw a frame for every display refresh, blending between the game's 30\n"
 		"ticks a second; false keeps the original 30 frames a second." },
@@ -150,10 +188,10 @@ static const struct config_setting config_settings[] =
 		"Draw the menus' and HUD's text with the fonts in port/assets/fonts\n"
 		"(Overpass) at the resolution the game draws at, and the menus' titles\n"
 		"from port/assets/titles; false draws the maps' bitmap fonts and titles." },
-	{ "display.shadow_resolution", _config_integer, "128", "HALO_SHADOW_RESOLUTION", _environment_value,
-		_platform_all,
+	{ "display.shadow_resolution", _config_integer, GRAPHICS_SHADOW_RESOLUTION, "HALO_SHADOW_RESOLUTION",
+		_environment_value, _platform_all,
 		"The size the objects' shadows are drawn at, in pixels each way: 128 as\n"
-		"on the Xbox, or 256, 512 or 1024 for smoother edges, as soft." },
+		"on the Xbox, or 256, 512 or 1024 for smoother edges, as soft." GRAPHICS_CHOOSES },
 	{ "display.menus", _config_string, "\"pc\"", "HALO_MENUS", _environment_value, _platform_all,
 		"The menus: \"pc\" for the PC version's main menu (port/assets/menus,\n"
 		"and a menus folder here for your own), \"xbox\" for the Xbox's." },
@@ -178,23 +216,24 @@ static const struct config_setting config_settings[] =
 		_environment_value, _platform_all,
 		"The scoreboard panel's colour: \"red, green, blue, alpha\", each 0 to 255\n"
 		"(alpha 0 is see-through, 255 solid)." },
-	{ "display.anisotropic_filtering", _config_integer, "4", "HALO_ANISOTROPIC_FILTERING", _environment_value,
-		_platform_all,
+	{ "display.anisotropic_filtering", _config_integer, GRAPHICS_ANISOTROPIC_FILTERING, "HALO_ANISOTROPIC_FILTERING",
+		_environment_value, _platform_all,
 		"Sharpen textures seen at a grazing angle (floors, walls, terrain), which\n"
 		"the Xbox did not: 2, 4, 8 or 16 times; 0 filters as the Xbox did. 4 keeps\n"
-		"most of 16's sharpness at less cost on slower GPUs." },
-	{ "display.per_pixel_lighting", _config_boolean, "false", "HALO_PER_PIXEL_LIGHTING", _environment_value,
-		_platform_all,
+		"most of 16's sharpness at less cost on slower GPUs." GRAPHICS_CHOOSES },
+	{ "display.per_pixel_lighting", _config_boolean, GRAPHICS_PER_PIXEL_LIGHTING, "HALO_PER_PIXEL_LIGHTING",
+		_environment_value, _platform_all,
 		"Light the models (characters, weapons, vehicles, scenery) for each\n"
 		"pixel by the lights the game gives them, without the facets the light\n"
 		"of each vertex shows across curved surfaces; false lights each vertex,\n"
-		"as the Xbox does." },
-	{ "display.model_detail", _config_string, "\"auto\"", "HALO_MODEL_DETAIL", _environment_value, _platform_all,
+		"as the Xbox does." GRAPHICS_CHOOSES },
+	{ "display.model_detail", _config_string, GRAPHICS_MODEL_DETAIL, "HALO_MODEL_DETAIL", _environment_value,
+		_platform_all,
 		"Which of their levels of detail models are drawn at: \"stock\" chooses by\n"
 		"their size on the Xbox's 480 lines, at any resolution; \"native\" by their\n"
 		"size on the display's, so that more detail is kept at a distance at high\n"
 		"resolutions; \"highest\" draws the models \"native\" does, each at its most\n"
-		"detailed level; \"auto\" is \"native\" in VR and \"stock\" on a display." },
+		"detailed level; \"auto\" is \"native\" in VR and \"stock\" on a display." GRAPHICS_CHOOSES },
 
 	{ "audio.enabled", _config_boolean, "true", "HALO_NO_AUDIO", _environment_set_is_false, _platform_all,
 		"Play sound." },
@@ -667,13 +706,14 @@ static const struct config_setting config_settings[] =
 	{ "display.shield_glow_intensity", _config_string, "\"default\"", "HALO_SHIELD_GLOW_INTENSITY", _environment_value, _platform_all,
 		"How far the shield glow reaches: \"default\" or \"light_show\" (three\n"
 		"times as far, and at full strength from a third of the flare)." },
-	{ "display.dynamic_lights", _config_string, "\"classic\"", "HALO_DYNAMIC_LIGHTS", _environment_value, _platform_desktop,
+	{ "display.dynamic_lights", _config_string, GRAPHICS_DYNAMIC_LIGHTS, "HALO_DYNAMIC_LIGHTS", _environment_value,
+		_platform_all,
 		"The light of plasma bolts, needles, rockets, muzzle flashes and\n"
 		"explosions: \"classic\" (the game's own) or \"enhanced\": for each pixel\n"
 		"of the walls and models, through the walls' bump maps, gliding with\n"
 		"the bolt between ticks, brighter in its core and fading softly, with\n"
 		"a glow about each plasma bolt, and lighting your own weapon and hands.\n"
-		"Desktop OpenGL only (not OpenGL ES: there, classic)." },
+		"Desktop OpenGL and Vulkan (not OpenGL ES nor Metal: there, classic)." GRAPHICS_CHOOSES },
 	{ "display.shield_color", _config_string, "\"default\"", "HALO_SHIELD_COLOR", _environment_value, _platform_all,
 		"Your energy shield's color, as this machine draws it: \"default\" (the\n"
 		"shield's own) or a multiplayer armor color: white, black, red, blue,\n"
@@ -1220,6 +1260,10 @@ struct config_value
 };
 
 static struct config_value config_values[NUMBER_OF_CONFIG_SETTINGS];
+/* whether the player has set each: in the file (not commented out), by its
+variable or by config_write; display.graphics chooses the others it covers
+(config_graphics_apply) */
+static unsigned char config_set[NUMBER_OF_CONFIG_SETTINGS];
 static int config_loaded = 0;
 static pthread_mutex_t config_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -1742,15 +1786,28 @@ static void config_set_from_text(struct config_value *value, enum config_type ty
 	}
 }
 
-/* the value in the file, if it is there and of the setting's type */
-static void config_set_from_file(struct config_value *value, const struct config_setting *setting,
+/* a value from its text as the table above writes it (a string's quoted,
+without escapes) */
+static void config_set_from_table_text(struct config_value *value, enum config_type type, const char *text)
+{
+	size_t length = strlen(text);
+
+	if (type == _config_string && length >= 2 && text[0] == '"')
+		value->string = config_copy(text + 1, length - 2);
+	else
+		config_set_from_text(value, type, text);
+}
+
+/* the value in the file, if it is there and of the setting's type: 1 if it
+was */
+static int config_set_from_file(struct config_value *value, const struct config_setting *setting,
 	toml_datum_t table)
 {
 	toml_datum_t datum = toml_seek(table, setting->name);
 	int wrong_type = 0;
 
 	if (datum.type == TOML_UNKNOWN)
-		return;
+		return 0;
 	switch (setting->type)
 	{
 	case _config_boolean:
@@ -1792,6 +1849,7 @@ static void config_set_from_file(struct config_value *value, const struct config
 		platform_log("config.toml line %d: %s should be %s; using %s", datum.lineno, setting->name,
 			expected[setting->type], setting->default_value);
 	}
+	return !wrong_type;
 }
 
 /* how many times a setting has been written (config_write): readers that
@@ -1808,6 +1866,109 @@ static long config_setting_index(const char *name)
 			return (long)index;
 	}
 	return -1;
+}
+
+/* ---------- display.graphics
+
+The settings display.graphics chooses, each at its value in "classic" (as
+the Xbox drew) or "enhanced" (its default, GRAPHICS_*: this build's) where
+the player has not set it; one set (config_set) wins over it. Settings
+writing one at the value the preset gives it, or the preset at the value of
+one set, leaves it to the preset again (config_write), so that choosing
+Classic or Enhanced there chooses them all. Only the drawing changes. */
+static const struct
+{
+	const char *name;
+	/* as the table above writes it */
+	const char *classic;
+} config_graphics[] =
+{
+	{ "display.anti_aliasing", "\"off\"" },
+	{ "display.anisotropic_filtering", "0" },
+	{ "display.shadow_resolution", "128" },
+	{ "display.per_pixel_lighting", "false" },
+	/* ("native" in VR, whose eyes' many lines the Xbox's 480 stand for) */
+	{ "display.model_detail", "\"auto\"" },
+	{ "display.dynamic_lights", "\"classic\"" },
+};
+
+#define NUMBER_OF_CONFIG_GRAPHICS (sizeof(config_graphics) / sizeof(config_graphics[0]))
+
+/* the setting's entry in config_graphics, or -1 */
+static long config_graphics_entry(long setting)
+{
+	size_t entry;
+
+	for (entry = 0; setting >= 0 && entry < NUMBER_OF_CONFIG_GRAPHICS; entry++)
+	{
+		if (!strcmp(config_graphics[entry].name, config_settings[setting].name))
+			return (long)entry;
+	}
+	return -1;
+}
+
+/* the value the preset (display.graphics's value: "classic", else
+"enhanced") gives the setting, as the table above writes it */
+static const char *config_graphics_text(const char *graphics, long setting)
+{
+	long entry = config_graphics_entry(setting);
+
+	return entry >= 0 && graphics && !strcmp(graphics, "classic") ? config_graphics[entry].classic :
+		config_settings[setting].default_value;
+}
+
+static int config_values_equal(const struct config_value *a, const struct config_value *b, enum config_type type)
+{
+	switch (type)
+	{
+	case _config_boolean:
+		return !a->boolean == !b->boolean;
+	case _config_integer:
+		return a->integer == b->integer;
+	case _config_real:
+		return a->real == b->real;
+	case _config_string:
+		return a->string && b->string && !strcmp(a->string, b->string);
+	}
+	return 0;
+}
+
+/* whether the setting's value is the one display.graphics gives it */
+static int config_graphics_gives(long setting)
+{
+	struct config_value preset = { 0, 0, 0.0, NULL };
+	int equal;
+
+	config_set_from_table_text(&preset, config_settings[setting].type,
+		config_graphics_text(config_values[config_setting_index("display.graphics")].string, setting));
+	equal = config_values_equal(&config_values[setting], &preset, config_settings[setting].type);
+	free(preset.string);
+	return equal;
+}
+
+/* the setting's line in the file, left to display.graphics: commented out
+at the value it gives it ("# anisotropic_filtering = 16") */
+static void config_graphics_line(long setting, char *line, size_t size)
+{
+	snprintf(line, size, "# %s = %s\n", strchr(config_settings[setting].name, '.') + 1,
+		config_graphics_text(config_values[config_setting_index("display.graphics")].string, setting));
+}
+
+/* the settings display.graphics chooses that the player has not set, at its
+values (the strings before are kept, as config_set_from_text keeps them) */
+static void config_graphics_apply(void)
+{
+	const char *graphics = config_values[config_setting_index("display.graphics")].string;
+	size_t entry;
+
+	for (entry = 0; entry < NUMBER_OF_CONFIG_GRAPHICS; entry++)
+	{
+		long setting = config_setting_index(config_graphics[entry].name);
+
+		if (setting >= 0 && !config_set[setting])
+			config_set_from_table_text(&config_values[setting], config_settings[setting].type,
+				config_graphics_text(graphics, setting));
+	}
 }
 
 /* keys in the file that are no setting, likely misspelt */
@@ -1895,7 +2056,8 @@ static void config_load(void)
 					platform_log("settings: cannot write %s", path);
 			}
 			for (index = 0; index < NUMBER_OF_CONFIG_SETTINGS; index++)
-				config_set_from_file(&config_values[index], &config_settings[index], result.toptab);
+				config_set[index] = (unsigned char)config_set_from_file(&config_values[index], &config_settings[index],
+					result.toptab);
 			config_report_unknown_keys(result.toptab);
 			platform_log("settings: %s", path);
 			completed = config_add_missing(text, result.toptab);
@@ -1940,6 +2102,15 @@ static void config_load(void)
 			config_values[index].boolean = 0;
 			break;
 		}
+		config_set[index] = 1;
+	}
+
+	{
+		const char *graphics = config_values[config_setting_index("display.graphics")].string;
+
+		if (strcmp(graphics, "classic") && strcmp(graphics, "enhanced"))
+			platform_log("settings: display.graphics \"%s\" is unknown, so enhanced", graphics);
+		config_graphics_apply();
 	}
 }
 
@@ -2141,9 +2312,43 @@ int config_write(const char *name, const char *value)
 		break;
 	}
 	}
+	/* (one display.graphics chooses, at the value it gives it: left to it,
+	commented out) */
+	config_set[index] = 1;
+	if (config_graphics_entry(index) >= 0 && config_graphics_gives(index))
+	{
+		config_set[index] = 0;
+		config_graphics_line(index, line_text, sizeof(line_text));
+	}
 	config_path(path, sizeof(path));
 	text = config_read_file(path, &size);
 	updated = config_set_line(text ? text : "", section, key, line_text);
+	/* (display.graphics: those it chooses that are set at the value it now
+	gives them left to it too, and the others it chooses at its values) */
+	if (!strcmp(name, "display.graphics"))
+	{
+		size_t entry;
+
+		for (entry = 0; entry < NUMBER_OF_CONFIG_GRAPHICS && updated; entry++)
+		{
+			long setting = config_setting_index(config_graphics[entry].name);
+			const char *setting_dot = strchr(config_graphics[entry].name, '.');
+			char *next;
+
+			if (setting < 0 || !setting_dot || !config_set[setting] || !config_graphics_gives(setting))
+				continue;
+			config_graphics_line(setting, line_text, sizeof(line_text));
+			snprintf(section, sizeof(section), "%.*s", (int)(setting_dot - config_graphics[entry].name),
+				config_graphics[entry].name);
+			next = config_set_line(updated, section, setting_dot + 1, line_text);
+			if (!next)
+				continue;
+			free(updated);
+			updated = next;
+			config_set[setting] = 0;
+		}
+		config_graphics_apply();
+	}
 	succeeded = updated && config_write_file(path, updated);
 	config_change_count++;
 	pthread_mutex_unlock(&config_lock);
@@ -2228,6 +2433,26 @@ int config_default(const char *name, char *text, size_t size)
 	value = config_settings[index].default_value;
 	length = strlen(value);
 	/* (a string's without its quotes: the defaults have no escapes) */
+	if (config_settings[index].type == _config_string && length >= 2 && value[0] == '"')
+	{
+		value++;
+		length -= 2;
+	}
+	snprintf(text, size, "%.*s", (int)length, value);
+	return 1;
+}
+
+int config_graphics_value(const char *graphics, const char *name, char *text, size_t size)
+{
+	long index = config_setting_index(name);
+	const char *value;
+	size_t length;
+
+	if (index < 0 || config_graphics_entry(index) < 0)
+		return 0;
+	value = config_graphics_text(graphics, index);
+	length = strlen(value);
+	/* (a string's without its quotes) */
 	if (config_settings[index].type == _config_string && length >= 2 && value[0] == '"')
 	{
 		value++;

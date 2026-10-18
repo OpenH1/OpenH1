@@ -312,9 +312,8 @@ def test_menu_settings_exist():
     assert controls == set(re.findall(r'\{ "(controls\.[a-z_]+)", L"', functions))
 
 
-@pytest.fixture
-def config_check(tmp_path):
-    """port_config.c (the VR build's settings) built on its own
+def config_check_build(tmp_path, defines):
+    """port_config.c built on its own with the build's defines
     (tools/config_check.c): run(command...) in a folder of config.toml"""
     root = Path(__file__).resolve().parent.parent
     compiler = shutil.which("clang") or shutil.which("cc")
@@ -327,7 +326,7 @@ def config_check(tmp_path):
     for name in ("port_config.c", "port_config.h", "install_layout.h"):
         shutil.copy(root / "port/linux/src" / name, stubs / name)
     program = tmp_path / "config_check"
-    subprocess.run([compiler, "-DHALO_VR=1", "-DHALO_GUEST=1", f"-I{stubs}",
+    subprocess.run([compiler, *defines, f"-I{stubs}",
                     f"-I{root}/port/third_party/tomlc17", "-o", str(program), str(stubs / "port_config.c"),
                     str(root / "tools/config_check.c"), str(root / "port/third_party/tomlc17/tomlc17.c"),
                     "-lpthread"], check=True, capture_output=True)
@@ -340,6 +339,18 @@ def config_check(tmp_path):
         return result.stdout.strip()
     run.config = data / "config.toml"
     return run
+
+
+@pytest.fixture
+def config_check(tmp_path):
+    """port_config.c with the VR build's settings (config_check_build)"""
+    return config_check_build(tmp_path, ["-DHALO_VR=1", "-DHALO_GUEST=1"])
+
+
+@pytest.fixture
+def config_check_mac(tmp_path):
+    """port_config.c with the macOS build's settings (config_check_build)"""
+    return config_check_build(tmp_path, ["-DHALO_MACOS=1", "-DHALO_GUEST=1"])
 
 
 def test_config_writes_defaults_commented_out(config_check):
@@ -382,6 +393,72 @@ def test_config_keeps_an_older_file(config_check):
     # (any other value of an older file stays)
     config_check.config.write_text(old.replace('"floating"', '"game"'))
     assert config_check("get", "vr.hands") == "game"
+
+
+# the settings display.graphics chooses, and their values in Classic, and in
+# Enhanced on the desktop and the Mac, and on a phone, a headset and the web
+GRAPHICS_SETTINGS = ["anti_aliasing", "anisotropic_filtering", "shadow_resolution", "per_pixel_lighting",
+                     "model_detail", "dynamic_lights"]
+GRAPHICS_CLASSIC = ["off", "0", "128", "false", "auto", "classic"]
+GRAPHICS_ENHANCED = ["smaa", "16", "512", "true", "native", "enhanced"]
+GRAPHICS_ENHANCED_LIGHT = ["off", "4", "256", "false", "auto", "classic"]
+
+
+def graphics_values(run):
+    return [run("get", f"display.{name}") for name in GRAPHICS_SETTINGS]
+
+
+def test_graphics_preset_chooses_the_settings_left_to_it(config_check_mac):
+    """display.graphics gives the settings it covers their values where the
+    player has not set them; Classic and Enhanced written choose them all,
+    leaving the file's lines of them commented out"""
+    run = config_check_mac
+    assert run("get", "display.graphics") == "enhanced"
+    assert graphics_values(run) == GRAPHICS_ENHANCED
+    text = run.config.read_text()
+    assert '\n# graphics = "enhanced"\n' in text and "\n# anisotropic_filtering = 16\n" in text
+    run("write", "display.graphics", "classic")
+    assert graphics_values(run) == GRAPHICS_CLASSIC
+    text = run.config.read_text()
+    assert '\ngraphics = "classic"\n' in text
+    assert not re.search(r"^(anti_aliasing|anisotropic_filtering|shadow_resolution) =", text, re.M)
+    run("write", "display.graphics", "enhanced")
+    assert graphics_values(run) == GRAPHICS_ENHANCED
+
+
+def test_graphics_preset_keeps_a_setting_set(config_check_mac, monkeypatch):
+    """a setting it covers set in the file, by its variable or in Settings
+    wins over display.graphics; written at the preset's value, it is left
+    to the preset again, and so is one set at the value of a preset chosen"""
+    run = config_check_mac
+    run("write", "display.anisotropic_filtering", "8")
+    assert "\nanisotropic_filtering = 8\n" in run.config.read_text()
+    run("write", "display.graphics", "classic")
+    assert graphics_values(run) == ["off", "8", "128", "false", "auto", "classic"]
+    # (at the preset's value: commented out, the preset's again)
+    run("write", "display.anisotropic_filtering", "0")
+    assert "\n# anisotropic_filtering = 0\n" in run.config.read_text()
+    run("write", "display.graphics", "enhanced")
+    assert run("get", "display.anisotropic_filtering") == "16"
+    # (one set by hand at the value of the preset chosen)
+    run.config.write_text(run.config.read_text().replace("# shadow_resolution = 512", "shadow_resolution = 128"))
+    assert run("get", "display.shadow_resolution") == "128"
+    run("write", "display.graphics", "classic")
+    assert "\n# shadow_resolution = 128\n" in run.config.read_text()
+    run("write", "display.graphics", "enhanced")
+    assert run("get", "display.shadow_resolution") == "512"
+    # (and by their variables, for one run)
+    monkeypatch.setenv("HALO_GRAPHICS", "classic")
+    monkeypatch.setenv("HALO_MODEL_DETAIL", "highest")
+    assert graphics_values(run) == ["off", "0", "128", "false", "highest", "classic"]
+
+
+def test_graphics_preset_on_a_headset(config_check):
+    """Enhanced on a phone, a headset, the web and 64-bit ARM Linux: the
+    sharper textures and shadows only; Classic as on the desktop"""
+    assert graphics_values(config_check) == GRAPHICS_ENHANCED_LIGHT
+    config_check("write", "display.graphics", "classic")
+    assert graphics_values(config_check) == GRAPHICS_CLASSIC
 
 
 def test_p2p_signatures_and_listings(tmp_path):

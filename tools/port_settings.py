@@ -116,7 +116,7 @@ SCREENS = {
              "Light Show: the shield glow three times as far,\nat full from a third of the flare.", None),
             ("DYNAMIC LIGHTS:", "display.dynamic_lights", [("CLASSIC", "classic"), ("ENHANCED", "enhanced")],
              "Enhanced: plasma, flashes and blasts light each\npixel, gliding with the bolt, a glow about it.",
-             "desktop"),
+             "desktop android"),
         ],
     },
     "mouse_settings": {
@@ -385,14 +385,21 @@ _graphics = {"display.high_res_hud", "display.hud_button_style", "display.high_r
              "display.shadow_resolution", "display.per_pixel_lighting",
              "display.shield_glow", "display.shield_glow_intensity",
              "display.dynamic_lights", "display.model_detail"}
+# (first, display.graphics: Classic or Enhanced, which shows the rows it
+# chooses at its values as it changes, port/linux/game/menu_functions.c's
+# graphics_preset_show; twelve rows, closer than the others' 30px, the help
+# line lower)
 SCREENS["video_settings/graphics"] = {
-    "screen": "graphics_settings_screen", "header": _video["header"], "spacing": 30,
+    "screen": "graphics_settings_screen", "header": _video["header"], "spacing": 24, "help_top": 366,
     "same_place": ["anti_aliasing_android"],
-    "rows": [row for row in _video["rows"] if row[1] in _graphics],
+    "rows": [("PRESET:", "display.graphics", [("ENHANCED", "enhanced"), ("CLASSIC", "classic")],
+              "Classic draws as the Xbox did; Enhanced turns on\nthe improvements below. Each can still be changed.",
+              None)] +
+            [row for row in _video["rows"] if row[1] in _graphics],
 }
 _video["rows"] = [row for row in _video["rows"] if row[1] not in _graphics]
 _video["categories"] = [
-    ("GRAPHICS:", "video_settings/graphics", "The HUD, text, anti-aliasing, shadows and\nlighting."),
+    ("GRAPHICS:", "video_settings/graphics", "Classic or Enhanced, the HUD, text,\nanti-aliasing, shadows and lighting."),
     ("FOV AND VIEWMODELS:", "video_settings/fov_viewmodels",
      "The field of view and the first-person\nweapon. Their defaults keep the stock view."),
 ]
