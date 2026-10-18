@@ -33,6 +33,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Locale;
 
 /**
@@ -77,6 +78,8 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static final float LOOK_RADIANS_PER_UNIT = 0.0022f;
     /** a label is at most this many radii wide */
     private static final float LABEL_WIDTH = 1.7f;
+    /** the labels' fitted sizes remembered (a few dozen are drawn; the editor's sizes add more) */
+    private static final int LABEL_FITS = 256;
     private static final long POLL_MS = 16;
     /** the game is in play this long before the controls show (no flash at a level's first frame) */
     private static final long SHOW_DELAY_MS = 200;
@@ -215,6 +218,43 @@ public final class TouchControls extends View implements SensorEventListener, In
     private final int[] bindings = DEFAULT_BINDINGS.clone();
     private final int[] bindingsRead = new int[bindings.length];
     private int bindingsSerial;
+    /** each kind's label, made once for the bindings (null: not yet) */
+    private final String[] labels = new String[KINDS.length];
+
+    /**
+     * a label's text size, made smaller to fit its circle: measureText is
+     * slow, and every frame of a touch draws every label at the same sizes
+     */
+    private static final class LabelFit {
+        String label;
+        float radius;
+        float textSize;
+        float fitted;
+
+        LabelFit set(String label, float radius, float textSize) {
+            this.label = label;
+            this.radius = radius;
+            this.textSize = textSize;
+            return this;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (!(other instanceof LabelFit))
+                return false;
+            LabelFit fit = (LabelFit) other;
+            return label.equals(fit.label) && Float.floatToIntBits(radius) == Float.floatToIntBits(fit.radius)
+                && Float.floatToIntBits(textSize) == Float.floatToIntBits(fit.textSize);
+        }
+
+        @Override
+        public int hashCode() {
+            return (label.hashCode() * 31 + Float.floatToIntBits(radius)) * 31 + Float.floatToIntBits(textSize);
+        }
+    }
+
+    private final HashMap<LabelFit, LabelFit> labelFits = new HashMap<>();
+    private final LabelFit labelFitKey = new LabelFit();
 
     /** reads what the game says every frame: when to show, the buttons' names, and the rumble */
     private final Runnable poll = new Runnable() {
@@ -471,6 +511,17 @@ public final class TouchControls extends View implements SensorEventListener, In
         return owners.indexOfValue(control) >= 0;
     }
 
+    /** the controls held, a bit each (TouchLayout.MAX_CONTROLS is 64) */
+    private long heldControls() {
+        long held = 0;
+        for (int i = 0; i < owners.size(); i++) {
+            int control = owners.valueAt(i);
+            if (control >= 0 && control < 64)
+                held |= 1L << control;
+        }
+        return held;
+    }
+
     private float stickCenterX() {
         return stickFloating ? stickX : layout.x(TouchLayout.LEFT);
     }
@@ -559,12 +610,22 @@ public final class TouchControls extends View implements SensorEventListener, In
                 reset();
             return true;
         }
+        // (most of a game's touches only aim, and change nothing drawn)
+        boolean wasEditing = editing;
+        boolean wasHidden = hidden;
+        long wasHeld = heldControls();
+        int wasStickX = axes[0];
+        int wasStickY = axes[1];
+        float wasCenterX = stickCenterX();
+        float wasCenterY = stickCenterY();
         if (editing)
             editTouch(event);
         else
             gameTouch(event);
         publish();
-        invalidate();
+        if (editing || wasEditing || hidden != wasHidden || heldControls() != wasHeld || axes[0] != wasStickX
+                || axes[1] != wasStickY || stickCenterX() != wasCenterX || stickCenterY() != wasCenterY)
+            invalidate();
         return true;
     }
 
@@ -743,12 +804,19 @@ public final class TouchControls extends View implements SensorEventListener, In
         bindingsSerial = serial;
         if (!Arrays.equals(bindingsRead, bindings)) {
             System.arraycopy(bindingsRead, 0, bindings, 0, bindings.length);
+            Arrays.fill(labels, null);
             invalidate();
         }
     }
 
     /** a control's name: its button and what the profile has it do ("A / Jump", "Fire", "RT") */
     private String label(int type) {
+        if (labels[type] == null)
+            labels[type] = makeLabel(type);
+        return labels[type];
+    }
+
+    private String makeLabel(int type) {
         Kind kind = KINDS[type];
         if (kind.gamepadButton < 0)
             return kind.buttonName;
@@ -1191,14 +1259,27 @@ public final class TouchControls extends View implements SensorEventListener, In
         paint.setStyle(Paint.Style.FILL);
         paint.setColor(alpha(Color.WHITE, Math.max(opacity, 0.5f)));
         paint.setTextAlign(Paint.Align.CENTER);
+        textSize = fittedTextSize(label, radius, textSize);
         paint.setTextSize(textSize);
-        // (a long name, "Y / Weapon", is made smaller to fit inside the circle)
-        float width = paint.measureText(label);
-        if (width > radius * LABEL_WIDTH) {
-            textSize *= radius * LABEL_WIDTH / width;
-            paint.setTextSize(textSize);
-        }
         canvas.drawText(label, x, y + textSize * 0.36f, paint);
+    }
+
+    /** a long name, "Y / Weapon", is made smaller to fit inside the circle */
+    private float fittedTextSize(String label, float radius, float textSize) {
+        LabelFit fit = labelFits.get(labelFitKey.set(label, radius, textSize));
+        if (fit != null)
+            return fit.fitted;
+        paint.setTextSize(textSize);
+        float fitted = textSize;
+        float width = paint.measureText(label);
+        if (width > radius * LABEL_WIDTH)
+            fitted *= radius * LABEL_WIDTH / width;
+        if (labelFits.size() >= LABEL_FITS)
+            labelFits.clear();
+        fit = new LabelFit().set(label, radius, textSize);
+        fit.fitted = fitted;
+        labelFits.put(fit, fit);
+        return fitted;
     }
 
     /** a toolbar item: never fainter than half, so that it can always be found */

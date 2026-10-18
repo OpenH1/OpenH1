@@ -463,6 +463,9 @@ struct xgpu_vulkan_statistics
 	uint32_t pipelines_made, samplers_made, uploads_ordered, uploads_early;
 	/* load actions for colour, depth and stencil (each aspect counted) */
 	uint32_t attachment_loads, attachment_clears;
+	/* draws' texture sets written, and found already written in their
+	submission (the last draw's, which most draws reuse, not counted) */
+	uint32_t texture_sets_written, texture_sets_reused;
 	uint64_t ring_bytes;
 	double pipeline_seconds;
 	uint64_t waits;

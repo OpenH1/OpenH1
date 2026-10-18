@@ -1,6 +1,7 @@
 # Halo VR for the Steam Frame
 
-The VR build of the Linux port (`configure.py --vr`, 64-bit ARM), packaged
+The VR build of the Linux port (`configure.py --vr`, `ninja linux_vulkan`:
+64-bit ARM, drawn with Vulkan), packaged
 by `tools/frame_package.py` for a Steam Frame. Refer to "VR" and "Steam
 Frame" in `port/linux/README.md` of the repository.
 
