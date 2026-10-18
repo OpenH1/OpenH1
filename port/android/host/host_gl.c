@@ -5,7 +5,7 @@ OpenGL services of the host's OpenGL backend (port/linux/host/
 host_gl_stream.c, xgpu_gl.c built into the host): an extension looked for,
 a buffer read back, the ring of stream buffers' fences and writes. They are
 the same functions in either API, which the host links from libGLESv2 (the
-OpenGL ES builds: Android, the arm64 build), or from GLVND's libOpenGL for
+OpenGL ES build: the arm64 build's), or from GLVND's libOpenGL for
 desktop OpenGL 4.5 (HALO_DESKTOP_GL: the x86-64 build's renderer, and the
 arm64 build's with --linux-arm64-gl=desktop or --vr): GLVND's entry points,
 which dispatch to the current context whatever its API and window system

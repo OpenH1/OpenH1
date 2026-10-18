@@ -97,7 +97,7 @@ class LinuxGuest:
     # the processors (platform.machine()) of the computers that build it
     machines: Tuple[str, ...]
     # its renderer unless configure.py says otherwise (<name>_gl): OpenGL ES
-    # 3 ("gles", HALO_GLES, as on Android), desktop OpenGL 4.5 ("desktop",
+    # 3 ("gles", HALO_GLES, as the web build's), desktop OpenGL 4.5 ("desktop",
     # as the x86 build's), or Vulkan ("vulkan": in the host, through the
     # renderer's command stream, port/linux/vulkan)
     renderer: str
@@ -228,9 +228,9 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     # (tools/guest_toolchain.py, configure.py --guest-llvm)
     explicit_cc = getattr(sln, f"{prefix}_cc", None)
     cc = explicit_cc or "clang"
-    # the renderer: OpenGL ES 3 (HALO_GLES, as on Android), or desktop OpenGL
-    # 4.5 (the x86-64 build's, --linux-arm64-gl=desktop); the VR build is the
-    # Vulkan one (vr_build)
+    # the renderer: OpenGL ES 3 (HALO_GLES, as the web build's), or desktop
+    # OpenGL 4.5 (the x86-64 build's, --linux-arm64-gl=desktop); the VR build
+    # is the Vulkan one (vr_build)
     vulkan = target.renderer == "vulkan"
     vr = bool(getattr(sln, "port_vr", False)) and vr_build(target)
     # (the Vulkan build: desktop OpenGL's headers and libraries, as the x86-64
