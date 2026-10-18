@@ -1,7 +1,7 @@
 """Runs port/android/tests/gl_visibility_test.c: the OpenGL ES backend's
 visibility tests counted by atomic counters (port/linux/src/xgpu_gl.c), as
-the Android host builds it, over a fake OpenGL ES whose GPU runs behind the
-CPU and whose undefined results are garbage. Built with the build machine's
+the Linux arm64 host builds it, over a fake OpenGL ES whose GPU runs behind
+the CPU and whose undefined results are garbage. Built with the build machine's
 clang or cc on a Linux host with the OpenGL ES 3 headers, as
 tools/host_gl_build.py builds the host's backend: its files copied beside
 the host's stand-ins for the guest's headers (port/linux/host/gl)."""

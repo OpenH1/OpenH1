@@ -36,7 +36,8 @@ def generated(fault=None, case=None):
     for member in ["_sound_promotion_dont", "_sound_compression_xbox_adpcm", "_sound_encoding_mono"]:
         enums += enum_with(constants_section, member) + "\n"
     enums += enum_with(read("source/sound/sound_classes.h"), "_sound_class_unit_dialog") + "\n"
-    for name in ["sound_fade_exponent", "sound_inaudible_fade_out_time", "speed_of_sound_threshold"]:
+    for name in ["sound_fade_exponent", "sound_inaudible_fade_out_time", "speed_of_sound_threshold",
+                 "sound_next_impulse_pitch_range_index", "sound_next_impulse_permutation_index"]:
         enums += re.search(r"^.*\b" + name + r"\s*=.*;", manager, re.M).group(0) + "\n"
     return (("types.inc", enums), ("under_test.inc", "\n".join(code)))
 

@@ -155,6 +155,13 @@ def host_machine():
     return {"x86_64": library_stand_in.EM_X86_64, "aarch64": library_stand_in.EM_AARCH64}[platform.machine()]
 
 
+def loader_finds(library):
+    """whether the computer's loader finds library by itself (a computer with
+    clang's libLLVM, as CI's Ubuntu, has a libxml2.so.2 of its own)"""
+    script = f"import ctypes\nctypes.CDLL({library!r})\n"
+    return subprocess.run([sys.executable, "-I", "-c", script], capture_output=True).returncode == 0
+
+
 def test_a_stand_in_is_the_same_bytes_each_time():
     for machine in (library_stand_in.EM_X86_64, library_stand_in.EM_AARCH64):
         first = library_stand_in.stand_in("libxml2.so.2", machine, LIBXML2_IMPORTS, "stand-in")
@@ -217,8 +224,11 @@ def test_a_tool_runs_with_the_stand_in_written_beside_it(tmp_path):
     assert "libxml2.so.2" in found.needed and "$ORIGIN/../lib" in found.runpath
     assert sorted(found.imports["libxml2.so.2"], key=str) == sorted(
         [item for item in LIBXML2_IMPORTS if item.name in ("xmlReadMemory", "xmlFree")], key=str)
-    # (without it the tool does not start)
-    assert subprocess.run([tool], capture_output=True).returncode == 127
+    # (without it the tool does not start, on a computer with no libxml2 of
+    # its own; on one with it, the stand-in in lib/ must still be the one
+    # loaded, which the runs below check)
+    if not loader_finds("libxml2.so.2"):
+        assert subprocess.run([tool], capture_output=True).returncode == 127
     assert guest_toolchain.write_stand_ins(folder) == [folder / "lib" / "libxml2.so.2"]
     assert guest_toolchain.write_stand_ins(folder) == []
     message = guest_toolchain.STAND_INS["libxml2.so.2"] + "\n"

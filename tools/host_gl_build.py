@@ -1,6 +1,6 @@
-"""Ninja rules for the OpenGL backend in the host of the guest builds (the
-Linux desktop guests', tools/linux_guest_build.py, and Android's,
-tools/android_build.py): port/linux/src/xgpu_gl.c and its files built into
+"""Ninja rules for the OpenGL backend in the host of the Linux desktop guest
+builds (tools/linux_guest_build.py; Android's and macOS's hosts have none):
+port/linux/src/xgpu_gl.c and its files built into
 the 64-bit host behind the renderer's command stream (XGPU_GL_HOST;
 port/linux/host/host_gl_stream.c), beside the host's stand-ins for the
 guest's headers (port/linux/host/gl). Refer to "The renderer's command
@@ -40,9 +40,12 @@ def host_gl_renderer(n: Writer, prefix: str, label: str, build: Path, host_cc: s
     headers (port/linux/host/gl), and the XDK's enumerations and texture
     format words for them (xdk_enums.h, as tools/macos_build.py makes it);
     its anti-aliasing's SMAA data and zlib; with vr, its VR mode
-    (host_gl_vr.c, with vr.h's and vr_visor.h's structures). Every guest
-    build's host has it (its import, host_gl_window, is every guest's); the
-    guests draw with it. Returns the objects."""
+    (host_gl_vr.c, with vr.h's and vr_visor.h's structures). Every Linux
+    guest build's host has it, and draws with it (beside Vulkan's in the
+    Vulkan build); the hosts that have none, Android's and macOS's, define
+    its import, host_gl_window, which is every guest's, as a stand-in
+    (port/android/host_renderer.c, port/macos/host_renderer.c). Returns the
+    objects."""
     shared_dir = build / "host" / "gl"
     obj_dir = build / "host" / "obj" / "gl"
     n.rule(name=f"{prefix}_gl_copy", command="cp $in $out", description=f"{label} HOST GL $out")
