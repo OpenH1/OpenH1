@@ -1,7 +1,11 @@
 name: Build
 
-# Debug and release builds of the native ports (Linux, Linux arm64, Linux
-# x86-64, Windows, Android, macOS) and the web port for every pushed commit, uploaded as artifacts.
+# Builds of the native ports (Linux, Linux arm64, Linux x86-64, Windows,
+# Android, macOS) for every pushed commit, uploaded as artifacts: on master
+# the debug and release builds (and the VR one), elsewhere the debug builds
+# alone, a quick check until a faster build system replaces this one. (The
+# web port is not built: its WebGL renderer goes with OpenGL, and it comes
+# back with WebGPU.)
 # tools/ci_build.py does each build; see it for the options.
 #
 # Kept cheap:
@@ -91,6 +95,7 @@ jobs:
         run: python tools/ci_build.py linux profile
 
       - name: Release
+        if: github.ref == 'refs/heads/master'
         run: python tools/ci_build.py linux release
 
       - name: Test
@@ -109,6 +114,7 @@ jobs:
           retention-days: 3
 
       - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
         with:
           name: halo-linux-i686-release
           path: dist/halo-linux-i686-release
@@ -123,6 +129,7 @@ jobs:
           retention-days: 3
 
       - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
         with:
           name: halo-linux-release
           path: dist/halo-linux-release
@@ -173,6 +180,7 @@ jobs:
         run: python3 tools/ci_build.py linux_arm64 debug
 
       - name: Release
+        if: github.ref == 'refs/heads/master'
         run: python3 tools/ci_build.py linux_arm64 release
 
       - name: Compile cache
@@ -185,6 +193,7 @@ jobs:
           retention-days: 3
 
       - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
         with:
           name: halo-linux-arm64-release
           path: dist/halo-linux-arm64-release
@@ -239,11 +248,13 @@ jobs:
         run: python3 tools/ci_build.py linux_x86_64 debug
 
       - name: Release
+        if: github.ref == 'refs/heads/master'
         run: python3 tools/ci_build.py linux_x86_64 release
 
       # the VR build (OpenXR: SteamVR, Monado), a download of its own: the
       # flat build has no VR mode, and the VR one starts the runtime
       - name: VR release
+        if: github.ref == 'refs/heads/master'
         run: python3 tools/ci_build.py linux_x86_64 release --vr
 
       # (with the guests' LLVM on the PATH: clang, ld.lld and LLVM's tools)
@@ -262,12 +273,14 @@ jobs:
           retention-days: 3
 
       - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
         with:
           name: halo-linux-x86_64-release
           path: dist/halo-linux-x86_64-release
           retention-days: 3
 
       - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
         with:
           name: halo-linux-x86_64-vr-release
           path: dist/halo-linux-x86_64-vr-release
@@ -337,6 +350,7 @@ jobs:
         run: python3 tools/ci_build.py android debug
 
       - name: Release
+        if: github.ref == 'refs/heads/master'
         env:
           HALO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: python3 tools/ci_build.py android release
@@ -355,6 +369,7 @@ jobs:
           retention-days: 3
 
       - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
         with:
           name: halo-android-release
           path: dist/halo-android-release
@@ -398,6 +413,7 @@ jobs:
         run: python tools/ci_build.py windows debug
 
       - name: Release
+        if: github.ref == 'refs/heads/master'
         run: python tools/ci_build.py windows release
 
       - name: Test light storage
@@ -413,6 +429,7 @@ jobs:
           retention-days: 3
 
       - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
         with:
           name: halo-windows-release
           path: dist/halo-windows-release
@@ -426,6 +443,7 @@ jobs:
           retention-days: 3
 
       - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
         with:
           name: halo-windows-release-symbols
           path: dist/halo-windows-release-symbols
@@ -469,6 +487,7 @@ jobs:
         run: python3 tools/ci_build.py macos debug
 
       - name: Release
+        if: github.ref == 'refs/heads/master'
         run: python3 tools/ci_build.py macos release
 
       - name: Compile cache
@@ -481,86 +500,10 @@ jobs:
           retention-days: 3
 
       - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
         with:
           name: halo-macos-release
           path: dist/halo-macos-release
-          retention-days: 3
-
-  web:
-    # Emscripten (emsdk, the version below, cached) builds the web port's
-    # site (port/web/README.md); the tests check its graph, the page's
-    # importer and service worker, its sockets, that it starts in a
-    # headless Chromium (with no game data, as far as the menus' map), and
-    # that two browsers join a room through a local MQTT broker.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    env:
-      EMSDK_VERSION: 6.0.10
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/emsdk
-          key: emsdk-${{ env.EMSDK_VERSION }}-${{ hashFiles('port/web/halo_sdl3.py') }}
-
-      - name: Install the toolchain
-        run: |
-          if [ ! -x ~/emsdk/upstream/emscripten/emcc ]; then
-            rm -rf ~/emsdk
-            git clone --depth 1 https://github.com/emscripten-core/emsdk.git ~/emsdk
-            ~/emsdk/emsdk install "$EMSDK_VERSION"
-          fi
-          ~/emsdk/emsdk activate "$EMSDK_VERSION"
-          sudo apt-get update -q
-          sudo apt-get install -y -q ninja-build ccache python3-pytest mosquitto
-
-      - uses: actions/cache@v4
-        with:
-          path: .ccache
-          key: ccache-web-${{ github.sha }}
-          restore-keys: ccache-web-
-
-      - name: Debug
-        run: |
-          source ~/emsdk/emsdk_env.sh
-          python3 tools/ci_build.py web debug
-
-      - name: Release
-        run: |
-          source ~/emsdk/emsdk_env.sh
-          python3 tools/ci_build.py web release
-
-      - name: Test
-        run: |
-          source ~/emsdk/emsdk_env.sh
-          node --test "port/web/tests/*.test.js"
-          python3 -m pytest -q tools/test_web_build.py
-
-      - name: Test in Chromium and Firefox
-        run: |
-          npm install --no-save --prefix "$RUNNER_TEMP/playwright" playwright@1.58
-          "$RUNNER_TEMP/playwright/node_modules/.bin/playwright" install --with-deps chromium firefox
-          NODE_PATH="$RUNNER_TEMP/playwright/node_modules" node port/web/tests/smoke.mjs dist/halo-web-release
-          NODE_PATH="$RUNNER_TEMP/playwright/node_modules" node port/web/tests/rooms.mjs dist/halo-web-release
-          # (the native builds' WebRTC, port/linux/src/p2p_webrtc.c, with both)
-          NODE_PATH="$RUNNER_TEMP/playwright/node_modules" node port/web/tests/webrtc_native.mjs chromium firefox
-
-      - name: Compile cache
-        run: ccache --show-stats
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: halo-web-debug
-          path: dist/halo-web-debug
-          include-hidden-files: true
-          retention-days: 3
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: halo-web-release
-          path: dist/halo-web-release
-          include-hidden-files: true
           retention-days: 3
 
   release:
@@ -569,7 +512,7 @@ jobs:
     # (every file keeps its name from release to release, for the README's
     # latest/download links); then all but the newest five build-* releases
     # go, tags and all. Only for master, and only when every platform built.
-    needs: [linux, linux-arm64, linux-x86_64, android, windows, macos, web]
+    needs: [linux, linux-arm64, linux-x86_64, android, windows, macos]
     if: ${{ github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -665,7 +608,7 @@ jobs:
     # without it): green when every platform built, red when one did not,
     # with each platform's result, this run's release (master only), and
     # links to the latest release's builds.
-    needs: [linux, linux-arm64, linux-x86_64, android, windows, macos, web, release]
+    needs: [linux, linux-arm64, linux-x86_64, android, windows, macos, release]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -679,7 +622,6 @@ jobs:
           ANDROID: ${{ needs.android.result }}
           WINDOWS: ${{ needs.windows.result }}
           MACOS: ${{ needs.macos.result }}
-          WEB: ${{ needs.web.result }}
           RELEASE_TAG: ${{ needs.release.outputs.tag }}
           SERVER: ${{ github.server_url }}
           REPOSITORY: ${{ github.repository }}
@@ -702,7 +644,7 @@ jobs:
               *) echo "➖ Skipped" ;;
             esac
           }
-          if [ "$LINUX" = success ] && [ "$LINUX_ARM64" = success ] && [ "$LINUX_X86_64" = success ] && [ "$ANDROID" = success ] && [ "$WINDOWS" = success ] && [ "$MACOS" = success ] && [ "$WEB" = success ]; then
+          if [ "$LINUX" = success ] && [ "$LINUX_ARM64" = success ] && [ "$LINUX_X86_64" = success ] && [ "$ANDROID" = success ] && [ "$WINDOWS" = success ] && [ "$MACOS" = success ]; then
             title="Build succeeded"; color=5763719
           else
             title="Build failed"; color=15548997
@@ -720,7 +662,6 @@ jobs:
             --arg description "[\`${SHA:0:7}\`]($COMMIT_URL) $subject — $ACTOR ($BRANCH)" \
             --arg release "$release" --arg downloads "$downloads" \
             --arg linux "$(status "$LINUX")" --arg linux_arm64 "$(status "$LINUX_ARM64")" --arg linux_x86_64 "$(status "$LINUX_X86_64")" --arg windows "$(status "$WINDOWS")" --arg macos "$(status "$MACOS")" --arg android "$(status "$ANDROID")" \
-            --arg web "$(status "$WEB")" \
             --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{embeds: [{
               title: $title, url: $url, color: $color, description: $description, timestamp: $timestamp,
@@ -731,7 +672,6 @@ jobs:
                 {name: "Windows", value: $windows, inline: true},
                 {name: "macOS", value: $macos, inline: true},
                 {name: "Android", value: $android, inline: true},
-                {name: "Web", value: $web, inline: true},
                 {name: "Release", value: $release},
                 {name: "Latest release builds", value: $downloads}
               ]
