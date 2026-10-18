@@ -25,7 +25,7 @@ self-updater compares (and the web site's version.json names).
 --vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md)
 into dist/halo-linux-x86_64-vr-<config>/, a build of its own, which updates
 to the release's VR build. Only for linux_x86_64: the 64-bit ARM VR build is
-the Steam Frame's package (tools/frame_package.py).
+the Vulkan one, the Steam Frame's package (tools/frame_package.py).
 
 A Linux build is the release's tree (tools/linux_package.py: bin/opence,
 lib/opence, share/...), dist/halo-linux-i686-<config>/ for the 32-bit x86

@@ -1,4 +1,4 @@
-# halo-arm64-build: builds `ninja linux_arm64` (and `--vr`) on a 64-bit ARM
+# halo-arm64-build: builds `ninja linux_arm64` (and, with `--vr`, `ninja linux_vulkan`) on a 64-bit ARM
 # Linux host, with clang 22 for the arm64_32 guest. Refer to README.md.
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive

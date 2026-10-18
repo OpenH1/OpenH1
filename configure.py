@@ -144,8 +144,9 @@ parser.add_argument(
 parser.add_argument(
     "--vr",
     action="store_true",
-    help="the VR mode (OpenXR) in `ninja linux_arm64` and `ninja linux_x86_64` with desktop OpenGL, "
-    "and `ninja linux_vulkan` with Vulkan (also give --linux-vulkan); "
+    help="the VR mode (OpenXR): on 64-bit ARM (the Steam Frame) in `ninja linux_vulkan`, with Vulkan; on "
+    "64-bit x86 in `ninja linux_x86_64` with desktop OpenGL, and `ninja linux_vulkan` with Vulkan (also give "
+    "--linux-vulkan); "
     "refer to \"VR\" in port/linux/README.md",
 )
 parser.add_argument(

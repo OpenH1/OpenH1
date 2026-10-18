@@ -1687,12 +1687,15 @@ built alongside it. Requirements and limitations are in
 
 ## VR
 
-`python3 configure.py --vr`, then `ninja linux_arm64` or `ninja
-linux_x86_64`, builds the 64-bit ARM or 64-bit x86 game with a VR mode: the
+`python3 configure.py --vr`, then `ninja linux_vulkan` on 64-bit ARM or
+`ninja linux_x86_64` on 64-bit x86, builds the game with a VR mode: the
 game plays in an OpenXR headset, in stereo, with the head tracked in 6
-degrees of freedom. It was made on a Steam Frame with SteamVR. The VR build
-draws with desktop OpenGL 4.5 (`--linux-arm64-gl=desktop`, which `--vr`
-implies; the 64-bit x86 build always does); it needs no OpenXR package, as it
+degrees of freedom. It was made on a Steam Frame with SteamVR. The 64-bit
+ARM VR build (the Steam Frame's) draws with Vulkan, through
+`XR_KHR_vulkan_enable2` ([the Vulkan README](vulkan/README.md)); `ninja
+linux_arm64` has no VR mode. The 64-bit x86 VR build draws with desktop
+OpenGL 4.5 (with `--linux-vulkan`, `ninja linux_vulkan` is a Vulkan one
+there too). It needs no OpenXR package, as it
 loads the active runtime itself (or a `libopenxr_loader.so.1` where there is
 one). Configuring it downloads the OpenXR SDK's four headers (to
 `build/<build>/third_party/openxr`, checked against their SHA-256 in
@@ -1721,7 +1724,7 @@ through a shortcut (a non-Steam game) to the launcher there,
 environment it gives the game). From a computer with SSH to the Frame:
 
 ```sh
-python3 configure.py --vr && ninja linux_arm64
+python3 configure.py --vr && ninja linux_vulkan
 python3 tools/frame_package.py
 tools/frame_install.sh <frame>
 ```
@@ -1731,8 +1734,8 @@ tools/frame_install.sh <frame>
   `brokers.txt` (without which internet play finds no games), a README
   (`port/linux/frame/README.md`: install, update, uninstall, the files),
   the libraries' licenses, `VERSION` (the commit) and `SHA256SUMS`. It
-  stops if the game is not a VR build, or needs a library that neither the
-  package nor SteamOS has.
+  stops if the game is not the Vulkan VR build, or needs a library that
+  neither the package nor SteamOS has.
 - `tools/frame_install.sh <host>` (`--package` for another package, a
   folder or the `.tar.gz`) copies it to `~/apps/halo-vr/` over SSH. It
   refuses while the game runs (`pgrep -x halo`) and never starts it. Each

@@ -86,13 +86,18 @@ def test_pinned_llvm_that_cannot_be_fetched_is_this_target_unavailable(tree, cap
 @pytest.mark.parametrize("native", linux_guest_build.LINUX_GUESTS, ids=lambda target: target.name)
 def test_vulkan_uses_native_guest(tree, monkeypatch, native):
     """The Vulkan target keeps a separate output folder, using this host's
-    ILP32 guest, and does not become an implicit download just because VR is on."""
+    ILP32 guest. VR on 64-bit ARM (the Steam Frame) is the Vulkan build's
+    alone, so VR asks for it there; on 64-bit x86 it is an implicit
+    download only when asked for (the OpenGL build has VR there)."""
     generated = []
     monkeypatch.setattr(linux_guest_build, "native_linux_guest", lambda: native)
     monkeypatch.setattr(linux_guest_build, "_generate", lambda n, sln, target, config, third_party:
                         generated.append((target, third_party)))
     linux_guest_build.generate_linux_guest_builds(Writer(io.StringIO()), SimpleNamespace(port_vr=True))
-    assert not any(target.renderer == "vulkan" for target, _ in generated)
+    arm = native.arch is linux_guest_build.ARM64_32
+    assert any(target.renderer == "vulkan" for target, _ in generated) == arm
+    # (the OpenGL build has a VR mode only on 64-bit x86)
+    assert linux_guest_build.vr_build(native) == (not arm)
     generated.clear()
     linux_guest_build.generate_linux_guest_builds(Writer(io.StringIO()),
                                                  SimpleNamespace(linux_vulkan=True, port_vr=True))
