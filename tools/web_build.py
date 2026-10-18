@@ -59,7 +59,7 @@ SDL_TAG = "release-3.4.16"
 # the game's functions the page (port/web/site) calls on its module, besides
 # main: tools/test_web_build.py checks that it names them all
 PAGE_EXPORTS = ["_main", "_malloc", "_free", "_web_state", "_web_net_receive", "_web_net_peer_lost",
-                "_web_p2p_fingerprint", "_web_p2p_described", "_web_p2p_receive"]
+                "_web_p2p_fingerprint", "_web_p2p_described", "_web_p2p_receive", "_web_loading_picture"]
 # the page's fonts, the menus' own (port/assets/fonts)
 SITE_FONTS = ["OpenCE-Regular.ttf", "Overpass-750.ttf", "Overpass-900.ttf"]
 # the memory watch by page contents, shared with the Android host

@@ -89,7 +89,10 @@ GUEST_FLAGS = [
     "-O2",
 ]
 # the Android app's code paths, and the OpenGL ES renderer's, which the
-# desktop guest builds share (tools/linux_guest_build.py)
+# desktop guest builds share (tools/linux_guest_build.py): the app's renderer
+# is Vulkan's, in the host, and its guest has no OpenGL backend, but its
+# platform code names OpenGL as the Linux arm64 guest's does (declarations
+# only), with the anti-aliasing a phone's GPU can spare (d3d8_device.c)
 ANDROID_DEFINES = ["-DHALO_GLES=1", "-DHALO_ANDROID=1"]
 
 # as the Linux build (tools/linux_build.py), minus what only x86 needs
@@ -149,7 +152,13 @@ VARIADIC_PROTOTYPE_FILES = {
     "source/render/render.c",
 }
 
-HOST_LIBRARIES = ["SDL3", "GLESv3", "EGL", "log", "android", "m", "dl"]
+HOST_LIBRARIES = ["SDL3", "log", "android", "m", "dl"]
+# (port/android/host's that the app does not build: the OpenGL backend's
+# services, which the Linux hosts have; the app's renderer is Vulkan's)
+HOST_EXCLUDED = {"host_gl.c"}
+# the window import of that OpenGL backend (host_gl_window, every guest's),
+# which the app has not
+HOST_RENDERER = PORT_DIR / "host_renderer.c"
 
 
 def _quote(path: Any) -> str:
@@ -620,14 +629,14 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     if not ndk or not ndk.is_dir():
         n.comment("Android build: no NDK found (set ANDROID_NDK_HOME or pass --android-ndk)")
         return
-    vulkan = bool(getattr(sln, "android_vulkan", False))
+    # (the renderer is Vulkan's, in the host: port/linux/vulkan; a phone needs
+    # a Vulkan 1.3 driver, which the app's manifest asks for)
     vulkan_headers = THIRD_PARTY / "vulkan-headers"
     try:
         fetch_third_party()
-        if vulkan:
-            fetch_vulkan_headers(vulkan_headers)
+        fetch_vulkan_headers(vulkan_headers)
     except (subprocess.CalledProcessError, OSError, RuntimeError) as error:
-        print(f"Android build disabled: cannot fetch musl/SDL3 ({error})", file=sys.stderr)
+        print(f"Android build disabled: cannot fetch musl/SDL3 or the Vulkan headers ({error})", file=sys.stderr)
         return
     import json
     config: Dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
@@ -672,18 +681,17 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     # chooses, tools/guest_base_register.py, instead of the fixed low ranges)
     base_register = getattr(sln, "guest_base", False)
     # (the renderer's backend is the host's, as the Linux guest builds have
-    # it: tools/host_gl_build.py)
-    from .host_gl_build import RENDER_STREAM_GUEST_EXCLUDED, host_gl_renderer
+    # it, Vulkan's here: the guest builds no OpenGL backend of its own)
+    from .host_gl_build import RENDER_STREAM_GUEST_EXCLUDED
     guest = generate_guest_image(
         n, sln, config, arch=ARM64_32, prefix="android", label="ANDROID", build=BUILD, third_party=THIRD_PARTY,
         guest_cc=guest_cc, gl_headers=sysroot_include, ar=toolchain.ar if toolchain else "$android_ndk_bin/llvm-ar",
         ld=toolchain.ld if toolchain else "$android_ndk_bin/ld.lld",
         objdump=toolchain.objdump if toolchain else "$android_ndk_bin/llvm-objdump", builtins_cc="$android_host_cc",
-        environment="android", platform_defines=ANDROID_DEFINES + ["-DHALO_RENDER_STREAM=1"] +
-        (["-DHALO_VULKAN=1"] if vulkan else []),
-        extra_imports=[PORT_DIR / "android_imports.list"] + ([VULKAN_DIR / "host_imports.list"] if vulkan else []),
-        extra_runtime=[VULKAN_DIR / "guest_vulkan.c"] if vulkan else [],
-        extra_prototypes=[VULKAN_DIR / "guest_vulkan.c"] if vulkan else [], base_register=base_register,
+        environment="android", platform_defines=ANDROID_DEFINES + ["-DHALO_RENDER_STREAM=1", "-DHALO_VULKAN=1"],
+        extra_imports=[PORT_DIR / "android_imports.list", VULKAN_DIR / "host_imports.list"],
+        extra_runtime=[VULKAN_DIR / "guest_vulkan.c"],
+        extra_prototypes=[VULKAN_DIR / "guest_vulkan.c"], base_register=base_register,
         excluded_platform_sources=RENDER_STREAM_GUEST_EXCLUDED)
     image = guest["image"]
     host_table_c = guest["host_table_c"]
@@ -723,10 +731,11 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     host_cflags = " ".join([
         "-O2", "-g", "-fPIC", "-Wall", "-Wno-unused-function", "-D_GNU_SOURCE",
         f"-I{PORT_DIR}/include", f"-I{PORT_DIR}/host", f"-I{SDL_DIR}/include", f"-I{LINUX_DIR}/src",
-        f"-I{TOML_DIR}", *(["-DHALO_VULKAN=1"] if vulkan else []), *(["-DHALO_GUEST_BASE=1"] if base_register else []),
+        f"-I{TOML_DIR}", "-DHALO_VULKAN=1", *(["-DHALO_GUEST_BASE=1"] if base_register else []),
     ])
-    host_sources = host_memory_sources(sorted((PORT_DIR / "host").glob("*.c")), base_register) + [
-        LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",
+    host_sources = host_memory_sources(sorted(path for path in (PORT_DIR / "host").glob("*.c")
+                                              if path.name not in HOST_EXCLUDED), base_register) + [
+        HOST_RENDERER, LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",
         # the app reads debug.sample_seconds from config.toml (host_main.c)
         TOML_DIR / "tomlc17.c",
     ]
@@ -753,12 +762,10 @@ def generate_android_build(n: Writer, sln: Any) -> None:
         n.build(outputs=obj, rule="android_host_cc", inputs=source,
                 variables={"cflags": mbedtls_cflags + (" -w" if source.name != "posix_dtls.c" else "")})
         host_objects.append(obj)
-    # the OpenGL backend for the command stream (OpenGL ES)
-    host_objects += host_gl_renderer(n, "android", "ANDROID", BUILD, "android_host_cc", host_cflags, desktop_gl=False,
-                                     vr=False)
-    if vulkan:
-        host_objects += host_vulkan_renderer(n, "android", "ANDROID", BUILD, "android_host_cc",
-                                             host_cflags, vulkan_headers)
+    # the renderer for the command stream, Vulkan's, with the Xbox's texture
+    # decoding (which no OpenGL backend beside it has)
+    host_objects += host_vulkan_renderer(n, "android", "ANDROID", BUILD, "android_host_cc",
+                                         host_cflags, vulkan_headers, texture_decoding=True)
     table_obj = host_obj_dir / "host_import_table.c.o"
     n.build(outputs=table_obj, rule="android_host_cc", inputs=host_table_c, variables={"cflags": host_cflags})
     host_objects.append(table_obj)

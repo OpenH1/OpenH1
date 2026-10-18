@@ -5,8 +5,10 @@ The renderer's backend for Vulkan, behind the renderer's command stream
 guest records each frame as a stream, and the host replays it with Vulkan.
 It is built into the 64-bit ARM and x86 Linux builds (the guest on the host,
 `tools/linux_guest_build.py`) as `ninja linux_vulkan`. The guest has the
-computer's architecture: `arm64_32` on ARM, `x32` on x86-64. Android uses the same backend
-with `configure.py --android-vulkan` and `ninja android`.
+computer's architecture: `arm64_32` on ARM, `x32` on x86-64. Android draws with the same backend
+(`ninja android`), with no OpenGL backend beside it: the Linux hosts share
+the Xbox's texture decoding with their OpenGL backend, and Android's host
+builds it for this one alone (`tools/vulkan_build.py`, `texture_decoding`).
 
 | File | What it is |
 | --- | --- |

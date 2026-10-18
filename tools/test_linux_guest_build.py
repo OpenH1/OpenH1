@@ -4,6 +4,7 @@ build, downloads nothing unless asked for, and a build that cannot be
 generated (here, a compiler that does not run) is a target that stops with
 the reason instead of stopping configure.py for every target."""
 import io
+from dataclasses import replace
 import json
 import shutil
 import sys
@@ -60,7 +61,10 @@ def test_fetched_sources_are_asked_for(tree, tmp_path):
     (third_party / "SDL3").mkdir()
     assert linux_guest_build.requested(SimpleNamespace(), X86_64, third_party)
     assert linux_guest_build.requested(SimpleNamespace(linux_x86_64=True), X86_64, tmp_path / "none")
-    assert linux_guest_build.requested(SimpleNamespace(port_vr=True), X86_64, tmp_path / "none")
+    # (VR asks for the Vulkan build, not the OpenGL one)
+    assert not linux_guest_build.requested(SimpleNamespace(port_vr=True), X86_64, tmp_path / "none")
+    vulkan = replace(X86_64, name="linux_vulkan", renderer="vulkan")
+    assert linux_guest_build.requested(SimpleNamespace(port_vr=True), vulkan, tmp_path / "none")
 
 
 def test_compiler_that_cannot_run_is_this_target_unavailable(tree, capsys):
@@ -86,13 +90,15 @@ def test_pinned_llvm_that_cannot_be_fetched_is_this_target_unavailable(tree, cap
 @pytest.mark.parametrize("native", linux_guest_build.LINUX_GUESTS, ids=lambda target: target.name)
 def test_vulkan_uses_native_guest(tree, monkeypatch, native):
     """The Vulkan target keeps a separate output folder, using this host's
-    ILP32 guest, and does not become an implicit download just because VR is on."""
+    ILP32 guest. VR is the Vulkan build's alone, so VR asks for it."""
     generated = []
     monkeypatch.setattr(linux_guest_build, "native_linux_guest", lambda: native)
     monkeypatch.setattr(linux_guest_build, "_generate", lambda n, sln, target, config, third_party:
                         generated.append((target, third_party)))
     linux_guest_build.generate_linux_guest_builds(Writer(io.StringIO()), SimpleNamespace(port_vr=True))
-    assert not any(target.renderer == "vulkan" for target, _ in generated)
+    assert any(target.renderer == "vulkan" for target, _ in generated)
+    # (the OpenGL builds have no VR mode)
+    assert not linux_guest_build.vr_build(native)
     generated.clear()
     linux_guest_build.generate_linux_guest_builds(Writer(io.StringIO()),
                                                  SimpleNamespace(linux_vulkan=True, port_vr=True))

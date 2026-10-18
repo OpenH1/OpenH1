@@ -2,7 +2,7 @@
 GL_VISIBILITY_TEST.C
 
 The OpenGL ES backend's visibility tests counted by atomic counters
-(xgpu_gl.c, XGPU_SAMPLE_COUNTERS), built as the Android host builds it
+(xgpu_gl.c, XGPU_SAMPLE_COUNTERS), built as the Linux arm64 host builds it
 (HALO_GLES, XGPU_GL_HOST) over a fake OpenGL ES whose GPU runs behind the
 CPU, as a driver's that queues frames does: draws and copies wait in a
 queue and run when a frame's fence is waited for or a buffer is read.

@@ -22,7 +22,7 @@ end.
 | `port/include/xdk/` | Stand-ins for the Xbox SDK's headers (declarations only) |
 | `port/windows/` | The Windows build's own files (`win32_*.c`, headers) |
 | `port/linux/host/` | The Linux host of the guest builds (`ninja linux_arm64`, `ninja linux_x86_64`), which the macOS build shares: its entry point (`host_main.c`), the desktop's and VR's host functions (`host_desktop.c`, `host_vr.c`) and their import lists, the guest's half of the desktop (`guest_desktop.c`), the OpenGL backend in the host for the renderer's command stream (`host_gl_stream.c`, `host_gl_textures.c`, and `gl/`, its stand-ins for the guest's headers); the rest of the host is Android's (`port/android/host`) |
-| `port/android/` | The Android app: the guest runtime, the host library (`host/`, which the Linux and macOS hosts share), the Java app (`app/`), host imports (`host_imports.list`, every guest's; `android_imports.list`, the app's own) |
+| `port/android/` | The Android app: the guest runtime, the host library (`host/`, which the Linux and macOS hosts share; its renderer is Vulkan's, `port/linux/vulkan`, and `host_renderer.c` stands in for the OpenGL backend's window import), the Java app (`app/`), host imports (`host_imports.list`, every guest's; `android_imports.list`, the app's own) |
 | `port/macos/` | The macOS host's own files: Darwin's system calls for the guest (`host_syscall.c`), the Metal renderer's backend (`xgpu_metal.m`, its bindings `xgpu_metal_bindings.h`, the command stream's table `xgpu_metal_stream.m`, the MSL emitter's shaders `xgpu_metal_shaders.c`, the textures `xgpu_metal_textures.c`, the NV2A combiner as one function of function constants `xgpu_metal_combiner.c`, the pipelines' description `xgpu_metal_pipeline.m`, the shader library's build tool `tools/xgpu_metal_prebuild.c`), the window and its presentation (`host_metal.m`), their tests (`tests/`), the app (`host_app.m`: its folders, the maps panel, the window kept; `halo.entitlements`, `opence-icon.icns`); the rest is `port/android/host` and `port/linux/host` |
 | `port/web/` | The web build: its runtime (`src/`: entry, sockets inside the page, memory watch), the page and its service worker (`site/`), the SDL port, tests |
 | `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), icons, network brokers, the Linux desktop entry (`linux/`) |
@@ -89,13 +89,15 @@ python tools/ci_build.py linux release   # what CI builds
   configures only on its own processor; `ninja` alone on x86-64 still
   builds `linux`, and `linux_x86_64` is generated (its sources
   downloaded) only with `--linux-x86-64`, `--linux-x86-64-cc` or `--vr`,
-  or once they are in `build/linux_x86_64/third_party`. Their host, and
-  Android's, has the OpenGL backend (`port/linux/host/host_gl_stream.c`,
-  with `XGPU_GL_HOST`: `tools/host_gl_build.py`), which draws the guest's
+  or once they are in `build/linux_x86_64/third_party`. Their host has
+  the OpenGL backend (`port/linux/host/host_gl_stream.c`, with
+  `XGPU_GL_HOST`: `tools/host_gl_build.py`), which draws the guest's
   frames from the renderer's command stream (`HALO_RENDER_STREAM` in the
-  guest, which has no OpenGL backend); the 32-bit x86, Windows and web
-  builds, with no host, build `port/linux/src/xgpu_gl.c` into the game: a
-  change to it builds in both.
+  guest, which has no OpenGL backend); Android's host has only the Vulkan
+  backend (`port/linux/vulkan`, `HALO_VULKAN`), which `ninja linux_vulkan`
+  builds beside the OpenGL one, and links no OpenGL ES. The 32-bit x86,
+  Windows and web builds, with no host, build `port/linux/src/xgpu_gl.c`
+  into the game: a change to it builds in both.
 - macOS: the guest of the Linux arm64 build (`ARM64_32`, with the macOS
   defines: `HALO_MACOS`, `HALO_METAL`, `HALO_RENDER_STREAM`), with its
   memory at a base the host chooses (`tools/guest_base_register.py`: every
@@ -129,7 +131,7 @@ python tools/ci_build.py linux release   # what CI builds
 | Define | Set by | Meaning |
 | --- | --- | --- |
 | `HALO_ANDROID` | Android | The app: its display, input, files and lifecycle |
-| `HALO_GLES` | Android, web | The OpenGL ES renderer |
+| `HALO_GLES` | Web, Linux arm64; the Android and macOS guests | The OpenGL ES renderer; in the Android and macOS guests, whose renderer is the host's, only its code paths' declarations and limits (`display.anti_aliasing`'s, `d3d8_device.c`) |
 | `HALO_GUEST` | Android, Linux arm64, Linux x86-64, macOS | The game is an ILP32 guest image in a 64-bit host process: its memory, its host imports, the SDL it reaches. The instruction set is the compiler's: test `__aarch64__` or `__x86_64__` |
 | `HALO_GUEST_MACHO` | Android, Linux arm64, macOS | The guest is compiled for clang's Darwin target (`arm64_32`), whose Mach-O objects are converted afterwards |
 | `HALO_ARM64_GUEST` | Android, Linux arm64, macOS | `HALO_GUEST` on AArch64 (its name before); new code tests `HALO_GUEST` or `__aarch64__` |
@@ -139,9 +141,10 @@ python tools/ci_build.py linux release   # what CI builds
 | `HALO_WINDOWS` | Windows (`halo_windows_prefix.h`) | The Windows build |
 | `HALO_RELEASE` | `--release` | No assertions checked |
 | `HALO_PROFILE` | `--profile` | The profiling build; a normal build must be unchanged by it |
+| `HALO_VULKAN` | Android, Linux Vulkan (`ninja linux_vulkan`) | The window is Vulkan's, drawn by the host (`port/linux/vulkan`), not OpenGL's |
 | `HALO_METAL` | macOS | The window is Metal's, drawn by the host (`port/macos/host_metal.m`), not OpenGL's |
 | `HALO_RENDER_STREAM` | macOS, Linux x86-64 and arm64, Android (the guest builds) | The renderer's backend is the host's: the front end's calls are a command stream (`port/linux/src/xgpu_stream_encode.c`), the high-res replacements images (`xgpu_images.c`) |
-| `XGPU_GL_HOST` | the Linux and Android hosts' OpenGL backend (`tools/host_gl_build.py`) | `port/linux/src/xgpu_gl.c` built into the 64-bit host, behind the command stream (`port/linux/host/host_gl_stream.c`): its textures are the host's cache's, its pixel shaders come decoded in the stream |
+| `XGPU_GL_HOST` | the Linux hosts' OpenGL backend (`tools/host_gl_build.py`) | `port/linux/src/xgpu_gl.c` built into the 64-bit host, behind the command stream (`port/linux/host/host_gl_stream.c`): its textures are the host's cache's, its pixel shaders come decoded in the stream |
 
 `HALO_LINUX` and `HALO_CUSTOM_EDITION` are **not** defined by any build:
 code guarded by them compiles to nothing. Custom Edition support is a

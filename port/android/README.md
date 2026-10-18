@@ -4,7 +4,7 @@
 `ninja android_apk` makes an app from it:
 `port/android/app/build/outputs/apk/debug/app-debug.apk`.
 
-The game shows its graphics with OpenGL ES 3 by default. It plays sound through SDL3
+The game shows its graphics with Vulkan 1.3. It plays sound through SDL3
 (AAudio). It accepts input from game controllers, for example a PlayStation
 5 DualSense on Bluetooth, and from the touchscreen (refer to "Controls").
 The app needs Android 9 (API 28) or later. It operates on 64-bit-only
@@ -75,14 +75,12 @@ of the whole `save` folder stops there.
 
 `ninja android` builds only the game image and the native libraries.
 
-`python configure.py --android-vulkan` selects the shared Vulkan renderer
-for these same targets. It needs a Vulkan 1.3 driver (dynamic rendering,
-timeline semaphores and host query reset); it uses the phone's Vulkan
-loader and an SDL Android surface. The pipeline cache is in the app's
-private cache directory. This path is build-checked; rendering, performance
-and activity suspend/resume still need testing on a phone. Configure without
-`--android-vulkan` to return to OpenGL ES. Refer to the renderer's
-[README](../linux/vulkan/README.md).
+The app draws with the shared Vulkan renderer, in the host. It needs a
+Vulkan 1.3 driver (dynamic rendering, timeline semaphores and host query
+reset), which the manifest asks for, so Google Play offers the app only to
+such phones; it uses the phone's Vulkan loader and an SDL Android surface.
+The pipeline cache is in the app's private cache directory. Refer to the
+renderer's [README](../linux/vulkan/README.md).
 
 ## Game data
 
@@ -382,9 +380,13 @@ build machine.
   `port/linux/src/posix_*.c` (DTLS with Mbed TLS, for internet play with
   browsers: `posix_dtls.c`).
 - Draws the game's frames, which the guest writes as the renderer's command
-  stream, with the OpenGL ES backend on a thread of its own
-  (`port/linux/host/host_gl_stream.c`; "The renderer's command stream" in
-  [port/linux/README.md](../linux/README.md#the-renderers-command-stream)).
+  stream, with the Vulkan backend on a thread of its own
+  (`port/linux/vulkan`, `host/host_render_stream.c`; "The renderer's command
+  stream" in [port/linux/README.md](../linux/README.md#the-renderers-command-stream)).
+  The library links no OpenGL ES or EGL: it builds none of the OpenGL
+  backend of the Linux hosts (`host/host_gl.c`, `port/linux/host/host_gl_*.c`),
+  and `host_renderer.c` stands in for its window import, `host_gl_window`,
+  which the guest does not call.
 
 The guest calls the host through stubs (`tools/android_imports.py`, with the
 instructions of `import_stub` in `tools/guest_arch.py`). The two ABIs use
@@ -445,29 +447,6 @@ the fixed addresses:
   swap; with `busy`, the page in the fixed addresses too.
 - `adb shell setprop debug.halo.art_overlap ""`: normal operation.
 
-### OpenGL ES
-
-The renderer (`port/linux/src/xgpu_gl.c`) uses OpenGL ES 3.0, and some
-functions of OpenGL ES 3.2 if they are available:
-
-- The vertex shaders flip y and change the depth range from 0..1. The front
-  face winding is inverted.
-- BGRA textures go to the GPU as RGBA with a swizzle. If the driver has no
-  S3TC (Mali GPUs), the CPU decodes the DXT textures.
-- The pixel shaders apply the LOD bias of the sampler.
-- The upload changes the byte order of `D3DCOLOR` vertex attributes.
-- Dynamic vertex and index data goes into a ring of three buffers, one for
-  each frame. On Mali, other methods used too much memory.
-- On OpenGL ES 3.2, indexed draws use a base vertex. Before 3.2, the CPU
-  changes the indices.
-- On OpenGL ES 3.1 and later, the visibility tests (lens flares) count
-  samples with an atomic counter, as the NV2A did. OpenGL ES 3.0 tells only
-  if a sample is visible. The GPU copies the counters at the end of each
-  frame, and the CPU reads the copy two frames later, when the frame's fence
-  has passed: a result is the latest count the GPU has finished, as with
-  the query buffer of desktop OpenGL. A read of the counters themselves
-  waits for the GPU, which halved the frame rate on Turnip (Zink).
-
 ### Calling conventions
 
 Some files of the game declare a function differently from its definition,
@@ -497,7 +476,12 @@ Android build defines all of (`tools/android_build.py`):
   compiler's own macro, `__aarch64__`;
 - `HALO_GUEST_MACHO`: the guest is compiled for clang's Darwin target
   (`arm64_32`), whose Mach-O objects are converted afterwards;
-- `HALO_GLES`: the OpenGL ES renderer;
+- `HALO_RENDER_STREAM` and `HALO_VULKAN`: the renderer's backend is the
+  host's, Vulkan's, which the guest's frames reach as the command stream;
+- `HALO_GLES`: the OpenGL ES renderer's code paths, as the Linux arm64
+  guest has them: the guest has no OpenGL backend, but its platform code
+  names OpenGL's declarations, and `display.anti_aliasing` keeps to what
+  a phone's GPU can spare (`"smaa"` gives FXAA, `"ssaa2x"` none);
 - `HALO_ANDROID`: the app (its display, input, files and lifecycle).
 
 `HALO_ARM64_GUEST`, the name of `HALO_GUEST` before, is still defined:
@@ -533,8 +517,6 @@ assembly of the port is necessary:
 - Set `sample_seconds = <seconds>` in `[debug]` of `config.toml`. The log
   then shows the program counter and the frame chain of each guest thread
   at this interval. This finds hangs on devices without root access.
-- Set `gl_debug = true` in `[debug]` of `config.toml`. The log then shows
-  the OpenGL ES errors.
 - The log says which write tracking the app uses: "page protection"
   (devices) or "page hashes" (the emulator, or `debug.memory_watch = false`).
 

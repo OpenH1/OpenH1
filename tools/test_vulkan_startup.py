@@ -135,7 +135,7 @@ def test_swapchain_rotation(tmp_path):
                   ROOT / "build/linux_vulkan/third_party/vulkan-headers", Path("/usr/include")]
     headers = next((path for path in candidates if (path / "vulkan/vulkan_core.h").exists()), None)
     if not compiler or not headers:
-        pytest.skip("needs a C compiler and Vulkan headers (configure --android-vulkan or --linux-vulkan)")
+        pytest.skip("needs a C compiler and Vulkan headers (an Android build, or configure --linux-vulkan)")
     text = (ROOT / "port/linux/vulkan/xgpu_vulkan.c").read_text()
     functions = text[text.index("static int swapchain_make("):
                      text.index("/* the image shown in the window:")]

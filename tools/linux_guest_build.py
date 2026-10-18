@@ -97,7 +97,7 @@ class LinuxGuest:
     # the processors (platform.machine()) of the computers that build it
     machines: Tuple[str, ...]
     # its renderer unless configure.py says otherwise (<name>_gl): OpenGL ES
-    # 3 ("gles", HALO_GLES, as on Android), desktop OpenGL 4.5 ("desktop",
+    # 3 ("gles", HALO_GLES, as the web build's), desktop OpenGL 4.5 ("desktop",
     # as the x86 build's), or Vulkan ("vulkan": in the host, through the
     # renderer's command stream, port/linux/vulkan)
     renderer: str
@@ -172,12 +172,20 @@ def _unavailable(n: Writer, target: LinuxGuest, reason: str, quiet: bool = False
     n.newline()
 
 
+def vr_build(target: LinuxGuest) -> bool:
+    """whether configure.py --vr gives the build a VR mode: the Vulkan build
+    alone (linux_vulkan), on 64-bit ARM (the Steam Frame's) and x86 alike"""
+    return target.renderer == "vulkan"
+
+
 def requested(sln: Any, target: LinuxGuest, third_party: Path) -> bool:
     """whether configure.py is to generate the build, and so download its
     sources: the computer's default build, one asked for (--<name>, its
-    compiler, or VR), or one whose sources are there already"""
+    compiler, or VR: the Vulkan build), or one whose sources are there
+    already"""
+    vr = bool(getattr(sln, "port_vr", False))
     return (target.default or bool(getattr(sln, target.name, False)) or bool(getattr(sln, f"{target.name}_cc", None))
-            or (bool(getattr(sln, "port_vr", False)) and target.renderer != "vulkan")
+            or (vr and vr_build(target))
             or ((third_party / f"musl-{MUSL_VERSION}").is_dir() and (third_party / "SDL3").is_dir()))
 
 
@@ -220,11 +228,11 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     # (tools/guest_toolchain.py, configure.py --guest-llvm)
     explicit_cc = getattr(sln, f"{prefix}_cc", None)
     cc = explicit_cc or "clang"
-    # the renderer: OpenGL ES 3 (HALO_GLES, as on Android), or desktop OpenGL
-    # 4.5 (the x86-64 build's, --linux-arm64-gl=desktop, and the VR build's:
-    # the OpenXR runtime takes a desktop GL context)
+    # the renderer: OpenGL ES 3 (HALO_GLES, as the web build's), or desktop
+    # OpenGL 4.5 (the x86-64 build's, --linux-arm64-gl=desktop); the VR build
+    # is the Vulkan one (vr_build)
     vulkan = target.renderer == "vulkan"
-    vr = bool(getattr(sln, "port_vr", False))
+    vr = bool(getattr(sln, "port_vr", False)) and vr_build(target)
     # (the Vulkan build: desktop OpenGL's headers and libraries, as the x86-64
     # build's, for the host's OpenGL backend beside the Vulkan one)
     desktop_gl = vr or vulkan or (getattr(sln, f"{prefix}_gl", None) or target.renderer) == "desktop"
