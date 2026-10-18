@@ -3,6 +3,7 @@
 #include "types.inc"
 #define NUMBEROF(a) (sizeof(a)/sizeof((a)[0]))
 #define MAX(a,b) ((a)>(b)?(a):(b))
+#define VALID_INDEX(i,n) ((i)>=0 && (i)<(n))
 #define PIN(v,a,b) ((v)<(a)?(a):((v)>(b)?(b):(v)))
 #define SET_FLAG(v,b,s) ((v)=(s)?((v)|FLAG(b)):((v)&~FLAG(b)))
 #define match_vassert(...) ((void)0)
