@@ -73,7 +73,7 @@ as the other desktop builds are (`halo.exe`, the window's title "Halo"):
   app's permissions (the microphone, the local network) by it.
 - `CFBundleShortVersionString` and `CFBundleVersion`: the build's number
   (`HALO_BUILD_NUMBER`, a release's; 0 for a local build), as the game
-  names itself ("OpenCE macOS | build N").
+  names itself ("OpenH1 macOS | build N").
 - `LSApplicationCategoryType` `public.app-category.games` and
   `LSSupportsGameMode`: macOS turns Game Mode on while the game is
   fullscreen (the processor and the GPU for the game, Bluetooth's lower

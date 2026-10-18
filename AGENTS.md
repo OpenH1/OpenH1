@@ -5,7 +5,8 @@ This repository ports the Halo: Combat Evolved decompilation (Xbox build
 sources are the decompilation; the port adds a platform layer that
 implements the Xbox APIs the game calls, and features the Xbox game did not
 have (a new netcode, internet play, the PC version's menus, Custom Edition
-maps, touch controls). The project is published as OpenCE.
+maps, touch controls). The project is published as OpenH1, a fork of OpenCE
+(OpenCommunityEdition/OpenCE), whose netcode it keeps compatible.
 
 Start with [README.md](README.md). The other documents are listed at the
 end.

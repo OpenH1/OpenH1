@@ -1,56 +1,29 @@
-# Halo: Combat Evolved for Linux, Windows, Android and the web
+# OpenH1
 
-[![Join our Discord](https://invidget.switchblade.xyz/9gqcHyr5km)](https://discord.gg/9gqcHyr5km)
+Halo: Combat Evolved for Linux, Windows, macOS, Android, VR and the web.
 
-This project is a port of the Halo: Combat Evolved decompilation to Linux,
-Windows, Android and web browsers. The decompilation is of the Xbox build 2342
-(`cachebeta.exe`, SHA-256
+OpenH1 is a port of the Halo: Combat Evolved decompilation. The
+decompilation is of the Xbox build 2342 (`cachebeta.exe`, SHA-256
 `4cc87b45f721270392a96f1674ed2b5cd4a7bb4355faeab4531d1cf1884d9520`).
 
 <img width="1289" height="995" alt="The game on Linux" src="https://github.com/user-attachments/assets/0d3ad50f-f8b8-46cf-aef8-e3661da2a7d7" />
 
-The port starts from the decompilation of [bnunu/halo-1](https://github.com/bnunu/halo-1).
-That project is a fork of [punpckhdq/halo](https://github.com/punpckhdq/halo).
+OpenH1 is a fork of [OpenCE](https://github.com/OpenCommunityEdition/OpenCE),
+the community's port, and adds its own renderers (Metal on macOS, Vulkan on
+Android), VR and more. It keeps OpenCE's netcode, so players of the two can
+play together. OpenCE starts from the decompilation of
+[bnunu/halo-1](https://github.com/bnunu/halo-1), a fork of
+[punpckhdq/halo](https://github.com/punpckhdq/halo).
 
 ## Download
 
-GitHub Actions builds the game for each commit. These links download the
-builds of the latest release:
+OpenH1 does not publish builds yet. Until it does, build the game: refer to
+"Build the game" below. The builds will be on the
+[Releases](https://github.com/OpenH1/OpenH1/releases) page.
 
-| Platform | Release | Debug |
-| --- | --- | --- |
-| Linux | [halo-linux-i686-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-i686-release.zip) | [halo-linux-i686-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-i686-debug.zip) |
-| Linux arm64 | [halo-linux-arm64-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-arm64-release.zip) | [halo-linux-arm64-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-arm64-debug.zip) |
-| Linux x86-64 | [halo-linux-x86_64-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-x86_64-release.zip) | [halo-linux-x86_64-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-linux-x86_64-debug.zip) |
-| Windows | [halo-windows-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-windows-release.zip) | [halo-windows-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-windows-debug.zip) |
-| Android | [halo-android-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-android-release.zip) | [halo-android-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-android-debug.zip) |
-| Web | [halocombatevolved.com](https://halocombatevolved.com/) (or [halo-web-release.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-web-release.zip) for your own server) | [halo-web-debug.zip](https://github.com/OpenCommunityEdition/OpenCE/releases/latest/download/halo-web-debug.zip) |
-
-Use the release build to play. The debug build stops at the first failed
-assertion and writes it to the log. Use the debug build to find and report
-problems.
-
-On Linux, unpack the zip into a folder and start `bin/opence` in it. The
-folders are laid out as a Unix prefix is (`bin/`, `lib/`, `share/`), for
-package managers too: refer to "Packaging" in
-[port/linux/README.md](port/linux/README.md#packaging). The releases also
-have `halo-linux-release.zip`, the same build laid out flat as before, for
-the updaters of older builds.
-
-The game updates itself. At start-up it looks for a newer release, and asks
-if you want to install it. Refer to "Updates" in
-[port/linux/README.md](port/linux/README.md#updates). The web site offers
-each new build when it is out.
-
-Each build of the `main` branch that passes on all the platforms is a new
-release, and the web site then plays it. The [Releases](https://github.com/OpenCommunityEdition/OpenCE/releases)
-page keeps the last five releases. If the latest build has a problem, get
-an older build from that page.
-
-### Arch-based Linux distributions
-
-The upstream OpenCE Linux release is available on the
-[AUR](https://aur.archlinux.org/packages/opence-bin).
+A build of OpenH1 does not look for updates yet. When the releases start,
+the game will look for a newer release at start-up and ask if you want to
+install it (refer to "Updates" in [port/linux/README.md](port/linux/README.md#updates)).
 
 ## Game data
 

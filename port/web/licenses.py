@@ -32,8 +32,9 @@ NOTICES = [
 def main() -> None:
     output, sdl_license = Path(sys.argv[1]), Path(sys.argv[2])
     parts = [
-        "OpenCE for the web\n\n"
-        "OpenCE's own code is CC0 (https://github.com/OpenCommunityEdition/OpenCE). The game data\n"
+        "OpenH1 for the web\n\n"
+        "OpenH1's own code is CC0 (https://github.com/OpenH1/OpenH1), a fork of OpenCE's\n"
+        "(https://github.com/OpenCommunityEdition/OpenCE). The game data\n"
         "comes from the player's own disc. It carries the following, under their licences:\n",
         f"\n==================== SDL 3 (windows, input and audio)\n\n{sdl_license.read_text(encoding='utf-8')}",
     ]
