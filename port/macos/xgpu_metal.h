@@ -395,6 +395,11 @@ as both have; the same format), in the frame's order: the pass drawing
 into it ends first, so that a draw can sample what was drawn before it
 (Metal cannot sample a texture its pass draws into) */
 void xgpu_metal_texture_copy(uint32_t source, uint32_t destination);
+/* a multisampled target's attachment resolved into its texture now, in the
+frame's order (the pass drawing into it ends first): a depth target's,
+which the passes store and do not resolve, for a draw that reads the depth
+(the enhanced dynamic lights' glows) */
+void xgpu_metal_texture_resolve(uint32_t texture);
 /* writes a region of a level and layer (a cube's face, a 3D texture's
 slices z to z + depth); bytes_per_row is a compressed format's row of
 blocks. Ordered with the frame's draws: draws before it see the old texels,
@@ -452,6 +457,11 @@ void xgpu_metal_set_texture(uint32_t stage, uint32_t texture, const struct xgpu_
 void xgpu_metal_set_vertex_constants(uint32_t first, uint32_t count, const float *values);
 void xgpu_metal_set_draw_uniforms(const void *data, uint32_t size);
 void xgpu_metal_set_stream(uint32_t stream, struct xgpu_metal_source source);
+/* the enhanced dynamic lights' block and their grid's cells, which the
+pixel shaders that light with them read (XGPU_METAL_BUFFER_DYNAMIC_LIGHTS,
+_DYNAMIC_LIGHT_CELLS): until set again (XGPU_METAL_SOURCE_NONE: none bound;
+a ring's source is the frame's alone) */
+void xgpu_metal_set_dynamic_lights(struct xgpu_metal_source block, struct xgpu_metal_source cells);
 /* the values of the 16 inputs no stream feeds */
 void xgpu_metal_set_constant_attributes(const float (*values)[4]);
 /* indices: 16-bit, or XGPU_METAL_SOURCE_NONE */

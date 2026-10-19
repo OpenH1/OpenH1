@@ -22,8 +22,12 @@ XGPU_MSL_BUFFER_CONSTANTS) */
 /* the draw's other uniforms (the emitter's struct xgpu_msl_uniforms), bound
 to both stages (setVertexBytes, setFragmentBytes; XGPU_MSL_BUFFER_UNIFORMS) */
 #define XGPU_METAL_BUFFER_DRAW_UNIFORMS 17
-/* (18 and 19: the emitter's enhanced dynamic lights and sample counter,
-which the macOS app does not use) */
+/* the enhanced dynamic lights' block and their grid's cells, for the pixel
+shaders that read them (xgpu_metal_set_dynamic_lights;
+XGPU_MSL_BUFFER_DYNAMIC_LIGHTS, _DYNAMIC_LIGHT_CELLS) */
+#define XGPU_METAL_BUFFER_DYNAMIC_LIGHTS 18
+#define XGPU_METAL_BUFFER_DYNAMIC_LIGHT_CELLS 22
+/* (19: the emitter's sample counter, which the macOS app does not use) */
 /* the values of the inputs no stream feeds, 16 float4 (setVertexBytes),
 read by the vertex descriptor at a constant step: the shaders read every
 input as [[attribute(n)]] whether a stream feeds it or not */

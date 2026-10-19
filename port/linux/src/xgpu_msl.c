@@ -1207,7 +1207,8 @@ static void model_lighting(struct xgpu_text *text, BOOL point_lights, BOOL dynam
 
 /* the enhanced dynamic lights (xgpu_glsl.c xgpu_dynamic_lights_glsl): the
 block (struct xgpu_dynamic_lights_block, 6 KB: a buffer, past
-setFragmentBytes' 4) and the cells' texture */
+setFragmentBytes' 4) and the cells (a buffer of four words a cell, which
+OpenGL's integer 3D texture holds, in its order) */
 static void dynamic_lights_functions(struct xgpu_text *text, struct xgpu_text *functions)
 {
 	xgpu_text_append(text,
@@ -1219,13 +1220,14 @@ static void dynamic_lights_functions(struct xgpu_text *text, struct xgpu_text *f
 		"\tfloat4 cone[%d];\n"
 		"};\n", XGPU_DYNAMIC_LIGHTS_MAXIMUM, XGPU_DYNAMIC_LIGHTS_MAXIMUM, XGPU_DYNAMIC_LIGHTS_MAXIMUM);
 	xgpu_text_append(functions,
-		"static inline float3 dynamic_light_sum(constant xgpu_dynamic_lights &lights, texture3d<uint> cells, float3 p, float3 n,\n"
-		"\tfloat3 surface_normal, bool environment)\n"
+		"static inline float3 dynamic_light_sum(constant xgpu_dynamic_lights &lights, const device uint4 *cells, float3 p,\n"
+		"\tfloat3 n, float3 surface_normal, bool environment)\n"
 		"{\n"
 		"\tfloat3 offset = p - lights.grid[0].xyz;\n"
 		"\tfloat3 cell = sign(offset) * log2(1.0 + abs(offset) * lights.grid[1].w) * lights.grid[1].xyz +\n"
 		"\t\tfloat3(%d.0, %d.0, %d.0);\n"
-		"\tuint4 mask = cells.read(uint3(clamp(int3(floor(cell)), int3(0), int3(%d, %d, %d))));\n"
+		"\tint3 at = clamp(int3(floor(cell)), int3(0), int3(%d, %d, %d));\n"
+		"\tuint4 mask = cells[(at.z * %d + at.y) * %d + at.x];\n"
 		"\tfloat3 sum = float3(0.0);\n"
 		"\tfor (int word = 0; word < 4; word++)\n"
 		"\t{\n"
@@ -1266,6 +1268,7 @@ static void dynamic_lights_functions(struct xgpu_text *text, struct xgpu_text *f
 		"}\n",
 		XGPU_DYNAMIC_LIGHTS_GRID_X / 2, XGPU_DYNAMIC_LIGHTS_GRID_Y / 2, XGPU_DYNAMIC_LIGHTS_GRID_Z / 2,
 		XGPU_DYNAMIC_LIGHTS_GRID_X - 1, XGPU_DYNAMIC_LIGHTS_GRID_Y - 1, XGPU_DYNAMIC_LIGHTS_GRID_Z - 1,
+		XGPU_DYNAMIC_LIGHTS_GRID_Y, XGPU_DYNAMIC_LIGHTS_GRID_X,
 		1.0 / (XGPU_DYNAMIC_LIGHTS_CORE * XGPU_DYNAMIC_LIGHTS_CORE));
 }
 
@@ -1362,7 +1365,8 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	}
 	if (program->dynamic_lights)
 		xgpu_text_append(&text, ",\n\tconstant xgpu_dynamic_lights &dynamic_lights [[buffer(%d)]], "
-			"texture3d<uint> dynamic_light_cells [[texture(%d)]]", XGPU_MSL_BUFFER_DYNAMIC_LIGHTS, XGPU_MSL_TEXTURE_DYNAMIC_LIGHTS);
+			"const device uint4 *dynamic_light_cells [[buffer(%d)]]", XGPU_MSL_BUFFER_DYNAMIC_LIGHTS,
+			XGPU_MSL_BUFFER_DYNAMIC_LIGHT_CELLS);
 	if (count_samples)
 		xgpu_text_append(&text, ",\n\tdevice atomic_uint *visible_samples [[buffer(%d)]]", XGPU_MSL_BUFFER_SAMPLES);
 	xgpu_text_append(&text, ")\n{\n\txgpu_fragment_out output;\n");
@@ -1528,5 +1532,79 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	xgpu_text_append(&text, "\treturn output;\n}\n");
 	functions_insert(&text, functions_at, functions.buffer);
 	free(functions.buffer);
+	return text.buffer;
+}
+
+/* the glow about each plasma bolt's light (xgpu_msl.h), the OpenGL
+backend's program (xgpu_gl.c dynamic_lights_halo_program) for the screen's
+target, operation for operation: the light's quad facing the camera,
+projected as the game's vertex programs project (the screen conversion
+undone, as the emitter's vertex shaders undo it: Metal's clip space is the
+game's), and in the pixel shader a wide soft glow and a small hot core,
+fading out as it nears what is behind it and gone behind what is before it */
+char *xgpu_msl_halo_shader(BOOL pixel)
+{
+	struct xgpu_text text = { 0 };
+
+	xgpu_text_append(&text,
+		"#include <metal_stdlib>\n"
+		"using namespace metal;\n"
+		"struct xgpu_halo_uniforms\n"
+		"{\n"
+		"\tfloat4 c[6];\n"
+		"\tfloat4 camera_axes[2];\n"
+		"\tfloat4 viewport_scale;\n"
+		"\tfloat4 viewport_offset;\n"
+		"\tfloat4 depth_parameters;\n"
+		"\tfloat screen_offset, unused0, unused1, unused2;\n"
+		"};\n"
+		"struct xgpu_halo_in\n"
+		"{\n"
+		"\tfloat4 middle [[attribute(%d)]];\n"
+		"\tfloat4 color [[attribute(%d)]];\n"
+		"\tfloat2 corner [[attribute(%d)]];\n"
+		"};\n"
+		"struct xgpu_halo_out\n"
+		"{\n"
+		"\tfloat4 position [[position]];\n"
+		"\tfloat2 corner;\n"
+		"\tfloat3 color;\n"
+		"\tfloat depth;\n"
+		"};\n",
+		XGPU_MSL_HALO_MIDDLE, XGPU_MSL_HALO_COLOR, XGPU_MSL_HALO_CORNER);
+	if (!pixel)
+		xgpu_text_append(&text,
+			"vertex xgpu_halo_out xgpu_halo_vertex(xgpu_halo_in in [[stage_in]],\n"
+			"\tconstant xgpu_halo_uniforms &u [[buffer(%d)]])\n"
+			"{\n"
+			"\txgpu_halo_out out;\n"
+			"\tout.corner = in.corner;\n"
+			"\tout.color = in.color.rgb;\n"
+			"\tfloat3 world = in.middle.xyz + (u.camera_axes[0].xyz * in.corner.x + u.camera_axes[1].xyz * in.corner.y) *\n"
+			"\t\tin.middle.w;\n"
+			"\tfloat4 clip = float4(dot(world, u.c[0].xyz) + u.c[0].w, dot(world, u.c[1].xyz) + u.c[1].w,\n"
+			"\t\tdot(world, u.c[2].xyz) + u.c[2].w, dot(world, u.c[3].xyz) + u.c[3].w);\n"
+			"\tout.depth = clip.w;\n"
+			"\tfloat3 scale = float3(u.viewport_scale.x != 0.0 ? u.viewport_scale.x : 1.0,\n"
+			"\t\tu.viewport_scale.y != 0.0 ? u.viewport_scale.y : 1.0, u.viewport_scale.z != 0.0 ? u.viewport_scale.z : 1.0);\n"
+			"\tout.position = float4((clip.xyz * u.c[4].xyz + (u.c[5].xyz + float3(0.5 + u.screen_offset, 0.5, 0.0) -\n"
+			"\t\tu.viewport_offset.xyz) * clip.w) / scale, clip.w);\n"
+			"\treturn out;\n"
+			"}\n", XGPU_MSL_BUFFER_UNIFORMS);
+	else
+		xgpu_text_append(&text,
+			"fragment float4 xgpu_halo_fragment(xgpu_halo_out in [[stage_in]], constant xgpu_halo_uniforms &u [[buffer(%d)]],\n"
+			"\tdepth2d<float> scene_depth [[texture(0)]])\n"
+			"{\n"
+			"\tfloat r2 = dot(in.corner, in.corner);\n"
+			"\tif (r2 >= 1.0)\n"
+			"\t\tdiscard_fragment();\n"
+			"\tfloat scene = scene_depth.read(uint2(in.position.xy));\n"
+			"\tfloat away = scene - u.depth_parameters.x;\n"
+			"\tfloat distance = away * u.depth_parameters.y > 0.0 ? u.depth_parameters.y / away : 1.0e9;\n"
+			"\tfloat fade = scene >= 1.0 ? 1.0 : saturate((distance - in.depth) / u.depth_parameters.z);\n"
+			"\tfloat glow = (exp(-3.0 * r2) - 0.0498) * 0.6 + exp(-24.0 * r2) * 0.8;\n"
+			"\treturn float4(in.color * (glow * fade * fade), 0.0);\n"
+			"}\n", XGPU_MSL_BUFFER_UNIFORMS);
 	return text.buffer;
 }

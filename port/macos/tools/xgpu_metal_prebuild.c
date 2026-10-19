@@ -20,7 +20,8 @@ which here keeps each function's source), and the render pipeline state
 (xgpu_metal_pipeline.m). It writes each function's source as <name>.metal
 in the sources folder (named after its source's hash, as the backend looks
 it up), with the clears' and the presentation's functions
-(xgpu_metal_fixed.metal), and the pipelines as a Metal pipelines script
+(xgpu_metal_fixed.metal), the enhanced dynamic lights' glows' and
+anti-aliasing's passes' (xgpu_metal_post_shaders.c), and the pipelines as a Metal pipelines script
 (xgpu_metal_prebuild_script.m) whose functions are the library's at the
 library path. Plain C: the shared headers' BOOL is not Objective-C's.
 */
@@ -36,6 +37,7 @@ library path. Plain C: the shared headers' BOOL is not Objective-C's.
 #include "xgpu_metal_stream.h"
 #include "xgpu_metal_prebuild.h"
 #include "xgpu_metal_combiner.h"
+#include "xgpu_metal_post_shaders.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -404,6 +406,17 @@ int main(int argc, char **argv)
 		}
 	}
 	prebuild_script_present();
+	/* the fixed functions of the stream's own passes: the glows' and
+	anti-aliasing's (their pipelines are made as the setting is chosen) */
+	{
+		uint32_t halo_vertex, halo_pixel;
+
+		if (!xgpu_metal_shaders()->halo(NULL, &halo_vertex, &halo_pixel))
+			fail("cannot write the glows' functions");
+		for (index = 0; index < XGPU_METAL_POST_FUNCTION_COUNT; index++)
+			xgpu_metal_pixel_shader_create(xgpu_metal_post_functions[index].source, xgpu_metal_post_functions[index].size,
+				xgpu_metal_post_functions[index].entry, NULL);
+	}
 	pipelines = prebuild_script_write(argv[3], argv[4]);
 	printf("%u draws, %u vertex shaders: %u functions (%u in the library), %lu pipelines (%u draws' writing no colour, not archived; "
 		"%u whose shaders failed)\n", manifest.draw_count, vertex.vertex_shader_count, function_count, functions_written(), pipelines,

@@ -87,10 +87,9 @@ Ctrl+D, which moving and crouching would press, from the browser) */
 
 /* display.graphics = "enhanced": the values it gives the settings it
 chooses (config_graphics), which are their defaults, the same on every
-build: SMAA (Metal draws none yet; OpenGL ES FXAA), 16x anisotropic
-filtering, 512 shadow maps, the models' detail by the display's lines and lit
-for each pixel, the enhanced dynamic lights (Metal and OpenGL ES draw them
-classic) */
+build: SMAA (OpenGL ES FXAA), 16x anisotropic filtering, 512 shadow maps,
+the models' detail by the display's lines and lit for each pixel, the
+enhanced dynamic lights (OpenGL ES draws them classic) */
 #define GRAPHICS_ANTI_ALIASING "\"smaa\""
 #define GRAPHICS_ANISOTROPIC_FILTERING "16"
 #define GRAPHICS_SHADOW_RESOLUTION "512"
@@ -706,7 +705,7 @@ static const struct config_setting config_settings[] =
 		"of the walls and models, through the walls' bump maps, gliding with\n"
 		"the bolt between ticks, brighter in its core and fading softly, with\n"
 		"a glow about each plasma bolt, and lighting your own weapon and hands.\n"
-		"Desktop OpenGL and Vulkan (not OpenGL ES nor Metal: there, classic)." GRAPHICS_CHOOSES },
+		"Desktop OpenGL, Vulkan and Metal (not OpenGL ES: there, classic)." GRAPHICS_CHOOSES },
 	{ "display.shield_color", _config_string, "\"default\"", "HALO_SHIELD_COLOR", _environment_value, _platform_all,
 		"Your energy shield's color, as this machine draws it: \"default\" (the\n"
 		"shield's own) or a multiplayer armor color: white, black, red, blue,\n"
