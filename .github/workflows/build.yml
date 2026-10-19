@@ -2,7 +2,8 @@ name: Build
 
 # Builds of the native ports (Linux x86-64 and arm64, Windows, Android,
 # macOS) for every pushed commit, uploaded as artifacts: on master
-# the debug and release builds (and the VR one), elsewhere the debug builds
+# the debug and release builds (and the VR ones: x86-64's, and the Steam
+# Frame's package on arm64), elsewhere the debug builds
 # alone, a quick check until a faster build system replaces this one. (The
 # web port is not built: its WebGL renderer goes with OpenGL, and it comes
 # back with WebGPU.)
@@ -62,7 +63,9 @@ jobs:
     # the pinned LLVM configure.py downloads.
     runs-on: ubuntu-24.04-arm
     container: ubuntu:22.04
-    timeout-minutes: 40
+    # (on master three builds, debug, release and the Steam Frame's VR
+    # release, each of the whole game, as the x86-64 job's)
+    timeout-minutes: 75
     steps:
       - name: Install the toolchain
         env:
@@ -84,7 +87,8 @@ jobs:
           key: ccache-linux-arm64-${{ github.sha }}
           restore-keys: ccache-linux-arm64-
 
-      # musl, SDL and the Vulkan headers, which configure.py fetches
+      # musl, SDL and the Vulkan headers, which configure.py fetches (and the
+      # OpenXR headers, which the VR build fetches)
       - uses: actions/cache@v4
         with:
           path: build/linux_arm64/third_party
@@ -103,6 +107,14 @@ jobs:
         if: github.ref == 'refs/heads/master'
         run: python3 tools/ci_build.py linux_arm64 release
 
+      # the VR build for the Steam Frame (an arm64 SteamOS headset), as its
+      # package (tools/frame_package.py: the game, the launcher of its Steam
+      # shortcut, SHA256SUMS), which frame_install.sh installs; a download of
+      # its own, halo-steam-frame-vr-release.zip
+      - name: Steam Frame VR release
+        if: github.ref == 'refs/heads/master'
+        run: python3 tools/ci_build.py linux_arm64 release --vr
+
       - name: Compile cache
         run: ccache --show-stats
 
@@ -117,6 +129,15 @@ jobs:
         with:
           name: halo-linux-arm64-release
           path: dist/halo-linux-arm64-release
+          retention-days: 3
+
+      # (the zip itself, which keeps the files' modes: the release has it as
+      # it is)
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          name: halo-steam-frame-vr-release
+          path: dist/halo-steam-frame-vr-release
           retention-days: 3
 
   linux-x86_64:
@@ -482,13 +503,14 @@ jobs:
           path: artifacts
 
       # (the Linux builds with their executables' modes, which the artifacts
-      # lose)
+      # lose; the Steam Frame's package is a zip already, with its modes)
       - name: Package
         run: |
           mkdir release
           for build in artifacts/*/; do
             name="$(basename "$build")"
             case "$name" in
+              halo-steam-frame-*) cp "$build/$name.zip" "release/$name.zip" ;;
               halo-linux-*) python3 tools/linux_package.py zip "$build" "release/$name.zip" ;;
               *) (cd "$build" && zip -qr "$GITHUB_WORKSPACE/release/$name.zip" .) ;;
             esac
@@ -504,7 +526,7 @@ jobs:
         run: |
           tag="build-$GITHUB_RUN_NUMBER"
           subject="$(printf '%s' "${MESSAGE:-manual run}" | head -n 1)"
-          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Linux, download halo-linux-x86_64-release.zip (halo-linux-arm64-release.zip on 64-bit ARM, halo-linux-x86_64-vr-release.zip for VR): it draws with Vulkan 1.3.\n\nOn macOS (Apple silicon, macOS 14.4 or later), download halo-macos-release.zip and open Halo.dmg in it. The app is not notarized yet: the first time, macOS asks to allow it in System Settings, Privacy & Security.\n' \
+          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Linux, download halo-linux-x86_64-release.zip (halo-linux-arm64-release.zip on 64-bit ARM, halo-linux-x86_64-vr-release.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, download halo-steam-frame-vr-release.zip and install it as the README.md in it says (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download halo-macos-release.zip and open Halo.dmg in it. The app is not notarized yet: the first time, macOS asks to allow it in System Settings, Privacy & Security.\n' \
             "$subject" "$COMMIT_URL" "$RUN_URL" > notes.md
           gh release create "$tag" release/*.zip --target "$GITHUB_SHA" --latest \
             --title "Build $GITHUB_RUN_NUMBER (${GITHUB_SHA:0:7})" --notes-file notes.md
@@ -595,7 +617,7 @@ jobs:
             title="Build failed"; color=15548997
           fi
           latest="$SERVER/$REPOSITORY/releases/latest"
-          downloads="[Linux x86-64]($latest/download/halo-linux-x86_64-release.zip) · [Linux arm64]($latest/download/halo-linux-arm64-release.zip) · [Linux x86-64 VR]($latest/download/halo-linux-x86_64-vr-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [macOS]($latest/download/halo-macos-release.zip) · [Android]($latest/download/halo-android-release.zip) ([all builds]($latest))"
+          downloads="[Linux x86-64]($latest/download/halo-linux-x86_64-release.zip) · [Linux arm64]($latest/download/halo-linux-arm64-release.zip) · [Linux x86-64 VR]($latest/download/halo-linux-x86_64-vr-release.zip) · [Steam Frame VR]($latest/download/halo-steam-frame-vr-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [macOS]($latest/download/halo-macos-release.zip) · [Android]($latest/download/halo-android-release.zip) ([all builds]($latest))"
           if [ -n "$RELEASE_TAG" ]; then
             release="[$RELEASE_TAG]($SERVER/$REPOSITORY/releases/tag/$RELEASE_TAG)"
           else

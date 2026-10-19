@@ -121,7 +121,9 @@ python tools/ci_build.py linux_x86_64 release   # what CI builds
   `lib/opence`, `share/`), which `tools/linux_package.py` lays out and zips
   for every Linux download (`halo-linux-x86_64-<config>.zip`,
   `halo-linux-x86_64-vr-release.zip`, `halo-linux-arm64-<config>.zip`, as
-  `UPDATE_PLATFORM` in `port/linux/src/updater.c` names them); the game
+  `UPDATE_PLATFORM` in `port/linux/src/updater.c` names them; but the
+  Steam Frame's `halo-steam-frame-vr-release.zip` is `tools/frame_package.py`'s
+  package, which `tools/frame_install.sh` installs, not a tree); the game
   finds its files from its executable's place
   (`port/linux/src/install_layout.c`), and updates itself only in a
   release's tree.

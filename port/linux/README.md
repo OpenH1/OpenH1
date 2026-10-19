@@ -553,7 +553,8 @@ updates: its package manager updates it.
 The release (`halo-linux-x86_64-release.zip`, `halo-linux-arm64-release.zip`,
 `halo-linux-x86_64-vr-release.zip`, and their `-debug.zip`) is laid out as a
 Unix prefix is, so a package can copy its folders to `/usr` (or
-`/opt/opence`) as they are:
+`/opt/opence`) as they are (but not the Steam Frame's
+`halo-steam-frame-vr-release.zip`, its own package: "Steam Frame" in "VR"):
 
 | Path | Contents |
 | --- | --- |
@@ -1677,16 +1678,27 @@ its own, with the maps ("Start the game"), and start `bin/opence`. It
 updates itself to the release's VR build, never to the other. The build
 without VR has no VR mode, and the VR build starts the
 runtime (SteamVR's server) whenever it starts, so it is a download of its
-own. On the Steam Frame the VR build doesn't update itself (`update.auto` has
-no effect): install a new one with `tools/frame_install.sh` (below), or by
-hand.
+own. For the Steam Frame, the releases have the 64-bit ARM VR build as the
+Frame's package, `halo-steam-frame-vr-release.zip`
+(`tools/ci_build.py linux_arm64 release --vr`, which runs
+`tools/frame_package.py --zip`). On the Frame the VR build doesn't update
+itself (`update.auto` has no effect): install a new one with
+`tools/frame_install.sh` (below), or by hand.
 
 ### Steam Frame
 
 On the Frame, the game is in `~/apps/halo-vr/`, and Steam starts it
 through a shortcut (a non-Steam game) to the launcher there,
 `halo-vr.sh` (`port/linux/frame/halo-vr.sh`, whose comments list the
-environment it gives the game). From a computer with SSH to the Frame:
+environment it gives the game). From a computer with SSH to the Frame,
+the latest release's package
+([halo-steam-frame-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-steam-frame-vr-release.zip)):
+
+```sh
+tools/frame_install.sh --package halo-steam-frame-vr-release.zip <frame>
+```
+
+or one built here:
 
 ```sh
 python3 configure.py --vr && ninja linux_arm64
@@ -1701,9 +1713,12 @@ tools/frame_install.sh <frame>
   the libraries' licenses, `VERSION` (the commit) and `SHA256SUMS`. It
   takes the game from `build/linux_arm64` (`--build` names another), and
   stops if the game is not the VR build, or needs a library that
-  neither the package nor SteamOS has.
+  neither the package nor SteamOS has. `--zip <file>` also writes it as a
+  zip (the `halo-vr-frame` folder, with the files' modes), as the release's
+  `halo-steam-frame-vr-release.zip`.
 - `tools/frame_install.sh <host>` (`--package` for another package, a
-  folder or the `.tar.gz`) copies it to `~/apps/halo-vr/` over SSH. It
+  folder, the `.tar.gz` or a release's `.zip`) copies it to
+  `~/apps/halo-vr/` over SSH. It
   refuses while the game runs (`pgrep -x halo`) and never starts it. Each
   file that differs goes in as `<name>.new`, checked against
   `SHA256SUMS`, and once all are, each takes its name (a rename, so a
