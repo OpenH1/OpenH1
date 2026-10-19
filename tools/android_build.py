@@ -282,7 +282,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
                          extra_runtime: Optional[List[Path]] = None, extra_imports: Optional[List[Path]] = None,
                          extra_prototypes: Optional[List[Path]] = None, updater_cflags: str = "",
                          base_register: bool = False, link_flags: str = "",
-                         excluded_platform_sources: Iterable[str] = ()) -> Dict[str, Path]:
+                         excluded_platform_sources: Iterable[str] = (),
+                         host_abi: Optional[str] = None) -> Dict[str, Path]:
     """The guest image (build/halo_guest.elf) and the host's import table, for
     the builds that run the game as ILP32 code of the architecture arch
     (tools/guest_arch.py): Android, and the desktop guest builds
@@ -306,7 +307,12 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     declare extra_imports' functions, whose pointer arguments the import
     stubs translate. link_flags are more of the image's linker options.
     excluded_platform_sources are files of port/linux/src the guest does not
-    build (the OpenGL backend: the renderer is the host's)."""
+    build (the OpenGL backend: the renderer is the host's). host_abi "sysv"
+    is for a host whose calling convention is not the guest's (the 64-bit
+    Windows host, tools/windows64_build.py): its table's entries are thunks
+    (tools/android_imports.py --host-abi), from every import's prototype
+    (extra_prototypes too). The steps that are shell commands elsewhere are
+    tools/guest_build_steps.py's on Windows, which has no POSIX shell."""
     extra_runtime = extra_runtime or []
     extra_imports = extra_imports or []
     extra_prototypes = extra_prototypes or []
@@ -334,6 +340,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     # (with the base register, the architecture's registers for it kept from
     # the compiler, GuestArch.base_register_flags)
     base_register_flags = [*(arch.base_register_flags or ()), "-DHALO_GUEST_BASE=1"] if base_register else []
+    # (the steps that are shell commands, on a computer without a POSIX shell)
+    steps = f"{python} tools/guest_build_steps.py" if os.name == "nt" else None
 
     # ---------- generated headers and sources
 
@@ -342,20 +350,21 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     version_h = libc_internal / "version.h"
     n.rule(
         name=f"{prefix}_alltypes",
-        command=f"sed -f {musl_dir}/tools/mkalltypes.sed $in > $out",
+        command=f"{steps} alltypes $out $in" if steps else f"sed -f {musl_dir}/tools/mkalltypes.sed $in > $out",
         description=f"{label} MUSL $out",
     )
     n.build(outputs=alltypes, rule=f"{prefix}_alltypes",
             inputs=[libc_arch / "bits" / "alltypes.h.in", musl_dir / "include" / "alltypes.h.in"])
     n.rule(
         name=f"{prefix}_syscall_h",
-        command="cp $in $out && sed -n -e s/__NR_/SYS_/p < $in >> $out",
+        command=f"{steps} syscall-h $out $in" if steps else "cp $in $out && sed -n -e s/__NR_/SYS_/p < $in >> $out",
         description=f"{label} MUSL $out",
     )
     n.build(outputs=syscall_h, rule=f"{prefix}_syscall_h", inputs=arch_generic / "bits" / "syscall.h.in")
     n.rule(
         name=f"{prefix}_version_h",
-        command=f"echo '#define VERSION \"{MUSL_VERSION}\"' > $out",
+        command=(f"{steps} version-h $out {MUSL_VERSION}" if steps else
+                 f"echo '#define VERSION \"{MUSL_VERSION}\"' > $out"),
         description=f"{label} MUSL $out",
     )
     n.build(outputs=version_h, rule=f"{prefix}_version_h")
@@ -364,7 +373,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     gl_stamp = gl_include / "stamp"
     n.rule(
         name=f"{prefix}_gl_include",
-        command=(f"mkdir -p {gl_include} && ln -sfn {gl_headers}/GLES2 {gl_include}/GLES2 && "
+        command=(f"{steps} gl-include $out {gl_include} {gl_headers}" if steps else
+                 f"mkdir -p {gl_include} && ln -sfn {gl_headers}/GLES2 {gl_include}/GLES2 && "
                  f"ln -sfn {gl_headers}/GLES3 {gl_include}/GLES3 && "
                  f"ln -sfn {gl_headers}/KHR {gl_include}/KHR && "
                  f"ln -sfn {gl_headers}/GL {gl_include}/GL && touch $out"),
@@ -389,10 +399,14 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     # (with the base register, the stubs translate the pointer arguments
     # the prototypes name)
     prototypes = [PORT_DIR / "guest" / "runtime" / "guest_host.h", *extra_prototypes]
-    prototype_flags = "".join(f" --prototypes {path}" for path in prototypes) if base_register else ""
+    if host_abi:
+        # (every import's, posix.h's too: the thunks')
+        prototypes.append(LINUX_DIR / "src" / "posix.h")
+    prototype_flags = "".join(f" --prototypes {path}" for path in prototypes) if base_register or host_abi else ""
+    abi_flag = f" --host-abi {host_abi}" if host_abi else ""
     n.rule(
         name=f"{prefix}_imports",
-        command=(f"{python} tools/android_imports.py --arch {arch.name}{base_flag}{prototype_flags} "
+        command=(f"{python} tools/android_imports.py --arch {arch.name}{base_flag}{abi_flag}{prototype_flags} "
                  f"--host-table {host_table_c} {imports_s} $in"),
         description=f"{label} IMPORTS",
     )
@@ -409,7 +423,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     n.build(outputs=[imports_s, host_table_c], rule=f"{prefix}_imports",
             inputs=[host_imports_list, *extra_imports, posix_imports],
             implicit=[Path("tools/android_imports.py"), GUEST_ARCH_SCRIPT, imports_checked,
-                      *(prototypes if base_register else [])])
+                      *(prototypes if base_register or host_abi else [])])
 
     generated_headers = [*xdk_headers(), alltypes, syscall_h, version_h, gl_stamp,
                          semantics_header, platform_semantics_header]
@@ -474,7 +488,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     libguestc = guest_dir / "libguestc.a"
     n.rule(
         name=f"{prefix}_ar",
-        command=f"rm -f $out && {ar} rcs $out @$out.rsp",
+        command=f"{steps} ar {ar} $out $out.rsp" if steps else f"rm -f $out && {ar} rcs $out @$out.rsp",
         description=f"{label} AR $out",
         rspfile="$out.rsp",
         rspfile_content="$in_newline",
