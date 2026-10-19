@@ -46,6 +46,10 @@ struct xgpu_vulkan_post_module
 
 extern const struct xgpu_vulkan_post_module xgpu_vulkan_post_vertex;
 extern const struct xgpu_vulkan_post_module xgpu_vulkan_post_programs[XGPU_VULKAN_POST_PROGRAM_COUNT];
+/* the core's clears of some of a colour target's channels (xgpu_vulkan.c):
+drawn with the vertex shader above, it writes the colour of its uniforms'
+block (set 0, binding 1: a vec4) */
+extern const struct xgpu_vulkan_post_module xgpu_vulkan_post_clear;
 
 /* SMAA's lookup textures, their texels' bytes four to a word (the first in
 the lowest bits): the area texture's two channels, the search texture's

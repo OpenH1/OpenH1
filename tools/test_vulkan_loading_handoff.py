@@ -15,7 +15,7 @@ def test_held_frames_retire_without_acquiring_or_presenting(tmp_path):
     stream = (ROOT / "port/linux/vulkan/xgpu_vulkan_stream.c").read_text()
     # The rest of frame_end only prints aggregate statistics every 600 frames.
     stream = stream[stream.index("static void stream_present("):
-                    stream.index('\tif (getenv("HALO_VULKAN_STATS"))')] + "}\n"
+                    stream.index('\tif (stream.statistics)')] + "}\n"
     source = r'''
 #include <assert.h>
 #include <stdint.h>

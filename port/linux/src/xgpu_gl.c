@@ -1513,7 +1513,8 @@ void xgpu_backend_initialize(void)
 			xgpu_capabilities.base_vertex, base_vertex_source);
 	}
 #else
-	if (config_boolean("debug.gl_debug"))
+	/* (debug.gl_debug: gpu_validation's old name) */
+	if (config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug"))
 	{
 		glEnable(GL_DEBUG_OUTPUT);
 		glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
@@ -2887,8 +2888,9 @@ static void gl_pipeline_apply(const struct gl_pipeline *pipeline, const struct x
 }
 
 #ifdef HALO_GLES
-/* ES has no debug callback in 3.0; debug.gl_debug polls glGetError around
-each draw instead, reporting each distinct error a few times */
+/* ES has no debug callback in 3.0; debug.gpu_validation (or its old name,
+debug.gl_debug) polls glGetError around each draw instead, reporting each
+distinct error a few times */
 static void gl_check_errors(const char *where)
 {
 	static int enabled = -1;
@@ -2896,7 +2898,7 @@ static void gl_check_errors(const char *where)
 	GLenum error;
 
 	if (enabled < 0)
-		enabled = config_boolean("debug.gl_debug");
+		enabled = config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug");
 	if (!enabled)
 		return;
 	while ((error = glGetError()) != GL_NO_ERROR)

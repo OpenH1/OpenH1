@@ -344,9 +344,17 @@ enum
 
 /* rectangles (left, top, width, height in the targets' pixels; none:
 nothing, as OpenGL's) of the parts XGPU_VULKAN_CLEAR_* of the bound
-targets */
+targets. Every channel of the colour, depth and stencil are cleared (a
+whole attachment's as its pass begins); some of the colour's channels alone
+are a triangle over each rectangle, drawn through their write mask, as
+OpenGL's glClear writes through glColorMask. */
 void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t parts, const float color[4], float depth,
 	uint32_t stencil);
+/* the pipeline xgpu_vulkan_clear draws a clear of parts with (some of the
+colour's channels) into the bound targets, queued for the pipelines'
+compiler (a map's preparation); nonzero if it was accepted, or none is
+needed */
+int xgpu_vulkan_clear_prepare(uint32_t parts);
 
 /* the dynamic state (struct xgpu_dynamic_state), in the targets' pixels */
 struct xgpu_vulkan_dynamic_state
@@ -472,6 +480,8 @@ int xgpu_vulkan_loading_resources(int window);
 /* statistics since the last call */
 struct xgpu_vulkan_statistics
 {
+	/* (clears_as_draws: of some of the colour's channels, drawn; their
+	triangles are among the draws) */
 	uint32_t frames, submissions, passes, draws, clears, clears_as_draws;
 	uint32_t pipelines_made, samplers_made, uploads_ordered, uploads_early;
 	/* load actions for colour, depth and stencil (each aspect counted) */

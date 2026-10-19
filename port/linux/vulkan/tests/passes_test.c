@@ -8,7 +8,9 @@ requirements on devices with optional depth formats or query precision.
 Also checks packed vertex bindings and transfer/submission dependencies,
 the texture sets a submission reuses, the order of the enhanced dynamic
 lights' uploads among the draws, and anti-aliasing's passes: their order,
-attachments, barriers, samples and uniforms (xgpu_vulkan_post.c).
+attachments, barriers, samples and uniforms (xgpu_vulkan_post.c); and the
+clears of some of the colour's channels: drawn through their write mask,
+over each rectangle, in each view, while every channel's are cleared.
 */
 
 #include "../xgpu_vulkan.c"
@@ -854,6 +856,271 @@ static void post_test(void)
 	reset();
 }
 
+/* ---------- clears of some of the colour's channels */
+
+/* what the clears record, in order: B a pass begun, A attachments cleared,
+D a draw, Q a query begun, q ended */
+static char masked_events[64];
+static unsigned char masked_ring[65536];
+static uint32_t masked_pipelines, masked_draws;
+static struct
+{
+	VkColorComponentFlags mask;
+	VkBool32 blend, depth_test, depth_write, stencil_test;
+	VkFormat color_format, depth_format;
+	VkSampleCountFlagBits samples;
+	uint32_t view_mask, bindings, attributes;
+	VkPrimitiveTopology topology;
+	VkCullModeFlags cull;
+} masked_made;
+static VkViewport masked_viewports[4];
+static VkRect2D masked_scissors[4];
+static uint32_t masked_offsets[4];
+static VkClearAttachment masked_cleared[2];
+static uint32_t masked_cleared_count;
+
+static void masked_event(char event)
+{
+	size_t length = strlen(masked_events);
+
+	assert(length + 1 < sizeof(masked_events));
+	masked_events[length] = event;
+}
+
+static void VKAPI_CALL masked_begin(VkCommandBuffer command, const VkRenderingInfo *info)
+{
+	fake_begin(command, info);
+	masked_event('B');
+}
+
+static void VKAPI_CALL masked_clear(VkCommandBuffer command, uint32_t attachment_count,
+	const VkClearAttachment *attachments, uint32_t rect_count, const VkClearRect *rects)
+{
+	fake_clear(command, attachment_count, attachments, rect_count, rects);
+	memcpy(masked_cleared, attachments, attachment_count * sizeof(*attachments));
+	masked_cleared_count = attachment_count;
+	masked_event('A');
+}
+
+static VkResult VKAPI_CALL masked_pipeline(VkDevice device, VkPipelineCache cache, uint32_t count,
+	const VkGraphicsPipelineCreateInfo *info, const VkAllocationCallbacks *allocator, VkPipeline *pipeline)
+{
+	const VkPipelineRenderingCreateInfo *rendering = info->pNext;
+
+	(void)device; (void)cache; (void)allocator;
+	assert(count == 1 && info->pColorBlendState->attachmentCount == 1 && rendering->colorAttachmentCount == 1);
+	masked_made.mask = info->pColorBlendState->pAttachments[0].colorWriteMask;
+	masked_made.blend = info->pColorBlendState->pAttachments[0].blendEnable;
+	masked_made.depth_test = info->pDepthStencilState->depthTestEnable;
+	masked_made.depth_write = info->pDepthStencilState->depthWriteEnable;
+	masked_made.stencil_test = info->pDepthStencilState->stencilTestEnable;
+	masked_made.color_format = rendering->pColorAttachmentFormats[0];
+	masked_made.depth_format = rendering->depthAttachmentFormat;
+	masked_made.samples = info->pMultisampleState->rasterizationSamples;
+	masked_made.view_mask = rendering->viewMask;
+	masked_made.bindings = info->pVertexInputState->vertexBindingDescriptionCount;
+	masked_made.attributes = info->pVertexInputState->vertexAttributeDescriptionCount;
+	masked_made.topology = info->pInputAssemblyState->topology;
+	masked_made.cull = info->pRasterizationState->cullMode;
+	*pipeline = (VkPipeline)(uintptr_t)(300 + masked_pipelines++);
+	return VK_SUCCESS;
+}
+
+static void VKAPI_CALL masked_viewport(VkCommandBuffer c, uint32_t first, uint32_t count, const VkViewport *v)
+{
+	(void)c;
+	assert(first == 0 && count == 1 && masked_draws < 4);
+	masked_viewports[masked_draws] = v[0];
+}
+
+static void VKAPI_CALL masked_scissor(VkCommandBuffer c, uint32_t first, uint32_t count, const VkRect2D *r)
+{
+	(void)c;
+	assert(first == 0 && count == 1 && masked_draws < 4);
+	masked_scissors[masked_draws] = r[0];
+}
+
+static void VKAPI_CALL masked_bind_sets(VkCommandBuffer c, VkPipelineBindPoint point, VkPipelineLayout layout,
+	uint32_t first, uint32_t count, const VkDescriptorSet *sets, uint32_t dynamic_count, const uint32_t *offsets)
+{
+	(void)c; (void)point; (void)layout; (void)sets;
+	assert(first == 0 && count == 2 && dynamic_count == 2 && offsets[0] == offsets[1]);
+	masked_offsets[masked_draws] = offsets[1];
+}
+
+static void VKAPI_CALL masked_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first,
+	uint32_t instance)
+{
+	(void)c;
+	assert(vertices == 3 && instances == 1 && first == 0 && instance == 0 && masked_draws < 4);
+	masked_draws++;
+	masked_event('D');
+}
+
+static void VKAPI_CALL masked_begin_query(VkCommandBuffer c, VkQueryPool pool, uint32_t query, VkQueryControlFlags flags)
+{
+	(void)c; (void)pool; (void)query; (void)flags;
+	masked_event('Q');
+}
+
+static void VKAPI_CALL masked_end_query(VkCommandBuffer c, VkQueryPool pool, uint32_t query)
+{
+	(void)c; (void)pool; (void)query;
+	masked_event('q');
+}
+
+static void masked_reset(void)
+{
+	reset();
+	memset(masked_events, 0, sizeof(masked_events));
+	memset(&masked_made, 0, sizeof(masked_made));
+	masked_draws = masked_cleared_count = 0;
+	vk.ring_mapped = masked_ring;
+	vk.ring = (VkBuffer)(uintptr_t)9;
+	vk.depth_format = VK_FORMAT_D24_UNORM_S8_UINT;
+	color_target.description.format = XGPU_VULKAN_FORMAT_BGRA8;
+	depth_target.description.format = XGPU_VULKAN_FORMAT_D24S8;
+	/* (the clears' shaders, made already) */
+	vk.clear_vertex = (VkShaderModule)(uintptr_t)61;
+	vk.clear_pixel = (VkShaderModule)(uintptr_t)62;
+	recording.main = (VkCommandBuffer)(uintptr_t)1;
+	recording.descriptor_pools = &post_pool;
+	recording.descriptor_pool_count = 1;
+	vkCmdBeginRendering = masked_begin;
+	vkCmdClearAttachments = masked_clear;
+	vkCreateGraphicsPipelines = masked_pipeline;
+	vkCmdBindPipeline = post_bind_pipeline;
+	vkCmdSetViewport = masked_viewport;
+	vkCmdSetScissor = masked_scissor;
+	vkCmdSetDepthBias = fake_bias;
+	vkCmdSetBlendConstants = fake_blend;
+	vkCmdSetStencilReference = fake_stencil;
+	vkCmdSetPrimitiveTopology = fake_topology;
+	vkCmdBindDescriptorSets = masked_bind_sets;
+	vkCmdDraw = masked_draw;
+	vkCmdBeginQuery = masked_begin_query;
+	vkCmdEndQuery = masked_end_query;
+}
+
+/* A clear of some of the colour's channels (the game's are of alpha alone)
+is a triangle over each rectangle, through a pipeline whose write mask is
+those channels, testing and writing no depth or stencil, of the targets'
+formats, samples and views; depth and stencil are cleared as before (a
+whole attachment's as the pass begins). A clear of every channel draws
+nothing. */
+static void masked_clear_test(void)
+{
+	static const int32_t full[1][4] = { { 0, 0, 64, 48 } };
+	static const int32_t two[2][4] = { { 4, 5, 10, 12 }, { -20, -20, 100, 100 } };
+	static const int32_t outside[1][4] = { { 70, 0, 8, 8 } };
+	static const float color[4] = { 0.25f, 0.5f, 0.75f, 0.125f };
+	struct query_frame queries;
+	const float *uniforms;
+	uint64_t count;
+
+	/* a fog screen's: alpha alone and depth, the whole target, before a
+	pass: depth cleared as the pass begins, the colour loaded and drawn */
+	masked_reset();
+	masked_pipelines = 0;
+	xgpu_vulkan_clear(full, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_ALPHA | XGPU_VULKAN_CLEAR_DEPTH, color,
+		1.0f, 0);
+	assert(!strcmp(masked_events, "BD"));
+	assert(began_color.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_depth.loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR);
+	assert(began_stencil.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_depth.clearValue.depthStencil.depth == 1.0f);
+	assert(vk.statistics.attachment_clears == 1 && vk.statistics.clears_as_draws == 1);
+	assert(masked_pipelines == 1 && masked_made.mask == VK_COLOR_COMPONENT_A_BIT && !masked_made.blend);
+	assert(!masked_made.depth_test && !masked_made.depth_write && !masked_made.stencil_test);
+	assert(masked_made.color_format == VK_FORMAT_B8G8R8A8_UNORM);
+	assert(masked_made.depth_format == VK_FORMAT_D24_UNORM_S8_UINT);
+	assert(masked_made.samples == VK_SAMPLE_COUNT_1_BIT && !masked_made.view_mask);
+	assert(!masked_made.bindings && !masked_made.attributes && masked_made.cull == VK_CULL_MODE_NONE);
+	assert(masked_made.topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	assert(masked_viewports[0].x == 0.0f && masked_viewports[0].y == 0.0f);
+	assert(masked_viewports[0].width == 64.0f && masked_viewports[0].height == 48.0f);
+	assert(masked_viewports[0].minDepth == 0.0f && masked_viewports[0].maxDepth == 1.0f);
+	assert(masked_scissors[0].extent.width == 64 && masked_scissors[0].extent.height == 48);
+	assert(masked_offsets[0] % 256 == 0);
+	uniforms = (const float *)(masked_ring + masked_offsets[0]);
+	assert(uniforms[0] == 0.25f && uniforms[1] == 0.5f && uniforms[2] == 0.75f && uniforms[3] == 0.125f);
+	/* (the same targets again: the same pipeline) */
+	count = xgpu_vulkan_pipeline_count();
+	xgpu_vulkan_clear(full, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_ALPHA, color, 1.0f, 0);
+	assert(!strcmp(masked_events, "BDD") && xgpu_vulkan_pipeline_count() == count && masked_pipelines == 1);
+
+	/* red, green and blue and the stencil, in a pass, over two rectangles
+	(one beyond the target): the stencil cleared, the colour drawn over
+	each, inside the target */
+	masked_reset();
+	xgpu_vulkan_clear(two, 1, XGPU_VULKAN_CLEAR_DEPTH, color, 0.5f, 0);
+	xgpu_vulkan_clear(two, 2, XGPU_VULKAN_CLEAR_COLOR | 7 | XGPU_VULKAN_CLEAR_STENCIL, color, 0.5f, 9);
+	assert(!strcmp(masked_events, "BAADD"));
+	assert(masked_cleared_count == 1 && masked_cleared[0].aspectMask == VK_IMAGE_ASPECT_STENCIL_BIT);
+	assert(masked_cleared[0].clearValue.depthStencil.stencil == 9);
+	assert(masked_made.mask == (VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT));
+	assert(masked_viewports[0].x == 4.0f && masked_viewports[0].y == 5.0f);
+	assert(masked_viewports[0].width == 10.0f && masked_viewports[0].height == 12.0f);
+	assert(masked_scissors[0].offset.x == 4 && masked_scissors[0].offset.y == 5);
+	assert(masked_scissors[0].extent.width == 10 && masked_scissors[0].extent.height == 12);
+	assert(masked_viewports[1].x == 0.0f && masked_viewports[1].y == 0.0f);
+	assert(masked_viewports[1].width == 64.0f && masked_viewports[1].height == 48.0f);
+	assert(masked_scissors[1].extent.width == 64 && masked_scissors[1].extent.height == 48);
+
+	/* every channel: cleared, never drawn (the whole target as the pass
+	begins, a rectangle in it with vkCmdClearAttachments) */
+	masked_reset();
+	count = xgpu_vulkan_pipeline_count();
+	xgpu_vulkan_clear(full, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS, color, 1.0f, 0);
+	xgpu_vulkan_clear(two, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS, color, 1.0f, 0);
+	assert(!strcmp(masked_events, "BA") && began_color.loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR);
+	assert(masked_cleared_count == 1 && masked_cleared[0].aspectMask == VK_IMAGE_ASPECT_COLOR_BIT);
+	assert(xgpu_vulkan_pipeline_count() == count && !vk.statistics.clears_as_draws && !masked_draws);
+	/* no channel, or a rectangle outside the target: nothing drawn */
+	xgpu_vulkan_clear(full, 1, XGPU_VULKAN_CLEAR_COLOR, color, 1.0f, 0);
+	xgpu_vulkan_clear(outside, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_ALPHA, color, 1.0f, 0);
+	assert(!strcmp(masked_events, "BA") && !masked_draws);
+
+	/* a layered target's two views (multiview), and a multisampled one */
+	masked_reset();
+	xgpu_vulkan_set_target_views(&color_target, &depth_target, 2, 2);
+	xgpu_vulkan_clear(full, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_ALPHA, color, 1.0f, 0);
+	assert(!strcmp(masked_events, "BD") && began.viewMask == 3 && masked_made.view_mask == 3);
+	assert(last_view.subresourceRange.baseArrayLayer == 2 && last_view.subresourceRange.layerCount == 2);
+	masked_reset();
+	color_target.description.samples = depth_target.description.samples = 4;
+	vk.depth = NULL;
+	xgpu_vulkan_clear(full, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_ALPHA, color, 1.0f, 0);
+	assert(!strcmp(masked_events, "BD") && masked_made.samples == VK_SAMPLE_COUNT_4_BIT);
+	assert(masked_made.depth_format == VK_FORMAT_UNDEFINED && !masked_made.view_mask);
+
+	/* in a visibility test: its query ended over the triangle, which counts
+	no samples, and begun again after it */
+	masked_reset();
+	memset(&queries, 0, sizeof(queries));
+	vk.queries = &queries;
+	xgpu_vulkan_visibility_begin();
+	xgpu_vulkan_clear(full, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_ALPHA, color, 1.0f, 0);
+	assert(!strcmp(masked_events, "BQqDQ") && vk.test_query_open && vk.test_query_count == 2);
+	vk.queries = NULL;
+
+	/* queued as a map is prepared: the targets' pipeline, the one the clear
+	draws with after (none for every channel) */
+	masked_reset();
+	masked_pipelines = 0;
+	count = xgpu_vulkan_pipeline_count();
+	assert(xgpu_vulkan_clear_prepare(XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS));
+	assert(xgpu_vulkan_pipeline_count() == count);
+	assert(xgpu_vulkan_clear_prepare(XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_RED | XGPU_VULKAN_CLEAR_BLUE));
+	assert(xgpu_vulkan_pipeline_count() == count + 1 && masked_pipelines == 1);
+	assert(masked_made.mask == (VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_B_BIT));
+	xgpu_vulkan_clear(full, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_RED | XGPU_VULKAN_CLEAR_BLUE, color, 1.0f, 0);
+	assert(!strcmp(masked_events, "BD") && xgpu_vulkan_pipeline_count() == count + 1 && masked_pipelines == 1);
+
+	recording.descriptor_pools = NULL;
+	recording.descriptor_pool_count = 0;
+	vkCmdEndQuery = fake_end_query;
+	reset();
+}
+
 int main(void)
 {
 	static const int32_t full[1][4] = { { 0, 0, 64, 48 } };
@@ -870,6 +1137,7 @@ int main(void)
 	submissions_test();
 	texture_sets_test();
 	post_test();
+	masked_clear_test();
 	reset();
 	xgpu_vulkan_clear(full, 0, all, color, 0.75f, 0x123);
 	assert(!begins && !clears);
@@ -914,11 +1182,6 @@ int main(void)
 	reset();
 	xgpu_vulkan_clear(beyond, 2, all, color, 0.75f, 3);
 	assert(begins == 1 && !clears && vk.statistics.attachment_clears == 3);
-
-	reset();
-	xgpu_vulkan_clear(full, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_RED, color, 0.0f, 0);
-	assert(began_color.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && clears == 1);
-	assert(vk.statistics.attachment_clears == 0);
 
 	reset();
 	xgpu_vulkan_set_target_views(&color_target, &depth_target, 2, 2);

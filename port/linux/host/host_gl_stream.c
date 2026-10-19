@@ -148,6 +148,7 @@ static const struct
 	BOOL set_is_true;
 } settings[] =
 {
+	{ "debug.gpu_validation", "HALO_GPU_VALIDATION", "false", TRUE },
 	{ "debug.gl_debug", "HALO_GL_DEBUG", "false", TRUE },
 	{ "debug.gpu_stats", "HALO_GPU_STATS", "false", TRUE },
 	{ "debug.gpu_flush_draws", "HALO_GPU_FLUSH_DRAWS", "-1", FALSE },

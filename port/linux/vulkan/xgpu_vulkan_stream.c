@@ -237,6 +237,10 @@ static struct
 	double trace_seconds[4];
 	uint64_t trace_counts[4];
 	uint32_t pipeline_misses;
+	/* the debugging settings (xgpu_vulkan_stream_debug): the statistics
+	logged, the folder the shader modules are written into (NULL: none) */
+	int statistics;
+	const char *shader_folder;
 } stream;
 
 static double preparation_start(void)
@@ -533,16 +537,43 @@ static void stream_set_targets(void *context, const struct xgpu_stream_set_targe
 	/* (whether a stage samples the target drawn into) */
 	stream.textures_dirty = 1;
 	targets_bind();
+	/* The game's clears of some of the colour's channels are of alpha alone
+	(a fog screen's, and a split screen's window's end, which the map's
+	enumeration may not reach): their pipeline is made for each of the
+	targets the map's draws go to, as the map loads. */
+	if (stream.preparing)
+		(void)xgpu_vulkan_clear_prepare(XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_ALPHA);
 }
 
 static void stream_clear(void *context, const struct xgpu_stream_clear *record)
 {
+	uint32_t parts = record->flags & 0x7f;
+	uint64_t before;
+
 	(void)context;
 	if (target_get(stream.color))
 		target_get(stream.color)->written++;
 	targets_bind();
-	xgpu_vulkan_clear((const int32_t (*)[4])record->rectangles, record->count, record->flags & 0x7f, record->color,
-		record->depth, record->stencil);
+	/* some of the colour's channels: drawn, through a pipeline made as the
+	map loads (not drawn then: the enumeration's frame is not seen) */
+	if (stream.preparing && (parts & XGPU_VULKAN_CLEAR_COLOR) &&
+		(parts & XGPU_VULKAN_CLEAR_CHANNELS) != XGPU_VULKAN_CLEAR_CHANNELS)
+	{
+		(void)xgpu_vulkan_clear_prepare(parts);
+		parts &= ~(uint32_t)(XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS);
+		if (!(parts & (XGPU_VULKAN_CLEAR_DEPTH | XGPU_VULKAN_CLEAR_STENCIL)))
+			return;
+	}
+	before = xgpu_vulkan_pipeline_count();
+	xgpu_vulkan_clear((const int32_t (*)[4])record->rectangles, record->count, parts, record->color, record->depth,
+		record->stencil);
+	if (!stream.preparing && stream.prepared && xgpu_vulkan_pipeline_count() != before)
+	{
+		stream.pipeline_misses++;
+		host_logf(HOST_LOG_WARN, "vulkan: pipeline missed map preparation: a clear of channels %x, views %u, "
+			"samples %u, total %u", (unsigned)(parts & XGPU_VULKAN_CLEAR_CHANNELS), (unsigned)stream.views,
+			(unsigned)stream.samples, stream.pipeline_misses);
+	}
 }
 
 static void stream_clear_target(void *context, const struct xgpu_stream_clear_target *record)
@@ -927,22 +958,16 @@ static void pixel_program_convert(const struct xgpu_stream_pixel_program *wire, 
 	program->source_blend = wire->source_blend;
 }
 
-/* HALO_VULKAN_SHADERS=<folder> writes each module there as it is made */
+/* debug.gpu_dump_shaders (HALO_VULKAN_SHADERS) writes each module into its
+folder as it is made */
 static void shader_dump(const char *name, const struct xgpu_spirv_module *module)
 {
-	static int read;
-	static const char *folder;
 	char path[1024];
 	FILE *file;
 
-	if (!read)
-	{
-		folder = getenv("HALO_VULKAN_SHADERS");
-		read = 1;
-	}
-	if (!folder || !*folder)
+	if (!stream.shader_folder)
 		return;
-	snprintf(path, sizeof(path), "%s/%s.spv", folder, name);
+	snprintf(path, sizeof(path), "%s/%s.spv", stream.shader_folder, name);
 	if ((file = fopen(path, "wb")) != NULL)
 	{
 		fwrite(module->words, 4, module->count, file);
@@ -2019,7 +2044,7 @@ static void stream_frame_end(void *context)
 	xgpu_vulkan_frame_end(back_buffer ? back_buffer->image : NULL, !host_render_stream_loading_holds());
 	stream.back_buffer = 0;
 	xgpu_vulkan_textures_frame_end();
-	if (getenv("HALO_VULKAN_STATS"))
+	if (stream.statistics)
 	{
 		static uint32_t frames;
 
@@ -2030,11 +2055,12 @@ static void stream_frame_end(void *context)
 
 			xgpu_vulkan_statistics(&statistics);
 			xgpu_vulkan_textures_statistics(&textures);
-			host_logf(HOST_LOG_INFO, "vulkan: %u frames: %u submissions, %u passes, %u draws, %u clears, %u attachment loads, "
-				"%u attachment clears, %u texture sets written, %u reused, %u pipelines made "
+			host_logf(HOST_LOG_INFO, "vulkan: %u frames: %u submissions, %u passes, %u draws, %u clears (%u drawn), "
+				"%u attachment loads, %u attachment clears, %u texture sets written, %u reused, %u pipelines made "
 				"(%.1f ms), %u uploads ordered, %u early, %llu ring bytes; textures %u made, %u remade, %u images",
 				statistics.frames, statistics.submissions, statistics.passes, statistics.draws, statistics.clears,
-				statistics.attachment_loads, statistics.attachment_clears, statistics.texture_sets_written,
+				statistics.clears_as_draws, statistics.attachment_loads, statistics.attachment_clears,
+				statistics.texture_sets_written,
 				statistics.texture_sets_reused,
 				statistics.pipelines_made, statistics.pipeline_seconds * 1000.0, statistics.uploads_ordered,
 				statistics.uploads_early, (unsigned long long)statistics.ring_bytes, textures.made, textures.remade,
@@ -2135,6 +2161,12 @@ static uint32_t stream_prepared(void *context)
 	stream.preparing = 0;
 	stream.prepared = 1;
 	return started >= 0.0 && finished >= started ? (uint32_t)((finished - started) * 1000.0) : 0;
+}
+
+void xgpu_vulkan_stream_debug(int statistics, const char *shader_folder)
+{
+	stream.statistics = statistics != 0;
+	stream.shader_folder = shader_folder && *shader_folder ? shader_folder : NULL;
 }
 
 const struct host_render_backend *xgpu_vulkan_stream_backend(void)

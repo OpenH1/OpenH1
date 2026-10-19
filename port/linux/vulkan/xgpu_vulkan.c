@@ -24,6 +24,7 @@ query pool once its last submission is done.
 */
 
 #include "xgpu_vulkan.h"
+#include "xgpu_vulkan_post_shaders.h"
 #include "host.h"
 #include "host_load_trace.h"
 #include "../src/loading_presentation.h"
@@ -334,6 +335,8 @@ static struct
 	char cache_path[1024];
 	struct pipeline_entry *pipelines[PIPELINE_BUCKETS];
 	struct shader_entry *shaders[SHADER_BUCKETS];
+	/* the shaders of the clears of some of the colour's channels */
+	VkShaderModule clear_vertex, clear_pixel;
 	struct
 	{
 		struct xgpu_vulkan_sampler_description description;
@@ -2681,15 +2684,77 @@ void xgpu_vulkan_set_targets(struct xgpu_vulkan_image *color, struct xgpu_vulkan
 	xgpu_vulkan_set_target_views(color, depth, layer, 1);
 }
 
+/* the draw set's constants' range (draw_set_make), which the uniforms' fits
+in: one range of the ring for both, as the anti-aliasing passes have it */
+#define CLEAR_UNIFORMS_RANGE (192 * 16)
+
+/* the pipeline of a clear of some of the bound colour target's channels
+(XGPU_VULKAN_CLEAR_RED to _ALPHA), which vkCmdClearAttachments cannot do (it
+writes every channel): a triangle over the viewport (the anti-aliasing
+passes' vertex shader) writing the uniforms' colour through the channels'
+write mask, as OpenGL's glClear through glColorMask, with no depth or stencil
+test or write, for the bound targets' formats, samples and views; 0 if
+there is none */
+static int clear_description(uint32_t channels, struct xgpu_vulkan_pipeline_description *description)
+{
+	if (!vk.color || !(channels & XGPU_VULKAN_CLEAR_CHANNELS))
+		return 0;
+	if (!vk.clear_vertex)
+		vk.clear_vertex = xgpu_vulkan_shader(xgpu_vulkan_post_vertex.words, xgpu_vulkan_post_vertex.count);
+	if (!vk.clear_pixel)
+		vk.clear_pixel = xgpu_vulkan_shader(xgpu_vulkan_post_clear.words, xgpu_vulkan_post_clear.count);
+	if (!vk.clear_vertex || !vk.clear_pixel)
+		return 0;
+	memset(description, 0, sizeof(*description));
+	description->vertex_shader = vk.clear_vertex;
+	description->pixel_shader = vk.clear_pixel;
+	description->primitive_class = XGPU_VULKAN_CLASS_TRIANGLES;
+	description->color_mask = (uint8_t)(channels & XGPU_VULKAN_CLEAR_CHANNELS);
+	description->color_format = vk.color->description.format;
+	description->depth_format = vk.depth ? XGPU_VULKAN_FORMAT_D24S8 : XGPU_VULKAN_FORMAT_NONE;
+	description->samples = vk.color->description.samples > 1 ? vk.color->description.samples : 1;
+	description->view_mask = vk.views > 1 ? (uint8_t)((1u << vk.views) - 1) : 0;
+	return 1;
+}
+
+int xgpu_vulkan_clear_prepare(uint32_t parts)
+{
+	struct xgpu_vulkan_pipeline_description description;
+
+	if (!(parts & XGPU_VULKAN_CLEAR_COLOR) || (parts & XGPU_VULKAN_CLEAR_CHANNELS) == XGPU_VULKAN_CLEAR_CHANNELS ||
+		!clear_description(parts, &description))
+		return 1;
+	return xgpu_vulkan_pipeline_prepare(&description);
+}
+
 void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t parts, const float color[4], float depth,
 	uint32_t stencil)
 {
 	VkClearAttachment attachments[2];
 	VkClearRect *rects;
 	uint32_t attachment_count = 0, rect_count = 0, index, clear_parts = 0;
+	struct xgpu_vulkan_pipeline_description description;
+	struct xgpu_vulkan_draw draw;
 
 	if (!count || !rectangles || (!vk.color && !vk.depth))
 		return;
+	/* Some of the colour's channels alone are drawn: the pipeline and its
+	uniforms first, before the pass, as uploading may submit the recording
+	(and end a pass). */
+	memset(&draw, 0, sizeof(draw));
+	if ((parts & XGPU_VULKAN_CLEAR_COLOR) && (parts & XGPU_VULKAN_CLEAR_CHANNELS) != XGPU_VULKAN_CLEAR_CHANNELS &&
+		clear_description(parts, &description))
+	{
+		float *uniforms;
+
+		draw.pipeline = xgpu_vulkan_pipeline(&description);
+		uniforms = draw.pipeline ? xgpu_vulkan_upload(CLEAR_UNIFORMS_RANGE, 256, &draw.uniforms) : NULL;
+		if (!uniforms)
+			draw.pipeline = VK_NULL_HANDLE;
+		else
+			memcpy(uniforms, color, 4 * sizeof(float));
+		draw.constants = draw.uniforms;
+	}
 	/* A full-target clear before a pass needs none of the overwritten
 	attachment's pixels. Keep other aspects, and all stores: later passes
 	may sample the depth or continue drawing over the colour. */
@@ -2724,18 +2789,8 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 	parts &= ~clear_parts;
 	if ((parts & XGPU_VULKAN_CLEAR_COLOR) && vk.color)
 	{
-		if ((parts & XGPU_VULKAN_CLEAR_CHANNELS) != XGPU_VULKAN_CLEAR_CHANNELS)
-		{
-			static int said;
-
-			/* (a clear of some channels alone: not yet) */
-			if (!said)
-				host_logf(HOST_LOG_WARN, "vulkan: a clear of channels %x alone is drawn as a clear of all of them",
-					parts & XGPU_VULKAN_CLEAR_CHANNELS);
-			said = 1;
-			vk.statistics.clears_as_draws++;
-		}
-		if (parts & XGPU_VULKAN_CLEAR_CHANNELS)
+		/* (all of them: cleared, below; some: drawn, after) */
+		if ((parts & XGPU_VULKAN_CLEAR_CHANNELS) == XGPU_VULKAN_CLEAR_CHANNELS)
 		{
 			attachments[attachment_count].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 			attachments[attachment_count].colorAttachment = 0;
@@ -2752,7 +2807,7 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 		attachments[attachment_count].clearValue.depthStencil.stencil = stencil & 0xff;
 		attachment_count++;
 	}
-	if (!attachment_count || !count)
+	if (!attachment_count && !draw.pipeline)
 		return;
 	rects = malloc(count * sizeof(*rects));
 	if (!rects)
@@ -2781,8 +2836,33 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 		rects[rect_count].layerCount = 1;
 		rect_count++;
 	}
-	if (rect_count)
+	if (rect_count && attachment_count)
 		vkCmdClearAttachments(vk.slot->main, attachment_count, attachments, rect_count, rects);
+	if (rect_count && draw.pipeline)
+	{
+		struct xgpu_vulkan_dynamic_state dynamic;
+		int counting = vk.test_query_open;
+
+		/* the channels' triangle over each rectangle (into each view, as
+		the clear's), counted by no visibility test, as a clear is not */
+		test_query_end();
+		memset(&dynamic, 0, sizeof(dynamic));
+		dynamic.depth_range[1] = 1.0f;
+		draw.dynamic = &dynamic;
+		draw.topology = XGPU_VULKAN_TOPOLOGY_TRIANGLES;
+		draw.count = 3;
+		for (index = 0; index < rect_count; index++)
+		{
+			dynamic.viewport[0] = dynamic.scissor[0] = rects[index].rect.offset.x;
+			dynamic.viewport[1] = dynamic.scissor[1] = rects[index].rect.offset.y;
+			dynamic.viewport[2] = dynamic.scissor[2] = (int32_t)rects[index].rect.extent.width;
+			dynamic.viewport[3] = dynamic.scissor[3] = (int32_t)rects[index].rect.extent.height;
+			xgpu_vulkan_draw(&draw);
+		}
+		vk.statistics.clears_as_draws++;
+		if (counting && vk.pass_active)
+			test_query_begin();
+	}
 	free(rects);
 }
 

@@ -1152,8 +1152,11 @@ static const struct config_setting config_settings[] =
 		"Record the shaders and pipelines the game draws with into this file (each\n"
 		"new one added to it), for the renderer's manifest\n"
 		"(port/assets/render/README.md); empty for none." },
+	{ "debug.gpu_validation", _config_boolean, "false", "HALO_GPU_VALIDATION", _environment_set_is_true, _platform_all,
+		"Report the graphics API's errors in the log: OpenGL's debug output, or\n"
+		"Vulkan's validation layers (which must be installed)." },
 	{ "debug.gl_debug", _config_boolean, "false", "HALO_GL_DEBUG", _environment_set_is_true, _platform_all,
-		"Report OpenGL errors in the log." },
+		"Deprecated: gpu_validation's old name, which turns it on too." },
 	{ "debug.skip_cinematics", _config_boolean, "false", "HALO_SKIP_CINEMATICS", _environment_set_is_true, _platform_all,
 		"Skip each cinematic in a local game: as the skip button does where it can\n"
 		"be skipped, else run at sixteen times its speed (a test reaches play in\n"
@@ -1162,10 +1165,11 @@ static const struct config_setting config_settings[] =
 		"Start on this screen of the menus (port/assets/menus) instead of the main\n"
 		"menu, a player profile being edited; empty for the main menu." },
 	{ "debug.gpu_flush_draws", _config_integer, "-1", "HALO_GPU_FLUSH_DRAWS", _environment_value, _platform_desktop,
-		"Flush the GPU's pipeline every this many draws: -1 for every 3 on Intel\n"
-		"graphics with Mesa's driver (which can hang without), 0 never." },
+		"OpenGL only: flush the GPU's pipeline every this many draws: -1 for every\n"
+		"3 on Intel graphics with Mesa's driver (which can hang without), 0 never." },
 	{ "debug.gpu_stats", _config_boolean, "false", "HALO_GPU_STATS", _environment_set_is_true, _platform_all,
-		"Log the renderer's draw counts once a second." },
+		"Log the renderer's draw counts once a second (with Vulkan, also its\n"
+		"submissions, passes, clears and pipelines every 600 frames)." },
 	{ "debug.gpu_trace_frame", _config_integer, "-1", "HALO_GPU_TRACE", _environment_value, _platform_all,
 		"Log every draw of this frame; -1 none." },
 	{ "debug.gpu_trace_constants", _config_boolean, "false", "HALO_GPU_TRACE_CONSTANTS", _environment_set_is_true, _platform_all,
@@ -1173,7 +1177,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.gpu_skip_vertex_shaders", _config_string, "\"\"", "HALO_GPU_SKIP_VS", _environment_value, _platform_all,
 		"Comma-separated ids of vertex shaders not to draw with." },
 	{ "debug.gpu_dump_shaders", _config_string, "\"\"", "HALO_GPU_DUMP_SHADERS", _environment_value, _platform_all,
-		"A folder to write the generated GLSL to; empty none." },
+		"A folder to write the generated shaders to (OpenGL's GLSL, Vulkan's\n"
+		"SPIR-V); empty none." },
 	{ "debug.dynamic_lights_look", _config_string, "\"\"", "HALO_DYNAMIC_LIGHTS_LOOK", _environment_value, _platform_all,
 		"The enhanced dynamic lights' look, for tuning it: up to eight numbers,\n"
 		"the lights' brightness, core, spill past white and wrap on models, the\n"
@@ -1183,7 +1188,8 @@ static const struct config_setting config_settings[] =
 		"Log where the first projectile's light is drawn each frame (the\n"
 		"enhanced dynamic lights)." },
 	{ "debug.gpu_debug_expression", _config_string, "\"\"", "HALO_GPU_DEBUG_EXPR", _environment_value, _platform_all,
-		"A GLSL expression every pixel shader shows instead of its result." },
+		"OpenGL only (and Metal's MSL), not Vulkan's SPIR-V: a GLSL expression\n"
+		"every pixel shader shows instead of its result." },
 	{ "debug.gpu_debug_texture0", _config_boolean, "false", "HALO_GPU_DEBUG_T0", _environment_set_is_true, _platform_all,
 		"Pixel shaders show their first texture." },
 	{ "debug.gpu_debug_flat", _config_boolean, "false", "HALO_GPU_DEBUG_FLAT", _environment_set_is_true, _platform_all,
