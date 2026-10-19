@@ -134,16 +134,16 @@ static const struct config_setting config_settings[] =
 		"The 3D view's look: \"classic\" as the Xbox drew it; \"enhanced\" with this\n"
 		"port's improvements together (anti-aliasing, sharper textures and\n"
 		"shadows, models' detail and lighting for each pixel, the enhanced\n"
-		"dynamic lights), each as far as this machine's GPU does it well (on a\n"
-		"phone, a headset, the web and 64-bit ARM Linux, only the textures and\n"
-		"shadows). Each of those settings, set here, wins over it." },
+		"dynamic lights), the same on every machine (a renderer that lacks one\n"
+		"draws without it). Each of those settings, set here, wins over it." },
 	{ "display.anti_aliasing", _config_string, GRAPHICS_ANTI_ALIASING, "HALO_ANTI_ALIASING", _environment_value,
 		_platform_all,
 		"Smoothing of jagged edges, which the Xbox did not have: \"off\"; \"fxaa\"\n"
 		"or \"smaa\" smooth the 3D view once it is drawn (the HUD and menus stay\n"
 		"sharp); \"ssaa2x\" draws at twice the resolution each way (four times\n"
 		"the work); \"msaa2x\", \"msaa4x\" or \"msaa8x\" draw with that many samples\n"
-		"a pixel. Android has \"fxaa\" for \"smaa\", and no \"ssaa2x\"." GRAPHICS_CHOOSES },
+		"a pixel. OpenGL ES (the web, 64-bit ARM Linux's OpenGL build) has\n"
+		"\"fxaa\" for \"smaa\"; it and Android have no \"ssaa2x\"." GRAPHICS_CHOOSES },
 	{ "display.interpolation", _config_boolean, "true", "HALO_INTERPOLATION", _environment_value, _platform_all,
 		"Draw a frame for every display refresh, blending between the game's 30\n"
 		"ticks a second; false keeps the original 30 frames a second." },
@@ -1155,7 +1155,7 @@ static const struct config_setting config_settings[] =
 	{ "debug.gpu_validation", _config_boolean, "false", "HALO_GPU_VALIDATION", _environment_set_is_true, _platform_all,
 		"Report the graphics API's errors in the log: OpenGL's debug output, or\n"
 		"Vulkan's validation layers (which must be installed)." },
-	{ "debug.gl_debug", _config_boolean, "false", "HALO_GL_DEBUG", _environment_set_is_true, _platform_all,
+	{ "debug.gl_debug", _config_boolean, "false", "HALO_GL_DEBUG", _environment_set_is_true, _platform_desktop,
 		"Deprecated: gpu_validation's old name, which turns it on too." },
 	{ "debug.skip_cinematics", _config_boolean, "false", "HALO_SKIP_CINEMATICS", _environment_set_is_true, _platform_all,
 		"Skip each cinematic in a local game: as the skip button does where it can\n"
