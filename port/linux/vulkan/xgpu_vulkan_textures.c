@@ -104,7 +104,24 @@ static struct
 	into it */
 	const char *dump_folder;
 	unsigned long dumped;
+	/* counts the thickness images destroyed (made again, their texture let
+	go of or read with another palette): an image looked up before is still
+	the one to draw with while it is the same
+	(xgpu_vulkan_textures_thickness_epoch) */
+	uint32_t thickness_epoch;
 } cache;
+
+/* the entry's thickness destroyed, and not to be taken as failed */
+static void thickness_forget(struct entry *entry)
+{
+	if (entry->thickness)
+	{
+		xgpu_vulkan_image_destroy(entry->thickness);
+		entry->thickness = NULL;
+		cache.thickness_epoch++;
+	}
+	entry->thickness_generation = entry->thickness_failed = 0;
+}
 
 static uint32_t bucket_index(uint32_t data, uint32_t format_word, uint32_t size_word)
 {
@@ -304,6 +321,9 @@ static struct entry *xbox_entry_find(const struct xgpu_stream_texture_stage *sta
 		/* (a palette that keeps changing: the stalest copy is read again) */
 		oldest->palette_hash = hash;
 		oldest->generation = 0;
+		/* (its thickness was the other palette's: the generation read again
+		may be the one it was baked at) */
+		thickness_forget(oldest);
 		return oldest;
 	}
 	entry = calloc(1, sizeof(*entry));
@@ -452,11 +472,7 @@ static struct xgpu_vulkan_image *thickness_bake(struct entry *entry, const D3DCO
 	double started = seconds();
 	int baked;
 
-	if (entry->thickness)
-	{
-		xgpu_vulkan_image_destroy(entry->thickness);
-		entry->thickness = NULL;
-	}
+	thickness_forget(entry);
 	entry->thickness_failed = entry->generation;
 	if (description->cube_map || description->depth > 1 || !source || width > XGPU_VULKAN_THICKNESS_LARGEST ||
 		height > XGPU_VULKAN_THICKNESS_LARGEST || !(texels = converted_get((size_t)width * height)))
@@ -500,11 +516,20 @@ struct xgpu_vulkan_image *xgpu_vulkan_textures_thickness(const struct xgpu_strea
 
 	if (stage->source != XGPU_SOURCE_TEXTURE || !stage->resource || !(entry = xbox_entry_current(stage, &palette)))
 		return NULL;
+	/* (texels never read, their pages not readable: nothing to bake from,
+	and not to be read here either) */
+	if (!entry->generation)
+		return NULL;
 	if (entry->thickness && entry->thickness_generation == entry->generation)
 		return entry->thickness;
 	if (entry->thickness_failed && entry->thickness_failed == entry->generation)
 		return NULL;
 	return thickness_bake(entry, palette);
+}
+
+uint32_t xgpu_vulkan_textures_thickness_epoch(void)
+{
+	return cache.thickness_epoch;
 }
 
 /* ---------- images */
@@ -623,8 +648,7 @@ void xgpu_vulkan_textures_frame_end(void)
 				*link = entry->next;
 				if (entry->image)
 					xgpu_vulkan_image_destroy(entry->image);
-				if (entry->thickness)
-					xgpu_vulkan_image_destroy(entry->thickness);
+				thickness_forget(entry);
 				free(entry);
 			}
 			else

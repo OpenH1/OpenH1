@@ -232,12 +232,14 @@ static struct
 	struct xgpu_vulkan_image *feedback;
 	uint32_t feedback_target, feedback_written;
 	/* texture 0's thickness, for the VR effects (effect_textures), and the
-	stage and the watched pages' serial it was looked up for (it is looked
-	up again once either changes: the texture another, or read again) */
+	stage, the watched pages' serial and the texture cache's thickness epoch
+	it was looked up for (it is looked up again once any changes: the
+	texture another, or read again, or the image destroyed: its texture let
+	go of, which may come back for the same stage and serial) */
 	struct xgpu_vulkan_image *thickness;
 	int thickness_known;
 	struct xgpu_stream_texture_stage thickness_stage;
-	uint32_t thickness_serial;
+	uint32_t thickness_serial, thickness_epoch;
 	struct composite *composites;
 
 	/* the vertex input: each input's attribute, the streams, the inputs'
@@ -1676,11 +1678,14 @@ static int effect_textures(struct xgpu_vulkan_texture textures[4])
 	textures[XGPU_SPIRV_EFFECT_THICKNESS_BINDING].kind = XGPU_VULKAN_IMAGE_2D;
 	textures[XGPU_SPIRV_EFFECT_THICKNESS_BINDING].sampler = xgpu_vulkan_sampler(&sampler);
 	if (!stream.thickness_known || stream.thickness_serial != stream.textures_serial ||
+		stream.thickness_epoch != xgpu_vulkan_textures_thickness_epoch() ||
 		memcmp(&stream.thickness_stage, &stream.stages[0].stage, sizeof(stream.thickness_stage)))
 	{
 		stream.thickness = xgpu_vulkan_textures_thickness(&stream.stages[0].stage);
 		stream.thickness_stage = stream.stages[0].stage;
 		stream.thickness_serial = stream.textures_serial;
+		/* (after the lookup, which may bake again) */
+		stream.thickness_epoch = xgpu_vulkan_textures_thickness_epoch();
 		stream.thickness_known = 1;
 	}
 	textures[XGPU_SPIRV_EFFECT_THICKNESS_BINDING].image = stream.thickness;
