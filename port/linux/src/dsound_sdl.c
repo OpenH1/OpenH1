@@ -1964,12 +1964,14 @@ static void *silent_clock_thread(void *parameter)
 at least six channels. Android and the browser play stereo */
 static unsigned long choose_output_channels(SDL_AudioDeviceID device)
 {
-#if defined(HALO_ANDROID) || defined(HALO_WEB) || defined(HALO_ARM64_GUEST)
+#if defined(HALO_ANDROID) || defined(HALO_WEB)
 	(void)device;
 	return 2;
 #else
 	const char *setting = config_string("audio.channels");
+#ifndef HALO_GUEST
 	SDL_AudioSpec format;
+#endif
 
 	if (!strcmp(setting, "5.1"))
 		return 6;
@@ -1979,9 +1981,15 @@ static unsigned long choose_output_channels(SDL_AudioDeviceID device)
 			platform_log("audio.channels \"%s\" is not \"auto\", \"stereo\" or \"5.1\"; using stereo", setting);
 		return 2;
 	}
+#ifdef HALO_GUEST
+	/* (a guest's SDL bridges no device format to ask, guest_sdl.c: "auto" is
+	stereo there, and 5.1 is "5.1" asked for by name) */
+	(void)device;
+#else
 	if ((SDL_GetAudioDeviceFormat(device, &format, NULL) ||
 		SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &format, NULL)) && format.channels >= 6)
 		return 6;
+#endif
 	return 2;
 #endif
 }

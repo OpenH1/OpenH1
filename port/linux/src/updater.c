@@ -613,34 +613,25 @@ static void updater_delete_partial(const char *partial, char names[][256], int n
 	update_delete_file(partial);
 }
 
-/* the zip, read once and unpacked from that copy; a download is deleted
-either way (a test's zip, debug.update_from, is kept) */
+/* the zip, no larger than a release's can be, unpacked; a download is
+deleted either way (a test's zip, debug.update_from, is kept) */
 static int updater_unpack(const char *zip_path, int downloaded, char names[][256], int *name_count, char *error,
 	size_t error_size)
 {
-	size_t zip_size = 0;
-	unsigned char *zip = SDL_LoadFile(zip_path, &zip_size);
-	SDL_IOStream *stream;
+	SDL_IOStream *stream = SDL_IOFromFile(zip_path, "rb");
+	Sint64 size = stream ? SDL_GetIOSize(stream) : -1;
 	int succeeded = 0;
 
+	/* (read from the file, not from a copy in memory: a guest's SDL bridges
+	no SDL_IOFromConstMem, guest_sdl.c) */
+	if (size < 0 || (unsigned long long)size > MAXIMUM_UPDATE_SIZE)
+		snprintf(error, error_size, "could not read the download");
+	else
+		succeeded = zip_extract(stream, names, name_count, error, error_size);
+	if (stream)
+		SDL_CloseIO(stream);
 	if (downloaded)
 		update_delete_file(zip_path);
-	if (!zip || zip_size > MAXIMUM_UPDATE_SIZE)
-	{
-		snprintf(error, error_size, "could not read the download");
-		goto done;
-	}
-	stream = SDL_IOFromConstMem(zip, zip_size);
-	if (!stream)
-	{
-		snprintf(error, error_size, "could not read the download");
-		goto done;
-	}
-	succeeded = zip_extract(stream, names, name_count, error, error_size);
-	SDL_CloseIO(stream);
-
-done:
-	SDL_free(zip);
 	return succeeded;
 }
 
