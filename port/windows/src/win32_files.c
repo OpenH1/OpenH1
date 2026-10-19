@@ -56,6 +56,29 @@ static int fail(void)
 	return -1;
 }
 
+/* The C runtime's descriptor functions, without its invalid-parameter
+handler: a descriptor that is not open fails with EBADF, rather than ending
+the game (the host makes that handler a crash report,
+port/windows/host/host_crash_win.c). */
+static void quiet_invalid_parameter(const wchar_t *expression, const wchar_t *function, const wchar_t *file,
+	unsigned int line, uintptr_t reserved)
+{
+	(void)expression;
+	(void)function;
+	(void)file;
+	(void)line;
+	(void)reserved;
+}
+
+static HANDLE descriptor_handle(int descriptor)
+{
+	_invalid_parameter_handler previous = _set_thread_local_invalid_parameter_handler(quiet_invalid_parameter);
+	HANDLE handle = (HANDLE)_get_osfhandle(descriptor);
+
+	_set_thread_local_invalid_parameter_handler(previous);
+	return handle;
+}
+
 static void split64(unsigned long long value, posix_ulong *low, posix_ulong *high)
 {
 	*low = (posix_ulong)(value & 0xffffffffULL);
@@ -119,7 +142,7 @@ int posix_stat(const char *path, struct posix_file_information *information)
 
 int posix_fstat(int descriptor, struct posix_file_information *information)
 {
-	HANDLE handle = (HANDLE)_get_osfhandle(descriptor);
+	HANDLE handle = descriptor_handle(descriptor);
 	BY_HANDLE_FILE_INFORMATION data;
 
 	if (handle == INVALID_HANDLE_VALUE)
@@ -157,7 +180,10 @@ int posix_seek(int descriptor, posix_long offset_low, posix_long offset_high, in
 	posix_ulong *position_low, posix_ulong *position_high)
 {
 	long long offset = (long long)(((unsigned long long)(posix_ulong)offset_high << 32) | (posix_ulong)offset_low);
+	_invalid_parameter_handler previous = _set_thread_local_invalid_parameter_handler(quiet_invalid_parameter);
 	long long result = _lseeki64(descriptor, offset, whence);
+
+	_set_thread_local_invalid_parameter_handler(previous);
 
 	if (result < 0)
 		return -1;
@@ -167,7 +193,10 @@ int posix_seek(int descriptor, posix_long offset_low, posix_long offset_high, in
 
 int posix_truncate(int descriptor, posix_ulong size_low, posix_ulong size_high)
 {
+	_invalid_parameter_handler previous = _set_thread_local_invalid_parameter_handler(quiet_invalid_parameter);
 	errno_t error = _chsize_s(descriptor, (long long)(((unsigned long long)size_high << 32) | size_low));
+
+	_set_thread_local_invalid_parameter_handler(previous);
 
 	if (error)
 	{

@@ -46,16 +46,15 @@ graphics) run a program on the integrated one unless it exports these */
 __declspec(dllexport) DWORD NvOptimusEnablement = 1;
 __declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
 
-/* the launcher's variable, in the copy it starts (host_memory_win.c reads
-it too) */
-#define LAUNCHED_VARIABLE L"HALO_WINDOWS_LAUNCHED"
-
 /* the game's stack, as the Linux host's main thread's */
 #define MAIN_STACK_SIZE (16 * 1024 * 1024)
 
 /* ---------- the log: the standard error stream, or halo.log */
 
 static HANDLE log_handle = INVALID_HANDLE_VALUE;
+/* whether it is halo.log, which each line is added to the end of: the
+launcher and the copy it starts write it both */
+static int log_appends;
 
 /* one write for each line, so that the lines of threads do not mix
 (host_common.c: no stdio, as the exception handlers log through it too) */
@@ -75,13 +74,21 @@ static void log_sink(int priority, const char *line)
 		text[length - 1] = '\n';
 	}
 	if (log_handle != INVALID_HANDLE_VALUE)
-		WriteFile(log_handle, text, (DWORD)length, &written, NULL);
+	{
+		OVERLAPPED at_end;
+
+		/* (an offset of all ones: at the file's end, as one write) */
+		memset(&at_end, 0, sizeof(at_end));
+		at_end.Offset = at_end.OffsetHigh = 0xffffffff;
+		WriteFile(log_handle, text, (DWORD)length, &written, log_appends ? &at_end : NULL);
+	}
 	if (IsDebuggerPresent())
 		OutputDebugStringA(text);
 }
 
 /* the standard error stream, or (none: a release build) halo.log beside the
-executable */
+executable: made afresh, but in the copy the launcher started, which adds to
+the launcher's lines; both write it (shared for writing) */
 static void log_open(void)
 {
 	HANDLE handle = GetStdHandle(STD_ERROR_HANDLE);
@@ -98,7 +105,9 @@ static void log_open(void)
 	if (!length || length >= MAX_PATH || !(slash = wcsrchr(path, L'\\')))
 		return;
 	wcscpy(slash + 1, L"halo.log");
-	log_handle = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	log_handle = CreateFileW(path, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
+		host_launched() ? OPEN_ALWAYS : CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	log_appends = log_handle != INVALID_HANDLE_VALUE;
 }
 
 /* ---------- the executable */
@@ -130,11 +139,71 @@ static void executable_path_find(void)
 	}
 }
 
+/* ---------- the system
+
+The build needs Windows 10 or 11 (its timers, its manifest's UTF-8 code
+page, Vulkan 1.3's drivers): an older Windows is told so plainly, at once,
+rather than failing later in a way a player cannot read. Windows 10 before
+version 1903 runs it, but takes no UTF-8 code page: its paths must then be
+in the system's (the log says so). */
+
+#define UTF8_CODE_PAGE_BUILD 18362
+
+static int windows_supported(void)
+{
+	typedef LONG (WINAPI *version_function)(OSVERSIONINFOW *);
+	version_function get_version =
+		(version_function)(void *)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion");
+	OSVERSIONINFOW version;
+
+	memset(&version, 0, sizeof(version));
+	version.dwOSVersionInfoSize = sizeof(version);
+	if (!get_version || get_version(&version) != 0)
+		return 1;
+	host_logf(HOST_LOG_INFO, "Windows %lu.%lu (build %lu)", (unsigned long)version.dwMajorVersion,
+		(unsigned long)version.dwMinorVersion, (unsigned long)version.dwBuildNumber);
+	if (version.dwMajorVersion < 10)
+	{
+		MessageBoxW(NULL, L"This version of Halo needs 64-bit Windows 10 (version 1903 or later) or Windows 11, "
+			L"and a graphics driver with Vulkan 1.3.\n\nThis computer has an older Windows.", L"Halo",
+			MB_OK | MB_ICONERROR);
+		return 0;
+	}
+	if (version.dwBuildNumber < UTF8_CODE_PAGE_BUILD)
+	{
+		host_logf(HOST_LOG_WARN, "Windows 10 before version 1903: the game's folders must have names in the "
+			"system's code page (update Windows for any name)");
+	}
+	return 1;
+}
+
 /* ---------- the launcher */
 
-static int launched(void)
+/* this process's environment with HOST_LAUNCHED_VARIABLE set to this
+process's id, for the copy alone (malloc'd); NULL on failure */
+static wchar_t *launched_environment(void)
 {
-	return GetEnvironmentVariableW(LAUNCHED_VARIABLE, NULL, 0) > 0;
+	wchar_t *block = GetEnvironmentStringsW(), *result;
+	wchar_t entry[64];
+	const wchar_t *at;
+	size_t length, entry_length;
+
+	if (!block)
+		return NULL;
+	for (at = block; *at; at += wcslen(at) + 1)
+		;
+	length = (size_t)(at - block);
+	entry_length = (size_t)_snwprintf(entry, 64, L"%ls=%lu", HOST_LAUNCHED_VARIABLE,
+		(unsigned long)GetCurrentProcessId()) + 1;
+	result = malloc((length + entry_length + 1) * sizeof(wchar_t));
+	if (result)
+	{
+		memcpy(result, block, length * sizeof(wchar_t));
+		memcpy(result + length, entry, entry_length * sizeof(wchar_t));
+		result[length + entry_length] = 0;
+	}
+	FreeEnvironmentStringsW(block);
+	return result;
 }
 
 /* starts this executable again, suspended, with the fixed ranges reserved
@@ -145,17 +214,23 @@ static int launch_reserved(void)
 	PROCESS_INFORMATION process;
 	wchar_t path[MAX_PATH];
 	wchar_t *command = _wcsdup(GetCommandLineW());
+	/* (the variable in the copy's environment alone: this process's, which
+	nothing else it starts inherits, stays without it) */
+	wchar_t *environment = launched_environment();
 	DWORD code = 1;
 
-	if (!command || !GetModuleFileNameW(NULL, path, MAX_PATH))
+	if (!command || !environment || !GetModuleFileNameW(NULL, path, MAX_PATH))
 		host_fatal("cannot start the game again");
 	host_logf(HOST_LOG_WARN, "starting the game again with its memory reserved before it runs");
-	SetEnvironmentVariableW(LAUNCHED_VARIABLE, L"1");
 	memset(&startup, 0, sizeof(startup));
 	startup.cb = sizeof(startup);
-	if (!CreateProcessW(path, command, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &startup, &process))
+	if (!CreateProcessW(path, command, NULL, NULL, FALSE, CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT, environment,
+		NULL, &startup, &process))
+	{
 		host_fatal("cannot start the game again (error %lu)", (unsigned long)GetLastError());
+	}
 	free(command);
+	free(environment);
 	if (VirtualAllocEx(process.hProcess, (void *)(uintptr_t)HALO_GUEST_WINDOW_BASE, HALO_GUEST_WINDOW_SIZE,
 		MEM_RESERVE, PAGE_NOACCESS) != (void *)(uintptr_t)HALO_GUEST_WINDOW_BASE ||
 		VirtualAllocEx(process.hProcess, (void *)(uintptr_t)HALO_GUEST_IMAGE_BASE, HALO_GUEST_IMAGE_RESERVE,
@@ -262,8 +337,13 @@ int main(void)
 	no game) */
 	if (host_crash_reporter())
 		return 0;
+	/* (read, and taken out of the environment, before anything starts
+	another process) */
+	host_launched();
 	log_open();
 	host_log_set_sink(log_sink);
+	if (!windows_supported())
+		return 1;
 	executable_path_find();
 	if (getenv("HALO_MEMORY_MAP") && *getenv("HALO_MEMORY_MAP") == '1')
 	{
@@ -275,7 +355,7 @@ int main(void)
 	{
 		host_logf(HOST_LOG_ERROR, "the low 4 GB at start-up:");
 		host_memory_log_low_map(NULL);
-		if (!launched())
+		if (!host_launched())
 			return launch_reserved();
 		host_fatal("The game cannot start: the memory it needs at 0x%08x and 0x%08x is taken. halo.log lists "
 			"what holds it.", HALO_GUEST_IMAGE_BASE, HALO_GUEST_WINDOW_BASE);

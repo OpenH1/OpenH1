@@ -11,6 +11,7 @@ text and error conversions (host_win.h).
 
 #include <windows.h>
 #include <direct.h>
+#include <io.h>
 #include <errno.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -22,16 +23,18 @@ text and error conversions (host_win.h).
 /* ---------- threads
 
 pthread_t is the thread's identifier; the handle of a joinable thread is
-kept here until pthread_join or pthread_detach closes it (while it is open,
-Windows gives no other thread that identifier). */
+kept here, in a list of entries each made before its thread (so that every
+joinable thread can be joined), until pthread_join or pthread_detach closes
+it (while it is open, Windows gives no other thread that identifier). */
 
-#define JOINABLE_MAXIMUM 64
-
-static struct
+struct joinable_thread
 {
+	struct joinable_thread *next;
 	pthread_t thread;
 	HANDLE handle;
-} joinable[JOINABLE_MAXIMUM];
+};
+
+static struct joinable_thread *joinable;
 static SRWLOCK joinable_lock = SRWLOCK_INIT;
 
 struct thread_start
@@ -53,12 +56,16 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attributes, void *(*
 {
 	struct thread_start *context = malloc(sizeof(*context));
 	int detached = attributes && attributes->detached;
+	struct joinable_thread *entry = detached ? NULL : malloc(sizeof(*entry));
 	HANDLE handle;
 	DWORD identifier;
-	int index;
 
-	if (!context)
+	if (!context || (!detached && !entry))
+	{
+		free(context);
+		free(entry);
 		return EAGAIN;
+	}
 	context->start = start;
 	context->argument = argument;
 	handle = CreateThread(NULL, attributes ? attributes->stack_size : 0, thread_main, context,
@@ -66,6 +73,7 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attributes, void *(*
 	if (!handle)
 	{
 		free(context);
+		free(entry);
 		return EAGAIN;
 	}
 	*thread = identifier;
@@ -74,43 +82,37 @@ int pthread_create(pthread_t *thread, const pthread_attr_t *attributes, void *(*
 		CloseHandle(handle);
 		return 0;
 	}
+	entry->thread = identifier;
+	entry->handle = handle;
 	AcquireSRWLockExclusive(&joinable_lock);
-	for (index = 0; index < JOINABLE_MAXIMUM; index++)
-	{
-		if (!joinable[index].handle)
-		{
-			joinable[index].thread = identifier;
-			joinable[index].handle = handle;
-			break;
-		}
-	}
+	entry->next = joinable;
+	joinable = entry;
 	ReleaseSRWLockExclusive(&joinable_lock);
-	if (index == JOINABLE_MAXIMUM)
-	{
-		/* (it runs, but cannot be joined) */
-		host_logf(HOST_LOG_WARN, "more than %d joinable host threads", JOINABLE_MAXIMUM);
-		CloseHandle(handle);
-	}
 	return 0;
 }
 
-/* the joinable thread's handle, taken out of the table; NULL if none */
+/* the joinable thread's handle, taken out of the list; NULL if none */
 static HANDLE joinable_take(pthread_t thread)
 {
+	struct joinable_thread **link, *entry = NULL;
 	HANDLE handle = NULL;
-	int index;
 
 	AcquireSRWLockExclusive(&joinable_lock);
-	for (index = 0; index < JOINABLE_MAXIMUM; index++)
+	for (link = &joinable; *link; link = &(*link)->next)
 	{
-		if (joinable[index].handle && joinable[index].thread == thread)
+		if ((*link)->thread == thread)
 		{
-			handle = joinable[index].handle;
-			joinable[index].handle = NULL;
+			entry = *link;
+			*link = entry->next;
 			break;
 		}
 	}
 	ReleaseSRWLockExclusive(&joinable_lock);
+	if (entry)
+	{
+		handle = entry->handle;
+		free(entry);
+	}
 	return handle;
 }
 
@@ -263,6 +265,24 @@ int pthread_cond_broadcast(pthread_cond_t *condition)
 /* 100-nanosecond intervals between 1601 (FILETIME's epoch) and 1970 */
 #define FILETIME_UNIX_EPOCH 116444736000000000ULL
 
+void host_unix_time_of_filetime(uint64_t filetime, int64_t *seconds, int64_t *nanoseconds)
+{
+	int64_t value = (int64_t)filetime - (int64_t)FILETIME_UNIX_EPOCH;
+
+	*seconds = value / 10000000;
+	*nanoseconds = (value % 10000000) * 100;
+	if (*nanoseconds < 0)
+	{
+		*seconds -= 1;
+		*nanoseconds += 1000000000;
+	}
+}
+
+uint64_t host_filetime_of_unix_time(int64_t seconds, int64_t nanoseconds)
+{
+	return (uint64_t)(seconds * 10000000 + nanoseconds / 100) + FILETIME_UNIX_EPOCH;
+}
+
 static uint64_t filetime_value(const FILETIME *time)
 {
 	return ((uint64_t)time->dwHighDateTime << 32) | time->dwLowDateTime;
@@ -282,8 +302,12 @@ int clock_gettime(clockid_t clock, struct timespec *time)
 	{
 		FILETIME now;
 
+		int64_t seconds, nanoseconds;
+
 		GetSystemTimePreciseAsFileTime(&now);
-		timespec_of_100ns(filetime_value(&now) - FILETIME_UNIX_EPOCH, time);
+		host_unix_time_of_filetime(filetime_value(&now), &seconds, &nanoseconds);
+		time->tv_sec = (time_t)seconds;
+		time->tv_nsec = (long)nanoseconds;
 		return 0;
 	}
 	case CLOCK_MONOTONIC:
@@ -536,6 +560,63 @@ int mincore(void *address, size_t length, unsigned char *residency)
 			residency[page++] = 1;
 	}
 	return 0;
+}
+
+/* ---------- the C runtime's descriptors
+
+Each call is made with a thread-local invalid-parameter handler that does
+nothing, so that a descriptor that is not open fails with EBADF (the guest's
+close or dup of one, as on Linux) rather than ending the game: the global
+handler reports it as a crash (host_crash_win.c). */
+
+static void quiet_invalid_parameter(const wchar_t *expression, const wchar_t *function, const wchar_t *file,
+	unsigned int line, uintptr_t reserved)
+{
+	(void)expression;
+	(void)function;
+	(void)file;
+	(void)line;
+	(void)reserved;
+}
+
+intptr_t host_crt_osfhandle(int fd)
+{
+	_invalid_parameter_handler previous;
+	intptr_t handle;
+
+	if (fd < 0)
+		return (intptr_t)INVALID_HANDLE_VALUE;
+	previous = _set_thread_local_invalid_parameter_handler(quiet_invalid_parameter);
+	handle = _get_osfhandle(fd);
+	_set_thread_local_invalid_parameter_handler(previous);
+	return handle;
+}
+
+int host_crt_close(int fd)
+{
+	_invalid_parameter_handler previous = _set_thread_local_invalid_parameter_handler(quiet_invalid_parameter);
+	int result = _close(fd);
+
+	_set_thread_local_invalid_parameter_handler(previous);
+	return result;
+}
+
+int host_crt_dup(int fd)
+{
+	_invalid_parameter_handler previous = _set_thread_local_invalid_parameter_handler(quiet_invalid_parameter);
+	int result = _dup(fd);
+
+	_set_thread_local_invalid_parameter_handler(previous);
+	return result;
+}
+
+int host_crt_dup2(int from, int to)
+{
+	_invalid_parameter_handler previous = _set_thread_local_invalid_parameter_handler(quiet_invalid_parameter);
+	int result = _dup2(from, to);
+
+	_set_thread_local_invalid_parameter_handler(previous);
+	return result;
 }
 
 /* ---------- text */

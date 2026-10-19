@@ -14,7 +14,10 @@ and answers in Linux's terms.
   posix_truncate) take the same numbers; reads and writes go to the handle
   itself, in binary. What a descriptor needs beyond the C runtime's (its
   path, for the calls relative to a directory and for /proc/self/fd; a
-  directory's listing) is kept here.
+  directory's listing; a second handle of the file for pread and pwrite)
+  is kept here. A descriptor that is not open is EBADF, as on Linux: the C
+  runtime's calls are made without its invalid-parameter handler, which
+  would otherwise end the game (host_crash_win.c).
 - Paths are UTF-8, as the guest has them (the folders the host gives it are
   UTF-8: host_main_win.c), and become Windows's UTF-16; a file is opened
   with every sharing mode, so that it can be renamed and deleted while open,
@@ -101,8 +104,12 @@ struct descriptor
 {
 	char *path;            /* UTF-8, as opened (resolved against its directory) */
 	uint32_t flags;        /* the guest's open flags (F_GETFL) */
+	unsigned long access;  /* the handle's access (CreateFileW's) */
 	int close_on_exec;
 	int directory;
+	/* pread and pwrite's handle of the same file, with a file position of its
+	own (ReOpenFile), made the first time; NULL until then */
+	HANDLE positional;
 	/* a directory's listing (getdents64) */
 	HANDLE find;
 	WIN32_FIND_DATAW pending;
@@ -125,9 +132,7 @@ static long crt_error(void)
 
 static HANDLE handle_of(int fd)
 {
-	if (fd < 0)
-		return INVALID_HANDLE_VALUE;
-	return (HANDLE)_get_osfhandle(fd);
+	return (HANDLE)host_crt_osfhandle(fd);
 }
 
 static int valid_handle(HANDLE handle)
@@ -145,12 +150,14 @@ static void descriptor_free(int fd)
 	entry = descriptors[fd];
 	if (entry->find && entry->find != INVALID_HANDLE_VALUE)
 		FindClose(entry->find);
+	if (entry->positional)
+		CloseHandle(entry->positional);
 	free(entry->path);
 	free(entry);
 	descriptors[fd] = NULL;
 }
 
-static void descriptor_set(int fd, const char *path, uint32_t flags, int directory)
+static void descriptor_set(int fd, const char *path, uint32_t flags, unsigned long access, int directory)
 {
 	struct descriptor *entry;
 
@@ -161,6 +168,7 @@ static void descriptor_set(int fd, const char *path, uint32_t flags, int directo
 	{
 		entry->path = path ? _strdup(path) : NULL;
 		entry->flags = flags;
+		entry->access = access;
 		entry->directory = directory;
 		entry->close_on_exec = (flags & GUEST_O_CLOEXEC) != 0;
 	}
@@ -180,6 +188,56 @@ static int descriptor_appends(int fd)
 		appends = (descriptors[fd]->flags & GUEST_O_APPEND) != 0;
 	ReleaseSRWLockShared(&descriptors_lock);
 	return appends;
+}
+
+/* the descriptor's handle for pread and pwrite: a handle of the same file
+with a file position of its own, which nothing else moves (a read or write
+at an offset on a synchronous handle moves that handle's position: the
+descriptor's own, which read, write and lseek share, stays where it was,
+whatever other threads do meanwhile). NULL with -errno in *error: ESPIPE
+for a pipe or a console. */
+static HANDLE descriptor_positional(int fd, HANDLE handle, long *error)
+{
+	struct descriptor *entry;
+	HANDLE positional = NULL;
+
+	if (GetFileType(handle) != FILE_TYPE_DISK)
+	{
+		*error = -29; /* ESPIPE */
+		return NULL;
+	}
+	AcquireSRWLockExclusive(&descriptors_lock);
+	entry = fd >= 0 && fd < DESCRIPTORS_MAXIMUM ? descriptors[fd] : NULL;
+	if (entry && !entry->positional && entry->access)
+	{
+		entry->positional = ReOpenFile(handle, entry->access, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+			0);
+		if (entry->positional == INVALID_HANDLE_VALUE)
+		{
+			*error = windows_error();
+			entry->positional = NULL;
+		}
+	}
+	else if (!entry || !entry->access)
+	{
+		*error = -GUEST_EBADF;
+	}
+	if (entry)
+		positional = entry->positional;
+	ReleaseSRWLockExclusive(&descriptors_lock);
+	return positional;
+}
+
+/* whether a descriptor was opened for writing alone (a pipe's write end) */
+static int descriptor_writes_only(int fd)
+{
+	int writes_only = 0;
+
+	AcquireSRWLockShared(&descriptors_lock);
+	if (fd >= 0 && fd < DESCRIPTORS_MAXIMUM && descriptors[fd])
+		writes_only = (descriptors[fd]->flags & GUEST_O_ACCMODE) == GUEST_O_WRONLY;
+	ReleaseSRWLockShared(&descriptors_lock);
+	return writes_only;
 }
 
 /* a copy of a descriptor's path (free it); NULL if it has none */
@@ -287,26 +345,14 @@ static void timespec_out(uint64_t address, int64_t seconds, int64_t nanoseconds)
 	result->nanoseconds = (int32_t)nanoseconds;
 }
 
-/* 100-nanosecond intervals between 1601 and 1970 */
-#define FILETIME_UNIX_EPOCH 116444736000000000ULL
-
 static void filetime_out(const FILETIME *time, int64_t *seconds, int64_t *nanoseconds)
 {
-	int64_t value = (int64_t)(((uint64_t)time->dwHighDateTime << 32) | time->dwLowDateTime) -
-		(int64_t)FILETIME_UNIX_EPOCH;
-
-	*seconds = value / 10000000;
-	*nanoseconds = (value % 10000000) * 100;
-	if (*nanoseconds < 0)
-	{
-		*seconds -= 1;
-		*nanoseconds += 1000000000;
-	}
+	host_unix_time_of_filetime(((uint64_t)time->dwHighDateTime << 32) | time->dwLowDateTime, seconds, nanoseconds);
 }
 
 static FILETIME filetime_in(int64_t seconds, int64_t nanoseconds)
 {
-	uint64_t value = (uint64_t)(seconds * 10000000 + nanoseconds / 100) + FILETIME_UNIX_EPOCH;
+	uint64_t value = host_filetime_of_unix_time(seconds, nanoseconds);
 	FILETIME result;
 
 	result.dwLowDateTime = (DWORD)value;
@@ -476,9 +522,8 @@ static long write_handle(int fd, const void *buffer, uint32_t size, int64_t offs
 {
 	HANDLE handle = handle_of(fd);
 	OVERLAPPED overlapped;
-	LARGE_INTEGER position, zero;
 	DWORD written = 0;
-	BOOL result;
+	long error = 0;
 
 	if (!valid_handle(handle))
 	{
@@ -505,25 +550,25 @@ static long write_handle(int fd, const void *buffer, uint32_t size, int64_t offs
 			return GetLastError() == ERROR_NO_DATA ? -32 /* EPIPE */ : windows_error();
 		return (long)written;
 	}
-	/* (pwrite: at the offset, and the file's own position as it was) */
-	zero.QuadPart = 0;
-	if (!SetFilePointerEx(handle, zero, &position, FILE_CURRENT))
-		return windows_error();
+	/* (pwrite: at the offset, through the descriptor's second handle, so
+	that its own position stays where it is) */
+	if (offset < 0)
+		return -GUEST_EINVAL;
+	handle = descriptor_positional(fd, handle, &error);
+	if (!handle)
+		return error;
 	memset(&overlapped, 0, sizeof(overlapped));
 	overlapped.Offset = (DWORD)offset;
 	overlapped.OffsetHigh = (DWORD)((uint64_t)offset >> 32);
-	result = WriteFile(handle, buffer, size, &written, &overlapped);
-	SetFilePointerEx(handle, position, NULL, FILE_BEGIN);
-	return result ? (long)written : windows_error();
+	return WriteFile(handle, buffer, size, &written, &overlapped) ? (long)written : windows_error();
 }
 
 static long read_handle(int fd, void *buffer, uint32_t size, int64_t offset, int positional)
 {
 	HANDLE handle = handle_of(fd);
 	OVERLAPPED overlapped;
-	LARGE_INTEGER position, zero;
 	DWORD read = 0;
-	BOOL result;
+	long error = 0;
 
 	if (!valid_handle(handle))
 		return -GUEST_EBADF;
@@ -535,15 +580,16 @@ static long read_handle(int fd, void *buffer, uint32_t size, int64_t offset, int
 			return GetLastError() == ERROR_BROKEN_PIPE || GetLastError() == ERROR_HANDLE_EOF ? 0 : windows_error();
 		return (long)read;
 	}
-	zero.QuadPart = 0;
-	if (!SetFilePointerEx(handle, zero, &position, FILE_CURRENT))
-		return windows_error();
+	/* (pread: as pwrite) */
+	if (offset < 0)
+		return -GUEST_EINVAL;
+	handle = descriptor_positional(fd, handle, &error);
+	if (!handle)
+		return error;
 	memset(&overlapped, 0, sizeof(overlapped));
 	overlapped.Offset = (DWORD)offset;
 	overlapped.OffsetHigh = (DWORD)((uint64_t)offset >> 32);
-	result = ReadFile(handle, buffer, size, &read, &overlapped);
-	SetFilePointerEx(handle, position, NULL, FILE_BEGIN);
-	if (!result)
+	if (!ReadFile(handle, buffer, size, &read, &overlapped))
 		return GetLastError() == ERROR_HANDLE_EOF ? 0 : windows_error();
 	return (long)read;
 }
@@ -662,7 +708,7 @@ static long guest_openat(int directory, uint64_t path_address, uint32_t flags, u
 	}
 	utf8 = resolved_utf8(wide);
 	free(wide);
-	descriptor_set(fd, utf8, flags, is_directory);
+	descriptor_set(fd, utf8, flags, access, is_directory);
 	free(utf8);
 	return fd;
 }
@@ -672,7 +718,34 @@ static long guest_close(int fd)
 	AcquireSRWLockExclusive(&descriptors_lock);
 	descriptor_free(fd);
 	ReleaseSRWLockExclusive(&descriptors_lock);
-	return _close(fd) == 0 ? 0 : -GUEST_EBADF;
+	return host_crt_close(fd) == 0 ? 0 : -GUEST_EBADF;
+}
+
+/* lseek(fd, 0, SEEK_SET) of a directory (musl's rewinddir): its listing
+starts again; 1 if fd is a directory (another seek of one is a no-op that
+reports 0, as getdents64 keeps its own place) */
+static int guest_directory_rewind(int fd, uint32_t offset_high, uint32_t offset_low, int whence)
+{
+	struct descriptor *entry;
+	int directory = 0;
+
+	AcquireSRWLockExclusive(&descriptors_lock);
+	entry = fd >= 0 && fd < DESCRIPTORS_MAXIMUM ? descriptors[fd] : NULL;
+	if (entry && entry->directory)
+	{
+		directory = 1;
+		if (whence == GUEST_SEEK_SET && !offset_high && !offset_low)
+		{
+			if (entry->find && entry->find != INVALID_HANDLE_VALUE)
+				FindClose(entry->find);
+			entry->find = NULL;
+			entry->has_pending = 0;
+			entry->listed = 0;
+			entry->entry_number = 0;
+		}
+	}
+	ReleaseSRWLockExclusive(&descriptors_lock);
+	return directory;
 }
 
 static long guest_llseek(int fd, uint32_t offset_high, uint32_t offset_low, uint64_t result, int whence)
@@ -685,6 +758,11 @@ static long guest_llseek(int fd, uint32_t offset_high, uint32_t offset_low, uint
 		return -GUEST_EFAULT;
 	if (!valid_handle(handle))
 		return -GUEST_EBADF;
+	if (guest_directory_rewind(fd, offset_high, offset_low, whence))
+	{
+		memset(GUEST(void *, result), 0, sizeof(int64_t));
+		return 0;
+	}
 	switch (whence)
 	{
 	case GUEST_SEEK_SET: method = FILE_BEGIN; break;
@@ -1080,11 +1158,12 @@ static long guest_dup3(int from, int to, uint32_t flags, int dup2)
 {
 	char *path = NULL;
 	uint32_t from_flags = 0;
+	unsigned long from_access = 0;
 	int has, directory = 0;
 
 	if (!dup2 && from == to)
 		return -GUEST_EINVAL;
-	if (_dup2(from, to) != 0)
+	if (host_crt_dup2(from, to) != 0)
 		return crt_error();
 	AcquireSRWLockShared(&descriptors_lock);
 	has = from >= 0 && from < DESCRIPTORS_MAXIMUM && descriptors[from];
@@ -1092,11 +1171,12 @@ static long guest_dup3(int from, int to, uint32_t flags, int dup2)
 	{
 		path = descriptors[from]->path ? _strdup(descriptors[from]->path) : NULL;
 		from_flags = descriptors[from]->flags;
+		from_access = descriptors[from]->access;
 		directory = descriptors[from]->directory;
 	}
 	ReleaseSRWLockShared(&descriptors_lock);
 	descriptor_set(to, path, has ? (from_flags & ~(uint32_t)GUEST_O_CLOEXEC) | (flags & GUEST_O_CLOEXEC) : flags,
-		directory);
+		from_access, directory);
 	free(path);
 	return to;
 }
@@ -1106,19 +1186,19 @@ static long guest_dup(int fd, int minimum)
 	int copies[64], count = 0, result;
 	long status;
 
-	result = _dup(fd);
+	result = host_crt_dup(fd);
 	while (result >= 0 && result < minimum && count < 64)
 	{
 		copies[count++] = result;
-		result = _dup(fd);
+		result = host_crt_dup(fd);
 	}
 	while (count)
-		_close(copies[--count]);
+		host_crt_close(copies[--count]);
 	if (result < 0)
 		return crt_error();
 	if (result < minimum)
 	{
-		_close(result);
+		host_crt_close(result);
 		return -LINUX_EMFILE;
 	}
 	status = guest_dup3(fd, result, 0, 1);
@@ -1134,8 +1214,8 @@ static long guest_pipe2(uint64_t address, uint32_t flags)
 		return -GUEST_EFAULT;
 	if (_pipe(pipe, 65536, _O_BINARY | _O_NOINHERIT) != 0)
 		return crt_error();
-	descriptor_set(pipe[0], NULL, GUEST_O_RDONLY | (flags & GUEST_O_CLOEXEC), 0);
-	descriptor_set(pipe[1], NULL, GUEST_O_WRONLY | (flags & GUEST_O_CLOEXEC), 0);
+	descriptor_set(pipe[0], NULL, GUEST_O_RDONLY | (flags & GUEST_O_CLOEXEC), GENERIC_READ, 0);
+	descriptor_set(pipe[1], NULL, GUEST_O_WRONLY | (flags & GUEST_O_CLOEXEC), GENERIC_WRITE, 0);
 	result[0] = pipe[0];
 	result[1] = pipe[1];
 	return 0;
@@ -1380,11 +1460,15 @@ static long guest_futex(uint64_t guest, int operation, uint32_t value, uint64_t 
 			return -GUEST_EAGAIN;
 		/* fall through */
 	case LINUX_FUTEX_REQUEUE:
-		/* the waiters that would move to the second address are woken
-		instead, to wait there again themselves (a spurious wakeup, which
-		every futex user allows) */
-		WakeByAddressAll(GUEST(void *, guest2));
-		return futex_wake((void *)address, value);
+		/* every waiter on the first address is woken: those the call would
+		wake, and those it would move to the second address, which wait
+		there again themselves (a spurious wakeup, which every futex user
+		allows). musl's condition variables hand a broadcast on this way
+		(unlock_requeue: wake 0, move 1), so waking only `value` would leave
+		the moved waiters asleep for good (as port/macos/host_syscall.c) */
+		(void)guest2;
+		WakeByAddressAll((void *)address);
+		return 1;
 	}
 	return -GUEST_ENOSYS;
 }
@@ -1424,6 +1508,12 @@ static long guest_ppoll(uint64_t fds_address, uint32_t count, uint64_t timeout)
 				continue;
 			if (!valid_handle(handle))
 				fds[index].revents = GUEST_POLLNVAL;
+			else if (GetFileType(handle) == FILE_TYPE_PIPE && descriptor_writes_only(fds[index].fd))
+			{
+				/* (a pipe's write end, which PeekNamedPipe cannot read: a
+				write goes ahead, or fails with EPIPE once the reader went) */
+				fds[index].revents = GUEST_POLLOUT;
+			}
 			else if (GetFileType(handle) == FILE_TYPE_PIPE)
 			{
 				if (!PeekNamedPipe(handle, NULL, 0, NULL, &available, NULL))
@@ -1441,9 +1531,19 @@ static long guest_ppoll(uint64_t fds_address, uint32_t count, uint64_t timeout)
 			return ready;
 		if (has_timeout && clock_nanoseconds(CLOCK_MONOTONIC) - start >= limit)
 			return 0;
-		host_sleep_nanoseconds(count ? 1000000 : limit);
-		if (!count && has_timeout)
+		if (!count)
+		{
+			/* (nothing to wait for: the time, or for ever, as Linux's,
+			whose only way out would be a signal the guest never gets) */
+			if (!has_timeout)
+			{
+				for (;;)
+					Sleep(INFINITE);
+			}
+			host_sleep_nanoseconds(limit);
 			return 0;
+		}
+		host_sleep_nanoseconds(1000000);
 	}
 }
 

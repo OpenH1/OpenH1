@@ -91,6 +91,21 @@ void host_crash_install(void);
 are on; 1 once it is written */
 int host_crash_dump(void *exception_pointers);
 
+/* ---------- the C runtime's descriptors (host_posix_win.c): its calls
+without its invalid-parameter handler, so that a descriptor that is not open
+fails (EBADF in errno; INVALID_HANDLE_VALUE, -1) rather than ending the game */
+
+intptr_t host_crt_osfhandle(int fd);
+int host_crt_close(int fd);
+int host_crt_dup(int fd);
+int host_crt_dup2(int from, int to);
+
+/* ---------- time (host_posix_win.c): a FILETIME's value (100 ns intervals
+since 1601) as seconds and nanoseconds since 1970, and back */
+
+void host_unix_time_of_filetime(uint64_t filetime, int64_t *seconds, int64_t *nanoseconds);
+uint64_t host_filetime_of_unix_time(int64_t seconds, int64_t nanoseconds);
+
 /* ---------- text and errors (host_posix_win.c) */
 
 /* UTF-16 of UTF-8 text, and back; malloc'd, NULL on failure (errno set) */
@@ -102,6 +117,17 @@ int host_linux_errno_of_windows(unsigned long error);
 /* Linux's errno value for the C runtime's (host_common.c's host_errno,
 the posix.h functions' errno) */
 int host_linux_errno(int error);
+
+/* ---------- the launcher (host_main_win.c, host_memory_win.c) */
+
+/* the variable of the copy of the game the launcher starts, whose fixed
+ranges it reserved before the copy ran: its value is the launcher's process
+id */
+#define HOST_LAUNCHED_VARIABLE L"HALO_WINDOWS_LAUNCHED"
+/* whether this process is that copy; read once, at the first call (the top
+of main), and the variable taken out of the environment, so that no
+process this one starts (the self-updater's) takes itself for one */
+int host_launched(void);
 
 /* ---------- the process (host_main_win.c) */
 

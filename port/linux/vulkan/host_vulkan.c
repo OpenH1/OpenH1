@@ -196,7 +196,8 @@ int host_vulkan_window_open(uint32_t window)
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Halo",
 			"The game cannot draw: it needs a graphics card and driver with Vulkan 1.3.\n\n"
 			"Install the latest driver for your graphics card (NVIDIA, AMD or Intel) and start the game again. "
-			"halo.log has the details.", object);
+			"A graphics card older than about 2016, or a computer without a graphics driver (a virtual machine, "
+			"say), may have no Vulkan 1.3 at all. halo.log has the details.", object);
 #endif
 		return 0;
 	}

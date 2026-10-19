@@ -56,10 +56,6 @@ decommits and commits again (the pages read as zero, as Linux's do).
 /* (Linux's, which halo_guest_syscall.h does not name) */
 #define GUEST_ENODEV 19
 
-/* the launcher's variable (host_main_win.c): set in the copy it started,
-whose fixed ranges it reserved */
-#define LAUNCHED_VARIABLE L"HALO_WINDOWS_LAUNCHED"
-
 struct pool
 {
 	uint64_t base;
@@ -163,24 +159,42 @@ void host_memory_report_low_mappings(FILE *file)
 
 /* ---------- start-up */
 
-static int launched(void)
+int host_launched(void)
 {
-	return GetEnvironmentVariableW(LAUNCHED_VARIABLE, NULL, 0) > 0;
+	static int known, launched;
+
+	if (!known)
+	{
+		known = 1;
+		launched = GetEnvironmentVariableW(HOST_LAUNCHED_VARIABLE, NULL, 0) > 0;
+		SetEnvironmentVariableW(HOST_LAUNCHED_VARIABLE, NULL);
+	}
+	return launched;
+}
+
+/* whether the region at base is the launcher's reservation of a fixed
+range: one allocation of exactly that size, only reserved, with the
+protection the launcher gives it (host_main_win.c, launch_reserved) */
+static int launcher_reservation(uint64_t base, uint64_t size)
+{
+	MEMORY_BASIC_INFORMATION region;
+
+	return VirtualQuery((void *)(uintptr_t)base, &region, sizeof(region)) && region.State == MEM_RESERVE &&
+		region.Type == MEM_PRIVATE && (uint64_t)(uintptr_t)region.AllocationBase == base &&
+		(uint64_t)(uintptr_t)region.BaseAddress == base && region.RegionSize == size &&
+		region.AllocationProtect == PAGE_NOACCESS;
 }
 
 /* reserves a fixed range; in a copy the launcher started, takes its
 reservation of it instead. 0 on success. */
 static int reserve_fixed_range(uint64_t base, uint64_t size, const char *what)
 {
-	MEMORY_BASIC_INFORMATION region;
 	DWORD error;
 
 	if (VirtualAlloc((void *)(uintptr_t)base, size, MEM_RESERVE, PAGE_NOACCESS) == (void *)(uintptr_t)base)
 		return 0;
 	error = GetLastError();
-	if (launched() && VirtualQuery((void *)(uintptr_t)base, &region, sizeof(region)) &&
-		region.State == MEM_RESERVE && region.Type == MEM_PRIVATE &&
-		(uint64_t)(uintptr_t)region.AllocationBase == base && region.RegionSize >= size)
+	if (host_launched() && launcher_reservation(base, size))
 	{
 		host_logf(HOST_LOG_INFO, "the launcher reserved the %s at %08llx", what, (unsigned long long)base);
 		return 0;
