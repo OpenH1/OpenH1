@@ -33,5 +33,9 @@ which munmap releases whole.
 void *mmap(void *address, size_t length, int protection, int flags, int descriptor, long long offset);
 int munmap(void *address, size_t length);
 int mprotect(void *address, size_t length, int protection);
+/* 0 if every page of the range is committed and readable (the Vulkan
+renderer's check before it reads guest memory), each residency byte 1;
+else -1 with errno ENOMEM */
+int mincore(void *address, size_t length, unsigned char *residency);
 
 #endif

@@ -46,7 +46,7 @@ from .linux_build import (MINIUPNPC_DIR, OPTIMISATION, compile_launcher, configu
                           updater_defines)
 from .macos_build import fetch_khronos_headers
 from .ninja_syntax import Writer
-from .vulkan_build import VULKAN_DIR, fetch_vulkan_headers
+from .vulkan_build import VULKAN_DIR, fetch_vulkan_headers, host_vulkan_renderer
 from .windows_build import SDL_DIR, fetch_sdl, windows_rc
 
 BUILD = Path("build/windows64")
@@ -256,6 +256,10 @@ def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
     for source in sorted((MBEDTLS_DIR / "library").glob("*.c")):
         add(source, " ".join([*base_cflags, mbedtls_include, f"-I{MBEDTLS_DIR / 'library'}", "-w"]),
             name=f"mbedtls/{source.name}.o")
+    # the renderer: Vulkan's (port/linux/vulkan), with its own texture
+    # decoding, as Android's host (there is no OpenGL backend beside it)
+    objects.extend(host_vulkan_renderer(n, "windows64", "WINDOWS64", BUILD, "windows64_host_cc", host_cflags,
+                                        VULKAN_HEADERS_DIR, vr=False, texture_decoding=True))
     add(guest["host_table_c"], host_cflags)
     # the guest image, inside the executable (host_main_win.c)
     image_obj = host_obj_dir / "guest_image_win.S.o"

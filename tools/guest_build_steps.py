@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """The guest image's build steps that are shell commands elsewhere
-(tools/android_build.py, generate_guest_image), for a computer without a
-POSIX shell: Windows, where ninja runs each command as a program of its own
-(the 64-bit Windows build, tools/windows64_build.py). Each step writes what
-the shell command writes.
+(tools/android_build.py, generate_guest_image; and the Vulkan host's,
+tools/vulkan_build.py), for a computer without a POSIX shell: Windows,
+where ninja runs each command as a program of its own (the 64-bit Windows
+build, tools/windows64_build.py). Each step writes what the shell command
+writes.
 
     guest_build_steps.py alltypes OUTPUT ARCH_ALLTYPES MUSL_ALLTYPES
         musl's bits/alltypes.h (its tools/mkalltypes.sed over both files)
@@ -16,6 +17,12 @@ the shell command writes.
         them), then STAMP
     guest_build_steps.py ar ARCHIVER OUTPUT RESPONSE_FILE
         a new archive of the objects the response file names
+    guest_build_steps.py copy INPUT OUTPUT
+        a copy
+    guest_build_steps.py xdk-enums OUTPUT XDK_PDB_H XDK_D3D8_H
+        the Vulkan host's xdk_enums.h: xdk_pdb.h's enumerations (from their
+        heading to the line before the structures' heading), then
+        xdk_d3d8.h's D3DFORMAT, D3DSIZE and D3DTEXTURE defines
 """
 
 import re
@@ -79,6 +86,24 @@ def archive(archiver: str, output: Path, response: Path) -> None:
     subprocess.run([archiver, "rcs", str(output), f"@{response}"], check=True)
 
 
+def xdk_enums(output: Path, pdb: Path, d3d8: Path) -> None:
+    lines = []
+    inside = False
+    for line in pdb.read_text(encoding="utf-8").splitlines():
+        if not inside and re.match(r"^/\* ---------- enumerations", line):
+            inside = True
+        if inside:
+            lines.append(line)
+            if re.match(r"^/\* ---------- structures and unions", line):
+                break
+    # (sed '$d': the structures' heading goes)
+    if lines:
+        lines.pop()
+    lines += [line for line in d3d8.read_text(encoding="utf-8").splitlines()
+              if re.match(r"^#define D3D(FORMAT|SIZE|TEXTURE)_", line)]
+    write_if_changed(output, "".join(f"{line}\n" for line in lines))
+
+
 def main(arguments: list) -> int:
     if not arguments:
         print(__doc__, file=sys.stderr)
@@ -94,6 +119,11 @@ def main(arguments: list) -> int:
         gl_include(Path(rest[0]), Path(rest[1]), Path(rest[2]))
     elif step == "ar" and len(rest) == 3:
         archive(rest[0], Path(rest[1]), Path(rest[2]))
+    elif step == "copy" and len(rest) == 2:
+        Path(rest[1]).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(rest[0], rest[1])
+    elif step == "xdk-enums" and len(rest) == 3:
+        xdk_enums(Path(rest[0]), Path(rest[1]), Path(rest[2]))
     else:
         print(__doc__, file=sys.stderr)
         return 2

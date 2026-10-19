@@ -515,6 +515,29 @@ int mprotect(void *address, size_t length, int protection)
 	return 0;
 }
 
+int mincore(void *address, size_t length, unsigned char *residency)
+{
+	uintptr_t at = (uintptr_t)address & ~(uintptr_t)0xfff, end = (uintptr_t)address + length;
+	size_t page = 0;
+
+	while (at < end)
+	{
+		MEMORY_BASIC_INFORMATION region;
+		uintptr_t region_end;
+
+		if (!VirtualQuery((void *)at, &region, sizeof(region)) || region.State != MEM_COMMIT ||
+			(region.Protect & (PAGE_NOACCESS | PAGE_GUARD)) || !region.Protect)
+		{
+			errno = ENOMEM;
+			return -1;
+		}
+		region_end = (uintptr_t)region.BaseAddress + region.RegionSize;
+		for (; at < end && at < region_end; at += 0x1000)
+			residency[page++] = 1;
+	}
+	return 0;
+}
+
 /* ---------- text */
 
 wchar_t *host_wide_from_utf8(const char *text)

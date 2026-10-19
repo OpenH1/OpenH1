@@ -88,3 +88,17 @@ def test_build_steps(tmp_path):
     version = tmp_path / "version.h"
     run(TOOLS / "guest_build_steps.py", "version-h", version, "1.2.5")
     assert version.read_text(encoding="utf-8") == '#define VERSION "1.2.5"\n'
+
+
+def test_xdk_enums_step(tmp_path):
+    pdb = tmp_path / "xdk_pdb.h"
+    pdb.write_text("/* intro */\n/* ---------- enumerations */\nenum a { b };\n\n"
+                   "/* ---------- structures and unions */\nstruct c;\n", encoding="utf-8")
+    d3d8 = tmp_path / "xdk_d3d8.h"
+    d3d8.write_text("#define D3DFORMAT_X 1\n#define OTHER 2\n#define D3DSIZE_Y 3\n#define D3DTEXTURE_Z 4\n",
+                    encoding="utf-8")
+    output = tmp_path / "xdk_enums.h"
+    run(TOOLS / "guest_build_steps.py", "xdk-enums", output, pdb, d3d8)
+    assert output.read_text(encoding="utf-8") == (
+        "/* ---------- enumerations */\nenum a { b };\n\n#define D3DFORMAT_X 1\n#define D3DSIZE_Y 3\n"
+        "#define D3DTEXTURE_Z 4\n")

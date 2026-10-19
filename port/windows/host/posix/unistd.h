@@ -29,8 +29,7 @@ typedef long long ssize_t;
 int getpagesize(void);
 long sysconf(int name);
 
-/* mkdir(path, mode): the C runtime's takes no mode */
-int halo_windows_mkdir(const char *path, int mode);
-#define mkdir(path, mode) halo_windows_mkdir(path, mode)
+/* (mkdir: sys/stat.h) */
+#include <sys/stat.h>
 
 #endif

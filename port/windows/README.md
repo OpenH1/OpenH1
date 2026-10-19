@@ -176,8 +176,10 @@ build. `ninja windows64` makes `build/windows64/halo.exe`, with
 `SDL3.dll` next to it. It is the 64-bit x86 Linux build
 ([port/linux/README.md](../linux/README.md), "64-bit x86") with a Windows
 host: the game is an x32 guest image, inside the executable, in a 64-bit
-process. It has no renderer yet: use it with `debug.null_renderer`, or as a
-server.
+process. It draws with the Vulkan renderer of the Linux build
+([port/linux/vulkan/README.md](../linux/vulkan/README.md)), which needs a
+graphics driver with Vulkan 1.3; without one, the game says so and stops.
+The Vulkan pipeline cache is `%LOCALAPPDATA%\OpenH1\vulkan_pipelines.bin`.
 
 ### Build it
 

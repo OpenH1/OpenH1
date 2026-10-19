@@ -16,7 +16,8 @@ drawn and read back (screenshots) but not shown.
 HALO_VULKAN_VALIDATION=1 turns on the validation layers and logs their
 messages (the layers must be installed, or found through VK_ADD_LAYER_PATH).
 The pipeline cache is $XDG_CACHE_HOME/openh1/vulkan_pipelines.bin (or
-~/.cache's); HALO_VULKAN_PIPELINE_CACHE names another file, or none (empty).
+~/.cache's; on Windows %LOCALAPPDATA%\OpenH1's); HALO_VULKAN_PIPELINE_CACHE
+names another file, or none (empty).
 */
 
 #include "host.h"
@@ -79,6 +80,18 @@ static const char *cache_path(char *path, size_t size)
 
 	if (chosen)
 		return *chosen ? chosen : NULL;
+#ifdef _WIN32
+	/* (the 64-bit Windows host: the user's local application data) */
+	cache = getenv("LOCALAPPDATA");
+	if (!cache || !*cache)
+		return NULL;
+	snprintf(folder, sizeof(folder), "%s\\OpenH1", cache);
+	if (mkdir(folder, 0755) && errno != EEXIST)
+		return NULL;
+	snprintf(path, size, "%s\\vulkan_pipelines.bin", folder);
+	(void)home;
+	return path;
+#endif
 #ifdef __ANDROID__
 	/* The app has no HOME; keep the driver cache in its private cache. */
 	if (!cache || !*cache)
@@ -177,7 +190,16 @@ int host_vulkan_window_open(uint32_t window)
 	options.cache_path = cache_path(path, sizeof(path));
 	options.validation = getenv("HALO_VULKAN_VALIDATION") && atoi(getenv("HALO_VULKAN_VALIDATION"));
 	if (!xgpu_vulkan_initialize(&options))
+	{
+#ifdef _WIN32
+		/* (the 64-bit Windows build draws with Vulkan alone: say so) */
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Halo",
+			"The game cannot draw: it needs a graphics card and driver with Vulkan 1.3.\n\n"
+			"Install the latest driver for your graphics card (NVIDIA, AMD or Intel) and start the game again. "
+			"halo.log has the details.", object);
+#endif
 		return 0;
+	}
 #ifdef HALO_VR
 	host_vr_vulkan_set_depth_format(xgpu_vulkan_depth_format());
 #endif
