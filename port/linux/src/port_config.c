@@ -87,7 +87,7 @@ Ctrl+D, which moving and crouching would press, from the browser) */
 
 /* display.graphics = "enhanced": the values it gives the settings it
 chooses (config_graphics), which are their defaults, the same on every
-build: SMAA (Metal and Vulkan draw none yet), 16x anisotropic
+build: SMAA (Metal draws none yet; OpenGL ES FXAA), 16x anisotropic
 filtering, 512 shadow maps, the models' detail by the display's lines and lit
 for each pixel, the enhanced dynamic lights (Metal and OpenGL ES draw them
 classic) */

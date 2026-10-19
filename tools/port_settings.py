@@ -55,8 +55,9 @@ SCREENS = {
         "platform_places": True,
         # (rows in the place of the row before them: Window Size in
         # Resolution's, port/linux/game/menu_functions.c showing the one the
-        # display mode chosen uses; Android's anti-aliasing in the desktop's)
-        "same_place": ["display.window_size", "anti_aliasing_android"],
+        # display mode chosen uses; Android's and the web's anti-aliasing in the
+        # desktop's)
+        "same_place": ["display.window_size", "anti_aliasing_android", "anti_aliasing_web"],
         "rows": [
             ("DISPLAY MODE:", "display.mode",
              [("FULLSCREEN", "fullscreen"), ("BORDERLESS", "borderless"), ("WINDOWED", "windowed")],
@@ -94,10 +95,15 @@ SCREENS = {
               ("MSAA 4X", "msaa4x"), ("MSAA 8X", "msaa8x")],
              "Smooth jagged edges, which the Xbox did not. FXAA\nand SMAA are cheap; SSAA and MSAA are sharper.",
              "desktop"),
+            # (Android's Vulkan draws SMAA; the web's OpenGL ES has FXAA alone)
+            ("ANTI-ALIASING:", "display.anti_aliasing",
+             [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x")],
+             "Smooth jagged edges, which the Xbox did not. FXAA\nand SMAA are cheap; MSAA is sharper.",
+             "android", "anti_aliasing_android"),
             ("ANTI-ALIASING:", "display.anti_aliasing",
              [("OFF", "off"), ("FXAA", "fxaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x")],
              "Smooth jagged edges, which the Xbox did not. FXAA\nis cheap; MSAA is sharper.",
-             "android web", "anti_aliasing_android"),
+             "web", "anti_aliasing_web"),
             ("TEXTURE FILTERING:", "display.anisotropic_filtering",
              [("OFF", "0"), ("2X", "2"), ("4X", "4"), ("8X", "8"), ("16X", "16")],
              "Keep floors and walls sharp at a grazing angle,\nwhich the Xbox did not. 4X costs very little.", None),
@@ -391,7 +397,7 @@ _graphics = {"display.high_res_hud", "display.hud_button_style", "display.high_r
 # line lower)
 SCREENS["video_settings/graphics"] = {
     "screen": "graphics_settings_screen", "header": _video["header"], "spacing": 24, "help_top": 366,
-    "same_place": ["anti_aliasing_android"],
+    "same_place": ["anti_aliasing_android", "anti_aliasing_web"],
     "rows": [("PRESET:", "display.graphics", [("ENHANCED", "enhanced"), ("CLASSIC", "classic")],
               "Classic draws as the Xbox did; Enhanced turns on\nthe improvements below. Each can still be changed.",
               None)] +

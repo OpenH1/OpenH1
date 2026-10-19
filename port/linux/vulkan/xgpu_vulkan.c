@@ -1646,6 +1646,40 @@ void xgpu_vulkan_image_copy(struct xgpu_vulkan_image *source, uint32_t source_le
 	transfer_done(commands);
 }
 
+void xgpu_vulkan_image_copy_rectangle(struct xgpu_vulkan_image *source, uint32_t source_layer,
+	struct xgpu_vulkan_image *destination, const int32_t rectangle[4])
+{
+	VkCommandBuffer commands;
+	VkImageCopy copy;
+	int32_t right = rectangle[2], bottom = rectangle[3];
+
+	/* (inside both) */
+	if (right > (int32_t)source->description.width)
+		right = (int32_t)source->description.width;
+	if (right > (int32_t)destination->description.width)
+		right = (int32_t)destination->description.width;
+	if (bottom > (int32_t)source->description.height)
+		bottom = (int32_t)source->description.height;
+	if (bottom > (int32_t)destination->description.height)
+		bottom = (int32_t)destination->description.height;
+	if (rectangle[0] < 0 || rectangle[1] < 0 || right <= rectangle[0] || bottom <= rectangle[1] ||
+		(source->aspect & VK_IMAGE_ASPECT_DEPTH_BIT))
+		return;
+	commands = main_commands();
+	memset(&copy, 0, sizeof(copy));
+	copy.srcSubresource.aspectMask = copy.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	copy.srcSubresource.baseArrayLayer = source_layer;
+	copy.srcSubresource.layerCount = copy.dstSubresource.layerCount = 1;
+	copy.srcOffset.x = copy.dstOffset.x = rectangle[0];
+	copy.srcOffset.y = copy.dstOffset.y = rectangle[1];
+	copy.extent.width = (uint32_t)(right - rectangle[0]);
+	copy.extent.height = (uint32_t)(bottom - rectangle[1]);
+	copy.extent.depth = 1;
+	source->used = destination->used = vk.serial;
+	vkCmdCopyImage(commands, source->image, VK_IMAGE_LAYOUT_GENERAL, destination->image, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+	transfer_done(commands);
+}
+
 /* OpenXR guarantees this layout after xrWaitSwapchainImage and requires
 it again at release. The copy preserves encoded colour bytes, as GL does
 with FRAMEBUFFER_SRGB disabled, including for the runtime's sRGB images. */

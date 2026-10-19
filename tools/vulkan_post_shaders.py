@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Build Vulkan's anti-aliasing passes from the OpenGL backend's.
+
+Run with glslangValidator and spirv-val on PATH:
+    python3 tools/vulkan_post_shaders.py
+The generated C (port/linux/vulkan/xgpu_vulkan_post_shaders.c) embeds the
+SPIR-V of display.anti_aliasing's passes and SMAA's lookup textures,
+inflated; the game needs no shader compiler and no zlib for them.
+--check verifies that the checked-in file still matches its sources.
+
+The passes are port/linux/src/xgpu_post.c's GLSL: its vertex shader, FXAA,
+and the main functions of SMAA's three passes after SMAA.hlsl
+(port/third_party/smaa), with the defines program_build gives it. Only the
+interface changes here: the uniforms become a block (set 0, binding 1, as
+the backend's other draws have their uniforms), the samplers take the
+texture units program_build gives them as their bindings (set 1), the
+output a location, and gl_VertexID is gl_VertexIndex. The coordinates stay:
+xgpu_post.c's textures and targets have their first row at the top, as
+Vulkan's images do, and gl_FragCoord counts rows from it in both. glslang
+16.6.0 and SPIRV-Tools 2026.4 (Homebrew's) produce the checked-in words.
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+from pathlib import Path
+import re
+import struct
+import subprocess
+import zlib
+
+ROOT = Path(__file__).resolve().parents[1]
+SOURCE = ROOT / "port/linux/src/xgpu_post.c"
+SMAA = ROOT / "port/third_party/smaa"
+OUTPUT = ROOT / "port/linux/vulkan/xgpu_vulkan_post_shaders.c"
+
+STRINGS = re.compile(r'"(?:\\.|[^"\\])*"')
+COMMENTS = re.compile(r"/\*.*?\*/", re.S)
+UNIFORM = re.compile(r"^uniform vec4 (\w+);\n", re.M)
+SAMPLER = re.compile(r"^uniform sampler2D (\w+);\n", re.M)
+# the uniforms' block: each pass's vec4s, in this order (std140)
+UNIFORMS = ("metrics", "bounds")
+# the fragment programs, in xgpu_vulkan_post_shaders.h's order
+PROGRAMS = ("fxaa", "smaa_edges", "smaa_weights", "smaa_blend")
+# SMAA's lookup textures: their file, size and channels
+TEXTURES = (("area", "area_tex.zlib", 160, 560, 2), ("search", "search_tex.zlib", 64, 16, 1))
+
+
+def literal(text: str) -> str:
+    """The C string literals of text (comments removed), joined."""
+    return "".join(ast.literal_eval(value) for value in STRINGS.findall(COMMENTS.sub("", text)))
+
+
+def declaration(source: str, name: str) -> str:
+    match = re.search(r"static const char " + name + r"\[\]\s*=\s*(.*?);\n", source, re.S)
+    if not match:
+        raise ValueError(f"{name} not found in {SOURCE.name}")
+    return literal(match[1])
+
+
+def smaa_mains(source: str) -> list[str]:
+    """smaa_mains's three strings, each its adjacent literals joined."""
+    match = re.search(r"static const char \*const smaa_mains\[\]\s*=\s*\{(.*?)\n\};", source, re.S)
+    if not match:
+        raise ValueError(f"smaa_mains not found in {SOURCE.name}")
+    body = COMMENTS.sub("", match[1])
+    mains = []
+    for group in re.findall(r'((?:\s*"(?:\\.|[^"\\])*")+)\s*,', body):
+        mains.append(literal(group))
+    if len(mains) != 3:
+        raise ValueError(f"smaa_mains has {len(mains)} strings, not 3")
+    return mains
+
+
+def smaa_prefix(source: str) -> str:
+    """What program_build puts before SMAA.hlsl and a pass's main: the
+    defines' text, as far as its first %s."""
+    match = re.search(r'xgpu_text_append\(&text,((?:\s*"(?:\\.|[^"\\])*")+)\s*,\s*\(const char \*\)xgpu_smaa_shader',
+                      source)
+    if not match:
+        raise ValueError(f"program_build's SMAA defines not found in {SOURCE.name}")
+    text = literal(match[1])
+    if not text.endswith("%s\n%s"):
+        raise ValueError("program_build's SMAA format changed")
+    return text[:-len("%s\n%s")]
+
+
+def units(source: str) -> dict[str, int]:
+    """program_build's samplers' texture units, which become bindings."""
+    found = {name: int(unit) for name, unit in re.findall(r'\{ "(\w+_texture)", (\d+) \}', source)}
+    if not found:
+        raise ValueError(f"program_build's texture units not found in {SOURCE.name}")
+    return found
+
+
+def translate(stage: str, code: str, bindings: dict[str, int]) -> str:
+    found = UNIFORM.findall(code)
+    unknown = set(found) - set(UNIFORMS)
+    if unknown:
+        raise ValueError(f"uniforms {sorted(unknown)} are not in the block")
+    code = UNIFORM.sub("", code)
+
+    def sampler(match):
+        return f"layout(set = 1, binding = {bindings[match[1]]}) uniform sampler2D {match[1]};\n"
+
+    code = SAMPLER.sub(sampler, code)
+    code = code.replace("out vec4 result;\n", "layout(location = 0) out vec4 result;\n")
+    code = code.replace("gl_VertexID", "gl_VertexIndex")
+    block = ""
+    if stage == "frag":
+        block = "layout(std140, set = 0, binding = 1) uniform PostUniforms\n{\n"
+        block += "".join(f"\tvec4 {name};\n" for name in UNIFORMS) + "};\n"
+    return "#version 450\n" + block + code
+
+
+def words_array(name: str, data: bytes, public: bool = False) -> str:
+    data += b"\0" * (-len(data) % 4)
+    words = struct.unpack(f"<{len(data) // 4}I", data)
+    lines = [f"{'' if public else 'static '}const uint32_t {name}[] =\n{{"]
+    for index in range(0, len(words), 8):
+        lines.append("\t" + ", ".join(f"0x{word:08x}" for word in words[index:index + 8]) + ",")
+    lines.append("};\n")
+    return "\n".join(lines)
+
+
+def generate(args):
+    build = args.build_dir
+    build.mkdir(parents=True, exist_ok=True)
+    source = SOURCE.read_text()
+    # (as tools/embed_assets.py gives it to the OpenGL backend: ASCII)
+    hlsl = bytes(byte if byte < 0x80 else 0x20 for byte in (SMAA / "SMAA.hlsl").read_bytes()).decode("ascii")
+    bindings = units(source)
+    prefix = smaa_prefix(source)
+    mains = smaa_mains(source)
+    programs = {
+        "post": ("vert", declaration(source, "vertex_source")),
+        "fxaa": ("frag", declaration(source, "fxaa_source")),
+    }
+    for name, main in zip(PROGRAMS[1:], mains):
+        programs[name] = ("frag", prefix + hlsl + "\n" + main)
+    text = [
+        "/* Generated by tools/vulkan_post_shaders.py from xgpu_post.c and port/third_party/smaa. Do not edit. */\n",
+        '#include "xgpu_vulkan_post_shaders.h"\n',
+    ]
+    for name, (stage, code) in programs.items():
+        path = build / f"{name}.{stage}"
+        path.write_text(translate(stage, code, bindings))
+        spv = path.with_suffix(f".{stage}.spv")
+        spv.unlink(missing_ok=True)
+        subprocess.run([args.compiler, "-V", "--target-env", "vulkan1.1", "-o", str(spv), str(path)],
+                       check=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        subprocess.run([args.validator, "--target-env", "vulkan1.1", str(spv)], check=True)
+        text.append(words_array(f"{name}_{stage}", spv.read_bytes()))
+        print(f"{name}: {spv.stat().st_size} bytes of SPIR-V")
+    text.append("const struct xgpu_vulkan_post_module xgpu_vulkan_post_vertex =\n{")
+    text.append("\tpost_vert, sizeof(post_vert) / 4,\n};\n")
+    text.append("const struct xgpu_vulkan_post_module xgpu_vulkan_post_programs[XGPU_VULKAN_POST_PROGRAM_COUNT] =\n{")
+    for name in PROGRAMS:
+        text.append(f"\t{{ {name}_frag, sizeof({name}_frag) / 4 }},")
+    text.append("};\n")
+    for name, file, width, height, channels in TEXTURES:
+        texels = zlib.decompress((SMAA / file).read_bytes())
+        if len(texels) != width * height * channels:
+            raise ValueError(f"{file} is {len(texels)} bytes, not {width}x{height}x{channels}")
+        text.append(words_array(f"xgpu_vulkan_post_{name}_texture", texels, public=True))
+    generated = "\n".join(text)
+    if args.check:
+        if not OUTPUT.exists() or OUTPUT.read_text() != generated:
+            raise SystemExit(f"{OUTPUT.relative_to(ROOT)} differs; regenerate it")
+    else:
+        OUTPUT.write_text(generated)
+    print(f"{len(programs)} modules validated for Vulkan 1.1")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--compiler", default="glslangValidator")
+    parser.add_argument("--validator", default="spirv-val")
+    parser.add_argument("--build-dir", type=Path, default=ROOT / "build/vulkan_post_shaders")
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
+    try:
+        generate(args)
+    except subprocess.CalledProcessError as error:
+        if error.stdout:
+            print(error.stdout.decode())
+        raise
+
+
+if __name__ == "__main__":
+    main()

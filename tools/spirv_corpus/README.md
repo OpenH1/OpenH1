@@ -16,7 +16,10 @@ each:
   (`tools/msl_corpus/synthetic.c`), plus layered texture lookups in each
   stage with projected, bump-offset and dependent coordinates;
 - the enhanced dynamic lights' glows (`xgpu_spirv_halo_vertex_shader` and
-  `xgpu_spirv_halo_pixel_shader`), flat, for both eyes and foveated.
+  `xgpu_spirv_halo_pixel_shader`), flat, for both eyes and foveated;
+- anti-aliasing's passes (FXAA and SMAA's three, and their vertex shader),
+  as `tools/vulkan_post_shaders.py` generated them
+  (`port/linux/vulkan/xgpu_vulkan_post_shaders.c`).
 
 Every program is checked flat, for both eyes, and for either eye alone,
 with and without the foveated insets. The visibility tests also check the
