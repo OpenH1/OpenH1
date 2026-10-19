@@ -40,6 +40,7 @@ void xgpu_stream_pixel_key_describe(const struct nv2a_pixel_shader_key *key, str
 	wire->multiview = key->multiview;
 	wire->source_blend = key->source_blend;
 	wire->dynamic_lights = key->dynamic_lights;
+	wire->vr_effect = key->vr_effect;
 }
 
 void xgpu_stream_pipeline_key_describe(const struct xgpu_pipeline_key *key, struct xgpu_stream_pipeline_key *wire)
@@ -120,4 +121,5 @@ void xgpu_stream_pixel_key_restore(const struct xgpu_stream_pixel_key *wire, str
 	key->multiview = wire->multiview;
 	key->source_blend = wire->source_blend;
 	key->dynamic_lights = wire->dynamic_lights;
+	key->vr_effect = wire->vr_effect;
 }

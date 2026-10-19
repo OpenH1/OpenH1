@@ -16,7 +16,11 @@ each:
   (`tools/msl_corpus/synthetic.c`), plus layered texture lookups in each
   stage with projected, bump-offset and dependent coordinates;
 - the enhanced dynamic lights' glows (`xgpu_spirv_halo_vertex_shader` and
-  `xgpu_spirv_halo_pixel_shader`), flat, for both eyes and foveated;
+  `xgpu_spirv_halo_pixel_shader`), flat, for both eyes and foveated, and in
+  the VR mode's eyes as their bolts' scattered light (`glow-*`);
+- the VR mode's effects (`effect-*`): an effect's program, with one map and
+  two, soft and thick, with each fade, for both eyes and foveated
+  (`tools/test_vr_effects.py` checks these alone);
 - anti-aliasing's passes (FXAA and SMAA's three, and their vertex shader),
   as `tools/vulkan_post_shaders.py` generated them
   (`port/linux/vulkan/xgpu_vulkan_post_shaders.c`).

@@ -195,6 +195,15 @@ enum
 	NUMBER_OF_RASTERIZER_GEOMETRY_FLAGS
 };
 
+#ifdef HALO_VR
+/* port: an effect's sprites large enough on the screen to be drawn thick in
+the VR mode's eyes (render_sprite.c, halo_vr_effect_depth) */
+enum
+{
+	_rasterizer_geometry_vr_thick_bit = NUMBER_OF_RASTERIZER_GEOMETRY_FLAGS,
+};
+#endif
+
 enum
 {
 	_shader_type_screen = 0,
@@ -1938,6 +1947,27 @@ void rasterizer_transparent_geometry_group_draw(
 									combiner_index++;
 								}
 								pixel_shader.combiner_count = combiner_index;
+#ifdef HALO_VR
+								{
+									/* port: in the VR mode's eyes, soft against the
+									scene's depth, and thick where its sprites are
+									large (halo_vr_effect_depth); not the
+									first-person weapon's (its own depth range), nor
+									one drawn without depth or with the game's own
+									soft z-sprite */
+									extern void halo_vr_effect_depth(int mode);
+									extern boolean vr_render_eye_pass(void);
+									boolean zsprite = rasterizer_debug_options.zsprite_enabled &&
+										shader_effect->secondary_map_anchor ==
+											_shader_effect_secondary_map_anchor_zsprite &&
+										shader_effect->secondary_map.index != NONE;
+
+									halo_vr_effect_depth(!vr_render_eye_pass() || zsprite ||
+										TEST_FLAG(group->geometry_flags, _rasterizer_geometry_first_person_bit) ||
+										TEST_FLAG(group->geometry_flags, _rasterizer_geometry_no_zbuffer_bit) ? 0 :
+										TEST_FLAG(group->geometry_flags, _rasterizer_geometry_vr_thick_bit) ? 2 : 1);
+								}
+#endif
 
 							}
 							break;
@@ -3605,6 +3635,14 @@ void rasterizer_transparent_geometry_group_draw(
 
 					rasterizer_set_pixel_shader(&pixel_shader);
 					rasterizer_transparent_geometry_group_draw__internal(group, FALSE);
+#ifdef HALO_VR
+					{
+						/* port: (the effect's alone: halo_vr_effect_depth) */
+						extern void halo_vr_effect_depth(int mode);
+
+						halo_vr_effect_depth(0);
+					}
+#endif
 				}
 
 				if (TEST_FLAG(group->geometry_flags, _rasterizer_geometry_no_zbuffer_bit) &&

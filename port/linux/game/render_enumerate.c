@@ -85,6 +85,8 @@ skipped or made without its sampler.
 #include "../src/vr.h"
 boolean vr_render_eye_pass(void);
 void vr_render_sky(boolean sky);
+/* (render_sprite.c's) */
+void render_sprite_vr_thick_force(boolean forced);
 #endif
 
 #include <string.h>
@@ -987,6 +989,42 @@ static void effect_sprite(long bitmap_group_index, struct shader_effect_definiti
 	build_sprite(&data, _build_sprite_normal, sequence_index, 0, &origin, &render.camera.forward, 0.0f, 0.001f, &color,
 		1.0f, 0);
 	build_sprites_end(&data);
+#ifdef HALO_VR
+	/* the VR mode's eyes draw large sprites thick (render_sprite.c): their
+	pipeline too, and each of the bitmaps' thickness, which the renderer
+	bakes as it first draws one (each sprite of a bitmap not yet drawn) */
+	if (vr_render_eye_pass() && !TEST_FLAG(flags, _build_sprites_first_person_bit))
+	{
+		short bitmap_count = (short)MIN(bitmap_group->bitmaps.count, 64);
+		unsigned long drawn[2] = { 0, 0 };
+
+		render_sprite_vr_thick_force(TRUE);
+		for (sequence_index = 0; sequence_index < bitmap_group->sequences.count; sequence_index++)
+		{
+			struct bitmap_group_sequence *sequence = TAG_BLOCK_GET_ELEMENT(&bitmap_group->sequences, sequence_index,
+				struct bitmap_group_sequence);
+			short sprite_index;
+
+			if (sequence->first_bitmap_index == NONE)
+				continue;
+			for (sprite_index = 0; sprite_index < sequence->sprites.count; sprite_index++)
+			{
+				short bitmap_index = TAG_BLOCK_GET_ELEMENT(&sequence->sprites, sprite_index,
+					struct bitmap_group_sprite)->bitmap_index;
+
+				if (bitmap_index < 0 || bitmap_index >= bitmap_count || (drawn[bitmap_index >> 5] & (1ul << (bitmap_index & 31))))
+					continue;
+				drawn[bitmap_index >> 5] |= 1ul << (bitmap_index & 31);
+				rasterizer_transparent_geometry_flush(TRANSPARENT_GROUPS_ROOM);
+				build_sprites_begin(&data, 1, bitmap_group_index, shader, flags);
+				build_sprite(&data, _build_sprite_normal, sequence_index, sprite_index, &origin, &render.camera.forward,
+					0.0f, 0.001f, &color, 1.0f, 0);
+				build_sprites_end(&data);
+			}
+		}
+		render_sprite_vr_thick_force(FALSE);
+	}
+#endif
 }
 
 /* Light volumes use the widget sprite shader with depth testing, unlike

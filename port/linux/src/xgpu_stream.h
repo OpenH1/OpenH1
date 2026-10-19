@@ -447,7 +447,7 @@ struct xgpu_stream_pixel_key
 	uint32_t alpha_test_function;
 	uint8_t fog_enable, fog_table_mode, count_samples, coverage_alpha;
 	uint8_t point_threshold, per_pixel_lighting, alpha_test_samples, multiview;
-	uint8_t source_blend, dynamic_lights, pad[3];
+	uint8_t source_blend, dynamic_lights, vr_effect, pad[2];
 };
 
 /* xgpu_backend.h's struct xgpu_pipeline_key */

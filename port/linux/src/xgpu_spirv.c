@@ -53,7 +53,7 @@ enum
 	OP_F_ORD_EQUAL = 180, OP_F_UNORD_NOT_EQUAL = 183, OP_F_ORD_LESS_THAN = 184, OP_F_ORD_GREATER_THAN = 186,
 	OP_F_ORD_LESS_THAN_EQUAL = 188, OP_F_ORD_GREATER_THAN_EQUAL = 190,
 	OP_SHIFT_RIGHT_ARITHMETIC = 195, OP_SHIFT_LEFT_LOGICAL = 196, OP_BITWISE_AND = 199,
-	OP_FWIDTH = 209, OP_ATOMIC_I_ADD = 234,
+	OP_DPDX = 207, OP_DPDY = 208, OP_FWIDTH = 209, OP_ATOMIC_I_ADD = 234,
 	OP_LOOP_MERGE = 246, OP_SELECTION_MERGE = 247, OP_LABEL = 248, OP_BRANCH = 249, OP_BRANCH_CONDITIONAL = 250,
 	OP_KILL = 252, OP_RETURN = 253,
 };
@@ -62,8 +62,8 @@ enum
 enum
 {
 	GLSL_F_ABS = 4, GLSL_F_SIGN = 6, GLSL_FLOOR = 8, GLSL_FRACT = 10, GLSL_POW = 26, GLSL_EXP = 27, GLSL_EXP2 = 29,
-	GLSL_LOG2 = 30, GLSL_INVERSE_SQRT = 32, GLSL_F_MIN = 37, GLSL_F_MAX = 40, GLSL_F_CLAMP = 43, GLSL_S_CLAMP = 45,
-	GLSL_F_MIX = 46, GLSL_LENGTH = 66, GLSL_NORMALIZE = 69, GLSL_FIND_I_LSB = 73,
+	GLSL_LOG2 = 30, GLSL_SQRT = 31, GLSL_INVERSE_SQRT = 32, GLSL_F_MIN = 37, GLSL_F_MAX = 40, GLSL_F_CLAMP = 43,
+	GLSL_S_CLAMP = 45, GLSL_F_MIX = 46, GLSL_LENGTH = 66, GLSL_CROSS = 68, GLSL_NORMALIZE = 69, GLSL_FIND_I_LSB = 73,
 };
 
 enum
@@ -804,6 +804,7 @@ enum
 	U_PS_C0, U_PS_C1, U_PS_FINAL_C0, U_PS_FINAL_C1, U_FOG_COLOR, U_FOG_PARAMETERS, U_BUMP_MATRIX, U_BUMP_LUMINANCE,
 	U_TEXTURE_SCALE, U_BLEND_CONSTANT, U_TEXTURE_BORDER, U_TEXTURE_BORDER_LINEAR, U_MODEL_LIGHTS,
 	U_EYE_CORRECTION, U_SCREEN_CORRECTION, U_FOVEA_VIEW, U_FOVEA_SAMPLE, U_VISIBILITY_COUNTER,
+	U_EFFECT_UNPROJECT, U_EFFECT_EYE,
 	U_COUNT,
 };
 
@@ -824,6 +825,7 @@ static void declare_uniforms(struct module *m)
 		offsetof(struct xgpu_spirv_uniforms, eye_correction), offsetof(struct xgpu_spirv_uniforms, screen_correction),
 		offsetof(struct xgpu_spirv_uniforms, fovea_view), offsetof(struct xgpu_spirv_uniforms, fovea_sample),
 		offsetof(struct xgpu_spirv_uniforms, visibility_counter),
+		offsetof(struct xgpu_spirv_uniforms, effect_unproject), offsetof(struct xgpu_spirv_uniforms, effect_eye),
 	};
 	unsigned int members[U_COUNT], block;
 	int member;
@@ -837,9 +839,10 @@ static void declare_uniforms(struct module *m)
 			break;
 		case U_PS_C0: case U_PS_C1: case U_EYE_CORRECTION: members[member] = block_array(m, 8); break;
 		case U_BUMP_MATRIX: case U_BUMP_LUMINANCE: case U_TEXTURE_SCALE: case U_TEXTURE_BORDER:
-		case U_FOVEA_VIEW: case U_FOVEA_SAMPLE:
+		case U_FOVEA_VIEW: case U_FOVEA_SAMPLE: case U_EFFECT_EYE:
 			members[member] = block_array(m, 4);
 			break;
+		case U_EFFECT_UNPROJECT: members[member] = block_array(m, 16); break;
 		case U_SCREEN_CORRECTION: members[member] = block_array(m, 2); break;
 		case U_MODEL_LIGHTS: members[member] = block_array(m, XGPU_MODEL_LIGHT_COUNT); break;
 		default: members[member] = m->t_v4; break;
@@ -1736,6 +1739,10 @@ struct pixel_state
 	unsigned int textures[4];
 	unsigned int v0, v1, t[4], dots[4], r0, r1, fog;
 	unsigned int zero4;
+	/* the VR mode's effects (xgpu_spirv.h): gl_FragCoord, the scene's depth
+	and the sprite's thickness, and texture 0's parallax (a vec2 added to its
+	coordinates; 0 none) */
+	unsigned int frag_coord, effect_depth, effect_thickness, t0_offset;
 };
 
 static unsigned int pixel_input(struct module *m, struct pixel_state *state, unsigned int variable_id, unsigned int type)
@@ -1917,6 +1924,13 @@ static void texture_stage(struct module *m, struct pixel_state *state, int stage
 
 		w = op3(m, OP_SELECT, m->t_float, compare(m, OP_F_UNORD_NOT_EQUAL, w, zero), w, one);
 		coordinates = vec4_of(m, fdiv(m, 3, xyz(m, xt), splat(m, 3, w)), one);
+		if (stage == 0 && state->t0_offset)
+		{
+			/* (an effect's parallax: effect_prelude) */
+			static const unsigned int moved[4] = { 4, 5, 2, 3 };
+
+			coordinates = shuffle(m, 4, coordinates, fadd(m, 2, xy(m, coordinates), state->t0_offset), moved);
+		}
 		state->t[stage] = sample(m, state, stage, coordinates);
 		if (stage == 0 && program->point_threshold && decoded->sampler == _xgpu_sampler_2d)
 		{
@@ -2603,6 +2617,201 @@ static BOOL stage_samples(unsigned char mode)
 	}
 }
 
+/* ---------- the VR mode's effects (xgpu_spirv.h) */
+
+/* the thickness map's unit (port/linux/vulkan/xgpu_vulkan_effects.h's
+XGPU_VULKAN_THICKNESS_UNIT: texels a stored 1 is) */
+#define THICKNESS_UNIT 128.0f
+
+BOOL xgpu_spirv_effect_possible(const struct xgpu_pixel_program *program)
+{
+	return program->multiview == XGPU_MULTIVIEW_EYES && program->stages[0].mode == XGPU_TEXTURE_PROJECT2D &&
+		program->stages[0].sampler == _xgpu_sampler_2d && !stage_samples(program->stages[2].mode) &&
+		!stage_samples(program->stages[3].mode);
+}
+
+/* the effect's textures: the scene's depth (the views' layers) and the
+sprite's thickness */
+static void effect_declare(struct module *m, struct pixel_state *state)
+{
+	state->frag_coord = variable(m, m->t_v4, STORAGE_INPUT, "gl_FragCoord");
+	decorate1(m, state->frag_coord, DECORATION_BUILT_IN, BUILT_IN_FRAG_COORD);
+	state->effect_depth = variable(m, type_sampled_image(m, DIM_2D, TRUE, FALSE, TRUE), STORAGE_UNIFORM_CONSTANT,
+		"effect_depth");
+	decorate1(m, state->effect_depth, DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_TEXTURES);
+	decorate1(m, state->effect_depth, DECORATION_BINDING, XGPU_SPIRV_EFFECT_DEPTH_BINDING);
+	state->effect_thickness = variable(m, type_sampled_image(m, DIM_2D, FALSE, FALSE, TRUE), STORAGE_UNIFORM_CONSTANT,
+		"effect_thickness");
+	decorate1(m, state->effect_thickness, DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_TEXTURES);
+	decorate1(m, state->effect_thickness, DECORATION_BINDING, XGPU_SPIRV_EFFECT_THICKNESS_BINDING);
+}
+
+/* the world point (a vec3) of a pixel's homogeneous unprojection */
+static unsigned int effect_point(struct module *m, unsigned int homogeneous)
+{
+	return fdiv(m, 3, xyz(m, homogeneous), splat(m, 3, extract(m, homogeneous, 3)));
+}
+
+/* What an effect works out before its textures are sampled, in uniform
+control flow (its derivatives): the world point the pixel draws, the
+scene's behind it and the eye's distance to each; the size of the
+sprite's texels in the world there (the world's derivatives over the
+texels'), so its radius and thickness in world units; with its thickness,
+texture 0's parallax (state->t0_offset). Returns the fade (1 drawn, 0
+gone). As GLSL:
+
+vec4 base = unproject[view][0] * gl_FragCoord.x + unproject[view][1] * gl_FragCoord.y + unproject[view][3];
+vec3 p = point(base + unproject[view][2] * gl_FragCoord.z);
+float depth = texelFetch(effect_depth, ivec3(gl_FragCoord.xy, view), 0).r;
+vec4 behind = base + unproject[view][2] * depth;
+float to_scene = depth >= 1.0 || behind.w <= 0.0 ? 1.0e9 : length(point(behind) - eye[view]);
+float to_pixel = length(p - eye[view]); vec3 ray = (p - eye[view]) / to_pixel;
+vec2 uv = xT0.xy / xT0.w, scaled = uv * texture_scale[0].xy;
+vec4 thick = texture(effect_thickness, scaled);
+vec2 texels = vec2(textureSize(tex0, 0));
+float texel = sqrt((dot(dFdx(p), dFdx(p)) + dot(dFdy(p), dFdy(p))) /
+	max(dot(dFdx(scaled) * texels, dFdx(scaled) * texels) + dot(dFdy(scaled) * texels, dFdy(scaled) * texels), 1e-20));
+float radius = thick.g * UNIT * texel, front = to_pixel;
+float span = max(max(SOFTNESS * radius, SOFTNESS_LEAST), SOFTNESS_DISTANCE * to_pixel);
+thick:
+	float height = thick.r * UNIT * THICKNESS * texel;
+	vec3 n = normalize(cross(dFdx(p), dFdy(p))); n = dot(n, ray) > 0.0 ? -n : n;
+	float along = height / max(-dot(ray, n), 0.25);   (along the ray, from the bulge's front to the sprite)
+	vec3 delta = -ray * along - n * height;             (in the sprite's plane: where the front's texel is)
+	(delta = a dFdx(p) + b dFdy(p), by the 2x2 of their dot products)
+	t0_offset = a dFdx(uv) + b dFdy(uv), no longer than PARALLAX_MOST of the radius in texels;
+	front = to_pixel - along; span = max(2.0 * along, span);
+return clamp((to_scene - front) / span, 0.0, 1.0); */
+static unsigned int effect_prelude(struct module *m, struct pixel_state *state)
+{
+	const struct xgpu_spirv_options *options = state->options;
+	BOOL thick = options->effect == XGPU_SPIRV_EFFECT_THICK;
+	unsigned int view = view_number(m, XGPU_MULTIVIEW_EYES, options->foveated);
+	unsigned int frag = load(m, m->t_v4, state->frag_coord), columns[4], first_column, base, p, depth, behind;
+	unsigned int eye, to_scene, far, to_pixel, offset_to_pixel, ray, xt, w, uv, scaled, thick_texel, texels;
+	unsigned int dpx, dpy, dux, duy, texel, radius, front, span, operands[4];
+	int column;
+
+	first_column = op2(m, OP_I_MUL, m->t_int, view, constant_int(m, 4));
+	for (column = 0; column < 4; column++)
+		columns[column] = uniform_index(m, U_EFFECT_UNPROJECT, column ? op2(m, OP_I_ADD, m->t_int, first_column,
+			constant_int(m, column)) : first_column);
+	base = fadd(m, 4, fadd(m, 4, fscale(m, 4, columns[0], extract(m, frag, 0)), fscale(m, 4, columns[1],
+		extract(m, frag, 1))), columns[3]);
+	p = effect_point(m, fadd(m, 4, base, fscale(m, 4, columns[2], extract(m, frag, 2))));
+	/* the scene's depth behind the pixel, in the view's layer */
+	{
+		unsigned int sampled = load(m, type_sampled_image(m, DIM_2D, TRUE, FALSE, TRUE), state->effect_depth);
+		unsigned int parts[2];
+
+		parts[0] = op1(m, OP_CONVERT_F_TO_S, m->t_iv2, xy(m, frag));
+		parts[1] = view;
+		operands[0] = op(m, OP_IMAGE, type_sampled_image(m, DIM_2D, TRUE, FALSE, FALSE), 1, &sampled);
+		operands[1] = op(m, OP_COMPOSITE_CONSTRUCT, m->t_iv3, 2, parts);
+		operands[2] = IMAGE_OPERANDS_LOD;
+		operands[3] = constant_int(m, 0);
+		depth = extract(m, op(m, OP_IMAGE_FETCH, m->t_v4, 4, operands), 0);
+	}
+	behind = fadd(m, 4, base, fscale(m, 4, columns[2], depth));
+	eye = xyz(m, uniform_index(m, U_EFFECT_EYE, view));
+	far = op2(m, OP_LOGICAL_OR, m->t_bool, compare(m, OP_F_ORD_GREATER_THAN_EQUAL, depth, constant_float(m, 1.0f)),
+		compare(m, OP_F_ORD_LESS_THAN_EQUAL, extract(m, behind, 3), constant_float(m, 0.0f)));
+	to_scene = op3(m, OP_SELECT, m->t_float, far, constant_float(m, 1.0e9f),
+		ext1(m, GLSL_LENGTH, m->t_float, fsub(m, 3, effect_point(m, behind), eye)));
+	offset_to_pixel = fsub(m, 3, p, eye);
+	to_pixel = ext1(m, GLSL_LENGTH, m->t_float, offset_to_pixel);
+	ray = fdiv(m, 3, offset_to_pixel, splat(m, 3, fmax_scalar(m, 1, to_pixel, 1.0e-6f)));
+	/* the sprite's texel: its coordinates as texture 0 samples them */
+	xt = pixel_input(m, state, state->in_t[0], m->t_v4);
+	w = extract(m, xt, 3);
+	w = op3(m, OP_SELECT, m->t_float, compare(m, OP_F_UNORD_NOT_EQUAL, w, constant_float(m, 0.0f)), w,
+		constant_float(m, 1.0f));
+	uv = fdiv(m, 2, xy(m, xt), splat(m, 2, w));
+	scaled = fmul(m, 2, uv, xy(m, uniform(m, U_TEXTURE_SCALE, 0)));
+	thick_texel = op2(m, OP_IMAGE_SAMPLE_IMPLICIT_LOD, m->t_v4,
+		load(m, type_sampled_image(m, DIM_2D, FALSE, FALSE, TRUE), state->effect_thickness), scaled);
+	{
+		unsigned int image = texture_load(m, state, 0);
+		unsigned int raw = op(m, OP_IMAGE, type_sampled_image(m, DIM_2D, FALSE, FALSE, FALSE), 1, &image);
+
+		texels = op1(m, OP_CONVERT_S_TO_F, m->t_v2, image_size(m, raw, m->t_iv2));
+	}
+	/* the world's size of a texel there */
+	dpx = op1(m, OP_DPDX, m->t_v3, p);
+	dpy = op1(m, OP_DPDY, m->t_v3, p);
+	dux = fmul(m, 2, op1(m, OP_DPDX, m->t_v2, scaled), texels);
+	duy = fmul(m, 2, op1(m, OP_DPDY, m->t_v2, scaled), texels);
+	texel = ext1(m, GLSL_SQRT, m->t_float, fdiv(m, 1, fadd(m, 1, fdot(m, dpx, dpx), fdot(m, dpy, dpy)),
+		fmax_scalar(m, 1, fadd(m, 1, fdot(m, dux, dux), fdot(m, duy, duy)), 1.0e-20f)));
+	radius = fmul(m, 1, fmul(m, 1, extract(m, thick_texel, 1), constant_float(m, THICKNESS_UNIT)), texel);
+	span = ext2(m, GLSL_F_MAX, m->t_float, fmax_scalar(m, 1, fmul(m, 1, radius,
+		constant_float(m, XGPU_SPIRV_EFFECT_SOFTNESS)), XGPU_SPIRV_EFFECT_SOFTNESS_LEAST),
+		fmul(m, 1, to_pixel, constant_float(m, XGPU_SPIRV_EFFECT_SOFTNESS_DISTANCE)));
+	front = to_pixel;
+	if (thick)
+	{
+		unsigned int height, n, cosine, along, delta, g11, g12, g22, determinant, b1, b2, a, b, valid, offset;
+		unsigned int offset_texels, length, most, shrink;
+
+		height = fmul(m, 1, fmul(m, 1, extract(m, thick_texel, 0),
+			constant_float(m, THICKNESS_UNIT * XGPU_SPIRV_EFFECT_THICKNESS)), texel);
+		n = ext1(m, GLSL_NORMALIZE, m->t_v3, ext2(m, GLSL_CROSS, m->t_v3, dpx, dpy));
+		n = select_n(m, 3, compare(m, OP_F_ORD_GREATER_THAN, fdot(m, n, ray), constant_float(m, 0.0f)), fneg(m, 3, n), n);
+		cosine = fmax_scalar(m, 1, fneg(m, 1, fdot(m, ray, n)), 0.25f);
+		along = fdiv(m, 1, height, cosine);
+		delta = fsub(m, 3, fneg(m, 3, fscale(m, 3, ray, along)), fscale(m, 3, n, height));
+		g11 = fdot(m, dpx, dpx);
+		g12 = fdot(m, dpx, dpy);
+		g22 = fdot(m, dpy, dpy);
+		determinant = fsub(m, 1, fmul(m, 1, g11, g22), fmul(m, 1, g12, g12));
+		valid = compare(m, OP_F_ORD_GREATER_THAN, determinant, fmul(m, 1, fmul(m, 1, g11, g22),
+			constant_float(m, 1.0e-4f)));
+		determinant = op3(m, OP_SELECT, m->t_float, valid, determinant, constant_float(m, 1.0f));
+		b1 = fdot(m, delta, dpx);
+		b2 = fdot(m, delta, dpy);
+		a = fdiv(m, 1, fsub(m, 1, fmul(m, 1, g22, b1), fmul(m, 1, g12, b2)), determinant);
+		b = fdiv(m, 1, fsub(m, 1, fmul(m, 1, g11, b2), fmul(m, 1, g12, b1)), determinant);
+		offset = fadd(m, 2, fscale(m, 2, op1(m, OP_DPDX, m->t_v2, uv), a), fscale(m, 2, op1(m, OP_DPDY, m->t_v2, uv), b));
+		/* (no farther than PARALLAX_MOST of the sprite's radius: a sprite
+		seen edge-on, or whose texels' derivatives fail) */
+		offset_texels = fmul(m, 2, fmul(m, 2, offset, xy(m, uniform(m, U_TEXTURE_SCALE, 0))), texels);
+		length = ext1(m, GLSL_LENGTH, m->t_float, offset_texels);
+		most = fmul(m, 1, extract(m, thick_texel, 1), constant_float(m, THICKNESS_UNIT * XGPU_SPIRV_EFFECT_PARALLAX_MOST));
+		shrink = ext2(m, GLSL_F_MIN, m->t_float, constant_float(m, 1.0f),
+			fdiv(m, 1, most, fmax_scalar(m, 1, length, 1.0e-6f)));
+		state->t0_offset = select_n(m, 2, valid, fscale(m, 2, offset, shrink), constant_splat(m, 2, 0.0f));
+		front = fsub(m, 1, to_pixel, along);
+		span = ext2(m, GLSL_F_MAX, m->t_float, fmul(m, 1, along, constant_float(m, 2.0f)), span);
+	}
+	return saturate(m, 1, fdiv(m, 1, fsub(m, 1, to_scene, front), span));
+}
+
+/* the effect's fade drawn as its blend's nothing (XGPU_SPIRV_FADE_*) */
+static unsigned int effect_fade(struct module *m, int fade_mode, unsigned int result, unsigned int fade)
+{
+	static const unsigned int rgb_a[4] = { 4, 5, 6, 3 };
+	unsigned int rgb = xyz(m, result);
+
+	switch (fade_mode)
+	{
+	case XGPU_SPIRV_FADE_ALPHA:
+		return op3(m, OP_COMPOSITE_INSERT, m->t_v4, fmul(m, 1, extract(m, result, 3), fade), result, 3);
+	case XGPU_SPIRV_FADE_COLOR:
+		return shuffle(m, 4, result, fscale(m, 3, rgb, fade), rgb_a);
+	case XGPU_SPIRV_FADE_COLOR_ALPHA:
+		return fscale(m, 4, result, fade);
+	case XGPU_SPIRV_FADE_TO_WHITE:
+	case XGPU_SPIRV_FADE_TO_GREY:
+	{
+		unsigned int neutral = constant_splat(m, 3, fade_mode == XGPU_SPIRV_FADE_TO_WHITE ? 1.0f : 0.5f);
+
+		return shuffle(m, 4, result, ext3(m, GLSL_F_MIX, m->t_v3, neutral, rgb, splat(m, 3, fade)), rgb_a);
+	}
+	default:
+		return result;
+	}
+}
+
 BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_spirv_options *options,
 	struct xgpu_spirv_module *module)
 {
@@ -2618,7 +2827,8 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 	unsigned int comparison = program->alpha_test ? comparison_opcode(program->alpha_test) : 0;
 	BOOL sample_mask = comparison && program->alpha_test_samples && program->alpha_test != D3DCMP_EQUAL &&
 		program->alpha_test != D3DCMP_NOTEQUAL;
-	unsigned int main_id, color_out, sample_mask_out = 0, result, dynamic_light_bump = 0;
+	unsigned int main_id, color_out, sample_mask_out = 0, result, dynamic_light_bump = 0, effect_fade_value = 0;
+	BOOL effect = options->effect != XGPU_SPIRV_EFFECT_NONE && xgpu_spirv_effect_possible(program);
 	int stage;
 
 	memset(&state, 0, sizeof(state));
@@ -2641,6 +2851,8 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		decorate1(&m, state.textures[stage], DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_TEXTURES);
 		decorate1(&m, state.textures[stage], DECORATION_BINDING, stage);
 	}
+	if (effect)
+		effect_declare(&m, &state);
 	if (count_samples)
 	{
 		unsigned int array = type1(&m, OP_TYPE_RUNTIME_ARRAY, m.t_uint), block;
@@ -2711,6 +2923,8 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		state.v0 = shuffle(&m, 4, state.v0, model_lighting(&m, &state, program->per_pixel_lighting == 2, FALSE), rgb);
 	}
 
+	if (effect)
+		effect_fade_value = effect_prelude(&m, &state);
 	for (stage = 0; stage < 4; stage++)
 		texture_stage(&m, &state, stage);
 	/* (the bump map's texel, which the combiners may overwrite: the enhanced
@@ -2849,6 +3063,8 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		op(&m, OP_ATOMIC_I_ADD, m.t_uint, 4, operands);
 	}
 	result = saturate(&m, 4, result);
+	if (effect)
+		result = effect_fade(&m, options->effect_fade, result, effect_fade_value);
 	if (program->source_blend)
 	{
 		unsigned int blend = uniform(&m, U_BLEND_CONSTANT, -1), factor;
@@ -2883,6 +3099,204 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 /* ---------- the enhanced dynamic lights' glows (xgpu_gl.c
 dynamic_lights_halo_program, its GLSL operation for operation) */
 
+/* With the VR mode's effects: each glow as the light its bolt scatters
+toward the eye (xgpu_spirv.h). The vertex shader: the quad that covers the
+haze from the head, as GLSL:
+
+vec3 middle = halo.xyz; float size = halo.w;
+vec3 to_head = head.xyz - middle; float away = length(to_head); vec3 n = to_head / max(away, 1e-6);
+vec3 across = cross(up, n); across = length(across) > 0.1 ? normalize(across) : normalize(cross(right, n));
+bool outside = away > 1.5 * size;
+vec3 centre = outside ? middle : head.xyz + forward * head.w;
+vec3 x = outside ? across : right, y = outside ? cross(n, across) : up;
+float half = outside ? size * away / sqrt(away * away - size * size) * 1.1 + 0.03 : head.w * 8.0;
+world = centre + (x * corner.x + y * corner.y) * half;
+gl_Position = clip[view] * vec4(world, 1.0);
+
+(the haze's outline seen from the head's centre, a tenth larger, and 0.03
+world units, 9 cm, for the eyes' offsets from it; with the head within 1.5
+sizes of the bolt, a quad across the view, ahead of the head at the near
+distance) */
+static BOOL glow_vertex_shader(const struct xgpu_spirv_options *options, struct xgpu_spirv_module *module)
+{
+	struct module m;
+	struct words locals = { 0 };
+	unsigned int main_id, middle_in, color_in, corner_in, position_out, world_out, color_out, middle_out;
+	unsigned int halo, corner, middle, size, head, near, right, up, forward, to_head, away, n, across, across_length;
+	unsigned int outside, centre, x, y, half, world, view, first_row, rows[4], world4;
+	int row;
+
+	module_begin(&m, EXECUTION_MODEL_VERTEX);
+	declare_constants(&m);
+	declare_views(&m, XGPU_MULTIVIEW_EYES, options->foveated, FALSE);
+	middle_in = interface_variable(&m, m.t_v4, STORAGE_INPUT, XGPU_SPIRV_HALO_MIDDLE, "middle");
+	color_in = interface_variable(&m, m.t_v4, STORAGE_INPUT, XGPU_SPIRV_HALO_COLOR, "halo_color");
+	corner_in = interface_variable(&m, m.t_v2, STORAGE_INPUT, XGPU_SPIRV_HALO_CORNER, "halo_corner");
+	position_out = variable(&m, m.t_v4, STORAGE_OUTPUT, "gl_Position");
+	decorate1(&m, position_out, DECORATION_BUILT_IN, BUILT_IN_POSITION);
+	world_out = interface_variable(&m, m.t_v3, STORAGE_OUTPUT, 0, "world");
+	color_out = interface_variable(&m, m.t_v3, STORAGE_OUTPUT, 1, "color");
+	middle_out = interface_variable(&m, m.t_v4, STORAGE_OUTPUT, 2, "halo");
+
+	main_id = function_begin(&m);
+	halo = load(&m, m.t_v4, middle_in);
+	corner = load(&m, m.t_v2, corner_in);
+	middle = xyz(&m, halo);
+	size = extract(&m, halo, 3);
+	head = vertex_constant(&m, constant_int(&m, XGPU_SPIRV_GLOW_HEAD));
+	near = extract(&m, head, 3);
+	right = xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_GLOW_AXES)));
+	up = xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_GLOW_AXES + 1)));
+	forward = xyz(&m, vertex_constant(&m, constant_int(&m, XGPU_SPIRV_GLOW_AXES + 2)));
+	to_head = fsub(&m, 3, xyz(&m, head), middle);
+	away = ext1(&m, GLSL_LENGTH, m.t_float, to_head);
+	n = fdiv(&m, 3, to_head, splat(&m, 3, fmax_scalar(&m, 1, away, 1.0e-6f)));
+	across = ext2(&m, GLSL_CROSS, m.t_v3, up, n);
+	across_length = ext1(&m, GLSL_LENGTH, m.t_float, across);
+	across = select_n(&m, 3, compare(&m, OP_F_ORD_GREATER_THAN, across_length, constant_float(&m, 0.1f)),
+		fdiv(&m, 3, across, splat(&m, 3, fmax_scalar(&m, 1, across_length, 1.0e-6f))),
+		ext1(&m, GLSL_NORMALIZE, m.t_v3, ext2(&m, GLSL_CROSS, m.t_v3, right, n)));
+	outside = compare(&m, OP_F_ORD_GREATER_THAN, away, fmul(&m, 1, size, constant_float(&m, 1.5f)));
+	centre = select_n(&m, 3, outside, middle, fadd(&m, 3, xyz(&m, head), fscale(&m, 3, forward, near)));
+	x = select_n(&m, 3, outside, across, right);
+	y = select_n(&m, 3, outside, ext2(&m, GLSL_CROSS, m.t_v3, n, across), up);
+	half = op3(&m, OP_SELECT, m.t_float, outside,
+		fadd(&m, 1, fmul(&m, 1, fdiv(&m, 1, fmul(&m, 1, size, away), ext1(&m, GLSL_SQRT, m.t_float,
+		fmax_scalar(&m, 1, fsub(&m, 1, fmul(&m, 1, away, away), fmul(&m, 1, size, size)), 1.0e-6f))),
+		constant_float(&m, 1.1f)), constant_float(&m, 0.03f)),
+		fmul(&m, 1, near, constant_float(&m, 8.0f)));
+	world = fadd(&m, 3, centre, fscale(&m, 3, fadd(&m, 3, fscale(&m, 3, x, extract(&m, corner, 0)),
+		fscale(&m, 3, y, extract(&m, corner, 1))), half));
+	/* each view's clip transform (the eye's, the inset's: xgpu_vulkan_effects.h) */
+	view = view_number(&m, XGPU_MULTIVIEW_EYES, options->foveated);
+	first_row = op2(&m, OP_I_ADD, m.t_int, op2(&m, OP_I_MUL, m.t_int, view, constant_int(&m, 4)),
+		constant_int(&m, XGPU_SPIRV_GLOW_CLIP));
+	world4 = vec4_of(&m, world, constant_float(&m, 1.0f));
+	for (row = 0; row < 4; row++)
+		rows[row] = fdot(&m, world4, vertex_constant(&m, row ? op2(&m, OP_I_ADD, m.t_int, first_row,
+			constant_int(&m, row)) : first_row));
+	store(&m, position_out, construct(&m, 4, rows));
+	store(&m, world_out, world);
+	store(&m, color_out, xyz(&m, load(&m, m.t_v4, color_in)));
+	store(&m, middle_out, halo);
+	return module_end(&m, EXECUTION_MODEL_VERTEX, main_id, &locals, module);
+}
+
+/* erf(x), Abramowitz and Stegun's 7.1.27 (within 5e-4):
+sign(x) (1 - 1 / (1 + 0.278393 |x| + 0.230389 x^2 + 0.000972 |x|^3 + 0.078108 x^4)^4) */
+static unsigned int error_function(struct module *m, unsigned int x)
+{
+	unsigned int a = ext1(m, GLSL_F_ABS, m->t_float, x), sum, square;
+
+	sum = fadd(m, 1, fmul(m, 1, a, constant_float(m, 0.078108f)), constant_float(m, 0.000972f));
+	sum = fadd(m, 1, fmul(m, 1, sum, a), constant_float(m, 0.230389f));
+	sum = fadd(m, 1, fmul(m, 1, sum, a), constant_float(m, 0.278393f));
+	sum = fadd(m, 1, fmul(m, 1, sum, a), constant_float(m, 1.0f));
+	square = fmul(m, 1, sum, sum);
+	square = fmul(m, 1, square, square);
+	return fmul(m, 1, ext1(m, GLSL_F_SIGN, m->t_float, x),
+		fsub(m, 1, constant_float(m, 1.0f), fdiv(m, 1, constant_float(m, 1.0f), square)));
+}
+
+/* the fraction of a Gaussian haze exp(-k s^2) (s from its middle, in its
+sizes) along a ray that lies between from and to (the ray's distances
+past its nearest approach to the middle, in sizes): 0.5 (erf(sqrt(k) to)
+- erf(sqrt(k) from)) */
+static unsigned int haze_fraction(struct module *m, float root_k, unsigned int from, unsigned int to)
+{
+	unsigned int k = constant_float(m, root_k);
+
+	return fmul(m, 1, constant_float(m, 0.5f), fsub(m, 1, error_function(m, fmul(m, 1, to, k)),
+		error_function(m, fmul(m, 1, from, k))));
+}
+
+/* The pixel shader, as GLSL:
+
+vec3 ray = normalize(world - eye[view]); vec3 to_middle = halo.xyz - eye[view];
+float nearest = dot(to_middle, ray);                               (along the ray, to its nearest approach)
+float r2 = max(dot(to_middle, to_middle) - nearest * nearest, 0.0) / (halo.w * halo.w);
+if (r2 >= 1.0) discard;
+(the scene's distance along the ray, as the effects': effect_prelude)
+float from = -nearest / halo.w, to = (to_scene - nearest) / halo.w;
+float glow = (exp(-3.0 * r2) - 0.0498) * 0.6 * fraction(sqrt(3.0), from, to) +
+	exp(-24.0 * r2) * 0.8 * fraction(sqrt(24.0), from, to);
+fragment_color = vec4(color * max(glow, 0.0), 0.0);
+
+the card's glow at r2, each of its two terms by the part of its haze the
+eye sees along the ray: all of it unhidden (from far before the bolt to far
+past it), less where the scene's surface is nearer */
+static BOOL glow_pixel_shader(const struct xgpu_spirv_options *options, struct xgpu_spirv_module *module)
+{
+	struct module m;
+	struct words locals = { 0 };
+	unsigned int main_id, scene_depth, frag_coord, world_in, color_in, halo_in, color_out, view, eye, ray, halo;
+	unsigned int to_middle, nearest, r2, size, frag, first_column, columns[4], base, depth, behind, far, to_scene;
+	unsigned int from, to, wide, core, glow, operands[4];
+	int column;
+
+	module_begin(&m, EXECUTION_MODEL_FRAGMENT);
+	declare_uniforms(&m);
+	declare_views(&m, XGPU_MULTIVIEW_EYES, options->foveated, TRUE);
+	scene_depth = variable(&m, type_sampled_image(&m, DIM_2D, TRUE, FALSE, TRUE), STORAGE_UNIFORM_CONSTANT, "scene_depth");
+	decorate1(&m, scene_depth, DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_TEXTURES);
+	decorate1(&m, scene_depth, DECORATION_BINDING, 0);
+	frag_coord = variable(&m, m.t_v4, STORAGE_INPUT, "gl_FragCoord");
+	decorate1(&m, frag_coord, DECORATION_BUILT_IN, BUILT_IN_FRAG_COORD);
+	world_in = interface_variable(&m, m.t_v3, STORAGE_INPUT, 0, "world");
+	color_in = interface_variable(&m, m.t_v3, STORAGE_INPUT, 1, "color");
+	decorate(&m, color_in, DECORATION_FLAT, 0, NULL);
+	halo_in = interface_variable(&m, m.t_v4, STORAGE_INPUT, 2, "halo");
+	decorate(&m, halo_in, DECORATION_FLAT, 0, NULL);
+	color_out = interface_variable(&m, m.t_v4, STORAGE_OUTPUT, 0, "fragment_color");
+
+	main_id = function_begin(&m);
+	view = view_number(&m, XGPU_MULTIVIEW_EYES, options->foveated);
+	eye = xyz(&m, uniform_index(&m, U_EFFECT_EYE, view));
+	ray = ext1(&m, GLSL_NORMALIZE, m.t_v3, fsub(&m, 3, load(&m, m.t_v3, world_in), eye));
+	halo = load(&m, m.t_v4, halo_in);
+	size = extract(&m, halo, 3);
+	to_middle = fsub(&m, 3, xyz(&m, halo), eye);
+	nearest = fdot(&m, to_middle, ray);
+	r2 = fdiv(&m, 1, fmax_scalar(&m, 1, fsub(&m, 1, fdot(&m, to_middle, to_middle), fmul(&m, 1, nearest, nearest)), 0.0f),
+		fmul(&m, 1, size, size));
+	discard_if(&m, compare(&m, OP_F_ORD_GREATER_THAN_EQUAL, r2, constant_float(&m, 1.0f)));
+	/* the scene's distance along the ray, from its depth in the view's layer */
+	frag = load(&m, m.t_v4, frag_coord);
+	first_column = op2(&m, OP_I_MUL, m.t_int, view, constant_int(&m, 4));
+	for (column = 0; column < 4; column++)
+		columns[column] = uniform_index(&m, U_EFFECT_UNPROJECT, column ? op2(&m, OP_I_ADD, m.t_int, first_column,
+			constant_int(&m, column)) : first_column);
+	base = fadd(&m, 4, fadd(&m, 4, fscale(&m, 4, columns[0], extract(&m, frag, 0)), fscale(&m, 4, columns[1],
+		extract(&m, frag, 1))), columns[3]);
+	{
+		unsigned int sampled = load(&m, type_sampled_image(&m, DIM_2D, TRUE, FALSE, TRUE), scene_depth);
+		unsigned int parts[2];
+
+		parts[0] = op1(&m, OP_CONVERT_F_TO_S, m.t_iv2, xy(&m, frag));
+		parts[1] = view;
+		operands[0] = op(&m, OP_IMAGE, type_sampled_image(&m, DIM_2D, TRUE, FALSE, FALSE), 1, &sampled);
+		operands[1] = op(&m, OP_COMPOSITE_CONSTRUCT, m.t_iv3, 2, parts);
+		operands[2] = IMAGE_OPERANDS_LOD;
+		operands[3] = constant_int(&m, 0);
+		depth = extract(&m, op(&m, OP_IMAGE_FETCH, m.t_v4, 4, operands), 0);
+	}
+	behind = fadd(&m, 4, base, fscale(&m, 4, columns[2], depth));
+	far = op2(&m, OP_LOGICAL_OR, m.t_bool, compare(&m, OP_F_ORD_GREATER_THAN_EQUAL, depth, constant_float(&m, 1.0f)),
+		compare(&m, OP_F_ORD_LESS_THAN_EQUAL, extract(&m, behind, 3), constant_float(&m, 0.0f)));
+	to_scene = op3(&m, OP_SELECT, m.t_float, far, constant_float(&m, 1.0e9f),
+		ext1(&m, GLSL_LENGTH, m.t_float, fsub(&m, 3, effect_point(&m, behind), eye)));
+	/* the hazes' parts along the ray, from the eye to the scene */
+	from = fdiv(&m, 1, fneg(&m, 1, nearest), size);
+	to = fdiv(&m, 1, fsub(&m, 1, to_scene, nearest), size);
+	wide = fmul(&m, 1, fmul(&m, 1, fsub(&m, 1, ext1(&m, GLSL_EXP, m.t_float, fmul(&m, 1, constant_float(&m, -3.0f), r2)),
+		constant_float(&m, 0.0498f)), constant_float(&m, 0.6f)), haze_fraction(&m, 1.7320508f, from, to));
+	core = fmul(&m, 1, fmul(&m, 1, ext1(&m, GLSL_EXP, m.t_float, fmul(&m, 1, constant_float(&m, -24.0f), r2)),
+		constant_float(&m, 0.8f)), haze_fraction(&m, 4.8989795f, from, to));
+	glow = fmax_scalar(&m, 1, fadd(&m, 1, wide, core), 0.0f);
+	store(&m, color_out, vec4_of(&m, fscale(&m, 3, load(&m, m.t_v3, color_in), glow), constant_float(&m, 0.0f)));
+	return module_end(&m, EXECUTION_MODEL_FRAGMENT, main_id, &locals, module);
+}
+
 BOOL xgpu_spirv_halo_vertex_shader(const struct xgpu_spirv_options *options, struct xgpu_spirv_module *module)
 {
 	static const unsigned int xy_zw[4] = { 4, 5, 2, 3 }, zw[2] = { 2, 3 };
@@ -2893,6 +3307,8 @@ BOOL xgpu_spirv_halo_vertex_shader(const struct xgpu_spirv_options *options, str
 	unsigned int offset_parts[3], w, sum, position, color, view = 0;
 	int component;
 
+	if (options->effect && options->multiview == XGPU_MULTIVIEW_EYES)
+		return glow_vertex_shader(options, module);
 	module_begin(&m, EXECUTION_MODEL_VERTEX);
 	declare_constants(&m);
 	declare_uniforms(&m);
@@ -2980,6 +3396,8 @@ BOOL xgpu_spirv_halo_pixel_shader(const struct xgpu_spirv_options *options, stru
 	unsigned int main_id, scene_depth, frag_coord, corner_in, color_in, depth_in, parameters_in, color_out;
 	unsigned int corner, r2, parameters, coordinates, operands[4], sampled, scene, away, distance, fade, glow, result;
 
+	if (options->effect && options->multiview == XGPU_MULTIVIEW_EYES)
+		return glow_pixel_shader(options, module);
 	module_begin(&m, EXECUTION_MODEL_FRAGMENT);
 	declare_views(&m, options->multiview, options->foveated, TRUE);
 	scene_depth = variable(&m, type_sampled_image(&m, DIM_2D, layered, FALSE, TRUE), STORAGE_UNIFORM_CONSTANT, "scene_depth");
