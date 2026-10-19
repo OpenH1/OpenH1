@@ -49,7 +49,9 @@ for updates */
 #if defined(HALO_ANDROID) || defined(HALO_WEB) || defined(HALO_MACOS)
 /* (none: the Android app updates itself, the site through its service
 worker; the macOS app is replaced by its disk image) */
-#elif defined(_WIN32)
+#elif defined(_WIN32) || defined(HALO_WINDOWS)
+/* (the 32-bit build, and the 64-bit one, the guest of
+port/windows/host, which replaces it) */
 #define UPDATE_PLATFORM "windows"
 #elif defined(HALO_VR) && defined(__x86_64__)
 /* the 64-bit x86 VR build, which releases have beside the other one
@@ -80,7 +82,7 @@ flat, for the updaters of the releases before the tree */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(HALO_WINDOWS)
 #include <unistd.h>
 #endif
 
@@ -93,7 +95,7 @@ flat, for the updaters of the releases before the tree */
 #endif
 
 #define UPDATE_REPOSITORY "OpenH1/OpenH1"
-#ifdef _WIN32
+#if defined(_WIN32) || defined(HALO_WINDOWS)
 #define PATH_SEPARATOR "\\"
 #else
 #define PATH_SEPARATOR "/"
@@ -595,7 +597,7 @@ static void updater_list_old(SDL_IOStream *old_list, const char *name)
 		SDL_WriteIO(old_list, line, (size_t)length);
 }
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(HALO_WINDOWS)
 /* what a flat build (the releases before the tree) had in its folder, which
 the tree has moved into lib/ and share/ (tools/linux_package.py) */
 static const char *const updater_flat_files[] =
@@ -725,7 +727,7 @@ static void updater_update(void)
 			updater_list_old(old_list, names[index]);
 		}
 		snprintf(launch, sizeof(launch), "%s", updater_executable);
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(HALO_WINDOWS)
 		/* (a flat build updated to the tree: install_layout.c) */
 		if (index == name_count && !install_is_tree())
 		{
@@ -831,7 +833,7 @@ void updater_start(void)
 
 	if (!update_executable_path(updater_executable, sizeof(updater_executable)))
 		return;
-#ifdef _WIN32
+#if defined(_WIN32) || defined(HALO_WINDOWS)
 	snprintf(updater_directory, sizeof(updater_directory), "%s", updater_executable);
 	slash = strrchr(updater_directory, PATH_SEPARATOR[0]);
 	if (!slash)

@@ -661,8 +661,9 @@ static struct peer *find_peer_by_address(unsigned long address)
 
 /* ---------- this machine's hardware id */
 
-#ifdef _WIN32
-/* win32_p2p.c's: the SMBIOS system UUID, else the registry's MachineGuid */
+#if defined(_WIN32) || defined(HALO_WINDOWS)
+/* win32_p2p.c's: the SMBIOS system UUID, else the registry's MachineGuid (the
+64-bit build's guest asks its host, port/windows/host/guest_windows.c) */
 int posix_hardware_id_source(char *text, int size);
 #endif
 
@@ -672,7 +673,7 @@ which only the app's Java can read and puts in hardware_id.txt
 (LauncherActivity.java) */
 static int hardware_id_source(char *text, int size)
 {
-#ifdef _WIN32
+#if defined(_WIN32) || defined(HALO_WINDOWS)
 	return posix_hardware_id_source(text, size);
 #else
 	static const char *const linux_paths[] = { "/etc/machine-id", "/var/lib/dbus/machine-id" };

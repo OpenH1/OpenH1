@@ -33,7 +33,7 @@ and the debug keyboard that the game's console reads.
 #include <string.h>
 #include <time.h>
 #include <zlib.h>
-#if !defined(_WIN32) && !defined(HALO_ANDROID)
+#if !defined(_WIN32) && !defined(HALO_WINDOWS) && !defined(HALO_ANDROID)
 #include <signal.h>
 #endif
 
@@ -445,7 +445,7 @@ BOOL platform_sdl_initialize(void)
 {
 	if (platform_sdl_started)
 		return TRUE;
-#if !defined(_WIN32) && !defined(HALO_ANDROID)
+#if !defined(_WIN32) && !defined(HALO_WINDOWS) && !defined(HALO_ANDROID)
 	/* a write to a connection the other end closed fails instead of ending
 	the game (the game's sockets and Discord's pass MSG_NOSIGNAL, but UPnP's
 	miniupnpc does not, nor does a write to a closed pipe's standard error) */
@@ -1191,7 +1191,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (config_boolean("debug.gl_debug"))
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 #endif
-#if !defined(HALO_ANDROID) && !defined(_WIN32)
+#if !defined(HALO_ANDROID) && !defined(_WIN32) && !defined(HALO_WINDOWS)
 	/* Mesa's GL thread: the renderer makes thousands of GL calls a frame
 	and never waits for their results, so handing them to a thread of
 	their own takes a fifth of the main thread's time off it. It leaves an
