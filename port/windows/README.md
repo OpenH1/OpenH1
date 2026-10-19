@@ -168,3 +168,72 @@ argument to a function of the C runtime.
 - The game uses only the ANSI file functions. A path to the data or the
   saved games with characters that are not in the code page of the system
   does not always operate.
+
+## 64-bit Windows
+
+The 64-bit Windows build is in development. It is to replace the 32-bit
+build. `ninja windows64` makes `build/windows64/halo.exe`, with
+`SDL3.dll` next to it. It is the 64-bit x86 Linux build
+([port/linux/README.md](../linux/README.md), "64-bit x86") with a Windows
+host: the game is an x32 guest image, inside the executable, in a 64-bit
+process. It has no renderer yet: use it with `debug.null_renderer`, or as a
+server.
+
+### Build it
+
+1. Go to the root folder of the repository.
+2. Enter `python configure.py`.
+3. Enter `ninja windows64`.
+
+The requirements are the same as for the 32-bit build, with the 64-bit
+(x64) MSVC libraries, and Git and `tar` (both in Windows 10 and 11) for the
+guest's sources. The first `configure.py` also downloads LLVM 22 for the
+guest (`tools/guest_toolchain.py`, about 900 MB, once) and the sources of
+musl and SDL3 to `build/windows64/third_party`. With
+`--guest-llvm=system`, the build uses the clang, `ld.lld`, `llvm-ar` and
+`llvm-objdump` in the `PATH` for the guest instead.
+
+On another computer, `python configure.py --windows64` and
+`ninja windows64_guest` make the guest image alone,
+`build/windows64/halo_guest.elf`, to check that it builds.
+
+### How it operates
+
+The guest image is the Linux Vulkan build's guest (`ninja linux_vulkan`)
+with the code paths of the 32-bit Windows build (`HALO_WINDOWS`): the saved
+games in `%APPDATA%\halo`, `config.toml` next to `halo.exe`, the Windows
+self-updater. It is compiled without the red zone, because Windows writes
+the records of an exception directly below the stack pointer, and with frame
+pointers.
+
+The host is `port/windows/host`, with the files of `port/android/host` that
+do not depend on the operating system:
+
+- `host_main_win.c`: the entry point. At the start, before it loads
+  `SDL3.dll` (a delay-loaded DLL), the host reserves the memory of the guest
+  below 4 GB. If another module already uses it, the game starts a copy of
+  itself, suspended, and reserves the memory in the copy before it runs.
+  Set `HALO_MEMORY_MAP=1` to log the map of the low 4 GB at the start.
+- `host_memory_win.c`: the memory of the guest, as `host_memory.c` on
+  Linux: the Xbox memory window at 0x80000000, the range of the image at
+  0x70000000, and pools of 256 MB, from the top of the low 4 GB downward.
+- `host_thread_win.c` and `host_enter_win.S`: each thread that runs guest
+  code moves to a stack in the memory of the guest, and the limits of the
+  stack in its TEB move with it.
+- `host_syscall_win.c`: the Linux system calls of the guest, with the
+  functions of Windows. The file descriptors are those of the C runtime.
+- `host_memory_watch_win.c`: a vectored exception handler for the write
+  tracking, the crash report in the log, and a function table that lets the
+  unwinder of Windows walk the frames of the guest.
+- The functions of `posix.h` are those of the 32-bit build
+  (`port/windows/src`: `win32_files.c`, `win32_net.c`, `win32_p2p.c`,
+  `win32_update.c`, `win32_upnp.c`).
+
+The guest calls the host through thunks (`tools/android_imports.py
+--host-abi sysv`): the guest uses the System V calling convention, and the
+host uses the Microsoft x64 calling convention. The manifest
+(`port/windows/host/halo.manifest`) sets UTF-8 as the code page of the
+process.
+
+The log is the standard error stream. A release build has no console: the
+log is `halo.log` next to `halo.exe`.

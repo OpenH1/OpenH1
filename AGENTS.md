@@ -20,7 +20,7 @@ end.
 | `port/linux/game/` | The port's game-side code, compiled as the game's sources are: the distributed netcode (`network_*.c`), co-op, map sharing (`map_share*.c`), the menus (`menu_tags.c`, `menu_functions.c`), Custom Edition maps (`custom_edition_*.c`, `cache_file_formats.c`), the tag validator (`tag_validate.c`, `tag_schema_*.c`), mods (`mods.c`, `mod_*.c`), streamer mode's word filter (`text_filter*.c`), touch, FOV and more |
 | `port/linux/include/` | The port's headers: the limits (`halo_port_limits.h`, with `HALO_PORT_NETWORK_VERSION`), capacities (`halo_port_capacity.h`), the prefix header, `halo_linux_source_fixups.h` (port functions the game's sources call) |
 | `port/include/xdk/` | Stand-ins for the Xbox SDK's headers (declarations only) |
-| `port/windows/` | The Windows build's own files (`win32_*.c`, headers) |
+| `port/windows/` | The Windows build's own files (`win32_*.c`, headers); `host/`, the 64-bit build's host (`ninja windows64`, in development: `tools/windows64_build.py`, port/windows/README.md "64-bit Windows") |
 | `port/linux/host/` | The Linux host of the guest builds (`ninja linux_arm64`, `ninja linux_x86_64`), which the macOS build shares: its entry point (`host_main.c`), the desktop's and VR's host functions (`host_desktop.c`, `host_vr.c`) and their import lists, the guest's half of the desktop (`guest_desktop.c`), the OpenGL backend in the host for the renderer's command stream (`host_gl_stream.c`, `host_gl_textures.c`, and `gl/`, its stand-ins for the guest's headers); the rest of the host is Android's (`port/android/host`) |
 | `port/android/` | The Android app: the guest runtime, the host library (`host/`, which the Linux and macOS hosts share; its renderer is Vulkan's, `port/linux/vulkan`, and `host_renderer.c` stands in for the OpenGL backend's window import), the Java app (`app/`), host imports (`host_imports.list`, every guest's; `android_imports.list`, the app's own) |
 | `port/macos/` | The macOS host's own files: Darwin's system calls for the guest (`host_syscall.c`), the Metal renderer's backend (`xgpu_metal.m`, its bindings `xgpu_metal_bindings.h`, the command stream's table `xgpu_metal_stream.m`, the MSL emitter's shaders `xgpu_metal_shaders.c`, the textures `xgpu_metal_textures.c`, the NV2A combiner as one function of function constants `xgpu_metal_combiner.c`, the pipelines' description `xgpu_metal_pipeline.m`, the shader library's build tool `tools/xgpu_metal_prebuild.c`), the window and its presentation (`host_metal.m`), their tests (`tests/`), the app (`host_app.m`: its folders, the maps panel, the window kept; `halo.entitlements`, `opence-icon.icns`); the rest is `port/android/host` and `port/linux/host` |
@@ -48,6 +48,8 @@ ninja web                      # build/web/site (Emscripten: port/web/README.md)
 ninja macos                    # build/macos/Halo.app (and halo), on Apple silicon (port/macos/README.md)
 ninja macos_dmg                # build/macos/Halo.dmg
 ninja windows                  # on Windows only
+ninja windows64                # build/windows64/halo.exe, the 64-bit build in development (on Windows only;
+                               # ninja windows64_guest, its guest image, anywhere after configure.py --windows64)
 python tools/ci_build.py linux release   # what CI builds
 ```
 
@@ -138,7 +140,7 @@ python tools/ci_build.py linux release   # what CI builds
 | `HALO_GUEST_BASE` | macOS, `--guest-base` | The guest's memory at a base register (`tools/guest_base_register.py`): host addresses are base plus offset (`port/android/host/host.h`) |
 | `HALO_MACOS` | macOS (the guest) | The macOS app: its folders (config.toml in the app's settings folder, not the Linux release's layout) and no self-updater; the host tests `__APPLE__` |
 | `HALO_WEB` | Web | The browser: its frames, storage, sockets and WebGL 2's limits (with `HALO_GLES`, not `HALO_ANDROID`) |
-| `HALO_WINDOWS` | Windows (`halo_windows_prefix.h`) | The Windows build |
+| `HALO_WINDOWS` | Windows (`halo_windows_prefix.h`); the 64-bit Windows build's guest (`tools/windows64_build.py`) | The Windows build. In the guest (with `HALO_GUEST`), the 32-bit build's `_WIN32` choices that are behaviour, not Windows's API: the folders, config.toml's place, the self-updater's release |
 | `HALO_RELEASE` | `--release` | No assertions checked |
 | `HALO_PROFILE` | `--profile` | The profiling build; a normal build must be unchanged by it |
 | `HALO_VULKAN` | Android, Linux Vulkan (`ninja linux_vulkan`) | The window is Vulkan's, drawn by the host (`port/linux/vulkan`), not OpenGL's |
