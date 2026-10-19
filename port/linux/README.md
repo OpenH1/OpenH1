@@ -1978,6 +1978,7 @@ The Steam Frame's controllers are the halves of an Xbox controller:
 | Both grips, held | Recentre: the head's place and heading become the player's eye and facing (not while the left hand holds a foregrip, nor while the hands hold a vehicle to lift it, nor on a Ghost's handlebars) |
 | Both grips on a Ghost's handles, turned as a bike's | Steer it, its guns aiming where the bars point (`vr.ghost_steering`, below) |
 | Both grips on a Warthog's wheel, turned as a car's | Steer it (`vr.warthog_steering`, below) |
+| Driving, the hands off the handlebars or the wheel: either stick pushed sideways | Steer (the Ghost, the Warthog); in the Scorpion, the left stick turns you and the aim, which it drives toward. The left stick's forward and back throttle as ever |
 | A gamepad's Back (View), held 1 s | Recentre, as both grips do |
 
 Other controllers that SteamVR maps to the Touch layout operate as well
@@ -2541,6 +2542,13 @@ a bike's handlebars: the Ghost turns, and its guns aim where the bars point.
 The left stick throttles and strafes as ever, the right trigger fires, and
 jump brakes (the Ghost has no boost).
 
+You need not take hold to drive: with the hands off the handles, push
+either stick sideways and the Ghost turns that way, up to 90 degrees a
+second at a full push (past a fifth of the stick: a resting thumb steers
+nothing); let it come back and the Ghost holds its course. The left stick
+then throttles and steers, as a car game's, and does not strafe; it strafes
+again once both hands hold the handles. Its guns fire straight ahead.
+
 - Take hold: squeeze each grip with the hand near its handle (within
   30 cm: the handles, on each side of the cockpit, are wide apart for the
   Chief), a tick in that hand; from then on that hand is drawn on its
@@ -2558,10 +2566,12 @@ jump brakes (the Ghost has no boost).
   about freely and steers nothing.
 - The view turns with the Ghost: your heading is the Ghost's, smoothed
   each frame (not in the steps of the game's 30 ticks a second), and you
-  look about from there; the right stick turns nothing, and both grips are
-  the bars, not a recentring. You take the Ghost's heading as your eye
-  moves into the seat, in the blink as you get in, and keep it as you get
-  out. The horizon stays level, and your eye is held in the Ghost as it
+  look about from there; the right stick turns the view nothing (it steers
+  the Ghost while your hands are off the handles), and both grips are the
+  bars, not a recentring. You take the Ghost's heading as your eye comes
+  into the seat, the room turning gently to it (no faster than 45 degrees a
+  second; with `vr.seat_motion = "blink"`, in the blink), and keep it as you
+  get out. The horizon stays level, and your eye is held in the Ghost as it
   would be level: its pitching and rolling as it hovers (up to 9 degrees,
   your eye 1.45 m behind its middle) reach your head only slowly, as a
   slope's, not as its quick wobble.
@@ -2583,6 +2593,11 @@ jump brakes (the Ghost has no boost).
 In a Warthog's driver seat, take its wheel with both hands and turn it as a
 car's: the Warthog's wheels turn, and it turns as they do. The left stick
 throttles (and reverses) as ever, jump brakes.
+
+Or drive without taking hold: with the hands off the wheel, push either
+stick sideways and the Warthog's wheels turn that way, to their lock at a
+full push (past a fifth of the stick), the other way as it reverses, as the
+wheel does; let it come back and they straighten.
 
 - Take hold: squeeze each grip with the hand near its side of the wheel
   (within 30 cm of the wheel's grips: about 70 cm before your eyes and 25 cm
@@ -2765,7 +2780,12 @@ the game's own textures and lighting:
 
 In each, the view stays yours, level and turned by your head and the stick:
 the Scorpion turns toward where you aim as you drive it, as it does under
-the game's camera, so the hull turns under you, not the view with it.
+the game's camera, so the hull turns under you, not the view with it. The
+left stick throttles, and pushed sideways turns you smoothly (up to 90
+degrees a second at a full push), and the aim with you, so the tank turns
+after it, as the right stick does; it does not slide the tank sideways
+(which it never did). A Warthog driven with `vr.warthog_steering = "look"`
+is the same.
 
 
 #### Flying a Banshee
@@ -3121,7 +3141,7 @@ headset's session is opened with, apply from the next start.
 | `vr.ghost_steering` | `"handlebars"` | `HALO_VR_GHOST_STEERING` | With `vr.aim = "controller"`, in a Ghost's driver seat: `"handlebars"`, grip its handles and turn them to steer, the view turning with the Ghost ("Driving a Ghost by its handlebars"); `"look"`, it steers and aims where the right controller points, the view turned by the stick. |
 | `vr.scorpion_view` | `"feed"` | `HALO_VR_SCORPION_VIEW` | With `vr.vehicle_view = "first_person"`, in a Scorpion's driver seat: `"feed"`, you ride the body's climb in (and out), in the first person, into a closed cockpit inside the hull and see the world on a display all the way round you (true to size; the zoom within its front), the tank's hologram on the dash; `"hatch"`, you stand in the turret's hatch, the eye above the turret on its axis, seeing all about over the hull; `"inside"`, you sit in the driver's compartment at the front of the hull, seeing out through its vision blocks ("Driving a Scorpion"). |
 | `vr.comfort_vignette` | `true` | `HALO_VR_COMFORT_VIGNETTE` | The edges of the view dim a little while the view turns fast with a Ghost steered by its handlebars, or it speeds up or slows hard. |
-| `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, the eye stays put in the vehicle, riding with it but not with the body climbing in and out, a turret's turning or flinches, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
+| `vr.seat_motion` | `"still"` | `HALO_VR_SEAT_MOTION` | With `vr.vehicle_view = "first_person"`: `"still"`, you stay in the first person all the way in and out: the eye follows the body's head as it climbs in and out, smoothed (no faster than 3 m/s), and once seated stays put in the vehicle, riding with it but not with a turret's turning or flinches, with no cut to black; `"blink"`, the eye stays where you stood as the body climbs in, and in the seat as it climbs out, and blinks (darkens and lightens in a quarter second) where it moves between places; `"head"`, it follows the seated body's head as the game animates it. |
 | `vr.death_view` | `"crt"` | `HALO_VR_DEATH_VIEW` | As you die: `"crt"`, the helmet's view switches off as a CRT does and cuts to a death cam, a feed from beside your body (the right stick moves it about the body), until the game brings you back and the HUD boots (above, "Dying"); `"face"`, the view stays where your head was, the world dimmed and reddened, your body falling before and under you, and turns to the body in a blink if it lands out of sight, until the game brings you back out of the dark (above, "Dying"); `"still"`, the same, never turned; `"game"`, the game's camera pulling away from the body. |
 | `vr.head_in_wall` | `"off"` | `HALO_VR_HEAD_IN_WALL` | Your head leaned or stepped into a wall or a pillar, or through it: `"off"` (the default), you see through it, as a black view is worse; `"fade"`, the view fades to black as your eyes go in (where the wall before them comes within 25 cm, black at 20 cm, just short of the game's near plane; black once they are in it or past it) and back as they come out, the HUD saying to step back, a scope showing nothing; not in a vehicle's seat (above, "Your head in a wall"). |
 | `vr.turn` | `"snap"` | `HALO_VR_TURN` | `"snap"` or `"smooth"` (with `vr.aim = "gamepad"`, `vr.gamepad_view` instead). |
@@ -3787,18 +3807,26 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   head 2.7 to 3.4 m over most of a second, getting out 1.7 to 2.7 m, and a
   turret's seat swings about the turret's pivot as it aims (where the
   controller or head points), the Shade's eye 0.65 m from it, with flinches
-  when hit. With `vr.seat_motion = "still"` the eye is held in the
-  vehicle (its root node's frame, posed between ticks as it is drawn):
-  where it was standing as the body climbs in, then where the head is once
-  seated, until the player is out. It rides with the vehicle, but the gun
+  when hit. With `vr.seat_motion = "still"` the eye follows the head's
+  path as the body climbs in (and out), smoothed in the vehicle's frame
+  (`game/vr_seat.c`'s glide: a critically damped spring over 0.12 s, no
+  faster than 3 m/s), then is held in the vehicle (its root node's frame,
+  posed between ticks as it is drawn) where the head is once seated, until
+  the body climbs out; what is left between where the eye was and where it
+  belongs (the seat's eye, a cabin's, the first person's once out) closes
+  over 0.12 s, no faster than 3 m/s, with no blink. With `"blink"` it is
+  held where it was standing as the body climbs in, and blinks into the
+  seat and out of it. It rides with the vehicle, but the gun
   swivels in front of it instead of the eye about the gun. With `"head"`
   the eye is the seated player's head marker. The view turns as on foot
   (the stick and the head, never the vehicle): the vehicle steers and aims
   where the controller (or head) points, and the horizon stays level
   whatever the vehicle does. But in a Ghost's driver seat steered by its
   handlebars (`vr.ghost_steering`, `game/vr_vehicle.c`): once the eye is in
-  the seat (the blink in at its darkest), the view's heading (the player's
-  axes, `body_yaw`) is the Ghost's root node's, as the frame draws it
+  the seat (the body seated; the blink in at its darkest), the view's heading
+  (the player's axes, `body_yaw`; eased to it over half a second or more, no
+  faster than 45 degrees a second, but all at once in a blink's dark) is the
+  Ghost's root node's, as the frame draws it
   between ticks, eased over 0.05 s (the ticks' steps in its turn rate
   smoothed out); the eye is the seat's held level in the Ghost (its place
   turned by the heading alone), its shift by the Ghost's tilt let in over

@@ -423,10 +423,12 @@ static const struct config_setting config_settings[] =
 		"sit, level with the horizon; \"third_person\" the game's camera following\n"
 		"the vehicle." },
 	{ "vr.seat_motion", _config_string, "\"still\"", "HALO_VR_SEAT_MOTION", _environment_value, _platform_desktop,
-		"With vr.vehicle_view = \"first_person\": \"still\" the eye stays put in\n"
-		"the vehicle, riding with it but not with the body climbing in and out,\n"
-		"a turret's turning or flinches, and blinks between its places; \"head\"\n"
-		"it follows the seated body's head as the game animates it." },
+		"With vr.vehicle_view = \"first_person\": \"still\" you stay in the first\n"
+		"person all the way in and out, the eye following the body's climb\n"
+		"smoothed, then staying put in the vehicle, riding with it but not with\n"
+		"a turret's turning or flinches; \"blink\" the eye stays put as the body\n"
+		"climbs in and out, and blinks between its places; \"head\" it follows\n"
+		"the seated body's head as the game animates it." },
 	{ "vr.ghost_steering", _config_string, "\"handlebars\"", "HALO_VR_GHOST_STEERING", _environment_value,
 		_platform_desktop,
 		"Driving a Ghost with vr.aim = \"controller\": \"handlebars\" grip its\n"

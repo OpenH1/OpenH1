@@ -268,11 +268,12 @@ jobs:
       # the Vulkan backend's core over a fake Vulkan, and the VR host's OpenXR
       # binding, with the system's clang (its sanitizers): the pinned Vulkan
       # and OpenXR headers, which only the VR release fetches, fetched here
-      # where it did not run (branches)
+      # where it did not run (branches); and the VR mode's vehicles' seats
+      # and steering against a fake world
       - name: Test the Vulkan backend and the VR host
         run: |
           python3 -c "import sys; sys.path.insert(0, '.'); from pathlib import Path; from tools.vulkan_build import fetch_vulkan_headers; from tools.linux_guest_build import fetch_openxr_headers; third_party = Path('build/linux_vulkan/third_party'); fetch_vulkan_headers(third_party / 'vulkan-headers'); fetch_openxr_headers(third_party / 'openxr')"
-          python3 -m pytest -q tools/test_vulkan_passes.py tools/test_host_vr_vulkan.py
+          python3 -m pytest -q tools/test_vulkan_passes.py tools/test_host_vr_vulkan.py tools/test_vr_vehicles.py
 
       - name: Compile cache
         run: ccache --show-stats
