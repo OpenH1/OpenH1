@@ -18,8 +18,8 @@ Everything is made here, apart from two CC0 downloads (CREDITS.md):
   on edges (Cycles bevel-node edge mask plus noise), around the fasteners and in
   small impact chips; scratches, grime in the crevices (AO), satin roughness
   variation and a little surface waviness. The stencil paint sits on top with
-  crisp edges (a tight-fitting stencil: barely any overspray), worn by chips
-  and scratches rather than blur.
+  crisp edges (a tight-fitting stencil: barely any overspray) and stays solid:
+  fresh paint, not faded or worn through.
 * Cameras and light rigs for each shot; render.py picks one per shot.
 """
 
@@ -43,6 +43,8 @@ BLEND = HERE / "scene.blend"
 
 S = 0.003          # metres per SVG unit: the 100-unit mark is a 30 cm plate
 HULL = "#465048"   # the hull paint: a dark, cool grey-green
+STENCIL_WHITE = "#f1f2f0"    # the H and the serial: white stencil paint
+STENCIL_ORANGE = "#ff5a0a"   # the 1 and the caution stripes: military-tech orange
 TEXTURES = HERE / "textures"
 # scanned CC0 textures (CREDITS.md): Poly Haven's green_metal_rust, painted
 # military-green steel, gives the paint its real surface; studio_small_08 is a
@@ -746,7 +748,7 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     paint = N.mix(N.mul(worn_thin, 0.45), paint, N.scale_col(paint, 1.55))   # edges rubbed lighter
     # the scan's real paint surface over ours: its streaks, stains and blemishes,
     # as relative light and shade, and its ambient occlusion
-    paint = N.scale_col(paint, N.add(0.35, N.mul(N.math("MINIMUM", scan_detail, 2.2), 0.65)))
+    paint = N.scale_col(paint, N.add(0.1, N.mul(N.math("MINIMUM", scan_detail, 2.4), 0.9)))
     paint = N.scale_col(paint, N.add(0.55, N.mul(scan_ao, 0.45)))
     col = paint
 
@@ -775,12 +777,14 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
         intact = N.mul(N.inv(scratch), front)
         keep = N.mul(N.mul(N.mul(N.inv(scuff), N.inv(N.math("MAXIMUM", gone, sgone))), intact), N.inv(specks))
         keep_s = N.mul(N.mul(N.inv(N.mul(scuff, 0.6)), N.inv(N.math("MAXIMUM", gone, sgone_serial))), intact)
-        sand, orange = srgb_to_linear(mark["sand"]), srgb_to_linear(mark["orange"])
-        sand = tuple(c * 0.92 for c in sand)
-        orange = tuple(c * f for c, f in zip(orange, (0.93, 0.95, 1.0)))
-        a_h = N.mul(N.ramp(N.add(sm[0], rag), 0.48, 0.52), keep)
-        a_o = N.mul(N.ramp(N.add(sm[1], rag), 0.48, 0.52), keep)
-        a_s = N.mul(N.ramp(N.add(sm[2], N.mul(rag, 0.6)), 0.47, 0.53), keep_s)
+        # (white and military-tech orange, not the board's sand and peach)
+        sand, orange = srgb_to_linear(STENCIL_WHITE), srgb_to_linear(STENCIL_ORANGE)
+        # (the letters stay solid: fresh, crisp stencil paint, worn only where
+        # the plate's own paint has gone to steel at the very edges)
+        solid = N.mul(N.inv(gone), front)
+        a_h = N.mul(N.ramp(N.add(sm[0], rag), 0.48, 0.52), solid)
+        a_o = N.mul(N.ramp(N.add(sm[1], rag), 0.48, 0.52), solid)
+        a_s = N.mul(N.ramp(N.add(sm[2], N.mul(rag, 0.6)), 0.47, 0.53), solid)
         speck = N.ramp(fine, 0.45, 0.75)
         col = N.mix(N.mul(N.mul(hm[0], 0.06), speck), col, N.rgb(sand))
         col = N.mix(N.mul(N.mul(hm[1], 0.08), speck), col, N.rgb(orange))
@@ -797,8 +801,8 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
         twear = N.add(swear, N.mul(near_tab_edge, N.mul(cl2, 0.6)))
         keep_t = N.mul(N.mul(N.inv(N.mul(N.ramp(twear, 0.5, 0.66), 0.45)), N.inv(N.math("MAXIMUM", gone, N.ramp(twear, 0.71, 0.74)))),
                        intact)
-        a_t = N.mul(N.ramp(N.add(tm[0], N.mul(rag, 0.8)), 0.48, 0.52), keep_t)
-        a_k = N.mul(N.ramp(N.add(tm[1], N.mul(rag, 0.8)), 0.48, 0.52), keep_t)
+        a_t = N.mul(N.ramp(N.add(tm[0], N.mul(rag, 0.8)), 0.48, 0.52), solid)
+        a_k = N.mul(N.ramp(N.add(tm[1], N.mul(rag, 0.8)), 0.48, 0.52), solid)
         col = N.mix(N.mul(N.mul(tm[2], 0.05), speck), col, N.rgb(orange))
         col = N.mix(a_t, col, N.scale_col(N.rgb(orange), stencil_tint))
         col = N.mix(a_k, col, N.scale_col(N.rgb((0.016, 0.016, 0.015)), N.add(0.8, N.mul(fine, 0.4))))
@@ -864,7 +868,7 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     N.feed(bump.inputs["Height"], h)
     # the scan's surface relief under our own height detail
     nmap = N.new("ShaderNodeNormalMap")
-    nmap.inputs["Strength"].default_value = 0.7
+    nmap.inputs["Strength"].default_value = 1.0
     N.feed(nmap.inputs["Color"], scan_nodes["nor_gl"][0].outputs["Color"])
     N.nt.links.new(nmap.outputs["Normal"], bump.inputs["Normal"])
 
