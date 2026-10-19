@@ -65,12 +65,14 @@ IMPORT_LISTS = [
     Path("port/android/android_imports.list"),
     Path("port/linux/host/host_imports.list"),
     Path("port/linux/host/vr_imports.list"),
+    Path("port/linux/vulkan/host_imports.list"),
 ]
 LISTED_DECLARATIONS = [
     Path("port/android/guest/runtime/guest_host.h"),
     Path("port/linux/host/guest_desktop.c"),
     Path("port/linux/src/vr_host.h"),
     Path("port/linux/src/xgpu.h"),
+    Path("port/linux/vulkan/guest_vulkan.c"),
 ]
 # where else the guest declares host functions (their declarations must agree)
 DECLARATION_FOLDERS = [
@@ -83,6 +85,7 @@ POSIX_HEADER = Path("port/linux/src/posix.h")
 HOST_DEFINITION_FOLDERS = [
     Path("port/android/host"),
     Path("port/linux/host"),
+    Path("port/linux/vulkan"),
 ]
 
 # functions whose pointer result is safe for the guest, and why

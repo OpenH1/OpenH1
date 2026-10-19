@@ -4238,11 +4238,13 @@ static void vr_initialize(void)
 	platform_video_vr_unavailable) */
 	if (!xgpu_backend_vr_supported())
 	{
+		platform_log("VR unavailable: the renderer cannot draw for the headset; playing flat");
 		platform_video_vr_unavailable();
 		return;
 	}
 	if (!halo_vr_initialize())
 	{
+		platform_log("VR unavailable: no OpenXR session (the log above says why); playing flat");
 		platform_video_vr_unavailable();
 		return;
 	}

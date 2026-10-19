@@ -735,9 +735,34 @@ static int session_create(void)
 }
 #endif
 
+/* the session's swapchain formats, as many as the runtime has (the two-call
+idiom), allocated; NULL if there are none or they cannot be read (logged),
+their count in count */
+static int64_t *swapchain_formats(uint32_t *count)
+{
+	int64_t *formats;
+	uint32_t capacity = 0;
+
+	*count = 0;
+	if (!check(xrEnumerateSwapchainFormats(vr.session, 0, &capacity, NULL), "xrEnumerateSwapchainFormats (count)") ||
+		!capacity || capacity > 4096)
+		return NULL;
+	formats = calloc(capacity, sizeof(*formats));
+	if (!formats)
+		return NULL;
+	if (!check(xrEnumerateSwapchainFormats(vr.session, capacity, count, formats), "xrEnumerateSwapchainFormats") ||
+		*count > capacity)
+	{
+		free(formats);
+		*count = 0;
+		return NULL;
+	}
+	return formats;
+}
+
 static int swapchain_create(int which, int width, int height, int layers, struct vr_host_info *info)
 {
-	int64_t formats[64];
+	int64_t *formats;
 	uint32_t format_count = 0, format_index;
 	XrSwapchainCreateInfo create = { XR_TYPE_SWAPCHAIN_CREATE_INFO };
 #ifndef HALO_VULKAN
@@ -757,8 +782,8 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 		create.usageFlags = which == VR_SWAPCHAIN_DEPTH ? XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT :
 			XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
 		create.usageFlags |= XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
-		if (!check(xrEnumerateSwapchainFormats(vr.session, 64, &format_count, formats),
-			"xrEnumerateSwapchainFormats") || format_count > 64)
+		formats = swapchain_formats(&format_count);
+		if (!formats)
 			return 0;
 		for (preference = 1; preference >= 0; preference--)
 		{
@@ -777,6 +802,7 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 					create.format = formats[format_index];
 			}
 		}
+		free(formats);
 		if (!create.format)
 		{
 			host_logf(HOST_LOG_ERROR, "vr: no supported Vulkan %s swapchain format",
@@ -800,7 +826,7 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 
 		create.usageFlags = XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 		create.format = 0;
-		xrEnumerateSwapchainFormats(vr.session, 64, &format_count, formats);
+		formats = swapchain_formats(&format_count);
 		for (preference = 2; preference >= 0; preference--)
 		{
 			for (format_index = 0; format_index < format_count; format_index++)
@@ -809,6 +835,7 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 					create.format = formats[format_index];
 			}
 		}
+		free(formats);
 		host_logf(HOST_LOG_INFO, "vr: depth format 0x%llx", (long long)create.format);
 		if (!create.format)
 			return 0;

@@ -318,7 +318,7 @@ struct xgpu_vulkan_pipeline_description { uintptr_t value; };
 ''' + entries + r'''
 static struct {
     struct pipeline_entry *pipelines[PIPELINE_BUCKETS];
-    uint64_t pipeline_count;
+    uint64_t pipeline_count, pipelines_made;
     struct { unsigned pipelines_made; double pipeline_seconds; } statistics;
 } vk;
 static pthread_t owner;

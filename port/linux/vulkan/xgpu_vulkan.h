@@ -22,8 +22,9 @@ The core:
   after;
 - caches pipelines by their whole description (shaders, vertex layout,
   fixed-function state, the targets' formats), made through a
-  VkPipelineCache that is saved to a file at exit and read at the next
-  start; and samplers by theirs;
+  VkPipelineCache that is saved to a file (at exit, after a map's
+  preparation, as an Android app goes to the background) and read at the
+  next start; and samplers by theirs;
 - writes what a draw reads that the game rewrites (streamed vertices and
   indices, the vertex constants, the uniforms, uploads' texels) into an
   upload ring, a host-visible buffer reused once the GPU is done with the
@@ -50,11 +51,26 @@ struct xgpu_vulkan_options
 {
 	/* the instance extensions the window's surface needs (SDL's), count of
 	them; and the surface made for the instance (NULL: no window, the
-	frames are not shown: SDL's offscreen driver, the tests) */
+	frames are not shown: SDL's offscreen driver, the tests). It is made
+	again, on the render thread, when the surface is lost
+	(VK_ERROR_SURFACE_LOST_KHR) or the app comes back from the background
+	(xgpu_vulkan_window_suspend): VK_NULL_HANDLE while it cannot be (an
+	Android app before its window is back), tried again at later frames */
 	const char *const *instance_extensions;
 	uint32_t instance_extension_count;
 	VkSurfaceKHR (*surface_create)(VkInstance instance, void *context);
 	void *surface_context;
+	/* the swap interval at the start (1 waits for the display, 0 does not:
+	xgpu_vulkan_window_interval) */
+	int interval;
+	/* The present step's turn for a surface the display turns (a phone held
+	sideways: xgpu_vulkan_post.c's): rotation_prepare makes its pipeline at
+	the start, where the surface can be turned (1 if it can); rotate draws
+	an image turned by quarter turns clockwise into an image of its own.
+	NULL: the swapchain is the window's way up, and the compositor turns
+	it. */
+	int (*rotation_prepare)(void);
+	struct xgpu_vulkan_image *(*rotate)(struct xgpu_vulkan_image *image, int quarter_turns);
 	/* the pipeline cache's file (NULL: none) */
 	const char *cache_path;
 	/* the validation layers (VK_LAYER_KHRONOS_validation) and their
@@ -74,6 +90,15 @@ struct xgpu_vulkan_options
 int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options);
 /* saves the pipeline cache and lets go of everything */
 void xgpu_vulkan_shutdown(void);
+/* After xgpu_vulkan_initialize failed: lets go of what it made, so that
+it can be tried again (with other options: VR's runtime refused the
+device, and the game plays flat). */
+void xgpu_vulkan_initialize_undo(void);
+/* the pipeline cache written to its file (atomically: a temporary file
+renamed over it) if pipelines were made since it was last written: after a
+map's preparation, and as the app goes to the background, since Android
+seldom lets an app exit cleanly. Render thread. */
+void xgpu_vulkan_pipeline_cache_save(void);
 
 /* what the front end's descriptions can ask of the device */
 struct xgpu_vulkan_capabilities
@@ -461,6 +486,20 @@ void xgpu_vulkan_wait(uint64_t fence);
 /* the window's size in pixels changed (any thread): the swapchain is made
 again */
 void xgpu_vulkan_window_resized(uint32_t width, uint32_t height);
+/* the swap interval (display.vsync; any thread): 1 or more waits for the
+display (FIFO), 0 does not (MAILBOX where the surface has it, else
+IMMEDIATE); the swapchain is made again when it changes */
+void xgpu_vulkan_window_interval(int interval);
+/* The app goes to the background (1) or comes back (0), on the render
+thread. Going: the GPU waited for, the swapchain and the surface let go of
+(Android takes the window away), the pipeline cache saved; frames are then
+drawn but not shown, never waited for. Coming back: the surface made again,
+now or, while the window is not back yet, at a later frame. */
+void xgpu_vulkan_window_suspend(int suspended);
+/* the window hidden (1: nothing is presented to it, which could wait for a
+display that never takes a frame: VR's window, until the game plays flat
+in it) or shown (0), any thread */
+void xgpu_vulkan_window_hidden(int hidden);
 
 /* the frame's end: its last work submitted, and (with a window) an image
 shown, letterboxed into the window (NULL: none) */

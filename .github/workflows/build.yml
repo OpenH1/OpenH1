@@ -265,6 +265,15 @@ jobs:
           PATH="$(python3 tools/guest_toolchain.py --cache "$CI_GUEST_LLVM_CACHE"):$PATH"
           python3 -m pytest -q tools/test_host_units.py tools/test_guest_image_check.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_guest_layout.py tools/test_linux_guest_build.py tools/test_guest_toolchain.py
 
+      # the Vulkan backend's core over a fake Vulkan, and the VR host's OpenXR
+      # binding, with the system's clang (its sanitizers): the pinned Vulkan
+      # and OpenXR headers, which only the VR release fetches, fetched here
+      # where it did not run (branches)
+      - name: Test the Vulkan backend and the VR host
+        run: |
+          python3 -c "import sys; sys.path.insert(0, '.'); from pathlib import Path; from tools.vulkan_build import fetch_vulkan_headers; from tools.linux_guest_build import fetch_openxr_headers; third_party = Path('build/linux_vulkan/third_party'); fetch_vulkan_headers(third_party / 'vulkan-headers'); fetch_openxr_headers(third_party / 'openxr')"
+          python3 -m pytest -q tools/test_vulkan_passes.py tools/test_host_vr_vulkan.py
+
       - name: Compile cache
         run: ccache --show-stats
 

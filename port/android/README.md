@@ -7,7 +7,11 @@
 The game shows its graphics with Vulkan 1.3. It plays sound through SDL3
 (AAudio). It accepts input from game controllers, for example a PlayStation
 5 DualSense on Bluetooth, and from the touchscreen (refer to "Controls").
-The app needs Android 9 (API 28) or later. It operates on 64-bit-only
+The app needs Android 9 (API 28) or later and a GPU driver with Vulkan
+1.3: in practice most phones from about 2021 on, with their system updates
+(older phones, and phones whose drivers were not updated, may have only
+Vulkan 1.0 or 1.1). The app checks before it starts the game or updates
+itself, and says so on a phone without it. It operates on 64-bit-only
 devices, for example the Pixel 9 Pro XL.
 
 The Android build uses the platform layer of the Linux build
@@ -77,9 +81,26 @@ of the whole `save` folder stops there.
 
 The app draws with the shared Vulkan renderer, in the host. It needs a
 Vulkan 1.3 driver (dynamic rendering, timeline semaphores and host query
-reset), which the manifest asks for, so Google Play offers the app only to
-such phones; it uses the phone's Vulkan loader and an SDL Android surface.
-The pipeline cache is in the app's private cache directory. Refer to the
+reset), which the manifest names (`android.hardware.vulkan.version`). The
+app is installed from its APK, not from a store that would enforce that, so
+the launcher checks it (`LauncherActivity`) and so does the self-updater
+before it offers a new version (`Updater`): a phone without it is told, and
+the game does not start. If the game's Vulkan window cannot be made after
+all, a message box says so. The renderer uses the phone's Vulkan loader and
+an SDL Android surface.
+
+When the app goes to the background, Android takes its window away, and
+gives it a new one when the app comes back. The renderer lets go of its
+swapchain and surface as the app goes (SDL's background events), draws no
+frames to the screen while it is away, and makes the surface again when the
+window is back. It also does so whenever the driver reports the surface
+lost. With the phone held sideways, the frames are drawn turned for the
+display's own orientation (pre-rotation), so the compositor does not turn
+them.
+
+The pipeline cache is in the app's private cache directory. It is written
+after each map's preparation that made new pipelines and as the app goes to
+the background, since Android seldom lets an app exit cleanly. Refer to the
 renderer's [README](../linux/vulkan/README.md).
 
 ## Game data

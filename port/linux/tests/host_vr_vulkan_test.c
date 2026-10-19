@@ -92,8 +92,15 @@ static int64_t created_format;
 static XrResult XRAPI_CALL enumerate_formats(XrSession session, uint32_t capacity, uint32_t *count, int64_t *formats)
 {
 	(void)session;
-	assert(capacity >= offered_count);
+	/* (the two-call idiom: the count, then as many as were asked for) */
 	*count = offered_count;
+	if (!capacity)
+	{
+		assert(!formats);
+		return XR_SUCCESS;
+	}
+	if (capacity < offered_count)
+		return XR_ERROR_SIZE_INSUFFICIENT;
 	memcpy(formats, offered_formats, offered_count * sizeof(*formats));
 	return XR_SUCCESS;
 }

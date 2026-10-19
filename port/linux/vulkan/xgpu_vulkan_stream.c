@@ -2034,14 +2034,20 @@ static void stream_present(void *context, uint32_t back_buffer)
 static void stream_frame_end(void *context)
 {
 	struct stream_target *back_buffer = target_get(stream.back_buffer);
+	int present_window = !host_render_stream_loading_holds();
 
 	(void)context;
 	target_resolve(back_buffer);
 #ifdef HALO_VR
+	/* (the headset shows the frames: the window, hidden, is not presented
+	to, which could wait for a display that never takes a frame) */
 	if (host_vulkan_vr_active())
+	{
 		back_buffer = NULL;
+		present_window = 0;
+	}
 #endif
-	xgpu_vulkan_frame_end(back_buffer ? back_buffer->image : NULL, !host_render_stream_loading_holds());
+	xgpu_vulkan_frame_end(back_buffer ? back_buffer->image : NULL, present_window);
 	stream.back_buffer = 0;
 	xgpu_vulkan_textures_frame_end();
 	if (stream.statistics)
@@ -2160,6 +2166,10 @@ static uint32_t stream_prepared(void *context)
 		(unsigned long long)xgpu_vulkan_pipeline_count());
 	stream.preparing = 0;
 	stream.prepared = 1;
+	/* (the pipelines just made kept, where they are new: Android seldom
+	lets the app exit cleanly, which also saves them) */
+	if (xgpu_vulkan_pipeline_count() != stream.prepare_pipelines)
+		xgpu_vulkan_pipeline_cache_save();
 	return started >= 0.0 && finished >= started ? (uint32_t)((finished - started) * 1000.0) : 0;
 }
 

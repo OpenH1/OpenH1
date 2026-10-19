@@ -25,8 +25,8 @@ of its architecture; the Vulkan target uses that computer's guest too. Its sourc
 downloaded when configure.py generates it, as the Android build's are, and
 only when it is asked for: the 64-bit ARM build, the default build of its
 computers, always; the 64-bit x86 build, which is not, with configure.py
---linux-x86-64 (or --linux-x86-64-cc, or --vr), or once its sources are
-there. A build that is not asked for, or cannot be generated, is a target
+--linux-x86-64 (or --linux-x86-64-cc), or once its sources are there; the
+Vulkan build with --linux-vulkan, or --vr (VR is the Vulkan build's alone). A build that is not asked for, or cannot be generated, is a target
 that stops with the reason. Refer to "64-bit ARM" and "64-bit x86" in
 port/linux/README.md.
 """

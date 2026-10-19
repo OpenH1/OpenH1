@@ -41,9 +41,9 @@ SYSTEM_LIBRARIES = {
     "libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0", "librt.so.1", "ld-linux-aarch64.so.1",
     "libvulkan.so.1", "libGLESv2.so.2", "libEGL.so.1", "libOpenGL.so.0",
 }
-# (the package's name for each, from the repository; as tools/ci_build.py)
+# (the package's name for each, from the repository; as tools/ci_build.py;
+# SDL3's, from the build's folder, is added in main)
 LICENSES = {
-    "SDL3-LICENSE.txt": "build/linux_vulkan/third_party/SDL3/LICENSE.txt",
     "extract-xiso-LICENSE.txt": "port/third_party/extract-xiso/LICENSE.TXT",
     "mbedtls-LICENSE.txt": "port/third_party/mbedtls/LICENSE",
     "miniupnpc-LICENSE.txt": "port/third_party/miniupnpc/LICENSE",
@@ -124,6 +124,7 @@ def main() -> int:
     files = {
         "halo": game,
         "libSDL3.so.0": args.build / "libSDL3.so.0",
+        "SDL3-LICENSE.txt": args.build / "third_party/SDL3/LICENSE.txt",
         "halo-vr.sh": FRAME_DIR / "halo-vr.sh",
         "brokers.txt": ROOT / "port/assets/network/brokers.txt",
         "README.md": FRAME_DIR / "README.md",

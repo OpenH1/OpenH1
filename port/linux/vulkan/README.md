@@ -40,7 +40,11 @@ multiview, or four views for the existing eye-tracked foveation (periphery
 and inset for each eye). The HUD, scope and visor share the GL path's game
 state, late latch and display pacing. The final images are copied to the
 runtime's acquired images and submitted before release. Runtime fragment
-density maps are not used by this path.
+density maps are not used by this path. The instance keeps the extensions
+SDL's window surface needs, and the window its surface: if the runtime
+refuses the instance or device, they are made again without it, and if VR
+cannot start later (no session, no swapchain format), the game plays flat
+in the window (`VR unavailable: ...; playing flat` in the log).
 
 A full-target clear at a pass's start uses `loadOp=CLEAR`, so the driver
 need not load the old attachment. Partial clears and aspects not cleared
@@ -84,7 +88,7 @@ four multiview views and fragment storage-buffer atomics.
 | `HALO_VULKAN_PIPELINE_CACHE=<file>` | The pipeline cache's file (by default `$XDG_CACHE_HOME/openh1/vulkan_pipelines.bin`); empty: none |
 | `HALO_VULKAN_SHADERS=<dir>` | Each shader module written there as it is made (`.spv`); as `debug.gpu_dump_shaders`, over which it wins |
 | `HALO_VULKAN_STATS=1` | Every 600 frames, submissions, passes, attachment loads/clears, clears drawn, draws, pipeline creation count/time, upload ring bytes and textures made; as `debug.gpu_stats` |
-| `HALO_NO_VSYNC=1` | Presented without waiting for the display (immediate, or mailbox) instead of FIFO |
+| `HALO_NO_VSYNC=1` | `display.vsync = false`: presented without waiting for the display (mailbox where the surface has it, else immediate) instead of FIFO |
 
 The game's settings for finding problems in the graphics (`port/linux/README.md`)
 reach the host with the window (`host_vulkan_window_open`: the host does not
@@ -98,6 +102,43 @@ backend's texture cache writes it (`tex<number>_fmt<format>_<width>x<height>.tga
 pixel shader, which the SPIR-V written directly has no place for) and
 `debug.gpu_flush_draws` (a workaround for Mesa's OpenGL driver) are OpenGL's
 alone, and do nothing here.
+
+## The window
+
+`display.vsync` chooses the present mode: FIFO waits for the display;
+without it, mailbox (no tearing) where the surface has it, else immediate.
+The guest hands the setting to the host with the window
+(`host_vulkan_window_open`, called again when it changes), and the
+swapchain is made again for it. The VR build's headset is presented
+through OpenXR, where it does not apply.
+
+The surface is made again when the driver reports it lost
+(`VK_ERROR_SURFACE_LOST_KHR`, from the acquire, the present or the
+surface's capabilities), on every build. On Android it is also let go of
+as the app goes to the background and made again as it comes back
+(suspend and resume): Android takes the app's window away when the app
+stops and gives it a new one when it returns, and SDL makes again only
+EGL's surfaces. On SDL's `WILL_ENTER_BACKGROUND` and
+`DID_ENTER_BACKGROUND`, the render thread waits for the GPU, lets go of the
+swapchain and the surface, and saves the pipeline cache; frames drawn in
+the background are submitted but not presented, so nothing waits for a
+display. On `DID_ENTER_FOREGROUND` the surface is made again with
+`SDL_Vulkan_CreateSurface`, or at a later frame while the window is not
+back yet (Android resumes the app before it makes the window's surface).
+
+A phone held sideways reports its surface turned (`currentTransform`).
+The swapchain is then made for the display's own orientation (its width and
+height swapped for a quarter turn, `preTransform` the surface's), and the
+frame is drawn turned into an image of its own (`xgpu_vulkan_post_rotate`,
+a draw: a blit cannot turn) before the present blit, so that the compositor
+has nothing to turn and no `VK_SUBOPTIMAL_KHR` to report. A
+`VK_SUBOPTIMAL_KHR` present makes the swapchain again only if the surface's
+extent or transform changed, and asks the surface at most once a second.
+
+The pipeline cache is written (atomically: a temporary file renamed over
+it) when pipelines were made since it was last written: at exit, after a
+map's preparation, and as an Android app goes to the background, since
+Android seldom lets an app exit cleanly.
 
 A window SDL cannot draw with Vulkan (its offscreen driver: NVIDIA's driver
 has no headless surfaces) is drawn without a swapchain: the frames are drawn

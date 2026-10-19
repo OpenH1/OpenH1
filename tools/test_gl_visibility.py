@@ -1,4 +1,4 @@
-"""Runs port/android/tests/gl_visibility_test.c: the OpenGL ES backend's
+"""Runs port/linux/tests/gl_visibility_test.c: the OpenGL ES backend's
 visibility tests counted by atomic counters (port/linux/src/xgpu_gl.c), as
 the Linux arm64 host builds it, over a fake OpenGL ES whose GPU runs behind
 the CPU and whose undefined results are garbage. Built with the build machine's
@@ -41,7 +41,7 @@ def test_gl_visibility(tmp_path):
     for header in (ROOT / "port" / "linux" / "host" / "gl").glob("*.h"):
         shutil.copy(header, tmp_path / header.name)
     (tmp_path / "xdk_enums.h").write_text(xdk_enums(), encoding="utf-8")
-    shutil.copy(ROOT / "port" / "android" / "tests" / "gl_visibility_test.c", tmp_path)
+    shutil.copy(ROOT / "port" / "linux" / "tests" / "gl_visibility_test.c", tmp_path)
     binary = tmp_path / "gl_visibility_test"
     # (the rest of the backend, which the test does not reach, is left
     # unlinked)
