@@ -37,7 +37,7 @@ ENTITLEMENTS = ROOT / "port/macos/halo.entitlements"
 APP_NAME = "Halo"
 EXECUTABLE = "halo"
 SDL_LIBRARY = "libSDL3.0.dylib"
-ICON = "opence-icon"
+ICON = "openh1-icon"
 # what the web page and the README say of the project (port/web/site/index.html)
 COPYRIGHT = ("OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
              "Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft "

@@ -1,7 +1,7 @@
 """Where the Linux build finds its files and puts the player's (port/linux/src/install_layout.c): install_layout.c
 compiled as it is with a main that prints its answers, run from the places a release can be: the release's tree
 unpacked (portable), a build's folder (build/linux_x86_64/halo), a read-only prefix (/usr), a read-only portable
-copy that has its own config.toml and maps/, a tree with share/opence/packaged, and installs without a home folder.
+copy that has its own config.toml and maps/, a tree with share/openh1/packaged, and installs without a home folder.
 Needs a C compiler (clang, or CC), not the game.
 
     python -m pytest -q tools/test_install_layout.py
@@ -65,16 +65,16 @@ def install(program, folder, *parts):
 
 
 def tree(program, root):
-    executable = install(program, root, "bin", "opence")
-    (root / "share/opence").mkdir(parents=True)
+    executable = install(program, root, "bin", "openh1")
+    (root / "share/openh1").mkdir(parents=True)
     return executable
 
 
 def test_tree_is_portable(program, tmp_path):
-    root = tmp_path / "OpenCE"
+    root = tmp_path / "OpenH1"
     found = answers(tree(program, root), tmp_path / "home")
     assert found == {"folder": str(root), "tree": "1", "system": "0", "reason": "", "config": f"{root}/",
-                     "data": str(root), "brokers": f"{root}/share/opence/brokers.txt"}
+                     "data": str(root), "brokers": f"{root}/share/openh1/brokers.txt"}
 
 
 def test_flat_folder(program, tmp_path):
@@ -86,8 +86,8 @@ def test_flat_folder(program, tmp_path):
 
 
 def test_bin_without_share_is_flat(program, tmp_path):
-    """a bin folder alone (~/bin/opence) is not a tree: the game keeps its files beside it"""
-    found = answers(install(program, tmp_path, "bin", "opence"), tmp_path / "home")
+    """a bin folder alone (~/bin/openh1) is not a tree: the game keeps its files beside it"""
+    found = answers(install(program, tmp_path, "bin", "openh1"), tmp_path / "home")
     assert found["tree"] == "0" and found["folder"] == str(tmp_path / "bin")
 
 
@@ -105,24 +105,24 @@ def test_read_only_prefix_is_installed(program, tmp_path):
     assert found["system"] == "1" and found["reason"] == "its folder is read-only"
     assert found["config"] == f"{home}/.config/halo-linux/"
     assert found["data"] == f"{home}/.local/share/halo-linux"
-    assert found["brokers"] == f"{prefix}/share/opence/brokers.txt"
+    assert found["brokers"] == f"{prefix}/share/openh1/brokers.txt"
     assert (home / ".config/halo-linux").is_dir() and (home / ".local/share/halo-linux").is_dir()
 
 
 def test_packaged_marker(program, tmp_path):
     prefix = tmp_path / "usr"
     executable = tree(program, prefix)
-    (prefix / "share/opence/packaged").write_text("")
+    (prefix / "share/openh1/packaged").write_text("")
     home = tmp_path / "home"
     found = answers(executable, home)
-    assert found["system"] == "1" and found["reason"] == "share/opence/packaged"
+    assert found["system"] == "1" and found["reason"] == "share/openh1/packaged"
     assert found["config"] == f"{home}/.config/halo-linux/"
 
 
 def test_xdg_folders(program, tmp_path):
     prefix = tmp_path / "usr"
     executable = tree(program, prefix)
-    (prefix / "share/opence/packaged").write_text("")
+    (prefix / "share/openh1/packaged").write_text("")
     environment = {"PATH": os.environ.get("PATH", ""), "HOME": str(tmp_path / "home"),
                    "XDG_CONFIG_HOME": str(tmp_path / "config"), "XDG_DATA_HOME": str(tmp_path / "data")}
     output = subprocess.run([str(executable)], env=environment, capture_output=True, text=True, check=True).stdout
@@ -132,10 +132,10 @@ def test_xdg_folders(program, tmp_path):
 
 
 def test_symlinked_executable(program, tmp_path):
-    """/usr/bin/opence as a link to the tree's: the tree is the link's target's"""
-    root = tmp_path / "opt/opence"
+    """/usr/bin/openh1 as a link to the tree's: the tree is the link's target's"""
+    root = tmp_path / "opt/openh1"
     executable = tree(program, root)
-    link = tmp_path / "opence"
+    link = tmp_path / "openh1"
     link.symlink_to(executable)
     found = answers(link, tmp_path / "home")
     assert found["folder"] == str(root) and found["tree"] == "1"
@@ -190,7 +190,7 @@ def test_read_only_folder_without_config(program, tmp_path):
 
 def test_read_only_tree_keeps_its_files(program, tmp_path):
     """the release's tree, portable, on a read-only disk: its config.toml and maps/ as the flat folder's"""
-    root = tmp_path / "stick/OpenCE"
+    root = tmp_path / "stick/OpenH1"
     executable = tree(program, root)
     (root / "config.toml").write_text("[game]\n")
     (root / "maps").mkdir()
@@ -199,12 +199,12 @@ def test_read_only_tree_keeps_its_files(program, tmp_path):
         found = answers(executable, home)
     assert found["tree"] == "1" and found["system"] == "1" and found["reason"] == "its folder is read-only"
     assert found["config"] == f"{root}/" and found["data"] == str(root)
-    assert found["brokers"] == f"{root}/share/opence/brokers.txt"
+    assert found["brokers"] == f"{root}/share/openh1/brokers.txt"
 
 
 def test_read_only_tree_without_files(program, tmp_path):
     """the same tree with only its config.toml: the game data goes to the home folder"""
-    root = tmp_path / "stick/OpenCE"
+    root = tmp_path / "stick/OpenH1"
     executable = tree(program, root)
     (root / "config.toml").write_text("[game]\n")
     home = tmp_path / "home"
@@ -217,12 +217,12 @@ def test_packaged_ignores_the_folders_files(program, tmp_path):
     """a package's tree is installed as designed: its folder's config.toml and maps/ are not the player's"""
     prefix = tmp_path / "usr"
     executable = tree(program, prefix)
-    (prefix / "share/opence/packaged").write_text("")
+    (prefix / "share/openh1/packaged").write_text("")
     (prefix / "config.toml").write_text("[game]\n")
     (prefix / "maps").mkdir()
     home = tmp_path / "home"
     found = answers(executable, home)
-    assert found["system"] == "1" and found["reason"] == "share/opence/packaged"
+    assert found["system"] == "1" and found["reason"] == "share/openh1/packaged"
     assert found["config"] == f"{home}/.config/halo-linux/"
     assert found["data"] == f"{home}/.local/share/halo-linux"
 
@@ -231,9 +231,9 @@ def test_packaged_without_home(program, tmp_path):
     """a package's tree with no HOME: the files stay in its folder, and it still does not update itself"""
     prefix = tmp_path / "usr"
     executable = tree(program, prefix)
-    (prefix / "share/opence/packaged").write_text("")
+    (prefix / "share/openh1/packaged").write_text("")
     found = answers(executable, None)
-    assert found["system"] == "1" and found["reason"] == "share/opence/packaged"
+    assert found["system"] == "1" and found["reason"] == "share/openh1/packaged"
     assert found["config"] == f"{prefix}/" and found["data"] == str(prefix)
 
 
@@ -249,6 +249,6 @@ def test_read_only_prefix_without_home(program, tmp_path):
 
 def test_portable_without_home(program, tmp_path):
     """a portable tree with no HOME stays portable"""
-    root = tmp_path / "OpenCE"
+    root = tmp_path / "OpenH1"
     found = answers(tree(program, root), None)
     assert found["system"] == "0" and found["config"] == f"{root}/" and found["data"] == str(root)

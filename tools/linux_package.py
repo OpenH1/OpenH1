@@ -6,15 +6,15 @@
 
 The release is a tree laid out as a Unix prefix is, which a package manager
 can copy to /usr (or /opt/<name>) as it is, and which a player unpacks
-anywhere and starts with bin/opence:
+anywhere and starts with bin/openh1:
 
-    bin/opence                                 the game
-    lib/opence/libSDL3.so.0                    its SDL (the rpath is $ORIGIN:$ORIGIN/../lib/opence)
-    share/opence/brokers.txt                   internet play's brokers (network.brokers_file)
-    share/applications/opence.desktop          the desktop entry
-    share/icons/hicolor/<n>x<n>/apps/opence.png  its icon
-    share/doc/opence/                          the READMEs
-    share/licenses/opence/                     the project's licence and those of what it carries
+    bin/openh1                                 the game
+    lib/openh1/libSDL3.so.0                    its SDL (the rpath is $ORIGIN:$ORIGIN/../lib/openh1)
+    share/openh1/brokers.txt                   internet play's brokers (network.brokers_file)
+    share/applications/openh1.desktop          the desktop entry
+    share/icons/hicolor/<n>x<n>/apps/openh1.png  its icon
+    share/doc/openh1/                          the READMEs
+    share/licenses/openh1/                     the project's licence and those of what it carries
 
 The game finds its files from where it is (port/linux/src/install_layout.c).
 
@@ -37,10 +37,10 @@ from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
 ROOT = Path(__file__).resolve().parent.parent
-NAME = "opence"  # install_layout.h's INSTALL_NAME
+NAME = "openh1"  # install_layout.h's INSTALL_NAME
 
-DESKTOP_ENTRY = ROOT / "port/assets/linux/opence.desktop"
-ICONS = ROOT / "port/assets/icon/hicolor"  # opence-<size>.png (tools/app_icon.py)
+DESKTOP_ENTRY = ROOT / "port/assets/linux/openh1.desktop"
+ICONS = ROOT / "port/assets/icon/hicolor"  # openh1-<size>.png (tools/app_icon.py)
 BROKERS = ROOT / "port/assets/network/brokers.txt"
 DOCUMENTS = [(ROOT / "README.md", "README.md"), (ROOT / "port/linux/README.md", "README.linux.md")]
 PROJECT_LICENSE = ROOT / "LICENSE.md"
@@ -87,9 +87,9 @@ def _copy(source: Path, destination: Path) -> None:
 
 
 def stage_tree(dist: Path, executable: Path, library: Optional[Path], notices: Iterable[Tuple[Path, str]]) -> None:
-    """The release's tree in dist: the executable as bin/opence, SDL in
-    lib/opence (none: the system's), and notices ((source, name) pairs: the
-    licences of what the build carries) in share/licenses/opence."""
+    """The release's tree in dist: the executable as bin/openh1, SDL in
+    lib/openh1 (none: the system's), and notices ((source, name) pairs: the
+    licences of what the build carries) in share/licenses/openh1."""
     _copy(executable, dist / "bin" / NAME)
     if library:
         _copy(library, dist / "lib" / NAME / library.name)

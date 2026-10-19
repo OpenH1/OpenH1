@@ -160,8 +160,8 @@ game.
   next to the app's `maps` link. With `HALO_DATA_ROOT`, use `mods/` in that
   data root instead.
 - **Android**: put it in `mods/` in the app's data folder,
-  `/sdcard/Android/data/com.halo.decomp/files/mods`, for example with
-  `adb push hd_audio /sdcard/Android/data/com.halo.decomp/files/mods/`.
+  `/sdcard/Android/data/com.openh1.openh1/files/mods`, for example with
+  `adb push hd_audio /sdcard/Android/data/com.openh1.openh1/files/mods/`.
 - **Web**: on the page, **Mods**, **Add a mod folder…** copies a mod's
   `mod.toml` and `tags` folder into the browser's storage for the site.
   **Remove** deletes it again.

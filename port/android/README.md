@@ -27,7 +27,7 @@ ninja) and these items:
 
 - Nothing for the guest: it is compiled with LLVM 22.1.8, which
   `configure.py` downloads the first time (approximately 1.5 GB) to
-  `~/.cache/opence`. Refer to "The guests' compiler" in
+  `~/.cache/openh1`. Refer to "The guests' compiler" in
   [README.md](../../README.md#the-guests-compiler). The option
   `--android-guest-cc` of `configure.py` selects a different compiler (a
   clang with the `arm64_32` target), with the NDK's linker and tools.
@@ -61,9 +61,9 @@ Your own builds all have the same signature (the debug key of WSL,
 (`adb install -r`).
 
 To keep the saved games before you remove the app, enter
-`adb pull /sdcard/Android/data/com.halo.decomp/files/save/u` (the profiles).
+`adb pull /sdcard/Android/data/com.openh1.openh1/files/save/u` (the profiles).
 After the new install, before the first start of the app, enter
-`adb push u /sdcard/Android/data/com.halo.decomp/files/save/u`. The app reads
+`adb push u /sdcard/Android/data/com.openh1.openh1/files/save/u`. The app reads
 and overwrites what adb pushes. adb cannot add files to `save/u` or `save/z` once the app made them, or
 change files that the app wrote, so push before the first start. adb cannot read
 some files that the app writes (the `blam.lst` files of `save/z`), so `adb pull`
@@ -107,7 +107,7 @@ renderer's [README](../linux/vulkan/README.md).
 
 The game needs the `maps/` folder from an Xbox disc image (`.xiso` or
 `.iso`) of any version of the game. The app extracts `maps/` from the disc
-image. The app keeps the data in `/sdcard/Android/data/com.halo.decomp/files`.
+image. The app keeps the data in `/sdcard/Android/data/com.openh1.openh1/files`.
 
 To install the data with the app:
 
@@ -122,17 +122,17 @@ To install the data with the app:
 To install the data from a computer:
 
 1. Start the app one time. The app makes its folders.
-2. Enter `adb push <folder>/. /sdcard/Android/data/com.halo.decomp/files/`.
+2. Enter `adb push <folder>/. /sdcard/Android/data/com.openh1.openh1/files/`.
 
-| Item | Location in `/sdcard/Android/data/com.halo.decomp/files` |
+| Item | Location in `/sdcard/Android/data/com.openh1.openh1/files` |
 | --- | --- |
 | Saved games (`z:\` and `u:\`) | `save` |
-| Mods (`docs/mods.md`) | `mods`: `adb push <mod folder> /sdcard/Android/data/com.halo.decomp/files/mods/`; the main menu's Mods orders them and turns them off |
+| Mods (`docs/mods.md`) | `mods`: `adb push <mod folder> /sdcard/Android/data/com.openh1.openh1/files/mods/`; the main menu's Mods orders them and turns them off |
 | Log | `debug.txt` |
 | Settings | `config.toml` |
 
 To make a copy of the saved games, enter
-`adb pull /sdcard/Android/data/com.halo.decomp/files/save/u` (the profiles).
+`adb pull /sdcard/Android/data/com.openh1.openh1/files/save/u` (the profiles).
 An `adb pull` of the whole `save` folder stops at the `blam.lst` files of
 `save/z`, which adb cannot read.
 
@@ -242,9 +242,9 @@ Removing the app's data or the app removes the layout.
 The settings are in `config.toml` in the data folder of the app. To change
 them:
 
-1. Enter `adb pull /sdcard/Android/data/com.halo.decomp/files/config.toml`.
+1. Enter `adb pull /sdcard/Android/data/com.openh1.openh1/files/config.toml`.
 2. Change the file.
-3. Enter `adb push config.toml /sdcard/Android/data/com.halo.decomp/files/`.
+3. Enter `adb push config.toml /sdcard/Android/data/com.openh1.openh1/files/`.
 
 At the first start, the game writes the file with the default values. To
 get the default values again, delete the file.

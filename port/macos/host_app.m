@@ -12,9 +12,7 @@ HALO_SAVE_ROOT) and config.toml's paths.data and paths.saves are kept.
   host's log in ~/Library/Logs/OpenH1 (halo.log, and the previous start's
   halo.previous.log), where Console shows it, unless the error output is a
   terminal. The Metal pipelines' archive is in ~/Library/Caches/OpenH1
-  (xgpu_metal.m). A player of the app from before the project was OpenH1
-  keeps their settings and saves: without an OpenH1 folder, the first start
-  copies Application Support's OpenCE folder, which stays as it was.
+  (xgpu_metal.m).
 - The game data: the players supply the Xbox game's maps folder. Without
   one, an open panel asks for it; it is checked (ui.map, an Xbox cache, and
   the other maps of the disc), kept as a bookmark (maps.bookmark), which
@@ -45,8 +43,6 @@ Full Screen) and turns Quit into the game's quit event.
 /* the folder's name, under Application Support, Logs and Caches (not Halo:
 Halo for Mac, MacSoft's port, has ~/Library/Application Support/Halo) */
 #define APP_FOLDER @"OpenH1"
-/* the folder's name before the project was OpenH1 (OpenCE's) */
-#define PREVIOUS_APP_FOLDER @"OpenCE"
 
 /* the Xbox disc's maps, which the game's menus offer: the campaign and
 multiplayer */
@@ -537,22 +533,14 @@ void host_app_start(void)
 		NSURL *support = [[files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject
 			URLByAppendingPathComponent:APP_FOLDER];
 		NSURL *logs = [[library URLByAppendingPathComponent:@"Logs"] URLByAppendingPathComponent:APP_FOLDER];
-		NSURL *previous = [[support URLByDeletingLastPathComponent] URLByAppendingPathComponent:PREVIOUS_APP_FOLDER];
 		NSString *brokers;
 		NSString *saves;
-		BOOL copied = NO;
 
 		if (!bundle.bundleIdentifier || ![bundle.bundlePath.pathExtension isEqualToString:@"app"])
 			return;
-		/* (the maps are a symbolic link and a bookmark in it: the copy is
-		small) */
-		if (![files fileExistsAtPath:support.path] && [files fileExistsAtPath:previous.path])
-			copied = [files copyItemAtURL:previous toURL:support error:NULL];
 		[files createDirectoryAtURL:support withIntermediateDirectories:YES attributes:nil error:NULL];
 		[files createDirectoryAtURL:logs withIntermediateDirectories:YES attributes:nil error:NULL];
 		log_open(logs);
-		if (copied)
-			host_logf(HOST_LOG_INFO, "settings and saves copied from %s", previous.fileSystemRepresentation);
 		support_folder = support.path;
 		snprintf(settings_folder, sizeof(settings_folder), "%s/", support_folder.fileSystemRepresentation);
 		host_logf(HOST_LOG_INFO, "%s %s (%s), %s", [[bundle objectForInfoDictionaryKey:@"CFBundleName"] UTF8String],

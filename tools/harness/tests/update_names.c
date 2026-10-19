@@ -2,8 +2,8 @@
 UPDATE_NAMES.C (test)
 
 The names the self-updater takes from a release's zip
-(port/linux/src/updater.c): the files of the release's tree (bin/opence,
-lib/opence/...) and of the flat release, but none that would leave the
+(port/linux/src/updater.c): the files of the release's tree (bin/openh1,
+lib/openh1/...) and of the flat release, but none that would leave the
 game's folder. test_update_names.py takes the code (under_test.inc).
 */
 
@@ -18,11 +18,11 @@ int main(int argc, char **argv)
 	/* the release's files, in the tree and flat */
 	CASE("release-names")
 	{
-		CHECK(updater_name_inside("bin/opence"), "bin/opence was refused");
-		CHECK(updater_name_inside("lib/opence/libSDL3.so.0"), "lib/opence/libSDL3.so.0 was refused");
-		CHECK(updater_name_inside("share/icons/hicolor/48x48/apps/opence.png"), "an icon was refused");
+		CHECK(updater_name_inside("bin/openh1"), "bin/openh1 was refused");
+		CHECK(updater_name_inside("lib/openh1/libSDL3.so.0"), "lib/openh1/libSDL3.so.0 was refused");
+		CHECK(updater_name_inside("share/icons/hicolor/48x48/apps/openh1.png"), "an icon was refused");
 		CHECK(updater_name_inside("halo"), "the flat release's halo was refused");
-		CHECK(updater_name_inside("share/opence/brokers.txt.old"), "an old file's name was refused");
+		CHECK(updater_name_inside("share/openh1/brokers.txt.old"), "an old file's name was refused");
 		CHECK(updater_name_inside(".hidden"), "a name that starts with a dot was refused");
 		return 0;
 	}
@@ -31,8 +31,8 @@ int main(int argc, char **argv)
 	{
 		static char const *const leaving[] =
 		{
-			"", "/etc/passwd", "../halo", "bin/../../halo", "bin/..", "..", ".", "./bin/opence", "bin//opence",
-			"bin/", "bin\\opence", "..\\halo", "c:/halo", "C:halo", "share/./opence",
+			"", "/etc/passwd", "../halo", "bin/../../halo", "bin/..", "..", ".", "./bin/openh1", "bin//openh1",
+			"bin/", "bin\\openh1", "..\\halo", "c:/halo", "C:halo", "share/./openh1",
 		};
 		int index;
 

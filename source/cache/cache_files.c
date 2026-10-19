@@ -1027,7 +1027,7 @@ void cache_files_show_multiplayer_unavailable(
 		snprintf(
 			message,
 			sizeof(message),
-			"The map %s (build %s) isn't supported for multiplayer yet.\n\nAsk in the Discord to get it added.",
+			"The map %s (build %s) isn't supported for multiplayer yet.",
 			tag_name_strip_path(map_name),
 			build);
 	}
@@ -1037,7 +1037,7 @@ void cache_files_show_multiplayer_unavailable(
 		snprintf(
 			message,
 			sizeof(message),
-			"Your maps (build %s) aren't supported for multiplayer yet.\n\nAsk in the Discord to get them added.",
+			"Your maps (build %s) aren't supported for multiplayer yet.",
 			build);
 	}
 	platform_show_message("Halo: multiplayer unavailable", message);
