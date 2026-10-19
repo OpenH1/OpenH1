@@ -33,5 +33,4 @@ hero,front` to render some, `--out DIR`, `--denoiser OIDN|NONE`, `--no-dof`, and
 
 ## Next changes (not done yet)
 
-- Put the black and orange caution-stripe tab back on the bottom strip, at the right, opposite the serial (as in round 4, variation A), with the same wear and the 1's orange.
-- Cluster the wear on the edges, corners, the bolts and the seam, with bare steel showing; grime in the seam and around the bolts; a grazing key light from the upper left.
+- A grazing key light from the upper left, to bring out the paint thickness and the stencil edges.
