@@ -23,6 +23,9 @@ guest's).
 An image (a high-res replacement: port/linux/src/xgpu_images.h) is found by
 its number and made again when its serial changes; the backend makes its
 levels from the first.
+
+A texture no stage has drawn for half a minute of time is let go, as the
+OpenGL cache's are.
 */
 
 #include "xgpu.h"
@@ -34,12 +37,17 @@ levels from the first.
 
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #define BUCKET_COUNT 4096
-/* frames a texture is kept without being drawn, and how often they are
-looked for */
-#define IDLE_FRAMES 1800
-#define EVICT_EVERY 600
+/* the textures are looked over every SWEEP_SECONDS, and those no stage
+has drawn since the look SWEEP_COUNT before are let go: 30 to 40 seconds
+after they were last drawn, as the OpenGL cache (xbox_textures.c). Counted
+in time, not frames: 1800 frames, half a minute at 60 frames a second, was
+15 seconds on a 120 Hz display */
+#define SWEEP_SECONDS 10
+#define IDLE_SECONDS 30
+#define SWEEP_COUNT (IDLE_SECONDS / SWEEP_SECONDS)
 /* the copies of one texture for its palettes (the game cycles some
 through a few) */
 #define PALETTE_VARIANTS 8
@@ -77,6 +85,11 @@ static struct
 {
 	struct entry *buckets[BUCKET_COUNT];
 	uint64_t frame;
+	/* the frames of the last looks over the textures, a look apart, the
+	looks made, and the time (seconds) the next is due */
+	uint64_t sweep_frames[SWEEP_COUNT];
+	unsigned long sweeps;
+	double next_sweep;
 	/* the decoded texels of the largest level so far */
 	DWORD *converted;
 	size_t converted_size;
@@ -402,13 +415,29 @@ uint32_t xgpu_metal_textures_get(const struct xgpu_stream_texture_stage *stage)
 	return stage->resource ? xbox_texture_get(stage) : 0;
 }
 
+static double seconds(void)
+{
+	struct timespec now;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (double)now.tv_sec + (double)now.tv_nsec * 1.0e-9;
+}
+
 void xgpu_metal_textures_frame_end(void)
 {
 	unsigned long index;
+	uint64_t idle_since;
+	double now = seconds();
 
 	cache.frame++;
-	if (cache.frame % EVICT_EVERY)
+	if (now < cache.next_sweep)
 		return;
+	cache.next_sweep = now + SWEEP_SECONDS;
+	/* the textures not drawn since the look half a minute ago (none before
+	the first looks, which find frame 0) */
+	idle_since = cache.sweep_frames[cache.sweeps % SWEEP_COUNT];
+	cache.sweep_frames[cache.sweeps % SWEEP_COUNT] = cache.frame;
+	cache.sweeps++;
 	for (index = 0; index < BUCKET_COUNT; index++)
 	{
 		struct entry **link = &cache.buckets[index];
@@ -417,7 +446,7 @@ void xgpu_metal_textures_frame_end(void)
 		{
 			struct entry *entry = *link;
 
-			if (cache.frame - entry->last_used > IDLE_FRAMES)
+			if (entry->last_used < idle_since)
 			{
 				*link = entry->next;
 				if (entry->texture)

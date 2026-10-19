@@ -20,8 +20,8 @@ pages have been written, or an image's (XGPU_STREAM_SOURCE_IMAGE); 0 if
 there is none */
 uint32_t xgpu_metal_textures_get(const struct xgpu_stream_texture_stage *stage);
 
-/* a frame has been played: the textures no stage has drawn for a while
-are let go */
+/* a frame has been played: the textures no stage has drawn for half a
+minute of time are let go */
 void xgpu_metal_textures_frame_end(void);
 
 /* statistics since the last call: textures made, and made again from

@@ -43,8 +43,9 @@ the OpenGL backend's texture cache writes it: tex<number>_fmt<format>_
 kept) */
 void xgpu_vulkan_textures_dump(const char *folder);
 
-/* a frame has been played: the textures no stage has drawn for a while are
-let go */
+/* a frame has been played: the textures no stage has drawn for half a
+minute of time are let go (but those with a thickness baked from texels the
+guest still has) */
 void xgpu_vulkan_textures_frame_end(void);
 
 /* statistics since the last call: textures made, and made again from pages
