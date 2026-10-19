@@ -553,7 +553,8 @@ updates: its package manager updates it.
 The release (`halo-linux-x86_64-release.zip`, `halo-linux-arm64-release.zip`,
 `halo-linux-x86_64-vr-release.zip`, and their `-debug.zip`) is laid out as a
 Unix prefix is, so a package can copy its folders to `/usr` (or
-`/opt/opence`) as they are:
+`/opt/opence`) as they are (but not the Steam Frame's
+`halo-steam-frame-vr-release.zip`, its own package: "Steam Frame" in "VR"):
 
 | Path | Contents |
 | --- | --- |
@@ -1677,16 +1678,27 @@ its own, with the maps ("Start the game"), and start `bin/opence`. It
 updates itself to the release's VR build, never to the other. The build
 without VR has no VR mode, and the VR build starts the
 runtime (SteamVR's server) whenever it starts, so it is a download of its
-own. On the Steam Frame the VR build doesn't update itself (`update.auto` has
-no effect): install a new one with `tools/frame_install.sh` (below), or by
-hand.
+own. For the Steam Frame, the releases have the 64-bit ARM VR build as the
+Frame's package, `halo-steam-frame-vr-release.zip`
+(`tools/ci_build.py linux_arm64 release --vr`, which runs
+`tools/frame_package.py --zip`). On the Frame the VR build doesn't update
+itself (`update.auto` has no effect): install a new one with
+`tools/frame_install.sh` (below), or by hand.
 
 ### Steam Frame
 
 On the Frame, the game is in `~/apps/halo-vr/`, and Steam starts it
 through a shortcut (a non-Steam game) to the launcher there,
 `halo-vr.sh` (`port/linux/frame/halo-vr.sh`, whose comments list the
-environment it gives the game). From a computer with SSH to the Frame:
+environment it gives the game). From a computer with SSH to the Frame,
+the latest release's package
+([halo-steam-frame-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-steam-frame-vr-release.zip)):
+
+```sh
+tools/frame_install.sh --package halo-steam-frame-vr-release.zip <frame>
+```
+
+or one built here:
 
 ```sh
 python3 configure.py --vr && ninja linux_arm64
@@ -1701,9 +1713,12 @@ tools/frame_install.sh <frame>
   the libraries' licenses, `VERSION` (the commit) and `SHA256SUMS`. It
   takes the game from `build/linux_arm64` (`--build` names another), and
   stops if the game is not the VR build, or needs a library that
-  neither the package nor SteamOS has.
+  neither the package nor SteamOS has. `--zip <file>` also writes it as a
+  zip (the `halo-vr-frame` folder, with the files' modes), as the release's
+  `halo-steam-frame-vr-release.zip`.
 - `tools/frame_install.sh <host>` (`--package` for another package, a
-  folder or the `.tar.gz`) copies it to `~/apps/halo-vr/` over SSH. It
+  folder, the `.tar.gz` or a release's `.zip`) copies it to
+  `~/apps/halo-vr/` over SSH. It
   refuses while the game runs (`pgrep -x halo`) and never starts it. Each
   file that differs goes in as `<name>.new`, checked against
   `SHA256SUMS`, and once all are, each takes its name (a rename, so a
@@ -3102,7 +3117,7 @@ headset's session is opened with, apply from the next start.
 | `debug.vr_test_fov` | `""` | `HALO_VR_TEST_FOV` | Each eye's field of view instead of the runtime's, for automated tests of what the edges of a wide view show: `"<outward> <inward> <up> <down>[ <cant>]"`, in degrees from the eye's axis, each eye turned outward by `<cant>` degrees (as canted displays are; the game's 3D view assumes the eyes look the same way, so only the visor and the helmet's rim are right with it). |
 | `debug.vr_test_gaze` | `""` | `HALO_VR_TEST_GAZE` | The eyes' gaze instead of the runtime's, for automated tests of the foveation (`vr.foveation = "eye"`): `"<right> <up>[ <seconds>]"`, in degrees from the head's forward; with `<seconds>`, it jumps to the opposite and back every so many seconds, as the eyes do. |
 | `debug.vr_foveation_show` | `false` | `HALO_VR_FOVEATION_SHOW` | With `vr.foveation`: tint red what is drawn at the periphery's resolution (fully about the inset, partly in its blend), to see the inset. |
-| `debug.vr_gpu_time` | `false` | `HALO_VR_GPU_TIME` | With `debug.gpu_stats`, log elapsed render GPU timelines from the first render commands after the runtime's frame wait through composition, read without waiting. This includes GPU stalls and any gaps in command submission, not only GPU busy time. Unavailable when the graphics queue has no timestamp support. |
+| `debug.vr_gpu_time` | `false` | `HALO_VR_GPU_TIME` | With `debug.gpu_stats`, log elapsed render GPU timelines from the first render commands after the runtime's frame wait through composition, read without waiting (every 300 frames, `vr: elapsed render GPU timeline per frame`). This includes GPU stalls and any gaps in command submission, not only GPU busy time (`tools/gpu_busy.py` reads that from the kernel). Unavailable when the graphics queue has no timestamp support. The guest reads it and hands it to the host's renderer with VR's start, so config.toml's works as well as the variable. |
 
 `debug.test_input = "pad"` (`HALO_TEST_INPUT=pad`) puts the gamepad mode
 through its paces without a gamepad: it turns, looks up and down, fires,
@@ -3174,7 +3189,10 @@ them (`view*.bmp`), and while a scope's view is shown (raised, or smart-linked)
 its image (`scope*.bmp`).
 
 The GPU's time is best read from the kernel: the process's
-`drm-engine-gpu` time in `/proc/<pid>/fdinfo`. The figures below were
+`drm-engine-gpu` time in `/proc/<pid>/fdinfo`, which `tools/gpu_busy.py`
+prints each second as the GPU's busy share and, with `--hz`, as milliseconds
+a frame (run it on the headset over ssh while the game plays: it needs no
+setting, and costs the game nothing). The figures below were
 measured with the OpenGL renderer the VR build had before it drew with
 Vulkan (on the Steam Frame, Mesa's Zink on Turnip). On the Steam Frame (b30's
 first outdoor area, SteamVR holding 72 Hz with the headset idle, the GPU at

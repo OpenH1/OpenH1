@@ -50,10 +50,11 @@ worker; the macOS app is replaced by its disk image) */
 (tools/ci_build.py --vr): it updates to itself, never to the other build */
 #define UPDATE_PLATFORM "linux-x86_64-vr"
 #elif defined(HALO_VR)
-/* (none: the 64-bit ARM VR build is installed and updated as a package of
-its own, tools/frame_package.py and frame_install.sh, with its launcher and
-its checksums; no release has it, and the desktop one would replace its
-executable) */
+/* (none: the 64-bit ARM VR build is the Steam Frame's, installed and updated
+as a package of its own, tools/frame_package.py and frame_install.sh, with
+its launcher and its checksums: the releases have it as
+halo-steam-frame-vr-release.zip, not a tree this could unpack, and the
+desktop build would replace its executable) */
 #elif defined(__aarch64__)
 /* the 64-bit ARM build (port/linux/host) */
 #define UPDATE_PLATFORM "linux-arm64"

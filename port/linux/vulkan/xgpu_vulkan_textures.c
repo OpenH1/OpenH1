@@ -339,11 +339,19 @@ static struct entry *xbox_entry_find(const struct xgpu_stream_texture_stage *sta
 	return entry;
 }
 
+static struct entry *xbox_entry_current(const struct xgpu_stream_texture_stage *stage, const D3DCOLOR **palette_out);
+
 /* the guest's pages of a range are mapped and readable (looked at on whole
 host pages, the extent's limits: no further). Without the base register
-(x86-64's guest, the low 4 GB) the memory layer keeps no such account: the
-Xbox's contiguous window is mapped whole, and other ranges are mapped if
-mincore finds their pages. */
+(the low 4 GB: the Steam Frame's and x86-64's guests) the memory layer keeps
+no such account: the Xbox's contiguous window is mapped whole, and other
+ranges are mapped if mincore finds their pages. The memory the guest's
+heaps and image come from (host_memory.c's pools, its image's range, and
+the window) is mapped from the start to the end, reserved where it is not
+in use, so mincore would find every page of a range inside one of them
+(host_low_owns, which takes no lock and makes no system call): each stage
+of each draw asked the kernel, which was a noticeable part of the render
+thread's time on the Steam Frame. */
 static BOOL readable(uint32_t address, uint32_t size)
 {
 	uint64_t page = host_page_size();
@@ -360,6 +368,8 @@ static BOOL readable(uint32_t address, uint32_t size)
 #else
 	if ((uint64_t)address >= CONTIGUOUS_BASE && (uint64_t)address + size <= (uint64_t)CONTIGUOUS_BASE + CONTIGUOUS_SIZE)
 		return TRUE;
+	if (host_low_owns(host_address((uint32_t)first), (size_t)(last - first)))
+		return TRUE;
 	{
 		unsigned char residency[64];
 		uint64_t at;
@@ -375,6 +385,13 @@ static BOOL readable(uint32_t address, uint32_t size)
 		return TRUE;
 	}
 #endif
+}
+
+static struct xgpu_vulkan_image *xbox_texture_get(const struct xgpu_stream_texture_stage *stage)
+{
+	struct entry *entry = xbox_entry_current(stage, NULL);
+
+	return entry ? entry->image : NULL;
 }
 
 /* the stage's texture's entry, its texels as the guest's memory has them now
@@ -410,13 +427,6 @@ static struct entry *xbox_entry_current(const struct xgpu_stream_texture_stage *
 	}
 	entry->watched_serial = serial;
 	return entry;
-}
-
-static struct xgpu_vulkan_image *xbox_texture_get(const struct xgpu_stream_texture_stage *stage)
-{
-	struct entry *entry = xbox_entry_current(stage, NULL);
-
-	return entry ? entry->image : NULL;
 }
 
 /* ---------- the effects' thickness (xgpu_vulkan_effects.h) */

@@ -6,6 +6,7 @@
     python tools/ci_build.py linux_x86_64 release --vr
     python tools/ci_build.py linux_x86_64 profile
     python tools/ci_build.py linux_arm64 release   (on a 64-bit ARM Linux computer)
+    python tools/ci_build.py linux_arm64 release --vr
     python tools/ci_build.py android release
     python tools/ci_build.py windows release       (on Windows)
     python tools/ci_build.py web release
@@ -22,10 +23,13 @@ passed on as --compiler-launcher, and CI_GUEST_LLVM_CACHE as --guest-llvm-cache.
 number (HALO_BUILD_NUMBER), which its release is named after and the
 self-updater compares (and the web site's version.json names).
 
---vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md),
-into dist/halo-linux-x86_64-vr-<config>/, a build of its own, which updates
-to the release's VR build. Only for linux_x86_64: the 64-bit ARM VR build is
-the Steam Frame's package (tools/frame_package.py).
+--vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md).
+For linux_x86_64, into dist/halo-linux-x86_64-vr-<config>/, a build of its
+own, which updates to the release's VR build. For linux_arm64, the Steam
+Frame's package (tools/frame_package.py, which tools/frame_install.sh
+installs; it does not update itself), zipped as
+dist/halo-steam-frame-vr-<config>/halo-steam-frame-vr-<config>.zip, which
+the release has as it is.
 
 A Linux build is the release's tree (tools/linux_package.py: bin/opence,
 lib/opence, share/...), dist/halo-linux-x86_64[-vr]-<config>/ or
@@ -78,7 +82,11 @@ def dist_name(platform: str, config: str, vr: bool = False) -> str:
     """the folder in dist/ (and the release's zip) of a build: halo-<platform>-
     <config>, where a Linux build's platform is the target's with its first
     underscore a hyphen, and -vr after it for the VR build (linux-x86_64,
-    linux-x86_64-vr, linux-arm64: updater.c's UPDATE_PLATFORM)"""
+    linux-x86_64-vr, linux-arm64: updater.c's UPDATE_PLATFORM); but the 64-bit
+    ARM VR build is the Steam Frame's package, halo-steam-frame-vr-<config>
+    (no UPDATE_PLATFORM: frame_install.sh updates it)"""
+    if platform == "linux_arm64" and vr:
+        return f"halo-steam-frame-vr-{config}"
     if platform.startswith("linux"):
         platform = platform.replace("_", "-", 1) + ("-vr" if vr else "")
     return f"halo-{platform}-{config}"
@@ -93,10 +101,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("platform", choices=sorted(OUTPUTS))
     parser.add_argument("config", choices=["debug", "release", "profile"])
-    parser.add_argument("--vr", action="store_true", help="the VR build (linux_x86_64 only)")
+    parser.add_argument("--vr", action="store_true",
+                        help="the VR build (linux_x86_64; linux_arm64: the Steam Frame's package)")
     args = parser.parse_args()
-    if args.vr and args.platform != "linux_x86_64":
-        parser.error("--vr is for linux_x86_64 only")
+    if args.vr and args.platform not in ("linux_x86_64", "linux_arm64"):
+        parser.error("--vr is for linux_x86_64 and linux_arm64 only")
 
     configure = [sys.executable, "configure.py", "--portable"]
     if args.config == "release":
@@ -144,6 +153,17 @@ def main() -> int:
         target = "macos_dmg" if args.platform == "macos" else args.platform
         run(["ninja", target])
         outputs = OUTPUTS[args.platform]
+
+    if args.platform == "linux_arm64" and args.vr:
+        # the Steam Frame's package (tools/frame_package.py: the game, its
+        # SDL3, the launcher, the licences, VERSION and SHA256SUMS), zipped
+        # with the files' modes, which the workflow's artifacts would lose:
+        # the release has the zip as it is
+        dist = ROOT / "dist" / dist_name(args.platform, args.config, args.vr)
+        if dist.exists():
+            shutil.rmtree(dist)
+        run([sys.executable, "tools/frame_package.py", "--zip", dist / f"{dist.name}.zip"])
+        return 0
 
     # the licences of what the build carries (tools/linux_package.py)
     notices = linux_package.notices(args.platform)

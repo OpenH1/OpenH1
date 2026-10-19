@@ -2,8 +2,10 @@
 
 The VR build of the Linux port (`configure.py --vr`, `ninja linux_arm64`:
 64-bit ARM, drawn with Vulkan), packaged
-by `tools/frame_package.py` for a Steam Frame. Refer to "VR" and "Steam
-Frame" in `port/linux/README.md` of the repository.
+by `tools/frame_package.py` for a Steam Frame. Each release has it as
+[halo-steam-frame-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-steam-frame-vr-release.zip)
+(the package's `halo-vr-frame` folder). Refer to "VR" and "Steam Frame" in
+`port/linux/README.md` of the repository.
 
 | File | Is |
 | --- | --- |
@@ -24,12 +26,16 @@ contain them, and the install does not touch them.
 
 ## Install, or update
 
-From a computer with the package and `ssh` to the Frame (in its desktop
-mode, with SSH on):
+Download the latest release's
+[halo-steam-frame-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-steam-frame-vr-release.zip)
+(or an older one from the
+[Releases](https://github.com/OpenH1/OpenH1/releases) page). Then, from a
+computer with the repository's `tools/frame_install.sh` and `ssh` to the
+Frame (in its desktop mode, with SSH on):
 
 ```sh
-tools/frame_install.sh <frame>          # dist/halo-vr-frame, from the repository
-tools/frame_install.sh --package halo-vr-frame.tar.gz <frame>
+tools/frame_install.sh --package halo-steam-frame-vr-release.zip <frame>
+tools/frame_install.sh <frame>          # dist/halo-vr-frame, built from the repository
 ```
 
 It copies the package to `~/apps/halo-vr/` on the Frame. It refuses while
@@ -46,8 +52,11 @@ desktop mode, Games > Add a Non-Steam Game to My Library > Browse, select
 prints the same until Steam has such a shortcut. (It does not add it
 itself: Steam keeps its shortcuts in a file it rewrites while it runs.)
 
-Without a computer: unpack the package on the Frame, and copy its files
-into `~/apps/halo-vr/`.
+Without a computer: download the zip on the Frame (in its desktop mode),
+unpack it, and copy the files of its `halo-vr-frame` folder into
+`~/apps/halo-vr/`. Or, from a terminal on the Frame, with
+`tools/frame_install.sh` beside the zip:
+`./frame_install.sh --package halo-steam-frame-vr-release.zip --local ~`.
 
 To go back to the previous build: in `~/apps/halo-vr`, `mv halo.prev halo`
 (and `libSDL3.so.0.prev`, `halo-vr.sh.prev` likewise, where they are).
@@ -76,3 +85,19 @@ That keeps the maps, `config.toml`, `halo-vr.env` and the logs; remove
 
 Start SteamVR before the game. Without a headset the game plays flat, in
 its window.
+
+## Measuring performance
+
+- Where a frame's time goes: put `HALO_GPU_STATS=1` and `HALO_VR_GPU_TIME=1`
+  in `halo-vr.env` (or `gpu_stats = true` and `vr_gpu_time = true` under
+  `[debug]` in `config.toml`). Every 300 frames `halo-vr.log` then has
+  `vr: a frame's draws: ...` (the render thread's time before the eyes, on
+  the eyes, and on the HUD and the present) and
+  `vr: elapsed render GPU timeline per frame: ...` (the GPU's, from the
+  frame's first commands to its last, gaps included); every 600 frames,
+  `vulkan: ... frames: ... passes, ... draws`.
+- The GPU's busy time alone, from the kernel, with nothing turned on in the
+  game: copy `tools/gpu_busy.py` here and, over ssh while the game plays,
+  `python3 gpu_busy.py --hz 120` (the headset's refresh rate). Near the
+  frame's budget (8.33 ms at 120 Hz), the GPU holds the frame rate; well
+  under it while the frame rate is still short, the CPU does.

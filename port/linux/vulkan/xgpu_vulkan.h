@@ -259,6 +259,11 @@ VkSampler xgpu_vulkan_sampler(const struct xgpu_vulkan_sampler_description *desc
 /* a shader module of SPIR-V words (count of them): the same for the same
 words; VK_NULL_HANDLE if it cannot be made (logged) */
 VkShaderModule xgpu_vulkan_shader(const uint32_t *words, size_t count);
+/* the same, for words that never change while the game runs (the fixed
+programs built into it, xgpu_vulkan_vr_shaders.c): found again by their
+address, without reading the words again, as a composition draw each frame
+asks for them */
+VkShaderModule xgpu_vulkan_shader_constant(const uint32_t *words, size_t count);
 
 /* the vertex inputs' bindings: the 16 streams', and the one of the inputs
 no stream feeds (a vec4 each, every vertex the same) */

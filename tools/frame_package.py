@@ -4,6 +4,11 @@ dist/halo-vr-frame.tar.gz, which tools/frame_install.sh installs.
 
     python3 configure.py --vr && ninja linux_arm64
     python3 tools/frame_package.py
+    python3 tools/frame_package.py --zip halo-steam-frame-vr-release.zip
+
+--zip also writes the package as a zip (halo-vr-frame/ in it, the files with
+their Unix modes), as the releases have it: tools/ci_build.py linux_arm64
+release --vr makes the release's halo-steam-frame-vr-release.zip so.
 
 The package is what ~/apps/halo-vr/ on the Frame needs beside the game's
 data and the player's own files: the game (build/linux_arm64/halo), the
@@ -22,10 +27,12 @@ import argparse
 import datetime
 import hashlib
 import shutil
+import stat
 import struct
 import subprocess
 import sys
 import tarfile
+import zipfile
 from pathlib import Path
 from typing import List
 
@@ -101,12 +108,36 @@ def version() -> str:
             f"packaged {stamp}\n")
 
 
+def executable(name: str) -> bool:
+    """the package's files that run (0755; the others are 0644)"""
+    return name in ("halo", "libSDL3.so.0", "halo-vr.sh")
+
+
+def write_zip(dist: Path, output: Path) -> None:
+    """the package's folder into the zip output, under its name, in name order,
+    with each file's Unix mode (for unzip on the Frame, and frame_install.sh)"""
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
+        info = zipfile.ZipInfo(f"{dist.name}/", date_time=(1980, 1, 1, 0, 0, 0))
+        info.create_system = 3
+        info.external_attr = (stat.S_IFDIR | 0o755) << 16 | 0x10
+        archive.writestr(info, b"")
+        for path in sorted(dist.iterdir()):
+            info = zipfile.ZipInfo.from_file(path, f"{dist.name}/{path.name}")
+            info.create_system = 3
+            info.external_attr = (stat.S_IFREG | (0o755 if executable(path.name) else 0o644)) << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(info, path.read_bytes(), compresslevel=9)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--build", type=Path, default=ROOT / "build/linux_arm64",
                         help="the VR build's folder (default: build/linux_arm64)")
     parser.add_argument("--out", type=Path, default=ROOT / "dist",
                         help=f"where {NAME}/ and {NAME}.tar.gz go (default: dist)")
+    parser.add_argument("--zip", type=Path,
+                        help="also write the package as this zip (as the release's halo-steam-frame-vr-release.zip)")
     args = parser.parse_args()
 
     game = args.build / "halo"
@@ -144,7 +175,7 @@ def main() -> int:
     dist.mkdir(parents=True)
     for name, source in files.items():
         shutil.copyfile(source, dist / name)
-        (dist / name).chmod(0o755 if name in ("halo", "libSDL3.so.0", "halo-vr.sh") else 0o644)
+        (dist / name).chmod(0o755 if executable(name) else 0o644)
     (dist / "VERSION").write_text(version(), encoding="utf-8")
     sums = [f"{hashlib.sha256((dist / name).read_bytes()).hexdigest()}  {name}\n"
             for name in [*files, "VERSION"]]
@@ -161,11 +192,13 @@ def main() -> int:
 
     with tarfile.open(tarball, "w:gz") as archive:
         archive.add(dist, arcname=NAME, filter=anyone)
+    if args.zip:
+        write_zip(dist, args.zip)
     print((dist / "VERSION").read_text(encoding="utf-8"), end="")
     for line in sums:
         digest, name = line.split()
         print(f"  {name:28} {(dist / name).stat().st_size:>10,} bytes  {digest[:16]}")
-    print(f"{dist}\n{tarball}\nInstall it: tools/frame_install.sh <frame>")
+    print(f"{dist}\n{tarball}" + (f"\n{args.zip}" if args.zip else "") + "\nInstall it: tools/frame_install.sh <frame>")
     return 0
 
 
