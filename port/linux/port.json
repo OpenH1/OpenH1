@@ -1,5 +1,5 @@
 {
-  "comment": "Native build inputs, shared by the Windows and Android builds. See port/linux/README.md.",
+  "comment": "Native build inputs: the game's sources and the platform layer's, shared by the guest builds (Linux, Android, macOS), the Windows build and the web build. See port/linux/README.md.",
   "game": {
     "comment": "The game: every C file under root but those excluded (a folder ends in /: libtiff and the TIFF writer that uses it, port/linux/game/tiff_file.c has why; zlib's own programs), built with these defines and include directories.",
     "root": "source",
@@ -64,11 +64,5 @@
     ]
   },
   "game_sources": "port/linux/game",
-  "platform_sources": "port/linux/src",
-  "libraries": [
-    "SDL3",
-    "m",
-    "pthread",
-    "dl"
-  ]
+  "platform_sources": "port/linux/src"
 }

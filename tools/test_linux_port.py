@@ -1,4 +1,5 @@
-"""Tests for the native Linux build tooling (port/linux, tools/linux_*.py)."""
+"""Tests for the Linux port's tooling (port/linux, the build scripts), its
+settings, menus and maps' checks."""
 
 import os
 import re
@@ -9,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from tools import linux_build, linux_link_check, linux_msvc_semantics
+from tools import build_common, linux_msvc_semantics, x86_game_abi
 from tools.port_settings import MENU_PLATFORMS
 
 
@@ -81,13 +82,21 @@ def test_xdk_headers_use_the_sdk_spellings():
         assert not re.findall(r"\bhalo_\w+", text), header.name
 
 
-@pytest.mark.skipif(shutil.which("clang") is None, reason="clang is needed to compile the headers")
+def x86_abi(tmp_path):
+    """skips unless this computer builds the game's 32-bit x86 ABI
+    (tools/x86_game_abi.py: clang and the C library's 32-bit files)"""
+    reason = x86_game_abi.can_build(tmp_path / "x86-probe")
+    if reason:
+        pytest.skip(reason)
+
+
 def test_xdk_headers_compile_for_the_game(tmp_path):
+    x86_abi(tmp_path)
     root = XDK_INCLUDE.parent.parent.parent
     source = write(tmp_path / "unit.c", "".join(
         f"#include <{name}>\n" for name in ("xtl.h", "xbdm.h", "xkbd.h", "d3d8perf.h")
     ))
-    flags = [flag for flag in linux_build.LINUX_ABI_FLAGS + linux_build.GAME_FLAGS if flag != "-w"]
+    flags = [flag for flag in x86_game_abi.GAME_ABI_FLAGS + x86_game_abi.GAME_FLAGS if flag != "-w"]
     for defines in ([], ["-DDEBUG_KEYBOARD"], ["-DNOD3D", "-DNODSOUND"]):
         subprocess.run(
             ["clang", *flags, *defines, "-Werror", "-fsyntax-only",
@@ -123,33 +132,6 @@ def test_xdk_headers_regroups_anonymous_members():
                          "unsigned long After;"]
 
 
-# ---------- weak reference link check
-
-
-@pytest.mark.skipif(shutil.which("clang") is None or shutil.which("nm") is None,
-                    reason="clang and nm are needed to build test objects")
-def test_link_check_rejects_undefined_weak_references(tmp_path):
-    def compile_object(name: str, text: str) -> Path:
-        source = write(tmp_path / f"{name}.c", text)
-        output = tmp_path / f"{name}.o"
-        subprocess.run(["clang", "-c", "-o", str(output), str(source)], check=True)
-        return output
-
-    caller = compile_object("caller", "#pragma weak helper\nint helper(int);\nint call(void) { return helper(1); }\n")
-    local = compile_object("local", "static int helper(int x) { return x; }\nint use(void) { return helper(2); }\n")
-    provider = compile_object("provider", "#pragma weak helper\nint helper(int x) { return x; }\n")
-
-    def check(*objects: Path) -> int:
-        response = write(tmp_path / "objects.rsp", "\n".join(f"'{o}'" for o in objects))
-        return subprocess.run(
-            [sys.executable, linux_link_check.__file__, str(response)], capture_output=True
-        ).returncode
-
-    # a file-local copy elsewhere does not satisfy the reference
-    assert check(caller, local) == 1
-    assert check(caller, local, provider) == 0
-
-
 # ---------- game sources
 
 
@@ -165,8 +147,8 @@ def test_game_sources_leave_out_the_excluded(tmp_path, monkeypatch):
     # (a folder is a name ending in "/": not a file that only starts like it)
     config = {"game": {"root": "source", "exclude": ["source/zlib/example.c", "source/tiff/"],
                        "defines": ["DEBUG"], "include_dirs": ["source", "source/saved games"]}}
-    assert linux_build.game_sources(config) == [Path("source/a.c"), Path("source/tiffx.c"), Path("source/zlib/b.c")]
-    assert linux_build.game_defines_and_includes(config) == '-DDEBUG -Isource -I"source/saved games"'
+    assert build_common.game_sources(config) == [Path("source/a.c"), Path("source/tiffx.c"), Path("source/zlib/b.c")]
+    assert build_common.game_defines_and_includes(config) == '-DDEBUG -Isource -I"source/saved games"'
 
 
 # ---------- menus (port/assets/menus)
@@ -462,28 +444,10 @@ def test_graphics_preset_on_a_headset(config_check):
 def test_p2p_signatures_and_listings(tmp_path):
     """internet play's Ed25519 (RFC 8032), the X25519 key of a seed, and the
     server browser's listings from host to browser (tools/p2p_lobby_check.c),
-    built with the flags ninja gives the platform layer"""
-    import shlex
-
-    if not shutil.which("clang") or not shutil.which("ninja") or not Path("build.ninja").is_file():
-        pytest.skip("needs clang, ninja and a configured build")
-    command = subprocess.run(["ninja", "-t", "commands", "build/linux/obj/port/linux/src/p2p_crypto.o"],
-                             capture_output=True, text=True, check=True).stdout.strip().splitlines()[-1]
-    words = shlex.split(command)
-    # (the compiler, and whatever runs it, ccache in CI: up to the first flag)
-    while words and not words[0].startswith("-"):
-        words = words[1:]
-    flags = []
-    skip = False
-    for word in words:
-        if skip:
-            skip = False
-        elif word in ("-MF", "-o", "-c"):
-            skip = True
-        elif word == "-MMD" or word.startswith("-flto") or word.startswith("-fprofile-use"):
-            continue
-        else:
-            flags.append(word)
+    built with the platform layer's flags in the game's 32-bit x86 ABI
+    (tools/x86_game_abi.py), as the game's data has them"""
+    x86_abi(tmp_path)
+    flags = x86_game_abi.platform_cflags(x86_game_abi.semantics_headers(tmp_path / "semantics"))
     program = tmp_path / "p2p_lobby_check"
     built = subprocess.run(["clang", *flags, "-O1", "-no-pie", "-Wl,--unresolved-symbols=ignore-all", "-o",
                             str(program), "tools/p2p_lobby_check.c", "port/linux/src/p2p_crypto.c",
@@ -640,31 +604,54 @@ def test_network_format_is_the_recorded_one():
 # ---------- the tag validator (port/linux/game/tag_validate.c)
 
 RETAIL_MAPS = Path("assets/maps")
-MAP_VALIDATE = Path("build/linux/map_validate")
+# the tag validator alone on map files (tools/map_validate.c), built in the
+# game's 32-bit x86 ABI, for the tests (tools/x86_game_abi.py)
+MAP_VALIDATE_FOLDER = Path("build/map_validate")
+MAP_VALIDATE = MAP_VALIDATE_FOLDER / "map_validate"
 
 
-def _retail_maps():
+def map_validate(tmp_path):
+    """build/map_validate/map_validate, built if it is missing or older than
+    its sources; skips where the game's 32-bit x86 ABI cannot be built"""
+    x86_abi(tmp_path)
+    return x86_game_abi.build_map_validate(MAP_VALIDATE_FOLDER)
+
+
+def test_map_validate_builds(tmp_path):
+    """the tag validator's program builds, maps its tag caches where the
+    game reads its maps, and refuses a file that is no map"""
+    program = map_validate(tmp_path)
+    result = subprocess.run([str(program)], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stdout + result.stderr
+    junk = tmp_path / "junk.map"
+    junk.write_bytes(bytes(4096))
+    result = subprocess.run([str(program), str(junk)], capture_output=True, text=True, timeout=60)
+    assert result.returncode == 1 and f"{junk}: refused" in result.stdout, result.stdout + result.stderr
+
+
+def _retail_maps(tmp_path):
     maps = sorted(RETAIL_MAPS.glob("*.map"))
-    if not maps or not MAP_VALIDATE.is_file():
-        pytest.skip("needs the retail maps in assets/maps and ninja linux's build/linux/map_validate")
+    if not maps:
+        pytest.skip("needs the retail maps in assets/maps")
+    map_validate(tmp_path)
     return maps
 
 
-def test_retail_maps_need_no_corrections():
+def test_retail_maps_need_no_corrections(tmp_path):
     """every retail map in assets/maps passes the tag validator, each of its
     structure bsps too, with no correction: the schemas (tag_schema_*.c)
     say what the game's own maps hold"""
-    maps = _retail_maps()
+    maps = _retail_maps(tmp_path)
     result = subprocess.run([str(MAP_VALIDATE), "--strict", *map(str, maps)], capture_output=True, text=True,
                             timeout=1800)
     assert result.returncode == 0, result.stdout[-6000:]
 
 
-def test_tag_validator_survives_damaged_maps():
+def test_tag_validator_survives_damaged_maps(tmp_path):
     """retail maps with a few of their tags' words changed at random: the
     validator never crashes or hangs, and a map it lets through is clean
     when checked again"""
-    maps = _retail_maps()
+    maps = _retail_maps(tmp_path)
     chosen = [path for path in maps if path.stem in ("bloodgulch", "a10", "ui")] or maps[:1]
     result = subprocess.run([str(MAP_VALIDATE), "--fuzz", "300", "--seed", "1", *map(str, chosen)],
                             capture_output=True, text=True, timeout=1800)
@@ -673,7 +660,7 @@ def test_tag_validator_survives_damaged_maps():
 
 # ---------- Custom Edition maps (port/linux/game/cache_file_formats.c, custom_edition_cache.c)
 
-def _custom_edition_maps():
+def _custom_edition_maps(tmp_path):
     """the Custom Edition maps (HALO_CUSTOM_EDITION_MAPS, or the gitignored
     assets/custom_edition), with the bitmaps.map, sounds.map and loc.map
     they need beside them"""
@@ -681,27 +668,27 @@ def _custom_edition_maps():
     folder = Path(configured) if configured else Path("assets/custom_edition")
     maps = [path for path in sorted(folder.glob("*.map"))
             if path.stem.lower() not in ("bitmaps", "sounds", "loc")]
-    if not maps or not (folder / "bitmaps.map").is_file() or not MAP_VALIDATE.is_file():
-        pytest.skip("needs Custom Edition maps (HALO_CUSTOM_EDITION_MAPS or assets/custom_edition) and "
-                    "ninja linux's build/linux/map_validate")
+    if not maps or not (folder / "bitmaps.map").is_file():
+        pytest.skip("needs Custom Edition maps (HALO_CUSTOM_EDITION_MAPS or assets/custom_edition)")
+    map_validate(tmp_path)
     return maps
 
 
-def test_custom_edition_maps_are_loaded_and_checked():
+def test_custom_edition_maps_are_loaded_and_checked(tmp_path):
     """every Custom Edition map is loaded, converted and passed by the tag
     validator, each of its structure bsps too: none is refused (a community
     map's own mistakes are corrected and logged)"""
-    maps = _custom_edition_maps()
+    maps = _custom_edition_maps(tmp_path)
     result = subprocess.run([str(MAP_VALIDATE), *map(str, maps)], capture_output=True, text=True, timeout=3600)
     assert result.returncode == 0, result.stdout[-6000:]
     assert "refused" not in result.stdout, result.stdout[-6000:]
 
 
-def test_custom_edition_loader_and_validator_survive_damaged_maps():
+def test_custom_edition_loader_and_validator_survive_damaged_maps(tmp_path):
     """Custom Edition maps with a few of their file's words changed at random:
     the loader, the conversion and the validator never crash or hang, and a
     map they let through is clean when checked again"""
-    maps = _custom_edition_maps()
+    maps = _custom_edition_maps(tmp_path)
     chosen = [path for path in maps if path.stem.lower() in ("bloodgulch", "hugeass", "ui")] or maps[:2]
     result = subprocess.run([str(MAP_VALIDATE), "--fuzz", "100", "--seed", "1", *map(str, chosen)],
                             capture_output=True, text=True, timeout=3600)

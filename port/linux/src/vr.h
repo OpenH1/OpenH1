@@ -711,7 +711,7 @@ void halo_vr_hud_group(int group);
 void halo_vr_hud_anchor(int corner);
 
 /* the platform layer's (d3d8_device.c, xinput_sdl.c) */
-/* opens the session once the GL context is current; 0 if VR cannot run */
+/* opens the session once the host's renderer has its device; 0 if VR cannot run */
 int halo_vr_initialize(void);
 void halo_vr_eye_size(int *width, int *height);
 void halo_vr_hud_size(int *width, int *height);
@@ -721,8 +721,8 @@ void halo_vr_panel_size(int panel, int *width, int *height);
 /* the scope's image, square (vr_host.h's VR_SWAPCHAIN_SCOPE); 0 if there is
 none */
 int halo_vr_scope_size(void);
-/* the swapchain's image for this frame (vr_host.h's VR_SWAPCHAIN_*), a GL
-texture: a 2-layer array for the eyes; 0 if there is none */
+/* whether the swapchain (vr_host.h's VR_SWAPCHAIN_*) has an image for this
+frame, which the host draws: 1, or 0 if there is none */
 unsigned int halo_vr_image(int swapchain);
 /* the frame is presented with what was drawn (it ends as the next begins,
 which halo_vr_frame_active waits for, as vsync would) */

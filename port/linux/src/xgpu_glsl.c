@@ -320,7 +320,7 @@ char *xgpu_glsl_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 		xgpu_text_append(&text, "\tif (screen_points != 0.0)\n\t\tclip_captured = false;\n");
 		/* Keep the captured position independent of the eye. NVIDIA's OVR
 		multiview compiler otherwise reuses the left eye's modified value
-		when it evaluates the right eye (tools/vr_test/gl_multiview.c). */
+		when it evaluates the right eye. */
 		xgpu_text_append(&text, "\tvec4 eye_clip_position = eye_correction[EYE] * clip_position;\n");
 		/* except where the game projected a point itself (lens flares,
 		sprites: vr_render_screen_point), which moves to each eye in the

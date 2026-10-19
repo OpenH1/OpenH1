@@ -12,9 +12,9 @@ its main() on a thread of its own with its stack in guest memory
 (host_thread.c). The main thread waits; the game ends the process.
 
 The guest is the Linux desktop build of the game, so it finds the game data,
-the saves and config.toml as the x86 build does (port/linux/README.md): it
-gets the part of this process's environment that it reads (the HALO_
-settings, HOME, the XDG folders), and /proc/self/exe is this executable.
+the saves and config.toml as port/linux/README.md says: it gets the part of
+this process's environment that it reads (the HALO_ settings, HOME, the XDG
+folders), and /proc/self/exe is this executable.
 The log is the standard error stream.
 
 The macOS build (tools/macos_build.py, port/macos) uses this file too. There
@@ -171,16 +171,6 @@ int main(int argc, char *argv[])
 		host_run_on_stack(game_main_on_stack, NULL, stack + MAIN_STACK_SIZE);
 		host_fatal("the game returned");
 	}
-#endif
-	/* Mesa's GL thread, as the x86 build asks for it (sdl_platform.c): the
-	guest's environment is its own copy, so the guest's request cannot reach
-	the driver, which reads this process's. An explicit setting stays. */
-	setenv("mesa_glthread", "true", 0);
-#ifdef HALO_DESKTOP_GL
-	/* Steam starts its games with Mesa capped at GL 4.3 (and GLSL 430),
-	where the 4.5 context the renderer asks for fails (EGL_BAD_MATCH) */
-	unsetenv("MESA_GL_VERSION_OVERRIDE");
-	unsetenv("MESA_GLSL_VERSION_OVERRIDE");
 #endif
 	host_log_set_sink(log_to_stderr);
 	host_install_signal_handlers();

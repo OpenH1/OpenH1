@@ -28,13 +28,12 @@ from typing import Any, Dict, Iterable, List, Optional
 
 from .guest_arch import ARM64_32, GuestArch
 from .guest_toolchain import LLVM_VERSION, guest_toolchain
-from .linux_build import (LINUX_PROFILE, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL_MATH_DIR, STB_VORBIS_SOURCE, XDK_INCLUDE,
-                          compile_launcher, configuration_defines, game_defines_and_includes, game_sources,
-                          miniupnpc_sources, musl_math_sources, opus_cflags, opus_sources, pgo_mode, pgo_profile,
-                          profile_use_flags, updater_defines, xdk_headers)
+from .build_common import (LINUX_PROFILE, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL_MATH_DIR, PLATFORM_SEMANTICS_HEADER,
+                           SEMANTICS_HEADER, STB_VORBIS_SOURCE, XDK_INCLUDE, compile_launcher, configuration_defines,
+                           download, game_defines_and_includes, game_sources, miniupnpc_sources, musl_math_sources,
+                           opus_cflags, opus_sources, pgo_profile, profile_use_flags, updater_defines, xdk_headers)
 from . import check_host_imports
 from .embed_assets import hud_assets_build, hud_configure_inputs
-from .linux_sysroot import download
 from .ninja_syntax import Writer
 from .vulkan_build import VULKAN_DIR, fetch_vulkan_headers, host_vulkan_renderer
 
@@ -64,7 +63,7 @@ MUSL_VERSION = "1.2.5"
 MUSL_DIR = THIRD_PARTY / f"musl-{MUSL_VERSION}"
 MUSL_URL = f"https://musl.libc.org/releases/musl-{MUSL_VERSION}.tar.gz"
 MUSL_SHA256 = "a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4"
-# (as tools/windows_build.py's and tools/linux_sysroot.py's SDL_VERSION)
+# (as tools/windows_build.py's SDL_VERSION)
 SDL_TAG = "release-3.4.16"
 SDL_DIR = THIRD_PARTY / "SDL3"
 SDL_URL = "https://github.com/libsdl-org/SDL.git"
@@ -95,7 +94,8 @@ GUEST_FLAGS = [
 # only), with the anti-aliasing a phone's GPU can spare (d3d8_device.c)
 ANDROID_DEFINES = ["-DHALO_GLES=1", "-DHALO_ANDROID=1"]
 
-# as the Linux build (tools/linux_build.py), minus what only x86 needs
+# the MSVC semantics the game's sources were written for, as the Windows
+# build has them (tools/windows_build.py), minus what only x86 needs
 GUEST_CODE_FLAGS = [
     "-fms-extensions",
     "-fcommon",
@@ -153,12 +153,14 @@ VARIADIC_PROTOTYPE_FILES = {
 }
 
 HOST_LIBRARIES = ["SDL3", "log", "android", "m", "dl"]
-# (port/android/host's that the app does not build: the OpenGL backend's
-# services, which the Linux hosts have; the app's renderer is Vulkan's)
-HOST_EXCLUDED = {"host_gl.c"}
-# the window import of that OpenGL backend (host_gl_window, every guest's),
-# which the app has not
+# the stand-in for the window import of the OpenGL backend that the hosts
+# once had (host_gl_window, every guest's), which the guests no longer call:
+# every host's renderer is Vulkan's or Metal's (the Linux hosts build it too)
 HOST_RENDERER = PORT_DIR / "host_renderer.c"
+# the files of port/linux/src that a guest whose renderer is in its host
+# (the command stream, HALO_RENDER_STREAM) does not build: the OpenGL
+# backend, its GLSL emitter, anti-aliasing passes and entry points
+RENDER_STREAM_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c", "xgpu_glsl.c", "gl_functions.c"]
 
 
 def _quote(path: Any) -> str:
@@ -277,7 +279,7 @@ def android_configure_inputs() -> List[Path]:
 
 
 def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: GuestArch, prefix: str, label: str,
-                         build: Path, third_party: Path, guest_cc: str, gl_headers: Path, ar: str, ld: str,
+                         build: Path, third_party: Path, guest_cc: str, gl_headers: Optional[Path], ar: str, ld: str,
                          objdump: str, builtins_cc: str, environment: str, platform_defines: List[str],
                          extra_runtime: Optional[List[Path]] = None, extra_imports: Optional[List[Path]] = None,
                          extra_prototypes: Optional[List[Path]] = None, updater_cflags: str = "",
@@ -287,7 +289,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     the builds that run the game as ILP32 code of the architecture arch
     (tools/guest_arch.py): Android, and the desktop guest builds
     (tools/linux_guest_build.py). The caller sets ${prefix}_guest_cc to
-    guest_cc; gl_headers holds the OpenGL ES headers (GLES2, GLES3, KHR), and
+    guest_cc; gl_headers holds the OpenGL ES headers (GLES2, GLES3, KHR) for
+    a guest with OpenGL ES's code paths (HALO_GLES; None for one without), and
     ar, ld and objdump are the archiver, the linker and the disassembler (with
     which tools/guest_image_check.py checks the image). builtins_cc is the compiler
     that names the runtime library the image links with (empty for none: the
@@ -325,8 +328,8 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     # what every guest architecture shares: the system call interface the
     # host translates (port/android/include/halo_guest_syscall.h)
     arch_generic = PORT_DIR / "guest" / "libc" / "arch" / "generic"
-    semantics_header = Path("build/linux/halo_msvc_semantics.h")
-    platform_semantics_header = Path("build/linux/platform_msvc_semantics.h")
+    semantics_header = SEMANTICS_HEADER
+    platform_semantics_header = PLATFORM_SEMANTICS_HEADER
     prefix_header = LINUX_DIR / "include" / "halo_linux_prefix.h"
     image = build / "halo_guest.elf"
     python = "$python"
@@ -360,14 +363,16 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     )
     n.build(outputs=version_h, rule=f"{prefix}_version_h")
 
-    # the NDK's OpenGL ES headers (C declarations only) for the guest
+    # the OpenGL ES headers (C declarations only) for a guest with OpenGL
+    # ES's code paths (the NDK's, or Khronos's); none for the others
     gl_stamp = gl_include / "stamp"
     n.rule(
         name=f"{prefix}_gl_include",
         command=(f"mkdir -p {gl_include} && ln -sfn {gl_headers}/GLES2 {gl_include}/GLES2 && "
                  f"ln -sfn {gl_headers}/GLES3 {gl_include}/GLES3 && "
                  f"ln -sfn {gl_headers}/KHR {gl_include}/KHR && "
-                 f"ln -sfn {gl_headers}/GL {gl_include}/GL && touch $out"),
+                 f"ln -sfn {gl_headers}/GL {gl_include}/GL && touch $out") if gl_headers else
+                f"mkdir -p {gl_include} && touch $out",
         description=f"{label} GL HEADERS",
     )
     n.build(outputs=gl_stamp, rule=f"{prefix}_gl_include")
@@ -447,10 +452,10 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     tool_implicit = [*([Path("tools/android_asm_convert.py")] if arch.darwin_assembly else []), *generated_headers]
     if base_register:
         tool_implicit.append(Path("tools/guest_base_register.py"))
-    # profile-guided optimisation with the Linux build's profile (committed,
-    # or trained by the Linux build with --pgo=train): the game and platform
-    # code are the same, and functions that differ simply go without
-    profile = pgo_profile(sln, LINUX_PROFILE if pgo_mode(sln) == "train" else None, [LINUX_PROFILE], guest_cc)
+    # profile-guided optimisation with the committed Linux profile: the game
+    # and platform code are the same, and functions that differ simply go
+    # without (the guests train none of their own: --pgo=train uses it too)
+    profile = pgo_profile(sln, None, [LINUX_PROFILE], guest_cc)
     profile_flags = " ".join(profile_use_flags(profile))
     if profile:
         tool_implicit.append(profile)
@@ -681,8 +686,7 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     # chooses, tools/guest_base_register.py, instead of the fixed low ranges)
     base_register = getattr(sln, "guest_base", False)
     # (the renderer's backend is the host's, as the Linux guest builds have
-    # it, Vulkan's here: the guest builds no OpenGL backend of its own)
-    from .host_gl_build import RENDER_STREAM_GUEST_EXCLUDED
+    # it, Vulkan's: the guest builds no OpenGL backend of its own)
     guest = generate_guest_image(
         n, sln, config, arch=ARM64_32, prefix="android", label="ANDROID", build=BUILD, third_party=THIRD_PARTY,
         guest_cc=guest_cc, gl_headers=sysroot_include, ar=toolchain.ar if toolchain else "$android_ndk_bin/llvm-ar",
@@ -733,8 +737,7 @@ def generate_android_build(n: Writer, sln: Any) -> None:
         f"-I{PORT_DIR}/include", f"-I{PORT_DIR}/host", f"-I{SDL_DIR}/include", f"-I{LINUX_DIR}/src",
         f"-I{TOML_DIR}", "-DHALO_VULKAN=1", *(["-DHALO_GUEST_BASE=1"] if base_register else []),
     ])
-    host_sources = host_memory_sources(sorted(path for path in (PORT_DIR / "host").glob("*.c")
-                                              if path.name not in HOST_EXCLUDED), base_register) + [
+    host_sources = host_memory_sources(sorted((PORT_DIR / "host").glob("*.c")), base_register) + [
         HOST_RENDERER, LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",
         # the app reads debug.sample_seconds from config.toml (host_main.c)
         TOML_DIR / "tomlc17.c",
@@ -763,7 +766,7 @@ def generate_android_build(n: Writer, sln: Any) -> None:
                 variables={"cflags": mbedtls_cflags + (" -w" if source.name != "posix_dtls.c" else "")})
         host_objects.append(obj)
     # the renderer for the command stream, Vulkan's, with the Xbox's texture
-    # decoding (which no OpenGL backend beside it has)
+    # decoding
     host_objects += host_vulkan_renderer(n, "android", "ANDROID", BUILD, "android_host_cc",
                                          host_cflags, vulkan_headers, texture_decoding=True)
     table_obj = host_obj_dir / "host_import_table.c.o"

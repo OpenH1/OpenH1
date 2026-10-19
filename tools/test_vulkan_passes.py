@@ -23,10 +23,11 @@ def test_vulkan_passes(tmp_path):
     cc = os.environ.get("CC") or shutil.which("clang") or shutil.which("cc")
     if not cc or not sys.platform.startswith("linux"):
         pytest.skip("needs a C compiler on Linux")
-    candidates = [ROOT / "build/linux_vulkan/third_party/vulkan-headers", Path("/usr/include")]
-    headers = next((path for path in candidates if (path / "vulkan/vulkan_core.h").exists()), None)
+    candidates = [ROOT / f"build/{name}/third_party/vulkan-headers" for name in ("linux_x86_64", "linux_arm64")]
+    headers = next((path for path in candidates + [Path("/usr/include")]
+                    if (path / "vulkan/vulkan_core.h").exists()), None)
     if headers is None:
-        pytest.skip("needs Vulkan headers (configure --linux-vulkan)")
+        pytest.skip("needs Vulkan headers (configure.py fetches them for the Linux build)")
     binary = tmp_path / "vulkan_passes"
     subprocess.run([
         cc, "-std=gnu11", "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",

@@ -1287,8 +1287,8 @@ unsigned int halo_vr_image(int swapchain)
 {
 	if (!vr.frame || swapchain < 0 || swapchain >= VR_SWAPCHAIN_COUNT)
 		return 0;
-	/* (the host acquires the images, as it draws: port/linux/host/
-	host_gl_vr.c; here they are only said to be) */
+	/* (the host acquires the images, as it draws: port/linux/vulkan/
+	host_vulkan_vr.c; here they are only said to be) */
 	vr.acquired[swapchain] = 0;
 	return 1;
 }
@@ -4630,7 +4630,7 @@ void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn)
 		return;
 	/* (the host ends the frame with these layers, leaving out those whose
 	image it did not acquire or draw: every image taken as acquired, the
-	eyes' depth as written: port/linux/host/host_gl_vr.c) */
+	eyes' depth as written: port/linux/vulkan/host_vulkan_vr.c) */
 	{
 		int swapchain;
 
