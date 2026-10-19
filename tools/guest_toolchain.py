@@ -131,8 +131,13 @@ def toolchain_in(folder: Path) -> GuestToolchain:
                if not (bin_dir / name).exists() and not (bin_dir / f"{name}.exe").exists()]
     if missing:
         raise RuntimeError(f"no {', '.join(missing)} in {bin_dir}")
-    return GuestToolchain(cc=str(bin_dir / "clang"), ld=str(bin_dir / "ld.lld"), ar=str(bin_dir / "llvm-ar"),
-                          objdump=str(bin_dir / "llvm-objdump"))
+
+    def tool(name: str) -> str:
+        # (Windows's are .exe files, named so in full: a program's name with
+        # another dot in it, ld.lld, gets no .exe from CreateProcess)
+        return str(bin_dir / f"{name}.exe") if (bin_dir / f"{name}.exe").exists() else str(bin_dir / name)
+
+    return GuestToolchain(cc=tool("clang"), ld=tool("ld.lld"), ar=tool("llvm-ar"), objdump=tool("llvm-objdump"))
 
 
 def _kept(name: str) -> bool:
