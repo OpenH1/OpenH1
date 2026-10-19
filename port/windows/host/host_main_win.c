@@ -18,7 +18,7 @@ window and pumps its events.
 
 The guest is the desktop build of the game with the Windows code paths
 (HALO_WINDOWS), so it finds the game data, the saves and config.toml as the
-32-bit Windows build does (port/windows/README.md): it gets the part of
+32-bit Windows build before it did (port/windows/README.md): it gets the part of
 this process's environment it reads (its HALO_ settings, the user's
 folders), in UTF-8, and /proc/self/exe is this executable. The log is the
 standard error stream; without one (a release build has no console),

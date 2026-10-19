@@ -8,10 +8,10 @@ the GLSL emitter (xgpu_glsl.c), the FXAA and SMAA passes
 replacements (hud_hires.c, text_hires.c, menu_files.c), which still make
 GL textures themselves.
 
-The backend is built into the game by the builds that draw with OpenGL in
-the game's own process: the 32-bit Windows build and the web build. The
-guest builds (Linux, Android, macOS) draw in their host, with Vulkan or
-Metal, from the renderer's command stream.
+The backend is built into the game by the build that draws with OpenGL in
+the game's own process: the web build. The guest builds (Linux, Windows,
+Android, macOS) draw in their host, with Vulkan or Metal, from the
+renderer's command stream.
 */
 
 #ifndef __HALO_LINUX_XGPU_GL_H
