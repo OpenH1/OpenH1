@@ -5,7 +5,9 @@ The real Vulkan core over a recording-only Vulkan: no driver or GPU.
 Checks attachment load actions, clears inside a pass, multiview layer
 selection, sampling an array's first layer as a 2D image, and capability
 requirements on devices with optional depth formats or query precision.
-Also checks packed vertex bindings and transfer/submission dependencies,
+Also checks the shader modules found again (by their words, or a fixed
+program's by their address), packed vertex bindings, each draw's state set
+only where it changed, and transfer/submission dependencies,
 the texture sets a submission reuses, the order of the enhanced dynamic
 lights' uploads among the draws, and anti-aliasing's passes: their order,
 attachments, barriers, samples and uniforms (xgpu_vulkan_post.c); and the
@@ -1655,6 +1657,47 @@ static void pipeline_cache_test(void)
 	reset();
 }
 
+static unsigned int modules_made;
+
+static VkResult VKAPI_CALL fake_shader_module(VkDevice device, const VkShaderModuleCreateInfo *info,
+	const VkAllocationCallbacks *allocator, VkShaderModule *module)
+{
+	(void)device; (void)allocator;
+	assert(info->codeSize % 4 == 0 && info->pCode);
+	*module = (VkShaderModule)(uintptr_t)(500 + modules_made++);
+	return VK_SUCCESS;
+}
+
+/* A module is the same for the same words, made once (by its words'
+hash, eight bytes at a time); the fixed programs' (the VR composition's,
+asked for at each of its draws) are found by their address, not read
+again. */
+static void shaders_test(void)
+{
+	static uint32_t fixed[5] = { 0x07230203, 1, 2, 3, 4 };
+	uint32_t copy[5], other[3] = { 0x07230203, 9, 9 };
+	VkShaderModule module;
+
+	reset();
+	modules_made = 0;
+	vkCreateShaderModule = fake_shader_module;
+	memcpy(copy, fixed, sizeof(copy));
+	module = xgpu_vulkan_shader_constant(fixed, 5);
+	assert(module && modules_made == 1);
+	assert(xgpu_vulkan_shader_constant(fixed, 5) == module && vk.constant_shader_count == 1);
+	/* (the same words elsewhere: the same module, by their hash) */
+	assert(xgpu_vulkan_shader(copy, 5) == module && modules_made == 1);
+	assert(xgpu_vulkan_shader(other, 3) != module && modules_made == 2);
+	/* (found by the address: the words are not hashed or compared again) */
+	fixed[4] = 5;
+	assert(xgpu_vulkan_shader_constant(fixed, 5) == module && modules_made == 2);
+	/* (another count at the address is another module) */
+	assert(xgpu_vulkan_shader_constant(fixed, 4) != module && modules_made == 3);
+	assert(bytes_hash64(copy, sizeof(copy)) != bytes_hash64(fixed, sizeof(fixed)));
+	assert(bytes_hash64(copy, 19) != bytes_hash64(copy, 20));
+	reset();
+}
+
 int main(void)
 {
 	static const int32_t full[1][4] = { { 0, 0, 64, 48 } };
@@ -1665,6 +1708,7 @@ int main(void)
 		XGPU_VULKAN_CLEAR_DEPTH | XGPU_VULKAN_CLEAR_STENCIL;
 
 	capabilities_test();
+	shaders_test();
 	vertex_input_test();
 	uploads_test();
 	dynamic_lights_test();
