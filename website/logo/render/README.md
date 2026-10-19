@@ -6,7 +6,7 @@ stencilled steel panel. Both scripts need Blender 4.2 or later (made with 5.2).
 - `build_scene.py` reads `../round4/c-bright/mark.svg`, builds the plate,
   fasteners, materials, cameras and lights, and saves `scene.blend`. The
   stencil masks it rasterises from the SVG go into `_build/` and are packed into
-  the .blend. Everything is procedural: there are no downloaded textures or HDRIs.
+  the .blend. Two CC0 downloads (CREDITS.md) give the paint a scanned surface and the scene a photographed studio's light; build_scene.py fetches them into textures/ when missing.
 - `render.py` renders the shots from `scene.blend`:
   `hero.png` (2400 x 1600, head-on on a dark backdrop), `front.png` (2048 x 2048,
   transparent), `icon-1024.png` (1024 x 1024, transparent, panel about 85 %) and

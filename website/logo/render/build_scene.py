@@ -3,7 +3,7 @@ from its vector source, and saves it as scene.blend next to this script:
 
     blender -b -P website/logo/render/build_scene.py
 
-Everything is made here, with no downloaded assets:
+Everything is made here, apart from two CC0 downloads (CREDITS.md):
 
 * mark.svg is parsed for the panel outline, the seam, the four fasteners, the
   stencilled H and 1, the paint specks and the OPENH1-001 serial, and its exact
