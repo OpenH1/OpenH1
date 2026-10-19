@@ -1,7 +1,8 @@
 /*
-HOST_GL_VR.C
+HOST_VR_STREAM.C
 
-The VR records shared by the host renderers (HALO_VR; host_vr_stream.h):
+The VR records of the renderer's command stream (HALO_VR; host_vr_stream.h),
+for the host's renderer (Vulkan's, port/linux/vulkan/host_vulkan_vr.c):
 the records' entries (xgpu_stream.h, "the VR mode"),
 and what the renderer's composition asks of the game's VR mode (vr.h's and
 vr_visor.h's functions, the guest's vr.c and vr_visor.c), answered as the
@@ -28,7 +29,6 @@ submitted with the eyes moved.
 #include "host.h"
 #include "host_render_stream.h"
 #include "host_vr_stream.h"
-#include "host_gl_renderer.h"
 #include "host_vr_render.h"
 #include "xgpu_backend.h"
 #include "vr.h"
@@ -56,8 +56,6 @@ _Static_assert(sizeof(struct vr_visor_panel) == XGPU_STREAM_VR_PANEL_WORDS * 4, 
 _Static_assert(offsetof(struct vr_visor_image, noise_texture) >= XGPU_STREAM_VR_VISOR_IMAGE_WORDS * 4 &&
 	offsetof(struct vr_visor_image, noise_texture) < XGPU_STREAM_VR_VISOR_IMAGE_WORDS * 4 + 8, "VR visor image");
 
-/* (xgpu_gl.c's: vr.c's callers declare it) */
-void halo_vr_eye_feed(float squash, float shrink, float bright, float noise, float red, float look, float interference);
 _Static_assert(sizeof(struct vr_visor_rim) == XGPU_STREAM_VR_RIM_WORDS * 4, "VR rim");
 
 static struct
@@ -85,6 +83,51 @@ static struct
 } vr_frame;
 
 static const struct host_vr_renderer *renderer;
+
+/* ---------- the settings (port_config.h, the stand-in beside the
+renderer's shared files: port/linux/vulkan/xgpu_vulkan_port_config.h)
+
+The VR mode's debugging settings, from their environment variables alone
+(port_config.c's names and defaults), as config.toml is the guest's. */
+
+static const struct
+{
+	const char *name, *variable, *value;
+} settings[] =
+{
+	{ "debug.screenshot_directory", "HALO_SCREENSHOT_DIR", "" },
+	{ "debug.vr_gpu_time", "HALO_VR_GPU_TIME", "false" },
+	{ "debug.vr_foveation_show", "HALO_VR_FOVEATION_SHOW", "false" },
+};
+
+const char *config_string(const char *name)
+{
+	size_t index;
+
+	for (index = 0; index < sizeof(settings) / sizeof(settings[0]); index++)
+	{
+		const char *value;
+
+		if (strcmp(settings[index].name, name))
+			continue;
+		value = getenv(settings[index].variable);
+		return value ? value : settings[index].value;
+	}
+	host_logf(HOST_LOG_WARN, "vr: no setting %s in the host", name);
+	return "";
+}
+
+int config_boolean(const char *name)
+{
+	const char *value = config_string(name);
+
+	return !strcmp(value, "true") || !strcmp(value, "1") || !strcmp(value, "yes") || !strcmp(value, "on");
+}
+
+long config_integer(const char *name)
+{
+	return strtol(config_string(name), NULL, 10);
+}
 
 /* ---------- the late latch */
 
@@ -890,46 +933,4 @@ void host_vr_stream_backend(struct host_render_backend *backend, const struct ho
 	/* (OpenXR's calls that use the context from now on on the render
 	thread: host_vr_render.h) */
 	host_vr_render_thread();
-}
-
-/* OpenGL supplies only its rendering operations; frame timing, poses and
-layer submission above are the same for every host backend. */
-static void gl_initialize(struct xgpu_vr_info *info)
-{
-	xgpu_backend_vr_initialize(info);
-	xgpu_foveated = info->foveated ? 1 : 0;
-}
-
-static BOOL gl_sample_counting(void)
-{
-	return xgpu_backend_capabilities.sample_counting;
-}
-
-static unsigned int gl_image(int swapchain, int index)
-{
-	return host_vr_info()->images[swapchain][index];
-}
-
-void host_gl_vr_backend(struct host_render_backend *backend)
-{
-	static const struct host_vr_renderer gl =
-	{
-		.supported = xgpu_backend_vr_supported,
-		.initialize = gl_initialize,
-		.sample_counting = gl_sample_counting,
-		.eyes = xgpu_backend_vr_eyes,
-		.pass = xgpu_backend_vr_pass,
-		.groups_reset = xgpu_backend_vr_groups_reset,
-		.timing = xgpu_backend_vr_timing,
-		.compose = xgpu_backend_vr_compose,
-		.submit = xgpu_backend_vr_submit,
-		.eye_transforms = halo_vr_set_eye_transforms,
-		.screen_corrections = halo_vr_set_screen_corrections,
-		.sky = halo_vr_sky,
-		.eye_feed = halo_vr_eye_feed,
-		.eye_tint = halo_vr_eye_tint,
-		.image = gl_image,
-	};
-
-	host_vr_stream_backend(backend, &gl);
 }

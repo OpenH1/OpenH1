@@ -208,28 +208,3 @@ int main(void) {
     return 0;
 }
 ''')
-
-
-def test_host_gl_uses_render_owned_state_without_sdl_window_queries(tmp_path):
-    query = function('port/linux/host/host_gl_stream.c', 'static int stream_loading_owned(void *context)')
-    assert 'SDL_' not in query
-    run(tmp_path, r'''
-#include <assert.h>
-#define HALO_VR 1
-static struct { int current,window; } gl;
-static int vr, owned, queries;
-static int host_vr_info(void) { return vr; }
-static int host_vr_loading_owned(void) { queries++; return owned; }
-''' + query + r'''
-int main(void) {
-    assert(!stream_loading_owned(0) && !queries);
-    gl.current=1; assert(!stream_loading_owned(0));
-    gl.window=1; assert(stream_loading_owned(0) && !queries);
-    vr=1; assert(!stream_loading_owned(0) && queries==1);
-    owned=1; assert(stream_loading_owned(0) && queries==2);
-    owned=0; assert(!stream_loading_owned(0) && queries==3);
-    vr=0; assert(stream_loading_owned(0) && queries==3);
-    gl.current=0; assert(!stream_loading_owned(0));
-    return 0;
-}
-''')

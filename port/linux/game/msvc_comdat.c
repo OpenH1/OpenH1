@@ -6,14 +6,15 @@ External definitions of the game's header inline functions.
 MSVC emits a C __inline function that has external linkage as a COMDAT, so
 a unit that sees only an ordinary prototype (bitmap_color_conversion.h
 declares real_rgb_color_to_pixel32, for example) links against a copy
-emitted by any other unit. The Linux build gives header inlines internal
+emitted by any other unit. The guest builds give header inlines internal
 linkage instead (halo_linux_prefix.h), so no unit exports them. This unit
 includes the headers that hold such functions with __inline meaning plain
 gnu89 inline, which emits an external definition of each; the generated
 `#pragma weak` list makes those definitions pick-any, like a COMDAT.
 
-tools/linux_link_check.py fails the link if a header inline that some unit
-calls through a prototype is still missing: add its header here.
+A header inline that some unit calls through a prototype must have its
+header here: else the unit's weak reference to it is left undefined, which
+the linker resolves to address 0.
 
 On Windows (port/windows) the functions keep MSVC's COMDAT linkage in every
 other unit, and this unit adds one weak definition of each (a COFF weak

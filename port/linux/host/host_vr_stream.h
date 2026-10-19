@@ -1,8 +1,8 @@
 /*
 HOST_VR_STREAM.H
 
-The VR records and late latch shared by the host renderers (implemented in
-host_gl_vr.c). The renderer owns its GPU work; this layer locates poses,
+The VR records and late latch of the host's renderer (implemented in
+host_vr_stream.c). The renderer owns its GPU work; this layer locates poses,
 acquires the runtime's images and submits the frame's layers.
 */
 
@@ -30,8 +30,8 @@ struct host_vr_renderer
 	void (*sky)(int sky);
 	void (*eye_feed)(float squash, float shrink, float bright, float noise, float red, float look, float interference);
 	void (*eye_tint)(float red, float green, float blue);
-	/* An acquired runtime image as the renderer names it: GL's texture,
-	or a Vulkan host token. This name never crosses the guest ABI. */
+	/* An acquired runtime image as the renderer names it (a Vulkan host
+	token). This name never crosses the guest ABI. */
 	unsigned int (*image)(int swapchain, int index);
 };
 

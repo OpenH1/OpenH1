@@ -9,7 +9,7 @@ directory when it has maps/, else the game's folder when it has maps/ (on
 Linux the release's root, or ~/.local/share/halo-linux when the game is
 installed: install_layout.c; on Windows the executable's folder), else
 assets/ in the current directory or two levels above the executable (the
-repository root for build/linux/halo).
+repository root for build/linux_x86_64/halo).
 h:\ is the Halo Custom Edition install paths.custom_edition names, if any
 (its maps folder holds the resource maps Custom Edition maps need, and more
 maps).
@@ -110,7 +110,7 @@ const char *platform_data_root(void)
 			}
 			else if (length > 0)
 			{
-				/* <repository>/build/linux/halo -> <repository>/assets */
+				/* <repository>/build/linux_x86_64/halo -> <repository>/assets */
 				char *slash;
 				int level;
 

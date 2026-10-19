@@ -1,6 +1,8 @@
 """The host's OpenXR Vulkan ABI and swapchain ownership, without a GPU.
 
-Requires the pinned headers fetched by configure.py --vr --linux-vulkan.
+Requires the pinned headers that configure.py fetches for the Linux build
+(and with --vr, OpenXR's) in build/linux_x86_64/third_party or
+build/linux_arm64/third_party.
 """
 import platform
 import shutil
@@ -10,6 +12,13 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def third_party():
+    """the Linux build's downloaded sources (the Vulkan and OpenXR headers):
+    this computer's build's, else the other's"""
+    folders = [ROOT / f"build/{name}/third_party" for name in ("linux_x86_64", "linux_arm64")]
+    return next((folder for folder in folders if (folder / "vulkan-headers").is_dir()), folders[0])
 
 
 @pytest.mark.parametrize(("name", "sanitizer"), [
@@ -25,10 +34,10 @@ def test_runtime_binding_and_image_ownership(tmp_path, name, sanitizer):
     cc = next((shutil.which(name) for name in ("clang", "cc") if shutil.which(name)), None)
     if not cc:
         pytest.skip("no C compiler")
-    headers = ROOT / "build/linux_vulkan/third_party"
+    headers = third_party()
     if not (headers / "openxr/openxr/openxr_platform.h").is_file() or not (
             headers / "vulkan-headers/vulkan/vulkan_core.h").is_file():
-        pytest.skip("configure.py --vr --linux-vulkan fetches the headers")
+        pytest.skip("configure.py --vr fetches the headers")
     binary = tmp_path / name
     command = [
         cc, "-std=gnu11", "-Wall", "-Werror", "-Wno-unused-function", "-O1", "-D_GNU_SOURCE",
@@ -55,9 +64,9 @@ def test_gpu_timestamps_without_waiting(tmp_path):
     cc = next((shutil.which(name) for name in ("clang", "cc") if shutil.which(name)), None)
     if not cc:
         pytest.skip("no C compiler")
-    headers = ROOT / "build/linux_vulkan/third_party/vulkan-headers"
+    headers = third_party() / "vulkan-headers"
     if not (headers / "vulkan/vulkan_core.h").is_file():
-        pytest.skip("configure.py --linux-vulkan fetches the headers")
+        pytest.skip("configure.py fetches the headers for the Linux build")
     binary = tmp_path / "vulkan_gpu_time_test"
     subprocess.run([
         cc, "-std=gnu11", "-Wall", "-Werror", "-Wno-unused-function", "-O1", "-D_GNU_SOURCE",

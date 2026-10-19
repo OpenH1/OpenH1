@@ -40,8 +40,17 @@ toward its heading turned as they ask, as the game turns it toward a
 driver's facing, which is all the netcode sends of it.
 
 The switch from the player's own heading to the vehicle's is made as the
-eye moves into the seat, in the blink's dark; getting out, the player keeps
-the vehicle's heading as it was.
+eye comes into the seat: the play space turned to it, eased, no faster than
+CLIMB_TURN_MOST (with vr.seat_motion = "blink", all at once in the blink's
+dark); getting out, the player keeps the vehicle's heading as it was.
+
+With the hands off the handlebars or the wheel, either stick pushed sideways
+steers (src/vr.c), the left one throttling as ever: the player can drive
+without taking hold. The driver of a vehicle the game steers toward the
+facing that is not ridden so (the Scorpion's; a Warthog's with
+vr.warthog_steering = "look") is told to src/vr.c each frame
+(halo_vr_seat_drive): there the left stick's sideways push turns the
+player, and the aim, which the vehicle steers toward, with them.
 */
 
 #ifdef HALO_VR
@@ -67,6 +76,7 @@ the vehicle's heading as it was.
 void platform_log(char const *format, ...);
 /* vr_seat.c's */
 boolean vr_seat_seated_shown(void);
+real vr_seat_darkness(void);
 /* vr_climb.c's */
 boolean vr_climb_seating(void);
 void vr_climb_offset(real_vector3d *offset);
@@ -189,6 +199,40 @@ static struct vehicle_seat const *vehicle_seat_find(long unit_index, long *vehic
 	return NULL;
 }
 
+/* the driver's seat of a vehicle the game steers toward the driver's
+facing whose sideways throttle moves nothing (the tank's and the jeep's
+physics, vehicles.c: their slide is unused), seated: told to src/vr.c
+(halo_vr_seat_drive) for one not ridden by vehicle_seats */
+static void vehicle_drive(long unit_index)
+{
+	struct unit_datum *unit;
+	struct object_datum *vehicle;
+	struct unit_definition *definition;
+	short type;
+
+	if (unit_index == NONE || (unit = unit_get(unit_index))->object.parent_object_index == NONE ||
+		unit->unit.parent_seat_index == NONE || unit->unit.animation.state == _unit_state_entering_seat ||
+		unit->unit.animation.state == _unit_state_exiting_seat)
+	{
+		return;
+	}
+	vehicle = object_get(unit->object.parent_object_index);
+	if (vehicle->object.type != _object_type_vehicle)
+		return;
+	definition = unit_definition_get(vehicle->definition_index);
+	if (unit->unit.parent_seat_index >= definition->unit.seats.count ||
+		!TEST_FLAG(TAG_BLOCK_GET_ELEMENT(&definition->unit.seats, unit->unit.parent_seat_index,
+		struct unit_seat)->flags, _unit_seat_driver_bit))
+	{
+		return;
+	}
+	/* (the tag's vehicle type, vehicles.c's struct vehicle_definition's
+	vehicle_type: 0 the human tank, 1 the human jeep) */
+	type = *(short const *)((char const *)tag_get(VEHICLE_DEFINITION_TAG, vehicle->definition_index) + 0x2f4);
+	if (type == 0 || type == 1)
+		halo_vr_seat_drive();
+}
+
 /* a point (from the eye) or a direction in the world in the player's axes
 (forward, left, up: turned back by the view's heading; metres) */
 static void player_axes(real_vector3d const *v, real heading, real scale, float out[3])
@@ -216,7 +260,9 @@ boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye,
 	real_point3d handle_eye;
 	short hand;
 
-	if ((seat = vehicle_seat_find(seated_unit_index, &vehicle_index)) == NULL || !vr_seat_seated_shown())
+	if ((seat = vehicle_seat_find(seated_unit_index, &vehicle_index)) == NULL)
+		vehicle_drive(seated_unit_index);
+	if (seat == NULL || !vr_seat_seated_shown())
 	{
 		if (vr_vehicle.vehicle_index != NONE)
 		{
@@ -285,9 +331,12 @@ boolean vr_vehicle_view(long seated_unit_index, real seconds, real_point3d *eye,
 		vr_vehicle.velocity_tick = NONE;
 		vr_vehicle.speeding = 0.0f;
 		vr_vehicle.handles_found = TRUE;
-		/* (got in by the hands: the play space turned to the vehicle's
-		heading as the eye glides into the seat, not in a blink) */
-		vr_vehicle.turn = vr_climb_seating() ? (real)remainder(*base_yaw - heading, 2.0 * M_PI) : 0.0f;
+		/* (got in by the hands, or by the action with the eye riding the
+		body in (vr.seat_motion = "still": no blink): the play space turned
+		to the vehicle's heading as the eye comes into the seat; only in a
+		blink's dark, all at once) */
+		vr_vehicle.turn = vr_climb_seating() || vr_seat_darkness() < 0.5f ?
+			(real)remainder(*base_yaw - heading, 2.0 * M_PI) : 0.0f;
 		vr_vehicle.turn_seconds = MAX(CLIMB_TURN_SECONDS, 1.5f * (real)fabs(vr_vehicle.turn) / CLIMB_TURN_MOST);
 		vr_vehicle.turned_seconds = 0.0f;
 		if (vr_vehicle.turn != 0.0f)

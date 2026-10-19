@@ -119,7 +119,8 @@ trigger senses no touch; it comes on and off over TRIGGER_TOUCH_SECONDS */
 #define RECENTRE_SECONDS 0.75f
 /* a vehicle's seat ridden first-person (port/linux/game/vr_vehicle.c, which
 places it each frame and turns the view with the vehicle: the stick turns
-nothing there), and its controls (HALO_VR_SEAT_*): a Ghost's handlebars
+the view nothing there, but steers a seat steered by its controls while the
+hands do not both hold them: STICK_STEER_*), and its controls (HALO_VR_SEAT_*): a Ghost's handlebars
 (vr.ghost_steering = "handlebars"), a Warthog's wheel (vr.warthog_steering =
 "wheel"), a turret's handles, or none (a passenger's: the hands as on foot).
 Each hand takes its handle as its grip closes past HANDLEBAR_GRIP_PRESSED
@@ -164,6 +165,21 @@ HANDLEBAR_PLACED_FRAMES frames is no seat. */
 #define HANDLEBAR_RELEASE_SECONDS 0.15f
 #define HANDLEBAR_PLACED_FRAMES 2
 #define WHEEL_RATIO 4.0f
+/* with the hands off a Ghost's handlebars or a Warthog's wheel (not both
+held), either stick pushed sideways steers, the stronger push of the two
+(the left stick's then does not strafe), past STICK_STEER_DEADZONE: the
+Ghost asks for a turn of up to HANDLEBAR_TURN_FASTEST radians a second at a
+full push, as the bars turned 45 degrees do; the Warthog turns its wheels as
+far as their lock at a full push (the other way as it reverses, as the
+wheel does); eased in over STICK_STEER_SECONDS (the time constant), and out
+over HANDLEBAR_RELEASE_SECONDS as the stick comes back: the vehicle then
+holds its course. Driving a vehicle the game steers toward the aim (the
+Scorpion: halo_vr_seat_drive), the left stick's sideways push turns the
+player smoothly, at up to STICK_DRIVE_FASTEST radians a second: the aim
+turns, and the vehicle after it, as the right stick turns them. */
+#define STICK_STEER_DEADZONE 0.2f
+#define STICK_STEER_SECONDS 0.08f
+#define STICK_DRIVE_FASTEST 1.5708f
 /* the comfort vignette (vr.comfort_vignette): eased toward what the game
 asks for over VIGNETTE_IN_SECONDS as it grows and VIGNETTE_OUT_SECONDS as it
 falls (time constants), to nothing when the game asks for none */
@@ -576,6 +592,10 @@ static struct
 	float bars_turn;
 	float bars_pitch;
 	float bars_pitch_zero;
+	/* driving a vehicle steered toward the aim (halo_vr_seat_drive): when
+	told last (vr.presents) */
+	unsigned long drive_told;
+	int drive_told_valid;
 	/* the comfort vignette: asked for (and at which frame), and as drawn */
 	float vignette_asked;
 	unsigned long vignette_asked_at;
@@ -1287,8 +1307,8 @@ unsigned int halo_vr_image(int swapchain)
 {
 	if (!vr.frame || swapchain < 0 || swapchain >= VR_SWAPCHAIN_COUNT)
 		return 0;
-	/* (the host acquires the images, as it draws: port/linux/host/
-	host_gl_vr.c; here they are only said to be) */
+	/* (the host acquires the images, as it draws: port/linux/vulkan/
+	host_vulkan_vr.c; here they are only said to be) */
 	vr.acquired[swapchain] = 0;
 	return 1;
 }
@@ -3404,6 +3424,29 @@ static int seat_held(void)
 	return seat_hands() && vr.bars_held[0] && vr.bars_held[1];
 }
 
+/* steered by the sticks: a seat steered by its controls, without both hands
+holding them (STICK_STEER_*) */
+static int seat_stick_steers(void)
+{
+	return seat_steers() && !(vr.bars_held[0] && vr.bars_held[1]);
+}
+
+/* driving a vehicle steered toward the aim, told this frame or the last */
+static int seat_drives(void)
+{
+	return settings.controller_aim && vr.drive_told_valid && vr.presents - vr.drive_told <= HANDLEBAR_PLACED_FRAMES &&
+		!handlebars_active();
+}
+
+/* a stick's sideways push past STICK_STEER_DEADZONE, from it (-1 to 1) */
+static float stick_steer_push(float x)
+{
+	if (fabsf(x) <= STICK_STEER_DEADZONE)
+		return 0.0f;
+	x = (x - (x > 0.0f ? STICK_STEER_DEADZONE : -STICK_STEER_DEADZONE)) / (1.0f - STICK_STEER_DEADZONE);
+	return x > 1.0f ? 1.0f : x < -1.0f ? -1.0f : x;
+}
+
 /* a hand's place (grip), and its pointing's pitch (radians), in the game's
 axes from the recentred head (metres) */
 static int bars_hand(int hand, float place[3], float *pitch)
@@ -3441,20 +3484,66 @@ static void wheel_line(float place[2][3], float line[3])
 		line[axis] = length > 0.0f ? line[axis] / length : 0.0f;
 }
 
-/* the facing's turn from the vehicle's heading (radians) that keeps it
-turning as the bars' turn asks (HANDLEBAR_TURN_*): the error at which the
-game's turn toward the facing is as fast */
-static float bars_facing(float turn)
+/* the facing's turn from the Ghost's heading (radians, unsigned) that keeps
+it turning this fast (radians a second): the error at which the game's turn
+toward the facing is as fast */
+static float turn_facing(float rate)
 {
-	float rate = fabsf(turn) * HANDLEBAR_TURN_RATE, tick, error;
+	float tick, error;
 
 	if (rate > HANDLEBAR_TURN_FASTEST)
 		rate = HANDLEBAR_TURN_FASTEST;
+	if (rate <= 0.0f)
+		return 0.0f;
 	tick = rate / HANDLEBAR_TICKS_PER_SECOND;
 	error = tick * tick / (2.0f * HANDLEBAR_GHOST_TURN_ACCELERATION);
 	if (error < 2.0f * tick)
 		error = 2.0f * tick;
+	return error;
+}
+
+/* the facing's turn from the vehicle's heading (radians) that keeps it
+turning as the bars' turn asks (HANDLEBAR_TURN_*) */
+static float bars_facing(float turn)
+{
+	float error = turn_facing(fabsf(turn) * HANDLEBAR_TURN_RATE);
+
 	return turn < 0.0f ? -error : error;
+}
+
+/* the facing's turn from the vehicle's heading (radians: to the left) the
+sticks steer by, with the hands off the controls (STICK_STEER_*): the
+stronger sideways push of the two (to the right, positive) */
+static float stick_facing(int kind, float left_x, float right_x, float lock_left, float lock_right, float steer_sign)
+{
+	float left = stick_steer_push(left_x), right = stick_steer_push(right_x);
+	float push = fabsf(left) > fabsf(right) ? left : right;
+
+	if (push == 0.0f)
+		return 0.0f;
+	if (kind == HALO_VR_SEAT_BARS)
+	{
+		float error = turn_facing(fabsf(push) * HANDLEBAR_TURN_FASTEST);
+
+		return push > 0.0f ? -error : error;
+	}
+	if (kind == HALO_VR_SEAT_WHEEL)
+		return (push > 0.0f ? -push * lock_right : -push * lock_left) * steer_sign;
+	return 0.0f;
+}
+
+/* without both hands on the controls, once a frame: the turn the sticks
+steer by eased toward (STICK_STEER_*), else out (ease: this frame's of
+HANDLEBAR_RELEASE_SECONDS) */
+static void stick_steer_update(float seconds, float ease)
+{
+	float steer = seat_stick_steers() ? stick_facing(vr.seat.kind, vr.input.left_stick[0], vr.input.right_stick[0],
+		vr.seat.lock[0], vr.seat.lock[1], vr.seat.steer_sign) : 0.0f;
+
+	if (steer != 0.0f)
+		vr.bars_turn += (steer - vr.bars_turn) * (1.0f - expf(-seconds / STICK_STEER_SECONDS));
+	else
+		vr.bars_turn -= vr.bars_turn * ease;
 }
 
 /* the handlebars, once a frame (HANDLEBAR_* above): each hand takes its
@@ -3468,8 +3557,13 @@ static void handlebars_update(float seconds)
 
 	if (!seat_hands())
 	{
+		/* (no handles to hold: the sticks steer alone) */
 		vr.bars_held[0] = vr.bars_held[1] = 0;
-		vr.bars_turn = vr.bars_pitch = 0.0f;
+		vr.bars_pitch = 0.0f;
+		if (seat_stick_steers())
+			stick_steer_update(seconds, ease);
+		else
+			vr.bars_turn = 0.0f;
 		return;
 	}
 	for (hand = 0; hand < 2; hand++)
@@ -3543,8 +3637,9 @@ static void handlebars_update(float seconds)
 	}
 	else if (!both)
 	{
-		/* (let go: the course held, the turn easing out) */
-		vr.bars_turn -= vr.bars_turn * ease;
+		/* (let go: the sticks steer; centred, the course held, the turn
+		easing out) */
+		stick_steer_update(seconds, ease);
 		vr.bars_pitch -= vr.bars_pitch * ease;
 	}
 }
@@ -3560,6 +3655,14 @@ void halo_vr_seat_place(const struct halo_vr_seat *seat)
 	vr.bars_placed_valid = 1;
 	/* (the view, the aim and the hands turn with the vehicle) */
 	vr.body_yaw = seat->heading;
+}
+
+void halo_vr_seat_drive(void)
+{
+	if (!vr.initialized)
+		return;
+	vr.drive_told = vr.presents;
+	vr.drive_told_valid = 1;
 }
 
 int halo_vr_seat_enabled(int kind)
@@ -3773,6 +3876,10 @@ static void input_update(void)
 	turns nothing, and both grips held are the bars, not a recentring) */
 	if (handlebars_active())
 		x = 0.0f;
+	/* (driving a vehicle steered toward the aim: the left stick's sideways
+	push turns smoothly too, STICK_DRIVE_FASTEST) */
+	if (seat_drives())
+		vr.body_yaw -= stick_steer_push(vr.input.left_stick[0]) * STICK_DRIVE_FASTEST * seconds;
 	if (settings.smooth_turn)
 	{
 		if (fabsf(x) > 0.2f)
@@ -4630,7 +4737,7 @@ void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn)
 		return;
 	/* (the host ends the frame with these layers, leaving out those whose
 	image it did not acquire or draw: every image taken as acquired, the
-	eyes' depth as written: port/linux/host/host_gl_vr.c) */
+	eyes' depth as written: port/linux/vulkan/host_vulkan_vr.c) */
 	{
 		int swapchain;
 
@@ -5367,7 +5474,10 @@ void halo_vr_gamepad(void *gamepad)
 	vr.crouch_button = (buttons & VR_BUTTON_LEFT_STICK) || (pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB);
 	if (vr.crouch_button || vr.crouching) pad->wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
 	if (buttons & VR_BUTTON_RIGHT_STICK) pad->wButtons |= XINPUT_GAMEPAD_RIGHT_THUMB;
-	stick_merge(&pad->sThumbLX, vr.input.left_stick[0]);
+	/* (the left stick's sideways push steers where the sticks steer a seat
+	or turn a driver: not the game's sideways throttle, the Ghost's strafe) */
+	if (!seat_stick_steers() && !seat_drives())
+		stick_merge(&pad->sThumbLX, vr.input.left_stick[0]);
 	stick_merge(&pad->sThumbLY, vr.input.left_stick[1]);
 	/* the right stick turns (input_update); while the aim does not follow
 	the head (menus, cinematics, a vehicle's turret without it), and always

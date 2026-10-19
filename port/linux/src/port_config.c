@@ -202,6 +202,11 @@ static const struct config_setting config_settings[] =
 		_environment_value, _platform_all,
 		"The scoreboard panel's colour: \"red, green, blue, alpha\", each 0 to 255\n"
 		"(alpha 0 is see-through, 255 solid)." },
+	{ "display.latency_meter", _config_boolean, "false", "HALO_LATENCY_METER", _environment_value, _platform_all,
+		"In a network game, your round trip to the host in milliseconds at the\n"
+		"screen's top right, with bars (the host: its slowest player's), and\n"
+		"\"Connection problem\" when the host has sent nothing for two seconds;\n"
+		"the scoreboard's pings in the same colours, as this machine times them." },
 	{ "display.anisotropic_filtering", _config_integer, GRAPHICS_ANISOTROPIC_FILTERING, "HALO_ANISOTROPIC_FILTERING",
 		_environment_value, _platform_all,
 		"Sharpen textures seen at a grazing angle (floors, walls, terrain), which\n"
@@ -423,10 +428,12 @@ static const struct config_setting config_settings[] =
 		"sit, level with the horizon; \"third_person\" the game's camera following\n"
 		"the vehicle." },
 	{ "vr.seat_motion", _config_string, "\"still\"", "HALO_VR_SEAT_MOTION", _environment_value, _platform_desktop,
-		"With vr.vehicle_view = \"first_person\": \"still\" the eye stays put in\n"
-		"the vehicle, riding with it but not with the body climbing in and out,\n"
-		"a turret's turning or flinches, and blinks between its places; \"head\"\n"
-		"it follows the seated body's head as the game animates it." },
+		"With vr.vehicle_view = \"first_person\": \"still\" you stay in the first\n"
+		"person all the way in and out, the eye following the body's climb\n"
+		"smoothed, then staying put in the vehicle, riding with it but not with\n"
+		"a turret's turning or flinches; \"blink\" the eye stays put as the body\n"
+		"climbs in and out, and blinks between its places; \"head\" it follows\n"
+		"the seated body's head as the game animates it." },
 	{ "vr.ghost_steering", _config_string, "\"handlebars\"", "HALO_VR_GHOST_STEERING", _environment_value,
 		_platform_desktop,
 		"Driving a Ghost with vr.aim = \"controller\": \"handlebars\" grip its\n"
@@ -895,6 +902,9 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test_vehicle", _config_real, "0.0", "HALO_NETWORK_TEST_VEHICLE", _environment_value, _platform_all,
 		"This many seconds into an automated test game the host seats its last\n"
 		"player as a vehicle's driver (and out 15 seconds on); 0 never." },
+	{ "debug.network_test_hitch", _config_real, "0.0", "HALO_NETWORK_TEST_HITCH", _environment_value, _platform_all,
+		"As debug.network_test_vehicle seats the player, the frame stops for this\n"
+		"many seconds, as a stall of the renderer or the VR runtime would; 0 never." },
 	{ "debug.network_test_pickup", _config_real, "0.0", "HALO_NETWORK_TEST_PICKUP", _environment_value, _platform_all,
 		"This many seconds into an automated test game the host stands its last\n"
 		"player on a weapon, which a joining player then picks up; 0 never." },

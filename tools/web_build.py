@@ -43,10 +43,11 @@ from typing import Any, Dict, List, Optional
 
 from .android_build import VARIADIC_PROTOTYPE_FILES
 from .embed_assets import hud_assets_build, hud_configure_inputs
-from .linux_build import (EXPAT_DIR, EXPAT_SOURCES, KCP_DIR, MONOCYPHER_DIR, MUSL_MATH_DIR, STB_VORBIS_SOURCE, TOML_DIR,
-                          XDK_INCLUDE, ZLIB_DEFINES, ZLIB_DIR, ZLIB_SOURCES, compile_launcher, configuration_defines,
-                          game_defines_and_includes, game_sources, musl_math_cflags, musl_math_sources,
-                          opus_cflags, opus_sources, updater_defines, xdk_headers)
+from .build_common import (EXPAT_DIR, EXPAT_SOURCES, KCP_DIR, MONOCYPHER_DIR, MUSL_MATH_DIR, STB_VORBIS_SOURCE, TOML_DIR,
+                           XDK_INCLUDE, ZLIB_DEFINES, ZLIB_DIR, ZLIB_SOURCES, PLATFORM_SEMANTICS_HEADER,
+                           SEMANTICS_HEADER, compile_launcher, configuration_defines, game_defines_and_includes,
+                           game_sources, musl_math_cflags, musl_math_sources, opus_cflags, opus_sources,
+                           updater_defines, xdk_headers)
 from .ninja_syntax import Writer
 
 PORT_DIR = Path("port/web")
@@ -72,7 +73,7 @@ WATCH_HASH = ANDROID_DIR / "host" / "host_watch_hash.c"
 WEB_MEMORY_BYTES = 0x88000000
 
 # The ABI the game was written for, as the other builds reproduce it
-# (tools/linux_build.py LINUX_ABI_FLAGS): 16-bit wchar_t, MSVC's extensions,
+# (tools/windows_build.py WINDOWS_ABI_FLAGS): 16-bit wchar_t, MSVC's extensions,
 # common symbols, no optimisations that assume the absence of what MSVC
 # tolerated, and no fused multiply-adds (the same results on every port).
 # wasm32 aligns doubles and 64-bit integers to 8 bytes already, as MSVC.
@@ -181,8 +182,8 @@ def generate_web_build(n: Writer, sln: Any) -> None:
     build_dir: Path = sln.build_dir / "web"
     obj_dir = build_dir / "obj"
     site_dir = build_dir / "site"
-    semantics_header = sln.build_dir / "linux" / "halo_msvc_semantics.h"
-    platform_semantics_header = sln.build_dir / "linux" / "platform_msvc_semantics.h"
+    semantics_header = SEMANTICS_HEADER
+    platform_semantics_header = PLATFORM_SEMANTICS_HEADER
     prefix_header = LINUX_DIR / "include" / "halo_linux_prefix.h"
     sdl_flag = f"--use-port={SDL_PORT}"
 

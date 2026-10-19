@@ -419,8 +419,14 @@ its name alone beside it, has its name given back as the map lists find it.
   map, bitmaps.map, sounds.map and loc.map it lacks) instead of leaving, if
   `network.map_download` lets it. Its players wait to join until the host's settings
   have named the map, and for a game in progress until it is downloaded; in
-  the lobby they join at once, and the host's start waits for the machine to
-  precache the map, as it waits for any machine.
+  the lobby they join at once. A host that starts while a machine is still
+  downloading starts the others without it: the machine's players are held
+  out of the game, and so is any player it asks for meanwhile (a machine
+  whose download began in the lobby does not know the game has started),
+  and the machine joins the game in progress once the map is there. A
+  client told to start before its download is done (by a host of an earlier
+  build) puts the start off until the map is there, rather than loading a
+  map it does not have yet (the damaged disc error, which stops the game).
 - **The offer.** A host that shares maps (`network.map_share`) hashes the
   map, and the resource maps the map needs (its tag index says which: a tag
   whose entry's word at 0x18 is set is held whole by bitmaps.map for a
@@ -783,6 +789,18 @@ Unity's Netcode for Entities, lightyear, netfox and the Ares source):
   took to come (the reliable channel's resending holds it up), that is
   when the shooter saw the target (as far back as the host keeps). A
   report made more than three seconds ago is refused.
+- **The latency meter** (`latency_meter.c`, `display.latency_meter`) shows
+  the same round trips, timed in milliseconds by when each machine sent the
+  tick they come back naming (the last 64 ticks' send times kept), with
+  nothing more sent: the host each client's, by the host tick its input
+  names; a client its own, by its tick the host's state of its player (or,
+  driving, its vehicle) says the host has it at. Each is the network both
+  ways plus each machine's wait for its next tick, so a LAN reads 15 to 35
+  ms. A client that has heard nothing from the host for two seconds shows
+  "Connection problem"; the host logs a client silent as long. With the
+  meter on, the scoreboard shows these where the machine has them (the
+  host every client's, a client its own players'), and the host's measure
+  in ticks, which every machine is sent, for the others.
 
 ## Testing
 
@@ -799,6 +817,9 @@ two machines' views of one game can be compared. `debug.network_test_kill`,
 `debug.network_test_pickup` script kills, hits, a vehicle ride and a weapon
 swap the bots' wandering does not reach (`debug.network_test_pickup_weapon`
 picks the weapon: the first whose tag name has it in it, as "sniper"),
+`debug.network_test_hitch` stops the frame for that many seconds as the
+vehicle test seats the player (as a stall of the renderer or the VR runtime
+does: the host must play on, its own client not timing out its own server),
 `debug.network_test_chat` has each machine's player say a chat line to
 everyone, one to the team and one to the vehicle (the host seats the last
 two players in one first), then the host mutes the last player for a
@@ -837,9 +858,9 @@ not.
 ### Comparing two builds
 
 `tools/net_compare.py` checks that two builds play a network game in step:
-a new port or architecture against the i686 Linux build (x86-64 against
-i686, arm64 against x86), or a build with a change to the simulation
-against one without. It plays them together on the loopback, build A
+a new port or architecture against the 64-bit x86 Linux build (arm64
+against x86-64), or a build with a change to the simulation against one
+without. It plays them together on the loopback, build A
 hosting and B joining (and, with `--swap`, the other way round), on each
 map given, each copy's player a seeded bot (`debug.test_input`
 `bot:<seed>`, `--events` adds `debug.network_test_shoot` and
@@ -849,15 +870,15 @@ started with, `DISPLAY` or `WAYLAND_DISPLAY`, or `--display`'s: a virtual
 one, Xvfb, rather than a desktop), and compares the two machines' logs:
 
 ```sh
-python tools/net_compare.py --a build/linux/halo --b build/linux_x86_64/halo \
+python tools/net_compare.py --a build/linux_x86_64/halo --b <another build's halo> \
     --data <folder holding maps/> --maps bloodgulch,beavercreek,hangemhigh --swap
 ```
 
 It needs the retail maps, so it runs on a developer's machine or a
 self-hosted runner, not in the public CI; run it before merging a change to
 a build's compiler, architecture, maths or the simulation itself. A build
-is its executable: a build's (`build/linux/halo`), a flat release's, or a
-release tree's `bin/opence` (its `lib/` and `share/opence` are linked into
+is its executable: a build's (`build/linux_x86_64/halo`), or a release
+tree's `bin/opence` (its `lib/` and `share/opence` are linked into
 the copy, which stays a portable tree). Each copy gets its own folder (an
 executable, `config.toml` written in the copy's folder, a data root linking
 the maps, and saves) in `build/net_compare/`, removed when every game
@@ -936,7 +957,8 @@ log has.
 
 Calibration (on one 24-thread computer, with up to four games played at
 once, 60 seconds each, both ways round, on bloodgulch, beavercreek,
-hangemhigh, chillout, prisoner, ratrace, longest and carousel):
+hangemhigh, chillout, prisoner, ratrace, longest and carousel; with the
+32-bit x86 Linux build the port had then, i686):
 
 | Builds | Games | Result | Ticks apart |
 | --- | --- | --- | --- |

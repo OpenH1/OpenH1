@@ -357,9 +357,9 @@ The APK contains the image as an asset.
 to the processor: the target and its options, the defines, the conversion
 of the assembly, the linker's emulation, the image's address, the
 builtins, the instructions of the import stubs and the calling convention
-of the host for the OpenGL stubs. The Android build and the desktop guest
-builds (`tools/linux_guest_build.py`) take it; the 64-bit x86 Linux build
-takes `X32` instead ("64-bit x86" in [port/linux/README.md](../linux/README.md#64-bit-x86)).
+of the host for the OpenGL stubs. The Android build and the 64-bit ARM
+Linux build (`tools/linux_guest_build.py`) take it; the 64-bit x86 Linux
+build takes `X32` instead ("64-bit x86" in [port/linux/README.md](../linux/README.md#64-bit-x86)).
 `tools/guest_image_check.py` checks each linked image: no thread-local
 storage, no use of the thread pointer, nothing outside its range.
 
@@ -404,10 +404,9 @@ build machine.
   stream, with the Vulkan backend on a thread of its own
   (`port/linux/vulkan`, `host/host_render_stream.c`; "The renderer's command
   stream" in [port/linux/README.md](../linux/README.md#the-renderers-command-stream)).
-  The library links no OpenGL ES or EGL: it builds none of the OpenGL
-  backend of the Linux hosts (`host/host_gl.c`, `port/linux/host/host_gl_*.c`),
-  and `host_renderer.c` stands in for its window import, `host_gl_window`,
-  which the guest does not call.
+  The library links no OpenGL ES or EGL, and no host builds an OpenGL
+  backend: `host_renderer.c` stands in for the window import of the one
+  the hosts once had, `host_gl_window`, which the guest does not call.
 
 The guest calls the host through stubs (`tools/android_imports.py`, with the
 instructions of `import_stub` in `tools/guest_arch.py`). The two ABIs use
@@ -499,11 +498,12 @@ Android build defines all of (`tools/android_build.py`):
   (`arm64_32`), whose Mach-O objects are converted afterwards;
 - `HALO_RENDER_STREAM` and `HALO_VULKAN`: the renderer's backend is the
   host's, Vulkan's, which the guest's frames reach as the command stream;
-- `HALO_GLES`: the OpenGL ES renderer's code paths, as the Linux arm64
-  guest has them: the guest has no OpenGL backend, but its platform code
-  names OpenGL's declarations, and `display.anti_aliasing` keeps to what
-  a phone's GPU can spare (`"ssaa2x"` gives none; `"smaa"` is Vulkan's
-  SMAA, as on the desktop, where OpenGL ES gives FXAA);
+- `HALO_GLES`: the OpenGL ES renderer's code paths: the guest has no
+  OpenGL backend, but its platform code names OpenGL ES's declarations,
+  and `display.anti_aliasing` keeps to what a phone's GPU can spare
+  (`"ssaa2x"` gives none; `"smaa"` is Vulkan's SMAA, as on the Linux
+  builds, which have the desktop's code paths and no `HALO_GLES`; the
+  web's OpenGL ES gives FXAA);
 - `HALO_ANDROID`: the app (its display, input, files and lifecycle).
 
 `HALO_ARM64_GUEST`, the name of `HALO_GUEST` before, is still defined:

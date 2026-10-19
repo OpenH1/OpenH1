@@ -7,5 +7,6 @@ voice chat (`port/linux/game/network_voice.c`). BSD licence: `COPYING`.
 Only the library is kept: `include/`, `src/`, `celt/` and `silk/` with
 `silk/float/` (the floating-point build), without the multistream and
 projection API, the demos, the tests and the SIMD and DNN code. `sources.txt`
-lists the files the builds compile (`tools/linux_build.py`), as plain C with
-`OPUS_BUILD`, `VAR_ARRAYS`, `HAVE_LRINTF` and `HAVE_LRINT`.
+lists the files the builds compile (`opus_sources` in
+`tools/build_common.py`), as plain C with `OPUS_BUILD`, `VAR_ARRAYS`,
+`HAVE_LRINTF` and `HAVE_LRINT`.

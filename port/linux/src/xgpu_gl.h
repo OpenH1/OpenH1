@@ -2,18 +2,16 @@
 XGPU_GL.H
 
 The OpenGL backend's own declarations (OpenGL 4.5, OpenGL ES 3.0 to 3.2 and
-WebGL 2): what its files share - the backend and its VR mode (xgpu_gl.c),
+WebGL 2): what its files share - the backend (xgpu_gl.c),
 the GLSL emitter (xgpu_glsl.c), the FXAA and SMAA passes
 (xgpu_post.c) - and the texture cache (xbox_textures.c) and the high-res
 replacements (hud_hires.c, text_hires.c, menu_files.c), which still make
 GL textures themselves.
 
-The backend is built into the game (the guest), or into the 64-bit host
-behind the renderer's command stream (XGPU_GL_HOST: port/linux/host/
-host_gl_stream.c plays the stream's records into it, with a stand-in for
-the guest's platform header, port/linux/host/gl). In the host the textures
-are the host's cache's (host_gl_textures.c), and a pipeline's pixel shader
-comes decoded in the stream's record of it.
+The backend is built into the game by the builds that draw with OpenGL in
+the game's own process: the 32-bit Windows build and the web build. The
+guest builds (Linux, Android, macOS) draw in their host, with Vulkan or
+Metal, from the renderer's command stream.
 */
 
 #ifndef __HALO_LINUX_XGPU_GL_H
@@ -46,13 +44,6 @@ void host_gl_read_buffer(unsigned int buffer, unsigned int offset, unsigned int 
 void host_gl_buffer_write(unsigned int target, unsigned int offset, unsigned int size, const void *data);
 void host_gl_fence_frame(unsigned int slot);
 void host_gl_wait_frame(unsigned int slot);
-#elif defined(XGPU_GL_HOST)
-/* the host's desktop renderer (port/android/host/host_gl.c) */
-int host_gl_has_extension(const char *name);
-void host_gl_buffer_write(unsigned int target, unsigned int offset, unsigned int size, const void *data);
-void host_gl_fence_frame(unsigned int slot);
-void host_gl_wait_frame(unsigned int slot);
-void host_gl_read_buffer(unsigned int buffer, unsigned int offset, unsigned int size, void *data);
 #endif
 
 /* ---------- GL state
@@ -101,23 +92,10 @@ struct xgpu_pixel_program;
 Returns a malloc'd string. */
 char *xgpu_glsl_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_glsl_options *options);
 
-#ifdef XGPU_GL_HOST
-/* (port/linux/host/host_gl_stream.c) the GL texture of a stage's texture
-as the stream's record has it (an Xbox texture or an image), from the host's
-cache; *target receives GL_TEXTURE_2D etc. And the decoded pixel program
-of the pipeline being made (xgpu_backend_pipeline), which the stream's
-record of it carries. */
-GLuint xgpu_host_texture_get(int stage, GLenum *target);
-/* (host_gl_textures.c) the GL texture of the Xbox texture whose header is
-at that guest address, as it is now */
-GLuint xgpu_host_texture_header(unsigned int header, GLenum *target);
-void xgpu_host_pixel_program(const struct nv2a_pixel_shader_key *key, struct xgpu_pixel_program *program);
-#else
 /* the GL texture for an Xbox texture header, uploading or refreshing it
 from guest memory as needed; *target receives GL_TEXTURE_2D etc. */
 GLuint xgpu_texture_get(const DWORD *resource, const D3DCOLOR *palette, GLenum *target,
 	struct xgpu_texture_description *description);
-#endif
 void xgpu_texture_cache_begin_frame(void);
 
 /* ---------- anti-aliasing

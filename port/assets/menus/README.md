@@ -60,7 +60,8 @@ python3 tools/ce_menus.py \
 
 It needs `rsvg-convert`, Pillow, NumPy and SciPy. It writes every file, so
 `git status` should show only the screens meant to change; then
-`ninja linux` (or `ninja android`) embeds them in the game.
+`ninja linux_x86_64` (or `ninja linux_arm64`, `ninja android`) embeds them
+in the game.
 
 A settings screen (Controls Setup, Gamepads, Mouse, Audio, Video or Network
 Setup) is changed in `tools/port_settings.py`, not in its XML, and written

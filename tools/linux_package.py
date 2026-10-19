@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Lays out the Linux release (tools/ci_build.py), and zips it:
 
-    python tools/linux_package.py tree <folder>    (the tree of build/linux's build)
-    python tools/linux_package.py zip dist/halo-linux-i686-release halo-linux-i686-release.zip
+    python tools/linux_package.py tree <folder>    (the tree of this computer's Linux build)
+    python tools/linux_package.py zip dist/halo-linux-x86_64-release halo-linux-x86_64-release.zip
 
 The release is a tree laid out as a Unix prefix is, which a package manager
 can copy to /usr (or /opt/<name>) as it is, and which a player unpacks
@@ -17,22 +17,18 @@ anywhere and starts with bin/opence:
     share/licenses/opence/                     the project's licence and those of what it carries
 
 The game finds its files from where it is (port/linux/src/install_layout.c).
-The releases before the tree were flat: everything in one folder, the game
-named halo. Their self-updaters, which cannot change, unpack only a zip's
-top-level files, and ask for halo-linux-<config>.zip; so the release keeps
-that zip, the same build laid out flat (stage_flat), for them. The game
-that build installs updates to the tree (port/linux/src/updater.c).
 
-tree lays out build/linux's build in a folder, for a package built from the
-sources: its contents go into the package's /usr. A build made with
-configure.py --portable brings its SDL (libSDL3.so.0 and SDL3-LICENSE.txt);
-another has none, and uses the system's. zip writes the
-folder's files in name order, with their Unix modes
-(executables by their place, as GitHub's artifacts lose the modes), for
-unzip and the self-updater.
+tree lays out a Linux build (build/linux_x86_64, or build/linux_arm64: the
+one of this computer's architecture unless --build names another) in a
+folder, for a package built from the sources: its contents go into the
+package's /usr, with the SDL the build brings (libSDL3.so.0 and
+SDL3-LICENSE.txt). zip writes the folder's files in name order, with their
+Unix modes (executables by their place, as GitHub's artifacts lose the
+modes), for unzip and the self-updater.
 """
 
 import argparse
+import platform
 import shutil
 import stat
 import sys
@@ -109,24 +105,13 @@ def stage_tree(dist: Path, executable: Path, library: Optional[Path], notices: I
         _copy(source, dist / "share/licenses" / NAME / name)
 
 
-def stage_flat(dist: Path, executable: Path, library: Path, notices: Iterable[Tuple[Path, str]]) -> None:
-    """The flat release in dist, as the releases before the tree were: halo,
-    libSDL3.so.0, brokers.txt and the notices in one folder (for their
-    self-updaters)."""
-    _copy(executable, dist / "halo")
-    _copy(library, dist / library.name)
-    _copy(BROKERS, dist / BROKERS.name)
-    for source, name in notices:
-        _copy(source, dist / name)
-
-
 def mode(name: str) -> int:
     """a file's mode in the zip, from its place: the executables and the
-    shared libraries of the tree and of the flat release are 0755"""
+    shared libraries of the tree are 0755"""
     parts = name.split("/")
     if parts[0] == "bin" and len(parts) == 2:
         return 0o755
-    if parts == ["halo"] or (".so" in parts[-1] and (len(parts) == 1 or parts[0] == "lib")):
+    if ".so" in parts[-1] and parts[0] == "lib":
         return 0o755
     return 0o644
 
@@ -153,13 +138,20 @@ def write_zip(folder: Path, output: Path) -> None:
     print(f"{folder} -> {output}", flush=True)
 
 
+def native_build() -> Path:
+    """this computer's Linux build's folder: build/linux_arm64 on 64-bit ARM,
+    else build/linux_x86_64"""
+    arm = platform.machine().lower() in ("aarch64", "arm64")
+    return ROOT / "build" / ("linux_arm64" if arm else "linux_x86_64")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
-    tree_command = commands.add_parser("tree", help="lay out build/linux's portable build as the release's tree")
+    tree_command = commands.add_parser("tree", help="lay out a Linux build as the release's tree")
     tree_command.add_argument("folder", type=Path)
-    tree_command.add_argument("--build", type=Path, default=ROOT / "build/linux",
-                              help="the build's folder (default: build/linux)")
+    tree_command.add_argument("--build", type=Path, default=native_build(),
+                              help=f"the build's folder (default: {native_build().relative_to(ROOT)})")
     zip_command = commands.add_parser("zip", help="zip a staged release with its files' modes")
     zip_command.add_argument("folder", type=Path)
     zip_command.add_argument("output", type=Path)
@@ -168,7 +160,7 @@ def main() -> int:
         library = args.build / "libSDL3.so.0"
         sdl_license = args.build / "SDL3-LICENSE.txt"
         if not (args.build / "halo").exists():
-            parser.error(f"{args.build} has no build: enter ninja linux first")
+            parser.error(f"{args.build} has no build: enter ninja {args.build.name} first")
         if library.exists() and sdl_license.exists():
             stage_tree(args.folder, args.build / "halo", library,
                        notices("linux") + [(sdl_license, sdl_license.name)])

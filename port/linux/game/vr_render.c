@@ -678,7 +678,8 @@ boolean vr_render_camera(struct render_camera *camera, struct render_camera *ras
 	the seated player's head is, as the frame poses it between ticks, or
 	held still in the vehicle: vr.seat_motion), and the view is level and
 	turned as on foot; not the game's camera following the vehicle, which
-	swings about it with the aim. Jumps between the two blink (vr_seat.c). */
+	swings about it with the aim. The eye glides between the two, riding the
+	body's climb in and out (or blinks: vr_seat.c). */
 	if (view->vehicle_first_person && halo_vr_aiming())
 		vr_render.seated_unit_index = seated_unit();
 	/* (on foot, crouched by the head: the game's drop taken back out of

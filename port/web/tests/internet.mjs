@@ -7,7 +7,7 @@
 // the maps folder holds ui.map and the multiplayer maps, which each
 // browser's profile imports, about 300 MB each). It starts a local broker
 // with a WebSocket listener for the browsers and a plain one for the native
-// build (<halo>, build/linux/halo by default), serves the site, and plays:
+// build (<halo>, build/linux_x86_64/halo by default), serves the site, and plays:
 //
 // - two browsers, one hosting and the other joining by its invite (?join=);
 // - the native build hosting a public game, which a browser finds in the
@@ -34,7 +34,7 @@ const here = path.dirname(new URL(import.meta.url).pathname);
 const root = path.resolve(here, '../../..');
 const site = path.resolve(process.argv[2] || 'build/web/site');
 const maps = path.resolve(process.argv[3] || 'assets/maps');
-const halo = path.resolve(process.argv[4] || 'build/linux/halo');
+const halo = path.resolve(process.argv[4] || 'build/linux_x86_64/halo');
 const PLAY_SECONDS = 45;
 const sitePort = 8000 + Math.floor(Math.random() * 1000);
 const tcpPort = 18000 + Math.floor(Math.random() * 1000);
