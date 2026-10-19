@@ -254,8 +254,10 @@ the display's lines (not supersampling's, which the display scales down;
 "original" resolution scaling draws 480); "highest" measures as "native"
 which models are too small to draw, and draws the others at their most
 detailed level; "auto" is "native" in the headset's eyes, which have far more
-lines than a display and are seen close, and "stock" elsewhere. level: the
-scale for choosing the level, otherwise for whether to draw at all. */
+lines than a display and are seen close, and "stock" elsewhere. Other than
+"stock", each permutation then draws the level that
+port/linux/game/model_detail.c chooses from the model's. level: the scale for
+choosing the level, otherwise for whether to draw at all. */
 enum
 {
 	_model_detail_stock,
@@ -267,11 +269,11 @@ enum
 static int model_detail = -1;
 static unsigned long model_detail_read_at;
 
-float halo_model_detail_scale(int level)
+/* the setting as it applies to the draws now ("auto" chosen by them), and
+whether they are the eyes' */
+static int model_detail_setting(int *eyes)
 {
-	float display_scale;
-	int detail, eyes = FALSE;
-
+	*eyes = FALSE;
 	if (model_detail < 0 || model_detail_read_at != config_changes())
 	{
 		const char *setting = config_string("display.model_detail");
@@ -290,9 +292,27 @@ float halo_model_detail_scale(int level)
 		model_detail = value;
 	}
 #ifdef HALO_VR
-	eyes = vr_drawing_eyes();
+	*eyes = vr_drawing_eyes();
 #endif
-	detail = model_detail == _model_detail_auto ? (eyes ? _model_detail_native : _model_detail_stock) : model_detail;
+	return model_detail == _model_detail_auto ? (*eyes ? _model_detail_native : _model_detail_stock) : model_detail;
+}
+
+/* whether the draws now measure models as "stock" does: each permutation then
+draws the model's level, as the Xbox did; otherwise the level
+port/linux/game/model_detail.c chooses from the model's */
+int halo_model_detail_stock(void)
+{
+	int eyes;
+
+	return model_detail_setting(&eyes) == _model_detail_stock;
+}
+
+float halo_model_detail_scale(int level)
+{
+	float display_scale;
+	int detail, eyes;
+
+	detail = model_detail_setting(&eyes);
 	if (detail == _model_detail_stock)
 		return 1.0f;
 	if (detail == _model_detail_highest && level)
@@ -2085,6 +2105,14 @@ void WINAPI D3DDevice_SetVertexShader(DWORD handle)
 		device.vertex_shader = object;
 		device.program_address = 0;
 		device.program_slots[0] = object;
+	}
+	else if (!handle)
+	{
+		/* (0, the fixed-function pipeline, which these renderers do not
+		have: OpenCE's loading screen draws with it. Its draws are left out
+		(prepare_draw) until a program is set, rather than drawn with the
+		program before) */
+		device.vertex_shader = NULL;
 	}
 }
 
@@ -4077,6 +4105,32 @@ void halo_screen_anti_alias(short x0, short y0, short x1, short y1)
 	corners[2] = scaled_pixel(x1, target->target.scale[0]);
 	corners[3] = scaled_pixel(y1, target->target.scale[1]);
 	xgpu_backend_anti_alias(target->target.number, mode == _anti_aliasing_smaa, corners);
+}
+
+/* display.hdr's tone mapping of a window's 3D view (source/render/render.c),
+OpenCE's: its OpenGL backend draws the back buffer in half floats and tone
+maps it here. No backend of OpenH1's draws HDR yet (Vulkan, Metal, nor the
+OpenGL one), so the back buffer stays 8 bits a channel and this does nothing;
+Video Setup has no HDR row (tools/port_settings.py) */
+void halo_screen_tone_map(short x0, short y0, short x1, short y1)
+{
+	(void)x0;
+	(void)y0;
+	(void)x1;
+	(void)y1;
+}
+
+/* display.overshield_effect's rise (rasterizer_xbox_plasma_energy.c,
+port/linux/game/overshield_effect.c), OpenCE's: a fade above a height on
+the model, in OpenCE's OpenGL vertex shaders. None of OpenH1's emitters
+(GLSL, SPIR-V, MSL) has it yet, so the overshield is drawn whole as it
+rises; Video Setup has no row for it (tools/port_settings.py) */
+void d3d8_gl_set_height_fade(float inverse_softness, float height, float offset, float scale)
+{
+	(void)inverse_softness;
+	(void)height;
+	(void)offset;
+	(void)scale;
 }
 
 /* ---------- presentation */

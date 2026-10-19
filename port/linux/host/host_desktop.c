@@ -490,11 +490,11 @@ static void download_progress(void *context, unsigned long long received, unsign
 /* progress: the guest's void (*)(unsigned int context, unsigned int received,
 unsigned int total), called on this thread */
 int host_update_download(const char *url, const char *path, uint32_t progress, uint32_t context,
-	char *error, int error_size)
+	char *error, int error_size, uint32_t maximum)
 {
 	struct download_progress binding = { progress, context };
 
-	return update_download(url, path, progress ? download_progress : NULL, &binding, error, error_size);
+	return update_download(url, path, maximum, progress ? download_progress : NULL, &binding, error, error_size);
 }
 
 int host_update_executable_path(char *path, int size)

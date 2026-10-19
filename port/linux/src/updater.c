@@ -93,6 +93,10 @@ generate_guest_image, windows_build.py) */
 version deletes */
 #define UPDATE_OLD_LIST "update-old.txt"
 #define MAXIMUM_UPDATE_FILES 64
+/* the most a download may be: GitHub's answer about the latest release, a
+release's zip (about 30 MB) */
+#define MAXIMUM_CHECK_SIZE (1024ULL * 1024)
+#define MAXIMUM_UPDATE_SIZE (256ULL * 1024 * 1024)
 
 enum
 {
@@ -230,6 +234,12 @@ static int zip_extract_entry(SDL_IOStream *zip, unsigned long local_offset, int 
 		remaining -= (unsigned long)count;
 		if (method == 0)
 		{
+			/* (no more than the entry says it holds) */
+			if (count > size - written)
+			{
+				snprintf(reason, reason_size, "it unpacks to more than %lu bytes", size);
+				break;
+			}
 			if (SDL_WriteIO(file, input, count) != count)
 			{
 				snprintf(reason, reason_size, "could not write %s after %lu bytes (%s)", path, written, SDL_GetError());
@@ -308,9 +318,8 @@ static int zip_extract_entry(SDL_IOStream *zip, unsigned long local_offset, int 
 
 /* the zip's files (the Linux release's tree, or the Windows release's folder) into
 update.partial/, their names in names */
-static int zip_extract(const char *zip_path, char names[][256], int *name_count, char *error, size_t error_size)
+static int zip_extract(SDL_IOStream *zip, char names[][256], int *name_count, char *error, size_t error_size)
 {
-	SDL_IOStream *zip = SDL_IOFromFile(zip_path, "rb");
 	unsigned char tail[65536 + 22];
 	Sint64 size;
 	size_t tail_size, index;
@@ -318,11 +327,6 @@ static int zip_extract(const char *zip_path, char names[][256], int *name_count,
 	int found = 0, succeeded = 0;
 
 	*name_count = 0;
-	if (!zip)
-	{
-		snprintf(error, error_size, "could not open the download");
-		return 0;
-	}
 	/* the end of the central directory, in the last 64 KB */
 	size = SDL_GetIOSize(zip);
 	tail_size = size < (Sint64)sizeof(tail) ? (size_t)size : sizeof(tail);
@@ -362,7 +366,9 @@ static int zip_extract(const char *zip_path, char names[][256], int *name_count,
 		name[name_length] = 0;
 		next = SDL_TellIO(zip) + (Sint64)(extra_length + comment_length);
 		/* (a folder, a link, or a name that would leave the game's folder,
-		is left out) */
+		is left out; a name with a NUL in it is no zip of a release's) */
+		if (memchr(name, 0, name_length))
+			goto done;
 		if (name_length && name[name_length - 1] != '/' && updater_name_inside(name) &&
 			!(header[5] == 3 && ((zip_long(header + 38) >> 16) & 0170000) == 0120000))
 		{
@@ -403,7 +409,6 @@ static int zip_extract(const char *zip_path, char names[][256], int *name_count,
 done:
 	if (!succeeded && !error[0])
 		snprintf(error, error_size, "the download is not a zip file this build can read");
-	SDL_CloseIO(zip);
 	return succeeded;
 }
 
@@ -420,8 +425,8 @@ static long updater_latest_release(void)
 	long build = 0;
 
 	updater_path(path, sizeof(path), "update-check.json");
-	if (!update_download("https://api.github.com/repos/" UPDATE_REPOSITORY "/releases/latest", path, NULL, NULL,
-		error, sizeof(error)))
+	if (!update_download("https://api.github.com/repos/" UPDATE_REPOSITORY "/releases/latest", path,
+		MAXIMUM_CHECK_SIZE, NULL, NULL, error, sizeof(error)))
 	{
 		platform_log("update: could not check for a new version: %s", error);
 		return 0;
@@ -489,8 +494,8 @@ static int SDLCALL updater_download_thread(void *context)
 {
 	struct updater_download *download = context;
 	char error[512] = "";
-	int succeeded = update_download(download->url, download->zip_path, updater_download_progress, download, error,
-		sizeof(error));
+	int succeeded = update_download(download->url, download->zip_path, MAXIMUM_UPDATE_SIZE, updater_download_progress,
+		download, error, sizeof(error));
 
 	SDL_LockMutex(download->lock);
 	download->succeeded = succeeded;
@@ -606,6 +611,71 @@ static void updater_delete_partial(const char *partial, char names[][256], int n
 		}
 	}
 	update_delete_file(partial);
+
+/* the zip, read once and unpacked from that copy; a download is deleted
+either way (a test's zip, debug.update_from, is kept) */
+static int updater_unpack(const char *zip_path, int downloaded, char names[][256], int *name_count, char *error,
+	size_t error_size)
+{
+	size_t zip_size = 0;
+	unsigned char *zip = SDL_LoadFile(zip_path, &zip_size);
+	SDL_IOStream *stream;
+	int succeeded = 0;
+
+	if (downloaded)
+		update_delete_file(zip_path);
+	if (!zip || zip_size > MAXIMUM_UPDATE_SIZE)
+	{
+		snprintf(error, error_size, "could not read the download");
+		goto done;
+	}
+	stream = SDL_IOFromConstMem(zip, zip_size);
+	if (!stream)
+	{
+		snprintf(error, error_size, "could not read the download");
+		goto done;
+	}
+	succeeded = zip_extract(stream, names, name_count, error, error_size);
+	SDL_CloseIO(stream);
+
+done:
+	SDL_free(zip);
+	return succeeded;
+}
+
+/* the first count of the new files, already in place, taken back out (to
+the update folder) and the old ones (<name>.old) put back, the last first:
+the install as it was before the update. A new file that had no old one is
+deleted */
+static void updater_put_back(char names[][256], int count)
+{
+	int index, failures = 0;
+
+	for (index = count - 1; index >= 0; index--)
+	{
+		char path[1200], new_path[1200], old_path[1300];
+
+		updater_path(path, sizeof(path), names[index]);
+		updater_partial_path(new_path, sizeof(new_path), names[index]);
+		snprintf(old_path, sizeof(old_path), "%s.old", path);
+		if (SDL_GetPathInfo(old_path, NULL))
+		{
+			if (!update_replace_file(path, old_path, new_path))
+			{
+				platform_log("update: could not put back %s", names[index]);
+				failures++;
+			}
+		}
+		else
+		{
+			update_delete_file(path);
+		}
+	}
+	if (failures)
+		platform_log("update: %d of %d replaced files could not be put back", failures, count);
+	else
+		platform_log("update: the %d replaced files put back: the install is as it was", count);
+}
 }
 
 /* downloads, unpacks and puts in place the new build, and starts it; returns
@@ -629,14 +699,12 @@ static void updater_update(void)
 		snprintf(error, sizeof(error), "could not make %s (is the game's folder read-only?)", partial);
 	}
 	else if ((local_zip[0] || updater_download_zip(zip_path, error, sizeof(error))) &&
-		zip_extract(zip_path, names, &name_count, error, sizeof(error)))
+		updater_unpack(zip_path, !local_zip[0], names, &name_count, error, sizeof(error)))
 	{
 		/* (the files replaced, for the new version to delete) */
 		SDL_IOStream *old_list;
 		char launch[1200];
 
-		if (!local_zip[0])
-			update_delete_file(zip_path);
 		updater_path(list_path, sizeof(list_path), UPDATE_OLD_LIST);
 		old_list = SDL_IOFromFile(list_path, "ab");
 		/* the new files in place of the old ones */
@@ -655,6 +723,10 @@ static void updater_update(void)
 			}
 			updater_list_old(old_list, names[index]);
 		}
+		/* (one could not be: the ones before it put back as they were, and
+		the list of them, which is of no update now, deleted) */
+		if (index < name_count && index > 0)
+			updater_put_back(names, index);
 		snprintf(launch, sizeof(launch), "%s", updater_executable);
 #ifndef _WIN32
 		/* (the tree's game: install_layout.c) */
@@ -663,6 +735,8 @@ static void updater_update(void)
 #endif
 		if (old_list)
 			SDL_CloseIO(old_list);
+		if (index < name_count)
+			update_delete_file(list_path);
 		if (index == name_count)
 		{
 			updater_delete_partial(partial, names, name_count);
@@ -681,14 +755,33 @@ static void updater_update(void)
 	}
 }
 
-/* the files a previous update left behind, which update-old.txt lists; 1
-when the list was there (this is the start that follows an update) */
+/* the files a previous update left behind, which update-old.txt lists, and
+the notice of extract-xiso, which releases carried until the disc image
+readers were written again; 1 when the list was there (this is the start
+that follows an update) */
 static int updater_clean_up(void)
 {
+	/* (the Windows folder's; the Linux tree's, with the CC0 licence the
+	releases before the AGPL had: tools/linux_package.py) */
+	static const char *const notices[] =
+	{
+#ifdef _WIN32
+		"extract-xiso-LICENSE.txt",
+#else
+		"share/licenses/" INSTALL_NAME "/extract-xiso-LICENSE.txt",
+		"share/licenses/" INSTALL_NAME "/LICENSE.md",
+#endif
+	};
+	size_t index;
 	char path[1200];
 	size_t size = 0;
 	char *list;
 
+	for (index = 0; index < sizeof(notices) / sizeof(notices[0]); index++)
+	{
+		updater_path(path, sizeof(path), notices[index]);
+		update_delete_file(path);
+	}
 	updater_path(path, sizeof(path), UPDATE_OLD_LIST);
 	list = SDL_LoadFile(path, &size);
 	if (list)
@@ -768,9 +861,19 @@ void updater_start(void)
 	watching, but for a test with its answer) */
 	if (config_string("debug.update_from")[0] && updated)
 		return;
-	if ((HALO_BUILD_NUMBER <= 0 && !config_string("debug.update_from")[0]) || !config_boolean("update.auto") ||
-		(!config_string("debug.update_answer")[0] && (config_boolean("debug.hidden_window") ||
-			config_real("debug.exit_after") > 0.0 || config_string("debug.network_test")[0])))
+	if (HALO_BUILD_NUMBER <= 0 && !config_string("debug.update_from")[0])
+	{
+		platform_log("update: not looked for: only the builds CI numbers update themselves (this one has no "
+			"number)");
+		return;
+	}
+	if (!config_boolean("update.auto"))
+	{
+		platform_log("update: not looked for: update.auto is false");
+		return;
+	}
+	if (!config_string("debug.update_answer")[0] && (config_boolean("debug.hidden_window") ||
+		config_real("debug.exit_after") > 0.0 || config_string("debug.network_test")[0]))
 	{
 		return;
 	}
@@ -783,6 +886,22 @@ void updater_start(void)
 		else
 			SDL_SetAtomicInt(&updater_state, _updater_handled);
 	}
+}
+
+/* whether the game runs under gamescope (the Steam Deck's Game Mode), where
+a system dialog such as SDL's message box crashes the game. gamescope sets
+GAMESCOPE_WAYLAND_DISPLAY for the programs it runs and Game Mode's session
+XDG_CURRENT_DESKTOP; Steam sets SteamDeck and SteamGamepadUI there. Wine
+passes them on to the Windows build under Proton. */
+static int updater_gamescope(void)
+{
+	const char *wayland_display = getenv("GAMESCOPE_WAYLAND_DISPLAY");
+	const char *desktop = getenv("XDG_CURRENT_DESKTOP");
+	const char *steam_deck = getenv("SteamDeck");
+	const char *gamepad_ui = getenv("SteamGamepadUI");
+
+	return (wayland_display && wayland_display[0]) || (desktop && strstr(desktop, "gamescope")) ||
+		(steam_deck && !strcmp(steam_deck, "1") && gamepad_ui && !strcmp(gamepad_ui, "1"));
 }
 
 /* every frame, on the game's thread (sdl_platform.c): asks the player once a
@@ -816,6 +935,14 @@ void updater_poll(SDL_Window *window)
 			updater_update();
 		else if (!strcmp(test_answer, "never"))
 			config_write_boolean("update.auto", 0);
+		return;
+	}
+	/* (no question under gamescope: the player updates from the desktop, or
+	with debug.update_answer) */
+	if (updater_gamescope())
+	{
+		platform_log("update: build %ld is out (this is build %d); not asking under gamescope (Steam Deck Game Mode)",
+			updater_latest_build, HALO_BUILD_NUMBER);
 		return;
 	}
 	/* (a dialog cannot show above a fullscreen game) */

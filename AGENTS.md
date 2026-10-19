@@ -29,7 +29,7 @@ end.
 | `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), icons, network brokers, the Linux desktop entry (`linux/`) |
 | `port/third_party/` | Vendored libraries, each with a README naming its upstream, version and checksum |
 | `port/tools/` | Stand-alone tools (`cache_file_report.c`) |
-| `tools/` | Build scripts (`build_common.py`, what the others share; `linux_guest_build.py`, `vulkan_build.py`, `windows_build.py`, `android_build.py` (also the guest image of every guest build), `macos_build.py`, `macos_app.py` (the macOS app, its disk image, signing and notarization), `macos_shaders.py` (the macOS app's shader library), `render_manifest.py` (the renderer's manifest, the game's vertex shaders from its code), `web_build.py`, `ci_build.py`, `linux_package.py`, `frame_package.py` (the Steam Frame's), `web_serve.py`), the game's 32-bit x86 ABI for test tools (`x86_game_abi.py`: `map_validate`), the guest's base register (`guest_base_register.py`, measured by `base_register_bench/`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`) and tests |
+| `tools/` | Build scripts (`build_common.py`, what the others share; `linux_guest_build.py`, `vulkan_build.py`, `windows_build.py`, `android_build.py` (also the guest image of every guest build), `macos_build.py`, `macos_app.py` (the macOS app, its disk image, signing and notarization), `macos_shaders.py` (the macOS app's shader library), `render_manifest.py` (the renderer's manifest, the game's vertex shaders from its code), `web_build.py`, `ci_build.py`, `linux_package.py`, `frame_package.py` (the Steam Frame's), `web_serve.py`), the game's 32-bit x86 ABI for test tools (`x86_game_abi.py`: `map_validate`), the guest's base register (`guest_base_register.py`, measured by `base_register_bench/`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`), tests, and OpenCE's `stagekit/` (scenarios staged and instrumented on the real engine, no retail assets; it builds on the 32-bit Linux build OpenH1 no longer has, so its tests skip) |
 | `docs/` | Longer design notes (`custom_edition_caches.md`, `mods.md`) |
 | `pgo/` | Profile-guided optimisation profiles |
 | `assets/` | Game data for local runs (gitignored: `maps/`, `custom_maps/`) |
@@ -46,7 +46,7 @@ ninja android_apk              # the APK (Gradle)
 ninja web                      # build/web/site (Emscripten: port/web/README.md)
 ninja macos                    # build/macos/Halo.app (and halo), on Apple silicon (port/macos/README.md)
 ninja macos_dmg                # build/macos/Halo.dmg
-ninja windows                  # on Windows only
+ninja windows                  # on Windows, or on Linux after configure.py --windows-cross
 python tools/ci_build.py linux_x86_64 release   # what CI builds
 ```
 
@@ -160,6 +160,7 @@ python -m pytest -q tools/harness tools/test_touch_menu.py   # the engine's func
 python -m pytest -q tools/test_linux_port.py                # the build, the maps' checks (needs assets/maps; map_validate,
                                                             # tools/x86_game_abi.py, needs gcc-multilib on x86-64 Linux)
 python -m pytest -q tools/test_mods.py                      # mods played over a map (needs assets/maps)
+python -m pytest -q tools/test_bots.py                      # the bots in local games (needs assets/maps)
 python -m pytest -q tools/test_cache_file_formats.py tools/test_bmp_files.py tools/test_profile.py
 python -m pytest -q tools/test_render_manifest.py tools/test_render_stream.py  # the renderer's manifest, the command stream
 python -m pytest -q tools/test_vulkan_passes.py tools/test_host_vr_vulkan.py  # the Vulkan backend, the VR host (a fake GPU)
@@ -191,7 +192,8 @@ python tools/net_compare.py --a build/linux_x86_64/halo --b <other build> --data
 ```
 
 `tools/harness/README.md` explains how to add an asset-free test: the code
-under test is taken from the sources, not copied.
+under test is taken from the sources, not copied. `tools/stagekit/README.md`
+explains how to add a scenario: the real engine, with no retail assets.
 
 Running the game without a person at it:
 
@@ -292,10 +294,18 @@ otherwise.
 
 ### Third-party code and licences
 
-The repository is CC0. Vendored code goes in `port/third_party/<name>`,
-copied unchanged, with a README naming the upstream, the version or commit,
-the checksum and what uses it. GPL code (OpenSauce, Reclaimer) may be read
-as documentation of file formats, never copied.
+The repository is `AGPL-3.0-or-later` (`LICENSE`); the commits before the
+change, and the releases built from them, stay CC0 (`LICENSES/CC0-1.0.txt`).
+The README's "Licence" section says what each part is under. Vendored code
+goes in `port/third_party/<name>`, copied unchanged, with a README naming
+the upstream, the version or commit, the licence, the checksum and what uses
+it. Its licence must let it be combined with the AGPL 3.0: MIT, BSD (without
+an advertising clause), ISC, zlib, Apache 2.0, MPL 2.0, LGPL or GPL 3.0 or
+later, public domain. GPL-2.0-only code and the 4-clause BSD licence cannot
+be. Code taken from another project, GPL 3.0 code included, keeps its
+notices and its licence, and says where it came from.
+The decompilation's upstream, punpckhdq/halo, is AGPL 3.0 from 17 October
+2026; bnunu/halo-1 is CC0.
 
 ### Commits and pull requests
 
@@ -328,5 +338,6 @@ as documentation of file formats, never copied.
 | [port/assets/menus/UNWIRED.md](port/assets/menus/UNWIRED.md) | Menu functions that do nothing yet |
 | [port/assets/fonts/README.md](port/assets/fonts/README.md) | The fonts and their licences |
 | [tools/harness/README.md](tools/harness/README.md) | Asset-free regression tests |
+| [tools/stagekit/README.md](tools/stagekit/README.md) | Scenarios staged and instrumented on the real engine, no retail assets |
 | `port/third_party/*/README.md` | Each vendored library |
 | [AUTHORS.md](AUTHORS.md) | Art credits |

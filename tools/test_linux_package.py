@@ -47,7 +47,7 @@ def test_tree(build, tmp_path):
     assert "share/opence/brokers.txt" in names
     assert "share/applications/opence.desktop" in names
     assert "share/icons/hicolor/48x48/apps/opence.png" in names
-    assert "share/licenses/opence/LICENSE.md" in names
+    assert "share/licenses/opence/LICENSE" in names
     assert "share/licenses/opence/SDL3-LICENSE.txt" in names
     assert "share/doc/opence/README.md" in names
     # (nothing but the prefix's folders at its top)

@@ -43,19 +43,14 @@ DESKTOP_ENTRY = ROOT / "port/assets/linux/opence.desktop"
 ICONS = ROOT / "port/assets/icon/hicolor"  # opence-<size>.png (tools/app_icon.py)
 BROKERS = ROOT / "port/assets/network/brokers.txt"
 DOCUMENTS = [(ROOT / "README.md", "README.md"), (ROOT / "port/linux/README.md", "README.linux.md")]
-PROJECT_LICENSE = ROOT / "LICENSE.md"
+PROJECT_LICENSE = ROOT / "LICENSE"  # the AGPL (earlier releases were CC0: LICENSES/)
 
 
 def notices(platform: str) -> List[Tuple[Path, str]]:
     """the licences of what a platform's build carries, which its release
     has beside it ((source, name in the release) pairs; tools/ci_build.py's
     for every platform; the Linux build's SDL3-LICENSE.txt is apart)"""
-    pairs = [
-        # the disc image readers (port/linux/src/xiso.c, and the Android
-        # app's XisoExtractor.java) follow extract-xiso, whose license asks
-        # binaries to carry its notice
-        (ROOT / "port/third_party/extract-xiso/LICENSE.TXT", "extract-xiso-LICENSE.txt"),
-    ]
+    pairs = []
     if platform != "web":
         # internet play's DTLS with browsers, and the Linux self-updater's
         # TLS (port/third_party/mbedtls), whose Apache license asks the same

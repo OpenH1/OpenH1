@@ -88,8 +88,16 @@ console. The port changes them to play as the North American (NTSC) maps do,
 so players of the two versions can play together.
 
 1. Start the game.
-2. At the first start, the game asks for the disc image. Select it.
+2. At the first start, the game asks for the disc image. Select it in the
+   file picker. On Linux and Windows, a disc image (`.iso` or `.xiso`) next
+   to the executable is used without the file picker. Where no file picker
+   can be shown (on Linux, without the desktop portal or `zenity`), the game
+   says to put the disc image next to the executable, and stops.
 3. The game extracts the `maps/` folder. Then the game starts.
+
+The `maps/` folder holds the Xbox maps only. If it holds Halo PC's maps
+instead (a Halo PC or Custom Edition install's `maps` folder), the game says
+so and stops: Custom Edition maps go in `custom_maps/`, beside `maps/`.
 
 On Linux, the game puts `maps/` in the folder of the release (next to
 `bin/`). On Windows, the game puts `maps/` next to the executable. On
@@ -159,7 +167,7 @@ To build the game:
 | --- | --- |
 | `ninja linux_x86_64` (on 64-bit x86 Linux) | `build/linux_x86_64/halo` and `libSDL3.so.0` (with `python configure.py --vr`, its VR mode) |
 | `ninja linux_arm64` (on 64-bit ARM Linux) | `build/linux_arm64/halo` and `libSDL3.so.0` (with `python configure.py --vr`, its VR mode) |
-| `ninja windows` (on Windows) | `build/windows/halo.exe` and `SDL3.dll` |
+| `ninja windows` (on Windows, or on Linux after `configure.py --windows-cross`) | `build/windows/halo.exe` and `SDL3.dll` |
 | `ninja android_apk` | `port/android/app/build/outputs/apk/debug/app-debug.apk` |
 | `ninja macos` (on a Mac with Apple silicon) | `build/macos/Halo.app` (and `halo` with `libSDL3.0.dylib`, for development); `ninja macos_dmg`: `Halo.dmg` |
 | `ninja web` | `build/web/site/`, the web site (`python tools/web_serve.py` serves it) |
@@ -328,3 +336,35 @@ players can still play together.
 
 Report problems on the [issue tracker](https://github.com/OpenH1/OpenH1/issues),
 with the build number (the main menu shows it) and `debug.txt`.
+
+## Licence
+
+OpenH1 is free software: you can give it to others and change it under the
+terms of the GNU Affero General Public License as published by the Free
+Software Foundation, version 3 of the License or (at your option) any later
+version (`AGPL-3.0-or-later`). It comes with no warranty. The full text is in
+[LICENSE](LICENSE).
+
+- **From the change.** The AGPL applies from the commit that made the change,
+  and to each release built from that commit or a later one. Earlier
+  releases, and the source at every earlier commit, were released under
+  [CC0 1.0](LICENSES/CC0-1.0.txt) and stay that way. (OpenH1 took the
+  change with its merge of OpenCE, which had made it.)
+- **What OpenH1 builds on.** The decompilation of
+  [punpckhdq/halo](https://github.com/punpckhdq/halo) is under the AGPL 3.0
+  from 17 October 2026, and under CC0 1.0 before that date.
+  [bnunu/halo-1](https://github.com/bnunu/halo-1) is under CC0 1.0.
+- **Contributions** are under `AGPL-3.0-or-later`. A change taken from a
+  project under GPL 3.0 keeps that licence and its notices; the GPL 3.0 and
+  the AGPL 3.0 let the two be combined (section 13 of each).
+- **Hosts and servers.** If you change the game and let other persons play
+  with your version over a network (for example, as the host of an internet
+  game, or on a web site), the AGPL asks you to offer them the source of
+  your version (section 13). The game as released has its source here, and
+  each release's source is its tag (`build-<n>`).
+- **Third-party code, fonts and art** keep their own licences, which are
+  next to them (`port/third_party`, `port/assets/fonts`,
+  `port/assets/icons`, `port/assets/text_filter`). The release downloads and
+  the web site's `licenses.txt` carry their notices.
+- **Halo is not covered.** The licence covers the work of OpenH1's and
+  OpenCE's authors. It gives no rights in Halo, its maps or anything else that Microsoft owns.

@@ -12,7 +12,6 @@ import pytest
 from tools import build_common, linux_msvc_semantics, x86_game_abi
 from tools.port_settings import MENU_PLATFORMS
 
-
 # ---------- MSVC semantics header
 
 
@@ -158,8 +157,8 @@ MENU_ATTRIBUTES = {
     "menus": {"root"},
     "bitmap": {"name", "width", "height", "frames", "platform"},
     "frame": {"png", "map", "index", "width", "height", "x", "y", "platform"},
-    "strings": {"name", "platform"},
-    "string": {"text", "platform"},
+    "strings": {"name", "map", "platform"},
+    "string": {"text", "map", "platform"},
     "widget": {"name", "type", "controller", "flags", "bitmap", "text", "strings", "values", "setting", "font",
                "color", "align", "description", "string_list", "list_flags", "text_flags", "header_bitmap",
                "footer_bitmap", "header_bounds", "footer_bounds", "child_controller", "x", "y", "left", "top",
@@ -241,6 +240,9 @@ def test_menus_are_well_formed():
                     assert width % logical[0] == 0 and width // logical[0] == height // logical[1], where
             elif element.tag == "strings":
                 strings[element.get("name")] = element
+                # (a string's map= is its number in the list's map list, menu_tags.c)
+                for string in element.findall("string"):
+                    assert string.get("map") is None or (element.get("map") and string.get("map").isdigit()), where
             elif element.tag == "widget":
                 name = element.get("name")
                 assert name and name not in widgets, where
@@ -302,7 +304,11 @@ def config_check_build(tmp_path, defines):
         pytest.skip("needs a C compiler")
     stubs = tmp_path / "stubs"
     (stubs / "SDL3").mkdir(parents=True)
-    (stubs / "SDL3" / "SDL.h").write_text("const char *SDL_GetBasePath(void);\n")
+    (stubs / "SDL3" / "SDL.h").write_text(
+        "const char *SDL_GetBasePath(void);\n"
+        "typedef struct SDL_PathInfo { int type; unsigned long long size; long long create_time, modify_time,"
+        " access_time; } SDL_PathInfo;\n"
+        "_Bool SDL_GetPathInfo(const char *path, SDL_PathInfo *info);\n")
     (stubs / "platform.h").write_text("void platform_log(const char *format, ...);\n")
     for name in ("port_config.c", "port_config.h", "install_layout.h"):
         shutil.copy(root / "port/linux/src" / name, stubs / name)
@@ -438,6 +444,17 @@ def test_graphics_preset_on_a_headset(config_check):
     assert graphics_values(config_check) == GRAPHICS_ENHANCED
     config_check("write", "display.graphics", "classic")
     assert graphics_values(config_check) == GRAPHICS_CLASSIC
+
+
+def test_default_brokers_are_brokers_txt():
+    """The brokers a game uses with no brokers.txt beside its config.toml
+    (p2p_signal.c's DEFAULT_BROKERS) are port/assets/network/brokers.txt's."""
+    root = MENUS.parent.parent.parent
+    listed = [line.split("#", 1)[0].strip()
+              for line in (root / "port/assets/network/brokers.txt").read_text().splitlines()]
+    default = re.search(r'^#define DEFAULT_BROKERS "([^"]*)"',
+                        (root / "port/linux/src/p2p_signal.c").read_text(), re.M).group(1)
+    assert default.split(",") == [line for line in listed if line]
 
 
 def test_p2p_signatures_and_listings(tmp_path):
