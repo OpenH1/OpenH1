@@ -27,7 +27,9 @@ name: Build
 on:
   push:
     # (the 64-bit Windows host's branch, built and tested on its own build
-    # system until it lands: this line stays on that branch only)
+    # system until it lands. NOT FOR MASTER: before win64 is merged, remove
+    # this line, which is the whole of the branch's first commit, "Build
+    # nothing on GitHub for the win64 branch": git revert bd0afc7f)
     branches-ignore: [win64]
     paths-ignore:
       - "**.md"

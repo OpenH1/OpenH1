@@ -232,7 +232,7 @@ def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
     )
     n.rule(
         name="windows_copy",
-        command="$python -c \"import shutil,sys; shutil.copyfile(sys.argv[1], sys.argv[2])\" $in $out",
+        command="$python tools/guest_build_steps.py copy $in $out",
         description="WINDOWS COPY $out",
     )
     n.variable("windows_rc_tool", windows_rc(cc))
