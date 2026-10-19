@@ -359,11 +359,14 @@ static long futex(uint64_t guest, int operation, uint32_t value, uint64_t timeou
 			return -11;
 		/* fall through */
 	case LINUX_FUTEX_REQUEUE:
-		/* the waiters that would move to the second address are woken
-		instead, to wait there again themselves (a spurious wakeup, which
-		every futex user allows) */
-		futex_wake(GUEST(void *, guest2), 0x7fffffff);
-		return futex_wake(address, value);
+		/* every waiter on the first address is woken: those the call would
+		wake, and those it would move to the second address, which wait
+		there again themselves (a spurious wakeup, which every futex user
+		allows). musl's condition variables hand a broadcast on this way
+		(unlock_requeue: wake 0, move 1), so waking only `value` would leave
+		the moved waiters asleep for good */
+		(void)guest2;
+		return futex_wake(address, 0x7fffffff);
 	default:
 		return -38;
 	}
