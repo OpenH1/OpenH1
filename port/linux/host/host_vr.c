@@ -2,38 +2,21 @@
 HOST_VR.C
 
 OpenXR for the VR mode (HALO_VR; port/linux/src/vr_host.h, port/linux/src/
-vr.c). With HALO_VULKAN the runtime creates the Vulkan instance and device
-through XR_KHR_vulkan_enable2 and owns the swapchains' VkImages. These
-handles stay on the host (host_vr_vulkan.h), outside the guest's ABI.
-
-With OpenGL the game draws through SDL's context, which OpenXR takes
-through XR_KHR_opengl_enable. Which context that is, is decided before the
-window is made (host_vr_probe, from the runtime's extensions): an EGL
-context (SDL_VIDEO_FORCE_EGL, sdl_platform.c) through XR_MNDX_egl_enable's
-binding where the runtime offers it (Monado; SteamVR 2.18 on the Steam Frame
-and on x86-64), else a GLX context through XR_KHR_opengl_enable's Xlib
-binding, which needs SDL's X11 video driver. The swapchains' images are
-then GL textures the game draws into directly: the eyes are one 2-layer
-texture array, which the renderer draws both of at once with
-GL_OVR_multiview2 (xgpu_gl.c).
+vr.c). The renderer is Vulkan's, in the host (port/linux/vulkan): the
+runtime creates the Vulkan instance and device through
+XR_KHR_vulkan_enable2 and owns the swapchains' VkImages. These handles stay
+on the host (host_vr_vulkan.h), outside the guest's ABI.
 
 The runtime is loaded without the OpenXR loader, which few distributions
 package: as the loader does, from the active runtime's manifest
 ($XDG_CONFIG_HOME/openxr/1/active_runtime.json, then /etc/xdg), through
 xrNegotiateLoaderRuntimeInterface. A libopenxr_loader.so.1 next to the
 executable or on the system is used instead where there is one, for its API
-layers. The OpenGL binding has been tested with SteamVR on a Steam Frame;
-the Vulkan binding with Monado on Linux.
+layers. The Vulkan binding has been tested with Monado on Linux.
 */
 
-#ifdef HALO_VULKAN
 #define XR_USE_GRAPHICS_API_VULKAN
 #include "host_vr_vulkan.h"
-#else
-#define XR_USE_PLATFORM_EGL
-#define XR_USE_PLATFORM_XLIB
-#define XR_USE_GRAPHICS_API_OPENGL
-#endif
 #define XR_NO_PROTOTYPES
 
 #include "host.h"
@@ -42,11 +25,6 @@ the Vulkan binding with Monado on Linux.
 #include "host_vr_render.h"
 #include "vr_host.h"
 
-#ifndef HALO_VULKAN
-#include <EGL/egl.h>
-#include <X11/Xlib.h>
-#include <SDL3/SDL.h>
-#endif
 #include <dlfcn.h>
 #include <limits.h>
 #include <math.h>
@@ -57,19 +35,9 @@ the Vulkan binding with Monado on Linux.
 #include <time.h>
 #include <unistd.h>
 
-#ifndef HALO_VULKAN
-/* GLX's types, without its header (which would want the desktop GL one) */
-typedef struct __GLXcontextRec *GLXContext;
-typedef struct __GLXFBConfigRec *GLXFBConfig;
-typedef XID GLXDrawable;
-#endif
-
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 #include <openxr/openxr_loader_negotiation.h>
-
-#define GL_SRGB8_ALPHA8 0x8C43
-#define GL_TEXTURE_2D_ARRAY 0x8C1A
 
 /* ---------- the runtime's functions */
 
@@ -117,7 +85,6 @@ typedef XID GLXDrawable;
 XR_FUNCTIONS(XR_DECLARE)
 #undef XR_DECLARE
 static PFN_xrGetInstanceProcAddr get_instance_proc_address;
-#ifdef HALO_VULKAN
 static PFN_xrGetVulkanGraphicsRequirements2KHR xrGetVulkanGraphicsRequirements2KHR;
 static PFN_xrCreateVulkanInstanceKHR xrCreateVulkanInstanceKHR;
 static PFN_xrGetVulkanGraphicsDevice2KHR xrGetVulkanGraphicsDevice2KHR;
@@ -132,9 +99,6 @@ static struct
 	VkFormat depth_format;
 	int prepared;
 } vulkan;
-#else
-static PFN_xrGetOpenGLGraphicsRequirementsKHR xrGetOpenGLGraphicsRequirementsKHR;
-#endif
 
 /* the actions (action_names, bindings) */
 enum
@@ -194,7 +158,7 @@ static struct
 	int info_made;
 } vr;
 
-/* OpenXR's calls that use the GL context on the render thread
+/* OpenXR's calls on the render thread
 (host_vr_render.h): a frame has been waited for (vr.frame is one's: the
 views are located for it: located); the frames waited for on the game's thread and
 not yet begun on the render thread (their states, oldest first), and the
@@ -408,12 +372,7 @@ static int binding_choose(void)
 {
 	XrExtensionProperties *extensions;
 	uint32_t count = 0, index;
-#ifdef HALO_VULKAN
 	int enabled;
-#else
-	int opengl, egl;
-	const char *driver;
-#endif
 
 	if (!runtime_load())
 		return VR_BINDING_NONE;
@@ -429,7 +388,6 @@ static int binding_choose(void)
 		extensions[index].type = XR_TYPE_EXTENSION_PROPERTIES;
 	if (xrEnumerateInstanceExtensionProperties(NULL, count, &count, extensions) != XR_SUCCESS)
 		count = 0;
-#ifdef HALO_VULKAN
 	enabled = extension_listed(extensions, count, XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);
 	free(extensions);
 	if (!enabled)
@@ -439,33 +397,6 @@ static int binding_choose(void)
 	}
 	host_logf(HOST_LOG_INFO, "vr: the runtime takes Vulkan (XR_KHR_vulkan_enable2)");
 	return VR_BINDING_VULKAN;
-#else
-	opengl = extension_listed(extensions, count, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME);
-	egl = extension_listed(extensions, count, XR_MNDX_EGL_ENABLE_EXTENSION_NAME);
-	free(extensions);
-	if (!opengl)
-	{
-		host_logf(HOST_LOG_ERROR, "vr: the OpenXR runtime has no OpenGL binding (XR_KHR_opengl_enable)");
-		return VR_BINDING_NONE;
-	}
-	if (egl)
-	{
-		host_logf(HOST_LOG_INFO, "vr: the runtime takes an EGL context (XR_MNDX_egl_enable)");
-		return VR_BINDING_EGL;
-	}
-	/* GLX's binding, whose context SDL makes only with its X11 driver (under
-	Wayland, X11 is XWayland's) */
-	driver = SDL_GetCurrentVideoDriver();
-	if (!driver || strcmp(driver, "x11"))
-	{
-		host_logf(HOST_LOG_ERROR, "vr: the OpenXR runtime has no XR_MNDX_egl_enable, so it takes OpenGL only "
-			"through GLX, which needs SDL's X11 video driver, not %s: start the game with SDL_VIDEO_DRIVER=x11 "
-			"to play in VR", driver ? driver : "none");
-		return VR_BINDING_NONE;
-	}
-	host_logf(HOST_LOG_INFO, "vr: the runtime has no XR_MNDX_egl_enable: it takes a GLX context");
-	return VR_BINDING_GLX;
-#endif
 }
 
 int host_vr_probe(void)
@@ -525,24 +456,12 @@ static int instance_create(void)
 			free(text);
 		}
 	}
-#ifdef HALO_VULKAN
 	if (!extension_listed(extensions, count, XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME))
 	{
 		free(extensions);
 		return 0;
 	}
 	enabled[enabled_count++] = XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME;
-#else
-	if (!extension_listed(extensions, count, XR_KHR_OPENGL_ENABLE_EXTENSION_NAME))
-	{
-		host_logf(HOST_LOG_ERROR, "vr: the OpenXR runtime has no OpenGL binding (XR_KHR_opengl_enable)");
-		free(extensions);
-		return 0;
-	}
-	enabled[enabled_count++] = XR_KHR_OPENGL_ENABLE_EXTENSION_NAME;
-	if (vr.binding == VR_BINDING_EGL)
-		enabled[enabled_count++] = XR_MNDX_EGL_ENABLE_EXTENSION_NAME;
-#endif
 	if (extension_listed(extensions, count, "XR_VALVE_frame_controller_interaction"))
 	{
 		enabled[enabled_count++] = "XR_VALVE_frame_controller_interaction";
@@ -585,7 +504,6 @@ static int instance_create(void)
 		return 0;
 	if (!functions_load(vr.instance))
 		return 0;
-#ifdef HALO_VULKAN
 #define XR_VULKAN_LOAD(name) \
 	if (get_instance_proc_address(vr.instance, #name, (PFN_xrVoidFunction *)&name) != XR_SUCCESS || !name) \
 	{ \
@@ -597,10 +515,6 @@ static int instance_create(void)
 	XR_VULKAN_LOAD(xrGetVulkanGraphicsDevice2KHR)
 	XR_VULKAN_LOAD(xrCreateVulkanDeviceKHR)
 #undef XR_VULKAN_LOAD
-#else
-	get_instance_proc_address(vr.instance, "xrGetOpenGLGraphicsRequirementsKHR",
-		(PFN_xrVoidFunction *)&xrGetOpenGLGraphicsRequirementsKHR);
-#endif
 	if (xrGetInstanceProperties(vr.instance, &properties) == XR_SUCCESS)
 	{
 		host_logf(HOST_LOG_INFO, "vr: %s %u.%u.%u", properties.runtimeName,
@@ -610,115 +524,6 @@ static int instance_create(void)
 	return 1;
 }
 
-#ifndef HALO_VULKAN
-/* the GLX binding of the current GLX context (session_create): 0, with
-what is missing logged, if there is none */
-static int glx_binding(XrGraphicsBindingOpenGLXlibKHR *xlib)
-{
-	/* (GLX from the GL library SDL's X11 driver loaded; XFree from Xlib,
-	which that loads) */
-	void *gl = dlopen("libGL.so.1", RTLD_NOW | RTLD_GLOBAL), *x11 = dlopen("libX11.so.6", RTLD_NOW | RTLD_GLOBAL);
-	Display *(*current_display)(void) = gl ? (Display *(*)(void))dlsym(gl, "glXGetCurrentDisplay") : NULL;
-	GLXContext (*current_context)(void) = gl ? (GLXContext (*)(void))dlsym(gl, "glXGetCurrentContext") : NULL;
-	GLXDrawable (*current_drawable)(void) = gl ? (GLXDrawable (*)(void))dlsym(gl, "glXGetCurrentDrawable") : NULL;
-	int (*query_context)(Display *, GLXContext, int, int *) =
-		gl ? (int (*)(Display *, GLXContext, int, int *))dlsym(gl, "glXQueryContext") : NULL;
-	GLXFBConfig *(*choose)(Display *, int, const int *, int *) =
-		gl ? (GLXFBConfig *(*)(Display *, int, const int *, int *))dlsym(gl, "glXChooseFBConfig") : NULL;
-	int (*config_attribute)(Display *, GLXFBConfig, int, int *) =
-		gl ? (int (*)(Display *, GLXFBConfig, int, int *))dlsym(gl, "glXGetFBConfigAttrib") : NULL;
-	int (*x_free)(void *) = x11 ? (int (*)(void *))dlsym(x11, "XFree") : NULL;
-	int id = 0, screen = 0, count = 0, visual = 0;
-	int attributes[] = { 0x8013 /* GLX_FBCONFIG_ID */, 0, 0 };
-	GLXFBConfig *configs;
-
-	if (!gl || !current_display || !current_context || !current_drawable || !query_context || !choose ||
-		!config_attribute)
-	{
-		host_logf(HOST_LOG_ERROR, "vr: the runtime takes a GLX context (no XR_MNDX_egl_enable), but %s",
-			!gl ? "there is no libGL.so.1" : "libGL.so.1 lacks a GLX function");
-		return 0;
-	}
-	if (!current_context() || !(xlib->xDisplay = current_display()))
-	{
-		host_logf(HOST_LOG_ERROR, "vr: the runtime takes a GLX context (no XR_MNDX_egl_enable), "
-			"but none is current%s", eglGetCurrentContext() != EGL_NO_CONTEXT ? " (an EGL context is)" : "");
-		return 0;
-	}
-	xlib->glxContext = current_context();
-	xlib->glxDrawable = current_drawable();
-	if (query_context(xlib->xDisplay, xlib->glxContext, 0x8013, &id) != 0 ||
-		query_context(xlib->xDisplay, xlib->glxContext, 0x800C /* GLX_SCREEN */, &screen) != 0)
-	{
-		host_logf(HOST_LOG_ERROR, "vr: cannot read the GLX context's config");
-		return 0;
-	}
-	attributes[1] = id;
-	configs = choose(xlib->xDisplay, screen, attributes, &count);
-	if (configs && count > 0)
-	{
-		xlib->glxFBConfig = configs[0];
-		config_attribute(xlib->xDisplay, configs[0], 0x800B /* GLX_VISUAL_ID */, &visual);
-		xlib->visualid = (uint32_t)visual;
-	}
-	if (configs && x_free)
-		x_free(configs);
-	if (!xlib->glxFBConfig)
-	{
-		host_logf(HOST_LOG_ERROR, "vr: no GLX config of the context's (id %d)", id);
-		return 0;
-	}
-	host_logf(HOST_LOG_INFO, "vr: GLX binding (config %d, visual 0x%x)", id, (unsigned)visual);
-	return 1;
-}
-
-/* the binding of the current GL context (host_vr_probe's) */
-static int session_create(void)
-{
-	XrSystemGetInfo system = { XR_TYPE_SYSTEM_GET_INFO };
-	XrGraphicsRequirementsOpenGLKHR requirements = { XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR };
-	XrSessionCreateInfo create = { XR_TYPE_SESSION_CREATE_INFO };
-	XrGraphicsBindingEGLMNDX egl = { XR_TYPE_GRAPHICS_BINDING_EGL_MNDX };
-	XrGraphicsBindingOpenGLXlibKHR xlib = { XR_TYPE_GRAPHICS_BINDING_OPENGL_XLIB_KHR };
-
-	system.formFactor = XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY;
-	if (!check(xrGetSystem(vr.instance, &system, &vr.system), "xrGetSystem (is the headset on?)"))
-		return 0;
-	if (xrGetOpenGLGraphicsRequirementsKHR)
-		xrGetOpenGLGraphicsRequirementsKHR(vr.instance, vr.system, &requirements);
-
-	if (vr.binding == VR_BINDING_EGL)
-	{
-		EGLint config_id = 0, count = 0;
-		EGLint attributes[] = { EGL_CONFIG_ID, 0, EGL_NONE };
-		EGLConfig config = NULL;
-
-		if (eglGetCurrentContext() == EGL_NO_CONTEXT)
-		{
-			host_logf(HOST_LOG_ERROR, "vr: the runtime takes an EGL context (XR_MNDX_egl_enable), but none is current");
-			return 0;
-		}
-		egl.getProcAddress = (PFN_xrEglGetProcAddressMNDX)eglGetProcAddress;
-		egl.display = eglGetCurrentDisplay();
-		egl.context = eglGetCurrentContext();
-		eglQueryContext(egl.display, egl.context, EGL_CONFIG_ID, &config_id);
-		attributes[1] = config_id;
-		eglChooseConfig(egl.display, attributes, &config, 1, &count);
-		egl.config = config;
-		create.next = &egl;
-		host_logf(HOST_LOG_INFO, "vr: EGL binding (config %d)", (int)config_id);
-	}
-	else
-	{
-		if (!glx_binding(&xlib))
-			return 0;
-		create.next = &xlib;
-	}
-	create.systemId = vr.system;
-	return check(xrCreateSession(vr.instance, &create, &vr.session), "xrCreateSession");
-}
-
-#else
 /* Vulkan's device exists before the guest asks to create the session. */
 static int session_create(void)
 {
@@ -733,32 +538,52 @@ static int session_create(void)
 	create.systemId = vr.system;
 	return check(xrCreateSession(vr.instance, &create, &vr.session), "xrCreateSession (Vulkan)");
 }
-#endif
+
+/* the session's swapchain formats, as many as the runtime has (the two-call
+idiom), allocated; NULL if there are none or they cannot be read (logged),
+their count in count */
+static int64_t *swapchain_formats(uint32_t *count)
+{
+	int64_t *formats;
+	uint32_t capacity = 0;
+
+	*count = 0;
+	if (!check(xrEnumerateSwapchainFormats(vr.session, 0, &capacity, NULL), "xrEnumerateSwapchainFormats (count)") ||
+		!capacity || capacity > 4096)
+		return NULL;
+	formats = calloc(capacity, sizeof(*formats));
+	if (!formats)
+		return NULL;
+	if (!check(xrEnumerateSwapchainFormats(vr.session, capacity, count, formats), "xrEnumerateSwapchainFormats") ||
+		*count > capacity)
+	{
+		free(formats);
+		*count = 0;
+		return NULL;
+	}
+	return formats;
+}
 
 static int swapchain_create(int which, int width, int height, int layers, struct vr_host_info *info)
 {
-	int64_t formats[64];
+	int64_t *formats;
 	uint32_t format_count = 0, format_index;
 	XrSwapchainCreateInfo create = { XR_TYPE_SWAPCHAIN_CREATE_INFO };
-#ifndef HALO_VULKAN
-	XrSwapchainImageOpenGLKHR images[VR_SWAPCHAIN_IMAGES];
-#endif
 	uint32_t count = 0, index;
 
-#ifdef HALO_VULKAN
 	/* Request both attachment and transfer usage: the backend can draw
 	directly or copy its resolved targets into the runtime's images. */
 	{
 		/* Encoded game values are copied unchanged. An UNORM runtime image
-		would treat those values as linear light, so require sRGB as GL does. */
+		would treat those values as linear light, so require sRGB. */
 		static const int64_t color_formats[] = { VK_FORMAT_B8G8R8A8_SRGB, VK_FORMAT_R8G8B8A8_SRGB };
 		int preference;
 
 		create.usageFlags = which == VR_SWAPCHAIN_DEPTH ? XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT :
 			XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
 		create.usageFlags |= XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT;
-		if (!check(xrEnumerateSwapchainFormats(vr.session, 64, &format_count, formats),
-			"xrEnumerateSwapchainFormats") || format_count > 64)
+		formats = swapchain_formats(&format_count);
+		if (!formats)
 			return 0;
 		for (preference = 1; preference >= 0; preference--)
 		{
@@ -777,6 +602,7 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 					create.format = formats[format_index];
 			}
 		}
+		free(formats);
 		if (!create.format)
 		{
 			host_logf(HOST_LOG_ERROR, "vr: no supported Vulkan %s swapchain format",
@@ -784,37 +610,6 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 			return 0;
 		}
 	}
-#else
-	/* sRGB, the only colour formats SteamVR offers: the renderer writes and
-	reads its values as they are (no GL_FRAMEBUFFER_SRGB, no decoding), and
-	the compositor shows them as the sRGB values they already are */
-	create.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT | XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
-	create.format = GL_SRGB8_ALPHA8;
-	if (which == VR_SWAPCHAIN_DEPTH)
-	{
-		/* 32-bit float depth where offered, else 24 or 16-bit. (SteamVR 2.18
-		on the Steam Frame lists these but cannot make any of them for a GL
-		session: vr.depth is off by default) */
-		static const int64_t preferences[] = { 0x8CAC, 0x81A6, 0x81A5 };
-		int preference;
-
-		create.usageFlags = XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-		create.format = 0;
-		xrEnumerateSwapchainFormats(vr.session, 64, &format_count, formats);
-		for (preference = 2; preference >= 0; preference--)
-		{
-			for (format_index = 0; format_index < format_count; format_index++)
-			{
-				if (formats[format_index] == preferences[preference])
-					create.format = formats[format_index];
-			}
-		}
-		host_logf(HOST_LOG_INFO, "vr: depth format 0x%llx", (long long)create.format);
-		if (!create.format)
-			return 0;
-	}
-
-#endif
 	create.sampleCount = 1;
 	create.width = (uint32_t)width;
 	create.height = (uint32_t)height;
@@ -823,7 +618,6 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 	create.mipCount = 1;
 	if (!check(xrCreateSwapchain(vr.session, &create, &vr.swapchains[which]), "xrCreateSwapchain"))
 		return 0;
-#ifdef HALO_VULKAN
 	if (!check(xrEnumerateSwapchainImages(vr.swapchains[which], 0, &count, NULL),
 		"xrEnumerateSwapchainImages (count)") || !count || count > INT_MAX)
 		goto failed;
@@ -839,33 +633,16 @@ static int swapchain_create(int which, int width, int height, int layers, struct
 	info->image_count[which] = (int)count;
 	/* The guest sends swapchain indices, never Vulkan handles. */
 	memset(info->images[which], 0, sizeof(info->images[which]));
-#else
-	for (index = 0; index < VR_SWAPCHAIN_IMAGES; index++)
-	{
-		images[index].type = XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_KHR;
-		images[index].next = NULL;
-	}
-	if (!check(xrEnumerateSwapchainImages(vr.swapchains[which], VR_SWAPCHAIN_IMAGES, &count,
-		(XrSwapchainImageBaseHeader *)images), "xrEnumerateSwapchainImages"))
-	{
-		return 0;
-	}
-	info->image_count[which] = (int)count;
-	for (index = 0; index < count; index++)
-		info->images[which][index] = images[index].image;
-#endif
 	vr.swapchain_width[which] = width;
 	vr.swapchain_height[which] = height;
 	vr.acquired[which] = -1;
 	return 1;
-#ifdef HALO_VULKAN
 failed:
 	free(vulkan.images[which]);
 	vulkan.images[which] = NULL;
 	xrDestroySwapchain(vr.swapchains[which]);
 	vr.swapchains[which] = XR_NULL_HANDLE;
 	return 0;
-#endif
 }
 
 /* ---------- the controllers */
@@ -1300,7 +1077,7 @@ int host_vr_initialize(struct vr_host_info *info)
 
 	if (!render_thread.on)
 		return initialize(info);
-	/* (where the GL context is current) */
+	/* (on the render thread, which has the device) */
 	call.info = info;
 	call.result = 0;
 	host_render_stream_call(initialize_called, &call);
@@ -2156,7 +1933,6 @@ void host_vr_haptic(int hand, float amplitude, float seconds)
 	pthread_mutex_unlock(&haptics.lock);
 }
 
-#ifdef HALO_VULKAN
 /* ---------- the Vulkan device and runtime images (host only) */
 
 int host_vr_vulkan_requested(void)
@@ -2308,4 +2084,3 @@ void host_vr_vulkan_shutdown(void)
 	vr.system = XR_NULL_SYSTEM_ID;
 	vr.info_made = vr.running = vr.frame_begun = 0;
 }
-#endif

@@ -1,6 +1,6 @@
-"""The Linux release's layout (tools/linux_package.py): the tree that packages copy to /usr, the flat release the
-updaters of older builds read, the zips' modes, and that the game (install_layout.c, updater.c) and the desktop
-entry agree with them. Needs no build: the files are stand-ins.
+"""The Linux release's layout (tools/linux_package.py): the tree that packages copy to /usr, the zips' modes, and
+that the game (install_layout.c, updater.c), tools/ci_build.py, the workflow and the desktop entry agree with them.
+Needs no build: the files are stand-ins.
 
     python -m pytest -q tools/test_linux_package.py
 """
@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ci_build  # noqa: E402
 import linux_package  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -59,49 +60,36 @@ def test_tree_without_sdl(build, tmp_path):
     assert not (tree / "lib").exists()
 
 
-def test_flat(build, tmp_path):
-    """what the updaters of the releases before the tree install: files at the zip's top, at most 32
-    (their MAXIMUM_UPDATE_FILES), the executable named halo"""
-    flat = tmp_path / "flat"
-    linux_package.stage_flat(flat, build / "halo", build / "libSDL3.so.0", notices(build))
-    names = files(flat)
-    assert all("/" not in name for name in names)
-    assert len(names) <= 32
-    assert {"halo", "libSDL3.so.0", "brokers.txt", "SDL3-LICENSE.txt"} <= set(names)
-
-
-def test_flat_files_are_those_the_update_to_the_tree_deletes(build, tmp_path):
-    """updater.c deletes the flat release's files (all but halo) when the flat build updates to the tree"""
-    flat = tmp_path / "flat"
-    linux_package.stage_flat(flat, build / "halo", build / "libSDL3.so.0", notices(build))
-    source = (ROOT / "port/linux/src/updater.c").read_text()
-    table = source[source.index("updater_flat_files[] ="):]
-    deleted = set(re.findall(r'"([^"]+)"', table[:table.index("};")]))
-    assert set(files(flat)) - {"halo"} == deleted
-
-
 def test_zip_modes(build, tmp_path):
-    for stage, executables in ((linux_package.stage_tree, {"bin/opence", "lib/opence/libSDL3.so.0"}),
-                               (linux_package.stage_flat, {"halo", "libSDL3.so.0"})):
-        folder = tmp_path / stage.__name__
-        # (as GitHub's artifacts give them: no file executable)
-        stage(folder, build / "halo", build / "libSDL3.so.0", notices(build))
-        for path in folder.rglob("*"):
-            if path.is_file():
-                path.chmod(0o644)
-        output = tmp_path / f"{stage.__name__}.zip"
-        linux_package.write_zip(folder, output)
-        with zipfile.ZipFile(output) as archive:
-            for info in archive.infolist():
-                assert info.create_system == 3
-                mode = info.external_attr >> 16
-                if info.is_dir():
-                    assert stat.S_ISDIR(mode)
-                    continue
-                assert stat.S_ISREG(mode)
-                expected = 0o755 if info.filename in executables else 0o644
-                assert stat.S_IMODE(mode) == expected, info.filename
-            assert archive.namelist() == sorted(archive.namelist())
+    executables = {"bin/opence", "lib/opence/libSDL3.so.0"}
+    folder = tmp_path / "tree"
+    # (as GitHub's artifacts give them: no file executable)
+    linux_package.stage_tree(folder, build / "halo", build / "libSDL3.so.0", notices(build))
+    for path in folder.rglob("*"):
+        if path.is_file():
+            path.chmod(0o644)
+    output = tmp_path / "tree.zip"
+    linux_package.write_zip(folder, output)
+    with zipfile.ZipFile(output) as archive:
+        for info in archive.infolist():
+            assert info.create_system == 3
+            mode = info.external_attr >> 16
+            if info.is_dir():
+                assert stat.S_ISDIR(mode)
+                continue
+            assert stat.S_ISREG(mode)
+            expected = 0o755 if info.filename in executables else 0o644
+            assert stat.S_IMODE(mode) == expected, info.filename
+        assert archive.namelist() == sorted(archive.namelist())
+
+
+def test_tree_fits_the_updater(build, tmp_path):
+    """the self-updater unpacks at most MAXIMUM_UPDATE_FILES files (updater.c)"""
+    tree = tmp_path / "tree"
+    linux_package.stage_tree(tree, build / "halo", build / "libSDL3.so.0", notices(build))
+    updater = (ROOT / "port/linux/src/updater.c").read_text()
+    maximum = int(re.search(r"#define MAXIMUM_UPDATE_FILES (\d+)", updater).group(1))
+    assert len(files(tree)) <= maximum
 
 
 def test_names_agree():
@@ -116,15 +104,20 @@ def test_names_agree():
 
 
 def test_asset_names_agree():
-    """the 32-bit x86 tree's zip is the one its self-updater asks for (halo-linux-i686-<flavor>.zip), and the flat
-    one keeps the name the updaters of the releases before the tree ask for (halo-linux-<flavor>.zip)"""
+    """each Linux build's zip is the one its self-updater asks for (halo-<UPDATE_PLATFORM>-<flavor>.zip): the
+    x86-64 build's, its VR build's and the 64-bit ARM build's, as tools/ci_build.py names them and the workflow
+    publishes them; there is no 32-bit build, nor a flat release"""
     updater = (ROOT / "port/linux/src/updater.c").read_text()
-    platforms = re.findall(r'#define UPDATE_PLATFORM "([^"]+)"', updater)
-    assert "linux-i686" in platforms and "linux" not in platforms
+    platforms = set(re.findall(r'#define UPDATE_PLATFORM "([^"]+)"', updater))
+    assert platforms == {"windows", "linux-x86_64", "linux-x86_64-vr", "linux-arm64"}
     assert '#define UPDATE_ASSET "halo-" UPDATE_PLATFORM "-" HALO_BUILD_FLAVOR ".zip"' in updater
-    ci_build = (ROOT / "tools/ci_build.py").read_text()
-    assert 'f"halo-linux-i686-{args.config}", linux_package.stage_tree' in ci_build
-    assert 'f"halo-linux-{args.config}", linux_package.stage_flat' in ci_build
     workflow = (ROOT / ".github/workflows/build.yml").read_text()
-    for config in ("debug", "release"):
-        assert f"name: halo-linux-i686-{config}" in workflow and f"name: halo-linux-{config}" in workflow
+    for platform, vr in (("linux_x86_64", False), ("linux_x86_64", True), ("linux_arm64", False)):
+        for config in ("debug", "release"):
+            name = ci_build.dist_name(platform, config, vr)
+            assert name == f"halo-{platform.replace('_', '-', 1)}{'-vr' if vr else ''}-{config}"
+            assert name[len("halo-"):-len(f"-{config}")] in platforms
+            if config == "release" or not vr:
+                assert f"name: {name}" in workflow and f"path: dist/{name}" in workflow, name
+    assert "i686" not in workflow and "halo-linux-debug" not in workflow and "halo-linux-release" not in workflow
+    assert not hasattr(linux_package, "stage_flat")

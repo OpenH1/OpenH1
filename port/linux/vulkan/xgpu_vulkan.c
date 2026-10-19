@@ -24,6 +24,7 @@ query pool once its last submission is done.
 */
 
 #include "xgpu_vulkan.h"
+#include "xgpu_vulkan_post_shaders.h"
 #include "host.h"
 #include "host_load_trace.h"
 #include "../src/loading_presentation.h"
@@ -52,17 +53,17 @@ query pool once its last submission is done.
 	F(vkEnumeratePhysicalDevices) F(vkGetPhysicalDeviceProperties) \
 	F(vkGetPhysicalDeviceFeatures2) F(vkGetPhysicalDeviceQueueFamilyProperties) \
 	F(vkGetPhysicalDeviceProperties2) F(vkGetPhysicalDeviceMemoryProperties) F(vkGetPhysicalDeviceFormatProperties) F(vkCreateDevice) \
-	F(vkGetDeviceProcAddr) F(vkEnumerateDeviceExtensionProperties)
+	F(vkGetDeviceProcAddr) F(vkEnumerateDeviceExtensionProperties) F(vkDestroyInstance)
 
 #define SURFACE_FUNCTIONS(F) \
 	F(vkGetPhysicalDeviceSurfaceSupportKHR) F(vkGetPhysicalDeviceSurfaceCapabilitiesKHR) \
-	F(vkGetPhysicalDeviceSurfaceFormatsKHR) F(vkGetPhysicalDeviceSurfacePresentModesKHR)
+	F(vkGetPhysicalDeviceSurfaceFormatsKHR) F(vkGetPhysicalDeviceSurfacePresentModesKHR) F(vkDestroySurfaceKHR)
 
 #define DEBUG_FUNCTIONS(F) \
-	F(vkCreateDebugUtilsMessengerEXT)
+	F(vkCreateDebugUtilsMessengerEXT) F(vkDestroyDebugUtilsMessengerEXT)
 
 #define DEVICE_FUNCTIONS(F) \
-	F(vkGetDeviceQueue) F(vkDeviceWaitIdle) F(vkQueueSubmit) \
+	F(vkGetDeviceQueue) F(vkDeviceWaitIdle) F(vkQueueSubmit) F(vkDestroyDevice) \
 	F(vkCreateCommandPool) F(vkResetCommandPool) F(vkAllocateCommandBuffers) \
 	F(vkBeginCommandBuffer) F(vkEndCommandBuffer) F(vkAllocateMemory) F(vkFreeMemory) F(vkMapMemory) \
 	F(vkCreateBuffer) F(vkDestroyBuffer) F(vkGetBufferMemoryRequirements) F(vkBindBufferMemory) \
@@ -336,9 +337,14 @@ static struct
 
 	VkPipelineCache pipeline_cache;
 	uint64_t pipeline_count;
+	/* the pipelines made (their compilation finished), and their count
+	when the cache was last written */
+	uint64_t pipelines_made, pipelines_saved;
 	char cache_path[1024];
 	struct pipeline_entry *pipelines[PIPELINE_BUCKETS];
 	struct shader_entry *shaders[SHADER_BUCKETS];
+	/* the shaders of the clears of some of the colour's channels */
+	VkShaderModule clear_vertex, clear_pixel;
 	struct
 	{
 		struct xgpu_vulkan_sampler_description description;
@@ -380,18 +386,41 @@ static struct
 	uint32_t gpu_time_current;
 	int gpu_time_active, gpu_time_armed, gpu_time_failed;
 
-	/* the window */
+	/* the window: its surface, and what makes it again (NULL: no window) */
 	VkSurfaceKHR surface;
+	VkSurfaceKHR (*surface_create)(VkInstance instance, void *context);
+	void *surface_context;
+	/* the app in the background (no surface), and a surface that could
+	not be made again (logged once until it is) */
+	int window_suspended, surface_failing;
 	VkSwapchainKHR swapchain;
 	VkFormat swapchain_format;
 	VkExtent2D swapchain_extent;
+	/* the surface's extent and transform as the swapchain was made for
+	them (a SUBOPTIMAL present makes it again only if they changed), and
+	the presents found SUBOPTIMAL since (the surface is asked again only
+	every SUBOPTIMAL_CHECKS of them) */
+	VkExtent2D surface_extent;
 	VkSurfaceTransformFlagBitsKHR surface_transform;
+	uint32_t suboptimal_presents;
+	/* quarter turns clockwise the frames are drawn turned by, for a
+	swapchain made for the display's own way up (preTransform: Android's
+	pre-rotation); and what turns them (NULL: none, the compositor turns
+	them) */
+	int swapchain_turns;
+	struct xgpu_vulkan_image *(*rotate)(struct xgpu_vulkan_image *image, int quarter_turns);
 	VkImage swapchain_images[8];
 	uint32_t swapchain_image_count;
 	VkSemaphore acquired[SLOTS], presentable[8];
 	int swapchain_stale;
 	VkPresentModeKHR present_mode;
-	volatile uint32_t window_width, window_height;
+	/* (any thread, atomic) the window's size in pixels, width in the upper
+	half, and whether it changed since the render thread last looked; the
+	swap interval asked for, plus one (0: none asked) */
+	uint64_t window_size;
+	uint32_t window_resized, interval_asked, window_hidden;
+	/* the swap interval the swapchain was made with */
+	int interval;
 
 	struct xgpu_vulkan_statistics statistics;
 } vk;
@@ -1651,6 +1680,40 @@ void xgpu_vulkan_image_copy(struct xgpu_vulkan_image *source, uint32_t source_le
 	transfer_done(commands);
 }
 
+void xgpu_vulkan_image_copy_rectangle(struct xgpu_vulkan_image *source, uint32_t source_layer,
+	struct xgpu_vulkan_image *destination, const int32_t rectangle[4])
+{
+	VkCommandBuffer commands;
+	VkImageCopy copy;
+	int32_t right = rectangle[2], bottom = rectangle[3];
+
+	/* (inside both) */
+	if (right > (int32_t)source->description.width)
+		right = (int32_t)source->description.width;
+	if (right > (int32_t)destination->description.width)
+		right = (int32_t)destination->description.width;
+	if (bottom > (int32_t)source->description.height)
+		bottom = (int32_t)source->description.height;
+	if (bottom > (int32_t)destination->description.height)
+		bottom = (int32_t)destination->description.height;
+	if (rectangle[0] < 0 || rectangle[1] < 0 || right <= rectangle[0] || bottom <= rectangle[1] ||
+		(source->aspect & VK_IMAGE_ASPECT_DEPTH_BIT))
+		return;
+	commands = main_commands();
+	memset(&copy, 0, sizeof(copy));
+	copy.srcSubresource.aspectMask = copy.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	copy.srcSubresource.baseArrayLayer = source_layer;
+	copy.srcSubresource.layerCount = copy.dstSubresource.layerCount = 1;
+	copy.srcOffset.x = copy.dstOffset.x = rectangle[0];
+	copy.srcOffset.y = copy.dstOffset.y = rectangle[1];
+	copy.extent.width = (uint32_t)(right - rectangle[0]);
+	copy.extent.height = (uint32_t)(bottom - rectangle[1]);
+	copy.extent.depth = 1;
+	source->used = destination->used = vk.serial;
+	vkCmdCopyImage(commands, source->image, VK_IMAGE_LAYOUT_GENERAL, destination->image, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
+	transfer_done(commands);
+}
+
 /* OpenXR guarantees this layout after xrWaitSwapchainImage and requires
 it again at release. The copy preserves encoded colour bytes, as GL does
 with FRAMEBUFFER_SRGB disabled, including for the runtime's sRGB images. */
@@ -2165,6 +2228,7 @@ static void pipeline_publish(struct pipeline_entry *entry, VkPipeline pipeline, 
 {
 	entry->pipeline = check(result, "vkCreateGraphicsPipelines") ? pipeline : VK_NULL_HANDLE;
 	entry->pending = 0;
+	vk.pipelines_made++;
 	vk.statistics.pipelines_made++;
 	/* Aggregate driver call wall time, not preparation latency: compilation
 	overlaps enumeration, so adding it to enumeration time double counts. */
@@ -2652,15 +2716,77 @@ void xgpu_vulkan_set_targets(struct xgpu_vulkan_image *color, struct xgpu_vulkan
 	xgpu_vulkan_set_target_views(color, depth, layer, 1);
 }
 
+/* the draw set's constants' range (draw_set_make), which the uniforms' fits
+in: one range of the ring for both, as the anti-aliasing passes have it */
+#define CLEAR_UNIFORMS_RANGE (192 * 16)
+
+/* the pipeline of a clear of some of the bound colour target's channels
+(XGPU_VULKAN_CLEAR_RED to _ALPHA), which vkCmdClearAttachments cannot do (it
+writes every channel): a triangle over the viewport (the anti-aliasing
+passes' vertex shader) writing the uniforms' colour through the channels'
+write mask, as OpenGL's glClear through glColorMask, with no depth or stencil
+test or write, for the bound targets' formats, samples and views; 0 if
+there is none */
+static int clear_description(uint32_t channels, struct xgpu_vulkan_pipeline_description *description)
+{
+	if (!vk.color || !(channels & XGPU_VULKAN_CLEAR_CHANNELS))
+		return 0;
+	if (!vk.clear_vertex)
+		vk.clear_vertex = xgpu_vulkan_shader(xgpu_vulkan_post_vertex.words, xgpu_vulkan_post_vertex.count);
+	if (!vk.clear_pixel)
+		vk.clear_pixel = xgpu_vulkan_shader(xgpu_vulkan_post_clear.words, xgpu_vulkan_post_clear.count);
+	if (!vk.clear_vertex || !vk.clear_pixel)
+		return 0;
+	memset(description, 0, sizeof(*description));
+	description->vertex_shader = vk.clear_vertex;
+	description->pixel_shader = vk.clear_pixel;
+	description->primitive_class = XGPU_VULKAN_CLASS_TRIANGLES;
+	description->color_mask = (uint8_t)(channels & XGPU_VULKAN_CLEAR_CHANNELS);
+	description->color_format = vk.color->description.format;
+	description->depth_format = vk.depth ? XGPU_VULKAN_FORMAT_D24S8 : XGPU_VULKAN_FORMAT_NONE;
+	description->samples = vk.color->description.samples > 1 ? vk.color->description.samples : 1;
+	description->view_mask = vk.views > 1 ? (uint8_t)((1u << vk.views) - 1) : 0;
+	return 1;
+}
+
+int xgpu_vulkan_clear_prepare(uint32_t parts)
+{
+	struct xgpu_vulkan_pipeline_description description;
+
+	if (!(parts & XGPU_VULKAN_CLEAR_COLOR) || (parts & XGPU_VULKAN_CLEAR_CHANNELS) == XGPU_VULKAN_CLEAR_CHANNELS ||
+		!clear_description(parts, &description))
+		return 1;
+	return xgpu_vulkan_pipeline_prepare(&description);
+}
+
 void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t parts, const float color[4], float depth,
 	uint32_t stencil)
 {
 	VkClearAttachment attachments[2];
 	VkClearRect *rects;
 	uint32_t attachment_count = 0, rect_count = 0, index, clear_parts = 0;
+	struct xgpu_vulkan_pipeline_description description;
+	struct xgpu_vulkan_draw draw;
 
 	if (!count || !rectangles || (!vk.color && !vk.depth))
 		return;
+	/* Some of the colour's channels alone are drawn: the pipeline and its
+	uniforms first, before the pass, as uploading may submit the recording
+	(and end a pass). */
+	memset(&draw, 0, sizeof(draw));
+	if ((parts & XGPU_VULKAN_CLEAR_COLOR) && (parts & XGPU_VULKAN_CLEAR_CHANNELS) != XGPU_VULKAN_CLEAR_CHANNELS &&
+		clear_description(parts, &description))
+	{
+		float *uniforms;
+
+		draw.pipeline = xgpu_vulkan_pipeline(&description);
+		uniforms = draw.pipeline ? xgpu_vulkan_upload(CLEAR_UNIFORMS_RANGE, 256, &draw.uniforms) : NULL;
+		if (!uniforms)
+			draw.pipeline = VK_NULL_HANDLE;
+		else
+			memcpy(uniforms, color, 4 * sizeof(float));
+		draw.constants = draw.uniforms;
+	}
 	/* A full-target clear before a pass needs none of the overwritten
 	attachment's pixels. Keep other aspects, and all stores: later passes
 	may sample the depth or continue drawing over the colour. */
@@ -2695,18 +2821,8 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 	parts &= ~clear_parts;
 	if ((parts & XGPU_VULKAN_CLEAR_COLOR) && vk.color)
 	{
-		if ((parts & XGPU_VULKAN_CLEAR_CHANNELS) != XGPU_VULKAN_CLEAR_CHANNELS)
-		{
-			static int said;
-
-			/* (a clear of some channels alone: not yet) */
-			if (!said)
-				host_logf(HOST_LOG_WARN, "vulkan: a clear of channels %x alone is drawn as a clear of all of them",
-					parts & XGPU_VULKAN_CLEAR_CHANNELS);
-			said = 1;
-			vk.statistics.clears_as_draws++;
-		}
-		if (parts & XGPU_VULKAN_CLEAR_CHANNELS)
+		/* (all of them: cleared, below; some: drawn, after) */
+		if ((parts & XGPU_VULKAN_CLEAR_CHANNELS) == XGPU_VULKAN_CLEAR_CHANNELS)
 		{
 			attachments[attachment_count].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 			attachments[attachment_count].colorAttachment = 0;
@@ -2723,7 +2839,7 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 		attachments[attachment_count].clearValue.depthStencil.stencil = stencil & 0xff;
 		attachment_count++;
 	}
-	if (!attachment_count || !count)
+	if (!attachment_count && !draw.pipeline)
 		return;
 	rects = malloc(count * sizeof(*rects));
 	if (!rects)
@@ -2752,8 +2868,33 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 		rects[rect_count].layerCount = 1;
 		rect_count++;
 	}
-	if (rect_count)
+	if (rect_count && attachment_count)
 		vkCmdClearAttachments(vk.slot->main, attachment_count, attachments, rect_count, rects);
+	if (rect_count && draw.pipeline)
+	{
+		struct xgpu_vulkan_dynamic_state dynamic;
+		int counting = vk.test_query_open;
+
+		/* the channels' triangle over each rectangle (into each view, as
+		the clear's), counted by no visibility test, as a clear is not */
+		test_query_end();
+		memset(&dynamic, 0, sizeof(dynamic));
+		dynamic.depth_range[1] = 1.0f;
+		draw.dynamic = &dynamic;
+		draw.topology = XGPU_VULKAN_TOPOLOGY_TRIANGLES;
+		draw.count = 3;
+		for (index = 0; index < rect_count; index++)
+		{
+			dynamic.viewport[0] = dynamic.scissor[0] = rects[index].rect.offset.x;
+			dynamic.viewport[1] = dynamic.scissor[1] = rects[index].rect.offset.y;
+			dynamic.viewport[2] = dynamic.scissor[2] = (int32_t)rects[index].rect.extent.width;
+			dynamic.viewport[3] = dynamic.scissor[3] = (int32_t)rects[index].rect.extent.height;
+			xgpu_vulkan_draw(&draw);
+		}
+		vk.statistics.clears_as_draws++;
+		if (counting && vk.pass_active)
+			test_query_begin();
+	}
 	free(rects);
 }
 
@@ -2818,7 +2959,9 @@ static void texture_set_remember(struct slot *slot, const struct texture_set_key
 		slot->texture_set_capacity = capacity;
 	}
 	entry = &slot->texture_sets[slot->texture_set_count++];
-	entry->key = *key;
+	/* (copied as bytes, its padding too: texture_set_find compares them
+	all; a structure's assignment need not copy padding) */
+	memcpy(&entry->key, key, sizeof(entry->key));
 	entry->set = set;
 	entry->next = slot->texture_set_buckets[bucket];
 	slot->texture_set_buckets[bucket] = slot->texture_set_count;
@@ -3120,6 +3263,11 @@ void xgpu_vulkan_wait(uint64_t fence)
 
 /* ---------- the window */
 
+/* presents found SUBOPTIMAL between the surface's questions (about a second
+of frames): a SUBOPTIMAL that making the swapchain again cannot mend is
+not asked about every frame */
+#define SUBOPTIMAL_CHECKS 60
+
 static void swapchain_forget(void)
 {
 	uint32_t index;
@@ -3138,6 +3286,102 @@ static void swapchain_forget(void)
 	vk.swapchain_image_count = 0;
 }
 
+/* the surface let go of, its swapchain first (lost, or the app in the
+background); made again by surface_remake */
+static void surface_forget(void)
+{
+	swapchain_forget();
+	if (vk.surface && vkDestroySurfaceKHR)
+		vkDestroySurfaceKHR(vk.instance, vk.surface, NULL);
+	vk.surface = VK_NULL_HANDLE;
+}
+
+/* VK_ERROR_SURFACE_LOST_KHR from what: the surface let go of, and made
+again at the next frame's present */
+static void surface_lost(const char *what)
+{
+	host_logf(HOST_LOG_WARN, "vulkan: %s: the window's surface was lost: it is made again", what);
+	surface_forget();
+}
+
+/* the window's surface made again (none, or the app back from the
+background): 1 if there is one. Tried at each frame while the window has
+none (Android gives the app its window back after it resumes). */
+static int surface_remake(void)
+{
+	VkBool32 supported = VK_FALSE;
+
+	if (vk.surface)
+		return 1;
+	if (!vk.surface_create || vk.window_suspended || !vkCreateSwapchainKHR)
+		return 0;
+	vk.surface = vk.surface_create(vk.instance, vk.surface_context);
+	if (!vk.surface)
+	{
+		vk.surface_failing = 1;
+		return 0;
+	}
+	vkGetPhysicalDeviceSurfaceSupportKHR(vk.physical, vk.queue_family, vk.surface, &supported);
+	if (!supported)
+	{
+		if (!vk.surface_failing)
+			host_logf(HOST_LOG_WARN, "vulkan: the device's queue cannot present to the window's new surface");
+		vk.surface_failing = 1;
+		vkDestroySurfaceKHR(vk.instance, vk.surface, NULL);
+		vk.surface = VK_NULL_HANDLE;
+		return 0;
+	}
+	if (vk.surface_failing)
+		host_logf(HOST_LOG_INFO, "vulkan: the window's surface is made again");
+	vk.surface_failing = 0;
+	vk.swapchain_stale = 1;
+	return 1;
+}
+
+/* the present mode of a swap interval: FIFO (which every surface has)
+waits for the display; without waiting, MAILBOX (no tearing) where the
+surface has it, else IMMEDIATE, else FIFO */
+static VkPresentModeKHR present_mode_choose(const VkPresentModeKHR *modes, uint32_t count, int interval)
+{
+	VkPresentModeKHR mode = VK_PRESENT_MODE_FIFO_KHR;
+	uint32_t index;
+
+	if (interval > 0)
+		return mode;
+	for (index = 0; index < count; index++)
+	{
+		if (modes[index] == VK_PRESENT_MODE_MAILBOX_KHR)
+			return modes[index];
+		if (modes[index] == VK_PRESENT_MODE_IMMEDIATE_KHR)
+			mode = modes[index];
+	}
+	return mode;
+}
+
+/* the quarter turns clockwise of a surface's transform (0: none, or a
+mirroring one, which the frames are not drawn for) */
+static int transform_turns(VkSurfaceTransformFlagBitsKHR transform)
+{
+	return transform == VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR ? 1 :
+		transform == VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR ? 2 :
+		transform == VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR ? 3 : 0;
+}
+
+/* what changed from any thread (the window's size, the swap interval)
+taken up by the render thread: the swapchain made again for it */
+static void window_changes(void)
+{
+	uint32_t asked = __atomic_load_n(&vk.interval_asked, __ATOMIC_ACQUIRE);
+
+	if (__atomic_exchange_n(&vk.window_resized, 0, __ATOMIC_ACQ_REL))
+		vk.swapchain_stale = 1;
+	if (asked && (int)(asked - 1) != vk.interval)
+	{
+		vk.interval = (int)(asked - 1);
+		vk.swapchain_stale = 1;
+	}
+}
+
 static int swapchain_make(void)
 {
 	VkSurfaceCapabilitiesKHR capabilities;
@@ -3147,9 +3391,18 @@ static int swapchain_make(void)
 	VkSemaphoreCreateInfo semaphore;
 	uint32_t format_count = 64, mode_count = 16, index;
 	VkSwapchainKHR old = vk.swapchain;
+	VkResult result;
+	uint64_t size;
+	int turns;
 
-	if (!check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk.physical, vk.surface, &capabilities),
-		"vkGetPhysicalDeviceSurfaceCapabilitiesKHR"))
+	window_changes();
+	result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk.physical, vk.surface, &capabilities);
+	if (result == VK_ERROR_SURFACE_LOST_KHR)
+	{
+		surface_lost("vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+		return 0;
+	}
+	if (!check(result, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"))
 		return 0;
 	vkGetPhysicalDeviceSurfaceFormatsKHR(vk.physical, vk.surface, &format_count, formats);
 	vkGetPhysicalDeviceSurfacePresentModesKHR(vk.physical, vk.surface, &mode_count, modes);
@@ -3164,21 +3417,26 @@ static int swapchain_make(void)
 			break;
 		}
 	}
-	vk.present_mode = VK_PRESENT_MODE_FIFO_KHR;
-	if (getenv("HALO_NO_VSYNC"))
-	{
-		for (index = 0; index < mode_count; index++)
-		{
-			if (modes[index] == VK_PRESENT_MODE_IMMEDIATE_KHR || (modes[index] == VK_PRESENT_MODE_MAILBOX_KHR &&
-				vk.present_mode == VK_PRESENT_MODE_FIFO_KHR))
-				vk.present_mode = modes[index];
-		}
-	}
+	vk.present_mode = present_mode_choose(modes, mode_count, vk.interval);
+	/* Turned (Android's landscape on a phone whose own way up is portrait):
+	the swapchain is the display's way up, its width and height the
+	surface's swapped for a quarter turn, and the frames are drawn turned
+	into it (present_turned), so that the compositor has nothing to turn
+	and no SUBOPTIMAL to report. Without a way to turn them, the swapchain
+	is the window's way up and the compositor turns it. */
+	turns = vk.rotate && (capabilities.supportedTransforms & capabilities.currentTransform) ?
+		transform_turns(capabilities.currentTransform) : 0;
 	vk.swapchain_extent = capabilities.currentExtent;
 	if (vk.swapchain_extent.width == 0xffffffffu)
 	{
-		vk.swapchain_extent.width = vk.window_width ? vk.window_width : 640;
-		vk.swapchain_extent.height = vk.window_height ? vk.window_height : 480;
+		size = __atomic_load_n(&vk.window_size, __ATOMIC_ACQUIRE);
+		vk.swapchain_extent.width = (uint32_t)(size >> 32) ? (uint32_t)(size >> 32) : 640;
+		vk.swapchain_extent.height = (uint32_t)size ? (uint32_t)size : 480;
+	}
+	else if (turns & 1)
+	{
+		vk.swapchain_extent.width = capabilities.currentExtent.height;
+		vk.swapchain_extent.height = capabilities.currentExtent.width;
 	}
 	if (!vk.swapchain_extent.width || !vk.swapchain_extent.height)
 		return 0;
@@ -3204,9 +3462,8 @@ static int swapchain_make(void)
 	info.imageArrayLayers = 1;
 	info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	/* The final blit does not rotate the frame. Let the compositor apply
-	the display's rotation instead of claiming that it is already drawn. */
-	info.preTransform = (capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) ?
+	info.preTransform = turns ? capabilities.currentTransform :
+		(capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR) ?
 		VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR : capabilities.currentTransform;
 	info.compositeAlpha = (capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR) ?
 		VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR : (VkCompositeAlphaFlagBitsKHR)(capabilities.supportedCompositeAlpha &
@@ -3224,11 +3481,17 @@ static int swapchain_make(void)
 			vk.presentable[index] = VK_NULL_HANDLE;
 		}
 	}
-	if (!check(vkCreateSwapchainKHR(vk.device, &info, NULL, &vk.swapchain), "vkCreateSwapchainKHR"))
+	result = vkCreateSwapchainKHR(vk.device, &info, NULL, &vk.swapchain);
+	if (result < 0)
 	{
 		vk.swapchain = VK_NULL_HANDLE;
+		vk.swapchain_image_count = 0;
 		if (old)
 			vkDestroySwapchainKHR(vk.device, old, NULL);
+		if (result == VK_ERROR_SURFACE_LOST_KHR)
+			surface_lost("vkCreateSwapchainKHR");
+		else
+			check(result, "vkCreateSwapchainKHR");
 		return 0;
 	}
 	if (old)
@@ -3240,36 +3503,105 @@ static int swapchain_make(void)
 	for (index = 0; index < vk.swapchain_image_count; index++)
 		vkCreateSemaphore(vk.device, &semaphore, NULL, &vk.presentable[index]);
 	vk.swapchain_stale = 0;
+	vk.swapchain_turns = turns;
+	vk.surface_extent = capabilities.currentExtent;
 	vk.surface_transform = capabilities.currentTransform;
-	host_logf(HOST_LOG_INFO, "vulkan: swapchain %ux%u, %u images, present mode %d", vk.swapchain_extent.width,
-		vk.swapchain_extent.height, vk.swapchain_image_count, (int)vk.present_mode);
+	vk.suboptimal_presents = 0;
+	host_logf(HOST_LOG_INFO, "vulkan: swapchain %ux%u, %u images, present mode %d, turned %d", vk.swapchain_extent.width,
+		vk.swapchain_extent.height, vk.swapchain_image_count, (int)vk.present_mode, turns * 90);
 	return 1;
 }
 
 void xgpu_vulkan_window_resized(uint32_t width, uint32_t height)
 {
-	vk.window_width = width;
-	vk.window_height = height;
-	vk.swapchain_stale = 1;
+	__atomic_store_n(&vk.window_size, (uint64_t)width << 32 | height, __ATOMIC_RELEASE);
+	__atomic_store_n(&vk.window_resized, 1, __ATOMIC_RELEASE);
 }
 
+void xgpu_vulkan_window_hidden(int hidden)
+{
+	__atomic_store_n(&vk.window_hidden, hidden ? 1 : 0, __ATOMIC_RELEASE);
+}
+
+void xgpu_vulkan_window_interval(int interval)
+{
+	__atomic_store_n(&vk.interval_asked, (uint32_t)(interval > 0 ? 1 : 0) + 1, __ATOMIC_RELEASE);
+}
+
+/* a SUBOPTIMAL present: 1 if the surface's extent or transform changed
+from the swapchain's (which making it again mends) or the surface is
+lost; else the present is fine as it is (a compositor that turns or
+scales it), and the surface is asked again only after SUBOPTIMAL_CHECKS
+more */
 static int swapchain_changed(void)
 {
 	VkSurfaceCapabilitiesKHR capabilities;
+	VkResult result;
 
-	if (!check(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk.physical, vk.surface, &capabilities),
-		"vkGetPhysicalDeviceSurfaceCapabilitiesKHR"))
+	if (vk.suboptimal_presents++ % SUBOPTIMAL_CHECKS)
+		return 0;
+	result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk.physical, vk.surface, &capabilities);
+	if (result == VK_ERROR_SURFACE_LOST_KHR)
+	{
+		surface_lost("vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
 		return 1;
-	/* Android reports SUBOPTIMAL while the compositor rotates an identity
-	swapchain. Recreating the same swapchain cannot improve it. */
+	}
+	if (!check(result, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"))
+		return 1;
 	return capabilities.currentTransform != vk.surface_transform ||
 		(capabilities.currentExtent.width != 0xffffffffu &&
-		(capabilities.currentExtent.width != vk.swapchain_extent.width ||
-		capabilities.currentExtent.height != vk.swapchain_extent.height));
+		(capabilities.currentExtent.width != vk.surface_extent.width ||
+		capabilities.currentExtent.height != vk.surface_extent.height));
+}
+
+void xgpu_vulkan_window_suspend(int suspended)
+{
+	if (!vk.device)
+		return;
+	if (suspended)
+	{
+		if (!vk.window_suspended && vk.surface_create)
+			host_logf(HOST_LOG_INFO, "vulkan: the app is in the background: the window's surface is let go of");
+		vk.window_suspended = 1;
+		vkDeviceWaitIdle(vk.device);
+		surface_forget();
+		xgpu_vulkan_pipeline_cache_save();
+		return;
+	}
+	if (vk.window_suspended)
+		host_logf(HOST_LOG_INFO, "vulkan: the app is back: the window's surface is made again");
+	vk.window_suspended = 0;
+	vk.surface_failing = 1;
+	surface_remake();
+}
+
+/* the frame turned for a swapchain made for the display's way up: the
+turned image (the frame's own if it cannot be turned, and no later
+swapchain is turned); the targets and visibility test as they were */
+static struct xgpu_vulkan_image *present_turned(struct xgpu_vulkan_image *image)
+{
+	struct xgpu_vulkan_image *color = vk.color, *depth = vk.depth, *turned;
+	uint32_t layer = vk.layer, views = vk.views;
+	int test_active = vk.test_active;
+
+	pass_end();
+	vk.test_active = 0;
+	turned = vk.rotate(image, vk.swapchain_turns);
+	pass_end();
+	vk.test_active = test_active;
+	xgpu_vulkan_set_target_views(color, depth, layer, views);
+	if (turned)
+		return turned;
+	host_logf(HOST_LOG_WARN, "vulkan: the frame cannot be turned for the display: the compositor turns it");
+	vk.rotate = NULL;
+	vk.swapchain_stale = 1;
+	return image;
 }
 
 /* the image shown in the window: letterboxed into a swapchain image
-(cleared black), then presented */
+(cleared black), then presented. 0 if nothing is presented: no surface (the
+app in the background, the window not back yet), a swapchain that cannot
+be made; the caller then submits the frame's work itself. */
 static uint64_t present(struct xgpu_vulkan_image *image)
 {
 	int trace = host_load_trace_detail_enabled();
@@ -3285,13 +3617,16 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 
 	uint64_t serial;
 
-	if (!vk.surface)
+	if (__atomic_load_n(&vk.window_hidden, __ATOMIC_ACQUIRE) || (!vk.surface && !surface_remake()))
 		return 0;
+	window_changes();
 	if (vk.swapchain_stale || !vk.swapchain)
 	{
 		if (!swapchain_make())
 			return 0;
 	}
+	if (image && vk.swapchain_turns && vk.rotate)
+		image = present_turned(image);
 	/* (the slot's semaphore free: the recording begun, which waits for the
 	slot's last submission) */
 	if (trace)
@@ -3308,6 +3643,11 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	if (result == VK_ERROR_OUT_OF_DATE_KHR)
 	{
 		vk.swapchain_stale = 1;
+		return 0;
+	}
+	if (result == VK_ERROR_SURFACE_LOST_KHR)
+	{
+		surface_lost("vkAcquireNextImageKHR");
 		return 0;
 	}
 	if (!check(result, "vkAcquireNextImageKHR"))
@@ -3383,7 +3723,9 @@ static uint64_t present(struct xgpu_vulkan_image *image)
 	if (trace)
 		host_load_trace("vulkan.queue_present.end", "result=%d", result);
 	host_load_trace("vulkan.present.return", "result=%d image=%d", result, image != NULL);
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || (result == VK_SUBOPTIMAL_KHR && swapchain_changed()))
+	if (result == VK_ERROR_SURFACE_LOST_KHR)
+		surface_lost("vkQueuePresentKHR");
+	else if (result == VK_ERROR_OUT_OF_DATE_KHR || (result == VK_SUBOPTIMAL_KHR && swapchain_changed()))
 		vk.swapchain_stale = 1;
 	else
 		check(result, "vkQueuePresentKHR");
@@ -3776,12 +4118,13 @@ static int required_features(const VkPhysicalDeviceFeatures2 *features,
 }
 
 /* a physical device of Vulkan 1.3 with a graphics queue (that can present to
-the surface, with one) */
+the surface, with one; VR's runtime's device may have none that can, and
+then draws only the headset's frames) */
 static int physical_choose(const struct xgpu_vulkan_options *options)
 {
 	VkPhysicalDevice devices[16];
 	uint32_t count = 0, index, best_score = 0;
-	int chosen = -1;
+	int chosen = -1, graphics;
 
 	if (options->choose_physical)
 	{
@@ -3812,6 +4155,7 @@ static int physical_choose(const struct xgpu_vulkan_options *options)
 		if (properties.apiVersion < VK_API_VERSION_1_3)
 			continue;
 		vkGetPhysicalDeviceQueueFamilyProperties(devices[index], &family_count, families);
+		graphics = -1;
 		for (family = 0; family < family_count; family++)
 		{
 			VkBool32 present = VK_TRUE;
@@ -3820,18 +4164,24 @@ static int physical_choose(const struct xgpu_vulkan_options *options)
 				continue;
 			if (vk.surface)
 				vkGetPhysicalDeviceSurfaceSupportKHR(devices[index], family, vk.surface, &present);
+			if (graphics < 0 && options->choose_physical)
+				graphics = (int)family;
 			if (!present)
 				continue;
-			score = properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 3 :
-				properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 2 : 1;
-			if (score > best_score)
-			{
-				best_score = score;
-				chosen = (int)index;
-				vk.queue_family = family;
-				vk.timestamp_bits = families[family].timestampValidBits;
-			}
+			graphics = (int)family;
 			break;
+		}
+		if (graphics < 0)
+			continue;
+		family = (uint32_t)graphics;
+		score = properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 3 :
+			properties.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 2 : 1;
+		if (score > best_score)
+		{
+			best_score = score;
+			chosen = (int)index;
+			vk.queue_family = family;
+			vk.timestamp_bits = families[family].timestampValidBits;
 		}
 	}
 	if (chosen < 0)
@@ -3929,7 +4279,9 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	timeline.timelineSemaphore = VK_TRUE;
 	query_reset.hostQueryReset = VK_TRUE;
 	rendering.dynamicRendering = VK_TRUE;
-	if (vk.surface)
+	/* (a window that has no surface now may have one later: the swapchain
+	where the device has it) */
+	if (vk.surface || (vk.surface_create && device_has_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME)))
 		extensions[extension_count++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
 	chain = &rendering.pNext;
 	if (custom_border && available_border.customBorderColors && available_border.customBorderColorWithoutFormat)
@@ -3970,7 +4322,7 @@ static int device_make(const struct xgpu_vulkan_options *options)
 		return 0;
 #define LOAD(name) name = (PFN_##name)vkGetDeviceProcAddr(vk.device, #name);
 	DEVICE_FUNCTIONS(LOAD)
-	if (vk.surface)
+	if (vk.surface || vk.surface_create)
 	{
 		SWAPCHAIN_FUNCTIONS(LOAD)
 	}
@@ -4255,14 +4607,15 @@ static void pipeline_cache_make(const char *path)
 	free(data);
 }
 
-static void pipeline_cache_save(void)
+void xgpu_vulkan_pipeline_cache_save(void)
 {
 	size_t size = 0;
 	void *data;
 	char temporary[1100];
 	FILE *file;
+	int saved = 0;
 
-	if (!vk.pipeline_cache || !vk.cache_path[0])
+	if (!vk.pipeline_cache || !vk.cache_path[0] || vk.pipelines_saved == vk.pipelines_made)
 		return;
 	if (vkGetPipelineCacheData(vk.device, vk.pipeline_cache, &size, NULL) != VK_SUCCESS || !size)
 		return;
@@ -4271,17 +4624,27 @@ static void pipeline_cache_save(void)
 		return;
 	if (vkGetPipelineCacheData(vk.device, vk.pipeline_cache, &size, data) == VK_SUCCESS)
 	{
+		/* (written whole under another name, then renamed over the old
+		one: a process killed while it writes leaves the old file) */
 		snprintf(temporary, sizeof(temporary), "%s.tmp", vk.cache_path);
 		file = fopen(temporary, "wb");
 		if (file)
 		{
 			int written = fwrite(data, 1, size, file) == size;
 
-			if (!fclose(file) && written)
-				rename(temporary, vk.cache_path);
+			if (!fclose(file) && written && !rename(temporary, vk.cache_path))
+				saved = 1;
+			else
+				remove(temporary);
 		}
 	}
 	free(data);
+	if (saved)
+	{
+		vk.pipelines_saved = vk.pipelines_made;
+		host_logf(HOST_LOG_INFO, "vulkan: the pipeline cache's %lu bytes written to %s", (unsigned long)size,
+			vk.cache_path);
+	}
 }
 
 int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
@@ -4297,13 +4660,36 @@ int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
 		return 1;
 	if (!load_functions() || !instance_make(options))
 		return 0;
-	if (options->surface_create)
+	vk.surface_create = options->surface_create;
+	vk.surface_context = options->surface_context;
+	vk.interval = getenv("HALO_NO_VSYNC") ? 0 : options->interval > 0;
+	if (vk.surface_create)
 	{
-		vk.surface = options->surface_create(vk.instance, options->surface_context);
+		vk.surface = vk.surface_create(vk.instance, vk.surface_context);
 		if (!vk.surface)
-			host_logf(HOST_LOG_WARN, "vulkan: no surface for the window: its frames are not shown");
+		{
+			host_logf(HOST_LOG_WARN, "vulkan: no surface for the window: its frames are not shown until there is one");
+			vk.surface_failing = 1;
+		}
 	}
-	if (!physical_choose(options) || !device_make(options))
+	if (!physical_choose(options))
+		return 0;
+	if (vk.surface)
+	{
+		VkBool32 supported = VK_FALSE;
+
+		/* (VR's runtime's device, which may not reach the window: the
+		headset's frames alone) */
+		vkGetPhysicalDeviceSurfaceSupportKHR(vk.physical, vk.queue_family, vk.surface, &supported);
+		if (!supported)
+		{
+			host_logf(HOST_LOG_WARN, "vulkan: the device's queue cannot present to the window: its frames are not shown");
+			vkDestroySurfaceKHR(vk.instance, vk.surface, NULL);
+			vk.surface = VK_NULL_HANDLE;
+			vk.surface_create = NULL;
+		}
+	}
+	if (!device_make(options))
 		return 0;
 	memset(&type, 0, sizeof(type));
 	type.sType = VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO;
@@ -4335,7 +4721,7 @@ int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
 			return 0;
 		vk.slots[index].main = buffers[0];
 		vk.slots[index].early = buffers[1];
-		if (vk.surface)
+		if (vk.surface_create)
 			vkCreateSemaphore(vk.device, &semaphore, NULL, &vk.acquired[index]);
 	}
 	if (!buffer_make(RING_SIZE, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
@@ -4355,6 +4741,19 @@ int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
 	if (!layouts_make() || !stand_ins_make() || !draw_set_make())
 		return 0;
 	pipeline_cache_make(options->cache_path);
+	if (vk.surface && options->rotation_prepare && options->rotate)
+	{
+		VkSurfaceCapabilitiesKHR capabilities;
+
+		/* (made now, not when the phone is first turned: while a map is
+		prepared, the loading screen presents, and may not ask for a
+		pipeline) */
+		if (vkGetPhysicalDeviceSurfaceCapabilitiesKHR(vk.physical, vk.surface, &capabilities) == VK_SUCCESS &&
+			(capabilities.supportedTransforms & (VK_SURFACE_TRANSFORM_ROTATE_90_BIT_KHR |
+			VK_SURFACE_TRANSFORM_ROTATE_180_BIT_KHR | VK_SURFACE_TRANSFORM_ROTATE_270_BIT_KHR)) &&
+			options->rotation_prepare())
+			vk.rotate = options->rotate;
+	}
 	if (options->device_ready)
 		options->device_ready(vk.instance, vk.physical, vk.device, vk.queue_family, 0);
 	return 1;
@@ -4372,7 +4771,33 @@ void xgpu_vulkan_shutdown(void)
 	if (vk.recording)
 		xgpu_vulkan_fence();
 	vkDeviceWaitIdle(vk.device);
-	pipeline_cache_save();
+	xgpu_vulkan_pipeline_cache_save();
 	if (vk.validation)
 		host_logf(HOST_LOG_INFO, "vulkan: %u validation messages", vk.validation_messages);
+}
+
+void xgpu_vulkan_initialize_undo(void)
+{
+	void *library = vk.library;
+
+	/* (what a failed start makes before it fails: the instance, the
+	surface, at most the device; anything made with the device goes with
+	it) */
+	if (vk.device)
+	{
+		vkDeviceWaitIdle(vk.device);
+		if (vkDestroyDevice)
+			vkDestroyDevice(vk.device, NULL);
+	}
+	if (vk.instance)
+	{
+		if (vk.surface && vkDestroySurfaceKHR)
+			vkDestroySurfaceKHR(vk.instance, vk.surface, NULL);
+		if (vk.messenger && vkDestroyDebugUtilsMessengerEXT)
+			vkDestroyDebugUtilsMessengerEXT(vk.instance, vk.messenger, NULL);
+		if (vkDestroyInstance)
+			vkDestroyInstance(vk.instance, NULL);
+	}
+	memset(&vk, 0, sizeof(vk));
+	vk.library = library;
 }

@@ -5,8 +5,9 @@ graphics, so a fix can carry a test that CI runs.
 
     python -m pytest -q tools/harness
 
-They need `clang` (or `CC`) and a 32-bit C runtime (`lib32-glibc`, `gcc-multilib`), as the Linux build does. pytest
-finds every `tests/test_*.py`, so a new test needs no change to CI.
+They compile with `-m32`, in the game's 32-bit x86 ABI (as `tools/x86_game_abi.py` does; nothing 32-bit ships), so
+they need `clang` (or `CC`) and a 32-bit C runtime (`lib32-glibc`, `gcc-multilib`) on 64-bit x86 Linux. pytest finds
+every `tests/test_*.py`, so a new test needs no change to CI.
 
 ## A test
 

@@ -107,13 +107,19 @@ static const struct
 {
 	{ "off", _anti_aliasing_off, 0 },
 	{ "fxaa", _anti_aliasing_fxaa, 0 },
-#ifdef HALO_GLES
-	/* (SMAA's three passes and supersampling's four times the pixels are
-	more than a phone's GPU has to spare: FXAA in SMAA's place, and none) */
+#if defined(HALO_GLES) && !defined(HALO_VULKAN)
+	/* (OpenGL ES has no SMAA, xgpu_post.c: FXAA in its place) */
 	{ "smaa", _anti_aliasing_fxaa, 0 },
+#else
+	/* (Vulkan draws it on a phone too, as on the desktop: passes of fixed
+	cost whatever the scene; "fxaa" is the cheaper pass) */
+	{ "smaa", _anti_aliasing_smaa, 0 },
+#endif
+#ifdef HALO_GLES
+	/* (supersampling's four times the pixels are more than a phone's GPU
+	has to spare: none) */
 	{ "ssaa2x", _anti_aliasing_off, 0 },
 #else
-	{ "smaa", _anti_aliasing_smaa, 0 },
 	{ "ssaa2x", _anti_aliasing_ssaa, 0 },
 #endif
 	{ "msaa2x", _anti_aliasing_msaa, 2 },
@@ -4232,11 +4238,13 @@ static void vr_initialize(void)
 	platform_video_vr_unavailable) */
 	if (!xgpu_backend_vr_supported())
 	{
+		platform_log("VR unavailable: the renderer cannot draw for the headset; playing flat");
 		platform_video_vr_unavailable();
 		return;
 	}
 	if (!halo_vr_initialize())
 	{
+		platform_log("VR unavailable: no OpenXR session (the log above says why); playing flat");
 		platform_video_vr_unavailable();
 		return;
 	}

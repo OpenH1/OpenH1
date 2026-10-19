@@ -36,12 +36,11 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, SDL_TAG, TOML_DIR, fetch_third_party,
-                            generate_guest_image)
+from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, RENDER_STREAM_GUEST_EXCLUDED, SDL_TAG,
+                            TOML_DIR, fetch_third_party, generate_guest_image)
+from .build_common import MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, compile_launcher, download, miniupnpc_sources
 from .guest_arch import ARM64_32
 from .guest_toolchain import LLVM_VERSION, guest_toolchain
-from .linux_build import MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, compile_launcher, miniupnpc_sources
-from .linux_sysroot import download
 from .ninja_syntax import Writer
 
 PORT_DIR = Path("port/macos")
@@ -92,7 +91,7 @@ MACOS_GUEST_DEFINES = ["-DHALO_GLES=1", "-DHALO_MACOS=1", "-DHALO_METAL", "-DHAL
 # (the renderer's backend is the host's, through the command stream:
 # port/linux/src/xgpu_stream_encode.c in place of the OpenGL backend and its
 # anti-aliasing passes)
-MACOS_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c", "xgpu_glsl.c", "gl_functions.c"]
+MACOS_GUEST_EXCLUDED = RENDER_STREAM_GUEST_EXCLUDED
 
 # the app's bundle identifier (configure.py --macos-bundle-id): the
 # reverse-DNS name of the project's domain, openh1.com
@@ -104,8 +103,8 @@ MACOS_FRAMEWORKS = "-framework Metal -framework QuartzCore -framework Foundation
 
 # (port/android/host's: those of the Android app alone, the fixed low
 # memory and Linux's system calls, which port/macos and host_memory_base.c
-# replace, and the OpenGL ES services)
-HOST_EXCLUDED = {"host_main.c", "host_touch.c", "host_memory.c", "host_syscall.c", "host_gl.c"}
+# replace)
+HOST_EXCLUDED = {"host_main.c", "host_touch.c", "host_memory.c", "host_syscall.c"}
 
 # the renderer's parts the host builds from port/linux/src (the MSL
 # emitter, the Xbox's texture decoding), and port/macos's files that use

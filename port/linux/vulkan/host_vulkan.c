@@ -13,6 +13,33 @@ A window SDL cannot draw with Vulkan (its offscreen driver, where the
 device has no headless surfaces) is drawn without one: the frames are
 drawn and read back (screenshots) but not shown.
 
+The surface is made again when it is lost, and when the app comes back
+from the background: Android takes the app's window (its ANativeWindow)
+away when the app stops and gives it a new one when it returns, and SDL
+makes again only EGL's surfaces. As the app goes (SDL's
+WILL_ENTER_BACKGROUND and DID_ENTER_BACKGROUND, sent on the thread that
+pumps SDL's events), the render thread lets go of the swapchain and the
+surface (xgpu_vulkan_window_suspend) and saves the pipeline cache; the
+frames drawn in the background are not shown. As it comes back
+(DID_ENTER_FOREGROUND) the surface is made again, or, while the window is
+not back yet (Android resumes the app before it makes the window's
+surface), at a later frame.
+
+The swap interval is display.vsync's (host_vulkan_window_open, asked again
+when the setting changes). With OpenXR (HALO_VR), the headset's runtime
+chooses the device; the window keeps its surface, so that the game can play
+flat in it if VR cannot start, and a device the runtime refuses is made
+again without it (flat).
+
+The game's debugging settings for the graphics come with the window (the
+host does not read the settings file): debug.gpu_validation (or its old
+name, debug.gl_debug) turns on the validation layers, as
+HALO_VULKAN_VALIDATION does; debug.gpu_stats logs the backend's statistics,
+as HALO_VULKAN_STATS does; debug.gpu_dump_shaders names the folder each
+shader module is written into, as HALO_VULKAN_SHADERS does (which wins);
+debug.texture_dump_directory the folder each texture is written into
+(xgpu_vulkan_textures.c).
+
 HALO_VULKAN_VALIDATION=1 turns on the validation layers and logs their
 messages (the layers must be installed, or found through VK_ADD_LAYER_PATH).
 The pipeline cache is $XDG_CACHE_HOME/openh1/vulkan_pipelines.bin (or
@@ -24,7 +51,9 @@ names another file, or none (empty).
 #include "host_render_stream.h"
 #include "xgpu_vulkan.h"
 #include "xgpu_vulkan_loading.h"
+#include "xgpu_vulkan_post.h"
 #include "xgpu_vulkan_stream.h"
+#include "xgpu_vulkan_textures.h"
 #ifdef HALO_VR
 #include "host_vr_vulkan.h"
 #endif
@@ -38,6 +67,8 @@ names another file, or none (empty).
 #include <sys/stat.h>
 
 static SDL_Window *vulkan_window;
+/* the last surface could not be made (logged once until one is) */
+static int surface_failing;
 
 uint64_t host_vulkan_display_period(void)
 {
@@ -53,21 +84,51 @@ static VkSurfaceKHR surface_create(VkInstance instance, void *context)
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
 
 	(void)context;
+	/* (also on the render thread, made again: tried at each frame while
+	Android has not given the window back) */
 	if (!SDL_Vulkan_CreateSurface(vulkan_window, instance, NULL, &surface))
 	{
-		host_logf(HOST_LOG_WARN, "vulkan: SDL makes no surface for the window: %s", SDL_GetError());
+		if (!surface_failing)
+			host_logf(HOST_LOG_WARN, "vulkan: SDL makes no surface for the window: %s", SDL_GetError());
+		surface_failing = 1;
 		return VK_NULL_HANDLE;
 	}
+	surface_failing = 0;
 	return surface;
+}
+
+static void suspend_call(void *argument)
+{
+	xgpu_vulkan_window_suspend(argument != NULL);
 }
 
 /* (the thread SDL reports the window's events on) */
 static bool SDLCALL window_event(void *userdata, SDL_Event *event)
 {
 	(void)userdata;
-	if (event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED &&
-		SDL_GetWindowFromID(event->window.windowID) == vulkan_window)
-		xgpu_vulkan_window_resized((uint32_t)event->window.data1, (uint32_t)event->window.data2);
+	switch (event->type)
+	{
+	case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+		if (SDL_GetWindowFromID(event->window.windowID) == vulkan_window)
+			xgpu_vulkan_window_resized((uint32_t)event->window.data1, (uint32_t)event->window.data2);
+		break;
+	case SDL_EVENT_WILL_ENTER_BACKGROUND:
+	case SDL_EVENT_DID_ENTER_BACKGROUND:
+		/* (after the frames submitted so far; Android blocks SDL's events'
+		thread once these are sent, until the app comes back) */
+		host_render_stream_call(suspend_call, (void *)1);
+		break;
+	case SDL_EVENT_DID_ENTER_FOREGROUND:
+		host_render_stream_call(suspend_call, NULL);
+		break;
+	case SDL_EVENT_WINDOW_SHOWN:
+		/* (VR's window, shown to play flat in: presented to from now on) */
+		if (SDL_GetWindowFromID(event->window.windowID) == vulkan_window)
+			xgpu_vulkan_window_hidden(0);
+		break;
+	default:
+		break;
+	}
 	return true;
 }
 
@@ -143,18 +204,58 @@ static void vulkan_exiting(void *context)
 	vulkan_shutdown();
 }
 
-/* (a host import: the guest's sdl_platform.c, on its main thread) */
-int host_vulkan_window_open(uint32_t window)
+/* sdl_platform.c's HOST_VULKAN_DEBUG_*: debug.gpu_stats, and
+debug.gpu_validation (or debug.gl_debug) */
+#define DEBUG_STATISTICS 1
+#define DEBUG_VALIDATION 2
+
+/* a folder the guest names (its address), or the environment variable's
+(set, it wins: NULL, none), copied; NULL for none */
+static const char *debug_folder(uint32_t address, const char *variable, char *folder, size_t size)
+{
+	const char *chosen = variable ? getenv(variable) : NULL;
+
+	if (!chosen)
+		chosen = host_pointer(address);
+	if (!chosen || !*chosen)
+		return NULL;
+	snprintf(folder, size, "%s", chosen);
+	return folder;
+}
+
+/* (a host import: the guest's sdl_platform.c, on its main thread; the
+folders are guest addresses of strings; again with the same window when
+display.vsync changes, for its swap interval) */
+int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_folder, uint32_t texture_folder,
+	int interval)
 {
 	static int opened;
+	static char shaders[1024], textures[1024];
 	SDL_Window *object = host_sdl_handle_get(window, _handle_window);
 	struct xgpu_vulkan_options options;
 	static struct host_render_backend backend;
 	char path[1100];
 	int width = 0, height = 0;
+#ifdef HALO_VR
+	int vr = 0;
+#endif
 
-	if (!object || opened)
+	if (!object)
 		return 0;
+	if (opened)
+	{
+		if (object != vulkan_window)
+			return 0;
+		xgpu_vulkan_window_interval(interval);
+		return 1;
+	}
+	if (getenv("HALO_VULKAN_STATS"))
+		debug |= DEBUG_STATISTICS;
+	if (getenv("HALO_VULKAN_VALIDATION") && atoi(getenv("HALO_VULKAN_VALIDATION")))
+		debug |= DEBUG_VALIDATION;
+	xgpu_vulkan_stream_debug((debug & DEBUG_STATISTICS) != 0,
+		debug_folder(shader_folder, "HALO_VULKAN_SHADERS", shaders, sizeof(shaders)));
+	xgpu_vulkan_textures_dump(debug_folder(texture_folder, NULL, textures, sizeof(textures)));
 	vulkan_window = object;
 	memset(&options, 0, sizeof(options));
 	if (SDL_GetWindowFlags(object) & SDL_WINDOW_VULKAN)
@@ -167,30 +268,50 @@ int host_vulkan_window_open(uint32_t window)
 			options.instance_extensions = extensions;
 			options.instance_extension_count = count;
 			options.surface_create = surface_create;
+			options.rotation_prepare = xgpu_vulkan_post_rotate_prepare;
+			options.rotate = xgpu_vulkan_post_rotate;
 		}
 	}
 	else
 	{
 		host_logf(HOST_LOG_INFO, "vulkan: the window is not one SDL draws with Vulkan: its frames are not shown");
 	}
+	options.interval = interval;
 #ifdef HALO_VR
 	if (host_vr_vulkan_requested() && host_vr_vulkan_prepare())
 	{
-		/* The headset's runtime chooses the physical device; its images
-		are presented through OpenXR, not the desktop surface. */
-		options.instance_extensions = NULL;
-		options.instance_extension_count = 0;
-		options.surface_create = NULL;
+		/* The headset's runtime chooses the physical device and adds what
+		it needs to the instance and device SDL's surface needs; its images
+		are presented through OpenXR. The window keeps its surface, which
+		the game plays flat in if VR cannot start after all. */
 		options.create_instance = host_vr_vulkan_create_instance;
 		options.choose_physical = host_vr_vulkan_physical_device;
 		options.create_device = host_vr_vulkan_create_device;
 		options.device_ready = host_vr_vulkan_bind;
+		vr = 1;
 	}
 #endif
 	options.cache_path = cache_path(path, sizeof(path));
-	options.validation = getenv("HALO_VULKAN_VALIDATION") && atoi(getenv("HALO_VULKAN_VALIDATION"));
+	options.validation = (debug & DEBUG_VALIDATION) != 0;
 	if (!xgpu_vulkan_initialize(&options))
 	{
+#ifdef HALO_VR
+		if (!vr)
+			return 0;
+		/* (the runtime refused the instance or device, or its device lacks
+		what the backend needs: a device of the backend's own choosing, to
+		play flat with) */
+		host_logf(HOST_LOG_WARN, "vr: VR unavailable: the headset's runtime gives no Vulkan device the "
+			"renderer can use; playing flat");
+		xgpu_vulkan_initialize_undo();
+		host_vr_vulkan_shutdown();
+		options.create_instance = NULL;
+		options.choose_physical = NULL;
+		options.create_device = NULL;
+		options.device_ready = NULL;
+		if (!xgpu_vulkan_initialize(&options))
+			return 0;
+#else
 #ifdef _WIN32
 		/* (the 64-bit Windows build draws with Vulkan alone: say so) */
 		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Halo",
@@ -200,9 +321,14 @@ int host_vulkan_window_open(uint32_t window)
 			"say), may have no Vulkan 1.3 at all. halo.log has the details.", object);
 #endif
 		return 0;
+#endif
 	}
 #ifdef HALO_VR
 	host_vr_vulkan_set_depth_format(xgpu_vulkan_depth_format());
+	/* (VR's window, hidden while the headset shows the game, is not
+	presented to until it is shown, to play flat in) */
+	if (vr && (SDL_GetWindowFlags(object) & SDL_WINDOW_HIDDEN))
+		xgpu_vulkan_window_hidden(1);
 #endif
 	SDL_GetWindowSizeInPixels(object, &width, &height);
 	xgpu_vulkan_window_resized((uint32_t)width, (uint32_t)height);

@@ -87,7 +87,7 @@ Ctrl+D, which moving and crouching would press, from the browser) */
 
 /* display.graphics = "enhanced": the values it gives the settings it
 chooses (config_graphics), which are their defaults, the same on every
-build: SMAA (Metal and Vulkan draw none yet), 16x anisotropic
+build: SMAA (Metal draws none yet; OpenGL ES FXAA), 16x anisotropic
 filtering, 512 shadow maps, the models' detail by the display's lines and lit
 for each pixel, the enhanced dynamic lights (Metal and OpenGL ES draw them
 classic) */
@@ -134,16 +134,16 @@ static const struct config_setting config_settings[] =
 		"The 3D view's look: \"classic\" as the Xbox drew it; \"enhanced\" with this\n"
 		"port's improvements together (anti-aliasing, sharper textures and\n"
 		"shadows, models' detail and lighting for each pixel, the enhanced\n"
-		"dynamic lights), each as far as this machine's GPU does it well (on a\n"
-		"phone, a headset, the web and 64-bit ARM Linux, only the textures and\n"
-		"shadows). Each of those settings, set here, wins over it." },
+		"dynamic lights), the same on every machine (a renderer that lacks one\n"
+		"draws without it). Each of those settings, set here, wins over it." },
 	{ "display.anti_aliasing", _config_string, GRAPHICS_ANTI_ALIASING, "HALO_ANTI_ALIASING", _environment_value,
 		_platform_all,
 		"Smoothing of jagged edges, which the Xbox did not have: \"off\"; \"fxaa\"\n"
 		"or \"smaa\" smooth the 3D view once it is drawn (the HUD and menus stay\n"
 		"sharp); \"ssaa2x\" draws at twice the resolution each way (four times\n"
 		"the work); \"msaa2x\", \"msaa4x\" or \"msaa8x\" draw with that many samples\n"
-		"a pixel. Android has \"fxaa\" for \"smaa\", and no \"ssaa2x\"." GRAPHICS_CHOOSES },
+		"a pixel. OpenGL ES (the web, 64-bit ARM Linux's OpenGL build) has\n"
+		"\"fxaa\" for \"smaa\"; it and Android have no \"ssaa2x\"." GRAPHICS_CHOOSES },
 	{ "display.interpolation", _config_boolean, "true", "HALO_INTERPOLATION", _environment_value, _platform_all,
 		"Draw a frame for every display refresh, blending between the game's 30\n"
 		"ticks a second; false keeps the original 30 frames a second." },
@@ -202,6 +202,11 @@ static const struct config_setting config_settings[] =
 		_environment_value, _platform_all,
 		"The scoreboard panel's colour: \"red, green, blue, alpha\", each 0 to 255\n"
 		"(alpha 0 is see-through, 255 solid)." },
+	{ "display.latency_meter", _config_boolean, "false", "HALO_LATENCY_METER", _environment_value, _platform_all,
+		"In a network game, your round trip to the host in milliseconds at the\n"
+		"screen's top right, with bars (the host: its slowest player's), and\n"
+		"\"Connection problem\" when the host has sent nothing for two seconds;\n"
+		"the scoreboard's pings in the same colours, as this machine times them." },
 	{ "display.anisotropic_filtering", _config_integer, GRAPHICS_ANISOTROPIC_FILTERING, "HALO_ANISOTROPIC_FILTERING",
 		_environment_value, _platform_all,
 		"Sharpen textures seen at a grazing angle (floors, walls, terrain), which\n"
@@ -423,10 +428,12 @@ static const struct config_setting config_settings[] =
 		"sit, level with the horizon; \"third_person\" the game's camera following\n"
 		"the vehicle." },
 	{ "vr.seat_motion", _config_string, "\"still\"", "HALO_VR_SEAT_MOTION", _environment_value, _platform_desktop,
-		"With vr.vehicle_view = \"first_person\": \"still\" the eye stays put in\n"
-		"the vehicle, riding with it but not with the body climbing in and out,\n"
-		"a turret's turning or flinches, and blinks between its places; \"head\"\n"
-		"it follows the seated body's head as the game animates it." },
+		"With vr.vehicle_view = \"first_person\": \"still\" you stay in the first\n"
+		"person all the way in and out, the eye following the body's climb\n"
+		"smoothed, then staying put in the vehicle, riding with it but not with\n"
+		"a turret's turning or flinches; \"blink\" the eye stays put as the body\n"
+		"climbs in and out, and blinks between its places; \"head\" it follows\n"
+		"the seated body's head as the game animates it." },
 	{ "vr.ghost_steering", _config_string, "\"handlebars\"", "HALO_VR_GHOST_STEERING", _environment_value,
 		_platform_desktop,
 		"Driving a Ghost with vr.aim = \"controller\": \"handlebars\" grip its\n"
@@ -895,6 +902,9 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test_vehicle", _config_real, "0.0", "HALO_NETWORK_TEST_VEHICLE", _environment_value, _platform_all,
 		"This many seconds into an automated test game the host seats its last\n"
 		"player as a vehicle's driver (and out 15 seconds on); 0 never." },
+	{ "debug.network_test_hitch", _config_real, "0.0", "HALO_NETWORK_TEST_HITCH", _environment_value, _platform_all,
+		"As debug.network_test_vehicle seats the player, the frame stops for this\n"
+		"many seconds, as a stall of the renderer or the VR runtime would; 0 never." },
 	{ "debug.network_test_pickup", _config_real, "0.0", "HALO_NETWORK_TEST_PICKUP", _environment_value, _platform_all,
 		"This many seconds into an automated test game the host stands its last\n"
 		"player on a weapon, which a joining player then picks up; 0 never." },
@@ -1152,8 +1162,11 @@ static const struct config_setting config_settings[] =
 		"Record the shaders and pipelines the game draws with into this file (each\n"
 		"new one added to it), for the renderer's manifest\n"
 		"(port/assets/render/README.md); empty for none." },
-	{ "debug.gl_debug", _config_boolean, "false", "HALO_GL_DEBUG", _environment_set_is_true, _platform_all,
-		"Report OpenGL errors in the log." },
+	{ "debug.gpu_validation", _config_boolean, "false", "HALO_GPU_VALIDATION", _environment_set_is_true, _platform_all,
+		"Report the graphics API's errors in the log: OpenGL's debug output, or\n"
+		"Vulkan's validation layers (which must be installed)." },
+	{ "debug.gl_debug", _config_boolean, "false", "HALO_GL_DEBUG", _environment_set_is_true, _platform_desktop,
+		"Deprecated: gpu_validation's old name, which turns it on too." },
 	{ "debug.skip_cinematics", _config_boolean, "false", "HALO_SKIP_CINEMATICS", _environment_set_is_true, _platform_all,
 		"Skip each cinematic in a local game: as the skip button does where it can\n"
 		"be skipped, else run at sixteen times its speed (a test reaches play in\n"
@@ -1162,10 +1175,11 @@ static const struct config_setting config_settings[] =
 		"Start on this screen of the menus (port/assets/menus) instead of the main\n"
 		"menu, a player profile being edited; empty for the main menu." },
 	{ "debug.gpu_flush_draws", _config_integer, "-1", "HALO_GPU_FLUSH_DRAWS", _environment_value, _platform_desktop,
-		"Flush the GPU's pipeline every this many draws: -1 for every 3 on Intel\n"
-		"graphics with Mesa's driver (which can hang without), 0 never." },
+		"OpenGL only: flush the GPU's pipeline every this many draws: -1 for every\n"
+		"3 on Intel graphics with Mesa's driver (which can hang without), 0 never." },
 	{ "debug.gpu_stats", _config_boolean, "false", "HALO_GPU_STATS", _environment_set_is_true, _platform_all,
-		"Log the renderer's draw counts once a second." },
+		"Log the renderer's draw counts once a second (with Vulkan, also its\n"
+		"submissions, passes, clears and pipelines every 600 frames)." },
 	{ "debug.gpu_trace_frame", _config_integer, "-1", "HALO_GPU_TRACE", _environment_value, _platform_all,
 		"Log every draw of this frame; -1 none." },
 	{ "debug.gpu_trace_constants", _config_boolean, "false", "HALO_GPU_TRACE_CONSTANTS", _environment_set_is_true, _platform_all,
@@ -1173,7 +1187,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.gpu_skip_vertex_shaders", _config_string, "\"\"", "HALO_GPU_SKIP_VS", _environment_value, _platform_all,
 		"Comma-separated ids of vertex shaders not to draw with." },
 	{ "debug.gpu_dump_shaders", _config_string, "\"\"", "HALO_GPU_DUMP_SHADERS", _environment_value, _platform_all,
-		"A folder to write the generated GLSL to; empty none." },
+		"A folder to write the generated shaders to (OpenGL's GLSL, Vulkan's\n"
+		"SPIR-V); empty none." },
 	{ "debug.dynamic_lights_look", _config_string, "\"\"", "HALO_DYNAMIC_LIGHTS_LOOK", _environment_value, _platform_all,
 		"The enhanced dynamic lights' look, for tuning it: up to eight numbers,\n"
 		"the lights' brightness, core, spill past white and wrap on models, the\n"
@@ -1183,7 +1198,8 @@ static const struct config_setting config_settings[] =
 		"Log where the first projectile's light is drawn each frame (the\n"
 		"enhanced dynamic lights)." },
 	{ "debug.gpu_debug_expression", _config_string, "\"\"", "HALO_GPU_DEBUG_EXPR", _environment_value, _platform_all,
-		"A GLSL expression every pixel shader shows instead of its result." },
+		"OpenGL only (and Metal's MSL), not Vulkan's SPIR-V: a GLSL expression\n"
+		"every pixel shader shows instead of its result." },
 	{ "debug.gpu_debug_texture0", _config_boolean, "false", "HALO_GPU_DEBUG_T0", _environment_set_is_true, _platform_all,
 		"Pixel shaders show their first texture." },
 	{ "debug.gpu_debug_flat", _config_boolean, "false", "HALO_GPU_DEBUG_FLAT", _environment_set_is_true, _platform_all,

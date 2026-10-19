@@ -28,8 +28,9 @@ as OpenGL's mip_composite_get makes it.
 
 The VR host supplies the eyes' targets and transforms, and consumes their
 images for the OpenXR layers. The enhanced dynamic lights' block and cells
-are the draw set's, and their glows a pass of their own, as OpenGL's. Not
-yet: anti-aliasing's passes (the stream skips records with no entry).
+are the draw set's, and their glows a pass of their own, as OpenGL's.
+Anti-aliasing's passes are xgpu_vulkan_post.c's, over the target's pixels as
+the record names them, in its first layer, as OpenGL's are.
 */
 
 #include "host.h"
@@ -41,6 +42,7 @@ yet: anti-aliasing's passes (the stream skips records with no entry).
 #include "xgpu_spirv.h"
 #include "xgpu_vulkan.h"
 #include "xgpu_vulkan_loading.h"
+#include "xgpu_vulkan_post.h"
 #include "xgpu_vulkan_stream.h"
 #include "xgpu_vulkan_textures.h"
 #ifdef HALO_VR
@@ -235,6 +237,10 @@ static struct
 	double trace_seconds[4];
 	uint64_t trace_counts[4];
 	uint32_t pipeline_misses;
+	/* the debugging settings (xgpu_vulkan_stream_debug): the statistics
+	logged, the folder the shader modules are written into (NULL: none) */
+	int statistics;
+	const char *shader_folder;
 } stream;
 
 static double preparation_start(void)
@@ -531,16 +537,43 @@ static void stream_set_targets(void *context, const struct xgpu_stream_set_targe
 	/* (whether a stage samples the target drawn into) */
 	stream.textures_dirty = 1;
 	targets_bind();
+	/* The game's clears of some of the colour's channels are of alpha alone
+	(a fog screen's, and a split screen's window's end, which the map's
+	enumeration may not reach): their pipeline is made for each of the
+	targets the map's draws go to, as the map loads. */
+	if (stream.preparing)
+		(void)xgpu_vulkan_clear_prepare(XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_ALPHA);
 }
 
 static void stream_clear(void *context, const struct xgpu_stream_clear *record)
 {
+	uint32_t parts = record->flags & 0x7f;
+	uint64_t before;
+
 	(void)context;
 	if (target_get(stream.color))
 		target_get(stream.color)->written++;
 	targets_bind();
-	xgpu_vulkan_clear((const int32_t (*)[4])record->rectangles, record->count, record->flags & 0x7f, record->color,
-		record->depth, record->stencil);
+	/* some of the colour's channels: drawn, through a pipeline made as the
+	map loads (not drawn then: the enumeration's frame is not seen) */
+	if (stream.preparing && (parts & XGPU_VULKAN_CLEAR_COLOR) &&
+		(parts & XGPU_VULKAN_CLEAR_CHANNELS) != XGPU_VULKAN_CLEAR_CHANNELS)
+	{
+		(void)xgpu_vulkan_clear_prepare(parts);
+		parts &= ~(uint32_t)(XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS);
+		if (!(parts & (XGPU_VULKAN_CLEAR_DEPTH | XGPU_VULKAN_CLEAR_STENCIL)))
+			return;
+	}
+	before = xgpu_vulkan_pipeline_count();
+	xgpu_vulkan_clear((const int32_t (*)[4])record->rectangles, record->count, parts, record->color, record->depth,
+		record->stencil);
+	if (!stream.preparing && stream.prepared && xgpu_vulkan_pipeline_count() != before)
+	{
+		stream.pipeline_misses++;
+		host_logf(HOST_LOG_WARN, "vulkan: pipeline missed map preparation: a clear of channels %x, views %u, "
+			"samples %u, total %u", (unsigned)(parts & XGPU_VULKAN_CLEAR_CHANNELS), (unsigned)stream.views,
+			(unsigned)stream.samples, stream.pipeline_misses);
+	}
 }
 
 static void stream_clear_target(void *context, const struct xgpu_stream_clear_target *record)
@@ -925,22 +958,16 @@ static void pixel_program_convert(const struct xgpu_stream_pixel_program *wire, 
 	program->source_blend = wire->source_blend;
 }
 
-/* HALO_VULKAN_SHADERS=<folder> writes each module there as it is made */
+/* debug.gpu_dump_shaders (HALO_VULKAN_SHADERS) writes each module into its
+folder as it is made */
 static void shader_dump(const char *name, const struct xgpu_spirv_module *module)
 {
-	static int read;
-	static const char *folder;
 	char path[1024];
 	FILE *file;
 
-	if (!read)
-	{
-		folder = getenv("HALO_VULKAN_SHADERS");
-		read = 1;
-	}
-	if (!folder || !*folder)
+	if (!stream.shader_folder)
 		return;
-	snprintf(path, sizeof(path), "%s/%s.spv", folder, name);
+	snprintf(path, sizeof(path), "%s/%s.spv", stream.shader_folder, name);
 	if ((file = fopen(path, "wb")) != NULL)
 	{
 		fwrite(module->words, 4, module->count, file);
@@ -1940,6 +1967,41 @@ static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_
 	targets_bind();
 }
 
+/* ---------- anti-aliasing (display.anti_aliasing; xgpu_vulkan_post.c) */
+
+static void stream_anti_aliasing_prepare(void *context, uint32_t smaa)
+{
+	(void)context;
+	/* (made as the setting is chosen: the front end chooses it between
+	frames; queued as a map is prepared; logged if they cannot be) */
+	(void)xgpu_vulkan_post_prepare(smaa != 0, stream.preparing);
+}
+
+/* FXAA or SMAA over a window's 3D view, before the HUD and menus are drawn
+over it: the target's texture, its first layer (the front end no longer
+multisamples the target, from just before the record: a target still
+multisampled would have its pixels resolved over the passes') */
+static void stream_anti_alias(void *context, const struct xgpu_stream_anti_alias *record)
+{
+	struct stream_target *target = target_get(record->target);
+
+	(void)context;
+	if (!target || target->depth)
+		return;
+	if (stream.preparing)
+	{
+		/* (made as the map loads, as the game's pipelines are) */
+		(void)xgpu_vulkan_post_prepare(record->smaa != 0, 1);
+		return;
+	}
+	if (target->multisampled)
+		return;
+	target->written++;
+	xgpu_vulkan_post_anti_alias(record->smaa != 0, target->image, 0, record->corners);
+	/* (the stream's targets again, for what follows) */
+	targets_bind();
+}
+
 /* ---------- visibility tests, frames */
 
 static void stream_visibility_begin(void *context)
@@ -1972,17 +2034,23 @@ static void stream_present(void *context, uint32_t back_buffer)
 static void stream_frame_end(void *context)
 {
 	struct stream_target *back_buffer = target_get(stream.back_buffer);
+	int present_window = !host_render_stream_loading_holds();
 
 	(void)context;
 	target_resolve(back_buffer);
 #ifdef HALO_VR
+	/* (the headset shows the frames: the window, hidden, is not presented
+	to, which could wait for a display that never takes a frame) */
 	if (host_vulkan_vr_active())
+	{
 		back_buffer = NULL;
+		present_window = 0;
+	}
 #endif
-	xgpu_vulkan_frame_end(back_buffer ? back_buffer->image : NULL, !host_render_stream_loading_holds());
+	xgpu_vulkan_frame_end(back_buffer ? back_buffer->image : NULL, present_window);
 	stream.back_buffer = 0;
 	xgpu_vulkan_textures_frame_end();
-	if (getenv("HALO_VULKAN_STATS"))
+	if (stream.statistics)
 	{
 		static uint32_t frames;
 
@@ -1993,11 +2061,12 @@ static void stream_frame_end(void *context)
 
 			xgpu_vulkan_statistics(&statistics);
 			xgpu_vulkan_textures_statistics(&textures);
-			host_logf(HOST_LOG_INFO, "vulkan: %u frames: %u submissions, %u passes, %u draws, %u clears, %u attachment loads, "
-				"%u attachment clears, %u texture sets written, %u reused, %u pipelines made "
+			host_logf(HOST_LOG_INFO, "vulkan: %u frames: %u submissions, %u passes, %u draws, %u clears (%u drawn), "
+				"%u attachment loads, %u attachment clears, %u texture sets written, %u reused, %u pipelines made "
 				"(%.1f ms), %u uploads ordered, %u early, %llu ring bytes; textures %u made, %u remade, %u images",
 				statistics.frames, statistics.submissions, statistics.passes, statistics.draws, statistics.clears,
-				statistics.attachment_loads, statistics.attachment_clears, statistics.texture_sets_written,
+				statistics.clears_as_draws, statistics.attachment_loads, statistics.attachment_clears,
+				statistics.texture_sets_written,
 				statistics.texture_sets_reused,
 				statistics.pipelines_made, statistics.pipeline_seconds * 1000.0, statistics.uploads_ordered,
 				statistics.uploads_early, (unsigned long long)statistics.ring_bytes, textures.made, textures.remade,
@@ -2097,7 +2166,17 @@ static uint32_t stream_prepared(void *context)
 		(unsigned long long)xgpu_vulkan_pipeline_count());
 	stream.preparing = 0;
 	stream.prepared = 1;
+	/* (the pipelines just made kept, where they are new: Android seldom
+	lets the app exit cleanly, which also saves them) */
+	if (xgpu_vulkan_pipeline_count() != stream.prepare_pipelines)
+		xgpu_vulkan_pipeline_cache_save();
 	return started >= 0.0 && finished >= started ? (uint32_t)((finished - started) * 1000.0) : 0;
+}
+
+void xgpu_vulkan_stream_debug(int statistics, const char *shader_folder)
+{
+	stream.statistics = statistics != 0;
+	stream.shader_folder = shader_folder && *shader_folder ? shader_folder : NULL;
 }
 
 const struct host_render_backend *xgpu_vulkan_stream_backend(void)
@@ -2144,6 +2223,8 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.dynamic_lights_prepare = stream_dynamic_lights_prepare;
 		backend.dynamic_lights_upload = stream_dynamic_lights_upload;
 		backend.dynamic_lights_halos = stream_dynamic_lights_halos;
+		backend.anti_aliasing_prepare = stream_anti_aliasing_prepare;
+		backend.anti_alias = stream_anti_alias;
 #ifdef HALO_VR
 		host_vulkan_vr_backend(&backend);
 #endif

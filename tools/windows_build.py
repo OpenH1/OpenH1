@@ -6,7 +6,7 @@ X32; tools/android_build.py, generate_guest_image) in a 64-bit host, here a
 Windows executable (port/windows/host; port/windows/README.md):
 
 - build/windows/halo_guest.elf, ``ninja windows_guest``: the guest image,
-  the Vulkan desktop guest's (the Linux Vulkan build's, linux_vulkan) with the
+  the Linux builds' desktop guest (drawn with Vulkan, in the host) with the
   Windows code paths (HALO_WINDOWS: the saves in %APPDATA%\\halo, config.toml
   beside the executable, the Windows self-updater's release), no red zone
   (Windows writes an exception's records right below the stack pointer) and
@@ -16,7 +16,7 @@ Windows executable (port/windows/host; port/windows/README.md):
   LLVM (tools/guest_toolchain.py), so that the guest can be checked anywhere:
   on another computer than Windows when configure.py is given
   --windows-guest (it downloads the pinned LLVM, musl, SDL3's source and the
-  Khronos and Vulkan headers), or once those are there;
+  Vulkan headers), or once those are there;
 - build/windows/halo.exe, ``ninja windows``, on Windows only: the host,
   compiled by clang for x86_64-pc-windows-msvc and linked by lld with the
   Windows SDK, the guest image inside it; its import table's entries are
@@ -38,28 +38,25 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .android_build import (MBEDTLS_DIR, TOML_DIR, fetch_third_party, generate_guest_image)
+from .android_build import (MBEDTLS_DIR, RENDER_STREAM_GUEST_EXCLUDED, TOML_DIR, fetch_third_party,
+                            generate_guest_image)
+from .build_common import (MINIUPNPC_DIR, OPTIMISATION, compile_launcher, configuration_defines, miniupnpc_sources,
+                           updater_defines)
 from .guest_arch import X32
 from .guest_toolchain import LLVM_VERSION, GuestToolchain, guest_toolchain
-from .host_gl_build import RENDER_STREAM_GUEST_EXCLUDED
-from .linux_build import (MINIUPNPC_DIR, OPTIMISATION, compile_launcher, configuration_defines, miniupnpc_sources,
-                          updater_defines)
-from .macos_build import fetch_khronos_headers
 from .ninja_syntax import Writer
 from .vulkan_build import VULKAN_DIR, fetch_vulkan_headers, host_vulkan_renderer
 
 BUILD = Path("build/windows")
 THIRD_PARTY = BUILD / "third_party"
 # SDL3's Visual C++ development package (headers, import library and DLL),
-# as the guest's SDL3_TAG (tools/android_build.py) and tools/linux_sysroot.py's
-# SDL_VERSION
+# as the guest's SDL3_TAG (tools/android_build.py)
 SDL_VERSION = "3.4.16"
 SDL_URL = (
     f"https://github.com/libsdl-org/SDL/releases/download/release-{SDL_VERSION}/"
     f"SDL3-devel-{SDL_VERSION}-VC.zip"
 )
 SDL_DIR = THIRD_PARTY / f"SDL3-{SDL_VERSION}"
-KHRONOS_DIR = THIRD_PARTY / "khronos"
 VULKAN_HEADERS_DIR = THIRD_PARTY / "vulkan-headers"
 PORT_DIR = Path("port/windows/host")
 WINDOWS_DIR = Path("port/windows")
@@ -177,10 +174,9 @@ def generate_windows_build(n: Writer, sln: Any) -> None:
                                    objdump=tools["llvm-objdump"])
     try:
         fetch_third_party(THIRD_PARTY)
-        fetch_khronos_headers(KHRONOS_DIR)
         fetch_vulkan_headers(VULKAN_HEADERS_DIR)
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
-        print(f"Windows build disabled: cannot fetch musl, SDL3 or the Khronos headers ({error})",
+        print(f"Windows build disabled: cannot fetch musl, SDL3 or the Vulkan headers ({error})",
               file=sys.stderr)
         return
     config: Dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
@@ -189,7 +185,7 @@ def generate_windows_build(n: Writer, sln: Any) -> None:
     n.variable("windows_guest_cc", toolchain.cc)
     guest = generate_guest_image(
         n, sln, config, arch=X32, prefix="windows", label="WINDOWS", build=BUILD, third_party=THIRD_PARTY,
-        guest_cc=toolchain.cc, gl_headers=KHRONOS_DIR.resolve(), ar=toolchain.ar, ld=toolchain.ld,
+        guest_cc=toolchain.cc, gl_headers=None, ar=toolchain.ar, ld=toolchain.ld,
         objdump=toolchain.objdump, builtins_cc="", environment="gnu", platform_defines=WINDOWS_GUEST_DEFINES,
         extra_runtime=[LINUX_HOST_DIR / "guest_desktop.c", VULKAN_DIR / "guest_vulkan.c", PORT_DIR / "guest_windows.c"],
         extra_imports=[LINUX_HOST_DIR / "host_imports.list", VULKAN_DIR / "host_imports.list",

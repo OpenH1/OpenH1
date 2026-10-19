@@ -392,6 +392,7 @@ symbols in this file:
 #include "networking/network_server_manager.h"
 #include "text/unicode.h"
 #include "map_share.h" /* port: port/linux/game/map_share.c */
+#include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
 
 /* ---------- constants */
 
@@ -782,6 +783,13 @@ progress, 16 bits of it (0 for a game starting); and whether the first game
 update is to bring the host's time (at every start) */
 long network_game_client_late_join_time;
 static boolean network_game_client_late_join_clock_pending;
+/* port: the host said to start while this machine was still downloading the
+map (map sharing): started once the map is there, network_game_client_idle_pregame,
+if the game is still the one put off (its map, and the games played before
+it: the host may end it, or go on to another, meanwhile) */
+static boolean network_game_client_start_pending;
+static char network_game_client_start_pending_map[0x80];
+static long network_game_client_start_pending_games;
 
 /* whether the automated tests' join has told the player why a host cannot
 be joined (network_game_client_join_first_available_game) */
@@ -895,6 +903,22 @@ static boolean check_networking_and_generate_error(
 	}
 
 	return connected;
+}
+
+/* port: how long the client's connection may hear nothing from the host
+before the game is left: none on the host. Its client's host is its own
+server, which runs in the same frame on the same thread: a frame that
+takes long (a hitch of the renderer or of the VR runtime) silences the
+server for as long, so when it ends the client had heard nothing for that
+long, the server's word of it not sent yet. It would leave its own game
+(the game host went down), though nothing went down. The server for its
+part times out none of its own machine's connections
+(network_game_server_client_machine_timed_out); a connection that has
+failed is still noticed by its read. */
+static long network_game_client_connection_timeout(
+	long timeout)
+{
+	return global_network_game_server_get() ? 0 : timeout;
 }
 
 void network_game_client_dispose(
@@ -1018,6 +1042,8 @@ boolean network_game_client_switch_to_pregame(
 		client->state = _network_game_client_state_pregame;
 		network_game_client_late_join_time = 0;
 		network_game_client_late_join_clock_pending = FALSE;
+		/* port: a start put off is not this game's */
+		network_game_client_start_pending = FALSE;
 		network_event("switching to pregame");
 		network_game_reset_to_pregame_ui();
 		network_connection_keep_alive(client->connection);
@@ -1651,6 +1677,26 @@ boolean network_game_client_handle_game_update(
 	return TRUE;
 }
 
+/* port: not while the map is still being downloaded (map sharing): loaded
+then, it is not there (the damaged disc error, for good). The game starts
+once it is there (network_game_client_idle_pregame). A host of this version
+starts no machine before its download is done; one of before may. */
+boolean network_game_client_begin_game(
+	struct network_game_client *client)
+{
+	if (client && map_share_downloading(client->game.map.name))
+	{
+		network_game_client_start_pending = TRUE;
+		csstrncpy(network_game_client_start_pending_map, client->game.map.name,
+			sizeof(network_game_client_start_pending_map) - 1);
+		network_game_client_start_pending_map[sizeof(network_game_client_start_pending_map) - 1] = 0;
+		network_game_client_start_pending_games = client->game.number_of_games_played;
+		network_event("the host started the game while its map is being downloaded: joining it once the map is there");
+		return TRUE;
+	}
+	return network_game_client_game_has_started(client);
+}
+
 boolean network_game_client_game_has_started(
 	struct network_game_client *client)
 {
@@ -2234,6 +2280,8 @@ void network_game_client_reset(
 	client->seconds_to_game_start = NONE;
 	network_game_client_late_join_time = 0;
 	network_game_client_late_join_clock_pending = FALSE;
+	/* port: no start put off */
+	network_game_client_start_pending = FALSE;
 	network_game_client_incompatibility_told = FALSE;
 	csmemset(network_game_client_add_player_requested, 0, sizeof(network_game_client_add_player_requested));
 
@@ -2902,7 +2950,8 @@ static boolean network_game_client_idle_pregame(
 		{
 			network_game_client_update_precache_status(client);
 
-			if (!(success = network_connection_idle(client->connection, 15000, NULL)))
+			/* (port: no timeout on the host, network_game_client_connection_timeout) */
+			if (!(success = network_connection_idle(client->connection, network_game_client_connection_timeout(15000), NULL)))
 			{
 				network_event("network_connection_idle() failed in network_game_client_idle_pregame()");
 				if (network_game_client_process_last_messages(client))
@@ -2913,6 +2962,26 @@ static boolean network_game_client_idle_pregame(
 			else if (!(success = network_game_client_process_incoming_messages(client)))
 			{
 				network_event("network_game_client_process_incoming_messages() failed in network_game_client_idle_pregame()");
+			}
+			/* port: a start put off while the map was downloaded (map
+			sharing), once the download is over: the game loaded if the map
+			is there (a failed download leaves the game: map_share.c) */
+			else if (network_game_client_start_pending && client->state == _network_game_client_state_pregame &&
+				!map_share_downloading(client->game.map.name))
+			{
+				network_game_client_start_pending = FALSE;
+				if (csstrcmp(client->game.map.name, network_game_client_start_pending_map) ||
+					client->game.number_of_games_played != network_game_client_start_pending_games)
+				{
+					network_event("the game put off is over: waiting for the host's next start");
+				}
+				else if (!custom_edition_level_name(client->game.map.name) ||
+					custom_edition_cache_playable(client->game.map.name))
+				{
+					network_event("the map is downloaded: joining the game the host started");
+					if (!network_game_client_game_has_started(client))
+						network_event("network_game_client_game_has_started() failed");
+				}
 			}
 		}
 		else
@@ -2989,7 +3058,9 @@ static boolean network_game_client_idle_ingame(
 
 	if (success == TRUE)
 	{
-		success = network_connection_idle(client->connection, started ? 15000 : 75000, NULL);
+		/* (port: no timeout on the host, network_game_client_connection_timeout) */
+		success = network_connection_idle(client->connection,
+			network_game_client_connection_timeout(started ? 15000 : 75000), NULL);
 
 		if (success)
 		{
@@ -3031,7 +3102,8 @@ static boolean network_game_client_idle_postgame(
 	}
 	else
 	{
-		if (!(success = network_connection_idle(client->connection, 15000, NULL)))
+		/* (port: no timeout on the host, network_game_client_connection_timeout) */
+		if (!(success = network_connection_idle(client->connection, network_game_client_connection_timeout(15000), NULL)))
 		{
 			network_event("network_connection_idle() failed in network_game_client_idle_postgame()");
 			if (network_game_client_process_last_messages(client))

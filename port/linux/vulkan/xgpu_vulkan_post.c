@@ -1,0 +1,426 @@
+/*
+XGPU_VULKAN_POST.C
+
+The post-process passes of display.anti_aliasing (xgpu_vulkan_post.h): FXAA
+and SMAA, run on a render target in place, over the rectangle of a window's
+3D view, as the OpenGL backend runs them (port/linux/src/xgpu_post.c), with
+its shaders compiled to SPIR-V (xgpu_vulkan_post_shaders.c, by
+tools/vulkan_post_shaders.py). Each pass draws one triangle covering the
+rectangle (its corners from the vertex's index, with no vertex data) and
+finds its texels from the fragment's coordinates; the target's rows are
+the picture's from the top, as the passes' own images' are, so no
+coordinate is turned over. The target's pixels are copied first, so that no
+pass reads what it writes, and only colour is written back: the game keeps
+values of its own in destination alpha.
+
+Each pass is a pass of the core's (xgpu_vulkan.c) of its own: the barrier
+that ends one makes what it drew visible to the next one's samples, and
+the copy's barrier its pixels to the first. SMAA's edges and weights are
+emptied whole before their passes, as the pass begins (a clear of the
+whole attachment loads none of it), so that no edge of another window's
+pass is found: they write only where there is an edge. The intermediate
+images are the target's size, as the OpenGL backend's textures are (the
+shaders' coordinates are the target's).
+
+The present step's turn (xgpu_vulkan_post_rotate) is a pass of the same
+kind: the frame drawn turned by quarter turns into an image of its own, for
+a swapchain made for the display's orientation while the phone is held
+another way (xgpu_vulkan.c, present). Its pipeline is made at the start,
+where the window's surface can be turned (xgpu_vulkan_post_rotate_prepare).
+
+The pipelines and SMAA's lookup textures are made as the setting is chosen
+(xgpu_vulkan_post_prepare), or queued as a map is prepared, not in the
+middle of a frame. The lookup textures are RGBA8 images of SMAA's one and
+two channels (the rest zero), sampled as OpenGL samples its R8 and RG8.
+*/
+
+#include "xgpu_vulkan_post.h"
+#include "host.h"
+#include "xgpu_vulkan.h"
+#include "xgpu_vulkan_post_shaders.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+/* the draw set's constants' range (xgpu_vulkan.c draw_set_make), which the
+uniforms' (2048 bytes) fits in: one range of the ring for both */
+#define UNIFORMS_RANGE (192 * 16)
+
+static struct
+{
+	VkShaderModule vertex, pixel[XGPU_VULKAN_POST_PROGRAM_COUNT];
+	struct xgpu_vulkan_pipeline_description pipelines[XGPU_VULKAN_POST_PROGRAM_COUNT];
+	/* FXAA's, and SMAA's, pipelines or textures could not be made */
+	int failed[2];
+	/* the size of the images below */
+	uint32_t width, height;
+	/* the target's pixels before the pass, and SMAA's edges and blending
+	weights */
+	struct xgpu_vulkan_image *color, *edges, *weights;
+	/* SMAA's lookup textures */
+	struct xgpu_vulkan_image *area, *search;
+	/* linear and clamped, as FXAA and SMAA sample */
+	VkSampler sampler;
+	/* the present step's turn: its pipeline (made at the start, never
+	while a map is prepared), whether it cannot be, and the turned frame */
+	VkPipeline rotate;
+	int rotate_failed;
+	struct xgpu_vulkan_image *turned;
+} post;
+
+/* ---------- images */
+
+static struct xgpu_vulkan_image *image_make(uint8_t format, uint8_t usage, uint32_t width, uint32_t height)
+{
+	struct xgpu_vulkan_image_description description;
+
+	memset(&description, 0, sizeof(description));
+	description.type = XGPU_VULKAN_IMAGE_2D;
+	description.format = format;
+	description.usage = usage;
+	description.width = width;
+	description.height = height;
+	description.depth_or_layers = 1;
+	description.levels = 1;
+	return xgpu_vulkan_image_create(&description);
+}
+
+/* a lookup texture of SMAA's, its channels' bytes (four to a word) each
+made a texel of four */
+static struct xgpu_vulkan_image *lookup_texture(const uint32_t *words, uint32_t width, uint32_t height,
+	uint32_t channels)
+{
+	struct xgpu_vulkan_image *image = image_make(XGPU_VULKAN_FORMAT_RGBA8, XGPU_VULKAN_USAGE_SAMPLED, width, height);
+	unsigned char *texels = malloc(width * height * 4);
+	uint32_t texel, channel, byte;
+
+	if (!image || !texels)
+	{
+		free(texels);
+		xgpu_vulkan_image_destroy(image);
+		return NULL;
+	}
+	for (texel = 0; texel < width * height; texel++)
+	{
+		for (channel = 0; channel < 4; channel++)
+		{
+			byte = texel * channels + channel;
+			texels[texel * 4 + channel] = channel < channels ?
+				(unsigned char)(words[byte / 4] >> (byte % 4 * 8)) : 0;
+		}
+	}
+	xgpu_vulkan_image_upload(image, 0, 0, 0, 0, 0, width, height, 1, texels, width * 4, width * height * 4);
+	free(texels);
+	return image;
+}
+
+/* the passes' images, of the target's size (SMAA's only for SMAA); color
+is the target's format, so that the copy is exact */
+static int images_fit(int smaa, uint32_t width, uint32_t height)
+{
+	if (post.width != width || post.height != height || !post.color)
+	{
+		xgpu_vulkan_image_destroy(post.color);
+		xgpu_vulkan_image_destroy(post.edges);
+		xgpu_vulkan_image_destroy(post.weights);
+		post.color = post.edges = post.weights = NULL;
+		post.width = width;
+		post.height = height;
+		post.color = image_make(XGPU_VULKAN_FORMAT_BGRA8, XGPU_VULKAN_USAGE_SAMPLED | XGPU_VULKAN_USAGE_TARGET,
+			width, height);
+	}
+	if (smaa && !post.edges)
+	{
+		post.edges = image_make(XGPU_VULKAN_FORMAT_BGRA8, XGPU_VULKAN_USAGE_SAMPLED | XGPU_VULKAN_USAGE_TARGET,
+			width, height);
+		post.weights = image_make(XGPU_VULKAN_FORMAT_BGRA8, XGPU_VULKAN_USAGE_SAMPLED | XGPU_VULKAN_USAGE_TARGET,
+			width, height);
+	}
+	return post.color && (!smaa || (post.edges && post.weights));
+}
+
+/* ---------- pipelines */
+
+/* the passes' sampler, made the first time: 1 if it is */
+static int sampler_make(void)
+{
+	struct xgpu_vulkan_sampler_description sampler;
+
+	if (post.sampler)
+		return 1;
+	memset(&sampler, 0, sizeof(sampler));
+	sampler.minify = sampler.magnify = XGPU_VULKAN_FILTER_LINEAR;
+	sampler.mip = XGPU_VULKAN_MIP_NONE;
+	sampler.address[0] = sampler.address[1] = sampler.address[2] = XGPU_VULKAN_ADDRESS_CLAMP;
+	sampler.anisotropy = 1;
+	post.sampler = xgpu_vulkan_sampler(&sampler);
+	return post.sampler != VK_NULL_HANDLE;
+}
+
+static int prepare_failed(int smaa, const char *what)
+{
+	host_logf(HOST_LOG_WARN, "vulkan: %s's %s cannot be made, so the 3D view is not antialiased",
+		smaa ? "SMAA" : "FXAA", what);
+	post.failed[smaa] = 1;
+	return 0;
+}
+
+int xgpu_vulkan_post_prepare(int smaa, int preparing)
+{
+	int first = smaa ? XGPU_VULKAN_POST_SMAA_EDGES : XGPU_VULKAN_POST_FXAA;
+	int last = smaa ? XGPU_VULKAN_POST_SMAA_BLEND : XGPU_VULKAN_POST_FXAA;
+	int program;
+
+	smaa = smaa != 0;
+	if (post.failed[smaa])
+		return 0;
+	if (!post.vertex)
+		post.vertex = xgpu_vulkan_shader(xgpu_vulkan_post_vertex.words, xgpu_vulkan_post_vertex.count);
+	for (program = first; program <= last; program++)
+	{
+		struct xgpu_vulkan_pipeline_description *description = &post.pipelines[program];
+
+		if (!post.pixel[program])
+			post.pixel[program] = xgpu_vulkan_shader(xgpu_vulkan_post_programs[program].words,
+				xgpu_vulkan_post_programs[program].count);
+		if (!post.vertex || !post.pixel[program])
+			return prepare_failed(smaa, "shaders");
+		memset(description, 0, sizeof(*description));
+		description->vertex_shader = post.vertex;
+		description->pixel_shader = post.pixel[program];
+		description->primitive_class = XGPU_VULKAN_CLASS_TRIANGLES;
+		/* (into the target its colour alone; into an intermediate, all
+		of it) */
+		description->color_mask = program == XGPU_VULKAN_POST_FXAA || program == XGPU_VULKAN_POST_SMAA_BLEND ? 7 : 15;
+		description->color_format = XGPU_VULKAN_FORMAT_BGRA8;
+		description->samples = 1;
+		if (preparing ? !xgpu_vulkan_pipeline_prepare(description) : !xgpu_vulkan_pipeline(description))
+			return prepare_failed(smaa, "pipelines");
+	}
+	if (smaa && !post.area)
+	{
+		post.area = lookup_texture(xgpu_vulkan_post_area_texture, XGPU_VULKAN_POST_AREA_WIDTH,
+			XGPU_VULKAN_POST_AREA_HEIGHT, 2);
+		post.search = lookup_texture(xgpu_vulkan_post_search_texture, XGPU_VULKAN_POST_SEARCH_WIDTH,
+			XGPU_VULKAN_POST_SEARCH_HEIGHT, 1);
+		if (!post.area || !post.search)
+			return prepare_failed(smaa, "lookup textures");
+	}
+	if (!sampler_make())
+		return prepare_failed(smaa, "sampler");
+	return 1;
+}
+
+int xgpu_vulkan_post_rotate_prepare(void)
+{
+	struct xgpu_vulkan_pipeline_description *description = &post.pipelines[XGPU_VULKAN_POST_ROTATE];
+
+	if (post.rotate)
+		return 1;
+	if (post.rotate_failed)
+		return 0;
+	if (!post.vertex)
+		post.vertex = xgpu_vulkan_shader(xgpu_vulkan_post_vertex.words, xgpu_vulkan_post_vertex.count);
+	if (!post.pixel[XGPU_VULKAN_POST_ROTATE])
+		post.pixel[XGPU_VULKAN_POST_ROTATE] = xgpu_vulkan_shader(xgpu_vulkan_post_programs[XGPU_VULKAN_POST_ROTATE].words,
+			xgpu_vulkan_post_programs[XGPU_VULKAN_POST_ROTATE].count);
+	if (post.vertex && post.pixel[XGPU_VULKAN_POST_ROTATE] && sampler_make())
+	{
+		memset(description, 0, sizeof(*description));
+		description->vertex_shader = post.vertex;
+		description->pixel_shader = post.pixel[XGPU_VULKAN_POST_ROTATE];
+		description->primitive_class = XGPU_VULKAN_CLASS_TRIANGLES;
+		description->color_mask = 15;
+		description->color_format = XGPU_VULKAN_FORMAT_BGRA8;
+		description->samples = 1;
+		post.rotate = xgpu_vulkan_pipeline(description);
+	}
+	if (!post.rotate)
+	{
+		host_logf(HOST_LOG_WARN, "vulkan: the frame cannot be turned for the display: the compositor turns it");
+		post.rotate_failed = 1;
+	}
+	return post.rotate != VK_NULL_HANDLE;
+}
+
+/* ---------- the passes */
+
+/* a program's triangle drawn into a layer of an image over the rectangle,
+sampling images (NULL: none) */
+static void pass_draw(int program, struct xgpu_vulkan_image *into, uint32_t layer, const int32_t rectangle[4],
+	struct xgpu_vulkan_image *image0, struct xgpu_vulkan_image *image1, struct xgpu_vulkan_image *image2,
+	const float bounds[4])
+{
+	struct xgpu_vulkan_image *images[3];
+	struct xgpu_vulkan_post_uniforms *uniforms;
+	struct xgpu_vulkan_dynamic_state dynamic;
+	struct xgpu_vulkan_draw draw;
+	int stage;
+
+	memset(&draw, 0, sizeof(draw));
+	draw.pipeline = xgpu_vulkan_pipeline(&post.pipelines[program]);
+	if (!draw.pipeline)
+		return;
+	images[0] = image0;
+	images[1] = image1;
+	images[2] = image2;
+	for (stage = 0; stage < 4; stage++)
+	{
+		draw.textures[stage].image = stage < 3 ? images[stage] : NULL;
+		draw.textures[stage].kind = XGPU_VULKAN_IMAGE_2D;
+		draw.textures[stage].sampler = post.sampler;
+	}
+	uniforms = xgpu_vulkan_upload(UNIFORMS_RANGE, 256, &draw.uniforms);
+	if (!uniforms)
+		return;
+	memset(uniforms, 0, sizeof(*uniforms));
+	uniforms->metrics[0] = 1.0f / (float)post.width;
+	uniforms->metrics[1] = 1.0f / (float)post.height;
+	uniforms->metrics[2] = (float)post.width;
+	uniforms->metrics[3] = (float)post.height;
+	if (bounds)
+		memcpy(uniforms->bounds, bounds, sizeof(uniforms->bounds));
+	draw.constants = draw.uniforms;
+	memset(&dynamic, 0, sizeof(dynamic));
+	dynamic.viewport[0] = dynamic.scissor[0] = rectangle[0];
+	dynamic.viewport[1] = dynamic.scissor[1] = rectangle[1];
+	dynamic.viewport[2] = dynamic.scissor[2] = rectangle[2] - rectangle[0];
+	dynamic.viewport[3] = dynamic.scissor[3] = rectangle[3] - rectangle[1];
+	dynamic.depth_range[1] = 1.0f;
+	draw.dynamic = &dynamic;
+	draw.topology = XGPU_VULKAN_TOPOLOGY_TRIANGLES;
+	draw.count = 3;
+	xgpu_vulkan_set_target_views(into, NULL, layer, 1);
+	xgpu_vulkan_draw(&draw);
+}
+
+/* an intermediate emptied, all of it, so that no edge of another window's
+pass is found: SMAA's passes write only where there is an edge */
+static void intermediate_clear(struct xgpu_vulkan_image *image)
+{
+	static const float transparent[4];
+	int32_t whole[1][4];
+
+	whole[0][0] = whole[0][1] = 0;
+	whole[0][2] = (int32_t)post.width;
+	whole[0][3] = (int32_t)post.height;
+	xgpu_vulkan_set_targets(image, NULL, 0);
+	xgpu_vulkan_clear((const int32_t (*)[4])whole, 1, XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS,
+		transparent, 1.0f, 0);
+}
+
+int xgpu_vulkan_post_anti_alias(int smaa, struct xgpu_vulkan_image *target, uint32_t layer, const int32_t corners[4])
+{
+	const struct xgpu_vulkan_image_description *description;
+	int32_t rectangle[4];
+	int index;
+
+	smaa = smaa != 0;
+	/* (made already, as the setting was chosen) */
+	if (!target || !xgpu_vulkan_post_prepare(smaa, 0))
+		return 0;
+	description = xgpu_vulkan_image_description(target);
+	if (description->format != XGPU_VULKAN_FORMAT_BGRA8 || description->samples > 1)
+		return 0;
+	/* (inside the target) */
+	for (index = 0; index < 4; index++)
+	{
+		int32_t most = (int32_t)(index & 1 ? description->height : description->width);
+
+		rectangle[index] = corners[index] < 0 ? 0 : corners[index] > most ? most : corners[index];
+	}
+	if (rectangle[2] <= rectangle[0] || rectangle[3] <= rectangle[1])
+		return 1;
+	if (!images_fit(smaa, description->width, description->height))
+		return 0;
+
+	/* the target's pixels, read while the target is drawn into */
+	xgpu_vulkan_image_copy_rectangle(target, layer, post.color, rectangle);
+	if (!smaa)
+	{
+		float bounds[4];
+
+		/* (split screen: no texel of the next window is read) */
+		bounds[0] = ((float)rectangle[0] + 0.5f) / (float)post.width;
+		bounds[1] = ((float)rectangle[1] + 0.5f) / (float)post.height;
+		bounds[2] = ((float)rectangle[2] - 0.5f) / (float)post.width;
+		bounds[3] = ((float)rectangle[3] - 0.5f) / (float)post.height;
+		pass_draw(XGPU_VULKAN_POST_FXAA, target, layer, rectangle, post.color, NULL, NULL, bounds);
+	}
+	else
+	{
+		intermediate_clear(post.edges);
+		pass_draw(XGPU_VULKAN_POST_SMAA_EDGES, post.edges, 0, rectangle, post.color, NULL, NULL, NULL);
+
+		intermediate_clear(post.weights);
+		pass_draw(XGPU_VULKAN_POST_SMAA_WEIGHTS, post.weights, 0, rectangle, post.edges, post.area, post.search, NULL);
+
+		pass_draw(XGPU_VULKAN_POST_SMAA_BLEND, target, layer, rectangle, post.color, post.weights, NULL, NULL);
+	}
+	return 1;
+}
+
+/* the turn's matrix for each count of quarter turns clockwise: rows from
+the turned image's coordinates (about its centre) to the frame's */
+static const float rotate_rows[4][4] =
+{
+	{ 1.0f, 0.0f, 0.0f, 1.0f },
+	{ 0.0f, 1.0f, -1.0f, 0.0f },
+	{ -1.0f, 0.0f, 0.0f, -1.0f },
+	{ 0.0f, -1.0f, 1.0f, 0.0f },
+};
+
+struct xgpu_vulkan_image *xgpu_vulkan_post_rotate(struct xgpu_vulkan_image *image, int quarter_turns)
+{
+	const struct xgpu_vulkan_image_description *description;
+	struct xgpu_vulkan_post_uniforms *uniforms;
+	struct xgpu_vulkan_dynamic_state dynamic;
+	struct xgpu_vulkan_draw draw;
+	uint32_t width, height;
+	int stage;
+
+	if (!image || !post.rotate || quarter_turns < 1 || quarter_turns > 3)
+		return NULL;
+	description = xgpu_vulkan_image_description(image);
+	width = quarter_turns & 1 ? description->height : description->width;
+	height = quarter_turns & 1 ? description->width : description->height;
+	if (post.turned && (xgpu_vulkan_image_description(post.turned)->width != width ||
+		xgpu_vulkan_image_description(post.turned)->height != height))
+	{
+		xgpu_vulkan_image_destroy(post.turned);
+		post.turned = NULL;
+	}
+	if (!post.turned)
+		post.turned = image_make(XGPU_VULKAN_FORMAT_BGRA8, XGPU_VULKAN_USAGE_SAMPLED | XGPU_VULKAN_USAGE_TARGET,
+			width, height);
+	if (!post.turned)
+		return NULL;
+	memset(&draw, 0, sizeof(draw));
+	draw.pipeline = post.rotate;
+	for (stage = 0; stage < 4; stage++)
+	{
+		draw.textures[stage].image = stage ? NULL : image;
+		draw.textures[stage].kind = XGPU_VULKAN_IMAGE_2D;
+		draw.textures[stage].sampler = post.sampler;
+	}
+	uniforms = xgpu_vulkan_upload(UNIFORMS_RANGE, 256, &draw.uniforms);
+	if (!uniforms)
+		return NULL;
+	memset(uniforms, 0, sizeof(*uniforms));
+	uniforms->metrics[0] = 1.0f / (float)width;
+	uniforms->metrics[1] = 1.0f / (float)height;
+	uniforms->metrics[2] = (float)width;
+	uniforms->metrics[3] = (float)height;
+	memcpy(uniforms->bounds, rotate_rows[quarter_turns], sizeof(uniforms->bounds));
+	draw.constants = draw.uniforms;
+	memset(&dynamic, 0, sizeof(dynamic));
+	dynamic.viewport[2] = dynamic.scissor[2] = (int32_t)width;
+	dynamic.viewport[3] = dynamic.scissor[3] = (int32_t)height;
+	dynamic.depth_range[1] = 1.0f;
+	draw.dynamic = &dynamic;
+	draw.topology = XGPU_VULKAN_TOPOLOGY_TRIANGLES;
+	draw.count = 3;
+	xgpu_vulkan_set_target_views(post.turned, NULL, 0, 1);
+	xgpu_vulkan_draw(&draw);
+	return post.turned;
+}

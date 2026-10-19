@@ -1,17 +1,15 @@
-"""Ninja rules for the desktop guest builds: Linux on 64-bit ARM
-(``ninja linux_arm64``) and on 64-bit x86 (``ninja linux_x86_64``), and
-``ninja linux_vulkan`` on either (port/linux/vulkan/README.md).
+"""Ninja rules for the Linux builds: on 64-bit x86 (``ninja linux_x86_64``)
+and on 64-bit ARM (``ninja linux_arm64``), each drawn with Vulkan 1.3.
 
-The game's data needs 32-bit pointers. Recent 64-bit ARM processors have no
-32-bit mode, and few distributions have 32-bit ARM libraries; 64-bit x86
-processors do have one, which the x86 build (``ninja linux``, tools/linux_build.py)
-uses, but it needs a distribution's 32-bit libraries, which some no longer
-carry, and 32-bit drivers. So these builds run the game as the Android port
-does (port/android/README.md, "How the port operates"): the
-guest image is ILP32 code of the computer's architecture (tools/guest_arch.py:
-arm64_32, or x32; tools/android_build.py, generate_guest_image), with the
-Linux desktop's code paths instead of the app's, and the host is a 64-bit
-Linux executable instead of an app's library:
+The game's data needs 32-bit pointers, and a 64-bit Linux computer runs
+64-bit programs: recent 64-bit ARM processors have no 32-bit mode, and few
+distributions still carry 32-bit libraries and drivers. So these builds run
+the game as the Android port does (port/android/README.md, "How the port
+operates"): the guest image is ILP32 code of the computer's architecture
+(tools/guest_arch.py: x32, or arm64_32; tools/android_build.py,
+generate_guest_image), with the Linux desktop's code paths instead of the
+app's, and the host is a 64-bit Linux executable instead of an app's
+library:
 
 - build/<name>/halo: the host (port/android/host, with
   port/linux/host/host_main.c as its entry point), with the guest image
@@ -20,15 +18,18 @@ Linux executable instead of an app's library:
   it there (an rpath of $ORIGIN), as few distributions have SDL3 yet, and
   its license, SDL3-LICENSE.txt.
 
-Each OpenGL build is a LinuxGuest in LINUX_GUESTS, generated on a computer
-of its architecture; the Vulkan target uses that computer's guest too. Its sources (musl and SDL3, and the OpenXR headers for VR) are
-downloaded when configure.py generates it, as the Android build's are, and
-only when it is asked for: the 64-bit ARM build, the default build of its
-computers, always; the 64-bit x86 build, which is not, with configure.py
---linux-x86-64 (or --linux-x86-64-cc, or --vr), or once its sources are
-there. A build that is not asked for, or cannot be generated, is a target
-that stops with the reason. Refer to "64-bit ARM" and "64-bit x86" in
-port/linux/README.md.
+The renderer is Vulkan's, in the host (port/linux/vulkan), as the Android
+app's: the guest writes its frames as the renderer's command stream
+(HALO_RENDER_STREAM), and has no OpenGL backend; the host builds no OpenGL
+backend either, and links no OpenGL library. With configure.py --vr the
+build has the VR mode (OpenXR, HALO_VR: port/linux/host/host_vr.c).
+
+Each build is a LinuxGuest in LINUX_GUESTS, generated on a computer of its
+architecture, whose default build it is. Its sources (musl, SDL3 and the
+Vulkan headers, and the OpenXR headers for VR) are downloaded when
+configure.py generates it, as the Android build's are; a build that cannot
+be generated is a target that stops with the reason. Refer to "64-bit ARM"
+and "64-bit x86" in port/linux/README.md.
 """
 
 import hashlib
@@ -38,18 +39,16 @@ import platform
 import shlex
 import subprocess
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, MUSL_VERSION, SDL_TAG, TOML_DIR,
-                            fetch_third_party, generate_guest_image, host_memory_sources)
-from .host_gl_build import RENDER_STREAM_GUEST_EXCLUDED, host_gl_renderer
+from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, HOST_RENDERER, RENDER_STREAM_GUEST_EXCLUDED,
+                            SDL_TAG, TOML_DIR, fetch_third_party, generate_guest_image, host_memory_sources)
+from .build_common import (MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, SDL_RPATH_LDFLAGS, compile_launcher,
+                           download, miniupnpc_sources, sdl3_rule, updater_defines)
 from .guest_arch import ARM64_32, X32, GuestArch
 from .guest_toolchain import LLVM_VERSION, guest_toolchain
-from .linux_sysroot import download
-from .linux_build import (MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, SDL_RPATH_LDFLAGS, compile_launcher,
-                          miniupnpc_sources, sdl3_rule, updater_defines)
 from .ninja_syntax import Writer, escape
 from .vulkan_build import VULKAN_DIR, fetch_vulkan_headers, host_vulkan_renderer
 
@@ -57,9 +56,6 @@ from .vulkan_build import VULKAN_DIR, fetch_vulkan_headers, host_vulkan_renderer
 PORT_DIR = Path("port/linux/host")
 ANDROID_DIR = Path("port/android")
 LINUX_DIR = Path("port/linux")
-# the system's OpenGL ES, EGL and OpenGL headers (libgles-dev, libegl-dev and
-# libgl-dev on Debian and Ubuntu, mesa on Arch Linux)
-GL_HEADERS = Path("/usr/include")
 # The Khronos OpenXR headers, for the VR build's host (port/linux/host/host_vr.c),
 # downloaded by the VR build when it is configured, as the OpenXR SDK has them
 # (Apache-2.0 OR MIT). The host loads the OpenXR runtime itself, so the build
@@ -76,17 +72,22 @@ OPENXR_HEADERS = {
     "openxr_loader_negotiation.h": "ebcca0946b4b738ebee41943b821abe4df518b3a37766e0ce6883bcefce65124",
 }
 
-# (with the desktop renderer, GLVND's libOpenGL in place of libGLESv2: the
-# host's own OpenGL calls, port/android/host/host_gl.c)
-HOST_LIBRARIES = ["SDL3", "GLESv2", "EGL", "m", "dl", "pthread"]
-DESKTOP_GL_HOST_LIBRARIES = ["SDL3", "OpenGL", "EGL", "m", "dl", "pthread"]
+# (no Vulkan loader: the host loads it, through SDL, when the window is made;
+# no OpenGL, EGL or OpenGL ES)
+HOST_LIBRARIES = ["SDL3", "m", "dl", "pthread"]
+# the guest's and the host's code paths: the desktop's (no HALO_ANDROID, nor
+# HALO_GLES: the guest's platform code that names OpenGL takes desktop
+# OpenGL's declarations, from SDL's headers), Vulkan's window, and the
+# renderer's backend in the host (the guest's frames are its command stream,
+# port/linux/src/xgpu_stream.h)
+GUEST_DEFINES = ["-DHALO_VULKAN=1", "-DHALO_RENDER_STREAM=1"]
+HOST_DEFINES = ["-DHALO_VULKAN=1"]
 
 
 @dataclass(frozen=True)
 class LinuxGuest:
     # the ninja target, the build's folder (build/<name>), the prefix of its
-    # rules and the configure.py settings that are its own (<name>_cc, and
-    # <name>_gl)
+    # rules and the configure.py setting that is its own (<name>_cc)
     name: str
     # what its rules' descriptions start with
     label: str
@@ -96,22 +97,13 @@ class LinuxGuest:
     arch: GuestArch
     # the processors (platform.machine()) of the computers that build it
     machines: Tuple[str, ...]
-    # its renderer unless configure.py says otherwise (<name>_gl): OpenGL ES
-    # 3 ("gles", HALO_GLES, as the web build's), desktop OpenGL 4.5 ("desktop",
-    # as the x86 build's), or Vulkan ("vulkan": in the host, through the
-    # renderer's command stream, port/linux/vulkan)
-    renderer: str
-    # whether it is the default target of those computers (configure.py):
-    # not the x86-64 build, as a 64-bit x86 computer builds the x86 build
-    # (ninja linux) by default
-    default: bool
 
 
 LINUX_GUESTS = (
-    LinuxGuest(name="linux_arm64", label="LINUX ARM64", title="64-bit ARM Linux", arch=ARM64_32,
-               machines=("aarch64", "arm64"), renderer="gles", default=True),
     LinuxGuest(name="linux_x86_64", label="LINUX X86_64", title="64-bit x86 Linux", arch=X32,
-               machines=("x86_64", "amd64"), renderer="desktop", default=False),
+               machines=("x86_64", "amd64")),
+    LinuxGuest(name="linux_arm64", label="LINUX ARM64", title="64-bit ARM Linux", arch=ARM64_32,
+               machines=("aarch64", "arm64")),
 )
 
 
@@ -131,12 +123,17 @@ def fetch_openxr_headers(openxr_dir: Path) -> None:
 
 
 def native_linux_guest() -> Optional[LinuxGuest]:
-    """the desktop guest build of this computer, if there is one (whether it
-    is the computer's default build is its own, LinuxGuest.default)"""
+    """the Linux build of this computer, if there is one: its default build"""
     if not sys.platform.startswith("linux"):
         return None
     machine = platform.machine().lower()
     return next((target for target in LINUX_GUESTS if machine in target.machines), None)
+
+
+def third_party_folder(target: LinuxGuest) -> Path:
+    """where configure.py downloads the build's sources (musl, SDL3, the
+    Vulkan and OpenXR headers): build/<name>/third_party"""
+    return Path("build") / target.name / "third_party"
 
 
 def linux_guest_configure_inputs() -> List[Path]:
@@ -146,22 +143,14 @@ def linux_guest_configure_inputs() -> List[Path]:
 def generate_linux_guest_builds(n: Writer, sln: Any) -> None:
     for target in LINUX_GUESTS:
         generate_linux_guest_build(n, sln, target)
-    # Vulkan uses the computer's guest architecture, in its own build folder
-    # so that both renderers can be built and compared with the same options.
-    native = native_linux_guest()
-    if native:
-        generate_linux_guest_build(n, sln, replace(
-            native, name="linux_vulkan", label="LINUX VULKAN", title=f"{native.title} Vulkan",
-            renderer="vulkan", default=False))
 
 
-def _unavailable(n: Writer, target: LinuxGuest, reason: str, quiet: bool = False) -> None:
+def _unavailable(n: Writer, target: LinuxGuest, reason: str) -> None:
     """a target of the build's name that stops with the reason it cannot be
     built, rather than none (ninja would then say only that it is unknown);
-    configure.py says it too unless quiet"""
+    configure.py says it too"""
     message = f"{target.title} build ({target.name}) unavailable: {reason}"
-    if not quiet:
-        print(message, file=sys.stderr)
+    print(message, file=sys.stderr)
     n.comment(message)
     n.rule(
         name=f"{target.name}_unavailable",
@@ -172,23 +161,6 @@ def _unavailable(n: Writer, target: LinuxGuest, reason: str, quiet: bool = False
     n.newline()
 
 
-def vr_build(target: LinuxGuest) -> bool:
-    """whether configure.py --vr gives the build a VR mode: the Vulkan build
-    alone (linux_vulkan), on 64-bit ARM (the Steam Frame's) and x86 alike"""
-    return target.renderer == "vulkan"
-
-
-def requested(sln: Any, target: LinuxGuest, third_party: Path) -> bool:
-    """whether configure.py is to generate the build, and so download its
-    sources: the computer's default build, one asked for (--<name>, its
-    compiler, or VR: the Vulkan build), or one whose sources are there
-    already"""
-    vr = bool(getattr(sln, "port_vr", False))
-    return (target.default or bool(getattr(sln, target.name, False)) or bool(getattr(sln, f"{target.name}_cc", None))
-            or (vr and vr_build(target))
-            or ((third_party / f"musl-{MUSL_VERSION}").is_dir() and (third_party / "SDL3").is_dir()))
-
-
 def generate_linux_guest_build(n: Writer, sln: Any, target: LinuxGuest) -> None:
     config_path = LINUX_DIR / "port.json"
     if not config_path.is_file() or not PORT_DIR.is_dir():
@@ -197,17 +169,11 @@ def generate_linux_guest_build(n: Writer, sln: Any, target: LinuxGuest) -> None:
     if not native or native.machines != target.machines:
         n.comment(f"{target.title} build ({target.name}): only on a {target.title} computer")
         return
-    third_party = Path("build") / target.name / "third_party"
-    if not requested(sln, target, third_party):
-        option = "--" + target.name.replace("_", "-")
-        _unavailable(n, target, f"run python3 configure.py {option} first (it downloads musl and SDL3 for it)",
-                     quiet=True)
-        return
     # (written aside, so that a build that fails to generate halfway leaves
     # nothing of itself but its unavailable target)
     output = io.StringIO()
     try:
-        _generate(Writer(output, n.width), sln, target, config_path, third_party)
+        _generate(Writer(output, n.width), sln, target, config_path, third_party_folder(target))
     except (subprocess.CalledProcessError, OSError, RuntimeError) as error:
         # (the reasons of _generate's own, and those of what it calls: a
         # compiler that cannot run, android_build.compiler_include)
@@ -223,32 +189,21 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     build = Path("build") / target.name
     sdl_dir = third_party / "SDL3"
     openxr_dir = third_party / "openxr"
+    vulkan_headers = third_party / "vulkan-headers"
     # the host's compiler: the build's own (--<name>-cc), or the system's; the
     # guest's: the build's own too, else the pinned LLVM's
     # (tools/guest_toolchain.py, configure.py --guest-llvm)
     explicit_cc = getattr(sln, f"{prefix}_cc", None)
     cc = explicit_cc or "clang"
-    # the renderer: OpenGL ES 3 (HALO_GLES, as the web build's), or desktop
-    # OpenGL 4.5 (the x86-64 build's, --linux-arm64-gl=desktop); the VR build
-    # is the Vulkan one (vr_build)
-    vulkan = target.renderer == "vulkan"
-    vr = bool(getattr(sln, "port_vr", False)) and vr_build(target)
-    # (the Vulkan build: desktop OpenGL's headers and libraries, as the x86-64
-    # build's, for the host's OpenGL backend beside the Vulkan one)
-    desktop_gl = vr or vulkan or (getattr(sln, f"{prefix}_gl", None) or target.renderer) == "desktop"
-    # (the host's OpenGL ES and EGL, and the guest's entry points: OpenGL ES's,
-    # or desktop OpenGL's from glcorearb.h)
-    headers = ["GLES3/gl32.h", "GLES2/gl2ext.h", "EGL/egl.h", "KHR/khrplatform.h"]
-    if desktop_gl:
-        headers.append("GL/glcorearb.h")
-    missing = [header for header in headers if not (GL_HEADERS / header).is_file()]
-    if missing:
-        raise RuntimeError(f"no {', '.join(missing)} in {GL_HEADERS} (libgles-dev, libegl-dev"
-                           + (", libgl-dev" if desktop_gl else "") + ")")
+    vr = bool(getattr(sln, "port_vr", False))
     try:
         fetch_third_party(third_party)
     except (subprocess.CalledProcessError, OSError, RuntimeError) as error:
         raise RuntimeError(f"cannot fetch musl or SDL3 ({error})") from error
+    try:
+        fetch_vulkan_headers(vulkan_headers)
+    except (RuntimeError, OSError) as error:
+        raise RuntimeError(f"cannot fetch the Vulkan headers ({error})") from error
     if vr:
         try:
             fetch_openxr_headers(openxr_dir)
@@ -259,20 +214,9 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     except (RuntimeError, OSError) as error:
         raise RuntimeError(f"no LLVM {LLVM_VERSION} for the guest ({error})") from error
     guest_cc = toolchain.cc if toolchain else cc
-    vulkan_headers = third_party / "vulkan-headers"
-    if vulkan:
-        try:
-            fetch_vulkan_headers(vulkan_headers)
-        except (RuntimeError, OSError) as error:
-            raise RuntimeError(f"cannot fetch the Vulkan headers ({error})") from error
     config: Dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
-    # the guest's and the host's code paths: the desktop's (no HALO_ANDROID),
-    # the renderer's and VR's
-    guest_defines = [] if desktop_gl else ["-DHALO_GLES=1"]
-    host_defines = ["-DHALO_DESKTOP_GL=1"] if desktop_gl else []
-    if vulkan:
-        guest_defines.append("-DHALO_VULKAN=1")
-        host_defines.append("-DHALO_VULKAN=1")
+    guest_defines = list(GUEST_DEFINES)
+    host_defines = list(HOST_DEFINES)
     if vr:
         guest_defines.append("-DHALO_VR=1")
         host_defines.append("-DHALO_VR=1")
@@ -284,9 +228,6 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         if target.arch.base_register_flags is None:
             raise RuntimeError(f"--guest-base: the {target.arch.name} guest has no base register")
         host_defines.append("-DHALO_GUEST_BASE=1")
-    # (the renderer's backend is the host's, the guest's frames its command
-    # stream, port/linux/src/xgpu_stream.h)
-    guest_defines.append("-DHALO_RENDER_STREAM=1")
 
     n.comment(f"{target.title} build (ninja {target.name}); see port/linux/README.md")
     n.variable(f"{prefix}_guest_cc", guest_cc)
@@ -294,14 +235,15 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
 
     guest = generate_guest_image(
         n, sln, config, arch=target.arch, prefix=prefix, label=label, build=build, third_party=third_party,
-        guest_cc=guest_cc, gl_headers=GL_HEADERS, ar=toolchain.ar if toolchain else "llvm-ar",
+        guest_cc=guest_cc, gl_headers=None, ar=toolchain.ar if toolchain else "llvm-ar",
         ld=toolchain.ld if toolchain else "ld.lld", objdump=toolchain.objdump if toolchain else "llvm-objdump",
         builtins_cc=f"${prefix}_cc",
-        environment="gnu", platform_defines=guest_defines, extra_runtime=[PORT_DIR / "guest_desktop.c", *([VULKAN_DIR / "guest_vulkan.c"] if vulkan else [])],
+        environment="gnu", platform_defines=guest_defines,
+        extra_runtime=[PORT_DIR / "guest_desktop.c", VULKAN_DIR / "guest_vulkan.c"],
         extra_imports=[PORT_DIR / "host_imports.list", *([PORT_DIR / "vr_imports.list"] if vr else []),
-                       *([VULKAN_DIR / "host_imports.list"] if vulkan else [])],
+                       VULKAN_DIR / "host_imports.list"],
         extra_prototypes=[PORT_DIR / "guest_desktop.c", *([LINUX_DIR / "src" / "vr_host.h"] if vr else []),
-                          *([VULKAN_DIR / "guest_vulkan.c"] if vulkan else [])],
+                          VULKAN_DIR / "guest_vulkan.c"],
         updater_cflags=updater_defines(getattr(sln, "port_release", False)),
         base_register=base_register, excluded_platform_sources=RENDER_STREAM_GUEST_EXCLUDED)
 
@@ -329,8 +271,7 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     host_cflags = " ".join([
         "-O2", "-g", "-fno-omit-frame-pointer", "-fPIC", "-Wall", "-Wno-unused-function", "-D_GNU_SOURCE",
         f"-I{ANDROID_DIR}/include", f"-I{ANDROID_DIR}/host", f"-I{sdl_dir}/include", f"-I{LINUX_DIR}/src",
-        f"-I{TOML_DIR}", f"-I{openxr_dir}", f"-I{PORT_DIR}",
-        *([f"-I{vulkan_headers}"] if vulkan else []), *host_defines,
+        f"-I{TOML_DIR}", f"-I{openxr_dir}", f"-I{PORT_DIR}", f"-I{vulkan_headers}", *host_defines,
     ])
     # (the app's own: its entry point, and the touch controls through Java)
     android_only = {"host_main.c", "host_touch.c"}
@@ -338,6 +279,9 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
                     if source.name not in android_only]
     host_sources += [
         PORT_DIR / "host_main.c", PORT_DIR / "host_desktop.c",
+        # (host_gl_window, which the guests import and do not call: the
+        # window has no OpenGL backend, as the Android app's)
+        HOST_RENDERER,
         LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",
         LINUX_DIR / "src" / "posix_trace_marker.c",
         # (where config.toml is, for the debugging settings host_main.c reads)
@@ -372,9 +316,10 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         n.build(outputs=obj, rule=host_cc, inputs=source,
                 variables={"cflags": f"{mbedtls_cflags} -I{MBEDTLS_DIR / 'library'} -w"})
         host_objects.append(obj)
-    host_objects += host_gl_renderer(n, prefix, label, build, host_cc, host_cflags, desktop_gl, vr)
-    if vulkan:
-        host_objects += host_vulkan_renderer(n, prefix, label, build, host_cc, host_cflags, vulkan_headers, vr)
+    # the renderer for the command stream, Vulkan's, with the Xbox's texture
+    # decoding, as the Android app's (and VR's passes)
+    host_objects += host_vulkan_renderer(n, prefix, label, build, host_cc, host_cflags, vulkan_headers, vr,
+                                         texture_decoding=True)
     table_obj = host_obj_dir / "host_import_table.c.o"
     n.build(outputs=table_obj, rule=host_cc, inputs=guest["host_table_c"],
             variables={"cflags": host_cflags})
@@ -393,8 +338,8 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         # of the address space: a fixed one, and the heap after it, would be
         # loaded there)
         command=(f"${prefix}_cc -pie -o $out $in -L{sdl_build} "
-                 + " ".join(f"-l{lib}" for lib in (DESKTOP_GL_HOST_LIBRARIES if desktop_gl else HOST_LIBRARIES))
-                 # (the SDL beside the executable, as the portable x86 build's)
+                 + " ".join(f"-l{lib}" for lib in HOST_LIBRARIES)
+                 # (the SDL beside the executable, or in the release's lib/opence)
                  + " " + " ".join(SDL_RPATH_LDFLAGS) + " -Wl,--no-undefined"
                  # (posix_trace_marker.c's, which the GPU driver's calls must reach)
                  + "".join(f" -Wl,--export-dynamic-symbol={name}" for name in ("open", "open64", "openat", "openat64"))),
@@ -411,4 +356,3 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     n.build(outputs=brokers, rule=f"{prefix}_copy", inputs=Path("port/assets/network/brokers.txt"))
     n.build(outputs=target.name, rule="phony", inputs=[output, staged_sdl, sdl_license, brokers])
     n.newline()
-

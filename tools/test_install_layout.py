@@ -1,6 +1,6 @@
 """Where the Linux build finds its files and puts the player's (port/linux/src/install_layout.c): install_layout.c
 compiled as it is with a main that prints its answers, run from the places a release can be: the release's tree
-unpacked (portable), a flat folder (build/linux/halo, the flat release), a read-only prefix (/usr), a read-only portable
+unpacked (portable), a build's folder (build/linux_x86_64/halo), a read-only prefix (/usr), a read-only portable
 copy that has its own config.toml and maps/, a tree with share/opence/packaged, and installs without a home folder.
 Needs a C compiler (clang, or CC), not the game.
 

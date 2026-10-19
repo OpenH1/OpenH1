@@ -1,20 +1,25 @@
-"""The shared Vulkan host renderer: Linux and Android build the same sources.
+"""The shared Vulkan host renderer: the Linux builds and the Android app
+build the same sources (tools/linux_guest_build.py, android_build.py).
 
-The shared game shader emitter uses a host stand-in for platform.h; the
-window and command stream are the same on both platforms through SDL3.
+The renderer's shared parts (the SPIR-V emitter, the Xbox's texture
+decoding) are built beside a host stand-in for platform.h; the window and
+command stream are the same on both platforms through SDL3. The Linux
+builds' VR mode (HALO_VR) adds its eye passes and composition
+(host_vulkan_vr.c) and the stream's VR records (port/linux/host/
+host_vr_stream.c).
 """
 import hashlib
 import os
 from pathlib import Path
 from typing import List
 
-from .linux_sysroot import download
+from .build_common import download
 from .ninja_syntax import Writer
 
 LINUX_DIR = Path("port/linux")
 
-# The Khronos Vulkan headers, for the Vulkan build's host (port/linux/vulkan),
-# downloaded by that build when it is configured, as Vulkan-Headers has them
+# The Khronos Vulkan headers, for the hosts' renderer (port/linux/vulkan),
+# downloaded by the builds that have it when they are configured, as Vulkan-Headers has them
 # (Apache-2.0 OR MIT). The host loads the Vulkan loader itself, so the build
 # needs no Vulkan package.
 VULKAN_HEADERS_TAG = "vulkan-sdk-1.4.363.0"
@@ -39,15 +44,18 @@ VULKAN_HEADERS = {
     "vk_video/vulkan_video_codec_vp9std_decode.h": "1ceb1a8d0e3370e508cf688a6e57dc314cd82186b60f3cef420ea4b1b483865d",
 }
 VULKAN_DIR = Path("port/linux/vulkan")
-# the renderer's parts the Vulkan build's host builds from port/linux/src (the
-# SPIR-V emitter), beside a stand-in for the guest's platform.h
-# (port/linux/vulkan/xgpu_vulkan_platform.h), as the macOS build's host does
-# (tools/macos_build.py, SHARED_SOURCES); the Xbox's texture decoding is the
-# host OpenGL backend's (HOST_GL_SHARED) where the host has one beside it
-# (Linux's), and VULKAN_DECODE_SOURCES where it has none (Android's)
+# the renderer's parts the hosts build from port/linux/src (the SPIR-V
+# emitter, and the Xbox's texture decoding, VULKAN_DECODE_SOURCES), beside a
+# stand-in for the guest's platform.h (port/linux/vulkan/
+# xgpu_vulkan_platform.h), as the macOS build's host does
+# (tools/macos_build.py, SHARED_SOURCES)
 VULKAN_SHARED_SOURCES = ["xgpu.h", "xgpu_backend.h", "loading_presentation.h", "loading_art.h", "loading_art_tables.h", "xgpu_shader.h", "xgpu_spirv.h", "xgpu_spirv.c",
                          "vr.h", "vr_host.h", "vr_visor.h"]
 VULKAN_DECODE_SOURCES = ["xbox_texture_decode.c"]
+# the VR mode's: the stream's VR records and late latch (host_vr_stream.h),
+# built beside the same stand-ins, and a stand-in for the guest's settings
+# (xgpu_vulkan_port_config.h), which they read
+VR_STREAM_SOURCES = [Path("port/linux/host/host_vr_stream.c")]
 
 def fetch_vulkan_headers(vulkan_dir: Path) -> None:
     """Download the Vulkan headers into vulkan_dir (configure time, once; a
@@ -65,10 +73,10 @@ def fetch_vulkan_headers(vulkan_dir: Path) -> None:
 
 def host_vulkan_renderer(n: Writer, prefix: str, label: str, build: Path, host_cc: str,
                          host_cflags: str, vulkan_headers: Path, vr: bool = False,
-                         texture_decoding: bool = False) -> List[Path]:
-    """Build the Vulkan host, returning objects. Its texture decoding is the
-    host OpenGL backend's (tools/host_gl_build.py) unless texture_decoding,
-    for a host with no OpenGL backend: then it builds its own
+                         texture_decoding: bool = True) -> List[Path]:
+    """Build the Vulkan host, returning objects: with vr, the VR mode's eye
+    passes, composition and stream records (VR_STREAM_SOURCES); with
+    texture_decoding (every host's), the Xbox's texture decoding
     (VULKAN_DECODE_SOURCES)."""
     # the Vulkan renderer (port/linux/vulkan), with the renderer's shared
     # parts copied beside a stand-in for the guest's platform.h, which
@@ -100,6 +108,10 @@ def host_vulkan_renderer(n: Writer, prefix: str, label: str, build: Path, host_c
         shared_copies.append(shared_dir / name)
     n.build(outputs=shared_dir / "platform.h", rule=f"{prefix}_vulkan_copy",
             inputs=VULKAN_DIR / "xgpu_vulkan_platform.h")
+    if vr:
+        n.build(outputs=shared_dir / "port_config.h", rule=f"{prefix}_vulkan_copy",
+                inputs=VULKAN_DIR / "xgpu_vulkan_port_config.h")
+        shared_copies.append(shared_dir / "port_config.h")
     n.build(outputs=shared_dir / "xdk_enums.h", rule=f"{prefix}_vulkan_xdk_enums",
             inputs=[xdk / "xdk_pdb.h", xdk / "xdk_d3d8.h"])
     shared_copies += [shared_dir / "platform.h", shared_dir / "xdk_enums.h"]
@@ -108,19 +120,11 @@ def host_vulkan_renderer(n: Writer, prefix: str, label: str, build: Path, host_c
     vr_sources = {"host_vulkan_vr.c", "xgpu_vulkan_vr_shaders.c"}
     vulkan_sources += sorted(source for source in VULKAN_DIR.glob("*.c")
                              if not source.name.startswith("guest_") and (vr or source.name not in vr_sources))
+    if vr:
+        vulkan_sources += VR_STREAM_SOURCES
     for source in vulkan_sources:
         obj = host_obj_dir / "vulkan" / (source.name + ".o")
-        source_cflags = vulkan_cflags
-        dependencies = shared_copies
-        if source.name == "host_vulkan_vr.c":
-            # The composition pass shares the VR/renderer interfaces and
-            # config declarations with the GL host, without guest headers.
-            gl_shared = build / "host" / "gl"
-            source_cflags = f"-I{gl_shared} {source_cflags}"
-            dependencies = shared_copies + [gl_shared / name for name in
-                ("platform.h", "port_config.h", "xgpu.h", "xgpu_backend.h", "xgpu_shader.h",
-                 "vr.h", "vr_host.h", "vr_visor.h", "xdk_enums.h")]
-        n.build(outputs=obj, rule=host_cc, inputs=source, order_only=dependencies,
-                variables={"cflags": source_cflags})
+        n.build(outputs=obj, rule=host_cc, inputs=source, order_only=shared_copies,
+                variables={"cflags": vulkan_cflags})
         host_objects.append(obj)
     return host_objects

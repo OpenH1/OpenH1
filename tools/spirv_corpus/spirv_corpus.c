@@ -7,8 +7,10 @@ pixel shader key, written as SPIR-V modules, one .spv file each, for
 spirv-val to check (check.sh). Identical modules are written once
 (index.txt names each variant's file). The variants include the flat and VR views, with and without foveation.
 The made-up programs are msl_corpus's (tools/msl_corpus/synthetic.c), plus
-layered texture lookups in each stage; and the enhanced dynamic lights'
-glows, in each of the layers they are drawn into.
+layered texture lookups in each stage; the enhanced dynamic lights'
+glows, in each of the layers they are drawn into; and anti-aliasing's
+passes (port/linux/vulkan/xgpu_vulkan_post_shaders.c, generated from the
+OpenGL backend's GLSL).
 
   spirv_corpus <capture dir> <out dir>
 
@@ -25,6 +27,7 @@ intermediate form (xgpu_shader.h).
 #include "xgpu.h"
 #include "xgpu_shader.h"
 #include "xgpu_spirv.h"
+#include "xgpu_vulkan_post_shaders.h"
 
 #include <dirent.h>
 #include <errno.h>
@@ -386,6 +389,31 @@ static void halo_programs(void)
 	}
 }
 
+/* anti-aliasing's passes: their vertex shader, FXAA and SMAA's three (as
+tools/vulkan_post_shaders.py checked them, made again here with the rest) */
+static void post_programs(void)
+{
+	static const char *const names[XGPU_VULKAN_POST_PROGRAM_COUNT] =
+	{
+		"post-fxaa", "post-smaa-edges", "post-smaa-weights", "post-smaa-blend", "post-rotate",
+	};
+	struct xgpu_spirv_module module;
+	int program;
+
+	for (program = -1; program < XGPU_VULKAN_POST_PROGRAM_COUNT; program++)
+	{
+		const struct xgpu_vulkan_post_module *from = program < 0 ? &xgpu_vulkan_post_vertex :
+			&xgpu_vulkan_post_programs[program];
+
+		module.count = (unsigned long)from->count;
+		module.words = malloc(from->count * 4);
+		if (module.words)
+			memcpy(module.words, from->words, from->count * 4);
+		emit(program < 0 ? "post-vertex" : names[program], "anti-aliasing's passes", module.words != NULL,
+			&module);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	const char *dir;
@@ -440,6 +468,7 @@ int main(int argc, char **argv)
 	layered_pixel_programs();
 	synthetic_vertex_programs(synthetic_vertex);
 	halo_programs();
+	post_programs();
 	fclose(index_file);
 	printf("%lu modules written to %s, %lu variants the same as one of them\n", written, out_dir, same);
 	return 0;

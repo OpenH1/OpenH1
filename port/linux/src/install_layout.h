@@ -21,7 +21,7 @@ the executable's path cannot be read */
 const char *install_folder(void);
 
 /* 1 when the executable is bin/opence of a tree (share/opence beside bin/),
-0 when its folder holds everything (build/linux/halo, the flat releases) */
+0 when its folder holds everything (a build: build/linux_x86_64/halo) */
 int install_is_tree(void);
 
 /* 1 when a package manager installed the game, or the player cannot write

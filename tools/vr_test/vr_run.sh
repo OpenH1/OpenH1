@@ -5,7 +5,8 @@
 # <map>: "b30", "levels\b30\b30", or "menu". Environment:
 #   HALO_MAPS  the folder with the game's maps (required)
 #   HALO_GAME  the folder with halo and libSDL3.so.0 (default: this
-#              repository's build/linux_vulkan)
+#              repository's build of this computer's processor,
+#              build/linux_arm64 or build/linux_x86_64, configured with --vr)
 #   HALO_BIN   the executable's name there (default: halo)
 #   HALO_XRTEST_IMAGE  the image (default: halo-xrtest-monado:latest)
 #   SLOT       a number unique among the runs at once (default: from the PID)
@@ -16,7 +17,8 @@
 set -eu
 out=$1; map=$2; secs=$3; shift 3
 repo=$(cd "$(dirname "$0")/../.." && pwd)
-game=$(cd "${HALO_GAME:-$repo/build/linux_vulkan}" && pwd)
+case "$(uname -m)" in aarch64|arm64) native=linux_arm64 ;; *) native=linux_x86_64 ;; esac
+game=$(cd "${HALO_GAME:-$repo/build/$native}" && pwd)
 maps=$(cd "${HALO_MAPS:?set HALO_MAPS to the folder with the maps}" && pwd)
 mkdir -p "$out/shots"; out=$(cd "$out" && pwd)
 mounts=()

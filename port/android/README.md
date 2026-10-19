@@ -7,7 +7,11 @@
 The game shows its graphics with Vulkan 1.3. It plays sound through SDL3
 (AAudio). It accepts input from game controllers, for example a PlayStation
 5 DualSense on Bluetooth, and from the touchscreen (refer to "Controls").
-The app needs Android 9 (API 28) or later. It operates on 64-bit-only
+The app needs Android 9 (API 28) or later and a GPU driver with Vulkan
+1.3: in practice most phones from about 2021 on, with their system updates
+(older phones, and phones whose drivers were not updated, may have only
+Vulkan 1.0 or 1.1). The app checks before it starts the game or updates
+itself, and says so on a phone without it. It operates on 64-bit-only
 devices, for example the Pixel 9 Pro XL.
 
 The Android build uses the platform layer of the Linux build
@@ -77,9 +81,26 @@ of the whole `save` folder stops there.
 
 The app draws with the shared Vulkan renderer, in the host. It needs a
 Vulkan 1.3 driver (dynamic rendering, timeline semaphores and host query
-reset), which the manifest asks for, so Google Play offers the app only to
-such phones; it uses the phone's Vulkan loader and an SDL Android surface.
-The pipeline cache is in the app's private cache directory. Refer to the
+reset), which the manifest names (`android.hardware.vulkan.version`). The
+app is installed from its APK, not from a store that would enforce that, so
+the launcher checks it (`LauncherActivity`) and so does the self-updater
+before it offers a new version (`Updater`): a phone without it is told, and
+the game does not start. If the game's Vulkan window cannot be made after
+all, a message box says so. The renderer uses the phone's Vulkan loader and
+an SDL Android surface.
+
+When the app goes to the background, Android takes its window away, and
+gives it a new one when the app comes back. The renderer lets go of its
+swapchain and surface as the app goes (SDL's background events), draws no
+frames to the screen while it is away, and makes the surface again when the
+window is back. It also does so whenever the driver reports the surface
+lost. With the phone held sideways, the frames are drawn turned for the
+display's own orientation (pre-rotation), so the compositor does not turn
+them.
+
+The pipeline cache is in the app's private cache directory. It is written
+after each map's preparation that made new pipelines and as the app goes to
+the background, since Android seldom lets an app exit cleanly. Refer to the
 renderer's [README](../linux/vulkan/README.md).
 
 ## Game data
@@ -336,9 +357,9 @@ The APK contains the image as an asset.
 to the processor: the target and its options, the defines, the conversion
 of the assembly, the linker's emulation, the image's address, the
 builtins, the instructions of the import stubs and the calling convention
-of the host for the OpenGL stubs. The Android build and the desktop guest
-builds (`tools/linux_guest_build.py`) take it; the 64-bit x86 Linux build
-takes `X32` instead ("64-bit x86" in [port/linux/README.md](../linux/README.md#64-bit-x86)).
+of the host for the OpenGL stubs. The Android build and the 64-bit ARM
+Linux build (`tools/linux_guest_build.py`) take it; the 64-bit x86 Linux
+build takes `X32` instead ("64-bit x86" in [port/linux/README.md](../linux/README.md#64-bit-x86)).
 `tools/guest_image_check.py` checks each linked image: no thread-local
 storage, no use of the thread pointer, nothing outside its range.
 
@@ -383,10 +404,9 @@ build machine.
   stream, with the Vulkan backend on a thread of its own
   (`port/linux/vulkan`, `host/host_render_stream.c`; "The renderer's command
   stream" in [port/linux/README.md](../linux/README.md#the-renderers-command-stream)).
-  The library links no OpenGL ES or EGL: it builds none of the OpenGL
-  backend of the Linux hosts (`host/host_gl.c`, `port/linux/host/host_gl_*.c`),
-  and `host_renderer.c` stands in for its window import, `host_gl_window`,
-  which the guest does not call.
+  The library links no OpenGL ES or EGL, and no host builds an OpenGL
+  backend: `host_renderer.c` stands in for the window import of the one
+  the hosts once had, `host_gl_window`, which the guest does not call.
 
 The guest calls the host through stubs (`tools/android_imports.py`, with the
 instructions of `import_stub` in `tools/guest_arch.py`). The two ABIs use
@@ -478,10 +498,12 @@ Android build defines all of (`tools/android_build.py`):
   (`arm64_32`), whose Mach-O objects are converted afterwards;
 - `HALO_RENDER_STREAM` and `HALO_VULKAN`: the renderer's backend is the
   host's, Vulkan's, which the guest's frames reach as the command stream;
-- `HALO_GLES`: the OpenGL ES renderer's code paths, as the Linux arm64
-  guest has them: the guest has no OpenGL backend, but its platform code
-  names OpenGL's declarations, and `display.anti_aliasing` keeps to what
-  a phone's GPU can spare (`"smaa"` gives FXAA, `"ssaa2x"` none);
+- `HALO_GLES`: the OpenGL ES renderer's code paths: the guest has no
+  OpenGL backend, but its platform code names OpenGL ES's declarations,
+  and `display.anti_aliasing` keeps to what a phone's GPU can spare
+  (`"ssaa2x"` gives none; `"smaa"` is Vulkan's SMAA, as on the Linux
+  builds, which have the desktop's code paths and no `HALO_GLES`; the
+  web's OpenGL ES gives FXAA);
 - `HALO_ANDROID`: the app (its display, input, files and lifecycle).
 
 `HALO_ARM64_GUEST`, the name of `HALO_GUEST` before, is still defined:

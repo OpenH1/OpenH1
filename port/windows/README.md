@@ -64,8 +64,8 @@ Without a graphics driver with Vulkan 1.3, the game says so and stops.
 
 ## How the port operates
 
-The guest image is the guest of the Linux Vulkan build (`ninja
-linux_vulkan`) with the code paths of Windows (`HALO_WINDOWS`): the saved
+The guest image is the guest of the 64-bit x86 Linux build (`ninja
+linux_x86_64`) with the code paths of Windows (`HALO_WINDOWS`): the saved
 games in `%APPDATA%\halo`, `config.toml` next to `halo.exe`, the
 self-updater of Windows. It is compiled without the red zone, because
 Windows writes the records of an exception directly below the stack

@@ -13,14 +13,14 @@ prefix is, which a package manager can copy to /usr as it is:
 	share/doc/opence/, share/licenses/opence/
 
 The executable is in a tree when its folder is named bin and share/opence
-is beside that folder. Otherwise (build/linux/halo, and the flat releases
-before the tree) its folder holds everything. The game's folder is the
-tree's root, or the executable's folder.
+is beside that folder. Otherwise (a build: build/linux_x86_64/halo,
+build/linux_arm64/halo) its folder holds everything. The game's folder is
+the tree's root, or the executable's folder.
 
 A portable game (a release unpacked in the player's folders, or a build)
-keeps the player's files in the game's folder, as the flat releases did:
-config.toml, the maps/ copied from a disc image (and so debug.txt), and the
-self-updater's work. An installed game does not update itself (updater.c)
+keeps the player's files in the game's folder: config.toml, the maps/
+copied from a disc image (and so debug.txt), and the self-updater's work
+(a release's tree's alone). An installed game does not update itself (updater.c)
 and keeps the player's files in their XDG folders: config.toml in
 $XDG_CONFIG_HOME/halo-linux (~/.config/halo-linux) and the game data in
 $XDG_DATA_HOME/halo-linux (~/.local/share/halo-linux, the save root's

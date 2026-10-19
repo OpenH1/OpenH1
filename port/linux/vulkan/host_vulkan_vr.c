@@ -737,6 +737,12 @@ static void compose(const struct xgpu_vr_frame *frame)
 	vr.eye_depth = xgpu_vulkan_stream_target(frame->eye_depth);
 	vr.hud_token = vr.scope_token = 0;
 	memset(vr.panel_tokens, 0, sizeof(vr.panel_tokens));
+	/* The eye pass's work submitted now, so that the GPU draws it while the
+	composition is recorded, rather than idle until the frame's one
+	submission at its end. No runtime image has been written yet: those
+	copies come below, and are submitted before their release (submit). */
+	if (vr.eyes_drawn)
+		xgpu_vulkan_fence();
 	fovea_compose();
 	xgpu_vulkan_stream_set_vr_target(vr.eye_target, vr.eyes);
 	cockpit(vr.eye_depth, frame->eye_depth_layers);
@@ -1022,7 +1028,7 @@ static void initialize(struct xgpu_vr_info *info)
 {
 	struct xgpu_vulkan_capabilities capabilities;
 	float inset = halo_vr_foveation_inset();
-	int eye, diagonal;
+	int eye, diagonal, panel;
 
 	xgpu_vulkan_capabilities(&capabilities);
 	vr.eye_width = info->eye_width;
@@ -1061,6 +1067,19 @@ static void initialize(struct xgpu_vr_info *info)
 		for (diagonal = 0; diagonal < 4; diagonal++)
 			vr.transforms[eye][diagonal * 5] = 1.0f;
 		vr.corrections[eye][0] = vr.corrections[eye][1] = 1.0f;
+	}
+	/* The composition's other images made now, not the first time each is
+	drawn (a hitch in play): each is still made then if it cannot be now */
+	image_keep(&vr.eye_copy, vr.eye_width, vr.eye_height, 2, color_format(VR_SWAPCHAIN_EYES));
+	image_keep(&vr.light, VR_LIGHT_WIDTH, VR_LIGHT_HEIGHT, 1, XGPU_VULKAN_FORMAT_RGBA16F);
+	image_keep(&vr.hud, vr.hud_width, vr.hud_height, 1, color_format(VR_SWAPCHAIN_HUD));
+	image_keep(&vr.scope, vr.scope_size, vr.scope_size, 1, color_format(VR_SWAPCHAIN_SCOPE));
+	for (panel = 0; panel < VR_PANEL_COUNT; panel++)
+	{
+		int width = 0, height = 0;
+
+		halo_vr_panel_size(panel, &width, &height);
+		image_keep(&vr.panels[panel], width, height, 1, color_format(VR_SWAPCHAIN_PANEL + panel));
 	}
 	prepare_fixed();
 	vr.ready = 1;
