@@ -45,6 +45,10 @@ import java.util.zip.ZipInputStream;
  *
  * Every build of main is signed with the same key (the workflow's), which an
  * app must keep for Android to install a new version over it.
+ *
+ * A phone without the renderer's Vulkan 1.3 (VulkanSupport) is told so
+ * instead of being offered the new version, and nothing is downloaded or
+ * installed: the new version could only show it a black screen.
  */
 final class Updater {
     private static final String REPOSITORY = "OpenH1/OpenH1";
@@ -66,7 +70,12 @@ final class Updater {
             int latest = latestRelease();
 
             if (latest > BuildConfig.HALO_BUILD_NUMBER)
-                activity.runOnUiThread(() -> ask(activity, latest));
+                activity.runOnUiThread(() -> {
+                    if (VulkanSupport.present(activity))
+                        ask(activity, latest);
+                    else
+                        VulkanSupport.explain(activity, null);
+                });
         }, "update check").start();
     }
 
@@ -232,6 +241,10 @@ final class Updater {
     /* ---------- updating */
 
     private static void update(Activity activity, int latest) {
+        if (!VulkanSupport.present(activity)) {
+            VulkanSupport.explain(activity, null);
+            return;
+        }
         String asset = "halo-android-" + (BuildConfig.DEBUG ? "debug" : "release") + ".zip";
         File directory = new File(activity.getCacheDir(), UpdateProvider.DIRECTORY);
         LinearLayout layout = new LinearLayout(activity);

@@ -52,6 +52,12 @@ public class LauncherActivity extends Activity {
             new File(dataRoot, "maps").mkdirs();
         passOnHardwareId();
         passOnInvite(getIntent());
+        // (a phone without the renderer's Vulkan 1.3 is told so, rather than
+        // shown a black screen: nothing more is done)
+        if (!VulkanSupport.present(this)) {
+            VulkanSupport.explain(this, this::finish);
+            return;
+        }
         if (haveData()) {
             startGame();
             return;
