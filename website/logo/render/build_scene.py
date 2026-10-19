@@ -57,6 +57,13 @@ SCANS = {
 }
 HDRI_URL = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/studio_small_08_2k.hdr"
 SCAN_TILE_MM = 420.0   # one tile of the scan covers 42 cm of panel
+USE_SCAN = False       # the scanned paint: off (the owners found it unconvincing)
+# ambientCG's PaintedMetal004 (CC0): real scratches and chips through paint to
+# steel. Only its wear is used (where the paint is gone, its roughness and
+# relief); the paint keeps our own hull colour
+CHIPS_ZIP = "https://ambientcg.com/get?file=PaintedMetal004_2K-JPG.zip"
+CHIPS_DIR = HERE / "textures" / "PaintedMetal004"
+CHIPS_TILE_MM = 520.0
 HDRI_STRENGTH = 0.55
 
 
@@ -74,6 +81,28 @@ def fetch(url):
 _scans = {}
 
 
+def chips(kind):
+    """a map of the chipped-paint scan (Color, Roughness, NormalGL, Metalness),
+    downloaded and unpacked the first time"""
+    import urllib.request
+    import zipfile
+    path = CHIPS_DIR / f"PaintedMetal004_2K-JPG_{kind}.jpg"
+    if not path.exists():
+        CHIPS_DIR.mkdir(parents=True, exist_ok=True)
+        archive = CHIPS_DIR / "PaintedMetal004_2K-JPG.zip"
+        print("downloading", CHIPS_ZIP)
+        urllib.request.urlretrieve(CHIPS_ZIP, archive)
+        with zipfile.ZipFile(archive) as z:
+            z.extractall(CHIPS_DIR)
+    key = "chips_" + kind
+    if key not in _scans:
+        img = bpy.data.images.load(str(path))
+        if kind != "Color":
+            img.colorspace_settings.name = "Non-Color"
+        _scans[key] = img
+    return _scans[key]
+
+
 def scan(kind):
     """the scan's image, and for the colour map the mean of its luminance (to
     use it as relative detail over our own paint colour)"""
@@ -89,10 +118,12 @@ def scan(kind):
             mean = float((px[:, 0] * 0.2126 + px[:, 1] * 0.7152 + px[:, 2] * 0.0722).mean())
         _scans[kind] = (img, mean)
     return _scans[kind]
-T = 0.010          # plate thickness
+T = 0.016          # plate thickness
 SEAM_GAP = 0.5     # SVG units between the main plate and the serial strip
 MASK_PX = 8192     # stencil mask resolution across the 100-unit square
-CB_DEPTH = 0.0032  # counterbore depth
+CB_DEPTH = 0.0045  # counterbore depth
+RECESS = 0.0018    # the face inside the raised frame sits this much lower
+STRIP_PROUD = 0.0025  # the bolted-on serial strip and tab stand this far proud of the face
 LEAN = 3.0         # degrees the plate leans back
 LIGHT_SCALE = 1 / 16  # light powers below are relative; this sets the exposure
 
@@ -462,6 +493,30 @@ def screw(name, x, y):
     return ob
 
 
+def inset_polygon(poly, d):
+    """a convex polygon (SVG units, y down, either winding) moved inward by d:
+    each edge offset along its inward normal, neighbours intersected"""
+    n = len(poly)
+    cx = sum(p[0] for p in poly) / n
+    cy = sum(p[1] for p in poly) / n
+    lines = []
+    for i in range(n):
+        (ax, ay), (bx, by) = poly[i], poly[(i + 1) % n]
+        ex, ey = bx - ax, by - ay
+        ln = math.hypot(ex, ey)
+        nx, ny = -ey / ln, ex / ln
+        if (cx - ax) * nx + (cy - ay) * ny < 0:
+            nx, ny = -nx, -ny
+        lines.append(((ax + nx * d, ay + ny * d), (ex, ey)))
+    out = []
+    for i in range(n):
+        (p1, d1), (p2, d2) = lines[i - 1], lines[i]
+        den = d1[0] * d2[1] - d1[1] * d2[0]
+        t = ((p2[0] - p1[0]) * d2[1] - (p2[1] - p1[1]) * d2[0]) / den
+        out.append((p1[0] + d1[0] * t, p1[1] + d1[1] * t))
+    return out
+
+
 def build_panel(mark, mats):
     seam = mark["seam_y"]
     outline = mark["outline"]
@@ -482,16 +537,21 @@ def build_panel(mark, mats):
                for i, (x, y, r) in enumerate(mark["rivets"])]
     cutters += [cylinder(f"hole{i}", 0.0028, -T - 0.01, 0.0, x=svg_to_xy(x, y)[0], y=svg_to_xy(x, y)[1], verts=48)
                 for i, (x, y, r) in enumerate(mark["rivets"])]
+    # the field inside a raised frame, set RECESS lower: the frame carries the
+    # bolts (its width clears their counterbores)
+    m = max(min(x - x0, x1 - x, y - y0, seam - g - y) + r for (x, y, r) in mark["rivets"]) + 1.5
+    field = inset_polygon(main_out, m)
+    cutters.append(prism("field", field, -RECESS, 0.01))
     boolean_diff(panel, cutters)
-    smooth_bevel(panel, 0.0012)
+    smooth_bevel(panel, 0.0024)
     panel.data.materials.append(mats["paint"])
 
-    strip = link(prism("SerialStrip", strip_out, -T, 0.0))
-    smooth_bevel(strip, 0.0012)
+    strip = link(prism("SerialStrip", strip_out, -T, STRIP_PROUD))
+    smooth_bevel(strip, 0.0022)
     strip.data.materials.append(mats["paint"])
     strip.parent = panel
-    tabp = link(prism("TabPanel", tab_out, -T, 0.0))
-    smooth_bevel(tabp, 0.0012)
+    tabp = link(prism("TabPanel", tab_out, -T, STRIP_PROUD))
+    smooth_bevel(tabp, 0.0022)
     tabp.data.materials.append(mats["paint"])
     tabp.parent = panel
 
@@ -679,6 +739,18 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     scan_detail = N.math("DIVIDE", lum.outputs[0], max(scan_nodes["diff"][1], 1e-4))
     scan_rough = N.math("DIVIDE", N.xyz(scan_nodes["rough"][0].outputs["Color"])[0], max(scan_nodes["rough"][1], 1e-4))
     scan_ao = N.xyz(scan_nodes["ao"][0].outputs["Color"])[0]
+    # the chipped-paint scan: where its paint is gone (its metalness), and
+    # its own roughness and relief
+    cuv = N.vec(N.math("DIVIDE", px, CHIPS_TILE_MM), N.math("DIVIDE", py, CHIPS_TILE_MM), 0.0)
+    chip_nodes = {}
+    for k in ("Color", "Roughness", "NormalGL", "Metalness"):
+        t = N.new("ShaderNodeTexImage", image=chips(k), interpolation="Cubic", extension="REPEAT")
+        N.feed(t.inputs[0], cuv)
+        chip_nodes[k] = t
+    chip_metal = N.ramp(N.xyz(chip_nodes["Metalness"].outputs["Color"])[0], 0.35, 0.65)
+    chip_rough = N.xyz(chip_nodes["Roughness"].outputs["Color"])[0]
+    chip_steel = N.new("ShaderNodeRGBToBW")
+    N.feed(chip_steel.inputs[0], chip_nodes["Color"].outputs["Color"])
 
     # distance to the nearest fastener centre, in mm
     dmin = None
@@ -748,8 +820,9 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     paint = N.mix(N.mul(worn_thin, 0.45), paint, N.scale_col(paint, 1.55))   # edges rubbed lighter
     # the scan's real paint surface over ours: its streaks, stains and blemishes,
     # as relative light and shade, and its ambient occlusion
-    paint = N.scale_col(paint, N.add(0.1, N.mul(N.math("MINIMUM", scan_detail, 2.4), 0.9)))
-    paint = N.scale_col(paint, N.add(0.55, N.mul(scan_ao, 0.45)))
+    if USE_SCAN:
+        paint = N.scale_col(paint, N.add(0.1, N.mul(N.math("MINIMUM", scan_detail, 2.4), 0.9)))
+        paint = N.scale_col(paint, N.add(0.55, N.mul(scan_ao, 0.45)))
     col = paint
 
     stencil_a = None
@@ -808,11 +881,15 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
         col = N.mix(a_k, col, N.scale_col(N.rgb((0.016, 0.016, 0.015)), N.add(0.8, N.mul(fine, 0.4))))
         stencil_a = N.math("MAXIMUM", N.math("MAXIMUM", N.math("MAXIMUM", a_h, a_o), a_s), a_t)
 
+    # the scan's chips and scratches through the hull paint to bare steel
+    # (not through the stencils, which stay solid)
+    chip_through = chip_metal if stencil_a is None else N.mul(chip_metal, N.inv(stencil_a))
+    col = N.mix(chip_through, col, N.scale_col(N.rgb((0.62, 0.61, 0.58)), N.add(0.7, N.mul(chip_steel.outputs[0], 0.6))))
     primer = (0.055, 0.058, 0.052)
     steel_col = N.scale_col(N.rgb((0.64, 0.63, 0.6)), N.add(0.85, N.mul(fine, 0.25)))
     col = N.mix(N.mul(scratch, 0.55), col, N.scale_col(col, 1.9))                 # scratch lightens
     col = N.mix(gone, col, N.rgb(primer))
-    metal = N.math("MAXIMUM", steel, N.mul(deep, 0.9))
+    metal = N.math("MAXIMUM", N.math("MAXIMUM", steel, N.mul(deep, 0.9)), chip_through)
     col = N.mix(metal, col, steel_col)
 
     # grime in crevices and a faint film of dirt
@@ -847,13 +924,16 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     rough_paint = N.add(0.46, N.mul(N.sub(big, 0.5), 0.4), N.mul(N.sub(mid, 0.5), 0.16), N.mul(N.sub(fine, 0.5), 0.08),
                         N.mul(polish, -0.22), N.mul(touch, -0.12), N.mul(handling, -0.16))
     # (the scan's roughness, around our own level)
-    rough_paint = N.mixf(0.6, rough_paint, N.math("MINIMUM", N.mul(rough_paint, scan_rough), 1.0))
+    if USE_SCAN:
+        rough_paint = N.mixf(0.6, rough_paint, N.math("MINIMUM", N.mul(rough_paint, scan_rough), 1.0))
     rough = N.mixf(N.mul(worn_thin, 0.6), rough_paint, 0.38)
     if stencil_a is not None:
         rough = N.mixf(stencil_a, rough, N.add(0.5, N.mul(fine, 0.1)))
     rough = N.mixf(N.mul(scratch, 0.5), rough, 0.32)
     rough = N.mixf(gone, rough, 0.62)
     rough = N.mixf(metal, rough, N.add(0.28, N.mul(mid, 0.18)))
+    rough = N.mixf(N.mul(chip_through, 0.8), rough, N.add(0.2, N.mul(chip_rough, 0.4)))
+    rough = N.mixf(0.35, rough, N.add(0.25, N.mul(chip_rough, 0.6)))
     rough = N.mixf(N.mul(grime, 0.7), rough, 0.85)
     rough = N.mixf(dust, rough, 0.9)
 
@@ -870,7 +950,13 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     nmap = N.new("ShaderNodeNormalMap")
     nmap.inputs["Strength"].default_value = 1.0
     N.feed(nmap.inputs["Color"], scan_nodes["nor_gl"][0].outputs["Color"])
-    N.nt.links.new(nmap.outputs["Normal"], bump.inputs["Normal"])
+    if USE_SCAN:
+        N.nt.links.new(nmap.outputs["Normal"], bump.inputs["Normal"])
+    else:
+        cmap = N.new("ShaderNodeNormalMap")
+        cmap.inputs["Strength"].default_value = 0.8
+        N.feed(cmap.inputs["Color"], chip_nodes["NormalGL"].outputs["Color"])
+        N.nt.links.new(cmap.outputs["Normal"], bump.inputs["Normal"])
 
     N.feed(bsdf.inputs["Base Color"], col)
     debug = os.environ.get("H1_DEBUG")       # e.g. H1_DEBUG=edge shows a mask flat
