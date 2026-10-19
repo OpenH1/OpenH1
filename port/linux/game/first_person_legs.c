@@ -44,6 +44,7 @@ chest is deeper than a person's).
 #include "object_mesh.h"
 
 
+#include <stdlib.h>
 #include <string.h>
 
 #ifdef HALO_VR
@@ -393,6 +394,61 @@ static boolean first_person_legs_vr_lean_split(
 	return shown;
 }
 
+/* each vertex's split (first_person_legs_vr_lean_split) for one lean: made
+the first time a triangle has the vertex as a corner, and kept for the
+others that share it (most vertices are corners of about six), which gives
+the same points as working each corner out again. NULL where the memory
+cannot be had: each corner is worked out as it comes */
+struct first_person_legs_split
+{
+	real_point3d base;
+	real_vector3d arm;
+	/* 0: not yet; 1: not seen; 2: seen */
+	byte state;
+};
+
+static struct first_person_legs_split *first_person_legs_splits(
+	long vertex_count)
+{
+	static struct first_person_legs_split *splits = NULL;
+	long index;
+
+	if (!splits)
+		splits = malloc(sizeof(*splits) * OBJECT_MESH_MAXIMUM_VERTICES);
+	if (!splits)
+		return NULL;
+	for (index = 0; index < vertex_count && index < OBJECT_MESH_MAXIMUM_VERTICES; index++)
+		splits[index].state = 0;
+	return splits;
+}
+
+/* a triangle's corner's split, kept in splits (if any) */
+static boolean first_person_legs_vr_lean_corner(
+	struct object_mesh const *mesh,
+	struct first_person_legs_split *splits,
+	long vertex_index,
+	long count,
+	real_matrix4x3 const *skin,
+	boolean const *leans,
+	real_point3d const *pivot,
+	real_point3d *base,
+	real_vector3d *arm)
+{
+	struct first_person_legs_split *split;
+
+	if (!splits || vertex_index < 0 || vertex_index >= mesh->vertex_count || vertex_index >= OBJECT_MESH_MAXIMUM_VERTICES)
+		return first_person_legs_vr_lean_split(mesh, vertex_index, count, skin, leans, pivot, base, arm);
+	split = &splits[vertex_index];
+	if (!split->state)
+	{
+		split->state = first_person_legs_vr_lean_split(mesh, vertex_index, count, skin, leans, pivot, &split->base,
+			&split->arm) ? 2 : 1;
+	}
+	*base = split->base;
+	*arm = split->arm;
+	return split->state == 2;
+}
+
 /* the VR mode's body leant back about its hips (pivot; the top of its neck;
 its heading's forward, and left), as little as keeps it clear of the eyes:
 the eyes nod forward over the chest as the head looks down (the neck stays
@@ -432,6 +488,7 @@ static void first_person_legs_vr_lean(
 	real near, seconds, clear, seen_reach = 0.f, wanted, angle, eyes_ahead, neck_forward, neck_up;
 	long index, weighed = 0;
 	short eye, corner;
+	struct first_person_legs_split *splits;
 
 	if (!mesh || mesh->node_count < count || !vr_render_body_eyes(eyes, views, &near, &seconds))
 		return;
@@ -462,6 +519,7 @@ static void first_person_legs_vr_lean(
 		leans[index] = node->parent_node_index != NONE && !first_person_legs_node(node->name);
 		matrix4x3_multiply(&first_person_legs_matrices[index], &mesh->inverse[index], &skin[index]);
 	}
+	splits = first_person_legs_splits(mesh->vertex_count);
 
 	/* (the points of the upper body's surface that a lean could bring
 	within seen_reach of an eye, its arm's reach about the pivot crossing
@@ -477,7 +535,7 @@ static void first_person_legs_vr_lean(
 
 		for (corner = 0; corner < 3; corner++)
 		{
-			if (first_person_legs_vr_lean_split(mesh, mesh->triangles[index][corner], count, skin, leans, pivot,
+			if (first_person_legs_vr_lean_corner(mesh, splits, mesh->triangles[index][corner], count, skin, leans, pivot,
 				&corner_base[corner], &corner_arm[corner]))
 			{
 				shown = TRUE;
