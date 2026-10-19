@@ -720,9 +720,13 @@ def generate_android_build(n: Writer, sln: Any) -> None:
 
     # ---------- SDL3
 
+    # (through the --compiler-launcher too, as the Linux builds' SDL:
+    # build_common.sdl3_rule)
+    launcher = getattr(sln, "compiler_launcher", None)
     n.rule(
         name="android_sdl3",
         command=(f"cmake -S {SDL_DIR} -B {sdl_build} -G Ninja "
+                 + (f"-DCMAKE_C_COMPILER_LAUNCHER={launcher} " if launcher else "") +
                  f"-DCMAKE_TOOLCHAIN_FILE={ndk}/build/cmake/android.toolchain.cmake "
                  f"-DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-{ANDROID_API} -DCMAKE_BUILD_TYPE=Release "
                  f"-DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF "

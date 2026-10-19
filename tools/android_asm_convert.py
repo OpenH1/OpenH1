@@ -25,6 +25,9 @@ import sys
 
 # a quoted name (its escapes kept: \" does not end it) or a plain one
 IDENT = re.compile(r'"(?:[^"\\]|\\.)*"|[A-Za-z_.$][\w.$]*')
+# a label, and what follows it on its line; a symbol's assignment
+LABEL = re.compile(r'^([A-Za-z_.$][\w.$]*|"[^"]*"):(.*)$')
+ASSIGNMENT = re.compile(r'^([A-Za-z_.$][\w.$]*)\s*=\s*(.+)$')
 
 # directives whose operands are string literals, the same in both
 # syntaxes: they go through as they are, never renamed as symbols (data
@@ -60,6 +63,16 @@ class ConvertError(Exception):
 
 
 def strip_comment(line: str) -> str:
+    if '"' not in line:
+        # (no string literal to step over: the comment, if any, starts at
+        # the first ";" or "//"; the same result as the scan below, which
+        # took most of the conversion's time: compiled data is a line per
+        # word, each with its comment)
+        end = line.find(";")
+        slashes = line.find("//", 0, end if end >= 0 else len(line))
+        if slashes >= 0:
+            end = slashes
+        return (line if end < 0 else line[:end]).rstrip()
     out = []
     in_string = False
     i = 0
@@ -91,7 +104,7 @@ class Converter:
         self.in_dropped_section = False
         for line in lines:
             text = strip_comment(line).strip()
-            m = re.match(r'^([A-Za-z_.$][\w.$]*|"[^"]*"):', text)
+            m = LABEL.match(text)
             if m and m.group(1)[0] in "lL":
                 self.local_labels.add(m.group(1))
 
@@ -108,12 +121,17 @@ class Converter:
         return name
 
     def operands(self, text: str) -> str:
+        if text.isdigit():
+            # (a number has nothing to rename: the operand of most lines,
+            # compiled data's words)
+            return text
         # relocation operators first
-        text = re.sub(r'([\w.$"]+)@GOTPAGE\b', r"\1", text)
-        text = re.sub(r'([\w.$"]+)@PAGE\b', r"\1", text)
-        text = re.sub(r'(\([^)]*\)|[\w.$"]+(?:[+-]\d+)?)@PAGEOFF\b', r":lo12:\1", text)
-        if "@" in text and not re.search(r'"[^"]*@[^"]*"', text):
-            raise ConvertError("unsupported relocation operator: " + text)
+        if "@" in text:
+            text = re.sub(r'([\w.$"]+)@GOTPAGE\b', r"\1", text)
+            text = re.sub(r'([\w.$"]+)@PAGE\b', r"\1", text)
+            text = re.sub(r'(\([^)]*\)|[\w.$"]+(?:[+-]\d+)?)@PAGEOFF\b', r":lo12:\1", text)
+            if "@" in text and not re.search(r'"[^"]*@[^"]*"', text):
+                raise ConvertError("unsupported relocation operator: " + text)
 
         def repl(m):
             tok = m.group(0)
@@ -173,7 +191,7 @@ class Converter:
         if not stripped:
             return
         # labels
-        m = re.match(r'^([A-Za-z_.$][\w.$]*|"[^"]*"):(.*)$', stripped)
+        m = LABEL.match(stripped)
         if m:
             if not self.in_dropped_section:
                 self.emit(self.sym(m.group(1)) + ":")
@@ -182,7 +200,7 @@ class Converter:
                 self.convert_line(rest)
             return
         # symbol assignment (aliases)
-        m = re.match(r'^([A-Za-z_.$][\w.$]*)\s*=\s*(.+)$', stripped)
+        m = ASSIGNMENT.match(stripped)
         if m:
             if not self.in_dropped_section:
                 self.emit(f"\t.set {self.sym(m.group(1))}, {self.operands(m.group(2))}")
