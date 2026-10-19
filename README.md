@@ -21,7 +21,8 @@ play together. OpenCE starts from the decompilation of
 - **One modern renderer.** The game draws through a command stream into
   Vulkan on Android, in VR and on 64-bit Linux, and into Metal on the Mac.
   OpenGL is being retired; the Vulkan backend now does everything the
-  OpenGL one did, including the enhanced dynamic lights, SMAA and FXAA.
+  OpenGL one did, including the enhanced dynamic lights, SMAA and FXAA, and
+  the Metal backend draws those too.
 - **A native Mac app** for Apple silicon, with its own Metal renderer.
 - **VR**, on the Steam Frame and PC headsets through OpenXR, drawn with Vulkan.
 - **Enhanced by default.** One setting, Classic or Enhanced (Video Setup >

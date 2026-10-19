@@ -107,12 +107,13 @@ static const struct
 {
 	{ "off", _anti_aliasing_off, 0 },
 	{ "fxaa", _anti_aliasing_fxaa, 0 },
-#if defined(HALO_GLES) && !defined(HALO_VULKAN)
+#if defined(HALO_GLES) && !defined(HALO_VULKAN) && !defined(HALO_METAL)
 	/* (OpenGL ES has no SMAA, xgpu_post.c: FXAA in its place) */
 	{ "smaa", _anti_aliasing_fxaa, 0 },
 #else
-	/* (Vulkan draws it on a phone too, as on the desktop: passes of fixed
-	cost whatever the scene; "fxaa" is the cheaper pass) */
+	/* (Vulkan draws it on a phone too, as on the desktop, and Metal on a
+	Mac: passes of fixed cost whatever the scene; "fxaa" is the cheaper
+	pass) */
 	{ "smaa", _anti_aliasing_smaa, 0 },
 #endif
 #ifdef HALO_GLES
@@ -2710,7 +2711,8 @@ lights cost what lights each pixel, not their number. A plasma bolt's light
 (a projectile with no model) also has a glow drawn about it
 (halo_dynamic_lights_halos_draw).
 "classic", the default: none of this, the game's own lighting. Where the
-backend has them (xgpu_backend_capabilities: desktop OpenGL). */
+backend has them (xgpu_backend_capabilities: desktop OpenGL, Vulkan,
+Metal). */
 static struct
 {
 	unsigned long read_at;

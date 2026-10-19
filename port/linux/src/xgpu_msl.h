@@ -36,12 +36,15 @@ the GLSL emitter's (xgpu_glsl.c), spelled for Metal and its conventions:
 #define __HALO_LINUX_XGPU_MSL_H
 
 /* the buffers' indices (the vertex streams are 0 to 15, the vertex
-descriptor's), the dynamic lights' cells' texture's */
+descriptor's): the enhanced dynamic lights' block (struct
+xgpu_dynamic_lights_block) and their grid's cells (four words a cell, x
+fastest, then y, then z: d3d8_device.c's mask), in buffers of their own (a
+draw reads the frame's, wherever its ring put them) */
 #define XGPU_MSL_BUFFER_CONSTANTS 16
 #define XGPU_MSL_BUFFER_UNIFORMS 17
 #define XGPU_MSL_BUFFER_DYNAMIC_LIGHTS 18
 #define XGPU_MSL_BUFFER_SAMPLES 19
-#define XGPU_MSL_TEXTURE_DYNAMIC_LIGHTS 4
+#define XGPU_MSL_BUFFER_DYNAMIC_LIGHT_CELLS 22
 
 /* the draw's values both stages read, laid out alike in C and in Metal
 (float4s, and floats in fours): d3d8_gl.c's draw uniforms, the per-pixel
@@ -101,5 +104,36 @@ char *xgpu_msl_vertex_shader(const struct xgpu_vertex_program *program, unsigned
 /* the pixel program (xgpu_shader.h) as a Metal fragment function,
 xgpu_fragment. Returns a malloc'd string. */
 char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_msl_options *options);
+
+/* the glow about each plasma bolt's light (the enhanced dynamic lights,
+xgpu_backend.h's xgpu_backend_dynamic_lights_halos), as the OpenGL
+backend's program (xgpu_gl.c): xgpu_halo_vertex, a camera-facing quad of
+six vertices about each light ([[attribute(n)]]: XGPU_MSL_HALO_MIDDLE, its
+light's middle and the glow's size; _COLOR; _CORNER, -1 or 1 each way),
+projected as the game's programs are; and xgpu_halo_fragment, its light
+round and soft, faded against the depth the scene was drawn with (a depth
+texture at texture 0, read at the pixel). Both read struct
+xgpu_msl_halo_uniforms at XGPU_MSL_BUFFER_UNIFORMS. The source of one of
+them (pixel: the fragment function's), a malloc'd string. */
+#define XGPU_MSL_HALO_MIDDLE 0
+#define XGPU_MSL_HALO_COLOR 1
+#define XGPU_MSL_HALO_CORNER 2
+
+struct xgpu_msl_halo_uniforms
+{
+	/* the world's projection (the game's c[0] to c[3]) and screen
+	conversion (c[-38], c[-37]) */
+	float projection[6][4];
+	/* the camera's right and up */
+	float camera_axes[2][4];
+	float viewport_scale[4];
+	float viewport_offset[4];
+	/* the depth buffer's value for a distance from the camera, alpha +
+	beta / distance; the softness against what a glow meets, world units */
+	float depth_parameters[4];
+	float screen_offset, unused[3];
+};
+
+char *xgpu_msl_halo_shader(BOOL pixel);
 
 #endif

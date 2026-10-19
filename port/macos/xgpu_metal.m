@@ -179,7 +179,8 @@ enum
 	_dirty_textures = 1 << 9,
 	_dirty_streams = 1 << 10,
 	_dirty_constant_attributes = 1 << 11,
-	_dirty_all = (1 << 12) - 1,
+	_dirty_dynamic_lights = 1 << 12,
+	_dirty_all = (1 << 13) - 1,
 };
 
 static struct
@@ -209,9 +210,10 @@ static struct
 	struct shader_entry shaders[SHADER_MAXIMUM];
 	uint32_t shader_count;
 	NSMutableDictionary<NSString *, NSNumber *> *shader_handles;
-	/* the pipelines made, by their key; those being made (all under lock) */
+	/* the pipelines made, by their key; those being made, each with the
+	group that is left once it is (all under lock) */
 	NSMutableDictionary<NSData *, id<MTLRenderPipelineState>> *pipelines;
-	NSMutableSet<NSData *> *pipelines_making;
+	NSMutableDictionary<NSData *, dispatch_group_t> *pipelines_making;
 	os_unfair_lock lock;
 	/* the queue shaders and pipelines are made on (user-initiated: a map's,
 	as it loads, or a draw's); the work the loading screen waits for
@@ -286,6 +288,8 @@ static struct
 	uint32_t draw_uniforms_size;
 	struct xgpu_metal_source streams[XGPU_METAL_STREAM_COUNT];
 	float constant_attributes[16][4];
+	/* the enhanced dynamic lights' block and cells */
+	struct xgpu_metal_source dynamic_lights[2];
 
 	/* an image for the presentation that a picture is copied into (a
 	target of levels or layers) */
@@ -1027,7 +1031,7 @@ int xgpu_metal_initialize(const struct xgpu_metal_options *options)
 	metal.options.archive_path = NULL;
 	metal.options.library_path = NULL;
 	metal.shader_handles = [NSMutableDictionary new];
-	metal.pipelines_making = [NSMutableSet new];
+	metal.pipelines_making = [NSMutableDictionary new];
 	metal.lock = OS_UNFAIR_LOCK_INIT;
 	metal.making_queue = dispatch_queue_create("OpenCE shaders and pipelines", dispatch_queue_attr_make_with_qos_class(
 		DISPATCH_QUEUE_CONCURRENT, QOS_CLASS_USER_INITIATED, 0));
@@ -1561,6 +1565,40 @@ void xgpu_metal_texture_copy(uint32_t source, uint32_t destination)
 	[blit endEncoding];
 	from->used = to->used = from->main_sampled = to->main_written = recording_serial();
 	statistics_add(&metal.statistics.feedback_copies, 1);
+}
+
+void xgpu_metal_texture_resolve(uint32_t texture)
+{
+	struct texture_entry *entry = texture_get(texture);
+	const struct xgpu_metal_format_information *format;
+	MTLRenderPassDescriptor *pass;
+	id<MTLRenderCommandEncoder> render;
+
+	if (!entry || !entry->multisampled)
+		return;
+	if (!metal.in_frame)
+		xgpu_metal_frame_begin();
+	pass_end();
+	format = format_get(entry->description.format);
+	/* (an empty pass that loads the samples and resolves them) */
+	pass = [MTLRenderPassDescriptor renderPassDescriptor];
+	if (format->depth)
+	{
+		pass.depthAttachment.texture = entry->multisampled;
+		pass.depthAttachment.resolveTexture = entry->texture;
+		pass.depthAttachment.loadAction = MTLLoadActionLoad;
+		pass.depthAttachment.storeAction = MTLStoreActionStoreAndMultisampleResolve;
+	}
+	else
+	{
+		pass.colorAttachments[0].texture = entry->multisampled;
+		pass.colorAttachments[0].resolveTexture = entry->texture;
+		pass.colorAttachments[0].loadAction = MTLLoadActionLoad;
+		pass.colorAttachments[0].storeAction = MTLStoreActionStoreAndMultisampleResolve;
+	}
+	render = [command_buffer() renderCommandEncoderWithDescriptor:pass];
+	[render endEncoding];
+	entry->used = entry->main_written = recording_serial();
 }
 
 static void statistics_add(uint32_t *counter, uint32_t amount)
@@ -2537,28 +2575,29 @@ if not NULL: the loading screen's, or a draw's waiting for it) */
 static void pipeline_make_later(const struct xgpu_metal_pipeline_state_key *key, dispatch_group_t group)
 {
 	struct xgpu_metal_pipeline_state_key copy = *key;
-	dispatch_group_t vertex_making, pixel_making;
+	dispatch_group_t vertex_making, pixel_making, making;
 	NSData *data = [NSData dataWithBytes:key length:sizeof(*key)];
 
 	os_unfair_lock_lock(&metal.lock);
-	if (metal.pipelines[data] || ([metal.pipelines_making containsObject:data] && !group))
+	if (metal.pipelines[data] || (metal.pipelines_making[data] && !group))
 	{
 		os_unfair_lock_unlock(&metal.lock);
 		return;
 	}
-	if ([metal.pipelines_making containsObject:data])
+	if ((making = metal.pipelines_making[data]) != nil)
 	{
-		/* (being made: a group waits for it by making it again, which
-		finds it made) */
+		/* (being made: a group waits for it to be; on the concurrent queue,
+		another making of it could find it still being made) */
 		os_unfair_lock_unlock(&metal.lock);
 		dispatch_group_enter(group);
-		dispatch_async(metal.making_queue, ^{
-			pipeline_make_later(&copy, nil);
+		dispatch_group_notify(making, metal.making_queue, ^{
 			dispatch_group_leave(group);
 		});
 		return;
 	}
-	[metal.pipelines_making addObject:data];
+	making = dispatch_group_create();
+	dispatch_group_enter(making);
+	metal.pipelines_making[data] = making;
 	vertex_making = key->vertex_shader <= metal.shader_count ? metal.shaders[key->vertex_shader].making : nil;
 	pixel_making = key->pixel_shader <= metal.shader_count ? metal.shaders[key->pixel_shader].making : nil;
 	os_unfair_lock_unlock(&metal.lock);
@@ -2593,7 +2632,7 @@ static void pipeline_make_later(const struct xgpu_metal_pipeline_state_key *key,
 				metal_log(HOST_LOG_ERROR, @"cannot make a pipeline: %@", error.localizedDescription);
 		}
 		os_unfair_lock_lock(&metal.lock);
-		[metal.pipelines_making removeObject:data];
+		[metal.pipelines_making removeObjectForKey:data];
 		if (state)
 		{
 			metal.pipelines[data] = state;
@@ -2602,6 +2641,7 @@ static void pipeline_make_later(const struct xgpu_metal_pipeline_state_key *key,
 			metal.archive_changed = YES;
 		}
 		os_unfair_lock_unlock(&metal.lock);
+		dispatch_group_leave(making);
 		pthread_mutex_lock(&metal.statistics_lock);
 		metal.statistics.pipelines_made++;
 		metal.statistics.pipeline_seconds += seconds_now() - start;
@@ -2832,6 +2872,13 @@ void xgpu_metal_set_stream(uint32_t stream, struct xgpu_metal_source source)
 	metal.dirty |= _dirty_streams;
 }
 
+void xgpu_metal_set_dynamic_lights(struct xgpu_metal_source block, struct xgpu_metal_source cells)
+{
+	metal.dynamic_lights[0] = block;
+	metal.dynamic_lights[1] = cells;
+	metal.dirty |= _dirty_dynamic_lights;
+}
+
 void xgpu_metal_set_constant_attributes(const float (*values)[4])
 {
 	if (!memcmp(metal.constant_attributes, values, sizeof(metal.constant_attributes)))
@@ -2982,6 +3029,20 @@ static BOOL draw_state_apply(id<MTLRenderCommandEncoder> render)
 			if (!buffer)
 				return NO;
 			[render setVertexBuffer:buffer offset:offset atIndex:XGPU_METAL_BUFFER_STREAM(index)];
+		}
+	}
+	if (dirty & _dirty_dynamic_lights)
+	{
+		static const NSUInteger places[2] = { XGPU_METAL_BUFFER_DYNAMIC_LIGHTS, XGPU_METAL_BUFFER_DYNAMIC_LIGHT_CELLS };
+
+		for (index = 0; index < 2; index++)
+		{
+			NSUInteger offset = 0;
+			id<MTLBuffer> buffer = metal.dynamic_lights[index].kind == XGPU_METAL_SOURCE_NONE ? nil :
+				source_buffer(metal.dynamic_lights[index], &offset);
+
+			if (buffer)
+				[render setFragmentBuffer:buffer offset:offset atIndex:places[index]];
 		}
 	}
 	metal.dirty = 0;

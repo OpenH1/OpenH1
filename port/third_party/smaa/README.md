@@ -19,5 +19,7 @@ as GLSL (`port/linux/src/xgpu_post.c`); the files are embedded in the Linux
 and Windows platform layers by `tools/embed_assets.py`. The Vulkan backend
 has the same passes as SPIR-V, and the lookup textures inflated, in
 `port/linux/vulkan/xgpu_vulkan_post_shaders.c`, which
-`tools/vulkan_post_shaders.py` generates from these files. OpenGL ES has
-FXAA in its place.
+`tools/vulkan_post_shaders.py` generates from these files. The Metal
+backend has them as MSL, by way of the same SPIR-V and SPIRV-Cross, in
+`port/macos/xgpu_metal_post_shaders.c`, which `tools/metal_post_shaders.py`
+generates. OpenGL ES has FXAA in its place.
