@@ -1,6 +1,7 @@
 # OpenH1
 
-Halo: Combat Evolved for Linux, Windows, macOS, Android, VR and the web.
+Halo: Combat Evolved for macOS, Windows, Linux, Android and VR, rebuilt from
+its decompilation.
 
 OpenH1 is a port of the Halo: Combat Evolved decompilation. The
 decompilation is of the Xbox build 2342 (`cachebeta.exe`, SHA-256
@@ -14,6 +15,27 @@ Vulkan renderer, VR and more. It keeps OpenCE's netcode, so players of the two c
 play together. OpenCE starts from the decompilation of
 [bnunu/halo-1](https://github.com/bnunu/halo-1), a fork of
 [punpckhdq/halo](https://github.com/punpckhdq/halo).
+
+## Why OpenH1
+
+- **One modern renderer.** The game draws through a command stream into
+  Vulkan on Android, in VR and on 64-bit Linux, and into Metal on the Mac.
+  OpenGL is being retired; the Vulkan backend now does everything the
+  OpenGL one did, including the enhanced dynamic lights, SMAA and FXAA.
+- **A native Mac app** for Apple silicon, with its own Metal renderer.
+- **VR**, on the Steam Frame and PC headsets through OpenXR, drawn with Vulkan.
+- **Enhanced by default.** One setting, Classic or Enhanced (Video Setup >
+  Graphics > Preset), switches the port's improvements on together: SMAA,
+  anisotropic filtering, sharper shadows, per-pixel lighting, full model
+  detail and the enhanced dynamic lights.
+- **64-bit Windows is under way**, running the same game code as 64-bit
+  Linux, with Vulkan.
+- **Plays online with OpenCE.** The netcode and the game's calculations
+  stay compatible.
+- **Every commit is built for every platform**, and each build of `master`
+  that passes is a release.
+
+Contributions are welcome. Refer to "Contributing" below.
 
 ## Download
 
@@ -97,7 +119,7 @@ Each platform has its own instructions:
 | Windows (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/windows/README.md](port/windows/README.md) |
 | Android (arm64 app, Vulkan 1.3, SDL3) | [port/android/README.md](port/android/README.md) |
 | macOS (Apple silicon: Halo.app, Metal) | [port/macos/README.md](port/macos/README.md) |
-| Web (WebAssembly, WebGL 2, SDL3; desktop Chrome, Edge and Firefox) | [port/web/README.md](port/web/README.md) |
+| Web (WebAssembly; not built for now: it returns with a WebGPU renderer) | [port/web/README.md](port/web/README.md) |
 
 The Linux README also gives the controls, the settings and the multiplayer
 functions. These are almost the same on all platforms.
@@ -272,3 +294,30 @@ python tools/net_compare.py --a build/linux/halo --b build/linux_x86_64/halo \
 Each game prints PASS or FAIL. A FAIL names the first player, tick and
 value that differ. Refer to "Comparing two builds" in
 [port/linux/NETCODE.md](port/linux/NETCODE.md).
+
+## Contributing
+
+Pull requests are welcome, from small fixes to whole renderer features. We
+review them promptly, and merge what is ready.
+
+1. Fork the repository and branch from `master`.
+2. Read [AGENTS.md](AGENTS.md): the layout, the build, the conventions (the
+   game's sources are C89, `gnu89`), the tests, and what must stay
+   deterministic.
+3. Open a pull request. GitHub Actions builds it for Android, Windows,
+   macOS and the Linux builds, and runs the tests (debug builds off
+   `master`, so a check takes minutes).
+4. Say what you tested and how, and what still needs a device to check.
+
+**Fixes from OpenCE are welcome too.** If you have a pull request waiting in
+[OpenCE](https://github.com/OpenCommunityEdition/OpenCE), open it here as
+well, or tell us about it. We bring good ones in with their authorship kept
+and credit given, as for OpenCE's #328, #369 and #392.
+
+**Keep network play compatible.** A change to what the game sends, or to how
+it calculates the game, needs `HALO_PORT_NETWORK_VERSION` and a
+`tools/net_compare.py` run (refer to "Testing"), so that OpenH1 and OpenCE
+players can still play together.
+
+Report problems on the [issue tracker](https://github.com/OpenH1/OpenH1/issues),
+with the build number (the main menu shows it) and `debug.txt`.
