@@ -533,8 +533,10 @@ draw goes to; the backend holds the eyes' images and the foveated layers,
 the HUD groups' targets, the eye corrections (halo_vr_set_eye_transforms),
 and composes the frame for OpenXR at the present (xgpu_gl.c). */
 
-/* in: the eyes', HUD's and scope's sizes, debug.gpu_stats; out: the eye
-pass foveated (vr.foveation: xgpu_foveated) and its layers' size, the
+/* in: the eyes', HUD's and scope's sizes, debug.gpu_stats, and with it
+debug.vr_gpu_time (gpu_time: the settings file's, which a backend in the
+host, whose settings are the environment's alone, could not read); out: the
+eye pass foveated (vr.foveation: xgpu_foveated) and its layers' size, the
 visibility tests counted in the pixel shaders */
 struct xgpu_vr_info
 {
@@ -544,6 +546,7 @@ struct xgpu_vr_info
 	BOOL statistics;
 	BOOL foveated;
 	int fovea_width, fovea_height;
+	BOOL gpu_time;
 };
 
 /* waits until the shaders and pipelines of the draws so far are made, where

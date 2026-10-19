@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise VR transitions on the simulated headset, checking the events occurred.
 
-    python tools/vr_test/scenarios.py --game build/linux_vulkan --maps /path/to/maps --out /path/to/evidence
+    python tools/vr_test/scenarios.py --game build/linux_arm64 --maps /path/to/maps --out /path/to/evidence
 
 Uses vr_run.sh (Docker/Monado/NVIDIA). Requires Pillow for lossless PNG evidence.
 Runs one case at a time, offline, loading maps directly. Logs, commands, PNGs and

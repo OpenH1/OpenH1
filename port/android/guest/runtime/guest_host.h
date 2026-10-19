@@ -107,10 +107,9 @@ int host_render_stream_open(unsigned int ring);
 void host_render_stream_submit(unsigned int flags);
 void host_render_stream_wait(unsigned int position);
 void host_render_stream_close(void);
-/* the window drawn by the host's OpenGL backend, whose render thread has
-its context (port/linux/host/host_gl_stream.c; macOS's has none), at a swap
-interval (vsync 1, or 0); asked again, the interval changed; nonzero on
-success */
+/* the window drawn by a host's OpenGL backend, which no host has now: every
+one's is a stand-in that draws nothing (port/android/host_renderer.c,
+port/macos/host_renderer.c), and the guests do not call it */
 int host_gl_window(unsigned int window, int interval);
 
 /* ---------- Android (android_imports.list) */

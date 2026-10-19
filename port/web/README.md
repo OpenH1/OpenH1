@@ -1,8 +1,10 @@
 # The web build
 
 The web build runs the game in a web browser, as WebAssembly. It is the
-same game and platform layer as the Linux build, with the OpenGL ES renderer
-of the Android build drawing through WebGL 2. Its site is
+same game and platform layer as the Linux builds, with the renderer's
+OpenGL backend in its OpenGL ES form (`HALO_GLES`) drawing through WebGL 2,
+in the game itself (the Linux builds and Android draw with Vulkan in a
+64-bit host). Its site is
 <https://openh1.com/>, once Pages is set up ("Hosting"): every build of
 `main` that passes on all platforms is published there (and as
 `halo-web-release.zip` in the release, for your own server).
@@ -197,7 +199,7 @@ python -m pytest -q tools/test_web_build.py  # the build's graph, version.json, 
 node port/web/tests/smoke.mjs dist/halo-web-release  # the site in a headless Chromium (Playwright)
 node port/web/tests/rooms.mjs dist/halo-web-release  # two browsers in a room (and mosquitto)
 node port/web/tests/webrtc_native.mjs chromium firefox  # the native builds' WebRTC with browsers
-node port/web/tests/internet.mjs build/web/site <maps folder>  # internet play with the Linux build
+node port/web/tests/internet.mjs build/web/site <maps folder>  # internet play with the 64-bit x86 Linux build
 ```
 
 The smoke test serves the site as GitHub Pages does, checks that the page
@@ -215,8 +217,9 @@ and Mbed TLS) for this computer around one connection, which a browser's
 data channel opens as signalling would have it; the browser sends it
 messages of every size, which come back, then again with a tenth of the
 datagrams lost each way. The internet play test needs the maps (`ui.map`
-and the multiplayer maps, which each browser imports) and the Linux build
-(`build/linux/halo`), and plays three games through a local broker: two
+and the multiplayer maps, which each browser imports) and the 64-bit x86
+Linux build (`build/linux_x86_64/halo`, or another native build's executable
+as its third argument), and plays three games through a local broker: two
 browsers by invite, the native build hosting with a browser joining from the
 server browser, and the reverse (`debug.network_test` `browse`,
 `debug.network_test_public`).
@@ -259,8 +262,9 @@ multiply-adds). `tools/web_build.py` writes the graph.
   (`-Wl,--fatal-warnings`); the declarations were corrected. There is no
   link-time optimisation: LLVM's would turn calls whose parameter types
   differ only in width, which WebAssembly passes alike, into traps.
-- **WebGL 2.** What the Android renderer needed of ES 3.0 the browser has;
-  the rest:
+- **WebGL 2.** What the OpenGL ES renderer needed of ES 3.0 on Android
+  and 64-bit ARM Linux, before they drew with Vulkan, the browser has; the
+  rest:
   - No texture swizzle: textures are put in RGBA order as they are
     converted (`xbox_textures.c`).
   - S3TC only for 2D textures whose sides are multiples of 4: the others

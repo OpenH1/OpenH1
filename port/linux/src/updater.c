@@ -25,17 +25,11 @@ The system side (the HTTPS download, the files, starting the new game) is
 update.h's: posix_update.c on Linux, win32_update.c on Windows.
 
 On Linux the release is a tree (bin/opence, lib/opence, share/...:
-install_layout.c, tools/linux_package.py), halo-linux-i686-<flavor>.zip, and
-the game's folder is its root. A game a package manager installed, or one
-in a folder the player cannot write to, never looks for updates: its
-package manager updates it. The releases before the tree were flat (halo,
-libSDL3.so.0 and the rest in one folder), and their updaters, which cannot
-change, take only the files at a zip's top and ask for
-halo-linux-<flavor>.zip: so releases keep that name for the same build laid
-out flat, which those updaters install as before. That build, started flat,
-updates to the tree: it puts the tree's files in its folder, a script that
-starts bin/opence in place of its executable (for the shortcuts and scripts
-that name it), and deletes the flat files the tree has moved.
+install_layout.c, tools/linux_package.py), halo-linux-x86_64-<flavor>.zip
+or halo-linux-arm64-<flavor>.zip (tools/ci_build.py), and the game's folder
+is its root. A game a package manager installed, or one in a folder the
+player cannot write to, never looks for updates: its package manager
+updates it; nor does a game outside a tree (a build's folder).
 */
 
 #include "platform.h"
@@ -56,20 +50,17 @@ worker; the macOS app is replaced by its disk image) */
 (tools/ci_build.py --vr): it updates to itself, never to the other build */
 #define UPDATE_PLATFORM "linux-x86_64-vr"
 #elif defined(HALO_VR)
-/* (none: the 64-bit ARM VR build is installed and updated as a package of
-its own, tools/frame_package.py and frame_install.sh, with its launcher and
-its checksums; no release has it, and the desktop one would replace its
-executable) */
+/* (none: the 64-bit ARM VR build is the Steam Frame's, installed and updated
+as a package of its own, tools/frame_package.py and frame_install.sh, with
+its launcher and its checksums: the releases have it as
+halo-steam-frame-vr-release.zip, not a tree this could unpack, and the
+desktop build would replace its executable) */
 #elif defined(__aarch64__)
 /* the 64-bit ARM build (port/linux/host) */
 #define UPDATE_PLATFORM "linux-arm64"
 #elif defined(__x86_64__)
 /* the 64-bit x86 build (port/linux/host, as the 64-bit ARM one) */
 #define UPDATE_PLATFORM "linux-x86_64"
-#else
-/* the 32-bit x86 build's tree; halo-linux-<flavor>.zip is the same build
-flat, for the updaters of the releases before the tree */
-#define UPDATE_PLATFORM "linux-i686"
 #endif
 
 #ifdef UPDATE_PLATFORM
@@ -80,11 +71,9 @@ flat, for the updaters of the releases before the tree */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef _WIN32
-#include <unistd.h>
-#endif
 
-/* (given for this file by the build: tools/linux_build.py, windows_build.py) */
+/* (given for this file by the build: tools/android_build.py's
+generate_guest_image, windows_build.py) */
 #ifndef HALO_BUILD_NUMBER
 #define HALO_BUILD_NUMBER 0
 #endif
@@ -317,7 +306,7 @@ static int zip_extract_entry(SDL_IOStream *zip, unsigned long local_offset, int 
 	return succeeded;
 }
 
-/* the zip's files (the release's tree, or a flat folder) into
+/* the zip's files (the Linux release's tree, or the Windows release's folder) into
 update.partial/, their names in names */
 static int zip_extract(const char *zip_path, char names[][256], int *name_count, char *error, size_t error_size)
 {
@@ -595,64 +584,6 @@ static void updater_list_old(SDL_IOStream *old_list, const char *name)
 		SDL_WriteIO(old_list, line, (size_t)length);
 }
 
-#ifndef _WIN32
-/* what a flat build (the releases before the tree) had in its folder, which
-the tree has moved into lib/ and share/ (tools/linux_package.py) */
-static const char *const updater_flat_files[] =
-{
-	"libSDL3.so.0", "brokers.txt", "SDL3-LICENSE.txt", "extract-xiso-LICENSE.txt", "mbedtls-LICENSE.txt",
-	"miniupnpc-LICENSE.txt", "Overpass-OFL.txt", "expat-COPYING.txt", "opus-COPYING.txt", "lucide-LICENSE.txt",
-};
-
-/* what is left at the flat executable's path, for the shortcuts (Steam's)
-and scripts that name it */
-static const char updater_flat_launcher[] =
-	"#!/bin/sh\n"
-	"# The game is bin/" INSTALL_NAME " since the release became a tree (bin/, lib/, share/).\n"
-	"# This starts it for the shortcuts and scripts that name this file; once\n"
-	"# none does, it can be deleted.\n"
-	"exec \"$(dirname \"$(readlink -f \"$0\")\")/bin/" INSTALL_NAME "\" \"$@\"\n";
-
-/* a flat build updated to the tree (in place already): the launcher in place
-of its executable, and its flat files gone (the running game keeps what it
-has open); 1 on success */
-static int updater_finish_flat(SDL_IOStream *old_list, char *error, size_t error_size)
-{
-	char launcher[1200], old_path[1300];
-	const char *name = strrchr(updater_executable, '/');
-	SDL_IOStream *file;
-	size_t index;
-
-	updater_partial_path(launcher, sizeof(launcher), "launcher");
-	file = SDL_IOFromFile(launcher, "wb");
-	if (!file || SDL_WriteIO(file, updater_flat_launcher, sizeof(updater_flat_launcher) - 1) !=
-		sizeof(updater_flat_launcher) - 1)
-	{
-		if (file)
-			SDL_CloseIO(file);
-		snprintf(error, error_size, "could not write %s", launcher);
-		return 0;
-	}
-	SDL_CloseIO(file);
-	snprintf(old_path, sizeof(old_path), "%s.old", updater_executable);
-	if (!update_make_executable(launcher) || !update_replace_file(updater_executable, launcher, old_path))
-	{
-		snprintf(error, error_size, "could not replace %s", updater_executable);
-		return 0;
-	}
-	if (name)
-		updater_list_old(old_list, name + 1);
-	for (index = 0; index < sizeof(updater_flat_files) / sizeof(*updater_flat_files); index++)
-	{
-		char path[1200];
-
-		updater_path(path, sizeof(path), updater_flat_files[index]);
-		update_delete_file(path);
-	}
-	return 1;
-}
-#endif
-
 /* update.partial/, once its files are in place: its folders, the deepest
 first */
 static void updater_delete_partial(const char *partial, char names[][256], int name_count)
@@ -726,21 +657,9 @@ static void updater_update(void)
 		}
 		snprintf(launch, sizeof(launch), "%s", updater_executable);
 #ifndef _WIN32
-		/* (a flat build updated to the tree: install_layout.c) */
-		if (index == name_count && !install_is_tree())
-		{
+		/* (the tree's game: install_layout.c) */
+		if (index == name_count)
 			updater_path(launch, sizeof(launch), "bin/" INSTALL_NAME);
-			if (access(launch, X_OK) != 0)
-				snprintf(error, sizeof(error), "the download has no bin/" INSTALL_NAME);
-			else if (updater_finish_flat(old_list, error, sizeof(error)))
-				platform_log("update: the game is now %s, and %s starts it", launch, updater_executable);
-			if (error[0])
-				index = -1;
-		}
-		else if (index == name_count)
-		{
-			updater_path(launch, sizeof(launch), "bin/" INSTALL_NAME);
-		}
 #endif
 		if (old_list)
 			SDL_CloseIO(old_list);
@@ -762,28 +681,14 @@ static void updater_update(void)
 	}
 }
 
-/* the files a previous update left behind: those update-old.txt lists, and
-the names the updaters before it left; 1 when the list was there (this is
-the start that follows an update) */
+/* the files a previous update left behind, which update-old.txt lists; 1
+when the list was there (this is the start that follows an update) */
 static int updater_clean_up(void)
 {
-	static const char *const names[] =
-	{
-		"halo.old", "halo.exe.old", "SDL3.dll.old", "libSDL3.so.0.old", "SDL3-LICENSE.txt.old",
-		"extract-xiso-LICENSE.txt.old", "mbedtls-LICENSE.txt.old", "miniupnpc-LICENSE.txt.old",
-		"Overpass-OFL.txt.old", "expat-COPYING.txt.old", "opus-COPYING.txt.old", "lucide-LICENSE.txt.old",
-		"brokers.txt.old",
-	};
 	char path[1200];
-	size_t index;
 	size_t size = 0;
 	char *list;
 
-	for (index = 0; index < sizeof(names) / sizeof(*names); index++)
-	{
-		updater_path(path, sizeof(path), names[index]);
-		update_delete_file(path);
-	}
 	updater_path(path, sizeof(path), UPDATE_OLD_LIST);
 	list = SDL_LoadFile(path, &size);
 	if (list)
@@ -838,13 +743,19 @@ void updater_start(void)
 		return;
 	*slash = 0;
 #else
-	/* (the tree's root, or the flat build's folder; not a game a package
-	manager installed, which it updates: install_layout.c) */
+	/* (the tree's root; not a game a package manager installed, which it
+	updates, nor one outside a tree, a build's: install_layout.c) */
 	(void)slash;
 	if (install_is_system())
 	{
 		if (HALO_BUILD_NUMBER > 0)
 			platform_log("update: not looking for updates: the game is installed (%s)", install_system_reason());
+		return;
+	}
+	if (!install_is_tree())
+	{
+		if (HALO_BUILD_NUMBER > 0)
+			platform_log("update: not looking for updates: the game is not in a release's tree (bin/" INSTALL_NAME ")");
 		return;
 	}
 	snprintf(updater_directory, sizeof(updater_directory), "%s", install_folder());

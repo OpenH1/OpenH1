@@ -18,8 +18,8 @@ The comparison and its tolerances are described in port/linux/NETCODE.md
 ("Comparing two builds"). It needs the retail maps, so it is a local (or
 self-hosted) check, not a public CI one.
 
-    python tools/net_compare.py --a build/linux/halo --data /path/to/halo \\
-        --b build/linux_x86_64/halo --maps bloodgulch,beavercreek --swap
+    python tools/net_compare.py --a build/linux_x86_64/halo --data /path/to/halo \\
+        --b /path/to/another/bin/opence --maps bloodgulch,beavercreek --swap
 
 Exit status: 0 when every run passes; 1 when a run diverges (FAIL), even if
 another could not be played, as a divergence is the finding and an error
@@ -392,7 +392,7 @@ def judge_drift(summary, tolerances, player):
 def release_tree(executable):
     """the root of the release's tree the executable is in (bin/opence, with
     share/opence beside bin: port/linux/src/install_layout.c), else None (a
-    flat folder: a build, or a flat release)"""
+    build's folder, which holds everything)"""
     if executable.parent.name == "bin" and (executable.parent.parent / "share" / "opence").is_dir():
         return executable.parent.parent
     return None

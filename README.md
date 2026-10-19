@@ -19,10 +19,10 @@ play together. OpenCE starts from the decompilation of
 ## Why OpenH1
 
 - **One modern renderer.** The game draws through a command stream into
-  Vulkan on Android, in VR and on 64-bit Linux, and into Metal on the Mac.
-  OpenGL is being retired; the Vulkan backend now does everything the
-  OpenGL one did, including the enhanced dynamic lights, SMAA and FXAA, and
-  the Metal backend draws those too.
+  Vulkan on Linux, Android and in VR, and into Metal on the Mac. OpenGL is
+  being retired (only the 32-bit Windows build still draws with it); the
+  Vulkan backend does everything the OpenGL one did, including the enhanced
+  dynamic lights, SMAA and FXAA, and the Metal backend draws those too.
 - **A native Mac app** for Apple silicon, with its own Metal renderer.
 - **VR**, on the Steam Frame and PC headsets through OpenXR, drawn with Vulkan.
 - **Enhanced by default.** One setting, Classic or Enhanced (Video Setup >
@@ -48,10 +48,10 @@ builds of the latest release:
 | --- | --- | --- |
 | macOS (Apple silicon, macOS 14.4 or later) | [halo-macos-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-release.zip) | [halo-macos-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-debug.zip) |
 | Windows | [halo-windows-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-release.zip) | [halo-windows-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-debug.zip) |
-| Linux | [halo-linux-i686-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-i686-release.zip) | [halo-linux-i686-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-i686-debug.zip) |
+| Linux x86-64 (also the Steam Deck) | [halo-linux-x86_64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-release.zip) | [halo-linux-x86_64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-debug.zip) |
 | Linux arm64 | [halo-linux-arm64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-release.zip) | [halo-linux-arm64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-debug.zip) |
-| Linux x86-64 | [halo-linux-x86_64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-release.zip) | [halo-linux-x86_64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-debug.zip) |
 | Linux x86-64 VR | [halo-linux-x86_64-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-vr-release.zip) | |
+| Steam Frame VR ([install](port/linux/frame/README.md#install-or-update)) | [halo-steam-frame-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-steam-frame-vr-release.zip) | |
 | Android | [halo-android-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-android-release.zip) | [halo-android-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-android-debug.zip) |
 
 Use the release build to play. The debug build stops at the first failed
@@ -66,9 +66,10 @@ older build there.
 - **Windows:** unzip into a folder and start `halo.exe`. The executable is
   not signed yet, so Windows may say that it protected your PC: choose
   **More info**, then **Run anyway**.
-- **Linux:** unzip into a folder and start `bin/opence` in it. The folders
-  are laid out as a Unix prefix is (`bin/`, `lib/`, `share/`), for package
-  managers too: refer to "Packaging" in
+- **Linux:** unzip into a folder and start `bin/opence` in it. The game
+  needs a GPU and driver with Vulkan 1.3. The folders are laid out as a
+  Unix prefix is (`bin/`, `lib/`, `share/`), for package managers too:
+  refer to "Packaging" in
   [port/linux/README.md](port/linux/README.md#packaging).
 - **Android:** unzip and install the APK. Refer to
   [port/android/README.md](port/android/README.md).
@@ -113,10 +114,9 @@ Each platform has its own instructions:
 
 | Platform | Instructions |
 | --- | --- |
-| Linux (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/linux/README.md](port/linux/README.md) |
-| Linux arm64 (arm64 executable, OpenGL ES 3, SDL3) | [port/linux/README.md](port/linux/README.md#64-bit-arm) |
-| Linux x86-64 (x86-64 executable, OpenGL 4.5, SDL3; no 32-bit libraries) | [port/linux/README.md](port/linux/README.md#64-bit-x86) |
-| Linux arm64 VR (Vulkan; OpenXR headsets such as the Steam Frame) | [port/linux/README.md](port/linux/README.md#vr) |
+| Linux x86-64 (x86-64 executable, Vulkan 1.3, SDL3) | [port/linux/README.md](port/linux/README.md#64-bit-x86) |
+| Linux arm64 (arm64 executable, Vulkan 1.3, SDL3) | [port/linux/README.md](port/linux/README.md#64-bit-arm) |
+| Linux VR (x86-64 and arm64, Vulkan 1.3; OpenXR headsets such as the Steam Frame) | [port/linux/README.md](port/linux/README.md#vr) |
 | Windows (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/windows/README.md](port/windows/README.md) |
 | Android (arm64 app, Vulkan 1.3, SDL3) | [port/android/README.md](port/android/README.md) |
 | macOS (Apple silicon: Halo.app, Metal) | [port/macos/README.md](port/macos/README.md) |
@@ -130,7 +130,7 @@ functions. These are almost the same on all platforms.
 The game can play system link games on a local network and on the internet:
 
 - A system link game can have up to 128 players on up to 128 machines.
-- Linux (x86, x86-64 and arm64), Windows and Android machines and browsers can play
+- Linux (x86-64 and arm64), Windows and Android machines and browsers can play
   in the same game. On a local network, the native builds play system link;
   browsers play each other in rooms, over WebRTC
   ([port/web/README.md](port/web/README.md)).
@@ -157,20 +157,23 @@ To build the game:
 
 | Target | Result |
 | --- | --- |
-| `ninja linux` | `build/linux/halo` |
-| `ninja linux_arm64` (on 64-bit ARM Linux) | `build/linux_arm64/halo` and `libSDL3.so.0` |
-| `ninja linux_x86_64` (on 64-bit x86 Linux, after `python configure.py --linux-x86-64`) | `build/linux_x86_64/halo` and `libSDL3.so.0` |
-| `ninja linux_vulkan` (on 64-bit ARM or x86 Linux, after `python configure.py --linux-vulkan`) | `build/linux_vulkan/halo` and `libSDL3.so.0`; the Vulkan renderer (`--vr` also enables OpenXR) |
+| `ninja linux_x86_64` (on 64-bit x86 Linux) | `build/linux_x86_64/halo` and `libSDL3.so.0` (with `python configure.py --vr`, its VR mode) |
+| `ninja linux_arm64` (on 64-bit ARM Linux) | `build/linux_arm64/halo` and `libSDL3.so.0` (with `python configure.py --vr`, its VR mode) |
 | `ninja windows` (on Windows) | `build/windows/halo.exe` and `SDL3.dll` |
 | `ninja android_apk` | `port/android/app/build/outputs/apk/debug/app-debug.apk` |
 | `ninja macos` (on a Mac with Apple silicon) | `build/macos/Halo.app` (and `halo` with `libSDL3.0.dylib`, for development); `ninja macos_dmg`: `Halo.dmg` |
 | `ninja web` | `build/web/site/`, the web site (`python tools/web_serve.py` serves it) |
 
 If you enter `ninja` without a target, ninja builds the game for the
-computer that you use: on 64-bit x86 Linux, the x86 build (`ninja linux`).
+computer that you use: on 64-bit x86 Linux, `ninja linux_x86_64`.
+
+The Linux builds are 64-bit, and draw with Vulkan 1.3: `configure.py`
+downloads the Vulkan headers with musl and SDL3, so the build needs no
+OpenGL or Vulkan development packages. Refer to
+[port/linux/README.md](port/linux/README.md).
 
 `tools/ci_build.py` makes the same builds as GitHub Actions. For example,
-enter `python tools/ci_build.py linux release`.
+enter `python tools/ci_build.py linux_x86_64 release`.
 
 ### Build options
 
@@ -180,19 +183,20 @@ Give these options to `configure.py`:
 | --- | --- |
 | (none) | A debug build. A failed assertion stops the game. |
 | `--release` | A release build. The game does not examine assertions, as in the retail game. |
-| `--portable` | The Linux and Windows builds operate on all x86-64 processors. The Linux build also operates on older distributions and on SteamOS: refer to "Portable build" in [port/linux/README.md](port/linux/README.md#portable-build). Use this option for builds that you give to other persons. |
-| `--lto=thin`, `--lto=off` | Less link-time optimization. The link is faster. |
+| `--portable` | The Windows build operates on all x86-64 processors. Use this option for builds that you give to other persons. (The Linux, Android and macOS builds operate on all processors of their architecture without it.) |
+| `--vr` | The VR mode (OpenXR) in the Linux build of the computer. Refer to "VR" in [port/linux/README.md](port/linux/README.md#vr). |
+| `--lto=thin`, `--lto=off` | Less link-time optimization for the Windows build. The link is faster. |
 | `--pgo=off` | No profile-guided optimization. |
-| `--pgo=train` | Records a new optimization profile. Refer to "Optimization profiles". |
+| `--pgo=train` | Records a new optimization profile for the Windows build. Refer to "Optimization profiles". |
 | `--profile` | A profiling build. It records CPU times. Refer to "Profiling builds". |
 | `--guest-llvm=system`, `--guest-llvm=FOLDER` | The guest builds (Linux arm64 and x86-64, Android, macOS) compile the guest with clang and the LLVM tools on the PATH, or with the LLVM in FOLDER, not with the pinned LLVM. Refer to "The guests' compiler". |
 | `--guest-llvm-cache FOLDER` | The folder for the pinned LLVM (else `~/.cache/opence`, on macOS `~/Library/Caches/opence`). |
 | `--guest-base` | The Linux arm64 and Android builds put the guest's memory at a base that the host chooses, not in the low 4 GB (a base register: `tools/guest_base_register.py`). The 64-bit x86 build has none: with it, `ninja linux_x86_64` stops with the reason. |
 | `--web-emcc PATH` | The Emscripten `emcc` for `ninja web` (else the one on the PATH, or `~/emsdk`'s). |
 
-Without `--portable`, the Linux and Windows builds use all the instructions
-of the processor that builds them (`-march=native`). Such a build does not
-always start on a different computer.
+Without `--portable`, the Windows build uses all the instructions of the
+processor that builds it (`-march=native`). Such a build does not always
+start on a different computer.
 
 ### The guests' compiler
 
@@ -221,18 +225,20 @@ with `--guest-llvm=system`.
 
 The builds use profiles of the game to optimize the code:
 
-- `pgo/halo_linux.profdata` for Linux and Android.
+- `pgo/halo_linux.profdata` for the guest builds: Linux, Android and macOS.
 - `pgo/halo_windows.profdata` for Windows.
 
 The profiles need clang 22 or later. With an older clang, the builds do not
 use the profiles. The guest builds' pinned LLVM (refer to "The guests'
 compiler") reads them on all platforms.
 
-To record a new profile:
+The Linux profile was recorded by the 32-bit Linux build, which is gone:
+the guest builds cannot record one yet, and use it as it is (code changed
+since then goes without). To record a new Windows profile:
 
 1. Delete the profile.
 2. Enter `python configure.py --pgo=train`.
-3. Enter `ninja linux` or `ninja windows`.
+3. Enter `ninja windows`.
 
 The build then plays the main menu and the first minute of each campaign
 level. This procedure continues for approximately 15 minutes. The game
@@ -285,10 +291,10 @@ self-hosted runner), not in GitHub Actions: `tools/net_compare.py` plays
 two builds together in a network game on one computer and checks that they
 stay in step. Run it when a change can alter how a build calculates the
 game, as a new platform, compiler or architecture does, before it is
-merged. For example, to check a 64-bit build against the 32-bit build:
+merged. For example, to check your build against the latest release:
 
 ```sh
-python tools/net_compare.py --a build/linux/halo --b build/linux_x86_64/halo \
+python tools/net_compare.py --a build/linux_x86_64/halo --b <release folder>/bin/opence \
     --data <folder with maps/> --maps bloodgulch,beavercreek,hangemhigh --swap
 ```
 

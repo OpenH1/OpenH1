@@ -1,11 +1,11 @@
-# halo-arm64-build: builds `ninja linux_arm64` (and, with `--vr`, `ninja linux_vulkan`) on a 64-bit ARM
+# halo-arm64-build: builds `ninja linux_arm64` (with `configure.py --vr`, its VR mode) on a 64-bit ARM
 # Linux host, with clang 22 for the arm64_32 guest. Refer to README.md.
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl gnupg lsb-release software-properties-common git python3 ninja-build cmake make pkg-config file xz-utils \
       libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev libxtst-dev libxkbcommon-dev \
-      libwayland-dev wayland-protocols libegl-dev libgles-dev libgl-dev libopengl-dev libdrm-dev libgbm-dev \
+      libwayland-dev wayland-protocols libdrm-dev libgbm-dev \
       libpulse-dev libpipewire-0.3-dev libasound2-dev libudev-dev libdbus-1-dev libdecor-0-dev \
     && curl -fsSL https://apt.llvm.org/llvm.sh -o /tmp/llvm.sh && bash /tmp/llvm.sh 22 \
     && apt-get install -y --no-install-recommends lld-22 llvm-22 \

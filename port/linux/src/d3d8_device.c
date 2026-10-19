@@ -4262,6 +4262,7 @@ static void vr_initialize(void)
 	info.hud_height = vr_gl.hud_height;
 	info.scope_size = vr_gl.scope_size;
 	info.statistics = vr_gl.statistics;
+	info.gpu_time = vr_gl.statistics && config_boolean("debug.vr_gpu_time");
 	xgpu_backend_vr_initialize(&info);
 	vr_gl.eye_target.target.number = next_target_number++;
 	vr_gl.eye_target.target.width = 640;

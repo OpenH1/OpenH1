@@ -1651,7 +1651,8 @@ void xgpu_backend_vr_initialize(struct xgpu_vr_info *info)
 	wire->hud_width = info->hud_width;
 	wire->hud_height = info->hud_height;
 	wire->scope_size = info->scope_size;
-	wire->statistics = info->statistics;
+	wire->statistics = (info->statistics ? XGPU_STREAM_VR_STATISTICS : 0) |
+		(info->gpu_time ? XGPU_STREAM_VR_GPU_TIME : 0);
 	wire->foveated = info->foveated;
 	wire->fovea_width = info->fovea_width;
 	wire->fovea_height = info->fovea_height;

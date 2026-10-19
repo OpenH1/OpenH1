@@ -3,11 +3,11 @@ VR_HOST.H
 
 What the VR mode (HALO_VR, vr.c) asks of OpenXR, which the host does
 (port/linux/host/host_vr.c): the session, the swapchains, the frame loop,
-the poses and the controllers. On the Linux arm64 build the game is guest
-code with 32-bit pointers that cannot call OpenXR, whose structures hold
-64-bit pointers and handles, so these structures hold only 32-bit integers
-and floats, laid out alike on both sides. The swapchains' image names are
-GL textures; Vulkan images stay on the host and these names are zero.
+the poses and the controllers. The game is guest code with 32-bit pointers
+that cannot call OpenXR, whose structures hold 64-bit pointers and handles,
+so these structures hold only 32-bit integers and floats, laid out alike on
+both sides. The swapchains' images (Vulkan's) stay on the host, and their
+names here are zero.
 
 Poses are in the play space: OpenXR's (metres; x right, y up, z backwards),
 the stage when standing, the local space when seated. Field of view angles
@@ -38,8 +38,6 @@ enum
 enum
 {
 	VR_BINDING_NONE = 0,
-	VR_BINDING_EGL, /* XR_MNDX_egl_enable: an EGL context (SDL_VIDEO_FORCE_EGL) */
-	VR_BINDING_GLX, /* XR_KHR_opengl_enable's Xlib binding: a GLX context, on SDL's X11 video driver */
 	VR_BINDING_VULKAN, /* XR_KHR_vulkan_enable2: the host owns its instance, device and images */
 };
 
@@ -203,14 +201,10 @@ struct vr_host_layers
 
 /* after SDL_Init and before the window is made: loads the runtime and
 reads its extensions (without starting it, nor asking for a headset), and
-says which binding its session will take, VR_BINDING_EGL where it offers
-XR_MNDX_egl_enable, else VR_BINDING_GLX; VR_BINDING_NONE if there is no
-runtime, it has no OpenGL binding, or GLX's is needed but SDL's video driver
-is not X11 (the reason is logged). With HALO_VULKAN this instead selects
-VR_BINDING_VULKAN if XR_KHR_vulkan_enable2 is offered. */
+says which binding its session will take: VR_BINDING_VULKAN if it offers
+XR_KHR_vulkan_enable2, else VR_BINDING_NONE (the reason is logged). */
 int host_vr_probe(void);
-/* after the GL context is made and current (on its thread), of the kind
-host_vr_probe said; with Vulkan, after the host has bound its device.
+/* after the host has bound its Vulkan device (on its render thread).
 0 if there is no OpenXR runtime, headset or graphics binding. */
 int host_vr_initialize(struct vr_host_info *info);
 /* waits for the runtime's next frame (which the host's render thread begins
