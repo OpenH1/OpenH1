@@ -1,0 +1,5 @@
+# rebuilt by build_scene.py (scene.blend is small, so it is kept in git)
+scene.blend1
+_build/
+textures/
+__pycache__/
