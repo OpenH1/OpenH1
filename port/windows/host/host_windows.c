@@ -4,7 +4,7 @@ HOST_WINDOWS.C
 The host's half of what the 64-bit Windows build's guest needs beyond the
 Linux desktop guest's (guest_windows.c is the guest's half,
 host_imports.list lists them): the Windows functions the platform layer
-calls under _WIN32 in the 32-bit build, here performed for the guest.
+calls under _WIN32 or HALO_WINDOWS, here performed for the guest.
 */
 
 #include "host_win.h"

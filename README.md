@@ -94,7 +94,7 @@ Each platform has its own instructions:
 | Linux arm64 (arm64 executable, OpenGL ES 3, SDL3) | [port/linux/README.md](port/linux/README.md#64-bit-arm) |
 | Linux x86-64 (x86-64 executable, OpenGL 4.5, SDL3; no 32-bit libraries) | [port/linux/README.md](port/linux/README.md#64-bit-x86) |
 | Linux arm64 VR (Vulkan; OpenXR headsets such as the Steam Frame) | [port/linux/README.md](port/linux/README.md#vr) |
-| Windows (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/windows/README.md](port/windows/README.md) |
+| Windows (64-bit executable, Vulkan 1.3, SDL3; Windows 10 1903 or later) | [port/windows/README.md](port/windows/README.md) |
 | Android (arm64 app, Vulkan 1.3, SDL3) | [port/android/README.md](port/android/README.md) |
 | macOS (Apple silicon: Halo.app, Metal) | [port/macos/README.md](port/macos/README.md) |
 | Web (WebAssembly, WebGL 2, SDL3; desktop Chrome, Edge and Firefox) | [port/web/README.md](port/web/README.md) |
@@ -157,27 +157,28 @@ Give these options to `configure.py`:
 | --- | --- |
 | (none) | A debug build. A failed assertion stops the game. |
 | `--release` | A release build. The game does not examine assertions, as in the retail game. |
-| `--portable` | The Linux and Windows builds operate on all x86-64 processors. The Linux build also operates on older distributions and on SteamOS: refer to "Portable build" in [port/linux/README.md](port/linux/README.md#portable-build). Use this option for builds that you give to other persons. |
+| `--portable` | The Linux build operates on all x86-64 processors (the Windows build always does). The Linux build also operates on older distributions and on SteamOS: refer to "Portable build" in [port/linux/README.md](port/linux/README.md#portable-build). Use this option for builds that you give to other persons. |
 | `--lto=thin`, `--lto=off` | Less link-time optimization. The link is faster. |
 | `--pgo=off` | No profile-guided optimization. |
 | `--pgo=train` | Records a new optimization profile. Refer to "Optimization profiles". |
 | `--profile` | A profiling build. It records CPU times. Refer to "Profiling builds". |
-| `--guest-llvm=system`, `--guest-llvm=FOLDER` | The guest builds (Linux arm64 and x86-64, Android, macOS) compile the guest with clang and the LLVM tools on the PATH, or with the LLVM in FOLDER, not with the pinned LLVM. Refer to "The guests' compiler". |
+| `--guest-llvm=system`, `--guest-llvm=FOLDER` | The guest builds (Linux arm64 and x86-64, Android, macOS, Windows) compile the guest with clang and the LLVM tools on the PATH, or with the LLVM in FOLDER, not with the pinned LLVM. Refer to "The guests' compiler". |
 | `--guest-llvm-cache FOLDER` | The folder for the pinned LLVM (else `~/.cache/opence`, on macOS `~/Library/Caches/opence`). |
 | `--guest-base` | The Linux arm64 and Android builds put the guest's memory at a base that the host chooses, not in the low 4 GB (a base register: `tools/guest_base_register.py`). The 64-bit x86 build has none: with it, `ninja linux_x86_64` stops with the reason. |
 | `--web-emcc PATH` | The Emscripten `emcc` for `ninja web` (else the one on the PATH, or `~/emsdk`'s). |
 
-Without `--portable`, the Linux and Windows builds use all the instructions
+Without `--portable`, the Linux build uses all the instructions
 of the processor that builds them (`-march=native`). Such a build does not
 always start on a different computer.
 
 ### The guests' compiler
 
-The Linux arm64 and x86-64, Android and macOS builds compile the game as a
-guest image (`arm64_32` or `x32` code). On all computers, the guest is
-compiled and linked by the same LLVM: release 22.1.8 from
+The Linux arm64 and x86-64, Android, macOS and Windows builds compile the
+game as a guest image (`arm64_32` or `x32` code). On all computers, the
+guest is compiled and linked by the same LLVM: release 22.1.8 from
 [LLVM's releases](https://github.com/llvm/llvm-project/releases), for
-64-bit x86 Linux, 64-bit ARM Linux and macOS on Apple silicon. The first
+64-bit x86 Linux, 64-bit ARM Linux, macOS on Apple silicon and 64-bit
+Windows. The first
 `configure.py` downloads it (approximately 1.5 GB, checked against its
 SHA-256) and keeps clang, `ld.lld` and the LLVM tools that the builds use
 (approximately 700 MB) in `~/.cache/opence` (on macOS
@@ -198,8 +199,8 @@ with `--guest-llvm=system`.
 
 The builds use profiles of the game to optimize the code:
 
-- `pgo/halo_linux.profdata` for Linux and Android.
-- `pgo/halo_windows.profdata` for Windows.
+- `pgo/halo_linux.profdata` for Linux, Android and the other guest builds
+  (macOS, Windows).
 
 The profiles need clang 22 or later. With an older clang, the builds do not
 use the profiles. The guest builds' pinned LLVM (refer to "The guests'
@@ -209,7 +210,7 @@ To record a new profile:
 
 1. Delete the profile.
 2. Enter `python configure.py --pgo=train`.
-3. Enter `ninja linux` or `ninja windows`.
+3. Enter `ninja linux`.
 
 The build then plays the main menu and the first minute of each campaign
 level. This procedure continues for approximately 15 minutes. The game

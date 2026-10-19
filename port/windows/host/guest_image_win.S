@@ -1,4 +1,4 @@
-/* the guest image (tools/windows64_build.py), inside the host executable;
+/* the guest image (tools/windows_build.py), inside the host executable;
 host_main_win.c loads it */
 
 	.section .rdata, "dr"

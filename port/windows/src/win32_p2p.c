@@ -177,7 +177,7 @@ static int pipe_server_is_this_user(HANDLE pipe)
 
 /* this machine's SMBIOS system UUID (its type 1 structure's), which a
 reinstall keeps; else the registry's MachineGuid, which it does not (the
-64-bit registry's: this process is 32-bit); as text, 0 if neither
+64-bit registry's); as text, 0 if neither
 (p2p.c's hardware id) */
 int posix_hardware_id_source(char *text, int size)
 {

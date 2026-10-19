@@ -316,7 +316,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     excluded_platform_sources are files of port/linux/src the guest does not
     build (the OpenGL backend: the renderer is the host's). host_abi "sysv"
     is for a host whose calling convention is not the guest's (the 64-bit
-    Windows host, tools/windows64_build.py): its table's entries are thunks
+    Windows host, tools/windows_build.py): its table's entries are thunks
     (tools/android_imports.py --host-abi), from every import's prototype
     (extra_prototypes too). The steps that are shell commands elsewhere are
     tools/guest_build_steps.py's on Windows, which has no POSIX shell."""

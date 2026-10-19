@@ -79,7 +79,7 @@ and port/linux/src/xbox_kernel.c). */
 #define TryEnterCriticalSection RtlTryEnterCriticalSection
 
 /* The Interlocked* functions under the names the port prefix headers route
-to the platform layer (halo_linux_prefix.h, halo_windows_prefix.h). */
+to the platform layer (halo_linux_prefix.h). */
 #define InterlockedIncrement _InterlockedIncrement
 #define InterlockedDecrement _InterlockedDecrement
 #define InterlockedExchange _InterlockedExchange

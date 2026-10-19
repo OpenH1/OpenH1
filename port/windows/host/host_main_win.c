@@ -1,7 +1,7 @@
 /*
 HOST_MAIN_WIN.C
 
-Entry point of the 64-bit Windows build (tools/windows64_build.py,
+Entry point of the 64-bit Windows build (tools/windows_build.py,
 port/windows/README.md "64-bit Windows"): the game as the x32 guest image,
 inside this executable (guest_image_win.S), in a 64-bit host.
 
@@ -14,7 +14,7 @@ before the copy runs, then waits for it and ends with its exit code.
 
 The game then runs on the process's main thread, moved onto a stack in
 guest memory (host_thread_win.c), as the guest's main thread: it makes the
-window and pumps its events, as the 32-bit build's main thread does.
+window and pumps its events.
 
 The guest is the desktop build of the game with the Windows code paths
 (HALO_WINDOWS), so it finds the game data, the saves and config.toml as the
@@ -22,7 +22,7 @@ The guest is the desktop build of the game with the Windows code paths
 this process's environment it reads (its HALO_ settings, the user's
 folders), in UTF-8, and /proc/self/exe is this executable. The log is the
 standard error stream; without one (a release build has no console),
-halo.log beside halo.exe, as in the 32-bit build.
+halo.log beside halo.exe.
 */
 
 #include "host_win.h"
@@ -288,8 +288,8 @@ int main(void)
 		MessageBoxW(NULL, L"SDL3.dll is missing. It belongs next to halo.exe.", L"Halo", MB_OK | MB_ICONERROR);
 		return 1;
 	}
-	/* Sleep and the timers wait in 1 ms steps rather than 15.6 ms ones, as
-	in the 32-bit build */
+	/* Sleep and the timers wait in 1 ms steps rather than 15.6 ms ones: the
+	game's frame pacing sleeps for short intervals */
 	timeBeginPeriod(1);
 	/* (the guest's text, and the log's, is UTF-8) */
 	SetConsoleOutputCP(CP_UTF8);

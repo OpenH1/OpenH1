@@ -50,8 +50,8 @@ for updates */
 /* (none: the Android app updates itself, the site through its service
 worker; the macOS app is replaced by its disk image) */
 #elif defined(_WIN32) || defined(HALO_WINDOWS)
-/* (the 32-bit build, and the 64-bit one, the guest of
-port/windows/host, which replaces it) */
+/* (the Windows build: the guest of port/windows/host, which takes the
+32-bit build's place, and its release's name) */
 #define UPDATE_PLATFORM "windows"
 #elif defined(HALO_VR) && defined(__x86_64__)
 /* the 64-bit x86 VR build, which releases have beside the other one

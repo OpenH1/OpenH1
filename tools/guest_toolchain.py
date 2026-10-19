@@ -66,7 +66,7 @@ LLVM_ARCHIVES: Dict[Tuple[str, str], Tuple[str, str]] = {
                            "805efad2bb91cb4967fa569e0881d10c0f69c04461cf671cccbae19f547acc34"),
     ("darwin", "arm64"): (f"LLVM-{LLVM_VERSION}-macOS-ARM64.tar.xz",
                           "f260f4f7c0d430828a81ae8a3826a1d63fc0963ec2459489308cc23b1f7eab4f"),
-    # (the 64-bit Windows build's guest, tools/windows64_build.py: its tools
+    # (the 64-bit Windows build's guest, tools/windows_build.py: its tools
     # are .exe files)
     ("win32", "x86_64"): (f"clang+llvm-{LLVM_VERSION}-x86_64-pc-windows-msvc.tar.xz",
                           "d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234"),

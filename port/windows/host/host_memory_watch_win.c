@@ -18,7 +18,7 @@ unwinder.
   Linux's is: the exception, the registers and the frames.
 - Windows walks a thread's frames with each function's unwinding data. The
   guest image, an ELF file loaded by hand, has none for Windows; it is built
-  with frame pointers (tools/windows64_build.py), so a function table
+  with frame pointers (tools/windows_build.py), so a function table
   callback over the image (RtlInstallFunctionTableCallback) describes every
   guest frame as a frame-pointer frame: push rbp; mov rbp, rsp. Windows's
   unwinder, which the exception dispatcher, the crash report and a debugger
@@ -30,7 +30,7 @@ unwinder.
 #include <windows.h>
 #include <errno.h>
 
-/* (tools/windows64_build.py gives it, as to updater.c) */
+/* (tools/windows_build.py gives it, as to updater.c) */
 #ifdef HALO_BUILD_NUMBER
 #define HALO_CRASH_BUILD_NUMBER HALO_BUILD_NUMBER
 #else

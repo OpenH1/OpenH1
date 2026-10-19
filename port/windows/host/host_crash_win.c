@@ -1,8 +1,7 @@
 /*
 HOST_CRASH_WIN.C
 
-Crash reports of the 64-bit Windows build, as the 32-bit build's
-(port/windows/src/win32_crash.c, whose reporter this is, in the host): a
+Crash reports of the Windows build (the 32-bit build's, in the host): a
 crash (host_memory_watch_win.c's handlers: the exception no handler took)
 has a second copy of halo.exe, the crash reporter ("halo.exe --crash-report
 <process> <thread> <exception pointers>"), write a minidump of the crashed
@@ -27,8 +26,7 @@ network) goes the next time the game starts ("halo.exe --crash-upload", in
 the background).
 
 Reports are off but with the HALO_CRASH_REPORTS_ANY_BUILD environment
-variable, as in the 32-bit build (OpenH1 has no Sentry project of its own
-yet). abort() and the C runtime's invalid parameter checks, which end the
+variable (OpenH1 has no Sentry project of its own yet). abort() and the C runtime's invalid parameter checks, which end the
 process without an exception, raise one here, so they are reported too.
 */
 
@@ -46,7 +44,7 @@ process without an exception, raise one here, so they are reported too.
 #include <string.h>
 #include <wchar.h>
 
-/* (tools/windows64_build.py gives them, as to updater.c) */
+/* (tools/windows_build.py gives them, as to updater.c) */
 #ifndef HALO_BUILD_NUMBER
 #define HALO_BUILD_NUMBER 0
 #endif

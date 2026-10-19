@@ -7,7 +7,7 @@ implements), since the x32 guest has no base register.
 
 A 64-bit Windows process has nearly all of its low 4 GB free: the
 executable, the system's DLLs and the heaps are placed above it (the
-executable is linked /DYNAMICBASE /HIGHENTROPYVA, tools/windows64_build.py).
+executable is linked /DYNAMICBASE /HIGHENTROPYVA, tools/windows_build.py).
 So at the top of main, before SDL3.dll and the drivers load, the host
 reserves (MEM_RESERVE: address space, no memory)
 

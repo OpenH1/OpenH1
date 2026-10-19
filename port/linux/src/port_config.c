@@ -873,7 +873,7 @@ static const struct config_setting config_settings[] =
 		"\"severe\", \"strong\" (and severe) or \"mild\" (all)." },
 	{ "crash_reports.upload", _config_string, "\"ask\"", "HALO_CRASH_REPORTS", _environment_value, _platform_windows,
 		"Send a report of each crash (a minidump and halo.log) to the developers'\n"
-		"Sentry project (port/windows/src/win32_crash.c): \"yes\" sends them, \"no\"\n"
+		"Sentry project (port/windows/host/host_crash_win.c): \"yes\" sends them, \"no\"\n"
 		"never does, \"ask\" asks at the next crash and writes the answer here." },
 
 	{ "debug.network_test", _config_string, "\"\"", "HALO_NETWORK_TEST", _environment_value, _platform_all,
@@ -1232,7 +1232,7 @@ static const struct config_setting config_settings[] =
 #elif defined(_WIN32)
 #define CONFIG_PLATFORM (_platform_desktop | _platform_windows)
 #elif defined(HALO_WINDOWS)
-/* (the 64-bit Windows build: a guest, tools/windows64_build.py) */
+/* (the Windows build: a guest, tools/windows_build.py) */
 #define CONFIG_PLATFORM (_platform_desktop | _platform_windows | _platform_guest)
 #elif defined(HALO_GUEST)
 #define CONFIG_PLATFORM (_platform_desktop | _platform_guest)

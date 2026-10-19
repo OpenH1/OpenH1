@@ -366,7 +366,6 @@ def lto_flags(sln: Any, cache_dir: Path) -> Tuple[List[str], List[str]]:
 # format of this LLVM version, which older compilers cannot read.
 PGO_DIR = Path("pgo")
 LINUX_PROFILE = PGO_DIR / "halo_linux.profdata"
-WINDOWS_PROFILE = PGO_DIR / "halo_windows.profdata"
 PROFILE_LLVM_MAJOR = 22
 
 _clang_majors: Dict[str, Optional[int]] = {}

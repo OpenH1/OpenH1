@@ -3,7 +3,7 @@
 (tools/android_build.py, generate_guest_image; and the Vulkan host's,
 tools/vulkan_build.py), for a computer without a POSIX shell: Windows,
 where ninja runs each command as a program of its own (the 64-bit Windows
-build, tools/windows64_build.py). Each step writes what the shell command
+build, tools/windows_build.py). Each step writes what the shell command
 writes.
 
     guest_build_steps.py alltypes OUTPUT ARCH_ALLTYPES MUSL_ALLTYPES

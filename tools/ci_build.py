@@ -183,16 +183,17 @@ def main() -> int:
         shutil.copy2(ROOT / output, dist)
         print(f"{output} -> {dist.relative_to(ROOT)}", flush=True)
     if args.platform == "windows":
-        # the symbols of halo.exe and SDL3.dll, apart (players do not need
-        # them): the workflow uploads them to Sentry, which turns the crash
-        # reports' minidumps into function names and lines
-        # (port/windows/src/win32_crash.c), and tools/symbolize_crash.py
-        # reads debug.txt's crash lines with them
+        # the symbols of halo.exe and SDL3.dll, and the guest image, apart
+        # (players do not need them): the workflow uploads them to Sentry,
+        # which turns the crash reports' minidumps into function names and
+        # lines (port/windows/host/host_crash_win.c), and
+        # tools/symbolize_crash.py reads halo.log's crash lines with them
         symbols = ROOT / "dist" / f"halo-windows-{args.config}-symbols"
         if symbols.exists():
             shutil.rmtree(symbols)
         symbols.mkdir(parents=True)
-        for pdb in [ROOT / "build/windows/halo.pdb", *sorted((ROOT / "build/windows/third_party").glob("SDL3-*/lib/x86/SDL3.pdb"))]:
+        for pdb in [ROOT / "build/windows/halo.pdb", ROOT / "build/windows/halo_guest.elf",
+                    *sorted((ROOT / "build/windows/third_party").glob("SDL3-*/lib/x64/SDL3.pdb"))]:
             shutil.copy2(pdb, symbols)
             print(f"{pdb.relative_to(ROOT)} -> {symbols.relative_to(ROOT)}", flush=True)
     if args.platform == "macos":

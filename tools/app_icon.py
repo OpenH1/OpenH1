@@ -4,7 +4,7 @@
     python tools/app_icon.py
 
 - opence-icon.png, the helmet on its background (512x512): the Windows
-  executable's icon (port/windows/opence-icon.ico, which port/windows/halo.rc
+  executable's icon (port/windows/opence-icon.ico, which port/windows/host/halo.rc
   puts in halo.exe) and the desktop builds' window icon (opence-icon-256.png,
   which tools/embed_assets.py embeds and sdl_platform.c gives the window);
 - opence-icon-render.png, the helmet alone on transparency (1024x1024, the same

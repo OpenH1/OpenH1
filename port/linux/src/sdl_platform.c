@@ -1264,7 +1264,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	}
 #ifndef HALO_ANDROID
 	/* the game's icon, which the desktop shows for the window (on Windows
-	also halo.exe's own, port/windows/halo.rc; a web page has its own; not
+	also halo.exe's own, port/windows/host/halo.rc; a web page has its own; not
 	a guest's, which reaches no SDL surfaces) */
 #if !defined(HALO_GLES) && !defined(HALO_GUEST)
 	if (platform_window_icon_size)

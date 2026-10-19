@@ -1,4 +1,4 @@
-"""The 64-bit Windows build's generators: the host's import thunks
+"""The Windows build's generators: the host's import thunks
 (tools/android_imports.py --host-abi sysv) and the guest's build steps that
 stand in for shell commands (tools/guest_build_steps.py)."""
 

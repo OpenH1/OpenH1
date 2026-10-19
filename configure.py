@@ -18,7 +18,6 @@ from tools.linux_build import check_profile_options, generate_linux_build, linux
 from tools.macos_build import generate_macos_build, is_macos_arm64, macos_configure_inputs
 from tools.web_build import generate_web_build, web_configure_inputs
 from tools.windows_build import generate_windows_build, windows_configure_inputs
-from tools.windows64_build import generate_windows64_build, windows64_configure_inputs
 
 # arguments
 parser = argparse.ArgumentParser()
@@ -144,11 +143,11 @@ parser.add_argument(
     "refer to \"VR\" in port/linux/README.md",
 )
 parser.add_argument(
-    "--windows64",
+    "--windows-guest",
     action="store_true",
-    help="generate `ninja windows64`, the 64-bit Windows build (in development), on Windows, and "
-    "`ninja windows64_guest`, its guest image, on any computer: configure.py downloads the guest's musl, SDL3 and "
-    "headers (once, to build/windows64/third_party); refer to port/windows/README.md",
+    help="generate `ninja windows_guest`, the Windows build's guest image, on another computer than Windows "
+    "(which always generates it, with `ninja windows`): configure.py downloads its musl, SDL3 and headers (once, to "
+    "build/windows/third_party); refer to port/windows/README.md",
 )
 parser.add_argument(
     "--guest-base",
@@ -205,7 +204,7 @@ sln = SimpleNamespace(
     linux_x86_64=args.linux_x86_64,
     linux_x86_64_cc=args.linux_x86_64_cc,
     linux_vulkan=args.linux_vulkan,
-    windows64=args.windows64,
+    windows_guest=args.windows_guest,
     port_vr=args.vr,
     macos_cc=args.macos_cc,
     macos_guest_cc=args.macos_guest_cc,
@@ -238,7 +237,6 @@ generate_linux_build(n, sln)
 generate_android_build(n, sln)
 generate_linux_guest_builds(n, sln)
 generate_windows_build(n, sln)
-generate_windows64_build(n, sln)
 generate_macos_build(n, sln)
 generate_web_build(n, sln)
 
@@ -259,7 +257,6 @@ n.build(
         *android_configure_inputs(),
         *linux_guest_configure_inputs(),
         *windows_configure_inputs(),
-        *windows64_configure_inputs(),
         *macos_configure_inputs(),
         *web_configure_inputs(),
     ],

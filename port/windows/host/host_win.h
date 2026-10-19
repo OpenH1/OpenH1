@@ -6,7 +6,7 @@ Windows"): the files of port/windows/host, beside port/android/host's
 portable ones (host.h), which it shares with the Linux and macOS hosts.
 
 The guest is the x32 image of the 64-bit x86 Linux build, with the Windows
-code paths (tools/windows64_build.py). Its memory lies below 4 GB, as on
+code paths (tools/windows_build.py). Its memory lies below 4 GB, as on
 Linux (it has no base register): the host reserves that address space at
 start-up (host_memory_win.c). Its threads run on stacks there
 (host_thread_win.c, host_enter_win.S). It calls the host through thunks
