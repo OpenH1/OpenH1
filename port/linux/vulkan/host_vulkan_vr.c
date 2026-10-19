@@ -192,8 +192,10 @@ static int fixed_begin(struct fixed_draw *draw, int program, struct xgpu_vulkan_
 	draw->program = &xgpu_vulkan_vr_programs[program];
 	if (!draw->program)
 		return 0;
-	draw->pipeline.vertex_shader = xgpu_vulkan_shader(draw->program->vertex_words, draw->program->vertex_bytes / 4);
-	draw->pipeline.pixel_shader = xgpu_vulkan_shader(draw->program->fragment_words, draw->program->fragment_bytes / 4);
+	draw->pipeline.vertex_shader = xgpu_vulkan_shader_constant(draw->program->vertex_words,
+		draw->program->vertex_bytes / 4);
+	draw->pipeline.pixel_shader = xgpu_vulkan_shader_constant(draw->program->fragment_words,
+		draw->program->fragment_bytes / 4);
 	draw->pipeline.primitive_class = XGPU_VULKAN_CLASS_TRIANGLES;
 	draw->pipeline.color_format = color ? xgpu_vulkan_image_description(color)->format : XGPU_VULKAN_FORMAT_NONE;
 	draw->pipeline.depth_format = depth ? xgpu_vulkan_image_description(depth)->format : XGPU_VULKAN_FORMAT_NONE;
@@ -969,8 +971,8 @@ static void prepare_fixed(void)
 		struct xgpu_vulkan_pipeline_description pipeline;
 
 		memset(&pipeline, 0, sizeof(pipeline));
-		pipeline.vertex_shader = xgpu_vulkan_shader(program->vertex_words, program->vertex_bytes / 4);
-		pipeline.pixel_shader = xgpu_vulkan_shader(program->fragment_words, program->fragment_bytes / 4);
+		pipeline.vertex_shader = xgpu_vulkan_shader_constant(program->vertex_words, program->vertex_bytes / 4);
+		pipeline.pixel_shader = xgpu_vulkan_shader_constant(program->fragment_words, program->fragment_bytes / 4);
 		pipeline.primitive_class = XGPU_VULKAN_CLASS_TRIANGLES;
 		pipeline.samples = 1;
 		pipeline.view_mask = program->views == 2 ? 3 : 0;

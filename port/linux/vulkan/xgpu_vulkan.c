@@ -103,6 +103,9 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr;
 #define SAMPLER_CACHE 1024
 #define PIPELINE_BUCKETS 4096
 #define SHADER_BUCKETS 1024
+/* the fixed programs' modules, found by their words' address
+(xgpu_vulkan_shader_constant) */
+#define CONSTANT_SHADERS 128
 /* frames whose visibility tests may be in flight, and the queries a frame
 has (a test can be several, one for each pass it spans) */
 #define QUERY_FRAMES 4
@@ -338,6 +341,13 @@ static struct
 	char cache_path[1024];
 	struct pipeline_entry *pipelines[PIPELINE_BUCKETS];
 	struct shader_entry *shaders[SHADER_BUCKETS];
+	struct
+	{
+		const uint32_t *words;
+		size_t count;
+		VkShaderModule module;
+	} constant_shaders[CONSTANT_SHADERS];
+	uint32_t constant_shader_count;
 	/* the shaders of the clears of some of the colour's channels */
 	VkShaderModule clear_vertex, clear_pixel;
 	struct
@@ -354,6 +364,28 @@ static struct
 	uint32_t pass_width, pass_height;
 	/* what the main command buffer has bound in this pass */
 	VkPipeline bound_pipeline;
+	/* and the rest of the state a draw sets, as the main command buffer
+	has it (every pipeline has the same dynamic state and layout, so a
+	pipeline bound or a pass begun keeps it): set again only where it
+	changes, as the driver's CPU time is much of a frame's on a phone's or
+	a headset's GPU (xgpu_vulkan_draw); all of it unknown as a recording
+	begins (dynamic set) */
+	struct
+	{
+		int dynamic;
+		VkViewport viewport;
+		VkRect2D scissor;
+		float depth_bias[2];
+		float blend[4];
+		uint32_t stencil_reference;
+		VkPrimitiveTopology topology;
+		VkDescriptorSet sets[2];
+		uint32_t offsets[2];
+		VkBuffer vertices[XGPU_VULKAN_BINDINGS];
+		VkDeviceSize vertex_offsets[XGPU_VULKAN_BINDINGS];
+		VkBuffer indices;
+		VkDeviceSize index_offset;
+	} bound;
 	VkDescriptorSet bound_textures;
 	struct xgpu_vulkan_texture last_textures[4];
 	VkDescriptorSet last_texture_set;
@@ -838,6 +870,7 @@ static void recording_begin(void)
 	vk.recording = 1;
 	vk.early_recording = 0;
 	vk.bound_pipeline = VK_NULL_HANDLE;
+	memset(&vk.bound, 0, sizeof(vk.bound));
 	vk.last_texture_valid = 0;
 	gpu_time_start();
 }
@@ -2066,18 +2099,40 @@ VkSampler xgpu_vulkan_sampler(const struct xgpu_vulkan_sampler_description *desc
 	return sampler;
 }
 
+/* ---------- the caches' keys */
+
+/* a hash of bytes for the caches' buckets, eight at a time (a byte at a
+time was a frame's noticeable part on a phone's or a headset's CPU, for
+each draw's pipeline and texture set); only where the entries are looked
+for depends on it */
+static uint64_t bytes_hash64(const void *data, size_t size)
+{
+	const unsigned char *bytes = (const unsigned char *)data;
+	uint64_t hash = 0x9e3779b97f4a7c15ull ^ size, word;
+	size_t index;
+
+	for (index = 0; index + 8 <= size; index += 8)
+	{
+		memcpy(&word, bytes + index, 8);
+		hash = (hash ^ word) * 0xff51afd7ed558ccdull;
+		hash ^= hash >> 31;
+	}
+	for (; index < size; index++)
+		hash = (hash ^ bytes[index]) * 0x100000001b3ull;
+	hash ^= hash >> 33;
+	hash *= 0xc4ceb9fe1a85ec53ull;
+	hash ^= hash >> 29;
+	return hash;
+}
+
 /* ---------- shaders */
 
 VkShaderModule xgpu_vulkan_shader(const uint32_t *words, size_t count)
 {
-	uint64_t hash = 14695981039346656037ULL;
-	const unsigned char *bytes = (const unsigned char *)words;
+	uint64_t hash = bytes_hash64(words, count * 4);
 	struct shader_entry *entry, **bucket;
 	VkShaderModuleCreateInfo info;
-	size_t index;
 
-	for (index = 0; index < count * 4; index++)
-		hash = (hash ^ bytes[index]) * 1099511628211ULL;
 	bucket = &vk.shaders[hash % SHADER_BUCKETS];
 	for (entry = *bucket; entry; entry = entry->next)
 	{
@@ -2104,6 +2159,28 @@ VkShaderModule xgpu_vulkan_shader(const uint32_t *words, size_t count)
 	entry->next = *bucket;
 	*bucket = entry;
 	return entry->module;
+}
+
+VkShaderModule xgpu_vulkan_shader_constant(const uint32_t *words, size_t count)
+{
+	VkShaderModule module;
+	uint32_t index;
+
+	for (index = 0; index < vk.constant_shader_count; index++)
+	{
+		if (vk.constant_shaders[index].words == words && vk.constant_shaders[index].count == count)
+			return vk.constant_shaders[index].module;
+	}
+	module = xgpu_vulkan_shader(words, count);
+	/* (more than the table holds are hashed each time, as before) */
+	if (module && vk.constant_shader_count < CONSTANT_SHADERS)
+	{
+		vk.constant_shaders[vk.constant_shader_count].words = words;
+		vk.constant_shaders[vk.constant_shader_count].count = count;
+		vk.constant_shaders[vk.constant_shader_count].module = module;
+		vk.constant_shader_count++;
+	}
+	return module;
 }
 
 /* ---------- pipelines */
@@ -2159,13 +2236,7 @@ static VkStencilOp stencil_op(uint8_t operation)
 
 static uint32_t description_hash(const struct xgpu_vulkan_pipeline_description *description)
 {
-	const unsigned char *bytes = (const unsigned char *)description;
-	uint32_t hash = 2166136261u;
-	size_t index;
-
-	for (index = 0; index < sizeof(*description); index++)
-		hash = (hash ^ bytes[index]) * 16777619u;
-	return hash;
+	return (uint32_t)bytes_hash64(description, sizeof(*description));
 }
 
 /* Preparation queues owned native descriptions. Shader modules, the device
@@ -2973,8 +3044,7 @@ static VkDescriptorSet texture_set(const struct xgpu_vulkan_texture textures[4])
 	VkDescriptorSet set = VK_NULL_HANDLE;
 	struct texture_set_key key;
 	struct texture_set_entry *entry;
-	const unsigned char *bytes = (const unsigned char *)&key;
-	uint32_t hash = 2166136261u, bucket, index;
+	uint32_t bucket;
 	int stage;
 
 	if (vk.last_texture_valid && !memcmp(vk.last_textures, textures, sizeof(vk.last_textures)))
@@ -2989,9 +3059,7 @@ static VkDescriptorSet texture_set(const struct xgpu_vulkan_texture textures[4])
 		key.samplers[stage] = textures[stage].sampler;
 		key.kinds[stage] = textures[stage].kind;
 	}
-	for (index = 0; index < sizeof(key); index++)
-		hash = (hash ^ bytes[index]) * 16777619u;
-	bucket = hash % TEXTURE_SET_BUCKETS;
+	bucket = (uint32_t)(bytes_hash64(&key, sizeof(key)) % TEXTURE_SET_BUCKETS);
 	entry = texture_set_find(vk.slot, &key, bucket);
 	if (entry)
 	{
@@ -3110,7 +3178,6 @@ void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw)
 	viewport.height = (float)dynamic->viewport[3];
 	viewport.minDepth = dynamic->depth_range[0];
 	viewport.maxDepth = dynamic->depth_range[1];
-	vkCmdSetViewport(commands, 0, 1, &viewport);
 	/* (the scissor rectangle where it is one, else the whole target, as
 	OpenGL's scissor test is enabled; inside the targets) */
 	if (dynamic->scissor[2] > 0 && dynamic->scissor[3] > 0)
@@ -3140,27 +3207,73 @@ void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw)
 	scissor.offset.y = top;
 	scissor.extent.width = (uint32_t)(right - left);
 	scissor.extent.height = (uint32_t)(bottom - top);
-	vkCmdSetScissor(commands, 0, 1, &scissor);
-	vkCmdSetDepthBias(commands, dynamic->depth_bias[1], 0.0f, dynamic->depth_bias[0]);
-	vkCmdSetBlendConstants(commands, dynamic->blend_color);
-	vkCmdSetStencilReference(commands, VK_STENCIL_FACE_FRONT_AND_BACK, dynamic->stencil_reference & 0xff);
-	vkCmdSetPrimitiveTopology(commands, topology_of(draw->topology));
+	/* (each only where it differs from what the command buffer has: the
+	game's draws mostly repeat their neighbours' state) */
+	if (!vk.bound.dynamic || memcmp(&vk.bound.viewport, &viewport, sizeof(viewport)))
+	{
+		vkCmdSetViewport(commands, 0, 1, &viewport);
+		vk.bound.viewport = viewport;
+	}
+	if (!vk.bound.dynamic || memcmp(&vk.bound.scissor, &scissor, sizeof(scissor)))
+	{
+		vkCmdSetScissor(commands, 0, 1, &scissor);
+		vk.bound.scissor = scissor;
+	}
+	if (!vk.bound.dynamic || memcmp(vk.bound.depth_bias, dynamic->depth_bias, sizeof(vk.bound.depth_bias)))
+	{
+		vkCmdSetDepthBias(commands, dynamic->depth_bias[1], 0.0f, dynamic->depth_bias[0]);
+		memcpy(vk.bound.depth_bias, dynamic->depth_bias, sizeof(vk.bound.depth_bias));
+	}
+	if (!vk.bound.dynamic || memcmp(vk.bound.blend, dynamic->blend_color, sizeof(vk.bound.blend)))
+	{
+		vkCmdSetBlendConstants(commands, dynamic->blend_color);
+		memcpy(vk.bound.blend, dynamic->blend_color, sizeof(vk.bound.blend));
+	}
+	if (!vk.bound.dynamic || vk.bound.stencil_reference != (dynamic->stencil_reference & 0xff))
+	{
+		vkCmdSetStencilReference(commands, VK_STENCIL_FACE_FRONT_AND_BACK, dynamic->stencil_reference & 0xff);
+		vk.bound.stencil_reference = dynamic->stencil_reference & 0xff;
+	}
+	if (!vk.bound.dynamic || vk.bound.topology != topology_of(draw->topology))
+	{
+		vkCmdSetPrimitiveTopology(commands, topology_of(draw->topology));
+		vk.bound.topology = topology_of(draw->topology);
+	}
+	vk.bound.dynamic = 1;
 	/* (the lights written after this are written after it: in order) */
 	if (draw->dynamic_lights)
 		vk.lights_block->used = vk.lights_cells->used = vk.serial;
 	sets[0] = vk.draw_set;
 	offsets[0] = (uint32_t)draw->constants.offset;
 	offsets[1] = (uint32_t)draw->uniforms.offset;
-	vkCmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeline_layout, 0, 2, sets, 2, offsets);
+	if (memcmp(vk.bound.sets, sets, sizeof(sets)) || memcmp(vk.bound.offsets, offsets, sizeof(offsets)))
+	{
+		vkCmdBindDescriptorSets(commands, VK_PIPELINE_BIND_POINT_GRAPHICS, vk.pipeline_layout, 0, 2, sets, 2, offsets);
+		memcpy(vk.bound.sets, sets, sizeof(sets));
+		memcpy(vk.bound.offsets, offsets, sizeof(offsets));
+	}
 	for (index = 0; index < XGPU_VULKAN_BINDINGS; index++)
 	{
 		if ((draw->bindings & (1u << index)) && draw->vertices[index].buffer)
-			vkCmdBindVertexBuffers(commands, vertex_binding(draw->bindings, index), 1,
-				&draw->vertices[index].buffer, &draw->vertices[index].offset);
+		{
+			uint32_t binding = vertex_binding(draw->bindings, index);
+
+			if (vk.bound.vertices[binding] == draw->vertices[index].buffer &&
+				vk.bound.vertex_offsets[binding] == draw->vertices[index].offset)
+				continue;
+			vkCmdBindVertexBuffers(commands, binding, 1, &draw->vertices[index].buffer, &draw->vertices[index].offset);
+			vk.bound.vertices[binding] = draw->vertices[index].buffer;
+			vk.bound.vertex_offsets[binding] = draw->vertices[index].offset;
+		}
 	}
 	if (draw->indices.buffer)
 	{
-		vkCmdBindIndexBuffer(commands, draw->indices.buffer, draw->indices.offset, VK_INDEX_TYPE_UINT16);
+		if (vk.bound.indices != draw->indices.buffer || vk.bound.index_offset != draw->indices.offset)
+		{
+			vkCmdBindIndexBuffer(commands, draw->indices.buffer, draw->indices.offset, VK_INDEX_TYPE_UINT16);
+			vk.bound.indices = draw->indices.buffer;
+			vk.bound.index_offset = draw->indices.offset;
+		}
 		vkCmdDrawIndexed(commands, draw->count, 1, draw->first_index, draw->vertex_offset, 0);
 	}
 	else
