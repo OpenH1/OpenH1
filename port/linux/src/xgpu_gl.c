@@ -5166,7 +5166,8 @@ void xgpu_backend_vr_initialize(struct xgpu_vr_info *info)
 	vr_gl.hud_height = info->hud_height;
 	vr_gl.scope_size = info->scope_size;
 	vr_gl.statistics = info->statistics;
-	vr_gl.gpu_time = vr_gl.statistics && config_boolean("debug.vr_gpu_time");
+	/* (the settings file's, which the guest reads, or HALO_VR_GPU_TIME) */
+	vr_gl.gpu_time = vr_gl.statistics && (info->gpu_time || config_boolean("debug.vr_gpu_time"));
 	if (vr_gl.gpu_time)
 	{
 #ifndef HALO_GLES

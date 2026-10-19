@@ -1039,7 +1039,8 @@ static void initialize(struct xgpu_vr_info *info)
 	vr.hud_height = info->hud_height;
 	vr.scope_size = info->scope_size;
 	vr.statistics = info->statistics;
-	vr.gpu_time = vr.statistics && config_boolean("debug.vr_gpu_time");
+	/* (the settings file's, which the guest reads, or HALO_VR_GPU_TIME) */
+	vr.gpu_time = vr.statistics && (info->gpu_time || config_boolean("debug.vr_gpu_time"));
 	if (vr.gpu_time && !capabilities.gpu_timestamps)
 	{
 		host_logf(HOST_LOG_INFO, "vr: this Vulkan queue has no GPU timestamps; GPU duration unavailable");

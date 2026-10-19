@@ -729,7 +729,8 @@ static void stream_vr_initialize(void *context, struct xgpu_stream_vr_info *wire
 	info.hud_width = wire->hud_width;
 	info.hud_height = wire->hud_height;
 	info.scope_size = wire->scope_size;
-	info.statistics = wire->statistics != 0;
+	info.statistics = (wire->statistics & XGPU_STREAM_VR_STATISTICS) != 0;
+	info.gpu_time = (wire->statistics & XGPU_STREAM_VR_GPU_TIME) != 0;
 	vr_frame.statistics = info.statistics;
 	renderer->initialize(&info);
 	wire->foveated = info.foveated != 0;

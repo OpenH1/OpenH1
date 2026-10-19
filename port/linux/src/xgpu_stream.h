@@ -726,6 +726,9 @@ vr.foveation's inset (halo_vr_foveation_inset, 0 off) and its name (for
 the log), in; and out, the visibility tests counted by the pixel shaders
 from now on (xgpu_backend_capabilities' sample_counting, which the VR
 mode's eye pass needs) */
+/* (statistics' bits: debug.gpu_stats, and with it debug.vr_gpu_time) */
+#define XGPU_STREAM_VR_STATISTICS 1
+#define XGPU_STREAM_VR_GPU_TIME 2
 struct xgpu_stream_vr_info
 {
 	int32_t eye_width, eye_height;
