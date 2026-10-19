@@ -18,7 +18,8 @@ Everything is made here, with no downloaded assets:
   on edges (Cycles bevel-node edge mask plus noise), around the fasteners and in
   small impact chips; scratches, grime in the crevices (AO), satin roughness
   variation and a little surface waviness. The stencil paint sits on top with
-  slightly soft, ragged edges, overspray haze and its own scuffs.
+  crisp edges (a tight-fitting stencil: barely any overspray), worn by chips
+  and scratches rather than blur.
 * Cameras and light rigs for each shot; render.py picks one per shot.
 """
 
@@ -41,6 +42,7 @@ BUILD = HERE / "_build"
 BLEND = HERE / "scene.blend"
 
 S = 0.003          # metres per SVG unit: the 100-unit mark is a 30 cm plate
+HULL = "#465048"   # the hull paint: a dark, cool grey-green
 T = 0.010          # plate thickness
 SEAM_GAP = 0.5     # SVG units between the main plate and the serial strip
 MASK_PX = 8192     # stencil mask resolution across the 100-unit square
@@ -285,7 +287,7 @@ def make_masks(mark):
     nt = MASK_PX // 2
     bar = raster(mark["tab"]["bar"], nt)
     stripes = raster(mark["tab"]["stripes"], nt) * (bar > 0).astype(np.float32)
-    write_png(tabp, np.dstack([gauss_blur(bar, 1.2), gauss_blur(stripes, 1.2),
+    write_png(tabp, np.dstack([gauss_blur(bar, 0.5), gauss_blur(stripes, 0.5),
                                gauss_blur(np.maximum(bar, stripes), 12.0)]))
     n = MASK_PX
     print("rasterising stencil masks ...", flush=True)
@@ -295,7 +297,7 @@ def make_masks(mark):
         m = raster(mark[key], n)
         hz = m.reshape(n // 4, 4, n // 4, 4).mean(axis=(1, 3))
         hazes.append(gauss_blur(hz, 7.0))
-        chans.append(gauss_blur(m, 2.0))
+        chans.append(gauss_blur(m, 0.7))
     letters = np.maximum(chans[0], chans[1])
     hazes.append(gauss_blur(letters.reshape(n // 4, 4, n // 4, 4).mean(axis=(1, 3)), 26.0))
     # A = the paint specks, blurred wider: the shader breaks their square edges up into chips
@@ -670,9 +672,10 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     deep = N.mul(scratch, N.ramp(N.noise(P, 0.05, 2), 0.55, 0.65))
 
     # ---- colours
-    olive_top, olive_bot = srgb_to_linear(mark["hull_top"]), srgb_to_linear(mark["hull_bottom"])
-    olive = tuple((a * 0.55 + b * 0.45) for a, b in zip(olive_top, olive_bot))
-    olive_dry = tuple(c * f for c, f in zip(olive, (1.18, 1.12, 0.95)))
+    # (a heavy military vehicle's hull: a darker, cooler grey-green than the
+    # mark's olive, semi-gloss, worn to steel where it is handled)
+    olive = srgb_to_linear(HULL)
+    olive_dry = tuple(c * f for c, f in zip(olive, (1.1, 1.1, 1.06)))
     paint = N.mix(N.ramp(mottle, 0.35, 0.7), N.rgb(olive), N.rgb(olive_dry))
     paint = N.scale_col(paint, N.add(0.82, N.mul(fine, 0.12), N.mul(big, 0.26)))
     # faded, sun-bleached patches and an occasional touched-up panel area
@@ -692,7 +695,7 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
         N.feed(st.inputs[0], uv)
         N.feed(hz.inputs[0], uv)
         sm, hm = N.xyz(st.outputs["Color"]), N.xyz(hz.outputs["Color"])
-        rag = N.add(N.mul(N.sub(N.noise(P, 2.6, 4, 0.6), 0.5), 0.22), N.mul(N.sub(mid, 0.5), 0.12))
+        rag = N.add(N.mul(N.sub(N.noise(P, 2.6, 4, 0.6), 0.5), 0.05), N.mul(N.sub(mid, 0.5), 0.03))
         # stencil wear: like the plate's, it gathers near the letters' edges and
         # bridges and in the plate's wear zones, in clumps, with whole areas intact;
         # the SVG's paint specks are kept only where that wear is
@@ -712,13 +715,13 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
         sand, orange = srgb_to_linear(mark["sand"]), srgb_to_linear(mark["orange"])
         sand = tuple(c * 0.92 for c in sand)
         orange = tuple(c * f for c, f in zip(orange, (0.93, 0.95, 1.0)))
-        a_h = N.mul(N.ramp(N.add(sm[0], rag), 0.44, 0.56), keep)
-        a_o = N.mul(N.ramp(N.add(sm[1], rag), 0.44, 0.56), keep)
-        a_s = N.mul(N.ramp(N.add(sm[2], N.mul(rag, 0.6)), 0.42, 0.58), keep_s)
+        a_h = N.mul(N.ramp(N.add(sm[0], rag), 0.48, 0.52), keep)
+        a_o = N.mul(N.ramp(N.add(sm[1], rag), 0.48, 0.52), keep)
+        a_s = N.mul(N.ramp(N.add(sm[2], N.mul(rag, 0.6)), 0.47, 0.53), keep_s)
         speck = N.ramp(fine, 0.45, 0.75)
-        col = N.mix(N.mul(N.mul(hm[0], 0.35), speck), col, N.rgb(sand))
-        col = N.mix(N.mul(N.mul(hm[1], 0.45), speck), col, N.rgb(orange))
-        col = N.mix(N.mul(N.mul(hm[2], 0.15), speck), col, N.rgb(sand))
+        col = N.mix(N.mul(N.mul(hm[0], 0.06), speck), col, N.rgb(sand))
+        col = N.mix(N.mul(N.mul(hm[1], 0.08), speck), col, N.rgb(orange))
+        col = N.mix(N.mul(N.mul(hm[2], 0.03), speck), col, N.rgb(sand))
         stencil_tint = N.add(N.mul(fine, 0.12), 0.9)
         col = N.mix(a_h, col, N.scale_col(N.rgb(sand), stencil_tint))
         col = N.mix(a_o, col, N.scale_col(N.rgb(orange), stencil_tint))
@@ -731,9 +734,9 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
         twear = N.add(swear, N.mul(near_tab_edge, N.mul(cl2, 0.6)))
         keep_t = N.mul(N.mul(N.inv(N.mul(N.ramp(twear, 0.5, 0.66), 0.45)), N.inv(N.math("MAXIMUM", gone, N.ramp(twear, 0.71, 0.74)))),
                        intact)
-        a_t = N.mul(N.ramp(N.add(tm[0], N.mul(rag, 0.8)), 0.44, 0.56), keep_t)
-        a_k = N.mul(N.ramp(N.add(tm[1], N.mul(rag, 0.8)), 0.44, 0.56), keep_t)
-        col = N.mix(N.mul(N.mul(tm[2], 0.3), speck), col, N.rgb(orange))
+        a_t = N.mul(N.ramp(N.add(tm[0], N.mul(rag, 0.8)), 0.48, 0.52), keep_t)
+        a_k = N.mul(N.ramp(N.add(tm[1], N.mul(rag, 0.8)), 0.48, 0.52), keep_t)
+        col = N.mix(N.mul(N.mul(tm[2], 0.05), speck), col, N.rgb(orange))
         col = N.mix(a_t, col, N.scale_col(N.rgb(orange), stencil_tint))
         col = N.mix(a_k, col, N.scale_col(N.rgb((0.016, 0.016, 0.015)), N.add(0.8, N.mul(fine, 0.4))))
         stencil_a = N.math("MAXIMUM", N.math("MAXIMUM", N.math("MAXIMUM", a_h, a_o), a_s), a_t)
@@ -774,7 +777,7 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     col = N.mix(N.mul(dust, N.inv(metal)), col, N.rgb((0.15, 0.14, 0.12)))
 
     # ---- roughness
-    rough_paint = N.add(0.64, N.mul(N.sub(big, 0.5), 0.4), N.mul(N.sub(mid, 0.5), 0.16), N.mul(N.sub(fine, 0.5), 0.08),
+    rough_paint = N.add(0.46, N.mul(N.sub(big, 0.5), 0.4), N.mul(N.sub(mid, 0.5), 0.16), N.mul(N.sub(fine, 0.5), 0.08),
                         N.mul(polish, -0.22), N.mul(touch, -0.12), N.mul(handling, -0.16))
     rough = N.mixf(N.mul(worn_thin, 0.6), rough_paint, 0.38)
     if stencil_a is not None:
