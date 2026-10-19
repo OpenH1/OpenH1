@@ -561,6 +561,11 @@ struct halo_vr_seat
 };
 int halo_vr_seat_enabled(int kind);
 void halo_vr_seat_place(const struct halo_vr_seat *seat);
+/* the first player drives a vehicle the game steers toward the facing, not
+placed as a seat (the Scorpion: port/linux/game/vr_vehicle.c), told each
+frame: the move stick's sideways push turns the player there, as the turn
+stick does, and does not reach the game's sideways throttle */
+void halo_vr_seat_drive(void);
 /* the smart-link's view on the visor magnifies the aim this many times
 this frame (1: it is not shown), told by the game (vr_aim.c): the aim is
 steadied the more, the more it is magnified */

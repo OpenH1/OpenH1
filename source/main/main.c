@@ -430,6 +430,13 @@ enum
 	_text_justification_right,
 };
 
+/* port: a network game's frame this long or longer is noted in debug.txt
+(milliseconds; a client's connection times out after 15 seconds of silence) */
+enum
+{
+	LONG_NETWORK_FRAME_MILLISECONDS = 2000,
+};
+
 /* ---------- macros */
 
 /* ---------- structures */
@@ -3617,6 +3624,24 @@ static boolean main_loop_iteration(
 			map_share_update();
 			/* port: network games' text chat (port/linux/game/network_chat.c) */
 			network_chat_update();
+			/* port: a frame of a network game that took seconds (a hitch,
+			a stall of the renderer or of the VR runtime) noted in debug.txt,
+			nothing having been sent or read meanwhile: why a machine
+			timed out of a game, or another lost it, can then be read */
+			{
+				static unsigned long previous_network_frame_milliseconds;
+				unsigned long now = system_milliseconds();
+
+				if ((main_globals.connection==_game_connection_network_client ||
+					main_globals.connection==_game_connection_network_server) && game_in_progress() &&
+					previous_network_frame_milliseconds &&
+					now-previous_network_frame_milliseconds>=LONG_NETWORK_FRAME_MILLISECONDS)
+				{
+					error(_error_silent, "a frame of %lu ms in a network game (nothing sent or read meanwhile)",
+						now-previous_network_frame_milliseconds);
+				}
+				previous_network_frame_milliseconds = now;
+			}
 			profile_scope_enter(main_network_start_frame_section)
 			connection = main_globals.connection;
 			if (connection==_game_connection_network_client)
