@@ -33,7 +33,10 @@ next with their weapon's projectile: a client's through its report to the
 host) and debug.network_test_vehicle (the host seats the last player as a
 vehicle's driver that many seconds in, takes them out 15 seconds on, and 5
 seconds later stands them at a vehicle's driver's entrance, where a joining
-machine's player holds the action button, as getting in does)
+machine's player holds the action button, as getting in does; with
+debug.network_test_hitch the frame then stops for that many seconds, as a
+stall of the renderer or of the VR runtime stops it, which the host must
+play through)
 and debug.network_test_pickup (the last player stands on a weapon lying
 about that many seconds in, and a joining machine's player holds the action
 button a second later, to pick it up).
@@ -81,6 +84,7 @@ double config_real(char const *name);
 long config_integer(char const *name);
 int config_write(char const *name, char const *value);
 void platform_log(char const *format, ...);
+unsigned long system_milliseconds(void);
 /* damage.c's */
 void damage_kill_object_for_player(long object_index, long player_index);
 /* network_distributed.c's */
@@ -124,6 +128,7 @@ static struct
 	real kill_interval;
 	real shoot_interval;
 	real vehicle_time;
+	real hitch_seconds;
 	real pickup_time;
 	char pickup_weapon[64];
 	/* debug.network_test_chat's, and the lines said this game */
@@ -195,6 +200,7 @@ static void network_test_read_settings(
 	network_test.kill_interval = (real)config_real("debug.network_test_kill");
 	network_test.shoot_interval = (real)config_real("debug.network_test_shoot");
 	network_test.vehicle_time = (real)config_real("debug.network_test_vehicle");
+	network_test.hitch_seconds = (real)config_real("debug.network_test_hitch");
 	network_test.pickup_time = (real)config_real("debug.network_test_pickup");
 	network_test.chat_time = (real)config_real("debug.network_test_chat");
 	snprintf(network_test.pickup_weapon, sizeof(network_test.pickup_weapon), "%s",
@@ -479,6 +485,22 @@ static void network_test_shoot(
 	}
 }
 
+/* debug.network_test_hitch: the frame stopped for that many seconds, as
+a stall of the renderer or of the VR runtime stops it (nothing sent, read
+or ticked meanwhile) */
+static void network_test_hitch(
+	void)
+{
+	unsigned long start = system_milliseconds();
+	unsigned long length = (unsigned long)(network_test.hitch_seconds * 1000.0f);
+
+	if (network_test.hitch_seconds <= 0.0f)
+		return;
+	platform_log("network test: the frame stops for %.1f seconds", network_test.hitch_seconds);
+	while (system_milliseconds() - start < length)
+		;
+}
+
 /* the host seats the last player as the nearest vehicle's driver, or out */
 /* the host brings the players far from the first (on foot) near it, so
 that they are within their weapons' reach (network_test_shoot shoots only
@@ -604,6 +626,7 @@ static void network_test_vehicle(
 				unit_enter_seat(last->unit_index, nearest_index, seat_index))
 			{
 				platform_log("network test: the last player drives vehicle %lx", nearest_index);
+				network_test_hitch();
 				return;
 			}
 		}
