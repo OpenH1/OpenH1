@@ -24,8 +24,13 @@ struct xgpu_vulkan_image *xgpu_vulkan_textures_get(const struct xgpu_stream_text
 (an effect's bitmap), RGBA8 (xgpu_vulkan_effects.h), baked from its first
 level the first time it is asked for and kept with the texture (made
 again with its texels); NULL for one it cannot be (a cube, a volume, too
-large, an image) */
+large, an image, one whose texels could not be read yet) */
 struct xgpu_vulkan_image *xgpu_vulkan_textures_thickness(const struct xgpu_stream_texture_stage *stage);
+/* changes whenever a thickness image is destroyed (baked again, its
+texture let go of by xgpu_vulkan_textures_frame_end, or read with another
+palette): one kept from xgpu_vulkan_textures_thickness may be drawn with
+only while this is the same as when it was looked up */
+uint32_t xgpu_vulkan_textures_thickness_epoch(void);
 
 /* A texture whose header is named by the VR stream (the visor's plasma
 noise), checked and decoded through the same cache as a draw's stage. */
