@@ -31,8 +31,8 @@ installs; it does not update itself), zipped as
 dist/halo-steam-frame-vr-<config>/halo-steam-frame-vr-<config>.zip, which
 the release has as it is.
 
-A Linux build is the release's tree (tools/linux_package.py: bin/opence,
-lib/opence, share/...), dist/halo-linux-x86_64[-vr]-<config>/ or
+A Linux build is the release's tree (tools/linux_package.py: bin/openh1,
+lib/openh1, share/...), dist/halo-linux-x86_64[-vr]-<config>/ or
 dist/halo-linux-arm64-<config>/, named as its self-updater asks
 (port/linux/src/updater.c, UPDATE_PLATFORM).
 

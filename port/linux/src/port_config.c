@@ -977,7 +977,7 @@ static const struct config_setting config_settings[] =
 		"HALO_NET_BROKERS_FILE", _environment_value, _platform_all,
 		"The file of the public MQTT brokers through which the machines of an\n"
 		"invite find each other (its messages are encrypted), beside this file\n"
-		"(else the game's own, share/opence/brokers.txt in the Linux release)\n"
+		"(else the game's own, share/openh1/brokers.txt in the Linux release)\n"
 		"unless a full path: one host:port on each line, up to 4. Updates\n"
 		"replace brokers.txt: keep a list of your own under another name." },
 	{ "network.stun_servers", _config_string, "\"stun.l.google.com:19302,stun.cloudflare.com:3478\"",

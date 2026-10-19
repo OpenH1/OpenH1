@@ -3,19 +3,19 @@
 
     python tools/app_icon.py
 
-- opence-icon.png, the helmet on its background (512x512): the Windows
-  executable's icon (port/windows/opence-icon.ico, which port/windows/halo.rc
-  puts in halo.exe) and the desktop builds' window icon (opence-icon-256.png,
+- openh1-icon.png, the helmet on its background (512x512): the Windows
+  executable's icon (port/windows/openh1-icon.ico, which port/windows/halo.rc
+  puts in halo.exe) and the desktop builds' window icon (openh1-icon-256.png,
   which tools/embed_assets.py embeds and sdl_platform.c gives the window);
-- opence-icon-render.png, the helmet alone on transparency (1024x1024, the same
+- openh1-icon-render.png, the helmet alone on transparency (1024x1024, the same
   framing): the Android app's launcher icon;
-- opence-icon.png again: the web page's icons (port/web/site/icons), its tab's,
+- openh1-icon.png again: the web page's icons (port/web/site/icons), its tab's,
   the installed web app's and the home screen's; the Linux release's
-  (port/assets/icon/hicolor/opence-<size>.png, which tools/linux_package.py
-  puts in share/icons/hicolor/<size>x<size>/apps/opence.png for the desktop
-  entry, port/assets/linux/opence.desktop);
+  (port/assets/icon/hicolor/openh1-<size>.png, which tools/linux_package.py
+  puts in share/icons/hicolor/<size>x<size>/apps/openh1.png for the desktop
+  entry, port/assets/linux/openh1.desktop);
 - the render on the background's gradient, in the rounded square of macOS's
-  icons (port/macos/opence-icon.icns): the macOS app's icon, which Finder and
+  icons (port/macos/openh1-icon.icns): the macOS app's icon, which Finder and
   the Dock show (tools/macos_build.py puts it in Halo.app).
 
 The launcher icon is an adaptive one (Android 8 and later): the render as its
@@ -41,10 +41,10 @@ from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 ARTWORK = ROOT / "port/assets/icon"
-ICON = ARTWORK / "opence-icon.png"
-RENDER = ARTWORK / "opence-icon-render.png"
-WINDOW_ICON = ARTWORK / "opence-icon-256.png"
-WINDOWS_ICON = ROOT / "port/windows/opence-icon.ico"
+ICON = ARTWORK / "openh1-icon.png"
+RENDER = ARTWORK / "openh1-icon-render.png"
+WINDOW_ICON = ARTWORK / "openh1-icon-256.png"
+WINDOWS_ICON = ROOT / "port/windows/openh1-icon.ico"
 RESOURCES = ROOT / "port/android/app/src/main/res"
 
 # the layers' size, and the part of them a launcher shows, in dp
@@ -63,7 +63,7 @@ LINUX_SIZES = [16, 24, 32, 48, 64, 128, 256, 512]
 # macOS's icon: Apple's grid for app icons (macOS 11 and later), a rounded
 # square of 824 pixels in a canvas of 1024, its corners' radius 185.4, with a
 # drop shadow below it; the .icns holds every size from it, 16 to 1024
-MACOS_ICON = ROOT / "port/macos/opence-icon.icns"
+MACOS_ICON = ROOT / "port/macos/openh1-icon.icns"
 MACOS_CANVAS = 1024
 MACOS_SQUARE = 824
 MACOS_RADIUS = 185.4
@@ -121,7 +121,7 @@ def web_icons(icon: Image.Image) -> None:
 def linux_icons(icon: Image.Image) -> None:
     LINUX_ICONS.mkdir(parents=True, exist_ok=True)
     for size in LINUX_SIZES:
-        icon.resize((size, size), Image.LANCZOS).save(LINUX_ICONS / f"opence-{size}.png", optimize=True)
+        icon.resize((size, size), Image.LANCZOS).save(LINUX_ICONS / f"openh1-{size}.png", optimize=True)
     print(f"{LINUX_ICONS.relative_to(ROOT)}: {', '.join(str(size) for size in LINUX_SIZES)}")
 
 

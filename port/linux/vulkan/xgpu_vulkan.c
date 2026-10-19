@@ -4139,8 +4139,8 @@ static int instance_make(const struct xgpu_vulkan_options *options)
 	}
 	memset(&application, 0, sizeof(application));
 	application.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	application.pApplicationName = "OpenCE";
-	application.pEngineName = "OpenCE";
+	application.pApplicationName = "OpenH1";
+	application.pEngineName = "OpenH1";
 	application.apiVersion = VK_API_VERSION_1_3;
 	memset(&info, 0, sizeof(info));
 	info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;

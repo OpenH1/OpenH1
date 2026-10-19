@@ -24,7 +24,7 @@ reached. If it is newer, the game asks whether to update:
 The system side (the HTTPS download, the files, starting the new game) is
 update.h's: posix_update.c on Linux, win32_update.c on Windows.
 
-On Linux the release is a tree (bin/opence, lib/opence, share/...:
+On Linux the release is a tree (bin/openh1, lib/openh1, share/...:
 install_layout.c, tools/linux_package.py), halo-linux-x86_64-<flavor>.zip
 or halo-linux-arm64-<flavor>.zip (tools/ci_build.py), and the game's folder
 is its root. A game a package manager installed, or one in a folder the
@@ -392,7 +392,7 @@ static int zip_extract(SDL_IOStream *zip, char names[][256], int *name_count, ch
 				snprintf(error, error_size, "could not unpack %s: %s", name, reason[0] ? reason : "no folder for it");
 				goto done;
 			}
-			/* (executable on Unix, as the zip made there says: bin/opence) */
+			/* (executable on Unix, as the zip made there says: bin/openh1) */
 			if (header[5] == 3 && ((zip_long(header + 38) >> 16) & 0111) && !update_make_executable(path))
 			{
 				snprintf(error, error_size, "could not make %s executable", name);
@@ -762,12 +762,14 @@ that follows an update) */
 static int updater_clean_up(void)
 {
 	/* (the Windows folder's; the Linux tree's, with the CC0 licence the
-	releases before the AGPL had: tools/linux_package.py) */
+	releases before the AGPL had, under the names of the trees then and now:
+	tools/linux_package.py) */
 	static const char *const notices[] =
 	{
 #ifdef _WIN32
 		"extract-xiso-LICENSE.txt",
 #else
+		"share/licenses/opence/extract-xiso-LICENSE.txt", "share/licenses/opence/LICENSE.md",
 		"share/licenses/" INSTALL_NAME "/extract-xiso-LICENSE.txt",
 		"share/licenses/" INSTALL_NAME "/LICENSE.md",
 #endif

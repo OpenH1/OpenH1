@@ -160,22 +160,22 @@ def test_copy_of_a_flat_folder(tmp_path):
 
 
 def test_copy_of_a_release_tree(tmp_path):
-    # bin/opence, its SDL in lib/opence (the rpath's $ORIGIN/../lib/opence),
-    # share/opence; packaged would make the copy an installed game
-    root = tmp_path / "OpenCE"
-    for folder in ("bin", "lib/opence", "share/opence", "share/doc/opence"):
+    # bin/openh1, its SDL in lib/openh1 (the rpath's $ORIGIN/../lib/openh1),
+    # share/openh1; packaged would make the copy an installed game
+    root = tmp_path / "OpenH1"
+    for folder in ("bin", "lib/openh1", "share/openh1", "share/doc/openh1"):
         (root / folder).mkdir(parents=True)
-    (root / "bin/opence").write_text("#!/bin/sh\n")
-    (root / "lib/opence/libSDL3.so.0").write_text("")
-    (root / "share/opence/brokers.txt").write_text("")
-    (root / "share/opence/packaged").write_text("")
-    copy = net_compare.prepare_copy(tmp_path / "work", "B", root / "bin/opence", make_data(tmp_path))
+    (root / "bin/openh1").write_text("#!/bin/sh\n")
+    (root / "lib/openh1/libSDL3.so.0").write_text("")
+    (root / "share/openh1/brokers.txt").write_text("")
+    (root / "share/openh1/packaged").write_text("")
+    copy = net_compare.prepare_copy(tmp_path / "work", "B", root / "bin/openh1", make_data(tmp_path))
     folder = tmp_path / "work/B"
-    assert copy["executable"] == folder / "bin/opence"
-    assert (folder / "lib/opence/libSDL3.so.0").resolve() == root / "lib/opence/libSDL3.so.0"
-    assert (folder / "share/opence/brokers.txt").exists()
-    assert not (folder / "share/opence/packaged").exists()
-    assert not (root / "share/opence/brokers.txt").is_symlink()
+    assert copy["executable"] == folder / "bin/openh1"
+    assert (folder / "lib/openh1/libSDL3.so.0").resolve() == root / "lib/openh1/libSDL3.so.0"
+    assert (folder / "share/openh1/brokers.txt").exists()
+    assert not (folder / "share/openh1/packaged").exists()
+    assert not (root / "share/openh1/brokers.txt").is_symlink()
 
 
 def environment_of(window=False, display=None):

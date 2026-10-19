@@ -795,7 +795,7 @@ static int cold_run(int argc, char *argv[])
 
 	if (_NSGetExecutablePath(self, &size) || !arguments)
 		return 2;
-	snprintf(identifier, sizeof(identifier), "org.opence.halo-replay.cold-%ld-%d", (long)time(NULL), getpid());
+	snprintf(identifier, sizeof(identifier), "com.openh1.halo-replay.cold-%ld-%d", (long)time(NULL), getpid());
 	app = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"%s.app", identifier]];
 	macos = [app stringByAppendingPathComponent:@"Contents/MacOS"];
 	copy = [macos stringByAppendingPathComponent:@"halo_replay"];

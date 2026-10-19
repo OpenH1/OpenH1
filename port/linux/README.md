@@ -24,7 +24,7 @@ To build:
 - Python and ninja.
 - clang for the host. The guest is compiled, linked and checked
   (`tools/guest_image_check.py`) with LLVM 22.1.8, which `configure.py`
-  downloads the first time (approximately 1.5 GB) to `~/.cache/opence`.
+  downloads the first time (approximately 1.5 GB) to `~/.cache/openh1`.
   Refer to "The guests' compiler" in [README.md](../../README.md#the-guests-compiler).
   The option `--linux-x86-64-cc` (or `--linux-arm64-cc`) of `configure.py`
   selects a different clang for the host and the guest, which then needs
@@ -54,16 +54,16 @@ To start the game:
   that built it, or a later one.
 - The X11 or Wayland client libraries, and the PipeWire, PulseAudio or ALSA
   client libraries for sound. The game brings SDL 3 (`libSDL3.so.0`, next
-  to the executable in a build, in `lib/opence` in a release), which looks
+  to the executable in a build, in `lib/openh1` in a release), which looks
   for X11, Wayland, libdecor, PipeWire, PulseAudio and ALSA when it starts,
   so it starts with whichever of them the system has. On GNOME, a Wayland
   window has borders only with libdecor.
 
 SteamOS has all of these. Its system is read-only, and the builds from
 GitHub Actions need no package: they bring their own SDL3
-(`lib/opence/libSDL3.so.0`). The executable looks for it in its own folder
-and in `../lib/opence` first (a `DT_RPATH` of
-`$ORIGIN:$ORIGIN/../lib/opence`, which comes before `LD_LIBRARY_PATH`), so
+(`lib/openh1/libSDL3.so.0`). The executable looks for it in its own folder
+and in `../lib/openh1` first (a `DT_RPATH` of
+`$ORIGIN:$ORIGIN/../lib/openh1`, which comes before `LD_LIBRARY_PATH`), so
 that it uses this SDL even when Steam sets `LD_LIBRARY_PATH`. Its license
 is `SDL3-LICENSE.txt`.
 
@@ -84,11 +84,11 @@ Enter `build/linux_x86_64/halo`.
 The release (`halo-linux-x86_64-release.zip`, or
 `halo-linux-arm64-release.zip` for 64-bit ARM) is a folder laid out as a
 Unix prefix is (refer to "Packaging"). Unpack it into a folder, and enter
-`bin/opence` in that folder. That folder is the game's folder: the game
+`bin/openh1` in that folder. That folder is the game's folder: the game
 keeps `config.toml` and `maps/` there.
 
 To play on a Steam Deck, unpack `halo-linux-x86_64-release.zip` into a
-folder (in Desktop Mode), and add `bin/opence` to Steam as a non-Steam game
+folder (in Desktop Mode), and add `bin/openh1` to Steam as a non-Steam game
 ("Add a Game" in the Games menu of Steam). The game then starts in Game
 Mode as well. Refer to "Steam Deck".
 
@@ -132,7 +132,7 @@ the game asks for the disc image again at the next start.
 
 Do the set-up in Desktop Mode: unpack the release, put `maps/` in its
 folder, next to `bin/` (or start the game one time to copy it from a disc
-image), and add `bin/opence` to Steam. Then start the game from the library
+image), and add `bin/openh1` to Steam. Then start the game from the library
 in Game Mode.
 
 - Build: the 64-bit x86 one, `halo-linux-x86_64-release.zip`, which draws
@@ -192,7 +192,7 @@ folder, or the folder of `build/linux_x86_64/halo`), or in
 `~/.config/halo-linux` for an installed game. Refer to "Settings" and
 "Packaging". Internet play's MQTT brokers are in `brokers.txt`
 (`network.brokers_file`): the one next to `config.toml`, if there is one,
-else the release's `share/opence/brokers.txt`.
+else the release's `share/openh1/brokers.txt`.
 
 If the game stops because of a fatal signal, the host writes the address,
 the registers and the frame chain to the standard error. Where the address
@@ -504,9 +504,9 @@ the setting for one start of the game. It has priority over the file.
 | `network.map_seed_upload` | `256` | `HALO_NET_MAP_SEED_UPLOAD` | When you play in the game of another machine: the most kilobytes per second that the game sends of maps to other players (`16` to `10240`, 10 MB/s). UPLOAD LIMIT in Settings > Network Setup > Map Sharing. |
 | `network.map_download` | `true` | `HALO_NET_MAP_DOWNLOAD` | When you join a game on a Custom Edition map that you do not have: download it from the players of the game. `false`: leave the game and show which map is missing. DOWNLOAD MAPS in Settings > Network Setup > Map Sharing. |
 | `network.coop_public` | `false` | `HALO_NET_COOP_PUBLIC` | `true`: an online co-op game (Create Game > Internet, a SINGLEPLAYER map) starts as PUBLIC. `false`: it starts as PRIVATE. LISTING in co-op's Server Setup writes its choice here. Refer to "Server browser". |
-| `network.brokers_file` | `"brokers.txt"` | `HALO_NET_BROKERS_FILE` | The file of the public MQTT brokers that let the machines of an invite find each other, and that carry the listings of the server browser: next to `config.toml` (else the release's, `share/opence/brokers.txt`), unless a full path. One `host:port` on each line, up to 4; `#` starts a comment. |
+| `network.brokers_file` | `"brokers.txt"` | `HALO_NET_BROKERS_FILE` | The file of the public MQTT brokers that let the machines of an invite find each other, and that carry the listings of the server browser: next to `config.toml` (else the release's, `share/openh1/brokers.txt`), unless a full path. One `host:port` on each line, up to 4; `#` starts a comment. |
 | `network.stun_servers` | Google and Cloudflare | `HALO_NET_STUN` | The public STUN servers (`host:port`, with commas between them) that give the internet address of a machine. |
-| `discord.application_id` | the application of the project | `HALO_DISCORD_APPLICATION` | The Discord application for invites. Empty: no Discord. |
+| `discord.application_id` | OpenCE's application (OpenH1 has none of its own) | `HALO_DISCORD_APPLICATION` | The Discord application for invites. Empty: no Discord. |
 | `update.auto` | `true` | `HALO_UPDATE_AUTO` | `true`: at start-up, the game looks for a new version. Refer to "Updates". `false`: the game does not look. |
 | `streamer.enabled` | `false` | `HALO_STREAMER_MODE` | `true`: streamer mode hides offensive words, as stars, in the names and text of other players, maps and mods, at the levels below. Refer to "Streamer mode". STREAMER MODE in Settings > Network Setup > Streamer Mode. |
 | `streamer.slurs` | `"mild"` | `HALO_STREAMER_SLURS` | With `streamer.enabled`, the slurs (race, ethnicity, sexuality, gender, disability) hidden: `"off"`, `"severe"`, `"strong"` (strong and severe) or `"mild"` (all). CENSOR SLURS in Settings > Network Setup > Streamer Mode. |
@@ -614,7 +614,7 @@ the distribution (`src/posix_update.c`, with Mbed TLS); on Windows, the
 certificate store of Windows (WinHTTP). The game's folder must let the
 game write to it.
 
-Only a game in a release's tree (`bin/opence`, refer to "Packaging")
+Only a game in a release's tree (`bin/openh1`, refer to "Packaging")
 updates itself. Builds that you make yourself have no build number, and a
 build's folder (`build/linux_x86_64`) is not a tree: they do not look for
 updates. An installed game (refer to "Packaging") does not look for
@@ -625,22 +625,22 @@ updates: its package manager updates it.
 The release (`halo-linux-x86_64-release.zip`, `halo-linux-arm64-release.zip`,
 `halo-linux-x86_64-vr-release.zip`, and their `-debug.zip`) is laid out as a
 Unix prefix is, so a package can copy its folders to `/usr` (or
-`/opt/opence`) as they are (but not the Steam Frame's
+`/opt/openh1`) as they are (but not the Steam Frame's
 `halo-steam-frame-vr-release.zip`, its own package: "Steam Frame" in "VR"):
 
 | Path | Contents |
 | --- | --- |
-| `bin/opence` | The game: a 64-bit executable (x86-64 or AArch64), with the game's guest image inside it. |
-| `lib/opence/libSDL3.so.0` | SDL 3, which the game loads from there (a `DT_RPATH` of `$ORIGIN:$ORIGIN/../lib/opence`; refer to "Requirements"). Leave it out to use the system's SDL 3. |
-| `share/opence/brokers.txt` | Internet play's MQTT brokers (`network.brokers_file`). |
-| `share/applications/opence.desktop` | The desktop entry. |
-| `share/icons/hicolor/<size>/apps/opence.png` | Its icon, 16x16 to 512x512. |
-| `share/doc/opence/` | The main README and this one. |
-| `share/licenses/opence/` | The project's license (`LICENSE.md`, CC0) and the licenses of what the build carries, which ask to be carried with it. |
+| `bin/openh1` | The game: a 64-bit executable (x86-64 or AArch64), with the game's guest image inside it. |
+| `lib/openh1/libSDL3.so.0` | SDL 3, which the game loads from there (a `DT_RPATH` of `$ORIGIN:$ORIGIN/../lib/openh1`; refer to "Requirements"). Leave it out to use the system's SDL 3. |
+| `share/openh1/brokers.txt` | Internet play's MQTT brokers (`network.brokers_file`). |
+| `share/applications/openh1.desktop` | The desktop entry. |
+| `share/icons/hicolor/<size>/apps/openh1.png` | Its icon, 16x16 to 512x512. |
+| `share/doc/openh1/` | The main README and this one. |
+| `share/licenses/openh1/` | The project's license (`LICENSE.md`, CC0) and the licenses of what the build carries, which ask to be carried with it. |
 
 The game finds its files from the place of its executable
 (`src/install_layout.c`): when the executable's folder is `bin/` and
-`share/opence/` is next to that folder, the folder above `bin/` is the
+`share/openh1/` is next to that folder, the folder above `bin/` is the
 game's folder. Otherwise the folder of the executable is the game's folder
 (a build: `build/linux_x86_64/halo`).
 
@@ -652,18 +652,18 @@ the game's folder, and does not update itself:
   and `debug.txt`: `$XDG_DATA_HOME/halo-linux/`
   (`~/.local/share/halo-linux/`), as are the saves (refer to "Files and
   folders").
-- `brokers.txt`: the package's `share/opence/brokers.txt`, unless the player
+- `brokers.txt`: the package's `share/openh1/brokers.txt`, unless the player
   puts one next to `config.toml`.
 
 The game is installed when the player cannot write to the game's folder
-(`/usr`, `/opt/opence`), or when `share/opence/packaged` exists. A package
+(`/usr`, `/opt/openh1`), or when `share/openh1/packaged` exists. A package
 adds that file (it can be empty) so that the game is installed also when its
 folder can be written to: when root starts it, or in a folder that the
 player owns. Otherwise the game is portable: it keeps its files in its
 folder and, in a release's tree, updates itself, as an unpacked release
 does.
 
-A read-only folder without `share/opence/packaged` (a portable copy on a
+A read-only folder without `share/openh1/packaged` (a portable copy on a
 read-only disk, or `/opt/halo` with maps that an administrator put there)
 keeps the `config.toml` and `maps/` it has: the game reads them there, and
 puts in the player's folders only what the folder does not have. Without a
@@ -683,7 +683,7 @@ python tools/linux_package.py tree "$pkgdir/usr"
 `tools/linux_package.py tree` lays out the build of this computer's
 architecture (`build/linux_x86_64`, or `build/linux_arm64` on 64-bit ARM;
 `--build` names another), with the SDL 3 that the build brings in
-`lib/opence`. A build that you make has no build number, so it does not
+`lib/openh1`. A build that you make has no build number, so it does not
 look for updates in any place.
 
 The game needs: glibc 2.35 or later (or the glibc of the computer that
@@ -1139,7 +1139,7 @@ addresses. Thus anyone can learn the address of the host of a public game,
 as for any public server.
 
 The brokers are in `brokers.txt` (from `port/assets/network/brokers.txt`:
-`share/opence/brokers.txt` in the Linux release, next to the executable in
+`share/openh1/brokers.txt` in the Linux release, next to the executable in
 a build and on Windows; on Android, the app writes it next to `config.toml`
 at each start), one `host:port` on each line. A `brokers.txt` next to
 `config.toml` comes first. The game uses
@@ -1495,7 +1495,7 @@ computer: on such a computer, `ninja` without a target builds it.
 | Result | Item |
 | --- | --- |
 | `build/linux_arm64/halo` | The game, an AArch64 executable |
-| `build/linux_arm64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/opence` in the release, `halo-linux-arm64-release.zip`: "Packaging"). |
+| `build/linux_arm64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/openh1` in the release, `halo-linux-arm64-release.zip`: "Packaging"). |
 | `build/linux_arm64/SDL3-LICENSE.txt` | The license of SDL |
 
 The game data, the settings, the saved games, the controls and system link
@@ -1656,7 +1656,7 @@ needs no 32-bit libraries or drivers.
 | Result | Item |
 | --- | --- |
 | `build/linux_x86_64/halo` | The game, an x86-64 executable |
-| `build/linux_x86_64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/opence` in the release, `halo-linux-x86_64-release.zip`: "Packaging"). |
+| `build/linux_x86_64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/openh1` in the release, `halo-linux-x86_64-release.zip`: "Packaging"). |
 | `build/linux_x86_64/SDL3-LICENSE.txt` | The license of SDL |
 
 The game data, the settings (`config.toml` in the game's folder), the
@@ -1749,7 +1749,7 @@ one). Configuring it downloads the OpenXR SDK's four headers (to
 `build/<build>/third_party/openxr`, checked against their SHA-256 in
 `tools/linux_guest_build.py`).
 
-To play, start SteamVR, then start `halo` (`bin/opence` in a release; from a terminal of the headset's
+To play, start SteamVR, then start `halo` (`bin/openh1` in a release; from a terminal of the headset's
 desktop session, or as a non-Steam game in Steam). Without a runtime or a
 headset the game plays flat, in its window. `vr.enabled = false` (or
 `HALO_VR=0`) plays flat too.
@@ -1757,7 +1757,7 @@ headset the game plays flat, in its window. `vr.enabled = false` (or
 On a PC, the releases have the 64-bit x86 VR build,
 `halo-linux-x86_64-vr-release.zip`, beside the one without VR
 (`tools/ci_build.py linux_x86_64 release --vr`): unpack it to a folder of
-its own, with the maps ("Start the game"), and start `bin/opence`. It
+its own, with the maps ("Start the game"), and start `bin/openh1`. It
 updates itself to the release's VR build, never to the other. The build
 without VR has no VR mode, and the VR build starts the
 runtime (SteamVR's server) whenever it starts, so it is a download of its

@@ -42,14 +42,14 @@ def test_tree(build, tmp_path):
     tree = tmp_path / "tree"
     linux_package.stage_tree(tree, build / "halo", build / "libSDL3.so.0", notices(build))
     names = files(tree)
-    assert (tree / "bin/opence").read_bytes() == b"halo"
-    assert "lib/opence/libSDL3.so.0" in names
-    assert "share/opence/brokers.txt" in names
-    assert "share/applications/opence.desktop" in names
-    assert "share/icons/hicolor/48x48/apps/opence.png" in names
-    assert "share/licenses/opence/LICENSE" in names
-    assert "share/licenses/opence/SDL3-LICENSE.txt" in names
-    assert "share/doc/opence/README.md" in names
+    assert (tree / "bin/openh1").read_bytes() == b"halo"
+    assert "lib/openh1/libSDL3.so.0" in names
+    assert "share/openh1/brokers.txt" in names
+    assert "share/applications/openh1.desktop" in names
+    assert "share/icons/hicolor/48x48/apps/openh1.png" in names
+    assert "share/licenses/openh1/LICENSE" in names
+    assert "share/licenses/openh1/SDL3-LICENSE.txt" in names
+    assert "share/doc/openh1/README.md" in names
     # (nothing but the prefix's folders at its top)
     assert {name.split("/")[0] for name in names} == {"bin", "lib", "share"}
 
@@ -61,7 +61,7 @@ def test_tree_without_sdl(build, tmp_path):
 
 
 def test_zip_modes(build, tmp_path):
-    executables = {"bin/opence", "lib/opence/libSDL3.so.0"}
+    executables = {"bin/openh1", "lib/openh1/libSDL3.so.0"}
     folder = tmp_path / "tree"
     # (as GitHub's artifacts give them: no file executable)
     linux_package.stage_tree(folder, build / "halo", build / "libSDL3.so.0", notices(build))

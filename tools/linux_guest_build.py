@@ -343,7 +343,7 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         # loaded there)
         command=(f"${prefix}_cc -pie -o $out $in -L{sdl_build} "
                  + " ".join(f"-l{lib}" for lib in HOST_LIBRARIES)
-                 # (the SDL beside the executable, or in the release's lib/opence)
+                 # (the SDL beside the executable, or in the release's lib/openh1)
                  + " " + " ".join(SDL_RPATH_LDFLAGS) + " -Wl,--no-undefined"
                  # (posix_trace_marker.c's, which the GPU driver's calls must reach)
                  + "".join(f" -Wl,--export-dynamic-symbol={name}" for name in ("open", "open64", "openat", "openat64"))),

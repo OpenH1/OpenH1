@@ -935,7 +935,7 @@ It needs the retail maps, so it runs on a developer's machine or a
 self-hosted runner, not in the public CI; run it before merging a change to
 a build's compiler, architecture, maths or the simulation itself. A build
 is its executable: a build's (`build/linux_x86_64/halo`), or a release
-tree's `bin/opence` (its `lib/` and `share/opence` are linked into
+tree's `bin/openh1` (its `lib/` and `share/openh1` are linked into
 the copy, which stays a portable tree). Each copy gets its own folder (an
 executable, `config.toml` written in the copy's folder, a data root linking
 the maps, and saves) in `build/net_compare/`, removed when every game

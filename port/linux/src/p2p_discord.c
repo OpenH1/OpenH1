@@ -9,9 +9,9 @@ Join" and whoever accepts it joins. Discord only hands the secret to people
 the host invited (asking to join goes unanswered).
 
 It goes through the Discord application in discord.application_id
-(config.toml; the project's by default), whose name is what Discord shows
-as being played. Without one, or without Discord running, invites are still
-links (p2p.c).
+(config.toml; OpenCE's by default: OpenH1 has none of its own), whose name
+is what Discord shows as being played. Without one, or without Discord
+running, invites are still links (p2p.c).
 
 The protocol: frames of a little-endian opcode and length, then JSON. The
 handshake (opcode 0) names the application; commands and events are opcode

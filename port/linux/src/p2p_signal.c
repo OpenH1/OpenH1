@@ -1764,7 +1764,7 @@ Keep it the same as that file (test_linux_port.py checks) */
 
 /* the brokers in network.brokers_file (beside config.toml, else the one the
 release brings, unless a full path: port/assets/network/brokers.txt, which
-the builds put beside the executable or in share/opence), one on
+the builds put beside the executable or in share/openh1), one on
 each line, "#" starting a comment, into text: host:port entries separated by
 commas; DEFAULT_BROKERS if the file cannot be read */
 static void brokers_list(char *text, size_t size)
@@ -1798,7 +1798,7 @@ static void brokers_list(char *text, size_t size)
 	}
 	file = config_file_read(path, &file_size);
 #if !defined(_WIN32) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
-	/* (the release's, share/opence/brokers.txt in its tree: install_layout.c) */
+	/* (the release's, share/openh1/brokers.txt in its tree: install_layout.c) */
 	if (!file && !(name[0] == '/' || name[0] == '\\' || (name[0] && name[1] == ':')))
 	{
 		install_shared_file(name, path, sizeof(path));

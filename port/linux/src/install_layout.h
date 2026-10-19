@@ -11,16 +11,16 @@ game's, so that it can be compiled anywhere the C library is.
 
 #include <stddef.h>
 
-/* the name of the executable in a tree (bin/opence) and of its folders
-(lib/opence, share/opence, share/doc/opence) */
-#define INSTALL_NAME "opence"
+/* the name of the executable in a tree (bin/openh1) and of its folders
+(lib/openh1, share/openh1, share/doc/openh1) */
+#define INSTALL_NAME "openh1"
 
 /* the game's folder, without a separator at its end: the root of the tree
 whose bin/ holds the executable, or else the executable's folder; "" if
 the executable's path cannot be read */
 const char *install_folder(void);
 
-/* 1 when the executable is bin/opence of a tree (share/opence beside bin/),
+/* 1 when the executable is bin/openh1 of a tree (share/openh1 beside bin/),
 0 when its folder holds everything (a build: build/linux_x86_64/halo) */
 int install_is_tree(void);
 
@@ -46,7 +46,7 @@ at its end */
 const char *install_data_folder(void);
 
 /* the path of a read-only file the release brings (brokers.txt):
-share/opence/<name> in a tree, else <name> beside the executable */
+share/openh1/<name> in a tree, else <name> beside the executable */
 void install_shared_file(const char *name, char *path, size_t size);
 
 #endif
