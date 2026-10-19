@@ -64,6 +64,7 @@ USE_SCAN = False       # the scanned paint: off (the owners found it unconvincin
 CHIPS_ZIP = "https://ambientcg.com/get?file=PaintedMetal004_2K-JPG.zip"
 CHIPS_DIR = HERE / "textures" / "PaintedMetal004"
 CHIPS_TILE_MM = 520.0
+USE_CHIPS = False      # the chipped-paint scan: off too (the owners don't want scanned scratches)
 HDRI_STRENGTH = 0.55
 
 
@@ -884,6 +885,8 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     # the scan's chips and scratches through the hull paint to bare steel
     # (not through the stencils, which stay solid)
     chip_through = chip_metal if stencil_a is None else N.mul(chip_metal, N.inv(stencil_a))
+    if not USE_CHIPS:
+        chip_through = 0.0
     col = N.mix(chip_through, col, N.scale_col(N.rgb((0.62, 0.61, 0.58)), N.add(0.7, N.mul(chip_steel.outputs[0], 0.6))))
     primer = (0.055, 0.058, 0.052)
     steel_col = N.scale_col(N.rgb((0.64, 0.63, 0.6)), N.add(0.85, N.mul(fine, 0.25)))
@@ -932,8 +935,9 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     rough = N.mixf(N.mul(scratch, 0.5), rough, 0.32)
     rough = N.mixf(gone, rough, 0.62)
     rough = N.mixf(metal, rough, N.add(0.28, N.mul(mid, 0.18)))
-    rough = N.mixf(N.mul(chip_through, 0.8), rough, N.add(0.2, N.mul(chip_rough, 0.4)))
-    rough = N.mixf(0.35, rough, N.add(0.25, N.mul(chip_rough, 0.6)))
+    if USE_CHIPS:
+        rough = N.mixf(N.mul(chip_through, 0.8), rough, N.add(0.2, N.mul(chip_rough, 0.4)))
+        rough = N.mixf(0.35, rough, N.add(0.25, N.mul(chip_rough, 0.6)))
     rough = N.mixf(N.mul(grime, 0.7), rough, 0.85)
     rough = N.mixf(dust, rough, 0.9)
 
@@ -952,7 +956,7 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     N.feed(nmap.inputs["Color"], scan_nodes["nor_gl"][0].outputs["Color"])
     if USE_SCAN:
         N.nt.links.new(nmap.outputs["Normal"], bump.inputs["Normal"])
-    else:
+    elif USE_CHIPS:
         cmap = N.new("ShaderNodeNormalMap")
         cmap.inputs["Strength"].default_value = 0.8
         N.feed(cmap.inputs["Color"], chip_nodes["NormalGL"].outputs["Color"])
