@@ -27,6 +27,11 @@ its first.
 
 debug.texture_dump_directory writes each 2D Xbox texture's first level as it
 is read, decoded to BGRA, in the OpenGL cache's files (texture_dump).
+
+The VR mode's effects draw an effect's bitmap with its thickness
+(xgpu_vulkan_effects.h), baked from its first level the first time an
+effect is drawn with it (as the map is prepared: its enumeration draws
+every effect's bitmaps) and kept with it, made again with its texels.
 */
 
 #include "xgpu.h"
@@ -34,12 +39,14 @@ is read, decoded to BGRA, in the OpenGL cache's files (texture_dump).
 #include "xgpu_stream.h"
 #include "host.h"
 #include "xgpu_vulkan.h"
+#include "xgpu_vulkan_effects.h"
 #include "xgpu_vulkan_textures.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#include <time.h>
 
 #define BUCKET_COUNT 4096
 /* frames a texture is kept without being drawn, and how often they are
@@ -78,6 +85,11 @@ struct entry
 	uint64_t last_used;
 	/* its DXT texels decoded (the device has no BC formats) */
 	int decoded;
+	/* (an Xbox texture's) its thickness for the VR mode's effects, baked
+	from its texels of that generation, or not to be (failed: the
+	generation it failed at) */
+	struct xgpu_vulkan_image *thickness;
+	uint32_t thickness_generation, thickness_failed;
 };
 
 static struct
@@ -327,6 +339,8 @@ static struct entry *xbox_entry_find(const struct xgpu_stream_texture_stage *sta
 	return entry;
 }
 
+static struct entry *xbox_entry_current(const struct xgpu_stream_texture_stage *stage, const D3DCOLOR **palette_out);
+
 /* the guest's pages of a range are mapped and readable (looked at on whole
 host pages, the extent's limits: no further). Without the base register
 (the low 4 GB: the Steam Frame's and x86-64's guests) the memory layer keeps
@@ -375,10 +389,21 @@ static BOOL readable(uint32_t address, uint32_t size)
 
 static struct xgpu_vulkan_image *xbox_texture_get(const struct xgpu_stream_texture_stage *stage)
 {
+	struct entry *entry = xbox_entry_current(stage, NULL);
+
+	return entry ? entry->image : NULL;
+}
+
+/* the stage's texture's entry, its texels as the guest's memory has them now
+(palette: its palette, NULL none) */
+static struct entry *xbox_entry_current(const struct xgpu_stream_texture_stage *stage, const D3DCOLOR **palette_out)
+{
 	const D3DCOLOR *palette = readable(stage->palette, 256 * sizeof(D3DCOLOR)) ? host_pointer(stage->palette) : NULL;
 	struct entry *entry;
 	uint32_t serial, generation;
 
+	if (palette_out)
+		*palette_out = palette;
 	if (!readable(stage->resource, 5 * sizeof(uint32_t)))
 		return NULL;
 	entry = xbox_entry_find(stage, palette);
@@ -387,7 +412,7 @@ static struct xgpu_vulkan_image *xbox_texture_get(const struct xgpu_stream_textu
 	entry->last_used = cache.frame;
 	serial = host_memory_watch_serial();
 	if (entry->generation && entry->watched_serial == serial)
-		return entry->image;
+		return entry;
 	generation = host_memory_watch_generation(entry->address, entry->size);
 	if ((!entry->generation || generation > entry->generation) && readable(entry->address, entry->size))
 	{
@@ -401,7 +426,85 @@ static struct xgpu_vulkan_image *xbox_texture_get(const struct xgpu_stream_textu
 		xbox_texture_upload(entry, palette);
 	}
 	entry->watched_serial = serial;
-	return entry->image;
+	return entry;
+}
+
+/* ---------- the effects' thickness (xgpu_vulkan_effects.h) */
+
+static double seconds(void)
+{
+	struct timespec now;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (double)now.tv_sec + (double)now.tv_nsec * 1.0e-9;
+}
+
+/* the entry's thickness, baked from its first level's texels (as they are
+now: the entry made current first) */
+static struct xgpu_vulkan_image *thickness_bake(struct entry *entry, const D3DCOLOR *palette)
+{
+	const struct xgpu_texture_description *description = &entry->description;
+	struct xgpu_vulkan_image_description made;
+	uint32_t width = (uint32_t)description->width, height = (uint32_t)description->height;
+	const unsigned char *source = host_pointer(entry->address);
+	DWORD *texels;
+	uint8_t *thickness;
+	double started = seconds();
+	int baked;
+
+	if (entry->thickness)
+	{
+		xgpu_vulkan_image_destroy(entry->thickness);
+		entry->thickness = NULL;
+	}
+	entry->thickness_failed = entry->generation;
+	if (description->cube_map || description->depth > 1 || !source || width > XGPU_VULKAN_THICKNESS_LARGEST ||
+		height > XGPU_VULKAN_THICKNESS_LARGEST || !(texels = converted_get((size_t)width * height)))
+		return NULL;
+	if (description->compressed)
+		xgpu_texture_decode_dxt(description, 0, source, texels);
+	else if (!xgpu_texture_decode_level(description, 0, source, palette, texels))
+		return NULL;
+	thickness = malloc((size_t)width * height * 4);
+	if (!thickness)
+		return NULL;
+	baked = xgpu_vulkan_thickness_bake((const uint32_t *)texels, width, height, thickness);
+	if (baked)
+	{
+		memset(&made, 0, sizeof(made));
+		made.type = XGPU_VULKAN_IMAGE_2D;
+		made.format = XGPU_VULKAN_FORMAT_RGBA8;
+		made.usage = XGPU_VULKAN_USAGE_SAMPLED;
+		made.width = width;
+		made.height = height;
+		made.depth_or_layers = 1;
+		made.levels = 1;
+		entry->thickness = xgpu_vulkan_image_create(&made);
+		if (entry->thickness)
+		{
+			xgpu_vulkan_image_upload(entry->thickness, 0, 0, 0, 0, 0, width, height, 1, thickness, width * 4, 0);
+			entry->thickness_generation = entry->generation;
+			entry->thickness_failed = 0;
+			cache.statistics.thickness++;
+			cache.statistics.thickness_seconds += seconds() - started;
+		}
+	}
+	free(thickness);
+	return entry->thickness;
+}
+
+struct xgpu_vulkan_image *xgpu_vulkan_textures_thickness(const struct xgpu_stream_texture_stage *stage)
+{
+	const D3DCOLOR *palette;
+	struct entry *entry;
+
+	if (stage->source != XGPU_SOURCE_TEXTURE || !stage->resource || !(entry = xbox_entry_current(stage, &palette)))
+		return NULL;
+	if (entry->thickness && entry->thickness_generation == entry->generation)
+		return entry->thickness;
+	if (entry->thickness_failed && entry->thickness_failed == entry->generation)
+		return NULL;
+	return thickness_bake(entry, palette);
 }
 
 /* ---------- images */
@@ -520,6 +623,8 @@ void xgpu_vulkan_textures_frame_end(void)
 				*link = entry->next;
 				if (entry->image)
 					xgpu_vulkan_image_destroy(entry->image);
+				if (entry->thickness)
+					xgpu_vulkan_image_destroy(entry->thickness);
 				free(entry);
 			}
 			else

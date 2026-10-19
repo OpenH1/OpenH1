@@ -781,6 +781,9 @@ static struct
 	/* the model drawn is mirrored (halo_vr_mirrored_draws): its triangles'
 	winding is the other way */
 	BOOL mirrored;
+	/* the effect drawn is soft against the scene's depth (1), and thick (2)
+	(halo_vr_effect_depth); 0 none */
+	int effect_depth;
 	/* debug.gpu_stats */
 	BOOL statistics;
 } vr_gl;
@@ -3169,6 +3172,8 @@ static BOOL prepare_draw(BOOL immediate, unsigned long primitive)
 #ifdef HALO_VR
 	key.multiview = vr_gl.multiview ? XGPU_MULTIVIEW_EYES : vr_gl.left_eye ? XGPU_MULTIVIEW_LEFT_EYE :
 		vr_gl.right_eye ? XGPU_MULTIVIEW_RIGHT_EYE : XGPU_MULTIVIEW_NONE;
+	/* (the VR mode's effects, drawn into both eyes: halo_vr_effect_depth) */
+	key.vr_effect = key.multiview == XGPU_MULTIVIEW_EYES ? (unsigned char)vr_gl.effect_depth : 0;
 #endif
 	/* the pipeline: the shaders, the fixed-function state, the targets */
 	memset(&pipeline_key, 0, sizeof(pipeline_key));
@@ -4404,6 +4409,15 @@ void halo_vr_mirrored_draws(int mirrored)
 int halo_vr_mirrored(void)
 {
 	return vr_gl.mirrored;
+}
+
+/* the effect drawn from now on (an effect shader's group, its particles,
+contrails or weather) is soft against the scene's depth (1), and thick
+(2), in the eyes' pass (the backend's VR effects: port/linux/vulkan/README.md
+"VR"); 0 for the draws after it */
+void halo_vr_effect_depth(int mode)
+{
+	vr_gl.effect_depth = mode >= 0 && mode <= 2 ? mode : 0;
 }
 
 /* ---------- the HUD's groups (vr.h, vr_visor.c's panels) */

@@ -20,6 +20,13 @@ from the guest's memory and made again once its pages have been written,
 or an image's (XGPU_STREAM_SOURCE_IMAGE); NULL if there is none */
 struct xgpu_vulkan_image *xgpu_vulkan_textures_get(const struct xgpu_stream_texture_stage *stage);
 
+/* the VR mode's effects: the thickness of the Xbox texture a stage draws
+(an effect's bitmap), RGBA8 (xgpu_vulkan_effects.h), baked from its first
+level the first time it is asked for and kept with the texture (made
+again with its texels); NULL for one it cannot be (a cube, a volume, too
+large, an image) */
+struct xgpu_vulkan_image *xgpu_vulkan_textures_thickness(const struct xgpu_stream_texture_stage *stage);
+
 /* A texture whose header is named by the VR stream (the visor's plasma
 noise), checked and decoded through the same cache as a draw's stage. */
 struct xgpu_vulkan_image *xgpu_vulkan_textures_header(uint32_t header);
@@ -36,11 +43,13 @@ let go */
 void xgpu_vulkan_textures_frame_end(void);
 
 /* statistics since the last call: textures made, and made again from pages
-that were written; images; their bytes read from the guest */
+that were written; images; their bytes read from the guest; thicknesses
+baked, and the seconds they took */
 struct xgpu_vulkan_texture_statistics
 {
-	uint32_t made, remade, images;
+	uint32_t made, remade, images, thickness;
 	uint64_t bytes;
+	double thickness_seconds;
 };
 void xgpu_vulkan_textures_statistics(struct xgpu_vulkan_texture_statistics *statistics);
 void xgpu_vulkan_textures_statistics_peek(struct xgpu_vulkan_texture_statistics *statistics);

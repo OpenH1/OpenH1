@@ -248,6 +248,7 @@ static void key_from_guest(const unsigned char *bytes, struct nv2a_pixel_shader_
 	key->multiview = bytes[offset++];
 	key->source_blend = bytes[offset++];
 	key->dynamic_lights = bytes[offset++];
+	key->vr_effect = bytes[offset++];
 }
 
 /* a pixel program as the Vulkan backend draws it: its visibility tests
@@ -389,6 +390,61 @@ static void halo_programs(void)
 	}
 }
 
+/* the VR mode's effects (xgpu_spirv.h): an effect's program (its bitmap in
+texture 0, a second map in texture 1) soft, and soft and thick, with each
+fade, for both eyes and foveated; and the glows drawn as the light their
+bolts scatter */
+static void effect_programs(void)
+{
+	static const char *const effects[3] = { "", "soft", "thick" };
+	struct xgpu_pixel_program program;
+	struct xgpu_spirv_options options;
+	struct xgpu_spirv_module module;
+	char name[96];
+	int effect, fade, foveated, second;
+	BOOL made;
+
+	for (second = 0; second < 2; second++)
+	{
+		synthetic_base(&program);
+		synthetic_stage(&program, 0, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+		if (second)
+			synthetic_stage(&program, 1, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+		program.multiview = XGPU_MULTIVIEW_EYES;
+		for (effect = XGPU_SPIRV_EFFECT_SOFT; effect <= XGPU_SPIRV_EFFECT_THICK; effect++)
+		{
+			for (fade = XGPU_SPIRV_FADE_NONE; fade <= XGPU_SPIRV_FADE_TO_GREY; fade++)
+			{
+				for (foveated = 0; foveated < 2; foveated++)
+				{
+					memset(&options, 0, sizeof(options));
+					options.multiview = XGPU_MULTIVIEW_EYES;
+					options.foveated = foveated;
+					options.effect = effect;
+					options.effect_fade = fade;
+					snprintf(name, sizeof(name), "effect-%s-maps%d-fade%d-fovea%d", effects[effect], second + 1, fade,
+						foveated);
+					made = xgpu_spirv_pixel_shader(&program, &options, &module);
+					emit(name, "the VR mode's effects", made, &module);
+				}
+			}
+		}
+	}
+	for (foveated = 0; foveated < 2; foveated++)
+	{
+		memset(&options, 0, sizeof(options));
+		options.multiview = XGPU_MULTIVIEW_EYES;
+		options.foveated = foveated;
+		options.effect = XGPU_SPIRV_EFFECT_SOFT;
+		snprintf(name, sizeof(name), "glow-view1-fovea%d-vertex", foveated);
+		made = xgpu_spirv_halo_vertex_shader(&options, &module);
+		emit(name, "the glows as their bolts' scattered light, vertex", made, &module);
+		snprintf(name, sizeof(name), "glow-view1-fovea%d-pixel", foveated);
+		made = xgpu_spirv_halo_pixel_shader(&options, &module);
+		emit(name, "the glows as their bolts' scattered light, pixel", made, &module);
+	}
+}
+
 /* anti-aliasing's passes: their vertex shader, FXAA and SMAA's three (as
 tools/vulkan_post_shaders.py checked them, made again here with the rest) */
 static void post_programs(void)
@@ -468,6 +524,7 @@ int main(int argc, char **argv)
 	layered_pixel_programs();
 	synthetic_vertex_programs(synthetic_vertex);
 	halo_programs();
+	effect_programs();
 	post_programs();
 	fclose(index_file);
 	printf("%lu modules written to %s, %lu variants the same as one of them\n", written, out_dir, same);

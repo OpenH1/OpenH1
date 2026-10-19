@@ -19,7 +19,9 @@ The core:
   where something must be done outside one (a copy, an upload ordered
   between draws, a readback, the end of a submission); every image is in
   the GENERAL layout, and the end of a pass is a barrier for what comes
-  after;
+  after; a draw that samples the depth attachment it is tested against
+  (the VR mode's effects) draws in a pass that writes and stores no depth
+  or stencil, which a draw that writes them ends;
 - caches pipelines by their whole description (shaders, vertex layout,
   fixed-function state, the targets' formats), made through a
   VkPipelineCache that is saved to a file (at exit, after a map's
@@ -420,11 +422,14 @@ the vertex constants and uniforms (ranges of the upload ring, or another
 buffer's, at most 64 KB each); the stages' textures; and the count of
 vertices or indices, the first index and the offset added to each index.
 dynamic_lights: its pixel shader reads the enhanced dynamic lights' block
-and cells (xgpu_vulkan_dynamic_lights_upload) */
+and cells (xgpu_vulkan_dynamic_lights_upload); reads_depth: it samples
+the bound depth attachment (the VR mode's effects), and is drawn in a pass
+that writes neither depth nor stencil; writes_depth: its pipeline writes
+depth or stencil, and is not drawn in such a pass */
 struct xgpu_vulkan_draw
 {
 	VkPipeline pipeline;
-	uint8_t topology, dynamic_lights;
+	uint8_t topology, dynamic_lights, reads_depth, writes_depth;
 	const struct xgpu_vulkan_dynamic_state *dynamic;
 	uint32_t bindings;
 	struct xgpu_vulkan_range vertices[XGPU_VULKAN_BINDINGS];

@@ -2956,7 +2956,10 @@ needles, muzzle flashes, grenades and explosions are drawn for each pixel:
 - A glow is drawn about each plasma bolt in flight (a projectile with no
   model: a needle's or a grenade's own body would hide its middle), sized
   and colored by its light, in both eyes at its depth (both eyes in one
-  draw, the foveated insets too), fading as it nears what is behind it.
+  draw, the foveated insets too), fading as it nears what is behind it. In
+  the VR mode's eyes it is the light the bolt scatters toward each eye
+  from a haze about it, worked out along each eye's ray ("Effects with
+  depth", below).
 - Vulkan draws them as the OpenGL backend does (Windows): the same
   lights, grid and shoulder, and the glows from the same shaders' operations
   (written as SPIR-V), prepared with the map's other pipelines as it
@@ -2971,6 +2974,42 @@ foveated, a50 with the plasma rifle firing in bursts): the GPU's time a
 frame 0.97 ms enhanced, 0.93 ms classic, over 70 s. A pixel's cost grows
 with the lights that reach it, not with the frame's; the Steam Frame's GPU,
 several times slower, is to be measured.
+
+#### Effects with depth
+
+In the eyes, the game's effects (smoke, dust, sparks, explosions, muzzle
+flashes' sprites, contrails, rain and snow: everything drawn with its
+effect shaders) are drawn with depth, always (there is no setting; the
+flat screen draws them as the game does):
+
+- They face the head. A sprite that faces the viewer faces the centre of
+  the head and stays upright in the world, so it holds still as the head
+  turns and rolls, and both eyes see the same card (the game draws the 3D
+  view once, from the head's centre, into both eyes). Near straight above
+  or below the head, it stays upright toward a fixed axis of the world,
+  never the view's.
+- They are soft. Each pixel of an effect fades as it nears the wall,
+  floor or object behind it (the depth the scene was drawn with), over a
+  distance in the world of half its sprite's radius, so an effect meets the
+  world without a hard straight line.
+- They are thick. Each effect bitmap's thickness is baked from its alpha
+  as the map loads (its silhouette's distance to the edge in each sprite,
+  made a sphere's profile, smoothed, thinner where the alpha is faint) and
+  kept with the texture. A sprite at least 2 degrees wide on the screen is
+  drawn with it as a bulge toward the eyes (half its radius high at its
+  middle, so puffs look round, not like balloons): each eye's ray meets the
+  bulge's front where that eye's texel is drawn, so the two eyes see
+  different texels and the effect has depth inside it, and it fades into
+  the world from that front. Smaller sprites (sparks, rain, distant puffs)
+  stay flat cards.
+- A plasma bolt's glow (`display.dynamic_lights = "enhanced"`) is the
+  light the bolt scatters toward each eye from a haze about it, its
+  density falling off as the card's glow does across it: closed along each
+  eye's ray, from the eye to the scene's surface. Unhidden it is the card's
+  glow; a wall through it hides the part behind the wall, in each eye.
+
+port/linux/vulkan/README.md ("The VR mode's effects") says how they are
+drawn and what they cost.
 
 ### Settings
 
@@ -4324,7 +4363,8 @@ Other changes:
 | `objects/object_lights.c` | Glows the port lights itself (`shield_glow.c`): dynamic lights attached to an object's node, colored and sized each frame by their maker, drawn with a light definition the map has. |
 | `objects/object_lights.c`, `rasterizer/xbox/rasterizer_xbox_environment.c` | A light attached to an object is drawn where the object is drawn between ticks (its marker as drawn), not where the tick placed it: it no longer steps behind a bolt at 30 Hz (the light's own position, which the units' illumination reads, is kept). With `display.dynamic_lights = "enhanced"`, the frame's lights go to the renderer (`game/dynamic_lights.c`), a projectile's light that is only its lens flare's lights too, a muzzle flash's is moved to the first-person weapon, the structure's own pass for each light is left to the lightmap pass (but spotlights'), which tells the renderer when it is drawn. |
 | `render/render_objects.c`, `interface/first_person_weapons.c`, `rasterizer/xbox/rasterizer_xbox_plasma_energy.c` | A local player's shield plasma is drawn in the chosen armor color (`display.shield_color`, `shield_color.c`), on the body and on the first-person arms; in the VR build, the plasma over the weapon in its holster in its highlight's color, close to the weapon (`vr_holster.c`). |
-| `render/render_sprite.c` | In the VR mode's eyes, sprites that face the viewer (smoke, explosions, sparks, glows) face the centre of the head and stay upright in the world, where they were parallel to the view's plane and rolled with the head (`vr_render_eye_pass`). |
+| `render/render_sprite.c` | In the VR mode's eyes, sprites that face the viewer (smoke, explosions, sparks, glows) face the centre of the head and stay upright in the world, where they were parallel to the view's plane and rolled with the head (`vr_render_eye_pass`); near straight above or below the head, upright toward a fixed axis of the world. A build whose largest sprite is at least 2 degrees wide on the screen is marked to be drawn thick ("Effects with depth"). |
+| `rasterizer/xbox/rasterizer_xbox_transparent_geometry.c` | In the VR mode's eyes, an effect shader's group is drawn soft against the scene's depth, and thick where its sprites are large (`halo_vr_effect_depth`), but the first-person weapon's, one drawn without depth, and one with the game's own z-sprite. |
 | `rasterizer/xbox/rasterizer_xbox_text.c`, `rasterizer/rasterizer_text.c` | The characters of a string are one draw, not a draw each (and a second for the drop shadow). The batch is drawn early before a character is cached and before the high-res glyph atlas starts over (`src/text_hires.c`). |
 | `rasterizer/xbox/rasterizer_xbox_decals.c` | Decals drawn one after another with the same blend function and bitmap are one draw, with each decal's color in its vertices, not a draw each: a long fight leaves hundreds in view. Within a run of decals whose blend functions commute (multiply, add, min, max, reverse subtract), they are drawn by bitmap, so more of them share a draw. |
 | `rasterizer/xbox/rasterizer_xbox_widgets.c`, `objects/widgets/light_volumes.c` | A light volume's sprites (a plasma bolt's glow, a couple of hundred) are one draw. |

@@ -94,6 +94,28 @@ symbols in this file:
 #ifdef HALO_VR
 /* port: port/linux/game/vr_render.c's: the VR mode's eye pass */
 boolean vr_render_eye_pass(void);
+
+/* port: in the VR mode's eyes, the sprites of a build drawn thick (their
+bitmaps' thickness a bulge with depth in each eye: port/linux/vulkan/README.md
+"VR") where the largest is at least this wide on the screen (radians, 2
+degrees: some 35 pixels in a Steam Frame's eye); smaller ones (sparks, rain,
+distant puffs) are flat cards, whose depth inside no eye could tell */
+#define VR_THICK_ANGLE 0.035f
+
+/* port: the largest sprite of the build begun (its width over its distance),
+and whether all of its sprites face the head (normal: a bulge toward the
+eyes is theirs alone); thick forced (the map's enumeration) */
+static struct
+{
+	real largest;
+	boolean facing;
+	boolean forced;
+} vr_sprites;
+
+void render_sprite_vr_thick_force(boolean forced)
+{
+	vr_sprites.forced = forced;
+}
 #endif
 
 /* ---------- constants */
@@ -126,6 +148,14 @@ enum
 	_rasterizer_geometry_parts_define_local_nodes_bit,
 	NUMBER_OF_RASTERIZER_GEOMETRY_FLAGS
 };
+
+#ifdef HALO_VR
+/* port: (rasterizer_xbox_transparent_geometry.c's) */
+enum
+{
+	_rasterizer_geometry_vr_thick_bit = NUMBER_OF_RASTERIZER_GEOMETRY_FLAGS,
+};
+#endif
 
 /* ---------- macros */
 
@@ -229,6 +259,10 @@ void build_sprites_begin(
 	data->maximum_sprite_count = maximum_sprite_count;
 	data->centroid = *global_origin3d;
 	SET_FLAG(data->flags, _build_sprites_valid_bit, TRUE);
+#ifdef HALO_VR
+	vr_sprites.largest = 0.0f;
+	vr_sprites.facing = TRUE;
+#endif
 	return;
 }
 
@@ -276,6 +310,14 @@ void build_sprites_end(
 					geometry_flags,
 					_rasterizer_geometry_first_person_bit,
 					TEST_FLAG(data->flags, _build_sprites_first_person_bit));
+#ifdef HALO_VR
+				/* port: (thick: VR_THICK_ANGLE) */
+				SET_FLAG(
+					geometry_flags,
+					_rasterizer_geometry_vr_thick_bit,
+					vr_render_eye_pass() && vr_sprites.facing &&
+						(vr_sprites.forced || vr_sprites.largest >= VR_THICK_ANGLE));
+#endif
 				rasterizer_dynamic_unlit_geometry_draw(
 					(struct shader const *)data->shader,
 					group->bitmap,
@@ -441,6 +483,20 @@ void build_sprite(
 						&direction,
 						&basis);
 					build_sprite_compute_scale(data, mode, flags, &transformed_origin, bitmap, &scale);
+#ifdef HALO_VR
+					/* port: how wide the build's largest sprite is on the
+					screen (VR_THICK_ANGLE) */
+					if (!TEST_FLAG(data->flags, _build_sprites_screen_space_bit))
+					{
+						real distance = magnitude3d((real_vector3d const *)&transformed_origin);
+						real width = MAX(sprite->bounds.x1 - sprite->bounds.x0, sprite->bounds.y1 - sprite->bounds.y0) * scale;
+
+						if (mode != _build_sprite_normal)
+							vr_sprites.facing = FALSE;
+						if (distance > 0.0f && width / distance > vr_sprites.largest)
+							vr_sprites.largest = width / distance;
+					}
+#endif
 
 					if (data->shader &&
 						data->shader->framebuffer_fade_mode &&
@@ -914,7 +970,21 @@ static void build_sprite_compute_basis(
 
 			if (vr_render_eye_pass() && normalize3d(&direction) > 0.f)
 			{
-				cross_product3d(&direction, &build_sprite_globals.viewer_space_world_up, &right);
+				/* (near straight above or below the head, upright toward a
+				fixed horizontal axis of the world, blended in from 0.9 of the
+				way: never the view's, which turns with the head) */
+				real_vector3d reference = build_sprite_globals.viewer_space_world_up;
+				real pole = (real)fabs(dot_product3d(&direction, &reference));
+
+				if (pole > 0.9f)
+				{
+					real blend = (pole - 0.9f) * 10.0f;
+
+					reference.i += build_sprite_globals.viewer_space_world_forward.i * blend;
+					reference.j += build_sprite_globals.viewer_space_world_forward.j * blend;
+					reference.k += build_sprite_globals.viewer_space_world_forward.k * blend;
+				}
+				cross_product3d(&direction, &reference, &right);
 				if (normalize3d(&right) > 0.01f)
 				{
 					basis->forward = right;

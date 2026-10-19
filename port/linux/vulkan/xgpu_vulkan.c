@@ -362,6 +362,9 @@ static struct
 	uint32_t layer, views;
 	int pass_active;
 	uint32_t pass_width, pass_height;
+	/* the pass's draws sample its depth attachment (xgpu_vulkan_draw's
+	reads_depth): it writes neither depth nor stencil, nor stores them */
+	int pass_reads_depth;
 	/* what the main command buffer has bound in this pass */
 	VkPipeline bound_pipeline;
 	/* and the rest of the state a draw sets, as the main command buffer
@@ -2720,6 +2723,10 @@ static int pass_begin(uint32_t clear_parts, const float clear_color[4], float cl
 		depth.clearValue.depthStencil.depth = clear_depth;
 		depth.clearValue.depthStencil.stencil = clear_stencil & 0xff;
 		depth.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		/* (a pass that samples its depth writes none of it: nothing to
+		store, which a tiler would write back to memory again) */
+		if (vk.pass_reads_depth)
+			depth.storeOp = VK_ATTACHMENT_STORE_OP_NONE;
 		stencil = depth;
 		stencil.loadOp = (clear_parts & XGPU_VULKAN_CLEAR_STENCIL) ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
 		rendering.pDepthAttachment = &depth;
@@ -2758,6 +2765,7 @@ static void pass_end(void)
 		VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT |
 		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, AFTER_STAGES, AFTER_ACCESS);
 	vk.pass_active = 0;
+	vk.pass_reads_depth = 0;
 }
 
 void xgpu_vulkan_set_target_views(struct xgpu_vulkan_image *color, struct xgpu_vulkan_image *depth,
@@ -2833,6 +2841,9 @@ void xgpu_vulkan_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t 
 
 	if (!count || !rectangles || (!vk.color && !vk.depth))
 		return;
+	/* (depth or stencil cleared: not in a pass that samples the depth) */
+	if (vk.pass_reads_depth && (parts & (XGPU_VULKAN_CLEAR_DEPTH | XGPU_VULKAN_CLEAR_STENCIL)))
+		pass_end();
 	/* Some of the colour's channels alone are drawn: the pipeline and its
 	uniforms first, before the pass, as uploading may submit the recording
 	(and end a pass). */
@@ -3161,8 +3172,24 @@ void xgpu_vulkan_draw(const struct xgpu_vulkan_draw *draw)
 	/* (the texture set first: it may begin the recording) */
 	recording_begin();
 	sets[1] = texture_set(draw->textures);
-	if (!sets[1] || !pass_begin(0, NULL, 0.0f, 0))
+	if (!sets[1])
 		return;
+	/* A draw that samples the depth attachment it is tested against (the
+	VR mode's effects) is drawn in a pass of its own that writes no depth
+	or stencil, which draws that read none of them may share; one that
+	writes them, in a pass that samples none. Vulkan allows an attachment to
+	be read through a descriptor in a pass only where the pass does not
+	write it (the images stay in the GENERAL layout), and the pass before
+	has stored the depth sampled (the barrier at its end). */
+	if (vk.pass_active && ((draw->reads_depth && !vk.pass_reads_depth) || (draw->writes_depth && vk.pass_reads_depth)))
+		pass_end();
+	if (!vk.pass_active)
+		vk.pass_reads_depth = draw->reads_depth && vk.depth;
+	if (!pass_begin(0, NULL, 0.0f, 0))
+	{
+		vk.pass_reads_depth = 0;
+		return;
+	}
 	commands = vk.slot->main;
 	if (vk.bound_pipeline != draw->pipeline)
 	{

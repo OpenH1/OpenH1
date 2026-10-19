@@ -14,8 +14,10 @@ attachments, barriers, samples and uniforms (xgpu_vulkan_post.c); and the
 clears of some of the colour's channels: drawn through their write mask,
 over each rectangle, in each view, while every channel's are cleared. And
 the window: a lost surface made again, the app in the background, the
-present mode of the swap interval, frames turned for the display; and the
-pipeline cache written only when pipelines were made.
+present mode of the swap interval, frames turned for the display; the
+pipeline cache written only when pipelines were made; and the VR effects'
+passes that sample their depth: begun after the depth's writes, storing no
+depth or stencil, ended by a draw or clear that writes them.
 */
 
 #include "../xgpu_vulkan.c"
@@ -414,6 +416,53 @@ static void vertex_input_test(void)
 		draw.dynamic_lights = 1;
 		xgpu_vulkan_draw(&draw);
 		assert(block.used == vk.serial && cells.used == vk.serial);
+	}
+	/* The VR mode's effects sample the depth attachment they are tested
+	against: in a pass of their own that writes neither depth nor stencil
+	(and stores neither), begun after the depth's writes, which draws that
+	write neither share; a draw that writes depth ends it, as a clear of
+	depth does. */
+	{
+		const float black[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		unsigned int before;
+
+		draw.dynamic_lights = 0;
+		draw.writes_depth = 1;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		before = begins;
+		assert(vk.pass_active && !vk.pass_reads_depth);
+		draw.writes_depth = 0;
+		draw.reads_depth = 1;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		assert(begins == before + 1 && vk.pass_reads_depth);
+		assert(began_depth.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_depth.storeOp == VK_ATTACHMENT_STORE_OP_NONE);
+		assert(began_stencil.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_stencil.storeOp == VK_ATTACHMENT_STORE_OP_NONE);
+		assert(began_color.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_color.storeOp == VK_ATTACHMENT_STORE_OP_STORE);
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		draw.reads_depth = 0;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		assert(begins == before + 1 && vk.pass_reads_depth);
+		draw.writes_depth = 1;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		assert(begins == before + 2 && !vk.pass_reads_depth && began_depth.storeOp == VK_ATTACHMENT_STORE_OP_STORE);
+		draw.writes_depth = 0;
+		draw.reads_depth = 1;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		assert(begins == before + 3 && vk.pass_reads_depth);
+		xgpu_vulkan_clear((const int32_t[][4]){ { 0, 0, 8, 8 } }, 1, XGPU_VULKAN_CLEAR_DEPTH, black, 1.0f, 0);
+		assert(begins == before + 4 && !vk.pass_reads_depth && began_depth.storeOp == VK_ATTACHMENT_STORE_OP_STORE);
+		/* (targets changed: the next pass is an ordinary one) */
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		xgpu_vulkan_set_target_views(&color_target, NULL, 0, 1);
+		assert(!vk.pass_active && !vk.pass_reads_depth);
+		draw.reads_depth = 0;
 	}
 }
 
