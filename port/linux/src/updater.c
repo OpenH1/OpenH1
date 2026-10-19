@@ -611,6 +611,7 @@ static void updater_delete_partial(const char *partial, char names[][256], int n
 		}
 	}
 	update_delete_file(partial);
+}
 
 /* the zip, read once and unpacked from that copy; a download is deleted
 either way (a test's zip, debug.update_from, is kept) */
@@ -675,7 +676,6 @@ static void updater_put_back(char names[][256], int count)
 		platform_log("update: %d of %d replaced files could not be put back", failures, count);
 	else
 		platform_log("update: the %d replaced files put back: the install is as it was", count);
-}
 }
 
 /* downloads, unpacks and puts in place the new build, and starts it; returns
