@@ -1229,8 +1229,6 @@ static const struct config_setting config_settings[] =
 #define CONFIG_PLATFORM _platform_android
 #elif defined(HALO_WEB)
 #define CONFIG_PLATFORM (_platform_desktop | _platform_web)
-#elif defined(_WIN32)
-#define CONFIG_PLATFORM (_platform_desktop | _platform_windows)
 #elif defined(HALO_WINDOWS)
 /* (the Windows build: a guest, tools/windows_build.py) */
 #define CONFIG_PLATFORM (_platform_desktop | _platform_windows | _platform_guest)
@@ -1266,7 +1264,7 @@ static void config_path(char *path, size_t size)
 	const char *root = getenv("HALO_DATA_ROOT");
 
 	snprintf(path, size, "%s/config.toml", root && *root ? root : ".");
-#elif defined(_WIN32) || defined(HALO_WINDOWS)
+#elif defined(HALO_WINDOWS)
 	/* the executable's folder, with its separator */
 	const char *base = SDL_GetBasePath();
 

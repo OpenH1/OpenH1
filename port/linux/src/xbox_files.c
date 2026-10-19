@@ -90,8 +90,7 @@ const char *platform_data_root(void)
 				if (slash)
 					*slash = '\0';
 			}
-#if !defined(_WIN32) && !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && \
-	!defined(HALO_MACOS)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
 			/* on Linux, the game's folder (the release's root, above its
 			bin/), or ~/.local/share/halo-linux when the game is installed
 			(install_layout.c) */
@@ -174,7 +173,7 @@ const char *platform_save_root(void)
 
 		if (*environment)
 			snprintf(root, sizeof(root), "%s", environment);
-#if defined(_WIN32) || defined(HALO_WINDOWS)
+#ifdef HALO_WINDOWS
 		/* the Windows builds (port/windows) keep saves in the roaming
 		application data folder */
 		else if (getenv("APPDATA") && *getenv("APPDATA"))
