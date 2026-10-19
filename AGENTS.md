@@ -48,8 +48,8 @@ ninja web                      # build/web/site (Emscripten: port/web/README.md)
 ninja macos                    # build/macos/Halo.app (and halo), on Apple silicon (port/macos/README.md)
 ninja macos_dmg                # build/macos/Halo.dmg
 ninja windows                  # on Windows only
-ninja windows64                # build/windows64/halo.exe, the 64-bit build in development (on Windows only;
-                               # ninja windows64_guest, its guest image, anywhere after configure.py --windows64)
+ninja windows64                # build/windows64/halo.exe, the 64-bit build in development (configure with
+                               # --windows64 first; on Windows only; ninja windows64_guest, its guest image, anywhere)
 python tools/ci_build.py linux release   # what CI builds
 ```
 

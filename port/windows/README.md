@@ -182,7 +182,7 @@ server.
 ### Build it
 
 1. Go to the root folder of the repository.
-2. Enter `python configure.py`.
+2. Enter `python configure.py --windows64`.
 3. Enter `ninja windows64`.
 
 The requirements are the same as for the 32-bit build, with the 64-bit

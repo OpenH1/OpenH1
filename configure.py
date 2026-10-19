@@ -146,9 +146,9 @@ parser.add_argument(
 parser.add_argument(
     "--windows64",
     action="store_true",
-    help="generate `ninja windows64_guest`, the 64-bit Windows build's guest image, on another computer than "
-    "Windows (which always generates it, and `ninja windows64`, the build itself): configure.py downloads its musl, "
-    "SDL3 and headers (once, to build/windows64/third_party); refer to port/windows/README.md",
+    help="generate `ninja windows64`, the 64-bit Windows build (in development), on Windows, and "
+    "`ninja windows64_guest`, its guest image, on any computer: configure.py downloads the guest's musl, SDL3 and "
+    "headers (once, to build/windows64/third_party); refer to port/windows/README.md",
 )
 parser.add_argument(
     "--guest-base",

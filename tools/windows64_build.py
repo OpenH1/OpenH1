@@ -15,9 +15,10 @@ Windows"):
   frames with them, port/windows/host/host_memory_watch_win.c). It builds
   on any computer the guests build on (Linux, macOS, Windows), with the pinned
   LLVM (tools/guest_toolchain.py), so that the guest can be checked anywhere;
-  on another computer than Windows only when configure.py is given
-  --windows64 (it downloads musl, SDL3's source and the Khronos and Vulkan
-  headers);
+- the build is generated only when configure.py is given --windows64 (it
+  downloads the pinned LLVM, musl, SDL3's source and the Khronos and Vulkan
+  headers), or once those are there: while the 32-bit build is Windows's
+  default, its configure stays as it was;
 - build/windows64/halo.exe, ``ninja windows64``, on Windows only: the host,
   compiled by clang for x86_64-pc-windows-msvc and linked by lld with the
   Windows SDK, the guest image inside it; its import table's entries are
@@ -113,11 +114,10 @@ def windows64_configure_inputs() -> List[Path]:
 
 
 def windows64_requested(sln: Any) -> bool:
-    """whether to generate the build: on Windows always, elsewhere (the
-    guest alone) with configure.py --windows64, or once its sources are
+    """whether to generate the build (on another computer than Windows, the
+    guest alone): with configure.py --windows64, or once its sources are
     there"""
-    return (sys.platform == "win32" or bool(getattr(sln, "windows64", False))
-            or (THIRD_PARTY / "SDL3").is_dir())
+    return bool(getattr(sln, "windows64", False)) or (THIRD_PARTY / "SDL3").is_dir()
 
 
 def _quote(path: Any) -> str:
