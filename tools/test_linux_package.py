@@ -121,3 +121,49 @@ def test_asset_names_agree():
                 assert f"name: {name}" in workflow and f"path: dist/{name}" in workflow, name
     assert "i686" not in workflow and "halo-linux-debug" not in workflow and "halo-linux-release" not in workflow
     assert not hasattr(linux_package, "stage_flat")
+
+
+def test_frame_release_names_agree():
+    """the 64-bit ARM VR build is the Steam Frame's package (tools/frame_package.py), which the release has as
+    halo-steam-frame-vr-release.zip, as it is: no UPDATE_PLATFORM names it (frame_install.sh updates it, never
+    the self-updater), tools/ci_build.py names it, and the workflow builds it on master, uploads it and publishes
+    it with the zip's own modes"""
+    updater = (ROOT / "port/linux/src/updater.c").read_text()
+    platforms = set(re.findall(r'#define UPDATE_PLATFORM "([^"]+)"', updater))
+    name = ci_build.dist_name("linux_arm64", "release", True)
+    assert name == "halo-steam-frame-vr-release"
+    assert name[len("halo-"):-len("-release")] not in platforms
+    assert "linux-arm64-vr" not in platforms
+    workflow = (ROOT / ".github/workflows/build.yml").read_text()
+    assert "run: python3 tools/ci_build.py linux_arm64 release --vr" in workflow
+    assert f"name: {name}" in workflow and f"path: dist/{name}" in workflow
+    assert 'halo-steam-frame-*) cp "$build/$name.zip" "release/$name.zip"' in workflow
+    assert f"/download/{name}.zip" in workflow
+
+
+def test_frame_zip(tmp_path):
+    """the Steam Frame's zip (frame_package.write_zip): its folder under the package's name, the programs 0755,
+    the rest 0644, in name order"""
+    import frame_package
+
+    package = tmp_path / frame_package.NAME
+    package.mkdir()
+    names = ["halo", "libSDL3.so.0", "halo-vr.sh", "brokers.txt", "README.md", "VERSION", "SHA256SUMS"]
+    for name in names:
+        (package / name).write_bytes(name.encode())
+        (package / name).chmod(0o644)
+    output = tmp_path / "halo-steam-frame-vr-release.zip"
+    frame_package.write_zip(package, output)
+    with zipfile.ZipFile(output) as archive:
+        assert archive.namelist() == [f"{frame_package.NAME}/"] + sorted(f"{frame_package.NAME}/{name}" for name in names)
+        for info in archive.infolist():
+            assert info.create_system == 3
+            mode = info.external_attr >> 16
+            if info.is_dir():
+                assert stat.S_ISDIR(mode)
+                continue
+            assert stat.S_ISREG(mode)
+            base = info.filename.split("/", 1)[1]
+            expected = 0o755 if base in ("halo", "libSDL3.so.0", "halo-vr.sh") else 0o644
+            assert stat.S_IMODE(mode) == expected, info.filename
+            assert archive.read(info) == base.encode()
