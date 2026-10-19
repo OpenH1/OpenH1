@@ -43,6 +43,50 @@ BLEND = HERE / "scene.blend"
 
 S = 0.003          # metres per SVG unit: the 100-unit mark is a 30 cm plate
 HULL = "#465048"   # the hull paint: a dark, cool grey-green
+TEXTURES = HERE / "textures"
+# scanned CC0 textures (CREDITS.md): Poly Haven's green_metal_rust, painted
+# military-green steel, gives the paint its real surface; studio_small_08 is a
+# photographed studio for the lighting and reflections
+SCANS = {
+    "diff": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/green_metal_rust/green_metal_rust_diff_2k.jpg",
+    "rough": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/green_metal_rust/green_metal_rust_rough_2k.jpg",
+    "nor_gl": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/green_metal_rust/green_metal_rust_nor_gl_2k.jpg",
+    "ao": "https://dl.polyhaven.org/file/ph-assets/Textures/jpg/2k/green_metal_rust/green_metal_rust_ao_2k.jpg",
+}
+HDRI_URL = "https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/2k/studio_small_08_2k.hdr"
+SCAN_TILE_MM = 420.0   # one tile of the scan covers 42 cm of panel
+HDRI_STRENGTH = 0.55
+
+
+def fetch(url):
+    """a texture in textures/, downloaded the first time"""
+    import urllib.request
+    path = TEXTURES / url.rsplit("/", 1)[1]
+    if not path.exists():
+        TEXTURES.mkdir(exist_ok=True)
+        print("downloading", url)
+        urllib.request.urlretrieve(url, path)
+    return path
+
+
+_scans = {}
+
+
+def scan(kind):
+    """the scan's image, and for the colour map the mean of its luminance (to
+    use it as relative detail over our own paint colour)"""
+    if kind not in _scans:
+        img = bpy.data.images.load(str(fetch(SCANS[kind])))
+        if kind != "diff":
+            img.colorspace_settings.name = "Non-Color"
+        mean = None
+        if kind in ("diff", "rough"):
+            px = np.empty(len(img.pixels), dtype=np.float32)
+            img.pixels.foreach_get(px)
+            px = px.reshape(-1, 4)
+            mean = float((px[:, 0] * 0.2126 + px[:, 1] * 0.7152 + px[:, 2] * 0.0722).mean())
+        _scans[kind] = (img, mean)
+    return _scans[kind]
 T = 0.010          # plate thickness
 SEAM_GAP = 0.5     # SVG units between the main plate and the serial strip
 MASK_PX = 8192     # stencil mask resolution across the 100-unit square
@@ -619,6 +663,21 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     fine = N.noise(P, 1.3, 6, 0.7)              # sub-millimetre
     mottle = N.noise(P, 0.012, 4, 0.55)         # paint shade drift
 
+    # ---- the scanned painted steel, tiled flat over the panel's face
+    suv = N.vec(N.math("DIVIDE", px, SCAN_TILE_MM), N.math("DIVIDE", py, SCAN_TILE_MM), 0.0)
+    scan_nodes = {}
+    for k in ("diff", "rough", "nor_gl", "ao"):
+        img, mean = scan(k)
+        t = N.new("ShaderNodeTexImage", image=img, interpolation="Cubic", extension="REPEAT")
+        N.feed(t.inputs[0], suv)
+        scan_nodes[k] = (t, mean)
+    lum = N.new("ShaderNodeRGBToBW")
+    N.feed(lum.inputs[0], scan_nodes["diff"][0].outputs["Color"])
+    # the scan's light and shade, relative to its own mean (1.0 = average)
+    scan_detail = N.math("DIVIDE", lum.outputs[0], max(scan_nodes["diff"][1], 1e-4))
+    scan_rough = N.math("DIVIDE", N.xyz(scan_nodes["rough"][0].outputs["Color"])[0], max(scan_nodes["rough"][1], 1e-4))
+    scan_ao = N.xyz(scan_nodes["ao"][0].outputs["Color"])[0]
+
     # distance to the nearest fastener centre, in mm
     dmin = None
     for (x, y, r) in mark["rivets"]:
@@ -685,6 +744,10 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     paint = N.mix(N.mul(touch, 0.35), paint, N.rgb(tuple(c * f for c, f in zip(olive, (0.85, 0.92, 0.9)))))
     polish = N.ramp(N.noise(warp, 0.02, 4, 0.6), 0.6, 0.78)
     paint = N.mix(N.mul(worn_thin, 0.45), paint, N.scale_col(paint, 1.55))   # edges rubbed lighter
+    # the scan's real paint surface over ours: its streaks, stains and blemishes,
+    # as relative light and shade, and its ambient occlusion
+    paint = N.scale_col(paint, N.add(0.35, N.mul(N.math("MINIMUM", scan_detail, 2.2), 0.65)))
+    paint = N.scale_col(paint, N.add(0.55, N.mul(scan_ao, 0.45)))
     col = paint
 
     stencil_a = None
@@ -779,6 +842,8 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     # ---- roughness
     rough_paint = N.add(0.46, N.mul(N.sub(big, 0.5), 0.4), N.mul(N.sub(mid, 0.5), 0.16), N.mul(N.sub(fine, 0.5), 0.08),
                         N.mul(polish, -0.22), N.mul(touch, -0.12), N.mul(handling, -0.16))
+    # (the scan's roughness, around our own level)
+    rough_paint = N.mixf(0.6, rough_paint, N.math("MINIMUM", N.mul(rough_paint, scan_rough), 1.0))
     rough = N.mixf(N.mul(worn_thin, 0.6), rough_paint, 0.38)
     if stencil_a is not None:
         rough = N.mixf(stencil_a, rough, N.add(0.5, N.mul(fine, 0.1)))
@@ -797,6 +862,11 @@ def paint_material(name, mark, panel_ref, stencil_img, haze_img, tab_img, kind="
     bump.inputs["Distance"].default_value = 0.001
     bump.inputs["Strength"].default_value = 1.0
     N.feed(bump.inputs["Height"], h)
+    # the scan's surface relief under our own height detail
+    nmap = N.new("ShaderNodeNormalMap")
+    nmap.inputs["Strength"].default_value = 0.7
+    N.feed(nmap.inputs["Color"], scan_nodes["nor_gl"][0].outputs["Color"])
+    N.nt.links.new(nmap.outputs["Normal"], bump.inputs["Normal"])
 
     N.feed(bsdf.inputs["Base Color"], col)
     debug = os.environ.get("H1_DEBUG")       # e.g. H1_DEBUG=edge shows a mask flat
@@ -845,15 +915,14 @@ def make_world():
     out = N.new("ShaderNodeOutputWorld")
     bg = N.new("ShaderNodeBackground")
     N.nt.links.new(bg.outputs[0], out.inputs[0])
-    # a soft studio dome for reflections: bright overhead, dim walls, dark floor;
+    # a photographed studio (studio_small_08) for real light and reflections;
     # the camera never sees it (render.py makes camera rays see the backdrop or alpha)
-    tc = N.new("ShaderNodeTexCoord")
-    z = N.xyz(tc.outputs["Generated"])[2]
-    dome = N.add(N.mul(N.ramp(z, 0.45, 1.0), 0.22), 0.01)
+    env = N.new("ShaderNodeTexEnvironment")
+    env.image = bpy.data.images.load(str(fetch(HDRI_URL)))
+    N.nt.links.new(env.outputs["Color"], bg.inputs["Color"])
     lp = N.new("ShaderNodeLightPath")
-    strength = N.mixf(lp.outputs["Is Camera Ray"], dome, 0.0)
+    strength = N.mixf(lp.outputs["Is Camera Ray"], HDRI_STRENGTH, 0.0)
     N.feed(bg.inputs["Strength"], strength)
-    bg.inputs["Color"].default_value = (0.9, 0.92, 1.0, 1.0)
     w["dome_node"] = bg.name
     return w
 
