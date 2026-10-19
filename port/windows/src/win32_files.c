@@ -4,8 +4,9 @@ WIN32_FILES.C
 The file system half of port/linux/src/posix.h for Windows (the Linux
 version is posix_files.c). Paths are the platform layer's host paths, in the
 code page of the C runtime's narrow functions that open the same files
-(xbox_files.c opens them with open()). Failures set errno, which the callers
-turn into Xbox error codes.
+(xbox_files.c opens them with open()): in the 64-bit build, the host of the
+guest's (port/windows/host), UTF-8, its manifest's code page. Failures set
+errno, which the callers turn into Xbox error codes.
 */
 
 #include <windows.h>
@@ -213,6 +214,57 @@ struct directory
 	BOOL pending; /* data holds an entry not returned yet */
 };
 
+#ifdef _WIN64
+/* (the 64-bit build's host: its guest keeps the lower 32 bits of a pointer
+the host returns, so a directory's handle is an index from 1 to 64, as
+posix_files.c's on a 64-bit Linux host; tools/check_host_imports.py's
+POINTER_RESULTS) */
+#define DIRECTORY_HANDLE_COUNT 64
+
+static struct directory *directory_handles[DIRECTORY_HANDLE_COUNT];
+static SRWLOCK directory_handle_lock = SRWLOCK_INIT;
+
+static void *directory_handle_new(struct directory *directory)
+{
+	size_t index;
+
+	AcquireSRWLockExclusive(&directory_handle_lock);
+	for (index = 0; index < DIRECTORY_HANDLE_COUNT; index++)
+	{
+		if (!directory_handles[index])
+		{
+			directory_handles[index] = directory;
+			ReleaseSRWLockExclusive(&directory_handle_lock);
+			return (void *)(index + 1);
+		}
+	}
+	ReleaseSRWLockExclusive(&directory_handle_lock);
+	if (directory->find != INVALID_HANDLE_VALUE)
+		FindClose(directory->find);
+	free(directory);
+	errno = EMFILE;
+	return NULL;
+}
+
+static struct directory *directory_from_handle(void *handle, int release)
+{
+	size_t index = (size_t)handle - 1;
+	struct directory *directory;
+
+	if (index >= DIRECTORY_HANDLE_COUNT)
+		return NULL;
+	AcquireSRWLockExclusive(&directory_handle_lock);
+	directory = directory_handles[index];
+	if (release)
+		directory_handles[index] = NULL;
+	ReleaseSRWLockExclusive(&directory_handle_lock);
+	return directory;
+}
+#else
+#define directory_handle_new(directory) ((void *)(directory))
+#define directory_from_handle(handle, release) ((struct directory *)(handle))
+#endif
+
 void *posix_directory_open(const char *path)
 {
 	struct directory *directory = malloc(sizeof(*directory));
@@ -244,19 +296,19 @@ void *posix_directory_open(const char *path)
 				return NULL;
 			directory->find = INVALID_HANDLE_VALUE;
 			directory->pending = FALSE;
-			return directory;
+			return directory_handle_new(directory);
 		}
 		SetLastError(error);
 		fail();
 		return NULL;
 	}
 	directory->pending = TRUE;
-	return directory;
+	return directory_handle_new(directory);
 }
 
 int posix_directory_next(void *handle, char *name, posix_ulong name_size)
 {
-	struct directory *directory = handle;
+	struct directory *directory = directory_from_handle(handle, 0);
 
 	if (!directory || directory->find == INVALID_HANDLE_VALUE)
 		return 0;
@@ -276,7 +328,7 @@ int posix_directory_next(void *handle, char *name, posix_ulong name_size)
 
 void posix_directory_close(void *handle)
 {
-	struct directory *directory = handle;
+	struct directory *directory = directory_from_handle(handle, 1);
 
 	if (!directory)
 		return;
