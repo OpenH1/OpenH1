@@ -23,6 +23,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -220,7 +221,13 @@ def fetch_third_party(third_party: Path = THIRD_PARTY) -> None:
         unpacked = third_party / f"musl-{MUSL_VERSION}.unpacked"
         shutil.rmtree(unpacked, ignore_errors=True)
         unpacked.mkdir()
-        subprocess.run(["tar", "xzf", str(archive.resolve())], cwd=unpacked, check=True)
+        if os.name == "nt":
+            # (Windows: the tar first on a Git Bash PATH takes a drive
+            # letter's colon for a remote host; Python's reads it alike)
+            with tarfile.open(archive, "r:gz") as tar:
+                tar.extractall(unpacked)
+        else:
+            subprocess.run(["tar", "xzf", str(archive.resolve())], cwd=unpacked, check=True)
         (unpacked / musl_dir.name).rename(musl_dir)
         unpacked.rmdir()
         archive.unlink()
