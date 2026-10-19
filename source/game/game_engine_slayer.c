@@ -642,6 +642,8 @@ static void slayer_player_update(
 					index,
 					NONE,
 					NONE);
+				/* port: drawn over the target as drawn */
+				game_engine_set_goal_object(index, target_player->unit_index);
 			}
 		}
 

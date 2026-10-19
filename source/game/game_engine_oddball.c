@@ -848,6 +848,8 @@ static void oddball_engine_weapon_update(
 		NONE,
 		NONE,
 		oddball_globals.current_ball_owner[weapon->object.owner_team_index]);
+	/* port: drawn over the ball, or its carrier, as drawn */
+	game_engine_set_goal_object(weapon->object.owner_team_index, weapon_index);
 
 	/* (a client of the distributed netcode has the ball where the host
 	puts it) */
@@ -964,6 +966,8 @@ static void oddball_engine_update(
 						NONE,
 						NONE,
 						owner_player_index);
+					/* port: drawn over the carrier as drawn */
+					game_engine_set_goal_object((short)ball_index, unit_index);
 				}
 			}
 		}
