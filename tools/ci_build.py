@@ -203,6 +203,9 @@ def main() -> int:
         for pdb in [ROOT / "build/windows/halo.pdb", *sorted((ROOT / "build/windows/third_party").glob("SDL3-*/lib/x86/SDL3.pdb"))]:
             shutil.copy2(pdb, symbols)
             print(f"{pdb.relative_to(ROOT)} -> {symbols.relative_to(ROOT)}", flush=True)
+    # OpenH1's own licence, the AGPL, which asks each copy to carry its text
+    # (the Linux tree's is in share/licenses: linux_package.py)
+    shutil.copy2(ROOT / "LICENSE", dist / "LICENSE.txt")
     if args.platform == "macos":
         # (the SDL3 the app carries, built from this source: tools/macos_build.py)
         notices.append((ROOT / "build/macos/third_party/SDL3/LICENSE.txt", "SDL3-LICENSE.txt"))

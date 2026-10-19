@@ -46,10 +46,11 @@ SYSTEM_LIBRARIES = {
     "libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0", "librt.so.1", "ld-linux-aarch64.so.1",
     "libvulkan.so.1",
 }
-# (the package's name for each, from the repository; as tools/ci_build.py;
+# (the package's name for each, from the repository: OpenH1's own, the AGPL,
+# and those of what it carries; as tools/ci_build.py;
 # SDL3's, from the build's folder, is added in main)
 LICENSES = {
-    "extract-xiso-LICENSE.txt": "port/third_party/extract-xiso/LICENSE.TXT",
+    "LICENSE.txt": "LICENSE",
     "mbedtls-LICENSE.txt": "port/third_party/mbedtls/LICENSE",
     "miniupnpc-LICENSE.txt": "port/third_party/miniupnpc/LICENSE",
     "Overpass-OFL.txt": "port/assets/fonts/Overpass-OFL.txt",

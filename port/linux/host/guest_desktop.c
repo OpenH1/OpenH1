@@ -70,7 +70,7 @@ int host_sdl_show_message_box(void *box);
 int host_sdl_open_file_dialog(int filter_count, const char *filter_names, const char *filter_patterns,
 	char *path, unsigned int size);
 int host_update_download(const char *url, const char *path, unsigned int progress, unsigned int context,
-	char *error, int error_size);
+	char *error, int error_size, unsigned int maximum);
 int host_update_executable_path(char *path, int size);
 int host_update_replace_file(const char *path, const char *new_path, const char *old_path);
 void host_update_delete_file(const char *path);
@@ -890,13 +890,15 @@ static void download_progress(unsigned int context, unsigned int received, unsig
 	binding->progress(binding->context, received, total);
 }
 
-int update_download(const char *url, const char *path, update_progress_proc progress, void *context,
-	char *error, int error_size)
+int update_download(const char *url, const char *path, unsigned long long maximum, update_progress_proc progress,
+	void *context, char *error, int error_size)
 {
 	struct download_progress binding = { progress, context };
 
+	/* (the most a download may be, in 32 bits: a release is far below 4 GB) */
 	return host_update_download(url, path, progress ? (unsigned int)(uintptr_t)download_progress : 0,
-		(unsigned int)(uintptr_t)&binding, error, error_size);
+		(unsigned int)(uintptr_t)&binding, error, error_size,
+		maximum > 0xffffffffULL ? 0xffffffffU : (unsigned int)maximum);
 }
 
 int update_executable_path(char *path, int size)

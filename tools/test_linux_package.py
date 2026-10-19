@@ -47,7 +47,7 @@ def test_tree(build, tmp_path):
     assert "share/openh1/brokers.txt" in names
     assert "share/applications/openh1.desktop" in names
     assert "share/icons/hicolor/48x48/apps/openh1.png" in names
-    assert "share/licenses/openh1/LICENSE.md" in names
+    assert "share/licenses/openh1/LICENSE" in names
     assert "share/licenses/openh1/SDL3-LICENSE.txt" in names
     assert "share/doc/openh1/README.md" in names
     # (nothing but the prefix's folders at its top)

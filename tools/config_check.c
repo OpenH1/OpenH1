@@ -32,6 +32,15 @@ const char *SDL_GetBasePath(void)
 }
 #endif
 
+/* (port_config.c's look for a config.toml it does not read: none here) */
+typedef struct SDL_PathInfo SDL_PathInfo;
+_Bool SDL_GetPathInfo(const char *path, SDL_PathInfo *info)
+{
+	(void)path;
+	(void)info;
+	return 0;
+}
+
 void platform_log(const char *format, ...)
 {
 	va_list arguments;

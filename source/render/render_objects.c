@@ -392,6 +392,8 @@ boolean vr_grab_highlight(long object_index, struct render_lighting const *given
 #endif
 /* port: port/linux/game/shield_color.c */
 real_rgb_color const *shield_color_colors(long unit_index, real_rgb_color const *colors);
+/* port: port/linux/game/overshield_effect.c */
+real const *overshield_effect_values(long unit_index, real const *values, boolean arms);
 
 void render_object_shadows(
 	void)
@@ -592,8 +594,12 @@ static void render_object_list(
 								TEST_FLAG(_object_mask_unit, object->object.type) ?
 									shield_color_colors(object_index, change_colors) :
 									change_colors;
+							/* port: an overshield as it rises and lasts
+							(port/linux/game/overshield_effect.c) */
 							model_effect.modifier_animation.values =
-								function_values;
+								TEST_FLAG(_object_mask_unit, object->object.type) ?
+									overshield_effect_values(object_index, function_values, FALSE) :
+									function_values;
 						}
 						else
 						{

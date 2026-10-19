@@ -37,6 +37,10 @@ faults, so the renderer's device installs it again, chained to that one.
 #define WATCH_PAGE_SIZE 0x1000UL
 #define WATCH_PAGE_COUNT (PLATFORM_CONTIGUOUS_SIZE / WATCH_PAGE_SIZE)
 
+/* (each page: 0 not watched, 1 watched and read-only, 2 made writable by a
+watched write. A fault on a page at 2 is a write another thread made as
+this one was making the page writable, and is made again; one on a page at
+0, freed memory or none of the watch's, is a crash) */
 static unsigned char page_protected[WATCH_PAGE_COUNT];
 static unsigned long page_generation[WATCH_PAGE_COUNT];
 static volatile unsigned long current_generation = 1;
@@ -60,7 +64,7 @@ static unsigned long page_index(unsigned long address)
 static void mark_written(unsigned long page)
 {
 	page_generation[page] = __sync_add_and_fetch(&current_generation, 1);
-	page_protected[page] = 0;
+	page_protected[page] = 2;
 	mprotect((void *)(PLATFORM_CONTIGUOUS_BASE + page * WATCH_PAGE_SIZE), WATCH_PAGE_SIZE, PROT_READ | PROT_WRITE);
 }
 
@@ -206,11 +210,13 @@ static void crash_handler(int signal_number, siginfo_t *information, void *conte
 		unsigned long page = page_index((unsigned long)information->si_addr);
 
 		/* a write to a page the renderer watches: noted, and let through */
-		if (page < WATCH_PAGE_COUNT && page_protected[page])
+		if (page < WATCH_PAGE_COUNT && page_protected[page] == 1)
 		{
 			mark_written(page);
 			return;
 		}
+		if (page < WATCH_PAGE_COUNT && page_protected[page] == 2)
+			return;
 	}
 	if (index < 0)
 		return;
@@ -291,7 +297,7 @@ void memory_watch_protect(unsigned long address, unsigned long size)
 		last = WATCH_PAGE_COUNT - 1;
 	for (page = first; page <= last; page++)
 	{
-		if (!page_protected[page])
+		if (page_protected[page] != 1)
 		{
 			page_protected[page] = 1;
 			mprotect((void *)(PLATFORM_CONTIGUOUS_BASE + page * WATCH_PAGE_SIZE), WATCH_PAGE_SIZE, PROT_READ);
@@ -339,7 +345,7 @@ void memory_watch_prepare_write(void *address, unsigned long size)
 		last = WATCH_PAGE_COUNT - 1;
 	for (page = first; page <= last; page++)
 	{
-		if (page_protected[page])
+		if (page_protected[page] == 1)
 			mark_written(page);
 	}
 }

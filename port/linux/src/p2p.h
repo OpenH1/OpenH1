@@ -31,6 +31,9 @@ const unsigned char *p2p_identifier(void);
 /* the address the game reaches the machine with this identifier at, if it
 is an internet play peer (reached yet or not) */
 int p2p_peer_address(const unsigned char *identifier, unsigned long *address);
+/* the ping to the machine with this identifier, in milliseconds, if the
+tunnel reaches it; -1 if not, or not timed yet */
+int p2p_peer_ping(const unsigned char *identifier);
 
 /* a destination the game sends to or connects to (stream: a TCP socket;
 socket: the game's UDP socket connected to it, else -1): 1 if it is a peer's
@@ -78,6 +81,10 @@ void p2p_set_hosting_allowed(int allowed);
 /* the invite link of the game this machine hosts (empty, 0: none, or LAN
 only) */
 int p2p_invite_link(char *link, int size);
+/* an invite (a link or a code, or any text holding one) as the log shows
+it: its first digits only, since players post their logs and an invite lets
+anyone join; the dedicated server's log, its operator's, has it whole */
+const char *p2p_invite_log_text(const char *invite, char *text, int size);
 
 /* the hosted game's players and the most it takes, which Discord shows
 (0, 0: not hosting; until the game says, the machines the tunnel reaches
@@ -157,6 +164,9 @@ int p2p_joined_listed_host(void);
 /* a copy of the public games found, in the order shown (the most players
 first; then those not failed, the open ones, by name); returns their count */
 int p2p_lobby_games(struct p2p_listing *games, int maximum_count);
+/* how many hosts list a game of a newer network version, which is not
+shown (an old build sees none of the games) */
+int p2p_lobby_newer_games(void);
 /* a game the browser could not join: kept, marked failed, for this run */
 void p2p_lobby_mark_failed(const unsigned char *identifier);
 /* a locked game's invite (into its invite), if the password is its own:

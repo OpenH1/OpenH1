@@ -315,6 +315,11 @@ void tgaLoadImageData(
 
 /* ---------- globals */
 
+/* port: rasterizer_xbox.c's (rasterizer_xbox_internal.h, which this file
+does not include) */
+void rasterizer_forget_hardware_state(
+	void);
+
 extern struct pixel_shader_definition blur_shader;
 extern struct pixel_shader_definition regular_shader;
 extern unsigned long current_time;
@@ -2196,6 +2201,9 @@ static void progress_bar_render(
 	IDirect3DDevice8_SetTransform(global_d3d_device, D3DTS_VIEW, &progress_bar_globals.saved_view);
 	IDirect3DDevice8_SetTransform(global_d3d_device, D3DTS_PROJECTION, &progress_bar_globals.saved_projection);
 	IDirect3DDevice8_BlockUntilVerticalBlank(global_d3d_device);
+	/* port: the rasterizer's caches of the device's states learn what was
+	set here */
+	rasterizer_forget_hardware_state();
 
 	return;
 }
@@ -2310,7 +2318,9 @@ static void progress_bar_make_stuff_ready(
 		IDirect3DDevice8_SetRenderTarget(global_d3d_device, front_buffer, depth_buffer);
 		IDirect3DSurface8_Release(back_buffer);
 		IDirect3DSurface8_Release(front_buffer);
-		IDirect3DSurface8_Release(depth_buffer);
+		/* port: (none, when no depth buffer is set) */
+		if (depth_buffer)
+			IDirect3DSurface8_Release(depth_buffer);
 	}
 
 	return;
@@ -2350,6 +2360,10 @@ static void progress_bar_load_loading_texture(
 		}
 		fclose(file);
 	}
+	/* port: no disc has loading.tga as a file (the retail default.xbe holds
+	the picture, which importing a disc writes as loading.tga:
+	port/linux/src/xiso.c); without it the texture is left as created,
+	black */
 	IDirect3DTexture8_UnlockRect(*texture, 0);
 
 	return;

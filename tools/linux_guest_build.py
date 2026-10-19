@@ -305,8 +305,12 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
                 variables={"cflags": miniupnpc_cflags + (" -w" if source.name != "posix_upnp.c" else "")})
         host_objects.append(obj)
     # the self-updater's download (posix_update.c) and internet play's DTLS
-    # with browsers (posix_dtls.c), with port/third_party/mbedtls
-    mbedtls_cflags = " ".join([host_cflags, f"-I{MBEDTLS_DIR / 'include'}"])
+    # with browsers (posix_dtls.c), with port/third_party/mbedtls: with Mbed
+    # TLS's own locks, as built from its unchanged config by these defines,
+    # since both run on threads of their own, and two threads setting up its
+    # PSA crypto or drawing on its random generator at once crashed it
+    mbedtls_cflags = " ".join([host_cflags, f"-I{MBEDTLS_DIR / 'include'}",
+                               "-DMBEDTLS_THREADING_C", "-DMBEDTLS_THREADING_PTHREAD"])
     for name in ("posix_update.c", "posix_dtls.c"):
         n.build(outputs=host_obj_dir / (name + ".o"), rule=host_cc,
                 inputs=LINUX_DIR / "src" / name, variables={"cflags": mbedtls_cflags})
