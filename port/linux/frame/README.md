@@ -76,3 +76,19 @@ That keeps the maps, `config.toml`, `halo-vr.env` and the logs; remove
 
 Start SteamVR before the game. Without a headset the game plays flat, in
 its window.
+
+## Measuring performance
+
+- Where a frame's time goes: put `HALO_GPU_STATS=1` and `HALO_VR_GPU_TIME=1`
+  in `halo-vr.env` (or `gpu_stats = true` and `vr_gpu_time = true` under
+  `[debug]` in `config.toml`). Every 300 frames `halo-vr.log` then has
+  `vr: a frame's draws: ...` (the render thread's time before the eyes, on
+  the eyes, and on the HUD and the present) and
+  `vr: elapsed render GPU timeline per frame: ...` (the GPU's, from the
+  frame's first commands to its last, gaps included); every 600 frames,
+  `vulkan: ... frames: ... passes, ... draws`.
+- The GPU's busy time alone, from the kernel, with nothing turned on in the
+  game: copy `tools/gpu_busy.py` here and, over ssh while the game plays,
+  `python3 gpu_busy.py --hz 120` (the headset's refresh rate). Near the
+  frame's budget (8.33 ms at 120 Hz), the GPU holds the frame rate; well
+  under it while the frame rate is still short, the CPU does.

@@ -5,7 +5,9 @@ The real Vulkan core over a recording-only Vulkan: no driver or GPU.
 Checks attachment load actions, clears inside a pass, multiview layer
 selection, sampling an array's first layer as a 2D image, and capability
 requirements on devices with optional depth formats or query precision.
-Also checks packed vertex bindings and transfer/submission dependencies,
+Also checks the shader modules found again (by their words, or a fixed
+program's by their address), packed vertex bindings, each draw's state set
+only where it changed, and transfer/submission dependencies,
 the texture sets a submission reuses, the order of the enhanced dynamic
 lights' uploads among the draws, and anti-aliasing's passes: their order,
 attachments, barriers, samples and uniforms (xgpu_vulkan_post.c); and the
@@ -36,6 +38,11 @@ static VkFormatFeatureFlags depth24_features, depth32_features;
 static unsigned int capability_errors;
 static unsigned int ended_queries;
 static unsigned int barriers, copies, bound_vertices;
+/* the vertex buffers each binding has, as the command buffer has them, and
+the calls that set state (a draw's state is set only where it changed) */
+static VkBuffer vertex_state[3];
+static VkDeviceSize vertex_state_offsets[3];
+static unsigned int state_calls;
 static unsigned int allocated_sets, set_updates, pool_resets;
 static VkMemoryBarrier last_memory;
 static VkPipelineStageFlags last_source, last_destination;
@@ -264,29 +271,58 @@ static void VKAPI_CALL fake_bind_vertices(VkCommandBuffer command, uint32_t firs
 	const uint32_t sources[3] = { 3, 15, XGPU_VULKAN_BINDING_CONSTANT };
 
 	(void)command;
-	assert(count == 1 && first == bound_vertices && first < 3);
+	assert(count == 1 && first < 3);
 	assert(buffers[0] == (VkBuffer)(uintptr_t)(100 + sources[first]));
 	assert(offsets[0] == sources[first] * 16);
+	vertex_state[first] = buffers[0];
+	vertex_state_offsets[first] = offsets[0];
 	bound_vertices++;
+	state_calls++;
+}
+
+static void VKAPI_CALL counted_bind_vertices(VkCommandBuffer command, uint32_t first, uint32_t count,
+	const VkBuffer *buffers, const VkDeviceSize *offsets)
+{
+	(void)command;
+	assert(count == 1 && first < 3);
+	vertex_state[first] = buffers[0];
+	vertex_state_offsets[first] = offsets[0];
+	bound_vertices++;
+	state_calls++;
 }
 
 static void VKAPI_CALL fake_viewport(VkCommandBuffer c, uint32_t first, uint32_t count, const VkViewport *v)
-{ (void)c; (void)first; (void)count; (void)v; }
+{ (void)c; (void)first; (void)count; (void)v; state_calls++; }
 static void VKAPI_CALL fake_scissor(VkCommandBuffer c, uint32_t first, uint32_t count, const VkRect2D *r)
-{ (void)c; (void)first; (void)count; (void)r; }
+{ (void)c; (void)first; (void)count; (void)r; state_calls++; }
+static float bias_state[2];
 static void VKAPI_CALL fake_bias(VkCommandBuffer c, float constant, float clamp, float slope)
-{ (void)c; (void)constant; (void)clamp; (void)slope; }
+{ (void)c; (void)clamp; bias_state[0] = slope; bias_state[1] = constant; state_calls++; }
 static void VKAPI_CALL fake_blend(VkCommandBuffer c, const float color[4])
-{ (void)c; (void)color; }
+{ (void)c; (void)color; state_calls++; }
 static void VKAPI_CALL fake_stencil(VkCommandBuffer c, VkStencilFaceFlags face, uint32_t reference)
-{ (void)c; (void)face; (void)reference; }
+{ (void)c; (void)face; (void)reference; state_calls++; }
 static void VKAPI_CALL fake_topology(VkCommandBuffer c, VkPrimitiveTopology topology)
-{ (void)c; (void)topology; }
+{ (void)c; (void)topology; state_calls++; }
 static void VKAPI_CALL fake_bind_sets(VkCommandBuffer c, VkPipelineBindPoint point, VkPipelineLayout layout,
 	uint32_t first, uint32_t count, const VkDescriptorSet *sets, uint32_t dynamic_count, const uint32_t *offsets)
-{ (void)c; (void)point; (void)layout; (void)first; (void)count; (void)sets; (void)dynamic_count; (void)offsets; }
+{ (void)c; (void)point; (void)layout; (void)first; (void)count; (void)sets; (void)dynamic_count; (void)offsets; state_calls++; }
+static void VKAPI_CALL plain_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first, uint32_t instance)
+{ (void)c; (void)vertices; (void)instances; (void)first; (void)instance; }
+/* (each binding the pipeline reads has its stream's buffer, set by this
+draw or kept from the one before) */
 static void VKAPI_CALL fake_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first, uint32_t instance)
-{ (void)c; (void)vertices; (void)instances; (void)first; (void)instance; assert(bound_vertices == 3); }
+{
+	const uint32_t sources[3] = { 3, 15, XGPU_VULKAN_BINDING_CONSTANT };
+	int index;
+
+	(void)c; (void)vertices; (void)instances; (void)first; (void)instance;
+	for (index = 0; index < 3; index++)
+	{
+		assert(vertex_state[index] == (VkBuffer)(uintptr_t)(100 + sources[index]));
+		assert(vertex_state_offsets[index] == sources[index] * 16);
+	}
+}
 
 static void vertex_input_test(void)
 {
@@ -332,8 +368,39 @@ static void vertex_input_test(void)
 	vkCmdBindDescriptorSets = fake_bind_sets;
 	vkCmdDraw = fake_draw;
 	bound_vertices = 0;
+	memset(vertex_state, 0, sizeof(vertex_state));
 	xgpu_vulkan_draw(&draw);
 	assert(bound_vertices == 3);
+	/* The same draw again sets nothing again: the command buffer keeps the
+	state, the buffers and the sets; a change sets only what changed. */
+	bound_vertices = state_calls = 0;
+	xgpu_vulkan_draw(&draw);
+	assert(bound_vertices == 0 && state_calls == 0);
+	draw.vertices[15].offset = 7 * 16;
+	draw.vertices[15].buffer = (VkBuffer)(uintptr_t)(100 + 7);
+	vkCmdBindVertexBuffers = counted_bind_vertices;
+	vkCmdDraw = plain_draw;
+	xgpu_vulkan_draw(&draw);
+	assert(bound_vertices == 1 && state_calls == 1 && vertex_state[1] == (VkBuffer)(uintptr_t)107);
+	draw.vertices[15].offset = 15 * 16;
+	draw.vertices[15].buffer = (VkBuffer)(uintptr_t)(100 + 15);
+	xgpu_vulkan_draw(&draw);
+	vkCmdBindVertexBuffers = fake_bind_vertices;
+	vkCmdDraw = fake_draw;
+	bound_vertices = state_calls = 0;
+	dynamic.depth_bias[0] = 2.0f;
+	dynamic.depth_bias[1] = 1.0f;
+	xgpu_vulkan_draw(&draw);
+	assert(state_calls == 1 && bias_state[0] == 2.0f && bias_state[1] == 1.0f);
+	draw.uniforms.offset = 256;
+	state_calls = 0;
+	xgpu_vulkan_draw(&draw);
+	assert(state_calls == 1);
+	/* A recording begun knows nothing of the last one's state. */
+	memset(&vk.bound, 0, sizeof(vk.bound));
+	state_calls = bound_vertices = 0;
+	xgpu_vulkan_draw(&draw);
+	assert(bound_vertices == 3 && state_calls == 10);
 	/* A draw that reads the dynamic lights orders their next upload after
 	it; others leave it free to go before the submission's draws. */
 	{
@@ -342,11 +409,9 @@ static void vertex_input_test(void)
 
 		vk.lights_block = &block;
 		vk.lights_cells = &cells;
-		bound_vertices = 0;
 		xgpu_vulkan_draw(&draw);
 		assert(block.used == 0 && cells.used == 0);
 		draw.dynamic_lights = 1;
-		bound_vertices = 0;
 		xgpu_vulkan_draw(&draw);
 		assert(block.used == vk.serial && cells.used == vk.serial);
 	}
@@ -573,6 +638,11 @@ static VkDescriptorImageInfo post_sampled[4][4];
 static VkViewport post_viewports[4];
 static VkRect2D post_scissors[4];
 static uint32_t post_offsets[4][2];
+/* the state the command buffer has (each draw's, as it draws: a draw sets
+only what changed) */
+static VkViewport post_viewport_state;
+static VkRect2D post_scissor_state;
+static uint32_t post_offset_state[2];
 static VkPipelineStageFlags post_barrier_sources[8], post_barrier_destinations[8];
 static VkAccessFlags post_barrier_access[8];
 static uint32_t post_barriers;
@@ -671,14 +741,14 @@ static void VKAPI_CALL post_viewport(VkCommandBuffer c, uint32_t first, uint32_t
 {
 	(void)c;
 	assert(first == 0 && count == 1);
-	post_viewports[post_draws] = v[0];
+	post_viewport_state = v[0];
 }
 
 static void VKAPI_CALL post_scissor(VkCommandBuffer c, uint32_t first, uint32_t count, const VkRect2D *r)
 {
 	(void)c;
 	assert(first == 0 && count == 1);
-	post_scissors[post_draws] = r[0];
+	post_scissor_state = r[0];
 }
 
 static void VKAPI_CALL post_bind_sets(VkCommandBuffer c, VkPipelineBindPoint point, VkPipelineLayout layout,
@@ -686,14 +756,18 @@ static void VKAPI_CALL post_bind_sets(VkCommandBuffer c, VkPipelineBindPoint poi
 {
 	(void)c; (void)point; (void)layout; (void)sets;
 	assert(first == 0 && count == 2 && dynamic_count == 2);
-	post_offsets[post_draws][0] = offsets[0];
-	post_offsets[post_draws][1] = offsets[1];
+	post_offset_state[0] = offsets[0];
+	post_offset_state[1] = offsets[1];
 }
 
 static void VKAPI_CALL post_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first, uint32_t instance)
 {
 	(void)c;
 	assert(vertices == 3 && instances == 1 && first == 0 && instance == 0 && post_draws < 4);
+	post_viewports[post_draws] = post_viewport_state;
+	post_scissors[post_draws] = post_scissor_state;
+	post_offsets[post_draws][0] = post_offset_state[0];
+	post_offsets[post_draws][1] = post_offset_state[1];
 	post_draws++;
 	post_event('D');
 }
@@ -880,6 +954,9 @@ static struct
 static VkViewport masked_viewports[4];
 static VkRect2D masked_scissors[4];
 static uint32_t masked_offsets[4];
+static VkViewport masked_viewport_state;
+static VkRect2D masked_scissor_state;
+static uint32_t masked_offset_state;
 static VkClearAttachment masked_cleared[2];
 static uint32_t masked_cleared_count;
 
@@ -934,14 +1011,14 @@ static void VKAPI_CALL masked_viewport(VkCommandBuffer c, uint32_t first, uint32
 {
 	(void)c;
 	assert(first == 0 && count == 1 && masked_draws < 4);
-	masked_viewports[masked_draws] = v[0];
+	masked_viewport_state = v[0];
 }
 
 static void VKAPI_CALL masked_scissor(VkCommandBuffer c, uint32_t first, uint32_t count, const VkRect2D *r)
 {
 	(void)c;
 	assert(first == 0 && count == 1 && masked_draws < 4);
-	masked_scissors[masked_draws] = r[0];
+	masked_scissor_state = r[0];
 }
 
 static void VKAPI_CALL masked_bind_sets(VkCommandBuffer c, VkPipelineBindPoint point, VkPipelineLayout layout,
@@ -949,7 +1026,7 @@ static void VKAPI_CALL masked_bind_sets(VkCommandBuffer c, VkPipelineBindPoint p
 {
 	(void)c; (void)point; (void)layout; (void)sets;
 	assert(first == 0 && count == 2 && dynamic_count == 2 && offsets[0] == offsets[1]);
-	masked_offsets[masked_draws] = offsets[1];
+	masked_offset_state = offsets[1];
 }
 
 static void VKAPI_CALL masked_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first,
@@ -957,6 +1034,9 @@ static void VKAPI_CALL masked_draw(VkCommandBuffer c, uint32_t vertices, uint32_
 {
 	(void)c;
 	assert(vertices == 3 && instances == 1 && first == 0 && instance == 0 && masked_draws < 4);
+	masked_viewports[masked_draws] = masked_viewport_state;
+	masked_scissors[masked_draws] = masked_scissor_state;
+	masked_offsets[masked_draws] = masked_offset_state;
 	masked_draws++;
 	masked_event('D');
 }
@@ -1577,6 +1657,47 @@ static void pipeline_cache_test(void)
 	reset();
 }
 
+static unsigned int modules_made;
+
+static VkResult VKAPI_CALL fake_shader_module(VkDevice device, const VkShaderModuleCreateInfo *info,
+	const VkAllocationCallbacks *allocator, VkShaderModule *module)
+{
+	(void)device; (void)allocator;
+	assert(info->codeSize % 4 == 0 && info->pCode);
+	*module = (VkShaderModule)(uintptr_t)(500 + modules_made++);
+	return VK_SUCCESS;
+}
+
+/* A module is the same for the same words, made once (by its words'
+hash, eight bytes at a time); the fixed programs' (the VR composition's,
+asked for at each of its draws) are found by their address, not read
+again. */
+static void shaders_test(void)
+{
+	static uint32_t fixed[5] = { 0x07230203, 1, 2, 3, 4 };
+	uint32_t copy[5], other[3] = { 0x07230203, 9, 9 };
+	VkShaderModule module;
+
+	reset();
+	modules_made = 0;
+	vkCreateShaderModule = fake_shader_module;
+	memcpy(copy, fixed, sizeof(copy));
+	module = xgpu_vulkan_shader_constant(fixed, 5);
+	assert(module && modules_made == 1);
+	assert(xgpu_vulkan_shader_constant(fixed, 5) == module && vk.constant_shader_count == 1);
+	/* (the same words elsewhere: the same module, by their hash) */
+	assert(xgpu_vulkan_shader(copy, 5) == module && modules_made == 1);
+	assert(xgpu_vulkan_shader(other, 3) != module && modules_made == 2);
+	/* (found by the address: the words are not hashed or compared again) */
+	fixed[4] = 5;
+	assert(xgpu_vulkan_shader_constant(fixed, 5) == module && modules_made == 2);
+	/* (another count at the address is another module) */
+	assert(xgpu_vulkan_shader_constant(fixed, 4) != module && modules_made == 3);
+	assert(bytes_hash64(copy, sizeof(copy)) != bytes_hash64(fixed, sizeof(fixed)));
+	assert(bytes_hash64(copy, 19) != bytes_hash64(copy, 20));
+	reset();
+}
+
 int main(void)
 {
 	static const int32_t full[1][4] = { { 0, 0, 64, 48 } };
@@ -1587,6 +1708,7 @@ int main(void)
 		XGPU_VULKAN_CLEAR_DEPTH | XGPU_VULKAN_CLEAR_STENCIL;
 
 	capabilities_test();
+	shaders_test();
 	vertex_input_test();
 	uploads_test();
 	dynamic_lights_test();
