@@ -1144,9 +1144,10 @@ int host_metal_window_open(unsigned int window);
 /* port/linux/vulkan/host_vulkan.c: the window drawn with Vulkan by the
 host, with the graphics' debugging settings (the host does not read the
 settings file): debug, HOST_VULKAN_DEBUG_*; the folders debug.gpu_dump_shaders
-and debug.texture_dump_directory name (empty: none); nonzero on success */
+and debug.texture_dump_directory name (empty: none); at a swap interval (vsync 1,
+or 0): asked again, the interval changed; nonzero on success */
 int host_vulkan_window_open(unsigned int window, unsigned int debug, const char *shader_folder,
-	const char *texture_folder);
+	const char *texture_folder, int interval);
 /* (host_vulkan.c's) debug.gpu_stats, debug.gpu_validation (or debug.gl_debug) */
 #define HOST_VULKAN_DEBUG_STATISTICS 1
 #define HOST_VULKAN_DEBUG_VALIDATION 2
@@ -1296,9 +1297,26 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (!host_vulkan_window_open((unsigned int)(uintptr_t)platform_window,
 		(config_boolean("debug.gpu_stats") ? HOST_VULKAN_DEBUG_STATISTICS : 0) |
 		(config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug") ? HOST_VULKAN_DEBUG_VALIDATION : 0),
-		config_string("debug.gpu_dump_shaders"), config_string("debug.texture_dump_directory")))
+		config_string("debug.gpu_dump_shaders"), config_string("debug.texture_dump_directory"),
+		config_boolean("display.vsync") ? 1 : 0))
 	{
 		platform_log("cannot draw the window with Vulkan");
+		/* (said where it can be seen, not only in the log: else the game
+		runs on with nothing on the screen; a box cannot show above a
+		fullscreen window) */
+#ifndef HALO_ANDROID
+		if (platform_window_fullscreen())
+			platform_window_set_fullscreen(FALSE);
+#endif
+		if (!config_boolean("debug.hidden_window"))
+			SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Halo",
+				"The game cannot draw with Vulkan on this device. It needs a GPU and driver with Vulkan 1.3 "
+#ifdef HALO_ANDROID
+				"(most phones from about 2021 on, with their system updates)."
+#else
+				"(dynamic rendering, timeline semaphores): updating the graphics driver may give it."
+#endif
+				, NULL);
 		return FALSE;
 	}
 #endif
@@ -1401,7 +1419,10 @@ void platform_display_apply(void)
 #endif
 #ifdef PLATFORM_HOST_GL
 	host_gl_window((unsigned int)(uintptr_t)platform_window, config_boolean("display.vsync") ? 1 : 0);
-#elif !defined(HALO_METAL) && !defined(HALO_VULKAN)
+#elif defined(HALO_VULKAN)
+	/* (the window open already: only its swap interval is taken) */
+	host_vulkan_window_open((unsigned int)(uintptr_t)platform_window, 0, "", "", config_boolean("display.vsync") ? 1 : 0);
+#elif !defined(HALO_METAL)
 	SDL_GL_SetSwapInterval(config_boolean("display.vsync") ? 1 : 0);
 #endif
 }

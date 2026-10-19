@@ -395,7 +395,7 @@ static void post_programs(void)
 {
 	static const char *const names[XGPU_VULKAN_POST_PROGRAM_COUNT] =
 	{
-		"post-fxaa", "post-smaa-edges", "post-smaa-weights", "post-smaa-blend",
+		"post-fxaa", "post-smaa-edges", "post-smaa-weights", "post-smaa-blend", "post-rotate",
 	};
 	struct xgpu_spirv_module module;
 	int program;

@@ -25,4 +25,16 @@ layer of a BGRA8 target, in the stream's order; the targets bound before
 are not bound after. 0 if its pipelines cannot be made */
 int xgpu_vulkan_post_anti_alias(int smaa, struct xgpu_vulkan_image *target, uint32_t layer, const int32_t corners[4]);
 
+/* The present step's turn, for a swapchain made for the display's own
+orientation while the phone is held another way (Android's pre-rotation:
+the compositor then has nothing to turn). prepare makes its pipeline, at the
+start (not while a map is prepared, since rotate may be called by the
+loading screen's presentation then): 0 if it cannot be made (logged).
+rotate draws an image turned by quarter turns clockwise (1 to 3) into an
+image of its own (its width and height swapped for an odd count), in the
+stream's order, and returns it; the targets bound before are not bound
+after. NULL if it cannot. */
+int xgpu_vulkan_post_rotate_prepare(void);
+struct xgpu_vulkan_image *xgpu_vulkan_post_rotate(struct xgpu_vulkan_image *image, int quarter_turns);
+
 #endif

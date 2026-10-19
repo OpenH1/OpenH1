@@ -10,7 +10,7 @@ uniforms are a block at set 0, binding 1: struct xgpu_vulkan_post_uniforms.
 Their textures are set 1's bindings, xgpu_post.c's texture units: FXAA and
 SMAA's edges read the target's copy (0); the blending weights the edges (0),
 the area texture (1) and the search texture (2); the blend the target's copy
-(0) and the weights (1).
+(0) and the weights (1); the turn the frame (0).
 */
 
 #ifndef XGPU_VULKAN_POST_SHADERS_H
@@ -25,6 +25,8 @@ enum xgpu_vulkan_post_program_id
 	XGPU_VULKAN_POST_SMAA_EDGES,
 	XGPU_VULKAN_POST_SMAA_WEIGHTS,
 	XGPU_VULKAN_POST_SMAA_BLEND,
+	/* (Vulkan's own: the frame turned for the swapchain, xgpu_vulkan_post_rotate) */
+	XGPU_VULKAN_POST_ROTATE,
 	XGPU_VULKAN_POST_PROGRAM_COUNT
 };
 
@@ -34,7 +36,8 @@ struct xgpu_vulkan_post_uniforms
 	/* 1 / width, 1 / height, width, height of the target */
 	float metrics[4];
 	/* FXAA's: the rectangle's outermost texel centres, as texture
-	coordinates (x0, y0, x1, y1) */
+	coordinates (x0, y0, x1, y1); the turn's: its matrix's rows (the
+	turned image's coordinates about its centre to the frame's) */
 	float bounds[4];
 };
 
