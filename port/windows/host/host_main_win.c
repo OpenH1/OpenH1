@@ -258,6 +258,10 @@ int main(void)
 {
 	int error;
 
+	/* (a copy of halo.exe started to report a crash, or to send reports:
+	no game) */
+	if (host_crash_reporter())
+		return 0;
 	log_open();
 	host_log_set_sink(log_sink);
 	executable_path_find();
@@ -293,6 +297,7 @@ int main(void)
 	_setmode(1, _O_BINARY);
 	_setmode(2, _O_BINARY);
 	host_install_signal_handlers();
+	host_crash_install();
 	error = host_run_on_low_stack(game_main, NULL, MAIN_STACK_SIZE);
 	if (error)
 		host_fatal("cannot allocate the game's stack in guest memory");

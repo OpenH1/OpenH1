@@ -237,7 +237,11 @@ def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
     for source in sorted(PORT_DIR.glob("*.c")) + sorted(PORT_DIR.glob("*.S")):
         if source.name in ("guest_windows.c", "guest_image_win.S"):
             continue
-        add(source, host_cflags)
+        if source.name in ("host_crash_win.c", "host_memory_watch_win.c"):
+            # (the build's number and configuration name its crash reports)
+            add(source, f"{host_cflags} {updater_defines(release)}")
+        else:
+            add(source, host_cflags)
     for name in SHARED_HOST_SOURCES:
         add(ANDROID_DIR / "host" / name, host_cflags)
     add(LINUX_HOST_DIR / "host_desktop.c", host_cflags)

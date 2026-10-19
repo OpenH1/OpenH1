@@ -70,13 +70,26 @@ int host_run_on_low_stack(void (*function)(void *), void *argument, size_t stack
 (host_enter_win.S): an exception no handler above took is a crash, which
 it reports before the process ends (an EXCEPTION_DISPOSITION) */
 int host_stack_exception(void *record, void *frame, void *context, void *dispatcher);
-/* reports an exception (the log; with a minidump once the crash reporter
-is there) */
+/* reports a crash: a minidump (host_crash_dump), then the exception, the
+registers and the frames in the log; once (another thread's crash waits) */
 void host_crash_report(void *exception_pointers);
 /* makes the guest image's frames walkable by Windows's unwinder (its
 crash reports and debuggers): a function table over the image whose
 entries follow the guest's frame pointers (host_image must be loaded) */
 void host_register_guest_frames(void);
+
+/* ---------- crash reports (host_crash_win.c) */
+
+/* a copy of halo.exe started as the crash reporter, or the uploader of the
+reports left unsent ("--crash-report", "--crash-upload" on the command
+line): does its work and returns 1 (main then ends); else 0 */
+int host_crash_reporter(void);
+/* abort() and the C runtime's invalid parameter checks raise exceptions
+(reported as crashes); reports left unsent go, in the background */
+void host_crash_install(void);
+/* has the crash reporter write a minidump of this process, when reports
+are on; 1 once it is written */
+int host_crash_dump(void *exception_pointers);
 
 /* ---------- text and errors (host_posix_win.c) */
 

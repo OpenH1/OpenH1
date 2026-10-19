@@ -29,6 +29,13 @@ unwinder.
 
 #include <windows.h>
 #include <errno.h>
+
+/* (tools/windows64_build.py gives it, as to updater.c) */
+#ifdef HALO_BUILD_NUMBER
+#define HALO_CRASH_BUILD_NUMBER HALO_BUILD_NUMBER
+#else
+#define HALO_CRASH_BUILD_NUMBER 0
+#endif
 #include <stdio.h>
 #include <string.h>
 
@@ -93,11 +100,27 @@ static int on_this_stack(uint64_t address)
 
 void host_crash_report(void *exception_pointers)
 {
+	static volatile LONG crashed_thread = 0;
 	EXCEPTION_POINTERS *pointers = exception_pointers;
 	EXCEPTION_RECORD *record = pointers->ExceptionRecord;
 	CONTEXT context = *pointers->ContextRecord;
+	LONG thread = (LONG)GetCurrentThreadId();
+	LONG first = InterlockedCompareExchange(&crashed_thread, thread, 0);
 	char line[512], where[400];
 	int frame;
+
+	/* one report: a crash in this report ends it, and another thread's
+	crash waits for the end the first one brings */
+	if (first == thread)
+		return;
+	if (first)
+		Sleep(INFINITE);
+	/* the minidump first, before anything here can fail */
+	if (host_crash_dump(pointers))
+		host_log(HOST_LOG_ERROR, "crash: the crash reporter wrote a minidump (crashes\\ beside halo.exe)");
+	snprintf(line, sizeof(line), "crash: halo.exe at %p, the guest image at %08x, build %d", (void *)GetModuleHandleW(NULL),
+		host_image.base, HALO_CRASH_BUILD_NUMBER);
+	host_log(HOST_LOG_ERROR, line);
 
 	describe_address(context.Rip, where, sizeof(where));
 	snprintf(line, sizeof(line), "exception %08lx at %016llx (%s), thread %lu", (unsigned long)record->ExceptionCode,
