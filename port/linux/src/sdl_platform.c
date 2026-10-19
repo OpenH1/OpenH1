@@ -1142,8 +1142,14 @@ int host_metal_window_open(unsigned int window);
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_METAL
 #elif defined(HALO_VULKAN)
 /* port/linux/vulkan/host_vulkan.c: the window drawn with Vulkan by the
-host; nonzero on success */
-int host_vulkan_window_open(unsigned int window);
+host, with the graphics' debugging settings (the host does not read the
+settings file): debug, HOST_VULKAN_DEBUG_*; the folders debug.gpu_dump_shaders
+and debug.texture_dump_directory name (empty: none); nonzero on success */
+int host_vulkan_window_open(unsigned int window, unsigned int debug, const char *shader_folder,
+	const char *texture_folder);
+/* (host_vulkan.c's) debug.gpu_stats, debug.gpu_validation (or debug.gl_debug) */
+#define HOST_VULKAN_DEBUG_STATISTICS 1
+#define HOST_VULKAN_DEBUG_VALIDATION 2
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_VULKAN
 #else
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_OPENGL
@@ -1188,7 +1194,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	colours through it) */
 	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
 #endif
-	if (config_boolean("debug.gl_debug"))
+	if (config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug"))
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 #endif
 #if !defined(HALO_ANDROID) && !defined(_WIN32)
@@ -1287,7 +1293,10 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		return FALSE;
 	}
 #else
-	if (!host_vulkan_window_open((unsigned int)(uintptr_t)platform_window))
+	if (!host_vulkan_window_open((unsigned int)(uintptr_t)platform_window,
+		(config_boolean("debug.gpu_stats") ? HOST_VULKAN_DEBUG_STATISTICS : 0) |
+		(config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug") ? HOST_VULKAN_DEBUG_VALIDATION : 0),
+		config_string("debug.gpu_dump_shaders"), config_string("debug.texture_dump_directory")))
 	{
 		platform_log("cannot draw the window with Vulkan");
 		return FALSE;

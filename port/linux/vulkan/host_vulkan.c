@@ -13,6 +13,15 @@ A window SDL cannot draw with Vulkan (its offscreen driver, where the
 device has no headless surfaces) is drawn without one: the frames are
 drawn and read back (screenshots) but not shown.
 
+The game's debugging settings for the graphics come with the window (the
+host does not read the settings file): debug.gpu_validation (or its old
+name, debug.gl_debug) turns on the validation layers, as
+HALO_VULKAN_VALIDATION does; debug.gpu_stats logs the backend's statistics,
+as HALO_VULKAN_STATS does; debug.gpu_dump_shaders names the folder each
+shader module is written into, as HALO_VULKAN_SHADERS does (which wins);
+debug.texture_dump_directory the folder each texture is written into
+(xgpu_vulkan_textures.c).
+
 HALO_VULKAN_VALIDATION=1 turns on the validation layers and logs their
 messages (the layers must be installed, or found through VK_ADD_LAYER_PATH).
 The pipeline cache is $XDG_CACHE_HOME/openh1/vulkan_pipelines.bin (or
@@ -24,6 +33,7 @@ The pipeline cache is $XDG_CACHE_HOME/openh1/vulkan_pipelines.bin (or
 #include "xgpu_vulkan.h"
 #include "xgpu_vulkan_loading.h"
 #include "xgpu_vulkan_stream.h"
+#include "xgpu_vulkan_textures.h"
 #ifdef HALO_VR
 #include "host_vr_vulkan.h"
 #endif
@@ -130,10 +140,31 @@ static void vulkan_exiting(void *context)
 	vulkan_shutdown();
 }
 
-/* (a host import: the guest's sdl_platform.c, on its main thread) */
-int host_vulkan_window_open(uint32_t window)
+/* sdl_platform.c's HOST_VULKAN_DEBUG_*: debug.gpu_stats, and
+debug.gpu_validation (or debug.gl_debug) */
+#define DEBUG_STATISTICS 1
+#define DEBUG_VALIDATION 2
+
+/* a folder the guest names (its address), or the environment variable's
+(set, it wins: NULL, none), copied; NULL for none */
+static const char *debug_folder(uint32_t address, const char *variable, char *folder, size_t size)
+{
+	const char *chosen = variable ? getenv(variable) : NULL;
+
+	if (!chosen)
+		chosen = host_pointer(address);
+	if (!chosen || !*chosen)
+		return NULL;
+	snprintf(folder, size, "%s", chosen);
+	return folder;
+}
+
+/* (a host import: the guest's sdl_platform.c, on its main thread; the
+folders are guest addresses of strings) */
+int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_folder, uint32_t texture_folder)
 {
 	static int opened;
+	static char shaders[1024], textures[1024];
 	SDL_Window *object = host_sdl_handle_get(window, _handle_window);
 	struct xgpu_vulkan_options options;
 	static struct host_render_backend backend;
@@ -142,6 +173,13 @@ int host_vulkan_window_open(uint32_t window)
 
 	if (!object || opened)
 		return 0;
+	if (getenv("HALO_VULKAN_STATS"))
+		debug |= DEBUG_STATISTICS;
+	if (getenv("HALO_VULKAN_VALIDATION") && atoi(getenv("HALO_VULKAN_VALIDATION")))
+		debug |= DEBUG_VALIDATION;
+	xgpu_vulkan_stream_debug((debug & DEBUG_STATISTICS) != 0,
+		debug_folder(shader_folder, "HALO_VULKAN_SHADERS", shaders, sizeof(shaders)));
+	xgpu_vulkan_textures_dump(debug_folder(texture_folder, NULL, textures, sizeof(textures)));
 	vulkan_window = object;
 	memset(&options, 0, sizeof(options));
 	if (SDL_GetWindowFlags(object) & SDL_WINDOW_VULKAN)
@@ -175,7 +213,7 @@ int host_vulkan_window_open(uint32_t window)
 	}
 #endif
 	options.cache_path = cache_path(path, sizeof(path));
-	options.validation = getenv("HALO_VULKAN_VALIDATION") && atoi(getenv("HALO_VULKAN_VALIDATION"));
+	options.validation = (debug & DEBUG_VALIDATION) != 0;
 	if (!xgpu_vulkan_initialize(&options))
 		return 0;
 #ifdef HALO_VR

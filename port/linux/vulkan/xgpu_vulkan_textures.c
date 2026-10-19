@@ -24,6 +24,9 @@ no longer the guest's).
 An image (a high-res replacement: port/linux/src/xgpu_images.h) is found by
 its number and made again when its serial changes; its levels are made from
 its first.
+
+debug.texture_dump_directory writes each 2D Xbox texture's first level as it
+is read, decoded to BGRA, in the OpenGL cache's files (texture_dump).
 */
 
 #include "xgpu.h"
@@ -33,6 +36,7 @@ its first.
 #include "xgpu_vulkan.h"
 #include "xgpu_vulkan_textures.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -84,6 +88,10 @@ static struct
 	DWORD *converted;
 	size_t converted_size;
 	struct xgpu_vulkan_texture_statistics statistics;
+	/* debug.texture_dump_directory (NULL: none), and the textures written
+	into it */
+	const char *dump_folder;
+	unsigned long dumped;
 } cache;
 
 static uint32_t bucket_index(uint32_t data, uint32_t format_word, uint32_t size_word)
@@ -134,6 +142,43 @@ static uint32_t levels_most(unsigned long width, unsigned long height, unsigned 
 	return levels;
 }
 
+/* ---------- the textures written out (debug.texture_dump_directory) */
+
+/* a 2D texture's first level as it is read (texels: its BGRA, decoded),
+written as the OpenGL backend writes it (port/linux/src/xbox_textures.c,
+texture_dump): tex<number>_fmt<format>_<width>x<height>.tga, 32-bit, rows
+from the top, numbered in the order they are read; texels as stored (a
+Custom Edition map's channel orders are the sampler's, as OpenGL's) */
+static void texture_dump(const struct xgpu_texture_description *description, const DWORD *texels)
+{
+	unsigned long width = description->width, height = description->height;
+	unsigned char header[18];
+	char path[1024];
+	FILE *file;
+
+	snprintf(path, sizeof(path), "%s/tex%05lu_fmt%02x_%lux%lu.tga", cache.dump_folder, cache.dumped++,
+		(unsigned)description->format, width, height);
+	file = fopen(path, "wb");
+	if (!file)
+		return;
+	memset(header, 0, sizeof(header));
+	header[2] = 2;
+	header[12] = (unsigned char)width;
+	header[13] = (unsigned char)(width >> 8);
+	header[14] = (unsigned char)height;
+	header[15] = (unsigned char)(height >> 8);
+	header[16] = 32;
+	header[17] = 0x28;
+	fwrite(header, 1, sizeof(header), file);
+	fwrite(texels, 4, width * height, file);
+	fclose(file);
+}
+
+void xgpu_vulkan_textures_dump(const char *folder)
+{
+	cache.dump_folder = folder && *folder ? folder : NULL;
+}
+
 /* ---------- Xbox textures */
 
 /* the texture's image, made for its description */
@@ -175,6 +220,8 @@ static void xbox_texture_upload(struct entry *entry, const D3DCOLOR *palette)
 	unsigned long faces = description->cube_map ? 6 : 1, face_size = xgpu_texture_face_size(description);
 	unsigned long levels = xgpu_vulkan_image_description(entry->image)->levels, face, level;
 	int blocks = description->compressed && !entry->decoded;
+	/* (a 2D texture's first level written out, as OpenGL's are) */
+	int dump = cache.dump_folder && !description->cube_map && description->depth <= 1;
 
 	for (face = 0; face < faces; face++)
 	{
@@ -192,6 +239,12 @@ static void xbox_texture_upload(struct entry *entry, const D3DCOLOR *palette)
 
 				xgpu_vulkan_image_upload(entry->image, (uint32_t)level, (uint32_t)face, 0, 0, 0, width, height, 1, source, row,
 					0);
+				/* (decoded to be written out) */
+				if (dump && !level && (converted = converted_get((size_t)width * height)) != NULL)
+				{
+					xgpu_texture_decode_dxt(description, level, source, converted);
+					texture_dump(description, converted);
+				}
 				continue;
 			}
 			converted = converted_get((size_t)width * height * depth);
@@ -203,6 +256,8 @@ static void xbox_texture_upload(struct entry *entry, const D3DCOLOR *palette)
 				return;
 			xgpu_vulkan_image_upload(entry->image, (uint32_t)level, (uint32_t)face, 0, 0, 0, width, height, depth, converted,
 				width * 4, width * height * 4);
+			if (dump && !level)
+				texture_dump(description, converted);
 		}
 	}
 	cache.statistics.bytes += entry->size;
