@@ -186,12 +186,12 @@ SDL_OPTIONS = [
     "-DSDL_SNDIO=OFF", "-DSDL_LIBURING=OFF", "-DSDL_FRIBIDI=OFF", "-DSDL_LIBTHAI=OFF", "-DSDL_X11_XTEST=OFF",
 ]
 # (the linker's options for the executable that loads the SDL it brings:
-# beside it in a build, in ../lib/opence in the release's tree
+# beside it in a build, in ../lib/openh1 in the release's tree
 # (tools/linux_package.py); DT_RPATH rather than DT_RUNPATH, as it comes
 # before LD_LIBRARY_PATH, which Steam sets for the games it starts, so that
 # the SDL the release brings is the one loaded, whatever other SDL that path
-# holds; a package without lib/opence gets the system's)
-SDL_RPATH_LDFLAGS = ["'-Wl,-rpath,$$ORIGIN:$$ORIGIN/../lib/opence'", "-Wl,--disable-new-dtags"]
+# holds; a package without lib/openh1 gets the system's)
+SDL_RPATH_LDFLAGS = ["'-Wl,-rpath,$$ORIGIN:$$ORIGIN/../lib/openh1'", "-Wl,--disable-new-dtags"]
 
 
 def sdl3_rule(n: Writer, sln: Any, *, name: str, description: str, source: Path, sdl_build: Path, log_dir: Path,

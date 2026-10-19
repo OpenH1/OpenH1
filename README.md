@@ -66,7 +66,7 @@ older build there.
 - **Windows:** unzip into a folder and start `halo.exe`. The executable is
   not signed yet, so Windows may say that it protected your PC: choose
   **More info**, then **Run anyway**.
-- **Linux:** unzip into a folder and start `bin/opence` in it. The game
+- **Linux:** unzip into a folder and start `bin/openh1` in it. The game
   needs a GPU and driver with Vulkan 1.3. The folders are laid out as a
   Unix prefix is (`bin/`, `lib/`, `share/`), for package managers too:
   refer to "Packaging" in
@@ -190,7 +190,7 @@ Give these options to `configure.py`:
 | `--pgo=train` | Records a new optimization profile for the Windows build. Refer to "Optimization profiles". |
 | `--profile` | A profiling build. It records CPU times. Refer to "Profiling builds". |
 | `--guest-llvm=system`, `--guest-llvm=FOLDER` | The guest builds (Linux arm64 and x86-64, Android, macOS) compile the guest with clang and the LLVM tools on the PATH, or with the LLVM in FOLDER, not with the pinned LLVM. Refer to "The guests' compiler". |
-| `--guest-llvm-cache FOLDER` | The folder for the pinned LLVM (else `~/.cache/opence`, on macOS `~/Library/Caches/opence`). |
+| `--guest-llvm-cache FOLDER` | The folder for the pinned LLVM (else `~/.cache/openh1`, on macOS `~/Library/Caches/openh1`). |
 | `--guest-base` | The Linux arm64 and Android builds put the guest's memory at a base that the host chooses, not in the low 4 GB (a base register: `tools/guest_base_register.py`). The 64-bit x86 build has none: with it, `ninja linux_x86_64` stops with the reason. |
 | `--web-emcc PATH` | The Emscripten `emcc` for `ninja web` (else the one on the PATH, or `~/emsdk`'s). |
 
@@ -207,8 +207,8 @@ compiled and linked by the same LLVM: release 22.1.8 from
 64-bit x86 Linux, 64-bit ARM Linux and macOS on Apple silicon. The first
 `configure.py` downloads it (approximately 1.5 GB, checked against its
 SHA-256) and keeps clang, `ld.lld` and the LLVM tools that the builds use
-(approximately 700 MB) in `~/.cache/opence` (on macOS
-`~/Library/Caches/opence`, or the folder of `--guest-llvm-cache`). The
+(approximately 700 MB) in `~/.cache/openh1` (on macOS
+`~/Library/Caches/openh1`, or the folder of `--guest-llvm-cache`). The
 version and the checksums are in `tools/guest_toolchain.py`. The hosts
 use the compiler of the system. On Linux, the LLVM tools need glibc 2.34
 or later, libstdc++ and zlib; LLVM's `ld.lld` is also linked to
@@ -275,7 +275,7 @@ from 4 to 1024). A recording has no length limit:
 the game writes a part each time the memory is full. Refer to "Settings" in
 [port/linux/README.md](port/linux/README.md).
 
-On Android, the files are in `/sdcard/Android/data/com.halo.decomp/files/profiles/`.
+On Android, the files are in `/sdcard/Android/data/com.openh1.openh1/files/profiles/`.
 Enter `adb pull` to copy the recording parts to a computer.
 
 A profiling build plays with normal builds. It does not use
@@ -294,7 +294,7 @@ game, as a new platform, compiler or architecture does, before it is
 merged. For example, to check your build against the latest release:
 
 ```sh
-python tools/net_compare.py --a build/linux_x86_64/halo --b <release folder>/bin/opence \
+python tools/net_compare.py --a build/linux_x86_64/halo --b <release folder>/bin/openh1 \
     --data <folder with maps/> --maps bloodgulch,beavercreek,hangemhigh --swap
 ```
 

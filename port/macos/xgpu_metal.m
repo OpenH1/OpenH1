@@ -1033,7 +1033,7 @@ int xgpu_metal_initialize(const struct xgpu_metal_options *options)
 	metal.shader_handles = [NSMutableDictionary new];
 	metal.pipelines_making = [NSMutableDictionary new];
 	metal.lock = OS_UNFAIR_LOCK_INIT;
-	metal.making_queue = dispatch_queue_create("OpenCE shaders and pipelines", dispatch_queue_attr_make_with_qos_class(
+	metal.making_queue = dispatch_queue_create("OpenH1 shaders and pipelines", dispatch_queue_attr_make_with_qos_class(
 		DISPATCH_QUEUE_CONCURRENT, QOS_CLASS_USER_INITIATED, 0));
 	metal.preparing = dispatch_group_create();
 	metal.pipelines = [NSMutableDictionary new];
@@ -1048,7 +1048,7 @@ int xgpu_metal_initialize(const struct xgpu_metal_options *options)
 	archive_open();
 	profile_initialize();
 	metal.archived = [NSMutableArray new];
-	metal.archive_queue = dispatch_queue_create("OpenCE pipeline archive", dispatch_queue_attr_make_with_qos_class(
+	metal.archive_queue = dispatch_queue_create("OpenH1 pipeline archive", dispatch_queue_attr_make_with_qos_class(
 		DISPATCH_QUEUE_SERIAL, QOS_CLASS_BACKGROUND, 0));
 
 	library_open(options->library_path);

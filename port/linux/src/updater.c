@@ -24,7 +24,7 @@ reached. If it is newer, the game asks whether to update:
 The system side (the HTTPS download, the files, starting the new game) is
 update.h's: posix_update.c on Linux, win32_update.c on Windows.
 
-On Linux the release is a tree (bin/opence, lib/opence, share/...:
+On Linux the release is a tree (bin/openh1, lib/openh1, share/...:
 install_layout.c, tools/linux_package.py), halo-linux-x86_64-<flavor>.zip
 or halo-linux-arm64-<flavor>.zip (tools/ci_build.py), and the game's folder
 is its root. A game a package manager installed, or one in a folder the
@@ -386,7 +386,7 @@ static int zip_extract(const char *zip_path, char names[][256], int *name_count,
 				snprintf(error, error_size, "could not unpack %s: %s", name, reason[0] ? reason : "no folder for it");
 				goto done;
 			}
-			/* (executable on Unix, as the zip made there says: bin/opence) */
+			/* (executable on Unix, as the zip made there says: bin/openh1) */
 			if (header[5] == 3 && ((zip_long(header + 38) >> 16) & 0111) && !update_make_executable(path))
 			{
 				snprintf(error, error_size, "could not make %s executable", name);

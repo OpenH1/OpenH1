@@ -20,7 +20,7 @@ maps and the campaign. It was tested on an Apple A18 Pro with macOS 27.
 - Xcode's clang (for the host), Python and ninja. The option `--macos-cc`
   of `configure.py` selects a different clang.
 - The guest is compiled with LLVM 22.1.8, which `configure.py` downloads
-  the first time (approximately 1.5 GB) to `~/Library/Caches/opence`. Refer
+  the first time (approximately 1.5 GB) to `~/Library/Caches/openh1`. Refer
   to "The guests' compiler" in [README.md](../../README.md#the-guests-compiler).
   With `--macos-guest-cc` (or `--macos-cc`, or `--guest-llvm=system`), the
   guest is compiled with that clang instead, and `configure.py` needs
@@ -60,7 +60,7 @@ as the other desktop builds are (`halo.exe`, the window's title "Halo"):
 | --- | --- |
 | `Contents/MacOS/halo` | The executable (its rpaths: `@executable_path`, and `@executable_path/../Frameworks` in the app) |
 | `Contents/Frameworks/libSDL3.0.dylib` | SDL |
-| `Contents/Resources/opence-icon.icns` | The icon, from `port/assets/icon` (`tools/app_icon.py` writes `port/macos/opence-icon.icns`) |
+| `Contents/Resources/openh1-icon.icns` | The icon, from `port/assets/icon` (`tools/app_icon.py` writes `port/macos/openh1-icon.icns`) |
 | `Contents/Resources/brokers.txt` | Internet play's brokers, copied beside `config.toml` at each start |
 | `Contents/Resources/Credits.html` | The About panel's text: the build |
 | `Contents/Info.plist` | Below |
@@ -93,9 +93,6 @@ a Mac app does, before the game starts:
   the game's lines) goes to `~/Library/Logs/OpenH1/halo.log`, the previous
   start's to `halo.previous.log` (Console shows them), unless the error
   output is a terminal. The Metal archive is in `~/Library/Caches/OpenH1`.
-  At the first start without an `OpenH1` folder, the app copies
-  `Application Support/OpenCE` (the folder before the project was OpenH1)
-  to it, and leaves that folder as it was.
   `HALO_DATA_ROOT` and `HALO_SAVE_ROOT`, and `paths.data` and `paths.saves`
   in `config.toml`, still choose other folders.
 - **The maps.** The players supply them. Without a maps folder, an open
@@ -150,9 +147,9 @@ To sign the app with a Developer ID, notarize it and make its disk image
 keychain):
 
 ```sh
-xcrun notarytool store-credentials opence --apple-id <apple-id> --team-id <team>   # once
+xcrun notarytool store-credentials openh1 --apple-id <apple-id> --team-id <team>   # once
 python3 tools/macos_app.py notarize --identity "Developer ID Application: <name> (<team>)" \
-    --keychain-profile opence
+    --keychain-profile openh1
 ```
 
 It signs the app (with a secure timestamp), sends it to the notary

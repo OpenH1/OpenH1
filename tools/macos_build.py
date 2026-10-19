@@ -393,7 +393,7 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
 
     app = BUILD / "Halo.app"
     app_executable = app / "Contents" / "MacOS" / "halo"
-    icon = PORT_DIR / "opence-icon.icns"
+    icon = PORT_DIR / "openh1-icon.icns"
     build_number = os.environ.get("HALO_BUILD_NUMBER", "0")
     bundle_id = getattr(sln, "macos_bundle_id", None) or MACOS_BUNDLE_ID
     n.rule(
