@@ -16,6 +16,8 @@ done
 # the XDK's enumerations (D3DRS_*, D3DCMP_*, D3DFOG_*, PS_*)
 sed -n '/^\/\* ---------- enumerations/,/^\/\* ---------- structures and unions/p' \
 	"$tree/port/include/xdk/xdk_pdb.h" | sed '$d' > "$build/xdk_enums.h"
+# (and anti-aliasing's passes, generated: tools/vulkan_post_shaders.py)
 ${CC:-cc} -std=gnu99 -O1 -Wall -I"$build" -I"$here/../msl_corpus/stub" -I"$here/../msl_corpus" -I"$build/src" \
-	-o "$build/spirv_corpus" "$here/spirv_corpus.c" \
-	"$build/src/nv2a_vsh.c" "$build/src/nv2a_psh.c" "$build/src/xgpu_text.c" "$build/src/xgpu_spirv.c" -lm
+	-I"$tree/port/linux/vulkan" -o "$build/spirv_corpus" "$here/spirv_corpus.c" \
+	"$build/src/nv2a_vsh.c" "$build/src/nv2a_psh.c" "$build/src/xgpu_text.c" "$build/src/xgpu_spirv.c" \
+	"$tree/port/linux/vulkan/xgpu_vulkan_post_shaders.c" -lm

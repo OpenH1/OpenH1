@@ -6,11 +6,14 @@ Checks attachment load actions, clears inside a pass, multiview layer
 selection, sampling an array's first layer as a 2D image, and capability
 requirements on devices with optional depth formats or query precision.
 Also checks packed vertex bindings and transfer/submission dependencies,
-the texture sets a submission reuses, and the order of the enhanced dynamic
-lights' uploads among the draws.
+the texture sets a submission reuses, the order of the enhanced dynamic
+lights' uploads among the draws, and anti-aliasing's passes: their order,
+attachments, barriers, samples and uniforms (xgpu_vulkan_post.c).
 */
 
 #include "../xgpu_vulkan.c"
+#include "../xgpu_vulkan_post.c"
+#include "../xgpu_vulkan_post_shaders.c"
 #include <assert.h>
 #include <stdarg.h>
 
@@ -551,6 +554,306 @@ static void texture_sets_test(void)
 	reset();
 }
 
+/* ---------- anti-aliasing's passes */
+
+/* what the passes record, in order: C a copy, X a barrier, B a pass begun
+(c its colour cleared, l loaded), D a draw, E a pass ended */
+static char post_events[64];
+static VkImageCopy post_copied;
+static VkImageView post_attachments[4];
+static VkRenderingAttachmentInfo post_began[4];
+static uint32_t post_begins, post_draws, post_updates, post_masks[4], post_pipelines;
+static VkDescriptorImageInfo post_sampled[4][4];
+static VkViewport post_viewports[4];
+static VkRect2D post_scissors[4];
+static uint32_t post_offsets[4][2];
+static VkPipelineStageFlags post_barrier_sources[8], post_barrier_destinations[8];
+static VkAccessFlags post_barrier_access[8];
+static uint32_t post_barriers;
+static unsigned char post_ring[65536];
+static VkDescriptorPool post_pool = (VkDescriptorPool)(uintptr_t)7;
+
+static void post_event(char event)
+{
+	size_t length = strlen(post_events);
+
+	assert(length + 1 < sizeof(post_events));
+	post_events[length] = event;
+}
+
+static void VKAPI_CALL post_copy(VkCommandBuffer command, VkImage source, VkImageLayout source_layout,
+	VkImage destination, VkImageLayout destination_layout, uint32_t count, const VkImageCopy *regions)
+{
+	(void)command;
+	assert(source == (VkImage)(uintptr_t)1 && destination == (VkImage)(uintptr_t)2);
+	assert(source_layout == VK_IMAGE_LAYOUT_GENERAL && destination_layout == VK_IMAGE_LAYOUT_GENERAL && count == 1);
+	post_copied = regions[0];
+	post_event('C');
+}
+
+static void VKAPI_CALL post_barrier(VkCommandBuffer command, VkPipelineStageFlags source, VkPipelineStageFlags destination,
+	VkDependencyFlags dependency, uint32_t memory_count, const VkMemoryBarrier *memory, uint32_t buffer_count,
+	const VkBufferMemoryBarrier *buffers, uint32_t image_count, const VkImageMemoryBarrier *images)
+{
+	(void)command; (void)dependency; (void)buffer_count; (void)buffers; (void)image_count; (void)images;
+	assert(memory_count == 1 && post_barriers < 8);
+	post_barrier_sources[post_barriers] = source;
+	post_barrier_destinations[post_barriers] = destination;
+	post_barrier_access[post_barriers] = memory[0].dstAccessMask;
+	post_barriers++;
+	post_event('X');
+}
+
+static void VKAPI_CALL post_begin(VkCommandBuffer command, const VkRenderingInfo *info)
+{
+	(void)command;
+	assert(post_begins < 4 && info->colorAttachmentCount == 1 && !info->pDepthAttachment && !info->viewMask);
+	post_began[post_begins] = info->pColorAttachments[0];
+	post_attachments[post_begins] = info->pColorAttachments[0].imageView;
+	post_begins++;
+	post_event('B');
+	post_event(info->pColorAttachments[0].loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR ? 'c' : 'l');
+}
+
+static void VKAPI_CALL post_end(VkCommandBuffer command)
+{
+	(void)command;
+	post_event('E');
+}
+
+static VkResult VKAPI_CALL post_pipeline(VkDevice device, VkPipelineCache cache, uint32_t count,
+	const VkGraphicsPipelineCreateInfo *info, const VkAllocationCallbacks *allocator, VkPipeline *pipeline)
+{
+	const VkPipelineRenderingCreateInfo *rendering = info->pNext;
+
+	(void)device; (void)cache; (void)allocator;
+	/* one triangle from the vertex's index, into BGRA8 alone, nothing
+	culled, tested or blended */
+	assert(count == 1 && post_pipelines < 4);
+	assert(!info->pVertexInputState->vertexBindingDescriptionCount &&
+		!info->pVertexInputState->vertexAttributeDescriptionCount);
+	assert(info->pInputAssemblyState->topology == VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST);
+	assert(info->pRasterizationState->cullMode == VK_CULL_MODE_NONE);
+	assert(!info->pDepthStencilState->depthTestEnable && !info->pDepthStencilState->stencilTestEnable);
+	assert(!info->pColorBlendState->pAttachments[0].blendEnable);
+	assert(rendering->colorAttachmentCount == 1 && rendering->pColorAttachmentFormats[0] == VK_FORMAT_B8G8R8A8_UNORM);
+	assert(rendering->depthAttachmentFormat == VK_FORMAT_UNDEFINED && !rendering->viewMask);
+	assert(info->pMultisampleState->rasterizationSamples == VK_SAMPLE_COUNT_1_BIT);
+	post_masks[post_pipelines] = info->pColorBlendState->pAttachments[0].colorWriteMask;
+	*pipeline = (VkPipeline)(uintptr_t)(200 + post_pipelines++);
+	return VK_SUCCESS;
+}
+
+static void VKAPI_CALL post_bind_pipeline(VkCommandBuffer command, VkPipelineBindPoint point, VkPipeline pipeline)
+{
+	(void)command; (void)point; (void)pipeline;
+}
+
+static void VKAPI_CALL post_update(VkDevice device, uint32_t count, const VkWriteDescriptorSet *writes,
+	uint32_t copies, const VkCopyDescriptorSet *copy)
+{
+	uint32_t index;
+
+	(void)device; (void)copies; (void)copy;
+	assert(count == 4 && post_updates < 4);
+	for (index = 0; index < count; index++)
+		post_sampled[post_updates][index] = *writes[index].pImageInfo;
+	post_updates++;
+}
+
+static void VKAPI_CALL post_viewport(VkCommandBuffer c, uint32_t first, uint32_t count, const VkViewport *v)
+{
+	(void)c;
+	assert(first == 0 && count == 1);
+	post_viewports[post_draws] = v[0];
+}
+
+static void VKAPI_CALL post_scissor(VkCommandBuffer c, uint32_t first, uint32_t count, const VkRect2D *r)
+{
+	(void)c;
+	assert(first == 0 && count == 1);
+	post_scissors[post_draws] = r[0];
+}
+
+static void VKAPI_CALL post_bind_sets(VkCommandBuffer c, VkPipelineBindPoint point, VkPipelineLayout layout,
+	uint32_t first, uint32_t count, const VkDescriptorSet *sets, uint32_t dynamic_count, const uint32_t *offsets)
+{
+	(void)c; (void)point; (void)layout; (void)sets;
+	assert(first == 0 && count == 2 && dynamic_count == 2);
+	post_offsets[post_draws][0] = offsets[0];
+	post_offsets[post_draws][1] = offsets[1];
+}
+
+static void VKAPI_CALL post_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first, uint32_t instance)
+{
+	(void)c;
+	assert(vertices == 3 && instances == 1 && first == 0 && instance == 0 && post_draws < 4);
+	post_draws++;
+	post_event('D');
+}
+
+static void post_image(struct xgpu_vulkan_image *image, uintptr_t number, uint8_t format, uint32_t width, uint32_t height)
+{
+	free(image->attachments);
+	memset(image, 0, sizeof(*image));
+	image->image = (VkImage)number;
+	image->sampled = (VkImageView)(number + 40);
+	image->number = (uint32_t)number;
+	image->aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+	image->description.type = XGPU_VULKAN_IMAGE_2D;
+	image->description.format = format;
+	image->description.width = width;
+	image->description.height = height;
+	image->description.depth_or_layers = 1;
+	image->description.levels = 1;
+}
+
+static void post_reset(void)
+{
+	reset();
+	memset(post_events, 0, sizeof(post_events));
+	post_begins = post_draws = post_updates = post_barriers = 0;
+	vk.color = vk.depth = NULL;
+	vk.ring_mapped = post_ring;
+	vk.ring = (VkBuffer)(uintptr_t)9;
+	recording.main = (VkCommandBuffer)(uintptr_t)1;
+	recording.descriptor_pools = &post_pool;
+	recording.descriptor_pool_count = 1;
+	vkCmdCopyImage = post_copy;
+	vkCmdPipelineBarrier = post_barrier;
+	vkCmdBeginRendering = post_begin;
+	vkCmdEndRendering = post_end;
+	vkUpdateDescriptorSets = post_update;
+	vkCmdSetViewport = post_viewport;
+	vkCmdSetScissor = post_scissor;
+	vkCmdBindDescriptorSets = post_bind_sets;
+	vkCmdDraw = post_draw;
+	vkCreateGraphicsPipelines = post_pipeline;
+	vkCmdBindPipeline = post_bind_pipeline;
+}
+
+/* SMAA's three passes and FXAA's one over a window's rectangle: the
+target's pixels copied first (the copy's barrier before the first pass
+samples them), each pass ended by the barrier the next one's samples
+need, SMAA's intermediates cleared whole as their passes begin, the target
+drawn last, loaded, its alpha kept; each pass's viewport and scissor the
+rectangle, its uniforms the target's size and FXAA's bounds the
+rectangle's outermost texel centres */
+static void post_test(void)
+{
+	static struct xgpu_vulkan_image target, color, edges, weights, area, search;
+	static const int32_t corners[4] = { 8, 4, 40, 44 };
+	static const int32_t beyond[4] = { -4, 4, 70, 44 }, empty[4] = { 70, 4, 80, 44 };
+	struct xgpu_vulkan_image *images[6];
+	const struct xgpu_vulkan_post_uniforms *uniforms;
+	uint32_t index;
+
+	post_reset();
+	post_image(&target, 1, XGPU_VULKAN_FORMAT_BGRA8, 64, 48);
+	post_image(&color, 2, XGPU_VULKAN_FORMAT_BGRA8, 64, 48);
+	post_image(&edges, 3, XGPU_VULKAN_FORMAT_BGRA8, 64, 48);
+	post_image(&weights, 4, XGPU_VULKAN_FORMAT_BGRA8, 64, 48);
+	post_image(&area, 5, XGPU_VULKAN_FORMAT_RGBA8, 160, 560);
+	post_image(&search, 6, XGPU_VULKAN_FORMAT_RGBA8, 64, 16);
+	memset(&post, 0, sizeof(post));
+	post.vertex = (VkShaderModule)(uintptr_t)1;
+	for (index = 0; index < XGPU_VULKAN_POST_PROGRAM_COUNT; index++)
+		post.pixel[index] = (VkShaderModule)(uintptr_t)(2 + index);
+	post.sampler = (VkSampler)(uintptr_t)5;
+	post.area = &area;
+	post.search = &search;
+	post.color = &color;
+	post.edges = &edges;
+	post.weights = &weights;
+	post.width = 64;
+	post.height = 48;
+	post_pipelines = 0;
+
+	assert(xgpu_vulkan_post_anti_alias(1, &target, 0, corners));
+	assert(!strcmp(post_events, "CXBcDEXBcDEXBlD"));
+	assert(post_pipelines == 3 && post_masks[0] == 15 && post_masks[1] == 15 && post_masks[2] == 7);
+	assert(post_copied.srcSubresource.baseArrayLayer == 0 && post_copied.dstSubresource.baseArrayLayer == 0);
+	assert(post_copied.srcOffset.x == 8 && post_copied.srcOffset.y == 4 && post_copied.dstOffset.x == 8);
+	assert(post_copied.dstOffset.y == 4 && post_copied.extent.width == 32 && post_copied.extent.height == 40);
+	/* (the copy, and each pass, made visible to the samples after) */
+	assert(post_barriers == 3 && post_barrier_sources[0] == VK_PIPELINE_STAGE_TRANSFER_BIT);
+	for (index = 0; index < 3; index++)
+	{
+		assert(post_barrier_destinations[index] & VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+		assert(post_barrier_access[index] & VK_ACCESS_SHADER_READ_BIT);
+	}
+	assert(post_barrier_sources[1] & VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+	assert(post_barrier_sources[2] & VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
+	for (index = 0; index < 2; index++)
+	{
+		assert(post_began[index].clearValue.color.float32[0] == 0.0f);
+		assert(post_began[index].clearValue.color.float32[3] == 0.0f);
+		assert(post_began[index].storeOp == VK_ATTACHMENT_STORE_OP_STORE);
+	}
+	assert(post_attachments[0] == edges.attachments[0] && post_attachments[1] == weights.attachments[0]);
+	assert(post_attachments[2] == target.attachments[0]);
+	/* edges from the copy; weights from the edges, the area and search
+	textures; the blend from the copy and the weights */
+	assert(post_updates == 3);
+	assert(post_sampled[0][0].imageView == color.sampled && post_sampled[0][0].sampler == post.sampler);
+	assert(post_sampled[1][0].imageView == edges.sampled && post_sampled[1][1].imageView == area.sampled);
+	assert(post_sampled[1][2].imageView == search.sampled);
+	assert(post_sampled[2][0].imageView == color.sampled && post_sampled[2][1].imageView == weights.sampled);
+	for (index = 0; index < 3; index++)
+	{
+		assert(post_viewports[index].x == 8.0f && post_viewports[index].y == 4.0f);
+		assert(post_viewports[index].width == 32.0f && post_viewports[index].height == 40.0f);
+		assert(post_scissors[index].offset.x == 8 && post_scissors[index].offset.y == 4);
+		assert(post_scissors[index].extent.width == 32 && post_scissors[index].extent.height == 40);
+		assert(post_offsets[index][0] == post_offsets[index][1] && post_offsets[index][1] % 256 == 0);
+		uniforms = (const struct xgpu_vulkan_post_uniforms *)(post_ring + post_offsets[index][1]);
+		assert(uniforms->metrics[0] == 1.0f / 64.0f && uniforms->metrics[1] == 1.0f / 48.0f);
+		assert(uniforms->metrics[2] == 64.0f && uniforms->metrics[3] == 48.0f);
+	}
+	assert(vk.color == &target);
+
+	/* FXAA in a layered target's second layer, beyond its corners */
+	post_reset();
+	free(target.attachments);
+	target.attachments = NULL;
+	target.attachment_count = 0;
+	target.description.type = XGPU_VULKAN_IMAGE_2D_ARRAY;
+	target.description.depth_or_layers = 2;
+	assert(xgpu_vulkan_post_anti_alias(0, &target, 1, beyond));
+	assert(!strcmp(post_events, "CXBlD"));
+	assert(post_pipelines == 4 && post_masks[3] == 7);
+	assert(post_copied.srcSubresource.baseArrayLayer == 1 && post_copied.dstSubresource.baseArrayLayer == 0);
+	assert(post_copied.srcOffset.x == 0 && post_copied.extent.width == 64 && post_copied.extent.height == 40);
+	assert(post_attachments[0] == target.attachments[4] && last_view.subresourceRange.baseArrayLayer == 1);
+	assert(post_sampled[0][0].imageView == color.sampled);
+	uniforms = (const struct xgpu_vulkan_post_uniforms *)(post_ring + post_offsets[0][1]);
+	assert(uniforms->bounds[0] == 0.5f / 64.0f && uniforms->bounds[1] == 4.5f / 48.0f);
+	assert(uniforms->bounds[2] == 63.5f / 64.0f && uniforms->bounds[3] == 43.5f / 48.0f);
+	assert(post_viewports[0].x == 0.0f && post_viewports[0].width == 64.0f);
+
+	/* nothing of an empty rectangle, nor of a multisampled target */
+	post_reset();
+	assert(xgpu_vulkan_post_anti_alias(0, &target, 0, empty) && !post_events[0]);
+	target.description.samples = 4;
+	assert(!xgpu_vulkan_post_anti_alias(0, &target, 0, corners) && !post_events[0]);
+
+	images[0] = &target;
+	images[1] = &color;
+	images[2] = &edges;
+	images[3] = &weights;
+	images[4] = &area;
+	images[5] = &search;
+	for (index = 0; index < 6; index++)
+	{
+		free(images[index]->attachments);
+		images[index]->attachments = NULL;
+	}
+	memset(&post, 0, sizeof(post));
+	recording.descriptor_pools = NULL;
+	recording.descriptor_pool_count = 0;
+	reset();
+}
+
 int main(void)
 {
 	static const int32_t full[1][4] = { { 0, 0, 64, 48 } };
@@ -566,6 +869,7 @@ int main(void)
 	dynamic_lights_test();
 	submissions_test();
 	texture_sets_test();
+	post_test();
 	reset();
 	xgpu_vulkan_clear(full, 0, all, color, 0.75f, 0x123);
 	assert(!begins && !clears);
@@ -713,6 +1017,6 @@ int main(void)
 		vk.queries = NULL;
 	}
 	reset();
-	puts("Vulkan passes, image views, vertex bindings and synchronization passed");
+	puts("Vulkan passes, image views, vertex bindings, synchronization and anti-aliasing passed");
 	return 0;
 }

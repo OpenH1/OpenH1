@@ -28,8 +28,9 @@ as OpenGL's mip_composite_get makes it.
 
 The VR host supplies the eyes' targets and transforms, and consumes their
 images for the OpenXR layers. The enhanced dynamic lights' block and cells
-are the draw set's, and their glows a pass of their own, as OpenGL's. Not
-yet: anti-aliasing's passes (the stream skips records with no entry).
+are the draw set's, and their glows a pass of their own, as OpenGL's.
+Anti-aliasing's passes are xgpu_vulkan_post.c's, over the target's pixels as
+the record names them, in its first layer, as OpenGL's are.
 */
 
 #include "host.h"
@@ -41,6 +42,7 @@ yet: anti-aliasing's passes (the stream skips records with no entry).
 #include "xgpu_spirv.h"
 #include "xgpu_vulkan.h"
 #include "xgpu_vulkan_loading.h"
+#include "xgpu_vulkan_post.h"
 #include "xgpu_vulkan_stream.h"
 #include "xgpu_vulkan_textures.h"
 #ifdef HALO_VR
@@ -1940,6 +1942,41 @@ static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_
 	targets_bind();
 }
 
+/* ---------- anti-aliasing (display.anti_aliasing; xgpu_vulkan_post.c) */
+
+static void stream_anti_aliasing_prepare(void *context, uint32_t smaa)
+{
+	(void)context;
+	/* (made as the setting is chosen: the front end chooses it between
+	frames; queued as a map is prepared; logged if they cannot be) */
+	(void)xgpu_vulkan_post_prepare(smaa != 0, stream.preparing);
+}
+
+/* FXAA or SMAA over a window's 3D view, before the HUD and menus are drawn
+over it: the target's texture, its first layer (the front end no longer
+multisamples the target, from just before the record: a target still
+multisampled would have its pixels resolved over the passes') */
+static void stream_anti_alias(void *context, const struct xgpu_stream_anti_alias *record)
+{
+	struct stream_target *target = target_get(record->target);
+
+	(void)context;
+	if (!target || target->depth)
+		return;
+	if (stream.preparing)
+	{
+		/* (made as the map loads, as the game's pipelines are) */
+		(void)xgpu_vulkan_post_prepare(record->smaa != 0, 1);
+		return;
+	}
+	if (target->multisampled)
+		return;
+	target->written++;
+	xgpu_vulkan_post_anti_alias(record->smaa != 0, target->image, 0, record->corners);
+	/* (the stream's targets again, for what follows) */
+	targets_bind();
+}
+
 /* ---------- visibility tests, frames */
 
 static void stream_visibility_begin(void *context)
@@ -2144,6 +2181,8 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.dynamic_lights_prepare = stream_dynamic_lights_prepare;
 		backend.dynamic_lights_upload = stream_dynamic_lights_upload;
 		backend.dynamic_lights_halos = stream_dynamic_lights_halos;
+		backend.anti_aliasing_prepare = stream_anti_aliasing_prepare;
+		backend.anti_alias = stream_anti_alias;
 #ifdef HALO_VR
 		host_vulkan_vr_backend(&backend);
 #endif

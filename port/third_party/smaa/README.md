@@ -16,5 +16,8 @@ unchanged. `area_tex.zlib` and `search_tex.zlib` are the bytes of
 
 `display.anti_aliasing = "smaa"` antialiases the 3D view with it, compiled
 as GLSL (`port/linux/src/xgpu_post.c`); the files are embedded in the Linux
-and Windows platform layers by `tools/embed_assets.py`. Android has FXAA in
-its place.
+and Windows platform layers by `tools/embed_assets.py`. The Vulkan backend
+has the same passes as SPIR-V, and the lookup textures inflated, in
+`port/linux/vulkan/xgpu_vulkan_post_shaders.c`, which
+`tools/vulkan_post_shaders.py` generates from these files. OpenGL ES has
+FXAA in its place.

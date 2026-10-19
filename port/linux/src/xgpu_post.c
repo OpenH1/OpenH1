@@ -16,8 +16,10 @@ edge from the luma around a pixel, the edge's ends found by stepping along
 it, and the pixel blended across it by where it lies between them, or by how
 much it stands out from its neighbours. SMAA is port/third_party/smaa's,
 compiled as GLSL at its HIGH preset: edges from luma, blending weights from
-its lookup textures, then the blend. Android has FXAA only (d3d8_device.c's
-anti_aliasing_values).
+its lookup textures, then the blend. OpenGL ES has FXAA only (d3d8_device.c's
+anti_aliasing_values). The Vulkan backend's passes are these, compiled to
+SPIR-V (tools/vulkan_post_shaders.py, port/linux/vulkan/xgpu_vulkan_post.c):
+a change to the GLSL here is made there by running the tool again.
 */
 
 #include "xgpu_gl.h"

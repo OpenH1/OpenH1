@@ -481,7 +481,8 @@ Android build defines all of (`tools/android_build.py`):
 - `HALO_GLES`: the OpenGL ES renderer's code paths, as the Linux arm64
   guest has them: the guest has no OpenGL backend, but its platform code
   names OpenGL's declarations, and `display.anti_aliasing` keeps to what
-  a phone's GPU can spare (`"smaa"` gives FXAA, `"ssaa2x"` none);
+  a phone's GPU can spare (`"ssaa2x"` gives none; `"smaa"` is Vulkan's
+  SMAA, as on the desktop, where OpenGL ES gives FXAA);
 - `HALO_ANDROID`: the app (its display, input, files and lifecycle).
 
 `HALO_ARM64_GUEST`, the name of `HALO_GUEST` before, is still defined:

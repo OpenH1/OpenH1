@@ -176,6 +176,11 @@ void xgpu_vulkan_image_make_levels(struct xgpu_vulkan_image *image, uint32_t fro
 of the same format (as much as both have), in the stream's order */
 void xgpu_vulkan_image_copy(struct xgpu_vulkan_image *source, uint32_t source_level, uint32_t source_layer,
 	struct xgpu_vulkan_image *destination, uint32_t destination_level, uint32_t destination_layer);
+/* copies a rectangle (x0, y0, x1, y1) of a colour image's layer into the
+same place of another's first layer, of the same format, in the stream's
+order */
+void xgpu_vulkan_image_copy_rectangle(struct xgpu_vulkan_image *source, uint32_t source_layer,
+	struct xgpu_vulkan_image *destination, const int32_t rectangle[4]);
 /* a multisampled image's samples resolved into an image of one (colour:
 averaged; depth and stencil: the first sample), in the stream's order */
 void xgpu_vulkan_image_resolve(struct xgpu_vulkan_image *multisampled, struct xgpu_vulkan_image *image);
