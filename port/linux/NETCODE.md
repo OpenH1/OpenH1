@@ -419,8 +419,14 @@ its name alone beside it, has its name given back as the map lists find it.
   map, bitmaps.map, sounds.map and loc.map it lacks) instead of leaving, if
   `network.map_download` lets it. Its players wait to join until the host's settings
   have named the map, and for a game in progress until it is downloaded; in
-  the lobby they join at once, and the host's start waits for the machine to
-  precache the map, as it waits for any machine.
+  the lobby they join at once. A host that starts while a machine is still
+  downloading starts the others without it: the machine's players are held
+  out of the game, and so is any player it asks for meanwhile (a machine
+  whose download began in the lobby does not know the game has started),
+  and the machine joins the game in progress once the map is there. A
+  client told to start before its download is done (by a host of an earlier
+  build) puts the start off until the map is there, rather than loading a
+  map it does not have yet (the damaged disc error, which stops the game).
 - **The offer.** A host that shares maps (`network.map_share`) hashes the
   map, and the resource maps the map needs (its tag index says which: a tag
   whose entry's word at 0x18 is set is held whole by bitmaps.map for a
@@ -783,6 +789,18 @@ Unity's Netcode for Entities, lightyear, netfox and the Ares source):
   took to come (the reliable channel's resending holds it up), that is
   when the shooter saw the target (as far back as the host keeps). A
   report made more than three seconds ago is refused.
+- **The latency meter** (`latency_meter.c`, `display.latency_meter`) shows
+  the same round trips, timed in milliseconds by when each machine sent the
+  tick they come back naming (the last 64 ticks' send times kept), with
+  nothing more sent: the host each client's, by the host tick its input
+  names; a client its own, by its tick the host's state of its player (or,
+  driving, its vehicle) says the host has it at. Each is the network both
+  ways plus each machine's wait for its next tick, so a LAN reads 15 to 35
+  ms. A client that has heard nothing from the host for two seconds shows
+  "Connection problem"; the host logs a client silent as long. With the
+  meter on, the scoreboard shows these where the machine has them (the
+  host every client's, a client its own players'), and the host's measure
+  in ticks, which every machine is sent, for the others.
 
 ## Testing
 
