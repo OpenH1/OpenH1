@@ -237,7 +237,9 @@ draws them as before. As drawn:
   profile of it (a disc becomes a hemisphere), smoothed, scaled by the
   square root of its alpha, with the sprite's radius beside it, an RGBA8
   image kept with the texture (`HALO_VULKAN_STATS` logs those baked and the
-  time).
+  time). A texture with one is kept though not drawn for the half minute
+  after which the cache lets others go, until the guest writes its texels
+  (the next map), so play does not bake them again.
 - Thick, the sprite is a bulge toward the eyes half its radius high at its
   middle (`XGPU_SPIRV_EFFECT_THICKNESS`: a sphere's depth made smoke look
   like balloons). Each eye's ray meets the bulge's front a little to one

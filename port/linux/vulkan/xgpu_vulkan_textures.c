@@ -28,10 +28,14 @@ its first.
 debug.texture_dump_directory writes each 2D Xbox texture's first level as it
 is read, decoded to BGRA, in the OpenGL cache's files (texture_dump).
 
+A texture no stage has drawn for half a minute of time is let go, as the
+OpenGL cache's are.
+
 The VR mode's effects draw an effect's bitmap with its thickness
 (xgpu_vulkan_effects.h), baked from its first level the first time an
 effect is drawn with it (as the map is prepared: its enumeration draws
-every effect's bitmaps) and kept with it, made again with its texels.
+every effect's bitmaps) and kept with it, made again with its texels. A
+texture with a thickness is not let go while the guest keeps its texels.
 */
 
 #include "xgpu.h"
@@ -49,10 +53,14 @@ every effect's bitmaps) and kept with it, made again with its texels.
 #include <time.h>
 
 #define BUCKET_COUNT 4096
-/* frames a texture is kept without being drawn, and how often they are
-looked for */
-#define IDLE_FRAMES 1800
-#define EVICT_EVERY 600
+/* the textures are looked over every SWEEP_SECONDS, and those no stage
+has drawn since the look SWEEP_COUNT before are let go: 30 to 40 seconds
+after they were last drawn, as the OpenGL cache (xbox_textures.c). Counted
+in time, not frames: 1800 frames, half a minute at 60 frames a second, was
+15 seconds on the Steam Frame at 120 */
+#define SWEEP_SECONDS 10
+#define IDLE_SECONDS 30
+#define SWEEP_COUNT (IDLE_SECONDS / SWEEP_SECONDS)
 /* the copies of one texture for its palettes (the game cycles some through
 a few) */
 #define PALETTE_VARIANTS 8
@@ -96,6 +104,11 @@ static struct
 {
 	struct entry *buckets[BUCKET_COUNT];
 	uint64_t frame;
+	/* the frames of the last looks over the textures, a look apart, the
+	looks made, and the time (seconds) the next is due */
+	uint64_t sweep_frames[SWEEP_COUNT];
+	unsigned long sweeps;
+	double next_sweep;
 	/* the decoded texels of the largest level so far */
 	DWORD *converted;
 	size_t converted_size;
@@ -628,13 +641,37 @@ struct xgpu_vulkan_image *xgpu_vulkan_textures_header(uint32_t header)
 	return xbox_texture_get(&stage);
 }
 
+/* an idle entry kept for its thickness: one baked from its texels as the
+guest still has them (none of its pages written since they were read).
+The thicknesses are baked as the map is prepared so that play does not
+bake them (a millisecond or so each on the Steam Frame, in the frames
+with the most effects); let go with an idle texture, an effect's bitmap
+not seen for half a minute (a grenade's smoke) was baked again at the
+next explosion. Kept, it goes once the guest writes its pages (the next
+map, or another texture read into them): its texels are no longer the
+ones baked. */
+static int thickness_keeps(const struct entry *entry)
+{
+	return entry->thickness && entry->thickness_generation == entry->generation &&
+		(entry->watched_serial == host_memory_watch_serial() ||
+			host_memory_watch_generation(entry->address, entry->size) <= entry->generation);
+}
+
 void xgpu_vulkan_textures_frame_end(void)
 {
 	unsigned long index;
+	uint64_t idle_since;
+	double now = seconds();
 
 	cache.frame++;
-	if (cache.frame % EVICT_EVERY)
+	if (now < cache.next_sweep)
 		return;
+	cache.next_sweep = now + SWEEP_SECONDS;
+	/* the textures not drawn since the look half a minute ago (none before
+	the first looks, which find frame 0) */
+	idle_since = cache.sweep_frames[cache.sweeps % SWEEP_COUNT];
+	cache.sweep_frames[cache.sweeps % SWEEP_COUNT] = cache.frame;
+	cache.sweeps++;
 	for (index = 0; index < BUCKET_COUNT; index++)
 	{
 		struct entry **link = &cache.buckets[index];
@@ -643,7 +680,7 @@ void xgpu_vulkan_textures_frame_end(void)
 		{
 			struct entry *entry = *link;
 
-			if (cache.frame - entry->last_used > IDLE_FRAMES)
+			if (entry->last_used < idle_since && !thickness_keeps(entry))
 			{
 				*link = entry->next;
 				if (entry->image)

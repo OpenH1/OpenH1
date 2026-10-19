@@ -224,13 +224,14 @@ jobs:
       # binding, with the system's clang (its sanitizers): the pinned Vulkan
       # headers, which the build fetched, and the OpenXR headers, which only
       # the VR release fetches, fetched here where it did not run (branches);
-      # the VR mode's vehicles' seats and steering against a fake world; and
-      # the VR mode's effects' thickness bake, eye transforms and shaders
+      # the VR mode's vehicles' seats and steering against a fake world; the
+      # VR mode's effects' thickness bake, eye transforms and shaders; and the
+      # Vulkan and Metal texture caches' idle time against a fake clock
       - name: Test the Vulkan backend and the VR host
         run: |
           python3 -c "import sys; sys.path.insert(0, '.'); from pathlib import Path; from tools.linux_guest_build import fetch_openxr_headers; fetch_openxr_headers(Path('build/linux_x86_64/third_party/openxr'))"
           python3 -m pytest -q tools/test_vulkan_passes.py tools/test_host_vr_vulkan.py tools/test_vr_vehicles.py \
-            tools/test_vr_effects.py
+            tools/test_vr_effects.py tools/test_host_texture_idle.py
 
       - name: Compile cache
         run: ccache --show-stats

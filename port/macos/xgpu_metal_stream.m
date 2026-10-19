@@ -1184,6 +1184,10 @@ static void stream_frame_end(void *context)
 	xgpu_metal_frame_end(target_texture(stream.back_buffer));
 	stream.back_buffer = 0;
 	xgpu_metal_textures_frame_end();
+	/* (each stage's texture looked for at least once a frame, so that the
+	cache sees it used and keeps it: the guest sends the stages only when
+	they change, and a frame of draws with the same ones sends none) */
+	stream.textures_dirty = YES;
 	/* (the dynamic lights the frame sent were in its ring) */
 	if (stream.lights_none[0])
 		lights_none_bind();
