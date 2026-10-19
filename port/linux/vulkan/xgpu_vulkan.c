@@ -2003,6 +2003,32 @@ static float anisotropic_bias(float anisotropy)
 	return -42.0f / 256.0f;
 }
 
+/* ---------- the caches' keys */
+
+/* a hash of bytes for the caches' buckets, eight at a time (a byte at a
+time was a frame's noticeable part on a phone's or a headset's CPU, for
+each draw's pipeline and texture set); only where the entries are looked
+for depends on it */
+static uint64_t bytes_hash64(const void *data, size_t size)
+{
+	const unsigned char *bytes = (const unsigned char *)data;
+	uint64_t hash = 0x9e3779b97f4a7c15ull ^ size, word;
+	size_t index;
+
+	for (index = 0; index + 8 <= size; index += 8)
+	{
+		memcpy(&word, bytes + index, 8);
+		hash = (hash ^ word) * 0xff51afd7ed558ccdull;
+		hash ^= hash >> 31;
+	}
+	for (; index < size; index++)
+		hash = (hash ^ bytes[index]) * 0x100000001b3ull;
+	hash ^= hash >> 33;
+	hash *= 0xc4ceb9fe1a85ec53ull;
+	hash ^= hash >> 29;
+	return hash;
+}
+
 static VkSamplerAddressMode address_mode(uint8_t mode)
 {
 	switch (mode)
@@ -2018,12 +2044,9 @@ VkSampler xgpu_vulkan_sampler(const struct xgpu_vulkan_sampler_description *desc
 {
 	VkSamplerCreateInfo info;
 	VkSamplerCustomBorderColorCreateInfoEXT custom;
-	uint32_t hash = 2166136261u, index, probe;
-	const unsigned char *bytes = (const unsigned char *)description;
+	uint32_t hash = (uint32_t)bytes_hash64(description, sizeof(*description)), index, probe;
 	VkSampler sampler = VK_NULL_HANDLE;
 
-	for (index = 0; index < sizeof(*description); index++)
-		hash = (hash ^ bytes[index]) * 16777619u;
 	for (probe = 0; probe < SAMPLER_CACHE; probe++)
 	{
 		index = (hash + probe) % SAMPLER_CACHE;
@@ -2097,32 +2120,6 @@ VkSampler xgpu_vulkan_sampler(const struct xgpu_vulkan_sampler_description *desc
 	vk.sampler_count++;
 	vk.statistics.samplers_made++;
 	return sampler;
-}
-
-/* ---------- the caches' keys */
-
-/* a hash of bytes for the caches' buckets, eight at a time (a byte at a
-time was a frame's noticeable part on a phone's or a headset's CPU, for
-each draw's pipeline and texture set); only where the entries are looked
-for depends on it */
-static uint64_t bytes_hash64(const void *data, size_t size)
-{
-	const unsigned char *bytes = (const unsigned char *)data;
-	uint64_t hash = 0x9e3779b97f4a7c15ull ^ size, word;
-	size_t index;
-
-	for (index = 0; index + 8 <= size; index += 8)
-	{
-		memcpy(&word, bytes + index, 8);
-		hash = (hash ^ word) * 0xff51afd7ed558ccdull;
-		hash ^= hash >> 31;
-	}
-	for (; index < size; index++)
-		hash = (hash ^ bytes[index]) * 0x100000001b3ull;
-	hash ^= hash >> 33;
-	hash *= 0xc4ceb9fe1a85ec53ull;
-	hash ^= hash >> 29;
-	return hash;
 }
 
 /* ---------- shaders */

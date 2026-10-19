@@ -107,6 +107,9 @@ enum
 
 /* ---------- state */
 
+/* every stage's texture looked at again (stream.textures_dirty) */
+#define TEXTURES_ALL 15u
+
 struct stream_target
 {
 	struct xgpu_vulkan_image *image;
@@ -199,10 +202,12 @@ static struct
 
 	/* the stages as set, their samplers' border axes the shader draws, and
 	what is bound for them (looked at again where a stage changed, a
-	watched page was written, or a target drawn into is sampled) */
+	watched page was written, or a target drawn into is sampled): the
+	stages to look at again (bits; TEXTURES_ALL) */
 	struct host_render_texture_stage stages[4];
 	uint8_t border[4];
-	int textures_dirty, feedback_bound;
+	unsigned int textures_dirty;
+	int feedback_bound;
 	uint32_t textures_serial;
 	struct xgpu_vulkan_texture textures[4];
 	/* the copy of a target drawn into that a draw samples: of which
@@ -355,7 +360,7 @@ static void target_forget(uint32_t number)
 	composites_forget(number);
 	if (stream.feedback_target == number)
 		stream.feedback_target = 0;
-	stream.textures_dirty = 1;
+	stream.textures_dirty = TEXTURES_ALL;
 }
 
 static struct xgpu_vulkan_image *target_image_make(const struct stream_target *target, int samples)
@@ -410,7 +415,7 @@ static void stream_target_create(void *context, const struct xgpu_stream_target_
 		return;
 	}
 	stream.targets[record->target] = target;
-	stream.textures_dirty = 1;
+	stream.textures_dirty = TEXTURES_ALL;
 }
 
 struct xgpu_vulkan_image *xgpu_vulkan_stream_target(uint32_t number)
@@ -455,12 +460,14 @@ void xgpu_vulkan_stream_set_vr_target(uint32_t number, struct xgpu_vulkan_image 
 	target->height = description->height;
 	target->layers = description->type == XGPU_VULKAN_IMAGE_2D_ARRAY ? description->depth_or_layers : 1;
 	target->written++;
-	stream.textures_dirty = stream.uniforms_dirty = 1;
+	stream.textures_dirty = TEXTURES_ALL;
+	stream.uniforms_dirty = 1;
 }
 
 void xgpu_vulkan_stream_vr_changed(void)
 {
-	stream.uniforms_dirty = stream.textures_dirty = 1;
+	stream.uniforms_dirty = 1;
+	stream.textures_dirty = TEXTURES_ALL;
 }
 
 static void stream_target_delete(void *context, uint32_t target)
@@ -535,7 +542,7 @@ static void stream_set_targets(void *context, const struct xgpu_stream_set_targe
 	stream.base = record->views == -2 ? 1 : record->base;
 	stream.hud_group = record->hud_group;
 	/* (whether a stage samples the target drawn into) */
-	stream.textures_dirty = 1;
+	stream.textures_dirty = TEXTURES_ALL;
 	targets_bind();
 	/* The game's clears of some of the colour's channels are of alpha alone
 	(a fog screen's, and a split screen's window's end, which the map's
@@ -648,6 +655,16 @@ static VkSampler sampler_get(const struct xgpu_stream_sampler *from, uint8_t axe
 	return xgpu_vulkan_sampler(&to);
 }
 
+/* a stage of a palettized Xbox texture, whose palette's colours are read as
+its texture is looked for (xgpu_vulkan_textures.c): a palette is not
+watched, so such a stage is looked at again whenever the stages are set,
+as every stage was */
+static int stage_palettized(const struct xgpu_stream_texture_stage *stage)
+{
+	return stage->source == _source_texture && stage->palette &&
+		((stage->resource_format & D3DFORMAT_FORMAT_MASK) >> D3DFORMAT_FORMAT_SHIFT) == 0x0b;
+}
+
 static void stream_set_textures(void *context, const struct host_render_texture_stage stages[4])
 {
 	int index;
@@ -659,12 +676,16 @@ static void stream_set_textures(void *context, const struct host_render_texture_
 
 		if (memcmp(&stream.stages[index].stage.sampler, &stage->sampler, sizeof(stage->sampler)))
 			stream.uniforms_dirty = 1;
+		/* (only the stages that changed are looked at again: the guest
+		sends all four when any changes, and a draw's textures were a
+		noticeable part of the render thread's time on a headset) */
+		if (memcmp(&stream.stages[index], &stages[index], sizeof(stages[index])) || stage_palettized(stage))
+			stream.textures_dirty |= 1u << index;
 		stream.stages[index] = stages[index];
 		/* (the shader draws the border of a 2D or 3D texture's sampler) */
 		stream.border[index] = stage->source != _source_none && stage->sampler_type != _xgpu_sampler_cube &&
 			stage->sampler_type != _xgpu_sampler_2d_layered ? border_axes(&stage->sampler) : 0;
 	}
-	stream.textures_dirty = 1;
 }
 
 /* a copy of a target the draw draws into, which it samples (Vulkan cannot
@@ -793,9 +814,17 @@ static struct xgpu_vulkan_image *composite_get(const struct host_render_texture_
 static void textures_bind(void)
 {
 	uint32_t serial = host_memory_watch_serial();
+	unsigned int dirty = stream.textures_dirty;
 	int index;
 
-	if (!stream.textures_dirty && serial == stream.textures_serial && !stream.feedback_bound)
+	/* (a watched page written: any texture may be read again; a target
+	drawn into sampled: its copy is checked at each draw. Otherwise the
+	stages that did not change keep what they have: each stage's image
+	and sampler are its own stage's alone, and the targets' changes mark
+	them all) */
+	if (serial != stream.textures_serial || stream.feedback_bound)
+		dirty = TEXTURES_ALL;
+	if (!dirty)
 		return;
 	stream.textures_dirty = 0;
 	stream.textures_serial = serial;
@@ -806,6 +835,8 @@ static void textures_bind(void)
 		const struct xgpu_stream_texture_stage *stage = &source->stage;
 		struct xgpu_vulkan_texture *texture = &stream.textures[index];
 
+		if (!(dirty & (1u << index)))
+			continue;
 		texture->image = NULL;
 		texture->kind = stage->sampler_type == _xgpu_sampler_3d ? XGPU_VULKAN_IMAGE_3D :
 			stage->sampler_type == _xgpu_sampler_cube ? XGPU_VULKAN_IMAGE_CUBE :
@@ -2073,6 +2104,9 @@ static void stream_frame_end(void *context)
 				textures.images);
 		}
 	}
+	/* (each stage's texture looked for at least once a frame, so that the
+	cache sees it used and keeps it: textures_bind) */
+	stream.textures_dirty = TEXTURES_ALL;
 }
 
 static void stream_open(void *context, void *ring, uint32_t ring_size, volatile uint32_t *visibility)
