@@ -837,9 +837,9 @@ not.
 ### Comparing two builds
 
 `tools/net_compare.py` checks that two builds play a network game in step:
-a new port or architecture against the i686 Linux build (x86-64 against
-i686, arm64 against x86), or a build with a change to the simulation
-against one without. It plays them together on the loopback, build A
+a new port or architecture against the 64-bit x86 Linux build (arm64
+against x86-64), or a build with a change to the simulation against one
+without. It plays them together on the loopback, build A
 hosting and B joining (and, with `--swap`, the other way round), on each
 map given, each copy's player a seeded bot (`debug.test_input`
 `bot:<seed>`, `--events` adds `debug.network_test_shoot` and
@@ -849,15 +849,15 @@ started with, `DISPLAY` or `WAYLAND_DISPLAY`, or `--display`'s: a virtual
 one, Xvfb, rather than a desktop), and compares the two machines' logs:
 
 ```sh
-python tools/net_compare.py --a build/linux/halo --b build/linux_x86_64/halo \
+python tools/net_compare.py --a build/linux_x86_64/halo --b <another build's halo> \
     --data <folder holding maps/> --maps bloodgulch,beavercreek,hangemhigh --swap
 ```
 
 It needs the retail maps, so it runs on a developer's machine or a
 self-hosted runner, not in the public CI; run it before merging a change to
 a build's compiler, architecture, maths or the simulation itself. A build
-is its executable: a build's (`build/linux/halo`), a flat release's, or a
-release tree's `bin/opence` (its `lib/` and `share/opence` are linked into
+is its executable: a build's (`build/linux_x86_64/halo`), or a release
+tree's `bin/opence` (its `lib/` and `share/opence` are linked into
 the copy, which stays a portable tree). Each copy gets its own folder (an
 executable, `config.toml` written in the copy's folder, a data root linking
 the maps, and saves) in `build/net_compare/`, removed when every game
@@ -936,7 +936,8 @@ log has.
 
 Calibration (on one 24-thread computer, with up to four games played at
 once, 60 seconds each, both ways round, on bloodgulch, beavercreek,
-hangemhigh, chillout, prisoner, ratrace, longest and carousel):
+hangemhigh, chillout, prisoner, ratrace, longest and carousel; with the
+32-bit x86 Linux build the port had then, i686):
 
 | Builds | Games | Result | Ticks apart |
 | --- | --- | --- | --- |

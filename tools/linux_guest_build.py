@@ -43,9 +43,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, HOST_RENDERER, MUSL_VERSION,
-                            RENDER_STREAM_GUEST_EXCLUDED, SDL_TAG, TOML_DIR, fetch_third_party, generate_guest_image,
-                            host_memory_sources)
+from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, HOST_RENDERER, RENDER_STREAM_GUEST_EXCLUDED,
+                            SDL_TAG, TOML_DIR, fetch_third_party, generate_guest_image, host_memory_sources)
 from .build_common import (MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, SDL_RPATH_LDFLAGS, compile_launcher,
                            download, miniupnpc_sources, sdl3_rule, updater_defines)
 from .guest_arch import ARM64_32, X32, GuestArch

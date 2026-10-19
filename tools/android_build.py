@@ -87,11 +87,11 @@ GUEST_FLAGS = [
     "-ffp-contract=off",
     "-O2",
 ]
-# the Android app's code paths, and the OpenGL ES renderer's, which the
-# desktop guest builds share (tools/linux_guest_build.py): the app's renderer
-# is Vulkan's, in the host, and its guest has no OpenGL backend, but its
-# platform code names OpenGL as the Linux arm64 guest's does (declarations
-# only), with the anti-aliasing a phone's GPU can spare (d3d8_device.c)
+# the Android app's code paths, and the OpenGL ES renderer's: the app's
+# renderer is Vulkan's, in the host, and its guest has no OpenGL backend, but
+# its platform code names OpenGL ES's declarations and limits, with the
+# anti-aliasing a phone's GPU can spare (d3d8_device.c); the Linux guests have
+# the desktop's code paths instead (tools/linux_guest_build.py)
 ANDROID_DEFINES = ["-DHALO_GLES=1", "-DHALO_ANDROID=1"]
 
 # the MSVC semantics the game's sources were written for, as the Windows
