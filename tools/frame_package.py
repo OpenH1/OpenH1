@@ -2,21 +2,20 @@
 """Packages the VR build for a Steam Frame: dist/halo-vr-frame/ and
 dist/halo-vr-frame.tar.gz, which tools/frame_install.sh installs.
 
-    python3 configure.py --vr && ninja linux_vulkan
+    python3 configure.py --vr && ninja linux_arm64
     python3 tools/frame_package.py
 
 The package is what ~/apps/halo-vr/ on the Frame needs beside the game's
-data and the player's own files: the game (build/linux_vulkan/halo), the
+data and the player's own files: the game (build/linux_arm64/halo), the
 SDL3 it finds beside it, the launcher of its Steam shortcut
 (port/linux/frame/halo-vr.sh), internet play's brokers.txt, a README
 (port/linux/frame/README.md), the libraries' licenses (as
 tools/ci_build.py's dist has them), VERSION (the commit) and SHA256SUMS.
 Never config.toml: the player's own, which an install must not replace.
 
-The game must be a VR build with Vulkan, for 64-bit ARM, and each library
-it or its SDL3 needs must be in the package or one that SteamOS has (the C
-library, Vulkan's loader, Mesa's EGL and OpenGL); else this stops, as the
-Frame would not start it. Refer to "Steam Frame" in port/linux/README.md.
+The game must be a VR build, for 64-bit ARM, and each library it or its
+SDL3 needs must be in the package or one that SteamOS has (the C library,
+Vulkan's loader); else this stops, as the Frame would not start it. Refer to "Steam Frame" in port/linux/README.md.
 """
 
 import argparse
@@ -34,12 +33,11 @@ ROOT = Path(__file__).resolve().parent.parent
 FRAME_DIR = ROOT / "port/linux/frame"
 NAME = "halo-vr-frame"
 
-# the libraries a Frame has (glibc's, Vulkan's loader, and Mesa's through
-# libglvnd: the Vulkan build's host still links OpenGL's, beside the Vulkan
-# renderer)
+# the libraries a Frame has (glibc's, and Vulkan's loader, which the game
+# loads through SDL rather than links)
 SYSTEM_LIBRARIES = {
     "libc.so.6", "libm.so.6", "libdl.so.2", "libpthread.so.0", "librt.so.1", "ld-linux-aarch64.so.1",
-    "libvulkan.so.1", "libGLESv2.so.2", "libEGL.so.1", "libOpenGL.so.0",
+    "libvulkan.so.1",
 }
 # (the package's name for each, from the repository; as tools/ci_build.py;
 # SDL3's, from the build's folder, is added in main)
@@ -65,7 +63,7 @@ def needed_libraries(path: Path) -> List[str]:
     it is not one."""
     data = path.read_bytes()
     if data[:6] != b"\x7fELF\x02\x01" or struct.unpack_from("<H", data, 18)[0] != EM_AARCH64:
-        sys.exit(f"{path}: not a 64-bit ARM executable (build with configure.py --vr, then ninja linux_vulkan)")
+        sys.exit(f"{path}: not a 64-bit ARM executable (build with configure.py --vr, then ninja linux_arm64)")
     phoff, = struct.unpack_from("<Q", data, 32)
     phentsize, phnum = struct.unpack_from("<HH", data, 54)
     loads, dynamic = [], None
@@ -105,21 +103,19 @@ def version() -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--build", type=Path, default=ROOT / "build/linux_vulkan",
-                        help="the VR build's folder (default: build/linux_vulkan)")
+    parser.add_argument("--build", type=Path, default=ROOT / "build/linux_arm64",
+                        help="the VR build's folder (default: build/linux_arm64)")
     parser.add_argument("--out", type=Path, default=ROOT / "dist",
                         help=f"where {NAME}/ and {NAME}.tar.gz go (default: dist)")
     args = parser.parse_args()
 
     game = args.build / "halo"
     if not game.is_file():
-        sys.exit(f"{game}: no game; build it first: python3 configure.py --vr && ninja linux_vulkan")
+        sys.exit(f"{game}: no game; build it first: python3 configure.py --vr && ninja linux_arm64")
     data = game.read_bytes()
-    if b"xrNegotiateLoaderRuntimeInterface" not in data:
-        sys.exit(f"{game}: not a VR build (python3 configure.py --vr, then ninja linux_vulkan)")
-    # (the Frame draws with Vulkan: host_vr.c's Vulkan binding names it)
-    if b"XR_KHR_vulkan_enable2" not in data:
-        sys.exit(f"{game}: not the Vulkan build (python3 configure.py --vr, then ninja linux_vulkan)")
+    # (host_vr.c's: the runtime's negotiation, and its Vulkan binding)
+    if b"xrNegotiateLoaderRuntimeInterface" not in data or b"XR_KHR_vulkan_enable2" not in data:
+        sys.exit(f"{game}: not a VR build (python3 configure.py --vr, then ninja linux_arm64)")
 
     files = {
         "halo": game,

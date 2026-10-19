@@ -2,10 +2,12 @@
 Halo Editing Kit writes them) played over Blood Gulch's tags, the same files damaged, which the game must leave out,
 a model made from the map's own (its nodes, regions and markers, with geometry of its own), and the same with a
 marker moved or a node renamed, which it must leave out, and the load order: alphabetical, moved as mods ask, as
-load_order.toml keeps it, and mods that say they cannot be played together. Needs the Linux build
-(build/linux/halo), assets/maps/bloodgulch.map and xvfb-run."""
+load_order.toml keeps it, and mods that say they cannot be played together. Needs this computer's Linux build
+(build/linux_x86_64/halo, or build/linux_arm64/halo), assets/maps/bloodgulch.map, xvfb-run and a Vulkan driver
+that draws in it (Mesa's lavapipe will do)."""
 
 import os
+import platform
 import shutil
 import signal
 import struct
@@ -16,7 +18,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-GAME = ROOT / "build" / "linux" / "halo"
+GAME = ROOT / "build" / ("linux_arm64" if platform.machine().lower() in ("aarch64", "arm64") else "linux_x86_64") / "halo"
 MAPS = ROOT / "assets" / "maps"
 LEVEL = "levels\\test\\bloodgulch\\bloodgulch"
 
@@ -189,9 +191,9 @@ def model_file(tags: MapTags, name: str, move_marker: bool = False, rename_node:
 @pytest.fixture(scope="module")
 def game(tmp_path_factory) -> Path:
     """the Linux build, copied with its SDL to a folder of its own: its config.toml, which it writes beside
-    itself, is the test's (not build/linux's)"""
+    itself, is the test's (not the build's folder's)"""
     if not GAME.is_file() or not (MAPS / "bloodgulch.map").is_file() or not shutil.which("xvfb-run"):
-        pytest.skip("needs build/linux/halo, assets/maps/bloodgulch.map and xvfb-run")
+        pytest.skip(f"needs {GAME.relative_to(ROOT)}, assets/maps/bloodgulch.map and xvfb-run")
     folder = tmp_path_factory.mktemp("game")
     for name in ("halo", "libSDL3.so.0"):
         if (GAME.parent / name).is_file():

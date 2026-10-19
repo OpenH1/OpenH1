@@ -3,8 +3,8 @@
 
 Two MSVC behaviours that the game (and the XDK headers) depend on have no
 compiler switch in clang for ELF targets. This script scans the sources and
-writes a header, force-included into every Linux translation unit, that
-reproduces both:
+writes a header, force-included into every unit of the guest builds (and,
+its tags alone, of the Windows build), that reproduces both:
 
 1. File-scope struct tags. MSVC gives a struct/union tag that first appears
    inside a function prototype file scope, so a later definition or prototype
@@ -21,8 +21,8 @@ reproduces both:
    function name turns exactly those definitions into weak symbols - the ELF
    analogue of a COMDAT - and is ignored for the static ones.
    A weak *reference* to a name that nothing defines would silently resolve
-   to NULL, so tools/linux_build.py rejects a link with weak undefined
-   symbols.
+   to NULL: port/linux/game/msvc_comdat.c gives each such function its one
+   external definition.
 """
 
 import argparse

@@ -1,16 +1,18 @@
 # Linux
 
-`ninja linux` compiles the game with clang for 32-bit x86 Linux. The result
-is a native executable, `build/linux/halo`. The game shows its graphics with
-OpenGL 4.5. It plays sound through SDL3. It accepts keyboard, mouse and
-gamepad input.
+The Linux builds are 64-bit: `ninja linux_x86_64` compiles the game for
+64-bit x86 Linux, and `ninja linux_arm64` for 64-bit ARM Linux. Each is the
+default build of its computer (`ninja` without a target builds it). The
+result is a native executable, `build/linux_x86_64/halo` or
+`build/linux_arm64/halo`. The game shows its graphics with Vulkan 1.3. It
+plays sound through SDL3. It accepts keyboard, mouse and gamepad input.
 
-The game is 32-bit code because its data (tags, cache files, saved games)
-contains 32-bit pointers, as on the Xbox.
-
-`ninja linux_arm64` builds the game for 64-bit ARM Linux. Refer to
-"64-bit ARM". `ninja linux_x86_64` builds it as a 64-bit x86 executable,
-which needs no 32-bit libraries. Refer to "64-bit x86".
+The game's data (tags, cache files, saved games) contains 32-bit pointers,
+as on the Xbox. So each build runs the game as the Android port does: the
+game is 32-bit-pointer code of the computer's architecture (x32 on x86-64,
+arm64_32 on ARM), a guest image in a 64-bit executable, the host. Refer to
+"64-bit x86" and "64-bit ARM". The examples below name
+`build/linux_x86_64`; on a 64-bit ARM computer, read `build/linux_arm64`.
 
 ## Requirements
 
@@ -20,91 +22,75 @@ You do not need the Xbox SDK. The declarations that the game uses are in
 To build:
 
 - Python and ninja.
-- clang. The option `--linux-cc` of `configure.py` selects a different
-  compiler.
-- The 32-bit glibc development files: `lib32-glibc` on Arch Linux,
-  `gcc-multilib` and `libc6-dev-i386` on Debian and Ubuntu.
-- The 32-bit SDL3: `lib32-sdl3` on Arch Linux, `libsdl3-dev:i386` on Debian
-  and Ubuntu. The portable build does not need it: refer to "Portable
-  build".
+- clang for the host. The guest is compiled, linked and checked
+  (`tools/guest_image_check.py`) with LLVM 22.1.8, which `configure.py`
+  downloads the first time (approximately 1.5 GB) to `~/.cache/opence`.
+  Refer to "The guests' compiler" in [README.md](../../README.md#the-guests-compiler).
+  The option `--linux-x86-64-cc` (or `--linux-arm64-cc`) of `configure.py`
+  selects a different clang for the host and the guest, which then needs
+  the `x32` (or `arm64_32`) target, `ld.lld`, `llvm-ar` and `llvm-objdump`.
+- CMake, and the development files that SDL3 uses for X11, Wayland and
+  sound. Refer to the SDL documentation, or to the `linux-x86_64` and
+  `linux-arm64` jobs in `.github/workflows/build.yml`. No OpenGL or Vulkan
+  development files are needed: the build uses no OpenGL, and downloads
+  the Vulkan headers it uses.
+- A network connection for the first build. `configure.py` downloads musl
+  1.2.5 (checked against its SHA-256), SDL 3.4.16 and the Khronos Vulkan
+  headers (checked against their SHA-256) to `build/<name>/third_party`
+  (`build/linux_x86_64/third_party`, `build/linux_arm64/third_party`), and
+  with `--vr` the OpenXR headers ("VR"). Later runs of `configure.py` take
+  them from there.
 
 To start the game:
 
-- glibc 2.29 or later (32-bit), for the builds from GitHub Actions, which
-  are built against glibc 2.31. They start on SteamOS 3 (Steam Deck). They
-  should also start on Debian 11, Ubuntu 20.04, Fedora 32 and later
-  distributions, but this is not tested. A build that you make without
-  `--portable` needs the glibc of the computer that built it, or a later
-  one.
-- The 32-bit OpenGL libraries (`lib32-mesa`).
-- The 32-bit PipeWire or PulseAudio client libraries (`lib32-pipewire` or
-  `lib32-libpulse`).
-- The 32-bit X11 libraries (`lib32-libx11`, `lib32-libxext`). In a Wayland
-  session, the game uses them through XWayland. SDL uses Wayland itself
-  only if the 32-bit Wayland libraries are version 1.20 or later
-  (`lib32-wayland`, `lib32-libxkbcommon`; Debian 11, Ubuntu 20.04 and
-  Fedora 32 have older ones) and the compositor has the fifo-v1 protocol.
-  On GNOME, the window then has borders only with the 32-bit libdecor
-  (`lib32-libdecor`).
+- A GPU and driver with Vulkan 1.3 (dynamic rendering, timeline
+  semaphores, host query reset), and the Vulkan loader, `libvulkan.so.1`,
+  which the game loads when it starts. Refer to
+  [the Vulkan README](vulkan/README.md) for the rest of what the driver
+  must have. Without them the game says so in a message box ("The game
+  cannot draw with Vulkan on this device") and in its log.
+- glibc 2.35 or later, for the builds from GitHub Actions, which are built
+  on Ubuntu 22.04. A build that you make needs the glibc of the computer
+  that built it, or a later one.
+- The X11 or Wayland client libraries, and the PipeWire, PulseAudio or ALSA
+  client libraries for sound. The game brings SDL 3 (`libSDL3.so.0`, next
+  to the executable in a build, in `lib/opence` in a release), which looks
+  for X11, Wayland, libdecor, PipeWire, PulseAudio and ALSA when it starts,
+  so it starts with whichever of them the system has. On GNOME, a Wayland
+  window has borders only with libdecor.
 
 SteamOS has all of these. Its system is read-only, and the builds from
 GitHub Actions need no package: they bring their own SDL3
-(`lib/opence/libSDL3.so.0`).
-
-### Portable build
-
-The builds from GitHub Actions are portable builds (`--portable`; refer to
-"Build options" in the main [README](../../README.md#build-options)). The
-portable build starts on more systems than the build machine's:
-
-- It is compiled and linked against the 32-bit glibc 2.31 of Debian 11, the
-  glibc of the Steam Runtime 3 ("sniper"), not against the glibc of the
-  build machine. An executable needs the glibc version that it was built
-  against, or a later one.
-- It brings SDL 3 (`libSDL3.so.0`), built from source against the same
-  glibc. The executable looks for it in its own folder and in
-  `../lib/opence` first (a `DT_RPATH` of `$ORIGIN:$ORIGIN/../lib/opence`,
-  which comes before `LD_LIBRARY_PATH`), so that it uses this SDL even when
-  Steam sets `LD_LIBRARY_PATH`. Few distributions have a 32-bit SDL 3. This
-  SDL loads X11, Wayland, libdecor, PipeWire, PulseAudio and ALSA when it
-  starts, so it starts with whichever of them the system has. It is linked
-  only to glibc. Its license is `SDL3-LICENSE.txt`.
-
-At the first build, `tools/linux_sysroot.py` downloads the Debian packages
-(about 25 MB) and the source of SDL. Each package comes from
-`archive.debian.org` or `deb.debian.org`, or else from
-`snapshot.debian.org`; the source of SDL comes from GitHub or from
-`libsdl.org`. It checks each download against its SHA-256 sum. The system root is in
-`build/linux/third_party/sysroot`. `tools/linux_sysroot.cmake` builds SDL
-against it.
-
-To make the portable build you need, in addition to the tools above,
-CMake, `pkg-config` (`pkgconf`) and `wayland-scanner` (`wayland` on Arch
-Linux, `libwayland-bin` on Debian and Ubuntu). You do not need the 32-bit
-SDL3. You need the 32-bit glibc only for the tests.
+(`lib/opence/libSDL3.so.0`). The executable looks for it in its own folder
+and in `../lib/opence` first (a `DT_RPATH` of
+`$ORIGIN:$ORIGIN/../lib/opence`, which comes before `LD_LIBRARY_PATH`), so
+that it uses this SDL even when Steam sets `LD_LIBRARY_PATH`. Its license
+is `SDL3-LICENSE.txt`.
 
 To see the glibc version that a build needs, enter
-`readelf -V build/linux/halo | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1`.
+`readelf -V build/linux_x86_64/halo | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1`.
 
 ## Build the game
 
 1. Go to the root folder of the repository.
 2. Enter `python configure.py`.
-3. Enter `ninja linux`.
+3. Enter `ninja` (`ninja linux_x86_64` on a 64-bit x86 computer,
+   `ninja linux_arm64` on a 64-bit ARM computer).
 
 ## Start the game
 
-Enter `build/linux/halo`.
+Enter `build/linux_x86_64/halo`.
 
-The release (`halo-linux-i686-release.zip`) is a folder laid out as a Unix
-prefix is (refer to "Packaging"). Unpack it into a folder, and enter
+The release (`halo-linux-x86_64-release.zip`, or
+`halo-linux-arm64-release.zip` for 64-bit ARM) is a folder laid out as a
+Unix prefix is (refer to "Packaging"). Unpack it into a folder, and enter
 `bin/opence` in that folder. That folder is the game's folder: the game
 keeps `config.toml` and `maps/` there.
 
-To play on a Steam Deck, unpack `halo-linux-i686-release.zip` into a folder
-(in Desktop Mode), and add `bin/opence` to Steam as a non-Steam game ("Add a
-Game" in the Games menu of Steam). The game then starts in Game Mode as
-well. Refer to "Steam Deck".
+To play on a Steam Deck, unpack `halo-linux-x86_64-release.zip` into a
+folder (in Desktop Mode), and add `bin/opence` to Steam as a non-Steam game
+("Add a Game" in the Games menu of Steam). The game then starts in Game
+Mode as well. Refer to "Steam Deck".
 
 The game data is the folder that contains `maps/`, from an Xbox disc image
 of any version of the game. The game looks for this folder in this
@@ -113,7 +99,7 @@ sequence:
 1. `paths.data` in `config.toml`.
 2. The current folder.
 3. The game's folder: the folder of the release (above `bin/`), or the
-   folder of the executable (`build/linux/halo`). For an installed game
+   folder of the executable (`build/linux_x86_64/halo`). For an installed game
    (refer to "Packaging"), `~/.local/share/halo-linux`, unless the game's
    folder is read-only and has `maps/`.
 4. `assets/` in the current folder, and `assets/` in the repository that
@@ -137,6 +123,8 @@ folder, next to `bin/` (or start the game one time to copy it from a disc
 image), and add `bin/opence` to Steam. Then start the game from the library
 in Game Mode.
 
+- Build: the 64-bit x86 one, `halo-linux-x86_64-release.zip`, which draws
+  with Vulkan (SteamOS has it).
 - Screen: the game fills the screen without borders (`display.mode` empty,
   thus borderless). The 3D view and the HUD have the shape of the screen
   (16:10) and are drawn at its resolution; the menus are at the center.
@@ -188,15 +176,17 @@ These files are in the data root:
 | `mods/` | Mods: folders of Halo PC tag files whose sounds, bitmaps, text and models play over the maps' on this machine, in the order of the main menu's Mods (`load_order.toml`). Refer to [docs/mods.md](../../docs/mods.md). |
 
 The settings are in `config.toml` in the game's folder (the release's
-folder, or the folder of `build/linux/halo`), or in
+folder, or the folder of `build/linux_x86_64/halo`), or in
 `~/.config/halo-linux` for an installed game. Refer to "Settings" and
 "Packaging". Internet play's MQTT brokers are in `brokers.txt`
 (`network.brokers_file`): the one next to `config.toml`, if there is one,
 else the release's `share/opence/brokers.txt`.
 
-If the game stops because of a fatal signal, it writes the address and a
-backtrace to the standard error. To find the function at the address, enter
-`addr2line -e build/linux/halo <address>`.
+If the game stops because of a fatal signal, the host writes the address,
+the registers and the frame chain to the standard error. Where the address
+is in the game's code, the report says so with the command that finds its
+function in the guest image: `addr2line -e build/linux_x86_64/halo_guest.elf
+<address>`.
 
 ## Controls
 
@@ -338,7 +328,7 @@ problem.
 ## Settings
 
 The settings are in `config.toml` in the game's folder (the release's
-folder, or `build/linux/config.toml`; `~/.config/halo-linux/config.toml` for
+folder, or `build/linux_x86_64/config.toml`; `~/.config/halo-linux/config.toml` for
 an installed game: refer to "Packaging"). At the first start, the game writes the file
 with a comment for each setting and the setting commented out at its
 default (`# vsync = true`): a commented setting follows the default, also a
@@ -373,9 +363,9 @@ the setting for one start of the game. It has priority over the file.
 | `display.vsync` | `true` | `HALO_NO_VSYNC=1` sets `false` | `true`: each frame waits for the display. With Vulkan, `false` presents in mailbox mode where the display has it (no tearing), else immediately. The VR mode's headset paces itself. |
 | `display.max_fps` | `0` | `HALO_MAX_FPS` | With vsync off, the most frames each second. `0`: twice the display's refresh rate. `-1`: no limit, which can hang some Intel graphics (Raptor Lake), resetting the desktop's graphics too. |
 | `display.graphics` | `"enhanced"` | `HALO_GRAPHICS` | The look of the 3D view, as one choice. `"classic"`: as the Xbox drew it. `"enhanced"`: the port's improvements together, each as far as the machine's GPU does it well. It chooses `display.anti_aliasing`, `display.anisotropic_filtering`, `display.shadow_resolution`, `display.per_pixel_lighting`, `display.model_detail` and `display.dynamic_lights` where they are commented out; each of them set wins over it. Video Setup > Graphics > Preset. Refer to "Classic and Enhanced". |
-| `display.anti_aliasing` | `display.graphics`'s | `HALO_ANTI_ALIASING` | The smoothing of jagged edges, which the Xbox did not have. `"off"`: none, as on the Xbox. `"fxaa"` or `"smaa"`: a pass over the 3D view after the game draws it. The HUD and the menus stay sharp. SMAA is the sharper and costs more. `"ssaa2x"`: the game draws at two times the resolution in each direction (at most the GPU's largest texture), and the picture is scaled down. The GPU does four times the work. Not with `display.resolution_scaling = "original"`. `"msaa2x"`, `"msaa4x"` or `"msaa8x"`: each pixel of the 3D view has that many samples (at most the GPU's). With OpenGL ES (the web, 64-bit ARM Linux), `"smaa"` gives FXAA; there and on Android, `"ssaa2x"` gives none. The VR mode's eyes have neither pass, as with OpenGL. A change applies from the next frame. Refer to "Anti-aliasing" in "What operates". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
+| `display.anti_aliasing` | `display.graphics`'s | `HALO_ANTI_ALIASING` | The smoothing of jagged edges, which the Xbox did not have. `"off"`: none, as on the Xbox. `"fxaa"` or `"smaa"`: a pass over the 3D view after the game draws it. The HUD and the menus stay sharp. SMAA is the sharper and costs more. `"ssaa2x"`: the game draws at two times the resolution in each direction (at most the GPU's largest texture), and the picture is scaled down. The GPU does four times the work. Not with `display.resolution_scaling = "original"`. `"msaa2x"`, `"msaa4x"` or `"msaa8x"`: each pixel of the 3D view has that many samples (at most the GPU's). With OpenGL ES (the web), `"smaa"` gives FXAA; there and on Android, `"ssaa2x"` gives none. The VR mode's eyes have neither pass. A change applies from the next frame. Refer to "Anti-aliasing" in "What operates". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.prepare_shaders` | `true` | `HALO_PREPARE_SHADERS` | `true`: as a map loads, its first frame (and the first of each of its structures) is drawn unseen through every shader its tags hold, in each way the game's code draws them, so that the renderer makes their shaders and pipelines during the loading screen, not in play (`port/assets/render/README.md`, "A map's enumeration"). `false`: each is made the first time a draw needs it, which the draw waits for. |
-| `debug.gpu_flush_draws` | `-1` | `HALO_GPU_FLUSH_DRAWS` | OpenGL only: flush the GPU's pipeline every this many draws. `-1`: every 3 on Intel graphics with Mesa's OpenGL driver, which can otherwise hang in the game's long runs of small draws and reset the desktop's graphics too. `0`: never. It does nothing with Vulkan or Metal. |
+| `debug.gpu_flush_draws` | `-1` | `HALO_GPU_FLUSH_DRAWS` | The OpenGL backend only (the Windows build): flush the GPU's pipeline every this many draws. `-1`: every 3 on Intel graphics with Mesa's OpenGL driver, which could otherwise hang in the game's long runs of small draws and reset the desktop's graphics too. `0`: never. It does nothing with Vulkan (Linux, Android) or Metal (macOS). |
 | `display.interpolation` | `true` | `HALO_INTERPOLATION` | `true`: one frame for each refresh of the display. `false`: 30 frames each second, as on the Xbox. Refer to "Frame rate". |
 | `display.direct_camera` | `true` | `HALO_DIRECT_CAMERA` | `true`: in first person, on foot, the view points where the player aims in each frame, not where the last tick left it. Refer to "Frame rate". |
 | `display.fov` | `0.0` | `HALO_FOV` | The first-person view's field of view on foot, in degrees across at 16:9, from 20 to 150. `0`: the stock view. Refer to "Field of view". |
@@ -397,12 +387,12 @@ the setting for one start of the game. It has priority over the file.
 | `display.scoreboard_background` | `true` | `HALO_SCOREBOARD_BACKGROUND` | `true`: the multiplayer scoreboard (hold BACK, or tab) has a panel behind its text, for clearer text. |
 | `display.scoreboard_background_color` | `"16, 16, 16, 150"` | `HALO_SCOREBOARD_BACKGROUND_COLOR` | The colour of the scoreboard's panel: `"red, green, blue, alpha"`, each from `0` to `255`. Alpha `0` is see-through, `255` is solid. |
 | `display.latency_meter` | `false` | `HALO_LATENCY_METER` | `true`: in a network game, your round trip to the host in milliseconds at the top right of the screen, "Ping 45 ms" with four bars: green below 80 ms, yellow below 150, red from 150. The host shows "Max ping", its slowest player's. A player's machine that has heard nothing from the host for two seconds shows "Connection problem". The round trip includes each machine's wait for its next tick, so a LAN reads 15 to 35 ms. Not shown in the menus, after the game, in a co-op cutscene or when the host plays alone. The scoreboard's pings take the same colours, and show the round trips this machine times itself (the host: each player's; a player: their own), so they agree with the meter. Nothing more is sent. Only in config.toml, not in the menus. |
-| `display.anisotropic_filtering` | `display.graphics`'s | `HALO_ANISOTROPIC_FILTERING` | Textures seen at a grazing angle (floors, walls, terrain) are sampled along the angle from finer mip levels, so they stay sharp; the Xbox game asks for none. `0` or `1`: as on the Xbox. `2`, `4`, `8` or `16`: at most that many samples (at most the GPU's); `4` keeps most of `16`'s sharpness at less cost on slower GPUs. It applies to the textures of the map that have mip levels and are filtered linearly (base, detail, bump and environment maps; lightmaps have no mip levels), not to what the game renders, such as the water's ripples. On the web, only where the GPU has `GL_EXT_texture_filter_anisotropic`; with Vulkan (Android), where it has `samplerAnisotropy`. Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
+| `display.anisotropic_filtering` | `display.graphics`'s | `HALO_ANISOTROPIC_FILTERING` | Textures seen at a grazing angle (floors, walls, terrain) are sampled along the angle from finer mip levels, so they stay sharp; the Xbox game asks for none. `0` or `1`: as on the Xbox. `2`, `4`, `8` or `16`: at most that many samples (at most the GPU's); `4` keeps most of `16`'s sharpness at less cost on slower GPUs. It applies to the textures of the map that have mip levels and are filtered linearly (base, detail, bump and environment maps; lightmaps have no mip levels), not to what the game renders, such as the water's ripples. On the web, only where the GPU has `GL_EXT_texture_filter_anisotropic`; with Vulkan (Linux, Android), where it has `samplerAnisotropy`. Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.per_pixel_lighting` | `display.graphics`'s | `HALO_PER_PIXEL_LIGHTING` | `false`: the models (characters, weapons, vehicles, scenery) are lit at each vertex and the light is blended between them, as on the Xbox. The light across a curved surface then shows facets, and a point light that passes close lights only the vertices it reaches. `true`: the models are lit at each pixel by the same lights (the ambient light, two distant lights and two point lights), which changes their look. Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.model_detail` | `display.graphics`'s | `HALO_MODEL_DETAIL` | Which level of detail (of up to five) each model is drawn at. The game measures a model by its size in the lines of its 480-line screen, at any resolution, so at 1440 lines a model three times larger than the levels were made for is drawn as the Xbox drew it. `"stock"`: as on the Xbox. `"native"`: measured in the lines of the display (not supersampling's), so more detail is kept at a distance at high resolutions, and small far models that the Xbox left out are drawn. `"highest"`: measured as `"native"` for which models are drawn, and those drawn at their most detailed level. `"auto"`: `"native"` in the headset's eyes in VR, which have several times a display's lines and are seen close, and `"stock"` on a display. Models whose map gives one level (the trees and rocks of b30) do not change. Android renders at its drawable's native resolution, so `"native"` uses those pixels too. Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.shield_glow` | `false` | `HALO_SHIELD_GLOW` | `true`: as a unit's energy shield flares (hit, charging, falling), it lights what is around it and itself, as a plasma bolt does, in the shield shader's own color (a Spartan's gold, an Elite's blue), rising and falling with the flare seen on the body. An ordinary dynamic light of the game's, drawn with a light definition the map has (`shield_glow.c`). Up to 8 units near the camera. |
 | `display.shield_glow_intensity` | `default` | `HALO_SHIELD_GLOW_INTENSITY` | The shield glow's reach and brightness: `default`, or `light_show` (three times as far, and at full strength from a third of the flare: a light is no brighter than full). The units glowing are those near any local player's camera, so each of a split screen's views has the same. |
-| `display.dynamic_lights` | `display.graphics`'s | `HALO_DYNAMIC_LIGHTS` | The light of plasma bolts, needles, muzzle flashes, grenades and explosions. `"classic"`: the game's own. `"enhanced"`: the structure and the models are lit for each pixel by the lights near each pixel (a grid of the lights about the camera, not a cap of two lights an object), the structure through its bump maps; in linear light, falling off as the inverse square of the distance with a soft core, to nothing at the light tag's radius, under a soft shoulder that never clips (a light's color and radius are its tag's); placed where the objects are drawn between ticks; lighting the first-person weapon and hands; with a soft glow about each plasma bolt in flight (a projectile with no model). Bolts and needles light too (the game draws only their lens flares). Desktop OpenGL and Vulkan: the x86 Linux, 64-bit x86 Linux and Windows builds, and the Vulkan ones (Android, the VR builds, `ninja linux_vulkan`); not OpenGL ES (the arm64 build, the web) nor Metal (macOS), where it is `classic`.. The structure's spotlights (a flashlight's gel) keep the game's own pass. Refer to "Dynamic lights" under "VR". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
+| `display.dynamic_lights` | `display.graphics`'s | `HALO_DYNAMIC_LIGHTS` | The light of plasma bolts, needles, muzzle flashes, grenades and explosions. `"classic"`: the game's own. `"enhanced"`: the structure and the models are lit for each pixel by the lights near each pixel (a grid of the lights about the camera, not a cap of two lights an object), the structure through its bump maps; in linear light, falling off as the inverse square of the distance with a soft core, to nothing at the light tag's radius, under a soft shoulder that never clips (a light's color and radius are its tag's); placed where the objects are drawn between ticks; lighting the first-person weapon and hands; with a soft glow about each plasma bolt in flight (a projectile with no model). Bolts and needles light too (the game draws only their lens flares). Desktop OpenGL and Vulkan: the Linux builds and Android (Vulkan), and Windows (OpenGL); not OpenGL ES (the web) nor Metal (macOS), where it is `classic`. The structure's spotlights (a flashlight's gel) keep the game's own pass. Refer to "Dynamic lights" under "VR". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `audio.enabled` | `true` | `HALO_NO_AUDIO=1` sets `false` | `false`: no audio device. The sound continues without output. |
 | `audio.volume` | `1.0` | `HALO_VOLUME` | The master volume. |
 | `audio.music_volume` | `1.0` | `HALO_MUSIC_VOLUME` | The music's volume, of the master volume. |
@@ -466,11 +456,11 @@ the setting for one start of the game. It has priority over the file.
 | `debug.screenshot_directory`, `debug.screenshot_every` | `""`, `0` | `HALO_SCREENSHOT_DIR`, `HALO_SCREENSHOT_EVERY` | The game writes each Nth frame to this folder as a BMP file. |
 | `debug.hidden_window`, `debug.null_renderer` | `false` | `HALO_HIDDEN_WINDOW`, `HALO_NULL_RENDERER` | `true`: no visible window, or no graphics. |
 | `debug.render_manifest` | `""` | `HALO_RENDER_MANIFEST` | A file the draws' shaders and pipelines are recorded into, each new one added (the renderer's manifest: `port/assets/render/README.md`), and a map's enumeration (as `display.prepare_shaders`): each later draw the map's enumeration does not have is marked missed, with the functions it was drawn in (`tools/render_manifest.py check`). Empty: none. |
-| `debug.gpu_stats`, `debug.gpu_trace_frame`, `debug.gpu_trace_constants`, `debug.gpu_dump_shaders`, `debug.texture_dump_directory`, `debug.texture_log`, `debug.gpu_validation`, `debug.texture_no_cache` | off | `HALO_GPU_STATS`, `HALO_GPU_TRACE`, `HALO_GPU_TRACE_CONSTANTS`, `HALO_GPU_DUMP_SHADERS`, `HALO_TEXTURE_DUMP`, `HALO_TEXTURE_LOG`, `HALO_GPU_VALIDATION`, `HALO_TEXTURE_NO_CACHE` | Tools to find problems in the graphics: counts for each frame (with Vulkan, also its submissions, passes, clears and pipelines every 600 frames, as `HALO_VULKAN_STATS`), all the GL state of one frame, the shaders' code (OpenGL's GLSL; Vulkan's SPIR-V, as `.spv` files, as `HALO_VULKAN_SHADERS`), the textures as they are read (TGA files, `tex<number>_fmt<format>_<width>x<height>.tga`, the same with OpenGL and Vulkan), the OpenGL texture cache's log and its reading every texture again at each use, and the graphics API's errors in the log (OpenGL's debug output; Vulkan's validation layers, which must be installed, as `HALO_VULKAN_VALIDATION`). |
-| `debug.gl_debug` | `false` | `HALO_GL_DEBUG` | Deprecated: `debug.gpu_validation`'s old name, which still turns it on. |
+| `debug.gpu_stats`, `debug.gpu_trace_frame`, `debug.gpu_trace_constants`, `debug.gpu_dump_shaders`, `debug.texture_dump_directory`, `debug.texture_log`, `debug.gpu_validation`, `debug.texture_no_cache` | off | `HALO_GPU_STATS`, `HALO_GPU_TRACE`, `HALO_GPU_TRACE_CONSTANTS`, `HALO_GPU_DUMP_SHADERS`, `HALO_TEXTURE_DUMP`, `HALO_TEXTURE_LOG`, `HALO_GPU_VALIDATION`, `HALO_TEXTURE_NO_CACHE` | Tools to find problems in the graphics: counts for each frame (with Vulkan, also its submissions, passes, clears and pipelines every 600 frames, as `HALO_VULKAN_STATS`), every draw of one frame, the shaders' code (Vulkan's SPIR-V, as `.spv` files, as `HALO_VULKAN_SHADERS`; OpenGL's GLSL on Windows), the textures as they are read (TGA files, `tex<number>_fmt<format>_<width>x<height>.tga`, the same with Vulkan and OpenGL), the OpenGL texture cache's log and its reading every texture again at each use (Windows and the web: the Linux builds' textures are the host's), and the graphics API's errors in the log (Vulkan's validation layers, which must be installed, as `HALO_VULKAN_VALIDATION`; OpenGL's debug output on Windows). |
+| `debug.gl_debug` | `false` | `HALO_GL_DEBUG` | Deprecated: `debug.gpu_validation`'s old name, which still turns it on (with Vulkan, the validation layers). |
 | `debug.skip_cinematics` | `false` | `HALO_SKIP_CINEMATICS` | Skip each cinematic of a local game: as the skip button does where the level lets it be skipped, else run at sixteen times its speed (`main_skip`), so that a test reaches play in seconds (b30's opening, which cannot be skipped, in about 100 frames rather than 2,400). |
 | `debug.menu_open` | `""` | `HALO_MENU_OPEN` | Start on this screen of the menus (`main_menu/settings_select/...`, as `port/assets/menus` names it), a player profile being edited, to look at it. |
-| `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with a GLSL expression (for example `t0.rgb`). `debug.gpu_debug_expression` is OpenGL only (Metal takes `HALO_GPU_DEBUG_EXPR` as MSL): it does nothing with Vulkan, whose shaders are SPIR-V written directly, with no GLSL to put it in. |
+| `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with a GLSL expression (for example `t0.rgb`). `debug.gpu_debug_expression` is OpenGL only (the Windows build; Metal takes `HALO_GPU_DEBUG_EXPR` as MSL): it does nothing with Vulkan, the Linux builds' renderer, whose shaders are SPIR-V written directly, with no GLSL to put it in. |
 | `debug.dynamic_lights_look`, `debug.dynamic_lights_log` | `""`, `false` | `HALO_DYNAMIC_LIGHTS_LOOK`, `HALO_DYNAMIC_LIGHTS_LOG` | Tools for the enhanced dynamic lights: up to eight numbers in place of their look's (the lights' brightness, `1.7`; their core's inverse square in radii, `12`; the spill past white, `0.18`; the wrap on models, `0.25`; the glow's size in the light's radius, `0.22`, its brightness, `1.2`, its softness against what it meets in world units, `0.12`, and its least size, `0.035`), and a log of where the first projectile's light is drawn each frame beside where the game placed it at the tick, and once a second how many lights there are. |
 | `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_hitch`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_HITCH`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link (`game/network_test.c`); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it. Refer to `NETCODE.md`. |
 | `debug.touch_targets` | `false` | `HALO_TOUCH_TARGETS` | Outlines the tap targets of the menus (item green, value blue, list slot yellow, legend button red, the band beside the slots of a list orange, keys of the on-screen keyboard white), marks where the last finger went down and the last tap landed for 3 seconds, and logs each tap with the target that it hit (for a value, also where it splits into previous and next): to judge the accuracy of touch. |
@@ -482,14 +472,11 @@ the setting for one start of the game. It has priority over the file.
 | `debug.random_seed` | `0` | `HALO_RANDOM_SEED` | The random seed of the network games this machine hosts, so that a test plays the same game again (where players spawn, the weapons' spread, the AI's choices); `0` a new one for each game, from the clock. |
 | `debug.audio_log` | `false` | `HALO_AUDIO_LOG` | Write to the log, five times a second, each sound placed in the world that plays: where it is from the listener (metres ahead, right and up), its gain in each ear (in VR, the HRTF's delays and filters too), and the time the mixing takes. |
 | `debug.audio_record` | `""` | `HALO_AUDIO_RECORD` | Record the game's sound as it plays (with a device or without) to this WAV file, 48 kHz 16-bit stereo, for automatic tests. Empty: none. |
-| `debug.sample_seconds` | `0.0` | `HALO_SAMPLE` | The 64-bit ARM and 64-bit x86 builds only. The host writes to the log, this often in seconds, where each game thread is: its program counter and frame chain, to find where the game spends its time or stops. `0`: never. |
-| `debug.memory_watch` | `true` | `HALO_MEMORY_WATCH` | The 64-bit ARM and 64-bit x86 builds only. `true`: the host notices the game's writes to cached textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. |
+| `debug.sample_seconds` | `0.0` | `HALO_SAMPLE` | The builds with a host only (Linux, Android, macOS). The host writes to the log, this often in seconds, where each game thread is: its program counter and frame chain, to find where the game spends its time or stops. `0`: never. |
+| `debug.memory_watch` | `true` | `HALO_MEMORY_WATCH` | The builds with a host only (Linux, Android, macOS). `true`: the host notices the game's writes to cached textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. |
 | `debug.telnet_console`, `debug.telnet_console_port` | `false`, `2323` | `HALO_TELNET_CONSOLE`, `HALO_TELNET_CONSOLE_PORT` | The game listens on 127.0.0.1, on this port, for a script console (connect with telnet). The console has no password, so only this computer can reach it. |
 | `debug.profile_record`, `debug.profile_record_when`, `debug.profile_memory` | `false`, `"start"`, `256` | `HALO_PROFILE_RECORD`, `HALO_PROFILE_RECORD_WHEN`, `HALO_PROFILE_MEMORY` | Profiling builds only (`configure.py --profile`). Record without a command; `"start"` records from the first frame until the first map change, `"game"` records each game outside the main menu. Memory is 4–1024 MB. Numbered `profile_<stamp>_<role>.part<n>.json` files remain in `profiles/` after recording. Refer to "Profiling builds" in the main README. |
 
-
-With Mesa drivers, the game sends its GL calls through the GL thread of
-Mesa. To stop this, set the environment variable `mesa_glthread=false`.
 
 ### Classic and Enhanced
 
@@ -521,9 +508,9 @@ the Xbox's 480.
 
 A renderer without a feature draws without it, as it does when the setting
 is chosen by hand: Metal (macOS) draws no SMAA and no enhanced dynamic
-lights yet, and OpenGL ES (the web, 64-bit ARM Linux) FXAA in SMAA's place
-and no enhanced dynamic lights. Vulkan (Android, VR, the Vulkan builds)
-draws them all, SMAA on a phone too. Enhanced gains them as the renderers
+lights yet, and OpenGL ES (the web) FXAA in SMAA's place and no enhanced
+dynamic lights. Vulkan (the Linux builds, Android) draws them all, SMAA on a
+phone too. Enhanced gains them as the renderers
 do.
 The preset changes only the drawing: nothing the game simulates or sends.
 The HUD, the text, the field of view, smooth motion and the shield glow
@@ -539,7 +526,9 @@ newer, the game does nothing.
 If the latest release is newer, the game asks: "Do you want to update?"
 
 - Select "Yes" to update. The game downloads the release for this platform
-  (`halo-linux-i686-release.zip`), replaces its files and starts the new
+  (`halo-linux-x86_64-release.zip`, `halo-linux-arm64-release.zip`, or the
+  VR build's `halo-linux-x86_64-vr-release.zip`: "VR"), replaces its files
+  and starts the new
   version. The old files get the extension `.old`. The new version deletes
   them.
 - Select "No" to continue. The game asks again at the next start.
@@ -553,41 +542,23 @@ the distribution (`src/posix_update.c`, with Mbed TLS); on Windows, the
 certificate store of Windows (WinHTTP). The game's folder must let the
 game write to it.
 
-Builds that you make yourself have no build number. They do not look for
+Only a game in a release's tree (`bin/opence`, refer to "Packaging")
+updates itself. Builds that you make yourself have no build number, and a
+build's folder (`build/linux_x86_64`) is not a tree: they do not look for
 updates. An installed game (refer to "Packaging") does not look for
 updates: its package manager updates it.
 
-### From the flat release
-
-Earlier releases were flat: `halo`, `libSDL3.so.0`, `brokers.txt` and the
-licenses in one folder. Their updaters cannot
-change. They install only the files at the top of a zip, and they download
-`halo-linux-release.zip`. So the releases still have
-`halo-linux-release.zip`: the same build as `halo-linux-i686-release.zip`,
-laid out flat. An update from a flat release thus occurs in two steps:
-
-1. The old game installs the new build, flat, as before.
-2. At the next update, the new game installs the release's folders
-   (`bin/`, `lib/`, `share/`) into its folder. It puts a script in place of
-   `halo` that starts `bin/opence`, so that shortcuts (Steam's) and scripts
-   that start `halo` continue to operate. It deletes the flat files that
-   the folders replace (`libSDL3.so.0`, `brokers.txt` and the licenses).
-   `config.toml` and `maps/` stay where they are.
-
-Delete the script `halo` when no shortcut starts it. A flat release that
-you unpacked yourself can be replaced the same way: unpack
-`halo-linux-i686-release.zip` into its folder, delete the files that the
-list above names, and start `bin/opence`.
-
 ## Packaging
 
-The release (`halo-linux-i686-release.zip`) is laid out as a Unix prefix is,
-so a package can copy its folders to `/usr` (or `/opt/opence`) as they are:
+The release (`halo-linux-x86_64-release.zip`, `halo-linux-arm64-release.zip`,
+`halo-linux-x86_64-vr-release.zip`, and their `-debug.zip`) is laid out as a
+Unix prefix is, so a package can copy its folders to `/usr` (or
+`/opt/opence`) as they are:
 
 | Path | Contents |
 | --- | --- |
-| `bin/opence` | The game: a 32-bit x86 executable. |
-| `lib/opence/libSDL3.so.0` | SDL 3, which the game loads from there (a `DT_RPATH` of `$ORIGIN:$ORIGIN/../lib/opence`; refer to "Portable build"). Leave it out to use the system's 32-bit SDL 3 (`lib32-sdl3`). |
+| `bin/opence` | The game: a 64-bit executable (x86-64 or AArch64), with the game's guest image inside it. |
+| `lib/opence/libSDL3.so.0` | SDL 3, which the game loads from there (a `DT_RPATH` of `$ORIGIN:$ORIGIN/../lib/opence`; refer to "Requirements"). Leave it out to use the system's SDL 3. |
 | `share/opence/brokers.txt` | Internet play's MQTT brokers (`network.brokers_file`). |
 | `share/applications/opence.desktop` | The desktop entry. |
 | `share/icons/hicolor/<size>/apps/opence.png` | Its icon, 16x16 to 512x512. |
@@ -598,7 +569,7 @@ The game finds its files from the place of its executable
 (`src/install_layout.c`): when the executable's folder is `bin/` and
 `share/opence/` is next to that folder, the folder above `bin/` is the
 game's folder. Otherwise the folder of the executable is the game's folder
-(`build/linux/halo`).
+(a build: `build/linux_x86_64/halo`).
 
 An installed game keeps the player's files in the player's folders, not in
 the game's folder, and does not update itself:
@@ -616,7 +587,8 @@ The game is installed when the player cannot write to the game's folder
 adds that file (it can be empty) so that the game is installed also when its
 folder can be written to: when root starts it, or in a folder that the
 player owns. Otherwise the game is portable: it keeps its files in its
-folder and updates itself, as an unpacked release does.
+folder and, in a release's tree, updates itself, as an unpacked release
+does.
 
 A read-only folder without `share/opence/packaged` (a portable copy on a
 read-only disk, or `/opt/halo` with maps that an administrator put there)
@@ -630,33 +602,28 @@ To make a package from the sources, build as the releases do, and lay out
 the build as the release's tree:
 
 ```sh
-python configure.py --portable --release
-ninja linux
+python configure.py --release
+ninja
 python tools/linux_package.py tree "$pkgdir/usr"
 ```
 
-A build that you make has no build number, so it does not look for updates
-in any place. `--portable` links against Debian 11's glibc and builds SDL 3,
-which goes into `lib/opence`; its first build downloads them (refer to
-"Portable build"). Without `--portable`, the build links against the
-system's 32-bit glibc and SDL 3 (`lib32-sdl3`, then a dependency), and the
-tree has no `lib/opence`.
+`tools/linux_package.py tree` lays out the build of this computer's
+architecture (`build/linux_x86_64`, or `build/linux_arm64` on 64-bit ARM;
+`--build` names another), with the SDL 3 that the build brings in
+`lib/opence`. A build that you make has no build number, so it does not
+look for updates in any place.
 
-The game needs, as 32-bit libraries: glibc 2.31 or later, OpenGL 4.5
-(`lib32-mesa`, or the driver's own), the X11 client libraries
-(`lib32-libx11`, `lib32-libxext`), and the PipeWire or PulseAudio client
-libraries (`lib32-pipewire` or `lib32-libpulse`) for sound. The 32-bit
-Wayland libraries (`lib32-wayland`, `lib32-libxkbcommon`, `lib32-libdecor`)
-are optional: refer to "Requirements". The disc image picker of the first
-start is the desktop's file dialog, through `xdg-desktop-portal` (or
-`zenity`).
+The game needs: glibc 2.35 or later (or the glibc of the computer that
+built it), the Vulkan loader (`libvulkan.so.1`) and a driver with Vulkan
+1.3, the X11 or Wayland client libraries, and the PipeWire, PulseAudio or
+ALSA client libraries for sound: refer to "Requirements". The disc image
+picker of the first start is the desktop's file dialog, through
+`xdg-desktop-portal` (or `zenity`).
 
 The 64-bit ARM build downloads `halo-linux-arm64-release.zip` (or
-`-debug.zip`), not the x86 build. The 64-bit x86 build downloads
+`-debug.zip`), not the x86-64 one. The 64-bit x86 build downloads
 `halo-linux-x86_64-release.zip` (or `-debug.zip`), and its VR build
-`halo-linux-x86_64-vr-release.zip` ("VR"). These are trees as
-`halo-linux-i686-release.zip` is (`bin/opence`, `lib/opence/libSDL3.so.0`,
-`share/`), and have no flat zip: no release had them flat.
+`halo-linux-x86_64-vr-release.zip` ("VR").
 
 ## Frame rate
 
@@ -811,9 +778,9 @@ broadcasts. Thus each copy must send its broadcasts to the other copies.
 For a host and two clients, enter these commands in three terminals:
 
 ```sh
-HALO_NET_ADDRESS=127.0.0.200 HALO_NET_BROADCAST=127.0.0.201,127.0.0.202 build/linux/halo
-HALO_NET_ADDRESS=127.0.0.201 HALO_NET_BROADCAST=127.0.0.200 build/linux/halo
-HALO_NET_ADDRESS=127.0.0.202 HALO_NET_BROADCAST=127.0.0.200 build/linux/halo
+HALO_NET_ADDRESS=127.0.0.200 HALO_NET_BROADCAST=127.0.0.201,127.0.0.202 build/linux_x86_64/halo
+HALO_NET_ADDRESS=127.0.0.201 HALO_NET_BROADCAST=127.0.0.200 build/linux_x86_64/halo
+HALO_NET_ADDRESS=127.0.0.202 HALO_NET_BROADCAST=127.0.0.200 build/linux_x86_64/halo
 ```
 
 Do not give 127.0.0.1 to a copy. Each copy gets to its own address through
@@ -1388,11 +1355,15 @@ BSP as it loads:
   graphs, vertex and index buffers, and indices into other tags.
 
 Each correction goes to `debug.txt`. The game's own maps need none.
-`build/linux/map_validate [--strict] map.map...` runs the same checks on map
-files without the game, and `tools/test_linux_port.py` runs it on the maps
-in `assets/maps`. `map_validate --fuzz <runs> map.map` changes a few words
-of the tags at random in each run. The checks must not crash or hang, and a
-map that they let through must need no more corrections.
+`build/map_validate/map_validate [--strict] map.map...` runs the same checks
+on map files without the game, and `tools/test_linux_port.py` runs it on
+the maps in `assets/maps`. `python tools/x86_game_abi.py` builds it: a test
+tool compiled in the game's 32-bit x86 ABI, which needs clang and the C
+library's 32-bit files (`gcc-multilib` on Debian and Ubuntu, `lib32-glibc`
+on Arch Linux) on 64-bit x86 Linux. Nothing 32-bit ships.
+`map_validate --fuzz <runs> map.map` changes a few words of the tags at
+random in each run. The checks must not crash or hang, and a map that they
+let through must need no more corrections.
 
 A map's scripts can call only the script functions that a map needs (the
 allowlist in `hs/hs.c`). They cannot call the functions for files, the
@@ -1440,45 +1411,28 @@ computer: on such a computer, `ninja` without a target builds it.
 | Result | Item |
 | --- | --- |
 | `build/linux_arm64/halo` | The game, an AArch64 executable |
-| `build/linux_arm64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/opence` in the release, `halo-linux-arm64-release.zip`, laid out as the x86 one: "Packaging"). |
+| `build/linux_arm64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/opence` in the release, `halo-linux-arm64-release.zip`: "Packaging"). |
 | `build/linux_arm64/SDL3-LICENSE.txt` | The license of SDL |
 
 The game data, the settings, the saved games, the controls and system link
-are the same as on x86. Linux arm64, x86 Linux, Windows and Android
-machines can play in the same game.
+are the same as on 64-bit x86, and so is the renderer: Vulkan 1.3, in the
+host. Linux arm64, Linux x86-64, Windows, macOS and Android machines can
+play in the same game.
 
-What this build and the 64-bit x86 one (the guest builds) do not have yet,
-as the guest reaches SDL only through the host's imports
-(`host/host_imports.list`), which do not include what they need: the
-Screenshot key (`controls.screenshot`; `debug.screenshot_every` does
-operate), the window's icon, and the names of gamepads in the log.
+What the Linux builds (each a guest build) do not have yet, as the guest
+reaches SDL only through the host's imports (`host/host_imports.list`),
+which do not include what they need: the Screenshot key
+(`controls.screenshot`; `debug.screenshot_every` does operate), the
+window's icon, and the names of gamepads in the log.
 
 ### Requirements
 
-- Python and ninja.
-- clang for the host. The guest is compiled, linked and checked
-  (`tools/guest_image_check.py`) with LLVM 22.1.8, which `configure.py`
-  downloads the first time (approximately 1.5 GB) to `~/.cache/opence`.
-  Refer to "The guests' compiler" in [README.md](../../README.md#the-guests-compiler).
-  The option `--linux-arm64-cc` of `configure.py` selects a different clang
-  for the host and the guest, which then needs the `arm64_32` target,
-  `ld.lld`, `llvm-ar` and `llvm-objdump`.
-- The OpenGL ES and EGL headers (`libgles-dev` and `libegl-dev` on Debian
-  and Ubuntu), and for the desktop OpenGL renderer (`--vr`) the OpenGL
-  headers (`libgl-dev`) and GLVND's OpenGL library, which the host links
-  (`libopengl-dev`). Without the headers, `ninja linux_arm64` stops and names
-  the missing headers.
-- CMake, and the development files that SDL3 uses for X11, Wayland and
-  sound. Refer to the SDL documentation, or to the `linux-arm64` job in
-  `.github/workflows/build.yml`.
-- A network connection for the first build. `configure.py`, for which
-  this is the default build of a 64-bit ARM computer, downloads musl
-  1.2.5 (checked against its SHA-256) and SDL 3.4.16 to
-  `build/linux_arm64/third_party`. SDL is built with the options of the
-  portable x86 build (`SDL_OPTIONS` in `tools/linux_build.py`).
-
-To start the game: OpenGL ES 3 (`libGLESv2.so.2`, `libEGL.so.1`, from Mesa
-for example). The release builds of GitHub Actions use glibc 2.35 or later.
+As in "Requirements" above. The option `--linux-arm64-cc` of `configure.py`
+selects a different clang for the host and the guest, which then needs the
+`arm64_32` target, `ld.lld`, `llvm-ar` and `llvm-objdump`. `configure.py`
+downloads the build's sources to `build/linux_arm64/third_party`. The
+release builds of GitHub Actions are built on Ubuntu 22.04 (the
+`linux-arm64` job), and use glibc 2.35 or later.
 
 ### How it operates
 
@@ -1493,8 +1447,8 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
   `ARM64_32` of `tools/guest_arch.py`), with the desktop code paths of the
   platform layer. `tools/linux_guest_build.py` builds it and the host; each
   of its builds (`LINUX_GUESTS`) is for one architecture. The guest code has
-  `HALO_GUEST` (and `HALO_ARM64_GUEST`, `HALO_GUEST_MACHO`) and `HALO_GLES`,
-  not `HALO_ANDROID`.
+  `HALO_GUEST` (and `HALO_ARM64_GUEST`, `HALO_GUEST_MACHO`), `HALO_VULKAN`
+  and `HALO_RENDER_STREAM`, and neither `HALO_GLES` nor `HALO_ANDROID`.
 - The host is the Android host (`port/android/host`) as a Linux executable.
   `host/host_main.c` replaces its `host_main.c` and `host_touch.c`; what
   both entry points do is in its `host_common.c`. The host's log is the
@@ -1509,11 +1463,13 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
   threads, mutexes, atomic values, files and `SDL_GlobDirectory` itself.
   The host does the windows, the displays, the 2D renderer, the dialogs
   and the downloads of the self-updater (`src/posix_update.c`).
-- The renderer uses OpenGL ES 3 ("OpenGL ES", below).
-- The host keeps the GPU driver from the kernel's `trace_marker`, as the
-  x86 build does (`src/posix_trace_marker.c`, under "The platform layer"
-  below): on the Steam Frame, its markers took the game from the headset's
-  72 Hz to about 50 frames a second.
+- The renderer is Vulkan's, in the host ("The renderer's command stream",
+  below, and [the Vulkan README](vulkan/README.md)). The guest has no
+  OpenGL backend, and the host links no OpenGL library.
+- The host keeps the GPU driver from the kernel's `trace_marker`
+  (`src/posix_trace_marker.c`, under "The platform layer" below): on the
+  Steam Frame, its markers took the game from the headset's 72 Hz to about
+  50 frames a second.
 - The guest's memory is the low 4 GB of the process. With
   `configure.py --guest-base`, it is at a base that the host chooses: each
   guest address is an offset from a base register, which every memory
@@ -1521,47 +1477,20 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
   `android/host/host_memory_base.c`). Then the guest's 4 KB pages also
   operate on a kernel with 16 KB pages.
 
-### OpenGL ES
-
-The OpenGL backend (`src/xgpu_gl.c`) with `HALO_GLES`, this build's and
-the web's (WebGL 2), uses OpenGL ES 3.0, and some functions of OpenGL ES
-3.2 if they are available:
-
-- The vertex shaders flip y and change the depth range from 0..1. The front
-  face winding is inverted.
-- BGRA textures go to the GPU as RGBA with a swizzle. If the driver has no
-  S3TC (Mali GPUs), the CPU decodes the DXT textures.
-- The pixel shaders apply the LOD bias of the sampler.
-- The upload changes the byte order of `D3DCOLOR` vertex attributes.
-- Dynamic vertex and index data goes into a ring of three buffers, one for
-  each frame. On Mali, other methods used too much memory.
-- On OpenGL ES 3.2, indexed draws use a base vertex. Before 3.2, the CPU
-  changes the indices.
-- On OpenGL ES 3.1 and later, the visibility tests (lens flares) count
-  samples with an atomic counter, as the NV2A did. OpenGL ES 3.0 tells only
-  if a sample is visible. The GPU copies the counters at the end of each
-  frame, and the CPU reads the copy two frames later, when the frame's fence
-  has passed: a result is the latest count the GPU has finished, as with
-  the query buffer of desktop OpenGL. A read of the counters themselves
-  waits for the GPU, which halved the frame rate on Turnip (Zink).
-  `tools/test_gl_visibility.py` tests them over a fake OpenGL ES whose GPU
-  runs behind the CPU.
-
 ### The renderer's command stream
 
-The renderer's backend can run on the 64-bit host instead of in the guest.
-The game's renderer is in two halves (`src/xgpu_backend.h`): a front end
-that knows the Xbox's Direct3D, and a backend that drives the GPU. Built
-with `HALO_RENDER_STREAM`, the front end's calls go to a command stream
-instead of a backend in the guest (`src/xgpu_stream.h`). The guest writes
-each call as a record into a ring in its own memory
-(`src/xgpu_stream_encode.c`), and one host call each frame hands the frame
-over. A thread of the host plays the records into a backend of the host:
-Metal on macOS, the OpenGL backend on Linux
-(`android/host/host_render_stream.c`, whose `host_render_backend` is the
-table of a backend's functions). It does so while the game goes on to the
-next frame, so the GPU driver's work leaves the game's thread, and no GL
-call crosses from the guest to the host.
+The renderer's backend runs on the 64-bit host, not in the guest. The
+game's renderer is in two halves (`src/xgpu_backend.h`): a front end that
+knows the Xbox's Direct3D, and a backend that drives the GPU. Built with
+`HALO_RENDER_STREAM`, the front end's calls go to a command stream instead
+of a backend in the guest (`src/xgpu_stream.h`). The guest writes each call
+as a record into a ring in its own memory (`src/xgpu_stream_encode.c`), and
+one host call each frame hands the frame over. A thread of the host plays
+the records into a backend of the host: Vulkan on Linux and Android, Metal
+on macOS (`android/host/host_render_stream.c`, whose `host_render_backend`
+is the table of a backend's functions). It does so while the game goes on
+to the next frame, so the GPU driver's work leaves the game's thread, and
+no graphics call crosses from the guest to the host.
 
 - The records hold only fixed-width integers and floats, alike in the
   ILP32 guest and the 64-bit host. Guest data in them is a guest address,
@@ -1586,47 +1515,34 @@ call crosses from the guest to the host.
 - In the VR mode, the host submits the frame to OpenXR as it plays the
   frame's last record: the moment to take the newest head pose.
 
-- Textures are the host's to read and cache, as the OpenGL backend's
-  cache does (the decoding, `src/xbox_texture_decode.c`, is shared). The
+- Textures are the host's to read and cache (`vulkan/xgpu_vulkan_textures.c`;
+  the decoding, `src/xbox_texture_decode.c`, is every backend's). The
   high-res replacements (the HUD's, the menus' art, the high-res text) are
   images: their pixels in the game's memory (`src/xgpu_images.c`), which a
   texture stage names in the Xbox texture's place.
 
-The macOS build uses it, with the Metal backend (port/macos/README.md,
-"Metal"), and Android with the Vulkan backend (`vulkan/`, its
-[README](vulkan/README.md)), as the Vulkan build (`ninja linux_vulkan`)
-can. The 64-bit Linux builds use it with the OpenGL backend in the host
-(the 32-bit x86 build, Windows and the web, which have no host, draw with
-the OpenGL backend in the game):
+Every build with a host uses it: the Linux builds and Android with the
+Vulkan backend (`vulkan/`, its [README](vulkan/README.md)), and macOS with
+the Metal backend (port/macos/README.md, "Metal"). The builds without a
+host, the 32-bit Windows build and the web, draw with the OpenGL backend in
+the game (`src/xgpu_gl.c`). On Linux:
 
-- The host builds `src/xgpu_gl.c` as the guest does (with its GLSL
-  emitter, its anti-aliasing passes and the texture decoding), beside
-  stand-ins for the guest's headers (`host/gl`), with `XGPU_GL_HOST`
-  (`tools/linux_guest_build.py`). `host/host_gl_stream.c` makes, for each
-  record, the backend call that the front end made, and
-  `host/host_gl_textures.c` caches the textures and the images as
-  `src/xbox_textures.c` does in the guest.
+- The host builds the Vulkan backend (`tools/vulkan_build.py`), with the
+  texture decoding, and links no OpenGL library; the guest builds none of
+  the OpenGL backend (`src/xgpu_gl.c`, its GLSL emitter, its anti-aliasing
+  passes and entry points: `RENDER_STREAM_GUEST_EXCLUDED` in
+  `tools/android_build.py`).
 - The guest makes the window (`src/sdl_platform.c`) and hands it to the
-  host (`host_gl_window`): the host makes the OpenGL context, which is
-  current on its render thread. That thread draws and shows the frames.
-  With vsync the display paces them (`src/frame_pacing.h`), as the Metal
-  backend's: the render thread waits for each frame's swap to be done (with
-  vsync, as the refresh that shows it begins), the frame is taken by the
-  display then, and the game starts each frame its budget before the next
-  refresh's latch, with at most one frame waiting. Without vsync the guest
-  paces them (`display.max_fps`), after each frame's records.
-- The front end calls `xgpu_backend_set_textures` and
-  `xgpu_backend_draw_state` before every draw, and the stream sends them
-  only when they change. In the backend they do more: the textures are
-  looked at again (their memory written since), the multisampled targets
-  drawn into since are resolved, the pipeline chosen is applied and the
-  constants set since are uploaded. Where the stream left one out, the
-  host makes the call again in its place.
-- The VR mode (`--vr`): OpenXR's calls that use the GL
-  context (the session made, the swapchains' images acquired and released,
-  the frame begun and ended) are made on the render thread
-  (`host/host_vr.c`, `host/host_gl_vr.c`); the game's thread waits for the
-  runtime's frames and locates the head and hands, as before. What the
+  host (`host_vulkan_window_open`; `vulkan/guest_vulkan.c`,
+  `vulkan/host_vulkan.c`): the host makes its Vulkan surface and swapchain,
+  and its render thread draws and presents the frames, with the present
+  mode that `display.vsync` chooses ("The window" in
+  [the Vulkan README](vulkan/README.md)).
+- The VR mode (`--vr`): OpenXR's calls that use the Vulkan device (the
+  session made, the swapchains' images acquired and released, the frame
+  begun and ended) are made on the render thread (`host/host_vr.c`,
+  `host/host_vr_stream.c`, `vulkan/host_vulkan_vr.c`); the game's thread
+  waits for the runtime's frames and locates the head and hands. What the
   frame's composition reads of `src/vr.c` and `src/vr_visor.c` (the scope,
   a cockpit's display, the vignette, the visor, the rim) comes as a record
   before it, as do the gaze for the foveation, the poses the eyes are
@@ -1634,75 +1550,49 @@ the OpenGL backend in the game):
   game submits; what `vr.c` sets as the frame is drawn (the eyes' transforms, the
   sky, the feed, the tint) are records in their order. The host ends each
   frame as it plays its last record. The screenshots of the eyes, the HUD
-  and the scope are the host's; the view's (the layers composed over the
-  eyes, `vr_visor_composite`) is not written.
+  and the scope are the host's.
 - At exit the guest has the host play the frames submitted (the last one
   shown, the VR mode's ended).
 - The visibility tests' counts are what the GPU has written by the end of
   the frame the host plays. The game's next frame reads them while the
   host plays its frames, so they can be a frame older or newer than those
-  of the guest's own backend, whose own depend on the frame's pacing
-  (whether the frame waited for `display.max_fps` before it read them).
-  With the same counts, the frames are the same as the guest's backend's.
+  of a backend in the game, whose own depend on the frame's pacing.
 
 `tools/test_render_stream.py` tests the stream with a backend of its
 own.
 
 ## 64-bit x86
 
-`ninja linux_x86_64` builds the game as a 64-bit x86 Linux executable. The
-x86 build (`ninja linux`) stays the default build of an x86 computer, and
-does not change: it is 32-bit code, which needs the distribution's 32-bit
-libraries and drivers. This build needs none. It runs the game as the
+`ninja linux_x86_64` builds the game as a 64-bit x86 Linux executable. It
+is the default build of a 64-bit x86 computer. It runs the game as the
 64-bit ARM build does, as a guest image of 32-bit-pointer code in a 64-bit
-process: here x32 code, the x86-64 instruction set with 32-bit pointers.
+process: here x32 code, the x86-64 instruction set with 32-bit pointers. It
+needs no 32-bit libraries or drivers.
 
 | Result | Item |
 | --- | --- |
 | `build/linux_x86_64/halo` | The game, an x86-64 executable |
-| `build/linux_x86_64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/opence` in the release, `halo-linux-x86_64-release.zip`, laid out as the x86 one: "Packaging"). |
+| `build/linux_x86_64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/opence` in the release, `halo-linux-x86_64-release.zip`: "Packaging"). |
 | `build/linux_x86_64/SDL3-LICENSE.txt` | The license of SDL |
 
 The game data, the settings (`config.toml` in the game's folder), the
-saved games, the controls and system link are the same as in the x86
-build. The renderer is the x86 build's: desktop OpenGL 4.5. The two builds
-compute the game with the same code and options (SSE arithmetic, no fused
-multiply-add, the vendored musl maths), but the x86 build's `long double`
-is x87's 80-bit one where this build's is a `double`, as MSVC's is.
+saved games, the controls and system link are the same as in the 64-bit
+ARM build, and so is the renderer: Vulkan 1.3, in the host. The game is
+computed with the same code and options as in the other builds (SSE
+arithmetic, no fused multiply-add, the vendored musl maths); its
+`long double` is a `double`, as MSVC's is.
 
 ### Requirements
 
-- Python and ninja.
-- clang for the host. The guest is compiled for x32
-  (`x86_64-linux-gnux32`), linked and checked with LLVM 22.1.8, which
-  `configure.py` downloads the first time (approximately 1.5 GB) to
-  `~/.cache/opence`. Refer to "The guests' compiler" in
-  [README.md](../../README.md#the-guests-compiler). The option
-  `--linux-x86-64-cc` of `configure.py` selects a different clang for the
-  host and the guest, which then needs the x32 target, `ld.lld`, `llvm-ar`
-  and `llvm-objdump`. The kernel's own x32 support is not needed: the
-  guest never calls the kernel itself.
-- The OpenGL, OpenGL ES and EGL headers (`libgl-dev`, `libgles-dev` and
-  `libegl-dev` on Debian and Ubuntu, `mesa` on Arch Linux), and GLVND's
-  OpenGL library, which the host links (`libopengl-dev`; Arch's
-  `libglvnd`). Without the headers,
-  `ninja linux_x86_64` stops and names the missing headers.
-- CMake, and the development files that SDL3 uses for X11, Wayland and
-  sound, as for the 64-bit ARM build. Refer to the `linux-x86_64` job in
-  `.github/workflows/build.yml`.
-- A network connection for the first build. As this is not the default
-  build of an x86 computer, `configure.py` generates it only when asked:
-  `python3 configure.py --linux-x86-64` (or with `--linux-x86-64-cc` or
-  `--vr`) downloads musl 1.2.5 (checked against its SHA-256) and SDL
-  3.4.16 to `build/linux_x86_64/third_party`, and later runs of
-  `configure.py` take them from there. Without them, `ninja linux_x86_64`
-  stops and says so; `configure.py` alone downloads nothing for it.
-
-To start the game: the 64-bit OpenGL libraries of GLVND (`libOpenGL.so.0`,
-`libEGL.so.1`), which Mesa and NVIDIA's driver use. The release builds of
-GitHub Actions are built on Ubuntu 22.04, and use glibc 2.35 or later; a
-build that you make needs the glibc of the computer that built it, or a
-later one.
+As in "Requirements" above. The guest is compiled for x32
+(`x86_64-linux-gnux32`). The option `--linux-x86-64-cc` of `configure.py`
+selects a different clang for the host and the guest, which then needs the
+x32 target, `ld.lld`, `llvm-ar` and `llvm-objdump`. The kernel's own x32
+support is not needed: the guest never calls the kernel itself.
+`configure.py` downloads the build's sources to
+`build/linux_x86_64/third_party`. The release builds of GitHub Actions are
+built on Ubuntu 22.04 (the `linux-x86_64` job), and use glibc 2.35 or
+later.
 
 ### How it operates
 
@@ -1718,11 +1608,11 @@ As "How it operates" under "64-bit ARM", with these differences:
   reach 2 GB or more. The Xbox memory above it is reached through
   registers, and its addresses compute with 32-bit wraparound, as on the
   Xbox.
-- As the image is not above the Xbox memory, the Xbox memory is the x86
-  build's 512 MB (`0x80000000` to `0xA0000000`), with its 256 MB texture
-  cache and 16 MB sound cache, which Custom Edition maps need
-  (`halo_port_capacity.h`). The 64-bit ARM build and Android have 128 MB,
-  with the Xbox's caches.
+- As the image is not above the Xbox memory, the Xbox memory is the
+  desktop builds' 512 MB (`0x80000000` to `0xA0000000`), as on Windows,
+  with its 256 MB texture cache and 16 MB sound cache, which Custom Edition
+  maps need (`halo_port_capacity.h`). The 64-bit ARM build and Android have
+  128 MB, with the Xbox's caches.
 - The guest calls the host's functions through import stubs that jump
   through a table of 64-bit addresses. The host's functions read pointer
   arguments as 64-bit registers, and x32 code passes them zero-extended,
@@ -1731,8 +1621,7 @@ As "How it operates" under "64-bit ARM", with these differences:
   (`host_call_guest`). An argument after the sixth is on the stack, in an
   8-byte slot, where clang's x32 code also writes a pointer zero-extended;
   as only the registers are tested, such an argument is kept a 32-bit or
-  64-bit integer, never a pointer (`tools/check_host_imports.py`), and the
-  OpenGL stubs extend a pointer there themselves.
+  64-bit integer, never a pointer (`tools/check_host_imports.py`).
 - The thread pointer (`%fs`) belongs to the host's glibc. The guest's
   thread-local variables are emulated, and the build stops if the image
   uses `%fs` or `%gs`, or has thread-local storage
@@ -1741,37 +1630,36 @@ As "How it operates" under "64-bit ARM", with these differences:
   every operation that its integers and floats need, and the link stops if
   that changes.
 - The host is a position-independent executable, which leaves the low 4 GB
-  of the address space to the guest, and calls OpenGL through GLVND's
-  `libOpenGL`.
+  of the address space to the guest.
 
 ## Vulkan
 
-On 64-bit ARM or x86 Linux, `python3 configure.py --linux-vulkan` and
-`ninja linux_vulkan` build the Vulkan renderer into `build/linux_vulkan`.
-It uses the same architecture and command stream as the computer's OpenGL
-guest build, with its own outputs. Add `--vr` to enable OpenXR through
-`XR_KHR_vulkan_enable2`. The OpenGL targets keep their renderer and can be
-built alongside it. Requirements and limitations are in
-[the Vulkan README](vulkan/README.md).
+Both Linux builds draw with the Vulkan renderer (`vulkan/`), in the host,
+as Android does. A GPU and driver with Vulkan 1.3 are needed; the rest of
+what the driver must have, and the renderer's own variables, are in
+[the Vulkan README](vulkan/README.md). With `--vr` the build has the VR
+mode, through OpenXR's `XR_KHR_vulkan_enable2` ("VR").
 
-It draws what the OpenGL backend draws: the enhanced dynamic lights, FXAA
-and SMAA, and the clears of some of a target's colour channels (a fog
-screen's, and a split screen's windows' ends, clear alpha alone). It takes
-the graphics' debugging settings: `debug.gpu_stats`,
-`debug.gpu_dump_shaders` (SPIR-V), `debug.gpu_validation` (the validation
-layers) and `debug.texture_dump_directory` (the same files as OpenGL's).
-`debug.gpu_debug_expression` and `debug.gpu_flush_draws` are OpenGL's
-alone, and do nothing with Vulkan.
+It draws everything the renderer has: the enhanced dynamic lights, FXAA and
+SMAA, and the clears of some of a target's colour channels (a fog screen's,
+and a split screen's windows' ends, clear alpha alone). It takes the
+graphics' debugging settings: `debug.gpu_stats`, `debug.gpu_dump_shaders`
+(SPIR-V), `debug.gpu_validation` (the validation layers; `debug.gl_debug`
+is its old name) and `debug.texture_dump_directory` (the same files as the
+OpenGL backend's). `debug.gpu_debug_expression` and `debug.gpu_flush_draws`
+are the OpenGL backend's alone (the Windows build's), and do nothing with
+Vulkan.
 
 ## VR
 
-`python3 configure.py --vr`, then `ninja linux_vulkan`, builds the 64-bit
-ARM or 64-bit x86 game with a VR mode: the game plays in an OpenXR headset,
-in stereo, with the head tracked in 6 degrees of freedom. It was made on a
-Steam Frame with SteamVR. The VR build draws with Vulkan, through
-`XR_KHR_vulkan_enable2` ([the Vulkan README](vulkan/README.md)); `ninja
-linux_arm64` and `ninja linux_x86_64`, the OpenGL builds, have no VR mode.
-It needs no OpenXR package, as it
+`python3 configure.py --vr`, then `ninja` (`ninja linux_x86_64` or
+`ninja linux_arm64`), builds the computer's Linux build with a VR mode: the
+game plays in an OpenXR headset, in stereo, with the head tracked in 6
+degrees of freedom. It was made on a Steam Frame with SteamVR. The VR build
+draws with Vulkan, as every Linux build does, and gives the runtime its
+Vulkan device through `XR_KHR_vulkan_enable2`, the only binding it has
+([the Vulkan README](vulkan/README.md)). Without `--vr` the build has no
+VR mode. It needs no OpenXR package, as it
 loads the active runtime itself (or a `libopenxr_loader.so.1` where there is
 one). Configuring it downloads the OpenXR SDK's four headers (to
 `build/<build>/third_party/openxr`, checked against their SHA-256 in
@@ -1783,10 +1671,11 @@ headset the game plays flat, in its window. `vr.enabled = false` (or
 `HALO_VR=0`) plays flat too.
 
 On a PC, the releases have the 64-bit x86 VR build,
-`halo-linux-x86_64-vr-release.zip`, beside the flat one (`tools/ci_build.py
-linux_x86_64 release --vr`): unpack it to a folder of its own, with the
-maps ("Start the game"), and start `bin/opence`. It updates itself to the release's VR build, never
-to the flat one. The flat build has no VR mode, and the VR build starts the
+`halo-linux-x86_64-vr-release.zip`, beside the one without VR
+(`tools/ci_build.py linux_x86_64 release --vr`): unpack it to a folder of
+its own, with the maps ("Start the game"), and start `bin/opence`. It
+updates itself to the release's VR build, never to the other. The build
+without VR has no VR mode, and the VR build starts the
 runtime (SteamVR's server) whenever it starts, so it is a download of its
 own. On the Steam Frame the VR build doesn't update itself (`update.auto` has
 no effect): install a new one with `tools/frame_install.sh` (below), or by
@@ -1800,7 +1689,7 @@ through a shortcut (a non-Steam game) to the launcher there,
 environment it gives the game). From a computer with SSH to the Frame:
 
 ```sh
-python3 configure.py --vr && ninja linux_vulkan
+python3 configure.py --vr && ninja linux_arm64
 python3 tools/frame_package.py
 tools/frame_install.sh <frame>
 ```
@@ -1810,7 +1699,8 @@ tools/frame_install.sh <frame>
   `brokers.txt` (without which internet play finds no games), a README
   (`port/linux/frame/README.md`: install, update, uninstall, the files),
   the libraries' licenses, `VERSION` (the commit) and `SHA256SUMS`. It
-  stops if the game is not the Vulkan VR build, or needs a library that
+  takes the game from `build/linux_arm64` (`--build` names another), and
+  stops if the game is not the VR build, or needs a library that
   neither the package nor SteamOS has.
 - `tools/frame_install.sh <host>` (`--package` for another package, a
   folder or the `.tar.gz`) copies it to `~/apps/halo-vr/` over SSH. It
@@ -1843,39 +1733,28 @@ tools/frame_install.sh <frame>
 
 ### SteamVR on a desktop PC
 
-The game's GL context is either EGL's or GLX's, chosen before its window
-opens from what the runtime offers (`host_vr_probe`): EGL's, through
-`XR_MNDX_egl_enable`, where it has that (Monado, SteamVR 2.18 on the Frame and
-on x86-64), else GLX's, through `XR_KHR_opengl_enable`'s Xlib binding, which
-needs SDL's X11 video driver: under Wayland, start the game with
-`SDL_VIDEO_DRIVER=x11` (XWayland), else it says so in its log and plays
-flat. (GLX's binding has not been tried on a headset: every runtime tried
-so far offers EGL's.) The window stays hidden while the headset shows the
-game; if the session cannot be made after all (no headset, the runtime's
-compositor failing), the game says so in its log, shows the window and
-plays flat in it.
-
-On SDL's X11 driver, the EGL context's window has no alpha: SDL makes the
-window with the screen's default (24-bit) visual before it chooses the EGL
-config, and NVIDIA's EGL makes no window surface for it from a config with
-alpha (`Could not create GLES window surface`, and the game had no window).
+Before its window opens, the game asks the runtime whether it offers
+`XR_KHR_vulkan_enable2` (`host_vr_probe`): the runtime then chooses the
+Vulkan device, which the host's renderer takes. A runtime without it gets
+no session: the game says so in its log (`vr: the OpenXR runtime has no
+Vulkan binding`) and plays flat. The window stays hidden while the headset
+shows the game; if the session cannot be made after all (no headset, the
+runtime's compositor failing), the game says so in its log, shows the
+window and plays flat in it.
 
 `tools/vr_test/openxr_probe.c` loads a runtime as the game does and lists
-its extensions, the binding the game would take (GLX's only on SDL's X11
-driver, which the probe cannot see), and whether it has a headset; its
-comment says how to build it.
-`openxr_probe --extensions-only <manifest>` does not start the runtime;
+its extensions and whether it has a headset; its comment says how to build
+it. `openxr_probe --extensions-only <manifest>` does not start the runtime;
 without it, the probe goes on to `xrCreateInstance` and `xrGetSystem`
-(which start SteamVR's server), and `--egl-session` to a session with
-EGL's binding.
+(which start SteamVR's server).
 
 What it found with SteamVR 2.18.3 on x86-64 Linux (CachyOS, KDE Plasma on
 Wayland, an RTX 4090 with NVIDIA 615.78, `steamxr_linux64.json`, October
-2026), with no headset connected:
+2026), with no headset connected, when the VR build still drew with OpenGL
+(through EGL's binding, `XR_MNDX_egl_enable`), before it drew with Vulkan:
 
 - The runtime offers 41 extensions, `XR_KHR_opengl_enable` (12) and
-  `XR_MNDX_egl_enable` (2) among them, so the game takes EGL's binding
-  there as on the Frame. It also offers `XR_FB_display_refresh_rate`,
+  `XR_MNDX_egl_enable` (2) among them. It also offers `XR_FB_display_refresh_rate`,
   `XR_KHR_composition_layer_depth`, `XR_EXT_eye_gaze_interaction`,
   `XR_VALVE_frame_controller_interaction` and `XR_MND_headless`, but not
   `XR_KHR_composition_layer_cylinder`: the visor's HUD is a quad, curved in
@@ -1895,8 +1774,9 @@ Wayland, an RTX 4090 with NVIDIA 615.78, `steamxr_linux64.json`, October
   SteamVR's launchers look for there: SteamVR still runs from the user's
   Steam folder, and may write its logs and caches there). With it, the
   game's instance is `SteamVR/OpenXR 2.18.3`, its system
-  `SteamVR/OpenXR : null`, and its EGL context (OpenGL 4.5, config 24, under XWayland) meets the runtime's
-  requirements (OpenGL 4.3 to 4.6).
+  `SteamVR/OpenXR : null`, and its OpenGL context of then (OpenGL 4.5,
+  EGL's, under XWayland) met the runtime's requirements (OpenGL 4.3 to
+  4.6).
 - With the null driver the session does not open: `xrCreateSession` fails
   (`XR_ERROR_RUNTIME_FAILURE`) and the game plays flat. SteamVR's compositor
   on Linux shows a headset only in direct mode, on a display of its own,
@@ -1924,7 +1804,8 @@ Wayland, an RTX 4090 with NVIDIA 615.78, `steamxr_linux64.json`, October
   longer shown: the driver sways it by a tenth of a millimetre.
 
 What was measured on x86-64, an RTX 4090, the head turning, fixed
-foveation, a release build, 90 Hz (11.1 ms a frame):
+foveation, a release build, 90 Hz (11.1 ms a frame), with the OpenGL
+renderer the VR build had then (not yet measured again with Vulkan):
 
 - With SteamVR and the test driver, at 1852x2056 eyes. The game's CPU time
   includes `xrEndFrame`'s 2.5 ms; SteamVR's "ApplicationTime" is its own
@@ -1937,17 +1818,7 @@ foveation, a release build, 90 Hz (11.1 ms a frame):
   | a10 | 4.5 ms | 2.4 / 6.0 ms | 5.6 to 7.1 ms | 0 of 300, none dropped or reprojected |
   | b30 | 6.6 to 6.8 ms | 4.6 / 8.1 ms | 8.4 to 9.5 ms | 0 of 300, none dropped or reprojected |
 
-- With `tools/vr_test/openxr_stub_runtime.c` (`tools/vr_test/README.md`), a
-  runtime that offers what SteamVR does (EGL's binding, no cylinder layers)
-  but composes nothing, at the null driver's 1512x1680 eyes, the game's own
-  time (`debug.gpu_stats`; the GPU's with `debug.vr_gpu_time`):
-
-  | Level | The game's time a frame (CPU) | Its draws of the eyes (CPU) | The GPU's time a frame | Late frames |
-  | --- | --- | --- | --- | --- |
-  | a10 | 1.9 to 2.0 ms | 1.6 ms | 3.4 to 3.6 ms | 0 of 300 |
-  | b30 | 4.1 to 4.3 ms | 3.4 to 3.7 ms | 4.2 ms (4.2 ms at 2268x2520 eyes) | 0 of 300 |
-
-The game keeps 90 Hz on an RTX 4090 with room to spare. A headset's own
+The game kept 90 Hz on an RTX 4090 with room to spare. A headset's own
 latency and its display are not in these.
 
 ### Controls
@@ -3072,7 +2943,7 @@ needles, muzzle flashes, grenades and explosions are drawn for each pixel:
   model: a needle's or a grenade's own body would hide its middle), sized
   and colored by its light, in both eyes at its depth (both eyes in one
   draw, the foveated insets too), fading as it nears what is behind it.
-- The VR build draws them with Vulkan as the OpenGL build did: the same
+- Vulkan draws them as the OpenGL backend does (Windows): the same
   lights, grid and shoulder, and the glows from the same shaders' operations
   (written as SPIR-V), prepared with the map's other pipelines as it
   loads.
@@ -3114,7 +2985,7 @@ headset's session is opened with, apply from the next start.
 | `vr.dominant_hand` | `"right"` | `HALO_VR_DOMINANT_HAND` | The hand that holds the weapon: `"right"`, or `"left"`: the weapon in the left controller, drawn mirrored with both hands, the left trigger firing, the right hand on the foregrip, at the magazines (at the right hip) and throwing, the holsters on the left, the haptics swapped with the hands (above, "Left-handed"). Not with `vr.aim = "gamepad"`. |
 | `vr.swap_sticks` | `"auto"` | `HALO_VR_SWAP_STICKS` | `"yes"`: the right stick moves (its click crouches) and the left turns (its click zooms, pushed down it ejects the magazine); `"no"`: as they are; `"auto"`: swapped with `vr.dominant_hand = "left"`. Not with `vr.aim = "gamepad"`. |
 | `vr.weapon_offset` | `"0.15, -0.22, 0.30"` | `HALO_VR_WEAPON_OFFSET` | With `vr.hands = "game"`: where the weapon's grip is from the eye that the game poses it for, in metres: right, up, forward. |
-| `vr.depth` | `false` | `HALO_VR_DEPTH` | `true`: give the runtime the eyes' depth too (`XR_KHR_composition_layer_depth`), for its reprojection. SteamVR on the Steam Frame cannot make a depth swapchain for an OpenGL session yet. |
+| `vr.depth` | `false` | `HALO_VR_DEPTH` | `true`: give the runtime the eyes' depth too (`XR_KHR_composition_layer_depth`), for its reprojection. SteamVR on the Steam Frame could not make a depth swapchain for the OpenGL session the VR build had before it drew with Vulkan. |
 | `vr.foveation` | `"eye"` | `HALO_VR_FOVEATION` | Foveated rendering (below, "How it operates"): each eye's image at its full resolution in an inset where you look, and at less about it, which draws half of the eyes' pixels (at the default `vr.foveation_inset`). `"eye"`: the inset follows the eyes, where the runtime tracks them (`XR_EXT_eye_gaze_interaction`; else as `"fixed"`); `"fixed"`: it stays in the middle of each eye's view; `"off"`: all of each image at full resolution. Not in VR Display; from the next start. |
 | `vr.foveation_inset` | `0.5` | `HALO_VR_FOVEATION_INSET` | With `vr.foveation`: how much of each eye's image across and up is the inset (from `0.3` to `0.8`), at the image's resolution; about it, the image is drawn at this much of it (`0.5`: half across and up). Smaller is faster. From the next start. |
 | `vr.late_latch` | `true` | `HALO_VR_LATE_LATCH` | The late latch (below, "How it operates"): each frame is drawn from where the head and the weapon's controller are just before it goes to the headset, located again by the renderer's thread, not where they were as the game began the frame; the game's work is the frame's as it was. `false`: as located when the game began it. |
@@ -3264,7 +3135,9 @@ them (`view*.bmp`), and while a scope's view is shown (raised, or smart-linked)
 its image (`scope*.bmp`).
 
 The GPU's time is best read from the kernel: the process's
-`drm-engine-gpu` time in `/proc/<pid>/fdinfo`. On the Steam Frame (b30's
+`drm-engine-gpu` time in `/proc/<pid>/fdinfo`. The figures below were
+measured with the OpenGL renderer the VR build had before it drew with
+Vulkan (on the Steam Frame, Mesa's Zink on Turnip). On the Steam Frame (b30's
 first outdoor area, SteamVR holding 72 Hz with the headset idle, the GPU at
 its 903 MHz) the game keeps the GPU busy about 8 ms a frame at
 `vr.resolution_scale = 1.0` (1728x1728 eyes), about 13 ms at 1.25 (on the
@@ -3287,14 +3160,13 @@ does; making the eye images from the four layers cost 0.2 ms more there.
 
 ### How it operates
 
-- The host opens the OpenXR session on SDL's EGL context
-  (`XR_KHR_opengl_enable` with `XR_MNDX_egl_enable`; `host/host_vr.c`),
-  or on its GLX context where the runtime has no `XR_MNDX_egl_enable`,
-  which needs SDL's X11 video driver (`SDL_VIDEO_DRIVER=x11` under
-  Wayland). The runtime's extensions decide which, before the window
-  opens (`host_vr_probe`; "SteamVR on a desktop PC", above). The guest
-  gets the swapchains' GL textures, the views and the controllers
-  through `src/vr_host.h`, whose structures hold only 32-bit values.
+- The host opens the OpenXR session with the Vulkan device of its
+  renderer (`XR_KHR_vulkan_enable2`; `host/host_vr.c`), which the runtime
+  chooses; a runtime without that binding gets no session, which the host
+  finds before the window opens (`host_vr_probe`; "SteamVR on a desktop
+  PC", above). The swapchains' Vulkan images stay on the host; the guest
+  gets the views and the controllers through `src/vr_host.h`, whose
+  structures hold only 32-bit values.
 - The game draws its 3D view once a frame, from the centre of the head,
   with a field of view that covers both eyes (`game/vr_render.c`): the
   culling and the game's work are those of one view. That view has the
@@ -3302,8 +3174,9 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   picks its model's detail level, its lighting's refresh and its shadow, is
   scaled to an eye's lines over the eye's field of view (about 3.6 times,
   at 1728 lines an eye). The renderer draws
-  each draw into both eyes at once with `GL_OVR_multiview2`, directly into
-  the eyes' swapchain image, a 2-layer texture array. Each vertex that the
+  each draw into both eyes at once with Vulkan's multiview, into the eyes'
+  image, an image of two layers, which is copied into the runtime's
+  swapchain image as the frame ends (`vulkan/host_vulkan_vr.c`). Each vertex that the
   game projected through clip space moves to its eye by a 4x4 for each
   eye, which `game/vr_render.c` makes each time the game sets a projection
   (`rasterizer_set_frustum_z`). The eyes are beside the centre, looking
@@ -3319,7 +3192,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   plays the frame a few milliseconds later. As it begins the eye pass it
   locates the head and the controllers again, at the frame's display time
   (`host_vr_locate_late`), and moves what the frame draws by how far they
-  have moved since (`host/host_gl_vr.c`): each eye's 4x4 for each
+  have moved since (`host/host_vr_stream.c`): each eye's 4x4 for each
   projection (the world's with the head; the sky's, drawn about the eye,
   with its turn alone; the first-person weapon's and the hands' with the
   head and the weapon's controller), as the view would have been made from
@@ -3332,7 +3205,8 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   `debug.gpu_stats` the host logs the time from the poses' locating to the
   frame's submission, as the game located them and as latched.
 - Foveated (`vr.foveation`, the default), the eye pass draws four views
-  in the same draws (`GL_OVR_multiview2`; `src/xgpu_gl.c`, "foveation"),
+  in the same draws (multiview with four views, where the device has them
+  and fragment storage-buffer atomics; `vulkan/host_vulkan_vr.c`),
   each `vr.foveation_inset` of an eye's image across and up (864x864 of
   1728x1728 by default): for each eye the whole of it, at that fraction of
   its resolution, and an inset of it, at its full resolution, about where
@@ -3360,12 +3234,10 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   view (where the lens's axis is). The visibility tests (lens flares) count
   the whole eyes' layers alone, as before, so a flare is as bright in the
   inset as out of it; the eyes' depth is not submitted (`vr.depth`) while
-  foveated. The Steam Frame's OpenGL is Zink, on Turnip, which has no GL
-  extension for the GPU's variable rate shading or its fragment density
-  maps (Mesa 25.2: no `GL_EXT_fragment_shading_rate`), and OpenXR's own
+  foveated. Neither the GPU's fragment density maps nor OpenXR's own
   foveation (`XR_FB_foveation`, `XR_META_foveation_eye_tracked`, which
-  Valve lists for the Frame) is for Vulkan swapchains: the views are what
-  draws the periphery at less. The log says what the runtime offers
+  Valve lists for the Frame) is used ([the Vulkan README](vulkan/README.md)):
+  the views are what draws the periphery at less. The log says what the runtime offers
   (`vr: the runtime's extensions`), what the driver has (`vr: the driver's
   shading rate and foveation extensions`), the foveation (`vr: foveation
   by ...`), and when the eyes are first tracked (`vr: the eyes' gaze is
@@ -3435,8 +3307,8 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   the chin, the glass a faint gold, and the shields on it, from the
   player's unit as the game has it. It is drawn into the eyes' images, as
   the rim is (`vr_draw_visor`, multiview), each pixel where that eye's
-  ray meets the glass, blended linearly as the compositor would
-  (`GL_FRAMEBUFFER_SRGB`), not a layer of its own: as a quad layer that
+  ray meets the glass, blended linearly as the compositor would, not a
+  layer of its own: as a quad layer that
   near and that wide (it reached 80 degrees from the head's forward), the
   Steam Frame showed a straight diagonal line across it, in a different
   place in each eye, which made it hard to look at; SteamVR draws such a
@@ -3845,8 +3717,8 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   a seat whose camera follows the vehicle (`first_person_weapons.c`), is
   drawn there without its weapon (the arms alone), each hand holding its
   handle placed on it as the controller would be, upright along the Ghost,
-  its fingers closed. The comfort vignette (`vr_draw_vignette`,
-  `src/xgpu_gl.c`) multiplies each eye's image by a dimming beyond 50
+  its fingers closed. The comfort vignette (`vulkan/host_vulkan_vr.c`,
+  with `halo_vr_vignette`'s strength) multiplies each eye's image by a dimming beyond 50
   degrees from that eye's own middle (30 at its strongest) over 22
   degrees, by 65% at most, eased in over 0.12 s and out over 0.4 s.
   The Warthog's driver seat is the same seat (`vehicle_seats` in
@@ -3993,8 +3865,9 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   does (on b40's Shade, swept across at 8x: no more than the aim, in any
   frame).
   Its image (the same copy: the window, its sight and readout, its glow,
-  and its animation, the image's middle rows) is not a layer: `xgpu_gl.c`
-  draws it into both eyes' images after the foveation's composite, where
+  and its animation, the image's middle rows) is not a layer: the host's
+  renderer (`vulkan/host_vulkan_vr.c`) draws it into both eyes' images
+  after the foveation's composite, where
   each eye's ray meets the window's quad (`halo_vr_scope_window`: through
   the reticle's point, at its smoothed distance, facing back along the line
   from between the eyes to it, up as the world's), so that each eye sees it about the reticle, at its depth, over
@@ -4069,11 +3942,11 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   delay. The mixing took 4.1% of a core of a DGX Spark (2.5% panned, 2.2%
   on the flat screen): the Steam Frame's cores are to be measured.
 - The visibility tests (the lens flares') are counted by the pixel shaders'
-  atomic counters, as on ES, not by queries: Vulkan counts a query in a
-  multiview pass in as many slots as views, which Zink does not allow for,
-  and Turnip's writes past them faulted the GPU (and could lose the
-  device). Without atomic counters they would be drawn into the left eye's
-  layer alone, outside the multiview pass.
+  atomic counters (in a storage buffer, where the device has fragment
+  stores), not by queries: Vulkan counts a query in a multiview pass in as
+  many slots as views, which Zink, the OpenGL the VR build drew with on the
+  Steam Frame before Vulkan, did not allow for, and Turnip's writes past
+  them faulted the GPU (and could lose the device).
 - The first-person weapon's own lens flares (the plasma pistol's charge, a
   ball of light at its muzzle; the tips' glow; the plasma rifle's vents; a
   muzzle flash's) are not tested in the eyes: they are drawn wholly visible
@@ -4090,11 +3963,11 @@ does; making the eye images from the four layers cost 0.2 ms more there.
 | Area | Status |
 | --- | --- |
 | Game code | All 466 C files of the game. The changes are in "Game source changes". |
-| Graphics | Direct3D 8 on OpenGL 4.5 core through SDL3. A front end (`src/d3d8_device.c`) keeps the Direct3D state and turns each draw into a description that any graphics API can draw (`src/xgpu_backend.h`: the pipeline's key, the textures and targets it binds, the draw's ranges, all plain data); the OpenGL backend (`src/xgpu_gl.c`) draws them, building the pipeline for a key once and keeping it. The port translates the NV2A vertex shaders and register combiners into a description of their operations (`src/xgpu_shader.h`), which `src/xgpu_glsl.c` writes as GLSL. It decodes all the Xbox texture formats. The vertex and index buffers come from a GL copy of the Xbox memory. |
+| Graphics | Direct3D 8 on Vulkan 1.3, in the host, with SDL3's window. A front end (`src/d3d8_device.c`) keeps the Direct3D state and turns each draw into a description that any graphics API can draw (`src/xgpu_backend.h`: the pipeline's key, the textures and targets it binds, the draw's ranges, all plain data); the Vulkan backend (`vulkan/`) draws them in the host, building the pipeline for a key once and keeping it (the Windows build and the web draw them with the OpenGL backend, `src/xgpu_gl.c`). The port translates the NV2A vertex shaders and register combiners into a description of their operations (`src/xgpu_shader.h`), which `src/xgpu_spirv.c` writes as SPIR-V (and `src/xgpu_glsl.c` as GLSL, for OpenGL). It decodes all the Xbox texture formats. The vertex and index buffers come from a copy of the Xbox memory on the GPU. |
 | High-res HUD | The HUD is drawn from high-res assets: redraws at 8x the size of the maps' bitmaps (4x for the largest), in `port/assets/hud`. They cover the meters, counters, panels and their outlines, the motion sensor, reticles, waypoints and scopes, but no bitmap with English text. `tools/hud_assets.py` makes them from the SVG redraws (the weapons' reticles from those of the PC HUD sheet that match the Xbox's exactly, the sniper rifle's 2x and 10x set in Overpass), and the build embeds them in the executable. When the game uploads one of those bitmaps, `src/hud_hires.c` gives the high-res texture in its place, if the bitmap's pixels are those of the English maps: another language's maps keep their own. The game sizes and places the HUD from its tags as before. `display.high_res_hud = false` turns this off. |
 | High-res text | The menus' and HUD's text is drawn with Overpass (`port/assets/fonts`, SIL Open Font License) in place of the maps' bitmap fonts, which are Interstate. `src/text_hires.c` rasterizes each glyph with stb_truetype (`port/third_party/stb`) at the resolution the game draws at, into an atlas that a placeholder bitmap of the game stands for. The game lays the text out from its font tags as before: each font is as tall as its tag's capitals, and narrowed where the tag's letters are narrower than the Xbox maps' (the fonts of a Custom Edition `loc.map`), so that its letters do not run into each other. The menus' titles (the screens' headers and the main menu's items) are pictures of text in the maps, so they are drawn as the high-res HUD is: `tools/title_assets.py` sets each one again in OpenCE, Roger White's public-domain Newtown respaced to match the maps' commercial title typeface (`tools/title_font.py`), at 4x the bitmap's size over its own plate or glow, each letter placed where the map's letter is, in `port/assets/titles`. The postgame carnage report's title is set over a hand-made SVG redraw of its panel (`port/assets/titles/svg`) instead. The A, B, X and Y button icons beside the menus' key labels and in their text ("Press A to Join") are drawn from hand-made SVG redraws at 8x the size of the maps' bitmaps (`port/assets/buttons`, made by `tools/button_assets.py`), in the same sizes and places. `display.high_res_text = false` turns it off. |
 | Dynamic lights | `display.dynamic_lights = "enhanced"` (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_glsl.c`, `game/dynamic_lights.c`; Vulkan's `src/xgpu_spirv.c`, `vulkan/xgpu_vulkan_stream.c`): the frame's lights are a uniform block, and a 32 x 32 x 16 grid about the camera, its cells growing with the distance (out to 128 world units each way), a 128-bit mask of the lights that reach each cell (an integer 3D texture). The structure's lightmap pass and the models' per-pixel lighting (`display.per_pixel_lighting`'s, which this turns on) add the lights of their cell for each pixel, in place of the game's pass over the structure for each light and its two lights for each model. The vertex shaders hand on the world position: a model program's skinned position before it is projected, a structure's vertex as it is. The glows are a camera-facing quad each, projected as the game's programs are, faded against the scene's depth, sampled with the target drawn into without it. Vulkan draws them alike: the block and the cells are its draw set's, written in the stream's order, and the glows' shaders are the SPIR-V emitter's, from the same GLSL, operation for operation. |
-| Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_post.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). Their programs are built when the setting is chosen. The Vulkan backend runs the same passes, their GLSL compiled to SPIR-V when the port is changed (`vulkan/xgpu_vulkan_post.c`, `tools/vulkan_post_shaders.py`), its pipelines made when the setting is chosen and as a map is prepared. Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (`gl_SampleMask`, not on OpenGL ES: the arm64 build, the web). |
+| Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_post.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). Their programs are built when the setting is chosen. The Vulkan backend runs the same passes, their GLSL compiled to SPIR-V when the port is changed (`vulkan/xgpu_vulkan_post.c`, `tools/vulkan_post_shaders.py`), its pipelines made when the setting is chosen and as a map is prepared. Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (the sample mask; not on OpenGL ES: the web). |
 | Sound | Xbox DirectSound on SDL3 audio (`src/dsound_sdl.c`): PCM and Xbox ADPCM, mixed at 48 kHz, with volume, pitch, mix bins, distance, stereo pan, occlusion and obstruction. There is no Doppler effect, no cones and no reverb. |
 | Input | XInput on SDL3 (`src/xinput_sdl.c`): keyboard, mouse, gamepads with rumble, and the debug keyboard for the console. |
 | Files | The Win32 file functions and the MSVC file functions on POSIX, with the translation of Xbox paths. |
@@ -4108,17 +3981,34 @@ does; making the eye images from the four layers cost 0.2 ms more there.
 
 ### The compiler
 
-`tools/linux_build.py` compiles the game with clang and these options, which
-give the ABI of the MSVC compiler:
+The game's sources were written for the MSVC compiler. Each build compiles
+them with clang and options that give MSVC's ABI and semantics:
 
-- `--target=i686-linux-gnu`: 32-bit x86.
-- `-fms-extensions`: the MSVC extensions.
-- `-fshort-wchar`: 16-bit `wchar_t`.
-- `-malign-double`: 8-byte alignment of 64-bit members.
-- `-fcommon`: tentative definitions, as in C89.
+- The Linux builds (as Android and macOS) compile the game into the guest
+  image (`generate_guest_image` in `tools/android_build.py`): the
+  architecture's target (`x86_64-linux-gnux32` or `arm64_32`,
+  `tools/guest_arch.py`), with `GUEST_FLAGS` for every unit (`-fshort-wchar`:
+  16-bit `wchar_t`; `-ffp-contract=off`: no fused multiply-add;
+  `-femulated-tls`; `-nostdinc`, as the C library is the guest's musl) and
+  `GUEST_CODE_FLAGS` for the game and the platform layer
+  (`-fms-extensions`: the MSVC extensions; `-fcommon`: tentative
+  definitions, as in C89; `-fno-strict-aliasing`, `-fwrapv` and
+  `-fno-delete-null-pointer-checks`: no optimisations that assume the
+  absence of what MSVC tolerates; `-fno-omit-frame-pointer`).
+- The Windows build (`tools/windows_build.py`) compiles for
+  `i686-pc-windows-msvc`, which gives MSVC's ABI itself: 16-bit `wchar_t`,
+  MSVC's structure layout, `__declspec`, calling conventions and COMDAT
+  inline functions ([port/windows/README.md](../windows/README.md)).
+- The tests that compile parts of the engine natively in the game's 32-bit
+  x86 ABI (the harness, `tools/harness`, and the tag validator's
+  `map_validate`: `tools/x86_game_abi.py`) compile for `i686-linux-gnu`
+  (`-m32`) with `-fshort-wchar`, `-malign-double` (8-byte alignment of
+  64-bit members) and `-freg-struct-return` (small structures and unions
+  returned in registers, as on Win32). Nothing built so ships.
 
-glibc gives only ISO C (`__STRICT_ANSI__`). Thus POSIX names, for example
-`random`, do not conflict with the names of the game.
+The game sees only the ISO C of its C library (`__STRICT_ANSI__`). Thus
+POSIX names, for example `random`, do not conflict with the names of the
+game.
 
 These files supply the MSVC functions that clang does not have:
 
@@ -4127,35 +4017,30 @@ These files supply the MSVC functions that clang does not have:
 | `include/halo_linux_prefix.h` | The first header of each file: the architecture macros of the SDK, MSVC `__inline`, SEH keywords, `__declspec(selectany)`. |
 | `include/` | Headers that add MSVC names to the C runtime headers. |
 | `port/include/xdk` | The Xbox SDK declarations. The compiler reads this folder after all the other folders. |
-| `tools/linux_msvc_semantics.py` | Makes a header that declares each struct tag at file scope, as MSVC does. It also makes the header inline functions weak, as the COMDAT functions of MSVC. `game/msvc_comdat.c` gives one external copy of each. |
+| `tools/linux_msvc_semantics.py` | Makes a header that declares each struct tag at file scope, as MSVC does (`build/msvc_semantics`, for every guest and the web). It also makes the header inline functions weak, as the COMDAT functions of MSVC. `game/msvc_comdat.c` gives one external copy of each. |
 | `include/halo_linux_winsock_names.h` | Gives new names to the Winsock functions of the SDK. Thus they do not link to the glibc functions with the same names. |
 | `include/halo_linux_source_fixups.h` | Declares the port's functions that the game's sources call. |
 
-`tools/linux_link_check.py` stops the link if a weak reference has no
-definition. Without this check, the linker gives the reference the address
-0.
-
 ### The platform layer (`src/`)
 
-- The files `posix_*.c` use glibc. The compiler uses the ABI of the host
-  for these files, because some glibc structures have a different layout
-  with `-malign-double`.
+- The files `posix_*.c` use glibc, whose structures have the 64-bit
+  host's layout: the host builds them (`tools/linux_guest_build.py`), and
+  the guest calls them through import stubs that
+  `tools/android_posix_stubs.py` makes from `src/posix.h`.
 - The other files include the SDK declarations through `platform.h`. Thus
   the compiler examines each definition against the SDK prototype.
 - `src/halo_linker_common.c` gives weak storage for some globals of the
   January link, and for `fast_ftol_C` and `main_crash`.
 - `main/d3d_intimacy.cpp` reads a private structure of the Xbox Direct3D.
-  The Linux build does not use this file. `src/d3d8_device.c` gives
+  The port does not build this file. `src/d3d8_device.c` gives
   `d3d_find_flipcount`.
-- The build returns small structures and unions in registers
-  (`-freg-struct-return`), as on Win32.
 - The GPU driver cannot open the kernel's `trace_marker`
-  (`src/posix_trace_marker.c`). SteamOS keeps kernel tracing on for its GPU
+  (`src/posix_trace_marker.c`, which the host links). SteamOS keeps kernel tracing on for its GPU
   performance captures (`gpu-trace.service`), and its Mesa then writes a
   marker for each traced driver function: on the Steam Frame, some 480,000
   writes a second, which took the game from the headset's 72 Hz to about
   50 frames a second. The Steam Deck runs the same service, but its Mesa
-  (25.3, 32-bit and 64-bit) has no markers to write: there the refusal
+  (25.3) has no markers to write: there the refusal
   changes nothing (measured: the same frame times and power either way).
   `HALO_GPU_TRACE_MARKERS=1` lets the driver write them, to capture with
   gpuvis.
@@ -4169,14 +4054,43 @@ second copy of what the Xbox's states mean:
 | File | Contents |
 | --- | --- |
 | `src/d3d8_device.c` | The front end: the `D3DDevice_*` functions and the device's state. It finds the render targets by the Xbox surface's address and numbers them, keeps the vertex shaders and declarations, the visibility tests' slots, the screen's size and scale, the mirror's pages and the VR mode's passes. For each draw it fills a pipeline key, the dynamic state, the textures bound and the draw's range. |
-| `src/xgpu_backend.h` | What passes between the halves. It holds no Xbox value and no GL one. Each call is plain data: targets are numbers, guest data is a guest address and a size, and the backend keeps no pointer into the front end's memory. A few calls are answered at once (a texture's description, whether a pipeline's shaders build, a visibility test's count, a screenshot's pixels); the header says how each could wait for the frame's end. So the calls of a frame could go to another thread or to the 64-bit host as one stream. |
-| `src/xgpu_gl.c` | The OpenGL backend (OpenGL 4.5, OpenGL ES 3.0 to 3.2, WebGL 2), with `src/xgpu_gl.h`. It keeps a pipeline for each key: the program and the GL state, made the first time a draw needs it. It holds the targets, the stream buffers, the mirror's buffers and the visibility queries or counters. In the VR mode it holds the eyes' images and the HUD's, and composes the frame for OpenXR. |
+| `src/xgpu_backend.h` | What passes between the halves. It holds no Xbox value and no GL one. Each call is plain data: targets are numbers, guest data is a guest address and a size, and the backend keeps no pointer into the front end's memory. A few calls are answered at once (a texture's description, whether a pipeline's shaders build, a visibility test's count, a screenshot's pixels); the header says how each could wait for the frame's end. So the calls of a frame go to the 64-bit host as one stream ("The renderer's command stream", under "64-bit ARM"). |
+| `vulkan/` | The Vulkan backend, the Linux builds' and Android's, in the host: the command stream's backend ([its README](vulkan/README.md)). In the VR mode it holds the eyes' images and the HUD's, and composes the frame for OpenXR (`vulkan/host_vulkan_vr.c`). |
+| `src/xgpu_gl.c` | The OpenGL backend (OpenGL 4.5, OpenGL ES 3.0 to 3.2, WebGL 2), with `src/xgpu_gl.h`, of the builds without a host: the 32-bit Windows build and the web. It keeps a pipeline for each key: the program and the GL state, made the first time a draw needs it. It holds the targets, the stream buffers, the mirror's buffers and the visibility queries or counters. |
 | `src/xgpu_shader.h` | The vertex programs and pixel shaders, decoded once: `src/nv2a_vsh.c` decodes the NV2A vertex microcode, `src/nv2a_psh.c` the texture stages and register combiners. |
-| `src/xgpu_glsl.c` | Writes GLSL 4.50 or ESSL 3.00 and 3.10 from the decoded programs. |
+| `src/xgpu_spirv.c` | Writes SPIR-V from the decoded programs, for Vulkan. |
+| `src/xgpu_glsl.c` | Writes GLSL 4.50 or ESSL 3.00 and 3.10 from the decoded programs, for OpenGL. |
 
-The texture cache (`src/xbox_textures.c`) and the high-res replacements
-(`src/hud_hires.c`, `src/text_hires.c`, `src/menu_files.c`) still make GL
-textures themselves.
+In the builds without a host, the texture cache (`src/xbox_textures.c`)
+and the high-res replacements (`src/hud_hires.c`, `src/text_hires.c`,
+`src/menu_files.c`) make OpenGL textures themselves. With the command
+stream, the host caches the textures, and the replacements are images
+(`src/xgpu_images.c`).
+
+### OpenGL ES
+
+The OpenGL backend (`src/xgpu_gl.c`) with `HALO_GLES`, the web's (WebGL 2),
+uses OpenGL ES 3.0, and some functions of OpenGL ES 3.2 if they are
+available. The 64-bit ARM build drew with it before it drew with Vulkan,
+where most of what follows was measured:
+
+- The vertex shaders flip y and change the depth range from 0..1. The front
+  face winding is inverted.
+- BGRA textures go to the GPU as RGBA with a swizzle. If the driver has no
+  S3TC (Mali GPUs), the CPU decodes the DXT textures.
+- The pixel shaders apply the LOD bias of the sampler.
+- The upload changes the byte order of `D3DCOLOR` vertex attributes.
+- Dynamic vertex and index data goes into a ring of three buffers, one for
+  each frame. On Mali, other methods used too much memory.
+- On OpenGL ES 3.2, indexed draws use a base vertex. Before 3.2, the CPU
+  changes the indices.
+- On OpenGL ES 3.1 and later, the visibility tests (lens flares) count
+  samples with an atomic counter, as the NV2A did. OpenGL ES 3.0 tells only
+  if a sample is visible. The GPU copies the counters at the end of each
+  frame, and the CPU reads the copy two frames later, when the frame's fence
+  has passed: a result is the latest count the GPU has finished, as with
+  the query buffer of desktop OpenGL. A read of the counters themselves
+  waits for the GPU, which halved the frame rate on Turnip (Zink).
 
 ### Presenting during map loading
 
@@ -4216,7 +4130,7 @@ presentation details do not change the shared map loader or simulation order.
 ### Measuring map loading
 
 For a separate visual diagnostic run, set `HALO_LOADING_CAPTURE_DIR` to an
-existing private directory. The GL and Vulkan hosts read back their rendered
+existing private directory. The hosts read back their rendered
 loading image twice per load: after its first frame and after half a second,
 when the load lasts that long. Files are `loading-<epoch>-<serial>.ppm`.
 These are GPU image readbacks; they stall rendering and must never be enabled
@@ -4248,10 +4162,10 @@ the loading epoch ends. These timestamps do not all prove physical display.
 
 On Linux, the loading runner starts each map directly, offline, in a private
 directory. It retains logs and JSON evidence and removes its run folders.
-For example, with a guest Vulkan build:
+For example:
 
 ```sh
-python3 tools/load_benchmark.py --halo build/linux_vulkan/halo \
+python3 tools/load_benchmark.py --halo build/linux_x86_64/halo \
     --data assets --out /path/on/disk/load-results --maps bloodgulch a10 b30 \
     --os-cache cold warm --game-cache reused --shader-cache reused
 ```
@@ -4268,7 +4182,7 @@ continues later runs after a failed launch and still exits with failure;
 cache-state verification failures always stop the measurement.
 
 The default display is offscreen. `--video-driver x11` selects an explicitly
-provided private virtual display for windowed checks. GL swap returns, Vulkan present returns,
+provided private virtual display for windowed checks. Vulkan present returns
 and OpenXR submissions measure application progress, not a physical screen's
 refreshes. Metal's callback also records the drawable's actual presentation
 time. The first game-frame submission is not necessarily the first playable

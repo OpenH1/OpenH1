@@ -1155,14 +1155,6 @@ int host_vulkan_window_open(unsigned int window, unsigned int debug, const char 
 #else
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_OPENGL
 #endif
-#if defined(HALO_RENDER_STREAM) && !defined(HALO_METAL) && !defined(HALO_VULKAN)
-/* port/linux/host/host_gl_stream.c: the window drawn with OpenGL by the
-host, whose render thread has the context (the renderer's backend is the
-host's), at a swap interval (vsync 1, or 0); asked again, the interval
-changed; nonzero on success */
-int host_gl_window(unsigned int window, int interval);
-#define PLATFORM_HOST_GL
-#endif
 
 BOOL platform_video_initialize(unsigned long width, unsigned long height)
 {
@@ -1198,7 +1190,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug"))
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 #endif
-#if !defined(HALO_ANDROID) && !defined(_WIN32)
+#if !defined(HALO_ANDROID) && !defined(_WIN32) && !defined(HALO_RENDER_STREAM)
 	/* Mesa's GL thread: the renderer makes thousands of GL calls a frame
 	and never waits for their results, so handing them to a thread of
 	their own takes a fifth of the main thread's time off it. It leaves an
@@ -1225,22 +1217,12 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	(void)height;
 	platform_window_size_setting(&platform_window_width, &platform_window_height);
 #ifdef HALO_VR
-	/* the context the OpenXR runtime takes (host_vr_probe, logging why where
-	there is none: the game then plays flat, in its window): an EGL context
-	where it offers XR_MNDX_egl_enable, else SDL's own on X11, GLX's; in a
-	window that stays hidden: the headset shows the game (vr.c) */
+	/* with an OpenXR runtime that takes the host's Vulkan device
+	(host_vr_probe, logging why where there is none: the game then plays
+	flat, in its window), a window that stays hidden: the headset shows the
+	game (vr.c) */
 	if (halo_vr_enabled() && host_vr_probe() != VR_BINDING_NONE)
 	{
-		if (host_vr_probe() == VR_BINDING_EGL)
-		{
-			SDL_SetHint(SDL_HINT_VIDEO_FORCE_EGL, "1");
-			/* no alpha in the window's framebuffer, which the game only ever
-			blits its colour to: SDL's X11 driver makes the window with the
-			default visual (24 bits) before it chooses the EGL config, and
-			NVIDIA's EGL makes no window surface from a config with alpha (a
-			32-bit visual) for it */
-			SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
-		}
 		platform_window = SDL_CreateWindow("Halo", (int)platform_window_width, (int)platform_window_height,
 			PLATFORM_WINDOW_DRAWING | SDL_WINDOW_HIDDEN);
 	}
@@ -1325,21 +1307,6 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	(void)version;
 	return TRUE;
 #endif
-#ifdef PLATFORM_HOST_GL
-	/* (the host makes the context, with the attributes set above, and
-	draws: the guest calls no OpenGL) */
-	if (!host_gl_window((unsigned int)(uintptr_t)platform_window, config_boolean("display.vsync") ? 1 : 0))
-	{
-		platform_log("cannot draw the window with the host's OpenGL");
-		return FALSE;
-	}
-	platform_event_thread = SDL_GetCurrentThreadID();
-#ifndef HALO_ANDROID
-	platform_mouse_capture(TRUE);
-#endif
-	(void)version;
-	return TRUE;
-#endif
 #ifndef HALO_RENDER_STREAM
 	platform_gl_context = SDL_GL_CreateContext(platform_window);
 #ifdef HALO_GLES
@@ -1417,9 +1384,7 @@ void platform_display_apply(void)
 	if (!platform_window)
 		return;
 #endif
-#ifdef PLATFORM_HOST_GL
-	host_gl_window((unsigned int)(uintptr_t)platform_window, config_boolean("display.vsync") ? 1 : 0);
-#elif defined(HALO_VULKAN)
+#if defined(HALO_VULKAN)
 	/* (the window open already: only its swap interval is taken) */
 	host_vulkan_window_open((unsigned int)(uintptr_t)platform_window, 0, "", "", config_boolean("display.vsync") ? 1 : 0);
 #elif !defined(HALO_METAL)

@@ -11,9 +11,10 @@ line for each map:
 and exits 1 if any map was refused (or, with --strict, corrected: the retail
 maps need no correction, which tools/test_linux_port.py checks).
 
-Built by ninja linux as build/linux/map_validate, with the platform layer's
-POSIX flags (it calls the validator's few functions, whose arguments are
-pointers and longs alike in both ABIs).
+Built by tools/x86_game_abi.py as build/map_validate/map_validate, a test
+tool in the game's 32-bit x86 ABI (the tags' pointers are 32-bit), this file
+with the C library's flags (it calls the validator's few functions, whose
+arguments are pointers and longs alike in both ABIs).
 
 With --fuzz, each map is instead checked iterations times with a few of its
 words changed at random (from --seed on): the validator must never crash or

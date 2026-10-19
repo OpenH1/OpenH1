@@ -1,7 +1,7 @@
 name: Build
 
-# Builds of the native ports (Linux, Linux arm64, Linux x86-64, Windows,
-# Android, macOS) for every pushed commit, uploaded as artifacts: on master
+# Builds of the native ports (Linux x86-64 and arm64, Windows, Android,
+# macOS) for every pushed commit, uploaded as artifacts: on master
 # the debug and release builds (and the VR one), elsewhere the debug builds
 # alone, a quick check until a faster build system replaces this one. (The
 # web port is not built: its WebGL renderer goes with OpenGL, and it comes
@@ -12,8 +12,8 @@ name: Build
 # - one job per platform builds both configurations, so its set-up (tools,
 #   downloads, caches) is paid once;
 # - compiles go through ccache, whose cache carries over from run to run, so
-#   a commit only recompiles what it changed; downloads (SDL, musl, Gradle,
-#   the Linux build's system root, the guests' pinned LLVM) are cached too;
+#   a commit only recompiles what it changed; downloads (SDL, musl, the
+#   Vulkan headers, Gradle, the guests' pinned LLVM) are cached too;
 # - a newer push to the same branch cancels a run still going;
 # - pushes that only change documentation do not build;
 # - Windows, whose minutes cost twice Linux's, builds only Windows;
@@ -33,7 +33,7 @@ on:
   workflow_dispatch:
     inputs:
       profile:
-        description: "Also build the profiling flavour (configure.py --profile) on Linux"
+        description: "Also build the profiling flavour (configure.py --profile) on Linux x86-64"
         type: boolean
         default: false
 
@@ -55,88 +55,6 @@ env:
   CI_GUEST_LLVM_CACHE: .cache/llvm
 
 jobs:
-  linux:
-    # Arch Linux has what the build needs as packages: clang 22 (for the
-    # profile-guided optimisation in pgo/), and CMake, pkg-config and
-    # wayland-scanner for the SDL 3 that the portable build brings. The build
-    # links against Debian 11's 32-bit glibc (tools/linux_sysroot.py), not
-    # Arch's, so that it starts on SteamOS and older distributions; Arch's
-    # 32-bit glibc is for the tests.
-    runs-on: ubuntu-24.04
-    container: archlinux:latest
-    timeout-minutes: 40
-    steps:
-      - name: Install the toolchain
-        run: |
-          printf '\n[multilib]\nInclude = /etc/pacman.d/mirrorlist\n' >> /etc/pacman.conf
-          pacman -Syu --noconfirm --needed git zstd python python-pytest ninja ccache \
-            clang lld gcc lib32-glibc lib32-gcc-libs cmake pkgconf wayland
-
-      - uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
-        with:
-          path: .ccache
-          key: ccache-linux-${{ github.sha }}
-          restore-keys: ccache-linux-
-
-      # the system root and SDL's source, which the build downloads
-      - uses: actions/cache@v4
-        with:
-          path: build/linux/third_party
-          key: linux-third-party-${{ hashFiles('tools/linux_sysroot.py') }}
-
-      - name: Debug
-        run: python tools/ci_build.py linux debug
-
-      # (the profiling build, configure.py --profile, which no other step
-      # compiles: only when a run started by hand asks for it, as it costs a
-      # build of its own)
-      - name: Profile
-        if: github.event_name == 'workflow_dispatch' && inputs.profile
-        run: python tools/ci_build.py linux profile
-
-      - name: Release
-        if: github.ref == 'refs/heads/master'
-        run: python tools/ci_build.py linux release
-
-      - name: Test
-        run: |
-          python -m pytest -q tools/test_linux_port.py tools/test_linux_package.py tools/test_install_layout.py tools/test_android_asm_convert.py tools/test_host_watch_hash.py tools/test_host_units.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_touch_menu.py tools/harness tools/test_profile.py tools/test_net_compare.py
-          python tools/test_light_storage.py
-
-      - name: Compile cache
-        run: ccache --show-stats
-
-      # the release's tree (bin/opence, lib/, share/: tools/linux_package.py)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: halo-linux-i686-debug
-          path: dist/halo-linux-i686-debug
-          retention-days: 3
-
-      - uses: actions/upload-artifact@v4
-        if: github.ref == 'refs/heads/master'
-        with:
-          name: halo-linux-i686-release
-          path: dist/halo-linux-i686-release
-          retention-days: 3
-
-      # the same builds flat, for the self-updaters of the releases before
-      # the tree (port/linux/src/updater.c)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: halo-linux-debug
-          path: dist/halo-linux-debug
-          retention-days: 3
-
-      - uses: actions/upload-artifact@v4
-        if: github.ref == 'refs/heads/master'
-        with:
-          name: halo-linux-release
-          path: dist/halo-linux-release
-          retention-days: 3
-
   linux-arm64:
     # Ubuntu 22.04 (glibc 2.35, so the build starts on older distributions
     # too) on GitHub's 64-bit ARM runner, with its clang for the host and the
@@ -154,8 +72,8 @@ jobs:
           apt-get install -y --no-install-recommends ca-certificates git python3 ninja-build cmake make \
             pkg-config ccache zip clang \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
-            libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libgles-dev \
-            libgl-dev libopengl-dev libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
+            libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
             libudev-dev libdbus-1-dev libdecor-0-dev
 
       - uses: actions/checkout@v4
@@ -166,11 +84,11 @@ jobs:
           key: ccache-linux-arm64-${{ github.sha }}
           restore-keys: ccache-linux-arm64-
 
-      # musl and SDL, which configure.py fetches
+      # musl, SDL and the Vulkan headers, which configure.py fetches
       - uses: actions/cache@v4
         with:
           path: build/linux_arm64/third_party
-          key: linux-arm64-third-party-${{ hashFiles('tools/android_build.py', 'port/android/patches/**') }}
+          key: linux-arm64-third-party-${{ hashFiles('tools/android_build.py', 'tools/vulkan_build.py', 'tools/linux_guest_build.py', 'port/android/patches/**') }}
 
       # the guests' LLVM, which configure.py fetches (tools/guest_toolchain.py)
       - uses: actions/cache@v4
@@ -202,17 +120,21 @@ jobs:
           retention-days: 3
 
   linux-x86_64:
-    # The 64-bit x86 guest build (ninja linux_x86_64: the game as x32 code in
-    # a 64-bit host), made as the 64-bit ARM one is: Ubuntu 22.04 (glibc 2.35,
-    # so the build starts on older distributions too) with its clang for the
-    # host and the development files SDL3 builds with, the guest's compiler
-    # (x32) the pinned LLVM; and the tests of the guest's call boundary and image
-    # checks, which need this processor.
+    # The 64-bit x86 build (ninja linux_x86_64: the game as x32 code in a
+    # 64-bit host, drawn with Vulkan), made as the 64-bit ARM one is: Ubuntu
+    # 22.04 (glibc 2.35, so the build starts on older distributions too) with
+    # its clang for the host and the development files SDL3 builds with (no
+    # OpenGL's: the build needs none), the guest's compiler (x32) the pinned
+    # LLVM; and the tests: the guest's call boundary and image checks, which
+    # need this processor, and the rest, among them those that compile the
+    # engine's code in the game's 32-bit x86 ABI (tools/harness,
+    # tools/x86_game_abi.py: test tools only, with gcc-multilib's 32-bit C
+    # library; nothing 32-bit ships).
     runs-on: ubuntu-24.04
     container: ubuntu:22.04
     # (three builds, debug, release and VR release, each of the whole game:
     # with a cold compile cache, more than the other jobs' one or two)
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - name: Install the toolchain
         env:
@@ -220,10 +142,10 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates git python3 python3-pytest ninja-build \
-            cmake make pkg-config ccache zip clang \
+            cmake make pkg-config ccache zip clang gcc-multilib binutils \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
-            libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols libegl-dev libgles-dev \
-            libgl-dev libopengl-dev libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
+            libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
+            libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
             libudev-dev libdbus-1-dev libdecor-0-dev
 
       - uses: actions/checkout@v4
@@ -234,11 +156,12 @@ jobs:
           key: ccache-linux-x86_64-${{ github.sha }}
           restore-keys: ccache-linux-x86_64-
 
-      # musl and SDL, which configure.py fetches
+      # musl, SDL and the Vulkan headers, which configure.py fetches (and the
+      # OpenXR headers, which the VR build fetches)
       - uses: actions/cache@v4
         with:
           path: build/linux_x86_64/third_party
-          key: linux-x86_64-third-party-${{ hashFiles('tools/android_build.py', 'port/android/patches/**') }}
+          key: linux-x86_64-third-party-${{ hashFiles('tools/android_build.py', 'tools/vulkan_build.py', 'tools/linux_guest_build.py', 'port/android/patches/**') }}
 
       # the guests' LLVM, which configure.py fetches (tools/guest_toolchain.py)
       - uses: actions/cache@v4
@@ -249,30 +172,41 @@ jobs:
       - name: Debug
         run: python3 tools/ci_build.py linux_x86_64 debug
 
+      # (the profiling build, configure.py --profile, which no other step
+      # compiles: only when a run started by hand asks for it, as it costs a
+      # build of its own)
+      - name: Profile
+        if: github.event_name == 'workflow_dispatch' && inputs.profile
+        run: python3 tools/ci_build.py linux_x86_64 profile
+
       - name: Release
         if: github.ref == 'refs/heads/master'
         run: python3 tools/ci_build.py linux_x86_64 release
 
       # the VR build (OpenXR: SteamVR, Monado), a download of its own: the
-      # flat build has no VR mode, and the VR one starts the runtime
+      # desktop build has no VR mode, and the VR one starts the runtime
       - name: VR release
         if: github.ref == 'refs/heads/master'
         run: python3 tools/ci_build.py linux_x86_64 release --vr
 
-      # (with the guests' LLVM on the PATH: clang, ld.lld and LLVM's tools)
+      # (with the guests' LLVM on the PATH: clang, ld.lld and LLVM's tools;
+      # but the profiling build's checks with the system's clang, whose
+      # sanitizers' runtimes the pinned LLVM leaves out)
       - name: Test
         run: |
+          python3 -m pytest -q -rs tools/test_profile.py
           PATH="$(python3 tools/guest_toolchain.py --cache "$CI_GUEST_LLVM_CACHE"):$PATH"
-          python3 -m pytest -q tools/test_host_units.py tools/test_guest_image_check.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_guest_layout.py tools/test_linux_guest_build.py tools/test_guest_toolchain.py
+          python3 -m pytest -q -rs tools/test_host_units.py tools/test_guest_image_check.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_guest_layout.py tools/test_linux_guest_build.py tools/test_guest_toolchain.py tools/test_linux_port.py tools/test_linux_package.py tools/test_install_layout.py tools/test_android_asm_convert.py tools/test_host_watch_hash.py tools/test_touch_menu.py tools/harness tools/test_net_compare.py
+          python3 tools/test_light_storage.py
 
       # the Vulkan backend's core over a fake Vulkan, and the VR host's OpenXR
       # binding, with the system's clang (its sanitizers): the pinned Vulkan
-      # and OpenXR headers, which only the VR release fetches, fetched here
-      # where it did not run (branches); and the VR mode's vehicles' seats
-      # and steering against a fake world
+      # headers, which the build fetched, and the OpenXR headers, which only
+      # the VR release fetches, fetched here where it did not run (branches);
+      # and the VR mode's vehicles' seats and steering against a fake world
       - name: Test the Vulkan backend and the VR host
         run: |
-          python3 -c "import sys; sys.path.insert(0, '.'); from pathlib import Path; from tools.vulkan_build import fetch_vulkan_headers; from tools.linux_guest_build import fetch_openxr_headers; third_party = Path('build/linux_vulkan/third_party'); fetch_vulkan_headers(third_party / 'vulkan-headers'); fetch_openxr_headers(third_party / 'openxr')"
+          python3 -c "import sys; sys.path.insert(0, '.'); from pathlib import Path; from tools.linux_guest_build import fetch_openxr_headers; fetch_openxr_headers(Path('build/linux_x86_64/third_party/openxr'))"
           python3 -m pytest -q tools/test_vulkan_passes.py tools/test_host_vr_vulkan.py tools/test_vr_vehicles.py
 
       - name: Compile cache
@@ -524,7 +458,7 @@ jobs:
     # (every file keeps its name from release to release, for the README's
     # latest/download links); then all but the newest five build-* releases
     # go, tags and all. Only for master, and only when every platform built.
-    needs: [linux, linux-arm64, linux-x86_64, android, windows, macos]
+    needs: [linux-x86_64, linux-arm64, android, windows, macos]
     if: ${{ github.ref == 'refs/heads/master' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -570,7 +504,7 @@ jobs:
         run: |
           tag="build-$GITHUB_RUN_NUMBER"
           subject="$(printf '%s' "${MESSAGE:-manual run}" | head -n 1)"
-          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Linux, download halo-linux-i686-release.zip. halo-linux-release.zip is the same build laid out as before, for the updaters of older builds.\n\nOn macOS (Apple silicon, macOS 14.4 or later), download halo-macos-release.zip and open Halo.dmg in it. The app is not notarized yet: the first time, macOS asks to allow it in System Settings, Privacy & Security.\n' \
+          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Linux, download halo-linux-x86_64-release.zip (halo-linux-arm64-release.zip on 64-bit ARM, halo-linux-x86_64-vr-release.zip for VR): it draws with Vulkan 1.3.\n\nOn macOS (Apple silicon, macOS 14.4 or later), download halo-macos-release.zip and open Halo.dmg in it. The app is not notarized yet: the first time, macOS asks to allow it in System Settings, Privacy & Security.\n' \
             "$subject" "$COMMIT_URL" "$RUN_URL" > notes.md
           gh release create "$tag" release/*.zip --target "$GITHUB_SHA" --latest \
             --title "Build $GITHUB_RUN_NUMBER (${GITHUB_SHA:0:7})" --notes-file notes.md
@@ -620,7 +554,7 @@ jobs:
     # without it): green when every platform built, red when one did not,
     # with each platform's result, this run's release (master only), and
     # links to the latest release's builds.
-    needs: [linux, linux-arm64, linux-x86_64, android, windows, macos, release]
+    needs: [linux-x86_64, linux-arm64, android, windows, macos, release]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -628,9 +562,8 @@ jobs:
       - name: Post to Discord
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-          LINUX: ${{ needs.linux.result }}
-          LINUX_ARM64: ${{ needs['linux-arm64'].result }}
           LINUX_X86_64: ${{ needs['linux-x86_64'].result }}
+          LINUX_ARM64: ${{ needs['linux-arm64'].result }}
           ANDROID: ${{ needs.android.result }}
           WINDOWS: ${{ needs.windows.result }}
           MACOS: ${{ needs.macos.result }}
@@ -656,13 +589,13 @@ jobs:
               *) echo "➖ Skipped" ;;
             esac
           }
-          if [ "$LINUX" = success ] && [ "$LINUX_ARM64" = success ] && [ "$LINUX_X86_64" = success ] && [ "$ANDROID" = success ] && [ "$WINDOWS" = success ] && [ "$MACOS" = success ]; then
+          if [ "$LINUX_X86_64" = success ] && [ "$LINUX_ARM64" = success ] && [ "$ANDROID" = success ] && [ "$WINDOWS" = success ] && [ "$MACOS" = success ]; then
             title="Build succeeded"; color=5763719
           else
             title="Build failed"; color=15548997
           fi
           latest="$SERVER/$REPOSITORY/releases/latest"
-          downloads="[Linux]($latest/download/halo-linux-i686-release.zip) · [Linux arm64]($latest/download/halo-linux-arm64-release.zip) · [Linux x86-64]($latest/download/halo-linux-x86_64-release.zip) · [Linux x86-64 VR]($latest/download/halo-linux-x86_64-vr-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [macOS]($latest/download/halo-macos-release.zip) · [Android]($latest/download/halo-android-release.zip) ([all builds]($latest))"
+          downloads="[Linux x86-64]($latest/download/halo-linux-x86_64-release.zip) · [Linux arm64]($latest/download/halo-linux-arm64-release.zip) · [Linux x86-64 VR]($latest/download/halo-linux-x86_64-vr-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [macOS]($latest/download/halo-macos-release.zip) · [Android]($latest/download/halo-android-release.zip) ([all builds]($latest))"
           if [ -n "$RELEASE_TAG" ]; then
             release="[$RELEASE_TAG]($SERVER/$REPOSITORY/releases/tag/$RELEASE_TAG)"
           else
@@ -673,14 +606,13 @@ jobs:
             --arg title "$title" --argjson color "$color" --arg url "$RUN_URL" \
             --arg description "[\`${SHA:0:7}\`]($COMMIT_URL) $subject — $ACTOR ($BRANCH)" \
             --arg release "$release" --arg downloads "$downloads" \
-            --arg linux "$(status "$LINUX")" --arg linux_arm64 "$(status "$LINUX_ARM64")" --arg linux_x86_64 "$(status "$LINUX_X86_64")" --arg windows "$(status "$WINDOWS")" --arg macos "$(status "$MACOS")" --arg android "$(status "$ANDROID")" \
+            --arg linux_x86_64 "$(status "$LINUX_X86_64")" --arg linux_arm64 "$(status "$LINUX_ARM64")" --arg windows "$(status "$WINDOWS")" --arg macos "$(status "$MACOS")" --arg android "$(status "$ANDROID")" \
             --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             '{embeds: [{
               title: $title, url: $url, color: $color, description: $description, timestamp: $timestamp,
               fields: [
-                {name: "Linux", value: $linux, inline: true},
-                {name: "Linux arm64", value: $linux_arm64, inline: true},
                 {name: "Linux x86-64", value: $linux_x86_64, inline: true},
+                {name: "Linux arm64", value: $linux_arm64, inline: true},
                 {name: "Windows", value: $windows, inline: true},
                 {name: "macOS", value: $macos, inline: true},
                 {name: "Android", value: $android, inline: true},

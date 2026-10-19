@@ -2,12 +2,12 @@
 """Builds one port in one configuration, as the GitHub workflow does
 (.github/workflows/build.yml), and collects what it built into dist/:
 
-    python tools/ci_build.py linux debug
-    python tools/ci_build.py android release
-    python tools/ci_build.py linux_arm64 release   (on a 64-bit ARM computer)
-    python tools/ci_build.py linux_x86_64 release  (on a 64-bit x86 computer)
+    python tools/ci_build.py linux_x86_64 debug    (on a 64-bit x86 Linux computer)
     python tools/ci_build.py linux_x86_64 release --vr
-    python tools/ci_build.py linux profile
+    python tools/ci_build.py linux_x86_64 profile
+    python tools/ci_build.py linux_arm64 release   (on a 64-bit ARM Linux computer)
+    python tools/ci_build.py android release
+    python tools/ci_build.py windows release       (on Windows)
     python tools/ci_build.py web release
     python tools/ci_build.py macos release         (on a Mac with Apple silicon)
 
@@ -22,18 +22,15 @@ passed on as --compiler-launcher, and CI_GUEST_LLVM_CACHE as --guest-llvm-cache.
 number (HALO_BUILD_NUMBER), which its release is named after and the
 self-updater compares (and the web site's version.json names).
 
---vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md):
-the Vulkan build (ninja linux_vulkan), into
-dist/halo-linux-x86_64-vr-<config>/, a build of its own, which updates to
-the release's VR build. Only for linux_x86_64: the 64-bit ARM VR build is
+--vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md),
+into dist/halo-linux-x86_64-vr-<config>/, a build of its own, which updates
+to the release's VR build. Only for linux_x86_64: the 64-bit ARM VR build is
 the Steam Frame's package (tools/frame_package.py).
 
 A Linux build is the release's tree (tools/linux_package.py: bin/opence,
-lib/opence, share/...), dist/halo-linux-i686-<config>/ for the 32-bit x86
-build (with the same build laid out flat, dist/halo-linux-<config>/, for
-the self-updaters of the releases before the tree), and
-dist/halo-linux-arm64-<config>/, dist/halo-linux-x86_64[-vr]-<config>/
-for the others.
+lib/opence, share/...), dist/halo-linux-x86_64[-vr]-<config>/ or
+dist/halo-linux-arm64-<config>/, named as its self-updater asks
+(port/linux/src/updater.c, UPDATE_PLATFORM).
 
 The macOS build is the app's disk image (ninja macos_dmg), signed ad hoc
 (tools/macos_app.py), in dist/halo-macos-<config>/ with the notices: the
@@ -59,18 +56,13 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # what each port's build leaves, and what goes into dist/
 OUTPUTS = {
-    # (and the SDL3 the portable build and the desktop guest builds bring,
-    # tools/linux_build.py and tools/linux_guest_build.py, with its zlib
-    # license, as the release carries the other libraries'; laid out by
-    # tools/linux_package.py)
-    "linux": ["build/linux/halo", "build/linux/libSDL3.so.0", "build/linux/SDL3-LICENSE.txt"],
+    # (and the SDL3 the Linux builds bring, tools/linux_guest_build.py, with
+    # its zlib license, as the release carries the other libraries'; laid
+    # out by tools/linux_package.py)
     "linux_arm64": ["build/linux_arm64/halo", "build/linux_arm64/libSDL3.so.0",
                     "build/linux_arm64/SDL3-LICENSE.txt"],
     "linux_x86_64": ["build/linux_x86_64/halo", "build/linux_x86_64/libSDL3.so.0",
                      "build/linux_x86_64/SDL3-LICENSE.txt"],
-    # (the VR build, --vr: the Vulkan one)
-    "linux_vulkan": ["build/linux_vulkan/halo", "build/linux_vulkan/libSDL3.so.0",
-                     "build/linux_vulkan/SDL3-LICENSE.txt"],
     "windows": ["build/windows/halo.exe", "build/windows/SDL3.dll"],
     "macos": ["build/macos/Halo.dmg"],
     "android": [],  # the APK, below
@@ -82,6 +74,16 @@ APKS = {
 }
 
 
+def dist_name(platform: str, config: str, vr: bool = False) -> str:
+    """the folder in dist/ (and the release's zip) of a build: halo-<platform>-
+    <config>, where a Linux build's platform is the target's with its first
+    underscore a hyphen, and -vr after it for the VR build (linux-x86_64,
+    linux-x86_64-vr, linux-arm64: updater.c's UPDATE_PLATFORM)"""
+    if platform.startswith("linux"):
+        platform = platform.replace("_", "-", 1) + ("-vr" if vr else "")
+    return f"halo-{platform}-{config}"
+
+
 def run(command, cwd=ROOT):
     print("+", " ".join(str(part) for part in command), flush=True)
     subprocess.run([str(part) for part in command], cwd=cwd, check=True)
@@ -89,7 +91,7 @@ def run(command, cwd=ROOT):
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("platform", choices=sorted(name for name in OUTPUTS if name != "linux_vulkan"))
+    parser.add_argument("platform", choices=sorted(OUTPUTS))
     parser.add_argument("config", choices=["debug", "release", "profile"])
     parser.add_argument("--vr", action="store_true", help="the VR build (linux_x86_64 only)")
     args = parser.parse_args()
@@ -104,12 +106,7 @@ def main() -> int:
     if args.config == "profile":
         configure.append("--profile")
     if args.vr:
-        # (the VR build is the Vulkan one, ninja linux_vulkan, which --vr asks for)
         configure.append("--vr")
-    elif args.platform == "linux_x86_64":
-        # (not this computer's default build, which configure.py generates
-        # only when asked)
-        configure.append("--linux-x86-64")
     launcher = os.environ.get("CI_COMPILER_LAUNCHER")
     if launcher:
         configure += ["--compiler-launcher", launcher]
@@ -144,35 +141,26 @@ def main() -> int:
         run([gradlew, "--console=plain", "-q", f"assemble{variant.capitalize()}"], cwd=ROOT / "port/android")
         outputs = [APKS[variant]]
     else:
-        target = "macos_dmg" if args.platform == "macos" else "linux_vulkan" if args.vr else args.platform
+        target = "macos_dmg" if args.platform == "macos" else args.platform
         run(["ninja", target])
-        outputs = OUTPUTS["linux_vulkan" if args.vr else args.platform]
+        outputs = OUTPUTS[args.platform]
 
     # the licences of what the build carries (tools/linux_package.py)
     notices = linux_package.notices(args.platform)
 
     if args.platform.startswith("linux"):
-        # the release's tree (and, for the 32-bit x86 build, the same build
-        # flat for the updaters of the releases before the tree:
-        # tools/linux_package.py; SDL's license with the others), named as
-        # the self-updater asks: halo-linux-i686-release,
-        # halo-linux-arm64-release, halo-linux-x86_64-release and
-        # halo-linux-x86_64-vr-release
+        # the release's tree (tools/linux_package.py; SDL's license with the
+        # others), named as the self-updater asks (updater.c's
+        # UPDATE_PLATFORM): halo-linux-x86_64-release,
+        # halo-linux-x86_64-vr-release and halo-linux-arm64-release (the
+        # target's first underscore only)
         executable, library, sdl_license = (ROOT / output for output in outputs)
         notices.append((sdl_license, sdl_license.name))
-        if args.platform == "linux":
-            stages = [(f"halo-linux-i686-{args.config}", linux_package.stage_tree),
-                      (f"halo-linux-{args.config}", linux_package.stage_flat)]
-        else:
-            # (the target's first underscore only)
-            stages = [(f"halo-{args.platform.replace('_', '-', 1)}{'-vr' if args.vr else ''}-{args.config}",
-                       linux_package.stage_tree)]
-        for name, stage in stages:
-            dist = ROOT / "dist" / name
-            if dist.exists():
-                shutil.rmtree(dist)
-            stage(dist, executable, library, notices)
-            print(f"{', '.join(outputs)} -> {dist.relative_to(ROOT)}", flush=True)
+        dist = ROOT / "dist" / dist_name(args.platform, args.config, args.vr)
+        if dist.exists():
+            shutil.rmtree(dist)
+        linux_package.stage_tree(dist, executable, library, notices)
+        print(f"{', '.join(outputs)} -> {dist.relative_to(ROOT)}", flush=True)
         return 0
 
     dist = ROOT / "dist" / f"halo-{args.platform}-{args.config}"

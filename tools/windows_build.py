@@ -1,6 +1,6 @@
 """Ninja rules for the native Windows build (``ninja windows``).
 
-Like the Linux build (tools/linux_build.py), it compiles the game sources
+It compiles the game sources
 with clang for 32-bit x86 Windows (i686-pc-windows-msvc), adds the platform layer shared with
 Linux (``port/linux/src``) and the Windows parts in ``port/windows``, and
 links ``build/windows/halo.exe`` with lld. It is generated only when
@@ -18,10 +18,10 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .linux_build import (LINUX_PROFILE, MINIUPNPC_DIR, OPTIMISATION, STB_VORBIS_SOURCE, WINDOWS_PROFILE, XDK_INCLUDE,
-                          lto_mode, march_flag, miniupnpc_sources, pgo_mode, compile_launcher, configuration_defines,
-                          game_defines_and_includes, game_sources, musl_math_cflags, musl_math_sources, opus_cflags,
-                          opus_sources, pgo_profile, profile_use_flags, xdk_headers)
+from .build_common import (LINUX_PROFILE, MINIUPNPC_DIR, OPTIMISATION, STB_VORBIS_SOURCE, WINDOWS_PROFILE, XDK_INCLUDE,
+                           lto_mode, march_flag, miniupnpc_sources, pgo_mode, compile_launcher, configuration_defines,
+                           game_defines_and_includes, game_sources, musl_math_cflags, musl_math_sources, opus_cflags,
+                           opus_sources, pgo_profile, profile_use_flags, xdk_headers)
 from .embed_assets import hud_assets_build, hud_configure_inputs
 from .ninja_syntax import Writer
 
@@ -30,7 +30,7 @@ PORT_DIR = Path("port/windows")
 PORT_CONFIG = PORT_DIR / "port.json"
 BUILD = Path("build/windows")
 
-# (as tools/android_build.py's SDL_TAG and tools/linux_sysroot.py's SDL_VERSION)
+# (as tools/android_build.py's SDL_TAG)
 SDL_VERSION = "3.4.16"
 SDL_URL = (
     f"https://github.com/libsdl-org/SDL/releases/download/release-{SDL_VERSION}/"
@@ -280,7 +280,8 @@ def generate_windows_build(n: Writer, sln: Any) -> None:
     n.comment("Native Windows build (ninja windows)")
     n.variable("windows_cc", cc)
     # MSVC gives struct tags first named in a prototype file scope; clang
-    # does not (the Linux build's generator also writes these declarations)
+    # does not (the guests' semantics headers have these declarations too:
+    # tools/build_common.py)
     n.rule(
         name="windows_msvc_tags",
         command="$python tools/linux_msvc_semantics.py --output $out --tags source",

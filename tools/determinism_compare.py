@@ -7,12 +7,12 @@ state after every tick, take the random seeds at the same places in the
 same order, and draw the same frames. This reads both logs and reports the
 first tick where they part: the game state's allocations whose hashes
 differ, the seeds, and the seeds' takers (by function, named from the
-executable's symbols: build/linux_arm64/halo_guest.elf for the guest
-builds, build/linux/halo for the 32-bit one), and the first frame whose
-pixels differ.
+executable's symbols: the guest image, build/linux_x86_64/halo_guest.elf
+or build/linux_arm64/halo_guest.elf), and the first frame whose pixels
+differ.
 
     python tools/determinism_compare.py a/determinism.txt b/determinism.txt \\
-        --symbols build/linux_arm64/halo_guest.elf
+        --symbols build/linux_x86_64/halo_guest.elf
 
 With --dump, two game states written at one tick (debug.determinism_dump)
 are compared instead, byte by byte: each allocation that differs, where,

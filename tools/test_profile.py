@@ -5,36 +5,50 @@ For local WSL runs in a Windows worktree, set HALO_GIT=git.exe.
 import io
 import json
 import os
+import platform
 import re
 import shlex
 import shutil
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from tools import linux_build, net_report, ninja_syntax, profile_fixture
+from tools import android_build, build_common, net_report, ninja_syntax, profile_fixture
+from tools.guest_arch import X32
 
 ROOT = Path(__file__).resolve().parent.parent
 GIT = os.environ.get("HALO_GIT", "git")
+
+
+def native_build():
+    """this computer's build's folder: build/windows, build/macos, or the
+    Linux build of its processor (build/linux_x86_64, build/linux_arm64)"""
+    if os.name == "nt":
+        return "build/windows"
+    if sys.platform == "darwin":
+        return "build/macos"
+    return "build/linux_arm64" if platform.machine().lower() in ("aarch64", "arm64") else "build/linux_x86_64"
 
 
 # ---------- the build switch
 
 
 def test_configuration_defines():
-    assert linux_build.configuration_defines(SimpleNamespace()) == []
-    assert linux_build.configuration_defines(SimpleNamespace(port_release=True)) == ["-DHALO_RELEASE"]
-    assert linux_build.configuration_defines(SimpleNamespace(port_release=True, port_profile=True)) == [
+    assert build_common.configuration_defines(SimpleNamespace()) == []
+    assert build_common.configuration_defines(SimpleNamespace(port_release=True)) == ["-DHALO_RELEASE"]
+    assert build_common.configuration_defines(SimpleNamespace(port_release=True, port_profile=True)) == [
         "-DHALO_RELEASE", "-DHALO_PROFILE"]
 
 
 def test_every_native_build_takes_the_configuration_defines():
-    # (the guest, the game and the platform layer of all three: one place
-    # decides what --release and --profile define)
-    for name in ("linux_build.py", "windows_build.py", "android_build.py"):
+    # (the guests' (Android, Linux, macOS: android_build.py's
+    # generate_guest_image), the Windows build's and the web build's game and
+    # platform layer: one place decides what --release and --profile define)
+    for name in ("windows_build.py", "android_build.py", "web_build.py"):
         text = (ROOT / "tools" / name).read_text(encoding="utf-8")
         assert "configuration_defines(sln)" in text, name
         assert '["-DHALO_RELEASE"] if' not in text, name
@@ -42,21 +56,32 @@ def test_every_native_build_takes_the_configuration_defines():
 
 def test_profile_refuses_pgo_training():
     with pytest.raises(ValueError, match="--pgo=train"):
-        linux_build.check_profile_options(True, "train")
-    linux_build.check_profile_options(True, "use")
-    linux_build.check_profile_options(True, "off")
-    linux_build.check_profile_options(False, "train")
+        build_common.check_profile_options(True, "train")
+    build_common.check_profile_options(True, "use")
+    build_common.check_profile_options(True, "off")
+    build_common.check_profile_options(False, "train")
 
 
-def test_linux_build_compiles_with_the_profile_define(monkeypatch):
+def test_guest_build_compiles_with_the_profile_define(monkeypatch):
+    """the guests' game and platform layer (the Linux x86-64 build's here,
+    tools/android_build.py's generate_guest_image) take --profile's define"""
     monkeypatch.chdir(ROOT)
+    # (no musl or compiler needed to write the rules)
+    monkeypatch.setattr(android_build, "_musl_sources", lambda musl_dir: [])
+    monkeypatch.setattr(android_build, "compiler_include", lambda cc: "include")
+    config = json.loads((ROOT / "port/linux/port.json").read_text(encoding="utf-8"))
     out = io.StringIO()
-    linux_build.generate_linux_build(ninja_syntax.Writer(out), SimpleNamespace(
-        build_dir=Path("build"), linux_cc="clang", compiler_launcher=None, port_release=False, port_lto="off",
-        port_portable=True, port_pgo="off", port_pgo_profile=None, port_profile=True))
+    build = Path("build/linux_x86_64")
+    android_build.generate_guest_image(
+        ninja_syntax.Writer(out), SimpleNamespace(compiler_launcher=None, port_release=False, port_pgo="off",
+                                                  port_pgo_profile=None, port_profile=True),
+        config, arch=X32, prefix="linux_x86_64", label="LINUX X86_64", build=build,
+        third_party=build / "third_party", guest_cc="clang", gl_headers=None, ar="llvm-ar", ld="ld.lld",
+        objdump="llvm-objdump", builtins_cc="", environment="gnu", platform_defines=["-DHALO_VULKAN=1"])
     # (ninja_syntax wraps long lines with " $"; Windows paths have backslashes)
     text = re.sub(r" \$\n *", " ", out.getvalue()).replace("\\", "/")
-    for obj in ("build/linux/obj/source/game/game.o", "build/linux/obj/port/linux/src/p2p.o"):
+    for obj in ("build/linux_x86_64/guest/obj/source/game/game.o",
+                "build/linux_x86_64/guest/obj/port/linux/src/p2p.o"):
         block = text[text.index(f"build {obj}:"):]
         cflags = next(line for line in block.splitlines() if line.strip().startswith("cflags = "))
         assert "-DHALO_PROFILE" in cflags, obj
@@ -425,7 +450,8 @@ def preprocess_flags():
         unavailable("needs " + ", ".join(missing))
     # (HALO_PROFILE_OBJECTS names another configured flavour's object folder, such as build/android/guest/obj,
     # where this computer has no build of its own)
-    objects = os.environ.get("HALO_PROFILE_OBJECTS") or f"build/{'windows' if os.name == 'nt' else 'linux'}/obj"
+    objects = os.environ.get("HALO_PROFILE_OBJECTS") or (
+        "build/windows/obj" if os.name == "nt" else f"{native_build()}/guest/obj")
 
     def flags(object_path):
         listing = subprocess.run(["ninja", "-t", "commands", object_path], cwd=ROOT, capture_output=True, text=True)
@@ -468,6 +494,9 @@ def preprocess_flags():
         reason = "the game's flags do not preprocess: " + next((line for line in probe.stderr.splitlines() if "error" in line), "")[:200]
         if "bits/libc-header-start.h" in probe.stderr:
             pytest.skip("needs a 32-bit C library (gcc-multilib); " + reason)
+        # (a guest's C library headers, which its build generates: bits/alltypes.h)
+        if "alltypes.h" in probe.stderr or "syscall.h" in probe.stderr:
+            unavailable("needs a built guest (its generated C library headers); " + reason)
         pytest.fail(reason)
     return flag_sets
 
@@ -550,11 +579,14 @@ def test_normal_build_has_no_profiling_symbols():
         folder = ROOT / (os.environ.get("HALO_PROFILE_OBJECTS") or "build/windows/obj")
         objects = sorted(str(path) for path in folder.rglob("*.o"))
     else:
-        objects = [str(ROOT / "build/linux/halo")] if (ROOT / "build/linux/halo").is_file() else []
+        # (the guest image: the game and the platform layer)
+        image = ROOT / native_build() / "halo_guest.elf"
+        objects = [str(image)] if image.is_file() else []
     if not nm:
         unavailable("needs nm")
     if not objects:
-        unavailable("needs a built normal build (build/windows/obj/**/*.o, build/linux/halo, or the objects in HALO_PROFILE_OBJECTS)")
+        unavailable("needs a built normal build (build/windows/obj/**/*.o, a guest build's halo_guest.elf, or the "
+                    "objects in HALO_PROFILE_OBJECTS)")
     found, words, defined = set(), set(), 0
     for start in range(0, len(objects), 200):
         listing = subprocess.run([nm, "--defined-only", *objects[start:start + 200]], capture_output=True, text=True)

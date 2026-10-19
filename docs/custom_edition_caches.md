@@ -411,9 +411,11 @@ cache, and the models and each structure BSP (checked as it loads, as an
 Xbox map's) given compressed vertices and buffers. The script function
 allowlist (`hs.c`) applies to Custom Edition maps as to every map.
 
-`build/linux/map_validate` runs the loader, the conversion of bytes and the
-validator on maps outside the game, with the resource maps beside each map
-or in `--maps`; `--fuzz` changes words of a map's file at random.
+`build/map_validate/map_validate` (built by `python tools/x86_game_abi.py`,
+a test tool in the game's 32-bit x86 ABI, on 64-bit x86 Linux with
+`gcc-multilib`) runs the loader, the conversion of bytes and the validator
+on maps outside the game, with the resource maps beside each map or in
+`--maps`; `--fuzz` changes words of a map's file at random.
 
 ## Tested
 
