@@ -47,6 +47,7 @@ slot, registered by the subsystem that owns it (sim_substep_register). A
 new slot goes where its work must run relative to the others' */
 enum sim_substep_slot
 {
+	_sim_substep_objects, /* the lanes': lifts' riders carried (objects.c) */
 	_sim_substep_player_control, /* the players' input and aim */
 	_sim_substep_units, /* the players' units: aim, throws */
 	_sim_substep_bipeds, /* the players' bipeds' movement */
