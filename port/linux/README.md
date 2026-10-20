@@ -721,7 +721,9 @@ Each frame shows the world between the last two ticks
   a Pelican) moves with the object as it is drawn.
 
 Thus the frames are one tick (33 ms) after the calculation. The calculation
-does not change.
+does not change. At `game.sim_rate` 60 and 120, the player's movement,
+projectiles and thrown items are drawn on the path of their sub-steps, not
+on the line between two ticks (refer to "Simulation rate").
 
 Other things the game moves once a tick are drawn between ticks as well:
 
@@ -4465,6 +4467,21 @@ mode's throws and grabs move in smaller steps.
   slots run in a fixed order each sub-step. The frames between the ticks
   can draw a sub-stepped object between its sub-steps' poses
   (`sim_substep_blend`). At 30, that is the tick's own fraction.
+- The frames draw the micro lane on its sub-steps' path
+  (`game/render_interpolation.c`, the last slot). After each sub-step the
+  place of each object of the micro lane is kept, for the tick that the
+  frames draw and the next tick, whose sub-steps run meanwhile. A frame in
+  sub-step j of the drawn tick draws the object between its places after
+  sub-step j - 1 (or the end of the tick before) and sub-step j. The pose,
+  its rotations and what the object carries mix between the ticks as
+  before, moved with the object. The first-person view on foot, and the
+  first-person weapon with it, move in the same way. The frames are still
+  one tick after the calculation. The tables are the frames' only: the
+  simulation never reads them. A projectile's first two ticks (its head
+  start and hold) and the VR mode's grenade let go of in a sub-step are
+  drawn between the ticks, as before. The grenade stays where the hand let
+  it go until the frames reach the tick of its release. At 30 nothing is
+  kept.
 - The profiling build times the fast phase as `game_tick.substeps`.
 - The determinism check writes the rate (`rate 30`) before the first tick.
   `tools/determinism_compare.py` compares two logs of different rates
