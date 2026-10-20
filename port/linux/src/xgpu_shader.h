@@ -251,6 +251,27 @@ struct xgpu_pixel_program
 	unsigned char source_blend;
 };
 
+/* the texture stage that replaces the fragment's depth, DOT_ZW (the game's
+z-sprites: a bullet impact's puff), with the previous stage's dot product
+over its own (the previous stage a dot product), in the 24-bit depth buffer's units: the depth of a point up to
+the sprite's radius nearer than its card, shaped by its second map, so that
+the surface it stands on does not cut it in half; 0 if none. The emitters
+write min(that, the card's depth), a conservative depth (only ever nearer),
+or, in the VR mode's soft effects, fade the effect from it (xgpu_spirv.h). */
+#define XGPU_REPLACED_DEPTH_UNITS 16777215.0f
+static __inline int xgpu_pixel_program_depth_stage(const struct xgpu_pixel_program *program)
+{
+	int stage;
+
+	/* (after a dot product stage: the hardware's is the last stage's) */
+	for (stage = 2; stage < 4; stage++)
+	{
+		if (program->stages[stage].mode == XGPU_TEXTURE_DOT_ZW && program->stages[stage - 1].mode == XGPU_TEXTURE_DOT_PRODUCT)
+			return stage;
+	}
+	return 0;
+}
+
 struct nv2a_pixel_shader_key;
 
 /* decodes a pixel shader key (xgpu.h): the combiner render states, texture

@@ -430,6 +430,42 @@ static void effect_programs(void)
 			}
 		}
 	}
+	/* a z-sprite (xgpu_shader.h, xgpu_pixel_program_depth_stage: the game's
+	effect program with its second map's puff, stages 2 and 3 its dot
+	products of it): its depth written, flat and in both eyes, or as an
+	effect, soft (and thick, which a z-sprite draws as soft) with each fade */
+	synthetic_base(&program);
+	synthetic_stage(&program, 0, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+	synthetic_stage(&program, 1, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+	synthetic_stage(&program, 2, XGPU_TEXTURE_DOT_PRODUCT, _xgpu_sampler_none);
+	synthetic_stage(&program, 3, XGPU_TEXTURE_DOT_ZW, _xgpu_sampler_none);
+	program.stages[2].input = program.stages[3].input = 1;
+	for (second = 0; second < 2; second++)
+	{
+		program.multiview = second ? XGPU_MULTIVIEW_EYES : XGPU_MULTIVIEW_NONE;
+		memset(&options, 0, sizeof(options));
+		options.multiview = program.multiview;
+		snprintf(name, sizeof(name), "zsprite-depth-view%d", second);
+		made = xgpu_spirv_pixel_shader(&program, &options, &module);
+		emit(name, "a z-sprite's depth", made, &module);
+	}
+	for (effect = XGPU_SPIRV_EFFECT_SOFT; effect <= XGPU_SPIRV_EFFECT_THICK; effect++)
+	{
+		for (fade = XGPU_SPIRV_FADE_NONE; fade <= XGPU_SPIRV_FADE_TO_GREY; fade++)
+		{
+			for (foveated = 0; foveated < 2; foveated++)
+			{
+				memset(&options, 0, sizeof(options));
+				options.multiview = XGPU_MULTIVIEW_EYES;
+				options.foveated = foveated;
+				options.effect = effect;
+				options.effect_fade = fade;
+				snprintf(name, sizeof(name), "zsprite-effect-%s-fade%d-fovea%d", effects[effect], fade, foveated);
+				made = xgpu_spirv_pixel_shader(&program, &options, &module);
+				emit(name, "a z-sprite as the VR mode's effects", made, &module);
+			}
+		}
+	}
 	for (foveated = 0; foveated < 2; foveated++)
 	{
 		memset(&options, 0, sizeof(options));

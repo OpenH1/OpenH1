@@ -149,6 +149,9 @@ struct stream_pipeline
 	/* its pixel shader is a VR effect's (XGPU_SPIRV_EFFECT_*: it samples
 	the scene's depth and the bitmap's thickness) */
 	uint8_t effect;
+	/* and a z-sprite's (xgpu_shader.h, xgpu_pixel_program_depth_stage),
+	which tests the depth itself, by its fade: xgpu_spirv.c */
+	uint8_t effect_tests_depth;
 };
 
 struct program_entry
@@ -1141,10 +1144,11 @@ static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_str
 	free(program);
 	pixel_program_convert(&definition->pixel_program, &pixel);
 	/* (a VR effect's, where its program leaves the effects' textures free) */
-	entry->effect = 0;
+	entry->effect = entry->effect_tests_depth = 0;
 	if (key->pixel.vr_effect && key->pixel.vr_effect <= XGPU_SPIRV_EFFECT_THICK && xgpu_spirv_effect_possible(&pixel))
 	{
 		entry->effect = key->pixel.vr_effect;
+		entry->effect_tests_depth = xgpu_pixel_program_depth_stage(&pixel) != 0;
 		options.effect = key->pixel.vr_effect;
 		options.effect_fade = effect_fade(key);
 	}
@@ -1214,6 +1218,11 @@ static int stream_pipeline(void *context, uint32_t id, const struct xgpu_stream_
 	pipeline->depth_test = key->depth_test;
 	pipeline->depth_function = key->depth_function;
 	pipeline->depth_write = key->depth_write;
+	/* (a VR z-sprite's puff is nearer than its card, which the scene's
+	depth would cut where it stands on a floor: its shader tests the depth
+	it computes against the scene's, sampled, and writes none) */
+	if (entry->effect_tests_depth)
+		pipeline->depth_test = pipeline->depth_write = 0;
 	pipeline->stencil_test = key->stencil_test;
 	pipeline->stencil_function = key->stencil_function;
 	pipeline->stencil_fail = key->stencil_fail;
@@ -1843,7 +1852,8 @@ static void draw_input(const struct draw_input *input)
 	{
 		const struct xgpu_stream_pipeline_key *key = &stream.definition->key;
 
-		draw.writes_depth = (key->depth_test && key->depth_write) || (key->stencil_test && key->stencil_write_mask &&
+		draw.writes_depth = (key->depth_test && key->depth_write && !entry->effect_tests_depth) ||
+			(key->stencil_test && key->stencil_write_mask &&
 			(key->stencil_fail != XGPU_STENCIL_KEEP || key->stencil_depth_fail != XGPU_STENCIL_KEEP ||
 			key->stencil_pass != XGPU_STENCIL_KEEP));
 	}

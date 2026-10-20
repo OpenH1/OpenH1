@@ -214,8 +214,18 @@ draws them as before. As drawn:
 - The game marks each effect's draws (the pixel key's `vr_effect`,
   `halo_vr_effect_depth` in `d3d8_device.c`): soft, or soft and thick where
   its build's largest sprite is at least 2 degrees wide on the screen
-  (`render_sprite.c`); not the first-person weapon's, one drawn without
-  depth, nor one with the game's own soft z-sprite. Sprites facing the
+  (`render_sprite.c`); not the first-person weapon's, nor one drawn
+  without depth. A z-sprite (a bullet impact's puff: its pixel shader's
+  DOT_ZW stage computes the depth of a rounded puff up to the sprite's
+  radius nearer than its card) is soft, not thick, and its fade is measured
+  from the puff's own depth (no farther than the card), not the card's
+  (`effect_zsprite_fade`). That fade is its depth test: its pipeline tests
+  and writes no depth (the floor would cut the card in half), and a pixel
+  whose puff is behind the scene is discarded, so no shader writes depth on
+  the Adreno (which can turn off its hierarchical depth for the rest of the
+  pass). Flat, and outside the effects, a z-sprite's shader writes that
+  depth instead (conservatively: SPIR-V's `DepthLess`, MSL's
+  `[[depth(less)]]`, GLSL's `depth_less`). Sprites facing the
   viewer face the head's centre and stay upright in the world; the game
   draws the 3D view once, from the head's centre, so both eyes see the same
   card.

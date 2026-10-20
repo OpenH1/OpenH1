@@ -1953,8 +1953,13 @@ void rasterizer_transparent_geometry_group_draw(
 									scene's depth, and thick where its sprites are
 									large (halo_vr_effect_depth); not the
 									first-person weapon's (its own depth range), nor
-									one drawn without depth or with the game's own
-									soft z-sprite */
+									one drawn without depth. A z-sprite (a bullet
+									impact's puff) soft, not thick: its fade is
+									measured from the puff's own depth, which its
+									DOT_ZW stage computes, and is its depth test
+									(xgpu_spirv.c, effect_zsprite_fade), so the
+									floor it stands on does not cut it in half,
+									with no depth written */
 									extern void halo_vr_effect_depth(int mode);
 									extern boolean vr_render_eye_pass(void);
 									boolean zsprite = rasterizer_debug_options.zsprite_enabled &&
@@ -1962,10 +1967,10 @@ void rasterizer_transparent_geometry_group_draw(
 											_shader_effect_secondary_map_anchor_zsprite &&
 										shader_effect->secondary_map.index != NONE;
 
-									halo_vr_effect_depth(!vr_render_eye_pass() || zsprite ||
+									halo_vr_effect_depth(!vr_render_eye_pass() ||
 										TEST_FLAG(group->geometry_flags, _rasterizer_geometry_first_person_bit) ||
 										TEST_FLAG(group->geometry_flags, _rasterizer_geometry_no_zbuffer_bit) ? 0 :
-										TEST_FLAG(group->geometry_flags, _rasterizer_geometry_vr_thick_bit) ? 2 : 1);
+										!zsprite && TEST_FLAG(group->geometry_flags, _rasterizer_geometry_vr_thick_bit) ? 2 : 1);
 								}
 #endif
 

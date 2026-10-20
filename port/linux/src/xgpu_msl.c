@@ -660,6 +660,14 @@ static void pixel_usage(const struct xgpu_pixel_program *program, struct pixel_u
 	/* the features that read texture 0 after the stages */
 	if (program->coverage_alpha || program->dynamic_lights == XGPU_DYNAMIC_LIGHTS_ENVIRONMENT)
 		usage->registers |= 1UL << XGPU_REGISTER_T0;
+	/* a z-sprite's depth (xgpu_shader.h) reads its stage's dot product and
+	the one before */
+	if (xgpu_pixel_program_depth_stage(program))
+	{
+		int depth_stage = xgpu_pixel_program_depth_stage(program);
+
+		usage->dots[depth_stage] = usage->dots[depth_stage - 1] = 1;
+	}
 	/* the stages read earlier stages' texels and dot products; a stage that
 	discards by its texel reads it */
 	for (stage = 3; stage >= 0; stage--)
@@ -1056,6 +1064,12 @@ static void texture_stage(struct xgpu_text *text, const struct xgpu_pixel_progra
 			dot_input(text, decoded);
 			xgpu_text_append(text, ");\n");
 		}
+		/* the depth it replaces the fragment's with (xgpu_glsl.c) */
+		if (mode == XGPU_TEXTURE_DOT_ZW && stage == xgpu_pixel_program_depth_stage(program))
+		{
+			xgpu_text_append(text, "\treplaced_depth = dot%d > 0.0 ? saturate(dot%d / dot%d / %.1f) : 1.0;\n",
+				stage, stage - 1, stage, (double)XGPU_REPLACED_DEPTH_UNITS);
+		}
 		break;
 	case XGPU_TEXTURE_DOT_ST:
 		if (dot)
@@ -1316,6 +1330,9 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	struct xgpu_text functions = { 0 };
 	unsigned long functions_at;
 	const char *comparison = program->alpha_test ? comparison_operator(program->alpha_test) : "";
+	/* a z-sprite (xgpu_shader.h): its depth, only ever nearer than its
+	card's (depth(less): the depth test before the shader keeps what it can) */
+	BOOL replaces_depth = xgpu_pixel_program_depth_stage(program) != 0;
 	int stage;
 
 	pixel_usage(program, &usage);
@@ -1334,6 +1351,8 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 		"\tfloat4 xT2 [[user(xT2)]];\n"
 		"\tfloat4 xT3 [[user(xT3)]];\n"
 		"\tfloat xFog [[user(xFog)]];\n");
+	if (replaces_depth)
+		xgpu_text_append(&text, "\tfloat4 frag_position [[position]];\n");
 	if (program->per_pixel_lighting || environment)
 		xgpu_text_append(&text, "\tfloat4 xWorldNormal [[user(xWorldNormal)]];\n");
 	if (world_position)
@@ -1343,6 +1362,8 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	xgpu_text_append(&text, "};\nstruct xgpu_fragment_out\n{\n\tfloat4 color [[color(0)]];\n");
 	if (sample_mask)
 		xgpu_text_append(&text, "\tuint sample_mask [[sample_mask]];\n");
+	if (replaces_depth)
+		xgpu_text_append(&text, "\tfloat depth [[depth(less)]];\n");
 	xgpu_text_append(&text, "};\n");
 	/* (the functions the shader calls: put in before it at the end) */
 	if (program->dynamic_lights)
@@ -1385,6 +1406,8 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 		if (usage.dots[stage])
 			xgpu_text_append(&text, "\tfloat dot%d = 0.0;\n", stage);
 	}
+	if (replaces_depth)
+		xgpu_text_append(&text, "\tfloat replaced_depth = 1.0;\n");
 	if (register_read(&usage, XGPU_REGISTER_V0) && program->per_pixel_lighting &&
 		program->dynamic_lights == XGPU_DYNAMIC_LIGHTS_MODEL)
 	{
@@ -1516,6 +1539,9 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 		xgpu_text_append(&text, "\tresult = in.xD0.a > 0.0 ? float4(in.xD0.rgb, 1.0) : float4(1.0, 0.0, 1.0, 1.0);\n");
 	if (count_samples)
 		xgpu_text_append(&text, "\tatomic_fetch_add_explicit(visible_samples, 1u, memory_order_relaxed);\n");
+	/* (no farther than the card: depth(less)'s promise) */
+	if (replaces_depth)
+		xgpu_text_append(&text, "\toutput.depth = min(replaced_depth, in.frag_position.z);\n");
 	if (program->source_blend)
 	{
 		static const char *const factors[] =

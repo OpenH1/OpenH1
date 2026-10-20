@@ -44,11 +44,13 @@ def test_effect_shaders(tmp_path):
     corpus = tmp_path / "corpus"
     subprocess.run([str(build / "spirv_corpus"), str(captures), str(corpus)], check=True, capture_output=True)
     rows = [line.split("\t") for line in (corpus / "index.txt").read_text().splitlines()
-            if line.startswith(("effect-", "glow-"))]
+            if line.startswith(("effect-", "glow-", "zsprite-"))]
     # soft and thick, one map and two, each fade, flat and foveated; the
-    # glows' two shaders flat and foveated
+    # glows' two shaders flat and foveated; a z-sprite's depth flat and in
+    # both eyes, and as an effect soft and thick, each fade, flat and foveated
     assert len([row for row in rows if row[0].startswith("effect-")]) == 2 * 2 * 6 * 2
     assert len([row for row in rows if row[0].startswith("glow-")]) == 4
+    assert len([row for row in rows if row[0].startswith("zsprite-")]) == 2 + 2 * 6 * 2
     files = sorted({row[1] for row in rows})
     assert all((corpus / f"{name}.spv").stat().st_size > 0 for name in files)
     validator = shutil.which("spirv-val")

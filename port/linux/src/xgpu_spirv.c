@@ -76,6 +76,7 @@ enum
 enum
 {
 	BUILT_IN_POSITION = 0, BUILT_IN_POINT_SIZE = 1, BUILT_IN_FRAG_COORD = 15, BUILT_IN_SAMPLE_MASK = 20,
+	BUILT_IN_FRAG_DEPTH = 22,
 	BUILT_IN_VIEW_INDEX = 4440,
 };
 
@@ -89,7 +90,8 @@ enum
 {
 	CAPABILITY_SHADER = 1, CAPABILITY_IMAGE_QUERY = 50, CAPABILITY_MULTIVIEW = 4439,
 	EXECUTION_MODEL_VERTEX = 0, EXECUTION_MODEL_FRAGMENT = 4,
-	EXECUTION_MODE_ORIGIN_UPPER_LEFT = 7, EXECUTION_MODE_EARLY_FRAGMENT_TESTS = 9,
+	EXECUTION_MODE_ORIGIN_UPPER_LEFT = 7, EXECUTION_MODE_EARLY_FRAGMENT_TESTS = 9, EXECUTION_MODE_DEPTH_REPLACING = 12,
+	EXECUTION_MODE_DEPTH_LESS = 15,
 	DIM_2D = 1, DIM_3D = 2, DIM_CUBE = 3,
 	IMAGE_OPERANDS_LOD = 2,
 	SCOPE_DEVICE = 1,
@@ -1743,6 +1745,12 @@ struct pixel_state
 	and the sprite's thickness, and texture 0's parallax (a vec2 added to its
 	coordinates; 0 none) */
 	unsigned int frag_coord, effect_depth, effect_thickness, t0_offset;
+	/* a z-sprite's depth (xgpu_shader.h, xgpu_pixel_program_depth_stage:
+	a float, the window's depth; 0 none), and for its fade as an effect the
+	prelude's unprojection of the pixel without its depth and of a depth
+	unit, the eye, the scene's distance and the fade's span */
+	unsigned int replaced_depth;
+	unsigned int effect_base, effect_column2, effect_eye, effect_to_scene, effect_span;
 };
 
 static unsigned int pixel_input(struct module *m, struct pixel_state *state, unsigned int variable_id, unsigned int type)
@@ -2023,6 +2031,16 @@ static void texture_stage(struct module *m, struct pixel_state *state, int stage
 	case XGPU_TEXTURE_DOT_ZW:
 		state->dots[stage] = fdot(m, xyz(m, xt), dot_input(m, state, decoded));
 		state->t[stage] = state->zero4;
+		/* the depth a DOT_ZW stage replaces the fragment's with: the previous
+		dot product over its own, in the depth buffer's units; the far plane
+		for a divisor that is not positive (xgpu_glsl.c) */
+		if (mode == XGPU_TEXTURE_DOT_ZW && stage == xgpu_pixel_program_depth_stage(program))
+		{
+			state->replaced_depth = op3(m, OP_SELECT, m->t_float,
+				compare(m, OP_F_ORD_GREATER_THAN, state->dots[stage], zero),
+				saturate(m, 1, fdiv(m, 1, fdiv(m, 1, state->dots[stage - 1], state->dots[stage]),
+					constant_float(m, XGPU_REPLACED_DEPTH_UNITS))), one);
+		}
 		break;
 	case XGPU_TEXTURE_DOT_ST:
 		state->dots[stage] = fdot(m, xyz(m, xt), dot_input(m, state, decoded));
@@ -2685,7 +2703,8 @@ return clamp((to_scene - front) / span, 0.0, 1.0); */
 static unsigned int effect_prelude(struct module *m, struct pixel_state *state)
 {
 	const struct xgpu_spirv_options *options = state->options;
-	BOOL thick = options->effect == XGPU_SPIRV_EFFECT_THICK;
+	/* (a z-sprite's front is its own depth: effect_zsprite_fade) */
+	BOOL thick = options->effect == XGPU_SPIRV_EFFECT_THICK && !xgpu_pixel_program_depth_stage(state->program);
 	unsigned int view = view_number(m, XGPU_MULTIVIEW_EYES, options->foveated);
 	unsigned int frag = load(m, m->t_v4, state->frag_coord), columns[4], first_column, base, p, depth, behind;
 	unsigned int eye, to_scene, far, to_pixel, offset_to_pixel, ray, xt, w, uv, scaled, thick_texel, texels;
@@ -2783,7 +2802,35 @@ static unsigned int effect_prelude(struct module *m, struct pixel_state *state)
 		front = fsub(m, 1, to_pixel, along);
 		span = ext2(m, GLSL_F_MAX, m->t_float, fmul(m, 1, along, constant_float(m, 2.0f)), span);
 	}
+	state->effect_base = base;
+	state->effect_column2 = columns[2];
+	state->effect_eye = eye;
+	state->effect_to_scene = to_scene;
+	state->effect_span = span;
 	return saturate(m, 1, fdiv(m, 1, fsub(m, 1, to_scene, front), span));
+}
+
+/* a z-sprite's fade as an effect, after its stages: measured from the puff's
+front, the depth its DOT_ZW stage computes (no farther than its card), not
+from the card; its distance along the eye's ray from the prelude's
+unprojection. Its pipeline tests no depth (xgpu_vulkan_stream.c), as the
+puff is nearer than the card the scene's depth would cut: the fade is its
+test, against the scene's depth sampled, so where the front is behind the
+scene it is discarded (effect_zsprite_hidden), whatever the blend's fade.
+As GLSL:
+
+float front_depth = min(replaced_depth, gl_FragCoord.z);
+float front = length(point(base + unproject[view][2] * front_depth) - eye[view]);
+fade = clamp((to_scene - front) / span, 0.0, 1.0);    hidden = front >= to_scene */
+static unsigned int effect_zsprite_fade(struct module *m, struct pixel_state *state, unsigned int *hidden)
+{
+	unsigned int frag = load(m, m->t_v4, state->frag_coord);
+	unsigned int front_depth = ext2(m, GLSL_F_MIN, m->t_float, state->replaced_depth, extract(m, frag, 2));
+	unsigned int front = ext1(m, GLSL_LENGTH, m->t_float, fsub(m, 3, effect_point(m, fadd(m, 4, state->effect_base,
+		fscale(m, 4, state->effect_column2, front_depth))), state->effect_eye));
+
+	*hidden = compare(m, OP_F_ORD_GREATER_THAN_EQUAL, front, state->effect_to_scene);
+	return saturate(m, 1, fdiv(m, 1, fsub(m, 1, state->effect_to_scene, front), state->effect_span));
 }
 
 /* the effect's fade drawn as its blend's nothing (XGPU_SPIRV_FADE_*) */
@@ -2829,6 +2876,10 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		program->alpha_test != D3DCMP_NOTEQUAL;
 	unsigned int main_id, color_out, sample_mask_out = 0, result, dynamic_light_bump = 0, effect_fade_value = 0;
 	BOOL effect = options->effect != XGPU_SPIRV_EFFECT_NONE && xgpu_spirv_effect_possible(program);
+	/* a z-sprite (xgpu_shader.h): its depth written, conservatively (only
+	ever nearer than the card), or as a VR effect its fade measured from it */
+	BOOL replaces_depth = xgpu_pixel_program_depth_stage(program) != 0;
+	unsigned int frag_depth_out = 0, zsprite_hidden = 0;
 	int stage;
 
 	memset(&state, 0, sizeof(state));
@@ -2853,6 +2904,13 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 	}
 	if (effect)
 		effect_declare(&m, &state);
+	else if (replaces_depth)
+	{
+		state.frag_coord = variable(&m, m.t_v4, STORAGE_INPUT, "gl_FragCoord");
+		decorate1(&m, state.frag_coord, DECORATION_BUILT_IN, BUILT_IN_FRAG_COORD);
+		frag_depth_out = variable(&m, m.t_float, STORAGE_OUTPUT, "gl_FragDepth");
+		decorate1(&m, frag_depth_out, DECORATION_BUILT_IN, BUILT_IN_FRAG_DEPTH);
+	}
 	if (count_samples)
 	{
 		unsigned int array = type1(&m, OP_TYPE_RUNTIME_ARRAY, m.t_uint), block;
@@ -2927,6 +2985,8 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		effect_fade_value = effect_prelude(&m, &state);
 	for (stage = 0; stage < 4; stage++)
 		texture_stage(&m, &state, stage);
+	if (effect && replaces_depth && state.replaced_depth)
+		effect_fade_value = effect_zsprite_fade(&m, &state, &zsprite_hidden);
 	/* (the bump map's texel, which the combiners may overwrite: the enhanced
 	dynamic lights read it after them) */
 	if (environment)
@@ -3078,7 +3138,25 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		}
 		result = fmul(&m, 4, result, factor);
 	}
+	/* a z-sprite's puff behind the scene (as an effect, tested by its fade:
+	effect_zsprite_fade) */
+	if (zsprite_hidden)
+		discard_if(&m, zsprite_hidden);
 	store(&m, color_out, result);
+	/* else its depth, no farther than the card: the conservative depth's
+	promise, so that the depth test before the shader keeps what it can */
+	if (frag_depth_out && state.replaced_depth)
+	{
+		unsigned int operands[2];
+
+		store(&m, frag_depth_out, ext2(&m, GLSL_F_MIN, m.t_float, state.replaced_depth,
+			extract(&m, load(&m, m.t_v4, state.frag_coord), 2)));
+		operands[0] = main_id;
+		operands[1] = EXECUTION_MODE_DEPTH_REPLACING;
+		instruction(&m, SECTION_EXECUTION_MODES, OP_EXECUTION_MODE, 2, operands);
+		operands[1] = EXECUTION_MODE_DEPTH_LESS;
+		instruction(&m, SECTION_EXECUTION_MODES, OP_EXECUTION_MODE, 2, operands);
+	}
 	if (count_samples)
 	{
 		unsigned int operands[2];
