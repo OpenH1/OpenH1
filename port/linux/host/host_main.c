@@ -97,6 +97,27 @@ static int environment_passes(const char *entry)
 	return 0;
 }
 
+/* HALO_GUEST_IMAGE (tests): another guest image, run in place of the game's,
+linked as the game's is: StageKit's map writer (tools/stagekit), whose tags
+are laid out at the game's 32-bit addresses, so it runs as a guest wherever
+the game does */
+static void load_other_image(const char *path)
+{
+	FILE *file = fopen(path, "rb");
+	unsigned char *image;
+	long size;
+
+	if (!file || fseek(file, 0, SEEK_END) != 0 || (size = ftell(file)) <= 0 || fseek(file, 0, SEEK_SET) != 0)
+		host_fatal("cannot read the guest image %s", path);
+	image = malloc((size_t)size);
+	if (!image || fread(image, 1, (size_t)size, file) != (size_t)size)
+		host_fatal("cannot read the guest image %s", path);
+	fclose(file);
+	if (host_load_image(image, (size_t)size) != 0)
+		host_fatal("cannot load the guest image %s", path);
+	free(image);
+}
+
 /* ---------- main */
 
 #define MAIN_STACK_SIZE (16 * 1024 * 1024)
@@ -121,7 +142,9 @@ static void *game_main(void *unused)
 	host_time_zone(zone, sizeof(zone));
 	host_environment_set(&environment, "TZ", zone);
 
-	if (host_load_image(halo_guest_image_start, (size_t)(halo_guest_image_end - halo_guest_image_start)) != 0)
+	if (getenv("HALO_GUEST_IMAGE") && *getenv("HALO_GUEST_IMAGE"))
+		load_other_image(getenv("HALO_GUEST_IMAGE"));
+	else if (host_load_image(halo_guest_image_start, (size_t)(halo_guest_image_end - halo_guest_image_start)) != 0)
 		host_fatal("cannot load the game image");
 #ifdef __APPLE__
 	{

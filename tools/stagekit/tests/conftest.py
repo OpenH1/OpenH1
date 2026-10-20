@@ -4,8 +4,6 @@ arguments."""
 
 import concurrent.futures
 import importlib
-import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -34,10 +32,18 @@ def pytest_runtest_makereport(item, call):
 
 @pytest.fixture(scope="session")
 def stagekit(tmp_path_factory):
-    if not shutil.which(os.environ.get("CC", "clang")) or not shutil.which("ninja") or not (runner.ROOT / "build.ninja").is_file() or \
-            not (runner.BUILD / "map_validate").is_file():
-        pytest.skip("needs clang, ninja and ninja linux's build (build/linux/map_validate)")
+    reason = runner.can_build()
+    if reason:
+        pytest.skip(reason)
     return runner.build(tmp_path_factory.mktemp("stagekit"))
+
+
+@pytest.fixture(scope="session")
+def map_validator(tmp_path_factory):
+    validator = runner.map_validator(tmp_path_factory.mktemp("map_validate"))
+    if not validator:
+        pytest.skip("map_validate builds only on 64-bit x86 Linux with the C library's 32-bit files")
+    return validator
 
 
 def sessions(stagekit, tmp_path_factory, setting, play, copies=1):
@@ -52,8 +58,6 @@ def sessions(stagekit, tmp_path_factory, setting, play, copies=1):
 
     def session(scenario, copy=0):
         if not played:
-            if not runner.GAME.is_file():
-                pytest.skip("needs the game (dist/halo-linux-release)")
             modules = {name: importlib.import_module(f"test_{name}") for name in runner.SCENARIOS}
             runs = [(name, copy, getattr(modules[name], setting)) for name in runner.SCENARIOS
                     if hasattr(modules[name], setting) for copy in range(copies)]

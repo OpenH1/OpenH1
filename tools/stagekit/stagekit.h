@@ -20,6 +20,8 @@ scenarios place (props.c), and a scenario itself (scenarios/).
 #include "devices/device_machines.h"
 #include "game/game_globals.h"
 #include "interface/weapon_hud_interface_definition.h"
+#include "items/projectile_definitions.h"
+#include "items/weapon_definitions.h"
 #include "models/model_animation_definitions.h"
 #include "models/model_definitions.h"
 #include "physics/collision_bsp_definitions.h"
@@ -57,6 +59,21 @@ scenarios place (props.c), and a scenario itself (scenarios/).
 struct stage
 {
 	struct scenario *scenario;
+	struct structure_bsp *bsp;
+};
+
+/* a projectile's flight: its speed (world units a second), the engine's
+gravity's scale, and its fuse in seconds (0: it goes off where it strikes);
+with a fuse, on a surface of a material (stage_chamber_material) it bounces:
+it keeps bounce of its speed into the surface and loses friction of its
+speed along it, at each strike */
+struct projectile_shape
+{
+	real speed;
+	real gravity_scale;
+	real fuse;
+	real bounce;
+	real friction;
 };
 
 struct stagekit_scenario
@@ -104,6 +121,10 @@ void box_build(struct collision_bsp *collision, void *(*block_new)(struct tag_bl
 no scripts and a player start, with scenario's content in between */
 void stage_build(struct stage *stage, struct stagekit_scenario const *scenario);
 
+/* the chamber's walls, floor and ceiling of a material type (game_globals.h),
+which projectiles respond to as their material responses say; none without */
+void stage_chamber_material(struct stage *stage, short material_type);
+
 /* ---------- prototypes/PROPS.C */
 
 /* a player start at position (on what stands there), facing along x */
@@ -121,5 +142,23 @@ when its position is set to 1 (device_set_position <name> 1) and comes down
 when set to 0, as the game's lifts do; elevator: what stands on it rides it */
 void prop_elevator(struct stage *stage, char const *name, real_rectangle3d const *platform,
 	real_point3d const *position, real rise, real seconds);
+
+/* a projectile of the shape, which draws nothing */
+long prop_projectile(char const *name, struct projectile_shape const *shape);
+
+/* a weapon of one trigger that fires the projectile rate_of_fire times a
+second while it is held, from no magazine (it never runs out) */
+long prop_weapon(char const *name, long projectile_handle, real rate_of_fire);
+
+/* the players start with the weapon in their hands (the scenario's first
+starting profile) */
+void player_loadout(struct stage *stage, long weapon_handle);
+
+/* ---------- prototypes/MAIN.C */
+
+/* a value of the scenario's, as the command line set it (stagekit <scenario>
+<map file> <name>=<value>,...: the scorecard's hidden scenarios vary them),
+else value */
+real stage_parameter(char const *name, real value);
 
 #endif // __STAGEKIT_H

@@ -6,9 +6,12 @@ every player each second, and tests check what happened.
 
     python -m pytest -q tools/stagekit/tests
 
-The tests build `stagekit` with `clang` (or `CC`) and the flags `ninja linux` gives the game's sources, so they need
-its build (and `build/linux/map_validate`); playing needs the game (`dist/halo-linux-release/halo`, or the
-executable `HALO_GAME` names).
+The tests build the generator as a guest image of the game's own host, with the flags and link a guest build gives
+the game (`ninja linux_x86_64`, `ninja linux_arm64` or `ninja macos`: this computer's, or `HALO_STAGEKIT_BUILD`'s),
+and the host runs it in place of the game (`HALO_GUEST_IMAGE`, its arguments in `HALO_STAGEKIT`). So it runs
+wherever the game does, natively; playing needs that build's game (`build/<build>/halo`, or the executable
+`HALO_GAME` names). The maps' validation (`map_validate`, `tools/x86_game_abi.py`) builds only on 64-bit x86 Linux
+with the C library's 32-bit files, and skips elsewhere.
 
 ## The stage
 
@@ -17,8 +20,8 @@ executable `HALO_GAME` names).
   map needs no correction.
 - `stage.c`: what every map has: the chamber (a floor in a box 1000 by 1000 by 100), the globals and interface, the
   players' biped, no scripts, a player start unless the scenario places its own.
-- `props.c`: what scenarios place (an obstacle, an elevator, the players' starts), each a function, any number of
-  each.
+- `props.c`: what scenarios place (an obstacle, an elevator, the players' starts; a weapon, its projectile and the
+  players' loadout), each a function, any number of each.
 - `collision.c`: a box's collision, hollow (the chamber) or solid (a prop).
 
 ## A scenario
@@ -57,7 +60,12 @@ Fidelity: a scenario stages the engine's logic, not the game's feel. When a fiel
 - A new scenario passes `test_stagekit.py`, so it plays the same tick for tick; what depends on the game's own
   maps and values is checked in the game.
 
+A scenario can ask for values by name (`stage_parameter`: `stagekit <scenario> <map> <name>=<value>,...`), which
+the scorecard's hidden scenarios vary (`tools/scorecard/README.md`); `shoot` and `lob` are the scorecard's weapons.
+
 ## Limits
 
-Linux only: the generator lays its tags out at the game's own (32-bit) addresses, and the runner gives each game its
-own loopback address (127.10.x.y). The game is logged once a game second, players only. Whatever needs the game's own maps is checked in the game.
+The generator lays its tags out at the game's own (32-bit) addresses: a guest image, it runs on the 64-bit Linux
+builds and the Mac's. On Linux the runner gives each game its own loopback address (127.10.x.y); elsewhere they
+share 127.0.0.1. The game is logged once a game second, players only (the scorecard's `debug.trace` logs every
+step). Whatever needs the game's own maps is checked in the game.
