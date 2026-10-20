@@ -165,6 +165,16 @@ static long box_collision_model(
 	return handle;
 }
 
+void prop_biped_body(
+	struct stage *stage)
+{
+	/* (round its capsule, from its feet: stage.c's radius and standing height) */
+	real radius = stage->biped->biped.collision_radius;
+	real_rectangle3d body = { { -radius, radius, -radius, radius, 0.f, stage->biped->biped.collision_height_standing } };
+
+	cache_reference(&stage->biped->object.collision_model, box_collision_model("stagekit\\biped", &body));
+}
+
 /* a scenery box placed, turned (radians) */
 static void obstacle_place(
 	struct stage *stage,

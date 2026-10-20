@@ -1379,6 +1379,19 @@ tick that sub-step ends at, from there to where the tick left it. Kept only
 for the tick (each is stamped with it), outside the game state: nothing of a
 sub-step outlives its tick, and with one sub-step a tick nothing is kept.
 
+An AI's biped moves its sub-steps in its own update (bipeds.c), before the
+fast phase (object_lane_view_substep): it sees what the tick has already
+updated as the fast phase's sub-step of that index does, and what the tick
+updates after it (a lift placed after it, a machine: the bipeds are placed
+first) as that sub-step of the tick before saw it, its last update's pose
+kept, from where that tick began to where it left it. A rider so moves with
+its lift a share each sub-step, a tick behind it as at 30 (where it rides a
+lift updated after it a tick behind), not all of the tick's movement at its
+first sub-step and none at the others. The nodes of the last two updates are
+kept for that (by the update's parity). A lift that carries it by its
+movement (device_machines.c) is seen where it is instead: the carry moves
+it, a share a sub-step where bipeds.c shows it.
+
 (render_interpolation.c keeps every object's last two poses too, but for the
 frames: at display.interpolation's word, of the nodes drawn, taken after the
 tick. The simulation must not change with a display setting.) */
@@ -1395,7 +1408,8 @@ struct object_lane_pose
 	short node_count;
 	/* the sub-step its blend is of (NONE: none yet) */
 	short blended_substep;
-	/* its nodes as the tick began, then their blend (object_lane_poses.nodes) */
+	/* its nodes as the tick began, then their blend (object_lane_poses.nodes
+	of the update's parity) */
 	long first_node;
 	/* where the tick began with it */
 	real_point3d position;
@@ -1409,14 +1423,26 @@ static struct
 {
 	/* by absolute index, made at the first tick with sub-steps */
 	struct object_lane_pose *poses;
-	/* the tick's nodes kept and blended, two of each pose's */
-	real_matrix4x3 *nodes;
-	long node_capacity;
-	long node_count;
-	long nodes_update;
-} object_lane_poses = { NULL, NULL, 0, 0, NONE };
+	/* the nodes kept and blended, two of each pose's, of the last two
+	updates: by the update's parity */
+	real_matrix4x3 *nodes[2];
+	long node_capacity[2];
+	long node_count[2];
+	long nodes_update[2];
+} object_lane_poses = { NULL, { NULL, NULL }, { 0, 0 }, { 0, 0 }, { NONE, NONE } };
 
-/* the pose kept for the object this tick, if any */
+/* the sub-step an AI's biped is moving in its own update (bipeds.c's
+biped_substep_inline: object_lane_view_substep), NONE outside one, and the
+lift that carries it (device_machines.c's machine_carries_rider), which
+carries it by the tick's whole movement in the lift's update, before its
+update or after it: seen where it is, and its shares are bipeds.c's
+(bipeds_replay_substep) */
+static short object_lane_inline_substep = NONE;
+static long object_lane_inline_carrier = NONE;
+
+/* the pose kept for the object this tick, if any; in an AI's biped's
+sub-step in its update, one not updated yet this tick (above) has its pose
+of the tick before, as long as its nodes are kept */
 static struct object_lane_pose *object_lane_pose_get(
 	long object_index)
 {
@@ -1429,9 +1455,26 @@ static struct object_lane_pose *object_lane_pose_get(
 	if (absolute_index < 0 || absolute_index >= MAXIMUM_OBJECTS_PER_MAP)
 		return NULL;
 	pose = &object_lane_poses.poses[absolute_index];
-	if (pose->object_index != object_index || pose->update != object_lane_update_count)
+	if (pose->object_index != object_index)
 		return NULL;
-	return pose;
+	if (object_lane_inline_substep != NONE && sim_substep_index() == NONE)
+	{
+		if (object_index == object_lane_inline_carrier)
+			return NULL;
+		if (pose->update == object_lane_update_count - 1 &&
+			object_lane_poses.nodes_update[pose->update & 1] == pose->update)
+		{
+			return pose;
+		}
+	}
+	return pose->update == object_lane_update_count ? pose : NULL;
+}
+
+/* its nodes kept, then their blend */
+static real_matrix4x3 *object_lane_pose_nodes(
+	struct object_lane_pose const *pose)
+{
+	return object_lane_poses.nodes[pose->update & 1] + pose->first_node;
 }
 
 /* (object_update, as an object's update begins) its pose kept, if the
@@ -1444,6 +1487,7 @@ static void object_lane_pose_keep(
 	struct object_datum *object = object_get(object_index);
 	short node_count = (short)(object->object.node_matrices.size / (short)sizeof(real_matrix4x3));
 	struct object_lane_pose *pose;
+	long buffer;
 
 	if (sim_substep_count() <= 1 || sim_substep_index() != NONE || node_count <= 0 ||
 		!TEST_FLAG(object->object.flags, _object_has_collision_model_bit) ||
@@ -1461,35 +1505,37 @@ static void object_lane_pose_keep(
 		for (index = 0; index < MAXIMUM_OBJECTS_PER_MAP; index++)
 			object_lane_poses.poses[index].object_index = NONE;
 	}
-	if (object_lane_poses.nodes_update != object_lane_update_count)
+	buffer = object_lane_update_count & 1;
+	if (object_lane_poses.nodes_update[buffer] != object_lane_update_count)
 	{
-		object_lane_poses.nodes_update = object_lane_update_count;
-		object_lane_poses.node_count = 0;
+		object_lane_poses.nodes_update[buffer] = object_lane_update_count;
+		object_lane_poses.node_count[buffer] = 0;
 	}
-	if (object_lane_poses.node_count + 2 * node_count > object_lane_poses.node_capacity)
+	if (object_lane_poses.node_count[buffer] + 2 * node_count > object_lane_poses.node_capacity[buffer])
 	{
-		long capacity = MAX(2 * object_lane_poses.node_capacity, object_lane_poses.node_count + 2 * node_count);
-		real_matrix4x3 *nodes = object_lane_poses.nodes ?
-			realloc(object_lane_poses.nodes, capacity * sizeof(real_matrix4x3)) :
+		long capacity = MAX(2 * object_lane_poses.node_capacity[buffer],
+			object_lane_poses.node_count[buffer] + 2 * node_count);
+		real_matrix4x3 *nodes = object_lane_poses.nodes[buffer] ?
+			realloc(object_lane_poses.nodes[buffer], capacity * sizeof(real_matrix4x3)) :
 			malloc(capacity * sizeof(real_matrix4x3));
 
 		if (!nodes)
 			return;
-		object_lane_poses.nodes = nodes;
-		object_lane_poses.node_capacity = capacity;
+		object_lane_poses.nodes[buffer] = nodes;
+		object_lane_poses.node_capacity[buffer] = capacity;
 	}
 	pose = &object_lane_poses.poses[DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index)];
 	pose->object_index = object_index;
 	pose->update = object_lane_update_count;
 	pose->node_count = node_count;
 	pose->blended_substep = NONE;
-	pose->first_node = object_lane_poses.node_count;
+	pose->first_node = object_lane_poses.node_count[buffer];
 	pose->position = object->object.position;
 	pose->bounding_sphere_center = object->object.bounding_sphere_center;
-	memcpy(object_lane_poses.nodes + pose->first_node,
+	memcpy(object_lane_pose_nodes(pose),
 		object_header_block_get(object_index, &object->object.node_matrices),
 		node_count * sizeof(real_matrix4x3));
-	object_lane_poses.node_count += 2 * node_count;
+	object_lane_poses.node_count[buffer] += 2 * node_count;
 }
 
 static real object_lane_lerp(
@@ -1549,6 +1595,31 @@ static void object_lane_node_blend(
 	}
 }
 
+void object_lane_view_substep(
+	long biped_index,
+	short substep_index)
+{
+	long elevator_index = biped_index != NONE ? biped_get(biped_index)->biped.elevator_object_index : NONE;
+
+	object_lane_inline_substep = substep_index;
+	object_lane_inline_carrier = substep_index != NONE && elevator_index != NONE &&
+		machine_carries_rider(elevator_index, biped_index) ? elevator_index : NONE;
+}
+
+/* the sub-step the macro lane is seen from (the fast phase's, or an AI's
+biped's in its update), and how far into the tick it ends */
+static short object_lane_viewed_substep(
+	real *end_fraction)
+{
+	short substep_index = sim_substep_index();
+
+	if (substep_index == NONE)
+		substep_index = object_lane_inline_substep;
+	if (end_fraction && substep_index != NONE)
+		*end_fraction = (real)(substep_index + 1) / (real)sim_substep_count();
+	return substep_index;
+}
+
 /* the object's nodes as a sub-step sees them: blended, or NULL to see them
 where they are (an object of the micro lane, one not moved by the tick, any
 outside the sub-steps or at the tick's end) */
@@ -1556,7 +1627,8 @@ static real_matrix4x3 *object_lane_node_matrices(
 	long object_index)
 {
 	struct object_lane_pose *pose;
-	short substep_index = sim_substep_index();
+	real end_fraction = 1.0f;
+	short substep_index = object_lane_viewed_substep(&end_fraction);
 	real_matrix4x3 const *latest;
 	real_matrix4x3 const *previous;
 	real_matrix4x3 *blended;
@@ -1572,13 +1644,13 @@ static real_matrix4x3 *object_lane_node_matrices(
 	if (object->object.node_matrices.size / (short)sizeof(real_matrix4x3) != pose->node_count)
 		return NULL;
 	latest = (real_matrix4x3 const *)object_header_block_get(object_index, &object->object.node_matrices);
-	previous = object_lane_poses.nodes + pose->first_node;
-	blended = object_lane_poses.nodes + pose->first_node + pose->node_count;
+	previous = object_lane_pose_nodes(pose);
+	blended = object_lane_pose_nodes(pose) + pose->node_count;
 	if (pose->blended_substep != substep_index || memcmp(&pose->blended_from, &latest[0].position, sizeof(real_point3d)))
 	{
 		short node_index;
 
-		t = sim_substep_end_fraction();
+		t = end_fraction;
 		if (distance_squared3d(&previous[0].position, &latest[0].position) <=
 			OBJECT_LANE_SNAP_DISTANCE * OBJECT_LANE_SNAP_DISTANCE)
 		{
@@ -1601,7 +1673,8 @@ void object_get_substep_position(
 	real_point3d *bounding_sphere_center)
 {
 	struct object_datum *object = object_get(object_index);
-	short substep_index = sim_substep_index();
+	real t = 1.0f;
+	short substep_index = object_lane_viewed_substep(&t);
 	struct object_lane_pose *pose = NULL;
 
 	if (substep_index != NONE && substep_index < sim_substep_count() - 1)
@@ -1609,8 +1682,6 @@ void object_get_substep_position(
 	if (pose && distance_squared3d(&pose->position, &object->object.position) <=
 		OBJECT_LANE_SNAP_DISTANCE * OBJECT_LANE_SNAP_DISTANCE)
 	{
-		real t = sim_substep_end_fraction();
-
 		if (position)
 			object_lane_point_lerp(&pose->position, &object->object.position, t, position);
 		if (bounding_sphere_center)

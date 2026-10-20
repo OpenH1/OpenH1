@@ -68,7 +68,7 @@ static void chamber_build(
 
 /* the players' biped: a capsule a unit tall, a quarter round, that no fall hurts */
 static long biped_build(
-	void)
+	struct biped_definition **definition)
 {
 	struct animation_graph *animations;
 	struct animation_graph_unit_seat *seat;
@@ -140,6 +140,7 @@ weapons have none) */
 	biped->biped.runtime_pelvis_node_index = biped->biped.runtime_head_node_index = NONE;
 	/* (round it from its feet) */
 	biped->object.bounding_radius = biped->biped.collision_height_standing;
+	*definition = biped;
 	return biped_handle;
 }
 
@@ -270,7 +271,7 @@ void stage_build(
 				sizeof(struct weapon_hud_interface_definition), &data));
 	}
 
-	stage->biped_handle = biped_build();
+	stage->biped_handle = biped_build(&stage->biped);
 	globals_build(font_handle, strings_handle, hud_handle, stage->biped_handle);
 
 	stage->scenario->hs_syntax_data.size = sizeof(struct data_array) + SCRIPT_NODES * SCRIPT_NODE_BYTES;

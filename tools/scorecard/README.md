@@ -59,6 +59,7 @@ on the 30 Hz grid, so the same script means the same at every rate (but the off-
 | `grenade_arcs` | each grenade's first landing and its time, where it lies when it goes off, its fuse | 0.01 wu; 1 ms; 0.25 wu; a step + 1 ms |
 | `elevator_ride` | the player's height every 30th of a second on a lift | 0.01 wu RMS |
 | `ai_patrol` | an AI's biped walking command lists: its place every 30th of a second, how far it walked, and how far its steps between the grid's times are from the ticks' lines | 0.01 wu RMS; 0.5%; 0.002 wu |
+| `elevator_ai_rider*` | an AI's biped walking across a lift as it rises and back as it comes down, updated before the lift or after it (`_late`), riding its floor or carried by it (`_carried`: a biped with a collision model): as `ai_patrol` | 0.01 wu RMS; 0.5%; 0.002 wu |
 | `vehicle_*` | StageKit's car, driven: its path every 30th of a second; to its top speed (half and 90% of it, and the top speed itself), a full-lock circle (its radius, its turn), a ramp's jump and a platform's drop (the apex, the suspension's travel after landing), a roll-over (when), a crash into a parked car (when, where that is a second later, the speed after) | 0.1 wu RMS; 2%, 1%; 2%; 0.03 wu; 5/30 s; two ticks, 0.1 wu, 1% |
 
 Needs retail maps (skipped, stubs in `scenarios.py`): every weapon's fire rate, the retail first shots, frag and

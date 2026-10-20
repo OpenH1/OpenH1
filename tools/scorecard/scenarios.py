@@ -96,6 +96,33 @@ SCENARIOS = [
              seconds=10.0, arguments=dict(start=0.5, end=9.5)),
 ]
 
+
+# an AI's biped riding a lift (rows 12 and 15's, synthetic; U19): an actor on the elevator's platform walks across
+# it as it rises 5 units and back as it comes down: its place every 30th of a second, and how far its steps between
+# the grid's times are from the ticks' lines (a rider that moves with the lift a whole tick at once, at one of the
+# tick's sub-steps, misses them by the share it moved too soon). The lift moves on the tick, its rider in the
+# sub-steps. The rider is updated before the lift in each tick, or after it (late: placed by the console), and rides
+# on its floor, or is carried by it (body: a biped with a collision model, as the game's are)
+def ai_rider(name, late=False, body=False):
+    cues = [(0.5, "ai_attach_free rider rider"), (1, "device_set_position lift 1"),
+            (1.2, "ai_command_list_by_unit rider across"), (5, "device_set_position lift 0"),
+            (5.2, "ai_command_list_by_unit rider back")]
+    params = dict(rider_late=1) if late else {}
+    if late:
+        cues.append((0.2, "object_create rider"))
+    if body:
+        params["rider_body"] = 1
+    return scenario(name, "lift", "ai_path", ["elevator", "ai", "U19"], params=params, cues=cues, seconds=8.0,
+                    arguments=dict(start=0.5, end=7.5))
+
+
+SCENARIOS += [
+    ai_rider("elevator_ai_rider"),
+    ai_rider("elevator_ai_rider_late", late=True),
+    ai_rider("elevator_ai_rider_carried", body=True),
+    ai_rider("elevator_ai_rider_carried_late", late=True, body=True),
+]
+
 # a player's vehicle (the plan's row 9, synthetic): StageKit's car, which the player sits in (the cue) and drives
 # (the script): along x to its top speed, round in a circle at full lock, over a ramp, off a platform, rolled over
 # by turning too hard, and into a parked car

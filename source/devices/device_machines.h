@@ -55,5 +55,11 @@ boolean machine_update(
 /* port: carry elevator riders with the current tick's collision transform. */
 boolean machine_get_elevator_position(long machine_index, real_point3d *position);
 void machine_move_elevator_riders(long machine_index, real_point3d const *previous_position);
+/* port: whether the lift carries the biped by its movement (it stands on it,
+and has a collision model); an AI's biped's carry this tick at game.sim_rate
+60 and 120, for its sub-steps (bipeds.c), forgotten at the tick's last */
+boolean machine_carries_rider(long machine_index, long biped_index);
+boolean machine_elevator_carried(long biped_index, real_vector3d *offset);
+void machine_elevator_carried_forget(void);
 
 #endif // __DEVICE_MACHINES_H
