@@ -22,7 +22,10 @@ name: Build
 #   pinned LLVM) are cached too;
 # - a newer push to the same branch cancels a run still going (but not on
 #   master, whose builds the others' caches come from);
-# - pushes that only change documentation do not build;
+# - pushes that only change documentation (Markdown, website/) do not
+#   build: the changes job finds that in seconds, and the platforms' jobs
+#   are skipped (still reported, as the checks that master's branch
+#   protection requires);
 # - Windows, whose minutes cost twice Linux's, builds only Windows;
 # - artifacts are kept for three days.
 #
@@ -31,12 +34,10 @@ name: Build
 # https://github.com/<repository>/releases/latest/download/<file> always
 # gives the latest build (the README's download links); the last five are
 # kept. (openh1.com is the landing page, website/, not the web build.)
+# (every push starts the run, documentation's too, so that the platforms'
+# checks are always reported: the changes job decides whether they build)
 on:
   push:
-    paths-ignore:
-      - "**.md"
-      # (openh1.com, published from website/ by hand: website/README.md)
-      - "website/**"
   workflow_dispatch:
     inputs:
       profile:
@@ -72,7 +73,64 @@ env:
   CI_GUEST_ASM_CACHE: .cache/guest-asm
 
 jobs:
+  # Whether the push changes anything but documentation: Markdown files
+  # anywhere, and website/ (openh1.com, published from website/ by hand:
+  # website/README.md). On master, the files the push changed (from its
+  # before sha); on a branch, every file the branch changed from master
+  # (from their merge base), so that the branch's latest commit is skipped
+  # only when the whole branch is documentation: a documentation commit
+  # pushed after code still builds the code. Builds when it cannot tell (a
+  # run started by hand, a first push of master, a history it cannot find),
+  # and the platforms' jobs build too should this job fail: a failed check
+  # rather than a skipped one, which branch protection would let through.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
+    steps:
+      # (the history's commits and trees, without their files' contents,
+      # and one file checked out: seconds)
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: README.md
+          sparse-checkout-cone-mode: false
+
+      - name: Changed files
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          build=true
+          base=
+          if [ "$EVENT" = push ]; then
+            if [ "$GITHUB_REF" = refs/heads/master ]; then
+              # (all zeros: master's first push)
+              if [ -n "${BEFORE//0/}" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+                base="$BEFORE"
+              fi
+            else
+              base="$(git merge-base origin/master "$GITHUB_SHA" 2>/dev/null)" || base=
+            fi
+          fi
+          if [ -n "$base" ] && files="$(git -c core.quotePath=false diff --name-only --no-renames "$base" "$GITHUB_SHA")"; then
+            echo "Changed from ${base:0:12}:"
+            printf '%s\n' "$files" | sed 's/^/  /'
+            if ! printf '%s\n' "$files" | grep -v -E -e '\.md$' -e '^website/' -e '^$' > /dev/null; then
+              build=false
+            fi
+          else
+            echo "No base to compare with (event $EVENT): building"
+          fi
+          echo "build: $build"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
   linux-arm64:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     # Ubuntu 22.04 (glibc 2.35, so the build starts on older distributions
     # too) on GitHub's 64-bit ARM runner, with its clang for the host and the
     # development files SDL3 builds with; the guest's compiler (arm64_32) is
@@ -204,6 +262,8 @@ jobs:
           retention-days: 3
 
   linux-x86_64:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     # The 64-bit x86 build (ninja linux_x86_64: the game as x32 code in a
     # 64-bit host, drawn with Vulkan), made as the 64-bit ARM one is: Ubuntu
     # 22.04 (glibc 2.35, so the build starts on older distributions too) with
@@ -377,6 +437,8 @@ jobs:
           retention-days: 3
 
   android:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     # The runner image has the Android SDK and NDK, a JDK and CMake; the
     # guest's compiler is the pinned LLVM configure.py downloads.
     runs-on: ubuntu-24.04
@@ -515,6 +577,8 @@ jobs:
           retention-days: 3
 
   windows:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     # The runner image has LLVM, Python and Visual Studio's x86 libraries and
     # Windows SDK.
     runs-on: windows-2025
@@ -619,6 +683,8 @@ jobs:
           retention-days: 3
 
   macos:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     # The runner image has Xcode (clang, the Metal compiler), Python and
     # CMake; the guest's compiler is the pinned LLVM configure.py downloads.
     # The app is signed ad hoc (tools/macos_app.py): without a Developer ID,
@@ -840,8 +906,9 @@ jobs:
     # without it): green when every platform built, red when one did not,
     # with each platform's result, this run's release (master only), and
     # links to the latest release's builds.
-    needs: [linux-x86_64, linux-arm64, android, windows, macos, release]
-    if: ${{ !cancelled() }}
+    # (not for a push of documentation alone, which builds nothing)
+    needs: [changes, linux-x86_64, linux-arm64, android, windows, macos, release]
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
