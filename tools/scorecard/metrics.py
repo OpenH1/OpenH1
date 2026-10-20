@@ -32,14 +32,15 @@ TOLERANCES = {
     "ai_between": dict(absolute=0.002, unit="wu"),
     # a player's vehicle (U17): the plan's row 9 (0 to its top speed 2%, its top speed 1%, its turning circle 2%);
     # its path and height through a run within a tenth of a unit RMS; a jump's apex and its suspension's travel
-    # after landing within 3 hundredths; a crash's moment within a tick (what it strikes, of the macro lane, answers on
-# its tick); a roll-over within 5 30ths of a second
+    # after landing within 3 hundredths; a crash's moment within two ticks (vehicles find each other at a tick's end, and
+# what it strikes, of the macro lane, answers on its tick: a few milliseconds either way is a tick either way); a
+# roll-over within 5 30ths of a second
     "vehicle_time": dict(relative=0.02, unit="s"),
     "vehicle_speed": dict(relative=0.01, unit="wu/s"),
     "vehicle_turn": dict(relative=0.02, unit="wu"),
     "vehicle_path": dict(absolute=0.1, unit="wu rms"),
     "vehicle_height": dict(absolute=0.03, unit="wu"),
-    "vehicle_impact": dict(absolute=1.0 / 30 + 0.001, unit="s"),
+    "vehicle_impact": dict(absolute=2.0 / 30 + 0.001, unit="s"),
     "vehicle_flip": dict(absolute=0.167, unit="s"),
 }
 
