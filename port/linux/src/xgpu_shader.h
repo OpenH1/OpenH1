@@ -249,6 +249,8 @@ struct xgpu_pixel_program
 	(1 to 4) */
 	unsigned char count_samples, coverage_alpha, point_threshold, per_pixel_lighting, dynamic_lights, multiview;
 	unsigned char source_blend;
+	/* display.hdr's tag (nv2a_pixel_shader_key.hdr: xgpu_hdr.h) */
+	unsigned short hdr;
 };
 
 /* the texture stage that replaces the fragment's depth, DOT_ZW (the game's

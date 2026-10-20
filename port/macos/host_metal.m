@@ -33,6 +33,18 @@ goes back with its input time, for the input to screen statistics.
 Until frames come (the null renderer draws none), each refresh clears the
 drawable to black and presents it.
 
+display.hdr (port/linux/src/xgpu_hdr.h): while the frame is drawn in HDR on a
+display with EDR headroom, the layer is half floats in extended linear sRGB
+with extended dynamic range content, 1.0 the system's SDR white, and the
+presentation encodes the frame for it (xgpu_hdr.c's encoding: linear, at
+most the peak, times paper white); else it is BGRA8, as without HDR. The
+window's screen's headroom is read on the main thread, every quarter second
+and as the window moves to another screen: its potential headroom says
+whether the display shows HDR (display.hdr "auto"), its headroom now is the
+peak the tone map and the encoding roll off to (it changes with the
+display's brightness). HALO_METAL_EDR_HEADROOM=<headroom> stands in for the
+display's (both), for tests and for the replay, which has no window.
+
 HALO_METAL_STATS=<seconds> logs the pacing that often: the link's
 refreshes, the frames presented, the intervals between the times the
 drawables reached the screen.
@@ -56,6 +68,9 @@ drawables reached the screen.
 #include "xgpu_metal_textures.h"
 #include "loading_art.h"
 #include "host_loading_capture.h"
+#include "xgpu_metal_post_shaders.h"
+#define XGPU_HDR_REFERENCE
+#include "xgpu_hdr.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_metal.h>
@@ -96,6 +111,16 @@ static struct
 	id<NSObject> activity;
 	id<MTLRenderPipelineState> present_pipeline;
 	id<MTLRenderPipelineState> loading_pipeline;
+	/* display.hdr: the presentation's encoding for an EDR layer (half
+	floats); the front end's state (drawn in HDR, the mode, paper white in
+	percent); the window's screen's potential headroom and headroom now (a
+	float's bits); the layer is EDR's; HALO_METAL_EDR_HEADROOM's (0: none) */
+	id<MTLRenderPipelineState> edr_pipeline, loading_edr_pipeline;
+	_Atomic int hdr_active, hdr_mode, hdr_paper_white;
+	_Atomic uint32_t edr_potential, edr_current;
+	BOOL layer_edr;
+	uint32_t edr_ticks;
+	float edr_override;
 	/* All presentation is ordered here, independently of future game work. */
 	id<MTLCommandQueue> command_queue;
 	id<MTLEvent> render_event;
@@ -166,6 +191,158 @@ static struct
 	.lock = PTHREAD_MUTEX_INITIALIZER,
 	.freed = PTHREAD_COND_INITIALIZER,
 };
+
+/* ---------- display.hdr */
+
+static float bits_float(uint32_t bits)
+{
+	float value;
+
+	memcpy(&value, &bits, sizeof(value));
+	return value;
+}
+
+static uint32_t float_bits(float value)
+{
+	uint32_t bits;
+
+	memcpy(&bits, &value, sizeof(bits));
+	return bits;
+}
+
+/* (the main thread) the window's screen's headroom, for the presentation and
+the guest (host_render_stream_display_hdr) */
+static void display_hdr_read(void)
+{
+	float potential = 1.0f, current = 1.0f;
+
+	if (presentation.edr_override > 0.0f)
+	{
+		potential = current = presentation.edr_override;
+	}
+	else if (presentation.window)
+	{
+		NSWindow *native = (__bridge NSWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(presentation.window),
+			SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
+		NSScreen *screen = native.screen ? native.screen : NSScreen.mainScreen;
+
+		potential = (float)screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
+		current = (float)screen.maximumExtendedDynamicRangeColorComponentValue;
+	}
+	if (!(potential >= 1.0f))
+		potential = 1.0f;
+	if (!(current >= 1.0f))
+		current = 1.0f;
+	if (bits_float(atomic_load(&presentation.edr_potential)) != potential)
+		host_logf(HOST_LOG_INFO, "metal: the display's EDR headroom: %.2f potential, %.2f now", potential, current);
+	atomic_store(&presentation.edr_potential, float_bits(potential));
+	atomic_store(&presentation.edr_current, float_bits(current));
+	host_render_stream_display_hdr(potential > XGPU_HDR_DISPLAY_HEADROOM, current);
+}
+
+void host_metal_hdr_override(float headroom)
+{
+	presentation.edr_override = headroom;
+	atomic_store(&presentation.edr_potential, float_bits(headroom > 1.0f ? headroom : 1.0f));
+	atomic_store(&presentation.edr_current, float_bits(headroom > 1.0f ? headroom : 1.0f));
+	host_render_stream_display_hdr(headroom > XGPU_HDR_DISPLAY_HEADROOM, headroom > 1.0f ? headroom : 1.0f);
+}
+
+void host_metal_hdr_state(int active, int mode, int paper_white)
+{
+	atomic_store(&presentation.hdr_active, active);
+	atomic_store(&presentation.hdr_mode, mode);
+	atomic_store(&presentation.hdr_paper_white, paper_white);
+}
+
+/* the layer is EDR's while the frame is drawn in HDR and the display has
+headroom at all (an SDR panel's dimmed white has some: display.hdr "on") */
+static BOOL edr_wanted(void)
+{
+	return atomic_load(&presentation.hdr_active) && bits_float(atomic_load(&presentation.edr_potential)) > 1.0f;
+}
+
+void host_metal_hdr_frame(struct xgpu_hdr_frame *frame)
+{
+	float current = bits_float(atomic_load(&presentation.edr_current));
+	float paper_white = (float)atomic_load(&presentation.hdr_paper_white) / 100.0f;
+
+	if (presentation.edr_override > 0.0f && !presentation.window)
+		current = presentation.edr_override;
+	memset(frame, 0, sizeof(*frame));
+	frame->mode = atomic_load(&presentation.hdr_mode);
+	frame->output = XGPU_HDR_OUTPUT_SDR;
+	frame->paper_white = 1.0f;
+	frame->peak = 1.0f;
+	if (!(paper_white > 0.0f))
+		paper_white = 1.0f;
+	/* (the replay's, which has no window, as its layer would be) */
+	if (edr_wanted() || (presentation.edr_override > 0.0f && !presentation.window && atomic_load(&presentation.hdr_active)))
+	{
+		/* (paper white no brighter than the display can show) */
+		if (paper_white > current)
+			paper_white = current;
+		frame->output = XGPU_HDR_OUTPUT_EXTENDED_LINEAR;
+		frame->paper_white = paper_white;
+		frame->peak = current / paper_white;
+	}
+}
+
+/* a colour's channel (the frame's values) as an EDR drawable takes it:
+linear, times paper white; as it is for an SDR one */
+static float edr_value(id<CAMetalDrawable> drawable, float value)
+{
+	struct xgpu_hdr_frame frame;
+
+	if (drawable.texture.pixelFormat != MTLPixelFormatRGBA16Float)
+		return value;
+	host_metal_hdr_frame(&frame);
+	return xgpu_hdr_linear(value) * (frame.output == XGPU_HDR_OUTPUT_SDR ? 1.0f : frame.paper_white);
+}
+
+/* (the presentation thread, before it draws into the drawable) the layer
+made EDR's or SDR's as the frame wants: the next drawables are */
+static void layer_hdr_choose(void)
+{
+	BOOL wanted = edr_wanted();
+	CGColorSpaceRef space;
+
+	if (wanted == presentation.layer_edr)
+		return;
+	presentation.layer_edr = wanted;
+	space = wanted ? CGColorSpaceCreateWithName(kCGColorSpaceExtendedLinearSRGB) : NULL;
+	presentation.layer.wantsExtendedDynamicRangeContent = wanted;
+	presentation.layer.pixelFormat = wanted ? MTLPixelFormatRGBA16Float : MTLPixelFormatBGRA8Unorm;
+	presentation.layer.colorspace = space;
+	if (space)
+		CGColorSpaceRelease(space);
+	host_logf(HOST_LOG_INFO, "metal: the window's layer: %s", wanted ? "EDR (half floats, extended linear sRGB)" : "SDR");
+}
+
+/* a post function (xgpu_metal_post_shaders.h), the app's library's, or
+compiled from its source */
+static id<MTLFunction> post_function(int which)
+{
+	const struct xgpu_metal_post_function *function = &xgpu_metal_post_functions[which];
+	NSString *name = @(function->entry);
+	id<MTLFunction> found = [xgpu_metal_library() newFunctionWithName:name];
+	MTLCompileOptions *options;
+	id<MTLLibrary> library;
+	NSError *error = nil;
+
+	if (found)
+		return found;
+	options = [MTLCompileOptions new];
+	if (@available(macOS 15.0, *))
+		options.mathMode = MTLMathModeSafe;
+	else
+		options.fastMathEnabled = NO;
+	library = [xgpu_metal_device() newLibraryWithSource:[[NSString alloc] initWithBytes:function->source
+		length:function->size encoding:NSUTF8StringEncoding] options:options error:&error];
+	if (!library)
+		host_logf(HOST_LOG_ERROR, "metal: %s: %s", function->entry, error.localizedDescription.UTF8String);
+	return [library newFunctionWithName:name];
+}
 
 int host_metal_window_active(void)
 {
@@ -610,6 +787,11 @@ static void pacing_log(double now)
 
 		(void)link;
 		presentation.ticks++;
+		/* (display.hdr: the screen's headroom looked at four times a second,
+		on the main thread, NSScreen's) */
+		if (presentation.edr_ticks++ % 15 == 0)
+			dispatch_async(dispatch_get_main_queue(), ^{ display_hdr_read(); });
+		layer_hdr_choose();
 		if (presentation.last_tick > 0.0 && presentation.refresh_rate > 0.0f &&
 			now - presentation.last_tick > 1.5 / presentation.refresh_rate)
 		{
@@ -741,8 +923,8 @@ static void pacing_log(double now)
 		/* (black until the game's first frame: the window opens before the
 		game draws) */
 		pass.colorAttachments[0].clearColor = loading_frame.active && !loading_image ?
-			MTLClearColorMake(LOADING_PRESENTATION_RED, LOADING_PRESENTATION_GREEN,
-				LOADING_PRESENTATION_BLUE, 1.0) : MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
+			MTLClearColorMake(edr_value(drawable, LOADING_PRESENTATION_RED), edr_value(drawable, LOADING_PRESENTATION_GREEN),
+				edr_value(drawable, LOADING_PRESENTATION_BLUE), 1.0) : MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 		encoder = [buffer renderCommandEncoderWithDescriptor:pass];
 		if (loading_image || (image && !loading_frame.active))
 		{
@@ -755,18 +937,43 @@ static void pacing_log(double now)
 				fit_height = drawable_height;
 				fit_width = drawable_height * sampled_image.width / sampled_image.height;
 			}
-			[encoder setRenderPipelineState:presentation.present_pipeline];
-			[encoder setViewport:(MTLViewport){ floor((drawable_width - fit_width) / 2.0),
-				floor((drawable_height - fit_height) / 2.0), floor(fit_width), floor(fit_height), 0.0, 1.0 }];
+			MTLViewport viewport = { floor((drawable_width - fit_width) / 2.0), floor((drawable_height - fit_height) / 2.0),
+				floor(fit_width), floor(fit_height), 0.0, 1.0 };
+
+			[encoder setViewport:viewport];
 			[encoder setFragmentTexture:sampled_image atIndex:0];
 			[encoder setFragmentSamplerState:presentation.present_sampler atIndex:0];
-			[encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+			if (drawable.texture.pixelFormat == MTLPixelFormatRGBA16Float && presentation.edr_pipeline)
+			{
+				/* display.hdr: the frame encoded for the EDR layer (xgpu_hdr.c) */
+				struct xgpu_metal_post_uniforms uniforms;
+				struct xgpu_hdr_frame frame;
+
+				host_metal_hdr_frame(&frame);
+				memset(&uniforms, 0, sizeof(uniforms));
+				uniforms.metrics[0] = (float)viewport.originX;
+				uniforms.metrics[1] = (float)viewport.originY;
+				uniforms.metrics[2] = 1.0f / (float)viewport.width;
+				uniforms.metrics[3] = 1.0f / (float)viewport.height;
+				uniforms.hdr[0] = frame.output == XGPU_HDR_OUTPUT_SDR ? 1.0f : frame.paper_white;
+				uniforms.hdr[1] = frame.output == XGPU_HDR_OUTPUT_SDR ? 1.0f : frame.peak;
+				uniforms.hdr[2] = (float)XGPU_HDR_OUTPUT_EXTENDED_LINEAR;
+				[encoder setRenderPipelineState:presentation.edr_pipeline];
+				[encoder setFragmentBytes:&uniforms length:sizeof(uniforms) atIndex:XGPU_METAL_BUFFER_DRAW_UNIFORMS];
+				[encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+			}
+			else
+			{
+				[encoder setRenderPipelineState:presentation.present_pipeline];
+				[encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
+			}
 		}
 		if (loading_frame.active && !loading_image)
 		{
 			uint32_t rectangle_index;
 
-			[encoder setRenderPipelineState:presentation.loading_pipeline];
+			[encoder setRenderPipelineState:drawable.texture.pixelFormat == MTLPixelFormatRGBA16Float &&
+				presentation.loading_edr_pipeline ? presentation.loading_edr_pipeline : presentation.loading_pipeline];
 			[encoder setViewport:(MTLViewport){0.0, 0.0, drawable.texture.width, drawable.texture.height, 0.0, 1.0}];
 			for (rectangle_index = 0; rectangle_index < loading_frame.count; rectangle_index++)
 			{
@@ -778,6 +985,9 @@ static void pacing_log(double now)
 				parameters[2] = (rectangle->x + rectangle->width) * (2.0f / LOADING_PRESENTATION_WIDTH) - 1.0f;
 				parameters[3] = 1.0f - (rectangle->y + rectangle->height) * (2.0f / LOADING_PRESENTATION_HEIGHT);
 				memcpy(parameters + 4, rectangle->color, sizeof(rectangle->color));
+				parameters[4] = edr_value(drawable, parameters[4]);
+				parameters[5] = edr_value(drawable, parameters[5]);
+				parameters[6] = edr_value(drawable, parameters[6]);
 				[encoder setVertexBytes:parameters length:sizeof(parameters) atIndex:0];
 				[encoder setFragmentBytes:parameters length:sizeof(parameters) atIndex:0];
 				[encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
@@ -917,6 +1127,7 @@ guest starts, so that the command stream finds it) */
 int host_metal_initialize(void)
 {
 	static int result = -1;
+	const char *edr = getenv("HALO_METAL_EDR_HEADROOM");
 	struct xgpu_metal_options options;
 	char path[1024];
 	const char *archive = getenv("HALO_METAL_ARCHIVE");
@@ -924,6 +1135,11 @@ int host_metal_initialize(void)
 
 	if (result >= 0)
 		return result;
+	atomic_store(&presentation.edr_potential, float_bits(1.0f));
+	atomic_store(&presentation.edr_current, float_bits(1.0f));
+	atomic_store(&presentation.hdr_paper_white, 100);
+	if (edr && atof(edr) > 0.0)
+		host_metal_hdr_override((float)atof(edr));
 	memset(&options, 0, sizeof(options));
 	if (!archive && home)
 	{
@@ -1024,6 +1240,23 @@ int host_metal_window_open(uint32_t window)
 		host_logf(HOST_LOG_ERROR, "metal: the loading presentation's pipeline: %s", error.localizedDescription.UTF8String);
 		return 0;
 	}
+	/* (and into an EDR layer: display.hdr) */
+	descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA16Float;
+	presentation.loading_edr_pipeline = [xgpu_metal_device() newRenderPipelineStateWithDescriptor:descriptor error:&error];
+	/* display.hdr: the presentation into an EDR layer (its encoding, from
+	xgpu_hdr.c's GLSL: xgpu_metal_post_shaders.h) */
+	descriptor = [MTLRenderPipelineDescriptor new];
+	descriptor.colorAttachments[0].pixelFormat = MTLPixelFormatRGBA16Float;
+	descriptor.vertexFunction = post_function(XGPU_METAL_POST_VERTEX);
+	descriptor.fragmentFunction = post_function(XGPU_METAL_POST_HDR_ENCODE);
+	presentation.edr_pipeline = descriptor.vertexFunction && descriptor.fragmentFunction ?
+		[xgpu_metal_device() newRenderPipelineStateWithDescriptor:descriptor error:&error] : nil;
+	if (!presentation.edr_pipeline)
+		host_logf(HOST_LOG_WARN, "metal: no HDR presentation (%s): the window stays SDR",
+			error ? error.localizedDescription.UTF8String : "its functions");
+	display_hdr_read();
+	[[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidChangeScreenNotification object:nil
+		queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) { (void)note; display_hdr_read(); }];
 	sampler = [MTLSamplerDescriptor new];
 	sampler.minFilter = MTLSamplerMinMagFilterLinear;
 	sampler.magFilter = MTLSamplerMinMagFilterLinear;

@@ -174,6 +174,7 @@ python -m pytest -q tools/test_linux_package.py tools/test_install_layout.py   #
 python -m pytest -q tools/test_guest_base_register.py tools/test_host_memory_base.py  # the base register
 python -m pytest -q tools/test_macos_metal.py               # the Metal backend (ninja macos_metal_test first)
 python -m pytest -q tools/test_metal_post_shaders.py        # the Metal backend's anti-aliasing passes (tools/metal_post_shaders.py)
+python -m pytest -q tools/test_hdr.py                       # display.hdr's contract: the draws' classification, the reference curves (docs/hdr.md)
 python -m pytest -q tools/test_macos_app.py                 # the macOS app's Info.plist, entitlements, signature
 build/macos/halo_replay <recording> --shots <dir>           # a recorded render stream replayed (ninja macos_replay;
                                                             # HALO_RENDER_RECORD: port/macos/README.md)
@@ -337,6 +338,7 @@ The decompilation's upstream, punpckhdq/halo, is AGPL 3.0 from 17 October
 | [port/web/README.md](port/web/README.md) | The web build, the page, the game data in the browser, limits, how it operates, hosting on GitHub Pages |
 | [port/include/xdk/README.md](port/include/xdk/README.md) | How the SDK declarations were written and are checked |
 | [docs/custom_edition_caches.md](docs/custom_edition_caches.md) | Loading and converting Custom Edition maps, and the evidence for each layout |
+| [docs/hdr.md](docs/hdr.md) | HDR (`display.hdr`): the shared contract the renderers implement, which draws go past paper white, the tone map and the encodings, the tests |
 | [docs/mods.md](docs/mods.md) | Mods: folders of Halo PC tag files whose sounds, bitmaps, text and models play over a map's on one machine |
 | [port/assets/text_filter/README.md](port/assets/text_filter/README.md) | Streamer mode's words: Surge AI's list, the review, the allowed words |
 | [port/assets/menus/README.md](port/assets/menus/README.md) | The menu files' format and how to write them again |

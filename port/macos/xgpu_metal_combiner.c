@@ -20,7 +20,7 @@ _Static_assert(sizeof(struct xgpu_metal_combiner) == 160, "the combiner's config
 int xgpu_metal_combiner_draws(const struct xgpu_pixel_program *program)
 {
 	return !program->per_pixel_lighting && !program->dynamic_lights && !program->alpha_test_samples &&
-		!program->multiview;
+		!program->multiview && !program->hdr;
 }
 
 static uint32_t input_bits(const struct xgpu_combiner_input *input)

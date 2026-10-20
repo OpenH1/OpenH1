@@ -21,6 +21,8 @@ id<MTLCommandQueue> xgpu_metal_queue(void);
 /* the library of the clears' and the presentation's functions
 (xgpu_metal_fixed_source's) */
 id<MTLLibrary> xgpu_metal_fixed_library(void);
+/* the app's library (nil without one) */
+id<MTLLibrary> xgpu_metal_library(void);
 /* a command buffer's GPU start and end, counted in the GPU's busy time */
 void xgpu_metal_gpu_interval(double start, double end);
 /* the render thread waits for the GPU to finish a frame (xgpu_metal_frame_wait) */
@@ -51,5 +53,17 @@ void host_metal_present_signal(id<MTLCommandBuffer> buffer, uint64_t frame);
 not later game work. Called once per frame, nil when there is no picture
 (its display's pacing, host_render_stream_frame_taken). */
 void host_metal_present_queue(id<MTLTexture> image, uint64_t frame);
+
+struct xgpu_hdr_frame;
+/* display.hdr (port/linux/src/xgpu_hdr.h): the front end's state (drawn in
+HDR, the mode, paper white in percent of the system's SDR white: the
+render thread, as it plays the stream); and what the tone map and the
+encoding are given now: the mode, the layer's output (EDR's extended linear
+sRGB, or SDR), paper white and the peak in paper whites (any thread) */
+void host_metal_hdr_state(int active, int mode, int paper_white);
+/* the display's headroom stood in for (HALO_METAL_EDR_HEADROOM's: the tests,
+the replay) */
+void host_metal_hdr_override(float headroom);
+void host_metal_hdr_frame(struct xgpu_hdr_frame *frame);
 
 #endif

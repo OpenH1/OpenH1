@@ -344,6 +344,29 @@ pacing tested on this one).
 Until frames come, each refresh clears the drawable to black and presents
 it (the window opens before the game draws).
 
+**HDR** (`display.hdr`, [docs/hdr.md](../../docs/hdr.md)). While the frame is
+drawn in HDR on a display with EDR headroom, the layer is RGBA16Float in
+extended linear sRGB with `wantsExtendedDynamicRangeContent` (1.0 the
+system's SDR white), and the presentation encodes the frame for it (the
+shared encoding, `xgpu_hdr_encode` in `xgpu_metal_post_shaders.c`: linear,
+at most the peak, times paper white); otherwise it is BGRA8 and untagged, as
+it was. The window's screen's headroom is read on the main thread (NSScreen)
+four times a second and whenever the window moves to another screen: its
+potential headroom says whether the display shows HDR (`"auto"` turns HDR
+on past 2: an SDR panel such as a MacBook Air's reports 2.0, its white dimmed
+below the backlight), and its headroom now is the peak the tone map and the
+encoding roll off to, which follows the display's brightness.
+`HALO_METAL_EDR_HEADROOM=<headroom>` stands in for the display's (the
+tests, the replay, and evidence made on a Mac without an HDR display). The
+backend tone maps each window's 3D view with a draw in the pass that drew
+it, reading the pixels where they are (programmable blending), and the
+draws that the front end tags blend in their pixel shaders, reading the
+pixel they draw over (`[[color(0)]]`); they are the MSL emitter's shaders,
+not the combiner function's. A shot of an HDR back buffer
+(`HALO_RENDER_SHOTS`) writes, beside its PNG (clamped, as an SDR display
+shows it), the frame's half floats (`.rgba16f`) and the frame encoded for
+the display it had (`.encoded.rgba16f`, `.encoded.txt`).
+
 `HALO_METAL_STATS=<seconds>` logs the pacing that often: the link's
 refreshes, the frames and clears presented, how many drawables reached the
 screen and the intervals between them; the refreshes without a new frame,

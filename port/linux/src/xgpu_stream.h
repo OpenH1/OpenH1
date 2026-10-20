@@ -38,7 +38,7 @@ port/linux/README.md.
 #include <stdint.h>
 
 #define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
-#define XGPU_STREAM_VERSION 6
+#define XGPU_STREAM_VERSION 7
 #define XGPU_STREAM_LOADING_ART_BYTES (640u * 480u * 4u)
 
 /* ---------- the ring
@@ -97,7 +97,13 @@ struct xgpu_stream_ring
 	uint32_t vertices_again;
 	uint32_t waits, wait_nanoseconds;
 	uint32_t decode_nanoseconds;
-	uint32_t pad[3];
+	/* the host's display (display.hdr: written by the host whenever it
+	looks, read by the guest between frames): whether it shows HDR (its
+	potential headroom past XGPU_HDR_DISPLAY_HEADROOM, or an HDR swapchain),
+	and its headroom now (a float's bits, 1.0 for none) */
+	uint32_t display_hdr;
+	uint32_t display_headroom;
+	uint32_t pad;
 };
 
 enum
@@ -221,6 +227,9 @@ enum
 	XGPU_STREAM_LOADING_ART,            /* value: byte count, followed by owned 640x480 RGBA pixels */
 	XGPU_STREAM_LOADING_SCENE,          /* value: byte count, followed by the menu's scene (loading_scene.h) */
 	XGPU_STREAM_LOADING_PROGRESS,       /* value: the load's progress, a float's bits (0 to 1) */
+	/* display.hdr (xgpu_hdr.h) */
+	XGPU_STREAM_HDR,
+	XGPU_STREAM_TONE_MAP,
 	XGPU_STREAM_RECORD_TYPES,
 };
 
@@ -260,7 +269,7 @@ struct xgpu_stream_capabilities
 	int32_t most_samples;
 	int32_t most_anisotropy;
 	uint8_t sample_counting, bgra_vertex_colors, base_vertex, sample_mask;
-	uint8_t mixed_constant_blend, dynamic_lights, dynamic_lights_preparable, pad;
+	uint8_t mixed_constant_blend, dynamic_lights, dynamic_lights_preparable, hdr;
 };
 
 struct xgpu_stream_reply_record
@@ -278,6 +287,22 @@ struct xgpu_stream_anti_alias
 	int32_t corners[4];
 };
 
+/* HDR: display.hdr's state (xgpu_backend_hdr): drawn in HDR, the mode
+(XGPU_HDR_MODE_*), paper white (percent of the system's SDR white) */
+struct xgpu_stream_hdr
+{
+	uint32_t header;
+	uint32_t active, mode, paper_white;
+};
+
+/* TONE_MAP: a window's 3D view tone mapped (xgpu_backend_tone_map) */
+struct xgpu_stream_tone_map
+{
+	uint32_t header;
+	uint32_t target;
+	int32_t corners[4];
+};
+
 /* ---------- render targets */
 
 struct xgpu_stream_target_create
@@ -285,7 +310,9 @@ struct xgpu_stream_target_create
 	uint32_t header;
 	uint32_t target;
 	uint32_t width, height;
-	uint8_t depth, layers, pad[2];
+	/* (format: XGPU_FORMAT_* of a colour target: BGRA8, or RGBA16F the
+	back buffer with display.hdr) */
+	uint8_t depth, layers, format, pad;
 };
 
 struct xgpu_stream_target_multisample
@@ -449,7 +476,9 @@ struct xgpu_stream_pixel_key
 	uint32_t alpha_test_function;
 	uint8_t fog_enable, fog_table_mode, count_samples, coverage_alpha;
 	uint8_t point_threshold, per_pixel_lighting, alpha_test_samples, multiview;
-	uint8_t source_blend, dynamic_lights, vr_effect, pad[2];
+	uint8_t source_blend, dynamic_lights, vr_effect, pad;
+	/* display.hdr's tag (xgpu_hdr.h) */
+	uint16_t hdr;
 };
 
 /* xgpu_backend.h's struct xgpu_pipeline_key */
@@ -487,6 +516,9 @@ struct xgpu_stream_pixel_program
 	uint8_t alpha_test_samples;
 	uint8_t count_samples, coverage_alpha, point_threshold, per_pixel_lighting, dynamic_lights, multiview;
 	uint8_t source_blend;
+	uint8_t pad;
+	/* display.hdr's tag (xgpu_hdr.h) */
+	uint16_t hdr;
 };
 
 /* a pipeline key the guest numbered (from 1, below XGPU_STREAM_PIPELINES),
@@ -905,14 +937,16 @@ struct xgpu_stream_vr_screen_corrections
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_ring, 96);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_frame_end, 12);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_capabilities, 20);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_hdr, 16);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_tone_map, 24);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_set_targets, 16);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_clear, 36);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_sampler, 24);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_texture_stage, 72);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pixel_key, 264);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pipeline_key, 308);
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pixel_program, 432);
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pipeline_define, 748);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pixel_program, 436);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_pipeline_define, 752);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_dynamic_state, 68);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_draw_uniforms, 572);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vertex_element, 6);

@@ -34,8 +34,11 @@ SHIELD_COLORS = ["white", "black", "red", "blue", "gray", "yellow", "green", "pi
 SENSITIVITIES = [(f"{value:g}", f"{value:g}") for value in (0.1, 0.15, 0.25, 0.4, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4)]
 VOLUMES = [(str(step), f"{step / 10:g}") for step in range(11)]
 # the platforms a menu element's platform attribute names (menu_files.c's
-# MENU_PLATFORM, and "vr": the VR build, playing in the headset)
-MENU_PLATFORMS = ("desktop", "android", "web", "vr")
+# MENU_PLATFORM, "vr": the VR build, playing in the headset, and "hdr": a
+# renderer that draws display.hdr)
+MENU_PLATFORMS = ("desktop", "android", "web", "vr", "hdr")
+# display.hdr_paper_white's values, percent of the system's SDR white
+PAPER_WHITES = (50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200, 250)
 
 # each screen: its folder below PE, its screen's widget (the name the profile
 # menu opens), its header (widget, bitmap), the row spacing, and its rows:
@@ -125,10 +128,18 @@ SCREENS = {
              "desktop android"),
             ("MATCH TIMER:", "display.match_timer", ON_OFF,
              "Draw a clock at the bottom right in multiplayer,\ncounting up from the start of the game.", None),
-            # (OpenCE's OVERSHIELD, HDR and HDR DISPLAY rows are left out:
-            # OpenH1's renderers do not draw the overshield's rise, nor HDR's
-            # floating-point back buffer and its tone mapping, so the settings
-            # stay as config.toml has them; port/linux/README.md)
+            # (display.hdr's rows, on the renderers that draw it: menu_files.c's
+            # "hdr")
+            ("HDR:", "display.hdr", [("AUTO", "auto"), ("ON", "on"), ("OFF", "off")],
+             "Brighter highlights on an HDR display. Auto: on\nwhen the display shows HDR.", "hdr"),
+            ("HDR MODE:", "display.hdr_mode", [("FAITHFUL", "faithful"), ("PUNCHY", "punchy")],
+             "Faithful: the stock picture, brighter highlights.\nPunchy: the whole scene lifted, remaster style.",
+             "hdr"),
+            ("PAPER WHITE:", "display.hdr_paper_white", [(f"{value}%", str(value)) for value in PAPER_WHITES],
+             "With HDR, how bright white surfaces and the HUD\nare, in percent of the system's white.", "hdr"),
+            # (OpenCE's OVERSHIELD and HDR DISPLAY rows are left out: OpenH1's
+            # renderers do not draw the overshield's rise, and HDR output is
+            # display.hdr's own; port/linux/README.md)
         ],
     },
     "mouse_settings": {
@@ -403,7 +414,8 @@ _graphics = {"display.high_res_hud", "display.hud_button_style", "display.high_r
 # plays at 30 whatever it says: a network game, split screen, a film's
 # playback. Twelve rows, closer than the others' 30px, the help line lower)
 # (the visual modifiers: a screen of their own, Extra Effects)
-_extra_effects = {"display.shield_glow", "display.shield_glow_intensity"}
+_extra_effects = {"display.shield_glow", "display.shield_glow_intensity", "display.hdr", "display.hdr_mode",
+                  "display.hdr_paper_white"}
 SCREENS["video_settings/graphics"] = {
     "screen": "graphics_settings_screen", "header": _video["header"], "spacing": 24, "help_top": 366,
     "same_place": ["anti_aliasing_android", "anti_aliasing_web"],
@@ -425,7 +437,7 @@ _video["categories"] = [
     ("FOV AND VIEWMODELS:", "video_settings/fov_viewmodels",
      "The field of view and the first-person\nweapon. Their defaults keep the stock view."),
     ("EXTRA EFFECTS:", "video_settings/extra_effects",
-     "Visual modifiers the stock game does not\nhave, such as the shield glow."),
+     "Visual modifiers the stock game does not\nhave, such as the shield glow and HDR."),
 ]
 SCREENS["video_settings/fov_viewmodels"] = {
     "screen": "fov_viewmodel_settings_screen", "header": _video["header"], "spacing": 30,

@@ -1276,6 +1276,27 @@ void xgpu_backend_anti_alias(xgpu_target number, BOOL smaa, const long corners[4
 	xgpu_gl_state_invalidate();
 }
 
+/* display.hdr: none here (xgpu_backend_capabilities.hdr is FALSE, so the
+front end never asks for it) */
+void xgpu_backend_hdr(BOOL active, int mode, int paper_white)
+{
+	(void)active;
+	(void)mode;
+	(void)paper_white;
+}
+
+void xgpu_backend_tone_map(xgpu_target target, const long corners[4])
+{
+	(void)target;
+	(void)corners;
+}
+
+BOOL xgpu_backend_display_hdr(float *headroom)
+{
+	*headroom = 1.0f;
+	return FALSE;
+}
+
 /* ---------- visibility (occlusion) tests */
 
 void xgpu_backend_visibility_begin(void)

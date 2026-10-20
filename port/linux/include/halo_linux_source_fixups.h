@@ -135,10 +135,22 @@ menus (source/render/render.c): the window's bounds on the screen */
 void halo_screen_anti_alias(short x0, short y0, short x1, short y1);
 /* the enhanced dynamic lights (display.dynamic_lights) */
 #include "halo_dynamic_lights.h"
-/* display.hdr's tone mapping of a window's 3D view, before its
-anti-aliasing (source/render/render.c): none on these renderers yet
-(d3d8_device.c) */
+/* display.hdr's tone map of a window's 3D view, before its anti-aliasing
+(source/render/render.c), and what the game's renderer tells it of its
+draws (port/linux/src/d3d8_device.c, xgpu_hdr.h): the category drawing now
+(rasterizer.h's _rasterizer_profile_*, -1 none: rasterizer_profile_begin and
+_end), and what the code drawing knows of them (HALO_HDR_KIND_*, 0 none) */
 void halo_screen_tone_map(short x0, short y0, short x1, short y1);
+void halo_hdr_category(int category);
+void halo_hdr_draw_kind(int kind);
+#ifndef HALO_HDR_KIND_NONE
+#define HALO_HDR_KIND_NONE 0
+#define HALO_HDR_KIND_FIRST_PERSON 1
+#define HALO_HDR_KIND_NUMERIC 2
+#define HALO_HDR_KIND_METER 4
+#define HALO_HDR_KIND_SPECULAR 8
+#define HALO_HDR_KIND_HUD_GLOW 16
+#endif
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
 

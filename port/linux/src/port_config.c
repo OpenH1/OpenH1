@@ -249,35 +249,25 @@ static const struct config_setting config_settings[] =
 		"size on the display's, so that more detail is kept at a distance at high\n"
 		"resolutions; \"highest\" draws the models \"native\" does, each at its most\n"
 		"detailed level; \"auto\" is \"native\" in VR and \"stock\" on a display." GRAPHICS_CHOOSES },
-	{ "display.hdr", _config_boolean, "false", "HALO_HDR", _environment_value, _platform_all,
-		"Draw the 3D view into a floating-point back buffer, which keeps what\n"
-		"the game's additive effects (explosions, plasma, lights, the sun's\n"
-		"glare) add past white, and tone map it before the HUD is drawn:\n"
-		"display.hdr_tone_mapping brings it back to the display's range\n"
-		"instead of clipping it. false draws into 8 bits a channel, as the\n"
-		"Xbox does.\n"
-		"OpenH1's renderers (Vulkan, Metal, and OpenGL on Windows) do not draw\n"
-		"it yet, so it has no effect, and Video Setup has no row for it." },
-	{ "display.hdr_exposure", _config_real, "1.0", "HALO_HDR_EXPOSURE", _environment_value, _platform_all,
-		"With display.hdr, the 3D view's brightness in linear light before it\n"
-		"is tone mapped, 0.25 to 4.0.\n"
-		"OpenH1's renderers (Vulkan, Metal, and OpenGL on Windows) do not draw\n"
-		"it yet, so it has no effect, and Video Setup has no row for it." },
-	{ "display.hdr_tone_mapping", _config_string, "\"neutral\"", "HALO_HDR_TONE_MAPPING", _environment_value,
-		_platform_all,
-		"With display.hdr, the curve that brings what is past white into the\n"
-		"display's range: \"neutral\" (the picture as drawn, with only its\n"
-		"brightest parts rolled off), \"aces\" (filmic, more contrast) or\n"
-		"\"reinhard\" (softer, and darker throughout).\n"
-		"OpenH1's renderers (Vulkan, Metal, and OpenGL on Windows) do not draw\n"
-		"it yet, so it has no effect, and Video Setup has no row for it." },
-	{ "display.hdr_output", _config_boolean, "false", "HALO_HDR_OUTPUT", _environment_value, _platform_desktop,
-		"With display.hdr, ask for a floating-point window (scRGB), so that an\n"
-		"HDR display shows what is past white brighter than the desktop's\n"
-		"white rather than tone mapped down to it; the operating system's HDR\n"
-		"must be on. Taken up when the game starts.\n"
-		"OpenH1's renderers (Vulkan, Metal, and OpenGL on Windows) do not draw\n"
-		"it yet, so it has no effect, and Video Setup has no row for it." },
+	{ "display.hdr", _config_string, "\"auto\"", "HALO_HDR", _environment_value, _platform_all,
+		"High dynamic range: \"auto\" draws in HDR while the window's display shows\n"
+		"it (an XDR or HDR display: macOS's EDR), \"on\" always (on an SDR display\n"
+		"the highlights are rolled off under its white), \"off\" never. The frame\n"
+		"is drawn in half floats, which keep the light the game's additive\n"
+		"effects (plasma, explosions, muzzle flashes, lights, the sun) add past\n"
+		"white, and an HDR display shows it brighter than paper white, the\n"
+		"display's SDR white; surfaces, the HUD and the menus stay as they are.\n"
+		"Off draws 8 bits a channel, as the Xbox did. Metal only for now (the\n"
+		"Vulkan and OpenGL renderers draw SDR, and the VR mode does)." },
+	{ "display.hdr_mode", _config_string, "\"faithful\"", "HALO_HDR_MODE", _environment_value, _platform_all,
+		"With HDR: \"faithful\" keeps the picture as the game draws it, only its\n"
+		"highlights brighter; \"punchy\" lifts the whole scene and its bright\n"
+		"parts, keeping each colour's hue, for a brighter, remastered look." },
+	{ "display.hdr_paper_white", _config_integer, "100", "HALO_HDR_PAPER_WHITE", _environment_value, _platform_all,
+		"With HDR, how bright paper white (white surfaces, the HUD, the menus) is,\n"
+		"in percent of the system's SDR white (macOS's; 203 nits where the system\n"
+		"has none), 50 to 250. The highlights keep the rest of the display's\n"
+		"headroom." },
 
 	{ "audio.enabled", _config_boolean, "true", "HALO_NO_AUDIO", _environment_set_is_false, _platform_all,
 		"Play sound." },

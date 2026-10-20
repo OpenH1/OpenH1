@@ -125,6 +125,8 @@ enum
 	and a byte each, white's coverage (read as 1, 1, 1, the byte) */
 	XGPU_METAL_FORMAT_RGBA8,
 	XGPU_METAL_FORMAT_COVERAGE,
+	/* half floats: the back buffer with display.hdr (xgpu_hdr.h) */
+	XGPU_METAL_FORMAT_RGBA16F,
 	XGPU_METAL_FORMAT_COUNT
 };
 

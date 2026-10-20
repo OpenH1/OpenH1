@@ -43,13 +43,16 @@ static struct
 	uint32_t functions[XGPU_METAL_POST_FUNCTION_COUNT];
 	/* FXAA's, and SMAA's, functions or textures could not be made */
 	int failed[2];
-	/* the size of the textures below */
+	/* the size of the textures below, and color's format (the target's) */
 	uint32_t width, height;
+	uint8_t color_format;
 	/* the target's pixels before the pass, and SMAA's edges and blending
 	weights */
 	uint32_t color, edges, weights;
 	/* SMAA's lookup textures */
 	uint32_t area, search;
+	/* display.hdr's tone map's functions could not be made */
+	int hdr_failed;
 } post;
 
 /* ---------- textures */
@@ -96,12 +99,13 @@ static uint32_t lookup_texture(const uint32_t *words, uint32_t width, uint32_t h
 	return texture;
 }
 
-/* the passes' textures, of the target's size (SMAA's only for SMAA) */
-static int textures_fit(int smaa, uint32_t width, uint32_t height)
+/* the passes' textures, of the target's size (SMAA's only for SMAA); the
+copy of the target's pixels in its format (display.hdr's half floats) */
+static int textures_fit(int smaa, uint8_t format, uint32_t width, uint32_t height)
 {
 	const uint8_t usage = XGPU_METAL_USAGE_SAMPLED | XGPU_METAL_USAGE_TARGET;
 
-	if (post.width != width || post.height != height || !post.color)
+	if (post.width != width || post.height != height || !post.color || post.color_format != format)
 	{
 		xgpu_metal_texture_destroy(post.color);
 		xgpu_metal_texture_destroy(post.edges);
@@ -109,7 +113,8 @@ static int textures_fit(int smaa, uint32_t width, uint32_t height)
 		post.color = post.edges = post.weights = 0;
 		post.width = width;
 		post.height = height;
-		post.color = texture_make(XGPU_METAL_FORMAT_BGRA8, usage, width, height);
+		post.color_format = format;
+		post.color = texture_make(format, usage, width, height);
 	}
 	if (smaa && !post.edges)
 	{
@@ -122,8 +127,8 @@ static int textures_fit(int smaa, uint32_t width, uint32_t height)
 /* ---------- pipelines */
 
 /* a pass's pipeline: into the target its colour alone; into an
-intermediate, all of it */
-static void pipeline_describe(int function, struct xgpu_metal_pipeline *pipeline)
+intermediate, all of it; the target's format (display.hdr's half floats) */
+static void pipeline_describe(int function, uint8_t format, struct xgpu_metal_pipeline *pipeline)
 {
 	memset(pipeline, 0, sizeof(*pipeline));
 	pipeline->vertex_shader = post.functions[XGPU_METAL_POST_VERTEX];
@@ -131,7 +136,8 @@ static void pipeline_describe(int function, struct xgpu_metal_pipeline *pipeline
 	pipeline->color_mask = function == XGPU_METAL_POST_FXAA || function == XGPU_METAL_POST_SMAA_BLEND ?
 		XGPU_WRITE_RED | XGPU_WRITE_GREEN | XGPU_WRITE_BLUE :
 		XGPU_WRITE_RED | XGPU_WRITE_GREEN | XGPU_WRITE_BLUE | XGPU_WRITE_ALPHA;
-	pipeline->color_format = XGPU_METAL_FORMAT_BGRA8;
+	pipeline->color_format = function == XGPU_METAL_POST_FXAA || function == XGPU_METAL_POST_SMAA_BLEND ? format :
+		XGPU_METAL_FORMAT_BGRA8;
 	pipeline->samples = 1;
 }
 
@@ -172,7 +178,7 @@ int xgpu_metal_post_prepare(int smaa)
 			return prepare_failed(smaa, "functions");
 		/* (made on the backend's queues: a draw waits for its own, a map's
 		preparation for all of them) */
-		pipeline_describe(function, &pipeline);
+		pipeline_describe(function, XGPU_METAL_FORMAT_BGRA8, &pipeline);
 		xgpu_metal_prepare(&pipeline);
 	}
 	if (smaa && !post.area)
@@ -190,8 +196,8 @@ int xgpu_metal_post_prepare(int smaa)
 
 /* a function's triangle drawn into a texture over the rectangle, sampling
 textures (0: none) */
-static void pass_draw(int function, uint32_t into, const int32_t rectangle[4], uint32_t texture0, uint32_t texture1,
-	uint32_t texture2, const float bounds[4])
+static void pass_draw(int function, uint32_t into, uint8_t format, const int32_t rectangle[4], uint32_t texture0,
+	uint32_t texture1, uint32_t texture2, const float bounds[4])
 {
 	struct xgpu_metal_pipeline pipeline;
 	struct xgpu_metal_dynamic_state dynamic;
@@ -201,7 +207,7 @@ static void pass_draw(int function, uint32_t into, const int32_t rectangle[4], u
 	uint32_t stage;
 
 	xgpu_metal_set_targets(into, 0, 0, 0, 0);
-	pipeline_describe(function, &pipeline);
+	pipeline_describe(function, format, &pipeline);
 	xgpu_metal_set_pipeline(&pipeline);
 	memset(&dynamic, 0, sizeof(dynamic));
 	dynamic.viewport[0] = dynamic.scissor[0] = rectangle[0];
@@ -240,7 +246,8 @@ static void intermediate_clear(uint32_t texture)
 	xgpu_metal_clear(NULL, 0, XGPU_METAL_CLEAR_COLOR | XGPU_METAL_CLEAR_CHANNELS, transparent, 1.0f, 0);
 }
 
-int xgpu_metal_post_anti_alias(int smaa, uint32_t target, uint32_t width, uint32_t height, const int32_t corners[4])
+int xgpu_metal_post_anti_alias(int smaa, uint32_t target, uint8_t format, uint32_t width, uint32_t height,
+	const int32_t corners[4])
 {
 	int32_t rectangle[4];
 	int index;
@@ -258,7 +265,7 @@ int xgpu_metal_post_anti_alias(int smaa, uint32_t target, uint32_t width, uint32
 	}
 	if (rectangle[2] <= rectangle[0] || rectangle[3] <= rectangle[1])
 		return 1;
-	if (!textures_fit(smaa, width, height))
+	if (!textures_fit(smaa, format, width, height))
 		return 0;
 
 	/* the target's pixels, read while the target is drawn into */
@@ -272,17 +279,89 @@ int xgpu_metal_post_anti_alias(int smaa, uint32_t target, uint32_t width, uint32
 		bounds[1] = ((float)rectangle[1] + 0.5f) / (float)post.height;
 		bounds[2] = ((float)rectangle[2] - 0.5f) / (float)post.width;
 		bounds[3] = ((float)rectangle[3] - 0.5f) / (float)post.height;
-		pass_draw(XGPU_METAL_POST_FXAA, target, rectangle, post.color, 0, 0, bounds);
+		pass_draw(XGPU_METAL_POST_FXAA, target, format, rectangle, post.color, 0, 0, bounds);
 	}
 	else
 	{
 		intermediate_clear(post.edges);
-		pass_draw(XGPU_METAL_POST_SMAA_EDGES, post.edges, rectangle, post.color, 0, 0, NULL);
+		pass_draw(XGPU_METAL_POST_SMAA_EDGES, post.edges, XGPU_METAL_FORMAT_BGRA8, rectangle, post.color, 0, 0, NULL);
 
 		intermediate_clear(post.weights);
-		pass_draw(XGPU_METAL_POST_SMAA_WEIGHTS, post.weights, rectangle, post.edges, post.area, post.search, NULL);
+		pass_draw(XGPU_METAL_POST_SMAA_WEIGHTS, post.weights, XGPU_METAL_FORMAT_BGRA8, rectangle, post.edges, post.area,
+			post.search, NULL);
 
-		pass_draw(XGPU_METAL_POST_SMAA_BLEND, target, rectangle, post.color, post.weights, 0, NULL);
+		pass_draw(XGPU_METAL_POST_SMAA_BLEND, target, format, rectangle, post.color, post.weights, 0, NULL);
 	}
+	return 1;
+}
+
+/* ---------- display.hdr's tone map */
+
+/* the tone map's pipeline: into the target's colour (its format, its
+samples), with its depth attachment (the pass's, which it neither tests nor
+writes) */
+static void tone_map_pipeline(uint8_t depth_format, uint32_t samples, struct xgpu_metal_pipeline *pipeline)
+{
+	memset(pipeline, 0, sizeof(*pipeline));
+	pipeline->vertex_shader = post.functions[XGPU_METAL_POST_VERTEX];
+	pipeline->pixel_shader = post.functions[XGPU_METAL_POST_HDR_TONE_MAP];
+	pipeline->color_mask = XGPU_WRITE_RED | XGPU_WRITE_GREEN | XGPU_WRITE_BLUE;
+	pipeline->color_format = XGPU_METAL_FORMAT_RGBA16F;
+	pipeline->depth_format = depth_format;
+	pipeline->samples = (uint8_t)(samples > 1 ? samples : 1);
+}
+
+int xgpu_metal_post_prepare_hdr(uint8_t depth_format, uint32_t samples)
+{
+	struct xgpu_metal_pipeline pipeline;
+
+	if (post.hdr_failed)
+		return 0;
+	if (!function_make(XGPU_METAL_POST_VERTEX) || !function_make(XGPU_METAL_POST_HDR_TONE_MAP))
+	{
+		host_logf(HOST_LOG_WARN, "metal: the HDR tone map's functions cannot be made, so the 3D view is not tone mapped");
+		post.hdr_failed = 1;
+		return 0;
+	}
+	tone_map_pipeline(depth_format, samples, &pipeline);
+	xgpu_metal_prepare(&pipeline);
+	return 1;
+}
+
+int xgpu_metal_post_tone_map(uint32_t target, uint32_t width, uint32_t height, uint32_t depth, uint8_t depth_format,
+	uint32_t samples, const int32_t corners[4], const float hdr[4])
+{
+	struct xgpu_metal_pipeline pipeline;
+	struct xgpu_metal_dynamic_state dynamic;
+	struct xgpu_metal_post_uniforms uniforms;
+	int32_t rectangle[4];
+	int index;
+
+	if (!target || !width || !height || !xgpu_metal_post_prepare_hdr(depth_format, samples))
+		return 0;
+	for (index = 0; index < 4; index++)
+	{
+		int32_t most = (int32_t)(index & 1 ? height : width);
+
+		rectangle[index] = corners[index] < 0 ? 0 : corners[index] > most ? most : corners[index];
+	}
+	if (rectangle[2] <= rectangle[0] || rectangle[3] <= rectangle[1])
+		return 1;
+	/* (the pass drawing the 3D view goes on: the pixels are read where
+	they are, in tile memory) */
+	xgpu_metal_set_targets(target, 0, 0, depth, samples > 1);
+	tone_map_pipeline(depth_format, samples, &pipeline);
+	xgpu_metal_set_pipeline(&pipeline);
+	memset(&dynamic, 0, sizeof(dynamic));
+	dynamic.viewport[0] = dynamic.scissor[0] = rectangle[0];
+	dynamic.viewport[1] = dynamic.scissor[1] = rectangle[1];
+	dynamic.viewport[2] = dynamic.scissor[2] = rectangle[2] - rectangle[0];
+	dynamic.viewport[3] = dynamic.scissor[3] = rectangle[3] - rectangle[1];
+	dynamic.depth_range[1] = 1.0f;
+	xgpu_metal_set_dynamic_state(&dynamic);
+	memset(&uniforms, 0, sizeof(uniforms));
+	memcpy(uniforms.hdr, hdr, sizeof(uniforms.hdr));
+	xgpu_metal_set_draw_uniforms(&uniforms, sizeof(uniforms));
+	xgpu_metal_draw(XGPU_METAL_PRIMITIVE_TRIANGLES, 3, 0, 0, (struct xgpu_metal_source){ XGPU_METAL_SOURCE_NONE, 0, 0, 0 });
 	return 1;
 }

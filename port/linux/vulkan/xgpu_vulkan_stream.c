@@ -1027,6 +1027,7 @@ static void pixel_program_convert(const struct xgpu_stream_pixel_program *wire, 
 	program->dynamic_lights = wire->dynamic_lights;
 	program->multiview = wire->multiview;
 	program->source_blend = wire->source_blend;
+	program->hdr = wire->hdr;
 }
 
 /* debug.gpu_dump_shaders (HALO_VULKAN_SHADERS) writes each module into its

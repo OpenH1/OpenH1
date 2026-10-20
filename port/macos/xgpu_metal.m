@@ -362,6 +362,11 @@ id<MTLLibrary> xgpu_metal_fixed_library(void)
 	return metal.fixed_library;
 }
 
+id<MTLLibrary> xgpu_metal_library(void)
+{
+	return metal.library;
+}
+
 id<MTLCommandQueue> xgpu_metal_queue(void)
 {
 	return metal.queue;
@@ -3200,21 +3205,28 @@ int xgpu_metal_read_pixels(uint32_t texture, uint32_t level, uint32_t layer, uin
 	depth = format->depth;
 	/* (depth as 4-byte floats: the depth plane of D24S8; D16 as it is) */
 	row_size = width * (depth && format->stencil ? 4 : format->bytes);
-	buffer = [metal.device newBufferWithLength:(NSUInteger)row_size * height options:MTLResourceStorageModeShared];
-	pass_end();
-	blit = blit_encoder("read");
-	[blit copyFromTexture:entry->texture sourceSlice:layer sourceLevel:level sourceOrigin:MTLOriginMake(x, y, 0)
-		sourceSize:MTLSizeMake(width, height, 1) toBuffer:buffer destinationOffset:0
-		destinationBytesPerRow:row_size destinationBytesPerImage:(NSUInteger)row_size * height
-		options:depth && format->stencil ? MTLBlitOptionDepthFromDepthStencil : MTLBlitOptionNone];
-	[blit endEncoding];
-	entry->used = recording_serial();
-	/* (the frame goes on in a command buffer of its own) */
-	serial = command_buffer_commit(nil);
-	xgpu_metal_frame_wait(serial);
-	for (row = 0; row < height; row++)
-		memcpy((unsigned char *)pixels + (size_t)row * bytes_per_row, (const unsigned char *)buffer.contents + (size_t)row * row_size,
-			row_size);
+	/* (the buffer and the command buffer let go of at once: a reading each
+	frame, as debug.determinism_log's is, would otherwise keep a frame's
+	pixels each until the render thread's pool drains) */
+	@autoreleasepool
+	{
+		buffer = [metal.device newBufferWithLength:(NSUInteger)row_size * height options:MTLResourceStorageModeShared];
+		pass_end();
+		blit = blit_encoder("read");
+		[blit copyFromTexture:entry->texture sourceSlice:layer sourceLevel:level sourceOrigin:MTLOriginMake(x, y, 0)
+			sourceSize:MTLSizeMake(width, height, 1) toBuffer:buffer destinationOffset:0
+			destinationBytesPerRow:row_size destinationBytesPerImage:(NSUInteger)row_size * height
+			options:depth && format->stencil ? MTLBlitOptionDepthFromDepthStencil : MTLBlitOptionNone];
+		[blit endEncoding];
+		entry->used = recording_serial();
+		/* (the frame goes on in a command buffer of its own) */
+		serial = command_buffer_commit(nil);
+		xgpu_metal_frame_wait(serial);
+		for (row = 0; row < height; row++)
+			memcpy((unsigned char *)pixels + (size_t)row * bytes_per_row,
+				(const unsigned char *)buffer.contents + (size_t)row * row_size, row_size);
+		buffer = nil;
+	}
 	metal.dirty = _dirty_all;
 	return 1;
 }
