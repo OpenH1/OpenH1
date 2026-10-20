@@ -395,6 +395,8 @@ void rasterizer_profile_begin(
 		"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox_profile.c",
 		259,
 		global_d3d_device);
+	/* port: the category drawing, for display.hdr (port/linux/src/d3d8_device.c) */
+	halo_hdr_category(profile);
 
 	if (rasterizer_profile_enabled() && rasterizer_profile_globals.window_index==0 && local_profile_enable==0)
 	{
@@ -431,6 +433,8 @@ void rasterizer_profile_end(
 		"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox_profile.c",
 		294,
 		global_d3d_device);
+	/* port: (as begin's) */
+	halo_hdr_category(NONE);
 
 	if (rasterizer_profile_enabled() && rasterizer_profile_globals.window_index==0 && local_profile_enable==0)
 	{

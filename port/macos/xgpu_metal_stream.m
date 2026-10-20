@@ -49,6 +49,8 @@ by the functions under "the interface's values".
 #include "xgpu_metal_post.h"
 #include "xgpu_metal_stream.h"
 #include "xgpu_metal_textures.h"
+#define XGPU_HDR_REFERENCE
+#include "xgpu_hdr.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -241,7 +243,8 @@ static void stream_target_create(void *context, const struct xgpu_stream_target_
 	(void)context;
 	memset(&description, 0, sizeof(description));
 	description.type = record->layers > 1 ? XGPU_METAL_TEXTURE_2D_ARRAY : XGPU_METAL_TEXTURE_2D;
-	description.format = record->depth ? XGPU_METAL_FORMAT_D24S8 : XGPU_METAL_FORMAT_BGRA8;
+	description.format = record->depth ? XGPU_METAL_FORMAT_D24S8 :
+		record->format == 3 /* XGPU_FORMAT_RGBA16F */ ? XGPU_METAL_FORMAT_RGBA16F : XGPU_METAL_FORMAT_BGRA8;
 	description.usage = XGPU_METAL_USAGE_SAMPLED | XGPU_METAL_USAGE_TARGET;
 	description.width = (uint16_t)record->width;
 	description.height = (uint16_t)record->height;
@@ -286,6 +289,12 @@ static void stream_set_targets(void *context, const struct xgpu_stream_set_targe
 		record->samples != 0);
 }
 
+/* a target's texture (the tests') */
+uint32_t xgpu_metal_stream_target_texture(uint32_t target)
+{
+	return target_texture(target);
+}
+
 /* the stream's targets, dynamic state, textures and uniforms again, after
 a pass of the stream's own (the glows, anti-aliasing's) drew with its own:
 the next draw sets its pipeline and streams */
@@ -318,6 +327,35 @@ static void stream_clear_target(void *context, const struct xgpu_stream_clear_ta
 	xgpu_metal_set_targets(target_texture(stream.color), 0, 0, target_texture(stream.depth), stream.samples != 0);
 }
 
+/* an RGBA16F target's pixels (display.hdr's back buffer) as BGRA8, as an
+SDR display shows them (clamped to [0, 1]); 0 if they cannot be read */
+static int read_half_floats(struct stream_target *entry, uint32_t layer, unsigned char *bgra)
+{
+	uint32_t width = entry->description.width, height = entry->description.height;
+	__fp16 *halves = malloc((size_t)width * height * 8);
+	size_t pixel;
+	int read;
+
+	if (!halves)
+		return 0;
+	read = xgpu_metal_read_pixels(entry->texture, 0, layer, 0, 0, width, height, halves, width * 8);
+	for (pixel = 0; read && pixel < (size_t)width * height; pixel++)
+	{
+		int channel;
+
+		for (channel = 0; channel < 4; channel++)
+		{
+			float value = (float)halves[pixel * 4 + channel];
+
+			/* (BGRA: blue, green, red, alpha) */
+			bgra[pixel * 4 + (channel == 3 ? 3 : 2 - channel)] =
+				(unsigned char)(value <= 0.0f ? 0 : value >= 1.0f ? 255 : (int)(value * 255.0f + 0.5f));
+		}
+	}
+	free(halves);
+	return read;
+}
+
 static int stream_read_target(void *context, const struct xgpu_stream_read_target *record)
 {
 	struct stream_target *entry = target_get(record->target);
@@ -330,8 +368,70 @@ static int stream_read_target(void *context, const struct xgpu_stream_read_targe
 	height = entry->description.height;
 	if ((uint64_t)width * height * 4 > record->size)
 		return 0;
+	if (entry->description.format == XGPU_METAL_FORMAT_RGBA16F)
+		return read_half_floats(entry, record->layer > 0 ? (uint32_t)record->layer : 0, host_pointer(record->pixels));
 	return xgpu_metal_read_pixels(entry->texture, 0, record->layer > 0 ? (uint32_t)record->layer : 0, 0, 0, width, height,
 		host_pointer(record->pixels), width * 4);
+}
+
+/* display.hdr's shots: the frame's values as they are (an RGBA16F target's
+half floats), beside its PNG: <path>.rgba16f, a header of the magic "RGBA16F\0",
+the width and the height (32 bits each, little-endian), then the rows from
+the top, four half floats a pixel; and the frame encoded for the display the
+presentation had then (<path>.encoded.rgba16f: linear light, 1.0 the
+system's SDR white, as host_metal.m's encoding writes it: xgpu_hdr.h's
+reference), with the encoding's paper white, peak and output in a line of
+<path>.encoded.txt */
+static void shot_half_floats(struct stream_target *entry, const char *path)
+{
+	uint32_t width = entry->description.width, height = entry->description.height, header[4] = { 0, 0, 0, 0 };
+	__fp16 *halves = malloc((size_t)width * height * 8);
+	struct xgpu_hdr_frame frame;
+	char name[1100];
+	FILE *file;
+	size_t pixel;
+
+	if (!halves || !xgpu_metal_read_pixels(entry->texture, 0, 0, 0, 0, width, height, halves, width * 8))
+	{
+		free(halves);
+		return;
+	}
+	memcpy(header, "RGBA16F", 8);
+	header[2] = width;
+	header[3] = height;
+	snprintf(name, sizeof(name), "%s.rgba16f", path);
+	if ((file = fopen(name, "wb")) != NULL)
+	{
+		fwrite(header, sizeof(header), 1, file);
+		fwrite(halves, 8, (size_t)width * height, file);
+		fclose(file);
+	}
+	host_metal_hdr_frame(&frame);
+	for (pixel = 0; pixel < (size_t)width * height; pixel++)
+	{
+		float rgb[3] = { (float)halves[pixel * 4], (float)halves[pixel * 4 + 1], (float)halves[pixel * 4 + 2] };
+
+		xgpu_hdr_encode(rgb, &frame);
+		halves[pixel * 4] = (__fp16)rgb[0];
+		halves[pixel * 4 + 1] = (__fp16)rgb[1];
+		halves[pixel * 4 + 2] = (__fp16)rgb[2];
+		halves[pixel * 4 + 3] = (__fp16)1.0f;
+	}
+	snprintf(name, sizeof(name), "%s.encoded.rgba16f", path);
+	if ((file = fopen(name, "wb")) != NULL)
+	{
+		fwrite(header, sizeof(header), 1, file);
+		fwrite(halves, 8, (size_t)width * height, file);
+		fclose(file);
+	}
+	snprintf(name, sizeof(name), "%s.encoded.txt", path);
+	if ((file = fopen(name, "w")) != NULL)
+	{
+		fprintf(file, "paper_white %.6f peak %.6f output %d mode %d\n", (double)frame.paper_white, (double)frame.peak,
+			frame.output, frame.mode);
+		fclose(file);
+	}
+	free(halves);
 }
 
 /* a target's picture as a PNG (host_render_record.h's shots: a frame's back
@@ -343,14 +443,18 @@ int xgpu_metal_stream_shot(uint32_t target, const char *path)
 	unsigned char *pixels;
 	int written = 0;
 
-	if (!entry || entry->description.format != XGPU_METAL_FORMAT_BGRA8)
+	if (!entry || (entry->description.format != XGPU_METAL_FORMAT_BGRA8 &&
+		entry->description.format != XGPU_METAL_FORMAT_RGBA16F))
 		return 0;
 	width = entry->description.width;
 	height = entry->description.height;
 	pixels = malloc((size_t)width * height * 4);
 	if (!pixels)
 		return 0;
-	if (xgpu_metal_read_pixels(entry->texture, 0, 0, 0, 0, width, height, pixels, width * 4))
+	if (entry->description.format == XGPU_METAL_FORMAT_RGBA16F)
+		shot_half_floats(entry, path);
+	if (entry->description.format == XGPU_METAL_FORMAT_RGBA16F ? read_half_floats(entry, 0, pixels) :
+		xgpu_metal_read_pixels(entry->texture, 0, 0, 0, 0, width, height, pixels, width * 4))
 	{
 		CGColorSpaceRef space = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
 		CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, pixels, (size_t)width * height * 4, NULL);
@@ -415,10 +519,11 @@ sample an attachment of the pass): copied again once the target has been
 drawn into since (as the web build's OpenGL does: xgpu_gl.c feedback_copy) */
 static uint32_t feedback_copy(struct stream_target *target)
 {
-	if (target->description.format != XGPU_METAL_FORMAT_BGRA8)
+	if (target->description.format != XGPU_METAL_FORMAT_BGRA8 && target->description.format != XGPU_METAL_FORMAT_RGBA16F)
 		return target->texture;
 	if (!stream.feedback || stream.feedback_description.width != target->description.width ||
-		stream.feedback_description.height != target->description.height)
+		stream.feedback_description.height != target->description.height ||
+		stream.feedback_description.format != target->description.format)
 	{
 		struct xgpu_metal_texture_description description = target->description;
 
@@ -1121,7 +1226,8 @@ static void stream_anti_alias(void *context, const struct xgpu_stream_anti_alias
 	struct stream_target *target = target_get(record->target);
 
 	(void)context;
-	if (!target || target->description.format != XGPU_METAL_FORMAT_BGRA8 || target->description.samples > 1 ||
+	if (!target || (target->description.format != XGPU_METAL_FORMAT_BGRA8 &&
+		target->description.format != XGPU_METAL_FORMAT_RGBA16F) || target->description.samples > 1 ||
 		target->description.depth_or_layers > 1)
 		return;
 	if (stream.preparing)
@@ -1131,8 +1237,56 @@ static void stream_anti_alias(void *context, const struct xgpu_stream_anti_alias
 		return;
 	}
 	target->written++;
-	xgpu_metal_post_anti_alias(record->smaa != 0, target->texture, target->description.width,
-		target->description.height, record->corners);
+	xgpu_metal_post_anti_alias(record->smaa != 0, target->texture, target->description.format,
+		target->description.width, target->description.height, record->corners);
+	stream_state_restore();
+}
+
+/* ---------- display.hdr (port/linux/src/xgpu_hdr.h)
+
+The front end's state: whether the frame is drawn in HDR, the mode and
+paper white, for the tone map here and the encoding (host_metal.m, which
+knows the display: its headroom, the layer's encoding). */
+
+static void stream_hdr(void *context, const struct xgpu_stream_hdr *record)
+{
+	(void)context;
+	host_metal_hdr_state(record->active != 0, record->mode == XGPU_HDR_MODE_PUNCHY ? XGPU_HDR_MODE_PUNCHY :
+		XGPU_HDR_MODE_FAITHFUL, (int)record->paper_white);
+	/* (the tone map's function and its pipeline for the back buffer's pass,
+	made as HDR is chosen, not in the middle of a frame) */
+	if (record->active)
+		(void)xgpu_metal_post_prepare_hdr(XGPU_METAL_FORMAT_D24S8, 0);
+}
+
+/* a window's 3D view tone mapped, in the pass that drew it, before the HUD
+and the menus are drawn over it */
+static void stream_tone_map(void *context, const struct xgpu_stream_tone_map *record)
+{
+	struct stream_target *target = target_get(record->target);
+	struct stream_target *depth = stream.color == record->target ? target_get(stream.depth) : NULL;
+	uint32_t samples = target ? target->description.samples : 0;
+	struct xgpu_hdr_frame frame;
+	float hdr[4];
+
+	(void)context;
+	if (!target || target->description.format != XGPU_METAL_FORMAT_RGBA16F || target->description.depth_or_layers > 1)
+		return;
+	if (depth && depth->description.samples != target->description.samples)
+		depth = NULL;
+	if (stream.preparing)
+	{
+		(void)xgpu_metal_post_prepare_hdr(depth ? depth->description.format : XGPU_METAL_FORMAT_NONE, samples);
+		return;
+	}
+	host_metal_hdr_frame(&frame);
+	hdr[0] = (float)frame.mode;
+	hdr[1] = frame.peak;
+	hdr[2] = hdr[3] = 0.0f;
+	target->written++;
+	xgpu_metal_post_tone_map(target->texture, target->description.width, target->description.height,
+		depth ? depth->texture : 0, depth ? depth->description.format : XGPU_METAL_FORMAT_NONE, samples,
+		record->corners, hdr);
 	stream_state_restore();
 }
 
@@ -1241,6 +1395,9 @@ static void stream_initialize(void *context, struct xgpu_stream_capabilities *ca
 	their zeroed stand-ins) */
 	capabilities->dynamic_lights = 1;
 	capabilities->dynamic_lights_preparable = 1;
+	/* (display.hdr: the half floats, the draws' tags blended in their
+	shaders, reading the pixels they draw over, the tone map in place) */
+	capabilities->hdr = 1;
 }
 
 const struct host_render_backend *xgpu_metal_stream_backend(void)
@@ -1294,6 +1451,8 @@ const struct host_render_backend *xgpu_metal_stream_backend(void)
 		backend.dynamic_lights_halos = stream_dynamic_lights_halos;
 		backend.anti_aliasing_prepare = stream_anti_aliasing_prepare;
 		backend.anti_alias = stream_anti_alias;
+		backend.hdr = stream_hdr;
+		backend.tone_map = stream_tone_map;
 	}
 	return &backend;
 }

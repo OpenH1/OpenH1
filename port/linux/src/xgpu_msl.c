@@ -15,6 +15,8 @@ write to a register nothing reads is dead on the hardware too).
 #include "xgpu.h"
 #include "xgpu_shader.h"
 #include "xgpu_msl.h"
+#include "xgpu_hdr.h"
+#include "xgpu_backend.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -1279,6 +1281,18 @@ static void dynamic_lights_functions(struct xgpu_text *text, struct xgpu_text *f
 		"\tfloat3 had = pow(saturate(base), float3(2.2));\n"
 		"\tfloat3 room = max(1.0 - had, float3(1.0e-3));\n"
 		"\treturn pow(had + room * (1.0 - exp(-light / room)), float3(1.0 / 2.2));\n"
+		"}\n"
+		/* (display.hdr: the same below white, and what its shoulder squeezes
+		under white rolled off toward the lights' white instead: xgpu_hdr.h's
+		xgpu_hdr_lights) */
+		"static inline float3 dynamic_light_add_hdr(constant xgpu_dynamic_lights &lights, float3 base, float3 light)\n"
+		"{\n"
+		"\tlight += float3(max(max(light.r, max(light.g, light.b)) - 1.0, 0.0) * lights.grid[2].z);\n"
+		"\tfloat3 had = pow(saturate(base), float3(2.2));\n"
+		"\tfloat3 room = max(1.0 - had, float3(1.0e-3));\n"
+		"\tfloat3 past = max(had + light - 1.0, float3(0.0));\n"
+		"\treturn pow(had + room * (1.0 - exp(-light / room)) + " XGPU_HDR_LIGHTS_ROOM " * (1.0 - exp(-past / " XGPU_HDR_LIGHTS_ROOM ")),\n"
+		"\t\tfloat3(1.0 / 2.2));\n"
 		"}\n",
 		XGPU_DYNAMIC_LIGHTS_GRID_X / 2, XGPU_DYNAMIC_LIGHTS_GRID_Y / 2, XGPU_DYNAMIC_LIGHTS_GRID_Z / 2,
 		XGPU_DYNAMIC_LIGHTS_GRID_X - 1, XGPU_DYNAMIC_LIGHTS_GRID_Y - 1, XGPU_DYNAMIC_LIGHTS_GRID_Z - 1,
@@ -1318,6 +1332,101 @@ static const char border_function[] =
 	"\t}\n"
 	"\treturn mix(color, texel, float4(inside));\n"
 	"}\n";
+
+/* ---------- display.hdr's tags (xgpu_hdr.h) */
+
+/* a blend factor, of the source (s), the destination (d: the pixel drawn
+over, which may be past white: one less it is never below 0) and the blend
+colour (c), for every channel at once (a colour's factor acts on alpha as
+its alpha's) */
+static const char *hdr_factor(int factor)
+{
+	switch (factor)
+	{
+	case XGPU_BLEND_ZERO: return "float4(0.0)";
+	case XGPU_BLEND_ONE: return "float4(1.0)";
+	case XGPU_BLEND_SOURCE_COLOR: return "s";
+	case XGPU_BLEND_ONE_MINUS_SOURCE_COLOR: return "(1.0 - s)";
+	case XGPU_BLEND_SOURCE_ALPHA: return "float4(s.a)";
+	case XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA: return "float4(1.0 - s.a)";
+	case XGPU_BLEND_DESTINATION_ALPHA: return "float4(d.a)";
+	case XGPU_BLEND_ONE_MINUS_DESTINATION_ALPHA: return "float4(max(1.0 - d.a, 0.0))";
+	case XGPU_BLEND_DESTINATION_COLOR: return "d";
+	case XGPU_BLEND_ONE_MINUS_DESTINATION_COLOR: return "max(1.0 - d, float4(0.0))";
+	case XGPU_BLEND_SOURCE_ALPHA_SATURATE: return "float4(float3(min(s.a, max(1.0 - d.a, 0.0))), 1.0)";
+	case XGPU_BLEND_CONSTANT_COLOR: return "u.blend_constant";
+	case XGPU_BLEND_ONE_MINUS_CONSTANT_COLOR: return "(1.0 - u.blend_constant)";
+	case XGPU_BLEND_CONSTANT_ALPHA: return "float4(u.blend_constant.a)";
+	case XGPU_BLEND_ONE_MINUS_CONSTANT_ALPHA: return "float4(1.0 - u.blend_constant.a)";
+	default: return "float4(1.0)";
+	}
+}
+
+static float hdr_ceiling(int ceiling)
+{
+	return ceiling == XGPU_HDR_CEILING_WEAPON ? XGPU_HDR_CEILING_WEAPON_VALUE :
+		ceiling == XGPU_HDR_CEILING_HUD ? XGPU_HDR_CEILING_HUD_VALUE : XGPU_HDR_CEILING_PAPER_WHITE_VALUE;
+}
+
+/* the colour written for a tagged draw, from its source (source: the
+pixel shader's result as the game's blend takes it): a glow brightened
+toward its ceiling; blended here with the pixel drawn over
+(xgpu_destination), no channel taken past what the pixel had or the
+ceiling, nor below 0, destination alpha past 1 */
+static void hdr_output(struct xgpu_text *text, unsigned short hdr)
+{
+	int ceiling = XGPU_HDR_CEILING_OF(hdr);
+	int operation = XGPU_HDR_BLEND_OPERATION(hdr);
+	const char *source = hdr_factor(XGPU_HDR_BLEND_SOURCE(hdr));
+	const char *destination = hdr_factor(XGPU_HDR_BLEND_DESTINATION(hdr));
+
+	if (!XGPU_HDR_SHADER_BLENDS(hdr))
+	{
+		xgpu_text_append(text, "\toutput.color = source;\n");
+		return;
+	}
+	xgpu_text_append(text, "\t{\n\t\tfloat4 s = source, d = xgpu_destination;\n");
+	switch (operation)
+	{
+	case XGPU_BLEND_SUBTRACT:
+		xgpu_text_append(text, "\t\tfloat4 v = s * %s - d * %s;\n", source, destination);
+		break;
+	case XGPU_BLEND_REVERSE_SUBTRACT:
+		xgpu_text_append(text, "\t\tfloat4 v = d * %s - s * %s;\n", destination, source);
+		break;
+	case XGPU_BLEND_MIN:
+		xgpu_text_append(text, "\t\tfloat4 v = min(s, d);\n");
+		break;
+	case XGPU_BLEND_MAX:
+		xgpu_text_append(text, "\t\tfloat4 v = max(s, d);\n");
+		break;
+	default:
+		xgpu_text_append(text, "\t\tfloat4 v = s * %s + d * %s;\n", source, destination);
+		break;
+	}
+	xgpu_text_append(text, "\t\tv = max(v, float4(0.0));\n");
+	/* (a glow: more of the light the draw added, where it is bright:
+	xgpu_hdr_expand) */
+	if (hdr & XGPU_HDR_EXPAND)
+		xgpu_text_append(text,
+			"\t\tfloat3 added = max(v.rgb - d.rgb, float3(0.0));\n"
+			"\t\tfloat added_most = max(added.r, max(added.g, added.b)), most = max(v.r, max(v.g, v.b));\n"
+			"\t\tif (added_most > 0.0)\n"
+			"\t\t\tv.rgb += added * min(%.6f * smoothstep(%.6f, 1.0, most) * most / added_most, %.6f);\n",
+			hdr_ceiling(ceiling) - 1.0f, XGPU_HDR_EXPAND_KNEE, XGPU_HDR_EXPAND_MOST);
+	/* (a glow's ceiling keeps its hue: its brightest channel's; any other's
+	each channel's) */
+	if (ceiling && (hdr & XGPU_HDR_EXPAND))
+		xgpu_text_append(text,
+			"\t\tfloat limit = max(max(d.r, max(d.g, d.b)), %.6f), brightest = max(v.r, max(v.g, v.b));\n"
+			"\t\tif (brightest > limit)\n"
+			"\t\t\tv.rgb *= limit / brightest;\n", hdr_ceiling(ceiling));
+	else if (ceiling)
+		xgpu_text_append(text, "\t\tv.rgb = min(v.rgb, max(d.rgb, float3(%.6f)));\n", hdr_ceiling(ceiling));
+	if (hdr & XGPU_HDR_ALPHA_LIMIT)
+		xgpu_text_append(text, "\t\tv.a = min(v.a, 1.0);\n");
+	xgpu_text_append(text, "\t\toutput.color = v;\n\t}\n");
+}
 
 char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_msl_options *options)
 {
@@ -1390,6 +1499,10 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 			XGPU_MSL_BUFFER_DYNAMIC_LIGHT_CELLS);
 	if (count_samples)
 		xgpu_text_append(&text, ",\n\tdevice atomic_uint *visible_samples [[buffer(%d)]]", XGPU_MSL_BUFFER_SAMPLES);
+	/* (display.hdr: a draw blended here reads the pixel it draws over:
+	Apple's GPUs' programmable blending) */
+	if (XGPU_HDR_SHADER_BLENDS(program->hdr))
+		xgpu_text_append(&text, ",\n\tfloat4 xgpu_destination [[color(0)]]");
 	xgpu_text_append(&text, ")\n{\n\txgpu_fragment_out output;\n");
 
 	if (register_read(&usage, XGPU_REGISTER_V0))
@@ -1499,11 +1612,12 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 			"\t\tfloat3 surface_normal = normalize(in.xWorldNormal.xyz);\n"
 			"\t\tfloat3 bump = %s;\n"
 			"\t\tfloat3 n = normalize(in.xWorldTangent * bump.x + in.xWorldBinormal * bump.y + surface_normal * max(bump.z, 0.05));\n"
-			"\t\tresult.rgb = dynamic_light_add(dynamic_lights, result.rgb,\n"
+			"\t\tresult.rgb = dynamic_light_add%s(dynamic_lights, result.rgb,\n"
 			"\t\t\tdynamic_light_sum(dynamic_lights, dynamic_light_cells, in.xWorldPosition, n, surface_normal, true) *\n"
 			"\t\t\tpow(u.ps_final_c0.rgb, float3(2.2)));\n"
 			"\t}\n",
-			program->stages[0].sampler == _xgpu_sampler_2d ? "dynamic_light_bump * 2.0 - 1.0" : "float3(0.0, 0.0, 1.0)");
+			program->stages[0].sampler == _xgpu_sampler_2d ? "dynamic_light_bump * 2.0 - 1.0" : "float3(0.0, 0.0, 1.0)",
+			(program->hdr & XGPU_HDR_LIGHTS) ? "_hdr" : "");
 	}
 	if (program->coverage_alpha)
 		xgpu_text_append(&text, "\tresult.a = mix(1.0, result.a, t0.g);\n");
@@ -1550,6 +1664,18 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 		};
 
 		xgpu_text_append(&text, "\toutput.color = saturate(result) * %s;\n", factors[(program->source_blend - 1) & 3]);
+	}
+	else if (program->hdr & XGPU_HDR_LIGHTS)
+	{
+		/* (display.hdr: the dynamic lights' light past white, to their white
+		in the display's gamma: xgpu_hdr.h) */
+		xgpu_text_append(&text, "\toutput.color = float4(clamp(result.rgb, 0.0, %.6f), saturate(result.a));\n",
+			XGPU_HDR_LIGHTS_WHITE_VALUE);
+	}
+	else if (program->hdr)
+	{
+		xgpu_text_append(&text, "\tfloat4 source = saturate(result);\n");
+		hdr_output(&text, program->hdr);
 	}
 	else
 	{

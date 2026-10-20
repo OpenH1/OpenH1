@@ -40,6 +40,8 @@ import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "port/linux/src/xgpu_post.c"
+# display.hdr's tone map and encoding (their functions and main functions)
+HDR_SOURCE = ROOT / "port/linux/src/xgpu_hdr.c"
 SMAA = ROOT / "port/third_party/smaa"
 OUTPUT = ROOT / "port/linux/vulkan/xgpu_vulkan_post_shaders.c"
 
@@ -47,8 +49,9 @@ STRINGS = re.compile(r'"(?:\\.|[^"\\])*"')
 COMMENTS = re.compile(r"/\*.*?\*/", re.S)
 UNIFORM = re.compile(r"^uniform vec4 (\w+);\n", re.M)
 SAMPLER = re.compile(r"^uniform sampler2D (\w+);\n", re.M)
-# the uniforms' block: each pass's vec4s, in this order (std140)
-UNIFORMS = ("metrics", "bounds")
+# the uniforms' block: each pass's vec4s, in this order (std140); hdr only
+# in display.hdr's passes, whose block has it
+UNIFORMS = ("metrics", "bounds", "hdr")
 # the fragment programs, in xgpu_vulkan_post_shaders.h's order
 PROGRAMS = ("fxaa", "smaa_edges", "smaa_weights", "smaa_blend", "rotate")
 # Vulkan's own program, which the OpenGL backend has no need of: the frame
@@ -92,7 +95,7 @@ def literal(text: str) -> str:
 
 
 def declaration(source: str, name: str) -> str:
-    match = re.search(r"static const char " + name + r"\[\]\s*=\s*(.*?);\n", source, re.S)
+    match = re.search(r"(?:static )?const char " + name + r"\[\]\s*=\s*(.*?);\n", source, re.S)
     if not match:
         raise ValueError(f"{name} not found in {SOURCE.name}")
     return literal(match[1])
@@ -133,6 +136,15 @@ def units(source: str) -> dict[str, int]:
     return found
 
 
+def hdr_programs() -> dict[str, str]:
+    """display.hdr's fragment programs (xgpu_hdr.c): the tone map, in place
+    (the pixel drawn over is the pass's input attachment), and the encoding,
+    each its main function after the functions they share."""
+    source = HDR_SOURCE.read_text()
+    functions = declaration(source, "xgpu_hdr_functions_source")
+    return {name: functions + declaration(source, f"{name}_source") for name in ("tone_map", "encode")}
+
+
 def translate(stage: str, code: str, bindings: dict[str, int]) -> str:
     found = UNIFORM.findall(code)
     unknown = set(found) - set(UNIFORMS)
@@ -149,7 +161,7 @@ def translate(stage: str, code: str, bindings: dict[str, int]) -> str:
     block = ""
     if stage == "frag":
         block = "layout(std140, set = 0, binding = 1) uniform PostUniforms\n{\n"
-        block += "".join(f"\tvec4 {name};\n" for name in UNIFORMS) + "};\n"
+        block += "".join(f"\tvec4 {name};\n" for name in UNIFORMS if name != "hdr" or "hdr" in found) + "};\n"
     return "#version 450\n" + block + code
 
 

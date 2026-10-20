@@ -163,7 +163,9 @@ struct nv2a_pixel_shader_key
 	backend's xgpu_spirv.h XGPU_SPIRV_EFFECT_*): an effect drawn into both
 	eyes soft against the scene's depth (1), and thick (2); 0 none */
 	unsigned char vr_effect;
-	unsigned char pad[2];
+	/* display.hdr: the draw's tag into the HDR back buffer (xgpu_hdr.h:
+	XGPU_HDR_*); 0 into any other target, and without HDR */
+	unsigned short hdr;
 };
 
 /* the vertex constants the per-pixel model lighting reads, in a uniform of

@@ -26,6 +26,7 @@ Conventions carried over from the Xbox:
 #include "xgpu.h"
 #include "xgpu_shader.h"
 #include "xgpu_backend.h"
+#include "xgpu_hdr.h"
 #include "xgpu_manifest.h"
 #include "frame_pacing.h"
 #include "sdl_platform.h"
@@ -163,6 +164,86 @@ static int anti_aliasing(void)
 	if (anti_aliasing_value < 0)
 		anti_aliasing_read();
 	return anti_aliasing_values[anti_aliasing_value].mode;
+}
+
+/* ---------- display.hdr (xgpu_hdr.h)
+
+The frame is drawn in HDR where the backend can (Vulkan and Metal: not the
+OpenGL backend, nor the VR mode's eyes) and display.hdr asks for it: "on",
+or "auto" while the backend's display shows HDR. The back buffer is then
+RGBA16F, each draw into it tagged (xgpu_hdr_classify: what the game's code
+says of it, halo_hdr_category and halo_hdr_draw_kind, its blend, and
+whether the 3D view is drawn or the HUD over it), and each window's 3D
+view tone mapped before the HUD (halo_screen_tone_map). Read between
+frames (halo_screen_commit): the back buffer is made again when it changes. */
+
+static struct
+{
+	/* the frame is drawn in HDR; display.hdr_mode, display.hdr_paper_white
+	as last sent to the backend (sent: once at least) */
+	BOOL active, sent;
+	int mode, paper_white;
+	/* the game's renderer's category, and what its code says of the draws
+	(halo_hdr_category, halo_hdr_draw_kind) */
+	int category, kind;
+	/* a window's 3D view is drawn (its categories), until it is tone
+	mapped: the draws after are the HUD's and the menus' */
+	BOOL view;
+	/* the draws' target is the HDR back buffer (bind_targets) */
+	BOOL target;
+	/* the display's state, last logged */
+	int display_logged;
+} hdr = { FALSE, FALSE, 0, 0, -1, 0, FALSE, FALSE, -1 };
+
+static int hdr_back_buffer_format(void)
+{
+	return hdr.active ? XGPU_FORMAT_RGBA16F : XGPU_FORMAT_BGRA8;
+}
+
+/* display.hdr's value (XGPU_HDR_*): "auto", "on" ("true"), "off" ("false") */
+static int hdr_setting(void)
+{
+	const char *setting = config_string("display.hdr");
+
+	if (!setting || !strcmp(setting, "auto"))
+		return XGPU_HDR_AUTO;
+	if (!strcmp(setting, "on") || !strcmp(setting, "true"))
+		return XGPU_HDR_ON;
+	return XGPU_HDR_OFF;
+}
+
+void halo_hdr_category(int category)
+{
+	hdr.category = category;
+	/* (the 3D view's categories: past the clear, before the HUD's) */
+	if (category > 0 && category < 26)
+		hdr.view = TRUE;
+}
+
+void halo_hdr_draw_kind(int kind)
+{
+	hdr.kind = kind;
+}
+
+/* a draw's tag (nv2a_pixel_shader_key.hdr): 0 but into the HDR back
+buffer */
+static unsigned short hdr_tag(const struct xgpu_pipeline_key *key)
+{
+	struct xgpu_hdr_draw draw;
+
+	if (!hdr.target)
+		return 0;
+	memset(&draw, 0, sizeof(draw));
+	draw.blend = key->blend;
+	draw.blend_source = key->blend_source;
+	draw.blend_destination = key->blend_destination;
+	draw.blend_operation = key->blend_operation;
+	draw.color_mask = key->color_mask;
+	draw.category = hdr.category;
+	draw.interface = !hdr.view;
+	draw.kind = hdr.kind;
+	draw.mode = hdr.mode;
+	return xgpu_hdr_classify(&draw);
 }
 
 #ifdef HALO_VR
@@ -438,6 +519,9 @@ struct xgpu_render_target
 	in pixels */
 	float scale[2];
 	unsigned long pixel_width, pixel_height;
+	/* a colour target's format: XGPU_FORMAT_BGRA8, or XGPU_FORMAT_RGBA16F
+	the back buffer drawn in HDR (display.hdr) */
+	int format;
 	/* 2: a texture array, a layer for each eye, drawn into with multiview
 	(the VR mode's eye pass); 4 foveated (xgpu_foveated); else 1 */
 	int layers;
@@ -1103,12 +1187,15 @@ static struct render_target_entry *render_target_get(const D3DSurface *surface)
 	entry->target.pixel_width = (unsigned long)(width * scale[0] + 0.5f);
 	entry->target.pixel_height = (unsigned long)(height * scale[1] + 0.5f);
 	entry->target.layers = layers;
+	entry->screen_buffer = surface->Data == (depth ? device.depth_buffer.Data : device.back_buffer.Data);
+	entry->target.format = depth ? XGPU_FORMAT_D24S8 : entry->screen_buffer && kind == _render_target_screen &&
+		layers == 1 ? hdr_back_buffer_format() : XGPU_FORMAT_BGRA8;
 	description.width = entry->target.pixel_width;
 	description.height = entry->target.pixel_height;
 	description.depth = depth;
 	description.layers = layers;
+	description.format = entry->target.format;
 	xgpu_backend_target_create(entry->target.number, &description);
-	entry->screen_buffer = surface->Data == (depth ? device.depth_buffer.Data : device.back_buffer.Data);
 	entry->next = render_targets;
 	render_targets = entry;
 	entry->next_in_bucket = *render_target_bucket(entry->target.data);
@@ -1280,6 +1367,7 @@ static BOOL bind_targets(BOOL *has_depth)
 	target_samples = samples ? samples : 1;
 	*has_depth = depth != NULL;
 	target_has_color = color != NULL;
+	hdr.target = color && color->target.format == XGPU_FORMAT_RGBA16F;
 	return TRUE;
 }
 
@@ -1557,6 +1645,52 @@ int halo_ui_pointer_update(int menus_active, struct halo_ui_pointer *pointer)
 	return 1;
 }
 
+/* (between frames: halo_screen_commit) the settings and the display as
+they are now; the back buffer made again if the frame is drawn otherwise */
+static void hdr_read(void)
+{
+	float headroom = 1.0f;
+	BOOL display = FALSE, active = FALSE;
+	int setting = hdr_setting(), paper_white = (int)config_integer("display.hdr_paper_white");
+	int mode = config_string("display.hdr_mode") && !strcmp(config_string("display.hdr_mode"), "punchy") ?
+		XGPU_HDR_MODE_PUNCHY : XGPU_HDR_MODE_FAITHFUL;
+
+	if (!device.gl_ready)
+		return;
+	if (xgpu_backend_capabilities.hdr)
+	{
+		display = xgpu_backend_display_hdr(&headroom);
+		active = setting == XGPU_HDR_ON || (setting == XGPU_HDR_AUTO && display);
+	}
+#ifdef HALO_VR
+	if (halo_vr_running())
+		active = FALSE;
+#endif
+	if (paper_white <= 0)
+		paper_white = 100;
+	paper_white = paper_white < XGPU_HDR_PAPER_WHITE_LEAST ? XGPU_HDR_PAPER_WHITE_LEAST :
+		paper_white > XGPU_HDR_PAPER_WHITE_MOST ? XGPU_HDR_PAPER_WHITE_MOST : paper_white;
+	if (hdr.display_logged != (display ? 1 : 0) && xgpu_backend_capabilities.hdr)
+	{
+		platform_log("display: %s (headroom %.2f)", display ? "HDR" : "SDR", headroom);
+		hdr.display_logged = display ? 1 : 0;
+	}
+	if (active != hdr.active)
+	{
+		platform_log("HDR: %s (display.hdr \"%s\", %s)", active ? "on" : "off", config_string("display.hdr"),
+			mode == XGPU_HDR_MODE_PUNCHY ? "punchy" : "faithful");
+		hdr.active = active;
+		render_targets_evict();
+	}
+	if (!hdr.sent || mode != hdr.mode || paper_white != hdr.paper_white || active != hdr.active)
+	{
+		xgpu_backend_hdr(active, mode, paper_white);
+		hdr.sent = TRUE;
+		hdr.mode = mode;
+		hdr.paper_white = paper_white;
+	}
+}
+
 /* takes up the display's shape and resolution, or the window's, if they
 have changed; between frames, since the game's layout and the targets must
 agree for a whole frame. Returns the width the game draws. */
@@ -1568,6 +1702,8 @@ long halo_screen_commit(void)
 	/* (display.anti_aliasing, as Settings or config.toml has it now:
 	supersampling changes the scale below) */
 	anti_aliasing_read();
+	/* (display.hdr, and the display: the back buffer's format) */
+	hdr_read();
 	/* display.shadow_resolution, if it has changed: the maps' entries at
 	the old scale are freed (render_targets_evict), new ones made at the new */
 	if (shadow_scale && shadow_scale_read_at != config_changes())
@@ -2268,7 +2404,9 @@ static BOOL render_target_stale(const struct render_target_entry *entry)
 	{
 	case _render_target_screen:
 		return entry->target.scale[0] != screen_scale[0] || entry->target.scale[1] != screen_scale[1] ||
-			(entry->target.height == SCREEN_HEIGHT && entry->target.width != (unsigned long)halo_screen_width());
+			(entry->target.height == SCREEN_HEIGHT && entry->target.width != (unsigned long)halo_screen_width()) ||
+			(entry->screen_buffer && !entry->target.depth && entry->target.layers == 1 &&
+				entry->target.format != hdr_back_buffer_format());
 	case _render_target_shadow_map:
 		return entry->target.scale[0] != (float)halo_shadow_map_scale();
 	default:
@@ -3212,7 +3350,11 @@ static BOOL prepare_draw(BOOL immediate, unsigned long primitive)
 	pipeline_key.packed_attributes = immediate ? 0 : device.vertex_shader->packed_mask;
 	pipeline_key.immediate = immediate != 0;
 	pipeline_key.views = key.multiview;
-	pipeline_key.color_format = target_has_color ? XGPU_FORMAT_BGRA8 : XGPU_FORMAT_NONE;
+	pipeline_key.color_format = !target_has_color ? XGPU_FORMAT_NONE : hdr.target ? XGPU_FORMAT_RGBA16F :
+		XGPU_FORMAT_BGRA8;
+	/* (display.hdr: the draw's tag, from its blend) */
+	key.hdr = hdr_tag(&pipeline_key);
+	pipeline_key.pixel = key;
 	pipeline_key.depth_format = has_depth ? XGPU_FORMAT_D24S8 : XGPU_FORMAT_NONE;
 	pipeline_key.samples = (unsigned char)target_samples;
 	if (program->lighting.lights && !program->lighting_failed && per_pixel_lighting())
@@ -3241,6 +3383,9 @@ static BOOL prepare_draw(BOOL immediate, unsigned long primitive)
 		/* a structure's lightmap pass: its normal, binormal and tangent are
 		packed (rasterizer_xbox_vertex_shaders_initialize.c's declaration) */
 		key.dynamic_lights = XGPU_DYNAMIC_LIGHTS_ENVIRONMENT;
+		/* (display.hdr: their light past white) */
+		if (hdr.target)
+			key.hdr |= XGPU_HDR_LIGHTS;
 		pipeline_key.pixel = key;
 		pipeline_key.lighting = XGPU_LIGHTING_ENVIRONMENT;
 		chosen = xgpu_backend_pipeline(&pipeline_key);
@@ -3250,6 +3395,7 @@ static BOOL prepare_draw(BOOL immediate, unsigned long primitive)
 				"above): lit by the game's own passes", program->id);
 			program->lighting_failed = TRUE;
 			key.dynamic_lights = 0;
+			key.hdr &= (unsigned short)~XGPU_HDR_LIGHTS;
 		}
 	}
 	ready = chosen;
@@ -4107,17 +4253,25 @@ void halo_screen_anti_alias(short x0, short y0, short x1, short y1)
 	xgpu_backend_anti_alias(target->target.number, mode == _anti_aliasing_smaa, corners);
 }
 
-/* display.hdr's tone mapping of a window's 3D view (source/render/render.c),
-OpenCE's: its OpenGL backend draws the back buffer in half floats and tone
-maps it here. No backend of OpenH1's draws HDR yet (Vulkan, Metal, nor the
-OpenGL one), so the back buffer stays 8 bits a channel and this does nothing;
-Video Setup has no HDR row (tools/port_settings.py) */
+/* display.hdr's tone map of a window's 3D view (source/render/render.c),
+before its anti-aliasing and the HUD: the draws from now on are the HUD's
+and the menus' (xgpu_hdr.h) */
 void halo_screen_tone_map(short x0, short y0, short x1, short y1)
 {
-	(void)x0;
-	(void)y0;
-	(void)x1;
-	(void)y1;
+	struct render_target_entry *target;
+	long corners[4];
+
+	hdr.view = FALSE;
+	if (!device.gl_ready || !hdr.active)
+		return;
+	target = render_target_get(&device.back_buffer);
+	if (!target || target->target.format != XGPU_FORMAT_RGBA16F)
+		return;
+	corners[0] = scaled_pixel(x0, target->target.scale[0]);
+	corners[1] = scaled_pixel(y0, target->target.scale[1]);
+	corners[2] = scaled_pixel(x1, target->target.scale[0]);
+	corners[3] = scaled_pixel(y1, target->target.scale[1]);
+	xgpu_backend_tone_map(target->target.number, corners);
 }
 
 /* display.overshield_effect's rise (rasterizer_xbox_plasma_energy.c,
@@ -4660,6 +4814,10 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 	}
 	device.frame++;
 	stats.presents++;
+	/* (display.hdr: a frame begins with no 3D view drawn) */
+	hdr.view = FALSE;
+	hdr.category = -1;
+	hdr.kind = 0;
 	if (debug_settings.statistics && device.frame % 60 == 0)
 	{
 		platform_log("frame %lu: %lu draws, %lu immediate, %lu clears, %lu target changes; skipped %lu no program, %lu no target, %lu link; "

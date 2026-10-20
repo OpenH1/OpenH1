@@ -65,6 +65,9 @@ struct xgpu_backend_capabilities
 	/* a draw can sample the target it draws into, as it was (else a copy
 	of it: WebGL, xgpu_texture_source's drawn) */
 	BOOL sample_drawn_target;
+	/* display.hdr: an RGBA16F back buffer, the draws' tags carried out
+	(xgpu_hdr.h), the tone map and an HDR display's encoding */
+	BOOL hdr;
 };
 
 extern struct xgpu_backend_capabilities xgpu_backend_capabilities;
@@ -88,6 +91,17 @@ its pixels from row 0) */
 void xgpu_backend_anti_aliasing_prepare(BOOL smaa);
 void xgpu_backend_anti_alias(xgpu_target target, BOOL smaa, const long corners[4]);
 
+/* display.hdr (xgpu_hdr.h): the frame drawn in HDR (the back buffer
+RGBA16F) or not from now on, the mode (XGPU_HDR_MODE_*) and paper white
+(percent of the system's SDR white); a window's 3D view in the back buffer
+tone mapped over its corners (as xgpu_backend_anti_alias's); and the
+display, as the backend last looked (answered now, from what the backend
+writes where the front end reads it: the stream's ring): whether it shows
+HDR, and its headroom */
+void xgpu_backend_hdr(BOOL active, int mode, int paper_white);
+void xgpu_backend_tone_map(xgpu_target target, const long corners[4]);
+BOOL xgpu_backend_display_hdr(float *headroom);
+
 /* ---------- render targets
 
 The front end finds a target by the Xbox surface it is (its address, its
@@ -105,6 +119,9 @@ struct xgpu_target_description
 	unsigned long width, height;
 	BOOL depth;
 	int layers;
+	/* a colour target's format: XGPU_FORMAT_BGRA8, or XGPU_FORMAT_RGBA16F
+	(the back buffer with display.hdr) */
+	int format;
 };
 
 void xgpu_backend_target_create(xgpu_target target, const struct xgpu_target_description *description);
@@ -294,6 +311,8 @@ enum
 enum
 {
 	XGPU_FORMAT_NONE, XGPU_FORMAT_BGRA8, XGPU_FORMAT_D24S8,
+	/* half floats: the back buffer with display.hdr (xgpu_hdr.h) */
+	XGPU_FORMAT_RGBA16F,
 };
 
 /* the vertex shader's lighting variant: none, a model lighting program's

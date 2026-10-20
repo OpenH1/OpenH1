@@ -26,6 +26,9 @@ and checks them.
 #undef host_page_size
 #include "xgpu_metal.h"
 #include "xgpu_metal_internal.h"
+#include "xgpu_metal_post_shaders.h"
+#define XGPU_HDR_REFERENCE
+#include "xgpu_hdr.h"
 #if __has_include("host_render_stream.h")
 #include "host_render_stream.h"
 #include "xgpu_metal_stream.h"
@@ -127,6 +130,12 @@ int host_render_stream_playing(void)
 void host_render_stream_display_paced(int paced)
 {
 	(void)paced;
+}
+
+void host_render_stream_display_hdr(int hdr, float headroom)
+{
+	(void)hdr;
+	(void)headroom;
 }
 
 uint64_t host_render_stream_frame_input(void)
@@ -1102,8 +1111,8 @@ static void test_stream_table(void)
 	struct xgpu_metal_stream_shaders shaders = { NULL, stream_shaders, NULL };
 	static volatile uint32_t visibility[XGPU_STREAM_VISIBILITY_SLOTS];
 	struct xgpu_stream_capabilities capabilities;
-	struct xgpu_stream_target_create create = { 0, 1, SIZE, SIZE, 0, 1, { 0, 0 } };
-	struct xgpu_stream_target_create create_depth = { 0, 2, SIZE, SIZE, 1, 1, { 0, 0 } };
+	struct xgpu_stream_target_create create = { 0, 1, SIZE, SIZE, 0, 1, 0, 0 };
+	struct xgpu_stream_target_create create_depth = { 0, 2, SIZE, SIZE, 1, 1, 0, 0 };
 	struct xgpu_stream_set_targets targets = { 0, 1, 2, -1, 1, 0, 1 };
 	struct xgpu_stream_pipeline_define definition;
 	struct xgpu_stream_dynamic_state dynamic;
@@ -1337,7 +1346,7 @@ static uint32_t swizzled(uint32_t x, uint32_t y)
 static void test_stream_emitter(void)
 {
 	const struct host_render_backend *backend = xgpu_metal_stream_backend();
-	struct xgpu_stream_target_create create = { 0, 11, SIZE, SIZE, 0, 1, { 0, 0 } };
+	struct xgpu_stream_target_create create = { 0, 11, SIZE, SIZE, 0, 1, 0, 0 };
 	struct xgpu_stream_set_targets targets = { 0, 11, 0, -1, 1, 0, 0 };
 	struct xgpu_stream_pipeline_define definition;
 	struct xgpu_stream_dynamic_state dynamic;
@@ -1578,7 +1587,7 @@ static void test_stream_anti_aliasing(void)
 {
 	const struct host_render_backend *backend = xgpu_metal_stream_backend();
 	struct xgpu_metal_stream_shaders shaders = { NULL, stream_shaders, NULL, NULL };
-	struct xgpu_stream_target_create create = { 0, 21, SIZE, SIZE, 0, 1, { 0, 0 } };
+	struct xgpu_stream_target_create create = { 0, 21, SIZE, SIZE, 0, 1, 0, 0 };
 	struct xgpu_stream_set_targets targets = { 0, 21, 0, -1, 1, 0, 0 };
 	struct xgpu_stream_pipeline_define definition;
 	struct xgpu_stream_dynamic_state dynamic;
@@ -1698,6 +1707,270 @@ static void test_stream_anti_aliasing(void)
 	backend->target_delete(NULL, 21);
 }
 
+/* ---------- display.hdr's tone map and encoding (port/linux/src/xgpu_hdr.h)
+
+The contract's golden vectors: colours of the frame (under white, at it,
+a little and far past it, saturated and grey) in an RGBA16F target, each
+cleared into a block of its own, tone mapped through the table as the front
+end sends it, at the peaks of an SDR display, an HDR one and an XDR one at
+low brightness, in both modes; and encoded for an EDR layer by the
+presentation's function. Each pixel must be what the C reference
+(xgpu_hdr.h, XGPU_HDR_REFERENCE) makes of it, to half floats' precision;
+and the tone map must leave alpha (the game's) as it was. The Vulkan
+backend's shaders are the same GLSL, held to the same reference. */
+
+#define HDR_BLOCKS 16
+#define HDR_BLOCK (SIZE / 4)
+
+static const float hdr_vectors[HDR_BLOCKS][3] =
+{
+	{ 0.0f, 0.0f, 0.0f }, { 0.02f, 0.04f, 0.03f }, { 0.25f, 0.5f, 0.75f }, { 1.0f, 1.0f, 1.0f },
+	{ 0.2f, 0.6f, 1.0f }, { 1.0f, 0.5f, 0.1f }, { 1.05f, 1.0f, 0.9f }, { 0.55f, 1.1f, 1.2f },
+	{ 1.3f, 1.3f, 1.3f }, { 0.4f, 0.9f, 1.6f }, { 2.0f, 1.2f, 0.4f }, { 1.8f, 1.8f, 1.8f },
+	{ 3.0f, 2.5f, 1.5f }, { 0.6f, 1.5f, 3.0f }, { 4.0f, 4.0f, 4.0f }, { 6.0f, 0.2f, 0.2f },
+};
+
+/* a half-float target's pixels, by its shot's file (xgpu_metal_stream_shot:
+<path>.rgba16f, the frame's values) */
+static float *hdr_read(uint32_t target, const char *path)
+{
+	char name[512];
+	FILE *file;
+	uint32_t header[4];
+	__fp16 halves[SIZE * SIZE * 4];
+	float *values = malloc(sizeof(float) * SIZE * SIZE * 4);
+	int index;
+
+	snprintf(name, sizeof(name), "%s.rgba16f", path);
+	if (!values || !xgpu_metal_stream_shot(target, path) || !(file = fopen(name, "rb")))
+	{
+		free(values);
+		return NULL;
+	}
+	if (fread(header, sizeof(header), 1, file) != 1 || header[2] != SIZE || header[3] != SIZE ||
+		fread(halves, sizeof(halves), 1, file) != 1)
+	{
+		fclose(file);
+		free(values);
+		return NULL;
+	}
+	fclose(file);
+	for (index = 0; index < SIZE * SIZE * 4; index++)
+		values[index] = (float)halves[index];
+	return values;
+}
+
+/* within half floats' precision of the reference */
+static int hdr_close(float got, float expected)
+{
+	return fabsf(got - expected) <= 0.004f + 0.004f * fabsf(expected);
+}
+
+static void hdr_clear_blocks(const struct host_render_backend *backend, float alpha)
+{
+	int block;
+
+	for (block = 0; block < HDR_BLOCKS; block++)
+	{
+		union
+		{
+			struct xgpu_stream_clear clear;
+			unsigned char bytes[sizeof(struct xgpu_stream_clear) + sizeof(int32_t[4])];
+		} clear;
+
+		memset(&clear, 0, sizeof(clear));
+		clear.clear.flags = XGPU_CLEAR_COLOR | XGPU_CLEAR_RED | XGPU_CLEAR_GREEN | XGPU_CLEAR_BLUE | XGPU_CLEAR_ALPHA;
+		memcpy(clear.clear.color, hdr_vectors[block], sizeof(hdr_vectors[block]));
+		clear.clear.color[3] = alpha;
+		clear.clear.count = 1;
+		clear.clear.rectangles[0][0] = (block % 4) * HDR_BLOCK;
+		clear.clear.rectangles[0][1] = (block / 4) * HDR_BLOCK;
+		clear.clear.rectangles[0][2] = HDR_BLOCK;
+		clear.clear.rectangles[0][3] = HDR_BLOCK;
+		backend->clear(NULL, &clear.clear);
+	}
+}
+
+static void test_stream_hdr(void)
+{
+	static const float peaks[3] = { 1.0f, 4.0f, 16.0f };
+	const struct host_render_backend *backend = xgpu_metal_stream_backend();
+	struct xgpu_stream_target_create create = { 0, 41, SIZE, SIZE, 0, 1, 3, 0 };
+	struct xgpu_stream_set_targets targets = { 0, 41, 0, -1, 1, 0, 0 };
+	struct xgpu_stream_capabilities capabilities;
+	struct xgpu_stream_hdr state;
+	struct xgpu_stream_tone_map tone_map;
+	char path[512];
+	int mode, peak, block, channel, wrong, alpha_kept;
+
+	begin("display.hdr's tone map and encoding against the reference");
+	memset(&capabilities, 0, sizeof(capabilities));
+	backend->initialize(NULL, &capabilities);
+	CHECK(capabilities.hdr, "the backend draws display.hdr");
+	snprintf(path, sizeof(path), "%s/xgpu_metal_test_hdr_%d.png", getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp",
+		(int)getpid());
+	backend->target_create(NULL, &create);
+	for (mode = XGPU_HDR_MODE_FAITHFUL; mode <= XGPU_HDR_MODE_PUNCHY; mode++)
+	{
+		for (peak = 0; peak < 3; peak++)
+		{
+			struct xgpu_hdr_frame frame;
+			float *values;
+
+			host_metal_hdr_override(peaks[peak]);
+			state = (struct xgpu_stream_hdr){ 0, 1, (uint32_t)mode, 100 };
+			backend->hdr(NULL, &state);
+			host_metal_hdr_frame(&frame);
+			backend->set_targets(NULL, &targets);
+			hdr_clear_blocks(backend, 0.25f);
+			memset(&tone_map, 0, sizeof(tone_map));
+			tone_map.target = 41;
+			tone_map.corners[2] = tone_map.corners[3] = SIZE;
+			backend->tone_map(NULL, &tone_map);
+			backend->present(NULL, 41);
+			backend->frame_end(NULL);
+			backend->wait(NULL, backend->fence(NULL));
+			values = hdr_read(41, path);
+			CHECK(values != NULL, "read the target's half floats");
+			if (!values)
+				continue;
+			wrong = 0;
+			alpha_kept = 1;
+			for (block = 0; block < HDR_BLOCKS; block++)
+			{
+				float expected[3];
+				const float *got = values + (((block / 4) * HDR_BLOCK + HDR_BLOCK / 2) * SIZE + (block % 4) * HDR_BLOCK +
+					HDR_BLOCK / 2) * 4;
+
+				memcpy(expected, hdr_vectors[block], sizeof(expected));
+				xgpu_hdr_tone_map(expected, mode, frame.peak);
+				for (channel = 0; channel < 3; channel++)
+				{
+					if (!hdr_close(got[channel], expected[channel]))
+					{
+						if (wrong++ < 4)
+							printf("  block %d channel %d: %.5f, the reference %.5f\n", block, channel, (double)got[channel],
+								(double)expected[channel]);
+					}
+				}
+				if (fabsf(got[3] - 0.25f) > 0.001f)
+					alpha_kept = 0;
+			}
+			CHECK(!wrong, "%s at peak %.0f: every vector as the reference has it (%d wrong)",
+				mode == XGPU_HDR_MODE_PUNCHY ? "punchy" : "faithful", (double)frame.peak, wrong);
+			CHECK(alpha_kept, "the tone map keeps the game's alpha");
+			if (mode == XGPU_HDR_MODE_FAITHFUL)
+			{
+				/* (under white: the frame's values themselves) */
+				const float *under = values + ((HDR_BLOCK / 2) * SIZE + 2 * HDR_BLOCK + HDR_BLOCK / 2) * 4;
+
+				CHECK(under[0] == (float)(__fp16)0.25f && under[1] == (float)(__fp16)0.5f && under[2] == (float)(__fp16)0.75f,
+					"faithful leaves a colour under white exactly as it was: %.6f %.6f %.6f", (double)under[0],
+					(double)under[1], (double)under[2]);
+			}
+			free(values);
+		}
+	}
+
+	/* the encoding: the presentation's function into an RGBA16F texture,
+	sampling the frame (the vectors, as they are) over the viewport */
+	{
+		uint32_t vertex = xgpu_metal_shader_create(xgpu_metal_post_functions[XGPU_METAL_POST_VERTEX].source,
+			xgpu_metal_post_functions[XGPU_METAL_POST_VERTEX].size, xgpu_metal_post_functions[XGPU_METAL_POST_VERTEX].entry);
+		uint32_t encode = xgpu_metal_shader_create(xgpu_metal_post_functions[XGPU_METAL_POST_HDR_ENCODE].source,
+			xgpu_metal_post_functions[XGPU_METAL_POST_HDR_ENCODE].size,
+			xgpu_metal_post_functions[XGPU_METAL_POST_HDR_ENCODE].entry);
+		struct xgpu_stream_target_create output_create = { 0, 42, SIZE, SIZE, 0, 1, 3, 0 };
+		struct xgpu_metal_pipeline pipeline;
+		struct xgpu_metal_dynamic_state dynamic;
+		struct xgpu_metal_post_uniforms uniforms;
+		struct xgpu_metal_sampler sampler;
+		struct xgpu_hdr_frame frame = { XGPU_HDR_MODE_FAITHFUL, XGPU_HDR_OUTPUT_EXTENDED_LINEAR, 1.5f, 4.0f };
+		uint32_t source = 0, output = 0;
+		float *values;
+		int output_wrong = 0;
+
+		CHECK(vertex && encode, "the encoding's functions are made");
+		backend->target_create(NULL, &output_create);
+		backend->set_targets(NULL, &targets);
+		hdr_clear_blocks(backend, 1.0f);
+		backend->present(NULL, 41);
+		backend->frame_end(NULL);
+		backend->wait(NULL, backend->fence(NULL));
+		{
+			/* (the targets' textures: the table's own) */
+			extern uint32_t xgpu_metal_stream_target_texture(uint32_t target);
+
+			source = xgpu_metal_stream_target_texture(41);
+			output = xgpu_metal_stream_target_texture(42);
+		}
+		memset(&pipeline, 0, sizeof(pipeline));
+		pipeline.vertex_shader = vertex;
+		pipeline.pixel_shader = encode;
+		pipeline.color_mask = 15;
+		pipeline.color_format = XGPU_METAL_FORMAT_RGBA16F;
+		pipeline.samples = 1;
+		xgpu_metal_set_targets(output, 0, 0, 0, 0);
+		xgpu_metal_set_pipeline(&pipeline);
+		memset(&dynamic, 0, sizeof(dynamic));
+		dynamic.viewport[2] = dynamic.scissor[2] = SIZE;
+		dynamic.viewport[3] = dynamic.scissor[3] = SIZE;
+		dynamic.depth_range[1] = 1.0f;
+		xgpu_metal_set_dynamic_state(&dynamic);
+		memset(&sampler, 0, sizeof(sampler));
+		sampler.min_filter = sampler.mag_filter = XGPU_METAL_FILTER_POINT;
+		sampler.mip_filter = XGPU_METAL_MIP_NONE;
+		sampler.address_u = sampler.address_v = sampler.address_w = XGPU_METAL_ADDRESS_CLAMP;
+		sampler.max_anisotropy = 1;
+		xgpu_metal_set_texture(0, source, &sampler);
+		memset(&uniforms, 0, sizeof(uniforms));
+		uniforms.metrics[2] = uniforms.metrics[3] = 1.0f / SIZE;
+		uniforms.hdr[0] = frame.paper_white;
+		uniforms.hdr[1] = frame.peak;
+		uniforms.hdr[2] = (float)frame.output;
+		xgpu_metal_set_draw_uniforms(&uniforms, sizeof(uniforms));
+		xgpu_metal_draw(XGPU_METAL_PRIMITIVE_TRIANGLES, 3, 0, 0, (struct xgpu_metal_source){ XGPU_METAL_SOURCE_NONE, 0, 0, 0 });
+		backend->present(NULL, 42);
+		backend->frame_end(NULL);
+		backend->wait(NULL, backend->fence(NULL));
+		values = hdr_read(42, path);
+		CHECK(values != NULL, "read the encoding's half floats");
+		for (block = 0; values && block < HDR_BLOCKS; block++)
+		{
+			float expected[3];
+			const float *got = values + (((block / 4) * HDR_BLOCK + HDR_BLOCK / 2) * SIZE + (block % 4) * HDR_BLOCK +
+				HDR_BLOCK / 2) * 4;
+
+			memcpy(expected, hdr_vectors[block], sizeof(expected));
+			xgpu_hdr_encode(expected, &frame);
+			for (channel = 0; channel < 3; channel++)
+			{
+				if (!hdr_close(got[channel], expected[channel]) && output_wrong++ < 4)
+					printf("  block %d channel %d: %.5f, the reference %.5f\n", block, channel, (double)got[channel],
+						(double)expected[channel]);
+			}
+		}
+		CHECK(values && !output_wrong, "the EDR encoding: every vector as the reference has it (%d wrong)", output_wrong);
+		free(values);
+		backend->target_delete(NULL, 42);
+	}
+	state = (struct xgpu_stream_hdr){ 0, 0, 0, 100 };
+	backend->hdr(NULL, &state);
+	host_metal_hdr_override(0.0f);
+	backend->target_delete(NULL, 41);
+	{
+		static const char *const suffixes[4] = { "", ".rgba16f", ".encoded.rgba16f", ".encoded.txt" };
+		char name[600];
+		int suffix;
+
+		for (suffix = 0; suffix < 4; suffix++)
+		{
+			snprintf(name, sizeof(name), "%s%s", path, suffixes[suffix]);
+			unlink(name);
+		}
+	}
+}
+
 /* ---------- the enhanced dynamic lights, through the table
 
 The emitter's lit structure (a lightmap pass's pixel program with the
@@ -1722,8 +1995,8 @@ static void test_stream_dynamic_lights(void)
 {
 	const struct host_render_backend *backend = xgpu_metal_stream_backend();
 	struct xgpu_stream_capabilities capabilities;
-	struct xgpu_stream_target_create create = { 0, 31, SIZE, SIZE, 0, 1, { 0, 0 } };
-	struct xgpu_stream_target_create create_depth = { 0, 32, SIZE, SIZE, 1, 1, { 0, 0 } };
+	struct xgpu_stream_target_create create = { 0, 31, SIZE, SIZE, 0, 1, 0, 0 };
+	struct xgpu_stream_target_create create_depth = { 0, 32, SIZE, SIZE, 1, 1, 0, 0 };
 	struct xgpu_stream_set_targets targets = { 0, 31, 32, -1, 1, 0, 0 };
 	struct xgpu_stream_pipeline_define definition;
 	struct xgpu_stream_dynamic_state dynamic;
@@ -2331,6 +2604,7 @@ int main(int argc, char *argv[])
 		test_stream_emitter();
 		test_stream_anti_aliasing();
 		test_stream_dynamic_lights();
+		test_stream_hdr();
 #else
 		printf("(the command stream's table: not built, its header is not in the tree)\n");
 #endif

@@ -81,6 +81,9 @@ struct host_render_backend
 	void (*flush)(void *context);
 	void (*anti_aliasing_prepare)(void *context, uint32_t smaa);
 	void (*anti_alias)(void *context, const struct xgpu_stream_anti_alias *record);
+	/* display.hdr (xgpu_hdr.h): its state, and a 3D view's tone map */
+	void (*hdr)(void *context, const struct xgpu_stream_hdr *record);
+	void (*tone_map)(void *context, const struct xgpu_stream_tone_map *record);
 
 	void (*target_create)(void *context, const struct xgpu_stream_target_create *record);
 	void (*target_delete)(void *context, uint32_t target);
@@ -223,6 +226,11 @@ the frame reached the screen with its input time
 (host_render_stream_frame_input, while the backend ends it), for
 host_render_stream_latency: nanoseconds of CLOCK_MONOTONIC, the game's. */
 void host_render_stream_display_paced(int paced);
+/* display.hdr: the display shows HDR (xgpu_hdr.h's XGPU_HDR_DISPLAY_HEADROOM),
+and its headroom now (1 for none), for the guest to read between frames
+(the ring's display_hdr and display_headroom: any thread, at any time,
+before or while a stream is open) */
+void host_render_stream_display_hdr(int hdr, float headroom);
 uint64_t host_render_stream_frame_input(void);
 void host_render_stream_frame_taken(void);
 /* the display has latched a refresh's frame (taken one or not) at latch;

@@ -1372,8 +1372,9 @@ static long platform_window_width = -1, platform_window_height = -1;
 /* the last configured mode; F11 can change the window independently */
 static int platform_window_mode = _display_mode_windowed;
 
-/* display.hdr_output: the window's pixels are half floats (scRGB), -1 until
-the window is first made; FALSE once the driver has none */
+/* OpenCE's display.hdr_output: the window's pixels are half floats (scRGB),
+-1 until the window is first made; FALSE once the driver has none (OpenH1's
+renderers draw their own HDR windows: docs/hdr.md, so it stays FALSE) */
 static int platform_float_window = -1;
 
 /* the attributes of a window with (or without) floating-point pixels */
@@ -1459,9 +1460,10 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (!platform_sdl_initialize())
 		return FALSE;
 #ifndef HALO_ANDROID
-	/* (display.hdr_output: OpenCE's OpenGL backend presents its HDR back buffer
-	into a floating-point window, which none of OpenH1's renderers does yet,
-	so the window keeps 8 bits a channel; a browser's canvas has them too) */
+	/* (OpenCE's OpenGL backend presented its HDR back buffer into a
+	floating-point window; OpenH1's renderers make their own HDR windows,
+	Metal's layer and Vulkan's swapchain (docs/hdr.md), so the GL window keeps
+	8 bits a channel; a browser's canvas has them too) */
 	platform_float_window = FALSE;
 	if (platform_float_window)
 		platform_float_window_attributes(TRUE);

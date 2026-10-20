@@ -27,6 +27,11 @@ enum
 	XGPU_METAL_POST_SMAA_EDGES,
 	XGPU_METAL_POST_SMAA_WEIGHTS,
 	XGPU_METAL_POST_SMAA_BLEND,
+	/* display.hdr's (port/linux/src/xgpu_hdr.c): the tone map, which reads
+	the pixel it draws over ([[color(0)]]: programmable blending), and the
+	encoding, which samples the frame (texture 0) over the viewport */
+	XGPU_METAL_POST_HDR_TONE_MAP,
+	XGPU_METAL_POST_HDR_ENCODE,
 	XGPU_METAL_POST_FUNCTION_COUNT
 };
 
@@ -38,6 +43,10 @@ struct xgpu_metal_post_uniforms
 	/* FXAA's: the rectangle's outermost texel centres, as texture
 	coordinates (x0, y0, x1, y1) */
 	float bounds[4];
+	/* display.hdr's: the tone map's mode and peak; the encoding's paper
+	white, peak and output (xgpu_hdr.h; its metrics are the viewport's x, y,
+	1 / width, 1 / height) */
+	float hdr[4];
 };
 
 /* a function's source (each its own: SPIRV-Cross names the structures

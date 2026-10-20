@@ -17,6 +17,7 @@ D3D texture the game made for it (menu_art_texture, xbox_textures.c), as the
 high-res HUD's are (hud_hires.c).
 */
 
+#include "xgpu_backend.h"
 #include "halo_menus.h"
 #include "hud_hires.h"
 #include "menu_files.h"
@@ -406,7 +407,7 @@ static long current_line(struct reader *reader)
 
 /* whether the element is for this platform (its platform attribute: the
 platforms it is for, separated by spaces; "vr" the VR build, playing in the
-headset) */
+headset; "hdr" a renderer that draws display.hdr: xgpu_backend.h) */
 static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 {
 	int index;
@@ -425,12 +426,15 @@ static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 				if (length)
 				{
 					if ((length != 7 || strncmp(name, "desktop", 7)) && (length != 7 || strncmp(name, "android", 7)) &&
-						(length != 3 || strncmp(name, "web", 3)) && (length != 2 || strncmp(name, "vr", 2)))
+						(length != 3 || strncmp(name, "web", 3)) && (length != 2 || strncmp(name, "vr", 2)) &&
+						(length != 3 || strncmp(name, "hdr", 3)))
 					{
-						reader_error(reader, "platform=\"%s\" names one that is not desktop, android, web or vr",
+						reader_error(reader, "platform=\"%s\" names one that is not desktop, android, web, vr or hdr",
 							attributes[index + 1]);
 						return 1;
 					}
+					if (length == 3 && !strncmp(name, "hdr", 3) && xgpu_backend_capabilities.hdr)
+						found = 1;
 					if (length == strlen(MENU_PLATFORM) && !strncmp(name, MENU_PLATFORM, length))
 						found = 1;
 #ifdef HALO_VR

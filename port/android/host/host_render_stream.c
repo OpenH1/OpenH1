@@ -215,6 +215,8 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_FLUSH] = sizeof(struct xgpu_stream_record),
 	[XGPU_STREAM_ANTI_ALIASING_PREPARE] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_ANTI_ALIAS] = sizeof(struct xgpu_stream_anti_alias),
+	[XGPU_STREAM_HDR] = sizeof(struct xgpu_stream_hdr),
+	[XGPU_STREAM_TONE_MAP] = sizeof(struct xgpu_stream_tone_map),
 	[XGPU_STREAM_TARGET_CREATE] = sizeof(struct xgpu_stream_target_create),
 	[XGPU_STREAM_TARGET_DELETE] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_TARGET_MULTISAMPLE] = sizeof(struct xgpu_stream_target_multisample),
@@ -406,6 +408,12 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 		break;
 	case XGPU_STREAM_ANTI_ALIAS:
 		CALL(anti_alias, (const void *)start);
+		break;
+	case XGPU_STREAM_HDR:
+		CALL(hdr, (const void *)start);
+		break;
+	case XGPU_STREAM_TONE_MAP:
+		CALL(tone_map, (const void *)start);
 		break;
 	case XGPU_STREAM_TARGET_CREATE:
 		CALL(target_create, (const void *)start);
@@ -1174,6 +1182,7 @@ int host_render_stream_open(uint32_t ring_address)
 		return -1;
 	}
 	render.ring = ring;
+	host_render_stream_display_hdr(-1, 0.0f);
 	render.decoder = host_render_decoder_new(backend, ring);
 	if (!render.decoder)
 		return -1;
@@ -1199,6 +1208,33 @@ int host_render_stream_open(uint32_t ring_address)
 }
 
 /* (render.lock held) the guest waits for done, counted in its statistics */
+/* ---------- display.hdr's display */
+
+/* what the backend last said of its display (headroom: a float's bits) */
+static _Atomic uint32_t display_hdr, display_headroom = 0x3f800000u;
+
+void host_render_stream_display_hdr(int hdr, float headroom)
+{
+	struct xgpu_stream_ring *ring = render.ring;
+
+	/* (-1: as last said, into a ring just opened) */
+	if (hdr >= 0)
+	{
+		uint32_t bits;
+
+		if (!(headroom >= 1.0f))
+			headroom = 1.0f;
+		memcpy(&bits, &headroom, sizeof(bits));
+		atomic_store(&display_hdr, hdr ? 1u : 0u);
+		atomic_store(&display_headroom, bits);
+	}
+	if (ring)
+	{
+		__atomic_store_n(&ring->display_headroom, atomic_load(&display_headroom), __ATOMIC_RELEASE);
+		__atomic_store_n(&ring->display_hdr, atomic_load(&display_hdr), __ATOMIC_RELEASE);
+	}
+}
+
 /* ---------- pacing by the display (frame_pacing.h) */
 
 static struct frame_pacing_latency latency;
