@@ -435,7 +435,15 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     # ---------- guest compilation: C -> object, or for a Darwin target
     # C -> Darwin assembly -> ELF assembly -> object
 
-    if arch.darwin_assembly:
+    # (with configure.py --guest-asm-cache, the conversion and assembly
+    # through tools/guest_asm_cache.py, which keeps their objects: ccache
+    # caches only the compile to Darwin assembly)
+    asm_cache = getattr(sln, "guest_asm_cache", None)
+    if arch.darwin_assembly and asm_cache:
+        guest_cc_command = (f"{compile_launcher(sln)}${prefix}_guest_cc -MMD -MF $out.d $cflags -S $in "
+                            f"-o $out.darwin.s && {python} tools/guest_asm_cache.py {asm_cache}{base_flag} "
+                            f"$out.darwin.s $out.s $out -- ${prefix}_guest_cc --target={asm_target} -c $out.s -o $out")
+    elif arch.darwin_assembly:
         guest_cc_command = (f"{compile_launcher(sln)}${prefix}_guest_cc -MMD -MF $out.d $cflags -S $in "
                             f"-o $out.darwin.s && {python} tools/android_asm_convert.py{base_flag} $out.darwin.s $out.s && "
                             f"${prefix}_guest_cc --target={asm_target} -c $out.s -o $out")
@@ -462,7 +470,9 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     ]
     guest_abi = " ".join(guest_abi_flags(arch, platform_defines) + base_register_flags + configuration_defines(sln))
     guest_code = " ".join(GUEST_CODE_FLAGS)
-    tool_implicit = [*([Path("tools/android_asm_convert.py")] if arch.darwin_assembly else []), *generated_headers]
+    tool_implicit = [*([Path("tools/android_asm_convert.py")] if arch.darwin_assembly else []),
+                     *([Path("tools/guest_asm_cache.py")] if arch.darwin_assembly and asm_cache else []),
+                     *generated_headers]
     if base_register:
         tool_implicit.append(Path("tools/guest_base_register.py"))
     # profile-guided optimisation with the committed Linux profile: the game

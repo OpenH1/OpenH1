@@ -19,7 +19,8 @@ release build does (profile-guided optimisation needs clang 22 or later,
 and is skipped with an older one; the guests' compiler is the pinned LLVM
 22 that configure.py downloads, tools/guest_toolchain.py). A profile build is a debug build with
 configure.py --profile, so that the profiling build is built too. CI_COMPILER_LAUNCHER (ccache, say) is
-passed on as --compiler-launcher, and CI_GUEST_LLVM_CACHE as --guest-llvm-cache. A build of the master branch gets the run's
+passed on as --compiler-launcher, CI_GUEST_LLVM_CACHE as --guest-llvm-cache, and CI_GUEST_ASM_CACHE as
+--guest-asm-cache. A build of the master branch gets the run's
 number (HALO_BUILD_NUMBER), which its release is named after and the
 self-updater compares (and the web site's version.json names).
 
@@ -124,6 +125,11 @@ def main() -> int:
     llvm_cache = os.environ.get("CI_GUEST_LLVM_CACHE")
     if llvm_cache:
         configure += ["--guest-llvm-cache", llvm_cache]
+    # the folder the arm64_32 guests' converted and assembled objects are
+    # kept in (tools/guest_asm_cache.py), which the workflow caches too
+    asm_cache = os.environ.get("CI_GUEST_ASM_CACHE")
+    if asm_cache:
+        configure += ["--guest-asm-cache", asm_cache]
     # a build of master knows its number, which names its release (build-<n>),
     # for the self-updater (port/linux/src/updater.c, and the Android app);
     # other builds have none, and never look for updates
