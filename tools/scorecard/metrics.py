@@ -169,6 +169,33 @@ def measure_jump(trace, after=0.0, player=0):
     return {}
 
 
+def jump_takeoff_expected(press, rate):
+    """where a jump pressed at a time (seconds; off the 30 Hz grid or on it) takes off at a rate: the scripted input
+    first has the press at the first step that starts at or after it (the script's clock is a step's start), and the
+    jump launches at that step's end, as a tick at 30 launches one at its end, its press read at its start; but a
+    press read at a tick's first step (the tick's own input: every step at 30, a step on the 30 Hz grid at 60 and
+    120) launches at the tick's end. So a press on the grid takes off a tick after it at every rate, and one between
+    a tick's steps a step of that rate after the step that read it (bipeds.c, biped_substep_jump)"""
+    step = 1.0 / rate
+    # (a hair before a step's time is that step's, as the script reads it: xinput_sdl.c)
+    start = math.ceil((press - 1e-6) * rate) / rate
+    on_grid = abs(start * 30 - round(start * 30)) < GRID_SLACK * 30
+    return start + (1.0 / 30 if on_grid else step)
+
+
+def measure_jump_off_grid(trace, press, after=0.0, player=0):
+    """a jump pressed off the 30 Hz grid (README.md): its takeoff legitimately differs between the rates (by under a
+    tick of the press's real time), so it is measured against where its own rate puts it (takeoff_error:
+    jump_takeoff_expected; 0 at 30 by its mechanics, so a pair checks each rate's), and the jump's arc from its
+    takeoff (its apex's height and time, its air time, its distance) is compared between the rates as every jump's"""
+    result = measure_jump(trace, after, player)
+    if "takeoff_time" not in result:
+        return {}
+    takeoff = result.pop("takeoff_time")[0]
+    result["takeoff_error"] = (takeoff - jump_takeoff_expected(press, trace.rate), "jump_time")
+    return result
+
+
 def shots_of(trace):
     """each shot: (its time, its first projectile's id and where it started)"""
     news = trace.events("new")
@@ -392,6 +419,7 @@ def measure_vehicle(trace, kind, start, end=None, player=0, window=2.0):
 MEASURES = {
     "vehicle": measure_vehicle,
     "jump": measure_jump,
+    "jump_off_grid": measure_jump_off_grid,
     "shots": measure_shots,
     "grenades": measure_grenades,
     "height_curve": measure_height_curve,
