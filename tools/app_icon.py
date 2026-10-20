@@ -1,34 +1,39 @@
 #!/usr/bin/env python3
-"""Makes the game's icons from its artwork, port/assets/icon:
+"""Makes the game's icons from its logo, port/assets/icon/openh1-mark.svg:
 
     python tools/app_icon.py
 
-- openh1-icon.png, the helmet on its background (512x512): the Windows
+The logo is Tail Code's mark (openh1.com's, website/public/favicon.svg): H1
+knocked out of a green plate with one clipped corner. It is drawn first as
+the artwork the icons are made from:
+
+- openh1-icon.png, the plate on the site's near-black (512x512): the Windows
   executable's icon (port/windows/openh1-icon.ico, which port/windows/halo.rc
   puts in halo.exe) and the desktop builds' window icon (openh1-icon-256.png,
   which tools/embed_assets.py embeds and sdl_platform.c gives the window);
-- openh1-icon-render.png, the helmet alone on transparency (1024x1024, the same
-  framing): the Android app's launcher icon;
+- openh1-icon-render.png, the plate alone on transparency (1024x1024), smaller
+  in its square, so that a launcher's round mask leaves its corners: the
+  Android app's launcher icon;
 - openh1-icon.png again: the web page's icons (port/web/site/icons), its tab's,
   the installed web app's and the home screen's; the Linux release's
   (port/assets/icon/hicolor/openh1-<size>.png, which tools/linux_package.py
   puts in share/icons/hicolor/<size>x<size>/apps/openh1.png for the desktop
   entry, port/assets/linux/openh1.desktop);
-- the render on the background's gradient, in the rounded square of macOS's
+- the render on the background, in the rounded square of macOS's
   icons (port/macos/openh1-icon.icns): the macOS app's icon, which Finder and
   the Dock show (tools/macos_build.py puts it in Halo.app).
 
 The launcher icon is an adaptive one (Android 8 and later): the render as its
-foreground layer, the background's gradient as its background layer, and the
-render's light parts (the armour, not the visor) as its monochrome (themed
-icon) layer. Launchers mask adaptive icons to their own shapes and show only
+foreground layer, the background as its background layer, and the
+render's light parts (the plate, H1 still knocked out of it) as its
+monochrome (themed icon) layer. Launchers mask adaptive icons to their own shapes and show only
 the middle 72 dp of the 108 dp layers, so the render fills those 72 dp, as
 the picture fills the other icons, and its edges are carried out to the
 layers' edges for the launchers that move the layers. Writes the layers for
 every screen density into port/android/app/src/main/res (mipmap-*), and the
 icon's definition (mipmap-anydpi-v26/ic_launcher.xml) and background
 (drawable/ic_launcher_background.xml). Run it again when the artwork
-changes. Needs Pillow and NumPy.
+changes. Needs Pillow, NumPy and rsvg-convert (librsvg).
 """
 
 import shutil
@@ -41,6 +46,14 @@ from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parent.parent
 ARTWORK = ROOT / "port/assets/icon"
+MARK = ARTWORK / "openh1-mark.svg"
+# openh1.com's near-black, behind the plate (its favicon's)
+BACKGROUND = (0x0A, 0x0D, 0x09)
+# the plate's size in each artwork's square: the favicon's in the icon; in
+# the render, small enough that its corners stay inside the 66 dp circle
+# launchers keep of the 72 dp they show
+ICON_SCALE = 0.88
+RENDER_SCALE = 0.72
 ICON = ARTWORK / "openh1-icon.png"
 RENDER = ARTWORK / "openh1-icon-render.png"
 WINDOW_ICON = ARTWORK / "openh1-icon-256.png"
@@ -69,25 +82,28 @@ MACOS_SQUARE = 824
 MACOS_RADIUS = 185.4
 
 
-def background_gradient(icon: Image.Image, render: Image.Image) -> tuple:
-    """the icon's background as a line through its rows' colours (where the
-    render leaves it bare): the colours at the top and the bottom of the
-    launcher's layer, which reaches (LAYER_DP - VISIBLE_DP) / 2 beyond the
-    picture at each side"""
-    pixels = np.asarray(icon.convert("RGB"), dtype=np.float64)
-    bare = np.asarray(render.resize(icon.size, Image.LANCZOS).getchannel("A")) == 0
-    rows, colours = [], []
-    for y in range(icon.height):
-        if bare[y].any():
-            rows.append(y)
-            colours.append(pixels[y][bare[y]].mean(axis=0))
-    fit = np.polyfit(np.array(rows, dtype=np.float64), np.array(colours), 1)
-    margin = (LAYER_DP - VISIBLE_DP) / 2 / VISIBLE_DP * icon.height
+def mark(size: int, scale: float) -> Image.Image:
+    """the logo on transparency, size pixels square, scaled about its middle"""
+    drawn = round(size * scale)
+    png = subprocess.run(["rsvg-convert", "-w", str(drawn), "-h", str(drawn), str(MARK)],
+                         capture_output=True, check=True).stdout
+    with tempfile.TemporaryDirectory() as temporary:
+        path = Path(temporary) / "mark.png"
+        path.write_bytes(png)
+        plate = Image.open(path).convert("RGBA")
+        plate.load()
+    canvas = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    canvas.alpha_composite(plate, ((size - drawn) // 2, (size - drawn) // 2))
+    return canvas
 
-    def at(y: float) -> tuple:
-        return tuple(int(round(min(255.0, max(0.0, fit[0][c] * y + fit[1][c])))) for c in range(3))
 
-    return at(-margin), at(icon.height + margin)
+def artwork() -> None:
+    """the icon and the render, from the logo"""
+    icon = Image.new("RGBA", (512, 512), BACKGROUND + (255,))
+    icon.alpha_composite(mark(512, ICON_SCALE))
+    icon.save(ICON, optimize=True)
+    mark(1024, RENDER_SCALE).save(RENDER, optimize=True)
+    print(f"{ICON.relative_to(ROOT)}, {RENDER.relative_to(ROOT)}: from {MARK.relative_to(ROOT)}")
 
 
 def carried_out(image: Image.Image, size: int) -> Image.Image:
@@ -126,8 +142,8 @@ def linux_icons(icon: Image.Image) -> None:
 
 
 def macos_icon(render: Image.Image, top: tuple, bottom: tuple) -> None:
-    """the render over the background's gradient, filling the rounded
-    square as the picture fills the other icons, with Apple's shadow"""
+    """the render over the background, filling the rounded square as the
+    picture fills the other icons, with Apple's shadow"""
     scale = 4
     square = MACOS_SQUARE
     offset = (MACOS_CANVAS - square) // 2
@@ -167,6 +183,7 @@ def macos_icon(render: Image.Image, top: tuple, bottom: tuple) -> None:
 
 
 def main() -> None:
+    artwork()
     icon = Image.open(ICON).convert("RGBA")
     render = Image.open(RENDER).convert("RGBA")
 
@@ -190,7 +207,7 @@ def main() -> None:
                 directory / f"{name}.png", optimize=True)
         print(f"{directory.relative_to(ROOT)}: {size}x{size}")
 
-    top, bottom = background_gradient(icon, render)
+    top = bottom = BACKGROUND
     drawable = RESOURCES / "drawable"
     drawable.mkdir(parents=True, exist_ok=True)
     (drawable / "ic_launcher_background.xml").write_text(
