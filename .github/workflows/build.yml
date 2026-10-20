@@ -423,6 +423,15 @@ jobs:
     # Windows SDK.
     runs-on: windows-2025
     timeout-minutes: 40
+    # (the image's Android SDK hidden from configure.py, which would otherwise
+    # fetch the Android build's SDL and musl, uncached here, for a build this
+    # job does not make: 10 seconds or so)
+    env:
+      ANDROID_HOME: ""
+      ANDROID_SDK_ROOT: ""
+      ANDROID_NDK_HOME: ""
+      ANDROID_NDK_ROOT: ""
+      ANDROID_NDK: ""
     defaults:
       run:
         shell: bash
@@ -520,6 +529,13 @@ jobs:
     # macOS asks the player to allow it once (README, "Download").
     runs-on: macos-15
     timeout-minutes: 40
+    # (the image's Android SDK hidden from configure.py, as in the Windows job)
+    env:
+      ANDROID_HOME: ""
+      ANDROID_SDK_ROOT: ""
+      ANDROID_NDK_HOME: ""
+      ANDROID_NDK_ROOT: ""
+      ANDROID_NDK: ""
     steps:
       - name: Install the toolchain
         run: |
