@@ -14,11 +14,19 @@ against a fake world.
   the Ghost turns toward the push at up to 90 degrees a second (the game's own turn toward the
   facing, update_alien_scout_physics), the Warthog's wheels turn toward their lock, the other way
   as it reverses.
+- The player's body in a seat (port/linux/game/first_person_legs.c), posed from the Chief as the
+  game seats him driving the Scorpion: its neck under the head as recentred, its legs the seat's,
+  its upper body turning toward the head about its hips (no farther than 0.6 radians), its head
+  and arms folded away for the VR mode's own; standing in the hatch, its legs straight down. And
+  the Scorpion's cockpits made around it (tools/vr_cabin_model.py): nothing of them within its
+  armour, its seat and floor under it, the header the generator's.
 """
+import math
 import os
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -478,3 +486,263 @@ def test_left_stick_does_not_strafe_while_it_steers():
     assert "if (!seat_stick_steers() && !seat_drives())\n\t\tstick_merge(&pad->sThumbLX" in gamepad
     # (the throttle, forward and back, always reaches the game)
     assert "\tstick_merge(&pad->sThumbLY, vr.input.left_stick[1]);" in gamepad
+
+
+# ---------- the player's body in a seat (first_person_legs.c, tools/vr_cabin_model.py)
+
+LEGS = ROOT / "port/linux/game/first_person_legs.c"
+BODY_H = ROOT / "port/linux/game/vr_body.h"
+CABINS = ROOT / "tools/vr_cabin_model.py"
+
+BODY_WORLD = r"""
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+typedef int boolean;
+typedef float real;
+typedef struct {real x,y,z;} real_point3d;
+typedef struct {real i,j,k;} real_vector3d;
+typedef struct {real scale; real_vector3d forward,left,up; real_point3d position;} real_matrix4x3;
+#define TRUE 1
+#define FALSE 0
+#define NONE (-1)
+#define TAG_STRING_LENGTH 31
+#define FIRST_PERSON_LEGS_MAXIMUM_NODES 64
+#define NUMBEROF(a) ((long)(sizeof(a) / sizeof((a)[0])))
+struct model_node {char name[TAG_STRING_LENGTH + 1]; short parent_node_index;};
+struct model {struct {long count; struct model_node *address;} nodes;};
+#define TAG_BLOCK_GET_ELEMENT(block, index, type) (&((type *)(block)->address)[index])
+static real_vector3d const zero = {0, 0, 0}, upward = {0, 0, 1};
+static real_vector3d const *global_zero_vector3d = &zero, *global_up3d = &upward;
+static real dot_product3d(real_vector3d const *a, real_vector3d const *b) {return a->i*b->i + a->j*b->j + a->k*b->k;}
+static real magnitude3d(real_vector3d const *v) {return sqrtf(dot_product3d(v, v));}
+static real normalize3d(real_vector3d *v)
+{real m = magnitude3d(v); if (m > 0) {v->i /= m; v->j /= m; v->k /= m;} return m;}
+static void cross_product3d(real_vector3d const *a, real_vector3d const *b, real_vector3d *c)
+{real_vector3d r = {a->j*b->k - a->k*b->j, a->k*b->i - a->i*b->k, a->i*b->j - a->j*b->i}; *c = r;}
+static void vector_from_points3d(real_point3d const *a, real_point3d const *b, real_vector3d *v)
+{v->i = b->x-a->x; v->j = b->y-a->y; v->k = b->z-a->z;}
+"""
+
+BODY_STUBS = r"""
+static struct vr_body_seat the_seat;
+static real_point3d the_anchor;
+static int leant;
+static boolean vr_render_body_seat(long object_index, struct vr_body_seat *seat) {*seat = the_seat; return TRUE;}
+static boolean vr_render_body_anchor(real_point3d *neck, real *yaw) {*neck = the_anchor; *yaw = 0; return TRUE;}
+static void first_person_legs_vr_lean(long object_index, struct model const *model, long count,
+    real_point3d const *pivot, real_point3d const *neck_top, real_vector3d const *forward, real_vector3d const *left)
+{leant++;}
+"""
+
+# the Master Chief as the game seats him driving the Scorpion ("scorpion-driver unarmed idle", logged in the
+# game: each node's parent and place in the hull's axes, world units)
+SCORPION_DRIVER = [
+    ("bip01 pelvis", -1, 0.033, 0.189, 0.422), ("bip01 l thigh", 0, 0.033, 0.231, 0.422),
+    ("bip01 r thigh", 0, 0.033, 0.147, 0.422), ("bip01 spine", 0, 0.025, 0.189, 0.459),
+    ("bip01 l calf", 1, 0.205, 0.234, 0.427), ("bip01 r calf", 2, 0.204, 0.135, 0.434),
+    ("bip01 spine1", 3, -0.007, 0.189, 0.525), ("bip01 l clavicle", 6, -0.021, 0.250, 0.587),
+    ("bip01 l foot", 4, 0.328, 0.223, 0.332), ("bip01 neck", 6, -0.022, 0.190, 0.610),
+    ("bip01 r clavicle", 6, -0.015, 0.130, 0.589), ("bip01 r foot", 5, 0.329, 0.141, 0.341),
+    ("bip01 head", 9, -0.024, 0.190, 0.627), ("bip01 l upperarm", 7, -0.007, 0.277, 0.589),
+    ("bip01 r upperarm", 10, 0.003, 0.105, 0.592), ("bip01 l forearm", 13, 0.063, 0.292, 0.508),
+    ("bip01 r forearm", 14, 0.062, 0.090, 0.503), ("bip01 l hand", 15, 0.176, 0.289, 0.489),
+    ("bip01 r hand", 16, 0.172, 0.100, 0.475),
+]
+# the feed cockpit's eye (vr_cabin_model.h), and the top of the real neck 10 cm behind and below it, the
+# body's own neck 5 cm behind that (first_person_legs.c's FIRST_PERSON_LEGS_VR_BACK)
+FEED_EYE = (0.465, 0.2, 0.52)
+REST_NECK = (FEED_EYE[0] - 0.0328, FEED_EYE[1], FEED_EYE[2] - 0.0328)
+
+BODY_MAIN = r"""
+static struct model_node node_list[] = {%(nodes)s};
+static real const places[][3] = {%(places)s};
+#define COUNT ((long)(sizeof(node_list) / sizeof(node_list[0])))
+
+int main(int argc, char **argv)
+{
+    struct model model = {{COUNT, node_list}};
+    real_matrix4x3 nodes[64];
+    real_matrix4x3 const *posed;
+    long i;
+
+    for (i = 0; i < COUNT; i++)
+    {
+        real_matrix4x3 m = {1.0f, {1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {places[i][0], places[i][1], places[i][2]}};
+        nodes[i] = m;
+    }
+    /* the top of the real neck as recentred; the head moved by argv[1..3] (world units) from there;
+    argv[4]: "stand" (turned to face left), "pad" (the gamepad: no arms of the VR mode's) */
+    the_seat.rest_neck.x = %(rx)ff; the_seat.rest_neck.y = %(ry)ff; the_seat.rest_neck.z = %(rz)ff;
+    the_seat.forward.i = 1; the_seat.left.j = 1; the_seat.pose_forward.i = 1;
+    the_seat.arms = strcmp(argv[4], "pad") != 0;
+    the_seat.standing = strcmp(argv[4], "stand") == 0;
+    if (the_seat.standing)
+    {
+        the_seat.forward.i = 0; the_seat.forward.j = 1; the_seat.left.i = -1; the_seat.left.j = 0;
+    }
+    the_anchor.x = the_seat.rest_neck.x + (real)atof(argv[1]);
+    the_anchor.y = the_seat.rest_neck.y + (real)atof(argv[2]);
+    the_anchor.z = the_seat.rest_neck.z + (real)atof(argv[3]);
+    posed = first_person_legs_vr_seated(7, &model, COUNT, nodes);
+    if (!posed)
+        return 1;
+    for (i = 0; i < COUNT; i++)
+        printf("%%s|%%f %%f %%f %%f\n", node_list[i].name, posed[i].position.x, posed[i].position.y,
+            posed[i].position.z, posed[i].scale);
+    printf("leant|%%d\n", leant);
+    return 0;
+}
+"""
+
+
+def body_source(text=None):
+    text = text or LEGS.read_text()
+    source = BODY_WORLD
+    source += between(BODY_H.read_text(), "struct vr_body_seat", "#endif")
+    source += defines(text, "FIRST_PERSON_LEGS_VR_BACK", "FIRST_PERSON_LEGS_SEAT_TURN_MOST")
+    source += "static real_matrix4x3 first_person_legs_matrices[FIRST_PERSON_LEGS_MAXIMUM_NODES];\n"
+    source += BODY_STUBS
+    for name in ("first_person_legs_name_has", "first_person_legs_node", "first_person_legs_turn",
+                 "first_person_legs_rotate", "first_person_legs_vr_turn_toward", "first_person_legs_below",
+                 "first_person_legs_vr_seated"):
+        source += function(text, name) + "\n"
+    nodes = ", ".join('{"%s", %d}' % (name, parent) for name, parent, *_ in SCORPION_DRIVER)
+    places = ", ".join("{%ff, %ff, %ff}" % (x, y, z) for _, _, x, y, z in SCORPION_DRIVER)
+    return source + BODY_MAIN % {"nodes": nodes, "places": places, "rx": REST_NECK[0], "ry": REST_NECK[1],
+                                 "rz": REST_NECK[2]}
+
+
+def pose_body(tmp_path, head=(0.0, 0.0, 0.0), how="sit", text=None, name="body"):
+    exe = build(tmp_path, body_source(text), name)
+    out = subprocess.run([str(exe), *(str(h) for h in head), how], check=True, capture_output=True,
+                         text=True).stdout
+    posed = {}
+    for line in out.splitlines():
+        key, value = line.split("|")
+        posed[key] = [float(v) for v in value.split()]
+    return posed
+
+
+def difference(a, b):
+    return [a[k] - b[k] for k in range(3)]
+
+
+NECK_PLACE = [REST_NECK[0] - 0.016, REST_NECK[1], REST_NECK[2]]
+
+
+def test_the_seated_body_hangs_its_neck_under_the_recentred_head(tmp_path):
+    posed = pose_body(tmp_path)
+    # the top of its neck 5 cm behind the real one's place (vr.c's: 10 cm behind and below the eye)
+    assert posed["bip01 neck"][:3] == pytest.approx(NECK_PLACE, abs=1e-4)
+    # its legs as the game seats it: the knees and feet where they are from the hips
+    game = {name: (x, y, z) for name, _, x, y, z in SCORPION_DRIVER}
+    for leg in ("bip01 l calf", "bip01 r foot"):
+        assert difference(posed[leg], posed["bip01 pelvis"]) == pytest.approx(
+            difference(game[leg], game["bip01 pelvis"]), abs=1e-4)
+    # its head and arms folded away (the VR mode's arms are drawn), and leant clear of the eyes
+    for folded in ("bip01 head", "bip01 l hand", "bip01 r forearm", "bip01 l upperarm"):
+        assert posed[folded][3] < 0.01
+    assert posed["bip01 l thigh"][3] == 1.0 and posed["bip01 spine1"][3] == 1.0
+    assert posed["bip01 l hand"][:3] == pytest.approx(posed["bip01 l upperarm"][:3], abs=1e-5)
+    assert posed["leant"][0] == 1
+
+
+def test_the_seated_body_leans_with_the_head_its_hips_staying(tmp_path):
+    rest = pose_body(tmp_path)
+    # the head 10 cm forward and 5 cm left: the upper body turns toward it about the hips
+    posed = pose_body(tmp_path, head=(0.0328, 0.0164, 0.0), name="body_lean")
+    assert posed["bip01 pelvis"][:3] == pytest.approx(rest["bip01 pelvis"][:3], abs=1e-5)
+    assert posed["bip01 l foot"][:3] == pytest.approx(rest["bip01 l foot"][:3], abs=1e-5)
+    moved = difference(posed["bip01 neck"], rest["bip01 neck"])
+    assert moved[0] > 0.02 and moved[1] > 0.01
+
+    def spine(p):
+        return math.dist(p["bip01 neck"][:3], p["bip01 pelvis"][:3])
+
+    # (the spine's length kept: it turns, it does not stretch)
+    assert spine(posed) == pytest.approx(spine(rest), abs=1e-4)
+    # and no farther than a person seated turns, however far the head goes
+    far = pose_body(tmp_path, head=(0.5, 0.0, -0.3), name="body_far")
+    a, b = difference(rest["bip01 neck"], rest["bip01 pelvis"]), difference(far["bip01 neck"], far["bip01 pelvis"])
+    angle = math.acos(sum(x * y for x, y in zip(a, b)) / (math.hypot(*a) * math.hypot(*b)))
+    assert angle == pytest.approx(0.6, abs=1e-3)
+
+
+def test_with_the_gamepad_the_body_keeps_its_arms(tmp_path):
+    posed = pose_body(tmp_path, how="pad")
+    assert posed["bip01 l hand"][3] == 1.0 and posed["bip01 head"][3] < 0.01
+
+
+def test_standing_in_the_hatch_the_legs_hang_down_turned_to_the_body(tmp_path):
+    posed = pose_body(tmp_path, how="stand")
+    for side in ("l", "r"):
+        thigh, calf, foot = (posed["bip01 %s %s" % (side, part)] for part in ("thigh", "calf", "foot"))
+        assert calf[:2] == pytest.approx(thigh[:2], abs=1e-4) and foot[:2] == pytest.approx(thigh[:2], abs=1e-4)
+        assert foot[2] < calf[2] < thigh[2]
+    # turned to face left (+y): its left shoulder behind it (-x), its right ahead of it
+    assert posed["bip01 l clavicle"][0] < posed["bip01 neck"][0] < posed["bip01 r clavicle"][0]
+    assert posed["bip01 neck"][:3] == pytest.approx([REST_NECK[0], REST_NECK[1] - 0.016, REST_NECK[2]], abs=1e-4)
+
+
+def test_negative_control_without_the_move_the_neck_stays_where_the_game_seats_it(tmp_path):
+    text = LEGS.read_text()
+    mutated = text.replace("vector_from_points3d(&first_person_legs_matrices[neck].position, &target, &move);",
+                           "move = *global_zero_vector3d;")
+    assert mutated != text
+    posed = pose_body(tmp_path, text=mutated, name="body_unmoved")
+    assert posed["bip01 neck"][:3] != pytest.approx(NECK_PLACE, abs=1e-3)
+
+
+def cabin_generator():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("vr_cabin_model", CABINS)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_cabin_header_is_the_generators(tmp_path):
+    out = tmp_path / "vr_cabin_model.h"
+    subprocess.run([sys.executable, str(CABINS), "--out", str(out)], check=True, capture_output=True)
+    assert out.read_text() == (ROOT / "port/linux/game/vr_cabin_model.h").read_text()
+
+
+@pytest.mark.parametrize("name", ["scorpion_inside", "scorpion_feed"])
+def test_the_seated_body_fits_the_scorpions_cockpit(name):
+    """the body as the game seats it, about the cabin's eye as first_person_legs.c draws it, clear of the
+    cabin's walls and fittings: none of their faces' corners within its armour's box (from its seat up to its
+    knees' top, from the back of its hips to its feet's front, between its sides), its seat's top under it and
+    its floor under its feet"""
+    module = cabin_generator()
+    spec = next(s for s in module.CABINS if s["name"] == name)
+    cabin = spec["make"]()
+    assert tuple(cabin["eye"]) == FEED_EYE or name != "scorpion_feed"
+    body = module.seated_body(cabin["eye"])
+    x0, x1 = body["hips_back"] + 0.005, body["front"] - 0.005
+    y0, y1 = body["sides"][0] + 0.005, body["sides"][1] - 0.005
+    z0, z1 = body["seat"] + 0.005, body["knees"] - 0.005
+    inside = [p for mesh in cabin["meshes"] for p, _, _ in mesh.vertices
+              if x0 < p[0] < x1 and y0 < p[1] < y1 and z0 < p[2] < z1]
+    assert not inside
+    # (the faces under it facing up: its seat's top, the floor's under its feet)
+    under = [p[2] for mesh in cabin["meshes"] for p, n, _ in mesh.vertices
+             if n[2] > 0.99 and x0 < p[0] < x1 and y0 - 0.01 < p[1] < y1 + 0.01 and p[2] <= body["seat"] + 1e-6]
+    assert max(under) == pytest.approx(body["seat"], abs=1e-6)
+    assert min(under) <= body["feet"]
+
+
+def test_negative_control_the_old_feed_cockpit_cuts_into_the_body():
+    module = cabin_generator()
+    text = CABINS.read_text()
+    # (its floor, seat and dash as they were, made for no body)
+    old = text.replace("z0, z1 = round(body['feet'] - 0.005, 3), 0.730", "z0, z1 = 0.200, 0.730")
+    assert old != text
+    namespace = {}
+    exec(compile(old, str(CABINS), "exec"), namespace)
+    cabin = namespace["scorpion_feed"](namespace["FEED_PELICAN"])
+    body = module.seated_body(cabin["eye"])
+    under = [p[2] for mesh in cabin["meshes"] for p, n, _ in mesh.vertices
+             if n[2] > 0.99 and body["hips_back"] < p[0] < body["front"] and p[2] < body["seat"]]
+    assert min(under) > body["feet"]

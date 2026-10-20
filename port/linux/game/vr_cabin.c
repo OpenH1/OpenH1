@@ -477,6 +477,16 @@ short vr_cabin_seat_eye(long seated_unit_index, real_point3d *eye)
 	return index;
 }
 
+/* vr_render.c: the player's body drawn in this unit's seat stands (the
+Scorpion's hatch: first_person_legs.c), the seat's cabin's */
+boolean vr_cabin_standing(long unit_index)
+{
+	long vehicle_index = NONE;
+	short index = cabin_find(unit_index, &vehicle_index);
+
+	return index != NONE && vr_cabin_models[index].standing;
+}
+
 /* render_objects.c, just after an object's model is drawn with these
 (render_model's): the cabin of the first player's seat, if it is this
 vehicle's and the eye is in the seat */
