@@ -95,3 +95,22 @@ def test_dump_leaves_out_the_objects_marks(tmp_path):
     status, out = run(tmp_path / "a.txt", tmp_path / "a.txt", "--dump", tmp_path / "a.bin", tmp_path / "b.bin")
     assert status == 1
     assert "block 1 of 512 bytes, tag ea0d0899, +20 in it" in out
+
+
+def test_rates(tmp_path):
+    # a log names its simulation rate (game.sim_rate) before its first tick;
+    # one that names none (a build before it) ran at 30
+    ticks = [(1, 10), (2, 11)]
+    write_log(tmp_path / "old.txt", ticks)
+    write_log(tmp_path / "30.txt", ticks)
+    write_log(tmp_path / "60.txt", ticks)
+    for name, rate in (("30.txt", 30), ("60.txt", 60)):
+        text = (tmp_path / name).read_text()
+        (tmp_path / name).write_text(text.replace("t 1 ", f"rate {rate}\nt 1 ", 1))
+    status, out = run(tmp_path / "old.txt", tmp_path / "30.txt")
+    assert status == 0, out
+    # runs at two rates are compared only when asked to
+    status, out = run(tmp_path / "30.txt", tmp_path / "60.txt")
+    assert status == 2 and "different rates (A 30 Hz, B 60 Hz" in out
+    status, out = run(tmp_path / "30.txt", tmp_path / "60.txt", "--across-rates")
+    assert status == 0 and "comparing across simulation rates" in out, out

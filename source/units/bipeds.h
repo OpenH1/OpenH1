@@ -37,6 +37,12 @@ struct real_orientation;
 struct scenario_object_datum;
 struct unit_animation_update_data;
 
+/* port: the counters of ticks here are bytes (127 at most): a player's
+biped moved in the sub-steps of game.sim_rate 60 or 120 (sim_rate.h) counts
+them on the last sub-step only, in ticks as at 30 (elevator_ticks' 60,
+airborne_ticks' thresholds, the landing's and jump's recovery, the melee's
+length, from animation frames), which four times the counts would
+overflow */
 struct _biped_datum
 {
 	unsigned long flags;
