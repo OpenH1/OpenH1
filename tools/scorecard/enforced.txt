@@ -1,0 +1,2 @@
+# The scorecard's tags whose scenarios must pass at 30:60, 30:120 and 60:120 in CI (tools/scorecard/ci.py), one a
+# line: the coordinator's, a unit's tags (U1...) added once it has landed. Until then the rates are reported only.

@@ -242,6 +242,24 @@ jobs:
       - name: Debug
         run: python3 tools/ci_build.py linux_x86_64 debug
 
+      # the 60/120 Hz scorecard on the debug build (tools/scorecard/ci.py):
+      # StageKit, the rates compared, the known bugs caught, and the 30 Hz
+      # gate against master's logs, which master's runs keep in the cache
+      - uses: actions/cache/restore@v4
+        with:
+          path: .scorecard-baseline
+          key: scorecard-baseline-${{ github.sha }}
+          restore-keys: scorecard-baseline-
+      - name: Scorecard
+        env:
+          SCORECARD_HOLDOUTS_JSON: ${{ secrets.SCORECARD_HOLDOUTS_JSON }}
+        run: python3 tools/scorecard/ci.py
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .scorecard-baseline
+          key: scorecard-baseline-${{ github.sha }}
+
       # (the profiling build, configure.py --profile, which no other step
       # compiles: only when a run started by hand asks for it, as it costs a
       # build of its own)

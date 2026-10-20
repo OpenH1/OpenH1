@@ -1624,3 +1624,14 @@ double network_test_game_seconds(
 {
 	return game_time_initialized() && game_in_progress() ? (double)game_time_get() / TICKS_PER_SECOND : -1.0;
 }
+
+/* the tick a test's seconds count from (its cues', whether it has any):
+the first every player waited for has a unit, NONE until then; 0 with no
+test, a game's own start (port/linux/game/sim_trace.c) */
+long network_test_cues_start_tick(
+	void)
+{
+	if (!network_test.checked)
+		network_test_read_settings();
+	return network_test.mode == _network_test_off ? 0 : network_test.cues_start;
+}

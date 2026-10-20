@@ -515,6 +515,7 @@ void game_time_update(
 						determinism_log_tick_begin();
 						random_math_port_set_ticking(TRUE);
 						game_tick();
+						sim_trace_step(game_time_globals->server_time, sim_substep_count() - 1, sim_substep_count()); /* port: debug.trace */
 						profile_scope(game_time_render_interpolation_tick_section, render_interpolation_tick();)
 						game_time_globals->server_time++;
 						game_time_globals->local_time++;

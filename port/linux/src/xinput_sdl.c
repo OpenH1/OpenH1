@@ -73,6 +73,12 @@ extern unsigned char pc_menu_split_players(void);
 /* port/linux/game/network_test.c: the game's time in seconds while one runs,
 else -1 */
 extern double network_test_game_seconds(void);
+/* port/linux/game/sim_trace.c: the simulation's clock, seconds from the
+scenario's start to the step to come (negative before it starts); the
+player's view turned to a yaw and pitch, in degrees (debug.test_input
+"script:") */
+extern double sim_trace_scenario_seconds(void);
+extern void sim_trace_aim(double yaw, double pitch);
 
 /* ---------- device tables */
 
@@ -975,6 +981,148 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 	}
 }
 
+/* debug.test_input "script:<event>;<event>...": the controller played on
+the simulation's clock (sim_trace_scenario_seconds), in seconds from the
+scenario's start, so that one script plays alike at 30, 60 and 120 steps a
+second (tools/scorecard). An event is "<start>[-<end>] <action>":
+
+    fire, throw, jump, melee, action (X), switch (Y), crouch, zoom
+                         the button held from start to end (0.1 seconds
+                         without an end)
+    move=<x>,<y>         the left stick (-1 to 1 each way), start to end
+    look=<x>,<y>         the right stick, start to end
+    aim=<yaw>,<pitch>    the view turned there (degrees) at start, once
+
+A time on the 30 Hz grid (a multiple of 1/30) falls on a step at every
+rate. */
+enum
+{
+	TEST_SCRIPT_EVENTS = 64,
+};
+
+static struct test_script_event
+{
+	double start, end;
+	int analog, digital;
+	int stick;
+	float x, y;
+	int aim, aimed;
+} test_script[TEST_SCRIPT_EVENTS];
+static int test_script_count;
+static int test_script_on;
+
+static void test_script_parse(const char *script)
+{
+	static const struct
+	{
+		const char *name;
+		int analog, digital;
+	} buttons[] =
+	{
+		{ "fire", XINPUT_GAMEPAD_RIGHT_TRIGGER, 0 },
+		{ "throw", XINPUT_GAMEPAD_LEFT_TRIGGER, 0 },
+		{ "jump", XINPUT_GAMEPAD_A, 0 },
+		{ "melee", XINPUT_GAMEPAD_B, 0 },
+		{ "action", XINPUT_GAMEPAD_X, 0 },
+		{ "switch", XINPUT_GAMEPAD_Y, 0 },
+		{ "crouch", -1, XINPUT_GAMEPAD_LEFT_THUMB },
+		{ "zoom", -1, XINPUT_GAMEPAD_RIGHT_THUMB },
+	};
+
+	test_script_on = 1;
+	while (*script && test_script_count < TEST_SCRIPT_EVENTS)
+	{
+		struct test_script_event *event = &test_script[test_script_count];
+		char action[32];
+		char *end;
+		size_t length;
+		unsigned int index;
+
+		script += strspn(script, " ;");
+		if (!*script)
+			break;
+		length = strcspn(script, ";");
+		memset(event, 0, sizeof(*event));
+		event->analog = -1;
+		event->start = strtod(script, &end);
+		event->end = event->start + 0.1;
+		if (*end == '-')
+			event->end = strtod(end + 1, &end);
+		end += strspn(end, " ");
+		snprintf(action, sizeof(action), "%.*s", (int)(script + length - end), end);
+		script += length;
+		for (index = 0; index < sizeof(buttons) / sizeof(buttons[0]); index++)
+		{
+			if (!strcmp(action, buttons[index].name))
+			{
+				event->analog = buttons[index].analog;
+				event->digital = buttons[index].digital;
+				break;
+			}
+		}
+		if (index < sizeof(buttons) / sizeof(buttons[0]))
+			;
+		else if (sscanf(action, "move=%f,%f", &event->x, &event->y) == 2)
+			event->stick = 1;
+		else if (sscanf(action, "look=%f,%f", &event->x, &event->y) == 2)
+			event->stick = 2;
+		else if (sscanf(action, "aim=%f,%f", &event->x, &event->y) == 2)
+			event->aim = 1;
+		else
+		{
+			platform_log("test input: script: no action \"%s\": left out", action);
+			continue;
+		}
+		test_script_count++;
+	}
+	platform_log("test input: script of %d events", test_script_count);
+}
+
+static SHORT test_script_axis(float value)
+{
+	return (SHORT)(value < -1.0f ? -32767 : value > 1.0f ? 32767 : value * 32767.0f);
+}
+
+static void test_script_gamepad(XINPUT_GAMEPAD *pad)
+{
+	/* (a hair before a step's time is that step's: 1/30 in a double is not
+	exact) */
+	double t = sim_trace_scenario_seconds() + 1e-6;
+	int index;
+
+	if (t < 0.0)
+		return;
+	for (index = 0; index < test_script_count; index++)
+	{
+		struct test_script_event *event = &test_script[index];
+
+		if (event->aim)
+		{
+			if (!event->aimed && t >= event->start)
+			{
+				event->aimed = 1;
+				sim_trace_aim(event->x, event->y);
+			}
+			continue;
+		}
+		if (t < event->start || t >= event->end)
+			continue;
+		if (event->analog >= 0)
+			pad->bAnalogButtons[event->analog] = 255;
+		pad->wButtons |= (WORD)event->digital;
+		if (event->stick == 1)
+		{
+			pad->sThumbLX = test_script_axis(event->x);
+			pad->sThumbLY = test_script_axis(event->y);
+		}
+		else if (event->stick == 2)
+		{
+			pad->sThumbRX = test_script_axis(event->x);
+			pad->sThumbRY = test_script_axis(event->y);
+		}
+	}
+}
+
 static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 {
 	static const WORD digital[] =
@@ -1039,6 +1187,13 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 			seed = 0;
 			pad_test = 1;
 		}
+		else if (!strncmp(setting, "script:", 7))
+			test_script_parse(setting + 7);
+	}
+	if (test_script_on)
+	{
+		test_script_gamepad(pad);
+		return;
 	}
 	if (test_input_menu[0])
 	{
