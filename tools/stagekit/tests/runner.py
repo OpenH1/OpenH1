@@ -6,6 +6,7 @@ host, as the game is (its guest's objects' flags and link): the game's host runs
 macOS one.
 """
 
+import ctypes
 import os
 import platform
 import re
@@ -14,6 +15,7 @@ import shutil
 import struct
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -209,6 +211,37 @@ def addresses(slot):
     return "127.0.0.1", "127.0.0.1"
 
 
+def clonefile():
+    """macOS's clonefile(2) (a copy on write: a file of its own, no data copied), None elsewhere"""
+    if sys.platform != "darwin":
+        return None
+    function = ctypes.CDLL(None, use_errno=True).clonefile
+    function.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.c_uint32]
+    return function
+
+
+CLONEFILE = clonefile()
+
+
+def place(source, target):
+    """source's file at target, whole from the moment it is there (made beside it, then renamed over it). On Linux a
+    hard link: an executable's $ORIGIN is the path it was started by (/proc/self/exe). On macOS a file of its own (a
+    clone): dyld finds @executable_path (the game's rpath, where its SDL is) from the executable's vnode, which, for
+    a file of many links, may name any of them, so that runs side by side would load their libraries from (and name)
+    a neighbouring run's folder, where they may not be yet ("Library not loaded")"""
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.{threading.get_ident()}")
+    temporary.unlink(missing_ok=True)
+    if CLONEFILE:
+        if CLONEFILE(os.fsencode(source), os.fsencode(temporary), 0):
+            shutil.copy2(source, temporary)
+    else:
+        try:
+            os.link(source, temporary)
+        except OSError:
+            shutil.copy2(source, temporary)
+    os.replace(temporary, target)
+
+
 def launch(machine, input, address, broadcast, test, init="", game=None, **environment):
     """the game (GAME, or another build's: game) in machine (a folder with its maps), with no window or sound,
     drawing nothing: debug.network_test test, the scripted input on the controller"""
@@ -220,12 +253,7 @@ def launch(machine, input, address, broadcast, test, init="", game=None, **envir
     # (the game, and the libraries it finds beside it, in machine's own folder: a desktop build keeps its
     # config.toml beside the executable, so each machine has its own settings)
     for source in [game, *game.parent.glob("lib*.so*"), *game.parent.glob("lib*.dylib")]:
-        target = machine / ("halo" if source == game else source.name)
-        target.unlink(missing_ok=True)
-        try:
-            os.link(source, target)
-        except OSError:
-            shutil.copy(source, target)
+        place(source, machine / ("halo" if source == game else source.name))
     # (none of the caller's own settings; system link on the loopback only, no internet play)
     environment = dict({name: value for name, value in os.environ.items() if not name.startswith("HALO_")},
                        HALO_NET_ONLINE="false", SDL_AUDIODRIVER="dummy", SDL_VIDEODRIVER="offscreen", HALO_NO_AUDIO="1",

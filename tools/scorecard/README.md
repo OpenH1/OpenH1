@@ -25,8 +25,10 @@ the Mac.
     python tools/scorecard/identity.py --baseline-game <master build>/halo   # the gate, against master's build
     python tools/scorecard/scorecard.py --mutation-checks  # (the coordinator's) the known bugs are still caught
 
-A run of the scorecard takes a few seconds (StageKit runs ~70,000 ticks a second, side by side on every core): about
-5 s for every scenario at one rate, about 10 s for 30, 60 and 120. With the build, an iteration is under a minute.
+A run of the scorecard takes a few seconds (StageKit runs ~70,000 ticks a second, side by side on half the cores:
+`--jobs`, `SCORECARD_JOBS`): about 5 s for every scenario at one rate, about 10 s for 30, 60 and 120. With the build,
+an iteration is under a minute. On a shared computer, run it gently: `nice -n 15 python3 tools/scorecard/scorecard.py
+--jobs 3`.
 Exit status 0 means every comparison passed; skips (a rate the build does not have, a scenario that needs retail
 maps) do not fail it. `--json` writes every measure. `--list` shows the scenarios and their tags (the plan's units,
 `U1`-`U20`, and `jump`, `projectile`, `weapon`, `grenade`, `first_shot`, `impact`, `cadence`, `elevator`).
