@@ -217,9 +217,14 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
 
     sdl_build = BUILD / "sdl3-build"
     libsdl = sdl_build / "libSDL3.0.dylib"
+    # (its C and Objective-C through the --compiler-launcher too, as the
+    # Linux builds' SDL: build_common.sdl3_rule)
+    launcher = getattr(sln, "compiler_launcher", None)
+    sdl_launcher = (f"-DCMAKE_C_COMPILER_LAUNCHER={launcher} -DCMAKE_OBJC_COMPILER_LAUNCHER={launcher} "
+                    if launcher else "")
     n.rule(
         name="macos_sdl3",
-        command=(f"cmake -S {SDL_DIR} -B {sdl_build} -G Ninja -DCMAKE_C_COMPILER=$macos_cc "
+        command=(f"cmake -S {SDL_DIR} -B {sdl_build} -G Ninja -DCMAKE_C_COMPILER=$macos_cc {sdl_launcher}"
                  f"-DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 "
                  f"-DCMAKE_OSX_DEPLOYMENT_TARGET={MACOS_MINIMUM} -DSDL_SHARED=ON -DSDL_STATIC=OFF "
                  f"-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF "
