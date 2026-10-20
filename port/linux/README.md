@@ -467,6 +467,7 @@ the setting for one start of the game. It has priority over the file.
 | `game.console_log` | `"important"` | `HALO_CONSOLE_LOG` | What the console shows on the screen. `"important"`: bans, players that the host drops for cheating, the reasons that the game refuses a command, and the asserts that stop the game. `"all"`: all the lines. `"none"`: only the asserts that stop the game. The output of a command always shows. `debug.txt` gets all the lines. |
 | `game.language` | `""` | `HALO_LANGUAGE` | The language of the menus: `ja`, `de`, `fr`, `es` or `it`. Empty: English. |
 | `game.enhanced_animations` | `true` | `HALO_ENHANCED_ANIMATIONS` | `true`: the player bipeds' grenade throws keep their legs moving, blended by speed and direction (crouched throws stay crouched, throws in the air use the jump's legs), Warthog and Scorpion riders stay seated to throw and let go of the grips to throw and reload, and a player turns with the aim while throwing, as while meleeing. `false`: the original animations, which freeze the legs during a throw and stand a rider up. Only in config.toml, not in the menus. |
+| `game.sim_rate` | `30` | `HALO_SIM_RATE` | How many steps a second the game takes for what a player feels in their hands: their own movement and aim, projectiles, thrown items, and the VR mode's throws and grabs. `30` (as the game was made), `60` or `120`: 1, 2 or 4 steps inside each of the game's 30 ticks a second. Everything else keeps the 30 ticks: the AI, scripts, cinematics, animations, timers, vehicles, saved games and the network. Any other value is `30`. Nothing moves in the smaller steps yet, so every rate plays exactly as `30` does (refer to "Simulation rate" in "How the port operates"). Network games are always `30`, hosting or joining, because OpenCE's netcode steps at 30. So are split screen games (and so games with bots), which run as a network game of one computer, and the playback of a saved film. Only in config.toml, not in the menus. |
 | `game.unlock_all_levels` | `false` | `HALO_UNLOCK_ALL_LEVELS` | `true`: a profile created afterward starts with all the campaign levels finished on all the difficulties. `false`: a new profile starts at The Pillar of Autumn, and each level opens when you finish the level before it, as on the Xbox. Existing profiles keep their progress. To start a profile over, type `profile_reset_campaign` in the console. |
 | `bots.count` | `0` | `HALO_BOTS` | Computer players (bots) in a local (split screen) Slayer game: `0` to `15` join its lobby with the players, as far as the game has room. Not in system link or internet games. `0`: none, as in the stock game. Refer to "Bots". |
 | `bots.skill` | `"normal"` | `HALO_BOT_SKILL` | How well the bots play: `"easy"`, `"normal"`, `"heroic"` or `"legendary"`: how soon they react, how far and how wide they see, how large their aim error is and how fast it settles, how fast they turn. |
@@ -4413,6 +4414,42 @@ marks, which the frames' tests leave too) and their cached render states'
 indices (the renderer's), and the free space after the objects' last
 block.
 
+### Simulation rate
+
+`game.sim_rate` (`game/sim_rate.c`, `game/sim_rate.h`) gives the game two
+clocks. The game's time stays at 30 ticks a second, and everything a tick
+does runs once a tick, as before: the AI, the scripts, cinematics,
+animations, timers, vehicles, the game engine, saved games and the network.
+Inside each tick, after the objects' update (`game/game.c`, `game_tick`), a
+fast phase runs 1, 2 or 4 sub-steps (30, 60 or 120). In later work, the
+player's movement and aim, projectiles, thrown items, and the VR mode's
+throws and grabs move there in smaller steps. For now nothing is
+registered in the fast phase, so the game is the same at every rate.
+
+- The rate is taken at the start of each tick. It is 30 in a network game
+  (the netcode is OpenCE's, and every machine must step alike), in a split
+  screen game (a network game of one machine, for now) and in the playback
+  of a saved film. A protocol of OpenH1's own would agree on a rate
+  in `sim_rate_network`.
+- Velocities and timers in the game state stay per tick. A sub-step takes
+  its share with `sim_per_substep` (linear), `sim_per_substep_squared`
+  (accelerations), `sim_decay_per_substep` (a factor each tick) and
+  `sim_chance_per_substep`. At 30 each returns its argument exactly. At 60 and
+  120 the linear and quadratic ones scale by a power of two, which is exact.
+- Nothing of a sub-step outlives its tick, other than what a tick at 30
+  leaves in the game state. A saved game (taken at the end of a tick) is the
+  same at every rate. A counter of ticks in a byte or a short (`airborne_ticks`,
+  `elevator_ticks`, a held button) counts on the last sub-step only
+  (`sim_substep_is_last`), so it does not overflow at 120.
+- A subsystem registers its work for a slot (`sim_substep_register`). The
+  slots run in a fixed order each sub-step. The frames between the ticks
+  can draw a sub-stepped object between its sub-steps' poses
+  (`sim_substep_blend`). At 30, that is the tick's own fraction.
+- The profiling build times the fast phase as `game_tick.substeps`.
+- The determinism check writes the rate (`rate 30`) before the first tick.
+  `tools/determinism_compare.py` compares two logs of different rates
+  only with `--across-rates`. Make a run to compare against at 30.
+
 ### Game source changes
 
 Five files of the game have changes for clang. These changes do not change
@@ -4448,6 +4485,7 @@ Other changes:
 | `hs/hs.c` | The console's `mods_reload`, `mods_enable` and `mods_list`, which a client may run too. |
 | `interface/ui_widget.c`, `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` | The main menu is the PC version's from `port/assets/menus` (`display.menus`); the menus' widgets can call the port's functions (`game/menu_functions.c`) and send the PC version's custom activation event; the widgets' memory is 256 KB, not 16 KB; the main menu and Multiplayer clear co-op's controllers, so that a gamepad going back to controller 1 is not a controller unplugged; the lobby's split screen players leave alone, and one who quits in game is not joined to the next game (`interface/player_ui.c`). |
 | `interface/player_ui.c` | Fast setup opens the pregame screen through the port's menus (the lobby), as `interface/ui_widget.c` does. |
+| `game/game.c` | Each tick takes its rate (`game.sim_rate`), and runs the fast phase's sub-steps after the objects' update (`game/sim_rate.c`; "Simulation rate"). |
 | `game/game_time.c`, `main/main.c` | With `debug.fixed_step`, a game of one machine runs a tick a frame, each frame taking a tick's time, so that it plays the same every time (`tools/stagekit`). |
 | `input/input_abstraction.c`, `game/player_control.c`, `game/players.c`, `game/player_queues_new.c`, `units/units.h` | The keyboard and mouse's actions (`src/xinput_sdl.c`, `include/halo_keyboard.h`) join controller 1's game controls; their reload key reloads on its own, and their action key only acts (a control flag of the port's, sent with the player's action, stops the reload the controller's X falls back to). |
 | `saved games/player_profile.h`, `interface/player_ui.c` | A sixth button layout, the Master Chief Collection's Bumper Jumper (`profile.button_preset` 5). A layout the build does not know (a later build's) gets the standard buttons, not none, which moved start and back and stopped the game. |

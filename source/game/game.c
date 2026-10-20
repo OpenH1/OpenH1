@@ -186,6 +186,7 @@ struct game_options;
 #include "profile_console.h" /* port: port/linux/game/profile_console.c */
 #endif
 #include "profile_sections.h" /* port: port/linux/include/profile_sections.h */
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 
 /* network_game_globals.c's */
 boolean network_game_distributed_client(void);
@@ -268,6 +269,7 @@ PROFILE_SECTION(game_tick_editor_section, "game_tick.editor")
 PROFILE_SECTION(game_tick_hs_section, "game_tick.hs")
 PROFILE_SECTION(game_tick_recorded_animations_section, "game_tick.recorded_animations")
 PROFILE_SECTION(game_tick_objects_section, "game_tick.objects")
+PROFILE_SECTION(game_tick_substeps_section, "game_tick.substeps")
 PROFILE_SECTION(game_tick_players_after_section, "game_tick.players_after")
 PROFILE_SECTION(game_tick_hud_section, "game_tick.hud")
 PROFILE_SECTION(game_tick_player_effect_section, "game_tick.player_effect")
@@ -348,6 +350,8 @@ void game_tick(
 	actors, made the first light from it (Sentry NATIVE-7) */
 	game_state_check_data_arrays();
 	lights_port_recover();
+	/* port: the rate this tick simulates at (game.sim_rate) */
+	sim_rate_tick_begin();
 
 	/* port: a client of another's game, the host's rules (its own cheats and
 	game speed, set before it joined too, put back) */
@@ -391,6 +395,10 @@ void game_tick(
 		profile_scope(game_tick_hs_section, hs_update();)
 	profile_scope(game_tick_recorded_animations_section, recorded_animations_update();)
 	profile_scope(game_tick_objects_section, objects_update();)
+	/* port: the fast phase, its sub-steps (1 at game.sim_rate 30, 2 at 60, 4
+	at 120): what a player feels in their hands moved in smaller steps, the
+	objects of the tick having moved (port/linux/game/sim_rate.c) */
+	profile_scope(game_tick_substeps_section, sim_substeps_run();)
 	profile_scope(game_tick_players_after_section, players_update_after_game();)
 	profile_scope(game_tick_hud_section, hud_update();)
 	profile_scope(game_tick_player_effect_section, player_effect_update();)
