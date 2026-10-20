@@ -9,7 +9,7 @@ tree=$1
 build=$2
 src=$tree/port/linux/src
 mkdir -p "$build/src"
-for file in xgpu.h xgpu_shader.h xgpu_msl.h nv2a_vsh.c nv2a_psh.c xgpu_text.c xgpu_msl.c; do
+for file in xgpu.h xgpu_backend.h xgpu_hdr.h xgpu_shader.h xgpu_msl.h nv2a_vsh.c nv2a_psh.c xgpu_text.c xgpu_msl.c; do
 	cp "$src/$file" "$build/src/"
 done
 # the XDK's enumerations (D3DRS_*, D3DCMP_*, D3DFOG_*, PS_*)

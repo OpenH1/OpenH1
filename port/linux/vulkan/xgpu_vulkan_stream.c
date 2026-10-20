@@ -37,6 +37,14 @@ cache), and reconstruct the world from each view's unprojection
 (xgpu_vulkan_effects.h) in their uniforms.
 Anti-aliasing's passes are xgpu_vulkan_post.c's, over the target's pixels as
 the record names them, in its first layer, as OpenGL's are.
+
+display.hdr (docs/hdr.md): where the core's draws can read their colour
+attachment (its capabilities' color_read: the desktop's), the stream says it
+draws HDR. The front end's back buffer is then RGBA16F, read where it is
+drawn; a draw whose tag blends in its shader has its pipeline's blending
+off and reads the pixel it draws over (xgpu_spirv.c); the tone map is a
+draw in the view's pass (xgpu_vulkan_post.c), the encoding the core's, for
+its swapchain.
 */
 
 #include "host.h"
@@ -44,6 +52,7 @@ the record names them, in its first layer, as OpenGL's are.
 #include "host_render_stream.h"
 #include "xgpu.h"
 #include "xgpu_backend.h"
+#include "xgpu_hdr.h"
 #include "xgpu_shader.h"
 #include "xgpu_spirv.h"
 #include "xgpu_vulkan.h"
@@ -126,6 +135,9 @@ struct stream_target
 	int samples, unresolved;
 	uint32_t width, height, layers;
 	int depth, borrowed;
+	/* its colour's XGPU_VULKAN_FORMAT_* (display.hdr's back buffer:
+	RGBA16F, read where it is drawn) */
+	uint8_t format;
 	/* counts the draws and clears into it */
 	uint32_t written;
 };
@@ -259,6 +271,8 @@ static struct
 	uint32_t views, base;
 	int hud_group;
 	uint32_t back_buffer;
+	/* display.hdr: the frames are HDR (stream_hdr) */
+	int hdr_active;
 	int preparing, prepared;
 	uint64_t prepare_pipelines;
 	/* the dynamic lights' glows' shaders for 1, 2 and 4 layers
@@ -398,8 +412,11 @@ static struct xgpu_vulkan_image *target_image_make(const struct stream_target *t
 
 	memset(&description, 0, sizeof(description));
 	description.type = target->layers > 1 ? XGPU_VULKAN_IMAGE_2D_ARRAY : XGPU_VULKAN_IMAGE_2D;
-	description.format = target->depth ? XGPU_VULKAN_FORMAT_D24S8 : XGPU_VULKAN_FORMAT_BGRA8;
+	description.format = target->depth ? XGPU_VULKAN_FORMAT_D24S8 :
+		target->format == XGPU_VULKAN_FORMAT_RGBA16F ? XGPU_VULKAN_FORMAT_RGBA16F : XGPU_VULKAN_FORMAT_BGRA8;
 	description.usage = XGPU_VULKAN_USAGE_SAMPLED | XGPU_VULKAN_USAGE_TARGET;
+	if (description.format == XGPU_VULKAN_FORMAT_RGBA16F)
+		description.usage |= XGPU_VULKAN_USAGE_INPUT;
 	description.samples = (uint8_t)(samples > 1 ? samples : 0);
 	description.width = target->width;
 	description.height = target->height;
@@ -437,6 +454,8 @@ static void stream_target_create(void *context, const struct xgpu_stream_target_
 	target->height = record->height;
 	target->layers = record->layers ? record->layers : 1;
 	target->depth = record->depth != 0;
+	target->format = record->format == XGPU_FORMAT_RGBA16F && stream.capabilities.color_read && !target->depth ?
+		XGPU_VULKAN_FORMAT_RGBA16F : XGPU_VULKAN_FORMAT_BGRA8;
 	target->image = target_image_make(target, 0);
 	if (!target->image)
 	{
@@ -1131,6 +1150,9 @@ static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_str
 	options.multiview = key->views;
 	options.foveated = variant->foveated;
 	options.count_samples = key->pixel.count_samples != 0;
+	/* (display.hdr: a draw blending in its shader reads its target's
+	pixel, each sample's own) */
+	options.input_samples = key->samples > 1 ? key->samples : 1;
 	options.debug_texture0 = getenv("HALO_GPU_DEBUG_T0") != NULL;
 	options.debug_flat = getenv("HALO_GPU_DEBUG_FLAT") != NULL;
 	program = malloc(sizeof(*program));
@@ -1240,8 +1262,14 @@ static int stream_pipeline(void *context, uint32_t id, const struct xgpu_stream_
 	pipeline->cull_front = key->cull_front;
 	pipeline->fill = key->fill;
 	pipeline->depth_bias = key->depth_bias;
-	/* (the targets' formats: XGPU_FORMAT_NONE, _BGRA8, _D24S8) */
-	pipeline->color_format = key->color_format == 1 ? XGPU_VULKAN_FORMAT_BGRA8 : XGPU_VULKAN_FORMAT_NONE;
+	/* (the targets' formats: XGPU_FORMAT_NONE, _BGRA8, _D24S8, _RGBA16F) */
+	pipeline->color_format = key->color_format == XGPU_FORMAT_BGRA8 ? XGPU_VULKAN_FORMAT_BGRA8 :
+		key->color_format == XGPU_FORMAT_RGBA16F && stream.capabilities.color_read ? XGPU_VULKAN_FORMAT_RGBA16F :
+		XGPU_VULKAN_FORMAT_NONE;
+	/* (display.hdr: a tag that blends in the shader, which reads the pixel
+	it draws over: the pipeline's blending off) */
+	pipeline->color_read = pipeline->color_format == XGPU_VULKAN_FORMAT_RGBA16F &&
+		XGPU_HDR_SHADER_BLENDS(key->pixel.hdr);
 	pipeline->depth_format = key->depth_format == 2 ? XGPU_VULKAN_FORMAT_D24S8 : XGPU_VULKAN_FORMAT_NONE;
 	pipeline->samples = key->samples > 1 ? key->samples : 1;
 	return 1;
@@ -1763,6 +1791,9 @@ static void draw_input(const struct draw_input *input)
 	pipeline.view_mask = stream.views > 1 ? (uint8_t)((1u << stream.views) - 1) : 0;
 	if (target_image(stream.color))
 		pipeline.color_format = xgpu_vulkan_image_description(target_image(stream.color))->format;
+	/* (display.hdr: the target's half floats read where it is drawn) */
+	pipeline.color_read = pipeline.color_format == XGPU_VULKAN_FORMAT_RGBA16F && stream.capabilities.color_read &&
+		XGPU_HDR_SHADER_BLENDS(stream.definition->key.pixel.hdr);
 #ifdef HALO_VR
 	pipeline.depth_clamp = host_vulkan_vr_sky() != 0;
 #endif
@@ -1854,6 +1885,7 @@ static void draw_input(const struct draw_input *input)
 	draw.uniforms = stream.uniforms_range;
 	draw.dynamic = &stream.dynamic;
 	draw.dynamic_lights = stream.definition->pixel_program.dynamic_lights != 0;
+	draw.reads_color = pipeline.color_read;
 	{
 		const struct xgpu_stream_pipeline_key *key = &stream.definition->key;
 
@@ -2301,8 +2333,11 @@ static void stream_anti_aliasing_prepare(void *context, uint32_t smaa)
 {
 	(void)context;
 	/* (made as the setting is chosen: the front end chooses it between
-	frames; queued as a map is prepared; logged if they cannot be) */
-	(void)xgpu_vulkan_post_prepare(smaa != 0, stream.preparing);
+	frames; queued as a map is prepared; logged if they cannot be; for
+	display.hdr's half floats too, while the frames are HDR) */
+	(void)xgpu_vulkan_post_prepare(smaa != 0, XGPU_VULKAN_FORMAT_BGRA8, stream.preparing);
+	if (stream.hdr_active)
+		(void)xgpu_vulkan_post_prepare(smaa != 0, XGPU_VULKAN_FORMAT_RGBA16F, stream.preparing);
 }
 
 /* FXAA or SMAA over a window's 3D view, before the HUD and menus are drawn
@@ -2319,7 +2354,7 @@ static void stream_anti_alias(void *context, const struct xgpu_stream_anti_alias
 	if (stream.preparing)
 	{
 		/* (made as the map loads, as the game's pipelines are) */
-		(void)xgpu_vulkan_post_prepare(record->smaa != 0, 1);
+		(void)xgpu_vulkan_post_prepare(record->smaa != 0, target->format, 1);
 		return;
 	}
 	if (target->multisampled)
@@ -2327,6 +2362,60 @@ static void stream_anti_alias(void *context, const struct xgpu_stream_anti_alias
 	target->written++;
 	xgpu_vulkan_post_anti_alias(record->smaa != 0, target->image, 0, record->corners);
 	/* (the stream's targets again, for what follows) */
+	targets_bind();
+}
+
+/* ---------- display.hdr (port/linux/src/xgpu_hdr.h)
+
+The front end's state, for the tone map and the core's encoding and
+swapchain; and the tone map of each window's 3D view, a draw in the pass
+that drew it (its multisampled attachments where it is drawn into them)
+before the anti-aliasing and the HUD. */
+
+static void stream_hdr(void *context, const struct xgpu_stream_hdr *record)
+{
+	(void)context;
+	stream.hdr_active = record->active != 0 && stream.capabilities.color_read;
+	xgpu_vulkan_hdr_state(stream.hdr_active, (int)record->mode, (int)record->paper_white);
+	/* (the tone map's pipeline for the back buffer's pass, made as HDR is
+	chosen, not in the middle of a frame) */
+	if (stream.hdr_active)
+		(void)xgpu_vulkan_post_prepare_hdr(XGPU_VULKAN_FORMAT_D24S8, 0, stream.preparing);
+}
+
+static void stream_tone_map(void *context, const struct xgpu_stream_tone_map *record)
+{
+	struct stream_target *target = target_get(record->target);
+	struct stream_target *depth = stream.color == record->target ? target_get(stream.depth) : NULL;
+	struct xgpu_vulkan_image *color_image, *depth_image;
+	struct xgpu_hdr_frame frame;
+	float hdr[4];
+
+	(void)context;
+	if (!target || target->depth || target->format != XGPU_VULKAN_FORMAT_RGBA16F || target->layers > 1)
+		return;
+	/* (the attachments the view was drawn into: multisampled where they
+	are, and both of a number of samples) */
+	color_image = stream.samples && target->multisampled ? target->multisampled : target->image;
+	depth_image = depth ? (stream.samples && depth->multisampled ? depth->multisampled : depth->image) : NULL;
+	if (depth_image && xgpu_vulkan_image_description(depth_image)->samples !=
+		xgpu_vulkan_image_description(color_image)->samples)
+		depth_image = NULL;
+	if (stream.preparing)
+	{
+		(void)xgpu_vulkan_post_prepare_hdr(depth_image ? XGPU_VULKAN_FORMAT_D24S8 : XGPU_VULKAN_FORMAT_NONE,
+			xgpu_vulkan_image_description(color_image)->samples, 1);
+		return;
+	}
+	xgpu_vulkan_hdr_frame(&frame);
+	hdr[0] = (float)frame.mode;
+	hdr[1] = frame.peak;
+	hdr[2] = hdr[3] = 0.0f;
+	target->written++;
+	if (color_image == target->multisampled)
+		target->unresolved = 1;
+	xgpu_vulkan_post_tone_map(color_image, depth_image, record->corners, hdr);
+	/* (the stream's targets again: the same, so that the pass goes on) */
 	targets_bind();
 }
 
@@ -2444,6 +2533,10 @@ static void stream_initialize(void *context, struct xgpu_stream_capabilities *ca
 	/* (the lights' block and cells are made with the device) */
 	capabilities->dynamic_lights = 1;
 	capabilities->dynamic_lights_preparable = 1;
+	/* (display.hdr: the half floats, the draws' tags blended in their
+	shaders, reading the pixels they draw over, the tone map in place:
+	where the device reads its colour attachments, the desktop's) */
+	capabilities->hdr = stream.capabilities.color_read != 0;
 }
 
 static void stream_prepare(void *context)
@@ -2562,6 +2655,8 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.dynamic_lights_halos = stream_dynamic_lights_halos;
 		backend.anti_aliasing_prepare = stream_anti_aliasing_prepare;
 		backend.anti_alias = stream_anti_alias;
+		backend.hdr = stream_hdr;
+		backend.tone_map = stream_tone_map;
 #ifdef HALO_VR
 		host_vulkan_vr_backend(&backend);
 #endif

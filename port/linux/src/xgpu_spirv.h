@@ -54,6 +54,10 @@ The conventions (SPIR-V 1.3, Vulkan 1.1):
 #define XGPU_SPIRV_BINDING_DYNAMIC_LIGHT_CELLS 3
 #define XGPU_SPIRV_BINDING_SAMPLES 4
 #define XGPU_SPIRV_SET_TEXTURES 1
+/* display.hdr: the pixel a draw blends over in its shader (its tag's
+XGPU_HDR_SHADER_BLENDS, xgpu_hdr.h), the colour attachment read as input
+attachment 0 at binding 0 (VK_KHR_dynamic_rendering_local_read) */
+#define XGPU_SPIRV_SET_INPUT 2
 
 /* the locations of what the vertex shader hands the pixel shader */
 enum
@@ -125,7 +129,10 @@ struct xgpu_spirv_uniforms
 - effect: the VR mode's effects (XGPU_SPIRV_EFFECT_*, below), and
   effect_fade how their fade is drawn under the pipeline's blend
   (XGPU_SPIRV_FADE_*: the backend's choice); for the glows' shaders, any effect draws them
-  as the light the bolt scatters toward each eye. */
+  as the light the bolt scatters toward each eye;
+- input_samples: the samples of the colour target a display.hdr draw that
+  blends in its shader reads (XGPU_SPIRV_SET_INPUT): more than 1, each
+  sample its own (sample shading). */
 struct xgpu_spirv_options
 {
 	BOOL count_samples;
@@ -134,6 +141,7 @@ struct xgpu_spirv_options
 	int multiview;
 	BOOL foveated;
 	int effect, effect_fade;
+	int input_samples;
 };
 
 /* ---------- the VR mode's effects

@@ -40,6 +40,16 @@ shader module is written into, as HALO_VULKAN_SHADERS does (which wins);
 debug.texture_dump_directory the folder each texture is written into
 (xgpu_vulkan_textures.c).
 
+display.hdr (docs/hdr.md): the window's display is read as SDL has it
+(whether HDR is on, its SDR white and its headroom), at the start and as
+SDL reports the window's HDR state or display changed, and handed to the
+backend, which tells the front end the display shows HDR where its surface
+also has an HDR colour space (host_render_stream_display_hdr) and makes an
+HDR swapchain while the frames are HDR. HALO_VULKAN_HDR_HEADROOM stands in
+for SDL's (HDR on, that headroom, BT.2408's 203-nit SDR white);
+HALO_VULKAN_HDR_OUTPUT ("scrgb", "pq") chooses the swapchain's encoding
+where the surface has both. Not on Android, nor in the VR mode.
+
 HALO_VULKAN_VALIDATION=1 turns on the validation layers and logs their
 messages (the layers must be installed, or found through VK_ADD_LAYER_PATH).
 The pipeline cache is $XDG_CACHE_HOME/openh1/vulkan_pipelines.bin (or
@@ -101,6 +111,26 @@ static void suspend_call(void *argument)
 	xgpu_vulkan_window_suspend(argument != NULL);
 }
 
+/* display.hdr: what the window's display says (SDL's), told the backend
+(any thread) */
+static void window_hdr_read(void)
+{
+	SDL_PropertiesID properties = vulkan_window ? SDL_GetWindowProperties(vulkan_window) : 0;
+	const char *chosen = getenv("HALO_VULKAN_HDR_HEADROOM");
+	float sdr_white, headroom;
+	int enabled;
+
+	if (chosen && atof(chosen) >= 1.0)
+	{
+		xgpu_vulkan_window_hdr(1, 203.0f / 80.0f, (float)atof(chosen));
+		return;
+	}
+	enabled = properties && SDL_GetBooleanProperty(properties, SDL_PROP_WINDOW_HDR_ENABLED_BOOLEAN, false);
+	sdr_white = properties ? SDL_GetFloatProperty(properties, SDL_PROP_WINDOW_SDR_WHITE_LEVEL_FLOAT, 1.0f) : 1.0f;
+	headroom = properties ? SDL_GetFloatProperty(properties, SDL_PROP_WINDOW_HDR_HEADROOM_FLOAT, 1.0f) : 1.0f;
+	xgpu_vulkan_window_hdr(enabled, sdr_white, headroom);
+}
+
 /* (the thread SDL reports the window's events on) */
 static bool SDLCALL window_event(void *userdata, SDL_Event *event)
 {
@@ -124,6 +154,11 @@ static bool SDLCALL window_event(void *userdata, SDL_Event *event)
 		/* (VR's window, shown to play flat in: presented to from now on) */
 		if (SDL_GetWindowFromID(event->window.windowID) == vulkan_window)
 			xgpu_vulkan_window_hidden(0);
+		break;
+	case SDL_EVENT_WINDOW_HDR_STATE_CHANGED:
+	case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+		if (SDL_GetWindowFromID(event->window.windowID) == vulkan_window)
+			window_hdr_read();
 		break;
 	default:
 		break;
@@ -257,6 +292,13 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 			options.surface_create = surface_create;
 			options.rotation_prepare = xgpu_vulkan_post_rotate_prepare;
 			options.rotate = xgpu_vulkan_post_rotate;
+#if !defined(__ANDROID__) && !defined(HALO_VR)
+			/* (display.hdr: an HDR swapchain, and the display told the front
+			end) */
+			options.display_hdr = host_render_stream_display_hdr;
+			options.encode_prepare = xgpu_vulkan_post_encode_prepare;
+			options.encode = xgpu_vulkan_post_encode;
+#endif
 		}
 	}
 	else
@@ -311,6 +353,7 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 #endif
 	SDL_GetWindowSizeInPixels(object, &width, &height);
 	xgpu_vulkan_window_resized((uint32_t)width, (uint32_t)height);
+	window_hdr_read();
 	SDL_AddEventWatch(window_event, NULL);
 	backend = *xgpu_vulkan_stream_backend();
 	backend.exiting = vulkan_exiting;

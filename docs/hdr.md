@@ -2,11 +2,13 @@
 
 How the renderer draws high dynamic range: one contract, decided once on
 the shared side (`port/linux/src/xgpu_hdr.h`, `xgpu_hdr.c`, the front end
-`d3d8_device.c`) and carried out by each backend. Metal (macOS, EDR) draws
-it now; Vulkan's desktop half (HDR10 or scRGB swapchains) implements the
-same contract. Android and the VR mode do not: the Frame's OpenXR
-swapchains are 8-bit sRGB on SDR panels, and the extra bandwidth would cost
-the headset frame time for highlights it cannot show.
+`d3d8_device.c`) and carried out by each backend: Metal (macOS, EDR) and
+Vulkan (the Linux desktop: HDR10 or scRGB swapchains,
+[port/linux/vulkan/README.md](../port/linux/vulkan/README.md)). Android and
+the VR mode do not: the Frame's OpenXR swapchains are 8-bit sRGB on SDR
+panels, and the extra bandwidth would cost the headset frame time for
+highlights it cannot show. The Windows build draws with OpenGL, which
+reports no HDR either.
 
 ## What the player gets
 
@@ -83,7 +85,9 @@ already past white (a decal over a wall a plasma bolt lights) therefore
 does not dim that light, and over a pixel under white it stops where the 8-bit
 target stopped. A float target cannot clamp a blend, so the backend blends
 such a draw in its pixel shader, reading the pixel it draws over (Metal's
-programmable blending), with the key's blend (`XGPU_HDR_BLEND_*`) and its
+programmable blending; Vulkan's local reads of the colour attachment, in
+rasterization order where the device has it, else after a framebuffer-local
+barrier before the draw), with the key's blend (`XGPU_HDR_BLEND_*`) and its
 fixed-function blending off. One less the destination's colour is never
 below 0 there.
 
@@ -122,8 +126,8 @@ at most *P*, times paper white, in the display's encoding:
 | --- | --- | --- |
 | SDR | the frame clamped to [0, 1] (the window's 8 bits) | the window's white |
 | EDR (macOS) | extended linear sRGB, 1.0 the system's SDR white | `display.hdr_paper_white` percent of 1.0, at most the headroom |
-| scRGB (Windows) | extended linear sRGB, 1.0 80 nits | the OS's SDR white times the setting |
-| HDR10 | BT.2020 primaries (the same colours: no saturation added), PQ | 203 nits (BT.2408) or the OS's, times the setting |
+| scRGB (Vulkan) | extended linear sRGB, 1.0 80 nits | the system's SDR white (SDL's), or 203 nits, times the setting |
+| HDR10 (Vulkan) | BT.2020 primaries (the same colours: no saturation added), PQ | the system's SDR white (SDL's), or 203 nits (BT.2408), times the setting |
 
 The curves are one GLSL source (`xgpu_hdr_functions_source`, the tone map's
 and the encoding's main functions in `xgpu_hdr.c`), compiled to SPIR-V by
@@ -148,15 +152,17 @@ the stream's ring carries it, written by the host). A backend declares
 2. carries out each tag: a ceiling or alpha limit blends in the shader with
    the pixel drawn over and the key's blend; expansion; the lights' raised
    shoulder;
-3. tone maps each 3D view with the shared shader (Metal: a draw in the pass
-   that drew the view, its pixels read in tile memory; Vulkan: fused into
-   the anti-aliasing passes' copy, or a copy and a draw);
+3. tone maps each 3D view with the shared shader, a draw in the pass that
+   drew the view reading its pixels where they are drawn (Metal: in tile
+   memory; Vulkan: the colour attachment as an input attachment,
+   `VK_KHR_dynamic_rendering_local_read`);
 4. encodes the frame for its display and fills in the frame's paper white,
    peak and output (`struct xgpu_hdr_frame`) from what the display says
    (Metal: NSScreen's EDR headroom, polled and read when the window changes
-   screens; Vulkan: the swapchain's colour space and SDL's SDR white and
-   headroom; the encoding's limit at the peak is what holds the HUD's glows
-   under it on a display of less headroom than their ceiling);
+   screens; Vulkan: SDL's HDR state, SDR white and headroom, and the
+   surface's HDR colour spaces, the swapchain made again as they change;
+   the encoding's limit at the peak is what holds the HUD's glows under it
+   on a display of less headroom than their ceiling);
 5. converts a half-float target to 8 bits where the front end reads one back
    (screenshots, the determinism log).
 
@@ -172,7 +178,21 @@ the stream's ring carries it, written by the host). A backend declares
   at it, a little and far past it, saturated and grey), tone mapped at peaks
   1, 4 and 16 in both modes and encoded for EDR, each against the reference
   to half floats' precision; the game's alpha kept; under white exactly as
-  it was. The Vulkan backend's shaders run the same vectors.
+  it was.
+- `tools/test_hdr_backends.py`: the Vulkan backend's shaders, which need a
+  Vulkan device, made Metal's by SPIRV-Cross and run on a Mac's GPU: its
+  tone map and encoding as shipped (`xgpu_vulkan_post_shaders.c`) over the
+  same golden colours against the reference (scRGB's and HDR10's encodings
+  too); and each tagged draw (every ceiling, a glow's expansion, the alpha
+  limit, over each of eleven blends) as the SPIR-V emitter writes it and as
+  the MSL emitter writes it, over the same 512 pixels: the two backends
+  leave the same values, none past its tag's limit. Everywhere: the two
+  backends' tone map and encoding are one GLSL source but for the
+  uniforms' binding.
+- `port/linux/vulkan/tests/passes_test.c` (over a fake Vulkan): the local
+  reads' barriers and input sets, the pipelines' blending, the swapchain's
+  output for the frames and the display, the encoding, the tone map's
+  draw; `tools/spirv_corpus`: every tag's SPIR-V valid for Vulkan 1.1.
 - `tools/test_metal_post_shaders.py`: the generated MSL is what the tool
   writes from the GLSL.
 - SDR identity: with `display.hdr` off, and `auto` on an SDR display, every
@@ -200,3 +220,24 @@ the stream's ring carries it, written by the host). A backend declares
 - **HDR on an SDR display** (`on` where `auto` would be off) uses the same
   tone map at a peak of 1: surfaces as they are, highlights compressed into
   white with their colour rolled toward white-hot.
+- **Vulkan reads the attachment where it is drawn, or draws SDR.** The
+  ceilings need the pixel drawn over, so the Vulkan renderer draws HDR only
+  where the device has `VK_KHR_dynamic_rendering_local_read` (recent
+  desktop drivers); elsewhere it reports no HDR and
+  the frame stays the 8-bit one. A copy of the target before each tagged
+  draw would cost a full-screen copy per HUD bitmap; a separate pass would
+  break the game's order of draws. Where the device also has
+  `VK_EXT_rasterization_order_attachment_access`, the reads are ordered as
+  Metal's are; without it, each tagged draw is ordered after those before
+  it by a framebuffer-local barrier, and only two triangles of the same
+  tagged draw over the same pixel are unordered.
+- **HDR10 on Linux, scRGB where asked or on Windows.** Linux compositors'
+  HDR (KDE's, GNOME's, gamescope's) is PQ's; Windows' compositor is scRGB's.
+  Both encodings are the shared one; the swapchain takes the one the
+  surface has, preferring the platform's.
+- **The tone map is no pass of its own on either backend.** It is a draw in
+  the view's pass, reading its pixels where they are drawn; the owner asked
+  for no new full-screen pass where avoidable. The encoding, which the
+  presentation must do anyway, is the one full-screen draw HDR adds on
+  Vulkan (into an image of the swapchain's format, which the present's blit
+  letterboxes, as Metal's presentation draws into its EDR drawable).
