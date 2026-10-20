@@ -57,3 +57,21 @@ def test_the_ais_input_and_aim_stay_on_the_tick():
     # (the aim turns in the sub-steps for a player's unit only: the AI's weapon fires on the tick, at its aim)
     update = function(read('source/units/units.c'), 'unit_update')
     assert 'if (unit->unit.player_index != NONE && object_lane_moves_in_substeps(unit_index))' in update
+
+
+def test_the_ais_tick_in_its_own_update():
+    # (an AI's biped is never left to the fast phase: its sub-steps run in its update, the rest of it after them)
+    moves = function(read('source/units/bipeds.c'), 'biped_moves_in_substeps')
+    assert 'biped_get(biped_index)->unit.player_index != NONE &&' in moves
+    moving = function(read('source/units/bipeds.c'), 'biped_update_moving')
+    assert moving.index('biped_substep_defer(') < moving.index('biped_substep_inline(')
+    # (a lift carries the AI's riders in its update, as at 30: only the players' are held for the sub-steps)
+    hold = function(read('source/objects/objects.c'), 'object_lane_hold_elevator_riders')
+    assert 'biped->unit.player_index != NONE &&' in hold
+
+
+def test_a_landing_is_as_fast_as_the_ticks():
+    # (a landing in a sub-step at the velocity the tick's step at 30 ends at)
+    physics = function(read('source/units/bipeds.c'), 'biped_update_physics')
+    assert 'real_vector3d landing = tick_new_velocity;' in physics
+    assert physics.count('tick_new_velocity') >= 8

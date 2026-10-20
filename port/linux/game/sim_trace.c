@@ -26,6 +26,9 @@ Lines:
                                                    second), aim (a unit
                                                    vector), 1 airborne
     o <id> <x> <y> <z> <vx> <vy> <vz>              each projectile in flight
+    u <id> <x> <y> <z> <vx> <vy> <vz> <air>        each biped the AI drives (an
+                                                   actor's or a swarm's): place,
+                                                   velocity, 1 airborne
     e fire <player> <weapon> <trigger>             a weapon fired
     e new <id> <tag> <x> <y> <z> <vx> <vy> <vz> <owner player>
                                                    a projectile made, where
@@ -320,6 +323,27 @@ static void sim_trace_projectiles(
 	sim_trace.projectile_count = seen_count;
 }
 
+/* the bipeds the AI drives (bipeds.c moves them in their sub-steps too) */
+static void sim_trace_ai_units(
+	void)
+{
+	struct object_iterator iterator;
+	struct biped_datum *biped;
+
+	object_iterator_new(&iterator, _object_mask_biped, 0);
+	while ((biped = (struct biped_datum *)object_iterator_next(&iterator)) != NULL)
+	{
+		if (biped->unit.actor_index == NONE && biped->unit.swarm_actor_index == NONE)
+			continue;
+		fprintf(sim_trace.file, "u %lx %.6f %.6f %.6f %.6f %.6f %.6f %d\n", iterator.index,
+			biped->object.position.x, biped->object.position.y, biped->object.position.z,
+			biped->object.translational_velocity.i * SECONDS_PER_VELOCITY_UNIT,
+			biped->object.translational_velocity.j * SECONDS_PER_VELOCITY_UNIT,
+			biped->object.translational_velocity.k * SECONDS_PER_VELOCITY_UNIT,
+			TEST_FLAG(biped->biped.flags, _biped_airborne_bit) ? 1 : 0);
+	}
+}
+
 /* ---------- public code */
 
 void sim_trace_step(
@@ -356,6 +380,7 @@ void sim_trace_step(
 	sim_trace_events_length = 0;
 	sim_trace_players();
 	sim_trace_projectiles();
+	sim_trace_ai_units();
 	if (sim_trace.stop_seconds > 0.0 && seconds >= sim_trace.stop_seconds - 1e-9)
 	{
 		fclose(sim_trace.file);

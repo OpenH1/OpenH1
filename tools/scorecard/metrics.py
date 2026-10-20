@@ -27,6 +27,9 @@ TOLERANCES = {
     "rest_point": dict(absolute=0.25, unit="wu"),
     "fuse": dict(absolute=0.001, step=True, unit="s"),
     "height_curve": dict(absolute=0.01, unit="wu rms"),
+    "ai_path": dict(absolute=0.01, unit="wu rms"),
+    "ai_walked": dict(relative=0.005, unit="wu"),
+    "ai_between": dict(absolute=0.002, unit="wu"),
 }
 
 # a step's time against a time on the grid
@@ -35,7 +38,7 @@ GRID_SLACK = 1e-4
 
 class Trace:
     """a trace read: its rate, mutation and steps; each step (t, tick, micro, players {index: fields}, objects
-    {id: (x, y, z, vx, vy, vz)}, events [words])"""
+    {id: (x, y, z, vx, vy, vz)}, the AI's bipeds ai {id: (x, y, z, vx, vy, vz, airborne)}, events [words])"""
 
     def __init__(self, path):
         self.rate = None
@@ -52,7 +55,7 @@ class Trace:
                     self.mutation = words[words.index("mutation") + 1] if "mutation" in words else "-"
                 elif words[0] == "s":
                     step = dict(t=float(words[1]), tick=int(words[2]), micro=int(words[3]), players={}, objects={},
-                                events=[])
+                                ai={}, events=[])
                     self.steps.append(step)
                 elif step is None:
                     continue
@@ -60,6 +63,8 @@ class Trace:
                     step["players"][int(words[1])] = [float(word) for word in words[2:12]]
                 elif words[0] == "o":
                     step["objects"][words[1]] = tuple(float(word) for word in words[2:8])
+                elif words[0] == "u":
+                    step["ai"][words[1]] = tuple(float(word) for word in words[2:9])
                 elif words[0] == "e":
                     step["events"].append(words[1:])
         self.step_seconds = 1.0 / self.rate if self.rate else None
@@ -221,11 +226,55 @@ def measure_height_curve(trace, start=0.0, end=None, player=0):
     return {"height": (tuple(curve), "height_curve")}
 
 
+def measure_ai_path(trace, start=0.0, end=None):
+    """each of the AI's bipeds' place at every 30th of a second from start to end: its path, compared by the RMS of
+    the distances between the rates' places; and how far it walked (so a path that never moves cannot pass by
+    agreeing)"""
+    paths = {}
+    n = round(start * 30)
+    while end is None or n / 30.0 <= end + GRID_SLACK:
+        step = trace.at(n / 30.0)
+        if step is None:
+            break
+        for unit, fields in step["ai"].items():
+            paths.setdefault(unit, []).append(tuple(fields[:3]))
+        n += 1
+    # (and between the grid's times, on the ground: how far each step of a tick before its last is from where the
+    # tick's straight line puts it, which a body moved only once a tick misses by the tick's share still to come)
+    ticks = {}
+    for step in trace.steps:
+        if start - GRID_SLACK <= step["t"] <= (end if end is not None else math.inf) + GRID_SLACK:
+            ticks.setdefault(step["tick"], []).append(step)
+    off_line = {}
+    for tick, steps in ticks.items():
+        before = ticks.get(tick - 1)
+        if len(steps) < 2 or not before:
+            continue
+        for index, step in enumerate(steps[:-1]):
+            fraction = (index + 1) / len(steps)
+            for unit, fields in step["ai"].items():
+                a, b = before[-1]["ai"].get(unit), steps[-1]["ai"].get(unit)
+                if a is None or b is None or fields[6] or a[6] or b[6]:
+                    continue
+                expected = tuple(x + (y - x) * fraction for x, y in zip(a[:3], b[:3]))
+                off_line.setdefault(unit, []).append(distance(fields[:3], expected))
+    result = {}
+    for number, unit in enumerate(sorted(paths)):
+        path = paths[unit]
+        gaps = off_line.get(unit, [])
+        result[f"ai{number}.path"] = (tuple(path), "ai_path")
+        result[f"ai{number}.walked"] = (sum(distance(a, b) for a, b in zip(path, path[1:])), "ai_walked")
+        result[f"ai{number}.between"] = (math.sqrt(sum(g * g for g in gaps) / len(gaps)) if gaps else 0.0,
+                                         "ai_between")
+    return result
+
+
 MEASURES = {
     "jump": measure_jump,
     "shots": measure_shots,
     "grenades": measure_grenades,
     "height_curve": measure_height_curve,
+    "ai_path": measure_ai_path,
 }
 
 
@@ -253,7 +302,7 @@ def apart(a, b, kind):
         count = min(len(a), len(b))
         if not count or len(a) != len(b):
             return math.inf
-        return math.sqrt(sum((x - y) ** 2 for x, y in zip(a, b)) / count)
+        return math.sqrt(sum((distance(x, y) if isinstance(x, tuple) else x - y) ** 2 for x, y in zip(a, b)) / count)
     if TOLERANCES[kind]["unit"] == "s max":
         return max((abs(x - y) for x, y in zip(a, b)), default=0.0) if len(a) == len(b) else math.inf
     if isinstance(a, tuple):

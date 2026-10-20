@@ -73,6 +73,14 @@ SCENARIOS = [
     scenario("elevator_ride", "elevator", "height_curve", ["elevator"],
              cues=[(1, "device_set_position elevator 1"), (5, "device_set_position elevator 0")], seconds=8.0,
              arguments=dict(start=0.5, end=7.5)),
+    # the AI's biped (row 12's, synthetic; U18): an actor made of a biped walks a command list (3 units along x, 2
+    # at 25 degrees, 2 along x again, each a list of its own): its place every 30th of a second, how far it walked,
+    # and how far its steps between the grid's times are from the ticks' lines (a body moved once a tick lags
+    # them). Its brain is the tick's, its body moves in the sub-steps
+    scenario("ai_patrol", "patrol", "ai_path", ["ai", "U18"],
+             cues=[(0.5, "ai_attach_free walker walker"), (1, "ai_command_list_by_unit walker leg1"),
+                   (4, "ai_command_list_by_unit walker leg2"), (7, "ai_command_list_by_unit walker leg3")],
+             seconds=10.0, arguments=dict(start=0.5, end=9.5)),
 ]
 
 # what CI cannot play, the retail maps' (the plan's rows 5, 9, 10, 12-14 and the retail halves of 4, 6-8), and
