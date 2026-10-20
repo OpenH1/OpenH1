@@ -59,8 +59,23 @@ static struct
 	uint64_t next;
 	uint64_t costs[8];
 	unsigned cost_index;
+	/* when it last drew, for the longest it may wait for the stream */
+	uint64_t drawn;
 	int servicing, ready;
 } loading;
+
+/* The loading picture covers the stream's work while the game waits for
+it, so it never makes the game wait: it is drawn when the guest waits for
+nothing the render thread has yet to do and the stream is played to its
+end, or once it has waited LOADING_DEFERRED_MOST_NS. Drawn on the thread
+that plays the stream, a picture holds it as long as the display or the VR
+runtime makes it wait: on the Steam Frame, 12 ms of its 13.9 ms period in
+xrBeginFrame and xrEndFrame, which left the stream 1.5 ms of each, and
+Blood Gulch's enumeration (129 MB through the 32 MB ring) took 5.3 s; so,
+1.1 s. */
+#define LOADING_DEFERRED_MOST_NS 100000000ull
+
+static int loading_stream_waits(void);
 
 int host_render_stream_loading_holds(void)
 {
@@ -77,6 +92,8 @@ void host_render_stream_loading_service(void)
 	now = monotonic_nanoseconds();
 	if (now < loading.next)
 		return;
+	if (loading_stream_waits() && now - loading.drawn < LOADING_DEFERRED_MOST_NS)
+		return;
 	loading.servicing = 1;
 	loading.frame.elapsed_ns = now - loading.frame.started_ns;
 	loading.frame.serial++;
@@ -86,6 +103,7 @@ void host_render_stream_loading_service(void)
 		interval = 16666667ull;
 	loading.next = now + interval;
 	completed = monotonic_nanoseconds();
+	loading.drawn = completed;
 	loading.costs[loading.cost_index++ % 8] = completed - now;
 	/* A late callback must leave time for queued work. Spend the spare
 	time before twice its requested service interval, using recent costs
@@ -1322,6 +1340,18 @@ static void display_wait(uint64_t *start)
 	}
 }
 
+/* whether the game waits for the render thread, or will: a guest waiting,
+or records committed and not yet played */
+static int loading_stream_waits(void)
+{
+	struct xgpu_stream_ring *ring = render.ring;
+
+	if (__atomic_load_n(&render.guest_waiting, __ATOMIC_RELAXED))
+		return 1;
+	return ring && __atomic_load_n(&ring->committed, __ATOMIC_ACQUIRE) !=
+		__atomic_load_n(&ring->decoded, __ATOMIC_ACQUIRE);
+}
+
 static void guest_wait(uint64_t *start)
 {
 	if (!*start)
@@ -1329,10 +1359,11 @@ static void guest_wait(uint64_t *start)
 		*start = monotonic_nanoseconds();
 		render.ring->waits++;
 	}
-	render.guest_waiting++;
+	/* (read by the render thread's loading picture without the lock) */
+	__atomic_add_fetch(&render.guest_waiting, 1, __ATOMIC_RELAXED);
 	pthread_cond_signal(&render.work);
 	pthread_cond_wait(&render.done, &render.lock);
-	render.guest_waiting--;
+	__atomic_sub_fetch(&render.guest_waiting, 1, __ATOMIC_RELAXED);
 }
 
 static void guest_waited(uint64_t start)

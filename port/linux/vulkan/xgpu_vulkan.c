@@ -37,6 +37,7 @@ query pool once its last submission is done.
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
 
 /* ---------- the functions (loaded at run time) */
 
@@ -2248,15 +2249,21 @@ requested handle and PREPARED wait with loading presentation still serviced. */
 /* Enough lookahead for a map's usual variants without blocking the producer
 behind each short burst. Jobs contain descriptions, never vertex/texture data. */
 #define PIPELINE_JOBS 512
+/* Compilers, each the driver's on one processor: one left the Steam Frame's
+eight cores idle while it made a map's 442 pipelines in 2 s, the game
+waiting 0.9 s of them. The game's and the render thread, and the VR
+runtime's, keep theirs. (A pipeline cache needs no lock of ours: Vulkan
+synchronizes one not made externally synchronized.) */
+#define PIPELINE_WORKERS_MOST 4
 static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description,
 	VkResult *result, double *elapsed);
 static struct
 {
-	pthread_t thread;
+	pthread_t threads[PIPELINE_WORKERS_MOST];
 	pthread_mutex_t mutex;
 	pthread_cond_t changed;
 	int started, stop;
-	uint64_t submitted, claimed, completed, published;
+	uint64_t submitted, claimed, published;
 	struct
 	{
 		struct xgpu_vulkan_pipeline_description description;
@@ -2264,6 +2271,8 @@ static struct
 		VkPipeline pipeline;
 		VkResult result;
 		double elapsed;
+		/* (made: the workers finish out of order, published in order) */
+		int done;
 	} jobs[PIPELINE_JOBS];
 	void (*service)(void);
 } pipeline_compiler = { .mutex = PTHREAD_MUTEX_INITIALIZER, .changed = PTHREAD_COND_INITIALIZER };
@@ -2285,7 +2294,7 @@ static void *pipeline_compile_worker(void *unused)
 		pipeline_compiler.jobs[index].pipeline = pipeline_build(&pipeline_compiler.jobs[index].description,
 			&pipeline_compiler.jobs[index].result, &pipeline_compiler.jobs[index].elapsed);
 		pthread_mutex_lock(&pipeline_compiler.mutex);
-		pipeline_compiler.completed++;
+		pipeline_compiler.jobs[index].done = 1;
 		pthread_cond_broadcast(&pipeline_compiler.changed);
 	}
 	pthread_mutex_unlock(&pipeline_compiler.mutex);
@@ -2307,10 +2316,12 @@ static void pipeline_publish(struct pipeline_entry *entry, VkPipeline pipeline, 
 /* Called with the mutex held, only by the render owner. */
 static void pipeline_publish_completed(void)
 {
-	while (pipeline_compiler.published < pipeline_compiler.completed)
+	while (pipeline_compiler.published < pipeline_compiler.submitted &&
+		pipeline_compiler.jobs[pipeline_compiler.published % PIPELINE_JOBS].done)
 	{
 		uint32_t index = (uint32_t)(pipeline_compiler.published++ % PIPELINE_JOBS);
 
+		pipeline_compiler.jobs[index].done = 0;
 		pipeline_publish(pipeline_compiler.jobs[index].entry, pipeline_compiler.jobs[index].pipeline,
 			pipeline_compiler.jobs[index].result, pipeline_compiler.jobs[index].elapsed);
 	}
@@ -2372,9 +2383,17 @@ static void pipeline_request(struct pipeline_entry *entry)
 		(unsigned long long)vk.pipeline_count, entry->hash);
 	if (pipeline_compiler.service && !pipeline_compiler.started)
 	{
+		long processors = sysconf(_SC_NPROCESSORS_ONLN);
+		int workers = processors > 4 ? (int)processors - 4 : 1;
+
+		if (workers > PIPELINE_WORKERS_MOST)
+			workers = PIPELINE_WORKERS_MOST;
 		pipeline_compiler.stop = 0;
-		if (pthread_create(&pipeline_compiler.thread, NULL, pipeline_compile_worker, NULL) == 0)
-			pipeline_compiler.started = 1;
+		while (pipeline_compiler.started < workers &&
+			pthread_create(&pipeline_compiler.threads[pipeline_compiler.started], NULL, pipeline_compile_worker,
+				NULL) == 0)
+			pipeline_compiler.started++;
+		host_logf(HOST_LOG_INFO, "vulkan: %d pipeline compilers", pipeline_compiler.started);
 	}
 	if (!pipeline_compiler.service || !pipeline_compiler.started)
 	{
@@ -2400,10 +2419,10 @@ static void pipeline_compiler_stop(void)
 	pipeline_wait(NULL, 0);
 	pthread_mutex_lock(&pipeline_compiler.mutex);
 	pipeline_compiler.stop = 1;
-	pthread_cond_signal(&pipeline_compiler.changed);
+	pthread_cond_broadcast(&pipeline_compiler.changed);
 	pthread_mutex_unlock(&pipeline_compiler.mutex);
-	pthread_join(pipeline_compiler.thread, NULL);
-	pipeline_compiler.started = 0;
+	while (pipeline_compiler.started)
+		pthread_join(pipeline_compiler.threads[--pipeline_compiler.started], NULL);
 }
 
 /* The stream has 16 vertex sources plus constant attributes, but at most

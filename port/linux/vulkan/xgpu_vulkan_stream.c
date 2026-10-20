@@ -592,15 +592,16 @@ static void stream_clear(void *context, const struct xgpu_stream_clear *record)
 	if (target_get(stream.color))
 		target_get(stream.color)->written++;
 	targets_bind();
-	/* some of the colour's channels: drawn, through a pipeline made as the
-	map loads (not drawn then: the enumeration's frame is not seen) */
-	if (stream.preparing && (parts & XGPU_VULKAN_CLEAR_COLOR) &&
-		(parts & XGPU_VULKAN_CLEAR_CHANNELS) != XGPU_VULKAN_CLEAR_CHANNELS)
+	/* Preparation clears nothing: the enumeration's frame is not seen, and
+	its draws are not drawn, so its clears were its only GPU work, each a
+	pass of the whole target that a tiler loads and stores (1585 passes for
+	Blood Gulch, 0.4 s of the Steam Frame's preparation). Some of the
+	colour's channels are drawn, through a pipeline made now. */
+	if (stream.preparing)
 	{
-		(void)xgpu_vulkan_clear_prepare(parts);
-		parts &= ~(uint32_t)(XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS);
-		if (!(parts & (XGPU_VULKAN_CLEAR_DEPTH | XGPU_VULKAN_CLEAR_STENCIL)))
-			return;
+		if ((parts & XGPU_VULKAN_CLEAR_COLOR) && (parts & XGPU_VULKAN_CLEAR_CHANNELS) != XGPU_VULKAN_CLEAR_CHANNELS)
+			(void)xgpu_vulkan_clear_prepare(parts);
+		return;
 	}
 	before = xgpu_vulkan_pipeline_count();
 	xgpu_vulkan_clear((const int32_t (*)[4])record->rectangles, record->count, parts, record->color, record->depth,
@@ -623,6 +624,9 @@ static void stream_clear_target(void *context, const struct xgpu_stream_clear_ta
 	if (!target)
 		return;
 	target->written++;
+	/* (not while preparing, as stream_clear) */
+	if (stream.preparing)
+		return;
 	whole[0][0] = whole[0][1] = 0;
 	whole[0][2] = (int32_t)target->width;
 	whole[0][3] = (int32_t)target->height;
