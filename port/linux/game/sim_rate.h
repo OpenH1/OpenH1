@@ -50,6 +50,7 @@ enum sim_substep_slot
 {
 	_sim_substep_objects, /* the lanes': lifts' riders carried (objects.c) */
 	_sim_substep_player_control, /* the players' input and aim */
+	_sim_substep_vehicles, /* the players' vehicles, and what they carry */
 	_sim_substep_units, /* the players' units: aim, throws */
 	_sim_substep_bipeds, /* the players' bipeds' movement */
 	_sim_substep_weapons, /* the players' shots, at the sub-step pulled */

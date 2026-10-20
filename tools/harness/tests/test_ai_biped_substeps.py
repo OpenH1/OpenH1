@@ -54,9 +54,13 @@ def test_the_ais_input_and_aim_stay_on_the_tick():
     # (a sub-step reads the input again for a player's biped only; the AI's throttle and facing are the tick's)
     step = function(read('source/units/bipeds.c'), 'biped_substep_move')
     assert 'if (substep_index > 0 && datum->speeds.valid && biped->unit.player_index != NONE)' in step
-    # (the aim turns in the sub-steps for a player's unit only: the AI's weapon fires on the tick, at its aim)
+    # (the aim turns in the sub-steps for a player's unit only, and a vehicle a player guns (vehicles.c): the AI's
+    # weapon fires on the tick, at its aim)
     update = function(read('source/units/units.c'), 'unit_update')
-    assert 'if (unit->unit.player_index != NONE && object_lane_moves_in_substeps(unit_index))' in update
+    assert ('if ((unit->unit.player_index != NONE || vehicle_gunned_by_player(unit_index)) && '
+            'object_lane_moves_in_substeps(unit_index))') in update
+    gunned = function(read('source/units/vehicles.c'), 'vehicle_gunned_by_player')
+    assert 'unit_get(unit->unit.gunner_object_index)->unit.player_index!=NONE' in gunned
 
 
 def test_the_ais_tick_in_its_own_update():

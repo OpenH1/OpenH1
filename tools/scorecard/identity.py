@@ -31,13 +31,15 @@ import runner  # noqa: E402
 
 ROOT = runner.ROOT
 # (StageKit map, input, cues, seconds): a biped that walks, turns, jumps and fires its weapon on its own, a lift
-# ridden, shots at walls, grenades
+# ridden, shots at walls, grenades, a car driven (the script's input, on the game's clock at 30), turned and jumped
 SCENARIOS = {
     "walk": ("walk", "bot:1", [], 12),
     "elevator": ("elevator", "look:1", [(1, "device_set_position elevator 1"), (5, "device_set_position elevator 0")],
                  8),
     "shoot": ("shoot", "bot:3", [], 12),
     "lob": ("lob", "bot:2", [], 12),
+    "drive": ("drive", "script:0.5 aim=0,0; 1-12 move=0,1; 2-4 look=0.3,0; 4.5 aim=0,0",
+              [(0.1, 'unit_enter_vehicle (unit (list_get (players) 0)) car "stand"')], 12),
 }
 LOG = "determinism.txt"
 # what two builds' logs are compared by (tools/determinism_compare.py): the game state and the seeds, the seeds'
@@ -121,7 +123,12 @@ def main():
     else:
         baseline = {name: args.baseline / f"{name}.txt" for name in SCENARIOS}
     failed = 0
+    # (a scenario new since the recorded baseline, which master records once it has it: a note)
+    recorded = json.loads((args.baseline / "baseline.json").read_text())["scenarios"] if args.baseline else SCENARIOS
     for name in SCENARIOS:
+        if name not in recorded:
+            print(f"{name}: new since the baseline was recorded (master records it once it has it)")
+            continue
         if not baseline[name].is_file():
             print(f"{name}: no baseline log ({baseline[name]})")
             failed += 1
@@ -138,7 +145,8 @@ def main():
         if not alike:
             print("\n".join("    " + line for line in compared.stdout.strip().splitlines()))
             failed += 1
-    print(f"identity: {len(SCENARIOS) - failed} of {len(SCENARIOS)} scenarios bit-identical at 30 Hz")
+    checked = [name for name in SCENARIOS if name in recorded]
+    print(f"identity: {len(checked) - failed} of {len(checked)} scenarios bit-identical at 30 Hz")
     return 1 if failed else 0
 
 

@@ -18,6 +18,7 @@ UNIT_TAGS = {
     "weapon": ["U5"],
     "grenade": ["U4", "U6"],
     "elevator": ["U1", "U7", "U19"],
+    "vehicle": ["U17"],
 }
 
 
@@ -81,6 +82,28 @@ SCENARIOS = [
              cues=[(0.5, "ai_attach_free walker walker"), (1, "ai_command_list_by_unit walker leg1"),
                    (4, "ai_command_list_by_unit walker leg2"), (7, "ai_command_list_by_unit walker leg3")],
              seconds=10.0, arguments=dict(start=0.5, end=9.5)),
+]
+
+# a player's vehicle (the plan's row 9, synthetic): StageKit's car, which the player sits in (the cue) and drives
+# (the script): along x to its top speed, round in a circle at full lock, over a ramp, off a platform, rolled over
+# by turning too hard, and into a parked car
+def drive(car):
+    return [(0.1, f'unit_enter_vehicle (unit (list_get (players) 0)) {car} "stand"')]
+
+
+SCENARIOS += [
+    scenario("vehicle_straight", "drive", "vehicle", ["vehicle"], script="0.5 aim=0,0; 1-4.5 move=0,1",
+             seconds=4.5, cues=drive("car"), arguments=dict(kind="straight", start=1.0)),
+    scenario("vehicle_turn", "drive", "vehicle", ["vehicle"], script="0.5 aim=0,0; 1-8 move=0,1; 2-8 look=0.35,0",
+             seconds=8.0, cues=drive("car"), arguments=dict(kind="turn", start=1.0)),
+    scenario("vehicle_jump", "drive", "vehicle", ["vehicle"], script="0.5 aim=0,0; 1-9 move=0,1", seconds=9.0,
+             cues=drive("car"), arguments=dict(kind="jump", start=6.0)),
+    scenario("vehicle_ledge", "drive", "vehicle", ["vehicle"], script="0.5 aim=180,0; 1-6 move=0,1", seconds=6.0,
+             cues=drive("high"), arguments=dict(kind="landing", start=3.0)),
+    scenario("vehicle_flip", "drive", "vehicle", ["vehicle"], script="0.5 aim=0,0; 1-8 move=0,1; 2-8 look=1,0",
+             seconds=8.0, cues=drive("car"), arguments=dict(kind="flip", start=1.0, end=4.5)),
+    scenario("vehicle_crash", "drive", "vehicle", ["vehicle"], script="0.5 aim=0,0; 1-8 move=0,1", seconds=8.0,
+             cues=drive("racer"), arguments=dict(kind="crash", start=1.0)),
 ]
 
 # what CI cannot play, the retail maps' (the plan's rows 5, 9, 10, 12-14 and the retail halves of 4, 6-8), and

@@ -37,6 +37,14 @@ static struct unit_datum *unit_get(long index)
 	return &fake_unit;
 }
 
+/* (vehicles.c's: a vehicle a player drives is of the micro lane; here, the
+fake unit's driver is the fake unit) */
+static boolean vehicle_takes_substeps(long index)
+{
+	(void)index;
+	return fake_unit.unit.player_index != NONE;
+}
+
 #include "under_test.inc"
 
 /* a tick of a biped walking by root motion, from velocity kept toward

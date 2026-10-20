@@ -30,6 +30,18 @@ TOLERANCES = {
     "ai_path": dict(absolute=0.01, unit="wu rms"),
     "ai_walked": dict(relative=0.005, unit="wu"),
     "ai_between": dict(absolute=0.002, unit="wu"),
+    # a player's vehicle (U17): the plan's row 9 (0 to its top speed 2%, its top speed 1%, its turning circle 2%);
+    # its path and height through a run within a tenth of a unit RMS; a jump's apex and its suspension's travel
+    # after landing within 3 hundredths; a crash's moment within two ticks (vehicles find each other at a tick's
+    # end, and what it strikes, of the macro lane, answers on its tick: a few milliseconds either way is a tick
+    # either way); a roll-over within 5 30ths of a second
+    "vehicle_time": dict(relative=0.02, unit="s"),
+    "vehicle_speed": dict(relative=0.01, unit="wu/s"),
+    "vehicle_turn": dict(relative=0.02, unit="wu"),
+    "vehicle_path": dict(absolute=0.1, unit="wu rms"),
+    "vehicle_height": dict(absolute=0.03, unit="wu"),
+    "vehicle_impact": dict(absolute=2.0 / 30 + 0.001, unit="s"),
+    "vehicle_flip": dict(absolute=0.167, unit="s"),
 }
 
 # a step's time against a time on the grid
@@ -67,6 +79,10 @@ class Trace:
                     step["ai"][words[1]] = tuple(float(word) for word in words[2:9])
                 elif words[0] == "e":
                     step["events"].append(words[1:])
+                elif words[0] == "v":
+                    step.setdefault("vehicles", {})[words[2]] = (int(words[1]),
+                                                                  [float(word) for word in words[3:18]],
+                                                                  int(words[18]))
         self.step_seconds = 1.0 / self.rate if self.rate else None
 
     def events(self, kind):
@@ -269,7 +285,112 @@ def measure_ai_path(trace, start=0.0, end=None):
     return result
 
 
+def vehicle_steps(trace, player=0):
+    """each step the player rides a vehicle: (t, its fields: place, velocity, forward, up, angular velocity; on the
+    ground)"""
+    steps = []
+    for step in trace.steps:
+        for rider, fields, ground in step.get("vehicles", {}).values():
+            if rider == player:
+                steps.append((step["t"], fields, ground))
+    return steps
+
+
+def on_grid(steps):
+    return [s for s in steps if abs(s[0] * 30 - round(s[0] * 30)) < GRID_SLACK * 30]
+
+
+def circle_radius(points):
+    """the circle through points (x, y), least squares (Kasa's)"""
+    n = len(points)
+    mx = sum(p[0] for p in points) / n
+    my = sum(p[1] for p in points) / n
+    u = [p[0] - mx for p in points]
+    v = [p[1] - my for p in points]
+    suu, svv, suv = sum(a * a for a in u), sum(b * b for b in v), sum(a * b for a, b in zip(u, v))
+    suuu, svvv = sum(a ** 3 for a in u), sum(b ** 3 for b in v)
+    suvv, svuu = sum(a * b * b for a, b in zip(u, v)), sum(b * a * a for a, b in zip(u, v))
+    det = suu * svv - suv * suv
+    if abs(det) < 1e-12:
+        return math.inf
+    uc = (svv * (suuu + suvv) - suv * (svvv + svuu)) / (2 * det)
+    vc = (suu * (svvv + svuu) - suv * (suuu + suvv)) / (2 * det)
+    return math.sqrt(uc * uc + vc * vc + (suu + svv) / n)
+
+
+# a struck vehicle's speed (world units a second) from which it is moving
+CRASH_SPEED = 0.1
+
+
+def measure_vehicle(trace, kind, start, end=None, player=0, window=2.0):
+    """the vehicle the player drives, from start (seconds) to end (the trace's end): its path (where it is at every
+    30th of a second, x, y and z, compared by RMS), and as the kind says:
+    straight: its top speed (across the ground, at the end) and when it reaches half and 90% of it;
+    turn: its turning circle (the circle through its last window seconds) and how fast it turns;
+    jump: the highest it gets, and how low and high it rides in its suspension in the second after it next touches
+    the ground; landing: the same but the highest (a drop's is where it leaves);
+    flip: when it rolls past 60 degrees (its up's height under a half);
+    crash: when the first vehicle no one rides starts to move (it is struck: a tenth of a unit a second), where it is a
+    second later, and how fast the player's goes then"""
+    steps = [s for s in vehicle_steps(trace, player) if s[0] >= start - GRID_SLACK and
+             (end is None or s[0] <= end + GRID_SLACK)]
+    grid = on_grid(steps)
+    if not grid:
+        return {}
+    result = {"path": (tuple(c for _, fields, _ in grid for c in fields[0:3]), "vehicle_path")}
+    if kind == "straight":
+        speeds = [(t, math.hypot(fields[3], fields[4])) for t, fields, _ in grid]
+        top = speeds[-1][1]
+        result["top_speed"] = (top, "vehicle_speed")
+        for level in (0.5, 0.9):
+            for (t0, v0), (t1, v1) in zip(speeds, speeds[1:]):
+                if v1 >= level * top > v0:
+                    result[f"t{int(level * 100)}"] = (t0 + (level * top - v0) / (v1 - v0) * (t1 - t0) - start,
+                                                      "vehicle_time")
+                    break
+    elif kind == "turn":
+        last = [s for s in grid if s[0] >= grid[-1][0] - window - GRID_SLACK]
+        result["turning_radius"] = (circle_radius([fields[0:2] for _, fields, _ in last]), "vehicle_turn")
+        result["turn_rate"] = (abs(sum(fields[14] for _, fields, _ in last) / len(last)), "vehicle_turn")
+    elif kind in ("jump", "landing"):
+        # (on the grid: what a vehicle meets is the tick's, physics.c, whose end the grid is at every rate)
+        airborne = next((index for index, s in enumerate(grid) if not s[2]), None)
+        if airborne is None:
+            return result
+        landing = next((s for s in grid[airborne:] if s[2]), None)
+        if kind == "jump":
+            result["apex"] = (max(fields[2] for _, fields, _ in grid[airborne:]), "vehicle_height")
+        if landing:
+            after = [s for s in grid if landing[0] - GRID_SLACK <= s[0] <= landing[0] + 1.0]
+            result["suspension_low"] = (min(fields[2] for _, fields, _ in after), "vehicle_height")
+            result["suspension_high"] = (max(fields[2] for _, fields, _ in after[len(after) // 4:]),
+                                         "vehicle_height")
+    elif kind == "flip":
+        flipped = next((t for t, fields, _ in steps if fields[11] < 0.5), None)
+        if flipped is not None:
+            result["roll_over"] = (flipped, "vehicle_flip")
+    elif kind == "crash":
+        # (on the grid: the struck vehicle, of the macro lane, moves once a tick, logged at its end at 30)
+        struck = None
+        for step in trace.steps:
+            if step["t"] < start or struck is not None or abs(step["t"] * 30 - round(step["t"] * 30)) > 1e-3:
+                continue
+            for name, (rider, fields, ground) in step.get("vehicles", {}).items():
+                if rider < 0 and math.hypot(fields[3], fields[4]) > CRASH_SPEED and struck is None:
+                    struck = (step["t"], name, fields)
+        if struck is not None:
+            result["impact"] = (struck[0], "vehicle_impact")
+            later = trace.at(struck[0] + 1.0)
+            mine = [fields for t, fields, _ in grid if abs(t - struck[0] - 1.0) < GRID_SLACK]
+            if later and struck[1] in later.get("vehicles", {}):
+                result["struck_place"] = (tuple(later["vehicles"][struck[1]][1][0:3]), "vehicle_path")
+            if mine:
+                result["speed_after"] = (math.hypot(mine[0][3], mine[0][4]), "vehicle_speed")
+    return result
+
+
 MEASURES = {
+    "vehicle": measure_vehicle,
     "jump": measure_jump,
     "shots": measure_shots,
     "grenades": measure_grenades,
