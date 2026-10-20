@@ -199,6 +199,11 @@ static game_state_before_load_proc before_load_procs[] =
 	/* port: a tick open between two of its sub-steps given up: the state
 	loaded is one saved between two ticks (game.sim_rate, game_time.c) */
 	game_time_port_drop_substeps,
+	/* port: the frames' snapshots of the objects and the view are the state's
+	before the load (a checkpoint's revert): the first frames after it drawn
+	where the loaded state has them, not blended in from there
+	(render_interpolation.c; drawing only) */
+	render_interpolation_reset,
 };
 
 static game_state_after_load_proc after_load_procs[] =

@@ -7,6 +7,9 @@ against a fake world.
   limit (3 m/s) however the game's climbing animation jumps the body's head, it ends in the seat
   (where the head is once seated, held there in the vehicle as it drives), and ends back at the
   first person's eye once out. With "blink" (the older way) it darkens, as before.
+- Back from a death (a respawn, a checkpoint's revert), the eye is the new one's from the first frame: not the
+  death's eye (its cam's vantage, or where the player died) held in view while a blink darkens, outside the head
+  as the helmet's view switches on (port/linux/game/vr_death.c calls vr_seat_eye_cut).
 - With the hands off a Ghost's handlebars or a Warthog's wheel, a stick pushed sideways steers:
   the Ghost turns toward the push at up to 90 degrees a second (the game's own turn toward the
   facing, update_alien_scout_physics), the Warthog's wheels turn toward their lock, the other way
@@ -305,6 +308,87 @@ def test_negative_control_without_following_the_head_jumps(tmp_path):
     assert mutated != text
     v = run_seat(tmp_path, "still", text=mutated, name="seat_unfollowed")
     assert v["step"] > v["limit"]
+
+
+# ---------- back from a death (vr_death.c, vr_seat.c)
+
+RESPAWN_MAIN = r"""
+#define DT (1.0f / 90.0f)
+
+int main(int argc, char **argv)
+{
+    /* the death cam's vantage (3 m from the body) the eye while dead, and the new unit's eye back */
+    real_point3d vantage = {4.0f, 1.0f, 1.2f}, head = {10.0f, -3.0f, 0.6f}, eye;
+    real farthest = 0.0f, darkest = 0.0f;
+    int i, cut = argc > 1 && !strcmp(argv[1], "cut");
+
+    perspective_now = 3;
+    for (i = 0; i < 30; i++)
+    {
+        eye = vantage;
+        vr_seat_eye(NONE, TRUE, DT, &eye);
+    }
+    /* back: the game's camera the new first person's eye, at once */
+    perspective_now = _director_perspective_first_person;
+    if (cut)
+        vr_seat_eye_cut();
+    for (i = 0; i < 45; i++)
+    {
+        eye = head;
+        vr_seat_eye(NONE, TRUE, DT, &eye);
+        farthest = MAX(farthest, distance3d(&eye, &head));
+        darkest = MAX(darkest, vr_seat_darkness());
+        if (i == 0)
+            printf("first %f\n", distance3d(&eye, &head));
+    }
+    printf("farthest %f darkest %f\n", farthest, darkest);
+    return 0;
+}
+"""
+
+
+def run_respawn(tmp_path, *args, text=None, name="respawn"):
+    text = text or SEAT.read_text()
+    source = "static short perspective_now;\n" + SEAT_WORLD.replace(
+        "return _director_perspective_first_person;}", "return perspective_now;}")
+    source += "static int vehicle_moving;\n"
+    source += between(text, "#define METRES_PER_WORLD_UNIT", "/* ---------- the view */")
+    source += SEAT_STUBS
+    for name_ in ("seat_motion", "seat_still", "seat_blinks", "vehicle_to_local", "vehicle_from_local",
+                  "shown_position", "ride_spring", "glide_left", "glide_to_frame", "glide_from_frame",
+                  "vr_seat_eye", "vr_seat_eye_cut", "vr_seat_darkness"):
+        source += function(text, name_) + "\n"
+    exe = build(tmp_path, source + RESPAWN_MAIN, name)
+    out = subprocess.run([str(exe), *args], check=True, capture_output=True, text=True).stdout.split()
+    return {"first": float(out[1]), "farthest": float(out[3]), "darkest": float(out[5])}
+
+
+def test_back_from_a_death_the_eye_is_the_new_ones_at_once(tmp_path):
+    v = run_respawn(tmp_path, "cut")
+    assert v["first"] == pytest.approx(0.0, abs=1e-5) and v["farthest"] == pytest.approx(0.0, abs=1e-5)
+    # (the death's own dark and switching bring it up: no blink of the seat's)
+    assert v["darkest"] == 0.0
+
+
+def test_without_the_cut_the_deaths_eye_is_held_in_view(tmp_path):
+    # (the negative control: as it was, the blink holds the death cam's vantage as it darkens)
+    v = run_respawn(tmp_path, name="respawn_held")
+    assert v["first"] > 1.0 and v["darkest"] > 0.0
+
+
+def test_negative_control_the_cut_that_keeps_the_eye_fails(tmp_path):
+    text = SEAT.read_text()
+    body = function(text, "vr_seat_eye_cut")
+    mutated = text.replace(body, body.replace("vr_seat.shown_valid = FALSE;", ""))
+    assert mutated != text
+    v = run_respawn(tmp_path, "cut", text=mutated, name="respawn_mutated")
+    assert v["first"] > 1.0
+
+
+def test_back_from_a_death_cuts_the_seats_eye():
+    death_reset = function((ROOT / "port/linux/game/vr_death.c").read_text(), "death_reset")
+    # (both ways back: the death cam's, "crt", and the held eye's, "face" and "still")
+    assert death_reset.count("vr_seat_eye_cut();") == 2
 
 
 # ---------- steering with the sticks (vr.c)

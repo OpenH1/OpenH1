@@ -131,7 +131,9 @@ static short director_get_perspective(short local_player_index) { return perspec
 static long scripted_camera_object_relative_to(void) { return NONE; }
 static boolean scripted_camera_object_is_first_person_camera(long index) { return FALSE; }
 static boolean cinematic_in_progress(void) { return FALSE; }
-static long player_control_get_unit_index(short local_player_index) { return RIDER; }
+/* the player's unit (NONE while dead) */
+static long fake_player_unit = RIDER;
+static long player_control_get_unit_index(short local_player_index) { return fake_player_unit; }
 static void unit_get_camera_position(long index, real_point3d *position);
 struct interpolation_ghost { boolean in_use; long tick; };
 static struct interpolation_ghost ghosts[64];
@@ -339,6 +341,7 @@ static void world_new(short substep_count)
 	ticks_ended = 0;
 	substeps_run = 0;
 	vehicle_micro = TRUE;
+	fake_player_unit = RIDER;
 	render_interpolation_register();
 	object_add(VEHICLE, _object_type_vehicle, NONE, 3);
 	object_add(RIDER, _object_type_biped, VEHICLE, 2);
@@ -611,6 +614,58 @@ static void camera_slow_case(short view)
 	}
 }
 
+/* A respawn into the seat (or a revert to one): dead (no unit), the game's camera the dead camera, 1.5 units behind
+and above the seat's camera point, looking down at 37 degrees (nearer, and turned less, than a cut is taken for);
+then the rider the player's unit, the game's camera at its seat at once. Every frame from the respawn's tick on is
+drawn at the seat (within the vehicle's tick of motion of it, as the view hangs on the vehicle's path), never on the
+way there from the dead camera, in the first person or following */
+static void respawn_case(short view)
+{
+	long frame;
+	long respawn_tick = 6;
+	boolean back_seen = FALSE;
+
+	world_new(4);
+	perspective = view;
+	for (frame = 0; frame < 30 * 4; frame++)
+	{
+		struct observer_result observer;
+		struct observer_result const *camera;
+		boolean back;
+
+		world_substep();
+		if (ticks_ended < 1)
+			continue;
+		back = ticks_ended >= respawn_tick;
+		fake_player_unit = back ? RIDER : NONE;
+		frame_begin(random_part());
+		observer = observer_now();
+		if (!back)
+		{
+			observer.position.x -= 1.2f;
+			observer.position.z += 0.9f;
+			observer.forward.i = 0.8f;
+			observer.forward.k = -0.6f;
+			observer.up.i = 0.6f;
+			observer.up.k = 0.8f;
+		}
+		camera = render_interpolation_blended_camera(0, &observer);
+		if (back)
+		{
+			struct observer_result now = observer_now();
+
+			CHECK(distance(&camera->position, &now.position) < 0.4f, "frame %ld (tick %ld, the respawn's %ld): the "
+				"view %f from the seat's, on its way in from the dead camera", frame, ticks_ended, respawn_tick,
+				distance(&camera->position, &now.position));
+			CHECK(camera->forward.k > -0.01f, "frame %ld: the view still turning down from the dead camera's (%f)",
+				frame, camera->forward.k);
+			back_seen = TRUE;
+		}
+		render_interpolation_frame_end();
+	}
+	CHECK(back_seen, "no frame after the respawn");
+}
+
 /* A vehicle of the macro lane (the AI drives it, or nobody does) at 120: nothing of it is kept, and it is drawn on
 the line between the ticks as before (each node's place lerped), and the view in its seat from its snapshots */
 static void case_macro(void)
@@ -671,6 +726,10 @@ int main(int argc, char **argv)
 		camera_slow_case(_director_perspective_first_person);
 	else if (!strcmp(argv[1], "following_slow"))
 		camera_slow_case(_director_perspective_third_person);
+	else if (!strcmp(argv[1], "respawn"))
+		respawn_case(_director_perspective_first_person);
+	else if (!strcmp(argv[1], "respawn_following"))
+		respawn_case(_director_perspective_third_person);
 	else if (!strcmp(argv[1], "macro"))
 		case_macro();
 	else

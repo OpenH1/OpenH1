@@ -971,6 +971,19 @@ boolean vr_seat_feed(real *grate, real *wash, real *off)
 	return TRUE;
 }
 
+/* the player back from a death (vr_death.c): the next eye is the new
+one's, at once, not blinked to from the death's (its cam's vantage, or
+where the player died), which the blink held in view as it darkened while
+the helmet's view switched on, out of the body; the death's own dark and
+switching bring the new eye up */
+void vr_seat_eye_cut(void)
+{
+	vr_seat.shown_valid = FALSE;
+	vr_seat.blinking = FALSE;
+	vr_seat.darkness = 0.0f;
+	vr_seat.glide = _glide_none;
+}
+
 /* where the eye was last frame (vr_death.c: the eye held as the player
 dies), FALSE when none was */
 boolean vr_seat_shown(real_point3d *position)

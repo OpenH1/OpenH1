@@ -17,7 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from harness import CHECK_FAILED, build, run  # noqa: E402
 from test_render_substeps import generated  # noqa: E402
 
-CASES = ["classic", "substeps", "substeps_60", "following", "camera_slow", "following_slow", "macro"]
+CASES = ["classic", "substeps", "substeps_60", "following", "camera_slow", "following_slow", "macro", "respawn",
+         "respawn_following"]
 
 # a fault in the code, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -48,6 +49,11 @@ NEGATIVE_CONTROLS = {
     # ... and following
     "following-view-unshifted": (("\t\t\trender_interpolation_camera_at_tick_in_vehicle(camera, &camera->latest);",
                                   "\t\t\t;"), "following_slow"),
+    # a respawn into the seat blended from the dead camera (nearer and turned less than a cut's)
+    "respawn-glides": (("\t\tcamera->has_previous = camera->valid && camera->unit_index == unit_index;",
+                        "\t\tcamera->has_previous = camera->valid;"), "respawn"),
+    "respawn-glides-following": (("\t\tcamera->has_previous = camera->valid && camera->unit_index == unit_index;",
+                                  "\t\tcamera->has_previous = camera->valid;"), "respawn_following"),
     # the view hung on the vehicle's root, not where it is on the vehicle: off as the vehicle turns
     "anchor-at-root": (("\t\tunit_get_camera_position(unit_index, &anchor);",
                         "\t\tanchor = record->nodes[record->latest * record->node_capacity].position;"), "following"),

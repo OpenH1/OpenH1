@@ -131,7 +131,9 @@ static short director_get_perspective(short local_player_index) { return _direct
 static long scripted_camera_object_relative_to(void) { return NONE; }
 static boolean scripted_camera_object_is_first_person_camera(long index) { return FALSE; }
 static boolean cinematic_in_progress(void) { return FALSE; }
-static long player_control_get_unit_index(short local_player_index) { return BIPED; }
+/* the player's unit (NONE while dead) */
+static long fake_player_unit = BIPED;
+static long player_control_get_unit_index(short local_player_index) { return fake_player_unit; }
 static void unit_get_camera_position(long index, real_point3d *position) { *position = object_get(index)->object.position; }
 struct interpolation_ghost { boolean in_use; long tick; };
 static struct interpolation_ghost ghosts[64];
@@ -264,6 +266,7 @@ static void world_new(short substep_count)
 	ticks_ended = 0;
 	substeps_run = 0;
 	case_substep = NULL;
+	fake_player_unit = BIPED;
 	render_interpolation_register();
 	object_add(BIPED, _object_type_biped, NONE, 3);
 	object_place(BIPED, 0.0f, 0.0f, 0.0f);
@@ -468,6 +471,57 @@ static void case_camera_slow(void)
 	}
 }
 
+/* A respawn: dead (no unit), the game's camera the dead camera, 1.5 units behind and above where the player will be,
+looking down at 37 degrees (nearer, and turned less, than a cut is taken for); then the player's unit, the game's
+camera its eye at once (player_spawn: observer_obsolete_position). Every frame from the respawn's tick on is drawn
+at the eye, never on the way there from the dead camera (at 30, and at 120 the micro lane's view on its sub-steps) */
+static void respawn_case(short substep_count)
+{
+	long frame;
+	long respawn_tick = 6;
+	boolean back_seen = FALSE;
+
+	world_new(substep_count);
+	for (frame = 0; frame < 30 * substep_count; frame++)
+	{
+		struct observer_result observer;
+		struct observer_result const *camera;
+		boolean back;
+
+		world_substep();
+		if (ticks_ended < 1)
+			continue;
+		back = ticks_ended >= respawn_tick;
+		fake_player_unit = back ? BIPED : NONE;
+		frame_begin(random_part());
+		observer = observer_now();
+		if (!back)
+		{
+			observer.position.x -= 1.2f;
+			observer.position.z += 0.9f;
+			observer.forward.i = 0.8f;
+			observer.forward.k = -0.6f;
+			observer.up.i = 0.6f;
+			observer.up.k = 0.8f;
+		}
+		camera = render_interpolation_blended_camera(0, &observer);
+		if (back)
+		{
+			struct observer_result now = observer_now();
+
+			/* (the eye moves 0.1 a tick: within a tick's of it, not 1.5 off on the way in) */
+			CHECK(distance(&camera->position, &now.position) < 0.2f, "frame %ld (tick %ld, the respawn's %ld): the "
+				"view %f from the new eye, on its way in from the dead camera", frame, ticks_ended, respawn_tick,
+				distance(&camera->position, &now.position));
+			CHECK(camera->forward.k > -0.01f, "frame %ld: the view still turning down from the dead camera's (%f)",
+				frame, camera->forward.k);
+			back_seen = TRUE;
+		}
+		render_interpolation_frame_end();
+	}
+	CHECK(back_seen, "no frame after the respawn");
+}
+
 /* A projectile made (in the tick's own work, or in sub-step 2 by the weapons' slot) at M with velocity v a tick:
 its head start puts it at M + v at once, and it holds for a tick of sub-steps, then moves v/k each (projectiles.c).
 Its first tick, and the next, are drawn on the line from a tick's motion back, as at 30: never darting out and
@@ -640,6 +694,10 @@ int main(int argc, char **argv)
 		projectile_case(-1, 2);
 	else if (!strcmp(argv[1], "projectile_late"))
 		projectile_case(2, 2);
+	else if (!strcmp(argv[1], "respawn"))
+		respawn_case(1);
+	else if (!strcmp(argv[1], "respawn_120"))
+		respawn_case(4);
 	else if (!strcmp(argv[1], "vr_release"))
 		case_vr_release();
 	else
