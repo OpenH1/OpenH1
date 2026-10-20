@@ -723,8 +723,9 @@ Each frame shows the world between the last two ticks
 
 Thus the frames are one tick (33 ms) after the calculation. The calculation
 does not change. At `game.sim_rate` 60 and 120, the player's movement,
-projectiles and thrown items are drawn on the path of their sub-steps, not
-on the line between two ticks (refer to "Simulation rate").
+the vehicle a player drives (and its turns, its riders and the view from its
+seats), projectiles and thrown items are drawn on the path of their
+sub-steps, not on the line between two ticks (refer to "Simulation rate").
 
 Other things the game moves once a tick are drawn between ticks as well:
 
@@ -4483,6 +4484,16 @@ mode's throws and grabs move in smaller steps.
   drawn between the ticks, as before. The grenade stays where the hand let
   it go until the frames reach the tick of its release. At 30 nothing is
   kept.
+- A vehicle that a player drives also turns in the sub-steps, so its frame
+  (the place and rotation of its root node) is kept after each sub-step too.
+  A frame draws it between two of them: the place is linear, the rotation
+  a normalised lerp the short way. Its nodes, and those of what it carries
+  (riders, the gunner, a turret, the player in the seat), mix between the
+  ticks in the vehicle's frame and go where that frame is. The view from a
+  seat (first person or following, flat or VR) hangs on the vehicle at the
+  unit's camera position, kept in the vehicle's frame at each tick. The
+  view's snapshot is moved back to where the tick left that point, and the
+  frames move it with that point onto the vehicle's path.
 - The profiling build times the fast phase as `game_tick.substeps`.
 - The determinism check writes the rate (`rate 30`) before the first tick.
   `tools/determinism_compare.py` compares two logs of different rates
