@@ -43,6 +43,7 @@ frame on screen.
 
 #include <errno.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
@@ -188,6 +189,8 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_LOADING] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_LOADING_OWNED] = sizeof(struct xgpu_stream_reply_record),
 	[XGPU_STREAM_LOADING_ART] = sizeof(struct xgpu_stream_value),
+	[XGPU_STREAM_LOADING_SCENE] = sizeof(struct xgpu_stream_value),
+	[XGPU_STREAM_LOADING_PROGRESS] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_SKIP] = sizeof(struct xgpu_stream_record),
 	[XGPU_STREAM_INITIALIZE] = sizeof(struct xgpu_stream_reply_record),
 	[XGPU_STREAM_INVALIDATE] = sizeof(struct xgpu_stream_record),
@@ -289,6 +292,28 @@ static int data_inside(const struct host_render_decoder *decoder, const void *re
 	return address >= start && address - start <= record_size && bytes <= record_size - (address - start);
 }
 
+/* HALO_LOADING_SCENE_DUMP=<file>: the main menu's scene as it arrives
+(loading_scene.h), for looking at the loading screen without the game */
+static void host_loading_scene_dump(const void *data, uint32_t bytes)
+{
+	static int checked;
+	static const char *path;
+	FILE *file;
+
+	if (!checked)
+	{
+		path = getenv("HALO_LOADING_SCENE_DUMP");
+		checked = 1;
+	}
+	if (!path || !*path || !bytes)
+		return;
+	file = fopen(path, "wb");
+	if (!file)
+		return;
+	fwrite(data, 1, bytes, file);
+	fclose(file);
+}
+
 static void answer(uint32_t reply, const void *value, size_t size)
 {
 	if (reply)
@@ -313,6 +338,21 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 			return XGPU_STREAM_ERROR_RECORD;
 		CALL(loading_art, value->value ? start + sizeof(*value) : NULL);
 		break;
+	case XGPU_STREAM_LOADING_SCENE:
+		if (size - sizeof(*value) != value->value)
+			return XGPU_STREAM_ERROR_RECORD;
+		host_loading_scene_dump(start + sizeof(*value), value->value);
+		CALL(loading_scene, start + sizeof(*value), value->value);
+		break;
+	case XGPU_STREAM_LOADING_PROGRESS:
+	{
+		float progress;
+
+		memcpy(&progress, &value->value, sizeof(progress));
+		host_load_trace("loading.progress", "progress=%.3f", (double)progress);
+		CALL(loading_progress, progress);
+		break;
+	}
 	case XGPU_STREAM_LOADING_OWNED:
 	{
 		uint32_t owned = host_render_stream_loading_holds() && backend->loading_owned &&

@@ -1287,6 +1287,8 @@ const struct host_render_backend *xgpu_metal_stream_backend(void)
 		backend.loading = host_metal_loading;
 		backend.loading_owned = host_metal_loading_owned;
 		backend.loading_art = host_metal_loading_art;
+		backend.loading_scene = host_metal_loading_scene;
+		backend.loading_progress = host_metal_loading_progress;
 		backend.dynamic_lights_prepare = stream_dynamic_lights_prepare;
 		backend.dynamic_lights_upload = stream_dynamic_lights_upload;
 		backend.dynamic_lights_halos = stream_dynamic_lights_halos;

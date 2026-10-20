@@ -81,14 +81,27 @@ void halo_loading_art(void)
 	free(pixels);
 }
 
+/* (port/linux/game/loading_scene.c) */
+void halo_loading_scene(void);
+void halo_loading_fade_begin(void);
+
 void halo_loading_begin(void)
 {
 	if (!loading_presentation_active && platform_window)
 	{
+		/* the main menu's scene, read before its map is disposed of, for
+		the presenter to draw while the next loads */
+		halo_loading_scene();
 		loading_presentation_active = 1;
 		halo_load_trace("loading.request", "begin");
 		xgpu_backend_loading(1);
 	}
+}
+
+void halo_loading_progress(float progress)
+{
+	if (loading_presentation_active)
+		xgpu_backend_loading_progress(progress);
 }
 
 int halo_loading_owned(void)
@@ -115,6 +128,8 @@ void halo_loading_ready(void)
 {
 	if (loading_presentation_active == 1)
 	{
+		/* the level's first pictures come up out of the dark (VR's eyes) */
+		halo_loading_fade_begin();
 		xgpu_backend_loading(2);
 		loading_presentation_active = 2;
 	}
@@ -303,6 +318,28 @@ void platform_loading_art(const unsigned char *rgba)
 	pthread_mutex_unlock(&loading_window.lock);
 }
 
+void platform_loading_scene(const void *data, unsigned long bytes)
+{
+	int phase;
+
+	pthread_mutex_lock(&loading_window.lock);
+	phase = loading_window.phase;
+	loading_window.phase = 0;
+	while (loading_window.busy)
+		pthread_cond_wait(&loading_window.changed, &loading_window.lock);
+	loading_art_scene(&loading_window.art, bytes ? data : NULL, bytes);
+	loading_window.phase = phase;
+	pthread_cond_broadcast(&loading_window.changed);
+	pthread_mutex_unlock(&loading_window.lock);
+}
+
+void platform_loading_progress(float progress)
+{
+	pthread_mutex_lock(&loading_window.lock);
+	loading_art_progress(&loading_window.art, progress);
+	pthread_mutex_unlock(&loading_window.lock);
+}
+
 void platform_loading_set(int phase)
 {
 	int width = 0, height = 0, previous;
@@ -359,6 +396,18 @@ static int loading_phase;
 void platform_loading_art(const unsigned char *rgba)
 {
 	web_loading_art(rgba);
+}
+
+void platform_loading_scene(const void *data, unsigned long bytes)
+{
+	/* (the web's loading screen is the page's: the picture alone) */
+	(void)data;
+	(void)bytes;
+}
+
+void platform_loading_progress(float progress)
+{
+	(void)progress;
 }
 
 void platform_loading_set(int phase)

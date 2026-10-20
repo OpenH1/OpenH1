@@ -4220,6 +4220,16 @@ void xgpu_backend_loading_art(const unsigned char *rgba)
 	platform_loading_art(rgba);
 }
 
+void xgpu_backend_loading_scene(const void *data, unsigned long bytes)
+{
+	platform_loading_scene(data, bytes);
+}
+
+void xgpu_backend_loading_progress(float progress)
+{
+	platform_loading_progress(progress);
+}
+
 int xgpu_backend_loading_owned(void)
 {
 #ifdef HALO_WEB

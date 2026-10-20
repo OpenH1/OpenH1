@@ -109,7 +109,7 @@ HOST_EXCLUDED = {"host_main.c", "host_touch.c", "host_memory.c", "host_syscall.c
 # the renderer's parts the host builds from port/linux/src (the MSL
 # emitter, the Xbox's texture decoding), and port/macos's files that use
 # them
-SHARED_SOURCES = ["xgpu.h", "xgpu_backend.h", "loading_presentation.h", "loading_art.h", "loading_art_tables.h", "xgpu_shader.h", "xgpu_msl.h", "xgpu_msl.c", "xgpu_text.c",
+SHARED_SOURCES = ["xgpu.h", "xgpu_backend.h", "loading_presentation.h", "loading_art.h", "loading_art_tables.h", "loading_ring.h", "loading_scene.h", "xgpu_shader.h", "xgpu_msl.h", "xgpu_msl.c", "xgpu_text.c",
                   "xbox_texture_decode.c"]
 SHARED_USERS = {"xgpu_metal_shaders.c", "xgpu_metal_textures.c", "xgpu_metal_combiner.c"}
 # the Metal backend's own C files, linked with it into its tests and the

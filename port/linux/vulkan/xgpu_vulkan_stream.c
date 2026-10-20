@@ -2547,6 +2547,8 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.loading = xgpu_vulkan_loading;
 		backend.loading_owned = xgpu_vulkan_loading_owned;
 		backend.loading_art = xgpu_vulkan_loading_art;
+		backend.loading_scene = xgpu_vulkan_loading_scene;
+		backend.loading_progress = xgpu_vulkan_loading_progress;
 		backend.frame_end = stream_frame_end;
 		backend.prepare = stream_prepare;
 		backend.prepared = stream_prepared;
