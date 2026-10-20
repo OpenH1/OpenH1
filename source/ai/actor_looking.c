@@ -608,7 +608,25 @@ boolean actor_look_secondary(
 	actor->control.secondary_look_type = type;
 	actor->control.secondary_look_priority = priority;
 	actor->control.secondary_look_timer = (short)ticks;
-	actor->control.secondary_look_direction = *direction;
+	/* port: the direction's type and the member of the union it uses, the
+	rest zero: the callers' directions are on their stacks, and a prop's or
+	an object's left the union's other bytes (and those after the type) as
+	the stack had them, in the actor, which then differed between two runs
+	of the same game */
+	csmemset(&actor->control.secondary_look_direction, 0, sizeof(actor->control.secondary_look_direction));
+	actor->control.secondary_look_direction.type = direction->type;
+	switch (direction->type)
+	{
+	case _direction_specification_prop:
+	case _direction_specification_object:
+		actor->control.secondary_look_direction.object_index = direction->object_index;
+		break;
+
+	case _direction_specification_point:
+	case _direction_specification_vector:
+		actor->control.secondary_look_direction.point = direction->point;
+		break;
+	}
 
 	return TRUE;
 }
