@@ -1,44 +1,76 @@
-# OpenH1
+<p align="center">
+  <a href="https://openh1.com"><img src="website/public/media/og.jpg" alt="OpenH1: welcome back, soldier" width="100%"></a>
+</p>
 
-[![Discord](https://img.shields.io/discord/1561955817463222332?logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/MJa327PSWt)
+<h3 align="center">Halo: Combat Evolved, recompiled for Mac, Windows, Linux, Android and VR.</h3>
 
-Halo: Combat Evolved for macOS, Windows, Linux, Android and VR, rebuilt from
-its decompilation.
+<p align="center">
+  The 2001 game, compiled natively from its decompiled Xbox source. It plays
+  exactly as it shipped, and new Vulkan and Metal renderers make it look the
+  way you remember.
+</p>
 
-OpenH1 is a port of the Halo: Combat Evolved decompilation. The
-decompilation is of the Xbox build 2342 (`cachebeta.exe`, SHA-256
-`4cc87b45f721270392a96f1674ed2b5cd4a7bb4355faeab4531d1cf1884d9520`).
+<p align="center">
+  <a href="https://github.com/OpenH1/OpenH1/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/OpenH1/OpenH1?label=release&color=9dff3c&labelColor=0a0d09"></a>
+  <a href="https://github.com/OpenH1/OpenH1/actions/workflows/build.yml"><img alt="Build" src="https://github.com/OpenH1/OpenH1/actions/workflows/build.yml/badge.svg?branch=master"></a>
+  <a href="https://discord.gg/MJa327PSWt"><img alt="Discord" src="https://img.shields.io/discord/1561955817463222332?logo=discord&logoColor=white&label=Discord&color=5865F2&labelColor=0a0d09"></a>
+  <a href="LICENSE"><img alt="Licence: AGPL-3.0-or-later" src="https://img.shields.io/badge/licence-AGPL--3.0--or--later-eef4ea?labelColor=0a0d09"></a>
+</p>
 
-<img width="1289" height="995" alt="The game on Linux" src="https://github.com/user-attachments/assets/0d3ad50f-f8b8-46cf-aef8-e3661da2a7d7" />
+<p align="center">
+  <a href="#download"><b>Download</b></a> ·
+  <a href="https://openh1.com">openh1.com</a> ·
+  <a href="https://discord.gg/MJa327PSWt">Discord</a> ·
+  <a href="#game-data">Bring your own game</a> ·
+  <a href="#contributing">Contributing</a>
+</p>
 
 OpenH1 is a fork of [OpenCE](https://github.com/OpenCommunityEdition/OpenCE),
 the community's port, and adds a Mac app with its own Metal renderer, a
-Vulkan renderer, VR and more. It keeps OpenCE's netcode, so players of the two can
-play together. OpenCE starts from the decompilation of
+Vulkan renderer, VR and more. It keeps OpenCE's netcode, so players of the
+two can play together. OpenCE starts from the decompilation of
 [bnunu/halo-1](https://github.com/bnunu/halo-1), a fork of
-[punpckhdq/halo](https://github.com/punpckhdq/halo).
+[punpckhdq/halo](https://github.com/punpckhdq/halo), of the Xbox build 2342
+(`cachebeta.exe`, SHA-256
+`4cc87b45f721270392a96f1674ed2b5cd4a7bb4355faeab4531d1cf1884d9520`).
 
-## Why OpenH1
+## Features
 
-- **One modern renderer.** The game draws through a command stream into
-  Vulkan on Linux, Android and in VR, and into Metal on the Mac. OpenGL is
-  being retired (only the 32-bit Windows build still draws with it); the
-  Vulkan backend does everything the OpenGL one did, including the enhanced
-  dynamic lights, SMAA and FXAA, and the Metal backend draws those too.
-- **A native Mac app** for Apple silicon, with its own Metal renderer.
-- **VR**, on the Steam Frame and PC headsets through OpenXR, drawn with Vulkan.
-- **Enhanced by default.** One setting, Classic or Enhanced (Video Setup >
-  Graphics > Preset), switches the port's improvements on together: SMAA,
-  anisotropic filtering, sharper shadows, per-pixel lighting, full model
-  detail and the enhanced dynamic lights.
-- **64-bit Windows is under way**, running the same game code as 64-bit
-  Linux, with Vulkan.
-- **Plays online with OpenCE.** The netcode and the game's calculations
-  stay compatible.
-- **Every commit is built for every platform**, and each build of `master`
-  that passes is a release.
+- **The original game, natively.** Not emulation: the game's own code, with
+  the same 30 ticks a second on every machine, so it plays as it shipped.
+- **New renderers.** Vulkan on Linux, Android and the Steam Frame, Metal on
+  the Mac, with SMAA, per-pixel dynamic lights and frames drawn between
+  ticks at your display's rate (4K, 120 Hz and up).
+- **VR** on the Steam Frame and OpenXR headsets: reload by hand, draw from
+  holsters, raise the scope to your eye.
+- **128 players** online and on the LAN, up to 4 in split screen on each
+  machine, and the campaign in co-op over the internet. Plays with OpenCE.
+- **Mods and Custom Edition maps**, from the game's own menus.
 
-Contributions are welcome. Refer to "Contributing" below. Players and
+| | Original | OpenH1 |
+| --- | --- | --- |
+| **Dynamic lights**<br><sub>Derelict, a frag grenade</sub> | <img src="website/public/media/lights-original.webp" alt="A frag grenade lit as the original drew it" width="360"> | <img src="website/public/media/lights-openh1.webp" alt="The same moment with OpenH1's per-pixel lights" width="360"> |
+| **Anti-aliasing**<br><sub>Blood Gulch, enlarged 2×</sub> | <img src="website/public/media/edge-original.webp" alt="Blood Gulch's cliffs with no anti-aliasing" width="360"> | <img src="website/public/media/edge-openh1.webp" alt="The same cliffs with SMAA" width="360"> |
+| **Plasma glow**<br><sub>Blood Gulch, a charged plasma pistol</sub> | <img src="website/public/media/glow-original.webp" alt="A plasma bolt as the original drew it" width="360"> | <img src="website/public/media/glow-openh1.webp" alt="The same bolt with OpenH1's glow" width="360"> |
+
+<sub>Real captures, the same moment twice. [openh1.com](https://openh1.com) has them side by side, with clips.</sub>
+
+## Under the hood
+
+| | |
+| --- | --- |
+| **Code** | The Xbox game's decompiled C, compiled natively, with few and marked changes. Not emulation |
+| **Simulation** | 30 ticks a second, as shipped, with the same calculations on every machine |
+| **Frames** | One per refresh of your display, each drawn between the last two ticks; nothing the game calculates changes |
+| **Architecture** | A 64-bit program, with the game compiled as a 32-bit-pointer guest inside it (`arm64_32` on ARM, `x32` on x86-64) |
+| **Renderers** | One command stream into Vulkan 1.3 on Linux, Android and in VR, and into Metal on the Mac. Only the 32-bit Windows build still draws with OpenGL; a 64-bit Vulkan build is on the way |
+| **Picture** | SMAA or FXAA, anisotropic filtering, sharper shadows, per-pixel lighting, full model detail. One switch: Video Setup › Graphics › Preset, Classic or Enhanced |
+| **Display** | Any resolution from 640 × 480, a field of view up to 150°, a HUD redrawn at 8× |
+| **Network** | Plays online with OpenCE players; internet play needs no servers to set up |
+| **Mods** | Texture, sound, text and model packs from the game's Mods menu; Custom Edition maps that share themselves |
+| **Releases** | Every commit is built for every platform, and each build of `master` that passes is a release |
+
+Contributions are welcome: refer to "Contributing" below. Players and
 contributors meet on the [OpenH1 Discord](https://discord.gg/MJa327PSWt).
 
 ## Download
@@ -376,3 +408,10 @@ version (`AGPL-3.0-or-later`). It comes with no warranty. The full text is in
   the web site's `licenses.txt` carry their notices.
 - **Halo is not covered.** The licence covers the work of OpenH1's and
   OpenCE's authors. It gives no rights in Halo, its maps or anything else that Microsoft owns.
+
+## Disclaimer
+
+OpenH1 is an unofficial fan project, not endorsed by or affiliated with
+Microsoft, Xbox Game Studios, Halo Studios or Bungie. Halo is a trademark of
+Microsoft Corporation. No game data is included: you need your own copy of
+the game.
