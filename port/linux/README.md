@@ -2738,7 +2738,8 @@ the game's own textures and lighting:
   the tank moves, a defence against motion sickness. Its walls are the
   Pelican's troop bay's gunmetal panels (the Scorpion's own in a map without
   the Pelican), and in it are a dash, the two steering levers, side consoles
-  and a seat.
+  and a seat, your body seated in it (below, "Your body"), its legs under
+  the dash in a footwell.
   - The display wraps all the way round you: the cockpit is round, and the
     display is the opening in its wall, from 20 degrees below your eyes to
     45 above, so you can turn your head and look out any way. The world in
@@ -2781,7 +2782,8 @@ the game's own textures and lighting:
   the hull; the turret aims where you aim.
 - `"inside"`: you sit in the driver's compartment at the front of the hull,
   under the front plate: walls, the hatch above you, a seat, the steering
-  levers and an instrument panel, and vision blocks across the front, which
+  levers either side of your hips, an instrument panel over your knees and
+  a footwell under it for your legs, and vision blocks across the front, which
   you see out through.
 
 In each, the view stays yours, level and turned by your head and the stick:
@@ -2845,8 +2847,35 @@ yours is, not where the game's eye is:
   pouch about them, stay where they are.
 
 The body is the one everyone else sees, drawn differently for you alone:
-hit boxes, markers and what others see are the game's. It is drawn on
-foot only, as on the flat screen (not in a vehicle's seat).
+hit boxes, markers and what others see are the game's.
+
+In a vehicle's seat (`vr.vehicle_view = "first_person"`) your body is drawn
+too, once you are in the seat (not while it climbs in or out; in the
+Scorpion's feed cockpit, once the display has woken), as the game seats it:
+in the Scorpion's driver seat leant back with its legs out ahead, in the
+Warthog's seats, on the Ghost, lying along the Banshee, standing at the
+Warthog's chaingun, on the Shade.
+
+- Its neck is under your head as you recentred: 10 cm behind and below
+  the seat's eye (or its cockpit's), and its own 5 cm behind that, as on
+  foot. Its hips and legs stay in the seat; as your head moves, its upper
+  body turns toward it about the hips (as far as 34 degrees, as a person
+  seated leans and twists), and leans back clear of your eyes as on foot.
+- No head; its arms are yours (`vr.hands`), from its shoulders to your
+  controllers. In a seat where the game draws no first-person arms (the
+  Scorpion's driver, the Banshee's pilot, the Shade's gunner), they are
+  drawn there now, the hands where the controllers are, without a weapon,
+  as on a Ghost's handlebars off them. With `vr.aim = "gamepad"` the body
+  keeps the arms the game gives it.
+- The Scorpion's cockpits were made for no body: its feed cockpit and its
+  inside view are made around the Chief seated in them (the seat's pan
+  under his hips and its back behind him, the floor under his feet, the dash
+  or the panel over his knees, a footwell ahead for his legs, the levers
+  either side of his hips). In the hatch (`"hatch"`) he stands, his legs
+  hanging straight down into the turret, turned to your body's heading:
+  from the eye his chest rises through the cupola's ring.
+- Only this headset draws it so: the game's body in the seat, what others
+  see (in the Scorpion, hidden in its hull), is as ever.
 
 #### Crouching (`vr.physical_crouch`)
 
@@ -3861,7 +3890,23 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   throw takes it (`vr_grenade_facing`), so the action bit goes with an aim
   on the control, in the same ticks, to the host as to the game here.
 - In a vehicle's seat (`vr.vehicle_view = "first_person"`) the eye is in
-  the seat, and the player's body is not drawn. The game animates the
+  the seat, and the player's body is drawn from it as the game seats it
+  (`game/first_person_legs.c`'s `first_person_legs_vr_seated`, from
+  `vr_render_body_seat`), moved so that the top of its neck is where the
+  real one is with the head as recentred (10 cm behind and below the seat's
+  eye, `vr_render.c`'s `base_position`, the eye before the head's offset),
+  its upper body turned about its hips toward the real neck (no farther
+  than 0.6 radians), leant back clear of the eyes and its head folded away
+  as on foot, and its arms folded away where the VR mode draws its own
+  (`vr_render_handlebar_hands`: in a seat whose camera follows the vehicle,
+  the hands alone with the body drawn); standing in a cabin that says so
+  (`vr_cabin_model.h`'s `standing`: the Scorpion's hatch). The Scorpion's
+  driver is not hidden by its seat's flags (`scorpion-driver`: driver,
+  gunner, third-person camera, not invisible) but by its hull, the seat's
+  pose sitting him under the hatch; the VR mode hid the player's own unit
+  in every seat (`vr_render_hides_object`), and still does for the scope's
+  pass and for what is attached to a feed cockpit's vehicle (the body is
+  drawn there through `first_person_legs_wanted`). The game animates the
   seated body, none of it the player's own motion: getting in sweeps the
   head 2.7 to 3.4 m over most of a second, getting out 1.7 to 2.7 m, and a
   turret's seat swings about the turret's pivot as it aims (where the

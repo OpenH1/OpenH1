@@ -65,6 +65,7 @@ though they aim nothing (cinematic_head).
 #include "../src/vr.h"
 #include "../src/xgpu_stream.h"
 #include "vr_hands.h"
+#include "vr_body.h"
 #include "structure_culling.h"
 #include "cache/cache_files.h"
 #include "tag_files/tag_groups.h"
@@ -100,6 +101,11 @@ the renderer's thread locates it again), else by the rounding alone. Some
 6 cm with the usual 64 mm between the eyes. */
 #define CULLING_LATCH_ALLOWANCE 0.03f
 #define CULLING_ALLOWANCE 0.005f
+/* the top of the neck behind and below the eyes, with the head level
+(metres: src/vr.c's NECK_BACK and NECK_DOWN), where the body drawn in a seat
+hangs from with the head as it was recentred (vr_render_body_seat) */
+#define BODY_NECK_BACK 0.10f
+#define BODY_NECK_DOWN 0.10f
 
 static struct
 {
@@ -1482,10 +1488,17 @@ was posed for the eyes (vr_render_weapon_camera); FALSE when the hands are
 the game's */
 /* first_person_weapons.c: the hands on a vehicle's handlebars are drawn
 from its seat, whose camera is the game's following the vehicle, without the
-weapon (vr_vehicle.c) */
+weapon (vr_vehicle.c); and so in any such seat the player's body is drawn
+in (first_person_legs.c), its arms the VR mode's, the hands where the
+controllers are (the Scorpion's driver's, a Banshee's pilot's) */
 boolean vr_render_handlebar_hands(void)
 {
-	return vr_render.active && vr_render.view.handlebars && vr_render.seated_unit_index != NONE;
+	extern boolean first_person_legs_seated(long object_index);
+
+	return vr_render.active && vr_render.seated_unit_index != NONE &&
+		(vr_render.view.handlebars ||
+		(vr_render.view.controller_aim && director_get_perspective(0) != _director_perspective_first_person &&
+		first_person_legs_seated(vr_render.seated_unit_index)));
 }
 
 boolean vr_render_hands(struct vr_hands_frame *frame)
@@ -1656,6 +1669,56 @@ boolean vr_render_body_anchor(real_point3d *neck, real *yaw)
 		return FALSE;
 	hand_point(view->body_neck, neck);
 	*yaw = vr_render.base_yaw + body_heading();
+	return TRUE;
+}
+
+/* first_person_legs.c: the player's body is drawn in the vehicle's seat it
+is in, viewed from it (object_index, the seated unit: vr.vehicle_view =
+"first_person"), and how (seat): once the eye is in the seat (vr_seat.c,
+in a feed cockpit the display woken) and the body seated, not climbing in
+or out (by the game's animation, or the hands: vr_climb.c); standing in the
+Scorpion's hatch (vr_cabin.c). Not in the scope's pass, nor a cinematic */
+boolean vr_render_body_seat(long object_index, struct vr_body_seat *seat)
+{
+	extern boolean vr_seat_in(void);
+	extern boolean vr_climb_active(void);
+	extern boolean vr_cabin_standing(long unit_index);
+	struct halo_vr_view const *view = &vr_render.view;
+	struct unit_datum *unit;
+	real_matrix4x3 const *root;
+	real units = view->world_units_per_metre;
+	real heading;
+
+	if (!vr_render.active || object_index == NONE || object_index != vr_render.seated_unit_index ||
+		!view->body_heading_valid || !halo_vr_aiming() || cinematic_in_progress() || !vr_seat_in() || vr_climb_active())
+	{
+		return FALSE;
+	}
+	unit = unit_get(object_index);
+	if (unit->unit.animation.state == _unit_state_entering_seat || unit->unit.animation.state == _unit_state_exiting_seat)
+		return FALSE;
+	root = object_get_node_matrix(unit->object.parent_object_index, 0);
+	heading = (real)atan2(root->forward.j, root->forward.i);
+	seat->pose_forward.i = (real)cos(heading);
+	seat->pose_forward.j = (real)sin(heading);
+	seat->pose_forward.k = 0.0f;
+	seat->standing = vr_cabin_standing(object_index);
+	if (seat->standing)
+		heading = vr_render.base_yaw + body_heading();
+	seat->forward.i = (real)cos(heading);
+	seat->forward.j = (real)sin(heading);
+	seat->forward.k = 0.0f;
+	seat->left.i = -seat->forward.j;
+	seat->left.j = seat->forward.i;
+	seat->left.k = 0.0f;
+	/* (the top of the neck under the eye, as vr.c's body_place has it with
+	the head level, facing the way the body does) */
+	seat->rest_neck.x = vr_render.base_position.x - seat->forward.i * BODY_NECK_BACK * units;
+	seat->rest_neck.y = vr_render.base_position.y - seat->forward.j * BODY_NECK_BACK * units;
+	seat->rest_neck.z = vr_render.base_position.z - BODY_NECK_DOWN * units;
+	/* (the VR mode's arms: the hands alone, where the controllers are, or
+	the first-person weapon's in a seat with the first person's camera) */
+	seat->arms = view->controller_aim || director_get_perspective(0) == _director_perspective_first_person;
 	return TRUE;
 }
 
