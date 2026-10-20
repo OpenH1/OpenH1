@@ -68,6 +68,24 @@ VR mode's grenade let go of in a sub-step) is drawn there until the frames
 reach that tick. Kept here only, for the frames: the simulation never reads
 it. At 30 a tick is one sub-step, nothing is kept, and the frames are as
 they were.
+
+A vehicle a player drives (of the micro lane too: vehicles.c) also turns in
+the sub-steps, and what it carries (its riders, its gunner, its turret, the
+player in its seat) is posed where each leaves it. Its frame (its root
+node's place and rotation) is kept after every sub-step as well, and a frame
+draws it between two of them, the place lerped and the rotation nlerped the
+shorter way round. Its nodes, and those of everything it carries, are blended
+between the ticks in that frame (each snapshot's seen from the root node of
+the vehicle's own), and placed where the sub-steps' frame has the vehicle:
+the vehicle and its riders on its path, turning as it did, and the pose
+(its wheels, its turret's aim, a rider's animation) between the ticks as
+before. A local player's view from one of its seats (in the first person or
+following it, flat or in the VR mode, which poses its eye from the drawn
+seat) hangs where the player's unit's camera is on the vehicle (kept, in
+the vehicle's frame, at each tick: render_interpolation_camera_anchors). The
+view's snapshot is taken back to where the tick left that point, not moved
+and turned by the next tick's sub-steps run since, and a frame draws it
+moved with that point onto the vehicle's path.
 */
 
 #include "cseries.h"
@@ -198,10 +216,20 @@ struct interpolated_substeps
 	/* every sub-step of the tick before kept too */
 	boolean continuing[2];
 	real_point3d positions[2][MAXIMUM_SIM_SUBSTEPS];
+	/* a vehicle's frame (its root node's place and rotation) after each,
+	when every one of the tick's was a rotation (framed): it turns in the
+	sub-steps, and what it carries is posed in that frame */
+	boolean framed[2];
+	real_point3d frame_positions[2][MAXIMUM_SIM_SUBSTEPS];
+	struct interpolation_quaternion frame_rotations[2][MAXIMUM_SIM_SUBSTEPS];
 	/* where it is drawn this frame, between two of the drawn tick's */
 	long drawn_frame;
 	boolean drawn_valid;
 	real_point3d drawn;
+	/* ... and its frame */
+	long frame_drawn_frame;
+	boolean frame_drawn_valid;
+	real_matrix4x3 frame_drawn;
 };
 
 struct interpolated_camera
@@ -215,6 +243,13 @@ struct interpolated_camera
 	/* its player's unit (or what it rides) corrected: as an object's */
 	real_vector3d correction;
 	real_vector3d correction_pending;
+	/* in a seat of a vehicle of the micro lane: where the view hangs on it
+	(its player's unit's camera position), in the frame of the vehicle's
+	root node as the tick (anchor_tick) left it; anchor_vehicle_index NONE
+	when it hangs on none */
+	long anchor_tick;
+	long anchor_vehicle_index;
+	real_point3d anchor;
 };
 
 /* a particle held back */
@@ -521,6 +556,106 @@ static real distance_squared(real_point3d const *a, real_point3d const *b)
 	return x * x + y * y + z * z;
 }
 
+/* A frame: a root node's matrix whose basis is a rotation (basis_is_rotation),
+its scale aside. What is in it is seen from it, and placed by another, by
+its place and its axes alone: the world's distances kept */
+
+/* the vector seen from the frame (along its forward, left and up) */
+static void vector_in_frame(real_matrix4x3 const *frame, real_vector3d const *vector, real_vector3d *result)
+{
+	real_vector3d v = *vector;
+
+	result->i = v.i * frame->forward.i + v.j * frame->forward.j + v.k * frame->forward.k;
+	result->j = v.i * frame->left.i + v.j * frame->left.j + v.k * frame->left.k;
+	result->k = v.i * frame->up.i + v.j * frame->up.j + v.k * frame->up.k;
+}
+
+/* ... and one seen from it, in the world */
+static void vector_from_frame(real_matrix4x3 const *frame, real_vector3d const *vector, real_vector3d *result)
+{
+	real_vector3d v = *vector;
+
+	result->i = frame->forward.i * v.i + frame->left.i * v.j + frame->up.i * v.k;
+	result->j = frame->forward.j * v.i + frame->left.j * v.j + frame->up.j * v.k;
+	result->k = frame->forward.k * v.i + frame->left.k * v.j + frame->up.k * v.k;
+}
+
+static void point_in_frame(real_matrix4x3 const *frame, real_point3d const *point, real_point3d *result)
+{
+	real_vector3d offset, local;
+
+	offset.i = point->x - frame->position.x;
+	offset.j = point->y - frame->position.y;
+	offset.k = point->z - frame->position.z;
+	vector_in_frame(frame, &offset, &local);
+	result->x = local.i;
+	result->y = local.j;
+	result->z = local.k;
+}
+
+static void point_from_frame(real_matrix4x3 const *frame, real_point3d const *point, real_point3d *result)
+{
+	real_vector3d local, offset;
+
+	local.i = point->x;
+	local.j = point->y;
+	local.k = point->z;
+	vector_from_frame(frame, &local, &offset);
+	result->x = frame->position.x + offset.i;
+	result->y = frame->position.y + offset.j;
+	result->z = frame->position.z + offset.k;
+}
+
+/* a node's matrix seen from the frame (its scale its own) */
+static void matrix_in_frame(real_matrix4x3 const *frame, real_matrix4x3 const *matrix, real_matrix4x3 *result)
+{
+	real_matrix4x3 m = *matrix;
+
+	point_in_frame(frame, &m.position, &result->position);
+	vector_in_frame(frame, &m.forward, &result->forward);
+	vector_in_frame(frame, &m.left, &result->left);
+	vector_in_frame(frame, &m.up, &result->up);
+	result->scale = m.scale;
+}
+
+/* ... and one seen from it, in the world */
+static void matrix_from_frame(real_matrix4x3 const *frame, real_matrix4x3 const *matrix, real_matrix4x3 *result)
+{
+	real_matrix4x3 m = *matrix;
+
+	point_from_frame(frame, &m.position, &result->position);
+	vector_from_frame(frame, &m.forward, &result->forward);
+	vector_from_frame(frame, &m.left, &result->left);
+	vector_from_frame(frame, &m.up, &result->up);
+	result->scale = m.scale;
+}
+
+/* a frame a fraction t of the way from one (its place and rotation) to
+another: the place lerped, the rotation nlerped the shorter way round */
+static void frame_blend(
+	real_point3d const *position_a,
+	struct interpolation_quaternion const *rotation_a,
+	real_point3d const *position_b,
+	struct interpolation_quaternion const *rotation_b,
+	real t,
+	real_matrix4x3 *result)
+{
+	real_matrix4x3 a, b;
+	struct interpolation_rotation ra, rb;
+
+	memset(&a, 0, sizeof(a));
+	memset(&b, 0, sizeof(b));
+	a.position = *position_a;
+	a.scale = 1.0f;
+	b.position = *position_b;
+	b.scale = 1.0f;
+	ra.quaternion = *rotation_a;
+	ra.is_rotation = TRUE;
+	rb.quaternion = *rotation_b;
+	rb.is_rotation = TRUE;
+	matrix_blend_rotations(&a, &b, &ra, &rb, t, result);
+}
+
 /* ---------- ticks */
 
 static void render_interpolation_ghosts_tick(void);
@@ -540,6 +675,7 @@ static void render_interpolation_previous_values(struct interpolated_object *rec
 }
 
 static void render_interpolation_substep(short substep_index, short substep_count, real seconds);
+static void render_interpolation_camera_anchors(void);
 
 /* the fast phase's slot (sim_rate.h), at every map's start and every tick
 (registering again changes nothing) */
@@ -671,7 +807,23 @@ void render_interpolation_tick(void)
 			short buffer = (short)(interpolation_tick & 1);
 
 			if (substeps->object_index == iterator.index && substeps->tick[buffer] == interpolation_tick)
+			{
 				substeps->positions[buffer][substeps->count[buffer] - 1] = object->object.position;
+				/* (and a vehicle's frame: its snapshot's root node) */
+				if (substeps->framed[buffer])
+				{
+					real_matrix4x3 const *root = record->nodes + record->latest * record->node_capacity;
+					struct interpolation_rotation rotation;
+
+					rotation_from_matrix(root, &rotation);
+					substeps->framed[buffer] = rotation.is_rotation;
+					if (rotation.is_rotation)
+					{
+						substeps->frame_positions[buffer][substeps->count[buffer] - 1] = root->position;
+						substeps->frame_rotations[buffer][substeps->count[buffer] - 1] = rotation.quaternion;
+					}
+				}
+			}
 		}
 		/* Made in this tick, and moving (a bolt, a rocket, a grenade
 		thrown): it has no snapshot from the tick before, and was drawn
@@ -728,6 +880,7 @@ void render_interpolation_tick(void)
 		}
 	}
 	interpolation_from.object_index = NONE;
+	render_interpolation_camera_anchors();
 }
 
 /* the object, put somewhere this tick, drawn from there to where the tick
@@ -758,6 +911,8 @@ void render_interpolation_reset(void)
 			interpolated_substeps[index].object_index = NONE;
 	}
 	memset(interpolated_cameras, 0, sizeof(interpolated_cameras));
+	for (index = 0; index < MAXIMUM_LOCAL_PLAYERS; index++)
+		interpolated_cameras[index].anchor_vehicle_index = NONE;
 	/* (the particles held back and the ghosts are the last map's) */
 	later_particle_count = 0;
 	for (index = 0; index < MAXIMUM_GHOSTS; index++)
@@ -797,7 +952,8 @@ static void render_interpolation_substep(short substep_index, short substep_coun
 			interpolated_substeps[index].object_index = NONE;
 	}
 	/* (the micro lane's types: objects.c's object_lane_micro_candidate) */
-	object_iterator_new(&iterator, _object_mask_biped | _object_mask_projectile | _object_mask_item, 0);
+	object_iterator_new(&iterator,
+		_object_mask_biped | _object_mask_vehicle | _object_mask_projectile | _object_mask_item, 0);
 	while ((object = (struct object_datum *)object_iterator_next(&iterator)) != NULL)
 	{
 		long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.index);
@@ -816,6 +972,7 @@ static void render_interpolation_substep(short substep_index, short substep_coun
 			substeps->tick[0] = NONE;
 			substeps->tick[1] = NONE;
 			substeps->drawn_frame = NONE;
+			substeps->frame_drawn_frame = NONE;
 		}
 		/* (a tick given up and begun again begins again here) */
 		if (substep_index == 0)
@@ -828,6 +985,8 @@ static void render_interpolation_substep(short substep_index, short substep_coun
 			substeps->tick[buffer] = tick;
 			substeps->count[buffer] = substep_count;
 			substeps->recorded[buffer] = 0;
+			substeps->framed[buffer] = TEST_FLAG(_object_mask_vehicle, object->object.type) &&
+				object->object.node_matrices.size >= (short)sizeof(real_matrix4x3);
 		}
 		else if (substeps->tick[buffer] != tick || substeps->count[buffer] != substep_count)
 		{
@@ -835,6 +994,21 @@ static void render_interpolation_substep(short substep_index, short substep_coun
 		}
 		substeps->positions[buffer][substep_index] = object->object.position;
 		substeps->recorded[buffer] |= (byte)FLAG(substep_index);
+		/* a vehicle's frame: its root node, as the sub-step posed it
+		(vehicles.c's vehicle_substep_pose) */
+		if (substeps->framed[buffer])
+		{
+			real_matrix4x3 const *root = object_get_node_matrices(iterator.index);
+			struct interpolation_rotation rotation;
+
+			rotation_from_matrix(root, &rotation);
+			substeps->framed[buffer] = rotation.is_rotation;
+			if (rotation.is_rotation)
+			{
+				substeps->frame_positions[buffer][substep_index] = root->position;
+				substeps->frame_rotations[buffer][substep_index] = rotation.quaternion;
+			}
+		}
 	}
 }
 
@@ -902,6 +1076,77 @@ static boolean render_interpolation_substep_offset(long object_index, boolean sn
 	/* (so written that an offset not a number is none) */
 	return offset->i * offset->i + offset->j * offset->j + offset->k * offset->k <=
 		SUBSTEP_OFFSET_MAXIMUM * SUBSTEP_OFFSET_MAXIMUM;
+}
+
+/* (the frames) the frame of a vehicle of the micro lane (its root node:
+place and rotation) as drawn this frame, by itself or with what it carries:
+between the frames the sub-steps of the tick drawn left it in, at the
+frame's sub-step (as render_interpolation_substep_offset's place), with the
+frames of its two snapshots (frames[0]: the tick before's, [1]: the tick
+drawn's), which its nodes and those of what it carries are blended in.
+FALSE when it is drawn otherwise (no vehicle's, a root node no rotation, as
+render_interpolation_substep_offset's: its place alone, or on the line) */
+static boolean render_interpolation_substep_frame(
+	long object_index,
+	real_matrix4x3 const **frames,
+	real_matrix4x3 const **drawn)
+{
+	struct interpolated_object *record;
+	struct interpolated_substeps *substeps;
+	short buffer = (short)(interpolation_tick & 1);
+	short count = interpolation_substep_count;
+	long vehicle_index;
+	long absolute_index;
+
+	if (count <= 1 || !interpolated_substeps || !interpolated_objects || object_index == NONE)
+		return FALSE;
+	vehicle_index = object_get_ultimate_parent(object_index);
+	absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(vehicle_index);
+	if (absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+		return FALSE;
+	substeps = &interpolated_substeps[absolute_index];
+	record = &interpolated_objects[absolute_index];
+	/* (as render_interpolation_substep_offset's, and every frame kept) */
+	if (substeps->object_index != vehicle_index || substeps->tick[buffer] != interpolation_tick ||
+		substeps->count[buffer] != count || substeps->recorded[buffer] != (byte)(FLAG(count) - 1) ||
+		!substeps->framed[buffer] || !substeps->continuing[buffer] ||
+		record->object_index != vehicle_index || record->tick != interpolation_tick || !record->has_previous)
+	{
+		return FALSE;
+	}
+	frames[0] = record->nodes + (record->latest ^ 1) * record->node_capacity;
+	frames[1] = record->nodes + record->latest * record->node_capacity;
+	if (substeps->frame_drawn_frame != interpolation_frame)
+	{
+		struct interpolation_rotation previous_rotation, latest_rotation;
+		short substep_index = interpolation_substep_index;
+
+		rotation_from_matrix(frames[0], &previous_rotation);
+		rotation_from_matrix(frames[1], &latest_rotation);
+		/* (so written that a position not a number is none) */
+		substeps->frame_drawn_valid = previous_rotation.is_rotation && latest_rotation.is_rotation &&
+			distance_squared(&frames[0]->position, &frames[1]->position) <= OBJECT_SNAP_DISTANCE * OBJECT_SNAP_DISTANCE;
+		if (substeps->frame_drawn_valid)
+		{
+			real_point3d line;
+
+			/* (the first sub-step's from the tick before's end: its snapshot) */
+			frame_blend(
+				substep_index > 0 ? &substeps->frame_positions[buffer][substep_index - 1] : &frames[0]->position,
+				substep_index > 0 ? &substeps->frame_rotations[buffer][substep_index - 1] : &previous_rotation.quaternion,
+				&substeps->frame_positions[buffer][substep_index],
+				&substeps->frame_rotations[buffer][substep_index],
+				interpolation_substep_fraction,
+				&substeps->frame_drawn);
+			point_lerp(&frames[0]->position, &frames[1]->position, interpolation_fraction, &line);
+			/* (so written that a position not a number is none) */
+			substeps->frame_drawn_valid = distance_squared(&substeps->frame_drawn.position, &line) <=
+				SUBSTEP_OFFSET_MAXIMUM * SUBSTEP_OFFSET_MAXIMUM;
+		}
+		substeps->frame_drawn_frame = interpolation_frame;
+	}
+	*drawn = &substeps->frame_drawn;
+	return substeps->frame_drawn_valid;
 }
 
 /* ---------- ghosts */
@@ -1116,6 +1361,49 @@ static real_matrix4x3 *render_interpolation_pending_from(long object_index)
 	return nodes;
 }
 
+/* The object (a vehicle of the micro lane, or what it carries) drawn in the
+vehicle's frame: each node of each snapshot seen from the vehicle's root
+node of that snapshot (frames), blended between the ticks there (or the
+latest taken, snapped: another pose), and placed by the vehicle's frame as
+drawn (render_interpolation_substep_frame). What rides with the vehicle
+turns with it, as the sub-steps posed it, rather than sweeping the straight
+line between two ticks' places; at the ticks' ends it is where the
+snapshots have it */
+static void render_interpolation_blend_in_frame(
+	struct interpolated_object *record,
+	boolean snap,
+	real_matrix4x3 const **frames,
+	real_matrix4x3 const *frame)
+{
+	real_matrix4x3 const *previous = record->nodes + (record->latest ^ 1) * record->node_capacity;
+	real_matrix4x3 const *latest = record->nodes + record->latest * record->node_capacity;
+	real_matrix4x3 *blended = record->nodes + 2 * record->node_capacity;
+	short node_index;
+
+	for (node_index = 0; node_index < record->node_count; node_index++)
+	{
+		real_matrix4x3 latest_local, local;
+
+		matrix_in_frame(frames[1], &latest[node_index], &latest_local);
+		if (snap)
+		{
+			local = latest_local;
+		}
+		else
+		{
+			real_matrix4x3 previous_local;
+			struct interpolation_rotation previous_rotation, latest_rotation;
+
+			matrix_in_frame(frames[0], &previous[node_index], &previous_local);
+			rotation_from_matrix(&previous_local, &previous_rotation);
+			rotation_from_matrix(&latest_local, &latest_rotation);
+			matrix_blend_rotations(&previous_local, &latest_local, &previous_rotation, &latest_rotation,
+				interpolation_fraction, &local);
+		}
+		matrix_from_frame(frame, &local, &blended[node_index]);
+	}
+}
+
 real_matrix4x3 *render_interpolation_object_node_matrices(long object_index)
 {
 	struct interpolated_object *record;
@@ -1143,6 +1431,8 @@ real_matrix4x3 *render_interpolation_object_node_matrices(long object_index)
 			OBJECT_SNAP_DISTANCE * OBJECT_SNAP_DISTANCE);
 		boolean snap = jumped;
 		real_vector3d offset;
+		real_matrix4x3 const *frames[2];
+		real_matrix4x3 const *frame;
 
 		/* a node moved further in the root's frame than a tick allows: the
 		two snapshots are different poses, not one moving (so written that
@@ -1155,45 +1445,54 @@ real_matrix4x3 *render_interpolation_object_node_matrices(long object_index)
 			matrix4x3_inverse_transform_point(&latest[0], &latest[node_index].position, &latest_local);
 			snap = !(distance_squared(&previous_local, &latest_local) <= NODE_SNAP_DISTANCE * NODE_SNAP_DISTANCE);
 		}
-		if (!snap)
+		/* a vehicle's of the micro lane, or what it carries: posed in its
+		frame as between the ticks, placed where its sub-steps' frame has it */
+		if (!jumped && render_interpolation_substep_frame(object_index, frames, &frame))
 		{
-			struct interpolation_rotation *previous_rotations =
-				record->rotations + (record->latest ^ 1) * record->node_capacity;
-			struct interpolation_rotation *latest_rotations =
-				record->rotations + record->latest * record->node_capacity;
-			short snapshot;
-
-			/* (each snapshot's rotations found once, not every frame: its
-			nodes' positions may move with a correction, their rotations
-			never) */
-			for (snapshot = 0; snapshot < 2; snapshot++)
+			render_interpolation_blend_in_frame(record, snap, frames, frame);
+		}
+		else
+		{
+			if (!snap)
 			{
-				if (!record->rotations_valid[snapshot])
-				{
-					real_matrix4x3 const *nodes = record->nodes + snapshot * record->node_capacity;
-					struct interpolation_rotation *rotations = record->rotations + snapshot * record->node_capacity;
+				struct interpolation_rotation *previous_rotations =
+					record->rotations + (record->latest ^ 1) * record->node_capacity;
+				struct interpolation_rotation *latest_rotations =
+					record->rotations + record->latest * record->node_capacity;
+				short snapshot;
 
-					for (node_index = 0; node_index < record->node_count; node_index++)
-						rotation_from_matrix(&nodes[node_index], &rotations[node_index]);
-					record->rotations_valid[snapshot] = TRUE;
+				/* (each snapshot's rotations found once, not every frame: its
+				nodes' positions may move with a correction, their rotations
+				never) */
+				for (snapshot = 0; snapshot < 2; snapshot++)
+				{
+					if (!record->rotations_valid[snapshot])
+					{
+						real_matrix4x3 const *nodes = record->nodes + snapshot * record->node_capacity;
+						struct interpolation_rotation *rotations = record->rotations + snapshot * record->node_capacity;
+
+						for (node_index = 0; node_index < record->node_count; node_index++)
+							rotation_from_matrix(&nodes[node_index], &rotations[node_index]);
+						record->rotations_valid[snapshot] = TRUE;
+					}
+				}
+				for (node_index = 0; node_index < record->node_count; node_index++)
+				{
+					matrix_blend_rotations(&previous[node_index], &latest[node_index], &previous_rotations[node_index],
+						&latest_rotations[node_index], interpolation_fraction, &blended[node_index]);
 				}
 			}
-			for (node_index = 0; node_index < record->node_count; node_index++)
+			if (snap)
+				memcpy(blended, latest, record->node_count * sizeof(real_matrix4x3));
+			/* the micro lane's: moved onto the sub-steps' path */
+			if (!jumped && render_interpolation_substep_offset(object_index, snap, &offset))
 			{
-				matrix_blend_rotations(&previous[node_index], &latest[node_index], &previous_rotations[node_index],
-					&latest_rotations[node_index], interpolation_fraction, &blended[node_index]);
-			}
-		}
-		if (snap)
-			memcpy(blended, latest, record->node_count * sizeof(real_matrix4x3));
-		/* the micro lane's: moved onto the sub-steps' path */
-		if (!jumped && render_interpolation_substep_offset(object_index, snap, &offset))
-		{
-			for (node_index = 0; node_index < record->node_count; node_index++)
-			{
-				blended[node_index].position.x += offset.i;
-				blended[node_index].position.y += offset.j;
-				blended[node_index].position.z += offset.k;
+				for (node_index = 0; node_index < record->node_count; node_index++)
+				{
+					blended[node_index].position.x += offset.i;
+					blended[node_index].position.y += offset.j;
+					blended[node_index].position.z += offset.k;
+				}
 			}
 		}
 		if (correction_significant(&record->correction) || correction_significant(&record->correction_pending))
@@ -1370,9 +1669,13 @@ void render_interpolation_correct_object(long object_index, real_vector3d const 
 					substeps->positions[buffer][substep_index].x -= offset->i;
 					substeps->positions[buffer][substep_index].y -= offset->j;
 					substeps->positions[buffer][substep_index].z -= offset->k;
+					substeps->frame_positions[buffer][substep_index].x -= offset->i;
+					substeps->frame_positions[buffer][substep_index].y -= offset->j;
+					substeps->frame_positions[buffer][substep_index].z -= offset->k;
 				}
 			}
 			substeps->drawn_frame = NONE;
+			substeps->frame_drawn_frame = NONE;
 		}
 	}
 	/* a local player's unit (by itself, or with what it rides): its
@@ -1561,6 +1864,153 @@ static void render_interpolation_camera_at_tick(long unit_index, struct observer
 	latest->position.z -= since.k;
 }
 
+/* (render_interpolation_tick, as the tick ends) where each local player's
+view hangs on the vehicle of the micro lane it rides in (with its sub-steps'
+frames kept): its unit's camera position (units.c's unit_get_camera_position:
+what the first-person camera stands at, and what the following one swings
+about), in the frame of the vehicle's root node as the tick left it. Read
+only, of the game */
+static void render_interpolation_camera_anchors(void)
+{
+	short buffer = (short)(interpolation_tick & 1);
+	short local_player_index;
+
+	for (local_player_index = 0; local_player_index < MAXIMUM_LOCAL_PLAYERS; local_player_index++)
+	{
+		struct interpolated_camera *camera = &interpolated_cameras[local_player_index];
+		struct interpolated_substeps *substeps;
+		struct interpolated_object *record;
+		long unit_index;
+		long vehicle_index;
+		long absolute_index;
+		real_point3d anchor;
+
+		camera->anchor_vehicle_index = NONE;
+		if (!interpolated_substeps || !interpolated_objects)
+			continue;
+		unit_index = player_control_get_unit_index(local_player_index);
+		if (unit_index == NONE || !object_try_and_get_and_verify_type(unit_index, _object_mask_unit) ||
+			object_get(unit_index)->object.parent_object_index == NONE)
+		{
+			continue;
+		}
+		vehicle_index = object_get_ultimate_parent(unit_index);
+		absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(vehicle_index);
+		if (absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+			continue;
+		substeps = &interpolated_substeps[absolute_index];
+		record = &interpolated_objects[absolute_index];
+		if (substeps->object_index != vehicle_index || substeps->tick[buffer] != interpolation_tick ||
+			!substeps->framed[buffer] || record->object_index != vehicle_index || record->tick != interpolation_tick)
+		{
+			continue;
+		}
+		unit_get_camera_position(unit_index, &anchor);
+		point_in_frame(record->nodes + record->latest * record->node_capacity, &anchor, &camera->anchor);
+		camera->anchor_tick = interpolation_tick;
+		camera->anchor_vehicle_index = vehicle_index;
+	}
+}
+
+/* The view of a local player in a seat of a vehicle of the micro lane (a
+player drives it), in the first person or following it: the vehicle, when
+the view's anchor on it was kept at the tick drawn
+(render_interpolation_camera_anchors); NONE for any other view (on foot, a
+cinematic, another perspective), or at 30. The observer, as the frame after
+the tick took it, may have the next tick's first sub-steps in it, the
+vehicle moved and turned by them; the view is drawn from the snapshots taken
+back to where the tick left its anchor, then moved with the anchor onto the
+vehicle's sub-steps' path, as the vehicle and its seat are
+(render_interpolation_substep_frame) */
+static long render_interpolation_camera_substep_vehicle(short local_player_index)
+{
+	struct interpolated_camera *camera = &interpolated_cameras[local_player_index];
+	short perspective;
+	long unit_index;
+
+	if (interpolation_substep_count <= 1 || camera->anchor_vehicle_index == NONE ||
+		camera->anchor_tick != interpolation_tick || cinematic_in_progress())
+	{
+		return NONE;
+	}
+	perspective = director_get_perspective(local_player_index);
+	if (perspective != _director_perspective_first_person && perspective != _director_perspective_third_person)
+		return NONE;
+	unit_index = player_control_get_unit_index(local_player_index);
+	if (unit_index == NONE || !object_try_and_get_and_verify_type(unit_index, _object_mask_unit) ||
+		object_get(unit_index)->object.parent_object_index == NONE ||
+		object_get_ultimate_parent(unit_index) != camera->anchor_vehicle_index)
+	{
+		return NONE;
+	}
+	return camera->anchor_vehicle_index;
+}
+
+/* the observer (latest) as of the tick's end, where the vehicle its view
+hangs on (of the micro lane) left its anchor: not moved and turned by the
+next tick's sub-steps run since */
+static void render_interpolation_camera_at_tick_in_vehicle(
+	struct interpolated_camera const *camera,
+	struct observer_result *latest)
+{
+	struct interpolated_object *record;
+	long vehicle_index = camera->anchor_vehicle_index;
+	long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(vehicle_index);
+	real_matrix4x3 const *now;
+	real_point3d at_tick, at_now;
+	real_vector3d since;
+
+	if (!interpolated_objects || absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+		return;
+	record = &interpolated_objects[absolute_index];
+	if (record->object_index != vehicle_index || record->tick != interpolation_tick)
+		return;
+	/* (as it is now: object_get_node_matrices gives the drawn pose while a
+	frame is drawn) */
+	now = (real_matrix4x3 const *)object_header_block_get(vehicle_index, &object_get(vehicle_index)->object.node_matrices);
+	if (!basis_is_rotation(now))
+		return;
+	point_from_frame(record->nodes + record->latest * record->node_capacity, &camera->anchor, &at_tick);
+	point_from_frame(now, &camera->anchor, &at_now);
+	since.i = at_now.x - at_tick.x;
+	since.j = at_now.y - at_tick.y;
+	since.k = at_now.z - at_tick.z;
+	/* (so written that a difference not a number is none) */
+	if (!(since.i * since.i + since.j * since.j + since.k * since.k <= CAMERA_CUT_DISTANCE * CAMERA_CUT_DISTANCE))
+		return;
+	latest->position.x -= since.i;
+	latest->position.y -= since.j;
+	latest->position.z -= since.k;
+}
+
+/* (the frames) how far the view hanging on a vehicle of the micro lane is
+moved from where its snapshots' blend has it: its anchor as the vehicle's
+drawn frame places it (render_interpolation_substep_frame), from where the
+blend of the anchor at the two ticks has it. FALSE when the vehicle is not
+drawn so */
+static boolean render_interpolation_camera_vehicle_offset(
+	struct interpolated_camera const *camera,
+	real t,
+	real_vector3d *offset)
+{
+	real_matrix4x3 const *frames[2];
+	real_matrix4x3 const *frame;
+	real_point3d previous_anchor, latest_anchor, line, drawn;
+
+	if (!render_interpolation_substep_frame(camera->anchor_vehicle_index, frames, &frame))
+		return FALSE;
+	point_from_frame(frames[0], &camera->anchor, &previous_anchor);
+	point_from_frame(frames[1], &camera->anchor, &latest_anchor);
+	point_lerp(&previous_anchor, &latest_anchor, t, &line);
+	point_from_frame(frame, &camera->anchor, &drawn);
+	offset->i = drawn.x - line.x;
+	offset->j = drawn.y - line.y;
+	offset->k = drawn.z - line.z;
+	/* (so written that an offset not a number is none) */
+	return offset->i * offset->i + offset->j * offset->j + offset->k * offset->k <=
+		SUBSTEP_OFFSET_MAXIMUM * SUBSTEP_OFFSET_MAXIMUM;
+}
+
 static struct observer_result const *render_interpolation_blended_camera(
 	short local_player_index,
 	struct observer_result const *observer)
@@ -1568,6 +2018,7 @@ static struct observer_result const *render_interpolation_blended_camera(
 	struct interpolated_camera *camera;
 	real t = interpolation_fraction;
 	long substep_unit_index;
+	long substep_vehicle_index;
 	real_vector3d offset;
 
 	if (!interpolation_rendering || !observer)
@@ -1576,6 +2027,7 @@ static struct observer_result const *render_interpolation_blended_camera(
 	}
 	camera = &interpolated_cameras[local_player_index];
 	substep_unit_index = render_interpolation_camera_substep_unit(local_player_index);
+	substep_vehicle_index = render_interpolation_camera_substep_vehicle(local_player_index);
 	/* A scripted camera that moves with an object (a cinematic's camera
 	point relative to a lifepod or dropship, or a unit's eyes in one) is
 	placed by the object as it stands after the last tick. Blended from its
@@ -1627,6 +2079,8 @@ static struct observer_result const *render_interpolation_blended_camera(
 		camera->latest = *observer;
 		if (substep_unit_index != NONE)
 			render_interpolation_camera_at_tick(substep_unit_index, &camera->latest);
+		if (substep_vehicle_index != NONE)
+			render_interpolation_camera_at_tick_in_vehicle(camera, &camera->latest);
 		/* Several ticks since the last snapshot (a long frame): the objects
 		are drawn between the last two ticks, so the camera's previous is
 		where it was a tick ago, as nearly as a steady move from the last
@@ -1661,6 +2115,13 @@ static struct observer_result const *render_interpolation_blended_camera(
 	}
 	/* the micro lane's unit's view: moved onto its sub-steps' path */
 	if (substep_unit_index != NONE && render_interpolation_substep_offset(substep_unit_index, FALSE, &offset))
+	{
+		camera->blended.position.x += offset.i;
+		camera->blended.position.y += offset.j;
+		camera->blended.position.z += offset.k;
+	}
+	/* ... and the view from a vehicle's seat, with the vehicle */
+	if (substep_vehicle_index != NONE && render_interpolation_camera_vehicle_offset(camera, t, &offset))
 	{
 		camera->blended.position.x += offset.i;
 		camera->blended.position.y += offset.j;

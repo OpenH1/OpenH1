@@ -22,12 +22,13 @@ static real_vector3d const zero3d;
 
 enum { _object_type_biped, _object_type_vehicle, _object_type_weapon, _object_type_projectile };
 #define _object_mask_biped FLAG(_object_type_biped)
+#define _object_mask_vehicle FLAG(_object_type_vehicle)
 #define _object_mask_unit (FLAG(_object_type_biped) | FLAG(_object_type_vehicle))
 #define _object_mask_item FLAG(_object_type_weapon)
 #define _object_mask_projectile FLAG(_object_type_projectile)
 #define _object_mask_all 0xFF
 enum { _object_lane_macro, _object_lane_micro };
-enum { _director_perspective_first_person, _director_perspective_scripted };
+enum { _director_perspective_first_person, _director_perspective_third_person, _director_perspective_scripted };
 
 struct _object
 {
@@ -131,6 +132,7 @@ static long scripted_camera_object_relative_to(void) { return NONE; }
 static boolean scripted_camera_object_is_first_person_camera(long index) { return FALSE; }
 static boolean cinematic_in_progress(void) { return FALSE; }
 static long player_control_get_unit_index(short local_player_index) { return BIPED; }
+static void unit_get_camera_position(long index, real_point3d *position) { *position = object_get(index)->object.position; }
 struct interpolation_ghost { boolean in_use; long tick; };
 static struct interpolation_ghost ghosts[64];
 static void render_interpolation_ghosts_tick(void) {}

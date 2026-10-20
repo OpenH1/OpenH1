@@ -68,15 +68,21 @@ def generated(fault=None):
     # sim_substep_blend, on the test's clock
     text += function(clock, "sim_substep_blend").replace("sim_rate_globals.substep_count", "fake_substep_count") + "\n"
     text += "static void render_interpolation_substep(short substep_index, short substep_count, real seconds);\n"
+    text += "static void render_interpolation_camera_anchors(void);\n"
     for name in ("lerp", "point_lerp", "vector_length", "vector_nlerp", "basis_is_rotation", "quaternion_from_basis",
                  "basis_from_quaternion", "rotation_from_matrix", "matrix_blend_rotations", "correction_significant",
-                 "correction_advance", "correction_drawn", "correction_add", "distance_squared",
-                 "render_interpolation_previous_values", "render_interpolation_register", "render_interpolation_tick",
+                 "correction_advance", "correction_drawn", "correction_add", "distance_squared", "vector_in_frame",
+                 "vector_from_frame", "point_in_frame", "point_from_frame", "matrix_in_frame", "matrix_from_frame",
+                 "frame_blend", "render_interpolation_previous_values", "render_interpolation_register",
+                 "render_interpolation_tick",
                  "render_interpolation_object_from", "render_interpolation_substep",
-                 "render_interpolation_substep_offset", "render_interpolation_frame_begin",
-                 "render_interpolation_frame_end", "render_interpolation_pending_from",
+                 "render_interpolation_substep_offset", "render_interpolation_substep_frame",
+                 "render_interpolation_frame_begin", "render_interpolation_frame_end",
+                 "render_interpolation_pending_from", "render_interpolation_blend_in_frame",
                  "render_interpolation_object_node_matrices", "observer_blend", "observer_cut",
                  "render_interpolation_camera_substep_unit", "render_interpolation_camera_at_tick",
+                 "render_interpolation_camera_anchors", "render_interpolation_camera_substep_vehicle",
+                 "render_interpolation_camera_at_tick_in_vehicle", "render_interpolation_camera_vehicle_offset",
                  "render_interpolation_blended_camera"):
         text += function(code, name) + "\n"
     if fault:
