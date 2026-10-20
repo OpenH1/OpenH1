@@ -130,6 +130,12 @@ long sim_rate_get(
 	return sim_rate_globals.rate;
 }
 
+boolean sim_rate_locked(
+	void)
+{
+	return game_connection() != _game_connection_local;
+}
+
 short sim_substep_count(
 	void)
 {

@@ -28,8 +28,9 @@ calls them from PC_MENU_FUNCTION_BASE on):
   (OK) writes those changed and applies the window's (the rest follow
   config.toml themselves), "port settings defaults" shows the defaults,
   "port settings help" the help of the row chosen (and Video Setup's
-  Resolution or Window Size, for the display mode shown, and Graphics' rows
-  at the values of the preset chosen, display.graphics);
+  Resolution or Window Size, for the display mode shown, Graphics' rows
+  at the values of the preset chosen, display.graphics, and its SIMULATION
+  row locked at ORIGINAL (30) where game.sim_rate is set aside);
 - Controls Setup's: the keyboard and mouse's controls, two bindings each,
   shown a group at a time ("controls update menu"); "controls begin
   binding" takes the next key or button pressed for the binding left and
@@ -83,6 +84,7 @@ their handlers open opens.
 #include "custom_edition_cache.h"
 #include "custom_edition_maps.h"
 #include "network_voice.h"
+#include "sim_rate.h"
 #include "text/draw_string.h"
 /* (internet play's server browser: the platform layer's) */
 #include "../src/p2p.h"
@@ -1479,7 +1481,8 @@ static boolean setting_changed_save(struct widget_instance *spinner, struct pc_m
 {
 	short index = spinner->parameters.list.selected_index;
 
-	if (index < 0 || index >= setting->value_count || index == setting->loaded_index)
+	/* (a row locked shows a value that is not the setting's: sim_rate_row_show) */
+	if (spinner->disabled || index < 0 || index >= setting->value_count || index == setting->loaded_index)
 		return TRUE;
 	if (!setting_write(setting->setting, setting->values[index]))
 	{
@@ -1611,6 +1614,52 @@ static void graphics_preset_show(struct widget_instance *list)
 	graphics_preset.shown = index;
 	graphics_preset.value = setting->values[index];
 	settings_each(screen_of(list), graphics_preset_row_show);
+}
+
+/* Graphics' SIMULATION row (game.sim_rate): where the game sets the setting
+aside and plays at 30 (sim_rate_locked: a network game, split screen, a
+film's playback), the row is locked. It shows ORIGINAL (30), dimmed, the
+list and the pointer pass over it, and OK leaves the setting as it was
+(setting_changed_save passes over a disabled spinner). Unlocked, it shows
+the setting's value again */
+static void sim_rate_row_show(struct widget_instance *list)
+{
+	struct widget_instance *row = named(list, "op_sim_rate", 0);
+	struct widget_instance *spinner = named(list, "sim_rate_spinner", 0);
+	struct pc_menu_setting *setting = spinner ? pc_menu_setting_get(spinner->definition_tag_index) : NULL;
+	boolean locked = sim_rate_locked();
+	struct widget_instance *child;
+	short index;
+
+	if (!row || !setting || spinner->disabled == locked)
+		return;
+	row->disabled = locked;
+	spinner->disabled = locked;
+	/* (dimmed: its label, its spinner and its background, as a row fading
+	out is) */
+	row->alpha_modifier = locked ? 0.4f : 1.0f;
+	if (locked)
+	{
+		char classic[16];
+
+		snprintf(classic, sizeof(classic), "%d", SIM_RATE_CLASSIC);
+		spinner->parameters.list.selected_index = setting_value_index(setting, classic);
+	}
+	else if (setting->loaded_index >= 0 && setting->loaded_index < setting->value_count)
+	{
+		spinner->parameters.list.selected_index = setting->loaded_index;
+	}
+	/* (the focus on it goes to the buttons: it is the last row) */
+	if (locked && list->focused_child == row)
+	{
+		for (index = 0, child = list->child; child && strncmp(child->name, "button_bar", 10); child = child->next)
+			index++;
+		if (child)
+		{
+			list->focused_child = child;
+			list->parameters.list.selected_index = index;
+		}
+	}
 }
 
 /* ---------- Change Color: the profile's colour, from a list of the
@@ -6537,6 +6586,7 @@ void pc_menu_game_data_function_invoke(
 		video_rows_show(widget);
 		hud_button_style_row_show(widget);
 		graphics_preset_show(widget);
+		sim_rate_row_show(widget);
 		settings_help(widget);
 	}
 	else if (!strcmp(name, "controls update menu"))
