@@ -47,11 +47,12 @@ per-step log, `port/linux/game/sim_trace.c`), `debug.trace_seconds`, `debug.trac
 Times are the simulation's seconds from the scenario's start; a shot's time is the start of the step it was fired
 in; a strike's is in its update (a sub-step's, or the tick's) by the fraction the projectile code found. Positions are compared at times every rate
 has a step at (the 30 Hz grid); a jump's height is fitted (a parabola) rather than sampled. Scripts put their events
-on the 30 Hz grid, so the same script means the same at every rate.
+on the 30 Hz grid, so the same script means the same at every rate (but the off-grid jumps', below).
 
 | Scenarios | Measures | Tolerance |
 | --- | --- | --- |
 | `jump_*` | apex height; apex, air and takeoff times; distance | 0.003 wu; 1 ms; 0.5% |
+| `jump_off_grid_*` | a jump pressed between the 30 Hz grid's times: its arc from takeoff (apex height, apex and air times, distance), and its takeoff against where its own rate puts it (the end of the step that first reads the press; the tick's end for a press a tick's first step reads), which legitimately differs between the rates | 0.003 wu; 1 ms; 0.5% |
 | `first_shot_*` | the shot's distance a 30th, 2, 3, 5 30ths of a second after it is fired (1: its instant range) | 0.1% |
 | `impact_*` | where and when each shot strikes | 0.005 wu; a step + 1 ms |
 | `cadence_*` | shots in a held trigger (rates of fire 1, 7, 15, 30), and their times | exact; 1 ms |

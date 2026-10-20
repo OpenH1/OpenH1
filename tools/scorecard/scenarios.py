@@ -7,7 +7,8 @@ A scenario is data: the hidden scenarios (holdouts, README.md) are files of the 
 One that needs what CI does not have (the retail maps) names it in "needs", and is skipped.
 
 Script times are on the 30 Hz grid (multiples of 1/30), where every rate has a step, so a script plays the same
-at 30, 60 and 120.
+at 30, 60 and 120; but for the jumps pressed off it (jump_off_grid_*), whose takeoffs differ between the rates by
+design.
 """
 
 # the plan's work units (60hz-audit.md 5.1) whose subset each part of the game is
@@ -47,6 +48,17 @@ SCENARIOS = [
              arguments=dict(after=0.9)),
     scenario("jump_strafing", "walk", "jump", ["jump", "biped"], script="0.2-3 move=1,0.5; 1.5 jump", seconds=3.5,
              arguments=dict(after=1.4)),
+    # jumps pressed off the 30 Hz grid (the sub-tick jump): at 120 a press read between a tick's sub-steps takes off a
+    # sub-step after it is read, not at the tick's end. Their takeoffs differ between the rates by design, each
+    # checked against where its rate puts it (metrics.jump_takeoff_expected), and their arcs from takeoff compared.
+    # 0.5125: read at 120's third sub-step of a tick, 60's second; 0.7375: the second of each; 1.02: 120's last and
+    # 60's first (the tick's own input, decided at the tick's end); running and strafing, their distances too
+    scenario("jump_off_grid", "walk", "jump_off_grid", ["jump", "biped"], script="0.5125 jump", seconds=2.5,
+             arguments=dict(press=0.5125, after=0.4)),
+    scenario("jump_off_grid_running", "walk", "jump_off_grid", ["jump", "biped"],
+             script="0.2-3 move=0,1; 0.7375 jump", seconds=2.7, arguments=dict(press=0.7375, after=0.6)),
+    scenario("jump_off_grid_strafing", "walk", "jump_off_grid", ["jump", "biped"],
+             script="0.2-3 move=1,0.5; 1.02 jump", seconds=3.0, arguments=dict(press=1.02, after=0.9)),
     # the first shot's travel (row 6): where it is a 30th, 2, 3 and 5 30ths of a second after it is fired, flying
     # free (a wall 500 away), level and aimed up
     scenario("first_shot_level", "shoot", "shots", ["first_shot", "projectile", "weapon"],

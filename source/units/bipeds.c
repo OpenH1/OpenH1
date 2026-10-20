@@ -528,6 +528,9 @@ static void biped_update_physics(
 	real_vector3d const *tick_velocity);
 /* units.c's: whether the unit gets the animation enhancements */
 boolean unit_animation_enhanced(long unit_index);
+/* player_control.c's: the controls of a player's unit that went down in the
+running sub-step past a tick's first */
+unsigned long player_control_substep_pressed_flags(long unit_index);
 static void biped_snap_facing(
 	long biped_index);
 static void biped_physics_apply_step(
@@ -558,12 +561,14 @@ accelerations, as a tick at 30 does) and leaves it here, and each sub-step
 moves the biped its share of the tick. What a tick's movement leads to (a
 landing, a jump, a melee's strike, a bump, falling damage, the animation,
 the counters of ticks) follows the last sub-step, once a tick, in the order
-biped_update has it. Nothing here outlives the tick: it is emptied at the
-last sub-step, and an entry of another tick is ignored. Every other biped
-(a rider, a body: the macro lane, objects.h) moves in its tick, as at 30.
-A lift carries its riders of the micro lane a share each sub-step before
-they move (objects.c's slot), and they stand on what the sub-step sees of
-the macro lane.
+biped_update has it; but a jump whose press only a later sub-step reads
+(player_control.c's) launches at the end of that sub-step, as a tick
+launches one at its end (biped_substep_jump). Nothing here outlives the
+tick: it is emptied at the last sub-step, and an entry of another tick is
+ignored. Every other biped (a rider, a body: the macro lane, objects.h)
+moves in its tick, as at 30. A lift carries its riders of the micro lane a
+share each sub-step before they move (objects.c's slot), and they stand on
+what the sub-step sees of the macro lane.
 
 The AI's bipeds (an actor's or a swarm's) are of the micro lane too, but
 their brains are the tick's: the AI decides in ai_update, before the
@@ -625,6 +630,11 @@ struct biped_substep_datum
 	long elevator_object_index;
 	long bumped_object_index;
 	real_vector3d bumped_velocity;
+	/* a jump launched at the end of one of the sub-steps before the last
+	(biped_substep_jump), and the velocity it launched at, from which the
+	rest of the tick's sub-steps work out their change of velocity */
+	boolean jumped;
+	real_vector3d launch_velocity;
 };
 
 static struct
@@ -4538,6 +4548,8 @@ static boolean biped_substep_defer(
 	datum->elevator_object_index = NONE;
 	datum->bumped_object_index = NONE;
 	datum->bumped_velocity = physics->velocity;
+	datum->jumped = FALSE;
+	datum->launch_velocity = *global_zero_vector3d;
 
 	return TRUE;
 }
@@ -4624,6 +4636,7 @@ static void biped_substep_move(
 	real_point3d old_position;
 	real_vector3d moved;
 	real gravity;
+	real_vector3d const *tick_velocity;
 
 	physics = datum->physics;
 	biped_get_physics_pill(
@@ -4671,11 +4684,21 @@ static void biped_substep_move(
 	biped in the air at the tick's start stays in the air to its end,
 	a landing on the ground clipping its fall; one that leaves the
 	ground in a sub-step goes on as it left it, without gravity, to the
-	tick's end. Slipping or not is each sub-step's) */
+	tick's end. A jump launched at an earlier sub-step's end
+	(biped_substep_jump) is the arc a tick at 30 starts at its end: in
+	the air from there, with gravity, the change of velocity worked out
+	from the velocity it launched at, as the first tick of a jump at 30
+	works it out from its start. Slipping or not is each sub-step's) */
 	gravity = global_gravity;
+	tick_velocity = &datum->physics.velocity;
 	SET_FLAG(physics.in_flags, _biped_physics_in_slipping_bit,
 		TEST_FLAG(biped->biped.flags, _biped_slipping_bit));
-	if (!TEST_FLAG(datum->physics.in_flags, _biped_physics_in_airborne_bit) &&
+	if (datum->jumped)
+	{
+		SET_FLAG(physics.in_flags, _biped_physics_in_airborne_bit, TRUE);
+		tick_velocity = &datum->launch_velocity;
+	}
+	else if (!TEST_FLAG(datum->physics.in_flags, _biped_physics_in_airborne_bit) &&
 		TEST_FLAG(biped->biped.flags, _biped_airborne_bit))
 	{
 		SET_FLAG(physics.in_flags, _biped_physics_in_airborne_bit, TRUE);
@@ -4683,7 +4706,7 @@ static void biped_substep_move(
 	}
 
 	old_position = biped->object.position;
-	biped_update_physics(&physics, tick_fraction, gravity, &datum->physics.velocity);
+	biped_update_physics(&physics, tick_fraction, gravity, tick_velocity);
 	biped_physics_apply_step(biped_index, &physics);
 	vector_from_points3d(&old_position, &biped->object.position, &moved);
 	biped_carry_nodes(biped_index, &moved);
@@ -4795,6 +4818,8 @@ static boolean biped_substep_inline(
 	datum.elevator_object_index = NONE;
 	datum.bumped_object_index = NONE;
 	datum.bumped_velocity = physics->velocity;
+	datum.jumped = FALSE;
+	datum.launch_velocity = *global_zero_vector3d;
 
 	if (biped_substep_too_small(physics, substep_count))
 	{
@@ -4917,6 +4942,52 @@ static void bipeds_replay_substep(
 	return;
 }
 
+/* port: a player's jump at the end of a sub-step before the tick's last, its
+press read at this sub-step (player_control.c: a sub-step past the first
+reads the controller again), as a tick at 30 launches a jump at its end, its
+press read at its start: so it takes off a sub-step after the press is
+read, not at the tick's end. Whether it can is the tick's own test
+(biped_physics_apply_tick's and biped_update_jumping's) of the state as the
+sub-step left it: standing room, on the ground, no hard landing, and the
+recovery since the last jump with this tick's count in it (the tick counts
+it at its end before it tests, as it would were the biped still on the
+ground there). A biped in the air at the tick's start is not tested: its
+landing is the tick's, at its end (biped_substep_move), and the tick's own
+test follows it. The tick's last sub-step leaves its press to the tick's
+test, which runs there; the tick's own input (its first sub-step's) too.
+The counters of ticks are left to the tick: launched here, the biped is in
+the air at the tick's end, so the tick neither counts the recovery nor
+tests again, and jump_recovery_timer is 0 there as at 30 */
+static void biped_substep_jump(
+	long biped_index,
+	struct biped_substep_datum *datum,
+	struct biped_physics const *physics)
+{
+	struct biped_datum *biped = biped_get(biped_index);
+	char recovery = biped->biped.jump_recovery_timer;
+
+	if (datum->jumped ||
+		biped->unit.player_index == NONE ||
+		!TEST_FLAG(player_control_substep_pressed_flags(biped_index), _unit_control_jump_bit) ||
+		!TEST_FLAG(biped->unit.control_flags, _unit_control_jump_bit) ||
+		TEST_FLAG(datum->physics.in_flags, _biped_physics_in_airborne_bit) ||
+		TEST_FLAG(physics->out_flags, _biped_physics_out_cannot_stand_bit) ||
+		TEST_FLAG(biped->biped.flags, _biped_airborne_bit) ||
+		biped->biped.landing == 1)
+	{
+		return;
+	}
+	if (recovery < SCHAR_MAX)
+		++recovery;
+	if (recovery > 5 && biped_jump(biped_index))
+	{
+		datum->jumped = TRUE;
+		datum->launch_velocity = biped->object.translational_velocity;
+	}
+
+	return;
+}
+
 /* port: the fast phase's _sim_substep_bipeds slot (sim_rate.h): the AI's
 bipeds where their sub-steps left them (bipeds_replay_substep), then each
 biped left by biped_update moves a sub-step's share of its tick
@@ -4956,6 +5027,7 @@ static void bipeds_substep(
 
 		if (!last)
 		{
+			biped_substep_jump(biped_index, datum, &physics);
 			biped_physics_ground_flags(biped_index, &physics);
 		}
 		else
