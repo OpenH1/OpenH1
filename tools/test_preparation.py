@@ -88,6 +88,10 @@ static int xgpu_backend_loading_owned(void) { return 0; }
 static void halo_load_trace(const char *phase, const char *detail) {
     (void)phase; (void)detail;
 }
+static int scenes, fades;
+static void halo_loading_scene(void) { assert(!epochs); scenes++; }
+static void halo_loading_fade_begin(void) { fades++; }
+static void xgpu_backend_loading_progress(float progress) { (void)progress; }
 static void xgpu_backend_loading(int phase) { if (phase == 1) epochs++; }
 static void xgpu_backend_consume(void) {
     assert(!borrowed || storage == borrowed);
@@ -98,13 +102,15 @@ int main(void) {
     halo_loading_begin();
     storage = borrowed = 1;
     halo_loading_begin();
-    assert(epochs == 1 && borrowed == 1);
+    /* the menu's scene read once, before the presenter takes the screen */
+    assert(epochs == 1 && borrowed == 1 && scenes == 1);
     halo_loading_retire();
     assert(!borrowed && retired == 1);
     storage = borrowed = 2;
     halo_loading_retire();
     assert(!borrowed && retired == 2 && epochs == 1);
     halo_loading_ready();
+    assert(fades == 1);
     halo_loading_end();
     platform_window = 0;
     storage = borrowed = 3;

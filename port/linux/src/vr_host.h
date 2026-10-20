@@ -175,6 +175,12 @@ struct vr_host_layers
 	float hud_size[2];
 	int hud_cylinder;
 	float hud_radius, hud_angle;
+	/* the HUD image's top left holds a stereo pair instead, each eye's
+	hud_stereo_width by hud_stereo_height pixels side by side (the left
+	eye's first), on a quad for each eye at hud_pose, hud_size metres (the
+	loading screen's window: loading_presentation.h) */
+	int hud_stereo;
+	int hud_stereo_width, hud_stereo_height;
 	/* the HUD's panels (VR_SWAPCHAIN_PANEL on), each a quad at its own
 	depth, placed as the HUD's layer is (hud_head_locked): those not
 	over_hud under the HUD's layer, the others over it */

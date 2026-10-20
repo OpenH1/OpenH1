@@ -332,6 +332,8 @@ static struct
 	struct xgpu_vulkan_image *loading_image;
 	struct xgpu_vulkan_image *loading_art_image;
 	struct loading_art loading_art;
+	/* the last loading image held VR's stereo pair (loading_presentation.h) */
+	int loading_stereo_drawn;
 
 	VkPipelineCache pipeline_cache;
 	uint64_t pipeline_count;
@@ -3875,6 +3877,38 @@ void xgpu_vulkan_loading_art(void *context, const uint8_t *rgba)
 	loading_art_set(&vk.loading_art, rgba);
 }
 
+void xgpu_vulkan_loading_scene(void *context, const void *data, uint32_t bytes)
+{
+	(void)context;
+	loading_art_scene(&vk.loading_art, bytes ? data : NULL, bytes);
+}
+
+void xgpu_vulkan_loading_progress(void *context, float progress)
+{
+	(void)context;
+	loading_art_progress(&vk.loading_art, progress);
+}
+
+void xgpu_vulkan_loading_stereo(int stereo)
+{
+	loading_art_stereo(&vk.loading_art, stereo ? 1u : 0u);
+}
+
+int xgpu_vulkan_loading_stereo_drawn(void)
+{
+	return vk.loading_stereo_drawn;
+}
+
+void xgpu_vulkan_loading_eyes(const float left[3], const float right[3])
+{
+	loading_art_stereo_eyes(&vk.loading_art, left, right);
+}
+
+float xgpu_vulkan_loading_stereo_tangent(void)
+{
+	return loading_art_stereo_tangent(&vk.loading_art);
+}
+
 struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presentation_frame *frame,
 	uint32_t width, uint32_t height, uint32_t format)
 {
@@ -3887,7 +3921,9 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 	int test_active = vk.test_active;
 	int32_t rectangle[1][4];
 	const uint8_t *pixels;
+	int stereo;
 
+	vk.loading_stereo_drawn = 0;
 	if (!frame || !frame->active)
 	{
 		xgpu_vulkan_image_destroy(vk.loading_image);
@@ -3916,13 +3952,16 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 			return NULL;
 	}
 	pixels = loading_art_render(&vk.loading_art, frame);
+	/* (VR's stereo pair side by side, where the image holds them) */
+	stereo = pixels && loading_art_stereo_drawn(&vk.loading_art) &&
+		width >= 2 * LOADING_PRESENTATION_VR_EYE_WIDTH && height >= LOADING_PRESENTATION_VR_EYE_HEIGHT;
 	if (pixels && !vk.loading_art_image)
 	{
 		memset(&description, 0, sizeof(description));
 		description.type = XGPU_VULKAN_IMAGE_2D;
 		description.format = XGPU_VULKAN_FORMAT_RGBA8;
 		description.usage = XGPU_VULKAN_USAGE_SAMPLED;
-		description.width = LOADING_ART_FRAME_WIDTH;
+		description.width = 2 * LOADING_ART_FRAME_WIDTH;
 		description.height = LOADING_ART_FRAME_HEIGHT;
 		description.depth_or_layers = description.levels = 1;
 		vk.loading_art_image = xgpu_vulkan_image_create(&description);
@@ -3959,14 +3998,25 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 			fit_height = 1;
 		x = (width - fit_width) / 2;
 		y = (height - fit_height) / 2;
+		if (stereo)
+		{
+			/* each eye's picture as it is, at the image's top left */
+			x = y = 0;
+			fit_width = 2 * LOADING_ART_FRAME_WIDTH;
+			fit_height = LOADING_ART_FRAME_HEIGHT;
+		}
 		pass_end();
 		xgpu_vulkan_image_upload(vk.loading_art_image, 0, 0, 0, 0, 0,
 			LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, 1, pixels, LOADING_ART_FRAME_WIDTH * 4, 0);
+		if (stereo)
+			xgpu_vulkan_image_upload(vk.loading_art_image, 0, 0, LOADING_ART_FRAME_WIDTH, 0, 0,
+				LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, 1, vk.loading_art.output_right,
+				LOADING_ART_FRAME_WIDTH * 4, 0);
 		commands = main_commands();
 		memset(&blit, 0, sizeof(blit));
 		blit.srcSubresource.aspectMask = blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		blit.srcSubresource.layerCount = blit.dstSubresource.layerCount = 1;
-		blit.srcOffsets[1].x = LOADING_ART_FRAME_WIDTH;
+		blit.srcOffsets[1].x = stereo ? 2 * LOADING_ART_FRAME_WIDTH : LOADING_ART_FRAME_WIDTH;
 		blit.srcOffsets[1].y = LOADING_ART_FRAME_HEIGHT;
 		blit.srcOffsets[1].z = 1;
 		blit.dstOffsets[0].x = (int32_t)x;
@@ -3978,6 +4028,7 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 		vkCmdBlitImage(commands, vk.loading_art_image->image, VK_IMAGE_LAYOUT_GENERAL,
 			vk.loading_image->image, VK_IMAGE_LAYOUT_GENERAL, 1, &blit, VK_FILTER_LINEAR);
 		transfer_done(commands);
+		vk.loading_stereo_drawn = stereo;
 	}
 	else
 	{

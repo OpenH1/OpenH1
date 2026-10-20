@@ -11,6 +11,13 @@
 #define LOADING_PRESENTATION_RED 0.015f
 #define LOADING_PRESENTATION_GREEN 0.03f
 #define LOADING_PRESENTATION_BLUE 0.055f
+/* VR: the menu's scene is a stereo pair on a window in the world, this many
+   metres before the head as the load began, as wide as the menu's camera
+   saw from there, 4:3; each eye's 640x480 picture side by side in the
+   loading image, the left eye's first */
+#define LOADING_PRESENTATION_VR_DISTANCE 8.0f
+#define LOADING_PRESENTATION_VR_EYE_WIDTH 640
+#define LOADING_PRESENTATION_VR_EYE_HEIGHT 480
 
 struct loading_presentation_rect
 {

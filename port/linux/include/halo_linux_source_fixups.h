@@ -11,6 +11,7 @@ The port's functions that the game's sources call, declared for them.
 void halo_loading_begin(void);
 void halo_loading_art(void);
 int halo_loading_owned(void);
+void halo_loading_progress(float progress);
 void halo_loading_retire(void);
 void halo_loading_end(void);
 void halo_loading_ready(void);

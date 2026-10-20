@@ -20,6 +20,13 @@ void host_vr_loading_set(int active);
 int host_vr_loading_owned(void);
 int host_vr_loading_begin(const struct loading_presentation_frame *frame, struct vr_host_views *views);
 void host_vr_loading_end(const struct loading_presentation_frame *frame);
+/* the loading frame being ended is the menu's scene's stereo pair
+(loading_presentation.h), not the picture, its window as wide as tangent
+says (that of half its angle from its distance) */
+void host_vr_loading_stereo(int stereo, float tangent);
+/* the eyes of the loading frame begun, in metres from the stereo pair's
+window's middle (right, up, out toward the head); 0 if not known */
+int host_vr_loading_eyes(float left[3], float right[3]);
 
 /* from now on: host_vr_initialize runs on the render thread
 (host_render_stream_call), host_vr_frame_wait waits alone, and the render

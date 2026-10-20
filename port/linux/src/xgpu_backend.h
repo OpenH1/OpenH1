@@ -598,5 +598,11 @@ void xgpu_backend_loading(int active);
 int xgpu_backend_loading_owned(void);
 /* Copy the 640 by 480 RGBA loading picture before returning; NULL clears. */
 void xgpu_backend_loading_art(const unsigned char *rgba);
+/* The main menu's scene the loading screen draws (loading_scene.h), copied
+before returning; no bytes return to the picture. */
+void xgpu_backend_loading_scene(const void *data, unsigned long bytes);
+/* The load's progress (0 to 1), as the loading screen's sweep is drawn: the
+picture fades out as it completes, as the original's did. */
+void xgpu_backend_loading_progress(float progress);
 
 #endif

@@ -219,6 +219,8 @@ enum
 	XGPU_STREAM_LOADING,
 	XGPU_STREAM_LOADING_OWNED,          /* synchronous: current presenter ownership */
 	XGPU_STREAM_LOADING_ART,            /* value: byte count, followed by owned 640x480 RGBA pixels */
+	XGPU_STREAM_LOADING_SCENE,          /* value: byte count, followed by the menu's scene (loading_scene.h) */
+	XGPU_STREAM_LOADING_PROGRESS,       /* value: the load's progress, a float's bits (0 to 1) */
 	XGPU_STREAM_RECORD_TYPES,
 };
 

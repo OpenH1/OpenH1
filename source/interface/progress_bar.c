@@ -2149,7 +2149,9 @@ static void progress_bar_render(
 
 	current_time= GetTickCount();
 	/* port: the independent loading image replaces these GPU draws,
-	but the original progress time, wobble and sound updates still run. */
+	but the original progress time, wobble and sound updates still run,
+	and the image fades out with the progress, as these draws did. */
+	halo_loading_progress(progress);
 	if (halo_loading_owned())
 		return;
 	IDirect3DDevice8_GetTransform(global_d3d_device, D3DTS_WORLD, &progress_bar_globals.saved_world);

@@ -10,6 +10,9 @@
 static const char *host_loading_capture_directory;
 static uint64_t host_loading_capture_epoch;
 static unsigned host_loading_capture_count;
+/* HALO_LOADING_CAPTURE_EVERY=<frames>: every that many frames of a load,
+not only its first and one half a second in */
+static unsigned host_loading_capture_every;
 
 static int host_loading_capture_due(const struct loading_presentation_frame *frame)
 {
@@ -17,7 +20,10 @@ static int host_loading_capture_due(const struct loading_presentation_frame *fra
 
 	if (!checked)
 	{
+		const char *every = getenv("HALO_LOADING_CAPTURE_EVERY");
+
 		host_loading_capture_directory = getenv("HALO_LOADING_CAPTURE_DIR");
+		host_loading_capture_every = every ? (unsigned)strtoul(every, NULL, 10) : 0;
 		checked = 1;
 	}
 	if (!host_loading_capture_directory || !*host_loading_capture_directory)
@@ -27,6 +33,8 @@ static int host_loading_capture_due(const struct loading_presentation_frame *fra
 		host_loading_capture_epoch = frame->epoch;
 		host_loading_capture_count = 0;
 	}
+	if (host_loading_capture_every)
+		return frame->serial % host_loading_capture_every == 0;
 	return host_loading_capture_count == 0 ? frame->serial >= 2 :
 		host_loading_capture_count == 1 && frame->elapsed_ns >= 500000000;
 }

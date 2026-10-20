@@ -176,6 +176,7 @@ void vr_seat_blink_draw(void);
 void vr_death_draw(void);
 void vr_headwall_draw(void);
 boolean vr_headwall_faded(void);
+void vr_loading_fade_draw(void);
 /* the view in a raised scope, or the smart-link's on the visor while zoomed
 (port/linux/game/vr_scope.c), drawn before the eyes into an image of its
 own: the eye pass's state (the clusters seen, the lights, the scene) is then
@@ -552,6 +553,9 @@ static void render_window(
 			/* the view faded with the head in a wall
 			(port/linux/game/vr_headwall.c) */
 			vr_headwall_draw();
+			/* the level coming up out of its loading screen's dark
+			(port/linux/game/loading_scene.c) */
+			vr_loading_fade_draw();
 			/* the crosshairs where the aim meets the world, in the eyes */
 			vr_render_crosshairs();
 			/* the teammates' triangles, the players' names and the

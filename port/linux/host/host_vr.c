@@ -187,6 +187,12 @@ static struct
 	int waiter_started, waiter_stop, waiter_request, waiter_busy, waiter_failed;
 	struct vr_host_views views;
 	struct vr_host_pose anchor;
+	/* the stereo pair's window: before the head as the load began, level,
+	facing it (loading_presentation.h), and whether this frame is the pair,
+	the tangent of half the angle it is wide from its distance */
+	struct vr_host_pose window;
+	int stereo;
+	float stereo_tangent;
 } loading = { .changed = PTHREAD_COND_INITIALIZER };
 
 static void loading_wait_request(void);
@@ -1486,6 +1492,9 @@ void host_vr_loading_set(int active)
 		memset(&loading.anchor, 0, sizeof(loading.anchor));
 		loading.anchor.orientation[3] = 1.0f;
 		loading.anchor.position[2] = -2.0f;
+		memset(&loading.window, 0, sizeof(loading.window));
+		loading.window.orientation[3] = 1.0f;
+		loading.window.position[2] = -LOADING_PRESENTATION_VR_DISTANCE;
 		/* A game frame may already have been waited for when its map
 		change begins. End that ticket before the loading frame loop. */
 		loading.presenting = 1;
@@ -1554,6 +1563,30 @@ int host_vr_loading_begin(const struct loading_presentation_frame *frame, struct
 		loading.anchor.position[0] -= 4.0f * (q[0] * q[2] + q[3] * q[1]);
 		loading.anchor.position[1] -= 4.0f * (q[1] * q[2] - q[3] * q[0]);
 		loading.anchor.position[2] -= 2.0f * (1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1]));
+		/* (the window: the head's facing about the vertical alone, so that
+		it stands upright however the head was tilted; at eye height) */
+		{
+			float forward_x = -2.0f * (q[0] * q[2] + q[3] * q[1]);
+			float forward_z = -(1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1]));
+			float length = sqrtf(forward_x * forward_x + forward_z * forward_z), yaw;
+
+			if (length < 1e-4f)
+			{
+				forward_x = 0.0f;
+				forward_z = -1.0f;
+				length = 1.0f;
+			}
+			forward_x /= length;
+			forward_z /= length;
+			yaw = atan2f(-forward_x, -forward_z);
+			loading.window = views->head;
+			loading.window.position[0] += forward_x * LOADING_PRESENTATION_VR_DISTANCE;
+			loading.window.position[2] += forward_z * LOADING_PRESENTATION_VR_DISTANCE;
+			loading.window.orientation[0] = 0.0f;
+			loading.window.orientation[1] = sinf(yaw * 0.5f);
+			loading.window.orientation[2] = 0.0f;
+			loading.window.orientation[3] = cosf(yaw * 0.5f);
+		}
 		loading.anchored = 1;
 	}
 	host_load_trace("loading.pose", "epoch=%llu serial=%llu predicted=%lld valid=%d orientation=%.6f,%.6f,%.6f,%.6f",
@@ -1570,6 +1603,35 @@ int host_vr_loading_begin(const struct loading_presentation_frame *frame, struct
 	return index;
 }
 
+void host_vr_loading_stereo(int stereo, float tangent)
+{
+	loading.stereo = stereo && tangent > 0.05f && tangent < 4.0f;
+	loading.stereo_tangent = tangent;
+}
+
+int host_vr_loading_eyes(float left[3], float right[3])
+{
+	const struct vr_host_pose *window = &loading.window;
+	float angle = 2.0f * atan2f(window->orientation[1], window->orientation[3]);
+	float cosine = cosf(angle), sine = sinf(angle);
+	int eye;
+
+	if (!loading.anchored || !loading.views.eye[0].valid || !loading.views.eye[1].valid)
+		return 0;
+	for (eye = 0; eye < 2; eye++)
+	{
+		const float *position = loading.views.eye[eye].position;
+		float *out = eye ? right : left;
+		float x = position[0] - window->position[0], z = position[2] - window->position[2];
+
+		/* (into the window's space: its yaw undone) */
+		out[0] = x * cosine - z * sine;
+		out[1] = position[1] - window->position[1];
+		out[2] = x * sine + z * cosine;
+	}
+	return 1;
+}
+
 void host_vr_loading_end(const struct loading_presentation_frame *frame)
 {
 	struct vr_host_layers layers;
@@ -1579,6 +1641,19 @@ void host_vr_loading_end(const struct loading_presentation_frame *frame)
 	layers.hud_pose = loading.anchor;
 	layers.hud_size[0] = 1.6f;
 	layers.hud_size[1] = 0.8f;
+	if (loading.stereo)
+	{
+		/* the menu's scene through a window in the world, as wide as the
+		pair was drawn for from where the head was */
+		layers.hud_stereo = 1;
+		layers.hud_stereo_width = LOADING_PRESENTATION_VR_EYE_WIDTH;
+		layers.hud_stereo_height = LOADING_PRESENTATION_VR_EYE_HEIGHT;
+		layers.hud_pose = loading.window;
+		layers.hud_size[0] = 2.0f * LOADING_PRESENTATION_VR_DISTANCE * loading.stereo_tangent;
+		layers.hud_size[1] = layers.hud_size[0] * (float)LOADING_PRESENTATION_VR_EYE_HEIGHT /
+			(float)LOADING_PRESENTATION_VR_EYE_WIDTH;
+	}
+	loading.stereo = 0;
 	host_vr_frame_end(&layers);
 	loading.presenting = 0;
 	loading_wait_request();
@@ -1770,11 +1845,12 @@ void host_vr_frame_end(const struct vr_host_layers *layers)
 	XrCompositionLayerProjectionView views[2];
 	XrCompositionLayerDepthInfoKHR depths[2];
 	XrCompositionLayerQuad quad = { XR_TYPE_COMPOSITION_LAYER_QUAD };
+	XrCompositionLayerQuad stereo[2] = { { XR_TYPE_COMPOSITION_LAYER_QUAD }, { XR_TYPE_COMPOSITION_LAYER_QUAD } };
 	XrCompositionLayerQuad visor = { XR_TYPE_COMPOSITION_LAYER_QUAD };
 	XrCompositionLayerCylinderKHR cylinder = { XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR };
 	XrCompositionLayerQuad panels[VR_PANEL_COUNT];
 	XrCompositionLayerQuad scope = { XR_TYPE_COMPOSITION_LAYER_QUAD };
-	const XrCompositionLayerBaseHeader *submitted[5 + VR_PANEL_COUNT];
+	const XrCompositionLayerBaseHeader *submitted[6 + VR_PANEL_COUNT];
 	uint32_t count = 0;
 	int eye, panel;
 
@@ -1848,7 +1924,28 @@ void host_vr_frame_end(const struct vr_host_layers *layers)
 	those before it, then the visor's glass over all */
 	for (panel = 0; panel < VR_PANEL_COUNT; panel++)
 		panel_layer(layers, panel, 0, &panels[panel], submitted, &count);
-	if (layers && layers->hud && layers->hud_cylinder && vr.has_cylinder)
+	if (layers && layers->hud && layers->hud_stereo && layers->hud_stereo_width > 0 &&
+		layers->hud_stereo_height > 0 && 2 * layers->hud_stereo_width <= (int)vr.swapchain_width[VR_SWAPCHAIN_HUD] &&
+		layers->hud_stereo_height <= (int)vr.swapchain_height[VR_SWAPCHAIN_HUD])
+	{
+		/* a stereo pair: each eye its half of the image's top, on the same
+		quad, held in the world by the compositor at every frame */
+		for (eye = 0; eye < 2; eye++)
+		{
+			stereo[eye].layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+			stereo[eye].space = layers->hud_head_locked ? vr.view_space : vr.play_space;
+			stereo[eye].eyeVisibility = eye ? XR_EYE_VISIBILITY_RIGHT : XR_EYE_VISIBILITY_LEFT;
+			stereo[eye].subImage.swapchain = vr.swapchains[VR_SWAPCHAIN_HUD];
+			stereo[eye].subImage.imageRect.offset.x = eye * layers->hud_stereo_width;
+			stereo[eye].subImage.imageRect.extent.width = layers->hud_stereo_width;
+			stereo[eye].subImage.imageRect.extent.height = layers->hud_stereo_height;
+			pose_to_xr(&layers->hud_pose, &stereo[eye].pose);
+			stereo[eye].size.width = layers->hud_size[0];
+			stereo[eye].size.height = layers->hud_size[1];
+			submitted[count++] = (const XrCompositionLayerBaseHeader *)&stereo[eye];
+		}
+	}
+	else if (layers && layers->hud && layers->hud_cylinder && vr.has_cylinder)
 	{
 		/* (as the quad below) */
 		cylinder.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;

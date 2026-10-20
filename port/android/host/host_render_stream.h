@@ -130,6 +130,11 @@ struct host_render_backend
 	int (*loading_owned)(void *context);
 	/* Copy 640x480 RGBA before returning; NULL clears the owned picture. */
 	void (*loading_art)(void *context, const unsigned char *rgba);
+	/* The menu's scene (loading_scene.h), unchecked bytes the backend
+	validates; copied before returning, none clears it. */
+	void (*loading_scene)(void *context, const void *data, uint32_t bytes);
+	/* the load's progress, 0 to 1 (unchecked: the backend clamps it) */
+	void (*loading_progress)(void *context, float progress);
 
 	/* nonzero if the block and cells are made */
 	int (*dynamic_lights_prepare)(void *context);

@@ -55,6 +55,7 @@ drawables reached the screen.
 #include "xgpu_metal_stream.h"
 #include "xgpu_metal_textures.h"
 #include "loading_art.h"
+#include "host_loading_capture.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_metal.h>
@@ -180,6 +181,23 @@ void host_metal_loading_art(void *context, const uint8_t *rgba)
 	pthread_mutex_unlock(&presentation.lock);
 }
 
+void host_metal_loading_progress(void *context, float progress)
+{
+	(void)context;
+	pthread_mutex_lock(&presentation.lock);
+	loading_art_progress(&presentation.loading_art, progress);
+	pthread_mutex_unlock(&presentation.lock);
+}
+
+void host_metal_loading_scene(void *context, const void *data, uint32_t bytes)
+{
+	(void)context;
+	pthread_mutex_lock(&presentation.lock);
+	loading_art_scene(&presentation.loading_art, bytes ? data : NULL, bytes);
+	presentation.loading_texture_valid = NO;
+	pthread_mutex_unlock(&presentation.lock);
+}
+
 static void loading_upload_initialize(void)
 {
 	MTLTextureDescriptor *description;
@@ -214,6 +232,8 @@ static id<MTLTexture> loading_upload(id<MTLCommandBuffer> buffer,
 	if (presentation.loading_texture && index < LOADING_UPLOADS)
 	{
 		pixels = loading_art_render(&presentation.loading_art, frame);
+		if (pixels && host_loading_capture_due(frame))
+			host_loading_capture_write(frame, pixels, LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, 0, 0);
 		if (pixels)
 		{
 			upload = presentation.loading_uploads[index];

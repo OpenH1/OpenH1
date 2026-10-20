@@ -1602,6 +1602,28 @@ void xgpu_backend_loading_art(const unsigned char *rgba)
 	synchronous();
 }
 
+void xgpu_backend_loading_scene(const void *data, unsigned long bytes)
+{
+	struct xgpu_stream_value *body;
+
+	if (!stream.open || bytes > XGPU_STREAM_RECORD_MAXIMUM - sizeof(*body) - 64)
+		return;
+	body = record(XGPU_STREAM_LOADING_SCENE, sizeof(*body) + (uint32_t)bytes);
+	body->value = (uint32_t)bytes;
+	if (bytes)
+		memcpy(body + 1, data, bytes);
+}
+
+void xgpu_backend_loading_progress(float progress)
+{
+	uint32_t bits;
+
+	if (!stream.open)
+		return;
+	memcpy(&bits, &progress, sizeof(bits));
+	record_value(XGPU_STREAM_LOADING_PROGRESS, bits);
+}
+
 void xgpu_backend_loading(int active)
 {
 	if (!stream.open)
