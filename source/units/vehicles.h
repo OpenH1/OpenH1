@@ -76,6 +76,11 @@ void vehicle_accelerate(
 	real_vector3d const *acceleration);
 void vehicle_render_debug(
 	long object_index);
+/* port: whether a vehicle may move in the fast phase's sub-steps
+(objects.c's lanes, port/linux/game/sim_rate.h): a player drives it, and its
+physics, if any, is of mass points */
+boolean vehicle_takes_substeps(
+	long vehicle_index);
 
 /* ---------- globals */
 

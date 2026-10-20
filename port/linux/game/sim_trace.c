@@ -25,6 +25,15 @@ Lines:
                                                    velocity (world units a
                                                    second), aim (a unit
                                                    vector), 1 airborne
+    v <player> <id> <x> <y> <z> <vx> <vy> <vz> <fx> <fy> <fz> <ux> <uy> <uz>
+      <wx> <wy> <wz> <ground>                      each vehicle, and the player
+                                                   whose unit rides it (-1 for
+                                                   none): place, velocity
+                                                   (world units a second),
+                                                   forward and up (unit
+                                                   vectors), angular velocity
+                                                   (radians a second), 1 on
+                                                   the ground
     o <id> <x> <y> <z> <vx> <vy> <vz>              each projectile in flight
     u <id> <x> <y> <z> <vx> <vy> <vz> <air>        each biped the AI drives (an
                                                    actor's or a swarm's): place,
@@ -231,6 +240,52 @@ static long sim_trace_player_of_unit(
 	return DATUM_INDEX_TO_ABSOLUTE_INDEX(unit->unit.player_index);
 }
 
+/* a vehicle, and the player whose unit rides it, NONE for none */
+static void sim_trace_vehicle(
+	long absolute_index,
+	long vehicle_index,
+	struct object_datum *vehicle)
+{
+	fprintf(sim_trace.file, "v %ld %lx %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %d\n",
+		absolute_index, vehicle_index,
+		vehicle->object.position.x, vehicle->object.position.y, vehicle->object.position.z,
+		vehicle->object.translational_velocity.i * SECONDS_PER_VELOCITY_UNIT,
+		vehicle->object.translational_velocity.j * SECONDS_PER_VELOCITY_UNIT,
+		vehicle->object.translational_velocity.k * SECONDS_PER_VELOCITY_UNIT,
+		vehicle->object.forward.i, vehicle->object.forward.j, vehicle->object.forward.k,
+		vehicle->object.up.i, vehicle->object.up.j, vehicle->object.up.k,
+		vehicle->object.angular_velocity.i * SECONDS_PER_VELOCITY_UNIT,
+		vehicle->object.angular_velocity.j * SECONDS_PER_VELOCITY_UNIT,
+		vehicle->object.angular_velocity.k * SECONDS_PER_VELOCITY_UNIT,
+		TEST_FLAG(vehicle->object.flags, _object_on_ground_bit) ? 1 : 0);
+}
+
+/* every vehicle, and the player whose unit rides it (its ultimate parent,
+the first such player), if any */
+static void sim_trace_vehicles(
+	void)
+{
+	struct object_iterator iterator;
+	struct object_datum *vehicle;
+
+	object_iterator_new(&iterator, _object_mask_vehicle, 0);
+	while ((vehicle = object_iterator_next(&iterator)) != NULL)
+	{
+		long vehicle_index = iterator.index;
+		long rider = NONE;
+		struct data_iterator players;
+		struct player_datum *player;
+
+		data_iterator_new(&players, player_data);
+		while (rider == NONE && (player = (struct player_datum *)data_iterator_next(&players)) != NULL)
+		{
+			if (player->unit_index != NONE && object_get_ultimate_parent(player->unit_index) == vehicle_index)
+				rider = DATUM_INDEX_TO_ABSOLUTE_INDEX(players.datum_index);
+		}
+		sim_trace_vehicle(rider, vehicle_index, vehicle);
+	}
+}
+
 static void sim_trace_players(
 	void)
 {
@@ -379,6 +434,7 @@ void sim_trace_step(
 	fwrite(sim_trace_events, 1, sim_trace_events_length, sim_trace.file);
 	sim_trace_events_length = 0;
 	sim_trace_players();
+	sim_trace_vehicles();
 	sim_trace_projectiles();
 	sim_trace_ai_units();
 	if (sim_trace.stop_seconds > 0.0 && seconds >= sim_trace.stop_seconds - 1e-9)

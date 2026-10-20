@@ -36,6 +36,21 @@ struct physics_test_vector_result
 	real_plane3d plane;
 };
 
+/* port: one of a tick's sub-steps of a vehicle's physics, in the fast phase
+(port/linux/game/sim_rate.h, vehicles.c): physics_substep_set */
+struct physics_substep
+{
+	/* which (0 up to count - 1), of how many */
+	short index;
+	short count;
+	/* its share of a tick (1 / count) */
+	real fraction;
+	/* (physics.c's) the collision force and torque the vehicle had kept for
+	this tick, taken at its first sub-step and given each sub-step its share */
+	real_vector3d collision_force;
+	real_vector3d collision_torque;
+};
+
 /* ---------- prototypes/PHYSICS.C */
 
 boolean physics_instance_new(struct physics_instance *instance, long object_index);
@@ -69,6 +84,12 @@ void physics_update(
 	real_vector3d const *magic_torque);
 
 void render_debug_physics(struct physics_instance *instance);
+
+/* port: physics_update moves a vehicle by a sub-step of a tick, as the
+substep says, from now until it is set NULL again (a tick's, as it always
+did): vehicles.c, around a vehicle's update in a sub-step of the fast phase
+(physics.c, "sub-steps") */
+void physics_substep_set(struct physics_substep *substep);
 
 
 /* ---------- globals */

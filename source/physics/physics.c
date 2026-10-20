@@ -117,6 +117,7 @@ symbols in this file:
 #include "units/bipeds.h"
 #include "units/unit_definitions.h"
 #include "units/vehicles.h"
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 
 /* ---------- constants */
 
@@ -281,6 +282,13 @@ static void rotate_vectors3d_by_angular_velocity(
 	real_vector3d const *angular_velocity,
 	real_vector3d *rotated_forward,
 	real_vector3d *rotated_up);
+static void physics_update_substep(
+	long object_index,
+	struct powered_mass_point_datum *powered_mass_points,
+	struct mass_point_datum *mass_points,
+	real_vector3d const *magic_force,
+	real_vector3d const *magic_torque,
+	struct physics_substep *substep);
 
 /* ---------- globals */
 
@@ -299,6 +307,10 @@ boolean debug_physics_disable_penetration_freeze = FALSE;
 /* port: whether a map's malformed physics was reported (once) */
 static boolean warned_about_physics_mass_points;
 static boolean warned_about_physics_inertial_matrix;
+
+/* port: the sub-step physics_update moves a vehicle by, NULL for a tick
+(physics_substep_set; "sub-steps", below) */
+static struct physics_substep *physics_substep;
 
 /* ---------- public code */
 
@@ -2245,6 +2257,19 @@ void physics_update(
 	real_vector3d total_torque;
 	short powered_mass_point_index;
 
+	/* port: a sub-step's share of a tick, in the fast phase (vehicles.c) */
+	if (physics_substep)
+	{
+		physics_update_substep(
+			object_index,
+			powered_mass_points,
+			mass_points,
+			magic_force,
+			magic_torque,
+			physics_substep);
+		return;
+	}
+
 	if (physics->radius > 0.0f)
 	{
 		physics_update_old(
@@ -2331,3 +2356,833 @@ void physics_update(
 }
 
 /* ---------- private code */
+
+/* ---------- port: sub-steps (physics.h, port/linux/game/sim_rate.h)
+
+At game.sim_rate 60 or 120 a vehicle a player drives (the micro lane,
+objects.h) moves in the fast phase's 2 or 4 sub-steps (vehicles.c), each of
+which runs its physics here: its forces worked out again from where it is
+and how it moves, with its input at that sub-step (vehicles.c), and the
+vehicle moved a sub-step's share of a tick. It must move as it does at 30,
+in real time: the same acceleration, top speed, turns, bounce on its
+suspension, landings, tumbles and collisions.
+
+A tick at 30 is semi-implicit Euler with a step of a tick
+(physics_update_new): the velocity takes the tick's acceleration, then the
+position takes a tick of the new velocity. Its velocity is so the average of
+the tick to come, half a tick behind the motion: with a steady acceleration
+(in the air, under a steady push) its positions lie exactly on the parabola
+whose velocity at a tick's start is the velocity kept plus half the tick's
+change. The sub-steps are the same method with a step of 1/count of a tick,
+their velocity half a sub-step behind. So each sub-step takes its share of a
+tick's acceleration (its forces are kept per tick, per tick), a share of a
+tick's travel at its velocity and of a tick's turn at its angular velocity;
+and the velocities a tick keeps are made the sub-steps' at the tick's first
+sub-step, by (1 - 1/count)/2 of the acceleration, and back at its last. With
+a steady acceleration every tick then ends exactly where the tick at 30
+leaves the vehicle (the launch bias of U1's jumps, here of gravity and every
+other force: a jump's arc, its air time and where it lands are the tick's),
+and with a changing one, as nearly as the sub-steps' finer steps follow the
+tick's. The springs (the ground under each mass point, the antigrav's lift)
+keep their stiffness: their period is the method's, which differs from a
+tick's by a fraction of a percent (a warthog's suspension, four wheels down:
+0.5%).
+
+What the method does not keep is a damping: a force that takes a share of the
+velocity each tick (the friction of the ground, the water and the air; the
+ground's and the antigrav's damping) takes that share once a tick at 30, and
+in the sub-steps count smaller shares, which together take less (a scorpion's
+suspension, eight treads down, takes 0.40 of its bounce a tick at 30, and
+0.34 in four sub-steps). So each damping is scaled to take in a tick's
+sub-steps the share it takes in a tick at 30 (physics_substep_damping_scale):
+the share the whole vehicle's velocity loses to it, each mass point's summed
+(a mass point's friction moves the vehicle by its share of the vehicle's
+mass), taken root by sub-step (sim_decay_per_substep). A force that pushes
+toward a velocity (a wheel's drive) is a friction toward it, scaled with it:
+its top speed is where the two balance, the same at any rate. A spring's
+damping is then exact (its two roots' product is the tick's damping at any
+rate): the suspension bounces as high, as many times, and is still as soon.
+
+Nothing here outlives the tick: what a tick keeps in the vehicle (its
+velocity and angular velocity, its collision force, its flags) is what a tick
+at 30 keeps, at the tick's end; the collisions with other vehicles and
+bipeds are the tick's, once at its last sub-step, as at 30. With one
+sub-step a tick (30) none of this runs: physics_update is the tick's, as it
+always was. */
+
+/* the vehicle's dampings: each one's share of the velocity a tick, summed
+(physics_compute_substep) */
+enum
+{
+	_substep_damping_normal = 0,
+	_substep_damping_ground_parallel,
+	_substep_damping_ground_perpendicular,
+	_substep_damping_water_parallel,
+	_substep_damping_water_perpendicular,
+	_substep_damping_air_parallel,
+	_substep_damping_air_perpendicular,
+	_substep_damping_antigrav,
+	NUMBER_OF_SUBSTEP_DAMPINGS
+};
+
+/* a mass point's springs and their dampings, apart (physics_compute_substep) */
+struct physics_substep_forces
+{
+	real_vector3d normal_spring;
+	real_vector3d normal_damping;
+	real_vector3d antigrav_spring;
+	real_vector3d antigrav_damping;
+};
+
+void physics_substep_set(
+	struct physics_substep *substep)
+{
+	physics_substep = substep;
+
+	return;
+}
+
+/* a damping that takes a share of the velocity a tick (rate) as scaled to take
+that share in a tick's sub-steps, each a fraction of a tick: 1 for none, and
+for one that takes the whole velocity or more each tick (kept as it is) */
+static real physics_substep_damping_scale(
+	real rate,
+	real fraction)
+{
+	if (!(rate > 0.0f && rate < 1.0f))
+		return 1.0f;
+
+	return (1.0f - sim_decay_per_substep(1.0f - rate)) / (rate * fraction);
+}
+
+/* a mass point's friction of a share of its velocity a tick (rate, its share
+of the vehicle's mass in it), into the vehicle's dampings along and across
+its forward, up or left (friction_evaluate's parallel and perpendicular; one
+of no direction is all parallel) */
+static void physics_substep_friction_rates(
+	struct mass_point_definition const *mass_point_definition,
+	real rate,
+	real *parallel_rate,
+	real *perpendicular_rate)
+{
+	if (mass_point_definition->friction_type == _friction_type_point)
+	{
+		*parallel_rate += rate;
+		*perpendicular_rate += rate;
+	}
+	else
+	{
+		*parallel_rate += rate*mass_point_definition->friction_parallel_scale;
+		*perpendicular_rate += rate*mass_point_definition->friction_perpendicular_scale;
+	}
+
+	return;
+}
+
+/* a friction as scaled for the sub-step, along and across */
+static void physics_substep_friction_scale(
+	struct friction_datum *friction,
+	real parallel_scale,
+	real perpendicular_scale)
+{
+	scale_vector3d(&friction->parallel, parallel_scale, &friction->parallel);
+	scale_vector3d(&friction->perpendicular, perpendicular_scale, &friction->perpendicular);
+	add_vectors3d(&friction->parallel, &friction->perpendicular, &friction->friction);
+
+	return;
+}
+
+/* physics_compute_new's forces, for a sub-step a fraction of a tick: each
+mass point's the same, but for its dampings, scaled so that the sub-steps
+take what a tick takes ("sub-steps", above). The mass points come out as
+physics_compute_new leaves them, their forces as scaled */
+static void physics_compute_substep(
+	struct physics_instance const *instance,
+	struct powered_mass_point_datum const *powered_mass_points,
+	struct mass_point_datum *mass_points,
+	real fraction,
+	real_vector3d *total_force,
+	real_vector3d *total_torque)
+{
+	struct object_datum *object = object_get(instance->object_index);
+	struct physics_definition const *physics = instance->physics;
+	real gravity = physics->gravity_scale*global_gravity;
+	struct physics_substep_forces forces[MAXIMUM_MASS_POINTS_PER_PHYSICS];
+	real rates[NUMBER_OF_SUBSTEP_DAMPINGS];
+	real scales[NUMBER_OF_SUBSTEP_DAMPINGS];
+	short mass_point_index;
+	short damping_index;
+	short mass_point_count = physics_mass_point_count(physics);
+
+	set_real_vector3d(total_force, 0.0f, 0.0f, -physics->mass*gravity);
+	set_real_vector3d(total_torque, 0.0f, 0.0f, 0.0f);
+
+	memset(mass_points, 0, sizeof(struct mass_point_datum)*mass_point_count);
+	memset(forces, 0, sizeof(struct physics_substep_forces)*mass_point_count);
+	for (damping_index = 0; damping_index < NUMBER_OF_SUBSTEP_DAMPINGS; damping_index++)
+		rates[damping_index] = 0.0f;
+
+	for (mass_point_index = 0;
+		mass_point_index < mass_point_count;
+		mass_point_index++)
+	{
+		struct mass_point_definition const *mass_point_definition = TAG_BLOCK_GET_ELEMENT(
+			&physics->mass_points,
+			mass_point_index,
+			struct mass_point_definition);
+		struct mass_point_datum *mass_point = mass_points + mass_point_index;
+		struct physics_substep_forces *mass_point_forces = forces + mass_point_index;
+		struct powered_mass_point_definition const *powered_mass_point_definition = NULL;
+		struct powered_mass_point_datum const *powered_mass_point = NULL;
+		real_vector3d powered_velocity;
+		short powered_mass_point_index = physics_powered_mass_point_index(physics, mass_point_definition);
+		/* (its share of the vehicle's mass: how much its friction moves the
+		vehicle) */
+		real mass_share = physics->mass > 0.0f ? mass_point_definition->mass/physics->mass : 0.0f;
+
+		if (powered_mass_point_index != NONE && powered_mass_points)
+		{
+			powered_mass_point_definition = TAG_BLOCK_GET_ELEMENT(
+				&physics->powered_mass_points,
+				powered_mass_point_index,
+				struct powered_mass_point_definition);
+			powered_mass_point = powered_mass_points + powered_mass_point_index;
+		}
+
+		mass_point->flags = 0;
+		matrix4x3_transform_point(
+			&instance->world_matrix,
+			&mass_point_definition->position,
+			&mass_point->position);
+		if (powered_mass_point)
+		{
+			real_matrix4x3 powered_world_matrix;
+
+			matrix4x3_multiply(&instance->world_matrix, &powered_mass_point->rotation_matrix, &powered_world_matrix);
+			matrix4x3_transform_normal(&powered_world_matrix, &mass_point_definition->forward, &mass_point->forward);
+			matrix4x3_transform_normal(&powered_world_matrix, &mass_point_definition->up, &mass_point->up);
+		}
+		else
+		{
+			matrix4x3_transform_normal(&instance->world_matrix, &mass_point_definition->forward, &mass_point->forward);
+			matrix4x3_transform_normal(&instance->world_matrix, &mass_point_definition->up, &mass_point->up);
+		}
+		scenario_location_from_point(&mass_point->location, &mass_point->position);
+
+		vector_from_points3d(&object->object.position, &mass_point->position, &mass_point->radius);
+		cross_product3d(&object->object.angular_velocity, &mass_point->radius, &mass_point->velocity);
+		add_vectors3d(&object->object.translational_velocity, &mass_point->velocity, &mass_point->velocity);
+
+		compute_ground_plane(instance->object_index, mass_point, mass_point_definition);
+		mass_point->water_depth = scenario_location_water_depth(&mass_point->location, &mass_point->position);
+
+		if (mass_point->ground_depth > 0.0f)
+		{
+			struct material_definition const *material = scenario_material_definition_get(
+				mass_point->ground_material_type);
+			real ground_friction = physics->ground_friction;
+			real ground_normal_k1 = physics->ground_normal_k1;
+			real ground_normal_k0 = physics->ground_normal_k0;
+			real ground_depth = physics->ground_depth;
+			real ground_damp_fraction = physics->ground_damp_fraction;
+			real normal_velocity;
+			real ground_scale;
+
+			if (material->physics_ground_friction_scale > 0.0f && physics->mass <= 7500.0f)
+				ground_friction *= material->physics_ground_friction_scale;
+			if (material->physics_ground_friction_normal_k1_scale > 0.0f)
+				ground_normal_k1 *= material->physics_ground_friction_normal_k1_scale;
+			if (material->physics_ground_friction_normal_k0_scale > 0.0f)
+				ground_normal_k0 *= material->physics_ground_friction_normal_k0_scale;
+			if (material->physics_ground_depth_scale > 0.0f)
+				ground_depth *= material->physics_ground_depth_scale;
+			if (material->physics_ground_damp_fraction_scale > 0.0f)
+				ground_damp_fraction *= material->physics_ground_damp_fraction_scale;
+
+			/* (the ground's push, its spring and its damping apart: each mass
+			point on the ground damps the whole vehicle) */
+			normal_velocity = dot_product3d(&mass_point->velocity, &mass_point->ground_plane.n);
+			scale_vector3d(
+				&mass_point->ground_plane.n,
+				physics->mass*(global_gravity/ground_depth*mass_point->ground_depth),
+				&mass_point_forces->normal_spring);
+			scale_vector3d(
+				&mass_point->ground_plane.n,
+				-physics->mass*normal_velocity*ground_damp_fraction,
+				&mass_point_forces->normal_damping);
+			rates[_substep_damping_normal] += ground_damp_fraction;
+
+			scale_vector3d(&mass_point->ground_plane.n, -normal_velocity, &mass_point->velocity_relative_to_ground);
+			add_vectors3d(&mass_point->velocity_relative_to_ground, &mass_point->velocity, &mass_point->velocity_relative_to_ground);
+
+			ground_scale = -mass_point_definition->mass*ground_friction;
+			scale_vector3d(&mass_point->velocity_relative_to_ground, ground_scale, &mass_point->ground_friction.friction);
+
+			if (powered_mass_point_definition &&
+				TEST_FLAG(powered_mass_point_definition->flags, _powered_mass_point_ground_friction_bit) &&
+				powered_mass_point->ground_friction_velocity != 0.0f)
+			{
+				real ground_fraction = pin_fraction(mass_point->ground_plane.n.k, ground_normal_k0, ground_normal_k1);
+				real alignment = PIN(dot_product3d(&mass_point->up, &mass_point->ground_plane.n), 0.0f, 1.0f);
+				real weight = alignment*alignment*ground_fraction*ground_fraction*ground_scale;
+				real_vector3d projected_velocity;
+
+				scale_vector3d(&mass_point->forward, -powered_mass_point->ground_friction_velocity, &powered_velocity);
+				scale_vector3d(
+					&mass_point->ground_plane.n,
+					-dot_product3d(&powered_velocity, &mass_point->ground_plane.n),
+					&projected_velocity);
+				add_vectors3d(&projected_velocity, &powered_velocity, &projected_velocity);
+				add_vectors3d(&mass_point->velocity_relative_to_ground, &projected_velocity, &mass_point->velocity_relative_to_ground);
+				scale_vector3d(&projected_velocity, weight, &projected_velocity);
+				add_vectors3d(&mass_point->ground_friction.friction, &projected_velocity, &mass_point->ground_friction.friction);
+			}
+
+			friction_evaluate(
+				mass_point_definition->friction_type,
+				mass_point_definition->friction_parallel_scale,
+				mass_point_definition->friction_perpendicular_scale,
+				&mass_point->ground_friction,
+				&mass_point->forward,
+				&mass_point->up);
+			physics_substep_friction_rates(
+				mass_point_definition,
+				mass_share*ground_friction,
+				&rates[_substep_damping_ground_parallel],
+				&rates[_substep_damping_ground_perpendicular]);
+		}
+
+		if (mass_point->water_depth > 0.0f)
+		{
+			real depth_fraction = mass_point->water_depth < physics->water_depth ?
+				mass_point->water_depth/physics->water_depth : 1.0f;
+			real water_scale = -mass_point_definition->mass*physics->water_friction;
+
+			if (mass_point_definition->density > 0.0f && physics->water_depth > 0.0f)
+			{
+				mass_point->water_pressure_magnitude = mass_point_definition->mass/mass_point_definition->density*
+					physics->water_density*depth_fraction*gravity;
+				set_real_vector3d(&mass_point->water_pressure, 0.0f, 0.0f, mass_point->water_pressure_magnitude);
+			}
+
+			if (powered_mass_point_definition &&
+				TEST_FLAG(powered_mass_point_definition->flags, _powered_mass_point_water_friction_bit) &&
+				powered_mass_point->water_friction_velocity != 0.0f)
+			{
+				scale_vector3d(&mass_point->forward, -powered_mass_point->water_friction_velocity, &powered_velocity);
+				add_vectors3d(&powered_velocity, &mass_point->velocity, &powered_velocity);
+				scale_vector3d(&powered_velocity, water_scale, &mass_point->water_friction.friction);
+			}
+			else
+			{
+				scale_vector3d(&mass_point->velocity, water_scale, &mass_point->water_friction.friction);
+			}
+
+			friction_evaluate(
+				mass_point_definition->friction_type,
+				mass_point_definition->friction_parallel_scale,
+				mass_point_definition->friction_perpendicular_scale,
+				&mass_point->water_friction,
+				&mass_point->forward,
+				&mass_point->up);
+			physics_substep_friction_rates(
+				mass_point_definition,
+				mass_share*physics->water_friction,
+				&rates[_substep_damping_water_parallel],
+				&rates[_substep_damping_water_perpendicular]);
+
+			if (powered_mass_point_definition &&
+				TEST_FLAG(powered_mass_point_definition->flags, _powered_mass_point_water_lift_bit) &&
+				powered_mass_point->water_lift_ratio != 0.0f)
+			{
+				real lift = fabs(dot_product3d(&mass_point->forward, &mass_point->velocity))*
+					powered_mass_point->water_lift_ratio*physics->mass*depth_fraction;
+				real_vector3d lift_force;
+
+				scale_vector3d(&mass_point->up, lift, &lift_force);
+				add_vectors3d(&mass_point->powered_force, &lift_force, &mass_point->powered_force);
+			}
+		}
+
+		{
+			real air_scale = -mass_point_definition->mass*physics->air_friction;
+
+			if (powered_mass_point_definition &&
+				TEST_FLAG(powered_mass_point_definition->flags, _powered_mass_point_air_friction_bit) &&
+				powered_mass_point->air_friction_velocity != 0.0f)
+			{
+				scale_vector3d(&mass_point->forward, -powered_mass_point->air_friction_velocity, &powered_velocity);
+				add_vectors3d(&powered_velocity, &mass_point->velocity, &powered_velocity);
+				scale_vector3d(&powered_velocity, air_scale, &mass_point->air_friction.friction);
+			}
+			else
+			{
+				scale_vector3d(&mass_point->velocity, air_scale, &mass_point->air_friction.friction);
+			}
+
+			friction_evaluate(
+				mass_point_definition->friction_type,
+				mass_point_definition->friction_parallel_scale,
+				mass_point_definition->friction_perpendicular_scale,
+				&mass_point->air_friction,
+				&mass_point->forward,
+				&mass_point->up);
+			physics_substep_friction_rates(
+				mass_point_definition,
+				mass_share*physics->air_friction,
+				&rates[_substep_damping_air_parallel],
+				&rates[_substep_damping_air_perpendicular]);
+
+			if (powered_mass_point_definition &&
+				TEST_FLAG(powered_mass_point_definition->flags, _powered_mass_point_air_lift_bit) &&
+				powered_mass_point->air_lift_ratio != 0.0f)
+			{
+				real lift = fabs(dot_product3d(&mass_point->forward, &mass_point->velocity))*
+					physics->mass*powered_mass_point->air_lift_ratio;
+				real_vector3d lift_force;
+
+				scale_vector3d(&mass_point->up, lift, &lift_force);
+				add_vectors3d(&mass_point->powered_force, &lift_force, &mass_point->powered_force);
+			}
+		}
+
+		SET_FLAG(mass_point->flags, _point_at_rest_bit, magnitude_squared3d(&mass_point->velocity) < 0.0011111111f);
+		SET_FLAG(mass_point->flags, _point_on_ground_bit, mass_point->ground_depth > 0.0f);
+		SET_FLAG(mass_point->flags, _point_in_water_bit, mass_point->water_depth > 0.0f);
+
+		if (powered_mass_point_definition)
+		{
+			if (TEST_FLAG(powered_mass_point_definition->flags, _powered_mass_point_thrust_bit))
+			{
+				real_vector3d thrust;
+
+				scale_vector3d(&mass_point->forward, powered_mass_point->thrust_fraction*physics->mass, &thrust);
+				add_vectors3d(&mass_point->powered_force, &thrust, &mass_point->powered_force);
+			}
+
+			if (TEST_FLAG(powered_mass_point_definition->flags, _powered_mass_point_antigrav_bit))
+			{
+				real probe_length = mass_point_definition->radius + powered_mass_point_definition->antigrav_height;
+				real_point3d point = mass_point->position;
+				real_vector3d probe_vector;
+				struct collision_result collision;
+
+				scale_vector3d(global_down3d, probe_length, &probe_vector);
+
+				if (collision_test_vector(
+						_collision_test_for_bipeds_dead_flags,
+						&point,
+						&probe_vector,
+						instance->object_index,
+						&collision))
+				{
+					real height = probe_length*collision.t - mass_point_definition->radius;
+					real alignment = pin_fraction(
+						mass_point->up.k,
+						powered_mass_point_definition->antigrav_normal_k0,
+						powered_mass_point_definition->antigrav_normal_k1);
+					real ground_effect = height > 0.0f ?
+						1.0f - height/powered_mass_point_definition->antigrav_height : 1.0f;
+					real strength = powered_mass_point->antigrav_fraction*
+						powered_mass_point_definition->antigrav_strength*
+						alignment;
+
+					/* (its lift, a spring of the height, and its damping apart:
+					each damps the whole vehicle by its strength) */
+					scale_vector3d(
+						&collision.plane.n,
+						ground_effect*ground_effect*global_gravity*strength*physics->mass,
+						&mass_point_forces->antigrav_spring);
+					scale_vector3d(
+						&collision.plane.n,
+						-dot_product3d(&collision.plane.n, &mass_point->velocity)*
+							powered_mass_point_definition->antigrav_damp_fraction*strength*physics->mass,
+						&mass_point_forces->antigrav_damping);
+					rates[_substep_damping_antigrav] += powered_mass_point_definition->antigrav_damp_fraction*strength;
+					SET_FLAG(mass_point->flags, _point_antigraving_bit, TRUE);
+				}
+			}
+		}
+	}
+
+	/* the dampings scaled for the sub-step, and the forces summed */
+	for (damping_index = 0; damping_index < NUMBER_OF_SUBSTEP_DAMPINGS; damping_index++)
+		scales[damping_index] = physics_substep_damping_scale(rates[damping_index], fraction);
+
+	for (mass_point_index = 0;
+		mass_point_index < mass_point_count;
+		mass_point_index++)
+	{
+		struct mass_point_datum *mass_point = mass_points + mass_point_index;
+		struct physics_substep_forces const *mass_point_forces = forces + mass_point_index;
+		real_vector3d damping;
+
+		scale_vector3d(&mass_point_forces->normal_damping, scales[_substep_damping_normal], &damping);
+		add_vectors3d(&mass_point_forces->normal_spring, &damping, &mass_point->normal_force);
+		mass_point->normal_force_magnitude = dot_product3d(&mass_point->normal_force, &mass_point->ground_plane.n);
+		if (mass_point->ground_depth > 0.0f)
+		{
+			physics_substep_friction_scale(
+				&mass_point->ground_friction,
+				scales[_substep_damping_ground_parallel],
+				scales[_substep_damping_ground_perpendicular]);
+		}
+		if (mass_point->water_depth > 0.0f)
+		{
+			physics_substep_friction_scale(
+				&mass_point->water_friction,
+				scales[_substep_damping_water_parallel],
+				scales[_substep_damping_water_perpendicular]);
+		}
+		physics_substep_friction_scale(
+			&mass_point->air_friction,
+			scales[_substep_damping_air_parallel],
+			scales[_substep_damping_air_perpendicular]);
+		scale_vector3d(&mass_point_forces->antigrav_damping, scales[_substep_damping_antigrav], &damping);
+		add_vectors3d(&mass_point->powered_force, &mass_point_forces->antigrav_spring, &mass_point->powered_force);
+		add_vectors3d(&mass_point->powered_force, &damping, &mass_point->powered_force);
+
+		add_vectors3d(&mass_point->normal_force, &mass_point->ground_friction.friction, &mass_point->force);
+		add_vectors3d(&mass_point->force, &mass_point->water_pressure, &mass_point->force);
+		add_vectors3d(&mass_point->force, &mass_point->water_friction.friction, &mass_point->force);
+		add_vectors3d(&mass_point->force, &mass_point->air_friction.friction, &mass_point->force);
+		add_vectors3d(&mass_point->force, &mass_point->powered_force, &mass_point->force);
+		cross_product3d(&mass_point->radius, &mass_point->force, &mass_point->torque);
+
+		add_vectors3d(total_force, &mass_point->force, total_force);
+		add_vectors3d(total_torque, &mass_point->torque, total_torque);
+	}
+
+	return;
+}
+
+/* physics_update_new's integration, for a sub-step: its share of a tick's
+acceleration, travel and turn, the velocities a tick keeps made the
+sub-steps' at the tick's first and back at its last ("sub-steps", above),
+and the mass points swept through the sub-step's movement */
+static void physics_integrate_substep(
+	struct physics_instance const *instance,
+	struct mass_point_datum const *mass_points,
+	real_vector3d const *total_force,
+	real_vector3d const *total_torque,
+	struct physics_substep const *substep)
+{
+	struct vehicle_datum *vehicle = vehicle_datum_get(instance->object_index);
+	real fraction = substep->fraction;
+	/* the velocities a tick keeps are half a tick behind the motion, the
+	sub-steps' half a sub-step: apart by this much of a tick's acceleration */
+	real lag = (1.0f - fraction)*0.5f;
+	real velocity_share = substep->index == 0 ? fraction + lag : fraction;
+	boolean last = substep->index == substep->count - 1;
+	real_vector3d linear_acceleration;
+	real_vector3d linear_velocity;
+	real_point3d position;
+	real_vector3d angular_acceleration;
+	real_vector3d angular_velocity;
+	real_vector3d turn;
+	real_vector3d forward;
+	real_vector3d up;
+	short mass_point_index;
+	short mass_point_count = physics_mass_point_count(instance->physics);
+
+	match_assert(
+		"c:\\halo\\SOURCE\\physics\\physics.c",
+		986,
+		instance->physics->mass>0.0f);
+
+	scale_vector3d(total_force, 1.0f/instance->physics->mass, &linear_acceleration);
+	PHYSICS_POINT_FROM_LINE3D(
+		&vehicle->object.translational_velocity,
+		&linear_acceleration,
+		velocity_share,
+		&linear_velocity);
+	PHYSICS_POINT_FROM_LINE3D(&vehicle->object.position, &linear_velocity, fraction, &position);
+
+	/* (as physics_update_new) */
+	if (instance->physics->inertial_matrix.count < 2)
+	{
+		if (!warned_about_physics_inertial_matrix)
+		{
+			error(_error_silent, "a physics has %ld inertial matrices (2 expected)",
+				instance->physics->inertial_matrix.count);
+			warned_about_physics_inertial_matrix = TRUE;
+		}
+		set_real_vector3d(&angular_acceleration, 0.0f, 0.0f, 0.0f);
+	}
+	else
+	{
+		real_matrix3x3 frame;
+		real_matrix3x3 world_inverse_inertia;
+
+		matrix3x3_from_forward_and_up(
+			&frame,
+			&vehicle->object.forward,
+			&vehicle->object.up);
+		matrix3x3_multiply(
+			&frame,
+			TAG_BLOCK_GET_ELEMENT(
+				&instance->physics->inertial_matrix,
+				1,
+				real_matrix3x3),
+			&world_inverse_inertia);
+		matrix3x3_multiply(
+			&world_inverse_inertia,
+			matrix3x3_transpose(&frame, &frame),
+			&world_inverse_inertia);
+		matrix3x3_transform_vector(
+			&world_inverse_inertia,
+			total_torque,
+			&angular_acceleration);
+	}
+
+	PHYSICS_POINT_FROM_LINE3D(
+		&vehicle->object.angular_velocity,
+		&angular_acceleration,
+		velocity_share,
+		&angular_velocity);
+	scale_vector3d(&angular_velocity, fraction, &turn);
+	rotate_vectors3d_by_angular_velocity(
+		&vehicle->object.forward,
+		&vehicle->object.up,
+		&turn,
+		&forward,
+		&up);
+
+	match_assert_valid_real_vector3d("c:\\halo\\SOURCE\\physics\\physics.c", 994, &linear_velocity);
+	match_assert_valid_real_vector3d("c:\\halo\\SOURCE\\physics\\physics.c", 1012, &angular_velocity);
+
+	vehicle->object.translational_velocity = linear_velocity;
+	vehicle->object.angular_velocity = angular_velocity;
+
+	if (debug_physics_disable_penetration_freeze)
+	{
+		object_set_position(instance->object_index, &position, &forward, &up);
+	}
+	else
+	{
+		short passes_remaining = 4;
+		unsigned long stuck_mass_point_flags;
+
+		/* (as physics_update_new, through the sub-step's movement) */
+		while (passes_remaining-- > 0)
+		{
+			boolean found_collision = FALSE;
+			real_vector3d worst_delta;
+			struct collision_result worst_collision;
+			real_matrix4x3 world_matrix;
+			real_point3d center_of_mass;
+
+			stuck_mass_point_flags = 0;
+			matrix4x3_from_point_and_vectors(&world_matrix, &position, &forward, &up);
+			set_real_point3d(&center_of_mass,
+				-instance->physics->center_of_mass.x,
+				-instance->physics->center_of_mass.y,
+				-instance->physics->center_of_mass.z);
+			matrix4x3_transform_point(&world_matrix, &center_of_mass, &center_of_mass);
+			world_matrix.position = center_of_mass;
+
+			for (mass_point_index = 0;
+				mass_point_index < mass_point_count;
+				mass_point_index++)
+			{
+				struct mass_point_definition const *mass_point_definition = TAG_BLOCK_GET_ELEMENT(
+					&instance->physics->mass_points,
+					mass_point_index,
+					struct mass_point_definition);
+				struct mass_point_datum const *mass_point = mass_points + mass_point_index;
+				real_point3d swept_position;
+				real_vector3d delta;
+				struct collision_result collision;
+
+				matrix4x3_transform_point(
+					&world_matrix,
+					&mass_point_definition->position,
+					&swept_position);
+				vector_from_points3d(&mass_point->position, &swept_position, &delta);
+
+				if (collision_test_vector(
+						_collision_test_for_vehicles_flags |
+							FLAG(_collision_test_front_facing_surfaces_bit),
+						&mass_point->position,
+						&delta,
+						instance->object_index,
+						&collision))
+				{
+					SET_FLAG(stuck_mass_point_flags, mass_point_index, TRUE);
+
+					if (!found_collision || worst_collision.t > collision.t)
+					{
+						found_collision = TRUE;
+						worst_delta = delta;
+						worst_collision = collision;
+					}
+				}
+			}
+
+			if (!found_collision)
+			{
+				object_set_position(instance->object_index, &position, &forward, &up);
+				break;
+			}
+			else
+			{
+				real normal_dot_delta = dot_product3d(&worst_delta, &worst_collision.plane.n);
+				real epsilon = (real)(normal_dot_delta != 0.0f ?
+					0.0078125/fabs(normal_dot_delta) : 0.03125);
+				real t = MAX(worst_collision.t - epsilon, 0.0f);
+				real normal_dot_velocity = dot_product3d(&worst_collision.plane.n, &linear_velocity);
+
+				if (normal_dot_velocity < 0.0f)
+				{
+					PHYSICS_POINT_FROM_LINE3D(
+						&linear_velocity,
+						&worst_collision.plane.n,
+						(t - 1.0f)*normal_dot_velocity,
+						&linear_velocity);
+					vehicle->object.translational_velocity = linear_velocity;
+					PHYSICS_POINT_FROM_LINE3D(&vehicle->object.position, &linear_velocity, fraction, &position);
+				}
+
+				scale_vector3d(&angular_velocity, t, &angular_velocity);
+				vehicle->object.angular_velocity = angular_velocity;
+				scale_vector3d(&angular_velocity, fraction, &turn);
+				rotate_vectors3d_by_angular_velocity(
+					&vehicle->object.forward,
+					&vehicle->object.up,
+					&turn,
+					&forward,
+					&up);
+			}
+		}
+
+		vehicle->vehicle.stuck_mass_point_flags = stuck_mass_point_flags;
+	}
+
+	/* the velocities a tick keeps, at its last sub-step */
+	if (last)
+	{
+		PHYSICS_POINT_FROM_LINE3D(&linear_velocity, &linear_acceleration, -lag, &linear_velocity);
+		PHYSICS_POINT_FROM_LINE3D(&angular_velocity, &angular_acceleration, -lag, &angular_velocity);
+		vehicle->object.translational_velocity = linear_velocity;
+		vehicle->object.angular_velocity = angular_velocity;
+	}
+
+	/* (as physics_update_new) */
+	{
+		short at_rest_count = 0;
+		short on_ground_count = 0;
+		short on_volatile_surface_count = 0;
+		short in_water_count = 0;
+
+		for (mass_point_index = 0;
+			mass_point_index < mass_point_count;
+			mass_point_index++)
+		{
+			struct mass_point_datum const *mass_point = mass_points + mass_point_index;
+
+			at_rest_count += TEST_FLAG(mass_point->flags, _point_at_rest_bit);
+			on_ground_count += TEST_FLAG(mass_point->flags, _point_on_ground_bit);
+			on_volatile_surface_count += TEST_FLAG(mass_point->flags, _point_on_volatile_surface_bit);
+			in_water_count += TEST_FLAG(mass_point->flags, _point_in_water_bit);
+		}
+
+		SET_FLAG(
+			vehicle->object.flags,
+			_object_at_rest_bit,
+			at_rest_count == mass_point_count &&
+			on_ground_count >= 3 &&
+			on_volatile_surface_count == 0 &&
+			magnitude_squared3d(&linear_velocity) <= 0.0011111111f &&
+			magnitude_squared3d(&angular_velocity) <= 0.0027415568f &&
+			magnitude_squared3d(&linear_acceleration) <= 0.00000030864197f &&
+			magnitude_squared3d(&angular_acceleration) <= 0.0000030461742f);
+		SET_FLAG(vehicle->object.flags, _object_on_ground_bit, on_ground_count > 0);
+		SET_FLAG(vehicle->object.flags, _object_on_media_bit, in_water_count > 0);
+		SET_FLAG(vehicle->object.flags, _object_partially_under_media_bit, in_water_count > 0);
+		SET_FLAG(
+			vehicle->object.flags,
+			_object_wholly_under_media_bit,
+			in_water_count == mass_point_count);
+	}
+
+	return;
+}
+
+/* physics_update in a sub-step of the fast phase (physics_substep_set): the
+vehicle's forces from where it is now, the collision forces the tick took
+given their share, and the sub-step's movement; the collisions with other
+vehicles and bipeds at the tick's last, once, as at 30. Only a physics of
+mass points (not one of a radius, physics_update_old's, which no vehicle of
+the micro lane has: vehicle_moves_in_substeps) */
+static void physics_update_substep(
+	long object_index,
+	struct powered_mass_point_datum *powered_mass_points,
+	struct mass_point_datum *mass_points,
+	real_vector3d const *magic_force,
+	real_vector3d const *magic_torque,
+	struct physics_substep *substep)
+{
+	struct object_datum *object = object_get(object_index);
+	struct object_definition *object_definition = object_definition_get(object->definition_index);
+	struct physics_definition *physics = physics_definition_get(
+		object_definition->object.physics.index);
+	struct vehicle_datum *vehicle = vehicle_datum_get(object_index);
+	struct physics_instance instance;
+	real_vector3d total_force;
+	real_vector3d total_torque;
+	short powered_mass_point_index;
+
+	physics_instance_new(&instance, object_index);
+	if (powered_mass_points)
+	{
+		for (powered_mass_point_index = 0;
+			powered_mass_point_index < physics_powered_mass_point_count(physics);
+			powered_mass_point_index++)
+		{
+			struct powered_mass_point_datum *powered_mass_point =
+				powered_mass_points + powered_mass_point_index;
+
+			matrix4x3_rotation_from_quaternion(
+				&powered_mass_point->rotation_matrix,
+				&powered_mass_point->rotation);
+			matrix4x3_transpose(&powered_mass_point->rotation_matrix);
+		}
+	}
+
+	physics_compute_substep(
+		&instance,
+		powered_mass_points,
+		mass_points,
+		substep->fraction,
+		&total_force,
+		&total_torque);
+
+	/* the collision forces kept for this tick (the last tick's collisions,
+	and this one's with the macro lane's vehicles), each sub-step its share */
+	if (substep->index == 0)
+	{
+		substep->collision_force = vehicle->vehicle.collision_force;
+		substep->collision_torque = vehicle->vehicle.collision_torque;
+		set_real_vector3d(&vehicle->vehicle.collision_force, 0.0f, 0.0f, 0.0f);
+		set_real_vector3d(&vehicle->vehicle.collision_torque, 0.0f, 0.0f, 0.0f);
+	}
+	add_vectors3d(&total_force, &substep->collision_force, &total_force);
+	add_vectors3d(&total_torque, &substep->collision_torque, &total_torque);
+
+	if (magic_force)
+	{
+		match_assert_valid_real_vector3d("c:\\halo\\SOURCE\\physics\\physics.c", 270, magic_force);
+		add_vectors3d(&total_force, magic_force, &total_force);
+	}
+	if (magic_torque)
+	{
+		match_assert_valid_real_vector3d("c:\\halo\\SOURCE\\physics\\physics.c", 276, magic_torque);
+		add_vectors3d(&total_torque, magic_torque, &total_torque);
+	}
+
+	physics_integrate_substep(&instance, mass_points, &total_force, &total_torque, substep);
+	if (substep->index == substep->count - 1)
+		physics_compute_unit_collisions(object_index);
+
+	return;
+}

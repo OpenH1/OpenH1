@@ -57,6 +57,7 @@ OBJECTS.C
 #include "structures/structure_bsp_definitions.h"
 #include "units/units.h"
 #include "units/bipeds.h" /* port: a lift's riders of the micro lane */
+#include "units/vehicles.h" /* port: a player's vehicle, of the micro lane */
 #include "sim_rate.h" /* port: the sub-steps (port/linux/game/sim_rate.c) */
 /* port: object_bounds_cache.c's */
 void object_bounds_cache_update(long object_index, real_point3d const *center, real radius);
@@ -1332,6 +1333,8 @@ static boolean object_lane_micro_candidate(
 		return unit->unit.player_index != NONE || unit->unit.actor_index != NONE ||
 			unit->unit.swarm_actor_index != NONE;
 	}
+	case _object_type_vehicle:
+		return vehicle_takes_substeps(root_index);
 	case _object_type_projectile:
 	case _object_type_weapon:
 	case _object_type_equipment:
