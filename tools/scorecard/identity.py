@@ -123,7 +123,12 @@ def main():
     else:
         baseline = {name: args.baseline / f"{name}.txt" for name in SCENARIOS}
     failed = 0
+    # (a scenario new since the recorded baseline, which master records once it has it: a note)
+    recorded = json.loads((args.baseline / "baseline.json").read_text())["scenarios"] if args.baseline else SCENARIOS
     for name in SCENARIOS:
+        if name not in recorded:
+            print(f"{name}: new since the baseline was recorded (master records it once it has it)")
+            continue
         if not baseline[name].is_file():
             print(f"{name}: no baseline log ({baseline[name]})")
             failed += 1
@@ -140,7 +145,8 @@ def main():
         if not alike:
             print("\n".join("    " + line for line in compared.stdout.strip().splitlines()))
             failed += 1
-    print(f"identity: {len(SCENARIOS) - failed} of {len(SCENARIOS)} scenarios bit-identical at 30 Hz")
+    checked = [name for name in SCENARIOS if name in recorded]
+    print(f"identity: {len(checked) - failed} of {len(checked)} scenarios bit-identical at 30 Hz")
     return 1 if failed else 0
 
 
