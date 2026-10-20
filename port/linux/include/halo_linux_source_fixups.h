@@ -71,6 +71,22 @@ char const *pc_menus_screen(char const *name);
 /* debug.fixed_step: a game of this machine alone runs a tick a frame
 (port/linux/src/port_config.c; game_time.c, main.c) */
 int halo_fixed_step(void);
+/* debug.trace, the scorecard's per-step log (port/linux/game/sim_trace.c):
+each simulation step (the tick it ran, the sub-step's index in the tick and
+the sub-steps a tick, 0 and 1 at 30 Hz: game_time.c after each tick, for
+its last sub-step; the fast phase's trace slot for the others, sim_rate.h),
+and what the steps do, each call made only while the trace is on
+(SIM_TRACE), so that it costs nothing when it is off */
+extern int sim_trace_on;
+#define SIM_TRACE(call) do { if (sim_trace_on) { call; } } while (0)
+void sim_trace_step(long tick, long micro_step, long steps_per_tick);
+/* the sub-steps of this tick (port/linux/game/sim_rate.h) */
+short sim_substep_count(void);
+void sim_trace_projectile_new(long projectile_index);
+void sim_trace_projectile_collision(long projectile_index, void const *point, void const *normal,
+	float time_remaining, float fraction);
+void sim_trace_projectile_detonate(long projectile_index);
+void sim_trace_weapon_fire(long weapon_index, long owner_object_index, short trigger_index);
 /* the Custom Edition tag cache window, or NULL unless the
 game.custom_edition setting reserved it (port/linux/src/xbox_memory.c) */
 void *halo_custom_edition_tag_cache(void);

@@ -98,6 +98,10 @@ static long biped_build(
 	at the engine's own walking and running speeds: bipeds.c, old player physics) */
 	biped->biped.flags = FLAG(_biped_immune_to_falling_damage_bit) | FLAG(_biped_uses_player_physics_bit) |
 		FLAG(_biped_uses_old_player_physics_bit);
+	/* (its weapons fire from its eyes along its aim, as a player's do: weapons.c
+takes a shot's origin from the weapon's marker otherwise, and StageKit's
+weapons have none) */
+	biped->unit.flags = FLAG(_unit_fires_from_camera_bit);
 	/* (the engine's own field of view, player_control.c's for no unit) */
 	biped->unit.camera_field_of_view = DEGREES_TO_RADIANS(70.f);
 	/* (StageKit's own round numbers: a body a unit tall, half crouched, a
@@ -192,6 +196,24 @@ static void globals_build(
 
 /* ---------- public code */
 
+void stage_chamber_material(
+	struct stage *stage,
+	short material_type)
+{
+	struct structure_collision_material *material = cache_bsp_block(&stage->bsp->collision_materials, 1,
+		sizeof(*material));
+	struct collision_bsp *collision = stage->bsp->collision_bsp.address;
+	struct collision_surface *surfaces = collision->surfaces.address;
+	long index;
+
+	/* (no shader: what draws it, and its sounds; the type is what collisions
+	read, collisions.c) */
+	cache_no_reference(&material->shader, FOURCC('s', 'h', 'd', 'r'));
+	material->runtime_physics_material_type = material_type;
+	for (index = 0; index < collision->surfaces.count; index++)
+		surfaces[index].material_index = 0;
+}
+
 void stage_build(
 	struct stage *stage,
 	struct stagekit_scenario const *scenario)
@@ -211,6 +233,7 @@ void stage_build(
 	bsp_header = cache_bsp_allocate(sizeof(*bsp_header));
 	bsp = cache_bsp_allocate(sizeof(struct structure_bsp));
 	bsp_header->bsp = bsp;
+	stage->bsp = bsp;
 	bsp_header->signature = FOURCC('s', 'b', 's', 'p');
 
 	scenario_handle = cache_tag_new(FOURCC('s', 'c', 'n', 'r'), NONE, NONE, "stagekit\\void", sizeof(struct scenario),

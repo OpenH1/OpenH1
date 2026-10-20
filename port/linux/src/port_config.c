@@ -1107,8 +1107,23 @@ static const struct config_setting config_settings[] =
 		"input each tick at any frame rate); \"pad\" turns, looks, fires, throws, holds Back and walks in\n"
 		"turn, logging each (the VR mode's vr.aim = \"gamepad\"); \"menu:<buttons>\" presses menu\n"
 		"buttons one a second (a, b, x, y, up, down, left, right, start, back or\n"
-		"wait, separated by spaces or commas), for testing the menus; empty for\n"
-		"none." },
+		"wait, separated by spaces or commas), for testing the menus;\n"
+		"\"script:<second>[-<second>] <action>;...\" presses, holds and aims on the\n"
+		"simulation's clock in seconds from the scenario's start (tools/scorecard),\n"
+		"the same at any simulation rate; empty for none." },
+	{ "debug.trace", _config_string, "\"\"", "HALO_TRACE", _environment_value, _platform_all,
+		"A file to write a line for each simulation step to: the players' place,\n"
+		"velocity and aim, each projectile's, and what happened in the step\n"
+		"(shots, projectiles made, hits and detonations), timed in seconds from\n"
+		"the scenario's start (port/linux/game/sim_trace.c, tools/scorecard);\n"
+		"empty for none." },
+	{ "debug.trace_seconds", _config_real, "0.0", "HALO_TRACE_SECONDS", _environment_value, _platform_all,
+		"With debug.trace, quit once the scenario has run this many seconds of\n"
+		"simulation; 0 never." },
+	{ "debug.trace_mutation", _config_string, "\"\"", "HALO_TRACE_MUTATION", _environment_value, _platform_all,
+		"With debug.trace, a known bug put in on purpose, which the scorecard\n"
+		"must catch (tools/scorecard): \"head_start\", \"jump\" or \"speed\";\n"
+		"empty for none." },
 	{ "debug.bot_trace", _config_integer, "0", "HALO_BOT_TRACE", _environment_value, _platform_all,
 		"Log each bot's state (bots.count) every this many seconds: where it is\n"
 		"and goes, its path, target and weapon; 0 never." },

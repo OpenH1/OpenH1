@@ -9,13 +9,15 @@ from runner import SCENARIOS
 
 
 def test_scenarios_list(stagekit):
-    listed = subprocess.run([str(stagekit), "--list"], capture_output=True, text=True, check=True).stdout
+    listed = subprocess.run([str(runner.GAME)], capture_output=True, text=True, check=True,
+                            env=dict(HALO_GUEST_IMAGE=str(stagekit), HALO_STAGEKIT="--list", HOME=str(stagekit.parent),
+                                     PATH="/usr/bin:/bin")).stdout
     assert sorted(line.split()[0] for line in listed.splitlines()) == SCENARIOS
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS)
-def test_map_needs_no_correction(stagekit, scenario, tmp_path):
-    assert runner.validate(runner.generate(stagekit, scenario, tmp_path)) == 0
+def test_map_needs_no_correction(stagekit, map_validator, scenario, tmp_path):
+    assert runner.validate(map_validator, runner.generate(stagekit, scenario, tmp_path)) == 0
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS)

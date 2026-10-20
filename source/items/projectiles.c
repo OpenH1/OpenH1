@@ -607,6 +607,7 @@ boolean projectile_new(
 
 	SET_FLAG(projectile->object.flags, _object_shadowless_bit, TRUE);
 	SET_FLAG(projectile->object.flags, _object_deleted_when_deactivated_bit, TRUE);
+	SIM_TRACE(sim_trace_projectile_new(projectile_index)); /* port: debug.trace */
 
 	return TRUE;
 }
@@ -923,6 +924,7 @@ boolean projectile_update(
 			(moved = TRUE) &&
 			projectile_collision_test_line(projectile_index, &new_position, &collision))
 		{
+			SIM_TRACE(sim_trace_projectile_collision(projectile_index, &collision.point, &collision.plane.n, time_remaining, collision.t)); /* port: debug.trace */
 			time_remaining = 1.0f - collision.t;
 			new_velocity.k += gravity_acceleration * time_remaining;
 			if (final_speed != 0.0f)
@@ -1089,6 +1091,7 @@ boolean projectile_update(
 		{
 			break;
 		}
+		SIM_TRACE(sim_trace_projectile_detonate(projectile_index)); /* port: debug.trace */
 		projectile_detonate(projectile_index, collision_count == 0, time_remaining);
 		/* the detonated projectile is deleted below */
 

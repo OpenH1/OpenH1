@@ -304,3 +304,105 @@ void prop_elevator(
 	placement->machine.device.power_group_index = NONE;
 	placement->machine.device.position_group_index = NONE;
 }
+
+/* ---------- weapons and projectiles (tools/scorecard's scenarios) */
+
+long prop_projectile(
+	char const *name,
+	struct projectile_shape const *shape)
+{
+	struct projectile_definition *projectile;
+	void *data;
+	long handle = cache_tag_new(FOURCC('p', 'r', 'o', 'j'), FOURCC('o', 'b', 'j', 'e'), NONE, name,
+		sizeof(struct projectile_definition), &data);
+
+	projectile = data;
+	projectile->object.type = _object_type_projectile;
+	cache_reference(&projectile->object.model, prop_empty_model());
+	/* (StageKit's own: a point, a hundredth round) */
+	projectile->object.bounding_radius = 0.01f;
+	/* (the engine's own units: world units a tick; one with a fuse slows to
+	nothing, else a bounce would leave at its final speed, projectiles.c) */
+	projectile->projectile.initial_velocity = shape->speed / TICKS_PER_SECOND;
+	projectile->projectile.final_velocity = shape->fuse > 0.f ? 0.f : shape->speed / TICKS_PER_SECOND;
+	projectile->projectile.air_gravity_scale = shape->gravity_scale;
+	projectile->projectile.water_gravity_scale = shape->gravity_scale;
+	/* (it keeps its speed, slowed only by its bounces, and flies on as far as
+	the chamber goes: a damage range of no length slows it none, and past it a
+	projectile of one speed and no fuse or range disappears, projectiles.c,
+	which takes the water's upper bound in the air too) */
+	projectile->projectile.air_damage_range_lower_bound = 2.f * CHAMBER_HALF_WIDTH * 2.f;
+	projectile->projectile.air_damage_range_upper_bound = 2.f * CHAMBER_HALF_WIDTH * 2.f;
+	projectile->projectile.water_damage_range_lower_bound = 2.f * CHAMBER_HALF_WIDTH * 2.f;
+	projectile->projectile.water_damage_range_upper_bound = 2.f * CHAMBER_HALF_WIDTH * 2.f;
+	/* (a fuse from its making, in seconds; none: it goes off where it
+	strikes, as it stops there: projectiles.c, a projectile slower than its
+	minimum velocity detonates) */
+	projectile->projectile.timer_lower_bound = shape->fuse;
+	projectile->projectile.timer_upper_bound = shape->fuse;
+	projectile->projectile.minimum_velocity = shape->fuse > 0.f ? 0.f : 0.0001f;
+	if (shape->fuse > 0.f)
+	{
+		struct projectile_material_response_definition *responses = cache_block(
+			&projectile->projectile.material_responses, NUMBER_OF_MATERIAL_TYPES, sizeof(*responses));
+		short material;
+
+		/* (on every material, a bounce: a reflection, its speed into the
+		surface and along it each scaled, projectiles.c, whose "parallel" is
+		along the surface's normal, its "perpendicular" along the surface;
+		stopped on the ground, it rests there until its fuse runs out) */
+		for (material = 0; material < NUMBER_OF_MATERIAL_TYPES; material++)
+		{
+			responses[material].default_response = _projectile_material_response_reflect;
+			responses[material].parallel_friction = 1.f - shape->bounce;
+			responses[material].perpendicular_friction = shape->friction;
+		}
+	}
+	return handle;
+}
+
+long prop_weapon(
+	char const *name,
+	long projectile_handle,
+	real rate_of_fire)
+{
+	struct weapon_definition *weapon;
+	struct weapon_trigger_definition *trigger;
+	void *data;
+	long handle = cache_tag_new(FOURCC('w', 'e', 'a', 'p'), FOURCC('i', 't', 'e', 'm'), FOURCC('o', 'b', 'j', 'e'),
+		name, sizeof(struct weapon_definition), &data);
+
+	weapon = data;
+	weapon->object.type = _object_type_weapon;
+	cache_reference(&weapon->object.model, prop_empty_model());
+	weapon->object.bounding_radius = 0.25f;
+	/* (the biped's one weapon class, stage.c's animations) */
+	strcpy(weapon->weapon.label, "unarmed");
+	/* (a HUD as an unarmed player's: hud_weapon.c reads it unchecked) */
+	cache_reference(&weapon->weapon.interface_definition.hud_interface,
+		cache_tag_new(FOURCC('w', 'p', 'h', 'i'), NONE, NONE, name, sizeof(struct weapon_hud_interface_definition),
+			&data));
+	trigger = cache_block(&weapon->weapon.triggers, 1, sizeof(*trigger));
+	/* (no magazine: it never runs out, weapons.c) */
+	trigger->magazine_index = NONE;
+	trigger->rounds_per_shot = 1;
+	trigger->projectiles_per_shot = 1;
+	trigger->initial_rate_of_fire = rate_of_fire;
+	trigger->final_rate_of_fire = rate_of_fire;
+	cache_reference(&trigger->projectile, projectile_handle);
+	return handle;
+}
+
+void player_loadout(
+	struct stage *stage,
+	long weapon_handle)
+{
+	struct scenario_starting_profile *profile = cache_block_add(&stage->scenario->starting_profiles,
+		sizeof(*profile));
+
+	strcpy(profile->name, "stagekit");
+	/* (as a map's profiles give: health and shields whole) */
+	profile->starting_health_modifier = 1.f;
+	profile->starting_shield_modifier = 1.f;
+	cache_reference(&profile->primary_weapon.weapon, weapon_handle);
+}

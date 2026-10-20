@@ -1,0 +1,461 @@
+/*
+SIM_TRACE.C
+
+The scorecard's per-step log (debug.trace, tools/scorecard): a line for each
+simulation step with its time, then the players' and projectiles' state as
+the step left it, and what happened in it. The scorecard plays a scenario at
+each simulation rate and compares what this logs in real units (seconds,
+world units, world units a second), so the times are the simulation's in
+seconds from the scenario's start, never ticks.
+
+Off (debug.trace empty), the game's calls cost a test of sim_trace_on
+(SIM_TRACE, halo_linux_source_fixups.h), except sim_trace_step's, once a
+step, which keeps the simulation's clock that debug.test_input's scripts
+("script:", port/linux/src/xinput_sdl.c) are timed on.
+
+Lines:
+
+    # sim trace 1 rate <R> mutation <name|->       once, first
+    s <t> <tick> <micro>                           each step: its end, in
+                                                   seconds from the scenario's
+                                                   start; the 30 Hz tick it is
+                                                   in; its index in that tick
+    p <player> <x> <y> <z> <vx> <vy> <vz> <ax> <ay> <az> <air>
+                                                   each player's unit: place,
+                                                   velocity (world units a
+                                                   second), aim (a unit
+                                                   vector), 1 airborne
+    o <id> <x> <y> <z> <vx> <vy> <vz>              each projectile in flight
+    e fire <player> <weapon> <trigger>             a weapon fired
+    e new <id> <tag> <x> <y> <z> <vx> <vy> <vz> <owner player>
+                                                   a projectile made, where
+                                                   and as fast as it starts
+    e hit <id> <t> <x> <y> <z> <nx> <ny> <nz>      it struck a surface, at t
+                                                   (in its update, by the
+                                                   fraction the projectile
+                                                   code found), at a point,
+                                                   facing a normal
+    e boom <id> <x> <y> <z>                        it detonated
+    e gone <id>                                    it is no more
+
+An event's line comes after the step's s line it happened in. Identifiers
+are object datum indexes in hexadecimal; a player is its absolute index, or
+-1 for none.
+
+The simulation's clock is sim_trace_step's, called after every step with
+the 30 Hz tick it is in, the sub-step's index in that tick and the number of
+sub-steps a tick (game.sim_rate / 30, sim_rate.h): by game_time.c after each
+tick, for its last sub-step (at 30 Hz, its only one: 0 and 1), and from the
+fast phase's last slot (_sim_substep_trace) for the others. The fast phase
+runs after the objects' update: until what a unit moves runs in it, a
+sub-step before the last sees the tick's end. A velocity
+is logged as the object keeps it, taken to be world units a 30 Hz tick
+(SECONDS_PER_VELOCITY_UNIT): if the micro lane keeps another unit, change
+it here, in one place.
+
+debug.trace_mutation puts a known bug in on purpose, which the scorecard
+must catch (its negative controls): "head_start", a projectile moves a whole
+tick further as it is made (as Halo 2's did, the other way, at 60 Hz);
+"jump", a jump leaves the ground 1.3% faster (2.6% higher, as an
+uncorrected 60 Hz jump does); "speed", a projectile starts 1% slow.
+*/
+
+#include "cseries.h"
+#include "game/game.h"
+#include "game/players.h"
+#include "objects/objects.h"
+#include "units/units.h"
+#include "units/bipeds.h"
+#include "items/projectiles.h"
+#include "tag_files/tag_files.h"
+#include "sim_rate.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+const char *config_string(char const *name);
+double config_real(char const *name);
+void platform_log(char const *format, ...);
+/* port/linux/game/network_test.c: the tick a scenario's seconds count from
+(its cues'), NONE until it is known; 0 with no network test */
+long network_test_cues_start_tick(void);
+
+/* ---------- constants */
+
+enum
+{
+	MAXIMUM_TRACED_PROJECTILES = 256,
+	TRACE_BUFFER_BYTES = 1 << 20,
+};
+
+/* a velocity as objects keep it (world units a 30 Hz tick) in world units a
+second */
+#define SECONDS_PER_VELOCITY_UNIT ((double)TICKS_PER_SECOND)
+
+enum
+{
+	_mutation_none,
+	_mutation_head_start,
+	_mutation_jump,
+	_mutation_speed,
+};
+
+/* ---------- globals */
+
+int sim_trace_on;
+
+static struct
+{
+	boolean checked;
+	FILE *file;
+	char *buffer;
+	double stop_seconds;
+	short mutation;
+	/* the clock: the last step's tick, index and steps a tick */
+	long tick;
+	long micro_step;
+	long steps_per_tick;
+	boolean stepped;
+	/* the projectiles in flight at the last step, and whether each is still
+	there at this one */
+	long projectiles[MAXIMUM_TRACED_PROJECTILES];
+	short projectile_count;
+	/* (the jump mutation: each player's unit airborne at the last step) */
+	boolean airborne[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+} sim_trace;
+
+/* the events of a step, written before the step's own line, are held back
+until it: a step's events print after its s line */
+static char sim_trace_events[64 * 1024];
+static int sim_trace_events_length;
+
+/* ---------- private code */
+
+/* the fast phase's last slot (sim_rate.h): each sub-step but the tick's
+last, which game_time.c logs after the tick (in the tick, game_time_get is
+the tick being run) */
+static void sim_trace_substep(
+	short substep_index,
+	short substep_count,
+	real seconds)
+{
+	(void)seconds;
+	if (substep_index < substep_count - 1)
+		sim_trace_step(game_time_get(), substep_index, substep_count);
+}
+
+static void sim_trace_check(
+	void)
+{
+	char const *path;
+	char const *mutation;
+
+	if (sim_trace.checked)
+		return;
+	sim_trace.checked = TRUE;
+	/* (the clock, which debug.test_input's scripts read, kept whether the
+	trace is on or not) */
+	sim_substep_register(_sim_substep_trace, sim_trace_substep);
+	path = config_string("debug.trace");
+	if (!path || !*path)
+		return;
+	sim_trace.file = fopen(path, "w");
+	if (!sim_trace.file)
+	{
+		platform_log("sim trace: cannot write %s", path);
+		return;
+	}
+	sim_trace.buffer = malloc(TRACE_BUFFER_BYTES);
+	if (sim_trace.buffer)
+		setvbuf(sim_trace.file, sim_trace.buffer, _IOFBF, TRACE_BUFFER_BYTES);
+	sim_trace.stop_seconds = config_real("debug.trace_seconds");
+	mutation = config_string("debug.trace_mutation");
+	if (!mutation || !*mutation)
+		sim_trace.mutation = _mutation_none;
+	else if (!strcmp(mutation, "head_start"))
+		sim_trace.mutation = _mutation_head_start;
+	else if (!strcmp(mutation, "jump"))
+		sim_trace.mutation = _mutation_jump;
+	else if (!strcmp(mutation, "speed"))
+		sim_trace.mutation = _mutation_speed;
+	else
+	{
+		platform_log("sim trace: no mutation \"%s\"", mutation);
+		sim_trace.mutation = _mutation_none;
+	}
+	platform_log("sim trace: %s%s%s", path, sim_trace.mutation ? ", mutation " : "",
+		sim_trace.mutation ? mutation : "");
+}
+
+/* the tick a scenario's seconds count from, NONE until it is known */
+static long sim_trace_start_tick(
+	void)
+{
+	return network_test_cues_start_tick();
+}
+
+/* seconds from the scenario's start to the end of the last step (the start
+of the next), or a negative number before it starts */
+static double sim_trace_seconds(
+	void)
+{
+	long start = sim_trace_start_tick();
+
+	if (!sim_trace.stepped || start == NONE)
+		return -1.0;
+	return ((double)(sim_trace.tick - start) + (double)(sim_trace.micro_step + 1) / (double)sim_trace.steps_per_tick) /
+		(double)TICKS_PER_SECOND;
+}
+
+static boolean sim_trace_logging(
+	void)
+{
+	return sim_trace.file && sim_trace_seconds() > 0.0;
+}
+
+static long sim_trace_player_of_unit(
+	long unit_index)
+{
+	struct unit_datum *unit;
+
+	if (unit_index == NONE)
+		return NONE;
+	unit = object_try_and_get_and_verify_type(unit_index, _object_mask_unit);
+	if (!unit || unit->unit.player_index == NONE)
+		return NONE;
+	return DATUM_INDEX_TO_ABSOLUTE_INDEX(unit->unit.player_index);
+}
+
+static void sim_trace_players(
+	void)
+{
+	struct data_iterator iterator;
+	struct player_datum *player;
+
+	data_iterator_new(&iterator, player_data);
+	while ((player = (struct player_datum *)data_iterator_next(&iterator)) != NULL)
+	{
+		long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index);
+		struct unit_datum *unit;
+		boolean airborne = FALSE;
+
+		if (player->unit_index == NONE)
+			continue;
+		unit = unit_get(player->unit_index);
+		if (TEST_FLAG(_object_mask_biped, unit->object.type))
+		{
+			struct biped_datum *biped = biped_get(player->unit_index);
+
+			airborne = TEST_FLAG(biped->biped.flags, _biped_airborne_bit);
+			/* (a jump: off the ground since the last step, rising) */
+			if (sim_trace.mutation == _mutation_jump && absolute_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS &&
+				airborne && !sim_trace.airborne[absolute_index] && unit->object.translational_velocity.k > 0.f)
+			{
+				unit->object.translational_velocity.k *= 1.013f;
+			}
+		}
+		if (absolute_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
+			sim_trace.airborne[absolute_index] = airborne;
+		fprintf(sim_trace.file, "p %ld %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %d\n", absolute_index,
+			unit->object.position.x, unit->object.position.y, unit->object.position.z,
+			unit->object.translational_velocity.i * SECONDS_PER_VELOCITY_UNIT,
+			unit->object.translational_velocity.j * SECONDS_PER_VELOCITY_UNIT,
+			unit->object.translational_velocity.k * SECONDS_PER_VELOCITY_UNIT,
+			unit->unit.aiming_vector.i, unit->unit.aiming_vector.j, unit->unit.aiming_vector.k, airborne ? 1 : 0);
+	}
+}
+
+static void sim_trace_projectiles(
+	void)
+{
+	struct object_iterator iterator;
+	struct object_datum *object;
+	long seen[MAXIMUM_TRACED_PROJECTILES];
+	short seen_count = 0;
+	short index;
+
+	object_iterator_new(&iterator, _object_mask_projectile, 0);
+	while ((object = object_iterator_next(&iterator)) != NULL)
+	{
+		boolean known = FALSE;
+
+		for (index = 0; index < sim_trace.projectile_count; index++)
+		{
+			if (sim_trace.projectiles[index] == iterator.index)
+				known = TRUE;
+		}
+		if (!known && sim_trace.mutation == _mutation_head_start)
+		{
+			real_point3d ahead;
+
+			ahead.x = object->object.position.x + object->object.translational_velocity.i;
+			ahead.y = object->object.position.y + object->object.translational_velocity.j;
+			ahead.z = object->object.position.z + object->object.translational_velocity.k;
+			object_translate(iterator.index, &ahead, NULL);
+		}
+		if (seen_count < MAXIMUM_TRACED_PROJECTILES)
+			seen[seen_count++] = iterator.index;
+		fprintf(sim_trace.file, "o %lx %.6f %.6f %.6f %.6f %.6f %.6f\n", iterator.index,
+			object->object.position.x, object->object.position.y, object->object.position.z,
+			object->object.translational_velocity.i * SECONDS_PER_VELOCITY_UNIT,
+			object->object.translational_velocity.j * SECONDS_PER_VELOCITY_UNIT,
+			object->object.translational_velocity.k * SECONDS_PER_VELOCITY_UNIT);
+	}
+	for (index = 0; index < sim_trace.projectile_count; index++)
+	{
+		short other;
+		boolean there = FALSE;
+
+		for (other = 0; other < seen_count; other++)
+		{
+			if (seen[other] == sim_trace.projectiles[index])
+				there = TRUE;
+		}
+		if (!there)
+			fprintf(sim_trace.file, "e gone %lx\n", sim_trace.projectiles[index]);
+	}
+	memcpy(sim_trace.projectiles, seen, seen_count * sizeof(seen[0]));
+	sim_trace.projectile_count = seen_count;
+}
+
+/* ---------- public code */
+
+void sim_trace_step(
+	long tick,
+	long micro_step,
+	long steps_per_tick)
+{
+	double seconds;
+
+	if (!sim_trace.checked)
+	{
+		sim_trace_check();
+		if (sim_trace.file)
+		{
+			fprintf(sim_trace.file, "# sim trace 1 rate %ld mutation %s\n", steps_per_tick * TICKS_PER_SECOND,
+				sim_trace.mutation ? config_string("debug.trace_mutation") : "-");
+		}
+	}
+	sim_trace.tick = tick;
+	sim_trace.micro_step = micro_step;
+	sim_trace.steps_per_tick = steps_per_tick > 0 ? steps_per_tick : 1;
+	sim_trace.stepped = TRUE;
+	/* (the events of the step to come follow its line: on from the first
+	step of the scenario) */
+	sim_trace_on = sim_trace.file != NULL && sim_trace_start_tick() != NONE;
+	if (!sim_trace_logging())
+	{
+		sim_trace_events_length = 0;
+		return;
+	}
+	seconds = sim_trace_seconds();
+	fprintf(sim_trace.file, "s %.6f %ld %ld\n", seconds, tick, micro_step);
+	fwrite(sim_trace_events, 1, sim_trace_events_length, sim_trace.file);
+	sim_trace_events_length = 0;
+	sim_trace_players();
+	sim_trace_projectiles();
+	if (sim_trace.stop_seconds > 0.0 && seconds >= sim_trace.stop_seconds - 1e-9)
+	{
+		fclose(sim_trace.file);
+		sim_trace.file = NULL;
+		platform_log("sim trace: %.3f seconds traced", seconds);
+		exit(EXIT_SUCCESS);
+	}
+}
+
+double sim_trace_scenario_seconds(
+	void)
+{
+	return sim_trace_seconds();
+}
+
+static void sim_trace_event(
+	char const *format,
+	...)
+{
+	va_list arguments;
+	int length;
+
+	va_start(arguments, format);
+	length = vsnprintf(sim_trace_events + sim_trace_events_length,
+		sizeof(sim_trace_events) - sim_trace_events_length, format, arguments);
+	va_end(arguments);
+	if (length > 0 && sim_trace_events_length + length < (int)sizeof(sim_trace_events))
+		sim_trace_events_length += length;
+}
+
+void sim_trace_projectile_new(
+	long projectile_index)
+{
+	struct projectile_datum *projectile = projectile_get(projectile_index);
+
+	if (sim_trace.mutation == _mutation_speed)
+		scale_vector3d(&projectile->object.translational_velocity, 0.99f, &projectile->object.translational_velocity);
+	sim_trace_event("e new %lx %s %.6f %.6f %.6f %.6f %.6f %.6f %ld\n", projectile_index,
+		tag_get_name(projectile->definition_index),
+		projectile->object.position.x, projectile->object.position.y, projectile->object.position.z,
+		projectile->object.translational_velocity.i * SECONDS_PER_VELOCITY_UNIT,
+		projectile->object.translational_velocity.j * SECONDS_PER_VELOCITY_UNIT,
+		projectile->object.translational_velocity.k * SECONDS_PER_VELOCITY_UNIT,
+		sim_trace_player_of_unit(object_get_ultimate_parent(projectile->object.owner_object_index)));
+}
+
+void sim_trace_projectile_collision(
+	long projectile_index,
+	void const *point,
+	void const *normal,
+	float time_remaining,
+	float fraction)
+{
+	real_point3d const *at = point;
+	real_vector3d const *facing = normal;
+	/* (the line tested spans the update's time left, from that far into it;
+	an update in the fast phase spans its sub-step, one in the objects'
+	update the whole tick) */
+	double into_update = (1.0 - time_remaining) + fraction * time_remaining;
+	short substep_index = sim_substep_index();
+	double ticks = substep_index == NONE ? into_update :
+		(substep_index + into_update) / sim_substep_count();
+
+	sim_trace_event("e hit %lx %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", projectile_index,
+		((double)(game_time_get() - sim_trace_start_tick()) + ticks) / (double)TICKS_PER_SECOND,
+		at->x, at->y, at->z, facing->i, facing->j, facing->k);
+}
+
+void sim_trace_projectile_detonate(
+	long projectile_index)
+{
+	struct object_datum *object = object_get(projectile_index);
+
+	sim_trace_event("e boom %lx %.6f %.6f %.6f\n", projectile_index,
+		object->object.position.x, object->object.position.y, object->object.position.z);
+}
+
+void sim_trace_weapon_fire(
+	long weapon_index,
+	long owner_object_index,
+	short trigger_index)
+{
+	sim_trace_event("e fire %ld %lx %d\n", sim_trace_player_of_unit(object_get_ultimate_parent(owner_object_index)),
+		weapon_index, (int)trigger_index);
+}
+
+/* debug.test_input "script:"'s aim (port/linux/src/xinput_sdl.c): the first
+local player's view turned to a yaw and pitch, in degrees, as a map's
+scripts turn it */
+void sim_trace_aim(
+	double yaw,
+	double pitch)
+{
+	real_euler_angles2d angles;
+	real_vector3d facing;
+
+	if (local_player_get_player_index(0) == NONE)
+		return;
+	angles.yaw = DEGREES_TO_RADIANS(yaw);
+	angles.pitch = DEGREES_TO_RADIANS(pitch);
+	vector3d_from_euler_angles2d(&facing, &angles);
+	player_control_set_facing(0, &facing);
+}
