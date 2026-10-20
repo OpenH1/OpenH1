@@ -28,6 +28,13 @@ read the drawn pose of what they hang off. A stream of particles from an
 object, made in the tick, is held back to be made through the frames between
 the ticks (render_interpolation_particle_later).
 
+An object made in a tick has no snapshot from the tick before: one moving
+(a bolt, a grenade thrown) is drawn from a tick of its motion back, not
+standing a tick where the tick left it. A projectile deleted in a tick (at
+what it hit) is drawn a tick longer, from its last snapshot to where it was
+deleted, as the effects it made there are drawn from the start of the tick:
+a ghost, drawn only here, which nothing of the game sees.
+
 An object the distributed netcode moves to where the host has it
 (port/linux/game/network_objects.c) is drawn gliding there over a few ticks
 rather than jumping: its snapshots move with it, and the difference is drawn
@@ -39,6 +46,9 @@ with their unit, and with what it rides.
 #include "cseries.h"
 #include "math/real_math.h"
 #include "objects/objects.h"
+#include "objects/object_definitions.h"
+#include "models/models.h"
+#include "rasterizer/rasterizer_model_types.h"
 #include "camera/camera_scripting.h"
 #include "camera/director.h"
 #include "camera/observer.h"
@@ -46,12 +56,15 @@ with their unit, and with what it rides.
 #include "effects/particles.h"
 #include "game/game.h"
 #include "game/players.h"
-#include "render/render_cameras.h"
+#include "render/render.h"
+#include "render/render_cameras_internal.h"
 #include "units/units.h"
 
 /* port/linux/src/port_config.c */
 int config_boolean(const char *name);
 unsigned long config_changes(void);
+/* render_objects.c */
+boolean render_objects_port_last_lighting(long object_index, struct render_lighting *lighting);
 
 #include <math.h>
 #include <stdlib.h>
@@ -91,6 +104,10 @@ vehicle is corrected by (3 and 4 world units), short of a snap */
 /* particles held back to be made between the ticks
 (render_interpolation_particle_later) */
 #define MAXIMUM_LATER_PARTICLES 512
+/* deleted projectiles drawn a tick longer (render_interpolation_object_deleted),
+and the nodes each may have */
+#define MAXIMUM_GHOSTS 64
+#define MAXIMUM_GHOST_NODES 8
 
 /* ---------- structures */
 
@@ -131,6 +148,8 @@ struct interpolated_object
 	real_rgb_color change_colors[3][NUMBER_OF_OBJECT_CHANGE_COLORS];
 	real camouflage[3][2];
 	long values_blended_frame;
+	/* where the object was at the latest snapshot */
+	real_point3d position;
 };
 
 struct interpolated_camera
@@ -168,6 +187,29 @@ struct interpolated_first_person
 	real_matrix4x3 latest[MAXIMUM_INTERPOLATED_NODES];
 };
 
+/* a projectile deleted in a tick, drawn through the frames after it */
+struct interpolation_ghost
+{
+	boolean in_use;
+	long object_index;
+	long tick; /* drawn in the frames after this tick; NONE until it ends */
+	long model_index;
+	short node_count;
+	short forced_shader_permutation_index;
+	/* the last snapshot, and where it was then and from there when deleted */
+	real_point3d position;
+	real_vector3d offset;
+	/* the bounding sphere, from its position */
+	real_vector3d center_offset;
+	real radius;
+	real_matrix4x3 nodes[MAXIMUM_GHOST_NODES];
+	real_matrix4x3 drawn[MAXIMUM_GHOST_NODES];
+	byte region_permutations[MAXIMUM_REGIONS_PER_OBJECT];
+	real function_values[NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS];
+	real_rgb_color change_colors[NUMBER_OF_OBJECT_CHANGE_COLORS];
+	struct render_lighting lighting;
+};
+
 /* ---------- globals */
 
 static struct interpolated_object *interpolated_objects;
@@ -186,6 +228,7 @@ static boolean interpolation_rendering;
 static real interpolation_fraction = 1.0f;
 static struct later_particle later_particles[MAXIMUM_LATER_PARTICLES];
 static short later_particle_count;
+static struct interpolation_ghost ghosts[MAXIMUM_GHOSTS];
 
 /* ---------- blending */
 
@@ -421,12 +464,29 @@ static real distance_squared(real_point3d const *a, real_point3d const *b)
 
 /* ---------- ticks */
 
+static void render_interpolation_ghosts_tick(void);
+
+/* the record's snapshot of the tick before, made of its latest (its nodes
+already placed): the latest's rotations, values and camouflage */
+static void render_interpolation_previous_values(struct interpolated_object *record)
+{
+	record->rotations_valid[record->latest ^ 1] = FALSE;
+	memcpy(record->function_values[record->latest ^ 1], record->function_values[record->latest],
+		sizeof(record->function_values[0]));
+	memcpy(record->change_colors[record->latest ^ 1], record->change_colors[record->latest],
+		sizeof(record->change_colors[0]));
+	memcpy(record->camouflage[record->latest ^ 1], record->camouflage[record->latest],
+		sizeof(record->camouflage[0]));
+	record->has_previous = TRUE;
+}
+
 void render_interpolation_tick(void)
 {
 	struct object_iterator iterator;
 	struct object_datum *object;
 	long previous_tick = interpolation_tick++;
 
+	render_interpolation_ghosts_tick();
 	if (!halo_interpolation_enabled())
 	{
 		interpolation_from.object_index = NONE;
@@ -462,10 +522,13 @@ void render_interpolation_tick(void)
 		struct interpolated_object *record;
 		short node_count = (short)(object->object.node_matrices.size / (short)sizeof(real_matrix4x3));
 		boolean continuing;
+		boolean made;
 
 		if (absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
 			continue;
 		record = &interpolated_objects[absolute_index];
+		/* (made since the last tick: none of its snapshots) */
+		made = record->object_index != iterator.index;
 		if (node_count <= 0 || node_count > MAXIMUM_INTERPOLATED_NODES)
 		{
 			record->object_index = NONE;
@@ -529,6 +592,34 @@ void render_interpolation_tick(void)
 			record->camouflage[record->latest][1] = unit->unit.active_camouflage_super_amount;
 		}
 		record->values_blended_frame = NONE;
+		record->position = object->object.position;
+		/* Made in this tick, and moving (a bolt, a rocket, a grenade
+		thrown): it has no snapshot from the tick before, and was drawn
+		standing for a tick where this one left it (a bolt hung a tick's
+		motion out from the muzzle, then set off), and a tick early, ahead
+		of the world drawn about it. The tick before's snapshot: this one's,
+		a tick's motion back. (Not an object something carries, which moves
+		with it; one that moves further than a tick allows snaps, as
+		before.) */
+		if (made && object->object.parent_object_index == NONE &&
+			(object->object.translational_velocity.i != 0.0f ||
+				object->object.translational_velocity.j != 0.0f ||
+				object->object.translational_velocity.k != 0.0f))
+		{
+			real_matrix4x3 const *latest = record->nodes + record->latest * record->node_capacity;
+			real_matrix4x3 *previous = record->nodes + (record->latest ^ 1) * record->node_capacity;
+			real_vector3d const *velocity = &object->object.translational_velocity;
+			short node_index;
+
+			memcpy(previous, latest, node_count * sizeof(real_matrix4x3));
+			for (node_index = 0; node_index < node_count; node_index++)
+			{
+				previous[node_index].position.x -= velocity->i;
+				previous[node_index].position.y -= velocity->j;
+				previous[node_index].position.z -= velocity->k;
+			}
+			render_interpolation_previous_values(record);
+		}
 		if (iterator.index == interpolation_from.object_index)
 		{
 			/* the tick before's snapshot: this one's, moved to the place */
@@ -547,14 +638,7 @@ void render_interpolation_tick(void)
 				previous[node_index].position.y += offset.j;
 				previous[node_index].position.z += offset.k;
 			}
-			record->rotations_valid[record->latest ^ 1] = FALSE;
-			memcpy(record->function_values[record->latest ^ 1], record->function_values[record->latest],
-				sizeof(record->function_values[0]));
-			memcpy(record->change_colors[record->latest ^ 1], record->change_colors[record->latest],
-				sizeof(record->change_colors[0]));
-			memcpy(record->camouflage[record->latest ^ 1], record->camouflage[record->latest],
-				sizeof(record->camouflage[0]));
-			record->has_previous = TRUE;
+			render_interpolation_previous_values(record);
 		}
 	}
 	interpolation_from.object_index = NONE;
@@ -582,8 +666,10 @@ void render_interpolation_reset(void)
 			interpolated_objects[index].object_index = NONE;
 	}
 	memset(interpolated_cameras, 0, sizeof(interpolated_cameras));
-	/* (the particles held back are the last map's) */
+	/* (the particles held back and the ghosts are the last map's) */
 	later_particle_count = 0;
+	for (index = 0; index < MAXIMUM_GHOSTS; index++)
+		ghosts[index].in_use = FALSE;
 	for (index = 0; index < MAXIMUM_LOCAL_PLAYERS; index++)
 	{
 		interpolated_first_person[index].node_count = 0;
@@ -591,13 +677,165 @@ void render_interpolation_reset(void)
 	}
 }
 
+/* ---------- ghosts */
+
+/* (objects.c's object_delete, in the tick) the object deleted: a projectile
+(a rocket, a needle, a grenade) that hit something or ran out, whose
+effects (an explosion, an impact) are made where it was. Those are drawn
+from the start of the frames after the tick, but the projectile was drawn
+only as far as the tick before had it: it went a tick early, short of what
+it hit, as what it made there appeared. It is drawn through the frames
+after this tick as it was, from its last snapshot to where it was deleted.
+Only a projectile drawn with a model, with nothing on it (its lights and
+its contrail go with it), and drawn before. */
+void render_interpolation_object_deleted(long object_index)
+{
+	struct object_datum *object;
+	struct object_definition *definition;
+	struct interpolated_object *record;
+	struct interpolation_ghost *ghost = NULL;
+	real_matrix4x3 const *latest;
+	long absolute_index;
+	short index;
+
+	if (!halo_interpolation_enabled() || !interpolated_objects || object_index == NONE)
+		return;
+	object = object_try_and_get(object_index);
+	if (!object || object->object.type != _object_type_projectile ||
+		object->object.parent_object_index != NONE || object->object.first_child_object_index != NONE ||
+		TEST_FLAG(object->object.flags, _object_invisible_bit))
+	{
+		return;
+	}
+	definition = object_definition_get(object->definition_index);
+	absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index);
+	if (definition->object.model.index == NONE || absolute_index >= MAXIMUM_INTERPOLATED_OBJECTS)
+		return;
+	/* (its snapshot at the end of the tick before) */
+	record = &interpolated_objects[absolute_index];
+	if (record->object_index != object_index || record->tick != interpolation_tick ||
+		record->node_count > MAXIMUM_GHOST_NODES)
+	{
+		return;
+	}
+	for (index = 0; index < MAXIMUM_GHOSTS && !ghost; index++)
+	{
+		if (!ghosts[index].in_use)
+			ghost = &ghosts[index];
+	}
+	if (!ghost)
+		return;
+	ghost->offset.i = object->object.position.x - record->position.x;
+	ghost->offset.j = object->object.position.y - record->position.y;
+	ghost->offset.k = object->object.position.z - record->position.z;
+	/* (so written that an offset not a number is none) */
+	if (!(ghost->offset.i * ghost->offset.i + ghost->offset.j * ghost->offset.j + ghost->offset.k * ghost->offset.k <=
+		OBJECT_SNAP_DISTANCE * OBJECT_SNAP_DISTANCE))
+	{
+		return;
+	}
+	/* (as last drawn; its point lights were that frame's, not one to come's) */
+	if (!render_objects_port_last_lighting(object_index, &ghost->lighting))
+		return;
+	ghost->lighting.point_light_count = 0;
+	latest = record->nodes + record->latest * record->node_capacity;
+	memcpy(ghost->nodes, latest, record->node_count * sizeof(real_matrix4x3));
+	memcpy(ghost->function_values, record->function_values[record->latest], sizeof(ghost->function_values));
+	memcpy(ghost->change_colors, record->change_colors[record->latest], sizeof(ghost->change_colors));
+	memcpy(ghost->region_permutations, object->object.region_permutations, sizeof(ghost->region_permutations));
+	ghost->in_use = TRUE;
+	ghost->object_index = object_index;
+	ghost->tick = NONE;
+	ghost->model_index = definition->object.model.index;
+	ghost->node_count = record->node_count;
+	ghost->forced_shader_permutation_index = object->object.forced_shader_permutation_index;
+	ghost->position = record->position;
+	ghost->center_offset.i = object->object.bounding_sphere_center.x - object->object.position.x;
+	ghost->center_offset.j = object->object.bounding_sphere_center.y - object->object.position.y;
+	ghost->center_offset.k = object->object.bounding_sphere_center.z - object->object.position.z;
+	ghost->radius = object->object.bounding_sphere_radius;
+}
+
+/* (render_interpolation_tick) those deleted in the tick are drawn after it;
+those drawn after the tick before are done */
+static void render_interpolation_ghosts_tick(void)
+{
+	short index;
+
+	for (index = 0; index < MAXIMUM_GHOSTS; index++)
+	{
+		struct interpolation_ghost *ghost = &ghosts[index];
+
+		if (ghost->in_use && ghost->tick == NONE && halo_interpolation_enabled())
+			ghost->tick = interpolation_tick;
+		else
+			ghost->in_use = FALSE;
+	}
+}
+
+/* (render_objects.c, as the objects are drawn) this tick's ghosts, as far
+from their last snapshot to where they were deleted as the frame is into
+the tick */
+void render_interpolation_ghosts_draw(void)
+{
+	short index;
+
+	if (!interpolation_rendering)
+		return;
+	for (index = 0; index < MAXIMUM_GHOSTS; index++)
+	{
+		struct interpolation_ghost *ghost = &ghosts[index];
+		struct render_model_effect model_effect;
+		real_point3d center;
+		short node_index;
+
+		if (!ghost->in_use || ghost->tick != interpolation_tick)
+			continue;
+		for (node_index = 0; node_index < ghost->node_count; node_index++)
+		{
+			ghost->drawn[node_index] = ghost->nodes[node_index];
+			ghost->drawn[node_index].position.x += ghost->offset.i * interpolation_fraction;
+			ghost->drawn[node_index].position.y += ghost->offset.j * interpolation_fraction;
+			ghost->drawn[node_index].position.z += ghost->offset.k * interpolation_fraction;
+		}
+		center.x = ghost->position.x + ghost->offset.i * interpolation_fraction + ghost->center_offset.i;
+		center.y = ghost->position.y + ghost->offset.j * interpolation_fraction + ghost->center_offset.j;
+		center.z = ghost->position.z + ghost->offset.k * interpolation_fraction + ghost->center_offset.k;
+		/* (no effect: as render_object's) */
+		memset(&model_effect, 0, sizeof(model_effect));
+		render_model(
+			ghost->model_index,
+			render_frustum_sphere_diameter_in_pixels(&render.frustum, &center, ghost->radius),
+			ghost->drawn,
+			(char const *)ghost->region_permutations,
+			ghost->change_colors,
+			ghost->function_values,
+			&ghost->lighting,
+			&center,
+			ghost->radius,
+			&model_effect,
+			ghost->object_index,
+			ghost->forced_shader_permutation_index,
+			0);
+	}
+}
+
 /* ---------- frames */
 
 void render_interpolation_frame_begin(void)
 {
+	short index;
+
 	interpolation_rendering = halo_interpolation_enabled();
 	interpolation_frame++;
 	interpolation_fraction = game_time_get_tick_fraction();
+	/* the ghost of one deleted since the last tick (between the ticks: by
+	the netcode, a script) is none: it was drawn as far as that tick */
+	for (index = 0; index < MAXIMUM_GHOSTS; index++)
+	{
+		if (ghosts[index].in_use && ghosts[index].tick == NONE)
+			ghosts[index].in_use = FALSE;
+	}
 }
 
 void render_interpolation_frame_end(void)
@@ -826,6 +1064,9 @@ void render_interpolation_correct_object(long object_index, real_vector3d const 
 				nodes[node_index].position.z -= offset->k;
 			}
 		}
+		record->position.x -= offset->i;
+		record->position.y -= offset->j;
+		record->position.z -= offset->k;
 		correction_add(&record->correction, &record->correction_pending, offset);
 		record->blended_frame = NONE;
 	}

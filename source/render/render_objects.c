@@ -345,6 +345,26 @@ struct render_lighting *object_get_cached_render_lighting(
 	return &lighting_storage;
 }
 
+/* port: the object's lighting as it was last drawn, if it was, the cache
+left as it is (a projectile deleted, drawn a tick longer:
+port/linux/game/render_interpolation.c) */
+boolean render_objects_port_last_lighting(
+	long object_index,
+	struct render_lighting *lighting)
+{
+	struct object_datum *object = object_get(object_index);
+
+	if (object->object.cached_render_state_index == NONE ||
+		!datum_try_and_get(cached_object_render_states, object->object.cached_render_state_index) ||
+		object_render_state_get(object->object.cached_render_state_index)->object_index != object_index)
+	{
+		return FALSE;
+	}
+	*lighting = object_render_state_get(object->object.cached_render_state_index)->lighting;
+
+	return TRUE;
+}
+
 void render_objects(
 	void)
 {
@@ -372,6 +392,9 @@ void render_objects(
 		first_person_pass = !first_person_pass;
 	}
 	while (first_person_pass);
+	/* port: the projectiles deleted in the last tick, drawn through it
+	(port/linux/game/render_interpolation.c) */
+	render_interpolation_ghosts_draw();
 
 	rasterizer_models_end();
 

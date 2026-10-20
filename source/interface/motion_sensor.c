@@ -270,6 +270,17 @@ long next_vertex_index= {0};
 static struct motion_sensor_globals_definition *motion_sensor_globals = NULL;
 static real sweep_theta = 0.f;
 boolean debug_motion_sensor_draw_all_units= {0};
+/* port: each local player's newest blips (the active sensor's) as they are
+drawn between the ticks: from their units and goals where those are drawn
+and the player's where it is (port/linux/game/render_interpolation.c), not
+a step a tick; the history they leave is the ticks', as ever. Drawn only,
+not the game's state (update_motion_sensor, render_motion_sensor) */
+static struct
+{
+	boolean valid;
+	real_point2d blips[MAXIMUM_MOTION_SENSOR_BLIPS];
+	real_point2d custom_blips[MAXIMUM_MOTION_SENSOR_BLIPS];
+} motion_sensor_drawn[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS];
 
 short blip_player_index;
 real_point2d center_point;
@@ -525,6 +536,8 @@ static void update_motion_sensor(
 	/* (port: the FRIENDS radar's viewer: this player) */
 	game_engine_motion_sensor_viewer(local_player_index);
 	game_time_get();
+	/* (port: none drawn but as found below) */
+	motion_sensor_drawn[local_player_index].valid = FALSE;
 	if (motion_sensor_globals->update)
 	{
 		active_sensor_index = motion_sensor_globals->active_sensor_index;
@@ -534,6 +547,19 @@ static void update_motion_sensor(
 		sensor = &player->sensor_data[active_sensor_index];
 		if (unit_index != NONE)
 		{
+			/* port: the player where drawn (motion_sensor_drawn), and
+			the blips as they are where none is found below */
+			real_point3d drawn_camera_position;
+			short drawn_blip_index;
+
+			unit_get_camera_position(unit_index, &drawn_camera_position);
+			render_interpolation_object_point(unit_index, &drawn_camera_position);
+			motion_sensor_drawn[local_player_index].valid = halo_interpolation_enabled();
+			for (drawn_blip_index = 0; drawn_blip_index < MAXIMUM_MOTION_SENSOR_BLIPS; drawn_blip_index++)
+			{
+				tiny_point2d_get(&sensor->blips[drawn_blip_index].position,
+					&motion_sensor_drawn[local_player_index].blips[drawn_blip_index]);
+			}
 			{
 				real_point3d camera_position;
 
@@ -578,6 +604,12 @@ static void update_motion_sensor(
 							tiny_point2d_set(
 								&blips[blip_index].position,
 								&displacement);
+							/* port: (and where drawn) */
+							render_interpolation_object_point(object_index, &object_position);
+							motion_sensor_drawn[local_player_index].blips[blip_index].x =
+								object_position.x - drawn_camera_position.x;
+							motion_sensor_drawn[local_player_index].blips[blip_index].y =
+								object_position.y - drawn_camera_position.y;
 						}
 						else
 						{
@@ -620,9 +652,18 @@ static void update_motion_sensor(
 							hud_globals->defaults.motion_sensor_range *
 								hud_globals->defaults.motion_sensor_range)
 					{
+						/* port: (and where drawn) */
+						real_point3d drawn_position;
+
 						tiny_point2d_set(
 							&sensor->custom_blips[blip_index - out_of_range_count],
 							&custom_positions[blip_index]);
+						game_engine_get_goal_drawn_position(&drawn_position,
+							(short)sensor->custom_blip_goal_indices[blip_index]);
+						motion_sensor_drawn[local_player_index].custom_blips[blip_index - out_of_range_count].x =
+							drawn_position.x - drawn_camera_position.x;
+						motion_sensor_drawn[local_player_index].custom_blips[blip_index - out_of_range_count].y =
+							drawn_position.y - drawn_camera_position.y;
 					}
 					else
 					{
@@ -701,6 +742,9 @@ static void render_motion_sensor(
 				real_point2d blip_pos;
 
 				tiny_point2d_get(&blip->position, &blip_pos);
+				/* port: the newest, as drawn (motion_sensor_drawn) */
+				if (!history_index && motion_sensor_drawn[local_player_index].valid)
+					blip_pos = motion_sensor_drawn[local_player_index].blips[blip_index];
 				render_blip(
 					sensor,
 					blip->type,
@@ -727,6 +771,9 @@ static void render_motion_sensor(
 				real_point2d blip_pos;
 
 				tiny_point2d_get(&sensor->custom_blips[blip_index], &blip_pos);
+				/* port: (as above) */
+				if (!history_index && motion_sensor_drawn[local_player_index].valid)
+					blip_pos = motion_sensor_drawn[local_player_index].custom_blips[blip_index];
 				render_blip(
 					sensor,
 					_blip_type_custom,

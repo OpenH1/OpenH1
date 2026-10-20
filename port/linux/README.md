@@ -724,10 +724,15 @@ does not change.
 Other things the game moves once a tick are drawn between ticks as well:
 
 - The motion tracker's sweep (and a custom blip's pulse) moves in each
-  frame. The blips are still taken once a tick, as on the Xbox.
+  frame. The blips are still taken once a tick, as on the Xbox, and leave
+  their trail a tick at a time, but the newest of each (a unit, a flag or
+  ball) is drawn where its unit or goal is drawn, from where the player
+  is drawn.
 - A waypoint (nav point) over an object stays over the object as it is
   drawn, an ally or a vehicle on the move too (in VR as well, where the
-  waypoint is drawn in the world).
+  waypoint is drawn in the world). So does a multiplayer game's marker
+  over the flag or the ball, over the player who carries it, and over
+  slayer's target.
 - The screen's flashes (a hit, a teleport) and a level's fades, and the
   camera's shake and knock, follow their curves in each frame. The shake
   is random once a tick, as on the Xbox; between ticks it moves from one
@@ -741,10 +746,20 @@ Other things the game moves once a tick are drawn between ticks as well:
 - A contrail's head (a rocket's exhaust, a needle's or a plasma bolt's
   trail) stays on the projectile in the frames between ticks, where it
   stayed behind until the next tick.
+- An object made moving (a bolt, a rocket, a grenade thrown) is drawn
+  from a tick of its motion back in its first tick, not standing a tick
+  at the muzzle. A projectile with a model (a rocket, a needle, a
+  grenade) that hits something is drawn a tick longer, on to where it hit,
+  as what it made there begins: it went a tick early, short of the wall,
+  as the explosion appeared. That last tick is drawn only: nothing of the
+  game sees it.
 - An object's animated glows and colours (a weapon's charge or heat, a
   vehicle's lights, a shield's flare: the values and change colours its
   shaders read) and a unit's active camouflage change between ticks, as
   its pose does.
+- So do the brightness and colour of the lights on an object (a muzzle
+  flash, a plasma pistol's charge, a vehicle's lights), and the light of an
+  explosion or an impact fades in each frame.
 
 The direction of the view is an exception. The game reads the mouse and the
 sticks in each frame. In first person, on foot, each frame points the view
@@ -4451,6 +4466,10 @@ Other changes:
 | `render/render_objects.c`, `interface/first_person_weapons.c`, `rasterizer/xbox/rasterizer_xbox_plasma_energy.c`, `items/projectiles.c` | An overshield as `overshield_effect.c` draws it (`display.overshield_effect`): in its own color, its intensity full, its energy slower, faded above the height it has risen to; a hit on it plays the projectile's effect for an Elite's energy shield in place of its own (only the effect: the projectile's response is its own). |
 | `objects/object_lights.c`, `rasterizer/xbox/rasterizer_xbox_environment.c` | A light attached to an object is drawn where the object is drawn between ticks (its marker as drawn), not where the tick placed it: it no longer steps behind a bolt at 30 Hz (the light's own position, which the units' illumination reads, is kept). With `display.dynamic_lights = "enhanced"`, the frame's lights go to the renderer (`game/dynamic_lights.c`), a projectile's light that is only its lens flare's lights too, a muzzle flash's is moved to the first-person weapon, the structure's own pass for each light is left to the lightmap pass (but spotlights'), which tells the renderer when it is drawn. |
 | `render/render_objects.c`, `interface/first_person_weapons.c`, `rasterizer/xbox/rasterizer_xbox_plasma_energy.c` | A local player's shield plasma is drawn in the chosen armor color (`display.shield_color`, `shield_color.c`), on the body and on the first-person arms; in the VR build, the plasma over the weapon in its holster in its highlight's color, close to the weapon (`vr_holster.c`). |
+| `objects/object_lights.c` | A light attached to an object is as bright, and of the colour, that the object's function and change colour are between ticks, and an effect's light (an explosion's, an impact's) fades at the frame's time, not a step a tick (`game/render_interpolation.c`); the light's own colour and radius, which the game reads, are the tick's. |
+| `objects/objects.c`, `render/render_objects.c` | A projectile deleted in a tick is drawn through the frames after it, on to where it was deleted (`game/render_interpolation.c`), with the lighting it was last drawn with. |
+| `game/game_engine.c`, `game/game_engine_ctf.c`, `game/game_engine_oddball.c`, `game/game_engine_slayer.c` | A goal over an object (a flag, the ball, a carrier, a target) notes the object, and its marker is drawn over the object as drawn between ticks (`game_engine_get_goal_drawn_position`); the goal's own position is the tick's. |
+| `interface/motion_sensor.c` | The motion sensor's newest blips are drawn from where their units and goals, and the player, are drawn between ticks (a copy of the drawing's own); the blips' history is the ticks'. |
 | `render/render_sprite.c` | In the VR mode's eyes, sprites that face the viewer (smoke, explosions, sparks, glows) face the centre of the head and stay upright in the world, where they were parallel to the view's plane and rolled with the head (`vr_render_eye_pass`); near straight above or below the head, upright toward a fixed axis of the world. A build whose largest sprite is at least 2 degrees wide on the screen is marked to be drawn thick ("Effects with depth"). |
 | `rasterizer/xbox/rasterizer_xbox_transparent_geometry.c` | In the VR mode's eyes, an effect shader's group is drawn soft against the scene's depth, and thick where its sprites are large (`halo_vr_effect_depth`), but the first-person weapon's, one drawn without depth, and one with the game's own z-sprite. |
 | `rasterizer/xbox/rasterizer_xbox_text.c`, `rasterizer/rasterizer_text.c` | The characters of a string are one draw, not a draw each (and a second for the drop shadow). The batch is drawn early before a character is cached and before the high-res glyph atlas starts over (`src/text_hires.c`). |

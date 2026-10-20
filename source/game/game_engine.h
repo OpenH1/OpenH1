@@ -555,6 +555,14 @@ void game_engine_set_goal_position(
 	long player_index,
 	short team_index,
 	long ignore_player_index);
+/* port: the object a goal set (game_engine_set_goal_position) is over,
+and where the goal is drawn: over the object as drawn between the ticks */
+void game_engine_set_goal_object(
+	short goal_index,
+	long object_index);
+real_point3d *game_engine_get_goal_drawn_position(
+	real_point3d *position,
+	short goal_index);
 
 boolean game_engine_has_teams(
 	void);

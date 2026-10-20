@@ -53,6 +53,8 @@ struct new_particle_data;
 unsigned char render_interpolation_particle_later(struct new_particle_data const *data, long object_index,
 	short node_index, float fraction);
 void render_interpolation_particles_due(void);
+void render_interpolation_object_deleted(long object_index);
+void render_interpolation_ghosts_draw(void);
 
 /* whether the map being loaded, by the name it was loaded by, is a
 downloaded one, whose scripts may call and set less: one map sharing

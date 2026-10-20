@@ -1051,6 +1051,12 @@ void lights_preprocess_scene(
 		real inverse_intensity;
 		real lens_flare_scale = 1.0f;
 		boolean projectile_lights;
+		/* port: how bright, and in what color, it is drawn: as the frame
+		is between the ticks (port/linux/game/render_interpolation.c), not
+		a step a tick; light->color, which the game reads, is the tick's */
+		real drawn_intensity;
+		real_rgb_color drawn_color;
+		real drawn_radius;
 
 		render_debug_light(scene_light_handle);
 		object = light->object_index != NONE
@@ -1060,6 +1066,8 @@ void lights_preprocess_scene(
 		{
 			/* port: a glow's color is as set (light_port_glow_set) */
 			intensity = 1.0f;
+			drawn_intensity = intensity;
+			drawn_color = light->color;
 		}
 		else if (light->parent_light_index == NONE)
 		{
@@ -1083,9 +1091,28 @@ void lights_preprocess_scene(
 				&definition->color_upper_bound,
 				color,
 				intensity);
+			/* port: (drawn from the object's function and change color
+			between the last two ticks', as its shaders are) */
+			drawn_intensity = intensity;
+			if (VALID_INDEX(light->function_index, NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS))
+				drawn_intensity = render_interpolation_object_function_values(light->object_index)[light->function_index];
+			if (light->color_function_index != NONE)
+				color = &render_interpolation_object_change_colors(light->object_index)[light->color_function_index];
+			rgb_colors_interpolate_and_scale(
+				&drawn_color,
+				definition->color_interpolation_flags,
+				&definition->color_lower_bound,
+				&definition->color_upper_bound,
+				color,
+				drawn_intensity);
 		}
 		else
 		{
+			/* port: (drawn at the frame's time, which is the part of a tick
+			behind the tick's that the objects are, as it fades: not a step
+			a tick) */
+			real drawn_elapsed = (real)(current_time - light->parent_light_index) - render_interpolation_ticks_behind();
+
 			intensity = (1.0f - transition_function_evaluate(
 				definition->falloff_function,
 				(real)(current_time - light->parent_light_index)
@@ -1097,6 +1124,16 @@ void lights_preprocess_scene(
 				&definition->color_lower_bound.rgb,
 				&definition->color_upper_bound.rgb,
 				intensity);
+			drawn_intensity = (1.0f - transition_function_evaluate(
+				definition->falloff_function,
+				MAX(drawn_elapsed, 0.0f) / definition->transition_duration))
+				* light->intensity_scale;
+			rgb_colors_interpolate(
+				&drawn_color,
+				definition->color_interpolation_flags,
+				&definition->color_lower_bound.rgb,
+				&definition->color_upper_bound.rgb,
+				drawn_intensity);
 		}
 
 		inverse_intensity = 1.0f - intensity;
@@ -1133,6 +1170,9 @@ void lights_preprocess_scene(
 					light->color.red *= lens_flare_scale;
 					light->color.green *= lens_flare_scale;
 					light->color.blue *= lens_flare_scale;
+					drawn_color.red *= lens_flare_scale;
+					drawn_color.green *= lens_flare_scale;
+					drawn_color.blue *= lens_flare_scale;
 					match_assert(
 						"c:\\halo\\SOURCE\\objects\\object_lights.c",
 						0x1D1,
@@ -1170,6 +1210,14 @@ void lights_preprocess_scene(
 				if (TEST_FLAG(light->flags, _point_light_port_glow_bit))
 					light->radius = light->intensity_scale;
 				lights_port.radius_writes++;
+				/* port: (and as drawn) */
+				drawn_radius = light->radius;
+				if (!projectile_lights && !TEST_FLAG(light->flags, _point_light_port_glow_bit))
+				{
+					drawn_radius = (definition->radius_modifier_lower_bound * (1.0f - drawn_intensity)
+						+ definition->radius_modifier_upper_bound * drawn_intensity)
+						* definition->radius;
+				}
 				if (light->radius != 0.0f)
 				{
 					struct rasterizer_light_submit_parameters light_parameters;
@@ -1179,8 +1227,15 @@ void lights_preprocess_scene(
 					light_parameters.position = light->position;
 					light_parameters.forward = light->forward;
 					light_parameters.up = light->up;
-					light_parameters.radius = light->radius;
-					light_parameters.color = light->color;
+					/* port: as drawn (none where it is drawn reaching
+					nowhere, at the tick's radius) */
+					light_parameters.radius = drawn_radius;
+					light_parameters.color = drawn_color;
+					if (!(drawn_radius > 0.0f) && light->radius > 0.0f)
+					{
+						light_parameters.radius = light->radius;
+						light_parameters.color = *global_real_rgb_black;
+					}
 					match_assert(
 						"c:\\halo\\SOURCE\\objects\\object_lights.c",
 						0x1EE,
@@ -1309,10 +1364,11 @@ void lights_preprocess_scene(
 
 				lens_flare_parameters.definition = lens_flare_definition_get(
 					definition->lens_flare.index);
+				/* port: (as drawn) */
 				lens_flare_parameters.compressed_light_color =
-					real_a_rgb_color_to_pixel32(lens_flare_scale, &light->color);
+					real_a_rgb_color_to_pixel32(lens_flare_scale, &drawn_color);
 				lens_flare_parameters.compressed_light_scale =
-					compress_real_to_int8(intensity);
+					compress_real_to_int8(drawn_intensity);
 				lens_flare_parameters.compressed_window_index = (byte)render.window_index;
 				lens_flare_parameters.light_index =
 					(short)DATUM_INDEX_TO_ABSOLUTE_INDEX(scene_light_handle);

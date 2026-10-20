@@ -918,6 +918,9 @@ short debug_player_color = NONE;
 /* port: slayer's kill-in-order target uses the player's absolute index as
 its goal index, so every player needs a goal slot */
 struct netgame_goal global_goal[MAX(32, MULTIPLAYER_MAXIMUM_PLAYERS)] = { 0 };
+/* port: the object each goal is over (game_engine_set_goal_object), to be
+drawn where it is drawn; nothing the ticks do reads it */
+static long global_goal_objects[NUMBEROF(global_goal)];
 struct game_variant global_variant = { 0 };
 struct game_engine *game_engine = NULL;
 
@@ -5887,15 +5890,18 @@ void game_engine_render_nav_points(
 				{
 					if (goal_matches_player(player, player_index, goal_index))
 					{
+						/* port: over its object as drawn
+						(game_engine_get_goal_drawn_position) */
+						real_point3d position;
 						short render_type = hud_get_nav_point_render_type(
 							local_player_index,
 							&head_position,
-							&global_goal[goal_index].position,
+							game_engine_get_goal_drawn_position(&position, (short)goal_index),
 							NONE);
 
 						custom_render_nav_point(
 							local_player_index,
-							&global_goal[goal_index].position,
+							&position,
 							global_goal[goal_index].nav_index,
 							render_type);
 					}
@@ -7208,8 +7214,49 @@ void game_engine_set_goal_position(
 	global_goal[goal_index].team_index = team_index;
 	global_goal[goal_index].position.z += height + 0.63f;
 	global_goal[goal_index].player_index = player_index;
+	global_goal_objects[goal_index] = NONE;
 
 	return;
+}
+
+/* port: the goal just set is over this object (a flag carrier, the ball's,
+a target; an item carried is where its carrier is, as
+item_get_position_even_if_in_inventory has it), and drawn over it where it
+is drawn between the ticks (port/linux/game/render_interpolation.c), not a
+step a tick behind it */
+void game_engine_set_goal_object(
+	short goal_index,
+	long object_index)
+{
+	struct item_datum *item = object_index == NONE ? NULL : item_try_and_get(object_index);
+
+	if (!VALID_INDEX(goal_index, NUMBEROF(global_goal)))
+		return;
+	if (item && TEST_FLAG(item->item.flags, _item_attached_to_unit_bit))
+	{
+		object_index = item->object.owner_player_index == NONE ?
+			NONE :
+			player_get(item->object.owner_player_index)->unit_index;
+	}
+	global_goal_objects[goal_index] = object_index;
+
+	return;
+}
+
+/* port: where the goal is drawn: its position, moved with its object from
+where the last tick left it to where it is drawn */
+real_point3d *game_engine_get_goal_drawn_position(
+	real_point3d *position,
+	short goal_index)
+{
+	/* (an object only of a goal set: game_engine_set_goal_position) */
+	long object_index = global_goal[goal_index].in_use ? global_goal_objects[goal_index] : NONE;
+
+	*position = global_goal[goal_index].position;
+	if (object_index != NONE && object_try_and_get(object_index))
+		render_interpolation_object_point(object_index, position);
+
+	return position;
 }
 
 boolean game_engine_man_out(

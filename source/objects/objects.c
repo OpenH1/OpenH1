@@ -1833,6 +1833,9 @@ void object_delete(
 {
 	if (!network_objects_may_delete(object_index))
 		return;
+	/* port: a projectile drawn a tick longer, to where it was deleted
+	(port/linux/game/render_interpolation.c) */
+	render_interpolation_object_deleted(object_index);
 	object_delete_initial_recursive(object_index, FALSE);
 
 	return;
