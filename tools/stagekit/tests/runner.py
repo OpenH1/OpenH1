@@ -257,7 +257,7 @@ def launch(machine, input, address, broadcast, test, init="", game=None, **envir
     # (none of the caller's own settings; system link on the loopback only, no internet play)
     environment = dict({name: value for name, value in os.environ.items() if not name.startswith("HALO_")},
                        HALO_NET_ONLINE="false", SDL_AUDIODRIVER="dummy", SDL_VIDEODRIVER="offscreen", HALO_NO_AUDIO="1",
-                       HALO_NULL_RENDERER="1", HALO_UPDATE_AUTO="false", HALO_TEST_INPUT=input,
+                       HALO_NULL_RENDERER="1", HALO_NO_CLIPBOARD="1", HALO_UPDATE_AUTO="false", HALO_TEST_INPUT=input,
                        HALO_SAVE_ROOT=str(machine / "save"), XDG_RUNTIME_DIR=str(machine / "runtime"),
                        HALO_DATA_ROOT=str(machine), HOME=str(machine), HALO_NETWORK_TEST=test,
                        HALO_NET_ADDRESS=address, HALO_NET_BROADCAST=broadcast, **environment)

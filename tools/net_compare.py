@@ -473,6 +473,8 @@ def copy_environment(copy, address, broadcast, test, seed, args, extra):
         "HALO_NET_MAP_SEED": "false",
         "HALO_NET_MAP_DOWNLOAD": "false",
         "HALO_NET_JOIN_FROM_CLIPBOARD": "false",
+        # (and no invite put on it: the clipboard is the person's at the machine)
+        "HALO_NO_CLIPBOARD": "1",
         "HALO_DISCORD_APPLICATION": "",
         "HALO_UPDATE_AUTO": "false",
         "HALO_NETWORK_TEST": test,

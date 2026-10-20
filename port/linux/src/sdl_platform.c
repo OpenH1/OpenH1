@@ -2052,9 +2052,22 @@ int platform_clipboard_get(char *text, int size)
 	return got;
 }
 
+/* whether the clipboard is left alone: in a run of the tests and tools
+(debug.no_clipboard, or a setting only they set: drawing nothing, scripted
+input, a tick a frame, a network test, quitting by itself), which play on
+the machine of someone at work on it, the game puts no invite on it and
+joins none found there */
+static BOOL platform_clipboard_left_alone(void)
+{
+	return config_boolean("debug.no_clipboard") || config_boolean("debug.null_renderer") ||
+		config_string("debug.test_input")[0] || config_boolean("debug.fixed_step") ||
+		config_string("debug.network_test")[0] || config_real("debug.exit_after") > 0.0;
+}
+
 void platform_clipboard_set(const char *text)
 {
-	SDL_SetClipboardText(text);
+	if (!platform_clipboard_left_alone())
+		SDL_SetClipboardText(text);
 }
 
 /* puts a new invite on the clipboard, and joins one found there when the
@@ -2065,6 +2078,8 @@ static void platform_invite_clipboard(BOOL look)
 	static char seen[256];
 	const char *invite = p2p_take_clipboard_text();
 
+	if (platform_clipboard_left_alone())
+		return;
 	if (invite)
 	{
 #ifdef HALO_WEB

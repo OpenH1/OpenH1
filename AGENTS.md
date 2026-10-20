@@ -204,6 +204,12 @@ Running the game without a person at it:
   test settings.
 - `debug.exit_after`, `debug.hidden_window`, `debug.null_renderer`,
   `debug.menu_open` (start on one menu screen), `debug.telnet_console`.
+- `debug.no_clipboard` (`HALO_NO_CLIPBOARD=1`) keeps a run off the
+  clipboard of the person you work for (no invite link put on it, none
+  joined from it); runs with `debug.null_renderer`, `debug.test_input`,
+  `debug.fixed_step`, `debug.network_test` or `debug.exit_after` keep off
+  it too. Give a run its own `HALO_DATA_ROOT` (its maps folder linked in)
+  so that its `debug.txt` is its own, not the shared `assets/debug.txt`.
 - `debug.determinism_log` (with `debug.frame_time` and a scripted player,
   `debug.test_input`) logs a hash of the game state each tick and every
   taker of the random seeds; two runs of the same input, compared by

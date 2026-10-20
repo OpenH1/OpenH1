@@ -479,7 +479,7 @@ def run_game(args, scenario, work, saves, shaders, destination, cache_proof=None
             if key.startswith(("HALO_", "MESA_SHADER_CACHE", "__GL_SHADER_DISK_CACHE")):
                 del environment[key]
         environment.update(dict(args.env))
-        environment.update(HALO_NET_ONLINE="false", HALO_DATA_ROOT=str(run), HALO_SAVE_ROOT=str(saves),
+        environment.update(HALO_NET_ONLINE="false", HALO_NO_CLIPBOARD="1", HALO_DATA_ROOT=str(run), HALO_SAVE_ROOT=str(saves),
                            HALO_EXIT_AFTER=str(args.seconds), HALO_LOAD_TRACE="1",
                            HALO_UPDATE_ANSWER="no", HALO_SCREENSHOT_EVERY="0", HALO_SCREENSHOT_DIR="",
                            XDG_CACHE_HOME=str(shaders), __GL_SHADER_DISK_CACHE_PATH=str(shaders / "nvidia"),

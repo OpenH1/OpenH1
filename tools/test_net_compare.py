@@ -201,6 +201,13 @@ def test_window_display(monkeypatch):
     assert environment["SDL_VIDEO_DRIVER"] == "x11" and environment["HALO_HIDDEN_WINDOW"] == "1"
 
 
+def test_copies_leave_the_clipboard_alone():
+    # (windowed copies too, which have no debug.null_renderer)
+    for window in (False, True):
+        environment = environment_of(window=window)
+        assert environment["HALO_NO_CLIPBOARD"] == "1" and environment["HALO_NET_JOIN_FROM_CLIPBOARD"] == "false"
+
+
 # a copy that ignores SIGTERM and starts a process of its own, as a game
 # under a wrapper might: each writes its PID
 FAKE_GAME = """#!/bin/sh
