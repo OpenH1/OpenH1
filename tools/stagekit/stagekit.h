@@ -65,8 +65,10 @@ struct stage
 {
 	struct scenario *scenario;
 	struct structure_bsp *bsp;
-	/* the players' biped (stage.c), which a scenario may place for the AI */
+	/* the players' biped (stage.c), which a scenario may place for the AI,
+	and its definition, which a scenario may give more (prop_biped_body) */
 	long biped_handle;
+	struct biped_definition *biped;
 };
 
 /* a move of an AI's command list (prop_ai_walker): a heading in degrees (0
@@ -157,6 +159,11 @@ when its position is set to 1 (device_set_position <name> 1) and comes down
 when set to 0, as the game's lifts do; elevator: what stands on it rides it */
 void prop_elevator(struct stage *stage, char const *name, real_rectangle3d const *platform,
 	real_point3d const *position, real rise, real seconds);
+
+/* the players' biped given a body: a collision model, a box round its capsule,
+as the game's bipeds all have one (what finds bodies by their collision finds
+it: a lift's riders, device_machines.c), else it has none */
+void prop_biped_body(struct stage *stage);
 
 /* an AI's biped: the players' biped standing at position facing along x,
 named name, which the console makes an actor of the variant variant_name

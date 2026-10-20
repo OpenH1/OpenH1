@@ -25,6 +25,8 @@ static short objects_in_sphere(long a,long b,void *l,void *p,real r,long *out,in
 static struct fake_object *biped_get(long i) {return i==1 ? &rider : &stranger;}
 static void add_vectors3d(real_vector3d const *a,real_vector3d const *b,real_vector3d *c) {c->i=a->i+b->i;c->j=a->j+b->j;c->k=a->k+b->k;}
 static void object_translate(long i,real_point3d const *p,void *unused) {biped_get(i)->object.position=*p;}
+/* (an AI rider's carry kept for its sub-steps: not this test's) */
+static void machine_carried_rider_add(long i,real_vector3d const *offset) {}
 #include "under_test.inc"
 int main(int argc,char **argv) {
     char const *case_name=argc>1?argv[1]:"";

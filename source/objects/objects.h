@@ -466,6 +466,12 @@ boolean object_lane_moves_in_substeps(long object_index);
 /* where a sub-step sees the object: its position and its bounding sphere's
 centre (either may be NULL), as its nodes (above) */
 void object_get_substep_position(long object_index, real_point3d *position, real_point3d *bounding_sphere_center);
+/* an AI's biped moving its tick's sub-steps in its own update (bipeds.c), each
+seeing the macro lane from the sub-step of its index (objects.c, "What the
+sub-steps see of the macro lane"): a lift it stands on that far into its
+movement, the tick's if the lift moved before it, else the tick before's;
+NONE once it is done */
+void object_lane_view_substep(long biped_index, short substep_index);
 char const *object_get_attachment_marker_name(long object_index, short attachment_index);
 boolean object_has_node(long object_index, short node_index);
 void object_set_automatic_deactivation(long object_index, boolean automatic_deactivation);

@@ -278,6 +278,12 @@ symbols in this file:
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 
+/* port: a lift's carry of an AI's biped this tick, a share a sub-step
+(devices/device_machines.c; its header's scenario structures are this
+file's own too) */
+boolean machine_elevator_carried(long biped_index, real_vector3d *offset);
+void machine_elevator_carried_forget(void);
+
 /* port: port/linux/game/network_objects.c's (a client deletes the host's
 objects on the host's word alone) */
 boolean network_objects_may_delete(long object_index);
@@ -585,8 +591,12 @@ kept (biped_replay_globals), and the fast phase puts it there at each
 sub-step (bipeds_substep, before the players' bipeds move): it is drawn on
 that path (render_interpolation.c), and what moves in the sub-steps (a
 projectile, a player) meets it there. The tick's last sub-step leaves it
-where its update did, and anything a sub-step moved it by besides (a lift's
-share) goes with it. */
+where its update did, and anything a sub-step moved it by besides goes with
+it. On a lift its sub-steps see the lift that far into its movement
+(objects.c's object_lane_view_substep); a lift that carries it, by the
+tick's whole movement in the lift's update, is taken off where its
+sub-steps are by the share still to come (device_machines.c's
+machine_elevator_carried), so it rides a share a sub-step either way. */
 enum
 {
 	MAXIMUM_SUBSTEP_BIPEDS = 16,
@@ -4848,11 +4858,15 @@ static boolean biped_substep_inline(
 	{
 		for (substep_index = 0; substep_index < substep_count; substep_index++)
 		{
+			/* (on the macro lane where the sub-step sees it, a lift it
+			stands on a share of its movement: objects.h) */
+			object_lane_view_substep(biped_index, substep_index);
 			biped_substep_move(biped_index, &datum, substep_index, tick_fraction, &step);
 			if (replay)
 				replay->poses[substep_index] = biped_get(biped_index)->object.position;
 			if (substep_index < substep_count - 1)
 				biped_physics_ground_flags(biped_index, &step);
+			object_lane_view_substep(biped_index, NONE);
 		}
 		biped_substep_tick_physics(&datum, &step);
 		biped_physics_apply_tick(biped_index, &step, animation);
@@ -4908,6 +4922,7 @@ static void bipeds_replay_substep(
 		struct biped_datum *biped;
 		real_point3d target;
 		real_vector3d moved;
+		real_vector3d lifted;
 
 		if (replay->tick != tick || substep_index >= replay->substep_count)
 			continue;
@@ -4928,6 +4943,16 @@ static void bipeds_replay_substep(
 			target.y += replay->carried.j;
 			target.z += replay->carried.k;
 		}
+		/* (a lift's carry, the tick's whole movement, before its update or
+		after it: only its share so far, the rest still to come) */
+		if (!last && machine_elevator_carried(replay->biped_index, &lifted))
+		{
+			real still_to_come = 1.f - sim_substep_end_fraction();
+
+			target.x -= lifted.i * still_to_come;
+			target.y -= lifted.j * still_to_come;
+			target.z -= lifted.k * still_to_come;
+		}
 		vector_from_points3d(&biped->object.position, &target, &moved);
 		if (moved.i != 0.f || moved.j != 0.f || moved.k != 0.f)
 		{
@@ -4937,7 +4962,10 @@ static void bipeds_replay_substep(
 		replay->last = target;
 	}
 	if (last)
+	{
 		biped_replay_globals.count = 0;
+		machine_elevator_carried_forget();
+	}
 
 	return;
 }

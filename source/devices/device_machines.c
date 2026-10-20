@@ -32,8 +32,10 @@ symbols in this file:
 #include "game/game.h"
 #include "game/game_allegiance.h"
 #include "memory/data.h"
+#include "objects/objects.h"
 #include "units/bipeds.h"
 #include "units/unit_definitions.h"
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 
 /* ---------- constants */
 
@@ -54,6 +56,13 @@ enum
 	_object_runtime_unit_cannot_open_doors_automatically_bit = 14,
 };
 
+enum
+{
+	/* port: the AI's bipeds the lifts carry in one tick, at most
+	(machine_carried_riders) */
+	MAXIMUM_CARRIED_AI_RIDERS = 64,
+};
+
 /* ---------- macros */
 
 /* ---------- structures */
@@ -67,7 +76,29 @@ struct device_group_datum
 
 /* ---------- prototypes */
 
+static void machine_carried_rider_add(long biped_index, real_vector3d const *offset);
+
 /* ---------- globals */
+
+/* port: at game.sim_rate 60 and 120, the AI's bipeds a lift carried this tick
+(machine_move_elevator_riders) and by how much. An AI's biped moves its
+sub-steps in its own update (bipeds.c), before the lift's update or after
+it, and the lift carries it by the tick's whole movement in its own, so
+where each of its sub-steps left it is off its share of the carry by the
+share still to come; bipeds.c's bipeds_replay_substep takes that off
+(machine_elevator_carried). A player's biped is carried in the fast phase
+instead, a share each sub-step (objects.c's lanes). Nothing here outlives the
+tick: bipeds.c forgets it at the tick's last sub-step */
+static struct
+{
+	long tick; /* (game_time) */
+	short count;
+	struct
+	{
+		long biped_index;
+		real_vector3d offset;
+	} riders[MAXIMUM_CARRIED_AI_RIDERS];
+} machine_carried_riders = { NONE, 0 };
 
 /* ---------- public code */
 
@@ -181,6 +212,23 @@ void machine_try_to_open_with_damage(
 	return;
 }
 
+/* port: at game.sim_rate 60 and 120 a machine (a lift, a door, a platform)
+still moves once a tick, in the macro lane (objects.h): its position is a
+quantity of the tick, which devices.c's device_update moves by its velocity
+and acceleration per tick toward its group's value (accelerate_to_position),
+a platform's by its speed per tick, and its nodes are its animation's frame at
+that position. Between two ticks it has no other path than the one between
+the two positions, so a sub-step that saw it "at its time" would see what the
+lanes already show it at: objects.c blends its nodes from the tick before's
+to this tick's by the sub-step's fraction (the position linearly, a rotation
+the shorter way round), which for a lift's animation, a translation a frame,
+is its animation at the sub-step's position exactly. Moving it in the
+sub-steps would add nothing a rider or a collider could meet, and would move
+what is authored on the tick off it: its delay and the door's open ticks,
+the door's check every fourth tick, the start and stop effects, the group
+values the scripts wait on and the network sends. A rider of the micro lane
+stands on the blend: a player's biped in the fast phase, an AI's biped in its
+own update (objects.c's object_lane_view_substep). */
 boolean machine_update(
 	long machine_index)
 {
@@ -385,6 +433,7 @@ void machine_move_elevator_riders(
 					{
 						add_vectors3d(&elevator_offset, (real_vector3d const *)&biped->object.position, (real_vector3d *)&new_position);
 						object_translate(biped_index, &new_position, NULL);
+						machine_carried_rider_add(biped_index, &elevator_offset);
 					}
 
 					elevator_object_index++;
@@ -396,4 +445,91 @@ void machine_move_elevator_riders(
 	}
 }
 
+/* port: whether the lift carries the biped by its movement
+(machine_move_elevator_riders): it stands on it, and the lift finds it among
+the objects that collide (objects_in_sphere's: those with a collision model,
+as the game's bipeds all have) */
+boolean machine_carries_rider(
+	long machine_index,
+	long biped_index)
+{
+	struct machine_datum *machine = machine_try_and_get(machine_index);
+	struct biped_datum *biped = (struct biped_datum *)object_try_and_get_and_verify_type(biped_index,
+		_object_mask_biped);
+	struct machine_definition *definition;
+
+	if (!machine || !biped || biped->biped.elevator_object_index != machine_index ||
+		!TEST_FLAG(biped->object.flags, _object_has_collision_model_bit))
+	{
+		return FALSE;
+	}
+	definition = machine_definition_get(machine->definition_index);
+	return TEST_FLAG(definition->machine.flags, _machine_is_elevator_bit) &&
+		definition->machine.elevator_node_index != NONE;
+}
+
+/* port: how far a lift carried an AI's biped this tick (above), if it did */
+boolean machine_elevator_carried(
+	long biped_index,
+	real_vector3d *offset)
+{
+	short index;
+
+	if (machine_carried_riders.tick != game_time_get())
+		return FALSE;
+	for (index = 0; index < machine_carried_riders.count; index++)
+	{
+		if (machine_carried_riders.riders[index].biped_index == biped_index)
+		{
+			*offset = machine_carried_riders.riders[index].offset;
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+/* port: (the tick's last sub-step, bipeds.c) the tick's carries forgotten */
+void machine_elevator_carried_forget(
+	void)
+{
+	machine_carried_riders.tick = NONE;
+	machine_carried_riders.count = 0;
+}
+
 /* ---------- private code */
+
+/* port: a biped carried by a lift this tick kept, if it is an AI's, which
+moves its sub-steps in its own update (machine_carried_riders), at 60 and
+120 */
+static void machine_carried_rider_add(
+	long biped_index,
+	real_vector3d const *offset)
+{
+	short index;
+
+	if (sim_substep_count() <= 1 || biped_get(biped_index)->unit.player_index != NONE ||
+		!object_lane_moves_in_substeps(biped_index))
+	{
+		return;
+	}
+	if (machine_carried_riders.tick != game_time_get())
+	{
+		machine_carried_riders.tick = game_time_get();
+		machine_carried_riders.count = 0;
+	}
+	for (index = 0; index < machine_carried_riders.count; index++)
+	{
+		if (machine_carried_riders.riders[index].biped_index == biped_index)
+		{
+			add_vectors3d(&machine_carried_riders.riders[index].offset, offset,
+				&machine_carried_riders.riders[index].offset);
+			return;
+		}
+	}
+	if (machine_carried_riders.count < MAXIMUM_CARRIED_AI_RIDERS)
+	{
+		machine_carried_riders.riders[machine_carried_riders.count].biped_index = biped_index;
+		machine_carried_riders.riders[machine_carried_riders.count].offset = *offset;
+		machine_carried_riders.count++;
+	}
+}
