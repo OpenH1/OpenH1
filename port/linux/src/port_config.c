@@ -1320,6 +1320,11 @@ static const struct config_setting config_settings[] =
 #endif
 	{ "debug.null_renderer", _config_boolean, "false", "HALO_NULL_RENDERER", _environment_set_is_true, _platform_all,
 		"Run without a window, drawing nothing." },
+	{ "debug.no_clipboard", _config_boolean, "false", "HALO_NO_CLIPBOARD", _environment_set_is_true, _platform_all,
+		"Leave the clipboard alone (tests and tools): no invite link is put on\n"
+		"it, and none found there is joined, as with debug.null_renderer,\n"
+		"debug.test_input, debug.fixed_step, debug.network_test or\n"
+		"debug.exit_after." },
 	{ "display.prepare_shaders", _config_boolean, "true", "HALO_PREPARE_SHADERS", _environment_value, _platform_all,
 		"Make a map's shaders and pipelines while it loads, so that none is made\n"
 		"in play: its first frame (and each structure's) drawn first, unseen,\n"
