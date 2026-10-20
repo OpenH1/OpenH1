@@ -239,7 +239,8 @@ int main(void) {
     assert(loading_art_stereo_tangent(art) > 0.65f && loading_art_stereo_tangent(art) < 0.75f);
     /* the window's edges dark */
     assert(art->output[(240 * 640) * 4 + 2] == 0 && art->output_right[(240 * 640 + 639) * 4 + 2] == 0);
-    free(b); free(art); return 0;
+    /* (the ring's buffers given back, for LeakSanitizer) */
+    loading_art_scene(art, NULL, 0); free(b); free(art); return 0;
 }
 ''')
 
@@ -268,6 +269,7 @@ int main(void) {
     out = loading_art_render(art, &frame);
     for (i = 0, sum = 0; i < LOADING_ART_FRAME_PIXELS * 4; i += 4) sum += out[i+2];
     assert(sum > 0);
-    free(b); free(art); return 0;
+    /* (the ring's buffers given back, for LeakSanitizer) */
+    loading_art_scene(art, NULL, 0); free(b); free(art); return 0;
 }
 ''')

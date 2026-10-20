@@ -22,7 +22,7 @@ def build(tmp_path, source):
     path.write_text(source)
     executable = tmp_path / "probe"
     subprocess.run([compiler, "-std=gnu89", "-Wall", "-Wextra", "-Werror", "-pthread",
-                    "-I", str(ROOT / "port/linux/src"), str(path), "-o", str(executable)], check=True)
+                    "-I", str(ROOT / "port/linux/src"), str(path), "-lm", "-o", str(executable)], check=True)
     return executable
 
 
