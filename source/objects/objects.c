@@ -56,6 +56,8 @@ OBJECTS.C
 #include "sound/game_sound.h"
 #include "structures/structure_bsp_definitions.h"
 #include "units/units.h"
+#include "units/bipeds.h" /* port: a lift's riders of the micro lane */
+#include "sim_rate.h" /* port: the sub-steps (port/linux/game/sim_rate.c) */
 /* port: object_bounds_cache.c's */
 void object_bounds_cache_update(long object_index, real_point3d const *center, real radius);
 /* port: port/linux/game/first_person_legs.c's */
@@ -173,6 +175,7 @@ static long recursive_object_adder(
 static long sort_dumps(struct dump_datum const *dump1, struct dump_datum const *dump2);
 static void object_add_to_dump(long object_index, struct dump_datum *dump);
 static void object_dump_write(FILE *stream, struct dump_datum *dump);
+static void objects_substep(short substep_index, short substep_count, real seconds);
 static short object_find_region_permutations_available_with_variant(struct model_region *region, short variant_number, short *available_indices);
 static boolean object_select_random_region_permutations_by_variant(long object_index, struct model *model, short variant_number);
 static short object_determine_variant_number(long object_index, struct model *model);
@@ -1064,6 +1067,8 @@ void objects_initialize(
 	object_name_list_allocate();
 	cluster_partition_new(&collideable_object_cluster_partition, "collideable object");
 	cluster_partition_new(&noncollideable_object_cluster_partition, "noncollideable object");
+	/* port: the lanes' work in the sub-steps (objects_substep) */
+	sim_substep_register(_sim_substep_objects, objects_substep);
 
 	return;
 }
@@ -1299,13 +1304,477 @@ short object_get_first_cluster(
 		object_get(ultimate_parent_index)->object.first_cluster_reference_index);
 }
 
+/* ---------- port: lanes (objects.h, port/linux/game/sim_rate.h) */
+
+/* the types whose objects of the micro lane their owners move in the
+sub-steps (object_lane_register) */
+static unsigned long object_lane_micro_types;
+/* the objects' updates so far (objects_update), which stamp what is kept
+for the sub-steps of one tick: never another tick's, after a revert or a
+new map either */
+static long object_lane_update_count;
+
+/* a type's objects that may be of the micro lane (object_get_lane): a
+player's biped, a projectile, an item loose in the world (thrown, dropped);
+each one's own, never a thing carried, which goes where its carrier does */
+static boolean object_lane_micro_candidate(
+	long root_index,
+	short type)
+{
+	switch (type)
+	{
+	case _object_type_biped:
+		return unit_get(root_index)->unit.player_index != NONE;
+	case _object_type_projectile:
+	case _object_type_weapon:
+	case _object_type_equipment:
+	case _object_type_garbage:
+		return TRUE;
+	default:
+		return FALSE;
+	}
+}
+
+void object_lane_register(
+	unsigned long object_type_mask)
+{
+	object_lane_micro_types |= object_type_mask;
+}
+
+short object_get_lane(
+	long object_index)
+{
+	long root_index = object_get_ultimate_parent(object_index);
+	short type = object_get_type(root_index);
+
+	return TEST_FLAG(object_lane_micro_types, type) && object_lane_micro_candidate(root_index, type) ?
+		_object_lane_micro :
+		_object_lane_macro;
+}
+
+boolean object_lane_moves_in_substeps(
+	long object_index)
+{
+	/* (one sub-step a tick ends where the tick does: its micro lane moves in
+	the tick, as it always has) */
+	return sim_substep_count() > 1 && object_get_lane(object_index) == _object_lane_micro;
+}
+
+/* What the sub-steps see of the macro lane. An object of the macro lane with
+a collision model, updated in a tick with sub-steps, has its pose of the tick
+before kept as its update begins (its node matrices, its position and its
+bounding sphere's centre): a sub-step sees it moved by the fraction of the
+tick that sub-step ends at, from there to where the tick left it. Kept only
+for the tick (each is stamped with it), outside the game state: nothing of a
+sub-step outlives its tick, and with one sub-step a tick nothing is kept.
+
+(render_interpolation.c keeps every object's last two poses too, but for the
+frames: at display.interpolation's word, of the nodes drawn, taken after the
+tick. The simulation must not change with a display setting.) */
+
+/* a node moved further than this in a tick was put there, not moved: seen
+where it is, not swept through the world on its way (as a frame draws it,
+render_interpolation.c) */
+#define OBJECT_LANE_SNAP_DISTANCE 10.0f
+
+struct object_lane_pose
+{
+	long object_index; /* NONE: none kept */
+	long update; /* the update it was kept in (object_lane_update_count) */
+	short node_count;
+	/* the sub-step its blend is of (NONE: none yet) */
+	short blended_substep;
+	/* its nodes as the tick began, then their blend (object_lane_poses.nodes) */
+	long first_node;
+	/* where the tick began with it */
+	real_point3d position;
+	real_point3d bounding_sphere_center;
+	/* where the tick left its root node when blended (a change since is
+	blended again) */
+	real_point3d blended_from;
+};
+
+static struct
+{
+	/* by absolute index, made at the first tick with sub-steps */
+	struct object_lane_pose *poses;
+	/* the tick's nodes kept and blended, two of each pose's */
+	real_matrix4x3 *nodes;
+	long node_capacity;
+	long node_count;
+	long nodes_update;
+} object_lane_poses = { NULL, NULL, 0, 0, NONE };
+
+/* the pose kept for the object this tick, if any */
+static struct object_lane_pose *object_lane_pose_get(
+	long object_index)
+{
+	struct object_lane_pose *pose;
+	long absolute_index;
+
+	if (!object_lane_poses.poses || object_index == NONE)
+		return NULL;
+	absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index);
+	if (absolute_index < 0 || absolute_index >= MAXIMUM_OBJECTS_PER_MAP)
+		return NULL;
+	pose = &object_lane_poses.poses[absolute_index];
+	if (pose->object_index != object_index || pose->update != object_lane_update_count)
+		return NULL;
+	return pose;
+}
+
+/* (object_update, as an object's update begins) its pose kept, if the
+sub-steps will see it so */
+static void object_lane_pose_keep(
+	long object_index)
+{
+	struct object_datum *object = object_get(object_index);
+	short node_count = (short)(object->object.node_matrices.size / (short)sizeof(real_matrix4x3));
+	struct object_lane_pose *pose;
+
+	if (sim_substep_count() <= 1 || node_count <= 0 ||
+		!TEST_FLAG(object->object.flags, _object_has_collision_model_bit) ||
+		object_get_lane(object_index) != _object_lane_macro)
+	{
+		return;
+	}
+	if (!object_lane_poses.poses)
+	{
+		long index;
+
+		object_lane_poses.poses = malloc(MAXIMUM_OBJECTS_PER_MAP * sizeof(struct object_lane_pose));
+		if (!object_lane_poses.poses)
+			return;
+		for (index = 0; index < MAXIMUM_OBJECTS_PER_MAP; index++)
+			object_lane_poses.poses[index].object_index = NONE;
+	}
+	if (object_lane_poses.nodes_update != object_lane_update_count)
+	{
+		object_lane_poses.nodes_update = object_lane_update_count;
+		object_lane_poses.node_count = 0;
+	}
+	if (object_lane_poses.node_count + 2 * node_count > object_lane_poses.node_capacity)
+	{
+		long capacity = MAX(2 * object_lane_poses.node_capacity, object_lane_poses.node_count + 2 * node_count);
+		real_matrix4x3 *nodes = object_lane_poses.nodes ?
+			realloc(object_lane_poses.nodes, capacity * sizeof(real_matrix4x3)) :
+			malloc(capacity * sizeof(real_matrix4x3));
+
+		if (!nodes)
+			return;
+		object_lane_poses.nodes = nodes;
+		object_lane_poses.node_capacity = capacity;
+	}
+	pose = &object_lane_poses.poses[DATUM_INDEX_TO_ABSOLUTE_INDEX(object_index)];
+	pose->object_index = object_index;
+	pose->update = object_lane_update_count;
+	pose->node_count = node_count;
+	pose->blended_substep = NONE;
+	pose->first_node = object_lane_poses.node_count;
+	pose->position = object->object.position;
+	pose->bounding_sphere_center = object->object.bounding_sphere_center;
+	memcpy(object_lane_poses.nodes + pose->first_node,
+		object_header_block_get(object_index, &object->object.node_matrices),
+		node_count * sizeof(real_matrix4x3));
+	object_lane_poses.node_count += 2 * node_count;
+}
+
+static real object_lane_lerp(
+	real a,
+	real b,
+	real t)
+{
+	return a + (b - a) * t;
+}
+
+static void object_lane_point_lerp(
+	real_point3d const *a,
+	real_point3d const *b,
+	real t,
+	real_point3d *result)
+{
+	result->x = object_lane_lerp(a->x, b->x, t);
+	result->y = object_lane_lerp(a->y, b->y, t);
+	result->z = object_lane_lerp(a->z, b->z, t);
+}
+
+/* whether a node's basis is a rotation, which a quaternion can hold (not
+mirrored) */
+static boolean object_lane_basis_is_rotation(
+	real_matrix4x3 const *matrix)
+{
+	real_vector3d forward_cross_left;
+
+	cross_product3d(&matrix->forward, &matrix->left, &forward_cross_left);
+	return dot_product3d(&forward_cross_left, &matrix->up) > 0.0f;
+}
+
+/* a node between its pose as the tick began (a) and as it left it (b): the
+position and scale linearly, the rotation the shorter way round */
+static void object_lane_node_blend(
+	real_matrix4x3 const *a,
+	real_matrix4x3 const *b,
+	real t,
+	real_matrix4x3 *result)
+{
+	*result = *b;
+	result->scale = object_lane_lerp(a->scale, b->scale, t);
+	object_lane_point_lerp(&a->position, &b->position, t, &result->position);
+	if (memcmp(a->n, b->n, 3 * sizeof(real_vector3d)) &&
+		object_lane_basis_is_rotation(a) && object_lane_basis_is_rotation(b))
+	{
+		real_quaternion qa, qb, q;
+		real_matrix4x3 rotation;
+
+		matrix4x3_rotation_to_quaternion(a, &qa);
+		matrix4x3_rotation_to_quaternion(b, &qb);
+		quaternions_interpolate_and_normalize(&qa, &qb, t, &q);
+		matrix4x3_rotation_from_quaternion(&rotation, &q);
+		result->forward = rotation.forward;
+		result->left = rotation.left;
+		result->up = rotation.up;
+	}
+}
+
+/* the object's nodes as a sub-step sees them: blended, or NULL to see them
+where they are (an object of the micro lane, one not moved by the tick, any
+outside the sub-steps or at the tick's end) */
+static real_matrix4x3 *object_lane_node_matrices(
+	long object_index)
+{
+	struct object_lane_pose *pose;
+	short substep_index = sim_substep_index();
+	real_matrix4x3 const *latest;
+	real_matrix4x3 const *previous;
+	real_matrix4x3 *blended;
+	struct object_datum *object;
+	real t;
+
+	if (substep_index == NONE || substep_index >= sim_substep_count() - 1)
+		return NULL;
+	pose = object_lane_pose_get(object_index);
+	if (!pose)
+		return NULL;
+	object = object_get(object_index);
+	if (object->object.node_matrices.size / (short)sizeof(real_matrix4x3) != pose->node_count)
+		return NULL;
+	latest = (real_matrix4x3 const *)object_header_block_get(object_index, &object->object.node_matrices);
+	previous = object_lane_poses.nodes + pose->first_node;
+	blended = object_lane_poses.nodes + pose->first_node + pose->node_count;
+	if (pose->blended_substep != substep_index || memcmp(&pose->blended_from, &latest[0].position, sizeof(real_point3d)))
+	{
+		short node_index;
+
+		t = sim_substep_end_fraction();
+		if (distance_squared3d(&previous[0].position, &latest[0].position) <=
+			OBJECT_LANE_SNAP_DISTANCE * OBJECT_LANE_SNAP_DISTANCE)
+		{
+			for (node_index = 0; node_index < pose->node_count; node_index++)
+				object_lane_node_blend(&previous[node_index], &latest[node_index], t, &blended[node_index]);
+		}
+		else
+		{
+			memcpy(blended, latest, pose->node_count * sizeof(real_matrix4x3));
+		}
+		pose->blended_substep = substep_index;
+		pose->blended_from = latest[0].position;
+	}
+	return blended;
+}
+
+void object_get_substep_position(
+	long object_index,
+	real_point3d *position,
+	real_point3d *bounding_sphere_center)
+{
+	struct object_datum *object = object_get(object_index);
+	short substep_index = sim_substep_index();
+	struct object_lane_pose *pose = NULL;
+
+	if (substep_index != NONE && substep_index < sim_substep_count() - 1)
+		pose = object_lane_pose_get(object_index);
+	if (pose && distance_squared3d(&pose->position, &object->object.position) <=
+		OBJECT_LANE_SNAP_DISTANCE * OBJECT_LANE_SNAP_DISTANCE)
+	{
+		real t = sim_substep_end_fraction();
+
+		if (position)
+			object_lane_point_lerp(&pose->position, &object->object.position, t, position);
+		if (bounding_sphere_center)
+			object_lane_point_lerp(&pose->bounding_sphere_center, &object->object.bounding_sphere_center, t, bounding_sphere_center);
+	}
+	else
+	{
+		if (position)
+			*position = object->object.position;
+		if (bounding_sphere_center)
+			*bounding_sphere_center = object->object.bounding_sphere_center;
+	}
+}
+
+/* A lift's riders (device_machines.c: machine_move_elevator_riders) are
+carried in its update by its movement in the tick. One of the micro lane,
+which moves in the sub-steps, is carried there instead, by its share of the
+movement each sub-step before it moves (objects_substep): with the lift's
+floor where the sub-step sees it, not where the tick leaves it. */
+
+enum
+{
+	/* the riders of the micro lane carried in one tick: the players' */
+	MAXIMUM_LANE_CARRIED_RIDERS = 64,
+	MAXIMUM_LANE_RIDER_CANDIDATES = 2048
+};
+
+static struct
+{
+	long update; /* the update they were carried in */
+	short count;
+	struct
+	{
+		long biped_index;
+		real_vector3d offset; /* the tick's: a share each sub-step */
+	} riders[MAXIMUM_LANE_CARRIED_RIDERS];
+} object_lane_carried = { NONE, 0 };
+
+static void object_lane_carry(
+	long biped_index,
+	real_vector3d const *offset)
+{
+	short index;
+
+	if (object_lane_carried.update != object_lane_update_count)
+	{
+		object_lane_carried.update = object_lane_update_count;
+		object_lane_carried.count = 0;
+	}
+	for (index = 0; index < object_lane_carried.count; index++)
+	{
+		if (object_lane_carried.riders[index].biped_index == biped_index)
+		{
+			add_vectors3d(&object_lane_carried.riders[index].offset, offset, &object_lane_carried.riders[index].offset);
+			return;
+		}
+	}
+	if (object_lane_carried.count < MAXIMUM_LANE_CARRIED_RIDERS)
+	{
+		object_lane_carried.riders[object_lane_carried.count].biped_index = biped_index;
+		object_lane_carried.riders[object_lane_carried.count].offset = *offset;
+		object_lane_carried.count++;
+	}
+}
+
+/* the riders of the micro lane held from a lift's carry in its update
+(object_lane_hold_elevator_riders), its riders again after it */
+static struct
+{
+	long machine_index;
+	short count;
+	long biped_indices[MAXIMUM_LANE_CARRIED_RIDERS];
+} object_lane_held = { NONE, 0 };
+
+/* (object_update, the lift's nodes computed, before its carry: its riders
+of the micro lane left to the sub-steps, carried there; not its riders for
+machine_move_elevator_riders, which carries the others now) */
+static void object_lane_hold_elevator_riders(
+	long machine_index,
+	real_point3d const *previous_position)
+{
+	real_point3d position;
+
+	object_lane_held.machine_index = machine_index;
+	object_lane_held.count = 0;
+	if (sim_substep_count() > 1 && machine_get_elevator_position(machine_index, &position) &&
+		(position.x != previous_position->x || position.y != previous_position->y ||
+			position.z != previous_position->z))
+	{
+		struct object_datum *machine = object_get(machine_index);
+		long candidates[MAXIMUM_LANE_RIDER_CANDIDATES];
+		real_vector3d offset;
+		short candidate_count;
+		short index;
+
+		/* (as machine_move_elevator_riders finds them) */
+		offset.i = position.x - previous_position->x;
+		offset.j = position.y - previous_position->y;
+		offset.k = position.z - previous_position->z;
+		candidate_count = objects_in_sphere(
+			_object_mask_biped,
+			_object_mask_biped,
+			&machine->object.location,
+			&machine->object.bounding_sphere_center,
+			machine->object.bounding_sphere_radius,
+			candidates,
+			NUMBEROF(candidates));
+		for (index = 0; index < candidate_count && object_lane_held.count < MAXIMUM_LANE_CARRIED_RIDERS; index++)
+		{
+			struct biped_datum *biped = biped_get(candidates[index]);
+
+			if (biped->biped.elevator_object_index == machine_index && object_lane_moves_in_substeps(candidates[index]))
+			{
+				biped->biped.elevator_object_index = NONE;
+				object_lane_held.biped_indices[object_lane_held.count++] = candidates[index];
+				object_lane_carry(candidates[index], &offset);
+			}
+		}
+	}
+}
+
+/* (... after its carry) the riders held its riders again */
+static void object_lane_release_elevator_riders(
+	long machine_index)
+{
+	short index;
+
+	if (object_lane_held.machine_index != machine_index)
+		return;
+	for (index = 0; index < object_lane_held.count; index++)
+		biped_get(object_lane_held.biped_indices[index])->biped.elevator_object_index = machine_index;
+	object_lane_held.machine_index = NONE;
+	object_lane_held.count = 0;
+}
+
+/* the fast phase's first slot (sim_rate.h): the lifts' riders of the micro
+lane carried their share */
+static void objects_substep(
+	short substep_index,
+	short substep_count,
+	real seconds)
+{
+	short index;
+
+	(void)seconds;
+	if (object_lane_carried.update != object_lane_update_count)
+		return;
+	for (index = 0; index < object_lane_carried.count; index++)
+	{
+		long biped_index = object_lane_carried.riders[index].biped_index;
+		struct object_datum *biped = object_try_and_get_and_verify_type(biped_index, _object_mask_biped);
+
+		if (biped)
+		{
+			real_vector3d share;
+			real_point3d position;
+
+			scale_vector3d(&object_lane_carried.riders[index].offset, sim_substep_tick_fraction(), &share);
+			add_vectors3d((real_vector3d const *)&biped->object.position, &share, (real_vector3d *)&position);
+			object_translate(biped_index, &position, NULL);
+		}
+	}
+	/* (nothing of the sub-steps outlives the tick) */
+	if (substep_index == substep_count - 1)
+		object_lane_carried.count = 0;
+}
+
 real_matrix4x3 *object_get_node_matrices(
 	long object_index)
 {
-	/* while a frame is drawn, the pose between the last two ticks
+	/* in a sub-step, an object of the macro lane where the sub-step sees it
+	(above); while a frame is drawn, the pose between the last two ticks
 	(port/linux/game/render_interpolation.c) */
-	real_matrix4x3 *interpolated = render_interpolation_object_node_matrices(object_index);
+	real_matrix4x3 *interpolated = object_lane_node_matrices(object_index);
 
+	if (!interpolated)
+		interpolated = render_interpolation_object_node_matrices(object_index);
 	if (interpolated)
 		return interpolated;
 	return (real_matrix4x3 *)object_header_block_get(object_index, &object_get(object_index)->object.node_matrices);
@@ -1952,8 +2421,12 @@ real_matrix4x3 *object_get_node_matrix(
 	}
 
 	{
-		real_matrix4x3 *interpolated = render_interpolation_object_node_matrices(object_index);
+		/* (where a sub-step sees it, or a frame draws it, as
+		object_get_node_matrices) */
+		real_matrix4x3 *interpolated = object_lane_node_matrices(object_index);
 
+		if (!interpolated)
+			interpolated = render_interpolation_object_node_matrices(object_index);
 		if (interpolated)
 			return &interpolated[node_index];
 	}
@@ -3864,6 +4337,8 @@ static boolean object_update(
 		/* port: preserve the floor before device_update advances its phase. */
 		elevator = object->object.type == _object_type_machine &&
 			machine_get_elevator_position(object_index, &elevator_position);
+		/* port: and its pose, for the sub-steps (object_lane_node_matrices) */
+		object_lane_pose_keep(object_index);
 
 		object_type_update(object_index);
 		if (object_definition->object.collision_model.index!=NONE)
@@ -3878,7 +4353,12 @@ static boolean object_update(
 			object_compute_node_matrices(object_index);
 			/* port: carry by this tick's movement, after its collision nodes. */
 			if (elevator)
+			{
+				/* (its riders of the micro lane carried in the sub-steps) */
+				object_lane_hold_elevator_riders(object_index, &elevator_position);
 				machine_move_elevator_riders(object_index, &elevator_position);
+				object_lane_release_elevator_riders(object_index);
+			}
 		}
 
 		object_compute_function_values(object_index);
@@ -4473,6 +4953,8 @@ void objects_update(
 	boolean dont_update_object = ((game_time_get()&1)!=0) && game_players_are_double_speed();
 
 	profile_enter(section);
+	/* port: (what the sub-steps keep is this update's from here on) */
+	object_lane_update_count++;
 
 	object_globals->active_garbage_object_count = 0;
 	
