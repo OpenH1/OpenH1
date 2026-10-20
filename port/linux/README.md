@@ -2403,6 +2403,21 @@ came from.
   your controller points, so the reticle, where the shot goes and the
   smart-link's view do not move with it; while a scope is raised to your
   eye (`vr.scope_view = "eye"`) the weapon does not kick at all.
+- The game's own first-person animations do not move the weapon out of
+  your hand: on the flat screen firing (the plasma pistol's charged shot
+  most of all), the plasma weapons' venting, a melee, a reload, drawing a
+  weapon and putting it away, standing idle and walking swing the weapon
+  and the arms about the view, which in your hand would fling it away from
+  where you hold it, the arm after it. In VR the weapon stays in your hand
+  and only the kick above moves it; what moves on the weapon itself still
+  does (the pistol's slide, the plasma pistol's cover and dial as it
+  charges and vents, the plasma rifle's vents, the needler's needles, the
+  magazines, the shotgun's pump), and the muzzle flash and the other
+  effects come from the weapon where it is. Your left hand on a long
+  gun's foregrip follows the animation's hand while it stays near the grip
+  (the shotgun's pump), and stays on the gun when the animation would take
+  it away. With `vr.aim = "gamepad"` the weapon is posed as on the flat
+  screen, its animations with it.
 - The feel, in the weapon's hand (and a third as strong in the left on a
   long gun's foregrip): the pistol's sharp tap, the assault rifle's fast
   buzz (a short pulse a round), the shotgun's heavy thump, the sniper
@@ -3642,12 +3657,22 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   them again. Each hand's middle (its wrist and knuckles) is at its
   controller's grip pose, turned with the controller's pointing pose as
   the weapon's idle animation has it turned from the camera. For the
-  right hand the camera is placed so (the weapon and the hand then play
-  their animation about it, reloads and throws too); the left wrist
+  right hand the camera is placed so; once the nodes are built, all of
+  them are moved together (a rigid move, nothing changing shape) until the
+  weapon's root (`frame gun`, hanging from `frame r wriste`; the needler's
+  `frame body`) is where the idle pose has it from that camera
+  (`weapon_hold`), so that the game's animations, which move the whole
+  weapon and both arms about the camera (firing, the plasma pistol's
+  charged shot, the vent, a melee, a reload, drawing, the idle's sway and
+  the walk's bob), keep only what they move within the weapon and the
+  right hand on it, and the weapon stays in the controller (the effects at
+  its markers with it), whatever `vr.hands` is; the left wrist
   (`frame l wriste`) and its fingers are put there in the idle pose's
-  shape once the nodes are built, the fingers curled about the knuckles'
-  line as the grip is pulled, and blended onto the weapon's foregrip as
-  the left hand takes it. The right index finger curls as the trigger is
+  shape, the fingers curled about the knuckles' line as the grip is
+  pulled, and blended onto the weapon's foregrip as the left hand takes
+  it: onto the animation's hand while it stays within 12 cm of the idle
+  pose's on the weapon, and onto the idle pose's from 24 cm
+  (`support_hold`). The right index finger curls as the trigger is
   pulled, and the weapon's `frame trigger` (the pistol's) moves back. How
   far it curls at rest and pulled is each weapon's (`trigger_fingers`, by
   the first-person animation's tag name), from the idle animation's finger,

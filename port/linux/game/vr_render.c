@@ -1190,6 +1190,21 @@ boolean vr_render_weapon_mirrored(real_point3d *origin, real_vector3d *normal)
 	return normalize3d(normal) > 0.0f;
 }
 
+/* vr_hands.c: the camera the first-person weapon was posed from this frame
+(vr_render_weapon_camera's, the shots' kick in it), when that put it in the
+right controller, whatever vr.hands is, to hold the weapon there; FALSE
+when it did not (the head's, the gamepad's aim: the weapon as on the flat
+screen) */
+boolean vr_render_weapon_held(real_matrix4x3 *camera)
+{
+	struct render_camera const *weapon = &vr_render.weapon_camera;
+
+	if (!vr_render.active || !vr_render.weapon_camera_set || !vr_render.weapon_in_hand)
+		return FALSE;
+	matrix4x3_from_point_and_vectors(camera, &weapon->position, &weapon->forward, &weapon->up);
+	return TRUE;
+}
+
 /* the aim's line: from the right controller along it (or, with a gamepad,
 from the game's eye along the facing); FALSE if it has no direction */
 static boolean aim_line(real_point3d *origin, real_vector3d *direction)
