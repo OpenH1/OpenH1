@@ -18,6 +18,10 @@ enum
 	platform, 2, which cycles by itself; any other has no behaviour of its own
 	and moves only where it is set) */
 	MACHINE_TYPE_SET = 1,
+	/* (units.h's: a weapon class's animations, the grenade's throw among them,
+	and the kinds of grenade a unit carries) */
+	WEAPON_CLASS_ANIMATION_THROW_GRENADE = 20,
+	UNIT_GRENADE_TYPES = 2,
 };
 
 /* ---------- structures */
@@ -136,10 +140,12 @@ static real box_reach(
 }
 
 /* a collision model of one node: a solid box (bounds in its object's space),
-whose bsp is the one its region's permutation picks (one region, one permutation) */
-static long box_collision_model(
+whose bsp is the one its region's permutation picks (one region, one
+permutation); its data in *made, for what the caller sets of it more */
+static long box_collision_model_new(
 	char const *name,
-	real_rectangle3d const *bounds)
+	real_rectangle3d const *bounds,
+	struct collision_model **made)
 {
 	struct collision_model *model;
 	struct collision_node *node;
@@ -162,17 +168,55 @@ static long box_collision_model(
 	box = cache_block(&node->bsps, 1, sizeof(*box));
 	box_build(box, cache_block, bounds, TRUE);
 	model->pathfinding_box = *bounds;
+	*made = model;
 	return handle;
 }
 
-void prop_biped_body(
+static long box_collision_model(
+	char const *name,
+	real_rectangle3d const *bounds)
+{
+	struct collision_model *model;
+
+	return box_collision_model_new(name, bounds, &model);
+}
+
+/* the players' biped's body (prop_biped_body): its collision model */
+static struct collision_model *biped_body(
 	struct stage *stage)
 {
 	/* (round its capsule, from its feet: stage.c's radius and standing height) */
 	real radius = stage->biped->biped.collision_radius;
 	real_rectangle3d body = { { -radius, radius, -radius, radius, 0.f, stage->biped->biped.collision_height_standing } };
+	struct collision_model *model;
 
-	cache_reference(&stage->biped->object.collision_model, box_collision_model("stagekit\\biped", &body));
+	cache_reference(&stage->biped->object.collision_model, box_collision_model_new("stagekit\\biped", &body, &model));
+	return model;
+}
+
+void prop_biped_body(
+	struct stage *stage)
+{
+	biped_body(stage);
+}
+
+void prop_biped_shield(
+	struct stage *stage,
+	real body_vitality,
+	real shield_vitality,
+	real recharge_seconds,
+	real stun_seconds)
+{
+	struct damage_resistance *resistance = &biped_body(stage)->resistance;
+
+	resistance->maximum_body_vitality = body_vitality;
+	resistance->maximum_shield_vitality = shield_vitality;
+	resistance->shield_recharge_time = recharge_seconds;
+	resistance->shield_stun_time = stun_seconds;
+	/* (what damage.c reads of the recharge time, which a map carries made from
+	it: the shield's fraction a tick, a full shield in that many seconds) */
+	resistance->runtime_shield_recharge_velocity = recharge_seconds > 0.f ?
+		1.f / (recharge_seconds * TICKS_PER_SECOND) : 0.f;
 }
 
 /* a scenery box placed, turned (radians) */
@@ -344,6 +388,87 @@ void prop_elevator(
 	placement->machine.object.position = *position;
 	placement->machine.device.power_group_index = NONE;
 	placement->machine.device.position_group_index = NONE;
+}
+
+/* ---------- grenades (tools/scorecard's scenarios) */
+
+void prop_grenades(
+	struct stage *stage,
+	long projectile_handle,
+	short count,
+	real throw_speed)
+{
+	enum { QUATERNION_ONE = 32767 };
+	/* (StageKit's own: a throw of 20 frames, two thirds of a second, letting go
+	at its tenth, a third of a second in) */
+	enum { THROW_FRAMES = 20, THROW_RELEASE_FRAME = 10 };
+	struct game_globals_grenade *grenades;
+	struct scenario_starting_profile *profile;
+	struct animation_graph *graph = stage->biped_animations;
+	struct animation_graph_weapon_class *unarmed;
+	struct animation_graph_animation_index *slots;
+	struct animation_node *node;
+	struct animation *animation;
+	short *rotation;
+	real *scale;
+	short kind;
+
+	/* the globals' grenades: each kind units.c has, of the projectile */
+	grenades = cache_block(&stage->globals->grenades, UNIT_GRENADE_TYPES, sizeof(*grenades));
+	for (kind = 0; kind < UNIT_GRENADE_TYPES; kind++)
+	{
+		grenades[kind].maximum_count = count;
+		cache_reference(&grenades[kind].projectile, projectile_handle);
+	}
+	/* in the players' hands as they start: the first kind's (a profile of no
+	weapon, if the scenario gave none) */
+	profile = stage->scenario->starting_profiles.count ?
+		(struct scenario_starting_profile *)stage->scenario->starting_profiles.address :
+		cache_block_add(&stage->scenario->starting_profiles, sizeof(*profile));
+	if (!profile->name[0])
+	{
+		strcpy(profile->name, "stagekit");
+		profile->starting_health_modifier = 1.f;
+		profile->starting_shield_modifier = 1.f;
+	}
+	profile->grenade_counts[0] = (char)count;
+	/* thrown as fast along its aim, from its eyes (the globals' grenade origin:
+	none, units.c's unit_throw_grenade_release) */
+	stage->biped->unit.grenade_velocity = throw_speed;
+
+	/* its throw: an animation of its one node, standing still, which units.c
+	plays by its unarmed weapon class's throw slot and lets go of the grenade
+	at its key frame (and has it in the hand from its second) */
+	node = cache_block(&graph->nodes, 1, sizeof(*node));
+	strcpy(node->name, "root");
+	node->next_sibling_node_index = node->first_child_node_index = node->parent_node_index = NONE;
+	animation = cache_block(&graph->animations, 1, sizeof(*animation));
+	strcpy(animation->name, "stand unarmed throw-grenade");
+	animation->type = _animation_base;
+	animation->frame_count = THROW_FRAMES;
+	animation->private_key_frame_index = THROW_RELEASE_FRAME;
+	animation->frame_size = sizeof(real_point3d);
+	animation->node_count = 1;
+	animation->next_animation_index = NONE;
+	animation->sound_index = NONE;
+	animation->runtime_parent_animation_index = 0;
+	animation->weight = 1.f;
+	animation->runtime_normalized_weight = 1.f;
+	animation->nodes_with_translation_flags[0] = 1;
+	/* (its rotation and scale the identity, its translation none every frame) */
+	animation->default_data.size = 4 * sizeof(short) + sizeof(real);
+	rotation = animation->default_data.address = cache_allocate(animation->default_data.size);
+	rotation[3] = QUATERNION_ONE;
+	scale = (real *)(rotation + 4);
+	*scale = 1.f;
+	animation->data.size = THROW_FRAMES * sizeof(real_point3d);
+	animation->data.address = cache_allocate(animation->data.size);
+	unarmed = (struct animation_graph_weapon_class *)
+		((struct animation_graph_unit_seat *)graph->unit_seats.address)->weapon_classes.address;
+	slots = cache_block(&unarmed->animations, WEAPON_CLASS_ANIMATION_THROW_GRENADE + 1, sizeof(*slots));
+	for (kind = 0; kind <= WEAPON_CLASS_ANIMATION_THROW_GRENADE; kind++)
+		slots[kind].animation_index = NONE;
+	slots[WEAPON_CLASS_ANIMATION_THROW_GRENADE].animation_index = 0;
 }
 
 /* ---------- weapons and projectiles (tools/scorecard's scenarios) */

@@ -27,6 +27,10 @@ TOLERANCES = {
     "rest_point": dict(absolute=0.25, unit="wu"),
     "fuse": dict(absolute=0.001, step=True, unit="s"),
     "height_curve": dict(absolute=0.01, unit="wu rms"),
+    # a player's shield (U14): its recharge is the tick's (damage.c), so its vitality every 30th of a second and
+    # when it is full again agree to a ten-thousandth of the shield and a millisecond
+    "shield_curve": dict(absolute=0.0001, unit="rms"),
+    "shield_time": dict(absolute=0.001, unit="s"),
     "ai_path": dict(absolute=0.01, unit="wu rms"),
     "ai_walked": dict(relative=0.005, unit="wu"),
     "ai_between": dict(absolute=0.002, unit="wu"),
@@ -72,7 +76,7 @@ class Trace:
                 elif step is None:
                     continue
                 elif words[0] == "p":
-                    step["players"][int(words[1])] = [float(word) for word in words[2:12]]
+                    step["players"][int(words[1])] = [float(word) for word in words[2:14]]
                 elif words[0] == "o":
                     step["objects"][words[1]] = tuple(float(word) for word in words[2:8])
                 elif words[0] == "u":
@@ -255,6 +259,25 @@ def measure_grenades(trace):
     return result
 
 
+def measure_thrown(trace):
+    """each grenade thrown by hand (a projectile made with no shot: in the thrower's hand, units.c, which lets go of
+    it at its throw's key frame), as each grenade fired is measured (measure_grenades), from its making: its first
+    landing (where, and how long after), where it lay when it went off, and its fuse"""
+    result = {}
+    shot = {projectile for _, projectile, _ in shots_of(trace)}
+    booms = {words[0]: (t, tuple(float(x) for x in words[1:4])) for t, step, words in trace.events("boom")}
+    made = [(t, words[0]) for t, step, words in trace.events("new") if words[0] not in shot]
+    for number, (t, projectile) in enumerate(made):
+        hits = hits_of(trace, projectile)
+        if hits:
+            result[f"grenade{number}.landing"] = (hits[0][1], "grenade_impact")
+            result[f"grenade{number}.flight"] = (hits[0][0] - t, "grenade_time")
+        if projectile in booms:
+            result[f"grenade{number}.rest"] = (booms[projectile][1], "rest_point")
+            result[f"grenade{number}.fuse"] = (booms[projectile][0] - t, "fuse")
+    return result
+
+
 def measure_height_curve(trace, start=0.0, end=None, player=0):
     """the player's height at every 30th of a second from start to end: the curve, compared by its RMS"""
     curve = []
@@ -267,6 +290,67 @@ def measure_height_curve(trace, start=0.0, end=None, player=0):
             curve.append(step["players"][player][2])
         n += 1
     return {"height": (tuple(curve), "height_curve")}
+
+
+def measure_fall(trace, after=0.0, player=0):
+    """the first fall after a time: the player off the ground (airborne) and not rising, as walking off a ledge.
+    Its height over time is fitted (a parabola, as constant gravity makes it at any rate); it went over the edge
+    where the fit's top is (it left the ledge level, so its height stops rising there), and landed where the fit
+    reaches the ground it landed on; how far it dropped and went across between the two; and the curve of its height
+    every 30th of a second from the time on, compared by its RMS"""
+    steps = [step for step in trace.steps if player in step["players"] and step["t"] > after]
+    for index, step in enumerate(steps):
+        fields = step["players"][player]
+        if fields[9] and index and not steps[index - 1]["players"][player][9] and fields[5] <= 0:
+            air = []
+            for later in steps[index:]:
+                if not later["players"][player][9]:
+                    break
+                air.append(later)
+            if len(air) < 4 or len(steps) <= index + len(air):
+                return {}
+            floor = steps[index + len(air)]["players"][player][2]
+            a, b, c = fit_quadratic([(s["t"], s["players"][player][2]) for s in air])
+            if a >= 0:
+                return {}
+            edge = -b / (2 * a)
+            top = a * edge ** 2 + b * edge + c
+            landing = (-b - math.sqrt(max(0.0, b * b - 4 * a * (c - floor)))) / (2 * a)
+            across = [fit_quadratic([(s["t"], s["players"][player][axis]) for s in air]) for axis in (0, 1)]
+
+            def place(t):
+                return tuple(p * t * t + q * t + r for p, q, r in across)
+
+            curve = measure_height_curve(trace, after, None, player)["height"][0]
+            return {"edge_time": (edge, "jump_time"),
+                    "fall_time": (landing - edge, "jump_time"),
+                    "drop": (top - floor, "apex_height"),
+                    "distance": (distance(place(edge), place(landing)), "jump_distance"),
+                    "height": (curve, "height_curve")}
+    return {}
+
+
+def measure_shield(trace, start=0.0, end=None, player=0):
+    """the player's shield (a fraction of its maximum) every 30th of a second from start to end, compared by its RMS;
+    and on those times, when it was lowest and when it was full again (it is the tick's: damage.c changes it in the
+    objects' update, which a tick's first sub-step sees)"""
+    shields = []
+    n = round(start * 30)
+    while end is None or n / 30.0 <= end + GRID_SLACK:
+        step = trace.at(n / 30.0)
+        if step is None:
+            break
+        if player in step["players"] and len(step["players"][player]) > 11:
+            shields.append((n / 30.0, step["players"][player][11]))
+        n += 1
+    if not shields:
+        return {}
+    low_t, low = min(shields, key=lambda item: item[1])
+    full = [t for t, shield in shields if t > low_t and shield >= 1.0]
+    result = {"shield": (tuple(shield for _, shield in shields), "shield_curve"), "depleted_at": (low_t, "shield_time")}
+    if full:
+        result["full_at"] = (full[0], "shield_time")
+    return result
 
 
 def measure_ai_path(trace, start=0.0, end=None):
@@ -422,7 +506,10 @@ MEASURES = {
     "jump_off_grid": measure_jump_off_grid,
     "shots": measure_shots,
     "grenades": measure_grenades,
+    "thrown": measure_thrown,
     "height_curve": measure_height_curve,
+    "fall": measure_fall,
+    "shield": measure_shield,
     "ai_path": measure_ai_path,
 }
 

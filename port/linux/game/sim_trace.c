@@ -20,11 +20,14 @@ Lines:
                                                    seconds from the scenario's
                                                    start; the 30 Hz tick it is
                                                    in; its index in that tick
-    p <player> <x> <y> <z> <vx> <vy> <vz> <ax> <ay> <az> <air>
+    p <player> <x> <y> <z> <vx> <vy> <vz> <ax> <ay> <az> <air> <body> <shield>
                                                    each player's unit: place,
                                                    velocity (world units a
                                                    second), aim (a unit
-                                                   vector), 1 airborne
+                                                   vector), 1 airborne, its
+                                                   body's and shield's
+                                                   vitality (fractions of
+                                                   their maximums: 0 without)
     v <player> <id> <x> <y> <z> <vx> <vy> <vz> <fx> <fy> <fz> <ux> <uy> <uz>
       <wx> <wy> <wz> <ground>                      each vehicle, and the player
                                                    whose unit rides it (-1 for
@@ -316,12 +319,13 @@ static void sim_trace_players(
 		}
 		if (absolute_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
 			sim_trace.airborne[absolute_index] = airborne;
-		fprintf(sim_trace.file, "p %ld %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %d\n", absolute_index,
+		fprintf(sim_trace.file, "p %ld %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %d %.6f %.6f\n", absolute_index,
 			unit->object.position.x, unit->object.position.y, unit->object.position.z,
 			unit->object.translational_velocity.i * SECONDS_PER_VELOCITY_UNIT,
 			unit->object.translational_velocity.j * SECONDS_PER_VELOCITY_UNIT,
 			unit->object.translational_velocity.k * SECONDS_PER_VELOCITY_UNIT,
-			unit->unit.aiming_vector.i, unit->unit.aiming_vector.j, unit->unit.aiming_vector.k, airborne ? 1 : 0);
+			unit->unit.aiming_vector.i, unit->unit.aiming_vector.j, unit->unit.aiming_vector.k, airborne ? 1 : 0,
+			unit->object.body_vitality, unit->object.shield_vitality);
 	}
 }
 

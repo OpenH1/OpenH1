@@ -68,7 +68,8 @@ static void chamber_build(
 
 /* the players' biped: a capsule a unit tall, a quarter round, that no fall hurts */
 static long biped_build(
-	struct biped_definition **definition)
+	struct biped_definition **definition,
+	struct animation_graph **graph)
 {
 	struct animation_graph *animations;
 	struct animation_graph_unit_seat *seat;
@@ -82,6 +83,7 @@ static long biped_build(
 	animations_handle = cache_tag_new(FOURCC('a', 'n', 't', 'r'), NONE, NONE, "stagekit\\biped",
 		sizeof(struct animation_graph), &data);
 	animations = data;
+	*graph = animations;
 	seat = cache_block(&animations->unit_seats, 1, sizeof(*seat));
 	strcpy(seat->label, "stand");
 	weapon_class = cache_block(&seat->weapon_classes, 1, sizeof(*weapon_class));
@@ -146,7 +148,7 @@ weapons have none) */
 
 /* the globals: how the player looks round, the interface's tags, the player's
 biped and its speeds, and falling damage */
-static void globals_build(
+static struct game_globals *globals_build(
 	long font_handle,
 	long strings_handle,
 	long hud_handle,
@@ -193,6 +195,7 @@ static void globals_build(
 	which the game reads as it read their absence; game_globals_check) */
 	cache_block(&globals->camera, 1, sizeof(struct tag_reference));
 	cache_block(&globals->first_person_interface, 1, sizeof(struct game_globals_first_person_interface));
+	return globals;
 }
 
 /* ---------- public code */
@@ -271,8 +274,8 @@ void stage_build(
 				sizeof(struct weapon_hud_interface_definition), &data));
 	}
 
-	stage->biped_handle = biped_build(&stage->biped);
-	globals_build(font_handle, strings_handle, hud_handle, stage->biped_handle);
+	stage->biped_handle = biped_build(&stage->biped, &stage->biped_animations);
+	stage->globals = globals_build(font_handle, strings_handle, hud_handle, stage->biped_handle);
 
 	stage->scenario->hs_syntax_data.size = sizeof(struct data_array) + SCRIPT_NODES * SCRIPT_NODE_BYTES;
 	nodes = stage->scenario->hs_syntax_data.address = cache_allocate(stage->scenario->hs_syntax_data.size);
