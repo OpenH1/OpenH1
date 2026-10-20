@@ -22,7 +22,9 @@ ai
 U18
 vehicle
 U17
-# the scorecard content landed (StageKit's thrown grenade and shield; the ledge's fall waits for bipeds.c)
+# the scorecard content landed (StageKit's thrown grenade, shield and ledge's fall)
 U12
 U14
 shield
+ledge
+U15

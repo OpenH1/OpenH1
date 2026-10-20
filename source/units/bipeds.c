@@ -332,6 +332,10 @@ enum
 	/* port: a player's, in a co-op game without player collisions: the other
 	players' bipeds are not in its way (network_coop_player_collisions) */
 	_biped_physics_in_pass_through_players_bit,
+	/* port: a sub-step on the ground its tick's step met or landed on
+	(biped_substep_move), past the one that met it: the tick's push into
+	it given already, and no gap left to go down */
+	_biped_physics_in_pushed_bit,
 };
 
 enum
@@ -531,7 +535,8 @@ static void biped_update_physics(
 	struct biped_physics *physics,
 	real tick_fraction,
 	real gravity,
-	real_vector3d const *tick_velocity);
+	real_vector3d const *tick_velocity,
+	real_plane3d const *tick_ground);
 /* units.c's: whether the unit gets the animation enhancements */
 boolean unit_animation_enhanced(long unit_index);
 /* player_control.c's: the controls of a player's unit that went down in the
@@ -645,6 +650,24 @@ struct biped_substep_datum
 	rest of the tick's sub-steps work out their change of velocity */
 	boolean jumped;
 	real_vector3d launch_velocity;
+	/* the ground at the tick's end as the tick's own step finds it, from
+	the first sub-step's start (biped_substep_move): whether the sub-steps
+	probe it themselves, stand on what the tick stands on, or leave it at
+	the tick's start; the plane and surface the tick stands on, and the
+	velocity it leaves at */
+	short ground;
+	real_plane3d ground_plane;
+	long support_surface_index;
+	real_vector3d leave_velocity;
+};
+
+/* biped_substep_datum's ground */
+enum
+{
+	_biped_substep_ground_probed,
+	_biped_substep_ground_tick,
+	_biped_substep_ground_left,
+	_biped_substep_ground_landed
 };
 
 static struct
@@ -2518,12 +2541,20 @@ at 30 does, at every rate. At h = 1 it is the tick at 30's, bit for bit.
 The push into the ground is no acceleration: a velocity of a 128th of a
 world unit a tick, which the ground clips away at each step, is given at
 each. gravity is a tick's (global_gravity), or none (bipeds_substep's, for
-the rest of the tick a biped walks off the ground in) */
+the rest of the tick a biped walks off the ground in).
+
+tick_ground (NULL but in a sub-step: biped_substep_move) is the plane the
+tick's own step met, which its push goes down to and then slides along:
+the step's movement goes down onto it (the first sub-step) and along it,
+rather than probing for ground past it. A tick's step ends where its
+velocity clipped by the plane takes it, less the gap it went down, so
+the sub-steps end there too */
 static void biped_update_physics(
 	struct biped_physics *physics,
 	real tick_fraction,
 	real gravity,
-	real_vector3d const *tick_velocity)
+	real_vector3d const *tick_velocity,
+	real_plane3d const *tick_ground)
 {
 	real_vector2d facing = { 0.f, 0.f };
 	boolean climbing = TEST_FLAG(physics->in_flags, _biped_physics_in_climb_anything_bit);
@@ -2769,11 +2800,15 @@ static void biped_update_physics(
 
 			/* (port: the push into the ground, a velocity of a 128th of a
 			world unit a tick given at each step, which the ground clips
-			away: a step probes its share of a tick's 128th, so the ground
-			holds the biped as at 30 at every rate) */
-			velocity_change.i -= ground_normal->i * (1.f / 128.f);
-			velocity_change.j -= ground_normal->j * (1.f / 128.f);
-			velocity_change.k -= ground_normal->k * (1.f / 128.f);
+			away: a step probes its share of a tick's 128th. On the ground
+			the tick's own step met (tick_ground) it is the tick's,
+			given at its first sub-step, where the tick's step gives it) */
+			if (!TEST_FLAG(in_flags, _biped_physics_in_pushed_bit))
+			{
+				velocity_change.i -= ground_normal->i * (1.f / 128.f);
+				velocity_change.j -= ground_normal->j * (1.f / 128.f);
+				velocity_change.k -= ground_normal->k * (1.f / 128.f);
+			}
 			physics->out_flags = slipping ? FLAG(_biped_physics_out_slipping_bit) : 0;
 			add_vectors3d(&velocity_change, &physics->velocity, &physics->new_velocity);
 			if (TEST_FLAG(physics->out_flags, _biped_physics_out_slipping_bit))
@@ -2807,6 +2842,42 @@ static void biped_update_physics(
 	velocity.k += physics->crouch_velocity;
 	/* port: the step's movement (the velocity's, at 30) */
 	scale_vector3d(&velocity, tick_fraction, &displacement);
+	if (tick_ground)
+	{
+		/* (port: less what goes into the tick's ground, of the velocity's
+		movement (the push, all of it) and of the arc's; and the first
+		sub-step goes down onto it, as the tick's step goes down to it
+		before it slides on: movement that is no velocity, as the arc) */
+		real_vector3d const *normal = &tick_ground->n;
+		real displacement_dot = dot_product3d(&displacement, normal);
+		real arc_dot = dot_product3d(&arc, normal);
+
+		if (displacement_dot < 0.f)
+		{
+			point_from_line3d(
+				(real_point3d *)&displacement,
+				normal,
+				-displacement_dot,
+				(real_point3d *)&displacement);
+		}
+		if (arc_dot < 0.f)
+		{
+			point_from_line3d(
+				(real_point3d *)&arc,
+				normal,
+				-arc_dot,
+				(real_point3d *)&arc);
+		}
+		if (!TEST_FLAG(in_flags, _biped_physics_in_pushed_bit))
+		{
+			/* (the collisions' planes are the pill's: where its point is
+			when it touches) */
+			real gap = dot_product3d((real_vector3d const *)&position, normal) - tick_ground->d;
+
+			if (gap > 0.f)
+				point_from_line3d((real_point3d *)&arc, normal, -gap, (real_point3d *)&arc);
+		}
+	}
 	/* (none at 30, where arc is zeros of either sign, which would change a
 	velocity of -0) */
 	if (arc.i != 0.f)
@@ -4647,6 +4718,7 @@ static void biped_substep_move(
 	real_vector3d moved;
 	real gravity;
 	real_vector3d const *tick_velocity;
+	real_plane3d const *tick_ground;
 
 	physics = datum->physics;
 	biped_get_physics_pill(
@@ -4692,21 +4764,102 @@ static void biped_substep_move(
 	it meets changes that at the tick's end: so an arc starts and ends
 	at a tick's end, biped_update_physics's launch bias from there. A
 	biped in the air at the tick's start stays in the air to its end,
-	a landing on the ground clipping its fall; one that leaves the
-	ground in a sub-step goes on as it left it, without gravity, to the
-	tick's end. A jump launched at an earlier sub-step's end
-	(biped_substep_jump) is the arc a tick at 30 starts at its end: in
-	the air from there, with gravity, the change of velocity worked out
-	from the velocity it launched at, as the first tick of a jump at 30
-	works it out from its start. Slipping or not is each sub-step's) */
+	a landing on the ground clipping its fall: the tick's step slides on
+	along the plane it lands on, so the sub-steps after the one that
+	lands do (their movement clipped by it, on the ground), rather than
+	falling again onto what lies past it (a rounded corner); but on
+	what moves or breaks within the tick, or by a snap, they fall and
+	meet the ground themselves, as below. A jump launched at an
+	earlier sub-step's end (biped_substep_jump) is the arc a tick at 30
+	starts at its end: in the air from there, with gravity, the change
+	of velocity worked out from the velocity it launched at, as the
+	first tick of a jump at 30 works it out from its start. Slipping or
+	not is each sub-step's.
+
+	On the ground at the tick's start, whether it stays there is the
+	tick's own step's to say. At 30 the push into the ground meets the
+	ground once a tick, at the step's start, and the step slides on
+	along the plane it met; a step that meets none in the whole of its
+	movement leaves the ground. A sub-step's push, its share of the
+	tick's over its share of the movement, meets ground the tick's step
+	passes over: off an edge it would follow the rounded corner down,
+	still on the ground, and leave it later and faster than the tick.
+	So the first sub-step takes the tick's step from the tick's start,
+	as at 30, without moving, and:
+	- if it stands on the ground it met, every sub-step slides on along
+	  that plane (its movement clipped by it), on the ground at the
+	  tick's start, the tick's push given once, at the first sub-step,
+	  as the tick's step gives it at its start; and the tick ends on
+	  what the step stood on;
+	- if it meets no ground, the biped leaves the ground at the tick's
+	  start at the velocity the step leaves at, and goes on as it does,
+	  without gravity, to the tick's end;
+	- if it stands on the next surface by its snap (the sub-steps snap
+	  their shares), or what it met moves or breaks within the tick (a
+	  lift, a vehicle, glass: its volatile collision), each sub-step
+	  probes the ground itself, and one that leaves it goes on as it
+	  left it, without gravity, to the tick's end) */
 	gravity = global_gravity;
 	tick_velocity = &datum->physics.velocity;
+	tick_ground = NULL;
 	SET_FLAG(physics.in_flags, _biped_physics_in_slipping_bit,
 		TEST_FLAG(biped->biped.flags, _biped_slipping_bit));
+	if (substep_index == 0)
+	{
+		datum->ground = _biped_substep_ground_probed;
+		if (!TEST_FLAG(physics.in_flags, _biped_physics_in_airborne_bit) &&
+			!TEST_FLAG(physics.in_flags, _biped_physics_in_flying_bit) &&
+			!TEST_FLAG(physics.in_flags, _biped_physics_in_absolute_movement_bit) &&
+			!TEST_FLAG(physics.in_flags, _biped_physics_in_no_collision_bit) &&
+			!TEST_FLAG(biped->biped.flags, _biped_airborne_bit))
+		{
+			struct biped_physics tick = physics;
+
+			biped_update_physics(&tick, 1.f, gravity, tick_velocity, NULL);
+			if (TEST_FLAG(tick.out_flags, _biped_physics_out_airborne_bit))
+			{
+				datum->ground = _biped_substep_ground_left;
+				datum->leave_velocity = tick.new_velocity;
+			}
+			else if (tick.stick_surface_index == NONE &&
+				!TEST_FLAG(tick.out_flags, _biped_physics_out_volatile_collision_bit))
+			{
+				datum->ground = _biped_substep_ground_tick;
+				datum->ground_plane = tick.ground_plane;
+				datum->support_surface_index = tick.support_surface_index;
+				datum->landing_velocity = tick.landing_velocity;
+				datum->elevator_object_index = tick.elevator_object_index;
+			}
+		}
+	}
+
 	if (datum->jumped)
 	{
 		SET_FLAG(physics.in_flags, _biped_physics_in_airborne_bit, TRUE);
 		tick_velocity = &datum->launch_velocity;
+	}
+	else if (datum->ground == _biped_substep_ground_tick)
+	{
+		physics.ground_plane = datum->physics.ground_plane;
+		physics.existing_support_surface_index = NONE;
+		SET_FLAG(physics.in_flags, _biped_physics_in_pushed_bit, substep_index > 0);
+		tick_ground = &datum->ground_plane;
+	}
+	else if (datum->ground == _biped_substep_ground_landed)
+	{
+		SET_FLAG(physics.in_flags, _biped_physics_in_pushed_bit, TRUE);
+		tick_ground = &datum->ground_plane;
+	}
+	else if (datum->ground == _biped_substep_ground_left)
+	{
+		/* (the tick's change of velocity is in the velocity it leaves at,
+		as the step left it: none in the air besides) */
+		SET_FLAG(physics.in_flags, _biped_physics_in_airborne_bit, TRUE);
+		gravity = 0.f;
+		physics.airborne_acceleration_maximum = 0.f;
+		tick_velocity = &datum->leave_velocity;
+		if (substep_index == 0)
+			physics.velocity = datum->leave_velocity;
 	}
 	else if (!TEST_FLAG(datum->physics.in_flags, _biped_physics_in_airborne_bit) &&
 		TEST_FLAG(biped->biped.flags, _biped_airborne_bit))
@@ -4716,7 +4869,27 @@ static void biped_substep_move(
 	}
 
 	old_position = biped->object.position;
-	biped_update_physics(&physics, tick_fraction, gravity, tick_velocity);
+	biped_update_physics(&physics, tick_fraction, gravity, tick_velocity, tick_ground);
+	if (tick_ground)
+	{
+		/* (on what the tick's step stood on, its landing the step's) */
+		SET_FLAG(physics.out_flags, _biped_physics_out_airborne_bit, FALSE);
+		physics.ground_plane = datum->ground_plane;
+		physics.support_surface_index = datum->support_surface_index;
+		physics.landing_velocity = 0.f;
+	}
+	else if (datum->ground == _biped_substep_ground_probed &&
+		TEST_FLAG(datum->physics.in_flags, _biped_physics_in_airborne_bit) &&
+		!TEST_FLAG(physics.out_flags, _biped_physics_out_airborne_bit) &&
+		!TEST_FLAG(physics.out_flags, _biped_physics_out_volatile_collision_bit) &&
+		physics.stick_surface_index == NONE)
+	{
+		/* (landed, in a tick it started in the air: the rest of the tick
+		on the plane it landed on) */
+		datum->ground = _biped_substep_ground_landed;
+		datum->ground_plane = physics.ground_plane;
+		datum->support_surface_index = physics.support_surface_index;
+	}
 	biped_physics_apply_step(biped_index, &physics);
 	vector_from_points3d(&old_position, &biped->object.position, &moved);
 	biped_carry_nodes(biped_index, &moved);
@@ -4839,7 +5012,7 @@ static boolean biped_substep_inline(
 		real_point3d const *end;
 
 		step = *physics;
-		biped_update_physics(&step, 1.f, global_gravity, &step.velocity);
+		biped_update_physics(&step, 1.f, global_gravity, &step.velocity, NULL);
 		biped_physics_apply_step(biped_index, &step);
 		biped_physics_apply_tick(biped_index, &step, animation);
 		end = &biped_get(biped_index)->object.position;
@@ -5094,7 +5267,7 @@ static boolean biped_update_moving(
 	if (biped_substep_inline(biped_index, &physics, animation, &speeds))
 		return FALSE;
 
-	biped_update_physics(&physics, 1.f, global_gravity, &physics.velocity);
+	biped_update_physics(&physics, 1.f, global_gravity, &physics.velocity, NULL);
 	biped_physics_apply_step(biped_index, &physics);
 	biped_physics_apply_tick(biped_index, &physics, animation);
 

@@ -95,8 +95,9 @@ SCENARIOS = [
                    (4, "ai_command_list_by_unit walker leg2"), (7, "ai_command_list_by_unit walker leg3")],
              seconds=10.0, arguments=dict(start=0.5, end=9.5)),
     # a ledge (U15, synthetic): the player walks off a block 2 high: when it goes over the edge, how long it falls,
-    # how far it drops and goes across, and its height every 30th of a second through the fall
-    scenario("ledge_fall", "ledge", "fall", ["ledge", "U15"], script="0.5-3 move=0,1", seconds=3.0,
+    # how far it drops and goes across, and its height every 30th of a second through the fall (and U1's: the biped
+    # leaves the ground when the tick's own step does, bipeds.c's biped_substep_move)
+    scenario("ledge_fall", "ledge", "fall", ["ledge", "U15", "biped", "U1"], script="0.5-3 move=0,1", seconds=3.0,
              arguments=dict(after=0.5)),
     # a shield (U14, synthetic): the player's biped with a shield of 75 recharging in 2 seconds, dropped to nothing
     # at a second and to half at 4: its vitality every 30th of a second, when it was lowest and when full again
