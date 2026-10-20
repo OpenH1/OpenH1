@@ -390,6 +390,15 @@ enum
 	PROJECTILE_SEGMENT_SLOTS = 64
 };
 
+/* port: the sub-step the fast phase's projectiles' slot last ran in (its
+tick, game_time, and its index), which a projectile its tick lets go of in a
+sub-step (projectile_substep_launch_on_tick) is let go of before or after */
+static struct
+{
+	long tick;
+	short substep_index;
+} projectiles_substep_ran = { NONE, NONE };
+
 static struct
 {
 	long projectile_index;
@@ -815,6 +824,49 @@ void projectile_substep_launch(
 	return;
 }
 
+/* port: a projectile let go of by its tick (a unit's grenade thrown at its
+throw animation's key frame, units.c), from here, as one made in the tick's
+own work, in whichever of the tick's sub-steps it is let go of (the units'
+slot lets go at the tick's last, where it counts its ticks: sim_rate.h): its
+head start at once, a whole 30 Hz tick of travel (its timers the tick's
+update counted, in the hand), then its hold until the next tick's first
+sub-step, its phase 0, as at 30, where its update in the tick takes a whole
+tick and the next tick the next. In a tick's own work, its head start
+to come in the tick's update (projectile_substep_launch). Nothing at 30, for
+one attached to an object or of the macro lane */
+void projectile_substep_launch_on_tick(
+	long projectile_index)
+{
+	struct projectile_datum *projectile = projectile_get(projectile_index);
+	short substep_index = sim_substep_index();
+
+	if (substep_index == NONE)
+	{
+		projectile_substep_launch(projectile_index);
+		return;
+	}
+	if (projectile->object.parent_object_index != NONE ||
+		!object_lane_moves_in_substeps(projectile_index))
+	{
+		return;
+	}
+	projectile->projectile.flags &= ~PROJECTILE_SUBSTEP_FLAGS_MASK;
+	SET_FLAG(projectile->projectile.flags, _projectile_substep_held_bit, TRUE);
+	/* (the tick's end has come for its hold once the projectiles' slot has run
+	at the tick's last sub-step; else that slot says so) */
+	if (substep_index == sim_substep_count() - 1 && projectiles_substep_ran.tick == game_time_get() &&
+		projectiles_substep_ran.substep_index == substep_index)
+	{
+		SET_FLAG(projectile->projectile.flags, _projectile_substep_hold_crossed_bit, TRUE);
+	}
+	/* (its timers counted this tick already, in its tick's update, held: a
+	child of the unit) */
+	projectile_step(projectile_index, 1.0f, 0.0f, FALSE, TRUE);
+	projectile_substep_finish(projectile_index);
+
+	return;
+}
+
 /* port: the fast phase's sub-step of every projectile flying on its own
 (sim_rate.h; at 30, its one sub-step leaves them to their ticks' updates).
 A projectile's first update is its head start, a whole tick of travel and
@@ -834,6 +886,8 @@ static void projectiles_substep(
 	(void)seconds;
 	if (substep_count <= 1)
 		return;
+	projectiles_substep_ran.tick = game_time_get();
+	projectiles_substep_ran.substep_index = substep_index;
 	/* (as objects_update: the objects stand still on the double speed
 	players' odd ticks) */
 	if ((game_time_get() & 1) != 0 && game_players_are_double_speed())

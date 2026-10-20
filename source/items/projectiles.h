@@ -128,6 +128,10 @@ void projectile_accelerate(
 projectiles.c) */
 void projectile_substep_launch(
 	long projectile_index);
+/* port: the same, let go of by its tick (a throw's key frame), as one made in
+the tick's own work, in whichever of its sub-steps */
+void projectile_substep_launch_on_tick(
+	long projectile_index);
 
 /* ---------- globals */
 
