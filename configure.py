@@ -91,6 +91,13 @@ parser.add_argument(
     help=f"where --guest-llvm=pinned keeps LLVM (default: {default_cache()})",
 )
 parser.add_argument(
+    "--guest-asm-cache",
+    metavar="FOLDER",
+    help="keep the arm64_32 guests' objects (Android, Linux arm64, macOS) in FOLDER, each found again by its "
+    "Darwin assembly, so that a build whose compile cache gives that back skips its conversion and assembly "
+    "(tools/guest_asm_cache.py; for CI, beside ccache)",
+)
+parser.add_argument(
     "--android-ndk",
     type=str,
     help="Android NDK for `ninja android` (default: ANDROID_NDK_HOME, or the newest under the Android SDK)",
@@ -198,6 +205,7 @@ sln = SimpleNamespace(
     android_ndk=args.android_ndk,
     guest_llvm=args.guest_llvm,
     guest_llvm_cache=args.guest_llvm_cache,
+    guest_asm_cache=args.guest_asm_cache,
     android_guest_cc=args.android_guest_cc,
     linux_arm64_cc=args.linux_arm64_cc,
     linux_x86_64_cc=args.linux_x86_64_cc,

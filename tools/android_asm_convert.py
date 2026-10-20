@@ -297,6 +297,22 @@ class Converter:
         return "\n".join(out) + "\n"
 
 
+def convert_file(source, destination, base_register=False):
+    """converts the file source into destination (with --base-register's
+    rewrite too); raises ConvertError (tools/guest_asm_cache.py calls it)"""
+    with open(source, "r", encoding="utf-8", errors="surrogateescape") as f:
+        lines = f.read().split("\n")
+    result = Converter(lines).run()
+    if base_register:
+        from guest_base_register import BaseRegisterError, rewrite
+        try:
+            result = "\n".join(rewrite(result.split("\n"))[0])
+        except BaseRegisterError as e:
+            raise ConvertError(f"base register: {e}") from None
+    with open(destination, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(result)
+
+
 def main():
     arguments = sys.argv[1:]
     base_register = bool(arguments) and arguments[0] == "--base-register"
@@ -305,21 +321,11 @@ def main():
     if len(arguments) != 2:
         print(__doc__)
         sys.exit(2)
-    with open(arguments[0], "r", encoding="utf-8", errors="surrogateescape") as f:
-        lines = f.read().split("\n")
     try:
-        result = Converter(lines).run()
-        if base_register:
-            from guest_base_register import BaseRegisterError, rewrite
-            try:
-                result = "\n".join(rewrite(result.split("\n"))[0])
-            except BaseRegisterError as e:
-                raise ConvertError(f"base register: {e}") from None
+        convert_file(arguments[0], arguments[1], base_register)
     except ConvertError as e:
         print(f"{arguments[0]}: {e}", file=sys.stderr)
         sys.exit(1)
-    with open(arguments[1], "w", encoding="utf-8", errors="surrogateescape") as f:
-        f.write(result)
 
 
 if __name__ == "__main__":
