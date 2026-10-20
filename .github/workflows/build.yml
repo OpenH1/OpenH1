@@ -10,7 +10,9 @@ name: Build
 # tools/ci_build.py does each build; see it for the options.
 #
 # Kept cheap:
-# - actions/cache compresses with zstd (the Ubuntu containers install it:
+# - the Linux jobs run in an image with their packages installed
+#   (.github/ci-image), rather than installing them with apt each time;
+# - actions/cache compresses with zstd (the Ubuntu containers have it:
 #   without it, gzip, slower to save and restore);
 # - one job per platform builds both configurations, so its set-up (tools,
 #   downloads, caches) is paid once;
@@ -51,6 +53,8 @@ concurrency:
 
 permissions:
   contents: read
+  # (the Linux jobs' container image, ghcr.io/openh1/ci-linux)
+  packages: read
 
 env:
   CI_COMPILER_LAUNCHER: ccache
@@ -74,24 +78,30 @@ jobs:
     # development files SDL3 builds with; the guest's compiler (arm64_32) is
     # the pinned LLVM configure.py downloads.
     runs-on: ubuntu-24.04-arm
-    container: ubuntu:22.04
+    # (.github/ci-image/Dockerfile: Ubuntu 22.04 with the packages)
+    container:
+      image: ghcr.io/openh1/ci-linux:ubuntu-22.04-arm64
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     # (on master three builds, debug, release and the Steam Frame's VR
     # release, each of the whole game, as the x86-64 job's)
     timeout-minutes: 75
     steps:
+      - uses: actions/checkout@v4
+
+      # (the image has the packages of .github/ci-image's lists: apt installs
+      # only what it lacks, a package a branch adds before master publishes
+      # the image with it)
       - name: Install the toolchain
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git python3 ninja-build cmake make \
-            pkg-config ccache zip zstd clang \
-            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
-            libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
-            libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
-            libudev-dev libdbus-1-dev libdecor-0-dev
-
-      - uses: actions/checkout@v4
+          packages="$(cat .github/ci-image/packages.txt)"
+          if ! dpkg -s $packages > /dev/null 2>&1; then
+            apt-get update
+            apt-get install -y --no-install-recommends $packages
+          fi
 
       # (the compile cache of master's latest build, restored on every branch
       # but saved by master's builds alone, below: every branch's saving its
@@ -205,24 +215,30 @@ jobs:
     # tools/x86_game_abi.py: test tools only, with gcc-multilib's 32-bit C
     # library; nothing 32-bit ships).
     runs-on: ubuntu-24.04
-    container: ubuntu:22.04
+    # (.github/ci-image/Dockerfile, as the 64-bit ARM job's)
+    container:
+      image: ghcr.io/openh1/ci-linux:ubuntu-22.04-x86_64
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     # (three builds, debug, release and VR release, each of the whole game:
     # with a cold compile cache, more than the other jobs' one or two)
     timeout-minutes: 75
     steps:
+      - uses: actions/checkout@v4
+
+      # (the image has the packages of .github/ci-image's lists: apt installs
+      # only what it lacks, a package a branch adds before master publishes
+      # the image with it)
       - name: Install the toolchain
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git python3 python3-pytest python3-pytest-xdist ninja-build \
-            cmake make pkg-config ccache zip zstd clang gcc-multilib binutils \
-            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
-            libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
-            libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
-            libudev-dev libdbus-1-dev libdecor-0-dev
-
-      - uses: actions/checkout@v4
+          packages="$(cat .github/ci-image/packages.txt .github/ci-image/packages-x86_64.txt)"
+          if ! dpkg -s $packages > /dev/null 2>&1; then
+            apt-get update
+            apt-get install -y --no-install-recommends $packages
+          fi
 
       # (master's, as the 64-bit ARM job's)
       - uses: actions/cache/restore@v4
