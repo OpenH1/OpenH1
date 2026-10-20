@@ -25,17 +25,39 @@
 /* what the sweep lights of the scene: its brightness, its detail's edges
 and the sweep's light on the ring, of 16 */
 #ifndef LOADING_ART_FEED_TONE
-#define LOADING_ART_FEED_TONE 20
+#define LOADING_ART_FEED_TONE 10
 #endif
 #ifndef LOADING_ART_FEED_EDGE
-#define LOADING_ART_FEED_EDGE 48
+#define LOADING_ART_FEED_EDGE 40
 #endif
 #ifndef LOADING_ART_FEED_GLINT
-#define LOADING_ART_FEED_GLINT 12
+#define LOADING_ART_FEED_GLINT 7
 #endif
-/* the brightness from which the scene's blue whitens */
-#ifndef LOADING_ART_HUE_KNEE
-#define LOADING_ART_HUE_KNEE 80
+/* the brightest the sweep is fed the scene but in its white specks, of 255,
+ * and the brightness from which it is fed less (a third), so that a bright,
+ * busy part of the ring does not whiten the feedback where the picture's
+ * etching would not */
+#ifndef LOADING_ART_FEED_KNEE
+#define LOADING_ART_FEED_KNEE 110
+#endif
+#ifndef LOADING_ART_FEED_LIMIT
+#define LOADING_ART_FEED_LIMIT 190
+#endif
+/* the most red and green there is beside blue in what is shown, of 256 */
+#ifndef LOADING_ART_GREY_RED
+#define LOADING_ART_GREY_RED 196
+#endif
+#ifndef LOADING_ART_GREY_GREEN
+#define LOADING_ART_GREY_GREEN 228
+#endif
+/* the picture's hues (loading_art_tint_set) */
+#define LOADING_ART_TINTS 16
+/* the scene's specks: of 128 detailed pixels (their edges past this), how many */
+#ifndef LOADING_ART_SPECKS
+#define LOADING_ART_SPECKS 4
+#endif
+#ifndef LOADING_ART_SPECK_EDGE
+#define LOADING_ART_SPECK_EDGE 40
 #endif
 /* the progress from which a load is complete, and how long the picture
 then takes to fade out, in nanoseconds */
@@ -81,7 +103,7 @@ struct loading_art
 	/* the picture's cumulative histogram, and the scene's brightness
 	matched to it (loading_art_histogram, loading_art_tone) */
 	uint32_t histogram[256];
-	uint8_t tone[256], hue[256][3], ramp[256][3];
+	uint8_t tone[256], tints[LOADING_ART_TINTS][256][3];
 	unsigned int histogram_valid, tone_valid;
 };
 
@@ -123,42 +145,99 @@ static inline void loading_art_axis_set(struct loading_art_axis *axis,
 	}
 }
 
-/* The picture's one hue by brightness: black, deep navy, its blue, then
- * nearly white. */
-static inline void loading_art_ramp_level(unsigned int level, uint8_t *rgb)
+/* The picture's colours: a narrow band of hues about its blue, from cyan
+ * to violet (LOADING_ART_TINTS steps of LOADING_ART_TINT_STEP degrees from
+ * LOADING_ART_TINT_FIRST), by brightness: black, deep navy, the blue, and
+ * nearly white at the brightest, as its etching goes. */
+#ifndef LOADING_ART_TINT_FIRST
+#define LOADING_ART_TINT_FIRST 198
+#endif
+#ifndef LOADING_ART_TINT_STEP
+#define LOADING_ART_TINT_STEP 3
+#endif
+/* the band's middle, where a colourless surface is */
+#ifndef LOADING_ART_TINT_MIDDLE
+#define LOADING_ART_TINT_MIDDLE 9
+#endif
+/* how far the ring's own colour moves it along the band (its channels'
+ * differences over this, steps) */
+#ifndef LOADING_ART_TINT_SPREAD
+#define LOADING_ART_TINT_SPREAD 40
+#endif
+/* of 8 pixels, how many are not moved toward violet by its grain (2 of
+ * them toward cyan) */
+#ifndef LOADING_ART_TINT_WANDER
+#define LOADING_ART_TINT_WANDER 6
+#endif
+/* the saturation of the band's colours, of 256, below the brightness where
+ * they begin to whiten */
+#ifndef LOADING_ART_TINT_SATURATION
+#define LOADING_ART_TINT_SATURATION 176
+#endif
+#ifndef LOADING_ART_TINT_WHITEN
+#define LOADING_ART_TINT_WHITEN 185
+#endif
+
+static inline void loading_art_tint_set(unsigned int tint, unsigned int level, uint8_t *rgb)
 {
-	static const unsigned char stops[5][4] = {
-		{ 0, 0, 0, 0 }, { 48, 3, 8, 34 }, { 128, 28, 92, 230 }, { 200, 120, 185, 255 }, { 255, 225, 240, 255 },
-	};
-	unsigned int stop = 1, channel;
-	while (stop < 4 && level > stops[stop][0])
-		stop++;
-	for (channel = 0; channel < 3; channel++)
+	unsigned int hue = LOADING_ART_TINT_FIRST + tint * LOADING_ART_TINT_STEP; /* degrees */
+	unsigned int saturation = level <= LOADING_ART_TINT_WHITEN ? LOADING_ART_TINT_SATURATION :
+		LOADING_ART_TINT_SATURATION - (LOADING_ART_TINT_SATURATION - 24) * (level - LOADING_ART_TINT_WHITEN) /
+		(255 - LOADING_ART_TINT_WHITEN);
+	unsigned int sector = hue / 60 % 6, fraction = (hue % 60) * 256 / 60;
+	unsigned int p = level * (256 - saturation) >> 8;
+	unsigned int q = level * (256 - (saturation * fraction >> 8)) >> 8;
+	unsigned int t = level * (256 - (saturation * (256 - fraction) >> 8)) >> 8;
+	unsigned int r, g, b;
+	switch (sector)
 	{
-		unsigned int from = stops[stop - 1][channel + 1], to = stops[stop][channel + 1];
-		unsigned int span = stops[stop][0] - stops[stop - 1][0];
-		unsigned int along = level < stops[stop - 1][0] ? 0 : level - stops[stop - 1][0];
-		if (along > span)
-			along = span;
-		rgb[channel] = (uint8_t)((from * (span - along) + to * along + span / 2) / span);
+	case 0: r = level; g = t; b = p; break;
+	case 1: r = q; g = level; b = p; break;
+	case 2: r = p; g = level; b = t; break;
+	case 3: r = p; g = q; b = level; break;
+	case 4: r = t; g = p; b = level; break;
+	default: r = level; g = p; b = q; break;
 	}
+	rgb[0] = (uint8_t)(r < 255 ? r : 255);
+	rgb[1] = (uint8_t)(g < 255 ? g : 255);
+	rgb[2] = (uint8_t)(b < 255 ? b : 255);
+}
+
+/* Where in the band a pixel of the scene is: the ring's own colour turned
+ * into it (a blue surface toward violet, a green one toward cyan, a grey one
+ * at its middle), and, here and there in its detail, a speck of cyan,
+ * lavender or near white, as the picture's etching has, at texels the
+ * ring's texture picks (so that they move with it, not with the screen). */
+static inline unsigned int loading_art_tint(uint32_t value, int edge, int *level, int *white)
+{
+	int r = (int)(value & 255), g = (int)((value >> 8) & 255), b = (int)((value >> 16) & 255);
+	int tint = LOADING_ART_TINT_MIDDLE + (b - g) / LOADING_ART_TINT_SPREAD + (r - g) * 3 / (LOADING_ART_TINT_SPREAD * 2);
+	unsigned int grain = ((unsigned int)r * 7u + (unsigned int)g * 13u + (unsigned int)b * 29u) & 127u;
+	/* (the picture's grain: its hue wanders a step either way, pixel by
+	pixel, as its etching's does) */
+	unsigned int wander = ((unsigned int)r * 3u + (unsigned int)g * 5u + (unsigned int)b * 11u) >> 1 & 7u;
+	tint += wander < 2 ? -1 : wander < LOADING_ART_TINT_WANDER ? 0 : 1;
+	if (edge > LOADING_ART_SPECK_EDGE && grain < LOADING_ART_SPECKS)
+	{
+		if (grain % 3 == 0)
+			tint = 0;
+		else if (grain % 3 == 1)
+			tint = LOADING_ART_TINTS - 1;
+		else
+		{
+			*level += 96;
+			*white = 1;
+		}
+	}
+	return (unsigned int)(tint < 0 ? 0 : tint >= LOADING_ART_TINTS ? LOADING_ART_TINTS - 1 : tint);
 }
 
 static inline void loading_art_axes(struct loading_art *art)
 {
 	unsigned int index;
-	/* (and the scene's one hue by brightness: navy, the picture's blue,
-	nearly white only at the brightest) */
-	for (index = 0; index < 256; index++)
-	{
-		unsigned int blue = index * 13 / 10 < 255 ? index * 13 / 10 : 255;
-		unsigned int s = index <= LOADING_ART_HUE_KNEE ? 0 : (index - LOADING_ART_HUE_KNEE) * 255 / (255 - LOADING_ART_HUE_KNEE), s3 = s * s / 255 * s / 255, s4 = s3 * s / 255;
-		art->hue[index][0] = (uint8_t)(blue * (31 + s4 * 191 / 255) / 255);
-		art->hue[index][1] = (uint8_t)(blue * (97 + s3 * 153 / 255) / 255);
-		art->hue[index][2] = (uint8_t)blue;
-	}
-	for (index = 0; index < 256; index++)
-		loading_art_ramp_level(index, art->ramp[index]);
+	/* (and the picture's colours, loading_art_tint_set's) */
+	for (index = 0; index < LOADING_ART_TINTS * 256; index++)
+		loading_art_tint_set(index / 256, index % 256, art->tints[index / 256][index % 256]);
 	/* Stock fade quad spans +/-129/128. Its source coordinates are
 	 * 3..637 horizontally and 0..480 vertically. */
 	for (index = 0; index < LOADING_ART_FRAME_WIDTH; index++)
@@ -374,7 +453,8 @@ static inline int loading_art_scene_draw(struct loading_art *art, float seconds,
 		{
 			unsigned int pixel = y * LOADING_ART_FRAME_WIDTH + x, value = pixels[pixel];
 			int level = (int)art->tone[loading_art_luminance(value & 255, (value >> 8) & 255, (value >> 16) & 255)];
-			int edge = 0, coverage, light, channel;
+			int edge = 0, coverage, light, channel, white;
+			unsigned int tint;
 			uint8_t rgb[3];
 			if (x > 0 && y > 0 && x + 1 < LOADING_ART_FRAME_WIDTH && y + 1 < LOADING_ART_FRAME_HEIGHT)
 			{
@@ -384,7 +464,9 @@ static inline int loading_art_scene_draw(struct loading_art *art, float seconds,
 				edge = (gx < 0 ? -gx : gx) + (gy < 0 ? -gy : gy);
 			}
 			coverage = art->text_valid ? art->text[pixel] : 0;
-			memcpy(scene + pixel * 3, art->ramp[level + edge > 255 ? 255 : level + edge], 3);
+			white = 0;
+			tint = loading_art_tint(value, edge, &level, &white);
+			memcpy(scene + pixel * 3, art->tints[tint][level + edge > 255 ? 255 : level + edge], 3);
 			if (feed)
 			{
 				/* what the sweep lights: the ring etched as the picture's is
@@ -392,7 +474,13 @@ static inline int loading_art_scene_draw(struct loading_art *art, float seconds,
 				sweep's light on its rim and highlight, in its detail */
 				light = (level * LOADING_ART_FEED_TONE + edge * LOADING_ART_FEED_EDGE) / 16 +
 					art->ring.glint[pixel] * (64 + (edge < 192 ? edge : 192)) * LOADING_ART_FEED_GLINT / 2048;
-				memcpy(feed + pixel * 3, art->ramp[light > 255 ? 255 : light], 3);
+				/* (white only in the specks: the feedback's whites are grey
+				as they fade, the picture's few) */
+				if (light > LOADING_ART_FEED_KNEE && !white)
+					light = LOADING_ART_FEED_KNEE + (light - LOADING_ART_FEED_KNEE) / 3;
+				if (light > LOADING_ART_FEED_LIMIT && !white)
+					light = LOADING_ART_FEED_LIMIT;
+				memcpy(feed + pixel * 3, art->tints[tint][light > 255 ? 255 : light], 3);
 			}
 			/* (the words, where they are) */
 			if (coverage)
@@ -539,24 +627,26 @@ static inline void loading_art_compose(struct loading_art *art, const uint8_t *p
 			(LOADING_ART_FRAME_HEIGHT - 1 - y) * 256 / 40 : 256) : 256;
 		for (x = 0; x < LOADING_ART_FRAME_WIDTH; x++)
 		{
-			unsigned int level = 0, value;
+			unsigned int value, edge = vy;
 			pixel = y * LOADING_ART_FRAME_WIDTH + x;
+			/* (VR's window darkens toward its edges) */
+			if (art->stereo)
+				edge = (x < 48 ? x * 256 / 48 : x >= LOADING_ART_FRAME_WIDTH - 48 ?
+					(LOADING_ART_FRAME_WIDTH - 1 - x) * 256 / 48 : 256) * vy >> 8;
 			for (channel = 0; channel < 3; channel++)
 			{
 				value = ((previous[pixel * 4 + channel] * (256 - fraction) +
 					current[pixel * 4 + channel] * fraction + 128) >> 8) + (scene[pixel * 3 + channel] * base >> 16);
-				level += (value < 255 ? value : 255) * (channel ? channel * 3 - 1 : 1);
+				output[pixel * 4 + channel] = (uint8_t)(((value < 255 ? value : 255) * edge) >> 8);
 			}
-			/* (one hue, by brightness: the feedback's channels saturate
-			apart, toward grey; VR's window darkens toward its edges) */
-			level >>= 3;
-			if (art->stereo)
-			{
-				unsigned int vx = x < 48 ? x * 256 / 48 : x >= LOADING_ART_FRAME_WIDTH - 48 ?
-					(LOADING_ART_FRAME_WIDTH - 1 - x) * 256 / 48 : 256;
-				level = level * vx * vy >> 16;
-			}
-			memcpy(output + pixel * 4, art->hue[level], 3);
+			/* (the feedback's channels saturate apart, and its whites fade
+			grey: kept in the picture's blues, its whites a pale blue) */
+			value = output[pixel * 4 + 2] * LOADING_ART_GREY_RED >> 8;
+			if (output[pixel * 4] > value)
+				output[pixel * 4] = (uint8_t)value;
+			value = output[pixel * 4 + 2] * LOADING_ART_GREY_GREEN >> 8;
+			if (output[pixel * 4 + 1] > value)
+				output[pixel * 4 + 1] = (uint8_t)value;
 			output[pixel * 4 + 3] = 255;
 		}
 	}

@@ -173,7 +173,7 @@ int main(void) {
 ''')
 
 
-def test_scene_takes_the_pictures_place_in_one_hue_and_gives_it_back(tmp_path):
+def test_scene_takes_the_pictures_place_in_its_hues_and_gives_it_back(tmp_path):
     run(tmp_path, r'''
 int main(void) {
     struct loading_art *art = calloc(1, sizeof(*art)), *fresh = calloc(1, sizeof(*fresh));
@@ -191,8 +191,9 @@ int main(void) {
     out = loading_art_render(art, &frame);
     assert(out);
     for (i = 0; i < LOADING_ART_FRAME_PIXELS; i++) {
-        /* one hue: blue at least green at least red (the texture is orange) */
-        assert(out[i*4+2] >= out[i*4+1] && out[i*4+1] >= out[i*4] && out[i*4+3] == 255);
+        /* the picture's band of hues, cyan to violet, whatever the texture's
+           (orange): blue the most, no warm or green colour */
+        assert(out[i*4+2] >= out[i*4+1] && out[i*4+2] >= out[i*4] && out[i*4+3] == 255);
         lit += out[i*4+2] > 8;
     }
     assert(lit > 1000);

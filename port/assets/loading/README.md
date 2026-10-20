@@ -19,8 +19,9 @@ The compressed payload's SHA-256 is
 ## The main menu's ring
 
 Once the main menu has been shown, the loading screen draws the menu's own
-scene in the picture's place: the ring, the sky and its planets, read from
-the player's `ui.map` as the menu drew them (`port/linux/game/loading_scene.c`)
+scene in the picture's place: the ring against the dark, as the picture's
+is (its sky, stars and planets left out), read from the player's `ui.map`
+as the menu drew it (`port/linux/game/loading_scene.c`)
 when the map change leaves the menu, from the menu's camera. Nothing of the
 map's is kept in the repository or the releases; without a scene (the first
 load, before the menu, or another ui map without one) the picture above is

@@ -2,8 +2,8 @@
 LOADING_SCENE.C
 
 The main menu's scene for the loading screen (port/linux/src/loading_scene.h):
-as a map change leaves the main menu, the meshes of the ui map's sky and of
-its objects (the ring, scenery\halo\halo, in the stock map) are read as the
+as a map change leaves the main menu, the meshes of the ui map's objects
+(the ring, scenery\halo\halo, in the stock map) are read as the
 game draws them (the vertex and index buffers of each model's most detailed
 geometry, as object_mesh.c reads them), with the textures their shaders
 draw with as the texture cache holds them (the Xbox's texels: the presenter
@@ -594,8 +594,10 @@ static void loading_scene_add_model(
 	}
 }
 
-/* the scenario's first sky's model, and toward its first light */
-static void loading_scene_add_sky(
+/* toward the scenario's first sky's first light (its sun, which lights the
+ring); the sky itself (its stars, galaxy and planets) is not drawn: the
+loading screen's ring is against the dark, as its picture's is */
+static void loading_scene_add_light(
 	struct loading_scene_builder *builder,
 	struct scenario *scenario)
 {
@@ -606,7 +608,6 @@ static void loading_scene_add_sky(
 	sky = (struct loading_scene_sky const *)scenario_get_sky(0);
 	if (!sky)
 		return;
-	loading_scene_add_model(builder, sky->model.index, NULL, LOADING_SCENE_LAYER_SKY, NULL, 0);
 	if (sky->lights.count > 0 && sky->lights.address)
 	{
 		struct loading_scene_sky_light const *light = sky->lights.address;
@@ -721,7 +722,7 @@ void halo_loading_scene(
 	memset(builder, 0, sizeof(*builder));
 	/* (the header first; written last, as the block may move as it grows) */
 	loading_scene_reserve(builder, sizeof(*header), 4);
-	loading_scene_add_sky(builder, scenario);
+	loading_scene_add_light(builder, scenario);
 	loading_scene_add_objects(builder);
 	for (index = 0; index < builder->part_count; index++)
 		world |= builder->parts[index].layer == LOADING_SCENE_LAYER_WORLD;
