@@ -231,6 +231,7 @@ symbols in this file:
 #include "sound/sound_definitions.h"
 #include "units/unit_definitions.h"
 #include "units/units.h"
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 
 #ifdef HALO_PORT_MAXIMUM_NETWORK_PLAYERS
 #include "bitmaps/bitmap_group.h"
@@ -261,6 +262,10 @@ enum weapon_trigger_flags
 	_weapon_trigger_useless_bit,
 	_weapon_trigger_blurred_bit,
 	_weapon_trigger_fired_before_charging_bit,
+	/* port: a shot fired in the fast phase, before the tick that would have
+	fired it at 30 Hz (weapons_substep): that tick's idle trigger does
+	nothing more, as though the shot were its own */
+	_weapon_trigger_fired_ahead_bit,
 	NUMBER_OF_WEAPON_TRIGGER_DATUM_FLAGS,
 };
 
@@ -532,9 +537,13 @@ static struct weapons_globals data_00307140 =
 
 /* ---------- public code */
 
+static void weapons_substep(short substep_index, short substep_count, real seconds);
+
 void weapons_initialize(
 	void)
 {
+	/* port: the players' shots in the fast phase (sim_rate.h) */
+	sim_substep_register(_sim_substep_weapons, weapons_substep);
 	return;
 }
 
@@ -3128,6 +3137,206 @@ static void weapon_trigger_overcharged(
 	return;
 }
 
+/* port: which triggers a weapon's controls hold down, its state timer as
+given: weapon_update's test, and the fast phase's (weapons_substep) alike */
+static void weapon_triggers_down(
+	struct weapon_datum *weapon,
+	struct weapon_definition *weapon_definition,
+	word control_flags,
+	short state_timer,
+	boolean *triggers_down)
+{
+	if (!TEST_FLAG(control_flags, _weapon_control_user_busy_bit) && state_timer<=0)
+	{
+		triggers_down[0]= TEST_FLAG(control_flags, _weapon_control_primary_trigger_bit);
+		triggers_down[1]= TEST_FLAG(weapon_definition->weapon.flags, _weapon_secondary_trigger_overrides_grenades_bit) && TEST_FLAG(control_flags, _weapon_control_secondary_trigger_bit);
+	}
+	else
+	{
+		triggers_down[0]= FALSE;
+		triggers_down[1]= FALSE;
+	}
+
+	switch (weapon_definition->weapon.secondary_trigger_mode)
+	{
+	case _weapon_secondary_trigger_slaved_to_primary:
+		if (triggers_down[1] && weapon_definition->weapon.triggers.count>0 && weapon->weapon.triggers[0].rate_of_fire!=1.0f)
+		{
+			triggers_down[1]= FALSE;
+		}
+		break;
+
+	case _weapon_secondary_trigger_inhibits_primary:
+		if (triggers_down[1])
+		{
+			triggers_down[0]= FALSE;
+		}
+		break;
+	}
+
+	return;
+}
+
+/* port: whether an idle trigger's magazine is too empty to fire, which its
+update reloads */
+static boolean weapon_trigger_magazine_empty(
+	struct weapon_datum *weapon,
+	struct weapon_definition *weapon_definition,
+	struct weapon_trigger_definition *trigger_definition)
+{
+	struct weapon_magazine *magazine;
+
+	if (trigger_definition->magazine_index==NONE ||
+		!weapon_trigger_magazine_valid(weapon_definition, trigger_definition)) /* port: one it has */
+	{
+		return FALSE;
+	}
+	magazine= weapon_magazine_get(weapon, trigger_definition->magazine_index);
+
+	return magazine &&
+		((magazine->rounds_loaded<trigger_definition->rounds_per_shot && !TEST_FLAG(trigger_definition->flags, _weapon_trigger_can_fire_with_partial_ammunition_bit)) ||
+		magazine->rounds_loaded<trigger_definition->minimum_rounds_loaded_per_shot ||
+		magazine->rounds_loaded==0);
+}
+
+/* port: a player's weapon in the fast phase (sim_rate.h): a trigger pulled
+during a sub-step after the tick's update fires its shot at that sub-step,
+made with the aim the player has then, rather than at the next tick's
+update. Only the shot's time is the sub-step's. Whether it may fire is the
+next tick's update's own test (the cadence, ceil(30/r) ticks, and every
+timer on the tick, as at 30 Hz), and that tick takes the shot for its own
+(_weapon_trigger_fired_ahead_bit), so the shots that follow come on the
+ticks they would have at 30 Hz.
+
+Only what a pull fires at once, from an idle trigger with rounds loaded: a
+trigger that charges, overloads, toggles, tracks its projectile or reads an
+analog rate of fire stays on the tick, as do a weapon fired from a seat (a
+vehicle's, which stays on the tick) and a shot at most a tick. Sub-step 0
+starts where the tick's update read the controls, so it has nothing new:
+at 30 Hz, a tick of one sub-step, nothing here runs. */
+static void weapon_fire_ahead(
+	long unit_index)
+{
+	struct unit_datum *unit= unit_try_and_get(unit_index);
+	struct weapon_datum *weapon;
+	struct weapon_definition *weapon_definition;
+	long weapon_index;
+	word control_flags;
+	short next_state_timer;
+	boolean were_down[MAXIMUM_NUMBER_OF_TRIGGERS_PER_WEAPON];
+	boolean now_down[MAXIMUM_NUMBER_OF_TRIGGERS_PER_WEAPON];
+	short trigger_index;
+
+	if (!unit ||
+		unit->object.parent_object_index!=NONE ||
+		TEST_FLAG(unit->object.damage_flags, _object_dead_bit) ||
+		unit->unit.current_weapon_index==NONE ||
+		unit->unit.current_weapon_index!=unit->unit.desired_weapon_index)
+	{
+		return;
+	}
+	/* (the jetpack cheat's combo, which units.c keeps from the weapon) */
+	if (cheat.jetpack &&
+		TEST_FLAG(unit->unit.control_flags, _unit_control_weapon_primary_trigger_bit) &&
+		TEST_FLAG(unit->unit.control_flags, _unit_control_throw_grenade_bit))
+	{
+		return;
+	}
+	weapon_index= unit_inventory_get_weapon(unit_index, unit->unit.current_weapon_index);
+	weapon= weapon_index!=NONE ? weapon_try_and_get(weapon_index) : NULL;
+	if (!weapon ||
+		weapon->object.parent_object_index!=unit_index ||
+		weapon->weapon.game_time_last_fired==game_time_get() ||
+		TEST_FLAG(weapon->weapon.control_flags, _weapon_control_user_switching_weapons_bit))
+	{
+		return;
+	}
+	weapon_definition= weapon_definition_get(weapon->definition_index);
+
+	/* the triggers as the tick's update had them, and as the controls hold
+	them now, with the weapon's state timer as the next tick's update will
+	see it */
+	control_flags= weapon->weapon.control_flags&~(FLAG(_weapon_control_primary_trigger_bit)|FLAG(_weapon_control_secondary_trigger_bit));
+	if (TEST_FLAG(unit->unit.control_flags, _unit_control_weapon_primary_trigger_bit))
+	{
+		SET_FLAG(control_flags, _weapon_control_primary_trigger_bit, TRUE);
+	}
+	if (TEST_FLAG(unit->unit.control_flags, _unit_control_weapon_secondary_trigger_bit))
+	{
+		SET_FLAG(control_flags, _weapon_control_secondary_trigger_bit, TRUE);
+	}
+	next_state_timer= weapon->weapon.state_timer>0 ? weapon->weapon.state_timer-1 : 0;
+	weapon_triggers_down(weapon, weapon_definition, weapon->weapon.control_flags, weapon->weapon.state_timer, were_down);
+	weapon_triggers_down(weapon, weapon_definition, control_flags, next_state_timer, now_down);
+
+	for (trigger_index= 0; trigger_index<weapon_trigger_count(weapon_definition); trigger_index++)
+	{
+		struct weapon_trigger *trigger= weapon_trigger_get(weapon, trigger_index);
+		struct weapon_trigger_definition *trigger_definition= TAG_BLOCK_GET_ELEMENT(&weapon_definition->weapon.triggers, trigger_index, struct weapon_trigger_definition);
+
+		if (!trigger ||
+			were_down[trigger_index] ||
+			!now_down[trigger_index] ||
+			trigger->state!=_trigger_idle ||
+			trigger_definition->charging_time>0.0f ||
+			trigger_definition->overloading_time>0.0f ||
+			TEST_FLAG(trigger_definition->flags, _weapon_trigger_toggles_bit) ||
+			TEST_FLAG(trigger_definition->flags, _weapon_trigger_analog_rate_of_fire_bit) ||
+			TEST_FLAG(trigger_definition->flags, _weapon_trigger_tracks_projectile_bit) ||
+			weapon_trigger_magazine_empty(weapon, weapon_definition, trigger_definition) ||
+			!weapon_trigger_can_fire_again(weapon_index, trigger_index))
+		{
+			continue;
+		}
+
+		weapon_trigger_begin_firing(weapon_index, trigger_index, FALSE);
+		/* (a weapon that overheats past its limit is gone) */
+		weapon= weapon_try_and_get(weapon_index);
+		if (!weapon)
+		{
+			return;
+		}
+		if (weapon->weapon.game_time_last_fired==game_time_get())
+		{
+			trigger= weapon_trigger_get(weapon, trigger_index);
+			if (trigger)
+			{
+				SET_FLAG(trigger->flags, _weapon_trigger_fired_ahead_bit, TRUE);
+			}
+			break;
+		}
+	}
+
+	return;
+}
+
+/* port: the fast phase's weapons slot (sim_rate.h): each player's weapon */
+static void weapons_substep(
+	short substep_index,
+	short substep_count,
+	real seconds)
+{
+	struct data_iterator iterator;
+	struct player_datum *player;
+
+	(void)substep_count;
+	(void)seconds;
+	if (substep_index<=0)
+	{
+		return;
+	}
+	data_iterator_new(&iterator, player_data);
+	while ((player= (struct player_datum *)data_iterator_next(&iterator))!=NULL)
+	{
+		if (player->unit_index!=NONE)
+		{
+			weapon_fire_ahead(player->unit_index);
+		}
+	}
+
+	return;
+}
+
 boolean weapon_update(
 	long weapon_index)
 {
@@ -3236,33 +3445,7 @@ boolean weapon_update(
 		weapon->weapon.state_timer--;
 	}
 
-	if (!TEST_FLAG(weapon->weapon.control_flags, _weapon_control_user_busy_bit) && weapon->weapon.state_timer<=0)
-	{
-		triggers_down[0]= TEST_FLAG(weapon->weapon.control_flags, _weapon_control_primary_trigger_bit);
-		triggers_down[1]= TEST_FLAG(weapon_definition->weapon.flags, _weapon_secondary_trigger_overrides_grenades_bit) && TEST_FLAG(weapon->weapon.control_flags, _weapon_control_secondary_trigger_bit);
-	}
-	else
-	{
-		triggers_down[0]= FALSE;
-		triggers_down[1]= FALSE;
-	}
-
-	switch (weapon_definition->weapon.secondary_trigger_mode)
-	{
-	case _weapon_secondary_trigger_slaved_to_primary:
-		if (triggers_down[1] && weapon_definition->weapon.triggers.count>0 && weapon->weapon.triggers[0].rate_of_fire!=1.0f)
-		{
-			triggers_down[1]= FALSE;
-		}
-		break;
-
-	case _weapon_secondary_trigger_inhibits_primary:
-		if (triggers_down[1])
-		{
-			triggers_down[0]= FALSE;
-		}
-		break;
-	}
+	weapon_triggers_down(weapon, weapon_definition, weapon->weapon.control_flags, weapon->weapon.state_timer, triggers_down);
 
 	if (TEST_FLAG(weapon->weapon.control_flags, _weapon_control_reload_bit) && weapon_definition->weapon.magazines.count>0)
 	{
@@ -3340,11 +3523,17 @@ boolean weapon_update(
 	{
 		struct weapon_trigger *trigger= weapon_trigger_get(weapon, trigger_index);
 		struct weapon_trigger_definition *trigger_definition= TAG_BLOCK_GET_ELEMENT(&weapon_definition->weapon.triggers, trigger_index, struct weapon_trigger_definition);
+		boolean fired_ahead;
 
 		if (!trigger)
 		{
 			continue;
 		}
+
+		/* port: this tick's shot fired already, in the tick before's fast
+		phase (weapon_fire_ahead): never at 30 Hz */
+		fired_ahead= TEST_FLAG(trigger->flags, _weapon_trigger_fired_ahead_bit);
+		SET_FLAG(trigger->flags, _weapon_trigger_fired_ahead_bit, FALSE);
 
 		if (TEST_FLAG(trigger_definition->flags, _weapon_trigger_analog_rate_of_fire_bit) && TEST_FLAG(weapon->item.flags, _item_belongs_to_player_bit))
 		{
@@ -3396,6 +3585,12 @@ boolean weapon_update(
 		switch (trigger->state)
 		{
 		case _trigger_idle:
+			/* port: as though it fired now: no reload, no shot, and its
+			ticks since the shot (idle_ticks) start from this one */
+			if (fired_ahead)
+			{
+				break;
+			}
 			if (!TEST_FLAG(weapon->weapon.control_flags, _weapon_control_user_busy_bit) &&
 				weapon->object.parent_object_index!=NONE &&
 				trigger_definition->magazine_index!=NONE &&

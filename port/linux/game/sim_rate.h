@@ -50,6 +50,7 @@ enum sim_substep_slot
 	_sim_substep_player_control, /* the players' input and aim */
 	_sim_substep_units, /* the players' units: aim, throws */
 	_sim_substep_bipeds, /* the players' bipeds' movement */
+	_sim_substep_weapons, /* the players' shots, at the sub-step pulled */
 	_sim_substep_items, /* thrown items and grenades */
 	_sim_substep_projectiles,
 	_sim_substep_vr, /* the VR mode's throws and grabs */
