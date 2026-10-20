@@ -75,6 +75,12 @@ a network game (the classic netcode's, whatever the host or client) and in a
 saved film's playback */
 long sim_rate_get(void);
 
+/* whether game.sim_rate is set aside: the game played (or about to be, from
+a lobby) takes its rate from its connection, not the setting (a network
+game, so split screen, and a film's playback). The menus' SIMULATION row
+shows it locked at ORIGINAL (30) meanwhile (menu_functions.c) */
+boolean sim_rate_locked(void);
+
 /* the sub-steps of this tick (1, 2 or 4), and the one running: 0 up to
 count - 1 in the fast phase, NONE outside it (between two sub-steps of a
 tick too, in the frames: sim_substep_next) */

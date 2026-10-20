@@ -1,7 +1,8 @@
 """The simulation's two clocks (game.sim_rate, port/linux/game/sim_rate.c): the rate a tick takes from the setting
-and the connection (30 in any network game), the fast phase's sub-steps and their slots, the conversions of per-tick
-quantities, each exactly its argument at 30, the frames' blend between sub-steps, and the sub-steps run one at a
-time as the clock spreads them over the frames (which is next, the first of a frame, the open tick's rate)."""
+and the connection (30 in any network game, where the setting is locked), the fast phase's sub-steps and their slots,
+the conversions of per-tick quantities, each exactly its argument at 30, the frames' blend between sub-steps, and the
+sub-steps run one at a time as the clock spreads them over the frames (which is next, the first of a frame, the open
+tick's rate)."""
 
 import sys
 from pathlib import Path
@@ -11,8 +12,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run  # noqa: E402
 
-CASES = ["classic-identity", "rates", "network-classic", "exact-scaling", "decay-and-chance", "substeps-run", "blend",
-         "spread"]
+CASES = ["classic-identity", "rates", "network-classic", "locked", "exact-scaling", "decay-and-chance", "substeps-run",
+         "blend", "spread"]
 
 # a fault in the code, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -20,6 +21,9 @@ NEGATIVE_CONTROLS = {
                             "network-classic"),
     "film-not-classic": (("\tdefault:\n\t\treturn SIM_RATE_CLASSIC;\n", "\tdefault:\n\t\treturn sim_rate_setting();\n"),
                          "network-classic"),
+    "film-not-locked": (("return game_connection() != _game_connection_local;",
+                         "return game_connection() == _game_connection_network_client ||\n"
+                         "\t\tgame_connection() == _game_connection_network_server;"), "locked"),
     "any-rate": (("(setting == 60 || setting == 120) ? setting", "setting > 0 ? setting"), "rates"),
     "setting-never-read-again": (("|| sim_rate_globals.read_at != config_changes()", ""), "rates"),
     "decay-at-30-rounded": (("\tif (count >= 2)\n\t\tfactor = square_root(factor);",

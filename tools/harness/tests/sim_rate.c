@@ -190,6 +190,26 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
+	/* the setting is set aside (the menus' row locked) exactly where the
+	connection, not the setting, gives the rate: every connection but a game
+	of this machine alone */
+	if (!strcmp(case_name, "locked"))
+	{
+		static short const connections[] = { _game_connection_local, _game_connection_network_client,
+			_game_connection_network_server, _game_connection_film_playback };
+
+		for (index = 0; index < NUMBEROF(connections); index++)
+		{
+			set(120, connections[index]);
+			CHECK(sim_rate_locked() == (sim_rate_get() != 120), "connection %d: locked %d at rate %ld",
+				connections[index], sim_rate_locked(), sim_rate_get());
+			set(30, connections[index]);
+			CHECK(sim_rate_locked() == (connections[index] != _game_connection_local),
+				"connection %d at 30: locked %d", connections[index], sim_rate_locked());
+		}
+		return 0;
+	}
+
 	/* 120 is 4 x 30: the linear and quadratic conversions scale by a power of
 	two, exactly */
 	if (!strcmp(case_name, "exact-scaling"))

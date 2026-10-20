@@ -398,8 +398,10 @@ _graphics = {"display.high_res_hud", "display.hud_button_style", "display.high_r
              "display.dynamic_lights", "display.model_detail", "display.match_timer"}
 # (first, display.graphics: Classic or Enhanced, which shows the rows it
 # chooses at its values as it changes, port/linux/game/menu_functions.c's
-# graphics_preset_show; eleven rows, closer than the others' 30px, the help
-# line lower)
+# graphics_preset_show; last, the simulation's rate, game.sim_rate, which
+# menu_functions.c's sim_rate_row_show locks at ORIGINAL (30) in a game that
+# plays at 30 whatever it says: a network game, split screen, a film's
+# playback. Twelve rows, closer than the others' 30px, the help line lower)
 # (the visual modifiers: a screen of their own, Extra Effects)
 _extra_effects = {"display.shield_glow", "display.shield_glow_intensity"}
 SCREENS["video_settings/graphics"] = {
@@ -408,7 +410,9 @@ SCREENS["video_settings/graphics"] = {
     "rows": [("PRESET:", "display.graphics", [("ENHANCED", "enhanced"), ("CLASSIC", "classic")],
               "Classic draws as the Xbox did; Enhanced turns on\nthe improvements below. Each can still be changed.",
               None)] +
-            [row for row in _video["rows"] if row[1] in _graphics],
+            [row for row in _video["rows"] if row[1] in _graphics] +
+            [("SIMULATION:", "game.sim_rate", [("ORIGINAL (30)", "30"), ("60", "60"), ("120", "120")],
+              "How often the world moves. Original plays exactly\nas shipped; 60 and 120 respond faster.", None)],
 }
 SCREENS["video_settings/extra_effects"] = {
     "screen": "extra_effects_settings_screen", "header": _video["header"], "spacing": 30,
@@ -416,7 +420,8 @@ SCREENS["video_settings/extra_effects"] = {
 }
 _video["rows"] = [row for row in _video["rows"] if row[1] not in _graphics | _extra_effects]
 _video["categories"] = [
-    ("GRAPHICS:", "video_settings/graphics", "Classic or Enhanced, the HUD, text,\nanti-aliasing, shadows and lighting."),
+    ("GRAPHICS:", "video_settings/graphics",
+     "Classic or Enhanced, the HUD, text, shadows,\nlighting, anti-aliasing and the simulation rate."),
     ("FOV AND VIEWMODELS:", "video_settings/fov_viewmodels",
      "The field of view and the first-person\nweapon. Their defaults keep the stock view."),
     ("EXTRA EFFECTS:", "video_settings/extra_effects",
