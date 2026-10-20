@@ -4,6 +4,7 @@ arguments."""
 
 import concurrent.futures
 import importlib
+import os
 import sys
 from pathlib import Path
 
@@ -14,6 +15,14 @@ import runner  # noqa: E402
 
 # the Sessions the running test has read, whose logs a failure shows
 READ = []
+# each pytest-xdist worker's own runs' slots (their loopback addresses, runner.addresses)
+SLOTS_PER_WORKER = 24
+
+
+def worker():
+    """this pytest-xdist worker's number (PYTEST_XDIST_WORKER's), 0 without xdist"""
+    digits = "".join(c for c in os.environ.get("PYTEST_XDIST_WORKER", "") if c.isdigit())
+    return int(digits) if digits else 0
 
 
 @pytest.fixture(autouse=True)
@@ -65,7 +74,7 @@ def sessions(stagekit, tmp_path_factory, setting, play, copies=1):
                 results = {(name, copy): pool.submit(generated_and_played, name, slot,
                                                      tmp_path_factory.mktemp(f"{name}-{setting.lower()}-{copy}"),
                                                      settings)
-                           for slot, (name, copy, settings) in enumerate(runs)}
+                           for slot, (name, copy, settings) in enumerate(runs, start=SLOTS_PER_WORKER * worker())}
             for key, result in results.items():
                 played[key] = result.exception() or result.result()
         if (scenario, copy) not in played:
