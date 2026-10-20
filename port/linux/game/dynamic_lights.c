@@ -28,6 +28,15 @@ debug.dynamic_lights_log logs, each frame, where the first projectile's
 light is drawn (the smoothness test: a step for each frame, not for each
 tick). Only the drawing changes: nothing the game simulates, nothing sent
 between machines.
+
+Which lights are drawn (dynamic_lights_rank): a view finds up to
+MAXIMUM_RENDERED_LIGHTS lights in the clusters it sees (halo_port_capacity.h:
+512 on the desktop builds), but the rasterizer has room for
+MAXIMUM_LIGHTS_PER_WINDOW (128) of them, the enhanced dynamic lights' grid
+too (XGPU_DYNAMIC_LIGHTS_MAXIMUM), and the game gave them to the first it
+found, in the clusters' order. Past 128, the lights are put in the order of
+what they show first, so that the 128 drawn are those that matter most to
+the view, classic or enhanced.
 */
 
 #include "cseries.h"
@@ -38,6 +47,9 @@ between machines.
 #include "rasterizer/rasterizer_lights.h"
 #include "interface/first_person_weapons.h"
 #include "game/game.h"
+
+#include <stdlib.h>
+#include <string.h>
 
 /* port/linux/src/port_config.c */
 int config_boolean(const char *name);
@@ -184,4 +196,111 @@ void dynamic_lights_submit(
 		dynamic_lights.cone_offset[light_index] = 1.0f;
 		dynamic_lights.tick_position[light_index] = rasterizer_lights.lights[light_index].position;
 	}
+}
+
+/* ---------- which lights are drawn */
+
+/* a light wholly behind the camera's plane by more than this (world units:
+the VR eyes beside the head's centre and the late latch's turn, with room)
+lights nothing in view, and goes after every light that may */
+#define RANK_BEHIND_MARGIN 0.1f
+#define RANK_BEHIND_SCALE (1.0f / 64.0f)
+
+struct rank_entry
+{
+	real score;
+	short index;
+};
+
+/* each light as it was last drawn (dynamic_lights_drawn: its handle,
+where, how far it reached and its brightest channel), by its index */
+static struct
+{
+	long light;
+	real_point3d position;
+	real radius;
+	real intensity;
+} lights_drawn[MAXIMUM_LIGHTS_PER_MAP];
+
+static int rank_compare(void const *a, void const *b)
+{
+	struct rank_entry const *left = a;
+	struct rank_entry const *right = b;
+
+	if (left->score != right->score)
+		return left->score > right->score ? -1 : 1;
+	/* (the game's order among equals: the same lights each frame) */
+	return left->index - right->index;
+}
+
+/* object_lights.c lights_preprocess_scene: a light submitted to the
+rasterizer, as it is drawn (between the ticks: its blended color and
+radius, on its marker as drawn), which ranks it next frame */
+void dynamic_lights_drawn(long light, real_point3d const *position, real radius, real_rgb_color const *color)
+{
+	long index = DATUM_INDEX_TO_ABSOLUTE_INDEX(light);
+
+	if (index >= MAXIMUM_LIGHTS_PER_MAP)
+		return;
+	lights_drawn[index].light = light;
+	lights_drawn[index].position = *position;
+	lights_drawn[index].radius = radius;
+	lights_drawn[index].intensity = MAX(color->red, MAX(color->green, color->blue));
+}
+
+/* object_lights.c lights_preprocess_scene: the scene's lights (light
+handles, as structure_visibility_find_objects found them), most visible
+first when there are more than the rasterizer has room for (none moved
+otherwise: the order is the game's). A light's part of the view is its
+intensity (its colour's brightest channel) times how wide its reach looks
+from the camera: its radius over its distance, at most 1 (the camera in
+it), so a near light and a far wide one both rank high, a small far one
+last; and far lower wholly behind the camera's plane. Each as it was drawn
+last frame (dynamic_lights_drawn: as the frame blends it between ticks, a
+frame old), else as the game has it (describe: the tick's), and one of no
+known brightness (new this frame) as bright. */
+void dynamic_lights_rank(long *lights, short count,
+	void (*describe)(long light, real_point3d *position, real *radius, real *intensity))
+{
+	static struct rank_entry entries[MAXIMUM_RENDERED_LIGHTS];
+	static long ranked[MAXIMUM_RENDERED_LIGHTS];
+	real_vector3d forward = render.camera.forward;
+	short index;
+
+	if (count <= MAXIMUM_LIGHTS_PER_WINDOW || count > MAXIMUM_RENDERED_LIGHTS)
+		return;
+	if (normalize3d(&forward) <= 0.0f)
+		forward.i = forward.j = forward.k = 0.0f;
+	for (index = 0; index < count; index++)
+	{
+		real_point3d position;
+		real_vector3d offset;
+		real radius = 0.0f, intensity = 0.0f, distance, score;
+		long drawn = DATUM_INDEX_TO_ABSOLUTE_INDEX(lights[index]);
+
+		if (drawn < MAXIMUM_LIGHTS_PER_MAP && lights_drawn[drawn].light == lights[index])
+		{
+			position = lights_drawn[drawn].position;
+			radius = lights_drawn[drawn].radius;
+			intensity = lights_drawn[drawn].intensity;
+		}
+		else
+		{
+			describe(lights[index], &position, &radius, &intensity);
+			if (!(intensity > 0.0f))
+				intensity = 1.0f;
+		}
+		radius = radius > 1.0e-3f ? radius : 1.0e-3f;
+		vector_from_points3d(&render.camera.position, &position, &offset);
+		distance = magnitude3d(&offset);
+		score = intensity * radius / (distance > radius ? distance : radius);
+		if (dot_product3d(&offset, &forward) < -(radius + RANK_BEHIND_MARGIN))
+			score *= RANK_BEHIND_SCALE;
+		entries[index].score = score;
+		entries[index].index = index;
+	}
+	qsort(entries, count, sizeof(*entries), rank_compare);
+	for (index = 0; index < count; index++)
+		ranked[index] = lights[entries[index].index];
+	memcpy(lights, ranked, count * sizeof(*lights));
 }
