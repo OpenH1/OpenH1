@@ -49,6 +49,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 TICKS_PER_SECOND = 30
 
+# (StageKit's runner: place(), an executable in a folder of its own)
+sys.path.insert(0, str(ROOT / "tools/stagekit/tests"))
+import runner  # noqa: E402
+
 # ---------- tolerances
 #
 # Chosen from how the netcode works (port/linux/NETCODE.md) and checked
@@ -445,12 +449,11 @@ def prepare_copy(work, name, executable, data_root, wrapper=""):
             if entry.name in (executable.name, "config.toml") or entry.name.endswith(".log"):
                 continue
             link_once(bin_folder / entry.name, entry.resolve())
+    # (a hard link on Linux, a clone of its own on macOS, where dyld may
+    # find @executable_path, and so the libraries, from any of a hard
+    # link's names: another copy's folder; runner.place)
     copied = bin_folder / executable.name
-    if not copied.exists():
-        try:
-            os.link(executable, copied)
-        except OSError:
-            shutil.copy2(executable, copied)
+    runner.place(executable, copied)
     for entry in ("maps", "custom_maps"):
         if (data_root / entry).is_dir() and not (data / entry).exists():
             (data / entry).symlink_to((data_root / entry).resolve())
