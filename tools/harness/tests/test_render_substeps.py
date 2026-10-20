@@ -14,7 +14,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
-CASES = ["classic", "substeps", "substeps_60", "carried", "camera_slow", "projectile", "projectile_late", "vr_release"]
+CASES = ["classic", "substeps", "substeps_60", "carried", "camera_slow", "projectile", "projectile_late", "vr_release",
+         "respawn", "respawn_120"]
 
 # a fault in the code, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -40,6 +41,11 @@ NEGATIVE_CONTROLS = {
     "head-start-drawn": (("\t\t!substeps->continuing[buffer] ||", ""), "projectile"),
     # ... and the hold's end in the tick after
     "hold-drawn": (("\t\t!substeps->continuing[buffer] ||", ""), "projectile_late"),
+    # a respawn blended from the dead camera into the new unit's eye (nearer and turned less than a cut's)
+    "respawn-glides": (("\t\tcamera->has_previous = camera->valid && camera->unit_index == unit_index;",
+                        "\t\tcamera->has_previous = camera->valid;"), "respawn"),
+    "respawn-glides-120": (("\t\tcamera->has_previous = camera->valid && camera->unit_index == unit_index;",
+                            "\t\tcamera->has_previous = camera->valid;"), "respawn_120"),
     # the grenade let go of in a sub-step drawn from the tick before's snapshot (the body's hand) until the tick ends
     "release-from-the-body": (("\tif ((pending = render_interpolation_pending_from(object_index)) != NULL)",
                                "\tif ((pending = NULL) != NULL)"), "vr_release"),

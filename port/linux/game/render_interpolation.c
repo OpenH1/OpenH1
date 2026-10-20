@@ -21,7 +21,9 @@ a tick of motion plausibly allows (teleports, respawns, camera cuts) snaps
 instead of sweeping across the world, and so does a pose whose nodes moved
 too far for one tick: two snapshots of different poses (a model swapped,
 another weapon's skeleton, a pose left from seconds before) blended node by
-node stretch vertices across the screen.
+node stretch vertices across the screen. The view cuts whenever its player's
+unit changes (a respawn, however near the dead camera was), and a game state
+loaded (a checkpoint's revert) leaves no snapshots behind.
 
 Particles, contrails and other effects move every frame (game_frame), and
 read the drawn pose of what they hang off. A stream of particles from an
@@ -240,6 +242,9 @@ struct interpolated_camera
 	struct observer_result previous;
 	struct observer_result latest;
 	struct observer_result blended;
+	/* its player's unit at the latest snapshot: another (a respawn, a
+	checkpoint's revert, a unit swapped) is a cut, however near */
+	long unit_index;
 	/* its player's unit (or what it rides) corrected: as an object's */
 	real_vector3d correction;
 	real_vector3d correction_pending;
@@ -2068,13 +2073,24 @@ static struct observer_result const *render_interpolation_blended_camera(
 	after the tick) */
 	if (!camera->valid || camera->tick != interpolation_tick)
 	{
-		/* (its correction taken on each tick, render_interpolation_tick) */
-		if (!camera->valid)
+		long unit_index = player_control_get_unit_index(local_player_index);
+
+		/* (its correction taken on each tick, render_interpolation_tick;
+		the last unit's none of the next's) */
+		if (!camera->valid || camera->unit_index != unit_index)
 		{
 			camera->correction = *global_zero_vector3d;
 			camera->correction_pending = *global_zero_vector3d;
 		}
-		camera->has_previous = camera->valid;
+		/* A respawn is a cut: the game's camera leaves the dead one for the
+		new unit's eye at once (player_spawn: observer_obsolete_position),
+		but the tick's blend drew it gliding from the dead camera into the
+		head wherever they were nearer than a cut's distance and turn (the
+		dead camera 2 to 6 units above the body, a spawn point near it; or
+		network co-op's spectating, 3.5 units behind the teammate a dead
+		player respawns beside) */
+		camera->has_previous = camera->valid && camera->unit_index == unit_index;
+		camera->unit_index = unit_index;
 		camera->previous = camera->latest;
 		camera->latest = *observer;
 		if (substep_unit_index != NONE)

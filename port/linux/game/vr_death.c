@@ -107,6 +107,7 @@ void halo_vr_test_screenshot(void);
 void halo_vr_eye_tint(float red, float green, float blue);
 /* vr_seat.c's, vr_render.c's, render_interpolation.c's */
 boolean vr_seat_shown(real_point3d *position);
+void vr_seat_eye_cut(void);
 real vr_seat_darkness(void);
 boolean vr_render_eye_pass(void);
 real render_interpolation_fraction(void);
@@ -408,6 +409,7 @@ static void death_reset(real seconds)
 		vr_death.cam_placed = FALSE;
 		vr_death.dead = FALSE;
 		vr_death.tint = vr_death.dark = vr_death.near = vr_death.blink = 0.0f;
+		vr_seat_eye_cut();
 		vr_death.blinking = FALSE;
 		vr_death.back_dark_seconds = 0.0f;
 		if (vr_death.testing)
@@ -428,6 +430,7 @@ static void death_reset(real seconds)
 	{
 		vr_death.dark = 1.0f;
 		vr_death.back_dark_seconds = DEAD_BACK_DARK_SECONDS;
+		vr_seat_eye_cut();
 	}
 	if (vr_death.back_dark_seconds > 0.0f)
 	{
