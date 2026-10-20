@@ -144,6 +144,10 @@ static long structure_culling_tests = FLAG(_structure_culling_triangle_frustum_b
 static long structure_culling_submitted;
 static long structure_culling_outside;
 static long structure_culling_facing;
+/* the camera's radius (world units): the facing tests and the planes hold
+for every point within it of the camera's position, not for that point
+alone (structure_culling_set_camera_radius); 0 flat */
+static real structure_culling_camera_radius;
 static boolean structure_culling_debug_enabled;
 static unsigned long structure_culling_recorded[2][BIT_VECTOR_SIZE_IN_LONGS(MAXIMUM_SURFACES_PER_STRUCTURE)];
 
@@ -616,14 +620,15 @@ boolean structure_culling_triangle_outside(
 	return FALSE;
 }
 
-boolean structure_culling_triangle_faces_away(
-	real_point3d const *camera, real_point3d const *point0, real_point3d const *point1, real_point3d const *point2)
+boolean structure_culling_triangle_faces_away(real_point3d const *camera, real radius,
+	real_point3d const *point0, real_point3d const *point1, real_point3d const *point2)
 {
 	real_vector3d edge0;
 	real_vector3d edge1;
 	real_vector3d normal;
 	real_vector3d view;
 	real squared;
+	real distance;
 
 	vector_from_points3d(point0, point1, &edge0);
 	vector_from_points3d(point0, point2, &edge1);
@@ -634,7 +639,11 @@ boolean structure_culling_triangle_faces_away(
 		return FALSE;
 	}
 	vector_from_points3d(point0, camera, &view);
-	return STRUCTURE_CULLING_FRONT_SIGN * dot_product3d(&normal, &view) < 0.0f;
+	/* the camera behind the triangle's plane, and further behind it than
+	its radius: the distance times the normal's length, squared against the
+	radius times it (no square root; with no radius, behind it at all) */
+	distance = STRUCTURE_CULLING_FRONT_SIGN * dot_product3d(&normal, &view);
+	return distance < 0.0f && distance * distance > radius * radius * squared;
 }
 
 void structure_culling_cone_build(struct structure_culling_cone *cone, long triangle_count, real_point3d const *points)
@@ -724,8 +733,11 @@ void structure_culling_cone_build(struct structure_culling_cone *cone, long tria
 	}
 }
 
-short structure_culling_cone_facing(struct structure_culling_cone const *cone, real_point3d const *camera)
+short structure_culling_cone_facing(struct structure_culling_cone const *cone, real_point3d const *camera, real radius)
 {
+	/* (every triangle's points from every camera point: the bucket's sphere
+	grown by the camera's) */
+	real reach = cone->radius + radius;
 	real_vector3d view;
 	real length;
 	real sin_theta;
@@ -736,12 +748,12 @@ short structure_culling_cone_facing(struct structure_culling_cone const *cone, r
 
 	vector_from_points3d(&cone->center, camera, &view);
 	length = square_root(magnitude_squared3d(&view));
-	if (cone->cutoff <= 0.0f || length <= cone->radius)
+	if (cone->cutoff <= 0.0f || length <= reach)
 	{
 		return _structure_culling_facing_mixed;
 	}
 	sin_theta = square_root(1.0f - cone->cutoff * cone->cutoff);
-	sin_alpha = cone->radius / length;
+	sin_alpha = reach / length;
 	cos_alpha = square_root(1.0f - sin_alpha * sin_alpha);
 	/* a cone plus the sphere's angular radius must fit within a hemisphere */
 	if (cone->cutoff * cos_alpha - sin_theta * sin_alpha <= 0.0f)
@@ -959,6 +971,11 @@ void structure_culling_initialize(void)
 		(FLAG(NUMBER_OF_STRUCTURE_CULLING_TESTS) - 1);
 }
 
+void structure_culling_set_camera_radius(real radius)
+{
+	structure_culling_camera_radius = radius > 0.0f ? radius : 0.0f;
+}
+
 void structure_culling_set_tests(long tests)
 {
 	long changed = structure_culling_tests ^ tests;
@@ -978,6 +995,7 @@ boolean structure_culling_traverse(struct structure_bsp *structure)
 	short axis;
 	real distances[MAXIMUM_RENDERED_CLUSTERS];
 	real_plane3d planes[6];
+	real radius = structure_culling_camera_radius;
 	struct profile_section *section;
 
 	/* split screen deliberately keeps only the last window's call */
@@ -1003,6 +1021,13 @@ boolean structure_culling_traverse(struct structure_bsp *structure)
 		rasterizer_globals.far_clip_distance;
 	/* mirror projections are oblique: this perpendicular plane is not their GPU far clip */
 	if (render.camera.z_near == 0.0f)
+	{
+		memset(&planes[_structure_culling_frustum_plane_far], 0, sizeof(planes[_structure_culling_frustum_plane_far]));
+	}
+	/* nor with a camera radius (the VR eyes): the late latch turns each eye
+	from the forward culled for, and its far plane with it, by far more than
+	the radius at the far plane's distance */
+	if (radius > 0.0f)
 	{
 		memset(&planes[_structure_culling_frustum_plane_far], 0, sizeof(planes[_structure_culling_frustum_plane_far]));
 	}
@@ -1040,6 +1065,23 @@ boolean structure_culling_traverse(struct structure_bsp *structure)
 			break;
 		}
 		memcpy(planes, frustum->world_planes, _structure_culling_frustum_plane_far * sizeof(*planes));
+		/* with a camera radius, the camera's own planes (the eyes' views are
+		within them: vr_render.c widens them for the eyes' fields of view and
+		the late latch), each moved out by the radius, so that a point any eye
+		within it sees is inside them. Not a portal's: its planes from the
+		head's centre pass its edges, and an eye beside the centre sees past an
+		edge by more, the further beyond it (the source box keeps the
+		original walk's test against them) */
+		if (radius > 0.0f)
+		{
+			short plane_index;
+
+			memcpy(planes, render.frustum.world_planes, _structure_culling_frustum_plane_far * sizeof(*planes));
+			for (plane_index = 0; plane_index < _structure_culling_frustum_plane_far; ++plane_index)
+			{
+				planes[plane_index].d += radius;
+			}
+		}
 		for (b = cluster->first_bucket; b < cluster->first_bucket + cluster->bucket_count; ++b)
 		{
 			struct structure_culling_bucket const *bucket = &structure_culling.buckets[b];
@@ -1069,7 +1111,7 @@ boolean structure_culling_traverse(struct structure_bsp *structure)
 				(TEST_FLAG(structure_culling_tests, _structure_culling_bucket_facing_bit) ||
 					TEST_FLAG(structure_culling_tests, _structure_culling_triangle_facing_bit)))
 			{
-				facing = structure_culling_cone_facing(&bucket->cone, &render.camera.position);
+				facing = structure_culling_cone_facing(&bucket->cone, &render.camera.position, radius);
 				if (facing == _structure_culling_facing_away &&
 					TEST_FLAG(structure_culling_tests, _structure_culling_bucket_facing_bit))
 				{
@@ -1117,7 +1159,7 @@ boolean structure_culling_traverse(struct structure_bsp *structure)
 						}
 						else if (triangle_facing &&
 							structure_culling_triangle_faces_away(
-								&render.camera.position, points, points + 1, points + 2))
+								&render.camera.position, radius, points, points + 1, points + 2))
 						{
 							reason = 2;
 						}

@@ -196,25 +196,38 @@ static real_vector3d cross(real_vector3d a, real_vector3d b)
     return (real_vector3d){a.j*b.k-a.k*b.j, a.k*b.i-a.i*b.k, a.i*b.j-a.j*b.i};
 }
 
-static void check_verdict(real_point3d *points, long count, struct structure_culling_cone *cone, real_point3d camera, long bucket, long sample)
+/* the verdicts for a camera of this radius against each triangle as seen
+from points within it (eyes: the first on its surface, where a verdict is
+nearest wrong; with no radius, the camera alone) */
+static void check_verdict(real_point3d *points, long count, struct structure_culling_cone *cone, real_point3d camera,
+    real radius, long eyes, long bucket, long sample)
 {
-    long t;
-    short verdict = structure_culling_cone_facing(cone, &camera);
-    for (t = 0; t < count; ++t)
+    long t, e;
+    short verdict = structure_culling_cone_facing(cone, &camera, radius);
+    for (e = 0; e < eyes; ++e)
     {
-        boolean away = structure_culling_triangle_faces_away(&camera, points+3*t, points+3*t+1, points+3*t+2);
-        CHECK(verdict != _structure_culling_facing_away || away,
-            "away verdict over-culls bucket %ld camera %ld triangle %ld", bucket, sample, t);
-        CHECK(verdict != _structure_culling_facing_toward || !away,
-            "toward verdict contradicts bucket %ld camera %ld triangle %ld", bucket, sample, t);
+        real_vector3d direction = unit((real_vector3d){random_real(-1, 1), random_real(-1, 1), random_real(-1, 1)});
+        real reach = e ? radius * random_real(0, 1) : radius;
+        real_point3d eye = {camera.x+direction.i*reach, camera.y+direction.j*reach, camera.z+direction.k*reach};
+        for (t = 0; t < count; ++t)
+        {
+            boolean away = structure_culling_triangle_faces_away(&eye, 0.0f, points+3*t, points+3*t+1, points+3*t+2);
+            CHECK(verdict != _structure_culling_facing_away || away,
+                "away verdict over-culls bucket %ld camera %ld eye %ld triangle %ld", bucket, sample, e, t);
+            CHECK(verdict != _structure_culling_facing_toward || !away,
+                "toward verdict contradicts bucket %ld camera %ld eye %ld triangle %ld", bucket, sample, e, t);
+            CHECK(!structure_culling_triangle_faces_away(&camera, radius, points+3*t, points+3*t+1, points+3*t+2) || away,
+                "a triangle away from the camera's sphere faces an eye in it: bucket %ld camera %ld eye %ld triangle %ld",
+                bucket, sample, e, t);
+        }
     }
 }
 
-static void random_buckets(void)
+static void random_buckets(long buckets, long cameras, real radius, long eyes)
 {
     long b, t, s, count;
     real_point3d points[64*3];
-    for (b = 0; b < 200; ++b)
+    for (b = 0; b < buckets; ++b)
     {
         struct structure_culling_cone cone;
         real_vector3d axis = unit((real_vector3d){random_real(-1, 1), random_real(-1, 1), random_real(-1, 1)});
@@ -238,12 +251,13 @@ static void random_buckets(void)
             points[3*t+2] = (real_point3d){p.x+.1f*c.i*STRUCTURE_CULLING_FRONT_SIGN, p.y+.1f*c.j*STRUCTURE_CULLING_FRONT_SIGN, p.z+.1f*c.k*STRUCTURE_CULLING_FRONT_SIGN};
         }
         structure_culling_cone_build(&cone, count, points);
-        for (s = 0; s < 2000; ++s)
+        for (s = 0; s < cameras; ++s)
         {
             real_vector3d direction = unit((real_vector3d){random_real(-1, 1), random_real(-1, 1), random_real(-1, 1)});
-            real distance = s < 500 ? cone.radius * 1.0001f : s < 1000 ? cone.radius * random_real(0, 1) : cone.radius * random_real(1, 20);
+            real reach = cone.radius + radius;
+            real distance = s < cameras / 4 ? reach * 1.0001f : s < cameras / 2 ? reach * random_real(0, 1) : reach * random_real(1, 20);
             real_point3d camera = {cone.center.x+direction.i*distance, cone.center.y+direction.j*distance, cone.center.z+direction.k*distance};
-            check_verdict(points, count, &cone, camera, b, s);
+            check_verdict(points, count, &cone, camera, radius, eyes, b, s);
         }
     }
 }
@@ -498,6 +512,34 @@ int main(int argc, char **argv)
         CHECK(structure_culling_traverse(&fixture_bsp) && render.environment_surface_count==0,"clipped cluster frustum selected");
         render.cluster_index=NONE;
         CHECK(structure_culling_traverse(&fixture_bsp) && render.environment_surface_count==4,"camera outside uses full frustum"); return 0;
+    }
+    CASE("walk-camera-radius")
+    {
+        /* the VR eyes within the radius of the camera: past the GPU far
+        plane (which the late latch turns) and outside the view by less than
+        the radius kept, by more culled; a portal's planes not used */
+        fixture_load(TRUE); fixture_frame();
+        for(i=0;i<3;++i) fixture_vertices[i].point.z=11;
+        structure_culling_structure_bsp_loaded(); memset(render.environment_surface_flags,0,sizeof(render.environment_surface_flags)); render.environment_surface_count=0;
+        structure_culling_set_camera_radius(.5f);
+        CHECK(structure_culling_traverse(&fixture_bsp) && render.environment_surface_count==4,"a radius has no GPU far plane");
+        fixture_frame();
+        for(i=0;i<3;++i) fixture_vertices[i].point.x-=2.3f;
+        structure_culling_structure_bsp_loaded();
+        CHECK(structure_culling_traverse(&fixture_bsp) && render.environment_surface_count==4,"outside the view by less than the radius kept");
+        structure_culling_set_camera_radius(.05f);
+        memset(render.environment_surface_flags,0,sizeof(render.environment_surface_flags)); render.environment_surface_count=0;
+        CHECK(structure_culling_traverse(&fixture_bsp) && render.environment_surface_flags[0]==10,"outside by more than the radius culled");
+        structure_culling_set_camera_radius(-1);
+        CHECK(structure_culling_camera_radius==0,"a negative radius is none");
+        fixture_frame(); structures_use_pvs_for_vs=FALSE; render.rendered_clusters[0].frustum=render.frustum;
+        render.rendered_clusters[0].frustum.world_planes[0].d=-.1f;
+        for(i=0;i<3;++i) fixture_vertices[i].point.x+=1.3f;
+        structure_culling_structure_bsp_loaded();
+        CHECK(structure_culling_traverse(&fixture_bsp) && render.environment_surface_flags[0]==10,"no radius: the portal's planes cull");
+        structure_culling_set_camera_radius(.05f);
+        memset(render.environment_surface_flags,0,sizeof(render.environment_surface_flags)); render.environment_surface_count=0;
+        CHECK(structure_culling_traverse(&fixture_bsp) && render.environment_surface_count==4,"a radius: the camera's planes, not the portal's"); return 0;
     }
     CASE("source-fog-rejected")
     {
@@ -763,24 +805,43 @@ int main(int argc, char **argv)
     }
     CASE("facing-away")
     {
-        CHECK(structure_culling_triangle_faces_away(&camera,p,p+1,p+2), "back camera");
-        CHECK(!structure_culling_triangle_faces_away(&camera,p,p+2,p+1), "swap flips back"); return 0;
+        CHECK(structure_culling_triangle_faces_away(&camera,0,p,p+1,p+2), "back camera");
+        CHECK(!structure_culling_triangle_faces_away(&camera,0,p,p+2,p+1), "swap flips back"); return 0;
     }
     CASE("facing-toward")
     {
         camera.z=2+STRUCTURE_CULLING_FRONT_SIGN;
-        CHECK(!structure_culling_triangle_faces_away(&camera,p,p+1,p+2), "front camera");
-        CHECK(structure_culling_triangle_faces_away(&camera,p,p+2,p+1), "swap flips front"); return 0;
+        CHECK(!structure_culling_triangle_faces_away(&camera,0,p,p+1,p+2), "front camera");
+        CHECK(structure_culling_triangle_faces_away(&camera,0,p,p+2,p+1), "swap flips front"); return 0;
     }
-    CASE("edge-on-kept") { camera.z=2; CHECK(!structure_culling_triangle_faces_away(&camera,p,p+1,p+2), "coplanar kept"); return 0; }
+    CASE("facing-sphere")
+    {
+        /* the camera a unit behind the plane: away from a sphere smaller than
+        that about it, not from one that reaches the front */
+        CHECK(structure_culling_triangle_faces_away(&camera,.5f,p,p+1,p+2), "sphere behind the plane");
+        CHECK(!structure_culling_triangle_faces_away(&camera,1.5f,p,p+1,p+2), "sphere across the plane kept");
+        camera.z=2+STRUCTURE_CULLING_FRONT_SIGN;
+        CHECK(!structure_culling_triangle_faces_away(&camera,.5f,p,p+1,p+2), "front camera with a radius"); return 0;
+    }
+    CASE("edge-on-kept") { camera.z=2; CHECK(!structure_culling_triangle_faces_away(&camera,0,p,p+1,p+2), "coplanar kept"); return 0; }
     CASE("degenerate-kept")
     {
-        p[2]=p[1]; CHECK(!structure_culling_triangle_faces_away(&camera,p,p+1,p+2), "duplicate kept");
-        p[2].x=1; CHECK(!structure_culling_triangle_faces_away(&camera,p,p+1,p+2), "collinear kept");
-        p[2].y=NAN; CHECK(!structure_culling_triangle_faces_away(&camera,p,p+1,p+2), "nonfinite kept");
-        p[2].y=INFINITY; CHECK(!structure_culling_triangle_faces_away(&camera,p,p+1,p+2), "infinite kept"); return 0;
+        p[2]=p[1]; CHECK(!structure_culling_triangle_faces_away(&camera,0,p,p+1,p+2), "duplicate kept");
+        p[2].x=1; CHECK(!structure_culling_triangle_faces_away(&camera,0,p,p+1,p+2), "collinear kept");
+        p[2].y=NAN; CHECK(!structure_culling_triangle_faces_away(&camera,0,p,p+1,p+2), "nonfinite kept");
+        p[2].y=INFINITY; CHECK(!structure_culling_triangle_faces_away(&camera,0,p,p+1,p+2), "infinite kept"); return 0;
     }
-    CASE("cone-never-more-aggressive") { random_buckets(); return 0; }
+    CASE("cone-never-more-aggressive") { random_buckets(200, 2000, 0.0f, 1); return 0; }
+    /* the VR eyes: about 3 cm (0.01 world units) beside the head's centre and
+    a late latch's few more, here up to a tenth of a unit and past the
+    buckets' own size */
+    CASE("cone-sphere-never-more-aggressive")
+    {
+        random_buckets(100, 400, .02f, 8);
+        random_buckets(50, 400, .1f, 8);
+        random_buckets(20, 200, 3.0f, 8);
+        return 0;
+    }
     CASE("cone-culls-something")
     {
         real_point3d grid[8*8*3];
@@ -792,17 +853,32 @@ int main(int argc, char **argv)
         }
         structure_culling_cone_build(&cone,64,grid);
         camera=(real_point3d){3.5f, 3.5f, -10};
-        CHECK(structure_culling_cone_facing(&cone,&camera)==_structure_culling_facing_away, "floor from below");
+        CHECK(structure_culling_cone_facing(&cone,&camera,0)==_structure_culling_facing_away, "floor from below");
         camera.z=10;
-        CHECK(structure_culling_cone_facing(&cone,&camera)==_structure_culling_facing_toward, "floor from above"); return 0;
+        CHECK(structure_culling_cone_facing(&cone,&camera,0)==_structure_culling_facing_toward, "floor from above"); return 0;
+    }
+    CASE("cone-sphere")
+    {
+        real_point3d grid[8*8*3];
+        for (i=0; i<64; ++i)
+        {
+            grid[3*i]=(real_point3d){i%8, i/8, 0};
+            grid[3*i+1]=(real_point3d){i%8+1, i/8, 0};
+            grid[3*i+2]=(real_point3d){i%8, i/8+STRUCTURE_CULLING_FRONT_SIGN, 0};
+        }
+        structure_culling_cone_build(&cone,64,grid);
+        camera=(real_point3d){3.5f, 3.5f, -10};
+        CHECK(structure_culling_cone_facing(&cone,&camera,1)==_structure_culling_facing_away, "floor from a small sphere below");
+        CHECK(structure_culling_cone_facing(&cone,&camera,10-cone.radius+.01f)==_structure_culling_facing_mixed,
+            "the camera's sphere reaching the bucket's: no verdict"); return 0;
     }
     CASE("cone-camera-inside")
     {
         structure_culling_cone_build(&cone,1,p);
         camera=cone.center;
-        CHECK(structure_culling_cone_facing(&cone,&camera)==_structure_culling_facing_mixed, "sphere center");
+        CHECK(structure_culling_cone_facing(&cone,&camera,0)==_structure_culling_facing_mixed, "sphere center");
         camera.z+=cone.radius;
-        CHECK(structure_culling_cone_facing(&cone,&camera)==_structure_culling_facing_mixed, "sphere surface"); return 0;
+        CHECK(structure_culling_cone_facing(&cone,&camera,0)==_structure_culling_facing_mixed, "sphere surface"); return 0;
     }
     CASE("cone-wide-no-verdict")
     {
@@ -811,7 +887,7 @@ int main(int argc, char **argv)
             {0,0,1},{1,0,1},{0,1,1}, {0,0,-1},{0,1,-1},{1,0,-1}};
         structure_culling_cone_build(&cone,6,cube);
         CHECK(cone.cutoff<=0, "cube has no cone");
-        for(i=0;i<100;++i) { camera=(real_point3d){random_real(-10,10),random_real(-10,10),random_real(-10,10)}; CHECK(structure_culling_cone_facing(&cone,&camera)==_structure_culling_facing_mixed,"wide mixed"); }
+        for(i=0;i<100;++i) { camera=(real_point3d){random_real(-10,10),random_real(-10,10),random_real(-10,10)}; CHECK(structure_culling_cone_facing(&cone,&camera,0)==_structure_culling_facing_mixed,"wide mixed"); }
         return 0;
     }
     CASE("box-outside")

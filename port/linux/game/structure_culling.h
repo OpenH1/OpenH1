@@ -66,11 +66,14 @@ extern struct profile_section render_structure_visibility_surface_traversal;
 
 boolean structure_culling_triangle_outside(
 	real_plane3d const planes[6], real_point3d const *point0, real_point3d const *point1, real_point3d const *point2);
-boolean structure_culling_triangle_faces_away(
-	real_point3d const *camera, real_point3d const *point0, real_point3d const *point1, real_point3d const *point2);
+/* the triangle faces away from every point within the radius of the camera
+(world units; 0, the camera alone) */
+boolean structure_culling_triangle_faces_away(real_point3d const *camera, real radius,
+	real_point3d const *point0, real_point3d const *point1, real_point3d const *point2);
 void structure_culling_cone_build(struct structure_culling_cone *cone, long triangle_count, real_point3d const *points);
-/* away and toward apply to every triangle; mixed leaves each triangle to be tested */
-short structure_culling_cone_facing(struct structure_culling_cone const *cone, real_point3d const *camera);
+/* away and toward apply to every triangle, from every point within the
+radius of the camera; mixed leaves each triangle to be tested */
+short structure_culling_cone_facing(struct structure_culling_cone const *cone, real_point3d const *camera, real radius);
 /* 0 is outside, 1 intersects a plane, and 2 is fully inside all six planes */
 short structure_culling_box_test(real_plane3d const planes[6], real_rectangle3d const *box);
 /* reserve one end slot per input surface; zero means there was not enough room */
@@ -87,6 +90,10 @@ boolean structure_culling_traverse(struct structure_bsp *structure);
 /* reads the starting tests from the settings */
 void structure_culling_initialize(void);
 void structure_culling_set_tests(long tests);
+/* the walk's camera is every point within this radius (world units) of the
+camera's position, not that point alone: in VR, the eyes beside the head's
+centre, which the game culls once from (vr_render.c); 0, flat */
+void structure_culling_set_camera_radius(real radius);
 void structure_culling_debug(boolean enable);
 void structure_culling_render_debug(void);
 
