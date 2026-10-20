@@ -1233,6 +1233,33 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 		pad->bAnalogButtons[XINPUT_GAMEPAD_LEFT_TRIGGER] = 255;
 }
 
+/* the simulation's sub-steps (port/linux/game/sim_rate.h; at 60 and 120
+Hz a tick runs 2 or 4 of them, one after another in the frame that runs the
+tick): the first controller read again at each sub-step's start, for the
+player's own movement and aim in it (input_abstraction.c). The devices are
+read once a frame, and a tick's sub-steps run within one, so the frame's
+reading is the latest of theirs there is; what the scripted player plays
+("script:") is on the simulation's clock, and is played again at the
+sub-step's time (the script's aim, an event, is taken there and then, as a
+frame takes it). The frame's reading before the scripted player's, and
+with it (the touch controls' and the chat keyboard's, after it, are the
+frame's alone) */
+static XINPUT_GAMEPAD substep_frame_devices;
+static XINPUT_GAMEPAD substep_frame_reading;
+
+/* the first controller at the running sub-step's start (sim_rate.h), in
+*pad: 1 when it differs from what the frame read, else 0 (and *pad is the
+frame's) */
+int halo_linux_substep_gamepad(short gamepad_index, XINPUT_GAMEPAD *pad)
+{
+	*pad = substep_frame_reading;
+	if (gamepad_index != 0 || !test_script_on)
+		return 0;
+	*pad = substep_frame_devices;
+	test_input_gamepad(pad);
+	return memcmp(pad, &substep_frame_reading, sizeof(*pad)) != 0;
+}
+
 static void wheel_update(void)
 {
 	Uint64 now = SDL_GetTicks();
@@ -1563,7 +1590,9 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		}
 		halo_vr_gamepad(&state->Gamepad);
 #endif
+		substep_frame_devices = state->Gamepad;
 		test_input_gamepad(&state->Gamepad);
+		substep_frame_reading = state->Gamepad;
 		touch_input_gamepad(&state->Gamepad);
 #if defined(HALO_ANDROID) || defined(HALO_WEB)
 		touch_input_controls(&state->Gamepad, input.menus);
