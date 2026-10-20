@@ -1,5 +1,7 @@
 # OpenH1
 
+[![Discord](https://img.shields.io/discord/1561955817463222332?logo=discord&logoColor=white&label=Discord&color=5865F2)](https://discord.gg/MJa327PSWt)
+
 Halo: Combat Evolved for macOS, Windows, Linux, Android and VR, rebuilt from
 its decompilation.
 
@@ -36,7 +38,8 @@ play together. OpenCE starts from the decompilation of
 - **Every commit is built for every platform**, and each build of `master`
   that passes is a release.
 
-Contributions are welcome. Refer to "Contributing" below.
+Contributions are welcome. Refer to "Contributing" below. Players and
+contributors meet on the [OpenH1 Discord](https://discord.gg/MJa327PSWt).
 
 ## Download
 
@@ -149,6 +152,9 @@ The game can play system link games on a local network and on the internet:
 - The netcode is new. Each machine moves its own player at once,
   and the host makes the decisions for the game. Refer to
   [port/linux/NETCODE.md](port/linux/NETCODE.md).
+
+To find people to play with, ask in #looking-for-game on the
+[Discord](https://discord.gg/MJa327PSWt).
 
 ## Build the game
 
@@ -335,7 +341,9 @@ it calculates the game, needs `HALO_PORT_NETWORK_VERSION` and a
 players can still play together.
 
 Report problems on the [issue tracker](https://github.com/OpenH1/OpenH1/issues),
-with the build number (the main menu shows it) and `debug.txt`.
+with the build number (the main menu shows it) and `debug.txt`. For help,
+or to talk about a change before you make it, ask on the
+[Discord](https://discord.gg/MJa327PSWt): #help, and #dev-general.
 
 ## Licence
 
