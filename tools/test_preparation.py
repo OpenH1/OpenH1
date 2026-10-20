@@ -31,6 +31,8 @@ static uint64_t callback(void *context, const struct loading_presentation_frame 
     return interval;
 }
 ''' + functions + r'''
+/* the stream is played to its end: the picture waits only for its interval */
+static int loading_stream_waits(void) { return 0; }
 int main(void) {
     struct host_render_backend backend = {0, callback};
     uint64_t start;
@@ -303,8 +305,10 @@ int main(void)
 
 def test_pipeline_worker_presents_during_compile_and_joins(tmp_path):
     text = (ROOT / "port/linux/vulkan/xgpu_vulkan.c").read_text()
+    # (up to the end of pipeline_compiler_stop: what follows it, before
+    # pipeline_build, is the pipelines' own, which the probe does not use)
     code = text[text.index("/* Preparation queues owned native descriptions."):
-                text.index("\nstatic VkPipeline pipeline_build(", text.index("static void pipeline_compiler_stop("))]
+                text.index("\n}\n", text.index("static void pipeline_compiler_stop(")) + 3]
     entries = text[text.index("struct pipeline_entry\n"):text.index("struct shader_entry\n")]
     accessors = text[text.index("static struct pipeline_entry *pipeline_find("):
                      text.index("uint64_t xgpu_vulkan_pipeline_count(")]
@@ -316,6 +320,7 @@ def test_pipeline_worker_presents_during_compile_and_joins(tmp_path):
 #include <stddef.h>
 #include <string.h>
 #include <stdlib.h>
+#include <unistd.h>
 typedef uintptr_t VkPipeline;
 typedef int VkResult;
 #define VK_NULL_HANDLE 0
@@ -351,6 +356,11 @@ static void service(void)
 {
     assert(pthread_equal(pthread_self(), owner));
     serviced++;
+}
+#define HOST_LOG_INFO 0
+static void host_logf(int level, const char *format, ...)
+{
+    (void)level; (void)format;
 }
 ''' + code + r'''
 static VkPipeline pipeline_build(const struct xgpu_vulkan_pipeline_description *description,
