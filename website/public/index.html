@@ -3,290 +3,740 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>OpenH1: Halo: Combat Evolved, ported</title>
-<meta name="description" content="OpenH1 ports Halo: Combat Evolved from its decompilation to macOS, Windows, Linux, Android and VR, with online play, co-op, mods and Custom Edition maps.">
-<meta name="theme-color" content="#02060c">
-<meta property="og:title" content="OpenH1">
-<meta property="og:description" content="Halo: Combat Evolved, ported from its decompilation to macOS, Windows, Linux, Android and VR.">
-<meta property="og:image" content="https://openh1.com/icon.png">
+<title>OpenH1: the 2001 original, native, as you remember it</title>
+<meta name="description" content="OpenH1 is an unofficial fan port of Halo: Combat Evolved, compiled natively from its decompiled Xbox source: 128-player multiplayer, online co-op, a native VR build for the Steam Frame, and new Vulkan and Metal renderers.">
+<meta name="theme-color" content="#040504">
+<meta property="og:title" content="OpenH1: as you remember it">
+<meta property="og:description" content="The 2001 original, compiled natively from its decompiled Xbox source. 128 players, online co-op, VR on the Steam Frame, Vulkan and Metal.">
+<meta property="og:image" content="https://openh1.com/media/og.jpg">
 <meta property="og:url" content="https://openh1.com/">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="favicon.png" sizes="32x32">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" href="fonts/Archivo-Latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="media/hero-poster.webp" as="image" fetchpriority="high">
 <style>
-/* the look of the game's menus (port/web/site/style.css): navy panels with
-   a blue edge, OpenCE (the menus' title font) for titles, Overpass for the
-   rest */
-@font-face { font-family: "OpenCE"; src: url("fonts/OpenCE-Regular.ttf") format("truetype"); font-display: swap; }
-@font-face { font-family: "Overpass"; font-weight: 750; src: url("fonts/Overpass-750.ttf") format("truetype"); font-display: swap; }
-@font-face { font-family: "Overpass"; font-weight: 900; src: url("fonts/Overpass-900.ttf") format("truetype"); font-display: swap; }
+/* Boot Glow: green on black (the Xbox era's boot glow, the plasma's green),
+   wide Archivo for titles, Inter for reading, Overpass Mono (the family of
+   the port's HUD font) for labels. The fonts: website/README.md. */
+@font-face { font-family: "Archivo"; font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; src: url("fonts/Archivo-Latin.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 400 800; font-display: swap; src: url("fonts/Inter-Latin.woff2") format("woff2"); }
+@font-face { font-family: "Overpass Mono"; font-weight: 400 700; font-display: swap; src: url("fonts/OverpassMono-Latin.woff2") format("woff2"); }
 
 :root {
   color-scheme: dark;
-  --ground: #02060c;
-  --navy: #002244;
-  --navy-deep: #000e23;
-  --edge: #2299ff;
-  --edge-bright: #36afff;
-  --edge-dim: #1d4f86;
-  --label: #2896ff;
-  --text: #ffffff;
-  --soft: #c9daf0;
-  --muted: #8ea6c4;
-  --glow: rgba(54, 175, 255, 0.45);
-  --title-font: "OpenCE", "Overpass", system-ui, sans-serif;
-  --body-font: "Overpass", system-ui, sans-serif;
+  --bg: #040504;
+  --panel: #090c08;
+  --line: rgba(157, 255, 60, 0.15);
+  --line-soft: rgba(238, 244, 234, 0.08);
+  --text: #eef4ea;
+  --soft: #c6cfc1;
+  --muted: #8e9a89;
+  --green: #9dff3c;
+  --glow: rgba(157, 255, 60, 0.42);
+  --display: "Archivo", "Arial Black", system-ui, sans-serif;
+  --body: "Inter", system-ui, sans-serif;
+  --mono: "Overpass Mono", ui-monospace, monospace;
+  --gutter: clamp(16px, 4vw, 48px);
+  --ease: cubic-bezier(.2, .7, .2, 1);
 }
-
 * { box-sizing: border-box; }
-
-html { scroll-behavior: smooth; }
-
-body {
-  margin: 0;
-  background: var(--ground);
-  color: var(--text);
-  font: 750 17px/1.55 var(--body-font);
-  -webkit-font-smoothing: antialiased;
-}
-
-a { color: var(--edge-bright); }
-a:hover { color: var(--text); }
-
-.wrap { max-width: 1080px; margin: 0 auto; padding: 0 16px; }
+html { background: var(--bg); scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 400 17px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+img, video { display: block; max-width: 100%; }
+::selection { background: var(--green); color: #061000; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 var(--gutter); }
+.mono { font: 500 12px/1.45 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; }
+.skip { position: absolute; left: 12px; top: -60px; z-index: 50; padding: 10px 14px; background: var(--green); color: #061000; border-radius: 6px; font-weight: 700; }
+.skip:focus { top: 12px; }
+:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.lit { color: var(--green); text-shadow: 0 0 34px var(--glow); }
 
 /* ---------- header */
-
-.top {
-  position: sticky; top: 0; z-index: 10;
-  background: rgba(2, 6, 12, 0.85);
-  backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--edge-dim);
-}
-.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 64px; gap: 16px; }
-.brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); }
-.brand img { width: 36px; height: 36px; }
-/* the wordmark is in Overpass: the title font's 1 reads as an I */
-.brand span { font: 900 24px/1 var(--body-font); letter-spacing: 0.02em; }
-.top nav { display: flex; gap: 22px; }
-.top nav a { color: var(--soft); text-decoration: none; font-size: 15px; letter-spacing: 0.06em; text-transform: uppercase; }
+.top { position: fixed; inset: 0 0 auto; z-index: 20; transition: background .4s ease, border-color .4s ease; border-bottom: 1px solid transparent; }
+.top.solid { background: rgba(4, 5, 4, 0.8); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); border-bottom-color: var(--line-soft); }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 72px; gap: 20px; }
+.wordmark { font: 800 22px/1 var(--display); font-stretch: 125%; letter-spacing: -0.01em; text-decoration: none; }
+.wordmark b { color: var(--green); font-weight: 800; text-shadow: 0 0 18px var(--glow); }
+.top nav { display: flex; gap: clamp(16px, 2.4vw, 32px); align-items: center; }
+.top nav a { text-decoration: none; color: var(--muted); font: 500 12px/1 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; transition: color .2s; }
 .top nav a:hover { color: var(--text); }
+.top nav a.gh { color: var(--text); border: 1px solid rgba(238, 244, 234, 0.3); padding: 10px 14px; border-radius: 999px; }
+.top nav a.gh:hover { border-color: var(--green); color: var(--green); }
 
 /* ---------- hero */
-
-.hero {
-  position: relative; overflow: hidden;
-  padding: 96px 0 88px;
+.hero { position: relative; min-height: 100svh; display: grid; align-content: end; padding-top: 140px; overflow: hidden; isolation: isolate; }
+.hero > .wrap { width: 100%; }
+.hero-media { position: absolute; inset: 0; z-index: -3; background: #0b0d09 url("media/hero-poster.webp") 50% 50% / cover no-repeat; }
+.hero-media video { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1.2s ease; }
+.hero-media video.playing { opacity: 1; }
+.hero::before {
+  content: ""; position: absolute; inset: 0; z-index: -2;
   background:
-    radial-gradient(ellipse 70% 60% at 50% 0%, rgba(34, 153, 255, 0.22), transparent 70%),
-    linear-gradient(180deg, var(--navy-deep), var(--ground));
-  border-bottom: 2px solid var(--edge-dim);
-  text-align: center;
+    linear-gradient(180deg, rgba(4, 5, 4, 0.8) 0%, rgba(4, 5, 4, 0) 24%),
+    linear-gradient(90deg, rgba(4, 5, 4, 0.85) 0%, rgba(4, 5, 4, 0.4) 45%, rgba(4, 5, 4, 0) 72%),
+    linear-gradient(0deg, var(--bg) 0%, rgba(4, 5, 4, 0.75) 22%, rgba(4, 5, 4, 0) 55%),
+    radial-gradient(ellipse 60% 50% at 16% 94%, rgba(157, 255, 60, 0.16), transparent 70%);
 }
-.hero img { width: 132px; height: 132px; filter: drop-shadow(0 0 28px var(--glow)); }
-.hero h1 {
-  margin: 18px 0 6px;
-  font: 900 clamp(56px, 11vw, 112px)/1 var(--body-font); letter-spacing: 0.01em;
-  text-shadow: 0 0 24px var(--glow);
+.hero::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px); mix-blend-mode: multiply; opacity: 0.5; }
+.frame { position: absolute; inset: 96px var(--gutter) auto; height: calc(100% - 180px); pointer-events: none; }
+.frame i { position: absolute; width: 28px; height: 28px; border: 0 solid var(--green); opacity: 0.7; }
+.frame i:nth-child(1) { left: 0; top: 0; border-width: 1px 0 0 1px; }
+.frame i:nth-child(2) { right: 0; top: 0; border-width: 1px 1px 0 0; }
+.frame .tag { position: absolute; right: 0; top: 40px; margin: 0; color: var(--green); text-align: right; text-shadow: 0 0 12px var(--glow); line-height: 1.7; }
+.rec { display: inline-block; width: 7px; height: 7px; margin-right: 10px; border-radius: 50%; background: var(--green); box-shadow: 0 0 10px var(--green); vertical-align: 1px; animation: blink 2.4s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: 0.25; } }
+.hero-copy { padding-bottom: clamp(56px, 8vh, 96px); }
+.eyebrow { color: var(--green); margin: 0 0 22px; text-shadow: 0 0 14px var(--glow); }
+h1 { margin: 0; font: 900 clamp(46px, 7.4vw, 120px)/0.88 var(--display); font-stretch: 116%; letter-spacing: -0.02em; text-transform: uppercase; }
+h1 span { display: block; }
+h1 .lit { text-shadow: 0 0 40px var(--glow), 0 0 2px rgba(157, 255, 60, 0.8); }
+.lede { max-width: 600px; margin: 28px 0 0; color: #d6dfd2; font-size: clamp(17px, 1.45vw, 20px); text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7); }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px 22px; margin-top: 34px; }
+.btn { display: inline-flex; align-items: center; gap: 10px; padding: 16px 26px; border-radius: 999px; background: var(--green); color: #061000; text-decoration: none; font: 700 15px/1 var(--body);
+  box-shadow: 0 0 0 1px rgba(157, 255, 60, 0.5), 0 10px 40px -8px var(--glow); transition: transform .2s ease, box-shadow .2s ease; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px var(--green), 0 14px 50px -6px var(--glow); }
+.btn svg { width: 16px; height: 16px; }
+.soon { color: var(--muted); }
+.pause { position: absolute; right: var(--gutter); bottom: 24px; z-index: 2; display: inline-flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--line-soft); border-radius: 999px; background: rgba(4, 5, 4, 0.55); color: var(--muted); cursor: pointer; font: 500 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+.pause:hover { color: var(--text); }
+.pause svg { width: 12px; height: 12px; }
+
+/* ---------- headline features */
+.headline { padding-top: clamp(56px, 7vw, 96px); }
+.headline .intro { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: 16px 40px; margin-bottom: 36px; }
+.headline .intro p { margin: 0; font: 800 clamp(22px, 2.4vw, 32px)/1.15 var(--display); font-stretch: 112%; max-width: 760px; }
+.headline .intro p span { color: var(--muted); }
+.chips { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.chips li { padding: 9px 14px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--text); font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; background: rgba(157, 255, 60, 0.04); }
+.feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.feat { position: relative; background: var(--bg); padding: clamp(24px, 3vw, 36px) clamp(22px, 2.6vw, 32px) clamp(26px, 3vw, 34px); overflow: hidden; }
+.feat::before { content: ""; position: absolute; inset: auto -30% -60% auto; width: 70%; aspect-ratio: 1; background: radial-gradient(circle, rgba(157, 255, 60, 0.09), transparent 65%); pointer-events: none; }
+.feat b { display: block; font: 900 clamp(46px, 5.6vw, 84px)/0.9 var(--display); font-stretch: 118%; letter-spacing: -0.03em; color: var(--text); }
+.feat b small { font-size: 0.42em; letter-spacing: 0; color: var(--green); vertical-align: 0.9em; margin-left: 4px; }
+.feat h3 { margin: 16px 0 4px; font: 700 18px/1.3 var(--body); }
+.feat p { margin: 0; color: var(--muted); font-size: 15px; }
+.feat .soonish { color: var(--green); }
+
+/* ---------- picture sections */
+.sec { padding: clamp(96px, 13vw, 180px) 0 0; }
+.sec-head { display: grid; grid-template-columns: 1.15fr 1fr; gap: 48px; align-items: end; margin-bottom: 48px; }
+.kicker { color: var(--green); margin: 0 0 18px; }
+h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stretch: 118%; letter-spacing: -0.02em; text-transform: uppercase; }
+.sec-head p { margin: 0; color: var(--soft); font-size: 18px; max-width: 470px; }
+.caption { margin: 22px 0 0; color: var(--muted); }
+.shot { position: relative; border-radius: 6px; overflow: hidden; background: #0b0d09; box-shadow: 0 0 0 1px var(--line), 0 40px 120px -40px rgba(157, 255, 60, 0.3); }
+.tagl { position: absolute; top: 16px; padding: 8px 12px; border-radius: 4px; background: rgba(4, 5, 4, 0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); z-index: 3; pointer-events: none; }
+.tagl.l { left: 16px; color: var(--muted); }
+.tagl.r { right: 16px; color: var(--green); }
+
+/* callouts: a pin, a thin leader up to a short label; on phones, numbered
+   pins with the legend under the picture */
+.cos { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.co { position: absolute; left: var(--x); top: var(--y); opacity: 0; transform: translateY(6px); transition: opacity .45s ease, transform .45s var(--ease); }
+.co.on { opacity: 1; transform: none; }
+.co .pin { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--green); background: rgba(4, 5, 4, 0.55); box-shadow: 0 0 0 4px rgba(157, 255, 60, 0.18), 0 0 16px var(--glow); }
+.co .pin::after { content: attr(data-n); position: absolute; inset: 0; display: none; place-items: center; font: 700 9px/1 var(--mono); color: var(--green); }
+.co .leader { position: absolute; left: -0.5px; bottom: 9px; width: 1px; height: var(--len, 44px); background: linear-gradient(0deg, var(--green), rgba(157, 255, 60, 0.25)); }
+.co .lbl { position: absolute; bottom: calc(var(--len, 44px) + 9px); left: -14px; width: max-content; max-width: 230px; padding: 8px 11px; border-radius: 5px; background: rgba(4, 5, 4, 0.8); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); box-shadow: inset 0 0 0 1px rgba(157, 255, 60, 0.35); font: 600 13px/1.3 var(--body); color: var(--text); }
+.co.west .lbl { left: auto; right: -14px; }
+.co.down .leader { bottom: auto; top: 9px; background: linear-gradient(180deg, var(--green), rgba(157, 255, 60, 0.25)); }
+.co.down .lbl { bottom: auto; top: calc(var(--len, 44px) + 9px); }
+.legend { display: none; margin: 16px 0 0; padding: 0; list-style: none; counter-reset: c; }
+.legend li { counter-increment: c; position: relative; padding: 6px 0 6px 34px; color: var(--soft); font-size: 15px; }
+.legend li::before { content: counter(c); position: absolute; left: 0; top: 6px; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--green); color: var(--green); display: grid; place-items: center; font: 700 10px/1 var(--mono); }
+
+/* comparisons: two layers of the same moment, Original under OpenH1.
+   Each side's label sits in its own half and clips with it; neither glows,
+   the larger side gets a quiet outline. */
+.pair { position: relative; aspect-ratio: 16 / 9; }
+.pair .layer { position: absolute; inset: 0; }
+.pair .layer > img, .pair .layer > video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.side { position: absolute; top: 14px; z-index: 4; padding: 7px 11px; border-radius: 4px; background: rgba(4, 5, 4, 0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); color: var(--text); font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; box-shadow: inset 0 0 0 1px rgba(238, 244, 234, 0.2); transition: box-shadow .3s; white-space: nowrap; pointer-events: none; }
+.side.l { left: 14px; }
+.side.r { right: 14px; }
+.side.big { box-shadow: inset 0 0 0 1px rgba(157, 255, 60, 0.6); }
+.side small { margin-left: 8px; color: var(--muted); font-weight: 500; letter-spacing: .1em; }
+
+/* the wipe: drag across, or the arrow keys */
+.wipe { user-select: none; -webkit-user-select: none; touch-action: pan-y; cursor: ew-resize; }
+.wipe .after { clip-path: inset(0 0 0 var(--pos, 50%)); }
+.wipe .lclip { position: absolute; inset: 0; z-index: 4; clip-path: inset(0 calc(100% - var(--pos, 50%)) 0 0); pointer-events: none; }
+.wipe .bar { position: absolute; z-index: 5; top: 0; bottom: 0; left: var(--pos, 50%); width: 2px; margin-left: -1px; background: rgba(238, 244, 234, 0.9); box-shadow: 0 0 14px rgba(0, 0, 0, 0.6); }
+.wipe .knob { position: absolute; z-index: 5; top: 50%; left: var(--pos, 50%); width: 58px; height: 58px; margin: -29px 0 0 -29px; border-radius: 50%; background: rgba(4, 5, 4, 0.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: 1.5px solid var(--green); display: grid; place-items: center; color: var(--green); box-shadow: 0 0 24px var(--glow); }
+.wipe .knob svg { width: 28px; height: 28px; }
+.wipe .hint { position: absolute; z-index: 5; top: calc(50% + 38px); left: var(--pos, 50%); transform: translateX(-50%); padding: 6px 10px; border-radius: 999px; background: rgba(4, 5, 4, 0.72); color: var(--soft); font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; white-space: nowrap; pointer-events: none; }
+.wipe:focus-visible .knob { outline: 2px solid var(--text); outline-offset: 3px; }
+
+/* the lens: OpenH1 inside the circle, the Original around it */
+.lensbox { cursor: none; touch-action: none; --r: clamp(70px, 12vw, 150px); }
+.lensbox .after { clip-path: circle(var(--r) at var(--x, 50%) var(--y, 50%)); }
+.lensbox.all .after { clip-path: none; }
+.lensbox .pix > img, .lensbox .pix > video { image-rendering: pixelated; }
+.ring { position: absolute; z-index: 4; left: var(--x, 50%); top: var(--y, 50%); width: calc(var(--r) * 2); height: calc(var(--r) * 2); transform: translate(-50%, -50%); border-radius: 50%; pointer-events: none;
+  box-shadow: 0 0 0 2px var(--green), 0 0 0 8px rgba(157, 255, 60, 0.14), 0 0 40px var(--glow); transition: opacity .2s; }
+.ring span { position: absolute; left: 50%; bottom: -36px; transform: translateX(-50%); padding: 6px 10px; border-radius: 4px; background: rgba(4, 5, 4, 0.75); color: var(--text); font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+.lensbox.all .ring { opacity: 0; }
+.toggle { display: inline-flex; gap: 10px; align-items: center; background: none; border: 1px solid var(--line); color: var(--soft); padding: 10px 14px; border-radius: 999px; cursor: pointer; font: 500 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
+.toggle:hover { color: var(--text); }
+.toggle[aria-pressed="true"] { color: var(--green); border-color: var(--green); }
+.under { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; justify-content: space-between; margin-top: 18px; }
+.key { display: flex; flex-wrap: wrap; gap: 8px 22px; color: var(--muted); }
+.key i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: 0; border: 1.5px solid var(--soft); }
+.key i.g { border-color: var(--green); }
+
+/* the flip: tap the shot, or the switch */
+.flipgrid { display: grid; grid-template-columns: 7fr 5fr; gap: clamp(28px, 4vw, 56px); align-items: center; }
+.flip { cursor: pointer; }
+.flip .after { transition: opacity .5s ease; }
+.flip.orig .after { opacity: 0; }
+.flip .side.l, .flip .side.r { transition: opacity .3s; }
+.flip:not(.orig) .side.l, .flip.orig .side.r { opacity: 0; }
+.switch { display: inline-grid; grid-template-columns: 1fr 1fr; margin-top: 26px; padding: 4px; border-radius: 999px; background: #10140e; box-shadow: inset 0 0 0 1px var(--line); position: relative; cursor: pointer; border: 0; }
+.switch span { position: relative; z-index: 1; padding: 13px 22px; color: var(--soft); font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; transition: color .3s; }
+.switch::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--text); transition: transform .45s var(--ease); }
+.switch[aria-checked="true"]::before { transform: translateX(100%); background: var(--green); }
+.switch[aria-checked="false"] span:first-child, .switch[aria-checked="true"] span:last-child { color: #061000; }
+.flipcopy p { color: var(--soft); max-width: 440px; }
+
+/* motion clips, side by side */
+.clips { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.clips .side { top: 12px; }
+
+/* VR */
+.vr-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.vr-grid div { background: var(--bg); padding: 30px 28px 34px; min-height: 190px; transition: background .3s; }
+.vr-grid div:hover { background: #080b07; }
+.vr-grid .n { color: var(--green); margin-bottom: 26px; display: block; }
+.vr-grid b { display: block; font: 800 22px/1.15 var(--display); font-stretch: 112%; margin-bottom: 8px; }
+.vr-grid span:not(.n) { color: var(--muted); font-size: 15px; }
+
+/* platforms */
+.plat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.plat article { padding: 28px 26px 26px; border-radius: 8px; background: linear-gradient(180deg, #0a0d09, #070906); box-shadow: inset 0 0 0 1px var(--line-soft); transition: box-shadow .3s; }
+.plat article:hover { box-shadow: inset 0 0 0 1px var(--line); }
+.plat h3 { margin: 0 0 6px; font: 900 26px/1.1 var(--display); font-stretch: 116%; letter-spacing: -0.01em; }
+.plat p { margin: 0; color: var(--soft); font-size: 15px; }
+.plat .r { margin-top: 18px; color: var(--green); }
+.plat .wip { color: var(--muted); }
+
+/* under the hood: dense */
+.hood { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 56px; }
+.hood dl { margin: 0; }
+.hood div { display: grid; grid-template-columns: 170px 1fr; gap: 20px; padding: 16px 0; border-top: 1px solid var(--line-soft); }
+.hood dt { color: var(--muted); font: 500 12px/1.75 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+.hood dd { margin: 0; font-size: 15px; color: var(--text); }
+.hood dd small { display: block; margin-top: 2px; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+.hood code { font: 500 13px var(--mono); color: var(--soft); }
+
+/* your copy */
+.byo { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start; padding: clamp(32px, 5vw, 56px); border-radius: 10px; background: radial-gradient(ellipse 80% 120% at 0% 0%, rgba(157, 255, 60, 0.08), transparent 60%), var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.byo h2 { font-size: clamp(34px, 4.4vw, 64px); }
+.byo ol { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+.byo li { counter-increment: s; position: relative; padding: 0 0 18px 48px; color: var(--soft); }
+.byo li::before { content: "0" counter(s); position: absolute; left: 0; top: 2px; color: var(--green); font: 600 13px/1.4 var(--mono); letter-spacing: .1em; }
+.byo code { font: 500 14px var(--mono); color: var(--text); }
+
+footer { margin-top: clamp(96px, 12vw, 160px); border-top: 1px solid var(--line-soft); padding: 40px 0 48px; color: var(--muted); font-size: 14px; }
+footer .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px 24px; align-items: center; }
+footer nav { display: flex; flex-wrap: wrap; gap: 22px; }
+footer nav a { text-decoration: none; }
+footer nav a:hover { color: var(--text); }
+footer .legal { margin: 26px 0 0; max-width: 920px; font-size: 13px; line-height: 1.6; }
+footer .legal a { color: var(--soft); }
+
+/* scroll reveals; none for reduced motion */
+.reveal { opacity: 0; transform: translateY(28px); transition: opacity .9s var(--ease), transform .9s var(--ease); }
+.reveal.in { opacity: 1; transform: none; }
+.d1 { transition-delay: .08s; } .d2 { transition-delay: .16s; } .d3 { transition-delay: .24s; }
+
+@media (max-width: 900px) {
+  .top nav a.opt { display: none; }
+  .feats { grid-template-columns: 1fr 1fr; }
+  .sec-head, .flipgrid, .byo, .hood { grid-template-columns: 1fr; gap: 20px; }
+  .hood { gap: 0; }
+  .clips { grid-template-columns: 1fr; }
+  .vr-grid, .plat { grid-template-columns: 1fr 1fr; }
+  .frame { display: none; }
+  .hero-media { background-position: 62% 50%; }
+  .hero-media video { object-position: 62% 50%; }
 }
-.hero .kicker { margin: 0; color: var(--label); letter-spacing: 0.18em; text-transform: uppercase; font-size: 15px; }
-.hero p.lede { max-width: 640px; margin: 22px auto 0; color: var(--soft); font-size: 19px; }
-
-.actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; margin-top: 34px; }
-.button {
-  display: inline-flex; align-items: center; gap: 8px;
-  padding: 13px 26px;
-  font: 900 15px/1 var(--body-font); letter-spacing: 0.1em; text-transform: uppercase; text-decoration: none;
-  color: var(--text);
-  background: linear-gradient(180deg, #0a3a6e, var(--navy));
-  border: 2px solid var(--edge);
-  box-shadow: 0 0 18px var(--glow);
+@media (max-width: 700px) {
+  /* callouts become numbered pins, the legend explains them */
+  .co .lbl, .co .leader { display: none; }
+  .co .pin { width: 22px; height: 22px; left: -11px; top: -11px; }
+  .co .pin::after { display: grid; }
+  .legend { display: block; }
 }
-.button:hover { color: var(--text); border-color: var(--edge-bright); box-shadow: 0 0 26px var(--glow); }
-.button.quiet { background: transparent; border-color: var(--edge-dim); box-shadow: none; color: var(--soft); cursor: default; }
-.button.quiet:hover { border-color: var(--edge-dim); color: var(--soft); box-shadow: none; }
-
-/* ---------- sections */
-
-section { padding: 76px 0; }
-section + section { border-top: 1px solid rgba(29, 79, 134, 0.45); }
-h2 {
-  margin: 0 0 8px;
-  font-family: var(--title-font); font-weight: normal;
-  font-size: clamp(32px, 5vw, 44px); letter-spacing: 0.05em;
+@media (max-width: 560px) {
+  .feats, .vr-grid, .plat { grid-template-columns: 1fr; }
+  .vr-grid div { min-height: 0; }
+  .hood div { grid-template-columns: 1fr; gap: 4px; }
+  .pause { bottom: auto; top: 84px; }
 }
-.sub { margin: 0 0 34px; color: var(--muted); max-width: 680px; }
-
-.grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
-.panel {
-  padding: 22px 22px 20px;
-  background: linear-gradient(180deg, rgba(0, 34, 68, 0.75), rgba(0, 14, 35, 0.75));
-  border: 2px solid var(--edge-dim);
-}
-.panel h3 { margin: 0 0 6px; font: 900 15px/1.3 var(--body-font); letter-spacing: 0.1em; text-transform: uppercase; color: var(--label); }
-.panel p { margin: 0; color: var(--soft); font-size: 16px; }
-
-.platforms .panel h3 { color: var(--text); font-size: 18px; letter-spacing: 0.06em; }
-.platforms .panel .detail { margin-top: 8px; color: var(--muted); font-size: 14px; }
-
-.need {
-  display: grid; gap: 24px; grid-template-columns: 1fr 1fr; align-items: start;
-}
-.need ol { margin: 0; padding-left: 22px; color: var(--soft); }
-.need li + li { margin-top: 8px; }
-
-.credits p { color: var(--soft); max-width: 760px; }
-
-footer {
-  padding: 36px 0 48px;
-  border-top: 2px solid var(--edge-dim);
-  color: var(--muted); font-size: 14px;
-}
-footer .links { display: flex; flex-wrap: wrap; gap: 18px; margin-bottom: 14px; }
-
-@media (max-width: 720px) {
-  .top nav { gap: 14px; }
-  .top nav a.optional { display: none; }
-  .hero { padding: 64px 0 60px; }
-  .hero img { width: 104px; height: 104px; }
-  section { padding: 56px 0; }
-  .need { grid-template-columns: 1fr; }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .rec { animation: none; }
+  .reveal { opacity: 1; transform: none; transition: none; }
+  .co, .flip .after, .switch::before, .hero-media video { transition: none; }
 }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
-<header class="top">
+<header class="top" id="top">
   <div class="wrap">
-    <a class="brand" href="#"><img src="icon.png" alt="" width="36" height="36"><span>OpenH1</span></a>
+    <a class="wordmark" href="#main" aria-label="OpenH1, top of page">Open<b>H1</b></a>
     <nav aria-label="Sections">
-      <a href="#platforms" class="optional">Platforms</a>
-      <a href="#features" class="optional">Features</a>
-      <a href="https://github.com/OpenH1/OpenH1">GitHub</a>
+      <a class="opt" href="#features">Features</a>
+      <a class="opt" href="#lights">Picture</a>
+      <a class="opt" href="#vr">VR</a>
+      <a class="opt" href="#hood">Under the hood</a>
+      <a class="gh" href="https://github.com/OpenH1/OpenH1">GitHub</a>
     </nav>
   </div>
 </header>
 
-<main>
-  <div class="hero">
-    <div class="wrap">
-      <img src="icon.png" alt="" width="132" height="132">
-      <h1>OpenH1</h1>
-      <p class="kicker">Halo: Combat Evolved, ported</p>
-      <p class="lede">The original Xbox game, rebuilt from its decompilation to run natively on
-        macOS, Windows, Linux, Android and in VR, with online play, co-op, mods and Custom Edition maps.</p>
-      <div class="actions">
-        <a class="button" href="https://github.com/OpenH1/OpenH1">View on GitHub</a>
-        <span class="button quiet" aria-disabled="true">Downloads coming soon</span>
+<main id="main">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="hero-media" aria-hidden="true">
+      <!-- a muted loop of the game, set playing by the script at the end
+           once the page has loaded; for less motion, the poster only -->
+      <video id="hero-video" muted loop playsinline preload="none" poster="media/hero-poster.webp" data-webm="media/hero.webm" data-mp4="media/hero.mp4"></video>
+    </div>
+    <div class="frame" aria-hidden="true"><i></i><i></i><p class="tag mono"><span class="rec"></span>Metal / Vulkan<br>4K @ 120Hz</p></div>
+    <div class="wrap hero-copy">
+      <p class="eyebrow mono reveal">Native port · Built from the decompiled Xbox source</p>
+      <h1 id="hero-title" class="reveal d1"><span>As you</span><span class="lit">remember it.</span></h1>
+      <p class="lede reveal d2">The 2001 original, compiled natively from its decompiled source. It plays exactly as it shipped, and new Vulkan and Metal renderers make it look the way you remember, on Mac, Linux, Android, Windows and the Steam Frame.</p>
+      <div class="actions reveal d3">
+        <a class="btn" href="https://github.com/OpenH1/OpenH1"><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 .6l2.3 4.6 5.1.8-3.7 3.6.9 5.1L8 12.3l-4.6 2.4.9-5.1L.6 6l5.1-.8z"/></svg>Star on GitHub</a>
+        <span class="soon mono"><span class="rec"></span>Downloads coming soon</span>
       </div>
     </div>
-  </div>
+    <button class="pause" id="hero-pause" type="button" hidden aria-pressed="false"><svg viewBox="0 0 12 12" aria-hidden="true"><path fill="currentColor" d="M2 1h3v10H2zM7 1h3v10H7z"/></svg><span>Pause</span></button>
+  </section>
 
-  <section id="platforms" class="platforms">
+  <!-- what you get, big and plain -->
+  <section class="headline" id="features" aria-labelledby="features-title">
     <div class="wrap">
-      <h2>Everywhere you play</h2>
-      <p class="sub">One port of the game, built for each system with its own renderer.</p>
-      <div class="grid">
-        <div class="panel">
-          <h3>macOS</h3>
-          <p>A Mac app with a native Metal renderer.</p>
-          <p class="detail">Apple silicon, macOS 14.4 or later</p>
-        </div>
-        <div class="panel">
-          <h3>Windows</h3>
-          <p>Runs as a regular Windows program.</p>
-          <p class="detail">Keyboard and mouse or a controller</p>
-        </div>
-        <div class="panel">
-          <h3>Linux</h3>
-          <p>A portable folder that also suits package managers.</p>
-          <p class="detail">x86-64 and 64-bit ARM, drawn with Vulkan</p>
-        </div>
-        <div class="panel">
-          <h3>Android</h3>
-          <p>Play with touch controls or a controller.</p>
-          <p class="detail">Phones and tablets</p>
-        </div>
-        <div class="panel">
-          <h3>VR</h3>
-          <p>Play in a headset, with waypoints drawn over what they mark.</p>
-          <p class="detail">Linux with OpenXR: SteamVR or Monado</p>
-        </div>
+      <div class="intro reveal">
+        <p id="features-title">Plays exactly like the original. <span>Looks the way you remember.</span></p>
+        <ul class="chips" aria-label="Display support"><li>4K</li><li>144Hz</li><li>Ultrawide 21:9</li></ul>
+      </div>
+      <div class="feats">
+        <div class="feat reveal"><b>128</b><h3>Players in one game</h3><p>Online and on the LAN, with up to 4 in split screen on each machine.</p></div>
+        <div class="feat reveal d1"><b>Co-op</b><h3>The campaign, online</h3><p>Play the story with friends over the internet. No servers to set up.</p></div>
+        <div class="feat reveal d2"><b>VR</b><h3>A native Steam Frame build</h3><p>The game in stereo, with your hands doing what the buttons did.</p></div>
+        <div class="feat reveal"><b>64<small>bit</small></b><h3>Native everywhere</h3><p>Mac, Linux and Android today. <span class="soonish">Windows is next.</span></p></div>
+        <div class="feat reveal d1"><b>Vulkan</b><h3>A modern renderer</h3><p>On Linux, Android and the Steam Frame. <span class="soonish">Windows is next.</span></p></div>
+        <div class="feat reveal d2"><b>Metal</b><h3>A native Apple renderer</h3><p>Built for the Mac and Apple silicon.</p></div>
       </div>
     </div>
   </section>
 
-  <section id="features">
+  <!-- 01: dynamic lights, a wipe with callouts -->
+  <section class="sec" id="lights" aria-labelledby="lights-title">
     <div class="wrap">
-      <h2>More than the Xbox had</h2>
-      <p class="sub">The 2001 game as it played on the Xbox, plus what a modern port should have.</p>
-      <div class="grid">
-        <div class="panel">
-          <h3>Online play</h3>
-          <p>Invite friends over the internet or find a game in the server browser. No servers to set up.</p>
+      <div class="sec-head">
+        <div class="reveal">
+          <p class="kicker mono">01 · Dynamic lights</p>
+          <h2 id="lights-title">The glow lights <span class="lit">the room.</span></h2>
         </div>
-        <div class="panel">
-          <h3>Co-op</h3>
-          <p>Play the campaign together, on a local network or online.</p>
-        </div>
-        <div class="panel">
-          <h3>Custom Edition maps</h3>
-          <p>Play the PC community's maps. A host sends a missing map to players as they join.</p>
-        </div>
-        <div class="panel">
-          <h3>Mods</h3>
-          <p>Drop mods in a folder, then order and switch them in the game's own Mods menu.</p>
-        </div>
-        <div class="panel">
-          <h3>Voice and text chat</h3>
-          <p>Talk or type in network games, with a streamer mode that hides offensive words.</p>
-        </div>
-        <div class="panel">
-          <h3>Sharper picture</h3>
-          <p>Any resolution, a high-resolution HUD and text, anti-aliasing and better lighting.</p>
-        </div>
+        <p class="reveal d1">The original lit a whole wall at once. OpenH1 lights every pixel by how far it is from the blast, so light pools near the fire and fades into the dark. Drag across the shot.</p>
       </div>
-    </div>
-  </section>
-
-  <section id="start">
-    <div class="wrap need">
-      <div>
-        <h2>Bring your own game</h2>
-        <p class="sub" style="margin-bottom:0">OpenH1 includes none of the game's data. You need your own Xbox disc
-          image of Halo: Combat Evolved, and any version works.</p>
+      <div class="shot pair wipe reveal" id="wipe" data-pair tabindex="0" role="slider" aria-label="Compare the Original and OpenH1" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="Half Original, half OpenH1">
+        <!-- VIDEO TODO (website/VIDEOS-TODO.md, "lights"): replace each layer's <img> with
+             <video muted loop playsinline preload="none" poster="media/lights-original-poster.webp"
+             data-webm="media/lights-original.webm" data-mp4="media/lights-original.mp4"></video>
+             (and lights-openh1 in the layer after); the script plays the pair in step. -->
+        <div class="layer before">
+          <img src="media/lights-original.webp" alt="A grenade going off in a corridor, as the game originally drew it: the far wall and the ramp across the room are lit as brightly as the wall beside the blast" width="1920" height="1080" loading="lazy" decoding="async">
+        </div>
+        <div class="layer after">
+          <img src="media/lights-openh1.webp" alt="The same moment in OpenH1: the wall dims with distance, the ceiling stays dark, and the ramp across the room stays in shadow" width="1920" height="1080" loading="lazy" decoding="async">
+          <div class="cos" aria-hidden="true">
+            <span class="co west" style="--x:88%;--y:40%;--len:56px"><i class="pin" data-n="1"></i><i class="leader"></i><span class="lbl">The wall dims with distance</span></span>
+            <span class="co west down" style="--x:80%;--y:13%;--len:30px"><i class="pin" data-n="2"></i><i class="leader"></i><span class="lbl">The ceiling stays in shadow</span></span>
+            <span class="co" style="--x:9%;--y:44%;--len:48px"><i class="pin" data-n="3"></i><i class="leader"></i><span class="lbl">No false light across the room</span></span>
+          </div>
+          <span class="side r">OpenH1</span>
+        </div>
+        <div class="lclip"><span class="side l">Original</span></div>
+        <span class="bar" aria-hidden="true"></span>
+        <span class="knob" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6"/></svg></span>
+        <span class="hint" aria-hidden="true">◀ Original · OpenH1 ▶</span>
       </div>
-      <ol>
-        <li>Get OpenH1 for your system. Builds are coming soon. Until then, build it from the
-          <a href="https://github.com/OpenH1/OpenH1">source on GitHub</a>.</li>
-        <li>Start the game and choose your disc image (<code>.iso</code> or <code>.xiso</code>) when it asks.</li>
-        <li>The game copies out its maps once, then you're in.</li>
+      <ol class="legend" aria-label="What OpenH1 changes in this shot">
+        <li>The wall dims with distance from the blast.</li>
+        <li>The ceiling stays in shadow.</li>
+        <li>The ramp across the room isn't lit as if it were beside the fire.</li>
       </ol>
+      <p class="caption mono">Real capture, the same moment twice · Derelict, a frag grenade · Dynamic Lights as the game drew them, and OpenH1's Enhanced; everything else the same</p>
     </div>
   </section>
 
-  <section class="credits">
+  <!-- 02: anti-aliasing, a lens -->
+  <section class="sec" id="edges" aria-labelledby="edges-title">
     <div class="wrap">
-      <h2>Built on the community's work</h2>
-      <p>OpenH1 is a fork of <a href="https://github.com/OpenCommunityEdition/OpenCE">OpenCE</a>, the community's
-        port, and stays compatible with it online. Both start from the decompilation of
-        <a href="https://github.com/bnunu/halo-1">bnunu/halo-1</a>, a fork of
-        <a href="https://github.com/punpckhdq/halo">punpckhdq/halo</a>. Thank you to everyone who made them.</p>
+      <div class="sec-head">
+        <div class="reveal">
+          <p class="kicker mono">02 · Anti-aliasing</p>
+          <h2 id="edges-title">No more <span class="lit">stairs.</span></h2>
+        </div>
+        <p class="reveal d1">The original drew every edge in jagged steps. OpenH1 smooths them with SMAA, and draws the HUD after, pin-sharp. Move the lens along the cliffs.</p>
+      </div>
+      <div class="shot pair lensbox reveal" id="lensbox" data-pair data-lx="0.31" data-ly="0.56" data-tx="0.62" data-ty="0.3">
+        <!-- VIDEO TODO (website/VIDEOS-TODO.md, "edges"): a slow pan, edges-original and edges-openh1, as
+             <video> layers like the lights' (keep the class "pix" for the enlarged pixels). -->
+        <div class="layer before pix">
+          <img src="media/edge-original.webp" alt="Cliff edges against the sky as the game originally drew them: every edge is a staircase of pixels" width="800" height="450" loading="lazy" decoding="async">
+        </div>
+        <div class="layer after pix">
+          <img src="media/edge-openh1.webp" alt="" width="800" height="450" loading="lazy" decoding="async">
+        </div>
+        <span class="ring" aria-hidden="true"><span>OpenH1</span></span>
+        <span class="side l">Original</span>
+      </div>
+      <div class="under">
+        <span class="key mono"><span><i></i>Around the lens: Original</span><span><i class="g"></i>Inside the lens: OpenH1, SMAA</span></span>
+        <button class="toggle" id="lens-all" type="button" aria-pressed="false" aria-controls="lensbox">Show OpenH1 everywhere</button>
+      </div>
+      <p class="caption mono">Real capture, the same moment twice, enlarged 2× so the pixels show · Blood Gulch · no anti-aliasing, as the game drew it, and OpenH1's SMAA</p>
+    </div>
+  </section>
+
+  <!-- 03: the plasma glow, a flip -->
+  <section class="sec" id="glow" aria-labelledby="glow-title">
+    <div class="wrap flipgrid">
+      <div>
+        <figure class="shot pair flip reveal" id="flip" data-pair style="margin:0;aspect-ratio:4/3">
+          <!-- VIDEO TODO (website/VIDEOS-TODO.md, "glow"): plasma fired down a dark hallway, glow-original and
+               glow-openh1, as <video> layers like the lights'; then set the figure's aspect-ratio to 16/9. -->
+          <div class="layer before">
+            <img src="media/glow-original.webp" alt="A charged plasma pistol shot, as the game originally drew it" width="640" height="480" loading="lazy" decoding="async">
+          </div>
+          <div class="layer after">
+            <img src="media/glow-openh1.webp" alt="The same moment in OpenH1: the bolt glows and lights the rock and the weapon around it" width="640" height="480" loading="lazy" decoding="async">
+            <div class="cos" aria-hidden="true">
+              <span class="co" style="--x:50%;--y:52%;--len:56px"><i class="pin" data-n="1"></i><i class="leader"></i><span class="lbl">The bolt glows as it flies</span></span>
+              <span class="co west" style="--x:78%;--y:74%;--len:40px"><i class="pin" data-n="2"></i><i class="leader"></i><span class="lbl">Your weapon catches the light</span></span>
+            </div>
+          </div>
+          <span class="side l">Original</span><span class="side r">OpenH1</span>
+        </figure>
+        <ol class="legend"><li>The bolt glows as it flies.</li><li>Your weapon catches the light.</li></ol>
+      </div>
+      <div class="flipcopy">
+        <p class="kicker mono reveal">03 · The plasma glow</p>
+        <h2 id="glow-title" class="reveal d1">Plasma that <span class="lit">glows.</span></h2>
+        <p class="reveal d2">The original drew a plasma bolt as a flat flare. OpenH1 gives every bolt in flight a soft glow, and lets it light the rock, the ground and the gun in your hands. Tap the shot to flip it.</p>
+        <button class="switch reveal d3" id="switch" role="switch" aria-checked="true" aria-label="Show OpenH1 (off: the Original)"><span>Original</span><span>OpenH1</span></button>
+        <p class="caption mono">Real capture, the same moment twice · Blood Gulch, a charged plasma pistol · Dynamic Lights as the game drew them, and OpenH1's Enhanced</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04: frames between ticks, two clips -->
+  <section class="sec" id="smooth" aria-labelledby="smooth-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <p class="kicker mono">04 · Smooth at any refresh rate</p>
+          <h2 id="smooth-title">Same game. <span class="lit">Every frame.</span></h2>
+        </div>
+        <p class="reveal d1">The world still runs at 30 ticks a second, exactly as it shipped. OpenH1 draws every frame in between at your display's rate: the camera, every object, every light, the motion tracker.</p>
+      </div>
+      <div class="clips" id="clips">
+        <div class="shot pair reveal" style="aspect-ratio:16/9">
+          <video muted loop playsinline preload="none" poster="media/strafe-original-poster.webp" data-webm="media/strafe-original.webm" data-mp4="media/strafe-original.mp4" aria-label="The Original, 30 frames a second: the view moves in steps"></video>
+          <span class="side l">Original <small>30 fps</small></span>
+        </div>
+        <div class="shot pair reveal d1" style="aspect-ratio:16/9">
+          <video muted loop playsinline preload="none" poster="media/strafe-openh1-poster.webp" data-webm="media/strafe-openh1.webm" data-mp4="media/strafe-openh1.mp4" aria-label="OpenH1, 60 frames a second drawn between the ticks: the view moves smoothly"></video>
+          <span class="side l">OpenH1 <small>60 fps</small></span>
+        </div>
+      </div>
+      <div class="under">
+        <div class="key mono"><span>Same <b style="color:var(--text)">30 Hz</b> game</span><span>Same input</span><span>Shown at 60 fps</span></div>
+        <button class="toggle" id="clips-play" type="button" aria-pressed="false">Play both</button>
+      </div>
+      <p class="caption mono">Real capture, the same run twice: Original, one frame a tick · OpenH1, frames between ticks · 120 and 240 Hz displays get a frame for every refresh</p>
+    </div>
+  </section>
+
+  <!-- 05: VR -->
+  <section class="sec" id="vr" aria-labelledby="vr-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <p class="kicker mono">05 · VR on the Steam Frame</p>
+          <h2 id="vr-title">Step <span class="lit">inside it.</span></h2>
+        </div>
+        <p class="reveal d1">Made on a Steam Frame and drawn with Vulkan: the game in stereo, your head tracked, and your hands doing what the buttons did. It plays on PC headsets through OpenXR too.</p>
+      </div>
+      <div class="vr-grid">
+        <div class="reveal"><span class="n mono">01</span><b>Reload by hand</b><span>Take a magazine from your hip and push it in.</span></div>
+        <div class="reveal d1"><span class="n mono">02</span><b>Draw from holsters</b><span>Reach over your shoulder or to your hip for the weapon carried there.</span></div>
+        <div class="reveal d2"><span class="n mono">03</span><b>Raise the scope</b><span>Lift the sniper rifle's or the pistol's scope to your eye and look through it.</span></div>
+        <div class="reveal"><span class="n mono">04</span><b>Throw for real</b><span>Grenades land where you threw them, as hard as you threw.</span></div>
+        <div class="reveal d1"><span class="n mono">05</span><b>Every seat, first person</b><span>Turn the Warthog's wheel with your hands. Every vehicle seat stays in first person.</span></div>
+        <div class="reveal d2"><span class="n mono">06</span><b>A HUD on your visor</b><span>Curved on the glass, its parts at their own depths.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06: platforms -->
+  <section class="sec" id="platforms" aria-labelledby="platforms-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <p class="kicker mono">06 · Platforms</p>
+          <h2 id="platforms-title">Wherever <span class="lit">you play.</span></h2>
+        </div>
+        <p class="reveal d1">One game, compiled for each machine and drawn by its own renderer. Keyboard and mouse, controllers, touch, or your own two hands.</p>
+      </div>
+      <div class="plat">
+        <article class="reveal"><h3>Mac</h3><p>A Mac app for Apple silicon, with its own Metal renderer.</p><p class="r mono">Metal · macOS 14.4+</p></article>
+        <article class="reveal d1"><h3>Linux</h3><p>64-bit x86 and ARM, in a portable folder that updates itself.</p><p class="r mono">Vulkan 1.3</p></article>
+        <article class="reveal d2"><h3>Steam Deck</h3><p>Fills the screen at its own shape, with Steam Input.</p><p class="r mono">Vulkan · up to 90 Hz</p></article>
+        <article class="reveal"><h3>Android</h3><p>Touch controls with gyro aiming, or a controller.</p><p class="r mono">Vulkan · 64-bit</p></article>
+        <article class="reveal d1"><h3>Steam Frame</h3><p>The VR build, packaged for the headset.</p><p class="r mono">Vulkan · OpenXR</p></article>
+        <article class="reveal d2"><h3>Windows</h3><p>Plays today. A 64-bit Vulkan build, on the same code as Linux, is on the way.</p><p class="r mono wip">64-bit Vulkan: in progress</p></article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07: under the hood, dense -->
+  <section class="sec" id="hood" aria-labelledby="hood-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <p class="kicker mono">07 · Under the hood</p>
+          <h2 id="hood-title">For the <span class="lit">purists.</span></h2>
+        </div>
+        <p class="reveal d1">What makes it the original, and what it adds. Every line is in the project's documentation.</p>
+      </div>
+      <div class="hood reveal">
+        <dl>
+          <div><dt>Code</dt><dd>The Xbox game's decompiled C, compiled natively, with few and marked changes<small>Not emulation. Xbox build 2342.</small></dd></div>
+          <div><dt>Simulation</dt><dd>30 ticks a second, as shipped<small>The same calculations on every machine. The scorecard holds every change bit-identical at 30 Hz, tick by tick.</small></dd></div>
+          <div><dt>60 / 120 Hz</dt><dd>Sub-steps for what you feel in your hands, in progress<small>Every rate plays exactly as 30 does</small></dd></div>
+          <div><dt>Frames</dt><dd>One per refresh of your display<small>Each frame drawn between the last two ticks; nothing the game calculates changes</small></dd></div>
+          <div><dt>Architecture</dt><dd>A 64-bit program, with the game compiled as a 32-bit-pointer guest inside it<small>ILP32: arm64_32 on ARM, x32 on x86-64</small></dd></div>
+          <div><dt>Renderers</dt><dd>Vulkan 1.3 on Linux, Android and in VR; Metal on the Mac<small>One command stream into both</small></dd></div>
+        </dl>
+        <dl>
+          <div><dt>Picture</dt><dd>SMAA or FXAA, anisotropic filtering, sharper shadows, per-pixel lighting<small>One switch: Video Setup › Graphics › Preset, Classic or Enhanced</small></dd></div>
+          <div><dt>Lights</dt><dd>Per-pixel, inverse-square, in linear light, with a glow on every bolt<small>Placed where their objects are drawn, between ticks</small></dd></div>
+          <div><dt>Display</dt><dd>Any resolution from 640 × 480, a field of view up to 150°, a HUD redrawn at 8×</dd></div>
+          <div><dt>Network</dt><dd>Plays online with OpenCE players; internet play needs no servers to set up</dd></div>
+          <div><dt>Mods</dt><dd>Texture, sound, text and model packs from the game's Mods menu; Custom Edition maps that share themselves</dd></div>
+          <div><dt>Licence</dt><dd>Free software, AGPL-3.0-or-later<small>No game data included</small></dd></div>
+        </dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08: your copy -->
+  <section class="sec" id="start" aria-labelledby="start-title">
+    <div class="wrap">
+      <div class="byo reveal">
+        <div>
+          <p class="kicker mono">08 · Your copy</p>
+          <h2 id="start-title">Bring your <span class="lit">own game.</span></h2>
+          <p style="color:var(--soft);max-width:460px">OpenH1 contains none of the game's data. You need your own Xbox disc image of the game. Any version works.</p>
+        </div>
+        <ol>
+          <li>Downloads are coming soon. Until then, you can <a href="https://github.com/OpenH1/OpenH1#build-the-game">build it from the source</a>.</li>
+          <li>Start the game and choose your disc image (<code>.iso</code> or <code>.xiso</code>) when it asks.</li>
+          <li>It copies out its maps once. Then you're in.</li>
+        </ol>
+      </div>
     </div>
   </section>
 </main>
 
 <footer>
   <div class="wrap">
-    <div class="links">
-      <a href="https://github.com/OpenH1/OpenH1">Source</a>
-      <a href="https://github.com/OpenH1/OpenH1/issues">Report a problem</a>
-      <a href="fonts/OpenCE-OFL.txt">Font licences</a>
+    <div class="row">
+      <a class="wordmark" href="#main">Open<b>H1</b></a>
+      <nav aria-label="Footer">
+        <a href="https://github.com/OpenH1/OpenH1">Source</a>
+        <a href="https://github.com/OpenH1/OpenH1/issues">Report a problem</a>
+        <a href="https://github.com/OpenH1/OpenH1/blob/master/LICENSE">Licence</a>
+        <a href="fonts/LICENSES.txt">Font licences</a>
+      </nav>
     </div>
-    <p>OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox Game Studios,
-      Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft Corporation;
-      Halo © Microsoft Corporation. No game data is included: you need your own copy of the game.</p>
+    <p class="legal">Free software under the AGPL-3.0-or-later. Built on <a href="https://github.com/OpenCommunityEdition/OpenCE">OpenCE</a>.
+      OpenH1 is an unofficial fan project, not endorsed by or affiliated with Microsoft, Xbox Game Studios, Halo Studios or Bungie.
+      Halo is a trademark of Microsoft Corporation. No game data is included: you need your own copy of the game.</p>
   </div>
 </footer>
 
+<script>
+(() => {
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+  // a one-time demo: f(0..1) over ms; the returned function stops it
+  function demo(ms, f, done) {
+    let stop = false, t0 = 0;
+    const step = (now) => {
+      if (stop) return;
+      t0 = t0 || now;
+      const t = Math.min(1, (now - t0) / ms);
+      f(t);
+      if (t < 1) requestAnimationFrame(step); else if (done) done();
+    };
+    requestAnimationFrame(step);
+    return () => { stop = true; };
+  }
+  // f, the first time el scrolls into view
+  function once(el, f, threshold = 0.45) {
+    new IntersectionObserver(([e], o) => { if (e.isIntersecting) { o.disconnect(); f(); } }, { threshold }).observe(el);
+  }
+
+  // the header turns solid past the top
+  const top = document.getElementById("top");
+  const onScroll = () => top.classList.toggle("solid", scrollY > 40);
+  addEventListener("scroll", onScroll, { passive: true }); onScroll();
+
+  // scroll reveals
+  const io = new IntersectionObserver((es) => es.forEach((e) => {
+    if (e.isIntersecting) { e.target.classList.add("in"); io.unobserve(e.target); }
+  }), { threshold: 0.12, rootMargin: "0px 0px -6% 0px" });
+  document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+
+  // a video's sources, added only when it is wanted
+  function load(video) {
+    if (video.dataset.loaded) return;
+    video.dataset.loaded = "1";
+    for (const [type, key] of [["video/webm", "webm"], ["video/mp4", "mp4"]]) {
+      if (!video.dataset[key]) continue;
+      const s = document.createElement("source"); s.src = video.dataset[key]; s.type = type; video.appendChild(s);
+    }
+    video.load();
+  }
+  // videos that play as one: together from the start, held in step with the
+  // first, paused off screen; for reduced motion, only on request
+  function group(videos, root, button) {
+    if (!videos.length) return;
+    let on = false, wanted = !still, visible = false;
+    const lead = videos[0];
+    const apply = () => {
+      const play = wanted && visible;
+      if (play === on) return;
+      on = play;
+      videos.forEach((v) => { if (play) { load(v); v.play().catch(() => {}); } else v.pause(); });
+      if (button) { button.setAttribute("aria-pressed", String(wanted)); button.textContent = wanted ? "Pause" : "Play"; }
+    };
+    lead.addEventListener("timeupdate", () => {
+      for (const v of videos.slice(1)) if (Math.abs(v.currentTime - lead.currentTime) > 0.06) v.currentTime = lead.currentTime;
+    });
+    lead.addEventListener("seeked", () => videos.slice(1).forEach((v) => { v.currentTime = lead.currentTime; }));
+    new IntersectionObserver(([e]) => { visible = e.isIntersecting; apply(); }, { threshold: 0.25 }).observe(root);
+    if (button) {
+      button.hidden = false;
+      button.addEventListener("click", () => { wanted = !wanted; on = !wanted; if (wanted) videos.forEach((v) => { v.currentTime = 0; }); apply(); });
+      button.setAttribute("aria-pressed", String(wanted)); button.textContent = wanted ? "Pause" : "Play";
+    }
+  }
+
+  // the hero's loop: after the page has loaded; never for reduced motion
+  const hero = document.getElementById("hero-video"), pause = document.getElementById("hero-pause");
+  let heroPaused = false;
+  function startHero() {
+    if (still) return;
+    load(hero);
+    hero.addEventListener("playing", () => hero.classList.add("playing"), { once: true });
+    hero.play().then(() => { pause.hidden = false; }).catch(() => {});
+  }
+  if (document.readyState === "complete") startHero(); else addEventListener("load", startHero);
+  pause.addEventListener("click", () => {
+    heroPaused = !heroPaused;
+    if (heroPaused) hero.pause(); else hero.play();
+    pause.setAttribute("aria-pressed", String(heroPaused));
+    pause.querySelector("span").textContent = heroPaused ? "Play" : "Pause";
+  });
+  new IntersectionObserver(([e]) => {
+    if (!hero.dataset.loaded || heroPaused) return;
+    if (e.isIntersecting) hero.play().catch(() => {}); else hero.pause();
+  }).observe(hero);
+
+  // the wipe: callouts on the OpenH1 side show as it is revealed
+  const wipe = document.getElementById("wipe");
+  const wipeCos = [...wipe.querySelectorAll(".co")];
+  const sideL = wipe.querySelector(".side.l"), sideR = wipe.querySelector(".side.r");
+  function setWipe(p) {
+    p = Math.max(0, Math.min(100, p));
+    wipe.style.setProperty("--pos", p + "%");
+    wipe.setAttribute("aria-valuenow", Math.round(p));
+    wipe.setAttribute("aria-valuetext", `${Math.round(p)}% Original, ${100 - Math.round(p)}% OpenH1`);
+    sideL.classList.toggle("big", p > 55); sideR.classList.toggle("big", p < 45);
+    wipeCos.forEach((c) => c.classList.toggle("on", parseFloat(c.style.getPropertyValue("--x")) > p + 3));
+  }
+  let stopWipe = () => {};
+  const wipeAt = (e) => { const r = wipe.getBoundingClientRect(); setWipe(((e.clientX - r.left) / r.width) * 100); };
+  let dragging = false;
+  wipe.addEventListener("pointerdown", (e) => { stopWipe(); dragging = true; wipe.setPointerCapture(e.pointerId); wipeAt(e); });
+  wipe.addEventListener("pointermove", (e) => { if (dragging) wipeAt(e); });
+  addEventListener("pointerup", () => { dragging = false; });
+  wipe.addEventListener("keydown", (e) => {
+    const now = +wipe.getAttribute("aria-valuenow");
+    const step = { ArrowLeft: -5, ArrowDown: -5, ArrowRight: 5, ArrowUp: 5, PageDown: -20, PageUp: 20 }[e.key];
+    const to = step ? now + step : e.key === "Home" ? 0 : e.key === "End" ? 100 : null;
+    if (to !== null) { stopWipe(); setWipe(to); e.preventDefault(); }
+  });
+  setWipe(still ? 40 : 100);
+  // demo: from the Original, a glide that reveals OpenH1 across most of the shot, then a resting split
+  if (!still) once(wipe, () => {
+    stopWipe = demo(2400, (t) => setWipe(t < 0.6 ? 100 - 92 * ease(t / 0.6) : 8 + 32 * ease((t - 0.6) / 0.4)));
+  });
+  group([...wipe.querySelectorAll("video")], wipe);
+
+  // the lens
+  const box = document.getElementById("lensbox"), all = document.getElementById("lens-all");
+  const lx = +box.dataset.lx, ly = +box.dataset.ly, tx = +box.dataset.tx, ty = +box.dataset.ty;
+  let fx = lx, fy = ly;
+  function place(x, y) { fx = x; fy = y; box.style.setProperty("--x", x * 100 + "%"); box.style.setProperty("--y", y * 100 + "%"); }
+  let stopLens = () => {};
+  const lensAt = (e) => { stopLens(); const r = box.getBoundingClientRect(); place((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height); };
+  box.addEventListener("pointermove", lensAt);
+  box.addEventListener("pointerdown", lensAt);
+  place(lx, ly);
+  // demo: the lens drifts along the far rim and back to the cliff's edge
+  if (!still) once(box, () => {
+    stopLens = demo(2400, (t) => { const u = Math.sin(Math.PI * ease(t)); place(lx + (tx - lx) * u, ly + (ty - ly) * u); });
+  });
+  all.addEventListener("click", () => {
+    const on = all.getAttribute("aria-pressed") !== "true";
+    all.setAttribute("aria-pressed", String(on)); box.classList.toggle("all", on);
+    all.textContent = on ? "Back to the lens" : "Show OpenH1 everywhere";
+  });
+  group([...box.querySelectorAll("video")], box);
+
+  // the flip
+  const sw = document.getElementById("switch"), flip = document.getElementById("flip");
+  const flipCos = [...flip.querySelectorAll(".co")];
+  function openh1(on) { sw.setAttribute("aria-checked", String(on)); flip.classList.toggle("orig", !on); }
+  let flipTimers = [];
+  const stopFlip = () => { flipTimers.forEach(clearTimeout); flipTimers = []; flipCos.forEach((c) => c.classList.add("on")); };
+  sw.addEventListener("click", () => { stopFlip(); openh1(sw.getAttribute("aria-checked") !== "true"); });
+  flip.addEventListener("click", () => { stopFlip(); openh1(flip.classList.contains("orig")); });
+  if (still) flipCos.forEach((c) => c.classList.add("on"));
+  else once(flip, () => {
+    // demo: the Original for a moment, back to OpenH1, then the callouts in turn
+    openh1(false);
+    flipTimers.push(setTimeout(() => openh1(true), 1100));
+    flipCos.forEach((c, i) => flipTimers.push(setTimeout(() => c.classList.add("on"), 1700 + i * 350)));
+  });
+  group([...flip.querySelectorAll("video")], flip);
+
+  // the clips
+  group([...document.querySelectorAll("#clips video")], document.getElementById("clips"), document.getElementById("clips-play"));
+})();
+</script>
 </body>
 </html>
