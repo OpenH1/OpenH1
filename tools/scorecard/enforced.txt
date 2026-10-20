@@ -20,3 +20,5 @@ U6
 U7
 ai
 U18
+vehicle
+U17
