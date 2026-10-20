@@ -4,7 +4,8 @@
 # One side of a comparison, offscreen, a BMP a frame: the Original (the Classic
 # preset, one frame a tick, the Xbox's 640x480) or OpenH1 (Enhanced, frames between
 # ticks, at SIZE). Settings: TREE (a built linux_x86_64 tree), MAPS, RUNS, SIZE,
-# PORT (the console's, distinct for runs side by side), FT (OpenH1's frame time),
+# PORT (the console's, distinct for runs side by side), CONSOLE (commands sent with
+# the HUD's, as "(cheat_all_weapons) "), FT (OpenH1's frame time),
 # SEED, TRACE_SECONDS (write the sim trace to data/trace.txt and quit then).
 set -u
 TREE=${TREE:-$HOME/halo-capture} MAPS=${MAPS:-$HOME/halo-x86-maps/maps}
@@ -36,7 +37,7 @@ game=$!
 # hide the HUD once the map is drawing (a command sent while it loads can stop the game)
 ( for i in $(seq 600); do grep -q "its shaders and pipelines made" "$root/log.txt" 2>/dev/null && break; sleep 0.1; done
   sleep 0.5
-  exec 3<>/dev/tcp/127.0.0.1/$HALO_TELNET_CONSOLE_PORT && printf '(begin (show_hud 0) (sleep 1))\r\n' >&3 && sleep 1 && exec 3>&-
+  exec 3<>/dev/tcp/127.0.0.1/$HALO_TELNET_CONSOLE_PORT && printf '(begin (show_hud 0) %s(sleep 1))\r\n' "${CONSOLE:-}" >&3 && sleep 1 && exec 3>&-
   echo "hud hidden at frame $(ls $root/frames | wc -l)" ) &
 wait $game
 echo "exit=$? took=$((SECONDS - start))s frames=$(ls $root/frames | wc -l)"
