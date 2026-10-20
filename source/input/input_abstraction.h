@@ -69,6 +69,12 @@ void input_abstraction_port_button_controls(
 	short *controls);
 boolean input_abstraction_port_look_inverted(
 	short controller_index);
+/* port: a sub-step's reading of a controller (port/linux/game/sim_rate.h):
+FALSE when it is the frame's */
+boolean input_abstraction_port_substep_state(
+	short controller_index,
+	struct game_input_state *state,
+	real *primary_trigger);
 
 /* ---------- globals */
 
