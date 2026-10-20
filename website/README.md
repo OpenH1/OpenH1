@@ -64,7 +64,7 @@ Rules for the content:
 | Files | Where | What |
 | --- | --- | --- |
 | `hero.mp4`, `hero.webm`, `hero-poster.webp` | The hero | Blood Gulch, a walk towards the base: Enhanced, SMAA, frames between ticks, HUD hidden. 14 s at 30 fps, 1600 wide, the last second crossfaded into the first |
-| `lights-original.webp`, `lights-openh1.webp` | 01 | Derelict, a frag grenade: Dynamic Lights Classic and Enhanced |
+| `lights-original.*`, `lights-openh1.*` | 01 | Rat Race, a frag grenade at a spot already scorched (`capture/`): the Classic preset at 640 × 480 a frame a tick, and Enhanced at 60 fps between ticks. 4 s, 1920 × 1440 (from 3840 × 2880 masters), a loop without a fade, MP4 and WebM with posters |
 | `edge-original.webp`, `edge-openh1.webp` | 02 | Blood Gulch's cliffs, an 800 × 450 crop of 1920 × 1080: anti-aliasing off and SMAA, shown at 2× with `image-rendering: pixelated` |
 | `glow-original.webp`, `glow-openh1.webp` | 03 | Blood Gulch, a charged plasma pistol: Dynamic Lights Classic and Enhanced (640 × 480) |
 | `strafe-original.*`, `strafe-openh1.*` | 04 | Blood Gulch, a strafe: the Classic preset at one frame a tick, and Enhanced at 60 fps between ticks. 4.4 s, 1280 wide, MP4 and WebM with posters |

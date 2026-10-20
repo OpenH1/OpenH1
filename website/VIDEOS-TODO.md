@@ -1,6 +1,6 @@
 # Clips still wanted for openh1.com
 
-Three of the page's comparisons are stills for now. Each should become a
+Two of the page's comparisons are stills for now (lights is done: `capture/README.md`). Each should become a
 pair of looping clips, the Original and OpenH1, of the same moment, frame
 for frame. Swapping one in is a file drop and a small edit: each place has a
 `VIDEO TODO` comment in `public/index.html`, and the page's script already
