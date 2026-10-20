@@ -16,6 +16,8 @@ stored. The module's types and constants are made once each (interned).
 */
 
 #include "xgpu.h"
+#include "xgpu_backend.h"
+#include "xgpu_hdr.h"
 #include "xgpu_shader.h"
 #include "xgpu_spirv.h"
 
@@ -44,7 +46,7 @@ enum
 	OP_DECORATE = 71, OP_MEMBER_DECORATE = 72,
 	OP_VECTOR_EXTRACT_DYNAMIC = 77, OP_VECTOR_SHUFFLE = 79, OP_COMPOSITE_CONSTRUCT = 80, OP_COMPOSITE_EXTRACT = 81,
 	OP_COMPOSITE_INSERT = 82,
-	OP_IMAGE_SAMPLE_IMPLICIT_LOD = 87, OP_IMAGE_FETCH = 95, OP_IMAGE = 100, OP_IMAGE_QUERY_SIZE_LOD = 103,
+	OP_IMAGE_SAMPLE_IMPLICIT_LOD = 87, OP_IMAGE_FETCH = 95, OP_IMAGE_READ = 98, OP_IMAGE = 100, OP_IMAGE_QUERY_SIZE_LOD = 103,
 	OP_CONVERT_F_TO_S = 110, OP_CONVERT_S_TO_F = 111, OP_BITCAST = 124,
 	OP_F_NEGATE = 127, OP_I_ADD = 128, OP_F_ADD = 129, OP_I_SUB = 130, OP_F_SUB = 131, OP_I_MUL = 132, OP_F_MUL = 133,
 	OP_F_DIV = 136, OP_VECTOR_TIMES_SCALAR = 142, OP_DOT = 148,
@@ -63,20 +65,20 @@ enum
 {
 	GLSL_F_ABS = 4, GLSL_F_SIGN = 6, GLSL_FLOOR = 8, GLSL_FRACT = 10, GLSL_POW = 26, GLSL_EXP = 27, GLSL_EXP2 = 29,
 	GLSL_LOG2 = 30, GLSL_SQRT = 31, GLSL_INVERSE_SQRT = 32, GLSL_F_MIN = 37, GLSL_F_MAX = 40, GLSL_F_CLAMP = 43,
-	GLSL_S_CLAMP = 45, GLSL_F_MIX = 46, GLSL_LENGTH = 66, GLSL_CROSS = 68, GLSL_NORMALIZE = 69, GLSL_FIND_I_LSB = 73,
+	GLSL_S_CLAMP = 45, GLSL_F_MIX = 46, GLSL_SMOOTH_STEP = 49, GLSL_LENGTH = 66, GLSL_CROSS = 68, GLSL_NORMALIZE = 69, GLSL_FIND_I_LSB = 73,
 };
 
 enum
 {
 	DECORATION_BLOCK = 2, DECORATION_ARRAY_STRIDE = 6, DECORATION_BUILT_IN = 11, DECORATION_FLAT = 14, DECORATION_INVARIANT = 18,
 	DECORATION_NON_WRITABLE = 24, DECORATION_LOCATION = 30, DECORATION_BINDING = 33, DECORATION_DESCRIPTOR_SET = 34,
-	DECORATION_OFFSET = 35, DECORATION_NO_CONTRACTION = 42,
+	DECORATION_OFFSET = 35, DECORATION_NO_CONTRACTION = 42, DECORATION_INPUT_ATTACHMENT_INDEX = 43,
 };
 
 enum
 {
 	BUILT_IN_POSITION = 0, BUILT_IN_POINT_SIZE = 1, BUILT_IN_FRAG_COORD = 15, BUILT_IN_SAMPLE_MASK = 20,
-	BUILT_IN_FRAG_DEPTH = 22,
+	BUILT_IN_SAMPLE_ID = 18, BUILT_IN_FRAG_DEPTH = 22,
 	BUILT_IN_VIEW_INDEX = 4440,
 };
 
@@ -88,12 +90,13 @@ enum
 
 enum
 {
-	CAPABILITY_SHADER = 1, CAPABILITY_IMAGE_QUERY = 50, CAPABILITY_MULTIVIEW = 4439,
+	CAPABILITY_SHADER = 1, CAPABILITY_SAMPLE_RATE_SHADING = 35, CAPABILITY_INPUT_ATTACHMENT = 40,
+	CAPABILITY_IMAGE_QUERY = 50, CAPABILITY_MULTIVIEW = 4439,
 	EXECUTION_MODEL_VERTEX = 0, EXECUTION_MODEL_FRAGMENT = 4,
 	EXECUTION_MODE_ORIGIN_UPPER_LEFT = 7, EXECUTION_MODE_EARLY_FRAGMENT_TESTS = 9, EXECUTION_MODE_DEPTH_REPLACING = 12,
 	EXECUTION_MODE_DEPTH_LESS = 15,
-	DIM_2D = 1, DIM_3D = 2, DIM_CUBE = 3,
-	IMAGE_OPERANDS_LOD = 2,
+	DIM_2D = 1, DIM_3D = 2, DIM_CUBE = 3, DIM_SUBPASS_DATA = 6,
+	IMAGE_OPERANDS_LOD = 2, IMAGE_OPERANDS_SAMPLE = 0x40,
 	SCOPE_DEVICE = 1,
 };
 
@@ -2579,10 +2582,10 @@ static unsigned int dynamic_light_sum(struct module *m, struct pixel_state *stat
 
 /* dynamic_light_add(base, light): the light added to the base under the
 shoulder, in linear space */
-static unsigned int dynamic_light_add(struct module *m, unsigned int base, unsigned int light)
+static unsigned int dynamic_light_add(struct module *m, unsigned int base, unsigned int light, BOOL hdr)
 {
 	unsigned int grid2 = dynamic_light(m, 0, constant_int(m, 2));
-	unsigned int brightest, had, room, gamma;
+	unsigned int brightest, had, room, gamma, lit;
 
 	brightest = ext2(m, GLSL_F_MAX, m->t_float, extract(m, light, 0), ext2(m, GLSL_F_MAX, m->t_float, extract(m, light, 1),
 		extract(m, light, 2)));
@@ -2591,8 +2594,162 @@ static unsigned int dynamic_light_add(struct module *m, unsigned int base, unsig
 	had = ext2(m, GLSL_POW, m->t_v3, saturate(m, 3, base), constant_splat(m, 3, 2.2f));
 	room = fmax_scalar(m, 3, fsub(m, 3, constant_splat(m, 3, 1.0f), had), (float)1.0e-3);
 	gamma = constant_splat(m, 3, (float)(1.0 / 2.2));
-	return ext2(m, GLSL_POW, m->t_v3, fadd(m, 3, had, fmul(m, 3, room, fsub(m, 3, constant_splat(m, 3, 1.0f),
-		ext1(m, GLSL_EXP, m->t_v3, fdiv(m, 3, fneg(m, 3, light), room))))), gamma);
+	lit = fadd(m, 3, had, fmul(m, 3, room, fsub(m, 3, constant_splat(m, 3, 1.0f),
+		ext1(m, GLSL_EXP, m->t_v3, fdiv(m, 3, fneg(m, 3, light), room)))));
+	/* (display.hdr: the same below white, and what its shoulder squeezes
+	under white rolled off toward the lights' white instead: xgpu_hdr.h's
+	xgpu_hdr_lights, xgpu_msl.c's dynamic_light_add_hdr) */
+	if (hdr)
+	{
+		unsigned int past = fmax_scalar(m, 3, fsub(m, 3, fadd(m, 3, had, light), constant_splat(m, 3, 1.0f)), 0.0f);
+		unsigned int white_room = constant_splat(m, 3, XGPU_HDR_LIGHTS_WHITE - 1.0f);
+
+		lit = fadd(m, 3, lit, fmul(m, 3, white_room, fsub(m, 3, constant_splat(m, 3, 1.0f),
+			ext1(m, GLSL_EXP, m->t_v3, fdiv(m, 3, fneg(m, 3, past), white_room)))));
+	}
+	return ext2(m, GLSL_POW, m->t_v3, lit, gamma);
+}
+
+/* ---------- display.hdr's tags (xgpu_hdr.h; xgpu_msl.c's hdr_output, operation
+for operation)
+
+A draw whose tag blends in the shader (XGPU_HDR_SHADER_BLENDS) reads the
+pixel it draws over as input attachment 0 (XGPU_SPIRV_SET_INPUT, binding 0:
+the colour attachment, read where it is drawn, VK_KHR_dynamic_rendering_
+local_read's), each sample's own where the target is multisampled, and
+blends with it here; the pipeline's blending is off. */
+
+static unsigned int brightest_of(struct module *m, unsigned int rgb)
+{
+	return ext2(m, GLSL_F_MAX, m->t_float, extract(m, rgb, 0), ext2(m, GLSL_F_MAX, m->t_float, extract(m, rgb, 1),
+		extract(m, rgb, 2)));
+}
+
+/* the pixel drawn over */
+static unsigned int hdr_destination(struct module *m, const struct xgpu_spirv_options *options)
+{
+	BOOL multisampled = options->input_samples > 1;
+	unsigned int operands[7], image_type, image, capability;
+	int count = 2;
+
+	capability = CAPABILITY_INPUT_ATTACHMENT;
+	instruction(m, SECTION_CAPABILITIES, OP_CAPABILITY, 1, &capability);
+	operands[0] = m->t_float;
+	operands[1] = DIM_SUBPASS_DATA;
+	operands[2] = 0;
+	operands[3] = 0;
+	operands[4] = multisampled ? 1 : 0;
+	operands[5] = 2;
+	operands[6] = 0;
+	image_type = intern(m, OP_TYPE_IMAGE, FALSE, 7, operands);
+	image = variable(m, image_type, STORAGE_UNIFORM_CONSTANT, "xgpu_destination");
+	decorate1(m, image, DECORATION_DESCRIPTOR_SET, XGPU_SPIRV_SET_INPUT);
+	decorate1(m, image, DECORATION_BINDING, 0);
+	decorate1(m, image, DECORATION_INPUT_ATTACHMENT_INDEX, 0);
+	operands[0] = load(m, image_type, image);
+	operands[1] = constant_int(m, 0);
+	operands[1] = intern(m, OP_CONSTANT_COMPOSITE, TRUE, 3, (const unsigned int[]){ m->t_iv2, operands[1], operands[1] });
+	if (multisampled)
+	{
+		unsigned int sample = variable(m, m->t_int, STORAGE_INPUT, "gl_SampleID");
+
+		capability = CAPABILITY_SAMPLE_RATE_SHADING;
+		instruction(m, SECTION_CAPABILITIES, OP_CAPABILITY, 1, &capability);
+		decorate1(m, sample, DECORATION_BUILT_IN, BUILT_IN_SAMPLE_ID);
+		decorate(m, sample, DECORATION_FLAT, 0, NULL);
+		operands[count++] = IMAGE_OPERANDS_SAMPLE;
+		operands[count++] = load(m, m->t_int, sample);
+	}
+	return op(m, OP_IMAGE_READ, m->t_v4, count, operands);
+}
+
+/* a blend factor for every channel at once, of the source (s), the pixel
+drawn over (d: past white, one less it is never below 0) and the blend
+colour (a colour's factor acts on alpha as its alpha's) */
+static unsigned int hdr_factor(struct module *m, int factor, unsigned int s, unsigned int d)
+{
+	unsigned int one = constant_splat(m, 4, 1.0f), one1 = constant_float(m, 1.0f);
+
+	switch (factor)
+	{
+	case XGPU_BLEND_ZERO: return constant_splat(m, 4, 0.0f);
+	case XGPU_BLEND_ONE: return one;
+	case XGPU_BLEND_SOURCE_COLOR: return s;
+	case XGPU_BLEND_ONE_MINUS_SOURCE_COLOR: return fsub(m, 4, one, s);
+	case XGPU_BLEND_SOURCE_ALPHA: return splat(m, 4, extract(m, s, 3));
+	case XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA: return splat(m, 4, fsub(m, 1, one1, extract(m, s, 3)));
+	case XGPU_BLEND_DESTINATION_ALPHA: return splat(m, 4, extract(m, d, 3));
+	case XGPU_BLEND_ONE_MINUS_DESTINATION_ALPHA:
+		return splat(m, 4, fmax_scalar(m, 1, fsub(m, 1, one1, extract(m, d, 3)), 0.0f));
+	case XGPU_BLEND_DESTINATION_COLOR: return d;
+	case XGPU_BLEND_ONE_MINUS_DESTINATION_COLOR: return fmax_scalar(m, 4, fsub(m, 4, one, d), 0.0f);
+	case XGPU_BLEND_SOURCE_ALPHA_SATURATE:
+		return vec4_of(m, splat(m, 3, ext2(m, GLSL_F_MIN, m->t_float, extract(m, s, 3),
+			fmax_scalar(m, 1, fsub(m, 1, one1, extract(m, d, 3)), 0.0f))), one1);
+	case XGPU_BLEND_CONSTANT_COLOR: return uniform(m, U_BLEND_CONSTANT, -1);
+	case XGPU_BLEND_ONE_MINUS_CONSTANT_COLOR: return fsub(m, 4, one, uniform(m, U_BLEND_CONSTANT, -1));
+	case XGPU_BLEND_CONSTANT_ALPHA: return splat(m, 4, extract(m, uniform(m, U_BLEND_CONSTANT, -1), 3));
+	case XGPU_BLEND_ONE_MINUS_CONSTANT_ALPHA:
+		return splat(m, 4, fsub(m, 1, one1, extract(m, uniform(m, U_BLEND_CONSTANT, -1), 3)));
+	default: return one;
+	}
+}
+
+/* the colour written for a tagged draw, from its source (s: the pixel
+shader's result as the game's blend takes it): blended here with the pixel
+drawn over and the key's blend, a glow brightened toward its ceiling, no
+channel taken past what the pixel had or the ceiling, nor below 0,
+destination alpha not past 1 */
+static unsigned int hdr_output(struct module *m, unsigned short hdr, unsigned int s,
+	const struct xgpu_spirv_options *options)
+{
+	int ceiling = XGPU_HDR_CEILING_OF(hdr);
+	float ceiling_value = ceiling == XGPU_HDR_CEILING_WEAPON ? XGPU_HDR_CEILING_WEAPON_VALUE :
+		ceiling == XGPU_HDR_CEILING_HUD ? XGPU_HDR_CEILING_HUD_VALUE : XGPU_HDR_CEILING_PAPER_WHITE_VALUE;
+	unsigned int d = hdr_destination(m, options), v, rgb, had, alpha;
+	unsigned int source = fmul(m, 4, s, hdr_factor(m, XGPU_HDR_BLEND_SOURCE(hdr), s, d));
+	unsigned int destination = fmul(m, 4, d, hdr_factor(m, XGPU_HDR_BLEND_DESTINATION(hdr), s, d));
+
+	switch (XGPU_HDR_BLEND_OPERATION(hdr))
+	{
+	case XGPU_BLEND_SUBTRACT: v = fsub(m, 4, source, destination); break;
+	case XGPU_BLEND_REVERSE_SUBTRACT: v = fsub(m, 4, destination, source); break;
+	case XGPU_BLEND_MIN: v = ext2(m, GLSL_F_MIN, m->t_v4, s, d); break;
+	case XGPU_BLEND_MAX: v = ext2(m, GLSL_F_MAX, m->t_v4, s, d); break;
+	default: v = fadd(m, 4, source, destination); break;
+	}
+	v = fmax_scalar(m, 4, v, 0.0f);
+	rgb = xyz(m, v);
+	had = xyz(m, d);
+	/* (a glow: more of the light the draw added, where it is bright:
+	xgpu_hdr_expand) */
+	if (hdr & XGPU_HDR_EXPAND)
+	{
+		unsigned int added = fmax_scalar(m, 3, fsub(m, 3, rgb, had), 0.0f);
+		unsigned int added_most = brightest_of(m, added), most = brightest_of(m, rgb), more;
+
+		more = ext2(m, GLSL_F_MIN, m->t_float, fdiv(m, 1, fmul(m, 1, fmul(m, 1, constant_float(m, ceiling_value - 1.0f),
+			ext3(m, GLSL_SMOOTH_STEP, m->t_float, constant_float(m, XGPU_HDR_EXPAND_KNEE), constant_float(m, 1.0f), most)),
+			most), fmax_scalar(m, 1, added_most, 1.0e-6f)), constant_float(m, XGPU_HDR_EXPAND_MOST));
+		more = op3(m, OP_SELECT, m->t_float, compare(m, OP_F_ORD_GREATER_THAN, added_most, constant_float(m, 0.0f)),
+			more, constant_float(m, 0.0f));
+		rgb = fadd(m, 3, rgb, fscale(m, 3, added, more));
+	}
+	/* (a glow's ceiling keeps its hue: its brightest channel's; any other's
+	each channel's) */
+	if (ceiling && (hdr & XGPU_HDR_EXPAND))
+	{
+		unsigned int limit = fmax_scalar(m, 1, brightest_of(m, had), ceiling_value), brightest = brightest_of(m, rgb);
+
+		rgb = fscale(m, 3, rgb, op3(m, OP_SELECT, m->t_float, compare(m, OP_F_ORD_GREATER_THAN, brightest, limit),
+			fdiv(m, 1, limit, fmax_scalar(m, 1, brightest, 1.0e-6f)), constant_float(m, 1.0f)));
+	}
+	else if (ceiling)
+		rgb = ext2(m, GLSL_F_MIN, m->t_v3, rgb, fmax_scalar(m, 3, had, ceiling_value));
+	alpha = extract(m, v, 3);
+	if (hdr & XGPU_HDR_ALPHA_LIMIT)
+		alpha = ext2(m, GLSL_F_MIN, m->t_float, alpha, constant_float(m, 1.0f));
+	return vec4_of(m, rgb, alpha);
 }
 
 /* ---------- the whole pixel shader */
@@ -2972,7 +3129,7 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		unsigned int sum = dynamic_light_sum(&m, &state, pixel_input(&m, &state, state.in_world_position, m.t_v3), n, n, FALSE);
 		static const unsigned int rgb[4] = { 4, 5, 6, 3 };
 
-		state.v0 = shuffle(&m, 4, state.v0, dynamic_light_add(&m, lit, sum), rgb);
+		state.v0 = shuffle(&m, 4, state.v0, dynamic_light_add(&m, lit, sum, FALSE), rgb);
 	}
 	else if (program->per_pixel_lighting)
 	{
@@ -3041,7 +3198,7 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 			fscale(&m, 3, surface_normal, fmax_scalar(&m, 1, extract(&m, bump, 2), 0.05f))));
 		sum = dynamic_light_sum(&m, &state, pixel_input(&m, &state, state.in_world_position, m.t_v3), n, surface_normal, TRUE);
 		lit = dynamic_light_add(&m, xyz(&m, result), fmul(&m, 3, sum, ext2(&m, GLSL_POW, m.t_v3,
-			xyz(&m, uniform(&m, U_PS_FINAL_C0, -1)), constant_splat(&m, 3, 2.2f))));
+			xyz(&m, uniform(&m, U_PS_FINAL_C0, -1)), constant_splat(&m, 3, 2.2f))), (program->hdr & XGPU_HDR_LIGHTS) != 0);
 		result = shuffle(&m, 4, result, lit, rgb);
 	}
 	if (program->coverage_alpha)
@@ -3122,7 +3279,13 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		}
 		op(&m, OP_ATOMIC_I_ADD, m.t_uint, 4, operands);
 	}
-	result = saturate(&m, 4, result);
+	/* (display.hdr: the dynamic lights' light past white, to their white
+	in the display's gamma: xgpu_hdr.h) */
+	if (!program->source_blend && (program->hdr & XGPU_HDR_LIGHTS))
+		result = vec4_of(&m, fclamp(&m, 3, xyz(&m, result), 0.0f, XGPU_HDR_LIGHTS_WHITE_VALUE),
+			saturate(&m, 1, extract(&m, result, 3)));
+	else
+		result = saturate(&m, 4, result);
 	if (effect)
 		result = effect_fade(&m, options->effect_fade, result, effect_fade_value);
 	if (program->source_blend)
@@ -3138,6 +3301,8 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		}
 		result = fmul(&m, 4, result, factor);
 	}
+	else if (XGPU_HDR_SHADER_BLENDS(program->hdr))
+		result = hdr_output(&m, program->hdr, result, options);
 	/* a z-sprite's puff behind the scene (as an effect, tested by its fade:
 	effect_zsprite_fade) */
 	if (zsprite_hidden)

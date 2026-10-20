@@ -6,6 +6,8 @@ the types the shader decoders and emitters use, and the XDK's enumerations
 #include <stdlib.h>
 #include <string.h>
 typedef unsigned int DWORD;
+typedef unsigned short WORD;
+typedef unsigned int UINT;
 typedef int BOOL;
 typedef unsigned int D3DCOLOR;
 #define TRUE 1

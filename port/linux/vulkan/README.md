@@ -318,6 +318,65 @@ preparation. Android draws SMAA too (the OpenGL ES backend, the web's,
 draws FXAA in its place). The VR mode's eyes have neither pass: the game
 antialiases only the flat screen's 3D view (`source/render/render.c`).
 
+## HDR
+
+`display.hdr` is the shared contract of [docs/hdr.md](../../../docs/hdr.md);
+this is the Vulkan half, on the Linux desktop (not Android, not the VR
+mode). The renderer says it draws HDR where the device reads a colour
+attachment where it is drawn (`VK_KHR_dynamic_rendering_local_read`, with
+sample shading and half floats it blends into): the front end's back buffer
+is then RGBA16F, an input attachment too.
+
+- A draw whose tag blends in its shader (a ceiling, a glow, the alpha
+  limit) has its pipeline's blending off; its SPIR-V (`xgpu_spirv.c`,
+  `hdr_output`, the MSL emitter's operation for operation) reads the pixel
+  it draws over as input attachment 0 of a third descriptor set, each
+  sample's own of a multisampled target. The core binds the attachment as
+  that input and orders the draw after the pass's draws before it with a
+  framebuffer-local barrier (by region), or, where the device orders
+  attachment reads in rasterization order
+  (`VK_EXT_rasterization_order_attachment_access`), with none, its own
+  overlapping triangles in order too. Without that extension, two
+  triangles of one tagged draw over the same pixel read it unordered (the
+  tagged draws are surfaces, HUD bitmaps and glows, which seldom overlap
+  themselves).
+- The tone map is the shared GLSL (`xgpu_hdr.c`) compiled to SPIR-V by
+  `tools/vulkan_post_shaders.py` (the same source `tools/metal_post_shaders.py`
+  makes Metal's from), drawn as a triangle in the pass that drew the view,
+  reading each pixel where it is drawn, as Metal's reads tile memory: no
+  pass of its own, no copy. Anti-aliasing then runs on the half floats.
+- The swapchain is HDR while the frames are HDR and the window's display
+  shows HDR (SDL's `SDL_PROP_WINDOW_HDR_ENABLED_BOOLEAN`, read at the start
+  and on `SDL_EVENT_WINDOW_HDR_STATE_CHANGED`) and the surface has an HDR
+  colour space (`VK_EXT_swapchain_colorspace`): HDR10 (A2B10G10R10, PQ,
+  BT.2020's primaries), Linux compositors' own, or scRGB (half floats,
+  extended linear sRGB); `HALO_VULKAN_HDR_OUTPUT` (`"pq"`, `"scrgb"`)
+  chooses where it has both. The frame is encoded for it
+  (`xgpu_vulkan_post_encode`: linear, at most the display's peak, times
+  paper white) into an image of its own, letterboxed into the swapchain as
+  an SDR frame is, and `VK_EXT_hdr_metadata` gives the compositor the
+  content's gamut (sRGB's) and light (the display's peak) where the device
+  has it. Paper white is SDL's SDR white (or BT.2408's 203 nits where the
+  system says none) times `display.hdr_paper_white`; the peak is SDL's
+  headroom. `HALO_VULKAN_HDR_HEADROOM` stands in for SDL's (HDR on, that
+  headroom). The front end's `"auto"` follows what the renderer tells it
+  (`host_render_stream_display_hdr`): the display shows HDR and the surface
+  can.
+- With HDR off, and with `"auto"` where the display shows none, nothing
+  changes: the back buffer is BGRA8, no pipeline reads its attachment, and
+  the swapchain is the 8-bit sRGB one.
+- A shot or the determinism log reads the half floats back as an SDR
+  display shows them (clamped to 1, 8 bits).
+
+The tests (no Vulkan device needed): `port/linux/vulkan/tests/passes_test.c`
+(the barriers and input sets, the pipelines' blending, the swapchain's
+choice and the encoding, the tone map's draw), `tools/spirv_corpus` (every
+tag over each blend, one sample and four, valid for Vulkan 1.1), and on a
+Mac `tools/test_hdr_backends.py`, which makes the Vulkan shaders Metal's
+with SPIRV-Cross and runs them on the GPU: the tone map and encoding
+against the reference's golden colours, and each tagged draw against the
+Metal backend's own over the same pixels.
+
 ## Not yet
 
 Nothing the OpenGL backend draws.
