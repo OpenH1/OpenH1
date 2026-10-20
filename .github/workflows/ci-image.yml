@@ -1,0 +1,71 @@
+name: CI image
+
+# The Linux jobs' container (.github/ci-image/Dockerfile), for each
+# processor on its own runner: built when its folder changes, to check it,
+# and published from master to ghcr.io/openh1/ci-linux, which
+# .github/workflows/build.yml's Linux jobs run in. Publishing takes the
+# run's GITHUB_TOKEN alone, with packages: write in master's job only.
+on:
+  push:
+    paths:
+      - ".github/ci-image/**"
+      - ".github/workflows/ci-image.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-image-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/openh1/ci-linux
+
+jobs:
+  # (a branch's: built, not published)
+  check:
+    if: github.ref != 'refs/heads/master'
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build --pull --build-arg ARCH=${{ matrix.arch }} -t ci-linux .github/ci-image
+
+  publish:
+    if: github.ref == 'refs/heads/master'
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      # (the tag the jobs use, and this commit's, kept for going back)
+      - name: Build
+        run: |
+          docker build --pull --build-arg ARCH=${{ matrix.arch }} \
+            -t "$IMAGE:ubuntu-22.04-${{ matrix.arch }}" \
+            -t "$IMAGE:ubuntu-22.04-${{ matrix.arch }}-${GITHUB_SHA::12}" .github/ci-image
+      - name: Publish
+        env:
+          TOKEN: ${{ github.token }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          printf '%s' "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker push --all-tags "$IMAGE"
