@@ -5848,10 +5848,13 @@ boolean unit_update(
 
 		unit_verify_vectors(unit_index, "unit-update-prevectors");
 
-		/* port: through a sub-step's share of the tick for a unit of the micro
-		lane in a tick with sub-steps, the fast phase turning it through the
-		others (unit_aim_substep); else the tick's, as it always did */
-		if (object_lane_moves_in_substeps(unit_index))
+		/* port: through a sub-step's share of the tick for a player's unit of
+		the micro lane in a tick with sub-steps, the fast phase turning it
+		through the others (unit_aim_substep); else the tick's, as it always
+		did. (The AI's bipeds, of the micro lane too, turn their aim on the
+		tick: its weapon fires on the tick, at the aim the tick turned to, as
+		at 30, and only their bodies move in the sub-steps, bipeds.c) */
+		if (unit->unit.player_index != NONE && object_lane_moves_in_substeps(unit_index))
 		{
 			unit_update_aim(unit_index, TRUE);
 			unit_aim_substeps_add(unit_index);

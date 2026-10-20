@@ -1315,8 +1315,10 @@ new map either */
 static long object_lane_update_count;
 
 /* a type's objects that may be of the micro lane (object_get_lane): a
-player's biped, a projectile, an item loose in the world (thrown, dropped);
-each one's own, never a thing carried, which goes where its carrier does */
+player's biped or the AI's (an actor's, or one of a swarm's: the AI decides
+on the tick, its body moves in the sub-steps, bipeds.c), a projectile, an
+item loose in the world (thrown, dropped); each one's own, never a thing
+carried, which goes where its carrier does */
 static boolean object_lane_micro_candidate(
 	long root_index,
 	short type)
@@ -1324,7 +1326,12 @@ static boolean object_lane_micro_candidate(
 	switch (type)
 	{
 	case _object_type_biped:
-		return unit_get(root_index)->unit.player_index != NONE;
+	{
+		struct unit_datum *unit = unit_get(root_index);
+
+		return unit->unit.player_index != NONE || unit->unit.actor_index != NONE ||
+			unit->unit.swarm_actor_index != NONE;
+	}
 	case _object_type_projectile:
 	case _object_type_weapon:
 	case _object_type_equipment:
@@ -1711,7 +1718,10 @@ static void object_lane_hold_elevator_riders(
 		{
 			struct biped_datum *biped = biped_get(candidates[index]);
 
-			if (biped->biped.elevator_object_index == machine_index && object_lane_moves_in_substeps(candidates[index]))
+			/* (a player's: the AI's bipeds move their sub-steps in their own
+			update, bipeds.c, where the lift carries them as at 30) */
+			if (biped->biped.elevator_object_index == machine_index && biped->unit.player_index != NONE &&
+				object_lane_moves_in_substeps(candidates[index]))
 			{
 				biped->biped.elevator_object_index = NONE;
 				object_lane_held.biped_indices[object_lane_held.count++] = candidates[index];
