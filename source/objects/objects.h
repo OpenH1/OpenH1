@@ -428,10 +428,10 @@ real_matrix4x3 *object_get_node_matrices(long object_index);
 second; at game.sim_rate 60 or 120 each tick ends in 2 or 4 sub-steps, the
 fast phase. An object of the macro lane (most of them: everything authored at
 30) moves once a tick, in objects_update. One of the micro lane moves in the
-sub-steps: a player's biped, a projectile, an item loose in the world (thrown
-or dropped), once the code that moves its type moves it there and says so
-(object_lane_register); anything carried goes in the lane of what carries it
-(a player in a vehicle's seat: the vehicle's). At 30, a tick's one sub-step
+sub-steps: a player's biped or the AI's, a projectile, an item loose in the
+world (thrown or dropped), once the code that moves its type moves it there
+and says so (object_lane_register); anything carried goes in the lane of what
+carries it (a player in a vehicle's seat: the vehicle's). At 30, a tick's one sub-step
 ends where the tick does, and the micro lane moves in the tick as always.
 
 In a sub-step, the macro lane is seen where it would be that far into the
@@ -453,10 +453,10 @@ _object_mask_item) whose objects of the micro lane the caller moves in the
 sub-steps, from now on (at its initialisation: bipeds.c, projectiles.c,
 items.c). Until a type is, its objects are of the macro lane */
 void object_lane_register(unsigned long object_type_mask);
-/* its lane (_object_lane_macro or _object_lane_micro): a player's biped, a
-projectile and an item loose in the world are of the micro lane once their
-type is registered, the rest of the macro lane, and anything carried of the
-lane of what carries it, at any rate */
+/* its lane (_object_lane_macro or _object_lane_micro): a player's biped, an
+AI's (an actor's or a swarm's), a projectile and an item loose in the world
+are of the micro lane once their type is registered, the rest of the macro
+lane, and anything carried of the lane of what carries it, at any rate */
 short object_get_lane(long object_index);
 /* whether it moves in this tick's sub-steps: of the micro lane, and the tick
 has more than one */

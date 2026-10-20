@@ -31,7 +31,7 @@ an iteration is under a minute. On a shared computer, run it gently: `nice -n 15
 --jobs 3`.
 Exit status 0 means every comparison passed; skips (a rate the build does not have, a scenario that needs retail
 maps) do not fail it. `--json` writes every measure. `--list` shows the scenarios and their tags (the plan's units,
-`U1`-`U20`, and `jump`, `projectile`, `weapon`, `grenade`, `first_shot`, `impact`, `cadence`, `elevator`).
+`U1`-`U20`, and `jump`, `projectile`, `weapon`, `grenade`, `first_shot`, `impact`, `cadence`, `elevator`, `ai`).
 
 Until a unit's work moves into the fast phase (`port/linux/game/sim_rate.h`), what it moves is logged at a
 sub-step before the tick's last as the tick left it: today the jumps fail at 60 and 120 (the biped's steps of
@@ -57,6 +57,7 @@ on the 30 Hz grid, so the same script means the same at every rate.
 | `cadence_*` | shots in a held trigger (rates of fire 1, 7, 15, 30), and their times | exact; 1 ms |
 | `grenade_arcs` | each grenade's first landing and its time, where it lies when it goes off, its fuse | 0.01 wu; 1 ms; 0.25 wu; a step + 1 ms |
 | `elevator_ride` | the player's height every 30th of a second on a lift | 0.01 wu RMS |
+| `ai_patrol` | an AI's biped walking command lists: its place every 30th of a second, how far it walked, and how far its steps between the grid's times are from the ticks' lines | 0.01 wu RMS; 0.5%; 0.002 wu |
 
 Needs retail maps (skipped, stubs in `scenarios.py`): every weapon's fire rate, the retail first shots, frag and
 plasma grenades, the needler's and rocket's flights, vehicles, melee, AI reaction, script timing, cinematics. Needs

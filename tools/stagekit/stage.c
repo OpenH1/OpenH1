@@ -270,7 +270,8 @@ void stage_build(
 				sizeof(struct weapon_hud_interface_definition), &data));
 	}
 
-	globals_build(font_handle, strings_handle, hud_handle, biped_build());
+	stage->biped_handle = biped_build();
+	globals_build(font_handle, strings_handle, hud_handle, stage->biped_handle);
 
 	stage->scenario->hs_syntax_data.size = sizeof(struct data_array) + SCRIPT_NODES * SCRIPT_NODE_BYTES;
 	nodes = stage->scenario->hs_syntax_data.address = cache_allocate(stage->scenario->hs_syntax_data.size);

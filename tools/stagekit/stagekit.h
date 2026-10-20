@@ -16,9 +16,13 @@ scenarios place (props.c), and a scenario itself (scenarios/).
 #include <string.h>
 
 #include "cseries.h"
+#include "ai/actor_definitions.h"
+#include "ai/actor_types.h"
+#include "ai/ai_scenario_definitions.h"
 #include "bitmaps/bitmap_group.h"
 #include "devices/device_machines.h"
 #include "game/game_globals.h"
+#include "hs/hs_scenario_definitions.h"
 #include "interface/weapon_hud_interface_definition.h"
 #include "items/projectile_definitions.h"
 #include "items/weapon_definitions.h"
@@ -60,6 +64,16 @@ struct stage
 {
 	struct scenario *scenario;
 	struct structure_bsp *bsp;
+	/* the players' biped (stage.c), which a scenario may place for the AI */
+	long biped_handle;
+};
+
+/* a move of an AI's command list (prop_ai_walker): a heading in degrees (0
+along x, 90 along y) and how far along it, in world units */
+struct ai_walker_move
+{
+	real heading;
+	real distance;
 };
 
 /* a projectile's flight: its speed (world units a second), the engine's
@@ -142,6 +156,18 @@ when its position is set to 1 (device_set_position <name> 1) and comes down
 when set to 0, as the game's lifts do; elevator: what stands on it rides it */
 void prop_elevator(struct stage *stage, char const *name, real_rectangle3d const *platform,
 	real_point3d const *position, real rise, real seconds);
+
+/* an AI's biped: the players' biped standing at position facing along x,
+named name, which the console makes an actor of the variant variant_name
+(ai_attach_free <name> <variant_name>). The floor is walkable for the AI's
+paths */
+void prop_ai_walker(struct stage *stage, char const *name, char const *variant_name, real_point3d const *position);
+
+/* a command list named name that an AI walks (ai_command_list_by_unit <unit>
+<name>): each move in turn, as far as it goes along its heading, by the AI's
+throttle */
+void prop_ai_command_list(struct stage *stage, char const *name, struct ai_walker_move const *moves,
+	short move_count);
 
 /* a projectile of the shape, which draws nothing */
 long prop_projectile(char const *name, struct projectile_shape const *shape);

@@ -406,3 +406,108 @@ void player_loadout(
 	profile->starting_shield_modifier = 1.f;
 	cache_reference(&profile->primary_weapon.weapon, weapon_handle);
 }
+
+/* ---------- the AI (tools/scorecard's scenarios) */
+
+/* (the scenario's placements of units keep these to themselves: their layout,
+which the game's tag schema fixes) */
+struct biped_placement
+{
+	struct scenario_object_datum object;
+	unsigned char unit[0x78 - sizeof(struct scenario_object_datum)];
+};
+typedef char biped_placement_size_check[sizeof(struct biped_placement) == 0x78 ? 1 : -1];
+typedef char hs_reference_size_check[sizeof(struct hs_reference) == 0x28 ? 1 : -1];
+typedef char ai_command_list_size_check[sizeof(struct ai_command_list_definition) == 0x60 ? 1 : -1];
+typedef char ai_command_size_check[sizeof(struct ai_command_definition) == 0x20 ? 1 : -1];
+
+enum
+{
+	/* (path_structure_bsp.c's: a surface the AI's paths may cross) */
+	PATHFINDING_SURFACE_WALKABLE = 0x40,
+};
+
+void prop_ai_walker(
+	struct stage *stage,
+	char const *name,
+	char const *variant_name,
+	real_point3d const *position)
+{
+	struct actor_definition *actor;
+	struct actor_variant_definition *variant;
+	struct hs_reference *reference;
+	struct scenario_object_palette_entry *palette;
+	struct biped_placement *placement;
+	struct collision_bsp *collision = stage->bsp->collision_bsp.address;
+	unsigned char *walkable;
+	long actor_handle, variant_handle;
+	void *data;
+
+	/* the actor: of a type the AI has (one under NUMBER_OF_ACTOR_TYPES, not a
+	swarm's), the rest zero: it sees and hears nothing, and looks idly at
+	nothing (actor_looking.c) */
+	actor_handle = cache_tag_new(FOURCC('a', 'c', 't', 'r'), NONE, NONE, "stagekit\\walker",
+		sizeof(struct actor_definition), &data);
+	actor = data;
+	actor->type = _actor_marine;
+	/* its variant, which the console names by its tag's whole name, found among
+	the scenario's script references (hs_compile.c); no weapon or equipment */
+	variant_handle = cache_tag_new(FOURCC('a', 'c', 't', 'v'), NONE, NONE, variant_name,
+		sizeof(struct actor_variant_definition), &data);
+	variant = data;
+	cache_reference(&variant->actor_reference, actor_handle);
+	cache_reference(&variant->unit_reference, stage->biped_handle);
+	cache_no_reference(&variant->major_upgrade_reference, FOURCC('a', 'c', 't', 'v'));
+	cache_no_reference(&variant->ranged_combat.reference, FOURCC('w', 'e', 'a', 'p'));
+	cache_no_reference(&variant->items.equipment_reference, FOURCC('e', 'q', 'i', 'p'));
+	reference = cache_block_add(&stage->scenario->hs_references, sizeof(*reference));
+	cache_reference(&reference->reference, variant_handle);
+
+	/* the biped it drives */
+	palette = cache_block_add(&stage->scenario->biped_palette, sizeof(*palette));
+	cache_reference(&palette->reference, stage->biped_handle);
+	placement = cache_block_add(&stage->scenario->bipeds, sizeof(*placement));
+	placement->object.palette_entry_index = (short)(stage->scenario->biped_palette.count - 1);
+	placement->object.name_index = object_name_new(stage, name, _object_type_biped,
+		(short)(stage->scenario->bipeds.count - 1));
+	placement->object.position = *position;
+
+	/* the chamber's floor walkable for the AI's paths, its walls and ceiling
+	not (one byte a collision surface: the floor is the box's first, collision.c) */
+	walkable = cache_bsp_block(&stage->bsp->pathfinding_surfaces, collision->surfaces.count, 1);
+	walkable[0] = PATHFINDING_SURFACE_WALKABLE;
+}
+
+void prop_ai_command_list(
+	struct stage *stage,
+	char const *name,
+	struct ai_walker_move const *moves,
+	short move_count)
+{
+	struct ai_command_list_definition *list = cache_block_add(&stage->scenario->ai_command_lists, sizeof(*list));
+	short index;
+
+	if (strlen(name) >= sizeof(list->name))
+	{
+		fprintf(stderr, "stagekit: the command list name %s is too long\n", name);
+		exit(1);
+	}
+	/* each move a direction (action_obey.c's move_direction, facing forward),
+	walked until it has gone its distance along it; of any structure BSP */
+	strcpy(list->name, name);
+	list->manual_structure_bsp_reference_index = NONE;
+	list->runtime_structure_bsp_reference_index = NONE;
+	for (index = 0; index < move_count; index++)
+	{
+		struct ai_command_definition *command = cache_block_add(&list->commands, sizeof(*command));
+
+		command->atom_type = _ai_atom_move_direction;
+		command->atom_modifier = 0;
+		command->parameter1 = moves[index].distance;
+		command->parameter2 = moves[index].heading;
+		command->point1_index = command->point2_index = NONE;
+		command->animation_reference_index = command->script_reference_index = NONE;
+		command->recording_reference_index = command->command_index = NONE;
+		command->object_name_index = NONE;
+	}
+}
