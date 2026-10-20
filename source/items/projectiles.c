@@ -779,6 +779,42 @@ boolean projectile_update(
 	return projectile_step(projectile_index, 1.0f, 0.0f, TRUE, TRUE);
 }
 
+/* port: a projectile made earlier and let go of now, flying on its own from
+here (a grenade the VR mode's hand held, made as it came to the hand:
+port/linux/game/vr_grenade.c), as one made now (projectile_new): in the
+fast phase (from any slot: a later one runs after the projectiles'), its
+head start at once, a whole 30 Hz tick as at 30, then its hold of a tick,
+this sub-step its phase, as projectiles_substep gives one made in the
+sub-step; in a tick's own work, its head start to come in the tick's
+update, as one made there. Nothing at 30, for one attached to an object or
+of the macro lane */
+void projectile_substep_launch(
+	long projectile_index)
+{
+	struct projectile_datum *projectile = projectile_get(projectile_index);
+	short substep_index = sim_substep_index();
+
+	if (projectile->object.parent_object_index != NONE ||
+		!object_lane_moves_in_substeps(projectile_index))
+	{
+		return;
+	}
+	projectile->projectile.flags &= ~PROJECTILE_SUBSTEP_FLAGS_MASK;
+	if (substep_index == NONE)
+	{
+		SET_FLAG(projectile->projectile.flags, _projectile_substep_head_start_bit, TRUE);
+		return;
+	}
+	projectile->projectile.flags |= FLAG(_projectile_substep_held_bit) |
+		((unsigned long)(substep_index & PROJECTILE_SUBSTEP_PHASE_MASK) << _projectile_substep_phase_first_bit);
+	if (substep_index == sim_substep_count() - 1)
+		SET_FLAG(projectile->projectile.flags, _projectile_substep_hold_crossed_bit, TRUE);
+	projectile_step(projectile_index, 1.0f, 0.0f, TRUE, TRUE);
+	projectile_substep_finish(projectile_index);
+
+	return;
+}
+
 /* port: the fast phase's sub-step of every projectile flying on its own
 (sim_rate.h; at 30, its one sub-step leaves them to their ticks' updates).
 A projectile's first update is its head start, a whole tick of travel and

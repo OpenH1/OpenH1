@@ -37,6 +37,23 @@ pass, whatever the hands; the game's own grenade hangs from the hand of the
 player's body, which is not drawn in first person. The thrown grenade
 starts where the held one was drawn last, and is drawn from there
 (render_interpolation_object_from), not from the body's hand.
+
+At game.sim_rate 60 or 120 (sim_rate.h) the hand's release does not wait
+for a tick: the fast phase's VR slot (_sim_substep_vr, vr_grenade_substep)
+lets the grenade go at the first sub-step after the frame the hand let go
+in, from the hand, along its throw, as the tick would (vr_grenade_release's
+place and velocity, the game's own release's way for a player: from the
+eye of that sub-step, the biped having moved through it), and gives it the
+head start and the hold of a projectile made at that sub-step
+(projectile_substep_launch, projectiles.c): a whole number of 30ths of a
+second after the hand let go it is where a grenade let go of at 30 is that
+long after. The throw animation goes on to the frame before its release, as
+the next tick's would at 30 (the hand having let go), so the body and the
+first-person weapon play the throw as at 30. A release the tick finds first
+(the hand let go before the grenade was in it, or in the frame of the
+tick's own work) is the tick's, as ever, and has its head start in the
+tick's update. At 30 the slot does nothing: the throw is the tick's alone,
+as it always was. (A network game, or a film, is at 30.)
 */
 
 #ifdef HALO_VR
@@ -46,6 +63,7 @@ starts where the held one was drawn last, and is drawn from there
 #include "game/game.h"
 #include "game/game_globals.h"
 #include "game/players.h"
+#include "items/projectiles.h"
 #include "items/weapons.h"
 #include "models/model_definitions.h"
 #include "models/models.h"
@@ -53,8 +71,10 @@ starts where the held one was drawn last, and is drawn from there
 #include "objects/objects.h"
 #include "render/render.h"
 #include "scenario/scenario.h"
+#include "units/unit_definitions.h"
 #include "units/units.h"
 
+#include "sim_rate.h"
 #include "../src/vr.h"
 
 #include <float.h>
@@ -105,6 +125,8 @@ static struct
 	/* debug.vr_test_grenades: the unit given them */
 	long test_unit_index;
 } vr_grenade = { NONE, FALSE, FALSE, 0, { FALSE, FALSE }, FALSE, { 0 }, NONE };
+
+static void vr_grenade_substep(short substep_index, short substep_count, real seconds);
 
 /* the first player's unit, which the VR mode plays */
 static long vr_grenade_player_unit(void)
@@ -164,6 +186,8 @@ boolean vr_grenade_facing(long unit_index, boolean aiming, real *yaw, real *pitc
 	short grenade_type;
 	boolean hand;
 
+	/* (the fast phase's VR slot: the hand's release at its sub-step) */
+	sim_substep_register(_sim_substep_vr, vr_grenade_substep);
 	if (unit_index == NONE)
 	{
 		halo_vr_throw_ready(FALSE);
@@ -357,53 +381,147 @@ void vr_grenade_draw(unsigned long flags)
 		&vr_grenade.drawn.position, 0.0f, NULL, unit_index, 0, flags);
 }
 
-/* units.c, as the unit lets its grenade go with the velocity the game
-gives it (world units a tick): the hand's throw (TRUE), the grenade moved to
-the hand and its velocity turned along the throw, as hard as the hand threw
-it of the game's; FALSE when it is not the hand's (the game's own, or cut
-short before the hand let go) */
-boolean vr_grenade_release(long unit_index, long grenade_index, real_vector3d *initial_velocity)
+/* the hand's throw, let go of (throw_state), for the unit's grenade: where
+it leaves from, the hand (from the unit's eye now, as from the recentred
+head, or where the frames drew it in the hand last: they draw the eye
+between ticks, and the hand later than the tick's), and its velocity (world
+units a tick) along the hand's throw, as hard as the hand threw it of the
+game's throw's, game_velocity (never harder: the power is at most 1); FALSE
+with no direction to throw it in */
+static boolean vr_grenade_hand_release(long unit_index, struct halo_vr_throw const *throw_state,
+	real_vector3d const *game_velocity, real_point3d *hand, real_vector3d *velocity, real *speed)
 {
-	struct halo_vr_throw throw_state;
-	real_point3d eye, hand;
+	real_point3d eye;
 	real_vector3d direction;
-	real speed, units, c, s;
+	real units, c, s;
 
-	if (!vr_grenade_hand_throw(unit_index, &throw_state) || throw_state.phase != HALO_VR_THROW_RELEASED)
-		return FALSE;
-	c = (real)cos(throw_state.body_yaw);
-	s = (real)sin(throw_state.body_yaw);
-	units = throw_state.world_units_per_metre;
-	/* from the hand: the head's place in the world is the eye's (as the
-	view's is, vr_render.c), the hand from it as from the recentred head */
+	c = (real)cos(throw_state->body_yaw);
+	s = (real)sin(throw_state->body_yaw);
+	units = throw_state->world_units_per_metre;
+	/* (the head's place in the world is the eye's, as the view's is,
+	vr_render.c) */
 	unit_get_camera_position(unit_index, &eye);
-	hand.x = eye.x + (throw_state.position[0] * c - throw_state.position[1] * s) * units;
-	hand.y = eye.y + (throw_state.position[0] * s + throw_state.position[1] * c) * units;
-	hand.z = eye.z + throw_state.position[2] * units;
-	/* (where the grenade was drawn in the hand, when it was: the frames
-	draw the eye between ticks, and the hand later than the tick's) */
+	hand->x = eye.x + (throw_state->position[0] * c - throw_state->position[1] * s) * units;
+	hand->y = eye.y + (throw_state->position[0] * s + throw_state->position[1] * c) * units;
+	hand->z = eye.z + throw_state->position[2] * units;
 	if (vr_grenade.drawn_valid)
-		hand = vr_grenade.drawn.position;
-	object_translate(grenade_index, &hand, NULL);
-	render_interpolation_object_from(grenade_index, &hand);
-	direction.i = throw_state.direction[0] * c - throw_state.direction[1] * s;
-	direction.j = throw_state.direction[0] * s + throw_state.direction[1] * c;
-	direction.k = throw_state.direction[2];
+		*hand = vr_grenade.drawn.position;
+	direction.i = throw_state->direction[0] * c - throw_state->direction[1] * s;
+	direction.j = throw_state->direction[0] * s + throw_state->direction[1] * c;
+	direction.k = throw_state->direction[2];
 	if (normalize3d(&direction) <= 0.0f)
 		return FALSE;
-	speed = magnitude3d(initial_velocity) * throw_state.power;
-	scale_vector3d(&direction, speed, initial_velocity);
+	*speed = magnitude3d(game_velocity) * throw_state->power;
+	scale_vector3d(&direction, *speed, velocity);
+	return TRUE;
+}
+
+/* the hand's grenade thrown: the hand's throw over */
+static void vr_grenade_thrown(struct halo_vr_throw const *throw_state, real speed)
+{
+	short substep_index = sim_substep_index();
+
 	vr_grenade.released = TRUE;
 	vr_grenade.drawn_valid = FALSE;
 	halo_vr_throw_done();
-	if (throw_state.log)
+	if (throw_state->log)
 	{
-		platform_log("vr grenade: tick %ld: thrown from the hand (%.2f %.2f %.2f m from the head: forward, left, "
-			"up), %.2f world units a second (power %.2f), pitched %.0f degrees up", game_time_get(),
-			throw_state.position[0], throw_state.position[1], throw_state.position[2], speed * TICKS_PER_SECOND,
-			throw_state.power, throw_state.pitch * 180.0f / _pi);
+		platform_log("vr grenade: tick %ld%s%d: thrown from the hand (%.2f %.2f %.2f m from the head: forward, "
+			"left, up), %.2f world units a second (power %.2f), pitched %.0f degrees up", game_time_get(),
+			substep_index != NONE ? " sub-step " : "", substep_index != NONE ? substep_index : 0,
+			throw_state->position[0], throw_state->position[1], throw_state->position[2], speed * TICKS_PER_SECOND,
+			throw_state->power, throw_state->pitch * 180.0f / _pi);
 	}
+}
+
+/* units.c, as the unit lets its grenade go with the velocity the game
+gives it (world units a tick), in the tick: the hand's throw (TRUE), the
+grenade moved to the hand and its velocity turned along the throw, as hard
+as the hand threw it of the game's; FALSE when it is not the hand's (the
+game's own, or cut short before the hand let go). At 60 and 120 (a release
+the fast phase did not see first: vr_grenade_substep) its head start is to
+come in the tick's update, as a projectile made in the tick's own work has
+it (projectile_substep_launch) */
+boolean vr_grenade_release(long unit_index, long grenade_index, real_vector3d *initial_velocity)
+{
+	struct halo_vr_throw throw_state;
+	real_vector3d game_velocity = *initial_velocity;
+	real_point3d hand;
+	real speed;
+
+	if (!vr_grenade_hand_throw(unit_index, &throw_state) || throw_state.phase != HALO_VR_THROW_RELEASED ||
+		!vr_grenade_hand_release(unit_index, &throw_state, &game_velocity, &hand, initial_velocity, &speed))
+	{
+		return FALSE;
+	}
+	object_translate(grenade_index, &hand, NULL);
+	render_interpolation_object_from(grenade_index, &hand);
+	projectile_substep_launch(grenade_index);
+	vr_grenade_thrown(&throw_state, speed);
 	return TRUE;
+}
+
+/* the fast phase's VR slot (_sim_substep_vr, sim_rate.h; at 30 its one
+sub-step leaves the throw to the tick): the hand having let go of the
+grenade the VR player's unit holds in its throw, it is let go of now, at
+this sub-step, as unit_throw_grenade_release lets a player's go (not early:
+the hand times it), from the hand along its throw (vr_grenade_hand_release,
+with the eye of this sub-step: the slot runs after the bipeds'), its head
+start and its hold those of a projectile made now
+(projectile_substep_launch). The throw animation is put on the frame before
+its release, which the next tick's update goes on to, as the next tick's
+would at 30 (vr_grenade_throw_advance); the release there finds the grenade
+gone. A grenade not yet in the hand is the tick's (its throw puts it there
+first) */
+static void vr_grenade_substep(short substep_index, short substep_count, real seconds)
+{
+	struct halo_vr_throw throw_state;
+	struct unit_datum *unit;
+	struct unit_definition *unit_definition;
+	struct object_datum *grenade;
+	real_vector3d game_velocity, velocity;
+	real_point3d hand, camera;
+	real speed;
+	long unit_index, grenade_index;
+
+	(void)substep_index;
+	(void)seconds;
+	if (substep_count <= 1 || (unit_index = vr_grenade_player_unit()) == NONE)
+		return;
+	unit = unit_get(unit_index);
+	grenade_index = unit->unit.grenade_object_index;
+	if (unit->unit.grenade_throw_state != _unit_grenade_throw_in_hand || grenade_index == NONE ||
+		unit->unit.animation.state != _unit_state_throw_grenade ||
+		!vr_grenade_hand_throw(unit_index, &throw_state) || throw_state.phase != HALO_VR_THROW_RELEASED)
+	{
+		return;
+	}
+	/* (the game's throw, a player's: along the aim, at the unit's grenade
+	velocity) */
+	unit_definition = unit_definition_get(unit->definition_index);
+	scale_vector3d(&unit->unit.aiming_vector, unit_definition->unit.grenade_velocity / TICKS_PER_SECOND,
+		&game_velocity);
+	if (!vr_grenade_hand_release(unit_index, &throw_state, &game_velocity, &hand, &velocity, &speed))
+		return;
+	object_detach(grenade_index);
+	object_translate(grenade_index, &hand, NULL);
+	render_interpolation_object_from(grenade_index, &hand);
+	grenade = object_get(grenade_index);
+	subtract_vectors3d(&velocity, &grenade->object.translational_velocity, &velocity);
+	projectile_accelerate(grenade_index, &velocity);
+	unit->unit.grenade_throw_state = _unit_grenade_throw_ending;
+	unit->unit.grenade_object_index = NONE;
+	if (vr_grenade.key_frame_index > 0 && unit->object.animation.state.frame_index + 1 < vr_grenade.key_frame_index)
+		unit->object.animation.state.frame_index = vr_grenade.key_frame_index - 1;
+	vr_grenade_thrown(&throw_state, speed);
+	unit_get_camera_position(unit_index, &camera);
+	if (!object_force_inside_bsp(grenade_index, &camera))
+	{
+		/* (gone at once, as a projectile deleted in a sub-step is) */
+		object_delete_immediately(grenade_index);
+		return;
+	}
+	projectile_substep_launch(grenade_index);
 }
 
 #endif
