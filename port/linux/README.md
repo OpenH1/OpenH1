@@ -4489,7 +4489,8 @@ mode's throws and grabs move in smaller steps.
   120 the linear and quadratic ones scale by a power of two, which is exact.
 - Nothing of a sub-step outlives its tick, other than what a tick at 30
   leaves in the game state. A saved game (taken at the end of a tick) is the
-  same at every rate. A counter of ticks in a byte or a short (`airborne_ticks`,
+  same at every rate and carries no rate: it loads at the rate the next tick
+  takes, the player's setting or a network game's 30. A counter of ticks in a byte or a short (`airborne_ticks`,
   `elevator_ticks`, a held button) counts on the last sub-step only
   (`sim_substep_is_last`), so it does not overflow at 120.
 - A subsystem registers its work for a slot (`sim_substep_register`). The
