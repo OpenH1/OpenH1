@@ -23,11 +23,12 @@
 #define LOADING_RING_MIPS 8
 /* the largest level kept of a texture, each way */
 #define LOADING_RING_TEXTURE_LIMIT 1024u
-/* the flow of the ring's surface as it turns, its maps' repeats a second */
-#define LOADING_RING_FLOW 0.25f
-/* the camera's drift toward the ring when the menu's was still, world units
-   a second */
-#define LOADING_RING_DRIFT 0.02f
+/* the far side of the ring's softening (a depth of field): how far, in
+   pixels, at its farthest from the camera, for the picture and for an eye
+   (VR's, a little), and from how far along the ring's depth, of 256 */
+#define LOADING_RING_FOCUS_RADIUS 3
+#define LOADING_RING_FOCUS_EYE_RADIUS 1
+#define LOADING_RING_FOCUS_START 80
 /* VR's stereo pair: the eyes' separation (metres), the game's metres to a
    world unit (vr.c's), and how much larger than the game's scale the scene
    seems (the eyes' separation that much less): the ring kilometres away */
@@ -78,7 +79,7 @@ struct loading_ring
 	uint16_t *triangles;
 	float camera_position[3], camera_forward[3], camera_up[3], camera_right[3];
 	float focal, light[3];
-	float spin_center[3], camera_velocity[3], drift_limit;
+	float spin_center[3];
 	/* the frame: the sky drawn once, the colour and depth buffers, the
 	vertices transformed */
 	uint32_t *sky, *color;
@@ -404,8 +405,8 @@ static inline float loading_ring_finite(float value)
 	return value == value && value < 1e9f && value > -1e9f ? value : 0.0f;
 }
 
-/* the middle of the world's vertices (the ring's), which the camera drifts
-   toward when the menu's did not move */
+/* the middle of the world's vertices (the ring's): the camera's target when
+   the menu's is not known, and which ring the scene's is */
 static inline void loading_ring_center(struct loading_ring *ring)
 {
 	double sum[3] = { 0.0, 0.0, 0.0 };
@@ -426,30 +427,39 @@ static inline void loading_ring_center(struct loading_ring *ring)
 		ring->spin_center[i] = count ? (float)(sum[i] / count) : 0.0f;
 }
 
-/* how far the camera may go: a twentieth of the way to the ring's nearest
-   vertex, so that the view stays the menu's */
-static inline void loading_ring_drift_limit(struct loading_ring *ring)
+/* The stock ui map's ring (the middle of its vertices, as loading_ring_center
+   finds it), and the camera the bundled picture shows it from, found by
+   matching the picture's ring to the drawn one (position, then yaw, pitch
+   and roll, radians, and the field of view across): with the stock ring,
+   the loading screen shows it as the picture does, whatever the menu's
+   camera was doing as the load began. */
+static const float loading_ring_stock_center[3] = { 12.38f, -1.63f, 16.66f };
+static const float loading_ring_picture_camera[7] = { 0.114f, 0.109f, 0.0f, -0.0002f, 0.0086f, -0.0278f, 1.2218f };
+
+static inline int loading_ring_picture_framing(struct loading_ring *ring, float *fov)
 {
-	float nearest = 1e30f;
-	uint32_t part, index;
+	const float *c = loading_ring_picture_camera;
+	float d[3], left[3];
+	int i;
 
-	for (part = 0; part < ring->part_count; part++)
+	for (i = 0; i < 3; i++)
+		d[i] = ring->spin_center[i] - loading_ring_stock_center[i];
+	if (loading_ring_dot(d, d) > 0.25f)
+		return 0;
+	ring->camera_forward[0] = cosf(c[3]) * cosf(c[4]);
+	ring->camera_forward[1] = sinf(c[3]) * cosf(c[4]);
+	ring->camera_forward[2] = sinf(c[4]);
+	ring->camera_up[0] = -cosf(c[3]) * sinf(c[4]);
+	ring->camera_up[1] = -sinf(c[3]) * sinf(c[4]);
+	ring->camera_up[2] = cosf(c[4]);
+	loading_ring_cross(ring->camera_up, ring->camera_forward, left);
+	for (i = 0; i < 3; i++)
 	{
-		const struct loading_ring_part *p = &ring->parts[part];
-
-		if (p->layer != LOADING_SCENE_LAYER_WORLD)
-			continue;
-		for (index = p->first_vertex; index < p->first_vertex + p->vertex_count; index++)
-		{
-			float d[3];
-			int i;
-
-			for (i = 0; i < 3; i++)
-				d[i] = ring->positions[index * 3 + i] - ring->camera_position[i];
-			nearest = fminf(nearest, loading_ring_dot(d, d));
-		}
+		ring->camera_position[i] = c[i];
+		ring->camera_up[i] = ring->camera_up[i] * cosf(c[5]) + left[i] * sinf(c[5]);
 	}
-	ring->drift_limit = nearest < 1e29f ? 0.05f * sqrtf(nearest) : 0.0f;
+	*fov = c[6];
+	return 1;
 }
 
 /* the scene to draw, from a block (loading_scene.h); 0: none (NULL, or a
@@ -561,7 +571,6 @@ static inline int loading_ring_set(struct loading_ring *ring, const void *data, 
 		ring->camera_forward[index] = loading_ring_finite(header->camera_forward[index]);
 		ring->camera_up[index] = loading_ring_finite(header->camera_up[index]);
 		ring->light[index] = loading_ring_finite(header->light_direction[index]);
-		ring->camera_velocity[index] = loading_ring_finite(header->camera_velocity[index]);
 	}
 	if (!loading_ring_normalize(ring->camera_forward))
 	{
@@ -582,11 +591,17 @@ static inline int loading_ring_set(struct loading_ring *ring, const void *data, 
 	{
 		float fov = loading_ring_finite(header->camera_field_of_view);
 
+		/* (the stock ring as the picture shows it) */
+		if (loading_ring_picture_framing(ring, &fov))
+		{
+			loading_ring_cross(ring->camera_forward, ring->camera_up, ring->camera_right);
+			loading_ring_normalize(ring->camera_right);
+			loading_ring_cross(ring->camera_right, ring->camera_forward, ring->camera_up);
+		}
 		if (!(fov > 0.2f && fov < 3.0f))
 			fov = 1.2217305f;
 		ring->focal = 0.5f / tanf(fov * 0.5f);
 	}
-	loading_ring_drift_limit(ring);
 	if (!loading_ring_normalize(ring->light))
 	{
 		/* (from over the camera's shoulder) */
@@ -856,31 +871,18 @@ static inline void loading_ring_part_draw(struct loading_ring *ring, const struc
 	}
 }
 
-/* the vertices of a layer's parts as the camera sees them at `seconds`: the
-   camera goes on as the menu's moved (or drifts toward the ring, the menu's
-   still), a twentieth of the way to the ring's nearest vertex at most; the ring's surfaces (its lit
-   parts) flow along it as it turns, its shadow, the sun's, staying put. A
-   ring is the same shape turned, so the flow of its maps is its turn, and
-   the part of it the map holds (the menu's view of it) stays in view. */
-static inline void loading_ring_transform(struct loading_ring *ring, uint32_t layer, float seconds)
+/* the vertices of a layer's parts as the camera sees them: still, as the
+   picture is (the sweep's light alone moves), from the camera's place or an
+   eye's beside it */
+static inline void loading_ring_transform(struct loading_ring *ring, uint32_t layer)
 {
-	float eye[3], toward[3], distance, travel, speed, light[3];
+	float eye[3], light[3];
 	uint32_t part, index, i;
 
 	for (i = 0; i < 3; i++)
-		toward[i] = ring->spin_center[i] - ring->camera_position[i];
-	distance = sqrtf(loading_ring_dot(toward, toward));
-	speed = sqrtf(loading_ring_dot(ring->camera_velocity, ring->camera_velocity));
-	travel = fminf(seconds * (speed > LOADING_RING_DRIFT ? speed : LOADING_RING_DRIFT), ring->drift_limit);
-	for (i = 0; i < 3; i++)
-	{
-		float direction = speed > LOADING_RING_DRIFT ? ring->camera_velocity[i] / speed :
-			distance > 1e-3f ? toward[i] / distance : 0.0f;
-
-		eye[i] = layer == LOADING_SCENE_LAYER_SKY ? 0.0f : ring->camera_position[i] + direction * travel +
+		eye[i] = layer == LOADING_SCENE_LAYER_SKY ? 0.0f : ring->camera_position[i] +
 			ring->view_eye[0] * ring->camera_right[i] + ring->view_eye[1] * ring->camera_up[i] +
 			ring->view_eye[2] * ring->camera_forward[i];
-	}
 	/* the sweep's light: behind the ring, toward the sweep's place across the
 	picture (glint_x, its pixel), lighting the edges that face across it */
 	{
@@ -894,12 +896,9 @@ static inline void loading_ring_transform(struct loading_ring *ring, uint32_t la
 	for (part = 0; part < ring->part_count; part++)
 	{
 		const struct loading_ring_part *p = &ring->parts[part];
-		float flow = 0.0f;
 
 		if (p->layer != layer)
 			continue;
-		if (layer == LOADING_SCENE_LAYER_WORLD && (p->flags & LOADING_SCENE_PART_LIT) && p->map_count)
-			flow = seconds * LOADING_RING_FLOW / fmaxf(fabsf(p->maps[0].scale[0]), 1.0f);
 		for (index = p->first_vertex; index < p->first_vertex + p->vertex_count; index++)
 		{
 			const float *position = &ring->positions[index * 3], *normal = &ring->normals[index * 3];
@@ -936,12 +935,124 @@ static inline void loading_ring_transform(struct loading_ring *ring, uint32_t la
 			point->x = loading_ring_dot(d, ring->camera_right);
 			point->y = loading_ring_dot(d, ring->camera_up);
 			point->z = loading_ring_dot(d, ring->camera_forward);
-			point->u = ring->texcoords[index * 2] + flow;
+			point->u = ring->texcoords[index * 2];
 			point->v = ring->texcoords[index * 2 + 1];
 			point->shade = shade;
 			point->glint = glint;
 		}
 	}
+}
+
+/* sums of a row or column of w values, each the sum of the 2r+1 about it
+   (the edges' outside counted as nothing) */
+static inline void loading_ring_box(const uint32_t *in, uint32_t *out, int count, int stride, int r)
+{
+	uint32_t sum = 0;
+	int i;
+
+	for (i = 0; i < r && i < count; i++)
+		sum += in[i * stride];
+	for (i = 0; i < count; i++)
+	{
+		if (i + r < count)
+			sum += in[(i + r) * stride];
+		out[i * stride] = sum;
+		if (i - r >= 0)
+			sum -= in[(i - r) * stride];
+	}
+}
+
+/* the ring's far side softened, its near edge sharp, as the picture's is (a
+   depth of field): each pixel mixed with the box of radius r about it, by
+   how far along the ring's depth it is; a pixel beside the ring by the
+   depth of the ring about it, so that the far side's outline softens too */
+static inline void loading_ring_focus(struct loading_ring *ring, int r)
+{
+	uint32_t width = ring->width, height = ring->height, pixels = width * height, index;
+	uint32_t *planes, *temporary;
+	float nearest = 0.0f, farthest = 1e30f;
+	int channel, row, column;
+
+	if (r <= 0)
+		return;
+	/* (the depth buffer holds 1/z: the ring's nearest is its largest) */
+	for (index = 0; index < pixels; index++)
+	{
+		float iz = ring->depth[index];
+
+		if (iz > 0.0f)
+		{
+			nearest = fmaxf(nearest, iz);
+			farthest = fminf(farthest, iz);
+		}
+	}
+	if (!(nearest > 0.0f) || !(farthest < nearest))
+		return;
+	/* planes: red, green, blue, the depth's mix (of 256) where the ring is,
+	and where it is (1) */
+	planes = malloc((size_t)pixels * 5 * 2 * sizeof(uint32_t));
+	if (!planes)
+		return;
+	temporary = planes + (size_t)pixels * 5;
+	for (index = 0; index < pixels; index++)
+	{
+		uint32_t value = ring->color[index], mix = 0, inside = ring->depth[index] > 0.0f;
+
+		if (inside)
+		{
+			float along = (1.0f / ring->depth[index] - 1.0f / nearest) / (1.0f / farthest - 1.0f / nearest);
+			float t = (along * 256.0f - LOADING_RING_FOCUS_START) / (256.0f - LOADING_RING_FOCUS_START);
+
+			t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+			mix = (uint32_t)(t * t * (3.0f - 2.0f * t) * 256.0f);
+		}
+		planes[index] = value & 255;
+		planes[pixels + index] = (value >> 8) & 255;
+		planes[pixels * 2 + index] = (value >> 16) & 255;
+		planes[pixels * 3 + index] = mix;
+		planes[pixels * 4 + index] = inside;
+	}
+	for (channel = 0; channel < 5; channel++)
+	{
+		uint32_t *plane = planes + (size_t)pixels * channel, *scratch = temporary + (size_t)pixels * channel;
+
+		for (row = 0; row < (int)height; row++)
+			loading_ring_box(plane + (uint32_t)row * width, scratch + (uint32_t)row * width, (int)width, 1, r);
+		for (column = 0; column < (int)width; column++)
+			loading_ring_box(scratch + column, plane + column, (int)height, (int)width, r);
+	}
+	{
+		uint32_t area = (uint32_t)((2 * r + 1) * (2 * r + 1));
+
+		for (index = 0; index < pixels; index++)
+		{
+			uint32_t value = ring->color[index], mix, result = 0xff000000u;
+
+			if (ring->depth[index] > 0.0f)
+				mix = 0;
+			else
+				mix = planes[pixels * 4 + index] ? planes[pixels * 3 + index] / planes[pixels * 4 + index] : 0;
+			/* (the ring's own pixels by their own depth) */
+			if (ring->depth[index] > 0.0f)
+			{
+				float along = (1.0f / ring->depth[index] - 1.0f / nearest) / (1.0f / farthest - 1.0f / nearest);
+				float t = (along * 256.0f - LOADING_RING_FOCUS_START) / (256.0f - LOADING_RING_FOCUS_START);
+
+				t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+				mix = (uint32_t)(t * t * (3.0f - 2.0f * t) * 256.0f);
+			}
+			if (!mix)
+				continue;
+			for (channel = 0; channel < 3; channel++)
+			{
+				uint32_t sharp = (value >> (channel * 8)) & 255, soft = planes[pixels * channel + index] / area;
+
+				result |= ((sharp * (256 - mix) + soft * mix) >> 8) << (channel * 8);
+			}
+			ring->color[index] = result;
+		}
+	}
+	free(planes);
 }
 
 /* the sky drawn about the camera into target, moved by (dx, dy) pixels (an
@@ -1013,7 +1124,7 @@ static inline const uint32_t *loading_ring_draw(struct loading_ring *ring, uint3
 		/* the sky, about the camera, which only moves (never turns) */
 		for (index = 0; index < pixels; index++)
 			ring->sky[index] = 0xff000000u;
-		loading_ring_transform(ring, LOADING_SCENE_LAYER_SKY, 0.0f);
+		loading_ring_transform(ring, LOADING_SCENE_LAYER_SKY);
 		for (part = 0; part < ring->part_count; part++)
 			if (ring->parts[part].layer == LOADING_SCENE_LAYER_SKY)
 				loading_ring_part_draw(ring, &ring->parts[part], ring->sky, 1e-3f);
@@ -1040,7 +1151,7 @@ static inline const uint32_t *loading_ring_draw(struct loading_ring *ring, uint3
 	memset(ring->depth, 0, (size_t)pixels * sizeof(float));
 	memset(ring->glint, 0, (size_t)pixels);
 	ring->glint_x = glint_x;
-	loading_ring_transform(ring, LOADING_SCENE_LAYER_WORLD, seconds);
+	loading_ring_transform(ring, LOADING_SCENE_LAYER_WORLD);
 	/* opaque parts first, then those blended over them */
 	for (part = 0; part < ring->part_count; part++)
 		if (ring->parts[part].layer == LOADING_SCENE_LAYER_WORLD && ring->parts[part].blend == LOADING_SCENE_BLEND_OPAQUE)
@@ -1048,6 +1159,8 @@ static inline const uint32_t *loading_ring_draw(struct loading_ring *ring, uint3
 	for (part = 0; part < ring->part_count; part++)
 		if (ring->parts[part].layer == LOADING_SCENE_LAYER_WORLD && ring->parts[part].blend != LOADING_SCENE_BLEND_OPAQUE)
 			loading_ring_part_draw(ring, &ring->parts[part], ring->color, 1e-2f);
+	loading_ring_focus(ring, eye ? LOADING_RING_FOCUS_EYE_RADIUS : LOADING_RING_FOCUS_RADIUS);
+	(void)seconds;
 	return ring->color;
 }
 

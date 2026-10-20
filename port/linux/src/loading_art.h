@@ -20,7 +20,7 @@
 #define LOADING_ART_FRAME_PIXELS (LOADING_ART_FRAME_WIDTH * LOADING_ART_FRAME_HEIGHT)
 /* how much of the menu's scene shows between the sweeps, of 256 */
 #ifndef LOADING_ART_SCENE_BASE
-#define LOADING_ART_SCENE_BASE 72
+#define LOADING_ART_SCENE_BASE 24
 #endif
 /* what the sweep lights of the scene: its brightness, its detail's edges
 and the sweep's light on the ring, of 16 */
