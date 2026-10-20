@@ -300,7 +300,9 @@ def main():
     parser.add_argument("--show-holdouts", action="store_true", help="show the hidden scenarios' measures")
     parser.add_argument("--no-retail", action="store_true", help="leave out the scenarios that need retail maps")
     parser.add_argument("--work", type=Path, default=ROOT / "build/scorecard", help="where the runs go")
-    parser.add_argument("--jobs", type=int, default=os.cpu_count() or 4, help="runs side by side")
+    parser.add_argument("--jobs", type=int, default=int(os.environ.get("SCORECARD_JOBS") or 0) or
+                        max(1, (os.cpu_count() or 4) // 2),
+                        help="runs side by side (default $SCORECARD_JOBS, else half the processors)")
     parser.add_argument("--json", type=Path, help="write every run's measures and the verdicts here")
     parser.add_argument("--list", action="store_true", help="list the scenarios and their tags")
     parser.add_argument("--verbose", action="store_true")
