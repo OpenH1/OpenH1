@@ -43,6 +43,54 @@ which ends when its smoke has gone and the frame most like the first comes.
 A spot is no good if the blast moves or hurts the player (the view jumps at
 the cut): the survey measures both from the trace.
 
+## Running them
+
+On the capture machine, the scripts in a folder of their own (here
+`~/halo-capture-runs/tools`), the runs beside it:
+
+```sh
+# a survey: candidates scored, the best drawn on a sheet
+python tools/survey.py ratrace,wizard --out survey-lights            # grenades (the default script)
+python tools/rank.py survey-lights 8                                 # survey-lights/sheet.png
+# a final pair at 4K, its loop chosen, masters encoded into final/out
+python tools/final.py lights "levels\test\ratrace\ratrace" "0 aim=90,-5;1 throw;5 throw" 4.5 7.6 9.8 --seed 7
+```
+
+`survey.py` takes `--yaws`, `--pitch` (lists), `--script` (with `{yaw}` and
+`{pitch}`), `--event boom|fire`, `--console` (commands sent once the map
+draws), `--seconds` (of simulation, then it quits), `--seed`. Its games run
+with `nohup` so that a dropped connection does not stop them; `follow.sh
+<log> <pattern>` prints a log as it grows.
+
+Things learnt doing it:
+
+- Do not copy a script over one that is running: bash reads a script as it
+  runs it. Copy it beside, then `mv`.
+- `debug.trace` must be a relative path (it lands in the data root); the
+  game cannot open an absolute one.
+- `debug.trace_seconds` quits the game at a time of simulation: much
+  sooner than `debug.exit_after`'s wall clock.
+- The trace has more steps than ticks (a tick can have several): count
+  frames by the steps' ticks.
+- A multiplayer spawn did not change with the seed on the maps tried.
+- `show_hud 0` in `init.txt` comes too early (and prints its result): send
+  it through the console once the map draws, as `capture.sh` does.
+- A grenade thrown at a wall close by comes back and kills the player
+  (35 of the 80 lights candidates): the survey drops those.
+
+### A weapon the player does not start with
+
+`cheat_all_weapons` (sent with `--console`) drops the globals' weapon list
+in a ring 1.5 world units around the player, 22.5° apart, in the list's
+order (`game_engine.c`: assault rifle, flamethrower, gravity rifle, needler,
+pistol, plasma pistol, plasma rifle, rocket launcher, shotgun, sniper rifle,
+ball, flag, frag and plasma grenades; `cheats.c`, `cheat_objects`). Walk to
+one and hold action to swap it in; the trace's `e new` lines name what the
+weapon fires, which says what was picked up. On Rat Race (seed 7): aim
+yaw 26 to 41 and pitch -25, walk forward 0.5 s at 3 s, action at 4.5 s:
+the plasma rifle, every time (yaw 45 to 65 gives the rocket launcher, 75
+to 105 the sniper rifle).
+
 ## Surveys
 
 `surveys/<clip>-<date>/`: `results.jsonl` (a line a candidate), `sheet.webp`
