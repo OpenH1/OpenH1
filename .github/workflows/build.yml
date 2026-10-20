@@ -10,6 +10,8 @@ name: Build
 # tools/ci_build.py does each build; see it for the options.
 #
 # Kept cheap:
+# - actions/cache compresses with zstd (the Ubuntu containers install it:
+#   without it, gzip, slower to save and restore);
 # - one job per platform builds both configurations, so its set-up (tools,
 #   downloads, caches) is paid once;
 # - compiles go through ccache, whose cache, master's latest build's, every
@@ -78,7 +80,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates git python3 ninja-build cmake make \
-            pkg-config ccache zip clang \
+            pkg-config ccache zip zstd clang \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
             libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
             libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
@@ -194,7 +196,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates git python3 python3-pytest python3-pytest-xdist ninja-build \
-            cmake make pkg-config ccache zip clang gcc-multilib binutils \
+            cmake make pkg-config ccache zip zstd clang gcc-multilib binutils \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
             libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
             libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
@@ -360,6 +362,14 @@ jobs:
           path: build/android/third_party
           key: android-third-party-${{ hashFiles('tools/android_build.py', 'port/android/patches/**') }}
 
+      # (and the Linux x86-64 build's, which configure.py fetches too on this
+      # x86-64 Linux runner, for a build this job does not make: the
+      # linux-x86_64 job's cache, restored only)
+      - uses: actions/cache/restore@v4
+        with:
+          path: build/linux_x86_64/third_party
+          key: linux-x86_64-third-party-${{ hashFiles('tools/android_build.py', 'tools/vulkan_build.py', 'tools/linux_guest_build.py', 'port/android/patches/**') }}
+
       # the guests' LLVM, which configure.py fetches (tools/guest_toolchain.py)
       - uses: actions/cache@v4
         with:
@@ -377,8 +387,11 @@ jobs:
       # keystore, base64) and ANDROID_KEYSTORE_PASSWORD (its password, and
       # the key's, alias halo): every build signed with it installs over the
       # one before, as the app's self-updater (Updater.java) needs. Without
-      # them each build is signed with the runner's own debug key.
+      # them each build is signed with the runner's own debug key. Master's
+      # builds alone (the release's) get them: a branch's build, which runs
+      # the branch's code, is signed with the debug key.
       - name: Signing key
+        if: github.ref == 'refs/heads/master'
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -391,7 +404,7 @@ jobs:
 
       - name: Debug
         env:
-          HALO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          HALO_ANDROID_KEYSTORE_PASSWORD: ${{ github.ref == 'refs/heads/master' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
         run: python3 tools/ci_build.py android debug
 
       - name: Release
