@@ -57,6 +57,9 @@ on the 30 Hz grid, so the same script means the same at every rate (but the off-
 | `impact_*` | where and when each shot strikes | 0.005 wu; a step + 1 ms |
 | `cadence_*` | shots in a held trigger (rates of fire 1, 7, 15, 30), and their times | exact; 1 ms |
 | `grenade_arcs` | each grenade's first landing and its time, where it lies when it goes off, its fuse | 0.01 wu; 1 ms; 0.25 wu; a step + 1 ms |
+| `grenade_thrown` | grenades thrown by hand (StageKit's throw animation lets go at its key frame): as `grenade_arcs`, timed from each grenade's making in the hand | 0.01 wu; 1 ms; 0.25 wu; a step + 1 ms |
+| `ledge_fall` | walking off a ledge 2 high: when it goes over the edge and how long it falls (where a fitted parabola tops out and reaches the floor), how far it drops and goes across, its height every 30th of a second | 1 ms; 0.003 wu; 0.5%; 0.01 wu RMS |
+| `shield_recharge` | a shield of 75 recharging in 2 seconds, dropped to nothing and to half by the console: the shield every 30th of a second (debug.trace's player lines carry body and shield), when it was lowest and full again | 0.0001 RMS; 1 ms |
 | `elevator_ride` | the player's height every 30th of a second on a lift | 0.01 wu RMS |
 | `ai_patrol` | an AI's biped walking command lists: its place every 30th of a second, how far it walked, and how far its steps between the grid's times are from the ticks' lines | 0.01 wu RMS; 0.5%; 0.002 wu |
 | `elevator_ai_rider*` | an AI's biped walking across a lift as it rises and back as it comes down, updated before the lift or after it (`_late`), riding its floor or carried by it (`_carried`: a biped with a collision model): as `ai_patrol` | 0.01 wu RMS; 0.5%; 0.002 wu |
@@ -64,7 +67,7 @@ on the 30 Hz grid, so the same script means the same at every rate (but the off-
 
 Needs retail maps (skipped, stubs in `scenarios.py`): every weapon's fire rate, the retail first shots, frag and
 plasma grenades, the needler's and rocket's flights, the retail vehicles, melee, AI reaction, script timing, cinematics. Needs
-StageKit content first: a thrown grenade (a throw animation), shields, a ledge; and the VR hands and a network game.
+more than StageKit: the VR hands and a network game.
 
 ## The gate
 

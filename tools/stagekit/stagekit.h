@@ -69,6 +69,10 @@ struct stage
 	and its definition, which a scenario may give more (prop_biped_body) */
 	long biped_handle;
 	struct biped_definition *biped;
+	/* its animations, and the globals (stage.c), which a scenario may give
+	more (prop_grenades) */
+	struct animation_graph *biped_animations;
+	struct game_globals *globals;
 };
 
 /* a move of an AI's command list (prop_ai_walker): a heading in degrees (0
@@ -164,6 +168,18 @@ void prop_elevator(struct stage *stage, char const *name, real_rectangle3d const
 as the game's bipeds all have one (what finds bodies by their collision finds
 it: a lift's riders, device_machines.c), else it has none */
 void prop_biped_body(struct stage *stage);
+/* the same, its body and shield of these vitalities, the shield recharging
+in recharge_seconds once stun_seconds have passed since it was struck
+(damage.c) */
+void prop_biped_shield(struct stage *stage, real body_vitality, real shield_vitality, real recharge_seconds,
+	real stun_seconds);
+
+/* grenades: count of them in the players' hands as they start (the globals'
+first kind, units.c's, each kind projectile_handle's projectile), which the
+players' biped throws (its throw animation, which lets go of the grenade a
+third of a second in) at throw_speed world units a second along its aim,
+from its eyes */
+void prop_grenades(struct stage *stage, long projectile_handle, short count, real throw_speed);
 
 /* an AI's biped: the players' biped standing at position facing along x,
 named name, which the console makes an actor of the variant variant_name

@@ -94,6 +94,21 @@ SCENARIOS = [
              cues=[(0.5, "ai_attach_free walker walker"), (1, "ai_command_list_by_unit walker leg1"),
                    (4, "ai_command_list_by_unit walker leg2"), (7, "ai_command_list_by_unit walker leg3")],
              seconds=10.0, arguments=dict(start=0.5, end=9.5)),
+    # a ledge (U15, synthetic): the player walks off a block 2 high: when it goes over the edge, how long it falls,
+    # how far it drops and goes across, and its height every 30th of a second through the fall
+    scenario("ledge_fall", "ledge", "fall", ["ledge", "U15"], script="0.5-3 move=0,1", seconds=3.0,
+             arguments=dict(after=0.5)),
+    # a shield (U14, synthetic): the player's biped with a shield of 75 recharging in 2 seconds, dropped to nothing
+    # at a second and to half at 4: its vitality every 30th of a second, when it was lowest and when full again
+    scenario("shield_recharge", "shield", "shield", ["shield", "U14"],
+             cues=[(1, "unit_set_current_vitality (unit (list_get (players) 0)) 75 0"),
+                   (4, "unit_set_current_vitality (unit (list_get (players) 0)) 75 37.5")],
+             seconds=6.0, arguments=dict(start=0.5)),
+    # grenades thrown by hand (U12, synthetic; row 4's): the throw animation lets go of each a third of a second after
+    # the press, at three pitches, each in its own direction: where and when each first lands, where it lies when it
+    # goes off, and its fuse
+    scenario("grenade_thrown", "throw", "thrown", ["grenade", "U12"],
+             script="0.4 aim=0,0; 0.5 throw; 1.9 aim=120,20; 2 throw; 3.4 aim=240,40; 3.5 throw", seconds=10.5),
 ]
 
 
@@ -167,10 +182,6 @@ SCENARIOS += [
       for level in ("a10", "b30")],
     *[scenario(f"retail_cinematic_{level}", "retail", "cinematic", ["cinematic", "retail"], needs=RETAIL)
       for level in ("a10", "c10")],
-    scenario("grenade_thrown", "stagekit", "grenades", ["grenade", "U2"],
-             needs="a StageKit biped with a grenade throw animation (U12)"),
-    scenario("shield_recharge", "stagekit", "shield", ["shield", "U2"], needs="a StageKit shield (U14)"),
-    scenario("ledge_fall", "stagekit", "fall", ["biped", "U1"], needs="a StageKit ledge (U15)"),
     scenario("vr_hand_throw", "vr", "throw", ["vr", "U10"], needs="the VR mode's test hands (tools/vr_test)"),
     scenario("classic_network_rate", "network", "rate", ["network", "U9"],
              needs="a two-machine network test (debug.network_test)"),

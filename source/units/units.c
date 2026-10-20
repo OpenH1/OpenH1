@@ -12048,6 +12048,8 @@ static void unit_throw_grenade_release(
 		if (unit->unit.grenade_object_index!=NONE)
 		{
 			long grenade_index = unit->unit.grenade_object_index;
+			/* port: its head start and hold given already (the VR mode's) */
+			boolean launched = FALSE;
 			
 			object_detach(grenade_index);
 			
@@ -12107,6 +12109,7 @@ static void unit_throw_grenade_release(
 			if (vr_grenade_release(unit_index, grenade_index, &initial_velocity))
 			{
 				premature = FALSE;
+				launched = TRUE;
 			}
 #endif
 
@@ -12144,6 +12147,17 @@ static void unit_throw_grenade_release(
 				if (!object_force_inside_bsp(grenade_index, &new_grenade_origin))
 				{
 					object_delete(grenade_index);
+				}
+				/* port: at game.sim_rate 60 and 120, flying on its own from
+				here as a projectile made in the tick's own work
+				(projectile_substep_launch_on_tick, projectiles.c): its head
+				start, a whole tick, then the next tick's sub-steps, as at
+				30, where its update later in the tick takes a whole tick;
+				not the one sub-step left of the tick's last, where the units'
+				slot lets go of it */
+				else if (!launched)
+				{
+					projectile_substep_launch_on_tick(grenade_index);
 				}
 			}
 		}
