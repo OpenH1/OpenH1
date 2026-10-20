@@ -778,7 +778,7 @@ struct xgpu_stream_vr_frame_record
 };
 
 /* vr_host.h's struct vr_host_layers and struct vr_host_pose, in words */
-#define XGPU_STREAM_VR_LAYERS_WORDS 113
+#define XGPU_STREAM_VR_LAYERS_WORDS 116
 #define XGPU_STREAM_VR_POSE_WORDS 8
 
 /* VR_SUBMIT: the frame record (screenshot: the eyes', HUD's and scope's
@@ -927,7 +927,7 @@ XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_eyes, 36 + 4 * 52);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_eye_transforms, 8 + 4 * 64);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_screen_corrections, 4 + 4 * 14);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_frame_record, 44);
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_submit, 44 + 8 + 4 * (113 + 8));
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_submit, 44 + 8 + 4 * (116 + 8));
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_state, 4 * (2 + 4 + 32 + 3 + 3 + 1 + 34 + 19 + 1 + 8 + 50 + 80 + 71 + 3 + 39));
 
 #endif
