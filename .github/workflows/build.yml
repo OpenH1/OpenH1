@@ -666,6 +666,21 @@ jobs:
           path: build/macos/third_party
           key: macos-third-party-${{ hashFiles('tools/macos_build.py', 'tools/android_build.py', 'port/android/patches/**') }}
 
+      # SDL3's CMake build folder, whose configure checks are most of SDL's
+      # time on this 3-core runner (its compiles are ccache's): found again
+      # for the same SDL, options (the scripts) and the image's compiler,
+      # SDK and CMake, as a build's release step finds its debug step's.
+      # Restored on every branch, saved by master's builds.
+      - name: SDL3 build folder key
+        id: sdl3
+        run: echo "tools=$( (xcrun clang --version; xcrun --show-sdk-version; cmake --version) | shasum -a 256 | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@v4
+        id: sdl3-restore
+        with:
+          path: build/macos/sdl3-build
+          key: macos-sdl3-build-${{ steps.sdl3.outputs.tools }}-${{ hashFiles('tools/macos_build.py', 'tools/android_build.py', 'tools/build_common.py', 'port/android/patches/**') }}
+
       # the guests' LLVM, which configure.py fetches (tools/guest_toolchain.py)
       - uses: actions/cache@v4
         with:
@@ -701,6 +716,13 @@ jobs:
         with:
           path: .cache/guest-asm
           key: guest-asm-macos-${{ github.sha }}
+
+      # (once for each key: a key already saved is left as it is)
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master' && steps.sdl3-restore.outputs.cache-hit != 'true'
+        with:
+          path: build/macos/sdl3-build
+          key: macos-sdl3-build-${{ steps.sdl3.outputs.tools }}-${{ hashFiles('tools/macos_build.py', 'tools/android_build.py', 'tools/build_common.py', 'port/android/patches/**') }}
 
       - uses: actions/upload-artifact@v4
         with:
