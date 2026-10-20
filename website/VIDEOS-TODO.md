@@ -10,7 +10,7 @@ loads, plays and syncs any `<video>` pair (README.md, "Pictures and clips").
 
 | Side | Settings |
 | --- | --- |
-| Original | `HALO_GRAPHICS=classic` (the Classic preset: no anti-aliasing, classic lights), `HALO_INTERPOLATION=false` (one frame a tick, as on the Xbox) |
+| Original | `HALO_GRAPHICS=classic` (the Classic preset: no anti-aliasing, classic lights), `HALO_INTERPOLATION=false` (one frame a tick, as on the Xbox), `HALO_RESOLUTION_SCALING=original` (the Xbox's 640 × 480), scaled up by nearest neighbour to OpenH1's size |
 | OpenH1 | `HALO_GRAPHICS=enhanced` (SMAA, Enhanced lights and the rest), `HALO_INTERPOLATION=true` (frames between ticks) |
 
 Both: the HUD hidden (`show_hud 0` on the console, below), the same map,
@@ -20,7 +20,7 @@ input and seed, and fixed timing.
 
 | Name | Section | Scene | Length | Files the page expects |
 | --- | --- | --- | --- | --- |
-| lights | 01, the wipe | Derelict (`levels\test\carousel\carousel`): aim down the dark corridor (`aim=180,-10`), throw a frag grenade at 3 s; the blast lights the walls, the floor and the weapon | 3-5 s around the blast | `lights-original.mp4`, `.webm`, `-poster.webp`; the same for `lights-openh1` |
+| lights | 01, the wipe | A frag grenade at a spot already scorched by one thrown before the clip (a loop without a fade): the spot is to be chosen from the survey in `capture/README.md` (Rat Race, yaw 90, first) | 4 s | `lights-original.mp4`, `.webm`, `-poster.webp`; the same for `lights-openh1` |
 | edges | 02, the lens | Blood Gulch, a slow pan or strafe across the cliffs against the sky (the spawn of seed 7 faces them): the Original's edges crawl, SMAA's stay clean | 4-6 s | `edges-original.*`, `edges-openh1.*` |
 | glow | 03, the flip | A plasma rifle or pistol fired straight down a genuinely dark hallway, still camera, steady shots, each bolt lighting the walls, floor and ceiling as it travels (a30's or a50's interiors, Truth and Reconciliation, or 343 Guilty Spark) | 4-6 s | `glow-original.*`, `glow-openh1.*` |
 
@@ -36,8 +36,12 @@ hero (`hero.*`) are done.
 ## Encoding
 
 - Both clips of a pair: the same length and frame count, at 60 fps (the
-  Original's 30 frames a second each shown twice), 1280 wide, no audio.
-- A seamless loop: the last 0.4 s crossfaded into the first.
+  Original's 30 frames a second each shown twice), no audio. To be captured
+  at 4K: OpenH1 at 3840 × 2880, the Original's 640 × 480 six times (or both
+  cropped to 3840 × 2160); the sizes below to be settled after.
+- A loop that cuts back to its first frame where the last matches it
+  (`capture/README.md`, "Loops without a fade"); else the last 0.4 s
+  crossfaded into the first.
 - H.264 MP4 (`-crf 26 -profile:v high -pix_fmt yuv420p -movflags
   +faststart`) and VP9 WebM (`-crf 38 -b:v 0`), each at most 1 MB; the
   poster, the first frame, as WebP (quality 75).
@@ -45,7 +49,8 @@ hero (`hero.*`) are done.
 
 ## Capturing
 
-What worked on a Mac (one game at a time, with a timeout that kills it):
+On Linux, the scripts in `capture/` (its README): offscreen, without the
+two problems below. What worked on a Mac (one game at a time, with a timeout that kills it):
 
 - A data folder of its own for each run, with `maps` linked in and an
   `init.txt` of `map_name <scenario>` (no menus), and the environment:
