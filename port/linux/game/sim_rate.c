@@ -22,7 +22,16 @@ whatever game.sim_rate says, in a game that must stay as it was:
   a recording's input tick by tick.
 
 A game saved is the game state at a tick's end, which nothing of a sub-step
-outlives (sim_rate.h), so it is the same at every rate and loads at any.
+outlives (sim_rate.h), so it is the same at every rate and loads at any. It
+carries no rate (game_state.h's header): a game loaded plays at the rate the
+tick after the load takes, the player's setting now or the connection's 30,
+as any other tick does. The rate is the machine's and the player's, as the
+display's settings are, not the game's: a checkpoint saved at 120 and reverted
+to after the setting went to 30 (a computer that cannot keep up) plays at 30,
+and a network game, which must step at 30, never has to set a saved rate
+aside (a co-op host's checkpoints, a solo save continued). Loaded at the rate
+it was saved at, it plays on step for step as if it had not been saved
+(tools/stagekit/tests/test_saved_rate.py).
 The determinism check (debug.determinism_log) writes the rate it ran at,
 and tools/determinism_compare.py compares two runs only at one rate unless
 asked to compare across rates: a run to compare against is made at 30.
