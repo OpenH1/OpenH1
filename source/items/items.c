@@ -150,6 +150,7 @@ void items_initialize(
 {
 	/* port: thrown and dropped items fly in the fast phase */
 	sim_substep_register(_sim_substep_items, item_substep);
+	object_lane_register(_object_mask_item); /* port: ... in the micro lane (objects.h) */
 	return;
 }
 

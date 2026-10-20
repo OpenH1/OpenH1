@@ -1424,7 +1424,9 @@ static struct object_lane_pose *object_lane_pose_get(
 }
 
 /* (object_update, as an object's update begins) its pose kept, if the
-sub-steps will see it so */
+sub-steps will see it so: in the tick's update, before the sub-steps (one
+updated in a sub-step is seen where it is: the poses kept may move as more
+are kept, and the sub-steps hold their blends) */
 static void object_lane_pose_keep(
 	long object_index)
 {
@@ -1432,7 +1434,7 @@ static void object_lane_pose_keep(
 	short node_count = (short)(object->object.node_matrices.size / (short)sizeof(real_matrix4x3));
 	struct object_lane_pose *pose;
 
-	if (sim_substep_count() <= 1 || node_count <= 0 ||
+	if (sim_substep_count() <= 1 || sim_substep_index() != NONE || node_count <= 0 ||
 		!TEST_FLAG(object->object.flags, _object_has_collision_model_bit) ||
 		object_get_lane(object_index) != _object_lane_macro)
 	{
