@@ -190,6 +190,9 @@ void dynamic_lights_note(long rasterizer_light_index, long flags, real cone_scal
 	real_point3d const *tick_position);
 boolean dynamic_lights_first_person(long weapon_index, real_point3d *position);
 void dynamic_lights_submit(void);
+void dynamic_lights_rank(long *lights, short count,
+	void (*describe)(long light, real_point3d *position, real *radius, real *intensity));
+void dynamic_lights_drawn(long light, real_point3d const *position, real radius, real_rgb_color const *color);
 
 /* port: port/linux/src (halo.log) */
 void platform_log(const char *format, ...);
@@ -970,6 +973,22 @@ long light_new_unattached(
 	return light_index;
 }
 
+/* port: a light, to port/linux/game/dynamic_lights.c's ranking, as the game
+has it where it has no drawing of it: where it is, how far it reaches and
+how bright it is at the tick (0 if not yet: its color is made below) */
+static void light_port_rank_describe(
+	long light_index,
+	real_point3d *position,
+	real *radius,
+	real *intensity)
+{
+	struct light_datum const *light = light_get(light_index);
+
+	*position = light->position;
+	*radius = light->radius > 0.0f ? light->radius : light_definition_get(light->definition_index)->radius;
+	*intensity = MAX(light->color.red, MAX(light->color.green, light->color.blue));
+}
+
 void lights_preprocess_scene(
 	void)
 {
@@ -1029,6 +1048,11 @@ void lights_preprocess_scene(
 		light_unmarked,
 		light_mark);
 	light_marker_end();
+	/* port: more lights than the rasterizer's 128, the most visible first
+	(port/linux/game/dynamic_lights.c: as drawn last frame), not the first
+	found */
+	dynamic_lights_rank(lights_globals.scene_point_lights, lights_globals.scene_point_light_count,
+		light_port_rank_describe);
 	rasterizer_lights_begin();
 	for (rendered_cluster_index = 0;
 		rendered_cluster_index < render.rendered_cluster_count;
@@ -1318,6 +1342,10 @@ void lights_preprocess_scene(
 						}
 					}
 
+					/* port: (how it is drawn ranks it next frame:
+					port/linux/game/dynamic_lights.c) */
+					dynamic_lights_drawn(scene_light_handle, &light_parameters.position, light_parameters.radius,
+						&light_parameters.color);
 					light->rasterizer_light_index = rasterizer_light_submit(
 						&light_parameters);
 					debug_rasterizer_light_count = light->rasterizer_light_index + 1;

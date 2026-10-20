@@ -99,15 +99,10 @@ enhanced dynamic lights (OpenGL ES draws them classic) */
 #define GRAPHICS_PER_PIXEL_LIGHTING "true"
 #define GRAPHICS_MODEL_DETAIL "\"native\""
 #define GRAPHICS_DYNAMIC_LIGHTS "\"enhanced\""
-/* display.structure_culling's tests: all of them, but in VR, where the game
-culls once from the head's centre and the facing tests (2 and 4) have no
-margin for the eyes beside it, which would drop triangles one eye sees: there
-only the view (1) and the nearer rooms first (16), until they have one */
-#ifdef HALO_VR
-#define STRUCTURE_CULLING_DEFAULT "17"
-#else
+/* display.structure_culling's tests: all of them (in VR too, where the game
+culls once from the head's centre and the tests allow for the eyes beside it:
+structure_culling_set_camera_radius) */
 #define STRUCTURE_CULLING_DEFAULT "31"
-#endif
 /* (in the comment of each setting it chooses) */
 #define GRAPHICS_CHOOSES "\nCommented out, display.graphics chooses it."
 
@@ -246,8 +241,7 @@ static const struct config_setting config_settings[] =
 		"added together: 1 outside the view, 2 groups facing away, 4 triangles\n"
 		"facing away, 8 smaller groups, 16 nearer rooms first; 0 walks them as\n"
 		"the Xbox does. The console's structure_culling changes it until the\n"
-		"game quits. The VR build's default is 17: the facing tests do not yet\n"
-		"allow for the eyes beside the head's centre." },
+		"game quits." },
 	{ "display.model_detail", _config_string, GRAPHICS_MODEL_DETAIL, "HALO_MODEL_DETAIL", _environment_value,
 		_platform_all,
 		"Which of their levels of detail models are drawn at: \"stock\" chooses by\n"

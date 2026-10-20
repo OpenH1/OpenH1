@@ -65,6 +65,7 @@ though they aim nothing (cinematic_head).
 #include "../src/vr.h"
 #include "../src/xgpu_stream.h"
 #include "vr_hands.h"
+#include "structure_culling.h"
 #include "cache/cache_files.h"
 #include "tag_files/tag_groups.h"
 #include "sound/game_sound.h"
@@ -90,6 +91,15 @@ distance's changes smoothed over this time constant (seconds) */
 #define CROSSHAIR_FARTHEST 100.0f
 #define CROSSHAIR_NEAREST 0.15f
 #define CROSSHAIR_SMOOTHING 0.06f
+/* the structure's culling (structure_culling.c) culls once from the head's
+centre for both eyes: its camera is a sphere about it, as wide as the
+farthest eye is from the centre and wider by how far the head may move
+before the frame is drawn, with the late latch (metres: 2 m/s, a fast duck
+or lean, over the 15 ms or so from where the game locates the head to where
+the renderer's thread locates it again), else by the rounding alone. Some
+6 cm with the usual 64 mm between the eyes. */
+#define CULLING_LATCH_ALLOWANCE 0.03f
+#define CULLING_ALLOWANCE 0.005f
 
 static struct
 {
@@ -633,6 +643,18 @@ static void camera_frusta(struct render_camera *camera, struct render_camera *ra
 		halo_vr_eye_size(&eye_width, &eye_height);
 		vr_render.level_of_detail_scale = eye_height > 0 && eye_span > 0.0f && viewport_height > 0.0f ?
 			((real)eye_height / eye_span) / (viewport_height / (up - down)) : 1.0f;
+	}
+	{
+		real farthest = 0.0f;
+
+		for (eye = 0; eye < 2; eye++)
+		{
+			const float *o = view->eye_offset[eye];
+
+			farthest = MAX(farthest, (real)sqrt(o[0] * o[0] + o[1] * o[1] + o[2] * o[2]));
+		}
+		structure_culling_set_camera_radius((farthest + (halo_vr_late_latching() ? CULLING_LATCH_ALLOWANCE :
+			CULLING_ALLOWANCE)) * view->world_units_per_metre);
 	}
 	vr_render.infinite = FALSE;
 	vr_render.projection_valid = FALSE;
@@ -1665,6 +1687,7 @@ boolean vr_render_long_gun(long weapon_index)
 void vr_render_end(void)
 {
 	vr_render.active = FALSE;
+	structure_culling_set_camera_radius(0.0f);
 	vr_render.seated_unit_index = NONE;
 	vr_render.infinite = FALSE;
 	vr_render_screen_point_end();

@@ -77,15 +77,42 @@ What one view draws in a frame, past which the rest is not drawn: the runs
 of particles that share a definition, and the dynamic lights (an assault
 rifle's flashlight, each plasma bolt's light) found in the clusters it sees.
 A busy multiplayer fight spends the Xbox's 512 and 128, and plasma bolts,
-charge glows and flashlights stop drawing. The desktop builds draw four
-times as many. Only what is drawn changes: these are rebuilt every frame,
-outside the game state, and nothing of them reaches the network, so
-machines with other limits still play the same game. Android's and the web
-build's keep the Xbox's. (The transparent geometry groups: below.) */
+charge glows and flashlights stop drawing. The desktop builds (x86-64 and
+the Mac's) draw four times as many. Only what is drawn changes: these are
+rebuilt every frame, outside the game state, and nothing of them reaches
+the network, so machines with other limits still play the same game.
+Android's, the web build's and Linux arm64's (boards and phones' cores)
+keep the Xbox's. (The transparent geometry groups: below.)
 
-#if defined(HALO_ARM64_GUEST) || defined(HALO_WEB)
+The lights found past the rasterizer's 128 are not lit (MAXIMUM_LIGHTS_PER_
+WINDOW, and the enhanced lights' 128-bit masks): more of them are more
+lights to choose the 128 from (dynamic_lights.c ranks them, most visible
+first) and more lens flares (a plasma bolt's glow), each an occlusion test
+and a quad.
+
+The Steam Frame (Linux arm64 with HALO_VR): twice the Xbox's of each, a
+first guess to tune on the headset. What each costs, from the code: a
+particle run is a draw (build_sprites, the transparent geometry's sort, the
+front end's state, the stream, and a Vulkan draw on the render thread, which
+on the Frame's cores is likely some 5 to 10 us on each of the two threads);
+its particles cost the same either way (8192 in the pool everywhere), and
+their effect pixels are the VR effects' (vulkan/README.md: some 0.07 ms a
+million soft, 0.13 thick). The runs are split by definition and cluster, so
+their number grows slowly with a fight's size: 1024 holds the overflow a
+fight shows past 512 and caps the worst case at about 512 more draws
+(some 3 to 5 ms, against the 8.3 ms of a 120 Hz frame) rather than 1536.
+A light past 128 costs the game's look at it each frame (its function,
+color and radius) and its lens flare; 256 doubles the ranking's choice for
+128 more of those at most. Paul: in a busy b40 or Blood Gulch fight with
+HALO_VR_GPU_TIME=1 and debug.gpu_stats, compare the frame times at these
+and at 512/128; raise them if the frame has room, lower the runs if not. */
+
+#if defined(HALO_WEB) || (defined(HALO_ARM64_GUEST) && !defined(HALO_MACOS) && !defined(HALO_VR))
 #define HALO_PORT_MAXIMUM_RENDERED_PARTICLE_GROUPS 512 /* (512) */
 #define HALO_PORT_MAXIMUM_RENDERED_LIGHTS 128 /* (128) */
+#elif defined(HALO_ARM64_GUEST) && defined(HALO_VR)
+#define HALO_PORT_MAXIMUM_RENDERED_PARTICLE_GROUPS 1024 /* (512) */
+#define HALO_PORT_MAXIMUM_RENDERED_LIGHTS 256 /* (128) */
 #else
 #define HALO_PORT_MAXIMUM_RENDERED_PARTICLE_GROUPS 2048 /* (512) */
 #define HALO_PORT_MAXIMUM_RENDERED_LIGHTS 512 /* (128) */

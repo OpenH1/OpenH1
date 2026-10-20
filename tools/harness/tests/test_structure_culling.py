@@ -9,14 +9,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, inline, mutated, read, run, structure
 
 CASES = ["outside-near", "outside-far", "outside-side", "crossing-kept",
-         "facing-away", "facing-toward", "edge-on-kept", "degenerate-kept",
-         "cone-never-more-aggressive", "cone-culls-something", "cone-camera-inside",
+         "facing-away", "facing-toward", "facing-sphere", "edge-on-kept", "degenerate-kept",
+         "cone-never-more-aggressive", "cone-sphere-never-more-aggressive", "cone-culls-something", "cone-sphere",
+         "cone-camera-inside",
          "cone-wide-no-verdict", "box-outside", "box-partly", "box-inside",
          "split-partition", "split-limits", "split-room", "split-loose",
          "out-of-range-surfaces", "group-material", "missing-owner",
          "load-subclusters", "load-surface-lists", "load-lifetime", "load-allocation-failure",
          "load-small-group-scratch", "cluster-order", "cluster-order-per-call", "stale-structure",
-         "walk-fallback", "walk-planes", "walk-facing", "walk-near-first", "set-tests", "set-tests-unloaded", "console-local", "walk-unit-forward",
+         "walk-fallback", "walk-planes", "walk-camera-radius", "walk-facing", "walk-near-first", "set-tests", "set-tests-unloaded", "console-local", "walk-unit-forward",
          "source-fog-rejected", "source-fog-straddling", "debug-record", "dispose-empty", "mirror-far", "build-budget",
           "rejected-bucket-visits", "compact-allocation-failure", "overlay-truncation", "default-mask", "debug-letterbox",
           "walk-profile", "missing-subcluster-warning", "debug-stale-data"]
@@ -35,8 +36,13 @@ CONTROLS = {
     "per-window-cap": (("static long count;", "long count = 0;"), "structure_culling_render_debug", "debug-record"),
     "drop-near": (("if (plane3d_distance_to_point", "if (plane_index == 4) continue;\n\t\tif (plane3d_distance_to_point"), "structure_culling_triangle_outside", "outside-near"),
     "different-planes": (("return FALSE;", "return outside_points[0] && outside_points[1] && outside_points[2];"), "structure_culling_triangle_outside", "crossing-kept"),
-    "ignore-radius": (("sin_alpha = cone->radius / length;", "sin_alpha = 0.0f;"), "structure_culling_cone_facing", "cone-never-more-aggressive"),
-    "flip-facing": (("STRUCTURE_CULLING_FRONT_SIGN * dot_product3d(&normal, &view) < 0.0f", "STRUCTURE_CULLING_FRONT_SIGN * dot_product3d(&normal, &view) > 0.0f"), "structure_culling_triangle_faces_away", "facing-away"),
+    "ignore-radius": (("sin_alpha = reach / length;", "sin_alpha = 0.0f;"), "structure_culling_cone_facing", "cone-never-more-aggressive"),
+    "flip-facing": (("return distance < 0.0f", "return distance > 0.0f"), "structure_culling_triangle_faces_away", "facing-away"),
+    "facing-ignore-camera-radius": (("distance * distance > radius * radius * squared", "TRUE"), "structure_culling_triangle_faces_away", "facing-sphere"),
+    "cone-ignore-camera-radius": (("real reach = cone->radius + radius;", "real reach = cone->radius;"), "structure_culling_cone_facing", "cone-sphere-never-more-aggressive"),
+    "radius-portal-planes": (("memcpy(planes, render.frustum.world_planes", "memcpy(planes, frustum->world_planes"), "structure_culling_traverse", "walk-camera-radius"),
+    "radius-planes-unmoved": (("planes[plane_index].d += radius;", "planes[plane_index].d += 0.0f;"), "structure_culling_traverse", "walk-camera-radius"),
+    "radius-keep-far": (("\tif (radius > 0.0f)\n\t{\n\t\tmemset(", "\tif (FALSE)\n\t{\n\t\tmemset("), "structure_culling_traverse", "walk-camera-radius"),
     "box-four-planes": (("plane_index < 6; ++plane_index", "plane_index < 4; ++plane_index"), "structure_culling_box_test", "box-outside"),
     "mix-eligibility": (("if (eligible_count && eligible_count < count)", "if (FALSE && eligible_count && eligible_count < count)"), "structure_culling_split_range", "split-limits"),
     "drop-split-tail": (("ends[(*bucket_count)++] = first + count;", "ends[(*bucket_count)++] = first + count - 1;"), "structure_culling_split_range", "split-partition"),
@@ -66,7 +72,7 @@ def generated(control=None):
     names = ["structure_culling_triangle_outside", "structure_culling_triangle_faces_away",
              "structure_culling_cone_build", "structure_culling_cone_facing", "structure_culling_box_test",
              "structure_culling_split_class", "structure_culling_split_compare", "structure_culling_split_range",
-             "structure_culling_split", "structure_culling_gather_pairings",
+             "structure_culling_split", "structure_culling_gather_pairings", "structure_culling_set_camera_radius",
              "structure_culling_dispose", "structure_culling_pairing_points", "structure_culling_bounds_add",
              "structure_culling_build_group", "structure_culling_build_lists", "structure_culling_structure_bsp_loaded"]
     names += ["structure_culling_order_clusters", "structure_culling_data_matches", "structure_culling_record",
@@ -107,6 +113,7 @@ def generated(control=None):
         default = mutated(default, *CONTROLS[control][0])
     types += "\nstatic struct structure_culling_data structure_culling;\n" + default + "\n"
     types += "static long structure_culling_submitted, structure_culling_outside, structure_culling_facing;\n"
+    types += "static real structure_culling_camera_radius;\n"
     types += "static boolean structure_culling_debug_enabled;\nstatic unsigned long structure_culling_recorded[2][4096];\n"
     cameras = read("source/render/render_cameras.c")
     types += "\n" + enum_with(cameras, "_render_frustum_point_flags_left_bit")
