@@ -196,6 +196,9 @@ static game_state_before_load_proc before_load_procs[] =
 	cluster_partitions_port_forget,
 	/* port: (the objects are put back: object_bounds_cache.c) */
 	object_bounds_cache_invalidate,
+	/* port: a tick open between two of its sub-steps given up: the state
+	loaded is one saved between two ticks (game.sim_rate, game_time.c) */
+	game_time_port_drop_substeps,
 };
 
 static game_state_after_load_proc after_load_procs[] =

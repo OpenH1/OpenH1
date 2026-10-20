@@ -1234,16 +1234,17 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 }
 
 /* the simulation's sub-steps (port/linux/game/sim_rate.h; at 60 and 120
-Hz a tick runs 2 or 4 of them, one after another in the frame that runs the
-tick): the first controller read again at each sub-step's start, for the
-player's own movement and aim in it (input_abstraction.c). The devices are
-read once a frame, and a tick's sub-steps run within one, so the frame's
-reading is the latest of theirs there is; what the scripted player plays
-("script:") is on the simulation's clock, and is played again at the
-sub-step's time (the script's aim, an event, is taken there and then, as a
-frame takes it). The frame's reading before the scripted player's, and
-with it (the touch controls' and the chat keyboard's, after it, are the
-frame's alone) */
+Hz a tick runs 2 or 4 of them, each on the frame its time comes in,
+game_time.c): the first controller read again at each sub-step's start, for
+the player's own movement and aim in it (input_abstraction.c). The devices
+are read once a frame, at the start of the frame's first sub-step (the
+frame's reading is its reading), and a later one in the same frame (a frame
+slower than a sub-step) has no newer reading than the frame's; what the
+scripted player plays ("script:") is on the simulation's clock, and is
+played again at the sub-step's time (the script's aim, an event, is taken
+there and then, as a frame takes it). The frame's reading before the
+scripted player's, and with it (the touch controls' and the chat
+keyboard's, after it, are the frame's alone) */
 static XINPUT_GAMEPAD substep_frame_devices;
 static XINPUT_GAMEPAD substep_frame_reading;
 

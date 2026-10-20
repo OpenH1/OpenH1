@@ -2386,6 +2386,18 @@ changed since the reading before it, before the sub-step's later slots
   difference for its share of the tick) and the scripted player's aim, taken
   at its time.
 
+The clock runs each sub-step when its time has come (game_time.c), so a
+tick's sub-steps are spread over the frames: at 120 on a display of 120 Hz,
+one a frame. The devices are read once a frame (input_abstraction_update,
+and player_control_update turns the facing by the frame's reading for the
+frame's time). A sub-step that is the first of its frame
+(sim_substep_first_of_frame) takes that frame's reading: the controls held
+and the movement that differ from the last given (from the tick's own
+input, the reading of the frame that began the tick, if no later sub-step
+has run), and the facing the frames have turned since the unit was given it
+last. One after it in the same frame (a frame slower than a sub-step) reads
+again as above, the scripted player at its own time.
+
 The one-shot controls (the action and reload, the flashlight, equipment,
 the weapon and grenade switches and the zoom) stay the tick's: a frame's
 press reaches one tick, latched until it is let go (player_queues_new.c).
@@ -2423,6 +2435,17 @@ static struct player_control_substep_player
 	struct player_control_substep_reading last;
 	/* the controls that went down in the running sub-step */
 	unsigned long pressed_flags;
+	/* The clock spreads a tick's sub-steps over the frames (game_time.c): a
+	sub-step after the tick's first may run on a later frame, which read the
+	devices again and turned the facing by its own reading
+	(player_control_update). The reading of the frame that began the tick
+	(what the tick's own input was), for this unit, and the facing the unit
+	was given last. */
+	boolean tick_frame_valid;
+	long tick_frame_unit_index;
+	struct player_control_substep_reading tick_frame;
+	boolean given_valid;
+	real_euler_angles2d given_angles;
 } player_control_substep_players[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS];
 
 /* as get_local_player_input_blob reads a controller's game input state:
@@ -2513,25 +2536,17 @@ static void player_control_substep_read(
 	return;
 }
 
-/* a local player's sub-step past the tick's first */
-static void player_control_substep_player(
+/* a local player whose unit a sub-step's reading moves: the player, or NONE
+(a network game's, none or one without a controller, input taken away) */
+static long player_control_substep_player_index(
 	short local_player_index)
 {
-	struct player_control_substep_player *substep = &player_control_substep_players[local_player_index];
-	struct player_control *control = player_control_get(local_player_index);
 	long player_index = local_player_get_player_index(local_player_index);
-	struct player_control_substep_reading reading;
-	struct game_input_state input_state;
 	struct player_datum *player;
-	struct unit_datum *unit;
-	real_euler_angles2d facing;
-	unsigned long changed;
 	short gamepad_index;
-	real pull;
 
-	substep->pressed_flags = 0;
 	if (game_connection() != _game_connection_local || player_index == NONE)
-		return;
+		return NONE;
 	player = player_get(player_index);
 	gamepad_index = player->local_player_index;
 	if (player->unit_index == NONE || gamepad_index == NONE || !input_has_gamepad(gamepad_index) ||
@@ -2539,19 +2554,83 @@ static void player_control_substep_player(
 		director_inhibited_input(local_player_index) ||
 		player_control_port_menu_has_controller(local_player_index))
 	{
-		return;
+		return NONE;
 	}
+	return player_index;
+}
+
+/* a local player's first sub-step of a tick of several: the reading of the
+frame that began the tick, the tick's own input, and the facing that input
+gave the unit (players_update_before_game), for the sub-steps that run on
+later frames (game_time.c) */
+static void player_control_substep_tick_begun(
+	short local_player_index)
+{
+	struct player_control_substep_player *substep = &player_control_substep_players[local_player_index];
+	long player_index = player_control_substep_player_index(local_player_index);
+	struct player_datum *player;
+
+	substep->tick_frame_valid = FALSE;
+	substep->given_valid = FALSE;
+	if (player_index == NONE)
+		return;
+	player = player_get(player_index);
+	player_control_substep_read(local_player_index, player, input_abstraction_get_input_state(player->local_player_index),
+		input_abstraction_port_primary_trigger(player->local_player_index), &substep->tick_frame);
+	substep->tick_frame_unit_index = player->unit_index;
+	substep->tick_frame_valid = TRUE;
+	substep->given_angles = player_control_get(local_player_index)->desired_angles;
+	substep->given_valid = TRUE;
+	return;
+}
+
+/* a local player's sub-step past the tick's first */
+static void player_control_substep_player(
+	short local_player_index)
+{
+	struct player_control_substep_player *substep = &player_control_substep_players[local_player_index];
+	struct player_control *control = player_control_get(local_player_index);
+	long player_index = player_control_substep_player_index(local_player_index);
+	struct player_control_substep_reading reading;
+	struct game_input_state input_state;
+	struct player_datum *player;
+	struct unit_datum *unit;
+	real_euler_angles2d facing;
+	unsigned long changed;
+	short gamepad_index;
+	boolean first_of_frame;
+	real pull;
+
+	substep->pressed_flags = 0;
+	if (player_index == NONE)
+		return;
+	player = player_get(player_index);
+	gamepad_index = player->local_player_index;
+	/* (the first sub-step of a frame that read the devices again since the
+	sub-step before: the tick's sub-steps spread over the frames) */
+	first_of_frame = sim_substep_first_of_frame();
 	if (!substep->begun || substep->unit_index != player->unit_index)
 	{
 		player_control_substep_read(local_player_index, player, input_abstraction_get_input_state(gamepad_index),
 			input_abstraction_port_primary_trigger(gamepad_index), &substep->frame);
-		substep->last = substep->frame;
+		/* (on a later frame than the tick's first, what has changed since the
+		tick's own input is this sub-step's) */
+		substep->last = first_of_frame && substep->tick_frame_valid &&
+			substep->tick_frame_unit_index == player->unit_index ? substep->tick_frame : substep->frame;
 		substep->unit_index = player->unit_index;
 		substep->begun = TRUE;
 	}
+	else if (first_of_frame)
+	{
+		/* (a later frame's reading, by which that frame turned the facing
+		already: player_control_update) */
+		player_control_substep_read(local_player_index, player, input_abstraction_get_input_state(gamepad_index),
+			input_abstraction_port_primary_trigger(gamepad_index), &substep->frame);
+	}
 
-	/* (the scripted player's aim, at its time, turns the facing here) */
-	facing = control->desired_angles;
+	/* (the scripted player's aim, at its time, turns the facing here; the
+	frames since the facing was given last, the player's own turn) */
+	facing = substep->given_valid ? substep->given_angles : control->desired_angles;
 	if (input_abstraction_port_substep_state(gamepad_index, &input_state, &pull))
 		player_control_substep_read(local_player_index, player, &input_state, pull, &reading);
 	else
@@ -2589,6 +2668,8 @@ static void player_control_substep_player(
 		unit->unit.desired_facing_vector = aiming_vector;
 		unit->unit.desired_looking_vector = aiming_vector;
 	}
+	substep->given_angles = control->desired_angles;
+	substep->given_valid = TRUE;
 	substep->last = reading;
 	return;
 }
@@ -2601,7 +2682,6 @@ static void player_control_substep(
 {
 	short local_player_index;
 
-	(void)substep_count;
 	(void)seconds;
 	for (local_player_index = 0; local_player_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
 	{
@@ -2610,6 +2690,8 @@ static void player_control_substep(
 			/* (the tick's own input) */
 			player_control_substep_players[local_player_index].begun = FALSE;
 			player_control_substep_players[local_player_index].pressed_flags = 0;
+			if (substep_count > 1)
+				player_control_substep_tick_begun(local_player_index);
 		}
 		else
 		{

@@ -7,7 +7,8 @@ for: everything a tick does runs once a tick, as before. Inside each tick a
 fast phase runs 1, 2 or 4 sub-steps (game.sim_rate 30, 60 or 120), where
 what a player feels in their hands can later move in smaller steps: their
 own movement and aim, projectiles, thrown items, the VR mode's throws and
-grabs. Nothing runs in it yet, so the game is the same at every rate.
+grabs. The clock spreads a tick's sub-steps over the frames as their time
+passes (sim_substep_next, below).
 
 Rules for what moves into the fast phase:
 
@@ -74,7 +75,8 @@ saved film's playback */
 long sim_rate_get(void);
 
 /* the sub-steps of this tick (1, 2 or 4), and the one running: 0 up to
-count - 1 in the fast phase, NONE outside it */
+count - 1 in the fast phase, NONE outside it (between two sub-steps of a
+tick too, in the frames: sim_substep_next) */
 short sim_substep_count(void);
 short sim_substep_index(void);
 /* whether this is the tick's last sub-step, or no sub-step (what counts
@@ -118,9 +120,35 @@ is the end of sub-step - 1, the tick before's end for 0) and how far from
 it, 0 to 1. At 30 that is sub-step 0 and the tick_fraction itself */
 void sim_substep_blend(real tick_fraction, short *substep_index, real *substep_fraction);
 
+/* The sub-steps spread over the frames (game_time.c): the clock runs a
+sub-step each time a sub-step's time has passed, not a whole tick at once.
+The tick's own work (game_tick's but for the fast phase) runs with its first
+sub-step; the rest run on the frames that follow as their time comes, the
+tick's work after the fast phase with its last, so a tick runs in the order
+it always has. At 120 on a display of 120 Hz that is one sub-step a frame,
+each with the input that frame read. Between two sub-steps of a tick the
+tick is open: what the frames do to the game as a whole (save it, load
+another, change the map) waits for its end (main.c).
+
+the open tick's next sub-step, 0 when none is open (the next to run begins
+a tick) */
+short sim_substep_next(void);
+/* whether the running sub-step is the first since the frame's input was
+read (player_control_update, before game_time_update runs the frame's
+sub-steps): what a sub-step after it in the same frame reads of the
+controller is the frame's, or the scripted player's at its own time */
+boolean sim_substep_first_of_frame(void);
+/* the rate of the next sub-step: the open tick's, else the one the next tick
+would take now (a frame of debug.fixed_step lasts one sub-step of it) */
+long sim_rate_next(void);
+
+/* the clock's (game_time.c): a frame's input read, and an open tick given
+up (a game state loaded over it, a map ended) */
+void sim_rate_frame_begin(void);
+void sim_rate_tick_drop(void);
 /* the tick loop's (game.c): the rate taken for the tick, at its start, and
-the fast phase's sub-steps */
+one sub-step of the fast phase (each of a tick's once, in order) */
 void sim_rate_tick_begin(void);
-void sim_substeps_run(void);
+void sim_substep_run(short substep_index);
 
 #endif

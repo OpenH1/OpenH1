@@ -385,6 +385,7 @@ symbols in this file:
 #include "network_aim_assist.h" /* port: port/linux/game/network_aim_assist.c */
 #include "map_share.h" /* port: port/linux/game/map_share.c */
 #include "profile_sections.h" /* port: port/linux/include/profile_sections.h */
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 #ifdef HALO_PROFILE
 #include "profile_trace.h" /* port: port/linux/src/profile_trace.c */
 #endif
@@ -2554,10 +2555,11 @@ static void main_update_time_unthrottled(
 	}
 	else if (halo_fixed_step() && main_globals.connection == _game_connection_local)
 	{
-		/* port: debug.fixed_step, a frame a tick whatever time has passed, as
-		a movie's frames are its recording's: what runs once a frame (aiming)
+		/* port: debug.fixed_step, a frame a step whatever time has passed (a
+		tick at game.sim_rate 30, a sub-step at 60 and 120: game_time.c), as a
+		movie's frames are its recording's: what runs once a frame (aiming)
 		sees the game's time, and the game plays the same every time */
-		seconds_elapsed = 1.0f / TICKS_PER_SECOND;
+		seconds_elapsed = 1.0f / (real)sim_rate_next();
 	}
 	else
 	{
@@ -2810,7 +2812,7 @@ static void main_update_time(
 	else if (halo_fixed_step() && main_globals.connection == _game_connection_local)
 	{
 		/* port: debug.fixed_step, as main_update_time_unthrottled */
-		seconds_elapsed = 1.0f / TICKS_PER_SECOND;
+		seconds_elapsed = 1.0f / (real)sim_rate_next();
 	}
 	else
 	{
@@ -3496,6 +3498,22 @@ static void main_loop_web_frame(
 }
 #endif
 
+/* port: whether a frame has work at its start that changes the game as a
+whole (main_loop's, which waits while a tick is open between two of its
+sub-steps: game_time_tick_open_wait) */
+static boolean main_frame_work_pending(
+	void)
+{
+	if (game_in_editor())
+		return main_globals.reset_map;
+	return main_globals.switch_to_structure_bsp_index != NONE || main_globals.lost_map || main_globals.won_map ||
+		main_globals.respawn || main_globals.save_map_completed || main_globals.defer_map_change ||
+		main_globals.revert_map || main_globals.skip_cinematic || main_globals.reset_map ||
+		main_globals.save_core || main_globals.load_core || main_globals.want_to_be_at_main_menu ||
+		main_globals.load_last_solo_level || main_globals.run_xdemos || main_globals.skip ||
+		main_globals.queue_map;
+}
+
 void main_loop(
 	void)
 {
@@ -3539,7 +3557,14 @@ static boolean main_loop_iteration(
 #endif
 	{
 		loading_game_frame = FALSE; /* port: loading presentation is independent of game frames */
-		if (!game_in_editor())
+		/* port: what follows changes the game as a whole (saves it, loads a
+		saved game, changes the map), between two ticks: with game.sim_rate's
+		sub-steps spread over the frames, not while a tick is open between two
+		of its sub-steps, but on the frame after its end (game_time.c) */
+		if (main_frame_work_pending() && game_time_tick_open_wait())
+		{
+		}
+		else if (!game_in_editor())
 		{
 			if (main_globals.switch_to_structure_bsp_index!=NONE)
 			{

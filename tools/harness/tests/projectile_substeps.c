@@ -582,7 +582,13 @@ static void game_tick(void)
 			projectile_update(datum_of(absolute_index));
 		}
 	}
-	sim_substeps_run();
+	/* (the tick's sub-steps, one at a time as the clock runs them) */
+	{
+		short substep;
+
+		for (substep = 0; substep < sim_substep_count(); substep++)
+			sim_substep_run(substep);
+	}
 	game_time++;
 }
 

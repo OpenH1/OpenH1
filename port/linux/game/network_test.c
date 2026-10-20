@@ -81,6 +81,7 @@ Called from the main loop every frame (main.c).
 #include "../src/p2p.h" /* port: port/linux/src/p2p.c, p2p_lobby.c */
 #include "network_chat.h"
 #include "network_voice.h"
+#include "sim_rate.h"
 #include "halo_keyboard.h"
 
 #include <math.h>
@@ -990,6 +991,11 @@ static void network_test_run_cues(
 	void)
 {
 	if (network_test.mode != _network_test_host && network_test.mode != _network_test_log)
+		return;
+	/* (between two ticks, as a frame of a game at 30 always is: not between
+	two sub-steps of an open tick, game.sim_rate's spread over the frames,
+	whose time is still the tick's: sim_rate.h) */
+	if (sim_substep_next())
 		return;
 	if (network_test.cues_start == NONE)
 	{

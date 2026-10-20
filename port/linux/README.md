@@ -517,7 +517,7 @@ the setting for one start of the game. It has priority over the file.
 | `debug.update_answer` | `""` | `HALO_UPDATE_ANSWER` | The answer to the update question, for automatic tests: `yes`, `no` or `never`. Empty: the game asks. |
 | `debug.update_from` | `""` | `HALO_UPDATE_FROM` | A release's zip file to update to, for tests of updates: the game offers it as a new version without asking GitHub, also when the build has no build number, but not in the version that the update starts. Empty: the game asks GitHub. |
 | `debug.load_trace` | `false` | `HALO_LOAD_TRACE` | Log map loading checkpoints with absolute monotonic wall, thread and process CPU seconds. Subtract timestamps to measure phases; process CPU includes worker threads. Set `HALO_LOAD_TRACE_DETAIL=1` to add sampled preparation CPU timings and detailed renderer traces; measure final loading times without these extra diagnostics. |
-| `debug.fixed_step` | `false` | `HALO_FIXED_STEP` | `true`: a game of this computer alone runs one tick a frame, whatever time has passed, so that it plays the same every time (tests). |
+| `debug.fixed_step` | `false` | `HALO_FIXED_STEP` | `true`: a game of this computer alone runs one step a frame (a tick at `game.sim_rate` 30, a sub-step at 60 and 120), whatever time has passed, so that it plays the same every time (tests). |
 | `debug.exit_after` | `0.0` | `HALO_EXIT_AFTER` | The game stops after this number of seconds (from when its window opens; with `debug.null_renderer`, or no display, from its first frame). `0`: never. |
 | `debug.screenshot_directory`, `debug.screenshot_every` | `""`, `0` | `HALO_SCREENSHOT_DIR`, `HALO_SCREENSHOT_EVERY` | The game writes each Nth frame to this folder as a BMP file. |
 | `debug.hidden_window`, `debug.null_renderer` | `false` | `HALO_HIDDEN_WINDOW`, `HALO_NULL_RENDERER` | `true`: no visible window, or no graphics. |
@@ -4421,11 +4421,30 @@ block.
 clocks. The game's time stays at 30 ticks a second, and everything a tick
 does runs once a tick, as before: the AI, the scripts, cinematics,
 animations, timers, vehicles, the game engine, saved games and the network.
-Inside each tick, after the objects' update (`game/game.c`, `game_tick`), a
-fast phase runs 1, 2 or 4 sub-steps (30, 60 or 120). In later work, the
-player's movement and aim, projectiles, thrown items, and the VR mode's
-throws and grabs move there in smaller steps. For now nothing is
-registered in the fast phase, so the game is the same at every rate.
+Inside each tick, after the objects' update (`game/game.c`,
+`game_tick_substep`), a fast phase runs 1, 2 or 4 sub-steps (30, 60 or 120),
+where the player's movement and aim, projectiles, thrown items, and the VR
+mode's throws and grabs move in smaller steps.
+
+- The clock (`game/game_time.c`) runs a sub-step each time a sub-step's
+  time (1/60 or 1/120 of a second) has passed, not a whole tick at once, so
+  a tick's sub-steps are spread over the frames that pass meanwhile. The
+  tick's own work runs with its first sub-step, and the work that follows
+  the fast phase with its last, so a tick runs in the order it always had.
+  At 120 on a display of 120 Hz that is one sub-step a frame, and each
+  sub-step takes the input that its frame read (`game/player_control.c`). A
+  frame slower than a sub-step runs the sub-steps that are due, in order.
+  At 30 a sub-step is the whole tick, as before.
+- Between two sub-steps of a tick, the tick is open. The work of a frame
+  that changes the game as a whole (a checkpoint saved, a saved game
+  loaded or reverted to, a map changed or reset, a structure switched)
+  waits until the tick has ended (`main/main.c`). The clock begins no new
+  tick until then. If the clock has stopped (paused, the console), the open
+  tick is run to its end at once. A game is saved only between two ticks.
+- A frame is drawn between the last two ticks, as far into the next as the
+  clock has run, including the open tick's sub-steps that have run
+  (`game_time_get_tick_fraction`). `sim_substep_blend` gives the sub-step
+  that the frame is in.
 
 - The rate is taken at the start of each tick. It is 30 in a network game
   (the netcode is OpenCE's, and every machine must step alike), in a split
@@ -4487,7 +4506,7 @@ Other changes:
 | `interface/ui_widget.c`, `interface/ui_widget_event_handler_functions.c`, `interface/ui_widget_game_data_input_functions.c` | The main menu is the PC version's from `port/assets/menus` (`display.menus`); the menus' widgets can call the port's functions (`game/menu_functions.c`) and send the PC version's custom activation event; the widgets' memory is 256 KB, not 16 KB; the main menu and Multiplayer clear co-op's controllers, so that a gamepad going back to controller 1 is not a controller unplugged; the lobby's split screen players leave alone, and one who quits in game is not joined to the next game (`interface/player_ui.c`). |
 | `interface/player_ui.c` | Fast setup opens the pregame screen through the port's menus (the lobby), as `interface/ui_widget.c` does. |
 | `game/game.c` | Each tick takes its rate (`game.sim_rate`), and runs the fast phase's sub-steps after the objects' update (`game/sim_rate.c`; "Simulation rate"). |
-| `game/game_time.c`, `main/main.c` | With `debug.fixed_step`, a game of one machine runs a tick a frame, each frame taking a tick's time, so that it plays the same every time (`tools/stagekit`). |
+| `game/game_time.c`, `main/main.c` | With `debug.fixed_step`, a game of one machine runs a step a frame (a tick, or a sub-step of `game.sim_rate`), each frame taking a step's time, so that it plays the same every time (`tools/stagekit`). |
 | `game/game_time.c`, `items/projectiles.c`, `items/weapons.c` | `debug.trace` (`game/sim_trace.c`, `tools/scorecard`): a call after each simulation step, and a call each where a projectile is made, strikes and detonates and a weapon fires, made only while the trace is on (`SIM_TRACE`). |
 | `input/input_abstraction.c`, `game/player_control.c`, `game/players.c`, `game/player_queues_new.c`, `units/units.h` | The keyboard and mouse's actions (`src/xinput_sdl.c`, `include/halo_keyboard.h`) join controller 1's game controls; their reload key reloads on its own, and their action key only acts (a control flag of the port's, sent with the player's action, stops the reload the controller's X falls back to). |
 | `saved games/player_profile.h`, `interface/player_ui.c` | A sixth button layout, the Master Chief Collection's Bumper Jumper (`profile.button_preset` 5). A layout the build does not know (a later build's) gets the standard buttons, not none, which moved start and back and stopped the game. |
