@@ -541,6 +541,8 @@ void prop_ai_command_list(
 		command->recording_reference_index = command->command_index = NONE;
 		command->object_name_index = NONE;
 	}
+}
+
 /* ---------- vehicles (tools/scorecard's vehicle scenarios) */
 
 enum
