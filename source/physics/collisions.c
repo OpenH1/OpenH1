@@ -497,6 +497,12 @@ boolean collision_test_vector(
 	collision->start_location.cluster_index = NONE;
 	collision->location.leaf_index = NONE;
 	collision->location.cluster_index = NONE;
+	/* port: and the rest of the locations set too, not left as the stack
+	had it, as scenario_location_from_point does: the location goes into
+	the objects (a projectile's, by object_translate), and two runs of one
+	game differed there */
+	collision->start_location.bonus = 0;
+	collision->location.bonus = 0;
 	collision->t = 1.0f;
 
 	if (test_environment)
@@ -780,11 +786,15 @@ boolean collision_test_pill(
 		collision->start_location.leaf_index = leaf_index;
 		cluster_index = collision_cluster_index_from_leaf(leaf_index);
 		collision->start_location.cluster_index = cluster_index;
+		/* port: and the rest of the locations set too, as in
+		collision_test_vector */
+		collision->start_location.bonus = 0;
 
 		leaf_index = bsp_result.leaf_indices[bsp_result.leaf_count - 1];
 		collision->location.leaf_index = leaf_index;
 		cluster_index = collision_cluster_index_from_leaf(leaf_index);
 		collision->location.cluster_index = cluster_index;
+		collision->location.bonus = 0;
 	}
 
 	if (!hit)
@@ -1153,6 +1163,10 @@ boolean collision_test_pill_new(
 	collision->start_location.cluster_index = NONE;
 	collision->location.leaf_index = NONE;
 	collision->location.cluster_index = NONE;
+	/* port: and the rest of the locations set too, as in
+	collision_test_vector */
+	collision->start_location.bonus = 0;
+	collision->location.bonus = 0;
 	collision->t = 1.0f;
 
 	if (collision_bsp_test_pill_new(
