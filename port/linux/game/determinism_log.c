@@ -212,6 +212,16 @@ void determinism_log_tick_begin(
 	determinism_log.in_tick = TRUE;
 }
 
+/* a tick left open between two of its sub-steps (game.sim_rate's spread
+over the frames: game_time.c), the frames meanwhile not the tick's; the
+next sub-step begins it again (determinism_log_tick_begin) and the last
+writes its line */
+void determinism_log_tick_pause(
+	void)
+{
+	determinism_log.in_tick = FALSE;
+}
+
 static unsigned long determinism_hash(
 	void const *address,
 	long size,

@@ -78,11 +78,13 @@ symbols in this file:
 #include "scenario/scenario.h" /* port: game_time_menu_scene */
 #include "scenario/scenario_definitions.h"
 #include "profile_sections.h" /* port: port/linux/include/profile_sections.h */
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 /* port/linux/game/network_distributed.c's */
 void network_distributed_tick(void);
 /* port: port/linux/game/determinism_log.c */
 void determinism_log_tick_begin(void);
 void determinism_log_tick_end(long tick);
+void determinism_log_tick_pause(void);
 
 /* port: the tick loop's steps, timed in the profiling build */
 PROFILE_SECTION(game_time_network_distributed_tick_section, "network_distributed_tick")
@@ -118,11 +120,50 @@ struct game_time_globals_struct
 
 /* ---------- prototypes */
 
+static boolean game_time_run_substep(void);
+
 /* ---------- globals */
 
 static struct game_time_globals_struct *game_time_globals;
 
+/* port: game.sim_rate's sub-steps spread over the frames (game_time_update;
+port/linux/game/sim_rate.h), outside the game state: a game is saved
+between two ticks, never with one open */
+static struct
+{
+	/* sub-steps run before their time (game_time_finish_tick), taken from the
+	clock's next, and the ticks they ended, the next update's elapsed ones */
+	long substeps_ahead;
+	short ticks_ended_ahead;
+	/* what the frames do to the game as a whole waits for the open tick's end
+	(game_time_tick_open_wait): the clock begins no other until it has run,
+	and the frames that have waited since a sub-step last ran */
+	boolean boundary_wanted;
+	short boundary_waits;
+} game_time_substeps;
+
+/* the frames in a row that run no sub-step while the frames' work waits
+for a tick's end, before the tick is ended at once: a clock that runs a
+sub-step every 8 ms runs one within a frame or a few, one that has stopped
+(paused, the console, a menu over the game) never does */
+#define GAME_TIME_MAXIMUM_BOUNDARY_WAITS 8
+
 /* ---------- public code */
+
+/* port: a tick left open by the clock given up, and what the clock owes
+(a map begun or ended, a game state loaded over the game: the state is one
+saved between two ticks) */
+void game_time_port_drop_substeps(
+	void)
+{
+	/* (not from inside a sub-step, which ends as it began) */
+	if (sim_substep_index() != NONE)
+		return;
+	sim_rate_tick_drop();
+	csmemset(&game_time_substeps, 0, sizeof(game_time_substeps));
+
+	return;
+}
 
 boolean game_time_initialized(
 	void)
@@ -145,6 +186,7 @@ void game_time_initialize_for_new_map(
 	match_assert("c:\\halo\\SOURCE\\game\\game_time.c", 131, game_time_globals && !game_time_globals->initialized);
 	memset(game_time_globals, 0, sizeof(*game_time_globals));
 	game_time_globals->initialized = TRUE;
+	game_time_port_drop_substeps();
 
 	return;
 }
@@ -157,6 +199,7 @@ void game_time_dispose_from_old_map(
 		game_time_globals->initialized = FALSE;
 		game_time_globals->active = FALSE;
 	}
+	game_time_port_drop_substeps();
 
 	return;
 }
@@ -184,6 +227,7 @@ void game_time_set_distributed(
 	game_time_globals->local_time = time;
 	game_time_globals->server_time = time;
 	game_time_globals->leftover_dt = 0.f;
+	game_time_port_drop_substeps();
 
 	return;
 }
@@ -287,7 +331,57 @@ real game_time_get_tick_fraction(
 	if (!game_time_globals || !game_time_globals->active || game_time_globals->paused)
 		return 1.0f;
 	fraction = game_time_globals->leftover_dt * game_time_globals->speed * TICKS_PER_SECOND;
+	/* port: and the sub-steps of the open tick that have run (a frame drawn
+	from the last of them on: sim_substep_blend), less those run before their
+	time (game_time_finish_tick) */
+	if (sim_substep_next() || game_time_substeps.substeps_ahead)
+	{
+		fraction += (real)(sim_substep_next() - game_time_substeps.substeps_ahead) /
+			(real)sim_substep_count();
+	}
 	return PIN(fraction, 0.0f, 1.0f);
+}
+
+/* port: whether what the frames do to the game as a whole (save it, load a
+saved game, revert, change the map or its structure: main.c's work at a
+frame's start) must wait, a tick being open (its sub-steps spread over the
+frames: game_time_update). The clock then begins no other tick until the
+open one has run to its end; one that has stopped ends it at once, as the
+frames would wait for it for good. */
+boolean game_time_tick_open_wait(
+	void)
+{
+	if (!sim_substep_next())
+		return FALSE;
+	if (game_time_globals && game_time_globals->initialized && game_time_globals->active &&
+		!game_time_globals->paused && game_time_globals->speed > 0.0f &&
+		game_time_substeps.boundary_waits < GAME_TIME_MAXIMUM_BOUNDARY_WAITS)
+	{
+		game_time_substeps.boundary_wanted = TRUE;
+		game_time_substeps.boundary_waits++;
+		return TRUE;
+	}
+	game_time_finish_tick();
+	return FALSE;
+}
+
+/* port: the open tick run to its end now, before its sub-steps' time (the
+clock takes them from its next); the frames' input is the latest read */
+void game_time_finish_tick(
+	void)
+{
+	if (!game_time_globals || !game_time_globals->initialized)
+		return;
+	while (sim_substep_next())
+	{
+		game_time_substeps.substeps_ahead++;
+		if (game_time_run_substep())
+			game_time_substeps.ticks_ended_ahead++;
+	}
+	game_time_substeps.boundary_wanted = FALSE;
+	game_time_substeps.boundary_waits = 0;
+
+	return;
 }
 
 real game_time_get_speed(
@@ -371,6 +465,7 @@ void game_time_start(
 	game_time_globals->speed = 1.f;
 	game_time_globals->leftover_dt = 0;
 	game_time_globals->active = TRUE;
+	game_time_port_drop_substeps();
 
 	connection = game_connection();
 
@@ -398,11 +493,22 @@ void game_time_update(
 {
 	match_assert("c:\\halo\\SOURCE\\game\\game_time.c", 205, game_time_globals);
 
+	/* port: the frame's input read (the main loop's player_control_update,
+	before this) */
+	sim_rate_frame_begin();
 	if (game_time_globals->active)
 	{
 		long connection;
-		long ticks_elapsed;
-		real ticks_per_second = game_time_globals->speed*TICKS_PER_SECOND;
+		long steps_elapsed;
+		/* port: the clock counts the sub-steps of game.sim_rate
+		(port/linux/game/sim_rate.h): 1, 2 or 4 a tick, the open tick's, else
+		the next's. At 30 they are the ticks themselves. Each runs when its
+		time has come (game_time_run_substep), so a tick's are spread over the
+		frames that pass meanwhile, each with the input its frame read: at 120
+		on a display of 120 Hz, one a frame. The tick's own work runs with its
+		first sub-step, and what follows its fast phase with its last. */
+		short substep_count = (short)(sim_rate_next() / SIM_RATE_CLASSIC);
+		real steps_per_second = game_time_globals->speed*(TICKS_PER_SECOND*substep_count);
 
 		/* The native builds draw several frames per tick
 		(port/linux/game/render_interpolation.c). A frame that runs no tick has
@@ -414,11 +520,11 @@ void game_time_update(
 		every frame ran at least one tick. */
 		game_time_globals->last_local_time_elapsed = 0;
 
-		if (ticks_per_second > 0.f)
+		if (steps_per_second > 0.f)
 		{
 			boolean discard_leftover_time;
 			real game_time;
-			real ticks_elapsed_real;
+			real steps_elapsed_real;
 
 			connection = game_connection();
 			switch (connection)
@@ -443,45 +549,74 @@ void game_time_update(
 			discard_leftover_time = TRUE;
 
 		calculate_elapsed_ticks:
+			/* (the most ticks a frame runs, in sub-steps) */
+			connection *= substep_count;
 			game_time = time_delta_sec + game_time_globals->leftover_dt;
-			ticks_elapsed_real = (real)floor(game_time*ticks_per_second);
-			ticks_elapsed = (long)(ticks_elapsed_real <= (real)SOME_LARGE_NUMBER_OF_TICKS ?
-				ticks_elapsed_real : (real)SOME_LARGE_NUMBER_OF_TICKS);
-			if (ticks_elapsed > connection)
+			steps_elapsed_real = (real)floor(game_time*steps_per_second);
+			steps_elapsed = (long)(steps_elapsed_real <= (real)SOME_LARGE_NUMBER_OF_TICKS ?
+				steps_elapsed_real : (real)SOME_LARGE_NUMBER_OF_TICKS);
+			if (steps_elapsed > connection)
 			{
-				ticks_elapsed = connection;
+				steps_elapsed = connection;
 				if (discard_leftover_time)
-					game_time = ticks_elapsed_real/ticks_per_second;
+					game_time = steps_elapsed_real/steps_per_second;
 			}
 
-			game_time_globals->leftover_dt = game_time - ticks_elapsed_real/ticks_per_second;
+			game_time_globals->leftover_dt = game_time - steps_elapsed_real/steps_per_second;
 			if (game_time_globals->leftover_dt < 0.f)
 				game_time_globals->leftover_dt = 0.f;
-			/* port: debug.fixed_step, a game of this machine alone: one tick a
-			frame that has time (main.c gives it a tick's; a 30th of a second in
-			a float is not one tick exactly), so that what runs once a frame
-			(aiming) sees the game's time; game_speed has no effect */
+			/* port: debug.fixed_step, a game of this machine alone: one step (a
+			tick at 30, a sub-step at 60 and 120) a frame that has time (main.c
+			gives it a step's; a 30th of a second in a float is not one tick
+			exactly), so that what runs once a frame (aiming) sees the game's
+			time; game_speed has no effect */
 			if (halo_fixed_step() && game_connection() == _game_connection_local && time_delta_sec > 0.f)
 			{
-				ticks_elapsed = 1;
+				steps_elapsed = 1;
 				game_time_globals->leftover_dt = 0.f;
 			}
 			match_assert("c:\\halo\\SOURCE\\game\\game_time.c", 306,
 				game_time_globals->leftover_dt>=0.f && game_time_globals->leftover_dt<100.f);
-
-			if (ticks_elapsed > 0)
+			/* port: the sub-steps already run before their time
+			(game_time_finish_tick) are these */
+			if (game_time_substeps.substeps_ahead > 0 && steps_elapsed > 0)
 			{
+				long owed = MIN(steps_elapsed, game_time_substeps.substeps_ahead);
+
+				steps_elapsed -= owed;
+				game_time_substeps.substeps_ahead -= owed;
+			}
+			/* port: at a boundary the frame's work has had its turn
+			(game_time_tick_open_wait) */
+			if (!sim_substep_next())
+				game_time_substeps.boundary_wanted = FALSE;
+
+			if (steps_elapsed > 0)
+			{
+				/* port: the open tick's next sub-step, the ticks these steps
+				begin and end (at 30 each step begins and ends one), and those
+				that did end */
+				short next_substep = sim_substep_next();
+				long ticks_begun = (next_substep + steps_elapsed - 1)/substep_count + (next_substep == 0);
+				long ticks_ended = (next_substep + steps_elapsed)/substep_count;
+				long ticks_ended_run = 0;
+				/* (the first tick these steps would begin) */
+				long first_server_time = game_time_globals->server_time + (next_substep != 0);
 				long final_local_time;
 				long maximum_possible_server_time;
+				long server_updates = 0;
+				long step_index;
 
-				final_local_time = game_time_globals->local_time + ticks_elapsed;
+				final_local_time = game_time_globals->local_time + (next_substep != 0) + ticks_begun;
 				switch (game_connection())
 				{
 				case _game_connection_local:
-					update_client_local_ticks(ticks_elapsed);
+					if (ticks_begun > 0)
+						update_client_local_ticks((short)ticks_begun);
 					break;
 				case _game_connection_network_server:
-					network_game_server_update_ticks(global_network_game_server_get(), (short)ticks_elapsed);
+					if (ticks_begun > 0)
+						network_game_server_update_ticks(global_network_game_server_get(), (short)ticks_begun);
 					break;
 				}
 
@@ -502,39 +637,47 @@ void game_time_update(
 				}
 				else
 					maximum_possible_server_time = update_client_get_maximum_possible_server_time();
-				if (maximum_possible_server_time > game_time_globals->server_time)
+				if (maximum_possible_server_time > first_server_time)
 				{
 					long final_server_time = MIN(maximum_possible_server_time, final_local_time);
-					long server_updates = final_server_time - game_time_globals->server_time;
-					long update_index;
 
-					for (update_index = 0; update_index < server_updates; update_index++)
+					server_updates = final_server_time - first_server_time;
+				}
+
+				/* (the open tick's sub-steps, which need no update, then a tick
+				begun for each update, its sub-steps run as far as the steps
+				go) */
+				for (step_index = 0; step_index < steps_elapsed; step_index++)
+				{
+					if (!sim_substep_next())
 					{
-						/* port: (debug.determinism_log), and the local seed's
-						takers in the tick take the ticks' (random_math.c) */
-						determinism_log_tick_begin();
-						random_math_port_set_ticking(TRUE);
-						game_tick();
-						sim_trace_step(game_time_globals->server_time, sim_substep_count() - 1, sim_substep_count()); /* port: debug.trace */
-						profile_scope(game_time_render_interpolation_tick_section, render_interpolation_tick();)
-						game_time_globals->server_time++;
-						game_time_globals->local_time++;
-						/* the distributed netcode's per-tick state (port: none of
-						the main menu's scene, which a lobby's machines do not share) */
-						if (!game_time_menu_scene())
+						if (server_updates <= 0)
+							break;
+						/* port: the frame's work waits for this boundary
+						(game_time_tick_open_wait): the time of the steps left
+						is the next frame's */
+						if (game_time_substeps.boundary_wanted)
 						{
-							profile_scope(game_time_network_distributed_tick_section, network_distributed_tick();)
+							game_time_globals->leftover_dt += (real)(steps_elapsed - step_index)/steps_per_second;
+							break;
 						}
-						random_math_port_set_ticking(FALSE);
-						determinism_log_tick_end(game_time_globals->server_time);
+						server_updates--;
 					}
+					if (game_time_run_substep())
+						ticks_ended_run++;
+					game_time_substeps.boundary_waits = 0;
 				}
 
 				/* (none while a client's clock waits: a frame that runs no tick
-				reports none) */
-				game_time_globals->last_local_time_elapsed = game_time_held() ? 0 : (short)ticks_elapsed;
+				reports none; port: with sub-steps, the ticks that ended) */
+				game_time_globals->last_local_time_elapsed = game_time_held() ? 0 :
+					(short)(substep_count > 1 ? ticks_ended_run : ticks_ended);
 			}
 		}
+		/* port: and those that ended before their time in this frame
+		(game_time_finish_tick) */
+		game_time_globals->last_local_time_elapsed += game_time_substeps.ticks_ended_ahead;
+		game_time_substeps.ticks_ended_ahead = 0;
 
 		/* The effects and the widgets that move every frame (game_frame) hang
 		off objects: they read the pose between the last two ticks, as the
@@ -554,3 +697,42 @@ void game_time_update(
 }
 
 /* ---------- private code */
+
+/* port: the next sub-step of game.sim_rate run (port/linux/game/sim_rate.h):
+the open tick's, or the first of a new tick, which begins with the tick's own
+work; the last ends it, and the tick is counted. Whether it did. */
+static boolean game_time_run_substep(
+	void)
+{
+	boolean tick_ended;
+
+	/* port: (debug.determinism_log), and the local seed's takers in the
+	tick take the ticks' (random_math.c) */
+	determinism_log_tick_begin();
+	random_math_port_set_ticking(TRUE);
+	tick_ended = game_tick_substep(sim_substep_next());
+	if (tick_ended)
+	{
+		sim_trace_step(game_time_globals->server_time, sim_substep_count() - 1, sim_substep_count()); /* port: debug.trace */
+		profile_scope(game_time_render_interpolation_tick_section, render_interpolation_tick();)
+		game_time_globals->server_time++;
+		game_time_globals->local_time++;
+		/* the distributed netcode's per-tick state (port: none of the main
+		menu's scene, which a lobby's machines do not share) */
+		if (!game_time_menu_scene())
+		{
+			profile_scope(game_time_network_distributed_tick_section, network_distributed_tick();)
+		}
+		random_math_port_set_ticking(FALSE);
+		determinism_log_tick_end(game_time_globals->server_time);
+	}
+	else
+	{
+		/* (the frames before the tick's next sub-step take the frames' seed,
+		and are not logged as the tick's) */
+		random_math_port_set_ticking(FALSE);
+		determinism_log_tick_pause();
+	}
+
+	return tick_ended;
+}

@@ -60,6 +60,16 @@ static void set(
 	sim_rate_tick_begin();
 }
 
+/* a tick's sub-steps, all of them (as a frame slower than a tick runs them) */
+static void run_tick(
+	void)
+{
+	short substep;
+
+	for (substep = 0; substep < sim_substep_count(); substep++)
+		sim_substep_run(substep);
+}
+
 static boolean same_bits(
 	real a,
 	real b)
@@ -81,6 +91,7 @@ static struct
 	real seconds;
 	boolean last;
 	real end_fraction;
+	boolean first_of_frame;
 } calls[64];
 static int call_count;
 
@@ -93,6 +104,7 @@ static int call_count;
 		calls[call_count].seconds = seconds; \
 		calls[call_count].last = sim_substep_is_last(); \
 		calls[call_count].end_fraction = sim_substep_end_fraction(); \
+		calls[call_count].first_of_frame = sim_substep_first_of_frame(); \
 		call_count++; \
 	}
 SLOT_PROCEDURE(0)
@@ -254,7 +266,7 @@ int main(int argc, char **argv)
 
 			set(rate, _game_connection_local);
 			call_count = 0;
-			sim_substeps_run();
+			run_tick();
 			CHECK(call_count == 3 * count, "%d calls at %ld", call_count, rate);
 			for (step = 0; step < count; step++)
 			{
@@ -276,7 +288,7 @@ int main(int argc, char **argv)
 		sim_substep_register(1, NULL);
 		set(120, _game_connection_local);
 		call_count = 0;
-		sim_substeps_run();
+		run_tick();
 		CHECK(call_count == 8, "a slot taken away: %d calls", call_count);
 		return 0;
 	}
@@ -303,6 +315,55 @@ int main(int argc, char **argv)
 		CHECK(substep == 0 && same_bits(fraction, 0.5f), "0.25 at 60: %d %g", substep, fraction);
 		sim_substep_blend(0.75f, &substep, &fraction);
 		CHECK(substep == 1 && same_bits(fraction, 0.5f), "0.75 at 60: %d %g", substep, fraction);
+		return 0;
+	}
+
+	/* the sub-steps one at a time, as the clock spreads them over the
+	frames: the open tick's next, the first of each frame, the rate of the
+	next sub-step (the open tick's, whatever the setting says meanwhile, then
+	the next tick's), and an open tick given up */
+	if (!strcmp(case_name, "spread"))
+	{
+		short step;
+
+		sim_substep_register(0, slot_0);
+		set(120, _game_connection_local);
+		CHECK(sim_substep_next() == 0 && sim_rate_next() == 120, "before: next %d rate %ld", sim_substep_next(),
+			sim_rate_next());
+		for (step = 0; step < 4; step++)
+		{
+			call_count = 0;
+			sim_rate_frame_begin();
+			sim_substep_run(step);
+			CHECK(call_count == 1 && calls[0].index == step && calls[0].count == 4 && calls[0].first_of_frame,
+				"step %d: %d calls", step, call_count);
+			CHECK(sim_substep_next() == (step < 3 ? step + 1 : 0), "after %d: next %d", step, sim_substep_next());
+			CHECK(sim_substep_index() == NONE && !sim_substep_first_of_frame(), "between %d", step);
+			if (step == 0)
+			{
+				/* (the setting changed in the open tick: its rate holds) */
+				setting = 30;
+				changes++;
+			}
+			CHECK(sim_rate_next() == (step < 3 ? 120 : 30), "rate after %d: %ld", step, sim_rate_next());
+		}
+		/* two sub-steps in one frame, then one in the next; a tick given up */
+		set(120, _game_connection_local);
+		call_count = 0;
+		sim_rate_frame_begin();
+		sim_substep_run(0);
+		sim_substep_run(1);
+		sim_rate_frame_begin();
+		sim_substep_run(2);
+		CHECK(call_count == 3 && calls[0].first_of_frame && !calls[1].first_of_frame && calls[2].first_of_frame,
+			"first of frame: %d %d %d", calls[0].first_of_frame, calls[1].first_of_frame, calls[2].first_of_frame);
+		CHECK(sim_substep_next() == 3, "open at 3: %d", sim_substep_next());
+		sim_rate_tick_drop();
+		CHECK(sim_substep_next() == 0 && sim_substep_index() == NONE, "dropped: next %d", sim_substep_next());
+		/* at 30 a sub-step is the tick: none is ever open */
+		set(30, _game_connection_local);
+		sim_substep_run(0);
+		CHECK(sim_substep_next() == 0 && sim_rate_next() == 30, "30: next %d", sim_substep_next());
 		return 0;
 	}
 

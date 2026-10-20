@@ -329,15 +329,12 @@ void game_initialize(
 	return;
 }
 
-void game_tick(
+/* port: a tick's own work, before its fast phase (the macro step: its first
+sub-step's, game_tick_substep) */
+static void game_tick_macro_step(
 	void)
 {
 	real seconds_per_tick;
-
-	profile_tick_start();
-	collision_log_begin_period(0);
-	real_math_reset_precision();
-	profile_enter(game_update_section);
 
 	match_assert(
 		"c:\\halo\\SOURCE\\game\\game.c",
@@ -395,10 +392,15 @@ void game_tick(
 		profile_scope(game_tick_hs_section, hs_update();)
 	profile_scope(game_tick_recorded_animations_section, recorded_animations_update();)
 	profile_scope(game_tick_objects_section, objects_update();)
-	/* port: the fast phase, its sub-steps (1 at game.sim_rate 30, 2 at 60, 4
-	at 120): what a player feels in their hands moved in smaller steps, the
-	objects of the tick having moved (port/linux/game/sim_rate.c) */
-	profile_scope(game_tick_substeps_section, sim_substeps_run();)
+
+	return;
+}
+
+/* port: a tick's own work after its fast phase (its last sub-step's,
+game_tick_substep) */
+static void game_tick_after_substeps(
+	void)
+{
 	profile_scope(game_tick_players_after_section, players_update_after_game();)
 	profile_scope(game_tick_hud_section, hud_update();)
 	profile_scope(game_tick_player_effect_section, player_effect_update();)
@@ -409,11 +411,38 @@ void game_tick(
 	game_state_check_data_arrays();
 	lights_port_recover();
 
+	return;
+}
+
+/* port: a sub-step of the tick (game.sim_rate; port/linux/game/sim_rate.h),
+which the clock runs when its time has come (game_time.c): the first begins
+the tick with its own work (the macro step), then runs the fast phase's
+first sub-step, what a player feels in their hands moved in smaller steps
+(1 at game.sim_rate 30, 2 at 60, 4 at 120), the objects of the tick having
+moved; the last ends the tick with the rest of its work. At 30 the one
+sub-step is the whole tick, as game_tick was. Whether the tick ended. */
+boolean game_tick_substep(
+	short substep_index)
+{
+	boolean tick_ended;
+
+	profile_tick_start();
+	collision_log_begin_period(0);
+	real_math_reset_precision();
+	profile_enter(game_update_section);
+
+	if (substep_index == 0)
+		game_tick_macro_step();
+	profile_scope(game_tick_substeps_section, sim_substep_run(substep_index);)
+	tick_ended = sim_substep_next() == 0;
+	if (tick_ended)
+		game_tick_after_substeps();
+
 	profile_exit(game_update_section);
 	collision_log_end_period();
 	profile_tick_end();
 
-	return;
+	return tick_ended;
 }
 
 void game_options_new(

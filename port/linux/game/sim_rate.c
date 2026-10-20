@@ -3,7 +3,10 @@ SIM_RATE.C
 
 The simulation's two clocks (sim_rate.h): game.sim_rate, the rate a tick
 takes, and the fast phase's sub-steps inside each tick (game.c's
-game_tick, after the objects' update).
+game_tick_substep, after the objects' update). The clock (game_time.c)
+runs each sub-step when its time has come, so a tick's sub-steps are
+spread over the frames that pass meanwhile; here is which is next, and
+whether the frame's input was read since the last.
 
 The rate is taken at each tick's start and holds for the tick. It is 30,
 whatever game.sim_rate says, in a game that must stay as it was:
@@ -52,8 +55,14 @@ static struct
 	long rate;
 	short substep_count;
 	short substep_index;
+	/* the open tick's next sub-step (0: none open) */
+	short substep_next;
+	/* no sub-step has run since the frame's input was read, and the running
+	one is the first since */
+	boolean frame_fresh;
+	boolean first_of_frame;
 	sim_substep_procedure procedures[NUMBER_OF_SIM_SUBSTEP_SLOTS];
-} sim_rate_globals = { 0, SIM_RATE_CLASSIC, FALSE, SIM_RATE_CLASSIC, 1, NONE };
+} sim_rate_globals = { 0, SIM_RATE_CLASSIC, FALSE, SIM_RATE_CLASSIC, 1, NONE, 0, TRUE, FALSE };
 
 /* ---------- private code */
 
@@ -81,6 +90,22 @@ static long sim_rate_network(
 	void)
 {
 	return SIM_RATE_CLASSIC;
+}
+
+/* the rate a tick begun now takes */
+static long sim_rate_for_connection(
+	void)
+{
+	switch (game_connection())
+	{
+	case _game_connection_local:
+		return sim_rate_setting();
+	case _game_connection_network_client:
+	case _game_connection_network_server:
+		return sim_rate_network();
+	default:
+		return SIM_RATE_CLASSIC;
+	}
 }
 
 /* a root of a factor, its count-th: exactly the factor at 30, and with
@@ -210,45 +235,65 @@ void sim_substep_blend(
 	*substep_fraction = scaled - (real)index;
 }
 
+short sim_substep_next(
+	void)
+{
+	return sim_rate_globals.substep_next;
+}
+
+boolean sim_substep_first_of_frame(
+	void)
+{
+	return sim_rate_globals.first_of_frame;
+}
+
+long sim_rate_next(
+	void)
+{
+	return sim_rate_globals.substep_next ? sim_rate_globals.rate : sim_rate_for_connection();
+}
+
+void sim_rate_frame_begin(
+	void)
+{
+	sim_rate_globals.frame_fresh = TRUE;
+}
+
+void sim_rate_tick_drop(
+	void)
+{
+	sim_rate_globals.substep_index = NONE;
+	sim_rate_globals.substep_next = 0;
+}
+
 void sim_rate_tick_begin(
 	void)
 {
-	long rate = sim_rate_setting();
+	long rate = sim_rate_for_connection();
 
-	switch (game_connection())
-	{
-	case _game_connection_local:
-		break;
-	case _game_connection_network_client:
-	case _game_connection_network_server:
-		rate = sim_rate_network();
-		break;
-	default:
-		rate = SIM_RATE_CLASSIC;
-		break;
-	}
 	sim_rate_globals.rate = rate;
 	sim_rate_globals.substep_count = (short)(rate / SIM_RATE_CLASSIC);
 	sim_rate_globals.substep_index = NONE;
+	sim_rate_globals.substep_next = 0;
 }
 
-void sim_substeps_run(
-	void)
+void sim_substep_run(
+	short substep_index)
 {
 	real seconds = sim_substep_seconds();
 	short count = sim_rate_globals.substep_count;
-	short substep_index;
+	short slot;
 
-	for (substep_index = 0; substep_index < count; substep_index++)
+	sim_rate_globals.first_of_frame = sim_rate_globals.frame_fresh;
+	sim_rate_globals.frame_fresh = FALSE;
+	sim_rate_globals.substep_index = substep_index;
+	for (slot = 0; slot < NUMBER_OF_SIM_SUBSTEP_SLOTS; slot++)
 	{
-		short slot;
-
-		sim_rate_globals.substep_index = substep_index;
-		for (slot = 0; slot < NUMBER_OF_SIM_SUBSTEP_SLOTS; slot++)
-		{
-			if (sim_rate_globals.procedures[slot])
-				sim_rate_globals.procedures[slot](substep_index, count, seconds);
-		}
+		if (sim_rate_globals.procedures[slot])
+			sim_rate_globals.procedures[slot](substep_index, count, seconds);
 	}
 	sim_rate_globals.substep_index = NONE;
+	sim_rate_globals.first_of_frame = FALSE;
+	/* (the tick open until its last sub-step has run) */
+	sim_rate_globals.substep_next = substep_index + 1 < count ? substep_index + 1 : 0;
 }
