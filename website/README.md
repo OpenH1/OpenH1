@@ -1,9 +1,9 @@
 # openh1.com
 
 The project's landing page: one static page (`public/index.html`), its
-pictures and clips (`public/media/`), its fonts (`public/fonts/`) and the
-app's icon (`public/favicon.png`, `apple-touch-icon.png`, `icon.png`, from
-`port/assets/icon`).
+pictures and clips (`public/media/`), its fonts (`public/fonts/`), the logo
+(`public/brand/`) and the icons (`public/favicon.svg`, `favicon-16.png`,
+`favicon-32.png`, `apple-touch-icon.png`).
 
 It is a Cloudflare Worker of static assets, `openh1`, on the custom domains
 `openh1.com` and `www.openh1.com` (`cloudflare.config.ts`), in Paul's
@@ -97,8 +97,11 @@ other sites, and has no trackers or analytics.
 
 ## The logo
 
-The header and the footer show the name as text, `Open<b>H1</b>`, in
-Archivo. When a logo is chosen, put it beside the wordmark in the header
-(`.wordmark`), and replace `favicon.png` (32 px), `apple-touch-icon.png`
-(180 px). The link preview, `og:image`, is `media/og.jpg` (1200 × 630, a
-crop of the hero's poster).
+The logo is "Tail Code" (round 5, concept 01, `website/brand/logo-r5` on
+the `logo-r5` branch): OPEN in light, wide caps, then H1 knocked out of a
+green plate with one clipped corner. `brand/openh1-lockup.svg` is the
+header's and the footer's wordmark, and `brand/openh1-mark.svg` the plate
+alone. `favicon.svg` is the plate on a dark tile; `favicon-16.png`,
+`favicon-32.png` and `apple-touch-icon.png` (180 px) are it drawn at those
+sizes. The link preview, `og:image`, is `media/og.jpg` (1200 × 630): the
+hero's poster with the logo and the headline.
