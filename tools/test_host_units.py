@@ -24,7 +24,7 @@ def compiler():
     return None
 
 
-def run_test(tmp_path, name, sources):
+def run_test(tmp_path, name, sources, includes=()):
     cc = compiler()
     if not cc:
         pytest.skip("no C compiler")
@@ -33,7 +33,7 @@ def run_test(tmp_path, name, sources):
     binary = tmp_path / name
     subprocess.run(
         [cc, "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-O1", "-D_GNU_SOURCE",
-         f"-I{ROOT / 'port' / 'android' / 'include'}", f"-I{HOST}",
+         f"-I{ROOT / 'port' / 'android' / 'include'}", f"-I{HOST}", *[f"-I{path}" for path in includes],
          "-pthread", *[str(source) for source in sources], "-o", str(binary)],
         check=True,
     )
@@ -53,6 +53,16 @@ def test_host_memory(tmp_path):
     run_test(tmp_path, "host_memory_test",
              [TESTS / "host_memory_test.c", HOST / "host_arch.c", HOST / "host_memory_watch.c",
               HOST / "host_watch_hash.c"])
+
+
+def test_posix_net_interrupted(tmp_path):
+    """a select interrupted by signals waits out its time: Winsock's is never
+    interrupted, and the game takes a failed one as the connection lost"""
+    if platform.system() != "Linux":
+        pytest.skip("the hosts' sockets are Linux's")
+    run_test(tmp_path, "posix_net_interrupt_test",
+             [TESTS / "posix_net_interrupt_test.c", ROOT / "port" / "linux" / "src" / "posix_net.c"],
+             [ROOT / "port" / "linux" / "src"])
 
 
 def test_x32_boundary(tmp_path):
