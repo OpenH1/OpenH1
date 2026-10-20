@@ -1317,9 +1317,10 @@ static long object_lane_update_count;
 
 /* a type's objects that may be of the micro lane (object_get_lane): a
 player's biped or the AI's (an actor's, or one of a swarm's: the AI decides
-on the tick, its body moves in the sub-steps, bipeds.c), a projectile, an
-item loose in the world (thrown, dropped); each one's own, never a thing
-carried, which goes where its carrier does */
+on the tick, its body moves in the sub-steps, bipeds.c), a vehicle a player
+drives (vehicle_takes_substeps), a projectile, an item loose in the world
+(thrown, dropped); each one's own, never a thing carried, which goes where
+its carrier does */
 static boolean object_lane_micro_candidate(
 	long root_index,
 	short type)

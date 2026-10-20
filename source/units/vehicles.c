@@ -2647,6 +2647,16 @@ boolean vehicle_takes_substeps(
 	return TRUE;
 }
 
+boolean vehicle_gunned_by_player(
+	long unit_index)
+{
+	struct unit_datum *unit = unit_get(unit_index);
+
+	return unit->object.type==_object_type_vehicle &&
+		unit->unit.gunner_object_index!=NONE &&
+		unit_get(unit->unit.gunner_object_index)->unit.player_index!=NONE;
+}
+
 /* port: whether a vehicle moves in the fast phase this tick
 (vehicle_substep_globals): one of the micro lane (objects.h: a player drives
 it, vehicle_takes_substeps) in a tick of more than one sub-step, in the

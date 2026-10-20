@@ -800,8 +800,9 @@ long prop_car(
 	car->unit.object.bounding_radius = 1.5f;
 	/* (the engine's own field of view, as the biped's) */
 	car->unit.unit.camera_field_of_view = DEGREES_TO_RADIANS(70.f);
-	/* (one seat, the driver's, seen from the rider's eyes, whose animations the players' biped has:
-	stage.c's one seat, "stand") */
+	/* (one seat, the driver's, whose animations the players' biped has:
+	stage.c's one seat, "stand"; seen from the rider's own eyes, as a
+	following camera reads a camera track StageKit has none of) */
 	seat = cache_block(&car->unit.unit.seats, 1, sizeof(*seat));
 	seat->flags = FLAG(_unit_seat_driver_bit);
 	strcpy(seat->label, "stand");

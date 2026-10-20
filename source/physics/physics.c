@@ -2385,25 +2385,40 @@ a steady acceleration every tick then ends exactly where the tick at 30
 leaves the vehicle (the launch bias of U1's jumps, here of gravity and every
 other force: a jump's arc, its air time and where it lands are the tick's),
 and with a changing one, as nearly as the sub-steps' finer steps follow the
-tick's. The springs (the ground under each mass point, the antigrav's lift)
-keep their stiffness: their period is the method's, which differs from a
-tick's by a fraction of a percent (a warthog's suspension, four wheels down:
-0.5%).
+tick's.
+
+Where the vehicle meets the world is the tick's: the ground under each mass
+point, the water round it and the ground its antigrav lifts it from are found
+once, at the tick's first sub-step, where the tick began, as a tick at 30
+finds them, and held through the tick (physics_substep's contacts). A tick at
+30 pushes on a wheel the whole tick that began with it in the ground, and not
+at all through the tick it reaches the ground in; so does each sub-step. A
+jump so leaves the ground, and lands, as at 30, with the springs' push of 30
+(found each sub-step, a wheel leaving a ramp's lip pushes less, and the jump
+falls 4% short at 120); and the world's tests, the costliest of a vehicle's
+physics, run once a tick. The forces that come of the vehicle's motion (the
+frictions, the dampings, a wheel's drive, which is a friction toward the
+speed the driver wants) are found each sub-step from how it moves then: the
+driver's controls take hold at once.
 
 What the method does not keep is a damping: a force that takes a share of the
 velocity each tick (the friction of the ground, the water and the air; the
 ground's and the antigrav's damping) takes that share once a tick at 30, and
 in the sub-steps count smaller shares, which together take less (a scorpion's
 suspension, eight treads down, takes 0.40 of its bounce a tick at 30, and
-0.34 in four sub-steps). So each damping is scaled to take in a tick's
-sub-steps the share it takes in a tick at 30 (physics_substep_damping_scale):
-the share the whole vehicle's velocity loses to it, each mass point's summed
+0.34 in four sub-steps). So the dampings are scaled to take in a tick's
+sub-steps the share they take in a tick at 30 (physics_substep_damping_scale):
+the share the whole vehicle's velocity loses to them, each mass point's summed
 (a mass point's friction moves the vehicle by its share of the vehicle's
-mass), taken root by sub-step (sim_decay_per_substep). A force that pushes
-toward a velocity (a wheel's drive) is a friction toward it, scaled with it:
-its top speed is where the two balance, the same at any rate. A spring's
-damping is then exact (its two roots' product is the tick's damping at any
-rate): the suspension bounces as high, as many times, and is still as soon.
+mass), taken root by sub-step (sim_decay_per_substep); along the ground's and
+the antigrav's normals, and along and across the mass points' forwards (the
+ground's, the water's and the air's frictions together, so that a wheel's
+drive and the air's drag balance where they did: the top speed is the
+tick's). A spring's damping is then exact (its two roots' product is the
+tick's damping at any rate): the suspension bounces as high, as many times,
+and is still as soon. Its period is the method's, which differs from a
+tick's by a fraction of a percent (a warthog's suspension, four wheels down:
+0.5%).
 
 Nothing here outlives the tick: what a tick keeps in the vehicle (its
 velocity and angular velocity, its collision force, its flags) is what a tick

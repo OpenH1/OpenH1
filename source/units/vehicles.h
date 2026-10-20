@@ -81,6 +81,10 @@ void vehicle_render_debug(
 physics, if any, is of mass points */
 boolean vehicle_takes_substeps(
 	long vehicle_index);
+/* port: whether a unit is a vehicle a player's unit guns (units.c: its aim
+turns in the sub-steps, as its gunner's does, while it is of the micro lane) */
+boolean vehicle_gunned_by_player(
+	long unit_index);
 
 /* ---------- globals */
 
