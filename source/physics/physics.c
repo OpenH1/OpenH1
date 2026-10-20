@@ -230,6 +230,8 @@ typedef char powered_mass_point_definition_size_assert[
 	sizeof(struct powered_mass_point_definition) == 0x80 ? 1 : -1];
 typedef char powered_mass_point_datum_size_assert[
 	sizeof(struct powered_mass_point_datum) == 0x60 ? 1 : -1];
+typedef char physics_substep_contacts_assert[
+	MAXIMUM_PHYSICS_SUBSTEP_CONTACTS == MAXIMUM_MASS_POINTS_PER_PHYSICS ? 1 : -1];
 typedef char mass_point_datum_size_assert[
 	sizeof(struct mass_point_datum) == 0x130 ? 1 : -1];
 
@@ -2410,18 +2412,16 @@ bipeds are the tick's, once at its last sub-step, as at 30. With one
 sub-step a tick (30) none of this runs: physics_update is the tick's, as it
 always was. */
 
-/* the vehicle's dampings: each one's share of the velocity a tick, summed
-(physics_compute_substep) */
+/* the vehicle's dampings, each the share of the velocity a tick its forces
+take together, summed (physics_compute_substep): along the ground's and the
+antigrav's normals (their dampings), and along and across the mass points'
+forwards (the frictions of the ground, the water and the air: one scale for
+all three, so that where they balance, a top speed, is where it was) */
 enum
 {
 	_substep_damping_normal = 0,
-	_substep_damping_ground_parallel,
-	_substep_damping_ground_perpendicular,
-	_substep_damping_water_parallel,
-	_substep_damping_water_perpendicular,
-	_substep_damping_air_parallel,
-	_substep_damping_air_perpendicular,
-	_substep_damping_antigrav,
+	_substep_damping_parallel,
+	_substep_damping_perpendicular,
 	NUMBER_OF_SUBSTEP_DAMPINGS
 };
 
@@ -2500,11 +2500,13 @@ static void physics_compute_substep(
 	struct physics_instance const *instance,
 	struct powered_mass_point_datum const *powered_mass_points,
 	struct mass_point_datum *mass_points,
-	real fraction,
+	struct physics_substep *substep,
 	real_vector3d *total_force,
 	real_vector3d *total_torque)
 {
 	struct object_datum *object = object_get(instance->object_index);
+	real fraction = substep->fraction;
+	boolean first = substep->index == 0;
 	struct physics_definition const *physics = instance->physics;
 	real gravity = physics->gravity_scale*global_gravity;
 	struct physics_substep_forces forces[MAXIMUM_MASS_POINTS_PER_PHYSICS];
@@ -2516,6 +2518,13 @@ static void physics_compute_substep(
 
 	set_real_vector3d(total_force, 0.0f, 0.0f, -physics->mass*gravity);
 	set_real_vector3d(total_torque, 0.0f, 0.0f, 0.0f);
+	/* (the vehicle as the tick found it, at its first sub-step: where its
+	mass points meet the world, as a tick at 30 finds it once) */
+	if (first)
+	{
+		substep->world_matrix = instance->world_matrix;
+		substep->tick_position = object->object.position;
+	}
 
 	memset(mass_points, 0, sizeof(struct mass_point_datum)*mass_point_count);
 	memset(forces, 0, sizeof(struct physics_substep_forces)*mass_point_count);
@@ -2539,6 +2548,7 @@ static void physics_compute_substep(
 		/* (its share of the vehicle's mass: how much its friction moves the
 		vehicle) */
 		real mass_share = physics->mass > 0.0f ? mass_point_definition->mass/physics->mass : 0.0f;
+		struct physics_substep_contact *contact = substep->contacts + mass_point_index;
 
 		if (powered_mass_point_index != NONE && powered_mass_points)
 		{
@@ -2549,32 +2559,53 @@ static void physics_compute_substep(
 			powered_mass_point = powered_mass_points + powered_mass_point_index;
 		}
 
+		/* (where it is and what it stands in, as the tick found them at its
+		first sub-step; its forward and up as the vehicle faced then, turned
+		as its powered mass point is now; its velocity, the vehicle's now) */
 		mass_point->flags = 0;
-		matrix4x3_transform_point(
-			&instance->world_matrix,
-			&mass_point_definition->position,
-			&mass_point->position);
 		if (powered_mass_point)
 		{
 			real_matrix4x3 powered_world_matrix;
 
-			matrix4x3_multiply(&instance->world_matrix, &powered_mass_point->rotation_matrix, &powered_world_matrix);
+			matrix4x3_multiply(&substep->world_matrix, &powered_mass_point->rotation_matrix, &powered_world_matrix);
 			matrix4x3_transform_normal(&powered_world_matrix, &mass_point_definition->forward, &mass_point->forward);
 			matrix4x3_transform_normal(&powered_world_matrix, &mass_point_definition->up, &mass_point->up);
 		}
 		else
 		{
-			matrix4x3_transform_normal(&instance->world_matrix, &mass_point_definition->forward, &mass_point->forward);
-			matrix4x3_transform_normal(&instance->world_matrix, &mass_point_definition->up, &mass_point->up);
+			matrix4x3_transform_normal(&substep->world_matrix, &mass_point_definition->forward, &mass_point->forward);
+			matrix4x3_transform_normal(&substep->world_matrix, &mass_point_definition->up, &mass_point->up);
 		}
-		scenario_location_from_point(&mass_point->location, &mass_point->position);
+		if (first)
+		{
+			matrix4x3_transform_point(
+				&substep->world_matrix,
+				&mass_point_definition->position,
+				&mass_point->position);
+			scenario_location_from_point(&mass_point->location, &mass_point->position);
+			compute_ground_plane(instance->object_index, mass_point, mass_point_definition);
+			mass_point->water_depth = scenario_location_water_depth(&mass_point->location, &mass_point->position);
+			contact->position = mass_point->position;
+			contact->ground_plane = mass_point->ground_plane;
+			contact->ground_depth = mass_point->ground_depth;
+			contact->ground_material_type = mass_point->ground_material_type;
+			contact->on_volatile_surface = TEST_FLAG(mass_point->flags, _point_on_volatile_surface_bit);
+			contact->water_depth = mass_point->water_depth;
+			contact->antigrav = FALSE;
+		}
+		else
+		{
+			mass_point->position = contact->position;
+			mass_point->ground_plane = contact->ground_plane;
+			mass_point->ground_depth = contact->ground_depth;
+			mass_point->ground_material_type = contact->ground_material_type;
+			SET_FLAG(mass_point->flags, _point_on_volatile_surface_bit, contact->on_volatile_surface);
+			mass_point->water_depth = contact->water_depth;
+		}
 
-		vector_from_points3d(&object->object.position, &mass_point->position, &mass_point->radius);
+		vector_from_points3d(&substep->tick_position, &mass_point->position, &mass_point->radius);
 		cross_product3d(&object->object.angular_velocity, &mass_point->radius, &mass_point->velocity);
 		add_vectors3d(&object->object.translational_velocity, &mass_point->velocity, &mass_point->velocity);
-
-		compute_ground_plane(instance->object_index, mass_point, mass_point_definition);
-		mass_point->water_depth = scenario_location_water_depth(&mass_point->location, &mass_point->position);
 
 		if (mass_point->ground_depth > 0.0f)
 		{
@@ -2648,8 +2679,8 @@ static void physics_compute_substep(
 			physics_substep_friction_rates(
 				mass_point_definition,
 				mass_share*ground_friction,
-				&rates[_substep_damping_ground_parallel],
-				&rates[_substep_damping_ground_perpendicular]);
+				&rates[_substep_damping_parallel],
+				&rates[_substep_damping_perpendicular]);
 		}
 
 		if (mass_point->water_depth > 0.0f)
@@ -2688,8 +2719,8 @@ static void physics_compute_substep(
 			physics_substep_friction_rates(
 				mass_point_definition,
 				mass_share*physics->water_friction,
-				&rates[_substep_damping_water_parallel],
-				&rates[_substep_damping_water_perpendicular]);
+				&rates[_substep_damping_parallel],
+				&rates[_substep_damping_perpendicular]);
 
 			if (powered_mass_point_definition &&
 				TEST_FLAG(powered_mass_point_definition->flags, _powered_mass_point_water_lift_bit) &&
@@ -2730,8 +2761,8 @@ static void physics_compute_substep(
 			physics_substep_friction_rates(
 				mass_point_definition,
 				mass_share*physics->air_friction,
-				&rates[_substep_damping_air_parallel],
-				&rates[_substep_damping_air_perpendicular]);
+				&rates[_substep_damping_parallel],
+				&rates[_substep_damping_perpendicular]);
 
 			if (powered_mass_point_definition &&
 				TEST_FLAG(powered_mass_point_definition->flags, _powered_mass_point_air_lift_bit) &&
@@ -2762,21 +2793,31 @@ static void physics_compute_substep(
 
 			if (TEST_FLAG(powered_mass_point_definition->flags, _powered_mass_point_antigrav_bit))
 			{
-				real probe_length = mass_point_definition->radius + powered_mass_point_definition->antigrav_height;
-				real_point3d point = mass_point->position;
-				real_vector3d probe_vector;
-				struct collision_result collision;
-
-				scale_vector3d(global_down3d, probe_length, &probe_vector);
-
-				if (collision_test_vector(
-						_collision_test_for_bipeds_dead_flags,
-						&point,
-						&probe_vector,
-						instance->object_index,
-						&collision))
+				/* (the ground under it, as the tick's first sub-step found it) */
+				if (first)
 				{
-					real height = probe_length*collision.t - mass_point_definition->radius;
+					real probe_length = mass_point_definition->radius + powered_mass_point_definition->antigrav_height;
+					real_point3d point = mass_point->position;
+					real_vector3d probe_vector;
+					struct collision_result collision;
+
+					scale_vector3d(global_down3d, probe_length, &probe_vector);
+					if (collision_test_vector(
+							_collision_test_for_bipeds_dead_flags,
+							&point,
+							&probe_vector,
+							instance->object_index,
+							&collision))
+					{
+						contact->antigrav = TRUE;
+						contact->antigrav_normal = collision.plane.n;
+						contact->antigrav_height = probe_length*collision.t - mass_point_definition->radius;
+					}
+				}
+
+				if (contact->antigrav)
+				{
+					real height = contact->antigrav_height;
 					real alignment = pin_fraction(
 						mass_point->up.k,
 						powered_mass_point_definition->antigrav_normal_k0,
@@ -2790,15 +2831,15 @@ static void physics_compute_substep(
 					/* (its lift, a spring of the height, and its damping apart:
 					each damps the whole vehicle by its strength) */
 					scale_vector3d(
-						&collision.plane.n,
+						&contact->antigrav_normal,
 						ground_effect*ground_effect*global_gravity*strength*physics->mass,
 						&mass_point_forces->antigrav_spring);
 					scale_vector3d(
-						&collision.plane.n,
-						-dot_product3d(&collision.plane.n, &mass_point->velocity)*
+						&contact->antigrav_normal,
+						-dot_product3d(&contact->antigrav_normal, &mass_point->velocity)*
 							powered_mass_point_definition->antigrav_damp_fraction*strength*physics->mass,
 						&mass_point_forces->antigrav_damping);
-					rates[_substep_damping_antigrav] += powered_mass_point_definition->antigrav_damp_fraction*strength;
+					rates[_substep_damping_normal] += powered_mass_point_definition->antigrav_damp_fraction*strength;
 					SET_FLAG(mass_point->flags, _point_antigraving_bit, TRUE);
 				}
 			}
@@ -2824,21 +2865,21 @@ static void physics_compute_substep(
 		{
 			physics_substep_friction_scale(
 				&mass_point->ground_friction,
-				scales[_substep_damping_ground_parallel],
-				scales[_substep_damping_ground_perpendicular]);
+				scales[_substep_damping_parallel],
+				scales[_substep_damping_perpendicular]);
 		}
 		if (mass_point->water_depth > 0.0f)
 		{
 			physics_substep_friction_scale(
 				&mass_point->water_friction,
-				scales[_substep_damping_water_parallel],
-				scales[_substep_damping_water_perpendicular]);
+				scales[_substep_damping_parallel],
+				scales[_substep_damping_perpendicular]);
 		}
 		physics_substep_friction_scale(
 			&mass_point->air_friction,
-			scales[_substep_damping_air_parallel],
-			scales[_substep_damping_air_perpendicular]);
-		scale_vector3d(&mass_point_forces->antigrav_damping, scales[_substep_damping_antigrav], &damping);
+			scales[_substep_damping_parallel],
+			scales[_substep_damping_perpendicular]);
+		scale_vector3d(&mass_point_forces->antigrav_damping, scales[_substep_damping_normal], &damping);
 		add_vectors3d(&mass_point->powered_force, &mass_point_forces->antigrav_spring, &mass_point->powered_force);
 		add_vectors3d(&mass_point->powered_force, &damping, &mass_point->powered_force);
 
@@ -3153,7 +3194,7 @@ static void physics_update_substep(
 		&instance,
 		powered_mass_points,
 		mass_points,
-		substep->fraction,
+		substep,
 		&total_force,
 		&total_torque);
 

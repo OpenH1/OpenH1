@@ -31,13 +31,15 @@ import runner  # noqa: E402
 
 ROOT = runner.ROOT
 # (StageKit map, input, cues, seconds): a biped that walks, turns, jumps and fires its weapon on its own, a lift
-# ridden, shots at walls, grenades
+# ridden, shots at walls, grenades, a car driven (the script's input, on the game's clock at 30), turned and jumped
 SCENARIOS = {
     "walk": ("walk", "bot:1", [], 12),
     "elevator": ("elevator", "look:1", [(1, "device_set_position elevator 1"), (5, "device_set_position elevator 0")],
                  8),
     "shoot": ("shoot", "bot:3", [], 12),
     "lob": ("lob", "bot:2", [], 12),
+    "drive": ("drive", "script:0.5 aim=0,0; 1-12 move=0,1; 2-4 look=0.3,0; 4.5 aim=0,0",
+              [(0.1, 'unit_enter_vehicle (unit (list_get (players) 0)) car "stand"')], 12),
 }
 LOG = "determinism.txt"
 # what two builds' logs are compared by (tools/determinism_compare.py): the game state and the seeds, the seeds'

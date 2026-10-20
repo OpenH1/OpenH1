@@ -30,6 +30,7 @@ scenarios place (props.c), and a scenario itself (scenarios/).
 #include "models/model_definitions.h"
 #include "physics/collision_bsp_definitions.h"
 #include "physics/collision_model_definitions.h"
+#include "physics/physics_definitions.h"
 #include "sound/sound_definitions.h"
 #include "structures/structure_bsp_definitions.h"
 #include "text/font_group.h"
@@ -179,6 +180,21 @@ long prop_weapon(char const *name, long projectile_handle, real rate_of_fire);
 /* the players start with the weapon in their hands (the scenario's first
 starting profile) */
 void player_loadout(struct stage *stage, long weapon_handle);
+
+/* a scenery box (bounds in its own space) at position, turned by yaw, pitch
+and roll in degrees (a ramp: a box pitched up), solid to anything */
+void prop_turned_obstacle(struct stage *stage, char const *name, real_rectangle3d const *bounds,
+	real_point3d const *position, real yaw, real pitch, real roll);
+
+/* a car (tools/scorecard's vehicle scenarios): four wheels it drives on, steers
+with and is held up by, a body above them, one seat a player drives it from,
+as a game's jeep is; its tag made once (a scenario's values, car_*) */
+long prop_car(void);
+
+/* the vehicle placed at position, facing yaw degrees from x, its console name
+name */
+void prop_vehicle(struct stage *stage, char const *name, long vehicle_handle, real_point3d const *position,
+	real yaw);
 
 /* ---------- prototypes/MAIN.C */
 

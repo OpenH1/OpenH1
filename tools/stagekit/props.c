@@ -165,11 +165,13 @@ static long box_collision_model(
 	return handle;
 }
 
-void prop_obstacle(
+/* a scenery box placed, turned (radians) */
+static void obstacle_place(
 	struct stage *stage,
 	char const *name,
 	real_rectangle3d const *bounds,
-	real_point3d const *position)
+	real_point3d const *position,
+	real_euler_angles3d const *rotation)
 {
 	struct object_definition *scenery;
 	struct scenario_object_palette_entry *palette;
@@ -194,6 +196,35 @@ void prop_obstacle(
 	placement->object.palette_entry_index = (short)(stage->scenario->scenery_palette.count - 1);
 	placement->object.name_index = NONE;
 	placement->object.position = *position;
+	placement->object.rotation = *rotation;
+}
+
+void prop_obstacle(
+	struct stage *stage,
+	char const *name,
+	real_rectangle3d const *bounds,
+	real_point3d const *position)
+{
+	real_euler_angles3d unturned = { { 0.f, 0.f, 0.f } };
+
+	obstacle_place(stage, name, bounds, position, &unturned);
+}
+
+void prop_turned_obstacle(
+	struct stage *stage,
+	char const *name,
+	real_rectangle3d const *bounds,
+	real_point3d const *position,
+	real yaw,
+	real pitch,
+	real roll)
+{
+	real_euler_angles3d rotation;
+
+	rotation.yaw = DEGREES_TO_RADIANS(yaw);
+	rotation.pitch = DEGREES_TO_RADIANS(pitch);
+	rotation.roll = DEGREES_TO_RADIANS(roll);
+	obstacle_place(stage, name, bounds, position, &rotation);
 }
 
 /* the name a scenario's console lines call an object it places by */
@@ -510,4 +541,306 @@ void prop_ai_command_list(
 		command->recording_reference_index = command->command_index = NONE;
 		command->object_name_index = NONE;
 	}
+/* ---------- vehicles (tools/scorecard's vehicle scenarios) */
+
+enum
+{
+	/* (vehicles.c's names a jeep 1: four wheels it drives on and steers with) */
+	VEHICLE_TYPE_JEEP = 1,
+	/* (physics.c's: a powered mass point pushes its wheels along at the
+	vehicle's speed, the jeep's, on the ground) */
+	POWERED_MASS_POINT_GROUND_FRICTION = FLAG(0),
+	/* (physics.c's friction types: none, along a mass point's forward) */
+	FRICTION_TYPE_POINT = 0,
+	FRICTION_TYPE_FORWARD = 1,
+	CAR_MASS_POINTS = 8,
+};
+
+/* (vehicles.c and physics.c keep these to themselves: their layouts, which
+their size checks fix; the names are what vehicles.c reads them for) */
+struct vehicle_definition
+{
+	struct unit_definition unit;
+	unsigned long flags;
+	short vehicle_type;
+	short pad;
+	/* world units a tick, forward and back, and their changes a tick */
+	real maximum_forward_speed;
+	real maximum_reverse_speed;
+	real speed_acceleration;
+	real speed_deceleration;
+	/* degrees, left and right, and degrees a second */
+	real maximum_left_turn;
+	real maximum_right_turn;
+	real wheel_circumference;
+	real turn_rate;
+	real blur_speed;
+	short function_modes[4];
+	unsigned char unused0[0xc];
+	real maximum_left_slide;
+	real maximum_right_slide;
+	unsigned char unused1[8];
+	real minimum_flip_roll;
+	real maximum_flip_roll;
+	unsigned char unused2[0x1c];
+	real fixed_gun_pitch;
+	unsigned char unused3[0x48];
+	struct tag_reference suspension_sound;
+	struct tag_reference crash_sound;
+	struct tag_reference material_effects;
+	struct tag_reference effect;
+};
+struct powered_mass_point_definition
+{
+	char name[32];
+	unsigned long flags;
+	real antigrav_strength;
+	real antigrav_offset;
+	real antigrav_height;
+	real antigrav_damp_fraction;
+	real antigrav_normal_k1;
+	real antigrav_normal_k0;
+	real unused[17];
+};
+struct vehicle_placement
+{
+	struct scenario_object_datum object;
+	struct scenario_object_permutation permutation;
+	real body_vitality;
+	unsigned long flags;
+	unsigned char unused[0x28];
+};
+typedef char vehicle_definition_size_check[sizeof(struct vehicle_definition) == 0x3F0 ? 1 : -1];
+typedef char powered_mass_point_definition_size_check[sizeof(struct powered_mass_point_definition) == 0x80 ? 1 : -1];
+typedef char vehicle_placement_size_check[sizeof(struct vehicle_placement) == 0x78 ? 1 : -1];
+
+/* a 3 by 3 symmetric matrix's inverse */
+static void matrix3x3_symmetric_inverse(
+	real_matrix3x3 const *m,
+	real_matrix3x3 *inverse)
+{
+	real a = m->n[0][0], b = m->n[0][1], c = m->n[0][2];
+	real d = m->n[1][1], e = m->n[1][2], f = m->n[2][2];
+	real ad = d*f - e*e, ab = c*e - b*f, ac = b*e - c*d;
+	real determinant = a*ad + b*ab + c*ac;
+
+	inverse->n[0][0] = ad / determinant;
+	inverse->n[0][1] = inverse->n[1][0] = ab / determinant;
+	inverse->n[0][2] = inverse->n[2][0] = ac / determinant;
+	inverse->n[1][1] = (a*f - c*c) / determinant;
+	inverse->n[1][2] = inverse->n[2][1] = (b*c - a*e) / determinant;
+	inverse->n[2][2] = (a*d - b*b) / determinant;
+}
+
+/* the car's physics: its mass points, the four wheels (the front two steered
+by the first powered mass point, the back two by the second, the jeep's, which
+both drive) and the body's four corners above them; its centre of mass where
+they balance, and its inertia from them (each a ball of its own radius) */
+static long car_physics(
+	real_point3d *center_of_mass)
+{
+	/* (StageKit's own round numbers: wheels 1.5 apart and 0.9 across, a
+	third round, the body's corners above and a little outside them; a car
+	of 4000, its wheels 400 each) */
+	static struct
+	{
+		char const *name;
+		short powered;
+		real x, y, z, radius, mass;
+	} const points[CAR_MASS_POINTS] =
+	{
+		{ "wheel front left", 0, 0.75f, 0.45f, 0.3f, 0.3f, 400.f },
+		{ "wheel front right", 0, 0.75f, -0.45f, 0.3f, 0.3f, 400.f },
+		{ "wheel back left", 1, -0.75f, 0.45f, 0.3f, 0.3f, 400.f },
+		{ "wheel back right", 1, -0.75f, -0.45f, 0.3f, 0.3f, 400.f },
+		{ "body front left", NONE, 0.8f, 0.4f, 0.7f, 0.35f, 600.f },
+		{ "body front right", NONE, 0.8f, -0.4f, 0.7f, 0.35f, 600.f },
+		{ "body back left", NONE, -0.8f, 0.4f, 0.7f, 0.35f, 600.f },
+		{ "body back right", NONE, -0.8f, -0.4f, 0.7f, 0.35f, 600.f },
+	};
+	struct physics_definition *physics;
+	struct mass_point_definition *mass_points;
+	struct powered_mass_point_definition *powered;
+	real_matrix3x3 *inertia;
+	real_point3d center = { { 0.f, 0.f, 0.f } };
+	real mass = 0.f;
+	long handle;
+	short index;
+	void *data;
+
+	handle = cache_tag_new(FOURCC('p', 'h', 'y', 's'), NONE, NONE, "stagekit\\car", sizeof(struct physics_definition),
+		&data);
+	physics = data;
+	for (index = 0; index < CAR_MASS_POINTS; index++)
+	{
+		mass += points[index].mass;
+		center.x += points[index].x * points[index].mass;
+		center.y += points[index].y * points[index].mass;
+		center.z += points[index].z * points[index].mass;
+	}
+	center.x /= mass;
+	center.y /= mass;
+	center.z /= mass;
+	physics->radius = -1.f;
+	physics->moment = 1.f;
+	physics->mass = mass;
+	physics->center_of_mass = center;
+	*center_of_mass = center;
+	physics->density = 1.f;
+	physics->gravity_scale = 1.f;
+	/* (StageKit's own, a share of a velocity a tick: its wheels' grip, a
+	quarter; the ground's give, a fifth of a unit, and its damping) */
+	physics->ground_friction = stage_parameter("car_grip", 0.25f);
+	physics->ground_depth = 0.2f;
+	physics->ground_damp_fraction = stage_parameter("car_damping", 0.06f);
+	/* (ground of 30 to 45 degrees drives it less; cos 45, cos 60) */
+	physics->ground_normal_k1 = square_root(0.5f);
+	physics->ground_normal_k0 = 0.5f;
+	physics->water_density = 1.f;
+	physics->air_friction = 0.01f;
+
+	mass_points = cache_block(&physics->mass_points, CAR_MASS_POINTS, sizeof(*mass_points));
+	inertia = cache_block(&physics->inertial_matrix, 2, sizeof(*inertia));
+	for (index = 0; index < CAR_MASS_POINTS; index++)
+	{
+		struct mass_point_definition *point = &mass_points[index];
+		real x = points[index].x - center.x, y = points[index].y - center.y, z = points[index].z - center.z;
+		real m = points[index].mass;
+		real ball = 0.4f * m * points[index].radius * points[index].radius;
+
+		strcpy(point->name, points[index].name);
+		point->powered_mass_point_index = points[index].powered;
+		point->model_node_index = 0;
+		point->relative_mass = m / 400.f;
+		point->mass = m;
+		point->relative_density = 1.f;
+		point->density = 1.f;
+		point->position.x = points[index].x;
+		point->position.y = points[index].y;
+		point->position.z = points[index].z;
+		point->forward.i = 1.f;
+		point->up.k = 1.f;
+		point->radius = points[index].radius;
+		/* (a wheel grips as hard along as across; the body, as anything) */
+		point->friction_type = points[index].powered == NONE ? FRICTION_TYPE_POINT : FRICTION_TYPE_FORWARD;
+		point->friction_parallel_scale = 1.f;
+		point->friction_perpendicular_scale = 1.f;
+		/* (the inertia about the centre of mass: each point's, and its ball's) */
+		inertia[0].n[0][0] += m * (y*y + z*z) + ball;
+		inertia[0].n[1][1] += m * (x*x + z*z) + ball;
+		inertia[0].n[2][2] += m * (x*x + y*y) + ball;
+		inertia[0].n[0][1] -= m * x * y;
+		inertia[0].n[0][2] -= m * x * z;
+		inertia[0].n[1][2] -= m * y * z;
+	}
+	inertia[0].n[1][0] = inertia[0].n[0][1];
+	inertia[0].n[2][0] = inertia[0].n[0][2];
+	inertia[0].n[2][1] = inertia[0].n[1][2];
+	matrix3x3_symmetric_inverse(&inertia[0], &inertia[1]);
+	physics->xx_moment = inertia[0].n[0][0];
+	physics->yy_moment = inertia[0].n[1][1];
+	physics->zz_moment = inertia[0].n[2][2];
+
+	powered = cache_block(&physics->powered_mass_points, 2, sizeof(*powered));
+	strcpy(powered[0].name, "front");
+	powered[0].flags = POWERED_MASS_POINT_GROUND_FRICTION;
+	strcpy(powered[1].name, "back");
+	powered[1].flags = POWERED_MASS_POINT_GROUND_FRICTION;
+	return handle;
+}
+
+long prop_car(
+	void)
+{
+	static long handle = NONE;
+	struct vehicle_definition *car;
+	struct animation_graph *animations;
+	struct animation_graph_unit_seat *animation_seat;
+	struct animation_graph_weapon_class *weapon_class;
+	struct animation_graph_weapon_type *weapon_type;
+	struct unit_seat *seat;
+	/* (StageKit's own: from just ahead of its wheels to just behind, a little
+	wider, from their axles to above the body) */
+	real_rectangle3d body = { { -1.f, 1.f, -0.6f, 0.6f, 0.2f, 1.f } };
+	real_point3d center_of_mass;
+	long animations_handle;
+	void *data;
+
+	if (handle != NONE)
+		return handle;
+	/* (a unit's animations as the players' biped's: one seat, unarmed, which
+	units.c reads of any unit; and a vehicle's, with nothing in them) */
+	animations_handle = cache_tag_new(FOURCC('a', 'n', 't', 'r'), NONE, NONE, "stagekit\\car",
+		sizeof(struct animation_graph), &data);
+	animations = data;
+	animation_seat = cache_block(&animations->unit_seats, 1, sizeof(*animation_seat));
+	strcpy(animation_seat->label, "stand");
+	weapon_class = cache_block(&animation_seat->weapon_classes, 1, sizeof(*weapon_class));
+	strcpy(weapon_class->label, "unarmed");
+	weapon_type = cache_block(&weapon_class->weapon_types, 1, sizeof(*weapon_type));
+	strcpy(weapon_type->label, "unarmed");
+	cache_block(&animations->vehicle_animations, 1, 0x74);
+
+	handle = cache_tag_new(FOURCC('v', 'e', 'h', 'i'), FOURCC('u', 'n', 'i', 't'), FOURCC('o', 'b', 'j', 'e'),
+		"stagekit\\car", sizeof(struct vehicle_definition), &data);
+	car = data;
+	car->unit.object.type = _object_type_vehicle;
+	cache_reference(&car->unit.object.model, prop_empty_model());
+	cache_reference(&car->unit.object.animation_graph, animations_handle);
+	cache_reference(&car->unit.object.physics, car_physics(&center_of_mass));
+	/* (a box round its body, in its own space, whose origin is its centre of
+	mass: what bullets and bipeds strike, and what puts it where vehicles
+	find each other, objects.c's collideable objects) */
+	body.x0 -= center_of_mass.x;
+	body.x1 -= center_of_mass.x;
+	body.z0 -= center_of_mass.z;
+	body.z1 -= center_of_mass.z;
+	cache_reference(&car->unit.object.collision_model, box_collision_model("stagekit\\car", &body));
+	/* (round the body, a little past its farthest point) */
+	car->unit.object.bounding_radius = 1.5f;
+	/* (the engine's own field of view, as the biped's) */
+	car->unit.unit.camera_field_of_view = DEGREES_TO_RADIANS(70.f);
+	/* (one seat, the driver's, seen from the rider's eyes, whose animations the players' biped has:
+	stage.c's one seat, "stand") */
+	seat = cache_block(&car->unit.unit.seats, 1, sizeof(*seat));
+	seat->flags = FLAG(_unit_seat_driver_bit);
+	strcpy(seat->label, "stand");
+	/* (vehicles.c's flags: a speed or a turn wakes it; a throttle against its
+	speed brakes) */
+	car->flags = FLAG(0) | FLAG(1) | FLAG(4);
+	car->vehicle_type = VEHICLE_TYPE_JEEP;
+	/* (StageKit's own: 7.5 world units a second forward, 3 back, a second and
+	two thirds to its top speed; its wheels turn 30 degrees each way, in a
+	quarter second) */
+	car->maximum_forward_speed = stage_parameter("car_speed", 7.5f) / TICKS_PER_SECOND;
+	car->maximum_reverse_speed = 3.f / TICKS_PER_SECOND;
+	car->speed_acceleration = car->maximum_forward_speed / (stage_parameter("car_seconds", 1.6667f) * TICKS_PER_SECOND);
+	car->speed_deceleration = 4.f * car->speed_acceleration;
+	car->maximum_left_turn = 30.f;
+	car->maximum_right_turn = -30.f;
+	car->turn_rate = 120.f;
+	car->wheel_circumference = 2.f;
+	/* (no blur: never this fast) */
+	car->blur_speed = 1000.f;
+	return handle;
+}
+
+void prop_vehicle(
+	struct stage *stage,
+	char const *name,
+	long vehicle_handle,
+	real_point3d const *position,
+	real yaw)
+{
+	struct scenario_object_palette_entry *palette;
+	struct vehicle_placement *placement;
+
+	palette = cache_block_add(&stage->scenario->vehicle_palette, sizeof(*palette));
+	cache_reference(&palette->reference, vehicle_handle);
+	placement = cache_block_add(&stage->scenario->vehicles, sizeof(*placement));
+	placement->object.palette_entry_index = (short)(stage->scenario->vehicle_palette.count - 1);
+	placement->object.name_index = object_name_new(stage, name, _object_type_vehicle,
+		(short)(stage->scenario->vehicles.count - 1));
+	placement->object.position = *position;
+	placement->object.rotation.yaw = DEGREES_TO_RADIANS(yaw);
 }

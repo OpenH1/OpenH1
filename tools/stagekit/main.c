@@ -35,9 +35,10 @@ extern struct stagekit_scenario const scenario_elevator;
 extern struct stagekit_scenario const scenario_shoot;
 extern struct stagekit_scenario const scenario_lob;
 extern struct stagekit_scenario const scenario_patrol;
+extern struct stagekit_scenario const scenario_drive;
 
 static struct stagekit_scenario const *const scenarios[] = { &scenario_walk, &scenario_obstacle, &scenario_elevator,
-	&scenario_shoot, &scenario_lob, &scenario_patrol };
+	&scenario_shoot, &scenario_lob, &scenario_patrol, &scenario_drive };
 
 static struct
 {
