@@ -69,7 +69,10 @@ struct physics_substep
 	short count;
 	/* its share of a tick (1 / count) */
 	real fraction;
-	/* (physics.c's, from the tick's first sub-step) the collision force and
+	/* (physics.c's) whether the vehicle's physics has run in an earlier
+	sub-step of the tick (FALSE as the tick begins: vehicles.c) */
+	boolean begun;
+	/* (physics.c's, from the tick's first sub-step its physics runs in) the collision force and
 	torque the vehicle had kept for this tick, given each sub-step its share;
 	the vehicle as the tick began, and its mass points' contacts */
 	real_vector3d collision_force;

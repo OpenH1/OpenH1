@@ -2999,7 +2999,7 @@ static void vehicle_update_moving(
 		measured from the tick's start (vehicle_substep_datum) */
 		if (vehicle_substep)
 		{
-			if (vehicle_substep->physics.index==0)
+			if (!vehicle_substep->physics.begun)
 				vehicle_substep->tick_velocity = previous_velocity;
 			previous_velocity = vehicle_substep->tick_velocity;
 			physics_substep_set(&vehicle_substep->physics);

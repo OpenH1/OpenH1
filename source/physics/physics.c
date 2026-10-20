@@ -2521,7 +2521,9 @@ static void physics_compute_substep(
 {
 	struct object_datum *object = object_get(instance->object_index);
 	real fraction = substep->fraction;
-	boolean first = substep->index == 0;
+	/* (the tick's first sub-step its physics runs in: the first, unless the
+	vehicle was at rest until a later one) */
+	boolean first = !substep->begun;
 	struct physics_definition const *physics = instance->physics;
 	real gravity = physics->gravity_scale*global_gravity;
 	struct physics_substep_forces forces[MAXIMUM_MASS_POINTS_PER_PHYSICS];
@@ -2928,7 +2930,7 @@ static void physics_integrate_substep(
 	/* the velocities a tick keeps are half a tick behind the motion, the
 	sub-steps' half a sub-step: apart by this much of a tick's acceleration */
 	real lag = (1.0f - fraction)*0.5f;
-	real velocity_share = substep->index == 0 ? fraction + lag : fraction;
+	real velocity_share = !substep->begun ? fraction + lag : fraction;
 	boolean last = substep->index == substep->count - 1;
 	real_vector3d linear_acceleration;
 	real_vector3d linear_velocity;
@@ -3215,7 +3217,7 @@ static void physics_update_substep(
 
 	/* the collision forces kept for this tick (the last tick's collisions,
 	and this one's with the macro lane's vehicles), each sub-step its share */
-	if (substep->index == 0)
+	if (!substep->begun)
 	{
 		substep->collision_force = vehicle->vehicle.collision_force;
 		substep->collision_torque = vehicle->vehicle.collision_torque;
@@ -3237,6 +3239,7 @@ static void physics_update_substep(
 	}
 
 	physics_integrate_substep(&instance, mass_points, &total_force, &total_torque, substep);
+	substep->begun = TRUE;
 	if (substep->index == substep->count - 1)
 		physics_compute_unit_collisions(object_index);
 
