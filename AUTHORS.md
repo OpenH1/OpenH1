@@ -4,8 +4,11 @@
 
 - **The loading screen**: by Paul Hontz (`port/assets/loading`).
 
-- **The game's icon** (the Android app's launcher icon, `halo.exe`'s icon
-  and the desktop windows' icon): by ORION (`port/assets/icon`).
+- **The game's icon** (the macOS app's, the Android app's launcher icon,
+  `halo.exe`'s, the Linux release's, the web build's and the desktop
+  windows'): the OpenH1 logo, Tail Code, by Erin Cena
+  (`port/assets/icon/openh1-mark.svg`, from openh1.com's
+  `website/public/favicon.svg`).
 - **The controller's A, B, X and Y buttons** (the menus' button icons and
   the HUD messages'): redraws by saulob (`port/assets/buttons`).
 - **The high-res HUD** (its meters, icons, scopes and messages, and the
