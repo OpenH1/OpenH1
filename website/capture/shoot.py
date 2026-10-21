@@ -19,24 +19,28 @@ def main():
     p.add_argument('scout'); p.add_argument('--count', type=int, default=8)
     p.add_argument('--before', type=float, default=3.5); p.add_argument('--after', type=float, default=1.2)
     p.add_argument('--size', default='3840x2160')
+    # (the most of a kind - snipe, rocket, vehicle, chaos, kill - so the cut has each)
+    p.add_argument('--per-kind', type=int, default=4)
     a = p.parse_args()
     found = json.load(open(f'{RUNS}/{a.scout}/moments.json'))
     scouted = argparse.Namespace(**found['args'])
-    chosen, per_match, per_map = [], {}, {}
+    chosen, per_match, per_map, per_kind = [], {}, {}, {}
     for m in found['moments']:
         if len(chosen) >= a.count:
             break
-        if per_match.get(m['match'], 0) >= 2 or per_map.get(m['map'], 0) >= 3:
+        if per_match.get(m['match'], 0) >= 2 or per_map.get(m['map'], 0) >= 3 or \
+                per_kind.get(m.get('kind'), 0) >= a.per_kind:
             continue
         if any(c['match'] == m['match'] and abs(c['kill'] - m['kill']) < a.before + a.after for c in chosen):
             continue
         chosen.append(m)
         per_match[m['match']] = per_match.get(m['match'], 0) + 1
         per_map[m['map']] = per_map.get(m['map'], 0) + 1
+        per_kind[m.get('kind')] = per_kind.get(m.get('kind'), 0) + 1
     out = f'{RUNS}/{a.scout}/clips'
     os.makedirs(out, exist_ok=True)
     for index, m in enumerate(chosen, 1):
-        name = f"{index:02d}-{m['match']}-{m['kill']:.0f}s"
+        name = f"{index:02d}-{m.get('kind', 'kill')}-{m['match']}-{m['kill']:.0f}s"
         start, end = m['kill'] - a.before, m['kill'] + a.after
         env = dict(os.environ, **match_env(m['map'], m['seed'], scouted, 0), PORT='3600', SIZE=a.size,
                    RUNS=f'{RUNS}/{a.scout}/shoot', TRACE_SECONDS=f'{end + 0.3:.2f}',

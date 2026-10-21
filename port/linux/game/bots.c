@@ -131,6 +131,8 @@ enum
 	_bots_goal_roam,
 	/* a better weapon to pick up */
 	_bots_goal_item,
+	/* a vehicle to board (debug.bot_player_vehicle) */
+	_bots_goal_vehicle,
 };
 
 /* ---------- structures */
@@ -214,6 +216,8 @@ struct bots_bot
 	/* the item it fetches (_bots_goal_item), and when it last pressed the
 	action button for it; when it first pressed it for this item */
 	long item_index;
+	/* the vehicle it boards (_bots_goal_vehicle) */
+	long vehicle_index;
 	long item_press_tick;
 	long item_first_press_tick;
 	/* the path there (steps of the engine's path), and when it was found */
@@ -684,6 +688,13 @@ static long bots_find_item(struct bots_bot *bot, struct unit_datum *unit, real_p
 	real best_score = REAL_MAX;
 	long current = bots_current_weapon(unit);
 	short current_value = current != NONE ? bots_weapon_value(weapon_get(current)->definition_index) : 0;
+	/* (debug.bot_player_weapon: the first player's bot goes for that weapon
+	wherever it lies, and keeps it) */
+	char const *preferred = bot->smooth ? config_string("debug.bot_player_weapon") : "";
+	char const *current_name = current != NONE ? tag_get_name(weapon_get(current)->definition_index) : NULL;
+
+	if (*preferred && current_name && strstr(current_name, preferred))
+		current_value += 20;
 
 	object_iterator_new(&iterator, _object_mask_weapon, 0);
 	while (object_iterator_next(&iterator))
@@ -702,9 +713,11 @@ static long bots_find_item(struct bots_bot *bot, struct unit_datum *unit, real_p
 			continue;
 		}
 		distance = bots_distance3d(&item->object.position, position);
-		if (distance > maximum_distance)
-			continue;
 		value = bots_weapon_value(item->definition_index);
+		if (*preferred && tag_get_name(item->definition_index) && strstr(tag_get_name(item->definition_index), preferred))
+			value += 20;
+		else if (distance > maximum_distance)
+			continue;
 		/* (one it holds already: only its ammunition, which walking over
 		takes) */
 		for (slot = 0; slot < MAXIMUM_WEAPONS_PER_UNIT; slot++)
@@ -1768,10 +1781,72 @@ static void bots_pick_roam_goal(struct bots_bot *bot, real_point3d const *positi
 
 /* where the bot goes: the enemy last seen, a better weapon near, or about
 the map */
+/* debug.bot_player_vehicle: the nearest vehicle of that kind (part of its
+tag's name) not destroyed and no one's (no unit in it), NONE for none */
+static long bots_find_vehicle(real_point3d const *position)
+{
+	char const *wanted = config_string("debug.bot_player_vehicle");
+	struct object_iterator iterator;
+	struct object_datum *vehicle;
+	long best_index = NONE;
+	real best_distance = REAL_MAX;
+
+	if (!*wanted)
+		return NONE;
+	object_iterator_new(&iterator, _object_mask_vehicle, 0);
+	while ((vehicle = (struct object_datum *)object_iterator_next(&iterator)) != NULL)
+	{
+		char const *name = tag_get_name(vehicle->definition_index);
+		real distance = bots_distance3d(&vehicle->object.position, position);
+		long child;
+		boolean taken = FALSE;
+
+		if (!name || !strstr(name, wanted) || TEST_FLAG(vehicle->object.damage_flags, _object_dead_bit) ||
+			distance >= best_distance)
+		{
+			continue;
+		}
+		for (child = vehicle->object.first_child_object_index; child != NONE; child = object_get(child)->object.next_object_index)
+		{
+			if (TEST_FLAG(_object_mask_unit, object_get(child)->object.type))
+				taken = TRUE;
+		}
+		if (taken)
+			continue;
+		best_distance = distance;
+		best_index = iterator.index;
+	}
+	return best_index;
+}
+
 static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point3d const *position, boolean fighting)
 {
+	struct unit_datum *own_unit = unit_get(player_get(player_index)->unit_index);
+
 	long now = game_time_get();
 
+	/* (debug.bot_player_vehicle: the player's bot boards one first, and
+	drives it after) */
+	if (bot->smooth && own_unit->object.parent_object_index == NONE && now >= bot->item_check_tick)
+	{
+		long vehicle_index = bots_find_vehicle(position);
+
+		bot->item_check_tick = now + TICKS_PER_SECOND;
+		if (vehicle_index != NONE)
+		{
+			real_point3d ground;
+			long surface_index = bots_surface_below(&object_get(vehicle_index)->object.position, &ground);
+
+			if (surface_index != NONE)
+			{
+				bots_set_goal(bot, _bots_goal_vehicle, &ground, surface_index);
+				bot->vehicle_index = vehicle_index;
+				return;
+			}
+		}
+	}
+	if (bot->goal_kind == _bots_goal_vehicle && own_unit->object.parent_object_index == NONE)
+		return;
 	if (!fighting && bot->target_player_index != NONE && bot->target_last_surface_index != NONE &&
 		now - bot->target_seen_tick < TICKS_PER_SECOND * 8)
 	{
@@ -2097,6 +2172,14 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 		bots_turn(bot, yaw_off, pitch_off, turn, 14.0f, yaw_track, pitch_track);
 	}
 
+	/* (debug.bot_player's sniper: through the scope at a distance, as a
+	player snipes, 2x past 12 world units and 8x past 45) */
+	if (bot->smooth && tick->weapon_index != NONE && tag_get_name(weapon_get(tick->weapon_index)->definition_index) &&
+		strstr(tag_get_name(weapon_get(tick->weapon_index)->definition_index), "sniper") && tick->target_distance > 12.0f)
+	{
+		tick->action->desired_zoom_level = tick->target_distance > 45.0f ? 1 : 0;
+	}
+
 	/* fire: once it has reacted, while its aim is on the target (its size
 	at that distance) */
 	yaw_off = (real)fabs(bots_angle_difference((real)atan2(dy, dx), bot->yaw));
@@ -2278,6 +2361,13 @@ static void bots_bot_weapons(struct bots_bot *bot, struct bots_tick *tick)
 			}
 		}
 	}
+	/* (boarding: the action button while it would enter the vehicle) */
+	if (bot->goal_kind == _bots_goal_vehicle && tick->object->object.parent_object_index == NONE &&
+		tick->player->action_result == _player_action_result_enter_vehicle &&
+		tick->player->action_object_index == bot->vehicle_index && (tick->now / (TICKS_PER_SECOND / 2)) % 2 == 0)
+	{
+		tick->flags |= FLAG(_unit_control_action_bit);
+	}
 	if (bot->goal_kind == _bots_goal_item)
 	{
 		struct object_datum *item = object_try_and_get_and_verify_type(bot->item_index, _object_mask_weapon);
@@ -2444,14 +2534,16 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		bots_bot_fight(bot, &tick);
 	/* the goal, and the path to it (while fighting, only a weapon close by:
 	towards it, still facing the enemy) */
-	if (!tick.fighting || bot->goal_kind == _bots_goal_item)
+	if (!tick.fighting || bot->goal_kind == _bots_goal_item || bot->smooth)
 		bots_choose_goal(bot, bot->player_index, &tick.position, tick.fighting);
 	if (!tick.fighting)
 	{
 		bots_bot_walk(bot, &tick);
 		bots_bot_yield(bot_index, &tick);
 	}
-	else if (bot->goal_kind == _bots_goal_item)
+	/* (a weapon close by, or debug.bot_player_vehicle's vehicle: towards
+	it, still facing the enemy) */
+	else if (bot->goal_kind == _bots_goal_item || bot->goal_kind == _bots_goal_vehicle)
 	{
 		real direction;
 
@@ -2461,6 +2553,14 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 	bots_bot_weapons(bot, &tick);
 	bots_bot_unstick(bot, &tick);
 
+	/* (driving, fighting: at the enemy, full ahead, as a Ghost's or a
+	Warthog's driver charges) */
+	if (bot->smooth && tick.fighting && tick.object->object.parent_object_index != NONE)
+	{
+		tick.moving = TRUE;
+		tick.move_direction = bot->yaw;
+		tick.throttle_scale = 1.0f;
+	}
 	if (tick.moving)
 	{
 		real relative = bots_angle_difference(tick.move_direction, bot->yaw);

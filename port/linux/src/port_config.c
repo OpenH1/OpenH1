@@ -1121,6 +1121,13 @@ static const struct config_setting config_settings[] =
 	{ "debug.bot_player", _config_boolean, "false", "HALO_BOT_PLAYER", _environment_set_is_true, _platform_all,
 		"In a local game with bots (bots.count), a bot of its own plays the first\n"
 		"player too, its view drawn as the player's (for recorded footage)." },
+	{ "debug.bot_player_weapon", _config_string, "\"\"", "HALO_BOT_PLAYER_WEAPON", _environment_value, _platform_all,
+		"With debug.bot_player, a weapon (part of its tag's name: \"sniper\",\n"
+		"\"rocket\") the player's bot goes for wherever it lies, and keeps." },
+	{ "debug.bot_player_vehicle", _config_string, "\"\"", "HALO_BOT_PLAYER_VEHICLE", _environment_value, _platform_all,
+		"With debug.bot_player, a vehicle (part of its tag's name: \"warthog\",\n"
+		"\"ghost\") the player's bot boards when it is on foot, and drives at the\n"
+		"enemies it fights." },
 	{ "debug.update_answer", _config_string, "\"\"", "HALO_UPDATE_ANSWER", _environment_value, _platform_desktop,
 		"The answer to the new version question, for automated tests: \"yes\",\n"
 		"\"no\" or \"never\" (do not ask again, confirmed); empty asks." },
