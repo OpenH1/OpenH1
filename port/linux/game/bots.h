@@ -41,6 +41,9 @@ void bots_network_player(long bot_index, struct network_player *player);
 tick, into the actions of the players by their index; nothing outside a
 local game */
 void bots_update_actions(struct player_action *actions);
+/* the first local player's view turned toward the nearest enemy in sight
+(debug.test_input's "hunt"); TRUE once on it, to fire */
+boolean bots_hunt(void);
 
 /* a map's start and end (players.c) */
 void bots_initialize_for_new_map(void);

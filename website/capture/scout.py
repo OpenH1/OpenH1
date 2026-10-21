@@ -20,7 +20,9 @@ LINE = re.compile(r'network test: tick (\d+) player 0: (?:\((-?[\d.]+) (-?[\d.]+
 
 def match_env(map_variant, seed, a, index):
     """the settings of a match: the same for the scout and the shoot"""
-    return {'NETTEST': f'local:{map_variant}', 'HALO_NETWORK_TEST_START': '2',
+    # (a score no one reaches: the game ends at its score limit, after which
+    # the simulation's clock stops short of the trace's end)
+    return {'NETTEST': f'local:{map_variant}', 'HALO_NETWORK_TEST_START': '2', 'HALO_NETWORK_TEST_SCORE': '500',
             'HALO_NET_ADDRESS': f'127.0.{index // 250}.{index % 250 + 2}', 'HALO_NET_BROADCAST': '127.255.255.255',
             'HALO_BOTS': str(a.bots), 'HALO_BOT_SKILL': a.skill, 'HALO_BOT_PLAYER': '1', 'SEED': str(seed)}
 
@@ -78,7 +80,7 @@ def main():
     p.add_argument('maps'); p.add_argument('--seeds', default='7')
     p.add_argument('--bots', type=int, default=11); p.add_argument('--skill', default='legendary')
     p.add_argument('--seconds', type=float, default=180); p.add_argument('--out', default='scout')
-    p.add_argument('--parallel', type=int, default=6)
+    p.add_argument('--parallel', type=int, default=1)  # (local games side by side slow each other)
     a = p.parse_args()
     jobs = [((m, int(s)), a, i) for i, (m, s) in enumerate((m, s) for m in a.maps.split(',') for s in a.seeds.split(','))]
     with ThreadPoolExecutor(a.parallel) as pool:

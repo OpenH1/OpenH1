@@ -1098,7 +1098,8 @@ static const struct config_setting config_settings[] =
 		"turn, logging each (the VR mode's vr.aim = \"gamepad\"); \"menu:<buttons>\" presses menu\n"
 		"buttons one a second (a, b, x, y, up, down, left, right, start, back or\n"
 		"wait, separated by spaces or commas), for testing the menus;\n"
-		"\"script:<second>[-<second>] <action>;...\" presses, holds and aims on the\n"
+		"\"script:<second>[-<second>] <action>;...\" presses, holds and aims (\"hunt\": at the\n"
+		"nearest enemy in sight) on the\n"
 		"simulation's clock in seconds from the scenario's start (tools/scorecard),\n"
 		"the same at any simulation rate; empty for none." },
 	{ "debug.trace", _config_string, "\"\"", "HALO_TRACE", _environment_value, _platform_all,

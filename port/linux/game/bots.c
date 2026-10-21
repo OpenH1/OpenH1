@@ -62,6 +62,7 @@ and each bot's kills and deaths; debug.bot_trace logs each bot's state.
 #include "cseries.h"
 #include "game/game.h"
 #include "game/game_engine.h"
+#include "game/game_allegiance.h"
 #include "game/players.h"
 #include "objects/objects.h"
 #include "units/units.h"
@@ -1604,6 +1605,72 @@ static long bots_find_target(struct bots_bot *bot, struct player_datum *player, 
 			candidates[index] = candidates[index + 1];
 	}
 	return NONE;
+}
+
+/* ---------- the scripted player's aim (debug.test_input's "hunt")
+
+For footage of the campaign: the first local player's view turns toward the
+nearest enemy unit (a biped or vehicle of a team the player's is at war
+with, alive) within 40 world units and 50 degrees of where it looks, whom a
+line of sight reaches, at most 300 degrees a second; TRUE (fire) once it is
+within 3 degrees. The script walks the player; this aims. Nothing is random,
+so a script plays the same again. */
+boolean bots_hunt(void)
+{
+	long player_index = local_player_get_player_index(0);
+	struct player_datum *player;
+	struct object_iterator iterator;
+	struct unit_datum *other;
+	real_euler_angles2d const *facing;
+	real_point3d eye, best_point;
+	real best_score = REAL_MAX;
+	short team;
+
+	if (player_index == NONE)
+		return FALSE;
+	player = player_get(player_index);
+	if (player->unit_index == NONE)
+		return FALSE;
+	team = object_get(player->unit_index)->object.owner_team_index;
+	facing = player_control_get_facing_angles(0);
+	unit_get_head_position(player->unit_index, &eye);
+	object_iterator_new(&iterator, _object_mask_biped|_object_mask_vehicle, 0);
+	while ((other = (struct unit_datum *)object_iterator_next(&iterator)) != NULL)
+	{
+		real_point3d point = other->object.bounding_sphere_center;
+		real distance = bots_distance3d(&eye, &point);
+		real bearing;
+
+		if (iterator.index == player->unit_index || TEST_FLAG(other->object.damage_flags, _object_dead_bit) ||
+			!game_team_is_enemy(team, other->object.owner_team_index) || distance > 40.0f)
+		{
+			continue;
+		}
+		bearing = (real)fabs(bots_angle_difference((real)atan2(point.y - eye.y, point.x - eye.x), facing->yaw));
+		if (bearing > 50.0f * BOTS_DEGREES || distance + bearing * 8.0f >= best_score ||
+			!bots_line_of_sight(player->unit_index, &eye, &point, iterator.index))
+		{
+			continue;
+		}
+		best_score = distance + bearing * 8.0f;
+		best_point = point;
+	}
+	if (best_score < REAL_MAX)
+	{
+		real_euler_angles2d angles;
+		real_vector3d direction;
+		real yaw = (real)atan2(best_point.y - eye.y, best_point.x - eye.x);
+		real pitch = (real)atan2(best_point.z - eye.z, bots_distance2d(&eye, &best_point));
+		real turn = 300.0f * BOTS_DEGREES / TICKS_PER_SECOND;
+		real dyaw = bots_angle_difference(yaw, facing->yaw), dpitch = pitch - facing->pitch;
+
+		angles.yaw = facing->yaw + PIN(dyaw, -turn, turn);
+		angles.pitch = facing->pitch + PIN(dpitch, -turn, turn);
+		vector3d_from_euler_angles2d(&direction, &angles);
+		player_control_set_facing(0, &direction);
+		return (real)fabs(dyaw) < 3.0f * BOTS_DEGREES && (real)fabs(dpitch) < 3.0f * BOTS_DEGREES;
+	}
+	return FALSE;
 }
 
 /* ---------- moving */
