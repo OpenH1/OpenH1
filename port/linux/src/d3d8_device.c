@@ -4760,23 +4760,46 @@ uint64_t d3d_frame_input_time(void)
 	return frame_input_time;
 }
 
+/* port/linux/game/sim_trace.c: the simulation's clock, seconds from the
+scenario's start (negative before it starts) */
+extern double sim_trace_scenario_seconds(void);
+
+/* debug.screenshot_every's frame, while the simulation's clock is between
+debug.screenshot_from and debug.screenshot_until (seconds; 0, no bound), so
+that a part of a run played again the same way is saved */
+static BOOL screenshot_this_frame(void)
+{
+	static long every = -1;
+	static double from, until;
+	double now;
+
+	if (every < 0)
+	{
+		every = config_integer("debug.screenshot_every");
+		from = config_real("debug.screenshot_from");
+		until = config_real("debug.screenshot_until");
+	}
+	if (every <= 0 || device.frame % (unsigned long)every != 0)
+		return FALSE;
+	if (from <= 0.0 && until <= 0.0)
+		return TRUE;
+	now = sim_trace_scenario_seconds();
+	return now >= from && (until <= 0.0 || now <= until);
+}
+
 void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destination_rectangle,
 	void *unused, void *unused2)
 {
-	static long screenshot_every = -1;
-
 	(void)source_rectangle;
 	(void)destination_rectangle;
 	(void)unused;
 	(void)unused2;
-	if (screenshot_every < 0)
-		screenshot_every = config_integer("debug.screenshot_every");
 
 #ifdef HALO_VR
 	if (device.gl_ready && vr_gl.ready)
 	{
 		/* (the window stays hidden: the headset paces the frames) */
-		vr_present(vr_screenshot_wanted || (screenshot_every > 0 && device.frame % (unsigned long)screenshot_every == 0));
+		vr_present(vr_screenshot_wanted || screenshot_this_frame());
 		vr_screenshot_wanted = FALSE;
 		xgpu_backend_frame_end();
 	}
@@ -4791,7 +4814,7 @@ void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destinat
 				back_buffer->target.number);
 		render_target_resolve(&back_buffer->target);
 		xgpu_backend_visibility_frame();
-		if (screenshot_every > 0 && device.frame % (unsigned long)screenshot_every == 0)
+		if (screenshot_this_frame())
 			write_screenshot(back_buffer);
 		if (determinism_log_frames())
 		{

@@ -14,7 +14,15 @@ name=$1 side=$2 scenario=$3 script=$4 seconds=$5 extra=${6:-}
 root=$RUNS/$name
 rm -rf "$root"; mkdir -p "$root/data" "$root/saves" "$root/frames"
 ln -s "$MAPS" "$root/data/maps"
-printf 'map_name %s\n%s' "$scenario" "$extra" > "$root/data/init.txt"
+# (NETTEST: a debug.network_test session, "local:<map>:<variant>" for a local
+# game with bots, instead of the scenario loaded directly; its HUD is hidden
+# once the network test logs the game, HUD_AFTER)
+if [ -n "${NETTEST:-}" ]; then
+  printf '%s' "$extra" > "$root/data/init.txt"; export HALO_NETWORK_TEST=$NETTEST
+  HUD_AFTER=${HUD_AFTER:-network test: tick}
+else
+  printf 'map_name %s\n%s' "$scenario" "$extra" > "$root/data/init.txt"
+fi
 export HALO_DATA_ROOT=$root/data HALO_SAVE_ROOT=$root/saves HALO_NET_ONLINE=false \
   HALO_DISPLAY_MODE=windowed HALO_NO_AUDIO=1 HALO_UPDATE_ANSWER=no HALO_NO_CLIPBOARD=1 \
   HALO_EXIT_AFTER=$seconds HALO_SCREENSHOT_DIR=$root/frames HALO_SCREENSHOT_EVERY=1 \
@@ -35,7 +43,7 @@ start=$SECONDS
 timeout $((${seconds%.*} + 60)) ./build/linux_x86_64/halo > "$root/log.txt" 2>&1 &
 game=$!
 # hide the HUD once the map is drawing (a command sent while it loads can stop the game)
-( for i in $(seq 600); do grep -q "its shaders and pipelines made" "$root/log.txt" 2>/dev/null && break; sleep 0.1; done
+( for i in $(seq 600); do grep -q "${HUD_AFTER:-its shaders and pipelines made}" "$root/log.txt" 2>/dev/null && break; sleep 0.1; done
   sleep 0.5
   exec 3<>/dev/tcp/127.0.0.1/$HALO_TELNET_CONSOLE_PORT && printf '(begin (show_hud 0) %s(sleep 1))\r\n' "${CONSOLE:-}" >&3 && sleep 1 && exec 3>&-
   echo "hud hidden at frame $(ls $root/frames | wc -l)" ) &

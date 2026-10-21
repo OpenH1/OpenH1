@@ -53,8 +53,9 @@ tick, so the bots do the same in two runs of the same input. Nothing of a
 bot is in the game state: multiplayer games are never saved. Bots are in
 local games only, which no other machine sees: no message of the network
 protocol changes, and bots_update_actions does nothing unless a local game
-runs. halo.log has the map's preparation and each minute of play's bots
-line: the searches and how many failed, the times a bot stood stuck, shots
+runs. debug.bot_player has a bot of its own drive the first local player
+too (the trailer's captures: the camera rides with a fighter). halo.log has
+the map's preparation and each minute of play's bots line: the searches and how many failed, the times a bot stood stuck, shots
 and each bot's kills and deaths; debug.bot_trace logs each bot's state.
 */
 
@@ -91,6 +92,7 @@ and each bot's kills and deaths; debug.bot_trace logs each bot's state.
 /* port/linux/src/port_config.c */
 const char *config_string(char const *name);
 long config_integer(char const *name);
+int config_boolean(char const *name);
 void platform_log(char const *format, ...);
 
 /* ---------- constants */
@@ -256,6 +258,9 @@ static struct
 	real_point3d roam_points[BOTS_MAXIMUM_ROAM_POINTS];
 	long roam_surfaces[BOTS_MAXIMUM_ROAM_POINTS];
 	struct bots_bot bots[BOTS_MAXIMUM];
+	/* the first local player's, with debug.bot_player (its index
+	BOTS_MAXIMUM: after the bots') */
+	struct bots_bot player_bot;
 	/* the skill setting, read once a tick for every bot */
 	short skill;
 	/* the path search's state (80 KB: the engine's 1024 nodes, heap and
@@ -1190,6 +1195,8 @@ void bots_initialize_for_new_map(void)
 	csmemset(bots_globals.bots, 0, sizeof(bots_globals.bots));
 	for (index = 0; index < BOTS_MAXIMUM; index++)
 		bots_globals.bots[index].player_index = NONE;
+	csmemset(&bots_globals.player_bot, 0, sizeof(bots_globals.player_bot));
+	bots_globals.player_bot.player_index = NONE;
 	bots_globals.map_ready = FALSE;
 	bots_globals.roam_point_count = 0;
 	bots_globals.ticks = 0;
@@ -2398,8 +2405,21 @@ void bots_update_actions(struct player_action *actions)
 		long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index);
 		struct bots_bot *bot;
 
-		if (player->local_player_index != NONE || !bots_machine_is_bot(player->network_player_data.machine_index))
+		if (player->local_player_index == 0 && config_boolean("debug.bot_player"))
+		{
+			bot_index = BOTS_MAXIMUM;
+			bot = &bots_globals.player_bot;
+		}
+		else if (player->local_player_index != NONE ||
+			!bots_machine_is_bot(player->network_player_data.machine_index))
+		{
 			continue;
+		}
+		else
+		{
+			bot_index = player->network_player_data.machine_index - BOTS_FIRST_MACHINE;
+			bot = &bots_globals.bots[bot_index];
+		}
 		/* (the roaming places and the walkable surfaces once a game has
 		bots; the skill once a tick) */
 		if (!count)
@@ -2410,8 +2430,6 @@ void bots_update_actions(struct player_action *actions)
 			bots_globals.tick_searches = 0;
 			bots_paths_scan();
 		}
-		bot_index = player->network_player_data.machine_index - BOTS_FIRST_MACHINE;
-		bot = &bots_globals.bots[bot_index];
 		if (bot->player_index != iterator.datum_index)
 			bots_bot_reset(bot, iterator.datum_index, bot_index);
 		if (absolute_index >= 0 && absolute_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
