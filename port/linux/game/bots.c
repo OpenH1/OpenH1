@@ -1683,9 +1683,11 @@ For footage of the campaign: the first local player's view turns toward the
 nearest enemy unit (a biped or vehicle of a team the player's is at war
 with, alive) within 40 world units and 50 degrees of where it looks, whom a
 line of sight reaches, at most 300 degrees a second; TRUE (fire) once it is
-within 3 degrees. The script walks the player; this aims. Nothing is random,
-so a script plays the same again. */
-boolean bots_hunt(void)
+within 3 degrees. It moves the player too (forward and strafe, -1 to 1):
+closing on a target far off with a weave, strafing one at middle range,
+backing from one close, and on ahead with none; a move in the script
+overrides it. Nothing is random, so a script plays the same again. */
+boolean bots_hunt(float *forward, float *strafe)
 {
 	long player_index = local_player_get_player_index(0);
 	struct player_datum *player;
@@ -1696,6 +1698,8 @@ boolean bots_hunt(void)
 	real best_score = REAL_MAX;
 	short team;
 
+	*forward = 0.6f;
+	*strafe = 0.0f;
 	if (player_index == NONE)
 		return FALSE;
 	player = player_get(player_index);
@@ -1734,6 +1738,12 @@ boolean bots_hunt(void)
 		real turn = 300.0f * BOTS_DEGREES / TICKS_PER_SECOND;
 		real dyaw = bots_angle_difference(yaw, facing->yaw), dpitch = pitch - facing->pitch;
 
+		real distance = bots_distance3d(&eye, &best_point);
+		/* (a strafe's side, changing every second and a half) */
+		real side = (game_time_get() / (TICKS_PER_SECOND * 3 / 2)) % 2 ? 1.0f : -1.0f;
+
+		*forward = distance > 14.0f ? 1.0f : distance < 6.0f ? -0.4f : 0.2f;
+		*strafe = distance > 14.0f ? side * 0.35f : side;
 		angles.yaw = facing->yaw + PIN(dyaw, -turn, turn);
 		angles.pitch = facing->pitch + PIN(dpitch, -turn, turn);
 		vector3d_from_euler_angles2d(&direction, &angles);
@@ -2260,12 +2270,12 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 		bots_turn(bot, yaw_off, pitch_off, turn, 14.0f, yaw_track, pitch_track);
 	}
 
-	/* (debug.bot_player's sniper: through the scope at a distance, as a
-	player snipes, 2x past 12 world units and 8x past 45) */
+	/* (debug.bot_player's sniper: through the scope, as a player snipes,
+	2x past 6 world units and 8x past 30) */
 	if (bot->smooth && tick->weapon_index != NONE && tag_get_name(weapon_get(tick->weapon_index)->definition_index) &&
-		strstr(tag_get_name(weapon_get(tick->weapon_index)->definition_index), "sniper") && tick->target_distance > 12.0f)
+		strstr(tag_get_name(weapon_get(tick->weapon_index)->definition_index), "sniper") && tick->target_distance > 6.0f)
 	{
-		tick->action->desired_zoom_level = tick->target_distance > 45.0f ? 1 : 0;
+		tick->action->desired_zoom_level = tick->target_distance > 30.0f ? 1 : 0;
 	}
 
 	/* fire: once it has reacted, while its aim is on the target (its size

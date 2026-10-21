@@ -42,8 +42,9 @@ tick, into the actions of the players by their index; nothing outside a
 local game */
 void bots_update_actions(struct player_action *actions);
 /* the first local player's view turned toward the nearest enemy in sight
-(debug.test_input's "hunt"); TRUE once on it, to fire */
-boolean bots_hunt(void);
+(debug.test_input's "hunt"), and how it moves (forward and strafe, -1 to
+1); TRUE once on it, to fire */
+boolean bots_hunt(float *forward, float *strafe);
 
 /* a map's start and end (players.c) */
 void bots_initialize_for_new_map(void);

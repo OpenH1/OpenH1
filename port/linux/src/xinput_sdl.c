@@ -80,8 +80,8 @@ player's view turned to a yaw and pitch, in degrees (debug.test_input
 extern double sim_trace_scenario_seconds(void);
 extern void sim_trace_aim(double yaw, double pitch);
 /* port/linux/game/bots.c: the view turned toward the nearest enemy in
-sight; TRUE once on it (the script's "hunt") */
-extern unsigned char bots_hunt(void);
+sight, and how the player moves; TRUE once on it (the script's "hunt") */
+extern unsigned char bots_hunt(float *forward, float *strafe);
 
 /* ---------- device tables */
 
@@ -996,8 +996,10 @@ second (tools/scorecard). An event is "<start>[-<end>] <action>":
     look=<x>,<y>         the right stick, start to end
     aim=<yaw>,<pitch>    the view turned there (degrees) at start, once
     hunt                 from start to end, the view turned toward the
-                         nearest enemy in sight and fire held once on it
-                         (bots_hunt: the campaign's footage)
+                         nearest enemy in sight and fire held once on it,
+                         the player moving to fight it (bots_hunt: the
+                         campaign's footage); a move= after it overrides
+                         the moving
 
 A time on the 30 Hz grid (a multiple of 1/30) falls on a step at every
 rate. */
@@ -1118,8 +1120,13 @@ static void test_script_gamepad(XINPUT_GAMEPAD *pad)
 			continue;
 		if (event->hunt)
 		{
-			if (bots_hunt())
+			float forward, strafe;
+
+			if (bots_hunt(&forward, &strafe))
 				pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] = 255;
+			/* (its moves, which a later move in the script overrides) */
+			pad->sThumbLX = test_script_axis(strafe);
+			pad->sThumbLY = test_script_axis(forward);
 			continue;
 		}
 		if (event->analog >= 0)

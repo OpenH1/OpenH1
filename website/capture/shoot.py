@@ -23,6 +23,10 @@ def main():
     # (the most of a kind - snipe, rocket, vehicle, chaos, kill - so the cut has each)
     p.add_argument('--per-kind', type=int, default=4)
     p.add_argument('--parallel', type=int, default=4)
+    # (the previews' numbers to film again, at --size: the picks, with the
+    # previews' --count and --per-kind so that the numbers are the same)
+    p.add_argument('--only')
+    p.add_argument('--out', default='clips')
     a = p.parse_args()
     found = json.load(open(f'{RUNS}/{a.scout}/moments.json'))
     scouted = argparse.Namespace(**found['args'])
@@ -41,9 +45,11 @@ def main():
         per_match[m['match']] = per_match.get(m['match'], 0) + 1
         per_map[m['map']] = per_map.get(m['map'], 0) + 1
         per_kind[m.get('kind')] = per_kind.get(m.get('kind'), 0) + 1
-    out = f'{RUNS}/{a.scout}/clips'
+    out = f'{RUNS}/{a.scout}/{a.out}'
     os.makedirs(out, exist_ok=True)
     jobs = list(enumerate(chosen, 1))
+    if a.only:
+        jobs = [(i, m) for i, m in jobs if f'{i:02d}' in a.only.split(',')]
     with ThreadPoolExecutor(a.parallel) as pool:
         for line in pool.map(lambda job: film(job, a, scouted, out), jobs):
             print(line, flush=True)
@@ -58,20 +64,27 @@ def film(job, a, scouted, out):
     first, last = m.get('first', m['kill']), m.get('last', m['kill'])
     start = min(m['kill'] - a.before, first - 1.5)
     end = max(m['kill'] + a.after, last + 1.0) + (0.8 if m.get('kind') == 'rocket_multi' else 0.0)
+    # (a preview's frames in memory, /dev/shm: a 4K clip's, ten gigabytes, on
+    # the disk)
+    width = int(a.size.split('x')[0])
+    runs = f'/dev/shm/halo-shoot/{a.scout}' if width <= 1920 and os.path.isdir('/dev/shm') else f'{RUNS}/{a.scout}/shoot'
     env = dict(os.environ, **match_env(m['map'], m['seed'], scouted, 0), PORT='3600', SIZE=a.size,
-               RUNS=f'{RUNS}/{a.scout}/shoot', TRACE_SECONDS=f'{end + 0.3:.2f}',
+               RUNS=runs, TRACE_SECONDS=f'{end + 0.3:.2f}',
                HALO_SCREENSHOT_FROM=f'{start:.3f}', HALO_SCREENSHOT_UNTIL=f'{end:.3f}')
     subprocess.run([f'{HERE}/capture.sh', name, 'openh1', '-', '', str(int(end) + 180)], env=env,
                    capture_output=True, text=True)
-    frames = f'{RUNS}/{a.scout}/shoot/{name}/frames'
+    frames = f'{runs}/{name}/frames'
     names = sorted(os.listdir(frames)) if os.path.isdir(frames) else []
     if not names:
         return f'{name}: no frames'
     subprocess.run(['ffmpeg', '-loglevel', 'error', '-y', '-framerate', '60', '-start_number',
                     names[0][5:10], '-i', f'{frames}/frame%05d.bmp', '-frames:v', str(len(names)),
-                    '-an', '-c:v', 'libx264', '-crf', '16', '-preset', 'slow', '-pix_fmt', 'yuv420p',
+                    # (the GPU's encoder: many times x264's speed at 4K, and
+                    # the processors left to the games)
+                    '-an', '-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '17', '-b:v', '0',
+                    '-pix_fmt', 'yuv420p',
                     '-movflags', '+faststart', f'{out}/{name}.mp4'], check=True)
-    shutil.rmtree(frames)
+    shutil.rmtree(f'{runs}/{name}')
     # (where in the clip its kills fall, for the cut)
     json.dump({'start': start, 'kill': m['kill'], 'first': first, 'last': last, 'kind': m.get('kind')},
               open(f'{out}/{name}.json', 'w'))

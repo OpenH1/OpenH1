@@ -21,8 +21,9 @@ LINE = re.compile(r'network test: tick (\d+) player 0: (?:\((-?[\d.]+) (-?[\d.]+
 
 VEHICLES = ('warthog', 'ghost', 'scorpion', 'banshee', 'rwarthog')
 # a round that struck this far above its victim's place (its feet) or more hit
-# the head (world units; the scout's hit heights calibrate it)
-HEAD_HEIGHT = 0.5
+# the head (world units): of 155 sniper rounds aimed at heads and striking
+# players, most struck 0.5 to 0.7 above the feet, the body's few 0.25 to 0.45
+HEAD_HEIGHT = 0.52
 
 def match_env(map_variant, seed, a, index):
     """the settings of a match: the same for the scout and the shoot. A match
@@ -91,6 +92,34 @@ def scout(job):
         return {'match': name, 'error': 'no trace'}
     kill_times = [seconds[i] for i in range(1, len(kills)) for _ in range(max(0, kills[i] - kills[i - 1]))]
     death_times = [seconds[i] for i in range(1, len(deaths)) if deaths[i] > deaths[i - 1]]
+    # (the log counts kills each second, up to a second late: each kill's tick
+    # is a victim's, the first not taken that the player looked at, whose body
+    # emptied or was gone in the second before its line)
+    def facing(k, index):
+        """how nearly the player looks at that one in the tick (a cosine), -1
+        for none"""
+        players = ticks.get(k, {})
+        if 0 not in players or index not in players:
+            return -1.0
+        (x, y, z), (ax, ay, az), _ = players[0]
+        (ox, oy, oz), _, _ = players[index]
+        d = max(1e-3, ((ox - x) ** 2 + (oy - y) ** 2 + (oz - z) ** 2) ** 0.5)
+        return ((ox - x) * ax + (oy - y) * ay + (oz - z) * az) / d
+
+    fallen = []
+    for k in sorted(ticks):
+        for index, (_, _, body) in ticks.get(k - 1, {}).items():
+            now_p = ticks[k].get(index)
+            if index and body > 0 and (now_p is None or now_p[2] <= 0) and facing(k - 1, index) > 0.8:
+                fallen.append(k / 30)
+    taken = set()
+    exact = []
+    for t in kill_times:
+        u = next((u for u in fallen if t - 1.05 < u <= t + 0.05 and u not in taken), None)
+        if u is not None:
+            taken.add(u)
+        exact.append(round(u, 4) if u is not None else t)
+    kill_times = exact
 
     def in_view(tick):
         """the enemies the player looks at in this tick: within 28 degrees of its
@@ -207,8 +236,10 @@ def main():
     for r in results:
         print(r['match'], r.get('error') or f"k{r['kills']} d{r['deaths']} moments {len(r['moments'])}")
     for m in moments[:15]:
-        print(f"{m['score']:5}  {m['kind']:7} {m['match']:28} kill at {m['kill']:6.1f}s  watched {m['watched']:.2f} crowd {m['crowd']:.1f} "
-              f"near {m['near_kills']} seen {int(m['seen_kill'])} {'died' if m['died'] else ''}")
+        detail = (f"dead {m['dead']} flight {m['flight']}s" if m['kind'] == 'rocket_multi' else
+                  f"watched {m['watched']:.2f} crowd {m['crowd']:.1f} near {m['near_kills']} seen {int(m['seen_kill'])}"
+                  f"{' died' if m['died'] else ''}{' hit ' + str(m['hit_height']) if 'hit_height' in m else ''}")
+        print(f"{m['score']:5}  {m['kind']:12} {m['match']:32} kill at {m['kill']:6.1f}s  {detail}")
 
 if __name__ == '__main__':
     main()
