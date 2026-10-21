@@ -81,12 +81,12 @@ copy over it, or below it where it needs more room, on the page's dark) */
 .hero::before {
   content: ""; position: absolute; inset: 0; z-index: -2;
   background:
-    linear-gradient(180deg, rgba(4, 5, 4, 0.7) 0%, rgba(4, 5, 4, 0) 18%),
-    linear-gradient(90deg, rgba(4, 5, 4, 0.78) 0%, rgba(4, 5, 4, 0.3) 38%, rgba(4, 5, 4, 0) 58%),
-    linear-gradient(0deg, var(--bg) 0%, rgba(4, 5, 4, 0.55) 16%, rgba(4, 5, 4, 0) 40%),
+    linear-gradient(180deg, rgba(4, 5, 4, 0.8) 0%, rgba(4, 5, 4, 0) 24%),
+    linear-gradient(90deg, rgba(4, 5, 4, 0.85) 0%, rgba(4, 5, 4, 0.4) 45%, rgba(4, 5, 4, 0) 72%),
+    linear-gradient(0deg, var(--bg) 0%, rgba(4, 5, 4, 0.75) 22%, rgba(4, 5, 4, 0) 55%),
     radial-gradient(ellipse 60% 50% at 16% 94%, rgba(157, 255, 60, 0.16), transparent 70%);
 }
-.hero::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px); mix-blend-mode: multiply; opacity: 0.22; }
+.hero::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px); mix-blend-mode: multiply; opacity: 0.5; }
 .frame { position: absolute; inset: 96px var(--gutter) auto; height: calc(100% - 180px); pointer-events: none; }
 .frame i { position: absolute; width: 28px; height: 28px; border: 0 solid var(--green); opacity: 0.7; }
 .frame i:nth-child(1) { left: 0; top: 0; border-width: 1px 0 0 1px; }
@@ -280,6 +280,7 @@ footer .legal a { color: var(--soft); }
   .hero { min-height: 0; padding-top: calc(72px + 100vw * 9 / 16 + 8px); }
   .hero-media { top: 72px; }
   .hero::before { background: linear-gradient(180deg, rgba(4, 5, 4, 0.7) 0, rgba(4, 5, 4, 0) 72px); }
+  .hero::after { opacity: 0.22; }
   /* callouts become numbered pins, the legend explains them */
   .co .lbl, .co .leader { display: none; }
   .co .pin { width: 22px; height: 22px; left: -11px; top: -11px; }
