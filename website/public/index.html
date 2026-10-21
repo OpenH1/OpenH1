@@ -70,10 +70,13 @@ footer .wordmark img { height: 18px; }
 .top nav a.gh:hover { border-color: var(--green); color: var(--green); }
 
 /* ---------- hero */
-.hero { position: relative; min-height: 100svh; display: grid; align-content: end; padding-top: 140px; overflow: hidden; isolation: isolate; }
+.hero { position: relative; min-height: calc(100vw * 9 / 16); display: grid; align-content: end; padding-top: 140px; overflow: hidden; isolation: isolate; }
 .hero > .wrap { width: 100%; }
-.hero-media { position: absolute; inset: -3%; z-index: -3; background: #0b0d09 url("media/hero-poster.webp") 50% 50% / cover no-repeat; transform: translate3d(var(--mx, 0px), calc(var(--my, 0px) + var(--sy, 0px)), 0) scale(var(--hs, 1)); will-change: transform; }
-.hero-media video { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1.2s ease; }
+/* (the video whole, never cropped: a 16:9 box the width of the page, the
+copy over it, or below it where it needs more room, on the page's dark) */
+.hero-media { position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: 16 / 9; z-index: -3; background: #0b0d09 url("media/hero-poster.webp") 50% 50% / contain no-repeat; }
+.hero-media::after { content: ""; position: absolute; inset: auto 0 -1px; height: 18%; background: linear-gradient(0deg, var(--bg), rgba(4, 5, 4, 0)); }
+.hero-media video { width: 100%; height: 100%; object-fit: contain; opacity: 0; transition: opacity 1.2s ease; }
 .hero-media video.playing { opacity: 1; }
 .hero::before {
   content: ""; position: absolute; inset: 0; z-index: -2;
@@ -274,6 +277,9 @@ footer .legal a { color: var(--soft); }
 
 }
 @media (max-width: 700px) {
+  .hero { min-height: 0; padding-top: calc(72px + 100vw * 9 / 16 + 8px); }
+  .hero-media { top: 72px; }
+  .hero::before { background: linear-gradient(180deg, rgba(4, 5, 4, 0.7) 0, rgba(4, 5, 4, 0) 72px); }
   /* callouts become numbered pins, the legend explains them */
   .co .lbl, .co .leader { display: none; }
   .co .pin { width: 22px; height: 22px; left: -11px; top: -11px; }
@@ -293,7 +299,6 @@ footer .legal a { color: var(--soft); }
   .spin b.still { opacity: 1; }
   .reveal { opacity: 1; transform: none; transition: none; }
   .co, .flip .after, .switch::before, .hero-media video { transition: none; }
-  .hero-media { transform: none; }
 }
 </style>
 </head>
@@ -683,31 +688,7 @@ footer .legal a { color: var(--soft); }
     hero.play().then(() => { pause.hidden = false; }).catch(() => {});
   }
   startHero();
-  // a little life: the scene pushes in as the page scrolls past it, and on a
-  // pointer's screen drifts a few pixels with it; never for reduced motion
-  const heroMedia = document.querySelector(".hero-media");
-  if (!still) {
-    let mx = 0, my = 0, tx = 0, ty = 0, queued = false;
-    const draw = () => {
-      queued = false;
-      mx += (tx - mx) * 0.12; my += (ty - my) * 0.12;
-      const p = Math.min(1, scrollY / innerHeight);
-      heroMedia.style.setProperty("--hs", (1 + p * 0.06).toFixed(4));
-      heroMedia.style.setProperty("--sy", (p * innerHeight * 0.12).toFixed(1) + "px");
-      heroMedia.style.setProperty("--mx", mx.toFixed(2) + "px");
-      heroMedia.style.setProperty("--my", my.toFixed(2) + "px");
-      if (Math.abs(tx - mx) > 0.05 || Math.abs(ty - my) > 0.05) queue();
-    };
-    const queue = () => { if (!queued) { queued = true; requestAnimationFrame(draw); } };
-    addEventListener("scroll", queue, { passive: true });
-    if (matchMedia("(pointer: fine)").matches) {
-      addEventListener("pointermove", (e) => {
-        if (scrollY > innerHeight) return;
-        tx = (e.clientX / innerWidth - 0.5) * -14; ty = (e.clientY / innerHeight - 0.5) * -8;
-        queue();
-      }, { passive: true });
-    }
-  }
+
   pause.addEventListener("click", () => {
     heroPaused = !heroPaused;
     if (heroPaused) hero.pause(); else hero.play();
