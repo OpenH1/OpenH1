@@ -524,8 +524,8 @@ static void respawn_case(short substep_count)
 
 /* A projectile made (in the tick's own work, or in sub-step 2 by the weapons' slot) at M with velocity v a tick:
 its head start puts it at M + v at once, and it holds for a tick of sub-steps, then moves v/k each (projectiles.c).
-Its first tick, and the next, are drawn on the line from a tick's motion back, as at 30: never darting out and
-waiting. From the tick after, on its sub-steps' path. */
+Its first tick, and the next, are drawn on the line from half a tick's motion back, as at 30 (a whole tick back is
+M, for a bolt the eye): never darting out and waiting. From the tick after, on its sub-steps' path. */
 static long projectile_made_tick;
 static short projectile_made_substep;
 static short projectile_held;
@@ -578,12 +578,12 @@ static void projectile_case(short made_substep, long checked_ticks)
 			continue;
 		frame_begin(random_part());
 		drawn = render_interpolation_object_node_matrices(PROJECTILE);
-		/* the line: from a tick's motion back (made), else between the ticks' ends */
+		/* the line: from half a tick's motion back (made), else between the ticks' ends */
 		if (tick == projectile_made_tick)
 		{
 			line_to = projectile_positions[tick][3];
 			line_from = line_to;
-			line_from.x -= PROJECTILE_SPEED;
+			line_from.x -= 0.5f * PROJECTILE_SPEED;
 		}
 		else
 		{

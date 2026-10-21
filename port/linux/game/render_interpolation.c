@@ -31,8 +31,9 @@ object, made in the tick, is held back to be made through the frames between
 the ticks (render_interpolation_particle_later).
 
 An object made in a tick has no snapshot from the tick before: one moving
-(a bolt, a grenade thrown) is drawn from a tick of its motion back, not
-standing a tick where the tick left it. A projectile deleted in a tick (at
+(a bolt, a grenade thrown) is drawn from half a tick of its motion back
+(a whole tick back is where it was made, for a bolt the eye), not standing
+a tick where the tick left it. A projectile deleted in a tick (at
 what it hit) is drawn a tick longer, from its last snapshot to where it was
 deleted, as the effects it made there are drawn from the start of the tick:
 a ghost, drawn only here, which nothing of the game sees.
@@ -835,9 +836,10 @@ void render_interpolation_tick(void)
 		standing for a tick where this one left it (a bolt hung a tick's
 		motion out from the muzzle, then set off), and a tick early, ahead
 		of the world drawn about it. The tick before's snapshot: this one's,
-		a tick's motion back. (Not an object something carries, which moves
-		with it; one that moves further than a tick allows snaps, as
-		before.) */
+		half a tick's motion back (a whole tick back is where it was made,
+		for a bolt the eye, where its sprite would fill the view). (Not an
+		object something carries, which moves with it; one that moves
+		further than a tick allows snaps, as before.) */
 		if (made && object->object.parent_object_index == NONE &&
 			(object->object.translational_velocity.i != 0.0f ||
 				object->object.translational_velocity.j != 0.0f ||
@@ -851,13 +853,13 @@ void render_interpolation_tick(void)
 			memcpy(previous, latest, node_count * sizeof(real_matrix4x3));
 			for (node_index = 0; node_index < node_count; node_index++)
 			{
-				previous[node_index].position.x -= velocity->i;
-				previous[node_index].position.y -= velocity->j;
-				previous[node_index].position.z -= velocity->k;
+				previous[node_index].position.x -= 0.5f * velocity->i;
+				previous[node_index].position.y -= 0.5f * velocity->j;
+				previous[node_index].position.z -= 0.5f * velocity->k;
 			}
-			record->previous_position.x -= velocity->i;
-			record->previous_position.y -= velocity->j;
-			record->previous_position.z -= velocity->k;
+			record->previous_position.x -= 0.5f * velocity->i;
+			record->previous_position.y -= 0.5f * velocity->j;
+			record->previous_position.z -= 0.5f * velocity->k;
 			render_interpolation_previous_values(record);
 		}
 		if (iterator.index == interpolation_from.object_index)
