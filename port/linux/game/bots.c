@@ -82,6 +82,7 @@ and each bot's kills and deaths; debug.bot_trace logs each bot's state.
 #include "devices/device_definitions.h"
 #include "tag_files/tag_groups.h"
 #include "tag_files/tag_files.h"
+#include "cache/cache_files.h"
 
 #include "bots.h"
 
@@ -2080,6 +2081,30 @@ static void bots_turn(struct bots_bot *bot, real yaw_off, real pitch_off, real t
 	bot->pitch += bot->pitch_rate * dt;
 }
 
+/* the weapon whose tag's name has that in it put in the unit's hands, as
+the game engine gives a loadout (game_engine_give_loadout) */
+static void bots_give_weapon(long unit_index, char const *part)
+{
+	struct tag_iterator iterator;
+	long tag_index;
+
+	tag_iterator_new(&iterator, WEAPON_DEFINITION_TAG);
+	while ((tag_index = tag_iterator_next(&iterator)) != NONE)
+	{
+		char const *name = tag_get_name(tag_index);
+		struct object_placement_data data;
+		long weapon_index;
+
+		if (!name || !strstr(name, part))
+			continue;
+		object_placement_data_new(&data, tag_index, NONE);
+		weapon_index = object_new(&data);
+		if (weapon_index != NONE && !unit_add_weapon_to_inventory(unit_index, weapon_index, _unit_add_weapon_replace))
+			object_delete(weapon_index);
+		return;
+	}
+}
+
 /* a bot's tick: what it knows of itself, and the controls it builds */
 struct bots_tick
 {
@@ -2585,6 +2610,11 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 	{
 		/* (spawned: it looks the way its unit faces) */
 		bot->unit_index = tick.player->unit_index;
+		/* (debug.bot_player_weapon: the player's bot spawns with it in its
+		hands, the trailer's snipes and rockets not a race to the map's
+		few) */
+		if (bot->smooth && *config_string("debug.bot_player_weapon"))
+			bots_give_weapon(tick.player->unit_index, config_string("debug.bot_player_weapon"));
 		bot->yaw = (real)atan2(tick.object->object.forward.j, tick.object->object.forward.i);
 		bot->pitch = 0.0f;
 		bot->yaw_rate = 0.0f;
