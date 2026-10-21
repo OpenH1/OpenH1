@@ -40,9 +40,9 @@ From the top:
   twice, the Original (as the game drew it) and OpenH1:
   - 01, dynamic lights: a wipe, with callouts on the OpenH1 side;
   - 02, anti-aliasing: a lens, OpenH1 inside it;
-  - 03, the plasma glow: a flip;
+  - 03, the plasma glow: two clips side by side, with a numbered legend;
   - 04, frames between ticks: two clips side by side.
-  Each comparison plays one short demo the first time it scrolls into view
+  The wipe and the lens play one short demo the first time it scrolls into view
   (none for less motion), and stops as soon as the visitor touches it.
 - **VR**, **Platforms**, **Under the hood** (the details for purists, in a
   dense list), **Bring your own game**, and the footer.
