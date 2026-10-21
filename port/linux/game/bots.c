@@ -179,6 +179,16 @@ struct bots_bot
 	/* where it looks (radians) */
 	real yaw;
 	real pitch;
+	/* debug.bot_player's: its aim turns as a player's does, with how fast
+	it turns now (radians a second) carried from tick to tick */
+	boolean smooth;
+	real yaw_rate;
+	real pitch_rate;
+	/* the direction to the target at its last aimed tick (radians), and that
+	tick: how fast the target crosses the view, which the aim tracks */
+	real target_yaw;
+	real target_pitch;
+	long target_aim_tick;
 
 	/* its target */
 	long target_player_index;
@@ -1910,6 +1920,37 @@ static void bots_bot_reset(struct bots_bot *bot, long player_index, long bot_ind
 	bot->goal_surface_index = NONE;
 	bot->random = 0x2545F491UL * (unsigned long)(bot_index + 1) ^ (unsigned long)network_game_get_random_seed();
 	bot->strafe_sign = 1.0f;
+	bot->smooth = bot_index == BOTS_MAXIMUM;
+}
+
+/* the bot's aim turned toward an offset (radians) by at most turn a tick:
+at once, or for debug.bot_player's, as a player's hand turns it, a spring
+at that frequency (radians a second, damped critically: it speeds into the
+turn and settles on the mark without overshooting), no faster than turn a
+tick, so that the footage's view moves as a player's. The track rates
+(radians a second: a target crossing the view) are matched as a player's
+hand follows a target, so that the aim does not trail a moving one */
+static void bots_turn(struct bots_bot *bot, real yaw_off, real pitch_off, real turn, real frequency,
+	real yaw_track, real pitch_track)
+{
+	real dt = 1.0f / TICKS_PER_SECOND, most = turn * TICKS_PER_SECOND;
+
+	if (!bot->smooth)
+	{
+		bot->yaw += PIN(yaw_off, -turn, turn);
+		bot->pitch += PIN(pitch_off, -turn, turn);
+		return;
+	}
+	/* (no faster a change than a hand's, 90 radians a second squared:
+	a half turn in about 0.4 seconds) */
+	bot->yaw_rate += PIN((frequency * frequency * yaw_off - 2.0f * frequency * (bot->yaw_rate - yaw_track)) * dt,
+		-90.0f * dt, 90.0f * dt);
+	bot->pitch_rate += PIN((frequency * frequency * pitch_off - 2.0f * frequency * (bot->pitch_rate - pitch_track)) * dt,
+		-90.0f * dt, 90.0f * dt);
+	bot->yaw_rate = PIN(bot->yaw_rate, -most, most);
+	bot->pitch_rate = PIN(bot->pitch_rate, -most, most);
+	bot->yaw += bot->yaw_rate * dt;
+	bot->pitch += bot->pitch_rate * dt;
 }
 
 /* a bot's tick: what it knows of itself, and the controls it builds */
@@ -2039,8 +2080,22 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	turn = skill->turn_degrees_per_tick * BOTS_DEGREES;
 	yaw_off = bots_angle_difference(desired_yaw, bot->yaw);
 	pitch_off = desired_pitch - bot->pitch;
-	bot->yaw += PIN(yaw_off, -turn, turn);
-	bot->pitch += PIN(pitch_off, -turn, turn);
+	/* (a player's hand on a target: quick, about a quarter second to
+	settle, following it as it moves) */
+	{
+		real target_yaw = (real)atan2(dy, dx), target_pitch = (real)atan2(dz, horizontal);
+		real yaw_track = 0.0f, pitch_track = 0.0f;
+
+		if (bot->target_aim_tick == now - 1)
+		{
+			yaw_track = PIN(bots_angle_difference(target_yaw, bot->target_yaw) * TICKS_PER_SECOND, -6.0f, 6.0f);
+			pitch_track = PIN((target_pitch - bot->target_pitch) * TICKS_PER_SECOND, -6.0f, 6.0f);
+		}
+		bot->target_yaw = target_yaw;
+		bot->target_pitch = target_pitch;
+		bot->target_aim_tick = now;
+		bots_turn(bot, yaw_off, pitch_off, turn, 14.0f, yaw_track, pitch_track);
+	}
 
 	/* fire: once it has reacted, while its aim is on the target (its size
 	at that distance) */
@@ -2124,8 +2179,16 @@ static void bots_bot_walk(struct bots_bot *bot, struct bots_tick *tick)
 
 		tick->move_direction = direction;
 		tick->moving = TRUE;
-		bot->yaw += PIN(off, -turn, turn);
-		bot->pitch += PIN(-bot->pitch, -0.05f, 0.05f);
+		if (bot->smooth)
+		{
+			/* (looking where it walks: an easier hand than fighting's) */
+			bots_turn(bot, off, -bot->pitch, turn, 6.0f, 0.0f, 0.0f);
+		}
+		else
+		{
+			bot->yaw += PIN(off, -turn, turn);
+			bot->pitch += PIN(-bot->pitch, -0.05f, 0.05f);
+		}
 		if (bot->climb_until_tick && tick->now < bot->climb_until_tick && (bot->climb_until_tick - tick->now) % 20 == 0)
 			tick->flags |= FLAG(_unit_control_jump_bit);
 	}
@@ -2345,6 +2408,8 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		bot->unit_index = tick.player->unit_index;
 		bot->yaw = (real)atan2(tick.object->object.forward.j, tick.object->object.forward.i);
 		bot->pitch = 0.0f;
+		bot->yaw_rate = 0.0f;
+		bot->pitch_rate = 0.0f;
 		bot->last_vitality = tick.object->object.body_vitality + tick.object->object.shield_vitality;
 		bot->stuck_position = tick.position;
 		bot->stuck_tick = tick.now;
