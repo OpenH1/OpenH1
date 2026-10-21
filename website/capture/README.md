@@ -128,3 +128,18 @@ at the sheet.
   drawn offscreen there (RADV has headless surfaces, so it makes a
   swapchain; with vsync on or off). Not looked into.
 - macOS: see `VIDEOS-TODO.md` ("Two problems on macOS").
+
+### hero, 2026-10-20
+
+The hero trailer, multiplayer only (the campaign and co-op a later pass):
+local matches with fifteen legendary bots, the first player played by one
+(`debug.bot_player`, with a rocket launcher or a sniper rifle given at each
+spawn, or a Warthog to board), scouted (`scout.py`, 42 matches over the
+famous maps), previewed (30 at 960 × 540) and eight chosen and filmed again
+at 3840 × 2160 (`shoot.py --only`), then cut (`cut.py`): a sniper double,
+the magnum's triple, rockets into groups, a sniper double on Longest, a
+rocket's body thrown at the camera. `surveys/hero-2026-10-20/hero.json`
+has all it takes to render it again: the build's commit (a match replays
+exactly only on the build that scouted it), each step's command, the picks
+in order, the cut's beats and each shot's window and kills;
+`moments.json` is the scout's, `previews/` the previews' notes and sheets.

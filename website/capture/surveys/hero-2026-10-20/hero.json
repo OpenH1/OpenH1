@@ -1,0 +1,131 @@
+{
+ "made": "2026-10-20",
+ "build": {
+  "commit": "1b25aea508122223cea2bcd765769ac7165a65a7",
+  "note": "the matches replay exactly only on this build (the port and website/capture as of this commit; the bots, the trace, the screenshot window)",
+  "configure": "python configure.py --release; ninja linux_x86_64 (x86-64 Linux, the 5900x)"
+ },
+ "scout": {
+  "script": "final.sh",
+  "command": "tools/scout.py <final.sh M> --seeds 7,8,9 --bots 15 --out final-scout --parallel 10",
+  "moments": "moments.json (each moment: match spec, seed, exact kill tick, chain first/last, kind)"
+ },
+ "previews": {
+  "command": "tools/shoot.py final-scout --count 30 --per-kind 7 --size 960x540 --parallel 4",
+  "notes": "previews/NN-*.json (the window each was filmed in, its kills)"
+ },
+ "master": {
+  "command": "tools/shoot.py final-scout --count 30 --per-kind 7 --only 12,22,03,23,05,17,02,07 --size 3840x2160 --parallel 2 --out clips-4k",
+  "note": "the same --count and --per-kind as the previews, so that the numbers pick the same moments"
+ },
+ "cut": {
+  "command": "tools/cut.py <clips-4k> hero.mp4 --pick 12,22,03,23,05,17,02,07",
+  "order": [
+   "12",
+   "22",
+   "03",
+   "23",
+   "05",
+   "17",
+   "02",
+   "07"
+  ],
+  "beats": {
+   "headshot": [
+    1.8,
+    0.6
+   ],
+   "snipe": [
+    1.6,
+    0.5
+   ],
+   "rocket": [
+    1.4,
+    0.7
+   ],
+   "rocket_multi": [
+    1.3,
+    1.3
+   ],
+   "chaos": [
+    1.0,
+    0.4
+   ]
+  },
+  "note": "a beat runs from before a chain's first kill to after its last: each multi-kill shown whole"
+ },
+ "shots": [
+  {
+   "preview": "12",
+   "clip": "12-headshot-bloodgulch-team_slayer-sniper-8-3s",
+   "start": -0.5333000000000001,
+   "kill": 2.9667,
+   "first": 1.4333,
+   "last": 2.9667,
+   "kind": "headshot"
+  },
+  {
+   "preview": "22",
+   "clip": "22-chaos-hangemhigh-team_slayer-rocket-8-20s",
+   "start": 15.7333,
+   "kill": 19.9667,
+   "first": 17.2333,
+   "last": 19.9667,
+   "kind": "chaos"
+  },
+  {
+   "preview": "03",
+   "clip": "03-rocket_multi-chillout-team_slayer-rocket-8-77s",
+   "start": 73.1,
+   "kill": 76.6,
+   "first": 76.6,
+   "last": 76.6,
+   "kind": "rocket_multi"
+  },
+  {
+   "preview": "23",
+   "clip": "23-snipe-longest-team_slayer-sniper-7-49s",
+   "start": 45.0667,
+   "kill": 48.5667,
+   "first": 48.5667,
+   "last": 49.6,
+   "kind": "snipe"
+  },
+  {
+   "preview": "05",
+   "clip": "05-rocket_multi-prisoner-team_slayer-rocket-8-45s",
+   "start": 41.733,
+   "kill": 45.233,
+   "first": 45.233,
+   "last": 45.233,
+   "kind": "rocket_multi"
+  },
+  {
+   "preview": "17",
+   "clip": "17-rocket-hangemhigh-team_slayer-rocket-8-107s",
+   "start": 103.9667,
+   "kill": 107.4667,
+   "first": 107.4667,
+   "last": 110.0,
+   "kind": "rocket"
+  },
+  {
+   "preview": "02",
+   "clip": "02-rocket_multi-damnation-team_slayer-rocket-9-11s",
+   "start": 7.132999999999999,
+   "kill": 10.633,
+   "first": 10.633,
+   "last": 10.633,
+   "kind": "rocket_multi"
+  },
+  {
+   "preview": "07",
+   "clip": "07-rocket_multi-damnation-team_slayer-rocket-7-156s",
+   "start": 152.767,
+   "kill": 156.267,
+   "first": 156.267,
+   "last": 156.267,
+   "kind": "rocket_multi"
+  }
+ ]
+}
