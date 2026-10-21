@@ -184,6 +184,8 @@ the eyes' */
 boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rasterizer_camera);
 /* port: its mono pipelines prepared at map load too (vr_scope.c) */
 void vr_scope_enumerate_camera(struct render_camera *camera, struct render_camera *rasterizer_camera);
+/* the smart-link window's zoomed view drawn over the scope's (vr_scope.c) */
+void vr_scope_draw_hud(void);
 void vr_render_scope_begin(void);
 void vr_render_scope_end(void);
 /* port/linux/game/vr_cabin.c: a feed cockpit's display, told to vr.c */
@@ -537,7 +539,10 @@ static void render_window(
 #ifdef HALO_VR
 		if (render_vr_scope_pass)
 		{
-			/* the scope's own reticle is drawn over its image (xgpu_gl.c) */
+			/* the scope's own reticle is drawn over its image (xgpu_gl.c),
+			or the smart-link's window the weapon's zoomed view, as the
+			flat screen shows it (port/linux/game/vr_scope.c) */
+			vr_scope_draw_hud();
 		}
 		else if (render_vr_eye_pass)
 		{

@@ -405,9 +405,20 @@ static const struct config_setting config_settings[] =
 		"\"eye\", the sniper rifle's and the pistol's scopes magnify the view\n"
 		"within their lens as you raise them to an eye, and only then (the\n"
 		"click changes the magnification); \"off\", as vr.scopes = false." },
-	{ "vr.smartlink_size", _config_real, "70.0", "HALO_VR_SMARTLINK_SIZE", _environment_value, _platform_desktop,
+	{ "vr.smartlink_size", _config_real, "60.0", "HALO_VR_SMARTLINK_SIZE", _environment_value, _platform_desktop,
 		"With vr.scope_view = \"smartlink\", how wide the zoom's window about\n"
-		"the reticle is, in degrees of your view (30 to 100; it is 16:9)." },
+		"the reticle is, in degrees of your view (30 to 100; it is 16:9). The\n"
+		"sniper rifle's and the pistol's are the flat screen's zoomed view: this\n"
+		"is the sniper rifle's scope's frame in it, the pistol's to its scale,\n"
+		"the zoomed view about them as large as the HUD (vr.hud_size) or a\n"
+		"fifth wider than the sniper rifle's frame." },
+	{ "vr.smartlink_place", _config_string, "\"reticle\"", "HALO_VR_SMARTLINK_PLACE", _environment_value,
+		_platform_desktop,
+		"With vr.scope_view = \"smartlink\", where the zoom's window is:\n"
+		"\"reticle\" about the reticle, at its depth, where the weapon aims (it\n"
+		"moves with your hand); \"visor\" on your visor where the HUD is (it\n"
+		"stays before your eyes, as the flat screen does, and the weapon aims\n"
+		"what it shows)." },
 	{ "vr.scope_gun", _config_string, "\"hidden\"", "HALO_VR_SCOPE_GUN", _environment_value, _platform_desktop,
 		"With vr.scope_view = \"smartlink\", how the weapon in your hand shows\n"
 		"where it crosses the zoom's window: \"hidden\" the window is over it,\n"

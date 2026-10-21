@@ -884,10 +884,12 @@ static struct
 	int holsters;
 	int physical_crouch;
 	/* vr.scopes and vr.scope_view: HALO_VR_SCOPES_*, 0 off; the smart-link's
-	window, how wide (degrees, vr.smartlink_size), and how the weapon in hand
-	shows over it (vr.scope_gun: 0 hidden, 1 ghost, 2 visible) */
+	window, how wide (degrees, vr.smartlink_size), where it is (on the visor,
+	vr.smartlink_place = "visor"; else at the reticle), and how the weapon in
+	hand shows over it (vr.scope_gun: 0 hidden, 1 ghost, 2 visible) */
 	int scopes;
 	float smartlink_degrees;
+	int smartlink_visor;
 	int scope_gun;
 	int manual_reload;
 	/* vr.vehicle_flip: what flips an overturned vehicle, X ("button",
@@ -1042,6 +1044,7 @@ static void settings_read(void)
 	if (settings.smartlink_degrees < SMARTLINK_NARROWEST || settings.smartlink_degrees > SMARTLINK_WIDEST)
 		settings.smartlink_degrees = settings.smartlink_degrees < SMARTLINK_NARROWEST ? SMARTLINK_NARROWEST :
 			SMARTLINK_WIDEST;
+	settings.smartlink_visor = !strcmp(config_string("vr.smartlink_place"), "visor");
 	settings.scope_gun = !strcmp(config_string("vr.scope_gun"), "visible") ? 2 :
 		!strcmp(config_string("vr.scope_gun"), "ghost") ? 1 : 0;
 	settings.manual_reload = config_boolean("vr.manual_reload");
@@ -2325,6 +2328,13 @@ void halo_vr_smartlink_view(float *degrees, float *distance)
 	*distance = settings.hud_distance;
 }
 
+int halo_vr_smartlink_hud(float *hud_degrees)
+{
+	settings_read();
+	*hud_degrees = settings.hud_size;
+	return settings.smartlink_visor;
+}
+
 void halo_vr_scope(const struct halo_vr_scope *scope)
 {
 	vr.scope_set = scope != NULL;
@@ -2598,6 +2608,13 @@ void halo_vr_scope_animation(float *opened_seconds, float *closing, float *switc
 	*opened_seconds = vr.scope.opened_seconds;
 	*closing = vr.scope.closing;
 	*switched_seconds = vr.scope.switched_seconds;
+}
+
+void halo_vr_scope_shape(float *corner, float *dim, float *feather)
+{
+	*corner = vr.scope_set ? vr.scope.corner : -1.0f;
+	*dim = vr.scope_set ? vr.scope.dim : 0.0f;
+	*feather = vr.scope_set ? vr.scope.feather : 0.0f;
 }
 
 int halo_vr_scope_gun(void)

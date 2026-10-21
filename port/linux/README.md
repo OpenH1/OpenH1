@@ -2238,31 +2238,49 @@ on your visor: you never bring a scope to your eye.
   the flat screen, then none; the pistol 2x, then none; the rocket
   launcher's too). What unzooms the game unzooms it: a hit, a reload, a
   grenade, a switch of weapons.
-- While zoomed, a wide 16:9 window opens about the reticle, the weapon's
-  sight fed into the HUD: about 70 degrees across (`vr.smartlink_size`),
-  its middle on the reticle and at the reticle's depth (each eye sees it
-  where it sees the reticle), facing you and level with the horizon. It
-  stays where the weapon aims: turning or tilting your head does not move
-  or turn it. It shows where the
-  weapon aims, magnified (2 or 8 times the world about it), and the rest of
-  your view stays the world, unmagnified. It is drawn over the weapon in
-  your hand (`vr.scope_gun`: or the weapon faintly through it, or in front
-  of it) and under the HUD.
-- In it: a faint blue tint and scan lines, its edges darkened, a thin line
-  of the HUD's blue about it with heavier corners and a soft glow outside;
-  a fine crosshair across it with range ticks and a gap at the aim, a ring
-  and a faint red dot where the shot goes; and along its bottom edge the
-  zoom, the range to what the aim meets and the rounds ("2X   RANGE 014.1
-  AMMO 4/8"). The flat game's zoomed view (its "2x" and "10x" with their
-  dial, the range ticks, the sniper's target distance) is not drawn.
-- As you zoom, it opens out from the reticle over about 0.18 s and the view
-  in it pushes in from the world's size to the zoom's with it (one motion),
-  a bright line sweeping down it and a little interference settling, the
-  sight and the readout last. From 2x to 10x the view eases in over 0.2 s
-  with a brief flicker. Unzoomed, it shrinks back and switches off as a CRT
-  does (about 0.1 s), to a line through the reticle and a point. With
-  `debug.screenshot_every = 1` (the game slowed by the screenshots) these
-  step a 72 Hz frame each frame, so that each shows.
+- The sniper rifle's and the pistol's zoom is the flat screen's zoomed
+  view, fed into the HUD: the game's own scope, drawn from the same art
+  (the sniper rifle's rounded frame with its elevation ladders on both
+  edges, the diamond reticle, the crosshair's bars and its "2x" or "10x";
+  the pistol's round lens, its reticle and "2x"), with the scope's mask
+  darkening and blurring the zoomed view about it as on the flat screen.
+  While zoomed it shows in a 4:3 window about the reticle: the sniper
+  rifle's frame 60 degrees across (`vr.smartlink_size`), the pistol's lens
+  to the same scale (about 38 degrees, as much smaller as on the flat
+  screen), the window as wide as the HUD (`vr.hud_size`) or a fifth wider
+  than the sniper rifle's frame, its edge fading into the world over about
+  1.5 degrees. Outside it your view stays the world, unmagnified and a
+  little dimmed (12%).
+- Other weapons that zoom (the rocket launcher), and a seat's zoom
+  (below), have no scope of their own on the flat screen: theirs is a wide
+  16:9 window, the smart-link's own, `vr.smartlink_size` across. In it: a
+  faint blue tint and scan lines, its edges darkened, a thin line of the
+  HUD's blue about it with heavier corners and a soft glow outside; a fine
+  crosshair across it with range ticks and a gap at the aim, a ring and a
+  faint red dot where the shot goes; and along its bottom edge the zoom,
+  the range to what the aim meets and the rounds ("2X   RANGE 014.1   AMMO
+  4/8").
+- Either window's middle is on the reticle and at the reticle's depth
+  (each eye sees it where it sees the reticle; the scopes' no nearer than
+  1.5 m), facing you and level with the horizon. It stays where the weapon
+  aims: turning or tilting your head does not move or turn it. It shows
+  where the weapon aims, magnified (2 or 8 times the world about it). With
+  `vr.smartlink_place = "visor"` it is on your visor instead, where the HUD
+  is: it stays before your eyes as the flat screen does, and the weapon
+  aims what it shows. It is drawn over the weapon in your hand
+  (`vr.scope_gun`: or the weapon faintly through it, or in front of it)
+  and under the HUD.
+- As you zoom, the scope's window grows from the reticle over 0.1 s while
+  the view in it pushes in from the world's size to the zoom's over 0.17 s,
+  as the flat screen's zoom does; from 2x to 10x the view eases in over
+  0.17 s; unzoomed, it is gone at once, as on the flat screen. The 16:9
+  window opens out from the reticle over
+  about 0.18 s, a bright line sweeping down it and a little interference
+  settling, the sight and the readout last; from 2x to 10x its view eases in
+  over 0.2 s with a brief flicker; unzoomed, it shrinks back and switches off
+  as a CRT does (about 0.1 s), to a line through the reticle and a point.
+  With `debug.screenshot_every = 1` (the game slowed by the screenshots)
+  these step a 72 Hz frame each frame, so that each shows.
 - While zoomed, the aim is steadied, the more the more it magnifies (and
   more still with your left hand on a long gun's foregrip): your hand's
   small shake and slow sway are damped, while a deliberate swing passes
@@ -3201,7 +3219,8 @@ headset's session is opened with, apply from the next start.
 | `vr.physical_crouch` | `true` | `HALO_VR_PHYSICAL_CROUCH` | The head crouching crouches the player: about 0.35 m below the standing eyes (`vr.height = "standing"`), or 0.25 m below the recentred ones (seated), and standing within 0.07 m of that stands (above, "Crouching"). The left stick's click crouches as ever. |
 | `vr.scopes` | `true` | `HALO_VR_SCOPES` | With `vr.aim = "controller"`: the zoom magnifies a view of its own, as `vr.scope_view` says (above, "Scopes"). `false`: the game's zoom (nothing is magnified in the headset), whatever `vr.scope_view` is. |
 | `vr.scope_view` | `"smartlink"` | `HALO_VR_SCOPE_VIEW` | With `vr.scopes`: `"smartlink"`, the right stick's click zooms as the game does, wherever the weapon is, and a wide magnified window opens about the reticle, at its depth (above, "Smart-link"); `"eye"`, the sniper rifle's and the pistol's scopes magnify the view within their lens while raised to an eye, and lowered do not zoom (above, "At the eye"); `"off"`, as `vr.scopes = false`. |
-| `vr.smartlink_size` | `70.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the zoom's window is, in degrees of the view (30 to 100); it is 16:9. |
+| `vr.smartlink_size` | `60.0` | `HALO_VR_SMARTLINK_SIZE` | With `vr.scope_view = "smartlink"`: how wide the zoom's window is, in degrees of the view (30 to 100); it is 16:9. The sniper rifle's and the pistol's are the flat screen's zoomed view: this is the sniper rifle's scope's frame in it, the pistol's to its scale, the zoomed view about them as wide as the HUD (`vr.hud_size`) or a fifth wider than the sniper rifle's frame. |
+| `vr.smartlink_place` | `"reticle"` | `HALO_VR_SMARTLINK_PLACE` | With `vr.scope_view = "smartlink"`: where the zoom's window is: `"reticle"`, about the reticle at its depth, where the weapon aims (it moves with your hand); `"visor"`, on your visor where the HUD is (it stays before your eyes, as the flat screen does, and the weapon aims what it shows). Not in VR Controls. |
 | `vr.scope_gun` | `"hidden"` | `HALO_VR_SCOPE_GUN` | With `vr.scope_view = "smartlink"`: how the weapon in your hand shows where it crosses the zoom's window: `"hidden"`, the window over it (no barrel in the view); `"ghost"`, faintly through the window (a fifth); `"visible"`, in front of the window. Not in VR Controls. |
 | `vr.vehicle_climb` | `true` | `HALO_VR_VEHICLE_CLIMB` | With `vr.aim = "controller"`: a vehicle with holds (the Scorpion, the Warthog, the Ghost, the Banshee, the Shade) is climbed with the hands: grip a hold and pull, the view moving against the hands; lowered into a hatch by its rim, pulled to a seat by its holds, or with both hands on a gun's handles, you are in the seat, and pulled or pushed out of it by its holds (the Ghost: pushed off its handlebars), out ("Climbing into a vehicle"). X works as ever. |
 | `vr.vehicle_zoom` | `"2 4"` | `HALO_VR_VEHICLE_ZOOM` | With `vr.scope_view = "smartlink"`, in a vehicle's seat whose weapon you aim, seen from the seat: the magnifications the right stick's click steps through in the zoom's window, then none (up to 4, each more than 1; `""`: the click does nothing there, as before). A vehicle's weapon with zoom levels of its own (none in the game's maps) has those. Not in VR Controls. |
@@ -4100,6 +4119,18 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   frames, 19 in the view at 8x); along the line it turns only as the aim
   does (on b40's Shade, swept across at 8x: no more than the aim, in any
   frame).
+  For the sniper rifle and the pistol it is the flat screen's zoomed view:
+  the pass draws all the 640x480 screen (not its middle 480 alone), and
+  over the view the weapon HUD's screen effect (the scope's mask:
+  `interface.c`, `interface_draw_vr_scope_screen_effect`) and the weapon's
+  zoomed HUD alone (`hud_weapon.c`, `hud_render_weapon_zoomed`: all its
+  crosshairs, as the flat screen draws them zoomed, and the elements that
+  follow the zoom; not moved to the controller's point as the HUD layer's
+  crosshairs are), laid out in the window the game gave the camera (the
+  HUD's safe area, as on the flat screen); the copy keeps a 4:3 window of
+  its middle square, the HUD's size or more, its edge feathered, and the
+  eyes' pass dims the world about it (`halo_vr_scope_shape`). Its
+  `scope-view<frame>.bmp` screenshot is the pass's image as drawn.
   Its image (the same copy: the window, its sight and readout, its glow,
   and its animation, the image's middle rows) is not a layer: the host's
   renderer (`vulkan/host_vulkan_vr.c`) draws it into both eyes' images
@@ -4113,7 +4144,7 @@ does; making the eye images from the four layers cost 0.2 ms more there.
   `vr.scope_gun` lets the weapon through (a fifth, or all of it). Its image
   is 1024 pixels square at `vr.resolution_scale = 1` (480 for the eye's
   lens). The HUD's zoomed view is not
-  drawn while it shows (`hud_weapon.c`, `vr_scope_shown`), and its shaders
+  drawn in the HUD's layer while it shows (`hud_weapon.c`, `vr_scope_shown`), and its shaders
   are made ready as the eye's are, the first time a weapon that zooms is in
   hand in a map. On spark (a50's start, standing still, the pistol zoomed
   and unzoomed every 8 s in one run) its cost was within the noise of the

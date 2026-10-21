@@ -38,7 +38,7 @@ port/linux/README.md.
 #include <stdint.h>
 
 #define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
-#define XGPU_STREAM_VERSION 7
+#define XGPU_STREAM_VERSION 8
 #define XGPU_STREAM_LOADING_ART_BYTES (640u * 480u * 4u)
 
 /* ---------- the ring
@@ -856,7 +856,8 @@ enum
 
 /* what the frame's composition asks of vr.c and vr_visor.c (vr.h,
 vr_visor.h), as they answered when the game composed it: the scope's
-(halo_vr_scope_zoom, _smartlink, _window, _readout, _animation, _gun), a
+(halo_vr_scope_zoom, _smartlink, _window, _readout, _animation, _shape,
+_gun), a
 cockpit's display (halo_vr_cockpit_window), the vignette
 (halo_vr_vignette), the visor's (vr_visor_hud_image, _panels, _image,
 _rim) */
@@ -870,6 +871,7 @@ struct xgpu_stream_vr_state
 	float scope_range;
 	int32_t scope_rounds_loaded, scope_rounds_carried;
 	float scope_animation[3];
+	float scope_shape[3];
 	int32_t scope_gun;
 	uint32_t cockpit_window[XGPU_STREAM_VR_COCKPIT_WINDOW_WORDS];
 	uint32_t cockpit_display[XGPU_STREAM_VR_COCKPIT_DISPLAY_WORDS];
@@ -962,6 +964,6 @@ XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_eye_transforms, 8 + 4 * 64);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_screen_corrections, 4 + 4 * 14);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_frame_record, 44);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_submit, 44 + 8 + 4 * (116 + 8));
-XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_state, 4 * (2 + 4 + 32 + 3 + 3 + 1 + 34 + 19 + 1 + 8 + 50 + 80 + 71 + 3 + 39));
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_vr_state, 4 * (2 + 4 + 32 + 3 + 3 + 3 + 1 + 34 + 19 + 1 + 8 + 50 + 80 + 71 + 3 + 39));
 
 #endif

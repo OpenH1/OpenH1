@@ -115,6 +115,8 @@ void hud_draw_vr_crosshairs(
 	void);
 void hud_draw_vr_world_marks(
 	void);
+void hud_draw_vr_zoomed(
+	void);
 #endif
 
 /* ---------- prototypes/HUD_NAV_POINTS.C */
