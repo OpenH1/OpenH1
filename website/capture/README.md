@@ -1,7 +1,7 @@
 # Capturing the site's clips
 
 The scripts that capture, survey and encode the comparison clips for
-openh1.com (`VIDEOS-TODO.md` lists the clips). They run on a Linux machine
+openh1.com (`README.md`, "Pictures and clips", lists them). They run on a Linux machine
 with a built `linux_x86_64` tree (`python configure.py --release`, `ninja
 linux_x86_64`) and the retail maps, drawn offscreen (SDL's offscreen driver),
 a BMP a frame.
@@ -13,6 +13,8 @@ a BMP a frame.
 | `rank.py` | The survey's usable candidates, best first, and a contact sheet of them |
 | `watch.sh` | Prints each survey result as it lands |
 | `encode.sh` | A pair's MP4, WebM and poster, frame for frame, the Original scaled by nearest neighbour |
+| `final.py` | A final pair: both sides captured, the loop's end found (the Original's frame most like the first), the masters encoded (`encode.sh`, CRF 16) into `final/out` |
+| `encode-web.sh` | The page's clips from a pair's masters: cropped, scaled (the Original by nearest neighbour), MP4, WebM and poster |
 
 Settings are environment variables: `TREE` (the built tree), `MAPS`, `RUNS`
 (where runs go), `SIZE` (OpenH1's window), `PORT` (the console's; distinct
@@ -127,7 +129,7 @@ at the sheet.
 - omarchy (Radeon 8060S, RADV): the game stops on the loading screen when
   drawn offscreen there (RADV has headless surfaces, so it makes a
   swapchain; with vsync on or off). Not looked into.
-- macOS: see `VIDEOS-TODO.md` ("Two problems on macOS").
+- macOS: see "Capturing on macOS: two problems", below.
 
 ### hero, 2026-10-20
 
@@ -143,3 +145,76 @@ has all it takes to render it again: the build's commit (a match replays
 exactly only on the build that scouted it), each step's command, the picks
 in order, the cut's beats and each shot's window and kills;
 `moments.json` is the scout's, `previews/` the previews' notes and sheets.
+
+### glow, edges and strafe, 2026-10-21
+
+4K masters with `final.py` (seed 7), then the page's clips with
+`encode-web.sh`:
+
+```sh
+# glow: the plasma rifle picked up (cheat_all_weapons), a burst at 6 s to leave the scorch marks, the clip's at 10 s
+CONSOLE="(cheat_all_weapons) " python tools/final.py glow 'levels\test\ratrace\ratrace' \
+  "0 aim=35,-25;3-3.5 move=0,1;4.5-5 action;5.5 aim=0,0;6-7.2 fire;10-11.2 fire" 9.5 12.6 14.5 --seed 7
+tools/encode-web.sh glow glow 3840:2880:0:0 1280x960
+# edges: Blood Gulch's spawn faces the cliffs; a slow strafe out and back, a quarter of the frame at 4x
+python tools/final.py edges 'levels\test\bloodgulch\bloodgulch' "3-5.5 move=0.4,0;5.5-8 move=-0.4,0" 3.0 7.7 8.8 --seed 7
+tools/encode-web.sh edges edges 1920:1080:1200:360 1280x720
+# strafe: Rat Race facing yaw 90, past pillars and back; the return's length (1.67 s) found from the trace's positions
+python tools/final.py strafe 'levels\test\ratrace\ratrace' "0 aim=90,0;3-4.5 move=1,0;4.5-6.1667 move=-1,0" 3.0 6.4 7.4 --seed 7
+tools/encode-web.sh strafe strafe 3840:2160:0:360 1280x720
+```
+
+- Glow: the survey's best yaws (247.5 to 292.5) face a wall a few units
+  off, where both sides light alike; down the corridor (yaw 0) the bolts
+  light the floor in OpenH1 only. Its first takes showed a frame nearly
+  white at each shot in OpenH1: a new bolt was drawn a tick back, at the
+  eye, where its sprite (and its glow) filled the view. Fixed in the game
+  (`render_interpolation.c`: half a tick back; `d3d8_device.c`: glows
+  faded near the camera); the clip is from that build.
+- `final.py` lines OpenH1 up by the brightest jump in both sides; check its
+  log's "guessed" against the one used (the flash above moved it 8
+  frames).
+- A strafe out and back closes its loop only when the return is timed to
+  bring the player back: a strafe of 1.5 s needed 1.67 s back (the
+  acceleration), found from ten runs at 640 x 480 a few seconds each.
+- At 4K, OpenH1's frames are written at two or three a second, so
+  `final.py` gives each game 1500 s of wall time (the trace's end quits it
+  first).
+
+### Capturing on macOS: two problems, and the local workarounds used
+
+Neither is fixed in the game. The workarounds below were local edits to
+`port/linux/src/d3d8_device.c`, for capturing only, and are not committed.
+
+1. **Interpolation off hangs on the loading screen with a hidden window.**
+   With `display.interpolation = false`, `D3DDevice_Present` waits for the
+   display's vertical blank (`pending_flips`, at most two frames queued),
+   which a hidden window never signals, so the game stops on its first
+   frames. The workaround skipped that wait when an environment variable
+   was set:
+
+   ```c
+   while (pending_flips >= 2 && !getenv("HALO_CAPTURE_NO_VBLANK"))
+       pthread_cond_wait(&vertical_blank_condition, &vertical_blank_lock);
+   if (!getenv("HALO_CAPTURE_NO_VBLANK"))
+       pending_flips++;
+   ```
+
+   With it and `HALO_FRAME_TIME=0.0333333`, the Original draws one frame a
+   tick, deterministically. (The main loop's throttle still waits up to a
+   second for the vertical blank once, then turns itself off: "stuck
+   waiting for VBLANK callback".)
+
+2. **A screenshot of every frame or two hangs some loads.** Writing BMPs
+   from the first frame, through the loading screen, stopped some runs on
+   the loading screen. The workaround started the screenshots at a frame
+   number, so loading went untouched:
+
+   ```c
+   if (screenshot_every > 0 && device.frame % (unsigned long)screenshot_every == 0
+       && device.frame >= (unsigned long)(getenv("HALO_SCREENSHOT_FROM") ? atol(getenv("HALO_SCREENSHOT_FROM")) : 0))
+       write_screenshot(back_buffer);
+   ```
+
+A machine with more headroom (or a capture path that records the window,
+such as OBS at a fixed frame rate) avoids both.
