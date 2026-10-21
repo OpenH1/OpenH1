@@ -63,7 +63,7 @@ Rules for the content:
 
 | Files | Where | What |
 | --- | --- | --- |
-| `hero-720.*`, `hero-1080.*`, `hero-1440.*`, `hero-poster.webp` | The hero | Six multiplayer moments cut together (`capture/`, "hero, 2026-10-20"): a Warthog's splatter, Sidewinder's triple, rockets into groups. Enhanced at 60 fps, HUD on, filmed at 3840 × 2160; MP4 and WebM at 1280, 1920 and 2560 wide (1.6, 3.2 and 5.5 Mbit/s, a keyframe each second), the page choosing by the screen (a phone the smallest); 21 s, hard cuts; the poster its first frame |
+| `hero-720.*`, `hero-1080.*`, `hero-1440.*`, `hero-poster.webp` | The hero | Six multiplayer moments cut together (`capture/`, "hero, 2026-10-20"): a Warthog's splatter on Blood Gulch, a pistol triple on Sidewinder, a needler on Prisoner, a sticky on Hang 'Em High, rockets on Chill Out and Damnation. Enhanced at 60 fps, HUD on, filmed at 3840 × 2160; MP4 and WebM at 1280, 1920 and 2560 wide (1.6, 3.2 and 5.5 Mbit/s, a keyframe each second), the page choosing by the screen (a phone the smallest); 21 s, hard cuts; the poster its first frame |
 | `lights-original.*`, `lights-openh1.*` | 01 | Rat Race, a frag grenade at a spot already scorched (`capture/`): the Classic preset at 640 × 480 a frame a tick, and Enhanced at 60 fps between ticks. 4 s, 1920 × 1440 (from 3840 × 2880 masters), a loop without a fade, MP4 and WebM with posters |
 | `edge-original.webp`, `edge-openh1.webp` | 02 | Blood Gulch's cliffs, an 800 × 450 crop of 1920 × 1080: anti-aliasing off and SMAA, shown at 2× with `image-rendering: pixelated` |
 | `glow-original.webp`, `glow-openh1.webp` | 03 | Blood Gulch, a charged plasma pistol: Dynamic Lights Classic and Enhanced (640 × 480) |

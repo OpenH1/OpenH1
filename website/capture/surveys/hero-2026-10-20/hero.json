@@ -17,22 +17,24 @@
  "master": {
   "commands": [
    "tools/shoot.py final-scout --count 30 --per-kind 7 --only 25,03,05,17,07 --size 3840x2160 --parallel 2 --out clips-4k",
-   "tools/shoot.py final-scout --moments bloodgulch-slayer-warthog-7@167 --size 3840x2160 --out clips-4k"
+   "tools/shoot.py final-scout --moments bloodgulch-slayer-warthog-7@167 --size 3840x2160 --out clips-4k",
+   "tools/shoot.py scout-nx --count 16 --per-kind 8 --only 13,08 --size 3840x2160 --out clips-4k (copied into final-scout/clips-4k as 41 and 42)"
   ],
   "sound": [
    "tools/shoot.py final-scout --count 30 --per-kind 7 --only 25,03,05,17,07 --size 960x540 --out clips-4k --audio",
-   "tools/shoot.py final-scout --moments bloodgulch-slayer-warthog-7@167 --size 960x540 --out clips-4k --audio"
+   "tools/shoot.py final-scout --moments bloodgulch-slayer-warthog-7@167 --size 960x540 --out clips-4k --audio",
+   "tools/shoot.py scout-nx --count 16 --per-kind 8 --only 13,08 --size 960x540 --out clips-4k --audio"
   ],
   "note": "--only's numbers need the previews' --count and --per-kind to name the same moments; --moments numbers from 31"
  },
  "cut": {
-  "command": "tools/cut.py final-scout/clips-4k hero-4k.mp4 --pick 31,25,03,05,17,07  (and --audio for the version with sound)",
+  "command": "tools/cut.py final-scout/clips-4k hero-4k.mp4 --pick 31,25,41,42,03,07  (and --audio)",
   "order": [
    "31",
    "25",
+   "41",
+   "42",
    "03",
-   "05",
-   "17",
    "07"
   ],
   "beats": {
@@ -58,11 +60,12 @@
    ]
   },
   "note": "a beat runs from before a chain's first kill to after its last: each multi-kill shown whole",
-  "changes": "the first cut had eight shots; three dropped (two unzoomed snipes, a second Damnation rocket), a Warthog splatter added to open, the magnum triple swapped for Sidewinder's (it looked mechanical)"
+  "changes": "the first cut had eight shots; three dropped (two unzoomed snipes, a second Damnation rocket), a Warthog splatter added to open, the magnum triple swapped for Sidewinder's (it looked mechanical); then two rocket shots (Prisoner, Hang 'Em High) swapped for a needler on Prisoner and a sticky on Hang 'Em High: six shots on six maps"
  },
  "shots": [
   {
-   "preview": "31",
+   "pick": "31",
+   "scout": "final-scout",
    "clip": "31-vehicle-bloodgulch-slayer-warthog-7-167s",
    "start": 163.5,
    "kill": 167.0,
@@ -71,7 +74,8 @@
    "kind": "vehicle"
   },
   {
-   "preview": "25",
+   "pick": "25",
+   "scout": "final-scout",
    "clip": "25-chaos-sidewinder-slayer-warthog-8-28s",
    "start": 24.9,
    "kill": 28.4,
@@ -80,7 +84,28 @@
    "kind": "chaos"
   },
   {
-   "preview": "03",
+   "pick": "41",
+   "scout": "scout-nx",
+   "clip": "13-needler-prisoner-team_slayer-needler-7-170s",
+   "start": 166.7333,
+   "kill": 170.2333,
+   "first": 170.2333,
+   "last": 170.2333,
+   "kind": "needler"
+  },
+  {
+   "pick": "42",
+   "scout": "scout-nx",
+   "clip": "08-sticky-hangemhigh-team_slayer-plasma-9-163s",
+   "start": 157.233,
+   "kill": 163.167,
+   "first": 158.733,
+   "last": 163.167,
+   "kind": "sticky"
+  },
+  {
+   "pick": "03",
+   "scout": "final-scout",
    "clip": "03-rocket_multi-chillout-team_slayer-rocket-8-77s",
    "start": 73.1,
    "kill": 76.6,
@@ -89,25 +114,8 @@
    "kind": "rocket_multi"
   },
   {
-   "preview": "05",
-   "clip": "05-rocket_multi-prisoner-team_slayer-rocket-8-45s",
-   "start": 41.733,
-   "kill": 45.233,
-   "first": 45.233,
-   "last": 45.233,
-   "kind": "rocket_multi"
-  },
-  {
-   "preview": "17",
-   "clip": "17-rocket-hangemhigh-team_slayer-rocket-8-107s",
-   "start": 103.9667,
-   "kill": 107.4667,
-   "first": 107.4667,
-   "last": 110.0,
-   "kind": "rocket"
-  },
-  {
-   "preview": "07",
+   "pick": "07",
+   "scout": "final-scout",
    "clip": "07-rocket_multi-damnation-team_slayer-rocket-7-156s",
    "start": 152.767,
    "kill": 156.267,
@@ -118,5 +126,10 @@
  ],
  "web": {
   "encode": "hero-web/encode.sh: 1280, 1920 and 2560 wide at 1.6, 3.2 and 5.5 Mbit/s, H.264 and two-pass VP9, a keyframe each second; the poster the first frame"
+ },
+ "scout_nx": {
+  "command": "tools/scout.py <six maps>:team_slayer+needler,+plasma --seeds 7,8,9 --bots 15 --out scout-nx --parallel 10",
+  "moments": "moments-nx.json",
+  "previews": "tools/shoot.py scout-nx --count 16 --per-kind 8 --size 960x540"
  }
 }

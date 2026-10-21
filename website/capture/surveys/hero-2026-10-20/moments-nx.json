@@ -1,0 +1,11137 @@
+{
+ "args": {
+  "maps": "prisoner:team_slayer+needler,prisoner:team_slayer+plasma,chillout:team_slayer+needler,chillout:team_slayer+plasma,hangemhigh:team_slayer+needler,hangemhigh:team_slayer+plasma,damnation:team_slayer+needler,damnation:team_slayer+plasma,longest:team_slayer+needler,longest:team_slayer+plasma,sidewinder:team_slayer+needler,sidewinder:team_slayer+plasma",
+  "seeds": "7,8,9",
+  "bots": 15,
+  "skill": "legendary",
+  "seconds": 180,
+  "out": "scout-nx",
+  "before": 3.5,
+  "after": 1.2,
+  "parallel": 10,
+  "rescore": false
+ },
+ "matches": [
+  {
+   "match": "prisoner-team_slayer-needler-7",
+   "kills": 3,
+   "deaths": 8,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     48.0,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     48.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     70.4,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     70.4333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     85.3333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     85.3667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     108.8,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     108.8333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     123.7333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     123.7667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     149.3333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     149.3667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     166.4,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     166.4333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "prisoner-team_slayer-needler-8",
+   "kills": 2,
+   "deaths": 7,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     28.8,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     28.8333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     52.2667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     52.3,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     67.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     67.2333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     82.1333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     82.1667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     99.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     99.2333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     119.4667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     119.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     173.8667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     173.9,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "prisoner-team_slayer-needler-9",
+   "kills": 1,
+   "deaths": 9,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     20.2667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     20.3,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     60.8,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     60.8333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     81.0667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     81.1,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     110.9333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     110.9667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     131.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     131.2333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     147.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     147.2333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     160.0,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     160.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     172.8,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     172.8333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-7",
+   "kills": 8,
+   "deaths": 8,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     0.7,
+     "act",
+     "throw"
+    ],
+    [
+     1.9,
+     "act",
+     "-"
+    ],
+    [
+     3.2667,
+     "act",
+     "throw"
+    ],
+    [
+     4.4667,
+     "act",
+     "-"
+    ],
+    [
+     5.7667,
+     "act",
+     "throw"
+    ],
+    [
+     6.9667,
+     "act",
+     "-"
+    ],
+    [
+     7.0,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     8.7333,
+     "act",
+     "throw"
+    ],
+    [
+     9.9333,
+     "act",
+     "-"
+    ],
+    [
+     28.8,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     29.1333,
+     "act",
+     "throw"
+    ],
+    [
+     30.3333,
+     "act",
+     "-"
+    ],
+    [
+     31.6333,
+     "act",
+     "throw"
+    ],
+    [
+     32.8333,
+     "act",
+     "-"
+    ],
+    [
+     44.2,
+     "act",
+     "throw"
+    ],
+    [
+     45.4,
+     "act",
+     "-"
+    ],
+    [
+     67.6,
+     "act",
+     "throw"
+    ],
+    [
+     68.8,
+     "act",
+     "-"
+    ],
+    [
+     70.6,
+     "act",
+     "throw"
+    ],
+    [
+     71.8,
+     "act",
+     "-"
+    ],
+    [
+     74.0667,
+     "act",
+     "throw"
+    ],
+    [
+     75.2667,
+     "act",
+     "-"
+    ],
+    [
+     81.9333,
+     "act",
+     "throw"
+    ],
+    [
+     92.8,
+     "act",
+     "-"
+    ],
+    [
+     93.3333,
+     "act",
+     "throw"
+    ],
+    [
+     94.5333,
+     "act",
+     "-"
+    ],
+    [
+     97.0,
+     "act",
+     "throw"
+    ],
+    [
+     98.2,
+     "act",
+     "-"
+    ],
+    [
+     100.2,
+     "act",
+     "throw"
+    ],
+    [
+     110.9333,
+     "act",
+     "-"
+    ],
+    [
+     111.9,
+     "act",
+     "throw"
+    ],
+    [
+     113.1,
+     "act",
+     "-"
+    ],
+    [
+     115.1667,
+     "act",
+     "throw"
+    ],
+    [
+     116.3667,
+     "act",
+     "-"
+    ],
+    [
+     117.8,
+     "act",
+     "throw"
+    ],
+    [
+     129.0667,
+     "act",
+     "-"
+    ],
+    [
+     134.5667,
+     "act",
+     "throw"
+    ],
+    [
+     135.7667,
+     "act",
+     "-"
+    ],
+    [
+     138.5,
+     "act",
+     "throw"
+    ],
+    [
+     139.7,
+     "act",
+     "-"
+    ],
+    [
+     141.2667,
+     "act",
+     "throw"
+    ],
+    [
+     142.4667,
+     "act",
+     "-"
+    ],
+    [
+     143.8,
+     "act",
+     "throw"
+    ],
+    [
+     145.0,
+     "act",
+     "-"
+    ],
+    [
+     157.3,
+     "act",
+     "throw"
+    ],
+    [
+     158.5,
+     "act",
+     "-"
+    ],
+    [
+     174.3333,
+     "act",
+     "throw"
+    ],
+    [
+     175.5333,
+     "act",
+     "-"
+    ],
+    [
+     176.8667,
+     "act",
+     "throw"
+    ],
+    [
+     178.0667,
+     "act",
+     "-"
+    ]
+   ]
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "kills": 9,
+   "deaths": 7,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     1.0,
+     "act",
+     "throw"
+    ],
+    [
+     2.2,
+     "act",
+     "-"
+    ],
+    [
+     3.7,
+     "act",
+     "throw"
+    ],
+    [
+     14.9333,
+     "act",
+     "-"
+    ],
+    [
+     15.8667,
+     "act",
+     "throw"
+    ],
+    [
+     17.0667,
+     "act",
+     "-"
+    ],
+    [
+     20.9,
+     "act",
+     "throw"
+    ],
+    [
+     22.1,
+     "act",
+     "-"
+    ],
+    [
+     26.0667,
+     "act",
+     "throw"
+    ],
+    [
+     27.2667,
+     "act",
+     "-"
+    ],
+    [
+     28.7333,
+     "act",
+     "throw"
+    ],
+    [
+     29.9333,
+     "act",
+     "-"
+    ],
+    [
+     54.8,
+     "act",
+     "throw"
+    ],
+    [
+     56.0,
+     "act",
+     "-"
+    ],
+    [
+     57.4333,
+     "act",
+     "throw"
+    ],
+    [
+     58.6333,
+     "act",
+     "-"
+    ],
+    [
+     58.7667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     60.9,
+     "act",
+     "throw"
+    ],
+    [
+     62.1,
+     "act",
+     "-"
+    ],
+    [
+     63.6,
+     "act",
+     "throw"
+    ],
+    [
+     64.8,
+     "act",
+     "-"
+    ],
+    [
+     77.8667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     86.7667,
+     "act",
+     "throw"
+    ],
+    [
+     87.9667,
+     "act",
+     "-"
+    ],
+    [
+     89.4667,
+     "act",
+     "throw"
+    ],
+    [
+     90.6667,
+     "act",
+     "-"
+    ],
+    [
+     93.5,
+     "act",
+     "throw"
+    ],
+    [
+     94.7,
+     "act",
+     "-"
+    ],
+    [
+     96.3333,
+     "act",
+     "throw"
+    ],
+    [
+     97.5333,
+     "act",
+     "-"
+    ],
+    [
+     110.3,
+     "act",
+     "throw"
+    ],
+    [
+     111.5,
+     "act",
+     "-"
+    ],
+    [
+     112.9,
+     "act",
+     "throw"
+    ],
+    [
+     114.1,
+     "act",
+     "-"
+    ],
+    [
+     115.6,
+     "act",
+     "throw"
+    ],
+    [
+     116.8,
+     "act",
+     "-"
+    ],
+    [
+     116.8333,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     118.4,
+     "act",
+     "throw"
+    ],
+    [
+     119.6,
+     "act",
+     "-"
+    ],
+    [
+     133.3333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     134.1,
+     "act",
+     "throw"
+    ],
+    [
+     135.3,
+     "act",
+     "-"
+    ],
+    [
+     136.9333,
+     "act",
+     "throw"
+    ],
+    [
+     138.1333,
+     "act",
+     "-"
+    ],
+    [
+     157.2333,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     159.9667,
+     "act",
+     "throw"
+    ],
+    [
+     161.1667,
+     "act",
+     "-"
+    ],
+    [
+     162.7333,
+     "act",
+     "throw"
+    ],
+    [
+     163.9333,
+     "act",
+     "-"
+    ],
+    [
+     176.0,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     176.3,
+     "act",
+     "throw"
+    ],
+    [
+     177.5,
+     "act",
+     "-"
+    ],
+    [
+     179.0333,
+     "act",
+     "throw"
+    ]
+   ]
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "kills": 9,
+   "deaths": 8,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     0.5,
+     "act",
+     "throw"
+    ],
+    [
+     1.7,
+     "act",
+     "-"
+    ],
+    [
+     23.8333,
+     "act",
+     "throw"
+    ],
+    [
+     25.0333,
+     "act",
+     "-"
+    ],
+    [
+     26.6333,
+     "act",
+     "throw"
+    ],
+    [
+     27.8333,
+     "act",
+     "-"
+    ],
+    [
+     28.7333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     41.6,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     44.4667,
+     "act",
+     "throw"
+    ],
+    [
+     45.6667,
+     "act",
+     "-"
+    ],
+    [
+     46.9667,
+     "act",
+     "throw"
+    ],
+    [
+     48.1667,
+     "act",
+     "-"
+    ],
+    [
+     61.1667,
+     "act",
+     "throw"
+    ],
+    [
+     62.3667,
+     "act",
+     "-"
+    ],
+    [
+     63.9333,
+     "act",
+     "throw"
+    ],
+    [
+     65.1333,
+     "act",
+     "-"
+    ],
+    [
+     78.1333,
+     "act",
+     "throw"
+    ],
+    [
+     79.3333,
+     "act",
+     "-"
+    ],
+    [
+     80.9,
+     "act",
+     "throw"
+    ],
+    [
+     82.1,
+     "act",
+     "-"
+    ],
+    [
+     83.4667,
+     "act",
+     "throw"
+    ],
+    [
+     84.6667,
+     "act",
+     "-"
+    ],
+    [
+     85.9667,
+     "act",
+     "throw"
+    ],
+    [
+     87.1667,
+     "act",
+     "-"
+    ],
+    [
+     87.7,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     88.6667,
+     "act",
+     "throw"
+    ],
+    [
+     89.8667,
+     "act",
+     "-"
+    ],
+    [
+     91.3667,
+     "act",
+     "throw"
+    ],
+    [
+     92.5667,
+     "act",
+     "-"
+    ],
+    [
+     99.3333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     121.6,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     122.1,
+     "act",
+     "throw"
+    ],
+    [
+     123.3,
+     "act",
+     "-"
+    ],
+    [
+     124.8,
+     "act",
+     "throw"
+    ],
+    [
+     126.0,
+     "act",
+     "-"
+    ],
+    [
+     127.3,
+     "act",
+     "throw"
+    ],
+    [
+     128.5,
+     "act",
+     "-"
+    ],
+    [
+     142.4333,
+     "act",
+     "throw"
+    ],
+    [
+     143.6333,
+     "act",
+     "-"
+    ],
+    [
+     145.0,
+     "act",
+     "throw"
+    ],
+    [
+     146.2,
+     "act",
+     "-"
+    ],
+    [
+     163.5333,
+     "act",
+     "throw"
+    ],
+    [
+     164.7333,
+     "act",
+     "-"
+    ],
+    [
+     169.1,
+     "act",
+     "throw"
+    ]
+   ]
+  },
+  {
+   "match": "chillout-team_slayer-needler-7",
+   "kills": 2,
+   "deaths": 7,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     13.8667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     13.9,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     65.0667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     65.1,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     113.0667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     113.1,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     131.2,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     131.2333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     148.2667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     148.3,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     172.8,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     172.8333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "chillout-team_slayer-needler-8",
+   "kills": 1,
+   "deaths": 4,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     26.6667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     26.7,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     92.8,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     92.8333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     105.6,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     105.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "chillout-team_slayer-needler-9",
+   "kills": 0,
+   "deaths": 8,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     23.4667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     23.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     48.0,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     48.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     73.6,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     73.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     92.8,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     92.8333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     114.1333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     114.1667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     137.6,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     137.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     158.9333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     158.9667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     176.0,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     176.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "chillout-team_slayer-plasma-7",
+   "kills": 6,
+   "deaths": 9,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     0.3333,
+     "act",
+     "throw"
+    ],
+    [
+     1.5333,
+     "act",
+     "-"
+    ],
+    [
+     2.7333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     13.8667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     14.4333,
+     "act",
+     "throw"
+    ],
+    [
+     15.6333,
+     "act",
+     "-"
+    ],
+    [
+     17.5667,
+     "act",
+     "throw"
+    ],
+    [
+     18.7667,
+     "act",
+     "-"
+    ],
+    [
+     31.4,
+     "weapon",
+     "weapons\\sniper rifle\\sniper rifle"
+    ],
+    [
+     38.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     38.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     38.6667,
+     "act",
+     "throw"
+    ],
+    [
+     39.8667,
+     "act",
+     "-"
+    ],
+    [
+     40.8333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     40.9667,
+     "wstate",
+     "idle"
+    ],
+    [
+     42.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     52.2667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     52.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     56.0333,
+     "act",
+     "throw"
+    ],
+    [
+     57.2333,
+     "act",
+     "-"
+    ],
+    [
+     58.7333,
+     "act",
+     "throw"
+    ],
+    [
+     59.9333,
+     "act",
+     "-"
+    ],
+    [
+     59.9667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     62.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     62.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     62.7333,
+     "act",
+     "throw"
+    ],
+    [
+     63.9333,
+     "act",
+     "-"
+    ],
+    [
+     63.9667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     64.1,
+     "wstate",
+     "idle"
+    ],
+    [
+     64.6,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     64.7333,
+     "wstate",
+     "idle"
+    ],
+    [
+     71.1667,
+     "act",
+     "throw"
+    ],
+    [
+     82.1333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     82.1333,
+     "act",
+     "-"
+    ],
+    [
+     101.2667,
+     "act",
+     "throw"
+    ],
+    [
+     113.0667,
+     "act",
+     "-"
+    ],
+    [
+     118.3333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     118.4667,
+     "act",
+     "throw"
+    ],
+    [
+     119.6667,
+     "act",
+     "-"
+    ],
+    [
+     119.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     119.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     130.1333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     130.3333,
+     "act",
+     "throw"
+    ],
+    [
+     131.5333,
+     "act",
+     "-"
+    ],
+    [
+     133.2333,
+     "act",
+     "throw"
+    ],
+    [
+     145.0667,
+     "act",
+     "-"
+    ],
+    [
+     145.6667,
+     "act",
+     "throw"
+    ],
+    [
+     146.8667,
+     "act",
+     "-"
+    ],
+    [
+     147.4,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     157.8667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     164.8333,
+     "act",
+     "throw"
+    ],
+    [
+     166.0333,
+     "act",
+     "-"
+    ],
+    [
+     168.9667,
+     "act",
+     "throw"
+    ],
+    [
+     170.1667,
+     "act",
+     "-"
+    ],
+    [
+     172.8,
+     "act",
+     "throw"
+    ],
+    [
+     174.0,
+     "act",
+     "-"
+    ],
+    [
+     176.5667,
+     "act",
+     "throw"
+    ],
+    [
+     177.7667,
+     "act",
+     "-"
+    ]
+   ]
+  },
+  {
+   "match": "chillout-team_slayer-plasma-8",
+   "kills": 1,
+   "deaths": 5,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     1.7,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     5.8,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     5.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     6.1,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     6.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     7.2667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     7.4,
+     "wstate",
+     "idle"
+    ],
+    [
+     7.4667,
+     "act",
+     "throw"
+    ],
+    [
+     8.6667,
+     "act",
+     "-"
+    ],
+    [
+     8.8,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     8.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     10.9667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     11.1,
+     "wstate",
+     "idle"
+    ],
+    [
+     11.2667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     11.4,
+     "wstate",
+     "idle"
+    ],
+    [
+     11.7,
+     "act",
+     "throw"
+    ],
+    [
+     12.9,
+     "act",
+     "-"
+    ],
+    [
+     12.9333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     13.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     23.4667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     32.1667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     35.8667,
+     "act",
+     "throw"
+    ],
+    [
+     37.0667,
+     "act",
+     "-"
+    ],
+    [
+     37.9,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     48.0,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     48.0,
+     "wstate",
+     "idle"
+    ],
+    [
+     49.2667,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     49.3,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     54.9667,
+     "act",
+     "throw"
+    ],
+    [
+     56.1667,
+     "act",
+     "-"
+    ],
+    [
+     67.5667,
+     "act",
+     "throw"
+    ],
+    [
+     68.7667,
+     "act",
+     "-"
+    ],
+    [
+     70.2333,
+     "act",
+     "throw"
+    ],
+    [
+     71.4333,
+     "act",
+     "-"
+    ],
+    [
+     72.6667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     90.8,
+     "act",
+     "throw"
+    ],
+    [
+     92.0,
+     "act",
+     "-"
+    ],
+    [
+     105.6,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     106.0333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     139.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     139.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     139.6,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     139.7333,
+     "wstate",
+     "idle"
+    ],
+    [
+     140.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     140.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     150.0667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     150.2,
+     "wstate",
+     "idle"
+    ],
+    [
+     150.3667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     150.5,
+     "wstate",
+     "idle"
+    ],
+    [
+     153.2,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     153.3333,
+     "wstate",
+     "idle"
+    ],
+    [
+     154.1,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     154.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     154.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     154.5,
+     "act",
+     "throw"
+    ],
+    [
+     154.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     155.7,
+     "act",
+     "-"
+    ],
+    [
+     155.9333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     156.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     157.0333,
+     "act",
+     "throw"
+    ],
+    [
+     158.2333,
+     "act",
+     "-"
+    ],
+    [
+     160.1333,
+     "act",
+     "throw"
+    ],
+    [
+     171.7333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     171.7333,
+     "act",
+     "-"
+    ],
+    [
+     179.5333,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     179.5667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ]
+   ]
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "kills": 13,
+   "deaths": 7,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     9.0667,
+     "act",
+     "throw"
+    ],
+    [
+     10.2667,
+     "act",
+     "-"
+    ],
+    [
+     11.6333,
+     "act",
+     "throw"
+    ],
+    [
+     22.4,
+     "act",
+     "-"
+    ],
+    [
+     26.2333,
+     "act",
+     "throw"
+    ],
+    [
+     27.4333,
+     "act",
+     "-"
+    ],
+    [
+     43.8,
+     "act",
+     "throw"
+    ],
+    [
+     45.0,
+     "act",
+     "-"
+    ],
+    [
+     58.7667,
+     "act",
+     "throw"
+    ],
+    [
+     59.9667,
+     "act",
+     "-"
+    ],
+    [
+     61.9333,
+     "act",
+     "throw"
+    ],
+    [
+     63.1333,
+     "act",
+     "-"
+    ],
+    [
+     65.0667,
+     "act",
+     "throw"
+    ],
+    [
+     75.7333,
+     "act",
+     "-"
+    ],
+    [
+     85.4,
+     "act",
+     "throw"
+    ],
+    [
+     86.6,
+     "act",
+     "-"
+    ],
+    [
+     87.9333,
+     "act",
+     "throw"
+    ],
+    [
+     98.1333,
+     "act",
+     "-"
+    ],
+    [
+     118.8333,
+     "act",
+     "throw"
+    ],
+    [
+     120.0333,
+     "act",
+     "-"
+    ],
+    [
+     120.0667,
+     "weapon",
+     "weapons\\sniper rifle\\sniper rifle"
+    ],
+    [
+     120.2333,
+     "zoom",
+     "0"
+    ],
+    [
+     120.3333,
+     "zoom",
+     "-1"
+    ],
+    [
+     121.2667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     121.2667,
+     "zoom",
+     "0"
+    ],
+    [
+     121.3,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     121.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     121.3,
+     "zoom",
+     "-1"
+    ],
+    [
+     121.7333,
+     "act",
+     "throw"
+    ],
+    [
+     122.9333,
+     "act",
+     "-"
+    ],
+    [
+     126.1,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     145.6,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     145.7333,
+     "wstate",
+     "idle"
+    ],
+    [
+     148.0,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     148.1333,
+     "wstate",
+     "idle"
+    ],
+    [
+     148.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     148.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     157.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     157.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     157.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     157.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     158.6667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     158.8,
+     "wstate",
+     "idle"
+    ],
+    [
+     169.6,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     177.9333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ]
+   ]
+  },
+  {
+   "match": "hangemhigh-team_slayer-needler-7",
+   "kills": 0,
+   "deaths": 10,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     21.3333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     21.3667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     38.4,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     38.4333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     55.4667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     55.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     72.5333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     72.5667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     88.5333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     88.5667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     123.7333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     123.7667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     137.6,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     137.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     151.4667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     151.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     164.2667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     164.3,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "hangemhigh-team_slayer-needler-8",
+   "kills": 2,
+   "deaths": 8,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     20.2667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     20.3,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     39.4667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     39.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     57.6,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     57.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     75.7333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     75.7667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     105.6,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     105.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     120.5333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     120.5667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     168.5333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     168.5667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "hangemhigh-team_slayer-needler-9",
+   "kills": 3,
+   "deaths": 9,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     23.4667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     23.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     40.5333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     40.5667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     56.5333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     56.5667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     80.0,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     80.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     108.8,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     108.8333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     137.6,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     137.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     152.5333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     152.5667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     169.6,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     169.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-7",
+   "kills": 7,
+   "deaths": 10,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     2.0667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     10.7333,
+     "act",
+     "throw"
+    ],
+    [
+     11.9333,
+     "act",
+     "-"
+    ],
+    [
+     15.0,
+     "act",
+     "throw"
+    ],
+    [
+     16.2,
+     "act",
+     "-"
+    ],
+    [
+     26.6667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     27.7667,
+     "act",
+     "throw"
+    ],
+    [
+     28.9667,
+     "act",
+     "-"
+    ],
+    [
+     29.0667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     29.2,
+     "wstate",
+     "idle"
+    ],
+    [
+     29.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     29.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     29.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     29.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     30.2667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     30.4,
+     "wstate",
+     "idle"
+    ],
+    [
+     30.4,
+     "act",
+     "throw"
+    ],
+    [
+     41.6,
+     "act",
+     "-"
+    ],
+    [
+     41.9667,
+     "act",
+     "throw"
+    ],
+    [
+     43.1667,
+     "act",
+     "-"
+    ],
+    [
+     43.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     43.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     43.7333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     43.8667,
+     "wstate",
+     "idle"
+    ],
+    [
+     44.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     44.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     57.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     57.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     57.8,
+     "act",
+     "throw"
+    ],
+    [
+     69.3333,
+     "act",
+     "-"
+    ],
+    [
+     71.8333,
+     "weapon",
+     "weapons\\shotgun\\shotgun"
+    ],
+    [
+     73.7,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     74.3667,
+     "act",
+     "throw"
+    ],
+    [
+     74.4,
+     "wstate",
+     "idle"
+    ],
+    [
+     75.5667,
+     "act",
+     "-"
+    ],
+    [
+     75.8667,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     76.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     76.8667,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     77.1,
+     "act",
+     "throw"
+    ],
+    [
+     77.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     78.3,
+     "act",
+     "-"
+    ],
+    [
+     78.5,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     79.2,
+     "wstate",
+     "idle"
+    ],
+    [
+     79.7667,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     80.0333,
+     "act",
+     "throw"
+    ],
+    [
+     90.6667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     90.6667,
+     "wstate",
+     "idle"
+    ],
+    [
+     90.6667,
+     "act",
+     "-"
+    ],
+    [
+     91.3,
+     "act",
+     "throw"
+    ],
+    [
+     92.5,
+     "act",
+     "-"
+    ],
+    [
+     92.5333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     92.6667,
+     "wstate",
+     "idle"
+    ],
+    [
+     92.9,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     93.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     93.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     93.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     94.0667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     94.2,
+     "wstate",
+     "idle"
+    ],
+    [
+     94.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     94.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     94.5333,
+     "act",
+     "throw"
+    ],
+    [
+     95.7333,
+     "act",
+     "-"
+    ],
+    [
+     95.7667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     95.9,
+     "wstate",
+     "idle"
+    ],
+    [
+     97.9667,
+     "act",
+     "throw"
+    ],
+    [
+     99.1667,
+     "act",
+     "-"
+    ],
+    [
+     99.5,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     99.6333,
+     "wstate",
+     "idle"
+    ],
+    [
+     99.9,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     100.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     100.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     100.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     101.0333,
+     "act",
+     "throw"
+    ],
+    [
+     102.2333,
+     "act",
+     "-"
+    ],
+    [
+     103.2667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     103.4,
+     "wstate",
+     "idle"
+    ],
+    [
+     104.9,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     117.3333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     117.6333,
+     "act",
+     "throw"
+    ],
+    [
+     128.0,
+     "act",
+     "-"
+    ],
+    [
+     132.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     132.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     132.6,
+     "act",
+     "throw"
+    ],
+    [
+     133.8,
+     "act",
+     "-"
+    ],
+    [
+     134.0333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     135.8,
+     "act",
+     "throw"
+    ],
+    [
+     147.2,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     147.2,
+     "act",
+     "-"
+    ],
+    [
+     147.6,
+     "act",
+     "throw"
+    ],
+    [
+     148.8,
+     "act",
+     "-"
+    ],
+    [
+     148.8333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     148.9667,
+     "wstate",
+     "idle"
+    ],
+    [
+     149.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     149.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     149.6333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     149.7667,
+     "wstate",
+     "idle"
+    ],
+    [
+     160.2333,
+     "act",
+     "throw"
+    ],
+    [
+     161.4333,
+     "act",
+     "-"
+    ],
+    [
+     163.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     163.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     163.6,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     163.6333,
+     "act",
+     "throw"
+    ],
+    [
+     163.7333,
+     "wstate",
+     "idle"
+    ],
+    [
+     164.8333,
+     "act",
+     "-"
+    ],
+    [
+     164.8667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     165.0,
+     "wstate",
+     "idle"
+    ],
+    [
+     165.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     165.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     170.1333,
+     "weapon",
+     "weapons\\shotgun\\shotgun"
+    ],
+    [
+     171.3667,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     172.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     172.3667,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     173.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     173.3667,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     174.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     174.5,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     175.2,
+     "wstate",
+     "idle"
+    ],
+    [
+     175.5,
+     "wstate",
+     "primary_chamber"
+    ]
+   ]
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-8",
+   "kills": 4,
+   "deaths": 10,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     0.2,
+     "act",
+     "throw"
+    ],
+    [
+     1.4,
+     "act",
+     "-"
+    ],
+    [
+     1.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     1.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     1.9,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     2.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     2.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     2.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     2.7333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     2.7667,
+     "act",
+     "throw"
+    ],
+    [
+     2.8667,
+     "wstate",
+     "idle"
+    ],
+    [
+     3.9667,
+     "act",
+     "-"
+    ],
+    [
+     4.7667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     4.9,
+     "wstate",
+     "idle"
+    ],
+    [
+     5.0667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     5.2,
+     "wstate",
+     "idle"
+    ],
+    [
+     5.3333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     5.3667,
+     "act",
+     "throw"
+    ],
+    [
+     6.5667,
+     "act",
+     "-"
+    ],
+    [
+     7.9,
+     "act",
+     "throw"
+    ],
+    [
+     9.1,
+     "act",
+     "-"
+    ],
+    [
+     25.6,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     28.5,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     28.6333,
+     "wstate",
+     "idle"
+    ],
+    [
+     28.8,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     28.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     29.2333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     29.3667,
+     "wstate",
+     "idle"
+    ],
+    [
+     29.5333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     29.6667,
+     "wstate",
+     "idle"
+    ],
+    [
+     29.9667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     30.1,
+     "wstate",
+     "idle"
+    ],
+    [
+     30.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     30.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     30.9,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     31.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     31.2,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     31.3333,
+     "wstate",
+     "idle"
+    ],
+    [
+     31.5333,
+     "act",
+     "throw"
+    ],
+    [
+     32.7333,
+     "act",
+     "-"
+    ],
+    [
+     44.1667,
+     "act",
+     "throw"
+    ],
+    [
+     45.3667,
+     "act",
+     "-"
+    ],
+    [
+     45.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     45.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     46.2667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     46.4,
+     "wstate",
+     "idle"
+    ],
+    [
+     46.9333,
+     "act",
+     "throw"
+    ],
+    [
+     57.6,
+     "act",
+     "-"
+    ],
+    [
+     58.8,
+     "act",
+     "throw"
+    ],
+    [
+     60.0,
+     "act",
+     "-"
+    ],
+    [
+     61.1,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     61.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     61.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     61.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     61.5333,
+     "act",
+     "throw"
+    ],
+    [
+     62.7333,
+     "act",
+     "-"
+    ],
+    [
+     62.7667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     62.9,
+     "wstate",
+     "idle"
+    ],
+    [
+     63.0667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     63.2,
+     "wstate",
+     "idle"
+    ],
+    [
+     63.3667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     63.5,
+     "wstate",
+     "idle"
+    ],
+    [
+     63.7333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     63.8667,
+     "wstate",
+     "idle"
+    ],
+    [
+     76.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     76.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     77.0,
+     "act",
+     "throw"
+    ],
+    [
+     78.2,
+     "act",
+     "-"
+    ],
+    [
+     81.9,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     81.9667,
+     "act",
+     "throw"
+    ],
+    [
+     82.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     83.1667,
+     "act",
+     "-"
+    ],
+    [
+     83.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     83.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     84.5333,
+     "act",
+     "throw"
+    ],
+    [
+     85.7333,
+     "act",
+     "-"
+    ],
+    [
+     86.0,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     86.1333,
+     "wstate",
+     "idle"
+    ],
+    [
+     86.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     86.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     87.9,
+     "act",
+     "throw"
+    ],
+    [
+     89.1,
+     "act",
+     "-"
+    ],
+    [
+     90.3667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     90.5,
+     "wstate",
+     "idle"
+    ],
+    [
+     91.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     91.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     91.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     91.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     93.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     93.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     105.6,
+     "act",
+     "throw"
+    ],
+    [
+     106.8,
+     "act",
+     "-"
+    ],
+    [
+     108.3667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     108.5,
+     "wstate",
+     "idle"
+    ],
+    [
+     108.6,
+     "act",
+     "throw"
+    ],
+    [
+     119.4667,
+     "act",
+     "-"
+    ],
+    [
+     121.8667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     122.0,
+     "wstate",
+     "idle"
+    ],
+    [
+     122.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     122.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     122.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     122.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     124.2667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     124.4,
+     "wstate",
+     "idle"
+    ],
+    [
+     124.5,
+     "weapon",
+     "weapons\\shotgun\\shotgun"
+    ],
+    [
+     126.9,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     127.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     128.0,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     128.3,
+     "act",
+     "throw"
+    ],
+    [
+     128.7,
+     "wstate",
+     "idle"
+    ],
+    [
+     129.5,
+     "act",
+     "-"
+    ],
+    [
+     131.2333,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     131.2667,
+     "act",
+     "throw"
+    ],
+    [
+     131.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     132.4667,
+     "act",
+     "-"
+    ],
+    [
+     132.5333,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     133.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     144.0,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     145.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     145.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     145.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     145.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     145.7333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     145.8667,
+     "wstate",
+     "idle"
+    ],
+    [
+     146.2,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     146.3333,
+     "wstate",
+     "idle"
+    ],
+    [
+     147.0667,
+     "act",
+     "throw"
+    ],
+    [
+     148.2667,
+     "act",
+     "-"
+    ],
+    [
+     148.8,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     149.6,
+     "weapon",
+     "weapons\\shotgun\\shotgun"
+    ],
+    [
+     149.7,
+     "act",
+     "throw"
+    ],
+    [
+     150.9,
+     "act",
+     "-"
+    ],
+    [
+     151.0667,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     151.7667,
+     "wstate",
+     "idle"
+    ],
+    [
+     152.3,
+     "act",
+     "throw"
+    ],
+    [
+     163.2,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     163.2,
+     "act",
+     "-"
+    ],
+    [
+     164.3333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     164.4667,
+     "wstate",
+     "idle"
+    ],
+    [
+     164.6,
+     "act",
+     "throw"
+    ],
+    [
+     176.0,
+     "act",
+     "-"
+    ],
+    [
+     176.4667,
+     "act",
+     "throw"
+    ],
+    [
+     177.6667,
+     "act",
+     "-"
+    ],
+    [
+     177.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     177.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     178.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     178.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     178.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     178.5667,
+     "wstate",
+     "idle"
+    ]
+   ]
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-9",
+   "kills": 5,
+   "deaths": 9,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     1.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     1.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     1.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     1.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     1.7333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     1.8667,
+     "wstate",
+     "idle"
+    ],
+    [
+     2.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     2.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     2.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     2.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     3.9,
+     "act",
+     "throw"
+    ],
+    [
+     5.1,
+     "act",
+     "-"
+    ],
+    [
+     5.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     5.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     17.8,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     17.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     18.1,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     18.1333,
+     "act",
+     "throw"
+    ],
+    [
+     18.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     29.8667,
+     "act",
+     "-"
+    ],
+    [
+     35.1,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     35.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     35.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     35.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     35.5667,
+     "act",
+     "throw"
+    ],
+    [
+     36.7667,
+     "act",
+     "-"
+    ],
+    [
+     36.8,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     36.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     37.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     37.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     38.0,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     38.0667,
+     "act",
+     "throw"
+    ],
+    [
+     38.1333,
+     "wstate",
+     "idle"
+    ],
+    [
+     49.0667,
+     "act",
+     "-"
+    ],
+    [
+     49.4333,
+     "act",
+     "throw"
+    ],
+    [
+     50.6333,
+     "act",
+     "-"
+    ],
+    [
+     51.2,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     51.3333,
+     "wstate",
+     "idle"
+    ],
+    [
+     51.5,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     51.6333,
+     "wstate",
+     "idle"
+    ],
+    [
+     52.1,
+     "act",
+     "throw"
+    ],
+    [
+     53.3,
+     "act",
+     "-"
+    ],
+    [
+     53.6,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     53.7333,
+     "wstate",
+     "idle"
+    ],
+    [
+     54.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     54.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     54.6,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     54.7333,
+     "wstate",
+     "idle"
+    ],
+    [
+     54.8333,
+     "weapon",
+     "weapons\\shotgun\\shotgun"
+    ],
+    [
+     55.4,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     55.4333,
+     "act",
+     "throw"
+    ],
+    [
+     56.1,
+     "wstate",
+     "idle"
+    ],
+    [
+     56.6333,
+     "act",
+     "-"
+    ],
+    [
+     61.2333,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     61.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     65.2,
+     "act",
+     "throw"
+    ],
+    [
+     75.7333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     75.7333,
+     "act",
+     "-"
+    ],
+    [
+     77.0,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     77.1333,
+     "wstate",
+     "idle"
+    ],
+    [
+     77.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     77.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     77.6667,
+     "act",
+     "throw"
+    ],
+    [
+     88.5333,
+     "act",
+     "-"
+    ],
+    [
+     89.2667,
+     "act",
+     "throw"
+    ],
+    [
+     90.4667,
+     "act",
+     "-"
+    ],
+    [
+     90.5,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     90.6333,
+     "wstate",
+     "idle"
+    ],
+    [
+     90.9,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     91.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     91.2,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     91.3333,
+     "wstate",
+     "idle"
+    ],
+    [
+     92.1333,
+     "act",
+     "throw"
+    ],
+    [
+     102.4,
+     "act",
+     "-"
+    ],
+    [
+     104.5,
+     "act",
+     "throw"
+    ],
+    [
+     105.7,
+     "act",
+     "-"
+    ],
+    [
+     106.7667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     106.9,
+     "wstate",
+     "idle"
+    ],
+    [
+     107.0667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     107.2,
+     "wstate",
+     "idle"
+    ],
+    [
+     108.3,
+     "act",
+     "throw"
+    ],
+    [
+     109.5,
+     "act",
+     "-"
+    ],
+    [
+     109.7333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     109.8667,
+     "wstate",
+     "idle"
+    ],
+    [
+     110.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     110.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     110.7667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     110.9,
+     "wstate",
+     "idle"
+    ],
+    [
+     112.6,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     112.6667,
+     "act",
+     "throw"
+    ],
+    [
+     112.7333,
+     "wstate",
+     "idle"
+    ],
+    [
+     113.8667,
+     "act",
+     "-"
+    ],
+    [
+     114.0667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     114.2,
+     "wstate",
+     "idle"
+    ],
+    [
+     114.3667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     114.5,
+     "wstate",
+     "idle"
+    ],
+    [
+     115.0,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     115.1333,
+     "wstate",
+     "idle"
+    ],
+    [
+     115.2,
+     "act",
+     "throw"
+    ],
+    [
+     116.4,
+     "act",
+     "-"
+    ],
+    [
+     117.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     117.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     117.8,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     117.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     118.2,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     118.3333,
+     "wstate",
+     "idle"
+    ],
+    [
+     131.2667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     131.4,
+     "wstate",
+     "idle"
+    ],
+    [
+     131.5667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     131.7,
+     "wstate",
+     "idle"
+    ],
+    [
+     132.0333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     132.1667,
+     "wstate",
+     "idle"
+    ],
+    [
+     134.1,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     134.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     136.1,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     136.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     136.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     136.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     136.5667,
+     "act",
+     "throw"
+    ],
+    [
+     137.7667,
+     "act",
+     "-"
+    ],
+    [
+     139.2333,
+     "act",
+     "throw"
+    ],
+    [
+     140.4333,
+     "act",
+     "-"
+    ],
+    [
+     140.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     140.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     141.0333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     141.1667,
+     "wstate",
+     "idle"
+    ],
+    [
+     141.3333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     141.4667,
+     "wstate",
+     "idle"
+    ],
+    [
+     141.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     141.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     142.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     142.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     142.5,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     142.6333,
+     "wstate",
+     "idle"
+    ],
+    [
+     142.7333,
+     "act",
+     "throw"
+    ],
+    [
+     153.6,
+     "act",
+     "-"
+    ],
+    [
+     155.8333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     155.9667,
+     "wstate",
+     "idle"
+    ],
+    [
+     156.0333,
+     "act",
+     "throw"
+    ],
+    [
+     157.2333,
+     "act",
+     "-"
+    ],
+    [
+     158.6667,
+     "act",
+     "throw"
+    ],
+    [
+     159.8667,
+     "act",
+     "-"
+    ],
+    [
+     161.2333,
+     "act",
+     "throw"
+    ],
+    [
+     172.8,
+     "act",
+     "-"
+    ],
+    [
+     178.0333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     178.1667,
+     "wstate",
+     "idle"
+    ],
+    [
+     178.3333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     178.3667,
+     "act",
+     "throw"
+    ],
+    [
+     178.4667,
+     "wstate",
+     "idle"
+    ],
+    [
+     179.5667,
+     "act",
+     "-"
+    ],
+    [
+     180.0,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ]
+   ]
+  },
+  {
+   "match": "damnation-team_slayer-needler-7",
+   "kills": 0,
+   "deaths": 5,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     34.1333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     34.1667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     104.5333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     104.5667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     121.6,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     121.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     155.7333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     155.7667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     179.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     179.2333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "damnation-team_slayer-needler-8",
+   "kills": 0,
+   "deaths": 6,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     59.7333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     59.7667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     84.2667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     84.3,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     114.1333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     114.1667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     147.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     147.2333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     161.0667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     161.1,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "damnation-team_slayer-needler-9",
+   "kills": 1,
+   "deaths": 3,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     19.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     19.2333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     41.6,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     41.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "damnation-team_slayer-plasma-7",
+   "kills": 6,
+   "deaths": 7,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     9.1,
+     "act",
+     "throw"
+    ],
+    [
+     10.3,
+     "act",
+     "-"
+    ],
+    [
+     11.4,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     20.6,
+     "act",
+     "throw"
+    ],
+    [
+     21.8,
+     "act",
+     "-"
+    ],
+    [
+     26.2,
+     "act",
+     "throw"
+    ],
+    [
+     27.4,
+     "act",
+     "-"
+    ],
+    [
+     31.2,
+     "weapon",
+     "weapons\\shotgun\\shotgun"
+    ],
+    [
+     32.1333,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     42.6667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     42.6667,
+     "wstate",
+     "idle"
+    ],
+    [
+     43.1333,
+     "act",
+     "throw"
+    ],
+    [
+     44.3333,
+     "act",
+     "-"
+    ],
+    [
+     46.8,
+     "act",
+     "throw"
+    ],
+    [
+     48.0,
+     "act",
+     "-"
+    ],
+    [
+     48.0333,
+     "weapon",
+     "weapons\\shotgun\\shotgun"
+    ],
+    [
+     58.6667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     61.0,
+     "act",
+     "throw"
+    ],
+    [
+     62.2,
+     "act",
+     "-"
+    ],
+    [
+     63.5,
+     "act",
+     "throw"
+    ],
+    [
+     64.7,
+     "act",
+     "-"
+    ],
+    [
+     67.0333,
+     "act",
+     "throw"
+    ],
+    [
+     78.9333,
+     "act",
+     "-"
+    ],
+    [
+     87.8,
+     "act",
+     "throw"
+    ],
+    [
+     89.0,
+     "act",
+     "-"
+    ],
+    [
+     101.3,
+     "weapon",
+     "weapons\\sniper rifle\\sniper rifle"
+    ],
+    [
+     102.6333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     102.7667,
+     "wstate",
+     "idle"
+    ],
+    [
+     103.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     103.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     103.8667,
+     "act",
+     "throw"
+    ],
+    [
+     105.0667,
+     "act",
+     "-"
+    ],
+    [
+     107.8,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     107.9,
+     "act",
+     "throw"
+    ],
+    [
+     107.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     118.4,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     118.4,
+     "act",
+     "-"
+    ],
+    [
+     120.5,
+     "act",
+     "throw"
+    ],
+    [
+     121.7,
+     "act",
+     "-"
+    ],
+    [
+     123.3,
+     "act",
+     "throw"
+    ],
+    [
+     124.5,
+     "act",
+     "-"
+    ],
+    [
+     126.8667,
+     "act",
+     "throw"
+    ],
+    [
+     128.0667,
+     "act",
+     "-"
+    ],
+    [
+     137.1333,
+     "act",
+     "throw"
+    ],
+    [
+     138.3333,
+     "act",
+     "-"
+    ],
+    [
+     138.5,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     161.0667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     178.2333,
+     "act",
+     "throw"
+    ],
+    [
+     179.4333,
+     "act",
+     "-"
+    ]
+   ]
+  },
+  {
+   "match": "damnation-team_slayer-plasma-8",
+   "kills": 3,
+   "deaths": 5,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     11.1,
+     "act",
+     "throw"
+    ],
+    [
+     12.3,
+     "act",
+     "-"
+    ],
+    [
+     14.8,
+     "act",
+     "throw"
+    ],
+    [
+     16.0,
+     "act",
+     "-"
+    ],
+    [
+     18.0333,
+     "act",
+     "throw"
+    ],
+    [
+     28.8,
+     "act",
+     "-"
+    ],
+    [
+     40.4333,
+     "act",
+     "throw"
+    ],
+    [
+     41.6333,
+     "act",
+     "-"
+    ],
+    [
+     41.6667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     43.5333,
+     "act",
+     "throw"
+    ],
+    [
+     44.7333,
+     "act",
+     "-"
+    ],
+    [
+     67.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     68.1333,
+     "act",
+     "throw"
+    ],
+    [
+     69.3333,
+     "act",
+     "-"
+    ],
+    [
+     76.6333,
+     "act",
+     "throw"
+    ],
+    [
+     77.8333,
+     "act",
+     "-"
+    ],
+    [
+     119.1333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     135.3,
+     "act",
+     "throw"
+    ],
+    [
+     136.5,
+     "act",
+     "-"
+    ],
+    [
+     144.3,
+     "weapon",
+     "weapons\\shotgun\\shotgun"
+    ],
+    [
+     148.0,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     148.0667,
+     "act",
+     "throw"
+    ],
+    [
+     148.7,
+     "wstate",
+     "idle"
+    ],
+    [
+     149.2667,
+     "act",
+     "-"
+    ],
+    [
+     149.4333,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     150.1333,
+     "wstate",
+     "idle"
+    ],
+    [
+     161.0667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     164.6,
+     "act",
+     "throw"
+    ],
+    [
+     165.8,
+     "act",
+     "-"
+    ],
+    [
+     167.3,
+     "act",
+     "throw"
+    ],
+    [
+     168.5,
+     "act",
+     "-"
+    ],
+    [
+     173.1667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     173.4,
+     "act",
+     "throw"
+    ]
+   ]
+  },
+  {
+   "match": "damnation-team_slayer-plasma-9",
+   "kills": 5,
+   "deaths": 7,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     11.1,
+     "act",
+     "throw"
+    ],
+    [
+     12.3,
+     "act",
+     "-"
+    ],
+    [
+     32.7,
+     "weapon",
+     "weapons\\sniper rifle\\sniper rifle"
+    ],
+    [
+     33.0333,
+     "zoom",
+     "0"
+    ],
+    [
+     33.7333,
+     "act",
+     "throw"
+    ],
+    [
+     34.9333,
+     "zoom",
+     "-1"
+    ],
+    [
+     34.9333,
+     "act",
+     "-"
+    ],
+    [
+     46.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     46.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     47.0,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     47.1333,
+     "wstate",
+     "idle"
+    ],
+    [
+     47.1667,
+     "act",
+     "throw"
+    ],
+    [
+     48.3,
+     "zoom",
+     "0"
+    ],
+    [
+     48.3667,
+     "act",
+     "-"
+    ],
+    [
+     48.5,
+     "zoom",
+     "-1"
+    ],
+    [
+     48.5333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     48.5333,
+     "zoom",
+     "0"
+    ],
+    [
+     48.6667,
+     "wstate",
+     "idle"
+    ],
+    [
+     49.0333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     49.0667,
+     "zoom",
+     "-1"
+    ],
+    [
+     49.1667,
+     "wstate",
+     "idle"
+    ],
+    [
+     50.2333,
+     "act",
+     "throw"
+    ],
+    [
+     51.4333,
+     "act",
+     "-"
+    ],
+    [
+     64.0,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     65.0,
+     "weapon",
+     "weapons\\shotgun\\shotgun"
+    ],
+    [
+     65.5,
+     "act",
+     "throw"
+    ],
+    [
+     66.7,
+     "act",
+     "-"
+    ],
+    [
+     66.7667,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     67.4667,
+     "wstate",
+     "idle"
+    ],
+    [
+     67.9,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     78.9333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     78.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     93.6,
+     "weapon",
+     "weapons\\sniper rifle\\sniper rifle"
+    ],
+    [
+     95.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     95.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     95.5333,
+     "act",
+     "throw"
+    ],
+    [
+     96.7333,
+     "act",
+     "-"
+    ],
+    [
+     96.8,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     96.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     108.8,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     109.9333,
+     "act",
+     "throw"
+    ],
+    [
+     111.1333,
+     "act",
+     "-"
+    ],
+    [
+     130.4,
+     "act",
+     "throw"
+    ],
+    [
+     131.6,
+     "act",
+     "-"
+    ],
+    [
+     157.3,
+     "act",
+     "throw"
+    ],
+    [
+     158.5,
+     "act",
+     "-"
+    ],
+    [
+     158.5333,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     169.6,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     171.2667,
+     "act",
+     "throw"
+    ],
+    [
+     172.4667,
+     "act",
+     "-"
+    ],
+    [
+     173.2333,
+     "weapon",
+     "weapons\\shotgun\\shotgun"
+    ],
+    [
+     174.2667,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     174.9667,
+     "wstate",
+     "idle"
+    ],
+    [
+     176.4,
+     "act",
+     "throw"
+    ],
+    [
+     177.6,
+     "act",
+     "-"
+    ],
+    [
+     177.9,
+     "wstate",
+     "primary_chamber"
+    ],
+    [
+     178.6,
+     "wstate",
+     "idle"
+    ]
+   ]
+  },
+  {
+   "match": "longest-team_slayer-needler-7",
+   "kills": 2,
+   "deaths": 9,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     17.0667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     17.1,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     33.0667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     33.1,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     54.4,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     54.4333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     82.1333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     82.1667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     105.6,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     105.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     129.0667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     129.1,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     144.0,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     144.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     163.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     163.2333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     178.1333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     178.1667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "longest-team_slayer-needler-8",
+   "kills": 2,
+   "deaths": 9,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     38.4,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     38.4333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     55.4667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     55.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     71.4667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     71.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     89.6,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     89.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     103.4667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     103.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     122.6667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     122.7,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     135.4667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     135.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     158.9333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     158.9667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     174.9333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     174.9667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "longest-team_slayer-needler-9",
+   "kills": 2,
+   "deaths": 10,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     29.8667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     29.9,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     32.8667,
+     "act",
+     "throw"
+    ],
+    [
+     34.0667,
+     "act",
+     "-"
+    ],
+    [
+     48.0,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     48.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     60.8,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     60.8333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     83.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     83.2333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     97.0667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     97.1,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     113.0667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     113.1,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     125.8667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     125.9,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     146.1333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     146.1667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     160.0,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     160.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     176.0,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     176.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "longest-team_slayer-plasma-7",
+   "kills": 6,
+   "deaths": 9,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     1.2,
+     "act",
+     "throw"
+    ],
+    [
+     2.4,
+     "act",
+     "-"
+    ],
+    [
+     3.8,
+     "act",
+     "throw"
+    ],
+    [
+     5.0,
+     "act",
+     "-"
+    ],
+    [
+     17.2333,
+     "act",
+     "throw"
+    ],
+    [
+     18.4333,
+     "act",
+     "-"
+    ],
+    [
+     28.1,
+     "act",
+     "throw"
+    ],
+    [
+     29.3,
+     "act",
+     "-"
+    ],
+    [
+     30.2333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     30.8,
+     "act",
+     "throw"
+    ],
+    [
+     32.0,
+     "act",
+     "-"
+    ],
+    [
+     32.3667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     32.5,
+     "wstate",
+     "idle"
+    ],
+    [
+     32.8,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     32.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     33.2333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     33.3667,
+     "wstate",
+     "idle"
+    ],
+    [
+     33.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     44.8,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     44.8,
+     "wstate",
+     "idle"
+    ],
+    [
+     45.6667,
+     "act",
+     "throw"
+    ],
+    [
+     46.8667,
+     "act",
+     "-"
+    ],
+    [
+     53.4333,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     58.8,
+     "act",
+     "throw"
+    ],
+    [
+     60.0,
+     "act",
+     "-"
+    ],
+    [
+     61.3,
+     "act",
+     "throw"
+    ],
+    [
+     71.4667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     71.4667,
+     "act",
+     "-"
+    ],
+    [
+     75.0667,
+     "act",
+     "throw"
+    ],
+    [
+     86.4,
+     "act",
+     "-"
+    ],
+    [
+     88.2,
+     "act",
+     "throw"
+    ],
+    [
+     89.4,
+     "act",
+     "-"
+    ],
+    [
+     90.8667,
+     "act",
+     "throw"
+    ],
+    [
+     102.4,
+     "act",
+     "-"
+    ],
+    [
+     106.9667,
+     "act",
+     "throw"
+    ],
+    [
+     117.3333,
+     "act",
+     "-"
+    ],
+    [
+     117.8667,
+     "weapon",
+     "weapons\\assault rifle\\assault rifle"
+    ],
+    [
+     118.8333,
+     "act",
+     "throw"
+    ],
+    [
+     120.0333,
+     "act",
+     "-"
+    ],
+    [
+     122.1667,
+     "act",
+     "throw"
+    ],
+    [
+     123.3667,
+     "act",
+     "-"
+    ],
+    [
+     125.3333,
+     "act",
+     "throw"
+    ],
+    [
+     126.5333,
+     "act",
+     "-"
+    ],
+    [
+     128.6333,
+     "act",
+     "throw"
+    ],
+    [
+     129.8333,
+     "act",
+     "-"
+    ],
+    [
+     141.8667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     142.9667,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     148.5,
+     "act",
+     "throw"
+    ],
+    [
+     149.7,
+     "act",
+     "-"
+    ],
+    [
+     171.7333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     171.9667,
+     "act",
+     "throw"
+    ],
+    [
+     173.1667,
+     "act",
+     "-"
+    ]
+   ]
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "kills": 11,
+   "deaths": 6,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     2.4333,
+     "act",
+     "throw"
+    ],
+    [
+     3.6333,
+     "act",
+     "-"
+    ],
+    [
+     17.6,
+     "act",
+     "throw"
+    ],
+    [
+     18.8,
+     "act",
+     "-"
+    ],
+    [
+     20.2,
+     "act",
+     "throw"
+    ],
+    [
+     21.4,
+     "act",
+     "-"
+    ],
+    [
+     21.4333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     25.0333,
+     "act",
+     "throw"
+    ],
+    [
+     26.2333,
+     "act",
+     "-"
+    ],
+    [
+     29.0333,
+     "act",
+     "throw"
+    ],
+    [
+     30.2333,
+     "act",
+     "-"
+    ],
+    [
+     30.2667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     30.4,
+     "wstate",
+     "idle"
+    ],
+    [
+     34.3667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     34.5,
+     "wstate",
+     "idle"
+    ],
+    [
+     45.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     45.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     45.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     45.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     46.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     46.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     47.0333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     47.1667,
+     "wstate",
+     "idle"
+    ],
+    [
+     47.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     47.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     47.8,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     47.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     48.1,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     48.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     48.7333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     48.8667,
+     "wstate",
+     "idle"
+    ],
+    [
+     49.0333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     49.1667,
+     "wstate",
+     "idle"
+    ],
+    [
+     55.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     55.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     55.7333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     55.8667,
+     "wstate",
+     "idle"
+    ],
+    [
+     58.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     58.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     59.0,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     59.1333,
+     "wstate",
+     "idle"
+    ],
+    [
+     59.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     59.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     59.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     59.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     60.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     60.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     62.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     62.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     62.9333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     63.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     63.2333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     63.3667,
+     "wstate",
+     "idle"
+    ],
+    [
+     63.5333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     63.6667,
+     "wstate",
+     "idle"
+    ],
+    [
+     64.0,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     64.1333,
+     "wstate",
+     "idle"
+    ],
+    [
+     66.6,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     66.7333,
+     "wstate",
+     "idle"
+    ],
+    [
+     66.9,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     67.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     67.3333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     67.4667,
+     "wstate",
+     "idle"
+    ],
+    [
+     70.9333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     71.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     71.2333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     71.3667,
+     "wstate",
+     "idle"
+    ],
+    [
+     71.6667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     71.8,
+     "wstate",
+     "idle"
+    ],
+    [
+     71.9667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     72.1,
+     "wstate",
+     "idle"
+    ],
+    [
+     73.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     73.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     76.3333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     76.4667,
+     "wstate",
+     "idle"
+    ],
+    [
+     77.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     77.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     77.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     77.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     89.6,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     94.0667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     95.3,
+     "act",
+     "throw"
+    ],
+    [
+     96.5,
+     "act",
+     "-"
+    ],
+    [
+     96.5333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     96.6667,
+     "wstate",
+     "idle"
+    ],
+    [
+     96.8333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     96.9667,
+     "wstate",
+     "idle"
+    ],
+    [
+     97.1333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     97.2667,
+     "wstate",
+     "idle"
+    ],
+    [
+     97.6333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     97.7667,
+     "wstate",
+     "idle"
+    ],
+    [
+     97.9333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     98.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     98.9667,
+     "act",
+     "throw"
+    ],
+    [
+     109.8667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     109.8667,
+     "act",
+     "-"
+    ],
+    [
+     110.9,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     112.4,
+     "act",
+     "throw"
+    ],
+    [
+     113.6,
+     "act",
+     "-"
+    ],
+    [
+     114.9667,
+     "act",
+     "throw"
+    ],
+    [
+     116.1667,
+     "act",
+     "-"
+    ],
+    [
+     117.8667,
+     "act",
+     "throw"
+    ],
+    [
+     119.0667,
+     "act",
+     "-"
+    ],
+    [
+     131.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     133.4333,
+     "act",
+     "throw"
+    ],
+    [
+     134.6333,
+     "act",
+     "-"
+    ],
+    [
+     137.8,
+     "act",
+     "throw"
+    ],
+    [
+     139.0,
+     "act",
+     "-"
+    ],
+    [
+     142.2,
+     "act",
+     "throw"
+    ],
+    [
+     143.4,
+     "act",
+     "-"
+    ],
+    [
+     144.9333,
+     "act",
+     "throw"
+    ],
+    [
+     165.3333,
+     "act",
+     "-"
+    ],
+    [
+     165.9333,
+     "act",
+     "throw"
+    ],
+    [
+     167.1333,
+     "act",
+     "-"
+    ],
+    [
+     178.4667,
+     "act",
+     "throw"
+    ],
+    [
+     179.6667,
+     "act",
+     "-"
+    ]
+   ]
+  },
+  {
+   "match": "longest-team_slayer-plasma-9",
+   "kills": 6,
+   "deaths": 8,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     15.5333,
+     "act",
+     "throw"
+    ],
+    [
+     16.7333,
+     "act",
+     "-"
+    ],
+    [
+     19.3333,
+     "act",
+     "throw"
+    ],
+    [
+     20.5333,
+     "act",
+     "-"
+    ],
+    [
+     21.8667,
+     "act",
+     "throw"
+    ],
+    [
+     23.0667,
+     "act",
+     "-"
+    ],
+    [
+     24.3667,
+     "act",
+     "throw"
+    ],
+    [
+     35.2,
+     "act",
+     "-"
+    ],
+    [
+     36.2667,
+     "act",
+     "throw"
+    ],
+    [
+     37.4667,
+     "act",
+     "-"
+    ],
+    [
+     40.9333,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     46.5333,
+     "act",
+     "throw"
+    ],
+    [
+     47.7333,
+     "act",
+     "-"
+    ],
+    [
+     49.1333,
+     "act",
+     "throw"
+    ],
+    [
+     50.3333,
+     "act",
+     "-"
+    ],
+    [
+     51.8333,
+     "act",
+     "throw"
+    ],
+    [
+     62.9333,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     62.9333,
+     "act",
+     "-"
+    ],
+    [
+     64.5667,
+     "act",
+     "throw"
+    ],
+    [
+     65.7667,
+     "act",
+     "-"
+    ],
+    [
+     81.1,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     89.3667,
+     "act",
+     "throw"
+    ],
+    [
+     90.5667,
+     "act",
+     "-"
+    ],
+    [
+     92.0,
+     "act",
+     "throw"
+    ],
+    [
+     102.4,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     102.4,
+     "act",
+     "-"
+    ],
+    [
+     102.6,
+     "act",
+     "throw"
+    ],
+    [
+     103.8,
+     "act",
+     "-"
+    ],
+    [
+     104.2333,
+     "weapon",
+     "weapons\\plasma rifle\\plasma rifle"
+    ],
+    [
+     107.7667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     109.5,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     109.6333,
+     "wstate",
+     "idle"
+    ],
+    [
+     109.8,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     109.9333,
+     "wstate",
+     "idle"
+    ],
+    [
+     110.1,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     110.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     110.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     110.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     110.6667,
+     "act",
+     "throw"
+    ],
+    [
+     111.8667,
+     "act",
+     "-"
+    ],
+    [
+     111.9333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     112.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     122.6667,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ],
+    [
+     122.8667,
+     "act",
+     "throw"
+    ],
+    [
+     124.0667,
+     "act",
+     "-"
+    ],
+    [
+     138.4333,
+     "act",
+     "throw"
+    ],
+    [
+     139.6333,
+     "act",
+     "-"
+    ],
+    [
+     150.7333,
+     "act",
+     "throw"
+    ],
+    [
+     151.9333,
+     "act",
+     "-"
+    ],
+    [
+     156.3333,
+     "act",
+     "throw"
+    ],
+    [
+     157.5333,
+     "act",
+     "-"
+    ],
+    [
+     158.8667,
+     "act",
+     "throw"
+    ],
+    [
+     160.0667,
+     "act",
+     "-"
+    ],
+    [
+     162.4667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     166.8333,
+     "act",
+     "throw"
+    ],
+    [
+     168.0333,
+     "act",
+     "-"
+    ],
+    [
+     168.0667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     168.2,
+     "wstate",
+     "idle"
+    ],
+    [
+     168.6667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     168.8,
+     "wstate",
+     "idle"
+    ],
+    [
+     179.2,
+     "weapon",
+     "weapons\\plasma pistol\\plasma pistol"
+    ]
+   ]
+  },
+  {
+   "match": "sidewinder-team_slayer-needler-7",
+   "kills": 1,
+   "deaths": 5,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     17.0667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     17.1,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     19.3667,
+     "act",
+     "throw"
+    ],
+    [
+     20.5667,
+     "act",
+     "-"
+    ],
+    [
+     75.7333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     75.7667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     81.5333,
+     "act",
+     "throw"
+    ],
+    [
+     82.7333,
+     "act",
+     "-"
+    ],
+    [
+     93.8667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     93.9,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     132.9,
+     "act",
+     "throw"
+    ],
+    [
+     134.1,
+     "act",
+     "-"
+    ],
+    [
+     145.0667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     145.1,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     148.0,
+     "act",
+     "throw"
+    ],
+    [
+     149.2,
+     "act",
+     "-"
+    ],
+    [
+     163.2,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     163.2333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     167.8667,
+     "act",
+     "throw"
+    ],
+    [
+     169.0667,
+     "act",
+     "-"
+    ]
+   ]
+  },
+  {
+   "match": "sidewinder-team_slayer-needler-8",
+   "kills": 1,
+   "deaths": 4,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     24.5333,
+     "act",
+     "throw"
+    ],
+    [
+     25.7333,
+     "act",
+     "-"
+    ],
+    [
+     56.5333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     56.5667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     59.9667,
+     "act",
+     "throw"
+    ],
+    [
+     61.1667,
+     "act",
+     "-"
+    ],
+    [
+     71.4667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     71.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     74.3333,
+     "act",
+     "throw"
+    ],
+    [
+     75.5333,
+     "act",
+     "-"
+    ],
+    [
+     86.4,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     86.4333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     89.0,
+     "act",
+     "throw"
+    ],
+    [
+     90.2,
+     "act",
+     "-"
+    ],
+    [
+     151.4667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     151.5,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "sidewinder-team_slayer-needler-9",
+   "kills": 1,
+   "deaths": 6,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     0.2333,
+     "act",
+     "throw"
+    ],
+    [
+     1.4333,
+     "act",
+     "-"
+    ],
+    [
+     16.0,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     16.0333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     73.6,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     73.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     88.5333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     88.5667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     110.2333,
+     "act",
+     "throw"
+    ],
+    [
+     111.4333,
+     "act",
+     "-"
+    ],
+    [
+     122.6667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     122.7,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     131.0333,
+     "act",
+     "throw"
+    ],
+    [
+     132.2333,
+     "act",
+     "-"
+    ],
+    [
+     146.1333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     146.1667,
+     "weapon",
+     "weapons\\needler\\needler"
+    ],
+    [
+     157.3,
+     "act",
+     "throw"
+    ],
+    [
+     158.5,
+     "act",
+     "-"
+    ],
+    [
+     169.6,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     169.6333,
+     "weapon",
+     "weapons\\needler\\needler"
+    ]
+   ]
+  },
+  {
+   "match": "sidewinder-team_slayer-plasma-7",
+   "kills": 2,
+   "deaths": 6,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     4.7667,
+     "weapon",
+     "weapons\\rocket launcher\\rocket launcher"
+    ],
+    [
+     5.1,
+     "act",
+     "throw"
+    ],
+    [
+     6.3,
+     "act",
+     "-"
+    ],
+    [
+     17.0667,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     30.1667,
+     "act",
+     "throw"
+    ],
+    [
+     41.6,
+     "act",
+     "-"
+    ],
+    [
+     50.0,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     50.1333,
+     "wstate",
+     "idle"
+    ],
+    [
+     50.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     50.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     51.0,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     51.1333,
+     "wstate",
+     "idle"
+    ],
+    [
+     51.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     51.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     51.7333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     51.8667,
+     "wstate",
+     "idle"
+    ],
+    [
+     52.0,
+     "act",
+     "throw"
+    ],
+    [
+     53.2,
+     "act",
+     "-"
+    ],
+    [
+     53.2333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     53.3667,
+     "wstate",
+     "idle"
+    ],
+    [
+     53.5333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     53.6667,
+     "wstate",
+     "idle"
+    ],
+    [
+     53.9,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     54.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     146.9333,
+     "weapon",
+     "weapons\\rocket launcher\\rocket launcher"
+    ],
+    [
+     157.2333,
+     "act",
+     "throw"
+    ],
+    [
+     158.4333,
+     "act",
+     "-"
+    ],
+    [
+     169.6,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     172.2333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     172.3667,
+     "wstate",
+     "idle"
+    ],
+    [
+     172.4333,
+     "act",
+     "throw"
+    ],
+    [
+     173.6333,
+     "act",
+     "-"
+    ],
+    [
+     176.6667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     176.7,
+     "act",
+     "throw"
+    ],
+    [
+     176.8,
+     "wstate",
+     "idle"
+    ],
+    [
+     177.9,
+     "act",
+     "-"
+    ],
+    [
+     177.9333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     178.0667,
+     "wstate",
+     "idle"
+    ]
+   ]
+  },
+  {
+   "match": "sidewinder-team_slayer-plasma-8",
+   "kills": 4,
+   "deaths": 5,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     15.8667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     16.0,
+     "wstate",
+     "idle"
+    ],
+    [
+     16.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     16.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     16.4,
+     "act",
+     "throw"
+    ],
+    [
+     17.6,
+     "act",
+     "-"
+    ],
+    [
+     18.4333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     18.5667,
+     "wstate",
+     "idle"
+    ],
+    [
+     18.9333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     19.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     19.2333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     19.3667,
+     "wstate",
+     "idle"
+    ],
+    [
+     20.7333,
+     "act",
+     "throw"
+    ],
+    [
+     21.9333,
+     "act",
+     "-"
+    ],
+    [
+     21.9667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     22.1,
+     "wstate",
+     "idle"
+    ],
+    [
+     41.1,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     41.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     41.2333,
+     "act",
+     "throw"
+    ],
+    [
+     42.4333,
+     "act",
+     "-"
+    ],
+    [
+     70.3333,
+     "act",
+     "throw"
+    ],
+    [
+     71.5333,
+     "act",
+     "-"
+    ],
+    [
+     71.5667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     71.7,
+     "wstate",
+     "idle"
+    ],
+    [
+     71.8667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     72.0,
+     "wstate",
+     "idle"
+    ],
+    [
+     72.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     72.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     72.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     72.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     95.4333,
+     "act",
+     "throw"
+    ],
+    [
+     96.6333,
+     "act",
+     "-"
+    ],
+    [
+     129.7333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     129.8667,
+     "wstate",
+     "idle"
+    ],
+    [
+     130.0333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     130.1667,
+     "wstate",
+     "idle"
+    ],
+    [
+     135.6,
+     "act",
+     "throw"
+    ],
+    [
+     147.2,
+     "act",
+     "-"
+    ],
+    [
+     149.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     149.7667,
+     "act",
+     "throw"
+    ],
+    [
+     149.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     150.9667,
+     "act",
+     "-"
+    ],
+    [
+     151.2,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     151.3333,
+     "wstate",
+     "idle"
+    ],
+    [
+     151.5,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     151.6333,
+     "wstate",
+     "idle"
+    ],
+    [
+     152.0333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     152.1667,
+     "wstate",
+     "idle"
+    ],
+    [
+     152.3333,
+     "act",
+     "throw"
+    ],
+    [
+     172.8,
+     "act",
+     "-"
+    ]
+   ]
+  },
+  {
+   "match": "sidewinder-team_slayer-plasma-9",
+   "kills": 2,
+   "deaths": 6,
+   "weapon_events": [
+    [
+     0.0333,
+     "weapon",
+     "weapons\\pistol\\pistol"
+    ],
+    [
+     0.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     0.0333,
+     "zoom",
+     "-1"
+    ],
+    [
+     0.2333,
+     "act",
+     "throw"
+    ],
+    [
+     1.4333,
+     "act",
+     "-"
+    ],
+    [
+     1.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     1.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     1.9,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     2.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     2.2,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     2.3333,
+     "wstate",
+     "idle"
+    ],
+    [
+     2.6333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     2.7667,
+     "wstate",
+     "idle"
+    ],
+    [
+     2.9333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     3.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     3.2667,
+     "act",
+     "throw"
+    ],
+    [
+     4.4667,
+     "act",
+     "-"
+    ],
+    [
+     6.6,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     6.7333,
+     "wstate",
+     "idle"
+    ],
+    [
+     6.9,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     7.0333,
+     "wstate",
+     "idle"
+    ],
+    [
+     23.8667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     24.0,
+     "wstate",
+     "idle"
+    ],
+    [
+     24.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     24.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     24.6667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     24.8,
+     "wstate",
+     "idle"
+    ],
+    [
+     24.9667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     25.1,
+     "wstate",
+     "idle"
+    ],
+    [
+     25.2667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     25.4,
+     "wstate",
+     "idle"
+    ],
+    [
+     25.5667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     25.7,
+     "wstate",
+     "idle"
+    ],
+    [
+     25.8667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     26.0,
+     "wstate",
+     "idle"
+    ],
+    [
+     26.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     26.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     26.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     26.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     26.9333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     27.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     61.1,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     61.2333,
+     "wstate",
+     "idle"
+    ],
+    [
+     62.7333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     62.8667,
+     "wstate",
+     "idle"
+    ],
+    [
+     72.6333,
+     "act",
+     "throw"
+    ],
+    [
+     73.8333,
+     "act",
+     "-"
+    ],
+    [
+     73.8667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     74.0,
+     "wstate",
+     "idle"
+    ],
+    [
+     74.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     74.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     74.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     74.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     76.4333,
+     "act",
+     "throw"
+    ],
+    [
+     77.6333,
+     "act",
+     "-"
+    ],
+    [
+     78.6667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     78.8,
+     "wstate",
+     "idle"
+    ],
+    [
+     78.9667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     79.1,
+     "wstate",
+     "idle"
+    ],
+    [
+     79.2667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     79.4,
+     "wstate",
+     "idle"
+    ],
+    [
+     79.5667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     79.7,
+     "wstate",
+     "idle"
+    ],
+    [
+     91.2,
+     "act",
+     "throw"
+    ],
+    [
+     102.4,
+     "act",
+     "-"
+    ],
+    [
+     107.7,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     107.8333,
+     "wstate",
+     "idle"
+    ],
+    [
+     108.0667,
+     "act",
+     "throw"
+    ],
+    [
+     109.2667,
+     "act",
+     "-"
+    ],
+    [
+     109.3,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     109.4333,
+     "wstate",
+     "idle"
+    ],
+    [
+     122.9333,
+     "act",
+     "throw"
+    ],
+    [
+     124.1333,
+     "act",
+     "-"
+    ],
+    [
+     124.1667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     124.3,
+     "wstate",
+     "idle"
+    ],
+    [
+     124.4667,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     124.6,
+     "wstate",
+     "idle"
+    ],
+    [
+     125.0333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     125.1667,
+     "wstate",
+     "idle"
+    ],
+    [
+     130.6333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     130.7,
+     "act",
+     "throw"
+    ],
+    [
+     130.7667,
+     "wstate",
+     "idle"
+    ],
+    [
+     131.9,
+     "act",
+     "-"
+    ],
+    [
+     131.9333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     132.0667,
+     "wstate",
+     "idle"
+    ],
+    [
+     132.2333,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     132.3667,
+     "wstate",
+     "idle"
+    ],
+    [
+     149.2,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     149.3333,
+     "wstate",
+     "idle"
+    ],
+    [
+     150.4,
+     "wstate",
+     "primary_recoil"
+    ],
+    [
+     150.5333,
+     "wstate",
+     "idle"
+    ],
+    [
+     150.6,
+     "act",
+     "throw"
+    ],
+    [
+     162.1333,
+     "act",
+     "-"
+    ]
+   ]
+  }
+ ],
+ "moments": [
+  {
+   "match": "prisoner-team_slayer-plasma-7",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 7,
+   "kill": 145.333,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 141.333,
+   "last": 145.333,
+   "kills": 1,
+   "flight": 4.0,
+   "score": 50
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 3.967,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 1.067,
+   "last": 3.967,
+   "kills": 1,
+   "flight": 2.9,
+   "score": 50
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 63.933,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 60.967,
+   "last": 63.933,
+   "kills": 1,
+   "flight": 2.97,
+   "score": 50
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 118.9,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 115.667,
+   "last": 118.9,
+   "kills": 1,
+   "flight": 3.23,
+   "score": 50
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 179.433,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 176.367,
+   "last": 179.433,
+   "kills": 1,
+   "flight": 3.07,
+   "score": 50
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 9,
+   "kill": 29.533,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 26.7,
+   "last": 29.533,
+   "kills": 1,
+   "flight": 2.83,
+   "score": 50
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 9,
+   "kill": 167.467,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 163.6,
+   "last": 167.467,
+   "kills": 1,
+   "flight": 3.87,
+   "score": 50
+  },
+  {
+   "match": "chillout-team_slayer-plasma-8",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 8,
+   "kill": 73.533,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 70.3,
+   "last": 73.533,
+   "kills": 1,
+   "flight": 3.23,
+   "score": 50
+  },
+  {
+   "match": "chillout-team_slayer-plasma-8",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 8,
+   "kill": 159.767,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 157.1,
+   "last": 159.767,
+   "kills": 1,
+   "flight": 2.67,
+   "score": 50
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 14.8,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 11.7,
+   "last": 14.8,
+   "kills": 1,
+   "flight": 3.1,
+   "score": 50
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 46.867,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 43.867,
+   "last": 46.867,
+   "kills": 1,
+   "flight": 3.0,
+   "score": 50
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 61.667,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 58.833,
+   "last": 61.667,
+   "kills": 1,
+   "flight": 2.83,
+   "score": 50
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 122.1,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 118.9,
+   "last": 122.1,
+   "kills": 1,
+   "flight": 3.2,
+   "score": 50
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-7",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 7,
+   "kill": 33.5,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 30.467,
+   "last": 33.5,
+   "kills": 1,
+   "flight": 3.03,
+   "score": 50
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-9",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 9,
+   "kill": 163.167,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 158.733,
+   "last": 163.167,
+   "kills": 1,
+   "flight": 4.43,
+   "score": 50
+  },
+  {
+   "match": "damnation-team_slayer-plasma-8",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 8,
+   "kill": 151.5,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 148.133,
+   "last": 151.5,
+   "kills": 1,
+   "flight": 3.37,
+   "score": 50
+  },
+  {
+   "match": "longest-team_slayer-plasma-7",
+   "map": "longest:team_slayer+plasma",
+   "seed": 7,
+   "kill": 174.867,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 172.033,
+   "last": 174.867,
+   "kills": 1,
+   "flight": 2.83,
+   "score": 50
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 23.1,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 20.267,
+   "last": 23.1,
+   "kills": 1,
+   "flight": 2.83,
+   "score": 50
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 98.167,
+   "kind": "sticky",
+   "weapon": "weapons\\plasma grenade\\plasma grenade",
+   "first": 95.367,
+   "last": 98.167,
+   "kills": 1,
+   "flight": 2.8,
+   "score": 50
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 121.2667,
+   "kind": "headshot",
+   "weapon": "weapons\\sniper rifle\\sniper rifle",
+   "first": 121.2667,
+   "last": 122.1,
+   "kills": 2,
+   "watched": 0.84,
+   "crowd": 2.19,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 9,
+   "died": false,
+   "score": 41.3,
+   "hit_height": 0.592
+  },
+  {
+   "match": "damnation-team_slayer-plasma-9",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 9,
+   "kill": 49.0333,
+   "kind": "headshot",
+   "weapon": "weapons\\sniper rifle\\sniper rifle",
+   "first": 49.0333,
+   "last": 49.0333,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 1.74,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 3,
+   "died": false,
+   "score": 37.5,
+   "hit_height": 0.641
+  },
+  {
+   "match": "longest-team_slayer-needler-9",
+   "map": "longest:team_slayer+needler",
+   "seed": 9,
+   "kill": 131.0333,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 131.0333,
+   "last": 135.0,
+   "kills": 2,
+   "watched": 0.81,
+   "crowd": 1.76,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 14,
+   "died": false,
+   "score": 30.8
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 96.8333,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 96.8333,
+   "last": 101.0,
+   "kills": 4,
+   "watched": 0.77,
+   "crowd": 3.11,
+   "near_kills": 2,
+   "seen_kill": true,
+   "shots": 1,
+   "died": false,
+   "score": 29.8
+  },
+  {
+   "match": "prisoner-team_slayer-needler-9",
+   "map": "prisoner:team_slayer+needler",
+   "seed": 9,
+   "kill": 64.9,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 64.9,
+   "last": 64.9,
+   "kills": 1,
+   "watched": 0.99,
+   "crowd": 2.57,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 17,
+   "died": false,
+   "score": 29.6
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 98.1667,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 96.8333,
+   "last": 101.0,
+   "kills": 4,
+   "watched": 0.91,
+   "crowd": 3.7,
+   "near_kills": 3,
+   "seen_kill": true,
+   "shots": 5,
+   "died": true,
+   "score": 29.6
+  },
+  {
+   "match": "prisoner-team_slayer-needler-7",
+   "map": "prisoner:team_slayer+needler",
+   "seed": 7,
+   "kill": 170.2333,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 170.2333,
+   "last": 170.2333,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 2.71,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 15,
+   "died": false,
+   "score": 29.5
+  },
+  {
+   "match": "prisoner-team_slayer-needler-8",
+   "map": "prisoner:team_slayer+needler",
+   "seed": 8,
+   "kill": 16.8667,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 16.8667,
+   "last": 16.8667,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 2.21,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 13,
+   "died": false,
+   "score": 29.3
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 99.0,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 96.8333,
+   "last": 101.0,
+   "kills": 4,
+   "watched": 0.87,
+   "crowd": 3.4,
+   "near_kills": 3,
+   "seen_kill": true,
+   "shots": 5,
+   "died": true,
+   "score": 29.2
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 9,
+   "kill": 95.9667,
+   "kind": "chaos",
+   "weapon": "weapons\\plasma rifle\\plasma rifle",
+   "first": 95.9667,
+   "last": 96.9,
+   "kills": 2,
+   "watched": 1.0,
+   "crowd": 3.33,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 9,
+   "died": false,
+   "score": 28.9
+  },
+  {
+   "match": "longest-team_slayer-needler-8",
+   "map": "longest:team_slayer+needler",
+   "seed": 8,
+   "kill": 106.8333,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 106.8333,
+   "last": 106.8333,
+   "kills": 1,
+   "watched": 0.96,
+   "crowd": 4.13,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 13,
+   "died": false,
+   "score": 28.9
+  },
+  {
+   "match": "prisoner-team_slayer-needler-7",
+   "map": "prisoner:team_slayer+needler",
+   "seed": 7,
+   "kill": 58.0,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 58.0,
+   "last": 58.0,
+   "kills": 1,
+   "watched": 0.88,
+   "crowd": 2.87,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 14,
+   "died": false,
+   "score": 28.2
+  },
+  {
+   "match": "chillout-team_slayer-needler-8",
+   "map": "chillout:team_slayer+needler",
+   "seed": 8,
+   "kill": 10.3333,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 10.3333,
+   "last": 10.3333,
+   "kills": 1,
+   "watched": 0.88,
+   "crowd": 2.98,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 9,
+   "died": false,
+   "score": 27.7
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 9,
+   "kill": 104.4,
+   "kind": "chaos",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 104.4,
+   "last": 104.4,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 3.43,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 42,
+   "died": false,
+   "score": 27.0
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 61.6667,
+   "kind": "chaos",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 61.6667,
+   "last": 62.0,
+   "kills": 2,
+   "watched": 0.71,
+   "crowd": 3.36,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 9,
+   "died": false,
+   "score": 26.0
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 62.0,
+   "kind": "chaos",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 61.6667,
+   "last": 62.0,
+   "kills": 2,
+   "watched": 0.71,
+   "crowd": 3.36,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 9,
+   "died": false,
+   "score": 26.0
+  },
+  {
+   "match": "hangemhigh-team_slayer-needler-8",
+   "map": "hangemhigh:team_slayer+needler",
+   "seed": 8,
+   "kill": 88.2333,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 88.2333,
+   "last": 88.2333,
+   "kills": 1,
+   "watched": 0.86,
+   "crowd": 1.69,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 1,
+   "died": false,
+   "score": 25.7
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 9,
+   "kill": 96.9,
+   "kind": "kill",
+   "weapon": "weapons\\plasma rifle\\plasma rifle",
+   "first": 95.9667,
+   "last": 96.9,
+   "kills": 2,
+   "watched": 1.0,
+   "crowd": 2.72,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 14,
+   "died": false,
+   "score": 25.4
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 117.8667,
+   "kind": "chaos",
+   "weapon": "weapons\\plasma rifle\\plasma rifle",
+   "first": 117.8667,
+   "last": 117.8667,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 7.18,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 12,
+   "died": false,
+   "score": 25.2
+  },
+  {
+   "match": "sidewinder-team_slayer-needler-7",
+   "map": "sidewinder:team_slayer+needler",
+   "seed": 7,
+   "kill": 22.0,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 22.0,
+   "last": 22.0,
+   "kills": 1,
+   "watched": 0.79,
+   "crowd": 1.51,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 5,
+   "died": false,
+   "score": 25.0
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 163.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma rifle\\plasma rifle",
+   "first": 163.0,
+   "last": 166.0,
+   "kills": 2,
+   "watched": 0.99,
+   "crowd": 2.11,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 8,
+   "died": false,
+   "score": 24.7
+  },
+  {
+   "match": "damnation-team_slayer-plasma-7",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 7,
+   "kill": 30.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma rifle\\plasma rifle",
+   "first": 29.0,
+   "last": 30.0,
+   "kills": 2,
+   "watched": 0.97,
+   "crowd": 2.04,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 10,
+   "died": false,
+   "score": 24.7
+  },
+  {
+   "match": "longest-team_slayer-needler-9",
+   "map": "longest:team_slayer+needler",
+   "seed": 9,
+   "kill": 135.0,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 131.0333,
+   "last": 135.0,
+   "kills": 2,
+   "watched": 0.84,
+   "crowd": 2.18,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 1,
+   "died": true,
+   "score": 24.5
+  },
+  {
+   "match": "longest-team_slayer-plasma-7",
+   "map": "longest:team_slayer+plasma",
+   "seed": 7,
+   "kill": 26.3667,
+   "kind": "chaos",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 26.3667,
+   "last": 26.3667,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 4.96,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 5,
+   "died": false,
+   "score": 24.5
+  },
+  {
+   "match": "longest-team_slayer-needler-7",
+   "map": "longest:team_slayer+needler",
+   "seed": 7,
+   "kill": 116.8,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 116.8,
+   "last": 116.8,
+   "kills": 1,
+   "watched": 0.55,
+   "crowd": 2.44,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 9,
+   "died": false,
+   "score": 24.4
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 47.4667,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 47.4667,
+   "last": 47.4667,
+   "kills": 1,
+   "watched": 0.99,
+   "crowd": 6.69,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 5,
+   "died": false,
+   "score": 24.4
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-7",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 7,
+   "kill": 7.0,
+   "kind": "chaos",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 7.0,
+   "last": 7.0,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 3.33,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 3,
+   "died": false,
+   "score": 24.3
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 96.6333,
+   "kind": "chaos",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 96.6333,
+   "last": 96.6333,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 3.84,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 3,
+   "died": false,
+   "score": 24.3
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-9",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 9,
+   "kill": 141.3667,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 141.3667,
+   "last": 141.3667,
+   "kills": 1,
+   "watched": 0.99,
+   "crowd": 3.2,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 3,
+   "died": false,
+   "score": 24.2
+  },
+  {
+   "match": "damnation-team_slayer-plasma-7",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 7,
+   "kill": 29.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma rifle\\plasma rifle",
+   "first": 29.0,
+   "last": 30.0,
+   "kills": 2,
+   "watched": 0.92,
+   "crowd": 2.23,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 10,
+   "died": false,
+   "score": 24.2
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 119.0,
+   "kind": "chaos",
+   "weapon": "weapons\\plasma rifle\\plasma rifle",
+   "first": 119.0,
+   "last": 119.0,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 3.77,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 1,
+   "died": false,
+   "score": 24.1
+  },
+  {
+   "match": "longest-team_slayer-needler-8",
+   "map": "longest:team_slayer+needler",
+   "seed": 8,
+   "kill": 10.9667,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 10.9667,
+   "last": 10.9667,
+   "kills": 1,
+   "watched": 0.53,
+   "crowd": 2.24,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 8,
+   "died": false,
+   "score": 24.1
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 60.1333,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 60.1333,
+   "last": 60.1333,
+   "kills": 1,
+   "watched": 0.97,
+   "crowd": 3.12,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 4,
+   "died": false,
+   "score": 24.1
+  },
+  {
+   "match": "damnation-team_slayer-needler-9",
+   "map": "damnation:team_slayer+needler",
+   "seed": 9,
+   "kill": 161.9333,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 161.9333,
+   "last": 161.9333,
+   "kills": 1,
+   "watched": 0.77,
+   "crowd": 1.31,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 4,
+   "died": false,
+   "score": 24.0
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-7",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 7,
+   "kill": 71.0667,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 71.0667,
+   "last": 73.7333,
+   "kills": 2,
+   "watched": 0.94,
+   "crowd": 2.98,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 5,
+   "died": false,
+   "score": 23.9
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-7",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 7,
+   "kill": 73.7333,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 71.0667,
+   "last": 73.7333,
+   "kills": 2,
+   "watched": 0.96,
+   "crowd": 1.82,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 8,
+   "died": false,
+   "score": 23.9
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-8",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 8,
+   "kill": 85.9667,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 85.9667,
+   "last": 85.9667,
+   "kills": 1,
+   "watched": 0.95,
+   "crowd": 3.91,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 1,
+   "died": false,
+   "score": 23.6
+  },
+  {
+   "match": "longest-team_slayer-plasma-7",
+   "map": "longest:team_slayer+plasma",
+   "seed": 7,
+   "kill": 48.1667,
+   "kind": "chaos",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 48.1667,
+   "last": 48.1667,
+   "kills": 1,
+   "watched": 0.87,
+   "crowd": 4.72,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 4,
+   "died": false,
+   "score": 23.1
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 122.1,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 121.2667,
+   "last": 122.1,
+   "kills": 2,
+   "watched": 0.84,
+   "crowd": 2.15,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 6,
+   "died": false,
+   "score": 23.0
+  },
+  {
+   "match": "longest-team_slayer-plasma-9",
+   "map": "longest:team_slayer+plasma",
+   "seed": 9,
+   "kill": 105.5333,
+   "kind": "chaos",
+   "weapon": "weapons\\plasma rifle\\plasma rifle",
+   "first": 105.5333,
+   "last": 105.5333,
+   "kills": 1,
+   "watched": 0.84,
+   "crowd": 3.67,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 3,
+   "died": false,
+   "score": 22.7
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 24.0,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 24.0,
+   "last": 24.0,
+   "kills": 2,
+   "watched": 0.85,
+   "crowd": 5.22,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 1,
+   "died": false,
+   "score": 22.6
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 24.0,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 24.0,
+   "last": 24.0,
+   "kills": 2,
+   "watched": 0.85,
+   "crowd": 5.22,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 1,
+   "died": false,
+   "score": 22.6
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-7",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 7,
+   "kill": 95.7667,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 93.3,
+   "last": 95.7667,
+   "kills": 2,
+   "watched": 0.82,
+   "crowd": 1.78,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 6,
+   "died": false,
+   "score": 22.1
+  },
+  {
+   "match": "longest-team_slayer-plasma-9",
+   "map": "longest:team_slayer+plasma",
+   "seed": 9,
+   "kill": 110.4,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 110.4,
+   "last": 114.0,
+   "kills": 2,
+   "watched": 0.77,
+   "crowd": 2.79,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 4,
+   "died": false,
+   "score": 22.1
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-7",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 7,
+   "kill": 93.3,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 93.3,
+   "last": 95.7667,
+   "kills": 2,
+   "watched": 0.77,
+   "crowd": 2.2,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 3,
+   "died": false,
+   "score": 22.0
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 9,
+   "kill": 167.4667,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 167.4667,
+   "last": 168.7667,
+   "kills": 2,
+   "watched": 0.74,
+   "crowd": 2.9,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 2,
+   "died": false,
+   "score": 21.6
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-7",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 7,
+   "kill": 173.1333,
+   "kind": "chaos",
+   "weapon": "weapons\\shotgun\\shotgun",
+   "first": 173.1333,
+   "last": 173.1333,
+   "kills": 1,
+   "watched": 0.72,
+   "crowd": 4.79,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": false,
+   "score": 21.4
+  },
+  {
+   "match": "longest-team_slayer-plasma-9",
+   "map": "longest:team_slayer+plasma",
+   "seed": 9,
+   "kill": 17.3,
+   "kind": "chaos",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 17.3,
+   "last": 17.3,
+   "kills": 1,
+   "watched": 0.68,
+   "crowd": 4.62,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 3,
+   "died": false,
+   "score": 21.1
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 101.0,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 96.8333,
+   "last": 101.0,
+   "kills": 4,
+   "watched": 0.44,
+   "crowd": 1.44,
+   "near_kills": 2,
+   "seen_kill": false,
+   "shots": 3,
+   "died": false,
+   "score": 21.0
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 9,
+   "kill": 168.7667,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 167.4667,
+   "last": 168.7667,
+   "kills": 2,
+   "watched": 0.65,
+   "crowd": 2.5,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 4,
+   "died": false,
+   "score": 20.9
+  },
+  {
+   "match": "chillout-team_slayer-needler-7",
+   "map": "chillout:team_slayer+needler",
+   "seed": 7,
+   "kill": 102.6667,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 102.6667,
+   "last": 102.6667,
+   "kills": 1,
+   "watched": 0.8,
+   "crowd": 2.3,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 7,
+   "died": true,
+   "score": 20.7
+  },
+  {
+   "match": "hangemhigh-team_slayer-needler-9",
+   "map": "hangemhigh:team_slayer+needler",
+   "seed": 9,
+   "kill": 126.8,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 126.8,
+   "last": 126.8,
+   "kills": 1,
+   "watched": 0.77,
+   "crowd": 2.55,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 10,
+   "died": true,
+   "score": 20.7
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 3.9667,
+   "kind": "chaos",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 3.9667,
+   "last": 4.0,
+   "kills": 2,
+   "watched": 0.82,
+   "crowd": 3.63,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 4,
+   "died": true,
+   "score": 20.6
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 4.0,
+   "kind": "chaos",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 3.9667,
+   "last": 4.0,
+   "kills": 2,
+   "watched": 0.82,
+   "crowd": 3.63,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 4,
+   "died": true,
+   "score": 20.6
+  },
+  {
+   "match": "sidewinder-team_slayer-plasma-7",
+   "map": "sidewinder:team_slayer+plasma",
+   "seed": 7,
+   "kill": 53.0,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 53.0,
+   "last": 53.0,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 2.68,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 5,
+   "died": false,
+   "score": 20.5
+  },
+  {
+   "match": "sidewinder-team_slayer-needler-8",
+   "map": "sidewinder:team_slayer+needler",
+   "seed": 8,
+   "kill": 61.2,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 61.2,
+   "last": 61.2,
+   "kills": 1,
+   "watched": 0.76,
+   "crowd": 2.89,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 4,
+   "died": true,
+   "score": 20.0
+  },
+  {
+   "match": "hangemhigh-team_slayer-needler-9",
+   "map": "hangemhigh:team_slayer+needler",
+   "seed": 9,
+   "kill": 47.0,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 47.0,
+   "last": 47.0,
+   "kills": 1,
+   "watched": 0.52,
+   "crowd": 1.55,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 16,
+   "died": false,
+   "score": 19.4
+  },
+  {
+   "match": "longest-team_slayer-plasma-7",
+   "map": "longest:team_slayer+plasma",
+   "seed": 7,
+   "kill": 128.2667,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 128.2667,
+   "last": 128.2667,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 1.74,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 0,
+   "died": false,
+   "score": 19.2
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 179.4333,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 179.4333,
+   "last": 179.4333,
+   "kills": 1,
+   "watched": 0.85,
+   "crowd": 2.26,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 4,
+   "died": false,
+   "score": 18.9
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 55.7667,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 55.7667,
+   "last": 55.7667,
+   "kills": 1,
+   "watched": 0.87,
+   "crowd": 2.65,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": false,
+   "score": 18.9
+  },
+  {
+   "match": "longest-team_slayer-plasma-9",
+   "map": "longest:team_slayer+plasma",
+   "seed": 9,
+   "kill": 50.0,
+   "kind": "chaos",
+   "weapon": "weapons\\plasma rifle\\plasma rifle",
+   "first": 50.0,
+   "last": 50.0,
+   "kills": 1,
+   "watched": 1.0,
+   "crowd": 5.18,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 8,
+   "died": true,
+   "score": 18.8
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-7",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 7,
+   "kill": 14.9333,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 14.9333,
+   "last": 14.9333,
+   "kills": 1,
+   "watched": 0.91,
+   "crowd": 1.28,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 17,
+   "died": false,
+   "score": 18.6
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-8",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 8,
+   "kill": 131.2667,
+   "kind": "kill",
+   "weapon": "weapons\\shotgun\\shotgun",
+   "first": 131.2667,
+   "last": 131.2667,
+   "kills": 1,
+   "watched": 0.82,
+   "crowd": 2.74,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": false,
+   "score": 18.4
+  },
+  {
+   "match": "chillout-team_slayer-plasma-8",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 8,
+   "kill": 74.0,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 74.0,
+   "last": 74.0,
+   "kills": 1,
+   "watched": 0.94,
+   "crowd": 1.28,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 10,
+   "died": false,
+   "score": 18.3
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 20.6333,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 20.6333,
+   "last": 20.6333,
+   "kills": 1,
+   "watched": 0.89,
+   "crowd": 1.47,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 9,
+   "died": false,
+   "score": 18.2
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 9,
+   "kill": 90.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma rifle\\plasma rifle",
+   "first": 90.0,
+   "last": 90.0,
+   "kills": 1,
+   "watched": 0.79,
+   "crowd": 2.57,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 1,
+   "died": false,
+   "score": 18.0
+  },
+  {
+   "match": "damnation-team_slayer-plasma-7",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 7,
+   "kill": 102.6333,
+   "kind": "kill",
+   "weapon": "weapons\\sniper rifle\\sniper rifle",
+   "first": 102.6333,
+   "last": 102.6333,
+   "kills": 1,
+   "watched": 0.74,
+   "crowd": 2.27,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": false,
+   "score": 17.6
+  },
+  {
+   "match": "chillout-team_slayer-plasma-7",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 7,
+   "kill": 134.0,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 134.0,
+   "last": 137.0,
+   "kills": 2,
+   "watched": 0.79,
+   "crowd": 2.25,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 16,
+   "died": true,
+   "score": 17.5
+  },
+  {
+   "match": "prisoner-team_slayer-needler-7",
+   "map": "prisoner:team_slayer+needler",
+   "seed": 7,
+   "kill": 113.4667,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 113.4667,
+   "last": 113.4667,
+   "kills": 1,
+   "watched": 0.53,
+   "crowd": 1.5,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 16,
+   "died": true,
+   "score": 17.4
+  },
+  {
+   "match": "chillout-team_slayer-plasma-7",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 7,
+   "kill": 64.6,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 64.6,
+   "last": 64.6,
+   "kills": 1,
+   "watched": 0.9,
+   "crowd": 1.3,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 3,
+   "died": false,
+   "score": 17.2
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-9",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 9,
+   "kill": 119.0667,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 119.0667,
+   "last": 119.0667,
+   "kills": 1,
+   "watched": 0.84,
+   "crowd": 6.13,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 3,
+   "died": true,
+   "score": 16.7
+  },
+  {
+   "match": "prisoner-team_slayer-needler-8",
+   "map": "prisoner:team_slayer+needler",
+   "seed": 8,
+   "kill": 110.0,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 110.0,
+   "last": 110.0,
+   "kills": 1,
+   "watched": 0.57,
+   "crowd": 1.21,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 12,
+   "died": true,
+   "score": 16.6
+  },
+  {
+   "match": "sidewinder-team_slayer-plasma-8",
+   "map": "sidewinder:team_slayer+plasma",
+   "seed": 8,
+   "kill": 72.4667,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 72.4667,
+   "last": 72.4667,
+   "kills": 1,
+   "watched": 0.82,
+   "crowd": 3.18,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 4,
+   "died": true,
+   "score": 16.6
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 56.5667,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 56.5667,
+   "last": 56.5667,
+   "kills": 1,
+   "watched": 0.7,
+   "crowd": 1.78,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": false,
+   "score": 16.5
+  },
+  {
+   "match": "sidewinder-team_slayer-plasma-8",
+   "map": "sidewinder:team_slayer+plasma",
+   "seed": 8,
+   "kill": 19.2667,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 19.2667,
+   "last": 19.2667,
+   "kills": 1,
+   "watched": 0.74,
+   "crowd": 1.52,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 5,
+   "died": false,
+   "score": 16.5
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 177.3667,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 177.3667,
+   "last": 177.3667,
+   "kills": 1,
+   "watched": 0.72,
+   "crowd": 1.62,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 4,
+   "died": false,
+   "score": 16.4
+  },
+  {
+   "match": "chillout-team_slayer-plasma-7",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 7,
+   "kill": 58.3333,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 58.3333,
+   "last": 58.3333,
+   "kills": 1,
+   "watched": 0.85,
+   "crowd": 0.96,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 8,
+   "died": false,
+   "score": 16.2
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 13.0,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 13.0,
+   "last": 15.0,
+   "kills": 2,
+   "watched": 0.49,
+   "crowd": 2.72,
+   "near_kills": 1,
+   "seen_kill": false,
+   "shots": 12,
+   "died": false,
+   "score": 16.1
+  },
+  {
+   "match": "sidewinder-team_slayer-plasma-8",
+   "map": "sidewinder:team_slayer+plasma",
+   "seed": 8,
+   "kill": 151.5333,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 151.5333,
+   "last": 152.0333,
+   "kills": 2,
+   "watched": 0.77,
+   "crowd": 2.03,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 3,
+   "died": true,
+   "score": 16.0
+  },
+  {
+   "match": "damnation-team_slayer-plasma-9",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 9,
+   "kill": 173.4,
+   "kind": "kill",
+   "weapon": "weapons\\shotgun\\shotgun",
+   "first": 172.4,
+   "last": 173.4,
+   "kills": 2,
+   "watched": 0.43,
+   "crowd": 1.04,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 3,
+   "died": false,
+   "score": 15.7
+  },
+  {
+   "match": "sidewinder-team_slayer-plasma-8",
+   "map": "sidewinder:team_slayer+plasma",
+   "seed": 8,
+   "kill": 152.0333,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 151.5333,
+   "last": 152.0333,
+   "kills": 2,
+   "watched": 0.73,
+   "crowd": 1.96,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 3,
+   "died": true,
+   "score": 15.5
+  },
+  {
+   "match": "sidewinder-team_slayer-plasma-9",
+   "map": "sidewinder:team_slayer+plasma",
+   "seed": 9,
+   "kill": 132.2333,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 132.2333,
+   "last": 132.2333,
+   "kills": 1,
+   "watched": 0.83,
+   "crowd": 1.01,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": false,
+   "score": 15.5
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-7",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 7,
+   "kill": 145.3333,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 145.3333,
+   "last": 145.7333,
+   "kills": 2,
+   "watched": 0.79,
+   "crowd": 1.65,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 5,
+   "died": true,
+   "score": 15.4
+  },
+  {
+   "match": "longest-team_slayer-needler-7",
+   "map": "longest:team_slayer+needler",
+   "seed": 7,
+   "kill": 133.5333,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 133.5333,
+   "last": 133.5333,
+   "kills": 1,
+   "watched": 0.48,
+   "crowd": 1.38,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 4,
+   "died": true,
+   "score": 15.4
+  },
+  {
+   "match": "longest-team_slayer-plasma-9",
+   "map": "longest:team_slayer+plasma",
+   "seed": 9,
+   "kill": 170.0,
+   "kind": "chaos",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 170.0,
+   "last": 170.0,
+   "kills": 1,
+   "watched": 0.52,
+   "crowd": 3.77,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 2,
+   "died": false,
+   "score": 15.4
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-9",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 9,
+   "kill": 90.9,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 90.9,
+   "last": 90.9,
+   "kills": 1,
+   "watched": 0.7,
+   "crowd": 1.36,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": false,
+   "score": 15.2
+  },
+  {
+   "match": "damnation-team_slayer-plasma-7",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 7,
+   "kill": 131.8333,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 131.8333,
+   "last": 131.8333,
+   "kills": 1,
+   "watched": 0.57,
+   "crowd": 1.64,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 0,
+   "died": false,
+   "score": 14.7
+  },
+  {
+   "match": "sidewinder-team_slayer-plasma-9",
+   "map": "sidewinder:team_slayer+plasma",
+   "seed": 9,
+   "kill": 125.0333,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 125.0333,
+   "last": 125.0333,
+   "kills": 1,
+   "watched": 0.62,
+   "crowd": 1.38,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": false,
+   "score": 14.6
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-8",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 8,
+   "kill": 145.4667,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 145.4667,
+   "last": 145.4667,
+   "kills": 1,
+   "watched": 0.52,
+   "crowd": 1.67,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": false,
+   "score": 14.5
+  },
+  {
+   "match": "chillout-team_slayer-needler-7",
+   "map": "chillout:team_slayer+needler",
+   "seed": 7,
+   "kill": 56.0,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 56.0,
+   "last": 56.0,
+   "kills": 1,
+   "watched": 0.4,
+   "crowd": 0.4,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 12,
+   "died": false,
+   "score": 14.4
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 9,
+   "kill": 29.5333,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 29.5333,
+   "last": 29.5333,
+   "kills": 1,
+   "watched": 0.98,
+   "crowd": 1.81,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 5,
+   "died": true,
+   "score": 13.7
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-7",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 7,
+   "kill": 145.7333,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 145.3333,
+   "last": 145.7333,
+   "kills": 2,
+   "watched": 0.71,
+   "crowd": 1.3,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 5,
+   "died": true,
+   "score": 13.5
+  },
+  {
+   "match": "damnation-team_slayer-plasma-9",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 9,
+   "kill": 172.4,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 172.4,
+   "last": 173.4,
+   "kills": 2,
+   "watched": 0.3,
+   "crowd": 0.5,
+   "near_kills": 1,
+   "seen_kill": true,
+   "shots": 2,
+   "died": false,
+   "score": 12.7
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-7",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 7,
+   "kill": 29.4,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 29.4,
+   "last": 29.4,
+   "kills": 1,
+   "watched": 0.84,
+   "crowd": 2.62,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": true,
+   "score": 12.6
+  },
+  {
+   "match": "sidewinder-team_slayer-needler-9",
+   "map": "sidewinder:team_slayer+needler",
+   "seed": 9,
+   "kill": 138.0,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 138.0,
+   "last": 138.0,
+   "kills": 1,
+   "watched": 0.33,
+   "crowd": 0.33,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 3,
+   "died": false,
+   "score": 12.6
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 83.8667,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 83.8667,
+   "last": 83.8667,
+   "kills": 1,
+   "watched": 0.44,
+   "crowd": 0.86,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 12,
+   "died": false,
+   "score": 12.2
+  },
+  {
+   "match": "sidewinder-team_slayer-plasma-7",
+   "map": "sidewinder:team_slayer+plasma",
+   "seed": 7,
+   "kill": 177.9667,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 177.9667,
+   "last": 177.9667,
+   "kills": 1,
+   "watched": 0.8,
+   "crowd": 1.98,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": true,
+   "score": 12.2
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 9,
+   "kill": 130.1667,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 130.1667,
+   "last": 130.1667,
+   "kills": 1,
+   "watched": 0.72,
+   "crowd": 1.99,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 8,
+   "died": true,
+   "score": 11.9
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 47.0,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 47.0,
+   "last": 47.0,
+   "kills": 2,
+   "watched": 0.44,
+   "crowd": 2.24,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 11,
+   "died": false,
+   "score": 11.5
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 47.0,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 47.0,
+   "last": 47.0,
+   "kills": 2,
+   "watched": 0.44,
+   "crowd": 2.24,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 11,
+   "died": false,
+   "score": 11.5
+  },
+  {
+   "match": "chillout-team_slayer-plasma-7",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 7,
+   "kill": 4.0,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 4.0,
+   "last": 4.0,
+   "kills": 1,
+   "watched": 0.5,
+   "crowd": 1.52,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 12,
+   "died": false,
+   "score": 10.7
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-7",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 7,
+   "kill": 43.4667,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 43.4667,
+   "last": 43.4667,
+   "kills": 1,
+   "watched": 0.65,
+   "crowd": 2.85,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 1,
+   "died": true,
+   "score": 10.6
+  },
+  {
+   "match": "longest-team_slayer-plasma-9",
+   "map": "longest:team_slayer+plasma",
+   "seed": 9,
+   "kill": 114.0,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 110.4,
+   "last": 114.0,
+   "kills": 2,
+   "watched": 0.37,
+   "crowd": 0.84,
+   "near_kills": 1,
+   "seen_kill": false,
+   "shots": 4,
+   "died": false,
+   "score": 10.6
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-9",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 9,
+   "kill": 110.4,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 110.4,
+   "last": 110.4,
+   "kills": 1,
+   "watched": 0.73,
+   "crowd": 1.23,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 12,
+   "died": true,
+   "score": 10.2
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-7",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 7,
+   "kill": 35.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 35.0,
+   "last": 35.0,
+   "kills": 1,
+   "watched": 0.47,
+   "crowd": 1.53,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 4,
+   "died": false,
+   "score": 9.7
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 24.7,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 24.7,
+   "last": 24.7,
+   "kills": 1,
+   "watched": 0.27,
+   "crowd": 0.58,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 10,
+   "died": false,
+   "score": 9.4
+  },
+  {
+   "match": "longest-team_slayer-plasma-7",
+   "map": "longest:team_slayer+plasma",
+   "seed": 7,
+   "kill": 175.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 175.0,
+   "last": 175.0,
+   "kills": 2,
+   "watched": 0.4,
+   "crowd": 1.62,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 1,
+   "died": false,
+   "score": 9.0
+  },
+  {
+   "match": "longest-team_slayer-plasma-7",
+   "map": "longest:team_slayer+plasma",
+   "seed": 7,
+   "kill": 175.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 175.0,
+   "last": 175.0,
+   "kills": 2,
+   "watched": 0.4,
+   "crowd": 1.62,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 1,
+   "died": false,
+   "score": 9.0
+  },
+  {
+   "match": "longest-team_slayer-plasma-8",
+   "map": "longest:team_slayer+plasma",
+   "seed": 8,
+   "kill": 6.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 6.0,
+   "last": 6.0,
+   "kills": 1,
+   "watched": 0.46,
+   "crowd": 1.35,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 3,
+   "died": false,
+   "score": 9.0
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-7",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 7,
+   "kill": 149.1333,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 149.1333,
+   "last": 149.1333,
+   "kills": 1,
+   "watched": 0.55,
+   "crowd": 1.76,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 1,
+   "died": true,
+   "score": 8.9
+  },
+  {
+   "match": "damnation-team_slayer-plasma-9",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 9,
+   "kill": 67.8667,
+   "kind": "kill",
+   "weapon": "weapons\\shotgun\\shotgun",
+   "first": 67.8667,
+   "last": 67.8667,
+   "kills": 1,
+   "watched": 0.54,
+   "crowd": 1.73,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 2,
+   "died": true,
+   "score": 8.8
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-8",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 8,
+   "kill": 166.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma rifle\\plasma rifle",
+   "first": 163.0,
+   "last": 166.0,
+   "kills": 2,
+   "watched": 0.53,
+   "crowd": 1.33,
+   "near_kills": 1,
+   "seen_kill": false,
+   "shots": 10,
+   "died": true,
+   "score": 8.3
+  },
+  {
+   "match": "hangemhigh-team_slayer-needler-8",
+   "map": "hangemhigh:team_slayer+needler",
+   "seed": 8,
+   "kill": 69.0,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 69.0,
+   "last": 69.0,
+   "kills": 1,
+   "watched": 0.0,
+   "crowd": 0.0,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 0,
+   "died": false,
+   "score": 8.0
+  },
+  {
+   "match": "hangemhigh-team_slayer-needler-9",
+   "map": "hangemhigh:team_slayer+needler",
+   "seed": 9,
+   "kill": 105.0,
+   "kind": "needler",
+   "weapon": "weapons\\needler\\needler",
+   "first": 105.0,
+   "last": 105.0,
+   "kills": 1,
+   "watched": 0.0,
+   "crowd": 0.0,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 0,
+   "died": false,
+   "score": 8.0
+  },
+  {
+   "match": "prisoner-team_slayer-plasma-7",
+   "map": "prisoner:team_slayer+plasma",
+   "seed": 7,
+   "kill": 162.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 162.0,
+   "last": 162.0,
+   "kills": 1,
+   "watched": 0.55,
+   "crowd": 1.2,
+   "near_kills": 0,
+   "seen_kill": true,
+   "shots": 7,
+   "died": true,
+   "score": 7.8
+  },
+  {
+   "match": "damnation-team_slayer-plasma-9",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 9,
+   "kill": 15.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 15.0,
+   "last": 15.0,
+   "kills": 1,
+   "watched": 0.37,
+   "crowd": 1.19,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 3,
+   "died": false,
+   "score": 7.6
+  },
+  {
+   "match": "chillout-team_slayer-plasma-7",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 7,
+   "kill": 137.0,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 134.0,
+   "last": 137.0,
+   "kills": 2,
+   "watched": 0.16,
+   "crowd": 0.57,
+   "near_kills": 1,
+   "seen_kill": false,
+   "shots": 1,
+   "died": false,
+   "score": 7.4
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 15.0,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 13.0,
+   "last": 15.0,
+   "kills": 2,
+   "watched": 0.06,
+   "crowd": 0.32,
+   "near_kills": 1,
+   "seen_kill": false,
+   "shots": 5,
+   "died": false,
+   "score": 6.1
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 68.0,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 68.0,
+   "last": 68.0,
+   "kills": 1,
+   "watched": 0.18,
+   "crowd": 0.59,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 9,
+   "died": false,
+   "score": 4.5
+  },
+  {
+   "match": "chillout-team_slayer-plasma-9",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 9,
+   "kill": 30.0,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 30.0,
+   "last": 30.0,
+   "kills": 1,
+   "watched": 0.24,
+   "crowd": 0.55,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 3,
+   "died": false,
+   "score": 4.4
+  },
+  {
+   "match": "longest-team_slayer-plasma-7",
+   "map": "longest:team_slayer+plasma",
+   "seed": 7,
+   "kill": 110.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 110.0,
+   "last": 110.0,
+   "kills": 1,
+   "watched": 0.16,
+   "crowd": 0.74,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 2,
+   "died": false,
+   "score": 4.0
+  },
+  {
+   "match": "damnation-team_slayer-plasma-8",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 8,
+   "kill": 152.0,
+   "kind": "kill",
+   "weapon": "weapons\\shotgun\\shotgun",
+   "first": 152.0,
+   "last": 152.0,
+   "kills": 2,
+   "watched": 0.23,
+   "crowd": 0.5,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 1,
+   "died": false,
+   "score": 3.9
+  },
+  {
+   "match": "damnation-team_slayer-plasma-8",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 8,
+   "kill": 152.0,
+   "kind": "kill",
+   "weapon": "weapons\\shotgun\\shotgun",
+   "first": 152.0,
+   "last": 152.0,
+   "kills": 2,
+   "watched": 0.23,
+   "crowd": 0.5,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 1,
+   "died": false,
+   "score": 3.9
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-8",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 8,
+   "kill": 156.0,
+   "kind": "kill",
+   "weapon": "weapons\\shotgun\\shotgun",
+   "first": 156.0,
+   "last": 156.0,
+   "kills": 1,
+   "watched": 0.13,
+   "crowd": 0.41,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 0,
+   "died": false,
+   "score": 2.5
+  },
+  {
+   "match": "chillout-team_slayer-plasma-7",
+   "map": "chillout:team_slayer+plasma",
+   "seed": 7,
+   "kill": 105.0,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 105.0,
+   "last": 105.0,
+   "kills": 1,
+   "watched": 0.13,
+   "crowd": 0.3,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 0,
+   "died": false,
+   "score": 2.2
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-9",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 9,
+   "kill": 42.0,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 42.0,
+   "last": 42.0,
+   "kills": 2,
+   "watched": 0.06,
+   "crowd": 0.32,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 1,
+   "died": false,
+   "score": 1.7
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-9",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 9,
+   "kill": 42.0,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 42.0,
+   "last": 42.0,
+   "kills": 2,
+   "watched": 0.06,
+   "crowd": 0.32,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 1,
+   "died": false,
+   "score": 1.7
+  },
+  {
+   "match": "damnation-team_slayer-plasma-8",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 8,
+   "kill": 177.0,
+   "kind": "kill",
+   "weapon": "weapons\\assault rifle\\assault rifle",
+   "first": 177.0,
+   "last": 177.0,
+   "kills": 1,
+   "watched": 0.04,
+   "crowd": 0.13,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 1,
+   "died": false,
+   "score": 0.9
+  },
+  {
+   "match": "hangemhigh-team_slayer-plasma-7",
+   "map": "hangemhigh:team_slayer+plasma",
+   "seed": 7,
+   "kill": 122.0,
+   "kind": "kill",
+   "weapon": "weapons\\pistol\\pistol",
+   "first": 122.0,
+   "last": 122.0,
+   "kills": 1,
+   "watched": 0.0,
+   "crowd": 0.0,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 0,
+   "died": false,
+   "score": 0.0
+  },
+  {
+   "match": "damnation-team_slayer-plasma-7",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 7,
+   "kill": 37.0,
+   "kind": "kill",
+   "weapon": "weapons\\shotgun\\shotgun",
+   "first": 37.0,
+   "last": 37.0,
+   "kills": 1,
+   "watched": 0.0,
+   "crowd": 0.0,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 0,
+   "died": false,
+   "score": 0.0
+  },
+  {
+   "match": "damnation-team_slayer-plasma-7",
+   "map": "damnation:team_slayer+plasma",
+   "seed": 7,
+   "kill": 166.0,
+   "kind": "kill",
+   "weapon": "weapons\\plasma pistol\\plasma pistol",
+   "first": 166.0,
+   "last": 166.0,
+   "kills": 1,
+   "watched": 0.26,
+   "crowd": 0.26,
+   "near_kills": 0,
+   "seen_kill": false,
+   "shots": 5,
+   "died": true,
+   "score": -2.2
+  }
+ ]
+}
