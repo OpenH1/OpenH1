@@ -7,7 +7,7 @@ usage: shoot.py <scout folder> [--count 8] [--before 3.5] [--after 1.2] [--size 
 
 The moments are taken best first, at most two from a match and three from a
 map, none overlapping another."""
-import argparse, json, os, shutil, subprocess, sys
+import argparse, json, os, re, shutil, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -26,7 +26,13 @@ def main():
     # (the previews' numbers to film again, at --size: the picks, with the
     # previews' --count and --per-kind so that the numbers are the same)
     p.add_argument('--only')
+    # (moments by their match and kill's time, "match@seconds,...": ones the
+    # previews' count left out; numbered from 31)
+    p.add_argument('--moments')
     p.add_argument('--out', default='clips')
+    # (each moment's sound alone, recorded in step with the frames, its frames
+    # thrown away: NN-*.wav beside the clips filmed before)
+    p.add_argument('--audio', action='store_true')
     a = p.parse_args()
     found = json.load(open(f'{RUNS}/{a.scout}/moments.json'))
     scouted = argparse.Namespace(**found['args'])
@@ -45,9 +51,15 @@ def main():
         per_match[m['match']] = per_match.get(m['match'], 0) + 1
         per_map[m['map']] = per_map.get(m['map'], 0) + 1
         per_kind[m.get('kind')] = per_kind.get(m.get('kind'), 0) + 1
+    if a.moments:
+        chosen = []
+        for want in a.moments.split(','):
+            match, _, seconds = want.partition('@')
+            chosen.append(min((m for m in found['moments'] if m['match'] == match),
+                              key=lambda m: abs(m['kill'] - float(seconds))))
     out = f'{RUNS}/{a.scout}/{a.out}'
     os.makedirs(out, exist_ok=True)
-    jobs = list(enumerate(chosen, 1))
+    jobs = list(enumerate(chosen, 31 if a.moments else 1))
     if a.only:
         jobs = [(i, m) for i, m in jobs if f'{i:02d}' in a.only.split(',')]
     with ThreadPoolExecutor(a.parallel) as pool:
@@ -71,8 +83,33 @@ def film(job, a, scouted, out):
     env = dict(os.environ, **match_env(m['map'], m['seed'], scouted, 0), PORT='3600', SIZE=a.size,
                RUNS=runs, TRACE_SECONDS=f'{end + 0.3:.2f}',
                HALO_SCREENSHOT_FROM=f'{start:.3f}', HALO_SCREENSHOT_UNTIL=f'{end:.3f}')
+    if a.audio:
+        env.update(AUDIO='1', HALO_SCREENSHOT_STREAM='/dev/null')
+        subprocess.run([f'{HERE}/capture.sh', name, 'openh1', '-', '', str(int(end) + 180)], env=env,
+                       capture_output=True, text=True)
+        log = open(f'{runs}/{name}/log.txt', errors='replace').read()
+        found = re.search(r"recorded sound's frame (\d+)", log)
+        if not found:
+            return f'{name}: no sound'
+        subprocess.run(['ffmpeg', '-nostdin', '-loglevel', 'error', '-y', '-ss', f'{int(found.group(1)) / 48000:.6f}',
+                        '-t', f'{end - start + 1 / 60:.6f}', '-i', f'{runs}/{name}/sound.wav', f'{out}/{name}.wav'],
+                       check=True)
+        shutil.rmtree(f'{runs}/{name}')
+        return f'{name}: sound'
+    # (a 4K clip's frames piped straight to the GPU's encoder: none on the disk)
+    if width > 1920:
+        env['STREAM_FPS'] = '60'
     subprocess.run([f'{HERE}/capture.sh', name, 'openh1', '-', '', str(int(end) + 180)], env=env,
                    capture_output=True, text=True)
+    stream = f'{runs}/{name}/stream.mp4'
+    if width > 1920:
+        if not os.path.exists(stream) or os.path.getsize(stream) < 1000:
+            return f'{name}: no frames'
+        shutil.move(stream, f'{out}/{name}.mp4')
+        shutil.rmtree(f'{runs}/{name}')
+        json.dump({'start': start, 'kill': m['kill'], 'first': first, 'last': last, 'kind': m.get('kind')},
+                  open(f'{out}/{name}.json', 'w'))
+        return f"{name}: streamed, score {m['score']}"
     frames = f'{runs}/{name}/frames'
     names = sorted(os.listdir(frames)) if os.path.isdir(frames) else []
     if not names:
@@ -81,8 +118,8 @@ def film(job, a, scouted, out):
                     names[0][5:10], '-i', f'{frames}/frame%05d.bmp', '-frames:v', str(len(names)),
                     # (the GPU's encoder: many times x264's speed at 4K, and
                     # the processors left to the games)
-                    '-an', '-c:v', 'h264_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '17', '-b:v', '0',
-                    '-pix_fmt', 'yuv420p',
+                    '-an', '-c:v', 'hevc_nvenc', '-preset', 'p5', '-rc', 'vbr', '-cq', '20', '-b:v', '0',
+                    '-tag:v', 'hvc1', '-pix_fmt', 'yuv420p',
                     '-movflags', '+faststart', f'{out}/{name}.mp4'], check=True)
     shutil.rmtree(f'{runs}/{name}')
     # (where in the clip its kills fall, for the cut)

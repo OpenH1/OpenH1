@@ -4406,13 +4406,39 @@ unsigned long xgpu_screenshot_number(void)
 	return device.frame;
 }
 
+/* port/linux/src/dsound_sdl.c: a frame's sound owed to a mix paced by the
+frames (debug.audio_record with debug.frame_time), and the sound recorded */
+void dsound_sdl_frame(double seconds);
+unsigned long dsound_sdl_recorded_frames(void);
+
+/* debug.screenshot_stream: each frame's pixels (BGRA, top row first, no
+header) appended to that file, opened once: a pipe an encoder reads, so
+that a long run's frames never reach the disk */
+static void write_screenshot_stream(const unsigned char *pixels, unsigned long width, unsigned long height)
+{
+	static FILE *stream;
+	static BOOL failed;
+
+	if (!stream && !failed)
+	{
+		stream = fopen(config_string("debug.screenshot_stream"), "wb");
+		failed = !stream;
+		if (failed)
+			platform_log("screenshot stream: cannot write %s", config_string("debug.screenshot_stream"));
+	}
+	if (!stream)
+		return;
+	fwrite(pixels, 1, width * height * 4, stream);
+	fflush(stream);
+}
+
 static void write_screenshot(struct render_target_entry *target)
 {
 	unsigned long width = target->target.pixel_width, height = target->target.pixel_height;
 	unsigned char *pixels;
 	unsigned long index;
 
-	if (!*config_string("debug.screenshot_directory"))
+	if (!*config_string("debug.screenshot_directory") && !*config_string("debug.screenshot_stream"))
 		return;
 	pixels = xgpu_backend_read_target(target->target.number, -1, FALSE);
 	if (!pixels)
@@ -4421,7 +4447,22 @@ static void write_screenshot(struct render_target_entry *target)
 	image viewers would show it as transparency */
 	for (index = 0; index < width * height; index++)
 		pixels[index * 4 + 3] = 0xff;
-	xgpu_write_bmp("frame", pixels, width, height, FALSE);
+	/* (where in debug.audio_record's sound the first frame saved falls, to
+	lay the sound under the frames) */
+	{
+		static BOOL first_logged;
+
+		if (!first_logged)
+		{
+			first_logged = TRUE;
+			platform_log("screenshot: the first frame saved at the recorded sound's frame %lu",
+				dsound_sdl_recorded_frames());
+		}
+	}
+	if (*config_string("debug.screenshot_stream"))
+		write_screenshot_stream(pixels, width, height);
+	else
+		xgpu_write_bmp("frame", pixels, width, height, FALSE);
 	free(pixels);
 }
 
@@ -4790,6 +4831,12 @@ static BOOL screenshot_this_frame(void)
 void WINAPI D3DDevice_Present(CONST RECT *source_rectangle, CONST RECT *destination_rectangle,
 	void *unused, void *unused2)
 {
+	static double frame_time = -1.0;
+
+	if (frame_time < 0.0)
+		frame_time = config_real("debug.frame_time");
+	if (frame_time > 0.0)
+		dsound_sdl_frame(frame_time);
 	(void)source_rectangle;
 	(void)destination_rectangle;
 	(void)unused;

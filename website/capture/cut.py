@@ -18,6 +18,9 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('clips'); p.add_argument('out')
     p.add_argument('--pick'); p.add_argument('--before', type=float, default=3.5)
+    # (with each clip's sound, NN-*.wav beside it: trimmed as its picture, a
+    # few milliseconds' fade at each cut)
+    p.add_argument('--audio', action='store_true')
     a = p.parse_args()
     clips = sorted(f for f in os.listdir(a.clips) if f.endswith('.mp4'))
     kind = lambda f: re.match(r'\d+-([a-z_]+)-', f).group(1)
@@ -34,7 +37,7 @@ def main():
                 if by_kind.get(k):
                     order.append(by_kind[k].pop(0))
         order.append(order.pop(order.index(clips[0])))
-    inputs, parts = [], []
+    inputs, parts, sounds = [], [], []
     for index, f in enumerate(order):
         before, after = BEATS.get(kind(f), (1.2, 0.4))
         # (the clip's kills, from shoot.py's note: a chain is shown from
@@ -47,8 +50,20 @@ def main():
             begin, finish = a.before - before, a.before + after
         inputs += ['-i', os.path.join(a.clips, f)]
         parts.append(f'[{index}:v]trim=start={max(begin, 0):.3f}:end={finish:.3f},setpts=PTS-STARTPTS[v{index}]')
-    graph = ';'.join(parts) + ';' + ''.join(f'[v{i}]' for i in range(len(order))) + f'concat=n={len(order)}:v=1:a=0[out]'
-    subprocess.run(['ffmpeg', '-loglevel', 'error', '-y', *inputs, '-filter_complex', graph, '-map', '[out]',
+        sounds.append((max(begin, 0), finish, os.path.join(a.clips, f[:-4] + '.wav')))
+    count = len(order)
+    if a.audio:
+        for index, (begin, finish, wav) in enumerate(sounds):
+            inputs += ['-i', wav]
+            length = finish - begin
+            parts.append(f'[{count + index}:a]atrim=start={begin:.3f}:end={finish:.3f},asetpts=PTS-STARTPTS,'
+                         f'afade=t=in:d=0.008,afade=t=out:st={length - 0.008:.3f}:d=0.008[a{index}]')
+        graph = ';'.join(parts) + ';' + ''.join(f'[v{i}][a{i}]' for i in range(count)) + f'concat=n={count}:v=1:a=1[out][sound]'
+        maps = ['-map', '[out]', '-map', '[sound]', '-c:a', 'aac', '-b:a', '256k']
+    else:
+        graph = ';'.join(parts) + ';' + ''.join(f'[v{i}]' for i in range(count)) + f'concat=n={count}:v=1:a=0[out]'
+        maps = ['-map', '[out]']
+    subprocess.run(['ffmpeg', '-nostdin', '-loglevel', 'error', '-y', *inputs, '-filter_complex', graph, *maps,
                     '-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p', a.out], check=True)
     print('\n'.join(order))
 

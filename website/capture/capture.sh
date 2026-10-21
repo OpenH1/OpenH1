@@ -41,8 +41,24 @@ else
     HALO_WINDOW_SIZE=$SIZE HALO_FRAME_TIME=${FT:-0.0166667}
 fi
 [ -n "${SEED:-}" ] && export HALO_RANDOM_SEED=$SEED
+# (AUDIO: the game's sound on, recorded to $root/sound.wav in step with the
+# frames - debug.audio_record with the fixed frame time - and no device)
+if [ -n "${AUDIO:-}" ]; then
+  unset HALO_NO_AUDIO; export HALO_AUDIO_RECORD=$root/sound.wav
+fi
 # (a relative path, which lands in the data root: an absolute one cannot be opened)
 [ -n "${TRACE_SECONDS:-}" ] && export HALO_TRACE=trace.txt HALO_TRACE_SECONDS=$TRACE_SECONDS
+# (STREAM_FPS: the frames piped to the GPU's HEVC encoder at that rate as
+# they are drawn, $root/stream.mp4, none on the disk; the Original's are the
+# Xbox's 640x480)
+if [ -n "${STREAM_FPS:-}" ]; then
+  [ "$side" = original ] && frame_size=640x480 || frame_size=$SIZE
+  mkfifo "$root/frames.fifo"
+  ffmpeg -loglevel error -y -f rawvideo -pix_fmt bgra -s "$frame_size" -r "$STREAM_FPS" -i "$root/frames.fifo" \
+    -c:v hevc_nvenc -preset p5 -rc vbr -cq "${STREAM_CQ:-20}" -b:v 0 -tag:v hvc1 -pix_fmt yuv420p "$root/stream.mp4" &
+  encoder=$!
+  export HALO_SCREENSHOT_STREAM=$root/frames.fifo
+fi
 cd "$TREE"
 start=$SECONDS
 timeout $((${seconds%.*} + 60)) ./build/linux_x86_64/halo > "$root/log.txt" 2>&1 &
@@ -53,5 +69,13 @@ game=$!
   exec 3<>/dev/tcp/127.0.0.1/$HALO_TELNET_CONSOLE_PORT && printf '(begin (show_hud 0) %s(sleep 1))\r\n' "${CONSOLE:-}" >&3 && sleep 1 && exec 3>&-
   echo "hud hidden at frame $(ls $root/frames | wc -l)" ) &
 wait $game
-echo "exit=$? took=$((SECONDS - start))s frames=$(ls $root/frames | wc -l)"
+status=$?
+if [ -n "${STREAM_FPS:-}" ]; then
+  # (a game that never reached its window never opened the pipe: opened and
+  # closed here, so that the encoder ends)
+  kill -0 $encoder 2> /dev/null && { exec 4> "$root/frames.fifo"; exec 4>&-; }
+  wait $encoder
+  rm -f "$root/frames.fifo"
+fi
+echo "exit=$status took=$((SECONDS - start))s frames=$(ls $root/frames | wc -l)"
 wait

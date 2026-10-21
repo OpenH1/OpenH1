@@ -1383,6 +1383,10 @@ static const struct config_setting config_settings[] =
 		"A folder to save frames to (with screenshot_every); empty none." },
 	{ "debug.screenshot_every", _config_integer, "0", "HALO_SCREENSHOT_EVERY", _environment_value, _platform_all,
 		"Save every this many frames to screenshot_directory; 0 none." },
+	{ "debug.screenshot_stream", _config_string, "\"\"", "HALO_SCREENSHOT_STREAM", _environment_value, _platform_all,
+		"With screenshot_every, a file (a pipe an encoder reads) each frame's\n"
+		"pixels go to instead of screenshot_directory's BMPs: BGRA, the top row\n"
+		"first, no header; empty none." },
 	{ "debug.screenshot_from", _config_real, "0.0", "HALO_SCREENSHOT_FROM", _environment_value, _platform_all,
 		"With screenshot_every, save from this many seconds of the scenario's\n"
 		"simulation (debug.trace's clock); 0 from the first frame." },
