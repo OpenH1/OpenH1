@@ -79,6 +79,9 @@ player's view turned to a yaw and pitch, in degrees (debug.test_input
 "script:") */
 extern double sim_trace_scenario_seconds(void);
 extern void sim_trace_aim(double yaw, double pitch);
+/* port/linux/game/bots.c: the view turned toward the nearest enemy in
+sight, and how the player moves; TRUE once on it (the script's "hunt") */
+extern unsigned char bots_hunt(float *forward, float *strafe);
 
 /* ---------- device tables */
 
@@ -992,6 +995,11 @@ second (tools/scorecard). An event is "<start>[-<end>] <action>":
     move=<x>,<y>         the left stick (-1 to 1 each way), start to end
     look=<x>,<y>         the right stick, start to end
     aim=<yaw>,<pitch>    the view turned there (degrees) at start, once
+    hunt                 from start to end, the view turned toward the
+                         nearest enemy in sight and fire held once on it,
+                         the player moving to fight it (bots_hunt: the
+                         campaign's footage); a move= after it overrides
+                         the moving
 
 A time on the 30 Hz grid (a multiple of 1/30) falls on a step at every
 rate. */
@@ -1007,6 +1015,7 @@ static struct test_script_event
 	int stick;
 	float x, y;
 	int aim, aimed;
+	int hunt;
 } test_script[TEST_SCRIPT_EVENTS];
 static int test_script_count;
 static int test_script_on;
@@ -1068,6 +1077,8 @@ static void test_script_parse(const char *script)
 			event->stick = 2;
 		else if (sscanf(action, "aim=%f,%f", &event->x, &event->y) == 2)
 			event->aim = 1;
+		else if (!strcmp(action, "hunt"))
+			event->hunt = 1;
 		else
 		{
 			platform_log("test input: script: no action \"%s\": left out", action);
@@ -1107,6 +1118,17 @@ static void test_script_gamepad(XINPUT_GAMEPAD *pad)
 		}
 		if (t < event->start || t >= event->end)
 			continue;
+		if (event->hunt)
+		{
+			float forward, strafe;
+
+			if (bots_hunt(&forward, &strafe))
+				pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] = 255;
+			/* (its moves, which a later move in the script overrides) */
+			pad->sThumbLX = test_script_axis(strafe);
+			pad->sThumbLY = test_script_axis(forward);
+			continue;
+		}
 		if (event->analog >= 0)
 			pad->bAnalogButtons[event->analog] = 255;
 		pad->wButtons |= (WORD)event->digital;

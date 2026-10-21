@@ -52,6 +52,21 @@ Lines:
                                                    facing a normal
     e boom <id> <x> <y> <z>                        it detonated
     e gone <id>                                    it is no more
+    e weapon <player> <tag|->                      the weapon in the player's
+                                                   hands changed (a pickup, a
+                                                   switch, a respawn; - none)
+    e wstate <player> <state>                      its state changed: idle,
+                                                   recoil, chamber (a pump, a
+                                                   bolt), reload, charged,
+                                                   ready (drawn), put_away
+                                                   (primary or secondary)
+    e zoom <player> <level>                        its zoom level changed (-1
+                                                   none, 0 the first)
+    e act <player> <state>                         the unit's animation state
+                                                   changed to a melee or a
+                                                   grenade's throw (melee,
+                                                   melee_airborne, throw);
+                                                   "-" when it ends
 
 An event's line comes after the step's s line it happened in. Identifiers
 are object datum indexes in hexadecimal; a player is its absolute index, or
@@ -82,6 +97,7 @@ uncorrected 60 Hz jump does); "speed", a projectile starts 1% slow.
 #include "units/units.h"
 #include "units/bipeds.h"
 #include "items/projectiles.h"
+#include "items/weapons.h"
 #include "tag_files/tag_files.h"
 #include "sim_rate.h"
 
@@ -139,6 +155,14 @@ static struct
 	short projectile_count;
 	/* (the jump mutation: each player's unit airborne at the last step) */
 	boolean airborne[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	/* each player's weapon (its definition, NONE for none), its state,
+	the unit's zoom and its action at the last step, for the events of
+	their changes; set once the player's first line is written */
+	boolean weapon_known[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	long weapon_definition[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	char weapon_state[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	char zoom[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+	char action[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
 } sim_trace;
 
 /* the events of a step, written before the step's own line, are held back
@@ -289,6 +313,63 @@ static void sim_trace_vehicles(
 	}
 }
 
+/* the player's weapon, its state, its zoom and its melee or throw, each as
+an event line when it changed since the last step (footage's cuts on the
+same action: e weapon, e wstate, e zoom, e act) */
+static void sim_trace_weapon_events(
+	long absolute_index,
+	struct unit_datum *unit)
+{
+	static char const *const weapon_states[] =
+	{
+		"idle", "primary_recoil", "secondary_recoil", "primary_chamber", "secondary_chamber",
+		"primary_reload", "secondary_reload", "primary_charged", "secondary_charged", "ready", "put_away",
+	};
+	long weapon_index = unit->unit.current_weapon_index >= 0 &&
+		unit->unit.current_weapon_index < MAXIMUM_WEAPONS_PER_UNIT ?
+		unit->unit.weapon_object_indices[unit->unit.current_weapon_index] : NONE;
+	struct weapon_datum *weapon = weapon_index != NONE ?
+		(struct weapon_datum *)object_try_and_get_and_verify_type(weapon_index, _object_mask_weapon) : NULL;
+	long definition = weapon ? weapon->definition_index : NONE;
+	char state = weapon ? weapon->weapon.state : -1;
+	char zoom = unit->unit.current_zoom_level;
+	char action = unit->unit.animation.state;
+	char const *act;
+
+	/* (only a melee's or a throw's start and end) */
+	if (action != _unit_state_melee_attack && action != _unit_state_melee_airborne &&
+		action != _unit_state_throw_grenade)
+	{
+		action = NONE;
+	}
+	if (sim_trace.weapon_known[absolute_index] && definition == sim_trace.weapon_definition[absolute_index] &&
+		state == sim_trace.weapon_state[absolute_index] && zoom == sim_trace.zoom[absolute_index] &&
+		action == sim_trace.action[absolute_index])
+	{
+		return;
+	}
+	if (!sim_trace.weapon_known[absolute_index] || definition != sim_trace.weapon_definition[absolute_index])
+		fprintf(sim_trace.file, "e weapon %ld %s\n", absolute_index, definition != NONE ? tag_get_name(definition) : "-");
+	if ((!sim_trace.weapon_known[absolute_index] || state != sim_trace.weapon_state[absolute_index]) && state >= 0 &&
+		state < (char)NUMBEROF(weapon_states))
+	{
+		fprintf(sim_trace.file, "e wstate %ld %s\n", absolute_index, weapon_states[(int)state]);
+	}
+	if (!sim_trace.weapon_known[absolute_index] || zoom != sim_trace.zoom[absolute_index])
+		fprintf(sim_trace.file, "e zoom %ld %d\n", absolute_index, zoom);
+	if (sim_trace.weapon_known[absolute_index] && action != sim_trace.action[absolute_index])
+	{
+		act = action == _unit_state_melee_attack ? "melee" : action == _unit_state_melee_airborne ? "melee_airborne" :
+			action == _unit_state_throw_grenade ? "throw" : "-";
+		fprintf(sim_trace.file, "e act %ld %s\n", absolute_index, act);
+	}
+	sim_trace.weapon_known[absolute_index] = TRUE;
+	sim_trace.weapon_definition[absolute_index] = definition;
+	sim_trace.weapon_state[absolute_index] = state;
+	sim_trace.zoom[absolute_index] = zoom;
+	sim_trace.action[absolute_index] = action;
+}
+
 static void sim_trace_players(
 	void)
 {
@@ -326,6 +407,8 @@ static void sim_trace_players(
 			unit->object.translational_velocity.k * SECONDS_PER_VELOCITY_UNIT,
 			unit->unit.aiming_vector.i, unit->unit.aiming_vector.j, unit->unit.aiming_vector.k, airborne ? 1 : 0,
 			unit->object.body_vitality, unit->object.shield_vitality);
+		if (absolute_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
+			sim_trace_weapon_events(absolute_index, unit);
 	}
 }
 

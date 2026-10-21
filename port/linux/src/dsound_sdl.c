@@ -1939,12 +1939,34 @@ static void SDLCALL audio_callback(void *userdata, SDL_AudioStream *stream, int 
 }
 
 /* without a device, drain voices in real time */
+/* debug.audio_record with debug.frame_time (footage: the frames drawn at
+a fixed time each, slower or faster than the clock): the mix paced by the
+frames instead, each drawn frame owing its time's sound, which the frame
+waits to be mixed (dsound_sdl_frame), so that the recording keeps step with
+the pictures */
+static BOOL paced;
+static pthread_mutex_t paced_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t paced_condition = PTHREAD_COND_INITIALIZER;
+static double paced_owed;
+
 static void *silent_clock_thread(void *parameter)
 {
 	float buffer[480 * MAXIMUM_OUTPUT_CHANNELS];
 	struct timespec next;
 
 	(void)parameter;
+	while (paced)
+	{
+		pthread_mutex_lock(&paced_lock);
+		while (paced_owed < 480.0)
+			pthread_cond_wait(&paced_condition, &paced_lock);
+		pthread_mutex_unlock(&paced_lock);
+		mix(buffer, 480);
+		pthread_mutex_lock(&paced_lock);
+		paced_owed -= 480.0;
+		pthread_cond_broadcast(&paced_condition);
+		pthread_mutex_unlock(&paced_lock);
+	}
 	clock_gettime(CLOCK_MONOTONIC, &next);
 	for (;;)
 	{
@@ -1958,6 +1980,26 @@ static void *silent_clock_thread(void *parameter)
 		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL);
 	}
 	return NULL;
+}
+
+/* (the presenting thread, each frame drawn) its time's sound owed to a
+paced mix, waited for */
+void dsound_sdl_frame(double seconds)
+{
+	if (!paced)
+		return;
+	pthread_mutex_lock(&paced_lock);
+	paced_owed += seconds * OUTPUT_RATE;
+	pthread_cond_broadcast(&paced_condition);
+	while (paced_owed >= 480.0)
+		pthread_cond_wait(&paced_condition, &paced_lock);
+	pthread_mutex_unlock(&paced_lock);
+}
+
+/* the frames of sound recorded so far (debug.audio_record) */
+unsigned long dsound_sdl_recorded_frames(void)
+{
+	return record_frames;
 }
 
 /* audio.channels: "stereo", "5.1", or "auto" for 5.1 when the device has
@@ -2009,8 +2051,11 @@ static void audio_start(void)
 	reverb_initialize();
 	hrtf_initialize();
 	record_open();
+	paced = record_file && config_real("debug.frame_time") > 0.0;
+	if (paced)
+		platform_log("sound: recorded in step with the frames (debug.frame_time), no device");
 
-	if (config_boolean("audio.enabled") && platform_sdl_initialize())
+	if (!paced && config_boolean("audio.enabled") && platform_sdl_initialize())
 	{
 		snprintf(audio_device_name, sizeof(audio_device_name), "%s", audio_device_setting());
 		output_channels = choose_output_channels(platform_audio_device(FALSE, audio_device_name));

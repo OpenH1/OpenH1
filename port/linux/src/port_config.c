@@ -1098,7 +1098,8 @@ static const struct config_setting config_settings[] =
 		"turn, logging each (the VR mode's vr.aim = \"gamepad\"); \"menu:<buttons>\" presses menu\n"
 		"buttons one a second (a, b, x, y, up, down, left, right, start, back or\n"
 		"wait, separated by spaces or commas), for testing the menus;\n"
-		"\"script:<second>[-<second>] <action>;...\" presses, holds and aims on the\n"
+		"\"script:<second>[-<second>] <action>;...\" presses, holds and aims (\"hunt\": at the\n"
+		"nearest enemy in sight) on the\n"
 		"simulation's clock in seconds from the scenario's start (tools/scorecard),\n"
 		"the same at any simulation rate; empty for none." },
 	{ "debug.trace", _config_string, "\"\"", "HALO_TRACE", _environment_value, _platform_all,
@@ -1117,6 +1118,20 @@ static const struct config_setting config_settings[] =
 	{ "debug.bot_trace", _config_integer, "0", "HALO_BOT_TRACE", _environment_value, _platform_all,
 		"Log each bot's state (bots.count) every this many seconds: where it is\n"
 		"and goes, its path, target and weapon; 0 never." },
+	{ "debug.bot_player", _config_boolean, "false", "HALO_BOT_PLAYER", _environment_set_is_true, _platform_all,
+		"In a local game with bots (bots.count), a bot of its own plays the first\n"
+		"player too, its view drawn as the player's (for recorded footage)." },
+	{ "debug.bot_player_weapon", _config_string, "\"\"", "HALO_BOT_PLAYER_WEAPON", _environment_value, _platform_all,
+		"With debug.bot_player, a weapon (part of its tag's name: \"sniper\",\n"
+		"\"rocket\") the player's bot goes for wherever it lies, and keeps." },
+	{ "debug.bot_player_grenades", _config_string, "\"\"", "HALO_BOT_PLAYER_GRENADES", _environment_value, _platform_all,
+		"With debug.bot_player, \"plasma\": the player's bot spawns with four plasma\n"
+		"grenades and no frags, and throws them closer and more often (for\n"
+		"sticks); empty as the other bots." },
+	{ "debug.bot_player_vehicle", _config_string, "\"\"", "HALO_BOT_PLAYER_VEHICLE", _environment_value, _platform_all,
+		"With debug.bot_player, a vehicle (part of its tag's name: \"warthog\",\n"
+		"\"ghost\") the player's bot boards when it is on foot, and drives at the\n"
+		"enemies it fights." },
 	{ "debug.update_answer", _config_string, "\"\"", "HALO_UPDATE_ANSWER", _environment_value, _platform_desktop,
 		"The answer to the new version question, for automated tests: \"yes\",\n"
 		"\"no\" or \"never\" (do not ask again, confirmed); empty asks." },
@@ -1372,6 +1387,16 @@ static const struct config_setting config_settings[] =
 		"A folder to save frames to (with screenshot_every); empty none." },
 	{ "debug.screenshot_every", _config_integer, "0", "HALO_SCREENSHOT_EVERY", _environment_value, _platform_all,
 		"Save every this many frames to screenshot_directory; 0 none." },
+	{ "debug.screenshot_stream", _config_string, "\"\"", "HALO_SCREENSHOT_STREAM", _environment_value, _platform_all,
+		"With screenshot_every, a file (a pipe an encoder reads) each frame's\n"
+		"pixels go to instead of screenshot_directory's BMPs: BGRA, the top row\n"
+		"first, no header; empty none." },
+	{ "debug.screenshot_from", _config_real, "0.0", "HALO_SCREENSHOT_FROM", _environment_value, _platform_all,
+		"With screenshot_every, save from this many seconds of the scenario's\n"
+		"simulation (debug.trace's clock); 0 from the first frame." },
+	{ "debug.screenshot_until", _config_real, "0.0", "HALO_SCREENSHOT_UNTIL", _environment_value, _platform_all,
+		"With screenshot_every, save until this many seconds of the scenario's\n"
+		"simulation; 0 to the last frame." },
 	{ "debug.texture_dump_directory", _config_string, "\"\"", "HALO_TEXTURE_DUMP", _environment_value, _platform_all,
 		"A folder to write every texture to as it is uploaded; empty none." },
 	{ "debug.texture_log", _config_boolean, "false", "HALO_TEXTURE_LOG", _environment_set_is_true, _platform_all,

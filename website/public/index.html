@@ -72,18 +72,18 @@ footer .wordmark img { height: 18px; }
 /* ---------- hero */
 .hero { position: relative; min-height: 100svh; display: grid; align-content: end; padding-top: 140px; overflow: hidden; isolation: isolate; }
 .hero > .wrap { width: 100%; }
-.hero-media { position: absolute; inset: 0; z-index: -3; background: #0b0d09 url("media/hero-poster.webp") 50% 50% / cover no-repeat; }
+.hero-media { position: absolute; inset: -3%; z-index: -3; background: #0b0d09 url("media/hero-poster.webp") 50% 50% / cover no-repeat; transform: translate3d(var(--mx, 0px), calc(var(--my, 0px) + var(--sy, 0px)), 0) scale(var(--hs, 1)); will-change: transform; }
 .hero-media video { width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity 1.2s ease; }
 .hero-media video.playing { opacity: 1; }
 .hero::before {
   content: ""; position: absolute; inset: 0; z-index: -2;
   background:
-    linear-gradient(180deg, rgba(4, 5, 4, 0.8) 0%, rgba(4, 5, 4, 0) 24%),
-    linear-gradient(90deg, rgba(4, 5, 4, 0.85) 0%, rgba(4, 5, 4, 0.4) 45%, rgba(4, 5, 4, 0) 72%),
-    linear-gradient(0deg, var(--bg) 0%, rgba(4, 5, 4, 0.75) 22%, rgba(4, 5, 4, 0) 55%),
+    linear-gradient(180deg, rgba(4, 5, 4, 0.7) 0%, rgba(4, 5, 4, 0) 18%),
+    linear-gradient(90deg, rgba(4, 5, 4, 0.78) 0%, rgba(4, 5, 4, 0.3) 38%, rgba(4, 5, 4, 0) 58%),
+    linear-gradient(0deg, var(--bg) 0%, rgba(4, 5, 4, 0.55) 16%, rgba(4, 5, 4, 0) 40%),
     radial-gradient(ellipse 60% 50% at 16% 94%, rgba(157, 255, 60, 0.16), transparent 70%);
 }
-.hero::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px); mix-blend-mode: multiply; opacity: 0.5; }
+.hero::after { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px); mix-blend-mode: multiply; opacity: 0.22; }
 .frame { position: absolute; inset: 96px var(--gutter) auto; height: calc(100% - 180px); pointer-events: none; }
 .frame i { position: absolute; width: 28px; height: 28px; border: 0 solid var(--green); opacity: 0.7; }
 .frame i:nth-child(1) { left: 0; top: 0; border-width: 1px 0 0 1px; }
@@ -155,6 +155,7 @@ h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stret
 .co.down .leader { bottom: auto; top: 9px; background: linear-gradient(180deg, var(--green), rgba(157, 255, 60, 0.25)); }
 .co.down .lbl { bottom: auto; top: calc(var(--len, 44px) + 9px); }
 .legend { display: none; margin: 16px 0 0; padding: 0; list-style: none; counter-reset: c; }
+.legend.always { display: block; }
 .legend li { counter-increment: c; position: relative; padding: 6px 0 6px 34px; color: var(--soft); font-size: 15px; }
 .legend li::before { content: counter(c); position: absolute; left: 0; top: 6px; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--green); color: var(--green); display: grid; place-items: center; font: 700 10px/1 var(--mono); }
 
@@ -270,8 +271,7 @@ footer .legal a { color: var(--soft); }
   .clips { grid-template-columns: 1fr; }
   .vr-grid, .plat { grid-template-columns: 1fr 1fr; }
   .frame { display: none; }
-  .hero-media { background-position: 62% 50%; }
-  .hero-media video { object-position: 62% 50%; }
+
 }
 @media (max-width: 700px) {
   /* callouts become numbered pins, the legend explains them */
@@ -293,6 +293,7 @@ footer .legal a { color: var(--soft); }
   .spin b.still { opacity: 1; }
   .reveal { opacity: 1; transform: none; transition: none; }
   .co, .flip .after, .switch::before, .hero-media video { transition: none; }
+  .hero-media { transform: none; }
 }
 </style>
 </head>
@@ -315,9 +316,10 @@ footer .legal a { color: var(--soft); }
 <main id="main">
   <section class="hero" aria-labelledby="hero-title">
     <div class="hero-media" aria-hidden="true">
-      <!-- a muted loop of the game, set playing by the script at the end
-           once the page has loaded; for less motion, the poster only -->
-      <video id="hero-video" muted loop playsinline preload="none" poster="media/hero-poster.webp" data-webm="media/hero.webm" data-mp4="media/hero.mp4"></video>
+      <!-- a muted loop of the game, of the size the screen wants (hero-720,
+           -1080, -1440), set playing by the script as soon as it runs; for
+           less motion, the poster only -->
+      <video id="hero-video" muted loop playsinline preload="none" poster="media/hero-poster.webp" data-sizes="720 1080 1440"></video>
     </div>
     <div class="frame" aria-hidden="true"><i></i><i></i><p class="tag mono"><span class="rec"></span>Metal / Vulkan<br>4K @ 120Hz</p></div>
     <div class="wrap hero-copy">
@@ -361,21 +363,12 @@ footer .legal a { color: var(--soft); }
         </div>
         <p class="reveal d1">The original lit a whole wall at once. OpenH1 lights every pixel by how far it is from the blast, so light pools near the fire and fades into the dark. Drag across the shot.</p>
       </div>
-      <div class="shot pair wipe reveal" id="wipe" data-pair tabindex="0" role="slider" aria-label="Compare the Original and OpenH1" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="Half Original, half OpenH1">
-        <!-- VIDEO TODO (website/VIDEOS-TODO.md, "lights"): replace each layer's <img> with
-             <video muted loop playsinline preload="none" poster="media/lights-original-poster.webp"
-             data-webm="media/lights-original.webm" data-mp4="media/lights-original.mp4"></video>
-             (and lights-openh1 in the layer after); the script plays the pair in step. -->
+      <div class="shot pair wipe reveal" id="wipe" data-pair tabindex="0" role="slider" aria-label="Compare the Original and OpenH1" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="Half Original, half OpenH1" style="aspect-ratio:4/3;width:min(100%,82vh*4/3);margin-inline:auto">
         <div class="layer before">
-          <img src="media/lights-original.webp" alt="A grenade going off in a corridor, as the game originally drew it: the far wall and the ramp across the room are lit as brightly as the wall beside the blast" width="1920" height="1080" loading="lazy" decoding="async">
+          <video muted loop playsinline preload="none" poster="media/lights-original-poster.webp" data-webm="media/lights-original.webm" data-mp4="media/lights-original.mp4" aria-label="A grenade going off in a room, as the game originally drew it: the whole room, its far walls and its ceiling turn yellow at once"></video>
         </div>
         <div class="layer after">
-          <img src="media/lights-openh1.webp" alt="The same moment in OpenH1: the wall dims with distance, the ceiling stays dark, and the ramp across the room stays in shadow" width="1920" height="1080" loading="lazy" decoding="async">
-          <div class="cos" aria-hidden="true">
-            <span class="co west" style="--x:88%;--y:40%;--len:56px"><i class="pin" data-n="1"></i><i class="leader"></i><span class="lbl">The wall dims with distance</span></span>
-            <span class="co west down" style="--x:80%;--y:13%;--len:30px"><i class="pin" data-n="2"></i><i class="leader"></i><span class="lbl">The ceiling stays in shadow</span></span>
-            <span class="co" style="--x:9%;--y:44%;--len:48px"><i class="pin" data-n="3"></i><i class="leader"></i><span class="lbl">No false light across the room</span></span>
-          </div>
+          <video muted loop playsinline preload="none" poster="media/lights-openh1-poster.webp" data-webm="media/lights-openh1.webm" data-mp4="media/lights-openh1.mp4" aria-label="The same moment in OpenH1: the light pools around the blast and the rest of the room stays dark"></video>
           <span class="side r">OpenH1</span>
         </div>
         <div class="lclip"><span class="side l">Original</span></div>
@@ -383,12 +376,12 @@ footer .legal a { color: var(--soft); }
         <span class="knob" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6"/></svg></span>
         <span class="hint" aria-hidden="true">◀ Original · OpenH1 ▶</span>
       </div>
-      <ol class="legend" aria-label="What OpenH1 changes in this shot">
-        <li>The wall dims with distance from the blast.</li>
-        <li>The ceiling stays in shadow.</li>
-        <li>The ramp across the room isn't lit as if it were beside the fire.</li>
+      <ol class="legend always" aria-label="What OpenH1 changes in this shot">
+        <li>The light pools around the blast and fades with distance.</li>
+        <li>The far walls and the ceiling stay in shadow.</li>
+        <li>Each surface keeps its own colour instead of turning yellow.</li>
       </ol>
-      <p class="caption mono">Real capture, the same moment twice · Derelict, a frag grenade · Dynamic Lights as the game drew them, and OpenH1's Enhanced; everything else the same</p>
+      <p class="caption mono">Real capture, the same run twice · Rat Race, a frag grenade · Original: the Classic preset at the Xbox's 640 × 480, a frame a tick · OpenH1: Enhanced, frames between ticks</p>
     </div>
   </section>
 
@@ -672,16 +665,49 @@ footer .legal a { color: var(--soft); }
     }
   }
 
-  // the hero's loop: after the page has loaded; never for reduced motion
+  // the hero's loop, of the size the screen wants (its pixels, the larger of
+  // its width and its height's 16:9 width; a phone the least): as soon as the
+  // script runs, the poster its first frame; never for reduced motion
   const hero = document.getElementById("hero-video"), pause = document.getElementById("hero-pause");
   let heroPaused = false;
   function startHero() {
     if (still) return;
+    const need = Math.max(innerWidth, innerHeight * 16 / 9) * Math.min(devicePixelRatio || 1, 2);
+    const sizes = hero.dataset.sizes.split(" ").map(Number);
+    // (a phone's, its data dearer than its sharpness behind the copy: the least)
+    const size = innerWidth < 700 ? sizes[0] : sizes.find((h) => h * 16 / 9 >= need * 0.9) || sizes[sizes.length - 1];
+    hero.dataset.webm = `media/hero-${size}.webm`;
+    hero.dataset.mp4 = `media/hero-${size}.mp4`;
     load(hero);
     hero.addEventListener("playing", () => hero.classList.add("playing"), { once: true });
     hero.play().then(() => { pause.hidden = false; }).catch(() => {});
   }
-  if (document.readyState === "complete") startHero(); else addEventListener("load", startHero);
+  startHero();
+  // a little life: the scene pushes in as the page scrolls past it, and on a
+  // pointer's screen drifts a few pixels with it; never for reduced motion
+  const heroMedia = document.querySelector(".hero-media");
+  if (!still) {
+    let mx = 0, my = 0, tx = 0, ty = 0, queued = false;
+    const draw = () => {
+      queued = false;
+      mx += (tx - mx) * 0.12; my += (ty - my) * 0.12;
+      const p = Math.min(1, scrollY / innerHeight);
+      heroMedia.style.setProperty("--hs", (1 + p * 0.06).toFixed(4));
+      heroMedia.style.setProperty("--sy", (p * innerHeight * 0.12).toFixed(1) + "px");
+      heroMedia.style.setProperty("--mx", mx.toFixed(2) + "px");
+      heroMedia.style.setProperty("--my", my.toFixed(2) + "px");
+      if (Math.abs(tx - mx) > 0.05 || Math.abs(ty - my) > 0.05) queue();
+    };
+    const queue = () => { if (!queued) { queued = true; requestAnimationFrame(draw); } };
+    addEventListener("scroll", queue, { passive: true });
+    if (matchMedia("(pointer: fine)").matches) {
+      addEventListener("pointermove", (e) => {
+        if (scrollY > innerHeight) return;
+        tx = (e.clientX / innerWidth - 0.5) * -14; ty = (e.clientY / innerHeight - 0.5) * -8;
+        queue();
+      }, { passive: true });
+    }
+  }
   pause.addEventListener("click", () => {
     heroPaused = !heroPaused;
     if (heroPaused) hero.pause(); else hero.play();
