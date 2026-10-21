@@ -405,7 +405,7 @@ footer .legal a { color: var(--soft); }
     </div>
   </section>
 
-  <!-- 03: the plasma glow, two clips -->
+  <!-- 03: the plasma glow, a wipe -->
   <section class="sec" id="glow" aria-labelledby="glow-title">
     <div class="wrap">
       <div class="sec-head">
@@ -413,17 +413,20 @@ footer .legal a { color: var(--soft); }
           <p class="kicker mono">03 · The plasma glow</p>
           <h2 id="glow-title">Plasma that <span class="lit">glows.</span></h2>
         </div>
-        <p class="reveal d1">The original drew a plasma bolt as a flat flare. OpenH1 gives every bolt in flight a soft glow, and lets it light the walls, the floor and the gun in your hands.</p>
+        <p class="reveal d1">The original drew a plasma bolt as a flat flare. OpenH1 gives every bolt in flight a soft glow, and lets it light the walls, the floor and the gun in your hands. Drag across the shot.</p>
       </div>
-      <div class="clips" id="glow-clips">
-        <div class="shot pair reveal" style="aspect-ratio:4/3">
+      <div class="shot pair wipe reveal" id="glow-wipe" data-pair tabindex="0" role="slider" aria-label="Compare the Original and OpenH1" aria-valuemin="0" aria-valuemax="100" aria-valuenow="50" aria-valuetext="Half Original, half OpenH1" style="aspect-ratio:4/3;width:min(100%,82vh*4/3);margin-inline:auto">
+        <div class="layer before">
           <video muted loop playsinline preload="none" poster="media/glow-original-poster.webp" data-webm="media/glow-original.webm" data-mp4="media/glow-original.mp4" aria-label="Plasma rifle bolts fired down a dark corridor, as the game originally drew them: small flares, and the corridor stays dark"></video>
-          <span class="side l">Original</span>
         </div>
-        <div class="shot pair reveal d1" style="aspect-ratio:4/3">
+        <div class="layer after">
           <video muted loop playsinline preload="none" poster="media/glow-openh1-poster.webp" data-webm="media/glow-openh1.webm" data-mp4="media/glow-openh1.mp4" aria-label="The same shots in OpenH1: each bolt glows and lights the floor and the walls as it flies"></video>
-          <span class="side l">OpenH1</span>
+          <span class="side r">OpenH1</span>
         </div>
+        <div class="lclip"><span class="side l">Original</span></div>
+        <span class="bar" aria-hidden="true"></span>
+        <span class="knob" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 6l-6 6 6 6M15 6l6 6-6 6"/></svg></span>
+        <span class="hint" aria-hidden="true">◀ Original · OpenH1 ▶</span>
       </div>
       <ol class="legend always" aria-label="What OpenH1 changes in this shot">
         <li>The bolt glows as it flies.</li>
@@ -683,36 +686,42 @@ footer .legal a { color: var(--soft); }
     if (e.isIntersecting) hero.play().catch(() => {}); else hero.pause();
   }).observe(hero);
 
-  // the wipe: callouts on the OpenH1 side show as it is revealed
-  const wipe = document.getElementById("wipe");
-  const wipeCos = [...wipe.querySelectorAll(".co")];
-  const sideL = wipe.querySelector(".side.l"), sideR = wipe.querySelector(".side.r");
-  function setWipe(p) {
-    p = Math.max(0, Math.min(100, p));
-    wipe.style.setProperty("--pos", p + "%");
-    wipe.setAttribute("aria-valuenow", Math.round(p));
-    wipe.setAttribute("aria-valuetext", `${Math.round(p)}% Original, ${100 - Math.round(p)}% OpenH1`);
-    sideL.classList.toggle("big", p > 55); sideR.classList.toggle("big", p < 45);
-    wipeCos.forEach((c) => c.classList.toggle("on", parseFloat(c.style.getPropertyValue("--x")) > p + 3));
+  // the wipes: callouts on the OpenH1 side show as it is revealed
+  function wipeBox(wipe, glide) {
+    const wipeCos = [...wipe.querySelectorAll(".co")];
+    const sideL = wipe.querySelector(".side.l"), sideR = wipe.querySelector(".side.r");
+    function setWipe(p) {
+      p = Math.max(0, Math.min(100, p));
+      wipe.style.setProperty("--pos", p + "%");
+      wipe.setAttribute("aria-valuenow", Math.round(p));
+      wipe.setAttribute("aria-valuetext", `${Math.round(p)}% Original, ${100 - Math.round(p)}% OpenH1`);
+      sideL.classList.toggle("big", p > 55); sideR.classList.toggle("big", p < 45);
+      wipeCos.forEach((c) => c.classList.toggle("on", parseFloat(c.style.getPropertyValue("--x")) > p + 3));
+    }
+    let stopWipe = () => {};
+    const wipeAt = (e) => { const r = wipe.getBoundingClientRect(); setWipe(((e.clientX - r.left) / r.width) * 100); };
+    let dragging = false;
+    wipe.addEventListener("pointerdown", (e) => { stopWipe(); dragging = true; wipe.setPointerCapture(e.pointerId); wipeAt(e); });
+    wipe.addEventListener("pointermove", (e) => { if (dragging) wipeAt(e); });
+    addEventListener("pointerup", () => { dragging = false; });
+    wipe.addEventListener("keydown", (e) => {
+      const now = +wipe.getAttribute("aria-valuenow");
+      const step = { ArrowLeft: -5, ArrowDown: -5, ArrowRight: 5, ArrowUp: 5, PageDown: -20, PageUp: 20 }[e.key];
+      const to = step ? now + step : e.key === "Home" ? 0 : e.key === "End" ? 100 : null;
+      if (to !== null) { stopWipe(); setWipe(to); e.preventDefault(); }
+    });
+    if (glide) {
+      setWipe(still ? 40 : 100);
+      // demo: from the Original, a glide that reveals OpenH1 across most of the shot, then a resting split
+      if (!still) once(wipe, () => {
+        stopWipe = demo(2400, (t) => setWipe(t < 0.6 ? 100 - 92 * ease(t / 0.6) : 8 + 32 * ease((t - 0.6) / 0.4)));
+      });
+    } else setWipe(50);
+    group([...wipe.querySelectorAll("video")], wipe);
   }
-  let stopWipe = () => {};
-  const wipeAt = (e) => { const r = wipe.getBoundingClientRect(); setWipe(((e.clientX - r.left) / r.width) * 100); };
-  let dragging = false;
-  wipe.addEventListener("pointerdown", (e) => { stopWipe(); dragging = true; wipe.setPointerCapture(e.pointerId); wipeAt(e); });
-  wipe.addEventListener("pointermove", (e) => { if (dragging) wipeAt(e); });
-  addEventListener("pointerup", () => { dragging = false; });
-  wipe.addEventListener("keydown", (e) => {
-    const now = +wipe.getAttribute("aria-valuenow");
-    const step = { ArrowLeft: -5, ArrowDown: -5, ArrowRight: 5, ArrowUp: 5, PageDown: -20, PageUp: 20 }[e.key];
-    const to = step ? now + step : e.key === "Home" ? 0 : e.key === "End" ? 100 : null;
-    if (to !== null) { stopWipe(); setWipe(to); e.preventDefault(); }
-  });
-  setWipe(still ? 40 : 100);
-  // demo: from the Original, a glide that reveals OpenH1 across most of the shot, then a resting split
-  if (!still) once(wipe, () => {
-    stopWipe = demo(2400, (t) => setWipe(t < 0.6 ? 100 - 92 * ease(t / 0.6) : 8 + 32 * ease((t - 0.6) / 0.4)));
-  });
-  group([...wipe.querySelectorAll("video")], wipe);
+  wipeBox(document.getElementById("wipe"), true);
+  // (the glow's: split down the middle, where the bolts fly)
+  wipeBox(document.getElementById("glow-wipe"), false);
 
   // the lens
   const box = document.getElementById("lensbox"), all = document.getElementById("lens-all");
@@ -736,7 +745,6 @@ footer .legal a { color: var(--soft); }
   group([...box.querySelectorAll("video")], box);
 
   // the clips
-  group([...document.querySelectorAll("#glow-clips video")], document.getElementById("glow-clips"));
   group([...document.querySelectorAll("#clips video")], document.getElementById("clips"), document.getElementById("clips-play"));
 })();
 </script>
