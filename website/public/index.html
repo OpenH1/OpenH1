@@ -201,20 +201,6 @@ h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stret
 .key i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 8px; vertical-align: 0; border: 1.5px solid var(--soft); }
 .key i.g { border-color: var(--green); }
 
-/* the flip: tap the shot, or the switch */
-.flipgrid { display: grid; grid-template-columns: 7fr 5fr; gap: clamp(28px, 4vw, 56px); align-items: center; }
-.flip { cursor: pointer; }
-.flip .after { transition: opacity .5s ease; }
-.flip.orig .after { opacity: 0; }
-.flip .side.l, .flip .side.r { transition: opacity .3s; }
-.flip:not(.orig) .side.l, .flip.orig .side.r { opacity: 0; }
-.switch { display: inline-grid; grid-template-columns: 1fr 1fr; margin-top: 26px; padding: 4px; border-radius: 999px; background: #10140e; box-shadow: inset 0 0 0 1px var(--line); position: relative; cursor: pointer; border: 0; }
-.switch span { position: relative; z-index: 1; padding: 13px 22px; color: var(--soft); font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; transition: color .3s; }
-.switch::before { content: ""; position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 999px; background: var(--text); transition: transform .45s var(--ease); }
-.switch[aria-checked="true"]::before { transform: translateX(100%); background: var(--green); }
-.switch[aria-checked="false"] span:first-child, .switch[aria-checked="true"] span:last-child { color: #061000; }
-.flipcopy p { color: var(--soft); max-width: 440px; }
-
 /* motion clips, side by side */
 .clips { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .clips .side { top: 12px; }
@@ -269,7 +255,7 @@ footer .legal a { color: var(--soft); }
 @media (max-width: 900px) {
   .top nav a.opt { display: none; }
   .feats { grid-template-columns: 1fr 1fr; }
-  .sec-head, .flipgrid, .byo, .hood { grid-template-columns: 1fr; gap: 20px; }
+  .sec-head, .byo, .hood { grid-template-columns: 1fr; gap: 20px; }
   .hood { gap: 0; }
   .clips { grid-template-columns: 1fr; }
   .vr-grid, .plat { grid-template-columns: 1fr 1fr; }
@@ -299,7 +285,7 @@ footer .legal a { color: var(--soft); }
   .spin b, .spin b.on { transition: none; opacity: 0; transform: none; filter: none; }
   .spin b.still { opacity: 1; }
   .reveal { opacity: 1; transform: none; transition: none; }
-  .co, .flip .after, .switch::before, .hero-media video { transition: none; }
+  .co, .hero-media video { transition: none; }
 }
 </style>
 </head>
@@ -419,32 +405,32 @@ footer .legal a { color: var(--soft); }
     </div>
   </section>
 
-  <!-- 03: the plasma glow, a flip -->
+  <!-- 03: the plasma glow, two clips -->
   <section class="sec" id="glow" aria-labelledby="glow-title">
-    <div class="wrap flipgrid">
-      <div>
-        <figure class="shot pair flip reveal" id="flip" data-pair style="margin:0;aspect-ratio:4/3">
-          <div class="layer before">
-            <video muted loop playsinline preload="none" poster="media/glow-original-poster.webp" data-webm="media/glow-original.webm" data-mp4="media/glow-original.mp4" aria-label="Plasma rifle bolts fired down a dark corridor, as the game originally drew them: small flares, and the corridor stays dark"></video>
-          </div>
-          <div class="layer after">
-            <video muted loop playsinline preload="none" poster="media/glow-openh1-poster.webp" data-webm="media/glow-openh1.webm" data-mp4="media/glow-openh1.mp4" aria-label="The same shots in OpenH1: each bolt glows and lights the floor and the walls as it flies"></video>
-            <div class="cos" aria-hidden="true">
-              <span class="co" style="--x:44%;--y:44%;--len:56px"><i class="pin" data-n="1"></i><i class="leader"></i><span class="lbl">The bolt glows as it flies</span></span>
-              <span class="co west" style="--x:78%;--y:74%;--len:40px"><i class="pin" data-n="2"></i><i class="leader"></i><span class="lbl">Your weapon catches the light</span></span>
-            </div>
-          </div>
-          <span class="side l">Original</span><span class="side r">OpenH1</span>
-        </figure>
-        <ol class="legend"><li>The bolt glows as it flies.</li><li>Your weapon catches the light.</li></ol>
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <p class="kicker mono">03 · The plasma glow</p>
+          <h2 id="glow-title">Plasma that <span class="lit">glows.</span></h2>
+        </div>
+        <p class="reveal d1">The original drew a plasma bolt as a flat flare. OpenH1 gives every bolt in flight a soft glow, and lets it light the walls, the floor and the gun in your hands.</p>
       </div>
-      <div class="flipcopy">
-        <p class="kicker mono reveal">03 · The plasma glow</p>
-        <h2 id="glow-title" class="reveal d1">Plasma that <span class="lit">glows.</span></h2>
-        <p class="reveal d2">The original drew a plasma bolt as a flat flare. OpenH1 gives every bolt in flight a soft glow, and lets it light the walls, the floor and the gun in your hands. Tap the shot to flip it.</p>
-        <button class="switch reveal d3" id="switch" role="switch" aria-checked="true" aria-label="Show OpenH1 (off: the Original)"><span>Original</span><span>OpenH1</span></button>
-        <p class="caption mono">Real capture, the same run twice · Rat Race, the plasma rifle · Original: the Classic preset at the Xbox's 640 × 480, a frame a tick · OpenH1: Enhanced, frames between ticks</p>
+      <div class="clips" id="glow-clips">
+        <div class="shot pair reveal" style="aspect-ratio:4/3">
+          <video muted loop playsinline preload="none" poster="media/glow-original-poster.webp" data-webm="media/glow-original.webm" data-mp4="media/glow-original.mp4" aria-label="Plasma rifle bolts fired down a dark corridor, as the game originally drew them: small flares, and the corridor stays dark"></video>
+          <span class="side l">Original</span>
+        </div>
+        <div class="shot pair reveal d1" style="aspect-ratio:4/3">
+          <video muted loop playsinline preload="none" poster="media/glow-openh1-poster.webp" data-webm="media/glow-openh1.webm" data-mp4="media/glow-openh1.mp4" aria-label="The same shots in OpenH1: each bolt glows and lights the floor and the walls as it flies"></video>
+          <span class="side l">OpenH1</span>
+        </div>
       </div>
+      <ol class="legend always" aria-label="What OpenH1 changes in this shot">
+        <li>The bolt glows as it flies.</li>
+        <li>It lights the floor and the walls on its way.</li>
+        <li>Your weapon catches the light.</li>
+      </ol>
+      <p class="caption mono">Real capture, the same run twice · Rat Race, the plasma rifle · Original: the Classic preset at the Xbox's 640 × 480, a frame a tick · OpenH1: Enhanced, frames between ticks</p>
     </div>
   </section>
 
@@ -749,24 +735,8 @@ footer .legal a { color: var(--soft); }
   });
   group([...box.querySelectorAll("video")], box);
 
-  // the flip
-  const sw = document.getElementById("switch"), flip = document.getElementById("flip");
-  const flipCos = [...flip.querySelectorAll(".co")];
-  function openh1(on) { sw.setAttribute("aria-checked", String(on)); flip.classList.toggle("orig", !on); }
-  let flipTimers = [];
-  const stopFlip = () => { flipTimers.forEach(clearTimeout); flipTimers = []; flipCos.forEach((c) => c.classList.add("on")); };
-  sw.addEventListener("click", () => { stopFlip(); openh1(sw.getAttribute("aria-checked") !== "true"); });
-  flip.addEventListener("click", () => { stopFlip(); openh1(flip.classList.contains("orig")); });
-  if (still) flipCos.forEach((c) => c.classList.add("on"));
-  else once(flip, () => {
-    // demo: the Original for a moment, back to OpenH1, then the callouts in turn
-    openh1(false);
-    flipTimers.push(setTimeout(() => openh1(true), 1100));
-    flipCos.forEach((c, i) => flipTimers.push(setTimeout(() => c.classList.add("on"), 1700 + i * 350)));
-  });
-  group([...flip.querySelectorAll("video")], flip);
-
   // the clips
+  group([...document.querySelectorAll("#glow-clips video")], document.getElementById("glow-clips"));
   group([...document.querySelectorAll("#clips video")], document.getElementById("clips"), document.getElementById("clips-play"));
 })();
 </script>
