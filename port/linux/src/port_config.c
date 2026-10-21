@@ -1124,6 +1124,10 @@ static const struct config_setting config_settings[] =
 	{ "debug.bot_player_weapon", _config_string, "\"\"", "HALO_BOT_PLAYER_WEAPON", _environment_value, _platform_all,
 		"With debug.bot_player, a weapon (part of its tag's name: \"sniper\",\n"
 		"\"rocket\") the player's bot goes for wherever it lies, and keeps." },
+	{ "debug.bot_player_grenades", _config_string, "\"\"", "HALO_BOT_PLAYER_GRENADES", _environment_value, _platform_all,
+		"With debug.bot_player, \"plasma\": the player's bot spawns with four plasma\n"
+		"grenades and no frags, and throws them closer and more often (for\n"
+		"sticks); empty as the other bots." },
 	{ "debug.bot_player_vehicle", _config_string, "\"\"", "HALO_BOT_PLAYER_VEHICLE", _environment_value, _platform_all,
 		"With debug.bot_player, a vehicle (part of its tag's name: \"warthog\",\n"
 		"\"ghost\") the player's bot boards when it is on foot, and drives at the\n"

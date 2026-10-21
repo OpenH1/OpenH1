@@ -2314,16 +2314,24 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 		tick->flags |= FLAG(_unit_control_use_equipment_bit);
 		bot->melee_tick = now + TICKS_PER_SECOND;
 	}
-	/* a grenade at middle range, now and then */
-	if (tick->target_distance > 6.0f && tick->target_distance < 22.0f && now >= bot->grenade_tick &&
-		(tick->unit->unit.grenade_counts[0] > 0 || tick->unit->unit.grenade_counts[1] > 0) &&
-		bots_random_real(bot) < skill->grenade_chance / TICKS_PER_SECOND * 3.0f &&
-		now - bot->target_first_seen_tick >= reaction_ticks)
+	/* a grenade at middle range, now and then (debug.bot_player_grenades'
+	plasma: closer, for a stick, and often) */
 	{
-		tick->flags |= FLAG(_unit_control_throw_grenade_bit);
-		if (tick->unit->unit.grenade_counts[(long)tick->unit->unit.current_grenade_index] <= 0)
-			tick->action->desired_grenade_index = tick->unit->unit.grenade_counts[0] > 0 ? 0 : 1;
-		bot->grenade_tick = now + TICKS_PER_SECOND * 4;
+		boolean sticking = bot->smooth && !strcmp(config_string("debug.bot_player_grenades"), "plasma");
+		real nearest = sticking ? 4.0f : 6.0f, furthest = sticking ? 18.0f : 22.0f;
+		real chance = skill->grenade_chance / TICKS_PER_SECOND * (sticking ? 18.0f : 3.0f);
+
+		if (tick->target_distance > nearest && tick->target_distance < furthest && now >= bot->grenade_tick &&
+			(tick->unit->unit.grenade_counts[0] > 0 || tick->unit->unit.grenade_counts[1] > 0) &&
+			bots_random_real(bot) < chance && now - bot->target_first_seen_tick >= reaction_ticks)
+		{
+			tick->flags |= FLAG(_unit_control_throw_grenade_bit);
+			if (sticking && tick->unit->unit.grenade_counts[1] > 0)
+				tick->action->desired_grenade_index = 1;
+			else if (tick->unit->unit.grenade_counts[(long)tick->unit->unit.current_grenade_index] <= 0)
+				tick->action->desired_grenade_index = tick->unit->unit.grenade_counts[0] > 0 ? 0 : 1;
+			bot->grenade_tick = now + (sticking ? TICKS_PER_SECOND * 5 / 2 : TICKS_PER_SECOND * 4);
+		}
 	}
 	/* strafing, to a side for a while; nearer or further to keep its
 	weapon's distance; a jump now and then */
@@ -2625,6 +2633,14 @@ static void bots_bot_update(struct bots_bot *bot, long bot_index, struct player_
 		few) */
 		if (bot->smooth && *config_string("debug.bot_player_weapon"))
 			bots_give_weapon(tick.player->unit_index, config_string("debug.bot_player_weapon"));
+		/* (debug.bot_player_grenades: plasma grenades, four, for sticks) */
+		if (bot->smooth && !strcmp(config_string("debug.bot_player_grenades"), "plasma"))
+		{
+			tick.unit = unit_get(tick.player->unit_index);
+			tick.unit->unit.grenade_counts[0] = 0;
+			tick.unit->unit.grenade_counts[1] = 4;
+			tick.unit->unit.current_grenade_index = 1;
+		}
 		bot->yaw = (real)atan2(tick.object->object.forward.j, tick.object->object.forward.i);
 		bot->pitch = 0.0f;
 		bot->yaw_rate = 0.0f;

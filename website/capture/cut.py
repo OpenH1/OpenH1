@@ -12,7 +12,8 @@ before for a vehicle's (the drive in), shorter for a chaos clip's.
 import argparse, json, os, re, subprocess
 
 BEATS = {'vehicle': (2.2, 0.6), 'snipe': (1.6, 0.5), 'headshot': (1.8, 0.6), 'rocket': (1.4, 0.7),
-         'rocket_multi': (1.3, 1.3), 'chaos': (1.0, 0.4), 'kill': (1.2, 0.4)}
+         'rocket_multi': (1.3, 1.3), 'chaos': (1.0, 0.4), 'kill': (1.2, 0.4), 'needler': (1.2, 0.8),
+         'sticky': (0.4, 1.0)}
 
 def main():
     p = argparse.ArgumentParser()
@@ -33,7 +34,7 @@ def main():
             by_kind.setdefault(kind(f), []).append(f)
         order = []
         while any(by_kind.values()):
-            for k in ('vehicle', 'kill', 'headshot', 'snipe', 'chaos', 'rocket_multi', 'rocket'):
+            for k in ('vehicle', 'kill', 'headshot', 'snipe', 'needler', 'sticky', 'chaos', 'rocket_multi', 'rocket'):
                 if by_kind.get(k):
                     order.append(by_kind[k].pop(0))
         order.append(order.pop(order.index(clips[0])))

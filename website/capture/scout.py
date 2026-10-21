@@ -28,10 +28,13 @@ HEAD_HEIGHT = 0.52
 def match_env(map_variant, seed, a, index):
     """the settings of a match: the same for the scout and the shoot. A match
     is "<map>:<variant>[+<loadout>]": the loadout a weapon the player's bot
-    goes for ("sniper", "rocket") or a vehicle it boards ("warthog", "ghost")"""
+    spawns with ("sniper", "rocket", "needler"), a vehicle it boards
+    ("warthog", "ghost"), or "plasma" for plasma grenades thrown for sticks"""
     map_variant, _, loadout = map_variant.partition('+')
     extra = {}
-    if loadout:
+    if loadout == 'plasma':
+        extra['HALO_BOT_PLAYER_GRENADES'] = 'plasma'
+    elif loadout:
         extra['HALO_BOT_PLAYER_VEHICLE' if loadout in VEHICLES else 'HALO_BOT_PLAYER_WEAPON'] = loadout
     # (a score no one reaches: the game ends at its score limit, after which
     # the simulation's clock stops short of the trace's end)
@@ -166,9 +169,10 @@ def scout(job):
         zoomed = next((int(v) for u, k, v in reversed(weapon_events) if k == 'zoom' and u <= t), -1) >= 0
         in_vehicle = any(k in driving for k in range(round((t - 1) * 30), round(t * 30) + 1))
         kind = ('vehicle' if in_vehicle else 'snipe' if 'sniper' in weapon and zoomed else
-                'rocket' if 'rocket' in weapon else 'chaos' if crowd >= 3 or near >= 2 else 'kill')
+                'rocket' if 'rocket' in weapon else 'needler' if 'needler' in weapon else
+                'chaos' if crowd >= 3 or near >= 2 else 'kill')
         score = 10 * watched + 3 * min(crowd, 2) + 4 * near + (4 if seen_kill else 0) + min(fired, 30) / 10 - (6 if died else 0)
-        score += {'vehicle': 8, 'snipe': 8, 'rocket': 8, 'chaos': 4}.get(kind, 0)
+        score += {'vehicle': 8, 'snipe': 8, 'rocket': 8, 'needler': 8, 'chaos': 4}.get(kind, 0)
         first, last = chain(t)
         moments.append({'match': name, 'map': map_variant, 'seed': seed, 'kill': t, 'kind': kind, 'weapon': weapon,
                         'first': first, 'last': last, 'kills': sum(1 for u in kill_times if first <= u <= last),
@@ -196,6 +200,19 @@ def scout(job):
             moments.append({'match': name, 'map': map_variant, 'seed': seed, 'kill': round(t, 3), 'kind': 'rocket_multi',
                             'weapon': tag, 'dead': len(dead), 'flight': round(t - launched, 2),
                             'score': round(30 + 10 * len(dead), 1)})
+    # a plasma grenade of the player's stuck to its victim: its blast on a
+    # player (within 0.8 world units) who dies in the 0.3 s after; the throw
+    # and the flight in the window before
+    for t, pid, (x, y, z) in booms:
+        tag, owner, launched = owned.get(pid, ('', -1, 0))
+        if owner != 0 or 'plasma grenade' not in tag:
+            continue
+        stuck = [i for i, (pos, _, body) in ticks.get(round(t * 30) - 1, {}).items()
+                 if i != 0 and body > 0 and sum((a - b) ** 2 for a, b in zip(pos, (x, y, z))) < 0.64 and dies(i, t, t + 0.3)]
+        if stuck:
+            moments.append({'match': name, 'map': map_variant, 'seed': seed, 'kill': round(t, 3), 'kind': 'sticky',
+                            'weapon': tag, 'first': round(launched, 3), 'last': round(t, 3), 'kills': len(stuck),
+                            'flight': round(t - launched, 2), 'score': round(40 + 10 * len(stuck), 1)})
     # a zoomed sniper kill's round: where it struck its victim, above its feet
     for m in moments:
         if m['kind'] != 'snipe':
