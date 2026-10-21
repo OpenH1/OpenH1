@@ -3017,14 +3017,25 @@ void halo_dynamic_lights_set(const struct halo_dynamic_light *lights, int count,
 		{
 			float *halo = halos->halos[halos->count * 2];
 			float size = light->radius * dynamic_lights.look[1][0];
+			float offset[3], distance, fade;
 
+			if (size < dynamic_lights.look[1][3])
+				size = dynamic_lights.look[1][3];
+			/* (faded out near the camera: a bolt's first frame between ticks
+			is drawn where it was made, at the eye, where its glow would
+			fill the view) */
+			for (axis = 0; axis < 3; axis++)
+				offset[axis] = light->position[axis] - camera[axis];
+			distance = sqrtf(offset[0] * offset[0] + offset[1] * offset[1] + offset[2] * offset[2]);
+			fade = (distance - size) / (3.0f * size);
+			fade = fade < 0.0f ? 0.0f : fade > 1.0f ? 1.0f : fade * fade * (3.0f - 2.0f * fade);
 			halo[0] = light->position[0];
 			halo[1] = light->position[1];
 			halo[2] = light->position[2];
-			halo[3] = size > dynamic_lights.look[1][3] ? size : dynamic_lights.look[1][3];
-			halo[4] = light->color[0] * dynamic_lights.look[1][1];
-			halo[5] = light->color[1] * dynamic_lights.look[1][1];
-			halo[6] = light->color[2] * dynamic_lights.look[1][1];
+			halo[3] = size;
+			halo[4] = light->color[0] * dynamic_lights.look[1][1] * fade;
+			halo[5] = light->color[1] * dynamic_lights.look[1][1] * fade;
+			halo[6] = light->color[2] * dynamic_lights.look[1][1] * fade;
 			halo[7] = 0.0f;
 			halos->count++;
 		}
