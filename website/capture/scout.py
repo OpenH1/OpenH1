@@ -20,6 +20,9 @@ RUNS = os.environ.get('RUNS', os.path.expanduser('~/halo-capture-runs'))
 LINE = re.compile(r'network test: tick (\d+) player 0: (?:\((-?[\d.]+) (-?[\d.]+) (-?[\d.]+)\)|dead).*? k(-?\d+) d(-?\d+)')
 
 VEHICLES = ('warthog', 'ghost', 'scorpion', 'banshee', 'rwarthog')
+# a round that struck this far above its victim's place (its feet) or more hit
+# the head (world units; the scout's hit heights calibrate it)
+HEAD_HEIGHT = 0.5
 
 def match_env(map_variant, seed, a, index):
     """the settings of a match: the same for the scout and the shoot. A match
@@ -58,6 +61,7 @@ def scout(job):
     # the sim trace: each player's place, aim and body each tick, the
     # player's shots
     ticks, shots, weapon_events, driving = {}, [], [], set()
+    owned, hits, booms = {}, {}, []
     now = 0.0
     try:
         for line in open(f'{base}/data/trace.txt'):
@@ -69,6 +73,13 @@ def scout(job):
                     tuple(float(x) for x in f[2:5]), tuple(float(x) for x in f[8:11]), float(f[12]))
             elif f[:3] == ['e', 'fire', '0']:
                 shots.append(now)
+            elif f[:2] == ['e', 'new']:
+                # (a projectile: its tag's name has spaces, its owner is last)
+                owned[f[2]] = (' '.join(f[3:-7]), int(f[-1]), now)
+            elif f[:2] == ['e', 'hit']:
+                hits.setdefault(f[2], []).append((now, tuple(float(x) for x in f[4:7])))
+            elif f[:2] == ['e', 'boom']:
+                booms.append((now, f[2], tuple(float(x) for x in f[3:6])))
             elif f[0] == 'v' and f[1] == '0':
                 driving.add(round(now * 30))
             elif f[0] == 'e' and f[1] in ('weapon', 'wstate', 'zoom', 'act') and f[2] == '0':
@@ -96,6 +107,18 @@ def scout(job):
                 seen.append((index, d))
         return seen
 
+    # (each kill's chain: the kills before and after it, each within 4 seconds
+    # of the next - a double, a triple - shown whole)
+    def chain(t):
+        first = last = t
+        for u in sorted(kill_times, reverse=True):
+            if first - 4 <= u < first:
+                first = u
+        for u in sorted(kill_times):
+            if last < u <= last + 4:
+                last = u
+        return first, last
+
     moments = []
     for t in kill_times:
         window = range(round((t - a.before) * 30), round((t + a.after) * 30))
@@ -115,10 +138,48 @@ def scout(job):
                 'rocket' if 'rocket' in weapon else 'chaos' if crowd >= 3 or near >= 2 else 'kill')
         score = 10 * watched + 3 * min(crowd, 2) + 4 * near + (4 if seen_kill else 0) + min(fired, 30) / 10 - (6 if died else 0)
         score += {'vehicle': 8, 'snipe': 8, 'rocket': 8, 'chaos': 4}.get(kind, 0)
+        first, last = chain(t)
         moments.append({'match': name, 'map': map_variant, 'seed': seed, 'kill': t, 'kind': kind, 'weapon': weapon,
+                        'first': first, 'last': last, 'kills': sum(1 for u in kill_times if first <= u <= last),
                         'watched': round(watched, 2),
                         'crowd': round(crowd, 2), 'near_kills': near, 'seen_kill': seen_kill, 'shots': fired,
                         'died': died, 'score': round(score, 1)})
+    def dies(index, t0, t1):
+        """the player's body gone or emptied between t0 and t1"""
+        for k in range(round(t0 * 30), round(t1 * 30) + 1):
+            p = ticks.get(k, {})
+            if index not in p or p[index][2] <= 0:
+                return index in ticks.get(round(t0 * 30) - 1, {})
+        return False
+
+    # a rocket of the player's whose blast two or more die in: its launch,
+    # flight and the group thrown
+    for t, pid, (x, y, z) in booms:
+        tag, owner, launched = owned.get(pid, ('', -1, 0))
+        if owner != 0 or 'rocket' not in tag:
+            continue
+        near = [i for i, (pos, _, body) in ticks.get(round(t * 30) - 1, {}).items()
+                if i != 0 and body > 0 and sum((a - b) ** 2 for a, b in zip(pos, (x, y, z))) < 36]
+        dead = [i for i in near if dies(i, t, t + 0.6)]
+        if len(dead) >= 2:
+            moments.append({'match': name, 'map': map_variant, 'seed': seed, 'kill': round(t, 3), 'kind': 'rocket_multi',
+                            'weapon': tag, 'dead': len(dead), 'flight': round(t - launched, 2),
+                            'score': round(30 + 10 * len(dead), 1)})
+    # a zoomed sniper kill's round: where it struck its victim, above its feet
+    for m in moments:
+        if m['kind'] != 'snipe':
+            continue
+        rounds = [(launched, pid) for pid, (tag, owner, launched) in owned.items()
+                  if owner == 0 and 'sniper' in tag and m['kill'] - 1.5 <= launched <= m['kill'] + 0.1]
+        for launched, pid in sorted(rounds, reverse=True)[:1]:
+            for u, (hx, hy, hz) in hits.get(pid, []):
+                for i, (pos, _, body) in ticks.get(round(u * 30) - 1, {}).items():
+                    if i and (pos[0] - hx) ** 2 + (pos[1] - hy) ** 2 < 0.36:
+                        m['hit_height'] = round(hz - pos[2], 3)
+        if m.get('hit_height', 0) > HEAD_HEIGHT:
+            m['kind'] = 'headshot'
+            m['score'] += 10
+    moments.sort(key=lambda m: -m['score'])
     return {'match': name, 'kills': kills[-1] if kills else 0, 'deaths': deaths[-1] if deaths else 0,
             'moments': moments, 'weapon_events': weapon_events}
 

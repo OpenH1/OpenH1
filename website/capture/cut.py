@@ -4,13 +4,15 @@ with hard cuts.
 
 usage: cut.py <clips folder> <out.mp4> [--pick 01,07,03,...] [--before 3.5]
 
-A clip's kill is --before seconds into it (shoot.py's window). Its beat is
-the second and a bit before the kill and a little after: longer for a
-vehicle's (the drive in), shorter for a chaos clip's (the fastest cuts).
+A clip's kills are in shoot.py's note beside it (else its kill is --before
+seconds in). Its beat runs from a second and a bit before its first kill to
+a little after its last, so that a double or a triple is shown whole: longer
+before for a vehicle's (the drive in), shorter for a chaos clip's.
 --pick takes the clips in that order instead."""
-import argparse, os, re, subprocess
+import argparse, json, os, re, subprocess
 
-BEATS = {'vehicle': (2.2, 0.6), 'snipe': (1.6, 0.5), 'rocket': (1.4, 0.7), 'chaos': (1.0, 0.4), 'kill': (1.2, 0.4)}
+BEATS = {'vehicle': (2.2, 0.6), 'snipe': (1.6, 0.5), 'headshot': (1.8, 0.6), 'rocket': (1.4, 0.7),
+         'rocket_multi': (1.8, 1.6), 'chaos': (1.0, 0.4), 'kill': (1.2, 0.4)}
 
 def main():
     p = argparse.ArgumentParser()
@@ -18,7 +20,7 @@ def main():
     p.add_argument('--pick'); p.add_argument('--before', type=float, default=3.5)
     a = p.parse_args()
     clips = sorted(f for f in os.listdir(a.clips) if f.endswith('.mp4'))
-    kind = lambda f: re.match(r'\d+-([a-z]+)-', f).group(1)
+    kind = lambda f: re.match(r'\d+-([a-z_]+)-', f).group(1)
     if a.pick:
         order = [next(f for f in clips if f.startswith(n + '-')) for n in a.pick.split(',')]
     else:
@@ -28,15 +30,23 @@ def main():
             by_kind.setdefault(kind(f), []).append(f)
         order = []
         while any(by_kind.values()):
-            for k in ('vehicle', 'kill', 'snipe', 'chaos', 'rocket'):
+            for k in ('vehicle', 'kill', 'headshot', 'snipe', 'chaos', 'rocket_multi', 'rocket'):
                 if by_kind.get(k):
                     order.append(by_kind[k].pop(0))
         order.append(order.pop(order.index(clips[0])))
     inputs, parts = [], []
     for index, f in enumerate(order):
         before, after = BEATS.get(kind(f), (1.2, 0.4))
+        # (the clip's kills, from shoot.py's note: a chain is shown from
+        # before its first to after its last)
+        note = os.path.join(a.clips, f[:-4] + '.json')
+        if os.path.exists(note):
+            n = json.load(open(note))
+            begin, finish = n['first'] - n['start'] - before, n['last'] - n['start'] + after
+        else:
+            begin, finish = a.before - before, a.before + after
         inputs += ['-i', os.path.join(a.clips, f)]
-        parts.append(f'[{index}:v]trim=start={a.before - before:.3f}:end={a.before + after:.3f},setpts=PTS-STARTPTS[v{index}]')
+        parts.append(f'[{index}:v]trim=start={max(begin, 0):.3f}:end={finish:.3f},setpts=PTS-STARTPTS[v{index}]')
     graph = ';'.join(parts) + ';' + ''.join(f'[v{i}]' for i in range(len(order))) + f'concat=n={len(order)}:v=1:a=0[out]'
     subprocess.run(['ffmpeg', '-loglevel', 'error', '-y', *inputs, '-filter_complex', graph, '-map', '[out]',
                     '-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p', a.out], check=True)

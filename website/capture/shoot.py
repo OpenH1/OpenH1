@@ -31,7 +31,9 @@ def main():
         if per_match.get(m['match'], 0) >= 2 or per_map.get(m['map'], 0) >= 3 or \
                 per_kind.get(m.get('kind'), 0) >= a.per_kind:
             continue
-        if any(c['match'] == m['match'] and abs(c['kill'] - m['kill']) < a.before + a.after for c in chosen):
+        # (none of the same chain or overlapping another's window)
+        if any(c['match'] == m['match'] and (abs(c['kill'] - m['kill']) < a.before + a.after or
+                                             c.get('first') == m.get('first')) for c in chosen):
             continue
         chosen.append(m)
         per_match[m['match']] = per_match.get(m['match'], 0) + 1
@@ -41,7 +43,11 @@ def main():
     os.makedirs(out, exist_ok=True)
     for index, m in enumerate(chosen, 1):
         name = f"{index:02d}-{m.get('kind', 'kill')}-{m['match']}-{m['kill']:.0f}s"
-        start, end = m['kill'] - a.before, m['kill'] + a.after
+        # (a chain of kills - a double, a triple - from before the first to
+        # after the last; a rocket's blast with the bodies in the air after it)
+        first, last = m.get('first', m['kill']), m.get('last', m['kill'])
+        start = min(m['kill'] - a.before, first - 1.5)
+        end = max(m['kill'] + a.after, last + 1.0) + (0.8 if m.get('kind') == 'rocket_multi' else 0.0)
         env = dict(os.environ, **match_env(m['map'], m['seed'], scouted, 0), PORT='3600', SIZE=a.size,
                    RUNS=f'{RUNS}/{a.scout}/shoot', TRACE_SECONDS=f'{end + 0.3:.2f}',
                    HALO_SCREENSHOT_FROM=f'{start:.3f}', HALO_SCREENSHOT_UNTIL=f'{end:.3f}')
@@ -57,6 +63,9 @@ def main():
                         '-an', '-c:v', 'libx264', '-crf', '16', '-preset', 'slow', '-pix_fmt', 'yuv420p',
                         '-movflags', '+faststart', f'{out}/{name}.mp4'], check=True)
         shutil.rmtree(frames)
+        # (where in the clip its kills fall, for the cut)
+        json.dump({'start': start, 'kill': m['kill'], 'first': first, 'last': last, 'kind': m.get('kind')},
+                  open(f'{out}/{name}.json', 'w'))
         print(f"{name}: {len(names)} frames, score {m['score']}", flush=True)
 
 if __name__ == '__main__':

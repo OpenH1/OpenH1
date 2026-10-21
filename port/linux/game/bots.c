@@ -1521,6 +1521,22 @@ static boolean bots_is_enemy(struct player_datum *player, struct player_datum *o
 	return TRUE;
 }
 
+/* whether the player's unit has a weapon whose tag's name has that in it in
+its hands */
+static boolean bots_holding(struct player_datum *player, char const *part)
+{
+	struct unit_datum *unit;
+	long weapon_index;
+	char const *name;
+
+	if (player->unit_index == NONE)
+		return FALSE;
+	unit = unit_get(player->unit_index);
+	weapon_index = bots_current_weapon(unit);
+	name = weapon_index != NONE ? tag_get_name(weapon_get(weapon_index)->definition_index) : NULL;
+	return name && strstr(name, part);
+}
+
 /* the enemy the bot sees best now, NONE for none: of the enemies in its
 sight's reach and view, the one of the least score (nearest, most ahead, the
 one it fights favoured) a line of sight reaches, the first in the players'
@@ -1573,6 +1589,24 @@ static boolean bots_target_score(struct bots_bot *bot, struct player_datum *play
 	candidate->player_index = player_index;
 	candidate->unit_index = other->unit_index;
 	candidate->score = distance + bearing * 4.0f - (player_index == bot->target_player_index ? 6.0f : 0.0f);
+	/* (debug.bot_player's rocket launcher: the enemy with the most others
+	about them, a group for one rocket) */
+	if (bot->smooth && bots_holding(player, "rocket"))
+	{
+		struct data_iterator others;
+		struct player_datum *near;
+
+		data_iterator_new(&others, player_data);
+		while ((near = (struct player_datum *)data_iterator_next(&others)) != NULL)
+		{
+			if (near != other && bots_is_enemy(player, near) &&
+				!TEST_FLAG(object_get(near->unit_index)->object.damage_flags, _object_dead_bit) &&
+				bots_distance3d(&object_get(near->unit_index)->object.position, &candidate->point) < 4.0f)
+			{
+				candidate->score -= 8.0f;
+			}
+		}
+	}
 	return TRUE;
 }
 
@@ -2145,6 +2179,17 @@ static void bots_bot_fight(struct bots_bot *bot, struct bots_tick *tick)
 	tick->fighting = TRUE;
 	bots_tick_eye(tick);
 	tick->target_distance = bots_distance3d(&tick->eye, &aim_point);
+	/* (debug.bot_player's sniper aims at the head, as a player snipes; its
+	rocket launcher at the feet, for the blast's reach) */
+	if (bot->smooth && tick->weapon_index != NONE)
+	{
+		char const *name = tag_get_name(weapon_get(tick->weapon_index)->definition_index);
+
+		if (name && strstr(name, "sniper"))
+			unit_get_head_position(target_player->unit_index, &aim_point);
+		else if (name && strstr(name, "rocket"))
+			aim_point = target_object->object.position;
+	}
 	/* (leading a moving target by the projectile's flight) */
 	if (tick->weapon_index != NONE && skill->lead > 0.0f)
 	{
