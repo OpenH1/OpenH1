@@ -47,7 +47,7 @@ def scout(job):
             kills.append(int(m.group(5))); deaths.append(int(m.group(6)))
     # the sim trace: each player's place, aim and body each tick, the
     # player's shots
-    ticks, shots = {}, []
+    ticks, shots, weapon_events = {}, [], []
     now = 0.0
     try:
         for line in open(f'{base}/data/trace.txt'):
@@ -59,6 +59,9 @@ def scout(job):
                     tuple(float(x) for x in f[2:5]), tuple(float(x) for x in f[8:11]), float(f[12]))
             elif f[:3] == ['e', 'fire', '0']:
                 shots.append(now)
+            elif f[0] == 'e' and f[1] in ('weapon', 'wstate', 'zoom', 'act') and f[2] == '0':
+                # (the player's: a weapon's tag has spaces)
+                weapon_events.append((round(now, 4), f[1], ' '.join(f[3:])))
     except FileNotFoundError:
         return {'match': name, 'error': 'no trace'}
     kill_times = [seconds[i] for i in range(1, len(kills)) for _ in range(max(0, kills[i] - kills[i - 1]))]
@@ -97,7 +100,7 @@ def scout(job):
                         'crowd': round(crowd, 2), 'near_kills': near, 'seen_kill': seen_kill, 'shots': fired,
                         'died': died, 'score': round(score, 1)})
     return {'match': name, 'kills': kills[-1] if kills else 0, 'deaths': deaths[-1] if deaths else 0,
-            'moments': moments}
+            'moments': moments, 'weapon_events': weapon_events}
 
 def main():
     p = argparse.ArgumentParser()
@@ -114,6 +117,8 @@ def main():
         results = list(pool.map(scout, jobs))
     moments = sorted((m for r in results for m in r.get('moments', [])), key=lambda m: -m['score'])
     os.makedirs(f'{RUNS}/{a.out}', exist_ok=True)
+    # (each match's weapon events, the player's: the trailer's cuts on the
+    # same action are found from them)
     json.dump({'args': vars(a), 'matches': [{k: v for k, v in r.items() if k != 'moments'} for r in results],
                'moments': moments}, open(f'{RUNS}/{a.out}/moments.json', 'w'), indent=1)
     for r in results:
