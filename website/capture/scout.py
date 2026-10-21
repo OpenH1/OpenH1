@@ -40,7 +40,9 @@ def match_env(map_variant, seed, a, index):
             # (multiplayer keeps the whole HUD: the trailer's firefights show it;
             # but not the port's names over every player's head, only the stock
             # game's of the one under the crosshair)
-            'HIDE_HUD': '0', 'HALO_PLAYER_NAMES': 'none'}
+            'HIDE_HUD': '0', 'HALO_PLAYER_NAMES': 'none',
+            # (each match in a network of its own: they run side by side)
+            'PRIVATE_NET': '1'}
 
 def scout(job):
     (map_variant, seed), a, index = job

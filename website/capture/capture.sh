@@ -8,6 +8,11 @@
 # the HUD's, as "(cheat_all_weapons) "), FT (OpenH1's frame time),
 # SEED, TRACE_SECONDS (write the sim trace to data/trace.txt and quit then).
 set -u
+# (PRIVATE_NET: the run in a network of its own, only its loopback - a user
+# network namespace - so that local games side by side never see each other)
+if [ -n "${PRIVATE_NET:-}" ] && [ -z "${IN_PRIVATE_NET:-}" ]; then
+  exec unshare -rn env IN_PRIVATE_NET=1 bash -c 'ip link set lo up && exec "$0" "$@"' "$0" "$@"
+fi
 TREE=${TREE:-$HOME/halo-capture} MAPS=${MAPS:-$HOME/halo-x86-maps/maps}
 RUNS=${RUNS:-$HOME/halo-capture-runs} SIZE=${SIZE:-1280x960}
 name=$1 side=$2 scenario=$3 script=$4 seconds=$5 extra=${6:-}

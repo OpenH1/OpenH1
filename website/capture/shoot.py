@@ -8,6 +8,7 @@ usage: shoot.py <scout folder> [--count 8] [--before 3.5] [--after 1.2] [--size 
 The moments are taken best first, at most two from a match and three from a
 map, none overlapping another."""
 import argparse, json, os, shutil, subprocess, sys
+from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RUNS = os.environ.get('RUNS', os.path.expanduser('~/halo-capture-runs'))
@@ -21,6 +22,7 @@ def main():
     p.add_argument('--size', default='3840x2160')
     # (the most of a kind - snipe, rocket, vehicle, chaos, kill - so the cut has each)
     p.add_argument('--per-kind', type=int, default=4)
+    p.add_argument('--parallel', type=int, default=4)
     a = p.parse_args()
     found = json.load(open(f'{RUNS}/{a.scout}/moments.json'))
     scouted = argparse.Namespace(**found['args'])
@@ -41,32 +43,39 @@ def main():
         per_kind[m.get('kind')] = per_kind.get(m.get('kind'), 0) + 1
     out = f'{RUNS}/{a.scout}/clips'
     os.makedirs(out, exist_ok=True)
-    for index, m in enumerate(chosen, 1):
-        name = f"{index:02d}-{m.get('kind', 'kill')}-{m['match']}-{m['kill']:.0f}s"
-        # (a chain of kills - a double, a triple - from before the first to
-        # after the last; a rocket's blast with the bodies in the air after it)
-        first, last = m.get('first', m['kill']), m.get('last', m['kill'])
-        start = min(m['kill'] - a.before, first - 1.5)
-        end = max(m['kill'] + a.after, last + 1.0) + (0.8 if m.get('kind') == 'rocket_multi' else 0.0)
-        env = dict(os.environ, **match_env(m['map'], m['seed'], scouted, 0), PORT='3600', SIZE=a.size,
-                   RUNS=f'{RUNS}/{a.scout}/shoot', TRACE_SECONDS=f'{end + 0.3:.2f}',
-                   HALO_SCREENSHOT_FROM=f'{start:.3f}', HALO_SCREENSHOT_UNTIL=f'{end:.3f}')
-        subprocess.run([f'{HERE}/capture.sh', name, 'openh1', '-', '', str(int(end) + 180)], env=env,
-                       capture_output=True, text=True)
-        frames = f'{RUNS}/{a.scout}/shoot/{name}/frames'
-        names = sorted(os.listdir(frames)) if os.path.isdir(frames) else []
-        if not names:
-            print(f'{name}: no frames', flush=True)
-            continue
-        subprocess.run(['ffmpeg', '-loglevel', 'error', '-y', '-framerate', '60', '-start_number',
-                        names[0][5:10], '-i', f'{frames}/frame%05d.bmp', '-frames:v', str(len(names)),
-                        '-an', '-c:v', 'libx264', '-crf', '16', '-preset', 'slow', '-pix_fmt', 'yuv420p',
-                        '-movflags', '+faststart', f'{out}/{name}.mp4'], check=True)
-        shutil.rmtree(frames)
-        # (where in the clip its kills fall, for the cut)
-        json.dump({'start': start, 'kill': m['kill'], 'first': first, 'last': last, 'kind': m.get('kind')},
-                  open(f'{out}/{name}.json', 'w'))
-        print(f"{name}: {len(names)} frames, score {m['score']}", flush=True)
+    jobs = list(enumerate(chosen, 1))
+    with ThreadPoolExecutor(a.parallel) as pool:
+        for line in pool.map(lambda job: film(job, a, scouted, out), jobs):
+            print(line, flush=True)
+
+def film(job, a, scouted, out):
+    """one moment's match played again, its frames saved around the moment and
+    encoded, the frames deleted"""
+    index, m = job
+    name = f"{index:02d}-{m.get('kind', 'kill')}-{m['match']}-{m['kill']:.0f}s"
+    # (a chain of kills - a double, a triple - from before the first to
+    # after the last; a rocket's blast with the bodies in the air after it)
+    first, last = m.get('first', m['kill']), m.get('last', m['kill'])
+    start = min(m['kill'] - a.before, first - 1.5)
+    end = max(m['kill'] + a.after, last + 1.0) + (0.8 if m.get('kind') == 'rocket_multi' else 0.0)
+    env = dict(os.environ, **match_env(m['map'], m['seed'], scouted, 0), PORT='3600', SIZE=a.size,
+               RUNS=f'{RUNS}/{a.scout}/shoot', TRACE_SECONDS=f'{end + 0.3:.2f}',
+               HALO_SCREENSHOT_FROM=f'{start:.3f}', HALO_SCREENSHOT_UNTIL=f'{end:.3f}')
+    subprocess.run([f'{HERE}/capture.sh', name, 'openh1', '-', '', str(int(end) + 180)], env=env,
+                   capture_output=True, text=True)
+    frames = f'{RUNS}/{a.scout}/shoot/{name}/frames'
+    names = sorted(os.listdir(frames)) if os.path.isdir(frames) else []
+    if not names:
+        return f'{name}: no frames'
+    subprocess.run(['ffmpeg', '-loglevel', 'error', '-y', '-framerate', '60', '-start_number',
+                    names[0][5:10], '-i', f'{frames}/frame%05d.bmp', '-frames:v', str(len(names)),
+                    '-an', '-c:v', 'libx264', '-crf', '16', '-preset', 'slow', '-pix_fmt', 'yuv420p',
+                    '-movflags', '+faststart', f'{out}/{name}.mp4'], check=True)
+    shutil.rmtree(frames)
+    # (where in the clip its kills fall, for the cut)
+    json.dump({'start': start, 'kill': m['kill'], 'first': first, 'last': last, 'kind': m.get('kind')},
+              open(f'{out}/{name}.json', 'w'))
+    return f"{name}: {len(names)} frames, score {m['score']}"
 
 if __name__ == '__main__':
     main()
