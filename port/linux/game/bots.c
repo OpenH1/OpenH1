@@ -2500,7 +2500,19 @@ void bots_update_actions(struct player_action *actions)
 		if (bot->player_index != iterator.datum_index)
 			bots_bot_reset(bot, iterator.datum_index, bot_index);
 		if (absolute_index >= 0 && absolute_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
+		{
 			bots_bot_update(bot, bot_index, &actions[absolute_index]);
+			/* (debug.bot_player: the view turned with the bot's aim, which
+			the unit follows, as a player's view leads its unit's; the
+			camera is the player's control's facing, not the action's) */
+			if (bot == &bots_globals.player_bot)
+			{
+				real_vector3d facing;
+
+				vector3d_from_euler_angles2d(&facing, &actions[absolute_index].desired_facing);
+				player_control_set_facing(0, &facing);
+			}
+		}
 		count++;
 	}
 	if (count)
