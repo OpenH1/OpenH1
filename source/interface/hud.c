@@ -1654,6 +1654,32 @@ void hud_draw_vr_crosshairs(
 	return;
 }
 
+/* the weapon's zoomed view alone (its scope's mask, ticks and label), as
+hud_draw_screen would draw it, for port/linux/game/vr_scope.c to draw over
+the smart-link window's view */
+void hud_draw_vr_zoomed(
+	void)
+{
+	long player_index = local_player_get_player_index(render.local_player_index);
+	director_perspective perspective = director_get_perspective(render.local_player_index);
+
+	if (player_index != NONE && hud_scripted_globals->show_hud &&
+		perspective != _director_perspective_neutral &&
+		perspective != _director_perspective_scripted)
+	{
+		struct player_datum *player = player_get(player_index);
+
+		if (player->unit_index != NONE)
+		{
+			rasterizer_hud_begin();
+			hud_render_weapon_zoomed(player);
+			rasterizer_hud_end();
+		}
+	}
+
+	return;
+}
+
 /* the marks over the world alone, as hud_draw_screen would draw them, for
 port/linux/game/vr_render.c to draw in the eyes, each over what it marks
 (vr_render_world_mark): the teammates' triangles, the players' names and

@@ -88,14 +88,20 @@ raised to an eye or smart-linked (a window about the reticle), showing
 the zoom (port/linux/src/d3d8_device.c): the zoomed view's
 elements (the zoom's crosshairs, the readout with its arc and the side
 panel's waveform; the range ticks; the sniper's target distance and
-elevation at the reticle) are not drawn, which would float beside it */
+elevation at the reticle) are not drawn, which would float beside it. The
+smart-link's window draws them over its own view instead, they alone
+(hud_render_weapon_zoomed) */
 boolean vr_scope_shown(void);
+static boolean hud_weapon_zoomed_only;
 /* port/linux/game/vr_death.c: the HUD booting as the player is back from
 the death cam (the ammo counting up) */
 real vr_death_hud_boot(short part);
-#define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) ((zoomed_layout) && vr_scope_shown())
+#define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) \
+	((zoomed_layout) ? vr_scope_shown() && !hud_weapon_zoomed_only : hud_weapon_zoomed_only)
+#define HUD_WEAPON_ZOOMED_ONLY hud_weapon_zoomed_only
 #else
 #define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) FALSE
+#define HUD_WEAPON_ZOOMED_ONLY FALSE
 #endif
 
 /* ---------- constants */
@@ -1064,7 +1070,7 @@ static void crosshairs_draw(
 					if (weapon_hud_state_index_valid(state_index, NUMBER_OF_WEAPON_HUD_CROSSHAIR_STATES) &&
 						TEST_FLAG(render_flags, state_index) &&
 						TEST_FLAG(map_type_flags, element->use_on_map_type) &&
-						!HUD_WEAPON_ZOOMED_HIDDEN(state_index == _crosshair_state_zoom))
+						(HUD_WEAPON_ZOOMED_ONLY || !HUD_WEAPON_ZOOMED_HIDDEN(state_index == _crosshair_state_zoom)))
 					{
 						struct crosshair_state *state = &crosshair->states[state_index];
 						short item_index;
@@ -1079,9 +1085,9 @@ static void crosshairs_draw(
 								struct weapon_hud_crosshair_item);
 
 							if (!TEST_FLAG(item->flags, _hud_crosshair_runtime_invalid_bit) &&
-								!HUD_WEAPON_ZOOMED_HIDDEN(
+								(HUD_WEAPON_ZOOMED_ONLY || !HUD_WEAPON_ZOOMED_HIDDEN(
 									TEST_FLAG(item->flags, _hud_crosshair_not_on_default_zoom_bit) ||
-									TEST_FLAG(item->flags, _hud_crosshair_show_sniper_data_bit)) &&
+									TEST_FLAG(item->flags, _hud_crosshair_show_sniper_data_bit))) &&
 								(!TEST_FLAG(item->flags, _hud_crosshair_not_on_default_zoom_bit) ||
 									crosshair->states[_crosshair_state_zoom].value.reference_data > 0) &&
 								(!TEST_FLAG(item->flags, _hud_crosshair_only_on_default_zoom_bit) ||
@@ -1930,7 +1936,8 @@ static void render_weapon_hud(
 
 		if (!TEST_FLAG(element->runtime_flags, _hud_element_runtime_invalid_bit) &&
 			TEST_FLAG(map_type_flags, element->use_on_map_type) &&
-			weapon_hud_state_index_valid(element->state_type, NUMBER_OF_WEAPON_HUD_FLASH_REFERENCES))
+			weapon_hud_state_index_valid(element->state_type, NUMBER_OF_WEAPON_HUD_FLASH_REFERENCES) &&
+			!HUD_WEAPON_ZOOMED_HIDDEN(FALSE)) /* port: (none are the zoomed view's) */
 		{
 			state_index = element->state_type;
 			hud_draw_weapon_overlays(
@@ -2216,6 +2223,39 @@ void hud_render_weapon_crosshairs(
 			NONE,
 			hud_globals->defaults.default_weapon_hud.index,
 			&weapon_state);
+	}
+
+	return;
+}
+
+/* the VR mode's smart-link window (port/linux/game/vr_scope.c): the
+weapon's zoomed view alone, as hud_render_weapon_interface draws it while
+zoomed (all its crosshairs, as the flat screen shows them zoomed: the
+reticle, the scope's brackets and ticks, the zoom's label; and the elements
+that follow the zoom), over the window's own view, drawn into the scope's
+image */
+void hud_render_weapon_zoomed(
+	struct player_datum *player)
+{
+	long weapon_index = unit_inventory_get_weapon(
+		player->unit_index,
+		unit_get(player->unit_index)->unit.current_weapon_index);
+
+	if (weapon_index != NONE)
+	{
+		struct weapon_definition *definition = weapon_definition_get(
+			weapon_get(weapon_index)->definition_index);
+		long hud_index = definition->weapon.interface_definition.hud_interface.index;
+		struct weapon_interface_state weapon_state;
+
+		if (hud_index != NONE)
+		{
+			hud_weapon_zoomed_only = TRUE;
+			weapon_build_weapon_interface_state(weapon_index, &weapon_state);
+			crosshairs_draw(player, weapon_index, hud_index, &weapon_state);
+			render_weapon_hud(hud_index, player->local_player_index, definition, &weapon_state, NULL, NULL, NULL);
+			hud_weapon_zoomed_only = FALSE;
+		}
 	}
 
 	return;

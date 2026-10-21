@@ -270,6 +270,16 @@ struct halo_vr_scope
 	float opened_seconds;
 	float closing;
 	float switched_seconds;
+	/* the smart-link's window drawn as the flat screen's zoomed view (the
+	weapon's scope's own mask and HUD in its image, vr_scope.c): the
+	corner's radius of its rounded window (of the image's half width: as
+	large as the window's half extents, a circle; less than 0: the
+	smart-link's own look instead), how far the world about it is dimmed
+	(0 to 1), and how wide its edge fades into the world (of the image's
+	half width; 0: sharp) */
+	float corner;
+	float dim;
+	float feather;
 };
 
 /* xgpu_gl.c: the smart-link's window as each eye sees it, in the eye's
@@ -661,6 +671,11 @@ And the smart-link's view: how wide (degrees) and how far before the eyes
 #define HALO_VR_SCOPES_SMARTLINK 2
 int halo_vr_scopes(void);
 void halo_vr_smartlink_view(float *degrees, float *distance);
+/* the HUD's width (vr.hud_size, degrees: its height three quarters of it),
+which the smart-link's framed window is as large as; whether the window is
+on the visor where the HUD is (vr.smartlink_place = "visor"), else at the
+reticle */
+int halo_vr_smartlink_hud(float *hud_degrees);
 /* this frame's scope, drawn into its image (the scope pass): shown where
 it says at the present; NULL, none */
 void halo_vr_scope(const struct halo_vr_scope *scope);
@@ -682,6 +697,9 @@ int halo_vr_climb(struct halo_vr_climb *climb);
 int halo_vr_cockpit_window(struct halo_vr_cockpit_window *window, struct halo_vr_cockpit_display *display);
 void halo_vr_scope_readout(float *range, int *rounds_loaded, int *rounds_carried);
 void halo_vr_scope_animation(float *opened_seconds, float *closing, float *switched_seconds);
+/* and its window's shape and the world's dimming about it (halo_vr_scope's
+corner, dim and feather) */
+void halo_vr_scope_shape(float *corner, float *dim, float *feather);
 int halo_vr_scope_gun(void);
 /* the weapon in hand, for the reload by hand, once a frame; and the reload
 by hand as it is (0 when it is off) */

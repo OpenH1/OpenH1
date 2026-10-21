@@ -581,6 +581,13 @@ void halo_vr_scope_animation(float *opened_seconds, float *closing, float *switc
 	*switched_seconds = vr_frame.state.scope_animation[2];
 }
 
+void halo_vr_scope_shape(float *corner, float *dim, float *feather)
+{
+	*corner = vr_frame.state.scope_shape[0];
+	*dim = vr_frame.state.scope_shape[1];
+	*feather = vr_frame.state.scope_shape[2];
+}
+
 int halo_vr_scope_gun(void)
 {
 	return vr_frame.state.scope_gun;

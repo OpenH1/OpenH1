@@ -1847,6 +1847,7 @@ static void vr_state_record(void)
 	record_body->scope_rounds_carried = carried;
 	halo_vr_scope_animation(&record_body->scope_animation[0], &record_body->scope_animation[1],
 		&record_body->scope_animation[2]);
+	halo_vr_scope_shape(&record_body->scope_shape[0], &record_body->scope_shape[1], &record_body->scope_shape[2]);
 	record_body->scope_gun = halo_vr_scope_gun();
 	if (halo_vr_cockpit_window(&cockpit, &display))
 	{

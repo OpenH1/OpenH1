@@ -428,7 +428,7 @@ static void text_glyphs(const char *line, int *text, int count)
 static int copy_scope(struct xgpu_vulkan_image *source)
 {
 	struct fixed_draw draw;
-	float zoom_height, reticle[2], range, animation[4] = { 0.0f };
+	float zoom_height, reticle[2], range, animation[4] = { 0.0f }, corner, dim, feather;
 	int zoom = (int)(halo_vr_scope_zoom(&zoom_height) + 0.5f);
 	int smartlink = halo_vr_scope_smartlink(reticle), rounds_loaded, rounds_carried;
 	struct halo_vr_scope_window window;
@@ -459,6 +459,9 @@ static int copy_scope(struct xgpu_vulkan_image *source)
 	uniform(&draw, "text", text, 1, SCOPE_TEXT_LENGTH);
 	halo_vr_scope_animation(&animation[0], &animation[1], &animation[2]);
 	uniform(&draw, "animation", animation, 4, 1);
+	halo_vr_scope_shape(&corner, &dim, &feather);
+	uniform1f(&draw, "corner", smartlink ? corner : -1.0f);
+	uniform1f(&draw, "feather", feather);
 	uniform1f(&draw, "text_cell", smartlink ?
 		fmaxf(floorf((float)vr.scope_size * window.window[0] * 0.0036f + 0.5f), 1.0f) : 1.0f);
 	texture(&draw, 0, source, XGPU_VULKAN_IMAGE_2D, XGPU_VULKAN_FILTER_LINEAR, XGPU_VULKAN_ADDRESS_CLAMP);
@@ -470,7 +473,7 @@ static void scope_window(struct xgpu_vulkan_image *depth, int depth_layers)
 {
 	struct fixed_draw draw;
 	struct halo_vr_scope_window window;
-	float centre[2][4] = { { 0 } }, right[2][4] = { { 0 } }, up[2][4] = { { 0 } };
+	float centre[2][4] = { { 0 } }, right[2][4] = { { 0 } }, up[2][4] = { { 0 } }, corner, dim, feather;
 	int gun = halo_vr_scope_gun(), eye;
 
 	if (!vr.eyes_drawn || !vr.scope || !halo_vr_scope_window(&window) ||
@@ -493,6 +496,8 @@ static void scope_window(struct xgpu_vulkan_image *depth, int depth_layers)
 	uniform1f(&draw, "gun_depth", window.far_z > window.near_z && 1.2f > window.near_z ?
 		window.far_z / (window.far_z - window.near_z) * (1.0f - window.near_z / 1.2f) : 0.0f);
 	uniform1i(&draw, "layers", depth_layers);
+	halo_vr_scope_shape(&corner, &dim, &feather);
+	uniform1f(&draw, "dim", dim);
 	texture(&draw, 0, vr.scope, XGPU_VULKAN_IMAGE_2D, XGPU_VULKAN_FILTER_LINEAR, XGPU_VULKAN_ADDRESS_CLAMP);
 	texture(&draw, 1, depth, XGPU_VULKAN_IMAGE_2D_ARRAY, XGPU_VULKAN_FILTER_POINT, XGPU_VULKAN_ADDRESS_CLAMP);
 	blend(&draw, XGPU_BLEND_ONE, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA);
@@ -876,6 +881,23 @@ static void screenshots(const struct xgpu_vr_frame *frame)
 		screenshot_layer("hud", xgpu_vulkan_stream_target(frame->hud));
 	if (vr.scope_token)
 		screenshot_layer("scope", vr.scope);
+	/* (the smart-link's window: its view as the game drew it, all its
+	640x480 screen, opaque) */
+	else if (vr.scope_drawn && frame->scope && halo_vr_scope_smartlink((float[2]){ 0.0f, 0.0f }))
+	{
+		struct xgpu_vulkan_image *view = xgpu_vulkan_stream_target(frame->scope);
+		const struct xgpu_vulkan_image_description *description = view ? xgpu_vulkan_image_description(view) : NULL;
+		unsigned char *pixels = description ? read_image(view, 0) : NULL;
+		uint32_t index;
+
+		if (pixels)
+		{
+			for (index = 0; index < description->width * description->height; index++)
+				pixels[index * 4 + 3] = 255;
+			xgpu_write_bmp("scope-view", pixels, description->width, description->height, FALSE);
+			free(pixels);
+		}
+	}
 }
 
 static void submit(const struct xgpu_vr_frame *frame, BOOL screenshot)
