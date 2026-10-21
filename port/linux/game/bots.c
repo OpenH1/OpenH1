@@ -693,8 +693,20 @@ static long bots_find_item(struct bots_bot *bot, struct unit_datum *unit, real_p
 	char const *preferred = bot->smooth ? config_string("debug.bot_player_weapon") : "";
 	char const *current_name = current != NONE ? tag_get_name(weapon_get(current)->definition_index) : NULL;
 
+	short slot;
+
 	if (*preferred && current_name && strstr(current_name, preferred))
 		current_value += 20;
+	/* (holding it, in either hand: no other; walking over ammunition
+	takes it) */
+	for (slot = 0; *preferred && slot < MAXIMUM_WEAPONS_PER_UNIT; slot++)
+	{
+		long held = unit->unit.weapon_object_indices[slot];
+		char const *held_name = held != NONE ? tag_get_name(weapon_get(held)->definition_index) : NULL;
+
+		if (held_name && strstr(held_name, preferred))
+			return NONE;
+	}
 
 	object_iterator_new(&iterator, _object_mask_weapon, 0);
 	while (object_iterator_next(&iterator))
@@ -1827,7 +1839,8 @@ static void bots_choose_goal(struct bots_bot *bot, long player_index, real_point
 
 	/* (debug.bot_player_vehicle: the player's bot boards one first, and
 	drives it after) */
-	if (bot->smooth && own_unit->object.parent_object_index == NONE && now >= bot->item_check_tick)
+	if (bot->smooth && *config_string("debug.bot_player_vehicle") && own_unit->object.parent_object_index == NONE &&
+		now >= bot->item_check_tick)
 	{
 		long vehicle_index = bots_find_vehicle(position);
 
@@ -1996,6 +2009,11 @@ static void bots_bot_reset(struct bots_bot *bot, long player_index, long bot_ind
 	bot->random = 0x2545F491UL * (unsigned long)(bot_index + 1) ^ (unsigned long)network_game_get_random_seed();
 	bot->strafe_sign = 1.0f;
 	bot->smooth = bot_index == BOTS_MAXIMUM;
+	if (bot->smooth)
+	{
+		platform_log("bots: the first player played by a bot (debug.bot_player): weapon \"%s\", vehicle \"%s\"",
+			config_string("debug.bot_player_weapon"), config_string("debug.bot_player_vehicle"));
+	}
 }
 
 /* the bot's aim turned toward an offset (radians) by at most turn a tick:
@@ -2346,6 +2364,32 @@ players_update_before_game's player_handle_weapon_swap), let go now and
 then, so that a second swap can follow a first */
 static void bots_bot_weapons(struct bots_bot *bot, struct bots_tick *tick)
 {
+	/* (debug.bot_player_weapon: in hand while it has rounds) */
+	if (bot->smooth && *config_string("debug.bot_player_weapon"))
+	{
+		char const *preferred = config_string("debug.bot_player_weapon");
+		short slot;
+
+		for (slot = 0; slot < MAXIMUM_WEAPONS_PER_UNIT; slot++)
+		{
+			long held = tick->unit->unit.weapon_object_indices[slot];
+			char const *name = held != NONE ? tag_get_name(weapon_get(held)->definition_index) : NULL;
+
+			struct weapon_datum *weapon = held != NONE ? weapon_get(held) : NULL;
+
+			/* (out of rounds only when its reserve is out too: an empty
+			magazine is reloaded) */
+			if (name && strstr(name, preferred) &&
+				weapon->weapon.magazines[0].rounds_loaded + weapon->weapon.magazines[0].rounds_total > 0)
+			{
+				if (slot != tick->unit->unit.current_weapon_index)
+					tick->action->desired_weapon_index = slot;
+				else if (weapon->weapon.magazines[0].rounds_loaded == 0)
+					tick->flags |= FLAG(_unit_control_weapon_reload_bit);
+				return;
+			}
+		}
+	}
 	if (tick->weapon_index != NONE && bots_weapon_empty(tick->weapon_index))
 	{
 		short slot;
