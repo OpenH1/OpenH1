@@ -401,14 +401,12 @@ footer .legal a { color: var(--soft); }
         </div>
         <p class="reveal d1">The original drew every edge in jagged steps. OpenH1 smooths them with SMAA, and draws the HUD after, pin-sharp. Move the lens along the cliffs.</p>
       </div>
-      <div class="shot pair lensbox reveal" id="lensbox" data-pair data-lx="0.31" data-ly="0.56" data-tx="0.62" data-ty="0.3">
-        <!-- VIDEO TODO (website/VIDEOS-TODO.md, "edges"): a slow pan, edges-original and edges-openh1, as
-             <video> layers like the lights' (keep the class "pix" for the enlarged pixels). -->
+      <div class="shot pair lensbox reveal" id="lensbox" data-pair data-lx="0.29" data-ly="0.52" data-tx="0.62" data-ty="0.46">
         <div class="layer before pix">
-          <img src="media/edge-original.webp" alt="Cliff edges against the sky as the game originally drew them: every edge is a staircase of pixels" width="800" height="450" loading="lazy" decoding="async">
+          <video muted loop playsinline preload="none" poster="media/edges-original-poster.webp" data-webm="media/edges-original.webm" data-mp4="media/edges-original.mp4" aria-label="Cliff edges against the sky as the game originally drew them, the view sliding past: every edge is a staircase of pixels that crawls as it moves"></video>
         </div>
         <div class="layer after pix">
-          <img src="media/edge-openh1.webp" alt="" width="800" height="450" loading="lazy" decoding="async">
+          <video muted loop playsinline preload="none" poster="media/edges-openh1-poster.webp" data-webm="media/edges-openh1.webm" data-mp4="media/edges-openh1.mp4" aria-hidden="true"></video>
         </div>
         <span class="ring" aria-hidden="true"><span>OpenH1</span></span>
         <span class="side l">Original</span>
@@ -417,7 +415,7 @@ footer .legal a { color: var(--soft); }
         <span class="key mono"><span><i></i>Around the lens: Original</span><span><i class="g"></i>Inside the lens: OpenH1, SMAA</span></span>
         <button class="toggle" id="lens-all" type="button" aria-pressed="false" aria-controls="lensbox">Show OpenH1 everywhere</button>
       </div>
-      <p class="caption mono">Real capture, the same moment twice, enlarged 2× so the pixels show · Blood Gulch · no anti-aliasing, as the game drew it, and OpenH1's SMAA</p>
+      <p class="caption mono">Real capture, the same run twice, enlarged 4× so the pixels show · Blood Gulch, a slow strafe · Original: the Classic preset at the Xbox's 640 × 480 · OpenH1: Enhanced, SMAA</p>
     </div>
   </section>
 
@@ -426,15 +424,13 @@ footer .legal a { color: var(--soft); }
     <div class="wrap flipgrid">
       <div>
         <figure class="shot pair flip reveal" id="flip" data-pair style="margin:0;aspect-ratio:4/3">
-          <!-- VIDEO TODO (website/VIDEOS-TODO.md, "glow"): plasma fired down a dark hallway, glow-original and
-               glow-openh1, as <video> layers like the lights'; then set the figure's aspect-ratio to 16/9. -->
           <div class="layer before">
-            <img src="media/glow-original.webp" alt="A charged plasma pistol shot, as the game originally drew it" width="640" height="480" loading="lazy" decoding="async">
+            <video muted loop playsinline preload="none" poster="media/glow-original-poster.webp" data-webm="media/glow-original.webm" data-mp4="media/glow-original.mp4" aria-label="Plasma rifle bolts fired down a dark corridor, as the game originally drew them: small flares, and the corridor stays dark"></video>
           </div>
           <div class="layer after">
-            <img src="media/glow-openh1.webp" alt="The same moment in OpenH1: the bolt glows and lights the rock and the weapon around it" width="640" height="480" loading="lazy" decoding="async">
+            <video muted loop playsinline preload="none" poster="media/glow-openh1-poster.webp" data-webm="media/glow-openh1.webm" data-mp4="media/glow-openh1.mp4" aria-label="The same shots in OpenH1: each bolt glows and lights the floor and the walls as it flies"></video>
             <div class="cos" aria-hidden="true">
-              <span class="co" style="--x:50%;--y:52%;--len:56px"><i class="pin" data-n="1"></i><i class="leader"></i><span class="lbl">The bolt glows as it flies</span></span>
+              <span class="co" style="--x:44%;--y:44%;--len:56px"><i class="pin" data-n="1"></i><i class="leader"></i><span class="lbl">The bolt glows as it flies</span></span>
               <span class="co west" style="--x:78%;--y:74%;--len:40px"><i class="pin" data-n="2"></i><i class="leader"></i><span class="lbl">Your weapon catches the light</span></span>
             </div>
           </div>
@@ -445,9 +441,9 @@ footer .legal a { color: var(--soft); }
       <div class="flipcopy">
         <p class="kicker mono reveal">03 · The plasma glow</p>
         <h2 id="glow-title" class="reveal d1">Plasma that <span class="lit">glows.</span></h2>
-        <p class="reveal d2">The original drew a plasma bolt as a flat flare. OpenH1 gives every bolt in flight a soft glow, and lets it light the rock, the ground and the gun in your hands. Tap the shot to flip it.</p>
+        <p class="reveal d2">The original drew a plasma bolt as a flat flare. OpenH1 gives every bolt in flight a soft glow, and lets it light the walls, the floor and the gun in your hands. Tap the shot to flip it.</p>
         <button class="switch reveal d3" id="switch" role="switch" aria-checked="true" aria-label="Show OpenH1 (off: the Original)"><span>Original</span><span>OpenH1</span></button>
-        <p class="caption mono">Real capture, the same moment twice · Blood Gulch, a charged plasma pistol · Dynamic Lights as the game drew them, and OpenH1's Enhanced</p>
+        <p class="caption mono">Real capture, the same run twice · Rat Race, the plasma rifle · Original: the Classic preset at the Xbox's 640 × 480, a frame a tick · OpenH1: Enhanced, frames between ticks</p>
       </div>
     </div>
   </section>
@@ -476,7 +472,7 @@ footer .legal a { color: var(--soft); }
         <div class="key mono"><span>Same <b style="color:var(--text)">30 Hz</b> game</span><span>Same input</span><span>Shown at 60 fps</span></div>
         <button class="toggle" id="clips-play" type="button" aria-pressed="false">Play both</button>
       </div>
-      <p class="caption mono">Real capture, the same run twice: Original, one frame a tick · OpenH1, frames between ticks · 120 and 240 Hz displays get a frame for every refresh</p>
+      <p class="caption mono">Real capture, the same run twice, Rat Race: Original, one frame a tick · OpenH1, frames between ticks · 120 and 240 Hz displays get a frame for every refresh</p>
     </div>
   </section>
 

@@ -21,11 +21,13 @@ SIZE = os.environ.get('SIZE', '3840x2880')
 WIDTH, HEIGHT = (int(x) for x in SIZE.split('x'))
 
 def capture(clip, side, a, port):
+    # (a long limit of wall time: 4K frames are written at two or three a
+    # second, and the trace's end quits the game first)
     env = dict(os.environ, PORT=str(port), SIZE=SIZE, TRACE_SECONDS=str(a.end_to + 1.0),
                FT='0.0333333' if side == 'original' else '0.0166667')
     if a.seed is not None:
         env['SEED'] = str(a.seed)
-    return subprocess.Popen([f'{HERE}/capture.sh', f'final/{clip}-{side}', side, a.scenario, a.script, '120'],
+    return subprocess.Popen([f'{HERE}/capture.sh', f'final/{clip}-{side}', side, a.scenario, a.script, '1500'],
                             env=env)
 
 def ticks(path):

@@ -65,17 +65,16 @@ Rules for the content:
 | --- | --- | --- |
 | `hero-720.*`, `hero-1080.*`, `hero-1440.*`, `hero-poster.webp` | The hero | Six multiplayer moments cut together (`capture/`, "hero, 2026-10-20"): a Warthog's splatter on Blood Gulch, a pistol triple on Sidewinder, a needler on Prisoner, a sticky on Hang 'Em High, rockets on Chill Out and Damnation. Enhanced at 60 fps, HUD on, filmed at 3840 × 2160; MP4 and WebM at 1280, 1920 and 2560 wide (1.6, 3.2 and 5.5 Mbit/s, a keyframe each second), the page choosing by the screen (a phone the smallest); 21 s, hard cuts; the poster its first frame |
 | `lights-original.*`, `lights-openh1.*` | 01 | Rat Race, a frag grenade at a spot already scorched (`capture/`): the Classic preset at 640 × 480 a frame a tick, and Enhanced at 60 fps between ticks. 4 s, 1920 × 1440 (from 3840 × 2880 masters), a loop without a fade, MP4 and WebM with posters |
-| `edge-original.webp`, `edge-openh1.webp` | 02 | Blood Gulch's cliffs, an 800 × 450 crop of 1920 × 1080: anti-aliasing off and SMAA, shown at 2× with `image-rendering: pixelated` |
-| `glow-original.webp`, `glow-openh1.webp` | 03 | Blood Gulch, a charged plasma pistol: Dynamic Lights Classic and Enhanced (640 × 480) |
-| `strafe-original.*`, `strafe-openh1.*` | 04 | Blood Gulch, a strafe: the Classic preset at one frame a tick, and Enhanced at 60 fps between ticks. 4.4 s, 1280 wide, MP4 and WebM with posters |
+| `edges-original.*`, `edges-openh1.*` | 02 | Blood Gulch's cliffs against the sky, a slow strafe out and back (`capture/`): the Classic preset at 640 × 480 and Enhanced (SMAA). A quarter of the frame (320 × 180 of the Original's pixels) at 1280 × 720, 4× by nearest neighbour, shown with `image-rendering: pixelated`; 5.3 s, a loop without a fade |
+| `glow-original.*`, `glow-openh1.*` | 03 | Rat Race, the plasma rifle fired down a dark corridor, a burst before the clip leaving the scorch marks (`capture/`): the Classic preset a frame a tick, and Enhanced at 60 fps between ticks. 4 s, 1280 × 960, a loop without a fade |
+| `strafe-original.*`, `strafe-openh1.*` | 04 | Rat Race, a strafe past pillars and back to where it began (`capture/`): the Classic preset at one frame a tick, and Enhanced at 60 fps between ticks. 3.9 s, 1280 × 720 (a 16:9 crop of 4:3 masters), a loop without a fade |
 
 Each comparison is a pair of layers, `.layer.before` (the Original) under
 `.layer.after` (OpenH1), each holding an `<img>` or a `<video>`. A video
 needs `muted loop playsinline preload="none"`, a `poster`, and
 `data-webm` / `data-mp4`: the script adds the sources when the pair comes
 into view, plays the pair together and keeps the second in step with the
-first. The clips still wanted, and how to capture them, are in
-`VIDEOS-TODO.md`; each place that wants one has a `VIDEO TODO` comment.
+first. How they are captured is in `capture/README.md`.
 
 Callouts are `<span class="co">` in the OpenH1 layer: `--x` and `--y` put
 the pin on the spot it names (in percent of the picture), `--len` is the
