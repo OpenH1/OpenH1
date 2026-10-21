@@ -34,8 +34,10 @@ def match_env(map_variant, seed, a, index):
     return {**extra, 'NETTEST': f'local:{map_variant}', 'HALO_NETWORK_TEST_START': '2', 'HALO_NETWORK_TEST_SCORE': '500',
             'HALO_NET_ADDRESS': f'127.0.{index // 250}.{index % 250 + 2}', 'HALO_NET_BROADCAST': '127.255.255.255',
             'HALO_BOTS': str(a.bots), 'HALO_BOT_SKILL': a.skill, 'HALO_BOT_PLAYER': '1', 'SEED': str(seed),
-            # (multiplayer keeps the whole HUD: the trailer's firefights show it)
-            'HIDE_HUD': '0'}
+            # (multiplayer keeps the whole HUD: the trailer's firefights show it;
+            # but not the port's names over every player's head, only the stock
+            # game's of the one under the crosshair)
+            'HIDE_HUD': '0', 'HALO_PLAYER_NAMES': 'none'}
 
 def scout(job):
     (map_variant, seed), a, index = job
