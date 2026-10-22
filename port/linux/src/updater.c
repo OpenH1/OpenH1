@@ -25,8 +25,8 @@ The system side (the HTTPS download, the files, starting the new game) is
 update.h's: posix_update.c on Linux, win32_update.c on Windows.
 
 On Linux the release is a tree (bin/openh1, lib/openh1, share/...:
-install_layout.c, tools/linux_package.py), halo-linux-x86_64-<flavor>.zip
-or halo-linux-arm64-<flavor>.zip (tools/ci_build.py), and the game's folder
+install_layout.c, tools/linux_package.py), OpenH1-Linux[-debug].zip or
+OpenH1-Linux-ARM64[-debug].zip (tools/release_names.py), and the game's folder
 is its root. A game a package manager installed, or one in a folder the
 player cannot write to, never looks for updates: its package manager
 updates it; nor does a game outside a tree (a build's folder).
@@ -37,30 +37,34 @@ updates it; nor does a game outside a tree (a build's folder).
 #include "port_config.h"
 #include "update.h"
 
-/* the release's build that this one updates to (halo-<platform>-<release|
-debug>.zip; on Linux, the release's tree); a build without one never looks
-for updates */
+/* the release's build that this one updates to (UPDATE_NAME[-debug].zip,
+as tools/release_names.py names the release's files; on Linux, the release's
+tree); a build without one never looks for updates */
 #if defined(HALO_ANDROID) || defined(HALO_WEB) || defined(HALO_MACOS)
 /* (none: the Android app updates itself, the site through its service
 worker; the macOS app is replaced by its disk image) */
 #elif defined(_WIN32)
 #define UPDATE_PLATFORM "windows"
+#define UPDATE_NAME "OpenH1-Windows"
 #elif defined(HALO_VR) && defined(__x86_64__)
 /* the 64-bit x86 VR build, which releases have beside the other one
 (tools/ci_build.py --vr): it updates to itself, never to the other build */
 #define UPDATE_PLATFORM "linux-x86_64-vr"
+#define UPDATE_NAME "OpenH1-Linux-VR"
 #elif defined(HALO_VR)
 /* (none: the 64-bit ARM VR build is the Steam Frame's, installed and updated
 as a package of its own, tools/frame_package.py and frame_install.sh, with
 its launcher and its checksums: the releases have it as
-halo-steam-frame-vr-release.zip, not a tree this could unpack, and the
+OpenH1-Steam-Frame.zip, not a tree this could unpack, and the
 desktop build would replace its executable) */
 #elif defined(__aarch64__)
 /* the 64-bit ARM build (port/linux/host) */
 #define UPDATE_PLATFORM "linux-arm64"
+#define UPDATE_NAME "OpenH1-Linux-ARM64"
 #elif defined(__x86_64__)
 /* the 64-bit x86 build (port/linux/host, as the 64-bit ARM one) */
 #define UPDATE_PLATFORM "linux-x86_64"
+#define UPDATE_NAME "OpenH1-Linux"
 #endif
 
 #ifdef UPDATE_PLATFORM
@@ -87,7 +91,10 @@ generate_guest_image, windows_build.py) */
 #else
 #define PATH_SEPARATOR "/"
 #endif
-#define UPDATE_ASSET "halo-" UPDATE_PLATFORM "-" HALO_BUILD_FLAVOR ".zip"
+/* the release's file (a debug build's has -debug after the name) */
+#define UPDATE_ASSET_RELEASE UPDATE_NAME ".zip"
+#define UPDATE_ASSET_DEBUG UPDATE_NAME "-debug.zip"
+#define UPDATE_ASSET (strcmp(HALO_BUILD_FLAVOR, "release") ? UPDATE_ASSET_DEBUG : UPDATE_ASSET_RELEASE)
 #define UPDATE_DIRECTORY "update.partial"
 /* the files an update replaced (<name>.old), one on each line, which the new
 version deletes */
@@ -518,7 +525,7 @@ static int updater_download_zip(const char *zip_path, char *error, size_t error_
 	memset(&download, 0, sizeof(download));
 	download.lock = SDL_CreateMutex();
 	snprintf(download.url, sizeof(download.url),
-		"https://github.com/" UPDATE_REPOSITORY "/releases/download/build-%ld/" UPDATE_ASSET, updater_latest_build);
+		"https://github.com/" UPDATE_REPOSITORY "/releases/download/build-%ld/%s", updater_latest_build, UPDATE_ASSET);
 	snprintf(download.zip_path, sizeof(download.zip_path), "%s", zip_path);
 	thread = SDL_CreateThread(updater_download_thread, "update download", &download);
 	if (!thread)

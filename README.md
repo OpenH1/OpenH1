@@ -82,11 +82,11 @@ builds of the latest release:
 | Platform | Release | Debug |
 | --- | --- | --- |
 | macOS (Apple silicon, macOS 14.4 or later) | [OpenH1.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1.dmg) | [OpenH1-debug.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-debug.dmg) |
-| Windows | [halo-windows-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-release.zip) | [halo-windows-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-debug.zip) |
-| Linux x86-64 (also the Steam Deck) | [halo-linux-x86_64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-release.zip) | [halo-linux-x86_64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-debug.zip) |
-| Linux arm64 | [halo-linux-arm64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-release.zip) | [halo-linux-arm64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-debug.zip) |
-| Linux x86-64 VR | [halo-linux-x86_64-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-vr-release.zip) | |
-| Steam Frame VR ([install](port/linux/frame/README.md#install-or-update)) | [halo-steam-frame-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-steam-frame-vr-release.zip) | |
+| Windows | [OpenH1-Windows.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Windows.zip) | [OpenH1-Windows-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Windows-debug.zip) |
+| Linux x86-64 (also the Steam Deck) | [OpenH1-Linux.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux.zip) | [OpenH1-Linux-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux-debug.zip) |
+| Linux arm64 | [OpenH1-Linux-ARM64.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux-ARM64.zip) | [OpenH1-Linux-ARM64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux-ARM64-debug.zip) |
+| Linux x86-64 VR | [OpenH1-Linux-VR.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux-VR.zip) | |
+| Steam Frame VR ([install](port/linux/frame/README.md#install-or-update)) | [OpenH1-Steam-Frame.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Steam-Frame.zip) | |
 | Android | [halo-android-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-android-release.zip) | [halo-android-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-android-debug.zip) |
 
 Use the release build to play. The debug build stops at the first failed

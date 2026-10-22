@@ -81,13 +81,13 @@ To see the glibc version that a build needs, enter
 
 Enter `build/linux_x86_64/halo`.
 
-The release (`halo-linux-x86_64-release.zip`, or
-`halo-linux-arm64-release.zip` for 64-bit ARM) is a folder laid out as a
+The release (`OpenH1-Linux.zip`, or
+`OpenH1-Linux-ARM64.zip` for 64-bit ARM) is a folder laid out as a
 Unix prefix is (refer to "Packaging"). Unpack it into a folder, and enter
 `bin/openh1` in that folder. That folder is the game's folder: the game
 keeps `config.toml` and `maps/` there.
 
-To play on a Steam Deck, unpack `halo-linux-x86_64-release.zip` into a
+To play on a Steam Deck, unpack `OpenH1-Linux.zip` into a
 folder (in Desktop Mode), and add `bin/openh1` to Steam as a non-Steam game
 ("Add a Game" in the Games menu of Steam). The game then starts in Game
 Mode as well. Refer to "Steam Deck".
@@ -135,7 +135,7 @@ folder, next to `bin/` (or start the game one time to copy it from a disc
 image), and add `bin/openh1` to Steam. Then start the game from the library
 in Game Mode.
 
-- Build: the 64-bit x86 one, `halo-linux-x86_64-release.zip`, which draws
+- Build: the 64-bit x86 one, `OpenH1-Linux.zip`, which draws
   with Vulkan (SteamOS has it).
 - Screen: the game fills the screen without borders (`display.mode` empty,
   thus borderless). The 3D view and the HUD have the shape of the screen
@@ -601,8 +601,8 @@ newer, the game does nothing.
 If the latest release is newer, the game asks: "Do you want to update?"
 
 - Select "Yes" to update. The game downloads the release for this platform
-  (`halo-linux-x86_64-release.zip`, `halo-linux-arm64-release.zip`, or the
-  VR build's `halo-linux-x86_64-vr-release.zip`: "VR"), replaces its files
+  (`OpenH1-Linux.zip`, `OpenH1-Linux-ARM64.zip`, or the
+  VR build's `OpenH1-Linux-VR.zip`: "VR"), replaces its files
   and starts the new
   version. The old files get the extension `.old`. The new version deletes
   them.
@@ -630,11 +630,11 @@ updates: its package manager updates it.
 
 ## Packaging
 
-The release (`halo-linux-x86_64-release.zip`, `halo-linux-arm64-release.zip`,
-`halo-linux-x86_64-vr-release.zip`, and their `-debug.zip`) is laid out as a
+The release (`OpenH1-Linux.zip`, `OpenH1-Linux-ARM64.zip`,
+`OpenH1-Linux-VR.zip`, and their `-debug.zip`) is laid out as a
 Unix prefix is, so a package can copy its folders to `/usr` (or
 `/opt/openh1`) as they are (but not the Steam Frame's
-`halo-steam-frame-vr-release.zip`, its own package: "Steam Frame" in "VR"):
+`OpenH1-Steam-Frame.zip`, its own package: "Steam Frame" in "VR"):
 
 | Path | Contents |
 | --- | --- |
@@ -701,10 +701,10 @@ ALSA client libraries for sound: refer to "Requirements". The disc image
 picker of the first start is the desktop's file dialog, through
 `xdg-desktop-portal` (or `zenity`).
 
-The 64-bit ARM build downloads `halo-linux-arm64-release.zip` (or
+The 64-bit ARM build downloads `OpenH1-Linux-ARM64.zip` (or
 `-debug.zip`), not the x86-64 one. The 64-bit x86 build downloads
-`halo-linux-x86_64-release.zip` (or `-debug.zip`), and its VR build
-`halo-linux-x86_64-vr-release.zip` ("VR").
+`OpenH1-Linux.zip` (or `-debug.zip`), and its VR build
+`OpenH1-Linux-VR.zip` ("VR").
 
 ## Frame rate
 
@@ -1521,7 +1521,7 @@ computer: on such a computer, `ninja` without a target builds it.
 | Result | Item |
 | --- | --- |
 | `build/linux_arm64/halo` | The game, an AArch64 executable |
-| `build/linux_arm64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/openh1` in the release, `halo-linux-arm64-release.zip`: "Packaging"). |
+| `build/linux_arm64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/openh1` in the release, `OpenH1-Linux-ARM64.zip`: "Packaging"). |
 | `build/linux_arm64/SDL3-LICENSE.txt` | The license of SDL |
 
 The game data, the settings, the saved games, the controls and system link
@@ -1682,7 +1682,7 @@ needs no 32-bit libraries or drivers.
 | Result | Item |
 | --- | --- |
 | `build/linux_x86_64/halo` | The game, an x86-64 executable |
-| `build/linux_x86_64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/openh1` in the release, `halo-linux-x86_64-release.zip`: "Packaging"). |
+| `build/linux_x86_64/libSDL3.so.0` | SDL 3.4.16. The game finds it next to the executable (in `lib/openh1` in the release, `OpenH1-Linux.zip`: "Packaging"). |
 | `build/linux_x86_64/SDL3-LICENSE.txt` | The license of SDL |
 
 The game data, the settings (`config.toml` in the game's folder), the
@@ -1781,14 +1781,14 @@ headset the game plays flat, in its window. `vr.enabled = false` (or
 `HALO_VR=0`) plays flat too.
 
 On a PC, the releases have the 64-bit x86 VR build,
-`halo-linux-x86_64-vr-release.zip`, beside the one without VR
+`OpenH1-Linux-VR.zip`, beside the one without VR
 (`tools/ci_build.py linux_x86_64 release --vr`): unpack it to a folder of
 its own, with the maps ("Start the game"), and start `bin/openh1`. It
 updates itself to the release's VR build, never to the other. The build
 without VR has no VR mode, and the VR build starts the
 runtime (SteamVR's server) whenever it starts, so it is a download of its
 own. For the Steam Frame, the releases have the 64-bit ARM VR build as the
-Frame's package, `halo-steam-frame-vr-release.zip`
+Frame's package, `OpenH1-Steam-Frame.zip`
 (`tools/ci_build.py linux_arm64 release --vr`, which runs
 `tools/frame_package.py --zip`). On the Frame the VR build doesn't update
 itself (`update.auto` has no effect): install a new one with
@@ -1801,10 +1801,10 @@ through a shortcut (a non-Steam game) to the launcher there,
 `halo-vr.sh` (`port/linux/frame/halo-vr.sh`, whose comments list the
 environment it gives the game). From a computer with SSH to the Frame,
 the latest release's package
-([halo-steam-frame-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-steam-frame-vr-release.zip)):
+([OpenH1-Steam-Frame.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Steam-Frame.zip)):
 
 ```sh
-tools/frame_install.sh --package halo-steam-frame-vr-release.zip <frame>
+tools/frame_install.sh --package OpenH1-Steam-Frame.zip <frame>
 ```
 
 or one built here:
@@ -1824,7 +1824,7 @@ tools/frame_install.sh <frame>
   stops if the game is not the VR build, or needs a library that
   neither the package nor SteamOS has. `--zip <file>` also writes it as a
   zip (the `halo-vr-frame` folder, with the files' modes), as the release's
-  `halo-steam-frame-vr-release.zip`.
+  `OpenH1-Steam-Frame.zip`.
 - `tools/frame_install.sh <host>` (`--package` for another package, a
   folder, the `.tar.gz` or a release's `.zip`) copies it to
   `~/apps/halo-vr/` over SSH. It

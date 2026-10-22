@@ -166,7 +166,7 @@ id of the project in the DSN. For a personal token instead, also set the
 `SENTRY_ORG` variable (the slug of the organization) and the `SENTRY_URL`
 variable (`https://de.sentry.io`).
 
-Each release also has the PDBs as `halo-windows-<configuration>-symbols.zip`.
+Each release also has the PDBs as `OpenH1-Windows-symbols.zip` (and `OpenH1-Windows-debug-symbols.zip`).
 `tools/symbolize_crash.py` uses them to add the function names and the
 source lines to the crash lines of a `debug.txt` or a `halo.log`:
 
