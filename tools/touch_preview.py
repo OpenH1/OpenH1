@@ -12,11 +12,13 @@ tools/touch_assets.py); the drawing follows TouchControls.onDraw, whose
 constants are repeated here. Each display is drawn in one
 display.hud_button_style, with the captions (input.touch_captions), and
 either with the right trigger and the stick held (the pressed look) or idle
-(faded, no finger on the screen). Without --background the picture behind
+(faded, no finger on the screen), and in a player's state (TouchContext):
+an action prompted, a magazine to reload, no grenades, a vehicle. Without --background the picture behind
 is a dark landscape drawn here (no game art). Needs Pillow and NumPy.
 """
 
 import argparse
+import math
 import subprocess
 import tempfile
 from pathlib import Path
@@ -28,12 +30,19 @@ ROOT = Path(__file__).resolve().parent.parent
 DRAWABLES = ROOT / "port/android/app/src/main/res/drawable-nodpi"
 JAVA = ROOT / "port/android/app/src/main/java/com/halo/decomp"
 
-# (name, width, height, dots per inch, display.hud_button_style, idle)
+# player 1's state (TouchContext's bits) and the time of the pulse drawn
+ACTION, RELOAD, NO_GRENADES, VEHICLE = 1, 2, 4, 8
+PULSE_PEAK = 312  # milliseconds into the reload pulse: its brightest (1.6 Hz)
+
+# (name, width, height, dots per inch, display.hud_button_style, idle, state)
 DISPLAYS = [
-    ("touch-controls-phone-classic", 2400, 1080, 420, "classic", False),
-    ("touch-controls-phone-gems", 2400, 1080, 420, "gems", False),
-    ("touch-controls-phone-classic-idle", 2400, 1080, 420, "classic", True),
-    ("touch-controls-tablet-menu-gems", 2560, 1600, 320, "menu_gems", False),
+    ("touch-controls-phone-classic", 2400, 1080, 420, "classic", False, 0),
+    ("touch-controls-phone-gems", 2400, 1080, 420, "gems", False, 0),
+    ("touch-controls-phone-classic-idle", 2400, 1080, 420, "classic", True, 0),
+    ("touch-controls-tablet-menu-gems", 2560, 1600, 320, "menu_gems", False, 0),
+    ("touch-controls-phone-action-no-grenades", 2400, 1080, 420, "classic", True, ACTION | NO_GRENADES),
+    ("touch-controls-phone-reload", 2400, 1080, 420, "classic", True, RELOAD),
+    ("touch-controls-phone-vehicle", 2400, 1080, 420, "classic", True, VEHICLE),
 ]
 
 # TouchControls's tables: each kind's controller button (-1 for none), its
@@ -72,6 +81,13 @@ IDLE_OPACITY = 0.7
 STICK_KNOB_RADIUS = 24
 TOOLBAR_RADIUS = 28
 OPTIONS_RADIUS = 34
+GLOW_MARGIN = 0.25
+GLOW_GROW = 0.14
+DIMMED = 0.35
+ACTION_GLOW = 1.0
+PULSE_HZ = 1.6
+PULSE_SWELL = 0.06
+CONTROL_JUMP, CONTROL_ACTION, CONTROL_GRENADE, CONTROL_CROUCH = 0, 2, 6, 10
 CAPTION_FONT = ROOT / "port/android/app/src/main/res/font/touch_caption.ttf"
 
 
@@ -144,6 +160,20 @@ class Painter:
             drawn = drawn.rotate(-rotate, resample=Image.BICUBIC)
         self.composite(drawn, x, y, alpha)
 
+    def glow(self, name, x, y, radius, alpha):
+        """TouchControls.glow: the art's shape blurred, in the HUD's colour, past it by GLOW_MARGIN"""
+        source = Image.open(DRAWABLES / ("touch_" + name + ".png")).convert("RGBA")
+        margin = round(max(source.size) * GLOW_MARGIN)
+        shape = Image.new("L", (source.width + 2 * margin, source.height + 2 * margin))
+        grown = source.getchannel("A").resize((round(source.width * (1 + GLOW_GROW)),
+                                               round(source.height * (1 + GLOW_GROW))), Image.LANCZOS)
+        shape.paste(grown, (margin - round(source.width * GLOW_GROW / 2), margin - round(source.height * GLOW_GROW / 2)))
+        glow = Image.new("RGBA", shape.size, HUD_COLOR + (0,))
+        glow.putalpha(shape.filter(ImageFilter.GaussianBlur(margin * 0.25)))
+        factor = radius * 2 * self.scale / max(glow.size)
+        glow = glow.resize((max(1, round(glow.width * factor)), max(1, round(glow.height * factor))), Image.LANCZOS)
+        self.composite(glow, x, y, alpha)
+
     def caption(self, words, x, y, alpha):
         """TouchControls.caption: Overpass, the HUD's colour, a soft shadow"""
         size = CAPTION_SIZE * self.scale
@@ -177,7 +207,11 @@ class Painter:
         self.image.alpha_composite(layer)
 
 
-def draw(name, width, height, dpi, style, idle, background, out):
+def pulse(millis):
+    return 0.5 - 0.5 * math.cos(millis / 1000 * PULSE_HZ * 2 * math.pi)
+
+
+def draw(name, width, height, dpi, style, idle, state, background, out):
     scale, logical_width, logical_height, finger, controls = layout(width, height, dpi)
     if background:
         image = Image.open(background).convert("RGBA").resize((width, height), Image.LANCZOS)
@@ -199,20 +233,34 @@ def draw(name, width, height, dpi, style, idle, background, out):
             painter.stick(x, y, radius, x + stick_x * radius, y + stick_y * radius, knob, active, opacity)
             continue
         art = KIND_ART[kind]
+        game = DEFAULT_BINDINGS[KIND_GAMEPAD[kind]] if KIND_GAMEPAD[kind] >= 0 else -1
+        if state & VEHICLE and game in (CONTROL_JUMP, CONTROL_CROUCH):
+            continue
         if art:
             if art in ("a", "b", "x", "y", "black", "white"):
                 folder = STYLES[style]
                 if folder == "gems" and art in ("black", "white"):
                     folder = "menu"
                 art = f"button_{folder}_{art}"
-            painter.picture(art, x, y, radius * ART_SIZE * sink,
-                            (1 if active else MINOR_BUTTON_ALPHA if minor else BUTTON_ALPHA) * opacity, fit=True,
-                            brighten=brighten)
-            game = DEFAULT_BINDINGS[KIND_GAMEPAD[kind]]
+            glow = 0
+            swell = 1
+            if game == CONTROL_ACTION and state & RELOAD:
+                glow = 0.2 + 0.8 * pulse(PULSE_PEAK)
+                swell = 1 + PULSE_SWELL * pulse(PULSE_PEAK)
+            elif game == CONTROL_ACTION and state & ACTION:
+                glow = ACTION_GLOW
+            dim = DIMMED if game == CONTROL_GRENADE and state & NO_GRENADES else 1
+            size_drawn = radius * ART_SIZE * sink * swell
+            if glow:
+                painter.glow(art, x, y, size_drawn * (1 + 2 * GLOW_MARGIN), glow * max(opacity, 0.5))
+            painter.picture(art, x, y, size_drawn,
+                            (1 if active else MINOR_BUTTON_ALPHA if minor else BUTTON_ALPHA) * opacity * dim, fit=True,
+                            brighten=PRESSED_BRIGHTEN if active or glow > 0.6 else 0)
             if game >= 0:
                 source = Image.open(DRAWABLES / ("touch_" + art + ".png"))
                 bottom = y + radius * ART_SIZE * source.height / max(source.size)
-                painter.caption(CAPTIONS[game], x, bottom + CAPTION_SIZE + 1, max(opacity, 0.5))
+                words = "EXIT" if state & VEHICLE and game == CONTROL_ACTION else CAPTIONS[game]
+                painter.caption(words, x, bottom + CAPTION_SIZE + 1, max(opacity, 0.5) * dim)
             continue
         icon, rotate = KIND_ICON[kind]
         painter.picture("icon_" + icon, x, y, radius * (MINOR_ICON_SIZE if minor else ICON_SIZE) * sink,
@@ -235,8 +283,8 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--background", type=Path, help="a picture to draw the controls over")
     args = parser.parse_args()
-    for name, width, height, dpi, style, idle in DISPLAYS:
-        draw(name, width, height, dpi, style, idle, args.background, args.out)
+    for name, width, height, dpi, style, idle, state in DISPLAYS:
+        draw(name, width, height, dpi, style, idle, state, args.background, args.out)
 
 
 if __name__ == "__main__":
