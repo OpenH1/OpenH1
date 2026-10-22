@@ -82,18 +82,27 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static final float LOOK_RADIANS_PER_UNIT = 0.0022f;
     /**
      * how solid each part is drawn, times the layout's opacity: the game
-     * shows through the plates, the seldom used controls' more
+     * shows through the buttons and plates, the seldom used controls' more
      */
+    private static final float BUTTON_ALPHA = 0.8f;
+    private static final float MINOR_BUTTON_ALPHA = 0.55f;
     private static final float PLATE_ALPHA = 0.6f;
     private static final float MINOR_PLATE_ALPHA = 0.4f;
     private static final float PRESSED_PLATE_ALPHA = 0.85f;
     private static final float STICK_PAD_ALPHA = 0.7f;
     private static final float STICK_KNOB_ALPHA = 0.9f;
     private static final float MINOR_ICON_ALPHA = 0.7f;
-    /** an icon's half-width, in its control's radii; a held control's icon sinks a little */
+    /**
+     * a controller button's art, half its longer side in its control's
+     * radii; a Kenney icon's on its plate; either sinks a little while held
+     */
+    private static final float ART_SIZE = 0.92f;
     private static final float ICON_SIZE = 0.5f;
     private static final float MINOR_ICON_SIZE = 0.44f;
-    private static final float PRESSED_ICON_SIZE = 0.9f;
+    private static final float PRESSED_SIZE = 0.9f;
+    /** a caption's size and how solid it is (input.touch_captions) */
+    private static final float CAPTION_SIZE = 10;
+    private static final float CAPTION_ALPHA = 0.6f;
     /** a label is at most this many radii wide */
     private static final float LABEL_WIDTH = 1.7f;
     /** the labels' fitted sizes remembered (a few dozen are drawn; the editor's sizes add more) */
@@ -109,6 +118,9 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static final int SCENE_MENUS = 2;
     private static final int SCENE_ON = 4;
     private static final int SCENE_OFF = 8;
+    /** display.hud_button_style (0 classic, 1 gems, 2 menu_gems) and input.touch_captions */
+    private static final int SCENE_STYLE_SHIFT = 4;
+    private static final int SCENE_CAPTIONS = 64;
 
     private static final String PREFERENCES = "touch-layout-v1";
     private static final String KEY_CONFIGURATION = "configuration";
@@ -171,18 +183,35 @@ public final class TouchControls extends View implements SensorEventListener, In
         "Grenade", "Fire", "Pause", "Back", "Crouch", "Zoom",
     };
     /**
-     * each game control's icon (res/drawable-nodpi, tools/touch_assets.py:
-     * port/assets/touch/README.md), and whether it is one seldom used, drawn
-     * fainter and smaller
+     * the controller's buttons drawn as the HUD draws them (port/assets/
+     * buttons, through tools/touch_assets.py: port/assets/touch/README.md):
+     * A, B, X, Y, black and white in each display.hud_button_style ("gems"
+     * has menu_gems' black and white), then the triggers and the sticks
      */
-    private static final int[] CONTROL_ICONS = {
-        R.drawable.touch_icon_jump, R.drawable.touch_icon_grenade_type, R.drawable.touch_icon_reload,
-        R.drawable.touch_icon_weapon, R.drawable.touch_icon_melee, R.drawable.touch_icon_flashlight,
-        R.drawable.touch_icon_grenade, R.drawable.touch_icon_fire, R.drawable.touch_icon_pause,
-        R.drawable.touch_icon_back, R.drawable.touch_icon_crouch, R.drawable.touch_icon_zoom,
+    private static final int[][] FACES = {
+        {R.drawable.touch_button_classic_a, R.drawable.touch_button_classic_b, R.drawable.touch_button_classic_x,
+            R.drawable.touch_button_classic_y, R.drawable.touch_button_classic_black,
+            R.drawable.touch_button_classic_white},
+        {R.drawable.touch_button_gems_a, R.drawable.touch_button_gems_b, R.drawable.touch_button_gems_x,
+            R.drawable.touch_button_gems_y, R.drawable.touch_button_menu_black, R.drawable.touch_button_menu_white},
+        {R.drawable.touch_button_menu_a, R.drawable.touch_button_menu_b, R.drawable.touch_button_menu_x,
+            R.drawable.touch_button_menu_y, R.drawable.touch_button_menu_black, R.drawable.touch_button_menu_white},
     };
-    private static final boolean[] MINOR_CONTROLS = {
-        false, true, false, false, false, true, false, false, false, true, false, false,
+    private static final int[] CONTROL_ART = {
+        R.drawable.touch_trigger_left, R.drawable.touch_trigger_right,
+        R.drawable.touch_thumbstick_left, R.drawable.touch_thumbstick_right,
+    };
+    /**
+     * by TouchLayout's kinds: the art each is drawn with (0..5 a face of
+     * FACES, 6..9 CONTROL_ART, -1 a Kenney plate with an icon), and whether it
+     * is seldom used, drawn smaller and fainter (white, black, back, the D-pad)
+     */
+    private static final int[] KIND_ART = {
+        0, 1, 2, 3, 7, 6, 8, 9, 5, 4, -1, -1, -1, -1, -1, -1, -1, 7,
+    };
+    private static final boolean[] MINOR_KINDS = {
+        false, false, false, false, false, false, false, false, true, true, false, true,
+        true, true, true, true, false, false,
     };
     /** the default profile's mapping, until the game sends the player's own */
     private static final int[] DEFAULT_BINDINGS = {
@@ -200,14 +229,17 @@ public final class TouchControls extends View implements SensorEventListener, In
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pictures = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final RectF pictureBounds = new RectF();
-    /** the pictures the controls are drawn with (Kenney's Mobile Controls and OpenH1's icons) */
+    /** the pictures the controls are drawn with: the HUD's buttons, and Kenney's Mobile Controls */
+    private final Bitmap[][] faces = new Bitmap[FACES.length][];
+    private final Bitmap[] controlArt = new Bitmap[CONTROL_ART.length];
     private final Bitmap plate;
     private final Bitmap pressRing;
     private final Bitmap stickPad;
     private final Bitmap stickKnob;
+    private final Bitmap pauseIcon;
+    private final Bitmap backIcon;
     private final Bitmap arrowIcon;
     private final Bitmap optionsIcon;
-    private final Bitmap[] controlIcons = new Bitmap[GAME_CONTROLS.length];
     private final SharedPreferences preferences;
     private final SensorManager sensors;
     private final Sensor gyroscope;
@@ -312,7 +344,11 @@ public final class TouchControls extends View implements SensorEventListener, In
         public void run() {
             if (!deviceInputActive)
                 return;
+            int was = scene;
             scene = nativeScene();
+            // (the buttons' style and captions are settings: drawn again when they change)
+            if (((was ^ scene) & (3 << SCENE_STYLE_SHIFT | SCENE_CAPTIONS)) != 0)
+                invalidate();
             updateShowing();
             readBindings();
             updateRumble();
@@ -327,10 +363,17 @@ public final class TouchControls extends View implements SensorEventListener, In
         pressRing = picture(resources, R.drawable.touch_press_ring);
         stickPad = picture(resources, R.drawable.touch_stick_pad);
         stickKnob = picture(resources, R.drawable.touch_stick_knob);
+        pauseIcon = picture(resources, R.drawable.touch_icon_pause);
+        backIcon = picture(resources, R.drawable.touch_icon_back);
         arrowIcon = picture(resources, R.drawable.touch_icon_arrow);
         optionsIcon = picture(resources, R.drawable.touch_icon_options);
-        for (int i = 0; i < controlIcons.length; i++)
-            controlIcons[i] = picture(resources, CONTROL_ICONS[i]);
+        for (int style = 0; style < FACES.length; style++) {
+            faces[style] = new Bitmap[FACES[style].length];
+            for (int i = 0; i < FACES[style].length; i++)
+                faces[style][i] = picture(resources, FACES[style][i]);
+        }
+        for (int i = 0; i < CONTROL_ART.length; i++)
+            controlArt[i] = picture(resources, CONTROL_ART[i]);
         sensors = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
         gyroscope = sensors == null ? null : sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
         if (Build.VERSION.SDK_INT >= 31) {
@@ -899,10 +942,15 @@ public final class TouchControls extends View implements SensorEventListener, In
         return control >= 0 && control < GAME_CONTROLS.length ? control : -1;
     }
 
-    /** a seldom used control: the flashlight, the grenade's type, back, and the D-pad's arrows */
-    private boolean minor(int type) {
-        int control = gameControl(type);
-        return control >= 0 ? MINOR_CONTROLS[control] : KINDS[type].arrow >= 0;
+    /** the controller buttons' art: display.hud_button_style, which the game sends with the scene */
+    private Bitmap art(int type) {
+        int art = KIND_ART[type];
+        if (art < 0)
+            return null;
+        if (art >= 6)
+            return controlArt[art - 6];
+        int style = (scene >> SCENE_STYLE_SHIFT) & 3;
+        return faces[style < faces.length ? style : 0][art];
     }
 
     private String controlName(int type) {
@@ -1349,35 +1397,73 @@ public final class TouchControls extends View implements SensorEventListener, In
         canvas.drawText(label, x, y + textSize * 0.36f, paint);
     }
 
+    /** a picture, its longer side 2 * radius, centred on a point */
+    private void fitted(Canvas canvas, Bitmap bitmap, float x, float y, float radius, float alpha) {
+        float scale = radius / Math.max(bitmap.getWidth(), bitmap.getHeight());
+        float halfWidth = bitmap.getWidth() * scale;
+        float halfHeight = bitmap.getHeight() * scale;
+        pictures.setAlpha(Math.max(0, Math.min(255, Math.round(alpha * 255))));
+        pictureBounds.set(x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight);
+        canvas.drawBitmap(bitmap, null, pictureBounds, pictures);
+    }
+
     /**
-     * a control: its plate and the icon of what it does in the player's
-     * profile (the right trigger's is the grenade with "Swap triggers"), or
-     * its button's name where it does nothing the icons show
+     * a control: a controller button drawn as the HUD draws it (A, B, X, Y,
+     * black, white, the triggers and the sticks), over a faint disc that shows
+     * where it takes a finger, lit while it is held; or start, back and the
+     * D-pad on Kenney's plates with their icons. With input.touch_captions,
+     * what the button does in the player's profile is written under it.
      */
     private void control(Canvas canvas, int control, boolean active, float opacity) {
         int type = layout.type(control);
         float x = layout.x(control);
         float y = layout.y(control);
         float radius = layout.radius(control);
-        boolean minor = minor(type);
+        boolean minor = MINOR_KINDS[type];
+        float sink = active ? PRESSED_SIZE : 1f;
+        Bitmap art = art(type);
+        if (art != null) {
+            paint.setStyle(Paint.Style.FILL);
+            paint.setColor(alpha(active ? 0x66ffffff : 0x33000000, opacity));
+            canvas.drawCircle(x, y, radius, paint);
+            paint.setStyle(Paint.Style.STROKE);
+            paint.setStrokeWidth(1.5f);
+            paint.setColor(alpha(active ? 0xccffffff : 0x40ffffff, opacity));
+            canvas.drawCircle(x, y, radius, paint);
+            fitted(canvas, art, x, y, radius * ART_SIZE * sink,
+                (active ? 1f : minor ? MINOR_BUTTON_ALPHA : BUTTON_ALPHA) * opacity);
+            caption(canvas, type, x, y + radius, opacity);
+            return;
+        }
         plate(canvas, x, y, radius, active, minor ? MINOR_PLATE_ALPHA : PLATE_ALPHA, opacity);
-        int game = gameControl(type);
-        Bitmap icon = game >= 0 ? controlIcons[game] : KINDS[type].arrow >= 0 ? arrowIcon : null;
+        Kind kind = KINDS[type];
+        Bitmap icon = kind.arrow >= 0 ? arrowIcon : kind.bit == 6 ? pauseIcon : kind.bit == 4 ? backIcon : null;
         float iconOpacity = Math.max(opacity, 0.5f) * (minor ? MINOR_ICON_ALPHA : 1f);
         if (icon == null) {
             float textSize = 11 * Math.max(layout.sizeScale(control), radius / 36f);
             label(canvas, x, y, radius, label(type), Math.min(textSize, 16), iconOpacity);
             return;
         }
-        float size = radius * (minor ? MINOR_ICON_SIZE : ICON_SIZE) * (active ? PRESSED_ICON_SIZE : 1f);
-        if (game < 0 && KINDS[type].arrow > 0) {
-            canvas.save();
-            canvas.rotate(KINDS[type].arrow, x, y);
-            picture(canvas, icon, x, y, size, iconOpacity);
-            canvas.restore();
-        } else {
-            picture(canvas, icon, x, y, size, iconOpacity);
-        }
+        float size = radius * (minor ? MINOR_ICON_SIZE : ICON_SIZE) * sink;
+        canvas.save();
+        if (kind.arrow > 0)
+            canvas.rotate(kind.arrow, x, y);
+        picture(canvas, icon, x, y, size, iconOpacity);
+        canvas.restore();
+    }
+
+    /** input.touch_captions: the game control a button does, faint, under it */
+    private void caption(Canvas canvas, int type, float x, float bottom, float opacity) {
+        int game = gameControl(type);
+        if ((scene & SCENE_CAPTIONS) == 0 || game < 0)
+            return;
+        paint.setStyle(Paint.Style.FILL);
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setTextSize(CAPTION_SIZE);
+        paint.setShadowLayer(2, 0, 0, alpha(Color.BLACK, opacity));
+        paint.setColor(alpha(Color.WHITE, CAPTION_ALPHA * Math.max(opacity, 0.5f)));
+        canvas.drawText(GAME_CONTROLS[game], x, bottom + CAPTION_SIZE + 1, paint);
+        paint.clearShadowLayer();
     }
 
     /** a long name, "Y / Weapon", is made smaller to fit inside the circle */

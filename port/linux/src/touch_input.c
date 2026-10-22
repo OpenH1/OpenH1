@@ -239,12 +239,21 @@ enum
 	device has a touchscreen and no controller) */
 	_touch_scene_on = 1 << 2,
 	_touch_scene_off = 1 << 3,
+	/* display.hud_button_style, which the Android overlay draws the
+	controller's buttons in: 0 "classic", 1 "gems", 2 "menu_gems" */
+	_touch_scene_style_shift = 4,
+	_touch_scene_style = 3 << _touch_scene_style_shift,
+	/* input.touch_captions: each controller button's game control written
+	under it */
+	_touch_scene_captions = 1 << 6,
 };
 
 /* the touch controls' stick at port 0's last read, -1..1, y down */
 static float move_x, move_y;
 
-/* input.touch_controls as _touch_scene_on, _touch_scene_off or 0 */
+/* the settings the overlay reads: input.touch_controls as
+_touch_scene_on, _touch_scene_off or 0, display.hud_button_style and
+input.touch_captions */
 static int touch_controls_setting(void)
 {
 	static int setting;
@@ -260,6 +269,13 @@ static int touch_controls_setting(void)
 			setting = _touch_scene_on;
 		else if (value && !strcmp(value, "off"))
 			setting = _touch_scene_off;
+		value = config_string("display.hud_button_style");
+		if (value && !strcmp(value, "gems"))
+			setting |= 1 << _touch_scene_style_shift;
+		else if (value && !strcmp(value, "menu_gems"))
+			setting |= 2 << _touch_scene_style_shift;
+		if (config_boolean("input.touch_captions"))
+			setting |= _touch_scene_captions;
 	}
 	return setting;
 }

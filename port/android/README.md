@@ -178,21 +178,27 @@ on-screen keyboard, tap a key to press it, "B =BACK" to cancel and
 ### Touch controls
 
 In a game, the app shows touch controls over the picture. They are a
-controller for player 1, drawn as round, see-through plates with an icon of
-what each button does (Kenney's Mobile Controls, and OpenH1's own icons:
-`port/assets/touch/README.md`). A held button's ring lights up. With the
-default buttons of the profile:
+controller for player 1. The controller's buttons are drawn as the HUD
+draws them, in the style of the setting `display.hud_button_style`
+("Button style" in the profile's graphics settings, shown while the
+high-res HUD is on: Classic, Gems or Dark Gems; the touch controls follow it in
+any case): A, B, X, Y, black, white, the triggers and the stick clicks,
+each over a faint disc that shows where it takes a finger and lights while
+it is held. The move stick, Pause, Back, the D-pad and the toolbar are
+see-through plates with icons (Kenney's Mobile Controls:
+`port/assets/touch/README.md`). With the default buttons of the profile:
 
-| Control | Icon | Function in the game |
+| Control | Drawn as | Function in the game |
 | --- | --- | --- |
-| stick (lower left) | | move |
+| stick (lower left) | a stick's base and knob | move |
 | swipe on the screen away from the buttons | | look |
-| Fire (right, and a second one at the left) | flame | right trigger |
-| Grenade | grenade | left trigger |
-| Jump, Melee, Reload, Weapon | double chevron, sword, turning arrow, curved arrow | A, B, X (also the action: pick up, enter), Y |
-| Crouch, Zoom | chevron over a bar, crosshair | left and right stick clicks |
+| Fire (right, and a second one at the left) | right trigger | right trigger |
+| Grenade | left trigger | left trigger |
+| Jump, Melee, Reload, Weapon | A, B, X, Y | A, B, X (also the action: pick up, enter), Y |
+| Crouch, Zoom | left stick, right stick | left and right stick clicks |
 | Pause | pause bars | start |
-| Light, Gren. type, Back | flashlight, grenade with a turning arrow, three bars | white, black, back |
+| Light, Gren. type | white, black | white, black |
+| Back | three bars | back |
 | D-pad: Up, Down, Left, Right | arrows | D-pad (in a network game, Up opens the text chat's keyboard) |
 
 The seldom used buttons (Light, Gren. type, Back and the D-pad) are
@@ -202,14 +208,13 @@ layout saved before keeps its places; "Reset" in "Hide or add buttons"
 moves to the new ones.) Every button can be moved, resized, hidden or
 copied as before.
 
-The icons follow the profile's "Button layout" (Settings > Gamepads): they
-show what the button does, not where it is, so with "Swap triggers" the
-right trigger's button (and the second Fire) shows the grenade, and the
-left trigger's the flame. A D-pad button the profile gives a control
-shows that control's icon; any other button the profile gives no control
-shows its controller name ("LS", "Black"). The lists of the options name
-the buttons as before ("A / Jump", "Fire"). The stick moves the player
-with every "Stick layout", southpaw too.
+A button shows the controller's button, not what it does: what it does
+follows the profile's "Button layout" (Settings > Gamepads), so with "Swap
+triggers" the right trigger's button throws a grenade. The setting
+`input.touch_captions` writes what each controller button does in the
+profile (Jump, Melee, Fire) faintly under it; it is off by default. The
+lists of the options name the buttons as "A / Jump", "Fire" and so on. The
+stick moves the player with every "Stick layout", southpaw too.
 
 A finger that holds a button can also swipe to look, so you can fire and
 aim with one thumb. The controls are a finger wide (48 dp) or larger, but
@@ -270,6 +275,7 @@ These settings are only for Android:
 
 | Setting | Function |
 | --- | --- |
+| `input.touch_captions` | `false` (the default): the touch controls' controller buttons alone. `true`: what each does in the profile (Jump, Melee, Fire) is written faintly under it. The buttons are drawn in `display.hud_button_style`. |
 | `input.touch_aim_assist` | `true` (the default): the touch controls' swipe aiming gets the aim assist of a controller (the aim slows over a target and follows a moving one). `false`: none, as with a mouse; the bullets' own autoaim stays. |
 | `input.touch_controls` | The touch controls in a game. `"auto"` (the default): shown on a touchscreen while no controller is connected. `"on"`: also shown with a controller. `"off"`: never shown. A device without a touchscreen never shows them. The menus take taps in any case. |
 | `debug.sample_seconds` | Refer to "Find problems". |

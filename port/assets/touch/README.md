@@ -1,32 +1,28 @@
 # The touch controls' art
 
 The Android app's on-screen controls (`TouchControls.java`; "Touch
-controls" in `port/android/README.md`) are the app's own interface, not the
-game's art. They are drawn with:
+controls" in `port/android/README.md`) are drawn with:
 
-- `kenney-mobile-controls/`: SVGs of Kenney's Mobile Controls pack (CC0):
-  the plates, the stick, the pressed ring and most icons. Its README names
-  the upstream, the version, the checksum and what uses each file.
-- `openh1/`: icons the pack lacks, drawn for OpenH1 in the pack's manner
-  (flat white glyphs on a 48 x 48 square, a light grey-blue shade on their
-  second parts), under the repository's licence (`AGPL-3.0-or-later`):
-
-  | File | Control |
-  | --- | --- |
-  | `icon_grenade.svg` | Grenade (throw a grenade) |
-  | `icon_grenade_type.svg` | Gren. type (change the grenade): the grenade, smaller, with Kenney's `icon_arrow_rotate` |
-  | `icon_crouch.svg` | Crouch |
-  | `icon_flashlight.svg` | Light (the flashlight) |
+- **The controller's buttons as the HUD draws them** (`port/assets/buttons`,
+  credited in `AUTHORS.md`): A, B, X, Y, black and white in the style
+  `display.hud_button_style` names (`classic`, `gems`, whose black and white
+  are `menu_gems`', or `menu_gems`), as `hud_hires_tags.c` picks them; the
+  triggers (`trigger_left`, `trigger_right`) and the stick clicks
+  (`thumbstick_left`, `thumbstick_right`), the same in every style.
+- **Kenney's Mobile Controls** (`kenney-mobile-controls/`, CC0), only where
+  there is no redraw: the move stick's base and knob, the plates of start,
+  back and the D-pad with their icons, the toolbar's plates and gear, and
+  the ring of a plate held. Its README names the upstream, the version, the
+  checksum and what uses each file.
 
 `python tools/touch_assets.py` draws them all into
-`port/android/app/src/main/res/drawable-nodpi/touch_*.png` (one large size
-each, which the app scales with mipmaps); run it after changing an SVG
-(`--check` tells whether the PNGs are up to date). An icon shows what its
-button does in the player's profile, not the button: with "Swap triggers",
-the right trigger's button shows the grenade.
+`port/android/app/src/main/res/drawable-nodpi/touch_*.png`: the buttons as
+`tools/button_assets.py` draws the HUD's (its SVG redraws, recoloured for
+`classic`, and the supplied PNGs of `gems`, the triggers and the sticks),
+larger and cropped to the art, and Kenney's SVGs. Run it again after
+changing a redraw or an SVG (`--check` tells whether the PNGs are up to
+date).
 
 `python tools/touch_preview.py --out port/android/docs` draws the default
-layout over a picture as the app draws it, on a phone and a tablet
-(`port/android/docs/touch-controls-*.png`).
-
-No icon may come from anywhere else, nor any art or logo of the game.
+layout over a picture as the app draws it, on a phone and a tablet, in each
+style (`port/android/docs/touch-controls-*.png`).

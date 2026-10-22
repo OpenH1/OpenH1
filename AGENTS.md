@@ -278,10 +278,11 @@ read `xbox/include`. To add a name, follow `port/include/xdk/README.md`.
   Custom Edition picture that cannot reasonably be redrawn (a 3D render, a
   screenshot, a logo) may be used only if it is listed in
   `port/assets/menus/NON_HANDDRAWN.md`.
-- The Android touch controls are the app's own interface, not the game's
-  art: they may use CC0 packs (Kenney's Mobile Controls,
-  `port/assets/touch`), credited in `AUTHORS.md`, and icons drawn for
-  OpenH1. Never the game's art, icons or logos.
+- The Android touch controls draw the controller's buttons with the HUD's
+  redraws (`port/assets/buttons`, in `display.hud_button_style`). What has
+  no redraw (their plates, the move stick, icons) may come from CC0 packs
+  (Kenney's Mobile Controls, `port/assets/touch`), credited in
+  `AUTHORS.md`. Never the game's art, icons or logos.
 - `AUTHORS.md` credits art only.
 - Fonts: Overpass and OpenCE (Newtown, respaced) only; see
   `port/assets/fonts/README.md`. Never ship the maps' commercial typefaces.
