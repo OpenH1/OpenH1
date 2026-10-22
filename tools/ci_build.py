@@ -99,6 +99,24 @@ def run(command, cwd=ROOT):
     subprocess.run([str(part) for part in command], cwd=cwd, check=True)
 
 
+def check_guest_image(platform: str) -> None:
+    """A guest build's executables carry the guest image just linked
+    (guest_image.S's .incbin): an executable with another guest, as a
+    cached object once gave macOS's releases (a black window: the guest's
+    render stream of another version than the host's), stops the build."""
+    image = ROOT / "build" / platform / "halo_guest.elf"
+    executables = [ROOT / "build" / platform / "halo"]
+    if platform == "macos":
+        executables.append(ROOT / "build/macos/OpenH1.app/Contents/MacOS/halo")
+    if not image.is_file():
+        return
+    data = image.read_bytes()
+    for executable in executables:
+        if executable.is_file() and data not in executable.read_bytes():
+            sys.exit(f"{executable.relative_to(ROOT)} does not carry {image.relative_to(ROOT)}, the guest just linked")
+        print(f"{executable.relative_to(ROOT)} carries {image.relative_to(ROOT)}", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("platform", choices=sorted(OUTPUTS))
@@ -160,6 +178,7 @@ def main() -> int:
         target = "macos_dmg" if args.platform == "macos" else args.platform
         run(["ninja", target])
         outputs = OUTPUTS[args.platform]
+        check_guest_image(args.platform)
 
     if args.platform == "linux_arm64" and args.vr:
         # the Steam Frame's package (tools/frame_package.py: the game, its

@@ -374,9 +374,15 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     n.build(outputs=table_obj, rule="macos_host_cc", inputs=guest["host_table_c"],
             variables={"cflags": host_cflags})
     host_objects.append(table_obj)
-    # the guest image, inside the executable (host_main.c)
+    # the guest image, inside the executable (host_main.c), assembled
+    # without the compile cache: ccache hashes guest_image.S, not the image
+    # its .incbin reads, and gave back an object with an old guest (the
+    # releases of 20 to 22 October drew nothing: their guest's render
+    # stream was of an older version than the host's)
+    n.rule(name="macos_host_cc_uncached", command="$macos_cc -MMD -MF $out.d $cflags -c $in -o $out",
+           description="MACOS HOST CC $out", depfile="$out.d", deps="gcc")
     image_obj = host_obj_dir / "guest_image.S.o"
-    n.build(outputs=image_obj, rule="macos_host_cc", inputs=PORT_DIR / "guest_image.S",
+    n.build(outputs=image_obj, rule="macos_host_cc_uncached", inputs=PORT_DIR / "guest_image.S",
             implicit=[guest["image"], guest["checked"]], variables={"cflags": f'-mmacosx-version-min={MACOS_MINIMUM} -DGUEST_IMAGE=\\"{guest["image"]}\\"'})
     host_objects.append(image_obj)
 
