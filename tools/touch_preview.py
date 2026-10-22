@@ -9,10 +9,11 @@ phone:
 The places and sizes are TouchLayout's own (tools/tests/TouchLayoutDump.java,
 compiled with JDK 17+), the pictures the app's (res/drawable-nodpi, from
 tools/touch_assets.py); the drawing follows TouchControls.onDraw, whose
-constants are repeated here. Each display is drawn with the right trigger
-and the stick held, to show the pressed look, in one display.hud_button_style
-and with or without input.touch_captions. Without --background the picture
-behind is a dark landscape drawn here (no game art). Needs Pillow and NumPy.
+constants are repeated here. Each display is drawn in one
+display.hud_button_style, with the captions (input.touch_captions), and
+either with the right trigger and the stick held (the pressed look) or idle
+(faded, no finger on the screen). Without --background the picture behind
+is a dark landscape drawn here (no game art). Needs Pillow and NumPy.
 """
 
 import argparse
@@ -21,17 +22,17 @@ import tempfile
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
 DRAWABLES = ROOT / "port/android/app/src/main/res/drawable-nodpi"
 JAVA = ROOT / "port/android/app/src/main/java/com/halo/decomp"
 
-# (name, width, height, dots per inch, display.hud_button_style, input.touch_captions)
+# (name, width, height, dots per inch, display.hud_button_style, idle)
 DISPLAYS = [
     ("touch-controls-phone-classic", 2400, 1080, 420, "classic", False),
     ("touch-controls-phone-gems", 2400, 1080, 420, "gems", False),
-    ("touch-controls-phone-classic-captions", 2400, 1080, 420, "classic", True),
+    ("touch-controls-phone-classic-idle", 2400, 1080, 420, "classic", True),
     ("touch-controls-tablet-menu-gems", 2560, 1600, 320, "menu_gems", False),
 ]
 
@@ -44,10 +45,10 @@ KIND_ART = ["a", "b", "x", "y", "trigger_right", "trigger_left", "thumbstick_lef
             "white", "black", None, None, None, None, None, None, None, "trigger_right"]
 KIND_ICON = {10: ("pause", 0), 11: ("back", 0), 12: ("arrow", 270), 13: ("arrow", 90),
              14: ("arrow", 180), 15: ("arrow", 0)}
-MINOR_KINDS = {8, 9, 11, 12, 13, 14, 15}
+MINOR_KINDS = {6, 7, 8, 9, 11, 12, 13, 14, 15}
 DEFAULT_BINDINGS = [0, 4, 2, 3, 1, 5, 6, 7, -1, -1, -1, -1, 8, 9, 10, 11]
-GAME_CONTROLS = ["Jump", "Gren. type", "Reload", "Weapon", "Melee", "Light",
-                 "Grenade", "Fire", "Pause", "Back", "Crouch", "Zoom"]
+CAPTIONS = ["JUMP", "GREN TYPE", "RELOAD", "SWAP", "MELEE", "LIGHT",
+            "GRENADE", "FIRE", "PAUSE", "BACK", "CROUCH", "ZOOM"]
 STYLES = {"classic": "classic", "gems": "gems", "menu_gems": "menu"}
 STICK = 16
 FIRE = 4
@@ -55,22 +56,23 @@ FIRE = 4
 # TouchControls's drawing constants
 BUTTON_ALPHA = 0.8
 MINOR_BUTTON_ALPHA = 0.55
-PLATE_ALPHA = 0.6
-MINOR_PLATE_ALPHA = 0.4
-PRESSED_PLATE_ALPHA = 0.85
-STICK_PAD_ALPHA = 0.7
-STICK_KNOB_ALPHA = 0.9
-MINOR_ICON_ALPHA = 0.7
+ICON_ALPHA = 0.85
+MINOR_ICON_ALPHA = 0.6
+STICK_RING_ALPHA = 0.35
+STICK_KNOB_ALPHA = 0.55
 ART_SIZE = 1.0
-ICON_SIZE = 0.5
-MINOR_ICON_SIZE = 0.44
+ICON_SIZE = 0.62
+MINOR_ICON_SIZE = 0.56
 PRESSED_SIZE = 0.9
 PRESSED_BRIGHTEN = 0x26
-CAPTION_SIZE = 10
-CAPTION_ALPHA = 0.6
+HUD_COLOR = (0x9c, 0xd3, 0xff)
+CAPTION_SIZE = 9
+CAPTION_ALPHA = 0.85
+IDLE_OPACITY = 0.7
 STICK_KNOB_RADIUS = 24
 TOOLBAR_RADIUS = 28
 OPTIONS_RADIUS = 34
+CAPTION_FONT = ROOT / "port/android/app/src/main/res/font/touch_caption.ttf"
 
 
 def layout(width, height, dpi):
@@ -107,10 +109,7 @@ def landscape(width, height):
 
 
 def font(size):
-    try:
-        return ImageFont.load_default(size=size)
-    except TypeError:
-        return ImageFont.load_default()
+    return ImageFont.truetype(str(CAPTION_FONT), size)
 
 
 class Painter:
@@ -145,47 +144,59 @@ class Painter:
             drawn = drawn.rotate(-rotate, resample=Image.BICUBIC)
         self.composite(drawn, x, y, alpha)
 
-    def plate(self, x, y, radius, active, alpha, opacity):
-        self.picture("plate", x, y, radius, (PRESSED_PLATE_ALPHA if active else alpha) * opacity)
-        if active:
-            self.picture("press_ring", x, y, radius, max(opacity, 0.5))
+    def caption(self, words, x, y, alpha):
+        """TouchControls.caption: Overpass, the HUD's colour, a soft shadow"""
+        size = CAPTION_SIZE * self.scale
+        face = font(round(size))
+        spacing = 0.06 * size
+        widths = [face.getlength(c) + spacing for c in words]
+        left = x * self.scale - (sum(widths) - spacing) / 2
+        shadow = Image.new("RGBA", self.image.size)
+        layer = Image.new("RGBA", self.image.size)
+        for target, fill, dy in ((shadow, (0, 0, 0, round(204 * alpha)), self.scale),
+                                 (layer, HUD_COLOR + (round(255 * CAPTION_ALPHA * alpha),), 0)):
+            draw = ImageDraw.Draw(target)
+            pen = left
+            for c, w in zip(words, widths):
+                draw.text((pen, y * self.scale + dy), c, fill=fill, font=face, anchor="ls")
+                pen += w
+        self.image.alpha_composite(shadow.filter(ImageFilter.GaussianBlur(1.5 * self.scale)))
+        self.image.alpha_composite(layer)
 
-    def text(self, words, x, y, size, alpha, shadow=False):
+    def stick(self, x, y, radius, knob_x, knob_y, knob, active, opacity):
+        s = self.scale
         layer = Image.new("RGBA", self.image.size)
         draw = ImageDraw.Draw(layer)
-        face = font(round(size * self.scale))
-        if shadow:
-            for dx, dy in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                draw.text((x * self.scale + dx * 2, y * self.scale + dy * 2), words, fill=(0, 0, 0, 160),
-                          font=face, anchor="ms")
-        draw.text((x * self.scale, y * self.scale), words, fill=(255, 255, 255, round(255 * alpha)),
-                  font=face, anchor="ms" if shadow else "mm")
+        draw.ellipse([(x - radius + 1) * s, (y - radius + 1) * s, (x + radius - 1) * s, (y + radius - 1) * s],
+                     outline=HUD_COLOR + (round(255 * STICK_RING_ALPHA * opacity),), width=round(2 * s))
+        draw.ellipse([(knob_x - knob) * s, (knob_y - knob) * s, (knob_x + knob) * s, (knob_y + knob) * s],
+                     fill=HUD_COLOR + (round(255 * (0.8 if active else STICK_KNOB_ALPHA) * opacity),))
+        shadow = Image.new("RGBA", self.image.size, (0, 0, 0, 0))
+        shadow.putalpha(layer.getchannel("A").point(lambda v: v // 2).filter(ImageFilter.GaussianBlur(3 * s)))
+        self.image.alpha_composite(shadow, (0, round(s)))
         self.image.alpha_composite(layer)
 
 
-def draw(name, width, height, dpi, style, captions, background, out):
+def draw(name, width, height, dpi, style, idle, background, out):
     scale, logical_width, logical_height, finger, controls = layout(width, height, dpi)
     if background:
         image = Image.open(background).convert("RGBA").resize((width, height), Image.LANCZOS)
     else:
         image = landscape(width, height)
     painter = Painter(image, scale)
-    opacity = 1.0
-    held = {FIRE, STICK}
-    stick_x, stick_y = 0.55, -0.6
+    opacity = IDLE_OPACITY if idle else 1.0
+    held = set() if idle else {FIRE, STICK}
+    stick_x, stick_y = (0, 0) if idle else (0.55, -0.6)
     for index, (kind, x, y, radius, size, shown) in enumerate(controls):
         if not shown:
             continue
         active = index in held
         sink = PRESSED_SIZE if active else 1
         minor = kind in MINOR_KINDS
+        brighten = PRESSED_BRIGHTEN if active else 0
         if kind == STICK:
             knob = max(STICK_KNOB_RADIUS * size, radius * 0.375)
-            painter.picture("stick_pad", x, y, radius, STICK_PAD_ALPHA * opacity)
-            knob_x, knob_y = x + stick_x * radius, y + stick_y * radius
-            painter.picture("stick_knob", knob_x, knob_y, knob, STICK_KNOB_ALPHA * opacity)
-            if active:
-                painter.picture("press_ring", knob_x, knob_y, knob, max(opacity, 0.5))
+            painter.stick(x, y, radius, x + stick_x * radius, y + stick_y * radius, knob, active, opacity)
             continue
         art = KIND_ART[kind]
         if art:
@@ -196,24 +207,24 @@ def draw(name, width, height, dpi, style, captions, background, out):
                 art = f"button_{folder}_{art}"
             painter.picture(art, x, y, radius * ART_SIZE * sink,
                             (1 if active else MINOR_BUTTON_ALPHA if minor else BUTTON_ALPHA) * opacity, fit=True,
-                            brighten=PRESSED_BRIGHTEN if active else 0)
+                            brighten=brighten)
             game = DEFAULT_BINDINGS[KIND_GAMEPAD[kind]]
-            if captions and game >= 0:
-                painter.text(GAME_CONTROLS[game], x, y + radius + CAPTION_SIZE + 1, CAPTION_SIZE,
-                             CAPTION_ALPHA * max(opacity, 0.5), shadow=True)
+            if game >= 0:
+                source = Image.open(DRAWABLES / ("touch_" + art + ".png"))
+                bottom = y + radius * ART_SIZE * source.height / max(source.size)
+                painter.caption(CAPTIONS[game], x, bottom + CAPTION_SIZE + 1, max(opacity, 0.5))
             continue
-        painter.plate(x, y, radius, active, MINOR_PLATE_ALPHA if minor else PLATE_ALPHA, opacity)
         icon, rotate = KIND_ICON[kind]
         painter.picture("icon_" + icon, x, y, radius * (MINOR_ICON_SIZE if minor else ICON_SIZE) * sink,
-                        max(opacity, 0.5) * (MINOR_ICON_ALPHA if minor else 1), rotate)
-    # the toolbar: Hide and Options' gear
+                        (1 if active else MINOR_ICON_ALPHA if minor else ICON_ALPHA) * max(opacity, 0.5),
+                        rotate, fit=True, brighten=brighten)
+    # the toolbar: hide and options, line icons
     toolbar_y = 38
     hide_radius = max(TOOLBAR_RADIUS, min(finger, 34))
     options_radius = max(OPTIONS_RADIUS, min(finger, 34))
-    painter.plate(logical_width / 2, toolbar_y, hide_radius, False, PLATE_ALPHA, max(opacity, 0.5))
-    painter.plate(logical_width - 42, toolbar_y, options_radius, False, PLATE_ALPHA, max(opacity, 0.5))
-    painter.picture("icon_options", logical_width - 42, toolbar_y, options_radius * MINOR_ICON_SIZE, max(opacity, 0.5))
-    painter.text("Hide", logical_width / 2, toolbar_y, 11, 1)
+    toolbar = max(opacity, 0.5) * ICON_ALPHA
+    painter.picture("icon_hide", logical_width / 2, toolbar_y, hide_radius * MINOR_ICON_SIZE, toolbar, fit=True)
+    painter.picture("icon_options", logical_width - 42, toolbar_y, options_radius * MINOR_ICON_SIZE, toolbar, fit=True)
     out.mkdir(parents=True, exist_ok=True)
     image.convert("RGB").save(out / (name + ".png"), optimize=True)
     print(out / (name + ".png"))
@@ -224,8 +235,8 @@ def main():
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--background", type=Path, help="a picture to draw the controls over")
     args = parser.parse_args()
-    for name, width, height, dpi, style, captions in DISPLAYS:
-        draw(name, width, height, dpi, style, captions, args.background, args.out)
+    for name, width, height, dpi, style, idle in DISPLAYS:
+        draw(name, width, height, dpi, style, idle, args.background, args.out)
 
 
 if __name__ == "__main__":

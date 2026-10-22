@@ -643,10 +643,10 @@ static const struct config_setting config_settings[] =
 		"touchscreen while no controller is connected, \"on\" also with a\n"
 		"controller, \"off\" never. A device without a touchscreen never shows\n"
 		"them. The menus take taps in any case." },
-	{ "input.touch_captions", _config_boolean, "false", "HALO_TOUCH_CAPTIONS", _environment_value, _platform_android,
-		"The touch controls write what each controller button does (Jump,\n"
-		"Melee) faintly under it. false: the buttons alone, drawn in\n"
-		"display.hud_button_style." },
+	{ "input.touch_captions", _config_boolean, "true", "HALO_TOUCH_CAPTIONS", _environment_value, _platform_android,
+		"The touch controls write what each controller button does in the\n"
+		"profile (JUMP, MELEE, FIRE) under it, in the HUD's font and colour.\n"
+		"false: the buttons alone, drawn in display.hud_button_style." },
 	{ "input.touch_aim_assist", _config_boolean, "true", "HALO_TOUCH_AIM_ASSIST", _environment_value, _platform_android | _platform_web,
 		"The touch controls' swipe aiming gets a controller's aim assist: the\n"
 		"aim slows over a target and follows a moving one. false: none, as a\n"

@@ -39,18 +39,26 @@ final class TouchLayout {
     private static final int MAX_FILE_LENGTH = 65536;
 
     /**
-     * each kind's default place on the grid, and its radius; the seldom used
-     * ones (white and black: the flashlight and the grenade's type, back and
-     * the D-pad) are smaller, together in the upper left, away from the thumbs
+     * each kind's default place on the grid, and its radius, by how often it
+     * is used: fire the largest, where the right thumb rests; jump and the
+     * grenade next; reload, swap and melee smaller; the seldom used ones
+     * (the stick clicks, white and black: the flashlight and the grenade's
+     * type, back and the D-pad) smallest, the last together in the upper
+     * left, away from the thumbs. The second fire (for a claw grip) is hidden
+     * until it is added.
      */
     private static final float[][] DEFAULTS = {
-        {856, 447}, {913, 377}, {794, 377}, {850, 312}, {915, 239}, {802, 239},
-        {236, 449}, {691, 449}, {220, 36}, {300, 36}, {570, 36}, {390, 36},
+        {875, 455}, {760, 465}, {742, 375}, {760, 228}, {862, 310}, {888, 150},
+        {236, 465}, {650, 465}, {220, 36}, {300, 36}, {570, 36}, {390, 36},
         {100, 101}, {100, 199}, {51, 150}, {149, 150}, {115, 440}, {255, 239}
     };
     private static final float[] RADII = {
-        36, 32, 34, 32, 39, 35, 32, 32, 24, 24, 28, 24, 22, 22, 22, 22, 64, 39
+        40, 30, 30, 30, 55, 40, 26, 26, 24, 24, 28, 24, 22, 22, 22, 22, 64, 45
     };
+    /** the kinds hidden by default: the second fire */
+    private static boolean hiddenByDefault(int type) {
+        return type == FIRE_LEFT;
+    }
 
     private static final class Control {
         final int type;
@@ -173,8 +181,11 @@ final class TouchLayout {
     /** the default controls, at their default places, sizes and visibility */
     void resetDefaults() {
         controls.clear();
-        for (int i = 0; i < DEFAULTS.length; i++)
-            controls.add(new Control(i, DEFAULTS[i][0] * width / GRID_WIDTH, DEFAULTS[i][1] * height / GRID_HEIGHT));
+        for (int i = 0; i < DEFAULTS.length; i++) {
+            Control control = new Control(i, DEFAULTS[i][0] * width / GRID_WIDTH, DEFAULTS[i][1] * height / GRID_HEIGHT);
+            control.shown = !hiddenByDefault(i);
+            controls.add(control);
+        }
         keepAllInside();
     }
 

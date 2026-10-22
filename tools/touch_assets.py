@@ -14,10 +14,13 @@ to each control's size, with mipmaps, so one size serves every display.
   style ("classic", "gems", "menu_gems"), the triggers and the sticks;
   each with the same thin light edge and soft drop shadow, so that it reads
   over any scene with nothing drawn behind it.
-- The rest, which has no redraw, is Kenney's Mobile Controls
-  (port/assets/touch/kenney-mobile-controls, CC0): the plates of the
-  D-pad, start, back and the toolbar, the ring of a plate held, the move
-  stick, and their icons.
+- The small controls, which have no redraw (the D-pad, start, back and
+  the toolbar's hide, show and options), are line icons: the outlines of
+  Kenney's Mobile Controls' glyphs (port/assets/touch/kenney-mobile-controls,
+  CC0), in the HUD's colour, with the same soft shadow as the buttons.
+- The captions' font, Overpass (port/assets/fonts, OFL), is copied into
+  res/font/touch_caption.ttf, and its licence into
+  res/raw/touch_caption_ofl.txt, which the APK carries with it.
 
 port/assets/touch/README.md says which picture is which control's. Run it
 again when an SVG or a redraw changes. Needs rsvg-convert, Pillow, NumPy
@@ -42,10 +45,16 @@ KENNEY = ROOT / "port/assets/touch/kenney-mobile-controls"
 BUTTONS = button_assets.ASSETS
 OUT = ROOT / "port/android/app/src/main/res/drawable-nodpi"
 
-# the plates are drawn up to about 420 pixels across (the stick at 200% on a
-# tablet); a picture made smaller with mipmaps stays sharp
-PLATE = 384
+FONTS = ROOT / "port/assets/fonts"
+FONT_OUT = ROOT / "port/android/app/src/main/res/font/touch_caption.ttf"
+LICENCE_OUT = ROOT / "port/android/app/src/main/res/raw/touch_caption_ofl.txt"
+
+# a line icon is drawn this many pixels across (a picture made smaller with
+# mipmaps stays sharp), its line this many wide, in the HUD's colour
+# (TouchControls.HUD_COLOR)
 ICON = 192
+LINE = 11
+HUD_COLOR = (0x9c, 0xd3, 0xff)
 # the redraws' texels drawn at this many pixels (a face, 26 texels high: 416)
 SCALE = 16
 # the supplied PNGs' art, at most this many pixels on a side
@@ -59,16 +68,14 @@ SHADOW_BLUR = 10
 SHADOW_OFFSET = 4
 SHADOW_ALPHA = 0.6
 
-# (the resource's name, Kenney's SVG, its size in pixels)
+# (the resource's name, Kenney's SVG)
 KENNEY_PICTURES = [
-    ("touch_plate", "button_circle.svg", PLATE),
-    ("touch_press_ring", "button_circle_highlight.svg", PLATE),
-    ("touch_stick_pad", "joystick_circle_pad_d.svg", PLATE),
-    ("touch_stick_knob", "joystick_circle_nub_a.svg", PLATE // 2),
-    ("touch_icon_pause", "icon_pause.svg", ICON),
-    ("touch_icon_back", "icon_menu.svg", ICON),
-    ("touch_icon_arrow", "icon_arrow.svg", ICON),
-    ("touch_icon_options", "icon_cog.svg", ICON),
+    ("touch_icon_pause", "icon_pause.svg"),
+    ("touch_icon_back", "icon_menu.svg"),
+    ("touch_icon_arrow", "icon_arrow.svg"),
+    ("touch_icon_options", "icon_cog.svg"),
+    ("touch_icon_hide", "icon_size_smaller.svg"),
+    ("touch_icon_show", "icon_size_larger.svg"),
 ]
 
 # each style's buttons (hud_hires_tags.c's hud_hires_button_draw): the
@@ -80,23 +87,65 @@ FACES = [("classic", button, f"classic_{button}__0") for button in ("a", "b", "x
 CONTROLS = ["trigger_left", "trigger_right", "thumbstick_left", "thumbstick_right"]
 
 
-def kenney(svg, size):
+def kenney(svg):
+    """a glyph's outline, a line icon in the HUD's colour, its shadow under it"""
+    inner = ICON - 2 * LINE
     with tempfile.TemporaryDirectory() as scratch:
         out = Path(scratch) / "picture.png"
-        subprocess.run(["rsvg-convert", "-w", str(size), "-h", str(size), "-o", str(out), str(KENNEY / svg)],
+        subprocess.run(["rsvg-convert", "-w", str(inner), "-h", str(inner), "-o", str(out), str(KENNEY / svg)],
                        check=True)
-        return Image.open(out).copy()
+        # (solid: a glyph drawn in two parts has no seam between them)
+        glyph = Image.open(out).getchannel("A").point(lambda v: 255 if v >= 96 else 0)
+    alpha = Image.new("L", (ICON, ICON))
+    alpha.paste(glyph, (LINE, LINE))
+    half = LINE // 2
+    outer = alpha.filter(ImageFilter.MaxFilter(2 * half + 1))
+    inside = alpha.filter(ImageFilter.MinFilter(2 * half + 1))
+    line = Image.frombytes("L", outer.size, bytes(max(0, a - b) for a, b in zip(outer.tobytes(), inside.tobytes())))
+    icon = Image.new("RGBA", (ICON, ICON), HUD_COLOR + (0,))
+    icon.putalpha(line.filter(ImageFilter.GaussianBlur(0.6)))
+    return shadowed(icon)
+
+
+def shadowed(image):
+    """an icon with the buttons' soft shadow (scaled to its size), on room enough for it"""
+    factor = image.width / ART
+    blur = max(1, round(SHADOW_BLUR * factor * 2))
+    offset = max(1, round(SHADOW_OFFSET * factor * 2))
+    pad = 2 * blur + offset
+    alpha = Image.new("L", (image.width + 2 * pad, image.height + 2 * pad))
+    alpha.paste(image.getchannel("A"), (pad, pad))
+    shadow = alpha.filter(ImageFilter.MaxFilter(3)).filter(ImageFilter.GaussianBlur(blur))
+    out = Image.new("RGBA", alpha.size)
+    dark = Image.new("RGBA", alpha.size, (0, 0, 0, 0))
+    dark.putalpha(shadow.point(lambda v: round(v * SHADOW_ALPHA)))
+    out.alpha_composite(dark, (0, offset))
+    out.alpha_composite(image, (pad, pad))
+    return out
+
+
+def without_words(image):
+    """a stick's art without the word over it (LEFT, RIGHT): the rows below the
+    first band of empty rows under the word"""
+    alpha = image.getchannel("A")
+    rows = [any(alpha.crop((0, y, image.width, y + 1)).getdata()) for y in range(image.height)]
+    top = rows.index(True)
+    gap = rows.index(False, top)
+    start = rows.index(True, gap)
+    return cropped(image.crop((0, start, image.width, image.height)))
 
 
 def cropped(image):
     return image.crop(image.getchannel("A").getbbox())
 
 
-def face(entry):
+def face(entry, words=False):
     """a style's button, as button_assets.py's build draws it, SCALE times its texels"""
     if "source_png" in entry:
         image = Image.open(BUTTONS / entry["source_png"]).convert("RGBA")
         image = cropped(image)
+        if words:
+            image = without_words(image)
         image.thumbnail((ART, ART), Image.Resampling.LANCZOS)
         return image
     if "classic" in entry:
@@ -126,13 +175,13 @@ def outlined(image):
 
 
 def pictures():
-    for name, svg, size in KENNEY_PICTURES:
-        yield name, kenney(svg, size)
+    for name, svg in KENNEY_PICTURES:
+        yield name, kenney(svg)
     entries = {entry["name"]: entry for entry in json.loads(button_assets.LIST.read_text())["assets"]}
     for style, button, entry in FACES:
         yield f"touch_button_{style}_{button}", outlined(face(entries[entry]))
     for control in CONTROLS:
-        yield f"touch_{control}", outlined(face(entries[control + "__0"]))
+        yield f"touch_{control}", outlined(face(entries[control + "__0"], control.startswith("thumbstick")))
 
 
 def encoded(image):
@@ -164,6 +213,15 @@ def main():
                 stale.append(old.relative_to(ROOT))
             else:
                 old.unlink()
+    # (the font, and its licence, which travels with it in the APK)
+    for source, target in ((FONTS / "Overpass-750.ttf", FONT_OUT), (FONTS / "Overpass-OFL.txt", LICENCE_OUT)):
+        data = source.read_bytes()
+        if args.check:
+            if not target.exists() or target.read_bytes() != data:
+                stale.append(target.relative_to(ROOT))
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
     if stale:
         print("Not as tools/touch_assets.py writes them:", *stale, sep="\n  ")
         return 1

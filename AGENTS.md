@@ -281,9 +281,9 @@ read `xbox/include`. To add a name, follow `port/include/xdk/README.md`.
   `port/assets/menus/NON_HANDDRAWN.md`.
 - The Android touch controls draw the controller's buttons with the HUD's
   redraws (`port/assets/buttons`, in `display.hud_button_style`). What has
-  no redraw (their plates, the move stick, icons) may come from CC0 packs
-  (Kenney's Mobile Controls, `port/assets/touch`), credited in
-  `AUTHORS.md`. Never the game's art, icons or logos.
+  no redraw (the small controls' icons) may come from CC0 packs (Kenney's
+  Mobile Controls, `port/assets/touch`), credited in `AUTHORS.md`. Never
+  the game's art, icons or logos.
 - `AUTHORS.md` credits art only.
 - Fonts: Overpass and OpenCE (Newtown, respaced) only; see
   `port/assets/fonts/README.md`. Never ship the maps' commercial typefaces.
