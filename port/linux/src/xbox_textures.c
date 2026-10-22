@@ -24,27 +24,12 @@ Edition channel orders, which the command stream hands the host.
 #include "hud_hires.h"
 #include "menu_files.h"
 #include "text_hires.h"
-#include "port_config.h"
 #include "../game/cache_file_formats.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-/* Draws query this for each texture; read the setting only when it changes. */
-static int hud_upscale_enabled(void)
-{
-	static unsigned long read_at = (unsigned long)-1;
-	static int enabled;
-
-	if (read_at != config_changes())
-	{
-		enabled = config_boolean("display.high_res_hud");
-		read_at = config_changes();
-	}
-	return enabled;
-}
 
 
 /* ---------- Custom Edition channel orders
@@ -334,7 +319,7 @@ unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_descri
 		description->hires_point_threshold = hud_hires_override_point_threshold(override);
 		return image;
 	}
-	if (hud_upscale_enabled())
+	if (hud_hires_enabled())
 	{
 		if (!entry->hud_upscale_checked)
 		{

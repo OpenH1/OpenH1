@@ -139,6 +139,31 @@ long hud_hires_asset_fits(long asset, long width, long height)
 		embedded->width / width == embedded->height / height && embedded->width / width > 1;
 }
 
+static unsigned long settings_read_at = (unsigned long)-1;
+static int settings_hud, settings_titles;
+
+static void settings_read(void)
+{
+	if (settings_read_at != config_changes())
+	{
+		settings_read_at = config_changes();
+		settings_hud = config_boolean("display.high_res_hud") != 0;
+		settings_titles = config_boolean("display.high_res_text") != 0;
+	}
+}
+
+int hud_hires_enabled(void)
+{
+	settings_read();
+	return settings_hud;
+}
+
+int hud_hires_titles_enabled(void)
+{
+	settings_read();
+	return settings_titles;
+}
+
 /* Changed settings since the previous rendered frame: HUD bit 0, titles bit 1.
  * Pending menu edits do not change config_changes(). */
 unsigned long hud_hires_settings_changed(void)
@@ -148,8 +173,7 @@ unsigned long hud_hires_settings_changed(void)
 	unsigned long current, changed;
 
 	if (read_at == config_changes()) return 0;
-	current = (config_boolean("display.high_res_hud") ? 1UL : 0UL) |
-		(config_boolean("display.high_res_text") ? 2UL : 0UL);
+	current = (hud_hires_enabled() ? 1UL : 0UL) | (hud_hires_titles_enabled() ? 2UL : 0UL);
 	changed = read_at == (unsigned long)-1 ? 0 : previous ^ current;
 	read_at = config_changes();
 	previous = current;
@@ -169,16 +193,9 @@ int hud_hires_bitmap_affected(unsigned long address, long width, long height, un
 long hud_hires_override_find(unsigned long address, unsigned long width, unsigned long height,
 	unsigned long level0_size)
 {
-	static int hud_enabled, titles_enabled;
-	static unsigned long read_at = (unsigned long)-1;
+	int hud_enabled = hud_hires_enabled(), titles_enabled = hud_hires_titles_enabled();
 	long asset;
 
-	if (read_at != config_changes())
-	{
-		read_at = config_changes();
-		hud_enabled = config_boolean("display.high_res_hud");
-		titles_enabled = config_boolean("display.high_res_text");
-	}
 	if (!hud_enabled && !titles_enabled)
 		return -1;
 	asset = hud_hires_asset_at(address, (long)width, (long)height);
@@ -280,19 +297,11 @@ cell's own, or the whole bitmap's), and the texture decoded; 0 if none */
 unsigned long hud_hires_sprites_drawable(long asset, unsigned long address, long width, long height,
 	int linear, unsigned long level0_size)
 {
-	static int hud_enabled, titles_enabled;
-	static unsigned long read_at = (unsigned long)-1;
 	const struct hud_hires_embedded *embedded;
 	unsigned long levels, drawable;
 
-	if (read_at != config_changes())
-	{
-		read_at = config_changes();
-		hud_enabled = config_boolean("display.high_res_hud");
-		titles_enabled = config_boolean("display.high_res_text");
-	}
 	if (asset < 0 || asset >= hud_hires_asset_count() || !hud_hires_embedded[asset].sprites ||
-		!(hud_hires_embedded[asset].title ? titles_enabled : hud_enabled))
+		!(hud_hires_embedded[asset].title ? hud_hires_titles_enabled() : hud_hires_enabled()))
 	{
 		return 0;
 	}
@@ -786,7 +795,7 @@ void hud_hires_map_loaded(const long *assets, long count)
 	hud_hires_map_unloaded();
 	/* (none for a test's run that draws nothing, or with the high-res HUD
 	off: then each is decoded when first drawn, as titles are) */
-	if (!config_boolean("display.high_res_hud") || config_boolean("debug.null_renderer"))
+	if (!hud_hires_enabled() || config_boolean("debug.null_renderer"))
 		return;
 	for (index = 0; index < count; index++)
 	{

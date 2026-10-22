@@ -84,6 +84,13 @@ struct hud_hires_ce_stock
 extern const struct hud_hires_ce_stock hud_hires_ce_stock[];
 extern const unsigned int hud_hires_ce_stock_count;
 
+/* display.high_res_hud and display.high_res_text, read again only when a
+setting changes (config_changes): the texture cache asks at every bind, the
+HUD's prompts at every draw, and config_boolean takes the settings' lock and
+looks the name up among them all */
+int hud_hires_enabled(void);
+int hud_hires_titles_enabled(void);
+
 /* At the frame boundary, identify cached bitmaps affected by committed HUD
  * or title setting changes. Pixel/CRC validation still occurs on upload. */
 unsigned long hud_hires_settings_changed(void);

@@ -43,6 +43,7 @@ void platform_log(char const *format, ...);
 unsigned long config_changes(void);
 int config_boolean(char const *name);
 char const *config_string(char const *name);
+int hud_hires_enabled(void);
 long hud_hires_asset_count(void);
 char const *hud_hires_asset_tag(long asset);
 long hud_hires_asset_bitmap(long asset);
@@ -495,7 +496,7 @@ boolean hud_hires_button_draw(struct icon_hud_element_definition const *icon,
 	short i;
 	short style, slot;
 
-	if (!hud_globals || (!config_boolean("display.high_res_hud") &&
+	if (!hud_globals || (!hud_hires_enabled() &&
 		(!custom_edition_cache_tags_loaded() ||
 		custom_edition_cache_stock_tag(hud_globals->messaging.messaging_icons.index))))
 		return FALSE;
@@ -506,7 +507,7 @@ boolean hud_hires_button_draw(struct icon_hud_element_definition const *icon,
 	if (index >= 18 || index >= hud_globals->messaging.button_icons.count)
 		return FALSE;
 	if (!ce_hud_buttons_stock(icon, index)) return FALSE;
-	if (!config_boolean("display.high_res_hud"))
+	if (!hud_hires_enabled())
 		return ce_hud_button_draw(icon, cursor, color);
 	slot = index < 6 ? (short)index : hud_button_control_slot((short)index,
 		icon->frame_rate > 0 ? game_time_get() / icon->frame_rate : 0);
