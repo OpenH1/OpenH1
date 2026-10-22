@@ -1,7 +1,7 @@
 /*
 HOST_APP.M
 
-The macOS app (Halo.app, tools/macos_build.py): what the host does when its
+The macOS app (OpenH1.app, tools/macos_build.py): what the host does when its
 executable runs inside the app's bundle, before the game starts, so that it
 behaves as a Mac app is expected to. A bare executable (build/macos/halo)
 does none of it, and the HALO_ settings of the environment (HALO_DATA_ROOT,

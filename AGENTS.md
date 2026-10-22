@@ -44,8 +44,8 @@ ninja linux_arm64              # build/linux_arm64/halo: arm64_32 guest (64-bit 
 ninja android                  # the Android guest image and native libraries
 ninja android_apk              # the APK (Gradle)
 ninja web                      # build/web/site (Emscripten: port/web/README.md)
-ninja macos                    # build/macos/Halo.app (and halo), on Apple silicon (port/macos/README.md)
-ninja macos_dmg                # build/macos/Halo.dmg
+ninja macos                    # build/macos/OpenH1.app (and halo), on Apple silicon (port/macos/README.md)
+ninja macos_dmg                # build/macos/OpenH1.dmg
 ninja windows                  # on Windows, or on Linux after configure.py --windows-cross
 python tools/ci_build.py linux_x86_64 release   # what CI builds
 ```

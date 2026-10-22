@@ -49,7 +49,7 @@ extern char **environ;
 device */
 int host_metal_initialize(void);
 /* port/macos/host_app.m: the app's folders, maps and window, when the
-executable runs inside Halo.app */
+executable runs inside OpenH1.app */
 void host_app_start(void);
 const char *host_app_settings_folder(void);
 #endif

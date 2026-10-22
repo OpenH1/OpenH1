@@ -81,7 +81,7 @@ builds of the latest release:
 
 | Platform | Release | Debug |
 | --- | --- | --- |
-| macOS (Apple silicon, macOS 14.4 or later) | [halo-macos-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-release.zip) | [halo-macos-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-debug.zip) |
+| macOS (Apple silicon, macOS 14.4 or later) | [halo-macos-release.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-release.dmg) | [halo-macos-debug.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-debug.dmg) |
 | Windows | [halo-windows-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-release.zip) | [halo-windows-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-debug.zip) |
 | Linux x86-64 (also the Steam Deck) | [halo-linux-x86_64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-release.zip) | [halo-linux-x86_64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-debug.zip) |
 | Linux arm64 | [halo-linux-arm64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-release.zip) | [halo-linux-arm64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-debug.zip) |
@@ -95,7 +95,7 @@ problems. The [Releases](https://github.com/OpenH1/OpenH1/releases) page
 keeps the last five releases: if the latest build has a problem, get an
 older build there.
 
-- **macOS:** unzip, open `Halo.dmg` and drag Halo to Applications. The app
+- **macOS:** open the `.dmg` and drag OpenH1 to Applications. The app
   is signed with a Developer ID and notarized by Apple, so it opens like any
   other downloaded app.
 - **Windows:** unzip into a folder and start `halo.exe`. The executable is
@@ -163,7 +163,7 @@ Each platform has its own instructions:
 | Linux VR (x86-64 and arm64, Vulkan 1.3; OpenXR headsets such as the Steam Frame) | [port/linux/README.md](port/linux/README.md#vr) |
 | Windows (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/windows/README.md](port/windows/README.md) |
 | Android (arm64 app, Vulkan 1.3, SDL3) | [port/android/README.md](port/android/README.md) |
-| macOS (Apple silicon: Halo.app, Metal) | [port/macos/README.md](port/macos/README.md) |
+| macOS (Apple silicon: OpenH1.app, Metal) | [port/macos/README.md](port/macos/README.md) |
 | Web (WebAssembly; not built for now: it returns with a WebGPU renderer) | [port/web/README.md](port/web/README.md) |
 
 The Linux README also gives the controls, the settings and the multiplayer
@@ -208,7 +208,7 @@ To build the game:
 | `ninja linux_arm64` (on 64-bit ARM Linux) | `build/linux_arm64/halo` and `libSDL3.so.0` (with `python configure.py --vr`, its VR mode) |
 | `ninja windows` (on Windows, or on Linux after `configure.py --windows-cross`) | `build/windows/halo.exe` and `SDL3.dll` |
 | `ninja android_apk` | `port/android/app/build/outputs/apk/debug/app-debug.apk` |
-| `ninja macos` (on a Mac with Apple silicon) | `build/macos/Halo.app` (and `halo` with `libSDL3.0.dylib`, for development); `ninja macos_dmg`: `Halo.dmg` |
+| `ninja macos` (on a Mac with Apple silicon) | `build/macos/OpenH1.app` (and `halo` with `libSDL3.0.dylib`, for development); `ninja macos_dmg`: `OpenH1.dmg` |
 | `ninja web` | `build/web/site/`, the web site (`python tools/web_serve.py` serves it) |
 
 If you enter `ninja` without a target, ninja builds the game for the
