@@ -49,7 +49,7 @@ From the top:
   footer.
 - **Get it**: a card for each machine. Windows and the Steam Deck link the
   latest release's zip (`releases/latest/download/…`) with short install
-  steps, and so does the Mac (signed and notarized: `halo-macos-release.dmg`). The Steam Frame (until it has a simpler install) says
+  steps, and so does the Mac (signed and notarized: `OpenH1.dmg`). The Steam Frame (until it has a simpler install) says
   "Coming soon". The script puts the visitor's machine
   first, and marks it, when it has a build. Android has no card: its builds
   cannot update over each other until it has a signing key (#92).

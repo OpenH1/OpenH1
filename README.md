@@ -81,7 +81,7 @@ builds of the latest release:
 
 | Platform | Release | Debug |
 | --- | --- | --- |
-| macOS (Apple silicon, macOS 14.4 or later) | [halo-macos-release.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-release.dmg) | [halo-macos-debug.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-debug.dmg) |
+| macOS (Apple silicon, macOS 14.4 or later) | [OpenH1.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1.dmg) | [OpenH1-debug.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-debug.dmg) |
 | Windows | [halo-windows-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-release.zip) | [halo-windows-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-debug.zip) |
 | Linux x86-64 (also the Steam Deck) | [halo-linux-x86_64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-release.zip) | [halo-linux-x86_64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-debug.zip) |
 | Linux arm64 | [halo-linux-arm64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-release.zip) | [halo-linux-arm64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-debug.zip) |
