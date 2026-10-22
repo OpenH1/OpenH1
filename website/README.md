@@ -49,15 +49,16 @@ From the top:
   footer.
 - **Get it**: a card for each machine. Windows and the Steam Deck link the
   latest release's zip (`releases/latest/download/…`) with short install
-  steps. The Mac (until it is notarized) and the Steam Frame (until it has a
-  simpler install) say "Coming soon". The script puts the visitor's machine
+  steps, and so does the Mac (signed and notarized: `halo-macos-release.zip`,
+  its `Halo.dmg`). The Steam Frame (until it has a simpler install) says
+  "Coming soon". The script puts the visitor's machine
   first, and marks it, when it has a build. Android has no card: its builds
   cannot update over each other until it has a signing key (#92).
 
 Rules for the content:
 
 - Download links only for builds someone who isn't a developer can install:
-  Windows and the Steam Deck for now, in the order above.
+  Windows, the Mac and the Steam Deck for now.
 - Every claim is in this repository's READMEs. Check a new one there first.
 - Every picture or clip is a real capture of the game in OpenH1, captioned
   with what it compares. No Microsoft or Halo branding, logos or art.
