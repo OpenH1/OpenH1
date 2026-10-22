@@ -865,10 +865,13 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      # (the Linux builds' zips are tools/linux_package.py's)
+      # (the Linux builds' zips are tools/linux_package.py's, the release's
+      # names tools/release_names.py's)
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: tools/linux_package.py
+          sparse-checkout: |
+            tools/linux_package.py
+            tools/release_names.py
           sparse-checkout-cone-mode: false
 
       - uses: actions/download-artifact@v4
