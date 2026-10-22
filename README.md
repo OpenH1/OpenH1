@@ -96,8 +96,8 @@ keeps the last five releases: if the latest build has a problem, get an
 older build there.
 
 - **macOS:** unzip, open `Halo.dmg` and drag Halo to Applications. The app
-  is not notarized yet, so the first start is refused: open System
-  Settings > Privacy & Security and choose **Open Anyway**.
+  is signed with a Developer ID and notarized by Apple, so it opens like any
+  other downloaded app.
 - **Windows:** unzip into a folder and start `halo.exe`. The executable is
   not signed yet, so Windows may say that it protected your PC: choose
   **More info**, then **Run anyway**.
