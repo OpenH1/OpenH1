@@ -7,6 +7,7 @@
     python3 tools/macos_app.py sign --identity "Developer ID Application: <name> (<team>)"
     python3 tools/macos_app.py notarize --identity "Developer ID Application: <name> (<team>)" \\
         --keychain-profile <profile>
+    python3 tools/macos_app.py notarize --identity ... --key AuthKey_<id>.p8 --key-id <id> --issuer <uuid>
 
 - bundle: Halo.app from the build: Contents/MacOS/halo (the executable, with
   an rpath of @executable_path/../Frameworks), Contents/Frameworks/
@@ -19,7 +20,8 @@
 - notarize: sign, then the app sent to Apple's notary service (xcrun
   notarytool) and its ticket stapled to it, then the disk image made of it,
   signed, notarized and stapled too. The credentials are notarytool's: a
-  keychain profile (xcrun notarytool store-credentials <profile>), or an
+  keychain profile (xcrun notarytool store-credentials <profile>), an App
+  Store Connect API key (its .p8 file, its ID and its issuer's: CI's), or an
   Apple ID, its team and an app-specific password.
 """
 
@@ -160,9 +162,12 @@ def dmg(args: argparse.Namespace) -> None:
 def notary_credentials(args: argparse.Namespace) -> list:
     if args.keychain_profile:
         return ["--keychain-profile", args.keychain_profile]
+    if args.key and args.key_id and args.issuer:
+        return ["--key", args.key, "--key-id", args.key_id, "--issuer", args.issuer]
     if args.apple_id and args.team_id and args.password:
         return ["--apple-id", args.apple_id, "--team-id", args.team_id, "--password", args.password]
-    sys.exit("notarize: give --keychain-profile, or --apple-id, --team-id and --password")
+    sys.exit("notarize: give --keychain-profile, --key, --key-id and --issuer, or --apple-id, --team-id and "
+             "--password")
 
 
 def notarize_file(path: Path, credentials: list) -> None:
@@ -220,6 +225,9 @@ def main() -> None:
     command.add_argument("--output", default=default_dmg)
     command.add_argument("--identity", required=True, help='"Developer ID Application: <name> (<team>)"')
     command.add_argument("--keychain-profile", help="notarytool's stored credentials")
+    command.add_argument("--key", help="an App Store Connect API key's .p8 file")
+    command.add_argument("--key-id", help="the API key's ID")
+    command.add_argument("--issuer", help="the API key's issuer ID")
     command.add_argument("--apple-id")
     command.add_argument("--team-id")
     command.add_argument("--password", help="an app-specific password")
