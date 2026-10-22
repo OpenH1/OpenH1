@@ -12,6 +12,7 @@ by `tools/frame_package.py` for a Steam Frame. Each release has it as
 | `halo` | The game |
 | `libSDL3.so.0` | SDL3, which the game finds beside it |
 | `halo-vr.sh` | The launcher: the target of the Steam shortcut. Its comments list the environment it gives the game. |
+| `install.sh` | The installer (`tools/frame_install.sh`): opened on the Frame, it installs the package it is in |
 | `brokers.txt` | Internet play's MQTT brokers (`network.brokers_file`): without it, internet play finds no games |
 | `VERSION` | The commit the game was built from |
 | `SHA256SUMS` | The files' SHA-256, which the install checks |
@@ -26,10 +27,19 @@ contain them, and the install does not touch them.
 
 ## Install, or update
 
-Download the latest release's
+On the Frame, in its desktop mode: download the latest release's
 [OpenH1-Steam-Frame.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Steam-Frame.zip)
 (or an older one from the
-[Releases](https://github.com/OpenH1/OpenH1/releases) page). Then, from a
+[Releases](https://github.com/OpenH1/OpenH1/releases) page), unzip it, and
+open `install.sh` in its `halo-vr-frame` folder. It installs the package
+into `~/apps/halo-vr/` (as below), in a terminal window that shows what it
+did. At the first install it asks for the maps folder of the game's Xbox
+disc (or the folder that contains it) and copies the maps, and it adds
+the game to Steam (SteamOS's `steamos-add-to-steam`) as `halo-vr.sh`.
+Start SteamVR, then the game from the library. To update, do the same
+with a newer zip.
+
+Or from a
 computer with the repository's `tools/frame_install.sh` and `ssh` to the
 Frame (in its desktop mode, with SSH on):
 
@@ -46,17 +56,14 @@ replaced `halo` is kept as `halo.prev` (only the last one), as are
 replaced. It prints what changed. It never touches `config.toml`,
 `halo-vr.env`, the maps, the logs or the saved games.
 
-At the first install, add the game to Steam once, on the Frame: in Steam's
+From a computer, add the game to Steam once, on the Frame: in Steam's
 desktop mode, Games > Add a Non-Steam Game to My Library > Browse, select
 `~/apps/halo-vr/halo-vr.sh`, then Add Selected Programs. The install
 prints the same until Steam has such a shortcut. (It does not add it
 itself: Steam keeps its shortcuts in a file it rewrites while it runs.)
 
-Without a computer: download the zip on the Frame (in its desktop mode),
-unpack it, and copy the files of its `halo-vr-frame` folder into
-`~/apps/halo-vr/`. Or, from a terminal on the Frame, with
-`tools/frame_install.sh` beside the zip:
-`./frame_install.sh --package OpenH1-Steam-Frame.zip --local ~`.
+Or by hand: copy the files of the zip's `halo-vr-frame` folder into
+`~/apps/halo-vr/`, and add the shortcut as above.
 
 To go back to the previous build: in `~/apps/halo-vr`, `mv halo.prev halo`
 (and `libSDL3.so.0.prev`, `halo-vr.sh.prev` likewise, where they are).
