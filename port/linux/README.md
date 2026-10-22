@@ -1847,8 +1847,10 @@ tools/frame_install.sh <frame>
 - The Steam shortcut: until Steam has one to the launcher (in
   `~/.local/share/Steam/userdata/*/config/shortcuts.vdf`, which the
   install only reads), the install prints how to add it on the Frame:
-  in Steam's desktop mode, Games > Add a Non-Steam Game to My Library >
-  Browse, `~/apps/halo-vr/halo-vr.sh`, Add Selected Programs. It does not
+  in Steam's desktop mode, Games > Add a Non-Steam Game to My Library,
+  OpenH1 VR, Add Selected Programs. (The install writes that menu entry,
+  `~/.local/share/applications/openh1-vr.desktop`, with the package's
+  `openh1.png`; Steam names the shortcut after it.) It does not
   write that file: Steam rewrites it while it runs, which on the Frame is
   always. Run on the Frame as `install.sh`, it asks the running Steam to
   add the shortcut instead (SteamOS's `steamos-add-to-steam`).

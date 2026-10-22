@@ -16,8 +16,9 @@
 # The package has this script as its install.sh: opened there with no
 #   arguments (from the Frame's file manager, say), it installs that package
 #   into the home of whoever runs it, in a terminal window of its own, asks
-#   for the maps folder if there are no maps yet, and adds the game to
-#   Steam (steamos-add-to-steam) if Steam has no shortcut to it.
+#   for the maps folder if there are no maps yet, gives it a menu entry
+#   named OpenH1 VR (~/.local/share/applications/openh1-vr.desktop), and
+#   adds that to Steam (steamos-add-to-steam) if Steam has no shortcut to it.
 #
 # It refuses while the game runs (pgrep -x halo), and never starts it. The
 # package goes to a folder of its own beside the game, where its SHA256SUMS
@@ -221,19 +222,36 @@ if [ ! -d maps ] && ! grep -Eq '^[[:space:]]*data[[:space:]]*=[[:space:]]*"[^"]+
 	echo "No maps here: copy the maps folder of the game's Xbox disc to $dir/maps (or name the folder that contains it in config.toml's paths.data)."
 fi
 
+# the menu entry, whose name Steam gives the shortcut made from it (in its
+# list of programs, and from steamos-add-to-steam)
+entry=$HOME/.local/share/applications/openh1-vr.desktop
+mkdir -p "$(dirname "$entry")"
+cat > "$entry.new" <<EOF
+[Desktop Entry]
+Type=Application
+Name=OpenH1 VR
+Comment=Halo: Combat Evolved in VR, ported from its decompilation
+Exec="$dir/halo-vr.sh"
+Path=$dir
+Icon=$dir/openh1.png
+Terminal=false
+Categories=Game;ActionGame;
+EOF
+mv -f "$entry.new" "$entry"
+
 # Steam's shortcut, which only Steam may add (it rewrites its shortcuts.vdf):
 # on the Frame, SteamOS's steamos-add-to-steam asks the running Steam to
 if ! grep -lqF "$dir/halo-vr.sh" "$HOME"/.local/share/Steam/userdata/*/config/shortcuts.vdf 2>/dev/null; then
 	if [ -n "$standalone" ] && command -v steamos-add-to-steam >/dev/null &&
-		steamos-add-to-steam "$dir/halo-vr.sh" >/dev/null 2>&1; then
-		echo "Added to Steam as halo-vr.sh: start SteamVR, then it, from the library."
+		steamos-add-to-steam "$entry" >/dev/null 2>&1; then
+		echo "Added to Steam as OpenH1 VR: start SteamVR, then it, from the library."
 		exit 0
 	fi
 	[ -n "$first" ] && echo "Installed. Now add it to Steam, once:" || echo "Steam has no shortcut to the launcher yet. To add one:"
 	cat <<EOF
   1. On the Frame, in Steam's desktop mode: Games > Add a Non-Steam Game to My Library.
-  2. Browse..., select $dir/halo-vr.sh, then Add Selected Programs.
-  3. Start SteamVR, then Halo VR (halo-vr.sh) from the library.
+  2. Tick OpenH1 VR in the list (or Browse..., select $dir/halo-vr.sh), then Add Selected Programs.
+  3. Start SteamVR, then OpenH1 VR from the library.
 EOF
 fi
 FRAME

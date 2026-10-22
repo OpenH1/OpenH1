@@ -12,6 +12,7 @@ by `tools/frame_package.py` for a Steam Frame. Each release has it as
 | `halo` | The game |
 | `libSDL3.so.0` | SDL3, which the game finds beside it |
 | `halo-vr.sh` | The launcher: the target of the Steam shortcut. Its comments list the environment it gives the game. |
+| `openh1.png` | The icon of the menu entry and the Steam shortcut |
 | `install.sh` | The installer (`tools/frame_install.sh`): opened on the Frame, it installs the package it is in |
 | `brokers.txt` | Internet play's MQTT brokers (`network.brokers_file`): without it, internet play finds no games |
 | `VERSION` | The commit the game was built from |
@@ -35,7 +36,7 @@ open `install.sh` in its `halo-vr-frame` folder. It installs the package
 into `~/apps/halo-vr/` (as below), in a terminal window that shows what it
 did. At the first install it asks for the maps folder of the game's Xbox
 disc (or the folder that contains it) and copies the maps, and it adds
-the game to Steam (SteamOS's `steamos-add-to-steam`) as `halo-vr.sh`.
+the game to Steam (SteamOS's `steamos-add-to-steam`) as OpenH1 VR.
 Start SteamVR, then the game from the library. To update, do the same
 with a newer zip.
 
@@ -57,8 +58,10 @@ replaced. It prints what changed. It never touches `config.toml`,
 `halo-vr.env`, the maps, the logs or the saved games.
 
 From a computer, add the game to Steam once, on the Frame: in Steam's
-desktop mode, Games > Add a Non-Steam Game to My Library > Browse, select
-`~/apps/halo-vr/halo-vr.sh`, then Add Selected Programs. The install
+desktop mode, Games > Add a Non-Steam Game to My Library, tick OpenH1 VR
+(the menu entry the install writes,
+`~/.local/share/applications/openh1-vr.desktop`), then Add Selected
+Programs. The install
 prints the same until Steam has such a shortcut. (It does not add it
 itself: Steam keeps its shortcuts in a file it rewrites while it runs.)
 
@@ -74,7 +77,7 @@ Remove the shortcut in Steam (its Properties > Manage > Remove
 non-Steam game from your library), then the program's files:
 
 ```sh
-cd ~/apps/halo-vr && cut -c 67- SHA256SUMS | xargs rm -f -- && rm -f SHA256SUMS halo.prev libSDL3.so.0.prev halo-vr.sh.prev
+cd ~/apps/halo-vr && cut -c 67- SHA256SUMS | xargs rm -f -- && rm -f SHA256SUMS halo.prev libSDL3.so.0.prev halo-vr.sh.prev ~/.local/share/applications/openh1-vr.desktop
 ```
 
 That keeps the maps, `config.toml`, `halo-vr.env` and the logs; remove

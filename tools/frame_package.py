@@ -15,7 +15,8 @@ data and the player's own files: the game (build/linux_arm64/halo), the
 SDL3 it finds beside it, the launcher of its Steam shortcut
 (port/linux/frame/halo-vr.sh), internet play's brokers.txt, its installer
 (install.sh: tools/frame_install.sh, which installs the package it is in
-when opened on the Frame), a README
+when opened on the Frame), the icon of its menu entry and Steam shortcut
+(openh1.png), a README
 (port/linux/frame/README.md), the libraries' licenses (as
 tools/ci_build.py's dist has them), VERSION (the commit) and SHA256SUMS.
 Never config.toml: the player's own, which an install must not replace.
@@ -157,6 +158,7 @@ def main() -> int:
         "SDL3-LICENSE.txt": args.build / "third_party/SDL3/LICENSE.txt",
         "halo-vr.sh": FRAME_DIR / "halo-vr.sh",
         "install.sh": ROOT / "tools/frame_install.sh",
+        "openh1.png": ROOT / "port/assets/icon/hicolor/openh1-256.png",
         "brokers.txt": ROOT / "port/assets/network/brokers.txt",
         "README.md": FRAME_DIR / "README.md",
         **{name: ROOT / source for name, source in LICENSES.items()},
