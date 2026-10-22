@@ -21,7 +21,7 @@ the artwork the icons are made from:
   entry, port/assets/linux/openh1.desktop);
 - the render on the background, in the rounded square of macOS's
   icons (port/macos/openh1-icon.icns): the macOS app's icon, which Finder and
-  the Dock show (tools/macos_build.py puts it in Halo.app).
+  the Dock show (tools/macos_build.py puts it in OpenH1.app).
 
 The launcher icon is an adaptive one (Android 8 and later): the render as its
 foreground layer, the background as its background layer, and the

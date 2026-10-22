@@ -14,9 +14,9 @@ wherever the host reserves them (port/android/host/host_memory_base.c).
   Darwin's system calls), with the guest image inside it;
 - build/macos/libSDL3.0.dylib: SDL3, built from source without OpenGL, next
   to the executable, which finds it there (an rpath of @executable_path);
-- build/macos/Halo.app: the app, the executable and SDL in a bundle (where
+- build/macos/OpenH1.app: the app, the executable and SDL in a bundle (where
   the executable finds SDL in Contents/Frameworks, its other rpath), signed
-  ad hoc with the hardened runtime (tools/macos_app.py); build/macos/Halo.dmg
+  ad hoc with the hardened runtime (tools/macos_app.py); build/macos/OpenH1.dmg
   (ninja macos_dmg), a disk image of it;
 - build/macos/xgpu_metal_test (ninja macos_metal_test): the Metal backend's
   tests (port/macos/tests).
@@ -397,7 +397,7 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
 
     # ---------- the app (tools/macos_app.py), and its disk image
 
-    app = BUILD / "Halo.app"
+    app = BUILD / "OpenH1.app"
     app_executable = app / "Contents" / "MacOS" / "halo"
     icon = PORT_DIR / "openh1-icon.icns"
     build_number = os.environ.get("HALO_BUILD_NUMBER", "0")
@@ -422,7 +422,7 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
             implicit=[icon, PORT_DIR / "halo.entitlements", Path("tools/macos_app.py"),
                       *(source for source, _ in licenses)])
     n.build(outputs="macos_app", rule="phony", inputs=[app_executable])
-    dmg = BUILD / "Halo.dmg"
+    dmg = BUILD / "OpenH1.dmg"
     n.rule(name="macos_dmg", command=f"$python tools/macos_app.py dmg --app {app} --output $out > {BUILD}/dmg.log",
            description=f"MACOS DMG $out")
     n.build(outputs=dmg, rule="macos_dmg", inputs=[app_executable])

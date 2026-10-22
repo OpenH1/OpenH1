@@ -70,7 +70,7 @@ OUTPUTS = {
     "linux_x86_64": ["build/linux_x86_64/halo", "build/linux_x86_64/libSDL3.so.0",
                      "build/linux_x86_64/SDL3-LICENSE.txt"],
     "windows": ["build/windows/halo.exe", "build/windows/SDL3.dll"],
-    "macos": ["build/macos/Halo.dmg"],
+    "macos": ["build/macos/OpenH1.dmg"],
     "android": [],  # the APK, below
     "web": [],  # the site, below
 }
