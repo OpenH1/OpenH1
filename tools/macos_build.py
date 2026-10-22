@@ -14,9 +14,9 @@ wherever the host reserves them (port/android/host/host_memory_base.c).
   Darwin's system calls), with the guest image inside it;
 - build/macos/libSDL3.0.dylib: SDL3, built from source without OpenGL, next
   to the executable, which finds it there (an rpath of @executable_path);
-- build/macos/Halo.app: the app, the executable and SDL in a bundle (where
+- build/macos/OpenH1.app: the app, the executable and SDL in a bundle (where
   the executable finds SDL in Contents/Frameworks, its other rpath), signed
-  ad hoc with the hardened runtime (tools/macos_app.py); build/macos/Halo.dmg
+  ad hoc with the hardened runtime (tools/macos_app.py); build/macos/OpenH1.dmg
   (ninja macos_dmg), a disk image of it;
 - build/macos/xgpu_metal_test (ninja macos_metal_test): the Metal backend's
   tests (port/macos/tests).
@@ -36,6 +36,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
+from .linux_package import ROOT as REPO_ROOT, notices as release_notices
 from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, RENDER_STREAM_GUEST_EXCLUDED, SDL_TAG,
                             TOML_DIR, fetch_third_party, generate_guest_image)
 from .build_common import MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, compile_launcher, download, miniupnpc_sources
@@ -373,9 +374,15 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     n.build(outputs=table_obj, rule="macos_host_cc", inputs=guest["host_table_c"],
             variables={"cflags": host_cflags})
     host_objects.append(table_obj)
-    # the guest image, inside the executable (host_main.c)
+    # the guest image, inside the executable (host_main.c), assembled
+    # without the compile cache: ccache hashes guest_image.S, not the image
+    # its .incbin reads, and gave back an object with an old guest (the
+    # releases of 20 to 22 October drew nothing: their guest's render
+    # stream was of an older version than the host's)
+    n.rule(name="macos_host_cc_uncached", command="$macos_cc -MMD -MF $out.d $cflags -c $in -o $out",
+           description="MACOS HOST CC $out", depfile="$out.d", deps="gcc")
     image_obj = host_obj_dir / "guest_image.S.o"
-    n.build(outputs=image_obj, rule="macos_host_cc", inputs=PORT_DIR / "guest_image.S",
+    n.build(outputs=image_obj, rule="macos_host_cc_uncached", inputs=PORT_DIR / "guest_image.S",
             implicit=[guest["image"], guest["checked"]], variables={"cflags": f'-mmacosx-version-min={MACOS_MINIMUM} -DGUEST_IMAGE=\\"{guest["image"]}\\"'})
     host_objects.append(image_obj)
 
@@ -396,24 +403,32 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
 
     # ---------- the app (tools/macos_app.py), and its disk image
 
-    app = BUILD / "Halo.app"
+    app = BUILD / "OpenH1.app"
     app_executable = app / "Contents" / "MacOS" / "halo"
     icon = PORT_DIR / "openh1-icon.icns"
     build_number = os.environ.get("HALO_BUILD_NUMBER", "0")
     bundle_id = getattr(sln, "macos_bundle_id", None) or MACOS_BUNDLE_ID
+    # the licences the app carries (Contents/Resources/Licenses): OpenH1's,
+    # the AGPL; those of what every build carries (tools/linux_package.py);
+    # and the SDL3 built here
+    licenses = [(Path("LICENSE"), "LICENSE.txt"),
+                *((source.relative_to(REPO_ROOT), name) for source, name in release_notices("macos")),
+                (BUILD / "third_party/SDL3/LICENSE.txt", "SDL3-LICENSE.txt")]
     n.rule(
         name="macos_app",
         command=(f"$python tools/macos_app.py bundle --app {app} --executable {output} --sdl {libsdl} "
                  f"--icon {icon} --resource {brokers} --resource {library} --bundle-id {bundle_id} "
+                 f"{' '.join(f'--license {source}={name}' for source, name in licenses)} "
                  f"--build {build_number if build_number.isdigit() else 0} "
                  f"--flavor {'release' if getattr(sln, 'port_release', False) else 'debug'} "
                  f"--minimum {MACOS_MINIMUM} > {BUILD}/app.log"),
         description=f"MACOS APP {app}",
     )
     n.build(outputs=app_executable, rule="macos_app", inputs=[output, libsdl, brokers, library],
-            implicit=[icon, PORT_DIR / "halo.entitlements", Path("tools/macos_app.py")])
+            implicit=[icon, PORT_DIR / "halo.entitlements", Path("tools/macos_app.py"),
+                      *(source for source, _ in licenses)])
     n.build(outputs="macos_app", rule="phony", inputs=[app_executable])
-    dmg = BUILD / "Halo.dmg"
+    dmg = BUILD / "OpenH1.dmg"
     n.rule(name="macos_dmg", command=f"$python tools/macos_app.py dmg --app {app} --output $out > {BUILD}/dmg.log",
            description=f"MACOS DMG $out")
     n.build(outputs=dmg, rule="macos_dmg", inputs=[app_executable])

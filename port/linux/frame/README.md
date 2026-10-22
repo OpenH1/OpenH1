@@ -3,7 +3,7 @@
 The VR build of the Linux port (`configure.py --vr`, `ninja linux_arm64`:
 64-bit ARM, drawn with Vulkan), packaged
 by `tools/frame_package.py` for a Steam Frame. Each release has it as
-[halo-steam-frame-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-steam-frame-vr-release.zip)
+[OpenH1-Steam-Frame.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Steam-Frame.zip)
 (the package's `halo-vr-frame` folder). Refer to "VR" and "Steam Frame" in
 `port/linux/README.md` of the repository.
 
@@ -27,14 +27,14 @@ contain them, and the install does not touch them.
 ## Install, or update
 
 Download the latest release's
-[halo-steam-frame-vr-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-steam-frame-vr-release.zip)
+[OpenH1-Steam-Frame.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Steam-Frame.zip)
 (or an older one from the
 [Releases](https://github.com/OpenH1/OpenH1/releases) page). Then, from a
 computer with the repository's `tools/frame_install.sh` and `ssh` to the
 Frame (in its desktop mode, with SSH on):
 
 ```sh
-tools/frame_install.sh --package halo-steam-frame-vr-release.zip <frame>
+tools/frame_install.sh --package OpenH1-Steam-Frame.zip <frame>
 tools/frame_install.sh <frame>          # dist/halo-vr-frame, built from the repository
 ```
 
@@ -56,7 +56,7 @@ Without a computer: download the zip on the Frame (in its desktop mode),
 unpack it, and copy the files of its `halo-vr-frame` folder into
 `~/apps/halo-vr/`. Or, from a terminal on the Frame, with
 `tools/frame_install.sh` beside the zip:
-`./frame_install.sh --package halo-steam-frame-vr-release.zip --local ~`.
+`./frame_install.sh --package OpenH1-Steam-Frame.zip --local ~`.
 
 To go back to the previous build: in `~/apps/halo-vr`, `mv halo.prev halo`
 (and `libSDL3.so.0.prev`, `halo-vr.sh.prev` likewise, where they are).

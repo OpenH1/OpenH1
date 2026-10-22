@@ -4,11 +4,11 @@ dist/halo-vr-frame.tar.gz, which tools/frame_install.sh installs.
 
     python3 configure.py --vr && ninja linux_arm64
     python3 tools/frame_package.py
-    python3 tools/frame_package.py --zip halo-steam-frame-vr-release.zip
+    python3 tools/frame_package.py --zip OpenH1-Steam-Frame.zip
 
 --zip also writes the package as a zip (halo-vr-frame/ in it, the files with
 their Unix modes), as the releases have it: tools/ci_build.py linux_arm64
-release --vr makes the release's halo-steam-frame-vr-release.zip so.
+release --vr makes the release's OpenH1-Steam-Frame.zip so.
 
 The package is what ~/apps/halo-vr/ on the Frame needs beside the game's
 data and the player's own files: the game (build/linux_arm64/halo), the
@@ -138,7 +138,7 @@ def main() -> int:
     parser.add_argument("--out", type=Path, default=ROOT / "dist",
                         help=f"where {NAME}/ and {NAME}.tar.gz go (default: dist)")
     parser.add_argument("--zip", type=Path,
-                        help="also write the package as this zip (as the release's halo-steam-frame-vr-release.zip)")
+                        help="also write the package as this zip (as the release's OpenH1-Steam-Frame.zip)")
     args = parser.parse_args()
 
     game = args.build / "halo"

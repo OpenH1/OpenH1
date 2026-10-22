@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- The disk image's window background (tools/macos_app.py dmg): 640 x 400,
+     the app's icon at (160, 190) and Applications' at (480, 190), 128 px.
+     Rendered to background.png and background@2x.png by the command in
+     README.md here. The plates behind the icons' names keep them readable
+     in both of Finder's appearances: it draws them black in light mode and
+     white in dark mode, over the picture. -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "Overpass Mono"; src: url("../../../website/public/fonts/OverpassMono-Latin.woff2") format("woff2"); }
+  html, body { margin: 0; width: 640px; height: 400px; overflow: hidden; }
+  body {
+    position: relative;
+    background:
+      radial-gradient(ellipse 70% 60% at 50% 46%, rgba(157, 255, 60, 0.16), rgba(157, 255, 60, 0) 70%),
+      radial-gradient(ellipse 120% 90% at 50% 0%, #0b1209, #040504 70%);
+  }
+  /* the hero's scanlines, faint */
+  body::after {
+    content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.28) 0 1px, transparent 1px 3px);
+  }
+  .lockup { position: absolute; left: 50%; top: 34px; width: 150px; transform: translateX(-50%); filter: drop-shadow(0 0 14px rgba(157, 255, 60, 0.35)); }
+  /* the arrow, from the app to Applications */
+  .arrow { position: absolute; left: 252px; top: 168px; width: 136px; height: 44px; }
+  /* the plates under the icons' names (centred 72 px below the icons' centres) */
+  .plate { position: absolute; z-index: 1; top: 251px; width: 118px; height: 22px; margin-left: -59px; border-radius: 6px; background: #6b7668; }
+  .plate.app { left: 160px; }
+  .plate.apps { left: 480px; }
+  .hint { position: absolute; z-index: 1; margin: 0; left: 0; right: 0; bottom: 34px; text-align: center; color: #8e9a89; font: 500 11px/1 "Overpass Mono", monospace; letter-spacing: 0.22em; text-transform: uppercase; }
+  .hint b { color: #9dff3c; font-weight: 500; }
+</style>
+</head>
+<body>
+  <img class="lockup" src="../../../website/public/brand/openh1-lockup.svg" alt="">
+  <svg class="arrow" viewBox="0 0 136 44" fill="none" stroke="#9dff3c" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0 0 8px rgba(157, 255, 60, 0.6))">
+    <path d="M6 22 H126" stroke-dasharray="2 9"/>
+    <path d="M112 9 L127 22 L112 35"/>
+  </svg>
+  <div class="plate app"></div>
+  <div class="plate apps"></div>
+  <p class="hint">Drag <b>OpenH1</b> to Applications</p>
+</body>
+</html>

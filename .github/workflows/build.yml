@@ -689,8 +689,9 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     # The runner image has Xcode (clang, the Metal compiler), Python and
     # CMake; the guest's compiler is the pinned LLVM configure.py downloads.
-    # The app is signed ad hoc (tools/macos_app.py): without a Developer ID,
-    # macOS asks the player to allow it once (README, "Download").
+    # The app is signed ad hoc (tools/macos_app.py), and the release on
+    # master with the Developer ID and notarized ("Sign and notarize"), so
+    # macOS opens it without asking (README, "Download").
     runs-on: macos-15
     timeout-minutes: 40
     # (the image's Android SDK hidden from configure.py, as in the Windows job)
@@ -704,6 +705,8 @@ jobs:
       - name: Install the toolchain
         run: |
           brew install ninja ccache
+          # (the disk image's window: tools/macos_app.py dmg)
+          python3 -m pip install --break-system-packages dmgbuild==1.6.7
           # (Xcode 26 downloads the Metal compiler apart)
           xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
 
@@ -761,6 +764,45 @@ jobs:
       - name: Release
         if: github.ref == 'refs/heads/master'
         run: python3 tools/ci_build.py macos release
+
+      # the release signed with the Developer ID and notarized
+      # (tools/macos_app.py notarize), its disk image in place of the ad hoc
+      # one: the certificate and its key from MACOS_CERTIFICATE (a .p12,
+      # base64) and MACOS_CERTIFICATE_PASSWORD, in a keychain of the run's
+      # own; notarytool's credentials an App Store Connect API key, ASC_KEY
+      # (its .p8, base64), ASC_KEY_ID and ASC_ISSUER_ID. Without them the
+      # release stays ad hoc
+      - name: Sign and notarize
+        if: github.ref == 'refs/heads/master'
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          ASC_KEY: ${{ secrets.ASC_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          if [ -z "$CERTIFICATE" ] || [ -z "$ASC_KEY" ]; then
+            echo "::warning::no MACOS_CERTIFICATE or ASC_KEY secret: the macOS app is signed ad hoc, not notarized"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          trap 'rm -f "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/AuthKey.p8"; security delete-keychain "$keychain" || true' EXIT
+          password="$(openssl rand -hex 16)"
+          printf '%s' "$CERTIFICATE" | base64 -d > "$RUNNER_TEMP/certificate.p12"
+          printf '%s' "$ASC_KEY" | base64 -d > "$RUNNER_TEMP/AuthKey.p8"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk '/Developer ID Application/ { print $2; exit }')"
+          if [ -z "$identity" ]; then
+            echo "::error::MACOS_CERTIFICATE has no Developer ID Application identity"
+            exit 1
+          fi
+          python3 tools/macos_app.py notarize --app build/macos/OpenH1.app --output dist/halo-macos-release/OpenH1.dmg \
+            --identity "$identity" --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID"
 
       - name: Compile cache
         run: ccache --show-stats
@@ -823,10 +865,13 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      # (the Linux builds' zips are tools/linux_package.py's)
+      # (the Linux builds' zips are tools/linux_package.py's, the release's
+      # names tools/release_names.py's)
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: tools/linux_package.py
+          sparse-checkout: |
+            tools/linux_package.py
+            tools/release_names.py
           sparse-checkout-cone-mode: false
 
       - uses: actions/download-artifact@v4
@@ -834,17 +879,22 @@ jobs:
           pattern: halo-*
           path: artifacts
 
-      # (the Linux builds with their executables' modes, which the artifacts
-      # lose; the Steam Frame's package is a zip already, with its modes)
+      # each build under the name players see (tools/release_names.py:
+      # OpenH1-Windows.zip, OpenH1-Linux.zip, OpenH1.dmg...): the Linux builds
+      # with their executables' modes, which the artifacts lose; the Steam
+      # Frame's package is a zip already, with its modes; the macOS build's
+      # disk image as it is, a file a Mac opens at once
       - name: Package
         run: |
           mkdir release
           for build in artifacts/*/; do
             name="$(basename "$build")"
+            published="$(python3 tools/release_names.py "$name")"
             case "$name" in
-              halo-steam-frame-*) cp "$build/$name.zip" "release/$name.zip" ;;
-              halo-linux-*) python3 tools/linux_package.py zip "$build" "release/$name.zip" ;;
-              *) (cd "$build" && zip -qr "$GITHUB_WORKSPACE/release/$name.zip" .) ;;
+              halo-steam-frame-*) cp "$build/$name.zip" "release/$published.zip" ;;
+              halo-linux-*) python3 tools/linux_package.py zip "$build" "release/$published.zip" ;;
+              halo-macos-*) cp "$build/OpenH1.dmg" "release/$published.dmg" ;;
+              *) (cd "$build" && zip -qr "$GITHUB_WORKSPACE/release/$published.zip" .) ;;
             esac
           done
           ls -l release
@@ -858,9 +908,9 @@ jobs:
         run: |
           tag="build-$GITHUB_RUN_NUMBER"
           subject="$(printf '%s' "${MESSAGE:-manual run}" | head -n 1)"
-          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Linux, download halo-linux-x86_64-release.zip (halo-linux-arm64-release.zip on 64-bit ARM, halo-linux-x86_64-vr-release.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, download halo-steam-frame-vr-release.zip and install it as the README.md in it says (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download halo-macos-release.zip and open Halo.dmg in it. The app is not notarized yet: the first time, macOS asks to allow it in System Settings, Privacy & Security.\n' \
+          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Windows, download OpenH1-Windows.zip.\n\nOn Linux and the Steam Deck, download OpenH1-Linux.zip (OpenH1-Linux-ARM64.zip on 64-bit ARM, OpenH1-Linux-VR.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, download OpenH1-Steam-Frame.zip and install it as the README.md in it says (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download OpenH1.dmg, open it and drag OpenH1 to Applications: the app is signed and notarized.\n' \
             "$subject" "$COMMIT_URL" "$RUN_URL" > notes.md
-          gh release create "$tag" release/*.zip --target "$GITHUB_SHA" --latest \
+          gh release create "$tag" release/*.zip release/*.dmg --target "$GITHUB_SHA" --latest \
             --title "Build $GITHUB_RUN_NUMBER (${GITHUB_SHA:0:7})" --notes-file notes.md
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
@@ -950,7 +1000,7 @@ jobs:
             title="Build failed"; color=15548997
           fi
           latest="$SERVER/$REPOSITORY/releases/latest"
-          downloads="[Linux x86-64]($latest/download/halo-linux-x86_64-release.zip) · [Linux arm64]($latest/download/halo-linux-arm64-release.zip) · [Linux x86-64 VR]($latest/download/halo-linux-x86_64-vr-release.zip) · [Steam Frame VR]($latest/download/halo-steam-frame-vr-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [macOS]($latest/download/halo-macos-release.zip) · [Android]($latest/download/halo-android-release.zip) ([all builds]($latest))"
+          downloads="[Linux x86-64]($latest/download/OpenH1-Linux.zip) · [Linux arm64]($latest/download/OpenH1-Linux-ARM64.zip) · [Linux x86-64 VR]($latest/download/OpenH1-Linux-VR.zip) · [Steam Frame VR]($latest/download/OpenH1-Steam-Frame.zip) · [Windows]($latest/download/OpenH1-Windows.zip) · [macOS]($latest/download/OpenH1.dmg) · [Android]($latest/download/halo-android-release.zip) ([all builds]($latest))"
           if [ -n "$RELEASE_TAG" ]; then
             release="[$RELEASE_TAG]($SERVER/$REPOSITORY/releases/tag/$RELEASE_TAG)"
           else

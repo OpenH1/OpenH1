@@ -5,10 +5,10 @@ Intel). On such a Mac, `ninja` without a target builds it.
 
 | Result | Item |
 | --- | --- |
-| `build/macos/Halo.app` | The app (refer to "The app"), signed ad hoc |
+| `build/macos/OpenH1.app` | The app (refer to "The app"), signed ad hoc |
 | `build/macos/halo` | The game, an arm64 executable, for development |
 | `build/macos/libSDL3.0.dylib` | SDL 3.4.16, without OpenGL. The game finds it next to the executable. |
-| `build/macos/Halo.dmg` | A disk image of the app (`ninja macos_dmg`) |
+| `build/macos/OpenH1.dmg` | A disk image of the app (`ninja macos_dmg`) |
 | `build/macos/xgpu_metal_test` | The Metal backend's tests (`ninja macos_metal_test`) |
 
 The game draws with Metal (refer to "Metal"): the menus, the multiplayer
@@ -33,7 +33,7 @@ maps and the campaign. It was tested on an Apple A18 Pro with macOS 27.
 
 ## Start the game
 
-Open `build/macos/Halo.app` (from Finder, or `open build/macos/Halo.app`).
+Open `build/macos/OpenH1.app` (from Finder, or `open build/macos/OpenH1.app`).
 The first time, it asks for the maps folder of the Xbox game (refer to
 "The app").
 
@@ -53,8 +53,11 @@ use the network tests (`HALO_NETWORK_TEST=host:bloodgulch`;
 
 ## The app
 
-`ninja macos` makes `build/macos/Halo.app` (`tools/macos_app.py`), named
-as the other desktop builds are (`halo.exe`, the window's title "Halo"):
+`ninja macos` makes `build/macos/OpenH1.app` (`tools/macos_app.py`), named
+OpenH1 as the site is; its executable is `halo`, as the other desktop
+builds' are (`halo.exe`). Its settings and saves are in Application
+Support's OpenH1 folder whatever the app is called, so an earlier
+`Halo.app` can simply be deleted:
 
 | Item | What |
 | --- | --- |
@@ -153,14 +156,31 @@ python3 tools/macos_app.py notarize --identity "Developer ID Application: <name>
 ```
 
 It signs the app (with a secure timestamp), sends it to the notary
-service, staples its ticket to it, makes `build/macos/Halo.dmg`, signs,
+service, staples its ticket to it, makes `build/macos/OpenH1.dmg`, signs,
 notarizes and staples that too, and checks both with `spctl`.
-`python3 tools/macos_app.py sign --identity ...` only signs the app.
+`python3 tools/macos_app.py sign --identity ...` only signs the app. An App
+Store Connect API key can stand in for the keychain profile: `--key
+AuthKey_<id>.p8 --key-id <id> --issuer <issuer ID>`.
+
+CI signs and notarizes the release on `master` this way ("Sign and
+notarize" in `.github/workflows/build.yml`), when the repository has the
+secrets: `MACOS_CERTIFICATE` (the Developer ID Application certificate and
+its private key, a `.p12` exported from Keychain Access, base64) and
+`MACOS_CERTIFICATE_PASSWORD`, and the API key's `ASC_KEY` (its `.p8`,
+base64), `ASC_KEY_ID` and `ASC_ISSUER_ID`. Without them the release is
+signed ad hoc.
 
 ### The release build and the disk image
 
 `python3 configure.py --release`, then `ninja macos_dmg`:
-`build/macos/Halo.dmg` holds the app and a link to Applications. The
+`build/macos/OpenH1.dmg` holds the app and a link to Applications, laid
+out in a window of its own: OpenH1's icon on the disk, the app on the left
+and Applications on the right over a background (`port/macos/dmg`:
+`background.html`, rendered by `render.sh` to `background.png` and
+`background@2x.png`). That is dmgbuild's
+([dmgbuild](https://github.com/dmgbuild/dmgbuild), MIT, `pip install
+dmgbuild==1.6.7`), which writes the window's layout without Finder; without
+it, the disk image is a plain one. The
 guest, where the profile of profile-guided optimisation (`pgo/`) is used,
 is compiled with the pinned LLVM 22, which reads the profile. The host
 does not use the profile, and Xcode's clang builds it.

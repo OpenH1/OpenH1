@@ -38,9 +38,10 @@ dist/halo-linux-arm64-<config>/, named as its self-updater asks
 (port/linux/src/updater.c, UPDATE_PLATFORM).
 
 The macOS build is the app's disk image (ninja macos_dmg), signed ad hoc
-(tools/macos_app.py), in dist/halo-macos-<config>/ with the notices: the
-disk image keeps the app's modes and links, which the workflow's artifacts
-would lose.
+(tools/macos_app.py), alone in dist/halo-macos-<config>/ (the app carries
+the licences): the disk image keeps the app's modes and links, which the
+workflow's artifacts would lose, and the release has it as it is,
+OpenH1.dmg (OpenH1-debug.dmg).
 
 The web build (port/web/README.md) needs Emscripten (emcc on the PATH, as
 emsdk_env.sh puts it); dist/halo-web-<config>/ is the whole site, which a
@@ -69,7 +70,7 @@ OUTPUTS = {
     "linux_x86_64": ["build/linux_x86_64/halo", "build/linux_x86_64/libSDL3.so.0",
                      "build/linux_x86_64/SDL3-LICENSE.txt"],
     "windows": ["build/windows/halo.exe", "build/windows/SDL3.dll"],
-    "macos": ["build/macos/Halo.dmg"],
+    "macos": ["build/macos/OpenH1.dmg"],
     "android": [],  # the APK, below
     "web": [],  # the site, below
 }
@@ -96,6 +97,24 @@ def dist_name(platform: str, config: str, vr: bool = False) -> str:
 def run(command, cwd=ROOT):
     print("+", " ".join(str(part) for part in command), flush=True)
     subprocess.run([str(part) for part in command], cwd=cwd, check=True)
+
+
+def check_guest_image(platform: str) -> None:
+    """A guest build's executables carry the guest image just linked
+    (guest_image.S's .incbin): an executable with another guest, as a
+    cached object once gave macOS's releases (a black window: the guest's
+    render stream of another version than the host's), stops the build."""
+    image = ROOT / "build" / platform / "halo_guest.elf"
+    executables = [ROOT / "build" / platform / "halo"]
+    if platform == "macos":
+        executables.append(ROOT / "build/macos/OpenH1.app/Contents/MacOS/halo")
+    if not image.is_file():
+        return
+    data = image.read_bytes()
+    for executable in executables:
+        if executable.is_file() and data not in executable.read_bytes():
+            sys.exit(f"{executable.relative_to(ROOT)} does not carry {image.relative_to(ROOT)}, the guest just linked")
+        print(f"{executable.relative_to(ROOT)} carries {image.relative_to(ROOT)}", flush=True)
 
 
 def main() -> int:
@@ -159,6 +178,7 @@ def main() -> int:
         target = "macos_dmg" if args.platform == "macos" else args.platform
         run(["ninja", target])
         outputs = OUTPUTS[args.platform]
+        check_guest_image(args.platform)
 
     if args.platform == "linux_arm64" and args.vr:
         # the Steam Frame's package (tools/frame_package.py: the game, its
@@ -209,12 +229,13 @@ def main() -> int:
         for pdb in [ROOT / "build/windows/halo.pdb", *sorted((ROOT / "build/windows/third_party").glob("SDL3-*/lib/x86/SDL3.pdb"))]:
             shutil.copy2(pdb, symbols)
             print(f"{pdb.relative_to(ROOT)} -> {symbols.relative_to(ROOT)}", flush=True)
+    if args.platform == "macos":
+        # (the app carries the licences: Contents/Resources/Licenses,
+        # tools/macos_build.py)
+        return 0
     # OpenH1's own licence, the AGPL, which asks each copy to carry its text
     # (the Linux tree's is in share/licenses: linux_package.py)
     shutil.copy2(ROOT / "LICENSE", dist / "LICENSE.txt")
-    if args.platform == "macos":
-        # (the SDL3 the app carries, built from this source: tools/macos_build.py)
-        notices.append((ROOT / "build/macos/third_party/SDL3/LICENSE.txt", "SDL3-LICENSE.txt"))
     for source, name in notices:
         shutil.copy2(source, dist / name)
     # internet play's MQTT brokers, a file beside the game (network.brokers_file;

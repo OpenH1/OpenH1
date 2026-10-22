@@ -1,25 +1,31 @@
 #!/usr/bin/env python3
-"""The macOS app, Halo.app, its signature, its disk image and notarization
+"""The macOS app, OpenH1.app, its signature, its disk image and notarization
 (port/macos/README.md, "The app").
 
-    python3 tools/macos_app.py bundle ...   # ninja macos does it: build/macos/Halo.app, signed ad hoc
-    python3 tools/macos_app.py dmg ...      # ninja macos_dmg: build/macos/Halo.dmg
+    python3 tools/macos_app.py bundle ...   # ninja macos does it: build/macos/OpenH1.app, signed ad hoc
+    python3 tools/macos_app.py dmg ...      # ninja macos_dmg: build/macos/OpenH1.dmg
     python3 tools/macos_app.py sign --identity "Developer ID Application: <name> (<team>)"
     python3 tools/macos_app.py notarize --identity "Developer ID Application: <name> (<team>)" \\
         --keychain-profile <profile>
+    python3 tools/macos_app.py notarize --identity ... --key AuthKey_<id>.p8 --key-id <id> --issuer <uuid>
 
-- bundle: Halo.app from the build: Contents/MacOS/halo (the executable, with
+- bundle: OpenH1.app from the build: Contents/MacOS/halo (the executable, with
   an rpath of @executable_path/../Frameworks), Contents/Frameworks/
   libSDL3.0.dylib, Contents/Resources (the icon, brokers.txt, the About
-  panel's credits) and Info.plist, signed with the hardened runtime and
+  panel's credits, and in Licenses the licences of the app and of what it
+  carries, which each copy must have) and Info.plist, signed with the hardened runtime and
   port/macos/halo.entitlements: ad hoc ("-") unless an identity is given.
-- dmg: a disk image of the app, with a link to Applications to drag it to.
+- dmg: a disk image of the app, with a link to Applications to drag it to,
+  in a window of its own (OpenH1's icon on the disk, a background, the icons
+  placed: port/macos/dmg) when dmgbuild is installed (pip install
+  dmgbuild==1.6.7), else a plain one.
 - sign: signs the app again with a Developer ID (and a secure timestamp,
   which notarization needs), and checks the signature.
 - notarize: sign, then the app sent to Apple's notary service (xcrun
   notarytool) and its ticket stapled to it, then the disk image made of it,
   signed, notarized and stapled too. The credentials are notarytool's: a
-  keychain profile (xcrun notarytool store-credentials <profile>), or an
+  keychain profile (xcrun notarytool store-credentials <profile>), an App
+  Store Connect API key (its .p8 file, its ID and its issuer's: CI's), or an
   Apple ID, its team and an app-specific password.
 """
 
@@ -30,11 +36,12 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ENTITLEMENTS = ROOT / "port/macos/halo.entitlements"
-APP_NAME = "Halo"
+APP_NAME = "OpenH1"
 EXECUTABLE = "halo"
 SDL_LIBRARY = "libSDL3.0.dylib"
 ICON = "openh1-icon"
@@ -47,6 +54,20 @@ COPYRIGHT = ("OpenH1 is an unofficial fan project. It is not endorsed by or affi
 def run(*command: str) -> None:
     print("+", " ".join(command), flush=True)
     subprocess.run(command, check=True)
+
+
+def run_retried(*command: str, tries: int = 5, wait: int = 20) -> None:
+    """run, tried again after a failure that may pass: stapler's lookups of
+    the ticket (a dropped connection, or a ticket not yet out for a minute
+    after the acceptance) and hdiutil's "Resource busy" on CI's runners"""
+    for attempt in range(1, tries + 1):
+        print("+", " ".join(command), flush=True)
+        if subprocess.run(command).returncode == 0:
+            return
+        if attempt == tries:
+            raise subprocess.CalledProcessError(1, command)
+        print(f"failed; again in {wait * attempt} s ({attempt} of {tries})", flush=True)
+        time.sleep(wait * attempt)
 
 
 def info_plist(bundle_id: str, build: int, minimum: str) -> dict:
@@ -129,6 +150,10 @@ def bundle(args: argparse.Namespace) -> None:
     shutil.copy2(args.icon, contents / "Resources" / (ICON + ".icns"))
     for resource in args.resource or []:
         shutil.copy2(resource, contents / "Resources" / Path(resource).name)
+    for license in args.license or []:
+        source, name = license.split("=", 1)
+        (contents / "Resources" / "Licenses").mkdir(exist_ok=True)
+        shutil.copy2(source, contents / "Resources" / "Licenses" / name)
     plist = info_plist(args.bundle_id, args.build, args.minimum)
     with open(contents / "Info.plist", "wb") as file:
         plistlib.dump(plist, file)
@@ -139,20 +164,66 @@ def bundle(args: argparse.Namespace) -> None:
     staging.rename(app)
 
 
+# the disk image's window (port/macos/dmg/background.html lays out its
+# background for these): its size, the icons' size and their centres
+DMG_ART = ROOT / "port/macos/dmg"
+DMG_WINDOW = (640, 400)
+DMG_ICON_SIZE = 128
+DMG_APP_AT = (160, 190)
+DMG_APPLICATIONS_AT = (480, 190)
+
+
+def dmg_laid_out(app: Path, partial: Path) -> None:
+    """the disk image with dmgbuild's window: the volume's icon, the
+    background (with its @2x), the icons placed, no toolbar or sidebar"""
+    import dmgbuild
+
+    settings = {
+        "files": [str(app)],
+        "symlinks": {"Applications": "/Applications"},
+        "icon": str(ROOT / "port/macos" / (ICON + ".icns")),
+        "background": str(DMG_ART / "background.png"),
+        "window_rect": ((200, 140), DMG_WINDOW),
+        "icon_size": DMG_ICON_SIZE,
+        "text_size": 13,
+        "icon_locations": {app.name: DMG_APP_AT, "Applications": DMG_APPLICATIONS_AT},
+        "show_status_bar": False, "show_tab_view": False, "show_toolbar": False,
+        "show_pathbar": False, "show_sidebar": False,
+        "format": "ULFO",
+        "filesystem": "APFS",
+    }
+    for attempt in range(1, 6):
+        print(f"+ dmgbuild {partial} ({attempt})", flush=True)
+        try:
+            dmgbuild.build_dmg(str(partial), APP_NAME, settings=settings)
+            return
+        except Exception as error:  # (hdiutil's "Resource busy" on CI's runners, as run_retried)
+            if attempt == 5:
+                raise
+            print(f"failed ({error}); again in {20 * attempt} s", flush=True)
+            time.sleep(20 * attempt)
+
+
 def dmg(args: argparse.Namespace) -> None:
     app = Path(args.app)
     output = Path(args.output)
-    with tempfile.TemporaryDirectory() as temporary:
-        folder = Path(temporary) / APP_NAME
-        folder.mkdir()
-        # (ditto keeps the signature's extended attributes and links)
-        run("ditto", str(app), str(folder / app.name))
-        (folder / "Applications").symlink_to("/Applications")
-        partial = output.with_name(output.name + ".partial.dmg")
-        partial.unlink(missing_ok=True)
-        run("hdiutil", "create", "-quiet", "-volname", APP_NAME, "-srcfolder", str(folder), "-fs", "APFS",
-            "-format", "ULFO", "-ov", str(partial))
-        partial.replace(output)
+    partial = output.with_name(output.name + ".partial.dmg")
+    partial.unlink(missing_ok=True)
+    try:
+        import dmgbuild  # noqa: F401
+    except ImportError:
+        print("dmgbuild is not installed (pip install dmgbuild==1.6.7): a plain disk image", flush=True)
+        with tempfile.TemporaryDirectory() as temporary:
+            folder = Path(temporary) / APP_NAME
+            folder.mkdir()
+            # (ditto keeps the signature's extended attributes and links)
+            run("ditto", str(app), str(folder / app.name))
+            (folder / "Applications").symlink_to("/Applications")
+            run_retried("hdiutil", "create", "-quiet", "-volname", APP_NAME, "-srcfolder", str(folder), "-fs", "APFS",
+                        "-format", "ULFO", "-ov", str(partial))
+    else:
+        dmg_laid_out(app, partial)
+    partial.replace(output)
     if args.identity and args.identity != "-":
         run("codesign", "--force", "--sign", args.identity, "--timestamp", str(output))
 
@@ -160,9 +231,12 @@ def dmg(args: argparse.Namespace) -> None:
 def notary_credentials(args: argparse.Namespace) -> list:
     if args.keychain_profile:
         return ["--keychain-profile", args.keychain_profile]
+    if args.key and args.key_id and args.issuer:
+        return ["--key", args.key, "--key-id", args.key_id, "--issuer", args.issuer]
     if args.apple_id and args.team_id and args.password:
         return ["--apple-id", args.apple_id, "--team-id", args.team_id, "--password", args.password]
-    sys.exit("notarize: give --keychain-profile, or --apple-id, --team-id and --password")
+    sys.exit("notarize: give --keychain-profile, --key, --key-id and --issuer, or --apple-id, --team-id and "
+             "--password")
 
 
 def notarize_file(path: Path, credentials: list) -> None:
@@ -177,10 +251,10 @@ def notarize(args: argparse.Namespace) -> None:
         archive = Path(temporary) / (APP_NAME + ".zip")
         run("ditto", "-c", "-k", "--keepParent", str(app), str(archive))
         notarize_file(archive, credentials)
-    run("xcrun", "stapler", "staple", str(app))
+    run_retried("xcrun", "stapler", "staple", str(app))
     dmg(argparse.Namespace(app=str(app), output=args.output, identity=args.identity))
     notarize_file(Path(args.output), credentials)
-    run("xcrun", "stapler", "staple", args.output)
+    run_retried("xcrun", "stapler", "staple", args.output)
     run("spctl", "--assess", "--type", "execute", "--verbose=2", str(app))
     run("spctl", "--assess", "--type", "open", "--context", "context:primary-signature", "--verbose=2", args.output)
 
@@ -191,12 +265,13 @@ def main() -> None:
     default_app = str(ROOT / "build/macos" / (APP_NAME + ".app"))
     default_dmg = str(ROOT / "build/macos" / (APP_NAME + ".dmg"))
 
-    command = commands.add_parser("bundle", help="make Halo.app from the build")
+    command = commands.add_parser("bundle", help="make OpenH1.app from the build")
     command.add_argument("--app", required=True)
     command.add_argument("--executable", required=True)
     command.add_argument("--sdl", required=True)
     command.add_argument("--icon", required=True)
     command.add_argument("--resource", action="append")
+    command.add_argument("--license", action="append", help="<file>=<name>: a licence, in Resources/Licenses")
     command.add_argument("--bundle-id", required=True)
     command.add_argument("--build", type=int, default=0)
     command.add_argument("--flavor", default="debug")
@@ -220,6 +295,9 @@ def main() -> None:
     command.add_argument("--output", default=default_dmg)
     command.add_argument("--identity", required=True, help='"Developer ID Application: <name> (<team>)"')
     command.add_argument("--keychain-profile", help="notarytool's stored credentials")
+    command.add_argument("--key", help="an App Store Connect API key's .p8 file")
+    command.add_argument("--key-id", help="the API key's ID")
+    command.add_argument("--issuer", help="the API key's issuer ID")
     command.add_argument("--apple-id")
     command.add_argument("--team-id")
     command.add_argument("--password", help="an app-specific password")

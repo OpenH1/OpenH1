@@ -29,7 +29,7 @@ end.
 | `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), the Android touch controls' art (`touch/`), icons, network brokers, the Linux desktop entry (`linux/`) |
 | `port/third_party/` | Vendored libraries, each with a README naming its upstream, version and checksum |
 | `port/tools/` | Stand-alone tools (`cache_file_report.c`) |
-| `tools/` | Build scripts (`build_common.py`, what the others share; `linux_guest_build.py`, `vulkan_build.py`, `windows_build.py`, `android_build.py` (also the guest image of every guest build), `macos_build.py`, `macos_app.py` (the macOS app, its disk image, signing and notarization), `macos_shaders.py` (the macOS app's shader library), `render_manifest.py` (the renderer's manifest, the game's vertex shaders from its code), `web_build.py`, `ci_build.py`, `linux_package.py`, `frame_package.py` (the Steam Frame's), `web_serve.py`), the game's 32-bit x86 ABI for test tools (`x86_game_abi.py`: `map_validate`), the guest's base register (`guest_base_register.py`, measured by `base_register_bench/`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`, `touch_assets.py`: the Android touch controls' pictures, whose layout `touch_preview.py` draws), tests, OpenCE's `stagekit/` (scenarios staged and instrumented on the real engine, no retail assets; its map writer runs as a guest image of the 64-bit builds' host), and `scorecard/` (the 60/120 Hz simulation's check: scenarios at each rate compared, the 30 Hz gate against master) |
+| `tools/` | Build scripts (`build_common.py`, what the others share; `linux_guest_build.py`, `vulkan_build.py`, `windows_build.py`, `android_build.py` (also the guest image of every guest build), `macos_build.py`, `macos_app.py` (the macOS app, its disk image, signing and notarization), `macos_shaders.py` (the macOS app's shader library), `render_manifest.py` (the renderer's manifest, the game's vertex shaders from its code), `web_build.py`, `ci_build.py`, `release_names.py` (the names releases publish the builds under), `linux_package.py`, `frame_package.py` (the Steam Frame's), `web_serve.py`), the game's 32-bit x86 ABI for test tools (`x86_game_abi.py`: `map_validate`), the guest's base register (`guest_base_register.py`, measured by `base_register_bench/`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`, `touch_assets.py`: the Android touch controls' pictures, whose layout `touch_preview.py` draws), tests, OpenCE's `stagekit/` (scenarios staged and instrumented on the real engine, no retail assets; its map writer runs as a guest image of the 64-bit builds' host), and `scorecard/` (the 60/120 Hz simulation's check: scenarios at each rate compared, the 30 Hz gate against master) |
 | `docs/` | Longer design notes (`custom_edition_caches.md`, `mods.md`) |
 | `pgo/` | Profile-guided optimisation profiles |
 | `assets/` | Game data for local runs (gitignored: `maps/`, `custom_maps/`) |
@@ -44,8 +44,8 @@ ninja linux_arm64              # build/linux_arm64/halo: arm64_32 guest (64-bit 
 ninja android                  # the Android guest image and native libraries
 ninja android_apk              # the APK (Gradle)
 ninja web                      # build/web/site (Emscripten: port/web/README.md)
-ninja macos                    # build/macos/Halo.app (and halo), on Apple silicon (port/macos/README.md)
-ninja macos_dmg                # build/macos/Halo.dmg
+ninja macos                    # build/macos/OpenH1.app (and halo), on Apple silicon (port/macos/README.md)
+ninja macos_dmg                # build/macos/OpenH1.dmg
 ninja windows                  # on Windows, or on Linux after configure.py --windows-cross
 python tools/ci_build.py linux_x86_64 release   # what CI builds
 ```
@@ -119,10 +119,11 @@ python tools/ci_build.py linux_x86_64 release   # what CI builds
   for Android, and `port/web`). Refer to [port/web/README.md](port/web/README.md).
 - The Linux release is a tree laid out as a Unix prefix is (`bin/openh1`,
   `lib/openh1`, `share/`), which `tools/linux_package.py` lays out and zips
-  for every Linux download (`halo-linux-x86_64-<config>.zip`,
-  `halo-linux-x86_64-vr-release.zip`, `halo-linux-arm64-<config>.zip`, as
-  `UPDATE_PLATFORM` in `port/linux/src/updater.c` names them; but the
-  Steam Frame's `halo-steam-frame-vr-release.zip` is `tools/frame_package.py`'s
+  for every Linux download (`OpenH1-Linux[-debug].zip`,
+  `OpenH1-Linux-VR.zip`, `OpenH1-Linux-ARM64[-debug].zip`, as
+  `tools/release_names.py` names them and `UPDATE_NAME` in
+  `port/linux/src/updater.c` asks for them; but the
+  Steam Frame's `OpenH1-Steam-Frame.zip` is `tools/frame_package.py`'s
   package, which `tools/frame_install.sh` installs, not a tree); the game
   finds its files from its executable's place
   (`port/linux/src/install_layout.c`), and updates itself only in a

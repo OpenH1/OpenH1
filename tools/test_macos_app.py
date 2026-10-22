@@ -1,6 +1,6 @@
 """The macOS app (tools/macos_app.py, port/macos/README.md, "The app"): its
 Info.plist and entitlements anywhere; on a Mac with Apple silicon, the app
-that ninja macos built (build/macos/Halo.app): its contents, the
+that ninja macos built (build/macos/OpenH1.app): its contents, the
 executable's rpath to its Frameworks, and its ad hoc signature with the
 hardened runtime."""
 import platform
@@ -15,11 +15,11 @@ from tools import macos_app
 from tools.macos_build import MACOS_BUNDLE_ID, MACOS_MINIMUM
 
 ROOT = Path(__file__).resolve().parent.parent
-APP = ROOT / "build" / "macos" / "Halo.app"
+APP = ROOT / "build" / "macos" / "OpenH1.app"
 
 built = pytest.mark.skipif(
     sys.platform != "darwin" or platform.machine().lower() != "arm64" or not APP.is_dir(),
-    reason="needs a Mac with Apple silicon and build/macos/Halo.app (ninja macos)")
+    reason="needs a Mac with Apple silicon and build/macos/OpenH1.app (ninja macos)")
 
 
 def test_info_plist_asks_for_game_mode_and_names_the_build():
@@ -30,7 +30,7 @@ def test_info_plist_asks_for_game_mode_and_names_the_build():
     assert plist["NSHighResolutionCapable"] is True
     assert plist["LSMinimumSystemVersion"] == MACOS_MINIMUM
     assert plist["CFBundleShortVersionString"] == plist["CFBundleVersion"] == "1234"
-    assert plist["CFBundleExecutable"] == "halo" and plist["CFBundleName"] == "Halo"
+    assert plist["CFBundleExecutable"] == "halo" and plist["CFBundleName"] == "OpenH1"
     assert plist["NSMicrophoneUsageDescription"] and plist["NSLocalNetworkUsageDescription"]
     assert "not endorsed" in plist["NSHumanReadableCopyright"]
 
