@@ -328,9 +328,14 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
     n.build(outputs=table_obj, rule=host_cc, inputs=guest["host_table_c"],
             variables={"cflags": host_cflags})
     host_objects.append(table_obj)
-    # the guest image, inside the executable (host_main.c)
+    # the guest image, inside the executable (host_main.c), assembled
+    # without the compile cache: ccache hashes guest_image.S, not the image
+    # its .incbin reads (macOS's releases shipped an old guest so:
+    # tools/macos_build.py)
+    n.rule(name=f"{host_cc}_uncached", command=f"${prefix}_cc -MMD -MF $out.d $cflags -c $in -o $out",
+           description=f"{label} HOST CC $out", depfile="$out.d", deps="gcc")
     image_obj = host_obj_dir / "guest_image.S.o"
-    n.build(outputs=image_obj, rule=host_cc, inputs=PORT_DIR / "guest_image.S",
+    n.build(outputs=image_obj, rule=f"{host_cc}_uncached", inputs=PORT_DIR / "guest_image.S",
             implicit=[guest["image"], guest["checked"]], variables={"cflags": f'-DGUEST_IMAGE=\\"{guest["image"]}\\"'})
     host_objects.append(image_obj)
 
