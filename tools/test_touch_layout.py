@@ -11,10 +11,13 @@ subprocess.run([
     str(root / "port/android/app/src/main/java/com/halo/decomp/TouchLayout.java"),
     str(root / "port/android/app/src/main/java/com/halo/decomp/GyroscopeAim.java"),
     str(root / "port/android/app/src/main/java/com/halo/decomp/TouchContext.java"),
+    str(root / "port/android/app/src/main/java/com/halo/decomp/BackupArchive.java"),
     str(root / "tools/tests/TouchContextTest.java"),
     str(root / "tools/tests/GyroscopeAimTest.java"),
-    str(root / "tools/tests/TouchLayoutTest.java")
+    str(root / "tools/tests/TouchLayoutTest.java"),
+    str(root / "tools/tests/BackupArchiveTest.java")
 ], check=True)
 subprocess.run(["java", "-cp", str(classes), "com.halo.decomp.TouchLayoutTest"], check=True)
 subprocess.run(["java", "-cp", str(classes), "com.halo.decomp.GyroscopeAimTest"], check=True)
 subprocess.run(["java", "-cp", str(classes), "com.halo.decomp.TouchContextTest"], check=True)
+subprocess.run(["java", "-cp", str(classes), "com.halo.decomp.BackupArchiveTest"], check=True)

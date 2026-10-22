@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- the app icon's long-press menu (LauncherActivity's meta-data) -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="backup"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_backup_short"
+        android:shortcutLongLabel="@string/shortcut_backup_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.openh1.openh1"
+            android:targetClass="com.halo.decomp.BackupActivity" />
+    </shortcut>
+</shortcuts>
