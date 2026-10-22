@@ -61,10 +61,11 @@ PRESSED_PLATE_ALPHA = 0.85
 STICK_PAD_ALPHA = 0.7
 STICK_KNOB_ALPHA = 0.9
 MINOR_ICON_ALPHA = 0.7
-ART_SIZE = 0.92
+ART_SIZE = 1.0
 ICON_SIZE = 0.5
 MINOR_ICON_SIZE = 0.44
 PRESSED_SIZE = 0.9
+PRESSED_BRIGHTEN = 0x26
 CAPTION_SIZE = 10
 CAPTION_ALPHA = 0.6
 STICK_KNOB_RADIUS = 24
@@ -126,7 +127,7 @@ class Painter:
         layer.paste(drawn, (round(x * self.scale - drawn.width / 2), round(y * self.scale - drawn.height / 2)))
         self.image.alpha_composite(layer)
 
-    def picture(self, name, x, y, radius, alpha, rotate=0, fit=False):
+    def picture(self, name, x, y, radius, alpha, rotate=0, fit=False, brighten=0):
         """TouchControls.picture (square) or fitted (its longer side 2 * radius)"""
         source = Image.open(DRAWABLES / ("touch_" + name + ".png")).convert("RGBA")
         longest = radius * 2 * self.scale
@@ -136,17 +137,13 @@ class Painter:
         else:
             size = (max(1, round(longest)),) * 2
         drawn = source.resize(size, Image.LANCZOS)
+        if brighten:
+            channels = np.array(drawn, dtype=np.int32)
+            channels[..., :3] = np.minimum(channels[..., :3] + brighten, 255)
+            drawn = Image.fromarray(channels.astype(np.uint8))
         if rotate:
             drawn = drawn.rotate(-rotate, resample=Image.BICUBIC)
         self.composite(drawn, x, y, alpha)
-
-    def disc(self, x, y, radius, fill, stroke):
-        layer = Image.new("RGBA", self.image.size)
-        draw = ImageDraw.Draw(layer)
-        s = self.scale
-        box = [(x - radius) * s, (y - radius) * s, (x + radius) * s, (y + radius) * s]
-        draw.ellipse(box, fill=fill, outline=stroke, width=max(1, round(1.5 * s)))
-        self.image.alpha_composite(layer)
 
     def plate(self, x, y, radius, active, alpha, opacity):
         self.picture("plate", x, y, radius, (PRESSED_PLATE_ALPHA if active else alpha) * opacity)
@@ -197,10 +194,9 @@ def draw(name, width, height, dpi, style, captions, background, out):
                 if folder == "gems" and art in ("black", "white"):
                     folder = "menu"
                 art = f"button_{folder}_{art}"
-            painter.disc(x, y, radius, (255, 255, 255, 0x66) if active else (0, 0, 0, 0x33),
-                         (255, 255, 255, 0xcc) if active else (255, 255, 255, 0x40))
             painter.picture(art, x, y, radius * ART_SIZE * sink,
-                            (1 if active else MINOR_BUTTON_ALPHA if minor else BUTTON_ALPHA) * opacity, fit=True)
+                            (1 if active else MINOR_BUTTON_ALPHA if minor else BUTTON_ALPHA) * opacity, fit=True,
+                            brighten=PRESSED_BRIGHTEN if active else 0)
             game = DEFAULT_BINDINGS[KIND_GAMEPAD[kind]]
             if captions and game >= 0:
                 painter.text(GAME_CONTROLS[game], x, y + radius + CAPTION_SIZE + 1, CAPTION_SIZE,

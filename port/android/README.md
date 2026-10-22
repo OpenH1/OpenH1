@@ -180,13 +180,15 @@ on-screen keyboard, tap a key to press it, "B =BACK" to cancel and
 In a game, the app shows touch controls over the picture. They are a
 controller for player 1. The controller's buttons are drawn as the HUD
 draws them, in the style of the setting `display.hud_button_style`
-("Button style" in the profile's graphics settings, shown while the
-high-res HUD is on: Classic, Gems or Dark Gems; the touch controls follow it in
+("Button style" in the profile's graphics settings, shown while the high-
+res HUD is on: Classic, Gems or Dark Gems; the touch controls follow it in
 any case): A, B, X, Y, black, white, the triggers and the stick clicks,
-each over a faint disc that shows where it takes a finger and lights while
-it is held. The move stick, Pause, Back, the D-pad and the toolbar are
-see-through plates with icons (Kenney's Mobile Controls:
-`port/assets/touch/README.md`). With the default buttons of the profile:
+each alone, with a thin light edge and a soft shadow so that it shows on
+any scene; a held button is drawn a little brighter and smaller, and each
+takes a finger anywhere in its circle, as before. The move stick, Pause,
+Back, the D-pad and the toolbar are see-through plates with icons
+(Kenney's Mobile Controls: `port/assets/touch/README.md`). With the
+default buttons of the profile:
 
 | Control | Drawn as | Function in the game |
 | --- | --- | --- |

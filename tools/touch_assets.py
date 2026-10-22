@@ -11,7 +11,9 @@ to each control's size, with mipmaps, so one size serves every display.
 - The controller's buttons are the HUD's redraws (port/assets/buttons, as
   tools/button_assets.py draws them for display.hud_button_style), drawn
   here larger and cropped to the art: A, B, X, Y, black and white in each
-  style ("classic", "gems", "menu_gems"), the triggers and the sticks.
+  style ("classic", "gems", "menu_gems"), the triggers and the sticks;
+  each with the same thin light edge and soft drop shadow, so that it reads
+  over any scene with nothing drawn behind it.
 - The rest, which has no redraw, is Kenney's Mobile Controls
   (port/assets/touch/kenney-mobile-controls, CC0): the plates of the
   D-pad, start, back and the toolbar, the ring of a plate held, the move
@@ -30,7 +32,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageFilter
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import button_assets  # noqa: E402
@@ -48,6 +50,14 @@ ICON = 192
 SCALE = 16
 # the supplied PNGs' art, at most this many pixels on a side
 ART = 416
+# every button's art gets the same thin light edge and soft dark shadow (in
+# pixels of its longer side's ART), so that it reads on dark and light
+# scenes alike (the classic black on a night sky) with nothing behind it
+EDGE = 5
+EDGE_ALPHA = 0.55
+SHADOW_BLUR = 10
+SHADOW_OFFSET = 4
+SHADOW_ALPHA = 0.6
 
 # (the resource's name, Kenney's SVG, its size in pixels)
 KENNEY_PICTURES = [
@@ -97,14 +107,32 @@ def face(entry):
     return cropped(Image.fromarray(button_assets.render(text, SCALE)))
 
 
+def outlined(image):
+    """the art with its light edge and drop shadow, on room enough for both"""
+    pad = EDGE + SHADOW_BLUR * 2 + SHADOW_OFFSET
+    alpha = Image.new("L", (image.width + 2 * pad, image.height + 2 * pad))
+    alpha.paste(image.getchannel("A"), (pad, pad))
+    edge = alpha.filter(ImageFilter.MaxFilter(2 * EDGE + 1)).filter(ImageFilter.GaussianBlur(1))
+    shadow = edge.filter(ImageFilter.GaussianBlur(SHADOW_BLUR))
+    out = Image.new("RGBA", alpha.size)
+    dark = Image.new("RGBA", alpha.size, (0, 0, 0, 0))
+    dark.putalpha(shadow.point(lambda v: round(v * SHADOW_ALPHA)))
+    out.alpha_composite(dark, (0, SHADOW_OFFSET))
+    light = Image.new("RGBA", alpha.size, (255, 255, 255, 0))
+    light.putalpha(edge.point(lambda v: round(v * EDGE_ALPHA)))
+    out.alpha_composite(light)
+    out.alpha_composite(image, (pad, pad))
+    return out
+
+
 def pictures():
     for name, svg, size in KENNEY_PICTURES:
         yield name, kenney(svg, size)
     entries = {entry["name"]: entry for entry in json.loads(button_assets.LIST.read_text())["assets"]}
     for style, button, entry in FACES:
-        yield f"touch_button_{style}_{button}", face(entries[entry])
+        yield f"touch_button_{style}_{button}", outlined(face(entries[entry]))
     for control in CONTROLS:
-        yield f"touch_{control}", face(entries[control + "__0"])
+        yield f"touch_{control}", outlined(face(entries[control + "__0"]))
 
 
 def encoded(image):

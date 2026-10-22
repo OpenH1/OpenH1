@@ -9,6 +9,7 @@ import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LightingColorFilter;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.hardware.Sensor;
@@ -93,10 +94,11 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static final float STICK_KNOB_ALPHA = 0.9f;
     private static final float MINOR_ICON_ALPHA = 0.7f;
     /**
-     * a controller button's art, half its longer side in its control's
-     * radii; a Kenney icon's on its plate; either sinks a little while held
+     * a controller button's art (with its edge and shadow), half its longer
+     * side in its control's radii; a Kenney icon's on its plate; either sinks
+     * a little while held
      */
-    private static final float ART_SIZE = 0.92f;
+    private static final float ART_SIZE = 1f;
     private static final float ICON_SIZE = 0.5f;
     private static final float MINOR_ICON_SIZE = 0.44f;
     private static final float PRESSED_SIZE = 0.9f;
@@ -229,6 +231,8 @@ public final class TouchControls extends View implements SensorEventListener, In
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pictures = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final RectF pictureBounds = new RectF();
+    /** a held controller button's art, a little brighter */
+    private final LightingColorFilter pressed = new LightingColorFilter(0xffffffff, 0x00262626);
     /** the pictures the controls are drawn with: the HUD's buttons, and Kenney's Mobile Controls */
     private final Bitmap[][] faces = new Bitmap[FACES.length][];
     private final Bitmap[] controlArt = new Bitmap[CONTROL_ART.length];
@@ -1409,9 +1413,10 @@ public final class TouchControls extends View implements SensorEventListener, In
 
     /**
      * a control: a controller button drawn as the HUD draws it (A, B, X, Y,
-     * black, white, the triggers and the sticks), over a faint disc that shows
-     * where it takes a finger, lit while it is held; or start, back and the
-     * D-pad on Kenney's plates with their icons. With input.touch_captions,
+     * black, white, the triggers and the sticks), alone (its edge and shadow
+     * are in its picture; it takes a finger in its whole circle), brighter
+     * and a little smaller while it is held; or start, back and the D-pad on
+     * Kenney's plates with their icons. With input.touch_captions,
      * what the button does in the player's profile is written under it.
      */
     private void control(Canvas canvas, int control, boolean active, float opacity) {
@@ -1423,15 +1428,11 @@ public final class TouchControls extends View implements SensorEventListener, In
         float sink = active ? PRESSED_SIZE : 1f;
         Bitmap art = art(type);
         if (art != null) {
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(alpha(active ? 0x66ffffff : 0x33000000, opacity));
-            canvas.drawCircle(x, y, radius, paint);
-            paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeWidth(1.5f);
-            paint.setColor(alpha(active ? 0xccffffff : 0x40ffffff, opacity));
-            canvas.drawCircle(x, y, radius, paint);
+            if (active)
+                pictures.setColorFilter(pressed);
             fitted(canvas, art, x, y, radius * ART_SIZE * sink,
                 (active ? 1f : minor ? MINOR_BUTTON_ALPHA : BUTTON_ALPHA) * opacity);
+            pictures.setColorFilter(null);
             caption(canvas, type, x, y + radius, opacity);
             return;
         }
