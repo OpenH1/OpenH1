@@ -26,3 +26,8 @@
 - **The Mods menu's warning icons** (a mod out of its requested order, and
   a mod that cannot be played): `triangle-alert` and `circle-x` from
   [Lucide](https://lucide.dev) 1.53.0, under the same licence.
+- **The Android touch controls** (their plates, stick, pressed ring and most
+  of their icons): [Mobile Controls](https://kenney.nl/assets/mobile-controls)
+  1.0 by Kenney (www.kenney.nl), CC0
+  (`port/assets/touch/kenney-mobile-controls`). The grenade, grenade type,
+  crouch and flashlight icons are OpenH1's own (`port/assets/touch/openh1`).

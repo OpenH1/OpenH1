@@ -178,23 +178,38 @@ on-screen keyboard, tap a key to press it, "B =BACK" to cancel and
 ### Touch controls
 
 In a game, the app shows touch controls over the picture. They are a
-controller for player 1. With the default buttons of the profile:
+controller for player 1, drawn as round, see-through plates with an icon of
+what each button does (Kenney's Mobile Controls, and OpenH1's own icons:
+`port/assets/touch/README.md`). A held button's ring lights up. With the
+default buttons of the profile:
 
-| Control | Function in the game |
-| --- | --- |
-| stick (lower left) | move |
-| swipe on the screen away from the buttons | look |
-| Fire | right trigger |
-| Grenade | left trigger |
-| A / Jump, B / Melee, X / Reload, Y / Weapon | A, B, X, Y |
-| Crouch, Zoom | left and right stick clicks |
-| Light, Gren. type | white, black |
-| Pause, Back | start, back |
-| Up, Down, Left, Right | D-pad (in a network game, Up opens the text chat's keyboard) |
+| Control | Icon | Function in the game |
+| --- | --- | --- |
+| stick (lower left) | | move |
+| swipe on the screen away from the buttons | | look |
+| Fire (right, and a second one at the left) | flame | right trigger |
+| Grenade | grenade | left trigger |
+| Jump, Melee, Reload, Weapon | double chevron, sword, turning arrow, curved arrow | A, B, X (also the action: pick up, enter), Y |
+| Crouch, Zoom | chevron over a bar, crosshair | left and right stick clicks |
+| Pause | pause bars | start |
+| Light, Gren. type, Back | flashlight, grenade with a turning arrow, three bars | white, black, back |
+| D-pad: Up, Down, Left, Right | arrows | D-pad (in a network game, Up opens the text chat's keyboard) |
 
-The names on the buttons follow the profile's "Button layout" (Settings >
-Gamepads): with "Swap triggers", the right trigger's button says "Grenade".
-The stick moves the player with every "Stick layout", southpaw too.
+The seldom used buttons (Light, Gren. type, Back and the D-pad) are
+smaller and fainter, together in the upper left of the screen with Pause
+at the top, away from the thumbs; the others are where they were. (A
+layout saved before keeps its places; "Reset" in "Hide or add buttons"
+moves to the new ones.) Every button can be moved, resized, hidden or
+copied as before.
+
+The icons follow the profile's "Button layout" (Settings > Gamepads): they
+show what the button does, not where it is, so with "Swap triggers" the
+right trigger's button (and the second Fire) shows the grenade, and the
+left trigger's the flame. A D-pad button the profile gives a control
+shows that control's icon; any other button the profile gives no control
+shows its controller name ("LS", "Black"). The lists of the options name
+the buttons as before ("A / Jump", "Fire"). The stick moves the player
+with every "Stick layout", southpaw too.
 
 A finger that holds a button can also swipe to look, so you can fire and
 aim with one thumb. The controls are a finger wide (48 dp) or larger, but
@@ -217,9 +232,9 @@ to "Settings").
 
 The buttons at the top of the screen:
 
-- "Hide" removes the controls (and stops the gyroscope aiming and the
-  vibration) until you push "Touch"; the app remembers it.
-- "Options" opens these items:
+- "Hide" (in the middle) removes the controls (and stops the gyroscope
+  aiming and the vibration) until you push "Touch"; the app remembers it.
+- "Options" (the gear, at the right) opens these items:
   - "General": the phone's vibration (on by default; it follows the
     vibration setting of the game's profile), aiming with the gyroscope
     (off by default), a floating move stick (off by default: the stick goes
@@ -231,7 +246,7 @@ The buttons at the top of the screen:
     file picker of the system.
   - "Look sensitivity".
 
-"Hide" and "Options" act when the finger lifts on them: a swipe that
+"Hide" and the gear act when the finger lifts on them: a swipe that
 starts on them turns the view instead.
 
 The app keeps the layout in its own preferences, not in `config.toml`.

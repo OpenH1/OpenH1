@@ -38,14 +38,18 @@ final class TouchLayout {
     private static final int VERSION = 3;
     private static final int MAX_FILE_LENGTH = 65536;
 
-    /** each kind's default place on the grid, and its radius */
+    /**
+     * each kind's default place on the grid, and its radius; the seldom used
+     * ones (white and black: the flashlight and the grenade's type, back and
+     * the D-pad) are smaller, together in the upper left, away from the thumbs
+     */
     private static final float[][] DEFAULTS = {
         {856, 447}, {913, 377}, {794, 377}, {850, 312}, {915, 239}, {802, 239},
-        {236, 449}, {691, 449}, {360, 490}, {438, 490}, {570, 36}, {390, 36},
-        {100, 237}, {100, 335}, {51, 286}, {149, 286}, {115, 440}, {255, 239}
+        {236, 449}, {691, 449}, {220, 36}, {300, 36}, {570, 36}, {390, 36},
+        {100, 101}, {100, 199}, {51, 150}, {149, 150}, {115, 440}, {255, 239}
     };
     private static final float[] RADII = {
-        36, 32, 34, 32, 39, 35, 32, 32, 27, 29, 28, 28, 25, 25, 25, 25, 64, 39
+        36, 32, 34, 32, 39, 35, 32, 32, 24, 24, 28, 24, 22, 22, 22, 22, 64, 39
     };
 
     private static final class Control {

@@ -1,0 +1,11 @@
+<svg width="48" height="48" xmlns="http://www.w3.org/2000/svg">
+  <!-- OpenH1's own: crouch, a chevron lowered to the floor, drawn in the manner of Kenney's Mobile Controls icons -->
+  <defs>
+    <linearGradient id="shade" gradientUnits="userSpaceOnUse" x1="0" y1="37" x2="0" y2="46">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D8E6E9"/>
+    </linearGradient>
+  </defs>
+  <path d="M7.5 9.5 L24 21.5 L40.5 9.5" fill="none" stroke="#FFFFFF" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+  <rect x="2" y="37" width="44" height="9" rx="2.5" fill="url(#shade)"/>
+</svg>
