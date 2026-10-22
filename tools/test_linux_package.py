@@ -191,3 +191,6 @@ def test_release_names():
     assert release_names.published("halo-android-release") == "halo-android-release"
     workflow = (ROOT / ".github/workflows/build.yml").read_text()
     assert 'published="$(python3 tools/release_names.py "$name")"' in workflow
+    # (the release job's checkout has only the files it names)
+    release_job = workflow[workflow.index("\n  release:"):]
+    assert "            tools/release_names.py\n" in release_job[:release_job.index("download-artifact")]
