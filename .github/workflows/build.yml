@@ -880,9 +880,7 @@ jobs:
       # OpenH1-Windows.zip, OpenH1-Linux.zip, OpenH1.dmg...): the Linux builds
       # with their executables' modes, which the artifacts lose; the Steam
       # Frame's package is a zip already, with its modes; the macOS build's
-      # disk image as it is, a file a Mac opens at once. Windows' and Linux's
-      # also under their old names (halo-<platform>-<config>.zip), which the
-      # self-updaters of builds from before the renaming ask for (LEGACY)
+      # disk image as it is, a file a Mac opens at once
       - name: Package
         run: |
           mkdir release
@@ -895,9 +893,6 @@ jobs:
               halo-macos-*) cp "$build/OpenH1.dmg" "release/$published.dmg" ;;
               *) (cd "$build" && zip -qr "$GITHUB_WORKSPACE/release/$published.zip" .) ;;
             esac
-            if python3 tools/release_names.py --legacy "$name"; then
-              cp "release/$published.zip" "release/$name.zip"
-            fi
           done
           ls -l release
 
