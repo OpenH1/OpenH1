@@ -4,15 +4,10 @@ their downloads: OpenH1-<machine>[-debug] (.dmg for the Mac, .zip for the
 rest). The workflow's artifacts and dist/ keep their own names
 (tools/ci_build.py dist_name: halo-<platform>-<config>), which this maps.
 
-    python3 tools/release_names.py <artifact>        # its published name, without the extension
-    python3 tools/release_names.py --legacy <artifact>  # exit 0 if the release also has it under its old name
+    python3 tools/release_names.py <artifact>   # its published name, without the extension
 
 The self-updaters ask for these names (port/linux/src/updater.c's
-UPDATE_NAME, with -debug for a debug build). Builds from before the
-renaming (build 324 and earlier) ask for halo-<platform>-<config>.zip: the
-release keeps those names too for Windows' and Linux's updating builds
-(LEGACY), so that they update once to a build that knows the new names.
-Drop LEGACY once no one runs those builds (from December 2026, say).
+UPDATE_NAME, with -debug for a debug build).
 Android keeps halo-android-<config>.zip for now: its app's updater asks for
 that name (Updater.java), and is to change with its signing key (#92).
 """
@@ -28,10 +23,6 @@ NAMES = {
     "steam-frame-vr": "OpenH1-Steam-Frame",
     "macos": "OpenH1",
 }
-# the artifacts whose old names the release keeps for the updaters of
-# builds from before the renaming (updater.c's UPDATE_PLATFORM then)
-LEGACY = {f"halo-{platform}-{config}" for platform in ("windows", "linux-x86_64", "linux-x86_64-vr", "linux-arm64")
-          for config in ("release", "debug")}
 
 
 def published(artifact: str) -> str:
@@ -48,8 +39,6 @@ def published(artifact: str) -> str:
 
 def main() -> int:
     arguments = sys.argv[1:]
-    if arguments[:1] == ["--legacy"] and len(arguments) == 2:
-        return 0 if arguments[1] in LEGACY else 1
     if len(arguments) != 1:
         print(__doc__, file=sys.stderr)
         return 2
