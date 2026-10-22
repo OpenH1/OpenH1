@@ -32,6 +32,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -49,6 +50,20 @@ COPYRIGHT = ("OpenH1 is an unofficial fan project. It is not endorsed by or affi
 def run(*command: str) -> None:
     print("+", " ".join(command), flush=True)
     subprocess.run(command, check=True)
+
+
+def run_retried(*command: str, tries: int = 5, wait: int = 20) -> None:
+    """run, tried again after a failure that may pass: stapler's lookups of
+    the ticket (a dropped connection, or a ticket not yet out for a minute
+    after the acceptance) and hdiutil's "Resource busy" on CI's runners"""
+    for attempt in range(1, tries + 1):
+        print("+", " ".join(command), flush=True)
+        if subprocess.run(command).returncode == 0:
+            return
+        if attempt == tries:
+            raise subprocess.CalledProcessError(1, command)
+        print(f"failed; again in {wait * attempt} s ({attempt} of {tries})", flush=True)
+        time.sleep(wait * attempt)
 
 
 def info_plist(bundle_id: str, build: int, minimum: str) -> dict:
@@ -152,7 +167,7 @@ def dmg(args: argparse.Namespace) -> None:
         (folder / "Applications").symlink_to("/Applications")
         partial = output.with_name(output.name + ".partial.dmg")
         partial.unlink(missing_ok=True)
-        run("hdiutil", "create", "-quiet", "-volname", APP_NAME, "-srcfolder", str(folder), "-fs", "APFS",
+        run_retried("hdiutil", "create", "-quiet", "-volname", APP_NAME, "-srcfolder", str(folder), "-fs", "APFS",
             "-format", "ULFO", "-ov", str(partial))
         partial.replace(output)
     if args.identity and args.identity != "-":
@@ -182,10 +197,10 @@ def notarize(args: argparse.Namespace) -> None:
         archive = Path(temporary) / (APP_NAME + ".zip")
         run("ditto", "-c", "-k", "--keepParent", str(app), str(archive))
         notarize_file(archive, credentials)
-    run("xcrun", "stapler", "staple", str(app))
+    run_retried("xcrun", "stapler", "staple", str(app))
     dmg(argparse.Namespace(app=str(app), output=args.output, identity=args.identity))
     notarize_file(Path(args.output), credentials)
-    run("xcrun", "stapler", "staple", args.output)
+    run_retried("xcrun", "stapler", "staple", args.output)
     run("spctl", "--assess", "--type", "execute", "--verbose=2", str(app))
     run("spctl", "--assess", "--type", "open", "--context", "context:primary-signature", "--verbose=2", args.output)
 
