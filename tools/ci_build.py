@@ -38,9 +38,10 @@ dist/halo-linux-arm64-<config>/, named as its self-updater asks
 (port/linux/src/updater.c, UPDATE_PLATFORM).
 
 The macOS build is the app's disk image (ninja macos_dmg), signed ad hoc
-(tools/macos_app.py), in dist/halo-macos-<config>/ with the notices: the
-disk image keeps the app's modes and links, which the workflow's artifacts
-would lose.
+(tools/macos_app.py), alone in dist/halo-macos-<config>/ (the app carries
+the licences): the disk image keeps the app's modes and links, which the
+workflow's artifacts would lose, and the release has it as it is,
+halo-macos-<config>.dmg.
 
 The web build (port/web/README.md) needs Emscripten (emcc on the PATH, as
 emsdk_env.sh puts it); dist/halo-web-<config>/ is the whole site, which a
@@ -209,12 +210,13 @@ def main() -> int:
         for pdb in [ROOT / "build/windows/halo.pdb", *sorted((ROOT / "build/windows/third_party").glob("SDL3-*/lib/x86/SDL3.pdb"))]:
             shutil.copy2(pdb, symbols)
             print(f"{pdb.relative_to(ROOT)} -> {symbols.relative_to(ROOT)}", flush=True)
+    if args.platform == "macos":
+        # (the app carries the licences: Contents/Resources/Licenses,
+        # tools/macos_build.py)
+        return 0
     # OpenH1's own licence, the AGPL, which asks each copy to carry its text
     # (the Linux tree's is in share/licenses: linux_package.py)
     shutil.copy2(ROOT / "LICENSE", dist / "LICENSE.txt")
-    if args.platform == "macos":
-        # (the SDL3 the app carries, built from this source: tools/macos_build.py)
-        notices.append((ROOT / "build/macos/third_party/SDL3/LICENSE.txt", "SDL3-LICENSE.txt"))
     for source, name in notices:
         shutil.copy2(source, dist / name)
     # internet play's MQTT brokers, a file beside the game (network.brokers_file;

@@ -12,7 +12,8 @@
 - bundle: Halo.app from the build: Contents/MacOS/halo (the executable, with
   an rpath of @executable_path/../Frameworks), Contents/Frameworks/
   libSDL3.0.dylib, Contents/Resources (the icon, brokers.txt, the About
-  panel's credits) and Info.plist, signed with the hardened runtime and
+  panel's credits, and in Licenses the licences of the app and of what it
+  carries, which each copy must have) and Info.plist, signed with the hardened runtime and
   port/macos/halo.entitlements: ad hoc ("-") unless an identity is given.
 - dmg: a disk image of the app, with a link to Applications to drag it to.
 - sign: signs the app again with a Developer ID (and a secure timestamp,
@@ -146,6 +147,10 @@ def bundle(args: argparse.Namespace) -> None:
     shutil.copy2(args.icon, contents / "Resources" / (ICON + ".icns"))
     for resource in args.resource or []:
         shutil.copy2(resource, contents / "Resources" / Path(resource).name)
+    for license in args.license or []:
+        source, name = license.split("=", 1)
+        (contents / "Resources" / "Licenses").mkdir(exist_ok=True)
+        shutil.copy2(source, contents / "Resources" / "Licenses" / name)
     plist = info_plist(args.bundle_id, args.build, args.minimum)
     with open(contents / "Info.plist", "wb") as file:
         plistlib.dump(plist, file)
@@ -217,6 +222,7 @@ def main() -> None:
     command.add_argument("--sdl", required=True)
     command.add_argument("--icon", required=True)
     command.add_argument("--resource", action="append")
+    command.add_argument("--license", action="append", help="<file>=<name>: a licence, in Resources/Licenses")
     command.add_argument("--bundle-id", required=True)
     command.add_argument("--build", type=int, default=0)
     command.add_argument("--flavor", default="debug")

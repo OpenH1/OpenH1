@@ -81,7 +81,7 @@ builds of the latest release:
 
 | Platform | Release | Debug |
 | --- | --- | --- |
-| macOS (Apple silicon, macOS 14.4 or later) | [halo-macos-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-release.zip) | [halo-macos-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-debug.zip) |
+| macOS (Apple silicon, macOS 14.4 or later) | [halo-macos-release.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-release.dmg) | [halo-macos-debug.dmg](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-macos-debug.dmg) |
 | Windows | [halo-windows-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-release.zip) | [halo-windows-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-windows-debug.zip) |
 | Linux x86-64 (also the Steam Deck) | [halo-linux-x86_64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-release.zip) | [halo-linux-x86_64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-x86_64-debug.zip) |
 | Linux arm64 | [halo-linux-arm64-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-release.zip) | [halo-linux-arm64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-linux-arm64-debug.zip) |
@@ -95,7 +95,7 @@ problems. The [Releases](https://github.com/OpenH1/OpenH1/releases) page
 keeps the last five releases: if the latest build has a problem, get an
 older build there.
 
-- **macOS:** unzip, open `Halo.dmg` and drag Halo to Applications. The app
+- **macOS:** open the `.dmg` and drag Halo to Applications. The app
   is signed with a Developer ID and notarized by Apple, so it opens like any
   other downloaded app.
 - **Windows:** unzip into a folder and start `halo.exe`. The executable is
