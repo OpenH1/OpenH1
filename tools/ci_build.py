@@ -41,7 +41,7 @@ The macOS build is the app's disk image (ninja macos_dmg), signed ad hoc
 (tools/macos_app.py), alone in dist/halo-macos-<config>/ (the app carries
 the licences): the disk image keeps the app's modes and links, which the
 workflow's artifacts would lose, and the release has it as it is,
-halo-macos-<config>.dmg.
+OpenH1.dmg (OpenH1-debug.dmg).
 
 The web build (port/web/README.md) needs Emscripten (emcc on the PATH, as
 emsdk_env.sh puts it); dist/halo-web-<config>/ is the whole site, which a
