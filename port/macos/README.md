@@ -155,7 +155,17 @@ python3 tools/macos_app.py notarize --identity "Developer ID Application: <name>
 It signs the app (with a secure timestamp), sends it to the notary
 service, staples its ticket to it, makes `build/macos/Halo.dmg`, signs,
 notarizes and staples that too, and checks both with `spctl`.
-`python3 tools/macos_app.py sign --identity ...` only signs the app.
+`python3 tools/macos_app.py sign --identity ...` only signs the app. An App
+Store Connect API key can stand in for the keychain profile: `--key
+AuthKey_<id>.p8 --key-id <id> --issuer <issuer ID>`.
+
+CI signs and notarizes the release on `master` this way ("Sign and
+notarize" in `.github/workflows/build.yml`), when the repository has the
+secrets: `MACOS_CERTIFICATE` (the Developer ID Application certificate and
+its private key, a `.p12` exported from Keychain Access, base64) and
+`MACOS_CERTIFICATE_PASSWORD`, and the API key's `ASC_KEY` (its `.p8`,
+base64), `ASC_KEY_ID` and `ASC_ISSUER_ID`. Without them the release is
+signed ad hoc.
 
 ### The release build and the disk image
 
