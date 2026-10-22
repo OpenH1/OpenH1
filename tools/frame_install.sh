@@ -8,7 +8,7 @@
 #
 # <host>: as ssh takes it (deck@steamframe.local, or a Host of ~/.ssh/config).
 # --package: by default dist/halo-vr-frame of this repository; or a release's
-#   halo-steam-frame-vr-release.zip.
+#   OpenH1-Steam-Frame.zip.
 # --local: install into <folder>/apps/halo-vr instead, <folder> standing in
 #   for the Frame's home (to test this script, or to install on the Frame
 #   from a terminal on it).

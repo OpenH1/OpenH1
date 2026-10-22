@@ -5,7 +5,7 @@ build's debug.txt or halo.log (port/windows/src/win32_crash.c):
     python tools/symbolize_crash.py debug.txt path/to/halo.exe
 
 halo.exe must be the build that crashed, with its halo.pdb beside it (a
-release's halo-windows-<config>-symbols.zip has the PDB; the zip of the
+release's OpenH1-Windows[-debug]-symbols.zip has the PDB; the zip of the
 same name without -symbols has halo.exe). The lines come from
 llvm-symbolizer, which reads the PDB. The crash reports that reach Sentry
 need none of this: Sentry symbolizes them itself.

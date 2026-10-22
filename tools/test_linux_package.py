@@ -16,6 +16,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ci_build  # noqa: E402
 import linux_package  # noqa: E402
+import release_names  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -104,13 +105,23 @@ def test_names_agree():
 
 
 def test_asset_names_agree():
-    """each Linux build's zip is the one its self-updater asks for (halo-<UPDATE_PLATFORM>-<flavor>.zip): the
-    x86-64 build's, its VR build's and the 64-bit ARM build's, as tools/ci_build.py names them and the workflow
-    publishes them; there is no 32-bit build, nor a flat release"""
+    """each updating build's zip is the one its self-updater asks for (UPDATE_NAME[-debug].zip): Windows', the
+    x86-64 build's, its VR build's and the 64-bit ARM build's, as tools/ci_build.py names their artifacts,
+    tools/release_names.py the release's files, and the workflow publishes them (with the old names too, for
+    the builds from before the renaming); there is no 32-bit build, nor a flat release"""
     updater = (ROOT / "port/linux/src/updater.c").read_text()
     platforms = set(re.findall(r'#define UPDATE_PLATFORM "([^"]+)"', updater))
     assert platforms == {"windows", "linux-x86_64", "linux-x86_64-vr", "linux-arm64"}
-    assert '#define UPDATE_ASSET "halo-" UPDATE_PLATFORM "-" HALO_BUILD_FLAVOR ".zip"' in updater
+    names = re.findall(r'#define UPDATE_PLATFORM "([^"]+)"\n#define UPDATE_NAME "([^"]+)"', updater)
+    assert dict(names) == {platform: release_names.NAMES[platform] for platform in platforms}
+    assert '#define UPDATE_ASSET_RELEASE UPDATE_NAME ".zip"' in updater
+    assert '#define UPDATE_ASSET_DEBUG UPDATE_NAME "-debug.zip"' in updater
+    for platform in platforms:
+        for config in ("release", "debug"):
+            artifact = f"halo-{platform}-{config}"
+            assert release_names.published(artifact) == release_names.NAMES[platform] + (
+                "-debug" if config == "debug" else "")
+            assert artifact in release_names.LEGACY
     workflow = (ROOT / ".github/workflows/build.yml").read_text()
     for platform, vr in (("linux_x86_64", False), ("linux_x86_64", True), ("linux_arm64", False)):
         for config in ("debug", "release"):
@@ -137,8 +148,9 @@ def test_frame_release_names_agree():
     workflow = (ROOT / ".github/workflows/build.yml").read_text()
     assert "run: python3 tools/ci_build.py linux_arm64 release --vr" in workflow
     assert f"name: {name}" in workflow and f"path: dist/{name}" in workflow
-    assert 'halo-steam-frame-*) cp "$build/$name.zip" "release/$name.zip"' in workflow
-    assert f"/download/{name}.zip" in workflow
+    assert 'halo-steam-frame-*) cp "$build/$name.zip" "release/$published.zip"' in workflow
+    assert release_names.published(name) == "OpenH1-Steam-Frame"
+    assert "/download/OpenH1-Steam-Frame.zip" in workflow
 
 
 def test_frame_zip(tmp_path):
@@ -167,3 +179,21 @@ def test_frame_zip(tmp_path):
             expected = 0o755 if base in ("halo", "libSDL3.so.0", "halo-vr.sh") else 0o644
             assert stat.S_IMODE(mode) == expected, info.filename
             assert archive.read(info) == base.encode()
+
+
+def test_release_names():
+    """the names players see: OpenH1-<machine>[-debug][-symbols]; Android's (whose app asks for its old name,
+    Updater.java) and anything unknown keep theirs; the Mac's, the Steam Frame's and the symbols have no old
+    copies, as no self-updater asks for them"""
+    assert release_names.published("halo-windows-release") == "OpenH1-Windows"
+    assert release_names.published("halo-windows-debug-symbols") == "OpenH1-Windows-debug-symbols"
+    assert release_names.published("halo-linux-x86_64-release") == "OpenH1-Linux"
+    assert release_names.published("halo-macos-release") == "OpenH1"
+    assert release_names.published("halo-macos-debug") == "OpenH1-debug"
+    assert release_names.published("halo-android-release") == "halo-android-release"
+    for artifact in ("halo-macos-release", "halo-steam-frame-vr-release", "halo-windows-release-symbols",
+                     "halo-android-release"):
+        assert artifact not in release_names.LEGACY
+    workflow = (ROOT / ".github/workflows/build.yml").read_text()
+    assert 'published="$(python3 tools/release_names.py "$name")"' in workflow
+    assert 'python3 tools/release_names.py --legacy "$name"' in workflow
