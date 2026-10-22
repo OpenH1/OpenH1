@@ -828,11 +828,14 @@ void xgpu_backend_texture_describe(DWORD resource, DWORD palette, struct xgpu_te
 #endif
 }
 
-static void texture_stage_describe(const struct xgpu_texture_source *source, struct xgpu_stream_texture_stage *stage,
-	struct xgpu_stream_texture_level *levels)
+static void texture_stage_describe(const struct xgpu_texture_source *source, int stage_index,
+	struct xgpu_stream_texture_stage *stage, struct xgpu_stream_texture_level *levels)
 {
 	uint32_t index;
 
+#ifdef XGPU_STREAM_TEST
+	(void)stage_index;
+#endif
 	memset(stage, 0, sizeof(*stage));
 	stage->source = source->source;
 	stage->sampler_type = source->sampler_type;
@@ -889,7 +892,8 @@ static void texture_stage_describe(const struct xgpu_texture_source *source, str
 			stage->resource_format = (uint32_t)header->Format;
 			stage->resource_size = (uint32_t)header->Size;
 #ifndef XGPU_STREAM_TEST
-			stage->target = (uint32_t)xgpu_texture_channels((unsigned long)PLATFORM_PHYSICAL_TO_VIRTUAL(header->Data));
+			stage->target = (uint32_t)xgpu_texture_channels((unsigned long)PLATFORM_PHYSICAL_TO_VIRTUAL(header->Data),
+				stage_index);
 #endif
 		}
 	}
@@ -911,7 +915,7 @@ void xgpu_backend_set_textures(const struct xgpu_texture_source stages[4])
 	{
 		uint32_t level_bytes;
 
-		texture_stage_describe(&stages[stage], &described[stage], levels[stage]);
+		texture_stage_describe(&stages[stage], stage, &described[stage], levels[stage]);
 		level_bytes = described[stage].level_count * sizeof(levels[0][0]);
 		if (stream.stages_sent[stage] && !memcmp(&described[stage], &stream.stages[stage], sizeof(described[stage])) &&
 			!memcmp(levels[stage], stream.levels[stage], level_bytes))
