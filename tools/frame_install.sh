@@ -84,7 +84,7 @@ if [ -f "$package" ]; then
 		else
 			python3 -m zipfile -e "$package" "$work/package"
 		fi ;;
-	*) tar -xzf "$package" -C "$work/package" ;;
+	*) tar -xmzf "$package" -C "$work/package" ;;
 	esac
 	sums=$(find "$work/package" -maxdepth 2 -name SHA256SUMS | head -n 1)
 	[ -n "$sums" ] || { echo "$package: not a package of tools/frame_package.py (no SHA256SUMS)" >&2; exit 1; }
@@ -121,7 +121,7 @@ echo "Installing $(sed -n 1p "$package/VERSION" 2>/dev/null || echo "a package")
 refuse_running='if pids=$(pgrep -x halo); then echo "Halo is running (process $(echo $pids)): quit it, then install again." >&2; exit 3; fi'
 # shellcheck disable=SC2086
 tar -C "$package" -cf - SHA256SUMS $names |
-	on_frame "set -eu; $refuse_running; mkdir -p \"\$HOME/$dir\"; rm -rf \"\$HOME/$dir/.install\"; mkdir \"\$HOME/$dir/.install\"; tar -xf - -C \"\$HOME/$dir/.install\""
+	on_frame "set -eu; $refuse_running; mkdir -p \"\$HOME/$dir\"; rm -rf \"\$HOME/$dir/.install\"; mkdir \"\$HOME/$dir/.install\"; tar -xmf - -C \"\$HOME/$dir/.install\""
 
 on_frame "sh -s -- '$dir' '$standalone'" <<'FRAME'
 set -eu

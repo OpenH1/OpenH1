@@ -102,7 +102,10 @@ def needed_libraries(path: Path) -> List[str]:
 def version() -> str:
     """VERSION: the commit the package is of, which the install prints"""
     def git(*args: str) -> str:
-        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+        # (CI's container runs the build as a user other than the checkout's,
+        # whose repository git would otherwise refuse as of dubious ownership)
+        return subprocess.run(["git", "-c", f"safe.directory={ROOT}", *args], cwd=ROOT, capture_output=True,
+                              text=True).stdout.strip()
 
     changes = " (with changes)" if git("status", "--porcelain", "-uno") else ""
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
