@@ -481,7 +481,9 @@ static struct
 	swap interval asked for, plus one (0: none asked) */
 	uint64_t window_size;
 	uint32_t window_resized, interval_asked, window_hidden;
-	/* the swap interval the swapchain was made with */
+	/* the swap interval: 0 not waiting for the display, else the refreshes
+	each frame is shown for (FIFO; the swapchain's present mode is made for
+	0 or more) */
 	int interval;
 
 	/* display.hdr: the input attachments' set layout (the pipeline
@@ -3860,8 +3862,11 @@ static void window_changes(void)
 		vk.swapchain_stale = 1;
 	if (asked && (int)(asked - 1) != vk.interval)
 	{
+		/* (made again for its present mode: not for the refreshes a
+		frame is shown for, xgpu_vulkan_frame_end's) */
+		if (((int)(asked - 1) > 0) != (vk.interval > 0))
+			vk.swapchain_stale = 1;
 		vk.interval = (int)(asked - 1);
-		vk.swapchain_stale = 1;
 	}
 	/* (display.hdr: the display told of again, and the swapchain made
 	again where its output changes) */
@@ -4054,7 +4059,8 @@ void xgpu_vulkan_window_hidden(int hidden)
 
 void xgpu_vulkan_window_interval(int interval)
 {
-	__atomic_store_n(&vk.interval_asked, (uint32_t)(interval > 0 ? 1 : 0) + 1, __ATOMIC_RELEASE);
+	__atomic_store_n(&vk.interval_asked, (uint32_t)(interval > 0 ? (interval < 8 ? interval : 8) : 0) + 1,
+		__ATOMIC_RELEASE);
 }
 
 /* a SUBOPTIMAL present: 1 if the surface's extent or transform changed
@@ -4489,7 +4495,7 @@ void xgpu_vulkan_loading_present(struct xgpu_vulkan_image *image)
 void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 {
 	uint64_t serial;
-	int gpu_time_armed = vk.gpu_time_armed;
+	int gpu_time_armed = vk.gpu_time_armed, repeat;
 
 	/* VR arms its next interval before this frame's visibility maintenance.
 	Keep that arm for real rendering after the next runtime frame wait. */
@@ -4500,6 +4506,18 @@ void xgpu_vulkan_frame_end(struct xgpu_vulkan_image *image, int present_window)
 	/* (the frame's last work, its tests' queries with it: the present's
 	submission, or one of its own) */
 	serial = present_window ? present(image) : 0;
+	/* (a swap interval of more than one, battery saver's: the frame
+	presented again for each refresh after its first, FIFO showing one a
+	refresh, so that it stays on screen as long as every other; the render
+	thread, and so the game, waits for the display meanwhile) */
+	for (repeat = 1; serial && repeat < vk.interval && vk.present_mode == VK_PRESENT_MODE_FIFO_KHR; repeat++)
+	{
+		uint64_t again = present(image);
+
+		if (!again)
+			break;
+		serial = again;
+	}
 	if (!serial)
 	{
 		recording_begin();
@@ -5351,7 +5369,7 @@ int xgpu_vulkan_initialize(const struct xgpu_vulkan_options *options)
 		memcpy(&vk.window_sdr_white, &one, sizeof(one));
 		memcpy(&vk.window_headroom, &one, sizeof(one));
 	}
-	vk.interval = getenv("HALO_NO_VSYNC") ? 0 : options->interval > 0;
+	vk.interval = getenv("HALO_NO_VSYNC") || options->interval < 0 ? 0 : options->interval;
 	if (vk.surface_create)
 	{
 		vk.surface = vk.surface_create(vk.instance, vk.surface_context);

@@ -26,7 +26,11 @@ not back yet (Android resumes the app before it makes the window's
 surface), at a later frame.
 
 The swap interval is display.vsync's (host_vulkan_window_open, asked again
-when the setting changes). With OpenXR (HALO_VR), the headset's runtime
+when the setting changes); while battery saver is on (display.battery_saver,
+battery_saver.c), each frame is shown for the whole number of the display's
+refreshes that brings the frames a second to 30 to 40 (frame_pacing.h's
+frame_pacing_divisor, at the window's display's rate as SDL has it when it
+is asked). With OpenXR (HALO_VR), the headset's runtime
 chooses the device; the window keeps its surface, so that the game can play
 flat in it if VR cannot start, and a device the runtime refuses is made
 again without it (flat).
@@ -63,6 +67,7 @@ The pipeline cache is $XDG_CACHE_HOME/openh1/vulkan_pipelines.bin (or
 #include "xgpu_vulkan_post.h"
 #include "xgpu_vulkan_stream.h"
 #include "xgpu_vulkan_textures.h"
+#include "frame_pacing.h"
 #ifdef HALO_VR
 #include "host_vr_vulkan.h"
 #endif
@@ -247,9 +252,9 @@ static const char *debug_folder(uint32_t address, const char *variable, char *fo
 
 /* (a host import: the guest's sdl_platform.c, on its main thread; the
 folders are guest addresses of strings; again with the same window when
-display.vsync changes, for its swap interval) */
+display.vsync or battery saver changes, for its swap interval) */
 int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_folder, uint32_t texture_folder,
-	int interval)
+	int interval, int battery_saver)
 {
 	static int opened;
 	static char shaders[1024], textures[1024];
@@ -264,6 +269,14 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 
 	if (!object)
 		return 0;
+	if (interval > 0 && battery_saver)
+	{
+		const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(object));
+
+		interval = (int)frame_pacing_divisor(mode ? mode->refresh_rate : 0.0f, BATTERY_SAVER_LEAST,
+			BATTERY_SAVER_MOST);
+		host_logf(HOST_LOG_INFO, "vulkan: battery saver: each frame shown for %d refreshes", interval);
+	}
 	if (opened)
 	{
 		if (object != vulkan_window)

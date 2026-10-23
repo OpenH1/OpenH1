@@ -308,6 +308,13 @@ get the default values again, delete the file.
 
 The settings are the settings of Linux, without the window, the mouse and
 the paths. Refer to [port/linux/README.md](../linux/README.md#settings).
+`display.battery_saver` (Video Setup > Battery Saver) saves the phone's
+battery and heat: `"auto"` turns it on while the phone is not charging (the
+battery broadcast, through SDL). On, each frame stays on screen for a whole
+number of the display's refreshes, 30 to 40 frames each second (30 at 60 or
+90 Hz, 40 at 120 Hz), and the Classic look is drawn where the graphics
+settings are not set (refer to "Battery saver" in
+[port/linux/README.md](../linux/README.md#battery-saver)).
 These settings are only for Android:
 
 | Setting | Function |

@@ -13,6 +13,8 @@ and the debug keyboard that the game's console reads.
 #include "sdl_platform.h"
 #include "gl.h"
 #include "port_config.h"
+#include "battery_saver.h"
+#include "frame_pacing.h"
 #include "xgpu_backend.h"
 #include "load_trace.h"
 #include "loading_presentation.h"
@@ -1432,6 +1434,9 @@ BOOL platform_video_hdr(float *sdr_white, float *headroom)
 /* port/macos/host_metal.m: the window drawn with Metal, from the main
 thread; nonzero on success */
 int host_metal_window_open(unsigned int window);
+/* port/macos/host_metal.m: battery saver on or off (battery_saver.c), the
+display link at a whole fraction of the display's rate (frame_pacing.h) */
+void host_metal_battery_saver(int on);
 /* the window's kind of drawing */
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_METAL
 #elif defined(HALO_VULKAN)
@@ -1439,9 +1444,11 @@ int host_metal_window_open(unsigned int window);
 host, with the graphics' debugging settings (the host does not read the
 settings file): debug, HOST_VULKAN_DEBUG_*; the folders debug.gpu_dump_shaders
 and debug.texture_dump_directory name (empty: none); at a swap interval (vsync 1,
-or 0): asked again, the interval changed; nonzero on success */
+or 0), each frame shown for a whole number of refreshes while battery saver
+is on (battery_saver.c, frame_pacing.h's frame_pacing_divisor at the host's
+display's rate): asked again, either changed; nonzero on success */
 int host_vulkan_window_open(unsigned int window, unsigned int debug, const char *shader_folder,
-	const char *texture_folder, int interval);
+	const char *texture_folder, int interval, int battery_saver);
 /* (host_vulkan.c's) debug.gpu_stats, debug.gpu_validation (or debug.gl_debug) */
 #define HOST_VULKAN_DEBUG_STATISTICS 1
 #define HOST_VULKAN_DEBUG_VALIDATION 2
@@ -1588,7 +1595,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 		(config_boolean("debug.gpu_stats") ? HOST_VULKAN_DEBUG_STATISTICS : 0) |
 		(config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug") ? HOST_VULKAN_DEBUG_VALIDATION : 0),
 		config_string("debug.gpu_dump_shaders"), config_string("debug.texture_dump_directory"),
-		config_boolean("display.vsync") ? 1 : 0))
+		config_boolean("display.vsync") ? 1 : 0, battery_saver_active()))
 	{
 		platform_log("cannot draw the window with Vulkan");
 		/* (said where it can be seen, not only in the log: else the game
@@ -1710,11 +1717,61 @@ void platform_display_apply(void)
 	if (!platform_window)
 		return;
 #endif
-#if defined(HALO_VULKAN)
+	platform_frame_rate_apply();
+}
+
+/* the window's display's refresh rate (frames a second), 0 if unknown (on
+Android, whose host knows it: frame_pacing_divisor takes it as 60) */
+static float platform_refresh_rate(void)
+{
+#ifdef HALO_ANDROID
+	return 0.0f;
+#else
+	SDL_DisplayID display = platform_window ? SDL_GetDisplayForWindow(platform_window) : 0;
+	const SDL_DisplayMode *mode = display ? SDL_GetCurrentDisplayMode(display) : NULL;
+
+	return mode && mode->refresh_rate > 0.0f ? mode->refresh_rate : 0.0f;
+#endif
+}
+
+#if !defined(HALO_VULKAN) && !defined(HALO_METAL)
+/* (the OpenGL builds) battery saver's frame every few refreshes is the swap
+interval's; else its frames are spaced by the clock (frame_interval_ns) */
+static BOOL platform_swap_divides;
+#endif
+
+/* display.vsync's swap interval, with battery saver's frames a second
+(battery_saver.c): the Vulkan host shows each frame for a whole number of
+refreshes, the Metal host's display link runs at that rate, and the OpenGL
+builds swap at that interval where the driver can */
+void platform_frame_rate_apply(void)
+{
+	int saving = battery_saver_active();
+#if !defined(HALO_VULKAN) && !defined(HALO_METAL)
+	int interval = config_boolean("display.vsync") ? 1 : 0;
+#endif
+
+	if (!platform_window)
+		return;
+#if defined(HALO_METAL)
+	host_metal_battery_saver(saving);
+#elif defined(HALO_VULKAN)
 	/* (the window open already: only its swap interval is taken) */
-	host_vulkan_window_open((unsigned int)(uintptr_t)platform_window, 0, "", "", config_boolean("display.vsync") ? 1 : 0);
-#elif !defined(HALO_METAL)
-	SDL_GL_SetSwapInterval(config_boolean("display.vsync") ? 1 : 0);
+	host_vulkan_window_open((unsigned int)(uintptr_t)platform_window, 0, "", "",
+		config_boolean("display.vsync") ? 1 : 0, saving);
+#else
+	platform_swap_divides = FALSE;
+	if (interval && saving)
+	{
+		int divisor = (int)frame_pacing_divisor(platform_refresh_rate(), BATTERY_SAVER_LEAST, BATTERY_SAVER_MOST);
+
+		if (divisor > 1 && SDL_GL_SetSwapInterval(divisor))
+		{
+			platform_swap_divides = TRUE;
+			return;
+		}
+	}
+	SDL_GL_SetSwapInterval(interval);
 #endif
 }
 
@@ -1723,38 +1780,47 @@ void platform_video_drawable_size(int *width, int *height)
 	SDL_GetWindowSizeInPixels(platform_window, width, height);
 }
 
-#ifndef HALO_ANDROID
 /* with vsync off, the time between frames display.max_fps asks for (0:
 twice the display's refresh rate), or 0 for no limit. A GPU never left idle
 can hang (Intel's Raptor Lake graphics, whose reset then takes the desktop
-with it); the limit gives it a rest every frame. */
+with it); the limit gives it a rest every frame. And battery saver's
+(battery_saver.c), where the display does not space its frames: without
+vsync, or an OpenGL driver without that swap interval. (Android has no
+display.max_fps.) */
 static Uint64 frame_interval_ns(void)
 {
 	static int vsync;
 	static long maximum;
 	static unsigned long read_at = (unsigned long)-1;
-	float rate;
+	float rate = 0.0f;
 
 	if (read_at != config_changes())
 	{
 		read_at = config_changes();
 		vsync = config_boolean("display.vsync");
+#ifdef HALO_ANDROID
+		maximum = -1;
+#else
 		maximum = config_integer("display.max_fps");
+#endif
 	}
-	if (vsync || maximum < 0)
-		return 0;
-	rate = (float)maximum;
-	if (!maximum)
+	if (!vsync && maximum >= 0)
+		rate = maximum ? (float)maximum : 2.0f * (platform_refresh_rate() > 0.0f ? platform_refresh_rate() : 60.0f);
+#if defined(HALO_RENDER_STREAM)
+	if (battery_saver_active() && !vsync)
+#else
+	if (battery_saver_active() && !platform_swap_divides)
+#endif
 	{
-		SDL_DisplayID display = SDL_GetDisplayForWindow(platform_window);
-		const SDL_DisplayMode *mode = display ? SDL_GetCurrentDisplayMode(display) : NULL;
+		float refresh = platform_refresh_rate() > 0.0f ? platform_refresh_rate() : 60.0f;
+		float saving = refresh / (float)frame_pacing_divisor(refresh, BATTERY_SAVER_LEAST, BATTERY_SAVER_MOST);
 
-		rate = 2.0f * (mode && mode->refresh_rate > 0.0f ? mode->refresh_rate : 60.0f);
+		if (!rate || saving < rate)
+			rate = saving;
 	}
-	return (Uint64)(1e9f / rate);
+	return rate > 0.0f ? (Uint64)(1e9f / rate) : 0;
 }
 
-#endif
 #ifdef HALO_WEB
 #include "web_shared.h"
 
@@ -1767,10 +1833,8 @@ void web_js_post(int kind, const char *text);
 void platform_video_swap(void)
 {
 	Uint64 swap_start = SDL_GetTicks(), swap_time;
-#ifndef HALO_ANDROID
 	static Uint64 next_frame;
 	Uint64 interval, now;
-#endif
 #ifdef HALO_RENDER_STREAM
 	/* (the host shows the frame, on its render thread: here it is paced) */
 #else
@@ -1790,19 +1854,22 @@ void platform_video_swap(void)
 #ifdef HALO_WEB
 	web_frame_shown();
 #endif
-#ifndef HALO_ANDROID
 	interval = frame_interval_ns();
 	if (!interval)
 		return;
 	now = SDL_GetTicksNS();
 	if (next_frame > now)
 	{
+#ifdef HALO_ANDROID
+		/* (the Android guest's SDL waits in milliseconds) */
+		SDL_Delay((Uint32)((next_frame - now) / 1000000u));
+#else
 		SDL_DelayPrecise(next_frame - now);
+#endif
 		now = next_frame;
 	}
 	/* (a frame more than an interval late starts the count again) */
 	next_frame = now - next_frame > interval ? now + interval : next_frame + interval;
-#endif
 }
 
 #if !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_GUEST)

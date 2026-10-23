@@ -439,6 +439,22 @@ def test_graphics_preset_keeps_a_setting_set(config_check_mac, monkeypatch):
     assert graphics_values(run) == ["off", "0", "128", "false", "highest", "classic"]
 
 
+def test_battery_saver_reads_the_classic_values(config_check_mac):
+    """with battery saver on (display.battery_saver), the game reads the
+    settings display.graphics chooses at their Classic values, but those the
+    player has set; Settings still shows (and writes from) the player's own"""
+    run = config_check_mac
+    assert run("get", "display.battery_saver") == "off"
+    assert [run("saving", f"display.{name}") for name in GRAPHICS_SETTINGS] == \
+        [f"{classic} {enhanced}" for classic, enhanced in zip(GRAPHICS_CLASSIC, GRAPHICS_ENHANCED)]
+    run("write", "display.anti_aliasing", "msaa4x")
+    assert run("saving", "display.anti_aliasing") == "msaa4x msaa4x"
+    assert run("saving", "display.anisotropic_filtering") == "0 16"
+    # (the other settings are as they are)
+    assert run("saving", "display.vsync") == "true true"
+    assert run("saving", "display.fov") == "0 0"
+
+
 def test_graphics_preset_on_a_headset(config_check):
     """Enhanced and Classic in the VR build: as on the desktop and the Mac"""
     assert graphics_values(config_check) == GRAPHICS_ENHANCED

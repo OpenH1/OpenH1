@@ -28,6 +28,15 @@ more between the player's hand and the picture.
   ready for the display (its renderer done) of the last FRAME_PACING_COSTS,
   and FRAME_PACING_MARGIN_NS more: frame_pacing_cost_add,
   frame_pacing_budget.
+- Battery saver (display.battery_saver, battery_saver.c) shows each frame
+  for a whole number of the display's refreshes, each on screen as long as
+  the others, so that the game draws BATTERY_SAVER_MOST frames a second or
+  fewer, but never fewer than BATTERY_SAVER_LEAST: frame_pacing_divisor.
+  At least 30, so that every one of the game's 30 ticks a second is drawn;
+  at most 40, half or less of the work at 60 Hz and more (30 at 60 or 90 Hz,
+  40 at 80, 120 or 240 Hz, 36 at 144). A display no whole number brings
+  between them keeps the least above 30 it can (42.5 at 85 Hz), and one
+  below 60 Hz its own rate.
 
 The times are nanoseconds of the game's monotonic clock (CLOCK_MONOTONIC
 as the game reads it; a guest's is its host's). Header only, C89, with no
@@ -55,6 +64,9 @@ time added to it */
 #define FRAME_PACING_MARGIN_NS 1500000ull
 /* the input to screen times kept between looks */
 #define FRAME_PACING_SAMPLES 1024
+/* battery saver's frames a second, at least and at most (frame_pacing_divisor) */
+#define BATTERY_SAVER_LEAST 30
+#define BATTERY_SAVER_MOST 40
 
 /* (the game's renderer front end, d3d8_device.c: not in the hosts) when the
 game read the input of the frame it draws, as D3DDevice_Present stamped it */
@@ -125,6 +137,33 @@ static FRAME_PACING_UNUSED uint64_t frame_pacing_start_time(uint64_t latch, uint
 		return 0;
 	target = latch + (uint64_t)(pending + 1) * period;
 	return target > budget ? target - budget : 0;
+}
+
+/* the refreshes each frame is shown for, at a display's refresh rate (frames
+a second; 0 or less: unknown, taken as 60): the fewest that bring the frames
+a second to most or below, but not so many that they fall below least; 1
+where the display's own rate is no more than most. (A rate a little off a
+whole multiple, 59.94 Hz, counts as the multiple.) */
+static FRAME_PACING_UNUSED uint32_t frame_pacing_divisor(float refresh_rate, uint32_t least, uint32_t most)
+{
+	float faster, slower;
+	uint32_t divisor, longest;
+
+	if (refresh_rate <= 0.0f)
+		refresh_rate = 60.0f;
+	if (!most || refresh_rate <= (float)most + 0.5f)
+		return 1;
+	/* (the fewest refreshes that bring it to most or below, and the most
+	that keep it at least or above) */
+	faster = refresh_rate / (float)most - 0.05f;
+	divisor = (uint32_t)faster;
+	if ((float)divisor < faster)
+		divisor++;
+	slower = least ? refresh_rate / (float)least + 0.05f : (float)divisor;
+	longest = (uint32_t)slower;
+	if (divisor > longest)
+		divisor = longest;
+	return divisor ? divisor : 1;
 }
 
 /* a frame on screen: the time its input was read and the time it was shown

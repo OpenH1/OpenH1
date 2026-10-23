@@ -33,6 +33,13 @@ goes back with its input time, for the input to screen statistics.
 Until frames come (the null renderer draws none), each refresh clears the
 drawable to black and presents it.
 
+Battery saver (display.battery_saver, port/linux/src/battery_saver.c:
+host_metal_battery_saver) runs the link at a whole fraction of the display's
+rate, 30 to 40 frames a second (frame_pacing.h's frame_pacing_divisor: 30
+at 60 Hz, 40 on a 120 Hz ProMotion display, whose refreshes then slow to
+it): the game is paced by the link's slower refreshes as it is by the
+display's own.
+
 display.hdr (port/linux/src/xgpu_hdr.h): while the frame is drawn in HDR on a
 display with EDR headroom, the layer is half floats in extended linear sRGB
 with extended dynamic range content, 1.0 the system's SDR white, and the
@@ -69,6 +76,7 @@ drawables reached the screen.
 #include "loading_art.h"
 #include "host_loading_capture.h"
 #include "xgpu_metal_post_shaders.h"
+#include "frame_pacing.h"
 #define XGPU_HDR_REFERENCE
 #include "xgpu_hdr.h"
 
@@ -148,6 +156,10 @@ static struct
 	/* a frame waits for an image (host_metal_present_exchange) */
 	_Atomic int image_waiting;
 	BOOL unpaced;
+	/* battery saver, as the guest asks (host_metal_battery_saver), and as the
+	link's rate was last set for it (the link's thread's) */
+	_Atomic int battery_saver;
+	int battery_saver_set;
 
 	/* pacing, since the last log */
 	double stats_interval, stats_since, started;
@@ -749,6 +761,8 @@ static void pacing_log(double now)
 
 /* ---------- each refresh */
 
+static CAFrameRateRange link_rate_range(int saving);
+
 @interface HaloDisplayLinkTarget : NSObject <CAMetalDisplayLinkDelegate>
 @end
 
@@ -768,6 +782,14 @@ static void pacing_log(double now)
 - (void)refresh:(CAMetalDisplayLinkUpdate *)update
 {
 	CAMetalDisplayLink *link = presentation.link;
+
+	/* (battery saver turned on or off: the link's rate, from its next
+	refresh) */
+	if (atomic_load(&presentation.battery_saver) != presentation.battery_saver_set)
+	{
+		presentation.battery_saver_set = atomic_load(&presentation.battery_saver);
+		link.preferredFrameRateRange = link_rate_range(presentation.battery_saver_set);
+	}
 
 	@autoreleasepool
 	{
@@ -1059,6 +1081,26 @@ static void pacing_log(double now)
 
 @end
 
+/* the link's rate: a ProMotion display's follows the frames, up to its
+highest; HALO_METAL_RATE, the link at a rate of its own (the pacing of
+another display, tested on this one); battery saver (saving), a whole
+fraction of the display's, 30 to 40 frames a second (frame_pacing.h) */
+static CAFrameRateRange link_rate_range(int saving)
+{
+	float rate = presentation.refresh_rate > 0.0f ? presentation.refresh_rate : 60.0f;
+
+	if (getenv("HALO_METAL_RATE"))
+		rate = (float)atof(getenv("HALO_METAL_RATE"));
+	if (saving)
+	{
+		rate /= (float)frame_pacing_divisor(rate, BATTERY_SAVER_LEAST, BATTERY_SAVER_MOST);
+		host_logf(HOST_LOG_INFO, "metal: battery saver: the display link at %.0f Hz", rate);
+		return CAFrameRateRangeMake(rate, rate, rate);
+	}
+	return getenv("HALO_METAL_RATE") ? CAFrameRateRangeMake(rate, rate, rate) :
+		CAFrameRateRangeMake(rate < 60.0f ? rate : 30.0f, rate, rate);
+}
+
 static void *presentation_thread(void *context)
 {
 	HaloDisplayLinkTarget *target = (__bridge_transfer HaloDisplayLinkTarget *)context;
@@ -1067,16 +1109,10 @@ static void *presentation_thread(void *context)
 	@autoreleasepool
 	{
 		CAMetalDisplayLink *link = [[CAMetalDisplayLink alloc] initWithMetalLayer:presentation.layer];
-		float rate = presentation.refresh_rate > 0.0f ? presentation.refresh_rate : 60.0f;
 
 		link.delegate = target;
-		/* (a ProMotion display's rate follows the frames, up to its
-		highest; HALO_METAL_RATE, the link at a rate of its own: the pacing
-		of another display, tested on this one) */
-		if (getenv("HALO_METAL_RATE"))
-			rate = (float)atof(getenv("HALO_METAL_RATE"));
-		link.preferredFrameRateRange = getenv("HALO_METAL_RATE") ? CAFrameRateRangeMake(rate, rate, rate) :
-			CAFrameRateRangeMake(rate < 60.0f ? rate : 30.0f, rate, rate);
+		presentation.battery_saver_set = atomic_load(&presentation.battery_saver);
+		link.preferredFrameRateRange = link_rate_range(presentation.battery_saver_set);
 		link.preferredFrameLatency = 1.0f;
 		presentation.link = link;
 		[link addToRunLoop:[NSRunLoop currentRunLoop] forMode:NSDefaultRunLoopMode];
@@ -1159,6 +1195,13 @@ int host_metal_initialize(void)
 		host_render_record_set_shooter(xgpu_metal_stream_shot);
 	}
 	return result;
+}
+
+/* (a host import: the guest's sdl_platform.c, as battery saver turns on or
+off) the link's rate, set on its thread at its next refresh */
+void host_metal_battery_saver(int on)
+{
+	atomic_store(&presentation.battery_saver, on ? 1 : 0);
 }
 
 /* (the replay's: port/macos/tools/halo_replay.m) */

@@ -134,6 +134,19 @@ bool SDL_ShowMessageBox(const SDL_MessageBoxData *data, int *buttonid)
 
 #endif
 
+/* (display.battery_saver's "auto": battery_saver.c) */
+SDL_PowerState SDL_GetPowerInfo(int *seconds, int *percent)
+{
+	int left = -1, charge = -1;
+	SDL_PowerState state = (SDL_PowerState)host_sdl_power_info(&left, &charge);
+
+	if (seconds)
+		*seconds = left;
+	if (percent)
+		*percent = charge;
+	return state;
+}
+
 void SDL_Delay(Uint32 milliseconds)
 {
 	struct timespec duration;

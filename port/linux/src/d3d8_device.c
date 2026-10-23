@@ -33,6 +33,7 @@ Conventions carried over from the Xbox:
 #include "halo_ui_pointer.h"
 #include "halo_dynamic_lights.h"
 #include "port_config.h"
+#include "battery_saver.h"
 #include "halo_linux_source_fixups.h"
 #include "main/console.h"
 
@@ -1699,6 +1700,9 @@ long halo_screen_commit(void)
 	long width;
 	float scale[2];
 
+	/* (display.battery_saver first: on, it reads the settings below at
+	cheaper values) */
+	battery_saver_update();
 	/* (display.anti_aliasing, as Settings or config.toml has it now:
 	supersampling changes the scale below) */
 	anti_aliasing_read();

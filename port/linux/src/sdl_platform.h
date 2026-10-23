@@ -98,6 +98,9 @@ BOOL platform_video_hdr(float *sdr_white, float *headroom);
 /* the window's mode and size and V-Sync, from config.toml as Settings has
 just written it (the main thread's) */
 void platform_display_apply(void);
+/* the frames a second battery saver asks for (battery_saver.c), given the
+window's renderer: the main thread's, as it turns on or off */
+void platform_frame_rate_apply(void);
 #ifdef HALO_VR
 /* the VR build's hidden window shown, to play flat in: no VR session */
 void platform_video_vr_unavailable(void);
