@@ -1,6 +1,7 @@
 # openh1.com
 
-The project's landing page: one static page (`public/index.html`), its
+The project's site: the landing page (`public/index.html`), the guide to
+the game data (`public/maps.html`, served at `/maps`), the landing page's
 pictures and clips (`public/media/`), its fonts (`public/fonts/`), the logo
 (`public/brand/`) and the icons (`public/favicon.svg`, `favicon-16.png`,
 `favicon-32.png`, `apple-touch-icon.png`).
@@ -66,6 +67,24 @@ Rules for the content:
 - The footer keeps the credit to OpenCE and the disclaimer: an unofficial
   fan project, not endorsed by or affiliated with Microsoft; Halo is
   Microsoft's trademark; no game data included.
+
+## Get your maps
+
+`public/maps.html`, at `/maps` (Workers' static assets serve `maps.html`
+there, and send `/maps.html` to it: no configuration), is the guide to the
+step that most often stops a new player: what the game data is, how to make
+a disc image of your own disc, how each build takes it, and what to do when
+it goes wrong. Each download card, "Bring your own game", and the game
+data section of the repository's README link to it. Previewed with
+`python3 -m http.server`, open it as `/maps.html`.
+
+Its style is the landing page's: the rules it uses are copied from
+`index.html`'s style sheet as they are (the tokens, the header, the cards,
+the dense list, the footer), so a change to one goes in the other. Its
+claims are the READMEs' and the code's (`port/linux/src/sdl_platform.c`,
+`tools/linux_install.sh`, `port/macos/host_app.m`, the Android
+`LauncherActivity.java`); the dumping tools it names are linked to their
+own projects only, never to a site that offers the game.
 
 ## Pictures and clips
 
