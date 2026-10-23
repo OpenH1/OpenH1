@@ -130,7 +130,9 @@ python tools/ci_build.py linux_x86_64 release   # what CI builds
   package, not a tree); the game
   finds its files from its executable's place
   (`port/linux/src/install_layout.c`), and updates itself only in a
-  release's tree. The tree's `install.sh` (`tools/linux_install.sh`)
+  release's tree (or, the Frame's, in its package's folder: the game
+  downloads the package, and its launcher `halo-vr.sh` installs it with
+  the package's `install.sh` once the game quits). The tree's `install.sh` (`tools/linux_install.sh`)
   copies it to `~/Applications/OpenH1` (the VR build's, whose tree has
   `share/openh1/vr`, to `~/Applications/OpenH1-VR`) and gives it a menu
   entry, a Steam shortcut and the shortcut's library artwork (the Steam

@@ -696,11 +696,40 @@ the distribution (`src/posix_update.c`, with Mbed TLS); on Windows, the
 certificate store of Windows (WinHTTP). The game's folder must let the
 game write to it.
 
-Only a game in a release's tree (`bin/openh1`, refer to "Packaging")
-updates itself. Builds that you make yourself have no build number, and a
-build's folder (`build/linux_x86_64`) is not a tree: they do not look for
-updates. An installed game (refer to "Packaging") does not look for
-updates: its package manager updates it.
+Only a game in a release's tree (`bin/openh1`, refer to "Packaging"), or
+the Steam Frame's (below), updates itself. Builds that you make yourself
+have no build number, and a build's folder (`build/linux_x86_64`) is not a
+tree: they do not look for updates. An installed game (refer to
+"Packaging") does not look for updates: its package manager updates it.
+
+### On the Steam Frame
+
+The Steam Frame's VR build (`~/apps/halo-vr`, "Steam Frame") updates itself
+from the headset. It looks for a new version when its launcher,
+`halo-vr.sh`, starts it (as Steam does), and `update.auto` is true
+(Settings > Network Setup > Check for Updates):
+
+- When the latest release is newer, the game downloads that release's
+  `OpenH1-Steam-Frame.zip` in the background while you play, and unpacks
+  it in `update.partial/` beside the game.
+- Then, at the main menu, it asks in its own menus (a system dialog would
+  not show in the headset, and stops the game under gamescope, where the
+  Frame runs it): "A new version is ready. Update now?"
+- UPDATE: the game writes `update-ready` and quits. `halo-vr.sh` then
+  installs the package with the package's own `install.sh` (the same as
+  installing it by hand: its `SHA256SUMS` checked, each file put in place
+  with a rename, `halo` kept as `halo.prev`, the player's files
+  untouched), deletes the download, and starts the new version. Its
+  output is in `halo-vr.log.prev`. If the install fails, the game starts
+  as it was.
+- NOT NOW (or B): the game goes on. It asks again at the next start (the
+  launcher deletes the download first).
+
+`update_answer = "yes"` (or `"no"`, `"never"`) in the `[debug]` section
+answers without the question, and `update_from` names a package's zip to
+update to, for tests. A game not started by `halo-vr.sh`, or not in a
+folder with the package's `halo-vr.sh` and `SHA256SUMS`, does not look for
+updates.
 
 ## Packaging
 
@@ -1909,9 +1938,10 @@ runtime (SteamVR's server) whenever it starts, so it is a download of its
 own. For the Steam Frame, the releases have the 64-bit ARM VR build as the
 Frame's package, `OpenH1-Steam-Frame.zip`
 (`tools/ci_build.py linux_arm64 release --vr`, which runs
-`tools/frame_package.py --zip`). On the Frame the VR build doesn't update
-itself (`update.auto` has no effect): install a new one with
-`tools/frame_install.sh` (below), or by hand.
+`tools/frame_package.py --zip`). On the Frame the VR build updates itself
+to the release's package, through its launcher ("On the Steam Frame" in
+"Updates"); or install a new one with its `install.sh`, or
+`tools/frame_install.sh` (below).
 
 ### Steam Frame
 
