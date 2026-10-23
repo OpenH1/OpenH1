@@ -271,9 +271,11 @@ The Metal backend is the macOS one. What differs:
 - `display.graphics = "enhanced"` gives MSAA 4x on iOS (not SMAA), resolved
   in tile memory: at the iPhone 15 Pro Max's 2796x1290, measured on an M1
   (the same family of GPU), about SMAA's cost (a10: 7.1 ms of the GPU a
-  frame against 6.8; Blood Gulch with bots: 5.2 against 7.5), with the
-  geometry's edges smoother. `display.anti_aliasing = "smaa"` still
-  chooses SMAA.
+  frame against 6.8; Blood Gulch alone: 5.2 against 7.5), with the
+  geometry's edges smoother; on the iPhone itself, in Blood Gulch with
+  seven bots, 6 to 7 ms against SMAA's 9 to 10 before the fight builds
+  (both near the frame's 15 ms at 60 Hz after it). `display.anti_aliasing
+  = "smaa"` still chooses SMAA.
 
 ## The Simulator
 
