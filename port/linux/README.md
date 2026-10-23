@@ -83,14 +83,12 @@ Enter `build/linux_x86_64/halo`.
 
 The release (`OpenH1-Linux.zip`, or
 `OpenH1-Linux-ARM64.zip` for 64-bit ARM) is a folder laid out as a
-Unix prefix is (refer to "Packaging"). Unpack it into a folder, and enter
-`bin/openh1` in that folder. That folder is the game's folder: the game
-keeps `config.toml` and `maps/` there.
-
-To play on a Steam Deck, unpack `OpenH1-Linux.zip` into a
-folder (in Desktop Mode), and add `bin/openh1` to Steam as a non-Steam game
-("Add a Game" in the Games menu of Steam). The game then starts in Game
-Mode as well. Refer to "Steam Deck".
+Unix prefix is (refer to "Packaging"). Unpack it into a folder, and open
+`install.sh` in that folder: it installs the game in
+`~/Applications/OpenH1` (refer to "Steam Deck", which applies to any
+Linux desktop). Or enter `bin/openh1` in the folder where you unpacked it.
+The folder of the game is the game's folder: the game keeps `config.toml`
+and `maps/` there.
 
 The game data is the folder that contains `maps/`, from an Xbox disc image
 of any version of the game. The game looks for this folder in this
@@ -107,8 +105,9 @@ sequence:
 
 If the game finds no data, it asks for an Xbox disc image (`.xiso` or
 `.iso`). This occurs at the first start. First the game looks for a disc
-image in the folder of the executable (a name that ends in `.iso` or
-`.xiso`, in capitals or not). If it finds one, it names that image in its
+image in the folder that it copies `maps/` to (the game's folder: the
+folder of the release, above `bin/`, or of the executable; a name that ends
+in `.iso` or `.xiso`, in capitals or not, or a link to the image). If it finds one, it names that image in its
 question:
 
 - Select "No" to stop the game.
@@ -130,10 +129,56 @@ the game asks for the disc image again at the next start.
 
 ### Steam Deck
 
-Do the set-up in Desktop Mode: unpack the release, put `maps/` in its
-folder, next to `bin/` (or start the game one time to copy it from a disc
-image), and add `bin/openh1` to Steam. Then start the game from the library
-in Game Mode.
+Do the set-up in Desktop Mode:
+
+1. Download `OpenH1-Linux.zip` and unpack it (in Dolphin, the file
+   manager: Extract > Extract archive here).
+2. Open `install.sh` in the unpacked folder (Dolphin asks whether to run
+   it: Execute). It opens a Konsole window, which shows what it does.
+3. When it asks where your game's maps are, select the disc image (`.iso`
+   or `.xiso`) or the maps folder copied from the disc.
+4. Start OpenH1 from the library in Game Mode.
+
+`install.sh` (`tools/linux_install.sh`, at the top of every Linux
+release's tree):
+
+- Copies the release to `~/Applications/OpenH1`: a folder of the player's
+  own, which the game can write to and so updates itself in (refer to
+  "Updates"), and which SteamOS's updates keep. Each file that differs from
+  the installed one is copied as `<name>.new` and compared with the
+  release's; when all are, each takes its name with a rename. It refuses
+  while the game runs. Open the `install.sh` of a newer release to update
+  in the same way (the game also updates itself). It never changes
+  `config.toml`, `maps/`, `debug.txt`, the files of the self-updater, or the
+  saves (`~/.local/share/halo-linux`), and does not delete the files that
+  an older release had and this one has not, as the self-updater does not.
+  After the install, the unpacked folder can be deleted.
+- A release that already has your files (`config.toml` or `maps/` next to
+  `bin/`: a release unpacked before `install.sh` came with it) stays where
+  it is: `install.sh` copies nothing, and does the rest for that folder.
+- If the game has no maps yet (and `paths.data` is not set), asks with
+  `kdialog` for a disc image or a maps folder. A maps folder (the folder
+  selected, or `maps/` in it) has its `.map` files and `loading.tga`
+  copied to `maps.partial`, then given the name `maps`, as the game does.
+  A disc image is the game's to copy (its first start, above):
+  `install.sh` puts a link to it in the game's folder, where the game finds
+  it without the file picker, and asks to start the game once in Desktop
+  Mode to copy the maps (about 2 GB). Select "Yes" when the game asks. Do
+  this in Desktop Mode: in Game Mode (gamescope), a system dialog stops the
+  game.
+- Writes the menu entry `~/.local/share/applications/openh1.desktop`: the
+  release's `share/applications/openh1.desktop`, with the installed
+  `bin/openh1`, its folder and its icon
+  (`share/icons/hicolor/256x256/apps/openh1.png`).
+- Adds that entry to Steam (SteamOS's `steamos-add-to-steam`), named
+  OpenH1, when Steam has no shortcut to the installed `bin/openh1` (in
+  `~/.local/share/Steam/userdata/*/config/shortcuts.vdf`, which it only
+  reads: Steam rewrites that file while it runs). Without
+  `steamos-add-to-steam`, it says how to add it: in Steam, Games > Add a
+  Non-Steam Game to My Library, OpenH1, Add Selected Programs.
+- On another Linux desktop, without `konsole`, `kdialog` or
+  `steamos-add-to-steam`, it does the same and says what is left to do:
+  the game asks for its disc image at its first start.
 
 - Build: the 64-bit x86 one, `OpenH1-Linux.zip`, which draws
   with Vulkan (SteamOS has it).
@@ -638,6 +683,7 @@ Unix prefix is, so a package can copy its folders to `/usr` (or
 
 | Path | Contents |
 | --- | --- |
+| `install.sh` | The installer (`tools/linux_install.sh`: "Steam Deck"). Only in the release's zips: `tools/linux_package.py tree`, for a package, leaves it out. |
 | `bin/openh1` | The game: a 64-bit executable (x86-64 or AArch64), with the game's guest image inside it. |
 | `lib/openh1/libSDL3.so.0` | SDL 3, which the game loads from there (a `DT_RPATH` of `$ORIGIN:$ORIGIN/../lib/openh1`; refer to "Requirements"). Leave it out to use the system's SDL 3. |
 | `share/openh1/brokers.txt` | Internet play's MQTT brokers (`network.brokers_file`). |

@@ -101,11 +101,15 @@ older build there.
 - **Windows:** unzip into a folder and start `halo.exe`. The executable is
   not signed yet, so Windows may say that it protected your PC: choose
   **More info**, then **Run anyway**.
-- **Linux:** unzip into a folder and start `bin/openh1` in it. The game
-  needs a GPU and driver with Vulkan 1.3. The folders are laid out as a
-  Unix prefix is (`bin/`, `lib/`, `share/`), for package managers too:
-  refer to "Packaging" in
-  [port/linux/README.md](port/linux/README.md#packaging).
+- **Linux and the Steam Deck:** unzip, and open `install.sh` in the
+  folder (on a Steam Deck, in Desktop Mode). It installs the game in
+  `~/Applications/OpenH1`, asks for your game's disc image or maps folder,
+  puts OpenH1 in the application menu and, on a Steam Deck, in Steam's
+  library for Game Mode. Or start `bin/openh1` where you unzipped it. The
+  game needs a GPU and driver with Vulkan 1.3. The folders are laid out as
+  a Unix prefix is (`bin/`, `lib/`, `share/`), for package managers too:
+  refer to "Steam Deck" and "Packaging" in
+  [port/linux/README.md](port/linux/README.md#steam-deck).
 - **Android:** unzip and install the APK. Refer to
   [port/android/README.md](port/android/README.md).
 

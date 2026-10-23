@@ -8,6 +8,7 @@ The release is a tree laid out as a Unix prefix is, which a package manager
 can copy to /usr (or /opt/<name>) as it is, and which a player unpacks
 anywhere and starts with bin/openh1:
 
+    install.sh                                 its installer (tools/linux_install.sh: the Steam Deck's)
     bin/openh1                                 the game
     lib/openh1/libSDL3.so.0                    its SDL (the rpath is $ORIGIN:$ORIGIN/../lib/openh1)
     share/openh1/brokers.txt                   internet play's brokers (network.brokers_file)
@@ -17,14 +18,17 @@ anywhere and starts with bin/openh1:
     share/licenses/openh1/                     the project's licence and those of what it carries
 
 The game finds its files from where it is (port/linux/src/install_layout.c).
+install.sh, opened in the unpacked tree, copies it to ~/Applications/OpenH1
+and gives it a menu entry and a Steam shortcut: the release's zips have it,
+the tree for a package (tree, below) has not.
 
 tree lays out a Linux build (build/linux_x86_64, or build/linux_arm64: the
 one of this computer's architecture unless --build names another) in a
 folder, for a package built from the sources: its contents go into the
 package's /usr, with the SDL the build brings (libSDL3.so.0 and
-SDL3-LICENSE.txt). zip writes the folder's files in name order, with their
-Unix modes (executables by their place, as GitHub's artifacts lose the
-modes), for unzip and the self-updater.
+SDL3-LICENSE.txt), without install.sh. zip writes the folder's files in
+name order, with their Unix modes (executables by their place, as GitHub's
+artifacts lose the modes), for unzip and the self-updater.
 """
 
 import argparse
@@ -42,6 +46,7 @@ NAME = "openh1"  # install_layout.h's INSTALL_NAME
 DESKTOP_ENTRY = ROOT / "port/assets/linux/openh1.desktop"
 ICONS = ROOT / "port/assets/icon/hicolor"  # openh1-<size>.png (tools/app_icon.py)
 BROKERS = ROOT / "port/assets/network/brokers.txt"
+INSTALLER = ROOT / "tools/linux_install.sh"  # the tree's install.sh
 DOCUMENTS = [(ROOT / "README.md", "README.md"), (ROOT / "port/linux/README.md", "README.linux.md")]
 PROJECT_LICENSE = ROOT / "LICENSE"  # the AGPL (earlier releases were CC0: LICENSES/)
 
@@ -81,10 +86,15 @@ def _copy(source: Path, destination: Path) -> None:
     shutil.copy2(source, destination)
 
 
-def stage_tree(dist: Path, executable: Path, library: Optional[Path], notices: Iterable[Tuple[Path, str]]) -> None:
+def stage_tree(dist: Path, executable: Path, library: Optional[Path], notices: Iterable[Tuple[Path, str]],
+               installer: bool = True) -> None:
     """The release's tree in dist: the executable as bin/openh1, SDL in
     lib/openh1 (none: the system's), and notices ((source, name) pairs: the
-    licences of what the build carries) in share/licenses/openh1."""
+    licences of what the build carries) in share/licenses/openh1; and, for
+    the release (not a package's /usr), its installer, install.sh, at its
+    top."""
+    if installer:
+        _copy(INSTALLER, dist / "install.sh")
     _copy(executable, dist / "bin" / NAME)
     if library:
         _copy(library, dist / "lib" / NAME / library.name)
@@ -102,8 +112,10 @@ def stage_tree(dist: Path, executable: Path, library: Optional[Path], notices: I
 
 def mode(name: str) -> int:
     """a file's mode in the zip, from its place: the executables and the
-    shared libraries of the tree are 0755"""
+    shared libraries of the tree, and its install.sh, are 0755"""
     parts = name.split("/")
+    if name == "install.sh":
+        return 0o755
     if parts[0] == "bin" and len(parts) == 2:
         return 0o755
     if ".so" in parts[-1] and parts[0] == "lib":
@@ -158,9 +170,9 @@ def main() -> int:
             parser.error(f"{args.build} has no build: enter ninja {args.build.name} first")
         if library.exists() and sdl_license.exists():
             stage_tree(args.folder, args.build / "halo", library,
-                       notices("linux") + [(sdl_license, sdl_license.name)])
+                       notices("linux") + [(sdl_license, sdl_license.name)], installer=False)
         else:
-            stage_tree(args.folder, args.build / "halo", None, notices("linux"))
+            stage_tree(args.folder, args.build / "halo", None, notices("linux"), installer=False)
         print(f"{args.build} -> {args.folder}", flush=True)
     elif args.command == "zip":
         write_zip(args.folder, args.output)
