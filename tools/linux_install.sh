@@ -170,7 +170,13 @@ file_mode() {
 
 # whether a folder has the player's files: config.toml, or maps (which the
 # game finds without regard to case, install_layout.c)
-has_maps() { [ -n "$(find "$1" -mindepth 1 -maxdepth 1 -iname maps -type d 2>/dev/null)" ]; }
+# (a maps folder of any case, or a link to one: the game follows it)
+has_maps() {
+	for maps in "$1"/[Mm][Aa][Pp][Ss]; do
+		[ -d "$maps" ] && return 0
+	done
+	return 1
+}
 in_use() { [ -f "$1/config.toml" ] || has_maps "$1"; }
 data_set() { grep -Eq '^[[:space:]]*data[[:space:]]*=[[:space:]]*"[^"]+"' "$1/config.toml" 2>/dev/null; }
 

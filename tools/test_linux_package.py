@@ -290,6 +290,22 @@ def test_frame_install_asks_for_maps_and_adds_to_steam(tmp_path):
     assert "Steam library artwork: 5 files" in output
 
 
+def test_install_takes_a_linked_maps_folder(tmp_path):
+    """a maps folder that is a link to one elsewhere (as a Frame's ~/apps/halo-vr/maps -> ~/apps/halo/maps) is the
+    game's maps: install.sh neither asks for maps nor says there are none"""
+    package = frame_package_folder(tmp_path / "home/Downloads/halo-vr-frame")
+    home = tmp_path / "home"
+    elsewhere = home / "apps/halo/maps"
+    elsewhere.mkdir(parents=True)
+    (elsewhere / "a10.map").write_text("map")
+    run_install(package, home, tools=())
+    installed = home / "apps/halo-vr"
+    (installed / "maps").symlink_to(elsewhere)
+    output = run_install(package, home)
+    assert "No maps" not in output
+    assert not any("getexistingdirectory" in call for call in calls(home))
+    assert (installed / "maps").is_symlink() and (installed / "maps/a10.map").read_text() == "map"
+
 def test_frame_update_keeps_the_player_files(tmp_path):
     """a newer Frame package replaces what changed (halo, kept as halo.prev), removes what it no longer has, and
     never touches the player's files; a package whose files differ from its SHA256SUMS installs nothing"""

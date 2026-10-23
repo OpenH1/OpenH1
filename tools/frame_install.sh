@@ -93,6 +93,8 @@ fi
 echo "Copying the package to $host"
 remote=$(on_frame 'mktemp -d /tmp/openh1-install.XXXXXX')
 case $remote in /tmp/openh1-install.*) ;; *) echo "$host: no folder made in /tmp" >&2; remote=; exit 1 ;; esac
-tar -C "$(dirname "$package")" -cf - "$(basename "$package")" | on_frame "tar -xmf - -C '$remote'"
+# (without macOS's extended attributes, which the Frame's tar warns of)
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$(dirname "$package")" -cf - "$(basename "$package")" |
+	on_frame "tar -xmf - -C '$remote'"
 on_frame "cat > '$remote/install.sh'" < "$installer"
 on_frame "bash '$remote/install.sh' --package '$remote/$(basename "$package")' --batch"
