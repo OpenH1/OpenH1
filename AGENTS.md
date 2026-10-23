@@ -207,6 +207,7 @@ python -m pytest -q tools/test_metal_post_shaders.py        # the Metal backend'
 python -m pytest -q tools/test_hdr.py                       # display.hdr's contract: the draws' classification, the reference curves (docs/hdr.md)
 python -m pytest -q tools/test_hdr_backends.py              # display.hdr across the backends: Vulkan's shaders (via SPIRV-Cross) on a Mac's GPU against the reference and Metal's
 python -m pytest -q tools/test_macos_app.py                 # the macOS app's Info.plist, entitlements, signature
+python -m pytest -q tools/test_ios_app.py                   # the iOS app's Info.plist, entitlements, the guest's code section
 build/macos/halo_replay <recording> --shots <dir>           # a recorded render stream replayed (ninja macos_replay;
                                                             # HALO_RENDER_RECORD: port/macos/README.md)
 python -m pytest -q tools/test_gpu_isa.py                  # tools/gpu_isa.py (a shader's GPU code, on an M1 Mac)
