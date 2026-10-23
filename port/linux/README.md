@@ -314,7 +314,7 @@ switching grenades on A, action and reload on B and the flashlight on X.
 | move | W, A, S, D |
 | aim | mouse (direct aim) |
 | fire | left mouse button |
-| throw a grenade | right mouse button, G |
+| throw a grenade | G |
 | jump (and skip a cutscene) | space |
 | crouch | left ctrl, C (C alone in the web build) |
 | melee | F, mouse button 4 |
@@ -323,7 +323,7 @@ switching grenades on A, action and reload on B and the flashlight on X.
 | change the weapon | mouse wheel, 1 |
 | change the grenade | X |
 | flashlight | Q |
-| zoom | Z, middle mouse button |
+| zoom | right mouse button, Z |
 | show the scores (hold) | tab |
 | pause menu | escape |
 | screenshot | F10 |
