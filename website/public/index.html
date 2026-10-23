@@ -260,6 +260,9 @@ h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stret
 .dl .alt a { color: var(--text); }
 .dl .alt .cmd { display: block; margin-top: 6px; padding: 9px 12px 9px calc(12px + 2ch); text-indent: -2ch; border-radius: 6px; background: rgba(238, 244, 234, 0.04); box-shadow: inset 0 0 0 1px var(--line-soft); font-size: 12px; line-height: 1.5; white-space: normal; overflow-wrap: anywhere; user-select: all; -webkit-user-select: all; }
 .dl .alt .cmd::before { content: "> "; color: var(--green); }
+.dl .maps { margin-top: auto; padding-top: 10px; color: var(--muted); font-size: 14px; text-underline-offset: 3px; }
+.dl .maps:hover { color: var(--green); }
+.dl .alt + .maps { margin-top: 0; }
 
 footer { margin-top: clamp(96px, 12vw, 160px); border-top: 1px solid var(--line-soft); padding: 40px 0 48px; color: var(--muted); font-size: 14px; }
 footer .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px 24px; align-items: center; }
@@ -570,7 +573,7 @@ footer .legal a { color: var(--soft); }
         </div>
         <ol>
           <li>Download the game for your machine, <a href="#get">below</a>.</li>
-          <li>Start the game and choose your disc image (<code>.iso</code> or <code>.xiso</code>) when it asks.</li>
+          <li>Start the game and choose your disc image (<code>.iso</code> or <code>.xiso</code>), or its maps folder, when it asks. <a href="/maps" style="color:var(--green)">How to get your maps</a>.</li>
           <li>It copies out its maps once. Then you're in.</li>
         </ol>
       </div>
@@ -602,6 +605,7 @@ footer .legal a { color: var(--soft); }
             <code class="cmd">scoop bucket add openh1 https://github.com/<wbr>OpenH1/<wbr>scoop-bucket</code>
             <code class="cmd">scoop install openh1</code>
           </div>
+          <a class="maps" href="/maps#give">Need your maps?</a>
         </article>
         <article data-os="linux">
           <h3>Steam Deck</h3>
@@ -612,6 +616,7 @@ footer .legal a { color: var(--soft); }
             <li>Open <code>install.sh</code> in that folder, and choose your game's disc image or maps folder when it asks.</li>
             <li>Play OpenH1 from Game Mode.</li>
           </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
         </article>
         <article data-os="mac">
           <h3>Mac</h3>
@@ -621,6 +626,7 @@ footer .legal a { color: var(--soft); }
             <li>Open the downloaded <code>.dmg</code>.</li>
             <li>Drag OpenH1 to Applications, and open it from there.</li>
           </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
         </article>
         <article data-os="android">
           <h3>Android</h3>
@@ -631,6 +637,7 @@ footer .legal a { color: var(--soft); }
             <li>When Android asks, allow your browser to install apps, then choose <em>Install</em>.</li>
             <li>Copy your disc image to the phone, open OpenH1 and choose it. It copies out its maps once.</li>
           </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
         </article>
         <article>
           <h3>Steam Frame</h3>
@@ -641,6 +648,7 @@ footer .legal a { color: var(--soft); }
             <li>Open <code>install.sh</code> in that folder, and choose your game's maps folder when it asks.</li>
             <li>Start SteamVR, then OpenH1 VR from your Library.</li>
           </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
         </article>
       </div>
     </div>

@@ -11,7 +11,7 @@ by `tools/frame_package.py` for a Steam Frame. Each release has it as
 | --- | --- |
 | `halo` | The game |
 | `libSDL3.so.0` | SDL3, which the game finds beside it |
-| `halo-vr.sh` | The launcher: the target of the Steam shortcut. Its comments list the environment it gives the game. |
+| `halo-vr.sh` | The launcher: the target of the Steam shortcut, which installs the game's updates when it quits for one. Its comments list the environment it gives the game. |
 | `openh1.png` | The icon of the menu entry and the Steam shortcut |
 | `openh1.desktop` | The menu entry, which the install makes the installed game's |
 | `steam-*.png` | Steam's library artwork for the shortcut: the capsule, the wide capsule, the hero, the logo and the icon |
@@ -41,7 +41,14 @@ disc (or the folder that contains it) and copies the maps, adds the game
 to Steam (SteamOS's `steamos-add-to-steam`) as OpenH1 VR, and gives it
 its library artwork (in Steam's grid folder; a running Steam may show it
 only after it restarts). Start SteamVR, then the game from the library.
-To update, do the same with a newer zip.
+The game updates itself: started from Steam (through `halo-vr.sh`), it
+looks for a newer release, downloads its package while you play, and
+asks at the main menu, in the headset, whether to update. UPDATE quits
+the game; `halo-vr.sh` installs the package with its `install.sh` (as
+below) and starts the new version. NOT NOW asks again at the next start.
+Settings > Network Setup > Check for Updates turns it off. (Refer to
+"Updates" in `port/linux/README.md` of the repository.) To update by hand,
+do the same as the first install with a newer zip.
 
 The install refuses while the game runs, and never starts it. It checks
 the files against `SHA256SUMS`; each goes in as `<name>.new`, then takes
@@ -81,7 +88,7 @@ Remove the shortcut in Steam (its Properties > Manage > Remove
 non-Steam game from your library), then the program's files:
 
 ```sh
-cd ~/apps/halo-vr && cut -c 67- SHA256SUMS | xargs rm -f -- && rm -f SHA256SUMS .steam-art halo.prev libSDL3.so.0.prev halo-vr.sh.prev ~/.local/share/applications/openh1-vr.desktop
+cd ~/apps/halo-vr && cut -c 67- SHA256SUMS | xargs rm -f -- && rm -rf SHA256SUMS .steam-art update.partial update-ready halo.prev libSDL3.so.0.prev halo-vr.sh.prev ~/.local/share/applications/openh1-vr.desktop
 ```
 
 That keeps the maps, `config.toml`, `halo-vr.env` and the logs; remove

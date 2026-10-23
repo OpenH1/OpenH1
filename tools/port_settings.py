@@ -26,6 +26,8 @@ MODS = "main_menu/mods"
 MOD_ROWS = 11
 MODS_ITEM_PLACE = (192, 391)
 QUIT_ITEM_PLACE = (192, 427)
+# the Steam Frame's update question, over the main menu (_update)
+UPDATE = "main_menu/update"
 YES_NO = [("YES", "true"), ("NO", "false")]
 ON_OFF = [("ON", "true"), ("OFF", "false")]
 # the multiplayer armor colors, in the profile's order (player_profile.c)
@@ -1914,6 +1916,9 @@ def multiplayer_files() -> dict:
         TEAMPLAY_EDIT.replace("/", ".") + ".port.xml": head + _teamplay_options_extras() + ["</menus>", ""],
         MODS.replace("/", ".") + ".xml": [head[0], "<!-- The port's Mods screen, in the PC version's style "
                                           "(tools/port_settings.py) -->", head[2]] + _mods() + ["</menus>", ""],
+        UPDATE.replace("/", ".") + ".xml": [head[0], "<!-- The Steam Frame's update question, in the style of the "
+                                            "PC version's Quit (tools/port_settings.py) -->", head[2]]
+        + _update() + ["</menus>", ""],
     }
 
 
@@ -2015,9 +2020,12 @@ def _mods() -> list:
     it; OK keeps it all (load_order.toml) and plays them, Cancel forgets it
     (menu_functions.c)"""
     base = MODS
+    # (its game data input notes the main menu shown, over which the Steam
+    # Frame's update question opens: _update)
     lines = _widget("main_menu/main_menu_item_mods",
                     [("type", "text"), ("width", 256), ("height", 33), ("bitmap", "main_menu/menu_mods")],
-                    [f'<on event="a" open="{base}/mods_screen"/>', f'<on event="start" open="{base}/mods_screen"/>',
+                    ['<data input="port update question"/>',
+                     f'<on event="a" open="{base}/mods_screen"/>', f'<on event="start" open="{base}/mods_screen"/>',
                      '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _widget(f"{base}/mods_screen", [("width", 640), ("height", 480),
                                              ("flags", "pass_unhandled_to_focused_child pause_game"),
@@ -2079,6 +2087,40 @@ def _mods() -> list:
                                                               '<on event="start" run="port mods move down"/>'])
     lines += _button(f"{base}/button_ok", 1, ['<on event="a" run="port mods save" back="true"/>',
                                               '<on event="start" run="port mods save" back="true"/>'])
+    return lines
+
+
+def _update() -> list:
+    """the Steam Frame's update question (port/linux/src/updater.c, which a
+    system dialog would not show in the headset), laid out as the PC
+    version's Quit is (ce/main_menu.quit_select.xml): its box, its header,
+    and its two buttons, UPDATE ("port update now": the game quits, and its
+    launcher installs the update and starts it again) and NOT NOW (back to
+    the main menu, which menu_functions.c's pc_menu_update_question_open
+    opened it over); B is NOT NOW. To stop the questions: Network Setup's
+    CHECK FOR UPDATES"""
+    base = UPDATE
+    lines = _widget(f"{base}/update_screen",
+                    [("type", "text"), ("controller", 1), ("left", 180), ("top", 160), ("width", 280), ("height", 160),
+                     ("flags", "pass_unhandled_to_focused_child"), ("bitmap", "bitmaps/alert_bkd"),
+                     ("string_list", f"{base}/update_prompt"), ("font", "ui\\small_ui"), ("color", "#FF2896FF"),
+                     ("align", "center"), ("text_x", -10), ("text_y", 40)],
+                    ['<on event="b" back="true"/>', '<on event="back" back="true"/>',
+                     f'<child widget="{base}/button_bar" x="182" y="293"/>',
+                     f'<child widget="{base}/header_update" x="182" y="164"/>'])
+    lines += _widget(f"{base}/header_update",
+                     [("type", "text"), ("controller", 1), ("width", 200), ("height", 20), ("text", "NEW VERSION"),
+                      ("font", "ui\\large_ui"), ("color", "#FF2896FF")], [])
+    lines += _widget(f"{base}/button_bar",
+                     [("type", "column_list"), ("width", 256), ("height", 20),
+                      ("flags", "pass_unhandled_to_focused_child up_down_tabs_items left_right_tabs_items")],
+                     [f'<child widget="{base}/button_update"/>', f'<child widget="{base}/button_later" x="128"/>'])
+    lines += _text_button(f"{base}/button_update", "UPDATE", ['<on event="a" run="port update now"/>',
+                                                             '<on event="start" run="port update now"/>'])
+    lines += _text_button(f"{base}/button_later", "NOT NOW", ['<on event="a" back="true"/>',
+                                                              '<on event="start" back="true"/>'])
+    lines += _strings(f"{base}/update_prompt",
+                      ["A new version is ready.\\nUpdate now? The game will\\nclose, update and start again."])
     return lines
 
 

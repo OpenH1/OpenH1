@@ -127,12 +127,12 @@ def test_names_agree():
 
 def test_asset_names_agree():
     """each updating build's zip is the one its self-updater asks for (UPDATE_NAME[-debug].zip): Windows', the
-    x86-64 build's, its VR build's and the 64-bit ARM build's, as tools/ci_build.py names their artifacts,
-    tools/release_names.py the release's files, and the workflow publishes them; there is no 32-bit build, nor
-    a flat release"""
+    x86-64 build's, its VR build's, the 64-bit ARM build's and the Steam Frame's (test_frame_release_names_agree),
+    as tools/ci_build.py names their artifacts, tools/release_names.py the release's files, and the workflow
+    publishes them; there is no 32-bit build, nor a flat release"""
     updater = (ROOT / "port/linux/src/updater.c").read_text()
     platforms = set(re.findall(r'#define UPDATE_PLATFORM "([^"]+)"', updater))
-    assert platforms == {"windows", "linux-x86_64", "linux-x86_64-vr", "linux-arm64"}
+    assert platforms == {"windows", "linux-x86_64", "linux-x86_64-vr", "linux-arm64", "steam-frame-vr"}
     names = re.findall(r'#define UPDATE_PLATFORM "([^"]+)"\n#define UPDATE_NAME "([^"]+)"', updater)
     assert dict(names) == {platform: release_names.NAMES[platform] for platform in platforms}
     assert '#define UPDATE_ASSET_RELEASE UPDATE_NAME ".zip"' in updater
@@ -156,15 +156,27 @@ def test_asset_names_agree():
 
 def test_frame_release_names_agree():
     """the 64-bit ARM VR build is the Steam Frame's package (tools/frame_package.py), which the release has as
-    halo-steam-frame-vr-release.zip, as it is: no UPDATE_PLATFORM names it (frame_install.sh updates it, never
-    the self-updater), tools/ci_build.py names it, and the workflow builds it on master, uploads it and publishes
-    it with the zip's own modes"""
+    halo-steam-frame-vr-release.zip, as it is, and which its self-updater (updater.c's UPDATER_PACKAGE) asks for
+    as OpenH1-Steam-Frame.zip and unpacks to update.partial/<the package's folder>, where its launcher installs
+    it: tools/ci_build.py names it, and the workflow builds it on master, uploads it and publishes it with the
+    zip's own modes"""
+    import frame_package
+
     updater = (ROOT / "port/linux/src/updater.c").read_text()
-    platforms = set(re.findall(r'#define UPDATE_PLATFORM "([^"]+)"', updater))
+    platforms = dict(re.findall(r'#define UPDATE_PLATFORM "([^"]+)"\n#define UPDATE_NAME "([^"]+)"', updater))
     name = ci_build.dist_name("linux_arm64", "release", True)
     assert name == "halo-steam-frame-vr-release"
-    assert name[len("halo-"):-len("-release")] not in platforms
+    platform = name[len("halo-"):-len("-release")]
+    assert platforms[platform] == release_names.NAMES[platform] == release_names.published(name)
     assert "linux-arm64-vr" not in platforms
+    frame = updater[updater.index("#elif defined(HALO_VR)\n"):updater.index("#elif defined(__aarch64__)")]
+    assert f'#define UPDATE_PLATFORM "{platform}"' in frame
+    assert f'#define UPDATER_PACKAGE "{frame_package.NAME}"' in frame
+    launcher = (ROOT / "port/linux/frame/halo-vr.sh").read_text()
+    assert f"update.partial/{frame_package.NAME}/install.sh" in launcher
+    assert '#define UPDATE_DIRECTORY "update.partial"' in updater
+    for name_in_both in ("HALO_FRAME_LAUNCHER", "HALO_FRAME_UPDATED", "update-ready"):
+        assert name_in_both in updater and name_in_both in launcher, name_in_both
     workflow = (ROOT / ".github/workflows/build.yml").read_text()
     assert "run: python3 tools/ci_build.py linux_arm64 release --vr" in workflow
     assert f"name: {name}" in workflow and f"path: dist/{name}" in workflow
@@ -278,6 +290,22 @@ def test_frame_install_asks_for_maps_and_adds_to_steam(tmp_path):
     assert "Steam library artwork: 5 files" in output
 
 
+def test_install_takes_a_linked_maps_folder(tmp_path):
+    """a maps folder that is a link to one elsewhere (as a Frame's ~/apps/halo-vr/maps -> ~/apps/halo/maps) is the
+    game's maps: install.sh neither asks for maps nor says there are none"""
+    package = frame_package_folder(tmp_path / "home/Downloads/halo-vr-frame")
+    home = tmp_path / "home"
+    elsewhere = home / "apps/halo/maps"
+    elsewhere.mkdir(parents=True)
+    (elsewhere / "a10.map").write_text("map")
+    run_install(package, home, tools=())
+    installed = home / "apps/halo-vr"
+    (installed / "maps").symlink_to(elsewhere)
+    output = run_install(package, home)
+    assert "No maps" not in output
+    assert not any("getexistingdirectory" in call for call in calls(home))
+    assert (installed / "maps").is_symlink() and (installed / "maps/a10.map").read_text() == "map"
+
 def test_frame_update_keeps_the_player_files(tmp_path):
     """a newer Frame package replaces what changed (halo, kept as halo.prev), removes what it no longer has, and
     never touches the player's files; a package whose files differ from its SHA256SUMS installs nothing"""
@@ -308,6 +336,95 @@ def test_frame_update_keeps_the_player_files(tmp_path):
                             env=install_environment(home))
     assert result.returncode == 4 and "differs from its SHA256SUMS" in result.stderr
     assert (installed / "halo").read_text() == "a newer halo\n"
+
+
+def frame_launcher_run(installed, tmp_path, **environment):
+    """halo-vr.sh run as Steam runs it (no terminal: its output to halo-vr.log), with stand-ins for the programs
+    install.sh runs"""
+    stand_ins = tmp_path / "launcher-stand-ins"
+    stand_ins.mkdir(exist_ok=True)
+    (stand_ins / "pgrep").write_text("#!/bin/sh\nexit 1\n")
+    (stand_ins / "pgrep").chmod(0o755)
+    commands = command_folder(tmp_path / "commands")
+    result = subprocess.run(["sh", str(installed / "halo-vr.sh")], capture_output=True, text=True,
+                            stdin=subprocess.DEVNULL,
+                            env={"HOME": str(tmp_path / "home"), "PATH": f"{stand_ins}:{commands}", **environment})
+    return result, (installed / "halo-vr.log").read_text()
+
+
+# the Frame's package's own launcher (port/linux/frame/halo-vr.sh), for frame_package_folder's extra
+LAUNCHER = {"halo-vr.sh": (ROOT / "port/linux/frame/halo-vr.sh").read_text()}
+# a stand-in for the game in the Frame's package: it notes how it was started, and, as the self-updater does when
+# the player chooses UPDATE, it unpacks the package UPDATE_TO names into update.partial/ (if there is one, and
+# this run was not just updated) and writes update-ready, then quits
+FRAME_GAME = """#!/bin/sh
+echo "{name} started: launcher=$HALO_FRAME_LAUNCHER updated=${{HALO_FRAME_UPDATED:-}} partial=$([ -d update.partial ] && echo yes || echo no)" >> ../game-runs.txt
+if [ -n "${{UPDATE_TO:-}}" ] && [ -z "${{HALO_FRAME_UPDATED:-}}" ]; then
+	mkdir -p update.partial
+	cp -R "$UPDATE_TO" update.partial/halo-vr-frame
+	echo "build 2" > update-ready
+fi
+"""
+
+
+def test_frame_launcher_installs_an_update(tmp_path):
+    """the Steam Frame's self-update: the game (started by halo-vr.sh, HALO_FRAME_LAUNCHER) unpacks the new package into
+    update.partial/halo-vr-frame, writes update-ready and quits; halo-vr.sh then installs it with the package's own
+    install.sh (its SHA256SUMS checked, the old halo kept as halo.prev, the player's files untouched), deletes the
+    download and starts the new version (HALO_FRAME_UPDATED, so that it does not look again)"""
+    home = tmp_path / "home"
+    old = frame_package_folder(tmp_path / "old/halo-vr-frame", game=FRAME_GAME.format(name="old"), extra=LAUNCHER)
+    run_install(old, home, tools=())
+    installed = home / "apps/halo-vr"
+    player = {"config.toml": "[vr]\n", "halo-vr.env": "HALO_VR=1\n", "maps/a10.map": "mine"}
+    for name, text in player.items():
+        (installed / name).parent.mkdir(parents=True, exist_ok=True)
+        (installed / name).write_text(text)
+    new = frame_package_folder(tmp_path / "new/halo-vr-frame", game=FRAME_GAME.format(name="new"),
+                               extra={**LAUNCHER, "brokers.txt": "newer brokers\n"})
+
+    result, log = frame_launcher_run(installed, tmp_path, UPDATE_TO=str(new))
+    assert result.returncode == 0, result.stdout + result.stderr + log
+    runs = (home / "apps/game-runs.txt").read_text().splitlines()
+    assert runs == [f"old started: launcher={installed}/halo-vr.sh updated= partial=no",
+                    f"new started: launcher={installed}/halo-vr.sh updated=1 partial=no"]
+    assert "halo-vr.sh: installing the update" in (installed / "halo-vr.log.prev").read_text()
+    assert "  halo: updated, the previous kept as halo.prev" in (installed / "halo-vr.log.prev").read_text()
+    assert (installed / "halo").read_bytes() == (new / "halo").read_bytes()
+    assert (installed / "halo.prev").read_bytes() == (old / "halo").read_bytes()
+    assert (installed / "brokers.txt").read_text() == "newer brokers\n"
+    assert (installed / "SHA256SUMS").read_bytes() == (new / "SHA256SUMS").read_bytes()
+    for name, text in player.items():
+        assert (installed / name).read_text() == text, name
+    assert not (installed / "update.partial").exists() and not (installed / "update-ready").exists()
+
+
+def test_frame_launcher_without_an_update(tmp_path):
+    """halo-vr.sh deletes a download the player did not take (update.partial without update-ready) before it starts
+    the game, and starts it once; a download that differs from its SHA256SUMS is not installed: the game starts
+    again as it was"""
+    home = tmp_path / "home"
+    package = frame_package_folder(tmp_path / "pkg/halo-vr-frame", game=FRAME_GAME.format(name="game"), extra=LAUNCHER)
+    run_install(package, home, tools=())
+    installed = home / "apps/halo-vr"
+    (installed / "update.partial/halo-vr-frame").mkdir(parents=True)
+    result, _ = frame_launcher_run(installed, tmp_path)
+    assert result.returncode == 0
+    assert (home / "apps/game-runs.txt").read_text().splitlines() == [
+        f"game started: launcher={installed}/halo-vr.sh updated= partial=no"]
+    assert not (installed / "update.partial").exists()
+
+    (home / "apps/game-runs.txt").unlink()
+    broken = frame_package_folder(tmp_path / "broken/halo-vr-frame", game=FRAME_GAME.format(name="broken"))
+    (broken / "halo").write_text("not what SHA256SUMS says\n")
+    result, log = frame_launcher_run(installed, tmp_path, UPDATE_TO=str(broken))
+    assert result.returncode == 0
+    assert "differs from its SHA256SUMS" in (installed / "halo-vr.log.prev").read_text()
+    assert "the update was not installed; starting the game as it was" in (installed / "halo-vr.log.prev").read_text()
+    assert [line.split(":")[0] for line in (home / "apps/game-runs.txt").read_text().splitlines()] == \
+        ["game started", "game started"]
+    assert (installed / "halo").read_bytes() == (package / "halo").read_bytes()
+    assert not (installed / "update.partial").exists()
 
 
 def test_frame_install_from_a_computer(tmp_path):

@@ -132,7 +132,8 @@ macOS, download the new release. A Scoop install is updated by Scoop
 The port does not include the game data. You need your own, legally
 obtained copy of Halo: Combat Evolved for the original Xbox: an Xbox disc
 image (`.xiso` or `.iso`) made from a disc you own. OpenH1 does not supply
-the game or say where to get it. All versions of the game operate. The maps of the European (PAL) version were made for a slower
+the game or say where to get it. How to make a disc image of your disc,
+and how each build takes it: [openh1.com/maps](https://openh1.com/maps). All versions of the game operate. The maps of the European (PAL) version were made for a slower
 console. The port changes them to play as the North American (NTSC) maps do,
 so players of the two versions can play together.
 

@@ -62,6 +62,14 @@ begin" makes two players, player 1 on its profile; "port coop player 2"
 gives player 2 the profile chosen and the controller that chose it; then the
 campaign's New Game and difficulty start the game for both.
 
+The update question (the Steam Frame's self-updater, port/linux/src/updater.c,
+which can show no system dialog in the headset): "port update question",
+the main menu's MODS item's game data input, notes that the main menu is
+shown; pc_menu_update_question_open, from the updater between frames, then
+opens main_menu/update/update_screen over it, whose UPDATE runs "port update
+now" (updater_update_now: the game quits, and its launcher installs the
+update).
+
 The rest are the PC version's, which its menus (port/assets/menus/ce)
 name and the Xbox's has not: they do nothing yet, and succeed, so that what
 their handlers open opens.
@@ -112,6 +120,7 @@ int platform_binding_capture_poll(int *input);
 void halo_input_name(int input, char *name, unsigned int size);
 void halo_input_shown_name(char const *binding, char *shown, unsigned int size);
 short pc_menu_string_index(long definition_index);
+void updater_update_now(void);
 /* cseries_windows.c's */
 unsigned long system_milliseconds(void);
 
@@ -2757,6 +2766,45 @@ static void mods_update(struct widget_instance *list)
 			icon->animation.current_frame_index = status == _port_mod_out_of_order ? 1 : 2;
 	}
 	mods_details_show(list->parameters.list.extended_description, count ? mods_screen.chosen : NONE, count);
+}
+
+/* ---------- the update question (updater.c's, the Steam Frame's) */
+
+static struct
+{
+	/* the main menu drawn since the updater last looked, and its tag */
+	boolean main_menu_shown;
+	long main_menu_tag;
+} update_question = { FALSE, NONE };
+
+/* "port update question": the MODS item, drawn on the main menu */
+static void update_question_note(struct widget_instance *widget)
+{
+	struct widget_instance *screen = widget;
+
+	while (screen->parent)
+		screen = screen->parent;
+	update_question.main_menu_shown = TRUE;
+	update_question.main_menu_tag = screen->definition_tag_index;
+}
+
+/* the updater's, between frames (not while the widgets are drawn, which
+opening a screen would free): the question opened over the main menu, B
+going back to it, if the main menu was drawn last; 1 when it was opened,
+or cannot be */
+int pc_menu_update_question_open(void)
+{
+	boolean shown = update_question.main_menu_shown;
+
+	update_question.main_menu_shown = FALSE;
+	if (!shown)
+		return 0;
+	if (!ui_widget_load_by_name_or_tag("pc\\main_menu\\update\\update_screen", NONE, NULL, NONE,
+		update_question.main_menu_tag, NONE, NONE))
+	{
+		platform_log("update: the menus have no update question (main_menu/update/update_screen)");
+	}
+	return 1;
 }
 
 /* "port mods save" (OK): kept, and played at once (port_mods_save keeps
@@ -6410,6 +6458,10 @@ boolean pc_menu_event_function_invoke(
 		{
 			return mods_save();
 		}
+		else if (!strcmp(name, "port update now"))
+		{
+			updater_update_now();
+		}
 		else if (!strcmp(name, "controls screen init") || !strcmp(name, "controls screen defaults"))
 		{
 			return controls_load(!strcmp(name, "controls screen defaults"));
@@ -6593,6 +6645,8 @@ void pc_menu_game_data_function_invoke(
 		controls_update(widget);
 	else if (!strcmp(name, "port mods update"))
 		mods_update(widget);
+	else if (!strcmp(name, "port update question"))
+		update_question_note(widget);
 	else if (!strcmp(name, "color picker update"))
 		color_list_update(widget);
 	else if (!strcmp(name, "3wide player profile list update"))

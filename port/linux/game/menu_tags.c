@@ -393,6 +393,8 @@ static char const *const port_function_names[] =
 	/* (the main menu's Mods: menu_functions.c) */
 	"port mods init", "port mods close", "port mods toggle", "port mods move up", "port mods move down",
 	"port mods save",
+	/* (the Steam Frame's update question: menu_functions.c) */
+	"port update now",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -414,8 +416,9 @@ static char const *const port_game_data_input_names[] =
 	/* (the profile settings' picture: the Xbox's of the button settings,
 	on Gamepad Setup's row) */
 	"port gamepad layout preview",
-	/* (the main menu's Mods) */
-	"port mods update",
+	/* (the main menu's Mods; its item notes the main menu shown, for the
+	Steam Frame's update question) */
+	"port mods update", "port update question",
 	/* (network co-op's pause menu's FRIENDLY FIRE: its text, ON or OFF) */
 	"port coop friendly fire text",
 };

@@ -28,7 +28,8 @@ self-updater compares (and the web site's version.json names).
 For linux_x86_64, into dist/halo-linux-x86_64-vr-<config>/, a build of its
 own, which updates to the release's VR build. For linux_arm64, the Steam
 Frame's package (tools/frame_package.py, which its install.sh,
-tools/linux_install.sh, installs; it does not update itself), zipped as
+tools/linux_install.sh, installs, and which updates itself to the
+release's: updater.c's UPDATER_PACKAGE), zipped as
 dist/halo-steam-frame-vr-<config>/halo-steam-frame-vr-<config>.zip, which
 the release has as it is.
 
@@ -86,7 +87,7 @@ def dist_name(platform: str, config: str, vr: bool = False) -> str:
     underscore a hyphen, and -vr after it for the VR build (linux-x86_64,
     linux-x86_64-vr, linux-arm64: updater.c's UPDATE_PLATFORM); but the 64-bit
     ARM VR build is the Steam Frame's package, halo-steam-frame-vr-<config>
-    (no UPDATE_PLATFORM: frame_install.sh updates it)"""
+    (UPDATE_PLATFORM steam-frame-vr: it updates to that package)"""
     if platform == "linux_arm64" and vr:
         return f"halo-steam-frame-vr-{config}"
     if platform.startswith("linux"):

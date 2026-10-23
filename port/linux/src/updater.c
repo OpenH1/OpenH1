@@ -30,6 +30,25 @@ OpenH1-Linux-ARM64[-debug].zip (tools/release_names.py), and the game's folder
 is its root. A game a package manager installed, or one in a folder the
 player cannot write to, never looks for updates: its package manager
 updates it; nor does a game outside a tree (a build's folder).
+
+The Steam Frame's VR build (UPDATER_PACKAGE) is a package of its own in
+~/apps/halo-vr (tools/frame_package.py), which Steam starts through its
+launcher, halo-vr.sh. Started by it (HALO_FRAME_LAUNCHER), the game looks for
+the latest release's OpenH1-Steam-Frame.zip as the others do, then
+downloads and unpacks it in the background (update.partial/halo-vr-frame),
+while the game plays. Once it is there, the game asks in its own menus, at
+the main menu (a system dialog would show nowhere in the headset, and
+stops the game under gamescope, where the Frame runs it):
+
+- Update: update-ready is written beside the game, and the game quits; the
+  launcher sees it, installs the package with the package's own install.sh
+  (tools/linux_install.sh: its SHA256SUMS checked, each file put in place
+  by a rename, the player's files untouched), and starts the new game.
+- Not now: nothing, until the next start (the launcher deletes the
+  download).
+
+Settings > Network Setup > Check for Updates (update.auto) stops it
+looking.
 */
 
 #include "platform.h"
@@ -52,11 +71,14 @@ worker; the macOS app is replaced by its disk image) */
 #define UPDATE_PLATFORM "linux-x86_64-vr"
 #define UPDATE_NAME "OpenH1-Linux-VR"
 #elif defined(HALO_VR)
-/* (none: the 64-bit ARM VR build is the Steam Frame's, installed and updated
-as a package of its own, tools/frame_package.py and frame_install.sh, with
-its launcher and its checksums: the releases have it as
-OpenH1-Steam-Frame.zip, not a tree this could unpack, and the
-desktop build would replace its executable) */
+/* the 64-bit ARM VR build, the Steam Frame's: a package of its own
+(tools/frame_package.py: OpenH1-Steam-Frame.zip, the game beside its
+launcher and checksums, not a tree), which it updates to as the package's
+install.sh installs it (UPDATER_PACKAGE, below), never to the desktop
+build */
+#define UPDATE_PLATFORM "steam-frame-vr"
+#define UPDATE_NAME "OpenH1-Steam-Frame"
+#define UPDATER_PACKAGE "halo-vr-frame"
 #elif defined(__aarch64__)
 /* the 64-bit ARM build (port/linux/host) */
 #define UPDATE_PLATFORM "linux-arm64"
@@ -454,6 +476,70 @@ static long updater_latest_release(void)
 	return build;
 }
 
+#ifdef UPDATER_PACKAGE
+static int updater_unpack(const char *zip_path, int downloaded, char names[][256], int *name_count, char *error,
+	size_t error_size);
+
+/* the Frame's: the release's package downloaded (or debug.update_from's zip)
+and unpacked into update.partial/, where the launcher's install takes it
+(update.partial/halo-vr-frame, with its install.sh, SHA256SUMS and
+launcher); 1 when it is there */
+static int updater_prepare_package(void)
+{
+	static char names[MAXIMUM_UPDATE_FILES][256];
+	static const char *const needed[] = { "install.sh", "SHA256SUMS", "halo-vr.sh", "halo" };
+	char partial[1200], zip_path[1200], url[512], error[512] = "";
+	const char *local_zip = config_string("debug.update_from");
+	int name_count = 0;
+	size_t index;
+
+	updater_path(partial, sizeof(partial), UPDATE_DIRECTORY);
+	if (!update_make_directory(partial))
+	{
+		platform_log("update: could not make %s (is the game's folder read-only?)", partial);
+		return 0;
+	}
+	if (local_zip[0])
+	{
+		snprintf(zip_path, sizeof(zip_path), "%s", local_zip);
+	}
+	else
+	{
+		updater_partial_path(zip_path, sizeof(zip_path), UPDATE_ASSET);
+		snprintf(url, sizeof(url), "https://github.com/" UPDATE_REPOSITORY "/releases/download/build-%ld/%s",
+			updater_latest_build, UPDATE_ASSET);
+		platform_log("update: downloading build %ld (%s)", updater_latest_build, UPDATE_ASSET);
+		if (!update_download(url, zip_path, MAXIMUM_UPDATE_SIZE, NULL, NULL, error, sizeof(error)))
+		{
+			platform_log("update: could not download build %ld: %s", updater_latest_build, error);
+			update_delete_file(zip_path);
+			return 0;
+		}
+	}
+	if (!updater_unpack(zip_path, !local_zip[0], names, &name_count, error, sizeof(error)))
+	{
+		platform_log("update: could not unpack build %ld: %s", updater_latest_build, error);
+		return 0;
+	}
+	for (index = 0; index < sizeof(needed) / sizeof(needed[0]); index++)
+	{
+		char path[1200];
+
+		updater_partial_path(path, sizeof(path), UPDATER_PACKAGE "/");
+		snprintf(path + strlen(path), sizeof(path) - strlen(path), "%s", needed[index]);
+		if (!SDL_GetPathInfo(path, NULL))
+		{
+			platform_log("update: build %ld's download is not the Steam Frame's package (no " UPDATER_PACKAGE "/%s)",
+				updater_latest_build, needed[index]);
+			return 0;
+		}
+	}
+	platform_log("update: build %ld is ready to install (%d files in " UPDATE_DIRECTORY "/" UPDATER_PACKAGE ")",
+		updater_latest_build, name_count);
+	return 1;
+}
+#endif
+
 static int SDLCALL updater_check_thread(void *context)
 {
 	/* (a test's zip, debug.update_from, is always newer) */
@@ -464,6 +550,14 @@ static int SDLCALL updater_check_thread(void *context)
 	{
 		platform_log("update: build %ld is available (this is build %d)", latest, HALO_BUILD_NUMBER);
 		updater_latest_build = latest;
+#ifdef UPDATER_PACKAGE
+		/* (the Frame's: asked about once it is ready to install) */
+		if (!updater_prepare_package())
+		{
+			SDL_SetAtomicInt(&updater_state, _updater_handled);
+			return 0;
+		}
+#endif
 		SDL_SetAtomicInt(&updater_state, _updater_available);
 	}
 	else
@@ -477,6 +571,9 @@ static int SDLCALL updater_check_thread(void *context)
 
 /* ---------- updating */
 
+/* (the release's files put in place by the game, but the Frame's, which its
+launcher installs) */
+#ifndef UPDATER_PACKAGE
 struct updater_download
 {
 	SDL_Mutex *lock;
@@ -620,6 +717,8 @@ static void updater_delete_partial(const char *partial, char names[][256], int n
 	update_delete_file(partial);
 }
 
+#endif
+
 /* the zip, no larger than a release's can be, unpacked; a download is
 deleted either way (a test's zip, debug.update_from, is kept) */
 static int updater_unpack(const char *zip_path, int downloaded, char names[][256], int *name_count, char *error,
@@ -642,6 +741,7 @@ static int updater_unpack(const char *zip_path, int downloaded, char names[][256
 	return succeeded;
 }
 
+#ifndef UPDATER_PACKAGE
 /* the first count of the new files, already in place, taken back out (to
 the update folder) and the old ones (<name>.old) put back, the last first:
 the install as it was before the update. A new file that had no old one is
@@ -818,6 +918,7 @@ static int updater_clean_up(void)
 	update_delete_file(path);
 	return list != NULL;
 }
+#endif
 
 /* ---------- the game's */
 
@@ -845,6 +946,39 @@ void updater_start(void)
 			platform_log("update: not looking for updates: the game is installed (%s)", install_system_reason());
 		return;
 	}
+#ifdef UPDATER_PACKAGE
+	/* (the Frame's package's folder, whose launcher, which says it started
+	the game, installs an update once the game has quit; HALO_ as the host
+	passes only those to the game, port/linux/host/host_main.c) */
+	snprintf(updater_directory, sizeof(updater_directory), "%s", install_folder());
+	if (!updater_directory[0])
+		return;
+	{
+		char launcher[1200], sums[1200];
+		const char *started_by = getenv("HALO_FRAME_LAUNCHER");
+
+		updater_path(launcher, sizeof(launcher), "halo-vr.sh");
+		updater_path(sums, sizeof(sums), "SHA256SUMS");
+		if (!started_by || !started_by[0] || !SDL_GetPathInfo(launcher, NULL) || !SDL_GetPathInfo(sums, NULL))
+		{
+			if (HALO_BUILD_NUMBER > 0)
+				platform_log("update: not looking for updates: the game was not started by the Steam Frame "
+					"package's halo-vr.sh");
+			return;
+		}
+	}
+	/* (not again just after the launcher installed one, or tried to) */
+	{
+		const char *just_updated = getenv("HALO_FRAME_UPDATED");
+
+		updated = just_updated && just_updated[0];
+		if (updated)
+		{
+			platform_log("update: not looked for: halo-vr.sh has just installed an update (or tried to)");
+			return;
+		}
+	}
+#else
 	if (!install_is_tree())
 	{
 		if (HALO_BUILD_NUMBER > 0)
@@ -855,7 +989,10 @@ void updater_start(void)
 	if (!updater_directory[0])
 		return;
 #endif
+#endif
+#ifndef UPDATER_PACKAGE
 	updated = updater_clean_up();
+#endif
 	/* (not for builds without a number, unless a test names a zip (not
 	again in the version it started), the player's no, or runs nobody is
 	watching, but for a test with its answer) */
@@ -888,6 +1025,63 @@ void updater_start(void)
 	}
 }
 
+#ifdef UPDATER_PACKAGE
+/* menu_functions.c's: the update question opened at the main menu, once it
+has been seen; 1 when it was, or cannot be */
+int pc_menu_update_question_open(void);
+void platform_request_quit(void);
+void updater_update_now(void);
+
+/* every frame, on the game's thread (sdl_platform.c): the Frame's asks in
+the game's menus once the new version is ready to install */
+void updater_poll(SDL_Window *window)
+{
+	const char *test_answer = config_string("debug.update_answer");
+
+	(void)window;
+	if (SDL_GetAtomicInt(&updater_state) != _updater_available)
+		return;
+	/* (an automated test's answer: debug.update_answer) */
+	if (test_answer[0])
+	{
+		SDL_SetAtomicInt(&updater_state, _updater_handled);
+		platform_log("update: answering %s (debug.update_answer)", test_answer);
+		if (!strcmp(test_answer, "yes"))
+			updater_update_now();
+		else if (!strcmp(test_answer, "never"))
+			config_write_boolean("update.auto", 0);
+		return;
+	}
+	if (!pc_menu_update_question_open())
+		return;
+	SDL_SetAtomicInt(&updater_state, _updater_handled);
+	platform_log("update: asking about build %ld at the main menu", updater_latest_build);
+}
+
+/* "port update now" (the update question's UPDATE: menu_functions.c): the
+game quits, and its launcher installs the update (update-ready says so)
+and starts the new game */
+void updater_update_now(void)
+{
+	char path[1200], line[64];
+	SDL_IOStream *ready;
+	int length;
+
+	updater_path(path, sizeof(path), "update-ready");
+	ready = SDL_IOFromFile(path, "wb");
+	length = snprintf(line, sizeof(line), "build %ld\n", updater_latest_build);
+	if (!ready || SDL_WriteIO(ready, line, (size_t)length) != (size_t)length)
+	{
+		platform_log("update: could not write %s (%s)", path, SDL_GetError());
+		if (ready)
+			SDL_CloseIO(ready);
+		return;
+	}
+	SDL_CloseIO(ready);
+	platform_log("update: quitting, for halo-vr.sh to install build %ld", updater_latest_build);
+	platform_request_quit();
+}
+#else
 /* whether the game runs under gamescope (the Steam Deck's Game Mode), where
 a system dialog such as SDL's message box crashes the game. gamescope sets
 GAMESCOPE_WAYLAND_DISPLAY for the programs it runs and Game Mode's session
@@ -984,9 +1178,20 @@ void updater_poll(SDL_Window *window)
 		SDL_SetWindowFullscreen(window, true);
 }
 
+/* (the Frame's alone: menu_functions.c's "port update now") */
+void updater_update_now(void)
+{
+}
+#endif
+
 #else
 
 void updater_start(void)
+{
+}
+
+/* (the Frame's alone: menu_functions.c's "port update now") */
+void updater_update_now(void)
 {
 }
 
