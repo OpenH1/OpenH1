@@ -7,12 +7,13 @@
 # (share/doc/openh1/README.linux.md in the tree; README.md in the Frame's).
 #
 #   install.sh        # in the unzipped package (opened from the file manager)
-#   install.sh [--package <folder>] [--batch]
+#   install.sh [--package <folder>] [--into <folder>] [--batch]
 #
 # --package: the package to install; by default the one this script is in.
+# --into: the folder to install it in, instead of its own (below).
 # --batch: no terminal window, no questions and no steamos-add-to-steam:
 #   it prints what is left to do (tools/frame_install.sh, which runs it on
-#   the Frame over ssh).
+#   the Frame over ssh; the Frame's self-updater, through halo-vr.sh).
 #
 # What it installs, and where (the packages' own part, "the package" below):
 # - The Linux release's tree (bin/openh1, share/openh1): in
@@ -49,17 +50,19 @@
 set -euo pipefail
 
 usage() {
-	sed -n '9,15p' "$0" | sed 's/^# \{0,1\}//' >&2
+	sed -n '9,16p' "$0" | sed 's/^# \{0,1\}//' >&2
 	exit 2
 }
 
 here=$(cd "$(dirname "$0")" && pwd)
 package=$here
+into=
 batch=
 arguments=("$@")
 while [ $# -gt 0 ]; do
 	case $1 in
 	--package) [ $# -ge 2 ] || usage; package=$(cd "$2" && pwd); shift 2 ;;
+	--into) [ $# -ge 2 ] || usage; into=$(mkdir -p "$2" && cd "$2" && pwd); shift 2 ;;
 	--batch) batch=yes; shift ;;
 	*) usage ;;
 	esac
@@ -171,7 +174,11 @@ has_maps() { [ -n "$(find "$1" -mindepth 1 -maxdepth 1 -iname maps -type d 2>/de
 in_use() { [ -f "$1/config.toml" ] || has_maps "$1"; }
 data_set() { grep -Eq '^[[:space:]]*data[[:space:]]*=[[:space:]]*"[^"]+"' "$1/config.toml" 2>/dev/null; }
 
-[ "$package" = "$dir" ] || ! in_use "$package" || dir=$package
+if [ -n "$into" ]; then
+	dir=$into
+elif [ "$package" != "$dir" ] && in_use "$package"; then
+	dir=$package
+fi
 if [ "$dir" != "$package" ] && [ -d "$dir" ] && [ -n "$(ls -A "$dir")" ] && [ ! -f "$dir/$game" ]; then
 	echo "$dir is not empty and holds no OpenH1 (no $game): move it away, then install again." >&2
 	exit 1
@@ -558,9 +565,5 @@ else
 	echo "Start $app from the application menu (Games)."
 fi
 if [ "$dir" != "$package" ] && [ -z "$batch" ]; then
-	if [ "$package_kind" = frame ]; then
-		echo "$package can be deleted."
-	else
-		echo "The game updates itself there. $package can be deleted."
-	fi
+	echo "The game updates itself there. $package can be deleted."
 fi
