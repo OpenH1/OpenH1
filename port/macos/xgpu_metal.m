@@ -357,6 +357,11 @@ id<MTLDevice> xgpu_metal_device(void)
 	return metal.device;
 }
 
+int xgpu_metal_block_compression(void)
+{
+	return metal.device && metal.device.supportsBCTextureCompression;
+}
+
 id<MTLLibrary> xgpu_metal_fixed_library(void)
 {
 	return metal.fixed_library;

@@ -55,9 +55,19 @@ display's (both), for tests and for the replay, which has no window.
 HALO_METAL_STATS=<seconds> logs the pacing that often: the link's
 refreshes, the frames presented, the intervals between the times the
 drawables reached the screen.
+
+The iOS app (tools/ios_build.py) builds this file too: its window is
+UIKit's, its screen a UIScreen (whose EDR headroom is the HDR's), and its
+layer fills the screen (the safe areas are the game's to keep its HUD
+from: port/ios/README.md).
 */
 
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#import <UIKit/UIKit.h>
+#else
 #import <AppKit/AppKit.h>
+#endif
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #import <QuartzCore/QuartzCore.h>
@@ -160,6 +170,9 @@ static struct
 	link's rate was last set for it (the link's thread's) */
 	_Atomic int battery_saver;
 	int battery_saver_set;
+	/* (iOS) the app is in the background: no GPU work, which iOS refuses
+	there (host_metal_background) */
+	_Atomic int background;
 
 	/* pacing, since the last log */
 	double stats_interval, stats_since, started;
@@ -234,12 +247,21 @@ static void display_hdr_read(void)
 	}
 	else if (presentation.window)
 	{
+#if TARGET_OS_IPHONE
+		UIWindow *native = (__bridge UIWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(presentation.window),
+			SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, NULL);
+		UIScreen *screen = native.windowScene.screen ? native.windowScene.screen : UIScreen.mainScreen;
+
+		potential = (float)screen.potentialEDRHeadroom;
+		current = (float)screen.currentEDRHeadroom;
+#else
 		NSWindow *native = (__bridge NSWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(presentation.window),
 			SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
 		NSScreen *screen = native.screen ? native.screen : NSScreen.mainScreen;
 
 		potential = (float)screen.maximumPotentialExtendedDynamicRangeColorComponentValue;
 		current = (float)screen.maximumExtendedDynamicRangeColorComponentValue;
+#endif
 	}
 	if (!(potential >= 1.0f))
 		potential = 1.0f;
@@ -772,6 +794,8 @@ static CAFrameRateRange link_rate_range(int saving);
 {
 	double start = seconds_now();
 
+	if (atomic_load(&presentation.background))
+		return;
 	[self refresh:update];
 	presentation.last_callback_seconds = seconds_now() - start;
 	if (presentation.last_callback_seconds > presentation.callback_most_seconds)
@@ -1017,6 +1041,15 @@ static CAFrameRateRange link_rate_range(int saving);
 		}
 		[encoder endEncoding];
 		atomic_fetch_add(&presentation.drawables_pending, 1);
+#if TARGET_OS_SIMULATOR
+		/* (the iOS simulator's drawables say nothing of their presentation:
+		taken as shown once drawn, at no known time) */
+		[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
+			(void)done;
+			atomic_fetch_sub(&presentation.drawables_pending, 1);
+			presented(0.0, target, image ? &compiled : NULL);
+		}];
+#else
 		[drawable addPresentedHandler:^(id<MTLDrawable> shown) {
 			atomic_fetch_sub(&presentation.drawables_pending, 1);
 			presented(shown.presentedTime, target, image ? &compiled : NULL);
@@ -1037,6 +1070,7 @@ static CAFrameRateRange link_rate_range(int saving);
 				host_render_stream_frame_shown(input, (uint64_t)((shown.presentedTime + offset) * 1e9));
 			}
 		}];
+#endif
 		[buffer presentDrawable:drawable];
 		committed = seconds_now();
 		[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
@@ -1183,6 +1217,11 @@ int host_metal_initialize(void)
 		archive = path;
 	}
 	options.archive_path = archive && *archive ? archive : NULL;
+#if TARGET_OS_SIMULATOR
+	/* (the iOS simulator's GPU has no binary archives: Metal stops the
+	process at the first pipeline made with one) */
+	options.archive_path = NULL;
+#endif
 	options.library_path = shader_library_path();
 	options.page_size = (uint32_t)getpagesize();
 	options.guest_extent = host_memory_readable_extent;
@@ -1202,6 +1241,13 @@ off) the link's rate, set on its thread at its next refresh */
 void host_metal_battery_saver(int on)
 {
 	atomic_store(&presentation.battery_saver, on ? 1 : 0);
+}
+
+/* (iOS: port/ios/host_app.m, as the app goes to the background and comes
+back) nothing presented while away */
+void host_metal_background(int away)
+{
+	atomic_store(&presentation.background, away ? 1 : 0);
 }
 
 /* (the replay's: port/macos/tools/halo_replay.m) */
@@ -1251,6 +1297,15 @@ int host_metal_window_open(uint32_t window)
 	presentation.drawable_width = (uint32_t)width;
 	presentation.drawable_height = (uint32_t)height;
 	{
+#if TARGET_OS_IPHONE
+		UIWindow *native = (__bridge UIWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(object),
+			SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, NULL);
+		UIScreen *screen = native.windowScene.screen ? native.windowScene.screen : UIScreen.mainScreen;
+
+		presentation.refresh_rate = (float)screen.maximumFramesPerSecond;
+		host_logf(HOST_LOG_INFO, "metal: window %dx%d pixels (scale %.1f), display at up to %ld Hz", width, height,
+			screen.nativeScale, (long)screen.maximumFramesPerSecond);
+#else
 		NSWindow *native = (__bridge NSWindow *)SDL_GetPointerProperty(SDL_GetWindowProperties(object),
 			SDL_PROP_WINDOW_COCOA_WINDOW_POINTER, NULL);
 		NSScreen *screen = native.screen ? native.screen : NSScreen.mainScreen;
@@ -1259,6 +1314,7 @@ int host_metal_window_open(uint32_t window)
 		host_logf(HOST_LOG_INFO, "metal: window %dx%d pixels (scale %.1f), display %s at up to %ld Hz%s", width, height,
 			screen.backingScaleFactor, screen.localizedName.UTF8String, (long)screen.maximumFramesPerSecond,
 			screen.minimumRefreshInterval < screen.maximumRefreshInterval ? " (variable)" : "");
+#endif
 	}
 
 	if (!host_metal_present_initialize())
@@ -1298,8 +1354,10 @@ int host_metal_window_open(uint32_t window)
 		host_logf(HOST_LOG_WARN, "metal: no HDR presentation (%s): the window stays SDR",
 			error ? error.localizedDescription.UTF8String : "its functions");
 	display_hdr_read();
+#if !TARGET_OS_IPHONE
 	[[NSNotificationCenter defaultCenter] addObserverForName:NSWindowDidChangeScreenNotification object:nil
 		queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) { (void)note; display_hdr_read(); }];
+#endif
 	sampler = [MTLSamplerDescriptor new];
 	sampler.minFilter = MTLSamplerMinMagFilterLinear;
 	sampler.magFilter = MTLSamplerMinMagFilterLinear;

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # root build script: writes build.ninja for the native ports (Linux, Windows,
-# Android, macOS) and the web port
+# Android, macOS, iOS) and the web port
 
 import argparse
 import io
@@ -14,6 +14,7 @@ from tools import ninja_syntax
 from tools.android_build import android_configure_inputs, generate_android_build
 from tools.build_common import check_profile_options, common_configure_inputs, generate_msvc_semantics
 from tools.guest_toolchain import LLVM_VERSION, default_cache
+from tools.ios_build import generate_ios_build, ios_configure_inputs
 from tools.linux_guest_build import generate_linux_guest_builds, linux_guest_configure_inputs, native_linux_guest
 from tools.macos_build import generate_macos_build, is_macos_arm64, macos_configure_inputs
 from tools.web_build import generate_web_build, web_configure_inputs
@@ -150,6 +151,23 @@ parser.add_argument(
     "project's domain); macOS keeps the app's permissions (the microphone, the local network) by it",
 )
 parser.add_argument(
+    "--ios-team",
+    metavar="TEAM",
+    help="the Apple developer team that signs `ninja ios`'s app for development (its ID, such as 5NH5B2VG6Y): "
+    "its provisioning profile is made with Xcode's automatic signing (tools/ios_provision.py; Xcode signed in to "
+    "the team's account). Without it the app is signed ad hoc, for sideloading tools to sign again",
+)
+parser.add_argument(
+    "--ios-identity",
+    metavar="CERTIFICATE",
+    help="the certificate that signs the iOS app with --ios-team (default: \"Apple Development\", the keychain's)",
+)
+parser.add_argument(
+    "--ios-bundle-id",
+    type=str,
+    help="the iOS app's bundle identifier (default: the macOS app's, com.openh1.openh1)",
+)
+parser.add_argument(
     "--web-emcc",
     type=str,
     help="Emscripten's emcc for `ninja web` (default: emcc on the PATH, then EMSDK's or ~/emsdk's)",
@@ -213,6 +231,9 @@ sln = SimpleNamespace(
     macos_cc=args.macos_cc,
     macos_guest_cc=args.macos_guest_cc,
     macos_bundle_id=args.macos_bundle_id,
+    ios_team=args.ios_team,
+    ios_identity=args.ios_identity,
+    ios_bundle_id=args.ios_bundle_id,
     guest_base=args.guest_base,
     web_emcc=args.web_emcc,
 )
@@ -243,6 +264,7 @@ generate_android_build(n, sln)
 generate_linux_guest_builds(n, sln)
 generate_windows_build(n, sln)
 generate_macos_build(n, sln)
+generate_ios_build(n, sln)
 generate_web_build(n, sln)
 
 n.comment("Reconfigure on change")
@@ -263,6 +285,7 @@ n.build(
         *linux_guest_configure_inputs(),
         *windows_configure_inputs(),
         *macos_configure_inputs(),
+        *ios_configure_inputs(),
         *web_configure_inputs(),
     ],
 )

@@ -180,7 +180,9 @@ struct host_guest_image
 
 extern struct host_guest_image host_image;
 
-/* maps the image from the ELF file in memory; returns 0 on success */
+/* maps the image from the ELF file in memory; returns 0 on success. On iOS
+the file must be the one inside the executable (guest_image.S), whose code
+is mapped from the executable's signed pages. */
 int host_load_image(const void *elf, size_t size);
 
 /* The image's class and machine for this host's guest: a 64-bit AArch64
@@ -223,6 +225,16 @@ image itself once loaded); 0 with the import count, or -1 with the reason
 logged */
 int host_image_validate_imports(const uint8_t *memory, uint32_t base, uint32_t end,
 	const struct host_image_layout *layout, uint32_t *count);
+/* the image's read-only part (its header, code and constants: every
+segment below its first writable one), as one mapping of the file the image
+is part of at file_offset (iOS: the signed executable, port/ios/README.md),
+in whole pages of page bytes: the guest addresses from *start to *end, at
+*position in the file. 0, or -1 with the reason logged: the read-only
+segments are not where one mapping puts them (each at the same distance from
+its place in the file, a multiple of page), or a writable segment shares a
+page with them. */
+int host_image_read_only_range(const struct host_image_layout *layout, uint64_t page, uint64_t file_offset,
+	uint64_t *start, uint64_t *end, uint64_t *position);
 
 /* ---------- the processor's registers (host_arch.c) */
 

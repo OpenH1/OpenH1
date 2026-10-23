@@ -21,7 +21,10 @@ the artwork the icons are made from:
   entry, port/assets/linux/openh1.desktop);
 - the render on the background, in the rounded square of macOS's
   icons (port/macos/openh1-icon.icns): the macOS app's icon, which Finder and
-  the Dock show (tools/macos_build.py puts it in OpenH1.app).
+  the Dock show (tools/macos_build.py puts it in OpenH1.app);
+- the render on the background, filling an opaque square of 1024 pixels
+  (port/ios/openh1-icon-1024.png), which iOS masks to its own shape: the iOS
+  app's icon (tools/ios_app.py makes the app's sizes of it with actool).
 
 The launcher icon is an adaptive one (Android 8 and later): the render as its
 foreground layer, the background as its background layer, and the
@@ -80,6 +83,9 @@ MACOS_ICON = ROOT / "port/macos/openh1-icon.icns"
 MACOS_CANVAS = 1024
 MACOS_SQUARE = 824
 MACOS_RADIUS = 185.4
+# iOS's icon: one opaque square, which the system masks and scales
+IOS_ICON = ROOT / "port/ios/openh1-icon-1024.png"
+IOS_SIZE = 1024
 
 
 def mark(size: int, scale: float) -> Image.Image:
@@ -182,6 +188,22 @@ def macos_icon(render: Image.Image, top: tuple, bottom: tuple) -> None:
     print(f"{MACOS_ICON.relative_to(ROOT)}: 16 to {MACOS_CANVAS}")
 
 
+def ios_icon(render: Image.Image, top: tuple, bottom: tuple) -> None:
+    """the render over the background, filling the square as the picture
+    fills the macOS icon's rounded square"""
+    rows = np.linspace(0.0, 1.0, IOS_SIZE)[:, None]
+    gradient = np.array(top, dtype=np.float64) * (1.0 - rows) + np.array(bottom, dtype=np.float64) * rows
+    body = np.empty((IOS_SIZE, IOS_SIZE, 4), dtype=np.uint8)
+    body[..., :3] = np.round(gradient[:, None, :]).astype(np.uint8)
+    body[..., 3] = 255
+    picture = Image.fromarray(body, "RGBA")
+    picture.alpha_composite(render.resize((IOS_SIZE, IOS_SIZE), Image.LANCZOS))
+    IOS_ICON.parent.mkdir(parents=True, exist_ok=True)
+    # (no alpha channel: iOS refuses app icons with one)
+    picture.convert("RGB").save(IOS_ICON, optimize=True)
+    print(f"{IOS_ICON.relative_to(ROOT)}: {IOS_SIZE}x{IOS_SIZE}")
+
+
 def main() -> None:
     artwork()
     icon = Image.open(ICON).convert("RGBA")
@@ -229,6 +251,7 @@ def main() -> None:
         "</adaptive-icon>\n", encoding="utf-8")
     print("background #{:02X}{:02X}{:02X} to #{:02X}{:02X}{:02X}".format(*top, *bottom))
     macos_icon(render, top, bottom)
+    ios_icon(render, top, bottom)
 
 
 if __name__ == "__main__":

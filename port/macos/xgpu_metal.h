@@ -390,6 +390,10 @@ double xgpu_metal_prepared(void);
 
 /* textures: a handle, or 0 (logged) */
 uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *description);
+/* whether the GPU samples DXT's blocks (BC1 to BC3): Apple silicon Macs and
+iPads with an M chip do; iPhones and the iOS simulator do not, and their
+DXT textures are decoded (xgpu_metal_textures.c) */
+int xgpu_metal_block_compression(void);
 /* (after the frames in flight that use it) */
 void xgpu_metal_texture_destroy(uint32_t texture);
 /* makes its levels past the first from the first, in the frame's order */

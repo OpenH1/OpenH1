@@ -11,7 +11,8 @@ An Xbox texture is found by its Data, Format and Size words (and a
 palettized one's palette, and the channels a Custom Edition map's texels
 are sampled from); its texels are read from the guest's memory where they
 are. DXT textures are uploaded as they are (BC1 to BC3), a volume's
-decoded; every other format is decoded to BGRA. The pages it was read from
+decoded, and every one on a GPU without BC's formats (an iPhone's:
+xgpu_metal_block_compression); every other format is decoded to BGRA. The pages it was read from
 are write-protected (the write tracking, host_memory_watch.c), and the
 texture is read again once any of them has been written: the check is a
 comparison of the tracking's serial while no page has been, and a look at
@@ -156,8 +157,9 @@ static uint32_t xbox_texture_make(const struct entry *entry)
 	memset(&made, 0, sizeof(made));
 	made.type = description->cube_map ? XGPU_METAL_TEXTURE_CUBE : description->depth > 1 ? XGPU_METAL_TEXTURE_3D :
 		XGPU_METAL_TEXTURE_2D;
-	/* (DXT as it is, but for a volume's, which is decoded) */
-	if (description->compressed && description->depth == 1)
+	/* (DXT as it is, but for a volume's, which is decoded, and on a GPU
+	without BC's formats) */
+	if (description->compressed && description->depth == 1 && xgpu_metal_block_compression())
 		made.format = description->format == 0x0c ? XGPU_METAL_FORMAT_DXT1 : description->format == 0x0e ?
 			XGPU_METAL_FORMAT_DXT3 : XGPU_METAL_FORMAT_DXT5;
 	else
@@ -178,7 +180,7 @@ static void xbox_texture_upload(struct entry *entry, const D3DCOLOR *palette)
 	const unsigned char *base = host_pointer(entry->address);
 	unsigned long faces = description->cube_map ? 6 : 1, face_size = xgpu_texture_face_size(description);
 	unsigned long levels = levels_most(description->width, description->height, description->depth), face, level;
-	BOOL blocks = description->compressed && description->depth == 1;
+	BOOL blocks = description->compressed && description->depth == 1 && xgpu_metal_block_compression();
 
 	if (description->levels < levels)
 		levels = description->levels;
