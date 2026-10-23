@@ -21,8 +21,10 @@ so the audio callback is handed to a thread that has one.
 #endif
 
 #if defined(__APPLE__) && TARGET_OS_IPHONE
-/* port/ios/host_app.m: returns once the app is in the foreground */
+/* port/ios/host_app.m: returns once the app is in the foreground; the
+fraction of the screen's pixels the game draws at */
 void host_app_background_wait(void);
+float host_app_render_scale(void);
 #endif
 
 #define HANDLE_COUNT 256
@@ -182,6 +184,12 @@ void host_sdl_window_size_in_pixels(uint32_t window, int *width, int *height)
 	*height = 0;
 	if (object)
 		SDL_GetWindowSizeInPixels(object, width, height);
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	/* (display.render_scale: the game draws smaller, host_metal.m's
+	drawables are that size, and the display scales them up) */
+	*width = (int)(*width * host_app_render_scale() + 0.5f) & ~1;
+	*height = (int)(*height * host_app_render_scale() + 0.5f) & ~1;
+#endif
 }
 
 int host_sdl_set_relative_mouse(uint32_t window, int enabled)

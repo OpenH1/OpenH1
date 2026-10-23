@@ -101,6 +101,8 @@ from: port/ios/README.md).
 #include <time.h>
 #include <unistd.h>
 
+static void drawn_size(int *width, int *height);
+
 #define PRESENT_IMAGES 2
 #define LOADING_UPLOADS 3
 /* the longest a frame waits for an image before the oldest queued frame is
@@ -1168,8 +1170,11 @@ static bool SDLCALL window_event(void *userdata, SDL_Event *event)
 	if (event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED &&
 		SDL_GetWindowFromID(event->window.windowID) == presentation.window)
 	{
-		atomic_store(&presentation.pixel_width, (uint32_t)event->window.data1);
-		atomic_store(&presentation.pixel_height, (uint32_t)event->window.data2);
+		int width = event->window.data1, height = event->window.data2;
+
+		drawn_size(&width, &height);
+		atomic_store(&presentation.pixel_width, (uint32_t)width);
+		atomic_store(&presentation.pixel_height, (uint32_t)height);
 	}
 	return true;
 }
@@ -1246,7 +1251,22 @@ void host_metal_battery_saver(int on)
 #if TARGET_OS_IPHONE
 /* port/ios/touch_controls.m */
 void host_touch_overlay_install(void *window);
+/* port/ios/host_app.m: display.render_scale */
+float host_app_render_scale(void);
 #endif
+
+/* the window's pixels the game draws, and the drawables are made: on iOS
+display.render_scale of them, which the display scales up */
+static void drawn_size(int *width, int *height)
+{
+#if TARGET_OS_IPHONE
+	*width = (int)(*width * host_app_render_scale() + 0.5f) & ~1;
+	*height = (int)(*height * host_app_render_scale() + 0.5f) & ~1;
+#else
+	(void)width;
+	(void)height;
+#endif
+}
 
 /* (iOS: port/ios/host_app.m, as the app goes to the background and comes
 back) nothing presented while away */
@@ -1301,6 +1321,7 @@ int host_metal_window_open(uint32_t window)
 	presentation.layer.opaque = YES;
 	presentation.layer.maximumDrawableCount = 3;
 	SDL_GetWindowSizeInPixels(object, &width, &height);
+	drawn_size(&width, &height);
 	atomic_store(&presentation.pixel_width, (uint32_t)width);
 	atomic_store(&presentation.pixel_height, (uint32_t)height);
 	presentation.layer.drawableSize = CGSizeMake(width, height);

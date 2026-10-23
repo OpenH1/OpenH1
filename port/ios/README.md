@@ -144,9 +144,27 @@ macOS, and its event polls turn UIKit's run loop.
 
 ### The game data
 
-For now, copy the Xbox game's `maps` folder into the app's Documents with
-the Files app (On My iPhone, OpenH1) or Finder's device window (Files), or
-from a Mac:
+The players supply the Xbox game's maps. While the app's Documents have no
+`maps` folder of the Xbox game, the first start (`port/ios/data_import.m`,
+before the game starts) asks for one of:
+
+- **the disc image** (`.iso` or `.xiso`), chosen with the system's document
+  picker (On My iPhone, iCloud Drive, a USB drive, another app's storage)
+  and read where it lies: its `maps` folder is extracted into Documents by
+  the desktop builds' extractor (`port/linux/src/xiso.c`, built into the
+  host beside the renderer's shared parts), with a progress bar;
+- **a maps folder**, chosen the same way, whose files are copied;
+- **the maps folder copied by hand** into OpenH1's folder with the Files app
+  (On My iPhone, OpenH1) or Finder's window of the device, then "Look
+  again".
+
+What is found is checked as the macOS app checks it: `ui.map` must be the
+Xbox game's (the PC version's and Custom Edition's are refused, saying
+why). A copy goes to `maps.partial` and is named `maps` once whole.
+`HALO_DATA_ROOT`, or `paths.data` in `config.toml`, skips the screen.
+`HALO_IMPORT_ANSWER=<disc image or folder>` answers it, for tests.
+
+From a Mac, the maps can also be copied into the app's Documents directly:
 
 ```sh
 xcrun devicectl device copy to --device <device> --domain-type appDataContainer \
@@ -207,6 +225,22 @@ menus take (the overlay turns `SDL_HINT_TOUCH_MOUSE_EVENTS` on there, and
 off in a game, where a tap would fire); in a game a tap skips a cinematic
 or types in the text chat (`touch_input.c`).
 
+## Settings
+
+The settings are the desktop builds' (`config.toml` in the app's Documents;
+refer to [port/linux/README.md](../linux/README.md)), with the touch
+controls' (`input.touch_controls`, `input.touch_captions`,
+`input.touch_aim_assist`: [port/android/README.md](../android/README.md)),
+and these of iOS's own:
+
+| Setting | Meaning |
+| --- | --- |
+| `display.render_scale` | The fraction of the screen's pixels the game draws, each way, from 0.25 to 1.0 (the default): the game's frames and the presentation's drawables are that size, and the display scales them up. 0.67 draws less than half the pixels. Read at start (`HALO_RENDER_SCALE`). |
+
+The host logs the device's thermal state at the start and as it changes
+(`thermal state: nominal`, `fair`, `serious`, `critical`): a hot phone
+slows its processor and its GPU.
+
 ## Metal on iOS
 
 The Metal backend is the macOS one. What differs:
@@ -237,7 +271,6 @@ put `maps` in its `Documents`.
 
 ## Not done yet
 
-- The first start's import of a disc image.
 - The safe areas: the game draws over the whole screen, the sensor housing's
   and the home indicator's edges too.
 - System link on a device: iOS lets apps send broadcasts only with the
