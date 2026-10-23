@@ -34,6 +34,10 @@ from .ninja_syntax import Writer
 PORT_DIR = Path("port/ios")
 BUILD = Path("build/ios")
 SIMULATOR_BUILD = Path("build/ios_sim")
+# the Android app's touch controls' pictures and font, which the iOS app's
+# overlay (port/ios/touch_controls.m) draws with too
+TOUCH_ART = Path("port/android/app/src/main/res/drawable-nodpi")
+TOUCH_FONT = Path("port/android/app/src/main/res/font/touch_caption.ttf")
 THIRD_PARTY = BUILD / "third_party"
 # iOS 17.4: os_sync_wait_on_address (the guest's futexes, port/macos/host_syscall.c);
 # CAMetalDisplayLink is 17.0
@@ -46,7 +50,7 @@ IOS_BUNDLE_ID = MACOS_BUNDLE_ID
 IOS_FRAMEWORKS = " ".join(f"-framework {name}" for name in (
     "Metal", "QuartzCore", "Foundation", "UIKit", "ImageIO", "CoreGraphics", "AVFoundation", "AudioToolbox",
     "CoreAudio", "CoreHaptics", "CoreMotion", "GameController", "CoreBluetooth", "UniformTypeIdentifiers",
-    "CoreFoundation", "Security", "CoreMedia", "CoreVideo", "IOSurface")) + " -lcompression"
+    "CoreFoundation", "Security", "CoreMedia", "CoreVideo", "IOSurface", "CoreText")) + " -lcompression"
 
 
 def ios_configure_inputs() -> List[Path]:
@@ -96,13 +100,17 @@ def ios_platform(name: str, sdk: str, guest=None) -> ApplePlatform:
         frameworks=IOS_FRAMEWORKS,
         # (port/macos/host_app.m is the Mac's: port/ios/host_app.m stands in)
         host_excluded={"host_app.m"},
-        host_sources=sorted(source for source in [*PORT_DIR.glob("*.m"), *PORT_DIR.glob("*.c")]
-                            if not source.name.startswith("guest_")),
+        host_sources=[*sorted(source for source in [*PORT_DIR.glob("*.m"), *PORT_DIR.glob("*.c")]
+                              if not source.name.startswith("guest_")),
+                      # (the touch controls' state, which the overlay,
+                      # touch_controls.m, shares with Android's)
+                      Path("port/android/host/host_touch.c")],
         sdl_options=(f"-DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT={'iphonesimulator' if simulator else 'iphoneos'} "
                      f"-DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET={IOS_MINIMUM} "
                      f"-DSDL_SHARED=OFF -DSDL_STATIC=ON"),
         sdl_library="libSDL3.a", sdl_link="-lSDL3", guest_image_source=PORT_DIR / "guest_image.S",
-        shader_platform="ios_simulator" if simulator else "ios", guest=guest)
+        shader_platform="ios_simulator" if simulator else "ios", guest=guest,
+        guest_imports=[PORT_DIR / "host_imports.list"])
 
 
 def generate_ios_app(n: Writer, sln: Any, built: dict, name: str, build: Path, signed: bool) -> None:
@@ -118,8 +126,12 @@ def generate_ios_app(n: Writer, sln: Any, built: dict, name: str, build: Path, s
     licenses = [(Path("LICENSE"), "LICENSE.txt"),
                 *((source.relative_to(REPO_ROOT), name) for source, name in release_notices("macos")),
                 (THIRD_PARTY / "SDL3/LICENSE.txt", "SDL3-LICENSE.txt")]
+    # the touch controls' pictures and their captions' font: the Android
+    # app's (tools/touch_assets.py draws them), and Overpass's licence
+    touch = [*sorted(TOUCH_ART.glob("touch_*.png")), TOUCH_FONT]
+    licenses.append((Path("port/assets/fonts/Overpass-OFL.txt"), "Overpass-OFL.txt"))
     implicit = [PORT_DIR / "halo.entitlements", Path("tools/ios_app.py"), Path("tools/app_icon.py"),
-                Path("port/assets/icon/openh1-icon.png"), *(source for source, _ in licenses)]
+                Path("port/ios/openh1-icon-1024.png"), *touch, *(source for source, _ in licenses)]
     signing = "--identity -"
     if team:
         # the development profile (tools/ios_provision.py: Xcode's automatic
@@ -137,6 +149,7 @@ def generate_ios_app(n: Writer, sln: Any, built: dict, name: str, build: Path, s
         command=(f"$python tools/ios_app.py bundle --app {app} --executable {built['executable']} "
                  f"--resource {built['brokers']} --resource {built['library']} --bundle-id {bundle_id} "
                  f"{' '.join(f'--license {source}={name}' for source, name in licenses)} "
+                 f"{' '.join(f'--touch {source}' for source in touch)} "
                  f"--build {build_number if build_number.isdigit() else 0} --minimum {IOS_MINIMUM} {signing} "
                  f"{'--simulator ' if not signed else ''}> {build}/app.log"),
         description=f"{name.upper()} APP {app}",

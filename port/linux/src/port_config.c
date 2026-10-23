@@ -66,6 +66,9 @@ enum
 	host, port/linux/host, which have the desktop's settings, and the
 	host's own) */
 	_platform_guest = 16,
+	/* (the iOS app, a guest build with the desktop's settings, and the
+	touch controls': port/ios) */
+	_platform_ios = 32,
 };
 
 struct config_setting
@@ -646,16 +649,19 @@ static const struct config_setting config_settings[] =
 		"false pans them left and right, as on the flat screen." },
 
 #endif
-	{ "input.touch_controls", _config_string, "\"auto\"", "HALO_TOUCH_CONTROLS", _environment_value, _platform_android | _platform_web,
+	{ "input.touch_controls", _config_string, "\"auto\"", "HALO_TOUCH_CONTROLS", _environment_value,
+		_platform_android | _platform_web | _platform_ios,
 		"The on-screen touch controls in a game: \"auto\" shows them on a\n"
 		"touchscreen while no controller is connected, \"on\" also with a\n"
 		"controller, \"off\" never. A device without a touchscreen never shows\n"
 		"them. The menus take taps in any case." },
-	{ "input.touch_captions", _config_boolean, "true", "HALO_TOUCH_CAPTIONS", _environment_value, _platform_android,
+	{ "input.touch_captions", _config_boolean, "true", "HALO_TOUCH_CAPTIONS", _environment_value,
+		_platform_android | _platform_ios,
 		"The touch controls write what each controller button does in the\n"
 		"profile (JUMP, MELEE, FIRE) under it, in the HUD's font and colour.\n"
 		"false: the buttons alone, drawn in display.hud_button_style." },
-	{ "input.touch_aim_assist", _config_boolean, "true", "HALO_TOUCH_AIM_ASSIST", _environment_value, _platform_android | _platform_web,
+	{ "input.touch_aim_assist", _config_boolean, "true", "HALO_TOUCH_AIM_ASSIST", _environment_value,
+		_platform_android | _platform_web | _platform_ios,
 		"The touch controls' swipe aiming gets a controller's aim assist: the\n"
 		"aim slows over a target and follows a moving one. false: none, as a\n"
 		"mouse (the bullets' own autoaim stays)." },
@@ -1463,6 +1469,8 @@ static const struct config_setting config_settings[] =
 #define CONFIG_PLATFORM (_platform_desktop | _platform_web)
 #elif defined(_WIN32)
 #define CONFIG_PLATFORM (_platform_desktop | _platform_windows)
+#elif defined(HALO_IOS)
+#define CONFIG_PLATFORM (_platform_desktop | _platform_guest | _platform_ios)
 #elif defined(HALO_GUEST)
 #define CONFIG_PLATFORM (_platform_desktop | _platform_guest)
 #else

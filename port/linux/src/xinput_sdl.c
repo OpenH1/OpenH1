@@ -119,7 +119,7 @@ the touch controls (their swipe, gyroscope or stick: halo_linux_mouse_aiming,
 halo_linux_touch_aiming) */
 static Uint64 mouse_aimed_ms = 0;
 static Uint64 stick_aimed_ms = 0;
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_TOUCH_CONTROLS
 static Uint64 touch_aimed_ms = 0;
 #endif
 
@@ -181,7 +181,7 @@ int halo_linux_mouse_look(short gamepad_index, float *yaw, float *pitch)
 	return TRUE;
 }
 
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_TOUCH_CONTROLS
 /* the touch controls moved the player or the aim (halo_linux_touch_aiming) */
 static void touch_used(void)
 {
@@ -232,7 +232,7 @@ int halo_chat_touch_layout(void)
 {
 #if defined(HALO_ANDROID)
 	return TRUE;
-#elif defined(HALO_WEB)
+#elif defined(HALO_WEB) || defined(HALO_IOS)
 	int used;
 
 	pthread_mutex_lock(&mouse_lock);
@@ -282,15 +282,15 @@ static void chat_pad_hold_over(XINPUT_GAMEPAD *pad)
 
 /* the touch controls' stick as the player's movement (input_abstraction.c's
 keyboard_controls_update), forward and strafe -1..1, whatever the
-profile's sticks do; nonzero while it is pushed. Nothing but on Android and
-the web (port/web/site/touch.js). */
+profile's sticks do; nonzero while it is pushed. Nothing but on Android, iOS
+and the web (port/web/site/touch.js). */
 int halo_linux_touch_move(short controller_index, float *forward, float *strafe)
 {
 	*forward = 0.0f;
 	*strafe = 0.0f;
 	if (controller_index != 0)
 		return FALSE;
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_TOUCH_CONTROLS
 	if (!touch_input_move(forward, strafe) || network_chat_keyboard_open())
 	{
 		*forward = 0.0f;
@@ -308,7 +308,7 @@ int halo_linux_touch_move(short controller_index, float *forward, float *strafe)
 the mouse's rate per pixel (the view applies its own sensitivity), each
 apart: player_control.c inverts the swipe as the profile inverts the stick,
 not the gyroscope, which turns as the phone does, and makes them the
-stick's rate before the magnetism. Nothing but on Android and the web. */
+stick's rate before the magnetism. Nothing but on Android, iOS and the web. */
 int halo_linux_touch_look(short gamepad_index, float *yaw, float *pitch, float *gyro_yaw, float *gyro_pitch)
 {
 	*yaw = 0.0f;
@@ -317,7 +317,7 @@ int halo_linux_touch_look(short gamepad_index, float *yaw, float *pitch, float *
 	*gyro_pitch = 0.0f;
 	if (gamepad_index != 0)
 		return FALSE;
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_TOUCH_CONTROLS
 	touch_input_look(0.0022f, yaw, pitch, gyro_yaw, gyro_pitch);
 	/* (none while the chat's on-screen keyboard is up: what was swiped is
 	dropped, not saved for after) */
@@ -342,7 +342,7 @@ assist (input.touch_aim_assist false): no magnetism, as for the mouse
 (player_control.c), until a stick moves the aim again */
 int halo_linux_touch_aiming(short gamepad_index)
 {
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_TOUCH_CONTROLS
 	int aiming;
 
 	if (gamepad_index != 0 || touch_input_aim_assist())
@@ -365,7 +365,7 @@ static int mouse_is_aim_device(short gamepad_index)
     if (gamepad_index != 0) return FALSE;
     pthread_mutex_lock(&mouse_lock);
     aiming = stick_aimed_ms == 0 || mouse_aimed_ms >= stick_aimed_ms;
-#ifdef HALO_ANDROID
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
     if (touch_aimed_ms != 0 && touch_aimed_ms >= mouse_aimed_ms &&
         touch_aimed_ms >= stick_aimed_ms) aiming = FALSE;
 #endif
@@ -1617,7 +1617,7 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		test_input_gamepad(&state->Gamepad);
 		substep_frame_reading = state->Gamepad;
 		touch_input_gamepad(&state->Gamepad);
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_TOUCH_CONTROLS
 		touch_input_controls(&state->Gamepad, input.menus);
 #endif
 #ifdef HALO_VR
@@ -1666,7 +1666,7 @@ DWORD WINAPI XInputSetState(HANDLE device, PXINPUT_FEEDBACK feedback)
 	feedback->Header.dwStatus = ERROR_SUCCESS;
 	if (port < 0)
 		return ERROR_DEVICE_NOT_CONNECTED;
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_TOUCH_CONTROLS
 	/* the phone vibrates for the touch controls' player (in a browser, where
 	it can) */
 	if (port == 0)
