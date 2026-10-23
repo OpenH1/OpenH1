@@ -110,7 +110,9 @@ def ios_platform(name: str, sdk: str, guest=None) -> ApplePlatform:
                      f"-DSDL_SHARED=OFF -DSDL_STATIC=ON"),
         sdl_library="libSDL3.a", sdl_link="-lSDL3", guest_image_source=PORT_DIR / "guest_image.S",
         shader_platform="ios_simulator" if simulator else "ios", guest=guest,
-        guest_imports=[PORT_DIR / "host_imports.list"])
+        guest_imports=[PORT_DIR / "host_imports.list"],
+        # (the first start's disc image extraction: port/ios/data_import.m)
+        shared_extra=["xiso.h", "xiso.c", "posix.h"])
 
 
 def generate_ios_app(n: Writer, sln: Any, built: dict, name: str, build: Path, signed: bool) -> None:

@@ -53,6 +53,12 @@ const char *host_app_documents_folder(void)
 
 /* port/macos/host_metal.m */
 void host_metal_background(int away);
+static NSString *config_path_setting(const char *name);
+static double config_number_setting(const char *name, double fallback);
+/* display.render_scale's default (port/linux/src/port_config.c's) */
+#define RENDER_SCALE_DEFAULT 1.0
+/* port/ios/data_import.m */
+void host_app_game_data(const char *documents);
 
 /* ---------- the background */
 
@@ -93,6 +99,47 @@ void host_app_background_wait(void)
 	}
 }
 
+/* ---------- the render scale and the device's temperature */
+
+/* display.render_scale (HALO_RENDER_SCALE): the game draws at this fraction
+of the screen's pixels each way, and the display scales the picture up
+(port/android/host/host_sdl.c gives the game the window's pixels times it;
+host_metal.m makes the layer's drawables that size) */
+float host_app_render_scale(void)
+{
+	static float scale;
+
+	if (!scale)
+	{
+		const char *value = getenv("HALO_RENDER_SCALE");
+
+		scale = value ? (float)atof(value) : (float)config_number_setting("display.render_scale", RENDER_SCALE_DEFAULT);
+		if (!(scale >= 0.25f && scale <= 1.0f))
+			scale = 1.0f;
+		host_logf(HOST_LOG_INFO, "render scale: %.2f", scale);
+	}
+	return scale;
+}
+
+static const char *thermal_state_name(NSProcessInfoThermalState state)
+{
+	return state == NSProcessInfoThermalStateNominal ? "nominal" : state == NSProcessInfoThermalStateFair ? "fair" :
+		state == NSProcessInfoThermalStateSerious ? "serious" : state == NSProcessInfoThermalStateCritical ?
+		"critical" : "unknown";
+}
+
+/* the device's thermal state in the log, at the start and as it changes:
+a hot phone slows its processor and GPU, which a frame's times show */
+static void thermal_watch(void)
+{
+	host_logf(HOST_LOG_INFO, "thermal state: %s", thermal_state_name(NSProcessInfo.processInfo.thermalState));
+	[[NSNotificationCenter defaultCenter] addObserverForName:NSProcessInfoThermalStateDidChangeNotification object:nil
+		queue:nil usingBlock:^(NSNotification *note) {
+			(void)note;
+			host_logf(HOST_LOG_INFO, "thermal state: %s", thermal_state_name(NSProcessInfo.processInfo.thermalState));
+		}];
+}
+
 /* ---------- the log */
 
 static void log_open(NSString *logs)
@@ -123,6 +170,27 @@ static NSString *config_path_setting(const char *name)
 
 		if (datum.type == TOML_STRING && datum.u.s[0])
 			value = [NSString stringWithUTF8String:datum.u.s];
+	}
+	toml_free(result);
+	return value;
+}
+
+/* a number of config.toml's (an integer or a real), or fallback */
+static double config_number_setting(const char *name, double fallback)
+{
+	NSString *path = [documents_folder stringByAppendingPathComponent:@"config.toml"];
+	toml_result_t result = toml_parse_file_ex(path.fileSystemRepresentation);
+	double value = fallback;
+
+	if (!result.ok)
+		return fallback;
+	{
+		toml_datum_t datum = toml_seek(result.toptab, name);
+
+		if (datum.type == TOML_FP64)
+			value = datum.u.fp64;
+		else if (datum.type == TOML_INT64)
+			value = (double)datum.u.int64;
 	}
 	toml_free(result);
 	return value;
@@ -159,6 +227,7 @@ void host_app_start(void)
 			bundle.bundleIdentifier.UTF8String, UIDevice.currentDevice.systemName.UTF8String,
 			UIDevice.currentDevice.systemVersion.UTF8String, bundle.bundlePath.fileSystemRepresentation);
 		host_logf(HOST_LOG_INFO, "settings, game data and saves: %s", settings_folder);
+		thermal_watch();
 
 		/* internet play's brokers (network.brokers_file), the app's list
 		beside config.toml at each start */
@@ -175,7 +244,11 @@ void host_app_start(void)
 		if (!getenv("HALO_SAVE_ROOT") && !config_path_setting("paths.saves"))
 			setenv("HALO_SAVE_ROOT", saves.fileSystemRepresentation, 1);
 		if (!getenv("HALO_DATA_ROOT") && !config_path_setting("paths.data"))
+		{
 			setenv("HALO_DATA_ROOT", documents_folder.fileSystemRepresentation, 1);
+			/* (the first start: the disc image or the maps, asked for) */
+			host_app_game_data(documents_folder.fileSystemRepresentation);
+		}
 		/* (HOME is the app's container: the Metal archive's folder,
 		Library/Caches/OpenH1) */
 	}
