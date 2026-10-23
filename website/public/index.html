@@ -242,7 +242,7 @@ h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stret
 .byo code { font: 500 14px var(--mono); color: var(--text); }
 
 /* ---------- downloads: one card a machine, the visitor's first */
-.dl { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
 .dl article { display: flex; flex-direction: column; padding: 28px 26px 26px; border-radius: 8px; background: linear-gradient(180deg, #0a0d09, #070906); box-shadow: inset 0 0 0 1px var(--line-soft); }
 .dl article.mine { box-shadow: inset 0 0 0 1px var(--green), 0 0 60px -20px var(--glow); }
 .dl h3 { margin: 0 0 6px; font: 900 26px/1.1 var(--display); font-stretch: 116%; letter-spacing: -0.01em; }
@@ -610,6 +610,16 @@ footer .legal a { color: var(--soft); }
             <li>Drag OpenH1 to Applications, and open it from there.</li>
           </ol>
         </article>
+        <article data-os="android">
+          <h3>Android</h3>
+          <p>64-bit Android 9 or later, with Vulkan 1.3.</p>
+          <a class="btn" href="https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Android.apk">Download for Android</a>
+          <ol>
+            <li>Download it on your phone, and open it.</li>
+            <li>When Android asks, allow your browser to install apps, then choose <em>Install</em>.</li>
+            <li>Copy your disc image to the phone, open OpenH1 and choose it. It copies out its maps once.</li>
+          </ol>
+        </article>
         <article>
           <h3>Steam Frame</h3>
           <p>The VR build, for the headset.</p>
@@ -811,9 +821,10 @@ footer .legal a { color: var(--soft); }
   group([...document.querySelectorAll("#clips video")], document.getElementById("clips"), document.getElementById("clips-play"));
 
   // the downloads: the visitor's machine first, and marked, once it has a
-  // build (a Steam Deck's browser says Linux; an iPad's says Mac, but has touch)
+  // build (a Steam Deck's browser says Linux, an Android phone's Linux too,
+  // so Android is asked first; an iPad's says Mac, but has touch)
   const ua = navigator.userAgent, touch = navigator.maxTouchPoints > 1;
-  const os = /Android|iPhone|iPad/.test(ua) ? "" : /Windows/.test(ua) ? "windows" : /Mac/.test(ua) ? (touch ? "" : "mac") : /Linux|CrOS/.test(ua) ? "linux" : "";
+  const os = /Android/.test(ua) ? "android" : /iPhone|iPad/.test(ua) ? "" : /Windows/.test(ua) ? "windows" : /Mac/.test(ua) ? (touch ? "" : "mac") : /Linux|CrOS/.test(ua) ? "linux" : "";
   const mine = os && document.querySelector(`#downloads [data-os="${os}"]:not(.later)`);
   if (mine) { mine.classList.add("mine"); mine.parentElement.prepend(mine); }
 })();

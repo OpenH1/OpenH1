@@ -110,8 +110,8 @@ def test_names_agree():
 def test_asset_names_agree():
     """each updating build's zip is the one its self-updater asks for (UPDATE_NAME[-debug].zip): Windows', the
     x86-64 build's, its VR build's and the 64-bit ARM build's, as tools/ci_build.py names their artifacts,
-    tools/release_names.py the release's files, and the workflow publishes them (with the old names too, for
-    the builds from before the renaming); there is no 32-bit build, nor a flat release"""
+    tools/release_names.py the release's files, and the workflow publishes them; there is no 32-bit build, nor
+    a flat release"""
     updater = (ROOT / "port/linux/src/updater.c").read_text()
     platforms = set(re.findall(r'#define UPDATE_PLATFORM "([^"]+)"', updater))
     assert platforms == {"windows", "linux-x86_64", "linux-x86_64-vr", "linux-arm64"}
@@ -124,7 +124,6 @@ def test_asset_names_agree():
             artifact = f"halo-{platform}-{config}"
             assert release_names.published(artifact) == release_names.NAMES[platform] + (
                 "-debug" if config == "debug" else "")
-            assert artifact in release_names.LEGACY
     workflow = (ROOT / ".github/workflows/build.yml").read_text()
     for platform, vr in (("linux_x86_64", False), ("linux_x86_64", True), ("linux_arm64", False)):
         for config in ("debug", "release"):
@@ -209,18 +208,44 @@ def test_frame_install_from_package(tmp_path):
 
 
 def test_release_names():
-    """the names players see: OpenH1-<machine>[-debug][-symbols]; Android's (whose app asks for its old name,
-    Updater.java) and anything unknown keep theirs; the Mac's, the Steam Frame's and the symbols have no old
-    copies, as no self-updater asks for them"""
+    """the names players see: OpenH1-<machine>[-debug][-symbols]; anything unknown keeps its own"""
     assert release_names.published("halo-windows-release") == "OpenH1-Windows"
     assert release_names.published("halo-windows-debug-symbols") == "OpenH1-Windows-debug-symbols"
     assert release_names.published("halo-linux-x86_64-release") == "OpenH1-Linux"
     assert release_names.published("halo-macos-release") == "OpenH1"
     assert release_names.published("halo-macos-debug") == "OpenH1-debug"
-    assert release_names.published("halo-android-release") == "halo-android-release"
-    for artifact in ("halo-macos-release", "halo-steam-frame-vr-release", "halo-windows-release-symbols",
-                     "halo-android-release"):
-        assert artifact not in release_names.LEGACY
+    assert release_names.published("halo-android-release") == "OpenH1-Android"
+    assert release_names.published("halo-android-debug") == "OpenH1-Android-debug"
+    assert release_names.published("halo-web-release") == "halo-web-release"
     workflow = (ROOT / ".github/workflows/build.yml").read_text()
     assert 'published="$(python3 tools/release_names.py "$name")"' in workflow
-    assert 'python3 tools/release_names.py --legacy "$name"' in workflow
+    # (the release job's checkout has only the files it names)
+    release_job = workflow[workflow.index("\n  release:"):]
+    assert "            tools/release_names.py\n" in release_job[:release_job.index("download-artifact")]
+
+
+def test_android_release():
+    """the Android app is published as its APK alone (OpenH1-Android[-debug].apk), which carries the licences
+    (tools/android_build.py's assets/licenses, as tools/ci_build.py's dist has none beside it), and is the file its
+    self-updater asks for (Updater.java)"""
+    workflow = (ROOT / ".github/workflows/build.yml").read_text()
+    package = workflow[workflow.index("- name: Package"):workflow.index("- name: Publish")]
+    android = package[package.index("halo-android-*)"):]
+    android = android[:android.index(";;")]
+    assert 'cp "${apks[0]}" "release/$published.apk"' in android
+    publish = workflow[workflow.index("- name: Publish"):]
+    create = publish[publish.index("gh release create"):]
+    assert "release/*.apk" in create[:create.index("\n")]
+    assert "halo-android-release.zip" not in workflow and "OpenH1-Android.apk" in workflow
+    # the artifacts the Package step reads: the debug build's on every push, the release build's on master
+    for config in ("debug", "release"):
+        assert f"name: halo-android-{config}" in workflow and f"path: dist/halo-android-{config}" in workflow
+    updater = (ROOT / "port/android/app/src/main/java/com/halo/decomp/Updater.java").read_text()
+    asset = re.search(r'String asset = "([^"]+)" \+ \(BuildConfig\.DEBUG \? "([^"]+)" : ""\) \+ "\.apk";', updater)
+    assert asset, "Updater.java's asset name"
+    assert asset.group(1) == release_names.published("halo-android-release")
+    assert asset.group(1) + asset.group(2) == release_names.published("halo-android-debug")
+    assert "ZipInputStream" not in updater and "Halo:" not in updater
+    builder = (ROOT / "tools/android_build.py").read_text()
+    assert 'assets_dir / "licenses"' in builder and 'release_notices("android")' in builder
+    assert '(SDL_DIR / "LICENSE.txt", "SDL3-LICENSE.txt")' in builder

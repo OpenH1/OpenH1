@@ -4,9 +4,16 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LightingColorFilter;
 import android.graphics.Paint;
+import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -45,8 +52,8 @@ import java.util.Locale;
  * It shows only in a game, never at the main menu, over a menu (which
  * takes taps itself, port/linux/src/touch_input.c) or during a cinematic,
  * only on a touchscreen, and with input.touch_controls = "auto" only while
- * no controller is connected. While it is not shown it lets every finger
- * through to the game.
+ * no controller, mouse or keyboard is connected. While it is not shown it
+ * lets every finger through to the game.
  */
 public final class TouchControls extends View implements SensorEventListener, InputManager.InputDeviceListener {
     /** what a finger holds besides a control: the view swipe */
@@ -76,6 +83,43 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static final float FLOATING_ZONE_TOP = 0.35f;
     /** radians per logical unit of swipe (the mouse's rate: xinput_sdl.c) */
     private static final float LOOK_RADIANS_PER_UNIT = 0.0022f;
+    /**
+     * how solid each part is drawn, times the layout's opacity: the game
+     * shows through everything, the seldom used controls more
+     */
+    private static final float BUTTON_ALPHA = 0.8f;
+    private static final float MINOR_BUTTON_ALPHA = 0.55f;
+    private static final float ICON_ALPHA = 0.85f;
+    private static final float MINOR_ICON_ALPHA = 0.6f;
+    private static final float STICK_RING_ALPHA = 0.35f;
+    private static final float STICK_KNOB_ALPHA = 0.55f;
+    /**
+     * a controller button's art (with its edge and shadow), half its longer
+     * side in its control's radii; a line icon's; either sinks a little and
+     * brightens while held
+     */
+    private static final float ART_SIZE = 1f;
+    private static final float ICON_SIZE = 0.62f;
+    private static final float MINOR_ICON_SIZE = 0.56f;
+    private static final float PRESSED_SIZE = 0.9f;
+    /** the line icons', the stick's and the captions' colour: the HUD's light blue (tools/touch_assets.py) */
+    private static final int HUD_COLOR = 0xff9cd3ff;
+    /** a caption's size and how solid it is (input.touch_captions) */
+    private static final float CAPTION_SIZE = 9;
+    private static final float CAPTION_ALPHA = 0.85f;
+    /**
+     * controls nobody has touched for IDLE_MS fade to IDLE_OPACITY of the
+     * opacity setting, over FADE_OUT_MS; a finger brings them back over
+     * FADE_IN_MS
+     */
+    private static final long IDLE_MS = 3000;
+    private static final float IDLE_OPACITY = 0.7f;
+    /** a glow reaches this far past its art, in the art's longer side */
+    private static final float GLOW_MARGIN = 0.25f;
+    /** ... from its art's shape this much larger */
+    private static final float GLOW_GROW = 0.14f;
+    private static final float FADE_OUT_MS = 600;
+    private static final float FADE_IN_MS = 120;
     /** a label is at most this many radii wide */
     private static final float LABEL_WIDTH = 1.7f;
     /** the labels' fitted sizes remembered (a few dozen are drawn; the editor's sizes add more) */
@@ -91,6 +135,11 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static final int SCENE_MENUS = 2;
     private static final int SCENE_ON = 4;
     private static final int SCENE_OFF = 8;
+    /** the game sees a controller of its own (SDL_GetGamepads) */
+    private static final int SCENE_CONTROLLER = 16;
+    /** display.hud_button_style (0 classic, 1 gems, 2 menu_gems) and input.touch_captions */
+    private static final int SCENE_STYLE_SHIFT = 5;
+    private static final int SCENE_CAPTIONS = 128;
 
     private static final String PREFERENCES = "touch-layout-v1";
     private static final String KEY_CONFIGURATION = "configuration";
@@ -99,7 +148,9 @@ public final class TouchControls extends View implements SensorEventListener, In
     /**
      * a kind of control: the SDL button bit or trigger axis it sends (-1 for
      * none), and the game's controller button it is (port/linux/game/
-     * touch_game.c numbers them: input.h's _gamepad_*), which names it
+     * touch_game.c numbers them: input.h's _gamepad_*), which names it; a
+     * D-pad button's arrow points this many degrees clockwise from the right
+     * (-1 for none)
      */
     private static final class Kind {
         final int bit;
@@ -107,13 +158,19 @@ public final class TouchControls extends View implements SensorEventListener, In
         final int gamepadButton;
         final String buttonName;
         final boolean faceButton;
+        final int arrow;
 
         Kind(int bit, int trigger, int gamepadButton, String buttonName, boolean faceButton) {
+            this(bit, trigger, gamepadButton, buttonName, faceButton, -1);
+        }
+
+        Kind(int bit, int trigger, int gamepadButton, String buttonName, boolean faceButton, int arrow) {
             this.bit = bit;
             this.trigger = trigger;
             this.gamepadButton = gamepadButton;
             this.buttonName = buttonName;
             this.faceButton = faceButton;
+            this.arrow = arrow;
         }
     }
 
@@ -131,18 +188,55 @@ public final class TouchControls extends View implements SensorEventListener, In
         new Kind(10, -1, 4, "Black", false),
         new Kind(6, -1, 12, "Start", false),
         new Kind(4, -1, 13, "Back", false),
-        new Kind(11, -1, 8, "Up", false),
-        new Kind(12, -1, 9, "Down", false),
-        new Kind(13, -1, 10, "Left", false),
-        new Kind(14, -1, 11, "Right", false),
+        new Kind(11, -1, 8, "Up", false, 270),
+        new Kind(12, -1, 9, "Down", false, 90),
+        new Kind(13, -1, 10, "Left", false, 180),
+        new Kind(14, -1, 11, "Right", false, 0),
         new Kind(-1, -1, -1, "Move", false),
         new Kind(-1, 5, 7, "RT", false),
     };
 
-    /** the game's controls (input_abstraction.c's _game_control_*), as the buttons name them */
+    /** the game's controls (input_abstraction.c's _game_control_*), as the options' lists name them */
     private static final String[] GAME_CONTROLS = {
         "Jump", "Gren. type", "Reload", "Weapon", "Melee", "Light",
         "Grenade", "Fire", "Pause", "Back", "Crouch", "Zoom",
+    };
+    /**
+     * the controller's buttons drawn as the HUD draws them (port/assets/
+     * buttons, through tools/touch_assets.py: port/assets/touch/README.md):
+     * A, B, X, Y, black and white in each display.hud_button_style ("gems"
+     * has menu_gems' black and white), then the triggers and the sticks
+     */
+    private static final int[][] FACES = {
+        {R.drawable.touch_button_classic_a, R.drawable.touch_button_classic_b, R.drawable.touch_button_classic_x,
+            R.drawable.touch_button_classic_y, R.drawable.touch_button_classic_black,
+            R.drawable.touch_button_classic_white},
+        {R.drawable.touch_button_gems_a, R.drawable.touch_button_gems_b, R.drawable.touch_button_gems_x,
+            R.drawable.touch_button_gems_y, R.drawable.touch_button_menu_black, R.drawable.touch_button_menu_white},
+        {R.drawable.touch_button_menu_a, R.drawable.touch_button_menu_b, R.drawable.touch_button_menu_x,
+            R.drawable.touch_button_menu_y, R.drawable.touch_button_menu_black, R.drawable.touch_button_menu_white},
+    };
+    private static final int[] CONTROL_ART = {
+        R.drawable.touch_trigger_left, R.drawable.touch_trigger_right,
+        R.drawable.touch_thumbstick_left, R.drawable.touch_thumbstick_right,
+    };
+    /**
+     * by TouchLayout's kinds: the art each is drawn with (0..5 a face of
+     * FACES, 6..9 CONTROL_ART, -1 a line icon), and whether it is seldom
+     * used, drawn smaller and fainter (the stick clicks, white, black, back,
+     * the D-pad)
+     */
+    private static final int[] KIND_ART = {
+        0, 1, 2, 3, 7, 6, 8, 9, 5, 4, -1, -1, -1, -1, -1, -1, -1, 7,
+    };
+    private static final boolean[] MINOR_KINDS = {
+        false, false, false, false, false, false, true, true, true, true, false, true,
+        true, true, true, true, false, false,
+    };
+    /** ... as the captions under the buttons name them */
+    private static final String[] CAPTIONS = {
+        "JUMP", "GREN TYPE", "RELOAD", "SWAP", "MELEE", "LIGHT",
+        "GRENADE", "FIRE", "PAUSE", "BACK", "CROUCH", "ZOOM",
     };
     /** the default profile's mapping, until the game sends the player's own */
     private static final int[] DEFAULT_BINDINGS = {
@@ -158,6 +252,27 @@ public final class TouchControls extends View implements SensorEventListener, In
     private static native int nativeBindings(int[] controls);
 
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint pictures = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
+    private final RectF pictureBounds = new RectF();
+    /** a held controller button's art, a little brighter */
+    private final LightingColorFilter pressed = new LightingColorFilter(0xffffffff, 0x00262626);
+    /** the pictures the controls are drawn with: the HUD's buttons, and line icons of Kenney's Mobile Controls */
+    private final Bitmap[][] faces = new Bitmap[FACES.length][];
+    private final Bitmap[] controlArt = new Bitmap[CONTROL_ART.length];
+    private final Bitmap pauseIcon;
+    private final Bitmap backIcon;
+    private final Bitmap arrowIcon;
+    private final Bitmap optionsIcon;
+    private final Bitmap hideIcon;
+    private final Bitmap showIcon;
+    /** the captions' font: Overpass, as the HUD's text (res/font, tools/touch_assets.py) */
+    private final Typeface captionFont;
+    /** each button art's glow (TouchContext.glow), made when first drawn */
+    private final HashMap<Bitmap, Bitmap> glows = new HashMap<>();
+    /** the idle fade (IDLE_OPACITY..1), and when a finger last touched the screen */
+    private float idle = 1f;
+    private long lastTouch;
+    private long lastFade;
     private final SharedPreferences preferences;
     private final SensorManager sensors;
     private final Sensor gyroscope;
@@ -207,6 +322,8 @@ public final class TouchControls extends View implements SensorEventListener, In
 
     private int scene;
     private boolean controllerConnected;
+    private boolean mouseConnected;
+    private boolean keyboardConnected;
     private boolean touchscreen;
     private boolean deviceInputActive;
     /** the controls are on screen: shown() for SHOW_DELAY_MS */
@@ -262,7 +379,14 @@ public final class TouchControls extends View implements SensorEventListener, In
         public void run() {
             if (!deviceInputActive)
                 return;
+            int was = scene;
             scene = nativeScene();
+            // (the buttons' style and captions are settings: drawn again when they change)
+            if (((was ^ scene) & (3 << SCENE_STYLE_SHIFT | SCENE_CAPTIONS)) != 0
+                    || TouchContext.fromScene(was) != TouchContext.fromScene(scene)
+                    || (showing && !hidden && TouchContext.animating(TouchContext.fromScene(scene))))
+                invalidate();
+            fadeWhenIdle();
             updateShowing();
             readBindings();
             updateRumble();
@@ -272,6 +396,22 @@ public final class TouchControls extends View implements SensorEventListener, In
 
     public TouchControls(Context context) {
         super(context);
+        Resources resources = context.getResources();
+        pauseIcon = picture(resources, R.drawable.touch_icon_pause);
+        backIcon = picture(resources, R.drawable.touch_icon_back);
+        arrowIcon = picture(resources, R.drawable.touch_icon_arrow);
+        optionsIcon = picture(resources, R.drawable.touch_icon_options);
+        hideIcon = picture(resources, R.drawable.touch_icon_hide);
+        showIcon = picture(resources, R.drawable.touch_icon_show);
+        captionFont = resources.getFont(R.font.touch_caption);
+        lastTouch = SystemClock.uptimeMillis();
+        for (int style = 0; style < FACES.length; style++) {
+            faces[style] = new Bitmap[FACES[style].length];
+            for (int i = 0; i < FACES[style].length; i++)
+                faces[style][i] = picture(resources, FACES[style][i]);
+        }
+        for (int i = 0; i < CONTROL_ART.length; i++)
+            controlArt[i] = picture(resources, CONTROL_ART[i]);
         sensors = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
         gyroscope = sensors == null ? null : sensors.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
         if (Build.VERSION.SDK_INT >= 31) {
@@ -302,6 +442,13 @@ public final class TouchControls extends View implements SensorEventListener, In
                 invalidate();
             return insets;
         });
+    }
+
+    /** a picture, drawn at many sizes from one large one (res/drawable-nodpi) */
+    private static Bitmap picture(Resources resources, int id) {
+        Bitmap bitmap = BitmapFactory.decodeResource(resources, id);
+        bitmap.setHasMipMap(true);
+        return bitmap;
     }
 
     private void loadLayout(Context context) {
@@ -392,12 +539,16 @@ public final class TouchControls extends View implements SensorEventListener, In
     /**
      * whether the controls belong on screen: in a game (no menu or
      * cinematic), never without a touchscreen, and with
-     * input.touch_controls = "auto" only while no controller is connected
+     * input.touch_controls = "auto" only while no controller, mouse or
+     * keyboard is connected (the game says which controllers SDL has, as
+     * this view's device list misses some, a pad paired after the game
+     * started)
      */
     private boolean shown() {
         if ((scene & SCENE_KNOWN) == 0 || (scene & (SCENE_MENUS | SCENE_OFF)) != 0 || !touchscreen)
             return false;
-        return (scene & SCENE_ON) != 0 || !controllerConnected;
+        return (scene & SCENE_ON) != 0
+            || (!controllerConnected && !mouseConnected && !keyboardConnected && (scene & SCENE_CONTROLLER) == 0);
     }
 
     /** shows the controls once shown() has held for SHOW_DELAY_MS; hides them at once */
@@ -428,8 +579,24 @@ public final class TouchControls extends View implements SensorEventListener, In
             || device.getMotionRange(MotionEvent.AXIS_HAT_X, InputDevice.SOURCE_JOYSTICK) != null;
     }
 
+    /** a physical mouse (or a trackpad): a non-virtual SOURCE_MOUSE device */
+    private static boolean isMouse(InputDevice device) {
+        if (device == null || device.isVirtual())
+            return false;
+        return (device.getSources() & InputDevice.SOURCE_MOUSE) == InputDevice.SOURCE_MOUSE;
+    }
+
+    /** a physical keyboard: a non-virtual SOURCE_KEYBOARD device */
+    private static boolean isKeyboard(InputDevice device) {
+        if (device == null || device.isVirtual())
+            return false;
+        return (device.getSources() & InputDevice.SOURCE_KEYBOARD) == InputDevice.SOURCE_KEYBOARD;
+    }
+
     private void refreshInputDevices() {
         boolean controller = false;
+        boolean mouse = false;
+        boolean keyboard = false;
         boolean touch = touchscreenFeature;
         for (int id : InputDevice.getDeviceIds()) {
             InputDevice device = InputDevice.getDevice(id);
@@ -437,11 +604,17 @@ public final class TouchControls extends View implements SensorEventListener, In
                 continue;
             if (isController(device))
                 controller = true;
+            if (isMouse(device))
+                mouse = true;
+            if (isKeyboard(device))
+                keyboard = true;
             boolean touchSource = (device.getSources() & InputDevice.SOURCE_TOUCHSCREEN) == InputDevice.SOURCE_TOUCHSCREEN;
             if (!device.isVirtual() && touchSource)
                 touch = true;
         }
         controllerConnected = controller;
+        mouseConnected = mouse;
+        keyboardConnected = keyboard;
         touchscreen = touch;
         updateShowing();
     }
@@ -575,7 +748,7 @@ public final class TouchControls extends View implements SensorEventListener, In
         if (hidden && !editing)
             return NOTHING;
         for (int i = 0; i < layout.size(); i++) {
-            if (layout.shown(i) && layout.type(i) != TouchLayout.LEFT
+            if (layout.shown(i) && layout.type(i) != TouchLayout.LEFT && (editing || !hiddenNow(layout.type(i)))
                     && inside(x, y, layout.x(i), layout.y(i), layout.radius(i)))
                 return i;
         }
@@ -602,6 +775,9 @@ public final class TouchControls extends View implements SensorEventListener, In
     @Override
     public boolean onTouchEvent(MotionEvent event) {
         int action = event.getActionMasked();
+        lastTouch = SystemClock.uptimeMillis();
+        if (idle < 1f)
+            fadeWhenIdle();
         if (!showing && !editing && openDialogs == 0) {
             // the menus and cinematics take the fingers (SDL's surface below)
             if (action == MotionEvent.ACTION_DOWN)
@@ -676,10 +852,12 @@ public final class TouchControls extends View implements SensorEventListener, In
             toolbarFingers.put(id, new float[] {px, py, target});
         } else if (target != NOTHING) {
             owners.put(id, target);
-            if (layout.type(target) == TouchLayout.LEFT)
+            if (layout.type(target) == TouchLayout.LEFT) {
                 moveStick(target, x, y);
-            else
+            } else {
                 buttonTouches.put(id, new float[] {px, py});
+                tap();
+            }
         } else if (!hidden && lookPointer < 0 && !inGestureZone(px, py, false)) {
             startLook(id, px, py);
         }
@@ -818,12 +996,75 @@ public final class TouchControls extends View implements SensorEventListener, In
 
     private String makeLabel(int type) {
         Kind kind = KINDS[type];
-        if (kind.gamepadButton < 0)
-            return kind.buttonName;
-        int control = bindings[kind.gamepadButton];
-        if (control < 0 || control >= GAME_CONTROLS.length)
+        int control = gameControl(type);
+        if (control < 0)
             return kind.buttonName;
         return kind.faceButton ? kind.buttonName + " / " + GAME_CONTROLS[control] : GAME_CONTROLS[control];
+    }
+
+    /** the game control a kind's button does in the player's profile, or -1 for none */
+    private int gameControl(int type) {
+        Kind kind = KINDS[type];
+        if (kind.gamepadButton < 0)
+            return -1;
+        int control = bindings[kind.gamepadButton];
+        return control >= 0 && control < GAME_CONTROLS.length ? control : -1;
+    }
+
+    /** player 1's state, which the game sends with the scene (TouchContext) */
+    private int context() {
+        return TouchContext.fromScene(scene);
+    }
+
+    /** a button the state hides: jump and crouch in a vehicle's seat */
+    private boolean hiddenNow(int type) {
+        return TouchContext.hidden(gameControl(type), context());
+    }
+
+    /** a light tap of the phone's vibrator at a button's press, with the vibration on */
+    private void tap() {
+        if (vibrator == null || !layout.rumbleEnabled || !vibrator.hasVibrator())
+            return;
+        try {
+            VibrationEffect effect = Build.VERSION.SDK_INT >= 29
+                ? VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK)
+                : VibrationEffect.createOneShot(12, 60);
+            vibrator.vibrate(effect, rumbleAttributes);
+        } catch (RuntimeException ignored) {
+            // the vibrator may already be gone with the activity
+        }
+    }
+
+    /** an art's glow: its shape, blurred, in the HUD's colour, on a margin of GLOW_MARGIN */
+    private Bitmap glow(Bitmap art) {
+        Bitmap glow = glows.get(art);
+        if (glow != null)
+            return glow;
+        int margin = Math.round(Math.max(art.getWidth(), art.getHeight()) * GLOW_MARGIN);
+        Bitmap shape = art.extractAlpha();
+        glow = Bitmap.createBitmap(art.getWidth() + 2 * margin, art.getHeight() + 2 * margin, Bitmap.Config.ARGB_8888);
+        Paint blur = new Paint(Paint.ANTI_ALIAS_FLAG);
+        blur.setColor(HUD_COLOR);
+        blur.setMaskFilter(new BlurMaskFilter(margin * 0.5f, BlurMaskFilter.Blur.NORMAL));
+        // (the shape a little larger, so that the glow reaches past the art's edge)
+        float grow = GLOW_GROW / 2;
+        new Canvas(glow).drawBitmap(shape, null, new RectF(margin - art.getWidth() * grow, margin - art.getHeight() * grow,
+            margin + art.getWidth() * (1 + grow), margin + art.getHeight() * (1 + grow)), blur);
+        shape.recycle();
+        glow.setHasMipMap(true);
+        glows.put(art, glow);
+        return glow;
+    }
+
+    /** the controller buttons' art: display.hud_button_style, which the game sends with the scene */
+    private Bitmap art(int type) {
+        int art = KIND_ART[type];
+        if (art < 0)
+            return null;
+        if (art >= 6)
+            return controlArt[art - 6];
+        int style = (scene >> SCENE_STYLE_SHIFT) & 3;
+        return faces[style < faces.length ? style : 0][art];
     }
 
     private String controlName(int type) {
@@ -1247,21 +1488,112 @@ public final class TouchControls extends View implements SensorEventListener, In
         return (color & 0x00ffffff) | (Math.max(0, Math.min(255, alpha)) << 24);
     }
 
-    private void circle(Canvas canvas, float x, float y, float radius, String label, boolean active,
-            float textSize, float opacity) {
+    /**
+     * the idle fade: toward IDLE_OPACITY once no finger has touched the
+     * screen for IDLE_MS, back to whole at a touch; smooth, a step a frame
+     */
+    private void fadeWhenIdle() {
+        long now = SystemClock.uptimeMillis();
+        long elapsed = Math.min(now - lastFade, 100);
+        lastFade = now;
+        boolean touched = owners.size() > 0 || lookPointer >= 0 || toolbarFingers.size() > 0
+            || now - lastTouch < IDLE_MS;
+        float target = touched ? 1f : IDLE_OPACITY;
+        float step = (1f - IDLE_OPACITY) * elapsed / (touched ? FADE_IN_MS : FADE_OUT_MS);
+        float faded = idle < target ? Math.min(target, idle + step) : Math.max(target, idle - step);
+        if (faded != idle) {
+            idle = faded;
+            invalidate();
+        }
+    }
+
+    private void label(Canvas canvas, float x, float y, float radius, String label, float textSize, float opacity) {
         paint.setStyle(Paint.Style.FILL);
-        paint.setColor(alpha(active ? 0x9983d9ff : 0x55304050, opacity));
-        canvas.drawCircle(x, y, radius, paint);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(2);
-        paint.setColor(alpha(active ? 0xffaee7ff : 0xffffffff, opacity));
-        canvas.drawCircle(x, y, radius, paint);
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(alpha(Color.WHITE, Math.max(opacity, 0.5f)));
+        paint.setColor(alpha(HUD_COLOR, Math.max(opacity, 0.5f)));
         paint.setTextAlign(Paint.Align.CENTER);
+        paint.setShadowLayer(2, 0, 1, alpha(Color.BLACK, 0.6f * opacity));
         textSize = fittedTextSize(label, radius, textSize);
         paint.setTextSize(textSize);
         canvas.drawText(label, x, y + textSize * 0.36f, paint);
+        paint.clearShadowLayer();
+    }
+
+    /** a picture, its longer side 2 * radius, centred on a point; brighter while held */
+    private void fitted(Canvas canvas, Bitmap bitmap, float x, float y, float radius, float alpha, boolean active) {
+        float scale = radius / Math.max(bitmap.getWidth(), bitmap.getHeight());
+        float halfWidth = bitmap.getWidth() * scale;
+        float halfHeight = bitmap.getHeight() * scale;
+        pictures.setAlpha(Math.max(0, Math.min(255, Math.round(alpha * 255))));
+        pictures.setColorFilter(active ? pressed : null);
+        pictureBounds.set(x - halfWidth, y - halfHeight, x + halfWidth, y + halfHeight);
+        canvas.drawBitmap(bitmap, null, pictureBounds, pictures);
+        pictures.setColorFilter(null);
+    }
+
+    /**
+     * a control, with nothing drawn behind it: a controller button drawn as
+     * the HUD draws it (A, B, X, Y, black, white, the triggers and the
+     * sticks), with its caption under it (input.touch_captions: what it does
+     * in the player's profile), or start, back and the D-pad as line icons.
+     * Each takes a finger anywhere in its circle; held, it is drawn brighter
+     * and a little smaller.
+     */
+    private void control(Canvas canvas, int control, boolean active, float opacity) {
+        int type = layout.type(control);
+        float x = layout.x(control);
+        float y = layout.y(control);
+        float radius = layout.radius(control);
+        boolean minor = MINOR_KINDS[type];
+        float sink = active ? PRESSED_SIZE : 1f;
+        Bitmap art = art(type);
+        if (art != null) {
+            int game = gameControl(type);
+            int context = editing ? 0 : context();
+            long now = SystemClock.uptimeMillis();
+            float glow = TouchContext.glow(game, context, now);
+            float size = radius * ART_SIZE * sink * TouchContext.swell(game, context, now);
+            if (glow > 0)
+                fitted(canvas, glow(art), x, y, size * (1 + 2 * GLOW_MARGIN), glow * Math.max(opacity, 0.5f), false);
+            fitted(canvas, art, x, y, size, (active ? 1f : minor ? MINOR_BUTTON_ALPHA : BUTTON_ALPHA) * opacity
+                * TouchContext.alpha(game, context), active || glow > 0.6f);
+            // (under the art, as drawn when it is not held, so that it stays put)
+            caption(canvas, type, x, y + radius * ART_SIZE * art.getHeight()
+                / Math.max(art.getWidth(), art.getHeight()), opacity * TouchContext.alpha(game, context));
+            return;
+        }
+        Kind kind = KINDS[type];
+        Bitmap icon = kind.arrow >= 0 ? arrowIcon : kind.bit == 6 ? pauseIcon : kind.bit == 4 ? backIcon : null;
+        float iconOpacity = (active ? 1f : minor ? MINOR_ICON_ALPHA : ICON_ALPHA) * Math.max(opacity, 0.5f);
+        if (icon == null) {
+            float textSize = 11 * Math.max(layout.sizeScale(control), radius / 36f);
+            label(canvas, x, y, radius, label(type), Math.min(textSize, 16), iconOpacity);
+            return;
+        }
+        float size = radius * (minor ? MINOR_ICON_SIZE : ICON_SIZE) * sink;
+        canvas.save();
+        if (kind.arrow > 0)
+            canvas.rotate(kind.arrow, x, y);
+        fitted(canvas, icon, x, y, size, iconOpacity, active);
+        canvas.restore();
+    }
+
+    /** input.touch_captions: the game control a button does, a short word in the HUD's font and colour, under it */
+    private void caption(Canvas canvas, int type, float x, float bottom, float opacity) {
+        int game = gameControl(type);
+        if ((scene & SCENE_CAPTIONS) == 0 || game < 0)
+            return;
+        paint.setStyle(Paint.Style.FILL);
+        paint.setTextAlign(Paint.Align.CENTER);
+        paint.setTypeface(captionFont);
+        paint.setTextSize(CAPTION_SIZE);
+        paint.setLetterSpacing(0.06f);
+        paint.setShadowLayer(2.5f, 0, 1, alpha(Color.BLACK, 0.8f * Math.max(opacity, 0.5f)));
+        paint.setColor(alpha(HUD_COLOR, CAPTION_ALPHA * Math.max(opacity, 0.5f)));
+        canvas.drawText(TouchContext.caption(game, editing ? 0 : context(), CAPTIONS[game]), x,
+            bottom + CAPTION_SIZE + 1, paint);
+        paint.clearShadowLayer();
+        paint.setLetterSpacing(0);
+        paint.setTypeface(null);
     }
 
     /** a long name, "Y / Weapon", is made smaller to fit inside the circle */
@@ -1282,52 +1614,64 @@ public final class TouchControls extends View implements SensorEventListener, In
         return fitted;
     }
 
-    /** a toolbar item: never fainter than half, so that it can always be found */
-    private void toolbarItem(Canvas canvas, float x, float radius, String label) {
-        circle(canvas, x, toolbarY(), toolbarRadius(radius), label, false, 11, Math.max(layout.opacity, 0.5f));
+    /** a toolbar item, a line icon or (the editor's) a word: never fainter than half, so that it can always be found */
+    private void toolbarItem(Canvas canvas, float x, float radius, Bitmap icon, String label) {
+        float opacity = Math.max(layout.opacity * idle, 0.5f);
+        if (icon != null)
+            fitted(canvas, icon, x, toolbarY(), toolbarRadius(radius) * MINOR_ICON_SIZE, ICON_ALPHA * opacity, false);
+        else
+            label(canvas, x, toolbarY(), toolbarRadius(radius), label, 13, opacity);
     }
 
     private void drawToolbar(Canvas canvas) {
         if (editing) {
-            toolbarItem(canvas, optionsX(), OPTIONS_RADIUS, "Save");
-            toolbarItem(canvas, optionsX() - 156, OPTIONS_RADIUS, "Export");
-            toolbarItem(canvas, optionsX() - 78, OPTIONS_RADIUS, "Import");
-            paint.setColor(Color.WHITE);
-            paint.setTextSize(14);
-            canvas.drawText("Drag the controls, then push Save", logicalWidth / 2, toolbarY() + 58, paint);
+            toolbarItem(canvas, optionsX(), OPTIONS_RADIUS, null, "Save");
+            toolbarItem(canvas, optionsX() - 156, OPTIONS_RADIUS, null, "Export");
+            toolbarItem(canvas, optionsX() - 78, OPTIONS_RADIUS, null, "Import");
+            label(canvas, logicalWidth / 2, toolbarY() + 58, 1000, "Drag the controls, then push Save", 14, 1f);
         } else {
-            toolbarItem(canvas, logicalWidth / 2, TOOLBAR_RADIUS, hidden ? "Touch" : "Hide");
-            toolbarItem(canvas, optionsX(), OPTIONS_RADIUS, "Options");
+            toolbarItem(canvas, logicalWidth / 2, TOOLBAR_RADIUS, hidden ? showIcon : hideIcon, null);
+            toolbarItem(canvas, optionsX(), OPTIONS_RADIUS, optionsIcon, null);
         }
     }
 
-    private void drawStick(Canvas canvas) {
+    /** the move stick: a faint ring, and a knob that brightens while held */
+    private void drawStick(Canvas canvas, float opacity) {
         int stick = TouchLayout.LEFT;
         float radius = layout.radius(stick);
         float size = layout.sizeScale(stick);
         // (a floating stick near an edge is drawn whole, nearer the middle than its centre)
         float x = Math.max(radius, Math.min(logicalWidth - radius, stickCenterX()));
         float y = Math.max(radius, Math.min(logicalHeight - radius, stickCenterY()));
-        circle(canvas, x, y, radius, "Move", false, 11 * size, layout.opacity);
-        circle(canvas, x + axes[0] / 32767f * radius, y + axes[1] / 32767f * radius,
-            Math.max(STICK_KNOB_RADIUS * size, radius * 0.375f), "", held(stick), 11, layout.opacity);
+        float knob = Math.max(STICK_KNOB_RADIUS * size, radius * 0.375f);
+        float knobX = x + axes[0] / 32767f * radius;
+        float knobY = y + axes[1] / 32767f * radius;
+        boolean active = held(stick) || dragControl == stick;
+        paint.setShadowLayer(3, 0, 1, alpha(Color.BLACK, 0.5f * opacity));
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(2);
+        paint.setColor(alpha(HUD_COLOR, STICK_RING_ALPHA * opacity));
+        canvas.drawCircle(x, y, radius - 1, paint);
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(alpha(HUD_COLOR, (active ? 0.8f : STICK_KNOB_ALPHA) * opacity));
+        canvas.drawCircle(knobX, knobY, knob, paint);
+        paint.clearShadowLayer();
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         if (!showing && !editing)
             return;
+        float opacity = layout.opacity * (editing ? 1f : idle);
         canvas.save();
         canvas.scale(scale, scale);
         if (!hidden || editing) {
             if (layout.shown(TouchLayout.LEFT))
-                drawStick(canvas);
+                drawStick(canvas, opacity);
             for (int i = 0; i < layout.size(); i++) {
-                if (!layout.shown(i) || layout.type(i) == TouchLayout.LEFT)
+                if (!layout.shown(i) || layout.type(i) == TouchLayout.LEFT || (!editing && hiddenNow(layout.type(i))))
                     continue;
-                float textSize = 11 * Math.max(layout.sizeScale(i), layout.radius(i) / 36f);
-                circle(canvas, layout.x(i), layout.y(i), layout.radius(i), label(layout.type(i)),
-                    held(i) || dragControl == i, Math.min(textSize, 16), layout.opacity);
+                control(canvas, i, held(i) || dragControl == i, opacity);
             }
         }
         drawToolbar(canvas);

@@ -35,7 +35,7 @@ public final class TouchLayoutTest {
         check(reopened.y(10) == 36, "Reopening must preserve unmoved top-row controls");
         reopened.bounds(1200, 540);
         reopened.move(0, 9999, 1);
-        check(reopened.x(0) == 1164 && reopened.y(0) == 36,
+        check(reopened.x(0) == 1200 - reopened.radius(0) && reopened.y(0) == reopened.radius(0),
               "Controls must reach the full widescreen edge and top edge");
         TouchLayout wide = new TouchLayout();
         wide.restore(0, reopened.savedX(0), reopened.savedY(0));
@@ -131,10 +131,42 @@ public final class TouchLayoutTest {
                       "At the capped minimum radius the D-pad's buttons stay apart");
             }
         }
+        // The default controls never overlap: on a phone (2400 x 1080 at 420 dpi, a
+        // finger 31.5 units wide), a tablet (2560 x 1600 at 320 dpi) and at the cap.
+        float[][] displays = {{1200, 540, 31.5f}, {960, 600, 24 * 2 / 2.6667f}, {960, 540, 80}};
+        for (float[] display : displays) {
+            TouchLayout spread = new TouchLayout();
+            spread.bounds(display[0], display[1]);
+            spread.setMinimumRadius(display[2]);
+            for (int a = 0; a < spread.size(); a++) {
+                for (int b = a + 1; b < spread.size(); b++) {
+                    check(Math.hypot(spread.x(a) - spread.x(b), spread.y(a) - spread.y(b))
+                          >= spread.radius(a) + spread.radius(b),
+                          "Default controls " + a + " and " + b + " overlap on a " + display[0] + " x " + display[1] + " display");
+                }
+            }
+        }
+        // Sizes follow use: fire the largest, then jump and the grenade, then reload,
+        // swap and melee; the seldom used (stick clicks, white, black, back, the
+        // D-pad) smaller than all of those.
+        TouchLayout plain = new TouchLayout();
+        for (int i = 0; i < plain.size(); i++)
+            check(i == 4 || i == TouchLayout.LEFT || plain.radius(4) > plain.radius(i), "Fire is the largest button");
+        check(plain.radius(0) > plain.radius(1) && plain.radius(5) > plain.radius(2) && plain.radius(0) > plain.radius(3),
+              "Jump and the grenade are larger than melee, reload and swap");
+        int[] minor = {6, 7, 8, 9, 11, 12, 13, 14, 15};
+        for (int small : minor) {
+            for (int i = 0; i < 6; i++)
+                check(plain.radius(small) < plain.radius(i), "Seldom used control " + small + " is smaller than " + i);
+        }
+        // The second fire is hidden until added; it then shows in its place.
+        check(!plain.shown(TouchLayout.FIRE_LEFT), "The second fire is hidden by default");
+        check(plain.add(TouchLayout.FIRE_LEFT) == TouchLayout.FIRE_LEFT && plain.shown(TouchLayout.FIRE_LEFT),
+              "The second fire can be added");
         fingers.setMinimumRadius(Float.NaN);
-        check(fingers.radius(12) == 25, "An invalid minimum radius is none");
+        check(fingers.radius(12) == 22, "An invalid minimum radius is none");
         wide.resetDefaults();
-        check(wide.size() == 18 && wide.shown(4) && wide.x(4) == 915*1200f/960,
+        check(wide.size() == 18 && wide.shown(4) && wide.x(4) == 862*1200f/960,
               "Reset restores defaults on the current display and removes all copies");
         check(wide.sizeScale(4) == 1f && !wide.rumbleEnabled && wide.gyroscopeEnabled,
               "Button reset must restore sizes without changing General settings");
