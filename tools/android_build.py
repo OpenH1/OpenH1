@@ -35,6 +35,7 @@ from .build_common import (LINUX_PROFILE, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL
                            opus_cflags, opus_sources, pgo_profile, profile_use_flags, updater_defines, xdk_headers)
 from . import check_host_imports
 from .embed_assets import hud_assets_build, hud_configure_inputs
+from .linux_package import ROOT as REPO_ROOT, notices as release_notices
 from .ninja_syntax import Writer
 from .vulkan_build import VULKAN_DIR, fetch_vulkan_headers, host_vulkan_renderer
 
@@ -819,7 +820,18 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     # config.toml (port/android/host/host_main.c)
     staged_brokers = assets_dir / "brokers.txt"
     n.build(outputs=staged_brokers, rule="android_copy", inputs=Path("port/assets/network/brokers.txt"))
-    n.build(outputs="android", rule="phony", inputs=[libmain, staged_sdl, staged_image, staged_brokers])
+    # the licences the APK carries (assets/licenses), as the macOS app does
+    # (Contents/Resources/Licenses): OpenH1's, the AGPL; those of what every
+    # build carries (tools/linux_package.py); and the SDL3 built here. The
+    # release publishes the APK alone (.github/workflows/build.yml)
+    licenses = [(Path("LICENSE"), "LICENSE.txt"),
+                *((source.relative_to(REPO_ROOT), name) for source, name in release_notices("android")),
+                (SDL_DIR / "LICENSE.txt", "SDL3-LICENSE.txt")]
+    staged_licenses = [assets_dir / "licenses" / name for _, name in licenses]
+    for (source, _), staged in zip(licenses, staged_licenses):
+        n.build(outputs=staged, rule="android_copy", inputs=source)
+    staged_assets = [staged_image, staged_brokers, *staged_licenses]
+    n.build(outputs="android", rule="phony", inputs=[libmain, staged_sdl, *staged_assets])
 
     apk = PORT_DIR / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
     sdl_android_mouse_listener = SDL_DIR / SDL_ANDROID_MOUSE_LISTENER
@@ -831,7 +843,7 @@ def generate_android_build(n: Writer, sln: Any) -> None:
         description="ANDROID GRADLE $out",
         pool="console",
     )
-    n.build(outputs=apk, rule="android_gradle", inputs=[libmain, staged_sdl, staged_image, staged_brokers],
+    n.build(outputs=apk, rule="android_gradle", inputs=[libmain, staged_sdl, *staged_assets],
             implicit=[sdl_android_mouse_listener])
     n.build(outputs="android_apk", rule="phony", inputs=apk)
     n.newline()
