@@ -377,7 +377,18 @@ id<MTLDevice> xgpu_metal_device(void)
 
 int xgpu_metal_block_compression(void)
 {
-	return metal.device && metal.device.supportsBCTextureCompression;
+	static int pretended = -1;
+
+	/* (HALO_METAL_NO_BC=1: as a GPU without BC, an iPhone's, to measure its
+	textures on a Mac) */
+	if (pretended < 0)
+		pretended = getenv("HALO_METAL_NO_BC") && atoi(getenv("HALO_METAL_NO_BC"));
+	return metal.device && metal.device.supportsBCTextureCompression && !pretended;
+}
+
+int xgpu_metal_astc(void)
+{
+	return metal.device && [metal.device supportsFamily:MTLGPUFamilyApple2];
 }
 
 id<MTLLibrary> xgpu_metal_fixed_library(void)

@@ -12,8 +12,9 @@ An Xbox texture is found by its Data, Format and Size words (and a
 palettized one's palette, and the channels a Custom Edition map's texels are
 sampled from); its texels are read from the guest's memory where they are.
 DXT textures are uploaded as they are (BC1 to BC3), as OpenGL's are, where
-the device has them, a volume's decoded; every other format is decoded to
-BGRA. The pages it was read from are write-protected (the write tracking,
+the device has them, a volume's decoded; where it has not (most Android
+phones' GPUs), ASTC where it has that (below), else decoded; every other
+format is decoded to BGRA. The pages it was read from are write-protected (the write tracking,
 host_memory_watch.c), and the texture is read again once any of them has
 been written: the check is a comparison of the tracking's serial while no
 page has been, and a look at the texture's pages' generations otherwise. The
@@ -31,6 +32,18 @@ is read, decoded to BGRA, in the OpenGL cache's files (texture_dump).
 A texture no stage has drawn for half a minute of time is let go, as the
 OpenGL cache's are.
 
+ASTC (HALO_ASTC, the Android app's build; display.astc_textures,
+xgpu_astc_chosen: on a device that samples ASTC 4x4 and not BC): a 2D or
+cube DXT texture's blocks are transcoded to ASTC 4x4 blocks as it is read
+(port/linux/astc/xgpu_astc.h), a quarter of the bytes its decoded texels
+were. A texture with blocks transcoding cannot make exactly (DXT3 and DXT5
+alpha that varies inside a block, mostly) is drawn decoded while a worker
+encodes those (or finds them in memory or on disk: the app's cache folder,
+xgpu_vulkan_textures_astc_folder), and made again as ASTC once it has them
+(xgpu_vulkan_textures_frame_end), unless the worker finds it better left
+decoded. The Metal backend's (port/macos/xgpu_metal_textures.c) does the
+same.
+
 The VR mode's effects draw an effect's bitmap with its thickness
 (xgpu_vulkan_effects.h), baked from its first level the first time an
 effect is drawn with it (as the map is prepared: its enumeration draws
@@ -45,6 +58,9 @@ texture with a thickness is not let go while the guest keeps its texels.
 #include "xgpu_vulkan.h"
 #include "xgpu_vulkan_effects.h"
 #include "xgpu_vulkan_textures.h"
+#ifdef HALO_ASTC
+#include "xgpu_astc.h"
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -70,6 +86,9 @@ a few) */
 /* the Xbox's contiguous memory, where the textures are */
 #define CONTIGUOUS_BASE HALO_GUEST_WINDOW_BASE
 #define CONTIGUOUS_SIZE HALO_GUEST_WINDOW_SIZE
+/* the ASTC blocks encoded, kept in the cache folder to this many bytes (all
+the stock maps' are some 60 MB) */
+#define ASTC_CACHE_BYTES (256u << 20)
 
 enum
 {
@@ -91,8 +110,11 @@ struct entry
 	uint32_t address, size;
 	uint32_t generation, watched_serial;
 	uint64_t last_used;
-	/* its DXT texels decoded (the device has no BC formats) */
-	int decoded;
+	/* its DXT texels decoded (the device has no BC formats); ASTC (HALO_ASTC),
+	and the job encoding the blocks it is waiting for, drawn decoded
+	meanwhile */
+	int decoded, astc;
+	struct xgpu_astc_job *astc_job;
 	/* (an Xbox texture's) its thickness for the VR mode's effects, baked
 	from its texels of that generation, or not to be (failed: the
 	generation it failed at) */
@@ -122,7 +144,15 @@ static struct
 	the one to draw with while it is the same
 	(xgpu_vulkan_textures_thickness_epoch) */
 	uint32_t thickness_epoch;
-} cache;
+	/* ASTC: to be used (-1 not decided yet), the cache's folder; the DXT
+	blocks of the largest texture so far, its ASTC blocks and which are to
+	be encoded; the textures waiting for the encoder */
+	int astc;
+	char astc_folder[1024];
+	uint8_t *dxt_blocks, *astc_blocks, *encode;
+	size_t blocks_size;
+	uint32_t astc_waiting;
+} cache = { .astc = -1 };
 
 /* the entry's thickness destroyed, and not to be taken as failed */
 static void thickness_forget(struct entry *entry)
@@ -236,11 +266,14 @@ static struct xgpu_vulkan_image *xbox_texture_make(struct entry *entry)
 	made.type = description->cube_map ? XGPU_VULKAN_IMAGE_CUBE : description->depth > 1 ? XGPU_VULKAN_IMAGE_3D :
 		XGPU_VULKAN_IMAGE_2D;
 	/* (DXT as it is, but for a volume's, which is decoded, and on a device
-	without BC formats) */
-	entry->decoded = description->compressed && (description->depth > 1 || !capabilities.block_compression);
+	without BC formats: ASTC, or decoded) */
+	entry->decoded = description->compressed && (description->depth > 1 || !capabilities.block_compression ||
+		cache.astc == 1);
 	if (description->compressed && !entry->decoded)
 		made.format = description->format == 0x0c ? XGPU_VULKAN_FORMAT_DXT1 : description->format == 0x0e ?
 			XGPU_VULKAN_FORMAT_DXT3 : XGPU_VULKAN_FORMAT_DXT5;
+	else if (entry->astc)
+		made.format = XGPU_VULKAN_FORMAT_ASTC;
 	else
 		made.format = XGPU_VULKAN_FORMAT_BGRA8;
 	made.usage = XGPU_VULKAN_USAGE_SAMPLED;
@@ -254,6 +287,203 @@ static struct xgpu_vulkan_image *xbox_texture_make(struct entry *entry)
 	return xgpu_vulkan_image_create(&made);
 }
 
+/* ---------- ASTC */
+
+void xgpu_vulkan_textures_astc_folder(const char *folder)
+{
+	snprintf(cache.astc_folder, sizeof(cache.astc_folder), "%s", folder ? folder : "");
+}
+
+#ifdef HALO_ASTC
+
+/* whether DXT textures are ASTC here (decided at the first, the device
+there): display.astc_textures, and the device's formats */
+static int astc_wanted(void)
+{
+	if (cache.astc < 0)
+	{
+		struct xgpu_vulkan_capabilities capabilities;
+
+		xgpu_vulkan_capabilities(&capabilities);
+		cache.astc = xgpu_astc_chosen(host_astc_textures, capabilities.block_compression, capabilities.astc);
+		if (cache.astc)
+			xgpu_astc_cache_initialize(*cache.astc_folder ? cache.astc_folder : NULL, ASTC_CACHE_BYTES);
+		host_logf(HOST_LOG_INFO, "vulkan: DXT textures %s (display.astc_textures \"%s\"; the device samples BC %s, "
+			"ASTC %s)", cache.astc ? "as ASTC 4x4" : capabilities.block_compression ? "as BC" : "decoded",
+			host_astc_textures, capabilities.block_compression ? "yes" : "no", capabilities.astc ? "yes" : "no");
+	}
+	return cache.astc;
+}
+
+/* XGPU_ASTC_DXT* of a DXT format */
+static int astc_kind(DWORD format)
+{
+	return format == 0x0c ? XGPU_ASTC_DXT1 : format == 0x0e ? XGPU_ASTC_DXT3 : XGPU_ASTC_DXT5;
+}
+
+/* the texture's DXT blocks, its faces' levels one after another, into
+cache.dxt_blocks (with room for as many ASTC blocks in cache.astc_blocks,
+and their flags); their count, 0 if there is no room */
+static uint32_t astc_blocks_read(const struct entry *entry)
+{
+	const struct xgpu_texture_description *description = &entry->description;
+	const unsigned char *base = host_pointer(entry->address);
+	unsigned long faces = description->cube_map ? 6 : 1, face_size = xgpu_texture_face_size(description);
+	unsigned long levels = xgpu_vulkan_image_description(entry->image)->levels, face, level;
+	unsigned block_bytes = xgpu_astc_dxt_block_bytes(astc_kind(description->format));
+	uint32_t count = 0, at = 0;
+
+	for (level = 0; level < levels; level++)
+		count += (uint32_t)((xgpu_texture_level_dimension(description->width, level) + 3) / 4 *
+			((xgpu_texture_level_dimension(description->height, level) + 3) / 4));
+	count *= (uint32_t)faces;
+	if (!count || (uint64_t)count * block_bytes > entry->size)
+		return 0;
+	if ((size_t)count * XGPU_ASTC_BLOCK_BYTES > cache.blocks_size)
+	{
+		uint8_t *dxt = realloc(cache.dxt_blocks, (size_t)count * XGPU_ASTC_BLOCK_BYTES);
+		uint8_t *astc = dxt ? realloc(cache.astc_blocks, (size_t)count * XGPU_ASTC_BLOCK_BYTES) : NULL;
+		uint8_t *encode = astc ? realloc(cache.encode, count) : NULL;
+
+		if (dxt)
+			cache.dxt_blocks = dxt;
+		if (astc)
+			cache.astc_blocks = astc;
+		if (!encode)
+			return 0;
+		cache.encode = encode;
+		cache.blocks_size = (size_t)count * XGPU_ASTC_BLOCK_BYTES;
+	}
+	for (face = 0; face < faces; face++)
+	{
+		for (level = 0; level < levels; level++)
+		{
+			uint32_t blocks = (uint32_t)((xgpu_texture_level_dimension(description->width, level) + 3) / 4 *
+				((xgpu_texture_level_dimension(description->height, level) + 3) / 4));
+
+			memcpy(cache.dxt_blocks + (size_t)at * block_bytes,
+				base + face * face_size + xgpu_texture_level_offset(description, level), (size_t)blocks * block_bytes);
+			at += blocks;
+		}
+	}
+	return at;
+}
+
+/* the texture's ASTC blocks (as astc_blocks_read lays them) into it */
+static void astc_upload(struct entry *entry, const uint8_t *blocks)
+{
+	const struct xgpu_texture_description *description = &entry->description;
+	unsigned long faces = description->cube_map ? 6 : 1;
+	unsigned long levels = xgpu_vulkan_image_description(entry->image)->levels, face, level;
+
+	for (face = 0; face < faces; face++)
+	{
+		for (level = 0; level < levels; level++)
+		{
+			uint32_t width = (uint32_t)xgpu_texture_level_dimension(description->width, level);
+			uint32_t height = (uint32_t)xgpu_texture_level_dimension(description->height, level);
+			uint32_t row = (width + 3) / 4 * XGPU_ASTC_BLOCK_BYTES;
+
+			xgpu_vulkan_image_upload(entry->image, (uint32_t)level, (uint32_t)face, 0, 0, 0, width, height, 1, blocks, row,
+				0);
+			blocks += (size_t)row * ((height + 3) / 4);
+		}
+	}
+}
+
+/* the entry's image made again as ASTC (astc) or decoded, if it is not so;
+zero if it cannot be */
+static int astc_format(struct entry *entry, int astc)
+{
+	if (entry->image && entry->astc == astc)
+		return 1;
+	xgpu_vulkan_image_destroy(entry->image);
+	entry->astc = astc;
+	entry->image = xbox_texture_make(entry);
+	return entry->image != NULL;
+}
+
+/* a DXT texture read as ASTC: its blocks transcoded, and uploaded if they
+all were, or if the workers have the rest in memory (the same texels read
+before at another address); else it is made decoded (xbox_texture_upload
+goes on: zero) and its blocks go to a worker, unless it is known to be
+better decoded. Nonzero if it was uploaded, or has no image to upload
+into. */
+static int astc_read(struct entry *entry)
+{
+	int kind = astc_kind(entry->description.format), remembered = 0;
+	uint32_t count, left = 0;
+
+	if (entry->astc_job)
+	{
+		xgpu_astc_cancel(entry->astc_job);
+		entry->astc_job = NULL;
+		cache.astc_waiting--;
+	}
+	count = astc_blocks_read(entry);
+	if (count)
+	{
+		left = xgpu_astc_transcode(kind, cache.dxt_blocks, count, cache.astc_blocks, cache.encode);
+		if (left)
+			remembered = xgpu_astc_remembered(kind, cache.dxt_blocks, count, cache.astc_blocks, cache.encode, left);
+	}
+	if (count && (!left || remembered > 0))
+	{
+		if (!astc_format(entry, 1))
+			return 1;
+		astc_upload(entry, cache.astc_blocks);
+		return 1;
+	}
+	if (count && !remembered)
+	{
+		entry->astc_job = xgpu_astc_submit(kind, cache.dxt_blocks, count, entry);
+		if (entry->astc_job)
+			cache.astc_waiting++;
+	}
+	return !astc_format(entry, 0);
+}
+
+#endif
+
+/* the workers' finished jobs: their textures made again as ASTC (the
+texels the same: a job is cancelled when its texture is read again) */
+static void astc_finished(void)
+{
+#ifdef HALO_ASTC
+	struct xgpu_astc_job *job;
+
+	if (!cache.astc_waiting)
+		return;
+	while ((job = xgpu_astc_finished()) != NULL)
+	{
+		struct entry *entry = xgpu_astc_job_owner(job);
+		const uint8_t *blocks = xgpu_astc_job_blocks(job);
+
+		entry->astc_job = NULL;
+		cache.astc_waiting--;
+		if (blocks && astc_format(entry, 1))
+			astc_upload(entry, blocks);
+		xgpu_astc_job_free(job);
+	}
+#endif
+}
+
+/* the entry's image let go (and its job, if it waits for one) */
+static void image_release(struct entry *entry)
+{
+	if (entry->image)
+		xgpu_vulkan_image_destroy(entry->image);
+	entry->image = NULL;
+#ifdef HALO_ASTC
+	if (entry->astc_job)
+	{
+		xgpu_astc_cancel(entry->astc_job);
+		entry->astc_job = NULL;
+		cache.astc_waiting--;
+	}
+#endif
+}
+
 /* reads the texture's texels into it */
 static void xbox_texture_upload(struct entry *entry, const D3DCOLOR *palette)
 {
@@ -265,6 +495,23 @@ static void xbox_texture_upload(struct entry *entry, const D3DCOLOR *palette)
 	/* (a 2D texture's first level written out, as OpenGL's are) */
 	int dump = cache.dump_folder && !description->cube_map && description->depth <= 1;
 
+#ifdef HALO_ASTC
+	if (description->compressed && description->depth <= 1 && cache.astc == 1 && astc_read(entry))
+	{
+		DWORD *converted;
+
+		if (dump && (converted = converted_get(description->width * description->height)) != NULL)
+		{
+			xgpu_texture_decode_dxt(description, 0, base, converted);
+			texture_dump(description, converted);
+		}
+		cache.statistics.bytes += entry->size;
+		return;
+	}
+	/* (made again as it is drawn, decoded) */
+	levels = xgpu_vulkan_image_description(entry->image)->levels;
+	blocks = description->compressed && !entry->decoded;
+#endif
 	for (face = 0; face < faces; face++)
 	{
 		for (level = 0; level < levels; level++)
@@ -350,6 +597,12 @@ static struct entry *xbox_entry_find(const struct xgpu_stream_texture_stage *sta
 	entry->channels = stage->target;
 	xgpu_texture_describe(format_word, size_word, &entry->description);
 	entry->address = CONTIGUOUS_BASE | data;
+#ifdef HALO_ASTC
+	/* (made ASTC from the start where it most likely will be: most DXT1
+	textures transcode exactly, most DXT3 and DXT5 ones wait for a worker) */
+	entry->astc = entry->description.compressed && entry->description.depth <= 1 && astc_wanted() &&
+		entry->description.format == 0x0c;
+#endif
 	/* (one larger than the device takes is never drawn, nor one outside the
 	contiguous memory: as the OpenGL cache) */
 	if (xgpu_texture_size_supported(&entry->description))
@@ -664,6 +917,7 @@ void xgpu_vulkan_textures_frame_end(void)
 	double now = seconds();
 
 	cache.frame++;
+	astc_finished();
 	if (now < cache.next_sweep)
 		return;
 	cache.next_sweep = now + SWEEP_SECONDS;
@@ -683,8 +937,7 @@ void xgpu_vulkan_textures_frame_end(void)
 			if (entry->last_used < idle_since && !thickness_keeps(entry))
 			{
 				*link = entry->next;
-				if (entry->image)
-					xgpu_vulkan_image_destroy(entry->image);
+				image_release(entry);
 				thickness_forget(entry);
 				free(entry);
 			}
