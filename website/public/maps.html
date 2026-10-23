@@ -275,17 +275,18 @@ pre code { font: inherit; }
           <h3>Steam Deck</h3>
           <p>And any Linux PC. Takes a disc image or a <code>maps</code> folder.</p>
           <ol>
-            <li>In Desktop Mode, open <code>install.sh</code> from the download. It asks: <em>A disc image</em> or <em>A maps folder</em>. Choose yours.</li>
-            <li>With a disc image, start OpenH1 once in Desktop Mode and choose <em>Yes</em>: it copies the maps. Then play from Game Mode.</li>
+            <li>Put your disc image in Downloads or on your SD card. From another computer, Steam's file transfer works in Game Mode.</li>
+            <li>Play OpenH1 from Game Mode. It finds the image: press <em>A</em> and it copies the maps.</li>
+            <li>Or choose the image or a <code>maps</code> folder when <code>install.sh</code> asks, in Desktop Mode.</li>
           </ol>
           <p class="where">Maps go in <code>~/Applications/OpenH1/maps</code>.</p>
         </article>
         <article data-os="frame">
           <h3>Steam Frame</h3>
-          <p>Takes the <code>maps</code> folder.</p>
+          <p>Takes a disc image or the <code>maps</code> folder.</p>
           <ol>
-            <li>On the Frame, in Desktop Mode, open <code>install.sh</code> from the download. It asks for the maps folder: choose it, and it copies the maps.</li>
-            <li>Only have a disc image? Unpack it first (<a href="#unpack">below</a>), on the Frame or on a computer, and copy the <code>maps</code> folder over.</li>
+            <li>Put your disc image in the Frame's Downloads, then play OpenH1 VR. It finds the image: press <em>A</em> and it copies the maps.</li>
+            <li>Or, on the Frame in Desktop Mode, open <code>install.sh</code> from the download. It asks for the maps folder: choose it, and it copies the maps.</li>
           </ol>
           <p class="where">Maps go in <code>~/apps/halo-vr/maps</code>.</p>
         </article>
@@ -300,7 +301,7 @@ pre code { font: inherit; }
         </article>
         <article id="unpack">
           <h3>Unpack an image</h3>
-          <p>For the Mac and the Steam Frame, which want the folder: <a href="https://github.com/XboxDev/extract-xiso">extract-xiso</a> (Windows, Mac, Linux) takes a disc image apart.</p>
+          <p>For the Mac, which wants the folder: <a href="https://github.com/XboxDev/extract-xiso">extract-xiso</a> (Windows, Mac, Linux) takes a disc image apart.</p>
           <pre><code>extract-xiso -x halo.iso</code></pre>
           <p>It makes a folder named after the image, with <code>maps</code> inside.</p>
           <p class="where">It reads full images too, as redumper makes them.</p>
@@ -323,8 +324,8 @@ pre code { font: inherit; }
         <dl>
           <div><dt>"Halo PC maps"</dt><dd>The <code>maps</code> folder is from Halo PC or Custom Edition, not the Xbox game. Move it aside, and give OpenH1 your Xbox disc image or its <code>maps</code> folder.<small>Custom Edition maps still work: they go in a <code>custom_maps</code> folder beside <code>maps</code>.</small></dd></div>
           <div><dt>"Not an Xbox disc image"</dt><dd>The file isn't a copy of the game. An image made in an ordinary DVD drive has only the disc's video part: make one as above.</dd></div>
-          <div><dt>No file picker on Linux</dt><dd>The picker needs the desktop's file portal (<code>xdg-desktop-portal</code>) or <code>zenity</code>. Install one, or put the disc image in the game's folder (next to <code>bin</code>) and start again: it's used without asking.</dd></div>
-          <div><dt>Game Mode</dt><dd>On a Steam Deck, copy the maps in Desktop Mode. In Game Mode, its questions stop the game.</dd></div>
+          <div><dt>Image not found</dt><dd>On Linux, a Steam Deck and the Steam Frame, OpenH1 looks in Downloads, the Desktop, your home folder, SD cards and USB drives. Put the image there and choose <em>Look again</em>.</dd></div>
+          <div><dt>Game Mode</dt><dd>Works there: put your disc image in Downloads or on your SD card, then play OpenH1 from Game Mode. It finds it.</dd></div>
         </dl>
         <dl>
           <div><dt>Disk space</dt><dd>About 2 GB free for the maps, as well as the disc image while they're copied.<small>On a Mac nothing is copied: the folder you choose is used where it is.</small></dd></div>

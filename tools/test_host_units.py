@@ -24,7 +24,7 @@ def compiler():
     return None
 
 
-def run_test(tmp_path, name, sources, includes=()):
+def run_test(tmp_path, name, sources, includes=(), arguments=()):
     cc = compiler()
     if not cc:
         pytest.skip("no C compiler")
@@ -37,7 +37,7 @@ def run_test(tmp_path, name, sources, includes=()):
          "-pthread", *[str(source) for source in sources], "-o", str(binary)],
         check=True,
     )
-    result = subprocess.run([str(binary)], capture_output=True, text=True)
+    result = subprocess.run([str(binary), *arguments], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -59,6 +59,18 @@ def test_frame_pacing_divisor(tmp_path):
     """battery saver's frames a second at each display's refresh rate
     (port/linux/src/frame_pacing.h, frame_pacing_divisor)"""
     run_test(tmp_path, "frame_pacing_test", [TESTS / "frame_pacing_test.c"], [ROOT / "port" / "linux" / "src"])
+
+
+def test_game_data_scan(tmp_path):
+    """the first start's search for disc images and maps folders, and the
+    copy of a maps folder (port/linux/src/game_data_scan.c), in a made-up home
+    folder, SD card and game folder"""
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    run_test(tmp_path, "game_data_scan_test",
+             [TESTS / "game_data_scan_test.c", ROOT / "port" / "linux" / "src" / "game_data_scan.c",
+              ROOT / "port" / "linux" / "src" / "posix_files.c"],
+             [ROOT / "port" / "linux" / "src"], [str(scratch)])
 
 
 def test_posix_net_interrupted(tmp_path):

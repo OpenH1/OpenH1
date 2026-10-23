@@ -3,7 +3,7 @@ GUEST_DESKTOP.C
 
 The guest's half of what the Linux desktop's code paths need beyond the
 Android app's (port/android/guest/runtime/guest_sdl.c): the SDL3 functions
-sdl_platform.c, menu_files.c, xiso.c and updater.c call, and update.h's for
+sdl_platform.c, first_start.c, menu_files.c, xiso.c and updater.c call, and update.h's for
 the self-updater. host_desktop.c is the host's half.
 
 What the guest can do itself it does here, on its own threads and its own C
@@ -841,7 +841,9 @@ bool SDL_ShowMessageBox(const SDL_MessageBoxData *data, int *button)
 }
 
 /* the host waits for the dialog, then the callback runs here, before this
-returns (sdl_platform.c waits for it either way) */
+returns (sdl_platform.c and first_start.c wait for it either way): with no
+files when none was picked, and NULL, as SDL's own, when no dialog could be
+shown */
 void SDL_ShowOpenFileDialog(SDL_DialogFileCallback callback, void *userdata, SDL_Window *window,
 	const SDL_DialogFileFilter *filters, int filter_count, const char *default_location, bool allow_many)
 {
@@ -851,6 +853,7 @@ void SDL_ShowOpenFileDialog(SDL_DialogFileCallback callback, void *userdata, SDL
 	const char *files[2] = { path, NULL };
 	int count = 0;
 	int index;
+	int result;
 
 	(void)window;
 	(void)default_location;
@@ -868,8 +871,11 @@ void SDL_ShowOpenFileDialog(SDL_DialogFileCallback callback, void *userdata, SDL
 		patterns_used += pattern_length;
 		count++;
 	}
-	if (host_sdl_open_file_dialog(count, names, patterns, path, sizeof(path)))
+	result = host_sdl_open_file_dialog(count, names, patterns, path, sizeof(path));
+	if (result > 0)
 		callback(userdata, files, -1);
+	else if (result < 0)
+		callback(userdata, NULL, -1);
 	else
 		callback(userdata, files + 1, -1);
 }

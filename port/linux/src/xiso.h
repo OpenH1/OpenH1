@@ -18,4 +18,9 @@ thread */
 int xiso_extract_maps(const char *image_path, const char *destination, xiso_progress_proc progress, void *context,
 	char *error, int error_size);
 
+/* whether a file is an Xbox disc image with Halo's maps folder (its ui.map),
+reading only its volume descriptor and two directory tables: cheap enough to
+check every image a search finds (game_data_scan.c) */
+int xiso_is_halo_image(const char *image_path);
+
 #endif

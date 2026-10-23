@@ -724,8 +724,8 @@ def test_install_sh_without_steamos(release, tmp_path):
 
 
 def test_install_sh_disc_image(release, tmp_path):
-    """a disc image is the game's own to copy from (its first start: sdl_platform.c's platform_offer_game_data,
-    which takes an image in the game's folder without a file picker): install.sh links it there, and, if the
+    """a disc image is the game's own to copy from (its first start: first_start.c's platform_offer_game_data,
+    which finds an image in the game's folder among other places): install.sh links it there, and, if the
     player says so, starts the game in its folder"""
     home = tmp_path / "home"
     image = tmp_path / "Halo.iso"
