@@ -122,6 +122,17 @@ drew those textures black), "auto" elsewhere (iPhones, through Metal) */
 culls once from the head's centre and the tests allow for the eyes beside it:
 structure_culling_set_camera_radius) */
 #define STRUCTURE_CULLING_DEFAULT "31"
+/* display.vsync: off on the Linux builds and Windows, whose PCs' displays
+are mostly fast and whose players want the most frames (display.max_fps
+still limits them, at twice the display's rate); on where a phone's or a
+Mac's display link paces the frames. Under gamescope (the Steam Deck's Game
+Mode, the Steam Frame) the Linux builds read it unset as on
+(config_gamescope_vsync), gamescope pacing the frames to the display */
+#if defined(_WIN32) || (defined(HALO_VULKAN) && !defined(HALO_ANDROID))
+#define VSYNC_DEFAULT "false"
+#else
+#define VSYNC_DEFAULT "true"
+#endif
 /* (in the comment of each setting it chooses) */
 #define GRAPHICS_CHOOSES "\nCommented out, display.graphics chooses it."
 
@@ -154,8 +165,10 @@ static const struct config_setting config_settings[] =
 	{ "display.window_scale", _config_integer, "2", "HALO_WINDOW_SCALE", _environment_value, _platform_desktop,
 		"Where display.window_size is empty: the window's size as a multiple of\n"
 		"640x480." },
-	{ "display.vsync", _config_boolean, "true", "HALO_NO_VSYNC", _environment_set_is_false, _platform_all,
-		"Wait for the display between frames; false draws as fast as possible." },
+	{ "display.vsync", _config_boolean, VSYNC_DEFAULT, "HALO_NO_VSYNC", _environment_set_is_false, _platform_all,
+		"Wait for the display between frames; false draws as fast as possible\n"
+		"(up to display.max_fps). Commented out under gamescope (the Steam Deck's\n"
+		"Game Mode, the Steam Frame), true." },
 	{ "display.max_fps", _config_integer, "0", "HALO_MAX_FPS", _environment_value, _platform_desktop,
 		"With vsync off, the most frames a second: 0 for twice the display's\n"
 		"refresh rate, -1 for no limit (which can hang some Intel graphics)." },
@@ -2539,6 +2552,34 @@ static void config_check_words(void)
 	}
 }
 
+/* whether the game runs under gamescope (the Steam Deck's Game Mode, the
+Steam Frame), as first_start.c's first_start_gamescope */
+#if defined(HALO_VULKAN) && !defined(HALO_ANDROID)
+static int config_gamescope(void)
+{
+	const char *wayland_display = getenv("GAMESCOPE_WAYLAND_DISPLAY");
+	const char *desktop = getenv("XDG_CURRENT_DESKTOP");
+	const char *steam_deck = getenv("SteamDeck");
+	const char *gamepad_ui = getenv("SteamGamepadUI");
+
+	return (wayland_display && wayland_display[0]) || (desktop && strstr(desktop, "gamescope")) ||
+		(steam_deck && !strcmp(steam_deck, "1") && gamepad_ui && !strcmp(gamepad_ui, "1"));
+}
+#endif
+
+/* (config_load) display.vsync unset under gamescope: on (VSYNC_DEFAULT),
+where gamescope shows each frame at the display's refresh and frames drawn
+past it would only spend the battery */
+static void config_gamescope_vsync(void)
+{
+#if defined(HALO_VULKAN) && !defined(HALO_ANDROID)
+	long index = config_setting_index("display.vsync");
+
+	if (index >= 0 && !config_set[index] && config_gamescope())
+		config_values[index].boolean = 1;
+#endif
+}
+
 static void config_load(void)
 {
 	char path[1024];
@@ -2678,6 +2719,7 @@ static void config_load(void)
 			platform_log("settings: display.graphics \"%s\" is unknown, so enhanced", graphics);
 		config_graphics_apply();
 	}
+	config_gamescope_vsync();
 	config_battery_values_set();
 	config_check_words();
 }

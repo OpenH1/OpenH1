@@ -455,6 +455,23 @@ def test_battery_saver_reads_the_classic_values(config_check_mac):
     assert run("saving", "display.fov") == "0 0"
 
 
+def test_vsync_default_by_build(tmp_path, monkeypatch, config_check_mac):
+    """display.vsync: off on the Linux builds (and Windows), on the Mac; on
+    under gamescope (the Steam Deck's Game Mode) where the player has not
+    set it, and as set where they have"""
+    for name in ("GAMESCOPE_WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "SteamDeck", "SteamGamepadUI", "HALO_NO_VSYNC"):
+        monkeypatch.delenv(name, raising=False)
+    assert config_check_mac("get", "display.vsync") == "true"
+    run = config_check_build(tmp_path / "linux", ["-DHALO_VULKAN=1", "-DHALO_GUEST=1"])
+    assert run("get", "display.vsync") == "false"
+    assert "\n# vsync = false\n" in run.config.read_text()
+    monkeypatch.setenv("SteamDeck", "1")
+    monkeypatch.setenv("SteamGamepadUI", "1")
+    assert run("get", "display.vsync") == "true"
+    run("write", "display.vsync", "false")
+    assert run("get", "display.vsync") == "false"
+
+
 def test_graphics_preset_on_a_headset(config_check):
     """Enhanced and Classic in the VR build: as on the desktop and the Mac"""
     assert graphics_values(config_check) == GRAPHICS_ENHANCED
