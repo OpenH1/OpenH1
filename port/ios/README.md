@@ -246,9 +246,19 @@ slows its processor and its GPU.
 The Metal backend is the macOS one. What differs:
 
 - iPhones' GPUs (and the Simulator's) have no BC texture formats: their
-  DXT textures are decoded when uploaded (`xgpu_metal_block_compression`,
-  `xgpu_metal_textures.c`), as the OpenGL ES backend decodes them for Mali.
-  iPads with an M chip sample them as they are.
+  DXT textures are transcoded to ASTC 4x4 when uploaded
+  (`display.astc_textures`, `xgpu_metal_textures.c`,
+  `port/linux/astc/xgpu_astc.h`), a quarter of the memory and bandwidth of
+  the textures decoded to 32 bits, which they were before (and are with
+  `display.astc_textures = "off"`). Nearly every block is transcoded
+  exactly; the rest (DXT3 and DXT5 alpha that varies inside a block, mostly)
+  are encoded by astc-encoder on two worker threads (utility QoS) the first
+  time a texture is drawn, the texture drawn decoded meanwhile, and kept in
+  `Library/Caches/OpenH1/astc` (256 MB at most; the stock maps' are some
+  60 MB). iPads with an M chip sample DXT as it is. The Simulator decodes
+  ASTC on its CPU when a texture is uploaded (Apple's `libate`), so its
+  loading times say nothing of a device's; `HALO_METAL_STATS` logs the
+  textures' bytes every 10 seconds.
 - The screen is a `UIScreen`: its refresh rate (ProMotion's 120 Hz), and
   its EDR headroom for `display.hdr`.
 - The Simulator's GPU has no binary archives (the pipelines' archive is not
@@ -261,9 +271,11 @@ The Metal backend is the macOS one. What differs:
 - `display.graphics = "enhanced"` gives MSAA 4x on iOS (not SMAA), resolved
   in tile memory: at the iPhone 15 Pro Max's 2796x1290, measured on an M1
   (the same family of GPU), about SMAA's cost (a10: 7.1 ms of the GPU a
-  frame against 6.8; Blood Gulch with bots: 5.2 against 7.5), with the
-  geometry's edges smoother. `display.anti_aliasing = "smaa"` still
-  chooses SMAA.
+  frame against 6.8; Blood Gulch alone: 5.2 against 7.5), with the
+  geometry's edges smoother; on the iPhone itself, in Blood Gulch with
+  seven bots, 6 to 7 ms against SMAA's 9 to 10 before the fight builds
+  (both near the frame's 15 ms at 60 Hz after it). `display.anti_aliasing
+  = "smaa"` still chooses SMAA.
 
 ## The Simulator
 

@@ -704,6 +704,8 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     n.comment("Android build (ninja android); see port/android/README.md")
     n.variable("android_guest_cc", guest_cc)
     n.variable("android_host_cc", str(host_cc))
+    # (and its C++, astc-encoder's: port/linux/astc)
+    n.variable("android_host_cxx", str(host_cc) + "++")
     n.variable("android_ndk_bin", str(ndk_bin))
 
     # (configure.py --guest-base: the guest's memory at a base the host
@@ -794,15 +796,25 @@ def generate_android_build(n: Writer, sln: Any) -> None:
                 variables={"cflags": mbedtls_cflags + (" -w" if source.name != "posix_dtls.c" else "")})
         host_objects.append(obj)
     # the renderer for the command stream, Vulkan's, with the Xbox's texture
-    # decoding
+    # decoding, and the DXT textures as ASTC on the GPUs without BC (most
+    # phones': port/linux/astc), with astc-encoder, the host's C++
+    n.rule(
+        name="android_host_cxx",
+        command="$android_host_cxx -MMD -MF $out.d $cflags -c $in -o $out",
+        description="ANDROID HOST CXX $out",
+        depfile="$out.d",
+        deps="gcc",
+    )
     host_objects += host_vulkan_renderer(n, "android", "ANDROID", BUILD, "android_host_cc",
-                                         host_cflags, vulkan_headers, texture_decoding=True)
+                                         host_cflags, vulkan_headers, texture_decoding=True,
+                                         astc_cxx="android_host_cxx")
     table_obj = host_obj_dir / "host_import_table.c.o"
     n.build(outputs=table_obj, rule="android_host_cc", inputs=host_table_c, variables={"cflags": host_cflags})
     host_objects.append(table_obj)
     n.rule(
         name="android_host_link",
-        command=(f"$android_host_cc -shared -o $out $in -L{sdl_build} "
+        # (C++'s library linked in, astc-encoder's: none to ship beside it)
+        command=(f"$android_host_cxx -static-libstdc++ -shared -o $out $in -L{sdl_build} "
                  + " ".join(f"-l{lib}" for lib in HOST_LIBRARIES)
                  + " -Wl,-z,max-page-size=16384 -Wl,--no-undefined"),
         description="ANDROID HOST LINK $out",

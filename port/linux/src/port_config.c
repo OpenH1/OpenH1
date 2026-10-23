@@ -110,6 +110,14 @@ passes over the screen there, and smoother edges) */
 #define GRAPHICS_PER_PIXEL_LIGHTING "true"
 #define GRAPHICS_MODEL_DETAIL "\"native\""
 #define GRAPHICS_DYNAMIC_LIGHTS "\"enhanced\""
+/* display.astc_textures: off on Android until its Vulkan path has been seen
+right on a device without BC (Android's emulator, whose ASTC is emulated,
+drew those textures black), "auto" elsewhere (iPhones, through Metal) */
+#ifdef HALO_ANDROID
+#define ASTC_TEXTURES_DEFAULT "\"off\""
+#else
+#define ASTC_TEXTURES_DEFAULT "\"auto\""
+#endif
 /* display.structure_culling's tests: all of them (in VR too, where the game
 culls once from the head's centre and the tests allow for the eyes beside it:
 structure_culling_set_camera_radius) */
@@ -290,6 +298,18 @@ static const struct config_setting config_settings[] =
 		"in percent of the system's SDR white (macOS's; 203 nits where the system\n"
 		"has none), 50 to 250. The highlights keep the rest of the display's\n"
 		"headroom." },
+	{ "display.astc_textures", _config_string, ASTC_TEXTURES_DEFAULT, "HALO_ASTC_TEXTURES", _environment_value,
+		_platform_android | _platform_guest,
+		"The maps' DXT textures on a GPU that cannot sample them (iPhones, most\n"
+		"Android phones): \"auto\" transcodes them to ASTC, a quarter of the memory\n"
+		"and bandwidth of the decoded textures the GPU drew before and the same\n"
+		"picture, where the GPU samples ASTC and not DXT; \"always\" wherever it\n"
+		"samples ASTC (to try it on a Mac); \"off\" decodes them. The few blocks\n"
+		"that cannot be transcoded exactly are encoded on a worker thread the\n"
+		"first time a texture is drawn, the texture drawn decoded meanwhile, and\n"
+		"kept in the app's caches folder. \"auto\" by default on iOS; \"off\" on\n"
+		"Android, where it is yet to be checked on a device (try \"auto\"). Read\n"
+		"by the host from the file, at the start (port/linux/astc/xgpu_astc.h)." },
 
 	{ "audio.enabled", _config_boolean, "true", "HALO_NO_AUDIO", _environment_set_is_false, _platform_all,
 		"Play sound." },
@@ -2445,6 +2465,7 @@ static const struct
 	{ "display.mode", { "", "fullscreen", "borderless", "windowed", NULL }, "display.fullscreen's" },
 	{ "display.resolution_scaling", { "native", "original", NULL }, NULL },
 	{ "display.anti_aliasing", { "off", "fxaa", "smaa", "ssaa2x", "msaa2x", "msaa4x", "msaa8x", NULL }, NULL },
+	{ "display.astc_textures", { "auto", "always", "off", NULL }, NULL },
 	{ "display.hud_button_style", { "classic", "gems", "menu_gems", NULL }, NULL },
 	{ "display.menus", { "pc", "xbox", NULL }, NULL },
 	{ "display.player_names", { "all", "allies", "enemies", "none", NULL }, NULL },

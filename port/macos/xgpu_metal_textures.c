@@ -11,9 +11,10 @@ An Xbox texture is found by its Data, Format and Size words (and a
 palettized one's palette, and the channels a Custom Edition map's texels
 are sampled from); its texels are read from the guest's memory where they
 are. DXT textures are uploaded as they are (BC1 to BC3), a volume's
-decoded, and every one on a GPU without BC's formats (an iPhone's:
-xgpu_metal_block_compression); every other format is decoded to BGRA. The pages it was read from
-are write-protected (the write tracking, host_memory_watch.c), and the
+decoded; on a GPU without BC's formats (an iPhone's:
+xgpu_metal_block_compression) they are ASTC (below), or decoded; every
+other format is decoded to BGRA. The pages it was read from are
+write-protected (the write tracking, host_memory_watch.c), and the
 texture is read again once any of them has been written: the check is a
 comparison of the tracking's serial while no page has been, and a look at
 the texture's pages' generations otherwise. The host reads a frame after
@@ -27,6 +28,16 @@ levels from the first.
 
 A texture no stage has drawn for half a minute of time is let go, as the
 OpenGL cache's are.
+
+ASTC (display.astc_textures, xgpu_astc_chosen: on a GPU that samples ASTC
+and not BC, an iPhone's): a 2D or cube DXT texture's blocks are transcoded
+to ASTC 4x4 blocks as it is read (port/linux/astc/xgpu_astc.h), a quarter of
+the bytes its decoded texels were. A texture with blocks transcoding cannot
+make exactly (DXT3 and DXT5 alpha that varies inside a block, mostly) is
+drawn decoded while a worker encodes those (or finds them on disk: the
+app's caches folder, ASTC_CACHE_FOLDER), and made again as ASTC once it
+has them (xgpu_metal_textures_frame_end), unless the worker finds it better
+left decoded.
 */
 
 #include "xgpu.h"
@@ -35,7 +46,9 @@ OpenGL cache's are.
 #include "host_render_record.h"
 #include "xgpu_metal.h"
 #include "xgpu_metal_textures.h"
+#include "xgpu_astc.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -59,11 +72,26 @@ through a few) */
 P is guest address PLATFORM_CONTIGUOUS_BASE + P (platform.h) */
 #define CONTIGUOUS_BASE HALO_GUEST_WINDOW_BASE
 #define CONTIGUOUS_SIZE HALO_GUEST_WINDOW_SIZE
+/* the ASTC blocks encoded, kept in the app's caches folder (under $HOME:
+the app's container on iOS; HALO_ASTC_CACHE another, or "" none), to this
+many bytes (all the stock maps' are some 60 MB) */
+#define ASTC_CACHE_FOLDER "Library/Caches/OpenH1/astc"
+#define ASTC_CACHE_BYTES (256u << 20)
 
 enum
 {
 	_entry_xbox,
 	_entry_image,
+};
+
+/* a texture's bytes, by what they are */
+enum
+{
+	_resident_other,
+	_resident_astc,
+	_resident_decoded,
+	_resident_bc,
+	_resident_kinds
 };
 
 struct entry
@@ -80,6 +108,14 @@ struct entry
 	uint32_t address, size;
 	uint32_t generation, watched_serial;
 	uint64_t last_used;
+	/* (a DXT texture's, with ASTC) its texture is ASTC; the job encoding the
+	blocks it is waiting for, drawn decoded meanwhile */
+	uint8_t astc;
+	struct xgpu_astc_job *astc_job;
+	/* its texture's bytes (all its levels and faces), and what they are
+	counted as (_resident_*) */
+	uint32_t bytes;
+	uint8_t resident;
 };
 
 static struct
@@ -95,7 +131,16 @@ static struct
 	DWORD *converted;
 	size_t converted_size;
 	struct xgpu_metal_texture_statistics statistics;
-} cache;
+	/* ASTC: to be used (-1 not decided yet); the DXT blocks of the largest
+	texture so far, its ASTC blocks and which are to be encoded */
+	int astc;
+	uint8_t *dxt_blocks, *astc_blocks, *encode;
+	size_t blocks_size;
+	/* the textures' bytes now: all, and by what they are (_resident_*:
+	DXT as ASTC, decoded, as BC) */
+	uint64_t resident, resident_kinds[_resident_kinds];
+	uint32_t astc_waiting;
+} cache = { .astc = -1 };
 
 static uint32_t bucket_index(uint32_t data, uint32_t format_word, uint32_t size_word)
 {
@@ -158,10 +203,12 @@ static uint32_t xbox_texture_make(const struct entry *entry)
 	made.type = description->cube_map ? XGPU_METAL_TEXTURE_CUBE : description->depth > 1 ? XGPU_METAL_TEXTURE_3D :
 		XGPU_METAL_TEXTURE_2D;
 	/* (DXT as it is, but for a volume's, which is decoded, and on a GPU
-	without BC's formats) */
-	if (description->compressed && description->depth == 1 && xgpu_metal_block_compression())
+	without BC's formats: ASTC, or decoded) */
+	if (description->compressed && description->depth == 1 && xgpu_metal_block_compression() && cache.astc != 1)
 		made.format = description->format == 0x0c ? XGPU_METAL_FORMAT_DXT1 : description->format == 0x0e ?
 			XGPU_METAL_FORMAT_DXT3 : XGPU_METAL_FORMAT_DXT5;
+	else if (entry->astc)
+		made.format = XGPU_METAL_FORMAT_ASTC;
 	else
 		made.format = XGPU_METAL_FORMAT_BGRA8;
 	made.usage = XGPU_METAL_USAGE_SAMPLED;
@@ -173,6 +220,277 @@ static uint32_t xbox_texture_make(const struct entry *entry)
 	return xgpu_metal_texture_create(&made);
 }
 
+/* the bytes of a texture of the entry's description in a format of bytes a
+texel (block: bytes a 4x4 block) */
+static uint32_t texture_bytes(const struct entry *entry, unsigned bytes, int block)
+{
+	const struct xgpu_texture_description *description = &entry->description;
+	unsigned long levels = levels_most(description->width, description->height, description->depth), level;
+	uint64_t total = 0;
+
+	if (description->levels < levels)
+		levels = description->levels;
+	for (level = 0; level < levels; level++)
+	{
+		uint64_t width = xgpu_texture_level_dimension(description->width, level);
+		uint64_t height = xgpu_texture_level_dimension(description->height, level);
+		uint64_t depth = xgpu_texture_level_dimension(description->depth, level);
+
+		total += block ? (width + 3) / 4 * ((height + 3) / 4) * depth * bytes : width * height * depth * bytes;
+	}
+	total *= description->cube_map ? 6 : 1;
+	return total > 0xffffffffu ? 0xffffffffu : (uint32_t)total;
+}
+
+/* the entry's texture let go, and its bytes counted out */
+static void texture_release(struct entry *entry)
+{
+	if (entry->texture)
+		xgpu_metal_texture_destroy(entry->texture);
+	entry->texture = 0;
+	cache.resident -= entry->bytes;
+	cache.resident_kinds[entry->resident] -= entry->bytes;
+	entry->bytes = 0;
+}
+
+/* the entry's texture made (its format as entry->astc and the GPU have
+it), and its bytes counted */
+static uint32_t texture_make(struct entry *entry)
+{
+	const struct xgpu_texture_description *description = &entry->description;
+
+	entry->texture = xbox_texture_make(entry);
+	if (!entry->texture)
+		return 0;
+	if (entry->astc)
+	{
+		entry->bytes = texture_bytes(entry, XGPU_ASTC_BLOCK_BYTES, 1);
+		entry->resident = _resident_astc;
+	}
+	else if (description->compressed && description->depth == 1 && xgpu_metal_block_compression() && cache.astc != 1)
+	{
+		entry->bytes = texture_bytes(entry, description->format == 0x0c ? 8 : 16, 1);
+		entry->resident = _resident_bc;
+	}
+	else
+	{
+		entry->bytes = texture_bytes(entry, 4, 0);
+		entry->resident = description->compressed ? _resident_decoded : _resident_other;
+	}
+	cache.resident += entry->bytes;
+	cache.resident_kinds[entry->resident] += entry->bytes;
+	return entry->texture;
+}
+
+/* ---------- ASTC */
+
+/* whether DXT textures are ASTC here (decided at the first, once the
+device is there): display.astc_textures, and the GPU's formats */
+static int astc_wanted(void)
+{
+	if (cache.astc < 0)
+	{
+		const char *folder = getenv("HALO_ASTC_CACHE"), *home = getenv("HOME");
+		char path[1024];
+
+		cache.astc = xgpu_astc_chosen(host_astc_textures, xgpu_metal_block_compression(), xgpu_metal_astc());
+		if (cache.astc)
+		{
+			if (!folder && home && *home)
+			{
+				snprintf(path, sizeof(path), "%s/" ASTC_CACHE_FOLDER, home);
+				folder = path;
+			}
+			xgpu_astc_cache_initialize(folder, ASTC_CACHE_BYTES);
+		}
+		host_logf(HOST_LOG_INFO, "metal: DXT textures %s (display.astc_textures \"%s\"; the GPU samples BC %s, ASTC %s)",
+			cache.astc ? "as ASTC 4x4" : xgpu_metal_block_compression() ? "as BC" : "decoded", host_astc_textures,
+			xgpu_metal_block_compression() ? "yes" : "no", xgpu_metal_astc() ? "yes" : "no");
+	}
+	return cache.astc;
+}
+
+/* XGPU_ASTC_DXT* of a DXT format */
+static int astc_kind(DWORD format)
+{
+	return format == 0x0c ? XGPU_ASTC_DXT1 : format == 0x0e ? XGPU_ASTC_DXT3 : XGPU_ASTC_DXT5;
+}
+
+/* the texture's DXT blocks, its faces' levels one after another, into
+cache.dxt_blocks (with room for as many ASTC blocks in cache.astc_blocks);
+their count, 0 if there is no room */
+static uint32_t astc_blocks_read(const struct entry *entry)
+{
+	const struct xgpu_texture_description *description = &entry->description;
+	const unsigned char *base = host_pointer(entry->address);
+	unsigned long faces = description->cube_map ? 6 : 1, face_size = xgpu_texture_face_size(description);
+	unsigned long levels = levels_most(description->width, description->height, 1), face, level;
+	unsigned block_bytes = xgpu_astc_dxt_block_bytes(astc_kind(description->format));
+	uint32_t count = texture_bytes(entry, XGPU_ASTC_BLOCK_BYTES, 1) / XGPU_ASTC_BLOCK_BYTES, at = 0;
+
+	if (!count || (uint64_t)count * block_bytes > entry->size)
+		return 0;
+	if ((size_t)count * XGPU_ASTC_BLOCK_BYTES > cache.blocks_size)
+	{
+		uint8_t *dxt = realloc(cache.dxt_blocks, (size_t)count * XGPU_ASTC_BLOCK_BYTES);
+		uint8_t *astc = dxt ? realloc(cache.astc_blocks, (size_t)count * XGPU_ASTC_BLOCK_BYTES) : NULL;
+		uint8_t *encode = astc ? realloc(cache.encode, count) : NULL;
+
+		if (dxt)
+			cache.dxt_blocks = dxt;
+		if (astc)
+			cache.astc_blocks = astc;
+		if (!encode)
+			return 0;
+		cache.encode = encode;
+		cache.blocks_size = (size_t)count * XGPU_ASTC_BLOCK_BYTES;
+	}
+	if (description->levels < levels)
+		levels = description->levels;
+	for (face = 0; face < faces; face++)
+	{
+		for (level = 0; level < levels; level++)
+		{
+			uint32_t blocks = (uint32_t)((xgpu_texture_level_dimension(description->width, level) + 3) / 4 *
+				((xgpu_texture_level_dimension(description->height, level) + 3) / 4));
+
+			if (at + blocks > count)
+				return 0;
+			memcpy(cache.dxt_blocks + (size_t)at * block_bytes,
+				base + face * face_size + xgpu_texture_level_offset(description, level), (size_t)blocks * block_bytes);
+			at += blocks;
+		}
+	}
+	return at;
+}
+
+/* the texture's ASTC blocks (as astc_blocks_read lays them) into it */
+static void astc_upload(struct entry *entry, const uint8_t *blocks)
+{
+	const struct xgpu_texture_description *description = &entry->description;
+	unsigned long faces = description->cube_map ? 6 : 1;
+	unsigned long levels = levels_most(description->width, description->height, 1), face, level;
+
+	if (description->levels < levels)
+		levels = description->levels;
+	for (face = 0; face < faces; face++)
+	{
+		for (level = 0; level < levels; level++)
+		{
+			uint32_t width = (uint32_t)xgpu_texture_level_dimension(description->width, level);
+			uint32_t height = (uint32_t)xgpu_texture_level_dimension(description->height, level);
+			uint32_t row = (width + 3) / 4 * XGPU_ASTC_BLOCK_BYTES;
+
+			xgpu_metal_texture_upload(entry->texture, (uint32_t)level, (uint32_t)face, 0, 0, 0, width, height, 1, blocks,
+				row, 0);
+			blocks += (size_t)row * ((height + 3) / 4);
+		}
+	}
+}
+
+/* the entry's texture made again as ASTC (astc) or decoded, if it is not
+so; zero if it cannot be */
+static int astc_format(struct entry *entry, int astc)
+{
+	if (entry->texture && entry->astc == astc)
+		return 1;
+	texture_release(entry);
+	entry->astc = (uint8_t)astc;
+	return texture_make(entry) != 0;
+}
+
+/* a DXT texture read as ASTC (the guest's memory readable over it): its
+blocks transcoded, and uploaded if they all were, or if the workers have
+the rest in memory (the same texels read before at another address); else
+it is made decoded (xbox_texture_upload goes on: zero) and its blocks go
+to a worker, unless it is known to be better decoded. Nonzero if it was
+uploaded, or has no texture to upload into. */
+static int astc_read(struct entry *entry)
+{
+	int kind = astc_kind(entry->description.format), remembered = 0;
+	uint32_t count, left = 0;
+
+	if (entry->astc_job)
+	{
+		xgpu_astc_cancel(entry->astc_job);
+		entry->astc_job = NULL;
+		cache.astc_waiting--;
+	}
+	count = astc_blocks_read(entry);
+	if (count)
+	{
+		left = xgpu_astc_transcode(kind, cache.dxt_blocks, count, cache.astc_blocks, cache.encode);
+		if (left)
+			remembered = xgpu_astc_remembered(kind, cache.dxt_blocks, count, cache.astc_blocks, cache.encode, left);
+	}
+	if (count && (!left || remembered > 0))
+	{
+		if (!astc_format(entry, 1))
+			return 1;
+		astc_upload(entry, cache.astc_blocks);
+		if (left)
+			cache.statistics.astc_encoded++;
+		else
+			cache.statistics.astc_transcoded++;
+		return 1;
+	}
+	if (count && !remembered)
+	{
+		entry->astc_job = xgpu_astc_submit(kind, cache.dxt_blocks, count, entry);
+		if (entry->astc_job)
+			cache.astc_waiting++;
+	}
+	return !astc_format(entry, 0);
+}
+
+/* (HALO_METAL_STATS, each look over the textures) the textures' bytes, and
+the ASTC encoder's work */
+static void resident_log(void)
+{
+	static int wanted = -1;
+	struct xgpu_astc_statistics astc;
+
+	if (wanted < 0)
+		wanted = getenv("HALO_METAL_STATS") != NULL;
+	if (!wanted)
+		return;
+	xgpu_astc_statistics(&astc);
+	host_logf(HOST_LOG_INFO, "metal: textures %.1f MB (DXT as ASTC %.1f MB, decoded %.1f MB, as BC %.1f MB), %u "
+		"waiting for the ASTC encoder; the encoder: %u jobs, %u from the disk cache, %u found in memory, %llu blocks "
+		"in %.2f s, %.1f MB on disk", cache.resident / 1048576.0, cache.resident_kinds[_resident_astc] / 1048576.0,
+		cache.resident_kinds[_resident_decoded] / 1048576.0, cache.resident_kinds[_resident_bc] / 1048576.0,
+		cache.astc_waiting, astc.jobs, astc.cache_hits, astc.memory_hits, (unsigned long long)astc.blocks_encoded,
+		astc.encode_seconds, astc.cache_bytes / 1048576.0);
+}
+
+/* the workers' finished jobs: their textures made again as ASTC (the
+texels the same: a job is cancelled when its texture is read again) */
+static void astc_finished(void)
+{
+	struct xgpu_astc_job *job;
+
+	if (!cache.astc_waiting)
+		return;
+	while ((job = xgpu_astc_finished()) != NULL)
+	{
+		struct entry *entry = xgpu_astc_job_owner(job);
+		const uint8_t *blocks = xgpu_astc_job_blocks(job);
+
+		entry->astc_job = NULL;
+		cache.astc_waiting--;
+		if (blocks && astc_format(entry, 1))
+		{
+			astc_upload(entry, blocks);
+			cache.statistics.astc_encoded++;
+		}
+		else if (!blocks)
+		{
+			cache.statistics.astc_left_decoded++;
+		}
+		xgpu_astc_job_free(job);
+	}
+}
+
 /* reads the texture's texels into it */
 static void xbox_texture_upload(struct entry *entry, const D3DCOLOR *palette)
 {
@@ -180,10 +498,15 @@ static void xbox_texture_upload(struct entry *entry, const D3DCOLOR *palette)
 	const unsigned char *base = host_pointer(entry->address);
 	unsigned long faces = description->cube_map ? 6 : 1, face_size = xgpu_texture_face_size(description);
 	unsigned long levels = levels_most(description->width, description->height, description->depth), face, level;
-	BOOL blocks = description->compressed && description->depth == 1 && xgpu_metal_block_compression();
+	BOOL blocks = description->compressed && description->depth == 1 && xgpu_metal_block_compression() && cache.astc != 1;
 
 	if (description->levels < levels)
 		levels = description->levels;
+	if (description->compressed && description->depth == 1 && cache.astc == 1 && astc_read(entry))
+	{
+		cache.statistics.bytes += entry->size;
+		return;
+	}
 	for (face = 0; face < faces; face++)
 	{
 		for (level = 0; level < levels; level++)
@@ -268,8 +591,12 @@ static struct entry *xbox_entry_find(const struct xgpu_stream_texture_stage *sta
 			(uint64_t)CONTIGUOUS_BASE + CONTIGUOUS_SIZE)
 			entry->size = (uint32_t)size;
 	}
+	/* (made ASTC from the start where it most likely will be: most DXT1
+	textures transcode exactly, most DXT3 and DXT5 ones wait for a worker) */
+	entry->astc = (uint8_t)(entry->description.compressed && entry->description.depth == 1 && astc_wanted() &&
+		entry->description.format == 0x0c);
 	if (entry->size)
-		entry->texture = xbox_texture_make(entry);
+		texture_make(entry);
 	if (!entry->size || !entry->texture)
 		host_logf(HOST_LOG_WARN, "metal: a %lux%lux%lu texture of format %02x at %08x is not drawn",
 			entry->description.width, entry->description.height, entry->description.depth,
@@ -378,8 +705,7 @@ static uint32_t image_get(const struct xgpu_stream_texture_stage *stage)
 		struct xgpu_metal_texture_description made;
 		uint16_t most = levels_most(width, height, 1);
 
-		if (entry->texture)
-			xgpu_metal_texture_destroy(entry->texture);
+		texture_release(entry);
 		memset(&made, 0, sizeof(made));
 		made.type = XGPU_METAL_TEXTURE_2D;
 		made.format = stage->resource_format == _image_coverage ? XGPU_METAL_FORMAT_COVERAGE : XGPU_METAL_FORMAT_RGBA8;
@@ -395,6 +721,11 @@ static uint32_t image_get(const struct xgpu_stream_texture_stage *stage)
 		entry->size_word = stage->resource_format;
 		if (!entry->texture)
 			return 0;
+		entry->bytes = width * height * (stage->resource_format == _image_coverage ? 1 : 4) *
+			(made.levels > 1 ? 4 : 3) / 3;
+		entry->resident = _resident_other;
+		cache.resident += entry->bytes;
+		cache.resident_kinds[_resident_other] += entry->bytes;
 	}
 	entry->format_word = stage->resource_size;
 	if (host_render_record_active)
@@ -432,9 +763,11 @@ void xgpu_metal_textures_frame_end(void)
 	double now = seconds();
 
 	cache.frame++;
+	astc_finished();
 	if (now < cache.next_sweep)
 		return;
 	cache.next_sweep = now + SWEEP_SECONDS;
+	resident_log();
 	/* the textures not drawn since the look half a minute ago (none before
 	the first looks, which find frame 0) */
 	idle_since = cache.sweep_frames[cache.sweeps % SWEEP_COUNT];
@@ -451,8 +784,12 @@ void xgpu_metal_textures_frame_end(void)
 			if (entry->last_used < idle_since)
 			{
 				*link = entry->next;
-				if (entry->texture)
-					xgpu_metal_texture_destroy(entry->texture);
+				texture_release(entry);
+				if (entry->astc_job)
+				{
+					xgpu_astc_cancel(entry->astc_job);
+					cache.astc_waiting--;
+				}
 				free(entry);
 			}
 			else
@@ -467,4 +804,8 @@ void xgpu_metal_textures_statistics(struct xgpu_metal_texture_statistics *statis
 {
 	*statistics = cache.statistics;
 	memset(&cache.statistics, 0, sizeof(cache.statistics));
+	statistics->resident = cache.resident;
+	statistics->resident_astc = cache.resident_kinds[_resident_astc];
+	statistics->resident_decoded = cache.resident_kinds[_resident_decoded];
+	statistics->astc_waiting = cache.astc_waiting;
 }

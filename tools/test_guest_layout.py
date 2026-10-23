@@ -66,10 +66,19 @@ def host_macros(elf_arch: str) -> Dict[str, int]:
     return macros([f"--target={HOST_TARGETS[elf_arch]}", "-ffreestanding"], ABI_HEADER.read_text())
 
 
+def clang_takes(flag: str) -> bool:
+    """whether the PATH's clang knows the flag (the builds' is the pinned
+    LLVM's: an older system clang, as Ubuntu 22.04's 14, does not know
+    -fno-define-target-os-macros, which the macros read here do not need)"""
+    return subprocess.run([clang(), flag, "-E", "-x", "c", "-"], input="", capture_output=True,
+                          text=True).returncode == 0
+
+
 def guest_flags(arch) -> Sequence[str]:
     # (as tools/android_build.py's guest_abi_flags)
-    return [*arch.target_flags, "-DHALO_GUEST=1", *(["-DHALO_GUEST_MACHO=1"] if arch.darwin_assembly else []),
-            *arch.defines]
+    flags = [*arch.target_flags, "-DHALO_GUEST=1", *(["-DHALO_GUEST_MACHO=1"] if arch.darwin_assembly else []),
+             *arch.defines]
+    return [flag for flag in flags if flag != "-fno-define-target-os-macros" or clang_takes(flag)]
 
 
 @pytest.mark.parametrize("name", sorted(GUEST_ARCHES))

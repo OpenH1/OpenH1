@@ -96,6 +96,24 @@ def miniupnpc_sources() -> List[Path]:
     return sorted((MINIUPNPC_DIR / "src").glob("*.c"))
 
 
+# the DXT textures as ASTC, in the hosts of the GPUs without BC (iOS's and
+# Android's: port/linux/astc/xgpu_astc.h), with ARM's astc-encoder, the
+# hosts' only C++: its library's sources, as its own CMake build compiles
+# them for AArch64 (NEON), without exceptions or RTTI, which it does not use
+ASTC_ENCODER_DIR = Path("port/third_party/astc-encoder/Source")
+ASTC_DIR = Path("port/linux/astc")
+ASTC_HOST_SOURCES = [ASTC_DIR / "xgpu_astc.c", ASTC_DIR / "xgpu_astc_cache.c"]
+ASTC_HOST_CXX_SOURCES = [ASTC_DIR / "xgpu_astc_encode.cpp"]
+ASTC_CXX_FLAGS = ["-std=c++14", "-O2", "-fno-exceptions", "-fno-rtti", "-DASTCENC_NEON=1", "-DASTCENC_SVE=0",
+                  "-DASTCENC_SSE=0", "-DASTCENC_AVX=0", "-DASTCENC_POPCNT=0", "-DASTCENC_F16C=0",
+                  f"-I{ASTC_ENCODER_DIR}"]
+
+
+def astc_encoder_sources() -> List[Path]:
+    """astc-encoder's library sources (not its command-line program's)"""
+    return sorted(source for source in ASTC_ENCODER_DIR.glob("astcenc_*.cpp"))
+
+
 def updater_defines(release: bool) -> str:
     """the self-updater's build (port/linux/src/updater.c): its number, from
     HALO_BUILD_NUMBER (tools/ci_build.py gives it for builds of master; none

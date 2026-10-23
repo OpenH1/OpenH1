@@ -49,6 +49,8 @@ and checks them.
 
 uintptr_t host_guest_base;
 void (*host_memory_remapped)(uint32_t address, uint32_t size);
+/* (display.astc_textures: the default) */
+char host_astc_textures[16] = "auto";
 
 void host_logf(int priority, const char *format, ...)
 {

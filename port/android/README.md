@@ -341,6 +341,7 @@ These settings are only for Android:
 | `input.touch_controls` | (Android, iOS and the web) The touch controls in a game. `"auto"` (the default): shown on a touchscreen while no controller is connected. `"on"`: also shown with a controller. `"off"`: never shown. A device without a touchscreen never shows them. The menus take taps in any case. |
 | `debug.sample_seconds` | Refer to "Find problems". |
 | `debug.memory_watch` | `true` (the default): the app notices the game's writes to textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. Refer to "Limits". |
+| `display.astc_textures` | `"off"` (the default on Android): the maps' DXT textures are decoded on a GPU without BC's formats (Mali, PowerVR), as before. `"auto"`: on such a GPU that samples ASTC, they are transcoded to ASTC 4x4, a quarter of the memory and bandwidth of the decoded textures; their few blocks that need encoding are encoded on worker threads the first time and kept in the app's cache folder. Not yet checked on such a device: the emulator, whose ASTC is emulated, drew those textures black (with `"always"`), so it is off until it has been. The log says which (`vulkan: DXT textures as ...`). Refer to [port/linux/README.md](../linux/README.md#settings). |
 
 ## Internet play
 

@@ -68,12 +68,17 @@ void host_time_zone(char *buffer, size_t size);
 for __guest_start */
 uint32_t host_make_boot(const struct host_environment *environment, const char *program);
 
-/* the debugging settings of config.toml at path that the host reads itself:
+/* the settings of config.toml at path that the host reads itself:
 debug.sample_seconds (the sampler, host_debug.c; or HALO_SAMPLE in the
-host's environment) and debug.memory_watch (false: page hashes,
-host_memory_watch_use_hashes). hashes_reason, if not NULL, says why the host
-must use page hashes whatever the setting. */
+host's environment), debug.memory_watch (false: page hashes,
+host_memory_watch_use_hashes) and display.astc_textures (host_astc_textures).
+hashes_reason, if not NULL, says why the host must use page hashes whatever
+the setting. */
 void host_apply_debug_settings(const char *path, const char *hashes_reason);
+/* display.astc_textures (or HALO_ASTC_TEXTURES in the host's environment),
+as it is written: "auto", "always" or "off" (port/linux/astc/xgpu_astc.h,
+xgpu_astc_chosen) */
+extern char host_astc_textures[16];
 
 /* ---------- the guest's addresses
 

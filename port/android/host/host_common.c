@@ -229,7 +229,15 @@ uint32_t host_make_boot(const struct host_environment *environment, const char *
 	return (uint32_t)(uintptr_t)boot;
 }
 
-/* ---------- config.toml's debugging settings */
+/* ---------- config.toml's settings the host reads */
+
+/* (display.astc_textures' default, as port_config.c's: off on Android until
+its Vulkan path has been seen right on a device without BC) */
+#ifdef __ANDROID__
+char host_astc_textures[16] = "off";
+#else
+char host_astc_textures[16] = "auto";
+#endif
 
 void host_apply_debug_settings(const char *path, const char *hashes_reason)
 {
@@ -241,13 +249,18 @@ void host_apply_debug_settings(const char *path, const char *hashes_reason)
 	{
 		toml_datum_t seconds = toml_seek(result.toptab, "debug.sample_seconds");
 		toml_datum_t watch = toml_seek(result.toptab, "debug.memory_watch");
+		toml_datum_t astc = toml_seek(result.toptab, "display.astc_textures");
 
 		sample_seconds = seconds.type == TOML_FP64 ? seconds.u.fp64 :
 			seconds.type == TOML_INT64 ? (double)seconds.u.int64 : 0.0;
 		if (watch.type == TOML_BOOLEAN)
 			memory_watch = watch.u.boolean ? 1 : 0;
+		if (astc.type == TOML_STRING)
+			snprintf(host_astc_textures, sizeof(host_astc_textures), "%s", astc.u.s);
 		toml_free(result);
 	}
+	if (getenv("HALO_ASTC_TEXTURES") && *getenv("HALO_ASTC_TEXTURES"))
+		snprintf(host_astc_textures, sizeof(host_astc_textures), "%s", getenv("HALO_ASTC_TEXTURES"));
 	/* (the setting's variable, as the game's settings have one: the Linux
 	host's environment) */
 	if (getenv("HALO_SAMPLE"))

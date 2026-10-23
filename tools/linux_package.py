@@ -82,6 +82,10 @@ def notices(platform: str) -> List[Tuple[Path, str]]:
         # notice
         (ROOT / "port/assets/icons/lucide/LICENSE", "lucide-LICENSE.txt"),
     ]
+    if platform in ("macos", "ios", "android"):
+        # the DXT textures' ASTC encoder (port/third_party/astc-encoder), in
+        # the Apple and Android hosts, whose Apache license asks the same
+        pairs.append((ROOT / "port/third_party/astc-encoder/LICENSE.txt", "astc-encoder-LICENSE.txt"))
     return pairs
 
 
