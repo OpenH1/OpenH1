@@ -1,0 +1,112 @@
+<!doctype html>
+<!-- Steam's library artwork for OpenH1's shortcut (a non-Steam game), in the
+     web site's Boot Glow look (website/public/index.html): the project's
+     lockup and mark (website/public/brand), green on black, the hero's
+     scanlines. Rendered by tools/steam_art.py, one picture to a load:
+     ?kind=capsule|wide|hero|logo|icon, &vr=1 for OpenH1 VR's. The project's
+     own branding only: none of the game's art. -->
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "Overpass"; font-weight: 900; src: url("../fonts/Overpass-900.ttf") format("truetype"); }
+  @font-face { font-family: "Overpass Mono"; font-weight: 400 700; src: url("../../../website/public/fonts/OverpassMono-Latin.woff2") format("woff2"); }
+  :root { --bg: #040504; --green: #9dff3c; --glow: rgba(157, 255, 60, 0.42); --muted: #8e9a89; --text: #eef4ea; }
+  html, body { margin: 0; padding: 0; overflow: hidden; background: transparent; }
+  .art { position: relative; overflow: hidden; }
+  /* the background of the pictures that have one: a green glow over black,
+     a floor of lines going to it, the scanlines */
+  .scene {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(ellipse 62% 46% at 50% var(--horizon), rgba(157, 255, 60, 0.30), rgba(157, 255, 60, 0) 72%),
+      radial-gradient(ellipse 130% 95% at 50% 0%, #0d160a, #040504 72%);
+  }
+  .floor {
+    position: absolute; left: -60%; right: -60%; top: var(--horizon); bottom: -2%;
+    transform-origin: 50% 0; transform: perspective(var(--depth)) rotateX(64deg);
+    background:
+      repeating-linear-gradient(90deg, rgba(157, 255, 60, 0.30) 0 2px, transparent 2px var(--cell)),
+      repeating-linear-gradient(0deg, rgba(157, 255, 60, 0.30) 0 2px, transparent 2px var(--cell));
+    -webkit-mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0.9) 45%, #000 100%);
+    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0) 0, rgba(0, 0, 0, 0.9) 45%, #000 100%);
+  }
+  .horizon { position: absolute; left: 0; right: 0; top: var(--horizon); height: 2px; margin-top: -1px;
+    background: linear-gradient(90deg, rgba(157, 255, 60, 0), rgba(157, 255, 60, 0.85) 30%, rgba(157, 255, 60, 0.85) 70%, rgba(157, 255, 60, 0));
+    box-shadow: 0 0 24px 4px var(--glow); }
+  .scanlines { position: absolute; inset: 0; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.30) 0 1px, transparent 1px 3px); }
+  .vignette { position: absolute; inset: 0; background: radial-gradient(ellipse 85% 80% at 50% 45%, rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.55)); }
+  /* the mark, large and faint, behind */
+  .ghost { position: absolute; opacity: 0.10; filter: blur(0.5px); }
+  .lockup { position: absolute; filter: drop-shadow(0 0 18px rgba(157, 255, 60, 0.45)); }
+  .tag { position: absolute; left: 0; right: 0; margin: 0; text-align: center; color: var(--muted);
+    font: 500 var(--tag-size)/1 "Overpass Mono", monospace; letter-spacing: 0.28em; text-transform: uppercase; }
+  .tag b { color: var(--green); font-weight: 500; text-shadow: 0 0 12px var(--glow); }
+  /* OpenH1 VR's badge: the mark's green plate, its corner cut */
+  .vr { position: absolute; display: none; color: #061000; background: var(--green);
+    font: 900 var(--vr-size)/1 "Overpass", sans-serif; letter-spacing: 0.02em;
+    padding: calc(var(--vr-size) * 0.16) calc(var(--vr-size) * 0.30) calc(var(--vr-size) * 0.04);
+    clip-path: polygon(0 0, calc(100% - var(--vr-size) * 0.30) 0, 100% calc(var(--vr-size) * 0.30), 100% 100%, 0 100%);
+    filter: drop-shadow(0 0 calc(var(--vr-size) * 0.3) var(--glow)); }
+  .is-vr .vr { display: block; }
+
+  /* the vertical capsule, 600 x 900 */
+  .capsule { width: 600px; height: 900px; --horizon: 58%; --depth: 180px; --cell: 34px; --tag-size: 17px; --vr-size: 64px; }
+  .capsule .ghost { width: 640px; left: -20px; top: -150px; opacity: 0.07; }
+  .capsule .lockup { width: 470px; left: 65px; top: 330px; }
+  .capsule .tag { top: 462px; }
+  .capsule .vr { left: 50%; transform: translateX(-50%); top: 210px; }
+  /* the wide capsule, 920 x 430 */
+  .wide { width: 920px; height: 430px; --horizon: 70%; --depth: 150px; --cell: 30px; --tag-size: 14px; --vr-size: 40px; }
+  .wide .ghost { width: 560px; right: -120px; top: -150px; opacity: 0.07; }
+  .wide .lockup { width: 560px; left: 180px; top: 132px; }
+  .wide .tag { top: 252px; }
+  .wide .vr { left: 50%; transform: translateX(-50%); top: 66px; }
+  /* the hero, 1920 x 620: no lockup (Steam draws the logo over it) */
+  .hero { width: 1920px; height: 620px; --horizon: 56%; --depth: 220px; --cell: 44px; }
+  .hero .ghost { width: 440px; right: 240px; top: 6px; opacity: 0.08; }
+  .hero .lockup, .hero .tag, .hero .vr { display: none; }
+  /* the logo, over the hero, on nothing */
+  .logo { width: 1280px; height: 360px; --vr-size: 124px; }
+  .logo .scene, .logo .scanlines, .logo .vignette, .logo .ghost, .logo .tag { display: none; }
+  .logo .lockup { width: 1180px; left: 50px; top: 82px; filter: drop-shadow(0 0 22px rgba(157, 255, 60, 0.55)); }
+  .logo.is-vr .lockup { width: 900px; left: 40px; top: 102px; }
+  .logo .vr { left: 990px; top: 104px; }
+  /* the icon, 256 x 256: the app's (port/assets/icon), with OpenH1 VR's badge */
+  .icon { width: 256px; height: 256px; --vr-size: 70px; }
+  .icon .scene, .icon .scanlines, .icon .vignette, .icon .ghost, .icon .tag, .icon .lockup { display: none; }
+  .icon .app { position: absolute; inset: 0; width: 256px; height: 256px; }
+  .icon .vr { right: 8px; bottom: 6px; box-shadow: 0 0 0 5px #0b0d09; }
+  .app { display: none; }
+  .icon .app { display: block; }
+</style>
+</head>
+<body>
+  <div class="art" id="art">
+    <div class="scene"></div>
+    <img class="ghost" src="../../../website/public/brand/openh1-mark.svg" alt="">
+    <div class="floor"></div>
+    <div class="horizon"></div>
+    <div class="vignette"></div>
+    <div class="scanlines"></div>
+    <img class="app" src="../icon/hicolor/openh1-256.png" alt="">
+    <img class="lockup" src="../../../website/public/brand/openh1-lockup.svg" alt="">
+    <p class="tag">The original, <b>recompiled</b></p>
+    <div class="vr">VR</div>
+  </div>
+  <script>
+    const query = new URLSearchParams(location.search);
+    const art = document.getElementById("art");
+    const kind = query.get("kind") || "capsule";
+    art.classList.add(kind);
+    if (query.get("vr") === "1") {
+      art.classList.add("is-vr");
+      art.querySelector(".tag").innerHTML = "The original, <b>in VR</b>";
+    }
+    // (the floor and horizon belong to the pictures with a scene)
+    if (kind === "logo" || kind === "icon")
+      for (const part of art.querySelectorAll(".floor, .horizon"))
+        part.style.display = "none";
+  </script>
+</body>
+</html>

@@ -27,8 +27,8 @@ self-updater compares (and the web site's version.json names).
 --vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md).
 For linux_x86_64, into dist/halo-linux-x86_64-vr-<config>/, a build of its
 own, which updates to the release's VR build. For linux_arm64, the Steam
-Frame's package (tools/frame_package.py, which tools/frame_install.sh
-installs; it does not update itself), zipped as
+Frame's package (tools/frame_package.py, which its install.sh,
+tools/linux_install.sh, installs; it does not update itself), zipped as
 dist/halo-steam-frame-vr-<config>/halo-steam-frame-vr-<config>.zip, which
 the release has as it is.
 

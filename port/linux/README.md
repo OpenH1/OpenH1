@@ -140,7 +140,8 @@ Do the set-up in Desktop Mode:
 4. Start OpenH1 from the library in Game Mode.
 
 `install.sh` (`tools/linux_install.sh`, at the top of every Linux
-release's tree):
+release's tree; the Steam Frame's package has the same script, "Steam
+Frame"):
 
 - Copies the release to `~/Applications/OpenH1`: a folder of the player's
   own, which the game can write to and so updates itself in (refer to
@@ -176,6 +177,23 @@ release's tree):
   reads: Steam rewrites that file while it runs). Without
   `steamos-add-to-steam`, it says how to add it: in Steam, Games > Add a
   Non-Steam Game to My Library, OpenH1, Add Selected Programs.
+- Gives the shortcut its library artwork, so that Game Mode shows the
+  game's tile, banner and logo rather than a grey tile: the release's
+  `share/openh1/steam/*.png` (`port/assets/steam`, drawn by
+  `tools/steam_art.py`), copied into the grid folder of each Steam user
+  whose `shortcuts.vdf` has the shortcut
+  (`~/.local/share/Steam/userdata/<user>/config/grid/`): `<id>p.png` (the
+  capsule, 600x900), `<id>.png` (the wide capsule, 920x430),
+  `<id>_hero.png` (1920x620), `<id>_logo.png` and `<id>_icon.png`. `<id>`
+  is the shortcut's app ID, its `appid` in `shortcuts.vdf` (a binary VDF,
+  which `install.sh` reads with `python3` and never writes); for an entry
+  without one, the ID Steam gives it (the CRC-32 of its `Exe` and
+  `AppName`, with the top bit set). A picture there that the player put
+  is kept: `install.sh` replaces only its own (listed with their SHA-256
+  in `.steam-art` in the game's folder). A running Steam may not show new
+  artwork until it restarts (on a Steam Deck, restart Steam or the Deck).
+  Run `install.sh` again after adding the shortcut by hand to give it its
+  artwork.
 - On another Linux desktop, without `konsole`, `kdialog` or
   `steamos-add-to-steam`, it does the same and says what is left to do:
   the game asks for its disc image at its first start.
@@ -699,6 +717,7 @@ Unix prefix is, so a package can copy its folders to `/usr` (or
 | `lib/openh1/libSDL3.so.0` | SDL 3, which the game loads from there (a `DT_RPATH` of `$ORIGIN:$ORIGIN/../lib/openh1`; refer to "Requirements"). Leave it out to use the system's SDL 3. |
 | `share/openh1/brokers.txt` | Internet play's MQTT brokers (`network.brokers_file`). |
 | `share/openh1/vr` | Only in the VR build's release: by it, `install.sh` installs that build beside the other ("Steam Deck"). |
+| `share/openh1/steam/*.png` | Steam's library artwork for the game's shortcut, which `install.sh` puts in Steam's grid folder ("Steam Deck"); OpenH1 VR's in the VR build's release. Only in the release's zips, as `install.sh`. |
 | `share/applications/openh1.desktop` | The desktop entry. |
 | `share/icons/hicolor/<size>/apps/openh1.png` | Its icon, 16x16 to 512x512. |
 | `share/doc/openh1/` | The main README and this one. |
@@ -1901,7 +1920,8 @@ through a shortcut (a non-Steam game) to the launcher there,
 `halo-vr.sh` (`port/linux/frame/halo-vr.sh`, whose comments list the
 environment it gives the game). On the Frame itself, in desktop mode:
 download the latest release's package, unzip it and open `install.sh` in
-it (port/linux/frame/README.md). From a computer with SSH to the Frame,
+it (port/linux/frame/README.md): it installs the game, asks for the maps,
+and adds it to Steam with its library artwork. From a computer with SSH to the Frame,
 the latest release's package
 ([OpenH1-Steam-Frame.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Steam-Frame.zip)):
 
@@ -1919,7 +1939,10 @@ tools/frame_install.sh <frame>
 
 - `tools/frame_package.py` makes the package, `dist/halo-vr-frame/` and
   `dist/halo-vr-frame.tar.gz`: the game, `libSDL3.so.0`, `halo-vr.sh`,
-  `install.sh` (`tools/frame_install.sh`), `brokers.txt` (without which internet play finds no games), a README
+  `install.sh` (`tools/linux_install.sh`, the Linux release's installer:
+  "Steam Deck"), `brokers.txt` (without which internet play finds no
+  games), the menu entry (`openh1.desktop`) and its icon (`openh1.png`),
+  Steam's library artwork for OpenH1 VR (`steam-<kind>.png`), a README
   (`port/linux/frame/README.md`: install, update, uninstall, the files),
   the libraries' licenses, `VERSION` (the commit) and `SHA256SUMS`. It
   takes the game from `build/linux_arm64` (`--build` names another), and
@@ -1927,36 +1950,46 @@ tools/frame_install.sh <frame>
   neither the package nor SteamOS has. `--zip <file>` also writes it as a
   zip (the `halo-vr-frame` folder, with the files' modes), as the release's
   `OpenH1-Steam-Frame.zip`.
-- `tools/frame_install.sh <host>` (`--package` for another package, a
-  folder, the `.tar.gz` or a release's `.zip`) copies it to
-  `~/apps/halo-vr/` over SSH. It
-  refuses while the game runs (`pgrep -x halo`) and never starts it. Each
-  file that differs goes in as `<name>.new`, checked against
-  `SHA256SUMS`, and once all are, each takes its name (a rename, so a
-  stopped install leaves the old game whole). The replaced `halo`,
+- The package's `install.sh`, opened on the Frame, installs the package
+  it is in into `~/apps/halo-vr/`, as the Linux release's does its tree
+  ("Steam Deck": one script, `tools/linux_install.sh`, with a small part
+  of its own for each package). It refuses while the game runs
+  (`pgrep -x halo`), checks the package against its `SHA256SUMS`, and
+  never starts the game. Each file that differs goes in as `<name>.new`,
+  checked, and once all are, each takes its name (a rename, so a stopped
+  install leaves the old game whole). The replaced `halo`,
   `libSDL3.so.0` and `halo-vr.sh` are kept as `<name>.prev` (the last
-  only): `mv halo.prev halo` goes back. `brokers.txt` is replaced. It
-  prints what changed (and the commits, from `VERSION`). It never touches
+  only): `mv halo.prev halo` goes back. Files an earlier package had and
+  this one has not are removed; `brokers.txt` is replaced. It prints what
+  changed (and the commits, from `VERSION`). It never touches
   `config.toml`, `halo-vr.env`, the maps, the logs or the saved games.
+- `tools/frame_install.sh <host>` (`--package` for another package, a
+  folder, the `.tar.gz` or a release's `.zip`) does the same from a
+  computer, over SSH: it copies the package and the repository's
+  `tools/linux_install.sh` to a folder of the Frame's `/tmp`, runs it
+  there with `--batch` (no questions, and no `steamos-add-to-steam`,
+  which needs the Frame's own session), then deletes the folder.
   `--local <folder>` installs into `<folder>/apps/halo-vr` instead, the
-  folder standing in for the Frame's home (from a terminal on the Frame,
-  or to test the script). As the package's `install.sh`, with no
-  arguments, it installs the package it is in into its user's home, in a
-  terminal window of its own (`konsole`) when opened from the file
-  manager.
-- The Steam shortcut: until Steam has one to the launcher (in
+  folder standing in for the Frame's home (to test the script).
+- The Steam shortcut: the install writes the menu entry
+  `~/.local/share/applications/openh1-vr.desktop` (the package's
+  `openh1.desktop`, named OpenH1 VR, with its `openh1.png`), and, opened
+  on the Frame, asks the running Steam to add it (SteamOS's
+  `steamos-add-to-steam`) when Steam has no shortcut to the launcher (in
   `~/.local/share/Steam/userdata/*/config/shortcuts.vdf`, which the
-  install only reads), the install prints how to add it on the Frame:
-  in Steam's desktop mode, Games > Add a Non-Steam Game to My Library,
-  OpenH1 VR, Add Selected Programs. (The install writes that menu entry,
-  `~/.local/share/applications/openh1-vr.desktop`, with the package's
-  `openh1.png`; Steam names the shortcut after it.) It does not
-  write that file: Steam rewrites it while it runs, which on the Frame is
-  always. Run on the Frame as `install.sh`, it asks the running Steam to
-  add the shortcut instead (SteamOS's `steamos-add-to-steam`).
+  install only reads: Steam rewrites it while it runs, which on the Frame
+  is always). Otherwise it prints how to add it on the Frame: in Steam's
+  desktop mode, Games > Add a Non-Steam Game to My Library, OpenH1 VR,
+  Add Selected Programs.
+- The shortcut's library artwork: the package's `steam-<kind>.png`, put
+  in Steam's grid folder under the shortcut's app ID, as on a Steam Deck
+  ("Steam Deck"), once Steam has the shortcut. A running Steam may not
+  show it until it restarts.
 - The maps go in `~/apps/halo-vr/maps` (or `paths.data`); the install
-  says so when there are none. Run on the Frame as `install.sh`, it first
-  asks for the disc's maps folder (`kdialog`) and copies its `.map` files.
+  says so when there are none. Opened on the Frame, it first asks for the
+  disc's maps folder (`kdialog`) and copies its `.map` files (not a disc
+  image: the game, in the headset, does not copy one at its first
+  start).
 - Settings of your own for the launcher (`HALO_*=value` lines) go in
   `~/apps/halo-vr/halo-vr.env`, which updates keep, or in the shortcut's
   launch options in Steam (`HALO_VR=0 %command%`).

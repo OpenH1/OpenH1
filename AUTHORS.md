@@ -9,6 +9,11 @@
   windows'): the OpenH1 logo, Tail Code, by Erin Cena
   (`port/assets/icon/openh1-mark.svg`, from openh1.com's
   `website/public/favicon.svg`).
+- **Steam's library artwork** (the capsules, hero, logo and icon of the
+  Steam shortcut the Linux and Steam Frame installs add, OpenH1's and
+  OpenH1 VR's): the OpenH1 lockup and mark by Erin Cena
+  (`website/public/brand`) in openh1.com's Boot Glow look, drawn by
+  `tools/steam_art.py` from `port/assets/steam/art.html`.
 - **The controller's A, B, X and Y buttons** (the menus' button icons, the
   HUD messages' and the Android touch controls'): redraws by saulob
   (`port/assets/buttons`).

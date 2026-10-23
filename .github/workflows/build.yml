@@ -207,7 +207,7 @@ jobs:
 
       # the VR build for the Steam Frame (an arm64 SteamOS headset), as its
       # package (tools/frame_package.py: the game, the launcher of its Steam
-      # shortcut, SHA256SUMS), which frame_install.sh installs; a download of
+      # shortcut, SHA256SUMS), which its install.sh installs; a download of
       # its own, halo-steam-frame-vr-release.zip
       - name: Steam Frame VR release
         if: github.ref == 'refs/heads/master'

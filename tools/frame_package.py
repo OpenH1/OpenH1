@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Packages the VR build for a Steam Frame: dist/halo-vr-frame/ and
-dist/halo-vr-frame.tar.gz, which tools/frame_install.sh installs.
+dist/halo-vr-frame.tar.gz, which its install.sh (tools/linux_install.sh)
+installs, on the Frame or, from a computer, through tools/frame_install.sh.
 
     python3 configure.py --vr && ninja linux_arm64
     python3 tools/frame_package.py
@@ -14,9 +15,12 @@ The package is what ~/apps/halo-vr/ on the Frame needs beside the game's
 data and the player's own files: the game (build/linux_arm64/halo), the
 SDL3 it finds beside it, the launcher of its Steam shortcut
 (port/linux/frame/halo-vr.sh), internet play's brokers.txt, its installer
-(install.sh: tools/frame_install.sh, which installs the package it is in
-when opened on the Frame), the icon of its menu entry and Steam shortcut
-(openh1.png), a README
+(install.sh: tools/linux_install.sh, the Linux release's installer too,
+which installs the package it is in when opened on the Frame), the icon of
+its menu entry and Steam shortcut (openh1.png), that menu entry
+(openh1.desktop, the Linux release's, which install.sh makes the
+installed game's), Steam's library artwork for the shortcut
+(steam-<kind>.png: OpenH1 VR's, tools/steam_art.py), a README
 (port/linux/frame/README.md), the libraries' licenses (as
 tools/ci_build.py's dist has them), VERSION (the commit) and SHA256SUMS.
 Never config.toml: the player's own, which an install must not replace.
@@ -122,7 +126,7 @@ def executable(name: str) -> bool:
 
 def write_zip(dist: Path, output: Path) -> None:
     """the package's folder into the zip output, under its name, in name order,
-    with each file's Unix mode (for unzip on the Frame, and frame_install.sh)"""
+    with each file's Unix mode (for unzip on the Frame, and install.sh)"""
     output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         info = zipfile.ZipInfo(f"{dist.name}/", date_time=(1980, 1, 1, 0, 0, 0))
@@ -160,8 +164,10 @@ def main() -> int:
         "libSDL3.so.0": args.build / "libSDL3.so.0",
         "SDL3-LICENSE.txt": args.build / "third_party/SDL3/LICENSE.txt",
         "halo-vr.sh": FRAME_DIR / "halo-vr.sh",
-        "install.sh": ROOT / "tools/frame_install.sh",
+        "install.sh": ROOT / "tools/linux_install.sh",
         "openh1.png": ROOT / "port/assets/icon/hicolor/openh1-256.png",
+        "openh1.desktop": ROOT / "port/assets/linux/openh1.desktop",
+        **{f"steam-{art.name}": art for art in sorted((ROOT / "port/assets/steam/openh1-vr").glob("*.png"))},
         "brokers.txt": ROOT / "port/assets/network/brokers.txt",
         "README.md": FRAME_DIR / "README.md",
         **{name: ROOT / source for name, source in LICENSES.items()},
