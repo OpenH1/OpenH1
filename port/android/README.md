@@ -203,23 +203,52 @@ on-screen keyboard, tap a key to press it, "B =BACK" to cancel and
 ### Touch controls
 
 In a game, the app shows touch controls over the picture. They are a
-controller for player 1. With the default buttons of the profile:
+controller for player 1, drawn in one style with nothing behind them. The
+controller's buttons are drawn as the HUD draws them, in the style of the
+setting `display.hud_button_style` ("Button style" in the profile's
+graphics settings, shown while the high-res HUD is on: Classic, Gems or
+Dark Gems; the touch controls follow it in any case): A, B, X, Y, black,
+white, the triggers and the stick clicks, each with a thin light edge and
+a soft shadow so that it shows on any scene, and a short word under it
+saying what it does (the setting `input.touch_captions`). The small
+controls (the D-pad, Pause, Back and the toolbar) are line icons in the
+HUD's light blue (from Kenney's Mobile Controls:
+`port/assets/touch/README.md`), and the move stick is a faint ring with a
+knob. A held control is drawn a little brighter and smaller; each takes a
+finger anywhere in its circle. After a few seconds with no finger on the
+screen the controls fade to 70% of their opacity, and come back at the
+next touch. With the default buttons of the profile:
 
-| Control | Function in the game |
-| --- | --- |
-| stick (lower left) | move |
-| swipe on the screen away from the buttons | look |
-| Fire | right trigger |
-| Grenade | left trigger |
-| A / Jump, B / Melee, X / Reload, Y / Weapon | A, B, X, Y |
-| Crouch, Zoom | left and right stick clicks |
-| Light, Gren. type | white, black |
-| Pause, Back | start, back |
-| Up, Down, Left, Right | D-pad (in a network game, Up opens the text chat's keyboard) |
+| Control | Drawn as | Caption | Function in the game |
+| --- | --- | --- | --- |
+| stick (lower left) | a ring and a knob | | move |
+| swipe on the screen away from the buttons | | | look |
+| Fire (right, the largest) | right trigger | FIRE | right trigger |
+| Grenade (upper right) | left trigger | GRENADE | left trigger |
+| Jump, Melee, Reload, Swap | A, B, X, Y | JUMP, MELEE, RELOAD, SWAP | A, B, X (also the action: pick up, enter), Y |
+| Crouch, Zoom | left stick, right stick | CROUCH, ZOOM | left and right stick clicks |
+| Pause | pause bars | | start |
+| Light, Gren. type | white, black | LIGHT, GREN TYPE | white, black |
+| Back | three bars | | back |
+| D-pad: Up, Down, Left, Right | arrows | | D-pad (in a network game, Up opens the text chat's keyboard) |
 
-The names on the buttons follow the profile's "Button layout" (Settings >
-Gamepads): with "Swap triggers", the right trigger's button says "Grenade".
-The stick moves the player with every "Stick layout", southpaw too.
+The buttons are sized by how often they are used: Fire the largest, where
+the right thumb rests; Jump and Grenade next; Reload, Swap and Melee
+smaller; the seldom used ones (Crouch, Zoom, Light, Gren. type, Back and
+the D-pad) smallest and fainter, the last four together in the upper left
+with Pause at the top, away from the thumbs. A second Fire at the left,
+for a claw grip, is hidden by default: add it with "Hide or add buttons".
+(A layout saved before keeps its places and sizes; "Reset" in "Hide or add
+buttons" gives the new ones.) Every button can be moved, resized, hidden
+or copied as before.
+
+A button shows the controller's button; its caption shows what it does,
+which follows the profile's "Button layout" (Settings > Gamepads): with
+"Swap triggers" the right trigger's caption says GRENADE. The setting
+`input.touch_captions` (on by default) shows the captions; off, the
+buttons are drawn alone. The lists of the options name the buttons as "A /
+Jump", "Fire" and so on. The stick moves the player with every "Stick
+layout", southpaw too.
 
 A finger that holds a button can also swipe to look, so you can fire and
 aim with one thumb. The controls are a finger wide (48 dp) or larger, but
@@ -244,9 +273,10 @@ changes this (refer to "Settings").
 
 The buttons at the top of the screen:
 
-- "Hide" removes the controls (and stops the gyroscope aiming and the
-  vibration) until you push "Touch"; the app remembers it.
-- "Options" opens these items:
+- "Hide" (in the middle, four corners pointing in) removes the controls
+  (and stops the gyroscope aiming and the vibration) until you push it
+  again (four corners pointing out); the app remembers it.
+- "Options" (the gear, at the right) opens these items:
   - "General": the phone's vibration (on by default; it follows the
     vibration setting of the game's profile), aiming with the gyroscope
     (off by default), a floating move stick (off by default: the stick goes
@@ -258,7 +288,7 @@ The buttons at the top of the screen:
     file picker of the system.
   - "Look sensitivity".
 
-"Hide" and "Options" act when the finger lifts on them: a swipe that
+"Hide" and the gear act when the finger lifts on them: a swipe that
 starts on them turns the view instead.
 
 The app keeps the layout in its own preferences, not in `config.toml`.
@@ -282,6 +312,7 @@ These settings are only for Android:
 
 | Setting | Function |
 | --- | --- |
+| `input.touch_captions` | `true` (the default): what each of the touch controls' controller buttons does in the profile (JUMP, MELEE, FIRE) is written under it, in the HUD's font and colour. `false`: the buttons alone. The buttons are drawn in `display.hud_button_style`. |
 | `input.touch_aim_assist` | `true` (the default): the touch controls' swipe aiming gets the aim assist of a controller (the aim slows over a target and follows a moving one). `false`: none, as with a mouse; the bullets' own autoaim stays. |
 | `input.touch_controls` | The touch controls in a game. `"auto"` (the default): shown on a touchscreen while no controller is connected. `"on"`: also shown with a controller. `"off"`: never shown. A device without a touchscreen never shows them. The menus take taps in any case. |
 | `debug.sample_seconds` | Refer to "Find problems". |

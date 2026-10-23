@@ -26,10 +26,10 @@ end.
 | `port/android/` | The Android app: the guest runtime, the host library (`host/`, which the Linux and macOS hosts share; its renderer is Vulkan's, `port/linux/vulkan`, and `host_renderer.c` stands in for the window import of the OpenGL backend the hosts once had, for the Linux hosts too), the Java app (`app/`), host imports (`host_imports.list`, every guest's; `android_imports.list`, the app's own) |
 | `port/macos/` | The macOS host's own files: Darwin's system calls for the guest (`host_syscall.c`), the Metal renderer's backend (`xgpu_metal.m`, its bindings `xgpu_metal_bindings.h`, the command stream's table `xgpu_metal_stream.m`, the MSL emitter's shaders `xgpu_metal_shaders.c`, the textures `xgpu_metal_textures.c`, the NV2A combiner as one function of function constants `xgpu_metal_combiner.c`, the pipelines' description `xgpu_metal_pipeline.m`, the shader library's build tool `tools/xgpu_metal_prebuild.c`), the window and its presentation (`host_metal.m`), their tests (`tests/`), the app (`host_app.m`: its folders, the maps panel, the window kept; `halo.entitlements`, `openh1-icon.icns`); the rest is `port/android/host` and `port/linux/host` |
 | `port/web/` | The web build: its runtime (`src/`: entry, sockets inside the page, memory watch), the page and its service worker (`site/`), the SDL port, tests |
-| `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), icons, network brokers, the Linux desktop entry (`linux/`) |
+| `port/assets/` | What the builds embed or ship: high-res HUD (`hud/`), fonts, titles, menus (`menus/`), the Android touch controls' art (`touch/`), icons, network brokers, the Linux desktop entry (`linux/`) |
 | `port/third_party/` | Vendored libraries, each with a README naming its upstream, version and checksum |
 | `port/tools/` | Stand-alone tools (`cache_file_report.c`) |
-| `tools/` | Build scripts (`build_common.py`, what the others share; `linux_guest_build.py`, `vulkan_build.py`, `windows_build.py`, `android_build.py` (also the guest image of every guest build), `macos_build.py`, `macos_app.py` (the macOS app, its disk image, signing and notarization), `macos_shaders.py` (the macOS app's shader library), `render_manifest.py` (the renderer's manifest, the game's vertex shaders from its code), `web_build.py`, `ci_build.py`, `release_names.py` (the names releases publish the builds under), `linux_package.py`, `frame_package.py` (the Steam Frame's), `web_serve.py`), the game's 32-bit x86 ABI for test tools (`x86_game_abi.py`: `map_validate`), the guest's base register (`guest_base_register.py`, measured by `base_register_bench/`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`), tests, OpenCE's `stagekit/` (scenarios staged and instrumented on the real engine, no retail assets; its map writer runs as a guest image of the 64-bit builds' host), and `scorecard/` (the 60/120 Hz simulation's check: scenarios at each rate compared, the 30 Hz gate against master) |
+| `tools/` | Build scripts (`build_common.py`, what the others share; `linux_guest_build.py`, `vulkan_build.py`, `windows_build.py`, `android_build.py` (also the guest image of every guest build), `macos_build.py`, `macos_app.py` (the macOS app, its disk image, signing and notarization), `macos_shaders.py` (the macOS app's shader library), `render_manifest.py` (the renderer's manifest, the game's vertex shaders from its code), `web_build.py`, `ci_build.py`, `release_names.py` (the names releases publish the builds under), `linux_package.py`, `frame_package.py` (the Steam Frame's), `web_serve.py`), the game's 32-bit x86 ABI for test tools (`x86_game_abi.py`: `map_validate`), the guest's base register (`guest_base_register.py`, measured by `base_register_bench/`), generators (`ce_menus.py`, `port_settings.py`, `hud_assets.py`, `title_assets.py`, `embed_assets.py`, `xdk_headers.py`, `touch_assets.py`: the Android touch controls' pictures, whose layout `touch_preview.py` draws), tests, OpenCE's `stagekit/` (scenarios staged and instrumented on the real engine, no retail assets; its map writer runs as a guest image of the 64-bit builds' host), and `scorecard/` (the 60/120 Hz simulation's check: scenarios at each rate compared, the 30 Hz gate against master) |
 | `docs/` | Longer design notes (`custom_edition_caches.md`, `mods.md`) |
 | `pgo/` | Profile-guided optimisation profiles |
 | `assets/` | Game data for local runs (gitignored: `maps/`, `custom_maps/`) |
@@ -186,6 +186,7 @@ build/macos/halo_replay <recording> --shots <dir>           # a recorded render 
 python -m pytest -q tools/test_gpu_isa.py                  # tools/gpu_isa.py (a shader's GPU code, on an M1 Mac)
 python tools/base_register_bench/run.py                     # the base register's cost (Linux arm64, macOS)
 python tools/test_touch_layout.py                           # the Android touch layout (JDK 17+)
+python tools/touch_assets.py --check                        # the touch controls' pictures as their SVGs draw them
 python tools/test_light_storage.py
 python tools/test_death_timing.py
 python -m pytest -q tools/test_web_build.py                 # the web build's graph, sockets, menus
@@ -281,6 +282,11 @@ read `xbox/include`. To add a name, follow `port/include/xdk/README.md`.
   Custom Edition picture that cannot reasonably be redrawn (a 3D render, a
   screenshot, a logo) may be used only if it is listed in
   `port/assets/menus/NON_HANDDRAWN.md`.
+- The Android touch controls draw the controller's buttons with the HUD's
+  redraws (`port/assets/buttons`, in `display.hud_button_style`). What has
+  no redraw (the small controls' icons) may come from CC0 packs (Kenney's
+  Mobile Controls, `port/assets/touch`), credited in `AUTHORS.md`. Never
+  the game's art, icons or logos.
 - `AUTHORS.md` credits art only.
 - Fonts: Overpass and OpenCE (Newtown, respaced) only; see
   `port/assets/fonts/README.md`. Never ship the maps' commercial typefaces.
