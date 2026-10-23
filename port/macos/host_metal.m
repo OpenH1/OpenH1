@@ -369,7 +369,7 @@ static id<MTLFunction> post_function(int which)
 	if (found)
 		return found;
 	options = [MTLCompileOptions new];
-	if (@available(macOS 15.0, *))
+	if (@available(macOS 15.0, iOS 18.0, *))
 		options.mathMode = MTLMathModeSafe;
 	else
 		options.fastMathEnabled = NO;
@@ -967,6 +967,12 @@ static CAFrameRateRange link_rate_range(int saving);
 		pass = [MTLRenderPassDescriptor renderPassDescriptor];
 		pass.colorAttachments[0].texture = drawable.texture;
 		pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+		/* (a frame of the drawable's own size covers all of it: nothing to
+		clear, which a tile-based GPU writes into each tile before the draw
+		writes over it) */
+		if (!loading_frame.active && image && image.width == drawable.texture.width &&
+			image.height == drawable.texture.height)
+			pass.colorAttachments[0].loadAction = MTLLoadActionDontCare;
 		pass.colorAttachments[0].storeAction = MTLStoreActionStore;
 		/* (black until the game's first frame: the window opens before the
 		game draws) */
@@ -1229,6 +1235,13 @@ int host_metal_initialize(void)
 #endif
 	options.library_path = shader_library_path();
 	options.page_size = (uint32_t)getpagesize();
+	/* (the 3D view in one pass on iOS, whose GPUs pay the most for a pass's
+	stores and loads: xgpu_metal.h; HALO_METAL_ASIDE_BREAK=1 or 0 chooses) */
+#if TARGET_OS_IPHONE
+	options.aside_continue = 1;
+#endif
+	if (getenv("HALO_METAL_ASIDE_BREAK") && *getenv("HALO_METAL_ASIDE_BREAK"))
+		options.aside_continue = !atoi(getenv("HALO_METAL_ASIDE_BREAK"));
 	options.guest_extent = host_memory_readable_extent;
 	result = xgpu_metal_initialize(&options);
 	if (result)
