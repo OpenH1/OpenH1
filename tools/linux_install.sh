@@ -128,7 +128,7 @@ vr|desktop)
 	keep=
 	image=yes
 	play="play it from Game Mode's library"
-	no_maps="No maps yet: at its first start, in Desktop Mode, the game asks for your disc image (.iso) and copies them. (Or copy the maps folder of the game's disc to %s/maps.)"
+	no_maps="No maps yet: at its first start, in Game Mode too, the game finds your disc image (.iso) in Downloads, on the SD card or in %s, and copies them."
 	;;
 esac
 
@@ -360,11 +360,11 @@ Where are they: in a disc image of the game (.iso or .xiso), or in a maps folder
 	fi
 fi
 if [ -n "$image_link" ] && ! has_maps "$dir"; then
-	echo "Start $app once in Desktop Mode (from the application menu, Games) and choose Yes when it asks: it copies the maps from $(readlink "$image_link") (about 2 GB). Then you can quit it, and play from Game Mode."
+	echo "The first time $app starts, in Game Mode too, it copies the maps from $(readlink "$image_link") (about 2 GB), then plays."
 	if [ -z "$batch" ] && command -v kdialog >/dev/null && kdialog --title "$title" --yesno \
-		"Start $app now, to copy the maps from the disc image? Choose Yes when it asks.
+		"Start $app now, to copy the maps from the disc image? (Once: about 2 GB.)
 
-(Once: about 2 GB. When it has copied them, you can quit it, and play from Game Mode.)"; then
+Or just play it from Game Mode: it copies them at its first start there too."; then
 		(cd "$dir" && nohup "$dir/$program" >/dev/null 2>&1 &)
 		echo "  $app started."
 	fi
