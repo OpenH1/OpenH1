@@ -23,8 +23,6 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 
 /**
  * The app's self-updater, as the desktop games' (port/linux/src/updater.c).
@@ -36,15 +34,17 @@ import java.util.zip.ZipInputStream;
  * the latest release when it starts, on a thread of its own, and if it is
  * newer asks the player whether to update:
  *
- * - Yes: the release's app (halo-android-release.zip or -debug.zip) is
- *   downloaded and handed to Android's package installer, which replaces the
- *   game (closing it) and offers to open the new version.
+ * - Yes: the release's app (OpenH1-Android.apk, or OpenH1-Android-debug.apk
+ *   for a debug build, as tools/release_names.py names them) is downloaded
+ *   and handed to Android's package installer, which replaces the game
+ *   (closing it) and offers to open the new version.
  * - No: nothing, until the next start.
  * - Do not ask again: after the player confirms it, update.auto = false is
  *   written to config.toml.
  *
- * Every build of main is signed with the same key (the workflow's), which an
- * app must keep for Android to install a new version over it.
+ * Every build of main is signed with the same key (the workflow's, OpenH1's
+ * own since #92), which an app must keep for Android to install a new
+ * version over it.
  *
  * A phone without the renderer's Vulkan 1.3 (VulkanSupport) is told so
  * instead of being offered the new version, and nothing is downloaded or
@@ -54,7 +54,7 @@ final class Updater {
     private static final String REPOSITORY = "OpenH1/OpenH1";
     private static final String USER_AGENT = "halo-ce-universal-updater";
     private static final int TIMEOUT_MILLISECONDS = 20000;
-    /** the most a download (a release's zip, about 35 MB) or the app in it may be */
+    /** the most a download (the release's APK, about 35 MB) may be */
     private static final long MAXIMUM_UPDATE_SIZE = 256L * 1024 * 1024;
 
     private Updater() {
@@ -211,8 +211,8 @@ final class Updater {
         if (activity.isFinishing())
             return;
         new AlertDialog.Builder(activity)
-            .setTitle("Halo: new version")
-            .setMessage("A new version of Halo was detected (build " + latest + "; this is build "
+            .setTitle("OpenH1: new version")
+            .setMessage("A new version of OpenH1 was detected (build " + latest + "; this is build "
                 + BuildConfig.HALO_BUILD_NUMBER + ").\n\nDo you want to update? The game will close and start "
                 + "the new version.")
             .setCancelable(false)
@@ -224,7 +224,7 @@ final class Updater {
 
     private static void confirmNever(Activity activity) {
         new AlertDialog.Builder(activity)
-            .setTitle("Halo: new version")
+            .setTitle("OpenH1: new version")
             .setMessage("Stop asking about new versions?\n\nTo ask again, set auto = true in the [update] section "
                 + "of config.toml.")
             .setCancelable(false)
@@ -245,7 +245,7 @@ final class Updater {
             VulkanSupport.explain(activity, null);
             return;
         }
-        String asset = "halo-android-" + (BuildConfig.DEBUG ? "debug" : "release") + ".zip";
+        String asset = "OpenH1-Android" + (BuildConfig.DEBUG ? "-debug" : "") + ".apk";
         File directory = new File(activity.getCacheDir(), UpdateProvider.DIRECTORY);
         LinearLayout layout = new LinearLayout(activity);
         TextView status = new TextView(activity);
@@ -260,7 +260,7 @@ final class Updater {
         layout.addView(status);
         layout.addView(bar);
         AlertDialog progress = new AlertDialog.Builder(activity)
-            .setTitle("Halo: new version")
+            .setTitle("OpenH1: new version")
             .setView(layout)
             .setCancelable(false)
             .show();
@@ -268,17 +268,21 @@ final class Updater {
         new Thread(() -> {
             try {
                 directory.mkdirs();
-                File zip = new File(directory, "update.zip");
+                File partial = new File(directory, UpdateProvider.APK + ".part");
                 File apk = new File(directory, UpdateProvider.APK);
+                String address = "https://github.com/" + REPOSITORY + "/releases/download/build-" + latest + "/"
+                    + asset;
 
-                download("https://github.com/" + REPOSITORY + "/releases/download/build-" + latest + "/" + asset, zip,
+                download(address, partial,
                     (received, total) -> activity.runOnUiThread(() -> {
                         bar.setProgress(total > 0 ? (int) (received * 1000 / total) : 0);
                         status.setText("Downloading build " + latest + "... (" + (received >> 20) + " of "
                             + (total >> 20) + " MB)");
                     }));
-                extractApk(zip, apk);
-                zip.delete();
+                // (only a whole download is handed to the installer)
+                apk.delete();
+                if (!partial.renameTo(apk))
+                    throw new IOException("the download could not be kept");
                 activity.runOnUiThread(() -> {
                     progress.dismiss();
                     install(activity);
@@ -288,7 +292,7 @@ final class Updater {
                 activity.runOnUiThread(() -> {
                     progress.dismiss();
                     new AlertDialog.Builder(activity)
-                        .setTitle("Halo: new version")
+                        .setTitle("OpenH1: new version")
                         .setMessage("The update failed:\n\n" + e.getMessage())
                         .setPositiveButton("OK", null)
                         .show();
@@ -332,32 +336,6 @@ final class Updater {
         } finally {
             connection.disconnect();
         }
-    }
-
-    /** the zip's app (its one .apk) to apk */
-    private static void extractApk(File zip, File apk) throws IOException {
-        try (ZipInputStream in = new ZipInputStream(new FileInputStream(zip))) {
-            ZipEntry entry;
-
-            while ((entry = in.getNextEntry()) != null) {
-                if (entry.isDirectory() || !entry.getName().endsWith(".apk"))
-                    continue;
-                try (OutputStream out = new FileOutputStream(apk)) {
-                    byte[] buffer = new byte[65536];
-                    long written = 0;
-                    int count;
-
-                    while ((count = in.read(buffer)) > 0) {
-                        written += count;
-                        if (written > MAXIMUM_UPDATE_SIZE)
-                            throw new IOException("the app in the download is larger than expected");
-                        out.write(buffer, 0, count);
-                    }
-                }
-                return;
-            }
-        }
-        throw new IOException("the download has no app in it");
     }
 
     /**
