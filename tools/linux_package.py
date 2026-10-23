@@ -13,6 +13,8 @@ anywhere and starts with bin/openh1:
     lib/openh1/libSDL3.so.0                    its SDL (the rpath is $ORIGIN:$ORIGIN/../lib/openh1)
     share/openh1/brokers.txt                   internet play's brokers (network.brokers_file)
     share/openh1/vr                            only in the VR build's (--vr): install.sh's sign of it
+    share/openh1/steam/<kind>.png              Steam's library artwork, which install.sh gives its shortcut
+                                               (port/assets/steam, tools/steam_art.py; the VR build's OpenH1 VR's)
     share/applications/openh1.desktop          the desktop entry
     share/icons/hicolor/<n>x<n>/apps/openh1.png  its icon
     share/doc/openh1/                          the READMEs
@@ -47,7 +49,8 @@ NAME = "openh1"  # install_layout.h's INSTALL_NAME
 DESKTOP_ENTRY = ROOT / "port/assets/linux/openh1.desktop"
 ICONS = ROOT / "port/assets/icon/hicolor"  # openh1-<size>.png (tools/app_icon.py)
 BROKERS = ROOT / "port/assets/network/brokers.txt"
-INSTALLER = ROOT / "tools/linux_install.sh"  # the tree's install.sh
+INSTALLER = ROOT / "tools/linux_install.sh"  # the tree's install.sh (and the Steam Frame package's)
+STEAM_ART = ROOT / "port/assets/steam"  # <variant>/<kind>.png (tools/steam_art.py)
 DOCUMENTS = [(ROOT / "README.md", "README.md"), (ROOT / "port/linux/README.md", "README.linux.md")]
 PROJECT_LICENSE = ROOT / "LICENSE"  # the AGPL (earlier releases were CC0: LICENSES/)
 
@@ -94,9 +97,13 @@ def stage_tree(dist: Path, executable: Path, library: Optional[Path], notices: I
     licences of what the build carries) in share/licenses/openh1; and, for
     the release (not a package's /usr), its installer, install.sh, at its
     top. The VR build's (vr) has share/openh1/vr, by which install.sh puts
-    it beside the other build, not in its place."""
+    it beside the other build, not in its place. The release's has Steam's
+    library artwork too (share/openh1/steam), which install.sh gives the
+    game's Steam shortcut: OpenH1 VR's in the VR build's."""
     if installer:
         _copy(INSTALLER, dist / "install.sh")
+        for art in sorted((STEAM_ART / ("openh1-vr" if vr else "openh1")).glob("*.png")):
+            _copy(art, dist / "share" / NAME / "steam" / art.name)
     _copy(executable, dist / "bin" / NAME)
     if library:
         _copy(library, dist / "lib" / NAME / library.name)

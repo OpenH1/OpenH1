@@ -13,7 +13,9 @@ by `tools/frame_package.py` for a Steam Frame. Each release has it as
 | `libSDL3.so.0` | SDL3, which the game finds beside it |
 | `halo-vr.sh` | The launcher: the target of the Steam shortcut. Its comments list the environment it gives the game. |
 | `openh1.png` | The icon of the menu entry and the Steam shortcut |
-| `install.sh` | The installer (`tools/frame_install.sh`): opened on the Frame, it installs the package it is in |
+| `openh1.desktop` | The menu entry, which the install makes the installed game's |
+| `steam-*.png` | Steam's library artwork for the shortcut: the capsule, the wide capsule, the hero, the logo and the icon |
+| `install.sh` | The installer (`tools/linux_install.sh`, the Linux release's too): opened on the Frame, it installs the package it is in |
 | `brokers.txt` | Internet play's MQTT brokers (`network.brokers_file`): without it, internet play finds no games |
 | `VERSION` | The commit the game was built from |
 | `SHA256SUMS` | The files' SHA-256, which the install checks |
@@ -35,10 +37,20 @@ On the Frame, in its desktop mode: download the latest release's
 open `install.sh` in its `halo-vr-frame` folder. It installs the package
 into `~/apps/halo-vr/` (as below), in a terminal window that shows what it
 did. At the first install it asks for the maps folder of the game's Xbox
-disc (or the folder that contains it) and copies the maps, and it adds
-the game to Steam (SteamOS's `steamos-add-to-steam`) as OpenH1 VR.
-Start SteamVR, then the game from the library. To update, do the same
-with a newer zip.
+disc (or the folder that contains it) and copies the maps, adds the game
+to Steam (SteamOS's `steamos-add-to-steam`) as OpenH1 VR, and gives it
+its library artwork (in Steam's grid folder; a running Steam may show it
+only after it restarts). Start SteamVR, then the game from the library.
+To update, do the same with a newer zip.
+
+The install refuses while the game runs, and never starts it. It checks
+the files against `SHA256SUMS`; each goes in as `<name>.new`, then takes
+the old one's name at once. The replaced `halo` is kept as `halo.prev`
+(only the last one), as are `libSDL3.so.0` and `halo-vr.sh` when they
+change. `brokers.txt` is replaced, and files an earlier package had and
+this one has not are removed. It prints what changed. It never touches
+`config.toml`, `halo-vr.env`, the maps, the logs or the saved games, nor
+artwork of your own in Steam's grid folder.
 
 Or from a
 computer with the repository's `tools/frame_install.sh` and `ssh` to the
@@ -49,21 +61,13 @@ tools/frame_install.sh --package OpenH1-Steam-Frame.zip <frame>
 tools/frame_install.sh <frame>          # dist/halo-vr-frame, built from the repository
 ```
 
-It copies the package to `~/apps/halo-vr/` on the Frame. It refuses while
-the game runs, and never starts it. Each file goes in as `<name>.new`, is
-checked against `SHA256SUMS`, then takes the old one's name at once. The
-replaced `halo` is kept as `halo.prev` (only the last one), as are
-`libSDL3.so.0` and `halo-vr.sh` when they change. `brokers.txt` is
-replaced. It prints what changed. It never touches `config.toml`,
-`halo-vr.env`, the maps, the logs or the saved games.
-
-From a computer, add the game to Steam once, on the Frame: in Steam's
-desktop mode, Games > Add a Non-Steam Game to My Library, tick OpenH1 VR
-(the menu entry the install writes,
-`~/.local/share/applications/openh1-vr.desktop`), then Add Selected
-Programs. The install
-prints the same until Steam has such a shortcut. (It does not add it
-itself: Steam keeps its shortcuts in a file it rewrites while it runs.)
+It runs the same install on the Frame, without its questions, and
+without adding the game to Steam (that needs the Frame's own session).
+Add it once, on the Frame: in Steam's desktop mode, Games > Add a
+Non-Steam Game to My Library, tick OpenH1 VR (the menu entry the install
+writes, `~/.local/share/applications/openh1-vr.desktop`), then Add
+Selected Programs. The install prints the same until Steam has such a
+shortcut; install again afterwards to give it its artwork.
 
 Or by hand: copy the files of the zip's `halo-vr-frame` folder into
 `~/apps/halo-vr/`, and add the shortcut as above.
@@ -77,7 +81,7 @@ Remove the shortcut in Steam (its Properties > Manage > Remove
 non-Steam game from your library), then the program's files:
 
 ```sh
-cd ~/apps/halo-vr && cut -c 67- SHA256SUMS | xargs rm -f -- && rm -f SHA256SUMS halo.prev libSDL3.so.0.prev halo-vr.sh.prev ~/.local/share/applications/openh1-vr.desktop
+cd ~/apps/halo-vr && cut -c 67- SHA256SUMS | xargs rm -f -- && rm -f SHA256SUMS .steam-art halo.prev libSDL3.so.0.prev halo-vr.sh.prev ~/.local/share/applications/openh1-vr.desktop
 ```
 
 That keeps the maps, `config.toml`, `halo-vr.env` and the logs; remove

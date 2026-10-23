@@ -1,7 +1,8 @@
 #!/bin/sh
 # Starts the VR build on a Steam Frame: the target of its Steam shortcut
-# (a non-Steam game), installed beside the game in ~/apps/halo-vr by
-# tools/frame_install.sh, which replaces it at each update. Refer to
+# (a non-Steam game), installed beside the game in ~/apps/halo-vr by the
+# package's install.sh (tools/linux_install.sh), which replaces it at each
+# update. Refer to
 # README.md beside it, and to "Steam Frame" in port/linux/README.md.
 #
 # The environment, as Steam gives it to the game:

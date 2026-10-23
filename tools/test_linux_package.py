@@ -10,9 +10,11 @@ import os
 import re
 import shutil
 import stat
+import struct
 import subprocess
 import sys
 import zipfile
+import zlib
 from pathlib import Path
 
 import pytest
@@ -56,6 +58,9 @@ def test_tree(build, tmp_path):
     assert "share/licenses/openh1/SDL3-LICENSE.txt" in names
     assert "share/doc/openh1/README.md" in names
     assert (tree / "install.sh").read_bytes() == linux_package.INSTALLER.read_bytes()
+    for kind in ("capsule", "wide", "hero", "logo", "icon"):
+        assert (tree / f"share/openh1/steam/{kind}.png").read_bytes() == \
+            (ROOT / f"port/assets/steam/openh1/{kind}.png").read_bytes()
     # (nothing but the prefix's folders, and the installer, at its top)
     assert {name.split("/")[0] for name in names} == {"bin", "lib", "share", "install.sh"}
 
@@ -71,6 +76,7 @@ def test_package_tree_has_no_installer(build, tmp_path):
     tree = tmp_path / "tree"
     linux_package.stage_tree(tree, build / "halo", None, linux_package.notices("linux"), installer=False)
     assert {name.split("/")[0] for name in files(tree)} == {"bin", "share"}
+    assert not (tree / "share/openh1/steam").exists()
     script = (ROOT / "tools/linux_package.py").read_text()
     assert script.count("installer=False)") == 2
 
@@ -195,28 +201,162 @@ def test_frame_zip(tmp_path):
             assert archive.read(info) == base.encode()
 
 
+def test_frame_package_files():
+    """the Frame's package has the one installer (tools/linux_install.sh) as its install.sh, the Linux release's
+    menu entry, and OpenH1 VR's library artwork; the Linux tree's install.sh is the same file"""
+    import frame_package
+
+    script = (ROOT / "tools/frame_package.py").read_text()
+    assert '"install.sh": ROOT / "tools/linux_install.sh"' in script
+    assert '"openh1.desktop": ROOT / "port/assets/linux/openh1.desktop"' in script
+    assert 'f"steam-{art.name}": art for art in sorted((ROOT / "port/assets/steam/openh1-vr").glob("*.png"))' in script
+    assert linux_package.INSTALLER == ROOT / "tools/linux_install.sh"
+    assert not frame_package.PLAYER_FILES & {"install.sh", "openh1.desktop", "steam-capsule.png"}
+    # (tools/frame_install.sh, from a computer, runs this repository's installer on the Frame)
+    assert 'installer=$repo/tools/linux_install.sh' in (ROOT / "tools/frame_install.sh").read_text()
+
+
+def frame_package_folder(folder, game="halo\n", extra=()):
+    """a Steam Frame package (tools/frame_package.py's files, stand-ins for the programs) in folder"""
+    folder.mkdir(parents=True, exist_ok=True)
+    files = {"halo": game, "libSDL3.so.0": "sdl\n", "halo-vr.sh": "#!/bin/sh\nexec ./halo \"$@\"\n",
+             "brokers.txt": "brokers\n", "README.md": "readme\n", "VERSION": f"commit {hash(game) & 0xffff:x}\nbranch master\nA change\n",
+             **dict(extra)}
+    for name, text in files.items():
+        (folder / name).write_text(text)
+    shutil.copyfile(linux_package.INSTALLER, folder / "install.sh")
+    shutil.copyfile(ROOT / "port/assets/icon/hicolor/openh1-256.png", folder / "openh1.png")
+    shutil.copyfile(ROOT / "port/assets/linux/openh1.desktop", folder / "openh1.desktop")
+    for art in sorted((linux_package.STEAM_ART / "openh1-vr").glob("*.png")):
+        shutil.copyfile(art, folder / f"steam-{art.name}")
+    for name in ("halo", "libSDL3.so.0", "halo-vr.sh", "install.sh"):
+        (folder / name).chmod(0o755)
+    names = sorted(path.name for path in folder.iterdir() if path.name != "SHA256SUMS")
+    (folder / "SHA256SUMS").write_text("".join(
+        f"{hashlib.sha256((folder / name).read_bytes()).hexdigest()}  {name}\n" for name in names))
+    return folder
+
+
 def test_frame_install_from_package(tmp_path):
-    """install.sh opened in an unzipped package (frame_install.sh with no arguments) installs that package into
-    the home of whoever runs it, as --local does, and says what is left to do where the Frame's helpers
-    (kdialog, steamos-add-to-steam) are not"""
-    package = tmp_path / "halo-vr-frame"
-    package.mkdir()
-    for name in ("halo", "libSDL3.so.0", "halo-vr.sh", "VERSION"):
-        (package / name).write_text(f"{name}\n")
-    shutil.copyfile(ROOT / "tools/frame_install.sh", package / "install.sh")
-    (package / "install.sh").chmod(0o755)
-    (package / "SHA256SUMS").write_text("".join(
-        f"{hashlib.sha256((package / name).read_bytes()).hexdigest()}  {name}\n"
-        for name in ("halo", "libSDL3.so.0", "halo-vr.sh", "install.sh", "VERSION")))
+    """install.sh opened in an unzipped Frame package installs that package into ~/apps/halo-vr of whoever runs it,
+    and says what is left to do where the Frame's helpers (kdialog, steamos-add-to-steam) are not"""
+    package = frame_package_folder(tmp_path / "home/Downloads/halo-vr-frame")
     home = tmp_path / "home"
-    home.mkdir()
-    environment = {"HOME": str(home), "PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "OPENH1_INSTALL_WINDOW": "1"}
-    result = subprocess.run([str(package / "install.sh")], env=environment, capture_output=True, text=True)
-    assert result.returncode == 0, result.stderr
+    output = run_install(package, home, tools=())
     installed = home / "apps/halo-vr"
-    for name in ("halo", "libSDL3.so.0", "halo-vr.sh", "install.sh", "VERSION", "SHA256SUMS"):
-        assert (installed / name).read_bytes() == (package / name).read_bytes()
-    assert "No maps here" in result.stdout and "Add a Non-Steam Game" in result.stdout
+    for name in files(package):
+        assert (installed / name).read_bytes() == (package / name).read_bytes(), name
+        expected = 0o755 if name in ("halo", "libSDL3.so.0", "halo-vr.sh", "install.sh") else 0o644
+        assert stat.S_IMODE((installed / name).stat().st_mode) == expected, name
+    assert "Installing OpenH1 VR to" in output and "(commit " in output
+    assert "No maps here" in output and "Add a Non-Steam Game" in output and "Start SteamVR" in output
+    entry = dict(line.split("=", 1) for line in
+                 (home / ".local/share/applications/openh1-vr.desktop").read_text().splitlines() if "=" in line)
+    assert entry["Name"] == "OpenH1 VR" and entry["Exec"] == f'"{installed}/halo-vr.sh"'
+    assert entry["Path"] == str(installed) and entry["Icon"] == f"{installed}/openh1.png"
+    assert not (home / "Applications").exists()
+
+
+def test_frame_install_asks_for_maps_and_adds_to_steam(tmp_path):
+    """on the Frame (kdialog, steamos-add-to-steam), install.sh asks for the maps folder only (the game, in the
+    headset, copies no disc image), copies it, adds the menu entry to Steam and gives the shortcut its artwork"""
+    package = frame_package_folder(tmp_path / "home/Downloads/halo-vr-frame")
+    home = tmp_path / "home"
+    disc = tmp_path / "disc"
+    (disc / "maps").mkdir(parents=True)
+    (disc / "maps/a10.map").write_text("map")
+    output = run_install(package, home, KDIALOG_FOLDER=disc)
+    installed = home / "apps/halo-vr"
+    assert (installed / "maps/a10.map").read_text() == "map"
+    assert calls(home) == [f"kdialog --title OpenH1: your game's maps --getexistingdirectory {home}",
+                           f"steamos-add-to-steam {home}/.local/share/applications/openh1-vr.desktop"]
+    assert "Added to Steam as OpenH1 VR: start SteamVR, then it, from the library." in output
+    appid = steam_id(f"{installed}/halo-vr.sh")
+    grid = home / ".local/share/Steam/userdata/12345/config/grid"
+    assert (grid / f"{appid}p.png").read_bytes() == (package / "steam-capsule.png").read_bytes()
+    assert (grid / f"{appid}_logo.png").read_bytes() == (package / "steam-logo.png").read_bytes()
+    assert "Steam library artwork: 5 files" in output
+
+
+def test_frame_update_keeps_the_player_files(tmp_path):
+    """a newer Frame package replaces what changed (halo, kept as halo.prev), removes what it no longer has, and
+    never touches the player's files; a package whose files differ from its SHA256SUMS installs nothing"""
+    home = tmp_path / "home"
+    old = frame_package_folder(tmp_path / "old/halo-vr-frame", extra={"gone.txt": "an old file\n"})
+    run_install(old, home, tools=())
+    installed = home / "apps/halo-vr"
+    player = {"config.toml": "[vr]\n", "halo-vr.env": "HALO_VR=1\n", "maps/a10.map": "mine", "debug.txt": "log",
+              "halo-vr.log": "out"}
+    for name, text in player.items():
+        (installed / name).parent.mkdir(parents=True, exist_ok=True)
+        (installed / name).write_text(text)
+    new = frame_package_folder(tmp_path / "new/halo-vr-frame", game="a newer halo\n")
+    output = run_install(new, home, tools=())
+    assert "  halo: updated, the previous kept as halo.prev" in output
+    assert "  gone.txt: removed (no longer in the package)" in output
+    assert "Was: commit" in output and "Now: commit" in output
+    assert (installed / "halo").read_text() == "a newer halo\n" and (installed / "halo.prev").read_text() == "halo\n"
+    assert not (installed / "gone.txt").exists()
+    assert (installed / "SHA256SUMS").read_bytes() == (new / "SHA256SUMS").read_bytes()
+    for name, text in player.items():
+        assert (installed / name).read_text() == text, name
+    assert not list(installed.glob("*.new"))
+
+    broken = frame_package_folder(tmp_path / "broken/halo-vr-frame", game="newest\n")
+    (broken / "halo").write_text("not what SHA256SUMS says\n")
+    result = subprocess.run([str(broken / "install.sh"), "--batch"], capture_output=True, text=True,
+                            env=install_environment(home))
+    assert result.returncode == 4 and "differs from its SHA256SUMS" in result.stderr
+    assert (installed / "halo").read_text() == "a newer halo\n"
+
+
+def test_frame_install_from_a_computer(tmp_path):
+    """tools/frame_install.sh, from a computer: --local, and over ssh (a stand-in that runs the commands here),
+    copies a release's zip and this repository's installer to a folder of the Frame's /tmp, runs it there with
+    --batch (no questions, no steamos-add-to-steam: it prints how to add the shortcut), and deletes the folder"""
+    import frame_package
+
+    package = frame_package_folder(tmp_path / "build/halo-vr-frame")
+    archive = tmp_path / "OpenH1-Steam-Frame.zip"
+    frame_package.write_zip(package, archive)
+    commands = command_folder(tmp_path / "commands")
+    for name in ("ssh", "mktemp", "tar", "unzip", "head", "find"):
+        found = shutil.which(name)
+        if found and not (commands / name).exists():
+            (commands / name).symlink_to(found)
+
+    local = tmp_path / "local-home"
+    result = subprocess.run([str(ROOT / "tools/frame_install.sh"), "--package", str(archive), "--local", str(local)],
+                            capture_output=True, text=True, env={"PATH": str(commands), "HOME": str(tmp_path)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (local / "apps/halo-vr/halo").read_text() == "halo\n"
+    assert "Add a Non-Steam Game" in result.stdout
+
+    frame = tmp_path / "frame-home"
+    frame.mkdir()
+    stand_ins = tmp_path / "ssh-stand-in"
+    stand_ins.mkdir()
+    # (ssh <options> -- <host> <command>: the command, run with the Frame's home, its /tmp a folder here)
+    (stand_ins / "ssh").write_text(f"""#!/bin/bash
+while [ $# -gt 0 ]; do
+	case $1 in -O) exit 0 ;; -o) shift 2 ;; --) shift; break ;; *) break ;; esac
+done
+shift
+printf '%s\\n' "$1" >> "{tmp_path}/ssh.txt"
+HOME="{frame}" exec bash -c "$1"
+""")
+    (stand_ins / "ssh").chmod(0o755)
+    result = subprocess.run([str(ROOT / "tools/frame_install.sh"), "--package", str(archive), "frame"],
+                            capture_output=True, text=True, env={"PATH": f"{stand_ins}:{commands}", "HOME": str(tmp_path)})
+    assert result.returncode == 0, result.stdout + result.stderr
+    installed = frame / "apps/halo-vr"
+    for name in files(package):
+        assert (installed / name).read_bytes() == (package / name).read_bytes(), name
+    assert "Installing OpenH1 VR to" in result.stdout and "Add a Non-Steam Game" in result.stdout
+    ssh = (tmp_path / "ssh.txt").read_text()
+    remote = re.search(r"rm -rf '(/tmp/openh1-install\.[^']+)'", ssh).group(1)
+    assert f"bash '{remote}/install.sh' --package '{remote}/halo-vr-frame' --batch" in ssh
+    assert not Path(remote).exists()
 
 
 def test_release_names():
@@ -251,8 +391,26 @@ case " $* " in
 esac
 exit 1
 """,
-    "steamos-add-to-steam": """#!/bin/sh
-echo "steamos-add-to-steam $*" >> "$HOME/calls.txt"
+    # (as SteamOS's: the running Steam adds the menu entry's program to its shortcuts.vdf at once, with an app ID
+    # of its own, not the one Steam would compute: steam_id)
+    "steamos-add-to-steam": f"""#!{sys.executable}
+import os, struct, sys, zlib
+from pathlib import Path
+home = Path(os.environ["HOME"])
+with open(home / "calls.txt", "a") as calls:
+    calls.write("steamos-add-to-steam " + " ".join(sys.argv[1:]) + "\\n")
+entry = dict(line.split("=", 1) for line in Path(sys.argv[1]).read_text().splitlines() if "=" in line)
+exe = entry["Exec"]
+appid = (zlib.crc32(exe.strip('"').encode()) ^ 0x1234567) | 0x80000000
+fields = b"\\x02appid\\0" + struct.pack("<I", appid) + b"\\x01AppName\\0" + entry["Name"].encode() + b"\\0" \\
+    + b"\\x01Exe\\0" + exe.encode() + b"\\0\\x01StartDir\\0" + entry["Path"].encode() + b"\\0" \\
+    + b"\\x01icon\\0" + entry["Icon"].encode() + b"\\0\\x00tags\\0\\x08"
+vdf = home / ".local/share/Steam/userdata/12345/config/shortcuts.vdf"
+vdf.parent.mkdir(parents=True, exist_ok=True)
+data = vdf.read_bytes() if vdf.exists() else b""
+if not (data.startswith(b"\\0shortcuts\\0") and data.endswith(b"\\x08\\x08")):
+    data = b"\\0shortcuts\\0\\x08\\x08"
+vdf.write_bytes(data[:-2] + b"\\0" + str(len(data)).encode() + b"\\0" + fields + b"\\x08\\x08\\x08")
 """,
     "pgrep": "#!/bin/sh\nexit 1\n",
 }
@@ -260,7 +418,31 @@ GAME = "#!/bin/sh\necho \"started in $(pwd)\" >> \"$HOME/calls.txt\"\n"
 # what install.sh runs besides them: the only commands on its PATH, so that a computer's own kdialog, konsole or
 # steamos-add-to-steam is never reached
 COMMANDS = ("basename", "bash", "cat", "chmod", "cmp", "cp", "dirname", "find", "grep", "ln", "ls", "mkdir", "mv", "nohup",
-            "printf", "readlink", "rm", "sed", "sh", "sleep", "sort")
+            "printf", "python3", "readlink", "rm", "sed", "sh", "sha256sum", "sleep", "sort")
+
+
+def steam_id(program):
+    """the app ID the steamos-add-to-steam stand-in gives a program's shortcut"""
+    return (zlib.crc32(str(program).encode()) ^ 0x1234567) | 0x80000000
+
+
+def shortcuts_vdf(*shortcuts):
+    """a binary shortcuts.vdf of shortcuts, each a list of (field, value) pairs: a str a string, an int an int32"""
+    data = b"\0shortcuts\0"
+    for index, fields in enumerate(shortcuts):
+        data += b"\0" + str(index).encode() + b"\0"
+        for name, value in fields:
+            if isinstance(value, int):
+                data += b"\x02" + name.encode() + b"\0" + struct.pack("<I", value)
+            else:
+                data += b"\x01" + name.encode() + b"\0" + value.encode() + b"\0"
+        data += b"\0tags\0\x08\x08"
+    return data + b"\x08\x08"
+
+
+def install_environment(home, path=None, **answers):
+    return {"HOME": str(home), "PATH": path or str(command_folder(home.parent / "commands")),
+            "OPENH1_INSTALL_WINDOW": "1", **{key: str(value) for key, value in answers.items()}}
 
 
 def command_folder(folder):
@@ -381,10 +563,8 @@ def test_install_sh_again_and_update(release, tmp_path):
     home = tmp_path / "home"
     run_install(release, home, KDIALOG_ANSWER=2)
     installed = home / "Applications/OpenH1"
-    calls(home)
-    shortcuts = home / ".local/share/Steam/userdata/12345/config/shortcuts.vdf"
-    shortcuts.parent.mkdir(parents=True)
-    shortcuts.write_bytes(b"\x00shortcuts\x00\x00exe\x00\"" + str(installed / "bin/openh1").encode() + b"\"\x00")
+    # (the shortcut the stand-in for steamos-add-to-steam added)
+    assert steam_calls(home) == [f"steamos-add-to-steam {home}/.local/share/applications/openh1.desktop"]
     player = {"config.toml": "[display]\nvsync = false\n", "maps/a10.map": "mine", "debug.txt": "log",
               "bin/openh1.old": "an update's", "update-old.txt": "bin/openh1.old\n"}
     for name, text in player.items():
@@ -502,6 +682,12 @@ def test_vr_tree_marker(build, tmp_path):
     linux_package.stage_tree(tmp_path / "vr", build / "halo", None, notices(build), vr=True)
     linux_package.stage_tree(tmp_path / "flat", build / "halo", None, notices(build))
     assert (tmp_path / "vr/share/openh1/vr").is_file() and not (tmp_path / "flat/share/openh1/vr").exists()
+    # (each with its own library artwork: OpenH1 VR's, and OpenH1's)
+    for tree, variant in (("vr", "openh1-vr"), ("flat", "openh1")):
+        assert (tmp_path / tree / "share/openh1/steam/capsule.png").read_bytes() == \
+            (ROOT / f"port/assets/steam/{variant}/capsule.png").read_bytes()
+    assert (ROOT / "port/assets/steam/openh1/capsule.png").read_bytes() != \
+        (ROOT / "port/assets/steam/openh1-vr/capsule.png").read_bytes()
     assert "linux_package.stage_tree(dist, executable, library, notices, vr=args.vr)" in \
         (ROOT / "tools/ci_build.py").read_text()
 
@@ -518,9 +704,7 @@ def test_install_sh_vr_beside_the_other(release, tmp_path):
     assert steam_calls(home) == [f"steamos-add-to-steam {entries}/openh1.desktop"]
     (desktop / "config.toml").write_text("mine")
     shortcuts = home / ".local/share/Steam/userdata/12345/config/shortcuts.vdf"
-    shortcuts.parent.mkdir(parents=True)
-    shortcuts.write_bytes(b"\x00exe\x00\"" + str(desktop / "bin/openh1").encode() + b"\"\x00")
-    before = snapshot(desktop), (entries / "openh1.desktop").read_bytes()
+    before =snapshot(desktop), (entries / "openh1.desktop").read_bytes()
 
     output = run_install(vr_release, home)
     assert f"Installing OpenH1 VR to {vr}" in output and "Added to Steam as OpenH1 VR" in output
@@ -529,18 +713,83 @@ def test_install_sh_vr_beside_the_other(release, tmp_path):
     entry = dict(line.split("=", 1) for line in (entries / "openh1-vr.desktop").read_text().splitlines() if "=" in line)
     assert entry["Name"] == "OpenH1 VR" and entry["Exec"] == f'"{vr}/bin/openh1"' and entry["Path"] == str(vr)
     assert entry["Icon"] == f"{vr}/share/icons/hicolor/256x256/apps/openh1.png"
-    # (Steam's shortcut to the other build is not this one's)
+    # (Steam's shortcut to the other build is not this one's; each has its own art)
     assert steam_calls(home) == [f"steamos-add-to-steam {entries}/openh1-vr.desktop"]
+    grid = shortcuts.parent / "grid"
+    assert (grid / f"{steam_id(vr / 'bin/openh1')}p.png").read_bytes() == \
+        (ROOT / "port/assets/steam/openh1-vr/capsule.png").read_bytes()
+    assert (grid / f"{steam_id(desktop / 'bin/openh1')}p.png").read_bytes() == \
+        (ROOT / "port/assets/steam/openh1/capsule.png").read_bytes()
     assert (snapshot(desktop), (entries / "openh1.desktop").read_bytes()) == before
 
     # the other build again: its own shortcut found, the VR build's untouched
-    shortcuts.write_bytes(b"\x00exe\x00\"" + str(vr / "bin/openh1").encode() + b"\"\x00")
+    shortcuts.write_bytes(shortcuts_vdf([("appid", steam_id(vr / "bin/openh1")), ("AppName", "OpenH1 VR"),
+                                         ("Exe", f'"{vr}/bin/openh1"')]))
     before_vr = snapshot(vr), (entries / "openh1-vr.desktop").read_bytes()
     output = run_install(release, home)
     assert "Nothing changed" in output and "Added to Steam as OpenH1:" in output
     assert steam_calls(home) == [f"steamos-add-to-steam {entries}/openh1.desktop"]
     assert (snapshot(vr), (entries / "openh1-vr.desktop").read_bytes()) == before_vr
     assert desktop_entry(home)["Name"] == "OpenH1"
+
+
+def test_steam_artwork(release, tmp_path):
+    """install.sh gives Steam's shortcut its library artwork, in the grid folder of each Steam user whose
+    shortcuts.vdf has a shortcut to the game, named after the shortcut's app ID there (or, in an entry without
+    one, Steam's own for it); a player's own picture is kept, and the art install.sh wrote before is replaced;
+    shortcuts.vdf is only read"""
+    home = tmp_path / "home"
+    program = f"{home}/Applications/OpenH1/bin/openh1"
+    userdata = home / ".local/share/Steam/userdata"
+    vdfs = {
+        # (as steamos-add-to-steam writes them, among the player's other shortcuts)
+        "111": shortcuts_vdf([("appid", 4267074786), ("AppName", "Another game"), ("Exe", '"/home/deck/game.sh"')],
+                             [("appid", 3000000001), ("AppName", "OpenH1"), ("Exe", f'"{program}"'),
+                              ("StartDir", f'"{home}/Applications/OpenH1/"'), ("LastPlayTime", 0)]),
+        # (an older Steam's, without the app ID)
+        "222": shortcuts_vdf([("AppName", "OpenH1"), ("Exe", f'"{program}"')]),
+        # (a user without the shortcut)
+        "333": shortcuts_vdf([("appid", 5), ("AppName", "Another game"), ("Exe", '"/home/deck/game.sh"')]),
+    }
+    for user, data in vdfs.items():
+        (userdata / user / "config").mkdir(parents=True)
+        (userdata / user / "config/shortcuts.vdf").write_bytes(data)
+    own = userdata / "111/config/grid/3000000001_hero.png"
+    own.parent.mkdir()
+    own.write_bytes(b"the player's own hero")
+    before = {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in userdata.glob("*/config/shortcuts.vdf")}
+
+    output = run_install(release, home)
+    assert "Steam has OpenH1 already" in output and steam_calls(home) == []
+    art = release / "share/openh1/steam"
+    # Steam's app ID for a shortcut without one: the CRC-32 of its Exe (quoted) and AppName, the top bit set, as
+    # a Steam Frame's shortcuts.vdf has it ("NFL Blitz 2027": 3691653383)
+    assert zlib.crc32(b'"/home/steamos/Blitz2000/Blitz2000.sh"NFL Blitz 2027') | 0x80000000 == 3691653383
+    computed = zlib.crc32(f'"{program}"OpenH1'.encode()) | 0x80000000
+    for user, appid in (("111", 3000000001), ("222", computed)):
+        grid = userdata / user / "config/grid"
+        for name, kind in ((f"{appid}p.png", "capsule"), (f"{appid}.png", "wide"), (f"{appid}_logo.png", "logo"),
+                           (f"{appid}_icon.png", "icon"), (f"{appid}_hero.png", "hero")):
+            if user == "111" and kind == "hero":
+                assert (grid / name).read_bytes() == b"the player's own hero"
+            else:
+                assert (grid / name).read_bytes() == (art / f"{kind}.png").read_bytes(), (user, name)
+    assert not (userdata / "333/config/grid").exists()
+    assert sorted(path.name for path in (userdata / "111/config/grid").iterdir()) == \
+        sorted(f"3000000001{suffix}" for suffix in ("p.png", ".png", "_hero.png", "_logo.png", "_icon.png"))
+    assert "Steam library artwork: 9 files (if Steam shows a blank tile, restart Steam)" in output
+    assert "Steam library artwork of your own kept: 3000000001_hero.png" in output
+    assert {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in userdata.glob("*/config/shortcuts.vdf")} == before
+
+    # a newer release's art replaces what install.sh wrote, never the player's
+    (art / "capsule.png").write_bytes(b"a newer capsule")
+    output = run_install(release, home)
+    assert (userdata / "111/config/grid/3000000001p.png").read_bytes() == b"a newer capsule"
+    assert (userdata / "222/config/grid" / f"{computed}p.png").read_bytes() == b"a newer capsule"
+    assert own.read_bytes() == b"the player's own hero"
+    assert "Steam library artwork: 2 files" in output
+    output = run_install(release, home)
+    assert "Steam library artwork:" not in output
 
 
 def test_install_sh_refuses_the_other_build(release, tmp_path):
@@ -557,9 +806,10 @@ def test_install_sh_refuses_the_other_build(release, tmp_path):
 
 def test_install_sh_shell():
     """bash -n, and shellcheck where there is one"""
-    subprocess.run(["bash", "-n", str(linux_package.INSTALLER)], check=True)
-    if shutil.which("shellcheck"):
-        subprocess.run(["shellcheck", str(linux_package.INSTALLER)], check=True)
+    for script in (linux_package.INSTALLER, ROOT / "tools/frame_install.sh"):
+        subprocess.run(["bash", "-n", str(script)], check=True)
+        if shutil.which("shellcheck"):
+            subprocess.run(["shellcheck", str(script)], check=True)
 
 
 def test_android_release():
