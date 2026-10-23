@@ -68,7 +68,10 @@ python tools/ci_build.py linux_x86_64 release   # what CI builds
   and the declarations agree, and that every argument crosses to the host
   as the guest left it. Run `ninja android`
   after changing anything it compiles: `port/linux/src`, `port/linux/game`,
-  `port/android`, `source/`, the build scripts.
+  `port/android`, `source/`, the build scripts. The release publishes the
+  APK alone, `OpenH1-Android[-debug].apk` (`tools/release_names.py`; the
+  app's `Updater.java` asks for it), its licences in its
+  `assets/licenses` (`tools/android_build.py`).
 - The guest builds (Android, Linux arm64 and x86-64, macOS) compile, link
   and check the guest with one pinned LLVM release (`tools/guest_toolchain.py`:
   `LLVM_VERSION` and each computer's archive's SHA-256), which

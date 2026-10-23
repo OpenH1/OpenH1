@@ -883,7 +883,9 @@ jobs:
       # OpenH1-Windows.zip, OpenH1-Linux.zip, OpenH1.dmg...): the Linux builds
       # with their executables' modes, which the artifacts lose; the Steam
       # Frame's package is a zip already, with its modes; the macOS build's
-      # disk image as it is, a file a Mac opens at once
+      # disk image as it is, a file a Mac opens at once; the Android app's
+      # APK as it is, which a phone installs at once and which carries its
+      # licences (tools/android_build.py)
       - name: Package
         run: |
           mkdir release
@@ -894,6 +896,12 @@ jobs:
               halo-steam-frame-*) cp "$build/$name.zip" "release/$published.zip" ;;
               halo-linux-*) python3 tools/linux_package.py zip "$build" "release/$published.zip" ;;
               halo-macos-*) cp "$build/OpenH1.dmg" "release/$published.dmg" ;;
+              halo-android-*)
+                apks=("$build"*.apk)
+                if [ "${#apks[@]}" -ne 1 ] || [ ! -f "${apks[0]}" ]; then
+                  echo "::error::$name has no single APK"; exit 1
+                fi
+                cp "${apks[0]}" "release/$published.apk" ;;
               *) (cd "$build" && zip -qr "$GITHUB_WORKSPACE/release/$published.zip" .) ;;
             esac
           done
@@ -908,9 +916,9 @@ jobs:
         run: |
           tag="build-$GITHUB_RUN_NUMBER"
           subject="$(printf '%s' "${MESSAGE:-manual run}" | head -n 1)"
-          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Windows, download OpenH1-Windows.zip.\n\nOn Linux and the Steam Deck, download OpenH1-Linux.zip (OpenH1-Linux-ARM64.zip on 64-bit ARM, OpenH1-Linux-VR.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, download OpenH1-Steam-Frame.zip and install it as the README.md in it says (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download OpenH1.dmg, open it and drag OpenH1 to Applications: the app is signed and notarized.\n' \
+          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Windows, download OpenH1-Windows.zip.\n\nOn Linux and the Steam Deck, download OpenH1-Linux.zip (OpenH1-Linux-ARM64.zip on 64-bit ARM, OpenH1-Linux-VR.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, download OpenH1-Steam-Frame.zip and install it as the README.md in it says (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download OpenH1.dmg, open it and drag OpenH1 to Applications: the app is signed and notarized.\n\nOn Android (64-bit, Android 9 or later, with Vulkan 1.3), download OpenH1-Android.apk on the phone and install it. The app is signed with OpenH1'"'"'s own key now: an install signed before it must be uninstalled once first (back up its maps and save folders).\n' \
             "$subject" "$COMMIT_URL" "$RUN_URL" > notes.md
-          gh release create "$tag" release/*.zip release/*.dmg --target "$GITHUB_SHA" --latest \
+          gh release create "$tag" release/*.zip release/*.dmg release/*.apk --target "$GITHUB_SHA" --latest \
             --title "Build $GITHUB_RUN_NUMBER (${GITHUB_SHA:0:7})" --notes-file notes.md
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
@@ -1000,7 +1008,7 @@ jobs:
             title="Build failed"; color=15548997
           fi
           latest="$SERVER/$REPOSITORY/releases/latest"
-          downloads="[Linux x86-64]($latest/download/OpenH1-Linux.zip) · [Linux arm64]($latest/download/OpenH1-Linux-ARM64.zip) · [Linux x86-64 VR]($latest/download/OpenH1-Linux-VR.zip) · [Steam Frame VR]($latest/download/OpenH1-Steam-Frame.zip) · [Windows]($latest/download/OpenH1-Windows.zip) · [macOS]($latest/download/OpenH1.dmg) · [Android]($latest/download/halo-android-release.zip) ([all builds]($latest))"
+          downloads="[Linux x86-64]($latest/download/OpenH1-Linux.zip) · [Linux arm64]($latest/download/OpenH1-Linux-ARM64.zip) · [Linux x86-64 VR]($latest/download/OpenH1-Linux-VR.zip) · [Steam Frame VR]($latest/download/OpenH1-Steam-Frame.zip) · [Windows]($latest/download/OpenH1-Windows.zip) · [macOS]($latest/download/OpenH1.dmg) · [Android]($latest/download/OpenH1-Android.apk) ([all builds]($latest))"
           if [ -n "$RELEASE_TAG" ]; then
             release="[$RELEASE_TAG]($SERVER/$REPOSITORY/releases/tag/$RELEASE_TAG)"
           else
