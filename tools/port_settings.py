@@ -85,7 +85,7 @@ SCREENS = {
              "With V-Sync off, the most frames a second. Auto:\ntwice the display's refresh rate.", "desktop web"),
             # (display.battery_saver: port/linux/src/battery_saver.c)
             ("BATTERY SAVER:", "display.battery_saver", [("OFF", "off"), ("ON", "on"), ("AUTO", "auto")],
-             "30 to 40 frames a second, Classic graphics, for\nbattery and heat. Auto: on while on battery.", None),
+             "Up to 60 frames a second, Classic graphics, for\nbattery and heat. Auto: on while on battery.", None),
             ("SMOOTH MOTION:", "display.interpolation", ON_OFF,
              "Draw a frame for every display refresh, blending\nbetween the game's 30 ticks a second.", None),
             ("INSTANT AIM:", "display.direct_camera", ON_OFF,

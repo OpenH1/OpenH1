@@ -35,8 +35,8 @@ drawable to black and presents it.
 
 Battery saver (display.battery_saver, port/linux/src/battery_saver.c:
 host_metal_battery_saver) runs the link at a whole fraction of the display's
-rate, 30 to 40 frames a second (frame_pacing.h's frame_pacing_divisor: 30
-at 60 Hz, 40 on a 120 Hz ProMotion display, whose refreshes then slow to
+rate, 30 to 60 frames a second (frame_pacing.h's frame_pacing_divisor: 60
+at 60 Hz, and on a 120 Hz ProMotion display, whose refreshes then slow to
 it): the game is paced by the link's slower refreshes as it is by the
 display's own.
 
@@ -1084,7 +1084,7 @@ static CAFrameRateRange link_rate_range(int saving);
 /* the link's rate: a ProMotion display's follows the frames, up to its
 highest; HALO_METAL_RATE, the link at a rate of its own (the pacing of
 another display, tested on this one); battery saver (saving), a whole
-fraction of the display's, 30 to 40 frames a second (frame_pacing.h) */
+fraction of the display's, 30 to 60 frames a second (frame_pacing.h) */
 static CAFrameRateRange link_rate_range(int saving)
 {
 	float rate = presentation.refresh_rate > 0.0f ? presentation.refresh_rate : 60.0f;

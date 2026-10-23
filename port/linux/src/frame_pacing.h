@@ -33,10 +33,10 @@ more between the player's hand and the picture.
   the others, so that the game draws BATTERY_SAVER_MOST frames a second or
   fewer, but never fewer than BATTERY_SAVER_LEAST: frame_pacing_divisor.
   At least 30, so that every one of the game's 30 ticks a second is drawn;
-  at most 40, half or less of the work at 60 Hz and more (30 at 60 or 90 Hz,
-  40 at 80, 120 or 240 Hz, 36 at 144). A display no whole number brings
-  between them keeps the least above 30 it can (42.5 at 85 Hz), and one
-  below 60 Hz its own rate.
+  at most 60, a shooter's smoothness at half or less of the work on a
+  display of 120 Hz and more (60 at 60, 120 or 240 Hz, 45 at 90, 48 at 144,
+  55 at 165). A display at 60 Hz or below keeps its own rate: there battery
+  saver changes only the graphics. VR never has it (battery_saver.c).
 
 The times are nanoseconds of the game's monotonic clock (CLOCK_MONOTONIC
 as the game reads it; a guest's is its host's). Header only, C89, with no
@@ -66,7 +66,7 @@ time added to it */
 #define FRAME_PACING_SAMPLES 1024
 /* battery saver's frames a second, at least and at most (frame_pacing_divisor) */
 #define BATTERY_SAVER_LEAST 30
-#define BATTERY_SAVER_MOST 40
+#define BATTERY_SAVER_MOST 60
 
 /* (the game's renderer front end, d3d8_device.c: not in the hosts) when the
 game read the input of the frame it draws, as D3DDevice_Present stamped it */

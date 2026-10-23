@@ -28,7 +28,7 @@ surface), at a later frame.
 The swap interval is display.vsync's (host_vulkan_window_open, asked again
 when the setting changes); while battery saver is on (display.battery_saver,
 battery_saver.c), each frame is shown for the whole number of the display's
-refreshes that brings the frames a second to 30 to 40 (frame_pacing.h's
+refreshes that brings the frames a second to 30 to 60 (frame_pacing.h's
 frame_pacing_divisor, at the window's display's rate as SDL has it when it
 is asked). With OpenXR (HALO_VR), the headset's runtime
 chooses the device; the window keeps its surface, so that the game can play

@@ -9,7 +9,7 @@ on its charger); "off", the default, never.
 
 While it is on:
 - each frame stays on the display for a whole number of its refreshes, 30
-  to 40 frames a second (frame_pacing.h, frame_pacing_divisor), where the
+  to 60 frames a second (frame_pacing.h, frame_pacing_divisor), where the
   window is shown (platform_frame_rate_apply, sdl_platform.c): the Vulkan
   host presents each frame that many times, the Metal host's display link
   runs at that rate, the OpenGL builds swap at that interval; without

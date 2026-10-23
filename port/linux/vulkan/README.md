@@ -114,7 +114,7 @@ The guest hands the setting to the host with the window
 swapchain is made again for it. With battery saver on
 (`display.battery_saver`, the guest's `battery_saver.c`), the host shows
 each frame for the whole number of the display's refreshes that brings the
-frames a second to 30 to 40 (`frame_pacing_divisor`): FIFO shows one image
+frames a second to 30 to 60 (`frame_pacing_divisor`): FIFO shows one image
 a refresh, so the frame is presented that many times
 (`xgpu_vulkan_frame_end`), and the render thread, and with it the game,
 waits for the display. The VR build's headset is presented through OpenXR,

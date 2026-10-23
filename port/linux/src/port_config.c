@@ -140,8 +140,8 @@ static const struct config_setting config_settings[] =
 	{ "display.battery_saver", _config_string, "\"off\"", "HALO_BATTERY_SAVER", _environment_value, _platform_all,
 		"Draw less, for a longer battery and a cooler machine: \"on\", \"off\", or\n"
 		"\"auto\", on while the machine runs on its battery. On, each frame stays\n"
-		"for a whole number of the display's refreshes, 30 to 40 frames a second\n"
-		"(30 at 60 Hz, 40 at 120), and the settings display.graphics chooses\n"
+		"for a whole number of the display's refreshes, 30 to 60 frames a second\n"
+		"(60 at 60 or 120 Hz, 45 at 90), and the settings display.graphics chooses\n"
 		"that are not set here are drawn as \"classic\" draws them. The game\n"
 		"plays the same. Not in VR, whose headset paces its frames." },
 	{ "display.graphics", _config_string, "\"enhanced\"", "HALO_GRAPHICS", _environment_value, _platform_all,
