@@ -201,6 +201,8 @@ class ApplePlatform:
     # another platform's guest image (generate_apple_build's "guest"), used
     # in place of building one: the iOS simulator's, which is the device's
     guest: Optional[Dict[str, Path]] = None
+    # more lists of host functions the guest imports (iOS's touch controls')
+    guest_imports: Optional[List[Path]] = None
 
 
 def macos_platform() -> ApplePlatform:
@@ -272,7 +274,8 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
         # the guest needs none of it)
         builtins_cc="", environment="gnu", platform_defines=MACOS_GUEST_DEFINES + target.guest_defines,
         extra_runtime=[LINUX_HOST_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
-        extra_imports=[LINUX_HOST_DIR / "host_imports.list", PORT_DIR / "host_imports.list"],
+        extra_imports=[LINUX_HOST_DIR / "host_imports.list", PORT_DIR / "host_imports.list",
+                       *(target.guest_imports or [])],
         extra_prototypes=[LINUX_HOST_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
         base_register=True, excluded_platform_sources=MACOS_GUEST_EXCLUDED)
 

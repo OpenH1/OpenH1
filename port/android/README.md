@@ -336,9 +336,9 @@ These settings are only for Android:
 
 | Setting | Function |
 | --- | --- |
-| `input.touch_captions` | `true` (the default): what each of the touch controls' controller buttons does in the profile (JUMP, MELEE, FIRE) is written under it, in the HUD's font and colour. `false`: the buttons alone. The buttons are drawn in `display.hud_button_style`. |
-| `input.touch_aim_assist` | `true` (the default): the touch controls' swipe aiming gets the aim assist of a controller (the aim slows over a target and follows a moving one). `false`: none, as with a mouse; the bullets' own autoaim stays. |
-| `input.touch_controls` | The touch controls in a game. `"auto"` (the default): shown on a touchscreen while no controller is connected. `"on"`: also shown with a controller. `"off"`: never shown. A device without a touchscreen never shows them. The menus take taps in any case. |
+| `input.touch_captions` | (Android and iOS) `true` (the default): what each of the touch controls' controller buttons does in the profile (JUMP, MELEE, FIRE) is written under it, in the HUD's font and colour. `false`: the buttons alone. The buttons are drawn in `display.hud_button_style`. |
+| `input.touch_aim_assist` | (Android, iOS and the web) `true` (the default): the touch controls' swipe aiming gets the aim assist of a controller (the aim slows over a target and follows a moving one). `false`: none, as with a mouse; the bullets' own autoaim stays. |
+| `input.touch_controls` | (Android, iOS and the web) The touch controls in a game. `"auto"` (the default): shown on a touchscreen while no controller is connected. `"on"`: also shown with a controller. `"off"`: never shown. A device without a touchscreen never shows them. The menus take taps in any case. |
 | `debug.sample_seconds` | Refer to "Find problems". |
 | `debug.memory_watch` | `true` (the default): the app notices the game's writes to textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. Refer to "Limits". |
 

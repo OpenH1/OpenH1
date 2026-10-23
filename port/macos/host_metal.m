@@ -1243,6 +1243,11 @@ void host_metal_battery_saver(int on)
 	atomic_store(&presentation.battery_saver, on ? 1 : 0);
 }
 
+#if TARGET_OS_IPHONE
+/* port/ios/touch_controls.m */
+void host_touch_overlay_install(void *window);
+#endif
+
 /* (iOS: port/ios/host_app.m, as the app goes to the background and comes
 back) nothing presented while away */
 void host_metal_background(int away)
@@ -1282,6 +1287,11 @@ int host_metal_window_open(uint32_t window)
 	can be, shows nothing until it is brought forward, and the drawables
 	presented meanwhile never reach the screen) */
 	SDL_RaiseWindow(object);
+#if TARGET_OS_IPHONE
+	/* (the touch controls over the game's view: port/ios/touch_controls.m) */
+	host_touch_overlay_install(SDL_GetPointerProperty(SDL_GetWindowProperties(object),
+		SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, NULL));
+#endif
 	presentation.layer = (__bridge CAMetalLayer *)SDL_Metal_GetLayer(presentation.view);
 	presentation.layer.device = xgpu_metal_device();
 	presentation.layer.pixelFormat = MTLPixelFormatBGRA8Unorm;

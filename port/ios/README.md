@@ -160,6 +160,53 @@ work from the background) and the game waits in its next event poll until
 the app is back; iOS suspends the process meanwhile. In a network game, the
 other machines drop it after 15 seconds, as on Android.
 
+## Controls
+
+Game controllers (MFi, Xbox, DualSense, through the GameController
+framework) are SDL's, as on macOS: a pad paired while the game runs is
+taken at once.
+
+### Touch controls
+
+The on-screen controls are the Android app's (refer to "Touch controls" in
+[port/android/README.md](../android/README.md)), drawn by a UIKit view over
+the game's (`port/ios/touch_controls.m`, a port of `TouchControls.java`,
+`TouchLayout.java`, `TouchContext.java` and `GyroscopeAim.java`): the same
+layout on the same 960 x 540 grid, laid out inside the screen's safe area
+(clear of the sensor housing and the rounded corners), with the default
+places moved clear of the game's HUD, which keeps the corners of a wide
+screen (the move stick off the motion tracker; pause, back and the options
+by the hide toggle at the top's middle; the D-pad, light and grenade type
+at the left between the messages and the tracker; crouch by zoom), which
+`tools/test_ios_touch_layout.py` checks on the iPhones' and the iPads'
+shapes; the same pictures
+(the HUD's buttons in `display.hud_button_style`, Kenney's line icons) and
+captions (`input.touch_captions`), copied from the Android app's resources
+into the app's `touch/`; the buttons that follow the player's state; the
+move stick (fixed or floating), swipe aiming (with the stick's aim assist,
+`input.touch_aim_assist`) and gyroscope aiming (CoreMotion); the toolbar's
+hide and options, and the layout editor. The options are a panel of
+UIKit's: vibration (the phone's haptics, for a press and for port 0's
+rumble), gyroscope aiming, the floating stick, opacity, look sensitivity,
+editing the layout, and hiding, adding, copying and sizing buttons. The
+layout is kept in the app's preferences in the Android app's layout file
+format, and Export and Import (in the editor) write and read
+`touch-layout.txt` in the app's Documents, so a layout moves between the
+two.
+
+The overlay hands its state to the game through
+`port/android/host/host_touch.c`, which Android's shares (without JNI:
+`host_touch.h`), and the game reads it through the same host imports
+(`port/ios/host_imports.list`; `port/linux/src/touch_input.c`,
+`HALO_TOUCH_CONTROLS`). It shows only in a game (not in the menus or a
+cinematic), and with `input.touch_controls = "auto"` only while no
+controller, keyboard or mouse is connected (the system's list, and the
+game's controllers). While it does not show, every finger passes through
+to SDL's view: in the menus SDL makes them the mouse, whose pointer the
+menus take (the overlay turns `SDL_HINT_TOUCH_MOUSE_EVENTS` on there, and
+off in a game, where a tap would fire); in a game a tap skips a cinematic
+or types in the text chat (`touch_input.c`).
+
 ## Metal on iOS
 
 The Metal backend is the macOS one. What differs:
@@ -190,8 +237,7 @@ put `maps` in its `Documents`.
 
 ## Not done yet
 
-- Touch controls (the Android app's are Java: `port/android/app`), and the
-  first start's import of a disc image.
+- The first start's import of a disc image.
 - The safe areas: the game draws over the whole screen, the sensor housing's
   and the home indicator's edges too.
 - System link on a device: iOS lets apps send broadcasts only with the

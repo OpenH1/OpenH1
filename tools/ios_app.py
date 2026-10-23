@@ -72,7 +72,7 @@ def info_plist(bundle_id: str, build: int, minimum: str, simulator: bool = False
         "NSHumanReadableCopyright": COPYRIGHT,
         # (the game fills the screen, sideways, without the status bar;
         # UIKit's scenes, which SDL's delegate takes)
-        "UILaunchScreen": {},
+        "UILaunchScreen": {"UIColorName": "LaunchBackground"},
         "UIRequiresFullScreen": True,
         "UIStatusBarHidden": True,
         "UIViewControllerBasedStatusBarAppearance": False,
@@ -97,13 +97,21 @@ def info_plist(bundle_id: str, build: int, minimum: str, simulator: bool = False
 
 def icons(app: Path, minimum: str, simulator: bool = False) -> dict:
     """the app's icons (Assets.car and the PNGs iOS reads), from the 1024
-    pixel one, by actool; the Info.plist entries it names them with"""
+    pixel one, and the launch screen's colour, by actool; the Info.plist
+    entries it names them with"""
     with tempfile.TemporaryDirectory() as temporary:
         catalog = Path(temporary) / "Assets.xcassets"
         icon_set = catalog / "AppIcon.appiconset"
         icon_set.mkdir(parents=True)
         shutil.copy2(ICON, icon_set / "icon.png")
         (catalog / "Contents.json").write_text(json.dumps({"info": {"author": "xcode", "version": 1}}))
+        # (the launch screen's colour: black, as the game starts)
+        launch = catalog / "LaunchBackground.colorset"
+        launch.mkdir()
+        (launch / "Contents.json").write_text(json.dumps({
+            "colors": [{"idiom": "universal", "color": {"color-space": "srgb", "components": {
+                "red": "0.000", "green": "0.000", "blue": "0.000", "alpha": "1.000"}}}],
+            "info": {"author": "xcode", "version": 1}}))
         (icon_set / "Contents.json").write_text(json.dumps({
             "images": [{"filename": "icon.png", "idiom": "universal", "platform": "ios", "size": "1024x1024"}],
             "info": {"author": "xcode", "version": 1}}))
@@ -158,6 +166,11 @@ def bundle(args: argparse.Namespace) -> None:
     shutil.copy2(args.executable, staging / EXECUTABLE)
     for resource in args.resource or []:
         shutil.copy2(resource, staging / Path(resource).name)
+    # (the touch controls' pictures and captions' font, the Android app's:
+    # port/ios/touch_controls.m reads them from touch/)
+    for resource in args.touch or []:
+        (staging / "touch").mkdir(exist_ok=True)
+        shutil.copy2(resource, staging / "touch" / Path(resource).name)
     for license in args.license or []:
         source, name = license.split("=", 1)
         (staging / "Licenses").mkdir(exist_ok=True)
@@ -229,6 +242,7 @@ def main() -> None:
     command.add_argument("--executable", required=True)
     command.add_argument("--resource", action="append")
     command.add_argument("--license", action="append", help="<file>=<name>: a licence, in Licenses")
+    command.add_argument("--touch", action="append", help="a picture or font of the touch controls, in touch/")
     command.add_argument("--bundle-id", required=True)
     command.add_argument("--build", type=int, default=0)
     command.add_argument("--minimum", required=True)
