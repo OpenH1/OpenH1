@@ -11,6 +11,43 @@ backend (`port/linux/src/xgpu_gl.c`, OpenGL 4.5) in the game itself, where
 the Linux builds draw with Vulkan in their 64-bit host. Refer to
 [port/linux/README.md](../linux/README.md).
 
+## Install the release
+
+The release is `OpenH1-Windows.zip`. Unzip it into a folder and start
+`halo.exe`. The executable is not code-signed, so when it was downloaded
+with a browser, Windows SmartScreen can say "Windows protected your PC". It
+says that of any app that is not signed. Choose **More info**, then **Run
+anyway**.
+
+### Install with Scoop
+
+[Scoop](https://scoop.sh) installs the same zip with no warning: its
+downloads do not carry the browser's mark (the Mark of the Web) that
+SmartScreen checks. Scoop checks each download against the hash in its
+manifest.
+
+```powershell
+scoop bucket add openh1 https://github.com/OpenH1/scoop-bucket
+scoop install openh1
+```
+
+The bucket is [OpenH1/scoop-bucket](https://github.com/OpenH1/scoop-bucket).
+Its manifest follows the releases by itself (its Excavator workflow, every
+6 hours).
+
+- The game is in `~\scoop\apps\openh1\current`, with an **OpenH1** Start
+  menu shortcut and an `openh1` command.
+- The files of the player next to `halo.exe` are kept in
+  `~\scoop\persist\openh1` and linked into each version: `config.toml`,
+  `maps\`, `custom_maps\`, `mods\`, `screenshots\`, `crashes\`, `bans.txt`,
+  `cheaters.txt` and `text_filter.txt`. At the first start the game copies
+  `maps\` out of the disc image as usual; the manifest moves that folder
+  into `persist` before an update or an uninstall. Saved games stay in
+  `%APPDATA%\halo`.
+- A first install writes `update.auto = false` in `config.toml`: Scoop
+  updates the game (`scoop update openh1`), not the game's updater, which
+  would replace the files of Scoop's version folder.
+
 ## Requirements
 
 You do not need the Xbox SDK.

@@ -98,9 +98,13 @@ older build there.
 - **macOS:** open the `.dmg` and drag OpenH1 to Applications. The app
   is signed with a Developer ID and notarized by Apple, so it opens like any
   other downloaded app.
-- **Windows:** unzip into a folder and start `halo.exe`. The executable is
-  not signed yet, so Windows may say that it protected your PC: choose
-  **More info**, then **Run anyway**.
+- **Windows:** unzip into a folder and start `halo.exe`. Windows may say
+  that it protected your PC: it says that of any app that is not signed, and
+  this one is not. Choose **More info**, then **Run anyway**. Or install it
+  with [Scoop](https://scoop.sh), with no warning:
+  `scoop bucket add openh1 https://github.com/OpenH1/scoop-bucket`, then
+  `scoop install openh1` (refer to
+  [port/windows/README.md](port/windows/README.md#install-with-scoop)).
 - **Linux and the Steam Deck:** unzip, and open `install.sh` in the
   folder (on a Steam Deck, in Desktop Mode). It installs the game in
   `~/Applications/OpenH1`, asks for your game's disc image or maps folder,
@@ -120,7 +124,8 @@ older build there.
 The Windows, Linux and Android builds update themselves. At start-up they
 look for a newer release, and ask if you want to install it (refer to
 "Updates" in [port/linux/README.md](port/linux/README.md#updates)). On
-macOS, download the new release.
+macOS, download the new release. A Scoop install is updated by Scoop
+(`scoop update openh1`), not by the game.
 
 ## Game data
 
