@@ -5,6 +5,7 @@
 #
 #   tools/frame_install.sh [--package <folder, .tar.gz or .zip>] <host>
 #   tools/frame_install.sh [--package <folder, .tar.gz or .zip>] --local <folder>
+#   install.sh                     # on the Frame, in the unzipped package
 #
 # <host>: as ssh takes it (deck@steamframe.local, or a Host of ~/.ssh/config).
 # --package: by default dist/halo-vr-frame of this repository; or a release's
@@ -12,6 +13,12 @@
 # --local: install into <folder>/apps/halo-vr instead, <folder> standing in
 #   for the Frame's home (to test this script, or to install on the Frame
 #   from a terminal on it).
+# The package has this script as its install.sh: opened there with no
+#   arguments (from the Frame's file manager, say), it installs that package
+#   into the home of whoever runs it, in a terminal window of its own, asks
+#   for the maps folder if there are no maps yet, gives it a menu entry
+#   named OpenH1 VR (~/.local/share/applications/openh1-vr.desktop), and
+#   adds that to Steam (steamos-add-to-steam) if Steam has no shortcut to it.
 #
 # It refuses while the game runs (pgrep -x halo), and never starts it. The
 # package goes to a folder of its own beside the game, where its SHA256SUMS
@@ -26,7 +33,7 @@
 set -euo pipefail
 
 usage() {
-	sed -n '6,14p' "$0" | sed 's/^# \{0,1\}//' >&2
+	sed -n '6,20p' "$0" | sed 's/^# \{0,1\}//' >&2
 	exit 2
 }
 
@@ -43,6 +50,18 @@ while [ $# -gt 0 ]; do
 	*) [ -z "$host" ] || usage; host=$1; shift ;;
 	esac
 done
+# install.sh in an unzipped package, with no arguments: that package, here
+here=$(cd "$(dirname "$0")" && pwd)
+standalone=
+if [ -z "$host" ] && [ -z "$local_home" ] && [ -f "$here/SHA256SUMS" ] && [ -f "$here/halo-vr.sh" ]; then
+	package=$here
+	local_home=$HOME
+	standalone=yes
+	# (opened from the file manager: a terminal window, to show what it did)
+	if [ ! -t 1 ] && [ -z "${OPENH1_INSTALL_WINDOW:-}" ] && command -v konsole >/dev/null; then
+		OPENH1_INSTALL_WINDOW=1 exec konsole --hold -e "$0"
+	fi
+fi
 [ -n "$host" ] || [ -n "$local_home" ] || usage
 [ -z "$host" ] || [ -z "$local_home" ] || usage
 
@@ -65,12 +84,12 @@ if [ -f "$package" ]; then
 		else
 			python3 -m zipfile -e "$package" "$work/package"
 		fi ;;
-	*) tar -xzf "$package" -C "$work/package" ;;
+	*) tar -xmzf "$package" -C "$work/package" ;;
 	esac
 	sums=$(find "$work/package" -maxdepth 2 -name SHA256SUMS | head -n 1)
 	[ -n "$sums" ] || { echo "$package: not a package of tools/frame_package.py (no SHA256SUMS)" >&2; exit 1; }
 	package=$(dirname "$sums")
-	for name in halo libSDL3.so.0 halo-vr.sh; do
+	for name in halo libSDL3.so.0 halo-vr.sh install.sh; do
 		[ ! -f "$package/$name" ] || chmod 755 "$package/$name"
 	done
 fi
@@ -102,11 +121,12 @@ echo "Installing $(sed -n 1p "$package/VERSION" 2>/dev/null || echo "a package")
 refuse_running='if pids=$(pgrep -x halo); then echo "Halo is running (process $(echo $pids)): quit it, then install again." >&2; exit 3; fi'
 # shellcheck disable=SC2086
 tar -C "$package" -cf - SHA256SUMS $names |
-	on_frame "set -eu; $refuse_running; mkdir -p \"\$HOME/$dir\"; rm -rf \"\$HOME/$dir/.install\"; mkdir \"\$HOME/$dir/.install\"; tar -xf - -C \"\$HOME/$dir/.install\""
+	on_frame "set -eu; $refuse_running; mkdir -p \"\$HOME/$dir\"; rm -rf \"\$HOME/$dir/.install\"; mkdir \"\$HOME/$dir/.install\"; tar -xmf - -C \"\$HOME/$dir/.install\""
 
-on_frame "sh -s -- '$dir'" <<'FRAME'
+on_frame "sh -s -- '$dir' '$standalone'" <<'FRAME'
 set -eu
 dir=$HOME/$1
+standalone=$2
 install=$dir/.install
 cd "$dir"
 trap 'rm -rf "$install"' EXIT
@@ -182,18 +202,56 @@ case " $changed " in *" halo-vr.sh "*)
 	[ -f halo-vr.sh.prev ] && echo "  (Settings of your own for the launcher go in halo-vr.env, which updates keep: halo-vr.sh.prev is the replaced launcher.)" ;;
 esac
 
-# the game's data
+# the game's data: on the Frame, asked for once (the maps folder of the
+# game's Xbox disc, or the folder that contains it)
+if [ -n "$standalone" ] && [ ! -d maps ] && command -v kdialog >/dev/null &&
+	! grep -Eq '^[[:space:]]*data[[:space:]]*=' config.toml 2>/dev/null; then
+	if from=$(kdialog --title "OpenH1: your game's maps" --getexistingdirectory "$HOME"); then
+		[ -d "$from/maps" ] && from=$from/maps
+		if ls "$from"/*.map >/dev/null 2>&1; then
+			mkdir maps.new
+			cp "$from"/*.map maps.new/
+			mv maps.new maps
+			echo "  maps: copied from $from"
+		else
+			echo "$from has no maps (.map files)." >&2
+		fi
+	fi
+fi
 if [ ! -d maps ] && ! grep -Eq '^[[:space:]]*data[[:space:]]*=[[:space:]]*"[^"]+"' config.toml 2>/dev/null; then
 	echo "No maps here: copy the maps folder of the game's Xbox disc to $dir/maps (or name the folder that contains it in config.toml's paths.data)."
 fi
 
-# Steam's shortcut, which only Steam may add (it rewrites its shortcuts.vdf)
+# the menu entry, whose name Steam gives the shortcut made from it (in its
+# list of programs, and from steamos-add-to-steam)
+entry=$HOME/.local/share/applications/openh1-vr.desktop
+mkdir -p "$(dirname "$entry")"
+cat > "$entry.new" <<EOF
+[Desktop Entry]
+Type=Application
+Name=OpenH1 VR
+Comment=Halo: Combat Evolved in VR, ported from its decompilation
+Exec="$dir/halo-vr.sh"
+Path=$dir
+Icon=$dir/openh1.png
+Terminal=false
+Categories=Game;ActionGame;
+EOF
+mv -f "$entry.new" "$entry"
+
+# Steam's shortcut, which only Steam may add (it rewrites its shortcuts.vdf):
+# on the Frame, SteamOS's steamos-add-to-steam asks the running Steam to
 if ! grep -lqF "$dir/halo-vr.sh" "$HOME"/.local/share/Steam/userdata/*/config/shortcuts.vdf 2>/dev/null; then
+	if [ -n "$standalone" ] && command -v steamos-add-to-steam >/dev/null &&
+		steamos-add-to-steam "$entry" >/dev/null 2>&1; then
+		echo "Added to Steam as OpenH1 VR: start SteamVR, then it, from the library."
+		exit 0
+	fi
 	[ -n "$first" ] && echo "Installed. Now add it to Steam, once:" || echo "Steam has no shortcut to the launcher yet. To add one:"
 	cat <<EOF
   1. On the Frame, in Steam's desktop mode: Games > Add a Non-Steam Game to My Library.
-  2. Browse..., select $dir/halo-vr.sh, then Add Selected Programs.
-  3. Start SteamVR, then Halo VR (halo-vr.sh) from the library.
+  2. Tick OpenH1 VR in the list (or Browse..., select $dir/halo-vr.sh), then Add Selected Programs.
+  3. Start SteamVR, then OpenH1 VR from the library.
 EOF
 fi
 FRAME

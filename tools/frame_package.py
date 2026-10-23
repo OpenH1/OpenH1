@@ -13,7 +13,10 @@ release --vr makes the release's OpenH1-Steam-Frame.zip so.
 The package is what ~/apps/halo-vr/ on the Frame needs beside the game's
 data and the player's own files: the game (build/linux_arm64/halo), the
 SDL3 it finds beside it, the launcher of its Steam shortcut
-(port/linux/frame/halo-vr.sh), internet play's brokers.txt, a README
+(port/linux/frame/halo-vr.sh), internet play's brokers.txt, its installer
+(install.sh: tools/frame_install.sh, which installs the package it is in
+when opened on the Frame), the icon of its menu entry and Steam shortcut
+(openh1.png), a README
 (port/linux/frame/README.md), the libraries' licenses (as
 tools/ci_build.py's dist has them), VERSION (the commit) and SHA256SUMS.
 Never config.toml: the player's own, which an install must not replace.
@@ -99,7 +102,10 @@ def needed_libraries(path: Path) -> List[str]:
 def version() -> str:
     """VERSION: the commit the package is of, which the install prints"""
     def git(*args: str) -> str:
-        return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True).stdout.strip()
+        # (CI's container runs the build as a user other than the checkout's,
+        # whose repository git would otherwise refuse as of dubious ownership)
+        return subprocess.run(["git", "-c", f"safe.directory={ROOT}", *args], cwd=ROOT, capture_output=True,
+                              text=True).stdout.strip()
 
     changes = " (with changes)" if git("status", "--porcelain", "-uno") else ""
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -111,7 +117,7 @@ def version() -> str:
 
 def executable(name: str) -> bool:
     """the package's files that run (0755; the others are 0644)"""
-    return name in ("halo", "libSDL3.so.0", "halo-vr.sh")
+    return name in ("halo", "libSDL3.so.0", "halo-vr.sh", "install.sh")
 
 
 def write_zip(dist: Path, output: Path) -> None:
@@ -154,6 +160,8 @@ def main() -> int:
         "libSDL3.so.0": args.build / "libSDL3.so.0",
         "SDL3-LICENSE.txt": args.build / "third_party/SDL3/LICENSE.txt",
         "halo-vr.sh": FRAME_DIR / "halo-vr.sh",
+        "install.sh": ROOT / "tools/frame_install.sh",
+        "openh1.png": ROOT / "port/assets/icon/hicolor/openh1-256.png",
         "brokers.txt": ROOT / "port/assets/network/brokers.txt",
         "README.md": FRAME_DIR / "README.md",
         **{name: ROOT / source for name, source in LICENSES.items()},

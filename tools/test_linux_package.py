@@ -5,8 +5,11 @@ Needs no build: the files are stand-ins.
     python -m pytest -q tools/test_linux_package.py
 """
 
+import hashlib
 import re
+import shutil
 import stat
+import subprocess
 import sys
 import zipfile
 from pathlib import Path
@@ -159,7 +162,7 @@ def test_frame_zip(tmp_path):
 
     package = tmp_path / frame_package.NAME
     package.mkdir()
-    names = ["halo", "libSDL3.so.0", "halo-vr.sh", "brokers.txt", "README.md", "VERSION", "SHA256SUMS"]
+    names = ["halo", "libSDL3.so.0", "halo-vr.sh", "install.sh", "brokers.txt", "README.md", "VERSION", "SHA256SUMS"]
     for name in names:
         (package / name).write_bytes(name.encode())
         (package / name).chmod(0o644)
@@ -175,9 +178,33 @@ def test_frame_zip(tmp_path):
                 continue
             assert stat.S_ISREG(mode)
             base = info.filename.split("/", 1)[1]
-            expected = 0o755 if base in ("halo", "libSDL3.so.0", "halo-vr.sh") else 0o644
+            expected = 0o755 if base in ("halo", "libSDL3.so.0", "halo-vr.sh", "install.sh") else 0o644
             assert stat.S_IMODE(mode) == expected, info.filename
             assert archive.read(info) == base.encode()
+
+
+def test_frame_install_from_package(tmp_path):
+    """install.sh opened in an unzipped package (frame_install.sh with no arguments) installs that package into
+    the home of whoever runs it, as --local does, and says what is left to do where the Frame's helpers
+    (kdialog, steamos-add-to-steam) are not"""
+    package = tmp_path / "halo-vr-frame"
+    package.mkdir()
+    for name in ("halo", "libSDL3.so.0", "halo-vr.sh", "VERSION"):
+        (package / name).write_text(f"{name}\n")
+    shutil.copyfile(ROOT / "tools/frame_install.sh", package / "install.sh")
+    (package / "install.sh").chmod(0o755)
+    (package / "SHA256SUMS").write_text("".join(
+        f"{hashlib.sha256((package / name).read_bytes()).hexdigest()}  {name}\n"
+        for name in ("halo", "libSDL3.so.0", "halo-vr.sh", "install.sh", "VERSION")))
+    home = tmp_path / "home"
+    home.mkdir()
+    environment = {"HOME": str(home), "PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "OPENH1_INSTALL_WINDOW": "1"}
+    result = subprocess.run([str(package / "install.sh")], env=environment, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    installed = home / "apps/halo-vr"
+    for name in ("halo", "libSDL3.so.0", "halo-vr.sh", "install.sh", "VERSION", "SHA256SUMS"):
+        assert (installed / name).read_bytes() == (package / name).read_bytes()
+    assert "No maps here" in result.stdout and "Add a Non-Steam Game" in result.stdout
 
 
 def test_release_names():
