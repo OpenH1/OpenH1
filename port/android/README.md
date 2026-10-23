@@ -21,6 +21,30 @@ captured: Android's pointer hides and its relative movement aims continuously.
 In the menus the capture is released, so the pointer shows again. During play,
 F12 still toggles the capture by hand.
 
+## Install
+
+Each release has the app as an APK: `OpenH1-Android.apk` (and
+`OpenH1-Android-debug.apk`, the debug build), at
+<https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Android.apk>.
+The APK carries the licences of OpenH1 and of what it includes (its
+`assets/licenses` folder).
+
+1. Download `OpenH1-Android.apk` on the phone and open it.
+2. The first time, Android asks you to let the browser (or the file
+   manager) install apps. Allow it, then select "Install".
+3. Copy the game's Xbox disc image (`.xiso` or `.iso`) to the phone, open
+   OpenH1 and select the disc image: the app extracts `maps/` from it
+   (refer to "Game data").
+
+After that, the app updates itself (refer to "Updates").
+
+Install once again if you installed the app before the project's own
+signing key (the builds before it were signed with keys that changed): such
+an app cannot be updated, and Android refuses to install the new APK over it.
+Uninstall it first. Uninstalling deletes its data folder, so first make a
+copy of `maps/` and `save/u` (refer to "Game data"), or extract `maps/` from
+the disc image again afterwards.
+
 ## Requirements
 
 You do not need the Xbox SDK. You need the tools of the Linux build (Python,
@@ -341,18 +365,22 @@ The app from GitHub Actions can update itself, as on Linux (refer to
 "Updates" in [port/linux/README.md](../linux/README.md#updates)). When you
 select "Yes":
 
-1. The app downloads the new version.
+1. The app downloads the new version (the release's `OpenH1-Android.apk`,
+   or `OpenH1-Android-debug.apk` for a debug build).
 2. The package installer of Android opens. At the first update, Android asks
-   you to let Halo install apps. Allow it.
+   you to let OpenH1 install apps. Allow it.
 3. Select "Update". Android replaces the app.
 4. Select "Open" to start the new version.
 
 To install over the previous version, each build must have the same
 signature. GitHub Actions signs each build with the key in the
 `ANDROID_KEYSTORE_BASE64` and `ANDROID_KEYSTORE_PASSWORD` secrets of the
-repository. If you installed a build that has a different signature, remove
-that build before you install a new build. Removing the app deletes its data
-folder: first make a copy of `maps/` and `save/u`.
+repository, the project's own key. The builds from before that key were
+signed with others, so an app installed before it cannot update: remove it
+once and install the new APK (refer to "Install"). If you installed a build
+that has a different signature, remove that build before you install a new
+build. Removing the app deletes its data folder: first make a copy of
+`maps/` and `save/u`.
 
 ## Widescreen
 

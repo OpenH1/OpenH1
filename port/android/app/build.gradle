@@ -61,7 +61,7 @@ android {
             halo {
                 storeFile file(signingKey)
                 storePassword System.getenv("HALO_ANDROID_KEYSTORE_PASSWORD")
-                keyAlias System.getenv("HALO_ANDROID_KEY_ALIAS") ?: "halo"
+                keyAlias System.getenv("HALO_ANDROID_KEY_ALIAS") ?: "openh1"
                 keyPassword System.getenv("HALO_ANDROID_KEYSTORE_PASSWORD")
             }
         }
