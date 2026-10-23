@@ -152,6 +152,13 @@ int64_t host_sdl_thread_id(void)
 	return (int64_t)SDL_GetCurrentThreadID();
 }
 
+/* (the guest's poll thread, battery_saver.c: SDL asks the system, Java's
+battery broadcast on Android) */
+int host_sdl_power_info(int *seconds, int *percent)
+{
+	return (int)SDL_GetPowerInfo(seconds, percent);
+}
+
 /* ---------- video */
 
 uint32_t host_sdl_create_window(const char *title, int width, int height, int64_t flags)

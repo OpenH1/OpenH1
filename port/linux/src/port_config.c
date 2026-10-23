@@ -11,7 +11,8 @@ commented out at its default ("# vsync = true", CONFIG_DEFAULTS_NOTE), so
 that a newer default reaches it; otherwise the file only gains the settings
 it lacks (config_add_missing) and the lines config_write sets, so that the
 player's edits and comments stay. display.graphics chooses the drawing's
-settings the player has not set (config_graphics).
+settings the player has not set (config_graphics), and battery saver reads
+them at their "classic" values while it is on (config_battery_saver_set).
 */
 
 #include "platform.h"
@@ -136,6 +137,13 @@ static const struct config_setting config_settings[] =
 	{ "display.max_fps", _config_integer, "0", "HALO_MAX_FPS", _environment_value, _platform_desktop,
 		"With vsync off, the most frames a second: 0 for twice the display's\n"
 		"refresh rate, -1 for no limit (which can hang some Intel graphics)." },
+	{ "display.battery_saver", _config_string, "\"off\"", "HALO_BATTERY_SAVER", _environment_value, _platform_all,
+		"Draw less, for a longer battery and a cooler machine: \"on\", \"off\", or\n"
+		"\"auto\", on while the machine runs on its battery. On, each frame stays\n"
+		"for a whole number of the display's refreshes, 30 to 40 frames a second\n"
+		"(30 at 60 Hz, 40 at 120), and the settings display.graphics chooses\n"
+		"that are not set here are drawn as \"classic\" draws them. The game\n"
+		"plays the same. Not in VR, whose headset paces its frames." },
 	{ "display.graphics", _config_string, "\"enhanced\"", "HALO_GRAPHICS", _environment_value, _platform_all,
 		"The 3D view's look: \"classic\" as the Xbox drew it; \"enhanced\" with this\n"
 		"port's improvements together (anti-aliasing, sharper textures and\n"
@@ -2177,6 +2185,43 @@ static void config_graphics_apply(void)
 	}
 }
 
+/* ---------- battery saver (display.battery_saver: battery_saver.c)
+
+While battery saver is on, the settings display.graphics chooses that the
+player has not set are read (config_boolean, config_integer, config_string)
+at their "classic" values, whatever display.graphics says; config_text,
+which Settings shows and writes from, keeps the player's own, so that the
+file and the menus are as they were when it goes off again. */
+static int config_battery_saving;
+static struct config_value config_battery_values[NUMBER_OF_CONFIG_GRAPHICS];
+
+/* (config_load: the values read while battery saver is on) */
+static void config_battery_values_set(void)
+{
+	size_t entry;
+
+	for (entry = 0; entry < NUMBER_OF_CONFIG_GRAPHICS; entry++)
+	{
+		long setting = config_setting_index(config_graphics[entry].name);
+
+		if (setting >= 0)
+			config_set_from_table_text(&config_battery_values[entry], config_settings[setting].type,
+				config_graphics[entry].classic);
+	}
+}
+
+void config_battery_saver_set(int saving)
+{
+	pthread_mutex_lock(&config_lock);
+	if (!config_battery_saving != !saving)
+	{
+		config_battery_saving = saving != 0;
+		/* (what keeps one of them reads it again) */
+		config_change_count++;
+	}
+	pthread_mutex_unlock(&config_lock);
+}
+
 /* a key in the file that is no setting, likely misspelt or in the wrong
 section: said in the log, with the section of a setting of that name */
 static void config_report_unknown_key(int line, const char *name)
@@ -2589,6 +2634,7 @@ static void config_load(void)
 			platform_log("settings: display.graphics \"%s\" is unknown, so enhanced", graphics);
 		config_graphics_apply();
 	}
+	config_battery_values_set();
 	config_check_words();
 }
 
@@ -2611,6 +2657,21 @@ static const struct config_value *config_value(const char *name, enum config_typ
 		return &none;
 	}
 	return &config_values[index];
+}
+
+/* a setting's value as the game reads it: battery saver's where it chooses
+it (config_battery_saving) */
+static const struct config_value *config_read(const char *name, enum config_type type)
+{
+	const struct config_value *value = config_value(name, type);
+	long setting, entry;
+
+	if (!config_battery_saving)
+		return value;
+	setting = config_setting_index(name);
+	entry = config_graphics_entry(setting);
+	return entry >= 0 && config_settings[setting].type == type && !config_set[setting] ?
+		&config_battery_values[entry] : value;
 }
 
 /* ---------- writing a setting */
@@ -2942,7 +3003,7 @@ int config_graphics_value(const char *graphics, const char *name, char *text, si
 
 int config_boolean(const char *name)
 {
-	return config_value(name, _config_boolean)->boolean;
+	return config_read(name, _config_boolean)->boolean;
 }
 
 int halo_fixed_step(void)
@@ -2956,7 +3017,7 @@ int halo_fixed_step(void)
 
 long config_integer(const char *name)
 {
-	return config_value(name, _config_integer)->integer;
+	return config_read(name, _config_integer)->integer;
 }
 
 double config_real(const char *name)
@@ -2966,7 +3027,7 @@ double config_real(const char *name)
 
 const char *config_string(const char *name)
 {
-	const char *string = config_value(name, _config_string)->string;
+	const char *string = config_read(name, _config_string)->string;
 
 	return string ? string : "";
 }

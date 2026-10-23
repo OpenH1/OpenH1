@@ -326,7 +326,10 @@ render thread is), run by a `CAMetalDisplayLink`: at
 each refresh of the display, the link hands over a drawable, and the
 thread draws the oldest frame queued into it, letterboxed to the frame's
 shape, and presents it. A ProMotion display's rate follows the frames, up
-to its highest; a fixed display's is its own. When a frame ends, its
+to its highest; a fixed display's is its own. With battery saver on
+(`display.battery_saver`, `host_metal_battery_saver`), the link runs at a
+whole fraction of the display's rate, 30 to 40 frames a second (30 at
+60 Hz, 40 at 120 Hz: a ProMotion display slows to it). When a frame ends, its
 back buffer's texture becomes one of two presentation images, and the
 back buffer takes the texture of the other, which the display has done
 with, for the next frame (a copy would be a pass over the whole of both).

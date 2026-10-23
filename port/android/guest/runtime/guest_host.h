@@ -74,6 +74,9 @@ void host_sdl_get_clipboard_text(char *buffer, unsigned int size);
 void host_sdl_scancode_name(int scancode, char *buffer, unsigned int size);
 int host_sdl_scancode_from_name(const char *name);
 int host_sdl_show_toast(const char *message, int duration, int gravity, int x, int y);
+/* SDL_GetPowerInfo: the SDL_PowerState, and the seconds and percent of
+battery left (-1 unknown) */
+int host_sdl_power_info(int *seconds, int *percent);
 int host_sdl_show_simple_message_box(unsigned int flags, const char *title, const char *message);
 /* SDL_ShowMessageBox of up to three buttons (SDL_MessageBoxData has not the
 guest's layout): labels are consecutive NUL-terminated strings, size bytes

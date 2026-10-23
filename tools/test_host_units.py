@@ -55,6 +55,12 @@ def test_host_memory(tmp_path):
               HOST / "host_watch_hash.c"])
 
 
+def test_frame_pacing_divisor(tmp_path):
+    """battery saver's frames a second at each display's refresh rate
+    (port/linux/src/frame_pacing.h, frame_pacing_divisor)"""
+    run_test(tmp_path, "frame_pacing_test", [TESTS / "frame_pacing_test.c"], [ROOT / "port" / "linux" / "src"])
+
+
 def test_posix_net_interrupted(tmp_path):
     """a select interrupted by signals waits out its time: Winsock's is never
     interrupted, and the game takes a failed one as the connection lost"""

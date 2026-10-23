@@ -43,5 +43,10 @@ int config_graphics_value(const char *graphics, const char *name, char *text, si
 /* how many times config_write has changed a setting: what keeps one reads
 it again when this moves */
 unsigned long config_changes(void);
+/* battery saver on or off (battery_saver.c): while on, the settings
+display.graphics chooses that the player has not set are read at their
+"classic" values (config_boolean, config_integer, config_string; not
+config_text); config_changes moves as it changes */
+void config_battery_saver_set(int saving);
 
 #endif

@@ -75,8 +75,8 @@ struct xgpu_vulkan_options
 	uint32_t instance_extension_count;
 	VkSurfaceKHR (*surface_create)(VkInstance instance, void *context);
 	void *surface_context;
-	/* the swap interval at the start (1 waits for the display, 0 does not:
-	xgpu_vulkan_window_interval) */
+	/* the swap interval at the start (1 or more waits for the display, 0
+	does not: xgpu_vulkan_window_interval) */
 	int interval;
 	/* The present step's turn for a surface the display turns (a phone held
 	sideways: xgpu_vulkan_post.c's): rotation_prepare makes its pipeline at
@@ -549,7 +549,9 @@ again */
 void xgpu_vulkan_window_resized(uint32_t width, uint32_t height);
 /* the swap interval (display.vsync; any thread): 1 or more waits for the
 display (FIFO), 0 does not (MAILBOX where the surface has it, else
-IMMEDIATE); the swapchain is made again when it changes */
+IMMEDIATE); the swapchain is made again when that changes. More than 1
+(battery saver's, at most 8) shows each frame for that many refreshes: it
+is presented that many times (xgpu_vulkan_frame_end) */
 void xgpu_vulkan_window_interval(int interval);
 /* The app goes to the background (1) or comes back (0), on the render
 thread. Going: the GPU waited for, the swapchain and the surface let go of

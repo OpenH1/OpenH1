@@ -2,3 +2,4 @@
 # (port/linux/host/host_imports.list): declared in guest_metal.c, defined
 # in host_metal.m. tools/android_imports.py generates the stubs.
 host_metal_window_open
+host_metal_battery_saver

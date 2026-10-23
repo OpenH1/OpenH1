@@ -209,7 +209,10 @@ release's tree):
   follows the refresh rate and the frame limit of Quick Access >
   Performance (40 to 60 Hz on the LCD model, up to 90 Hz on the OLED model).
   The world is calculated at 30 Hz at all rates. Keep `display.vsync =
-  true`. Refer to "Frame rate".
+  true`. Refer to "Frame rate". For a longer battery, set Video Setup >
+  Battery Saver to Auto (on while the Deck is not charging) or On: 30
+  frames each second at 60 or 90 Hz, 40 with the screen at 40 or 80 Hz, and
+  the Classic look (refer to "Battery saver").
 - Sleep: the clocks of the game do not count the time that the Deck sleeps,
   so the game continues from where it stopped. A network game does not
   wait: the host drops a machine that it has not heard from for 15 seconds,
@@ -457,6 +460,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.window_scale` | `2` | `HALO_WINDOW_SCALE` | Used when `display.window_size` is empty: the size of the window, as a multiple of 640x480. |
 | `display.vsync` | `true` | `HALO_NO_VSYNC=1` sets `false` | `true`: each frame waits for the display. With Vulkan, `false` presents in mailbox mode where the display has it (no tearing), else immediately. The VR mode's headset paces itself. |
 | `display.max_fps` | `0` | `HALO_MAX_FPS` | With vsync off, the most frames each second. `0`: twice the display's refresh rate. `-1`: no limit, which can hang some Intel graphics (Raptor Lake), resetting the desktop's graphics too. |
+| `display.battery_saver` | `"off"` | `HALO_BATTERY_SAVER` | Draw less, for a longer battery and a cooler machine. `"on"`: each frame stays on screen for a whole number of the display's refreshes, 30 to 40 frames each second (30 at 60 or 90 Hz, 40 at 80 or 120 Hz), and the settings `display.graphics` chooses that are commented out are drawn at their Classic values; those set keep their own. `"auto"`: on while the machine runs on its battery, off on its charger, as SDL says (a machine without a battery, or one that cannot tell, is taken to be on its charger). `"off"`: never. Not in VR. The game plays the same. Video Setup > Battery Saver. Refer to "Battery saver". |
 | `display.graphics` | `"enhanced"` | `HALO_GRAPHICS` | The look of the 3D view, as one choice. `"classic"`: as the Xbox drew it. `"enhanced"`: the port's improvements together, each as far as the machine's GPU does it well. It chooses `display.anti_aliasing`, `display.anisotropic_filtering`, `display.shadow_resolution`, `display.per_pixel_lighting`, `display.model_detail` and `display.dynamic_lights` where they are commented out; each of them set wins over it. Video Setup > Graphics > Preset. Refer to "Classic and Enhanced". |
 | `display.anti_aliasing` | `display.graphics`'s | `HALO_ANTI_ALIASING` | The smoothing of jagged edges, which the Xbox did not have. `"off"`: none, as on the Xbox. `"fxaa"` or `"smaa"`: a pass over the 3D view after the game draws it. The HUD and the menus stay sharp. SMAA is the sharper and costs more. `"ssaa2x"`: the game draws at two times the resolution in each direction (at most the GPU's largest texture), and the picture is scaled down. The GPU does four times the work. Not with `display.resolution_scaling = "original"`. `"msaa2x"`, `"msaa4x"` or `"msaa8x"`: each pixel of the 3D view has that many samples (at most the GPU's). With OpenGL ES (the web), `"smaa"` gives FXAA; there and on Android, `"ssaa2x"` gives none. The VR mode's eyes have neither pass. A change applies from the next frame. Refer to "Anti-aliasing" in "What operates". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.prepare_shaders` | `true` | `HALO_PREPARE_SHADERS` | `true`: as a map loads, its first frame (and the first of each of its structures) is drawn unseen through every shader its tags hold, in each way the game's code draws them, so that the renderer makes their shaders and pipelines during the loading screen, not in play (`port/assets/render/README.md`, "A map's enumeration"). `false`: each is made the first time a draw needs it, which the draw waits for. |
@@ -833,6 +837,47 @@ turns in the frame that the mouse moves. In a vehicle and in cinematics, the
 view mixes as the other things do. On Android, the view mixes as before.
 
 To get 30 frames each second, set `display.interpolation = false`.
+
+### Battery saver
+
+`display.battery_saver` (Video Setup > Battery Saver) draws less, for a
+handheld's (or a laptop's) battery and heat: `"on"`, `"off"` (the default),
+or `"auto"`, on while the machine runs on its battery
+(`src/battery_saver.c`). The game looks at the battery every 5 seconds on a
+thread of its own, with SDL's `SDL_GetPowerInfo`: the system's power supply
+on Linux (the Steam Deck's too), IOKit on macOS, the battery broadcast on
+Android, Windows' power status. The guest builds reach it through the host
+(`host_sdl_power_info`). A machine without a battery, or one whose battery
+SDL cannot read, is taken to be on its charger: Auto stays off.
+
+While it is on:
+
+- Each frame stays on screen for a whole number of the display's refreshes,
+  as many as bring the frames each second to 40 or fewer, but not fewer than
+  30, so that every tick is drawn (`frame_pacing_divisor` in
+  `src/frame_pacing.h`): 30 at 60 or 90 Hz, 40 at 80, 120 or 240 Hz, 36 at
+  144 Hz. A display below 60 Hz keeps its own rate. With every frame on
+  screen as long as the others, the motion stays even, and the frames still
+  mix the ticks (`display.interpolation`). The Vulkan host (Linux, Android)
+  presents each frame that many times in its FIFO swapchain, so that the
+  game waits for the display as it does at every refresh; the Metal host
+  (macOS) runs its display link at that rate (a ProMotion display slows to
+  it); the OpenGL build (Windows) swaps at that interval. Without vsync, or
+  with an OpenGL driver that has no such interval, the frames are spaced by
+  the clock (with `display.max_fps`'s limit, the lower).
+- The settings that `display.graphics` chooses (refer to "Classic and
+  Enhanced") are drawn at their Classic values where they are commented
+  out, whatever the preset: no anti-aliasing, no anisotropic filtering,
+  128-pixel shadows, lighting at each vertex, stock model detail, the
+  game's own dynamic lights. A setting that is set keeps its own value. The
+  Settings menu shows the values of the file, which battery saver does not
+  change.
+
+Only the drawing changes: the game calculates its ticks as before, and a
+network game is the same on every machine (`HALO_PORT_NETWORK_VERSION` is
+unchanged). In VR, battery saver is off: the headset's runtime paces its
+frames, and a frame held for two of its refreshes would make the player
+sick. The log says when it turns on or off, and why for Auto.
 
 To see the frame rate:
 
