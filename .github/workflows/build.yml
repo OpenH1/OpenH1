@@ -510,7 +510,7 @@ jobs:
 
       # the app's signing key, from the ANDROID_KEYSTORE_BASE64 secret (a
       # keystore, base64) and ANDROID_KEYSTORE_PASSWORD (its password, and
-      # the key's, alias halo): every build signed with it installs over the
+      # the key's, alias openh1): every build signed with it installs over the
       # one before, as the app's self-updater (Updater.java) needs. Without
       # them each build is signed with the runner's own debug key. Master's
       # builds alone (the release's) get them: a branch's build, which runs
