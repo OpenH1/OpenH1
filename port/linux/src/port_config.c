@@ -66,6 +66,9 @@ enum
 	host, port/linux/host, which have the desktop's settings, and the
 	host's own) */
 	_platform_guest = 16,
+	/* (the iOS app, a guest build with the desktop's settings, and the
+	touch controls': port/ios) */
+	_platform_ios = 32,
 };
 
 struct config_setting
@@ -91,10 +94,17 @@ Ctrl+D, which moving and crouching would press, from the browser) */
 
 /* display.graphics = "enhanced": the values it gives the settings it
 chooses (config_graphics), which are their defaults, the same on every
-build: SMAA (OpenGL ES FXAA), 16x anisotropic filtering, 512 shadow maps,
-the models' detail by the display's lines and lit for each pixel, the
-enhanced dynamic lights (OpenGL ES draws them classic) */
+build: SMAA (OpenGL ES FXAA; on iOS MSAA 4x), 16x anisotropic filtering,
+512 shadow maps, the models' detail by the display's lines and lit for each
+pixel, the enhanced dynamic lights (OpenGL ES draws them classic) */
+#ifdef HALO_IOS
+/* (an iPhone's tile-based GPU resolves MSAA in its tile memory, the 3D view
+drawn in one pass, port/macos/xgpu_metal.m: about the cost of SMAA's
+passes over the screen there, and smoother edges) */
+#define GRAPHICS_ANTI_ALIASING "\"msaa4x\""
+#else
 #define GRAPHICS_ANTI_ALIASING "\"smaa\""
+#endif
 #define GRAPHICS_ANISOTROPIC_FILTERING "16"
 #define GRAPHICS_SHADOW_RESOLUTION "512"
 #define GRAPHICS_PER_PIXEL_LIGHTING "true"
@@ -126,6 +136,10 @@ static const struct config_setting config_settings[] =
 		"\"native\" draws at the window's resolution (fullscreen, the display's or\n"
 		"display.resolution); \"original\" draws the Xbox's 640x480 and scales it\n"
 		"up." },
+	{ "display.render_scale", _config_real, "1.0", "HALO_RENDER_SCALE", _environment_value, _platform_ios,
+		"iOS: the fraction of the screen's pixels the game draws, each way (0.25\n"
+		"to 1.0), which the display scales up: 0.67 draws less than half the\n"
+		"pixels, for a cooler phone and a steadier frame rate. Read at start." },
 	{ "display.window_size", _config_string, "\"\"", "HALO_WINDOW_SIZE", _environment_value, _platform_desktop,
 		"The window's size, \"<width>x<height>\" (\"1920x1080\"), 640x480 or more (it\n"
 		"can be resized). Empty: display.window_scale's." },
@@ -657,16 +671,19 @@ static const struct config_setting config_settings[] =
 		"false pans them left and right, as on the flat screen." },
 
 #endif
-	{ "input.touch_controls", _config_string, "\"auto\"", "HALO_TOUCH_CONTROLS", _environment_value, _platform_android | _platform_web,
+	{ "input.touch_controls", _config_string, "\"auto\"", "HALO_TOUCH_CONTROLS", _environment_value,
+		_platform_android | _platform_web | _platform_ios,
 		"The on-screen touch controls in a game: \"auto\" shows them on a\n"
 		"touchscreen while no controller is connected, \"on\" also with a\n"
 		"controller, \"off\" never. A device without a touchscreen never shows\n"
 		"them. The menus take taps in any case." },
-	{ "input.touch_captions", _config_boolean, "true", "HALO_TOUCH_CAPTIONS", _environment_value, _platform_android,
+	{ "input.touch_captions", _config_boolean, "true", "HALO_TOUCH_CAPTIONS", _environment_value,
+		_platform_android | _platform_ios,
 		"The touch controls write what each controller button does in the\n"
 		"profile (JUMP, MELEE, FIRE) under it, in the HUD's font and colour.\n"
 		"false: the buttons alone, drawn in display.hud_button_style." },
-	{ "input.touch_aim_assist", _config_boolean, "true", "HALO_TOUCH_AIM_ASSIST", _environment_value, _platform_android | _platform_web,
+	{ "input.touch_aim_assist", _config_boolean, "true", "HALO_TOUCH_AIM_ASSIST", _environment_value,
+		_platform_android | _platform_web | _platform_ios,
 		"The touch controls' swipe aiming gets a controller's aim assist: the\n"
 		"aim slows over a target and follows a moving one. false: none, as a\n"
 		"mouse (the bullets' own autoaim stays)." },
@@ -1169,6 +1186,10 @@ static const struct config_setting config_settings[] =
 	{ "debug.update_answer", _config_string, "\"\"", "HALO_UPDATE_ANSWER", _environment_value, _platform_desktop,
 		"The answer to the new version question, for automated tests: \"yes\",\n"
 		"\"no\" or \"never\" (do not ask again, confirmed); empty asks." },
+	{ "debug.first_start_input", _config_string, "\"\"", "HALO_FIRST_START_INPUT", _environment_value, _platform_desktop,
+		"Linux: the buttons an automated test presses on the first start's screen\n"
+		"(no game data), one each half second: \"up\", \"down\", \"a\" and \"b\",\n"
+		"separated by commas; empty waits for the player." },
 	{ "debug.update_from", _config_string, "\"\"", "HALO_UPDATE_FROM", _environment_value, _platform_desktop,
 		"A release's zip file to update to, for testing updates: the game offers\n"
 		"it as a new version without asking GitHub, even when it has no build\n"
@@ -1470,6 +1491,8 @@ static const struct config_setting config_settings[] =
 #define CONFIG_PLATFORM (_platform_desktop | _platform_web)
 #elif defined(_WIN32)
 #define CONFIG_PLATFORM (_platform_desktop | _platform_windows)
+#elif defined(HALO_IOS)
+#define CONFIG_PLATFORM (_platform_desktop | _platform_guest | _platform_ios)
 #elif defined(HALO_GUEST)
 #define CONFIG_PLATFORM (_platform_desktop | _platform_guest)
 #else

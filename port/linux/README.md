@@ -103,25 +103,42 @@ sequence:
 4. `assets/` in the current folder, and `assets/` in the repository that
    contains the executable.
 
-If the game finds no data, it asks for an Xbox disc image (`.xiso` or
-`.iso`). This occurs at the first start. First the game looks for a disc
-image in the folder that it copies `maps/` to (the game's folder: the
-folder of the release, above `bin/`, or of the executable; a name that ends
-in `.iso` or `.xiso`, in capitals or not, or a link to the image). If it finds one, it names that image in its
-question:
+If the game finds no data (its first start), it looks for your Xbox disc
+image itself and shows what it finds on a screen of its own, in its window
+(`port/linux/src/first_start.c`). The screen works with a controller (the
+D-pad or the left stick, A to choose, B to quit), the keyboard (the arrows,
+Enter, Escape), the mouse and touch. It asks nothing of the desktop, so it
+works in the Steam Deck's Game Mode and on the Steam Frame, where no system
+dialog can be shown, and on a desktop without a file picker.
 
-- Select "No" to stop the game.
-- Select "Yes" to copy `maps/` from the disc image. If the game found an
-  image next to the executable, it uses that image and shows no file picker.
-  Otherwise it opens a file picker: select the disc image, or cancel to see
-  the question again. The game copies `maps/` next to the executable and
-  shows the progress. If the copy from the image found next to the
-  executable fails, the next "Yes" opens the file picker.
+The game looks in these places, a few folders deep (it skips hidden folders
+and Steam's game folders, and stops after 3 seconds):
 
-On Linux, the file picker needs the desktop portal or `zenity`. If neither
-is present, the game says to put the disc image next to the executable (or
-to install `zenity`) and stops. Put the image there and start the game
-again.
+1. Downloads and the Desktop (the XDG user folders, else `~/Downloads` and
+   `~/Desktop`).
+2. SD cards and USB drives (below `/run/media` and `/media`). A Steam
+   Deck's SD card is shown as "SD card".
+3. The home folder.
+4. The game's folder, which it copies `maps/` to (the folder of the
+   release, above `bin/`, or of the executable). A link to the image
+   there is found too.
+
+It offers each disc image of Halo (a name that ends in `.iso` or `.xiso`, in
+capitals or not, whose file system the game reads to check that it holds
+Halo's `maps/ui.map`), and each maps folder copied from a disc (a folder
+with the Xbox game's `ui.map`; Halo PC's maps are not offered), with the
+place and the size of each. Choose one to copy its maps (about 2 GB) to the
+game's folder. The screen shows the progress, and then the game starts.
+
+If the game finds nothing, the screen says where to put the image: put it
+in Downloads or on the SD card (from another computer, or with Steam's file
+transfer), then choose "Look again". On a desktop (not under gamescope, and
+not in the VR build), the screen also has "Browse for the disc image...",
+the desktop's file picker (through the desktop portal or `zenity`). Where
+neither is present, the screen says so, and you can still put the image in
+Downloads and choose "Look again". The game does not stop. A copy that
+fails (an incomplete image, a full disk) is shown on the same screen;
+"Back" looks again.
 
 The game writes the copy to `maps.partial`. When the copy is complete, the
 game changes the name to `maps`. If the copy stops before it is complete,
@@ -138,6 +155,11 @@ Do the set-up in Desktop Mode:
 3. When it asks where your game's maps are, select the disc image (`.iso`
    or `.xiso`) or the maps folder copied from the disc.
 4. Start OpenH1 from the library in Game Mode.
+
+Step 3 can be skipped: put the disc image in Downloads or on the SD card
+(in Game Mode too, with Steam's file transfer from another computer), and
+start OpenH1 from Game Mode. Its first start finds the image and copies the
+maps (refer to "Game data", above).
 
 `install.sh` (`tools/linux_install.sh`, at the top of every Linux
 release's tree; the Steam Frame's package has the same script, "Steam
@@ -163,10 +185,9 @@ Frame"):
   copied to `maps.partial`, then given the name `maps`, as the game does.
   A disc image is the game's to copy (its first start, above):
   `install.sh` puts a link to it in the game's folder, where the game finds
-  it without the file picker, and asks to start the game once in Desktop
-  Mode to copy the maps (about 2 GB). Select "Yes" when the game asks. Do
-  this in Desktop Mode: in Game Mode (gamescope), a system dialog stops the
-  game.
+  it, and asks to start the game once to copy the maps (about 2 GB).
+  Choose the image when the game shows it. Starting the game from Game Mode
+  does the same.
 - Writes the menu entry `~/.local/share/applications/openh1.desktop`: the
   release's `share/applications/openh1.desktop`, with the installed
   `bin/openh1`, its folder and its icon
@@ -480,7 +501,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.max_fps` | `0` | `HALO_MAX_FPS` | With vsync off, the most frames each second. `0`: twice the display's refresh rate. `-1`: no limit, which can hang some Intel graphics (Raptor Lake), resetting the desktop's graphics too. |
 | `display.battery_saver` | `"off"` | `HALO_BATTERY_SAVER` | Draw less, for a longer battery and a cooler machine. `"on"`: each frame stays on screen for a whole number of the display's refreshes, 30 to 60 frames each second (60 at 60 or 120 Hz, 45 at 90 Hz), and the settings `display.graphics` chooses that are commented out are drawn at their Classic values; those set keep their own. `"auto"`: on while the machine runs on its battery, off on its charger, as SDL says (a machine without a battery, or one that cannot tell, is taken to be on its charger). `"off"`: never. Not in VR. The game plays the same. Video Setup > Battery Saver. Refer to "Battery saver". |
 | `display.graphics` | `"enhanced"` | `HALO_GRAPHICS` | The look of the 3D view, as one choice. `"classic"`: as the Xbox drew it. `"enhanced"`: the port's improvements together, each as far as the machine's GPU does it well. It chooses `display.anti_aliasing`, `display.anisotropic_filtering`, `display.shadow_resolution`, `display.per_pixel_lighting`, `display.model_detail` and `display.dynamic_lights` where they are commented out; each of them set wins over it. Video Setup > Graphics > Preset. Refer to "Classic and Enhanced". |
-| `display.anti_aliasing` | `display.graphics`'s | `HALO_ANTI_ALIASING` | The smoothing of jagged edges, which the Xbox did not have. `"off"`: none, as on the Xbox. `"fxaa"` or `"smaa"`: a pass over the 3D view after the game draws it. The HUD and the menus stay sharp. SMAA is the sharper and costs more. `"ssaa2x"`: the game draws at two times the resolution in each direction (at most the GPU's largest texture), and the picture is scaled down. The GPU does four times the work. Not with `display.resolution_scaling = "original"`. `"msaa2x"`, `"msaa4x"` or `"msaa8x"`: each pixel of the 3D view has that many samples (at most the GPU's). With OpenGL ES (the web), `"smaa"` gives FXAA; there and on Android, `"ssaa2x"` gives none. The VR mode's eyes have neither pass. A change applies from the next frame. Refer to "Anti-aliasing" in "What operates". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
+| `display.anti_aliasing` | `display.graphics`'s | `HALO_ANTI_ALIASING` | The smoothing of jagged edges, which the Xbox did not have. `"off"`: none, as on the Xbox. `"fxaa"` or `"smaa"`: a pass over the 3D view after the game draws it. The HUD and the menus stay sharp. SMAA is the sharper and costs more. `"ssaa2x"`: the game draws at two times the resolution in each direction (at most the GPU's largest texture), and the picture is scaled down. The GPU does four times the work. Not with `display.resolution_scaling = "original"`. `"msaa2x"`, `"msaa4x"` or `"msaa8x"`: each pixel of the 3D view has that many samples (at most the GPU's). With OpenGL ES (the web), `"smaa"` gives FXAA; there and on Android, `"ssaa2x"` gives none. On iOS `display.graphics = "enhanced"` gives `"msaa4x"` (port/ios/README.md). The VR mode's eyes have neither pass. A change applies from the next frame. Refer to "Anti-aliasing" in "What operates". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.prepare_shaders` | `true` | `HALO_PREPARE_SHADERS` | `true`: as a map loads, its first frame (and the first of each of its structures) is drawn unseen through every shader its tags hold, in each way the game's code draws them, so that the renderer makes their shaders and pipelines during the loading screen, not in play (`port/assets/render/README.md`, "A map's enumeration"). `false`: each is made the first time a draw needs it, which the draw waits for. |
 | `debug.gpu_flush_draws` | `-1` | `HALO_GPU_FLUSH_DRAWS` | The OpenGL backend only (the Windows build): flush the GPU's pipeline every this many draws. `-1`: every 3 on Intel graphics with Mesa's OpenGL driver, which could otherwise hang in the game's long runs of small draws and reset the desktop's graphics too. `0`: never. It does nothing with Vulkan (Linux, Android) or Metal (macOS). |
 | `display.interpolation` | `true` | `HALO_INTERPOLATION` | `true`: one frame for each refresh of the display. `false`: 30 frames each second, as on the Xbox. Refer to "Frame rate". |
@@ -588,6 +609,7 @@ the setting for one start of the game. It has priority over the file.
 | `streamer.swearing` | `"strong"` | `HALO_STREAMER_SWEARING` | With `streamer.enabled`, the swearing and sexual words hidden: `"off"`, `"severe"`, `"strong"` or `"mild"`. CENSOR SWEARING in Settings > Network Setup > Streamer Mode. |
 | `streamer.insults` | `"off"` | `HALO_STREAMER_INSULTS` | With `streamer.enabled`, the insults that are not slurs hidden: `"off"`, `"severe"`, `"strong"` or `"mild"`. CENSOR INSULTS in Settings > Network Setup > Streamer Mode. |
 | `crash_reports.upload` | `"ask"` | `HALO_CRASH_REPORTS` | Windows only. `"yes"`: the game sends a report of each crash to the developers. `"no"`: the game sends no reports. `"ask"`: the game asks at the next crash and writes the answer here. Refer to "Crash reports" in [port/windows/README.md](../windows/README.md#crash-reports). |
+| `debug.first_start_input` | `""` | `HALO_FIRST_START_INPUT` | The buttons an automated test presses on the first start's screen (no game data), one each half second: `up`, `down`, `a` and `b`, separated by commas. Empty: the player's. |
 | `debug.update_answer` | `""` | `HALO_UPDATE_ANSWER` | The answer to the update question, for automatic tests: `yes`, `no` or `never`. Empty: the game asks. |
 | `debug.update_from` | `""` | `HALO_UPDATE_FROM` | A release's zip file to update to, for tests of updates: the game offers it as a new version without asking GitHub, also when the build has no build number, but not in the version that the update starts. Empty: the game asks GitHub. |
 | `debug.load_trace` | `false` | `HALO_LOAD_TRACE` | Log map loading checkpoints with absolute monotonic wall, thread and process CPU seconds. Subtract timestamps to measure phases; process CPU includes worker threads. Set `HALO_LOAD_TRACE_DETAIL=1` to add sampled preparation CPU timings and detailed renderer traces; measure final loading times without these extra diagnostics. |
@@ -804,9 +826,10 @@ look for updates in any place.
 The game needs: glibc 2.35 or later (or the glibc of the computer that
 built it), the Vulkan loader (`libvulkan.so.1`) and a driver with Vulkan
 1.3, the X11 or Wayland client libraries, and the PipeWire, PulseAudio or
-ALSA client libraries for sound: refer to "Requirements". The disc image
-picker of the first start is the desktop's file dialog, through
-`xdg-desktop-portal` (or `zenity`).
+ALSA client libraries for sound: refer to "Requirements". The first start
+finds the disc image itself; its "Browse for the disc image..." is the
+desktop's file dialog, through `xdg-desktop-portal` (or `zenity`), which
+the game does without.
 
 The 64-bit ARM build downloads `OpenH1-Linux-ARM64.zip` (or
 `-debug.zip`), not the x86-64 one. The 64-bit x86 build downloads
@@ -2018,9 +2041,9 @@ tools/frame_install.sh <frame>
   show it until it restarts.
 - The maps go in `~/apps/halo-vr/maps` (or `paths.data`); the install
   says so when there are none. Opened on the Frame, it first asks for the
-  disc's maps folder (`kdialog`) and copies its `.map` files (not a disc
-  image: the game, in the headset, does not copy one at its first
-  start).
+  disc's maps folder (`kdialog`) and copies its `.map` files. Or put the
+  disc image in the Frame's Downloads: the game's first start, in the
+  headset, finds it and copies its maps ("Game data").
 - Settings of your own for the launcher (`HALO_*=value` lines) go in
   `~/apps/halo-vr/halo-vr.env`, which updates keep, or in the shortcut's
   launch options in Steam (`HALO_VR=0 %command%`).

@@ -114,6 +114,18 @@ struct texture_entry
 	the whole of it comes first */
 	id<MTLTexture> previous;
 	uint8_t present;
+	/* (frame-end discards) the frame it was first used in; how many frames
+	in a row its first use was a clear of the whole of it, which leaves its
+	contents at the end of the frame before unread; the last frame whose
+	end discarded them */
+	uint64_t first_use_frame, end_discarded_frame;
+	uint32_t end_unread_frames;
+	/* multisampled is memoryless: its samples never leave tile memory
+	(multisampled_demote) */
+	BOOL multisampled_memoryless;
+	id<MTLTexture> multisampled_next;
+	/* the last frame a pass loaded its samples */
+	uint64_t samples_loaded_frame;
 };
 
 /* a shader: its function, once there is one (made on the making queue:
@@ -260,6 +272,12 @@ static struct
 	BOOL aside;
 	/* the frame whose first return to the parked pass ended it */
 	uint64_t aside_frame;
+	/* the main command buffer's pass (encoder, or the parked one): its
+	targets, and which of its attachments' stores are decided as it ends
+	(frame-end discards); the frame's last pass is ending */
+	uint32_t encoder_color, encoder_depth;
+	BOOL encoder_color_deferred, encoder_depth_deferred, encoder_stencil_deferred;
+	BOOL frame_ending;
 	struct
 	{
 		id<MTLRenderCommandEncoder> encoder;
@@ -671,12 +689,207 @@ static void profile_log(void)
 	atomic_store(&profile.state, 0);
 }
 
+/* ---------- frame-end discards
+
+A tile-based GPU (Apple's: the iPhone's, the iPad's, Apple silicon Macs')
+draws each pass in tile memory and stores its attachments into their
+textures at the pass's end: tens of megabytes at the screen's size for a
+depth and stencil target, four times the colour's for a multisampled one.
+Where nothing reads them before they are cleared again, the store is
+wasted. The last pass of a frame decides its depth, stencil and
+multisampled colour attachments' stores as it ends (deferred store
+actions): a target whose first use in each of the last
+FRAME_END_DISCARD_FRAMES frames was a clear of the whole of it (not a
+load, a draw's read, a copy or a resolve) has its contents at the frame's
+end discarded (a multisampled colour is resolved, its samples dropped).
+The game clears its depth and its multisampled targets at each frame's
+start, so their stores at the frame's end go. A first use that is not a
+clear starts the count again (and is logged once, if the contents were
+discarded: that frame read what the discard left). The other passes, and
+the targets read at the next frame's start, store as before.
+HALO_METAL_DISCARDS=0: none. */
+
+#define FRAME_END_DISCARD_FRAMES 30
+
+static struct texture_entry *texture_get(uint32_t texture);
+
+static int discards_enabled = -1;
+
+/* (each use of a texture: a clear of the whole of it, or a use that wants
+its contents) */
+static void texture_first_use(struct texture_entry *entry, BOOL cleared)
+{
+	static BOOL logged;
+
+	if (!entry || entry->first_use_frame == metal.frame_number)
+		return;
+	entry->first_use_frame = metal.frame_number;
+	if (cleared)
+	{
+		if (entry->end_unread_frames < FRAME_END_DISCARD_FRAMES)
+			entry->end_unread_frames++;
+		return;
+	}
+	if (entry->end_discarded_frame && entry->end_discarded_frame + 1 == metal.frame_number && !logged)
+	{
+		host_logf(HOST_LOG_WARN, "metal: a target's contents discarded at a frame's end were read by the next frame "
+			"(its stores kept from now on)");
+		logged = YES;
+	}
+	entry->end_unread_frames = 0;
+}
+
+/* whether the pass ending now discards the target's contents */
+static BOOL frame_end_discards(struct texture_entry *entry)
+{
+	if (discards_enabled < 0)
+		discards_enabled = !getenv("HALO_METAL_DISCARDS") || atoi(getenv("HALO_METAL_DISCARDS")) != 0;
+	return discards_enabled && entry && metal.frame_ending && entry->end_unread_frames >= FRAME_END_DISCARD_FRAMES;
+}
+
+/* a memoryless multisampled attachment (texture_create) that a pass is
+to load or store: it becomes a texture in memory, for the frames after
+this one (this pass loads or stores nothing: what it would have read is
+lost, once) */
+static void multisampled_demote(struct texture_entry *entry, const char *why)
+{
+	static int logged;
+	MTLTextureDescriptor *descriptor;
+
+	if (!entry || !entry->multisampled_memoryless)
+		return;
+	descriptor = [MTLTextureDescriptor new];
+	descriptor.textureType = MTLTextureType2DMultisample;
+	descriptor.pixelFormat = entry->multisampled.pixelFormat;
+	descriptor.width = entry->multisampled.width;
+	descriptor.height = entry->multisampled.height;
+	descriptor.sampleCount = entry->multisampled.sampleCount;
+	descriptor.usage = MTLTextureUsageRenderTarget;
+	descriptor.storageMode = MTLStorageModePrivate;
+	entry->multisampled_memoryless = NO;
+	entry->end_unread_frames = 0;
+	/* (the pass already begun keeps the memoryless one: the next has this) */
+	entry->multisampled_next = [metal.device newTextureWithDescriptor:descriptor];
+	if (logged < 8)
+	{
+		host_logf(HOST_LOG_INFO, "metal: a %lux%lu multisampled target's samples are wanted beyond a pass (%s, frame %llu): "
+			"kept in memory from now on", (unsigned long)descriptor.width, (unsigned long)descriptor.height, why,
+			(unsigned long long)metal.frame_number);
+		logged++;
+	}
+}
+
+static BOOL multisampled_memoryless_supported(void);
+
+/* frames in a row with no pass loading a multisampled target's samples (and
+the contents at each end unread) before its samples go back to being
+memoryless: a frame's structure changes at a map's start, the loading
+screen's passes loading what the game's next frames clear */
+#define MEMORYLESS_AGAIN_FRAMES 120
+
+/* (a pass begins on the multisampled attachment, which it loads or not)
+the texture in memory that a demotion made, if any; or, the samples
+loaded by no pass for long, memoryless again */
+static void multisampled_current(struct texture_entry *entry, BOOL loads)
+{
+	if (!entry)
+		return;
+	if (loads)
+		entry->samples_loaded_frame = metal.frame_number;
+	if (entry->multisampled_next)
+	{
+		entry->multisampled = entry->multisampled_next;
+		entry->multisampled_next = nil;
+	}
+	else if (!loads && !entry->multisampled_memoryless && metal.options.aside_continue &&
+		multisampled_memoryless_supported() && metal.frame_number > entry->samples_loaded_frame + MEMORYLESS_AGAIN_FRAMES &&
+		entry->end_unread_frames >= FRAME_END_DISCARD_FRAMES)
+	{
+		MTLTextureDescriptor *descriptor = [MTLTextureDescriptor new];
+		id<MTLTexture> memoryless;
+
+		descriptor.textureType = MTLTextureType2DMultisample;
+		descriptor.pixelFormat = entry->multisampled.pixelFormat;
+		descriptor.width = entry->multisampled.width;
+		descriptor.height = entry->multisampled.height;
+		descriptor.sampleCount = entry->multisampled.sampleCount;
+		descriptor.usage = MTLTextureUsageRenderTarget;
+		descriptor.storageMode = MTLStorageModeMemoryless;
+		memoryless = [metal.device newTextureWithDescriptor:descriptor];
+		if (memoryless)
+		{
+			static int logged;
+
+			entry->multisampled = memoryless;
+			entry->multisampled_memoryless = YES;
+			if (logged++ < 8)
+				host_logf(HOST_LOG_INFO, "metal: a %lux%lu multisampled target's samples memoryless again (frame %llu)",
+					(unsigned long)descriptor.width, (unsigned long)descriptor.height,
+					(unsigned long long)metal.frame_number);
+		}
+	}
+}
+
+/* the stores of the pass ending (its attachments' deferred actions:
+encoder) */
+static void encoder_stores(void)
+{
+	struct texture_entry *color = texture_get(metal.encoder_color), *depth = texture_get(metal.encoder_depth);
+
+	if (metal.encoder_color_deferred)
+	{
+		BOOL discard = frame_end_discards(color);
+
+		/* (memoryless samples cannot be stored: they go as the pass ends,
+		resolved, and a pass that loads them again keeps them in memory from
+		then on, multisampled_demote) */
+		if (!discard && color && color->multisampled_memoryless)
+		{
+			discard = YES;
+		}
+
+		[metal.encoder setColorStoreAction:discard ? MTLStoreActionMultisampleResolve :
+			MTLStoreActionStoreAndMultisampleResolve atIndex:0];
+		if (discard)
+			color->end_discarded_frame = metal.frame_number;
+		if (profile.current >= 0)
+			profile.passes[profile.current].stores[0] = (int8_t)(discard ? MTLStoreActionMultisampleResolve :
+				MTLStoreActionStoreAndMultisampleResolve);
+	}
+	if (metal.encoder_depth_deferred)
+	{
+		BOOL discard = frame_end_discards(depth);
+		MTLStoreAction action;
+
+		if (!discard && depth && depth->multisampled_memoryless && metal.multisampled)
+		{
+			discard = YES;
+		}
+		action = discard ? MTLStoreActionDontCare : MTLStoreActionStore;
+
+		[metal.encoder setDepthStoreAction:action];
+		if (metal.encoder_stencil_deferred)
+			[metal.encoder setStencilStoreAction:action];
+		if (discard)
+			depth->end_discarded_frame = metal.frame_number;
+		if (profile.current >= 0)
+		{
+			profile.passes[profile.current].stores[1] = (int8_t)action;
+			if (metal.encoder_stencil_deferred)
+				profile.passes[profile.current].stores[2] = (int8_t)action;
+		}
+	}
+	metal.encoder_color_deferred = metal.encoder_depth_deferred = metal.encoder_stencil_deferred = NO;
+}
+
 static void encoder_end(void)
 {
 	if (metal.encoder)
 	{
 		if (metal.visibility_active && metal.visibility_entry >= 0)
 			[metal.encoder setVisibilityResultMode:MTLVisibilityResultModeDisabled offset:0];
+		if (!metal.aside)
+			encoder_stores();
 		[metal.encoder endEncoding];
 		metal.encoder = nil;
 		metal.visibility_entry = -1;
@@ -1202,7 +1415,7 @@ static MTLCompileOptions *compile_options(void)
 	multiply by a reciprocal, which safe maths would make correctly rounded
 	IEEE divides of about 25 instructions each: xgpu_msl.c,
 	xgpu_metal_combiner.c) */
-	if (@available(macOS 15.0, *))
+	if (@available(macOS 15.0, iOS 18.0, *))
 		options.mathMode = MTLMathModeSafe;
 	else
 		options.fastMathEnabled = NO;
@@ -1413,6 +1626,23 @@ static void texture_clear_new(id<MTLTexture> texture)
 	}
 }
 
+/* whether multisampled attachments are made memoryless (Apple's GPUs: every
+iOS device's, Apple silicon Macs'), with HALO_METAL_MEMORYLESS=1 alone:
+the game ends and resumes its 3D view's pass now and then (every few
+hundred frames in a10), and a memoryless target's samples are gone then,
+which shows for a frame (multisampled_demote). The frame-end discards
+spare the bandwidth without that; memoryless spares the memory too
+(about 130 MB at an iPhone Pro Max's resolution with MSAA 4x). */
+static BOOL multisampled_memoryless_supported(void)
+{
+	static int supported = -1;
+
+	if (supported < 0)
+		supported = [metal.device supportsFamily:MTLGPUFamilyApple1] && getenv("HALO_METAL_MEMORYLESS") &&
+			atoi(getenv("HALO_METAL_MEMORYLESS")) != 0;
+	return supported != 0;
+}
+
 uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *description)
 {
 	const struct xgpu_metal_format_information *format = format_get(description->format);
@@ -1502,6 +1732,13 @@ uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *
 		multisampled.sampleCount = description->samples;
 		multisampled.usage = MTLTextureUsageRenderTarget;
 		multisampled.storageMode = MTLStorageModePrivate;
+		/* (with the 3D view in one pass, its samples need never leave
+		tile memory: none of memory's, which is a lot at a phone's
+		resolution, until a pass would load or store them) */
+		entry->multisampled_memoryless = metal.options.aside_continue && multisampled_memoryless_supported();
+		if (entry->multisampled_memoryless)
+			multisampled.storageMode = MTLStorageModeMemoryless;
+		entry->multisampled_next = nil;
 		entry->multisampled = [metal.device newTextureWithDescriptor:multisampled];
 		if (!entry->multisampled)
 			entry->texture = nil;
@@ -1520,7 +1757,7 @@ uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *
 	{
 		texture_clear_new(entry->texture);
 		entry->main_written = recording_serial();
-		if (entry->multisampled)
+		if (entry->multisampled && !entry->multisampled_memoryless)
 			texture_clear_new(entry->multisampled);
 		entry->used = recording_serial();
 	}
@@ -1585,6 +1822,8 @@ void xgpu_metal_texture_copy(uint32_t source, uint32_t destination)
 		destinationOrigin:MTLOriginMake(0, 0, 0)];
 	[blit endEncoding];
 	from->used = to->used = from->main_sampled = to->main_written = recording_serial();
+	texture_first_use(from, NO);
+	texture_first_use(to, NO);
 	statistics_add(&metal.statistics.feedback_copies, 1);
 }
 
@@ -1600,6 +1839,10 @@ void xgpu_metal_texture_resolve(uint32_t texture)
 	if (!metal.in_frame)
 		xgpu_metal_frame_begin();
 	pass_end();
+	/* (memoryless samples, gone with the pass that drew them: kept from
+	now on, and the resolve's own source the texture in memory) */
+	multisampled_demote(entry, "a resolve");
+	multisampled_current(entry, YES);
 	format = format_get(entry->description.format);
 	/* (an empty pass that loads the samples and resolves them) */
 	pass = [MTLRenderPassDescriptor renderPassDescriptor];
@@ -1619,6 +1862,7 @@ void xgpu_metal_texture_resolve(uint32_t texture)
 	}
 	render = [command_buffer() renderCommandEncoderWithDescriptor:pass];
 	[render endEncoding];
+	texture_first_use(entry, NO);
 	entry->used = entry->main_written = recording_serial();
 }
 
@@ -2049,7 +2293,10 @@ uint64_t xgpu_metal_frame_end(uint32_t present)
 
 	if (!metal.in_frame)
 		xgpu_metal_frame_begin();
+	/* (the frame's last pass: its stores at the frame's end) */
+	metal.frame_ending = YES;
 	pass_end();
+	metal.frame_ending = NO;
 	slot = metal.slot;
 	entries = slot->visibility_entries;
 	number = slot->number;
@@ -2199,7 +2446,7 @@ void xgpu_metal_set_targets(uint32_t color, uint32_t color_level, uint32_t color
 		metal.parked.color_layer == color_layer && metal.parked.depth == (depth_entry ? depth : 0) &&
 		metal.parked.multisampled == (multisampled != 0))
 	{
-		if (metal.aside_frame == metal.frame_number)
+		if (metal.aside_frame == metal.frame_number || metal.options.aside_continue)
 		{
 			encoder_end();
 			aside_unpark();
@@ -2315,11 +2562,20 @@ static id<MTLRenderCommandEncoder> encoder(void)
 
 		if (color->multisampled && metal.multisampled)
 		{
+			multisampled_current(color, metal.color_load != MTLLoadActionClear);
+			if (color->multisampled_memoryless && metal.color_load != MTLLoadActionClear)
+			{
+				multisampled_demote(color, "a pass loading them");
+				metal.color_load = MTLLoadActionDontCare;
+			}
 			attachment.texture = color->multisampled;
 			attachment.resolveTexture = color->texture;
 			attachment.resolveLevel = metal.color_level;
 			attachment.resolveSlice = metal.color_layer;
-			attachment.storeAction = MTLStoreActionStoreAndMultisampleResolve;
+			/* (decided as the pass ends: encoder_stores; an aside
+			pass is never multisampled) */
+			attachment.storeAction = MTLStoreActionUnknown;
+			metal.encoder_color_deferred = YES;
 		}
 		else
 		{
@@ -2330,6 +2586,7 @@ static id<MTLRenderCommandEncoder> encoder(void)
 		}
 		attachment.loadAction = metal.color_load;
 		attachment.clearColor = metal.clear_color;
+		texture_first_use(color, metal.color_load == MTLLoadActionClear);
 		color->used = serial;
 		if (!metal.aside)
 			color->main_written = serial;
@@ -2337,19 +2594,38 @@ static id<MTLRenderCommandEncoder> encoder(void)
 	if (depth)
 	{
 		const struct xgpu_metal_format_information *format = format_get(depth->description.format);
-		id<MTLTexture> texture = depth->multisampled && metal.multisampled ? depth->multisampled : depth->texture;
+		id<MTLTexture> texture;
+
+		if (depth->multisampled && metal.multisampled)
+		{
+			multisampled_current(depth, metal.depth_load != MTLLoadActionClear ||
+				(format->stencil && metal.stencil_load != MTLLoadActionClear));
+			if (depth->multisampled_memoryless && (metal.depth_load != MTLLoadActionClear ||
+				(format->stencil && metal.stencil_load != MTLLoadActionClear)))
+			{
+				multisampled_demote(depth, "a pass loading them");
+				metal.depth_load = metal.stencil_load = MTLLoadActionDontCare;
+			}
+		}
+		texture = depth->multisampled && metal.multisampled ? depth->multisampled : depth->texture;
 
 		pass.depthAttachment.texture = texture;
 		pass.depthAttachment.loadAction = metal.depth_load;
 		pass.depthAttachment.clearDepth = metal.clear_depth;
-		pass.depthAttachment.storeAction = MTLStoreActionStore;
+		/* (decided as the pass ends: encoder_stores; the main command
+		buffer's passes alone have depth) */
+		pass.depthAttachment.storeAction = metal.aside ? MTLStoreActionStore : MTLStoreActionUnknown;
+		metal.encoder_depth_deferred = !metal.aside;
 		if (format->stencil)
 		{
 			pass.stencilAttachment.texture = texture;
 			pass.stencilAttachment.loadAction = metal.stencil_load;
 			pass.stencilAttachment.clearStencil = metal.clear_stencil;
-			pass.stencilAttachment.storeAction = MTLStoreActionStore;
+			pass.stencilAttachment.storeAction = metal.aside ? MTLStoreActionStore : MTLStoreActionUnknown;
+			metal.encoder_stencil_deferred = !metal.aside;
 		}
+		texture_first_use(depth, metal.depth_load == MTLLoadActionClear &&
+			(!format->stencil || metal.stencil_load == MTLLoadActionClear));
 		depth->used = serial;
 		depth->main_written = serial;
 	}
@@ -2400,6 +2676,11 @@ static id<MTLRenderCommandEncoder> encoder(void)
 				timed->stores[2] = (int8_t)pass.stencilAttachment.storeAction;
 			}
 		}
+	}
+	if (!metal.aside)
+	{
+		metal.encoder_color = color ? metal.color : 0;
+		metal.encoder_depth = depth ? metal.depth : 0;
 	}
 	metal.encoder = [(metal.aside ? aside_buffer() : command_buffer()) renderCommandEncoderWithDescriptor:pass];
 	if (metal.aside)
@@ -3027,6 +3308,7 @@ static BOOL draw_state_apply(id<MTLRenderCommandEncoder> render)
 			entry->used = serial;
 			if (!metal.aside)
 				entry->main_sampled = serial;
+			texture_first_use(entry, NO);
 		}
 	}
 	if (dirty & _dirty_streams)

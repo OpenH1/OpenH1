@@ -101,6 +101,8 @@ from: port/ios/README.md).
 #include <time.h>
 #include <unistd.h>
 
+static void drawn_size(int *width, int *height);
+
 #define PRESENT_IMAGES 2
 #define LOADING_UPLOADS 3
 /* the longest a frame waits for an image before the oldest queued frame is
@@ -367,7 +369,7 @@ static id<MTLFunction> post_function(int which)
 	if (found)
 		return found;
 	options = [MTLCompileOptions new];
-	if (@available(macOS 15.0, *))
+	if (@available(macOS 15.0, iOS 18.0, *))
 		options.mathMode = MTLMathModeSafe;
 	else
 		options.fastMathEnabled = NO;
@@ -965,6 +967,12 @@ static CAFrameRateRange link_rate_range(int saving);
 		pass = [MTLRenderPassDescriptor renderPassDescriptor];
 		pass.colorAttachments[0].texture = drawable.texture;
 		pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+		/* (a frame of the drawable's own size covers all of it: nothing to
+		clear, which a tile-based GPU writes into each tile before the draw
+		writes over it) */
+		if (!loading_frame.active && image && image.width == drawable.texture.width &&
+			image.height == drawable.texture.height)
+			pass.colorAttachments[0].loadAction = MTLLoadActionDontCare;
 		pass.colorAttachments[0].storeAction = MTLStoreActionStore;
 		/* (black until the game's first frame: the window opens before the
 		game draws) */
@@ -1168,8 +1176,11 @@ static bool SDLCALL window_event(void *userdata, SDL_Event *event)
 	if (event->type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED &&
 		SDL_GetWindowFromID(event->window.windowID) == presentation.window)
 	{
-		atomic_store(&presentation.pixel_width, (uint32_t)event->window.data1);
-		atomic_store(&presentation.pixel_height, (uint32_t)event->window.data2);
+		int width = event->window.data1, height = event->window.data2;
+
+		drawn_size(&width, &height);
+		atomic_store(&presentation.pixel_width, (uint32_t)width);
+		atomic_store(&presentation.pixel_height, (uint32_t)height);
 	}
 	return true;
 }
@@ -1224,6 +1235,13 @@ int host_metal_initialize(void)
 #endif
 	options.library_path = shader_library_path();
 	options.page_size = (uint32_t)getpagesize();
+	/* (the 3D view in one pass on iOS, whose GPUs pay the most for a pass's
+	stores and loads: xgpu_metal.h; HALO_METAL_ASIDE_BREAK=1 or 0 chooses) */
+#if TARGET_OS_IPHONE
+	options.aside_continue = 1;
+#endif
+	if (getenv("HALO_METAL_ASIDE_BREAK") && *getenv("HALO_METAL_ASIDE_BREAK"))
+		options.aside_continue = !atoi(getenv("HALO_METAL_ASIDE_BREAK"));
 	options.guest_extent = host_memory_readable_extent;
 	result = xgpu_metal_initialize(&options);
 	if (result)
@@ -1241,6 +1259,26 @@ off) the link's rate, set on its thread at its next refresh */
 void host_metal_battery_saver(int on)
 {
 	atomic_store(&presentation.battery_saver, on ? 1 : 0);
+}
+
+#if TARGET_OS_IPHONE
+/* port/ios/touch_controls.m */
+void host_touch_overlay_install(void *window);
+/* port/ios/host_app.m: display.render_scale */
+float host_app_render_scale(void);
+#endif
+
+/* the window's pixels the game draws, and the drawables are made: on iOS
+display.render_scale of them, which the display scales up */
+static void drawn_size(int *width, int *height)
+{
+#if TARGET_OS_IPHONE
+	*width = (int)(*width * host_app_render_scale() + 0.5f) & ~1;
+	*height = (int)(*height * host_app_render_scale() + 0.5f) & ~1;
+#else
+	(void)width;
+	(void)height;
+#endif
 }
 
 /* (iOS: port/ios/host_app.m, as the app goes to the background and comes
@@ -1282,6 +1320,11 @@ int host_metal_window_open(uint32_t window)
 	can be, shows nothing until it is brought forward, and the drawables
 	presented meanwhile never reach the screen) */
 	SDL_RaiseWindow(object);
+#if TARGET_OS_IPHONE
+	/* (the touch controls over the game's view: port/ios/touch_controls.m) */
+	host_touch_overlay_install(SDL_GetPointerProperty(SDL_GetWindowProperties(object),
+		SDL_PROP_WINDOW_UIKIT_WINDOW_POINTER, NULL));
+#endif
 	presentation.layer = (__bridge CAMetalLayer *)SDL_Metal_GetLayer(presentation.view);
 	presentation.layer.device = xgpu_metal_device();
 	presentation.layer.pixelFormat = MTLPixelFormatBGRA8Unorm;
@@ -1291,6 +1334,7 @@ int host_metal_window_open(uint32_t window)
 	presentation.layer.opaque = YES;
 	presentation.layer.maximumDrawableCount = 3;
 	SDL_GetWindowSizeInPixels(object, &width, &height);
+	drawn_size(&width, &height);
 	atomic_store(&presentation.pixel_width, (uint32_t)width);
 	atomic_store(&presentation.pixel_height, (uint32_t)height);
 	presentation.layer.drawableSize = CGSizeMake(width, height);

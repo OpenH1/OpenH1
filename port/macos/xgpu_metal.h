@@ -346,6 +346,13 @@ struct xgpu_metal_options
 	thread. */
 	int (*guest_extent)(uint32_t address, uint32_t size, uint32_t limit_start, uint32_t limit_end,
 		uint32_t *start, uint32_t *end);
+	/* the large pass parked for the frame's first aside passes goes on
+	(0) rather than ending there (1: the frames identical, to the pixel, to
+	those drawn without aside passes; xgpu_metal.m, "aside passes"): one
+	pass for the whole 3D view, and with MSAA its samples never leave tile
+	memory, but a few pixels of some frames differ. HALO_METAL_ASIDE_BREAK
+	chooses either. */
+	int aside_continue;
 };
 
 /* what the front end's descriptions depend on */

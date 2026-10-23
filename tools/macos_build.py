@@ -202,6 +202,11 @@ class ApplePlatform:
     # another platform's guest image (generate_apple_build's "guest"), used
     # in place of building one: the iOS simulator's, which is the device's
     guest: Optional[Dict[str, Path]] = None
+    # more lists of host functions the guest imports (iOS's touch controls')
+    guest_imports: Optional[List[Path]] = None
+    # more of port/linux/src's files built into the host beside the
+    # platform.h stand-in (iOS's: the disc image's extractor, xiso.c)
+    shared_extra: Optional[List[str]] = None
 
 
 def macos_platform() -> ApplePlatform:
@@ -273,7 +278,8 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
         # the guest needs none of it)
         builtins_cc="", environment="gnu", platform_defines=MACOS_GUEST_DEFINES + target.guest_defines,
         extra_runtime=[LINUX_HOST_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
-        extra_imports=[LINUX_HOST_DIR / "host_imports.list", PORT_DIR / "host_imports.list"],
+        extra_imports=[LINUX_HOST_DIR / "host_imports.list", PORT_DIR / "host_imports.list",
+                       *(target.guest_imports or [])],
         extra_prototypes=[LINUX_HOST_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
         base_register=True, excluded_platform_sources=MACOS_GUEST_EXCLUDED)
 
@@ -351,7 +357,8 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
                     f"grep -E '^#define D3D(FORMAT|SIZE|TEXTURE)_' {xdk / 'xdk_d3d8.h'}) > $out"),
            description=f"{label} SHARED $out")
     shared_copies: List[Path] = []
-    for source_name in SHARED_SOURCES:
+    shared_sources = SHARED_SOURCES + list(target.shared_extra or [])
+    for source_name in shared_sources:
         n.build(outputs=shared_dir / source_name, rule=f"{name}_shared_copy", inputs=LINUX_DIR / "src" / source_name)
         shared_copies.append(shared_dir / source_name)
     n.build(outputs=shared_dir / "platform.h", rule=f"{name}_shared_copy", inputs=PORT_DIR / "xgpu_metal_platform.h")
@@ -360,7 +367,7 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
     shared_copies += [shared_dir / "platform.h", shared_dir / "xdk_enums.h"]
     shared_cflags = f"-I{shared_dir} {host_cflags}"
     shared_objects: List[Path] = []
-    for source in [shared_dir / source_name for source_name in SHARED_SOURCES if source_name.endswith(".c")] + \
+    for source in [shared_dir / source_name for source_name in shared_sources if source_name.endswith(".c")] + \
             [PORT_DIR / source_name for source_name in sorted(SHARED_USERS)]:
         obj = host_obj_dir / "shared" / (source.name + ".o")
         n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source, order_only=shared_copies,

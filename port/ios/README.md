@@ -144,9 +144,27 @@ macOS, and its event polls turn UIKit's run loop.
 
 ### The game data
 
-For now, copy the Xbox game's `maps` folder into the app's Documents with
-the Files app (On My iPhone, OpenH1) or Finder's device window (Files), or
-from a Mac:
+The players supply the Xbox game's maps. While the app's Documents have no
+`maps` folder of the Xbox game, the first start (`port/ios/data_import.m`,
+before the game starts) asks for one of:
+
+- **the disc image** (`.iso` or `.xiso`), chosen with the system's document
+  picker (On My iPhone, iCloud Drive, a USB drive, another app's storage)
+  and read where it lies: its `maps` folder is extracted into Documents by
+  the desktop builds' extractor (`port/linux/src/xiso.c`, built into the
+  host beside the renderer's shared parts), with a progress bar;
+- **a maps folder**, chosen the same way, whose files are copied;
+- **the maps folder copied by hand** into OpenH1's folder with the Files app
+  (On My iPhone, OpenH1) or Finder's window of the device, then "Look
+  again".
+
+What is found is checked as the macOS app checks it: `ui.map` must be the
+Xbox game's (the PC version's and Custom Edition's are refused, saying
+why). A copy goes to `maps.partial` and is named `maps` once whole.
+`HALO_DATA_ROOT`, or `paths.data` in `config.toml`, skips the screen.
+`HALO_IMPORT_ANSWER=<disc image or folder>` answers it, for tests.
+
+From a Mac, the maps can also be copied into the app's Documents directly:
 
 ```sh
 xcrun devicectl device copy to --device <device> --domain-type appDataContainer \
@@ -159,6 +177,69 @@ As the app goes to the background, the presentation stops (iOS refuses GPU
 work from the background) and the game waits in its next event poll until
 the app is back; iOS suspends the process meanwhile. In a network game, the
 other machines drop it after 15 seconds, as on Android.
+
+## Controls
+
+Game controllers (MFi, Xbox, DualSense, through the GameController
+framework) are SDL's, as on macOS: a pad paired while the game runs is
+taken at once.
+
+### Touch controls
+
+The on-screen controls are the Android app's (refer to "Touch controls" in
+[port/android/README.md](../android/README.md)), drawn by a UIKit view over
+the game's (`port/ios/touch_controls.m`, a port of `TouchControls.java`,
+`TouchLayout.java`, `TouchContext.java` and `GyroscopeAim.java`): the same
+layout on the same 960 x 540 grid, laid out inside the screen's safe area
+(clear of the sensor housing and the rounded corners), with the default
+places moved clear of the game's HUD, which keeps the corners of a wide
+screen (the move stick off the motion tracker; pause, back and the options
+by the hide toggle at the top's middle; the D-pad, light and grenade type
+at the left between the messages and the tracker; crouch by zoom), which
+`tools/test_ios_touch_layout.py` checks on the iPhones' and the iPads'
+shapes; the same pictures
+(the HUD's buttons in `display.hud_button_style`, Kenney's line icons) and
+captions (`input.touch_captions`), copied from the Android app's resources
+into the app's `touch/`; the buttons that follow the player's state; the
+move stick (fixed or floating), swipe aiming (with the stick's aim assist,
+`input.touch_aim_assist`) and gyroscope aiming (CoreMotion); the toolbar's
+hide and options, and the layout editor. The options are a panel of
+UIKit's: vibration (the phone's haptics, for a press and for port 0's
+rumble), gyroscope aiming, the floating stick, opacity, look sensitivity,
+editing the layout, and hiding, adding, copying and sizing buttons. The
+layout is kept in the app's preferences in the Android app's layout file
+format, and Export and Import (in the editor) write and read
+`touch-layout.txt` in the app's Documents, so a layout moves between the
+two.
+
+The overlay hands its state to the game through
+`port/android/host/host_touch.c`, which Android's shares (without JNI:
+`host_touch.h`), and the game reads it through the same host imports
+(`port/ios/host_imports.list`; `port/linux/src/touch_input.c`,
+`HALO_TOUCH_CONTROLS`). It shows only in a game (not in the menus or a
+cinematic), and with `input.touch_controls = "auto"` only while no
+controller, keyboard or mouse is connected (the system's list, and the
+game's controllers). While it does not show, every finger passes through
+to SDL's view: in the menus SDL makes them the mouse, whose pointer the
+menus take (the overlay turns `SDL_HINT_TOUCH_MOUSE_EVENTS` on there, and
+off in a game, where a tap would fire); in a game a tap skips a cinematic
+or types in the text chat (`touch_input.c`).
+
+## Settings
+
+The settings are the desktop builds' (`config.toml` in the app's Documents;
+refer to [port/linux/README.md](../linux/README.md)), with the touch
+controls' (`input.touch_controls`, `input.touch_captions`,
+`input.touch_aim_assist`: [port/android/README.md](../android/README.md)),
+and these of iOS's own:
+
+| Setting | Meaning |
+| --- | --- |
+| `display.render_scale` | The fraction of the screen's pixels the game draws, each way, from 0.25 to 1.0 (the default): the game's frames and the presentation's drawables are that size, and the display scales them up. 0.67 draws less than half the pixels. Read at start (`HALO_RENDER_SCALE`). |
+
+The host logs the device's thermal state at the start and as it changes
+(`thermal state: nominal`, `fair`, `serious`, `critical`): a hot phone
+slows its processor and its GPU.
 
 ## Metal on iOS
 
@@ -182,6 +263,17 @@ The Metal backend is the macOS one. What differs:
   its EDR headroom for `display.hdr`.
 - The Simulator's GPU has no binary archives (the pipelines' archive is not
   used there) and its drawables say nothing of their presentation.
+- The 3D view and the HUD are drawn in one pass (the aside passes' break,
+  which the Mac keeps for its recordings, is not made: "Aside passes" in
+  [port/macos/README.md](../macos/README.md)), and the frame's last pass
+  discards what the next frame clears ("Frame-end discards" there): a
+  phone's tile-based GPU stores none of the screen's depth and samples.
+- `display.graphics = "enhanced"` gives MSAA 4x on iOS (not SMAA), resolved
+  in tile memory: at the iPhone 15 Pro Max's 2796x1290, measured on an M1
+  (the same family of GPU), about SMAA's cost (a10: 7.1 ms of the GPU a
+  frame against 6.8; Blood Gulch with bots: 5.2 against 7.5), with the
+  geometry's edges smoother. `display.anti_aliasing = "smaa"` still
+  chooses SMAA.
 
 ## The Simulator
 
@@ -200,8 +292,6 @@ put `maps` in its `Documents`.
 
 ## Not done yet
 
-- Touch controls (the Android app's are Java: `port/android/app`), and the
-  first start's import of a disc image.
 - The safe areas: the game draws over the whole screen, the sensor housing's
   and the home indicator's edges too.
 - System link on a device: iOS lets apps send broadcasts only with the

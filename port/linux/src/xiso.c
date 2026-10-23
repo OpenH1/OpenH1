@@ -2,10 +2,12 @@
 XISO.C
 
 The maps folder out of an Xbox disc image, for the desktop games (Linux and
-Windows). When no data root has a maps folder, sdl_platform.c asks the player
-for their disc image of Halo and this copies the image's maps folder next to
-the executable. (The Android app's copy of this is XisoExtractor.java, the
-web page's xiso-worker.js.)
+Windows). When no data root has a maps folder, the first start (Linux's
+first_start.c, which finds the images itself and checks each with
+xiso_is_halo_image; Windows' sdl_platform.c) asks the player for their disc
+image of Halo and this copies the image's maps folder to the game's folder.
+(The Android app's copy of this is XisoExtractor.java, the web page's
+xiso-worker.js.)
 
 Written from a description of the Xbox's disc file system, XDVDFS
 (xboxdevwiki's XDVDFS page, https://xboxdevwiki.net/XDVDFS, and the format
@@ -591,6 +593,48 @@ done:
 }
 
 /* ---------- public code */
+
+int xiso_is_halo_image(const char *image_path)
+{
+	struct xiso_image image;
+	struct xiso_entry *entries = malloc(sizeof(*entries) * XISO_MAXIMUM_ENTRIES);
+	unsigned char *table = NULL;
+	unsigned long root_sector, root_size, maps_size;
+	int count, index, out_of_memory, found = 0;
+
+	memset(&image, 0, sizeof(image));
+	image.descriptor = entries ? open(image_path, O_RDONLY | O_LARGEFILE | O_CLOEXEC) : -1;
+	if (image.descriptor < 0)
+	{
+		free(entries);
+		return 0;
+	}
+	if (!xiso_find_volume(&image, &root_sector, &root_size))
+		goto done;
+	table = xiso_read_table(&image, root_sector, root_size, &out_of_memory);
+	if (!table)
+		goto done;
+	count = xiso_walk_table(table, root_size, 1, entries);
+	free(table);
+	table = NULL;
+	index = count > 0 ? xiso_maps_folder(entries, count) : 0;
+	if (count <= 0 || index >= count)
+		goto done;
+	maps_size = entries[index].size;
+	table = xiso_read_table(&image, entries[index].sector, maps_size, &out_of_memory);
+	if (!table)
+		goto done;
+	count = xiso_walk_table(table, maps_size, 0, entries);
+	for (index = 0; index < count && !found; index++)
+		found = xiso_name_is(entries[index].name, (int)strlen(entries[index].name), "ui.map");
+
+done:
+	free(table);
+	free(entries);
+	close(image.descriptor);
+	return found;
+}
+
 
 int xiso_extract_maps(const char *image_path, const char *destination, xiso_progress_proc progress, void *context,
 	char *error, int error_size)

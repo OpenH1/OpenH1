@@ -649,9 +649,10 @@ BOOL platform_sdl_initialize(void)
 	return TRUE;
 }
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
-/* ---------- first start without game data (xbox_files.c; the web page
-imports it itself) */
+#if !defined(HALO_ANDROID) && !defined(HALO_WEB) && (defined(_WIN32) || defined(HALO_MACOS))
+/* ---------- first start without game data (xbox_files.c), on Windows and
+macOS: the system's dialogs. (The Linux builds' is first_start.c, in the
+game's own window; the web page imports the data itself) */
 
 struct data_extraction
 {
@@ -2710,7 +2711,7 @@ void platform_pump_events(void)
 				SDL_ShowCursor();
 			}
 #endif
-#ifdef HALO_ANDROID
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
 			touch_input_cancel();
 #endif
 			break;
@@ -2722,7 +2723,10 @@ void platform_pump_events(void)
 			if (!input_state.mouse_released && !input_state.ui_pointer && !scoreboard_pointer_active)
 				platform_mouse_capture(TRUE);
 			break;
-#ifdef HALO_ANDROID
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
+		/* (on iOS the fingers the touch controls' overlay does not take: a
+		cinematic's skip, the text chat's keys; the menus take them as the
+		mouse, port/ios/touch_controls.m) */
 		case SDL_EVENT_FINGER_DOWN:
 		case SDL_EVENT_FINGER_MOTION:
 		case SDL_EVENT_FINGER_UP:

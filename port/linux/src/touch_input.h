@@ -17,6 +17,13 @@ on the game's main thread: a call from any other thread needs the lock.
 
 #include <SDL3/SDL_events.h>
 
+/* the on-screen touch controls: an overlay of the app's own over the game,
+Android's (port/android/app/.../TouchControls.java), the iPhone's
+(port/ios/touch_controls.m) and a browser's (port/web/site/touch.js) */
+#if defined(HALO_ANDROID) || defined(HALO_WEB) || defined(HALO_IOS)
+#define HALO_TOUCH_CONTROLS 1
+#endif
+
 /* feeds one finger event to the menus' pointer; x and y are 0..1 of the window */
 void touch_input_event(unsigned int type, const SDL_TouchFingerEvent *finger);
 
@@ -39,10 +46,10 @@ on-screen keyboard is up (port/linux/game/network_chat.c), and where the
 latest was, 0 to 1 across and down the window */
 int touch_input_chat_taps(float *x, float *y);
 
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
-/* the on-screen touch controls (port/android/app/.../TouchControls.java; in
-a browser, port/web/site/touch.js),
-an Android view over the game: tells them whether a menu is up and
+#ifdef HALO_TOUCH_CONTROLS
+/* the on-screen touch controls (port/android/app/.../TouchControls.java; on
+iOS, port/ios/touch_controls.m; in a browser, port/web/site/touch.js),
+a view over the game: tells them whether a menu is up and
 input.touch_controls, and adds their stick and buttons to port 0's state */
 void touch_input_controls(XINPUT_GAMEPAD *pad, int menus);
 

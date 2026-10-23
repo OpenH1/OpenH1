@@ -138,11 +138,14 @@ console. The port changes them to play as the North American (NTSC) maps do,
 so players of the two versions can play together.
 
 1. Start the game.
-2. At the first start, the game asks for the disc image. Select it in the
-   file picker. On Linux and Windows, a disc image (`.iso` or `.xiso`) next
-   to the executable is used without the file picker. Where no file picker
-   can be shown (on Linux, without the desktop portal or `zenity`), the game
-   says to put the disc image next to the executable, and stops.
+2. At the first start, the game asks for the disc image. On Linux (the
+   Steam Deck and the Steam Frame too), the game finds it itself: put the
+   image in Downloads, on the Desktop, in your home folder, on an SD card or
+   USB drive, or next to the game, and choose it on the game's own screen,
+   with a controller, the keyboard or the mouse. This works in the Steam
+   Deck's Game Mode and needs no file picker. On Windows, select it in the
+   file picker (a disc image next to `halo.exe` is used without one). The
+   macOS app asks for the maps folder copied from the disc instead.
 3. The game extracts the `maps/` folder. Then the game starts.
 
 The `maps/` folder holds the Xbox maps only. If it holds Halo PC's maps

@@ -336,9 +336,9 @@ These settings are only for Android:
 
 | Setting | Function |
 | --- | --- |
-| `input.touch_captions` | `true` (the default): what each of the touch controls' controller buttons does in the profile (JUMP, MELEE, FIRE) is written under it, in the HUD's font and colour. `false`: the buttons alone. The buttons are drawn in `display.hud_button_style`. |
-| `input.touch_aim_assist` | `true` (the default): the touch controls' swipe aiming gets the aim assist of a controller (the aim slows over a target and follows a moving one). `false`: none, as with a mouse; the bullets' own autoaim stays. |
-| `input.touch_controls` | The touch controls in a game. `"auto"` (the default): shown on a touchscreen while no controller is connected. `"on"`: also shown with a controller. `"off"`: never shown. A device without a touchscreen never shows them. The menus take taps in any case. |
+| `input.touch_captions` | (Android and iOS) `true` (the default): what each of the touch controls' controller buttons does in the profile (JUMP, MELEE, FIRE) is written under it, in the HUD's font and colour. `false`: the buttons alone. The buttons are drawn in `display.hud_button_style`. |
+| `input.touch_aim_assist` | (Android, iOS and the web) `true` (the default): the touch controls' swipe aiming gets the aim assist of a controller (the aim slows over a target and follows a moving one). `false`: none, as with a mouse; the bullets' own autoaim stays. |
+| `input.touch_controls` | (Android, iOS and the web) The touch controls in a game. `"auto"` (the default): shown on a touchscreen while no controller is connected. `"on"`: also shown with a controller. `"off"`: never shown. A device without a touchscreen never shows them. The menus take taps in any case. |
 | `debug.sample_seconds` | Refer to "Find problems". |
 | `debug.memory_watch` | `true` (the default): the app notices the game's writes to textures and vertices by page protection. `false`: it compares page contents once a frame instead, which is slower. Refer to "Limits". |
 | `display.astc_textures` | `"auto"` (the default): on a GPU without BC's formats (most Adreno and Mali drivers on Android) that samples ASTC, the maps' DXT textures are transcoded to ASTC 4x4, a quarter of the memory and bandwidth of the decoded textures drawn before; their few blocks that need encoding are encoded on worker threads the first time and kept in the app's cache folder. `"off"`: decoded, as before. The log says which (`vulkan: DXT textures as ...`). Refer to [port/linux/README.md](../linux/README.md#settings). |
