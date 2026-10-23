@@ -116,6 +116,12 @@ long halo_screen_commit(void);
 /* the shadow maps' pixels for each of their 128 texels each way, a power of
 two (display.shadow_resolution) */
 long halo_shadow_map_scale(void);
+/* a larger shadow map's blur, the Xbox's pass and the passes widening it
+drawn as one by the renderer (rasterizer_shadow_convolve): the map drawn
+blurred into the other; FALSE where the game should draw the passes itself
+(port/linux/src/d3d8_device.c) */
+struct D3DSurface;
+unsigned char halo_shadow_map_blur(struct D3DSurface *source, struct D3DSurface *destination);
 /* how many times a model's size in the 480-line screen's pixels to measure
 it at (display.model_detail, source/models/models.c): level nonzero, to
 choose its level of detail, otherwise whether it is drawn */

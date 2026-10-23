@@ -2365,6 +2365,31 @@ static void stream_anti_alias(void *context, const struct xgpu_stream_anti_alias
 	targets_bind();
 }
 
+/* display.shadow_resolution's blur of a larger shadow map into the other
+(port/linux/src/xgpu_shadow_blur.h) */
+static void stream_shadow_blur(void *context, const struct xgpu_stream_shadow_blur *record)
+{
+	struct stream_target *source = target_get(record->source);
+	struct stream_target *destination = target_get(record->destination);
+
+	(void)context;
+	if (!source || !destination || source == destination || source->depth || destination->depth ||
+		source->format != XGPU_VULKAN_FORMAT_BGRA8 || destination->format != XGPU_VULKAN_FORMAT_BGRA8 ||
+		source->samples > 1 || destination->samples > 1 || source->layers > 1 || destination->layers > 1 ||
+		source->width != destination->width || source->height != destination->height || record->scale > 8)
+		return;
+	if (stream.preparing)
+	{
+		/* (made as the map loads, as the game's pipelines are) */
+		(void)xgpu_vulkan_post_prepare_shadow_blur(1);
+		return;
+	}
+	destination->written++;
+	xgpu_vulkan_post_shadow_blur(source->image, destination->image, (int)record->scale);
+	/* (the stream's targets again, for what follows) */
+	targets_bind();
+}
+
 /* ---------- display.hdr (port/linux/src/xgpu_hdr.h)
 
 The front end's state, for the tone map and the core's encoding and
@@ -2657,6 +2682,7 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.anti_alias = stream_anti_alias;
 		backend.hdr = stream_hdr;
 		backend.tone_map = stream_tone_map;
+		backend.shadow_blur = stream_shadow_blur;
 #ifdef HALO_VR
 		host_vulkan_vr_backend(&backend);
 #endif

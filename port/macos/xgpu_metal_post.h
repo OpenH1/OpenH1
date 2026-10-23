@@ -38,4 +38,13 @@ int xgpu_metal_post_prepare_hdr(uint8_t depth_format, uint32_t samples);
 int xgpu_metal_post_tone_map(uint32_t target, uint32_t width, uint32_t height, uint32_t depth, uint8_t depth_format,
 	uint32_t samples, const int32_t corners[4], const float hdr[4]);
 
+/* display.shadow_resolution (port/linux/src/xgpu_shadow_blur.h): the
+blur's function and pipelines, made (as a map is prepared); and a larger
+shadow map's texture (source) blurred into the other's (destination: its
+colour, its alpha kept), both BGRA8 of that size, at a scale of 2 to 8, in
+two passes of the backend's. Nonzero if it was blurred; the backend's state
+is the passes' afterwards, as anti-aliasing's is. */
+int xgpu_metal_post_prepare_shadow_blur(void);
+int xgpu_metal_post_shadow_blur(uint32_t source, uint32_t destination, uint32_t width, uint32_t height, int scale);
+
 #endif

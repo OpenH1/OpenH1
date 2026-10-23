@@ -1791,6 +1791,144 @@ static void hdr_clear_blocks(const struct host_render_backend *backend, float al
 	}
 }
 
+/* the game's passes over a line of a shadow map (rasterizer_shadow_convolve):
+the Xbox's 1, 2, 1 and each widening distance's taps twice, black beyond
+the ends, without the 8-bit stores between them */
+static void shadow_chain(double *line, int length, int scale)
+{
+	double before[SIZE];
+	int index, distance, twice;
+
+	memcpy(before, line, sizeof(double) * (size_t)length);
+	for (index = 0; index < length; index++)
+		line[index] = ((index > 0 ? before[index - 1] : 0.0) + 2.0 * before[index] +
+			(index + 1 < length ? before[index + 1] : 0.0)) / 4.0;
+	for (distance = 1; distance < scale; distance *= 2)
+	{
+		for (twice = 0; twice < 2; twice++)
+		{
+			memcpy(before, line, sizeof(double) * (size_t)length);
+			for (index = 0; index < length; index++)
+				line[index] = ((index >= distance ? before[index - distance] : 0.0) +
+					(index + distance < length ? before[index + distance] : 0.0)) / 2.0;
+		}
+	}
+}
+
+static void test_stream_shadow_blur(void)
+{
+	static const struct
+	{
+		int32_t x, y, width, height;
+		float color[3];
+	} shapes[] =
+	{
+		/* a shadow in the middle, one against an edge, one in a corner */
+		{ 20, 16, 18, 24, { 0.5f, 0.75f, 1.0f } },
+		{ 0, 30, 9, 12, { 1.0f, 0.25f, 0.6f } },
+		{ 55, 0, 9, 7, { 0.3f, 1.0f, 0.1f } },
+	};
+	static const int scales[2] = { 4, 8 };
+	const struct host_render_backend *backend = xgpu_metal_stream_backend();
+	struct xgpu_stream_target_create source = { 0, 61, SIZE, SIZE, 0, 1, 0, 0 };
+	struct xgpu_stream_target_create destination = { 0, 62, SIZE, SIZE, 0, 1, 0, 0 };
+	struct xgpu_stream_set_targets targets = { 0, 61, 0, -1, 1, 0, 0 };
+	struct xgpu_stream_shadow_blur blur;
+	struct xgpu_stream_read_target read;
+	static uint32_t drawn[SIZE * SIZE];
+	static double expected[3][SIZE * SIZE];
+	double line[SIZE];
+	int scale_index, shape, x, y, channel, worst, alpha_kept;
+	union
+	{
+		struct xgpu_stream_clear clear;
+		unsigned char bytes[sizeof(struct xgpu_stream_clear) + sizeof(int32_t[4])];
+	} clear;
+
+	begin("display.shadow_resolution's blur against the game's passes");
+	backend->target_create(NULL, &source);
+	backend->target_create(NULL, &destination);
+	for (scale_index = 0; scale_index < 2; scale_index++)
+	{
+		/* the map drawn: black, and the shadows; the other map's alpha
+		half, which the blur must keep */
+		backend->set_targets(NULL, &targets);
+		memset(&clear, 0, sizeof(clear));
+		clear.clear.flags = XGPU_CLEAR_COLOR | XGPU_CLEAR_RED | XGPU_CLEAR_GREEN | XGPU_CLEAR_BLUE | XGPU_CLEAR_ALPHA;
+		backend->clear(NULL, &clear.clear);
+		for (shape = 0; shape < (int)(sizeof(shapes) / sizeof(shapes[0])); shape++)
+		{
+			memcpy(clear.clear.color, shapes[shape].color, sizeof(shapes[shape].color));
+			clear.clear.count = 1;
+			clear.clear.rectangles[0][0] = shapes[shape].x;
+			clear.clear.rectangles[0][1] = shapes[shape].y;
+			clear.clear.rectangles[0][2] = shapes[shape].width;
+			clear.clear.rectangles[0][3] = shapes[shape].height;
+			backend->clear(NULL, &clear.clear);
+		}
+		targets.color = 62;
+		backend->set_targets(NULL, &targets);
+		memset(&clear, 0, sizeof(clear));
+		clear.clear.flags = XGPU_CLEAR_COLOR | XGPU_CLEAR_RED | XGPU_CLEAR_GREEN | XGPU_CLEAR_BLUE | XGPU_CLEAR_ALPHA;
+		clear.clear.color[3] = 0.5f;
+		backend->clear(NULL, &clear.clear);
+		targets.color = 61;
+		blur = (struct xgpu_stream_shadow_blur){ 0, 61, 62, (uint32_t)scales[scale_index] };
+		backend->shadow_blur(NULL, &blur);
+		backend->present(NULL, 62);
+		backend->frame_end(NULL);
+		backend->wait(NULL, backend->fence(NULL));
+		read = (struct xgpu_stream_read_target){ 0, 61, -1, 0, GUEST_START + 0x200000, SIZE * SIZE * 4, 0 };
+		CHECK(backend->read_target(NULL, &read), "read the map drawn");
+		memcpy(drawn, (void *)host_address(read.pixels), sizeof(drawn));
+		read.target = 62;
+		CHECK(backend->read_target(NULL, &read), "read the map blurred");
+		memcpy(pixels, (void *)host_address(read.pixels), sizeof(pixels));
+		/* the chain's result, across then down (each pass is the same
+		either way) */
+		for (channel = 0; channel < 3; channel++)
+		{
+			for (y = 0; y < SIZE; y++)
+			{
+				for (x = 0; x < SIZE; x++)
+					line[x] = (double)((drawn[y * SIZE + x] >> (channel * 8)) & 0xff);
+				shadow_chain(line, SIZE, scales[scale_index]);
+				for (x = 0; x < SIZE; x++)
+					expected[channel][y * SIZE + x] = line[x];
+			}
+			for (x = 0; x < SIZE; x++)
+			{
+				for (y = 0; y < SIZE; y++)
+					line[y] = expected[channel][y * SIZE + x];
+				shadow_chain(line, SIZE, scales[scale_index]);
+				for (y = 0; y < SIZE; y++)
+					expected[channel][y * SIZE + x] = line[y];
+			}
+		}
+		worst = 0;
+		alpha_kept = 1;
+		for (y = 0; y < SIZE; y++)
+		{
+			for (x = 0; x < SIZE; x++)
+			{
+				for (channel = 0; channel < 3; channel++)
+				{
+					int got = (int)((pixel(x, y) >> (channel * 8)) & 0xff);
+					int difference = abs(got - (int)lround(expected[channel][y * SIZE + x]));
+
+					if (difference > worst)
+						worst = difference;
+				}
+				if ((pixel(x, y) >> 24) != 0x80)
+					alpha_kept = 0;
+			}
+		}
+		CHECK(worst <= 1, "scale %d: every texel within 1 of the game's passes (at most %d off)", scales[scale_index],
+			worst);
+		CHECK(alpha_kept, "scale %d: the blur keeps the map's alpha", scales[scale_index]);
+	}
+}
+
 static void test_stream_hdr(void)
 {
 	static const float peaks[3] = { 1.0f, 4.0f, 16.0f };
@@ -2603,6 +2741,7 @@ int main(int argc, char *argv[])
 		test_stream_table();
 		test_stream_emitter();
 		test_stream_anti_aliasing();
+		test_stream_shadow_blur();
 		test_stream_dynamic_lights();
 		test_stream_hdr();
 #else

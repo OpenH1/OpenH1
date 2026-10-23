@@ -4289,6 +4289,30 @@ void halo_screen_tone_map(short x0, short y0, short x1, short y1)
 	xgpu_backend_tone_map(target->target.number, corners);
 }
 
+/* display.shadow_resolution's blur of a larger shadow map
+(rasterizer_shadow_convolve): the map drawn (source) blurred into the other
+(destination) by the backend in two passes, as the game's pass and its
+passes widening it would blur it (xgpu_shadow_blur.h); FALSE where the
+game should draw them itself (the Xbox's size, or no backend yet) */
+unsigned char halo_shadow_map_blur(struct D3DSurface *source, struct D3DSurface *destination)
+{
+	struct render_target_entry *from, *into;
+	long scale = halo_shadow_map_scale();
+
+	if (!device.gl_ready || scale < 2)
+		return FALSE;
+	from = render_target_get(source);
+	into = render_target_get(destination);
+	if (!from || !into || from == into || from->kind != _render_target_shadow_map ||
+		into->kind != _render_target_shadow_map || from->target.pixel_width != into->target.pixel_width ||
+		from->target.pixel_height != into->target.pixel_height)
+		return FALSE;
+	into->last_rendered = device.frame + 1;
+	into->target.written = ++render_target_write_serial;
+	xgpu_backend_shadow_blur(from->target.number, into->target.number, (int)scale);
+	return TRUE;
+}
+
 /* display.overshield_effect's rise (rasterizer_xbox_plasma_energy.c,
 port/linux/game/overshield_effect.c), OpenCE's: a fade above a height on
 the model, in OpenCE's OpenGL vertex shaders. None of OpenH1's emitters

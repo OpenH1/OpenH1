@@ -38,7 +38,7 @@ port/linux/README.md.
 #include <stdint.h>
 
 #define XGPU_STREAM_MAGIC 0x53504758u /* "XGPS" */
-#define XGPU_STREAM_VERSION 8
+#define XGPU_STREAM_VERSION 9
 #define XGPU_STREAM_LOADING_ART_BYTES (640u * 480u * 4u)
 
 /* ---------- the ring
@@ -230,6 +230,8 @@ enum
 	/* display.hdr (xgpu_hdr.h) */
 	XGPU_STREAM_HDR,
 	XGPU_STREAM_TONE_MAP,
+	/* display.shadow_resolution's blur */
+	XGPU_STREAM_SHADOW_BLUR,
 	XGPU_STREAM_RECORD_TYPES,
 };
 
@@ -301,6 +303,14 @@ struct xgpu_stream_tone_map
 	uint32_t header;
 	uint32_t target;
 	int32_t corners[4];
+};
+
+/* SHADOW_BLUR: a larger shadow map blurred into the other
+(xgpu_backend_shadow_blur) */
+struct xgpu_stream_shadow_blur
+{
+	uint32_t header;
+	uint32_t source, destination, scale;
 };
 
 /* ---------- render targets */
@@ -941,6 +951,7 @@ XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_frame_end, 12);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_capabilities, 20);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_hdr, 16);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_tone_map, 24);
+XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_shadow_blur, 16);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_set_targets, 16);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_clear, 36);
 XGPU_STREAM_ASSERT_SIZE(struct xgpu_stream_sampler, 24);

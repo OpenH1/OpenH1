@@ -63,6 +63,15 @@ image of its own (its width and height swapped for an odd count), in the
 stream's order, and returns it; the targets bound before are not bound
 after. NULL if it cannot. */
 int xgpu_vulkan_post_rotate_prepare(void);
+
+/* display.shadow_resolution (port/linux/src/xgpu_shadow_blur.h): the
+blur's pipelines, made now or queued where preparing (0 if they cannot be:
+logged; once 0, it stays so); and a larger shadow map (source) blurred into
+the other (destination: its colour, its alpha kept), both BGRA8 of one
+size, at a scale of 2 to 8, in two passes in the stream's order; the
+targets bound before are not bound after. 0 if it cannot be. */
+int xgpu_vulkan_post_prepare_shadow_blur(int preparing);
+int xgpu_vulkan_post_shadow_blur(struct xgpu_vulkan_image *source, struct xgpu_vulkan_image *destination, int scale);
 struct xgpu_vulkan_image *xgpu_vulkan_post_rotate(struct xgpu_vulkan_image *image, int quarter_turns);
 
 #endif

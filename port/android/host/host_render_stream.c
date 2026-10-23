@@ -217,6 +217,7 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_ANTI_ALIAS] = sizeof(struct xgpu_stream_anti_alias),
 	[XGPU_STREAM_HDR] = sizeof(struct xgpu_stream_hdr),
 	[XGPU_STREAM_TONE_MAP] = sizeof(struct xgpu_stream_tone_map),
+	[XGPU_STREAM_SHADOW_BLUR] = sizeof(struct xgpu_stream_shadow_blur),
 	[XGPU_STREAM_TARGET_CREATE] = sizeof(struct xgpu_stream_target_create),
 	[XGPU_STREAM_TARGET_DELETE] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_TARGET_MULTISAMPLE] = sizeof(struct xgpu_stream_target_multisample),
@@ -414,6 +415,9 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 		break;
 	case XGPU_STREAM_TONE_MAP:
 		CALL(tone_map, (const void *)start);
+		break;
+	case XGPU_STREAM_SHADOW_BLUR:
+		CALL(shadow_blur, (const void *)start);
 		break;
 	case XGPU_STREAM_TARGET_CREATE:
 		CALL(target_create, (const void *)start);

@@ -44,7 +44,7 @@ UNIFORMS_BUFFER = 17
 PROGRAMS = (("post", "vert", "xgpu_post_vertex"), ("fxaa", "frag", "xgpu_post_fxaa"),
             ("smaa_edges", "frag", "xgpu_post_smaa_edges"), ("smaa_weights", "frag", "xgpu_post_smaa_weights"),
             ("smaa_blend", "frag", "xgpu_post_smaa_blend"), ("hdr_tone_map", "frag", "xgpu_hdr_tone_map"),
-            ("hdr_encode", "frag", "xgpu_hdr_encode"))
+            ("hdr_encode", "frag", "xgpu_hdr_encode"), ("shadow_blur", "frag", "xgpu_post_shadow_blur"))
 # display.hdr's tone map reads the pixel it draws over (its input
 # attachment) as Metal's programmable blending does: [[color(0)]]
 FRAMEBUFFER_FETCH = ("hdr_tone_map",)
@@ -72,6 +72,7 @@ def generate(args):
     codes = {
         "post": vulkan.declaration(source, "vertex_source"),
         "fxaa": vulkan.declaration(source, "fxaa_source"),
+        "shadow_blur": vulkan.declaration(source, "shadow_blur_source"),
     }
     for name, main in zip(("smaa_edges", "smaa_weights", "smaa_blend"), mains):
         codes[name] = prefix + hlsl + "\n" + main

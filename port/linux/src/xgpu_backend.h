@@ -102,6 +102,13 @@ void xgpu_backend_hdr(BOOL active, int mode, int paper_white);
 void xgpu_backend_tone_map(xgpu_target target, const long corners[4]);
 BOOL xgpu_backend_display_hdr(float *headroom);
 
+/* display.shadow_resolution: a shadow map drawn larger than the Xbox's
+(source) blurred into the other (destination, of its size: its colour, its
+alpha kept), as the game's pass and its passes widening it blur it, in two
+(xgpu_shadow_blur.h); scale the maps' pixels for each of the Xbox's 128
+texels, 2 to 8 */
+void xgpu_backend_shadow_blur(xgpu_target source, xgpu_target destination, int scale);
+
 /* ---------- render targets
 
 The front end finds a target by the Xbox surface it is (its address, its

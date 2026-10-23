@@ -32,6 +32,10 @@ enum
 	encoding, which samples the frame (texture 0) over the viewport */
 	XGPU_METAL_POST_HDR_TONE_MAP,
 	XGPU_METAL_POST_HDR_ENCODE,
+	/* display.shadow_resolution's blur of a larger shadow map, one way
+	(port/linux/src/xgpu_shadow_blur.h): the map, or the blur across (0),
+	and its weights (1) */
+	XGPU_METAL_POST_SHADOW_BLUR,
 	XGPU_METAL_POST_FUNCTION_COUNT
 };
 

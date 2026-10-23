@@ -33,6 +33,7 @@ RG8.
 #include "xgpu_metal.h"
 #include "xgpu_metal_post.h"
 #include "xgpu_metal_post_shaders.h"
+#include "xgpu_shadow_blur.h"
 #include "host.h"
 
 #include <stdlib.h>
@@ -53,6 +54,14 @@ static struct
 	uint32_t area, search;
 	/* display.hdr's tone map's functions could not be made */
 	int hdr_failed;
+	/* display.shadow_resolution's blur: its function could not be made;
+	its weights' scale and table, and the blur across (half floats) of the
+	map's size */
+	int shadow_failed, shadow_prepared;
+	int shadow_scale;
+	uint32_t shadow_weights;
+	uint32_t shadow_width, shadow_height;
+	uint32_t shadow_across;
 } post;
 
 /* ---------- textures */
@@ -363,5 +372,130 @@ int xgpu_metal_post_tone_map(uint32_t target, uint32_t width, uint32_t height, u
 	memcpy(uniforms.hdr, hdr, sizeof(uniforms.hdr));
 	xgpu_metal_set_draw_uniforms(&uniforms, sizeof(uniforms));
 	xgpu_metal_draw(XGPU_METAL_PRIMITIVE_TRIANGLES, 3, 0, 0, (struct xgpu_metal_source){ XGPU_METAL_SOURCE_NONE, 0, 0, 0 });
+	return 1;
+}
+
+/* ---------- display.shadow_resolution's blur (port/linux/src/xgpu_shadow_blur.h)
+
+Two passes of the backend's: across, from the map into a texture of half
+floats of its own, all of it; then down, from that into the other map, its
+colour alone (the game's passes write no alpha). */
+
+/* a blur's pipeline: across, into the half floats; down, into the map's
+colour (BGRA8) */
+static void shadow_pipeline(int down, struct xgpu_metal_pipeline *pipeline)
+{
+	memset(pipeline, 0, sizeof(*pipeline));
+	pipeline->vertex_shader = post.functions[XGPU_METAL_POST_VERTEX];
+	pipeline->pixel_shader = post.functions[XGPU_METAL_POST_SHADOW_BLUR];
+	pipeline->color_mask = down ? XGPU_WRITE_RED | XGPU_WRITE_GREEN | XGPU_WRITE_BLUE :
+		XGPU_WRITE_RED | XGPU_WRITE_GREEN | XGPU_WRITE_BLUE | XGPU_WRITE_ALPHA;
+	pipeline->color_format = down ? XGPU_METAL_FORMAT_BGRA8 : XGPU_METAL_FORMAT_RGBA16F;
+	pipeline->samples = 1;
+}
+
+int xgpu_metal_post_prepare_shadow_blur(void)
+{
+	struct xgpu_metal_pipeline pipeline;
+	int down;
+
+	if (post.shadow_failed)
+		return 0;
+	if (post.shadow_prepared)
+		return 1;
+	if (!function_make(XGPU_METAL_POST_VERTEX) || !function_make(XGPU_METAL_POST_SHADOW_BLUR))
+	{
+		host_logf(HOST_LOG_WARN, "metal: the shadow blur's function cannot be made, so the shadows are not blurred");
+		post.shadow_failed = 1;
+		return 0;
+	}
+	for (down = 0; down < 2; down++)
+	{
+		shadow_pipeline(down, &pipeline);
+		xgpu_metal_prepare(&pipeline);
+	}
+	post.shadow_prepared = 1;
+	return 1;
+}
+
+/* the weights' table of a scale (made again as the scale changes), and the
+blur across of the map's size: 1 if they are made */
+static int shadow_textures_fit(int scale, uint32_t width, uint32_t height)
+{
+	if (!post.shadow_weights || post.shadow_scale != scale)
+	{
+		unsigned char texels[(2 * XGPU_SHADOW_BLUR_MOST_RADIUS + 1) * (XGPU_SHADOW_BLUR_MOST_RADIUS + 1) * 4];
+		int radius = xgpu_shadow_blur_weights(scale, texels);
+		uint32_t table_width = (uint32_t)(2 * radius + 1), table_height = (uint32_t)(radius + 1);
+
+		xgpu_metal_texture_destroy(post.shadow_weights);
+		post.shadow_weights = radius ?
+			texture_make(XGPU_METAL_FORMAT_RGBA8, XGPU_METAL_USAGE_SAMPLED, table_width, table_height) : 0;
+		if (!post.shadow_weights)
+			return 0;
+		xgpu_metal_texture_upload(post.shadow_weights, 0, 0, 0, 0, 0, table_width, table_height, 1, texels,
+			table_width * 4, table_width * table_height * 4);
+		post.shadow_scale = scale;
+	}
+	if (!post.shadow_across || post.shadow_width != width || post.shadow_height != height)
+	{
+		xgpu_metal_texture_destroy(post.shadow_across);
+		post.shadow_across = texture_make(XGPU_METAL_FORMAT_RGBA16F, XGPU_METAL_USAGE_SAMPLED | XGPU_METAL_USAGE_TARGET,
+			width, height);
+		post.shadow_width = width;
+		post.shadow_height = height;
+	}
+	return post.shadow_across != 0;
+}
+
+/* a blur's triangle over all of a texture, reading another and the
+weights */
+static void shadow_pass(int down, uint32_t into, uint32_t from, int radius)
+{
+	struct xgpu_metal_pipeline pipeline;
+	struct xgpu_metal_dynamic_state dynamic;
+	struct xgpu_metal_post_uniforms uniforms;
+	struct xgpu_metal_sampler sampler;
+	uint32_t stage;
+
+	xgpu_metal_set_targets(into, 0, 0, 0, 0);
+	shadow_pipeline(down, &pipeline);
+	xgpu_metal_set_pipeline(&pipeline);
+	memset(&dynamic, 0, sizeof(dynamic));
+	dynamic.viewport[2] = dynamic.scissor[2] = (int32_t)post.shadow_width;
+	dynamic.viewport[3] = dynamic.scissor[3] = (int32_t)post.shadow_height;
+	dynamic.depth_range[1] = 1.0f;
+	xgpu_metal_set_dynamic_state(&dynamic);
+	/* (read texel by texel) */
+	memset(&sampler, 0, sizeof(sampler));
+	sampler.min_filter = sampler.mag_filter = XGPU_METAL_FILTER_POINT;
+	sampler.mip_filter = XGPU_METAL_MIP_NONE;
+	sampler.address_u = sampler.address_v = sampler.address_w = XGPU_METAL_ADDRESS_CLAMP;
+	sampler.max_anisotropy = 1;
+	xgpu_metal_set_texture(0, from, &sampler);
+	xgpu_metal_set_texture(1, post.shadow_weights, &sampler);
+	for (stage = 2; stage < 4; stage++)
+		xgpu_metal_set_texture(stage, 0, &sampler);
+	memset(&uniforms, 0, sizeof(uniforms));
+	uniforms.metrics[0] = 1.0f / (float)post.shadow_width;
+	uniforms.metrics[1] = 1.0f / (float)post.shadow_height;
+	uniforms.metrics[2] = (float)post.shadow_width;
+	uniforms.metrics[3] = (float)post.shadow_height;
+	uniforms.bounds[0] = (float)radius;
+	uniforms.bounds[1] = down ? 1.0f : 0.0f;
+	xgpu_metal_set_draw_uniforms(&uniforms, sizeof(uniforms));
+	xgpu_metal_draw(XGPU_METAL_PRIMITIVE_TRIANGLES, 3, 0, 0, (struct xgpu_metal_source){ XGPU_METAL_SOURCE_NONE, 0, 0, 0 });
+}
+
+int xgpu_metal_post_shadow_blur(uint32_t source, uint32_t destination, uint32_t width, uint32_t height, int scale)
+{
+	int radius = xgpu_shadow_blur_radius(scale);
+
+	if (!source || !destination || !radius || width < (uint32_t)(2 * radius + 1) ||
+		height < (uint32_t)(2 * radius + 1) || !xgpu_metal_post_prepare_shadow_blur() ||
+		!shadow_textures_fit(scale, width, height))
+		return 0;
+	shadow_pass(0, post.shadow_across, source, radius);
+	shadow_pass(1, destination, post.shadow_across, radius);
 	return 1;
 }

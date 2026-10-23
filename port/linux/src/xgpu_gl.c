@@ -1297,6 +1297,20 @@ BOOL xgpu_backend_display_hdr(float *headroom)
 	return FALSE;
 }
 
+void xgpu_backend_shadow_blur(xgpu_target source_number, xgpu_target destination_number, int scale)
+{
+	struct gl_target *source = gl_target(source_number);
+	struct gl_target *destination = gl_target(destination_number);
+
+	if (!source->made || !destination->made || source->gl_width != destination->gl_width ||
+		source->gl_height != destination->gl_height)
+		return;
+	xgpu_post_shadow_blur(source->texture, framebuffer_get(destination->texture, 0), destination->gl_width,
+		destination->gl_height, scale);
+	glBindVertexArray(device.vertex_array);
+	xgpu_gl_state_invalidate();
+}
+
 /* ---------- visibility (occlusion) tests */
 
 void xgpu_backend_visibility_begin(void)

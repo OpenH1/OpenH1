@@ -1290,6 +1290,34 @@ static void stream_tone_map(void *context, const struct xgpu_stream_tone_map *re
 	stream_state_restore();
 }
 
+/* ---------- display.shadow_resolution's blur (xgpu_shadow_blur.h) */
+
+static void stream_shadow_blur(void *context, const struct xgpu_stream_shadow_blur *record)
+{
+	struct stream_target *source = target_get(record->source);
+	struct stream_target *destination = target_get(record->destination);
+
+	(void)context;
+	if (!source || !destination || source == destination ||
+		source->description.format != XGPU_METAL_FORMAT_BGRA8 ||
+		destination->description.format != XGPU_METAL_FORMAT_BGRA8 || source->description.samples > 1 ||
+		destination->description.samples > 1 || source->description.depth_or_layers > 1 ||
+		destination->description.depth_or_layers > 1 ||
+		source->description.width != destination->description.width ||
+		source->description.height != destination->description.height || record->scale > 8)
+		return;
+	if (stream.preparing)
+	{
+		/* (made as the map loads, as the game's pipelines are) */
+		(void)xgpu_metal_post_prepare_shadow_blur();
+		return;
+	}
+	destination->written++;
+	xgpu_metal_post_shadow_blur(source->texture, destination->texture, destination->description.width,
+		destination->description.height, (int)record->scale);
+	stream_state_restore();
+}
+
 /* ---------- visibility tests, frames */
 
 static void stream_visibility_begin(void *context)
@@ -1453,6 +1481,7 @@ const struct host_render_backend *xgpu_metal_stream_backend(void)
 		backend.anti_alias = stream_anti_alias;
 		backend.hdr = stream_hdr;
 		backend.tone_map = stream_tone_map;
+		backend.shadow_blur = stream_shadow_blur;
 	}
 	return &backend;
 }

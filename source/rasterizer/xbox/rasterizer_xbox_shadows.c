@@ -866,6 +866,14 @@ static void rasterizer_shadow_convolve(
 	if (rasterizer_debug_options.draw_environment_shadows &&
 		rasterizer_debug_options.shadow_convolution_enabled)
 	{
+		/* port: a larger map's blur, this pass and the passes widening it,
+		drawn by the renderer in two (port/linux/src/xgpu_shadow_blur.h) */
+		if (scale > 1 &&
+			halo_shadow_map_blur(rasterizer_get_target(2, 0), rasterizer_get_target(3, 0)))
+		{
+			return;
+		}
+
 		for (stage = 0; stage < 4; stage++)
 		{
 			rasterizer_set_target_as_texture(stage, 2, FALSE);
@@ -1041,7 +1049,10 @@ texels 2 * distance apart each way, which doubles a box of 2 * distance
 texels; two passes each at distance 1, 2, ... scale / 2 make both boxes
 2 * scale texels wide. The quad's offsets of half a texel stay as they are:
 they are half of the game's units, which the port undoes in the same units
-at any size (port/linux/src/nv2a_vsh.c), so the quad covers the map. */
+at any size (port/linux/src/nv2a_vsh.c), so the quad covers the map. The
+renderer draws the same blur, the Xbox's pass with these, as two passes of
+its own (halo_shadow_map_blur, port/linux/src/xgpu_shadow_blur.h); these
+are drawn only where it does not. */
 static void rasterizer_shadow_convolve_pass(
 	short source_target,
 	short destination_target,

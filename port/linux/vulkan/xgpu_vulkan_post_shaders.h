@@ -11,7 +11,8 @@ uniforms are a block at set 0, binding 1: struct xgpu_vulkan_post_uniforms.
 Their textures are set 1's bindings, xgpu_post.c's texture units: FXAA and
 SMAA's edges read the target's copy (0); the blending weights the edges (0),
 the area texture (1) and the search texture (2); the blend the target's copy
-(0) and the weights (1); the turn and the encoding the frame (0). The tone
+(0) and the weights (1); the turn and the encoding the frame (0); the
+shadow blur the map, or the blur across (0), and its weights (1). The tone
 map reads the pixel it draws over as input attachment 0 of set 2 (binding
 0), each sample's own in its multisampled variant.
 */
@@ -35,6 +36,9 @@ enum xgpu_vulkan_post_program_id
 	XGPU_VULKAN_POST_HDR_TONE_MAP,
 	XGPU_VULKAN_POST_HDR_TONE_MAP_MS,
 	XGPU_VULKAN_POST_HDR_ENCODE,
+	/* display.shadow_resolution's blur of a larger shadow map, one way
+	(port/linux/src/xgpu_shadow_blur.h) */
+	XGPU_VULKAN_POST_SHADOW_BLUR,
 	XGPU_VULKAN_POST_PROGRAM_COUNT
 };
 

@@ -93,6 +93,10 @@ void rasterizer_set_target_as_texture(
 	short stage,
 	short target,
 	short maximum_mipmap_level);
+/* port: declared for rasterizer_shadow_convolve (rasterizer_xbox_shadows.c) */
+D3DSurface *rasterizer_get_target(
+	short target,
+	short mipmap_index);
 void SetRenderStateSmart(
 	D3DRENDERSTATETYPE state,
 	unsigned long value);

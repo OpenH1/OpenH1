@@ -115,5 +115,11 @@ not build */
 BOOL xgpu_post_anti_alias(BOOL smaa, GLuint framebuffer, unsigned long width, unsigned long height,
 	const GLint corners[4]);
 
+/* display.shadow_resolution's blur of a shadow map drawn larger than the
+Xbox's (xgpu_shadow_blur.h): the source texture blurred into a
+framebuffer's colour (its alpha kept), both width by height, at a scale of
+2 to 8; FALSE if it cannot be (its program does not build) */
+BOOL xgpu_post_shadow_blur(GLuint source, GLuint framebuffer, unsigned long width, unsigned long height, int scale);
+
 
 #endif

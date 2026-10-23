@@ -53,6 +53,7 @@ made at the start (xgpu_vulkan_post_encode_prepare).
 #include "xgpu_vulkan.h"
 #include "xgpu_vulkan_post_shaders.h"
 #include "../src/xgpu_hdr.h"
+#include "../src/xgpu_shadow_blur.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -89,6 +90,12 @@ static struct
 	int tone_map_failed;
 	VkPipeline encode[2];
 	struct xgpu_vulkan_image *encoded;
+	/* display.shadow_resolution's blur: its pipelines could not be made
+	(the blur across is half_float's, the blur down pipelines'); its
+	weights' scale and table, and the blur across of the map's size */
+	int shadow_failed, shadow_made;
+	int shadow_scale;
+	struct xgpu_vulkan_image *shadow_weights, *shadow_across;
 } post;
 
 /* ---------- images */
@@ -674,4 +681,137 @@ struct xgpu_vulkan_image *xgpu_vulkan_post_encode(struct xgpu_vulkan_image *imag
 	xgpu_vulkan_set_target_views(post.encoded, NULL, 0, 1);
 	xgpu_vulkan_draw(&draw);
 	return post.encoded;
+}
+
+/* ---------- display.shadow_resolution's blur (port/linux/src/xgpu_shadow_blur.h)
+
+Two passes of the core's: across, from the map into a half-float image of
+its own, all of it; then down, from that into the other map, its colour
+alone (the game's passes write no alpha). */
+
+int xgpu_vulkan_post_prepare_shadow_blur(int preparing)
+{
+	int down;
+
+	if (post.shadow_failed)
+		return 0;
+	if (post.shadow_made)
+		return 1;
+	if (!shaders_make(XGPU_VULKAN_POST_SHADOW_BLUR) || !sampler_make())
+	{
+		host_logf(HOST_LOG_WARN, "vulkan: the shadow blur's shaders cannot be made, so the shadows are not blurred");
+		post.shadow_failed = 1;
+		return 0;
+	}
+	for (down = 0; down < 2; down++)
+	{
+		struct xgpu_vulkan_pipeline_description *description = down ?
+			&post.pipelines[XGPU_VULKAN_POST_SHADOW_BLUR] : &post.half_float[XGPU_VULKAN_POST_SHADOW_BLUR];
+
+		memset(description, 0, sizeof(*description));
+		description->vertex_shader = post.vertex;
+		description->pixel_shader = post.pixel[XGPU_VULKAN_POST_SHADOW_BLUR];
+		description->primitive_class = XGPU_VULKAN_CLASS_TRIANGLES;
+		description->color_mask = down ? 7 : 15;
+		description->color_format = down ? XGPU_VULKAN_FORMAT_BGRA8 : XGPU_VULKAN_FORMAT_RGBA16F;
+		description->samples = 1;
+		if (preparing ? !xgpu_vulkan_pipeline_prepare(description) : !xgpu_vulkan_pipeline(description))
+		{
+			host_logf(HOST_LOG_WARN, "vulkan: the shadow blur's pipelines cannot be made, so the shadows are not blurred");
+			post.shadow_failed = 1;
+			return 0;
+		}
+	}
+	post.shadow_made = !preparing;
+	return 1;
+}
+
+/* the weights' table of a scale (made again as the scale changes), and the
+blur across of the map's size: 1 if they are made */
+static int shadow_images_fit(int scale, uint32_t width, uint32_t height)
+{
+	if (!post.shadow_weights || post.shadow_scale != scale)
+	{
+		unsigned char texels[(2 * XGPU_SHADOW_BLUR_MOST_RADIUS + 1) * (XGPU_SHADOW_BLUR_MOST_RADIUS + 1) * 4];
+		int radius = xgpu_shadow_blur_weights(scale, texels);
+		uint32_t table_width = (uint32_t)(2 * radius + 1), table_height = (uint32_t)(radius + 1);
+
+		xgpu_vulkan_image_destroy(post.shadow_weights);
+		post.shadow_weights = radius ?
+			image_make(XGPU_VULKAN_FORMAT_RGBA8, XGPU_VULKAN_USAGE_SAMPLED, table_width, table_height) : NULL;
+		if (!post.shadow_weights)
+			return 0;
+		xgpu_vulkan_image_upload(post.shadow_weights, 0, 0, 0, 0, 0, table_width, table_height, 1, texels,
+			table_width * 4, table_width * table_height * 4);
+		post.shadow_scale = scale;
+	}
+	if (post.shadow_across && (xgpu_vulkan_image_description(post.shadow_across)->width != width ||
+		xgpu_vulkan_image_description(post.shadow_across)->height != height))
+	{
+		xgpu_vulkan_image_destroy(post.shadow_across);
+		post.shadow_across = NULL;
+	}
+	if (!post.shadow_across)
+		post.shadow_across = image_make(XGPU_VULKAN_FORMAT_RGBA16F, XGPU_VULKAN_USAGE_SAMPLED | XGPU_VULKAN_USAGE_TARGET,
+			width, height);
+	return post.shadow_across != NULL;
+}
+
+/* a blur's triangle over all of an image, reading another and the
+weights */
+static void shadow_pass(int down, struct xgpu_vulkan_image *into, struct xgpu_vulkan_image *from, int radius,
+	uint32_t width, uint32_t height)
+{
+	struct xgpu_vulkan_post_uniforms *uniforms;
+	struct xgpu_vulkan_dynamic_state dynamic;
+	struct xgpu_vulkan_draw draw;
+	int stage;
+
+	memset(&draw, 0, sizeof(draw));
+	draw.pipeline = xgpu_vulkan_pipeline(down ? &post.pipelines[XGPU_VULKAN_POST_SHADOW_BLUR] :
+		&post.half_float[XGPU_VULKAN_POST_SHADOW_BLUR]);
+	if (!draw.pipeline)
+		return;
+	for (stage = 0; stage < 4; stage++)
+	{
+		draw.textures[stage].image = stage == 0 ? from : stage == 1 ? post.shadow_weights : NULL;
+		draw.textures[stage].kind = XGPU_VULKAN_IMAGE_2D;
+		draw.textures[stage].sampler = post.sampler;
+	}
+	uniforms = xgpu_vulkan_upload(UNIFORMS_RANGE, 256, &draw.uniforms);
+	if (!uniforms)
+		return;
+	memset(uniforms, 0, sizeof(*uniforms));
+	uniforms->metrics[0] = 1.0f / (float)width;
+	uniforms->metrics[1] = 1.0f / (float)height;
+	uniforms->metrics[2] = (float)width;
+	uniforms->metrics[3] = (float)height;
+	uniforms->bounds[0] = (float)radius;
+	uniforms->bounds[1] = down ? 1.0f : 0.0f;
+	draw.constants = draw.uniforms;
+	memset(&dynamic, 0, sizeof(dynamic));
+	dynamic.viewport[2] = dynamic.scissor[2] = (int32_t)width;
+	dynamic.viewport[3] = dynamic.scissor[3] = (int32_t)height;
+	dynamic.depth_range[1] = 1.0f;
+	draw.dynamic = &dynamic;
+	draw.topology = XGPU_VULKAN_TOPOLOGY_TRIANGLES;
+	draw.count = 3;
+	xgpu_vulkan_set_target_views(into, NULL, 0, 1);
+	xgpu_vulkan_draw(&draw);
+}
+
+int xgpu_vulkan_post_shadow_blur(struct xgpu_vulkan_image *source, struct xgpu_vulkan_image *destination, int scale)
+{
+	const struct xgpu_vulkan_image_description *description;
+	int radius = xgpu_shadow_blur_radius(scale);
+
+	if (!source || !destination || !radius)
+		return 0;
+	description = xgpu_vulkan_image_description(destination);
+	if (description->width < (uint32_t)(2 * radius + 1) || description->height < (uint32_t)(2 * radius + 1) ||
+		!xgpu_vulkan_post_prepare_shadow_blur(0) || !shadow_images_fit(scale, description->width, description->height))
+		return 0;
+	shadow_pass(0, post.shadow_across, source, radius, description->width, description->height);
+	shadow_pass(1, destination, post.shadow_across, radius, description->width, description->height);
+	return 1;
 }

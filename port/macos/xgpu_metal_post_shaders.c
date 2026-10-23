@@ -1228,6 +1228,68 @@ static const char hdr_encode_source[] =
 	"}\n"
 	"\n";
 
+static const char shadow_blur_source[] =
+	"#include <metal_stdlib>\n"
+	"#include <simd/simd.h>\n"
+	"\n"
+	"using namespace metal;\n"
+	"\n"
+	"struct PostUniforms\n"
+	"{\n"
+	"    float4 metrics;\n"
+	"    float4 bounds;\n"
+	"};\n"
+	"\n"
+	"struct xgpu_post_shadow_blur_out\n"
+	"{\n"
+	"    float4 result [[color(0)]];\n"
+	"};\n"
+	"\n"
+	"fragment xgpu_post_shadow_blur_out xgpu_post_shadow_blur(constant PostUniforms& _22 [[buffer(17)]], texture2d<float> color_texture [[texture(0)]], texture2d<float> weights_texture [[texture(1)]], sampler color_textureSmplr [[sampler(0)]], sampler weights_textureSmplr [[sampler(1)]], float4 gl_FragCoord [[position]])\n"
+	"{\n"
+	"    xgpu_post_shadow_blur_out out = {};\n"
+	"    int2 texel = int2(gl_FragCoord.xy);\n"
+	"    int radius = int(_22.bounds.x);\n"
+	"    bool down = _22.bounds.y > 0.5;\n"
+	"    int2 along = select(int2(1, 0), int2(0, 1), bool2(down));\n"
+	"    int _48;\n"
+	"    if (down)\n"
+	"    {\n"
+	"        _48 = texel.y;\n"
+	"    }\n"
+	"    else\n"
+	"    {\n"
+	"        _48 = texel.x;\n"
+	"    }\n"
+	"    int position = _48;\n"
+	"    float _60;\n"
+	"    if (down)\n"
+	"    {\n"
+	"        _60 = _22.metrics.w;\n"
+	"    }\n"
+	"    else\n"
+	"    {\n"
+	"        _60 = _22.metrics.z;\n"
+	"    }\n"
+	"    int last = int(_60) - 1;\n"
+	"    int row = min(min(position, (last - position)), radius);\n"
+	"    int mirror = (position <= (last - position)) ? 1 : (-1);\n"
+	"    float3 sum = float3(0.0);\n"
+	"    int _96 = -radius;\n"
+	"    for (int offset = _96; offset <= radius; offset++)\n"
+	"    {\n"
+	"        int at = position + offset;\n"
+	"        if ((at >= 0) && (at <= last))\n"
+	"        {\n"
+	"            float4 weight = weights_texture.read(uint2(int2(radius + (offset * mirror), row)), 0);\n"
+	"            sum += (color_texture.read(uint2((texel + (along * int2(offset)))), 0).xyz * (((weight.x * 65280.0) + (weight.y * 255.0)) / 65536.0));\n"
+	"        }\n"
+	"    }\n"
+	"    out.result = float4(sum, 1.0);\n"
+	"    return out;\n"
+	"}\n"
+	"\n";
+
 const struct xgpu_metal_post_function xgpu_metal_post_functions[XGPU_METAL_POST_FUNCTION_COUNT] =
 {
 	{ post_source, sizeof(post_source) - 1, "xgpu_post_vertex" },
@@ -1237,6 +1299,7 @@ const struct xgpu_metal_post_function xgpu_metal_post_functions[XGPU_METAL_POST_
 	{ smaa_blend_source, sizeof(smaa_blend_source) - 1, "xgpu_post_smaa_blend" },
 	{ hdr_tone_map_source, sizeof(hdr_tone_map_source) - 1, "xgpu_hdr_tone_map" },
 	{ hdr_encode_source, sizeof(hdr_encode_source) - 1, "xgpu_hdr_encode" },
+	{ shadow_blur_source, sizeof(shadow_blur_source) - 1, "xgpu_post_shadow_blur" },
 };
 
 const uint32_t xgpu_metal_post_area_texture[] =

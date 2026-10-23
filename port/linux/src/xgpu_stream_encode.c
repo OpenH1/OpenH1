@@ -667,6 +667,18 @@ void xgpu_backend_tone_map(xgpu_target target, const long corners[4])
 		record_body->corners[index] = (int32_t)corners[index];
 }
 
+void xgpu_backend_shadow_blur(xgpu_target source, xgpu_target destination, int scale)
+{
+	struct xgpu_stream_shadow_blur *record_body;
+
+	if (!stream.open)
+		return;
+	record_body = record(XGPU_STREAM_SHADOW_BLUR, sizeof(*record_body));
+	record_body->source = source;
+	record_body->destination = destination;
+	record_body->scale = (uint32_t)scale;
+}
+
 /* (the host writes the ring's display_hdr and display_headroom as it looks
 at its display) */
 BOOL xgpu_backend_display_hdr(float *headroom)
