@@ -206,7 +206,7 @@ def main() -> int:
         dist = ROOT / "dist" / dist_name(args.platform, args.config, args.vr)
         if dist.exists():
             shutil.rmtree(dist)
-        linux_package.stage_tree(dist, executable, library, notices)
+        linux_package.stage_tree(dist, executable, library, notices, vr=args.vr)
         print(f"{', '.join(outputs)} -> {dist.relative_to(ROOT)}", flush=True)
         return 0
 

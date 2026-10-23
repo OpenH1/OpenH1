@@ -77,6 +77,29 @@ def test_tree_is_portable(program, tmp_path):
                      "data": str(root), "brokers": f"{root}/share/openh1/brokers.txt"}
 
 
+def test_tree_installed_by_install_sh(program, tmp_path):
+    """the release's install.sh (tools/linux_install.sh) puts the tree in ~/Applications/OpenH1 as it is: a portable
+    tree, which keeps the player's files in it and updates itself there (updater.c)"""
+    release = tmp_path / "home/Downloads/OpenH1-Linux"
+    tree(program, release)
+    (release / "share/openh1/brokers.txt").write_text("")
+    (release / "share/applications").mkdir()
+    shutil.copy2(ROOT / "port/assets/linux/openh1.desktop", release / "share/applications/openh1.desktop")
+    shutil.copy2(ROOT / "tools/linux_install.sh", release / "install.sh")
+    commands = tmp_path / "commands"
+    commands.mkdir()
+    for name in ("bash", "basename", "cat", "chmod", "cmp", "cp", "dirname", "find", "grep", "ls", "mkdir", "mv",
+                 "readlink", "rm", "sed", "sort"):
+        (commands / name).symlink_to(shutil.which(name))
+    home = tmp_path / "home"
+    subprocess.run([str(release / "install.sh")], check=True, capture_output=True, stdin=subprocess.DEVNULL,
+                   env={"HOME": str(home), "PATH": str(commands), "OPENH1_INSTALL_WINDOW": "1"})
+    root = home / "Applications/OpenH1"
+    found = answers(root / "bin/openh1", home)
+    assert found == {"folder": str(root), "tree": "1", "system": "0", "reason": "", "config": f"{root}/",
+                     "data": str(root), "brokers": f"{root}/share/openh1/brokers.txt"}
+
+
 def test_flat_folder(program, tmp_path):
     root = tmp_path / "halo"
     found = answers(install(program, root, "halo"), tmp_path / "home")
