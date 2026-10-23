@@ -27,28 +27,28 @@ int main(void)
 {
 	float rate;
 
-	/* (the common displays: between 30 and 40 frames a second) */
-	check(60.0f, 2);
-	check(59.94f, 2);
-	check(90.0f, 3);
-	check(120.0f, 3);
-	check(119.88f, 3);
-	check(144.0f, 4);
-	check(165.0f, 5);
-	check(240.0f, 6);
+	/* (the common displays: between 30 and 60 frames a second) */
+	check(60.0f, 1);
+	check(59.94f, 1);
+	check(90.0f, 2);
+	check(120.0f, 2);
+	check(119.88f, 2);
+	check(144.0f, 3);
+	check(165.0f, 3);
+	check(240.0f, 4);
 	check(80.0f, 2);
 	check(75.0f, 2);
-	check(100.0f, 3);
-	/* (a display at or below 40 Hz keeps its rate, as does one no whole
-	number brings to 30 to 40) */
+	check(100.0f, 2);
+	check(360.0f, 6);
+	/* (a display at or below 60 Hz keeps its rate) */
 	check(40.0f, 1);
 	check(30.0f, 1);
 	check(24.0f, 1);
 	check(48.0f, 1);
 	check(50.0f, 1);
 	/* (unknown: taken as 60 Hz) */
-	check(0.0f, 2);
-	check(-1.0f, 2);
+	check(0.0f, 1);
+	check(-1.0f, 1);
 	/* (no most: every refresh) */
 	if (frame_pacing_divisor(144.0f, BATTERY_SAVER_LEAST, 0) != 1)
 	{
@@ -56,14 +56,16 @@ int main(void)
 		failures++;
 	}
 	check(85.0f, 2);
-	/* (never below the least, and above the most (but for the 59.94 Hz
-	allowance) only where one refresh more would be below the least) */
+	/* (never below the least, and above the most only where one refresh
+	more would be below the least, or within frame_pacing_divisor's
+	allowance of 5% over it: 62 Hz is a 60 Hz display's rate, not one to
+	halve to 31) */
 	for (rate = 41.0f; rate <= 360.0f; rate += 0.5f)
 	{
 		uint32_t divisor = frame_pacing_divisor(rate, BATTERY_SAVER_LEAST, BATTERY_SAVER_MOST);
 		float shown = rate / (float)divisor;
 
-		if (shown > (float)BATTERY_SAVER_MOST * 1.02f && rate / (float)(divisor + 1) >= (float)BATTERY_SAVER_LEAST)
+		if (shown > (float)BATTERY_SAVER_MOST * 1.06f && rate / (float)(divisor + 1) >= (float)BATTERY_SAVER_LEAST)
 		{
 			printf("FAIL %g Hz: %g frames a second\n", (double)rate, (double)shown);
 			failures++;
