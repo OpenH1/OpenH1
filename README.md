@@ -87,7 +87,7 @@ builds of the latest release:
 | Linux arm64 | [OpenH1-Linux-ARM64.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux-ARM64.zip) | [OpenH1-Linux-ARM64-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux-ARM64-debug.zip) |
 | Linux x86-64 VR | [OpenH1-Linux-VR.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Linux-VR.zip) | |
 | Steam Frame VR ([install](port/linux/frame/README.md#install-or-update)) | [OpenH1-Steam-Frame.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Steam-Frame.zip) | |
-| Android | [halo-android-release.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-android-release.zip) | [halo-android-debug.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/halo-android-debug.zip) |
+| Android (64-bit, Android 9 or later, Vulkan 1.3) | [OpenH1-Android.apk](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Android.apk) | [OpenH1-Android-debug.apk](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Android-debug.apk) |
 
 Use the release build to play. The debug build stops at the first failed
 assertion and writes it to the log. Use the debug build to find and report
@@ -111,7 +111,10 @@ older build there.
   a Unix prefix is (`bin/`, `lib/`, `share/`), for package managers too:
   refer to "Steam Deck" and "Packaging" in
   [port/linux/README.md](port/linux/README.md#steam-deck).
-- **Android:** unzip and install the APK. Refer to
+- **Android:** download the APK on the phone and open it to install it
+  (Android asks you to allow installs from the browser the first time). An
+  install from before the project's own signing key must be uninstalled
+  once first: back up its `maps/` and `save/` folders. Refer to
   [port/android/README.md](port/android/README.md).
 
 The Windows, Linux and Android builds update themselves. At start-up they

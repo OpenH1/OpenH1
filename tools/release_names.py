@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """The names the release publishes each build under, as players see them in
-their downloads: OpenH1-<machine>[-debug] (.dmg for the Mac, .zip for the
-rest). The workflow's artifacts and dist/ keep their own names
+their downloads: OpenH1-<machine>[-debug] (.dmg for the Mac, .apk for
+Android, .zip for the rest). The workflow's artifacts and dist/ keep their own names
 (tools/ci_build.py dist_name: halo-<platform>-<config>), which this maps.
 
     python3 tools/release_names.py <artifact>   # its published name, without the extension
 
 The self-updaters ask for these names (port/linux/src/updater.c's
-UPDATE_NAME, with -debug for a debug build).
-Android keeps halo-android-<config>.zip for now: its app's updater asks for
-that name (Updater.java), and is to change with its signing key (#92).
+UPDATE_NAME, and the Android app's Updater.java, with -debug for a debug
+build).
 """
 
 import sys
@@ -22,12 +21,13 @@ NAMES = {
     "linux-arm64": "OpenH1-Linux-ARM64",
     "steam-frame-vr": "OpenH1-Steam-Frame",
     "macos": "OpenH1",
+    "android": "OpenH1-Android",
 }
 
 
 def published(artifact: str) -> str:
     """halo-<platform>-<config>[-symbols] -> OpenH1-<machine>[-debug][-symbols]; an artifact of no machine
-    here (Android's) keeps its name"""
+    here keeps its name"""
     name, symbols = (artifact[:-len("-symbols")], "-symbols") if artifact.endswith("-symbols") else (artifact, "")
     for config in ("release", "debug"):
         if name.startswith("halo-") and name.endswith(f"-{config}"):

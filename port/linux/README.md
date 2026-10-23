@@ -1853,7 +1853,9 @@ itself (`update.auto` has no effect): install a new one with
 On the Frame, the game is in `~/apps/halo-vr/`, and Steam starts it
 through a shortcut (a non-Steam game) to the launcher there,
 `halo-vr.sh` (`port/linux/frame/halo-vr.sh`, whose comments list the
-environment it gives the game). From a computer with SSH to the Frame,
+environment it gives the game). On the Frame itself, in desktop mode:
+download the latest release's package, unzip it and open `install.sh` in
+it (port/linux/frame/README.md). From a computer with SSH to the Frame,
 the latest release's package
 ([OpenH1-Steam-Frame.zip](https://github.com/OpenH1/OpenH1/releases/latest/download/OpenH1-Steam-Frame.zip)):
 
@@ -1871,7 +1873,7 @@ tools/frame_install.sh <frame>
 
 - `tools/frame_package.py` makes the package, `dist/halo-vr-frame/` and
   `dist/halo-vr-frame.tar.gz`: the game, `libSDL3.so.0`, `halo-vr.sh`,
-  `brokers.txt` (without which internet play finds no games), a README
+  `install.sh` (`tools/frame_install.sh`), `brokers.txt` (without which internet play finds no games), a README
   (`port/linux/frame/README.md`: install, update, uninstall, the files),
   the libraries' licenses, `VERSION` (the commit) and `SHA256SUMS`. It
   takes the game from `build/linux_arm64` (`--build` names another), and
@@ -1892,16 +1894,23 @@ tools/frame_install.sh <frame>
   `config.toml`, `halo-vr.env`, the maps, the logs or the saved games.
   `--local <folder>` installs into `<folder>/apps/halo-vr` instead, the
   folder standing in for the Frame's home (from a terminal on the Frame,
-  or to test the script).
+  or to test the script). As the package's `install.sh`, with no
+  arguments, it installs the package it is in into its user's home, in a
+  terminal window of its own (`konsole`) when opened from the file
+  manager.
 - The Steam shortcut: until Steam has one to the launcher (in
   `~/.local/share/Steam/userdata/*/config/shortcuts.vdf`, which the
   install only reads), the install prints how to add it on the Frame:
-  in Steam's desktop mode, Games > Add a Non-Steam Game to My Library >
-  Browse, `~/apps/halo-vr/halo-vr.sh`, Add Selected Programs. It does not
-  add it itself: Steam rewrites that file while it runs, which on the
-  Frame is always.
+  in Steam's desktop mode, Games > Add a Non-Steam Game to My Library,
+  OpenH1 VR, Add Selected Programs. (The install writes that menu entry,
+  `~/.local/share/applications/openh1-vr.desktop`, with the package's
+  `openh1.png`; Steam names the shortcut after it.) It does not
+  write that file: Steam rewrites it while it runs, which on the Frame is
+  always. Run on the Frame as `install.sh`, it asks the running Steam to
+  add the shortcut instead (SteamOS's `steamos-add-to-steam`).
 - The maps go in `~/apps/halo-vr/maps` (or `paths.data`); the install
-  says so when there are none.
+  says so when there are none. Run on the Frame as `install.sh`, it first
+  asks for the disc's maps folder (`kdialog`) and copies its `.map` files.
 - Settings of your own for the launcher (`HALO_*=value` lines) go in
   `~/apps/halo-vr/halo-vr.env`, which updates keep, or in the shortcut's
   launch options in Steam (`HALO_VR=0 %command%`).

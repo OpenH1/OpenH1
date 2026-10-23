@@ -39,6 +39,7 @@ int touch_game_cinematic_skippable(void);
 int touch_game_cinematic_playing(void);
 int touch_game_playing(void);
 void touch_game_button_controls(int *controls);
+int touch_game_context(void);
 
 /* the gamepad's buttons (input.h), which the touch controls are named by */
 #define TOUCH_BUTTONS 16
@@ -249,12 +250,25 @@ enum
 	controls, and on Android the overlay's own input device list did not
 	show every controller (a Bluetooth pad arrived after it looked) */
 	_touch_scene_controller = 1 << 4,
+	/* display.hud_button_style, which the Android overlay draws the
+	controller's buttons in: 0 "classic", 1 "gems", 2 "menu_gems" */
+	_touch_scene_style_shift = 5,
+	_touch_scene_style = 3 << _touch_scene_style_shift,
+	/* input.touch_captions: each controller button's game control written
+	under it */
+	_touch_scene_captions = 1 << 7,
+	/* player 1's state, which the overlay's buttons show (touch_game.c's
+	_touch_context_* bits: an action prompted, a magazine to reload, no
+	grenades, in a vehicle), from this bit up */
+	_touch_scene_context_shift = 8,
 };
 
 /* the touch controls' stick at port 0's last read, -1..1, y down */
 static float move_x, move_y;
 
-/* input.touch_controls as _touch_scene_on, _touch_scene_off or 0 */
+/* the settings the overlay reads: input.touch_controls as
+_touch_scene_on, _touch_scene_off or 0, display.hud_button_style and
+input.touch_captions */
 static int touch_controls_setting(void)
 {
 	static int setting;
@@ -270,6 +284,13 @@ static int touch_controls_setting(void)
 			setting = _touch_scene_on;
 		else if (value && !strcmp(value, "off"))
 			setting = _touch_scene_off;
+		value = config_string("display.hud_button_style");
+		if (value && !strcmp(value, "gems"))
+			setting |= 1 << _touch_scene_style_shift;
+		else if (value && !strcmp(value, "menu_gems"))
+			setting |= 2 << _touch_scene_style_shift;
+		if (config_boolean("input.touch_captions"))
+			setting |= _touch_scene_captions;
 	}
 	return setting;
 }
@@ -305,6 +326,7 @@ void touch_input_controls(XINPUT_GAMEPAD *pad, int menus)
 	int state[7];
 	int index;
 	int controller;
+	int playing;
 
 	/* a gamepad that is not the touch controls' own: the controls' state
 	goes to port 0 only, and the overlay's device list has left some
@@ -313,10 +335,12 @@ void touch_input_controls(XINPUT_GAMEPAD *pad, int menus)
 	/* (the controls show only in a game: not while it starts, at the main
 	menu, in a menu or during a cinematic; nor while the text chat's
 	on-screen keyboard is up, whose keys the fingers then tap) */
+	playing = touch_game_playing();
 	host_touch_scene(_touch_scene_known | touch_controls_setting() |
 		(controller ? _touch_scene_controller : 0) |
-		(menus || !touch_game_playing() || touch_game_cinematic_playing() || network_chat_keyboard_open() ?
-			_touch_scene_menus : 0));
+		(menus || !playing || touch_game_cinematic_playing() || network_chat_keyboard_open() ?
+			_touch_scene_menus : 0) |
+		(playing ? touch_game_context() << _touch_scene_context_shift : 0));
 	/* (the profile's mapping, for the buttons' names; only when it changes) */
 	touch_game_button_controls(bindings);
 	if (!bindings_known || memcmp(bindings, bindings_sent, sizeof(bindings)))

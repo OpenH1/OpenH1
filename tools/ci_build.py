@@ -168,7 +168,8 @@ def main() -> int:
         return 0
     if args.platform == "android":
         # the native part, then the app around it (Gradle's variant of the
-        # same name: release is signed with the debug key, not debuggable)
+        # same name: release is not debuggable; both are signed with the
+        # workflow's key when it has one, port/android/app/build.gradle)
         run(["ninja", "android"])
         gradlew = "gradlew.bat" if os.name == "nt" else "./gradlew"
         variant = "release" if args.config == "release" else "debug"
@@ -229,9 +230,11 @@ def main() -> int:
         for pdb in [ROOT / "build/windows/halo.pdb", *sorted((ROOT / "build/windows/third_party").glob("SDL3-*/lib/x86/SDL3.pdb"))]:
             shutil.copy2(pdb, symbols)
             print(f"{pdb.relative_to(ROOT)} -> {symbols.relative_to(ROOT)}", flush=True)
-    if args.platform == "macos":
-        # (the app carries the licences: Contents/Resources/Licenses,
-        # tools/macos_build.py)
+    if args.platform in ("macos", "android"):
+        # (the app carries the licences: the macOS app's
+        # Contents/Resources/Licenses, tools/macos_build.py; the APK's
+        # assets/licenses, tools/android_build.py), and the release publishes
+        # it alone
         return 0
     # OpenH1's own licence, the AGPL, which asks each copy to carry its text
     # (the Linux tree's is in share/licenses: linux_package.py)
@@ -240,8 +243,7 @@ def main() -> int:
         shutil.copy2(source, dist / name)
     # internet play's MQTT brokers, a file beside the game (network.brokers_file;
     # Android's APK and the macOS app have their own copies)
-    if args.platform not in ("android", "macos"):
-        shutil.copy2(ROOT / "port/assets/network/brokers.txt", dist / "brokers.txt")
+    shutil.copy2(ROOT / "port/assets/network/brokers.txt", dist / "brokers.txt")
     return 0
 
 
