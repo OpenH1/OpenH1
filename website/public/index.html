@@ -254,6 +254,8 @@ h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stret
 .dl code, .dl em { font: 500 13px var(--mono); font-style: normal; color: var(--text); }
 .dl .r { margin-top: auto; padding-top: 18px; color: var(--muted); }
 .dl .later h3 { color: var(--soft); }
+.dl .maps { margin-top: auto; padding-top: 10px; color: var(--muted); font-size: 14px; text-underline-offset: 3px; }
+.dl .maps:hover { color: var(--green); }
 
 footer { margin-top: clamp(96px, 12vw, 160px); border-top: 1px solid var(--line-soft); padding: 40px 0 48px; color: var(--muted); font-size: 14px; }
 footer .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px 24px; align-items: center; }
@@ -563,7 +565,7 @@ footer .legal a { color: var(--soft); }
         </div>
         <ol>
           <li>Download the game for your machine, <a href="#get">below</a>.</li>
-          <li>Start the game and choose your disc image (<code>.iso</code> or <code>.xiso</code>) when it asks.</li>
+          <li>Start the game and choose your disc image (<code>.iso</code> or <code>.xiso</code>), or its maps folder, when it asks. <a href="/maps" style="color:var(--green)">How to get your maps</a>.</li>
           <li>It copies out its maps once. Then you're in.</li>
         </ol>
       </div>
@@ -590,6 +592,7 @@ footer .legal a { color: var(--soft); }
             <li>Unzip it anywhere, and open <code>halo.exe</code>.</li>
             <li>If Windows says it protected your PC, choose <em>More info</em>, then <em>Run anyway</em>. The game isn't signed yet.</li>
           </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
         </article>
         <article data-os="linux">
           <h3>Steam Deck</h3>
@@ -600,6 +603,7 @@ footer .legal a { color: var(--soft); }
             <li>Open <code>install.sh</code> in that folder, and choose your game's disc image or maps folder when it asks.</li>
             <li>Play OpenH1 from Game Mode.</li>
           </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
         </article>
         <article data-os="mac">
           <h3>Mac</h3>
@@ -609,6 +613,7 @@ footer .legal a { color: var(--soft); }
             <li>Open the downloaded <code>.dmg</code>.</li>
             <li>Drag OpenH1 to Applications, and open it from there.</li>
           </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
         </article>
         <article data-os="android">
           <h3>Android</h3>
@@ -619,6 +624,7 @@ footer .legal a { color: var(--soft); }
             <li>When Android asks, allow your browser to install apps, then choose <em>Install</em>.</li>
             <li>Copy your disc image to the phone, open OpenH1 and choose it. It copies out its maps once.</li>
           </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
         </article>
         <article>
           <h3>Steam Frame</h3>
@@ -629,6 +635,7 @@ footer .legal a { color: var(--soft); }
             <li>Open <code>install.sh</code> in that folder, and choose your game's maps folder when it asks.</li>
             <li>Start SteamVR, then OpenH1 VR from your Library.</li>
           </ol>
+          <a class="maps" href="/maps#give">Need your maps?</a>
         </article>
       </div>
     </div>
