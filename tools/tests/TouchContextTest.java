@@ -7,11 +7,13 @@ public final class TouchContextTest {
     }
 
     public static void main(String[] args) {
-        // The state comes from bit 8 of the scene up, past the settings' bits.
-        int scene = 1 | 4 | (2 << 4) | 64 | (TouchContext.ACTION | TouchContext.VEHICLE) << 8;
+        // The state comes from bit 8 of the scene up, past the other bits: known, menus,
+        // on, off, a controller (bit 4), the button style (bits 5 and 6), the captions (bit 7).
+        int others = 1 | 2 | 4 | 8 | 16 | (3 << 5) | 128;
+        int scene = others | (TouchContext.ACTION | TouchContext.VEHICLE) << 8;
         check(TouchContext.fromScene(scene) == (TouchContext.ACTION | TouchContext.VEHICLE),
               "The state is read from bit 8 up");
-        check(TouchContext.fromScene(1 | 4 | (3 << 4) | 64) == 0, "The settings' bits are not state");
+        check(TouchContext.fromScene(others) == 0, "The other bits are not state");
 
         // In a vehicle jump and crouch hide, and the action button exits.
         int vehicle = TouchContext.VEHICLE;
