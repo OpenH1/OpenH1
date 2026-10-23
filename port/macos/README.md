@@ -590,11 +590,34 @@ command stream's backend table. They run on one thread, the render thread.
   and the large pass, parked, goes on when the game comes back to its
   targets. A target that the command buffer's work has read is given another
   texture first (its contents copied where the pass loads them, or has other
-  levels or layers). The first return in a frame still ends the large pass
-  (a frame drawn in one pass from its start differed from the stock order
-  at a few pixels of some frames; with that break, every shot of the
-  recordings is the same). `HALO_METAL_ASIDE=0`: none. HALO_METAL_STATS
-  counts them.
+  levels or layers). On the Mac the first return in a frame still ends the
+  large pass (a frame drawn in one pass from its start differed from the
+  stock order at a few pixels of some frames; with that break, every shot
+  of the recordings is the same). On iOS it goes on (the backend's
+  `aside_continue`), the 3D view and the HUD then one pass, which a
+  phone's GPU pays least for and MSAA needs to resolve its samples in tile
+  memory: at 2796x1290 on an M1, MSAA 4x went from 9.1 to 5.2 ms of the
+  GPU a frame, and one or two pixels of a shot differ.
+  `HALO_METAL_ASIDE_BREAK=1` or `0` chooses on either. `HALO_METAL_ASIDE=0`:
+  no aside passes. HALO_METAL_STATS counts them.
+- **Frame-end discards.** A tile-based GPU (Apple's) stores each pass's
+  attachments from tile memory into their textures as the pass ends. The
+  frame's last pass decides its depth, stencil and multisampled colour
+  attachments' stores as it ends (deferred store actions): a target whose
+  first use in each of the last 30 frames was a clear of the whole of it
+  (no load, draw's read, copy or resolve before) has its contents at the
+  frame's end discarded, a multisampled colour resolved and its samples
+  dropped. The game clears its depth and its multisampled targets at each
+  frame's start, so those stores go. A first use that is not a clear starts
+  the count again (logged once, if the frame read what was discarded). The
+  shots of recorded frames are the same with and without them.
+  `HALO_METAL_DISCARDS=0`: none. `HALO_METAL_MEMORYLESS=1` (with
+  `aside_continue`) makes multisampled attachments memoryless, saving their
+  memory too (about 130 MB at an iPhone Pro Max's resolution); off by
+  default, as the game ends and resumes its 3D view's pass now and then
+  (every few hundred frames of a10), and a memoryless target's samples are
+  gone then, which shows for a frame (the target is then kept in memory,
+  and memoryless again after 120 frames without such a load).
 - **Visibility tests** count samples in a visibility result buffer, one for
   each pass (Apple's GPUs zero the first results an earlier pass counted
   into a buffer when a later pass counts into the same one), and the counts

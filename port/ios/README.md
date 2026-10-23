@@ -219,6 +219,17 @@ The Metal backend is the macOS one. What differs:
   its EDR headroom for `display.hdr`.
 - The Simulator's GPU has no binary archives (the pipelines' archive is not
   used there) and its drawables say nothing of their presentation.
+- The 3D view and the HUD are drawn in one pass (the aside passes' break,
+  which the Mac keeps for its recordings, is not made: "Aside passes" in
+  [port/macos/README.md](../macos/README.md)), and the frame's last pass
+  discards what the next frame clears ("Frame-end discards" there): a
+  phone's tile-based GPU stores none of the screen's depth and samples.
+- `display.graphics = "enhanced"` gives MSAA 4x on iOS (not SMAA), resolved
+  in tile memory: at the iPhone 15 Pro Max's 2796x1290, measured on an M1
+  (the same family of GPU), about SMAA's cost (a10: 7.1 ms of the GPU a
+  frame against 6.8; Blood Gulch with bots: 5.2 against 7.5), with the
+  geometry's edges smoother. `display.anti_aliasing = "smaa"` still
+  chooses SMAA.
 
 ## The Simulator
 

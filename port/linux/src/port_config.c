@@ -94,10 +94,17 @@ Ctrl+D, which moving and crouching would press, from the browser) */
 
 /* display.graphics = "enhanced": the values it gives the settings it
 chooses (config_graphics), which are their defaults, the same on every
-build: SMAA (OpenGL ES FXAA), 16x anisotropic filtering, 512 shadow maps,
-the models' detail by the display's lines and lit for each pixel, the
-enhanced dynamic lights (OpenGL ES draws them classic) */
+build: SMAA (OpenGL ES FXAA; on iOS MSAA 4x), 16x anisotropic filtering,
+512 shadow maps, the models' detail by the display's lines and lit for each
+pixel, the enhanced dynamic lights (OpenGL ES draws them classic) */
+#ifdef HALO_IOS
+/* (an iPhone's tile-based GPU resolves MSAA in its tile memory, the 3D view
+drawn in one pass, port/macos/xgpu_metal.m: about the cost of SMAA's
+passes over the screen there, and smoother edges) */
+#define GRAPHICS_ANTI_ALIASING "\"msaa4x\""
+#else
 #define GRAPHICS_ANTI_ALIASING "\"smaa\""
+#endif
 #define GRAPHICS_ANISOTROPIC_FILTERING "16"
 #define GRAPHICS_SHADOW_RESOLUTION "512"
 #define GRAPHICS_PER_PIXEL_LIGHTING "true"
