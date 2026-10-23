@@ -1158,6 +1158,10 @@ static const struct config_setting config_settings[] =
 	{ "debug.update_answer", _config_string, "\"\"", "HALO_UPDATE_ANSWER", _environment_value, _platform_desktop,
 		"The answer to the new version question, for automated tests: \"yes\",\n"
 		"\"no\" or \"never\" (do not ask again, confirmed); empty asks." },
+	{ "debug.first_start_input", _config_string, "\"\"", "HALO_FIRST_START_INPUT", _environment_value, _platform_desktop,
+		"Linux: the buttons an automated test presses on the first start's screen\n"
+		"(no game data), one each half second: \"up\", \"down\", \"a\" and \"b\",\n"
+		"separated by commas; empty waits for the player." },
 	{ "debug.update_from", _config_string, "\"\"", "HALO_UPDATE_FROM", _environment_value, _platform_desktop,
 		"A release's zip file to update to, for testing updates: the game offers\n"
 		"it as a new version without asking GitHub, even when it has no build\n"

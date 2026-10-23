@@ -423,6 +423,7 @@ int host_sdl_show_message_box(struct host_message_box *box)
 struct file_dialog
 {
 	SDL_AtomicInt done;
+	int failed;
 	char *path;
 	uint32_t size;
 };
@@ -432,14 +433,17 @@ static void SDLCALL file_dialog_chosen(void *userdata, const char * const *files
 	struct file_dialog *dialog = userdata;
 
 	(void)filter;
-	if (files && files[0])
+	if (!files)
+		dialog->failed = 1;
+	else if (files[0])
 		SDL_strlcpy(dialog->path, files[0], dialog->size);
 	SDL_SetAtomicInt(&dialog->done, 1);
 }
 
 /* the file the player picks (filter_names and filter_patterns: the
 filters' names and patterns one after another, each NUL terminated), once
-the dialog closes; 1 with its path, 0 if none */
+the dialog closes; 1 with its path, 0 if none, -1 when no dialog could be
+shown (SDL needs the desktop portal or zenity: first_start.c then says so) */
 int host_sdl_open_file_dialog(int filter_count, const char *filter_names, const char *filter_patterns,
 	char *path, uint32_t size)
 {
@@ -468,6 +472,8 @@ int host_sdl_open_file_dialog(int filter_count, const char *filter_names, const 
 		SDL_PumpEvents();
 		SDL_Delay(50);
 	}
+	if (dialog.failed)
+		return -1;
 	return path[0] != 0;
 }
 

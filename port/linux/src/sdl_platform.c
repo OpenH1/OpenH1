@@ -649,9 +649,10 @@ BOOL platform_sdl_initialize(void)
 	return TRUE;
 }
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
-/* ---------- first start without game data (xbox_files.c; the web page
-imports it itself) */
+#if !defined(HALO_ANDROID) && !defined(HALO_WEB) && (defined(_WIN32) || defined(HALO_MACOS))
+/* ---------- first start without game data (xbox_files.c), on Windows and
+macOS: the system's dialogs. (The Linux builds' is first_start.c, in the
+game's own window; the web page imports the data itself) */
 
 struct data_extraction
 {
