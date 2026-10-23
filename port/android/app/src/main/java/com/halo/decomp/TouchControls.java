@@ -7,6 +7,7 @@ import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.BlurMaskFilter;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LightingColorFilter;
@@ -113,6 +114,10 @@ public final class TouchControls extends View implements SensorEventListener, In
      */
     private static final long IDLE_MS = 3000;
     private static final float IDLE_OPACITY = 0.7f;
+    /** a glow reaches this far past its art, in the art's longer side */
+    private static final float GLOW_MARGIN = 0.25f;
+    /** ... from its art's shape this much larger */
+    private static final float GLOW_GROW = 0.14f;
     private static final float FADE_OUT_MS = 600;
     private static final float FADE_IN_MS = 120;
     /** a label is at most this many radii wide */
@@ -262,6 +267,8 @@ public final class TouchControls extends View implements SensorEventListener, In
     private final Bitmap showIcon;
     /** the captions' font: Overpass, as the HUD's text (res/font, tools/touch_assets.py) */
     private final Typeface captionFont;
+    /** each button art's glow (TouchContext.glow), made when first drawn */
+    private final HashMap<Bitmap, Bitmap> glows = new HashMap<>();
     /** the idle fade (IDLE_OPACITY..1), and when a finger last touched the screen */
     private float idle = 1f;
     private long lastTouch;
@@ -375,7 +382,9 @@ public final class TouchControls extends View implements SensorEventListener, In
             int was = scene;
             scene = nativeScene();
             // (the buttons' style and captions are settings: drawn again when they change)
-            if (((was ^ scene) & (3 << SCENE_STYLE_SHIFT | SCENE_CAPTIONS)) != 0)
+            if (((was ^ scene) & (3 << SCENE_STYLE_SHIFT | SCENE_CAPTIONS)) != 0
+                    || TouchContext.fromScene(was) != TouchContext.fromScene(scene)
+                    || (showing && !hidden && TouchContext.animating(TouchContext.fromScene(scene))))
                 invalidate();
             fadeWhenIdle();
             updateShowing();
@@ -739,7 +748,7 @@ public final class TouchControls extends View implements SensorEventListener, In
         if (hidden && !editing)
             return NOTHING;
         for (int i = 0; i < layout.size(); i++) {
-            if (layout.shown(i) && layout.type(i) != TouchLayout.LEFT
+            if (layout.shown(i) && layout.type(i) != TouchLayout.LEFT && (editing || !hiddenNow(layout.type(i)))
                     && inside(x, y, layout.x(i), layout.y(i), layout.radius(i)))
                 return i;
         }
@@ -843,10 +852,12 @@ public final class TouchControls extends View implements SensorEventListener, In
             toolbarFingers.put(id, new float[] {px, py, target});
         } else if (target != NOTHING) {
             owners.put(id, target);
-            if (layout.type(target) == TouchLayout.LEFT)
+            if (layout.type(target) == TouchLayout.LEFT) {
                 moveStick(target, x, y);
-            else
+            } else {
                 buttonTouches.put(id, new float[] {px, py});
+                tap();
+            }
         } else if (!hidden && lookPointer < 0 && !inGestureZone(px, py, false)) {
             startLook(id, px, py);
         }
@@ -998,6 +1009,51 @@ public final class TouchControls extends View implements SensorEventListener, In
             return -1;
         int control = bindings[kind.gamepadButton];
         return control >= 0 && control < GAME_CONTROLS.length ? control : -1;
+    }
+
+    /** player 1's state, which the game sends with the scene (TouchContext) */
+    private int context() {
+        return TouchContext.fromScene(scene);
+    }
+
+    /** a button the state hides: jump and crouch in a vehicle's seat */
+    private boolean hiddenNow(int type) {
+        return TouchContext.hidden(gameControl(type), context());
+    }
+
+    /** a light tap of the phone's vibrator at a button's press, with the vibration on */
+    private void tap() {
+        if (vibrator == null || !layout.rumbleEnabled || !vibrator.hasVibrator())
+            return;
+        try {
+            VibrationEffect effect = Build.VERSION.SDK_INT >= 29
+                ? VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK)
+                : VibrationEffect.createOneShot(12, 60);
+            vibrator.vibrate(effect, rumbleAttributes);
+        } catch (RuntimeException ignored) {
+            // the vibrator may already be gone with the activity
+        }
+    }
+
+    /** an art's glow: its shape, blurred, in the HUD's colour, on a margin of GLOW_MARGIN */
+    private Bitmap glow(Bitmap art) {
+        Bitmap glow = glows.get(art);
+        if (glow != null)
+            return glow;
+        int margin = Math.round(Math.max(art.getWidth(), art.getHeight()) * GLOW_MARGIN);
+        Bitmap shape = art.extractAlpha();
+        glow = Bitmap.createBitmap(art.getWidth() + 2 * margin, art.getHeight() + 2 * margin, Bitmap.Config.ARGB_8888);
+        Paint blur = new Paint(Paint.ANTI_ALIAS_FLAG);
+        blur.setColor(HUD_COLOR);
+        blur.setMaskFilter(new BlurMaskFilter(margin * 0.5f, BlurMaskFilter.Blur.NORMAL));
+        // (the shape a little larger, so that the glow reaches past the art's edge)
+        float grow = GLOW_GROW / 2;
+        new Canvas(glow).drawBitmap(shape, null, new RectF(margin - art.getWidth() * grow, margin - art.getHeight() * grow,
+            margin + art.getWidth() * (1 + grow), margin + art.getHeight() * (1 + grow)), blur);
+        shape.recycle();
+        glow.setHasMipMap(true);
+        glows.put(art, glow);
+        return glow;
     }
 
     /** the controller buttons' art: display.hud_button_style, which the game sends with the scene */
@@ -1491,11 +1547,18 @@ public final class TouchControls extends View implements SensorEventListener, In
         float sink = active ? PRESSED_SIZE : 1f;
         Bitmap art = art(type);
         if (art != null) {
-            fitted(canvas, art, x, y, radius * ART_SIZE * sink,
-                (active ? 1f : minor ? MINOR_BUTTON_ALPHA : BUTTON_ALPHA) * opacity, active);
+            int game = gameControl(type);
+            int context = editing ? 0 : context();
+            long now = SystemClock.uptimeMillis();
+            float glow = TouchContext.glow(game, context, now);
+            float size = radius * ART_SIZE * sink * TouchContext.swell(game, context, now);
+            if (glow > 0)
+                fitted(canvas, glow(art), x, y, size * (1 + 2 * GLOW_MARGIN), glow * Math.max(opacity, 0.5f), false);
+            fitted(canvas, art, x, y, size, (active ? 1f : minor ? MINOR_BUTTON_ALPHA : BUTTON_ALPHA) * opacity
+                * TouchContext.alpha(game, context), active || glow > 0.6f);
             // (under the art, as drawn when it is not held, so that it stays put)
             caption(canvas, type, x, y + radius * ART_SIZE * art.getHeight()
-                / Math.max(art.getWidth(), art.getHeight()), opacity);
+                / Math.max(art.getWidth(), art.getHeight()), opacity * TouchContext.alpha(game, context));
             return;
         }
         Kind kind = KINDS[type];
@@ -1526,7 +1589,8 @@ public final class TouchControls extends View implements SensorEventListener, In
         paint.setLetterSpacing(0.06f);
         paint.setShadowLayer(2.5f, 0, 1, alpha(Color.BLACK, 0.8f * Math.max(opacity, 0.5f)));
         paint.setColor(alpha(HUD_COLOR, CAPTION_ALPHA * Math.max(opacity, 0.5f)));
-        canvas.drawText(CAPTIONS[game], x, bottom + CAPTION_SIZE + 1, paint);
+        canvas.drawText(TouchContext.caption(game, editing ? 0 : context(), CAPTIONS[game]), x,
+            bottom + CAPTION_SIZE + 1, paint);
         paint.clearShadowLayer();
         paint.setLetterSpacing(0);
         paint.setTypeface(null);
@@ -1605,7 +1669,7 @@ public final class TouchControls extends View implements SensorEventListener, In
             if (layout.shown(TouchLayout.LEFT))
                 drawStick(canvas, opacity);
             for (int i = 0; i < layout.size(); i++) {
-                if (!layout.shown(i) || layout.type(i) == TouchLayout.LEFT)
+                if (!layout.shown(i) || layout.type(i) == TouchLayout.LEFT || (!editing && hiddenNow(layout.type(i))))
                     continue;
                 control(canvas, i, held(i) || dragControl == i, opacity);
             }

@@ -250,6 +250,23 @@ buttons are drawn alone. The lists of the options name the buttons as "A /
 Jump", "Fire" and so on. The stick moves the player with every "Stick
 layout", southpaw too.
 
+The buttons follow player 1's state, which the game sends with the
+controls' scene (`port/linux/game/touch_game.c`, `TouchContext.java`):
+
+- While the HUD prompts an action (pick up a weapon, enter a vehicle,
+  press a switch), the action button (X: RELOAD) glows.
+- While the weapon's magazine is under a quarter full, or empty, with
+  rounds left to load, the action button pulses. A weapon without a
+  magazine (a plasma weapon) never pulses it, nor does a reload under way.
+- With none of the current grenade type, the grenade button is dimmed.
+- In a vehicle's seat (driver, passenger or gunner), Jump and Crouch hide
+  and the action button's caption says EXIT; Fire stays.
+- Each button press gives a short, light tap of the vibrator, with the
+  vibration on ("General"), on top of the game's own rumble.
+
+They follow the profile's button layout: the state goes with the game
+control a button does, not with the button.
+
 A finger that holds a button can also swipe to look, so you can fire and
 aim with one thumb. The controls are a finger wide (48 dp) or larger, but
 on a small screen of high density they stay apart rather than reach that
