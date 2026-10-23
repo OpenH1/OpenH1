@@ -1067,14 +1067,16 @@ static void surface_dimensions(const D3DSurface *surface, unsigned long *width, 
 }
 
 /* the shadow maps: the game's only R5G6B5 render targets, 128x128
-(rasterizer_xbox.c) */
+(rasterizer_xbox.c), and the port's shadow atlases, whose regions are
+maps of 128 (rasterizer_xbox_shadows.c): all drawn at
+display.shadow_resolution's scale */
 static BOOL surface_is_shadow_map(const D3DSurface *surface)
 {
 	struct xgpu_texture_description description;
 
 	xgpu_texture_describe(surface->Format, surface->Size, &description);
-	return description.format == D3DFMT_R5G6B5 && description.width == SHADOW_MAP_SIZE &&
-		description.height == SHADOW_MAP_SIZE;
+	return description.format == D3DFMT_R5G6B5 && description.width >= SHADOW_MAP_SIZE &&
+		description.height >= SHADOW_MAP_SIZE;
 }
 
 /* the secondary render target, the size of the Xbox's (rasterizer_xbox.c) */
