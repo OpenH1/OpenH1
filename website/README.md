@@ -132,4 +132,4 @@ header's and the footer's wordmark, and `brand/openh1-mark.svg` the plate
 alone. `favicon.svg` is the plate on a dark tile; `favicon-16.png`,
 `favicon-32.png` and `apple-touch-icon.png` (180 px) are it drawn at those
 sizes. The link preview, `og:image`, is `media/og.jpg` (1200 × 630): the
-hero's poster with the logo and the headline.
+hero's poster with the logo and the headline. The maps guide's, `media/og-maps.jpg`, is drawn: the logo, its headline and a disc, from `og/maps.html` (`og/render.sh maps`).
