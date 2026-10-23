@@ -172,6 +172,7 @@ Each platform has its own instructions:
 | Windows (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/windows/README.md](port/windows/README.md) |
 | Android (arm64 app, Vulkan 1.3, SDL3) | [port/android/README.md](port/android/README.md) |
 | macOS (Apple silicon: OpenH1.app, Metal) | [port/macos/README.md](port/macos/README.md) |
+| iOS and iPadOS (arm64, iOS 17.4 or later: OpenH1.app, Metal; built from source and sideloaded, not released yet) | [port/ios/README.md](port/ios/README.md) |
 | Web (WebAssembly; not built for now: it returns with a WebGPU renderer) | [port/web/README.md](port/web/README.md) |
 
 The Linux README also gives the controls, the settings and the multiplayer
@@ -217,6 +218,7 @@ To build the game:
 | `ninja windows` (on Windows, or on Linux after `configure.py --windows-cross`) | `build/windows/halo.exe` and `SDL3.dll` |
 | `ninja android_apk` | `port/android/app/build/outputs/apk/debug/app-debug.apk` |
 | `ninja macos` (on a Mac with Apple silicon) | `build/macos/OpenH1.app` (and `halo` with `libSDL3.0.dylib`, for development); `ninja macos_dmg`: `OpenH1.dmg` |
+| `ninja ios` (on a Mac with Apple silicon and Xcode's iOS SDK) | `build/ios/OpenH1.app`, signed for development with `configure.py --ios-team`; `ninja ios_install` installs it on the connected device; `ninja ios_sim`: the Simulator's |
 | `ninja web` | `build/web/site/`, the web site (`python tools/web_serve.py` serves it) |
 
 If you enter `ninja` without a target, ninja builds the game for the
@@ -247,6 +249,7 @@ Give these options to `configure.py`:
 | `--guest-llvm=system`, `--guest-llvm=FOLDER` | The guest builds (Linux arm64 and x86-64, Android, macOS) compile the guest with clang and the LLVM tools on the PATH, or with the LLVM in FOLDER, not with the pinned LLVM. Refer to "The guests' compiler". |
 | `--guest-llvm-cache FOLDER` | The folder for the pinned LLVM (else `~/.cache/openh1`, on macOS `~/Library/Caches/openh1`). |
 | `--guest-base` | The Linux arm64 and Android builds put the guest's memory at a base that the host chooses, not in the low 4 GB (a base register: `tools/guest_base_register.py`). The 64-bit x86 build has none: with it, `ninja linux_x86_64` stops with the reason. |
+| `--ios-team TEAM` | `ninja ios` signs the iOS app for development with the team's certificate and a provisioning profile that Xcode makes (`tools/ios_provision.py`; Xcode signed in to the team's account). Without it the app is signed ad hoc. `--ios-identity` and `--ios-bundle-id` choose another certificate and bundle identifier. Refer to [port/ios/README.md](port/ios/README.md). |
 | `--web-emcc PATH` | The Emscripten `emcc` for `ninja web` (else the one on the PATH, or `~/emsdk`'s). |
 
 Without `--portable`, the Windows build uses all the instructions of the

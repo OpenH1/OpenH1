@@ -12,8 +12,9 @@ of time"):
    shader the manifest's draws and those vertex shaders need as <name>.metal, and the pipelines as a Metal
    pipelines script whose functions are the library's.
 2. Each source is compiled to AIR (xcrun metal, in parallel, as the backend
-   would compile it: MSL 3.1 for macOS 14.4, safe maths) and linked into one
-   library, shaders.metallib, which the app looks each shader up in.
+   would compile it: MSL 3.1 for macOS 14.4, or with --platform ios for iOS
+   17.4, safe maths) and linked into one library, shaders.metallib, which the
+   app looks each shader up in.
 The pipelines are not built here: a GPU's binaries are the OS's and its
 driver's (a binary archive serves only the macOS version it was made for,
 and one for each version and GPU family would be hundreds of MB). The app
@@ -27,8 +28,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-# as xgpu_metal_shader_create compiles a shader (MTLMathModeSafe)
-METAL_FLAGS = ["-std=metal3.1", "-mmacosx-version-min=14.4", "-fmetal-math-mode=safe"]
+# as xgpu_metal_shader_create compiles a shader (MTLMathModeSafe), for each
+# platform: its SDK and its deployment target (the macOS app's; the iOS
+# app's, tools/ios_build.py)
+METAL_FLAGS = ["-std=metal3.1", "-fmetal-math-mode=safe"]
+PLATFORMS = {
+    "macos": ("macosx", "-mmacosx-version-min=14.4"),
+    "ios": ("iphoneos", "-mios-version-min=17.4"),
+    "ios_simulator": ("iphonesimulator", "-mios-simulator-version-min=17.4"),
+}
 
 
 def run(command, **arguments):
@@ -39,12 +47,14 @@ def run(command, **arguments):
     return result.stdout
 
 
-def compile_chunk(folder, names):
-    run(["xcrun", "-sdk", "macosx", "metal", *METAL_FLAGS, "-c", *names], cwd=folder)
+def compile_chunk(folder, names, platform):
+    sdk, minimum = PLATFORMS[platform]
+    run(["xcrun", "-sdk", sdk, "metal", *METAL_FLAGS, minimum, "-c", *names], cwd=folder)
 
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--platform", choices=sorted(PLATFORMS), default="macos")
     parser.add_argument("--tool", required=True)
     parser.add_argument("--manifest", required=True)
     parser.add_argument("--work", required=True)
@@ -67,10 +77,10 @@ def main():
     names = sorted(path.name for path in sources.glob("*.metal"))
     chunks = [names[index::arguments.jobs] for index in range(arguments.jobs)]
     with concurrent.futures.ThreadPoolExecutor(arguments.jobs) as pool:
-        list(pool.map(lambda chunk: compile_chunk(sources, chunk) if chunk else None, chunks))
+        list(pool.map(lambda chunk: compile_chunk(sources, chunk, arguments.platform) if chunk else None, chunks))
     airs = sorted(str(path) for path in sources.glob("*.air"))
     library.parent.mkdir(parents=True, exist_ok=True)
-    run(["xcrun", "-sdk", "macosx", "metallib", *airs, "-o", str(library)])
+    run(["xcrun", "-sdk", PLATFORMS[arguments.platform][0], "metallib", *airs, "-o", str(library)])
     print(f"{library}: {len(airs)} sources, {library.stat().st_size // 1024} KB")
 
 

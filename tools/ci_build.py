@@ -11,6 +11,7 @@
     python tools/ci_build.py windows release       (on Windows)
     python tools/ci_build.py web release
     python tools/ci_build.py macos release         (on a Mac with Apple silicon)
+    python tools/ci_build.py ios debug             (on a Mac with Apple silicon and Xcode's iOS SDK)
 
 Builds are portable (any x86-64 processor; any ARMv8.0 one for
 linux_arm64 and android), so they run on other computers. Debug builds skip link-time and profile-guided optimisation,
@@ -43,6 +44,11 @@ the licences): the disk image keeps the app's modes and links, which the
 workflow's artifacts would lose, and the release has it as it is,
 OpenH1.dmg (OpenH1-debug.dmg).
 
+The iOS build is the app (ninja ios), signed ad hoc (tools/ios_app.py: a
+device refuses it, a sideloading tool such as AltStore signs it again), as
+an .ipa (Payload/OpenH1.app, zipped), alone in dist/halo-ios-<config>/. The
+release does not publish it yet (port/ios/README.md).
+
 The web build (port/web/README.md) needs Emscripten (emcc on the PATH, as
 emsdk_env.sh puts it); dist/halo-web-<config>/ is the whole site, which a
 static host serves as it is: the workflow publishes the release build's to
@@ -71,6 +77,7 @@ OUTPUTS = {
                      "build/linux_x86_64/SDL3-LICENSE.txt"],
     "windows": ["build/windows/halo.exe", "build/windows/SDL3.dll"],
     "macos": ["build/macos/OpenH1.dmg"],
+    "ios": [],  # the .ipa, below
     "android": [],  # the APK, below
     "web": [],  # the site, below
 }
@@ -108,6 +115,8 @@ def check_guest_image(platform: str) -> None:
     executables = [ROOT / "build" / platform / "halo"]
     if platform == "macos":
         executables.append(ROOT / "build/macos/OpenH1.app/Contents/MacOS/halo")
+    if platform == "ios":
+        executables.append(ROOT / "build/ios/OpenH1.app/halo")
     if not image.is_file():
         return
     data = image.read_bytes()
@@ -165,6 +174,20 @@ def main() -> int:
             shutil.rmtree(dist)
         shutil.copytree(ROOT / "build/web/site", dist)
         print(f"build/web/site -> {dist.relative_to(ROOT)}", flush=True)
+        return 0
+    if args.platform == "ios":
+        # the app as an .ipa: Payload/OpenH1.app, zipped with its modes
+        # (ditto), which the workflow's artifacts would lose
+        run(["ninja", "ios"])
+        check_guest_image(args.platform)
+        dist = ROOT / "dist" / f"halo-ios-{args.config}"
+        if dist.exists():
+            shutil.rmtree(dist)
+        payload = dist / "Payload"
+        payload.mkdir(parents=True)
+        run(["ditto", ROOT / "build/ios/OpenH1.app", payload / "OpenH1.app"])
+        run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", payload, dist / "OpenH1.ipa"])
+        shutil.rmtree(payload)
         return 0
     if args.platform == "android":
         # the native part, then the app around it (Gradle's variant of the

@@ -22,6 +22,18 @@ all memory. MAP_JIT memory needs only com.apple.security.cs.allow-jit
 (port/macos/halo.entitlements). It cannot be mapped at a fixed address, so
 the code's pages are unmapped from the guest's reservation first and mapped
 again at the same address.
+
+iOS gives apps no memory that was writable and is executable, MAP_JIT's
+included (outside a debugger). There the image is part of the app's signed
+executable (port/ios/guest_image.S puts it in a section of the executable's
+__TEXT, on a page boundary), and its read-only part (the header, the code and
+the constants, below the first writable segment) is mapped from the
+executable's file at the guest's addresses: the pages the kernel checks
+against the executable's signature, nothing written or made executable by
+the host. Only the writable segments are copied (with the import table, in
+the image's .data). The guest's base is a multiple of 4 GB wherever its
+memory lies (host_memory_base.c), so the code's PC-relative references to
+its data find them at base plus their addresses, as on macOS.
 */
 
 #include "host.h"
@@ -42,6 +54,7 @@ again at the same address.
 #define PT_DYNAMIC 2
 #define PT_INTERP 3
 #define PF_X 1
+#define PF_W 2
 
 typedef struct
 {
@@ -76,13 +89,21 @@ typedef struct
 #else
 #include <elf.h>
 #endif
+#include <errno.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
 #ifdef __APPLE__
+#include <TargetConditionals.h>
 #include <pthread.h>
 #include <stdlib.h>
+#endif
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+#include <dlfcn.h>
+#include <fcntl.h>
+#include <unistd.h>
+#define HOST_IMAGE_FROM_FILE 1
 #endif
 
 /* more than the guest has (its own, the POSIX and the GL imports) */
@@ -109,7 +130,7 @@ static void missing_import(void)
 	host_fatal("the guest called a host function that is not available");
 }
 
-#ifdef __APPLE__
+#if defined(__APPLE__) && !defined(HOST_IMAGE_FROM_FILE)
 /* the code at address made executable through MAP_JIT memory; 0 if it
 cannot be, and the pages are left as they were */
 static int code_map_jit(void *address, size_t size)
@@ -373,6 +394,99 @@ int host_image_validate_imports(const uint8_t *memory, uint32_t base, uint32_t e
 	return 0;
 }
 
+/* ---------- the read-only part, mapped from a file */
+
+int host_image_read_only_range(const struct host_image_layout *layout, uint64_t page, uint64_t file_offset,
+	uint64_t *start, uint64_t *end, uint64_t *position)
+{
+	uint64_t writable = ~0ULL, read_only_end = 0, distance = 0;
+	uint32_t index;
+	int found = 0;
+
+	/* (the lowest writable segment: everything below it is the read-only
+	part) */
+	for (index = 0; index < layout->segment_count; index++)
+	{
+		const struct host_image_segment *segment = &layout->segments[index];
+
+		if ((segment->flags & PF_W) && segment->address < writable)
+			writable = segment->address;
+	}
+	for (index = 0; index < layout->segment_count; index++)
+	{
+		const struct host_image_segment *segment = &layout->segments[index];
+		/* (the file's place of the segment's guest address 0, as an
+		unsigned difference) */
+		uint64_t at = file_offset + segment->offset - segment->address;
+
+		if (segment->address >= writable)
+			continue;
+		if (segment->flags & PF_W)
+			return fail("segment %u is writable below the first writable one", index);
+		if (segment->file_size != segment->memory_size)
+			return fail("read-only segment %u is larger in memory than in the file", index);
+		if (segment->address + segment->memory_size > writable)
+			return fail("read-only segment %u overlaps a writable one", index);
+		if (found && at != distance)
+			return fail("read-only segment %u is not where the others are in the file", index);
+		distance = at;
+		found = 1;
+		if (segment->address + segment->memory_size > read_only_end)
+			read_only_end = segment->address + segment->memory_size;
+	}
+	if (!found)
+		return fail("has no read-only segment");
+	*start = layout->low;
+	*end = (read_only_end + page - 1) & ~(page - 1);
+	*position = distance + *start;
+	if ((*start & (page - 1)) || (*position & (page - 1)))
+		return fail("read-only part (%llx in the file) is not on a page boundary of %llu bytes",
+			(unsigned long long)*position, (unsigned long long)page);
+	if (writable != ~0ULL && *end > writable)
+		return fail("first writable segment (%llx) shares a page with the read-only part (to %llx)",
+			(unsigned long long)writable, (unsigned long long)read_only_end);
+	return 0;
+}
+
+#ifdef HOST_IMAGE_FROM_FILE
+/* the image's read-only part mapped from the executable that holds the
+image (file, in its __TEXT, whose bytes are the file's from the Mach-O
+header on), over the copy at the guest's addresses */
+static int code_map_file(const void *file, size_t size, const struct host_image_layout *layout, uint64_t page)
+{
+	Dl_info information;
+	uint64_t offset, start, end, position;
+	unsigned char check[4096];
+	void *mapped;
+	int descriptor;
+
+	if (!dladdr(file, &information) || !information.dli_fname || !information.dli_fbase)
+		return fail("is not in a file of the app");
+	offset = (uint64_t)((const char *)file - (const char *)information.dli_fbase);
+	if (host_image_read_only_range(layout, page, offset, &start, &end, &position) != 0)
+		return -1;
+	descriptor = open(information.dli_fname, O_RDONLY | O_CLOEXEC);
+	if (descriptor < 0)
+		return fail("file %s cannot be opened", information.dli_fname);
+	/* (the file's bytes at the offset are the image's: the executable is not
+	a universal one, whose architectures are at offsets of their own) */
+	if (pread(descriptor, check, sizeof(check), (off_t)offset) != (ssize_t)sizeof(check) ||
+		memcmp(check, file, size < sizeof(check) ? size : sizeof(check)))
+	{
+		close(descriptor);
+		return fail("is not at %llx in %s", (unsigned long long)offset, information.dli_fname);
+	}
+	mapped = mmap((void *)host_address((uint32_t)start), end - start, PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_FIXED,
+		descriptor, (off_t)position);
+	close(descriptor);
+	if (mapped != (void *)host_address((uint32_t)start))
+		return fail("code cannot be mapped from %s (%s)", information.dli_fname, strerror(errno));
+	host_logf(HOST_LOG_INFO, "guest code %08llx-%08llx mapped from the executable at %llx",
+		(unsigned long long)start, (unsigned long long)end, (unsigned long long)position);
+	return 0;
+}
+#endif
+
 /* ---------- loading */
 
 int host_load_image(const void *file, size_t size)
@@ -438,6 +552,11 @@ int host_load_image(const void *file, size_t size)
 	host_logf(HOST_LOG_INFO, "guest image %08llx-%08llx, %u imports (%d unavailable)",
 		(unsigned long long)low, (unsigned long long)high, count, missing);
 
+#ifdef HOST_IMAGE_FROM_FILE
+	/* (the copy's read-only part replaced by the executable's pages: no
+	other way to make code executable on iOS) */
+	return code_map_file(file, size, &layout, page);
+#else
 	/* code becomes read-only and executable */
 	for (index = 0; index < layout.segment_count; index++)
 	{
@@ -457,4 +576,5 @@ int host_load_image(const void *file, size_t size)
 	}
 	__builtin___clear_cache((char *)host_address((uint32_t)low), (char *)host_address((uint32_t)low) + (high - low));
 	return 0;
+#endif
 }

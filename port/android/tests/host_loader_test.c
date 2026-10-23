@@ -3,7 +3,8 @@ HOST_LOADER_TEST.C
 
 Tests of the guest image's checks (port/android/host/host_loader.c:
 host_image_validate and host_image_validate_imports) on ELF files and
-images made here, of both classes whatever the build machine is. Built and
+images made here, and of where iOS maps the image's read-only part from the
+executable (host_image_read_only_range), of both classes whatever the build machine is. Built and
 run by tools/test_host_units.py; exits nonzero on a failure.
 */
 
@@ -424,12 +425,80 @@ static void test_imports(void)
 	EXPECT(validate_imports(&layout, &count) != 0);
 }
 
+/* ---------- the read-only part mapped from a file (iOS) */
+
+static void layout_segment(struct host_image_layout *layout, uint32_t flags, uint64_t offset, uint64_t address,
+	uint64_t size, uint64_t memory_size)
+{
+	struct host_image_segment *segment = &layout->segments[layout->segment_count++];
+
+	segment->flags = flags;
+	segment->offset = offset;
+	segment->address = address;
+	segment->file_size = size;
+	segment->memory_size = memory_size;
+}
+
+/* the guest image's layout as ld.lld links it (64 KB alignment): the
+header, the code and the constants in one run of the file, then the data
+on a boundary of its own */
+static void guest_layout(struct host_image_layout *layout)
+{
+	memset(layout, 0, sizeof(*layout));
+	layout->low = 0x88000000;
+	layout_segment(layout, PF_R, 0x10000, 0x88000000, 0x30, 0x30);
+	layout_segment(layout, PF_R | PF_X, 0x10030, 0x88000030, 0x5283b4, 0x5283b4);
+	layout_segment(layout, PF_R, 0x5383f0, 0x885283f0, 0xbb4092, 0xbb4092);
+	layout_segment(layout, PF_R | PF_W, 0x10f0000, 0x890e0000, 0x32da58, 0x1a55bc0);
+	layout->high = 0x8ab36000;
+}
+
+static void test_read_only_range(void)
+{
+	struct host_image_layout layout;
+	uint64_t start = 0, end = 0, position = 0;
+
+	/* the image at 0x8000 in the executable, 16 KB pages: the run from the
+	header to the constants' last page, from the image's 0x10000 */
+	guest_layout(&layout);
+	EXPECT(host_image_read_only_range(&layout, 0x4000, 0x8000, &start, &end, &position) == 0);
+	EXPECT(start == 0x88000000 && end == 0x890e0000 && position == 0x18000);
+	/* (the image not on a page boundary of the file) */
+	EXPECT(host_image_read_only_range(&layout, 0x4000, 0x8100, &start, &end, &position) != 0);
+	/* (64 KB pages: the data's boundary is a page's) */
+	EXPECT(host_image_read_only_range(&layout, 0x10000, 0x20000, &start, &end, &position) == 0);
+	EXPECT(end == 0x890e0000 && position == 0x30000);
+	/* the data in the constants' last page */
+	guest_layout(&layout);
+	layout.segments[3].address = 0x890dd000;
+	EXPECT(host_image_read_only_range(&layout, 0x4000, 0x8000, &start, &end, &position) != 0);
+	/* the constants elsewhere in the file than the code's distance puts them */
+	guest_layout(&layout);
+	layout.segments[2].offset += 0x1000;
+	EXPECT(host_image_read_only_range(&layout, 0x4000, 0x8000, &start, &end, &position) != 0);
+	/* a read-only segment with zero-filled memory (not in the file) */
+	guest_layout(&layout);
+	layout.segments[2].memory_size += 0x100;
+	EXPECT(host_image_read_only_range(&layout, 0x4000, 0x8000, &start, &end, &position) != 0);
+	/* no writable segment at all: the whole image */
+	guest_layout(&layout);
+	layout.segment_count = 3;
+	EXPECT(host_image_read_only_range(&layout, 0x4000, 0x8000, &start, &end, &position) == 0);
+	EXPECT(end == 0x890e0000);
+	/* only writable segments */
+	memset(&layout, 0, sizeof(layout));
+	layout.low = 0x88000000;
+	layout_segment(&layout, PF_R | PF_W, 0x10000, 0x88000000, 0x1000, 0x1000);
+	EXPECT(host_image_read_only_range(&layout, 0x4000, 0x8000, &start, &end, &position) != 0);
+}
+
 int main(void)
 {
 	test_classes();
 	test_headers_in_file();
 	test_segments();
 	test_imports();
+	test_read_only_range();
 	if (failures)
 		printf("%d failures\n", failures);
 	else

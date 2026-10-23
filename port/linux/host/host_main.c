@@ -23,6 +23,13 @@ system calls are translated to Darwin's (port/macos/host_syscall.c), its
 config.toml is in the app's settings folder (port/macos/host_app.m), and
 the game runs on the process's main thread, which Cocoa's windows and
 events need, after moving it onto a stack in guest memory.
+
+The iOS build (tools/ios_build.py, port/ios) is the macOS one with UIKit's
+app around it: main hands the process to UIKit's run loop (SDL_RunApp),
+which calls back once the app has launched, and the game then runs on the
+main thread as on macOS, its event pumps running UIKit's loop. The app's
+folders are port/ios/host_app.m's, and the guest's code is mapped from the
+executable (host_loader.c).
 */
 
 #include "host.h"
@@ -33,7 +40,12 @@ events need, after moving it onto a stack in guest memory.
 #include <stdlib.h>
 #include <string.h>
 #ifdef __APPLE__
+#include <TargetConditionals.h>
 #include <sys/mman.h>
+#endif
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+#define SDL_MAIN_HANDLED
+#include <SDL3/SDL_main.h>
 #endif
 #include <sys/uio.h>
 #include <unistd.h>
@@ -48,8 +60,8 @@ extern char **environ;
 /* port/macos/host_metal.m: the Metal backend, 1 if there is a Metal
 device */
 int host_metal_initialize(void);
-/* port/macos/host_app.m: the app's folders, maps and window, when the
-executable runs inside OpenH1.app */
+/* port/macos/host_app.m (port/ios/host_app.m on iOS): the app's folders,
+maps and window, when the executable runs inside OpenH1.app */
 void host_app_start(void);
 const char *host_app_settings_folder(void);
 #endif
@@ -166,13 +178,11 @@ static void game_main_on_stack(void *unused)
 {
 	game_main(unused);
 }
-#endif
 
-int main(int argc, char *argv[])
+static int apple_main(int argc, char *argv[])
 {
 	(void)argc;
 	(void)argv;
-#ifdef __APPLE__
 	{
 		/* Cocoa's windows and events belong to the main thread, and the
 		game's main thread is the one that makes its window and pumps its
@@ -194,6 +204,19 @@ int main(int argc, char *argv[])
 		host_run_on_stack(game_main_on_stack, NULL, stack + MAIN_STACK_SIZE);
 		host_fatal("the game returned");
 	}
+	return 1;
+}
+#endif
+
+int main(int argc, char *argv[])
+{
+	(void)argc;
+	(void)argv;
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	/* (UIKit's run loop, which calls apple_main once the app has launched) */
+	return SDL_RunApp(argc, argv, apple_main, NULL);
+#elif defined(__APPLE__)
+	return apple_main(argc, argv);
 #endif
 	host_log_set_sink(log_to_stderr);
 	host_install_signal_handlers();

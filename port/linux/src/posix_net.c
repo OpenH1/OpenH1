@@ -20,7 +20,12 @@ with the host ABI.
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+#if !defined(__APPLE__) || !TARGET_OS_IPHONE
 #include <sys/random.h>
+#endif
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -33,7 +38,7 @@ with the host ABI.
 #ifdef __APPLE__
 /* The macOS host (port/macos) has neither SOCK_CLOEXEC and SOCK_NONBLOCK nor
 accept4 and getrandom: a socket gets its flags once made, and random bytes
-come from getentropy. */
+come from getentropy (on iOS, which has no header of it, arc4random_buf). */
 #define SOCK_CLOEXEC 0x10000000
 #define SOCK_NONBLOCK 0x20000000
 
@@ -60,10 +65,15 @@ static int accept4(int descriptor, struct sockaddr *address, socklen_t *length, 
 static ssize_t getrandom(void *buffer, size_t size, unsigned int flags)
 {
 	(void)flags;
+#if TARGET_OS_IPHONE
+	arc4random_buf(buffer, size);
+	return (ssize_t)size;
+#else
 	/* (getentropy gives at most 256 bytes at a time) */
 	if (size > 256)
 		size = 256;
 	return getentropy(buffer, size) == 0 ? (ssize_t)size : -1;
+#endif
 }
 
 /* Its socket addresses start with their length and a one-byte family, where

@@ -847,6 +847,91 @@ jobs:
           path: dist/halo-macos-release
           retention-days: 3
 
+  ios:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
+    # The iOS app (port/ios/README.md), built as the macOS one is, debug only
+    # and signed ad hoc: the job checks that it builds, and its .ipa is for
+    # sideloading tools to sign again. The release does not publish it yet.
+    runs-on: macos-15
+    timeout-minutes: 50
+    env:
+      ANDROID_HOME: ""
+      ANDROID_SDK_ROOT: ""
+      ANDROID_NDK_HOME: ""
+      ANDROID_NDK_ROOT: ""
+      ANDROID_NDK: ""
+    steps:
+      - name: Install the toolchain
+        run: |
+          brew install ninja ccache
+          xcrun -sdk iphoneos metal --version || xcodebuild -downloadComponent MetalToolchain
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-ios-${{ github.sha }}
+          restore-keys: ccache-ios-
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/guest-asm
+          key: guest-asm-ios-${{ github.sha }}
+          restore-keys: guest-asm-ios-
+
+      - name: Start the compile cache
+        run: |
+          ccache --zero-stats
+          echo "CCACHE_START=$(date +%s)" >> "$GITHUB_ENV"
+          mkdir -p .cache/guest-asm && touch "$RUNNER_TEMP/build-start"
+
+      # musl, SDL and the OpenGL ES headers, which configure.py fetches (the
+      # macOS build's too: the iOS build uses its shaders' tool)
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/ios/third_party
+            build/macos/third_party
+          key: ios-third-party-${{ hashFiles('tools/macos_build.py', 'tools/ios_build.py', 'tools/android_build.py', 'port/android/patches/**') }}
+
+      - uses: actions/cache@v4
+        with:
+          path: .cache/llvm
+          key: guest-llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/guest_toolchain.py') }}
+
+      - name: Debug
+        run: python3 tools/ci_build.py ios debug
+
+      - name: Compile cache
+        run: ccache --show-stats
+
+      - name: Trim the compile cache
+        if: github.ref == 'refs/heads/master'
+        run: |
+          ccache --evict-older-than "$(( $(date +%s) - CCACHE_START + 60 ))s"
+          ccache --show-stats
+          find .cache/guest-asm -type f ! -newer "$RUNNER_TEMP/build-start" -delete
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .ccache
+          key: ccache-ios-${{ github.sha }}
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .cache/guest-asm
+          key: guest-asm-ios-${{ github.sha }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halo-ios-debug
+          path: dist/halo-ios-debug
+          retention-days: 3
+
   release:
     # The builds (and the Windows builds' PDBs) as a release, tagged
     # build-<run number> and marked latest

@@ -33,8 +33,9 @@ import platform
 import shutil
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional, Set
 
 from .linux_package import ROOT as REPO_ROOT, notices as release_notices
 from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, RENDER_STREAM_GUEST_EXCLUDED, SDL_TAG,
@@ -164,13 +165,74 @@ def _tool(name: str) -> str:
     return ""
 
 
+# the platforms' names in the build file's comments
+TITLES = {"macos": "macOS", "ios": "iOS"}
+
+
+@dataclass
+class ApplePlatform:
+    """What the macOS build and the iOS build (tools/ios_build.py), which
+    share this file's rules, do differently. name prefixes their rules and
+    targets; label is their builds' lines' prefix."""
+    name: str
+    label: str
+    build: Path
+    third_party: Path
+    # the guest's code paths beside MACOS_GUEST_DEFINES
+    guest_defines: List[str]
+    # the host's compiler options for its target (the deployment target, the SDK)
+    target_flags: str
+    frameworks: str
+    # port/macos's Objective-C files the platform does not build, and its own
+    # host sources
+    host_excluded: Set[str]
+    host_sources: List[Path]
+    # SDL3's CMake options for the platform; the library made and how the
+    # host links it
+    sdl_options: str
+    sdl_library: str
+    sdl_link: str
+    # where the guest image goes in the executable (an assembly file
+    # including GUEST_IMAGE)
+    guest_image_source: Path
+    # tools/macos_shaders.py's --platform
+    shader_platform: str
+    link_flags: str = ""
+    # another platform's guest image (generate_apple_build's "guest"), used
+    # in place of building one: the iOS simulator's, which is the device's
+    guest: Optional[Dict[str, Path]] = None
+
+
+def macos_platform() -> ApplePlatform:
+    return ApplePlatform(
+        name="macos", label="MACOS", build=BUILD, third_party=THIRD_PARTY, guest_defines=[],
+        target_flags=f"-mmacosx-version-min={MACOS_MINIMUM}", frameworks=MACOS_FRAMEWORKS, host_excluded=set(),
+        host_sources=[],
+        sdl_options=(f"-DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET={MACOS_MINIMUM} "
+                     "-DSDL_SHARED=ON -DSDL_STATIC=OFF"),
+        sdl_library="libSDL3.0.dylib", sdl_link="-lSDL3", guest_image_source=PORT_DIR / "guest_image.S",
+        shader_platform="macos",
+        link_flags="-Wl,-rpath,@executable_path -Wl,-rpath,@executable_path/../Frameworks")
+
+
 def generate_macos_build(n: Writer, sln: Any) -> None:
+    generate_apple_build(n, sln, macos_platform())
+
+
+def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional[Dict[str, Path]]:
+    """The rules of an Apple platform's build (macOS's, or iOS's from
+    tools/ios_build.py); the paths of what the caller packages: the
+    executable ("executable"), SDL ("sdl"), the shaders' library
+    ("library"), brokers.txt ("brokers"); None when it cannot be built."""
     config_path = LINUX_DIR / "port.json"
     if not config_path.is_file() or not PORT_DIR.is_dir():
-        return
+        return None
     if not is_macos_arm64():
-        n.comment("macOS build: only on a Mac with Apple silicon")
-        return
+        n.comment(f"{target.name} build: only on a Mac with Apple silicon")
+        return None
+    name, label, build, third_party = target.name, target.label, target.build, target.third_party
+    sdl_dir = third_party / "SDL3"
+    khronos_dir = third_party / "khronos"
     cc = getattr(sln, "macos_cc", None) or "clang"
     # the guest's compiler and tools: --macos-guest-cc's, else --macos-cc's,
     # else the pinned LLVM's (tools/guest_toolchain.py, configure.py
@@ -182,33 +244,33 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     try:
         toolchain = guest_toolchain(sln, explicit_cc)
     except (RuntimeError, OSError) as error:
-        print(f"macOS build disabled: no LLVM {LLVM_VERSION} for the guest ({error})", file=sys.stderr)
-        return
+        print(f"{name} build disabled: no LLVM {LLVM_VERSION} for the guest ({error})", file=sys.stderr)
+        return None
     if toolchain:
         guest_cc, ld, ar, objdump = toolchain.cc, toolchain.ld, toolchain.ar, toolchain.objdump
     else:
         guest_cc, ld, ar, objdump = explicit_cc or cc, _tool("ld.lld"), _tool("llvm-ar"), _tool("llvm-objdump")
     if not ld or not ar or not objdump:
-        n.comment("macOS build: needs ld.lld, llvm-ar and llvm-objdump (brew install llvm lld)")
-        return
+        n.comment(f"{name} build: needs ld.lld, llvm-ar and llvm-objdump (brew install llvm lld)")
+        return None
     try:
-        fetch_third_party(THIRD_PARTY)
-        fetch_khronos_headers()
+        fetch_third_party(third_party)
+        fetch_khronos_headers(khronos_dir)
     except (subprocess.CalledProcessError, OSError, RuntimeError) as error:
-        print(f"macOS build disabled: cannot fetch musl, SDL3 or the OpenGL ES headers ({error})", file=sys.stderr)
-        return
+        print(f"{name} build disabled: cannot fetch musl, SDL3 or the OpenGL ES headers ({error})", file=sys.stderr)
+        return None
     config: Dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
 
-    n.comment("macOS build (ninja macos); see port/macos/README.md")
-    n.variable("macos_guest_cc", guest_cc)
-    n.variable("macos_cc", cc)
+    n.comment(f"{TITLES.get(name, name)} build (ninja {name}); see port/{name}/README.md")
+    n.variable(f"{name}_guest_cc", guest_cc)
+    n.variable(f"{name}_cc", cc)
 
-    guest = generate_guest_image(
-        n, sln, config, arch=ARM64_32, prefix="macos", label="MACOS", build=BUILD, third_party=THIRD_PARTY,
-        guest_cc=guest_cc, gl_headers=KHRONOS_DIR.resolve(), ar=ar, ld=ld, objdump=objdump,
+    guest = target.guest or generate_guest_image(
+        n, sln, config, arch=ARM64_32, prefix=name, label=label, build=build, third_party=third_party,
+        guest_cc=guest_cc, gl_headers=khronos_dir.resolve(), ar=ar, ld=ld, objdump=objdump,
         # (no runtime library: Apple's clang has none for an ELF image, and
         # the guest needs none of it)
-        builtins_cc="", environment="gnu", platform_defines=MACOS_GUEST_DEFINES,
+        builtins_cc="", environment="gnu", platform_defines=MACOS_GUEST_DEFINES + target.guest_defines,
         extra_runtime=[LINUX_HOST_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
         extra_imports=[LINUX_HOST_DIR / "host_imports.list", PORT_DIR / "host_imports.list"],
         extra_prototypes=[LINUX_HOST_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
@@ -216,41 +278,40 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
 
     # ---------- SDL3, built from the same source as the guest's headers
 
-    sdl_build = BUILD / "sdl3-build"
-    libsdl = sdl_build / "libSDL3.0.dylib"
+    sdl_build = build / "sdl3-build"
+    libsdl = sdl_build / target.sdl_library
     # (its C and Objective-C through the --compiler-launcher too, as the
     # Linux builds' SDL: build_common.sdl3_rule)
     launcher = getattr(sln, "compiler_launcher", None)
     sdl_launcher = (f"-DCMAKE_C_COMPILER_LAUNCHER={launcher} -DCMAKE_OBJC_COMPILER_LAUNCHER={launcher} "
                     if launcher else "")
     n.rule(
-        name="macos_sdl3",
-        command=(f"cmake -S {SDL_DIR} -B {sdl_build} -G Ninja -DCMAKE_C_COMPILER=$macos_cc {sdl_launcher}"
-                 f"-DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 "
-                 f"-DCMAKE_OSX_DEPLOYMENT_TARGET={MACOS_MINIMUM} -DSDL_SHARED=ON -DSDL_STATIC=OFF "
+        name=f"{name}_sdl3",
+        command=(f"cmake -S {sdl_dir} -B {sdl_build} -G Ninja -DCMAKE_C_COMPILER=${name}_cc {sdl_launcher}"
+                 f"-DCMAKE_BUILD_TYPE=Release {target.sdl_options} "
                  f"-DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF "
                  # (no OpenGL: the renderer will be Metal's)
-                 f"-DSDL_OPENGL=OFF -DSDL_OPENGLES=OFF > {BUILD}/sdl3-configure.log && "
-                 f"ninja -C {sdl_build} > {BUILD}/sdl3-build.log"),
-        description=f"MACOS SDL3 {SDL_TAG}",
+                 f"-DSDL_OPENGL=OFF -DSDL_OPENGLES=OFF > {build}/sdl3-configure.log && "
+                 f"ninja -C {sdl_build} > {build}/sdl3-build.log"),
+        description=f"{label} SDL3 {SDL_TAG}",
         pool="console",
     )
-    n.build(outputs=libsdl, rule="macos_sdl3", implicit=[SDL_DIR / "CMakeLists.txt"])
+    n.build(outputs=libsdl, rule=f"{name}_sdl3", implicit=[sdl_dir / "CMakeLists.txt"])
 
     # ---------- the host
 
-    host_obj_dir = BUILD / "host" / "obj"
+    host_obj_dir = build / "host" / "obj"
     n.rule(
-        name="macos_host_cc",
-        command=f"{compile_launcher(sln)}$macos_cc -MMD -MF $out.d $cflags -c $in -o $out",
-        description="MACOS HOST CC $out",
+        name=f"{name}_host_cc",
+        command=f"{compile_launcher(sln)}${name}_cc -MMD -MF $out.d $cflags -c $in -o $out",
+        description=f"{label} HOST CC $out",
         depfile="$out.d",
         deps="gcc",
     )
     host_cflags = " ".join([
         "-O2", "-g", "-Wall", "-Wno-unused-function", "-D_DARWIN_C_SOURCE", "-DHALO_GUEST_BASE=1",
-        f"-mmacosx-version-min={MACOS_MINIMUM}",
-        f"-I{ANDROID_DIR}/include", f"-I{ANDROID_DIR}/host", f"-I{SDL_DIR}/include", f"-I{LINUX_DIR}/src",
+        target.target_flags,
+        f"-I{ANDROID_DIR}/include", f"-I{ANDROID_DIR}/host", f"-I{sdl_dir}/include", f"-I{LINUX_DIR}/src",
         f"-I{TOML_DIR}", f"-I{ANDROID_DIR}/guest/libc/arch/generic", f"-I{PORT_DIR}",
     ])
     objc_cflags = f"{host_cflags} -fobjc-arc"
@@ -267,84 +328,95 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     host_objects: List[Path] = []
     for source in host_sources:
         obj = host_obj_dir / (source.name + ".o")
-        n.build(outputs=obj, rule="macos_host_cc", inputs=source, variables={"cflags": host_cflags})
+        n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source, variables={"cflags": host_cflags})
+        host_objects.append(obj)
+    # (the platform's own: iOS's app, port/ios)
+    for source in target.host_sources:
+        obj = host_obj_dir / (source.name + ".o")
+        n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source,
+                variables={"cflags": objc_cflags if source.suffix == ".m" else host_cflags})
         host_objects.append(obj)
     # the renderer's shared parts in the host, copied beside a stand-in for
     # the guest's platform.h (xgpu_metal_platform.h), which their quoted
     # includes would otherwise find in port/linux/src, and the files of
     # port/macos that use them; the XDK's enumerations and texture format
     # words for the stand-in (xdk_enums.h)
-    shared_dir = BUILD / "host" / "shared"
-    n.rule(name="macos_shared_copy", command="cp $in $out", description="MACOS SHARED $out")
+    shared_dir = build / "host" / "shared"
+    n.rule(name=f"{name}_shared_copy", command="cp $in $out", description=f"{label} SHARED $out")
     xdk = Path("port/include/xdk")
-    n.rule(name="macos_xdk_enums",
+    n.rule(name=f"{name}_xdk_enums",
            command=(f"(sed -n '/^\\/\\* ---------- enumerations/,/^\\/\\* ---------- structures and unions/p' "
                     f"{xdk / 'xdk_pdb.h'} | sed '$$d' && "
                     f"grep -E '^#define D3D(FORMAT|SIZE|TEXTURE)_' {xdk / 'xdk_d3d8.h'}) > $out"),
-           description="MACOS SHARED $out")
+           description=f"{label} SHARED $out")
     shared_copies: List[Path] = []
-    for name in SHARED_SOURCES:
-        n.build(outputs=shared_dir / name, rule="macos_shared_copy", inputs=LINUX_DIR / "src" / name)
-        shared_copies.append(shared_dir / name)
-    n.build(outputs=shared_dir / "platform.h", rule="macos_shared_copy", inputs=PORT_DIR / "xgpu_metal_platform.h")
-    n.build(outputs=shared_dir / "xdk_enums.h", rule="macos_xdk_enums", inputs=[xdk / "xdk_pdb.h", xdk / "xdk_d3d8.h"])
+    for source_name in SHARED_SOURCES:
+        n.build(outputs=shared_dir / source_name, rule=f"{name}_shared_copy", inputs=LINUX_DIR / "src" / source_name)
+        shared_copies.append(shared_dir / source_name)
+    n.build(outputs=shared_dir / "platform.h", rule=f"{name}_shared_copy", inputs=PORT_DIR / "xgpu_metal_platform.h")
+    n.build(outputs=shared_dir / "xdk_enums.h", rule=f"{name}_xdk_enums",
+            inputs=[xdk / "xdk_pdb.h", xdk / "xdk_d3d8.h"])
     shared_copies += [shared_dir / "platform.h", shared_dir / "xdk_enums.h"]
     shared_cflags = f"-I{shared_dir} {host_cflags}"
     shared_objects: List[Path] = []
-    for source in [shared_dir / name for name in SHARED_SOURCES if name.endswith(".c")] + \
-            [PORT_DIR / name for name in sorted(SHARED_USERS)]:
+    for source in [shared_dir / source_name for source_name in SHARED_SOURCES if source_name.endswith(".c")] + \
+            [PORT_DIR / source_name for source_name in sorted(SHARED_USERS)]:
         obj = host_obj_dir / "shared" / (source.name + ".o")
-        n.build(outputs=obj, rule="macos_host_cc", inputs=source, order_only=shared_copies,
+        n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source, order_only=shared_copies,
                 variables={"cflags": shared_cflags})
         shared_objects.append(obj)
     host_objects += shared_objects
-    # the shaders' tool
-    tool_objects: List[Path] = []
-    for name in TOOL_SHARED_SOURCES:
-        n.build(outputs=shared_dir / name, rule="macos_shared_copy", inputs=LINUX_DIR / "src" / name)
-    tool_copies = [shared_dir / name for name in TOOL_SHARED_SOURCES]
-    for source in [shared_dir / name for name in TOOL_SHARED_SOURCES if name.endswith(".c")] + \
-            [PORT_DIR / "tools" / "xgpu_metal_prebuild.c"]:
-        obj = host_obj_dir / "tool" / (source.name + ".o")
-        flags = f"-I{PORT_DIR / 'tools'} {shared_cflags}" + (" -DXGPU_MANIFEST_READER_ONLY" if source.name ==
-                                                               "xgpu_manifest.c" else "")
-        n.build(outputs=obj, rule="macos_host_cc", inputs=source, order_only=shared_copies + tool_copies,
-                variables={"cflags": flags})
-        tool_objects.append(obj)
-    obj = host_obj_dir / "tool" / "xgpu_metal_prebuild_script.m.o"
-    n.build(outputs=obj, rule="macos_host_cc", inputs=PORT_DIR / "tools" / "xgpu_metal_prebuild_script.m",
-            variables={"cflags": f"-I{PORT_DIR / 'tools'} {objc_cflags}"})
-    tool_objects.append(obj)
     # the Metal renderer and the window's presentation (Objective-C)
     metal_objects: List[Path] = []
     for source in sorted(PORT_DIR.glob("*.m")):
+        if source.name in target.host_excluded:
+            continue
         obj = host_obj_dir / (source.name + ".o")
-        n.build(outputs=obj, rule="macos_host_cc", inputs=source, variables={"cflags": objc_cflags})
+        n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source, variables={"cflags": objc_cflags})
         if source.name in APP_SOURCES:
             host_objects.append(obj)
         else:
             metal_objects.append(obj)
-    for name in sorted(METAL_C_SOURCES):
-        obj = host_obj_dir / (name + ".o")
-        n.build(outputs=obj, rule="macos_host_cc", inputs=PORT_DIR / name, variables={"cflags": host_cflags})
+    for source_name in sorted(METAL_C_SOURCES):
+        obj = host_obj_dir / (source_name + ".o")
+        n.build(outputs=obj, rule=f"{name}_host_cc", inputs=PORT_DIR / source_name, variables={"cflags": host_cflags})
         metal_objects.append(obj)
     host_objects += metal_objects
-    # (the shaders' tool: the emitter's and the pipelines' parts of the host)
+    # the shaders' tool, a Mac's (the macOS build's: the iOS build uses it
+    # too): the emitter's and the pipelines' parts of the host
     tool = BUILD / "xgpu_metal_prebuild"
-    n.rule(name="macos_tool_link",
-           command=f"$macos_cc -mmacosx-version-min={MACOS_MINIMUM} -o $out $in -framework Metal -framework Foundation",
-           description="MACOS LINK $out")
-    n.build(outputs=tool, rule="macos_tool_link",
-            inputs=[*tool_objects, *(obj for obj in shared_objects if obj.name in (
-                "xgpu_msl.c.o", "xgpu_text.c.o", "xgpu_metal_shaders.c.o", "xgpu_metal_combiner.c.o")),
-                    host_obj_dir / "xgpu_metal_pipeline.m.o", host_obj_dir / "xgpu_metal_post_shaders.c.o"])
+    if name == "macos":
+        tool_objects: List[Path] = []
+        for source_name in TOOL_SHARED_SOURCES:
+            n.build(outputs=shared_dir / source_name, rule=f"{name}_shared_copy",
+                    inputs=LINUX_DIR / "src" / source_name)
+        tool_copies = [shared_dir / source_name for source_name in TOOL_SHARED_SOURCES]
+        for source in [shared_dir / source_name for source_name in TOOL_SHARED_SOURCES
+                       if source_name.endswith(".c")] + [PORT_DIR / "tools" / "xgpu_metal_prebuild.c"]:
+            obj = host_obj_dir / "tool" / (source.name + ".o")
+            flags = f"-I{PORT_DIR / 'tools'} {shared_cflags}" + (" -DXGPU_MANIFEST_READER_ONLY" if source.name ==
+                                                                   "xgpu_manifest.c" else "")
+            n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source, order_only=shared_copies + tool_copies,
+                    variables={"cflags": flags})
+            tool_objects.append(obj)
+        obj = host_obj_dir / "tool" / "xgpu_metal_prebuild_script.m.o"
+        n.build(outputs=obj, rule=f"{name}_host_cc", inputs=PORT_DIR / "tools" / "xgpu_metal_prebuild_script.m",
+                variables={"cflags": f"-I{PORT_DIR / 'tools'} {objc_cflags}"})
+        tool_objects.append(obj)
+        n.rule(name="macos_tool_link",
+               command=f"$macos_cc -mmacosx-version-min={MACOS_MINIMUM} -o $out $in -framework Metal -framework Foundation",
+               description="MACOS LINK $out")
+        n.build(outputs=tool, rule="macos_tool_link",
+                inputs=[*tool_objects, *(obj for obj in shared_objects if obj.name in (
+                    "xgpu_msl.c.o", "xgpu_text.c.o", "xgpu_metal_shaders.c.o", "xgpu_metal_combiner.c.o")),
+                        host_obj_dir / "xgpu_metal_pipeline.m.o", host_obj_dir / "xgpu_metal_post_shaders.c.o"])
     # the app's shaders, made ahead of time (tools/macos_shaders.py)
-    library = BUILD / "shaders.metallib"
-    n.rule(name="macos_shaders",
-           command=(f"$python tools/macos_shaders.py --tool {tool} --manifest {RENDER_MANIFEST} "
-                    f"--work {BUILD / 'shaders'} --library $out > {BUILD}/shaders.log"),
-           description="MACOS SHADERS $out")
-    n.build(outputs=library, rule="macos_shaders", inputs=[tool],
+    library = build / "shaders.metallib"
+    n.rule(name=f"{name}_shaders",
+           command=(f"$python tools/macos_shaders.py --platform {target.shader_platform} --tool {tool} "
+                    f"--manifest {RENDER_MANIFEST} --work {build / 'shaders'} --library $out > {build}/shaders.log"),
+           description=f"{label} SHADERS $out")
+    n.build(outputs=library, rule=f"{name}_shaders", inputs=[tool],
             implicit=[Path("tools/macos_shaders.py"), Path("tools/render_manifest.py"),
                       Path("source/rasterizer/xbox/rasterizer_xbox_vertex_shaders.c"),
                       Path("source/rasterizer/xbox/rasterizer_xbox_vertex_shaders_initialize.c"),
@@ -355,23 +427,23 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     for source in [LINUX_DIR / "src" / "posix_upnp.c", *miniupnpc_sources()]:
         obj = host_obj_dir / ("miniupnpc_" + source.name + ".o" if source.parent.parent == MINIUPNPC_DIR
                               else source.name + ".o")
-        n.build(outputs=obj, rule="macos_host_cc", inputs=source,
+        n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source,
                 variables={"cflags": miniupnpc_cflags + (" -w" if source.name != "posix_upnp.c" else "")})
         host_objects.append(obj)
     # the self-updater's download (posix_update.c) and internet play's DTLS
     # with browsers (posix_dtls.c), with port/third_party/mbedtls
     mbedtls_cflags = " ".join([host_cflags, f"-I{MBEDTLS_DIR / 'include'}"])
-    for name in ("posix_update.c", "posix_dtls.c"):
-        n.build(outputs=host_obj_dir / (name + ".o"), rule="macos_host_cc",
-                inputs=LINUX_DIR / "src" / name, variables={"cflags": mbedtls_cflags})
-        host_objects.append(host_obj_dir / (name + ".o"))
+    for source_name in ("posix_update.c", "posix_dtls.c"):
+        n.build(outputs=host_obj_dir / (source_name + ".o"), rule=f"{name}_host_cc",
+                inputs=LINUX_DIR / "src" / source_name, variables={"cflags": mbedtls_cflags})
+        host_objects.append(host_obj_dir / (source_name + ".o"))
     for source in sorted((MBEDTLS_DIR / "library").glob("*.c")):
         obj = host_obj_dir / "mbedtls" / (source.name + ".o")
-        n.build(outputs=obj, rule="macos_host_cc", inputs=source,
+        n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source,
                 variables={"cflags": f"{mbedtls_cflags} -I{MBEDTLS_DIR / 'library'} -w"})
         host_objects.append(obj)
     table_obj = host_obj_dir / "host_import_table.c.o"
-    n.build(outputs=table_obj, rule="macos_host_cc", inputs=guest["host_table_c"],
+    n.build(outputs=table_obj, rule=f"{name}_host_cc", inputs=guest["host_table_c"],
             variables={"cflags": host_cflags})
     host_objects.append(table_obj)
     # the guest image, inside the executable (host_main.c), assembled
@@ -379,27 +451,40 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
     # its .incbin reads, and gave back an object with an old guest (the
     # releases of 20 to 22 October drew nothing: their guest's render
     # stream was of an older version than the host's)
-    n.rule(name="macos_host_cc_uncached", command="$macos_cc -MMD -MF $out.d $cflags -c $in -o $out",
-           description="MACOS HOST CC $out", depfile="$out.d", deps="gcc")
+    n.rule(name=f"{name}_host_cc_uncached", command=f"${name}_cc -MMD -MF $out.d $cflags -c $in -o $out",
+           description=f"{label} HOST CC $out", depfile="$out.d", deps="gcc")
     image_obj = host_obj_dir / "guest_image.S.o"
-    n.build(outputs=image_obj, rule="macos_host_cc_uncached", inputs=PORT_DIR / "guest_image.S",
-            implicit=[guest["image"], guest["checked"]], variables={"cflags": f'-mmacosx-version-min={MACOS_MINIMUM} -DGUEST_IMAGE=\\"{guest["image"]}\\"'})
+    n.build(outputs=image_obj, rule=f"{name}_host_cc_uncached", inputs=target.guest_image_source,
+            implicit=[guest["image"], guest["checked"]],
+            variables={"cflags": f'{target.target_flags} -DGUEST_IMAGE=\\"{guest["image"]}\\"'})
     host_objects.append(image_obj)
 
-    output = BUILD / "halo"
-    staged_sdl = BUILD / "libSDL3.0.dylib"
+    output = build / "halo"
     n.rule(
-        name="macos_host_link",
-        command=(f"$macos_cc -mmacosx-version-min={MACOS_MINIMUM} -o $out $in -L{sdl_build} -lSDL3 "
-                 f"{MACOS_FRAMEWORKS} -Wl,-rpath,@executable_path -Wl,-rpath,@executable_path/../Frameworks"),
-        description="MACOS LINK $out",
+        name=f"{name}_host_link",
+        command=(f"${name}_cc {target.target_flags} -o $out $in -L{sdl_build} {target.sdl_link} "
+                 f"{target.frameworks} {target.link_flags}"),
+        description=f"{label} LINK $out",
     )
-    n.build(outputs=output, rule="macos_host_link", inputs=host_objects, implicit=[libsdl])
-    n.rule(name="macos_copy", command="cp $in $out", description="MACOS STAGE $out")
-    n.build(outputs=staged_sdl, rule="macos_copy", inputs=libsdl)
+    n.build(outputs=output, rule=f"{name}_host_link", inputs=host_objects, implicit=[libsdl])
+    n.rule(name=f"{name}_copy", command="cp $in $out", description=f"{label} STAGE $out")
     # internet play's MQTT brokers, a file beside the game (network.brokers_file)
-    brokers = BUILD / "brokers.txt"
-    n.build(outputs=brokers, rule="macos_copy", inputs=Path("port/assets/network/brokers.txt"))
+    brokers = build / "brokers.txt"
+    n.build(outputs=brokers, rule=f"{name}_copy", inputs=Path("port/assets/network/brokers.txt"))
+    result = {"guest": guest, "executable": output, "sdl": libsdl, "library": library, "brokers": brokers,
+              "metal_objects": metal_objects, "shared_objects": shared_objects, "host_obj_dir": host_obj_dir, "objc_cflags": objc_cflags}
+    if name == "macos":
+        _generate_macos_app(n, sln, result)
+    return result
+
+
+def _generate_macos_app(n: Writer, sln: Any, built: Dict[str, Any]) -> None:
+    """the macOS app, its disk image, the Metal backend's tests and the
+    command stream's replay"""
+    output, libsdl, library, brokers = built["executable"], built["sdl"], built["library"], built["brokers"]
+    metal_objects, shared_objects, host_obj_dir = built["metal_objects"], built["shared_objects"], built["host_obj_dir"]
+    staged_sdl = BUILD / "libSDL3.0.dylib"
+    n.build(outputs=staged_sdl, rule="macos_copy", inputs=libsdl)
 
     # ---------- the app (tools/macos_app.py), and its disk image
 
@@ -437,6 +522,7 @@ def generate_macos_build(n: Writer, sln: Any) -> None:
 
     # ---------- the Metal backend's tests (python3 tools/test_macos_metal.py)
 
+    objc_cflags = built["objc_cflags"]
     test_obj = host_obj_dir / "tests" / "xgpu_metal_test.m.o"
     n.build(outputs=test_obj, rule="macos_host_cc", inputs=PORT_DIR / "tests" / "xgpu_metal_test.m",
             variables={"cflags": objc_cflags})

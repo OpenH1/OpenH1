@@ -16,6 +16,14 @@ so the audio callback is handed to a thread that has one.
 #include <SDL3/SDL.h>
 #include <pthread.h>
 #include <string.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+/* port/ios/host_app.m: returns once the app is in the foreground */
+void host_app_background_wait(void);
+#endif
 
 #define HANDLE_COUNT 256
 
@@ -194,6 +202,10 @@ int host_sdl_poll_event(void *event)
 {
 	SDL_Event host_event;
 
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	/* (the game waits here while the app is in the background) */
+	host_app_background_wait();
+#endif
 	if (!SDL_PollEvent(&host_event))
 		return 0;
 	/* the layouts agree except for the pointers of text, drop and user
