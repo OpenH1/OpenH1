@@ -40,7 +40,8 @@ from typing import Any, Dict, List, Optional, Set
 from .linux_package import ROOT as REPO_ROOT, notices as release_notices
 from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, RENDER_STREAM_GUEST_EXCLUDED, SDL_TAG,
                             TOML_DIR, fetch_third_party, generate_guest_image)
-from .build_common import MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, compile_launcher, download, miniupnpc_sources
+from .build_common import (ASTC_CXX_FLAGS, ASTC_DIR, ASTC_HOST_CXX_SOURCES, ASTC_HOST_SOURCES, MBEDTLS_DIR, MINIUPNPC_DEFINES,
+                           MINIUPNPC_DIR, astc_encoder_sources, compile_launcher, download, miniupnpc_sources)
 from .guest_arch import ARM64_32
 from .guest_toolchain import LLVM_VERSION, guest_toolchain
 from .ninja_syntax import Writer
@@ -311,7 +312,7 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
     host_cflags = " ".join([
         "-O2", "-g", "-Wall", "-Wno-unused-function", "-D_DARWIN_C_SOURCE", "-DHALO_GUEST_BASE=1",
         target.target_flags,
-        f"-I{ANDROID_DIR}/include", f"-I{ANDROID_DIR}/host", f"-I{sdl_dir}/include", f"-I{LINUX_DIR}/src",
+        f"-I{ANDROID_DIR}/include", f"-I{ANDROID_DIR}/host", f"-I{sdl_dir}/include", f"-I{LINUX_DIR}/src", f"-I{ASTC_DIR}",
         f"-I{TOML_DIR}", f"-I{ANDROID_DIR}/guest/libc/arch/generic", f"-I{PORT_DIR}",
     ])
     objc_cflags = f"{host_cflags} -fobjc-arc"
@@ -364,6 +365,30 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
         obj = host_obj_dir / "shared" / (source.name + ".o")
         n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source, order_only=shared_copies,
                 variables={"cflags": shared_cflags})
+        shared_objects.append(obj)
+    # the DXT textures as ASTC on a GPU without BC (an iPhone's:
+    # port/linux/astc/xgpu_astc.h), with astc-encoder, the host's C++; linked
+    # with the Metal backend into its tests and the replay too
+    n.rule(
+        name=f"{name}_host_cxx",
+        command=f"{compile_launcher(sln)}${name}_cc -x c++ -MMD -MF $out.d $cflags -c $in -o $out",
+        description=f"{label} HOST CXX $out",
+        depfile="$out.d",
+        deps="gcc",
+    )
+    astc_cxx_flags = " ".join(["-g", target.target_flags, *ASTC_CXX_FLAGS])
+    for source in ASTC_HOST_SOURCES:
+        obj = host_obj_dir / "astc" / (source.name + ".o")
+        n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source, variables={"cflags": host_cflags})
+        shared_objects.append(obj)
+    for source in ASTC_HOST_CXX_SOURCES:
+        obj = host_obj_dir / "astc" / (source.name + ".o")
+        n.build(outputs=obj, rule=f"{name}_host_cxx", inputs=source,
+                variables={"cflags": f"{astc_cxx_flags} -Wall -I{ASTC_DIR}"})
+        shared_objects.append(obj)
+    for source in astc_encoder_sources():
+        obj = host_obj_dir / "astc" / (source.name + ".o")
+        n.build(outputs=obj, rule=f"{name}_host_cxx", inputs=source, variables={"cflags": f"{astc_cxx_flags} -w"})
         shared_objects.append(obj)
     host_objects += shared_objects
     # the Metal renderer and the window's presentation (Objective-C)
@@ -463,7 +488,8 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
     n.rule(
         name=f"{name}_host_link",
         command=(f"${name}_cc {target.target_flags} -o $out $in -L{sdl_build} {target.sdl_link} "
-                 f"{target.frameworks} {target.link_flags}"),
+                 # (C++'s library: astc-encoder's)
+                 f"{target.frameworks} -lc++ {target.link_flags}"),
         description=f"{label} LINK $out",
     )
     n.build(outputs=output, rule=f"{name}_host_link", inputs=host_objects, implicit=[libsdl])

@@ -127,6 +127,9 @@ enum
 	XGPU_METAL_FORMAT_COVERAGE,
 	/* half floats: the back buffer with display.hdr (xgpu_hdr.h) */
 	XGPU_METAL_FORMAT_RGBA16F,
+	/* ASTC 4x4 (LDR): DXT textures transcoded on a GPU without BC
+	(port/linux/astc/xgpu_astc.h) */
+	XGPU_METAL_FORMAT_ASTC,
 	XGPU_METAL_FORMAT_COUNT
 };
 
@@ -392,8 +395,13 @@ double xgpu_metal_prepared(void);
 uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *description);
 /* whether the GPU samples DXT's blocks (BC1 to BC3): Apple silicon Macs and
 iPads with an M chip do; iPhones and the iOS simulator do not, and their
-DXT textures are decoded (xgpu_metal_textures.c) */
+DXT textures are ASTC (xgpu_metal_textures.c, port/linux/astc/xgpu_astc.h)
+or decoded */
 int xgpu_metal_block_compression(void);
+/* whether the GPU samples ASTC's LDR blocks: every Apple GPU (the Apple2
+family and later: every iPhone the app runs on, Apple silicon Macs), not an
+Intel Mac's */
+int xgpu_metal_astc(void);
 /* (after the frames in flight that use it) */
 void xgpu_metal_texture_destroy(uint32_t texture);
 /* makes its levels past the first from the first, in the frame's order */

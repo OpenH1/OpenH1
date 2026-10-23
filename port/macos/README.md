@@ -624,7 +624,15 @@ command stream's backend table. They run on one thread, the render thread.
   header's Data, Format and Size (and a palettized one's palette, and a
   Custom Edition map's channel order), read from the guest's memory and
   decoded as the OpenGL backend does (`xbox_texture_decode.c`): DXT as BC1
-  to BC3, the rest to BGRA. Its pages are write-protected (the write
+  to BC3, the rest to BGRA. On a GPU without BC (an iPhone's), DXT is
+  transcoded to ASTC 4x4 (`display.astc_textures`; `port/linux/astc`,
+  `port/ios/README.md`); `"always"` does so on a Mac too, and
+  `HALO_METAL_NO_BC=1` makes the backend take the Mac's GPU for one without
+  BC, to measure an iPhone's textures on a Mac (`"off"` then decodes them as
+  the iPhone did before). `HALO_ASTC_CACHE=<folder>` keeps the encoded
+  blocks there instead of `~/Library/Caches/OpenH1/astc` (empty: nowhere),
+  and `HALO_METAL_STATS` logs the textures' bytes (all, DXT as ASTC,
+  decoded, as BC) every 10 seconds. Its pages are write-protected (the write
   tracking, `host_memory_watch.c`, safe from the render thread), and it is
   read again once any of them has been written; a texture whose memory the
   game has let go of is not read. The high-res replacements (the HUD's,

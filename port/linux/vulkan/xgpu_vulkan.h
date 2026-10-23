@@ -141,8 +141,9 @@ struct xgpu_vulkan_capabilities
 	/* the vertex formats of 16-bit integers converted to float
 	(R16*_SSCALED): else the shader converts them */
 	int scaled_shorts;
-	/* DXT textures uploaded as they are (BC1 to BC3): else decoded */
-	int block_compression;
+	/* DXT textures uploaded as they are (BC1 to BC3): else decoded, or ASTC
+	(port/linux/astc) where the device samples ASTC 4x4 */
+	int block_compression, astc;
 	/* pixel shaders can write storage buffers (the visibility tests' counts
 	in the shader) */
 	int fragment_stores;
@@ -195,6 +196,9 @@ enum
 	/* 10-bit red, green and blue, 2-bit alpha (A2B10G10R10: HDR10's
 	swapchain) */
 	XGPU_VULKAN_FORMAT_RGB10A2,
+	/* ASTC 4x4 (LDR): DXT textures transcoded on a device without BC
+	(port/linux/astc/xgpu_astc.h) */
+	XGPU_VULKAN_FORMAT_ASTC,
 	XGPU_VULKAN_FORMAT_COUNT
 };
 

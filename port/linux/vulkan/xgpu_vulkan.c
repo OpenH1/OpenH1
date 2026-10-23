@@ -1404,13 +1404,15 @@ static VkFormat vulkan_format(uint8_t format)
 	case XGPU_VULKAN_FORMAT_RGBA32_UINT: return VK_FORMAT_R32G32B32A32_UINT;
 	case XGPU_VULKAN_FORMAT_RGBA16F: return VK_FORMAT_R16G16B16A16_SFLOAT;
 	case XGPU_VULKAN_FORMAT_RGB10A2: return VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	case XGPU_VULKAN_FORMAT_ASTC: return VK_FORMAT_ASTC_4x4_UNORM_BLOCK;
 	default: return VK_FORMAT_UNDEFINED;
 	}
 }
 
 static int format_blocks(uint8_t format)
 {
-	return format == XGPU_VULKAN_FORMAT_DXT1 || format == XGPU_VULKAN_FORMAT_DXT3 || format == XGPU_VULKAN_FORMAT_DXT5;
+	return format == XGPU_VULKAN_FORMAT_DXT1 || format == XGPU_VULKAN_FORMAT_DXT3 || format == XGPU_VULKAN_FORMAT_DXT5 ||
+		format == XGPU_VULKAN_FORMAT_ASTC;
 }
 
 static VkComponentSwizzle swizzle_of(uint32_t source)
@@ -4920,6 +4922,7 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	features.features.largePoints = available.features.largePoints;
 	features.features.occlusionQueryPrecise = available.features.occlusionQueryPrecise;
 	features.features.textureCompressionBC = available.features.textureCompressionBC;
+	features.features.textureCompressionASTC_LDR = available.features.textureCompressionASTC_LDR;
 	features.features.fragmentStoresAndAtomics = available.features.fragmentStoresAndAtomics;
 	features.features.shaderImageGatherExtended = VK_FALSE;
 	timeline.timelineSemaphore = VK_TRUE;
@@ -5020,6 +5023,9 @@ static int device_make(const struct xgpu_vulkan_options *options)
 	vk.capabilities.anisotropy = available.features.samplerAnisotropy ?
 		(uint32_t)vk.properties.limits.maxSamplerAnisotropy : 1;
 	vk.capabilities.block_compression = available.features.textureCompressionBC;
+	vk.capabilities.astc = available.features.textureCompressionASTC_LDR && format_has(VK_FORMAT_ASTC_4x4_UNORM_BLOCK, 0,
+		VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT |
+		VK_FORMAT_FEATURE_TRANSFER_DST_BIT);
 	vk.capabilities.fragment_stores = available.features.fragmentStoresAndAtomics;
 	vk.capabilities.scaled_shorts = format_has(VK_FORMAT_R16G16_SSCALED, 1, VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) &&
 		format_has(VK_FORMAT_R16G16B16_SSCALED, 1, VK_FORMAT_FEATURE_VERTEX_BUFFER_BIT) &&
@@ -5042,11 +5048,11 @@ static int device_make(const struct xgpu_vulkan_options *options)
 		vk.capabilities.multiview_views = available11.multiview ? properties11.maxMultiviewViewCount : 0;
 		vk.nvidia = properties12.driverID == VK_DRIVER_ID_NVIDIA_PROPRIETARY;
 	}
-	host_logf(HOST_LOG_INFO, "vulkan: %s (Vulkan %u.%u.%u, driver %08x)%s%s%s%s%s", vk.properties.deviceName,
+	host_logf(HOST_LOG_INFO, "vulkan: %s (Vulkan %u.%u.%u, driver %08x)%s%s%s%s%s%s", vk.properties.deviceName,
 		VK_API_VERSION_MAJOR(vk.properties.apiVersion), VK_API_VERSION_MINOR(vk.properties.apiVersion),
 		VK_API_VERSION_PATCH(vk.properties.apiVersion), vk.properties.driverVersion,
 		vk.capabilities.custom_border_colors ? ", custom border colours" : "",
-		vk.capabilities.block_compression ? ", BC" : "",
+		vk.capabilities.block_compression ? ", BC" : "", vk.capabilities.astc ? ", ASTC" : "",
 		vk.capabilities.color_read ? (vk.capabilities.raster_order ? ", local reads (ordered)" : ", local reads") : "",
 		vk.colorspaces ? ", swapchain colour spaces" : "", vk.validation ? ", validated" : "");
 	return 1;

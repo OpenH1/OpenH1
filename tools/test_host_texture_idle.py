@@ -38,6 +38,8 @@ struct entry
     struct image *image, *texture, *thickness;
     uint32_t address, size, generation, watched_serial, thickness_generation, thickness_failed;
     uint64_t last_used;
+    /* (the ASTC encoder's job a texture waits for: none here) */
+    void *astc_job;
 };
 static struct
 {
@@ -47,6 +49,7 @@ static struct
     unsigned long sweeps;
     double next_sweep;
     uint32_t thickness_epoch;
+    uint32_t astc_waiting;
 } cache;
 static double clock_now;
 static uint32_t watch_serial = 1, watch_generation = 1;
@@ -61,6 +64,23 @@ static uint32_t host_memory_watch_generation(uint32_t address, uint32_t size)
 static void image_destroy(struct image *image) { image->destroyed = 1; }
 #define xgpu_vulkan_image_destroy image_destroy
 #define xgpu_metal_texture_destroy image_destroy
+/* (the ASTC encoder's finished jobs and the textures' bytes, which the
+caches look at each frame and let go with a texture: port/linux/astc) */
+static void xgpu_astc_cancel(void *job) { (void)job; }
+static void astc_finished(void) {}
+static void resident_log(void) {}
+static void texture_release(struct entry *entry)
+{
+    if (entry->texture)
+        image_destroy(entry->texture);
+    entry->texture = NULL;
+}
+static void image_release(struct entry *entry)
+{
+    if (entry->image)
+        image_destroy(entry->image);
+    entry->image = NULL;
+}
 %(code)s
 
 #define CHECK(condition, ...) \

@@ -171,24 +171,20 @@ static bool SDLCALL window_event(void *userdata, SDL_Event *event)
 	return true;
 }
 
-/* the pipeline cache's file: made folders, or NULL */
-static const char *cache_path(char *path, size_t size)
+/* the caches' folder (made), into folder; NULL if there is none */
+static const char *cache_folder(char *folder, size_t size)
 {
-	const char *chosen = getenv("HALO_VULKAN_PIPELINE_CACHE");
 	const char *cache = getenv("XDG_CACHE_HOME"), *home = getenv("HOME");
-	char folder[1024];
 
-	if (chosen)
-		return *chosen ? chosen : NULL;
 #ifdef __ANDROID__
 	/* The app has no HOME; keep the driver cache in its private cache. */
 	if (!cache || !*cache)
 		cache = SDL_GetAndroidCachePath();
 #endif
 	if (cache && *cache)
-		snprintf(folder, sizeof(folder), "%s/openh1", cache);
+		snprintf(folder, size, "%s/openh1", cache);
 	else if (home && *home)
-		snprintf(folder, sizeof(folder), "%s/.cache/openh1", home);
+		snprintf(folder, size, "%s/.cache/openh1", home);
 	else
 		return NULL;
 	{
@@ -204,6 +200,19 @@ static const char *cache_path(char *path, size_t size)
 		if (mkdir(folder, 0755) && errno != EEXIST)
 			return NULL;
 	}
+	return folder;
+}
+
+/* the pipeline cache's file: made folders, or NULL */
+static const char *cache_path(char *path, size_t size)
+{
+	const char *chosen = getenv("HALO_VULKAN_PIPELINE_CACHE");
+	char folder[1024];
+
+	if (chosen)
+		return *chosen ? chosen : NULL;
+	if (!cache_folder(folder, sizeof(folder)))
+		return NULL;
 	snprintf(path, size, "%s/vulkan_pipelines.bin", folder);
 	return path;
 }
@@ -291,6 +300,19 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 	xgpu_vulkan_stream_debug((debug & DEBUG_STATISTICS) != 0,
 		debug_folder(shader_folder, "HALO_VULKAN_SHADERS", shaders, sizeof(shaders)));
 	xgpu_vulkan_textures_dump(debug_folder(texture_folder, NULL, textures, sizeof(textures)));
+	{
+		/* (the DXT textures' ASTC blocks encoded, where they are ASTC:
+		HALO_ASTC_CACHE, or the caches' folder's astc) */
+		char folder[1024];
+		const char *chosen = getenv("HALO_ASTC_CACHE");
+
+		if (!chosen && cache_folder(folder, sizeof(folder)))
+		{
+			strncat(folder, "/astc", sizeof(folder) - strlen(folder) - 1);
+			chosen = folder;
+		}
+		xgpu_vulkan_textures_astc_folder(chosen);
+	}
 	vulkan_window = object;
 	memset(&options, 0, sizeof(options));
 	if (SDL_GetWindowFlags(object) & SDL_WINDOW_VULKAN)

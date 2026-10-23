@@ -276,6 +276,17 @@ static const struct config_setting config_settings[] =
 		"in percent of the system's SDR white (macOS's; 203 nits where the system\n"
 		"has none), 50 to 250. The highlights keep the rest of the display's\n"
 		"headroom." },
+	{ "display.astc_textures", _config_string, "\"auto\"", "HALO_ASTC_TEXTURES", _environment_value,
+		_platform_android | _platform_guest,
+		"The maps' DXT textures on a GPU that cannot sample them (iPhones, most\n"
+		"Android phones): \"auto\" transcodes them to ASTC, a quarter of the memory\n"
+		"and bandwidth of the decoded textures the GPU drew before and the same\n"
+		"picture, where the GPU samples ASTC and not DXT; \"always\" wherever it\n"
+		"samples ASTC (to try it on a Mac); \"off\" decodes them. The few blocks\n"
+		"that cannot be transcoded exactly are encoded on a worker thread the\n"
+		"first time a texture is drawn, the texture drawn decoded meanwhile, and\n"
+		"kept in the app's caches folder. Read by the host from the file, at the\n"
+		"start (port/linux/astc/xgpu_astc.h)." },
 
 	{ "audio.enabled", _config_boolean, "true", "HALO_NO_AUDIO", _environment_set_is_false, _platform_all,
 		"Play sound." },
@@ -2422,6 +2433,7 @@ static const struct
 	{ "display.mode", { "", "fullscreen", "borderless", "windowed", NULL }, "display.fullscreen's" },
 	{ "display.resolution_scaling", { "native", "original", NULL }, NULL },
 	{ "display.anti_aliasing", { "off", "fxaa", "smaa", "ssaa2x", "msaa2x", "msaa4x", "msaa8x", NULL }, NULL },
+	{ "display.astc_textures", { "auto", "always", "off", NULL }, NULL },
 	{ "display.hud_button_style", { "classic", "gems", "menu_gems", NULL }, NULL },
 	{ "display.menus", { "pc", "xbox", NULL }, NULL },
 	{ "display.player_names", { "all", "allies", "enemies", "none", NULL }, NULL },

@@ -43,6 +43,11 @@ the OpenGL backend's texture cache writes it: tex<number>_fmt<format>_
 kept) */
 void xgpu_vulkan_textures_dump(const char *folder);
 
+/* the folder the ASTC encoder keeps the DXT textures' encoded blocks in
+(port/linux/astc/xgpu_astc.h; NULL or empty: none; the string is copied),
+where DXT textures are ASTC (HALO_ASTC builds) */
+void xgpu_vulkan_textures_astc_folder(const char *folder);
+
 /* a frame has been played: the textures no stage has drawn for half a
 minute of time are let go (but those with a thickness baked from texels the
 guest still has) */
