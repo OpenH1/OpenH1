@@ -128,8 +128,9 @@ python tools/ci_build.py linux_x86_64 release   # what CI builds
   finds its files from its executable's place
   (`port/linux/src/install_layout.c`), and updates itself only in a
   release's tree. The tree's `install.sh` (`tools/linux_install.sh`)
-  copies it to `~/Applications/OpenH1` and gives it a menu entry and a
-  Steam shortcut (the Steam Deck's install); a package's tree
+  copies it to `~/Applications/OpenH1` (the VR build's, whose tree has
+  `share/openh1/vr`, to `~/Applications/OpenH1-VR`) and gives it a menu
+  entry and a Steam shortcut (the Steam Deck's install); a package's tree
   (`linux_package.py tree`) has none.
 
 ### Defines

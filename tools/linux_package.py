@@ -12,6 +12,7 @@ anywhere and starts with bin/openh1:
     bin/openh1                                 the game
     lib/openh1/libSDL3.so.0                    its SDL (the rpath is $ORIGIN:$ORIGIN/../lib/openh1)
     share/openh1/brokers.txt                   internet play's brokers (network.brokers_file)
+    share/openh1/vr                            only in the VR build's (--vr): install.sh's sign of it
     share/applications/openh1.desktop          the desktop entry
     share/icons/hicolor/<n>x<n>/apps/openh1.png  its icon
     share/doc/openh1/                          the READMEs
@@ -87,18 +88,22 @@ def _copy(source: Path, destination: Path) -> None:
 
 
 def stage_tree(dist: Path, executable: Path, library: Optional[Path], notices: Iterable[Tuple[Path, str]],
-               installer: bool = True) -> None:
+               installer: bool = True, vr: bool = False) -> None:
     """The release's tree in dist: the executable as bin/openh1, SDL in
     lib/openh1 (none: the system's), and notices ((source, name) pairs: the
     licences of what the build carries) in share/licenses/openh1; and, for
     the release (not a package's /usr), its installer, install.sh, at its
-    top."""
+    top. The VR build's (vr) has share/openh1/vr, by which install.sh puts
+    it beside the other build, not in its place."""
     if installer:
         _copy(INSTALLER, dist / "install.sh")
     _copy(executable, dist / "bin" / NAME)
     if library:
         _copy(library, dist / "lib" / NAME / library.name)
     _copy(BROKERS, dist / "share" / NAME / BROKERS.name)
+    if vr:
+        (dist / "share" / NAME / "vr").write_text(
+            "The VR build (HALO_VR). install.sh installs it in ~/Applications/OpenH1-VR, beside the other build.\n")
     _copy(DESKTOP_ENTRY, dist / "share/applications" / f"{NAME}.desktop")
     for icon in sorted(ICONS.glob(f"{NAME}-*.png")):
         size = icon.stem.rsplit("-", 1)[1]

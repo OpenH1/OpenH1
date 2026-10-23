@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Installs, or updates, OpenH1 on a Linux desktop, the Steam Deck's first:
 # the release's tree (tools/linux_package.py) whose install.sh this is, into
-# ~/Applications/OpenH1. Refer to "Steam Deck" in port/linux/README.md
-# (share/doc/openh1/README.linux.md in the tree).
+# ~/Applications/OpenH1 (the VR build's, ~/Applications/OpenH1-VR). Refer
+# to "Steam Deck" in port/linux/README.md (share/doc/openh1/README.linux.md
+# in the tree).
 #
 #   install.sh        # in the unzipped OpenH1-Linux.zip (opened from the file manager)
 #
@@ -13,6 +14,10 @@
 # (~/.local/share/applications/openh1.desktop), and adds that to Steam
 # (SteamOS's steamos-add-to-steam) if Steam has no shortcut to it. Where
 # kdialog or steamos-add-to-steam is missing, it says what is left to do.
+# The VR build's tree (which has share/openh1/vr: tools/linux_package.py)
+# goes beside the other, so that a computer keeps both: in
+# ~/Applications/OpenH1-VR, with a menu entry named OpenH1 VR
+# (openh1-vr.desktop, as the Steam Frame's), and a shortcut of its own.
 #
 # A tree that already holds a player's files (config.toml or maps beside
 # bin/: a release unpacked and played before this script came with it) is
@@ -38,6 +43,16 @@ fi
 if [ ! -t 1 ] && [ -z "${OPENH1_INSTALL_WINDOW:-}" ] && command -v konsole >/dev/null; then
 	OPENH1_INSTALL_WINDOW=1 exec konsole --hold -e "$0"
 fi
+kind() { if [ -f "$1/share/openh1/vr" ]; then echo vr; else echo desktop; fi; }
+if [ "$(kind "$here")" = vr ]; then
+	app="OpenH1 VR"
+	dir=$HOME/Applications/OpenH1-VR
+	entry=$HOME/.local/share/applications/openh1-vr.desktop
+else
+	app=OpenH1
+	dir=$HOME/Applications/OpenH1
+	entry=$HOME/.local/share/applications/openh1.desktop
+fi
 
 # whether a folder has the player's files: config.toml, or maps (which the
 # game finds without regard to case, install_layout.c)
@@ -45,10 +60,13 @@ has_maps() { [ -n "$(find "$1" -mindepth 1 -maxdepth 1 -iname maps -type d 2>/de
 in_use() { [ -f "$1/config.toml" ] || has_maps "$1"; }
 data_set() { grep -Eq '^[[:space:]]*data[[:space:]]*=[[:space:]]*"[^"]+"' "$1/config.toml" 2>/dev/null; }
 
-dir=$HOME/Applications/OpenH1
 [ "$here" = "$dir" ] || ! in_use "$here" || dir=$here
 if [ "$dir" != "$here" ] && [ -d "$dir" ] && [ -n "$(ls -A "$dir")" ] && [ ! -f "$dir/bin/openh1" ]; then
 	echo "$dir is not empty and holds no OpenH1 (no bin/openh1): move it away, then install again." >&2
+	exit 1
+fi
+if [ "$dir" != "$here" ] && [ -f "$dir/bin/openh1" ] && [ "$(kind "$here")" != "$(kind "$dir")" ]; then
+	echo "$dir holds the other build (the VR one, or the one without VR): move it away, then install again." >&2
 	exit 1
 fi
 
@@ -62,10 +80,10 @@ running() {
 # ---------- the tree's files
 
 if [ "$dir" = "$here" ]; then
-	echo "OpenH1 is in $dir: it stays there."
+	echo "$app is in $dir: it stays there."
 	first=
 else
-	echo "Installing OpenH1 to $dir"
+	echo "Installing $app to $dir"
 	running
 	first=yes
 	[ -e "$dir/bin/openh1" ] && first=
@@ -159,13 +177,13 @@ Where are they: in a disc image of the game (.iso or .xiso), or in a maps folder
 	fi
 fi
 if [ -n "$image_link" ] && ! has_maps "$dir"; then
-	echo "Start OpenH1 once in Desktop Mode (from the application menu, Games) and choose Yes when it asks: it copies the maps from $(readlink "$image_link") (about 2 GB). Then you can quit it, and play from Game Mode."
+	echo "Start $app once in Desktop Mode (from the application menu, Games) and choose Yes when it asks: it copies the maps from $(readlink "$image_link") (about 2 GB). Then you can quit it, and play from Game Mode."
 	if command -v kdialog >/dev/null && kdialog --title "OpenH1: your game's maps" --yesno \
-		"Start OpenH1 now, to copy the maps from the disc image? Choose Yes when it asks.
+		"Start $app now, to copy the maps from the disc image? Choose Yes when it asks.
 
 (Once: about 2 GB. When it has copied them, you can quit it, and play from Game Mode.)"; then
 		(cd "$dir" && nohup "$dir/bin/openh1" >/dev/null 2>&1 &)
-		echo "  OpenH1 started."
+		echo "  $app started."
 	fi
 elif ! has_maps "$dir" && ! data_set "$dir"; then
 	echo "No maps yet: at its first start, in Desktop Mode, the game asks for your disc image (.iso) and copies them. (Or copy the maps folder of the game's disc to $dir/maps.)"
@@ -177,13 +195,13 @@ fi
 # Exec=openh1, Icon=openh1), with this folder's program and icon; Steam
 # names the shortcut made from it after it (in its list of programs, and
 # from steamos-add-to-steam)
-entry=$HOME/.local/share/applications/openh1.desktop
 icon=$dir/share/icons/hicolor/256x256/apps/openh1.png
 escape() { printf '%s' "$1" | sed 's/[\\|&]/\\&/g'; }
 mkdir -p "$(dirname "$entry")"
 sed -e "s|^Exec=.*|Exec=\"$(escape "$dir/bin/openh1")\"\\
 Path=$(escape "$dir")|" \
 	-e "s|^Icon=.*|Icon=$(escape "$icon")|" \
+	-e "s|^Name=.*|Name=$app|" \
 	"$dir/share/applications/openh1.desktop" > "$entry.new"
 mv -f "$entry.new" "$entry"
 echo "  menu entry: $entry"
@@ -193,18 +211,18 @@ echo "  menu entry: $entry"
 # which only Steam may add (it rewrites its shortcuts.vdf while it runs):
 # SteamOS's steamos-add-to-steam asks the running Steam to
 if grep -lqF "$dir/bin/openh1" "$HOME"/.local/share/Steam/userdata/*/config/shortcuts.vdf 2>/dev/null; then
-	echo "Steam has OpenH1 already: play it from Game Mode's library."
+	echo "Steam has $app already: play it from Game Mode's library."
 elif command -v steamos-add-to-steam >/dev/null && steamos-add-to-steam "$entry" >/dev/null 2>&1; then
-	echo "Added to Steam as OpenH1: play it from Game Mode's library."
+	echo "Added to Steam as $app: play it from Game Mode's library."
 elif [ -d "$HOME/.local/share/Steam" ] || command -v steam >/dev/null; then
-	[ -n "$first" ] && echo "Installed. Now add it to Steam, once:" || echo "Steam has no shortcut to OpenH1 yet. To add one:"
+	[ -n "$first" ] && echo "Installed. Now add it to Steam, once:" || echo "Steam has no shortcut to $app yet. To add one:"
 	cat <<EOF
   1. In Steam: Games > Add a Non-Steam Game to My Library.
-  2. Tick OpenH1 in the list (or Browse..., select $dir/bin/openh1), then Add Selected Programs.
-  3. Play OpenH1 from the library (on a Steam Deck, in Game Mode).
+  2. Tick $app in the list (or Browse..., select $dir/bin/openh1), then Add Selected Programs.
+  3. Play $app from the library (on a Steam Deck, in Game Mode).
 EOF
 else
-	echo "Start OpenH1 from the application menu (Games)."
+	echo "Start $app from the application menu (Games)."
 fi
 if [ "$dir" != "$here" ]; then
 	echo "The game updates itself there. $here can be deleted."

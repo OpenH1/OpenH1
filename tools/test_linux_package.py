@@ -250,14 +250,19 @@ def command_folder(folder):
 @pytest.fixture
 def release(tmp_path):
     """an unzipped release (OpenH1-Linux.zip in ~/Downloads), its bin/openh1 a script that notes it started"""
-    build = tmp_path / "build"
+    return unzipped_release(tmp_path, "OpenH1-Linux")
+
+
+def unzipped_release(tmp_path, name, vr=False):
+    """the release name.zip (the VR build's: vr) as the file manager unpacks it in ~/Downloads"""
+    build = tmp_path / f"build-{name}"
     build.mkdir()
-    (build / "halo").write_text(GAME)
-    for name in ("libSDL3.so.0", "SDL3-LICENSE.txt"):
-        (build / name).write_bytes(name.encode())
-    folder = tmp_path / "home/Downloads/OpenH1-Linux"
-    linux_package.stage_tree(folder, build / "halo", build / "libSDL3.so.0", notices(build))
-    archive = tmp_path / "OpenH1-Linux.zip"
+    (build / "halo").write_text(GAME + f"# {name}\n")
+    for part in ("libSDL3.so.0", "SDL3-LICENSE.txt"):
+        (build / part).write_bytes(part.encode())
+    folder = tmp_path / "home/Downloads" / name
+    linux_package.stage_tree(folder, build / "halo", build / "libSDL3.so.0", notices(build), vr=vr)
+    archive = tmp_path / f"{name}.zip"
     linux_package.write_zip(folder, archive)
     shutil.rmtree(folder)
     # (as the file manager unpacks it: with the zip's modes)
@@ -455,6 +460,73 @@ def test_install_sh_refuses_while_running(release, tmp_path):
                             env={"HOME": str(home), "PATH": f"{stand_ins}:{commands}", "OPENH1_INSTALL_WINDOW": "1"})
     assert result.returncode == 3 and "OpenH1 is running (process 41 42)" in result.stderr
     assert not (home / "Applications/OpenH1/bin").exists()
+
+
+def snapshot(folder):
+    """every file under folder, with its contents and modification time"""
+    return {path: (path.read_bytes(), path.stat().st_mtime_ns) for path in folder.rglob("*") if path.is_file()}
+
+
+def steam_calls(home):
+    return [line for line in calls(home) if line.startswith("steamos-add-to-steam")]
+
+
+def test_vr_tree_marker(build, tmp_path):
+    """the VR build's tree (tools/ci_build.py --vr) has share/openh1/vr, install.sh's sign of it; the other has not"""
+    linux_package.stage_tree(tmp_path / "vr", build / "halo", None, notices(build), vr=True)
+    linux_package.stage_tree(tmp_path / "flat", build / "halo", None, notices(build))
+    assert (tmp_path / "vr/share/openh1/vr").is_file() and not (tmp_path / "flat/share/openh1/vr").exists()
+    assert "linux_package.stage_tree(dist, executable, library, notices, vr=args.vr)" in \
+        (ROOT / "tools/ci_build.py").read_text()
+
+
+def test_install_sh_vr_beside_the_other(release, tmp_path):
+    """the VR build's install.sh installs it in ~/Applications/OpenH1-VR, with the menu entry openh1-vr.desktop
+    named OpenH1 VR (as the Steam Frame's) and a Steam shortcut of its own, and never touches the other build, its
+    entry or its shortcut; nor the other way round"""
+    home = tmp_path / "home"
+    vr_release = unzipped_release(tmp_path, "OpenH1-Linux-VR", vr=True)
+    run_install(release, home)
+    desktop, vr = home / "Applications/OpenH1", home / "Applications/OpenH1-VR"
+    entries = home / ".local/share/applications"
+    assert steam_calls(home) == [f"steamos-add-to-steam {entries}/openh1.desktop"]
+    (desktop / "config.toml").write_text("mine")
+    shortcuts = home / ".local/share/Steam/userdata/12345/config/shortcuts.vdf"
+    shortcuts.parent.mkdir(parents=True)
+    shortcuts.write_bytes(b"\x00exe\x00\"" + str(desktop / "bin/openh1").encode() + b"\"\x00")
+    before = snapshot(desktop), (entries / "openh1.desktop").read_bytes()
+
+    output = run_install(vr_release, home)
+    assert f"Installing OpenH1 VR to {vr}" in output and "Added to Steam as OpenH1 VR" in output
+    assert (vr / "bin/openh1").read_bytes() == (vr_release / "bin/openh1").read_bytes()
+    assert (vr / "share/openh1/vr").is_file()
+    entry = dict(line.split("=", 1) for line in (entries / "openh1-vr.desktop").read_text().splitlines() if "=" in line)
+    assert entry["Name"] == "OpenH1 VR" and entry["Exec"] == f'"{vr}/bin/openh1"' and entry["Path"] == str(vr)
+    assert entry["Icon"] == f"{vr}/share/icons/hicolor/256x256/apps/openh1.png"
+    # (Steam's shortcut to the other build is not this one's)
+    assert steam_calls(home) == [f"steamos-add-to-steam {entries}/openh1-vr.desktop"]
+    assert (snapshot(desktop), (entries / "openh1.desktop").read_bytes()) == before
+
+    # the other build again: its own shortcut found, the VR build's untouched
+    shortcuts.write_bytes(b"\x00exe\x00\"" + str(vr / "bin/openh1").encode() + b"\"\x00")
+    before_vr = snapshot(vr), (entries / "openh1-vr.desktop").read_bytes()
+    output = run_install(release, home)
+    assert "Nothing changed" in output and "Added to Steam as OpenH1:" in output
+    assert steam_calls(home) == [f"steamos-add-to-steam {entries}/openh1.desktop"]
+    assert (snapshot(vr), (entries / "openh1-vr.desktop").read_bytes()) == before_vr
+    assert desktop_entry(home)["Name"] == "OpenH1"
+
+
+def test_install_sh_refuses_the_other_build(release, tmp_path):
+    """a folder that holds the other build (moved there by hand) is not replaced by this one"""
+    home = tmp_path / "home"
+    vr_release = unzipped_release(tmp_path, "OpenH1-Linux-VR", vr=True)
+    shutil.copytree(release, home / "Applications/OpenH1-VR")
+    commands = command_folder(tmp_path / "commands")
+    result = subprocess.run([str(vr_release / "install.sh")], capture_output=True, text=True,
+                            env={"HOME": str(home), "PATH": str(commands), "OPENH1_INSTALL_WINDOW": "1"})
+    assert result.returncode == 1 and "holds the other build" in result.stderr
+    assert not (home / "Applications/OpenH1-VR/share/openh1/vr").exists()
 
 
 def test_install_sh_shell():

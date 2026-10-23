@@ -179,6 +179,13 @@ release's tree):
 - On another Linux desktop, without `konsole`, `kdialog` or
   `steamos-add-to-steam`, it does the same and says what is left to do:
   the game asks for its disc image at its first start.
+- The VR build's release (`OpenH1-Linux-VR.zip`, whose tree has
+  `share/openh1/vr`) goes beside the other, so that a computer keeps both:
+  in `~/Applications/OpenH1-VR`, with the menu entry
+  `~/.local/share/applications/openh1-vr.desktop`, named OpenH1 VR (as the
+  Steam Frame's), and a Steam shortcut of its own (its check looks for its
+  own `bin/openh1`). Neither install changes the other's folder, menu entry
+  or shortcut, and each refuses a folder that holds the other build.
 
 - Build: the 64-bit x86 one, `OpenH1-Linux.zip`, which draws
   with Vulkan (SteamOS has it).
@@ -687,6 +694,7 @@ Unix prefix is, so a package can copy its folders to `/usr` (or
 | `bin/openh1` | The game: a 64-bit executable (x86-64 or AArch64), with the game's guest image inside it. |
 | `lib/openh1/libSDL3.so.0` | SDL 3, which the game loads from there (a `DT_RPATH` of `$ORIGIN:$ORIGIN/../lib/openh1`; refer to "Requirements"). Leave it out to use the system's SDL 3. |
 | `share/openh1/brokers.txt` | Internet play's MQTT brokers (`network.brokers_file`). |
+| `share/openh1/vr` | Only in the VR build's release: by it, `install.sh` installs that build beside the other ("Steam Deck"). |
 | `share/applications/openh1.desktop` | The desktop entry. |
 | `share/icons/hicolor/<size>/apps/openh1.png` | Its icon, 16x16 to 512x512. |
 | `share/doc/openh1/` | The main README and this one. |
