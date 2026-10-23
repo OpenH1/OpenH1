@@ -231,7 +231,13 @@ uint32_t host_make_boot(const struct host_environment *environment, const char *
 
 /* ---------- config.toml's settings the host reads */
 
+/* (display.astc_textures' default, as port_config.c's: off on Android until
+its Vulkan path has been seen right on a device without BC) */
+#ifdef __ANDROID__
+char host_astc_textures[16] = "off";
+#else
 char host_astc_textures[16] = "auto";
+#endif
 
 void host_apply_debug_settings(const char *path, const char *hashes_reason)
 {

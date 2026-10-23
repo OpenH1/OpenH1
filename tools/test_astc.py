@@ -92,5 +92,7 @@ def test_setting_documented():
     config = (ROOT / "port/linux/src/port_config.c").read_text()
     assert '"display.astc_textures"' in config and '"HALO_ASTC_TEXTURES"' in config
     assert '{ "display.astc_textures", { "auto", "always", "off", NULL }, NULL }' in config
+    # (off by default on Android, the host's default as the file's)
+    assert '#ifdef HALO_ANDROID\n#define ASTC_TEXTURES_DEFAULT "\\"off\\""' in config
     assert '"display.astc_textures"' in (ROOT / "port/android/host/host_common.c").read_text()
     assert "`display.astc_textures`" in (ROOT / "port/linux/README.md").read_text()

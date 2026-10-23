@@ -41,8 +41,8 @@ enum
 unsigned xgpu_astc_dxt_block_bytes(int kind);
 
 /* whether the DXT textures are drawn as ASTC on a GPU, by the setting
-display.astc_textures (port_config.c): "auto" (the default, and anything
-else) where it samples ASTC and not BC, "always" where it samples ASTC
+display.astc_textures (port_config.c): "auto" (the default but on
+Android, and anything else) where it samples ASTC and not BC, "always" where it samples ASTC
 (beside BC: to try it on a Mac), "off" never */
 int xgpu_astc_chosen(const char *setting, int block_compression, int astc);
 
