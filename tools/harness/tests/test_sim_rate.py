@@ -1,5 +1,6 @@
 """The simulation's two clocks (game.sim_rate, port/linux/game/sim_rate.c): the rate a tick takes from the setting
-and the connection (30 in any network game, where the setting is locked), the fast phase's sub-steps and their slots,
+and the connection (30 in any network game of other machines, where the setting is locked; split screen, a network
+game of one machine, takes the setting), the fast phase's sub-steps and their slots,
 the conversions of per-tick quantities, each exactly its argument at 30, the frames' blend between sub-steps, and the
 sub-steps run one at a time as the clock spreads them over the frames (which is next, the first of a frame, the open
 tick's rate)."""
@@ -21,9 +22,16 @@ NEGATIVE_CONTROLS = {
                             "network-classic"),
     "film-not-classic": (("\tdefault:\n\t\treturn SIM_RATE_CLASSIC;\n", "\tdefault:\n\t\treturn sim_rate_setting();\n"),
                          "network-classic"),
-    "film-not-locked": (("return game_connection() != _game_connection_local;",
+    "film-not-locked": (("return !sim_rate_follows_setting();",
                          "return game_connection() == _game_connection_network_client ||\n"
                          "\t\tgame_connection() == _game_connection_network_server;"), "locked"),
+    "splitscreen-classic": (("connection == _game_connection_local ||\n"
+                             "\t\t(connection == _game_connection_network_server && network_game_is_splitscreen_local());",
+                             "connection == _game_connection_local;"), "network-classic"),
+    "splitscreen-locked": (("return !sim_rate_follows_setting();", "return game_connection() != _game_connection_local;"),
+                           "locked"),
+    "any-server-follows": (("(connection == _game_connection_network_server && network_game_is_splitscreen_local())",
+                            "connection == _game_connection_network_server"), "network-classic"),
     "any-rate": (("(setting == 60 || setting == 120) ? setting", "setting > 0 ? setting"), "rates"),
     "setting-never-read-again": (("|| sim_rate_globals.read_at != config_changes()", ""), "rates"),
     "decay-at-30-rounded": (("\tif (count >= 2)\n\t\tfactor = square_root(factor);",
@@ -71,10 +79,10 @@ def test_negative_control(control):
 
 
 def test_default_and_tick_loop():
-    # 30 unless asked (port_config.c), the rate taken at each tick's start and the fast phase after the objects'
+    # 60 unless asked (port_config.c), the rate taken at each tick's start and the fast phase after the objects'
     # update (game.c: the tick's macro step with its first sub-step, what follows the fast phase with its last); the
     # determinism check writes the rate (determinism_log.c)
-    assert '{ "game.sim_rate", _config_integer, "30", "HALO_SIM_RATE"' in read("port/linux/src/port_config.c")
+    assert '{ "game.sim_rate", _config_integer, "60", "HALO_SIM_RATE"' in read("port/linux/src/port_config.c")
     game = read("source/game/game.c")
     macro = function(game, "game_tick_macro_step")
     assert macro.index("sim_rate_tick_begin();") < macro.index("units_update();") < macro.index("objects_update();")

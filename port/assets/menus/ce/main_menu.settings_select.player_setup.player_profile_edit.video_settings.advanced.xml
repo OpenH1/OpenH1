@@ -228,6 +228,6 @@
 		<string text="Faithful keeps the original picture and brightens its highlights. Punchy lifts the whole scene, as a remaster would.|The pictures are shown approximately: no SDR picture can show HDR."/>
 		<string text="With HDR, how bright white surfaces and the HUD are, in percent of your system's white. Raise it in a bright room."/>
 		<string text=""/>
-		<string text="How often the world updates each second. 60 and 120 respond faster and take more of the processor. Online games and split screen always play at 30, the original's rate."/>
+		<string text="How often the world updates each second, in games on this device: the campaign, split screen and bots. 60 and 120 respond faster and take more of the processor. Online games always play at 30, the original's rate."/>
 	</strings>
 </menus>

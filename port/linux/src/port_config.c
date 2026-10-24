@@ -837,14 +837,13 @@ static const struct config_setting config_settings[] =
 		"to throw and reload, and a player turns with the aim while throwing;\n"
 		"false: the original animations, which freeze the legs and stand a\n"
 		"rider up." },
-	{ "game.sim_rate", _config_integer, "30", "HALO_SIM_RATE", _environment_value, _platform_all,
+	{ "game.sim_rate", _config_integer, "60", "HALO_SIM_RATE", _environment_value, _platform_all,
 		"The steps a second of what a player feels in their hands: their own\n"
 		"movement and aim, projectiles and thrown items: 30 (as the game was\n"
 		"made), 60 or 120, in steps inside the game's 30 ticks a second, which\n"
-		"everything else keeps. Nothing moves in the smaller steps yet, so every\n"
-		"rate plays as 30 does. Network games, which OpenCE's netcode steps at\n"
-		"30, split screen games (a network game of one machine) and saved films\n"
-		"play at 30 whatever this is." },
+		"everything else keeps. For games of this computer alone: the campaign,\n"
+		"split screen and games with bots. Network games, which OpenCE's\n"
+		"netcode steps at 30, and saved films play at 30 whatever this is." },
 	{ "game.custom_edition", _config_boolean, "true", "HALO_CUSTOM_EDITION", _environment_value, _platform_all,
 		"Load and run Halo Custom Edition maps (not those that need OpenSauce):\n"
 		"put them and Custom Edition's bitmaps.map, sounds.map and loc.map in\n"

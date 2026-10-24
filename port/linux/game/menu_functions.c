@@ -1791,8 +1791,8 @@ static void graphics_preset_show(struct widget_instance *list)
 }
 
 /* Graphics' SIMULATION row (game.sim_rate): where the game sets the setting
-aside and plays at 30 (sim_rate_locked: a network game, split screen, a
-film's playback), the row is locked. It shows ORIGINAL (30), dimmed, the
+aside and plays at 30 (sim_rate_locked: a network game of other machines,
+a film's playback), the row is locked. It shows ORIGINAL (30), dimmed, the
 list and the pointer pass over it, and OK leaves the setting as it was
 (setting_changed_save passes over a disabled spinner). Unlocked, it shows
 the setting's value again */

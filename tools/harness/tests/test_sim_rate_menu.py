@@ -1,6 +1,6 @@
 """Video Setup > Graphics' SIMULATION row (game.sim_rate): the row tools/port_settings.py writes, and
 port/linux/game/menu_functions.c's sim_rate_row_show, which locks it at ORIGINAL (30) where the game sets the setting
-aside (sim_rate.c's sim_rate_locked: a network game, split screen, a film's playback), with OK passing over the locked
+aside (sim_rate.c's sim_rate_locked: a network game of other machines, a film's playback), with OK passing over the locked
 spinner."""
 
 import re
@@ -66,7 +66,7 @@ def test_the_row_on_advanced_graphics():
     assert '<string text="TICK RATE"/>' in labels
     # its row fits above the buttons (y + the row's height <= 414)
     assert int(re.search(r'y="(\d+)"', child).group(1)) + port_settings.SETTINGS_ROW_HEIGHT <= 414
-    assert '{ "game.sim_rate", _config_integer, "30", "HALO_SIM_RATE"' in read("port/linux/src/port_config.c")
+    assert '{ "game.sim_rate", _config_integer, "60", "HALO_SIM_RATE"' in read("port/linux/src/port_config.c")
     update = read("port/linux/game/menu_functions.c")
     update = update[update.index("static void settings_page_update("):]
     assert update.index("sim_rate_row_show(list);") < update.index("settings_each(screen, setting_stash);")

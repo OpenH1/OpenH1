@@ -192,6 +192,11 @@ static short game_connection(void)
 	return _game_connection_local;
 }
 
+boolean network_game_is_splitscreen_local(void)
+{
+	return FALSE;
+}
+
 static real square_root(real x)
 {
 	return (real)sqrt(x);

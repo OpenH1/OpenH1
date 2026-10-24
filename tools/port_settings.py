@@ -598,11 +598,12 @@ PAGES = {
             # display.hdr's own; port/linux/README.md)
             (SECTION, "GAME"),
             # (locked at ORIGINAL (30) in a game that plays at 30 whatever it
-            # says, a network game, split screen, a film's playback:
+            # says, a network game of other machines, a film's playback:
             # menu_functions.c's sim_rate_row_show)
             ("TICK RATE", "game.sim_rate", [("ORIGINAL (30)", "30"), ("60", "60"), ("120", "120")],
-             "How often the world updates each second. 60 and 120 respond faster and take more of the processor. "
-             "Online games and split screen always play at 30, the original's rate.", None),
+             "How often the world updates each second, in games on this device: the campaign, split screen and "
+             "bots. 60 and 120 respond faster and take more of the processor. Online games always play at 30, "
+             "the original's rate.", None),
         ],
     },
     FIRST_PERSON[0]: {
