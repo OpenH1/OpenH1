@@ -26,7 +26,9 @@ Built with the host's ABI, as the other posix_*.c.
 #include "psa/crypto.h"
 
 #include <errno.h>
+#include <fcntl.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -616,4 +618,29 @@ int update_launch(const char *path)
 		_exit(127);
 	}
 	return child > 0;
+}
+
+int update_restart(const char *path)
+{
+	struct rlimit limit;
+	sigset_t signals;
+	int descriptor, maximum = 4096;
+
+	/* none of this process's files in the new program (its sockets hold the
+	game's ports; its window's connection closes, and the window with it),
+	closed as it starts, not before: the other threads use them until then */
+	if (getrlimit(RLIMIT_NOFILE, &limit) == 0 && limit.rlim_cur != RLIM_INFINITY && limit.rlim_cur < 65536)
+		maximum = (int)limit.rlim_cur;
+	for (descriptor = 3; descriptor < maximum; descriptor++)
+	{
+		int flags = fcntl(descriptor, F_GETFD);
+
+		if (flags >= 0)
+			fcntl(descriptor, F_SETFD, flags | FD_CLOEXEC);
+	}
+	/* (no signal blocked, as at a start: the thread's mask is kept) */
+	sigemptyset(&signals);
+	pthread_sigmask(SIG_SETMASK, &signals, NULL);
+	execl(path, path, (char *)NULL);
+	return 0;
 }

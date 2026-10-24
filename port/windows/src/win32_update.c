@@ -248,3 +248,11 @@ int update_launch(const char *path)
 	CloseHandle(process.hProcess);
 	return 1;
 }
+
+int update_restart(const char *path)
+{
+	/* (no program starts in place of another on Windows: updater.c starts
+	the new one with update_launch) */
+	(void)path;
+	return 0;
+}

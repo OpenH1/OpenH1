@@ -441,7 +441,7 @@ static char const *const port_function_names[] =
 	/* (the main menu's Mods: menu_functions.c) */
 	"port mods init", "port mods close", "port mods toggle", "port mods move up", "port mods move down",
 	"port mods save",
-	/* (the Steam Frame's update question: menu_functions.c) */
+	/* (the update question, the Steam Frame's and gamescope's: menu_functions.c) */
 	"port update now",
 	/* (Multiplayer's panel: menu_functions.c's multiplayer_status) */
 	"port multiplayer status end", "port multiplayer refresh", "port multiplayer open",
@@ -479,7 +479,7 @@ static char const *const port_game_data_input_names[] =
 	on Gamepad Setup's row) */
 	"port gamepad layout preview",
 	/* (the main menu's Mods; its item notes the main menu shown, for the
-	Steam Frame's update question) */
+	update question) */
 	"port mods update", "port update question",
 	/* (network co-op's pause menu's FRIENDLY FIRE: its text, ON or OFF) */
 	"port coop friendly fire text",

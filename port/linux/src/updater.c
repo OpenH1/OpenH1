@@ -21,6 +21,20 @@ reached. If it is newer, the game asks whether to update:
 - Do not ask again: after the player confirms it, update.auto = false is
   written to config.toml.
 
+Under gamescope (the Steam Deck's Game Mode, where Steam starts the game
+that install.sh installed, ~/Applications/OpenH1/bin/openh1), a system
+dialog stops the game, so the Linux tree's game asks in its own menus, as
+the Steam Frame's does (below): the release's zip is downloaded in the
+background while the game plays (update.partial/), and then, at the main
+menu, the game asks:
+
+- Update: the zip is unpacked and its files put in place as above, and the
+  new game started in this process (update_restart: the same process, of
+  the same parent, so that Steam, which waits for it, and gamescope, which
+  shows its window, see a game that goes on, never one that quit or
+  crashed).
+- Not now: nothing, until the next start (which deletes the download).
+
 The system side (the HTTPS download, the files, starting the new game) is
 update.h's: posix_update.c on Linux, win32_update.c on Windows.
 
@@ -133,13 +147,28 @@ enum
 	_updater_idle,
 	_updater_checking,
 	_updater_available,
+	/* (the question asked in the game's menus: updater_update_now's) */
+	_updater_asked,
 	_updater_handled,
 };
+
+/* menu_functions.c's: the update question opened at the main menu, once it
+has been seen; 1 when it was, or cannot be */
+int pc_menu_update_question_open(void);
+/* sdl_platform.c's */
+void platform_request_quit(void);
+void updater_update_now(void);
 
 static SDL_AtomicInt updater_state;
 static long updater_latest_build;
 static char updater_directory[1024];
 static char updater_executable[1024];
+#ifndef UPDATER_PACKAGE
+/* (the Linux tree's, under gamescope: asking in the game's menus, the
+release's zip downloaded in the background) */
+static int updater_in_game;
+static int updater_downloaded;
+#endif
 
 /* ---------- paths */
 
@@ -477,7 +506,52 @@ static long updater_latest_release(void)
 	return build;
 }
 
-#ifdef UPDATER_PACKAGE
+#ifndef UPDATER_PACKAGE
+/* whether the game runs under gamescope (the Steam Deck's Game Mode), where
+a system dialog such as SDL's message box crashes the game. gamescope sets
+GAMESCOPE_WAYLAND_DISPLAY for the programs it runs and Game Mode's session
+XDG_CURRENT_DESKTOP; Steam sets SteamDeck and SteamGamepadUI there. Wine
+passes them on to the Windows build under Proton. */
+static int updater_gamescope(void)
+{
+	const char *wayland_display = getenv("GAMESCOPE_WAYLAND_DISPLAY");
+	const char *desktop = getenv("XDG_CURRENT_DESKTOP");
+	const char *steam_deck = getenv("SteamDeck");
+	const char *gamepad_ui = getenv("SteamGamepadUI");
+
+	return (wayland_display && wayland_display[0]) || (desktop && strstr(desktop, "gamescope")) ||
+		(steam_deck && !strcmp(steam_deck, "1") && gamepad_ui && !strcmp(gamepad_ui, "1"));
+}
+
+/* under gamescope, the release's zip downloaded in the background, while
+the game plays (with no window of its own, as updater_download_zip's would
+stand over the game there), into update.partial/, where updater_update
+unpacks it once the player chose to update; 1 when it is there */
+static int updater_download_background(void)
+{
+	char partial[1200], zip_path[1200], url[512], error[512] = "";
+
+	updater_path(partial, sizeof(partial), UPDATE_DIRECTORY);
+	if (!update_make_directory(partial))
+	{
+		platform_log("update: could not make %s (is the game's folder read-only?)", partial);
+		return 0;
+	}
+	updater_partial_path(zip_path, sizeof(zip_path), UPDATE_ASSET);
+	snprintf(url, sizeof(url), "https://github.com/" UPDATE_REPOSITORY "/releases/download/build-%ld/%s",
+		updater_latest_build, UPDATE_ASSET);
+	platform_log("update: downloading build %ld (%s) in the background", updater_latest_build, UPDATE_ASSET);
+	if (!update_download(url, zip_path, MAXIMUM_UPDATE_SIZE, NULL, NULL, error, sizeof(error)))
+	{
+		platform_log("update: could not download build %ld: %s", updater_latest_build, error);
+		update_delete_file(zip_path);
+		update_delete_file(partial);
+		return 0;
+	}
+	platform_log("update: build %ld is downloaded", updater_latest_build);
+	return 1;
+}
+#else
 static int updater_unpack(const char *zip_path, int downloaded, char names[][256], int *name_count, char *error,
 	size_t error_size);
 
@@ -557,6 +631,17 @@ static int SDLCALL updater_check_thread(void *context)
 		{
 			SDL_SetAtomicInt(&updater_state, _updater_handled);
 			return 0;
+		}
+#else
+		/* (under gamescope: asked about once it is downloaded) */
+		if (updater_in_game && !config_string("debug.update_from")[0])
+		{
+			if (!updater_download_background())
+			{
+				SDL_SetAtomicInt(&updater_state, _updater_handled);
+				return 0;
+			}
+			updater_downloaded = 1;
 		}
 #endif
 		SDL_SetAtomicInt(&updater_state, _updater_available);
@@ -777,8 +862,8 @@ static void updater_put_back(char names[][256], int count)
 		platform_log("update: the %d replaced files put back: the install is as it was", count);
 }
 
-/* downloads, unpacks and puts in place the new build, and starts it; returns
-only if something failed */
+/* downloads (unless updater_download_background has), unpacks and puts in
+place the new build, and starts it; returns only if something failed */
 static void updater_update(void)
 {
 	char names[MAXIMUM_UPDATE_FILES][256];
@@ -797,7 +882,7 @@ static void updater_update(void)
 	{
 		snprintf(error, sizeof(error), "could not make %s (is the game's folder read-only?)", partial);
 	}
-	else if ((local_zip[0] || updater_download_zip(zip_path, error, sizeof(error))) &&
+	else if ((local_zip[0] || updater_downloaded || updater_download_zip(zip_path, error, sizeof(error))) &&
 		updater_unpack(zip_path, !local_zip[0], names, &name_count, error, sizeof(error)))
 	{
 		/* (the files replaced, for the new version to delete) */
@@ -840,12 +925,29 @@ static void updater_update(void)
 		{
 			updater_delete_partial(partial, names, name_count);
 			platform_log("update: starting build %ld", updater_latest_build);
+#ifndef HALO_WINDOWS
+			/* (under gamescope, in this process, which Steam started and
+			waits for: it never quits, and the new game's window is this
+			process's, which gamescope shows as the game's. If it cannot be,
+			the game quits, as its Quit does, to be started again) */
+			if (updater_in_game)
+			{
+				update_restart(launch);
+				platform_log("update: the new version is in place, but could not be started in this process: "
+					"quitting");
+				platform_request_quit();
+				return;
+			}
+#endif
 			if (update_launch(launch))
 				exit(EXIT_SUCCESS);
 			snprintf(error, sizeof(error), "the new version is in place, but could not be started: start it again");
 		}
 	}
 	platform_log("update: failed: %s", error);
+	/* (no dialog under gamescope: the game goes on as it was) */
+	if (updater_in_game)
+		return;
 	{
 		char message[800];
 
@@ -989,6 +1091,8 @@ void updater_start(void)
 	snprintf(updater_directory, sizeof(updater_directory), "%s", install_folder());
 	if (!updater_directory[0])
 		return;
+	/* (asked in the game's menus under gamescope) */
+	updater_in_game = updater_gamescope();
 #endif
 #endif
 #ifndef UPDATER_PACKAGE
@@ -1027,12 +1131,6 @@ void updater_start(void)
 }
 
 #ifdef UPDATER_PACKAGE
-/* menu_functions.c's: the update question opened at the main menu, once it
-has been seen; 1 when it was, or cannot be */
-int pc_menu_update_question_open(void);
-void platform_request_quit(void);
-void updater_update_now(void);
-
 /* every frame, on the game's thread (sdl_platform.c): the Frame's asks in
 the game's menus once the new version is ready to install */
 void updater_poll(SDL_Window *window)
@@ -1083,22 +1181,6 @@ void updater_update_now(void)
 	platform_request_quit();
 }
 #else
-/* whether the game runs under gamescope (the Steam Deck's Game Mode), where
-a system dialog such as SDL's message box crashes the game. gamescope sets
-GAMESCOPE_WAYLAND_DISPLAY for the programs it runs and Game Mode's session
-XDG_CURRENT_DESKTOP; Steam sets SteamDeck and SteamGamepadUI there. Wine
-passes them on to the Windows build under Proton. */
-static int updater_gamescope(void)
-{
-	const char *wayland_display = getenv("GAMESCOPE_WAYLAND_DISPLAY");
-	const char *desktop = getenv("XDG_CURRENT_DESKTOP");
-	const char *steam_deck = getenv("SteamDeck");
-	const char *gamepad_ui = getenv("SteamGamepadUI");
-
-	return (wayland_display && wayland_display[0]) || (desktop && strstr(desktop, "gamescope")) ||
-		(steam_deck && !strcmp(steam_deck, "1") && gamepad_ui && !strcmp(gamepad_ui, "1"));
-}
-
 /* every frame, on the game's thread (sdl_platform.c): asks the player once a
 new version is found */
 void updater_poll(SDL_Window *window)
@@ -1121,10 +1203,10 @@ void updater_poll(SDL_Window *window)
 
 	if (SDL_GetAtomicInt(&updater_state) != _updater_available)
 		return;
-	SDL_SetAtomicInt(&updater_state, _updater_handled);
 	/* (an automated test's answer: debug.update_answer) */
 	if (test_answer[0])
 	{
+		SDL_SetAtomicInt(&updater_state, _updater_handled);
 		platform_log("update: answering %s (debug.update_answer)", test_answer);
 		if (!strcmp(test_answer, "yes"))
 			updater_update();
@@ -1132,8 +1214,19 @@ void updater_poll(SDL_Window *window)
 			config_write_boolean("update.auto", 0);
 		return;
 	}
-	/* (no question under gamescope: the player updates from the desktop, or
-	with debug.update_answer) */
+	/* (the Linux tree's under gamescope: in the game's menus, at the main
+	menu, whose UPDATE is updater_update_now) */
+	if (updater_in_game)
+	{
+		if (!pc_menu_update_question_open())
+			return;
+		SDL_SetAtomicInt(&updater_state, _updater_asked);
+		platform_log("update: asking about build %ld at the main menu", updater_latest_build);
+		return;
+	}
+	SDL_SetAtomicInt(&updater_state, _updater_handled);
+	/* (no question for the Windows build under gamescope, Proton's: the
+	player updates from the desktop, or with debug.update_answer) */
 	if (updater_gamescope())
 	{
 		platform_log("update: build %ld is out (this is build %d); not asking under gamescope (Steam Deck Game Mode)",
@@ -1179,9 +1272,17 @@ void updater_poll(SDL_Window *window)
 		SDL_SetWindowFullscreen(window, true);
 }
 
-/* (the Frame's alone: menu_functions.c's "port update now") */
+/* "port update now" (the update question's UPDATE: menu_functions.c),
+under gamescope: the new version put in place and started in this
+process; the game goes on if it could not be */
 void updater_update_now(void)
 {
+	/* (once, for the question asked) */
+	if (SDL_GetAtomicInt(&updater_state) != _updater_asked)
+		return;
+	SDL_SetAtomicInt(&updater_state, _updater_handled);
+	platform_log("update: updating to build %ld (UPDATE)", updater_latest_build);
+	updater_update();
 }
 #endif
 

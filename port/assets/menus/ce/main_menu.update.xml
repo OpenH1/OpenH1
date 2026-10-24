@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- The Steam Frame's update question, in the style of the PC version's Quit (tools/port_settings.py) -->
+<!-- The update question (the Steam Frame's, gamescope's), in the style of the PC version's Quit (tools/port_settings.py) -->
 <menus>
 	<widget name="main_menu/update/update_screen" type="text" controller="1" left="180" top="160" width="280" height="160" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/alert_bkd" string_list="main_menu/update/update_prompt" font="ui\small_ui" color="#FF2896FF" align="center" text_x="-10" text_y="40">
 		<on event="b" back="true"/>

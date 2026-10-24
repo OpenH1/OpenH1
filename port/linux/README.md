@@ -161,6 +161,10 @@ Step 3 can be skipped: put the disc image in Downloads or on the SD card
 start OpenH1 from Game Mode. Its first start finds the image and copies the
 maps (refer to "Game data", above).
 
+Updates need no Desktop Mode: when a new release is out, the game
+downloads it while you play, and asks at the main menu. Select UPDATE with
+the controller, and the game updates and starts again (refer to "Updates").
+
 `install.sh` (`tools/linux_install.sh`, at the top of every Linux
 release's tree; the Steam Frame's package has the same script, "Steam
 Frame"):
@@ -751,10 +755,25 @@ If the latest release is newer, the game asks: "Do you want to update?"
   writes `auto = false` in the `[update]` section of `config.toml`. To get
   the questions again, set `auto = true`.
 
-Under gamescope (the Game Mode of the Steam Deck), the game does not ask,
-because a system dialog stops the game there. The game writes the new
-version in the log. To update, start the game from the desktop, or set
-`update_answer = "yes"` in the `[debug]` section of `config.toml`.
+Under gamescope (the Game Mode of the Steam Deck), a system dialog stops
+the game, so the game asks in its own menus, and you answer with the
+controller:
+
+- When the latest release is newer, the game downloads its zip in the
+  background while you play, into `update.partial/` beside the game.
+- Then, at the main menu, it asks: "A new version is ready. Update now?"
+- UPDATE: the game replaces its files as above (the old ones as `.old`),
+  and starts the new version in the same process. Steam started that
+  process and waits for it, so Steam does not see the game quit or crash,
+  and the game stays open in Game Mode. If the new version cannot start
+  there, the game quits; start it again from the library.
+- NOT NOW (or B): the game goes on. It asks again at the next start, which
+  deletes the download first.
+
+To stop the questions, turn off Settings > Network Setup > Check for
+Updates (`update.auto`). `update_answer = "yes"` (or `"no"`, `"never"`) in
+the `[debug]` section answers without the question. The Windows build under
+Proton does not ask under gamescope: update it from the desktop.
 
 The game downloads through HTTPS. It examines the certificate of the server
 against the certificate authorities of the system: on Linux, the bundle of
