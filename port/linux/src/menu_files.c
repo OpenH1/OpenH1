@@ -405,9 +405,20 @@ static long current_line(struct reader *reader)
 #define MENU_PLATFORM "desktop"
 #endif
 
+/* whether the menus are laid out for a touchscreen (the Android and iOS
+apps, or debug.touch_menus): the menus' "touch" platform, the others'
+"pointer" */
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
+#define MENU_TOUCH 1
+#else
+#define MENU_TOUCH config_boolean("debug.touch_menus")
+#endif
+
 /* whether the element is for this platform (its platform attribute: the
 platforms it is for, separated by spaces; "vr" the VR build, playing in the
-headset; "hdr" a renderer that draws display.hdr: xgpu_backend.h) */
+headset; "hdr" a renderer that draws display.hdr: xgpu_backend.h; "touch"
+the touchscreen's builds, "pointer" the rest: MENU_TOUCH; "computer" the
+desktop's builds but iOS's, whose phone has no window to size nor mouse) */
 static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 {
 	int index;
@@ -427,12 +438,21 @@ static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 				{
 					if ((length != 7 || strncmp(name, "desktop", 7)) && (length != 7 || strncmp(name, "android", 7)) &&
 						(length != 3 || strncmp(name, "web", 3)) && (length != 2 || strncmp(name, "vr", 2)) &&
-						(length != 3 || strncmp(name, "hdr", 3)))
+						(length != 3 || strncmp(name, "hdr", 3)) && (length != 5 || strncmp(name, "touch", 5)) &&
+						(length != 7 || strncmp(name, "pointer", 7)) && (length != 8 || strncmp(name, "computer", 8)))
 					{
-						reader_error(reader, "platform=\"%s\" names one that is not desktop, android, web, vr or hdr",
-							attributes[index + 1]);
+						reader_error(reader, "platform=\"%s\" names one that is not desktop, android, web, vr, hdr, "
+							"touch, pointer or computer", attributes[index + 1]);
 						return 1;
 					}
+#if !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_IOS)
+					if (length == 8 && !strncmp(name, "computer", 8))
+						found = 1;
+#endif
+					if (length == 5 && !strncmp(name, "touch", 5) && MENU_TOUCH)
+						found = 1;
+					if (length == 7 && !strncmp(name, "pointer", 7) && !MENU_TOUCH)
+						found = 1;
 					if (length == 3 && !strncmp(name, "hdr", 3) && xgpu_backend_capabilities.hdr)
 						found = 1;
 					if (length == strlen(MENU_PLATFORM) && !strncmp(name, MENU_PLATFORM, length))

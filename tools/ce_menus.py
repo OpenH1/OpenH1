@@ -589,7 +589,8 @@ def widget_xml(tag: str, widget: dict, tags: Tags, functions: list, inputs: list
         name = patch.get("swap", {}).get(our_name(child_tag), our_name(child_tag))
         lines += [f"{inner}{line}" for line in patch.get("insert_before", {}).get(our_name(child_tag), [])]
         pairs = [("widget", name), ("x", x or None), ("y", y or None),
-                 ("controller", str(child["custom controller index"] + 1) if child["flags"] & 1 else None)]
+                 ("controller", str(child["custom controller index"] + 1) if child["flags"] & 1 else None),
+                 ("platform", port_settings.CHILD_PLATFORMS.get((our_name(tag), name)))]
         lines.append(f"{inner}<child{attributes(pairs)}/>")
     lines += [f"{inner}{line}" for line in patch.get("children", [])]
     lines.append(f"{indent}</widget>")
@@ -708,6 +709,13 @@ def main() -> None:
     # (Multiplayer's panel: its counts' digits, and a game's ping as bars)
     lines.append(art.digits(port_settings.STATUS_DIGITS))
     lines.append(art.port_picture(port_settings.PING_BARS, port_settings.ping_bars_frames()))
+    # (the touchscreen's Multiplayer: its rows, its panel's two parts, its
+    # OPEN button)
+    body, cap = port_settings.touch_panel_frames()
+    lines.append(art.port_picture(port_settings.TOUCH_ITEM, port_settings.touch_item_frames()))
+    lines.append(art.port_picture(port_settings.TOUCH_PANEL_BODY, body))
+    lines.append(art.port_picture(port_settings.TOUCH_PANEL_CAP, cap))
+    lines.append(art.port_picture(port_settings.TOUCH_OPEN_BUTTON, port_settings.touch_open_frames()))
     lines.append("</menus>")
     (CE / "bitmaps.xml").write_text("\n".join(lines) + "\n")
     # what is not hand-drawn

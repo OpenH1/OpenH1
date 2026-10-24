@@ -109,6 +109,14 @@ unsigned char custom_edition_vehicle_placement_allowed(struct scenario_object_da
 /* the width of the screen the game draws, 480 lines tall: the device's or
 the display's shape, or 640 (port/linux/src/d3d8_device.c) */
 long halo_screen_width(void);
+/* the menus' widgets anchored to the screen's edges on a touchscreen's wide
+screen (their port flags anchor_left, anchor_right and stretch): the
+horizontal offset of one, how much wider a stretched one is drawn, and how
+far left of the menus' 0 the screen's edge is; 0 elsewhere
+(port/linux/game/menu_tags.c) */
+short ui_widget_port_anchor_offset(long flags);
+short ui_widget_port_stretch(long flags);
+short ui_widget_port_anchor_extra(void);
 /* the screen's pixels to the Xbox's one (port/linux/src/d3d8_device.c) */
 float halo_screen_scale(void);
 /* takes up a new width between frames (F11); returns the width */

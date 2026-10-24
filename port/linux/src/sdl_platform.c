@@ -2587,6 +2587,10 @@ void platform_pump_events(void)
 				ui_pointer.x = event.motion.x;
 				ui_pointer.y = event.motion.y;
 				ui_pointer.moved = TRUE;
+				/* (iOS's taps come as the mouse's, SDL's for the touchscreen:
+				port/ios/touch_controls.m. The menus size and use their targets
+				for a finger: ui_widget.c's ui_mouse_pointer_is_touch) */
+				ui_pointer.touch = event.motion.which == SDL_TOUCH_MOUSEID;
 				break;
 			}
 #ifdef PLATFORM_MOUSE_WARP
@@ -2650,6 +2654,8 @@ void platform_pump_events(void)
 					ui_pointer.left_clicks++;
 					ui_pointer.click_x = event.button.x;
 					ui_pointer.click_y = event.button.y;
+					/* (a tap's: as the motion's) */
+					ui_pointer.touch = event.button.which == SDL_TOUCH_MOUSEID;
 				}
 				else if (event.button.down && event.button.button == SDL_BUTTON_RIGHT)
 				{

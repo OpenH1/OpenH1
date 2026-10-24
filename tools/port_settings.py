@@ -38,7 +38,7 @@ VOLUMES = [(str(step), f"{step / 10:g}") for step in range(11)]
 # the platforms a menu element's platform attribute names (menu_files.c's
 # MENU_PLATFORM, "vr": the VR build, playing in the headset, and "hdr": a
 # renderer that draws display.hdr)
-MENU_PLATFORMS = ("desktop", "android", "web", "vr", "hdr")
+MENU_PLATFORMS = ("desktop", "android", "web", "vr", "hdr", "touch", "pointer", "computer")
 # display.hdr_paper_white's values, percent of the system's SDR white
 PAPER_WHITES = (50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200, 250)
 
@@ -1028,6 +1028,13 @@ MULTIPLAYER_ROWS = {
         "multiplayer_type_join_direct_item", "multiplayer_type_create_item", "multiplayer_type_create_internet_item",
         "multiplayer_type_create_lan_item", "multiplayer_type_online_coop_item", "multiplayer_type_coop_item"])}
 MULTIPLAYER_LINE_PLACE = (64, 363)
+# the screen's children for one platform only (tools/ce_menus.py): the
+# computer's list and its line, the touchscreen's in their place
+# (_multiplayer_touch)
+CHILD_PLATFORMS = {
+    (f"{MT}/multiplayer_type_select_screen", f"{MT}/multiplayer_type_select_list"): "pointer",
+    (f"{MT}/multiplayer_type_select_screen", "main_menu/blueline"): "pointer",
+}
 MULTIPLAYER_GAMETYPES_PLACE = (0, 370)
 
 # changes to the PC version's widgets (by our names): attributes set, all
@@ -1075,11 +1082,20 @@ WIDGET_PATCHES = {
             "online_games_label", "online_players_label", "best_label",
             *[f"best_{row}_{part}" for row in range(BEST_GAMES) for part in ("name", "about", "players", "ping")]]]},
     f"{MT}/multiplayer_type_join_lan_item": {"children": [f'<child widget="{MT}/item_note"/>']},
-    f"{MT}/multiplayer_type_button_bar": {"insert_before": {
+    f"{MT}/multiplayer_type_button_bar": {"set": {"flags": "pass_unhandled_to_focused_child left_right_tabs_items "
+                                                           "anchor_right"}, "insert_before": {
         "common_button_back": [f'<child widget="{MT}/multiplayer_button_refresh" x="380" y="1"/>']}},
     f"{MT}/multiplayer_type_select_screen": {"handlers": [
         '<on event="created" run="mp type menu initialize"/>',
-        '<on event="deleted" run="port multiplayer status end"/>']},
+        '<on event="deleted" run="port multiplayer status end"/>'], "children": [
+        f'<child widget="{MT}/touch/multiplayer_touch_list" platform="touch"/>',
+        f'<child widget="{MT}/touch/multiplayer_touch_open_bar" y="346" platform="touch"/>',
+        f'<child widget="{MT}/touch/multiplayer_touch_hint" platform="touch"/>']},
+    f"{MT}/header_multiplayer": {"set": {"flags": "anchor_left"}},
+    # (the list's headers, which the touchscreen's list shows too, at its rows'
+    # left edge)
+    f"{MT}/multiplayer_type_join_item": {"set": {"flags": "anchor_left"}},
+    f"{MT}/multiplayer_type_create_item": {"set": {"flags": "anchor_left"}},
     # (Co-op, after Create Game's: _coop)
     f"{MT}/multiplayer_type_select_list": {"inputs": ["port multiplayer status"], "insert_before": {
         f"{MT}/multiplayer_type_gametypes_item": [
@@ -1993,6 +2009,197 @@ def ping_bars_frames() -> list:
     return frames
 
 
+# the touchscreen's Multiplayer (the menus' "touch" platform: the Android and
+# iOS apps): its rows 46 units tall (44 points and more on a phone), Create
+# Game's three in one row, the panel stretched to the screen's right edge
+# (the port's flags anchor_left, anchor_right and stretch: menu_tags.c), a
+# large OPEN button in it, and the hint that a tap chooses and another opens
+# (ui_widget.c's ui_mouse_tap_chooses_first)
+TOUCH = f"{MT}/touch"
+TOUCH_ITEM = f"{MT}/touch_item_bkd"
+TOUCH_ITEM_SIZE = (300, 46)
+TOUCH_PANEL_BODY = f"{MT}/touch_panel_body"
+TOUCH_PANEL_CAP = f"{MT}/touch_panel_cap"
+TOUCH_OPEN_BUTTON = f"{MT}/touch_open_button"
+# the panel's body: its width as the 640 have it, and the picture's (the
+# widest screen's stretch: a phone of 2.2 to 1 adds 2 x 208)
+TOUCH_PANEL_WIDTH = 262
+TOUCH_PANEL_PICTURE_WIDTH = 704
+TOUCH_PANEL = (345, 78, 322)
+TOUCH_ROW_STEP = 48
+
+
+def touch_item_frames() -> list:
+    """a touchscreen row's background: nothing, and chosen the menus' list
+    item's (a rounded left end, a blue outline, open to the right), taller"""
+    width, height = TOUCH_ITEM_SIZE
+    blank = f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}"/>\n'
+    chosen = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+              f'viewBox="0 0 {width} {height}">'
+              f'<path d="M12,0 H{width} V{height} H12 A12,12 0 0 1 0,{height - 12} V12 A12,12 0 0 1 12,0 Z" '
+              'fill="#000e23"/>'
+              f'<path d="M{width},1 H12 A11,11 0 0 0 1,12 V{height - 12} A11,11 0 0 0 12,{height - 1} H{width}" '
+              'fill="none" stroke="#2995ff" stroke-width="2"/></svg>\n')
+    return [(blank, width, height), (chosen, width, height)]
+
+
+def touch_panel_frames() -> list:
+    """the panel's body (the menus' description field's left end, its top
+    and bottom running on, which a stretched widget shows as much of as it
+    is wide) and its right end"""
+    width, height = TOUCH_PANEL_PICTURE_WIDTH, TOUCH_PANEL[2]
+    body = (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+            f'viewBox="0 0 {width} {height}">'
+            f'<rect x="2" y="2" width="{width - 2}" height="{height - 4}" fill="#000e23"/>'
+            f'<path d="M9.5,0 H{width} V2 H10.5 A8.5,8.5 0 0 0 2,10.5 V{height - 10.5} A8.5,8.5 0 0 0 10.5,{height - 2} '
+            f'H{width} V{height} H9.5 A9.5,9.5 0 0 1 0,{height - 9.5} V9.5 A9.5,9.5 0 0 1 9.5,0 Z" '
+            'fill="#2995ff"/></svg>\n')
+    cap = (f'<svg xmlns="http://www.w3.org/2000/svg" width="16" height="{height}" viewBox="0 0 16 {height}">'
+           f'<rect x="0" y="2" width="14" height="{height - 4}" fill="#000e23"/>'
+           f'<path d="M0,0 H6.5 A9.5,9.5 0 0 1 16,9.5 V{height - 9.5} A9.5,9.5 0 0 1 6.5,{height} H0 V{height - 2} '
+           f'H5.5 A8.5,8.5 0 0 0 14,{height - 10.5} V10.5 A8.5,8.5 0 0 0 5.5,2 H0 Z" fill="#2995ff"/></svg>\n')
+    return [(body, width, height)], [(cap, 16, height)]
+
+
+def touch_open_frames() -> list:
+    """the panel's OPEN button: the menus' text buttons' pill, larger, and
+    brighter while chosen"""
+    width, height = 300, 40
+    frames = []
+    for fill, opacity in (("#004488", "0.6"), ("#1a5fb4", "0.9")):
+        frames.append((f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+                       f'viewBox="0 0 {width} {height}">'
+                       f'<rect x="1.5" y="1.5" width="{width - 3}" height="{height - 3}" rx="{(height - 3) / 2}" '
+                       f'fill="{fill}" fill-opacity="{opacity}" stroke="#3399ff" stroke-width="2"/></svg>\n',
+                       width, height))
+    return frames
+
+
+def _multiplayer_touch() -> list:
+    """the touchscreen's Multiplayer: its list, its panel, its OPEN button
+    and its hint (TOUCH)"""
+    width, height = TOUCH_ITEM_SIZE
+    left, top, panel_height = TOUCH_PANEL
+
+    # (each row anchored to the screen's left edge, not the list: the list's
+    # description, its panel, is drawn in it and is anchored by its own parts)
+    def item(name, text=None, string_index=None, handlers=(), x_width=width, bitmap=TOUCH_ITEM, extra=(),
+             anchored=True):
+        return _widget(f"{TOUCH}/{name}", [("type", "text"), ("left", 51), ("width", x_width), ("height", height),
+                                           ("flags", "anchor_left" if anchored else None),
+                                           ("bitmap", bitmap), ("text", text),
+                                           ("string_list", f"{MT}/multiplayer_options" if string_index is not None
+                                            else None), ("string_index", string_index),
+                                           ("font", "ui\\large_ui"), ("color", "#FF2896FF"), ("text_x", 15),
+                                           ("text_y", 14)],
+                       [*handlers, '<on event="left_mouse" run="mouse emit accept event"/>', *extra])
+
+    def joins(mode_open):
+        return [f'<on event="a" run="mp type set mode" open="{mode_open}"/>',
+                f'<on event="start" run="mp type set mode" open="{mode_open}"/>']
+
+    def creates():
+        return ['<on event="a" run="join controller to mp game"/>',
+                f'<on event="a" run="mp type set mode" open="{MT}/connected/connected_map_select_wrapper"/>']
+
+    lines = []
+    rows = [("multiplayer_type_join_item", -32, 78)]
+    y = 104
+    for name in ("multiplayer_touch_browser_item", "multiplayer_touch_join_lan_item", "multiplayer_touch_join_direct_item"):
+        rows.append((f"touch/{name}", 0, y))
+        y += TOUCH_ROW_STEP
+    rows.append(("multiplayer_type_create_item", -32, y + 2))
+    y += 28
+    rows.append(("touch/multiplayer_touch_create_row", 0, y))
+    y += TOUCH_ROW_STEP + 6
+    rows.append(("touch/multiplayer_touch_gametypes_item", 0, y))
+    lines += _widget(f"{TOUCH}/multiplayer_touch_list",
+                     [("type", "column_list"), ("width", 640), ("height", 480),
+                      ("flags", "pass_unhandled_to_focused_child up_down_tabs_items"),
+                      ("description", f"{TOUCH}/multiplayer_touch_desc")],
+                     ['<data input="port multiplayer status"/>'] +
+                     [f'<child widget="{MT}/{name}"' + (f' x="{x}"' if x else "") + f' y="{y}"/>'
+                      for name, x, y in rows] +
+                     [f'<child widget="{MT}/multiplayer_type_button_bar" y="414"/>'])
+    lines += item("multiplayer_touch_browser_item", string_index=6, handlers=joins(f"{MT}/join_game/join_game_screen"))
+    lines += item("multiplayer_touch_join_lan_item", string_index=3, handlers=joins(f"{MT}/join_game/join_game_screen"),
+                  extra=[f'<child widget="{TOUCH}/item_note"/>'])
+    lines += item("multiplayer_touch_join_direct_item", string_index=4,
+                  handlers=joins(f"{MT}/join_game/join_game_screen"), extra=[f'<child widget="{TOUCH}/invite_note"/>'])
+    # (the notes at the rows' ends, as the computer's: menu_functions.c's
+    # multiplayer_status_notes)
+    for name, color in (("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C")):
+        lines += _widget(f"{TOUCH}/{name}", [("type", "text"), ("width", width - 12), ("height", height),
+                                             ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
+                                             ("text_y", 17), ("text_flags", "no_focus_test")], [])
+    lines += item("multiplayer_touch_gametypes_item", string_index=5, handlers=[
+        f'<on event="a" open="main_menu/settings_select/multiplayer_setup/playlist_select/gametype_select_screen"/>'])
+    # (Create Game's row: INTERNET, LOCAL and CO-OP side by side, each chosen
+    # by left and right or a tap)
+    lines += _widget(f"{TOUCH}/multiplayer_touch_create_row",
+                     [("type", "column_list"), ("left", 51), ("width", width), ("height", height),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items anchor_left"),
+                      ("bitmap", TOUCH_ITEM)],
+                     [f'<child widget="{TOUCH}/multiplayer_touch_create_inter_item"/>',
+                      f'<child widget="{TOUCH}/multiplayer_touch_create_lan_item" x="118"/>',
+                      f'<child widget="{TOUCH}/multiplayer_touch_online_coop"  x="204"/>'])
+    for name, text, x_width in (("multiplayer_touch_create_inter_item", "INTERNET", 110),
+                                ("multiplayer_touch_create_lan_item", "LOCAL", 82),
+                                ("multiplayer_touch_online_coop", "CO-OP", 90)):
+        lines += item(name, text=text, handlers=creates(), x_width=x_width, bitmap=None, anchored=False)
+    # (its panel: the menus' description field stretched to the screen's
+    # right edge; the Server Browser's counts, a headline and a line for the
+    # rest, the item's description, as the computer's panel has them, by the
+    # same names: menu_functions.c's multiplayer_status_update)
+    def text(name, x, y, w, h, font, color, value=None):
+        return _widget(f"{TOUCH}/{name}", [("type", "text"), ("controller", 1), ("left", x), ("top", y),
+                                           ("width", w), ("height", h), ("flags", "anchor_left"), ("text", value),
+                                           ("font", font), ("color", color), ("text_flags", "no_focus_test")], [])
+    x = left + 18
+    lines += _widget(f"{TOUCH}/multiplayer_touch_desc", [("width", 640), ("height", 480)],
+                     [f'<child widget="{TOUCH}/{name}"/>' for name in [
+                         "panel_body", "panel_cap", "multiplayer_status", "multiplayer_status_detail",
+                         "online_now_label",
+                         *[f"online_{count}_{digit}" for count in ("games", "players")
+                           for digit in range(STATUS_DIGIT_PLACES)],
+                         "online_games_label", "online_players_label", "multiplayer_options_txt"]])
+    lines += _widget(f"{TOUCH}/panel_body", [("left", left), ("top", top), ("width", TOUCH_PANEL_WIDTH),
+                                             ("height", panel_height), ("flags", "anchor_left stretch"),
+                                             ("bitmap", TOUCH_PANEL_BODY)], [])
+    lines += _widget(f"{TOUCH}/panel_cap", [("left", left + TOUCH_PANEL_WIDTH), ("top", top), ("width", 16),
+                                            ("height", panel_height), ("flags", "anchor_right"),
+                                            ("bitmap", TOUCH_PANEL_CAP)], [])
+    lines += text("multiplayer_status", x, 96, 420, 30, "ui\\large_ui", "#FFFFFFFF")
+    lines += text("multiplayer_status_detail", x, 128, 420, 90, "ui\\large_ui", "#FF2896FF")
+    lines += text("online_now_label", x, 88, 200, 18, "ui\\small_ui", "#FF2896FF", "ONLINE NOW")
+    for count, count_left in (("games", x), ("players", x + 170)):
+        for digit in range(STATUS_DIGIT_PLACES):
+            lines += _widget(f"{TOUCH}/online_{count}_{digit}",
+                             [("controller", 1), ("left", count_left + DIGIT_SIZE[0] * digit), ("top", 106),
+                              ("width", DIGIT_SIZE[0]), ("height", DIGIT_SIZE[1]), ("flags", "anchor_left"),
+                              ("bitmap", STATUS_DIGITS)], [])
+    lines += text("online_games_label", x, 124, 140, 20, "ui\\large_ui", "#FF2896FF")
+    lines += text("online_players_label", x + 170, 124, 150, 20, "ui\\large_ui", "#FF2896FF")
+    lines += text("multiplayer_options_txt", x, 200, 420, 80, "ui\\large_ui", "#FF2896FF")
+    # (OPEN: a bar of its own, so that one tap uses it; it opens the item
+    # chosen, "port multiplayer open")
+    lines += _widget(f"{TOUCH}/multiplayer_touch_open_bar",
+                     [("type", "column_list"), ("width", 640), ("height", 44),
+                      ("flags", "pass_unhandled_to_focused_child left_right_tabs_items anchor_left")],
+                     [f'<child widget="{TOUCH}/multiplayer_touch_open" x="{x}"/>'])
+    lines += _widget(f"{TOUCH}/multiplayer_touch_open",
+                     [("type", "text"), ("width", 300), ("height", 40), ("bitmap", TOUCH_OPEN_BUTTON),
+                      ("font", "ui\\large_ui"), ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 12)],
+                     ['<on event="a" run="port multiplayer open"/>', '<on event="start" run="port multiplayer open"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    lines += _widget(f"{TOUCH}/multiplayer_touch_hint",
+                     [("type", "text"), ("controller", 1), ("left", 51), ("top", 446), ("width", 320), ("height", 24),
+                      ("flags", "anchor_left"), ("text", "Tap to choose, tap again to open."),
+                      ("font", "ui\\small_ui"), ("color", "#FF2896FF"), ("text_y", 5),
+                      ("text_flags", "no_focus_test")], [])
+    return lines
+
+
 def _multiplayer_status() -> list:
     """Multiplayer's panel: in the place of the PC version's pictures, what
     is live for the item chosen, a headline and a line below it (the games
@@ -2053,6 +2260,7 @@ def multiplayer_files() -> dict:
         f"{MT}/lobby".replace("/", ".") + ".xml": head + _lobby() + ["</menus>", ""],
         f"{MT}/coop".replace("/", ".") + ".xml": head + _coop() + ["</menus>", ""],
         MT.replace("/", ".") + ".port.xml": head + _multiplayer_status() + ["</menus>", ""],
+        TOUCH.replace("/", ".") + ".xml": head + _multiplayer_touch() + ["</menus>", ""],
         "main_menu/new_select".replace("/", ".") + ".port.xml": head + _map_kind() + ["</menus>", ""],
         "main_menu/settings_select/multiplayer_setup/item_options_edit".replace("/", ".") + ".port.xml": head + _item_options_extras() + ["</menus>", ""],
         PLAYER_EDIT.replace("/", ".") + ".port.xml": head + _player_options_extras() + ["</menus>", ""],

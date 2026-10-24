@@ -1144,6 +1144,10 @@ static const struct config_setting config_settings[] =
 		_platform_all,
 		"The port of the script console (telnet_console); the Xbox's was 23, which\n"
 		"only the administrator can listen on." },
+	{ "debug.touch_menus", _config_boolean, "false", "HALO_TOUCH_MENUS", _environment_set_is_true, _platform_all,
+		"Lay the menus out as the touchscreen's builds do (Android, iOS): their\n"
+		"\"touch\" screens, anchored to the screen's edges, for looking at them on\n"
+		"a computer. Read as the menus load." },
 	{ "debug.touch_targets", _config_boolean, "false", "HALO_TOUCH_TARGETS", _environment_set_is_true, _platform_all,
 		"Outline the menus' tap targets (item green, value blue, list slot yellow,\n"
 		"legend button red, the band beside a list's slots orange; the virtual\n"
