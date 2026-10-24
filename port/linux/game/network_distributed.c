@@ -555,6 +555,16 @@ static struct
 	long taken_time;
 	long taken_host_time;
 } distributed_predictions[MAXIMUM_TRACKED_PLAYERS];
+/* ... the latest heard, which a tick takes as it begins (network_distributed_tick_begun), as it
+takes the input heard: at 60 and 120 a tick's sub-steps may be spread over several frames, and a
+prediction heard between them is the next tick's, as its input is (at 30, where a tick runs in
+one frame, a prediction heard is always the next tick's) */
+static struct
+{
+	boolean valid;
+	long time;
+	struct distributed_unit_state state;
+} distributed_predictions_heard[MAXIMUM_TRACKED_PLAYERS];
 /* the host: the anchor, where it took each client's player to be (one
 taken, a newer once a second: the next may be no further from it than the
 player moves in the client's ticks since), at which of the client's ticks
@@ -860,6 +870,20 @@ void network_distributed_divergence(
 void network_distributed_tick_begun(
 	void)
 {
+	short player_index;
+
+	/* (the host: each client's player's latest prediction heard, taken as
+	the tick ends) */
+	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+	{
+		if (distributed_predictions_heard[player_index].valid)
+		{
+			distributed_predictions[player_index].valid = TRUE;
+			distributed_predictions[player_index].time = distributed_predictions_heard[player_index].time;
+			distributed_predictions[player_index].state = distributed_predictions_heard[player_index].state;
+			distributed_predictions_heard[player_index].valid = FALSE;
+		}
+	}
 	/* (the tests' reports: the input each player's unit takes this tick) */
 	csmemcpy(distributed_divergence.input_time, distributed_divergence.input_heard_time,
 		sizeof(distributed_divergence.input_time));
@@ -2219,9 +2243,9 @@ static void distributed_handle_predictions(
 		{
 			continue;
 		}
-		distributed_predictions[state.player_index].valid = TRUE;
-		distributed_predictions[state.player_index].time = time;
-		distributed_predictions[state.player_index].state = state;
+		distributed_predictions_heard[state.player_index].valid = TRUE;
+		distributed_predictions_heard[state.player_index].time = time;
+		distributed_predictions_heard[state.player_index].state = state;
 	}
 }
 
@@ -3812,6 +3836,7 @@ void network_distributed_new_game(
 	csmemset(distributed_deaths, 0, sizeof(distributed_deaths));
 	csmemset(distributed_seat_disagreements, 0, sizeof(distributed_seat_disagreements));
 	csmemset(distributed_predictions, 0, sizeof(distributed_predictions));
+	csmemset(distributed_predictions_heard, 0, sizeof(distributed_predictions_heard));
 	csmemset(distributed_accepted, 0, sizeof(distributed_accepted));
 	csmemset(distributed_host_speeds, 0, sizeof(distributed_host_speeds));
 	csmemset(distributed_round_trips, 0, sizeof(distributed_round_trips));
