@@ -94,9 +94,11 @@ version it was last raised for, and the build fails until they agree. */
 #if HALO_PORT_STANDARD_BASE_VERSION != HALO_PORT_NETWORK_VERSION
 #error "HALO_PORT_NETWORK_VERSION was raised: raise HALO_PORT_STANDARD_NETWORK_VERSION and its base too"
 #endif
-/* what an OpenCE build that knows of Standard games tells its player
-joining one (NETCODE.md, "Standard and Legacy games") */
-#define HALO_PORT_STANDARD_REFUSAL "This is an OpenH1 Standard game; join a Legacy game or get OpenH1"
+/* what an OpenCE build that knows of OpenH1's games tells its player
+joining one, with the game's rate (the advertisement's
+HALO_PORT_ADVERTISED_RATE_OFFSET): NETCODE.md, "OpenH1 and Legacy games".
+Players see Standard games as "OpenH1 <rate> Tick" */
+#define HALO_PORT_STANDARD_REFUSAL "This is an OpenH1 %u Tick game; join a Legacy game or get OpenH1"
 /* ... the host plays the distributed netcode (always, since the lockstep
 netcode was removed; hosts of version 4 built before then may not) */
 #define HALO_PORT_ADVERTISED_DISTRIBUTED_FLAG 0x01

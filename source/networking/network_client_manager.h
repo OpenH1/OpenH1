@@ -55,6 +55,10 @@ byte network_game_client_advertised_game_kind(
 long network_game_client_advertised_game_rate(
 	struct network_game_client *client,
 	struct network_advertised_game const *game);
+/* port: whether the advertised game is an OpenH1 Standard game */
+boolean network_game_client_advertised_game_standard(
+	struct network_game_client *client,
+	struct network_advertised_game const *game);
 boolean network_game_client_advertised_game_compatible(
 	struct network_game_client *client,
 	struct network_advertised_game const *game,

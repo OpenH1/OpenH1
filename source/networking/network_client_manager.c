@@ -3205,19 +3205,20 @@ boolean network_game_client_advertised_game_compatible(
 		theirs &= ~HALO_PORT_STANDARD_VERSION_BIT;
 		if (theirs == ours && distributed)
 		{
-			network_event("joining a Standard host of protocol version %u at %u Hz", theirs,
-				(unsigned int)network_game_client_advertised_versions[game_index].rate);
+			network_event("joining an OpenH1 %u Tick host (protocol version %u)",
+				(unsigned int)network_game_client_advertised_versions[game_index].rate, theirs);
 			return TRUE;
 		}
 		csprintf(message,
-			"The host's OpenH1 Standard game is of %s version than yours.\n\n"
-			"You are on Standard version %u. The host is on Standard version %u.\n\n"
+			"The host's OpenH1 %u Tick game uses %s version of OpenH1's network code than yours.\n\n"
+			"You are on version %u. The host is on version %u.\n\n"
 			"%s",
+			(unsigned int)network_game_client_advertised_versions[game_index].rate,
 			theirs > ours ? "a newer" : "an older", ours, theirs,
 			theirs > ours ? "Update the game to join this host." : "Ask the host to update the game.");
 		if (tell)
 		{
-			network_event("not joining a Standard host of protocol version %u (this machine's is %u)", theirs, ours);
+			network_event("not joining an OpenH1 host of protocol version %u (this machine's is %u)", theirs, ours);
 			platform_show_message("Halo: cannot join this game", message);
 		}
 		return FALSE;
@@ -3296,6 +3297,17 @@ long network_game_client_advertised_game_rate(
 		return 30;
 	}
 	return network_game_client_advertised_versions[game_index].rate;
+}
+
+/* port: whether the advertised game is an OpenH1 Standard game */
+boolean network_game_client_advertised_game_standard(
+	struct network_game_client *client,
+	struct network_advertised_game const *game)
+{
+	long game_index = client ? game - client->available_games : NONE;
+
+	return game_index >= 0 && game_index < MAXIMUM_NETWORK_ADVERTISED_GAMES &&
+		(network_game_client_advertised_versions[game_index].version & HALO_PORT_STANDARD_VERSION_BIT) != 0;
 }
 
 boolean network_game_client_join_first_available_game(
