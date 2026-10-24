@@ -1,33 +1,37 @@
 /*
-WIN32_CRASH.C
+HOST_CRASH_WIN.C
 
-Crash reports. The game's own __try handler cannot catch a crash
-(port/windows/include/halo_windows_prefix.h); an unhandled exception filter
-does instead. It writes a backtrace of the EBP frame chain into debug.txt and
-the log, as before, and then has a second copy of halo.exe, the crash
-reporter ("halo.exe --crash-report <process> <thread> <exception pointers>"),
-write a minidump of the crashed game. A crashed process cannot be trusted to
-dump itself (its stack, heap or locks may be what broke), so the reporter
-reads it from outside, as breakpad and crashpad do. The game waits for the
-dump and then ends, without Windows's own crash dialog.
+Crash reports of the Windows build (the 32-bit build's, in the host): a
+crash (host_memory_watch_win.c's handlers: the exception no handler took)
+has a second copy of halo.exe, the crash reporter ("halo.exe --crash-report
+<process> <thread> <exception pointers>"), write a minidump of the crashed
+game, as breakpad and crashpad do. The game waits for the dump, writes its
+own report into the log (with the guest's frames, which its function table
+lets Windows's unwinder walk) and ends, without Windows's own crash dialog.
+
+The minidump holds each thread's stack as its TEB names it: a thread that
+runs guest code has its guest stack there (host_enter_win.S), so the guest's
+frames are in the dump, walkable by their frame pointers.
 
 The reporter waits for the game to close, then, at the first crash, asks the
 player whether to send crash reports. config.toml keeps the answer
 (crash_reports.upload): "yes" sends this report and every later one without
-asking, "no" sends none and never asks again. A report is the minidump and
-a copy of halo.log, sent to the minidump endpoint of the project's Sentry.
-Sentry turns the minidump into a backtrace with function names and lines
-from halo.pdb, which the workflow uploads for each build of main
-(.github/workflows/build.yml). Reports wait in crashes\ beside halo.exe until
-they are sent; one that could not be sent (no network) goes the next time
-the game starts ("halo.exe --crash-upload", in the background).
+asking, "no" sends none and never asks again. The host reads and writes
+that one setting itself (the game's settings are the guest's), in
+config.toml beside halo.exe; HALO_CRASH_REPORTS overrides it, as the game's
+setting's variable. A report is the minidump and a copy of halo.log, sent
+to the minidump endpoint of the project's Sentry. Reports wait in crashes\
+beside halo.exe until they are sent; one that could not be sent (no
+network) goes the next time the game starts ("halo.exe --crash-upload", in
+the background).
 
-Only numbered builds (the workflow's builds of main, whose symbols Sentry
-has) report crashes; the HALO_CRASH_REPORTS_ANY_BUILD environment variable
-makes any build report (for testing). Abort() and the C runtime's invalid
-parameter checks, which end the process without an exception, raise one
-here, so they are reported too.
+Reports are off but with the HALO_CRASH_REPORTS_ANY_BUILD environment
+variable (OpenH1 has no Sentry project of its own yet). abort() and the C runtime's invalid parameter checks, which end the
+process without an exception, raise one here, so they are reported too.
 */
+
+#include "host_win.h"
+#include "tomlc17.h"
 
 #include <windows.h>
 #include <dbghelp.h>
@@ -39,8 +43,6 @@ here, so they are reported too.
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
-
-#include "port_config.h"
 
 /* (tools/windows_build.py gives them, as to updater.c) */
 #ifndef HALO_BUILD_NUMBER
@@ -71,6 +73,7 @@ an application's own code) */
 #define MAXIMUM_LOG_SIZE (512 * 1024)
 #define MAXIMUM_DUMP_SIZE (32 * 1024 * 1024)
 #define MAXIMUM_REPORTER_LOG_SIZE (64 * 1024)
+#define MAXIMUM_CONFIG_SIZE (1024 * 1024)
 #define DUMP_WAIT_MILLISECONDS 60000
 #define EXIT_WAIT_MILLISECONDS 10000
 #define CONSENT_WAIT_MILLISECONDS (10 * 60 * 1000)
@@ -83,10 +86,19 @@ an application's own code) */
 #define WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3 0x00002000
 #endif
 
-void platform_log(const char *format, ...);
-/* errors.c's: debug.txt, whose first lines (its reference address) place
-the addresses here in the build */
-void write_to_error_file(char *string, unsigned char date);
+static void crash_log(const char *format, ...) __attribute__((format(printf, 1, 2)));
+
+/* the game's log (host_log), or the reporter's own */
+static void crash_log(const char *format, ...)
+{
+	char line[1024];
+	va_list arguments;
+
+	va_start(arguments, format);
+	vsnprintf(line, sizeof(line), format, arguments);
+	va_end(arguments);
+	host_log(HOST_LOG_INFO, line);
+}
 
 /* ---------- files */
 
@@ -315,7 +327,7 @@ static DWORD crash_post(const struct crash_body *body, char *answer, DWORD answe
 	}
 	else
 	{
-		platform_log("crash report: could not reach %ls (error %lu)", SENTRY_HOST, (unsigned long)GetLastError());
+		crash_log("crash report: could not reach %ls (error %lu)", SENTRY_HOST, (unsigned long)GetLastError());
 	}
 	if (request)
 		WinHttpCloseHandle(request);
@@ -353,7 +365,7 @@ static int crash_upload(const wchar_t *folder, const wchar_t *name)
 	}
 	if (dump_size > MAXIMUM_DUMP_SIZE)
 	{
-		platform_log("crash report: %ls.dmp is too large to send", name);
+		crash_log("crash report: %ls.dmp is too large to send", name);
 		free(dump);
 		return 1;
 	}
@@ -383,10 +395,10 @@ static int crash_upload(const wchar_t *folder, const wchar_t *name)
 	free(body.data);
 	if (status == 200)
 	{
-		platform_log("crash report: sent %ls (%s, %s): %s", name, release, environment, answer);
+		crash_log("crash report: sent %ls (%s, %s): %s", name, release, environment, answer);
 		return 1;
 	}
-	platform_log("crash report: Sentry answered %lu to %ls: %s", (unsigned long)status, name, answer);
+	crash_log("crash report: Sentry answered %lu to %ls: %s", (unsigned long)status, name, answer);
 	/* (no answer, a server error or too many reports: again later; any other
 	refusal would be the same the next time) */
 	return status >= 400 && status < 500 && status != 408 && status != 429;
@@ -416,6 +428,130 @@ static void crash_upload_pending(const wchar_t *folder)
 	}
 }
 
+/* ---------- the setting (crash_reports.upload, in config.toml beside
+halo.exe, as port/linux/src/port_config.c keeps it) */
+
+/* config.toml beside halo.exe, UTF-8 */
+static int crash_config_path(char *path, size_t size)
+{
+	wchar_t folder[PATH_SIZE];
+
+	if (!crash_executable_folder(folder, PATH_SIZE) || wcslen(folder) + sizeof("config.toml") > PATH_SIZE)
+		return 0;
+	wcscat(folder, L"config.toml");
+	return WideCharToMultiByte(CP_UTF8, 0, folder, -1, path, (int)size, NULL, NULL) > 0;
+}
+
+/* "yes", "no" or "ask" (the default, and anything else) */
+static const char *crash_consent(void)
+{
+	static char answer[8];
+	const char *variable = getenv("HALO_CRASH_REPORTS");
+	char path[PATH_SIZE * 3];
+
+	snprintf(answer, sizeof(answer), "ask");
+	if (variable && *variable)
+	{
+		snprintf(answer, sizeof(answer), "%s", variable);
+	}
+	else if (crash_config_path(path, sizeof(path)))
+	{
+		toml_result_t result = toml_parse_file_ex(path);
+
+		if (result.ok)
+		{
+			toml_datum_t value = toml_seek(result.toptab, "crash_reports.upload");
+
+			if (value.type == TOML_STRING)
+				snprintf(answer, sizeof(answer), "%s", value.u.s);
+			toml_free(result);
+		}
+	}
+	return !strcmp(answer, "yes") || !strcmp(answer, "no") ? answer : "ask";
+}
+
+/* the line's key, if it is one: its first word, past a comment's mark, up
+to its = */
+static int crash_config_line_is(const char *line, const char *end, const char *key)
+{
+	size_t length = strlen(key);
+
+	while (line < end && (*line == ' ' || *line == '\t' || *line == '#'))
+		line++;
+	if ((size_t)(end - line) < length || strncmp(line, key, length))
+		return 0;
+	line += length;
+	while (line < end && (*line == ' ' || *line == '\t'))
+		line++;
+	return line < end && *line == '=';
+}
+
+/* writes crash_reports.upload = "answer" into config.toml: in place of its
+line in [crash_reports] (or the commented-out one the game writes), else
+at that table's head, else in a table added at the end */
+static void crash_config_write(const char *answer)
+{
+	wchar_t folder[PATH_SIZE];
+	char setting[64];
+	DWORD size = 0;
+	char *text, *updated, *at, *section = NULL, *replace_start = NULL, *replace_end = NULL;
+	size_t length;
+
+	if (!crash_executable_folder(folder, PATH_SIZE) || wcslen(folder) + sizeof("config.toml") > PATH_SIZE)
+		return;
+	wcscat(folder, L"config.toml");
+	text = crash_read_file(folder, MAXIMUM_CONFIG_SIZE, &size);
+	if (!text)
+	{
+		text = _strdup("");
+		size = 0;
+		if (!text)
+			return;
+	}
+	snprintf(setting, sizeof(setting), "upload = \"%s\"\n", answer);
+	for (at = text; *at;)
+	{
+		char *end = strchr(at, '\n');
+		char *next = end ? end + 1 : at + strlen(at);
+		char *first = at;
+
+		if (!end)
+			end = next;
+		while (first < end && (*first == ' ' || *first == '\t'))
+			first++;
+		if (*first == '[')
+		{
+			if (section && !replace_start)
+				break;
+			section = !strncmp(first, "[crash_reports]", 15) ? next : NULL;
+		}
+		else if (section && crash_config_line_is(at, end, "upload"))
+		{
+			replace_start = at;
+			replace_end = next;
+			break;
+		}
+		at = next;
+	}
+	length = strlen(text) + strlen(setting) + sizeof("\n[crash_reports]\n") + 1;
+	updated = malloc(length);
+	if (!updated)
+	{
+		free(text);
+		return;
+	}
+	if (replace_start)
+		snprintf(updated, length, "%.*s%s%s", (int)(replace_start - text), text, setting, replace_end);
+	else if (section)
+		snprintf(updated, length, "%.*s%s%s", (int)(section - text), text, setting, section);
+	else
+		snprintf(updated, length, "%s%s[crash_reports]\n%s", text, size && text[size - 1] != '\n' ? "\n" : "", setting);
+	if (!crash_write_file(folder, updated, (DWORD)strlen(updated)))
+		crash_log("crash report: cannot write config.toml");
+	free(updated);
+	free(text);
+}
+
 /* ---------- the reporter */
 
 /* a module's CodeView record (its PDB's id and name), from its image in the
@@ -423,7 +559,7 @@ crashed game; its size, or 0 */
 static DWORD crash_codeview_record(HANDLE process, ULONG64 base, char *record, DWORD size)
 {
 	IMAGE_DOS_HEADER dos;
-	IMAGE_NT_HEADERS32 headers;
+	IMAGE_NT_HEADERS64 headers;
 	IMAGE_DATA_DIRECTORY debug;
 	DWORD index;
 
@@ -431,7 +567,7 @@ static DWORD crash_codeview_record(HANDLE process, ULONG64 base, char *record, D
 		dos.e_magic != IMAGE_DOS_SIGNATURE ||
 		!ReadProcessMemory(process, (void *)(ULONG_PTR)(base + (ULONG64)dos.e_lfanew), &headers, sizeof(headers),
 			NULL) ||
-		headers.Signature != IMAGE_NT_SIGNATURE || headers.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC ||
+		headers.Signature != IMAGE_NT_SIGNATURE || headers.OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR64_MAGIC ||
 		headers.OptionalHeader.NumberOfRvaAndSizes <= IMAGE_DIRECTORY_ENTRY_DEBUG)
 	{
 		return 0;
@@ -518,15 +654,10 @@ static void crash_add_codeview_records(HANDLE process, const wchar_t *path)
 		}
 	}
 	if (added && crash_write_file(path, dump.data, (DWORD)dump.length))
-		platform_log("crash report: added the CodeView records of %d modules", added);
+		crash_log("crash report: added the CodeView records of %d modules", added);
 
 done:
 	free(dump.data);
-}
-
-static const char *crash_consent(void)
-{
-	return config_string("crash_reports.upload");
 }
 
 /* asks the player: 1 yes, 0 no, -1 no answer (the box went unanswered, as
@@ -552,9 +683,22 @@ static int crash_ask(void)
 	return answer == IDYES ? 1 : answer == IDNO ? 0 : -1;
 }
 
-/* the reporter's own log, crashes\reporter.log (the game's goes to halo.log,
-which this process must leave as the game wrote it) */
-static void crash_reporter_log(const wchar_t *folder)
+/* the reporter's log, crashes\reporter.log, through host_log (the game's
+halo.log is left as the game wrote it) */
+static HANDLE reporter_log = INVALID_HANDLE_VALUE;
+
+static void reporter_log_sink(int priority, const char *line)
+{
+	DWORD written;
+
+	(void)priority;
+	if (reporter_log == INVALID_HANDLE_VALUE)
+		return;
+	WriteFile(reporter_log, line, (DWORD)strlen(line), &written, NULL);
+	WriteFile(reporter_log, "\r\n", 2, &written, NULL);
+}
+
+static void crash_reporter_log_open(const wchar_t *folder)
 {
 	wchar_t path[PATH_SIZE];
 	WIN32_FILE_ATTRIBUTE_DATA attributes;
@@ -565,8 +709,9 @@ static void crash_reporter_log(const wchar_t *folder)
 	/* (added to, until it grows past its limit) */
 	full = GetFileAttributesExW(path, GetFileExInfoStandard, &attributes) &&
 		(attributes.nFileSizeHigh || attributes.nFileSizeLow > MAXIMUM_REPORTER_LOG_SIZE);
-	if (_wfreopen(path, full ? L"w" : L"a", stderr))
-		setvbuf(stderr, NULL, _IONBF, 0);
+	reporter_log = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ, NULL, full ? CREATE_ALWAYS : OPEN_ALWAYS,
+		FILE_ATTRIBUTE_NORMAL, NULL);
+	host_log_set_sink(reporter_log_sink);
 }
 
 /* a copy of the crashed game's halo.log beside its minidump, if the game
@@ -626,20 +771,20 @@ static void crash_reporter(DWORD process_id, DWORD thread_id, ULONG_PTR exceptio
 	if (!crash_folder(folder, PATH_SIZE))
 		return;
 	CreateDirectoryW(folder, NULL);
-	crash_reporter_log(folder);
+	crash_reporter_log_open(folder);
 	consent = crash_consent();
 	if (!strcmp(consent, "no"))
 		return;
 	if (crash_pending_reports(folder, NULL, 0) >= MAXIMUM_PENDING_REPORTS)
 	{
-		platform_log("crash report: %d reports are waiting to be sent already; no new one", MAXIMUM_PENDING_REPORTS);
+		crash_log("crash report: %d reports are waiting to be sent already; no new one", MAXIMUM_PENDING_REPORTS);
 		return;
 	}
 	process = OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_DUP_HANDLE | SYNCHRONIZE, FALSE,
 		process_id);
 	if (!process)
 	{
-		platform_log("crash report: cannot open the game's process (error %lu)", (unsigned long)GetLastError());
+		crash_log("crash report: cannot open the game's process (error %lu)", (unsigned long)GetLastError());
 		return;
 	}
 	GetSystemTime(&now);
@@ -654,7 +799,7 @@ static void crash_reporter(DWORD process_id, DWORD thread_id, ULONG_PTR exceptio
 	file = CreateFileW(dump, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
 	if (file == INVALID_HANDLE_VALUE)
 	{
-		platform_log("crash report: cannot write %ls (error %lu)", dump, (unsigned long)GetLastError());
+		crash_log("crash report: cannot write %ls (error %lu)", dump, (unsigned long)GetLastError());
 		CloseHandle(process);
 		return;
 	}
@@ -669,7 +814,7 @@ static void crash_reporter(DWORD process_id, DWORD thread_id, ULONG_PTR exceptio
 	CloseHandle(file);
 	if (!dumped)
 	{
-		platform_log("crash report: the minidump failed (error %lu)", (unsigned long)GetLastError());
+		crash_log("crash report: the minidump failed (error %lu)", (unsigned long)GetLastError());
 		DeleteFileW(dump);
 		CloseHandle(process);
 		return;
@@ -680,21 +825,21 @@ static void crash_reporter(DWORD process_id, DWORD thread_id, ULONG_PTR exceptio
 	WaitForSingleObject(process, EXIT_WAIT_MILLISECONDS);
 	crash_copy_log(process, log);
 	CloseHandle(process);
-	platform_log("crash report: wrote %ls", dump);
+	crash_log("crash report: wrote %ls", dump);
 
 	if (strcmp(consent, "yes"))
 	{
 		answer = crash_ask();
 		if (answer < 0)
 		{
-			platform_log("crash report: no answer; nothing sent");
+			crash_log("crash report: no answer; nothing sent");
 			crash_delete_report(folder, name);
 			return;
 		}
-		config_write("crash_reports.upload", answer ? "yes" : "no");
+		crash_config_write(answer ? "yes" : "no");
 		if (!answer)
 		{
-			platform_log("crash report: the player declined; none will be sent");
+			crash_log("crash report: the player declined; none will be sent");
 			crash_delete_report(folder, name);
 			return;
 		}
@@ -711,7 +856,7 @@ static void crash_uploader(void)
 
 	if (!crash_folder(folder, PATH_SIZE))
 		return;
-	crash_reporter_log(folder);
+	crash_reporter_log_open(folder);
 	consent = crash_consent();
 	if (!strcmp(consent, "yes"))
 	{
@@ -758,19 +903,20 @@ static HANDLE crash_start_reporter(const wchar_t *arguments)
 	return process.hProcess;
 }
 
-/* has the reporter dump this process; 1 once the minidump is written */
-static int crash_dump(EXCEPTION_POINTERS *exception)
+int host_crash_dump(void *exception_pointers)
 {
 	wchar_t name[64], arguments[128];
 	HANDLE event, waits[2];
 	DWORD result;
 
+	if (!crash_reports_enabled())
+		return 0;
 	_snwprintf(name, 64, L"Local\\halo-crash-dumped-%lu", (unsigned long)GetCurrentProcessId());
 	event = CreateEventW(NULL, TRUE, FALSE, name);
 	if (!event)
 		return 0;
-	_snwprintf(arguments, 128, CRASH_REPORT_OPTION L" %lu %lu %lx", (unsigned long)GetCurrentProcessId(),
-		(unsigned long)GetCurrentThreadId(), (unsigned long)(ULONG_PTR)exception);
+	_snwprintf(arguments, 128, CRASH_REPORT_OPTION L" %lu %lu %llx", (unsigned long)GetCurrentProcessId(),
+		(unsigned long)GetCurrentThreadId(), (unsigned long long)(uintptr_t)exception_pointers);
 	waits[0] = event;
 	waits[1] = crash_start_reporter(arguments);
 	if (!waits[1])
@@ -786,76 +932,8 @@ static int crash_dump(EXCEPTION_POINTERS *exception)
 	return result == WAIT_OBJECT_0;
 }
 
-/* a line of the report, to the log and to debug.txt (a player sends
-debug.txt; the console closes with the game) */
-static void crash_line(const char *format, ...)
-{
-	char line[256];
-	va_list arguments;
-	size_t length;
-
-	va_start(arguments, format);
-	vsnprintf(line, sizeof(line) - 2, format, arguments);
-	va_end(arguments);
-	platform_log("%s", line);
-	length = strlen(line);
-	line[length] = '\r';
-	line[length + 1] = '\n';
-	line[length + 2] = 0;
-	write_to_error_file(line, 1);
-}
-
-static LONG WINAPI crash_filter(EXCEPTION_POINTERS *exception)
-{
-	static volatile LONG crashed_thread = 0;
-	EXCEPTION_RECORD *record = exception->ExceptionRecord;
-	CONTEXT *context = exception->ContextRecord;
-	const DWORD *stack = (const DWORD *)context->Esp;
-	LONG thread = (LONG)GetCurrentThreadId();
-	LONG first = InterlockedCompareExchange(&crashed_thread, thread, 0);
-	int dumped;
-
-	/* one report: a crash in this report goes on to Windows, and another
-	thread's crash waits for the end the first one brings */
-	if (first == thread)
-		return EXCEPTION_CONTINUE_SEARCH;
-	if (first)
-		Sleep(INFINITE);
-	/* the minidump first, before anything here can fail */
-	dumped = crash_reports_enabled() && crash_dump(exception);
-	/* (where halo.exe is: tools/symbolize_crash.py finds the lines of the
-	addresses below from it and halo.pdb) */
-	crash_line("crash: halo.exe at %p, build %d (%s)", (void *)GetModuleHandleW(NULL), HALO_BUILD_NUMBER,
-		HALO_BUILD_FLAVOR);
-	crash_line("crash: exception %08lx at %p (accessing %p), eip %08lx ebp %08lx esp %08lx",
-		record->ExceptionCode, record->ExceptionAddress,
-		record->NumberParameters >= 2 ? (void *)record->ExceptionInformation[1] : NULL,
-		context->Eip, context->Ebp, context->Esp);
-	if (!IsBadReadPtr(stack, 6 * sizeof(DWORD)))
-	{
-		crash_line("crash: stack %08lx %08lx %08lx %08lx %08lx %08lx",
-			stack[0], stack[1], stack[2], stack[3], stack[4], stack[5]);
-	}
-	{
-		/* the EBP frame chain (the game keeps frame pointers) */
-		const DWORD *frame = (const DWORD *)context->Ebp;
-		int depth;
-
-		for (depth = 0; depth < 32 && frame && !IsBadReadPtr(frame, 2 * sizeof(DWORD)); depth++)
-		{
-			crash_line("crash: called from %08lx", frame[1]);
-			if ((const DWORD *)frame[0] <= frame)
-				break;
-			frame = (const DWORD *)frame[0];
-		}
-	}
-	fflush(stderr);
-	/* (the reporter has it: the game ends without Windows's crash dialog) */
-	return dumped ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH;
-}
-
 /* abort() and a bad argument to the C runtime end the process at once
-(__fastfail), past the filter: an exception of their own first */
+(__fastfail), past the handlers: an exception of their own first */
 static void crash_abort(int signal_number)
 {
 	(void)signal_number;
@@ -884,37 +962,31 @@ static const wchar_t *crash_option(const wchar_t *option)
 	return found && found > command && found[-1] == L' ' ? found + wcslen(option) : NULL;
 }
 
-/* whether this process is a reporter (win32_posix.c then leaves halo.log
-to the game) */
-int crash_reporter_process(void)
-{
-	return crash_option(CRASH_REPORT_OPTION) || crash_option(CRASH_UPLOAD_OPTION);
-}
-
-__attribute__((constructor))
-static void crash_reports_install(void)
+int host_crash_reporter(void)
 {
 	const wchar_t *arguments;
-	ULONG guarantee = 64 * 1024;
-	wchar_t folder[PATH_SIZE];
 
 	if ((arguments = crash_option(CRASH_REPORT_OPTION)) != NULL)
 	{
-		unsigned long process_id = 0, thread_id = 0, exception_pointers = 0;
+		unsigned long process_id = 0, thread_id = 0;
+		unsigned long long exception_pointers = 0;
 
-		if (swscanf(arguments, L" %lu %lu %lx", &process_id, &thread_id, &exception_pointers) == 3)
+		if (swscanf(arguments, L" %lu %lu %llx", &process_id, &thread_id, &exception_pointers) == 3)
 			crash_reporter((DWORD)process_id, (DWORD)thread_id, (ULONG_PTR)exception_pointers);
-		ExitProcess(0);
+		return 1;
 	}
 	if (crash_option(CRASH_UPLOAD_OPTION))
 	{
 		crash_uploader();
-		ExitProcess(0);
+		return 1;
 	}
+	return 0;
+}
 
-	SetUnhandledExceptionFilter(crash_filter);
-	/* (room on the main thread's stack for the filter after a stack overflow) */
-	SetThreadStackGuarantee(&guarantee);
+void host_crash_install(void)
+{
+	wchar_t folder[PATH_SIZE];
+
 	signal(SIGABRT, crash_abort);
 	_set_invalid_parameter_handler(crash_invalid_parameter);
 	/* reports an earlier crash could not send */

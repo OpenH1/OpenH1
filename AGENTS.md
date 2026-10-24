@@ -16,11 +16,11 @@ end.
 | Path | Contents |
 | --- | --- |
 | `source/` | The game: 466 C files of the decompilation, compiled as they are with few changes (each marked, below) |
-| `port/linux/src/` | The platform layer the ports share: Direct3D 8's front end (`d3d8_device.c`), behind `xgpu_backend.h` the renderer's command stream to the host's backend (`xgpu_stream_encode.c`: the guest builds') or the in-process OpenGL backend (`xgpu_gl.c`: the 32-bit Windows build's), DirectSound and XInput on SDL3, files, threads, memory, sockets, settings (`port_config.c`), the mods folder (`port_mods.c`), internet play (`p2p*.c`), the Linux release's layout (`install_layout.c`) and self-updater (`updater.c`) |
+| `port/linux/src/` | The platform layer the ports share: Direct3D 8's front end (`d3d8_device.c`), behind `xgpu_backend.h` the renderer's command stream to the host's backend (`xgpu_stream_encode.c`: the guest builds') or the in-process OpenGL backend (`xgpu_gl.c`: the web build's), DirectSound and XInput on SDL3, files, threads, memory, sockets, settings (`port_config.c`), the mods folder (`port_mods.c`), internet play (`p2p*.c`), the Linux release's layout (`install_layout.c`) and self-updater (`updater.c`) |
 | `port/linux/game/` | The port's game-side code, compiled as the game's sources are: the distributed netcode (`network_*.c`), co-op, OpenCE's gametypes (`game_modes.c`, `infection.c`, `gun_game.c`), map sharing (`map_share*.c`), the menus (`menu_tags.c`, `menu_functions.c`), Custom Edition maps (`custom_edition_*.c`, `cache_file_formats.c`), the tag validator (`tag_validate.c`, `tag_schema_*.c`), mods (`mods.c`, `mod_*.c`), streamer mode's word filter (`text_filter*.c`), touch, FOV and more |
 | `port/linux/include/` | The port's headers: the limits (`halo_port_limits.h`, with `HALO_PORT_NETWORK_VERSION`), capacities (`halo_port_capacity.h`), the prefix header, `halo_linux_source_fixups.h` (port functions the game's sources call) |
 | `port/include/xdk/` | Stand-ins for the Xbox SDK's headers (declarations only) |
-| `port/windows/` | The Windows build's own files (`win32_*.c`, headers): a 32-bit x86 executable, drawn with OpenGL in-process |
+| `port/windows/` | The Windows build's host (`host/`: the x32 guest in a 64-bit Windows process, drawn with Vulkan, `tools/windows_build.py`) and the `posix.h` and `update.h` functions it shares (`src/win32_*.c`) |
 | `port/linux/host/` | The Linux host of the Linux builds (`ninja linux_x86_64`, `ninja linux_arm64`), which the macOS build shares: its entry point (`host_main.c`), the desktop's and VR's host functions (`host_desktop.c`, `host_vr.c`: OpenXR) and their import lists, the guest's half of the desktop (`guest_desktop.c`), the command stream's VR records (`host_vr_stream.c`); the rest of the host is Android's (`port/android/host`), its renderer Vulkan's (`port/linux/vulkan`) |
 | `port/linux/vulkan/` | The Vulkan renderer of the Linux builds and the Android app, in the host, behind the renderer's command stream: the device, pipelines and passes (`xgpu_vulkan*.c`), the window (`host_vulkan.c`, `guest_vulkan.c`), VR's eye passes and composition (`host_vulkan_vr.c`, its shaders' GLSL `xgpu_vulkan_vr_glsl.inc`); [README](port/linux/vulkan/README.md) |
 | `port/linux/astc/` | The Xbox's DXT textures as ASTC 4x4 in the hosts whose GPUs have no BC (iOS's Metal, the Android app's Vulkan): the exact transcoding (`xgpu_astc.c`), astc-encoder for the rest (`xgpu_astc_encode.cpp`, the hosts' only C++), its workers and disk cache (`xgpu_astc_cache.c`); `display.astc_textures` |
@@ -40,7 +40,7 @@ end.
 ## Building
 
 ```sh
-python configure.py            # debug build; add --release, --profile, --vr, --pgo=off (and, Windows', --portable, --lto=off)
+python configure.py            # debug build; add --release, --profile, --vr, --pgo=off
 ninja linux_x86_64             # build/linux_x86_64/halo: x32 guest in a 64-bit host (x86-64 Linux only)
 ninja linux_arm64              # build/linux_arm64/halo: arm64_32 guest (64-bit ARM Linux only)
 ninja android                  # the Android guest image and native libraries
@@ -51,7 +51,9 @@ ninja macos_dmg                # build/macos/OpenH1.dmg
 ninja ios                      # build/ios/OpenH1.app, on Apple silicon with Xcode's iOS SDK (port/ios/README.md);
                                # configure.py --ios-team <team> signs it for development; ninja ios_install
 ninja ios_sim                  # build/ios_sim/OpenH1.app, the iOS Simulator's
-ninja windows                  # on Windows, or on Linux after configure.py --windows-cross
+ninja windows                  # build/windows/halo.exe: x32 guest in a 64-bit Windows host (on Windows, or on
+                               # Linux after configure.py --windows-cross; ninja windows_guest, its guest
+                               # image, anywhere after configure.py --windows-guest)
 python tools/ci_build.py linux_x86_64 release   # what CI builds
 ```
 
@@ -59,8 +61,7 @@ python tools/ci_build.py linux_x86_64 release   # what CI builds
   the options it was run with. Restore them after trying other options.
 - The game's sources are C89 (`gnu89`): declarations come before
   statements. Every build compiles them with clang in MSVC's semantics
-  (`-fms-extensions -fshort-wchar -fcommon`); the Windows build is 32-bit
-  x86 in MSVC's ABI, the others ILP32 guests.
+  (`-fms-extensions -fshort-wchar -fcommon`), as ILP32 guests.
 - Every native build compiles without fused multiply-add and with the
   vendored musl maths (`halo_math.h`), so that every machine of a network
   game computes the same results. Do not call the system's maths functions.
@@ -102,9 +103,21 @@ python tools/ci_build.py linux_x86_64 release   # what CI builds
   draws the guest's frames from the renderer's command stream
   (`HALO_RENDER_STREAM`): neither the guest nor the host has an OpenGL
   backend, and the host links no OpenGL, EGL or OpenGL ES. `--vr` gives
-  the build its VR mode (`HALO_VR`, OpenXR's Vulkan binding). The 32-bit
-  Windows build (and the web build, not built for now), with no host,
-  build `port/linux/src/xgpu_gl.c` into the game.
+  the build its VR mode (`HALO_VR`, OpenXR's Vulkan binding). Only the web
+  build (not built for now), with no host, builds
+  `port/linux/src/xgpu_gl.c` into the game.
+- Windows: the Linux builds' desktop guest (`X32`, with `HALO_WINDOWS`,
+  no red zone and frame pointers) in a 64-bit Windows host
+  (`port/windows/host`, `tools/windows_build.py`), drawn with Vulkan as
+  the Linux builds are: its memory below 4 GB reserved at start-up, each
+  guest thread on a stack there, Linux's system calls performed with
+  Windows's (`host_syscall_win.c`), the guest's imports called through
+  `sysv_abi` thunks (`tools/android_imports.py --host-abi sysv`: the
+  host's calling convention is Microsoft's). The host shares
+  `port/android/host`'s portable files through a POSIX shim
+  (`port/windows/host/posix`): a change there must build for Windows too
+  (`configure.py --windows-guest` and `ninja windows_guest` check the
+  guest anywhere; the host builds on Windows only).
 - macOS: the guest of the Linux arm64 build (`ARM64_32`, with the macOS
   defines: `HALO_MACOS`, `HALO_METAL`, `HALO_RENDER_STREAM`), with its
   memory at a base the host chooses (`tools/guest_base_register.py`: every
@@ -171,14 +184,14 @@ python tools/ci_build.py linux_x86_64 release   # what CI builds
 | `HALO_MACOS` | macOS, iOS (the guests) | The macOS app: its folders (config.toml in the app's settings folder, not the Linux release's layout) and no self-updater; the host tests `__APPLE__` |
 | `HALO_IOS` | iOS (the guest) | The iOS app, with `HALO_MACOS`; the host tests `TARGET_OS_IPHONE` |
 | `HALO_WEB` | Web | The browser: its frames, storage, sockets and WebGL 2's limits (with `HALO_GLES`, not `HALO_ANDROID`) |
-| `HALO_WINDOWS` | Windows (`halo_windows_prefix.h`) | The Windows build |
+| `HALO_WINDOWS` | Windows (the guest, `tools/windows_build.py`) | The Windows build: with `HALO_GUEST`, the platform layer's `_WIN32` choices that are behaviour, not Windows's API (the folders, config.toml's place, the self-updater's release); the game's sources' Windows choices (socket buffers, the build's label) |
 | `HALO_RELEASE` | `--release` | No assertions checked |
 | `HALO_PROFILE` | `--profile` | The profiling build; a normal build must be unchanged by it |
-| `HALO_VULKAN` | Android, Linux x86-64 and arm64 | The window is Vulkan's, drawn by the host (`port/linux/vulkan`), not OpenGL's |
+| `HALO_VULKAN` | Android, Linux x86-64 and arm64, Windows | The window is Vulkan's, drawn by the host (`port/linux/vulkan`), not OpenGL's |
 | `HALO_VR` | `--vr` (Linux x86-64 and arm64) | The VR mode: OpenXR (`port/linux/host/host_vr.c`), with Vulkan's eye passes (`port/linux/vulkan/host_vulkan_vr.c`) |
 | `HALO_METAL` | macOS, iOS | The window is Metal's, drawn by the host (`port/macos/host_metal.m`), not OpenGL's |
 | `HALO_ASTC` | Android (the host's Vulkan renderer) | The DXT textures as ASTC on a device without BC (`port/linux/astc`, `xgpu_vulkan_textures.c`); the Apple hosts build it always, the Linux hosts not |
-| `HALO_RENDER_STREAM` | macOS, iOS, Linux x86-64 and arm64, Android (the guest builds) | The renderer's backend is the host's: the front end's calls are a command stream (`port/linux/src/xgpu_stream_encode.c`), the high-res replacements images (`xgpu_images.c`) |
+| `HALO_RENDER_STREAM` | macOS, iOS, Linux x86-64 and arm64, Android, Windows (the guest builds) | The renderer's backend is the host's: the front end's calls are a command stream (`port/linux/src/xgpu_stream_encode.c`), the high-res replacements images (`xgpu_images.c`) |
 
 `HALO_LINUX` and `HALO_CUSTOM_EDITION` are **not** defined by any build:
 code guarded by them compiles to nothing. Custom Edition support is a
@@ -201,6 +214,7 @@ python tools/render_enumerate_sweep.py --data <game data>  # every map's enumera
 python -m pytest -q tools/test_host_watch_hash.py tools/test_host_units.py tools/test_check_host_imports.py tools/test_host_syscall.py  # the guests' host
 python -m pytest -q tools/test_guest_image_check.py         # the guest images' checks (x86-64)
 python -m pytest -q tools/test_guest_layout.py tools/test_linux_guest_build.py  # the guests' memory layout, the guest builds' configure
+python -m pytest -q tools/test_windows_build.py         # the Windows host's import thunks, the guest build's steps without a shell
 python -m pytest -q tools/test_guest_toolchain.py         # the guests' pinned LLVM: its archives, what is kept of them, libxml2's stand-in
 python -m pytest -q tools/test_linux_package.py tools/test_install_layout.py   # the Linux release's layout, its install.sh
 python -m pytest -q tools/test_guest_base_register.py tools/test_host_memory_base.py  # the base register
@@ -383,7 +397,7 @@ The decompilation's upstream, punpckhdq/halo, is AGPL 3.0 from 17 October
 | [port/linux/README.md](port/linux/README.md) | The Linux builds (64-bit, Vulkan), controls, menus, every setting, updates, frame rate, field of view, system link, internet play, voice chat, the server browser, map sharing, security, map checks, how the port operates, the game source changes |
 | [port/linux/vulkan/README.md](port/linux/vulkan/README.md) | The Vulkan renderer: its files, building and running, VR, the passes |
 | [port/linux/NETCODE.md](port/linux/NETCODE.md) | The distributed netcode, network versions, joining a game in progress, map sharing, transport, testing |
-| [port/windows/README.md](port/windows/README.md) | The Windows build, its headers, inline functions, crash reports |
+| [port/windows/README.md](port/windows/README.md) | The Windows build, its host, crash reports |
 | [port/android/README.md](port/android/README.md) | The Android build, the guest and host, touch controls, Android settings, finding problems |
 | [port/macos/README.md](port/macos/README.md) | The macOS build, the guest's memory at a base register, 16 KB pages, Darwin's system calls, the Metal renderer and its window |
 | [port/ios/README.md](port/ios/README.md) | The iOS and iPadOS build, its signing and provisioning, the guest's code in the signed executable, the app, the Simulator |

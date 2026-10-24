@@ -581,8 +581,9 @@ jobs:
   windows:
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
-    # The runner image has LLVM, Python and Visual Studio's x86 libraries and
-    # Windows SDK.
+    # The runner image has LLVM, Python, Git and Visual Studio's x64 libraries
+    # and Windows SDK; the guest's compiler is the pinned LLVM configure.py
+    # downloads (its Windows archive), the host's the image's clang.
     runs-on: windows-2025
     timeout-minutes: 40
     # (the image's Android SDK hidden from configure.py, which would otherwise
@@ -626,14 +627,39 @@ jobs:
           ccache --zero-stats
           echo "CCACHE_START=$(date +%s)" >> "$GITHUB_ENV"
 
-      # SDL's development package, which configure.py fetches
+      # SDL's development package, and the guest's musl, SDL3 and headers,
+      # which configure.py fetches
       - uses: actions/cache@v4
         with:
           path: build/windows/third_party
-          key: windows-third-party-${{ hashFiles('tools/windows_build.py') }}
+          key: windows-third-party-${{ hashFiles('tools/windows_build.py', 'tools/android_build.py', 'port/android/patches/**') }}
+
+      # the guests' LLVM, which configure.py fetches (tools/guest_toolchain.py)
+      - uses: actions/cache@v4
+        with:
+          path: .cache/llvm
+          key: guest-llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/guest_toolchain.py') }}
 
       - name: Debug
         run: python tools/ci_build.py windows debug
+
+      # The debug build started: the 64-bit host reserves the guest's memory,
+      # loads the guest image and runs it through its start-up (settings,
+      # SDL, the files) until it finds no game data and quits, saying so.
+      # The runner has no game data and no GPU, so it goes no further;
+      # HALO_HIDDEN_WINDOW keeps it from asking for the data.
+      - name: Start the game
+        run: |
+          start="$RUNNER_TEMP/start"
+          rm -rf "$start"
+          cp -r dist/halo-windows-debug "$start"
+          cd "$start"
+          status=0
+          HALO_HIDDEN_WINDOW=1 timeout 120 ./halo.exe > start.log 2>&1 || status=$?
+          cat start.log
+          echo "halo.exe exited with $status"
+          grep -q "is not the Xbox maps" start.log
+          [ "$status" = 1 ]
 
       - name: Release
         if: github.ref == 'refs/heads/master'
@@ -1061,20 +1087,20 @@ jobs:
         run: |
           tag="build-$GITHUB_RUN_NUMBER"
           subject="$(printf '%s' "${MESSAGE:-manual run}" | head -n 1)"
-          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Windows, download OpenH1-Windows.zip.\n\nOn Linux and the Steam Deck, download OpenH1-Linux.zip (OpenH1-Linux-ARM64.zip on 64-bit ARM, OpenH1-Linux-VR.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, in desktop mode, download OpenH1-Steam-Frame.zip, unzip it and open install.sh in it (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download OpenH1.dmg, open it and drag OpenH1 to Applications: the app is signed and notarized.\n\nOn Android (64-bit, Android 9 or later, with Vulkan 1.3), download OpenH1-Android.apk on the phone and install it. The app is signed with OpenH1'"'"'s own key now: an install signed before it must be uninstalled once first (back up its maps and save folders).\n' \
+          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Windows (64-bit Windows 10 1903 or later, with a Vulkan 1.3 graphics driver), download OpenH1-Windows.zip.\n\nOn Linux and the Steam Deck, download OpenH1-Linux.zip (OpenH1-Linux-ARM64.zip on 64-bit ARM, OpenH1-Linux-VR.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, in desktop mode, download OpenH1-Steam-Frame.zip, unzip it and open install.sh in it (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download OpenH1.dmg, open it and drag OpenH1 to Applications: the app is signed and notarized.\n\nOn Android (64-bit, Android 9 or later, with Vulkan 1.3), download OpenH1-Android.apk on the phone and install it. The app is signed with OpenH1'"'"'s own key now: an install signed before it must be uninstalled once first (back up its maps and save folders).\n' \
             "$subject" "$COMMIT_URL" "$RUN_URL" > notes.md
           gh release create "$tag" release/*.zip release/*.dmg release/*.apk $(ls release/appcast.xml 2> /dev/null) --target "$GITHUB_SHA" --latest \
             --title "Build $GITHUB_RUN_NUMBER (${GITHUB_SHA:0:7})" --notes-file notes.md
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
       # The Windows builds' executables and PDBs to Sentry, which turns the
-      # crash reports of these builds (port/windows/src/win32_crash.c) into
+      # crash reports of these builds (port/windows/host/host_crash_win.c) into
       # backtraces with function names and lines. (OpenH1 has no Sentry
-      # project yet, and its builds send no reports: win32_crash.c.) Needs the SENTRY_AUTH_TOKEN
+      # project yet, and its builds send no reports: host_crash_win.c.) Needs the SENTRY_AUTH_TOKEN
       # secret: an organization auth token of the Sentry organization, which
       # names the organization and its region itself. The SENTRY_PROJECT
       # variable can name the project (its slug), else the id in the DSN of
-      # win32_crash.c; SENTRY_ORG and SENTRY_URL (https://de.sentry.io) are
+      # host_crash_win.c; SENTRY_ORG and SENTRY_URL (https://de.sentry.io) are
       # for a personal token instead. A failed upload does not stop the
       # release.
       - name: Upload Windows symbols to Sentry

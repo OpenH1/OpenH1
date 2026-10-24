@@ -38,8 +38,8 @@ its data find them at base plus their addresses, as on macOS.
 
 #include "host.h"
 
-#ifdef __APPLE__
-/* (macOS has no elf.h: the little of it the loader reads) */
+#if defined(__APPLE__) || defined(_WIN32)
+/* (macOS and Windows have no elf.h: the little of it the loader reads) */
 #define EI_NIDENT 16
 #define ELFMAG "\177ELF"
 #define SELFMAG 4

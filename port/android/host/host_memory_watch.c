@@ -139,6 +139,10 @@ int host_memory_watch_fault(uintptr_t address)
 	return 1;
 }
 
+/* (the 64-bit Windows host's handlers are port/windows/host's
+host_memory_watch_win.c) */
+#ifndef _WIN32
+
 static struct sigaction previous_segv, previous_bus, previous_ill;
 
 /* the guest's code, the stack and the frame records at a crash, through the
@@ -251,6 +255,8 @@ void host_install_signal_handlers(void)
 	action.sa_sigaction = ill_handler;
 	sigaction(SIGILL, &action, &previous_ill);
 }
+
+#endif
 
 void host_memory_watch_initialize(void)
 {

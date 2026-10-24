@@ -2871,7 +2871,7 @@ void main_rasterizer_throttle(
 				busy for most of each frame of a game held at 30 frames a
 				second (display.interpolation off). A millisecond is well
 				inside a 33 ms frame (Windows sets its timer to 1 ms:
-				win32_posix.c) */
+				port/windows/host/host_main_win.c) */
 				Sleep(1);
 				if (system_milliseconds() > start_milliseconds + 1000)
 				{

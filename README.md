@@ -38,7 +38,7 @@ two can play together. OpenCE starts from the decompilation of
 
 - **The original game, natively.** Not emulation: the game's own code, with
   the same 30 ticks a second on every machine, so it plays as it shipped.
-- **New renderers.** Vulkan on Linux, Android and the Steam Frame, Metal on
+- **New renderers.** Vulkan on Linux, Windows, Android and the Steam Frame, Metal on
   the Mac, with SMAA, per-pixel dynamic lights and frames drawn between
   ticks at your display's rate (4K, 120 Hz and up).
 - **VR** on the Steam Frame and OpenXR headsets: reload by hand, draw from
@@ -63,7 +63,7 @@ two can play together. OpenCE starts from the decompilation of
 | **Simulation** | 30 ticks a second, as shipped, with the same calculations on every machine |
 | **Frames** | One per refresh of your display, each drawn between the last two ticks; nothing the game calculates changes |
 | **Architecture** | A 64-bit program, with the game compiled as a 32-bit-pointer guest inside it (`arm64_32` on ARM, `x32` on x86-64) |
-| **Renderers** | One command stream into Vulkan 1.3 on Linux, Android and in VR, and into Metal on the Mac. Only the 32-bit Windows build still draws with OpenGL; a 64-bit Vulkan build is on the way |
+| **Renderers** | One command stream into Vulkan 1.3 on Linux, Windows, Android and in VR, and into Metal on the Mac |
 | **Picture** | SMAA or FXAA, anisotropic filtering, sharper shadows, per-pixel lighting, full model detail. One switch: Video Setup › Graphics › Preset, Classic or Enhanced |
 | **Display** | Any resolution from 640 × 480, a field of view up to 150°, a HUD redrawn at 8× |
 | **Network** | Plays online with OpenCE players; internet play needs no servers to set up |
@@ -182,7 +182,7 @@ Each platform has its own instructions:
 | Linux x86-64 (x86-64 executable, Vulkan 1.3, SDL3) | [port/linux/README.md](port/linux/README.md#64-bit-x86) |
 | Linux arm64 (arm64 executable, Vulkan 1.3, SDL3) | [port/linux/README.md](port/linux/README.md#64-bit-arm) |
 | Linux VR (x86-64 and arm64, Vulkan 1.3; OpenXR headsets such as the Steam Frame) | [port/linux/README.md](port/linux/README.md#vr) |
-| Windows (32-bit x86 executable, OpenGL 4.5, SDL3) | [port/windows/README.md](port/windows/README.md) |
+| Windows (64-bit executable, Vulkan 1.3, SDL3; Windows 10 1903 or later) | [port/windows/README.md](port/windows/README.md) |
 | Android (arm64 app, Vulkan 1.3, SDL3) | [port/android/README.md](port/android/README.md) |
 | macOS (Apple silicon: OpenH1.app, Metal) | [port/macos/README.md](port/macos/README.md) |
 | iOS and iPadOS (arm64, iOS 17.4 or later: OpenH1.app, Metal; built from source and sideloaded, not released yet) | [port/ios/README.md](port/ios/README.md) |
@@ -228,7 +228,7 @@ To build the game:
 | --- | --- |
 | `ninja linux_x86_64` (on 64-bit x86 Linux) | `build/linux_x86_64/halo` and `libSDL3.so.0` (with `python configure.py --vr`, its VR mode) |
 | `ninja linux_arm64` (on 64-bit ARM Linux) | `build/linux_arm64/halo` and `libSDL3.so.0` (with `python configure.py --vr`, its VR mode) |
-| `ninja windows` (on Windows, or on Linux after `configure.py --windows-cross`) | `build/windows/halo.exe` and `SDL3.dll` |
+| `ninja windows` (on Windows, or on Linux after `configure.py --windows-cross`) | `build/windows/halo.exe` and `SDL3.dll`; `ninja windows_guest`, its guest image alone, anywhere after `configure.py --windows-guest` |
 | `ninja android_apk` | `port/android/app/build/outputs/apk/debug/app-debug.apk` |
 | `ninja macos` (on a Mac with Apple silicon) | `build/macos/OpenH1.app` (and `halo` with `libSDL3.0.dylib`, for development); `ninja macos_dmg`: `OpenH1.dmg` |
 | `ninja ios` (on a Mac with Apple silicon and Xcode's iOS SDK) | `build/ios/OpenH1.app`, signed for development with `configure.py --ios-team`; `ninja ios_install` installs it on the connected device; `ninja ios_sim`: the Simulator's |
@@ -253,29 +253,24 @@ Give these options to `configure.py`:
 | --- | --- |
 | (none) | A debug build. A failed assertion stops the game. |
 | `--release` | A release build. The game does not examine assertions, as in the retail game. |
-| `--portable` | The Windows build operates on all x86-64 processors. Use this option for builds that you give to other persons. (The Linux, Android and macOS builds operate on all processors of their architecture without it.) |
 | `--vr` | The VR mode (OpenXR) in the Linux build of the computer. Refer to "VR" in [port/linux/README.md](port/linux/README.md#vr). |
-| `--lto=thin`, `--lto=off` | Less link-time optimization for the Windows build. The link is faster. |
 | `--pgo=off` | No profile-guided optimization. |
-| `--pgo=train` | Records a new optimization profile for the Windows build. Refer to "Optimization profiles". |
 | `--profile` | A profiling build. It records CPU times. Refer to "Profiling builds". |
-| `--guest-llvm=system`, `--guest-llvm=FOLDER` | The guest builds (Linux arm64 and x86-64, Android, macOS) compile the guest with clang and the LLVM tools on the PATH, or with the LLVM in FOLDER, not with the pinned LLVM. Refer to "The guests' compiler". |
+| `--guest-llvm=system`, `--guest-llvm=FOLDER` | The guest builds (Linux arm64 and x86-64, Android, macOS, Windows) compile the guest with clang and the LLVM tools on the PATH, or with the LLVM in FOLDER, not with the pinned LLVM. Refer to "The guests' compiler". |
 | `--guest-llvm-cache FOLDER` | The folder for the pinned LLVM (else `~/.cache/openh1`, on macOS `~/Library/Caches/openh1`). |
 | `--guest-base` | The Linux arm64 and Android builds put the guest's memory at a base that the host chooses, not in the low 4 GB (a base register: `tools/guest_base_register.py`). The 64-bit x86 build has none: with it, `ninja linux_x86_64` stops with the reason. |
 | `--ios-team TEAM` | `ninja ios` signs the iOS app for development with the team's certificate and a provisioning profile that Xcode makes (`tools/ios_provision.py`; Xcode signed in to the team's account). Without it the app is signed ad hoc. `--ios-identity` and `--ios-bundle-id` choose another certificate and bundle identifier. Refer to [port/ios/README.md](port/ios/README.md). |
 | `--web-emcc PATH` | The Emscripten `emcc` for `ninja web` (else the one on the PATH, or `~/emsdk`'s). |
 
-Without `--portable`, the Windows build uses all the instructions of the
-processor that builds it (`-march=native`). Such a build does not always
-start on a different computer.
 
 ### The guests' compiler
 
-The Linux arm64 and x86-64, Android and macOS builds compile the game as a
-guest image (`arm64_32` or `x32` code). On all computers, the guest is
-compiled and linked by the same LLVM: release 22.1.8 from
+The Linux arm64 and x86-64, Android, macOS and Windows builds compile the
+game as a guest image (`arm64_32` or `x32` code). On all computers, the
+guest is compiled and linked by the same LLVM: release 22.1.8 from
 [LLVM's releases](https://github.com/llvm/llvm-project/releases), for
-64-bit x86 Linux, 64-bit ARM Linux and macOS on Apple silicon. The first
+64-bit x86 Linux, 64-bit ARM Linux, macOS on Apple silicon and 64-bit
+Windows. The first
 `configure.py` downloads it (approximately 1.5 GB, checked against its
 SHA-256) and keeps clang, `ld.lld` and the LLVM tools that the builds use
 (approximately 700 MB) in `~/.cache/openh1` (on macOS
@@ -296,24 +291,16 @@ with `--guest-llvm=system`.
 
 The builds use profiles of the game to optimize the code:
 
-- `pgo/halo_linux.profdata` for the guest builds: Linux, Android and macOS.
-- `pgo/halo_windows.profdata` for Windows.
+- `pgo/halo_linux.profdata`, for every build (they are all guest builds:
+  Linux, Android, macOS, Windows).
 
 The profiles need clang 22 or later. With an older clang, the builds do not
 use the profiles. The guest builds' pinned LLVM (refer to "The guests'
 compiler") reads them on all platforms.
 
-The Linux profile was recorded by the 32-bit Linux build, which is gone:
-the guest builds cannot record one yet, and use it as it is (code changed
-since then goes without). To record a new Windows profile:
-
-1. Delete the profile.
-2. Enter `python configure.py --pgo=train`.
-3. Enter `ninja windows`.
-
-The build then plays the main menu and the first minute of each campaign
-level. This procedure continues for approximately 15 minutes. The game
-data must be in `assets/`.
+The profile was recorded by the 32-bit Linux build, which is gone: the
+guest builds cannot record one yet, and use it as it is (code changed since
+then goes without).
 
 ### Profiling builds
 
@@ -349,8 +336,7 @@ the game writes a part each time the memory is full. Refer to "Settings" in
 On Android, the files are in `/sdcard/Android/data/com.openh1.openh1/files/profiles/`.
 Enter `adb pull` to copy the recording parts to a computer.
 
-A profiling build plays with normal builds. It does not use
-`--pgo=train`.
+A profiling build plays with normal builds.
 
 ## Testing
 

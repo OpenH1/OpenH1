@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Record the profile of a profile-guided native build (configure.py --pgo=train).
+"""Record the profile of a profile-guided build, by playing an instrumented one.
 
-Runs an instrumented build (built with -fprofile-generate: the Windows
-build's, tools/windows_build.py), through the main menu and the opening minute of every campaign
+Runs an instrumented build (built with -fprofile-generate), through the
+main menu and the opening minute of every campaign
 level in the game data (level loading, cutscenes, the first gameplay with
 AI), each a separate run that quits by itself (HALO_EXIT_AFTER), and merges
 what they recorded into the profile the optimised build uses, one of the
@@ -19,11 +19,12 @@ too), need a display, play silently and take about fifteen minutes. On
 Windows, started from a session without a desktop (over ssh), each run is a
 scheduled task in the session of the logged-in user.
 
-Usage: pgo_train.py --binary build/windows/pgo-generate/halo.exe --work build/pgo/windows
-                    --output pgo/halo_windows.profdata
+Usage: pgo_train.py --binary <the instrumented executable> --work <scratch folder>
+                    --output pgo/halo_linux.profdata
 
-(pgo/halo_linux.profdata, which the guest builds use, was recorded so by the
-32-bit Linux build that preceded them; the guests record none of their own.)
+No build trains with it now: every build is a guest, and the guests cannot
+record a profile yet; pgo/halo_linux.profdata, which they all use, was
+recorded with it by the 32-bit Linux build that preceded them.
 """
 
 import argparse

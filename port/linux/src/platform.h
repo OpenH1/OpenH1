@@ -154,8 +154,7 @@ which must agree; so must halo_port_capacity.h's test of the same builds. */
 /* 512 MB on the desktop builds, whose caches outgrow the Xbox's (Custom
 Edition maps' textures and geometry: halo_port_capacity.h), the x86-64
 guest's too, whose image is linked below the window. Its pages are backed
-as they are used. port/windows/src/win32_memory_watch.c has the same
-size. */
+as they are used. */
 #define PLATFORM_CONTIGUOUS_SIZE 0x20000000UL
 #endif
 #define PLATFORM_ANY_PHYSICAL_ADDRESS 0xffffffffUL

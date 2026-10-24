@@ -46,7 +46,12 @@ that changes.
 #include "../src/loading_art.h"
 #include "../src/xgpu_hdr.h"
 
+#ifdef _WIN32
+/* (the 64-bit Windows host: Windows's loader, vulkan-1.dll) */
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
 #include <math.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -4576,6 +4581,16 @@ void xgpu_vulkan_capabilities(struct xgpu_vulkan_capabilities *capabilities)
 
 static int load_functions(void)
 {
+#ifdef _WIN32
+	if (!vk.library)
+		vk.library = LoadLibraryExW(L"vulkan-1.dll", NULL, LOAD_LIBRARY_SEARCH_SYSTEM32);
+	if (!vk.library)
+	{
+		host_logf(HOST_LOG_ERROR, "vulkan: no Vulkan loader (vulkan-1.dll, error %lu)", (unsigned long)GetLastError());
+		return 0;
+	}
+	vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)(void *)GetProcAddress(vk.library, "vkGetInstanceProcAddr");
+#else
 	const char *names[] = { "libvulkan.so.1", "libvulkan.so" };
 	size_t index;
 
@@ -4587,6 +4602,7 @@ static int load_functions(void)
 		return 0;
 	}
 	vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)dlsym(vk.library, "vkGetInstanceProcAddr");
+#endif
 	if (!vkGetInstanceProcAddr)
 		return 0;
 #define LOAD(name) name = (PFN_##name)vkGetInstanceProcAddr(NULL, #name);

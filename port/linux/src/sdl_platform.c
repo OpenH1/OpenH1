@@ -35,11 +35,7 @@ and the debug keyboard that the game's console reads.
 #include <string.h>
 #include <time.h>
 #include <zlib.h>
-#ifdef HALO_WINDOWS
-/* port/windows/src/win32_window.c, compiled with the Windows SDK */
-void win32_window_borderless_apply(SDL_Window *window);
-#endif
-#if !defined(_WIN32) && !defined(HALO_ANDROID)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID)
 #include <signal.h>
 #endif
 #if defined(__linux__) && !defined(HALO_GUEST) && !defined(HALO_ANDROID)
@@ -591,7 +587,7 @@ BOOL platform_sdl_initialize(void)
 {
 	if (platform_sdl_started)
 		return TRUE;
-#if !defined(_WIN32) && !defined(HALO_ANDROID)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID)
 	/* a write to a connection the other end closed fails instead of ending
 	the game (the game's sockets and Discord's pass MSG_NOSIGNAL, but UPnP's
 	miniupnpc does not, nor does a write to a closed pipe's standard error) */
@@ -651,7 +647,7 @@ BOOL platform_sdl_initialize(void)
 	return TRUE;
 }
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB) && (defined(_WIN32) || defined(HALO_MACOS))
+#if !defined(HALO_ANDROID) && !defined(HALO_WEB) && (defined(HALO_WINDOWS) || defined(HALO_MACOS))
 /* ---------- first start without game data (xbox_files.c), on Windows and
 macOS: the system's dialogs. (The Linux builds' is first_start.c, in the
 game's own window; the web page imports the data itself) */
@@ -1506,7 +1502,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	if (config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug"))
 		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 #endif
-#if !defined(HALO_ANDROID) && !defined(_WIN32) && !defined(HALO_RENDER_STREAM)
+#if !defined(HALO_ANDROID) && !defined(HALO_WINDOWS) && !defined(HALO_RENDER_STREAM)
 	/* Mesa's GL thread: the renderer makes thousands of GL calls a frame
 	and never waits for their results, so handing them to a thread of
 	their own takes a fifth of the main thread's time off it. It leaves an
@@ -1573,7 +1569,7 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	}
 #ifndef HALO_ANDROID
 	/* the game's icon, which the desktop shows for the window (on Windows
-	also halo.exe's own, port/windows/halo.rc; a web page has its own; not
+	also halo.exe's own, port/windows/host/halo.rc; a web page has its own; not
 	a guest's, which reaches no SDL surfaces) */
 #if !defined(HALO_GLES) && !defined(HALO_GUEST)
 	if (platform_window_icon_size)
@@ -1629,9 +1625,6 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	return TRUE;
 #endif
 #ifndef HALO_RENDER_STREAM
-#ifdef HALO_WINDOWS
-	win32_window_borderless_apply(platform_window);
-#endif
 	platform_gl_context = SDL_GL_CreateContext(platform_window);
 #ifdef HALO_GLES
 	/* ES 3.2 where the driver has it, otherwise the renderer makes do with
@@ -1845,12 +1838,6 @@ void platform_video_swap(void)
 #ifdef HALO_RENDER_STREAM
 	/* (the host shows the frame, on its render thread: here it is paced) */
 #else
-#ifdef HALO_WINDOWS
-	/* SDL can restore its fullscreen styles on a mode or focus change.
-	Keep borderless on the desktop before the driver presents a frame. */
-	win32_window_borderless_apply(platform_window);
-#endif
-
 	SDL_GL_SwapWindow(platform_window);
 #endif
 	/* (a frame the graphics driver held for seconds: the game froze, and

@@ -57,7 +57,8 @@ where the surface has both. Not on Android, nor in the VR mode.
 HALO_VULKAN_VALIDATION=1 turns on the validation layers and logs their
 messages (the layers must be installed, or found through VK_ADD_LAYER_PATH).
 The pipeline cache is $XDG_CACHE_HOME/openh1/vulkan_pipelines.bin (or
-~/.cache's); HALO_VULKAN_PIPELINE_CACHE names another file, or none (empty).
+~/.cache's; on Windows %LOCALAPPDATA%\OpenH1's); HALO_VULKAN_PIPELINE_CACHE
+names another file, or none (empty).
 */
 
 #include "host.h"
@@ -176,6 +177,17 @@ static const char *cache_folder(char *folder, size_t size)
 {
 	const char *cache = getenv("XDG_CACHE_HOME"), *home = getenv("HOME");
 
+#ifdef _WIN32
+	/* (the 64-bit Windows host: the user's local application data) */
+	cache = getenv("LOCALAPPDATA");
+	if (!cache || !*cache)
+		return NULL;
+	snprintf(folder, size, "%s\\OpenH1", cache);
+	if (mkdir(folder, 0755) && errno != EEXIST)
+		return NULL;
+	(void)home;
+	return folder;
+#endif
 #ifdef __ANDROID__
 	/* The app has no HOME; keep the driver cache in its private cache. */
 	if (!cache || !*cache)
@@ -376,6 +388,14 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 		if (!xgpu_vulkan_initialize(&options))
 			return 0;
 #else
+#ifdef _WIN32
+		/* (the 64-bit Windows build draws with Vulkan alone: say so) */
+		SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Halo",
+			"The game cannot draw: it needs a graphics card and driver with Vulkan 1.3.\n\n"
+			"Install the latest driver for your graphics card (NVIDIA, AMD or Intel) and start the game again. "
+			"A graphics card older than about 2016, or a computer without a graphics driver (a virtual machine, "
+			"say), may have no Vulkan 1.3 at all. halo.log has the details.", object);
+#endif
 		return 0;
 #endif
 	}

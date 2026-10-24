@@ -1,0 +1,6 @@
+/* halo.exe's resources (tools/windows_build.py): its icon
+(tools/app_icon.py), which Explorer and the taskbar show and SDL's windows
+take, as the first icon of the executable; and the manifest (halo.manifest:
+24 is RT_MANIFEST, 1 a process's own) */
+1 ICON "../openh1-icon.ico"
+1 24 "halo.manifest"

@@ -90,7 +90,7 @@ const char *platform_data_root(void)
 				if (slash)
 					*slash = '\0';
 			}
-#if !defined(_WIN32) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
 			/* on Linux, the game's folder (the release's root, above its
 			bin/), or ~/.local/share/halo-linux when the game is installed
 			(install_layout.c) */
@@ -173,8 +173,8 @@ const char *platform_save_root(void)
 
 		if (*environment)
 			snprintf(root, sizeof(root), "%s", environment);
-#ifdef _WIN32
-		/* the Windows build (port/windows) keeps saves in the roaming
+#ifdef HALO_WINDOWS
+		/* the Windows builds (port/windows) keep saves in the roaming
 		application data folder */
 		else if (getenv("APPDATA") && *getenv("APPDATA"))
 			snprintf(root, sizeof(root), "%s/halo", getenv("APPDATA"));
@@ -373,7 +373,7 @@ void platform_maps_folder_check(struct platform_maps_folder *maps)
 	memset(maps, 0, sizeof(*maps));
 	/* the data root as the player finds it (whole: Windows' is the
 	executable's folder's, or paths.data's) */
-#ifndef _WIN32
+#ifndef HALO_WINDOWS
 	if (root[0] != '/' && getcwd(maps->root, sizeof(maps->root)))
 	{
 		size_t length = strlen(maps->root);

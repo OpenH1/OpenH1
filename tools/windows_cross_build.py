@@ -150,11 +150,11 @@ def cross_toolchain_prefix(sln: Any) -> str:
         _ci_child(_ci_child(sdk, "include") / sdk_version, "shared"),
         _ci_child(_ci_child(sdk, "include") / sdk_version, "winrt"),
     ]
-    # link to 32-bit (x86) libraries
+    # link to the 64-bit host's (x64) libraries
     libraries = [
-        _ci_child(_ci_child(vctools, "lib"), "x86"),
-        _ci_child(_ci_child(_ci_child(sdk, "lib") / sdk_version, "ucrt"), "x86"),
-        _ci_child(_ci_child(_ci_child(sdk, "lib") / sdk_version, "um"), "x86"),
+        _ci_child(_ci_child(vctools, "lib"), "x64"),
+        _ci_child(_ci_child(_ci_child(sdk, "lib") / sdk_version, "ucrt"), "x64"),
+        _ci_child(_ci_child(_ci_child(sdk, "lib") / sdk_version, "um"), "x64"),
     ]
     # The game includes <StdDef.h>, which has the wrong casing on a case-sensitive file system.
     # The Linux build already has a shim (port/linux/include/StdDef.h), so we can use it for this too

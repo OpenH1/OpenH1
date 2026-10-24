@@ -62,7 +62,8 @@ tree); a build without one never looks for updates */
 #if defined(HALO_ANDROID) || defined(HALO_WEB) || defined(HALO_MACOS)
 /* (none: the Android app updates itself, the site through its service
 worker; the macOS app through Sparkle, in its host: updater_poll below) */
-#elif defined(_WIN32)
+#elif defined(HALO_WINDOWS)
+/* (the Windows build: the guest of port/windows/host) */
 #define UPDATE_PLATFORM "windows"
 #define UPDATE_NAME "OpenH1-Windows"
 #elif defined(HALO_VR) && defined(__x86_64__)
@@ -108,7 +109,7 @@ generate_guest_image, windows_build.py) */
 #endif
 
 #define UPDATE_REPOSITORY "OpenH1/OpenH1"
-#ifdef _WIN32
+#ifdef HALO_WINDOWS
 #define PATH_SEPARATOR "\\"
 #else
 #define PATH_SEPARATOR "/"
@@ -826,7 +827,7 @@ static void updater_update(void)
 		if (index < name_count && index > 0)
 			updater_put_back(names, index);
 		snprintf(launch, sizeof(launch), "%s", updater_executable);
-#ifndef _WIN32
+#ifndef HALO_WINDOWS
 		/* (the tree's game: install_layout.c) */
 		if (index == name_count)
 			updater_path(launch, sizeof(launch), "bin/" INSTALL_NAME);
@@ -864,7 +865,7 @@ static int updater_clean_up(void)
 	tools/linux_package.py) */
 	static const char *const notices[] =
 	{
-#ifdef _WIN32
+#ifdef HALO_WINDOWS
 		"extract-xiso-LICENSE.txt",
 #else
 		"share/licenses/opence/extract-xiso-LICENSE.txt", "share/licenses/opence/LICENSE.md",
@@ -930,7 +931,7 @@ void updater_start(void)
 
 	if (!update_executable_path(updater_executable, sizeof(updater_executable)))
 		return;
-#ifdef _WIN32
+#ifdef HALO_WINDOWS
 	snprintf(updater_directory, sizeof(updater_directory), "%s", updater_executable);
 	slash = strrchr(updater_directory, PATH_SEPARATOR[0]);
 	if (!slash)

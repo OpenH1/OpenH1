@@ -105,14 +105,14 @@ void host_exit(int code)
 	_exit(code);
 }
 
-#ifdef __APPLE__
-/* port/macos/host_syscall.c */
+#if defined(__APPLE__) || defined(_WIN32)
+/* port/macos/host_syscall.c, port/windows/host/host_posix_win.c */
 int host_linux_errno(int error);
 #endif
 
 int host_errno(void)
 {
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(_WIN32)
 	/* (the guest's errno values are Linux's) */
 	return host_linux_errno(errno);
 #else
@@ -184,7 +184,13 @@ void host_time_zone(char *buffer, size_t size)
 	long offset;
 
 	localtime_r(&now, &local);
+#ifdef _WIN32
+	/* (the 64-bit Windows host: its C runtime's struct tm has no
+	tm_gmtoff) */
+	offset = (long)(now - _mkgmtime(&local));
+#else
 	offset = -local.tm_gmtoff;
+#endif
 	snprintf(buffer, size, "<L>%s%ld:%02ld", offset < 0 ? "-" : "", labs(offset) / 3600, (labs(offset) / 60) % 60);
 }
 

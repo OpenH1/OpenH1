@@ -237,7 +237,7 @@ static const char *profile_trace_platform(void)
 {
 #if defined(HALO_ANDROID)
 	return "android";
-#elif defined(_WIN32)
+#elif defined(HALO_WINDOWS)
 	return "windows";
 #else
 	return "linux";

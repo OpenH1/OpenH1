@@ -103,7 +103,7 @@ backend's texture cache writes it (`tex<number>_fmt<format>_<width>x<height>.tga
 `xgpu_vulkan_textures.c`). `debug.gpu_debug_expression` (GLSL put into each
 pixel shader, which the SPIR-V written directly has no place for) and
 `debug.gpu_flush_draws` (a workaround for Mesa's OpenGL driver) are the
-OpenGL backend's alone (the 32-bit Windows build's), and do nothing here.
+OpenGL backend's alone (the web build's), and do nothing here.
 
 ## The window
 

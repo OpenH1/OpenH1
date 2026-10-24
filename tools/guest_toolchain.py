@@ -66,6 +66,10 @@ LLVM_ARCHIVES: Dict[Tuple[str, str], Tuple[str, str]] = {
                            "805efad2bb91cb4967fa569e0881d10c0f69c04461cf671cccbae19f547acc34"),
     ("darwin", "arm64"): (f"LLVM-{LLVM_VERSION}-macOS-ARM64.tar.xz",
                           "f260f4f7c0d430828a81ae8a3826a1d63fc0963ec2459489308cc23b1f7eab4f"),
+    # (the 64-bit Windows build's guest, tools/windows_build.py: its tools
+    # are .exe files)
+    ("win32", "x86_64"): (f"clang+llvm-{LLVM_VERSION}-x86_64-pc-windows-msvc.tar.xz",
+                          "d96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234"),
 }
 MACHINE_NAMES = {"amd64": "x86_64", "arm64": "aarch64"}
 # what the guest builds use of the archive (a few hundred MB of its several
@@ -123,14 +127,23 @@ def default_cache() -> Path:
 def toolchain_in(folder: Path) -> GuestToolchain:
     """the tools of the LLVM installation in folder (its bin/)"""
     bin_dir = folder / "bin"
-    missing = [name for name in ("clang", "ld.lld", "llvm-ar", "llvm-objdump") if not (bin_dir / name).exists()]
+    missing = [name for name in ("clang", "ld.lld", "llvm-ar", "llvm-objdump")
+               if not (bin_dir / name).exists() and not (bin_dir / f"{name}.exe").exists()]
     if missing:
         raise RuntimeError(f"no {', '.join(missing)} in {bin_dir}")
-    return GuestToolchain(cc=str(bin_dir / "clang"), ld=str(bin_dir / "ld.lld"), ar=str(bin_dir / "llvm-ar"),
-                          objdump=str(bin_dir / "llvm-objdump"))
+
+    def tool(name: str) -> str:
+        # (Windows's are .exe files, named so in full: a program's name with
+        # another dot in it, ld.lld, gets no .exe from CreateProcess)
+        return str(bin_dir / f"{name}.exe") if (bin_dir / f"{name}.exe").exists() else str(bin_dir / name)
+
+    return GuestToolchain(cc=tool("clang"), ld=tool("ld.lld"), ar=tool("llvm-ar"), objdump=tool("llvm-objdump"))
 
 
 def _kept(name: str) -> bool:
+    # (Windows's tools are bin/clang.exe and the like)
+    if name.startswith("bin/") and name.endswith(".exe"):
+        name = name[:-len(".exe")]
     return name in KEPT_FILES or any(name.startswith(folder) for folder in KEPT_FOLDERS)
 
 
@@ -241,8 +254,10 @@ def fetch_llvm(cache: Path) -> Path:
         return folder
     cache.mkdir(parents=True, exist_ok=True)
     archive = cache / name
+    # (on standard error: main's standard output is the bin/ folder alone,
+    # which CI puts on the PATH)
     print(f"Downloading LLVM {LLVM_VERSION} for the guest builds ({name}, about 1.5 GB, once) into {cache}",
-          flush=True)
+          file=sys.stderr, flush=True)
     _download(LLVM_URL.format(version=LLVM_VERSION, name=name), digest, archive)
     # (unpacked beside it and then moved, so that an interrupted unpacking
     # leaves no folder that a later configure would take as complete)

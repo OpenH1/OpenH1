@@ -41,7 +41,7 @@ into their host too.
 
 #include "install_layout.h"
 
-#if !defined(_WIN32) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_WEB)
 
 #include <dirent.h>
 #include <errno.h>

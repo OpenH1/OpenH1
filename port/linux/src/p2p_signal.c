@@ -1802,7 +1802,7 @@ static void brokers_list(char *text, size_t size)
 		snprintf(path + strlen(path), sizeof(path) - strlen(path), "%s", name);
 	}
 	file = config_file_read(path, &file_size);
-#if !defined(_WIN32) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
 	/* (the release's, share/openh1/brokers.txt in its tree: install_layout.c) */
 	if (!file && !(name[0] == '/' || name[0] == '\\' || (name[0] && name[1] == ':')))
 	{

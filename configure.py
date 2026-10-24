@@ -42,32 +42,14 @@ parser.add_argument(
     "--profile",
     action="store_true",
     help="profiling builds (Linux, Windows, Android): CPU scopes recorded on a "
-    "console command or launch setting (README, \"Profiling builds\"); not with --pgo=train",
-)
-parser.add_argument(
-    "--lto",
-    choices=["full", "thin", "off"],
-    default="full",
-    help="link-time optimisation (Windows): full (the default: the whole game "
-    "optimised as one module, the fastest code and the slowest links), thin (parallel and incremental) or off",
-)
-parser.add_argument(
-    "--portable",
-    action="store_true",
-    help="the x86 Windows build: code for any x86-64 processor (SSE2) rather than for this machine's "
-    "(-march=native, the default); use it for builds that run on other computers (the Linux, Android and macOS "
-    "builds' code runs on any processor of their architecture already)",
+    "console command or launch setting (README, \"Profiling builds\")",
 )
 parser.add_argument(
     "--pgo",
-    nargs="?",
-    const="train",
     default="use",
-    choices=["use", "train", "off"],
-    help="profile-guided optimisation: use (the default) optimises with the profiles in pgo/, "
-    "train (or plain --pgo) first records the Windows build's profile if it is missing, by letting an instrumented "
-    "build play every campaign level (needs the game data in assets/ and a display; the guest builds, Linux's, "
-    "Android's and macOS's, use the committed Linux profile either way), off does without",
+    choices=["use", "off"],
+    help="profile-guided optimisation: use (the default) optimises every build (they are all guest builds) with "
+    "the committed profile, pgo/halo_linux.profdata; off does without",
 )
 parser.add_argument(
     "--pgo-profile",
@@ -125,6 +107,13 @@ parser.add_argument(
     action="store_true",
     help="the VR mode (OpenXR) in the Linux build of this computer (`ninja linux_x86_64`, or `ninja linux_arm64`: "
     "the Steam Frame's); configure.py also downloads the OpenXR headers; refer to \"VR\" in port/linux/README.md",
+)
+parser.add_argument(
+    "--windows-guest",
+    action="store_true",
+    help="generate `ninja windows_guest`, the Windows build's guest image, on another computer than Windows "
+    "(which always generates it, with `ninja windows`): configure.py downloads its musl, SDL3 and headers (once, to "
+    "build/windows/third_party); refer to port/windows/README.md",
 )
 parser.add_argument(
     "--guest-base",
@@ -216,8 +205,6 @@ sln = SimpleNamespace(
     compiler_launcher=args.compiler_launcher,
     port_release=args.release,
     port_profile=args.profile,
-    port_lto=args.lto,
-    port_portable=args.portable,
     port_pgo=args.pgo,
     port_pgo_profile=args.pgo_profile,
     android_ndk=args.android_ndk,
@@ -227,6 +214,7 @@ sln = SimpleNamespace(
     android_guest_cc=args.android_guest_cc,
     linux_arm64_cc=args.linux_arm64_cc,
     linux_x86_64_cc=args.linux_x86_64_cc,
+    windows_guest=args.windows_guest,
     port_vr=args.vr,
     macos_cc=args.macos_cc,
     macos_guest_cc=args.macos_guest_cc,

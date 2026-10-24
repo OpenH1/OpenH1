@@ -16,7 +16,7 @@ Edition's, 609). (Files are reached through posix.h, as the rest of the
 platform layer's: the game's ABI cannot use the C library's struct stat.)
 */
 
-#if !defined(_WIN32) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
 
 #include "game_data_scan.h"
 #include "posix.h"

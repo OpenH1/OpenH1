@@ -1,0 +1,6 @@
+# Host functions the 64-bit Windows build's guest imports beyond the Linux
+# desktop guest's (port/linux/host/host_imports.list) and the Vulkan build's
+# (port/linux/vulkan/host_imports.list): declared in guest_windows.c, defined
+# in host_windows.c. tools/android_imports.py generates the stubs and, with
+# --host-abi sysv, the host's thunks.
+host_windows_hardware_id

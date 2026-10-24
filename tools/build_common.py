@@ -182,14 +182,6 @@ def musl_math_cflags(abi: str) -> str:
                      f"-include {MUSL_MATH_DIR}/include/libm.h"])
 
 
-def march_flag(sln: Any) -> str:
-    """The instruction set of the x86 Windows build: this machine's
-    (-march=native, the default), or with configure.py --portable the
-    baseline every x86-64 processor has (SSE2), for builds that run on other
-    computers. The game stays 32-bit code either way."""
-    return "-march=x86-64" if getattr(sln, "port_portable", False) else "-march=native"
-
-
 # ---------- the SDL3 the Linux builds bring
 
 # SDL's options: what it would build on a desktop distribution, its X11,
@@ -237,21 +229,15 @@ def sdl3_rule(n: Writer, sln: Any, *, name: str, description: str, source: Path,
     )
 
 
-def lto_mode(sln: Any) -> str:
-    """full, thin or off (configure.py --lto)"""
-    return getattr(sln, "port_lto", "full")
-
-
 # ---------- profile-guided optimisation
 
 # Profiles recorded by playing the game (tools/pgo_train.py), kept in the
 # repository so that every build is optimised with them. They are in the
 # format of this LLVM version, which older compilers cannot read. The Linux
-# profile is the guests' (Android, Linux, macOS), whose game and platform
-# code it was recorded from; the Windows build trains its own.
+# profile is every build's (they are all guests: Android, Linux, macOS,
+# Windows), whose game and platform code it was recorded from.
 PGO_DIR = Path("pgo")
 LINUX_PROFILE = PGO_DIR / "halo_linux.profdata"
-WINDOWS_PROFILE = PGO_DIR / "halo_windows.profdata"
 PROFILE_LLVM_MAJOR = 22
 
 _clang_majors: Dict[str, Optional[int]] = {}

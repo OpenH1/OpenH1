@@ -9,6 +9,7 @@ builds' VR mode (HALO_VR) adds its eye passes and composition
 host_vr_stream.c).
 """
 import hashlib
+import os
 from pathlib import Path
 from typing import List, Optional
 
@@ -87,13 +88,22 @@ def host_vulkan_renderer(n: Writer, prefix: str, label: str, build: Path, host_c
     host_obj_dir = build / "host" / "obj"
     host_objects: List[Path] = []
     shared_dir = build / "host" / "shared"
-    n.rule(name=f"{prefix}_vulkan_copy", command="cp $in $out", description=f"{label} SHARED $out")
     xdk = Path("port/include/xdk")
-    n.rule(name=f"{prefix}_vulkan_xdk_enums",
-           command=(f"(sed -n '/^\\/\\* ---------- enumerations/,/^\\/\\* ---------- structures and unions/p' "
-                    f"{xdk / 'xdk_pdb.h'} | sed '$$d' && "
-                    f"grep -E '^#define D3D(FORMAT|SIZE|TEXTURE)_' {xdk / 'xdk_d3d8.h'}) > $out"),
-           description=f"{label} SHARED $out")
+    if os.name == "nt":
+        # (no POSIX shell: tools/guest_build_steps.py's steps, the 64-bit
+        # Windows build's)
+        steps = "$python tools/guest_build_steps.py"
+        n.rule(name=f"{prefix}_vulkan_copy", command=f"{steps} copy $in $out", description=f"{label} SHARED $out")
+        n.rule(name=f"{prefix}_vulkan_xdk_enums",
+               command=f"{steps} xdk-enums $out {xdk / 'xdk_pdb.h'} {xdk / 'xdk_d3d8.h'}",
+               description=f"{label} SHARED $out")
+    else:
+        n.rule(name=f"{prefix}_vulkan_copy", command="cp $in $out", description=f"{label} SHARED $out")
+        n.rule(name=f"{prefix}_vulkan_xdk_enums",
+               command=(f"(sed -n '/^\\/\\* ---------- enumerations/,/^\\/\\* ---------- structures and unions/p' "
+                        f"{xdk / 'xdk_pdb.h'} | sed '$$d' && "
+                        f"grep -E '^#define D3D(FORMAT|SIZE|TEXTURE)_' {xdk / 'xdk_d3d8.h'}) > $out"),
+               description=f"{label} SHARED $out")
     shared_copies: List[Path] = []
     shared_names = VULKAN_SHARED_SOURCES + (VULKAN_DECODE_SOURCES if texture_decoding else [])
     for name in shared_names:

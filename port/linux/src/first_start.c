@@ -20,7 +20,7 @@ a desktop, and a failure to show one is said in the window too.
 
 #include "platform.h"
 
-#if !defined(_WIN32) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
 
 #include "port_config.h"
 #include "xiso.h"

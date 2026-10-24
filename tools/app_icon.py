@@ -8,7 +8,7 @@ knocked out of a green plate with one clipped corner. It is drawn first as
 the artwork the icons are made from:
 
 - openh1-icon.png, the plate on the site's near-black (512x512): the Windows
-  executable's icon (port/windows/openh1-icon.ico, which port/windows/halo.rc
+  executable's icon (port/windows/openh1-icon.ico, which port/windows/host/halo.rc
   puts in halo.exe) and the desktop builds' window icon (openh1-icon-256.png,
   which tools/embed_assets.py embeds and sdl_platform.c gives the window);
 - openh1-icon-render.png, the plate alone on transparency (1024x1024), smaller

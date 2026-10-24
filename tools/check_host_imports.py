@@ -66,6 +66,7 @@ IMPORT_LISTS = [
     Path("port/linux/host/host_imports.list"),
     Path("port/linux/host/vr_imports.list"),
     Path("port/linux/vulkan/host_imports.list"),
+    Path("port/windows/host/host_imports.list"),
 ]
 LISTED_DECLARATIONS = [
     Path("port/android/guest/runtime/guest_host.h"),
@@ -73,6 +74,7 @@ LISTED_DECLARATIONS = [
     Path("port/linux/src/vr_host.h"),
     Path("port/linux/src/xgpu.h"),
     Path("port/linux/vulkan/guest_vulkan.c"),
+    Path("port/windows/host/guest_windows.c"),
 ]
 # where else the guest declares host functions (their declarations must agree)
 DECLARATION_FOLDERS = [
@@ -85,10 +87,11 @@ POSIX_HEADER = Path("port/linux/src/posix.h")
 HOST_DEFINITION_FOLDERS = [
     Path("port/android/host"),
     Path("port/linux/host"),
+    Path("port/windows/host"),
     Path("port/linux/vulkan"),
 ]
 # and the files outside them that define one (host_gl_window's stand-in, which
-# the Android app and the Linux builds build)
+# the Android app and the Linux and Windows builds build)
 HOST_DEFINITION_FILES = [
     Path("port/android/host_renderer.c"),
 ]

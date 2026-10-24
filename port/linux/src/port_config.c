@@ -26,7 +26,7 @@ them at their "classic" values while it is on (config_battery_saver_set).
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifndef _WIN32
+#ifndef HALO_WINDOWS
 #include <unistd.h>
 #endif
 
@@ -122,7 +122,7 @@ want the most frames and the least latency (display.max_fps still limits
 them, at twice the display's rate; the Mac shows the newest at each refresh,
 host_metal_vsync), the Steam Deck's too; on the phones, for their
 batteries */
-#if defined(_WIN32) || (defined(HALO_VULKAN) && !defined(HALO_ANDROID)) || \
+#if defined(HALO_WINDOWS) || (defined(HALO_VULKAN) && !defined(HALO_ANDROID)) || \
 	(defined(HALO_MACOS) && !defined(HALO_IOS))
 #define VSYNC_DEFAULT "false"
 #else
@@ -1123,7 +1123,7 @@ static const struct config_setting config_settings[] =
 		"\"severe\", \"strong\" (and severe) or \"mild\" (all)." },
 	{ "crash_reports.upload", _config_string, "\"ask\"", "HALO_CRASH_REPORTS", _environment_value, _platform_windows,
 		"Send a report of each crash (a minidump and halo.log) to the developers'\n"
-		"Sentry project (port/windows/src/win32_crash.c): \"yes\" sends them, \"no\"\n"
+		"Sentry project (port/windows/host/host_crash_win.c): \"yes\" sends them, \"no\"\n"
 		"never does, \"ask\" asks at the next crash and writes the answer here." },
 
 	{ "debug.network_test", _config_string, "\"\"", "HALO_NETWORK_TEST", _environment_value, _platform_all,
@@ -1578,8 +1578,9 @@ static const struct config_setting config_settings[] =
 #define CONFIG_PLATFORM _platform_android
 #elif defined(HALO_WEB)
 #define CONFIG_PLATFORM (_platform_desktop | _platform_web)
-#elif defined(_WIN32)
-#define CONFIG_PLATFORM (_platform_desktop | _platform_windows)
+#elif defined(HALO_WINDOWS)
+/* (the Windows build: a guest, tools/windows_build.py) */
+#define CONFIG_PLATFORM (_platform_desktop | _platform_windows | _platform_guest)
 #elif defined(HALO_IOS)
 #define CONFIG_PLATFORM (_platform_desktop | _platform_guest | _platform_ios)
 #elif defined(HALO_GUEST)
@@ -1614,7 +1615,7 @@ static void config_path(char *path, size_t size)
 	const char *root = getenv("HALO_DATA_ROOT");
 
 	snprintf(path, size, "%s/config.toml", root && *root ? root : ".");
-#elif defined(_WIN32)
+#elif defined(HALO_WINDOWS)
 	/* the executable's folder, with its separator */
 	const char *base = SDL_GetBasePath();
 
@@ -2650,7 +2651,7 @@ the log, with the one it reads (path) */
 static void config_report_unread(const char *path)
 {
 	char other[1100];
-#ifndef _WIN32
+#ifndef HALO_WINDOWS
 	/* in the folder the game was started from, when that is not the
 	executable's (the game's is beside the executable) */
 	char folder[1024];
@@ -2676,7 +2677,7 @@ static void config_report_unread(const char *path)
 	snprintf(other, sizeof(other), "%s.txt", path);
 	if (SDL_GetPathInfo(other, NULL))
 	{
-#ifdef _WIN32
+#ifdef HALO_WINDOWS
 		platform_log("settings: %s is not read: Windows saved it as config.toml.txt; rename it to config.toml", other);
 #else
 		platform_log("settings: %s is not read; rename it to config.toml", other);
