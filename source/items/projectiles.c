@@ -141,6 +141,10 @@ symbols in this file:
 #include "sound/sound_definitions.h"
 #include "units/bipeds.h"
 #include "units/units.h"
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
+/* port: port/linux/game/overshield_effect.c */
+boolean overshield_effect_active(long object_index);
+boolean overshield_effect_hit_effect_allowed(long effect_index);
 
 /* ---------- constants */
 
@@ -155,6 +159,32 @@ enum projectile_datum_flags
 	_projectile_already_super_exploded_bit = 6,
 	_projectile_will_super_explode_bit = 7,
 	NUMBER_OF_PROJECTILE_DATUM_FLAGS,
+};
+
+/* port: a projectile in the fast phase (game.sim_rate 60 or 120, sim_rate.h;
+projectiles_substep), in bits of its flags the original game never sets,
+and none of them is ever set at 30:
+- head start: made, and its head start (its first update, a whole 30 Hz
+  tick of travel and of its timers, as at 30) not yet taken; made in the
+  fast phase, it is taken in its sub-step there, else in its tick's objects'
+  update (objects.c's update of the objects made in it)
+- held: after the head start, it waits a tick (as many sub-steps as a tick
+  has) before its first sub-step's travel, so that a tick of time after it
+  was fired it is where its head start put it, as at 30; crossed, a tick's
+  end came while it waited: the hold ends at its phase in the next tick
+- phase: the sub-step it was made in (0 if in a tick's update), where its
+  hold ends and where its timers count each tick (in 30 Hz ticks, as at 30)
+A projectile saved in its hold (at a tick's end) resumes it as it was. */
+enum
+{
+	_projectile_substep_head_start_bit = 24,
+	_projectile_substep_made_in_fast_phase_bit,
+	_projectile_substep_held_bit,
+	_projectile_substep_hold_crossed_bit,
+	_projectile_substep_phase_first_bit, /* two bits: 0 up to 3 */
+
+	PROJECTILE_SUBSTEP_PHASE_MASK = 3,
+	PROJECTILE_SUBSTEP_FLAGS_MASK = 0x3F << _projectile_substep_head_start_bit,
 };
 
 enum projectile_definition_flags
@@ -320,10 +350,65 @@ static void projectile_collision(
 	real_point3d *new_position,
 	real_vector3d *new_velocity,
 	real time_left);
+static boolean projectile_step(
+	long projectile_index,
+	real tick_fraction,
+	real tick_elapsed,
+	boolean opens_tick,
+	boolean closes_tick);
+static void projectiles_substep(
+	short substep_index,
+	short substep_count,
+	real seconds);
+static void projectile_substep_finish(
+	long projectile_index);
+static real projectile_segment_get(
+	long projectile_index,
+	boolean opens_tick);
+static void projectile_segment_set(
+	long projectile_index,
+	real segment_start);
+static void projectile_set_speed_under_final(
+	struct projectile_definition const *definition,
+	real_vector3d *velocity,
+	real gravity_since);
 
 /* ---------- globals */
 
+/* port: where in its tick each projectile that struck in a sub-step struck
+last (projectile_step): the start of the line the rest of its tick travels
+on, as its update at 30 travels on from a strike. Kept from the strike to its
+tick's end (its next tick's first sub-step forgets it), outside the game
+state: nothing of it is wanted at a tick's end but for a projectile made at
+a sub-step after the first, whose tick ends in the next one (a game saved
+then has it travel the rest of that tick on its line from the tick's start).
+Hashed by the projectile's index: one that loses its place to another the
+same way. (An empty slot's index, 0, is no projectile's: a datum index has
+its identifier, never 0, in its high bits.) */
+enum
+{
+	PROJECTILE_SEGMENT_SLOTS = 64
+};
+
+/* port: the sub-step the fast phase's projectiles' slot last ran in (its
+tick, game_time, and its index), which a projectile its tick lets go of in a
+sub-step (projectile_substep_launch_on_tick) is let go of before or after */
+static struct
+{
+	long tick;
+	short substep_index;
+} projectiles_substep_ran = { NONE, NONE };
+
+static struct
+{
+	long projectile_index;
+	real segment_start;
+} projectile_segments[PROJECTILE_SEGMENT_SLOTS];
+
 static real const seconds_per_tick = 1.0f / TICKS_PER_SECOND;
+/* port: the length of the update running (projectile_step) in seconds: a
+tick's, or a sub-step's in the fast phase */
+static real projectile_update_seconds = 1.0f / TICKS_PER_SECOND;
 
 static struct profile_section projectile_update_section = {"projectile_update", NONE, TRUE};
 
@@ -341,6 +426,11 @@ static char const *effect_marker_names[NUMBER_OF_EFFECT_MARKERS] =
 void projectiles_initialize(
 	void)
 {
+	/* port: the projectiles' travel in the fast phase (sim_rate.h), the
+	micro lane's (objects.h) */
+	object_lane_register(_object_mask_projectile);
+	sim_substep_register(_sim_substep_projectiles, projectiles_substep);
+
 	return;
 }
 
@@ -604,6 +694,15 @@ boolean projectile_new(
 
 	SET_FLAG(projectile->object.flags, _object_shadowless_bit, TRUE);
 	SET_FLAG(projectile->object.flags, _object_deleted_when_deactivated_bit, TRUE);
+	/* port: in sub-steps, its head start to come, and where it was made
+	(projectiles_substep) */
+	if (object_lane_moves_in_substeps(projectile_index))
+	{
+		SET_FLAG(projectile->projectile.flags, _projectile_substep_head_start_bit, TRUE);
+		SET_FLAG(projectile->projectile.flags, _projectile_substep_made_in_fast_phase_bit,
+			sim_substep_index() != NONE);
+	}
+	SIM_TRACE(sim_trace_projectile_new(projectile_index)); /* port: debug.trace */
 
 	return TRUE;
 }
@@ -665,18 +764,329 @@ void projectile_accelerate(
 boolean projectile_update(
 	long projectile_index)
 {
+	struct projectile_datum *projectile = projectile_get(projectile_index);
+
+	/* port: in sub-steps (game.sim_rate 60 or 120), a projectile flying on its
+	own travels in the fast phase (projectiles_substep): its tick's update
+	here is only its head start, if it was made outside the fast phase. One
+	attached to an object (a child, in its parent's update) stays on the
+	tick */
+	if (projectile->object.parent_object_index == NONE &&
+		object_lane_moves_in_substeps(projectile_index))
+	{
+		if (!TEST_FLAG(projectile->projectile.flags, _projectile_substep_head_start_bit))
+			return TRUE;
+		/* (its phase 0: the tick's start) */
+		projectile->projectile.flags &= ~PROJECTILE_SUBSTEP_FLAGS_MASK;
+		SET_FLAG(projectile->projectile.flags, _projectile_substep_held_bit, TRUE);
+	}
+	else
+	{
+		projectile->projectile.flags &= ~PROJECTILE_SUBSTEP_FLAGS_MASK;
+	}
+
+	return projectile_step(projectile_index, 1.0f, 0.0f, TRUE, TRUE);
+}
+
+/* port: a projectile made earlier and let go of now, flying on its own from
+here (a grenade the VR mode's hand held, made as it came to the hand:
+port/linux/game/vr_grenade.c), as one made now (projectile_new): in the
+fast phase (from any slot: a later one runs after the projectiles'), its
+head start at once, a whole 30 Hz tick as at 30, then its hold of a tick,
+this sub-step its phase, as projectiles_substep gives one made in the
+sub-step; in a tick's own work, its head start to come in the tick's
+update, as one made there. Nothing at 30, for one attached to an object or
+of the macro lane */
+void projectile_substep_launch(
+	long projectile_index)
+{
+	struct projectile_datum *projectile = projectile_get(projectile_index);
+	short substep_index = sim_substep_index();
+
+	if (projectile->object.parent_object_index != NONE ||
+		!object_lane_moves_in_substeps(projectile_index))
+	{
+		return;
+	}
+	projectile->projectile.flags &= ~PROJECTILE_SUBSTEP_FLAGS_MASK;
+	if (substep_index == NONE)
+	{
+		SET_FLAG(projectile->projectile.flags, _projectile_substep_head_start_bit, TRUE);
+		return;
+	}
+	projectile->projectile.flags |= FLAG(_projectile_substep_held_bit) |
+		((unsigned long)(substep_index & PROJECTILE_SUBSTEP_PHASE_MASK) << _projectile_substep_phase_first_bit);
+	if (substep_index == sim_substep_count() - 1)
+		SET_FLAG(projectile->projectile.flags, _projectile_substep_hold_crossed_bit, TRUE);
+	projectile_step(projectile_index, 1.0f, 0.0f, TRUE, TRUE);
+	projectile_substep_finish(projectile_index);
+
+	return;
+}
+
+/* port: a projectile let go of by its tick (a unit's grenade thrown at its
+throw animation's key frame, units.c), from here, as one made in the tick's
+own work, in whichever of the tick's sub-steps it is let go of (the units'
+slot lets go at the tick's last, where it counts its ticks: sim_rate.h): its
+head start at once, a whole 30 Hz tick of travel (its timers the tick's
+update counted, in the hand), then its hold until the next tick's first
+sub-step, its phase 0, as at 30, where its update in the tick takes a whole
+tick and the next tick the next. In a tick's own work, its head start
+to come in the tick's update (projectile_substep_launch). Nothing at 30, for
+one attached to an object or of the macro lane */
+void projectile_substep_launch_on_tick(
+	long projectile_index)
+{
+	struct projectile_datum *projectile = projectile_get(projectile_index);
+	short substep_index = sim_substep_index();
+
+	if (substep_index == NONE)
+	{
+		projectile_substep_launch(projectile_index);
+		return;
+	}
+	if (projectile->object.parent_object_index != NONE ||
+		!object_lane_moves_in_substeps(projectile_index))
+	{
+		return;
+	}
+	projectile->projectile.flags &= ~PROJECTILE_SUBSTEP_FLAGS_MASK;
+	SET_FLAG(projectile->projectile.flags, _projectile_substep_held_bit, TRUE);
+	/* (the tick's end has come for its hold once the projectiles' slot has run
+	at the tick's last sub-step; else that slot says so) */
+	if (substep_index == sim_substep_count() - 1 && projectiles_substep_ran.tick == game_time_get() &&
+		projectiles_substep_ran.substep_index == substep_index)
+	{
+		SET_FLAG(projectile->projectile.flags, _projectile_substep_hold_crossed_bit, TRUE);
+	}
+	/* (its timers counted this tick already, in its tick's update, held: a
+	child of the unit) */
+	projectile_step(projectile_index, 1.0f, 0.0f, FALSE, TRUE);
+	projectile_substep_finish(projectile_index);
+
+	return;
+}
+
+/* port: the fast phase's sub-step of every projectile flying on its own
+(sim_rate.h; at 30, its one sub-step leaves them to their ticks' updates).
+A projectile's first update is its head start, a whole tick of travel and
+timers, as at 30, then it holds for a tick of time (a tick's sub-steps),
+then it travels a sub-step each sub-step, its timers counting once a tick,
+at its phase. So a tick after it was fired, and every tick after that, it is
+where it would be at 30, at whichever sub-step it was fired */
+static void projectiles_substep(
+	short substep_index,
+	short substep_count,
+	real seconds)
+{
+	real tick_fraction = sim_substep_tick_fraction();
+	boolean first_pass = TRUE;
+	boolean more = TRUE;
+
+	(void)seconds;
+	if (substep_count <= 1)
+		return;
+	projectiles_substep_ran.tick = game_time_get();
+	projectiles_substep_ran.substep_index = substep_index;
+	/* (as objects_update: the objects stand still on the double speed
+	players' odd ticks) */
+	if ((game_time_get() & 1) != 0 && game_players_are_double_speed())
+		return;
+
+	/* (passes again for the projectiles a pass made, a detonation's, for
+	their head starts in the sub-step they were made in) */
+	while (more)
+	{
+		struct object_iterator iterator;
+
+		more = FALSE;
+		object_iterator_new(&iterator, _object_mask_projectile, FLAG(_object_header_active_bit));
+		while (object_iterator_next(&iterator))
+		{
+			long projectile_index = iterator.index;
+			struct object_header_datum *header = object_header_get(projectile_index);
+			struct projectile_datum *projectile;
+			unsigned long flags;
+			short phase;
+
+			if (TEST_FLAG(header->flags, _object_header_being_deleted_bit) ||
+				TEST_FLAG(header->flags, _object_header_do_not_update_bit))
+			{
+				continue;
+			}
+			projectile = projectile_get(projectile_index);
+			if (projectile->object.parent_object_index != NONE ||
+				!object_lane_moves_in_substeps(projectile_index))
+			{
+				continue;
+			}
+			flags = projectile->projectile.flags;
+
+			if (TEST_FLAG(flags, _projectile_substep_head_start_bit))
+			{
+				/* (made outside the fast phase: its head start is its tick's
+				update's) */
+				if (!TEST_FLAG(flags, _projectile_substep_made_in_fast_phase_bit))
+					continue;
+				projectile->projectile.flags &= ~PROJECTILE_SUBSTEP_FLAGS_MASK;
+				projectile->projectile.flags |= FLAG(_projectile_substep_held_bit) |
+					((unsigned long)(substep_index & PROJECTILE_SUBSTEP_PHASE_MASK) << _projectile_substep_phase_first_bit);
+				if (substep_index == substep_count - 1)
+					SET_FLAG(projectile->projectile.flags, _projectile_substep_hold_crossed_bit, TRUE);
+				projectile_step(projectile_index, 1.0f, 0.0f, TRUE, TRUE);
+				projectile_substep_finish(projectile_index);
+				more = TRUE;
+				continue;
+			}
+			if (!first_pass)
+				continue;
+
+			/* (a rate lowered since it was made: its phase in this tick) */
+			phase = (short)((flags >> _projectile_substep_phase_first_bit) & PROJECTILE_SUBSTEP_PHASE_MASK) % substep_count;
+			if (TEST_FLAG(flags, _projectile_substep_held_bit))
+			{
+				if (!TEST_FLAG(flags, _projectile_substep_hold_crossed_bit) || substep_index != phase)
+				{
+					if (substep_index == substep_count - 1)
+						SET_FLAG(projectile->projectile.flags, _projectile_substep_hold_crossed_bit, TRUE);
+					continue;
+				}
+				projectile->projectile.flags &=
+					~(FLAG(_projectile_substep_held_bit) | FLAG(_projectile_substep_hold_crossed_bit));
+			}
+
+			/* (how far into its own tick, which starts at its phase) */
+			projectile_step(
+				projectile_index,
+				tick_fraction,
+				(real)((substep_index - phase + substep_count) % substep_count) * tick_fraction,
+				substep_index == phase,
+				substep_index == (phase + substep_count - 1) % substep_count);
+			projectile_substep_finish(projectile_index);
+		}
+		first_pass = FALSE;
+	}
+
+	return;
+}
+
+/* port: where in its tick the line a projectile travels on in a sub-step
+starts (projectile_segments): its tick's start, or where it last struck in
+the tick. The sub-step that opens its tick forgets the last tick's */
+static real projectile_segment_get(
+	long projectile_index,
+	boolean opens_tick)
+{
+	short slot = (short)(DATUM_INDEX_TO_ABSOLUTE_INDEX(projectile_index) % PROJECTILE_SEGMENT_SLOTS);
+
+	if (projectile_segments[slot].projectile_index != projectile_index)
+		return 0.0f;
+	if (opens_tick)
+	{
+		projectile_segments[slot].projectile_index = 0;
+		return 0.0f;
+	}
+	return projectile_segments[slot].segment_start;
+}
+
+static void projectile_segment_set(
+	long projectile_index,
+	real segment_start)
+{
+	short slot = (short)(DATUM_INDEX_TO_ABSOLUTE_INDEX(projectile_index) % PROJECTILE_SEGMENT_SLOTS);
+
+	projectile_segments[slot].projectile_index = projectile_index;
+	projectile_segments[slot].segment_start = segment_start;
+}
+
+/* port: a slow projectile's speed set a little under its final velocity in
+a sub-step, as its update at 30 sets it: from the velocity its line started
+with (the velocity now with the gravity since given back, gravity_since),
+then that gravity taken again */
+static void projectile_set_speed_under_final(
+	struct projectile_definition const *definition,
+	real_vector3d *velocity,
+	real gravity_since)
+{
+	real_vector3d start_velocity = *velocity;
+	real start_speed;
+
+	start_velocity.k += gravity_since;
+	start_speed = magnitude3d(&start_velocity);
+	if (start_speed < definition->projectile.final_velocity && start_speed > 0.0f)
+	{
+		scale_vector3d(
+			&start_velocity,
+			definition->projectile.final_velocity / start_speed * 0.99f,
+			velocity);
+		velocity->k -= gravity_since;
+	}
+
+	return;
+}
+
+/* port: after a projectile's sub-step: deleted in it (it struck, went off
+or vanished), it is gone at once, as a tick's update's are gone by its end
+(objects_update deletes them after the objects' updates), not seen by the
+sub-steps after it or the next tick's update; else its nodes are where the
+sub-step left it, for what reads them before the next */
+static void projectile_substep_finish(
+	long projectile_index)
+{
+	struct object_header_datum *header = object_header_get(projectile_index);
+	struct projectile_datum *projectile;
+
+	if (TEST_FLAG(header->flags, _object_header_being_deleted_bit))
+	{
+		object_delete_immediately(projectile_index);
+		return;
+	}
+	projectile = projectile_get(projectile_index);
+	if (projectile->object.parent_object_index == NONE &&
+		!TEST_FLAG(projectile->object.flags, _object_do_not_recompute_node_matrices_bit))
+	{
+		object_compute_node_matrices(projectile_index);
+	}
+
+	return;
+}
+
+/* the update of a projectile, the original game's projectile_update (port:
+for a share of a tick, tick_fraction: 1 at 30, a sub-step's in the fast
+phase. Its velocity, deceleration, gravity and spin stay per tick, of which
+it takes its share. What a tick's update does once at its start, the
+sub-step that opens the projectile's tick does: its timers count a tick,
+and it may vanish at its range. What a tick's update does to its velocity
+at once, which the tick's own travel does not see (a guided projectile's
+turn, a slow one's speed set to its final velocity), the sub-step that
+closes its tick does, for the next tick's travel) */
+static boolean projectile_step(
+	long projectile_index,
+	real tick_fraction,
+	real tick_elapsed,
+	boolean opens_tick,
+	boolean closes_tick)
+{
 	struct projectile_datum *projectile;
 	struct projectile_definition const *definition;
 	real time_remaining;
+	real step_ticks;
 	short collision_count;
 	boolean flyby_sound_played;
 	boolean detonation_timer_running;
+	/* port: (a tick's update, or its head start: as the original game's) */
+	boolean whole_tick = opens_tick && closes_tick;
+	/* port: where in its tick the line it travels on starts (a sub-step's) */
+	real segment_start = 0.0f;
 
 	projectile = projectile_get(projectile_index);
 	definition = projectile_definition_get(projectile->definition_index);
 	time_remaining = 1.0f;
 	collision_count = 0;
 	flyby_sound_played = FALSE;
+	projectile_update_seconds = seconds_per_tick * tick_fraction;
+	if (!whole_tick)
+		segment_start = projectile_segment_get(projectile_index, opens_tick);
 
 	profile_enter(projectile_update_section);
 
@@ -689,8 +1099,12 @@ boolean projectile_update(
 		projectile->projectile.tracer_attachment_index = NONE;
 	}
 
-	projectile->projectile.arming_time += projectile->projectile.arming_time_delta;
-	projectile->projectile.deceleration_timer += projectile->projectile.deceleration_timer_delta;
+	/* port: (in the fast phase the timers count in ticks, once a tick) */
+	if (opens_tick)
+	{
+		projectile->projectile.arming_time += projectile->projectile.arming_time_delta;
+		projectile->projectile.deceleration_timer += projectile->projectile.deceleration_timer_delta;
+	}
 
 	switch (definition->projectile.detonation_timer_starts)
 	{
@@ -712,7 +1126,7 @@ boolean projectile_update(
 		detonation_timer_running = TRUE;
 	}
 
-	if (detonation_timer_running)
+	if (detonation_timer_running && opens_tick)
 	{
 		if (!TEST_FLAG(projectile->projectile.flags, _projectile_counting_down_bit))
 			SET_FLAG(projectile->projectile.flags, _projectile_counting_down_bit, TRUE);
@@ -744,14 +1158,30 @@ boolean projectile_update(
 		real_vector3d average_velocity = projectile->object.translational_velocity;
 		long ignore_object_index = projectile->projectile.ignore_object_index;
 		real distance_fraction;
+		/* port: (in a sub-step) how far into its tick this pass starts; and
+		whether its speed is set under its final velocity at a strike */
+		real now_ticks;
+		boolean speed_set_at_strike = FALSE;
+
+		/* port: the time this pass covers, in ticks (time_remaining is the
+		update's) */
+		step_ticks = time_remaining * tick_fraction;
+		now_ticks = tick_elapsed + (1.0f - time_remaining) * tick_fraction;
 
 		match_assert_valid_real_vector3d(
 			"c:\\halo\\SOURCE\\items\\projectiles.c",
 			326,
 			&projectile->object.translational_velocity);
 
+		/* (port: wanted before the deceleration, in sub-steps) */
+		if (TEST_FLAG(projectile->object.flags, _object_wholly_under_media_bit))
+			gravity_acceleration = global_gravity * definition->projectile.water_gravity_scale;
+		else
+			gravity_acceleration = global_gravity * definition->projectile.air_gravity_scale;
+
 		if (projectile->projectile.target_object_index != NONE &&
-			definition->projectile.guided_angular_velocity > 0.0f)
+			definition->projectile.guided_angular_velocity > 0.0f &&
+			closes_tick)
 		{
 			struct object_datum *target = object_get(projectile->projectile.target_object_index);
 			real angular_velocity = definition->projectile.guided_angular_velocity * (1.0f / TICKS_PER_SECOND);
@@ -824,10 +1254,10 @@ boolean projectile_update(
 			if (speed > definition->projectile.final_velocity &&
 				projectile->projectile.deceleration != 0.0f)
 			{
-				final_speed = speed - projectile->projectile.deceleration * time_remaining;
+				final_speed = speed - projectile->projectile.deceleration * step_ticks;
 				if (final_speed <= definition->projectile.final_velocity)
 				{
-					real fraction = (speed - definition->projectile.final_velocity) / (projectile->projectile.deceleration * time_remaining);
+					real fraction = (speed - definition->projectile.final_velocity) / (projectile->projectile.deceleration * step_ticks);
 
 					final_speed = definition->projectile.final_velocity * 0.99f;
 					average_speed = (final_speed + speed) * fraction * 0.5f +
@@ -839,7 +1269,7 @@ boolean projectile_update(
 				}
 				else
 				{
-					average_speed = speed - projectile->projectile.deceleration * time_remaining * 0.5f;
+					average_speed = speed - projectile->projectile.deceleration * step_ticks * 0.5f;
 					scale_vector3d(&new_velocity, final_speed / speed, &new_velocity);
 					average_velocity.i = (new_velocity.i + projectile->object.translational_velocity.i) * 0.5f;
 					average_velocity.j = (new_velocity.j + projectile->object.translational_velocity.j) * 0.5f;
@@ -852,14 +1282,31 @@ boolean projectile_update(
 				(projectile->projectile.deceleration != 0.0f ||
 					projectile->projectile.odometer >= projectile->projectile.maximum_damage_distance))
 			{
-				projectile_set_action(projectile_index, _projectile_action_disappear);
+				/* port: (at the projectile's tick's start, as at 30) */
+				if (opens_tick)
+					projectile_set_action(projectile_index, _projectile_action_disappear);
 			}
 			else if (speed < definition->projectile.final_velocity && speed > 0.0f)
 			{
-				scale_vector3d(
-					&new_velocity,
-					definition->projectile.final_velocity / speed * 0.99f,
-					&new_velocity);
+				if (whole_tick)
+				{
+					scale_vector3d(
+						&new_velocity,
+						definition->projectile.final_velocity / speed * 0.99f,
+						&new_velocity);
+				}
+				else if (closes_tick)
+				{
+					/* port: in a sub-step, at the projectile's tick's end (or at a
+					strike before it, below), as its update at 30 sets it for the
+					next tick's travel, not this one's */
+					projectile_set_speed_under_final(definition, &new_velocity,
+						gravity_acceleration * (now_ticks - segment_start));
+				}
+				else
+				{
+					speed_set_at_strike = TRUE;
+				}
 			}
 		}
 
@@ -869,12 +1316,23 @@ boolean projectile_update(
 			valid_real_vector3d(&new_velocity),
 			"projectile velocity is bad after deceleration.");
 
-		if (TEST_FLAG(projectile->object.flags, _object_wholly_under_media_bit))
-			gravity_acceleration = global_gravity * definition->projectile.water_gravity_scale;
+		new_velocity.k -= gravity_acceleration * step_ticks;
+		if (whole_tick)
+		{
+			average_velocity.k -= gravity_acceleration * step_ticks * 0.5f;
+		}
 		else
-			gravity_acceleration = global_gravity * definition->projectile.air_gravity_scale;
-		new_velocity.k -= gravity_acceleration * time_remaining;
-		average_velocity.k -= gravity_acceleration * time_remaining * 0.5f;
+		{
+			/* port: a sub-step travels its share of the line its tick's update
+			at 30 travels (the chord of the arc, from where the tick starts, or
+			where it last struck in it, to where it ends, both on the arc), so
+			that it strikes what it would strike at 30, where and when: its
+			average velocity is that line's, the velocity it had at the line's
+			start less half the rest of the tick's gravity */
+			real gravity_ticks = (1.0f - segment_start) * 0.5f - (now_ticks - segment_start);
+
+			average_velocity.k -= gravity_acceleration * gravity_ticks;
+		}
 
 		match_vassert(
 			"c:\\halo\\SOURCE\\items\\projectiles.c",
@@ -883,12 +1341,15 @@ boolean projectile_update(
 			"projectile velocity is bad after gravity.");
 
 		if (definition->projectile.maximum_range != 0.0f &&
-			average_speed * time_remaining + projectile->projectile.odometer > definition->projectile.maximum_range)
+			average_speed * step_ticks + projectile->projectile.odometer > definition->projectile.maximum_range)
 		{
 			if (average_speed != 0.0f)
 			{
+				/* (port: the speed for the update's share of a tick) */
+				real update_speed = average_speed * tick_fraction;
+
 				distance_fraction = (definition->projectile.maximum_range - projectile->projectile.odometer) /
-					average_speed * time_remaining;
+					update_speed * time_remaining;
 			}
 			else
 			{
@@ -901,7 +1362,7 @@ boolean projectile_update(
 			distance_fraction = 1.0f;
 		}
 
-		point_from_line3d(&projectile->object.position, &average_velocity, distance_fraction * time_remaining, &new_position);
+		point_from_line3d(&projectile->object.position, &average_velocity, distance_fraction * step_ticks, &new_position);
 
 		match_assert_valid_real_point3d(
 			"c:\\halo\\SOURCE\\items\\projectiles.c",
@@ -920,14 +1381,36 @@ boolean projectile_update(
 			(moved = TRUE) &&
 			projectile_collision_test_line(projectile_index, &new_position, &collision))
 		{
-			time_remaining = 1.0f - collision.t;
-			new_velocity.k += gravity_acceleration * time_remaining;
+			SIM_TRACE(sim_trace_projectile_collision(projectile_index, &collision.point, &collision.plane.n, time_remaining, collision.t)); /* port: debug.trace */
+			/* port: (in a sub-step, what is left of it) */
+			if (whole_tick)
+				time_remaining = 1.0f - collision.t;
+			else
+				time_remaining *= 1.0f - collision.t;
+			step_ticks = time_remaining * tick_fraction;
+			new_velocity.k += gravity_acceleration * step_ticks;
 			if (final_speed != 0.0f)
 			{
-				real restored_speed = time_remaining * projectile->projectile.deceleration + final_speed;
+				real restored_speed = step_ticks * projectile->projectile.deceleration + final_speed;
 
 				restored_speed = MIN(restored_speed, speed);
 				scale_vector3d(&new_velocity, restored_speed / final_speed, &new_velocity);
+			}
+			if (!whole_tick)
+			{
+				/* port: where in its tick it struck, from where the line it
+				travels on from here starts; its speed set under its final
+				velocity before it bounces, as its update at 30 sets it at the
+				pass's start */
+				real struck_ticks = tick_elapsed + (1.0f - time_remaining) * tick_fraction;
+
+				if (speed_set_at_strike)
+				{
+					projectile_set_speed_under_final(definition, &new_velocity,
+						gravity_acceleration * (struck_ticks - segment_start));
+				}
+				segment_start = struck_ticks;
+				projectile_segment_set(projectile_index, segment_start);
 			}
 
 			if (collision.plane.n.k > 0.3f)
@@ -967,6 +1450,18 @@ boolean projectile_update(
 		if (moved)
 		{
 			real_vector3d movement;
+			/* port: the update's share of a tick's spin */
+			real rotation_sine = projectile->projectile.rotation_sine;
+			real rotation_cosine = projectile->projectile.rotation_cosine;
+
+			if (!whole_tick &&
+				TEST_FLAG(projectile->projectile.flags, _projectile_has_nonzero_angular_velocity_bit))
+			{
+				real angle = magnitude3d(&projectile->object.angular_velocity) * tick_fraction;
+
+				rotation_sine = sine(angle);
+				rotation_cosine = cosine(angle);
+			}
 
 			vector_from_points3d(&projectile->object.position, &new_position, &movement);
 			projectile->projectile.odometer += magnitude3d(&movement);
@@ -1033,8 +1528,8 @@ boolean projectile_update(
 				rotate_vector_about_axis(
 					&projectile->object.up,
 					&projectile->object.forward,
-					projectile->projectile.rotation_sine,
-					projectile->projectile.rotation_cosine);
+					rotation_sine,
+					rotation_cosine);
 			}
 			else if (TEST_FLAG(projectile->projectile.flags, _projectile_has_nonzero_angular_velocity_bit))
 			{
@@ -1043,13 +1538,13 @@ boolean projectile_update(
 				rotate_vector_about_axis(
 					&projectile->object.forward,
 					&projectile->projectile.rotation_axis,
-					projectile->projectile.rotation_sine,
-					projectile->projectile.rotation_cosine);
+					rotation_sine,
+					rotation_cosine);
 				rotate_vector_about_axis(
 					&projectile->object.up,
 					&projectile->projectile.rotation_axis,
-					projectile->projectile.rotation_sine,
-					projectile->projectile.rotation_cosine);
+					rotation_sine,
+					rotation_cosine);
 				normalize3d(&projectile->object.forward);
 				cross_product3d(&projectile->object.up, &projectile->object.forward, &left);
 				cross_product3d(&projectile->object.forward, &left, &projectile->object.up);
@@ -1068,7 +1563,7 @@ boolean projectile_update(
 				contrail_owner_collision(
 					projectile->object.attachment_indices[projectile->projectile.tracer_attachment_index],
 					FALSE,
-					(1.0f - time_remaining) * seconds_per_tick);
+					(1.0f - time_remaining) * projectile_update_seconds);
 			}
 		}
 
@@ -1086,6 +1581,7 @@ boolean projectile_update(
 		{
 			break;
 		}
+		SIM_TRACE(sim_trace_projectile_detonate(projectile_index)); /* port: debug.trace */
 		projectile_detonate(projectile_index, collision_count == 0, time_remaining);
 		/* the detonated projectile is deleted below */
 
@@ -1100,6 +1596,8 @@ boolean projectile_update(
 		&projectile->object.forward,
 		&projectile->object.up);
 
+	/* port: (a detonation outside an update spans a tick) */
+	projectile_update_seconds = seconds_per_tick;
 	profile_exit(projectile_update_section);
 
 	return TRUE;
@@ -1425,7 +1923,7 @@ static void projectile_detonate(
 		contrail_owner_collision(
 			projectile->object.attachment_indices[projectile->projectile.tracer_attachment_index],
 			FALSE,
-			(1.0f - time_left) * seconds_per_tick);
+			(1.0f - time_left) * projectile_update_seconds);
 	}
 
 	object_get_origin(projectile_index, &marker_points[0]);
@@ -1611,6 +2109,23 @@ static void projectile_collision(
 	{
 		response = material_response->default_response;
 		effect_definition_index = material_response->default_effect.index;
+	}
+
+	/* port: a hit on an overshield plays what the projectile plays on an
+	Elite's shield, when the map has it and it only shows and sounds; how
+	the projectile responds stays the hit's own
+	(port/linux/game/overshield_effect.c) */
+	if (collision->type == _collision_result_object &&
+		VALID_INDEX(_material_elite_energy_shield, definition->projectile.material_responses.count) &&
+		overshield_effect_active(collision->object_index))
+	{
+		struct projectile_material_response_definition const *elite_response = TAG_BLOCK_GET_ELEMENT(
+			&definition->projectile.material_responses,
+			_material_elite_energy_shield,
+			struct projectile_material_response_definition);
+
+		if (overshield_effect_hit_effect_allowed(elite_response->default_effect.index))
+			effect_definition_index = elite_response->default_effect.index;
 	}
 
 	if (collision->type == _collision_result_structure &&

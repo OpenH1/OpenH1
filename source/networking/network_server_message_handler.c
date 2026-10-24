@@ -248,6 +248,8 @@ symbols in this file:
 /* ---------- headers */
 
 #include "cseries.h"
+#include "game_modes.h" /* port: port/linux/game/game_modes.c */
+#include "network_standard.h" /* port: port/linux/game/network_standard.c */
 #include "bungie_net/common/message_header.h"
 #include "bungie_net/network/transport.h"
 #include "bungie_net/network/transport_endpoint_winsock.h"
@@ -590,6 +592,14 @@ static boolean network_game_server_handle_message_client_graceful_game_exit_post
 
 /* ---------- globals */
 
+/* port: where each machine's distributed datagrams come from, by slot.
+The host replies there, since a client may not be on the client port. */
+static struct
+{
+	struct network_connection *connection;
+	struct transport_address address;
+} network_distributed_return_addresses[MAXIMUM_NETWORK_MACHINE_COUNT];
+
 /* ---------- private code */
 
 /* port: a name a machine sends (its machine's, or a player's: they come
@@ -776,6 +786,16 @@ boolean network_game_server_send_message_to_client_machine(
 	return network_game_server_write(connection, buffer, size, NULL, 1);
 }
 
+/* port: whether the server's game is in its lobby, not yet started (a
+Standard game's rate is read again there, and holds from its start:
+network_standard.c) */
+static boolean network_game_server_in_lobby(
+	struct network_game_server *server)
+{
+	return network_game_server_get_state(server, NULL) == _network_game_server_state_pregame &&
+		!network_game_server_game_is_loading(server);
+}
+
 boolean network_game_server_send_game_settings_to_client_machine(
 	struct network_game_server *server,
 	struct network_game_server_client_machine *machine,
@@ -784,6 +804,9 @@ boolean network_game_server_send_game_settings_to_client_machine(
 {
 	struct message_server_game_settings_update message;
 	long offset;
+
+	/* port: a Standard game's rate in its record (a Legacy game's as it was) */
+	network_standard_stamp_game(network_game_server_get_game(server), network_game_server_in_lobby(server));
 
 	for (offset = 0; offset < game_size; offset += sizeof(message.data))
 	{
@@ -879,11 +902,16 @@ boolean network_distributed_server_send_to_machine(
 	connection = network_game_server_get_client_connection(machine);
 	if (!connection || !network_connection_active(connection))
 		return FALSE;
-	/* from the game's public datagram endpoint (the one clients send
-	their game updates to) to the client's, at the address its
-	connection comes from (the write swaps the header in place) */
+	/* to where the client's datagrams come from, else the client port at
+	its connection's address (the write swaps the header in place) */
 	network_connection_get_address(connection, &address, NULL);
 	address.port = NETWORK_GAME_CLIENT_PORT;
+	if (network_distributed_return_addresses[machine_index].connection == connection &&
+		network_distributed_return_addresses[machine_index].address.address.long_words[0] ==
+			address.address.long_words[0])
+	{
+		address = network_distributed_return_addresses[machine_index].address;
+	}
 	csmemcpy(buffer, message, size);
 	return network_game_server_write(network_game_server_get_connection(server), buffer, size, &address, 0);
 }
@@ -1067,6 +1095,8 @@ boolean network_game_server_send_game_settings_to_all_machines(
 		"c:\\halo\\SOURCE\\networking\\network_server_message_handler.c",
 		0x1C8,
 		server);
+	/* port: a Standard game's rate in its record (a Legacy game's as it was) */
+	network_standard_stamp_game(network_game_server_get_game(server), network_game_server_in_lobby(server));
 
 	/* every piece goes out even if one fails for a machine: the others
 	would otherwise keep the old settings (a machine whose connection failed
@@ -1610,8 +1640,10 @@ boolean network_game_server_handle_datagram(
 				those that joined, and only in game: else dropped) */
 				if (network_game_server_get_state(server, NULL) == _network_game_server_state_ingame)
 				{
+					/* port: not the host's own machine first (a second game on its
+					computer shares its address) */
 					struct network_game_server_client_machine *client_machine =
-						network_game_server_get_client_machine_at_address(server, source_address->address.long_words[0]);
+						network_game_server_get_remote_client_machine_at_address(server, source_address->address.long_words[0]);
 
 					/* (and has loaded it, as for its reliable messages) */
 					if (client_machine && network_game_server_client_machine_is_loaded(server, client_machine))
@@ -1620,6 +1652,14 @@ boolean network_game_server_handle_datagram(
 
 						network_game_server_client_machine_heard(server, client_machine);
 						network_game_server_get_client_machine(server, client_machine, &machine_index);
+						/* port: where its datagrams come from, which the host answers
+						(network_distributed_return_addresses) */
+						if (VALID_INDEX(machine_index, MAXIMUM_NETWORK_MACHINE_COUNT))
+						{
+							network_distributed_return_addresses[machine_index].connection =
+								network_game_server_get_client_connection(client_machine);
+							network_distributed_return_addresses[machine_index].address = *source_address;
+						}
 						network_distributed_handle_message(machine_index, message, datagram_size);
 					}
 				}
@@ -1692,9 +1732,12 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 	boolean result = TRUE;
 	/* port: the advertisement is broadcast (to every internet play peer
 	too): one each so often answers every machine searching, and a flood of
-	searches no more */
+	searches no more. A searcher not on the client port hears no broadcast,
+	so it is answered directly every time. */
 	static unsigned long last_advertised_time = 0;
 	unsigned long now = system_milliseconds();
+	boolean broadcast_due = !last_advertised_time || now - last_advertised_time >= GAME_ADVERTISEMENT_INTERVAL;
+	boolean answer_directly = source_address && source_address->port != NETWORK_GAME_CLIENT_PORT;
 
 	match_assert(
 		"c:\\halo\\SOURCE\\networking\\network_server_message_handler.c",
@@ -1704,8 +1747,9 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 	{
 		struct network_game *game = network_game_server_get_game(server);
 
-		/* (the time taken only by a search answered) */
-		if (game && last_advertised_time && now - last_advertised_time < GAME_ADVERTISEMENT_INTERVAL)
+		/* (the time taken only by a search answered; port: one off the client
+		port is always answered) */
+		if (game && !broadcast_due && !answer_directly)
 			return TRUE;
 		if (game)
 		{
@@ -1756,8 +1800,21 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 			/* the native builds' network version and netcode (a client
 			refuses a host of another version, or of the lockstep netcode
 			older builds had: network_client_manager.c) */
-			advertisement.reserved[HALO_PORT_ADVERTISED_VERSION_OFFSET] = (byte)(HALO_PORT_NETWORK_VERSION & 0xFF);
-			advertisement.reserved[HALO_PORT_ADVERTISED_VERSION_OFFSET + 1] = (byte)(HALO_PORT_NETWORK_VERSION >> 8);
+			/* port: (a Standard game's protocol version in its place, which
+			builds that know nothing of Standard games take for a newer
+			version, and its rate: network_standard.c) */
+			{
+				word version = network_standard_hosting() ?
+					HALO_PORT_STANDARD_ADVERTISED_VERSION : HALO_PORT_NETWORK_VERSION;
+
+				advertisement.reserved[HALO_PORT_ADVERTISED_VERSION_OFFSET] = (byte)(version & 0xFF);
+				advertisement.reserved[HALO_PORT_ADVERTISED_VERSION_OFFSET + 1] = (byte)(version >> 8);
+				if (network_standard_hosting())
+				{
+					advertisement.reserved[HALO_PORT_ADVERTISED_RATE_OFFSET] =
+						(byte)network_standard_server_rate(network_game_server_in_lobby(server));
+				}
+			}
 			advertisement.reserved[HALO_PORT_ADVERTISED_FLAGS_OFFSET] =
 				HALO_PORT_ADVERTISED_DISTRIBUTED_FLAG;
 			if (network_game_server_get_state(server, NULL) != _network_game_server_state_pregame ||
@@ -1765,6 +1822,9 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 			{
 				advertisement.reserved[HALO_PORT_ADVERTISED_FLAGS_OFFSET] |= HALO_PORT_ADVERTISED_IN_PROGRESS_FLAG;
 			}
+			/* (an OpenCE gametype's kind, the server browser's name for it) */
+			advertisement.reserved[HALO_PORT_ADVERTISED_KIND_OFFSET] = game_modes_kind(&game->variant,
+				&game->variant_options);
 			/* (open to joins: not while the machines load the game, nor
 			once it is over, nor in progress when no player can join it) */
 			if (network_game_server_get_state(server, NULL) == _network_game_server_state_ingame
@@ -1781,22 +1841,26 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 				sizeof(advertisement));
 			if (reply)
 			{
-				word message_size = GET_MESSAGE_SIZE(reply->header);
 				struct network_connection *connection =
 					network_game_server_get_connection(server);
 
-				last_advertised_time = now ? now : 1;
-				result = network_game_server_write(
-					connection,
-					reply,
-					message_size,
-					&address,
-					0);
-				if (!result)
+				/* port: the broadcast when it is due, and a searcher off the
+				client port answered directly */
+				if (broadcast_due)
 				{
-					network_event(
-						"network_game_server_write() failed in handle_message_client_broadcast_game_search()");
+					last_advertised_time = now ? now : 1;
+					result = network_game_server_write(connection, reply, GET_MESSAGE_SIZE(reply->header), &address, 0);
+					if (!result)
+					{
+						network_event(
+							"network_game_server_write() failed in handle_message_client_broadcast_game_search()");
+					}
+					/* (the write swapped the header in place: a fresh copy for the next) */
+					reply = answer_directly ? create_network_game_message(_message_server_game_advertise,
+						&advertisement, sizeof(advertisement)) : NULL;
 				}
+				if (answer_directly && reply)
+					network_game_server_write(connection, reply, GET_MESSAGE_SIZE(reply->header), source_address, 0);
 			}
 			else
 			{
@@ -1954,6 +2018,10 @@ static boolean network_game_server_handle_message_client_join_game_request(
 				byte join_game_token[JOIN_GAME_TOKEN_LENGTH];
 
 				network_game_generate_join_game_token(join_game_token);
+				/* port: a Standard game takes a Standard game's token alone
+				(network_standard.c): a machine that is not of it is refused */
+				if (network_standard_hosting())
+					network_standard_join_token(join_game_token, sizeof(join_game_token));
 				if (!csmemcmp(
 					join_game_request.join_game_token,
 					join_game_token,

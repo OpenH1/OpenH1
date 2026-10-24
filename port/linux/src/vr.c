@@ -884,10 +884,12 @@ static struct
 	int holsters;
 	int physical_crouch;
 	/* vr.scopes and vr.scope_view: HALO_VR_SCOPES_*, 0 off; the smart-link's
-	window, how wide (degrees, vr.smartlink_size), and how the weapon in hand
-	shows over it (vr.scope_gun: 0 hidden, 1 ghost, 2 visible) */
+	window, how wide (degrees, vr.smartlink_size), where it is (on the visor,
+	vr.smartlink_place = "visor"; else at the reticle), and how the weapon in
+	hand shows over it (vr.scope_gun: 0 hidden, 1 ghost, 2 visible) */
 	int scopes;
 	float smartlink_degrees;
+	int smartlink_visor;
 	int scope_gun;
 	int manual_reload;
 	/* vr.vehicle_flip: what flips an overturned vehicle, X ("button",
@@ -1042,6 +1044,7 @@ static void settings_read(void)
 	if (settings.smartlink_degrees < SMARTLINK_NARROWEST || settings.smartlink_degrees > SMARTLINK_WIDEST)
 		settings.smartlink_degrees = settings.smartlink_degrees < SMARTLINK_NARROWEST ? SMARTLINK_NARROWEST :
 			SMARTLINK_WIDEST;
+	settings.smartlink_visor = !strcmp(config_string("vr.smartlink_place"), "visor");
 	settings.scope_gun = !strcmp(config_string("vr.scope_gun"), "visible") ? 2 :
 		!strcmp(config_string("vr.scope_gun"), "ghost") ? 1 : 0;
 	settings.manual_reload = config_boolean("vr.manual_reload");
@@ -2325,6 +2328,13 @@ void halo_vr_smartlink_view(float *degrees, float *distance)
 	*distance = settings.hud_distance;
 }
 
+int halo_vr_smartlink_hud(float *hud_degrees)
+{
+	settings_read();
+	*hud_degrees = settings.hud_size;
+	return settings.smartlink_visor;
+}
+
 void halo_vr_scope(const struct halo_vr_scope *scope)
 {
 	vr.scope_set = scope != NULL;
@@ -2598,6 +2608,13 @@ void halo_vr_scope_animation(float *opened_seconds, float *closing, float *switc
 	*opened_seconds = vr.scope.opened_seconds;
 	*closing = vr.scope.closing;
 	*switched_seconds = vr.scope.switched_seconds;
+}
+
+void halo_vr_scope_shape(float *corner, float *dim, float *feather)
+{
+	*corner = vr.scope_set ? vr.scope.corner : -1.0f;
+	*dim = vr.scope_set ? vr.scope.dim : 0.0f;
+	*feather = vr.scope_set ? vr.scope.feather : 0.0f;
 }
 
 int halo_vr_scope_gun(void)
@@ -5487,6 +5504,118 @@ void halo_vr_gamepad(void *gamepad)
 		stick_merge(&pad->sThumbRX, vr.input.right_stick[0]);
 		stick_merge(&pad->sThumbRY, vr.input.right_stick[1]);
 	}
+}
+
+/* ---------- the HUD's prompts (port/linux/game/hud_key_prompts.c) */
+
+/* the controller inputs that press each of the game's controller buttons
+(halo_vr_gamepad's, in the game's order: A, B, X, Y, black, white, the
+triggers, the d-pad, Start, Back, the sticks' clicks), and the names they
+have when the runtime names none: the Frame's, or the Touch's, which have
+grips where the Frame has bumpers */
+static const struct
+{
+	int input;
+	const char *frame_name;
+	const char *touch_name;
+} prompt_inputs[] =
+{
+	{ VR_BUTTON_A, "A", "A" },
+	{ VR_BUTTON_B, "B", "B" },
+	{ VR_BUTTON_X, "X", "X" },
+	{ VR_BUTTON_Y, "Y", "Y" },
+	{ VR_BUTTON_RIGHT_BUMPER, "Right Bumper", "Right Grip" },
+	{ VR_BUTTON_LEFT_BUMPER, "Left Bumper", "Left Grip" },
+	{ VR_INPUT_LEFT_TRIGGER, "Left Trigger", "Left Trigger" },
+	{ VR_INPUT_RIGHT_TRIGGER, "Right Trigger", "Right Trigger" },
+	{ VR_BUTTON_DPAD_UP, "D-Pad Up", "D-Pad Up" },
+	{ VR_BUTTON_DPAD_DOWN, "D-Pad Down", "D-Pad Down" },
+	{ VR_BUTTON_DPAD_LEFT, "D-Pad Left", "D-Pad Left" },
+	{ VR_BUTTON_DPAD_RIGHT, "D-Pad Right", "D-Pad Right" },
+	{ VR_BUTTON_MENU, "Menu", "Menu" },
+	{ VR_BUTTON_VIEW, "View", "View" },
+	{ VR_BUTTON_LEFT_STICK, "Left Thumbstick Click", "Left Thumbstick Click" },
+	{ VR_BUTTON_RIGHT_STICK, "Right Thumbstick Click", "Right Thumbstick Click" },
+};
+
+#define PROMPT_INPUTS ((int)(sizeof(prompt_inputs) / sizeof(prompt_inputs[0])))
+/* how long the runtime's names are kept before they are asked again (the
+controllers, and with them the bindings, may change) */
+#define PROMPT_NAMES_MS 5000
+
+/* UTF-8 as the HUD's text takes it, Latin-1: 0 for a character beyond */
+static int prompt_name_latin1(const char *utf8, char *name, unsigned long size)
+{
+	const unsigned char *in = (const unsigned char *)utf8;
+	unsigned long used = 0;
+
+	while (*in && used + 1 < size)
+	{
+		if (*in < 0x80)
+			name[used++] = (char)*in++;
+		else if ((in[0] == 0xc2 || in[0] == 0xc3) && (in[1] & 0xc0) == 0x80)
+		{
+			name[used++] = (char)(((in[0] & 0x03) << 6) | (in[1] & 0x3f));
+			in += 2;
+		}
+		else
+			return 0;
+	}
+	name[used] = 0;
+	return used > 0;
+}
+
+int halo_vr_button_name(int button, char *name, unsigned long size)
+{
+	static char names[PROMPT_INPUTS][64];
+	static unsigned long named_at;
+	static int named;
+	unsigned long now = GetTickCount();
+	int index;
+
+	if (!size)
+		return 0;
+	name[0] = 0;
+	if (!vr.initialized || button < 0 || button >= PROMPT_INPUTS)
+		return 0;
+	/* (the left trigger thrown by the hand alone, on foot: vr.grenade_throw
+	"gesture", halo_vr_gamepad) */
+	if (button == 6 && settings.throw_gesture_only && settings.controller_aim && vr.crouch_able_frame)
+	{
+		snprintf(name, size, "%s", "Left Hand Throw");
+		return 1;
+	}
+	if (!named || now - named_at >= PROMPT_NAMES_MS)
+	{
+		char text[64];
+
+		named = 1;
+		named_at = now;
+		for (index = 0; index < PROMPT_INPUTS; index++)
+		{
+			char kept[sizeof(names[index])];
+
+			memcpy(kept, names[index], sizeof(kept));
+			if (!host_vr_input_name(prompt_inputs[index].input, text, (int)sizeof(text)) ||
+				!prompt_name_latin1(text, names[index], sizeof(names[index])))
+			{
+				names[index][0] = 0;
+			}
+			/* (each name the runtime gives, said as it changes) */
+			if (strcmp(kept, names[index]))
+				platform_log("vr: the prompts' %s is \"%s\"", prompt_inputs[index].frame_name, names[index]);
+		}
+	}
+	index = button;
+	/* the game's triggers are the dominant hand's and the other's
+	(hands_assign_input), the sticks' clicks the move's and the turn's */
+	if (settings.left_handed && (button == 6 || button == 7))
+		index = button == 6 ? 7 : 6;
+	if (settings.swap_sticks && (button == 14 || button == 15))
+		index = button == 14 ? 15 : 14;
+	snprintf(name, size, "%s", names[index][0] ? names[index] :
+		strstr(vr.info.system_name, "Frame") ? prompt_inputs[index].frame_name : prompt_inputs[index].touch_name);
+	return 1;
 }
 
 void halo_vr_rumble(float left, float right)

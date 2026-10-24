@@ -644,6 +644,7 @@ symbols in this file:
 /* ---------- headers */
 
 #include "cseries.h"
+#include "infection.h" /* port: port/linux/game/infection.c */
 #include "units.h"
 
 #include "bipeds.h"
@@ -695,6 +696,7 @@ symbols in this file:
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "coop_scripts.h" /* port: port/linux/game/coop_scripts.c */
 #include "coop_enemies.h" /* port: port/linux/game/coop_enemies.c */
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 
 /* port: the control and animation impulses the host's actors give their
 units go to the clients' copies (port/linux/game/network_actors.c) */
@@ -997,6 +999,9 @@ static void unit_drop_inventory_weapons(
 	long unit_index);
 
 static void unit_verify_vectors(long unit_index, char const *debugstring);
+static void unit_update_aim(long unit_index, boolean in_substeps);
+static void unit_aim_substeps_add(long unit_index);
+static void unit_aim_substep(short substep_index, short substep_count, real seconds);
 static void unit_running_blind(long unit_index, real_vector3d *run_vector);
 
 static boolean unit_integrated_night_vision_is_active(long unit_index);
@@ -1014,6 +1019,18 @@ static struct unit_globals *unit_globals;
 
 static struct profile_section unit_update_section = {"unit_update", NONE, TRUE};
 
+/* port: the units whose aim turns in the fast phase this tick, through its
+first sub-step in unit_update and through the others in unit_aim_substep,
+which forgets them at the tick's last: a tick's only, kept outside the game
+state (nothing of a sub-step outlives its tick, sim_rate.h). One gone since,
+or no longer of the micro lane, is NONE */
+static struct
+{
+	long time;
+	short count;
+	long unit_indices[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
+} unit_aim_substep_globals = { NONE, 0 };
+
 boolean debug_objects_unit_mouth_apeture;
 boolean debug_objects_unit_seats;
 boolean debug_objects_unit_vectors;
@@ -1030,6 +1047,8 @@ void units_initialize(
 {
 	unit_globals = (struct unit_globals *)game_state_malloc("unit globals", NULL, sizeof(*unit_globals));
 	match_assert("c:\\halo\\SOURCE\\units\\units.c", 264, unit_globals);
+	/* port: the players' units' aim in the fast phase (sim_rate.h) */
+	sim_substep_register(_sim_substep_units, unit_aim_substep);
 
 	return;
 }
@@ -1051,6 +1070,8 @@ void units_dispose_from_old_map(
 void units_dispose(
 	void)
 {
+	sim_substep_register(_sim_substep_units, NULL);
+	unit_aim_substep_globals.count = 0;
 	return;
 }
 
@@ -2162,6 +2183,10 @@ boolean unit_add_grenade_to_inventory(
 	boolean result = FALSE;
 	static boolean grenade_type_reported = FALSE;
 
+	/* port: an Infection zombie takes no grenades */
+	if (infection_unit_is_zombie(unit_index))
+		return FALSE;
+
 	match_assert(
 		"c:\\halo\\SOURCE\\units\\units.c",
 		7282,
@@ -2225,6 +2250,9 @@ boolean unit_add_equipment_to_inventory(
 		7330,
 		equipment_definition->equipment.powerup_type!=_equipment_powerup_grenade);
 
+	/* port: nor powerups */
+	if (infection_unit_is_zombie(unit_index))
+		return FALSE;
 	if (unit->unit.equipment_object_index!=NONE && replace==TRUE)
 	{
 		object_delete(unit->unit.equipment_object_index);
@@ -3060,6 +3088,9 @@ boolean unit_enter_seat(
 {
 	boolean result = FALSE;
 
+	/* port: and fights on foot */
+	if (infection_unit_is_zombie(unit_index))
+		return FALSE;
 	if (unit_can_enter_seat(unit_index, target_unit_index, seat_index, NULL))
 	{
 		struct unit_datum *unit = unit_get(unit_index);
@@ -5114,20 +5145,18 @@ void unit_render_debug(
 		struct object_marker marker;
 		real mouth_aperture;
 
-		/*
-		 * BUG (original): January ignores the marker count and consumes the
-		 * output even when the requested head marker is absent. A safe,
-		 * intentionally nonmatching build should render only when this call
-		 * returns a value greater than zero.
-		 */
-		object_get_marker_by_name(unit_index, "head", &marker, 1);
-		mouth_aperture = unit->unit.mouth_aperture;
-		origin = marker.matrix.position;
-		render_debug_string_at_point(
-			FALSE,
-			&origin,
-			csprintf(temporary, "%.2f", mouth_aperture),
-			global_real_argb_orange);
+		/* port: the Xbox's bug fixed: it ignored the marker count and read
+		the marker of a unit with no head marker uninitialised */
+		if (object_get_marker_by_name(unit_index, "head", &marker, 1) > 0)
+		{
+			mouth_aperture = unit->unit.mouth_aperture;
+			origin = marker.matrix.position;
+			render_debug_string_at_point(
+				FALSE,
+				&origin,
+				csprintf(temporary, "%.2f", mouth_aperture),
+				global_real_argb_orange);
+		}
 	}
 
 	return;
@@ -5740,11 +5769,6 @@ boolean unit_update(
 
 	if (!TEST_FLAG(unit_definition->unit.flags, _unit_has_no_aiming_bit))
 	{
-		real aim_scale;
-		real aiming_velocity_limit;
-		real aiming_angular_acceleration_limit;
-		real_vector3d last_aiming_vector;
-
 		if (!TEST_FLAG(unit->object.damage_flags, _object_dead_bit))
 		{
 			if (TEST_FLAG(unit->object.damage_flags, _object_cannot_hold_weapon_bit))
@@ -5835,112 +5859,21 @@ boolean unit_update(
 
 		unit_verify_vectors(unit_index, "unit-update-prevectors");
 
-		if (unit->unit.aiming_speed==_unit_aiming_speed_casual)
+		/* port: through a sub-step's share of the tick for a player's unit (or
+		a vehicle a player guns, vehicles.c) of the micro lane in a tick with
+		sub-steps, the fast phase turning it through the others
+		(unit_aim_substep); else the tick's, as it always did. (The AI's bipeds, of the micro lane too, turn their aim on the
+		tick: its weapon fires on the tick, at the aim the tick turned to, as
+		at 30, and only their bodies move in the sub-steps, bipeds.c) */
+		if ((unit->unit.player_index != NONE || vehicle_gunned_by_player(unit_index)) && object_lane_moves_in_substeps(unit_index))
 		{
-			aim_scale = unit_definition->unit.casual_aiming_modifier;
+			unit_update_aim(unit_index, TRUE);
+			unit_aim_substeps_add(unit_index);
 		}
 		else
 		{
-			aim_scale = 1.f;
+			unit_update_aim(unit_index, FALSE);
 		}
-
-		aiming_velocity_limit = aim_scale*unit_definition->unit.aiming_velocity_maximum/TICKS_PER_SECOND;
-		aiming_angular_acceleration_limit = aim_scale*unit_definition->unit.aiming_acceleration_maximum/(TICKS_PER_SECOND*TICKS_PER_SECOND);
-		last_aiming_vector = unit->unit.aiming_vector;
-
-		if (aiming_velocity_limit==0.f && aiming_angular_acceleration_limit==0.f)
-		{
-			match_assert_valid_real_normal3d("c:\\halo\\SOURCE\\units\\units.c", 993, &unit->unit.desired_aiming_vector);
-			
-			unit->unit.aiming_vector = unit->unit.desired_aiming_vector;
-			unit_clip_to_aiming_bounds(unit_index, &unit->unit.aiming_vector, TRUE);
-			unit->unit.aiming_velocity = *global_zero_vector3d;
-			unit_verify_vectors(unit_index, "unit-update-aim-set");
-		}
-		else if (unit->unit.animation.aiming_with_euler_screen)
-		{
-			real_matrix4x3 object_matrix;
-
-			object_matrix.scale = 1.f;
-			object_get_orientation(unit_index, &object_matrix.forward, &object_matrix.up);
-			cross_product3d(&object_matrix.up, &object_matrix.forward, &object_matrix.left);
-			object_matrix.position = *global_origin3d;
-
-			unit_euler_aiming_update(
-				&object_matrix,
-				&unit->unit.aiming_vector,
-				&unit->unit.desired_aiming_vector,
-				&unit->unit.aiming_velocity,
-				&unit->unit.animation.aiming_screen_bounds,
-				aiming_velocity_limit,
-				aiming_angular_acceleration_limit);
-
-			unit_verify_vectors(unit_index, "unit-update-aim-euler");
-		}
-		else
-		{
-			angular_accelerate_to_position(
-				&unit->unit.aiming_vector,
-				&unit->unit.desired_aiming_vector,
-				&unit->unit.aiming_velocity,
-				aiming_velocity_limit,
-				aiming_angular_acceleration_limit);
-			unit_verify_vectors(unit_index, "unit-update-aim-3d");
-		}
-
-		{
-			real angle = angle_between_vectors3d(&unit->unit.aiming_vector, &last_aiming_vector);
-			real change = angle / (unit_definition->unit.aiming_velocity_maximum/TICKS_PER_SECOND);
-				
-			unit->unit.aiming_change = (byte)(PIN(change, 0.f, 1.f) * 255.f);
-		}
-
-		match_assert_valid_real_normal3d("c:\\halo\\SOURCE\\units\\units.c", 1032, &unit->unit.aiming_vector);
-
-		{
-			real looking_velocity_limit = (aim_scale*unit_definition->unit.looking_velocity_maximum)/((real)TICKS_PER_SECOND);
-			real looking_angular_acceleration_limit = (aim_scale*unit_definition->unit.looking_acceleration_maximum)/900.f;
-
-			if (looking_velocity_limit==0.f && looking_angular_acceleration_limit==0.f)
-			{
-				unit->unit.looking_vector = unit->unit.desired_looking_vector;
-				unit_clip_to_aiming_bounds(unit_index, &unit->unit.looking_vector, FALSE);
-				unit->unit.looking_velocity = *global_zero_vector3d;
-
-				unit_verify_vectors(unit_index, "unit-update-look-set");
-			}
-			else if (unit->unit.animation.looking_with_euler_screen)
-			{
-				real_matrix4x3 object_matrix;
-
-				object_matrix.scale = 1.f;
-				object_get_orientation(unit_index, &object_matrix.forward, &object_matrix.up);
-				cross_product3d(&object_matrix.up, &object_matrix.forward, &object_matrix.left);
-				object_matrix.position = *global_origin3d;
-
-				unit_euler_aiming_update(
-					&object_matrix,
-					&unit->unit.looking_vector,
-					&unit->unit.desired_looking_vector,
-					&unit->unit.looking_velocity,
-					&unit->unit.animation.looking_screen_bounds,
-					looking_velocity_limit,
-					looking_angular_acceleration_limit);
-
-				unit_verify_vectors(unit_index, "unit-update-look-euler");
-			}
-			else
-			{
-				angular_accelerate_to_position(
-					&unit->unit.looking_vector,
-					&unit->unit.desired_looking_vector,
-					&unit->unit.looking_velocity,
-					looking_velocity_limit,
-					looking_angular_acceleration_limit);
-				unit_verify_vectors(unit_index, "unit-update-look-3d");
-			}
-		}
-
 
 		match_assert_valid_real_normal3d("c:\\halo\\SOURCE\\units\\units.c", 1076, &unit->unit.looking_vector);
 
@@ -6307,6 +6240,223 @@ boolean unit_update(
 	profile_exit(unit_update_section);
 	
 	return TRUE;
+}
+
+
+/* port: a unit's aim and look turned toward the desired ones, through the
+tick (unit_update's, as it always did) or, in_substeps, through a sub-step
+of it (sim_rate.h): a unit of the micro lane in a tick with sub-steps turns
+through the first in unit_update and through the others in the fast phase
+(unit_aim_substep), so that a shot fired in a sub-step (weapons.c) flies
+along the aim of that sub-step's time, the desired aim the players' control
+gives it there (player_control.c). A tick's limits are taken as a
+sub-step's, its velocity as kept in the unit (per tick) as a sub-step's for
+the turn and back after it: the turn per second is the same at every rate.
+The aiming change (the unit's function) is the sub-step's turn as a share
+of its limit, as the tick's is of the tick's */
+static void unit_update_aim(
+	long unit_index,
+	boolean in_substeps)
+{
+	struct unit_datum *unit = unit_get(unit_index);
+	struct unit_definition *unit_definition = unit_definition_get(unit->definition_index);
+	real aim_scale;
+	real aiming_velocity_limit;
+	real aiming_angular_acceleration_limit;
+	real aiming_change_limit;
+	real looking_velocity_limit;
+	real looking_angular_acceleration_limit;
+	real_vector3d last_aiming_vector;
+
+	if (unit->unit.aiming_speed==_unit_aiming_speed_casual)
+	{
+		aim_scale = unit_definition->unit.casual_aiming_modifier;
+	}
+	else
+	{
+		aim_scale = 1.f;
+	}
+
+	aiming_velocity_limit = aim_scale*unit_definition->unit.aiming_velocity_maximum/TICKS_PER_SECOND;
+	aiming_angular_acceleration_limit = aim_scale*unit_definition->unit.aiming_acceleration_maximum/(TICKS_PER_SECOND*TICKS_PER_SECOND);
+	aiming_change_limit = unit_definition->unit.aiming_velocity_maximum/TICKS_PER_SECOND;
+	looking_velocity_limit = (aim_scale*unit_definition->unit.looking_velocity_maximum)/((real)TICKS_PER_SECOND);
+	looking_angular_acceleration_limit = (aim_scale*unit_definition->unit.looking_acceleration_maximum)/900.f;
+	if (in_substeps)
+	{
+		/* (a turn's limits per tick, and its velocity kept per tick, as one
+		sub-step's: exact scalings by a power of two) */
+		aiming_velocity_limit = sim_per_substep(aiming_velocity_limit);
+		aiming_angular_acceleration_limit = sim_per_substep_squared(aiming_angular_acceleration_limit);
+		aiming_change_limit = sim_per_substep(aiming_change_limit);
+		looking_velocity_limit = sim_per_substep(looking_velocity_limit);
+		looking_angular_acceleration_limit = sim_per_substep_squared(looking_angular_acceleration_limit);
+		scale_vector3d(&unit->unit.aiming_velocity, sim_substep_tick_fraction(), &unit->unit.aiming_velocity);
+		scale_vector3d(&unit->unit.looking_velocity, sim_substep_tick_fraction(), &unit->unit.looking_velocity);
+	}
+	last_aiming_vector = unit->unit.aiming_vector;
+
+	if (aiming_velocity_limit==0.f && aiming_angular_acceleration_limit==0.f)
+	{
+		match_assert_valid_real_normal3d("c:\\halo\\SOURCE\\units\\units.c", 993, &unit->unit.desired_aiming_vector);
+		
+		unit->unit.aiming_vector = unit->unit.desired_aiming_vector;
+		unit_clip_to_aiming_bounds(unit_index, &unit->unit.aiming_vector, TRUE);
+		unit->unit.aiming_velocity = *global_zero_vector3d;
+		unit_verify_vectors(unit_index, "unit-update-aim-set");
+	}
+	else if (unit->unit.animation.aiming_with_euler_screen)
+	{
+		real_matrix4x3 object_matrix;
+
+		object_matrix.scale = 1.f;
+		object_get_orientation(unit_index, &object_matrix.forward, &object_matrix.up);
+		cross_product3d(&object_matrix.up, &object_matrix.forward, &object_matrix.left);
+		object_matrix.position = *global_origin3d;
+
+		unit_euler_aiming_update(
+			&object_matrix,
+			&unit->unit.aiming_vector,
+			&unit->unit.desired_aiming_vector,
+			&unit->unit.aiming_velocity,
+			&unit->unit.animation.aiming_screen_bounds,
+			aiming_velocity_limit,
+			aiming_angular_acceleration_limit);
+
+		unit_verify_vectors(unit_index, "unit-update-aim-euler");
+	}
+	else
+	{
+		angular_accelerate_to_position(
+			&unit->unit.aiming_vector,
+			&unit->unit.desired_aiming_vector,
+			&unit->unit.aiming_velocity,
+			aiming_velocity_limit,
+			aiming_angular_acceleration_limit);
+		unit_verify_vectors(unit_index, "unit-update-aim-3d");
+	}
+
+	{
+		real angle = angle_between_vectors3d(&unit->unit.aiming_vector, &last_aiming_vector);
+		real change = angle / aiming_change_limit;
+
+		unit->unit.aiming_change = (byte)(PIN(change, 0.f, 1.f) * 255.f);
+	}
+
+	match_assert_valid_real_normal3d("c:\\halo\\SOURCE\\units\\units.c", 1032, &unit->unit.aiming_vector);
+
+	if (looking_velocity_limit==0.f && looking_angular_acceleration_limit==0.f)
+	{
+		unit->unit.looking_vector = unit->unit.desired_looking_vector;
+		unit_clip_to_aiming_bounds(unit_index, &unit->unit.looking_vector, FALSE);
+		unit->unit.looking_velocity = *global_zero_vector3d;
+
+		unit_verify_vectors(unit_index, "unit-update-look-set");
+	}
+	else if (unit->unit.animation.looking_with_euler_screen)
+	{
+		real_matrix4x3 object_matrix;
+
+		object_matrix.scale = 1.f;
+		object_get_orientation(unit_index, &object_matrix.forward, &object_matrix.up);
+		cross_product3d(&object_matrix.up, &object_matrix.forward, &object_matrix.left);
+		object_matrix.position = *global_origin3d;
+
+		unit_euler_aiming_update(
+			&object_matrix,
+			&unit->unit.looking_vector,
+			&unit->unit.desired_looking_vector,
+			&unit->unit.looking_velocity,
+			&unit->unit.animation.looking_screen_bounds,
+			looking_velocity_limit,
+			looking_angular_acceleration_limit);
+
+		unit_verify_vectors(unit_index, "unit-update-look-euler");
+	}
+	else
+	{
+		angular_accelerate_to_position(
+			&unit->unit.looking_vector,
+			&unit->unit.desired_looking_vector,
+			&unit->unit.looking_velocity,
+			looking_velocity_limit,
+			looking_angular_acceleration_limit);
+		unit_verify_vectors(unit_index, "unit-update-look-3d");
+	}
+
+	if (in_substeps)
+	{
+		scale_vector3d(&unit->unit.aiming_velocity, (real)sim_substep_count(), &unit->unit.aiming_velocity);
+		scale_vector3d(&unit->unit.looking_velocity, (real)sim_substep_count(), &unit->unit.looking_velocity);
+	}
+
+	return;
+}
+
+/* port: a unit whose aim turns in this tick's sub-steps (unit_update_aim) */
+static void unit_aim_substeps_add(
+	long unit_index)
+{
+	long time = game_time_get();
+
+	if (unit_aim_substep_globals.time != time)
+	{
+		unit_aim_substep_globals.time = time;
+		unit_aim_substep_globals.count = 0;
+	}
+	/* (a player's unit: no more of them than players) */
+	if (unit_aim_substep_globals.count < (short)NUMBEROF(unit_aim_substep_globals.unit_indices))
+	{
+		unit_aim_substep_globals.unit_indices[unit_aim_substep_globals.count++] = unit_index;
+	}
+
+	return;
+}
+
+/* port: the fast phase's units slot (sim_rate.h), after the players'
+control and before their bipeds' and weapons': the tick's units of the micro
+lane, each one's aim and look turned through a sub-step after its first
+(unit_update's), and forgotten at the last. One deleted since, or no longer
+of the micro lane (a vehicle's seat, whose lane it is then), is left on the
+tick */
+static void unit_aim_substep(
+	short substep_index,
+	short substep_count,
+	real seconds)
+{
+	(void)seconds;
+
+	if (substep_index > 0 &&
+		unit_aim_substep_globals.time == game_time_get())
+	{
+		short i;
+
+		for (i = 0; i < unit_aim_substep_globals.count; i++)
+		{
+			long unit_index = unit_aim_substep_globals.unit_indices[i];
+
+			if (unit_index == NONE)
+				continue;
+			if (!unit_try_and_get(unit_index) ||
+				TEST_FLAG(object_header_get(unit_index)->flags, _object_header_being_deleted_bit) ||
+				!object_lane_moves_in_substeps(unit_index))
+			{
+				unit_aim_substep_globals.unit_indices[i] = NONE;
+				continue;
+			}
+
+			unit_verify_vectors(unit_index, "unit-substep-prevectors");
+			unit_update_aim(unit_index, TRUE);
+			unit_verify_vectors(unit_index, "unit-substep-postvector");
+		}
+	}
+
+	if (substep_index >= substep_count - 1)
+	{
+		unit_aim_substep_globals.count = 0;
+	}
+
+	return;
 }
 
 
@@ -7763,8 +7913,13 @@ boolean unit_drop_selected_weapon(
 		TEST_FLAG(weapon_definition_get(weapon_get(weapon_index)->definition_index)->weapon.flags,
 			_weapon_doesnt_count_toward_maximum_bit))
 	{
+		/* port: (an Infection zombie keeps its skull: infection.c) */
+		if (!infection_allow_weapon_drop(unit_index, unit_get_current_weapon_index(unit_index)))
+			return FALSE;
 		return unit_drop_current_weapon(unit_index, TRUE);
 	}
+	if (!infection_allow_weapon_drop(unit_index, weapon_index))
+		return FALSE;
 	unit_drop_item(unit_index, weapon_index);
 	unit->unit.weapon_object_indices[slot] = NONE;
 	unit->unit.desired_weapon_index = unit->unit.current_weapon_index!=NONE ?
@@ -9101,8 +9256,11 @@ void unit_cause_player_melee_damage(
 						long hit_object_index = collision.object_index;
 						struct object_datum *hit_object = object_get(hit_object_index);
 
+						/* port: (an Infection zombie's skull hits a rider in an open
+						seat itself: infection.c) */
 						if (hit_object->object.type!=_object_type_weapon &&
-							hit_object->object.parent_object_index!=NONE)
+							hit_object->object.parent_object_index!=NONE &&
+							!infection_melee_rider_target(unit_index, hit_object_index))
 						{
 							hit_object_index = hit_object->object.parent_object_index;
 							hit_object = object_get(hit_object_index);
@@ -9212,6 +9370,9 @@ void unit_cause_player_melee_damage(
 			struct damage_data damage_data;
 
 			damage_data_new(&damage_data, melee_damage_effect_index);
+			/* port: an Infection zombie's skull's (a client's report the host
+			works out again: network_damage.c) */
+			damage_data.multiplier = infection_melee_multiplier(unit_index);
 			SET_FLAG(damage_data.flags, _damage_area_of_effect_bit, TRUE);
 			damage_data.location = unit->object.location;
 			damage_data.owner_object_index = unit_index;
@@ -11909,6 +12070,8 @@ static void unit_throw_grenade_release(
 		if (unit->unit.grenade_object_index!=NONE)
 		{
 			long grenade_index = unit->unit.grenade_object_index;
+			/* port: its head start and hold given already (the VR mode's) */
+			boolean launched = FALSE;
 			
 			object_detach(grenade_index);
 			
@@ -11968,6 +12131,7 @@ static void unit_throw_grenade_release(
 			if (vr_grenade_release(unit_index, grenade_index, &initial_velocity))
 			{
 				premature = FALSE;
+				launched = TRUE;
 			}
 #endif
 
@@ -12005,6 +12169,17 @@ static void unit_throw_grenade_release(
 				if (!object_force_inside_bsp(grenade_index, &new_grenade_origin))
 				{
 					object_delete(grenade_index);
+				}
+				/* port: at game.sim_rate 60 and 120, flying on its own from
+				here as a projectile made in the tick's own work
+				(projectile_substep_launch_on_tick, projectiles.c): its head
+				start, a whole tick, then the next tick's sub-steps, as at
+				30, where its update later in the tick takes a whole tick;
+				not the one sub-step left of the tick's last, where the units'
+				slot lets go of it */
+				else if (!launched)
+				{
+					projectile_substep_launch_on_tick(grenade_index);
 				}
 			}
 		}

@@ -12,6 +12,9 @@ the other run did not, and which of the game state's allocations differ.
 Lines:
 
     alloc <index> <offset> <size> <name>    each game state allocation, once
+    rate <rate>                             the simulation's rate (game.sim_rate,
+                                            sim_rate.c), before the first tick
+                                            and when it changes
     t <tick> g <seed> l <seed> h <hash>     after each tick
     a <hash> <hash> ...                     the allocations' hashes, in order
     G <count>: <site>...                    the global seed's takers in the tick
@@ -41,6 +44,8 @@ const char *config_string(char const *name);
 long config_integer(char const *name);
 void platform_log(const char *format, ...);
 void random_math_port_seeds(unsigned long *global_seed, unsigned long *local_seed);
+/* port/linux/game/sim_rate.c */
+long sim_rate_get(void);
 
 enum
 {
@@ -82,6 +87,7 @@ static struct
 	long dump_tick;
 	unsigned long base;
 	long tick;
+	long rate;
 	long ticks_logged;
 	long frames_since_tick;
 	long allocation_count;
@@ -204,6 +210,16 @@ void determinism_log_tick_begin(
 		determinism_main_thread_known = TRUE;
 	}
 	determinism_log.in_tick = TRUE;
+}
+
+/* a tick left open between two of its sub-steps (game.sim_rate's spread
+over the frames: game_time.c), the frames meanwhile not the tick's; the
+next sub-step begins it again (determinism_log_tick_begin) and the last
+writes its line */
+void determinism_log_tick_pause(
+	void)
+{
+	determinism_log.in_tick = FALSE;
 }
 
 static unsigned long determinism_hash(
@@ -333,6 +349,11 @@ void determinism_log_tick_end(
 		hash = (hash ^ allocation_hash) * 16777619UL;
 	}
 	fputc('\n', file);
+	if (determinism_log.rate != sim_rate_get())
+	{
+		determinism_log.rate = sim_rate_get();
+		fprintf(file, "rate %ld\n", determinism_log.rate);
+	}
 	random_math_port_seeds(&global_seed, &local_seed);
 	fprintf(file, "t %ld g %08lx l %08lx h %08lx\n", tick, global_seed, local_seed, hash);
 	for (index = 0; index < NUMBER_OF_DETERMINISM_TAKERS; index++)

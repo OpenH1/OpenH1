@@ -22,6 +22,8 @@ struct game_state_header
 	short player_count; // 0x124
 	short difficulty; // 0x126
 	unsigned long cache_file_checksum; // 0x128
+	/* port: no simulation rate either: a game saved loads at the rate the
+	player's setting or the connection gives (port/linux/game/sim_rate.c) */
 	long unused[7]; // 0x12C
 	unsigned long checksum; // 0x148
 };

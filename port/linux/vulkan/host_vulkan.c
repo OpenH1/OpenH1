@@ -26,7 +26,11 @@ not back yet (Android resumes the app before it makes the window's
 surface), at a later frame.
 
 The swap interval is display.vsync's (host_vulkan_window_open, asked again
-when the setting changes). With OpenXR (HALO_VR), the headset's runtime
+when the setting changes); while battery saver is on (display.battery_saver,
+battery_saver.c), each frame is shown for the whole number of the display's
+refreshes that brings the frames a second to 30 to 60 (frame_pacing.h's
+frame_pacing_divisor, at the window's display's rate as SDL has it when it
+is asked). With OpenXR (HALO_VR), the headset's runtime
 chooses the device; the window keeps its surface, so that the game can play
 flat in it if VR cannot start, and a device the runtime refuses is made
 again without it (flat).
@@ -39,6 +43,16 @@ as HALO_VULKAN_STATS does; debug.gpu_dump_shaders names the folder each
 shader module is written into, as HALO_VULKAN_SHADERS does (which wins);
 debug.texture_dump_directory the folder each texture is written into
 (xgpu_vulkan_textures.c).
+
+display.hdr (docs/hdr.md): the window's display is read as SDL has it
+(whether HDR is on, its SDR white and its headroom), at the start and as
+SDL reports the window's HDR state or display changed, and handed to the
+backend, which tells the front end the display shows HDR where its surface
+also has an HDR colour space (host_render_stream_display_hdr) and makes an
+HDR swapchain while the frames are HDR. HALO_VULKAN_HDR_HEADROOM stands in
+for SDL's (HDR on, that headroom, BT.2408's 203-nit SDR white);
+HALO_VULKAN_HDR_OUTPUT ("scrgb", "pq") chooses the swapchain's encoding
+where the surface has both. Not on Android, nor in the VR mode.
 
 HALO_VULKAN_VALIDATION=1 turns on the validation layers and logs their
 messages (the layers must be installed, or found through VK_ADD_LAYER_PATH).
@@ -54,6 +68,7 @@ names another file, or none (empty).
 #include "xgpu_vulkan_post.h"
 #include "xgpu_vulkan_stream.h"
 #include "xgpu_vulkan_textures.h"
+#include "frame_pacing.h"
 #ifdef HALO_VR
 #include "host_vr_vulkan.h"
 #endif
@@ -102,6 +117,26 @@ static void suspend_call(void *argument)
 	xgpu_vulkan_window_suspend(argument != NULL);
 }
 
+/* display.hdr: what the window's display says (SDL's), told the backend
+(any thread) */
+static void window_hdr_read(void)
+{
+	SDL_PropertiesID properties = vulkan_window ? SDL_GetWindowProperties(vulkan_window) : 0;
+	const char *chosen = getenv("HALO_VULKAN_HDR_HEADROOM");
+	float sdr_white, headroom;
+	int enabled;
+
+	if (chosen && atof(chosen) >= 1.0)
+	{
+		xgpu_vulkan_window_hdr(1, 203.0f / 80.0f, (float)atof(chosen));
+		return;
+	}
+	enabled = properties && SDL_GetBooleanProperty(properties, SDL_PROP_WINDOW_HDR_ENABLED_BOOLEAN, false);
+	sdr_white = properties ? SDL_GetFloatProperty(properties, SDL_PROP_WINDOW_SDR_WHITE_LEVEL_FLOAT, 1.0f) : 1.0f;
+	headroom = properties ? SDL_GetFloatProperty(properties, SDL_PROP_WINDOW_HDR_HEADROOM_FLOAT, 1.0f) : 1.0f;
+	xgpu_vulkan_window_hdr(enabled, sdr_white, headroom);
+}
+
 /* (the thread SDL reports the window's events on) */
 static bool SDLCALL window_event(void *userdata, SDL_Event *event)
 {
@@ -126,32 +161,32 @@ static bool SDLCALL window_event(void *userdata, SDL_Event *event)
 		if (SDL_GetWindowFromID(event->window.windowID) == vulkan_window)
 			xgpu_vulkan_window_hidden(0);
 		break;
+	case SDL_EVENT_WINDOW_HDR_STATE_CHANGED:
+	case SDL_EVENT_WINDOW_DISPLAY_CHANGED:
+		if (SDL_GetWindowFromID(event->window.windowID) == vulkan_window)
+			window_hdr_read();
+		break;
 	default:
 		break;
 	}
 	return true;
 }
 
-/* the pipeline cache's file: made folders, or NULL */
-static const char *cache_path(char *path, size_t size)
+/* the caches' folder (made), into folder; NULL if there is none */
+static const char *cache_folder(char *folder, size_t size)
 {
-	const char *chosen = getenv("HALO_VULKAN_PIPELINE_CACHE");
 	const char *cache = getenv("XDG_CACHE_HOME"), *home = getenv("HOME");
-	char folder[1024];
 
-	if (chosen)
-		return *chosen ? chosen : NULL;
 #ifdef _WIN32
 	/* (the 64-bit Windows host: the user's local application data) */
 	cache = getenv("LOCALAPPDATA");
 	if (!cache || !*cache)
 		return NULL;
-	snprintf(folder, sizeof(folder), "%s\\OpenH1", cache);
+	snprintf(folder, size, "%s\\OpenH1", cache);
 	if (mkdir(folder, 0755) && errno != EEXIST)
 		return NULL;
-	snprintf(path, size, "%s\\vulkan_pipelines.bin", folder);
 	(void)home;
-	return path;
+	return folder;
 #endif
 #ifdef __ANDROID__
 	/* The app has no HOME; keep the driver cache in its private cache. */
@@ -159,9 +194,9 @@ static const char *cache_path(char *path, size_t size)
 		cache = SDL_GetAndroidCachePath();
 #endif
 	if (cache && *cache)
-		snprintf(folder, sizeof(folder), "%s/openh1", cache);
+		snprintf(folder, size, "%s/openh1", cache);
 	else if (home && *home)
-		snprintf(folder, sizeof(folder), "%s/.cache/openh1", home);
+		snprintf(folder, size, "%s/.cache/openh1", home);
 	else
 		return NULL;
 	{
@@ -177,6 +212,19 @@ static const char *cache_path(char *path, size_t size)
 		if (mkdir(folder, 0755) && errno != EEXIST)
 			return NULL;
 	}
+	return folder;
+}
+
+/* the pipeline cache's file: made folders, or NULL */
+static const char *cache_path(char *path, size_t size)
+{
+	const char *chosen = getenv("HALO_VULKAN_PIPELINE_CACHE");
+	char folder[1024];
+
+	if (chosen)
+		return *chosen ? chosen : NULL;
+	if (!cache_folder(folder, sizeof(folder)))
+		return NULL;
 	snprintf(path, size, "%s/vulkan_pipelines.bin", folder);
 	return path;
 }
@@ -225,9 +273,9 @@ static const char *debug_folder(uint32_t address, const char *variable, char *fo
 
 /* (a host import: the guest's sdl_platform.c, on its main thread; the
 folders are guest addresses of strings; again with the same window when
-display.vsync changes, for its swap interval) */
+display.vsync or battery saver changes, for its swap interval) */
 int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_folder, uint32_t texture_folder,
-	int interval)
+	int interval, int battery_saver)
 {
 	static int opened;
 	static char shaders[1024], textures[1024];
@@ -242,6 +290,14 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 
 	if (!object)
 		return 0;
+	if (interval > 0 && battery_saver)
+	{
+		const SDL_DisplayMode *mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(object));
+
+		interval = (int)frame_pacing_divisor(mode ? mode->refresh_rate : 0.0f, BATTERY_SAVER_LEAST,
+			BATTERY_SAVER_MOST);
+		host_logf(HOST_LOG_INFO, "vulkan: battery saver: each frame shown for %d refreshes", interval);
+	}
 	if (opened)
 	{
 		if (object != vulkan_window)
@@ -256,6 +312,19 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 	xgpu_vulkan_stream_debug((debug & DEBUG_STATISTICS) != 0,
 		debug_folder(shader_folder, "HALO_VULKAN_SHADERS", shaders, sizeof(shaders)));
 	xgpu_vulkan_textures_dump(debug_folder(texture_folder, NULL, textures, sizeof(textures)));
+	{
+		/* (the DXT textures' ASTC blocks encoded, where they are ASTC:
+		HALO_ASTC_CACHE, or the caches' folder's astc) */
+		char folder[1024];
+		const char *chosen = getenv("HALO_ASTC_CACHE");
+
+		if (!chosen && cache_folder(folder, sizeof(folder)))
+		{
+			strncat(folder, "/astc", sizeof(folder) - strlen(folder) - 1);
+			chosen = folder;
+		}
+		xgpu_vulkan_textures_astc_folder(chosen);
+	}
 	vulkan_window = object;
 	memset(&options, 0, sizeof(options));
 	if (SDL_GetWindowFlags(object) & SDL_WINDOW_VULKAN)
@@ -270,6 +339,13 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 			options.surface_create = surface_create;
 			options.rotation_prepare = xgpu_vulkan_post_rotate_prepare;
 			options.rotate = xgpu_vulkan_post_rotate;
+#if !defined(__ANDROID__) && !defined(HALO_VR)
+			/* (display.hdr: an HDR swapchain, and the display told the front
+			end) */
+			options.display_hdr = host_render_stream_display_hdr;
+			options.encode_prepare = xgpu_vulkan_post_encode_prepare;
+			options.encode = xgpu_vulkan_post_encode;
+#endif
 		}
 	}
 	else
@@ -332,6 +408,7 @@ int host_vulkan_window_open(uint32_t window, uint32_t debug, uint32_t shader_fol
 #endif
 	SDL_GetWindowSizeInPixels(object, &width, &height);
 	xgpu_vulkan_window_resized((uint32_t)width, (uint32_t)height);
+	window_hdr_read();
 	SDL_AddEventWatch(window_event, NULL);
 	backend = *xgpu_vulkan_stream_backend();
 	backend.exiting = vulkan_exiting;

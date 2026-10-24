@@ -1,7 +1,7 @@
 # Windows
 
 `ninja windows` makes the Windows build, `build/windows/halo.exe`, with
-`SDL3.dll` next to it. You must build on Windows. The build is 64-bit: it
+`SDL3.dll` next to it, on Windows or cross-compiled from Linux. The build is 64-bit: it
 starts on 64-bit Windows 10 (version 1903 or later) and Windows 11, and
 needs a graphics driver with Vulkan 1.3.
 
@@ -13,8 +13,45 @@ graphics are the Vulkan renderer of the Linux build
 input, the settings and the multiplayer functions are the same as on Linux.
 
 The build replaces the 32-bit build of the releases before it. Its download
-has the same name (`halo-windows-release.zip`), so their self-updaters
-update to it.
+has the same name (`OpenH1-Windows.zip`), so their self-updaters update to
+it.
+
+## Install the release
+
+The release is `OpenH1-Windows.zip`. Unzip it into a folder and start
+`halo.exe`. The executable is not code-signed, so when it was downloaded
+with a browser, Windows SmartScreen can say "Windows protected your PC". It
+says that of any app that is not signed. Choose **More info**, then **Run
+anyway**.
+
+### Install with Scoop
+
+[Scoop](https://scoop.sh) installs the same zip with no warning: its
+downloads do not carry the browser's mark (the Mark of the Web) that
+SmartScreen checks. Scoop checks each download against the hash in its
+manifest.
+
+```powershell
+scoop bucket add openh1 https://github.com/OpenH1/scoop-bucket
+scoop install openh1
+```
+
+The bucket is [OpenH1/scoop-bucket](https://github.com/OpenH1/scoop-bucket).
+Its manifest follows the releases by itself (its Excavator workflow, every
+6 hours).
+
+- The game is in `~\scoop\apps\openh1\current`, with an **OpenH1** Start
+  menu shortcut and an `openh1` command.
+- The files of the player next to `halo.exe` are kept in
+  `~\scoop\persist\openh1` and linked into each version: `config.toml`,
+  `maps\`, `custom_maps\`, `mods\`, `screenshots\`, `crashes\`, `bans.txt`,
+  `cheaters.txt` and `text_filter.txt`. At the first start the game copies
+  `maps\` out of the disc image as usual; the manifest moves that folder
+  into `persist` before an update or an uninstall. Saved games stay in
+  `%APPDATA%\halo`.
+- A first install writes `update.auto = false` in `config.toml`: Scoop
+  updates the game (`scoop update openh1`), not the game's updater, which
+  would replace the files of Scoop's version folder.
 
 ## Requirements
 
@@ -39,10 +76,30 @@ You do not need the Xbox SDK.
 2. Enter `python configure.py`.
 3. Enter `ninja windows`.
 
-`configure.py` generates the Windows build only on Windows. On another
-computer, `python configure.py --windows-guest` and `ninja windows_guest`
-make the guest image alone, `build/windows/halo_guest.elf`, to check that
-it builds.
+`configure.py` generates the Windows build on Windows, and with
+`--windows-cross`, which cross-compiles it from Linux: the same clang and
+lld build the host against an MSVC toolchain (its x64 libraries), whose
+directories `--windows-vctools-dir` (the versioned folder under
+`VC/Tools/MSVC`, the one with `include` and `lib`) and `--windows-sdk-dir`
+(the SDK folder with `Include` and `Lib`) name, or `VCToolsInstallDir` and
+`WindowsSdkDir`. The build passes them to clang in `INCLUDE` and `LIB`.
+`--windows-cc` names the cross compiler (a run-of-the-mill clang by
+default); the guest is built with the pinned LLVM, as on Windows.
+
+    python configure.py --windows-cross \
+        --windows-vctools-dir "$VCToolsInstallDir" \
+        --windows-sdk-dir "$WindowsSdkDir"
+    ninja windows
+
+The toolchain can be an [msvc-wine](https://github.com/mstorsjo/msvc-wine)
+install or an unmodified MSVC from a Windows install (from an NTFS volume,
+for instance). The SDK must have a versioned folder in each of `Include`
+and `Lib` (`Include/<version>/um`): a plain `xwin splat` does not, a splat
+made with `xwin splat --use-winsysroot-style` does.
+
+On another computer, `python configure.py --windows-guest` and
+`ninja windows_guest` make the guest image alone,
+`build/windows/halo_guest.elf`, to check that it builds.
 
 ## Start the game
 
@@ -130,9 +187,9 @@ id of the project in the DSN. For a personal token instead, also set the
 variable (`https://de.sentry.io`).
 
 Each release also has the PDBs and the guest image as
-`halo-windows-<configuration>-symbols.zip`. `tools/symbolize_crash.py`
-uses them to add the function names and the source lines to the crash
-lines of a `halo.log`:
+`OpenH1-Windows-symbols.zip` (and `OpenH1-Windows-debug-symbols.zip`).
+`tools/symbolize_crash.py` uses them to add the function names and the
+source lines to the crash lines of a `halo.log`:
 
 ```
 python tools/symbolize_crash.py halo.log <folder>

@@ -19,7 +19,7 @@ The comparison and its tolerances are described in port/linux/NETCODE.md
 self-hosted) check, not a public CI one.
 
     python tools/net_compare.py --a build/linux_x86_64/halo --data /path/to/halo \\
-        --b /path/to/another/bin/opence --maps bloodgulch,beavercreek --swap
+        --b /path/to/another/bin/openh1 --maps bloodgulch,beavercreek --swap
 
 Exit status: 0 when every run passes; 1 when a run diverges (FAIL), even if
 another could not be played, as a divergence is the finding and an error
@@ -48,6 +48,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 TICKS_PER_SECOND = 30
+
+# (StageKit's runner: place(), an executable in a folder of its own)
+sys.path.insert(0, str(ROOT / "tools/stagekit/tests"))
+import runner  # noqa: E402
 
 # ---------- tolerances
 #
@@ -390,10 +394,10 @@ def judge_drift(summary, tolerances, player):
 
 
 def release_tree(executable):
-    """the root of the release's tree the executable is in (bin/opence, with
-    share/opence beside bin: port/linux/src/install_layout.c), else None (a
+    """the root of the release's tree the executable is in (bin/openh1, with
+    share/openh1 beside bin: port/linux/src/install_layout.c), else None (a
     build's folder, which holds everything)"""
-    if executable.parent.name == "bin" and (executable.parent.parent / "share" / "opence").is_dir():
+    if executable.parent.name == "bin" and (executable.parent.parent / "share" / "openh1").is_dir():
         return executable.parent.parent
     return None
 
@@ -421,17 +425,17 @@ def prepare_copy(work, name, executable, data_root, wrapper=""):
         path.mkdir(parents=True, exist_ok=True)
     tree = release_tree(executable)
     if tree:
-        # a release's tree: the copy is a tree too (folder/bin/opence), with
+        # a release's tree: the copy is a tree too (folder/bin/openh1), with
         # the release's lib/ (its SDL, found through the rpath
-        # $ORIGIN/../lib/opence) and share/opence's files linked, but not
-        # share/opence/packaged, which would make the copy an installed game
+        # $ORIGIN/../lib/openh1) and share/openh1's files linked, but not
+        # share/openh1/packaged, which would make the copy an installed game
         # keeping its config.toml in the user's own folders
         for entry in tree.iterdir():
             if entry.name not in ("bin", "share") and entry.is_dir():
                 link_once(folder / entry.name, entry.resolve())
-        shared = folder / "share" / "opence"
+        shared = folder / "share" / "openh1"
         shared.mkdir(parents=True, exist_ok=True)
-        for entry in (tree / "share" / "opence").iterdir():
+        for entry in (tree / "share" / "openh1").iterdir():
             if entry.name != "packaged":
                 link_once(shared / entry.name, entry.resolve())
         for entry in executable.parent.iterdir():
@@ -445,12 +449,11 @@ def prepare_copy(work, name, executable, data_root, wrapper=""):
             if entry.name in (executable.name, "config.toml") or entry.name.endswith(".log"):
                 continue
             link_once(bin_folder / entry.name, entry.resolve())
+    # (a hard link on Linux, a clone of its own on macOS, where dyld may
+    # find @executable_path, and so the libraries, from any of a hard
+    # link's names: another copy's folder; runner.place)
     copied = bin_folder / executable.name
-    if not copied.exists():
-        try:
-            os.link(executable, copied)
-        except OSError:
-            shutil.copy2(executable, copied)
+    runner.place(executable, copied)
     for entry in ("maps", "custom_maps"):
         if (data_root / entry).is_dir() and not (data / entry).exists():
             (data / entry).symlink_to((data_root / entry).resolve())
@@ -473,6 +476,8 @@ def copy_environment(copy, address, broadcast, test, seed, args, extra):
         "HALO_NET_MAP_SEED": "false",
         "HALO_NET_MAP_DOWNLOAD": "false",
         "HALO_NET_JOIN_FROM_CLIPBOARD": "false",
+        # (and no invite put on it: the clipboard is the person's at the machine)
+        "HALO_NO_CLIPBOARD": "1",
         "HALO_DISCORD_APPLICATION": "",
         "HALO_UPDATE_AUTO": "false",
         "HALO_NETWORK_TEST": test,

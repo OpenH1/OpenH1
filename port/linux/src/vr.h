@@ -270,6 +270,16 @@ struct halo_vr_scope
 	float opened_seconds;
 	float closing;
 	float switched_seconds;
+	/* the smart-link's window drawn as the flat screen's zoomed view (the
+	weapon's scope's own mask and HUD in its image, vr_scope.c): the
+	corner's radius of its rounded window (of the image's half width: as
+	large as the window's half extents, a circle; less than 0: the
+	smart-link's own look instead), how far the world about it is dimmed
+	(0 to 1), and how wide its edge fades into the world (of the image's
+	half width; 0: sharp) */
+	float corner;
+	float dim;
+	float feather;
 };
 
 /* xgpu_gl.c: the smart-link's window as each eye sees it, in the eye's
@@ -661,6 +671,11 @@ And the smart-link's view: how wide (degrees) and how far before the eyes
 #define HALO_VR_SCOPES_SMARTLINK 2
 int halo_vr_scopes(void);
 void halo_vr_smartlink_view(float *degrees, float *distance);
+/* the HUD's width (vr.hud_size, degrees: its height three quarters of it),
+which the smart-link's framed window is as large as; whether the window is
+on the visor where the HUD is (vr.smartlink_place = "visor"), else at the
+reticle */
+int halo_vr_smartlink_hud(float *hud_degrees);
 /* this frame's scope, drawn into its image (the scope pass): shown where
 it says at the present; NULL, none */
 void halo_vr_scope(const struct halo_vr_scope *scope);
@@ -682,6 +697,9 @@ int halo_vr_climb(struct halo_vr_climb *climb);
 int halo_vr_cockpit_window(struct halo_vr_cockpit_window *window, struct halo_vr_cockpit_display *display);
 void halo_vr_scope_readout(float *range, int *rounds_loaded, int *rounds_carried);
 void halo_vr_scope_animation(float *opened_seconds, float *closing, float *switched_seconds);
+/* and its window's shape and the world's dimming about it (halo_vr_scope's
+corner, dim and feather) */
+void halo_vr_scope_shape(float *corner, float *dim, float *feather);
 int halo_vr_scope_gun(void);
 /* the weapon in hand, for the reload by hand, once a frame; and the reload
 by hand as it is (0 when it is off) */
@@ -735,6 +753,13 @@ void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn);
 /* the controllers as port 0's gamepad (an XINPUT_GAMEPAD), merged in */
 void halo_vr_gamepad(void *gamepad);
 void halo_vr_rumble(float left, float right);
+/* the name of what presses one of the game's controller buttons (its index,
+input.h's _gamepad_ buttons: A, B, X, Y, black, white, the triggers, the
+d-pad, Start, Back, the sticks' clicks) on the controllers in the hands, as
+the runtime names it ("A Button", "Right Hand Trigger") or a fixed name, or
+the gesture that does ("Left Hand Throw"), Latin-1, for the HUD's prompts
+(port/linux/game/hud_key_prompts.c); 0 outside VR */
+int halo_vr_button_name(int button, char *name, unsigned long size);
 /* the menus are up: their layer stays in front of the recentred place,
 not of the head */
 void halo_vr_menus(int active);
@@ -791,6 +816,12 @@ other way; told by the rasterizer as each model's nodes are set, and as it
 ends (rasterizer_xbox.c) */
 void halo_vr_mirrored_draws(int mirrored);
 int halo_vr_mirrored(void);
+/* the effect drawn from now on (an effect shader's: particles, contrails,
+weather) is drawn soft against the scene's depth (1), and thick (2), in the
+eyes' pass; 0 for the draws after it. Told by the rasterizer for each
+effect's group, and as it ends (rasterizer_xbox_transparent_geometry.c);
+render_sprite.c chooses thick for sprites large enough on the screen. */
+void halo_vr_effect_depth(int mode);
 /* the comfort vignette (vr.comfort_vignette): asked for each frame by
 the game (vr_vehicle.c: how fast the view turns with a vehicle, how hard
 the vehicle speeds up or slows), 0 to 1; and as it is drawn this frame,

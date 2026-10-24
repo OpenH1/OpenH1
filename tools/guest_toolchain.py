@@ -9,7 +9,7 @@ another's lld did not match its LLVM (Homebrew's), so by default the guest
 builds download LLVM's release archive for this computer
 (github.com/llvm/llvm-project/releases), check its SHA-256 and keep the
 tools they use, once, in a folder outside the build folder: the user's
-cache (~/.cache/opence, or ~/Library/Caches/opence on macOS) or
+cache (~/.cache/openh1, or ~/Library/Caches/openh1 on macOS) or
 --guest-llvm-cache's. The hosts keep the system's compiler.
 
 The release's Linux tools need only the C and C++ runtime libraries and
@@ -85,11 +85,11 @@ KEPT_FOLDERS = (f"lib/clang/{LLVM_MAJOR}/include/",)
 # the libraries the kept tools are linked to and do not use, which a
 # stand-in in lib/ replaces (tools/library_stand_in.py)
 STAND_INS = {
-    "libxml2.so.2": "opence: this LLVM's libxml2 is a stand-in (tools/guest_toolchain.py); "
+    "libxml2.so.2": "openh1: this LLVM's libxml2 is a stand-in (tools/guest_toolchain.py); "
                     "lld-link's manifests are not supported",
 }
 # what a complete folder has, last of all (written once the rest is there)
-COMPLETE = "opence-complete"
+COMPLETE = "openh1-complete"
 TRIES = 3
 RETRY_SECONDS = 2
 
@@ -118,10 +118,10 @@ def llvm_archive(system: Optional[str] = None, machine: Optional[str] = None) ->
 def default_cache() -> Path:
     """the user's cache folder for the downloaded toolchain"""
     if sys.platform == "darwin":
-        return Path.home() / "Library" / "Caches" / "opence"
+        return Path.home() / "Library" / "Caches" / "openh1"
     if os.name == "nt":
-        return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "opence"
-    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "opence"
+        return Path(os.environ.get("LOCALAPPDATA") or Path.home() / "AppData" / "Local") / "openh1"
+    return Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "openh1"
 
 
 def toolchain_in(folder: Path) -> GuestToolchain:

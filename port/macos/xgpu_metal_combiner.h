@@ -59,7 +59,8 @@ struct xgpu_metal_combiner
 
 /* whether a program is the combiner function's to draw (not one lit for
 each pixel, nor with the enhanced dynamic lights, nor whose alpha test
-covers samples in proportion: those have inputs or outputs of their own) */
+covers samples in proportion, nor display.hdr's tagged draws: those have
+inputs or outputs of their own) */
 int xgpu_metal_combiner_draws(const struct xgpu_pixel_program *program);
 /* a program's configuration, with the axes whose border the shader draws
 (xgpu_metal_stream_variant's) */

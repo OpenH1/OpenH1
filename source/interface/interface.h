@@ -64,6 +64,10 @@ void interface_set_bitmap_text_draw_mode(
 	short color_index);
 void interface_draw_screen(
 	void);
+#ifdef HALO_VR
+void interface_draw_vr_scope_screen_effect(
+	void);
+#endif
 void interface_draw_fullscreen_overlays(
 	void);
 void interface_draw_bitmap(

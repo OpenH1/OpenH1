@@ -4,10 +4,10 @@
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/controls_settings_screen" width="640" height="480" flags="pass_unhandled_to_focused_child pause_game" bitmap="bitmaps/gradient">
 		<on event="b" back="true"/>
 		<on event="back" back="true"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/header_profile_controls_settings"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/header_key_bindings"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/options_menu"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/header_profile_controls_settings" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/header_profile_controls_settings">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/header_key_bindings" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/header_key_bindings">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/help" type="text" controller="1" left="68" top="350" width="482" height="60" string_list="main_menu/settings_select/player_setup/player_profile_edit/controls_setup/help_strings" font="ui\large_ui" color="#FFFFFFFF">
 	</widget>

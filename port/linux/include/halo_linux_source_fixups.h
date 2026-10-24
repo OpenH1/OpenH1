@@ -11,6 +11,7 @@ The port's functions that the game's sources call, declared for them.
 void halo_loading_begin(void);
 void halo_loading_art(void);
 int halo_loading_owned(void);
+void halo_loading_progress(float progress);
 void halo_loading_retire(void);
 void halo_loading_end(void);
 void halo_loading_ready(void);
@@ -44,6 +45,14 @@ union real_rgb_color const *render_interpolation_object_change_colors(long objec
 float render_interpolation_unit_camouflage(long unit_index, float *super_amount);
 struct observer_result const *render_interpolation_camera(short local_player_index,
 	struct observer_result const *observer);
+/* the local player's own view (and first-person weapon) was drawn last from
+the newest step, not a tick behind (display.direct_camera) */
+unsigned char render_interpolation_view_newest(short local_player_index);
+/* the first-person weapons' animations advanced (first_person_weapons.c,
+in the tick), and how far the frame is past that, in ticks: -1 for a view
+drawn between the ticks (render_interpolation.c) */
+void render_interpolation_first_person_updated(void);
+float render_interpolation_first_person_phase(short local_player_index);
 void render_interpolation_first_person(short local_player_index, struct real_matrix4x3 *node_matrices,
 	short node_count, struct render_camera const *camera);
 float render_interpolation_game_time_sec(long ticks);
@@ -53,10 +62,52 @@ struct new_particle_data;
 unsigned char render_interpolation_particle_later(struct new_particle_data const *data, long object_index,
 	short node_index, float fraction);
 void render_interpolation_particles_due(void);
+void render_interpolation_object_deleted(long object_index);
+void render_interpolation_ghosts_draw(void);
+
+/* whether the map being loaded, by the name it was loaded by, is a
+downloaded one, whose scripts may call and set less: one map sharing
+downloaded, or one game.downloaded_maps names (port/linux/game/map_share.c) */
+int map_share_map_downloaded(char const *map_name);
+
+/* an IP address as the log may show it: a public one as a tag of the run's,
+never whole (port/linux/src/log_address.c, log_address.h) */
+const char *log_address(const unsigned char *bytes, int length, int port, char *text, int size);
 
 /* the port's menus' screen for one of ui.map's, by name, else the name
 (port/linux/game/menu_tags.c) */
 char const *pc_menus_screen(char const *name);
+/* debug.fixed_step: a game of this machine alone runs a tick a frame
+(port/linux/src/port_config.c; game_time.c, main.c) */
+int halo_fixed_step(void);
+/* debug.trace, the scorecard's per-step log (port/linux/game/sim_trace.c):
+each simulation step (the tick it ran, the sub-step's index in the tick and
+the sub-steps a tick, 0 and 1 at 30 Hz: game_time.c after each tick, for
+its last sub-step; the fast phase's trace slot for the others, sim_rate.h),
+and what the steps do, each call made only while the trace is on
+(SIM_TRACE), so that it costs nothing when it is off */
+extern int sim_trace_on;
+#define SIM_TRACE(call) do { if (sim_trace_on) { call; } } while (0)
+void sim_trace_step(long tick, long micro_step, long steps_per_tick);
+/* the sub-steps of this tick (port/linux/game/sim_rate.h) */
+short sim_substep_count(void);
+void sim_trace_projectile_new(long projectile_index);
+void sim_trace_projectile_collision(long projectile_index, void const *point, void const *normal,
+	float time_remaining, float fraction);
+void sim_trace_projectile_detonate(long projectile_index);
+void sim_trace_weapon_fire(long weapon_index, long owner_object_index, short trigger_index);
+/* debug.latency_log (port/linux/game/latency_log.c): the first local
+player's input to the frame that shows it, each call made only while the
+log is on (LATENCY_LOG): a weapon fired (weapons.c), each simulation step
+(game_time.c), each frame drawn (main.c) */
+extern int latency_log_on;
+#define LATENCY_LOG(call) do { if (latency_log_on) { call; } } while (0)
+void latency_log_fire(long owner_object_index);
+void latency_log_substep_begin(void);
+void latency_log_substep_end(void);
+void latency_log_frame_begin(void);
+void latency_log_frame_rendered(void);
+void latency_log_frame_presented(void);
 /* the Custom Edition tag cache window, or NULL unless the
 game.custom_edition setting reserved it (port/linux/src/xbox_memory.c) */
 void *halo_custom_edition_tag_cache(void);
@@ -78,6 +129,14 @@ unsigned char custom_edition_vehicle_placement_allowed(struct scenario_object_da
 /* the width of the screen the game draws, 480 lines tall: the device's or
 the display's shape, or 640 (port/linux/src/d3d8_device.c) */
 long halo_screen_width(void);
+/* the menus' widgets anchored to the screen's edges on a touchscreen's wide
+screen (their port flags anchor_left, anchor_right and stretch): the
+horizontal offset of one, how much wider a stretched one is drawn, and how
+far left of the menus' 0 the screen's edge is; 0 elsewhere
+(port/linux/game/menu_tags.c) */
+short ui_widget_port_anchor_offset(long flags);
+short ui_widget_port_stretch(long flags);
+short ui_widget_port_anchor_extra(void);
 /* the screen's pixels to the Xbox's one (port/linux/src/d3d8_device.c) */
 float halo_screen_scale(void);
 /* takes up a new width between frames (F11); returns the width */
@@ -89,6 +148,9 @@ long halo_shadow_map_scale(void);
 it at (display.model_detail, source/models/models.c): level nonzero, to
 choose its level of detail, otherwise whether it is drawn */
 float halo_model_detail_scale(int level);
+/* whether display.model_detail is "stock" (port/linux/src/d3d8_gl.c), for
+each permutation's level (port/linux/game/model_detail.c) */
+int halo_model_detail_stock(void);
 /* while TRUE, drawing shifts right to center 640-column layouts */
 void halo_screen_ui_offset(unsigned char centered);
 /* names a model lighting vertex program, whose draws can be lit for each
@@ -101,6 +163,22 @@ menus (source/render/render.c): the window's bounds on the screen */
 void halo_screen_anti_alias(short x0, short y0, short x1, short y1);
 /* the enhanced dynamic lights (display.dynamic_lights) */
 #include "halo_dynamic_lights.h"
+/* display.hdr's tone map of a window's 3D view, before its anti-aliasing
+(source/render/render.c), and what the game's renderer tells it of its
+draws (port/linux/src/d3d8_device.c, xgpu_hdr.h): the category drawing now
+(rasterizer.h's _rasterizer_profile_*, -1 none: rasterizer_profile_begin and
+_end), and what the code drawing knows of them (HALO_HDR_KIND_*, 0 none) */
+void halo_screen_tone_map(short x0, short y0, short x1, short y1);
+void halo_hdr_category(int category);
+void halo_hdr_draw_kind(int kind);
+#ifndef HALO_HDR_KIND_NONE
+#define HALO_HDR_KIND_NONE 0
+#define HALO_HDR_KIND_FIRST_PERSON 1
+#define HALO_HDR_KIND_NUMERIC 2
+#define HALO_HDR_KIND_METER 4
+#define HALO_HDR_KIND_SPECULAR 8
+#define HALO_HDR_KIND_HUD_GLOW 16
+#endif
 /* the mouse in the menus (source/interface/ui_widget.c) */
 #include "halo_ui_pointer.h"
 

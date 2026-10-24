@@ -469,6 +469,9 @@ static void render_state_text(
 boolean hud_hires_button_draw(struct icon_hud_element_definition const *icon,
 	rectangle2d *cursor, pixel32 color);
 struct bitmap_data const *hud_hires_sprite_bitmap(struct bitmap_data const *bitmap, short sequence_index);
+/* port: the keyboard and mouse's keys in the prompts, port/linux/game/hud_key_prompts.c */
+boolean hud_key_prompt_draw(short local_player_index, short game_control, short gamepad_button,
+	rectangle2d *bounds, rectangle2d *cursor, pixel32 color);
 
 static void render_state_bitmap(
 	rectangle2d *bounds,
@@ -537,6 +540,13 @@ static void render_state_bitmap(
 	real scale;
 	point2d point;
 
+	/* port: keep gameplay prompts on the high-resolution HUD path, which
+	draws a button by its place among the HUD globals' button icons: before
+	the map's own picture of it is looked for, which a Custom Edition map's
+	message icons (13 sequences to the Xbox's 24) may not have, so that the
+	button was not drawn */
+	if (hud_hires_button_draw(icon, cursor_bounds, color))
+		return;
 	if (icon->frame_rate)
 		frame_index = game_time_get() / icon->frame_rate;
 	hud_retrieve_bitmap_and_bounding_rect(
@@ -548,9 +558,6 @@ static void render_state_bitmap(
 	if (bitmap && _texture_cache_bitmap_get_hardware_format(
 		(struct bitmap_data *)bitmap, FALSE, TRUE))
 	{
-		/* port: keep gameplay prompts on the high-resolution HUD path. */
-		if (hud_hires_button_draw(icon, cursor_bounds, color))
-			return;
 		bitmap = hud_hires_sprite_bitmap(bitmap, icon->sequence_index);
 		scale = local_player_count() > 1 ? 0.75f : 1.0f;
 		point.x = (short)(icon->offset.x * scale + cursor_bounds->x0);
@@ -1591,6 +1598,21 @@ void hud_messaging_update(
 						{
 							short icon_index = NONE;
 
+							/* port: the key bound to it for the keyboard and
+							mouse (input.button_prompts) */
+							if (element->data <= _icon_look && hud_key_prompt_draw(
+								local_player_index,
+								element->data >= _icon_action && element->data <= _icon_zoom ?
+									button_mappings[element->data - _icon_action] : NONE,
+								element->data == _icon_move ? _icon_left_stick :
+									element->data == _icon_look ? _icon_right_stick :
+									element->data <= _icon_right_stick ? element->data : NONE,
+								&line_bounds,
+								&line_cursor,
+								pixel_color))
+							{
+								break;
+							}
 							if (element->data > _icon_right_stick)
 							{
 								if (element->data <= _icon_look)

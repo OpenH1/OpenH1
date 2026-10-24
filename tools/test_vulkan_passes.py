@@ -1,4 +1,6 @@
-"""The Vulkan core's pass/load actions and layered image views over a fake Vulkan.
+"""The Vulkan core's pass/load actions and layered image views over a fake Vulkan,
+and what a draw costs the render thread: the texture stages looked up again,
+and the guest's memory found mapped without a system call.
 
 Compiles the actual core; no GPU, display, game data or Vulkan loader is
 needed. Vulkan headers come from configure's downloaded host dependencies
@@ -92,9 +94,10 @@ int main(void)
 
 
 def test_post_shaders(tmp_path):
-    # The anti-aliasing passes' generated file (tools/vulkan_post_shaders.py):
-    # SMAA's lookup textures are port/third_party/smaa's, inflated, and each
-    # module is valid for Vulkan 1.1 where spirv-val is installed.
+    # The anti-aliasing passes' generated file (tools/vulkan_post_shaders.py),
+    # with display.hdr's tone map and encoding: SMAA's lookup textures are
+    # port/third_party/smaa's, inflated, and each module is valid for Vulkan
+    # 1.1 where spirv-val is installed.
     text = (ROOT / "port/linux/vulkan/xgpu_vulkan_post_shaders.c").read_text()
     arrays = {name: [int(word, 16) for word in re.findall(r"0x([0-9a-f]{8})", body)]
               for name, body in re.findall(r"const uint32_t (\w+)\[\] =\n\{\n(.*?)\n\};", text, re.S)}
@@ -104,8 +107,8 @@ def test_post_shaders(tmp_path):
         assert len(texels) == size
         assert struct.pack(f"<{len(words)}I", *words)[:size] == texels
     modules = sorted(name for name in arrays if name.endswith(("_vert", "_frag")))
-    assert modules == ["clear_frag", "fxaa_frag", "post_vert", "rotate_frag", "smaa_blend_frag", "smaa_edges_frag",
-                       "smaa_weights_frag"]
+    assert modules == ["clear_frag", "fxaa_frag", "hdr_encode_frag", "hdr_tone_map_frag", "hdr_tone_map_ms_frag",
+                       "post_vert", "rotate_frag", "smaa_blend_frag", "smaa_edges_frag", "smaa_weights_frag"]
     validator = shutil.which("spirv-val")
     if not validator:
         pytest.skip("needs spirv-val (SPIRV-Tools)")
@@ -114,3 +117,195 @@ def test_post_shaders(tmp_path):
         module = tmp_path / f"{name}.spv"
         module.write_bytes(struct.pack(f"<{len(arrays[name])}I", *arrays[name]))
         subprocess.run([validator, "--target-env", "vulkan1.1", str(module)], check=True)
+
+
+def _native_cc():
+    cc = os.environ.get("CC") or shutil.which("clang") or shutil.which("cc")
+    if not cc:
+        pytest.skip("needs a native C compiler")
+    return cc
+
+
+def test_texture_memory_in_the_guests_ranges_is_not_asked_of_the_kernel(tmp_path):
+    # Without the base register (the Steam Frame's guest) readable() asked
+    # mincore for each stage's header and palette at each bind. A range in
+    # the memory the guest's heaps come from (host_low_owns: mapped whole,
+    # reserved where unused) is readable without a system call; any other
+    # range is still asked about, page by page as before.
+    text = (ROOT / "port/linux/vulkan/xgpu_vulkan_textures.c").read_text()
+    function = text[text.index("static BOOL readable(uint32_t address, uint32_t size)"):
+                    text.index("static struct xgpu_vulkan_image *xbox_texture_get(")]
+    source = tmp_path / "readable.c"
+    source.write_text(r"""
+#include <assert.h>
+#include <stddef.h>
+#include <stdint.h>
+typedef int BOOL;
+#define TRUE 1
+#define FALSE 0
+#define CONTIGUOUS_BASE 0x80000000ull
+#define CONTIGUOUS_SIZE 0x08000000ull
+#define POOL_BASE 0x20000000ull
+#define POOL_SIZE 0x10000000ull
+static unsigned asked, owned_asked;
+static int mapped = 1;
+static uint64_t host_page_size(void) { return 4096; }
+static uintptr_t host_address(uint32_t address) { return address; }
+static void *host_pointer(uint32_t address) { return (void *)(uintptr_t)address; }
+static int host_low_owns(uintptr_t address, size_t size)
+{
+    owned_asked++;
+    return address >= POOL_BASE && address + size <= POOL_BASE + POOL_SIZE;
+}
+static int mincore(void *address, size_t length, unsigned char *residency)
+{
+    (void)address; (void)residency;
+    assert(length && length <= 4096 * 64);
+    asked++;
+    return mapped ? 0 : -1;
+}
+""" + function + r"""
+int main(void)
+{
+    /* the window, as before: no question at all */
+    assert(readable(0x80001000u, 20) && !asked && !owned_asked);
+    /* a header in a pool: no system call */
+    assert(readable(0x20000010u, 20) && !asked && owned_asked == 1);
+    assert(readable(0x2ffffc00u, 1024) && !asked);
+    /* across the pool's end, or outside it: mincore, as before */
+    assert(readable(0x2ffffc00u, 2048) && asked == 1);
+    mapped = 0;
+    assert(!readable(0x10000000u, 1024) && asked == 2);
+    /* nothing at 0, or past 4 GB */
+    assert(!readable(0, 20) && !readable(0xfffffff0u, 64));
+    return 0;
+}
+""")
+    binary = tmp_path / "readable"
+    subprocess.run([_native_cc(), "-std=gnu11", "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
+                    str(source), "-o", str(binary)], check=True)
+    subprocess.run([str(binary)], check=True)
+
+
+def test_only_the_texture_stages_that_changed_are_looked_up_again(tmp_path):
+    # The guest sends the four stages when any changes; each stage's image and
+    # sampler depend on that stage alone, so only the changed ones are looked
+    # up again. A watched page written, a sampled target drawn into, the
+    # targets set and each frame's end look at them all again, and a
+    # palettized texture's stage whenever the stages are set (its palette is
+    # read as it is looked up, and is not watched).
+    text = (ROOT / "port/linux/vulkan/xgpu_vulkan_stream.c").read_text()
+    set_textures = text[text.index("static int stage_palettized("):
+                        text.index("/* a copy of a target the draw draws into")]
+    bind = text[text.index("/* the stages' images and samplers for a draw */"):
+                text.index("/* ---------- pipelines */")]
+    source = tmp_path / "textures_bind.c"
+    source.write_text(r"""
+#include <assert.h>
+#include <stdint.h>
+#include <string.h>
+#include "xgpu_stream.h"
+typedef uint64_t VkSampler;
+#define VK_NULL_HANDLE 0
+#define TEXTURES_ALL 15u
+#define D3DFORMAT_FORMAT_MASK 0x0000ff00u
+#define D3DFORMAT_FORMAT_SHIFT 8
+enum { _source_none, _source_texture, _source_target };
+enum { _xgpu_sampler_2d, _xgpu_sampler_3d, _xgpu_sampler_cube, _xgpu_sampler_2d_layered };
+enum { XGPU_VULKAN_IMAGE_2D, XGPU_VULKAN_IMAGE_2D_ARRAY, XGPU_VULKAN_IMAGE_3D, XGPU_VULKAN_IMAGE_CUBE };
+struct host_render_texture_stage
+{
+    struct xgpu_stream_texture_stage stage;
+    struct xgpu_stream_texture_level levels[XGPU_STREAM_MIP_LEVELS];
+};
+struct xgpu_vulkan_image_description { uint8_t type; };
+struct xgpu_vulkan_image { struct xgpu_vulkan_image_description description; };
+struct xgpu_vulkan_texture { struct xgpu_vulkan_image *image; VkSampler sampler; uint8_t kind; };
+struct stream_target { struct xgpu_vulkan_image *image; };
+static struct
+{
+    struct host_render_texture_stage stages[4];
+    uint8_t border[4];
+    unsigned int textures_dirty;
+    int feedback_bound, uniforms_dirty;
+    uint32_t textures_serial, color;
+    struct xgpu_vulkan_texture textures[4];
+} stream;
+static struct xgpu_vulkan_image images[4];
+static unsigned looked_up[4], samplers, binds;
+static uint32_t serial = 1;
+static uint32_t host_memory_watch_serial(void) { return serial; }
+static uint8_t border_axes(const struct xgpu_stream_sampler *sampler) { (void)sampler; return 0; }
+static VkSampler sampler_get(const struct xgpu_stream_sampler *from, uint8_t axes)
+{ (void)axes; samplers++; return 1 + from->minify; }
+static struct stream_target *target_get(uint32_t number) { (void)number; return NULL; }
+static void target_resolve(struct stream_target *target) { (void)target; }
+static struct xgpu_vulkan_image *composite_get(const struct host_render_texture_stage *source)
+{ (void)source; return NULL; }
+static struct xgpu_vulkan_image *feedback_copy(uint32_t number, struct stream_target *target)
+{ (void)number; (void)target; return NULL; }
+static struct xgpu_vulkan_image *xgpu_vulkan_textures_get(const struct xgpu_stream_texture_stage *stage)
+{
+    looked_up[stage->resource - 1]++;
+    return &images[stage->resource - 1];
+}
+static const struct xgpu_vulkan_image_description *xgpu_vulkan_image_description(const struct xgpu_vulkan_image *image)
+{ return &image->description; }
+static void targets_bind(void) { binds++; }
+""" + set_textures + bind + r"""
+static void set(struct host_render_texture_stage stages[4])
+{
+    memset(looked_up, 0, sizeof(looked_up));
+    stream_set_textures(NULL, stages);
+    textures_bind();
+}
+
+int main(void)
+{
+    struct host_render_texture_stage stages[4];
+    int index;
+
+    memset(stages, 0, sizeof(stages));
+    for (index = 0; index < 4; index++)
+    {
+        stages[index].stage.source = _source_texture;
+        stages[index].stage.resource = (uint32_t)index + 1;
+        stages[index].stage.resource_format = 0x0c00; /* DXT1 */
+    }
+    set(stages);
+    for (index = 0; index < 4; index++)
+        assert(looked_up[index] == 1 && stream.textures[index].image == &images[index]);
+    /* one stage changed: it alone */
+    stages[2].stage.sampler.minify = 2;
+    set(stages);
+    assert(!looked_up[0] && !looked_up[1] && looked_up[2] == 1 && !looked_up[3]);
+    assert(stream.textures[2].sampler == 3 && stream.textures[0].image == &images[0]);
+    /* the same stages again (another stage's levels written, say): none */
+    binds = 0;
+    set(stages);
+    assert(!looked_up[0] && !looked_up[1] && !looked_up[2] && !looked_up[3] && !binds);
+    /* a watched page written: all of them */
+    serial++;
+    set(stages);
+    for (index = 0; index < 4; index++)
+        assert(looked_up[index] == 1);
+    /* a palettized stage with a palette: whenever the stages are set */
+    stages[1].stage.resource_format = 0x0b00;
+    stages[1].stage.palette = 0x1000;
+    set(stages);
+    assert(looked_up[1] == 1 && !looked_up[0]);
+    set(stages);
+    assert(looked_up[1] == 1 && !looked_up[0] && !looked_up[2] && !looked_up[3]);
+    /* the targets set, or a frame's end: all of them */
+    stream.textures_dirty = TEXTURES_ALL;
+    memset(looked_up, 0, sizeof(looked_up));
+    textures_bind();
+    for (index = 0; index < 4; index++)
+        assert(looked_up[index] == 1);
+    return 0;
+}
+""")
+    binary = tmp_path / "textures_bind"
+    subprocess.run([_native_cc(), "-std=gnu11", "-O1", "-Wall", "-Wextra", "-Werror", "-Wno-unused-function",
+                    f"-I{ROOT / 'port/linux/src'}", str(source), "-o", str(binary)], check=True)
+    subprocess.run([str(binary)], check=True)

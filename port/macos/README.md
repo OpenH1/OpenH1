@@ -5,10 +5,10 @@ Intel). On such a Mac, `ninja` without a target builds it.
 
 | Result | Item |
 | --- | --- |
-| `build/macos/Halo.app` | The app (refer to "The app"), signed ad hoc |
+| `build/macos/OpenH1.app` | The app (refer to "The app"), signed ad hoc |
 | `build/macos/halo` | The game, an arm64 executable, for development |
 | `build/macos/libSDL3.0.dylib` | SDL 3.4.16, without OpenGL. The game finds it next to the executable. |
-| `build/macos/Halo.dmg` | A disk image of the app (`ninja macos_dmg`) |
+| `build/macos/OpenH1.dmg` | A disk image of the app (`ninja macos_dmg`) |
 | `build/macos/xgpu_metal_test` | The Metal backend's tests (`ninja macos_metal_test`) |
 
 The game draws with Metal (refer to "Metal"): the menus, the multiplayer
@@ -20,7 +20,7 @@ maps and the campaign. It was tested on an Apple A18 Pro with macOS 27.
 - Xcode's clang (for the host), Python and ninja. The option `--macos-cc`
   of `configure.py` selects a different clang.
 - The guest is compiled with LLVM 22.1.8, which `configure.py` downloads
-  the first time (approximately 1.5 GB) to `~/Library/Caches/opence`. Refer
+  the first time (approximately 1.5 GB) to `~/Library/Caches/openh1`. Refer
   to "The guests' compiler" in [README.md](../../README.md#the-guests-compiler).
   With `--macos-guest-cc` (or `--macos-cc`, or `--guest-llvm=system`), the
   guest is compiled with that clang instead, and `configure.py` needs
@@ -33,9 +33,9 @@ maps and the campaign. It was tested on an Apple A18 Pro with macOS 27.
 
 ## Start the game
 
-Open `build/macos/Halo.app` (from Finder, or `open build/macos/Halo.app`).
-The first time, it asks for the maps folder of the Xbox game (refer to
-"The app").
+Open `build/macos/OpenH1.app` (from Finder, or `open build/macos/OpenH1.app`).
+The first time, it asks for the disc image or the maps folder of the Xbox
+game (refer to "The app").
 
 For development, the executable runs without the app as on Linux:
 
@@ -53,14 +53,18 @@ use the network tests (`HALO_NETWORK_TEST=host:bloodgulch`;
 
 ## The app
 
-`ninja macos` makes `build/macos/Halo.app` (`tools/macos_app.py`), named
-as the other desktop builds are (`halo.exe`, the window's title "Halo"):
+`ninja macos` makes `build/macos/OpenH1.app` (`tools/macos_app.py`), named
+OpenH1 as the site is; its executable is `halo`, as the other desktop
+builds' are (`halo.exe`). Its settings and saves are in Application
+Support's OpenH1 folder whatever the app is called, so an earlier
+`Halo.app` can simply be deleted:
 
 | Item | What |
 | --- | --- |
 | `Contents/MacOS/halo` | The executable (its rpaths: `@executable_path`, and `@executable_path/../Frameworks` in the app) |
 | `Contents/Frameworks/libSDL3.0.dylib` | SDL |
-| `Contents/Resources/opence-icon.icns` | The icon, from `port/assets/icon` (`tools/app_icon.py` writes `port/macos/opence-icon.icns`) |
+| `Contents/Frameworks/Sparkle.framework` | The updater ([Sparkle](https://sparkle-project.org) 2, MIT; without its XPC services, which only a sandboxed app uses), loaded by `host_app.m` at run time |
+| `Contents/Resources/openh1-icon.icns` | The icon, from `port/assets/icon` (`tools/app_icon.py` writes `port/macos/openh1-icon.icns`) |
 | `Contents/Resources/brokers.txt` | Internet play's brokers, copied beside `config.toml` at each start |
 | `Contents/Resources/Credits.html` | The About panel's text: the build |
 | `Contents/Info.plist` | Below |
@@ -93,21 +97,26 @@ a Mac app does, before the game starts:
   the game's lines) goes to `~/Library/Logs/OpenH1/halo.log`, the previous
   start's to `halo.previous.log` (Console shows them), unless the error
   output is a terminal. The Metal archive is in `~/Library/Caches/OpenH1`.
-  At the first start without an `OpenH1` folder, the app copies
-  `Application Support/OpenCE` (the folder before the project was OpenH1)
-  to it, and leaves that folder as it was.
   `HALO_DATA_ROOT` and `HALO_SAVE_ROOT`, and `paths.data` and `paths.saves`
   in `config.toml`, still choose other folders.
 - **The maps.** The players supply them. Without a maps folder, an open
-  panel asks for the Xbox game's (a short explanation in it). The folder is
-  checked: `ui.map` must be an Xbox cache file (the PC version's and Custom
-  Edition's are refused, with the reason), and a folder that lacks some of
-  the disc's 23 maps can be used once the player agrees. It is kept as a
+  panel asks for the Xbox game's disc image or its maps folder (a short
+  explanation in it). It enables folders and, of the files, disc images
+  (`.iso` or `.xiso` in any case, as `halo1.xiso.iso`). A disc image's maps
+  folder is extracted by `port/linux/src/xiso.c` (the desktop builds' and the
+  iOS app's extractor, built into the host: `shared_extra` in
+  `tools/macos_build.py`) into the data root's `maps`, a folder of its own
+  (no bookmark, no link), through `maps.partial`, with a window showing the
+  copy; an image that is not one, or has no maps, is refused with xiso.c's
+  reason. Either is checked: `ui.map` must be an Xbox cache file (the PC
+  version's and Custom Edition's are refused, with the reason), and maps
+  that lack some of the disc's 23 can be used once the player agrees. A
+  folder is kept as a
   bookmark (`maps.bookmark`), which finds the folder again when it is moved
   or renamed, and the data root's `maps` is a symbolic link to it, made
   again at each start. A `maps` folder of the data root's own (not a link)
   is used as it is. The panel's tests:
-  `HALO_MAPS_PANEL_ANSWER=<folder>;<folder>...` (or `cancel`) answers each
+  `HALO_MAPS_PANEL_ANSWER=<folder or image>;...` (or `cancel`) answers each
   showing of the panel with the next one, and each alert with its first
   button.
 - **The window.** Its place and size, and whether it was fullscreen, are
@@ -119,6 +128,57 @@ a Mac app does, before the game starts:
 - **Menus.** SDL's: About, Hide, Quit (Cmd-Q quits as closing the window
   does; before the game starts, at once), and the Window menu with Toggle
   Full Screen (Cmd-Ctrl-F). The window has the native fullscreen button.
+
+### Updates
+
+A release's app updates itself with Sparkle 2, as Mac apps do. The build
+downloads Sparkle's release once, pinned by its SHA-256
+(`SPARKLE_VERSION` in `tools/macos_build.py`), into
+`build/macos/third_party/Sparkle`.
+
+- A release's `Info.plist` has `SUFeedURL`
+  (`https://github.com/OpenH1/OpenH1/releases/latest/download/appcast.xml`),
+  `SUPublicEDKey` (the `SPARKLE_PUBLIC_KEY` repository variable),
+  `SUEnableAutomaticChecks`, `SUScheduledCheckInterval` (four hours) and
+  `SUVerifyUpdateBeforeExtraction`. Debug and local builds have none of
+  them, and never look for updates.
+- The app looks when the game first reaches its main menu, then every four
+  hours, unless `update.auto` is false. The app menu's Automatically Check
+  for Updates and Settings > Network Setup > Check for Updates are both
+  `update.auto`. Check for Updates... in the app menu looks at once.
+- Sparkle's window shows the new version's notes, with Install Update,
+  Remind Me Later and Skip This Version. The window opens only at the main
+  menu. When a check finds a version during a game, the window waits until
+  the game is over: each frame, the guest tells the host whether a game is
+  being played (`updater.c`'s `updater_poll`, `host_app_playing`).
+- Install Update downloads the release's `OpenH1.dmg`, checks its EdDSA
+  signature and the app's Developer ID signature, replaces the app and
+  starts it again. Settings and saves are in Application Support, so the
+  update does not change them.
+- CI: the macOS job signs the notarized disk image with Sparkle's
+  `sign_update` and the `SPARKLE_PRIVATE_KEY` secret (`OpenH1.dmg.sparkle`).
+  The release job writes `appcast.xml` from it (`tools/macos_appcast.py`:
+  the build number, the disk image's URL, the signature, and the merged
+  pull requests since the last release as notes), and attaches it to the
+  release. Without the secret, or without a notarized app, the release has
+  no appcast and the apps already installed stay as they are.
+- The key: `bash tools/setup_sparkle_key.sh` (on the Mac whose Keychain
+  will keep the private key) makes it with Sparkle's `generate_keys`, sets
+  the secret and the variable, and prints the public key.
+- Test against an appcast of your own: `HALO_UPDATE_FEED=<url>` replaces the
+  appcast URL of an app whose `Info.plist` has a public key.
+  `HALO_UPDATE_TEST=window` shows the update window at once (a visible
+  window), and `HALO_UPDATE_TEST=install` downloads, checks and installs
+  the update at once without a window. With either, the app is never
+  started again after an install, because LaunchServices would start it
+  without the test's environment, in the player's own folders. Give a test
+  its own home (`CFFIXED_USER_HOME`), data and save roots, Metal archive
+  (`HALO_METAL_ARCHIVE`) and bundle ID.
+- The updater starts on the first `host_sdl_poll_event` call
+  (`host_app_update_tick`), and ticks every two seconds after that.
+  Neither a run-loop timer nor `NSApplicationDidFinishLaunching` works
+  here: the game's event pump does not fire timers, and the notification
+  never arrives.
 
 ### Signing
 
@@ -150,20 +210,37 @@ To sign the app with a Developer ID, notarize it and make its disk image
 keychain):
 
 ```sh
-xcrun notarytool store-credentials opence --apple-id <apple-id> --team-id <team>   # once
+xcrun notarytool store-credentials openh1 --apple-id <apple-id> --team-id <team>   # once
 python3 tools/macos_app.py notarize --identity "Developer ID Application: <name> (<team>)" \
-    --keychain-profile opence
+    --keychain-profile openh1
 ```
 
 It signs the app (with a secure timestamp), sends it to the notary
-service, staples its ticket to it, makes `build/macos/Halo.dmg`, signs,
+service, staples its ticket to it, makes `build/macos/OpenH1.dmg`, signs,
 notarizes and staples that too, and checks both with `spctl`.
-`python3 tools/macos_app.py sign --identity ...` only signs the app.
+`python3 tools/macos_app.py sign --identity ...` only signs the app. An App
+Store Connect API key can stand in for the keychain profile: `--key
+AuthKey_<id>.p8 --key-id <id> --issuer <issuer ID>`.
+
+CI signs and notarizes the release on `master` this way ("Sign and
+notarize" in `.github/workflows/build.yml`), when the repository has the
+secrets: `MACOS_CERTIFICATE` (the Developer ID Application certificate and
+its private key, a `.p12` exported from Keychain Access, base64) and
+`MACOS_CERTIFICATE_PASSWORD`, and the API key's `ASC_KEY` (its `.p8`,
+base64), `ASC_KEY_ID` and `ASC_ISSUER_ID`. Without them the release is
+signed ad hoc.
 
 ### The release build and the disk image
 
 `python3 configure.py --release`, then `ninja macos_dmg`:
-`build/macos/Halo.dmg` holds the app and a link to Applications. The
+`build/macos/OpenH1.dmg` holds the app and a link to Applications, laid
+out in a window of its own: OpenH1's icon on the disk, the app on the left
+and Applications on the right over a background (`port/macos/dmg`:
+`background.html`, rendered by `render.sh` to `background.png` and
+`background@2x.png`). That is dmgbuild's
+([dmgbuild](https://github.com/dmgbuild/dmgbuild), MIT, `pip install
+dmgbuild==1.6.7`), which writes the window's layout without Finder; without
+it, the disk image is a plain one. The
 guest, where the profile of profile-guided optimisation (`pgo/`) is used,
 is compiled with the pinned LLVM 22, which reads the profile. The host
 does not use the profile, and Xcode's clang builds it.
@@ -309,7 +386,10 @@ render thread is), run by a `CAMetalDisplayLink`: at
 each refresh of the display, the link hands over a drawable, and the
 thread draws the oldest frame queued into it, letterboxed to the frame's
 shape, and presents it. A ProMotion display's rate follows the frames, up
-to its highest; a fixed display's is its own. When a frame ends, its
+to its highest; a fixed display's is its own. With battery saver on
+(`display.battery_saver`, `host_metal_battery_saver`), the link runs at a
+whole fraction of the display's rate, 30 to 60 frames a second (60 at
+60 or 120 Hz: a ProMotion display slows to it). When a frame ends, its
 back buffer's texture becomes one of two presentation images, and the
 back buffer takes the texture of the other, which the display has done
 with, for the next frame (a copy would be a pass over the whole of both).
@@ -346,6 +426,29 @@ pacing tested on this one).
 
 Until frames come, each refresh clears the drawable to black and presents
 it (the window opens before the game draws).
+
+**HDR** (`display.hdr`, [docs/hdr.md](../../docs/hdr.md)). While the frame is
+drawn in HDR on a display with EDR headroom, the layer is RGBA16Float in
+extended linear sRGB with `wantsExtendedDynamicRangeContent` (1.0 the
+system's SDR white), and the presentation encodes the frame for it (the
+shared encoding, `xgpu_hdr_encode` in `xgpu_metal_post_shaders.c`: linear,
+at most the peak, times paper white); otherwise it is BGRA8 and untagged, as
+it was. The window's screen's headroom is read on the main thread (NSScreen)
+four times a second and whenever the window moves to another screen: its
+potential headroom says whether the display shows HDR (`"auto"` turns HDR
+on past 2: an SDR panel such as a MacBook Air's reports 2.0, its white dimmed
+below the backlight), and its headroom now is the peak the tone map and the
+encoding roll off to, which follows the display's brightness.
+`HALO_METAL_EDR_HEADROOM=<headroom>` stands in for the display's (the
+tests, the replay, and evidence made on a Mac without an HDR display). The
+backend tone maps each window's 3D view with a draw in the pass that drew
+it, reading the pixels where they are (programmable blending), and the
+draws that the front end tags blend in their pixel shaders, reading the
+pixel they draw over (`[[color(0)]]`); they are the MSL emitter's shaders,
+not the combiner function's. A shot of an HDR back buffer
+(`HALO_RENDER_SHOTS`) writes, beside its PNG (clamped, as an SDR display
+shows it), the frame's half floats (`.rgba16f`) and the frame encoded for
+the display it had (`.encoded.rgba16f`, `.encoded.txt`).
 
 `HALO_METAL_STATS=<seconds>` logs the pacing that often: the link's
 refreshes, the frames and clears presented, how many drawables reached the
@@ -547,11 +650,34 @@ command stream's backend table. They run on one thread, the render thread.
   and the large pass, parked, goes on when the game comes back to its
   targets. A target that the command buffer's work has read is given another
   texture first (its contents copied where the pass loads them, or has other
-  levels or layers). The first return in a frame still ends the large pass
-  (a frame drawn in one pass from its start differed from the stock order
-  at a few pixels of some frames; with that break, every shot of the
-  recordings is the same). `HALO_METAL_ASIDE=0`: none. HALO_METAL_STATS
-  counts them.
+  levels or layers). On the Mac the first return in a frame still ends the
+  large pass (a frame drawn in one pass from its start differed from the
+  stock order at a few pixels of some frames; with that break, every shot
+  of the recordings is the same). On iOS it goes on (the backend's
+  `aside_continue`), the 3D view and the HUD then one pass, which a
+  phone's GPU pays least for and MSAA needs to resolve its samples in tile
+  memory: at 2796x1290 on an M1, MSAA 4x went from 9.1 to 5.2 ms of the
+  GPU a frame, and one or two pixels of a shot differ.
+  `HALO_METAL_ASIDE_BREAK=1` or `0` chooses on either. `HALO_METAL_ASIDE=0`:
+  no aside passes. HALO_METAL_STATS counts them.
+- **Frame-end discards.** A tile-based GPU (Apple's) stores each pass's
+  attachments from tile memory into their textures as the pass ends. The
+  frame's last pass decides its depth, stencil and multisampled colour
+  attachments' stores as it ends (deferred store actions): a target whose
+  first use in each of the last 30 frames was a clear of the whole of it
+  (no load, draw's read, copy or resolve before) has its contents at the
+  frame's end discarded, a multisampled colour resolved and its samples
+  dropped. The game clears its depth and its multisampled targets at each
+  frame's start, so those stores go. A first use that is not a clear starts
+  the count again (logged once, if the frame read what was discarded). The
+  shots of recorded frames are the same with and without them.
+  `HALO_METAL_DISCARDS=0`: none. `HALO_METAL_MEMORYLESS=1` (with
+  `aside_continue`) makes multisampled attachments memoryless, saving their
+  memory too (about 130 MB at an iPhone Pro Max's resolution); off by
+  default, as the game ends and resumes its 3D view's pass now and then
+  (every few hundred frames of a10), and a memoryless target's samples are
+  gone then, which shows for a frame (the target is then kept in memory,
+  and memoryless again after 120 frames without such a load).
 - **Visibility tests** count samples in a visibility result buffer, one for
   each pass (Apple's GPUs zero the first results an earlier pass counted
   into a buffer when a later pass counts into the same one), and the counts
@@ -581,7 +707,15 @@ command stream's backend table. They run on one thread, the render thread.
   header's Data, Format and Size (and a palettized one's palette, and a
   Custom Edition map's channel order), read from the guest's memory and
   decoded as the OpenGL backend does (`xbox_texture_decode.c`): DXT as BC1
-  to BC3, the rest to BGRA. Its pages are write-protected (the write
+  to BC3, the rest to BGRA. On a GPU without BC (an iPhone's), DXT is
+  transcoded to ASTC 4x4 (`display.astc_textures`; `port/linux/astc`,
+  `port/ios/README.md`); `"always"` does so on a Mac too, and
+  `HALO_METAL_NO_BC=1` makes the backend take the Mac's GPU for one without
+  BC, to measure an iPhone's textures on a Mac (`"off"` then decodes them as
+  the iPhone did before). `HALO_ASTC_CACHE=<folder>` keeps the encoded
+  blocks there instead of `~/Library/Caches/OpenH1/astc` (empty: nowhere),
+  and `HALO_METAL_STATS` logs the textures' bytes (all, DXT as ASTC,
+  decoded, as BC) every 10 seconds. Its pages are write-protected (the write
   tracking, `host_memory_watch.c`, safe from the render thread), and it is
   read again once any of them has been written; a texture whose memory the
   game has let go of is not read. The high-res replacements (the HUD's,
@@ -593,6 +727,30 @@ command stream's backend table. They run on one thread, the render thread.
   into since, as the web build's OpenGL does.
 - **Fans and line loops** (the game draws fans in immediate mode) are made
   into lists.
+- **The enhanced dynamic lights** (`display.dynamic_lights = "enhanced"`, the
+  Enhanced preset's): the MSL emitter's lit structure and models
+  (`port/linux/src/xgpu_msl.c`, the GLSL emitter's lighting operation for
+  operation) read the frame's lights' block and their grid's cells from two
+  buffers (`XGPU_METAL_BUFFER_DYNAMIC_LIGHTS`, `_DYNAMIC_LIGHT_CELLS`), which
+  the stream's upload record copies into the frame's upload ring, so that
+  the draws after it read them in the stream's order without a pass broken;
+  where a frame has sent none, zeroed ones. The glow about each plasma bolt
+  is a pass of its own, as OpenGL's: a camera-facing quad about each light
+  (the emitter's `xgpu_msl_halo_shader`), added to the 3D view's colour
+  after its transparent geometry, faded against the depth the scene was
+  drawn with (read at each pixel; a multisampled depth target's resolved
+  first, `xgpu_metal_texture_resolve`).
+- **Anti-aliasing** (`display.anti_aliasing = "smaa"`, the Enhanced preset's,
+  or `"fxaa"`): the OpenGL backend's passes (`port/linux/src/xgpu_post.c`)
+  over the window's 3D view, after the glows and before the HUD and the
+  menus, which stay sharp, drawn through the backend's own functions
+  (`xgpu_metal_post.c`): the target's pixels copied, then FXAA, or SMAA's
+  edges, blending weights (with its area and search textures) and blend,
+  colour alone written back. Their MSL is the Vulkan backend's SPIR-V
+  written by SPIRV-Cross (`xgpu_metal_post_shaders.c`, generated by
+  `tools/metal_post_shaders.py`); the functions are in the app's library,
+  their pipelines made as the setting is chosen and as a map is
+  prepared.
 
 ### Tests
 
@@ -602,7 +760,11 @@ channel alone), a textured quad with the vertex constants and the draw's
 uniforms, every format, the pipeline cache, the winding, visibility tests,
 multisampling, the order of uploads, cubes, arrays and volumes, guest
 memory read in place and mapped again, frames in flight, and the command
-stream's table. Each draws with shaders written in the test, reads the
+stream's table, with anti-aliasing's passes (SMAA and FXAA blend the 3D
+view's staircase and leave the HUD drawn after them, and the target's alpha,
+as they were) and the enhanced dynamic lights (the emitter's lit structure
+compiles and draws unlit with no lights sent, lit near a light sent, and a
+bolt's glow is added about its middle). Each draws with shaders written in the test, reads the
 pixels back and checks them; and through the table, with the MSL emitter's
 shaders made from a vertex program and a pixel program written as the
 stream's bytes: an Xbox texture in the guest's memory (swizzled), read
@@ -633,12 +795,11 @@ draw, and cleared.
 
 ## Limits
 
-- Not drawn yet: display.anti_aliasing's FXAA and SMAA passes, the
-  enhanced dynamic lights, a render target's mip levels drawn one by one
-  (the water's ripple map: its first level is sampled), points drawn as
+- Not drawn yet: a render target's mip levels drawn one by one (the
+  water's ripple map: its first level is sampled), points drawn as
   polygons' fill (lines instead).
 - With `display.prepare_shaders` off (it is on by default), a pipeline is
   made the first time a draw needs it, which the draw waits for (the shaders
   are the library's or specialised: no MSL is compiled); later runs find it
   in the archive.
-- The self-updater and the Discord invites are not set up for macOS.
+- The Discord invites are not set up for macOS.

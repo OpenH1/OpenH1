@@ -39,6 +39,8 @@ void hud_render_weapon_interface(
 #ifdef HALO_VR
 void hud_render_weapon_crosshairs(
 	struct player_datum *player);
+void hud_render_weapon_zoomed(
+	struct player_datum *player);
 #endif
 
 #endif // __HUD_WEAPON_H

@@ -96,6 +96,15 @@ static void synthetic_pixel_programs(synthetic_pixel_callback callback)
 		snprintf(name, sizeof(name), "synthetic-dependent%d", i);
 		callback(name, &program);
 	}
+	/* a z-sprite (the game's effect program with its second map's puff:
+	stage 3's DOT_ZW replaces the fragment's depth, xgpu_shader.h) */
+	synthetic_base(&program);
+	synthetic_stage(&program, 0, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+	synthetic_stage(&program, 1, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+	synthetic_stage(&program, 2, XGPU_TEXTURE_DOT_PRODUCT, _xgpu_sampler_none);
+	synthetic_stage(&program, 3, XGPU_TEXTURE_DOT_ZW, _xgpu_sampler_none);
+	program.stages[2].input = program.stages[3].input = 1;
+	callback("synthetic-zsprite", &program);
 	/* the dot products, with each dot mapping */
 	for (i = 0; i < 8; i++)
 	{

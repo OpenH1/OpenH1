@@ -6,10 +6,12 @@
     python tools/ci_build.py linux_x86_64 release --vr
     python tools/ci_build.py linux_x86_64 profile
     python tools/ci_build.py linux_arm64 release   (on a 64-bit ARM Linux computer)
+    python tools/ci_build.py linux_arm64 release --vr
     python tools/ci_build.py android release
     python tools/ci_build.py windows release       (on Windows)
     python tools/ci_build.py web release
     python tools/ci_build.py macos release         (on a Mac with Apple silicon)
+    python tools/ci_build.py ios debug             (on a Mac with Apple silicon and Xcode's iOS SDK)
 
 Builds are portable (any x86-64 processor; any ARMv8.0 one for
 linux_arm64 and android), so they run on other computers. Debug builds skip link-time and profile-guided optimisation,
@@ -18,24 +20,35 @@ release build does (profile-guided optimisation needs clang 22 or later,
 and is skipped with an older one; the guests' compiler is the pinned LLVM
 22 that configure.py downloads, tools/guest_toolchain.py). A profile build is a debug build with
 configure.py --profile, so that the profiling build is built too. CI_COMPILER_LAUNCHER (ccache, say) is
-passed on as --compiler-launcher, and CI_GUEST_LLVM_CACHE as --guest-llvm-cache. A build of the master branch gets the run's
+passed on as --compiler-launcher, CI_GUEST_LLVM_CACHE as --guest-llvm-cache, and CI_GUEST_ASM_CACHE as
+--guest-asm-cache. A build of the master branch gets the run's
 number (HALO_BUILD_NUMBER), which its release is named after and the
 self-updater compares (and the web site's version.json names).
 
---vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md),
-into dist/halo-linux-x86_64-vr-<config>/, a build of its own, which updates
-to the release's VR build. Only for linux_x86_64: the 64-bit ARM VR build is
-the Steam Frame's package (tools/frame_package.py).
+--vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md).
+For linux_x86_64, into dist/halo-linux-x86_64-vr-<config>/, a build of its
+own, which updates to the release's VR build. For linux_arm64, the Steam
+Frame's package (tools/frame_package.py, which its install.sh,
+tools/linux_install.sh, installs, and which updates itself to the
+release's: updater.c's UPDATER_PACKAGE), zipped as
+dist/halo-steam-frame-vr-<config>/halo-steam-frame-vr-<config>.zip, which
+the release has as it is.
 
-A Linux build is the release's tree (tools/linux_package.py: bin/opence,
-lib/opence, share/...), dist/halo-linux-x86_64[-vr]-<config>/ or
+A Linux build is the release's tree (tools/linux_package.py: bin/openh1,
+lib/openh1, share/...), dist/halo-linux-x86_64[-vr]-<config>/ or
 dist/halo-linux-arm64-<config>/, named as its self-updater asks
 (port/linux/src/updater.c, UPDATE_PLATFORM).
 
 The macOS build is the app's disk image (ninja macos_dmg), signed ad hoc
-(tools/macos_app.py), in dist/halo-macos-<config>/ with the notices: the
-disk image keeps the app's modes and links, which the workflow's artifacts
-would lose.
+(tools/macos_app.py), alone in dist/halo-macos-<config>/ (the app carries
+the licences): the disk image keeps the app's modes and links, which the
+workflow's artifacts would lose, and the release has it as it is,
+OpenH1.dmg (OpenH1-debug.dmg).
+
+The iOS build is the app (ninja ios), signed ad hoc (tools/ios_app.py: a
+device refuses it, a sideloading tool such as AltStore signs it again), as
+an .ipa (Payload/OpenH1.app, zipped), alone in dist/halo-ios-<config>/. The
+release does not publish it yet (port/ios/README.md).
 
 The web build (port/web/README.md) needs Emscripten (emcc on the PATH, as
 emsdk_env.sh puts it); dist/halo-web-<config>/ is the whole site, which a
@@ -64,7 +77,8 @@ OUTPUTS = {
     "linux_x86_64": ["build/linux_x86_64/halo", "build/linux_x86_64/libSDL3.so.0",
                      "build/linux_x86_64/SDL3-LICENSE.txt"],
     "windows": ["build/windows/halo.exe", "build/windows/SDL3.dll"],
-    "macos": ["build/macos/Halo.dmg"],
+    "macos": ["build/macos/OpenH1.dmg"],
+    "ios": [],  # the .ipa, below
     "android": [],  # the APK, below
     "web": [],  # the site, below
 }
@@ -78,7 +92,11 @@ def dist_name(platform: str, config: str, vr: bool = False) -> str:
     """the folder in dist/ (and the release's zip) of a build: halo-<platform>-
     <config>, where a Linux build's platform is the target's with its first
     underscore a hyphen, and -vr after it for the VR build (linux-x86_64,
-    linux-x86_64-vr, linux-arm64: updater.c's UPDATE_PLATFORM)"""
+    linux-x86_64-vr, linux-arm64: updater.c's UPDATE_PLATFORM); but the 64-bit
+    ARM VR build is the Steam Frame's package, halo-steam-frame-vr-<config>
+    (UPDATE_PLATFORM steam-frame-vr: it updates to that package)"""
+    if platform == "linux_arm64" and vr:
+        return f"halo-steam-frame-vr-{config}"
     if platform.startswith("linux"):
         platform = platform.replace("_", "-", 1) + ("-vr" if vr else "")
     return f"halo-{platform}-{config}"
@@ -89,14 +107,37 @@ def run(command, cwd=ROOT):
     subprocess.run([str(part) for part in command], cwd=cwd, check=True)
 
 
+def check_guest_image(platform: str) -> None:
+    """A guest build's executables carry the guest image just linked
+    (guest_image.S's .incbin): an executable with another guest, as a
+    cached object once gave macOS's releases (a black window: the guest's
+    render stream of another version than the host's), stops the build."""
+    image = ROOT / "build" / platform / "halo_guest.elf"
+    executables = [ROOT / "build" / platform / "halo"]
+    if platform == "macos":
+        executables.append(ROOT / "build/macos/OpenH1.app/Contents/MacOS/halo")
+    if platform == "ios":
+        executables.append(ROOT / "build/ios/OpenH1.app/halo")
+    if platform == "windows":
+        executables.append(ROOT / "build/windows/halo.exe")
+    if not image.is_file():
+        return
+    data = image.read_bytes()
+    for executable in executables:
+        if executable.is_file() and data not in executable.read_bytes():
+            sys.exit(f"{executable.relative_to(ROOT)} does not carry {image.relative_to(ROOT)}, the guest just linked")
+        print(f"{executable.relative_to(ROOT)} carries {image.relative_to(ROOT)}", flush=True)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("platform", choices=sorted(OUTPUTS))
     parser.add_argument("config", choices=["debug", "release", "profile"])
-    parser.add_argument("--vr", action="store_true", help="the VR build (linux_x86_64 only)")
+    parser.add_argument("--vr", action="store_true",
+                        help="the VR build (linux_x86_64; linux_arm64: the Steam Frame's package)")
     args = parser.parse_args()
-    if args.vr and args.platform != "linux_x86_64":
-        parser.error("--vr is for linux_x86_64 only")
+    if args.vr and args.platform not in ("linux_x86_64", "linux_arm64"):
+        parser.error("--vr is for linux_x86_64 and linux_arm64 only")
 
     configure = [sys.executable, "configure.py"]
     if args.config == "release":
@@ -115,6 +156,11 @@ def main() -> int:
     llvm_cache = os.environ.get("CI_GUEST_LLVM_CACHE")
     if llvm_cache:
         configure += ["--guest-llvm-cache", llvm_cache]
+    # the folder the arm64_32 guests' converted and assembled objects are
+    # kept in (tools/guest_asm_cache.py), which the workflow caches too
+    asm_cache = os.environ.get("CI_GUEST_ASM_CACHE")
+    if asm_cache:
+        configure += ["--guest-asm-cache", asm_cache]
     # a build of master knows its number, which names its release (build-<n>),
     # for the self-updater (port/linux/src/updater.c, and the Android app);
     # other builds have none, and never look for updates
@@ -132,9 +178,24 @@ def main() -> int:
         shutil.copytree(ROOT / "build/web/site", dist)
         print(f"build/web/site -> {dist.relative_to(ROOT)}", flush=True)
         return 0
+    if args.platform == "ios":
+        # the app as an .ipa: Payload/OpenH1.app, zipped with its modes
+        # (ditto), which the workflow's artifacts would lose
+        run(["ninja", "ios"])
+        check_guest_image(args.platform)
+        dist = ROOT / "dist" / f"halo-ios-{args.config}"
+        if dist.exists():
+            shutil.rmtree(dist)
+        payload = dist / "Payload"
+        payload.mkdir(parents=True)
+        run(["ditto", ROOT / "build/ios/OpenH1.app", payload / "OpenH1.app"])
+        run(["ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", payload, dist / "OpenH1.ipa"])
+        shutil.rmtree(payload)
+        return 0
     if args.platform == "android":
         # the native part, then the app around it (Gradle's variant of the
-        # same name: release is signed with the debug key, not debuggable)
+        # same name: release is not debuggable; both are signed with the
+        # workflow's key when it has one, port/android/app/build.gradle)
         run(["ninja", "android"])
         gradlew = "gradlew.bat" if os.name == "nt" else "./gradlew"
         variant = "release" if args.config == "release" else "debug"
@@ -144,6 +205,18 @@ def main() -> int:
         target = "macos_dmg" if args.platform == "macos" else args.platform
         run(["ninja", target])
         outputs = OUTPUTS[args.platform]
+        check_guest_image(args.platform)
+
+    if args.platform == "linux_arm64" and args.vr:
+        # the Steam Frame's package (tools/frame_package.py: the game, its
+        # SDL3, the launcher, the licences, VERSION and SHA256SUMS), zipped
+        # with the files' modes, which the workflow's artifacts would lose:
+        # the release has the zip as it is
+        dist = ROOT / "dist" / dist_name(args.platform, args.config, args.vr)
+        if dist.exists():
+            shutil.rmtree(dist)
+        run([sys.executable, "tools/frame_package.py", "--zip", dist / f"{dist.name}.zip"])
+        return 0
 
     # the licences of what the build carries (tools/linux_package.py)
     notices = linux_package.notices(args.platform)
@@ -159,7 +232,7 @@ def main() -> int:
         dist = ROOT / "dist" / dist_name(args.platform, args.config, args.vr)
         if dist.exists():
             shutil.rmtree(dist)
-        linux_package.stage_tree(dist, executable, library, notices)
+        linux_package.stage_tree(dist, executable, library, notices, vr=args.vr)
         print(f"{', '.join(outputs)} -> {dist.relative_to(ROOT)}", flush=True)
         return 0
 
@@ -184,15 +257,20 @@ def main() -> int:
                     *sorted((ROOT / "build/windows/third_party").glob("SDL3-*/lib/x64/SDL3.pdb"))]:
             shutil.copy2(pdb, symbols)
             print(f"{pdb.relative_to(ROOT)} -> {symbols.relative_to(ROOT)}", flush=True)
-    if args.platform == "macos":
-        # (the SDL3 the app carries, built from this source: tools/macos_build.py)
-        notices.append((ROOT / "build/macos/third_party/SDL3/LICENSE.txt", "SDL3-LICENSE.txt"))
+    if args.platform in ("macos", "android"):
+        # (the app carries the licences: the macOS app's
+        # Contents/Resources/Licenses, tools/macos_build.py; the APK's
+        # assets/licenses, tools/android_build.py), and the release publishes
+        # it alone
+        return 0
+    # OpenH1's own licence, the AGPL, which asks each copy to carry its text
+    # (the Linux tree's is in share/licenses: linux_package.py)
+    shutil.copy2(ROOT / "LICENSE", dist / "LICENSE.txt")
     for source, name in notices:
         shutil.copy2(source, dist / name)
     # internet play's MQTT brokers, a file beside the game (network.brokers_file;
     # Android's APK and the macOS app have their own copies)
-    if args.platform not in ("android", "macos"):
-        shutil.copy2(ROOT / "port/assets/network/brokers.txt", dist / "brokers.txt")
+    shutil.copy2(ROOT / "port/assets/network/brokers.txt", dist / "brokers.txt")
     return 0
 
 

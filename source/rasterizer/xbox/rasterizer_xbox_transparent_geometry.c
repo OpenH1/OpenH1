@@ -195,6 +195,15 @@ enum
 	NUMBER_OF_RASTERIZER_GEOMETRY_FLAGS
 };
 
+#ifdef HALO_VR
+/* port: an effect's sprites large enough on the screen to be drawn thick in
+the VR mode's eyes (render_sprite.c, halo_vr_effect_depth) */
+enum
+{
+	_rasterizer_geometry_vr_thick_bit = NUMBER_OF_RASTERIZER_GEOMETRY_FLAGS,
+};
+#endif
+
 enum
 {
 	_shader_type_screen = 0,
@@ -1102,6 +1111,38 @@ static void numeric_mirrored_map(
 }
 #endif
 
+/* port: what display.hdr needs to know of a group's draws: a glass or
+water shader's (their reflections, a surface's specular light), and the
+first-person weapon's own transparent parts (its displays and glows), a
+number or a meter among them: not its effects' particles (a muzzle flash is
+light), nor its shields' plasma (port/linux/src/d3d8_device.c, xgpu_hdr.h) */
+static int transparent_hdr_kind(
+	struct transparent_geometry_group const *group)
+{
+	short type = group->shader->base.type;
+	int kind = HALO_HDR_KIND_NONE;
+
+	if (type == _shader_type_transparent_glass || type == _shader_type_transparent_water)
+		kind |= HALO_HDR_KIND_SPECULAR;
+	if (TEST_FLAG(group->geometry_flags, _rasterizer_geometry_first_person_bit) &&
+		(type == _shader_type_transparent_generic || type == _shader_type_transparent_chicago ||
+			type == _shader_type_transparent_meter))
+	{
+		kind |= HALO_HDR_KIND_FIRST_PERSON;
+		if (type == _shader_type_transparent_meter)
+			kind |= HALO_HDR_KIND_METER;
+		if (type == _shader_type_transparent_generic &&
+			TEST_FLAG(((struct shader_transparent_generic_definition *)shader_get_and_verify_type(
+				group->shader, _shader_type_transparent_generic))->generic.flags, _shader_transparent_flag_numeric_bit))
+			kind |= HALO_HDR_KIND_NUMERIC;
+		if (type == _shader_type_transparent_chicago &&
+			TEST_FLAG(((struct shader_transparent_chicago_definition *)shader_get_and_verify_type(
+				group->shader, _shader_type_transparent_chicago))->chicago.flags, _shader_transparent_flag_numeric_bit))
+			kind |= HALO_HDR_KIND_NUMERIC;
+	}
+	return kind;
+}
+
 void rasterizer_transparent_geometry_group_draw(
 	struct transparent_geometry_group *group,
 	boolean dirty)
@@ -1542,6 +1583,8 @@ void rasterizer_transparent_geometry_group_draw(
 						break;
 					}
 
+					/* port: (display.hdr's, until the group is drawn) */
+					halo_hdr_draw_kind(transparent_hdr_kind(group));
 					switch (group->shader->base.type)
 					{
 						case _shader_type_model:
@@ -1938,6 +1981,32 @@ void rasterizer_transparent_geometry_group_draw(
 									combiner_index++;
 								}
 								pixel_shader.combiner_count = combiner_index;
+#ifdef HALO_VR
+								{
+									/* port: in the VR mode's eyes, soft against the
+									scene's depth, and thick where its sprites are
+									large (halo_vr_effect_depth); not the
+									first-person weapon's (its own depth range), nor
+									one drawn without depth. A z-sprite (a bullet
+									impact's puff) soft, not thick: its fade is
+									measured from the puff's own depth, which its
+									DOT_ZW stage computes, and is its depth test
+									(xgpu_spirv.c, effect_zsprite_fade), so the
+									floor it stands on does not cut it in half,
+									with no depth written */
+									extern void halo_vr_effect_depth(int mode);
+									extern boolean vr_render_eye_pass(void);
+									boolean zsprite = rasterizer_debug_options.zsprite_enabled &&
+										shader_effect->secondary_map_anchor ==
+											_shader_effect_secondary_map_anchor_zsprite &&
+										shader_effect->secondary_map.index != NONE;
+
+									halo_vr_effect_depth(!vr_render_eye_pass() ||
+										TEST_FLAG(group->geometry_flags, _rasterizer_geometry_first_person_bit) ||
+										TEST_FLAG(group->geometry_flags, _rasterizer_geometry_no_zbuffer_bit) ? 0 :
+										!zsprite && TEST_FLAG(group->geometry_flags, _rasterizer_geometry_vr_thick_bit) ? 2 : 1);
+								}
+#endif
 
 							}
 							break;
@@ -2404,6 +2473,12 @@ void rasterizer_transparent_geometry_group_draw(
 									component_index < NUMBEROF(constant_color0.n);
 									component_index++)
 									constant_color0.n[component_index] = function_value*color_delta.n[component_index] + stage->constant_color0.n[component_index];
+								/* port: the native builds' rounding can put this blend
+								of two valid colours a hair outside [0, 1] */
+								for (component_index = 0;
+									component_index < NUMBEROF(constant_color0.n);
+									component_index++)
+									constant_color0.n[component_index] = PIN(constant_color0.n[component_index], 0.0f, 1.0f);
 
 								match_assert(
 									"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox_transparent_geometry.c",
@@ -3605,7 +3680,17 @@ void rasterizer_transparent_geometry_group_draw(
 
 					rasterizer_set_pixel_shader(&pixel_shader);
 					rasterizer_transparent_geometry_group_draw__internal(group, FALSE);
+#ifdef HALO_VR
+					{
+						/* port: (the effect's alone: halo_vr_effect_depth) */
+						extern void halo_vr_effect_depth(int mode);
+
+						halo_vr_effect_depth(0);
+					}
+#endif
 				}
+				/* port: (display.hdr's: the group is drawn) */
+				halo_hdr_draw_kind(HALO_HDR_KIND_NONE);
 
 				if (TEST_FLAG(group->geometry_flags, _rasterizer_geometry_no_zbuffer_bit) &&
 					global_window_parameters.rasterizer_target == 0)

@@ -16,6 +16,28 @@ so the audio callback is handed to a thread that has one.
 #include <SDL3/SDL.h>
 #include <pthread.h>
 #include <string.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+/* port/ios/host_app.m: returns once the app is in the foreground; the
+fraction of the screen's pixels the game draws at */
+void host_app_background_wait(void);
+float host_app_render_scale(void);
+#endif
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
+/* port/macos/host_app.m: the updater's (weak: the Metal tests and the
+replay have no host_app.m) */
+void host_app_update_tick(void);
+#pragma weak host_app_update_tick
+#endif
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
+/* port/macos/host_raw_mouse.m: the mouse's unaccelerated counts */
+#define HOST_RAW_MOUSE 1
+void host_raw_mouse_start(void);
+int host_raw_mouse_take(float *x, float *y);
+#endif
 
 #define HANDLE_COUNT 256
 
@@ -152,6 +174,13 @@ int64_t host_sdl_thread_id(void)
 	return (int64_t)SDL_GetCurrentThreadID();
 }
 
+/* (the guest's poll thread, battery_saver.c: SDL asks the system, Java's
+battery broadcast on Android) */
+int host_sdl_power_info(int *seconds, int *percent)
+{
+	return (int)SDL_GetPowerInfo(seconds, percent);
+}
+
 /* ---------- video */
 
 uint32_t host_sdl_create_window(const char *title, int width, int height, int64_t flags)
@@ -167,12 +196,22 @@ void host_sdl_window_size_in_pixels(uint32_t window, int *width, int *height)
 	*height = 0;
 	if (object)
 		SDL_GetWindowSizeInPixels(object, width, height);
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	/* (display.render_scale: the game draws smaller, host_metal.m's
+	drawables are that size, and the display scales them up) */
+	*width = (int)(*width * host_app_render_scale() + 0.5f) & ~1;
+	*height = (int)(*height * host_app_render_scale() + 0.5f) & ~1;
+#endif
 }
 
 int host_sdl_set_relative_mouse(uint32_t window, int enabled)
 {
 	SDL_Window *object = host_sdl_handle_get(window, _handle_window);
 
+#ifdef HOST_RAW_MOUSE
+	if (enabled)
+		host_raw_mouse_start();
+#endif
 	return object ? SDL_SetWindowRelativeMouseMode(object, enabled != 0) : 0;
 }
 
@@ -187,8 +226,55 @@ int host_sdl_poll_event(void *event)
 {
 	SDL_Event host_event;
 
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+	/* (the game waits here while the app is in the background) */
+	host_app_background_wait();
+#elif defined(__APPLE__)
+	/* (the macOS app's updater: port/macos/host_app.m; not in the Metal
+	tests, which link no host_app.m) */
+	if (host_app_update_tick)
+		host_app_update_tick();
+#endif
 	if (!SDL_PollEvent(&host_event))
+	{
+#ifdef HOST_RAW_MOUSE
+		/* (the counts that came since the last motion, as one more, read as
+		late as the game reads its events: host_raw_mouse.m) */
+		SDL_Window *focus = SDL_GetMouseFocus();
+		float x, y;
+
+		if (!focus || !SDL_GetWindowRelativeMouseMode(focus) || !host_raw_mouse_take(&x, &y) ||
+			(x == 0.0f && y == 0.0f))
+			return 0;
+		SDL_zero(host_event);
+		host_event.type = SDL_EVENT_MOUSE_MOTION;
+		host_event.motion.timestamp = SDL_GetTicksNS();
+		host_event.motion.windowID = SDL_GetWindowID(focus);
+		host_event.motion.which = 1;
+		host_event.motion.state = SDL_GetMouseState(&host_event.motion.x, &host_event.motion.y);
+		host_event.motion.xrel = x;
+		host_event.motion.yrel = y;
+		memcpy(event, &host_event, sizeof(host_event));
+		return 1;
+#else
 		return 0;
+#endif
+	}
+#ifdef HOST_RAW_MOUSE
+	/* (captured, the mouse's motion is its own counts, not the system's
+	accelerated pointer's: host_raw_mouse.m) */
+	if (host_event.type == SDL_EVENT_MOUSE_MOTION && host_event.motion.which != SDL_TOUCH_MOUSEID)
+	{
+		SDL_Window *window = SDL_GetWindowFromID(host_event.motion.windowID);
+		float x, y;
+
+		if (window && SDL_GetWindowRelativeMouseMode(window) && host_raw_mouse_take(&x, &y))
+		{
+			host_event.motion.xrel = x;
+			host_event.motion.yrel = y;
+		}
+	}
+#endif
 	/* the layouts agree except for the pointers of text, drop and user
 	events, which the guest does not read */
 	memcpy(event, &host_event, sizeof(host_event));

@@ -44,6 +44,8 @@ static double fake_pow(double value, double exponent) { return value * exponent;
 #define pow fake_pow
 static unsigned long GetTickCount(void) { clocks++; return 123456; }
 static int halo_loading_owned(void) { queries++; return owned; }
+static int progress_calls; static real progress_told;
+static void halo_loading_progress(float value) { progress_calls++; progress_told = value; }
 static void IDirectSoundBuffer_SetVolume(int sound, long value) { audio++; volume[sound-1]=(int)value; }
 ''' + prefix + r'''
     (void)back_buffer_texture; (void)back_buffer; (void)stage; (void)color;
@@ -60,6 +62,8 @@ int main(void) {
     progress_bar_render(0.6f);
     assert(gpu==1 && clocks==2 && queries==2 && audio==8 && current_time==123456);
     assert(wobble_phase==original_wobble && last_t==original_progress);
+    /* the presenter is told the smoothed progress the draws would fade with */
+    assert(progress_calls==2 && progress_told==last_t);
     for(i=0;i<4;i++) assert(volume[i]==original[i]);
     owned=0; progress_bar_render(0.7f); assert(gpu==2);
     return 0;

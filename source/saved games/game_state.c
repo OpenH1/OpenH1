@@ -100,6 +100,7 @@ symbols in this file:
 #include "real_math.h"
 #include "console.h"
 #include "game_state.h"
+#include "coop_vehicles.h" /* port: preserve replacement-vehicle homes across reverts */
 #include "game.h"
 #include "tag_files.h"
 #include "cache_files.h"
@@ -183,6 +184,8 @@ typedef void (*game_state_before_save_proc)(void);
 static game_state_before_save_proc before_save_procs[] =
 {
 	dummy,
+	/* port: the host's vehicle home table follows the saved object handles. */
+	coop_vehicles_before_save,
 };
 
 static game_state_before_load_proc before_load_procs[] =
@@ -193,6 +196,14 @@ static game_state_before_load_proc before_load_procs[] =
 	cluster_partitions_port_forget,
 	/* port: (the objects are put back: object_bounds_cache.c) */
 	object_bounds_cache_invalidate,
+	/* port: a tick open between two of its sub-steps given up: the state
+	loaded is one saved between two ticks (game.sim_rate, game_time.c) */
+	game_time_port_drop_substeps,
+	/* port: the frames' snapshots of the objects and the view are the state's
+	before the load (a checkpoint's revert): the first frames after it drawn
+	where the loaded state has them, not blended in from there
+	(render_interpolation.c; drawing only) */
+	render_interpolation_reset,
 };
 
 static game_state_after_load_proc after_load_procs[] =
@@ -209,7 +220,9 @@ static game_state_after_load_proc after_load_procs[] =
 	game_state_set_revert_time,
 	player_control_fix_for_loaded_game_state,
 	director_initialize_for_saved_game,
-	scripted_hud_messages_clear
+	scripted_hud_messages_clear,
+	/* port: restore matching homes or forget an unrelated disk/core load. */
+	coop_vehicles_after_load
 };
 
 /* ---------- public code */

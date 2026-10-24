@@ -153,6 +153,7 @@ symbols in this file:
 #include "effects/effects.h"
 #include "models/model_animation_definitions.h"
 #include "objects/damage.h"
+#include "objects/object_types.h"
 #include "objects/objects.h"
 #include "physics/collision_bsp.h"
 #include "physics/collision_usage.h"
@@ -165,6 +166,7 @@ symbols in this file:
 #include "structures/structure_bsp_definitions.h"
 #include "units/unit_definitions.h"
 #include "units/vehicle_definitions.h"
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 
 /* ---------- constants */
 
@@ -298,15 +300,77 @@ the comparator checks. */
 extern boolean debug_objects_vehicle_powered_mass_points;
 extern real global_gravity;
 
+static void vehicles_substep(
+	short substep_index,
+	short substep_count,
+	real seconds);
+
 /* ---------- globals */
 
 static struct profile_section vehicle_update_section = {"vehicle_update", NONE, TRUE};
+
+/* port: the fast phase (port/linux/game/sim_rate.h). At game.sim_rate 60 or
+120 a vehicle a player drives (the micro lane, objects.h; what it carries,
+its riders and its weapon, goes with it) moves in the tick's sub-steps
+(vehicles_substep, the fast phase's _sim_substep_vehicles slot) rather than
+in the objects' update: vehicle_update leaves it for them, and each sub-step
+runs its movement (vehicle_update_moving) for its share of a tick, with its
+driver's and gunner's controls of that sub-step (player_control.c), its
+forces worked out again where it is (physics.c's "sub-steps"), and what it
+carries posed where it is. What is counted in ticks (its airborne and
+upending ticks, its stop time) counts at the last sub-step, and what a tick's
+movement leads to (its tyres' slips, its suspension and its crashes, its
+riders' falling damage, the collisions with other vehicles and bipeds, its
+blur) follows the last sub-step, once, as a tick at 30 has it. Nothing here
+outlives the tick: an entry of another tick is ignored. Every other vehicle
+(the AI's, an empty one) moves in its tick, as at 30, and at 30 every one
+does. */
+enum
+{
+	MAXIMUM_SUBSTEP_VEHICLES = 16
+};
+
+/* what a vehicle's controls ramp toward a step a tick (vehicle_substep_lead) */
+enum
+{
+	_vehicle_ramp_speed = 0,
+	_vehicle_ramp_slide,
+	_vehicle_ramp_turn,
+	NUMBER_OF_VEHICLE_RAMPS
+};
+
+struct vehicle_substep_datum
+{
+	long vehicle_index;
+	/* the tick (game_time) it was left for the sub-steps in */
+	long tick;
+	/* its velocity as the tick began: what a crash measures, from the tick's
+	start to its end (create_crashing_effects) */
+	real_vector3d tick_velocity;
+	/* the sub-step being run, and physics.c's share of it */
+	struct physics_substep physics;
+};
+
+static struct
+{
+	short count;
+	struct vehicle_substep_datum vehicles[MAXIMUM_SUBSTEP_VEHICLES];
+} vehicle_substep_globals;
+
+/* port: the sub-step the vehicle being moved is in, NULL in a tick
+(vehicle_update_moving) */
+static struct vehicle_substep_datum *vehicle_substep;
 
 /* ---------- code */
 
 void vehicles_initialize(
 	void)
 {
+	/* port: the players' vehicles' movement in the fast phase (sim_rate.h),
+	the micro lane's (objects.h) */
+	sim_substep_register(_sim_substep_vehicles, vehicles_substep);
+	object_lane_register(_object_mask_vehicle);
+
 	return;
 }
 
@@ -319,13 +383,46 @@ void vehicles_initialize_for_new_map(
 void vehicles_dispose_from_old_map(
 	void)
 {
+	vehicle_substep_globals.count = 0;
+
 	return;
 }
 
 void vehicles_dispose(
 	void)
 {
+	sim_substep_register(_sim_substep_vehicles, NULL);
+	vehicle_substep_globals.count = 0;
+
 	return;
+}
+
+/* port: the vehicle being moved (vehicle_update_moving): its sub-step's share
+of a tick, 1 in a tick (a per-tick change as one per sub-step: a wheel's turn,
+a rate's step) */
+static real vehicle_tick_share(
+	void)
+{
+	return vehicle_substep ? vehicle_substep->physics.fraction : 1.0f;
+}
+
+/* port: ... whether its movement ends the tick: its tick's, or the tick's
+last sub-step (what counts ticks, and what a tick's movement leads to) */
+static boolean vehicle_tick_ends(
+	void)
+{
+	return !vehicle_substep || vehicle_substep->physics.index == vehicle_substep->physics.count - 1;
+}
+
+/* port: ... a controller's gain on a velocity's error, for one that closes the
+error a tick (to the limit of its acceleration, a tick's at 30): in a sub-step
+it closes it a sub-step, so the error is taken count times (its limit, a
+force kept per tick, per tick, the same: physics.c gives the sub-step its
+share). 1 in a tick */
+static real vehicle_closing_gain(
+	void)
+{
+	return vehicle_substep ? (real)vehicle_substep->physics.count : 1.0f;
 }
 
 void vehicle_place(
@@ -966,8 +1063,24 @@ static void update_alien_fighter_physics_new(
 			else
 				throttle = -(vehicle->vehicle.speed/definition->unknown2fc);
 
-			compute_acceleration(&desired_velocity, &vehicle->object.translational_velocity, &acceleration,
-				throttle*definition->unknown300, throttle*definition->unknown304);
+			/* port: in a sub-step, its velocity's error closed a sub-step
+			(vehicle_closing_gain): measured from the velocity that error
+			times over short of the one it wants */
+			if (vehicle_substep)
+			{
+				real_vector3d closing_velocity;
+
+				subtract_vectors3d(&desired_velocity, &vehicle->object.translational_velocity, &closing_velocity);
+				scale_vector3d(&closing_velocity, -vehicle_closing_gain(), &closing_velocity);
+				add_vectors3d(&closing_velocity, &desired_velocity, &closing_velocity);
+				compute_acceleration(&desired_velocity, &closing_velocity, &acceleration,
+					throttle*definition->unknown300, throttle*definition->unknown304);
+			}
+			else
+			{
+				compute_acceleration(&desired_velocity, &vehicle->object.translational_velocity, &acceleration,
+					throttle*definition->unknown300, throttle*definition->unknown304);
+			}
 
 			scale_vector3d(&acceleration, physics->mass, &magic_force);
 			scale_vector3d(&magic_force, vehicle->unit.seat_power[0], &magic_force);
@@ -1009,6 +1122,9 @@ static void update_alien_fighter_physics_new(
 		}
 
 		subtract_vectors3d(&desired_angular_velocity, &vehicle->object.angular_velocity, &angular_acceleration);
+		/* port: (closed a sub-step in a sub-step: vehicle_closing_gain) */
+		if (vehicle_substep)
+			scale_vector3d(&angular_acceleration, vehicle_closing_gain(), &angular_acceleration);
 
 		scale_vector3d(&angular_acceleration,
 			(physics->zz_moment+physics->yy_moment+physics->xx_moment)*(1.0f/3), &magic_torque);
@@ -1021,12 +1137,17 @@ static void update_alien_fighter_physics_new(
 			thrust_delta = PIN((1.0f-vehicle->vehicle.thrust)*
 				(1.0f-vehicle->vehicle.thrust)*0.2f,
 				0.01f, 0.05f);
+			/* port: (a tick's step, a sub-step's share of it) */
+			if (vehicle_substep)
+				thrust_delta *= vehicle_tick_share();
 			thrust_delta = MIN(spin-vehicle->vehicle.thrust, thrust_delta);
 		}
 		else
 		{
 			thrust_delta = -MAX(vehicle->vehicle.thrust*vehicle->vehicle.thrust*0.05f,
 				0.005f);
+			if (vehicle_substep)
+				thrust_delta *= vehicle_tick_share();
 			thrust_delta = MAX(spin-vehicle->vehicle.thrust, thrust_delta);
 		}
 
@@ -1156,24 +1277,45 @@ static void slowly_stop_vehicle(
 	real_vector3d forward, up;
 	real magnitude;
 
-	vehicle->vehicle.stop_time--;
+	/* port: in a sub-step (vehicle_substep), its share of a tick: the tick's
+	slowing as its root, a share of a tick's travel and turn; its stop time,
+	in ticks, counted at the tick's last */
+	if (vehicle_substep)
+	{
+		real slowing = sim_decay_per_substep(0.835f);
+		real share = vehicle_tick_share();
 
-	velocity->i *= 0.835f;
-	velocity->j *= 0.835f;
-	velocity->k *= 0.835f;
-	angular_velocity->i *= 0.835f;
-	angular_velocity->j *= 0.835f;
-	angular_velocity->k *= 0.835f;
+		if (vehicle_tick_ends())
+			vehicle->vehicle.stop_time--;
+		scale_vector3d(velocity, slowing, velocity);
+		scale_vector3d(angular_velocity, slowing, angular_velocity);
+		position.x = velocity->i*share+object_position->x;
+		position.y = velocity->j*share+object_position->y;
+		position.z = velocity->k*share+object_position->z;
+	}
+	else
+	{
+		vehicle->vehicle.stop_time--;
 
-	position.x = velocity->i+object_position->x;
-	position.y = object_position->y+velocity->j;
-	position.z = object_position->z+velocity->k;
+		velocity->i *= 0.835f;
+		velocity->j *= 0.835f;
+		velocity->k *= 0.835f;
+		angular_velocity->i *= 0.835f;
+		angular_velocity->j *= 0.835f;
+		angular_velocity->k *= 0.835f;
+
+		position.x = velocity->i+object_position->x;
+		position.y = object_position->y+velocity->j;
+		position.z = object_position->z+velocity->k;
+	}
 
 	{
 		real_vector3d axis;
 		axis = *angular_velocity;
 
 		magnitude = normalize3d(&axis);
+		if (vehicle_substep)
+			magnitude *= vehicle_tick_share();
 		if (magnitude!=0.0f)
 		{
 			matrix4x3_rotation_from_axis_and_angle(&rotation, &axis, sine(magnitude), cosine(magnitude));
@@ -1519,7 +1661,11 @@ static void update_human_plane_physics(
 
 		factor = !TEST_FLAG(vehicle->vehicle.flags, 2) ? (TEST_FLAG(vehicle->vehicle.flags, 3) ? 1.0f : 0.75f) : 0.25f;
 		factor *= 1.0f-throttle;
-		interpolate_scalar(&vehicle->vehicle.hover, factor*vehicle->unit.seat_power[0], 0.05f);
+		/* port: (a tick's step, a sub-step's share of it) */
+		if (vehicle_substep)
+			interpolate_scalar(&vehicle->vehicle.hover, factor*vehicle->unit.seat_power[0], 0.05f*vehicle_tick_share());
+		else
+			interpolate_scalar(&vehicle->vehicle.hover, factor*vehicle->unit.seat_power[0], 0.05f);
 
 		vehicle->vehicle.thrust = throttle*vehicle->unit.seat_power[0];
 
@@ -1611,7 +1757,9 @@ static void update_human_plane_physics(
 		physics_update(vehicle_index, NULL, mass_points, &force, &torque);
 	}
 
-	create_pelican_effect(vehicle_index);
+	/* port: (once a tick) */
+	if (vehicle_tick_ends())
+		create_pelican_effect(vehicle_index);
 
 	return;
 }
@@ -1887,12 +2035,16 @@ static void update_human_tank_physics(
 	real left = vehicle->vehicle.speed-vehicle->vehicle.turn;
 	real right = vehicle->vehicle.turn+vehicle->vehicle.speed;
 
-	vehicle->vehicle.left_tread = left+vehicle->vehicle.left_tread;
+	/* port: (a sub-step's share of a tick's turn of the treads) */
+	real left_turn = vehicle_substep ? left*vehicle_tick_share() : left;
+	real right_turn = vehicle_substep ? right*vehicle_tick_share() : right;
+
+	vehicle->vehicle.left_tread = left_turn+vehicle->vehicle.left_tread;
 	vehicle->vehicle.left_tread = (real)fmod(vehicle->vehicle.left_tread, definition->wheel_circumference);
 	if (vehicle->vehicle.left_tread<0.0f)
 		vehicle->vehicle.left_tread += definition->wheel_circumference;
 
-	vehicle->vehicle.right_tread = right+vehicle->vehicle.right_tread;
+	vehicle->vehicle.right_tread = right_turn+vehicle->vehicle.right_tread;
 	vehicle->vehicle.right_tread = (real)fmod(vehicle->vehicle.right_tread, definition->wheel_circumference);
 	if (vehicle->vehicle.right_tread<0.0f)
 		vehicle->vehicle.right_tread += definition->wheel_circumference;
@@ -2040,10 +2192,22 @@ static void update_human_boat_physics(
 
 			sign = angle!=0.0f ? (angle<0.0f ? -1 : 1) : 0;
 
-			scale_vector3d(&vehicle->object.forward,
-				PIN(square_root((real)fabs(angle)*2.0*VEHICLE_ANGULAR_ACCELERATION)*sign-dot,
-					-VEHICLE_ANGULAR_ACCELERATION, VEHICLE_ANGULAR_ACCELERATION)*physics->xx_moment,
-				&thrust);
+			/* port: (its spin's error closed a sub-step in a sub-step:
+			vehicle_closing_gain) */
+			if (vehicle_substep)
+			{
+				scale_vector3d(&vehicle->object.forward,
+					PIN((square_root((real)fabs(angle)*2.0*VEHICLE_ANGULAR_ACCELERATION)*sign-dot)*vehicle_closing_gain(),
+						-VEHICLE_ANGULAR_ACCELERATION, VEHICLE_ANGULAR_ACCELERATION)*physics->xx_moment,
+					&thrust);
+			}
+			else
+			{
+				scale_vector3d(&vehicle->object.forward,
+					PIN(square_root((real)fabs(angle)*2.0*VEHICLE_ANGULAR_ACCELERATION)*sign-dot,
+						-VEHICLE_ANGULAR_ACCELERATION, VEHICLE_ANGULAR_ACCELERATION)*physics->xx_moment,
+					&thrust);
+			}
 		}
 		else
 		{
@@ -2073,7 +2237,11 @@ static void update_human_jeep_physics(
 	struct physics_definition *physics = physics_definition_get(
 		definition->unit.object.physics.index);
 
-	vehicle->vehicle.wheel = vehicle->vehicle.speed+vehicle->vehicle.wheel;
+	/* port: (a sub-step's share of a tick's turn of the wheels) */
+	if (vehicle_substep)
+		vehicle->vehicle.wheel = vehicle->vehicle.speed*vehicle_tick_share()+vehicle->vehicle.wheel;
+	else
+		vehicle->vehicle.wheel = vehicle->vehicle.speed+vehicle->vehicle.wheel;
 	vehicle->vehicle.wheel = (real)fmod(vehicle->vehicle.wheel, definition->wheel_circumference);
 	if (vehicle->vehicle.wheel<0.0f)
 		vehicle->vehicle.wheel += definition->wheel_circumference;
@@ -2175,6 +2343,9 @@ static void update_alien_scout_physics(
 				maximum_acceleration *= 1.0f-reduction;
 			}
 
+			/* port: (closed a sub-step in a sub-step: vehicle_closing_gain) */
+			if (vehicle_substep)
+				scale_vector3d(&acceleration, vehicle_closing_gain(), &acceleration);
 			limit3d(&acceleration, maximum_acceleration);
 			matrix4x3_transform_vector(&vehicle_matrix, &acceleration, &acceleration);
 
@@ -2196,7 +2367,11 @@ static void update_alien_scout_physics(
 			if (fabs(desired)>_real_epsilon && steering/desired<2.0f)
 				desired = steering*0.5f;
 
-			error = PIN(desired-current, -0.0034906587f, 0.0034906587f);
+			/* port: (closed a sub-step in a sub-step: vehicle_closing_gain) */
+			if (vehicle_substep)
+				error = PIN((desired-current)*vehicle_closing_gain(), -0.0034906587f, 0.0034906587f);
+			else
+				error = PIN(desired-current, -0.0034906587f, 0.0034906587f);
 			torque = error*physics->zz_moment;
 			torque *= vehicle->vehicle.hover;
 
@@ -2379,7 +2554,14 @@ static void update_alien_scout_physics(
 			ratio = (real)(short)grounded_count/(real)(short)powered_count;
 
 		target = PIN(ratio*maximum, 0.0f, 1.0f);
-		if (target-vehicle->vehicle.hover>0.1f)
+		/* port: (a tick's step, a sub-step's share of it) */
+		if (vehicle_substep)
+		{
+			real step = 0.1f*vehicle_tick_share();
+
+			target = PIN(target, vehicle->vehicle.hover-step, vehicle->vehicle.hover+step);
+		}
+		else if (target-vehicle->vehicle.hover>0.1f)
 			target = vehicle->vehicle.hover+0.1f;
 		else if (target-vehicle->vehicle.hover<-0.1f)
 			target = vehicle->vehicle.hover-0.1f;
@@ -2387,7 +2569,9 @@ static void update_alien_scout_physics(
 		vehicle->vehicle.hover = target;
 	}
 
-	create_ghost_effect(vehicle_index);
+	/* port: (once a tick) */
+	if (vehicle_tick_ends())
+		create_ghost_effect(vehicle_index);
 
 	return;
 }
@@ -2406,7 +2590,9 @@ static void update_alien_fighter_physics(
 	else
 		update_alien_fighter_physics_new(vehicle_index, state, mass_points);
 
-	create_ghost_effect(vehicle_index);
+	/* port: (once a tick) */
+	if (vehicle_tick_ends())
+		create_ghost_effect(vehicle_index);
 
 	return;
 }
@@ -2441,12 +2627,157 @@ static boolean vehicle_mass_points_fit(
 	return fit;
 }
 
-/* Full semantic reconstruction. January's vehicle_update is 2320 bytes; this
-body has the same padded size and 98 relocations. The remaining residual is
-instruction scheduling, branch layout, and relocation placement. Keep the
-file-static call topology intact while closing it. */
+boolean vehicle_takes_substeps(
+	long vehicle_index)
+{
+	struct vehicle_datum *vehicle = vehicle_datum_get(vehicle_index);
+	struct unit_definition *definition = vehicle_definition_get(vehicle->definition_index);
+	long driver_index = vehicle->unit.driver_object_index;
 
-boolean vehicle_update(
+	if (driver_index==NONE || unit_get(driver_index)->unit.player_index==NONE)
+		return FALSE;
+	/* (physics.c's sub-steps are of mass points: not of a physics of a radius,
+	physics_update_old's, which no vehicle of the game has) */
+	if (definition->object.physics.index!=NONE &&
+		physics_definition_get(definition->object.physics.index)->radius>0.0f)
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+
+boolean vehicle_gunned_by_player(
+	long unit_index)
+{
+	struct unit_datum *unit = unit_get(unit_index);
+
+	return unit->object.type==_object_type_vehicle &&
+		unit->unit.gunner_object_index!=NONE &&
+		unit_get(unit->unit.gunner_object_index)->unit.player_index!=NONE;
+}
+
+/* port: whether a vehicle moves in the fast phase this tick
+(vehicle_substep_globals): one of the micro lane (objects.h: a player drives
+it, vehicle_takes_substeps) in a tick of more than one sub-step, in the
+objects' update. At one (30) the fast phase's one step is the tick's own,
+which the vehicle takes in its place in the objects' update, in the order
+the game always had */
+static boolean vehicle_moves_in_substeps(
+	long vehicle_index)
+{
+	return sim_substep_index()==NONE &&
+		object_lane_moves_in_substeps(vehicle_index);
+}
+
+/* port: the vehicle left for the fast phase, if it moves in it */
+static boolean vehicle_substep_defer(
+	long vehicle_index)
+{
+	struct vehicle_datum *vehicle = vehicle_datum_get(vehicle_index);
+	long tick = game_time_get();
+	struct vehicle_substep_datum *datum = NULL;
+	short index;
+
+	if (!vehicle_moves_in_substeps(vehicle_index))
+		return FALSE;
+
+	/* (another tick's, which no fast phase took, gone) */
+	if (vehicle_substep_globals.count>0 && vehicle_substep_globals.vehicles[0].tick!=tick)
+		vehicle_substep_globals.count = 0;
+	for (index = 0; index<vehicle_substep_globals.count; index++)
+	{
+		if (vehicle_substep_globals.vehicles[index].vehicle_index==vehicle_index)
+			datum = &vehicle_substep_globals.vehicles[index];
+	}
+	if (!datum)
+	{
+		if (vehicle_substep_globals.count>=MAXIMUM_SUBSTEP_VEHICLES)
+			return FALSE;
+		datum = &vehicle_substep_globals.vehicles[vehicle_substep_globals.count++];
+	}
+
+	csmemset(datum, 0, sizeof(*datum));
+	datum->vehicle_index = vehicle_index;
+	datum->tick = tick;
+	datum->tick_velocity = vehicle->object.translational_velocity;
+
+	return TRUE;
+}
+
+/* port: the speed, slide and turn a sub-step's physics takes (led, from
+before the sub-step's steps toward them; as kept in the vehicle after them).
+A tick at 30 takes each rate's whole step at its start and holds the result
+through the tick: the tick's average is a ramp's value at its end, half a
+tick ahead of the ramp; a sub-step's is half a sub-step ahead. So each is led
+by (count - 1)/2 of its sub-step's step, and a ramp (the speed's to its top,
+the wheels' turn to their lock) is as far along through a tick as at 30, not
+3/8 of a tick behind (at 120): the vehicle gathers speed, and turns, as
+soon. None is led past where it was going (a target reached), nor past its
+limits */
+static void vehicle_substep_lead(
+	long vehicle_index,
+	real const *before,
+	boolean const *reached,
+	real *led)
+{
+	struct vehicle_datum *vehicle = vehicle_datum_get(vehicle_index);
+	struct vehicle_definition *definition = vehicle_specific_definition_get(vehicle->definition_index);
+	struct physics_variable_speed_parameters const *speed_parameters =
+		(struct physics_variable_speed_parameters const *)&definition->unknown2f8;
+	struct physics_variable_speed_parameters const *slide_parameters =
+		(struct physics_variable_speed_parameters const *)&definition->unknown330;
+	real lead = (real)(vehicle_substep->physics.count-1)*0.5f;
+	real current[NUMBER_OF_VEHICLE_RAMPS];
+	real minimum[NUMBER_OF_VEHICLE_RAMPS];
+	real maximum[NUMBER_OF_VEHICLE_RAMPS];
+	short ramp;
+
+	current[_vehicle_ramp_speed] = vehicle->vehicle.speed;
+	current[_vehicle_ramp_slide] = vehicle->vehicle.slide;
+	current[_vehicle_ramp_turn] = vehicle->vehicle.turn;
+	/* (the limits of the seeks: vehicle_update_moving's) */
+	minimum[_vehicle_ramp_speed] = -speed_parameters->negative_scale;
+	maximum[_vehicle_ramp_speed] = speed_parameters->positive_scale;
+	minimum[_vehicle_ramp_slide] = -slide_parameters->negative_scale;
+	maximum[_vehicle_ramp_slide] = slide_parameters->positive_scale;
+	if (definition->vehicle_type)
+	{
+		minimum[_vehicle_ramp_turn] = DEGREES_TO_RADIANS(definition->unknown30c);
+		maximum[_vehicle_ramp_turn] = DEGREES_TO_RADIANS(definition->unknown308);
+	}
+	else
+	{
+		minimum[_vehicle_ramp_turn] = -2.0f*speed_parameters->negative_scale;
+		maximum[_vehicle_ramp_turn] = 2.0f*speed_parameters->positive_scale;
+	}
+
+	for (ramp = 0; ramp<NUMBER_OF_VEHICLE_RAMPS; ramp++)
+	{
+		real value = current[ramp];
+
+		if (!reached[ramp] && current[ramp]!=before[ramp])
+		{
+			value = current[ramp]+(current[ramp]-before[ramp])*lead;
+			/* (within its limits, but never back from where it is) */
+			if (value>maximum[ramp])
+				value = MAX(maximum[ramp], current[ramp]);
+			if (value<minimum[ramp])
+				value = MIN(minimum[ramp], current[ramp]);
+		}
+		led[ramp] = value;
+	}
+
+	return;
+}
+
+/* the vehicle's movement this tick (port: vehicle_update's, from its controls
+to its riders' falling damage): its controls, speed and turn, its physics,
+and what they lead to. In a sub-step of the fast phase (vehicle_substep) a
+sub-step's share of it ("the fast phase", above): each rate's step a share
+of a tick's, its physics a sub-step's (physics.c's "sub-steps"), and what
+counts ticks or follows a tick's movement at the tick's last */
+static void vehicle_update_moving(
 	long vehicle_index)
 {
 	/* port: (named: 32 each, as before) */
@@ -2456,25 +2787,15 @@ boolean vehicle_update(
 	real steering_angle;
 	real torque;
 	struct vehicle_definition *definition;
+	/* port: (what counts ticks, or follows a tick's movement) */
+	boolean tick_ends = vehicle_tick_ends();
+	/* port: in a sub-step, its speed, slide and turn as the physics takes them
+	(vehicle_substep_lead), and as kept */
+	real ramps[NUMBER_OF_VEHICLE_RAMPS];
+	real ramps_kept[NUMBER_OF_VEHICLE_RAMPS];
 
 	vehicle = vehicle_datum_get(vehicle_index);
 	definition = vehicle_specific_definition_get(vehicle->definition_index);
-
-	profile_enter(vehicle_update_section);
-
-	if (vehicle->object.parent_object_index!=NONE)
-	{
-		unsigned long *object_flags = &vehicle->object.flags;
-
-		vehicle->object.angular_velocity.i = 0.0f;
-		vehicle->object.angular_velocity.j = 0.0f;
-		vehicle->object.angular_velocity.k = 0.0f;
-		vehicle->object.translational_velocity.i = 0.0f;
-		vehicle->object.translational_velocity.j = 0.0f;
-		vehicle->object.translational_velocity.k = 0.0f;
-		*object_flags &= ~FLAG(_object_at_rest_bit);
-		goto animate;
-	}
 
 	SET_FLAG(vehicle->vehicle.flags, 2,
 		TEST_FLAG(vehicle->unit.control_flags, _unit_control_crouch_modifier_bit));
@@ -2552,7 +2873,9 @@ boolean vehicle_update(
 				break;
 			}
 
-			vehicle->vehicle.upending_ticks++;
+			/* port: (ticks, counted at the tick's last sub-step) */
+			if (tick_ends)
+				vehicle->vehicle.upending_ticks++;
 		}
 		else
 		{
@@ -2565,19 +2888,46 @@ boolean vehicle_update(
 	{
 		struct physics_variable_speed_parameters *speed_parameters =
 			(struct physics_variable_speed_parameters *)&definition->unknown2f8;
+		struct physics_variable_speed_parameters *slide_parameters =
+			(struct physics_variable_speed_parameters *)&definition->unknown330;
+		real turn_rate = DEGREES_TO_RADIANS(definition->unknown314)*(1.0f/TICKS_PER_SECOND);
+		/* port: in a sub-step, each rate's step a sub-step's share of a
+		tick's (its limits the same) */
+		struct physics_variable_speed_parameters substep_speed_parameters;
+		struct physics_variable_speed_parameters substep_slide_parameters;
+
+		boolean reached[NUMBER_OF_VEHICLE_RAMPS] = { TRUE, TRUE, TRUE };
+
+		if (vehicle_substep)
+		{
+			real share = vehicle_tick_share();
+
+			ramps[_vehicle_ramp_speed] = vehicle->vehicle.speed;
+			ramps[_vehicle_ramp_slide] = vehicle->vehicle.slide;
+			ramps[_vehicle_ramp_turn] = vehicle->vehicle.turn;
+			substep_speed_parameters = *speed_parameters;
+			substep_speed_parameters.acceleration *= share;
+			substep_speed_parameters.deceleration *= share;
+			speed_parameters = &substep_speed_parameters;
+			substep_slide_parameters = *slide_parameters;
+			substep_slide_parameters.acceleration *= share;
+			substep_slide_parameters.deceleration *= share;
+			slide_parameters = &substep_slide_parameters;
+			turn_rate *= share;
+		}
 
 		if (TEST_FLAG(vehicle->vehicle.flags, 3))
 		{
-			physics_variable_speed_update_seek(
+			reached[_vehicle_ramp_speed] = physics_variable_speed_update_seek(
 				&vehicle->vehicle.speed, speed_parameters, 0.0f, 1.0f);
 		}
 		else
 		{
-			physics_variable_speed_update_seek(
+			reached[_vehicle_ramp_speed] = physics_variable_speed_update_seek(
 				&vehicle->vehicle.speed, speed_parameters, vehicle->unit.throttle.i, 1.0f);
-			physics_variable_speed_update_seek(
+			reached[_vehicle_ramp_slide] = physics_variable_speed_update_seek(
 				&vehicle->vehicle.slide,
-				(struct physics_variable_speed_parameters *)&definition->unknown330,
+				slide_parameters,
 				vehicle->unit.throttle.j, 1.0f);
 		}
 
@@ -2592,29 +2942,33 @@ boolean vehicle_update(
 			else if (desired_position>DEGREES_TO_RADIANS(definition->unknown308))
 				desired_position = DEGREES_TO_RADIANS(definition->unknown308);
 
-			physics_variable_position_update_seek(
+			reached[_vehicle_ramp_turn] = physics_variable_position_update_seek(
 				&vehicle->vehicle.turn,
 				&definition->unknown308,
 				FALSE,
 				desired_position,
-				DEGREES_TO_RADIANS(definition->unknown314)*(1.0f/TICKS_PER_SECOND));
+				turn_rate);
 		}
 		else
 		{
 			if (vehicle->vehicle.speed==0.0f)
 			{
-				physics_variable_speed_update_seek(
+				reached[_vehicle_ramp_turn] = physics_variable_speed_update_seek(
 					&vehicle->vehicle.turn, speed_parameters, 0.0f, 1.0f);
 			}
 			else
 			{
-				physics_variable_speed_update_seek(
+				reached[_vehicle_ramp_turn] = physics_variable_speed_update_seek(
 					&vehicle->vehicle.turn,
 					speed_parameters,
 					PIN(steering_angle*0.63661975f, -1.0f, 1.0f)*definition->unknown2f8,
 					2.0f);
 			}
 		}
+
+		/* port: (the speed, slide and turn the physics takes in a sub-step) */
+		if (vehicle_substep)
+			vehicle_substep_lead(vehicle_index, ramps, reached, ramps);
 	}
 
 	if (definition->unit.object.physics.index!=NONE)
@@ -2641,6 +2995,22 @@ boolean vehicle_update(
 	{
 		real_vector3d previous_velocity = vehicle->object.translational_velocity;
 
+		/* port: in a sub-step, a sub-step of physics (physics.c), and a crash
+		measured from the tick's start (vehicle_substep_datum) */
+		if (vehicle_substep)
+		{
+			if (!vehicle_substep->physics.begun)
+				vehicle_substep->tick_velocity = previous_velocity;
+			previous_velocity = vehicle_substep->tick_velocity;
+			physics_substep_set(&vehicle_substep->physics);
+			ramps_kept[_vehicle_ramp_speed] = vehicle->vehicle.speed;
+			ramps_kept[_vehicle_ramp_slide] = vehicle->vehicle.slide;
+			ramps_kept[_vehicle_ramp_turn] = vehicle->vehicle.turn;
+			vehicle->vehicle.speed = ramps[_vehicle_ramp_speed];
+			vehicle->vehicle.slide = ramps[_vehicle_ramp_slide];
+			vehicle->vehicle.turn = ramps[_vehicle_ramp_turn];
+		}
+
 		switch (definition->vehicle_type)
 		{
 		case _vehicle_type_human_tank:
@@ -2666,10 +3036,22 @@ boolean vehicle_update(
 			break;
 		}
 
-		create_slipping_effects(vehicle_index, powered_mass_points, mass_points);
-		if (!update_suspension(vehicle_index))
-			create_crashing_effects(vehicle_index, &previous_velocity, mass_points);
-		compute_airborne_ticks(vehicle_index, mass_points, powered_mass_points);
+		if (vehicle_substep)
+		{
+			physics_substep_set(NULL);
+			vehicle->vehicle.speed = ramps_kept[_vehicle_ramp_speed];
+			vehicle->vehicle.slide = ramps_kept[_vehicle_ramp_slide];
+			vehicle->vehicle.turn = ramps_kept[_vehicle_ramp_turn];
+		}
+
+		/* port: (what a tick's movement leads to, once, at its end) */
+		if (tick_ends)
+		{
+			create_slipping_effects(vehicle_index, powered_mass_points, mass_points);
+			if (!update_suspension(vehicle_index))
+				create_crashing_effects(vehicle_index, &previous_velocity, mass_points);
+			compute_airborne_ticks(vehicle_index, mass_points, powered_mass_points);
+		}
 
 		if (TEST_FLAG(vehicle->object.flags, _object_at_rest_bit))
 			vehicle->vehicle.stop_time = 15;
@@ -2681,34 +3063,60 @@ boolean vehicle_update(
 			real floor = global_structure_bsp_get()->vehicle_floor;
 			real ceiling = global_structure_bsp_get()->vehicle_ceiling;
 
-			if (floor!=0.0f && vehicle->object.position.z<floor)
+			/* port: in a sub-step, a share of a tick's push back and the
+			tick's slowing as its root */
+			if (vehicle_substep)
 			{
-				vehicle->object.translational_velocity.k +=
-					((floor-vehicle->object.position.z)*0.015625f-
-					vehicle->object.translational_velocity.k*0.0625f)*
-					vehicle->unit.seat_power[0];
-			}
+				real share = vehicle_tick_share();
+				real power = vehicle->unit.seat_power[0];
+				real slowing = 1.0f-sim_decay_per_substep(1.0f-0.0625f*power);
 
-			if (ceiling!=0.0f && vehicle->object.position.z>ceiling)
+				if (floor!=0.0f && vehicle->object.position.z<floor)
+				{
+					vehicle->object.translational_velocity.k +=
+						(floor-vehicle->object.position.z)*0.015625f*share*power-
+						vehicle->object.translational_velocity.k*slowing;
+				}
+
+				if (ceiling!=0.0f && vehicle->object.position.z>ceiling)
+				{
+					vehicle->object.translational_velocity.k -=
+						(vehicle->object.position.z-ceiling)*0.015625f*share*power+
+						vehicle->object.translational_velocity.k*slowing;
+				}
+			}
+			else
 			{
-				vehicle->object.translational_velocity.k -=
-					((vehicle->object.position.z-ceiling)*0.015625f+
-					vehicle->object.translational_velocity.k*0.0625f)*
-					vehicle->unit.seat_power[0];
+				if (floor!=0.0f && vehicle->object.position.z<floor)
+				{
+					vehicle->object.translational_velocity.k +=
+						((floor-vehicle->object.position.z)*0.015625f-
+						vehicle->object.translational_velocity.k*0.0625f)*
+						vehicle->unit.seat_power[0];
+				}
+
+				if (ceiling!=0.0f && vehicle->object.position.z>ceiling)
+				{
+					vehicle->object.translational_velocity.k -=
+						((vehicle->object.position.z-ceiling)*0.015625f+
+						vehicle->object.translational_velocity.k*0.0625f)*
+						vehicle->unit.seat_power[0];
+				}
 			}
 		}
 	}
 	else if (vehicle->vehicle.stop_time>0)
 	{
 		slowly_stop_vehicle(vehicle_index);
-		update_suspension(vehicle_index);
+		if (tick_ends)
+			update_suspension(vehicle_index);
 	}
 
 	match_assert("c:\\halo\\SOURCE\\units\\vehicles.c", 372,
 		global_current_collision_user_depth > 1);
 	--global_current_collision_user_depth;
 
-	if (TEST_FLAG(definition->flags, 6))
+	if (TEST_FLAG(definition->flags, 6) && tick_ends)
 	{
 		struct game_globals_falling_damage *falling_damage = TAG_BLOCK_GET_ELEMENT(
 			&scenario_get_game_globals()->falling_damage, 0, struct game_globals_falling_damage);
@@ -2730,6 +3138,66 @@ boolean vehicle_update(
 		}
 	}
 
+	return;
+}
+
+/* the blur of a vehicle at speed (port: vehicle_update's) */
+static void vehicle_update_blur(
+	long vehicle_index)
+{
+	struct vehicle_datum *vehicle = vehicle_datum_get(vehicle_index);
+	struct vehicle_definition *definition = vehicle_specific_definition_get(vehicle->definition_index);
+	boolean blur = fabs(vehicle->vehicle.speed)>=definition->unknown318;
+
+	if (blur!=TEST_FLAG(vehicle->vehicle.flags, 0))
+	{
+		object_permute_region(vehicle_index, "~blur", NONE, blur);
+		SET_FLAG(vehicle->vehicle.flags, 0, blur);
+	}
+
+	return;
+}
+
+/* Full semantic reconstruction. January's vehicle_update is 2320 bytes; this
+body has the same padded size and 98 relocations. The remaining residual is
+instruction scheduling, branch layout, and relocation placement. Keep the
+file-static call topology intact while closing it. (port: its movement in
+vehicle_update_moving, its blur in vehicle_update_blur, for the fast phase's
+sub-steps, vehicles_substep) */
+
+boolean vehicle_update(
+	long vehicle_index)
+{
+	struct vehicle_datum *vehicle;
+	struct vehicle_definition *definition;
+	/* port: left for the fast phase's sub-steps (vehicle_substep_defer) */
+	boolean deferred = FALSE;
+
+	vehicle = vehicle_datum_get(vehicle_index);
+	definition = vehicle_specific_definition_get(vehicle->definition_index);
+
+	profile_enter(vehicle_update_section);
+
+	if (vehicle->object.parent_object_index!=NONE)
+	{
+		unsigned long *object_flags = &vehicle->object.flags;
+
+		vehicle->object.angular_velocity.i = 0.0f;
+		vehicle->object.angular_velocity.j = 0.0f;
+		vehicle->object.angular_velocity.k = 0.0f;
+		vehicle->object.translational_velocity.i = 0.0f;
+		vehicle->object.translational_velocity.j = 0.0f;
+		vehicle->object.translational_velocity.k = 0.0f;
+		*object_flags &= ~FLAG(_object_at_rest_bit);
+		goto animate;
+	}
+
+	/* port: a vehicle of the micro lane moves in the tick's sub-steps
+	(vehicles_substep), every other here, as it always did */
+	deferred = vehicle_substep_defer(vehicle_index);
+	if (!deferred)
+		vehicle_update_moving(vehicle_index);
+
 animate:
 	if (definition->unit.object.animation_graph.index!=NONE)
 	{
@@ -2740,17 +3208,147 @@ animate:
 		unit_update_animation(vehicle_index, &data);
 	}
 
-	{
-		boolean blur = fabs(vehicle->vehicle.speed)>=definition->unknown318;
-
-		if (blur!=TEST_FLAG(vehicle->vehicle.flags, 0))
-		{
-			object_permute_region(vehicle_index, "~blur", NONE, blur);
-			SET_FLAG(vehicle->vehicle.flags, 0, blur);
-		}
-	}
+	/* port: (a vehicle in the sub-steps blurs at the last, with its speed) */
+	if (!deferred)
+		vehicle_update_blur(vehicle_index);
 
 	profile_exit(vehicle_update_section);
 
 	return TRUE;
+}
+
+/* port: the controls a vehicle's driver and gunner have at this sub-step (a
+player's unit is given each sub-step's: player_control.c), taken as
+unit_update takes them at the tick's start (units.c): its throttle, facing
+and driving controls; its aim, look, trigger and gunning controls */
+static void vehicle_substep_take_controls(
+	long vehicle_index)
+{
+	struct unit_datum *unit = unit_get(vehicle_index);
+
+	if (TEST_FLAG(unit->unit.flags, _unit_possessed_by_recording_bit) ||
+		TEST_FLAG(unit->object.damage_flags, _object_dead_bit))
+	{
+		return;
+	}
+
+	if (unit->unit.driver_object_index!=NONE)
+	{
+		struct unit_datum *driver_unit = unit_get(unit->unit.driver_object_index);
+
+		if (driver_unit->unit.player_index!=NONE ||
+			driver_unit->unit.animation.state!=_unit_state_exiting_seat &&
+			driver_unit->unit.animation.state!=_unit_state_entering_seat)
+		{
+			unit->unit.control_flags = (word)((unit->unit.control_flags&~UNIT_CONTROL_DRIVER_MASK)|
+				(driver_unit->unit.control_flags&UNIT_CONTROL_DRIVER_MASK));
+			unit->unit.desired_facing_vector = driver_unit->unit.desired_facing_vector;
+			unit->unit.throttle = driver_unit->unit.throttle;
+		}
+	}
+
+	if (unit->unit.gunner_object_index!=NONE)
+	{
+		struct unit_datum *gunner_unit = unit_get(unit->unit.gunner_object_index);
+
+		if (gunner_unit->unit.player_index!=NONE ||
+			gunner_unit->unit.animation.state!=_unit_state_exiting_seat &&
+			gunner_unit->unit.animation.state!=_unit_state_entering_seat)
+		{
+			unit->unit.desired_aiming_vector = gunner_unit->unit.desired_aiming_vector;
+			unit->unit.desired_looking_vector = gunner_unit->unit.desired_aiming_vector;
+			unit->unit.control_flags = (word)((unit->unit.control_flags&~UNIT_CONTROL_GUNNER_MASK)|
+				(gunner_unit->unit.control_flags&UNIT_CONTROL_GUNNER_MASK));
+			unit->unit.primary_trigger = gunner_unit->unit.primary_trigger;
+		}
+	}
+
+	return;
+}
+
+/* port: an object's nodes posed where a sub-step left it, and what it
+carries, as the objects' update poses them (objects.c's object_update: its
+own, what it carries, then its own aim and the like): a vehicle's riders and
+weapons go with it each sub-step, where the sub-step's later slots (the
+units' aim, the weapons' shots, the projectiles' strikes) find them */
+static void vehicle_substep_pose(
+	long object_index)
+{
+	struct object_datum *object = object_get(object_index);
+	struct object_definition *definition = object_definition_get(object->definition_index);
+	long child_index;
+
+	if (!TEST_FLAG(object->object.flags, _object_do_not_recompute_node_matrices_bit))
+		object_compute_node_matrices(object_index);
+	for (child_index = object->object.first_child_object_index;
+		child_index!=NONE;
+		child_index = object_get(child_index)->object.next_object_index)
+	{
+		vehicle_substep_pose(child_index);
+	}
+	if (definition->object.model.index!=NONE &&
+		definition->object.animation_graph.index!=NONE)
+	{
+		object_type_postprocess_node_matrices(
+			object_index,
+			(real_matrix4x3 *)object_header_block_get(object_index, &object->object.node_matrices));
+	}
+
+	return;
+}
+
+/* port: the fast phase's _sim_substep_vehicles slot (sim_rate.h), after the
+players' controls and before their units' aim: each vehicle vehicle_update
+left moves a sub-step's share of its tick (vehicle_update_moving), with its
+driver's and gunner's controls (again, past the first: the first's are the
+tick's, unit_update's) and what it carries posed where it is left; at the
+last, what the tick's movement leads to, and its blur */
+static void vehicles_substep(
+	short substep_index,
+	short substep_count,
+	real seconds)
+{
+	boolean last = substep_index==substep_count-1;
+	long tick = game_time_get();
+	short index;
+
+	(void)seconds;
+
+	for (index = 0; index<vehicle_substep_globals.count; index++)
+	{
+		struct vehicle_substep_datum *datum = &vehicle_substep_globals.vehicles[index];
+		struct vehicle_datum *vehicle;
+
+		if (datum->tick!=tick)
+			continue;
+		vehicle = vehicle_datum_try_and_get(datum->vehicle_index);
+		if (!vehicle ||
+			vehicle->object.parent_object_index!=NONE ||
+			TEST_FLAG(object_header_get(datum->vehicle_index)->flags, _object_header_being_deleted_bit))
+		{
+			datum->tick = NONE;
+			continue;
+		}
+
+		profile_enter(vehicle_update_section);
+		if (substep_index>0)
+			vehicle_substep_take_controls(datum->vehicle_index);
+		datum->physics.index = substep_index;
+		datum->physics.count = substep_count;
+		datum->physics.fraction = sim_substep_tick_fraction();
+		vehicle_substep = datum;
+		vehicle_update_moving(datum->vehicle_index);
+		vehicle_substep = NULL;
+		vehicle_substep_pose(datum->vehicle_index);
+		if (last)
+		{
+			vehicle_update_blur(datum->vehicle_index);
+			datum->tick = NONE;
+		}
+		profile_exit(vehicle_update_section);
+	}
+	if (last)
+		vehicle_substep_globals.count = 0;
+
+	return;
 }

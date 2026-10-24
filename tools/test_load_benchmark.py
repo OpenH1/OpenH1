@@ -199,7 +199,7 @@ def test_offline_settings_override_inherited_and_requested_online(runner, monkey
     runner[0].env = [("HALO_RANDOM_SEED", "42")]
     execute(runner)
     env = runner[-1][0]["env"]
-    assert env["HALO_NET_ONLINE"] == "false"
+    assert env["HALO_NET_ONLINE"] == "false" and env["HALO_NO_CLIPBOARD"] == "1"
     assert env["HALO_SCREENSHOT_EVERY"] == "0"
     assert "HALO_NETWORK_TEST" not in env
     assert env["HALO_SAVE_ROOT"] == str(runner[2])

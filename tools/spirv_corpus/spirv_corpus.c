@@ -8,9 +8,12 @@ spirv-val to check (check.sh). Identical modules are written once
 (index.txt names each variant's file). The variants include the flat and VR views, with and without foveation.
 The made-up programs are msl_corpus's (tools/msl_corpus/synthetic.c), plus
 layered texture lookups in each stage; the enhanced dynamic lights'
-glows, in each of the layers they are drawn into; and anti-aliasing's
-passes (port/linux/vulkan/xgpu_vulkan_post_shaders.c, generated from the
-OpenGL backend's GLSL).
+glows, in each of the layers they are drawn into; display.hdr's tags
+(xgpu_hdr.h: every ceiling, expanded or not, the alpha limit and the
+dynamic lights past white, over each blend, into a target of one sample and
+of four); and anti-aliasing's and display.hdr's passes
+(port/linux/vulkan/xgpu_vulkan_post_shaders.c, generated from the OpenGL
+backend's GLSL and xgpu_hdr.c's).
 
   spirv_corpus <capture dir> <out dir>
 
@@ -25,6 +28,8 @@ intermediate form (xgpu_shader.h).
 */
 
 #include "xgpu.h"
+#include "xgpu_backend.h"
+#include "xgpu_hdr.h"
 #include "xgpu_shader.h"
 #include "xgpu_spirv.h"
 #include "xgpu_vulkan_post_shaders.h"
@@ -248,6 +253,7 @@ static void key_from_guest(const unsigned char *bytes, struct nv2a_pixel_shader_
 	key->multiview = bytes[offset++];
 	key->source_blend = bytes[offset++];
 	key->dynamic_lights = bytes[offset++];
+	key->vr_effect = bytes[offset++];
 }
 
 /* a pixel program as the Vulkan backend draws it: its visibility tests
@@ -389,13 +395,177 @@ static void halo_programs(void)
 	}
 }
 
+/* the VR mode's effects (xgpu_spirv.h): an effect's program (its bitmap in
+texture 0, a second map in texture 1) soft, and soft and thick, with each
+fade, for both eyes and foveated; and the glows drawn as the light their
+bolts scatter */
+static void effect_programs(void)
+{
+	static const char *const effects[3] = { "", "soft", "thick" };
+	struct xgpu_pixel_program program;
+	struct xgpu_spirv_options options;
+	struct xgpu_spirv_module module;
+	char name[96];
+	int effect, fade, foveated, second;
+	BOOL made;
+
+	for (second = 0; second < 2; second++)
+	{
+		synthetic_base(&program);
+		synthetic_stage(&program, 0, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+		if (second)
+			synthetic_stage(&program, 1, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+		program.multiview = XGPU_MULTIVIEW_EYES;
+		for (effect = XGPU_SPIRV_EFFECT_SOFT; effect <= XGPU_SPIRV_EFFECT_THICK; effect++)
+		{
+			for (fade = XGPU_SPIRV_FADE_NONE; fade <= XGPU_SPIRV_FADE_TO_GREY; fade++)
+			{
+				for (foveated = 0; foveated < 2; foveated++)
+				{
+					memset(&options, 0, sizeof(options));
+					options.multiview = XGPU_MULTIVIEW_EYES;
+					options.foveated = foveated;
+					options.effect = effect;
+					options.effect_fade = fade;
+					snprintf(name, sizeof(name), "effect-%s-maps%d-fade%d-fovea%d", effects[effect], second + 1, fade,
+						foveated);
+					made = xgpu_spirv_pixel_shader(&program, &options, &module);
+					emit(name, "the VR mode's effects", made, &module);
+				}
+			}
+		}
+	}
+	/* a z-sprite (xgpu_shader.h, xgpu_pixel_program_depth_stage: the game's
+	effect program with its second map's puff, stages 2 and 3 its dot
+	products of it): its depth written, flat and in both eyes, or as an
+	effect, soft (and thick, which a z-sprite draws as soft) with each fade */
+	synthetic_base(&program);
+	synthetic_stage(&program, 0, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+	synthetic_stage(&program, 1, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+	synthetic_stage(&program, 2, XGPU_TEXTURE_DOT_PRODUCT, _xgpu_sampler_none);
+	synthetic_stage(&program, 3, XGPU_TEXTURE_DOT_ZW, _xgpu_sampler_none);
+	program.stages[2].input = program.stages[3].input = 1;
+	for (second = 0; second < 2; second++)
+	{
+		program.multiview = second ? XGPU_MULTIVIEW_EYES : XGPU_MULTIVIEW_NONE;
+		memset(&options, 0, sizeof(options));
+		options.multiview = program.multiview;
+		snprintf(name, sizeof(name), "zsprite-depth-view%d", second);
+		made = xgpu_spirv_pixel_shader(&program, &options, &module);
+		emit(name, "a z-sprite's depth", made, &module);
+	}
+	for (effect = XGPU_SPIRV_EFFECT_SOFT; effect <= XGPU_SPIRV_EFFECT_THICK; effect++)
+	{
+		for (fade = XGPU_SPIRV_FADE_NONE; fade <= XGPU_SPIRV_FADE_TO_GREY; fade++)
+		{
+			for (foveated = 0; foveated < 2; foveated++)
+			{
+				memset(&options, 0, sizeof(options));
+				options.multiview = XGPU_MULTIVIEW_EYES;
+				options.foveated = foveated;
+				options.effect = effect;
+				options.effect_fade = fade;
+				snprintf(name, sizeof(name), "zsprite-effect-%s-fade%d-fovea%d", effects[effect], fade, foveated);
+				made = xgpu_spirv_pixel_shader(&program, &options, &module);
+				emit(name, "a z-sprite as the VR mode's effects", made, &module);
+			}
+		}
+	}
+	for (foveated = 0; foveated < 2; foveated++)
+	{
+		memset(&options, 0, sizeof(options));
+		options.multiview = XGPU_MULTIVIEW_EYES;
+		options.foveated = foveated;
+		options.effect = XGPU_SPIRV_EFFECT_SOFT;
+		snprintf(name, sizeof(name), "glow-view1-fovea%d-vertex", foveated);
+		made = xgpu_spirv_halo_vertex_shader(&options, &module);
+		emit(name, "the glows as their bolts' scattered light, vertex", made, &module);
+		snprintf(name, sizeof(name), "glow-view1-fovea%d-pixel", foveated);
+		made = xgpu_spirv_halo_pixel_shader(&options, &module);
+		emit(name, "the glows as their bolts' scattered light, pixel", made, &module);
+	}
+}
+
 /* anti-aliasing's passes: their vertex shader, FXAA and SMAA's three (as
 tools/vulkan_post_shaders.py checked them, made again here with the rest) */
+/* display.hdr's tags (xgpu_hdr.h), as the front end gives them
+(xgpu_hdr_classify): each blend the game's draws have, each ceiling with and
+without a glow's expansion, the alpha limit, and the enhanced dynamic lights
+past white; each blending in the shader with the pixel it draws over, of a
+target of one sample and of four */
+static void hdr_programs(void)
+{
+	static const unsigned char blends[][3] =
+	{
+		{ XGPU_BLEND_ONE, XGPU_BLEND_ONE, XGPU_BLEND_ADD },
+		{ XGPU_BLEND_SOURCE_ALPHA, XGPU_BLEND_ONE, XGPU_BLEND_ADD },
+		{ XGPU_BLEND_DESTINATION_COLOR, XGPU_BLEND_SOURCE_COLOR, XGPU_BLEND_ADD },
+		{ XGPU_BLEND_SOURCE_ALPHA, XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA, XGPU_BLEND_ADD },
+		{ XGPU_BLEND_ONE_MINUS_DESTINATION_COLOR, XGPU_BLEND_ONE, XGPU_BLEND_ADD },
+		{ XGPU_BLEND_CONSTANT_COLOR, XGPU_BLEND_ONE_MINUS_CONSTANT_ALPHA, XGPU_BLEND_ADD },
+		{ XGPU_BLEND_SOURCE_ALPHA_SATURATE, XGPU_BLEND_DESTINATION_ALPHA, XGPU_BLEND_ADD },
+		{ XGPU_BLEND_ONE, XGPU_BLEND_ONE, XGPU_BLEND_REVERSE_SUBTRACT },
+		{ XGPU_BLEND_ONE, XGPU_BLEND_ONE, XGPU_BLEND_SUBTRACT },
+		{ XGPU_BLEND_ONE, XGPU_BLEND_ONE, XGPU_BLEND_MIN },
+		{ XGPU_BLEND_ONE, XGPU_BLEND_ONE, XGPU_BLEND_MAX },
+	};
+	static const unsigned short tags[] =
+	{
+		XGPU_HDR_CEILING(XGPU_HDR_CEILING_PAPER_WHITE),
+		XGPU_HDR_CEILING(XGPU_HDR_CEILING_PAPER_WHITE) | XGPU_HDR_ALPHA_LIMIT,
+		XGPU_HDR_ALPHA_LIMIT,
+		XGPU_HDR_EXPAND | XGPU_HDR_CEILING(XGPU_HDR_CEILING_WEAPON),
+		XGPU_HDR_EXPAND | XGPU_HDR_CEILING(XGPU_HDR_CEILING_HUD) | XGPU_HDR_ALPHA_LIMIT,
+	};
+	struct xgpu_spirv_options options;
+	struct xgpu_spirv_module module;
+	struct xgpu_pixel_program program;
+	char name[64], what[96];
+	unsigned int blend, tag;
+	int samples;
+
+	for (samples = 1; samples <= 4; samples += 3)
+	{
+		memset(&options, 0, sizeof(options));
+		options.input_samples = samples;
+		for (blend = 0; blend < sizeof(blends) / sizeof(blends[0]); blend++)
+		{
+			for (tag = 0; tag < sizeof(tags) / sizeof(tags[0]); tag++)
+			{
+				synthetic_base(&program);
+				synthetic_stage(&program, 0, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+				program.hdr = (unsigned short)(tags[tag] | XGPU_HDR_BLEND(blends[blend][0], blends[blend][1],
+					blends[blend][2]));
+				snprintf(name, sizeof(name), "hdr-blend%u-tag%u-samples%d", blend, tag, samples);
+				snprintf(what, sizeof(what), "display.hdr's tag %04x, %d samples", program.hdr, samples);
+				emit(name, what, xgpu_spirv_pixel_shader(&program, &options, &module), &module);
+			}
+		}
+	}
+	/* (the structure's lightmap pass: the dynamic lights past white, and
+	that with a ceiling, which the front end never gives it, still valid) */
+	for (tag = 0; tag < 2; tag++)
+	{
+		synthetic_base(&program);
+		synthetic_stage(&program, 0, XGPU_TEXTURE_PROJECT2D, _xgpu_sampler_2d);
+		program.final.inputs[1].reg = XGPU_REGISTER_V0;
+		program.dynamic_lights = XGPU_DYNAMIC_LIGHTS_ENVIRONMENT;
+		program.hdr = (unsigned short)(XGPU_HDR_LIGHTS | (tag ? XGPU_HDR_CEILING(XGPU_HDR_CEILING_PAPER_WHITE) |
+			XGPU_HDR_BLEND(XGPU_BLEND_ONE, XGPU_BLEND_ONE, XGPU_BLEND_ADD) : 0));
+		memset(&options, 0, sizeof(options));
+		options.input_samples = 1;
+		snprintf(name, sizeof(name), "hdr-lights%u", tag);
+		emit(name, "display.hdr's dynamic lights past white", xgpu_spirv_pixel_shader(&program, &options, &module),
+			&module);
+	}
+}
+
 static void post_programs(void)
 {
 	static const char *const names[XGPU_VULKAN_POST_PROGRAM_COUNT] =
 	{
-		"post-fxaa", "post-smaa-edges", "post-smaa-weights", "post-smaa-blend", "post-rotate",
+		"post-fxaa", "post-smaa-edges", "post-smaa-weights", "post-smaa-blend", "post-rotate", "post-hdr-tone-map",
+		"post-hdr-tone-map-ms", "post-hdr-encode",
 	};
 	struct xgpu_spirv_module module;
 	int program;
@@ -468,6 +638,8 @@ int main(int argc, char **argv)
 	layered_pixel_programs();
 	synthetic_vertex_programs(synthetic_vertex);
 	halo_programs();
+	effect_programs();
+	hdr_programs();
 	post_programs();
 	fclose(index_file);
 	printf("%lu modules written to %s, %lu variants the same as one of them\n", written, out_dir, same);

@@ -1,7 +1,7 @@
 /*
 HOST_APP.M
 
-The macOS app (Halo.app, tools/macos_build.py): what the host does when its
+The macOS app (OpenH1.app, tools/macos_build.py): what the host does when its
 executable runs inside the app's bundle, before the game starts, so that it
 behaves as a Mac app is expected to. A bare executable (build/macos/halo)
 does none of it, and the HALO_ settings of the environment (HALO_DATA_ROOT,
@@ -12,23 +12,39 @@ HALO_SAVE_ROOT) and config.toml's paths.data and paths.saves are kept.
   host's log in ~/Library/Logs/OpenH1 (halo.log, and the previous start's
   halo.previous.log), where Console shows it, unless the error output is a
   terminal. The Metal pipelines' archive is in ~/Library/Caches/OpenH1
-  (xgpu_metal.m). A player of the app from before the project was OpenH1
-  keeps their settings and saves: without an OpenH1 folder, the first start
-  copies Application Support's OpenCE folder, which stays as it was.
-- The game data: the players supply the Xbox game's maps folder. Without
-  one, an open panel asks for it; it is checked (ui.map, an Xbox cache, and
-  the other maps of the disc), kept as a bookmark (maps.bookmark), which
-  follows the folder when it is moved or renamed, and the data root's maps
-  is a symbolic link to it, made again at each start.
+  (xgpu_metal.m).
+- The game data: the players supply the Xbox game's maps folder or its
+  disc image. Without one, an open panel asks for either. A folder is
+  checked (ui.map, an Xbox cache, and the other maps of the disc), kept as a
+  bookmark (maps.bookmark), which follows the folder when it is moved or
+  renamed, and the data root's maps is a symbolic link to it, made again at
+  each start. A disc image (.iso or .xiso, any name: halo1.xiso.iso) has its
+  maps folder extracted into the data root's maps, a folder of its own, by
+  port/linux/src/xiso.c (the desktop builds' and the iOS app's extractor),
+  with a window showing the copy; the image is not needed after.
 - The window: its place and size, and whether it was fullscreen, are kept
   (window.plist) and the next start opens it so (display.fullscreen, through
   HALO_FULLSCREEN, and the window's frame once it is a window).
+
+- Updates: a release's app updates itself with Sparkle (Sparkle.framework
+  in the bundle, loaded at run time; tools/macos_app.py gives a release's
+  Info.plist its appcast and public key). It looks when the game reaches
+  its main menu and every four hours after, unless update.auto is false; a
+  new version's window (its notes, Install Update, Remind Me Later, Skip
+  This Version) is shown only at the main menu: found during a game, it
+  waits until the game is over (the guest says which, updater.c's
+  updater_poll). Installing replaces the app and starts it again; the
+  player's files, here in Application Support, are untouched. The app's
+  menu has Check for Updates... and Automatically Check for Updates, which
+  is update.auto (written to config.toml; Settings > Network Setup > Check
+  for Updates is the same setting).
 
 SDL makes the app's menus (About, Hide, Quit, the Window menu with Toggle
 Full Screen) and turns Quit into the game's quit event.
 */
 
 #import <AppKit/AppKit.h>
+#import <Sparkle/Sparkle.h>
 #include <SDL3/SDL.h>
 
 /* (host.h's host_page_size is Mach's too: not used here) */
@@ -36,7 +52,10 @@ Full Screen) and turns Quit into the game's quit event.
 #include "host.h"
 #undef host_page_size
 #include "tomlc17.h"
+#include "xiso.h"
 
+#include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,8 +64,6 @@ Full Screen) and turns Quit into the game's quit event.
 /* the folder's name, under Application Support, Logs and Caches (not Halo:
 Halo for Mac, MacSoft's port, has ~/Library/Application Support/Halo) */
 #define APP_FOLDER @"OpenH1"
-/* the folder's name before the project was OpenH1 (OpenCE's) */
-#define PREVIOUS_APP_FOLDER @"OpenCE"
 
 /* the Xbox disc's maps, which the game's menus offer: the campaign and
 multiplayer */
@@ -102,7 +119,38 @@ static NSString *config_path_setting(const char *name)
 	return value;
 }
 
+/* a boolean setting of config.toml, else its default */
+static BOOL config_boolean_setting(const char *name, BOOL default_value)
+{
+	NSString *path = [support_folder stringByAppendingPathComponent:@"config.toml"];
+	toml_result_t result = toml_parse_file_ex(path.fileSystemRepresentation);
+	BOOL value = default_value;
+
+	if (!result.ok)
+		return value;
+	{
+		toml_datum_t datum = toml_seek(result.toptab, name);
+
+		if (datum.type == TOML_BOOLEAN)
+			value = datum.u.boolean ? YES : NO;
+	}
+	toml_free(result);
+	return value;
+}
+
 /* ---------- the maps */
+
+/* xiso.c's log lines, the host's */
+void platform_log(const char *format, ...)
+{
+	char line[512];
+	va_list arguments;
+
+	va_start(arguments, format);
+	vsnprintf(line, sizeof(line), format, arguments);
+	va_end(arguments);
+	host_logf(HOST_LOG_INFO, "%s", line);
+}
 
 /* name in folder, in any case (the volume may tell case apart), or nil */
 static NSURL *entry_named(NSURL *folder, NSString *name)
@@ -239,8 +287,8 @@ static NSURL *maps_remembered(void)
 	return maps;
 }
 
-/* HALO_MAPS_PANEL_ANSWER, for the automated tests: the folders (or
-"cancel") the panel is answered with, one for each time it is shown,
+/* HALO_MAPS_PANEL_ANSWER, for the automated tests: the folders or disc
+images (or "cancel") the panel is answered with, one for each time it is shown,
 separated by semicolons; each alert is answered with its first button. The
 answer comes a second after the panel or alert shows. */
 static NSMutableArray<NSString *> *test_answers;
@@ -285,7 +333,129 @@ static NSURL *test_answer_panel(void)
 		host_logf(HOST_LOG_INFO, "test: the panel answered with %s", answer.UTF8String);
 		[NSApp stopModalWithCode:[answer isEqualToString:@"cancel"] ? NSModalResponseCancel : NSModalResponseOK];
 	});
-	return [answer isEqualToString:@"cancel"] ? nil : [NSURL fileURLWithPath:answer isDirectory:YES];
+	return [answer isEqualToString:@"cancel"] ? nil : [NSURL fileURLWithPath:answer];
+}
+
+/* whether url names a disc image: .iso or .xiso, in any case (and
+halo1.xiso.iso) */
+static BOOL is_disc_image(NSURL *url)
+{
+	NSString *extension = url.pathExtension.lowercaseString;
+
+	return [extension isEqualToString:@"iso"] || [extension isEqualToString:@"xiso"];
+}
+
+static BOOL is_folder(NSURL *url)
+{
+	BOOL directory = NO;
+
+	return [[NSFileManager defaultManager] fileExistsAtPath:url.path isDirectory:&directory] && directory;
+}
+
+/* the panel's choices: folders, and of the files only disc images (the
+panel is given no types: .xiso has none of its own, and would be greyed
+out) */
+@interface HaloMapsPanelDelegate : NSObject <NSOpenSavePanelDelegate>
+@end
+
+@implementation HaloMapsPanelDelegate
+
+- (BOOL)panel:(id)sender shouldEnableURL:(NSURL *)url
+{
+	(void)sender;
+	return is_folder(url) || is_disc_image(url);
+}
+
+@end
+
+/* the extraction's progress, which xiso.c reports from its thread */
+static _Atomic(unsigned long long) extract_done, extract_total;
+
+static void extract_progress(void *context, const char *file, unsigned long long done, unsigned long long total)
+{
+	(void)context;
+	(void)file;
+	atomic_store(&extract_done, done);
+	atomic_store(&extract_total, total);
+}
+
+/* the disc image's maps folder copied into the data root's maps (a folder
+of its own: no bookmark, no link), with a window showing the copy; nil, or
+why not (for the player) */
+static NSString *maps_extract(NSURL *image)
+{
+	static char error[512];
+	NSFileManager *files = [NSFileManager defaultManager];
+	NSString *maps = [support_folder stringByAppendingPathComponent:@"maps"];
+	NSString *destination = support_folder;
+	NSPanel *window = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 440, 110)
+		styleMask:NSWindowStyleMaskTitled backing:NSBackingStoreBuffered defer:NO];
+	NSTextField *label = [NSTextField labelWithString:[NSString stringWithFormat:
+		@"Copying the maps out of “%@”…", image.lastPathComponent]];
+	NSTextField *detail = [NSTextField labelWithString:@" "];
+	NSProgressIndicator *bar = [[NSProgressIndicator alloc] init];
+	NSStackView *stack;
+	dispatch_semaphore_t finished = dispatch_semaphore_create(0);
+	NSModalSession session;
+	__block int succeeded = 0;
+
+	/* (a link to a folder chosen before that is not usable: the copy takes
+	its place) */
+	if ([files destinationOfSymbolicLinkAtPath:maps error:NULL])
+		[files removeItemAtPath:maps error:NULL];
+	host_logf(HOST_LOG_INFO, "maps: extracting %s into %s", image.fileSystemRepresentation,
+		maps.fileSystemRepresentation);
+	window.title = @"Copying Halo’s Maps";
+	label.lineBreakMode = NSLineBreakByTruncatingMiddle;
+	detail.font = [NSFont monospacedDigitSystemFontOfSize:[NSFont smallSystemFontSize] weight:NSFontWeightRegular];
+	detail.textColor = [NSColor secondaryLabelColor];
+	bar.style = NSProgressIndicatorStyleBar;
+	bar.indeterminate = NO;
+	bar.minValue = 0.0;
+	bar.maxValue = 1.0;
+	stack = [NSStackView stackViewWithViews:@[ label, bar, detail ]];
+	stack.orientation = NSUserInterfaceLayoutOrientationVertical;
+	stack.alignment = NSLayoutAttributeLeading;
+	stack.spacing = 10;
+	stack.edgeInsets = NSEdgeInsetsMake(20, 20, 20, 20);
+	[bar.widthAnchor constraintEqualToConstant:400].active = YES;
+	[label.widthAnchor constraintLessThanOrEqualToConstant:400].active = YES;
+	window.contentView = stack;
+	[window center];
+	atomic_store(&extract_done, 0);
+	atomic_store(&extract_total, 0);
+	error[0] = 0;
+	session = [NSApp beginModalSessionForWindow:window];
+	dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+		succeeded = xiso_extract_maps(image.path.fileSystemRepresentation, destination.fileSystemRepresentation,
+			extract_progress, NULL, error, sizeof(error));
+		dispatch_semaphore_signal(finished);
+	});
+	for (;;)
+	{
+		unsigned long long done = atomic_load(&extract_done), total = atomic_load(&extract_total);
+
+		if (total)
+		{
+			bar.doubleValue = (double)done / (double)total;
+			detail.stringValue = [NSString stringWithFormat:@"%@ of %@",
+				[NSByteCountFormatter stringFromByteCount:(long long)done countStyle:NSByteCountFormatterCountStyleFile],
+				[NSByteCountFormatter stringFromByteCount:(long long)total countStyle:NSByteCountFormatterCountStyleFile]];
+		}
+		[NSApp runModalSession:session];
+		if (!dispatch_semaphore_wait(finished, dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC / 20)))
+			break;
+	}
+	[NSApp endModalSession:session];
+	[window orderOut:nil];
+	if (!succeeded)
+	{
+		host_logf(HOST_LOG_WARN, "maps: the extraction failed: %s", error);
+		return error[0] ? [NSString stringWithUTF8String:error] : @"The maps could not be copied out of it.";
+	}
+	/* (the folder chosen before, if any, is no longer the game's) */
+	[files removeItemAtPath:bookmark_path() error:NULL];
+	return nil;
 }
 
 /* Quit while the app asks for the maps (before the game reads SDL's
@@ -301,10 +471,14 @@ static bool SDLCALL quit_watch(void *unused, SDL_Event *event)
 	return true;
 }
 
-/* the maps folder the player chooses; quits if they choose none */
-static NSURL *maps_choose(void)
+/* the maps folder the player chooses, or the one extracted from the disc
+image they choose (*extracted, the data root's maps); quits if they choose
+none */
+static NSURL *maps_choose(BOOL *extracted)
 {
 	NSURL *chosen = nil;
+	HaloMapsPanelDelegate *delegate = [HaloMapsPanelDelegate new];
+	BOOL from_image = NO;
 
 	/* (SDL's application: its menus, and Quit as the game's quit event) */
 	SDL_InitSubSystem(SDL_INIT_VIDEO);
@@ -318,20 +492,24 @@ static NSURL *maps_choose(void)
 	{
 		NSOpenPanel *panel = [NSOpenPanel openPanel];
 		NSURL *answer = test_answer_panel();
+		NSURL *picked;
 		NSURL *maps;
 		NSString *problem = nil;
+		BOOL image;
 
 		panel.canChooseDirectories = YES;
-		panel.canChooseFiles = NO;
+		panel.canChooseFiles = YES;
 		panel.allowsMultipleSelection = NO;
+		panel.delegate = delegate;
 		panel.prompt = @"Use These Maps";
-		panel.message = @"Choose the maps folder of Halo: Combat Evolved for the Xbox, from your own copy of the game.\n"
-			"It holds ui.map, bloodgulch.map and the other maps. It stays where it is: the game remembers it.";
+		panel.message = @"Choose the maps folder or the disc image (.iso or .xiso) of Halo: Combat Evolved for the "
+			"Xbox, from your own copy of the game.\nA folder holds ui.map, bloodgulch.map and the other maps; it stays "
+			"where it is. A disc image’s maps are copied into the game’s folder.";
 		if ([panel runModal] != NSModalResponseOK || !(answer ?: panel.URL))
 		{
 			if (alert(NSAlertStyleInformational, @"Halo needs its maps to play",
-					@"The game data is not part of the app: choose the maps folder of your copy of "
-					"Halo: Combat Evolved for the Xbox.", @[ @"Choose Folder…", @"Quit" ]) ==
+					@"The game data is not part of the app: choose the maps folder or the disc image of your "
+					"copy of Halo: Combat Evolved for the Xbox.", @[ @"Choose…", @"Quit" ]) ==
 				NSAlertFirstButtonReturn)
 			{
 				continue;
@@ -339,7 +517,20 @@ static NSURL *maps_choose(void)
 			host_logf(HOST_LOG_INFO, "no maps folder chosen: quitting");
 			exit(EXIT_SUCCESS);
 		}
-		switch (maps_check(answer ?: panel.URL, &maps, &problem))
+		picked = answer ?: panel.URL;
+		image = !is_folder(picked);
+		if (image)
+		{
+			problem = maps_extract(picked);
+			if (problem)
+			{
+				alert(NSAlertStyleWarning, @"The maps could not be copied from that disc image", problem,
+					@[ @"Choose Another…" ]);
+				continue;
+			}
+			picked = [NSURL fileURLWithPath:[support_folder stringByAppendingPathComponent:@"maps"]];
+		}
+		switch (maps_check(picked, &maps, &problem))
 		{
 		case _maps_good:
 			chosen = maps;
@@ -347,16 +538,23 @@ static NSURL *maps_choose(void)
 		case _maps_incomplete:
 			if (alert(NSAlertStyleWarning, @"Some maps are missing", [problem stringByAppendingString:
 					@" The levels without their maps cannot be played."],
-					@[ @"Use This Folder", @"Choose Another…" ]) == NSAlertFirstButtonReturn)
+					@[ image ? @"Use These Maps" : @"Use This Folder", @"Choose Another…" ]) ==
+				NSAlertFirstButtonReturn)
 			{
 				chosen = maps;
 			}
 			break;
 		case _maps_unusable:
-			alert(NSAlertStyleWarning, @"That folder cannot be used", problem, @[ @"Choose Another…" ]);
+			alert(NSAlertStyleWarning, image ? @"That disc image cannot be used" : @"That folder cannot be used",
+				problem, @[ @"Choose Another…" ]);
 			break;
 		}
+		/* (a copy not taken is not kept) */
+		if (image && !chosen)
+			[[NSFileManager defaultManager] removeItemAtURL:picked error:NULL];
+		from_image = image;
 	}
+	*extracted = from_image;
 	SDL_RemoveEventWatch(quit_watch, NULL);
 	return chosen;
 }
@@ -389,7 +587,14 @@ static void maps_find(void)
 	}
 	if (!maps)
 	{
-		maps = maps_choose();
+		BOOL extracted = NO;
+
+		maps = maps_choose(&extracted);
+		if (extracted)
+		{
+			host_logf(HOST_LOG_INFO, "maps: %s (from the disc image)", maps.fileSystemRepresentation);
+			return;
+		}
 		maps_remember(maps);
 	}
 	host_logf(HOST_LOG_INFO, "maps: %s", maps.fileSystemRepresentation);
@@ -525,6 +730,310 @@ static void window_remember(void)
 	}
 }
 
+/* ---------- updates (Sparkle) */
+
+/* port/linux/host/host_desktop.c's: 1 while a game is played, 0 at the main
+menu, -1 before the game's first frame (updater.c's updater_poll) */
+int host_app_is_playing(void);
+
+@interface HaloUpdater : NSObject <SPUUpdaterDelegate, SPUStandardUserDriverDelegate, NSMenuItemValidation>
+@end
+
+static SPUStandardUpdaterController *updater_controller;
+static HaloUpdater *updater_delegate;
+/* a new version found during a game, to be shown at the main menu */
+static BOOL update_waiting;
+/* the check of the start, made at the first main menu */
+static BOOL update_start_checked;
+/* config.toml's modification date when update.auto was last read */
+static NSDate *update_config_read;
+
+static NSString *config_path(void)
+{
+	return [support_folder stringByAppendingPathComponent:@"config.toml"];
+}
+
+static NSDate *config_modified(void)
+{
+	return [[NSFileManager defaultManager] attributesOfItemAtPath:config_path() error:NULL].fileModificationDate;
+}
+
+/* update.auto = on written to config.toml as the game writes a setting:
+its line in [update] (or its commented default) replaced, else added. The
+game reads the file again before it writes any setting, and keeps this */
+static void config_write_update_auto(BOOL on)
+{
+	NSCharacterSet *blank = [NSCharacterSet whitespaceCharacterSet];
+	NSString *text = [NSString stringWithContentsOfFile:config_path() encoding:NSUTF8StringEncoding error:NULL] ?: @"";
+	NSMutableArray<NSString *> *lines = [[text componentsSeparatedByString:@"\n"] mutableCopy];
+	NSString *line = on ? @"auto = true" : @"auto = false";
+	NSUInteger section = NSNotFound, index;
+	BOOL replaced = NO;
+
+	for (index = 0; index < lines.count; index++)
+	{
+		NSString *trimmed = [lines[index] stringByTrimmingCharactersInSet:blank];
+
+		if ([trimmed hasPrefix:@"["])
+		{
+			if (section != NSNotFound)
+				break;
+			if ([trimmed isEqualToString:@"[update]"])
+				section = index;
+			continue;
+		}
+		if (section == NSNotFound)
+			continue;
+		if ([trimmed hasPrefix:@"#"])
+			trimmed = [[trimmed substringFromIndex:1] stringByTrimmingCharactersInSet:blank];
+		if ([trimmed hasPrefix:@"auto"] &&
+			[[[trimmed substringFromIndex:4] stringByTrimmingCharactersInSet:blank] hasPrefix:@"="])
+		{
+			lines[index] = line;
+			replaced = YES;
+			break;
+		}
+	}
+	if (!replaced && section == NSNotFound)
+	{
+		if (lines.count && [lines.lastObject length] == 0)
+			[lines removeLastObject];
+		[lines addObjectsFromArray:@[ @"", @"[update]", line, @"" ]];
+	}
+	else if (!replaced)
+		[lines insertObject:line atIndex:section + 1];
+	if (![[lines componentsJoinedByString:@"\n"] writeToFile:config_path() atomically:YES encoding:NSUTF8StringEncoding
+		error:NULL])
+	{
+		host_logf(HOST_LOG_WARN, "update: could not write update.auto to config.toml");
+	}
+}
+
+/* Sparkle's windows over the game's when it is fullscreen (in its Space),
+not in a Space of their own */
+static void update_windows_over_game(void)
+{
+	dispatch_async(dispatch_get_main_queue(), ^{
+		for (NSWindow *window in NSApp.windows)
+		{
+			if (is_game_window(window) || !window.visible)
+				continue;
+			window.collectionBehavior |= NSWindowCollectionBehaviorFullScreenAuxiliary |
+				NSWindowCollectionBehaviorMoveToActiveSpace;
+			[window orderFrontRegardless];
+		}
+	});
+}
+
+static BOOL update_test_install(void)
+{
+	const char *test = getenv("HALO_UPDATE_TEST");
+
+	return test && !strcmp(test, "install");
+}
+
+@implementation HaloUpdater
+
+/* (the appcast of a test: HALO_UPDATE_FEED, port/macos/README.md) */
+- (NSString *)feedURLStringForUpdater:(SPUUpdater *)updater
+{
+	const char *feed = getenv("HALO_UPDATE_FEED");
+
+	return feed && *feed ? [NSString stringWithUTF8String:feed] : nil;
+}
+
+- (void)updater:(SPUUpdater *)updater didFindValidUpdate:(SUAppcastItem *)item
+{
+	host_logf(HOST_LOG_INFO, "update: build %s is out", item.versionString.UTF8String);
+}
+
+- (void)updaterDidNotFindUpdate:(SPUUpdater *)updater
+{
+	host_logf(HOST_LOG_INFO, "update: this is the latest build");
+}
+
+- (void)updater:(SPUUpdater *)updater didAbortWithError:(NSError *)error
+{
+	host_logf(HOST_LOG_INFO, "update: %s", error.localizedDescription.UTF8String);
+}
+
+- (void)updaterWillRelaunchApplication:(SPUUpdater *)updater
+{
+	host_logf(HOST_LOG_INFO, "update: installed; starting the new build");
+}
+
+/* (HALO_UPDATE_TEST=install, port/macos/README.md: a downloaded update
+installed at once, as Install Update does, but the app not started again,
+which LaunchServices would do without the test's environment) */
+- (BOOL)updater:(SPUUpdater *)updater willInstallUpdateOnQuit:(SUAppcastItem *)item
+	immediateInstallationBlock:(void (^)(void))immediateInstallHandler
+{
+	host_logf(HOST_LOG_INFO, "update: build %s downloaded and checked", item.versionString.UTF8String);
+	if (!update_test_install())
+		return NO;
+	immediateInstallHandler();
+	return YES;
+}
+
+/* (never in a test: LaunchServices would start the new app without the
+test's environment, in the player's own folders) */
+- (BOOL)updaterShouldRelaunchApplication:(SPUUpdater *)updater
+{
+	return !getenv("HALO_UPDATE_TEST");
+}
+
+/* a version found by a check of Sparkle's own (not Check for Updates...):
+shown by Sparkle at the main menu, else kept for it (update_tick) */
+- (BOOL)supportsGentleScheduledUpdateReminders
+{
+	return YES;
+}
+
+- (BOOL)standardUserDriverShouldHandleShowingScheduledUpdate:(SUAppcastItem *)update andInImmediateFocus:(BOOL)immediateFocus
+{
+	return host_app_is_playing() == 0;
+}
+
+- (void)standardUserDriverWillHandleShowingUpdate:(BOOL)handleShowingUpdate forUpdate:(SUAppcastItem *)update
+	state:(SPUUserUpdateState *)state
+{
+	if (handleShowingUpdate)
+	{
+		host_logf(HOST_LOG_INFO, "update: build %s shown", update.versionString.UTF8String);
+		update_windows_over_game();
+		return;
+	}
+	update_waiting = YES;
+	host_logf(HOST_LOG_INFO, "update: build %s shown at the main menu, after this game",
+		update.versionString.UTF8String);
+}
+
+- (void)standardUserDriverDidReceiveUserAttentionForUpdate:(SUAppcastItem *)update
+{
+	update_waiting = NO;
+}
+
+- (void)standardUserDriverWillFinishUpdateSession
+{
+	update_waiting = NO;
+}
+
+/* the app menu's Automatically Check for Updates: update.auto */
+- (void)toggleAutomaticChecks:(NSMenuItem *)item
+{
+	BOOL on = !updater_controller.updater.automaticallyChecksForUpdates;
+
+	updater_controller.updater.automaticallyChecksForUpdates = on;
+	config_write_update_auto(on);
+	update_config_read = config_modified();
+	host_logf(HOST_LOG_INFO, "update: update.auto = %s", on ? "true" : "false");
+}
+
+- (BOOL)validateMenuItem:(NSMenuItem *)item
+{
+	if (item.action == @selector(toggleAutomaticChecks:))
+	{
+		item.state = updater_controller.updater.automaticallyChecksForUpdates ? NSControlStateValueOn
+			: NSControlStateValueOff;
+	}
+	return YES;
+}
+
+@end
+
+/* every two seconds, on the main thread (between the game's frames, which
+pump its run loop): update.auto as Settings changes it, the start's check
+at the first main menu, and a version found during a game shown once the
+game is over */
+static void update_tick(void)
+{
+	SPUUpdater *updater = updater_controller.updater;
+	NSDate *modified = config_modified();
+
+	if (modified && ![modified isEqualToDate:update_config_read])
+	{
+		BOOL on = config_boolean_setting("update.auto", YES);
+
+		update_config_read = modified;
+		if (on != updater.automaticallyChecksForUpdates)
+		{
+			updater.automaticallyChecksForUpdates = on;
+			host_logf(HOST_LOG_INFO, "update: update.auto = %s", on ? "true" : "false");
+		}
+	}
+	if (host_app_is_playing() != 0)
+		return;
+	if (!update_start_checked)
+	{
+		update_start_checked = YES;
+		if (updater.automaticallyChecksForUpdates && updater.canCheckForUpdates)
+			[updater checkForUpdatesInBackground];
+	}
+	if (update_waiting)
+	{
+		update_waiting = NO;
+		[updater_controller checkForUpdates:nil];
+		update_windows_over_game();
+	}
+}
+
+/* once SDL has made the app's menus (host_app_start's timer):
+Sparkle, if the app has it and an appcast (a release's), else nothing */
+static void update_start(void)
+{
+	NSBundle *bundle = [NSBundle mainBundle];
+	NSBundle *sparkle = [NSBundle bundleWithPath:[bundle.privateFrameworksPath
+		stringByAppendingPathComponent:@"Sparkle.framework"]];
+	BOOL test = getenv("HALO_UPDATE_FEED") && *getenv("HALO_UPDATE_FEED");
+	NSMenu *menu = NSApp.mainMenu.itemArray.firstObject.submenu;
+	NSError *error = nil;
+	Class controller;
+
+	if (updater_controller)
+		return;
+	if (![bundle objectForInfoDictionaryKey:@"SUPublicEDKey"] || (!test && ![bundle objectForInfoDictionaryKey:@"SUFeedURL"]))
+	{
+		host_logf(HOST_LOG_INFO, "update: not looked for (a release's app looks: this build has no appcast)");
+		return;
+	}
+	if (!sparkle || ![sparkle loadAndReturnError:&error] || !(controller = NSClassFromString(@"SPUStandardUpdaterController")))
+	{
+		host_logf(HOST_LOG_WARN, "update: no Sparkle (%s)", error ? error.localizedDescription.UTF8String : "");
+		return;
+	}
+	updater_delegate = [HaloUpdater new];
+	updater_controller = [[controller alloc] initWithStartingUpdater:NO updaterDelegate:updater_delegate
+		userDriverDelegate:updater_delegate];
+	[updater_controller startUpdater];
+	updater_controller.updater.automaticallyChecksForUpdates = config_boolean_setting("update.auto", YES);
+	if (update_test_install())
+		updater_controller.updater.automaticallyDownloadsUpdates = YES;
+	update_config_read = config_modified();
+	host_logf(HOST_LOG_INFO, "update: Sparkle started (%s), update.auto = %s",
+		updater_controller.updater.feedURL.absoluteString.UTF8String,
+		updater_controller.updater.automaticallyChecksForUpdates ? "true" : "false");
+	if (menu)
+	{
+		NSMenuItem *check = [[NSMenuItem alloc] initWithTitle:@"Check for Updates\u2026"
+			action:@selector(checkForUpdates:) keyEquivalent:@""];
+		NSMenuItem *automatic = [[NSMenuItem alloc] initWithTitle:@"Automatically Check for Updates"
+			action:@selector(toggleAutomaticChecks:) keyEquivalent:@""];
+
+		check.target = updater_controller;
+		automatic.target = updater_delegate;
+		[menu insertItem:[NSMenuItem separatorItem] atIndex:1];
+		[menu insertItem:check atIndex:2];
+		[menu insertItem:automatic atIndex:3];
+	}
+	/* (the tests, HALO_UPDATE_TEST: window, the update window at once, as
+	Check for Updates... shows it; install, the update looked for at once,
+	downloaded and installed: whatever the game is doing) */
+	if (update_test_install())
+		[updater_controller.updater checkForUpdatesInBackground];
+	else if (getenv("HALO_UPDATE_TEST") && !strcmp(getenv("HALO_UPDATE_TEST"), "window"))
+		[updater_controller checkForUpdates:nil];
+}
+
 /* ---------- start */
 
 void host_app_start(void)
@@ -537,22 +1046,14 @@ void host_app_start(void)
 		NSURL *support = [[files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject
 			URLByAppendingPathComponent:APP_FOLDER];
 		NSURL *logs = [[library URLByAppendingPathComponent:@"Logs"] URLByAppendingPathComponent:APP_FOLDER];
-		NSURL *previous = [[support URLByDeletingLastPathComponent] URLByAppendingPathComponent:PREVIOUS_APP_FOLDER];
 		NSString *brokers;
 		NSString *saves;
-		BOOL copied = NO;
 
 		if (!bundle.bundleIdentifier || ![bundle.bundlePath.pathExtension isEqualToString:@"app"])
 			return;
-		/* (the maps are a symbolic link and a bookmark in it: the copy is
-		small) */
-		if (![files fileExistsAtPath:support.path] && [files fileExistsAtPath:previous.path])
-			copied = [files copyItemAtURL:previous toURL:support error:NULL];
 		[files createDirectoryAtURL:support withIntermediateDirectories:YES attributes:nil error:NULL];
 		[files createDirectoryAtURL:logs withIntermediateDirectories:YES attributes:nil error:NULL];
 		log_open(logs);
-		if (copied)
-			host_logf(HOST_LOG_INFO, "settings and saves copied from %s", previous.fileSystemRepresentation);
 		support_folder = support.path;
 		snprintf(settings_folder, sizeof(settings_folder), "%s/", support_folder.fileSystemRepresentation);
 		host_logf(HOST_LOG_INFO, "%s %s (%s), %s", [[bundle objectForInfoDictionaryKey:@"CFBundleName"] UTF8String],
@@ -581,5 +1082,30 @@ void host_app_start(void)
 			maps_find();
 		}
 		window_remember();
+	}
+}
+
+/* host_sdl.c's, each time the game reads its events (on the main thread):
+the updater started once the game reads them, and its tick every two
+seconds. (Not a timer of the run loop: the game's event pump does not run
+them, and NSApplicationDidFinishLaunching does not come) */
+void host_app_update_tick(void)
+{
+	static Uint64 next;
+	static BOOL started;
+	Uint64 now = SDL_GetTicks();
+
+	if (!support_folder || now < next)
+		return;
+	next = now + 2000;
+	@autoreleasepool
+	{
+		if (!started)
+		{
+			started = YES;
+			update_start();
+		}
+		if (updater_controller)
+			update_tick();
 	}
 }

@@ -39,6 +39,9 @@ a mouse button (INPUT_MOUSE + SDL_BUTTON_*), or the wheel */
 /* an input by its name in config.toml ("W", "Mouse Left"), -1 if none */
 int halo_input_from_name(const char *name);
 void halo_input_name(int input, char *name, size_t size);
+/* a binding's name ("Z") as the keyboard's layout labels its key ("Y"),
+for the menus */
+void halo_input_shown_name(const char *binding, char *shown, size_t size);
 
 /* whether a menu is up (halo_ui_pointer_update, every frame) */
 void platform_menus_set_active(BOOL active);
@@ -64,6 +67,8 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height);
 Phase 0 waits until its presenter no longer touches the default framebuffer. */
 void platform_loading_set(int phase);
 void platform_loading_art(const unsigned char *rgba);
+void platform_loading_scene(const void *data, unsigned long bytes);
+void platform_loading_progress(float progress);
 int platform_loading_active(void);
 BOOL platform_screen_mode(long *width, long *height);
 /* Video Setup's resolutions (port/linux/game/menu_tags.c), in pixels: the
@@ -84,9 +89,18 @@ int platform_audio_devices(int recording, char (*names)[PLATFORM_AUDIO_DEVICE_NA
 the system's default for "default", or one not found */
 SDL_AudioDeviceID platform_audio_device(int recording, const char *name);
 void platform_video_drawable_size(int *width, int *height);
+#ifndef HALO_ANDROID
+/* whether the window's display shows HDR, with the desktop's white (in
+scRGB's units, 1.0 being 80 nits) and how many times brighter than it the
+display goes (1.0 without HDR) */
+BOOL platform_video_hdr(float *sdr_white, float *headroom);
+#endif
 /* the window's mode and size and V-Sync, from config.toml as Settings has
 just written it (the main thread's) */
 void platform_display_apply(void);
+/* the frames a second battery saver asks for (battery_saver.c), given the
+window's renderer: the main thread's, as it turns on or off */
+void platform_frame_rate_apply(void);
 #ifdef HALO_VR
 /* the VR build's hidden window shown, to play flat in: no VR session */
 void platform_video_vr_unavailable(void);
@@ -123,6 +137,9 @@ struct platform_ui_pointer
 	float down_x, down_y;
 	/* the pointer is the touchscreen (touch_input.c), not a mouse */
 	BOOL touch;
+	/* the mouse's left button is held (a slider dragged); never the
+	touchscreen's, whose drags scroll */
+	BOOL left_held;
 };
 /* says whether a menu is up; the mouse is released for the menus (desktop),
 or the touchscreen goes to them (Android); a change of mode drops the gesture
@@ -132,6 +149,9 @@ void platform_ui_pointer_set_active(BOOL active);
 /* pointer receives what the pointer did since the last call; returns
 nonzero while a menu is up (platform_ui_pointer_set_active) */
 BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer);
+/* a scripted run's click on the menus, 0 to 1 of the window (debug.test_input
+"menu:... click:<x>:<y> ...", xinput_sdl.c) */
+int platform_test_menu_click(float *x, float *y);
 
 /* returns the window's size in the units that pointer positions come in,
 which differ from the drawable's pixels on displays that scale */

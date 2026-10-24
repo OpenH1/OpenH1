@@ -60,6 +60,10 @@ byte input_abstraction_port_accept(
 	short controller_index);
 boolean input_abstraction_port_action_only(
 	short controller_index);
+short input_abstraction_port_keyboard_action(
+	short local_player_index,
+	short game_control,
+	short gamepad_button);
 real input_abstraction_port_primary_trigger(
 	short controller_index);
 /* port: the game control on each of the controller's buttons, and the
@@ -69,6 +73,12 @@ void input_abstraction_port_button_controls(
 	short *controls);
 boolean input_abstraction_port_look_inverted(
 	short controller_index);
+/* port: a sub-step's reading of a controller (port/linux/game/sim_rate.h):
+FALSE when it is the frame's */
+boolean input_abstraction_port_substep_state(
+	short controller_index,
+	struct game_input_state *state,
+	real *primary_trigger);
 
 /* ---------- globals */
 

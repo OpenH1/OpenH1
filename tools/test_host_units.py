@@ -24,7 +24,7 @@ def compiler():
     return None
 
 
-def run_test(tmp_path, name, sources):
+def run_test(tmp_path, name, sources, includes=(), arguments=()):
     cc = compiler()
     if not cc:
         pytest.skip("no C compiler")
@@ -33,11 +33,11 @@ def run_test(tmp_path, name, sources):
     binary = tmp_path / name
     subprocess.run(
         [cc, "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-O1", "-D_GNU_SOURCE",
-         f"-I{ROOT / 'port' / 'android' / 'include'}", f"-I{HOST}",
+         f"-I{ROOT / 'port' / 'android' / 'include'}", f"-I{HOST}", *[f"-I{path}" for path in includes],
          "-pthread", *[str(source) for source in sources], "-o", str(binary)],
         check=True,
     )
-    result = subprocess.run([str(binary)], capture_output=True, text=True)
+    result = subprocess.run([str(binary), *arguments], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
@@ -53,6 +53,34 @@ def test_host_memory(tmp_path):
     run_test(tmp_path, "host_memory_test",
              [TESTS / "host_memory_test.c", HOST / "host_arch.c", HOST / "host_memory_watch.c",
               HOST / "host_watch_hash.c"])
+
+
+def test_frame_pacing_divisor(tmp_path):
+    """battery saver's frames a second at each display's refresh rate
+    (port/linux/src/frame_pacing.h, frame_pacing_divisor)"""
+    run_test(tmp_path, "frame_pacing_test", [TESTS / "frame_pacing_test.c"], [ROOT / "port" / "linux" / "src"])
+
+
+def test_game_data_scan(tmp_path):
+    """the first start's search for disc images and maps folders, and the
+    copy of a maps folder (port/linux/src/game_data_scan.c), in a made-up home
+    folder, SD card and game folder"""
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    run_test(tmp_path, "game_data_scan_test",
+             [TESTS / "game_data_scan_test.c", ROOT / "port" / "linux" / "src" / "game_data_scan.c",
+              ROOT / "port" / "linux" / "src" / "posix_files.c"],
+             [ROOT / "port" / "linux" / "src"], [str(scratch)])
+
+
+def test_posix_net_interrupted(tmp_path):
+    """a select interrupted by signals waits out its time: Winsock's is never
+    interrupted, and the game takes a failed one as the connection lost"""
+    if platform.system() != "Linux":
+        pytest.skip("the hosts' sockets are Linux's")
+    run_test(tmp_path, "posix_net_interrupt_test",
+             [TESTS / "posix_net_interrupt_test.c", ROOT / "port" / "linux" / "src" / "posix_net.c"],
+             [ROOT / "port" / "linux" / "src"])
 
 
 def test_x32_boundary(tmp_path):

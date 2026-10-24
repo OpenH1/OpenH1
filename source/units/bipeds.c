@@ -257,6 +257,7 @@ symbols in this file:
 #include "models/model_animation_definitions.h"
 #include "models/model_definitions.h"
 #include "objects/damage.h"
+#include "objects/object_types.h"
 #include "units/biped_limp_noodle.h"
 #include "units/biped_definitions.h"
 #include "units/bipeds.h"
@@ -275,6 +276,13 @@ symbols in this file:
 #include "scenario/scenario.h"
 #include "structures/structure_bsp_definitions.h"
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
+
+/* port: a lift's carry of an AI's biped this tick, a share a sub-step
+(devices/device_machines.c; its header's scenario structures are this
+file's own too) */
+boolean machine_elevator_carried(long biped_index, real_vector3d *offset);
+void machine_elevator_carried_forget(void);
 
 /* port: port/linux/game/network_objects.c's (a client deletes the host's
 objects on the host's word alone) */
@@ -324,6 +332,10 @@ enum
 	/* port: a player's, in a co-op game without player collisions: the other
 	players' bipeds are not in its way (network_coop_player_collisions) */
 	_biped_physics_in_pass_through_players_bit,
+	/* port: a sub-step on the ground its tick's step met or landed on
+	(biped_substep_move), past the one that met it: the tick's push into
+	it given already, and no gap left to go down */
+	_biped_physics_in_pushed_bit,
 };
 
 enum
@@ -520,13 +532,171 @@ static void biped_update_jumping(
 	long biped_index,
 	struct unit_animation_update_data *animation);
 static void biped_update_physics(
-	struct biped_physics *physics);
+	struct biped_physics *physics,
+	real tick_fraction,
+	real gravity,
+	real_vector3d const *tick_velocity,
+	real_plane3d const *tick_ground);
 /* units.c's: whether the unit gets the animation enhancements */
 boolean unit_animation_enhanced(long unit_index);
+/* player_control.c's: the controls of a player's unit that went down in the
+running sub-step past a tick's first */
+unsigned long player_control_substep_pressed_flags(long unit_index);
 static void biped_snap_facing(
 	long biped_index);
+static void biped_physics_apply_step(
+	long biped_index,
+	struct biped_physics *physics);
+static void biped_physics_apply_tick(
+	long biped_index,
+	struct biped_physics *physics,
+	struct unit_animation_update_data *animation);
+static void biped_update_on_foot(
+	long biped_index,
+	struct unit_animation_update_data *animation);
+static void biped_update_end(
+	long biped_index,
+	struct unit_animation_update_data *animation);
+static void bipeds_substep(
+	short substep_index,
+	short substep_count,
+	real seconds);
 
 /* ---------- globals */
+
+/* port: the fast phase (port/linux/game/sim_rate.h). At game.sim_rate 60 or
+120 a player's biped moves in the tick's sub-steps (bipeds_substep, the
+fast phase's _sim_substep_bipeds slot) rather than in the objects' update:
+biped_update makes the tick's movement ready (its input, speeds and
+accelerations, as a tick at 30 does) and leaves it here, and each sub-step
+moves the biped its share of the tick. What a tick's movement leads to (a
+landing, a jump, a melee's strike, a bump, falling damage, the animation,
+the counters of ticks) follows the last sub-step, once a tick, in the order
+biped_update has it; but a jump whose press only a later sub-step reads
+(player_control.c's) launches at the end of that sub-step, as a tick
+launches one at its end (biped_substep_jump). Nothing here outlives the
+tick: it is emptied at the last sub-step, and an entry of another tick is
+ignored. Every other biped (a rider, a body: the macro lane, objects.h)
+moves in its tick, as at 30. A lift carries its riders of the micro lane a
+share each sub-step before they move (objects.c's slot), and they stand on
+what the sub-step sees of the macro lane.
+
+The AI's bipeds (an actor's or a swarm's) are of the micro lane too, but
+their brains are the tick's: the AI decides in ai_update, before the
+objects' update, and what follows a tick's movement (a landing, the
+animation and the permutation it picks by the game's random seed, the
+footsteps, a jump) is decided in the objects' update, in the order of the
+objects, as at 30, where the random seed is drawn in that order. So such a
+biped moves its tick's sub-steps in its own update, one after the other
+(biped_substep_inline: each step as bipeds_substep's, toward the throttle,
+the facing and the root motion the AI chose for the tick, with gravity, a
+jump's or a fall's launch bias, on the ground and against what it meets),
+and the rest of its update follows as at 30. Where each sub-step left it is
+kept (biped_replay_globals), and the fast phase puts it there at each
+sub-step (bipeds_substep, before the players' bipeds move): it is drawn on
+that path (render_interpolation.c), and what moves in the sub-steps (a
+projectile, a player) meets it there. The tick's last sub-step leaves it
+where its update did, and anything a sub-step moved it by besides goes with
+it. On a lift its sub-steps see the lift that far into its movement
+(objects.c's object_lane_view_substep); a lift that carries it, by the
+tick's whole movement in the lift's update, is taken off where its
+sub-steps are by the share still to come (device_machines.c's
+machine_elevator_carried), so it rides a share a sub-step either way. */
+enum
+{
+	MAXIMUM_SUBSTEP_BIPEDS = 16,
+	/* the AI's bipeds whose sub-steps a tick keeps, at most (the array grows
+	to the most a tick has had) */
+	MAXIMUM_REPLAYED_BIPEDS = MAXIMUM_OBJECTS_PER_MAP
+};
+
+/* a player's speeds this tick (player physics), for a throttle back (0) and
+forward (1): biped_player_movement */
+struct biped_player_speeds
+{
+	boolean valid;
+	boolean double_speed;
+	real stun_scale;
+	real forward_speed[2];
+	real sideways_speed[2];
+	real double_speed_multiplier;
+};
+
+struct biped_substep_datum
+{
+	long biped_index;
+	/* the tick (game_time) it was made ready in */
+	long tick;
+	/* the tick's movement, as biped_physics_prepare made it, each of its
+	quantities per tick */
+	struct biped_physics physics;
+	/* the object's velocity as biped_physics_prepare left it (an
+	animation's root motion it set: biped_substep_start_velocity) */
+	real_vector3d prepared_velocity;
+	struct unit_animation_update_data animation;
+	/* its speeds, by which each sub-step's throttle is its movement */
+	struct biped_player_speeds speeds;
+	/* the pill at the first sub-step's start: what the melee strike sweeps
+	from, once a tick, as a tick at 30 does */
+	real_point3d tick_position;
+	/* of the sub-steps so far: the fastest landing, an elevator stood on,
+	the last object bumped and the velocity it was bumped at */
+	real landing_velocity;
+	long elevator_object_index;
+	long bumped_object_index;
+	real_vector3d bumped_velocity;
+	/* a jump launched at the end of one of the sub-steps before the last
+	(biped_substep_jump), and the velocity it launched at, from which the
+	rest of the tick's sub-steps work out their change of velocity */
+	boolean jumped;
+	real_vector3d launch_velocity;
+	/* the ground at the tick's end as the tick's own step finds it, from
+	the first sub-step's start (biped_substep_move): whether the sub-steps
+	probe it themselves, stand on what the tick stands on, or leave it at
+	the tick's start; the plane and surface the tick stands on, and the
+	velocity it leaves at */
+	short ground;
+	real_plane3d ground_plane;
+	long support_surface_index;
+	real_vector3d leave_velocity;
+};
+
+/* biped_substep_datum's ground */
+enum
+{
+	_biped_substep_ground_probed,
+	_biped_substep_ground_tick,
+	_biped_substep_ground_left,
+	_biped_substep_ground_landed
+};
+
+static struct
+{
+	short count;
+	struct biped_substep_datum bipeds[MAXIMUM_SUBSTEP_BIPEDS];
+} biped_substep_globals;
+
+/* an AI's biped's sub-steps, moved in its update (biped_substep_inline) */
+struct biped_replay_datum
+{
+	long biped_index;
+	/* the tick (game_time) it moved in */
+	long tick;
+	short substep_count;
+	/* where each sub-step left it (the last: where its update did) */
+	real_point3d poses[MAXIMUM_SIM_SUBSTEPS];
+	/* where the fast phase put it last (its update's end, before the first
+	sub-step), and what moved it since besides (a lift's shares) */
+	real_point3d last;
+	real_vector3d carried;
+};
+
+static struct
+{
+	long count;
+	long capacity;
+	struct biped_replay_datum *bipeds;
+} biped_replay_globals;
 
 boolean debug_biped_physics = FALSE;
 boolean debug_biped_skip_update = FALSE;
@@ -598,6 +768,11 @@ char animation_right_foot_frame_index(
 void bipeds_initialize(
 	void)
 {
+	/* port: the players' bipeds' movement in the fast phase (sim_rate.h),
+	the micro lane's (objects.h) */
+	sim_substep_register(_sim_substep_bipeds, bipeds_substep);
+	object_lane_register(_object_mask_biped);
+
 	return;
 }
 void bipeds_initialize_for_new_map(
@@ -2344,8 +2519,42 @@ static void biped_find_nearby_support_surface(
 	return;
 }
 
+/* port: a step of the biped's movement, tick_fraction of a tick long: 1 (the
+tick's own step), or a sub-step's share of it (1/2, 1/4: sim_rate.h, the
+fast phase). Velocities stay per tick, and a step moves the biped
+velocity * tick_fraction.
+
+A tick at 30 changes the velocity once, toward the velocity the biped
+wants (by as much as its acceleration's maximum) and by gravity, then
+moves a tick at the new velocity: semi-implicit Euler. That is exactly the
+parabola of a steady acceleration a (the tick's change of velocity) whose
+velocity at the tick's start is the velocity kept plus a/2. So a step of h
+of a tick changes the velocity by h of the tick's change, worked out as at
+30 from the velocity at the tick's start (tick_velocity) with a tick's
+maximum, and moves along that parabola:
+	(v + a/2) h + a h^2/2 = v' h + a h (1 - h)/2
+(tick units; v the velocity kept, v' = v + a h the step's new one). For
+gravity (a = -g) that is the launch bias of every ballistic start, a
+jump's or a walk off a ledge (its velocity less g T30/2, as at 30), which
+puts a jump's apex, air time and landing, and a run's start, where a tick
+at 30 does, at every rate. At h = 1 it is the tick at 30's, bit for bit.
+The push into the ground is no acceleration: a velocity of a 128th of a
+world unit a tick, which the ground clips away at each step, is given at
+each. gravity is a tick's (global_gravity), or none (bipeds_substep's, for
+the rest of the tick a biped walks off the ground in).
+
+tick_ground (NULL but in a sub-step: biped_substep_move) is the plane the
+tick's own step met, which its push goes down to and then slides along:
+the step's movement goes down onto it (the first sub-step) and along it,
+rather than probing for ground past it. A tick's step ends where its
+velocity clipped by the plane takes it, less the gap it went down, so
+the sub-steps end there too */
 static void biped_update_physics(
-	struct biped_physics *physics)
+	struct biped_physics *physics,
+	real tick_fraction,
+	real gravity,
+	real_vector3d const *tick_velocity,
+	real_plane3d const *tick_ground)
 {
 	real_vector2d facing = { 0.f, 0.f };
 	boolean climbing = TEST_FLAG(physics->in_flags, _biped_physics_in_climb_anything_bit);
@@ -2357,6 +2566,19 @@ static void biped_update_physics(
 	struct collision_plane collisions[16];
 	short collision_count;
 	unsigned long collision_flags;
+	/* port: the step's movement (velocity * tick_fraction, and arc: the
+	tick's steady acceleration's share of it, the step's change of velocity
+	times arc_scale), and the step's gravity */
+	real_vector3d displacement;
+	real_vector3d arc = { 0.f, 0.f, 0.f };
+	real arc_scale = (1.f - tick_fraction) * 0.5f;
+	real step_gravity = gravity * tick_fraction;
+	/* port: the velocity the tick's step at 30 would end at (the tick's
+	starting velocity and the whole of its change, worked out in the same
+	order: physics->new_velocity's, bit for bit, at 30), which a landing in
+	any of its sub-steps is as fast as (physics->landing_velocity: its
+	landing, and falling damage, as at 30) */
+	real_vector3d tick_new_velocity;
 
 	match_assert_valid_real_point3d("c:\\halo\\SOURCE\\units\\bipeds.c", 0xBCC, &physics->position);
 	match_assert_valid_real_vector3d("c:\\halo\\SOURCE\\units\\bipeds.c", 0xBCD, &physics->velocity);
@@ -2383,14 +2605,18 @@ static void biped_update_physics(
 			left.k * physics->movement_desired.j +
 			up.k * physics->movement_desired.k;
 		scale_vector3d(&desired_velocity, 1.f - physics->movement_penalty, &desired_velocity);
-		acceleration.i = desired_velocity.i - physics->velocity.i;
-		acceleration.j = desired_velocity.j - physics->velocity.j;
-		acceleration.k = desired_velocity.k - physics->velocity.k;
+		acceleration.i = desired_velocity.i - tick_velocity->i;
+		acceleration.j = desired_velocity.j - tick_velocity->j;
+		acceleration.k = desired_velocity.k - tick_velocity->k;
 		direction = acceleration;
 		if (normalize3d(&direction) > physics->acceleration_maximum)
 			scale_vector3d(&direction, physics->acceleration_maximum, &velocity_change);
 		else
 			velocity_change = acceleration;
+		add_vectors3d(&velocity_change, tick_velocity, &tick_new_velocity);
+		/* (port: the step's share of the tick's change) */
+		scale_vector3d(&velocity_change, tick_fraction, &velocity_change);
+		scale_vector3d(&velocity_change, arc_scale, &arc);
 		add_vectors3d(&velocity_change, &physics->velocity, &physics->new_velocity);
 		SET_FLAG(physics->out_flags, _biped_physics_out_airborne_bit, TRUE);
 		SET_FLAG(physics->out_flags, _biped_physics_out_slipping_bit, FALSE);
@@ -2404,6 +2630,7 @@ static void biped_update_physics(
 		facing.j = physics->new_velocity.j =
 			physics->movement_desired.j * physics->forward.i +
 			physics->movement_desired.i * physics->forward.j;
+		tick_new_velocity = physics->new_velocity;
 	}
 	else if (TEST_FLAG(in_flags, _biped_physics_in_airborne_bit))
 	{
@@ -2417,16 +2644,24 @@ static void biped_update_physics(
 		desired_velocity.j = physics->movement_desired.j * physics->forward.i +
 			physics->movement_desired.i * physics->forward.j;
 		scale_vector2d(&desired_velocity, 1.f - physics->movement_penalty, &desired_velocity);
-		acceleration.i = desired_velocity.i - physics->velocity.i;
-		acceleration.j = desired_velocity.j - physics->velocity.j;
+		acceleration.i = desired_velocity.i - tick_velocity->i;
+		acceleration.j = desired_velocity.j - tick_velocity->j;
 		direction = acceleration;
 		if (normalize2d(&direction) > physics->airborne_acceleration_maximum)
 			scale_vector2d(&direction, physics->airborne_acceleration_maximum, &velocity_change);
 		else
 			velocity_change = acceleration;
+		tick_new_velocity.i = velocity_change.i + tick_velocity->i;
+		tick_new_velocity.j = velocity_change.j + tick_velocity->j;
+		tick_new_velocity.k = tick_velocity->k - gravity;
+		/* (port: the step's share of the tick's change) */
+		scale_vector2d(&velocity_change, tick_fraction, &velocity_change);
+		arc.i = velocity_change.i * arc_scale;
+		arc.j = velocity_change.j * arc_scale;
 		physics->new_velocity.i = velocity_change.i + physics->velocity.i;
 		physics->new_velocity.j = velocity_change.j + physics->velocity.j;
-		physics->new_velocity.k = physics->velocity.k - global_gravity;
+		physics->new_velocity.k = physics->velocity.k - step_gravity;
+		arc.k = -step_gravity * arc_scale;
 		physics->out_flags = TEST_FLAG(in_flags, _biped_physics_in_slipping_bit) ?
 			FLAG(_biped_physics_out_slipping_bit) : 0;
 	}
@@ -2541,9 +2776,9 @@ static void biped_update_physics(
 			boolean slipping = FALSE;
 
 			scale_vector3d(&move_direction, speed * (1.f - physics->movement_penalty), &desired_velocity);
-			acceleration.i = desired_velocity.i - physics->velocity.i;
-			acceleration.j = desired_velocity.j - physics->velocity.j;
-			acceleration.k = desired_velocity.k - physics->velocity.k;
+			acceleration.i = desired_velocity.i - tick_velocity->i;
+			acceleration.j = desired_velocity.j - tick_velocity->j;
+			acceleration.k = desired_velocity.k - tick_velocity->k;
 			direction = acceleration;
 			if (normalize3d(&direction) > physics->acceleration_maximum)
 			{
@@ -2555,14 +2790,33 @@ static void biped_update_physics(
 			{
 				velocity_change = acceleration;
 			}
+			tick_new_velocity.i = velocity_change.i - ground_normal->i * (1.f / 128.f);
+			tick_new_velocity.j = velocity_change.j - ground_normal->j * (1.f / 128.f);
+			tick_new_velocity.k = velocity_change.k - ground_normal->k * (1.f / 128.f);
+			add_vectors3d(&tick_new_velocity, tick_velocity, &tick_new_velocity);
+			/* (port: the step's share of the tick's change) */
+			scale_vector3d(&velocity_change, tick_fraction, &velocity_change);
+			scale_vector3d(&velocity_change, arc_scale, &arc);
 
-			velocity_change.i -= ground_normal->i * (1.f / 128.f);
-			velocity_change.j -= ground_normal->j * (1.f / 128.f);
-			velocity_change.k -= ground_normal->k * (1.f / 128.f);
+			/* (port: the push into the ground, a velocity of a 128th of a
+			world unit a tick given at each step, which the ground clips
+			away: a step probes its share of a tick's 128th. On the ground
+			the tick's own step met (tick_ground) it is the tick's,
+			given at its first sub-step, where the tick's step gives it) */
+			if (!TEST_FLAG(in_flags, _biped_physics_in_pushed_bit))
+			{
+				velocity_change.i -= ground_normal->i * (1.f / 128.f);
+				velocity_change.j -= ground_normal->j * (1.f / 128.f);
+				velocity_change.k -= ground_normal->k * (1.f / 128.f);
+			}
 			physics->out_flags = slipping ? FLAG(_biped_physics_out_slipping_bit) : 0;
 			add_vectors3d(&velocity_change, &physics->velocity, &physics->new_velocity);
 			if (TEST_FLAG(physics->out_flags, _biped_physics_out_slipping_bit))
-				physics->new_velocity.k -= global_gravity;
+			{
+				physics->new_velocity.k -= step_gravity;
+				arc.k -= step_gravity * arc_scale;
+				tick_new_velocity.k -= gravity;
+			}
 		}
 	}
 
@@ -2586,6 +2840,52 @@ static void biped_update_physics(
 	position = physics->position;
 	velocity = physics->new_velocity;
 	velocity.k += physics->crouch_velocity;
+	/* port: the step's movement (the velocity's, at 30) */
+	scale_vector3d(&velocity, tick_fraction, &displacement);
+	if (tick_ground)
+	{
+		/* (port: less what goes into the tick's ground, of the velocity's
+		movement (the push, all of it) and of the arc's; and the first
+		sub-step goes down onto it, as the tick's step goes down to it
+		before it slides on: movement that is no velocity, as the arc) */
+		real_vector3d const *normal = &tick_ground->n;
+		real displacement_dot = dot_product3d(&displacement, normal);
+		real arc_dot = dot_product3d(&arc, normal);
+
+		if (displacement_dot < 0.f)
+		{
+			point_from_line3d(
+				(real_point3d *)&displacement,
+				normal,
+				-displacement_dot,
+				(real_point3d *)&displacement);
+		}
+		if (arc_dot < 0.f)
+		{
+			point_from_line3d(
+				(real_point3d *)&arc,
+				normal,
+				-arc_dot,
+				(real_point3d *)&arc);
+		}
+		if (!TEST_FLAG(in_flags, _biped_physics_in_pushed_bit))
+		{
+			/* (the collisions' planes are the pill's: where its point is
+			when it touches) */
+			real gap = dot_product3d((real_vector3d const *)&position, normal) - tick_ground->d;
+
+			if (gap > 0.f)
+				point_from_line3d((real_point3d *)&arc, normal, -gap, (real_point3d *)&arc);
+		}
+	}
+	/* (none at 30, where arc is zeros of either sign, which would change a
+	velocity of -0) */
+	if (arc.i != 0.f)
+		displacement.i += arc.i;
+	if (arc.j != 0.f)
+		displacement.j += arc.j;
+	if (arc.k != 0.f)
+		displacement.k += arc.k;
 	if (debug_biped_skip_collision)
 	{
 		collisions[0].t = 0.f;
@@ -2598,8 +2898,8 @@ static void biped_update_physics(
 		collisions[0].breakable_surface_index = 0;
 		collisions[0].material_index = NONE;
 		clipped_velocity = velocity;
-		clipped_position.x = position.x + clipped_velocity.i;
-		clipped_position.y = position.y + clipped_velocity.j;
+		clipped_position.x = position.x + displacement.i;
+		clipped_position.y = position.y + displacement.j;
 		clipped_position.z = position.z;
 		clipped_velocity.k = 0.f;
 		collision_count = 1;
@@ -2609,7 +2909,7 @@ static void biped_update_physics(
 		collision_count = collision_move_pill(
 			collision_flags,
 			&position,
-			&velocity,
+			&displacement,
 			physics->height,
 			physics->width,
 			physics->biped_index,
@@ -2617,6 +2917,31 @@ static void biped_update_physics(
 			&clipped_velocity,
 			16,
 			collisions);
+
+		/* port: the movement as the collisions clipped it, as the step's
+		velocity (a tick's): arc clipped as the movement was (by the planes it
+		met: the ground takes all of a fall's, a wall none of it) taken off,
+		and a step's movement made a tick's. At 30 this is the clipped
+		movement itself */
+		if (arc.i != 0.f || arc.j != 0.f || arc.k != 0.f)
+		{
+			short collision_index;
+
+			for (collision_index = 0; collision_index < collision_count; collision_index++)
+			{
+				real_vector3d const *normal = &collisions[collision_index].plane.n;
+
+				point_from_line3d(
+					(real_point3d *)&arc,
+					normal,
+					-dot_product3d(&arc, normal),
+					(real_point3d *)&arc);
+			}
+			clipped_velocity.i -= arc.i;
+			clipped_velocity.j -= arc.j;
+			clipped_velocity.k -= arc.k;
+		}
+		scale_vector3d(&clipped_velocity, 1.f / tick_fraction, &clipped_velocity);
 	}
 
 	if (debug_biped_physics &&
@@ -2624,7 +2949,7 @@ static void biped_update_physics(
 	{
 		collision_debug_repeat = TRUE;
 		collision_debug_point = position;
-		collision_debug_vector = velocity;
+		collision_debug_vector = displacement;
 		collision_debug_length = 1.0f;
 		collision_debug_width = physics->width;
 		collision_debug_height = physics->height;
@@ -2769,7 +3094,12 @@ static void biped_update_physics(
 					best_plane.n.j * clipped_position.y +
 					best_plane.n.k * clipped_position.z -
 					(best_plane.d + physics->width);
-				if (!(fabs(distance) > physics->width * 0.5f))
+				/* (port: the snap onto the next surface reaches as far as a
+				step's share of a tick's, half the pill's width at 30: a
+				step of a sub-step goes its share of the way off the
+				surface, and more steps a tick with a tick's reach each
+				would hold the biped to the ground harder) */
+				if (!(fabs(distance) > physics->width * 0.5f * tick_fraction))
 				{
 					real new_velocity_dot = dot_product3d(&best_plane.n, &clipped_velocity);
 
@@ -2913,7 +3243,12 @@ static void biped_update_physics(
 				if (physics->support_surface_index == NONE ||
 					physics->support_surface_index != physics->stick_surface_index)
 				{
-					physics->landing_velocity = -dot_product3d(&velocity, &physics->ground_plane.n);
+					/* (port: as the tick's step at 30 lands, at the velocity it ends
+					at, in whichever sub-step the landing is) */
+					real_vector3d landing = tick_new_velocity;
+
+					landing.k += physics->crouch_velocity;
+					physics->landing_velocity = -dot_product3d(&landing, &physics->ground_plane.n);
 				}
 				else
 				{
@@ -3507,9 +3842,42 @@ static void biped_update_turning(
 	return;
 }
 
-static void biped_update_moving(
+/* port: a player's movement a tick (a velocity, per tick) by its throttle at
+the tick's speeds (biped_physics_prepare's, and each sub-step's of the fast
+phase, whose throttle the player's input gives again, player_control.c) */
+static void biped_player_movement(
+	struct biped_player_speeds const *speeds,
+	real_vector3d const *throttle,
+	real_vector3d *movement_desired)
+{
+	short direction = throttle->i <= 0.f ? 0 : 1;
+
+	movement_desired->i =
+		throttle->i * speeds->stun_scale * speeds->forward_speed[direction] /
+		TICKS_PER_SECOND;
+	movement_desired->j =
+		throttle->j * speeds->stun_scale * speeds->sideways_speed[direction] /
+		TICKS_PER_SECOND;
+	movement_desired->k = 0.f;
+	if (speeds->double_speed)
+	{
+		scale_vector3d(
+			movement_desired,
+			speeds->double_speed_multiplier,
+			movement_desired);
+	}
+
+	return;
+}
+
+/* port: the biped's movement this tick made ready for biped_update_physics (its
+input, speeds and accelerations, its crouch's change, its flags): FALSE when
+it does not move (the first half of the Xbox game's biped_update_moving) */
+static boolean biped_physics_prepare(
 	long biped_index,
-	struct unit_animation_update_data *animation)
+	struct unit_animation_update_data *animation,
+	struct biped_physics *result,
+	struct biped_player_speeds *speeds)
 {
 	struct biped_physics physics;
 	struct biped_definition *definition;
@@ -3523,10 +3891,11 @@ static void biped_update_moving(
 		TEST_FLAG(biped->object.damage_flags, _object_dead_bit) &&
 		TEST_FLAG(biped->unit.animation.flags, _unit_animation_ignore_translation_bit))
 	{
-		return;
+		return FALSE;
 	}
 
 	definition = biped_definition_get(biped->definition_index);
+	speeds->valid = FALSE;
 	physics.biped_index = biped_index;
 	physics.in_flags = 0;
 	physics.forward = biped->object.forward;
@@ -3763,6 +4132,7 @@ static void biped_update_moving(
 				real forward_speed;
 				real sideways_speed;
 				real acceleration;
+				short direction;
 
 				if (cinematic_in_progress() ||
 					TEST_FLAG(
@@ -3790,37 +4160,43 @@ static void biped_update_moving(
 					-(player_information->stun_movement_penalty *
 						biped->unit.body_stun - 1.f) *
 					body_stun_scale * movement_scale;
-				if (biped->unit.throttle.i <= 0.f)
+				/* (port: the speeds of a throttle back (0) and forward (1), by
+				which a sub-step's throttle is its movement too,
+				biped_player_movement) */
+				for (direction = 0; direction < 2; direction++)
 				{
-					forward_speed = player_information->sneak_backward_speed;
-					sideways_speed = player_information->run_backward_speed;
-				}
-				else
-				{
-					forward_speed = player_information->sneak_forward_speed;
-					sideways_speed = player_information->run_forward_speed;
-				}
+					if (!direction)
+					{
+						forward_speed = player_information->sneak_backward_speed;
+						sideways_speed = player_information->run_backward_speed;
+					}
+					else
+					{
+						forward_speed = player_information->sneak_forward_speed;
+						sideways_speed = player_information->run_forward_speed;
+					}
 
-				forward_speed = sideways_speed * uncrouch + forward_speed * crouch;
-				sideways_speed = player_information->run_sideways_speed * uncrouch +
-					player_information->sneak_sideways_speed * crouch;
+					forward_speed = sideways_speed * uncrouch + forward_speed * crouch;
+					sideways_speed = player_information->run_sideways_speed * uncrouch +
+						player_information->sneak_sideways_speed * crouch;
+					if (biped->unit.animation.base_seat_index == _unit_base_seat_alert)
+					{
+						forward_speed = !direction ?
+							0.f : player_information->walking_speed;
+						sideways_speed = 0.f;
+					}
+					speeds->forward_speed[direction] = forward_speed;
+					speeds->sideways_speed[direction] = sideways_speed;
+				}
 				acceleration = player_information->run_acceleration * uncrouch +
 					player_information->sneak_acceleration * crouch;
-				if (biped->unit.animation.base_seat_index == _unit_base_seat_alert)
-				{
-					forward_speed = biped->unit.throttle.i <= 0.f ?
-						0.f : player_information->walking_speed;
-					sideways_speed = 0.f;
-				}
+				speeds->stun_scale = stun_scale;
+				speeds->double_speed = game_players_are_double_speed();
+				speeds->double_speed_multiplier = player_information->double_speed_multiplier;
+				speeds->valid = TRUE;
 
 				physics.acceleration_maximum = acceleration / TICKS_PER_SECOND;
-				physics.movement_desired.i =
-					biped->unit.throttle.i * stun_scale * forward_speed /
-					TICKS_PER_SECOND;
-				physics.movement_desired.j =
-					biped->unit.throttle.j * stun_scale * sideways_speed /
-					TICKS_PER_SECOND;
-				physics.movement_desired.k = 0.f;
+				biped_player_movement(speeds, &biped->unit.throttle, &physics.movement_desired);
 				physics.airborne_acceleration_maximum =
 					player_information->airborne_acceleration / TICKS_PER_SECOND;
 				if (!TEST_FLAG(
@@ -3828,14 +4204,6 @@ static void biped_update_moving(
 					_unit_control_look_dont_turn_bit))
 				{
 					physics.forward = biped->unit.desired_facing_vector;
-				}
-
-				if (game_players_are_double_speed())
-				{
-					scale_vector3d(
-						&physics.movement_desired,
-						player_information->double_speed_multiplier,
-						&physics.movement_desired);
 				}
 			}
 		}
@@ -3970,10 +4338,107 @@ static void biped_update_moving(
 		SET_FLAG(in_flags, _biped_physics_in_climb_anything_bit, TRUE);
 	}
 	physics.in_flags = in_flags;
+	*result = physics;
 
-	biped_update_physics(&physics);
+	return TRUE;
+}
 
-	if (physics.elevator_object_index == NONE)
+/* port: a step's movement applied (the second half of the Xbox game's
+biped_update_moving, the part of it each step of a tick makes): the biped
+where biped_update_physics left it, its velocity, its flags of the ground
+and the air, the ground under it */
+static void biped_physics_apply_step(
+	long biped_index,
+	struct biped_physics *physics)
+{
+	struct biped_datum *biped = biped_get(biped_index);
+	struct biped_definition *definition = biped_definition_get(biped->definition_index);
+	real_point3d new_biped_position;
+	word out_flags;
+
+	if (TEST_FLAG(biped->unit.flags, _unit_suspended_bit))
+	{
+		physics->new_position = physics->position;
+		SET_FLAG(physics->out_flags, _biped_physics_out_airborne_bit, FALSE);
+		physics->new_velocity = *global_zero_vector3d;
+		physics->velocity = *global_zero_vector3d;
+	}
+
+	new_biped_position = physics->new_position;
+	out_flags = physics->out_flags;
+	if (!TEST_FLAG(
+		definition->biped.flags,
+		_biped_pill_centered_at_origin_bit))
+	{
+		new_biped_position.z -= physics->width;
+	}
+	object_translate(biped_index, &new_biped_position, NULL);
+
+	biped->biped.support_surface_index = physics->support_surface_index;
+	biped->biped.pathfinding_point = new_biped_position;
+	biped->biped.pathfinding_surface_index = NONE;
+	biped->object.translational_velocity = physics->new_velocity;
+
+	SET_FLAG(
+		biped->biped.flags,
+		_biped_airborne_bit,
+		TEST_FLAG(out_flags, _biped_physics_out_airborne_bit));
+	SET_FLAG(
+		biped->biped.flags,
+		_biped_slipping_bit,
+		TEST_FLAG(out_flags, _biped_physics_out_slipping_bit));
+	SET_FLAG(
+		biped->biped.flags,
+		_biped_movement_passes_through_bipeds_bit,
+		TEST_FLAG(
+			definition->biped.flags,
+			_biped_passes_through_bipeds_bit));
+
+	biped->biped.ground_plane = physics->ground_plane;
+
+	return;
+}
+
+/* port: whether the biped is on the ground, and at rest, as its movement left
+it */
+static void biped_physics_ground_flags(
+	long biped_index,
+	struct biped_physics const *physics)
+{
+	struct biped_datum *biped = biped_get(biped_index);
+
+	SET_FLAG(
+		biped->object.flags,
+		_object_on_ground_bit,
+		!TEST_FLAG(physics->in_flags, _biped_physics_in_flying_bit) &&
+			!TEST_FLAG(biped->biped.flags, _biped_airborne_bit));
+	SET_FLAG(
+		biped->object.flags,
+		_object_at_rest_bit,
+		!TEST_FLAG(physics->in_flags, _biped_physics_in_flying_bit) &&
+			!TEST_FLAG(biped->biped.flags, _biped_airborne_bit) &&
+			!TEST_FLAG(physics->out_flags, _biped_physics_out_volatile_collision_bit) &&
+			magnitude_squared3d(&biped->object.translational_velocity) < 0.0001f);
+	if (TEST_FLAG(biped->object.flags, _object_on_ground_bit))
+		biped->object.angular_velocity = *global_zero_vector3d;
+
+	return;
+}
+
+/* port: what a tick's movement leads to, once a tick, after its last step
+(the rest of the Xbox game's biped_update_moving): the elevator it rides,
+whether it can stand, a landing, a jump, a melee's strike (swept over the
+tick's movement, from physics->position to physics->new_position), a bump,
+falling damage */
+static void biped_physics_apply_tick(
+	long biped_index,
+	struct biped_physics *physics,
+	struct unit_animation_update_data *animation)
+{
+	struct biped_datum *biped = biped_get(biped_index);
+	word out_flags = physics->out_flags;
+
+	if (physics->elevator_object_index == NONE)
 	{
 		if (biped->biped.elevator_ticks <= 0)
 			biped->biped.elevator_object_index = NONE;
@@ -3982,163 +4447,831 @@ static void biped_update_moving(
 	}
 	else
 	{
-		biped->biped.elevator_object_index = physics.elevator_object_index;
+		biped->biped.elevator_object_index = physics->elevator_object_index;
 		biped->biped.elevator_ticks = 60;
 	}
 
-	if (TEST_FLAG(biped->unit.flags, _unit_suspended_bit))
+	if (!animation->crouching &&
+		TEST_FLAG(out_flags, _biped_physics_out_cannot_stand_bit))
 	{
-		physics.new_position = physics.position;
-		SET_FLAG(physics.out_flags, _biped_physics_out_airborne_bit, FALSE);
-		physics.new_velocity = *global_zero_vector3d;
-		physics.velocity = *global_zero_vector3d;
+		animation->crouching = TRUE;
 	}
 
+	if (physics->landing_velocity > 0.f)
+		biped_start_landing(biped_index, physics->landing_velocity);
+	if (!TEST_FLAG(out_flags, _biped_physics_out_cannot_stand_bit))
+		biped_update_jumping(biped_index, animation);
+
+	if (biped->unit.melee_attack_state == _unit_melee_attack_impact &&
+		biped->biped.impact_target_object_index != NONE)
 	{
-		real_point3d new_biped_position = physics.new_position;
-		word out_flags = physics.out_flags;
+		struct object_datum *target = object_get(
+			biped->biped.impact_target_object_index);
+		real_vector3d melee_vector;
 
-		if (!TEST_FLAG(
-			definition->biped.flags,
-			_biped_pill_centered_at_origin_bit))
+		match_assert(
+			"c:\\halo\\SOURCE\\units\\bipeds.c",
+			0x87A,
+			global_current_collision_user_depth <
+				MAXIMUM_COLLISION_USER_STACK_DEPTH);
+		global_current_collision_users[global_current_collision_user_depth++] =
+			_collision_user_bipeds;
+
+		vector_from_points3d(
+			&physics->position,
+			&physics->new_position,
+			&melee_vector);
+		if (fast_vector_intersects_sphere(
+			&physics->position,
+			&melee_vector,
+			&target->object.bounding_sphere_center,
+			target->object.bounding_sphere_radius))
 		{
-			new_biped_position.z -= physics.width;
-		}
-		object_translate(biped_index, &new_biped_position, NULL);
+			struct collision_model_instance instance;
+			struct collision_model_test_vector_result vector_result;
+			struct collision_result collision;
 
-		biped->biped.support_surface_index = physics.support_surface_index;
-		biped->biped.pathfinding_point = new_biped_position;
-		biped->biped.pathfinding_surface_index = NONE;
-		biped->object.translational_velocity = physics.new_velocity;
-		if (!animation->crouching &&
-			TEST_FLAG(out_flags, _biped_physics_out_cannot_stand_bit))
-		{
-			animation->crouching = TRUE;
-		}
-
-		SET_FLAG(
-			biped->biped.flags,
-			_biped_airborne_bit,
-			TEST_FLAG(out_flags, _biped_physics_out_airborne_bit));
-		SET_FLAG(
-			biped->biped.flags,
-			_biped_slipping_bit,
-			TEST_FLAG(out_flags, _biped_physics_out_slipping_bit));
-		SET_FLAG(
-			biped->biped.flags,
-			_biped_movement_passes_through_bipeds_bit,
-			TEST_FLAG(
-				definition->biped.flags,
-				_biped_passes_through_bipeds_bit));
-
-		biped->biped.ground_plane = physics.ground_plane;
-		if (physics.landing_velocity > 0.f)
-			biped_start_landing(biped_index, physics.landing_velocity);
-		if (!TEST_FLAG(out_flags, _biped_physics_out_cannot_stand_bit))
-			biped_update_jumping(biped_index, animation);
-
-		if (biped->unit.melee_attack_state == _unit_melee_attack_impact &&
-			biped->biped.impact_target_object_index != NONE)
-		{
-			struct object_datum *target = object_get(
-				biped->biped.impact_target_object_index);
-			real_vector3d melee_vector;
-
-			match_assert(
-				"c:\\halo\\SOURCE\\units\\bipeds.c",
-				0x87A,
-				global_current_collision_user_depth <
-					MAXIMUM_COLLISION_USER_STACK_DEPTH);
-			global_current_collision_users[global_current_collision_user_depth++] =
-				_collision_user_bipeds;
-
-			vector_from_points3d(
-				&physics.position,
-				&physics.new_position,
-				&melee_vector);
-			if (fast_vector_intersects_sphere(
-				&physics.position,
-				&melee_vector,
-				&target->object.bounding_sphere_center,
-				target->object.bounding_sphere_radius))
-			{
-				struct collision_model_instance instance;
-				struct collision_model_test_vector_result vector_result;
-				struct collision_result collision;
-
-				if (collision_model_instance_new(
+			if (collision_model_instance_new(
+				&instance,
+				biped->biped.impact_target_object_index) &&
+				collision_model_test_vector(
 					&instance,
-					biped->biped.impact_target_object_index) &&
-					collision_model_test_vector(
-						&instance,
-						FLAG(_collision_test_front_facing_surfaces_bit) |
-							FLAG(_collision_test_back_facing_surfaces_bit),
-						&physics.position,
-						&melee_vector,
-						&vector_result) &&
-					!collision_test_vector(
-						_collision_test_for_bipeds_passthrough_living_flags,
-						&physics.position,
-						&melee_vector,
-						biped_index,
-						&collision))
-				{
-					real_point3d collision_point;
-					real_plane3d collision_plane;
+					FLAG(_collision_test_front_facing_surfaces_bit) |
+						FLAG(_collision_test_back_facing_surfaces_bit),
+					&physics->position,
+					&melee_vector,
+					&vector_result) &&
+				!collision_test_vector(
+					_collision_test_for_bipeds_passthrough_living_flags,
+					&physics->position,
+					&melee_vector,
+					biped_index,
+					&collision))
+			{
+				real_point3d collision_point;
+				real_plane3d collision_plane;
 
-					point_from_line3d(
-						&physics.position,
-						&melee_vector,
-						vector_result.bsp_result.t,
-						&collision_point);
-					matrix4x3_transform_plane(
-						&instance.matrices[vector_result.node_index],
-						vector_result.bsp_result.plane,
-						&collision_plane);
-					if (vector_result.bsp_result.plane_designator < 0)
-						plane3d_negate(&collision_plane, &collision_plane);
-					unit_impact_melee_damage(
-						biped_index,
-						biped->biped.impact_target_object_index,
-						vector_result.node_index,
-						vector_result.region_index,
-						vector_result.bsp_result.material_index,
-						&collision_point,
-						&collision_plane.n,
-						&collision.location);
-				}
+				point_from_line3d(
+					&physics->position,
+					&melee_vector,
+					vector_result.bsp_result.t,
+					&collision_point);
+				matrix4x3_transform_plane(
+					&instance.matrices[vector_result.node_index],
+					vector_result.bsp_result.plane,
+					&collision_plane);
+				if (vector_result.bsp_result.plane_designator < 0)
+					plane3d_negate(&collision_plane, &collision_plane);
+				unit_impact_melee_damage(
+					biped_index,
+					biped->biped.impact_target_object_index,
+					vector_result.node_index,
+					vector_result.region_index,
+					vector_result.bsp_result.material_index,
+					&collision_point,
+					&collision_plane.n,
+					&collision.location);
 			}
-
-			match_assert(
-				"c:\\halo\\SOURCE\\units\\bipeds.c",
-				0x8A5,
-				global_current_collision_user_depth > 1);
-			--global_current_collision_user_depth;
 		}
 
-		biped_bumped_object(
-			biped_index,
-			physics.bumped_object_index,
-			&physics.velocity);
-		biped_falling_damage(biped_index, physics.landing_velocity);
+		match_assert(
+			"c:\\halo\\SOURCE\\units\\bipeds.c",
+			0x8A5,
+			global_current_collision_user_depth > 1);
+		--global_current_collision_user_depth;
+	}
 
-		SET_FLAG(
-			biped->object.flags,
-			_object_on_ground_bit,
-			!TEST_FLAG(physics.in_flags, _biped_physics_in_flying_bit) &&
-				!TEST_FLAG(biped->biped.flags, _biped_airborne_bit));
-		SET_FLAG(
-			biped->object.flags,
-			_object_at_rest_bit,
-			!TEST_FLAG(physics.in_flags, _biped_physics_in_flying_bit) &&
-				!TEST_FLAG(biped->biped.flags, _biped_airborne_bit) &&
-				!TEST_FLAG(out_flags, _biped_physics_out_volatile_collision_bit) &&
-				magnitude_squared3d(&biped->object.translational_velocity) < 0.0001f);
-		if (TEST_FLAG(biped->object.flags, _object_on_ground_bit))
-			biped->object.angular_velocity = *global_zero_vector3d;
+	biped_bumped_object(
+		biped_index,
+		physics->bumped_object_index,
+		&physics->velocity);
+	biped_falling_damage(biped_index, physics->landing_velocity);
+
+	biped_physics_ground_flags(biped_index, physics);
+
+	return;
+}
+
+/* port: the velocity a biped's first sub-step of a tick starts from (velocity,
+the object's now): the one the biped kept (kept, as the tick's step at 30
+starts from it) and what changed the object's since biped_physics_prepare
+(prepared, as it left it: a bump, a blast in the rest of the objects'
+update). A velocity biped_physics_prepare set on the object itself (an
+animation's root motion: the AI's walk, a player's scripted animation),
+which the tick's step at 30 overwrites unread, is the movement the step
+wants, not where it starts */
+static void biped_substep_start_velocity(
+	real_vector3d const *kept,
+	real_vector3d const *prepared,
+	real_vector3d *velocity)
+{
+	if (prepared->i != kept->i)
+		velocity->i = kept->i + (velocity->i - prepared->i);
+	if (prepared->j != kept->j)
+		velocity->j = kept->j + (velocity->j - prepared->j);
+	if (prepared->k != kept->k)
+		velocity->k = kept->k + (velocity->k - prepared->k);
+
+	return;
+}
+
+/* port: whether a biped moves in the fast phase this tick (biped_substep_globals):
+a player's of the micro lane (objects.h: on foot) in a tick of more than one
+sub-step, made ready in the objects' update (an AI's moves its sub-steps in
+its update: biped_substep_inline). At one (30) the fast phase's one step is
+the tick's own, which the biped takes in its place in the objects' update,
+in the order the game always had */
+static boolean biped_moves_in_substeps(
+	long biped_index)
+{
+	return sim_substep_index() == NONE &&
+		biped_get(biped_index)->unit.player_index != NONE &&
+		object_lane_moves_in_substeps(biped_index);
+}
+
+/* port: the tick's movement left for the fast phase, if the biped moves in it */
+static boolean biped_substep_defer(
+	long biped_index,
+	struct biped_physics const *physics,
+	struct unit_animation_update_data const *animation,
+	struct biped_player_speeds const *speeds)
+{
+	long tick = game_time_get();
+	struct biped_substep_datum *datum = NULL;
+	short index;
+
+	if (!biped_moves_in_substeps(biped_index))
+		return FALSE;
+
+	/* (another tick's, which no fast phase took, gone) */
+	if (biped_substep_globals.count > 0 && biped_substep_globals.bipeds[0].tick != tick)
+		biped_substep_globals.count = 0;
+	for (index = 0; index < biped_substep_globals.count; index++)
+	{
+		if (biped_substep_globals.bipeds[index].biped_index == biped_index)
+			datum = &biped_substep_globals.bipeds[index];
+	}
+	if (!datum)
+	{
+		if (biped_substep_globals.count >= MAXIMUM_SUBSTEP_BIPEDS)
+			return FALSE;
+		datum = &biped_substep_globals.bipeds[biped_substep_globals.count++];
+	}
+
+	datum->biped_index = biped_index;
+	datum->tick = tick;
+	datum->physics = *physics;
+	datum->prepared_velocity = biped_get(biped_index)->object.translational_velocity;
+	datum->animation = *animation;
+	datum->speeds = *speeds;
+	datum->tick_position = physics->position;
+	datum->landing_velocity = 0.f;
+	datum->elevator_object_index = NONE;
+	datum->bumped_object_index = NONE;
+	datum->bumped_velocity = physics->velocity;
+	datum->jumped = FALSE;
+	datum->launch_velocity = *global_zero_vector3d;
+
+	return TRUE;
+}
+
+/* port: an object moved in a sub-step, after the tick's nodes were made: its
+nodes and bounding sphere moved with it, and its children's (the weapon it
+holds) */
+static void biped_carry_nodes(
+	long object_index,
+	real_vector3d const *moved)
+{
+	struct object_datum *object = object_get(object_index);
+	short node_count = (short)(object->object.node_matrices.size / sizeof(real_matrix4x3));
+	long child_index;
+
+	if (node_count > 0)
+	{
+		real_matrix4x3 *matrices = (real_matrix4x3 *)object_header_block_get(
+			object_index,
+			&object->object.node_matrices);
+		short node_index;
+
+		for (node_index = 0; node_index < node_count; node_index++)
+		{
+			matrices[node_index].position.x += moved->i;
+			matrices[node_index].position.y += moved->j;
+			matrices[node_index].position.z += moved->k;
+		}
+	}
+	object->object.bounding_sphere_center.x += moved->i;
+	object->object.bounding_sphere_center.y += moved->j;
+	object->object.bounding_sphere_center.z += moved->k;
+
+	for (child_index = object->object.first_child_object_index;
+		child_index != NONE;
+		child_index = object_get(child_index)->object.next_object_index)
+	{
+		biped_carry_nodes(child_index, moved);
 	}
 
 	return;
+}
+
+/* port: the biped's nodes made again after its tick's end in the fast phase
+(its animation stepped after the objects' update made them), as the objects'
+update makes them: its children's too, and the unit's aim put in */
+static void biped_refresh_nodes(
+	long biped_index)
+{
+	struct biped_datum *biped = biped_try_and_get(biped_index);
+	struct object_definition *definition;
+
+	if (!biped || TEST_FLAG(biped->object.flags, _object_do_not_recompute_node_matrices_bit))
+		return;
+
+	object_compute_node_matrices_recursive(biped_index);
+	definition = object_definition_get(biped->definition_index);
+	if (definition->object.model.index != NONE &&
+		definition->object.animation_graph.index != NONE)
+	{
+		object_type_postprocess_node_matrices(
+			biped_index,
+			(real_matrix4x3 *)object_header_block_get(biped_index, &biped->object.node_matrices));
+	}
+
+	return;
+}
+
+/* port: one sub-step of a biped's tick (bipeds_substep's, biped_substep_inline's):
+the biped moved a sub-step's share of its tick, from where it is (a lift
+carries a player's a share first, objects.c's slot) as fast as it goes, with
+its input (a player's, again, past the first) and a sub-step's share of the
+tick's change of velocity (biped_update_physics); what it met kept in datum,
+and the step's movement in result */
+static void biped_substep_move(
+	long biped_index,
+	struct biped_substep_datum *datum,
+	short substep_index,
+	real tick_fraction,
+	struct biped_physics *result)
+{
+	struct biped_datum *biped = biped_get(biped_index);
+	struct biped_physics physics;
+	real_point3d old_position;
+	real_vector3d moved;
+	real gravity;
+	real_vector3d const *tick_velocity;
+	real_plane3d const *tick_ground;
+
+	physics = datum->physics;
+	biped_get_physics_pill(
+		biped_index,
+		&physics.position,
+		&physics.height,
+		&physics.width);
+	physics.velocity = biped->object.translational_velocity;
+	if (substep_index == 0)
+		biped_substep_start_velocity(&datum->physics.velocity, &datum->prepared_velocity, &physics.velocity);
+	physics.ground_plane = biped->biped.ground_plane;
+	physics.existing_support_surface_index = biped->biped.support_surface_index;
+	/* (a sub-step past the first, whose input the player's is again,
+	player_control.c: the movement its throttle wants, and the way it
+	faces, as biped_update and biped_physics_prepare make them of the
+	tick's. The AI's input is the tick's: what it wants of every sub-step
+	is what biped_physics_prepare made) */
+	if (substep_index > 0 && datum->speeds.valid && biped->unit.player_index != NONE)
+	{
+		real_vector3d throttle = biped->unit.throttle;
+
+		if (magnitude_squared3d(&throttle) < 0.1f * 0.1f)
+			throttle = *global_zero_vector3d;
+		biped_player_movement(&datum->speeds, &throttle, &physics.movement_desired);
+		if (!TEST_FLAG(biped->unit.control_flags, _unit_control_look_dont_turn_bit))
+		{
+			struct biped_definition *definition = biped_definition_get(biped->definition_index);
+
+			physics.forward = biped->unit.desired_facing_vector;
+			if (!(definition->biped.flags &
+				(FLAG(_biped_flying_bit) | FLAG(_biped_climbs_anything_bit))))
+			{
+				physics.forward.k = 0.f;
+				if (normalize3d(&physics.forward) == 0.f)
+					physics.forward = *global_forward3d;
+			}
+		}
+	}
+	if (substep_index == 0)
+		datum->tick_position = physics.position;
+
+	/* (at 30 a tick's movement is in the air or on the ground, and what
+	it meets changes that at the tick's end: so an arc starts and ends
+	at a tick's end, biped_update_physics's launch bias from there. A
+	biped in the air at the tick's start stays in the air to its end,
+	a landing on the ground clipping its fall: the tick's step slides on
+	along the plane it lands on, so the sub-steps after the one that
+	lands do (their movement clipped by it, on the ground), rather than
+	falling again onto what lies past it (a rounded corner); but on
+	what moves or breaks within the tick, or by a snap, they fall and
+	meet the ground themselves, as below. A jump launched at an
+	earlier sub-step's end (biped_substep_jump) is the arc a tick at 30
+	starts at its end: in the air from there, with gravity, the change
+	of velocity worked out from the velocity it launched at, as the
+	first tick of a jump at 30 works it out from its start. Slipping or
+	not is each sub-step's.
+
+	On the ground at the tick's start, whether it stays there is the
+	tick's own step's to say. At 30 the push into the ground meets the
+	ground once a tick, at the step's start, and the step slides on
+	along the plane it met; a step that meets none in the whole of its
+	movement leaves the ground. A sub-step's push, its share of the
+	tick's over its share of the movement, meets ground the tick's step
+	passes over: off an edge it would follow the rounded corner down,
+	still on the ground, and leave it later and faster than the tick.
+	So the first sub-step takes the tick's step from the tick's start,
+	as at 30, without moving, and:
+	- if it stands on the ground it met, every sub-step slides on along
+	  that plane (its movement clipped by it), on the ground at the
+	  tick's start, the tick's push given once, at the first sub-step,
+	  as the tick's step gives it at its start; and the tick ends on
+	  what the step stood on;
+	- if it meets no ground, the biped leaves the ground at the tick's
+	  start at the velocity the step leaves at, and goes on as it does,
+	  without gravity, to the tick's end;
+	- if it stands on the next surface by its snap (the sub-steps snap
+	  their shares), or what it met moves or breaks within the tick (a
+	  lift, a vehicle, glass: its volatile collision), each sub-step
+	  probes the ground itself, and one that leaves it goes on as it
+	  left it, without gravity, to the tick's end) */
+	gravity = global_gravity;
+	tick_velocity = &datum->physics.velocity;
+	tick_ground = NULL;
+	SET_FLAG(physics.in_flags, _biped_physics_in_slipping_bit,
+		TEST_FLAG(biped->biped.flags, _biped_slipping_bit));
+	if (substep_index == 0)
+	{
+		datum->ground = _biped_substep_ground_probed;
+		if (!TEST_FLAG(physics.in_flags, _biped_physics_in_airborne_bit) &&
+			!TEST_FLAG(physics.in_flags, _biped_physics_in_flying_bit) &&
+			!TEST_FLAG(physics.in_flags, _biped_physics_in_absolute_movement_bit) &&
+			!TEST_FLAG(physics.in_flags, _biped_physics_in_no_collision_bit) &&
+			!TEST_FLAG(biped->biped.flags, _biped_airborne_bit))
+		{
+			struct biped_physics tick = physics;
+
+			biped_update_physics(&tick, 1.f, gravity, tick_velocity, NULL);
+			if (TEST_FLAG(tick.out_flags, _biped_physics_out_airborne_bit))
+			{
+				datum->ground = _biped_substep_ground_left;
+				datum->leave_velocity = tick.new_velocity;
+			}
+			else if (tick.stick_surface_index == NONE &&
+				!TEST_FLAG(tick.out_flags, _biped_physics_out_volatile_collision_bit))
+			{
+				datum->ground = _biped_substep_ground_tick;
+				datum->ground_plane = tick.ground_plane;
+				datum->support_surface_index = tick.support_surface_index;
+				datum->landing_velocity = tick.landing_velocity;
+				datum->elevator_object_index = tick.elevator_object_index;
+			}
+		}
+	}
+
+	if (datum->jumped)
+	{
+		SET_FLAG(physics.in_flags, _biped_physics_in_airborne_bit, TRUE);
+		tick_velocity = &datum->launch_velocity;
+	}
+	else if (datum->ground == _biped_substep_ground_tick)
+	{
+		physics.ground_plane = datum->physics.ground_plane;
+		physics.existing_support_surface_index = NONE;
+		SET_FLAG(physics.in_flags, _biped_physics_in_pushed_bit, substep_index > 0);
+		tick_ground = &datum->ground_plane;
+	}
+	else if (datum->ground == _biped_substep_ground_landed)
+	{
+		SET_FLAG(physics.in_flags, _biped_physics_in_pushed_bit, TRUE);
+		tick_ground = &datum->ground_plane;
+	}
+	else if (datum->ground == _biped_substep_ground_left)
+	{
+		/* (the tick's change of velocity is in the velocity it leaves at,
+		as the step left it: none in the air besides) */
+		SET_FLAG(physics.in_flags, _biped_physics_in_airborne_bit, TRUE);
+		gravity = 0.f;
+		physics.airborne_acceleration_maximum = 0.f;
+		tick_velocity = &datum->leave_velocity;
+		if (substep_index == 0)
+			physics.velocity = datum->leave_velocity;
+	}
+	else if (!TEST_FLAG(datum->physics.in_flags, _biped_physics_in_airborne_bit) &&
+		TEST_FLAG(biped->biped.flags, _biped_airborne_bit))
+	{
+		SET_FLAG(physics.in_flags, _biped_physics_in_airborne_bit, TRUE);
+		gravity = 0.f;
+	}
+
+	old_position = biped->object.position;
+	biped_update_physics(&physics, tick_fraction, gravity, tick_velocity, tick_ground);
+	if (tick_ground)
+	{
+		/* (on what the tick's step stood on, its landing the step's) */
+		SET_FLAG(physics.out_flags, _biped_physics_out_airborne_bit, FALSE);
+		physics.ground_plane = datum->ground_plane;
+		physics.support_surface_index = datum->support_surface_index;
+		physics.landing_velocity = 0.f;
+	}
+	else if (datum->ground == _biped_substep_ground_probed &&
+		TEST_FLAG(datum->physics.in_flags, _biped_physics_in_airborne_bit) &&
+		!TEST_FLAG(physics.out_flags, _biped_physics_out_airborne_bit) &&
+		!TEST_FLAG(physics.out_flags, _biped_physics_out_volatile_collision_bit) &&
+		physics.stick_surface_index == NONE)
+	{
+		/* (landed, in a tick it started in the air: the rest of the tick
+		on the plane it landed on) */
+		datum->ground = _biped_substep_ground_landed;
+		datum->ground_plane = physics.ground_plane;
+		datum->support_surface_index = physics.support_surface_index;
+	}
+	biped_physics_apply_step(biped_index, &physics);
+	vector_from_points3d(&old_position, &biped->object.position, &moved);
+	biped_carry_nodes(biped_index, &moved);
+
+	if (physics.landing_velocity > datum->landing_velocity)
+		datum->landing_velocity = physics.landing_velocity;
+	if (physics.elevator_object_index != NONE)
+		datum->elevator_object_index = physics.elevator_object_index;
+	if (physics.bumped_object_index != NONE)
+	{
+		datum->bumped_object_index = physics.bumped_object_index;
+		datum->bumped_velocity = physics.velocity;
+	}
+	*result = physics;
+
+	return;
+}
+
+/* port: a tick's movement, its sub-steps over, as one (from the first
+sub-step's start to the last's end, and what any of its sub-steps met),
+for biped_physics_apply_tick */
+static void biped_substep_tick_physics(
+	struct biped_substep_datum const *datum,
+	struct biped_physics *physics)
+{
+	physics->position = datum->tick_position;
+	physics->landing_velocity = datum->landing_velocity;
+	physics->elevator_object_index = datum->elevator_object_index;
+	physics->bumped_object_index = datum->bumped_object_index;
+	physics->velocity = datum->bumped_velocity;
+
+	return;
+}
+
+/* port: whether a tick's movement on the ground is too small for its
+sub-steps: the collisions (collision_move_point) stop a movement once each
+of its components is under _real_epsilon, so a sub-step of a slow drift (an
+idle animation's root motion, a few hundredths of a world unit a second)
+would not move at all where the tick at 30 does. Such a tick (its velocity
+and the movement it wants each under a sub-step's count of _real_epsilon a
+tick) moves as at 30, in one step */
+static boolean biped_substep_too_small(
+	struct biped_physics const *physics,
+	short substep_count)
+{
+	real limit = _real_epsilon * (real)substep_count;
+
+	return !TEST_FLAG(physics->in_flags, _biped_physics_in_airborne_bit) &&
+		!TEST_FLAG(physics->in_flags, _biped_physics_in_flying_bit) &&
+		magnitude_squared3d(&physics->movement_desired) < limit * limit &&
+		physics->velocity.i * physics->velocity.i + physics->velocity.j * physics->velocity.j < limit * limit;
+}
+
+/* port: an AI's biped's tick in its update at game.sim_rate 60 or 120 (the
+globals' comment, above): its sub-steps one after the other, where each
+left it kept for the fast phase (biped_replay_globals), then what the
+tick's movement leads to (biped_physics_apply_tick); the rest of its update
+follows in biped_update, as at 30. FALSE for a player's biped (the fast
+phase's, biped_substep_defer) and in a tick of one sub-step */
+static boolean biped_substep_inline(
+	long biped_index,
+	struct biped_physics const *physics,
+	struct unit_animation_update_data *animation,
+	struct biped_player_speeds const *speeds)
+{
+	struct biped_substep_datum datum;
+	struct biped_replay_datum *replay = NULL;
+	struct biped_physics step;
+	short substep_count = sim_substep_count();
+	real tick_fraction;
+	short substep_index;
+
+	if (sim_substep_index() != NONE || !object_lane_moves_in_substeps(biped_index) ||
+		substep_count > MAXIMUM_SIM_SUBSTEPS)
+	{
+		return FALSE;
+	}
+	/* (a sub-step's share of a tick: 1/2 or 1/4, exactly) */
+	tick_fraction = 1.f / (real)substep_count;
+
+	/* (where its sub-steps leave it, for the fast phase: a tick's, from
+	the first biped of it on) */
+	if (biped_replay_globals.count > 0 && biped_replay_globals.bipeds[0].tick != game_time_get())
+		biped_replay_globals.count = 0;
+	if (biped_replay_globals.count >= biped_replay_globals.capacity &&
+		biped_replay_globals.capacity < MAXIMUM_REPLAYED_BIPEDS)
+	{
+		long capacity = MIN(MAX(2 * biped_replay_globals.capacity, 64), MAXIMUM_REPLAYED_BIPEDS);
+		struct biped_replay_datum *bipeds = realloc(biped_replay_globals.bipeds,
+			capacity * sizeof(struct biped_replay_datum));
+
+		if (bipeds)
+		{
+			biped_replay_globals.bipeds = bipeds;
+			biped_replay_globals.capacity = capacity;
+		}
+	}
+	if (biped_replay_globals.count < biped_replay_globals.capacity)
+		replay = &biped_replay_globals.bipeds[biped_replay_globals.count++];
+
+	datum.biped_index = biped_index;
+	datum.tick = game_time_get();
+	datum.physics = *physics;
+	datum.prepared_velocity = biped_get(biped_index)->object.translational_velocity;
+	datum.animation = *animation;
+	datum.speeds = *speeds;
+	datum.tick_position = physics->position;
+	datum.landing_velocity = 0.f;
+	datum.elevator_object_index = NONE;
+	datum.bumped_object_index = NONE;
+	datum.bumped_velocity = physics->velocity;
+	datum.jumped = FALSE;
+	datum.launch_velocity = *global_zero_vector3d;
+
+	if (biped_substep_too_small(physics, substep_count))
+	{
+		/* (a tick's movement on the ground smaller than a sub-step can make
+		of it: the tick's step, as at 30, its sub-steps on the line) */
+		real_point3d start = biped_get(biped_index)->object.position;
+		real_point3d const *end;
+
+		step = *physics;
+		biped_update_physics(&step, 1.f, global_gravity, &step.velocity, NULL);
+		biped_physics_apply_step(biped_index, &step);
+		biped_physics_apply_tick(biped_index, &step, animation);
+		end = &biped_get(biped_index)->object.position;
+		for (substep_index = 0; replay && substep_index < substep_count; substep_index++)
+		{
+			real t = (real)(substep_index + 1) * tick_fraction;
+
+			replay->poses[substep_index].x = start.x + (end->x - start.x) * t;
+			replay->poses[substep_index].y = start.y + (end->y - start.y) * t;
+			replay->poses[substep_index].z = start.z + (end->z - start.z) * t;
+		}
+		if (replay)
+			replay->poses[substep_count - 1] = *end;
+	}
+	else
+	{
+		for (substep_index = 0; substep_index < substep_count; substep_index++)
+		{
+			/* (on the macro lane where the sub-step sees it, a lift it
+			stands on a share of its movement: objects.h) */
+			object_lane_view_substep(biped_index, substep_index);
+			biped_substep_move(biped_index, &datum, substep_index, tick_fraction, &step);
+			if (replay)
+				replay->poses[substep_index] = biped_get(biped_index)->object.position;
+			if (substep_index < substep_count - 1)
+				biped_physics_ground_flags(biped_index, &step);
+			object_lane_view_substep(biped_index, NONE);
+		}
+		biped_substep_tick_physics(&datum, &step);
+		biped_physics_apply_tick(biped_index, &step, animation);
+	}
+
+	if (replay)
+	{
+		replay->biped_index = biped_index;
+		replay->tick = datum.tick;
+		replay->substep_count = substep_count;
+		replay->last = biped_get(biped_index)->object.position;
+		replay->carried = *global_zero_vector3d;
+	}
+
+	return TRUE;
+}
+
+/* port: at the end of an AI's biped's update (biped_update), its sub-steps
+kept (biped_substep_inline) for the fast phase, unless the rest of its
+update moved it (a teleport): then it waits where it is */
+static void biped_replay_seal(
+	long biped_index)
+{
+	struct biped_replay_datum *replay;
+	real_point3d const *position;
+
+	if (biped_replay_globals.count <= 0)
+		return;
+	replay = &biped_replay_globals.bipeds[biped_replay_globals.count - 1];
+	if (replay->biped_index != biped_index || replay->tick != game_time_get())
+		return;
+	position = &biped_get(biped_index)->object.position;
+	if (position->x != replay->last.x || position->y != replay->last.y || position->z != replay->last.z)
+		replay->tick = NONE;
+
+	return;
+}
+
+/* port: the AI's bipeds at a sub-step (bipeds_substep, before the players'
+move): each where its sub-step left it in its update, and what moved it
+since besides (a lift's shares, objects.c's slot) with it; at the tick's
+last, where its update left it (and that) */
+static void bipeds_replay_substep(
+	short substep_index,
+	boolean last)
+{
+	long tick = game_time_get();
+	long index;
+
+	for (index = 0; index < biped_replay_globals.count; index++)
+	{
+		struct biped_replay_datum *replay = &biped_replay_globals.bipeds[index];
+		struct biped_datum *biped;
+		real_point3d target;
+		real_vector3d moved;
+		real_vector3d lifted;
+
+		if (replay->tick != tick || substep_index >= replay->substep_count)
+			continue;
+		biped = biped_try_and_get(replay->biped_index);
+		if (!biped || biped->object.parent_object_index != NONE)
+		{
+			replay->tick = NONE;
+			continue;
+		}
+		/* (moved since by something else: exactly nothing, most often) */
+		replay->carried.i += biped->object.position.x - replay->last.x;
+		replay->carried.j += biped->object.position.y - replay->last.y;
+		replay->carried.k += biped->object.position.z - replay->last.z;
+		target = replay->poses[substep_index];
+		if (replay->carried.i != 0.f || replay->carried.j != 0.f || replay->carried.k != 0.f)
+		{
+			target.x += replay->carried.i;
+			target.y += replay->carried.j;
+			target.z += replay->carried.k;
+		}
+		/* (a lift's carry, the tick's whole movement, before its update or
+		after it: only its share so far, the rest still to come) */
+		if (!last && machine_elevator_carried(replay->biped_index, &lifted))
+		{
+			real still_to_come = 1.f - sim_substep_end_fraction();
+
+			target.x -= lifted.i * still_to_come;
+			target.y -= lifted.j * still_to_come;
+			target.z -= lifted.k * still_to_come;
+		}
+		vector_from_points3d(&biped->object.position, &target, &moved);
+		if (moved.i != 0.f || moved.j != 0.f || moved.k != 0.f)
+		{
+			object_translate(replay->biped_index, &target, NULL);
+			biped_carry_nodes(replay->biped_index, &moved);
+		}
+		replay->last = target;
+	}
+	if (last)
+	{
+		biped_replay_globals.count = 0;
+		machine_elevator_carried_forget();
+	}
+
+	return;
+}
+
+/* port: a player's jump at the end of a sub-step before the tick's last, its
+press read at this sub-step (player_control.c: a sub-step past the first
+reads the controller again), as a tick at 30 launches a jump at its end, its
+press read at its start: so it takes off a sub-step after the press is
+read, not at the tick's end. Whether it can is the tick's own test
+(biped_physics_apply_tick's and biped_update_jumping's) of the state as the
+sub-step left it: standing room, on the ground, no hard landing, and the
+recovery since the last jump with this tick's count in it (the tick counts
+it at its end before it tests, as it would were the biped still on the
+ground there). A biped in the air at the tick's start is not tested: its
+landing is the tick's, at its end (biped_substep_move), and the tick's own
+test follows it. The tick's last sub-step leaves its press to the tick's
+test, which runs there; the tick's own input (its first sub-step's) too.
+The counters of ticks are left to the tick: launched here, the biped is in
+the air at the tick's end, so the tick neither counts the recovery nor
+tests again, and jump_recovery_timer is 0 there as at 30 */
+static void biped_substep_jump(
+	long biped_index,
+	struct biped_substep_datum *datum,
+	struct biped_physics const *physics)
+{
+	struct biped_datum *biped = biped_get(biped_index);
+	char recovery = biped->biped.jump_recovery_timer;
+
+	if (datum->jumped ||
+		biped->unit.player_index == NONE ||
+		!TEST_FLAG(player_control_substep_pressed_flags(biped_index), _unit_control_jump_bit) ||
+		!TEST_FLAG(biped->unit.control_flags, _unit_control_jump_bit) ||
+		TEST_FLAG(datum->physics.in_flags, _biped_physics_in_airborne_bit) ||
+		TEST_FLAG(physics->out_flags, _biped_physics_out_cannot_stand_bit) ||
+		TEST_FLAG(biped->biped.flags, _biped_airborne_bit) ||
+		biped->biped.landing == 1)
+	{
+		return;
+	}
+	if (recovery < SCHAR_MAX)
+		++recovery;
+	if (recovery > 5 && biped_jump(biped_index))
+	{
+		datum->jumped = TRUE;
+		datum->launch_velocity = biped->object.translational_velocity;
+	}
+
+	return;
+}
+
+/* port: the fast phase's _sim_substep_bipeds slot (sim_rate.h): the AI's
+bipeds where their sub-steps left them (bipeds_replay_substep), then each
+biped left by biped_update moves a sub-step's share of its tick
+(biped_substep_move); at the last sub-step what the tick's movement leads
+to, and the rest of biped_update, once */
+static void bipeds_substep(
+	short substep_index,
+	short substep_count,
+	real seconds)
+{
+	real tick_fraction = sim_substep_tick_fraction();
+	boolean last = substep_index == substep_count - 1;
+	long tick = game_time_get();
+	short index;
+
+	(void)seconds;
+
+	bipeds_replay_substep(substep_index, last);
+	for (index = 0; index < biped_substep_globals.count; index++)
+	{
+		struct biped_substep_datum *datum = &biped_substep_globals.bipeds[index];
+		long biped_index = datum->biped_index;
+		struct biped_datum *biped;
+		struct biped_physics physics;
+
+		if (datum->tick != tick)
+			continue;
+		biped = biped_try_and_get(biped_index);
+		if (!biped || biped->object.parent_object_index != NONE)
+		{
+			datum->tick = NONE;
+			continue;
+		}
+
+		profile_enter(biped_update_section);
+		biped_substep_move(biped_index, datum, substep_index, tick_fraction, &physics);
+
+		if (!last)
+		{
+			biped_substep_jump(biped_index, datum, &physics);
+			biped_physics_ground_flags(biped_index, &physics);
+		}
+		else
+		{
+			struct unit_animation_update_data animation = datum->animation;
+
+			biped_substep_tick_physics(datum, &physics);
+			biped_physics_apply_tick(biped_index, &physics, &animation);
+			biped_verify_object_vectors(biped_index, "post-moving");
+			biped_update_on_foot(biped_index, &animation);
+			biped_update_end(biped_index, &animation);
+			biped_refresh_nodes(biped_index);
+			datum->tick = NONE;
+		}
+		profile_exit(biped_update_section);
+	}
+	if (last)
+		biped_substep_globals.count = 0;
+
+	return;
+}
+
+/* the biped's movement this tick (port: biped_physics_prepare, then its steps
+applied): TRUE when it waits for the fast phase (biped_substep_defer) */
+static boolean biped_update_moving(
+	long biped_index,
+	struct unit_animation_update_data *animation)
+{
+	struct biped_physics physics;
+	struct biped_player_speeds speeds;
+
+	if (!biped_physics_prepare(biped_index, animation, &physics, &speeds))
+		return FALSE;
+	if (biped_substep_defer(biped_index, &physics, animation, &speeds))
+		return TRUE;
+	if (biped_substep_inline(biped_index, &physics, animation, &speeds))
+		return FALSE;
+
+	biped_update_physics(&physics, 1.f, global_gravity, &physics.velocity, NULL);
+	biped_physics_apply_step(biped_index, &physics);
+	biped_physics_apply_tick(biped_index, &physics, animation);
+
+	return FALSE;
 }
 
 boolean biped_new(
@@ -4199,6 +5332,125 @@ static boolean biped_check_discard(
 	}
 
 	return FALSE;
+}
+
+/* port: the rest of a biped on foot's update after its movement (biped_update's,
+which a biped moved in the fast phase runs after its last sub-step) */
+static void biped_update_on_foot(
+	long biped_index,
+	struct unit_animation_update_data *animation)
+{
+	struct biped_datum *biped = biped_get(biped_index);
+
+	if (TEST_FLAG(biped->object.damage_flags, _object_dead_bit))
+	{
+		biped_update_dead(biped_index, animation);
+	}
+	else if (TEST_FLAG(biped->biped.flags, _biped_airborne_bit))
+	{
+		biped_update_airborne(biped_index, animation);
+	}
+	else if (biped->biped.landing!=NONE)
+	{
+		biped_update_landing(biped_index, animation);
+	}
+	else if (TEST_FLAG(biped->biped.flags, _biped_slipping_bit))
+	{
+		biped_update_slipping(biped_index, animation);
+	}
+
+	biped_verify_object_vectors(biped_index, "post-dead/air/land/slip");
+
+	if (!biped->biped.player_melee_ticks)
+	{
+		if (biped->unit.player_index!=NONE &&
+			TEST_FLAG(biped->unit.control_flags, _unit_control_use_equipment_bit))
+		{
+			long weapon_index = unit_inventory_get_weapon(
+				biped_index,
+				unit_get(biped_index)->unit.current_weapon_index);
+
+			/* (port: and with no weapon, which prevents it in the
+			Xbox game: a gametype's loadout of none; not from a
+			vehicle's seat, which holds no weapon either) */
+			if (((weapon_index == NONE && biped->unit.parent_seat_index == NONE) ||
+				(weapon_index != NONE && !weapon_prevents_melee_attack(weapon_index))) &&
+				biped->unit.current_zoom_level==NONE)
+			{
+				short melee_speedup_ticks;
+
+				unit_animation_start_action(biped_index, _unit_animation_action_melee);
+				/* port: a player with no weapon (a gametype's loadout of
+				none) melees too: in a weapon's usual time, the hit
+				halfway (the Xbox game read the timing from the weapon's
+				animations, through a weapon it did not check) */
+				if (weapon_index == NONE)
+				{
+					biped->biped.player_melee_ticks = UNARMED_MELEE_TICKS;
+					biped->biped.player_melee_attack_tick = UNARMED_MELEE_TICKS / 2;
+				}
+				else
+				{
+				weapon_stop_reload(weapon_index);
+				first_person_weapon_message_from_unit(
+					biped_index,
+					_first_person_weapon_message_melee);
+				biped->biped.player_melee_ticks = weapon_get_first_person_animation_time(
+					weapon_index,
+					_weapon_first_person_animation_time_frame_count,
+					_first_person_weapon_animation_melee,
+					NONE);
+				biped->biped.player_melee_attack_tick = biped->biped.player_melee_ticks -
+					weapon_get_first_person_animation_time(
+						weapon_index,
+						_weapon_first_person_animation_time_private_key_frame,
+						_first_person_weapon_animation_melee,
+						NONE);
+				}
+
+				melee_speedup_ticks = biped->biped.player_melee_ticks >> 2;
+				biped->biped.player_melee_ticks -= melee_speedup_ticks;
+				biped->biped.player_melee_attack_tick -= melee_speedup_ticks;
+			}
+		}
+	}
+	else
+	{
+		if (biped->biped.player_melee_ticks==biped->biped.player_melee_attack_tick)
+			unit_cause_player_melee_damage(biped_index);
+		--biped->biped.player_melee_ticks;
+	}
+
+	biped_try_to_make_footsteps(biped_index);
+	biped_falling_danger(biped_index);
+	biped_check_discard(biped_index);
+
+	return;
+}
+
+/* port: the end of every biped's update (biped_update's) */
+static void biped_update_end(
+	long biped_index,
+	struct unit_animation_update_data *animation)
+{
+	struct biped_datum *biped = biped_get(biped_index);
+
+	if (unit_update_animation(biped_index, animation)==1)
+		biped_jump(biped_index);
+
+	if (TEST_FLAG(biped->object.damage_flags, _object_dead_bit) &&
+		TEST_FLAG(biped->object.flags, _object_at_rest_bit))
+	{
+		++biped->object.idle_ticks;
+	}
+	else
+	{
+		biped->object.idle_ticks = 0;
+	}
+
+	biped_verify_object_vectors(biped_index, "post-update");
+
+	return;
 }
 
 boolean biped_update(
@@ -4309,107 +5561,22 @@ boolean biped_update(
 			biped_verify_object_vectors(biped_index, "post-turning");
 		}
 
-		biped_update_moving(biped_index, &animation);
+		/* port: a player's biped at game.sim_rate 60 or 120 moves in the fast
+		phase, and the rest of its update follows its last sub-step
+		(bipeds_substep); an AI's moves its sub-steps here
+		(biped_substep_inline) */
+		if (biped_update_moving(biped_index, &animation))
+		{
+			profile_exit(biped_update_section);
+			return TRUE;
+		}
 		biped_verify_object_vectors(biped_index, "post-moving");
-
-		if (TEST_FLAG(biped->object.damage_flags, _object_dead_bit))
-		{
-			biped_update_dead(biped_index, &animation);
-		}
-		else if (TEST_FLAG(biped->biped.flags, _biped_airborne_bit))
-		{
-			biped_update_airborne(biped_index, &animation);
-		}
-		else if (biped->biped.landing!=NONE)
-		{
-			biped_update_landing(biped_index, &animation);
-		}
-		else if (TEST_FLAG(biped->biped.flags, _biped_slipping_bit))
-		{
-			biped_update_slipping(biped_index, &animation);
-		}
-
-		biped_verify_object_vectors(biped_index, "post-dead/air/land/slip");
-
-		if (!biped->biped.player_melee_ticks)
-		{
-			if (biped->unit.player_index!=NONE &&
-				TEST_FLAG(biped->unit.control_flags, _unit_control_use_equipment_bit))
-			{
-				long weapon_index = unit_inventory_get_weapon(
-					biped_index,
-					unit_get(biped_index)->unit.current_weapon_index);
-
-				/* (port: and with no weapon, which prevents it in the
-				Xbox game: a gametype's loadout of none; not from a
-				vehicle's seat, which holds no weapon either) */
-				if (((weapon_index == NONE && biped->unit.parent_seat_index == NONE) ||
-					(weapon_index != NONE && !weapon_prevents_melee_attack(weapon_index))) &&
-					biped->unit.current_zoom_level==NONE)
-				{
-					short melee_speedup_ticks;
-
-					unit_animation_start_action(biped_index, _unit_animation_action_melee);
-					/* port: a player with no weapon (a gametype's loadout of
-					none) melees too: in a weapon's usual time, the hit
-					halfway (the Xbox game read the timing from the weapon's
-					animations, through a weapon it did not check) */
-					if (weapon_index == NONE)
-					{
-						biped->biped.player_melee_ticks = UNARMED_MELEE_TICKS;
-						biped->biped.player_melee_attack_tick = UNARMED_MELEE_TICKS / 2;
-					}
-					else
-					{
-					weapon_stop_reload(weapon_index);
-					first_person_weapon_message_from_unit(
-						biped_index,
-						_first_person_weapon_message_melee);
-					biped->biped.player_melee_ticks = weapon_get_first_person_animation_time(
-						weapon_index,
-						_weapon_first_person_animation_time_frame_count,
-						_first_person_weapon_animation_melee,
-						NONE);
-					biped->biped.player_melee_attack_tick = biped->biped.player_melee_ticks -
-						weapon_get_first_person_animation_time(
-							weapon_index,
-							_weapon_first_person_animation_time_private_key_frame,
-							_first_person_weapon_animation_melee,
-							NONE);
-					}
-
-					melee_speedup_ticks = biped->biped.player_melee_ticks >> 2;
-					biped->biped.player_melee_ticks -= melee_speedup_ticks;
-					biped->biped.player_melee_attack_tick -= melee_speedup_ticks;
-				}
-			}
-		}
-		else
-		{
-			if (biped->biped.player_melee_ticks==biped->biped.player_melee_attack_tick)
-				unit_cause_player_melee_damage(biped_index);
-			--biped->biped.player_melee_ticks;
-		}
-
-		biped_try_to_make_footsteps(biped_index);
-		biped_falling_danger(biped_index);
-		biped_check_discard(biped_index);
+		biped_update_on_foot(biped_index, &animation);
 	}
 
-	if (unit_update_animation(biped_index, &animation)==1)
-		biped_jump(biped_index);
-
-	if (TEST_FLAG(biped->object.damage_flags, _object_dead_bit) &&
-		TEST_FLAG(biped->object.flags, _object_at_rest_bit))
-	{
-		++biped->object.idle_ticks;
-	}
-	else
-	{
-		biped->object.idle_ticks = 0;
-	}
-
-	biped_verify_object_vectors(biped_index, "post-update");
+	biped_update_end(biped_index, &animation);
+	/* port: (an AI's sub-steps kept for the fast phase) */
+	biped_replay_seal(biped_index);
 	profile_exit(biped_update_section);
 
 	return TRUE;

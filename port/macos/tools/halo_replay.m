@@ -47,6 +47,8 @@ made (compiles) in it; then a summary, hitches named.
 #include "xgpu_metal.h"
 #include "xgpu_metal_internal.h"
 #include "xgpu_metal_stream.h"
+#include "xgpu_metal_textures.h"
+#include "xgpu_astc.h"
 
 #include <SDL3/SDL.h>
 #include <compression.h>
@@ -72,6 +74,8 @@ void host_metal_set_unpaced(int unpaced);
 
 uintptr_t host_guest_base;
 void (*host_memory_remapped)(uint32_t address, uint32_t size);
+/* display.astc_textures, from HALO_ASTC_TEXTURES as the host reads it (main) */
+char host_astc_textures[16] = "auto";
 static int verbose;
 
 void host_logf(int priority, const char *format, ...)
@@ -450,6 +454,9 @@ static struct
 	double hitch_ms;
 	uint32_t mismatches;
 	uint64_t restored_bytes;
+	/* the textures' cache over the loop: its bytes at the most and at the
+	end (all, ASTC, DXT decoded), and its counts (xgpu_metal_textures.h) */
+	struct xgpu_metal_texture_statistics textures, textures_most;
 } play;
 
 static double seconds_now(void)
@@ -465,6 +472,20 @@ static void frame_closed(void)
 	uint32_t frame = play.frame;
 
 	xgpu_metal_statistics(&statistics);
+	{
+		struct xgpu_metal_texture_statistics textures;
+
+		xgpu_metal_textures_statistics(&textures);
+		play.textures.astc_transcoded += textures.astc_transcoded;
+		play.textures.astc_encoded += textures.astc_encoded;
+		play.textures.astc_left_decoded += textures.astc_left_decoded;
+		play.textures.resident = textures.resident;
+		play.textures.resident_astc = textures.resident_astc;
+		play.textures.resident_decoded = textures.resident_decoded;
+		play.textures.astc_waiting = textures.astc_waiting;
+		if (textures.resident > play.textures_most.resident)
+			play.textures_most = textures;
+	}
 	if (frame >= play.first_frame && frame <= play.last_frame)
 	{
 		struct frame_measure *measure = &play.frames[(size_t)play.loop * (play.last_frame - play.first_frame + 1) +
@@ -692,6 +713,20 @@ static void report(uint32_t loop, double seconds)
 		compiles, compile_ms, shaders, shader_ms, hitches, threshold, hitches ? ":" : "");
 	if (hitches)
 		printf("  hitches:%s%s\n", hitch_list, used >= sizeof(hitch_list) - 48 ? " ..." : "");
+	{
+		struct xgpu_astc_statistics astc;
+
+		xgpu_astc_statistics(&astc);
+		printf("  textures: at the most %.1f MB (DXT as ASTC %.1f MB, DXT decoded %.1f MB), at the end %.1f MB "
+			"(%.1f, %.1f); DXT textures transcoded to ASTC %u, encoded blocks applied %u, left decoded %u, waiting %u; "
+			"the encoder: %u jobs, %u from the disk cache, %llu blocks in %.2f s\n",
+			play.textures_most.resident / 1048576.0, play.textures_most.resident_astc / 1048576.0,
+			play.textures_most.resident_decoded / 1048576.0, play.textures.resident / 1048576.0,
+			play.textures.resident_astc / 1048576.0, play.textures.resident_decoded / 1048576.0,
+			play.textures.astc_transcoded, play.textures.astc_encoded, play.textures.astc_left_decoded,
+			play.textures.astc_waiting, astc.jobs, astc.cache_hits, (unsigned long long)astc.blocks_encoded,
+			astc.encode_seconds);
+	}
 	free(sorted);
 }
 
@@ -795,7 +830,7 @@ static int cold_run(int argc, char *argv[])
 
 	if (_NSGetExecutablePath(self, &size) || !arguments)
 		return 2;
-	snprintf(identifier, sizeof(identifier), "org.opence.halo-replay.cold-%ld-%d", (long)time(NULL), getpid());
+	snprintf(identifier, sizeof(identifier), "com.openh1.halo-replay.cold-%ld-%d", (long)time(NULL), getpid());
 	app = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"%s.app", identifier]];
 	macos = [app stringByAppendingPathComponent:@"Contents/MacOS"];
 	copy = [macos stringByAppendingPathComponent:@"halo_replay"];
@@ -883,6 +918,8 @@ int main(int argc, char *argv[])
 	int index, cold = 0;
 	double started;
 
+	if (getenv("HALO_ASTC_TEXTURES") && *getenv("HALO_ASTC_TEXTURES"))
+		snprintf(host_astc_textures, sizeof(host_astc_textures), "%s", getenv("HALO_ASTC_TEXTURES"));
 	if (argc == 4 && !strcmp(argv[1], "--compare"))
 	{
 		@autoreleasepool

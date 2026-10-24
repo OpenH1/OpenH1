@@ -46,13 +46,26 @@ _Static_assert(XGPU_VERTEX_PROGRAM_MAXIMUM == XGPU_STREAM_VERTEX_PROGRAM_MAXIMUM
 _Static_assert(XGPU_MSL_BUFFER_CONSTANTS == XGPU_METAL_BUFFER_VERTEX_CONSTANTS, "constants' buffer");
 _Static_assert(XGPU_MSL_BUFFER_UNIFORMS == XGPU_METAL_BUFFER_DRAW_UNIFORMS, "uniforms' buffer");
 _Static_assert(XGPU_METAL_BUFFER_STREAM(XGPU_METAL_STREAM_COUNT - 1) < XGPU_MSL_BUFFER_CONSTANTS, "streams' buffers");
+_Static_assert(XGPU_MSL_BUFFER_DYNAMIC_LIGHTS == XGPU_METAL_BUFFER_DYNAMIC_LIGHTS &&
+	XGPU_MSL_BUFFER_DYNAMIC_LIGHT_CELLS == XGPU_METAL_BUFFER_DYNAMIC_LIGHT_CELLS, "dynamic lights' buffers");
 _Static_assert(XGPU_METAL_BUFFER_CONSTANT_ATTRIBUTES != XGPU_MSL_BUFFER_DYNAMIC_LIGHTS &&
 	XGPU_METAL_BUFFER_CONSTANT_ATTRIBUTES != XGPU_MSL_BUFFER_SAMPLES &&
+	XGPU_METAL_BUFFER_CONSTANT_ATTRIBUTES != XGPU_MSL_BUFFER_DYNAMIC_LIGHT_CELLS &&
+	XGPU_METAL_BUFFER_VIEW_UNIFORMS != XGPU_MSL_BUFFER_DYNAMIC_LIGHT_CELLS &&
 	XGPU_METAL_BUFFER_CONSTANT_ATTRIBUTES > XGPU_MSL_BUFFER_UNIFORMS, "constant inputs' buffer");
+_Static_assert(XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE ==
+	XGPU_DYNAMIC_LIGHTS_GRID_X * XGPU_DYNAMIC_LIGHTS_GRID_Y * XGPU_DYNAMIC_LIGHTS_GRID_Z * 16, "dynamic lights' cells");
+_Static_assert(sizeof(struct xgpu_metal_halo_uniforms) == sizeof(struct xgpu_msl_halo_uniforms) &&
+	offsetof(struct xgpu_metal_halo_uniforms, depth_parameters) == offsetof(struct xgpu_msl_halo_uniforms, depth_parameters) &&
+	offsetof(struct xgpu_metal_halo_uniforms, screen_offset) == offsetof(struct xgpu_msl_halo_uniforms, screen_offset),
+	"the glows' uniforms");
+_Static_assert(XGPU_MSL_HALO_MIDDLE == 0 && XGPU_MSL_HALO_COLOR == 1 && XGPU_MSL_HALO_CORNER == 2 &&
+	XGPU_MSL_HALO_MIDDLE < 16 && XGPU_MSL_HALO_COLOR < 16 && XGPU_MSL_HALO_CORNER < 16, "glows' attributes");
 _Static_assert(XGPU_METAL_TEXTURE_STAGE(3) == 3 && XGPU_METAL_SAMPLER_STAGE(3) == 3, "stages' textures and samplers");
 _Static_assert(XGPU_METAL_VERTEX_CONSTANT_COUNT == XGPU_VERTEX_CONSTANT_COUNT, "vertex constants");
 /* (setVertexBytes' limit) */
-_Static_assert(sizeof(struct xgpu_msl_uniforms) <= 4096, "uniforms' size");
+_Static_assert(sizeof(struct xgpu_msl_uniforms) <= 4096 && sizeof(struct xgpu_msl_halo_uniforms) <= 4096,
+	"uniforms' size");
 
 /* ---------- the stream's records as the host's structures */
 
@@ -104,6 +117,7 @@ static void pixel_program_convert(const struct xgpu_stream_pixel_program *wire, 
 	program->dynamic_lights = wire->dynamic_lights;
 	program->multiview = wire->multiview;
 	program->source_blend = wire->source_blend;
+	program->hdr = wire->hdr;
 }
 
 /* ---------- the shaders */
@@ -328,9 +342,36 @@ static uint32_t uniforms_make(void *context, const struct xgpu_metal_stream_unif
 	return sizeof(*to);
 }
 
+/* ---------- the enhanced dynamic lights' glows */
+
+static int halo_make(void *context, uint32_t *vertex_shader, uint32_t *pixel_shader)
+{
+	static const char *const entries[2] = { "xgpu_halo_vertex", "xgpu_halo_fragment" };
+	uint32_t *shaders[2];
+	int pixel;
+
+	(void)context;
+	shaders[0] = vertex_shader;
+	shaders[1] = pixel_shader;
+	for (pixel = 0; pixel < 2; pixel++)
+	{
+		char *source = xgpu_msl_halo_shader(pixel);
+
+		*shaders[pixel] = 0;
+		if (!source)
+			return 0;
+		if (dump_folder())
+			dump(entries[pixel], source);
+		/* (the app's library's, made ahead of time: tools/xgpu_metal_prebuild.c) */
+		*shaders[pixel] = xgpu_metal_pixel_shader_create(source, strlen(source), entries[pixel], NULL);
+		free(source);
+	}
+	return *vertex_shader && *pixel_shader;
+}
+
 const struct xgpu_metal_stream_shaders *xgpu_metal_shaders(void)
 {
-	static const struct xgpu_metal_stream_shaders shaders = { NULL, shaders_make, uniforms_make };
+	static const struct xgpu_metal_stream_shaders shaders = { NULL, shaders_make, uniforms_make, halo_make };
 
 	return &shaders;
 }

@@ -1,6 +1,7 @@
 """Tests for the Linux port's tooling (port/linux, the build scripts), its
 settings, menus and maps' checks."""
 
+import math
 import os
 import re
 import shutil
@@ -11,7 +12,6 @@ import pytest
 
 from tools import build_common, linux_msvc_semantics, x86_game_abi
 from tools.port_settings import MENU_PLATFORMS
-
 
 # ---------- MSVC semantics header
 
@@ -158,8 +158,8 @@ MENU_ATTRIBUTES = {
     "menus": {"root"},
     "bitmap": {"name", "width", "height", "frames", "platform"},
     "frame": {"png", "map", "index", "width", "height", "x", "y", "platform"},
-    "strings": {"name", "platform"},
-    "string": {"text", "platform"},
+    "strings": {"name", "map", "platform"},
+    "string": {"text", "map", "platform"},
     "widget": {"name", "type", "controller", "flags", "bitmap", "text", "strings", "values", "setting", "font",
                "color", "align", "description", "string_list", "list_flags", "text_flags", "header_bitmap",
                "footer_bitmap", "header_bounds", "footer_bounds", "child_controller", "x", "y", "left", "top",
@@ -241,6 +241,9 @@ def test_menus_are_well_formed():
                     assert width % logical[0] == 0 and width // logical[0] == height // logical[1], where
             elif element.tag == "strings":
                 strings[element.get("name")] = element
+                # (a string's map= is its number in the list's map list, menu_tags.c)
+                for string in element.findall("string"):
+                    assert string.get("map") is None or (element.get("map") and string.get("map").isdigit()), where
             elif element.tag == "widget":
                 name = element.get("name")
                 assert name and name not in widgets, where
@@ -302,7 +305,11 @@ def config_check_build(tmp_path, defines):
         pytest.skip("needs a C compiler")
     stubs = tmp_path / "stubs"
     (stubs / "SDL3").mkdir(parents=True)
-    (stubs / "SDL3" / "SDL.h").write_text("const char *SDL_GetBasePath(void);\n")
+    (stubs / "SDL3" / "SDL.h").write_text(
+        "const char *SDL_GetBasePath(void);\n"
+        "typedef struct SDL_PathInfo { int type; unsigned long long size; long long create_time, modify_time,"
+        " access_time; } SDL_PathInfo;\n"
+        "_Bool SDL_GetPathInfo(const char *path, SDL_PathInfo *info);\n")
     (stubs / "platform.h").write_text("void platform_log(const char *format, ...);\n")
     for name in ("port_config.c", "port_config.h", "install_layout.h"):
         shutil.copy(root / "port/linux/src" / name, stubs / name)
@@ -376,6 +383,54 @@ def test_config_keeps_an_older_file(config_check):
     assert config_check("get", "vr.hands") == "game"
 
 
+MOUSE_FROM_OLD = 0.0022 * 180 / math.pi / 0.022  # the older scale's radians a count over CS2's degrees
+
+
+def test_config_mouse_sensitivity_in_cs2_units(config_check_mac):
+    """input.mouse_sensitivity set on the older scale (0.0022 radians a
+    count) becomes CS2's (0.022 degrees a count) for the same turn, and the
+    vertical one, on that scale too (0 the same), a multiplier of it; once:
+    the file then has the setting's new comment, and a value written in CS2's
+    units stays. A file that never set them keeps the defaults, 5.73 being
+    the old default's turn"""
+    run = config_check_mac
+    assert run("get", "input.mouse_sensitivity") == "5.73"
+    assert run("get", "input.mouse_vertical_sensitivity") == "1"
+    assert run("get", "input.zoom_sensitivity") == "cs2"
+    assert abs(5.73 / MOUSE_FROM_OLD - 1) < 1e-3
+    new = run.config.read_text()
+    assert "Counter-Strike 2's" in new
+    run("write", "input.mouse_sensitivity", "1.7")
+    assert run("get", "input.mouse_sensitivity") == "1.7"
+
+    # an older version's, with the note (commented defaults) and its comment
+    old = ("# Halo settings\n#\n# A setting commented out (\"# key = value\") is at its default, which a\n#\n\n"
+           "[input]\n\n# How far the view turns for the mouse's movement.\n"
+           "# (for one run: HALO_MOUSE_SENSITIVITY=<value>)\nmouse_sensitivity = 0.5\n\n"
+           "# Moving the mouse forward looks down.\n# (for one run: HALO_MOUSE_INVERT=1 makes it true)\n"
+           "invert_mouse = true\n\n"
+           "# How far the view turns up and down for the mouse's movement; 0 for the\n"
+           "# same as input.mouse_sensitivity.\n# (for one run: HALO_MOUSE_VERTICAL_SENSITIVITY=<value>)\n"
+           "mouse_vertical_sensitivity = 0.25\n")
+    run.config.write_text(old)
+    assert float(run("get", "input.mouse_sensitivity")) == pytest.approx(0.5 * MOUSE_FROM_OLD, abs=1e-4)
+    assert float(run("get", "input.mouse_vertical_sensitivity")) == pytest.approx(0.5)
+    assert run("get", "input.invert_mouse") == "true"
+    text = run.config.read_text()
+    assert "Counter-Strike 2's" in text and "0 for the" not in text
+    assert len(re.findall(r"^(# )?mouse_sensitivity = ", text, re.M)) == 1
+    assert "\ninvert_mouse = true\n" in text
+    run("get", "input.mouse_sensitivity")
+    assert run.config.read_text() == text
+
+    # (not set: the defaults; "0", the same, is the multiplier 1)
+    run.config.write_text(old.replace("mouse_sensitivity = 0.5", "# mouse_sensitivity = 1.0")
+                          .replace("mouse_vertical_sensitivity = 0.25", "mouse_vertical_sensitivity = 0.0"))
+    assert run("get", "input.mouse_sensitivity") == "5.73"
+    assert run("get", "input.mouse_vertical_sensitivity") == "1"
+    assert "\n# mouse_sensitivity = 5.73\n" in run.config.read_text()
+
+
 # the settings display.graphics chooses, and their values in Classic and in
 # Enhanced (the same on every build)
 GRAPHICS_SETTINGS = ["anti_aliasing", "anisotropic_filtering", "shadow_resolution", "per_pixel_lighting",
@@ -433,11 +488,54 @@ def test_graphics_preset_keeps_a_setting_set(config_check_mac, monkeypatch):
     assert graphics_values(run) == ["off", "0", "128", "false", "highest", "classic"]
 
 
+def test_battery_saver_reads_the_classic_values(config_check_mac):
+    """with battery saver on (display.battery_saver), the game reads the
+    settings display.graphics chooses at their Classic values, but those the
+    player has set; Settings still shows (and writes from) the player's own"""
+    run = config_check_mac
+    assert run("get", "display.battery_saver") == "off"
+    assert [run("saving", f"display.{name}") for name in GRAPHICS_SETTINGS] == \
+        [f"{classic} {enhanced}" for classic, enhanced in zip(GRAPHICS_CLASSIC, GRAPHICS_ENHANCED)]
+    run("write", "display.anti_aliasing", "msaa4x")
+    assert run("saving", "display.anti_aliasing") == "msaa4x msaa4x"
+    assert run("saving", "display.anisotropic_filtering") == "0 16"
+    # (the other settings are as they are)
+    assert run("saving", "display.vsync") == "false false"
+    assert run("saving", "display.fov") == "0 0"
+
+
+def test_vsync_default_by_build(tmp_path, monkeypatch, config_check_mac):
+    """display.vsync: off on the Linux builds (the Steam Deck's Game Mode
+    too), Windows and the Mac, and as set where the player has set it"""
+    for name in ("GAMESCOPE_WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "SteamDeck", "SteamGamepadUI", "HALO_NO_VSYNC"):
+        monkeypatch.delenv(name, raising=False)
+    assert config_check_mac("get", "display.vsync") == "false"
+    run = config_check_build(tmp_path / "linux", ["-DHALO_VULKAN=1", "-DHALO_GUEST=1"])
+    assert run("get", "display.vsync") == "false"
+    assert "\n# vsync = false\n" in run.config.read_text()
+    monkeypatch.setenv("SteamDeck", "1")
+    monkeypatch.setenv("SteamGamepadUI", "1")
+    assert run("get", "display.vsync") == "false"
+    run("write", "display.vsync", "true")
+    assert run("get", "display.vsync") == "true"
+
+
 def test_graphics_preset_on_a_headset(config_check):
     """Enhanced and Classic in the VR build: as on the desktop and the Mac"""
     assert graphics_values(config_check) == GRAPHICS_ENHANCED
     config_check("write", "display.graphics", "classic")
     assert graphics_values(config_check) == GRAPHICS_CLASSIC
+
+
+def test_default_brokers_are_brokers_txt():
+    """The brokers a game uses with no brokers.txt beside its config.toml
+    (p2p_signal.c's DEFAULT_BROKERS) are port/assets/network/brokers.txt's."""
+    root = MENUS.parent.parent.parent
+    listed = [line.split("#", 1)[0].strip()
+              for line in (root / "port/assets/network/brokers.txt").read_text().splitlines()]
+    default = re.search(r'^#define DEFAULT_BROKERS "([^"]*)"',
+                        (root / "port/linux/src/p2p_signal.c").read_text(), re.M).group(1)
+    assert default.split(",") == [line for line in listed if line]
 
 
 def test_p2p_signatures_and_listings(tmp_path):

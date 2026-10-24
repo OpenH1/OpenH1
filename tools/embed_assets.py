@@ -34,6 +34,8 @@ from typing import Any, List
 ROOT = Path(__file__).resolve().parent.parent
 HUD_ASSETS = Path("port/assets/hud")
 LAYOUT = HUD_ASSETS / "layout.json"
+# the HUD textures whose bitmaps Halo Custom Edition lays out alike
+CUSTOM_EDITION_HUD = HUD_ASSETS / "custom_edition.json"
 TITLE_ASSETS = Path("port/assets/titles")
 TITLE_LIST = TITLE_ASSETS / "titles.json"
 BUTTON_ASSETS = Path("port/assets/buttons")
@@ -47,7 +49,7 @@ SMAA_ASSETS = Path("port/third_party/smaa")
 SMAA_FILES = (("SMAA.hlsl", "xgpu_smaa_shader"), ("area_tex.zlib", "xgpu_smaa_area_texture"),
               ("search_tex.zlib", "xgpu_smaa_search_texture"))
 # the desktop windows' icon (tools/app_icon.py; port/linux/src/sdl_platform.c)
-WINDOW_ICON = Path("port/assets/icon/opence-icon-256.png")
+WINDOW_ICON = Path("port/assets/icon/openh1-icon-256.png")
 LOADING_PICTURE = Path("port/assets/loading/loading.rgba.zlib")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -86,7 +88,7 @@ def smaa_files() -> List[tuple]:
 
 def hud_asset_inputs() -> List[Path]:
     """The files the generated source is made from."""
-    inputs = [listing for listing in (LAYOUT, TITLE_LIST, BUTTON_LIST, FONT_LIST, MENU_LIST)
+    inputs = [listing for listing in (LAYOUT, CUSTOM_EDITION_HUD, TITLE_LIST, BUTTON_LIST, FONT_LIST, MENU_LIST)
               if (ROOT / listing).is_file()]
     return [*inputs, *(folder / f"{asset['name']}.png" for folder, asset, _ in textures()),
             *(FONT_ASSETS / name for name in font_files()), *(MENU_ASSETS / name for name in menu_files()),
@@ -177,6 +179,10 @@ def main() -> None:
         "",
     ]
     table = []
+    custom_edition = set()
+    if (ROOT / CUSTOM_EDITION_HUD).is_file():
+        custom_edition = {(entry["tag"], entry["bitmap"])
+                          for entry in json.loads((ROOT / CUSTOM_EDITION_HUD).read_text())["assets"]}
     for index, (folder, asset, title) in enumerate(textures()):
         name = f"{asset['name']}.png"
         data = (ROOT / folder / name).read_bytes()
@@ -197,7 +203,8 @@ def main() -> None:
             sys.exit(f"{name}: sprite sequences must be 0 to 31 (hud_hires.h: sprites)")
         sprites = sum(1 << sequence for sequence in sequences)
         table.append(f'\t{{ "{tag}", {asset["bitmap"]}, {width}, {height}, 0x{asset["crc"]:08x}u, {coverage}, '
-                     f'{point_threshold}, {int(title)}, 0x{sprites:x}u, asset{index}, {len(data)} }},')
+                     f'{point_threshold}, {int(title)}, 0x{sprites:x}u, '
+                     f'{int((asset["tag"], asset["bitmap"]) in custom_edition)}, asset{index}, {len(data)} }},')
     lines.append("const struct hud_hires_embedded hud_hires_embedded[] =")
     lines.append("{")
     lines.extend(table)

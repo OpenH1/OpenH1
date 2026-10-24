@@ -180,6 +180,68 @@ static void rasterizer_shadow_convolve_pass(
 	short source_target,
 	short destination_target,
 	real offset);
+/* port: the shadow atlas (rasterizer_shadow_atlas_begin) */
+static void shadow_atlas_caster_target(
+	short region);
+
+/* ---------- port: the shadow atlas
+
+Each object's shadow was drawn into the 128x128 map, blurred by the chain
+of passes (rasterizer_shadow_convolve) into the other, and drawn onto the
+level, before the next object's: seven passes an object with the port's
+512x512 maps, each with a GPU's fixed cost of a pass. With the atlas, the
+frame's casters are drawn first, each into a region of 128 of an atlas
+(SHADOW_ATLAS_REGIONS of them, SHADOW_ATLAS_SPACING apart), and the chain's
+passes but the last are run once over all of them, back and forth between
+two atlases: one quad a region, so that the atlases' guard bands, cleared
+black as the frame's first caster is drawn, stay black, and each region's
+taps beyond its edge read black as the map's border does. The chain's last
+pass goes from each region into a 128 map of the region's own, and each
+object's receivers are drawn sampling its map as they sampled the
+secondary map: the level's surfaces are whole, their texture coordinates
+far beyond the map's, which only a map's own border keeps black (in the
+atlas they would read the other regions). A frame's N casters cost
+1 + (passes - 1) + N passes, all before the receivers, instead of
+(1 + passes) * N between them; the shadows are the same. More casters than
+regions, the larger maps of 1024 (whose atlases would be 64 MB each) and
+the debugging options take the per-object path. */
+
+enum
+{
+	/* the atlases' size, in the game's units (each display.shadow_resolution's
+	scale of pixels: 2048x2048 at 512) */
+	SHADOW_ATLAS_SIZE = 512,
+	SHADOW_ATLAS_COLUMNS = 3,
+	SHADOW_ATLAS_REGIONS = RASTERIZER_SHADOW_ATLAS_REGIONS,
+	SHADOW_ATLAS_SPACING = SHADOW_ATLAS_SIZE / SHADOW_ATLAS_COLUMNS,
+	/* the guard band before the first region; between two, 42 units, at
+	least 2 * scale - 1 pixels at any scale */
+	SHADOW_ATLAS_MAP_SIZE = 128,
+	SHADOW_ATLAS_MARGIN = (SHADOW_ATLAS_SPACING - SHADOW_ATLAS_MAP_SIZE) / 2,
+	SHADOW_ATLAS_MOST_SCALE = 4,
+};
+
+/* the atlases: the casters' (0), and the chain's other */
+static D3DTexture *shadow_atlas_textures[2];
+static D3DSurface *shadow_atlas_surfaces[2];
+/* each region's blurred map, which its receivers sample */
+static D3DTexture *shadow_atlas_map_textures[SHADOW_ATLAS_REGIONS];
+static D3DSurface *shadow_atlas_map_surfaces[SHADOW_ATLAS_REGIONS];
+static boolean shadow_atlas_failed = FALSE;
+/* the casters go to the atlas, and how many it has */
+static boolean shadow_atlas_active = FALSE;
+static short shadow_atlas_count = 0;
+/* the region of the shadow begun last (NONE: its map's), and of the shadow
+whose receivers are drawn (NONE: not the atlas's) */
+static short shadow_atlas_region = NONE;
+static short shadow_atlas_receiving = NONE;
+static struct
+{
+	real_matrix4x3 matrix;
+	real_rgb_color color;
+	real radius;
+	boolean used;
+} shadow_atlas_shadows[SHADOW_ATLAS_REGIONS];
 
 /* ---------- globals */
 
@@ -302,12 +364,24 @@ boolean _rasterizer_environment_shadow_begin(
 			vsh_constants__screenproj,
 			5);
 
-		rasterizer_set_target(
-			2,
-			0,
-			rasterizer_debug_options.shadow_debug_enabled ? 0x88888888 : 0,
-			TRUE,
-			FALSE);
+		/* port: into a region of the shadow atlas while it has one free
+		(rasterizer_shadow_atlas_begin), else into the map as before */
+		shadow_atlas_region = shadow_atlas_active && shadow_atlas_count < SHADOW_ATLAS_REGIONS ?
+			shadow_atlas_count++ :
+			NONE;
+		if (shadow_atlas_region != NONE)
+		{
+			shadow_atlas_caster_target(shadow_atlas_region);
+		}
+		else
+		{
+			rasterizer_set_target(
+				2,
+				0,
+				rasterizer_debug_options.shadow_debug_enabled ? 0x88888888 : 0,
+				TRUE,
+				FALSE);
+		}
 		rasterizer_set_stencil_mode(0);
 
 		local_shadow_matrix = *shadow_matrix;
@@ -316,6 +390,14 @@ boolean _rasterizer_environment_shadow_begin(
 		if (shadow_volume_bounding_radius)
 		{
 			*shadow_volume_bounding_radius = object_bounding_radius;
+		}
+		/* port: what its receivers are drawn with, after every caster's
+		(rasterizer_shadow_atlas_receive) */
+		if (shadow_atlas_region != NONE)
+		{
+			shadow_atlas_shadows[shadow_atlas_region].matrix = *shadow_matrix;
+			shadow_atlas_shadows[shadow_atlas_region].color = *shadow_color;
+			shadow_atlas_shadows[shadow_atlas_region].radius = object_bounding_radius;
 		}
 
 		local_parameters = 0;
@@ -580,15 +662,27 @@ void _rasterizer_environment_shadow_draw(
 	{
 		if (!shadow_setup)
 		{
-			if (rasterizer_debug_options.shadow_convolution_enabled)
+			/* port: a shadow of the atlas is blurred already, into its own
+			map (rasterizer_shadow_atlas_convolve) */
+			if (shadow_atlas_receiving != NONE)
 			{
-				rasterizer_shadow_convolve();
+				IDirect3DDevice8_SetTexture(
+					global_d3d_device,
+					0,
+					(IDirect3DBaseTexture8 *)shadow_atlas_map_textures[shadow_atlas_receiving]);
 			}
+			else
+			{
+				if (rasterizer_debug_options.shadow_convolution_enabled)
+				{
+					rasterizer_shadow_convolve();
+				}
 
-			rasterizer_set_target_as_texture(
-				0,
-				(rasterizer_debug_options.shadow_convolution_enabled != FALSE) + 2,
-				FALSE);
+				rasterizer_set_target_as_texture(
+					0,
+					(rasterizer_debug_options.shadow_convolution_enabled != FALSE) + 2,
+					FALSE);
+			}
 			IDirect3DDevice8_SetTextureStageState(
 				global_d3d_device,
 				0,
@@ -1084,6 +1178,353 @@ static void rasterizer_shadow_convolve_pass(
 	IDirect3DDevice8_SetVertexData2s(global_d3d_device, 4, 0, 1);
 	IDirect3DDevice8_SetVertexData2f(global_d3d_device, 0, -1.0078125f, -0.9921875f);
 	IDirect3DDevice8_End(global_d3d_device);
+
+	return;
+}
+
+/* ---------- port: the shadow atlas (above, "the shadow atlas") */
+
+static long shadow_atlas_x(
+	short region)
+{
+	return SHADOW_ATLAS_MARGIN + (region % SHADOW_ATLAS_COLUMNS) * SHADOW_ATLAS_SPACING;
+}
+
+static long shadow_atlas_y(
+	short region)
+{
+	return SHADOW_ATLAS_MARGIN + (region / SHADOW_ATLAS_COLUMNS) * SHADOW_ATLAS_SPACING;
+}
+
+/* a render target of the maps' format, a size each way */
+static boolean shadow_atlas_target_make(
+	long size,
+	D3DTexture **texture,
+	D3DSurface **surface)
+{
+	return IDirect3DDevice8_CreateTexture(
+			global_d3d_device,
+			size,
+			size,
+			1,
+			D3DUSAGE_RENDERTARGET,
+			D3DFMT_R5G6B5,
+			D3DPOOL_DEFAULT,
+			texture) >= 0 &&
+		*texture &&
+		IDirect3DTexture8_GetSurfaceLevel(*texture, 0, surface) >= 0 &&
+		*surface;
+}
+
+/* the atlases and the regions' maps, made the first time */
+static boolean shadow_atlas_make(
+	void)
+{
+	static boolean made = FALSE;
+	short index;
+
+	if (made)
+	{
+		return TRUE;
+	}
+	if (shadow_atlas_failed)
+	{
+		return FALSE;
+	}
+	for (index = 0; index < 2 + SHADOW_ATLAS_REGIONS; index++)
+	{
+		if (!(index < 2 ?
+			shadow_atlas_target_make(SHADOW_ATLAS_SIZE, &shadow_atlas_textures[index], &shadow_atlas_surfaces[index]) :
+			shadow_atlas_target_make(
+				SHADOW_ATLAS_MAP_SIZE,
+				&shadow_atlas_map_textures[index - 2],
+				&shadow_atlas_map_surfaces[index - 2])))
+		{
+			error(_error_silent, "### ERROR the shadow atlas cannot be made: shadows are drawn one at a time");
+			shadow_atlas_failed = TRUE;
+			return FALSE;
+		}
+	}
+	made = TRUE;
+
+	return TRUE;
+}
+
+/* an atlas drawn into, all of it emptied first if clear, the viewport a
+region's (NONE: all of it) */
+static void shadow_atlas_set_target(
+	short atlas,
+	short region,
+	boolean clear)
+{
+	D3DVIEWPORT8 viewport;
+
+	IDirect3DDevice8_SetRenderTarget(global_d3d_device, shadow_atlas_surfaces[atlas], NULL);
+	viewport.X = 0;
+	viewport.Y = 0;
+	viewport.Width = SHADOW_ATLAS_SIZE;
+	viewport.Height = SHADOW_ATLAS_SIZE;
+	viewport.MinZ = 0.0f;
+	viewport.MaxZ = 1.0f;
+	if (clear)
+	{
+		IDirect3DDevice8_SetViewport(global_d3d_device, &viewport);
+		IDirect3DDevice8_Clear(global_d3d_device, 0, NULL, D3DCLEAR_TARGET, 0, 1.0f, 0);
+	}
+	if (region != NONE)
+	{
+		viewport.X = shadow_atlas_x(region);
+		viewport.Y = shadow_atlas_y(region);
+		viewport.Width = SHADOW_ATLAS_MAP_SIZE;
+		viewport.Height = SHADOW_ATLAS_MAP_SIZE;
+	}
+	IDirect3DDevice8_SetViewport(global_d3d_device, &viewport);
+
+	return;
+}
+
+/* a caster drawn into its region of the casters' atlas, which the frame's
+first empties */
+static void shadow_atlas_caster_target(
+	short region)
+{
+	shadow_atlas_set_target(0, region, region == 0);
+
+	return;
+}
+
+/* the chain's passes for the scale: the Xbox's, and each widening
+distance's two (rasterizer_shadow_convolve) */
+static short shadow_atlas_pass_count(
+	long scale)
+{
+	short count = 1;
+	long distance;
+
+	for (distance = 1; distance < scale; distance *= 2)
+	{
+		count += 2;
+	}
+
+	return count;
+}
+
+/* the offset of a pass's taps, in a map's texture coordinates: half a
+texel for the Xbox's, its distance in texels for a widening pass's */
+static real shadow_atlas_pass_offset(
+	short pass,
+	long scale)
+{
+	return pass == 0 ?
+		0.00390625f / (real)scale :
+		(real)(1L << ((pass - 1) / 2)) / (real)(128 * scale);
+}
+
+/* the chain's state, as rasterizer_shadow_convolve sets it, sampling an
+atlas */
+static void shadow_atlas_states(
+	short atlas)
+{
+	short stage;
+
+	for (stage = 0; stage < 4; stage++)
+	{
+		IDirect3DDevice8_SetTexture(
+			global_d3d_device,
+			stage,
+			(IDirect3DBaseTexture8 *)shadow_atlas_textures[atlas]);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_ADDRESSU, D3DTADDRESS_BORDER);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_ADDRESSV, D3DTADDRESS_BORDER);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_MAGFILTER, D3DTEXF_LINEAR);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_MINFILTER, D3DTEXF_LINEAR);
+		IDirect3DDevice8_SetTextureStageState(global_d3d_device, stage, D3DTSS_MIPFILTER, D3DTEXF_POINT);
+	}
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_CULLMODE, D3DCULL_CCW);
+	IDirect3DDevice8_SetRenderState(
+		global_d3d_device,
+		D3DRS_COLORWRITEENABLE,
+		D3DCOLORWRITEENABLE_RED | D3DCOLORWRITEENABLE_GREEN | D3DCOLORWRITEENABLE_BLUE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ALPHABLENDENABLE, FALSE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ALPHATESTENABLE, FALSE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ZENABLE, FALSE);
+	IDirect3DDevice8_SetRenderState(global_d3d_device, D3DRS_ZBIAS, 0);
+	rasterizer_set_vertex_shader_permutation(_shadow_convolution_vertex_shader_index, 8, 0);
+
+	csmemset(&pixel_shader, 0, sizeof(pixel_shader));
+	pixel_shader.texture_modes = 0x00008421;
+	pixel_shader.combiner_count = 1;
+	pixel_shader.alpha_inputs[0] = 0x08A009A0;
+	pixel_shader.alpha_outputs[0] = 0x00030C00;
+	pixel_shader.rgb_inputs[0] = 0x0AA00BA0;
+	pixel_shader.rgb_outputs[0] = 0x00030C00;
+	pixel_shader.final_combiner_inputs_abcd = 0x0C20001C;
+	rasterizer_set_pixel_shader(&pixel_shader);
+
+	return;
+}
+
+/* a pass's quad over the viewport, its taps the pass's corners
+(rasterizer_shadow_convolve_pass) about the texels of a region of the
+atlas sampled */
+static void shadow_atlas_quad(
+	short region,
+	real offset)
+{
+	/* the Xbox pass's corners, in its order */
+	static real const signs[8] = { -1.0f, -1.0f, 1.0f, 1.0f, -1.0f, 1.0f, 1.0f, -1.0f };
+	real const scale = (real)SHADOW_ATLAS_MAP_SIZE / (real)SHADOW_ATLAS_SIZE;
+	real vertex_constants[8][4];
+	short stage;
+
+	csmemset(vertex_constants, 0, sizeof(vertex_constants));
+	for (stage = 0; stage < 4; stage++)
+	{
+		/* (the map's coordinates, 0 to 1, made the region's) */
+		vertex_constants[stage * 2][0] = scale;
+		vertex_constants[stage * 2][3] =
+			(real)shadow_atlas_x(region) / (real)SHADOW_ATLAS_SIZE + signs[stage * 2] * offset * scale;
+		vertex_constants[stage * 2 + 1][1] = scale;
+		vertex_constants[stage * 2 + 1][3] =
+			(real)shadow_atlas_y(region) / (real)SHADOW_ATLAS_SIZE + signs[stage * 2 + 1] * offset * scale;
+	}
+	IDirect3DDevice8_SetVertexShaderConstant(
+		global_d3d_device,
+		-81,
+		vertex_constants,
+		8);
+
+	IDirect3DDevice8_Begin(global_d3d_device, D3DPT_TRIANGLEFAN);
+	IDirect3DDevice8_SetVertexData2s(global_d3d_device, 4, 0, 0);
+	IDirect3DDevice8_SetVertexData2f(global_d3d_device, 0, -1.0078125f, 1.0078125f);
+	IDirect3DDevice8_SetVertexData2s(global_d3d_device, 4, 1, 0);
+	IDirect3DDevice8_SetVertexData2f(global_d3d_device, 0, 0.9921875f, 1.0078125f);
+	IDirect3DDevice8_SetVertexData2s(global_d3d_device, 4, 1, 1);
+	IDirect3DDevice8_SetVertexData2f(global_d3d_device, 0, 0.9921875f, -0.9921875f);
+	IDirect3DDevice8_SetVertexData2s(global_d3d_device, 4, 0, 1);
+	IDirect3DDevice8_SetVertexData2f(global_d3d_device, 0, -1.0078125f, -0.9921875f);
+	IDirect3DDevice8_End(global_d3d_device);
+
+	return;
+}
+
+boolean rasterizer_shadow_atlas_begin(
+	void)
+{
+	shadow_atlas_active = FALSE;
+	shadow_atlas_count = 0;
+	shadow_atlas_region = NONE;
+	shadow_atlas_receiving = NONE;
+	if (global_window_parameters.rasterizer_target == _rasterizer_target_render_primary &&
+		rasterizer_debug_options.draw_environment_shadows &&
+		rasterizer_debug_options.shadow_convolution_enabled &&
+		!rasterizer_debug_options.shadow_debug_enabled &&
+		halo_shadow_map_scale() <= SHADOW_ATLAS_MOST_SCALE &&
+		shadow_atlas_make())
+	{
+		shadow_atlas_active = TRUE;
+	}
+
+	return shadow_atlas_active;
+}
+
+short rasterizer_shadow_atlas_caster_end(
+	void)
+{
+	short region = shadow_atlas_region;
+
+	if (region != NONE)
+	{
+		shadow_atlas_shadows[region].used = shadow_used;
+		shadow_atlas_region = NONE;
+	}
+
+	return region;
+}
+
+void rasterizer_shadow_atlas_convolve(
+	void)
+{
+	long scale = halo_shadow_map_scale();
+	short pass_count = shadow_atlas_pass_count(scale);
+	short pass, region;
+	D3DVIEWPORT8 viewport;
+
+	if (!shadow_atlas_active)
+	{
+		return;
+	}
+	shadow_atlas_active = FALSE;
+	if (!shadow_atlas_count)
+	{
+		return;
+	}
+	/* every pass but the last, back and forth from the casters' atlas,
+	ending in it; each atlas's guard bands black, as the first pass into
+	the other empties it */
+	for (pass = 0; pass < pass_count - 1; pass++)
+	{
+		shadow_atlas_states(pass & 1);
+		for (region = 0; region < shadow_atlas_count; region++)
+		{
+			shadow_atlas_set_target(!(pass & 1), region, pass == 0 && region == 0);
+			shadow_atlas_quad(region, shadow_atlas_pass_offset(pass, scale));
+		}
+	}
+	/* the last, from each region into its own map, the whole of it (a
+	map's taps beyond its edge read the guard band's black, as they read
+	the map's border), so that every map is made before any receiver is
+	drawn */
+	shadow_atlas_states(0);
+	for (region = 0; region < shadow_atlas_count; region++)
+	{
+		IDirect3DDevice8_SetRenderTarget(global_d3d_device, shadow_atlas_map_surfaces[region], NULL);
+		viewport.X = 0;
+		viewport.Y = 0;
+		viewport.Width = SHADOW_ATLAS_MAP_SIZE;
+		viewport.Height = SHADOW_ATLAS_MAP_SIZE;
+		viewport.MinZ = 0.0f;
+		viewport.MaxZ = 1.0f;
+		IDirect3DDevice8_SetViewport(global_d3d_device, &viewport);
+		shadow_atlas_quad(region, shadow_atlas_pass_offset(pass_count - 1, scale));
+	}
+	rasterizer_set_target(
+		global_window_parameters.rasterizer_target,
+		0,
+		0,
+		FALSE,
+		TRUE);
+	shadow_restored = TRUE;
+
+	return;
+}
+
+void rasterizer_shadow_atlas_receive(
+	short region)
+{
+	match_assert(
+		"c:\\halo\\SOURCE\\rasterizer\\xbox\\rasterizer_xbox_shadows.c",
+		0,
+		region >= 0 && region < shadow_atlas_count);
+
+	local_shadow_matrix = shadow_atlas_shadows[region].matrix;
+	local_shadow_color = shadow_atlas_shadows[region].color;
+	local_object_bounding_radius = shadow_atlas_shadows[region].radius;
+	local_parameters = NULL;
+	shadow_setup = FALSE;
+	shadow_used = shadow_atlas_shadows[region].used;
+	shadow_restored = FALSE;
+	shadow_atlas_receiving = region;
+
+	return;
+}
+
+void rasterizer_shadow_atlas_end(
+	void)
+{
+	shadow_atlas_active = FALSE;
+	shadow_atlas_count = 0;
+	shadow_atlas_region = NONE;
+	shadow_atlas_receiving = NONE;
 
 	return;
 }

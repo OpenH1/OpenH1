@@ -17,7 +17,9 @@ Windows executable (port/windows/host; port/windows/README.md):
   on another computer than Windows when configure.py is given
   --windows-guest (it downloads the pinned LLVM, musl, SDL3's source and the
   Vulkan headers), or once those are there;
-- build/windows/halo.exe, ``ninja windows``, on Windows only: the host,
+- build/windows/halo.exe, ``ninja windows``, on Windows, or on Linux with
+  configure.py --windows-cross (tools/windows_cross_build.py, against the
+  MSVC toolchain of --windows-vctools-dir and --windows-sdk-dir): the host,
   compiled by clang for x86_64-pc-windows-msvc and linked by lld with the
   Windows SDK, the guest image inside it; its import table's entries are
   thunks from the guest's calling convention (System V's) to the host's
@@ -28,6 +30,7 @@ Windows executable (port/windows/host; port/windows/README.md):
 - build/windows/brokers.txt, internet play's brokers.
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -46,6 +49,7 @@ from .guest_arch import X32
 from .guest_toolchain import LLVM_VERSION, GuestToolchain, guest_toolchain
 from .ninja_syntax import Writer
 from .vulkan_build import VULKAN_DIR, fetch_vulkan_headers, host_vulkan_renderer
+from .windows_cross_build import cross_toolchain_prefix
 
 BUILD = Path("build/windows")
 THIRD_PARTY = BUILD / "third_party"
@@ -56,6 +60,8 @@ SDL_URL = (
     f"https://github.com/libsdl-org/SDL/releases/download/release-{SDL_VERSION}/"
     f"SDL3-devel-{SDL_VERSION}-VC.zip"
 )
+# (its SHA-256 when it was pinned: the DLL ships in the builds)
+SDL_SHA256 = "1a784cb2a5c64d56fe7a62090fe9d242d9865f235e4ea9678f1a6ba4e693e7de"
 SDL_DIR = THIRD_PARTY / f"SDL3-{SDL_VERSION}"
 VULKAN_HEADERS_DIR = THIRD_PARTY / "vulkan-headers"
 PORT_DIR = Path("port/windows/host")
@@ -115,14 +121,20 @@ HOST_FLAGS = [
 
 
 def windows_configure_inputs() -> List[Path]:
-    return [Path(__file__), PORT_DIR, WINDOWS_DIR / "src"]
+    return [Path(__file__), Path(__file__).with_name("windows_cross_build.py"), PORT_DIR, WINDOWS_DIR / "src"]
 
 
 def windows_requested(sln: Any) -> bool:
-    """whether to generate the build: on Windows always; elsewhere (the guest
-    alone) with configure.py --windows-guest, or once its sources are there"""
-    return (sys.platform == "win32" or bool(getattr(sln, "windows_guest", False))
+    """whether to generate the build: on Windows, or with configure.py
+    --windows-cross, always; elsewhere (the guest alone) with configure.py
+    --windows-guest, or once its sources are there"""
+    return (sys.platform == "win32" or windows_cross(sln) or bool(getattr(sln, "windows_guest", False))
             or (THIRD_PARTY / "SDL3").is_dir())
+
+
+def windows_cross(sln: Any) -> bool:
+    """whether the host is cross-compiled from Linux (configure.py --windows-cross)"""
+    return sys.platform != "win32" and bool(getattr(sln, "windows_cross", False))
 
 
 def fetch_sdl() -> None:
@@ -135,6 +147,10 @@ def fetch_sdl() -> None:
     print(f"Downloading {SDL_URL}")
     with urllib.request.urlopen(SDL_URL) as response, open(archive, "wb") as f:
         shutil.copyfileobj(response, f)
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    if digest != SDL_SHA256:
+        archive.unlink()
+        raise SystemExit(f"{SDL_URL}: SHA-256 {digest}, not the pinned {SDL_SHA256}")
     with zipfile.ZipFile(archive) as z:
         z.extractall(THIRD_PARTY)
     archive.unlink()
@@ -196,7 +212,7 @@ def generate_windows_build(n: Writer, sln: Any) -> None:
         excluded_platform_sources=RENDER_STREAM_GUEST_EXCLUDED, host_abi="sysv")
     n.build(outputs="windows_guest", rule="phony", inputs=[guest["image"], guest["checked"]])
     n.newline()
-    if sys.platform != "win32":
+    if sys.platform != "win32" and not windows_cross(sln):
         return
     try:
         fetch_sdl()
@@ -207,21 +223,35 @@ def generate_windows_build(n: Writer, sln: Any) -> None:
 
 
 def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
-    """the host executable, SDL3.dll and brokers.txt (on Windows)"""
+    """the host executable, SDL3.dll and brokers.txt (on Windows, or cross-compiled)"""
     cc = getattr(sln, "windows_cc", None) or "clang"
+    # (a cross build's MSVC and Windows SDK, as vcvars64.bat sets them)
+    cross_prefix = cross_toolchain_prefix(sln) if windows_cross(sln) else ""
+    # ninja quotes the response file's paths for the shell that runs the
+    # rule: Windows quoting on Windows, POSIX quoting elsewhere
+    rsp_quoting = "windows" if sys.platform == "win32" else "posix"
     host_obj_dir = BUILD / "host" / "obj"
     release = getattr(sln, "port_release", False)
     n.variable("windows_cc", cc)
     n.rule(
         name="windows_host_cc",
-        command=f"{compile_launcher(sln)}$windows_cc -MMD -MF $out.d $cflags -c $in -o $out",
+        command=f"{cross_prefix}{compile_launcher(sln)}$windows_cc -MMD -MF $out.d $cflags -c $in -o $out",
+        description="WINDOWS HOST CC $out",
+        depfile="$out.d",
+        deps="gcc",
+    )
+    # (the guest image's object, assembled without the compile cache: ccache
+    # hashes guest_image_win.S, not the image its .incbin reads)
+    n.rule(
+        name="windows_host_cc_uncached",
+        command=f"{cross_prefix}$windows_cc -MMD -MF $out.d $cflags -c $in -o $out",
         description="WINDOWS HOST CC $out",
         depfile="$out.d",
         deps="gcc",
     )
     n.rule(
         name="windows_link",
-        command="$windows_cc $ldflags -o $out --rsp-quoting=windows @$out.rsp $libs",
+        command=f"{cross_prefix}$windows_cc $ldflags -o $out --rsp-quoting={rsp_quoting} @$out.rsp $libs",
         description="WINDOWS LINK $out",
         rspfile="$out.rsp",
         rspfile_content="$in_newline",
@@ -252,7 +282,10 @@ def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
     # (the files of port/windows/src talk to Windows alone; and posix_dtls.c's
     # Mbed TLS, and win32_upnp.c's miniupnpc)
     win32_cflags = " ".join([*base_cflags, f"-I{LINUX_DIR / 'src'}", f"-I{_quote(sdl_include)}"])
-    mbedtls_include = f"-I{MBEDTLS_DIR / 'include'}"
+    # (with Mbed TLS's own locks, on the POSIX threads of posix/pthread.h, as
+    # the Linux host builds it: tools/linux_guest_build.py)
+    mbedtls_include = (f"-I{MBEDTLS_DIR / 'include'} -I{PORT_DIR / 'posix'} -DMBEDTLS_THREADING_C "
+                       "-DMBEDTLS_THREADING_PTHREAD")
     miniupnpc_include = f"-I{MINIUPNPC_DIR / 'include'} -DMINIUPNP_STATICLIB"
 
     objects: List[Path] = []
@@ -295,14 +328,14 @@ def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
     add(guest["host_table_c"], host_cflags)
     # the guest image, inside the executable (host_main_win.c)
     image_obj = host_obj_dir / "guest_image_win.S.o"
-    n.build(outputs=image_obj, rule="windows_host_cc", inputs=PORT_DIR / "guest_image_win.S",
+    n.build(outputs=image_obj, rule="windows_host_cc_uncached", inputs=PORT_DIR / "guest_image_win.S",
             implicit=[guest["image"], guest["checked"]],
             variables={"cflags": f'--target=x86_64-pc-windows-msvc -DGUEST_IMAGE=\\"{guest["image"].as_posix()}\\"'})
     objects.append(image_obj)
     resources = BUILD / "halo.res"
     # (the icon, and the manifest: UTF-8 as the process's code page)
     n.build(outputs=resources, rule="windows_rc_tool", inputs=PORT_DIR / "halo.rc",
-            implicit=[WINDOWS_DIR / "opence-icon.ico", PORT_DIR / "halo.manifest"])
+            implicit=[WINDOWS_DIR / "openh1-icon.ico", PORT_DIR / "halo.manifest"])
     objects.append(resources)
 
     ldflags = [

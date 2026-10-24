@@ -210,7 +210,11 @@ symbols in this file:
 #include "units/vehicles.h"
 
 #include "real_math.h"
+#include "passenger_camera.h" /* port: port/linux/game/passenger_camera.c; after the limit2d alias above */
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
+#include "network_substeps.h" /* port: port/linux/game/network_substeps.c */
+#include "view_fov.h" /* port: port/linux/game/view_fov.c */
 
 /* ---------- constants */
 
@@ -374,6 +378,10 @@ long player_control_get_desired_weapon(
 	long unit_index);
 static boolean player_control_camera_control_is_active(
 	void);
+static void player_control_substep(
+	short substep_index,
+	short substep_count,
+	real seconds);
 
 /* ---------- globals */
 
@@ -419,6 +427,8 @@ void player_control_initialize(
 		"player control globals",
 		NULL,
 		sizeof(*player_control_globals));
+	/* port: the players' input read again in each of a tick's sub-steps */
+	sim_substep_register(_sim_substep_player_control, player_control_substep);
 	return;
 }
 
@@ -739,7 +749,15 @@ static void handle_one_player_input(
 				1);
 		}
 
-		if (TEST_FLAG(input.player_control_flags, _player_control_input_zoom_bit) &&
+		/* port: this local passenger view has no weapon zoom, including a
+		scope held before entering the seat or enabling the setting. */
+		if (passenger_camera_enabled(local_player_index))
+		{
+			player->zoom_level = NONE;
+			if (unit->unit.current_zoom_level != NONE || unit->unit.desired_zoom_level != NONE)
+				unit_unzoom(player->unit_index);
+		}
+		else if (TEST_FLAG(input.player_control_flags, _player_control_input_zoom_bit) &&
 			player_control_camera_control_is_active() &&
 			current_weapon_index != NONE &&
 			!cinematic_in_progress())
@@ -1187,6 +1205,175 @@ void player_control_new_unit(
 	return;
 }
 
+/* port: a local player's turn a tick at a full stick (radians), by the
+player's preferences or the seat the player's unit sits in
+(get_local_player_input_blob's, and a sub-step's: player_control_substep) */
+static void player_control_look_rates(
+	short local_player_index,
+	long unit_index,
+	real *look_yaw_rate,
+	real *look_pitch_rate)
+{
+	*look_yaw_rate = 0.f;
+	*look_pitch_rate = 0.f;
+	if (unit_index != NONE)
+	{
+		struct unit_datum *unit = unit_get(unit_index);
+
+		*look_yaw_rate = DEGREES_TO_RADIANS(
+			player_look_yaw_rate[local_player_index]) *
+			(1.f / TICKS_PER_SECOND);
+		*look_pitch_rate = DEGREES_TO_RADIANS(
+			player_look_pitch_rate[local_player_index]) *
+			(1.f / TICKS_PER_SECOND);
+		if (unit->object.parent_object_index != NONE &&
+			unit->unit.parent_seat_index != NONE)
+		{
+			struct unit_datum *parent_unit = unit_get(
+				unit->object.parent_object_index);
+			struct unit_definition *parent_definition = unit_definition_get(
+				parent_unit->definition_index);
+			struct unit_seat *seat = TAG_BLOCK_GET_ELEMENT(
+				&parent_definition->unit.seats,
+				unit->unit.parent_seat_index,
+				struct unit_seat);
+
+			if (seat->yaw_rate > 0.f)
+			{
+				*look_yaw_rate = DEGREES_TO_RADIANS(seat->yaw_rate) *
+					(1.f / TICKS_PER_SECOND);
+			}
+			if (seat->pitch_rate > 0.f)
+			{
+				*look_pitch_rate = DEGREES_TO_RADIANS(seat->pitch_rate) *
+					(1.f / TICKS_PER_SECOND);
+			}
+		}
+	}
+
+	return;
+}
+
+/* port: the look stick's yaw and pitch, a diagonal's scaled out to the
+square and each clamped to 1 (get_local_player_input_blob's, and a
+sub-step's) */
+static void player_control_clamp_look(
+	struct game_input_state const *input_state,
+	real *clamped_yaw,
+	real *clamped_pitch)
+{
+	real absolute_pitch = fabs(input_state->pitch);
+	real absolute_yaw = fabs(input_state->yaw);
+	real look_scale = 1.f;
+
+	if (absolute_pitch > 0.1f && absolute_yaw > 0.1f)
+	{
+		if (absolute_pitch > absolute_yaw)
+		{
+			absolute_yaw /= absolute_pitch;
+			absolute_pitch = 1.f;
+		}
+		else
+		{
+			absolute_pitch /= absolute_yaw;
+			absolute_yaw = 1.f;
+		}
+		look_scale = square_root(
+			absolute_pitch * absolute_pitch +
+			absolute_yaw * absolute_yaw);
+	}
+	*clamped_yaw = PIN(input_state->yaw * look_scale, -1.f, 1.f);
+	*clamped_pitch = PIN(input_state->pitch * look_scale, -1.f, 1.f);
+
+	return;
+}
+
+/* port: the look stick's turn a tick, before the zoom, the stun, the
+acceleration and the magnetism act on it (get_local_player_input_blob's,
+and a sub-step's) */
+static void player_control_stick_look(
+	struct game_globals_player_control const *constants,
+	struct game_input_state const *input_state,
+	real clamped_yaw,
+	real clamped_pitch,
+	real look_yaw_rate,
+	real look_pitch_rate,
+	real_euler_angles2d *look_delta)
+{
+	long doubled_spin;
+	real yaw_spin_scale;
+	real pitch_spin_scale;
+
+	if (input_state->buttons[_button_scope_zoom] &&
+		controls_enable_doubled_spin)
+	{
+		doubled_spin = !controls_swap_doubled_spin_state;
+	}
+	else
+	{
+		doubled_spin = controls_swap_doubled_spin_state;
+	}
+	pitch_spin_scale = (real)(doubled_spin + 1);
+	if (!input_state->buttons[_button_scope_zoom] ||
+		!controls_enable_doubled_spin)
+	{
+		doubled_spin = controls_swap_doubled_spin_state;
+	}
+	else
+	{
+		doubled_spin = !controls_swap_doubled_spin_state;
+	}
+	yaw_spin_scale = (real)(doubled_spin + 1);
+	match_assert(
+		"c:\\halo\\SOURCE\\game\\player_control.c",
+		0x1C8,
+		constants->look_function.count>1);
+	look_delta->yaw = evaluate_piecewise_linear_function(
+		constants->look_function.count,
+		constants->look_function.address,
+		clamped_yaw) * yaw_spin_scale * look_yaw_rate;
+	look_delta->pitch = evaluate_piecewise_linear_function(
+		constants->look_function.count,
+		constants->look_function.address,
+		clamped_pitch) * pitch_spin_scale * look_pitch_rate;
+
+	return;
+}
+
+/* port: a turn slowed by the zoom and by the unit's stun
+(get_local_player_input_blob's, and a sub-step's) */
+static void player_control_scale_look(
+	long unit_index,
+	short zoom_level,
+	real_euler_angles2d *look_delta)
+{
+	if (unit_index != NONE && zoom_level != NONE)
+	{
+		real inverse_zoom = 1.f / unit_get_zoom_magnification(
+			unit_index,
+			zoom_level);
+
+		look_delta->yaw *= inverse_zoom;
+		look_delta->pitch *= inverse_zoom;
+	}
+	if (unit_index != NONE)
+	{
+		struct game_globals_player_information *player_information =
+			TAG_BLOCK_GET_ELEMENT(
+				&scenario_get_game_globals()->player_information,
+				0,
+				struct game_globals_player_information);
+		struct unit_datum *unit = unit_get(unit_index);
+		real stun_scale = 1.f - unit->unit.body_stun *
+			player_information->stun_turning_penalty;
+
+		look_delta->yaw *= stun_scale;
+		look_delta->pitch *= stun_scale;
+	}
+
+	return;
+}
+
 static void get_local_player_input_blob(
 	short local_player_index,
 	real time_delta_sec,
@@ -1210,113 +1397,26 @@ static void get_local_player_input_blob(
 				struct game_globals_player_control);
 			struct gamepad_state const *gamepad = input_get_gamepad_state(gamepad_index);
 			struct game_input_state *input_state = input_abstraction_get_input_state(gamepad_index);
-			real look_yaw_rate = 0.f;
-			real look_pitch_rate = 0.f;
+			real look_yaw_rate;
+			real look_pitch_rate;
 
-			if (player->unit_index != NONE)
-			{
-				struct unit_datum *unit = unit_get(player->unit_index);
-
-				look_yaw_rate = DEGREES_TO_RADIANS(
-					player_look_yaw_rate[local_player_index]) *
-					(1.f / TICKS_PER_SECOND);
-				look_pitch_rate = DEGREES_TO_RADIANS(
-					player_look_pitch_rate[local_player_index]) *
-					(1.f / TICKS_PER_SECOND);
-				if (unit->object.parent_object_index != NONE &&
-					unit->unit.parent_seat_index != NONE)
-				{
-					struct unit_datum *parent_unit = unit_get(
-						unit->object.parent_object_index);
-					struct unit_definition *parent_definition = unit_definition_get(
-						parent_unit->definition_index);
-					struct unit_seat *seat = TAG_BLOCK_GET_ELEMENT(
-						&parent_definition->unit.seats,
-						unit->unit.parent_seat_index,
-						struct unit_seat);
-
-					if (seat->yaw_rate > 0.f)
-					{
-						look_yaw_rate = DEGREES_TO_RADIANS(seat->yaw_rate) *
-							(1.f / TICKS_PER_SECOND);
-					}
-					if (seat->pitch_rate > 0.f)
-					{
-						look_pitch_rate = DEGREES_TO_RADIANS(seat->pitch_rate) *
-							(1.f / TICKS_PER_SECOND);
-					}
-				}
-			}
-
+			player_control_look_rates(local_player_index, player->unit_index, &look_yaw_rate, &look_pitch_rate);
 			input->throttle.i = input_state->forward_movement;
 			input->throttle.j = input_state->strafe;
 			{
-				real absolute_pitch = fabs(input_state->pitch);
-				real absolute_yaw = fabs(input_state->yaw);
-				real look_scale = 1.f;
 				real clamped_yaw;
 				real clamped_pitch;
 
-				if (absolute_pitch > 0.1f && absolute_yaw > 0.1f)
-				{
-					if (absolute_pitch > absolute_yaw)
-					{
-						absolute_yaw /= absolute_pitch;
-						absolute_pitch = 1.f;
-					}
-					else
-					{
-						absolute_pitch /= absolute_yaw;
-						absolute_yaw = 1.f;
-					}
-					look_scale = square_root(
-						absolute_pitch * absolute_pitch +
-						absolute_yaw * absolute_yaw);
-				}
-				clamped_yaw = PIN(input_state->yaw * look_scale, -1.f, 1.f);
-				clamped_pitch = PIN(input_state->pitch * look_scale, -1.f, 1.f);
+				player_control_clamp_look(input_state, &clamped_yaw, &clamped_pitch);
 
 				if (player_control_camera_control_is_active())
 				{
-					long doubled_spin;
-					real yaw_spin_scale;
-					real pitch_spin_scale;
 					real_euler_angles2d look_delta;
 					/* port: the touch controls' swipe or gyroscope this frame */
 					boolean touching = FALSE;
 
-					if (input_state->buttons[_button_scope_zoom] &&
-						controls_enable_doubled_spin)
-					{
-						doubled_spin = !controls_swap_doubled_spin_state;
-					}
-					else
-					{
-						doubled_spin = controls_swap_doubled_spin_state;
-					}
-					pitch_spin_scale = (real)(doubled_spin + 1);
-					if (!input_state->buttons[_button_scope_zoom] ||
-						!controls_enable_doubled_spin)
-					{
-						doubled_spin = controls_swap_doubled_spin_state;
-					}
-					else
-					{
-						doubled_spin = !controls_swap_doubled_spin_state;
-					}
-					yaw_spin_scale = (real)(doubled_spin + 1);
-					match_assert(
-						"c:\\halo\\SOURCE\\game\\player_control.c",
-						0x1C8,
-						constants->look_function.count>1);
-					look_delta.yaw = evaluate_piecewise_linear_function(
-						constants->look_function.count,
-						constants->look_function.address,
-						clamped_yaw) * yaw_spin_scale * look_yaw_rate;
-					look_delta.pitch = evaluate_piecewise_linear_function(
-						constants->look_function.count,
-						constants->look_function.address,
-						clamped_pitch) * pitch_spin_scale * look_pitch_rate;
+					player_control_stick_look(constants, input_state, clamped_yaw, clamped_pitch, look_yaw_rate,
+						look_pitch_rate, &look_delta);
 					{
 						/* port: the touch controls' swipe (port/linux/src/xinput_sdl.c),
 						a turn this frame, made a rate as the stick's look is: the
@@ -1345,29 +1445,7 @@ static void get_local_player_input_blob(
 						}
 					}
 
-					if (player->unit_index != NONE && control->zoom_level != NONE)
-					{
-						real inverse_zoom = 1.f / unit_get_zoom_magnification(
-							player->unit_index,
-							control->zoom_level);
-
-						look_delta.yaw *= inverse_zoom;
-						look_delta.pitch *= inverse_zoom;
-					}
-					if (player->unit_index != NONE)
-					{
-						struct game_globals_player_information *player_information =
-							TAG_BLOCK_GET_ELEMENT(
-								&scenario_get_game_globals()->player_information,
-								0,
-								struct game_globals_player_information);
-						struct unit_datum *unit = unit_get(player->unit_index);
-						real stun_scale = 1.f - unit->unit.body_stun *
-							player_information->stun_turning_penalty;
-
-						look_delta.yaw *= stun_scale;
-						look_delta.pitch *= stun_scale;
-					}
+					player_control_scale_look(player->unit_index, control->zoom_level, &look_delta);
 
 					match_assert(
 						"c:\\halo\\SOURCE\\game\\player_control.c",
@@ -1459,14 +1537,18 @@ static void get_local_player_input_blob(
 
 						if (halo_linux_mouse_look(gamepad_index, &mouse_yaw, &mouse_pitch))
 						{
+							/* port: the zoom's scaling as input.zoom_sensitivity
+							chooses (view_fov.c): CS2's, or the game's one over
+							the magnification */
 							if (player->unit_index != NONE && control->zoom_level != NONE)
 							{
-								real inverse_zoom = 1.f / unit_get_zoom_magnification(
+								real zoom_scale = mouse_zoom_look_scale(
+									local_player_index,
 									player->unit_index,
 									control->zoom_level);
 
-								mouse_yaw *= inverse_zoom;
-								mouse_pitch *= inverse_zoom;
+								mouse_yaw *= zoom_scale;
+								mouse_pitch *= zoom_scale;
 							}
 							input->facing_delta.yaw += mouse_yaw;
 							input->facing_delta.pitch += mouse_pitch;
@@ -2282,6 +2364,385 @@ static void player_control_modify_desired_angles(
 		player->desired_angles.pitch,
 		player->pitch_minimum,
 		player->pitch_maximum);
+	/* port: the local camera and the passenger's weapon share the aiming bounds */
+	passenger_camera_clamp_facing(local_player_index, &player->desired_angles);
 
 	return;
+}
+
+/* ---------- the simulation's sub-steps (port) */
+
+/* At 60 and 120 Hz each tick runs 2 or 4 sub-steps after the objects'
+update (port/linux/game/sim_rate.h), in which what the players feel in their
+hands moves in smaller steps. The first is the tick's own: the players'
+units took this frame's input at the tick's start (players_update_before_
+game), as at 30. Each later one reads the controller again at its own start
+(input_abstraction_port_substep_state) and gives the player's unit what has
+changed since the reading before it, before the sub-step's later slots
+(the units, the bipeds, the weapons) run:
+
+- the controls that are held (the crouch and the jump, the triggers and the
+  grenade): the units' and bipeds' own updates make a jump, a shot or a
+  throw of them, as they do of a tick's, so a press is seen as it goes down
+  and once (player_control_substep_pressed_flags names the presses of the
+  running sub-step);
+- the movement (the throttle) and the fire control's pull;
+- the facing: the stick's turn (the frame turned the player by its reading
+  for the whole tick: a sub-step whose reading turns otherwise adds the
+  difference for its share of the tick) and the scripted player's aim, taken
+  at its time.
+
+The clock runs each sub-step when its time has come (game_time.c), so a
+tick's sub-steps are spread over the frames: at 120 on a display of 120 Hz,
+one a frame. The devices are read once a frame (input_abstraction_update,
+and player_control_update turns the facing by the frame's reading for the
+frame's time). A sub-step that is the first of its frame
+(sim_substep_first_of_frame) takes that frame's reading: the controls held
+and the movement that differ from the last given (from the tick's own
+input, the reading of the frame that began the tick, if no later sub-step
+has run), and the facing the frames have turned since the unit was given it
+last. One after it in the same frame (a frame slower than a sub-step) reads
+again as above, the scripted player at its own time.
+
+The one-shot controls (the action and reload, the flashlight, equipment,
+the weapon and grenade switches and the zoom) stay the tick's: a frame's
+press reaches one tick, latched until it is let go (player_queues_new.c).
+Nothing is counted here (the autolevel's and the look acceleration's are the
+frame's). A network game of other machines has one sub-step a tick, so
+nothing here runs, as in a game at 30, but for an OpenH1 game at 60 or 120:
+there each local player's sub-steps are read as here, and what each gave the
+unit goes to the other machines, which give the player's unit the same in
+the same sub-steps (network_substeps.c). */
+
+/* the unit controls a sub-step's reading changes */
+#define PLAYER_CONTROL_SUBSTEP_HELD_FLAGS ( \
+	FLAG(_unit_control_crouch_modifier_bit) | \
+	FLAG(_unit_control_jump_bit) | \
+	FLAG(_unit_control_weapon_primary_trigger_bit) | \
+	FLAG(_unit_control_weapon_secondary_trigger_bit) | \
+	FLAG(_unit_control_throw_grenade_bit))
+
+/* what a reading of the controller makes of the player's held controls,
+movement and the stick's turn a tick */
+struct player_control_substep_reading
+{
+	unsigned long held_flags;
+	real_vector2d throttle;
+	real primary_trigger;
+	real_euler_angles2d look;
+};
+
+/* each local player's this tick (not of the game state: a tick's sub-steps
+begin from the tick's input, and nothing of them is kept past it) */
+static struct player_control_substep_player
+{
+	/* a sub-step past the first has run this tick, for this unit */
+	boolean begun;
+	long unit_index;
+	/* the frame's reading, and the last sub-step's */
+	struct player_control_substep_reading frame;
+	struct player_control_substep_reading last;
+	/* the controls that went down in the running sub-step */
+	unsigned long pressed_flags;
+	/* The clock spreads a tick's sub-steps over the frames (game_time.c): a
+	sub-step after the tick's first may run on a later frame, which read the
+	devices again and turned the facing by its own reading
+	(player_control_update). The reading of the frame that began the tick
+	(what the tick's own input was), for this unit, and the facing the unit
+	was given last. */
+	boolean tick_frame_valid;
+	long tick_frame_unit_index;
+	struct player_control_substep_reading tick_frame;
+	boolean given_valid;
+	real_euler_angles2d given_angles;
+} player_control_substep_players[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS];
+
+/* as get_local_player_input_blob reads a controller's game input state:
+its held controls, movement and pull (pull: how far the fire control is
+pulled), and the stick's turn a tick, with the frame's zoom, stun, look
+acceleration and magnetism (whose pull towards a target the frame's turn
+has: a sub-step turns by a difference of two readings, where it cancels) */
+static void player_control_substep_read(
+	short local_player_index,
+	struct player_datum const *player,
+	struct game_input_state const *input_state,
+	real pull,
+	struct player_control_substep_reading *reading)
+{
+	struct player_control *control = player_control_get(local_player_index);
+	struct game_globals_player_control *constants = TAG_BLOCK_GET_ELEMENT(
+		&scenario_get_game_globals()->player_control,
+		0,
+		struct game_globals_player_control);
+	struct biped_datum *biped = biped_try_and_get(player->unit_index);
+	byte effective_buttons[NUMBER_OF_ACTION_CONTROL_BUTTONS];
+	long button_index;
+#ifdef HALO_VR
+	extern int halo_vr_crouch(void);
+	boolean vr_physical_crouch = local_player_index == 0 &&
+		(halo_vr_crouch() & 1 /* HALO_VR_CROUCH_PHYSICAL */);
+#endif
+
+	for (button_index = 0; button_index < NUMBER_OF_ACTION_CONTROL_BUTTONS; button_index++)
+	{
+		effective_buttons[button_index] =
+			TEST_FLAG(control->inhibited_button_bit_vector, button_index) ? 0 : input_state->buttons[button_index];
+	}
+	reading->held_flags = 0;
+	reading->throttle.i = input_state->forward_movement;
+	reading->throttle.j = input_state->strafe;
+	if (biped &&
+		(controls_enable_crouch ||
+#ifdef HALO_VR
+		vr_physical_crouch ||
+#endif
+		TEST_FLAG(biped->biped.flags, _biped_airborne_bit) ||
+		magnitude_squared2d(&reading->throttle) < 0.98f * 0.98f))
+	{
+		SET_FLAG(reading->held_flags, _unit_control_crouch_modifier_bit, effective_buttons[_button_crouch]);
+	}
+	SET_FLAG(reading->held_flags, _unit_control_weapon_primary_trigger_bit, effective_buttons[_button_fire]);
+	SET_FLAG(reading->held_flags, _unit_control_throw_grenade_bit, effective_buttons[_button_throw_grenade]);
+	SET_FLAG(reading->held_flags, _unit_control_weapon_secondary_trigger_bit, effective_buttons[_button_throw_grenade]);
+	SET_FLAG(reading->held_flags, _unit_control_jump_bit, effective_buttons[_button_jump]);
+	reading->primary_trigger = effective_buttons[_button_fire] ? pull : 0.f;
+	if (magnitude_squared2d(&reading->throttle) > 1.f)
+	{
+		real scale = 1.f / square_root(magnitude_squared2d(&reading->throttle));
+
+		reading->throttle.i *= scale;
+		reading->throttle.j *= scale;
+	}
+
+	reading->look.yaw = 0.f;
+	reading->look.pitch = 0.f;
+	if (player_control_camera_control_is_active())
+	{
+		real look_yaw_rate;
+		real look_pitch_rate;
+		real clamped_yaw;
+		real clamped_pitch;
+
+		player_control_look_rates(local_player_index, player->unit_index, &look_yaw_rate, &look_pitch_rate);
+		player_control_clamp_look(input_state, &clamped_yaw, &clamped_pitch);
+		player_control_stick_look(constants, input_state, clamped_yaw, clamped_pitch, look_yaw_rate,
+			look_pitch_rate, &reading->look);
+		player_control_scale_look(player->unit_index, control->zoom_level, &reading->look);
+		if (fabs(clamped_yaw) >= constants->look_pegging_threshold && constants->look_acceleration_time > 0.f)
+		{
+			real acceleration = PIN(control->look_acceleration_time / constants->look_acceleration_time, 0.f, 1.f);
+
+			reading->look.yaw *= (constants->look_acceleration_scale - 1.f) * acceleration + 1.f;
+		}
+		if (player_magnetism_flag && control->magnetism_level > 0.f)
+		{
+			real input_scale = 1.f - control->magnetism_level * PIN(constants->magnetism_friction, 0.f, 1.f);
+
+			reading->look.yaw *= input_scale;
+			reading->look.pitch *= input_scale;
+		}
+	}
+	return;
+}
+
+/* a local player whose unit a sub-step's reading moves: the player, or NONE
+(none or one without a controller, input taken away; split screen, a network
+game of one machine, is this machine's alone: sim_rate_follows_setting; a
+network game of other machines only an OpenH1 game of several sub-steps a
+tick, whose sub-steps go to the other machines: network_substeps_active) */
+static long player_control_substep_player_index(
+	short local_player_index)
+{
+	long player_index = local_player_get_player_index(local_player_index);
+	struct player_datum *player;
+	short gamepad_index;
+
+	if ((!sim_rate_follows_setting() && !network_substeps_active()) || player_index == NONE)
+		return NONE;
+	player = player_get(player_index);
+	gamepad_index = player->local_player_index;
+	if (player->unit_index == NONE || gamepad_index == NONE || !input_has_gamepad(gamepad_index) ||
+		!unit_controllable(player->unit_index) || players_globals->input_disabled ||
+		director_inhibited_input(local_player_index) ||
+		player_control_port_menu_has_controller(local_player_index))
+	{
+		return NONE;
+	}
+	return player_index;
+}
+
+/* a local player's first sub-step of a tick of several: the reading of the
+frame that began the tick, the tick's own input, and the facing that input
+gave the unit (players_update_before_game), for the sub-steps that run on
+later frames (game_time.c) */
+static void player_control_substep_tick_begun(
+	short local_player_index)
+{
+	struct player_control_substep_player *substep = &player_control_substep_players[local_player_index];
+	long player_index = player_control_substep_player_index(local_player_index);
+	struct player_datum *player;
+
+	substep->tick_frame_valid = FALSE;
+	substep->given_valid = FALSE;
+	if (player_index == NONE)
+		return;
+	player = player_get(player_index);
+	player_control_substep_read(local_player_index, player, input_abstraction_get_input_state(player->local_player_index),
+		input_abstraction_port_primary_trigger(player->local_player_index), &substep->tick_frame);
+	substep->tick_frame_unit_index = player->unit_index;
+	substep->tick_frame_valid = TRUE;
+	substep->given_angles = player_control_get(local_player_index)->desired_angles;
+	substep->given_valid = TRUE;
+	return;
+}
+
+/* a local player's sub-step past the tick's first */
+static void player_control_substep_player(
+	short local_player_index)
+{
+	struct player_control_substep_player *substep = &player_control_substep_players[local_player_index];
+	struct player_control *control = player_control_get(local_player_index);
+	long player_index = player_control_substep_player_index(local_player_index);
+	struct player_control_substep_reading reading;
+	struct game_input_state input_state;
+	struct player_datum *player;
+	struct unit_datum *unit;
+	real_euler_angles2d facing;
+	unsigned long changed;
+	short gamepad_index;
+	boolean first_of_frame;
+	boolean turned;
+	real pull;
+
+	substep->pressed_flags = 0;
+	if (player_index == NONE)
+		return;
+	player = player_get(player_index);
+	gamepad_index = player->local_player_index;
+	/* (the first sub-step of a frame that read the devices again since the
+	sub-step before: the tick's sub-steps spread over the frames) */
+	first_of_frame = sim_substep_first_of_frame();
+	if (!substep->begun || substep->unit_index != player->unit_index)
+	{
+		player_control_substep_read(local_player_index, player, input_abstraction_get_input_state(gamepad_index),
+			input_abstraction_port_primary_trigger(gamepad_index), &substep->frame);
+		/* (on a later frame than the tick's first, what has changed since the
+		tick's own input is this sub-step's) */
+		substep->last = first_of_frame && substep->tick_frame_valid &&
+			substep->tick_frame_unit_index == player->unit_index ? substep->tick_frame : substep->frame;
+		substep->unit_index = player->unit_index;
+		substep->begun = TRUE;
+	}
+	else if (first_of_frame)
+	{
+		/* (a later frame's reading, by which that frame turned the facing
+		already: player_control_update) */
+		player_control_substep_read(local_player_index, player, input_abstraction_get_input_state(gamepad_index),
+			input_abstraction_port_primary_trigger(gamepad_index), &substep->frame);
+	}
+
+	/* (the scripted player's aim, at its time, turns the facing here; the
+	frames since the facing was given last, the player's own turn) */
+	facing = substep->given_valid ? substep->given_angles : control->desired_angles;
+	if (input_abstraction_port_substep_state(gamepad_index, &input_state, &pull))
+		player_control_substep_read(local_player_index, player, &input_state, pull, &reading);
+	else
+		reading = substep->frame;
+
+	unit = unit_get(player->unit_index);
+	changed = (reading.held_flags ^ substep->last.held_flags) & PLAYER_CONTROL_SUBSTEP_HELD_FLAGS;
+	substep->pressed_flags = reading.held_flags & changed;
+	unit->unit.control_flags = (word)((unit->unit.control_flags & ~changed) | (reading.held_flags & changed));
+	if (reading.throttle.i != substep->last.throttle.i || reading.throttle.j != substep->last.throttle.j)
+	{
+		unit->unit.throttle.i = reading.throttle.i;
+		unit->unit.throttle.j = reading.throttle.j;
+		unit->unit.throttle.k = 0.f;
+	}
+	if (reading.primary_trigger != substep->last.primary_trigger)
+		unit->unit.primary_trigger = reading.primary_trigger;
+	if (!director_inhibited_facing(local_player_index) &&
+		(reading.look.yaw != substep->frame.look.yaw || reading.look.pitch != substep->frame.look.pitch))
+	{
+		/* (no autolevel nor pitch limits' easing: the frame's) */
+		player_control_angle_step_ticks = 0.f;
+		player_control_modify_desired_angles(
+			local_player_index,
+			sim_per_substep(reading.look.yaw - substep->frame.look.yaw),
+			sim_per_substep(reading.look.pitch - substep->frame.look.pitch));
+		player_control_angle_step_ticks = 1.f;
+	}
+	turned = control->desired_angles.yaw != facing.yaw || control->desired_angles.pitch != facing.pitch;
+	if (turned)
+	{
+		real_vector3d aiming_vector;
+
+		player_aiming_vector_from_facing(player_index, &aiming_vector, &control->desired_angles);
+		unit->unit.desired_aiming_vector = aiming_vector;
+		unit->unit.desired_facing_vector = aiming_vector;
+		unit->unit.desired_looking_vector = aiming_vector;
+	}
+	/* (what the unit was given, for the other machines of an OpenH1 game:
+	network_substeps.c) */
+	network_substeps_local_given(player_index, player->unit_index, sim_substep_index(), sim_substep_count(),
+		&control->desired_angles, turned);
+	substep->given_angles = control->desired_angles;
+	substep->given_valid = TRUE;
+	substep->last = reading;
+	return;
+}
+
+/* the fast phase's first slot (_sim_substep_player_control) */
+static void player_control_substep(
+	short substep_index,
+	short substep_count,
+	real seconds)
+{
+	short local_player_index;
+
+	(void)seconds;
+	for (local_player_index = 0; local_player_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
+	{
+		if (substep_index == 0)
+		{
+			/* (the tick's own input) */
+			player_control_substep_players[local_player_index].begun = FALSE;
+			player_control_substep_players[local_player_index].pressed_flags = 0;
+			if (substep_count > 1)
+				player_control_substep_tick_begun(local_player_index);
+		}
+		else
+		{
+			player_control_substep_player(local_player_index);
+		}
+	}
+	/* (an OpenH1 game's other players: their sub-steps as their machines
+	gave them, network_substeps.c) */
+	if (substep_index == 0)
+		network_substeps_tick_begun(substep_count);
+	else
+		network_substeps_replay(substep_index, substep_count);
+	return;
+}
+
+/* port: the controls of a player's unit that went down in the running
+sub-step past a tick's first (sim_rate.h): a press seen there, once; 0 for
+the first (the tick's own: its presses are the tick's) and outside the fast
+phase, and for a unit no local player controls */
+unsigned long player_control_substep_pressed_flags(
+	long unit_index)
+{
+	short local_player_index;
+
+	if (unit_index == NONE || sim_substep_index() == NONE)
+		return 0;
+	for (local_player_index = 0; local_player_index < MAXIMUM_NUMBER_OF_LOCAL_PLAYERS; local_player_index++)
+	{
+		struct player_control_substep_player const *substep = &player_control_substep_players[local_player_index];
+
+		if (substep->begun && substep->unit_index == unit_index)
+			return substep->pressed_flags;
+	}
+	/* (another machine's player's, replayed: network_substeps.c) */
+	return network_substeps_pressed_flags(unit_index);
 }

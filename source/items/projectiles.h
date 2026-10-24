@@ -124,6 +124,14 @@ boolean projectile_aim_ballistic(
 void projectile_accelerate(
 	long projectile_index,
 	union real_vector3d const *acceleration);
+/* port: one made earlier and let go of now, as one made now (sim_rate.h;
+projectiles.c) */
+void projectile_substep_launch(
+	long projectile_index);
+/* port: the same, let go of by its tick (a throw's key frame), as one made in
+the tick's own work, in whichever of its sub-steps */
+void projectile_substep_launch_on_tick(
+	long projectile_index);
 
 /* ---------- globals */
 

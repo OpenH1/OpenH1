@@ -584,6 +584,7 @@ void xgpu_backend_initialize(void)
 	xgpu_backend_capabilities.sample_mask = stream.capabilities.sample_mask;
 	xgpu_backend_capabilities.mixed_constant_blend = stream.capabilities.mixed_constant_blend;
 	xgpu_backend_capabilities.dynamic_lights = stream.capabilities.dynamic_lights;
+	xgpu_backend_capabilities.hdr = stream.capabilities.hdr;
 }
 
 /* (at exit) the frames submitted played, the render thread ended */
@@ -641,6 +642,48 @@ void xgpu_backend_anti_alias(xgpu_target target, BOOL smaa, const long corners[4
 		record_body->corners[index] = (int32_t)corners[index];
 }
 
+void xgpu_backend_hdr(BOOL active, int mode, int paper_white)
+{
+	struct xgpu_stream_hdr *record_body;
+
+	if (!stream.open)
+		return;
+	record_body = record(XGPU_STREAM_HDR, sizeof(*record_body));
+	record_body->active = active ? 1 : 0;
+	record_body->mode = (uint32_t)mode;
+	record_body->paper_white = (uint32_t)paper_white;
+}
+
+void xgpu_backend_tone_map(xgpu_target target, const long corners[4])
+{
+	struct xgpu_stream_tone_map *record_body;
+	int index;
+
+	if (!stream.open)
+		return;
+	record_body = record(XGPU_STREAM_TONE_MAP, sizeof(*record_body));
+	record_body->target = target;
+	for (index = 0; index < 4; index++)
+		record_body->corners[index] = (int32_t)corners[index];
+}
+
+/* (the host writes the ring's display_hdr and display_headroom as it looks
+at its display) */
+BOOL xgpu_backend_display_hdr(float *headroom)
+{
+	uint32_t bits;
+	float value;
+
+	*headroom = 1.0f;
+	if (!stream.open)
+		return FALSE;
+	bits = __atomic_load_n(&stream.ring->display_headroom, __ATOMIC_ACQUIRE);
+	memcpy(&value, &bits, sizeof(value));
+	if (value >= 1.0f && value < 1000.0f)
+		*headroom = value;
+	return __atomic_load_n(&stream.ring->display_hdr, __ATOMIC_ACQUIRE) != 0;
+}
+
 /* ---------- render targets */
 
 void xgpu_backend_target_create(xgpu_target target, const struct xgpu_target_description *description)
@@ -655,6 +698,8 @@ void xgpu_backend_target_create(xgpu_target target, const struct xgpu_target_des
 	record_body->height = (uint32_t)description->height;
 	record_body->depth = description->depth ? 1 : 0;
 	record_body->layers = (uint8_t)description->layers;
+	record_body->format = (uint8_t)(description->depth ? XGPU_FORMAT_D24S8 :
+		description->format ? description->format : XGPU_FORMAT_BGRA8);
 	if (target < TARGET_MAXIMUM)
 	{
 		stream.targets[target].width = record_body->width;
@@ -1602,6 +1647,28 @@ void xgpu_backend_loading_art(const unsigned char *rgba)
 	synchronous();
 }
 
+void xgpu_backend_loading_scene(const void *data, unsigned long bytes)
+{
+	struct xgpu_stream_value *body;
+
+	if (!stream.open || bytes > XGPU_STREAM_RECORD_MAXIMUM - sizeof(*body) - 64)
+		return;
+	body = record(XGPU_STREAM_LOADING_SCENE, sizeof(*body) + (uint32_t)bytes);
+	body->value = (uint32_t)bytes;
+	if (bytes)
+		memcpy(body + 1, data, bytes);
+}
+
+void xgpu_backend_loading_progress(float progress)
+{
+	uint32_t bits;
+
+	if (!stream.open)
+		return;
+	memcpy(&bits, &progress, sizeof(bits));
+	record_value(XGPU_STREAM_LOADING_PROGRESS, bits);
+}
+
 void xgpu_backend_loading(int active)
 {
 	if (!stream.open)
@@ -1651,7 +1718,8 @@ void xgpu_backend_vr_initialize(struct xgpu_vr_info *info)
 	wire->hud_width = info->hud_width;
 	wire->hud_height = info->hud_height;
 	wire->scope_size = info->scope_size;
-	wire->statistics = info->statistics;
+	wire->statistics = (info->statistics ? XGPU_STREAM_VR_STATISTICS : 0) |
+		(info->gpu_time ? XGPU_STREAM_VR_GPU_TIME : 0);
 	wire->foveated = info->foveated;
 	wire->fovea_width = info->fovea_width;
 	wire->fovea_height = info->fovea_height;
@@ -1779,6 +1847,7 @@ static void vr_state_record(void)
 	record_body->scope_rounds_carried = carried;
 	halo_vr_scope_animation(&record_body->scope_animation[0], &record_body->scope_animation[1],
 		&record_body->scope_animation[2]);
+	halo_vr_scope_shape(&record_body->scope_shape[0], &record_body->scope_shape[1], &record_body->scope_shape[2]);
 	record_body->scope_gun = halo_vr_scope_gun();
 	if (halo_vr_cockpit_window(&cockpit, &display))
 	{

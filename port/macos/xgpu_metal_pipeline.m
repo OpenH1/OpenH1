@@ -9,6 +9,7 @@ pipelines ahead of time runs this too.
 #import <Metal/Metal.h>
 
 #include "xgpu_metal_pipeline.h"
+#include "xgpu_hdr.h"
 #include "xgpu_stream.h"
 
 #include <string.h>
@@ -41,6 +42,8 @@ static const struct xgpu_metal_format_information formats[XGPU_METAL_FORMAT_COUN
 	[XGPU_METAL_FORMAT_D16] = { MTLPixelFormatDepth16Unorm, 2, 0, 1, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
 	[XGPU_METAL_FORMAT_RGBA8] = { MTLPixelFormatRGBA8Unorm, 4, 0, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
 	[XGPU_METAL_FORMAT_COVERAGE] = { MTLPixelFormatR8Unorm, 1, 0, 0, 0, SWIZZLE(One, One, One, Red), 1 },
+	[XGPU_METAL_FORMAT_RGBA16F] = { MTLPixelFormatRGBA16Float, 8, 0, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
+	[XGPU_METAL_FORMAT_ASTC] = { MTLPixelFormatASTC_4x4_LDR, 16, 1, 0, 0, SWIZZLE(Red, Green, Blue, Alpha), 0 },
 };
 
 const struct xgpu_metal_format_information *xgpu_metal_format_information(uint32_t format)
@@ -278,16 +281,19 @@ NSString *const xgpu_metal_fixed_source =
 
 /* ---------- the command stream's pipelines */
 
-/* the stream's target formats (XGPU_FORMAT_*) */
+/* the stream's target formats (XGPU_FORMAT_*: BGRA8 1, D24S8 2, RGBA16F 3) */
 static uint8_t target_format(uint8_t format)
 {
-	return format == 1 ? XGPU_METAL_FORMAT_BGRA8 : format == 2 ? XGPU_METAL_FORMAT_D24S8 : XGPU_METAL_FORMAT_NONE;
+	return format == 1 ? XGPU_METAL_FORMAT_BGRA8 : format == 2 ? XGPU_METAL_FORMAT_D24S8 :
+		format == 3 ? XGPU_METAL_FORMAT_RGBA16F : XGPU_METAL_FORMAT_NONE;
 }
 
 void xgpu_metal_pipeline_from_key(const struct xgpu_stream_pipeline_key *key, struct xgpu_metal_pipeline *pipeline)
 {
 	memset(pipeline, 0, sizeof(*pipeline));
-	pipeline->blend = key->blend;
+	/* (display.hdr: a draw whose pixel shader blends it itself, reading the
+	pixel it draws over, has no blending of Metal's: xgpu_hdr.h) */
+	pipeline->blend = XGPU_HDR_SHADER_BLENDS(key->pixel.hdr) ? 0 : key->blend;
 	pipeline->blend_source = key->blend_source;
 	pipeline->blend_destination = key->blend_destination;
 	pipeline->blend_operation = key->blend_operation;

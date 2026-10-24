@@ -19,6 +19,29 @@ It is on the weapon as animated only while it holds a long gun's foregrip
 (vr.two_handed). The right index finger pulls as the trigger does, and the
 weapon's own trigger, where it has one, with it.
 
+The weapon stays in the hand (weapon_hold): the game's animations (firing,
+the plasma pistol's charged shot, the plasma rifle's vent, a melee, a
+reload, drawing and putting away, the idle's sway and the walk's bob) move
+the whole of the weapon and both arms about the camera, which on the flat
+screen reads as recoil, and in the hand flings the weapon out of it, the
+arm after it (the charged shot swings it up and round). So once the nodes
+are built, all of them are moved together, without changing their shape,
+until the weapon's root ("frame gun", hanging from the right wrist; the
+needler's "frame body") is where the idle pose has it from the camera, so
+in the controller: what the animation moves within the weapon is kept (the
+slides, the plasma pistol's cover, dial and face, the plasma rifle's rods
+and wings, the needles, the magazines, the shotgun's pump), and the right
+hand as it holds it; the muzzle flash and the weapon's other effects,
+placed from its markers in these nodes, with it. The recoil is the VR
+mode's own, struck by each shot (vr_feel.c, vr.recoil): a few
+degrees and a centimetre or two, back in a tenth of a second, in the camera
+the weapon is held from. Whatever vr.hands is, while the weapon is in the
+right controller; with the gamepad's aim (vr.aim = "gamepad") the weapon
+is posed as on the flat screen, animations and all. The left hand on a
+long gun's foregrip follows the animation's hand while it stays on the
+weapon's grip (the shotgun's pump), and stays on the weapon, in the idle
+pose's grip, as the animation takes it away (support_hold).
+
 With vr.hands = "arms", each arm reaches its hand from a shoulder: the
 shoulders are below and beside the eyes (as they would be with the head
 level: they hang from the neck, and stay put as the head nods), turned with
@@ -51,6 +74,7 @@ winding about (rasterizer_set_model_skinning).
 
 #include "cseries.h"
 #include "math/real_math.h"
+#include "cache/cache_files.h"
 #include "models/model_animation_definitions.h"
 #include "render/render_debug.h"
 #include "tag_files/tag_files.h"
@@ -75,6 +99,12 @@ hand's, relaxed and with the grip pulled */
 /* the left grip's pull at most while the hand holds a grenade
 (vr_grenade.c): the fingers about it, not through it */
 #define GRIP_GRENADE 0.5f
+/* the left hand on a long gun's foregrip follows the animation's hand
+while it is nearer than SUPPORT_STAYS to where the idle pose holds the
+weapon (metres; the shotgun's pump is less), and is held there, on the
+weapon, as it goes farther, all the way from SUPPORT_LEAVES (support_hold) */
+#define SUPPORT_STAYS 0.12f
+#define SUPPORT_LEAVES 0.24f
 /* the right index finger on each weapon's trigger (by the first-person
 animation graph's tag name; the first that matches, the last for any
 other): its curl at each joint from the knuckle at rest, from the idle
@@ -209,8 +239,11 @@ struct vr_hands_graph_node
 static struct
 {
 	/* the first-person animation graph whose nodes are known (the weapon
-	in hand's), and whether it has both wrists, and both arms */
+	in hand's), the tags' generation its index is of (another map numbers
+	its graphs again: cache_files_tags_generation), and whether it has both
+	wrists, and both arms */
 	long animation_graph_index;
+	unsigned long generation;
 	boolean usable;
 	boolean arms_usable;
 	short node_count;
@@ -226,6 +259,9 @@ static struct
 	short trigger;
 	struct trigger_finger finger;
 	real trigger_travel;
+	/* the weapon's root, which the weapon is held by (weapon_hold): its
+	model's node the rest of it hangs from, or the right wrist */
+	short weapon_root;
 	byte roles[MAXIMUM_NODES_PER_ANIMATION];
 	/* the idle pose, in the camera's axes (forward, left, up; world units),
 	and in it the middle of the right hand, the middle of the left hand
@@ -244,6 +280,7 @@ static struct
 
 /* vr_render.c's */
 boolean vr_render_weapon_mirrored(real_point3d *origin, real_vector3d *normal);
+boolean vr_render_weapon_held(real_matrix4x3 *camera);
 /* first_person_weapons.c's */
 long first_person_weapon_vr_graph(short local_player_index);
 short first_person_weapon_vr_idle_pose(short local_player_index, real_matrix4x3 *node_matrices,
@@ -519,6 +556,46 @@ static void hand_centre(struct animation_graph *graph, real_matrix4x3 const *nod
 	centre->z = sum.z / count;
 }
 
+/* the weapon's root: of the nodes the weapon's model draws and the arms'
+does not, whose parent is not one of them, the one with the most of the
+weapon's nodes below it (the game's graphs' "frame gun", or the needler's
+"frame body", hanging from the right wrist, with the weapon's moving parts
+below it: not a part that hangs apart, nor the root of the graph, which
+both models draw); NONE without */
+static short weapon_root_find(struct animation_graph *graph, short node_count, byte const *node_models)
+{
+	short node_index, other, best = NONE, best_count = 0;
+
+	for (node_index = 0; node_index < node_count; node_index++)
+	{
+		short parent = graph_node(graph, node_index)->parent_node_index;
+		short count = 0;
+
+		if (!TEST_FLAG(node_models[node_index], _vr_hands_node_weapon_bit) ||
+			TEST_FLAG(node_models[node_index], _vr_hands_node_hands_bit))
+		{
+			continue;
+		}
+		if (parent >= 0 && parent < node_count && parent != node_index &&
+			TEST_FLAG(node_models[parent], _vr_hands_node_weapon_bit) &&
+			!TEST_FLAG(node_models[parent], _vr_hands_node_hands_bit))
+		{
+			continue;
+		}
+		for (other = 0; other < node_count; other++)
+		{
+			if (TEST_FLAG(node_models[other], _vr_hands_node_weapon_bit) && node_descends(graph, other, node_index))
+				count++;
+		}
+		if (count > best_count)
+		{
+			best = node_index;
+			best_count = count;
+		}
+	}
+	return best;
+}
+
 /* the line of a hand's knuckles, from the index finger's to the little
 finger's, in these nodes; FALSE without both */
 static boolean knuckle_axis(real_matrix4x3 const *node_matrices, short side, real_vector3d *axis)
@@ -543,9 +620,13 @@ static boolean hands_learn(void)
 	real_point3d left_centre;
 	short node_count, node_index, side;
 
-	if (animation_graph_index == vr_hands.animation_graph_index)
+	if (animation_graph_index == vr_hands.animation_graph_index &&
+		vr_hands.generation == cache_files_tags_generation())
+	{
 		return vr_hands.usable;
+	}
 	vr_hands.animation_graph_index = animation_graph_index;
+	vr_hands.generation = cache_files_tags_generation();
 	vr_hands.usable = FALSE;
 	vr_hands.arms_usable = FALSE;
 	if (animation_graph_index == NONE)
@@ -638,17 +719,20 @@ static boolean hands_learn(void)
 	if (vr_hands.trigger != NONE && !TEST_FLAG(node_models[vr_hands.trigger], _vr_hands_node_weapon_bit))
 		vr_hands.trigger = NONE;
 	trigger_finger_find(tag_get_name(animation_graph_index));
+	vr_hands.weapon_root = weapon_root_find(graph, node_count, node_models);
+	if (vr_hands.weapon_root == NONE)
+		vr_hands.weapon_root = vr_hands.wrist[_right];
 	hand_centre(graph, vr_hands.idle, node_count, node_models, vr_hands.wrist[_right], &vr_hands.right_centre);
 	hand_centre(graph, vr_hands.idle, node_count, node_models, vr_hands.wrist[_left], &left_centre);
 	vector_between(&vr_hands.idle[vr_hands.wrist[_left]].position, &left_centre, &vr_hands.left_centre);
 	vr_hands.usable = TRUE;
 	platform_log("vr: hands: %s: wrists %d (%s) and %d (%s), arms %d %d and %d %d (%.2f and %.2f m), trigger %d, "
-		"its finger's \"%s\"",
+		"its finger's \"%s\", held by %d (%s)",
 		tag_get_name(animation_graph_index), vr_hands.wrist[_left], graph_node(graph, vr_hands.wrist[_left])->name,
 		vr_hands.wrist[_right], graph_node(graph, vr_hands.wrist[_right])->name, vr_hands.upper_arm[_left],
 		vr_hands.forearm[_left], vr_hands.upper_arm[_right], vr_hands.forearm[_right],
 		vr_hands.upper_arm_length[_right] * 3.048f, vr_hands.forearm_length[_right] * 3.048f, vr_hands.trigger,
-		vr_hands.finger.name);
+		vr_hands.finger.name, vr_hands.weapon_root, graph_node(graph, vr_hands.weapon_root)->name);
 	return TRUE;
 }
 
@@ -749,6 +833,88 @@ static void matrix_blend(real_matrix4x3 const *a, real_matrix4x3 const *b, real 
 	matrix_from_quaternion(q, result);
 	result->position = position;
 	result->scale = scale;
+}
+
+/* ---------- the weapon held */
+
+/* the weapon in the hand, still, whatever the game's animation does with it
+and the arms (node_matrices, in the world, as the game built them about the
+camera the weapon is posed from, the shots' kick in it): every node moved
+together, turned and carried, none changing its shape or size, until the
+weapon's root is where the idle pose has it from the camera. What the
+animation moves within the weapon (its slides, cover, needles, magazine)
+and the hands about it stay as they were. */
+static void weapon_hold(real_matrix4x3 *node_matrices, short node_count, real_matrix4x3 const *camera)
+{
+	short root = vr_hands.weapon_root;
+	real_matrix4x3 held, animated, inverse, move;
+	short node_index;
+
+	if (root < 0 || root >= node_count)
+		return;
+	matrix4x3_multiply(camera, &vr_hands.idle[root], &held);
+	held.scale = 1.0f;
+	animated = node_matrices[root];
+	animated.scale = 1.0f;
+	matrix4x3_inverse(&animated, &inverse);
+	/* (the move that takes the root as animated to where it is held) */
+	matrix4x3_multiply(&held, &inverse, &move);
+	move.scale = 1.0f;
+	for (node_index = 0; node_index < node_count; node_index++)
+		matrix4x3_multiply(&move, &node_matrices[node_index], &node_matrices[node_index]);
+}
+
+/* the left hand on a long gun's foregrip (weight: how far it holds it, 0 to
+1, vr.two_handed), from where it is (its controller's): onto the
+animation's hand (animated: the nodes as the game built them, the weapon
+held), its fingers as they are, while that stays on the weapon's grip, as
+the shotgun's pumps it; as the animation takes it away from there (a
+reload, a melee, a vent), onto the idle pose's hand on the weapon instead,
+all the way once it is SUPPORT_LEAVES from it, so that the hand stays on
+the gun (units: the world's a metre) */
+static void support_hold(real_matrix4x3 *node_matrices, real_matrix4x3 const *animated, real weight, real units)
+{
+	short root = vr_hands.weapon_root, wrist = vr_hands.wrist[_left];
+	real_matrix4x3 on_weapon, grip;
+	real away = 0.0f;
+	short node_index;
+
+	if (weight <= 0.0f)
+		return;
+	if (root >= 0 && root < vr_hands.node_count && units > 0.0f)
+	{
+		real_matrix4x3 idle_root = vr_hands.idle[root], weapon = animated[root], inverse;
+		real_vector3d v;
+		real distance;
+
+		/* (the idle pose, from the camera, onto the weapon as it is) */
+		idle_root.scale = 1.0f;
+		weapon.scale = 1.0f;
+		matrix4x3_inverse(&idle_root, &inverse);
+		matrix4x3_multiply(&weapon, &inverse, &on_weapon);
+		on_weapon.scale = 1.0f;
+		matrix4x3_multiply(&on_weapon, &vr_hands.idle[wrist], &grip);
+		vector_between(&grip.position, &animated[wrist].position, &v);
+		distance = (real)sqrt(vector_dot(&v, &v)) / units;
+		away = PIN((distance - SUPPORT_STAYS) / (SUPPORT_LEAVES - SUPPORT_STAYS), 0.0f, 1.0f);
+		away = away * away * (3.0f - 2.0f * away);
+	}
+	for (node_index = 0; node_index < vr_hands.node_count; node_index++)
+	{
+		real_matrix4x3 target;
+
+		if (vr_hands.roles[node_index] != _node_left_hand)
+			continue;
+		target = animated[node_index];
+		if (away > 0.0f)
+		{
+			real_matrix4x3 idle;
+
+			matrix4x3_multiply(&on_weapon, &vr_hands.idle[node_index], &idle);
+			matrix_blend(&target, &idle, away, &target);
+		}
+		matrix_blend(&node_matrices[node_index], &target, weight, &node_matrices[node_index]);
+	}
 }
 
 /* ---------- the fingers */
@@ -1049,7 +1215,8 @@ static void side_hide(real_matrix4x3 *node_matrices, short side)
 }
 
 /* first_person_weapons.c, once the game has built the first-person nodes
-(node_matrices, in the world) of this animation graph: the left hand to the
+(node_matrices, in the world) of this animation graph: the weapon held in
+the right controller, still (whatever vr.hands is); the left hand to the
 left controller, the fingers and trigger pulled, the arms to the hands (or
 into the wrists) */
 void vr_hands_pose(
@@ -1061,19 +1228,26 @@ void vr_hands_pose(
 	struct vr_hands_frame frame;
 	real_matrix4x3 *left;
 	real_matrix4x3 seen[NUMBER_OF_SIDES];
+	real_matrix4x3 camera;
 	short node_index, side;
 	boolean visible[NUMBER_OF_SIDES];
+	boolean held, posed;
 
-	if (local_player_index == 0)
-	{
-		vr_hands.trigger_travel = 0.0f;
-		vr_hands.mirrored = FALSE;
-	}
-	if (local_player_index != 0 || !vr_render_hands(&frame) || !hands_learn() ||
+	if (local_player_index != 0)
+		return;
+	vr_hands.trigger_travel = 0.0f;
+	vr_hands.mirrored = FALSE;
+	held = vr_render_weapon_held(&camera);
+	posed = vr_render_hands(&frame);
+	if (!(held || posed) || !hands_learn() ||
 		animation_graph_index != vr_hands.animation_graph_index || node_count != vr_hands.node_count)
 	{
 		return;
 	}
+	if (held)
+		weapon_hold(node_matrices, node_count, &camera);
+	if (!posed)
+		return;
 	left = &node_matrices[vr_hands.wrist[_left]];
 	visible[_left] = frame.left_valid;
 	visible[_right] = frame.right_valid;
@@ -1115,15 +1289,8 @@ void vr_hands_pose(
 				grip = GRIP_GRENADE;
 			left_fingers_free(node_matrices, &frame.camera, grip);
 		}
-		if (weight > 0.0f)
-		{
-			/* (the animation's hand, on the weapon, its fingers as they are) */
-			for (node_index = 0; node_index < node_count; node_index++)
-			{
-				if (vr_hands.roles[node_index] == _node_left_hand)
-					matrix_blend(&node_matrices[node_index], &animated[node_index], weight, &node_matrices[node_index]);
-			}
-		}
+		/* (on the weapon, held) */
+		support_hold(node_matrices, animated, weight, frame.units);
 	}
 	if (frame.right_valid)
 	{

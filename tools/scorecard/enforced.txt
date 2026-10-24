@@ -1,0 +1,30 @@
+# The scorecard's tags whose scenarios must pass at 30:60, 30:120 and 60:120 in CI (tools/scorecard/ci.py), one a
+# line: the coordinator's, a unit's tags (U1...) added once it has landed. Until then the rates are reported only.
+# the parts of the game, which between them hold every StageKit scenario the scorecard plays
+jump
+biped
+elevator
+cadence
+weapon
+first_shot
+impact
+projectile
+grenade
+# the units landed
+U1
+U2
+U3
+U4
+U5
+U6
+U7
+ai
+U18
+vehicle
+U17
+# the scorecard content landed (StageKit's thrown grenade, shield and ledge's fall)
+U12
+U14
+shield
+ledge
+U15

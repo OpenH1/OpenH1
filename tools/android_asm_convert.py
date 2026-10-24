@@ -9,6 +9,11 @@ symbol decoration and relocation operators are Darwin-specific. This script
 rewrites them for the ELF assembler, so the objects can be linked by ld.lld
 into an image that the Android loader maps into the low 4 GB of the process.
 
+One kind of instruction is also replaced: a conversion from floating point
+to an integer that stays in a SIMD register (``fcvtzs s0, s1``). The ARM
+translation of the x86 Android emulator does not have these, and stops the
+app with SIGILL at the first one (the HUD's, once a game is drawn).
+
 With --base-register, the result is also rewritten for a guest whose memory
 lies at a base the host chooses (tools/guest_base_register.py).
 
@@ -20,6 +25,9 @@ import sys
 
 # a quoted name (its escapes kept: \" does not end it) or a plain one
 IDENT = re.compile(r'"(?:[^"\\]|\\.)*"|[A-Za-z_.$][\w.$]*')
+# a label, and what follows it on its line; a symbol's assignment
+LABEL = re.compile(r'^([A-Za-z_.$][\w.$]*|"[^"]*"):(.*)$')
+ASSIGNMENT = re.compile(r'^([A-Za-z_.$][\w.$]*)\s*=\s*(.+)$')
 
 # directives whose operands are string literals, the same in both
 # syntaxes: they go through as they are, never renamed as symbols (data
@@ -43,12 +51,28 @@ RODATA_SECTIONS = {
     "__ustring",
 }
 
+# the scalar conversions to an integer in a SIMD register, which the
+# emulator's ARM translation lacks: fcvt{a,m,n,p,z}{s,u} sN/dN, sM/dM, with
+# an optional number of fraction bits
+SCALAR_FP_TO_INT = re.compile(r"^fcvt[amnpz][su]$")
+SCALAR_FP_TO_INT_OPERANDS = re.compile(r"^([sd])(\d+)\s*,\s*([sd])(\d+)\s*(,\s*#\d+)?$")
+
 
 class ConvertError(Exception):
     pass
 
 
 def strip_comment(line: str) -> str:
+    if '"' not in line:
+        # (no string literal to step over: the comment, if any, starts at
+        # the first ";" or "//"; the same result as the scan below, which
+        # took most of the conversion's time: compiled data is a line per
+        # word, each with its comment)
+        end = line.find(";")
+        slashes = line.find("//", 0, end if end >= 0 else len(line))
+        if slashes >= 0:
+            end = slashes
+        return (line if end < 0 else line[:end]).rstrip()
     out = []
     in_string = False
     i = 0
@@ -80,7 +104,7 @@ class Converter:
         self.in_dropped_section = False
         for line in lines:
             text = strip_comment(line).strip()
-            m = re.match(r'^([A-Za-z_.$][\w.$]*|"[^"]*"):', text)
+            m = LABEL.match(text)
             if m and m.group(1)[0] in "lL":
                 self.local_labels.add(m.group(1))
 
@@ -97,12 +121,17 @@ class Converter:
         return name
 
     def operands(self, text: str) -> str:
+        if text.isdigit():
+            # (a number has nothing to rename: the operand of most lines,
+            # compiled data's words)
+            return text
         # relocation operators first
-        text = re.sub(r'([\w.$"]+)@GOTPAGE\b', r"\1", text)
-        text = re.sub(r'([\w.$"]+)@PAGE\b', r"\1", text)
-        text = re.sub(r'(\([^)]*\)|[\w.$"]+(?:[+-]\d+)?)@PAGEOFF\b', r":lo12:\1", text)
-        if "@" in text and not re.search(r'"[^"]*@[^"]*"', text):
-            raise ConvertError("unsupported relocation operator: " + text)
+        if "@" in text:
+            text = re.sub(r'([\w.$"]+)@GOTPAGE\b', r"\1", text)
+            text = re.sub(r'([\w.$"]+)@PAGE\b', r"\1", text)
+            text = re.sub(r'(\([^)]*\)|[\w.$"]+(?:[+-]\d+)?)@PAGEOFF\b', r":lo12:\1", text)
+            if "@" in text and not re.search(r'"[^"]*@[^"]*"', text):
+                raise ConvertError("unsupported relocation operator: " + text)
 
         def repl(m):
             tok = m.group(0)
@@ -162,7 +191,7 @@ class Converter:
         if not stripped:
             return
         # labels
-        m = re.match(r'^([A-Za-z_.$][\w.$]*|"[^"]*"):(.*)$', stripped)
+        m = LABEL.match(stripped)
         if m:
             if not self.in_dropped_section:
                 self.emit(self.sym(m.group(1)) + ":")
@@ -171,7 +200,7 @@ class Converter:
                 self.convert_line(rest)
             return
         # symbol assignment (aliases)
-        m = re.match(r'^([A-Za-z_.$][\w.$]*)\s*=\s*(.+)$', stripped)
+        m = ASSIGNMENT.match(stripped)
         if m:
             if not self.in_dropped_section:
                 self.emit(f"\t.set {self.sym(m.group(1))}, {self.operands(m.group(2))}")
@@ -242,6 +271,17 @@ class Converter:
                 raise ConvertError("unsupported GOT access: " + stripped)
             self.emit(f"\tadd x{gm.group(2)}, {gm.group(3)}, :lo12:{self.sym(gm.group(4))}")
             return
+        cm = SCALAR_FP_TO_INT_OPERANDS.match(args) if SCALAR_FP_TO_INT.match(op) else None
+        if cm and cm.group(1) == cm.group(3):
+            # the vector form on a copy of the operand: the copy clears the
+            # rest of the register, whose lanes then convert 0.0 to 0, so the
+            # register and the exception flags end as the scalar form leaves
+            # them
+            size, d, n = cm.group(1), cm.group(2), cm.group(4)
+            lanes = "2s" if size == "s" else "2d"
+            self.emit(f"\tfmov {size}{d}, {size}{n}")
+            self.emit(f"\t{op} v{d}.{lanes}, v{d}.{lanes}{cm.group(5) or ''}")
+            return
         self.emit(f"\t{op} {self.operands(args)}" if args else f"\t{op}")
 
     def run(self):
@@ -257,6 +297,22 @@ class Converter:
         return "\n".join(out) + "\n"
 
 
+def convert_file(source, destination, base_register=False):
+    """converts the file source into destination (with --base-register's
+    rewrite too); raises ConvertError (tools/guest_asm_cache.py calls it)"""
+    with open(source, "r", encoding="utf-8", errors="surrogateescape") as f:
+        lines = f.read().split("\n")
+    result = Converter(lines).run()
+    if base_register:
+        from guest_base_register import BaseRegisterError, rewrite
+        try:
+            result = "\n".join(rewrite(result.split("\n"))[0])
+        except BaseRegisterError as e:
+            raise ConvertError(f"base register: {e}") from None
+    with open(destination, "w", encoding="utf-8", errors="surrogateescape") as f:
+        f.write(result)
+
+
 def main():
     arguments = sys.argv[1:]
     base_register = bool(arguments) and arguments[0] == "--base-register"
@@ -265,21 +321,11 @@ def main():
     if len(arguments) != 2:
         print(__doc__)
         sys.exit(2)
-    with open(arguments[0], "r", encoding="utf-8", errors="surrogateescape") as f:
-        lines = f.read().split("\n")
     try:
-        result = Converter(lines).run()
-        if base_register:
-            from guest_base_register import BaseRegisterError, rewrite
-            try:
-                result = "\n".join(rewrite(result.split("\n"))[0])
-            except BaseRegisterError as e:
-                raise ConvertError(f"base register: {e}") from None
+        convert_file(arguments[0], arguments[1], base_register)
     except ConvertError as e:
         print(f"{arguments[0]}: {e}", file=sys.stderr)
         sys.exit(1)
-    with open(arguments[1], "w", encoding="utf-8", errors="surrogateescape") as f:
-        f.write(result)
 
 
 if __name__ == "__main__":

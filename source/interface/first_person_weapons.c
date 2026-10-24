@@ -129,6 +129,8 @@ symbols in this file:
 #include "shaders/shaders.h"
 /* port: port/linux/game/shield_color.c */
 real_rgb_color const *shield_color_colors(long unit_index, real_rgb_color const *colors);
+/* port: port/linux/game/overshield_effect.c */
+real const *overshield_effect_values(long unit_index, real const *values, boolean arms);
 
 /* ---------- constants */
 
@@ -648,7 +650,8 @@ void first_person_weapon_draw(
 								model_effect.modifier_shader= modifier_shader;
 								model_effect.modifier_animation.colors= shield_color_colors(unit_index,
 									unit_change_colors);
-								model_effect.modifier_animation.values= unit_function_values;
+								model_effect.modifier_animation.values= overshield_effect_values(unit_index,
+									unit_function_values, TRUE);
 							}
 						}
 					}
@@ -737,6 +740,42 @@ short first_person_weapon_get_marker_by_name(
 	}
 
 	return marker_count;
+}
+
+/* port: interpolate_node_orientations (model_animations.c) at a fraction of
+the blend (at most 1), not a whole frame of it: a frame drawn from the
+newest step blends at its time (render_interpolation_first_person_phase) */
+static void first_person_weapon_interpolate_continuous(
+	short node_count,
+	struct real_orientation const *original_node_orientations,
+	struct real_orientation *target_node_orientations,
+	real fraction)
+{
+	real inverse_fraction;
+	short node_index;
+
+	if (fraction>1.0f)
+	{
+		fraction= 1.0f;
+	}
+	inverse_fraction= 1.0f-fraction;
+	if (node_count>MAXIMUM_NODES_PER_ANIMATION)
+	{
+		node_count= MAXIMUM_NODES_PER_ANIMATION;
+	}
+	for (node_index= 0; node_index<node_count; node_index++)
+	{
+		struct real_orientation *target= &target_node_orientations[node_index];
+		struct real_orientation const *original= &original_node_orientations[node_index];
+
+		target->scale= original->scale*inverse_fraction+target->scale*fraction;
+		quaternions_interpolate_and_normalize(&original->rotation, &target->rotation, fraction, &target->rotation);
+		target->translation.x= original->translation.x*inverse_fraction+target->translation.x*fraction;
+		target->translation.y= original->translation.y*inverse_fraction+target->translation.y*fraction;
+		target->translation.z= original->translation.z*inverse_fraction+target->translation.z*fraction;
+	}
+
+	return;
 }
 
 void first_person_weapon_render_update(
@@ -961,6 +1000,9 @@ void first_person_weapons_update(
 			first_person_weapon_update(local_player_index);
 		}
 	}
+	/* port: when the animations advanced: a frame drawn from the newest step
+	samples them where they are at its time (port/linux/game/render_interpolation.c) */
+	render_interpolation_first_person_updated();
 
 	return;
 }
@@ -1418,6 +1460,27 @@ static void first_person_weapon_build_node_matrices(
 			{
 				short firing_animation_index;
 				short overlay_animation_index;
+				/* port: the player's own view drawn from the newest step: how far
+				the frame is past the tick that advanced the animations (0 to 1),
+				at which each is sampled between its frame and the next, so that
+				the weapon moves every frame, at the frame's time; -1 for a view
+				drawn between the ticks (port/linux/game/render_interpolation.c) */
+				real phase= render_interpolation_first_person_phase(local_player_index);
+				/* port: the overlays' springs (position, turning, firing push
+				back) where their velocity has them at that time */
+				real_vector2d position= first_person_weapon->position;
+				real_vector2d turning= first_person_weapon->turning;
+				real firing_push_back= first_person_weapon->firing_push_back;
+
+				if (phase>0.0f)
+				{
+					position.i= PIN(position.i+first_person_weapon->position_velocity.i*phase, -1.0f, 1.0f);
+					position.j= PIN(position.j+first_person_weapon->position_velocity.j*phase, -1.0f, 1.0f);
+					turning.i= PIN(turning.i+first_person_weapon->turning_velocity.i*phase, -1.0f, 1.0f);
+					turning.j= PIN(turning.j+first_person_weapon->turning_velocity.j*phase, -1.0f, 1.0f);
+					firing_push_back= PIN(firing_push_back+first_person_weapon->firing_push_back_velocity*phase,
+						0.0f, 1.0f);
+				}
 
 				if (first_person_weapon->state_animation.index!=NONE)
 				{
@@ -1442,6 +1505,12 @@ static void first_person_weapon_build_node_matrices(
 							first_person_weapon->state_animation.index,
 							first_person_weapon->state_animation.frame_index);
 
+						/* port: ... and the player's own view drawn from the newest
+						step, at the frame's time (phase, above) */
+						if (fraction<=0.0f && phase>0.0f)
+						{
+							fraction= phase;
+						}
 						if (fraction>0.0f &&
 							first_person_weapon->state_animation.frame_index+1<state_animation->frame_count)
 						{
@@ -1544,7 +1613,21 @@ static void first_person_weapon_build_node_matrices(
 						struct animation);
 
 					/* port: and one of the graph's nodes */
-					if (first_person_weapon_animation_fits(animation_graph, moving_animation))
+					if (!first_person_weapon_animation_fits(animation_graph, moving_animation))
+					{
+						/* (not applied) */
+					}
+					/* port: at the frame's time, between its frame and the next
+					(phase, above) */
+					else if (phase>0.0f)
+					{
+						overlay_animation_apply_continuous_scaled(
+							moving_animation,
+							first_person_weapon->moving_animation.frame_index+phase,
+							1.0f,
+							first_person_weapon->node_orientations);
+					}
+					else
 					{
 						overlay_animation_apply(
 							moving_animation,
@@ -1589,86 +1672,96 @@ static void first_person_weapon_build_node_matrices(
 					if (overlay_animation->frame_count>=NUMBER_OF_FIRST_PERSON_WEAPON_OVERLAY_FRAMES &&
 						first_person_weapon_animation_fits(animation_graph, overlay_animation))
 					{
-						if (first_person_weapon->position.i>0.0f)
+						if (position.i>0.0f)
 						{
 							overlay_animation_apply_scaled(
 								overlay_animation,
 								0,
-								first_person_weapon->position.i,
+								position.i,
 								first_person_weapon->node_orientations);
 						}
-						else if (first_person_weapon->position.i<0.0f)
+						else if (position.i<0.0f)
 						{
 							overlay_animation_apply_scaled(
 								overlay_animation,
 								1,
-								-first_person_weapon->position.i,
+								-position.i,
 								first_person_weapon->node_orientations);
 						}
 
-						if (first_person_weapon->position.j>0.0f)
+						if (position.j>0.0f)
 						{
 							overlay_animation_apply_scaled(
 								overlay_animation,
 								3,
-								first_person_weapon->position.j,
+								position.j,
 								first_person_weapon->node_orientations);
 						}
-						else if (first_person_weapon->position.j<0.0f)
+						else if (position.j<0.0f)
 						{
 							overlay_animation_apply_scaled(
 								overlay_animation,
 								2,
-								-first_person_weapon->position.j,
+								-position.j,
 								first_person_weapon->node_orientations);
 						}
 
-						if (first_person_weapon->turning.i>0.0f)
+						if (turning.i>0.0f)
 						{
 							overlay_animation_apply_scaled(
 								overlay_animation,
 								4,
-								first_person_weapon->turning.i,
+								turning.i,
 								first_person_weapon->node_orientations);
 						}
-						else if (first_person_weapon->turning.i<0.0f)
+						else if (turning.i<0.0f)
 						{
 							overlay_animation_apply_scaled(
 								overlay_animation,
 								5,
-								-first_person_weapon->turning.i,
+								-turning.i,
 								first_person_weapon->node_orientations);
 						}
 
-						if (first_person_weapon->turning.j>0.0f)
+						if (turning.j>0.0f)
 						{
 							overlay_animation_apply_scaled(
 								overlay_animation,
 								7,
-								first_person_weapon->turning.j,
+								turning.j,
 								first_person_weapon->node_orientations);
 						}
-						else if (first_person_weapon->turning.j<0.0f)
+						else if (turning.j<0.0f)
 						{
 							overlay_animation_apply_scaled(
 								overlay_animation,
 								6,
-								-first_person_weapon->turning.j,
+								-turning.j,
 								first_person_weapon->node_orientations);
 						}
 
-						if (first_person_weapon->firing_push_back>0.0f)
+						if (firing_push_back>0.0f)
 						{
 							overlay_animation_apply_scaled(
 								overlay_animation,
 								8,
-								first_person_weapon->firing_push_back,
+								firing_push_back,
 								first_person_weapon->node_orientations);
 						}
 					}
 				}
 
-				if (first_person_weapon->interpolation_frame_count>0)
+				/* port: at the frame's time (phase, above) */
+				if (first_person_weapon->interpolation_frame_count>0 && phase>0.0f)
+				{
+					first_person_weapon_interpolate_continuous(
+						(short)animation_graph->nodes.count,
+						first_person_weapon->original_node_orientations,
+						first_person_weapon->node_orientations,
+						((real)first_person_weapon->interpolation_frame_index+1.0f+phase)/
+							(real)first_person_weapon->interpolation_frame_count);
+				}
+				else if (first_person_weapon->interpolation_frame_count>0)
 				{
 					interpolate_node_orientations(
 						(short)animation_graph->nodes.count,

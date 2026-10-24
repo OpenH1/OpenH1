@@ -192,6 +192,10 @@ static struct
 	float well[3];
 	boolean well_drawn;
 	real_matrix4x3 well_matrix;
+	/* the tags' generation the weapon and its models were kept in
+	(cache_files_tags_generation): another map numbers its models again,
+	and its unit's and weapon's indices may be the same as these were */
+	unsigned long generation;
 } vr_reload = { NONE, NONE, HALO_VR_RELOAD_NONE, 0, FALSE, 0, 0, 0, FALSE, FALSE, 0, 0, FALSE, 0, FALSE, FALSE,
 	NONE, NONE, NONE };
 
@@ -313,7 +317,7 @@ static boolean vr_reload_current(void)
 	long unit_index;
 
 	if (vr_reload.unit_index == NONE || vr_reload.weapon_index == NONE || !halo_vr_running() ||
-		player_index == NONE)
+		player_index == NONE || vr_reload.generation != cache_files_tags_generation())
 	{
 		return FALSE;
 	}
@@ -412,7 +416,8 @@ void vr_reload_update(long unit_index, boolean aiming)
 		magazine = &weapon_get(weapon_index)->weapon.magazines[0];
 		reloading = magazine->state == _magazine_reloading;
 	}
-	if (weapon_index != vr_reload.weapon_index || kind != vr_reload.kind)
+	if (weapon_index != vr_reload.weapon_index || kind != vr_reload.kind ||
+		vr_reload.generation != cache_files_tags_generation())
 	{
 		vr_reload.pressing = FALSE;
 		vr_reload.shells = 0;
@@ -426,6 +431,7 @@ void vr_reload_update(long unit_index, boolean aiming)
 	}
 	vr_reload.unit_index = unit_index;
 	vr_reload.weapon_index = weapon_index;
+	vr_reload.generation = cache_files_tags_generation();
 	vr_reload.kind = kind;
 
 	/* the magazines pushed home since the last frame: loaded at once where

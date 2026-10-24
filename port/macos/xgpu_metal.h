@@ -88,6 +88,8 @@ struct loading_presentation_frame;
 uint64_t host_metal_loading(void *context, const struct loading_presentation_frame *frame);
 int host_metal_loading_owned(void *context);
 void host_metal_loading_art(void *context, const uint8_t *rgba);
+void host_metal_loading_scene(void *context, const void *data, uint32_t bytes);
+void host_metal_loading_progress(void *context, float progress);
 
 #endif
 
@@ -123,6 +125,11 @@ enum
 	and a byte each, white's coverage (read as 1, 1, 1, the byte) */
 	XGPU_METAL_FORMAT_RGBA8,
 	XGPU_METAL_FORMAT_COVERAGE,
+	/* half floats: the back buffer with display.hdr (xgpu_hdr.h) */
+	XGPU_METAL_FORMAT_RGBA16F,
+	/* ASTC 4x4 (LDR): DXT textures transcoded on a GPU without BC
+	(port/linux/astc/xgpu_astc.h) */
+	XGPU_METAL_FORMAT_ASTC,
 	XGPU_METAL_FORMAT_COUNT
 };
 
@@ -339,6 +346,13 @@ struct xgpu_metal_options
 	thread. */
 	int (*guest_extent)(uint32_t address, uint32_t size, uint32_t limit_start, uint32_t limit_end,
 		uint32_t *start, uint32_t *end);
+	/* the large pass parked for the frame's first aside passes goes on
+	(0) rather than ending there (1: the frames identical, to the pixel, to
+	those drawn without aside passes; xgpu_metal.m, "aside passes"): one
+	pass for the whole 3D view, and with MSAA its samples never leave tile
+	memory, but a few pixels of some frames differ. HALO_METAL_ASIDE_BREAK
+	chooses either. */
+	int aside_continue;
 };
 
 /* what the front end's descriptions depend on */
@@ -386,6 +400,15 @@ double xgpu_metal_prepared(void);
 
 /* textures: a handle, or 0 (logged) */
 uint32_t xgpu_metal_texture_create(const struct xgpu_metal_texture_description *description);
+/* whether the GPU samples DXT's blocks (BC1 to BC3): Apple silicon Macs and
+iPads with an M chip do; iPhones and the iOS simulator do not, and their
+DXT textures are ASTC (xgpu_metal_textures.c, port/linux/astc/xgpu_astc.h)
+or decoded */
+int xgpu_metal_block_compression(void);
+/* whether the GPU samples ASTC's LDR blocks: every Apple GPU (the Apple2
+family and later: every iPhone the app runs on, Apple silicon Macs), not an
+Intel Mac's */
+int xgpu_metal_astc(void);
 /* (after the frames in flight that use it) */
 void xgpu_metal_texture_destroy(uint32_t texture);
 /* makes its levels past the first from the first, in the frame's order */
@@ -395,6 +418,11 @@ as both have; the same format), in the frame's order: the pass drawing
 into it ends first, so that a draw can sample what was drawn before it
 (Metal cannot sample a texture its pass draws into) */
 void xgpu_metal_texture_copy(uint32_t source, uint32_t destination);
+/* a multisampled target's attachment resolved into its texture now, in the
+frame's order (the pass drawing into it ends first): a depth target's,
+which the passes store and do not resolve, for a draw that reads the depth
+(the enhanced dynamic lights' glows) */
+void xgpu_metal_texture_resolve(uint32_t texture);
 /* writes a region of a level and layer (a cube's face, a 3D texture's
 slices z to z + depth); bytes_per_row is a compressed format's row of
 blocks. Ordered with the frame's draws: draws before it see the old texels,
@@ -452,6 +480,11 @@ void xgpu_metal_set_texture(uint32_t stage, uint32_t texture, const struct xgpu_
 void xgpu_metal_set_vertex_constants(uint32_t first, uint32_t count, const float *values);
 void xgpu_metal_set_draw_uniforms(const void *data, uint32_t size);
 void xgpu_metal_set_stream(uint32_t stream, struct xgpu_metal_source source);
+/* the enhanced dynamic lights' block and their grid's cells, which the
+pixel shaders that light with them read (XGPU_METAL_BUFFER_DYNAMIC_LIGHTS,
+_DYNAMIC_LIGHT_CELLS): until set again (XGPU_METAL_SOURCE_NONE: none bound;
+a ring's source is the frame's alone) */
+void xgpu_metal_set_dynamic_lights(struct xgpu_metal_source block, struct xgpu_metal_source cells);
 /* the values of the 16 inputs no stream feeds */
 void xgpu_metal_set_constant_attributes(const float (*values)[4]);
 /* indices: 16-bit, or XGPU_METAL_SOURCE_NONE */

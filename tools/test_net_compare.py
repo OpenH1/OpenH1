@@ -159,23 +159,42 @@ def test_copy_of_a_flat_folder(tmp_path):
     assert (copy["data"] / "maps").is_symlink()
 
 
+def test_copies_executables_are_their_own_on_macos(tmp_path):
+    # (on macOS a file of its own, a clone, so that dyld finds each copy's
+    # libraries in its own folder: a hard link's @executable_path may name
+    # another copy's; on Linux a hard link, whose $ORIGIN is the path it was
+    # started by; runner.place) and placed again over an older build's
+    build = tmp_path / "build"
+    build.mkdir()
+    (build / "halo").write_text("old")
+    first = net_compare.prepare_copy(tmp_path / "work", "A", build / "halo", make_data(tmp_path))
+    (build / "halo").unlink()
+    (build / "halo").write_text("new")
+    second = net_compare.prepare_copy(tmp_path / "work", "B", build / "halo", tmp_path / "data")
+    again = net_compare.prepare_copy(tmp_path / "work", "A", build / "halo", tmp_path / "data")
+    assert first["executable"].read_text() == second["executable"].read_text() == "new"
+    links = os.stat(build / "halo").st_nlink
+    assert links == (1 if sys.platform == "darwin" else 3)
+    assert again["executable"] == first["executable"]
+
+
 def test_copy_of_a_release_tree(tmp_path):
-    # bin/opence, its SDL in lib/opence (the rpath's $ORIGIN/../lib/opence),
-    # share/opence; packaged would make the copy an installed game
-    root = tmp_path / "OpenCE"
-    for folder in ("bin", "lib/opence", "share/opence", "share/doc/opence"):
+    # bin/openh1, its SDL in lib/openh1 (the rpath's $ORIGIN/../lib/openh1),
+    # share/openh1; packaged would make the copy an installed game
+    root = tmp_path / "OpenH1"
+    for folder in ("bin", "lib/openh1", "share/openh1", "share/doc/openh1"):
         (root / folder).mkdir(parents=True)
-    (root / "bin/opence").write_text("#!/bin/sh\n")
-    (root / "lib/opence/libSDL3.so.0").write_text("")
-    (root / "share/opence/brokers.txt").write_text("")
-    (root / "share/opence/packaged").write_text("")
-    copy = net_compare.prepare_copy(tmp_path / "work", "B", root / "bin/opence", make_data(tmp_path))
+    (root / "bin/openh1").write_text("#!/bin/sh\n")
+    (root / "lib/openh1/libSDL3.so.0").write_text("")
+    (root / "share/openh1/brokers.txt").write_text("")
+    (root / "share/openh1/packaged").write_text("")
+    copy = net_compare.prepare_copy(tmp_path / "work", "B", root / "bin/openh1", make_data(tmp_path))
     folder = tmp_path / "work/B"
-    assert copy["executable"] == folder / "bin/opence"
-    assert (folder / "lib/opence/libSDL3.so.0").resolve() == root / "lib/opence/libSDL3.so.0"
-    assert (folder / "share/opence/brokers.txt").exists()
-    assert not (folder / "share/opence/packaged").exists()
-    assert not (root / "share/opence/brokers.txt").is_symlink()
+    assert copy["executable"] == folder / "bin/openh1"
+    assert (folder / "lib/openh1/libSDL3.so.0").resolve() == root / "lib/openh1/libSDL3.so.0"
+    assert (folder / "share/openh1/brokers.txt").exists()
+    assert not (folder / "share/openh1/packaged").exists()
+    assert not (root / "share/openh1/brokers.txt").is_symlink()
 
 
 def environment_of(window=False, display=None):
@@ -199,6 +218,13 @@ def test_window_display(monkeypatch):
     environment = environment_of(window=True, display=":99")
     assert environment["DISPLAY"] == ":99" and "WAYLAND_DISPLAY" not in environment
     assert environment["SDL_VIDEO_DRIVER"] == "x11" and environment["HALO_HIDDEN_WINDOW"] == "1"
+
+
+def test_copies_leave_the_clipboard_alone():
+    # (windowed copies too, which have no debug.null_renderer)
+    for window in (False, True):
+        environment = environment_of(window=window)
+        assert environment["HALO_NO_CLIPBOARD"] == "1" and environment["HALO_NET_JOIN_FROM_CLIPBOARD"] == "false"
 
 
 # a copy that ignores SIGTERM and starts a process of its own, as a game

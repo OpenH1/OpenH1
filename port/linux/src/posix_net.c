@@ -20,7 +20,12 @@ with the host ABI.
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+#if !defined(__APPLE__) || !TARGET_OS_IPHONE
 #include <sys/random.h>
+#endif
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <time.h>
@@ -33,7 +38,7 @@ with the host ABI.
 #ifdef __APPLE__
 /* The macOS host (port/macos) has neither SOCK_CLOEXEC and SOCK_NONBLOCK nor
 accept4 and getrandom: a socket gets its flags once made, and random bytes
-come from getentropy. */
+come from getentropy (on iOS, which has no header of it, arc4random_buf). */
 #define SOCK_CLOEXEC 0x10000000
 #define SOCK_NONBLOCK 0x20000000
 
@@ -60,10 +65,15 @@ static int accept4(int descriptor, struct sockaddr *address, socklen_t *length, 
 static ssize_t getrandom(void *buffer, size_t size, unsigned int flags)
 {
 	(void)flags;
+#if TARGET_OS_IPHONE
+	arc4random_buf(buffer, size);
+	return (ssize_t)size;
+#else
 	/* (getentropy gives at most 256 bytes at a time) */
 	if (size > 256)
 		size = 256;
 	return getentropy(buffer, size) == 0 ? (ssize_t)size : -1;
+#endif
 }
 
 /* Its socket addresses start with their length and a one-byte family, where
@@ -185,6 +195,16 @@ static int fail(void)
 	return -1;
 }
 
+/* Winsock's calls are never cut short by a signal (WSAEINTR comes only from
+WSACancelBlockingCall, which the game never calls), and the game takes any
+failure of them as the connection lost: one signal, the host's sampler's or
+a profiler's, a child's end, interrupted a select and ended a network game.
+So a call interrupted here is made again, never failed with WSAEINTR. */
+#define RETRY_INTERRUPTED(result, call) \
+	do \
+		(result) = (call); \
+	while ((result) < 0 && errno == EINTR)
+
 static int succeed(int result)
 {
 	if (result < 0)
@@ -205,7 +225,12 @@ int posix_socket(int family, int type, int protocol)
 
 int posix_socket_close(int socket)
 {
-	return succeed(close(socket));
+	/* (interrupted, the descriptor is closed all the same on Linux: a
+	second close could close another thread's new one) */
+	if (close(socket) < 0 && errno != EINTR)
+		return fail();
+	last_error = 0;
+	return 0;
 }
 
 int posix_socket_bind(int socket, const void *address, int address_length)
@@ -226,7 +251,9 @@ int posix_socket_connect(int socket, const void *address, int address_length)
 	struct sockaddr_storage copy;
 	int result = connect(socket, address_in(address, address_length, &copy), (socklen_t)address_length);
 
-	if (result < 0 && errno == EINPROGRESS)
+	/* (an interrupted connect goes on by itself, as one under way: made
+	again, it would fail with EALREADY) */
+	if (result < 0 && (errno == EINPROGRESS || errno == EINTR))
 	{
 		last_error = WSAEWOULDBLOCK;
 		return -1;
@@ -242,7 +269,9 @@ int posix_socket_listen(int socket, int backlog)
 int posix_socket_accept(int socket, void *address, int *address_length)
 {
 	socklen_t length = address_length ? (socklen_t)*address_length : 0;
-	int result = accept4(socket, address, address_length ? &length : NULL, SOCK_CLOEXEC);
+	int result;
+
+	RETRY_INTERRUPTED(result, accept4(socket, address, address_length ? &length : NULL, SOCK_CLOEXEC));
 
 	if (address_length)
 		*address_length = (int)length;
@@ -253,21 +282,30 @@ int posix_socket_accept(int socket, void *address, int *address_length)
 
 int posix_socket_send(int socket, const void *buffer, int length, int flags)
 {
-	return succeed((int)send(socket, buffer, (size_t)length, flags | MSG_NOSIGNAL));
+	int result;
+
+	RETRY_INTERRUPTED(result, (int)send(socket, buffer, (size_t)length, flags | MSG_NOSIGNAL));
+	return succeed(result);
 }
 
 int posix_socket_sendto(int socket, const void *buffer, int length, int flags,
 	const void *address, int address_length)
 {
 	struct sockaddr_storage copy;
+	const struct sockaddr *to = address_in(address, address_length, &copy);
+	int result;
 
-	return succeed((int)sendto(socket, buffer, (size_t)length, flags | MSG_NOSIGNAL,
-		address_in(address, address_length, &copy), (socklen_t)address_length));
+	RETRY_INTERRUPTED(result, (int)sendto(socket, buffer, (size_t)length, flags | MSG_NOSIGNAL,
+		to, (socklen_t)address_length));
+	return succeed(result);
 }
 
 int posix_socket_recv(int socket, void *buffer, int length, int flags)
 {
-	return succeed((int)recv(socket, buffer, (size_t)length, flags));
+	int result;
+
+	RETRY_INTERRUPTED(result, (int)recv(socket, buffer, (size_t)length, flags));
+	return succeed(result);
 }
 
 int posix_socket_recvfrom(int socket, void *buffer, int length, int flags,
@@ -284,7 +322,7 @@ int posix_socket_recvfrom(int socket, void *buffer, int length, int flags,
 	message.msg_namelen = address && address_length ? (socklen_t)*address_length : 0;
 	message.msg_iov = &vector;
 	message.msg_iovlen = 1;
-	result = (int)recvmsg(socket, &message, flags);
+	RETRY_INTERRUPTED(result, (int)recvmsg(socket, &message, flags));
 	if (address_length)
 		*address_length = (int)message.msg_namelen;
 	if (result >= 0 && message.msg_name)
@@ -424,6 +462,7 @@ int posix_socket_select(int *read, int *read_count, int *write, int *write_count
 	struct pollfd stack[256];
 	struct pollfd *descriptors = stack;
 	long long milliseconds = (long long)timeout_seconds * 1000 + ((long long)timeout_microseconds + 999) / 1000;
+	struct timespec started;
 	int total = 0;
 	int list, index;
 	int result;
@@ -461,8 +500,27 @@ int posix_socket_select(int *read, int *read_count, int *write, int *write_count
 			descriptors[total].revents = 0;
 		}
 	}
-	result = poll(descriptors, (nfds_t)total, infinite ? -1 :
-		(int)(milliseconds < 0 ? 0 : milliseconds > INT_MAX ? INT_MAX : milliseconds));
+	if (milliseconds < 0)
+		milliseconds = 0;
+	clock_gettime(CLOCK_MONOTONIC, &started);
+	for (;;)
+	{
+		struct timespec now;
+		long long left = milliseconds;
+
+		if (!infinite)
+		{
+			clock_gettime(CLOCK_MONOTONIC, &now);
+			left -= (long long)(now.tv_sec - started.tv_sec) * 1000 + (now.tv_nsec - started.tv_nsec) / 1000000;
+			if (left < 0)
+				left = 0;
+		}
+		result = poll(descriptors, (nfds_t)total, infinite ? -1 : (int)(left > INT_MAX ? INT_MAX : left));
+		/* (interrupted: waited again for the time left, as Winsock's select
+		is never interrupted) */
+		if (result >= 0 || errno != EINTR)
+			break;
+	}
 	for (index = 0; index < total && result > 0; index++)
 	{
 		/* (as select fails on a descriptor that is not open) */

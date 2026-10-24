@@ -105,6 +105,14 @@ the bitmap has exactly two frames; the game's functions choose others.
 
 A list of texts, which widgets show by number. `\n` starts a new line.
 
+A list may name the PC version's list of the same texts with `map=` (its tag,
+`ui\shell\main_menu\main_menu_options`), and each of its texts that is one
+of that list's its number there (`<string text="NEW CAMPAIGN" map="0"/>`).
+Each Custom Edition has that list in its language in its `loc.map`: with
+`display.menu_language = "maps"`, a text with a number is the list's from
+the `loc.map` in `custom_maps`, when it has the list and the number. A text
+without one (the port's own) is always the file's.
+
 ### `<widget>`
 
 A screen, or a part of one. Its children are `<widget>` elements in it, or
@@ -131,7 +139,7 @@ be a child of many).
 | `description` | A column list's extended description: a widget |
 | `controller` | `1` to `4`, or `any` (the default); a `<child>`'s or `child_controller`: the one it is for |
 | `auto_close`, `auto_close_fade` | It closes itself after this many milliseconds, fading for this many |
-| `platform` | `desktop`, `android` or `web`, or several separated by spaces: it is only there; `vr`: only in the VR build while it plays in the headset. Every element takes this. |
+| `platform` | `desktop`, `android` or `web`, or several separated by spaces: it is only there; `vr`: only in the VR build while it plays in the headset; `touch`: the touchscreen's builds (Android, iOS, or `debug.touch_menus`), `pointer`: the others; `computer`: the desktop's builds but iOS's. Every element takes this. |
 
 Widget flags: `pass_unhandled_to_focused_child` (an event it does not handle
 goes to its focused child: a screen needs it for its list to get events),
@@ -140,7 +148,18 @@ goes to its focused child: a screen needs it for its list to get events),
 `left_right_tabs_children`, `no_focused_child`, `pause_game`, `flash_bitmap`,
 `render_any_controller`, `main_menu_if_no_history`, `tag_controller_index`,
 `nifty_fx`, `no_history`, and the PC version's `force_handle_mouse` and
-`no_widescreen_fill`, which this engine has no use for.
+`no_widescreen_fill`, which this engine has no use for. The port's, for the
+touchscreen's wide screens (where the menus are laid out for touch: the
+`touch` platform), which elsewhere do nothing: `anchor_left` and
+`anchor_right` move the widget (and what is in it) to the screen's left or
+right edge, by as much as the screen is wider than the menus' 640 on that
+side; `stretch` draws its picture wider by both sides' width, from its left
+(a panel that reaches from the menus' middle to the right edge).
+
+On a touchscreen a tap on an item of a list with an extended description
+(the Multiplayer menu, the settings) chooses it, showing what the
+description says of it, and a second tap uses it; a list without one (the
+button bars) uses its item at the first tap.
 
 A widget takes the focus if it has an `<on>` or is a list; a screen gives it
 to its first such child.
@@ -188,7 +207,10 @@ difficulty` are the port's, as the Xbox's take the Xbox's widgets. The
 settings screens': `port settings save` (OK) writes the settings changed
 (config.toml's, or `profile.<field>`: the profile being edited) and applies
 them, `port settings defaults` shows the defaults, `port settings help` the
-help of the row chosen; Controls Setup's `controls ...` bind the keyboard
+help of the row chosen; a slider row's (`tools/port_settings.py`'s `Slider`)
+`port slider left` and `right` step its value, and `port slider edit` sets
+it where a click on its track is (the mouse held drags it) or types a value
+into its number (Enter keeps it, Escape forgets it); Controls Setup's `controls ...` bind the keyboard
 and mouse's controls (Enter takes the next key or button pressed; left and
 right choose which of two; Escape cancels, Delete clears); Change Color's
 `color picker ...` (the Xbox's names) set the profile's colour. The others

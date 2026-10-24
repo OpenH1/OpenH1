@@ -9,9 +9,9 @@ Join" and whoever accepts it joins. Discord only hands the secret to people
 the host invited (asking to join goes unanswered).
 
 It goes through the Discord application in discord.application_id
-(config.toml; the project's by default), whose name is what Discord shows
-as being played. Without one, or without Discord running, invites are still
-links (p2p.c).
+(config.toml; OpenCE's by default: OpenH1 has none of its own), whose name
+is what Discord shows as being played. Without one, or without Discord
+running, invites are still links (p2p.c).
 
 The protocol: frames of a little-endian opcode and length, then JSON. The
 handshake (opcode 0) names the application; commands and events are opcode
@@ -173,7 +173,10 @@ static void send_activity(void)
 	else
 	{
 		size = snprintf(json, sizeof(json),
-			"{\"cmd\":\"SET_ACTIVITY\",\"nonce\":\"%lu\",\"args\":{\"pid\":%lu}}",
+			"{\"cmd\":\"SET_ACTIVITY\",\"nonce\":\"%lu\",\"args\":{\"pid\":%lu,\"activity\":{"
+			"\"details\":\"In Menus\","
+			"\"assets\":{\"large_image\":\"logo\",\"large_text\":\"Halo: Combat Evolved\"},"
+			"\"instance\":false}}}",
 			++discord.nonce, (unsigned long)posix_process_id());
 	}
 	discord_send(_opcode_frame, json, size);
@@ -315,7 +318,10 @@ void p2p_discord_update(void)
 		const char *application = config_string("discord.application_id");
 
 		discord.checked = 1;
-		if (*application && strlen(application) < sizeof(discord.application))
+		/* (an application's id is digits: it goes into a file's path and
+		the handshake's JSON) */
+		if (*application && strlen(application) < sizeof(discord.application) &&
+			strspn(application, "0123456789") == strlen(application))
 		{
 			char scheme[48];
 

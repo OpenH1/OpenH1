@@ -280,6 +280,12 @@ static void vr_copy_scope(void)
 		"uniform float height;\n"
 		"uniform int text[28];\n"
 		"uniform float text_cell;\n"
+		/* (drawn as the flat screen's zoomed view, the weapon's own mask and
+		HUD in the image: the corner's radius of the rounded window, of the
+		image's half width, less than 0 the smart-link's own look; and how
+		wide its edge fades, of the same) */
+		"uniform float corner;\n"
+		"uniform float feather;\n"
 		/* (its animation: the seconds since it began to open, how far it
 		has closed, the seconds since its level changed) */
 		"uniform vec4 animation;\n"
@@ -351,6 +357,18 @@ static void vr_copy_scope(void)
 		"		float t = animation.x;\n"
 		"		float thin = max(0.6 * size / 1024.0, 0.5);\n"
 		"		vec3 white = mix(hud, vec3(1.0), 0.6);\n"
+		/* as the flat screen's zoomed view: the image as it is, within the
+		rounded window (a circle when the corner is as large as it), its edge
+		fading into the world over the feather */
+		"		if (corner >= 0.0)\n"
+		"		{\n"
+		"			float k = min(corner * radius, min(w.x, w.y));\n"
+		"			vec2 e = a - (w - vec2(k));\n"
+		"			float d = length(max(e, 0.0)) + min(max(e.x, e.y), 0.0) - k;\n"
+		"			alpha = clamp(-d / max(feather * radius, 1.0) + 0.5 / max(feather * radius, 1.0), 0.0, 1.0);\n"
+		"			colour = vec4(c * alpha, alpha);\n"
+		"			return;\n"
+		"		}\n"
 		/* switching off, as a CRT does: the feed collapses to a bright line
 		through the aim (the image squashed into it), then the line to a
 		point, and is gone; brighter only as it is thin */
@@ -979,6 +997,8 @@ static void vr_draw_scope_window(void)
 		"uniform int gun;\n"
 		"uniform float gun_depth;\n"
 		"uniform int layers;\n"
+		/* (how far the world about the window is dimmed: 0 to 1) */
+		"uniform float dim;\n"
 		"out vec4 colour;\n"
 		"void main()\n"
 		"{\n"
@@ -991,14 +1011,23 @@ static void vr_draw_scope_window(void)
 		"	vec3 n = cross(right[eye].xyz, up[eye].xyz);\n"
 		"	float facing = dot(ray, n);\n"
 		"	if (abs(facing) < 1.0e-6)\n"
-		"		discard;\n"
+		"	{\n"
+		"		colour = vec4(0.0, 0.0, 0.0, dim);\n"
+		"		return;\n"
+		"	}\n"
 		"	float along = dot(centre[eye].xyz, n) / facing;\n"
 		"	if (along <= 0.0)\n"
-		"		discard;\n"
+		"	{\n"
+		"		colour = vec4(0.0, 0.0, 0.0, dim);\n"
+		"		return;\n"
+		"	}\n"
 		"	vec3 d = ray * along - centre[eye].xyz;\n"
 		"	vec2 q = vec2(dot(d, right[eye].xyz) / half_size.x, dot(d, up[eye].xyz) / half_size.y);\n"
 		"	if (abs(q.x) > 1.0 || abs(q.y) > 1.0)\n"
-		"		discard;\n"
+		"	{\n"
+		"		colour = vec4(0.0, 0.0, 0.0, dim);\n"
+		"		return;\n"
+		"	}\n"
 		"	vec4 c = texture(window_texture, vec2(0.5 + 0.5 * q.x, 0.5 + 0.5 * q.y * height));\n"
 		"	if (gun != 0)\n"
 		"	{\n"
@@ -1006,6 +1035,6 @@ static void vr_draw_scope_window(void)
 		"		if (z < gun_depth)\n"
 		"			c *= gun == 1 ? 0.8 : 0.0;\n"
 		"	}\n"
-		"	colour = c;\n"
+		"	colour = vec4(c.rgb, c.a + (1.0 - c.a) * dim);\n"
 		"}\n";
 }

@@ -53,6 +53,7 @@ symbols in this file:
 /* ---------- headers */
 
 #include "cseries/cseries.h"
+#include "passenger_camera.h" /* port: port/linux/game/passenger_camera.c */
 #include "cseries/errors.h"
 #include "bitmaps/bitmap_group.h"
 #include "cache/texture_cache.h"
@@ -87,14 +88,20 @@ raised to an eye or smart-linked (a window about the reticle), showing
 the zoom (port/linux/src/d3d8_device.c): the zoomed view's
 elements (the zoom's crosshairs, the readout with its arc and the side
 panel's waveform; the range ticks; the sniper's target distance and
-elevation at the reticle) are not drawn, which would float beside it */
+elevation at the reticle) are not drawn, which would float beside it. The
+smart-link's window draws them over its own view instead, they alone
+(hud_render_weapon_zoomed) */
 boolean vr_scope_shown(void);
+static boolean hud_weapon_zoomed_only;
 /* port/linux/game/vr_death.c: the HUD booting as the player is back from
 the death cam (the ammo counting up) */
 real vr_death_hud_boot(short part);
-#define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) ((zoomed_layout) && vr_scope_shown())
+#define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) \
+	((zoomed_layout) ? vr_scope_shown() && !hud_weapon_zoomed_only : hud_weapon_zoomed_only)
+#define HUD_WEAPON_ZOOMED_ONLY hud_weapon_zoomed_only
 #else
 #define HUD_WEAPON_ZOOMED_HIDDEN(zoomed_layout) FALSE
+#define HUD_WEAPON_ZOOMED_ONLY FALSE
 #endif
 
 /* ---------- constants */
@@ -744,6 +751,11 @@ static void hud_update_weapon_local_player(
 		long render_flags = 0;
 		short definition_count = 1;
 		short crosshair_index;
+		/* port: a weapon of one magazine has no secondary ammunition to warn
+		of. Its second magazine (empty) set the secondary states off: "fired
+		secondary with no ammo" at every pull of the trigger, coldsnap's
+		master HUD's NO FUEL beside the weapon's own NO AMMO */
+		boolean const secondary_magazine = weapon_state->magazine_count > 1;
 
 		if (weapon_index != get_hud_state(local_player_index)->last_weapon_index &&
 			weapon_index == NONE)
@@ -786,8 +798,9 @@ static void hud_update_weapon_local_player(
 					result = weapon_state->magazines[0].can_fire;
 					break;
 
+				/* port: (secondary_magazine) */
 				case _crosshair_state_secondary_trigger_ready:
-					result = weapon_state->magazines[1].can_fire;
+					result = secondary_magazine && weapon_state->magazines[1].can_fire;
 					break;
 
 				case _crosshair_state_aim:
@@ -871,8 +884,10 @@ static void hud_update_weapon_local_player(
 						weapon_state->magazines[0].rounds_loaded <= root_definition->flash_cutoffs.loaded_ammo;
 					break;
 
+				/* port: (secondary_magazine) */
 				case _crosshair_state_flash_secondary_ammo:
-					result = (weapon_state->magazines[1].rounds_remaining || weapon_state->magazines[1].rounds_loaded) &&
+					result = secondary_magazine &&
+						(weapon_state->magazines[1].rounds_remaining || weapon_state->magazines[1].rounds_loaded) &&
 						weapon_state->magazines[1].rounds_remaining &&
 						weapon_state->magazines[1].rounds_loaded <= root_definition->flash_cutoffs.loaded_ammo;
 					break;
@@ -886,8 +901,9 @@ static void hud_update_weapon_local_player(
 						!weapon_state->magazines[1].reloading;
 					break;
 
+				/* port: (secondary_magazine) */
 				case _crosshair_state_secondary_reload:
-					result = weapon_state->magazines[1].reloading;
+					result = secondary_magazine && weapon_state->magazines[1].reloading;
 					break;
 
 				case _crosshair_state_fired_secondary_with_no_ammo:
@@ -900,8 +916,10 @@ static void hud_update_weapon_local_player(
 						state->value.reference_data != NONE);
 					break;
 
+				/* port: (secondary_magazine) */
 				case _crosshair_state_flash_secondary_ammo_none_for_reload:
-					result = (weapon_state->magazines[1].rounds_remaining || weapon_state->magazines[1].rounds_loaded) &&
+					result = secondary_magazine &&
+						(weapon_state->magazines[1].rounds_remaining || weapon_state->magazines[1].rounds_loaded) &&
 						!weapon_state->magazines[1].rounds_remaining &&
 						weapon_state->magazines[1].rounds_loaded <= root_definition->flash_cutoffs.loaded_ammo;
 					break;
@@ -984,6 +1002,9 @@ static void crosshairs_draw(
 	long stack_buffer[STACK_BUFFER_LENGTH];
 	boolean firing_active = FALSE;
 
+	/* port: project the passenger's shot once for all pieces of its reticle */
+	if (!passenger_camera_reticle_begin(player->local_player_index, weapon_index))
+		return;
 	csmemset(
 		stack_buffer,
 		0x62,
@@ -1049,7 +1070,7 @@ static void crosshairs_draw(
 					if (weapon_hud_state_index_valid(state_index, NUMBER_OF_WEAPON_HUD_CROSSHAIR_STATES) &&
 						TEST_FLAG(render_flags, state_index) &&
 						TEST_FLAG(map_type_flags, element->use_on_map_type) &&
-						!HUD_WEAPON_ZOOMED_HIDDEN(state_index == _crosshair_state_zoom))
+						(HUD_WEAPON_ZOOMED_ONLY || !HUD_WEAPON_ZOOMED_HIDDEN(state_index == _crosshair_state_zoom)))
 					{
 						struct crosshair_state *state = &crosshair->states[state_index];
 						short item_index;
@@ -1064,9 +1085,9 @@ static void crosshairs_draw(
 								struct weapon_hud_crosshair_item);
 
 							if (!TEST_FLAG(item->flags, _hud_crosshair_runtime_invalid_bit) &&
-								!HUD_WEAPON_ZOOMED_HIDDEN(
+								(HUD_WEAPON_ZOOMED_ONLY || !HUD_WEAPON_ZOOMED_HIDDEN(
 									TEST_FLAG(item->flags, _hud_crosshair_not_on_default_zoom_bit) ||
-									TEST_FLAG(item->flags, _hud_crosshair_show_sniper_data_bit)) &&
+									TEST_FLAG(item->flags, _hud_crosshair_show_sniper_data_bit))) &&
 								(!TEST_FLAG(item->flags, _hud_crosshair_not_on_default_zoom_bit) ||
 									crosshair->states[_crosshair_state_zoom].value.reference_data > 0) &&
 								(!TEST_FLAG(item->flags, _hud_crosshair_only_on_default_zoom_bit) ||
@@ -1345,6 +1366,8 @@ static void crosshairs_draw(
 		}
 	}
 
+	/* port: other HUD elements keep their ordinary anchors */
+	passenger_camera_reticle_end();
 	match_assert_stack_frame("c:\\halo\\SOURCE\\interface\\hud_weapon.c", 0x4E2);
 	return;
 }
@@ -1487,33 +1510,43 @@ static void render_weapon_hud(
 			local_player_count() > 1);
 		state_flags[3] = flags;
 
-		flags = state_flags[4];
-		SET_FLAG(
-			flags,
-			_hud_draw_flashing_bit,
-			weapon_state->magazines[1].rounds_remaining <= cutoffs->total_ammo);
-		SET_FLAG(
-			flags,
-			_hud_draw_disabled_bit,
-			weapon_state->magazines[1].rounds_remaining == 0);
-		SET_FLAG(
-			flags,
-			_hud_draw_in_multiplayer_bit,
-			local_player_count() > 1);
-		state_flags[4] = flags;
+		/* port: a weapon of one magazine has no secondary ammunition, so
+		nothing of it flashes or shows empty (the overlays below likewise) */
+		if (weapon_state->magazine_count > 1)
+		{
+			flags = state_flags[4];
+			SET_FLAG(
+				flags,
+				_hud_draw_flashing_bit,
+				weapon_state->magazines[1].rounds_remaining <= cutoffs->total_ammo);
+			SET_FLAG(
+				flags,
+				_hud_draw_disabled_bit,
+				weapon_state->magazines[1].rounds_remaining == 0);
+			SET_FLAG(
+				flags,
+				_hud_draw_in_multiplayer_bit,
+				local_player_count() > 1);
+			state_flags[4] = flags;
 
-		flags = state_flags[5];
-		SET_FLAG(
-			flags,
-			_hud_draw_flashing_bit,
-			weapon_state->magazines[1].rounds_loaded <= cutoffs->loaded_ammo &&
-				!weapon_state->magazines[1].reloading);
-		SET_FLAG(flags, _hud_draw_disabled_bit, FALSE);
-		SET_FLAG(
-			flags,
-			_hud_draw_in_multiplayer_bit,
-			local_player_count() > 1);
-		state_flags[5] = flags;
+			flags = state_flags[5];
+			SET_FLAG(
+				flags,
+				_hud_draw_flashing_bit,
+				weapon_state->magazines[1].rounds_loaded <= cutoffs->loaded_ammo &&
+					!weapon_state->magazines[1].reloading);
+			SET_FLAG(flags, _hud_draw_disabled_bit, FALSE);
+			SET_FLAG(
+				flags,
+				_hud_draw_in_multiplayer_bit,
+				local_player_count() > 1);
+			state_flags[5] = flags;
+		}
+		else
+		{
+			state_flags[4] = local_player_count() > 1 ? FLAG(_hud_draw_in_multiplayer_bit) : 0;
+			state_flags[5] = state_flags[4];
+		}
 
 		for (state_index = 0;
 			state_index < NUMBER_OF_WEAPON_HUD_FLASH_REFERENCES;
@@ -1664,8 +1697,7 @@ static void render_weapon_hud(
 		SET_FLAG(flags, _weapon_overlay_on_always_bit, TRUE);
 		overlay_flags[5] = flags;
 		/* port: a weapon without a second magazine draws none of its overlays,
-		as the Xbox never set these; its states above read an empty one, whose
-		total ammunition is drawn disabled */
+		as the Xbox never set these (its states above none either) */
 		if (weapon_state->magazine_count < 2)
 			overlay_flags[4] = overlay_flags[5] = 0;
 
@@ -1904,7 +1936,8 @@ static void render_weapon_hud(
 
 		if (!TEST_FLAG(element->runtime_flags, _hud_element_runtime_invalid_bit) &&
 			TEST_FLAG(map_type_flags, element->use_on_map_type) &&
-			weapon_hud_state_index_valid(element->state_type, NUMBER_OF_WEAPON_HUD_FLASH_REFERENCES))
+			weapon_hud_state_index_valid(element->state_type, NUMBER_OF_WEAPON_HUD_FLASH_REFERENCES) &&
+			!HUD_WEAPON_ZOOMED_HIDDEN(FALSE)) /* port: (none are the zoomed view's) */
 		{
 			state_index = element->state_type;
 			hud_draw_weapon_overlays(
@@ -2190,6 +2223,39 @@ void hud_render_weapon_crosshairs(
 			NONE,
 			hud_globals->defaults.default_weapon_hud.index,
 			&weapon_state);
+	}
+
+	return;
+}
+
+/* the VR mode's smart-link window (port/linux/game/vr_scope.c): the
+weapon's zoomed view alone, as hud_render_weapon_interface draws it while
+zoomed (all its crosshairs, as the flat screen shows them zoomed: the
+reticle, the scope's brackets and ticks, the zoom's label; and the elements
+that follow the zoom), over the window's own view, drawn into the scope's
+image */
+void hud_render_weapon_zoomed(
+	struct player_datum *player)
+{
+	long weapon_index = unit_inventory_get_weapon(
+		player->unit_index,
+		unit_get(player->unit_index)->unit.current_weapon_index);
+
+	if (weapon_index != NONE)
+	{
+		struct weapon_definition *definition = weapon_definition_get(
+			weapon_get(weapon_index)->definition_index);
+		long hud_index = definition->weapon.interface_definition.hud_interface.index;
+		struct weapon_interface_state weapon_state;
+
+		if (hud_index != NONE)
+		{
+			hud_weapon_zoomed_only = TRUE;
+			weapon_build_weapon_interface_state(weapon_index, &weapon_state);
+			crosshairs_draw(player, weapon_index, hud_index, &weapon_state);
+			render_weapon_hud(hud_index, player->local_player_index, definition, &weapon_state, NULL, NULL, NULL);
+			hud_weapon_zoomed_only = FALSE;
+		}
 	}
 
 	return;

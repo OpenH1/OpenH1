@@ -11,9 +11,10 @@ host_vr_stream.c).
 import hashlib
 import os
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
-from .build_common import download
+from .build_common import (ASTC_CXX_FLAGS, ASTC_DIR, ASTC_HOST_CXX_SOURCES, ASTC_HOST_SOURCES, astc_encoder_sources,
+                           download)
 from .ninja_syntax import Writer
 
 LINUX_DIR = Path("port/linux")
@@ -49,7 +50,7 @@ VULKAN_DIR = Path("port/linux/vulkan")
 # stand-in for the guest's platform.h (port/linux/vulkan/
 # xgpu_vulkan_platform.h), as the macOS build's host does
 # (tools/macos_build.py, SHARED_SOURCES)
-VULKAN_SHARED_SOURCES = ["xgpu.h", "xgpu_backend.h", "loading_presentation.h", "loading_art.h", "loading_art_tables.h", "xgpu_shader.h", "xgpu_spirv.h", "xgpu_spirv.c",
+VULKAN_SHARED_SOURCES = ["xgpu.h", "xgpu_backend.h", "loading_presentation.h", "loading_art.h", "loading_art_tables.h", "loading_ring.h", "loading_scene.h", "xgpu_shader.h", "xgpu_spirv.h", "xgpu_spirv.c", "xgpu_hdr.h",
                          "vr.h", "vr_host.h", "vr_visor.h"]
 VULKAN_DECODE_SOURCES = ["xbox_texture_decode.c"]
 # the VR mode's: the stream's VR records and late latch (host_vr_stream.h),
@@ -73,11 +74,13 @@ def fetch_vulkan_headers(vulkan_dir: Path) -> None:
 
 def host_vulkan_renderer(n: Writer, prefix: str, label: str, build: Path, host_cc: str,
                          host_cflags: str, vulkan_headers: Path, vr: bool = False,
-                         texture_decoding: bool = True) -> List[Path]:
+                         texture_decoding: bool = True, astc_cxx: Optional[str] = None) -> List[Path]:
     """Build the Vulkan host, returning objects: with vr, the VR mode's eye
     passes, composition and stream records (VR_STREAM_SOURCES); with
     texture_decoding (every host's), the Xbox's texture decoding
-    (VULKAN_DECODE_SOURCES)."""
+    (VULKAN_DECODE_SOURCES); with astc_cxx (a rule compiling C++: the
+    Android app's), the DXT textures as ASTC on a device without BC
+    (HALO_ASTC: port/linux/astc, with astc-encoder)."""
     # the Vulkan renderer (port/linux/vulkan), with the renderer's shared
     # parts copied beside a stand-in for the guest's platform.h, which
     # their quoted includes would otherwise find in port/linux/src; the
@@ -116,6 +119,8 @@ def host_vulkan_renderer(n: Writer, prefix: str, label: str, build: Path, host_c
             inputs=[xdk / "xdk_pdb.h", xdk / "xdk_d3d8.h"])
     shared_copies += [shared_dir / "platform.h", shared_dir / "xdk_enums.h"]
     vulkan_cflags = f"-I{shared_dir} -I{VULKAN_DIR} -I{vulkan_headers} {host_cflags}"
+    if astc_cxx:
+        vulkan_cflags += f" -DHALO_ASTC=1 -I{ASTC_DIR}"
     vulkan_sources = [shared_dir / name for name in shared_names if name.endswith(".c")]
     vr_sources = {"host_vulkan_vr.c", "xgpu_vulkan_vr_shaders.c"}
     vulkan_sources += sorted(source for source in VULKAN_DIR.glob("*.c")
@@ -127,4 +132,19 @@ def host_vulkan_renderer(n: Writer, prefix: str, label: str, build: Path, host_c
         n.build(outputs=obj, rule=host_cc, inputs=source, order_only=shared_copies,
                 variables={"cflags": vulkan_cflags})
         host_objects.append(obj)
+    if astc_cxx:
+        astc_cxx_flags = " ".join(["-g", "-fPIC", *ASTC_CXX_FLAGS])
+        for source in ASTC_HOST_SOURCES:
+            obj = host_obj_dir / "astc" / (source.name + ".o")
+            n.build(outputs=obj, rule=host_cc, inputs=source, variables={"cflags": host_cflags})
+            host_objects.append(obj)
+        for source in ASTC_HOST_CXX_SOURCES:
+            obj = host_obj_dir / "astc" / (source.name + ".o")
+            n.build(outputs=obj, rule=astc_cxx, inputs=source,
+                    variables={"cflags": f"{astc_cxx_flags} -Wall -I{ASTC_DIR}"})
+            host_objects.append(obj)
+        for source in astc_encoder_sources():
+            obj = host_obj_dir / "astc" / (source.name + ".o")
+            n.build(outputs=obj, rule=astc_cxx, inputs=source, variables={"cflags": f"{astc_cxx_flags} -w"})
+            host_objects.append(obj)
     return host_objects

@@ -3437,6 +3437,9 @@ static boolean ui_widget_function_denied(
 	return denied;
 }
 
+/* port: ui_widget_event_handler_functions.h */
+boolean ui_widget_function_failure_expected = FALSE;
+
 boolean ui_widget_event_handler_function_invoke(
 	struct widget_instance *widget,
 	struct event_record *event,
@@ -3465,7 +3468,10 @@ boolean ui_widget_event_handler_function_invoke(
 	if ((short)function_index >= 0 && function_index < 102)
 	{
 		result = event_handler_function_list.functions[(short)function_index](widget, event, widget_deleted);
-		if (!result)
+		/* port: not where the failure is the handler's branch to its conditional
+		widget ("new game if no plyr profiles" with no profile, at the first
+		start), which the player saw as an error */
+		if (!result && !ui_widget_function_failure_expected)
 			console_warning("event handler '%s' failed", event_handler_function_list.names[(short)function_index]);
 		return result;
 	}
@@ -6223,6 +6229,28 @@ boolean ui_widget_port_open(
 
 	if (!ui_widget_load_by_name_or_tag(name, NONE, NULL, NONE, topmost_parent->definition_tag_index,
 		widget->parent ? widget->parent->definition_tag_index : NONE, widget_instance_get_child_index_from_parent(widget)))
+	{
+		error(2, "event handler failed to spawn widget");
+		return FALSE;
+	}
+	*widget_deleted = TRUE;
+	return TRUE;
+}
+
+/* a screen by name in place of the widget's, kept out of the history (back
+returns to the screen before the widget's): Settings' tabs, which B leaves
+together (port/linux/game/menu_functions.c). It is the same player's, as a
+screen opened from it is (ui_widget_launch_widget): in a game, the menus
+up for that player keep their controller's, keyboard's and mouse's input
+from the player (ui_widgets_active_for_local_player) */
+boolean ui_widget_port_switch(
+	struct widget_instance *widget,
+	char const *name,
+	boolean *widget_deleted)
+{
+	short local_player_index = widget_instance_get_topmost_parent(widget)->local_player_index;
+
+	if (!ui_widget_load_by_name_or_tag(name, NONE, NULL, local_player_index, NONE, NONE, NONE))
 	{
 		error(2, "event handler failed to spawn widget");
 		return FALSE;

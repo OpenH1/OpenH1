@@ -159,7 +159,13 @@ struct nv2a_pixel_shader_key
 	model's lighting lit for each pixel in place of its two point lights; 0
 	none */
 	unsigned char dynamic_lights;
-	unsigned char pad[3];
+	/* the VR mode's effects (d3d8_device.c halo_vr_effect_depth, the
+	backend's xgpu_spirv.h XGPU_SPIRV_EFFECT_*): an effect drawn into both
+	eyes soft against the scene's depth (1), and thick (2); 0 none */
+	unsigned char vr_effect;
+	/* display.hdr: the draw's tag into the HDR back buffer (xgpu_hdr.h:
+	XGPU_HDR_*); 0 into any other target, and without HDR */
+	unsigned short hdr;
 };
 
 /* the vertex constants the per-pixel model lighting reads, in a uniform of

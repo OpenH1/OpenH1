@@ -419,7 +419,59 @@ void object_reset(long object_index);
 void object_placement_data_new(struct object_placement_data *data, long definition_index, long owner_object_index);
 void object_disconnect_from_map(long object_index);
 short object_get_first_cluster(struct object_cluster_iterator *iterator, long object_index);
+/* an object's nodes: in a sub-step, an object of the macro lane where the
+sub-step sees it (object_get_lane, below); while a frame is drawn, as it is
+drawn (render_interpolation.c); else where the tick left it. (So is
+object_get_node_matrix's, and what collides with the object.) */
 real_matrix4x3 *object_get_node_matrices(long object_index);
+/* port: lanes (port/linux/game/sim_rate.h). The game's ticks stay 30 a
+second; at game.sim_rate 60 or 120 each tick ends in 2 or 4 sub-steps, the
+fast phase. An object of the macro lane (most of them: everything authored at
+30) moves once a tick, in objects_update. One of the micro lane moves in the
+sub-steps: a player's biped or the AI's, a vehicle a player drives
+(vehicles.c), a projectile, an item loose in the world (thrown or dropped),
+once the code that moves its type moves it there and says so
+(object_lane_register); anything carried goes in the lane of what carries it
+(a player in a vehicle's seat: the vehicle's). At 30, a tick's one sub-step
+ends where the tick does, and the micro lane moves in the tick as always.
+
+In a sub-step, the macro lane is seen where it would be that far into the
+tick: an object it moved (one with a collision model) between where the tick
+before left it and where this one does, at sim_substep_end_fraction(); its
+nodes (object_get_node_matrices, so the collision tests against it) and
+object_get_substep_position. A lift's riders of the micro lane are carried a
+share of its movement each sub-step, before the sub-step moves them: they
+stand on its floor where they see it. Nothing of this is in the game state or
+outlives its tick. */
+enum object_lane
+{
+	_object_lane_macro, /* moved once a tick */
+	_object_lane_micro, /* moved in the sub-steps */
+	NUMBER_OF_OBJECT_LANES
+};
+/* the types (a mask: _object_mask_biped, _object_mask_projectile,
+_object_mask_item) whose objects of the micro lane the caller moves in the
+sub-steps, from now on (at its initialisation: bipeds.c, projectiles.c,
+items.c). Until a type is, its objects are of the macro lane */
+void object_lane_register(unsigned long object_type_mask);
+/* its lane (_object_lane_macro or _object_lane_micro): a player's biped, an
+AI's (an actor's or a swarm's), a vehicle a player drives, a projectile and an
+item loose in the world are of the micro lane once their type is registered,
+the rest of the macro lane, and anything carried of the lane of what carries
+it, at any rate */
+short object_get_lane(long object_index);
+/* whether it moves in this tick's sub-steps: of the micro lane, and the tick
+has more than one */
+boolean object_lane_moves_in_substeps(long object_index);
+/* where a sub-step sees the object: its position and its bounding sphere's
+centre (either may be NULL), as its nodes (above) */
+void object_get_substep_position(long object_index, real_point3d *position, real_point3d *bounding_sphere_center);
+/* an AI's biped moving its tick's sub-steps in its own update (bipeds.c), each
+seeing the macro lane from the sub-step of its index (objects.c, "What the
+sub-steps see of the macro lane"): a lift it stands on that far into its
+movement, the tick's if the lift moved before it, else the tick before's;
+NONE once it is done */
+void object_lane_view_substep(long biped_index, short substep_index);
 char const *object_get_attachment_marker_name(long object_index, short attachment_index);
 boolean object_has_node(long object_index, short node_index);
 void object_set_automatic_deactivation(long object_index, boolean automatic_deactivation);

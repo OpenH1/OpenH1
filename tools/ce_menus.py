@@ -74,12 +74,24 @@ LEFT_OUT = {
 # below Co-op, keeping its 32-unit highlight inside the description panel's
 # bottom curve (port_settings.WIDGET_PATCHES)
 CHILD_OFFSETS = {
+    # Player Options' rows 27 apart, not 30, so that the host's AIM ASSIST and
+    # SHIELD EFFECTS fit below them and above the help, which some fill with
+    # three lines (port_settings.WIDGET_PATCHES)
+    **{("ui\\shell\\main_menu\\settings_select\\multiplayer_setup\\player_options_edit\\player_options_menu",
+        f"ui\\shell\\main_menu\\settings_select\\multiplayer_setup\\player_options_edit\\op_{row}"): (54, 73 + 27 * index)
+       for index, row in enumerate(port_settings.PLAYER_OPTIONS_ROWS)},
     ("ui\\shell\\main_menu\\main_menu_select_list", "ui\\shell\\main_menu\\main_menu_item_quit_game"):
         port_settings.QUIT_ITEM_PLACE,
     ("ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_select_list",
-     "ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_gametypes_item"): (0, 358),
+     "ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_gametypes_item"):
+        port_settings.MULTIPLAYER_GAMETYPES_PLACE,
     ("ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_select_screen",
-     "ui\\shell\\main_menu\\blueline"): (64, 349),
+     "ui\\shell\\main_menu\\blueline"): port_settings.MULTIPLAYER_LINE_PLACE,
+    # (the rest of Multiplayer's rows, a step closer for Create Game's two
+    # co-op items)
+    **{("ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_select_list",
+        f"ui\\shell\\main_menu\\multiplayer_type_select\\{name}"): place
+       for name, place in port_settings.MULTIPLAYER_ROWS.items()},
     # the browser's rows up under the column titles, into the place of the
     # scroll up button (hidden: the list does not scroll)
     **{("ui\\shell\\main_menu\\multiplayer_type_select\\join_game\\join_game_items_list",
@@ -156,6 +168,7 @@ WIRED = {
     "load game menu delete request", "load game menu delete finish",
     "controls screen init", "controls begin binding", "controls screen change set", "controls screen defaults",
     "controls update menu", "profile manager select", "direct ip connect go", "ss edit server password",
+    "gamespy select header",
 }
 
 # ---------- HEK tags
@@ -276,6 +289,31 @@ def text_value(utf16: bytes) -> str:
     return text.replace("\r\n", "\\n").replace("\n", "\\n").replace("\r", "")
 
 
+def strings_xml(lists: dict) -> str:
+    """strings.xml: the PC version's string lists (each tag's strings), with
+    the port's changes to them (port_settings.STRING_OVERRIDES and
+    STRING_INSERTS). Each list names its tag (map=) and each of its strings
+    that is the PC version's its index there (map=), which a map in another
+    language has in its language (menu_tags.c's map_strings)."""
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             "<!-- The PC version's menus' text (tools/ce_menus.py) -->", "<menus>"]
+    for tag in sorted(lists):
+        strings = lists[tag]
+        originals = list(range(len(strings)))
+        if our_name(tag) in port_settings.STRING_OVERRIDES:
+            strings = port_settings.STRING_OVERRIDES[our_name(tag)]
+            originals = port_settings.OVERRIDE_ORIGINALS.get(our_name(tag), [None] * len(strings))
+        for index, texts in port_settings.STRING_INSERTS.get(our_name(tag), []):
+            strings = strings[:index] + texts + strings[index:]
+            originals = originals[:index] + [None] * len(texts) + originals[index:]
+        lines.append(f"\t<strings{attributes([('name', our_name(tag)), ('map', tag)])}>")
+        lines += [f"\t\t<string{attributes([('text', text), ('map', original)])}/>"
+                  for text, original in zip(strings, originals)]
+        lines.append("\t</strings>")
+    lines.append("</menus>")
+    return "\n".join(lines) + "\n"
+
+
 def flag_names(value: int, names: list) -> str:
     return " ".join(name for bit, name in enumerate(names) if value >> bit & 1) or None
 
@@ -323,6 +361,44 @@ class Art:
         return "\n".join([f"\t<bitmap{attributes([('name', name)])}>",
                           f"\t\t<frame{attributes([('png', png), ('width', 512), ('height', 64)])}/>",
                           "\t</bitmap>"])
+
+    def still(self, name: str, png, width: int, height: int) -> str:
+        """a <bitmap> of a picture shipped as it is (port/assets/menus/stills:
+        NON_HANDDRAWN.md says what each is), outside ce/, which this script
+        writes anew"""
+        pngs = [png] if isinstance(png, str) else png
+        self.pngs += [frame for frame in pngs if frame not in self.pngs]
+        return "\n".join([f"\t<bitmap{attributes([('name', name)])}>",
+                          *(f"\t\t<frame{attributes([('png', frame), ('width', width), ('height', height)])}/>"
+                            for frame in pngs),
+                          "\t</bitmap>"])
+
+    def digits(self, name: str) -> str:
+        """a <bitmap> of the ten digits, a frame each, set as the titles are
+        (OpenCE, the titles' colour) at port_settings.DIGIT_CAP units high,
+        each in the middle of a frame of one width: Multiplayer's panel's
+        counts (menu_functions.c's multiplayer_status_number)"""
+        from PIL import ImageDraw, ImageFont
+        scale = SCALE
+        width, height = port_settings.DIGIT_SIZE
+        probe = ImageFont.truetype(str(TITLE_FONT), 1000)
+        left, top, right, bottom = probe.getbbox("0")
+        font = ImageFont.truetype(str(TITLE_FONT), round(port_settings.DIGIT_CAP * scale * 1000 / (bottom - top)))
+        lines = [f"\t<bitmap{attributes([('name', name)])}>"]
+        for digit in range(10):
+            image = Image.new("RGBA", (width * scale, height * scale), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(image)
+            box = font.getbbox(str(digit))
+            x = (width * scale - (box[2] - box[0])) / 2 - box[0]
+            y = (height * scale - (box[3] - box[1])) / 2 - box[1]
+            draw.text((x, y), str(digit), font=font, fill=port_settings.DIGIT_COLOR)
+            png = f"ce/port/{name}__{digit}.png"
+            (MENUS / png).parent.mkdir(parents=True, exist_ok=True)
+            image.save(MENUS / png, optimize=True)
+            self.pngs.append(png)
+            lines.append(f"\t\t<frame{attributes([('png', png), ('width', width), ('height', height)])}/>")
+        lines.append("\t</bitmap>")
+        return "\n".join(lines)
 
     def port_picture(self, name: str, frames: list) -> str:
         """a <bitmap> of this port's own drawing: each frame an SVG (text,
@@ -531,7 +607,8 @@ def widget_xml(tag: str, widget: dict, tags: Tags, functions: list, inputs: list
         name = patch.get("swap", {}).get(our_name(child_tag), our_name(child_tag))
         lines += [f"{inner}{line}" for line in patch.get("insert_before", {}).get(our_name(child_tag), [])]
         pairs = [("widget", name), ("x", x or None), ("y", y or None),
-                 ("controller", str(child["custom controller index"] + 1) if child["flags"] & 1 else None)]
+                 ("controller", str(child["custom controller index"] + 1) if child["flags"] & 1 else None),
+                 ("platform", port_settings.CHILD_PLATFORMS.get((our_name(tag), name)))]
         lines.append(f"{inner}<child{attributes(pairs)}/>")
     lines += [f"{inner}{line}" for line in patch.get("children", [])]
     lines.append(f"{indent}</widget>")
@@ -555,7 +632,8 @@ def pause_art(art):
             (port_settings.pause_box_svg(piece, height), 4 if piece == "center" else 16, 256) for height in heights]))
     for piece in ("left", "center", "right"):
         lines.append(art.port_picture(f"pause/objectives_{piece}", [
-            (port_settings.pause_box_svg(piece, 195, header=True), 4 if piece == "center" else 16, 256)]))
+            (port_settings.pause_box_svg(piece, height, header=True), 4 if piece == "center" else 16, 256)
+            for height in port_settings.PAUSE_BOX_EXTRA_HEIGHTS]))
     return lines
 
 
@@ -620,18 +698,9 @@ def main() -> None:
     for name, lines in [*port_settings.settings_files().items(), *port_settings.multiplayer_files().items()]:
         (CE / name).write_text("\n".join(lines))
     # their strings
-    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
-             "<!-- The PC version's menus' text (tools/ce_menus.py) -->", "<menus>"]
-    for tag in sorted(string_lists):
-        strings = [text_value(item["string"]) for item in tags.load(tag, "unicode_string_list")["strings"]]
-        strings = port_settings.STRING_OVERRIDES.get(our_name(tag), strings)
-        for index, texts in port_settings.STRING_INSERTS.get(our_name(tag), []):
-            strings = strings[:index] + texts + strings[index:]
-        lines.append(f"\t<strings{attributes([('name', our_name(tag))])}>")
-        lines += [f"\t\t<string{attributes([('text', text)])}/>" for text in strings]
-        lines.append("\t</strings>")
-    lines.append("</menus>")
-    (CE / "strings.xml").write_text("\n".join(lines) + "\n")
+    (CE / "strings.xml").write_text(strings_xml({
+        tag: [text_value(item["string"]) for item in tags.load(tag, "unicode_string_list")["strings"]]
+        for tag in string_lists}))
     # their bitmaps
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
              "<!-- The PC version's menus' bitmaps, drawn from the redraws, else the PC version's own pictures"
@@ -655,6 +724,25 @@ def main() -> None:
     # menu_tags.c)
     lines.append(art.port_picture("blank", [
         ('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4" viewBox="0 0 4 4"/>\n', 4, 4)]))
+    # (Multiplayer's panel: its counts' digits, and a game's ping as bars)
+    lines.append(art.digits(port_settings.STATUS_DIGITS))
+    lines.append(art.port_picture(port_settings.PING_BARS, port_settings.ping_bars_frames()))
+    # (the browsers' rows' star: Lucide's, port/assets/icons/lucide)
+    lines.append(art.port_picture(port_settings.FAVORITE_STAR,
+                                  port_settings.favorite_star_frames(ROOT / "port/assets/icons/lucide")))
+    # (the touchscreen's Multiplayer: its rows, its panel's two parts, its
+    # OPEN button)
+    body, cap = port_settings.touch_panel_frames()
+    lines.append(art.port_picture(port_settings.TOUCH_ITEM, port_settings.touch_item_frames()))
+    lines.append(art.port_picture(port_settings.TOUCH_PANEL_BODY, body))
+    lines.append(art.port_picture(port_settings.TOUCH_PANEL_CAP, cap))
+    lines.append(art.port_picture(port_settings.TOUCH_OPEN_BUTTON, port_settings.touch_open_frames()))
+    # (Settings' rows, tabs and panels, and the Quality row's stills)
+    lines += [art.port_picture(name, frames) for name, frames in port_settings.settings_pictures()]
+    lines += [art.still(name, png, width, height) for name, png, width, height, _ in port_settings.SETTINGS_STILLS]
+    lines += [art.still(f"{port_settings.SETTINGS}/pictures_{key}", pngs, port_settings.SETTINGS_PICTURE_WIDTH,
+                        port_settings.SETTINGS_PICTURE_HEIGHT)
+              for key, pngs in port_settings.SETTINGS_VALUE_PICTURES.items()]
     lines.append("</menus>")
     (CE / "bitmaps.xml").write_text("\n".join(lines) + "\n")
     # what is not hand-drawn
@@ -691,6 +779,18 @@ def main() -> None:
         "| --- | --- |",
     ]
     report += [f"| `{name}` | `{tag}` frame {index} |" for name, tag, index in art.added_frames]
+    report += [
+        "",
+        "## Screenshots",
+        "",
+        *port_settings.SETTINGS_STILLS_MADE,
+        "",
+        "| File | Size | What it shows |",
+        "| --- | --- | --- |",
+    ]
+    report += [f"| `{png}` | {width}x{height} | {what} |" for _, png, width, height, what in port_settings.SETTINGS_STILLS]
+    report += [f"| `{png}` | {port_settings.SETTINGS_PICTURE_WIDTH}x{port_settings.SETTINGS_PICTURE_HEIGHT} | {what} |"
+               for png, what in port_settings.SETTINGS_PICTURE_FILES.items()]
     report += [
         "",
         "## Placeholders, to be redrawn",

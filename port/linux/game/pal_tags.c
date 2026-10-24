@@ -145,6 +145,10 @@ static struct
 	/* the loaded map's graphs (tag indices) of pal_first_person_animations,
 	NONE where the map has not the graph or not the PAL frame count */
 	long first_person_graphs[NUMBEROF(pal_first_person_animations)];
+	/* the tags' generation they were found in (cache_files_tags_generation):
+	a map loaded since without pal_tags_loaded (a Custom Edition map's) has
+	none of them */
+	unsigned long generation;
 	/* each local player's first-person animation and how far through its
 	next frame it is (pal_tags_first_person_advance) */
 	struct
@@ -348,6 +352,8 @@ static short pal_tags_first_person_entry(
 {
 	short index;
 
+	if (pal_tags.generation != cache_files_tags_generation())
+		return NONE;
 	for (index = 0; index < NUMBEROF(pal_first_person_animations); index++)
 	{
 		if (pal_tags.first_person_graphs[index] == graph_index &&
@@ -375,6 +381,7 @@ void pal_tags_loaded(
 		pal_tags.first_person_graphs[index] = NONE;
 	for (index = 0; index < MAXIMUM_LOCAL_PLAYERS; index++)
 		pal_tags.advancing[index].graph_index = NONE;
+	pal_tags.generation = cache_files_tags_generation();
 	region = cache_files_build_region(build);
 	if (!region || strcmp(region, "PAL"))
 		return;

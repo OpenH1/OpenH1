@@ -17,6 +17,7 @@ D3D texture the game made for it (menu_art_texture, xbox_textures.c), as the
 high-res HUD's are (hud_hires.c).
 */
 
+#include "xgpu_backend.h"
 #include "halo_menus.h"
 #include "hud_hires.h"
 #include "menu_files.h"
@@ -404,9 +405,20 @@ static long current_line(struct reader *reader)
 #define MENU_PLATFORM "desktop"
 #endif
 
+/* whether the menus are laid out for a touchscreen (the Android and iOS
+apps, or debug.touch_menus): the menus' "touch" platform, the others'
+"pointer" */
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
+#define MENU_TOUCH 1
+#else
+#define MENU_TOUCH config_boolean("debug.touch_menus")
+#endif
+
 /* whether the element is for this platform (its platform attribute: the
 platforms it is for, separated by spaces; "vr" the VR build, playing in the
-headset) */
+headset; "hdr" a renderer that draws display.hdr: xgpu_backend.h; "touch"
+the touchscreen's builds, "pointer" the rest: MENU_TOUCH; "computer" the
+desktop's builds but iOS's, whose phone has no window to size nor mouse) */
 static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 {
 	int index;
@@ -425,12 +437,24 @@ static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 				if (length)
 				{
 					if ((length != 7 || strncmp(name, "desktop", 7)) && (length != 7 || strncmp(name, "android", 7)) &&
-						(length != 3 || strncmp(name, "web", 3)) && (length != 2 || strncmp(name, "vr", 2)))
+						(length != 3 || strncmp(name, "web", 3)) && (length != 2 || strncmp(name, "vr", 2)) &&
+						(length != 3 || strncmp(name, "hdr", 3)) && (length != 5 || strncmp(name, "touch", 5)) &&
+						(length != 7 || strncmp(name, "pointer", 7)) && (length != 8 || strncmp(name, "computer", 8)))
 					{
-						reader_error(reader, "platform=\"%s\" names one that is not desktop, android, web or vr",
-							attributes[index + 1]);
+						reader_error(reader, "platform=\"%s\" names one that is not desktop, android, web, vr, hdr, "
+							"touch, pointer or computer", attributes[index + 1]);
 						return 1;
 					}
+#if !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_IOS)
+					if (length == 8 && !strncmp(name, "computer", 8))
+						found = 1;
+#endif
+					if (length == 5 && !strncmp(name, "touch", 5) && MENU_TOUCH)
+						found = 1;
+					if (length == 7 && !strncmp(name, "pointer", 7) && !MENU_TOUCH)
+						found = 1;
+					if (length == 3 && !strncmp(name, "hdr", 3) && xgpu_backend_capabilities.hdr)
+						found = 1;
 					if (length == strlen(MENU_PLATFORM) && !strncmp(name, MENU_PLATFORM, length))
 						found = 1;
 #ifdef HALO_VR
@@ -590,7 +614,7 @@ static void read_strings(struct reader *reader, const XML_Char **attributes)
 {
 	struct halo_menus *menus = &reader->menus;
 	struct halo_menu_strings strings;
-	struct attribute table[] = { { "name", &strings.name } };
+	struct attribute table[] = { { "name", &strings.name }, { "map", &strings.map } };
 
 	memset(&strings, 0, sizeof(strings));
 	strings.first = menus->string_count;
@@ -607,11 +631,16 @@ static void read_string(struct reader *reader, const XML_Char **attributes, long
 {
 	struct halo_menus *menus = &reader->menus;
 	const char *text = NULL;
-	struct attribute table[] = { { "text", &text } };
+	long map = HALO_MENU_NONE, map_given = 0;
+	struct attribute table[] = { { "text", &text }, { "map", NULL, &map, &map_given } };
 
 	read_attributes(reader, "string", attributes, table, sizeof(table) / sizeof(*table));
 	if (!reader->failed && !text)
 		reader_error(reader, "a <string> needs text");
+	if (!reader->failed && map_given && (map < 0 || !menus->string_lists[owner].map))
+		reader_error(reader, "a <string>'s map= is an index in its <strings>' map list");
+	GROW(reader, menus->string_maps, menus->string_count);
+	menus->string_maps[menus->string_count] = map_given ? map : HALO_MENU_NONE;
 	GROW(reader, menus->strings, menus->string_count);
 	menus->strings[menus->string_count++] = text ? text : "";
 	menus->string_lists[owner].count++;

@@ -17,6 +17,7 @@ type that carries no pointer, which covers all the platform layer reads.
 #include <SDL3/SDL.h>
 
 #include "guest_host.h"
+#include "posix.h"
 
 bool SDL_Init(SDL_InitFlags flags)
 {
@@ -132,6 +133,19 @@ bool SDL_ShowMessageBox(const SDL_MessageBoxData *data, int *buttonid)
 }
 
 #endif
+
+/* (display.battery_saver's "auto": battery_saver.c) */
+SDL_PowerState SDL_GetPowerInfo(int *seconds, int *percent)
+{
+	int left = -1, charge = -1;
+	SDL_PowerState state = (SDL_PowerState)host_sdl_power_info(&left, &charge);
+
+	if (seconds)
+		*seconds = left;
+	if (percent)
+		*percent = charge;
+	return state;
+}
 
 void SDL_Delay(Uint32 milliseconds)
 {
@@ -266,4 +280,30 @@ int SDL_GetAudioStreamAvailable(SDL_AudioStream *stream)
 void SDL_DestroyAudioStream(SDL_AudioStream *stream)
 {
 	host_sdl_destroy_audio_stream((unsigned int)stream);
+}
+
+/* (from the host's stat, port/linux/src/posix.h: whether a path is there, and
+what it is; the game asks for the files and folders it looks for) */
+bool SDL_GetPathInfo(const char *path, SDL_PathInfo *info)
+{
+	struct posix_file_information information;
+
+	if (!path || posix_stat(path, &information) != 0)
+	{
+		if (info)
+			memset(info, 0, sizeof(*info));
+		return false;
+	}
+	if (info)
+	{
+		info->type = (information.flags & _posix_file_is_directory) ? SDL_PATHTYPE_DIRECTORY : SDL_PATHTYPE_FILE;
+		info->size = ((Uint64)information.size_high << 32) | (Uint32)information.size_low;
+		info->modify_time = (SDL_Time)information.modification_seconds * 1000000000 +
+			(SDL_Time)information.modification_nanoseconds;
+		info->access_time = (SDL_Time)information.access_seconds * 1000000000 +
+			(SDL_Time)information.access_nanoseconds;
+		info->create_time = (SDL_Time)information.creation_seconds * 1000000000 +
+			(SDL_Time)information.creation_nanoseconds;
+	}
+	return true;
 }

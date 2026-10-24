@@ -255,11 +255,16 @@ static boolean cache_file_structure_bsp_tag_valid(
 /* ---------- globals */
 
 static struct cache_file_globals cache_file_globals = { 0 };
+/* port: the name the map loaded last was loaded by (scenario_tags_load) */
+static char cache_file_loaded_name[64];
 extern struct cache_file_tag_instance *global_tag_instances;
 /* port: global_tag_instances' count. The menus add their tags to a copy of
 the table (port/linux/game/menu_tags.c); the map's tag header keeps its own,
 which a Custom Edition map's loader goes on reading. */
 static long global_tag_count;
+/* port: one more each time a map's tags are loaded or unloaded
+(cache_files_tags_generation) */
+static unsigned long cache_file_tags_generation = 1;
 static char const *data_00316820[] =
 {
 	"d:\\maps_de\\",
@@ -626,6 +631,7 @@ void scenario_tags_unload(
 	cache_file_globals.tags_loaded = FALSE;
 	global_tag_instances = NULL;
 	global_tag_count = 0;
+	cache_file_tags_generation++; /* port: cache_files_tags_generation */
 
 	return;
 }
@@ -856,6 +862,47 @@ long tag_iterator_next(
 	return result;
 }
 
+/* port: the name the map loaded (or being loaded) was loaded by: its file's,
+<file>@ce and the like for the families past the Xbox's */
+char const *cache_file_loaded_map_name(
+	void)
+{
+	return cache_file_loaded_name;
+}
+
+/* port: the loaded tags' generation. A tag index names a tag of the map
+loaded now only (each map's tags are numbered again, the menus' added to
+them: port/linux/game/menu_tags.c), as a pointer into its tag data points
+into it only: what keeps either past a frame keeps the generation with it,
+and takes it again when this has changed */
+unsigned long cache_files_tags_generation(
+	void)
+{
+	return cache_file_tags_generation;
+}
+
+/* port: a tag index kept with the generation it was taken in, if it is
+still this map's; else NONE, and a checked build stops on it, naming what
+kept it, rather than reading another map's tag as it (whose group would
+not be the one asked for: "expected tag group 'font' but got 'lsnd'") */
+long cache_files_kept_tag_index(
+	long tag_index,
+	unsigned long generation,
+	char const *what)
+{
+	if (tag_index == NONE || generation == cache_file_tags_generation)
+		return tag_index;
+#ifndef HALO_RELEASE
+	match_vassert(
+		__FILE__,
+		__LINE__,
+		FALSE,
+		csprintf(temporary, "tag index from an earlier map: %s", what ? what : "<unnamed>"));
+#endif
+
+	return NONE;
+}
+
 boolean cache_file_header_verify(
 	struct cache_file_header *header,
 	char const *scenario_name,
@@ -1027,7 +1074,7 @@ void cache_files_show_multiplayer_unavailable(
 		snprintf(
 			message,
 			sizeof(message),
-			"The map %s (build %s) isn't supported for multiplayer yet.\n\nAsk in the Discord to get it added.",
+			"The map %s (build %s) isn't supported for multiplayer yet.",
 			tag_name_strip_path(map_name),
 			build);
 	}
@@ -1037,7 +1084,7 @@ void cache_files_show_multiplayer_unavailable(
 		snprintf(
 			message,
 			sizeof(message),
-			"Your maps (build %s) aren't supported for multiplayer yet.\n\nAsk in the Discord to get them added.",
+			"Your maps (build %s) aren't supported for multiplayer yet.",
 			build);
 	}
 	platform_show_message("Halo: multiplayer unavailable", message);
@@ -1184,8 +1231,12 @@ long scenario_tags_load(
 	boolean read_complete;
 
 	halo_load_trace("tags.begin", scenario_name); /* port: loading measurement */
+	cache_file_tags_generation++; /* port: cache_files_tags_generation */
 	stripped_scenario_name = tag_name_strip_path(scenario_name);
 	result = NONE;
+	/* port: the map being loaded, by its name (cache_file_loaded_map_name) */
+	csstrncpy(cache_file_loaded_name, stripped_scenario_name, sizeof(cache_file_loaded_name) - 1);
+	cache_file_loaded_name[sizeof(cache_file_loaded_name) - 1] = 0;
 	texture_cache_open();
 	sound_cache_open();
 	/* port: a Halo Custom Edition map (custom_maps\<name>) is read in place
@@ -1317,9 +1368,9 @@ long scenario_tags_load(
 			}
 			/* port: the bitmaps the high-res HUD stands for (port/linux/game/hud_hires_tags.c) */
 			{
-				extern void hud_hires_tags_loaded(void);
+				extern void hud_hires_tags_loaded(long scenario_index);
 
-				hud_hires_tags_loaded();
+				hud_hires_tags_loaded(cache_file_globals.tag_header->scenario_tag_index);
 			}
 			/* port: the mods' sounds, bitmaps, text and models played over
 			the map's, last, over the menus' tags too, and with the high-res

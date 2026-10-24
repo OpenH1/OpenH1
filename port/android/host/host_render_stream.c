@@ -43,6 +43,7 @@ frame on screen.
 
 #include <errno.h>
 #include <pthread.h>
+#include <stdio.h>
 #include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,8 +59,23 @@ static struct
 	uint64_t next;
 	uint64_t costs[8];
 	unsigned cost_index;
+	/* when it last drew, for the longest it may wait for the stream */
+	uint64_t drawn;
 	int servicing, ready;
 } loading;
+
+/* The loading picture covers the stream's work while the game waits for
+it, so it never makes the game wait: it is drawn when the guest waits for
+nothing the render thread has yet to do and the stream is played to its
+end, or once it has waited LOADING_DEFERRED_MOST_NS. Drawn on the thread
+that plays the stream, a picture holds it as long as the display or the VR
+runtime makes it wait: on the Steam Frame, 12 ms of its 13.9 ms period in
+xrBeginFrame and xrEndFrame, which left the stream 1.5 ms of each, and
+Blood Gulch's enumeration (129 MB through the 32 MB ring) took 5.3 s; so,
+1.1 s. */
+#define LOADING_DEFERRED_MOST_NS 100000000ull
+
+static int loading_stream_waits(void);
 
 int host_render_stream_loading_holds(void)
 {
@@ -76,6 +92,8 @@ void host_render_stream_loading_service(void)
 	now = monotonic_nanoseconds();
 	if (now < loading.next)
 		return;
+	if (loading_stream_waits() && now - loading.drawn < LOADING_DEFERRED_MOST_NS)
+		return;
 	loading.servicing = 1;
 	loading.frame.elapsed_ns = now - loading.frame.started_ns;
 	loading.frame.serial++;
@@ -85,6 +103,7 @@ void host_render_stream_loading_service(void)
 		interval = 16666667ull;
 	loading.next = now + interval;
 	completed = monotonic_nanoseconds();
+	loading.drawn = completed;
 	loading.costs[loading.cost_index++ % 8] = completed - now;
 	/* A late callback must leave time for queued work. Spend the spare
 	time before twice its requested service interval, using recent costs
@@ -188,12 +207,16 @@ static const uint32_t record_minimum[XGPU_STREAM_RECORD_TYPES] =
 	[XGPU_STREAM_LOADING] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_LOADING_OWNED] = sizeof(struct xgpu_stream_reply_record),
 	[XGPU_STREAM_LOADING_ART] = sizeof(struct xgpu_stream_value),
+	[XGPU_STREAM_LOADING_SCENE] = sizeof(struct xgpu_stream_value),
+	[XGPU_STREAM_LOADING_PROGRESS] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_SKIP] = sizeof(struct xgpu_stream_record),
 	[XGPU_STREAM_INITIALIZE] = sizeof(struct xgpu_stream_reply_record),
 	[XGPU_STREAM_INVALIDATE] = sizeof(struct xgpu_stream_record),
 	[XGPU_STREAM_FLUSH] = sizeof(struct xgpu_stream_record),
 	[XGPU_STREAM_ANTI_ALIASING_PREPARE] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_ANTI_ALIAS] = sizeof(struct xgpu_stream_anti_alias),
+	[XGPU_STREAM_HDR] = sizeof(struct xgpu_stream_hdr),
+	[XGPU_STREAM_TONE_MAP] = sizeof(struct xgpu_stream_tone_map),
 	[XGPU_STREAM_TARGET_CREATE] = sizeof(struct xgpu_stream_target_create),
 	[XGPU_STREAM_TARGET_DELETE] = sizeof(struct xgpu_stream_value),
 	[XGPU_STREAM_TARGET_MULTISAMPLE] = sizeof(struct xgpu_stream_target_multisample),
@@ -289,6 +312,28 @@ static int data_inside(const struct host_render_decoder *decoder, const void *re
 	return address >= start && address - start <= record_size && bytes <= record_size - (address - start);
 }
 
+/* HALO_LOADING_SCENE_DUMP=<file>: the main menu's scene as it arrives
+(loading_scene.h), for looking at the loading screen without the game */
+static void host_loading_scene_dump(const void *data, uint32_t bytes)
+{
+	static int checked;
+	static const char *path;
+	FILE *file;
+
+	if (!checked)
+	{
+		path = getenv("HALO_LOADING_SCENE_DUMP");
+		checked = 1;
+	}
+	if (!path || !*path || !bytes)
+		return;
+	file = fopen(path, "wb");
+	if (!file)
+		return;
+	fwrite(data, 1, bytes, file);
+	fclose(file);
+}
+
 static void answer(uint32_t reply, const void *value, size_t size)
 {
 	if (reply)
@@ -313,6 +358,21 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 			return XGPU_STREAM_ERROR_RECORD;
 		CALL(loading_art, value->value ? start + sizeof(*value) : NULL);
 		break;
+	case XGPU_STREAM_LOADING_SCENE:
+		if (size - sizeof(*value) != value->value)
+			return XGPU_STREAM_ERROR_RECORD;
+		host_loading_scene_dump(start + sizeof(*value), value->value);
+		CALL(loading_scene, start + sizeof(*value), value->value);
+		break;
+	case XGPU_STREAM_LOADING_PROGRESS:
+	{
+		float progress;
+
+		memcpy(&progress, &value->value, sizeof(progress));
+		host_load_trace("loading.progress", "progress=%.3f", (double)progress);
+		CALL(loading_progress, progress);
+		break;
+	}
 	case XGPU_STREAM_LOADING_OWNED:
 	{
 		uint32_t owned = host_render_stream_loading_holds() && backend->loading_owned &&
@@ -348,6 +408,12 @@ static int decode_record(struct host_render_decoder *decoder, const unsigned cha
 		break;
 	case XGPU_STREAM_ANTI_ALIAS:
 		CALL(anti_alias, (const void *)start);
+		break;
+	case XGPU_STREAM_HDR:
+		CALL(hdr, (const void *)start);
+		break;
+	case XGPU_STREAM_TONE_MAP:
+		CALL(tone_map, (const void *)start);
 		break;
 	case XGPU_STREAM_TARGET_CREATE:
 		CALL(target_create, (const void *)start);
@@ -1116,6 +1182,7 @@ int host_render_stream_open(uint32_t ring_address)
 		return -1;
 	}
 	render.ring = ring;
+	host_render_stream_display_hdr(-1, 0.0f);
 	render.decoder = host_render_decoder_new(backend, ring);
 	if (!render.decoder)
 		return -1;
@@ -1141,6 +1208,33 @@ int host_render_stream_open(uint32_t ring_address)
 }
 
 /* (render.lock held) the guest waits for done, counted in its statistics */
+/* ---------- display.hdr's display */
+
+/* what the backend last said of its display (headroom: a float's bits) */
+static _Atomic uint32_t display_hdr, display_headroom = 0x3f800000u;
+
+void host_render_stream_display_hdr(int hdr, float headroom)
+{
+	struct xgpu_stream_ring *ring = render.ring;
+
+	/* (-1: as last said, into a ring just opened) */
+	if (hdr >= 0)
+	{
+		uint32_t bits;
+
+		if (!(headroom >= 1.0f))
+			headroom = 1.0f;
+		memcpy(&bits, &headroom, sizeof(bits));
+		atomic_store(&display_hdr, hdr ? 1u : 0u);
+		atomic_store(&display_headroom, bits);
+	}
+	if (ring)
+	{
+		__atomic_store_n(&ring->display_headroom, atomic_load(&display_headroom), __ATOMIC_RELEASE);
+		__atomic_store_n(&ring->display_hdr, atomic_load(&display_hdr), __ATOMIC_RELEASE);
+	}
+}
+
 /* ---------- pacing by the display (frame_pacing.h) */
 
 static struct frame_pacing_latency latency;
@@ -1282,6 +1376,18 @@ static void display_wait(uint64_t *start)
 	}
 }
 
+/* whether the game waits for the render thread, or will: a guest waiting,
+or records committed and not yet played */
+static int loading_stream_waits(void)
+{
+	struct xgpu_stream_ring *ring = render.ring;
+
+	if (__atomic_load_n(&render.guest_waiting, __ATOMIC_RELAXED))
+		return 1;
+	return ring && __atomic_load_n(&ring->committed, __ATOMIC_ACQUIRE) !=
+		__atomic_load_n(&ring->decoded, __ATOMIC_ACQUIRE);
+}
+
 static void guest_wait(uint64_t *start)
 {
 	if (!*start)
@@ -1289,10 +1395,11 @@ static void guest_wait(uint64_t *start)
 		*start = monotonic_nanoseconds();
 		render.ring->waits++;
 	}
-	render.guest_waiting++;
+	/* (read by the render thread's loading picture without the lock) */
+	__atomic_add_fetch(&render.guest_waiting, 1, __ATOMIC_RELAXED);
 	pthread_cond_signal(&render.work);
 	pthread_cond_wait(&render.done, &render.lock);
-	render.guest_waiting--;
+	__atomic_sub_fetch(&render.guest_waiting, 1, __ATOMIC_RELAXED);
 }
 
 static void guest_waited(uint64_t start)

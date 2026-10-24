@@ -20,10 +20,13 @@ static inline void loading_gl_dispose(struct loading_gl *image)
 	memset(image, 0, sizeof(*image));
 }
 
-static inline int loading_gl_draw(struct loading_gl *image, const unsigned char *pixels, int width, int height)
+/* the frame, `frame_width` wide (loading_art_width: the screen's shape),
+letterboxed to the window `width` by `height` (which it then fills) */
+static inline int loading_gl_draw(struct loading_gl *image, const unsigned char *pixels, int frame_width, int width,
+	int height)
 {
 	GLint texture, read_framebuffer, unpack_buffer, alignment, row_length, skip_rows, skip_pixels;
-	int fit_width = width, fit_height = width * LOADING_ART_FRAME_HEIGHT / LOADING_ART_FRAME_WIDTH;
+	int fit_width = width, fit_height = width * LOADING_ART_FRAME_HEIGHT / frame_width;
 	int x, y, valid;
 
 	if (!pixels || width <= 0 || height <= 0)
@@ -31,8 +34,13 @@ static inline int loading_gl_draw(struct loading_gl *image, const unsigned char 
 	if (fit_height > height)
 	{
 		fit_height = height;
-		fit_width = height * LOADING_ART_FRAME_WIDTH / LOADING_ART_FRAME_HEIGHT;
+		fit_width = height * frame_width / LOADING_ART_FRAME_HEIGHT;
 	}
+	/* (within a pixel of the window's shape: all of it) */
+	if (width - fit_width <= frame_width / LOADING_ART_FRAME_HEIGHT + 1)
+		fit_width = width;
+	if (height - fit_height <= 2)
+		fit_height = height;
 	x = (width - fit_width) / 2;
 	y = (height - fit_height) / 2;
 	glGetIntegerv(GL_TEXTURE_BINDING_2D, &texture);
@@ -51,14 +59,14 @@ static inline int loading_gl_draw(struct loading_gl *image, const unsigned char 
 	{
 		glGenTextures(1, &image->texture);
 		glBindTexture(GL_TEXTURE_2D, image->texture);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, 0,
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, LOADING_ART_FRAME_MAXIMUM_WIDTH, LOADING_ART_FRAME_HEIGHT, 0,
 			GL_RGBA, GL_UNSIGNED_BYTE, NULL);
 		glGenFramebuffers(1, &image->framebuffer);
 		glBindFramebuffer(GL_READ_FRAMEBUFFER, image->framebuffer);
 		glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, image->texture, 0);
 	}
 	glBindTexture(GL_TEXTURE_2D, image->texture);
-	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT,
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, frame_width, LOADING_ART_FRAME_HEIGHT,
 		GL_RGBA, GL_UNSIGNED_BYTE, pixels);
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, image->framebuffer);
 	valid = glCheckFramebufferStatus(GL_READ_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
@@ -67,7 +75,7 @@ static inline int loading_gl_draw(struct loading_gl *image, const unsigned char 
 		glClearColor(0.f, 0.f, 0.f, 1.f);
 		glClear(GL_COLOR_BUFFER_BIT);
 		/* The shared pixels start with the top row; framebuffer Y starts below. */
-		glBlitFramebuffer(0, LOADING_ART_FRAME_HEIGHT, LOADING_ART_FRAME_WIDTH, 0,
+		glBlitFramebuffer(0, LOADING_ART_FRAME_HEIGHT, frame_width, 0,
 			x, y, x + fit_width, y + fit_height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
 	}
 	glBindFramebuffer(GL_READ_FRAMEBUFFER, (GLuint)read_framebuffer);

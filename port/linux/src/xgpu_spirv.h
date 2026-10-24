@@ -54,6 +54,10 @@ The conventions (SPIR-V 1.3, Vulkan 1.1):
 #define XGPU_SPIRV_BINDING_DYNAMIC_LIGHT_CELLS 3
 #define XGPU_SPIRV_BINDING_SAMPLES 4
 #define XGPU_SPIRV_SET_TEXTURES 1
+/* display.hdr: the pixel a draw blends over in its shader (its tag's
+XGPU_HDR_SHADER_BLENDS, xgpu_hdr.h), the colour attachment read as input
+attachment 0 at binding 0 (VK_KHR_dynamic_rendering_local_read) */
+#define XGPU_SPIRV_SET_INPUT 2
 
 /* the locations of what the vertex shader hands the pixel shader */
 enum
@@ -101,6 +105,13 @@ struct xgpu_spirv_uniforms
 	float fovea_sample[4][4];
 	/* this draw's counter in the visibility tests' uint storage buffer */
 	float visibility_counter, vr_unused[3];
+	/* the VR mode's effects (xgpu_spirv_options effect): for each view, the
+	world point (homogeneous) at a pixel and depth, as columns (the point is
+	unproject[0] x + unproject[1] y + unproject[2] depth + unproject[3],
+	gl_FragCoord's x and y), and its eye in the world (port/linux/vulkan/
+	xgpu_vulkan_effects.h) */
+	float effect_unproject[4][4][4];
+	float effect_eye[4][4];
 };
 
 /* what the SPIR-V is written for (xgpu_spirv.c):
@@ -114,7 +125,14 @@ struct xgpu_spirv_uniforms
 - multiview: the vertex shader's XGPU_MULTIVIEW_* mode (the pixel
   program carries its own); foveated: four layers, periphery and inset
   for each eye, rather than the two eyes alone;
-- the pixel shaders' debugging settings, as the GLSL's. */
+- the pixel shaders' debugging settings, as the GLSL's;
+- effect: the VR mode's effects (XGPU_SPIRV_EFFECT_*, below), and
+  effect_fade how their fade is drawn under the pipeline's blend
+  (XGPU_SPIRV_FADE_*: the backend's choice); for the glows' shaders, any effect draws them
+  as the light the bolt scatters toward each eye;
+- input_samples: the samples of the colour target a display.hdr draw that
+  blends in its shader reads (XGPU_SPIRV_SET_INPUT): more than 1, each
+  sample its own (sample shading). */
 struct xgpu_spirv_options
 {
 	BOOL count_samples;
@@ -122,7 +140,67 @@ struct xgpu_spirv_options
 	BOOL debug_texture0, debug_flat;
 	int multiview;
 	BOOL foveated;
+	int effect, effect_fade;
+	int input_samples;
 };
+
+/* ---------- the VR mode's effects
+
+The game's effects (particles, contrails, weather: its effect shaders),
+drawn into both eyes at once (the pixel key's vr_effect: d3d8_device.c,
+halo_vr_effect_depth):
+
+- XGPU_SPIRV_EFFECT_SOFT: soft. Each pixel finds the world point it draws
+  and the scene's behind it (the depth buffer, texture
+  XGPU_SPIRV_EFFECT_DEPTH_BINDING, an array of the views' layers sampled
+  with texelFetch; the uniforms' effect_unproject) and fades the effect out
+  as the two meet, over a distance scaled to the effect's sprite (its
+  radius, the thickness map's green, in the world by the texels' size
+  there), so that it meets walls and floors without a hard line.
+- XGPU_SPIRV_EFFECT_THICK: soft and thick. The sprite's thickness (the map
+  at XGPU_SPIRV_EFFECT_THICKNESS_BINDING, baked from its bitmap's alpha:
+  xgpu_vulkan_effects.h) is a bulge toward the eyes: each eye's ray meets
+  the bulge's front where the sprite's texel there is drawn (one parallax
+  step: the bulge is smooth and the eyes' rays near the sprite's normal),
+  so each eye samples other texels and the effect has depth inside it; the
+  fade is measured from the bulge's front, through its thickness.
+
+The pixel program must sample texture 0 in 2D (the effect's bitmap) and
+not textures 2 and 3, whose bindings the depth and thickness take
+(xgpu_spirv_effect_possible), drawn into both eyes. The fade is drawn as
+the blend's own nothing (XGPU_SPIRV_FADE_*): alpha to 0 over an alpha
+blend, colour to 0 when added, to white when multiplied, to grey when
+multiplied twice. */
+enum
+{
+	XGPU_SPIRV_EFFECT_NONE, XGPU_SPIRV_EFFECT_SOFT, XGPU_SPIRV_EFFECT_THICK,
+};
+enum
+{
+	XGPU_SPIRV_FADE_NONE, XGPU_SPIRV_FADE_ALPHA, XGPU_SPIRV_FADE_COLOR, XGPU_SPIRV_FADE_COLOR_ALPHA,
+	XGPU_SPIRV_FADE_TO_WHITE, XGPU_SPIRV_FADE_TO_GREY,
+};
+#define XGPU_SPIRV_EFFECT_DEPTH_BINDING 2
+#define XGPU_SPIRV_EFFECT_THICKNESS_BINDING 3
+/* the bulge's height at a sprite's middle, of its radius (a sphere's is
+1). Smoke is denser in its middle than at its silhouette, so the front of
+what is seen of it lies nearer its middle than a ball's surface would: a
+sphere's depth made puffs look like balloons, half of it keeps them round
+without a hard surface. */
+#define XGPU_SPIRV_EFFECT_THICKNESS 0.5f
+/* the fade's distance: of the sprite's radius, and the least (world units,
+6 cm, and of the distance from the eye: 24-bit depth's steps there, with the
+game's near plane, are smaller), and the most an eye's parallax moves a
+texel (of the radius) */
+#define XGPU_SPIRV_EFFECT_SOFTNESS 0.5f
+#define XGPU_SPIRV_EFFECT_SOFTNESS_LEAST 0.02f
+#define XGPU_SPIRV_EFFECT_SOFTNESS_DISTANCE 0.002f
+#define XGPU_SPIRV_EFFECT_PARALLAX_MOST 0.5f
+
+struct xgpu_pixel_program;
+
+/* the program can be drawn as an effect (above) */
+BOOL xgpu_spirv_effect_possible(const struct xgpu_pixel_program *program);
 
 /* a module's words (SPIR-V's own: 32 bits each), malloc'd, count of them */
 struct xgpu_spirv_module
@@ -163,7 +241,25 @@ at XGPU_SPIRV_HALO_DEPTH (xgpu_gl.c's depth_parameters). The uniforms are
 struct xgpu_spirv_uniforms (the viewport's, the screen offset, the eyes' and
 insets' corrections); the scene's depth is texture 0, sampled with
 texelFetch (an array of the views' layers with multiview). options:
-multiview (XGPU_MULTIVIEW_EYES or none) and foveated alone. */
+multiview (XGPU_MULTIVIEW_EYES or none), foveated and effect alone.
+
+With effect (the VR mode's eyes), each glow is the light its bolt
+scatters toward each eye from a haze about it, worked out for each pixel
+along that eye's ray: the haze's density falls off from the bolt as the
+card's glow does across it (a wide Gaussian, less its value at the glow's
+edge, and a narrow hot core), and its integral along the ray is closed
+(each Gaussian's is an error function's difference), from the eye to the
+scene's surface behind the pixel. Unhidden, a ray passing the bolt at a
+fraction r of the glow's size gets exactly the card's glow at r; a wall
+through the glow hides the part behind it, in each eye as it should. The
+quad drawn covers the haze's outline from the head (a quad about the bolt
+facing the head's centre, or, with the head in the haze, one across the
+view). Its vertex constants, past the card's: each view's clip transform
+(rows: XGPU_SPIRV_GLOW_CLIP + 4 view), its unprojection (columns:
+XGPU_SPIRV_GLOW_UNPROJECT + 4 view) and eye (XGPU_SPIRV_GLOW_EYE + view),
+the head's centre and the near distance the quad across the view is drawn
+at (XGPU_SPIRV_GLOW_HEAD), and the head's right, up and forward
+(XGPU_SPIRV_GLOW_AXES); port/linux/vulkan/xgpu_vulkan_effects.h. */
 enum
 {
 	XGPU_SPIRV_HALO_MIDDLE, XGPU_SPIRV_HALO_COLOR, XGPU_SPIRV_HALO_CORNER,
@@ -171,6 +267,11 @@ enum
 #define XGPU_SPIRV_HALO_PROJECTION 0
 #define XGPU_SPIRV_HALO_CAMERA_AXES 6
 #define XGPU_SPIRV_HALO_DEPTH 8
+#define XGPU_SPIRV_GLOW_CLIP 16
+#define XGPU_SPIRV_GLOW_UNPROJECT 32
+#define XGPU_SPIRV_GLOW_EYE 48
+#define XGPU_SPIRV_GLOW_HEAD 52
+#define XGPU_SPIRV_GLOW_AXES 53
 
 BOOL xgpu_spirv_halo_vertex_shader(const struct xgpu_spirv_options *options, struct xgpu_spirv_module *module);
 BOOL xgpu_spirv_halo_pixel_shader(const struct xgpu_spirv_options *options, struct xgpu_spirv_module *module);

@@ -581,6 +581,13 @@ void halo_vr_scope_animation(float *opened_seconds, float *closing, float *switc
 	*switched_seconds = vr_frame.state.scope_animation[2];
 }
 
+void halo_vr_scope_shape(float *corner, float *dim, float *feather)
+{
+	*corner = vr_frame.state.scope_shape[0];
+	*dim = vr_frame.state.scope_shape[1];
+	*feather = vr_frame.state.scope_shape[2];
+}
+
 int halo_vr_scope_gun(void)
 {
 	return vr_frame.state.scope_gun;
@@ -772,7 +779,8 @@ static void stream_vr_initialize(void *context, struct xgpu_stream_vr_info *wire
 	info.hud_width = wire->hud_width;
 	info.hud_height = wire->hud_height;
 	info.scope_size = wire->scope_size;
-	info.statistics = wire->statistics != 0;
+	info.statistics = (wire->statistics & XGPU_STREAM_VR_STATISTICS) != 0;
+	info.gpu_time = (wire->statistics & XGPU_STREAM_VR_GPU_TIME) != 0;
 	vr_frame.statistics = info.statistics;
 	renderer->initialize(&info);
 	wire->foveated = info.foveated != 0;

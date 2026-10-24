@@ -2,20 +2,30 @@ name: Build
 
 # Builds of the native ports (Linux x86-64 and arm64, Windows, Android,
 # macOS) for every pushed commit, uploaded as artifacts: on master
-# the debug and release builds (and the VR one), elsewhere the debug builds
+# the debug and release builds (and the VR ones: x86-64's, and the Steam
+# Frame's package on arm64), elsewhere the debug builds
 # alone, a quick check until a faster build system replaces this one. (The
 # web port is not built: its WebGL renderer goes with OpenGL, and it comes
 # back with WebGPU.)
 # tools/ci_build.py does each build; see it for the options.
 #
 # Kept cheap:
+# - the Linux jobs run in an image with their packages installed
+#   (.github/ci-image), rather than installing them with apt each time;
+# - actions/cache compresses with zstd (the Ubuntu containers have it:
+#   without it, gzip, slower to save and restore);
 # - one job per platform builds both configurations, so its set-up (tools,
 #   downloads, caches) is paid once;
-# - compiles go through ccache, whose cache carries over from run to run, so
-#   a commit only recompiles what it changed; downloads (SDL, musl, the
-#   Vulkan headers, Gradle, the guests' pinned LLVM) are cached too;
-# - a newer push to the same branch cancels a run still going;
-# - pushes that only change documentation do not build;
+# - compiles go through ccache, whose cache, master's latest build's, every
+#   run starts from, so a commit only recompiles what it changed from
+#   master; downloads (SDL, musl, the Vulkan headers, Gradle, the guests'
+#   pinned LLVM) are cached too;
+# - a newer push to the same branch cancels a run still going (but not on
+#   master, whose builds the others' caches come from);
+# - pushes that only change documentation (Markdown, website/) do not
+#   build: the changes job finds that in seconds, and the platforms' jobs
+#   are skipped (still reported, as the checks that master's branch
+#   protection requires);
 # - Windows, whose minutes cost twice Linux's, builds only Windows;
 # - artifacts are kept for three days.
 #
@@ -24,12 +34,10 @@ name: Build
 # https://github.com/<repository>/releases/latest/download/<file> always
 # gives the latest build (the README's download links); the last five are
 # kept. (openh1.com is the landing page, website/, not the web build.)
+# (every push starts the run, documentation's too, so that the platforms'
+# checks are always reported: the changes job decides whether they build)
 on:
   push:
-    paths-ignore:
-      - "**.md"
-      # (openh1.com, published from website/ by hand: website/README.md)
-      - "website/**"
   workflow_dispatch:
     inputs:
       profile:
@@ -37,12 +45,17 @@ on:
         type: boolean
         default: false
 
+# (but master's builds finish, a newer one waiting for the one going: 12
+# of 28 were cancelled by the next merge, before they saved the compile
+# cache that every branch's build starts from, or made a release)
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
 
 permissions:
   contents: read
+  # (the Linux jobs' container image, ghcr.io/openh1/ci-linux)
+  packages: read
 
 env:
   CI_COMPILER_LAUNCHER: ccache
@@ -53,38 +66,127 @@ env:
   # downloads: kept in the workspace, where actions/cache finds it in a
   # container job too)
   CI_GUEST_LLVM_CACHE: .cache/llvm
+  # (the arm64_32 guests' converted and assembled objects,
+  # tools/guest_asm_cache.py, past what ccache can cache: restored and
+  # saved as the compile cache is, by the linux-arm64, android and macos
+  # jobs)
+  CI_GUEST_ASM_CACHE: .cache/guest-asm
 
 jobs:
+  # Whether the push changes anything but documentation: Markdown files
+  # anywhere, and website/ (openh1.com, published from website/ by hand:
+  # website/README.md). On master, the files the push changed (from its
+  # before sha); on a branch, every file the branch changed from master
+  # (from their merge base), so that the branch's latest commit is skipped
+  # only when the whole branch is documentation: a documentation commit
+  # pushed after code still builds the code. Builds when it cannot tell (a
+  # run started by hand, a first push of master, a history it cannot find),
+  # and the platforms' jobs build too should this job fail: a failed check
+  # rather than a skipped one, which branch protection would let through.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.diff.outputs.build }}
+    steps:
+      # (the history's commits and trees, without their files' contents,
+      # and one file checked out: seconds)
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+          sparse-checkout: README.md
+          sparse-checkout-cone-mode: false
+
+      - name: Changed files
+        id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          build=true
+          base=
+          if [ "$EVENT" = push ]; then
+            if [ "$GITHUB_REF" = refs/heads/master ]; then
+              # (all zeros: master's first push)
+              if [ -n "${BEFORE//0/}" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+                base="$BEFORE"
+              fi
+            else
+              base="$(git merge-base origin/master "$GITHUB_SHA" 2>/dev/null)" || base=
+            fi
+          fi
+          if [ -n "$base" ] && files="$(git -c core.quotePath=false diff --name-only --no-renames "$base" "$GITHUB_SHA")"; then
+            echo "Changed from ${base:0:12}:"
+            printf '%s\n' "$files" | sed 's/^/  /'
+            if ! printf '%s\n' "$files" | grep -v -E -e '\.md$' -e '^website/' -e '^$' > /dev/null; then
+              build=false
+            fi
+          else
+            echo "No base to compare with (event $EVENT): building"
+          fi
+          echo "build: $build"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
   linux-arm64:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     # Ubuntu 22.04 (glibc 2.35, so the build starts on older distributions
     # too) on GitHub's 64-bit ARM runner, with its clang for the host and the
     # development files SDL3 builds with; the guest's compiler (arm64_32) is
     # the pinned LLVM configure.py downloads.
     runs-on: ubuntu-24.04-arm
-    container: ubuntu:22.04
-    timeout-minutes: 40
+    # (.github/ci-image/Dockerfile: Ubuntu 22.04 with the packages)
+    container:
+      image: ghcr.io/openh1/ci-linux:ubuntu-22.04-arm64
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+    # (on master three builds, debug, release and the Steam Frame's VR
+    # release, each of the whole game, as the x86-64 job's)
+    timeout-minutes: 75
     steps:
+      - uses: actions/checkout@v4
+
+      # (the image has the packages of .github/ci-image's lists: apt installs
+      # only what it lacks, a package a branch adds before master publishes
+      # the image with it)
       - name: Install the toolchain
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git python3 ninja-build cmake make \
-            pkg-config ccache zip clang \
-            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
-            libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
-            libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
-            libudev-dev libdbus-1-dev libdecor-0-dev
+          packages="$(cat .github/ci-image/packages.txt)"
+          if ! dpkg -s $packages > /dev/null 2>&1; then
+            apt-get update
+            apt-get install -y --no-install-recommends $packages
+          fi
 
-      - uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
+      # (the compile cache of master's latest build, restored on every branch
+      # but saved by master's builds alone, below: every branch's saving its
+      # own filled the repository's 10 GB of caches, which then lost
+      # master's, the downloads' among them, the LLVM's 1.5 GB too)
+      - uses: actions/cache/restore@v4
         with:
           path: .ccache
           key: ccache-linux-arm64-${{ github.sha }}
           restore-keys: ccache-linux-arm64-
 
-      # musl, SDL and the Vulkan headers, which configure.py fetches
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/guest-asm
+          key: guest-asm-linux-arm64-${{ github.sha }}
+          restore-keys: guest-asm-linux-arm64-
+
+      # (so that the Compile cache step shows this run's hits and misses; and
+      # when it started, for the trim)
+      - name: Start the compile cache
+        run: |
+          ccache --zero-stats
+          echo "CCACHE_START=$(date +%s)" >> "$GITHUB_ENV"
+          mkdir -p .cache/guest-asm && touch "$RUNNER_TEMP/build-start"
+
+      # musl, SDL and the Vulkan headers, which configure.py fetches (and the
+      # OpenXR headers, which the VR build fetches)
       - uses: actions/cache@v4
         with:
           path: build/linux_arm64/third_party
@@ -103,8 +205,39 @@ jobs:
         if: github.ref == 'refs/heads/master'
         run: python3 tools/ci_build.py linux_arm64 release
 
+      # the VR build for the Steam Frame (an arm64 SteamOS headset), as its
+      # package (tools/frame_package.py: the game, the launcher of its Steam
+      # shortcut, SHA256SUMS), which its install.sh installs; a download of
+      # its own, halo-steam-frame-vr-release.zip
+      - name: Steam Frame VR release
+        if: github.ref == 'refs/heads/master'
+        run: python3 tools/ci_build.py linux_arm64 release --vr
+
       - name: Compile cache
         run: ccache --show-stats
+
+      # (what master saves for the builds after it: what this run compiled or
+      # found, each hit refreshing its entry's time, rather than everything
+      # since the cache began, up to CCACHE_MAXSIZE)
+      - name: Trim the compile cache
+        if: github.ref == 'refs/heads/master'
+        run: |
+          ccache --evict-older-than "$(( $(date +%s) - CCACHE_START + 60 ))s"
+          ccache --show-stats
+          find .cache/guest-asm -type f ! -newer "$RUNNER_TEMP/build-start" -delete
+          echo "guest objects kept: $(find .cache/guest-asm -type f | wc -l)"
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .ccache
+          key: ccache-linux-arm64-${{ github.sha }}
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .cache/guest-asm
+          key: guest-asm-linux-arm64-${{ github.sha }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -119,7 +252,18 @@ jobs:
           path: dist/halo-linux-arm64-release
           retention-days: 3
 
+      # (the zip itself, which keeps the files' modes: the release has it as
+      # it is)
+      - uses: actions/upload-artifact@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          name: halo-steam-frame-vr-release
+          path: dist/halo-steam-frame-vr-release
+          retention-days: 3
+
   linux-x86_64:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     # The 64-bit x86 build (ninja linux_x86_64: the game as x32 code in a
     # 64-bit host, drawn with Vulkan), made as the 64-bit ARM one is: Ubuntu
     # 22.04 (glibc 2.35, so the build starts on older distributions too) with
@@ -131,30 +275,42 @@ jobs:
     # tools/x86_game_abi.py: test tools only, with gcc-multilib's 32-bit C
     # library; nothing 32-bit ships).
     runs-on: ubuntu-24.04
-    container: ubuntu:22.04
+    # (.github/ci-image/Dockerfile, as the 64-bit ARM job's)
+    container:
+      image: ghcr.io/openh1/ci-linux:ubuntu-22.04-x86_64
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
     # (three builds, debug, release and VR release, each of the whole game:
     # with a cold compile cache, more than the other jobs' one or two)
     timeout-minutes: 75
     steps:
+      - uses: actions/checkout@v4
+
+      # (the image has the packages of .github/ci-image's lists: apt installs
+      # only what it lacks, a package a branch adds before master publishes
+      # the image with it)
       - name: Install the toolchain
         env:
           DEBIAN_FRONTEND: noninteractive
         run: |
-          apt-get update
-          apt-get install -y --no-install-recommends ca-certificates git python3 python3-pytest ninja-build \
-            cmake make pkg-config ccache zip clang gcc-multilib binutils \
-            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxfixes-dev \
-            libxtst-dev libxkbcommon-dev libwayland-dev wayland-protocols \
-            libdrm-dev libgbm-dev libpulse-dev libpipewire-0.3-dev libasound2-dev \
-            libudev-dev libdbus-1-dev libdecor-0-dev
+          packages="$(cat .github/ci-image/packages.txt .github/ci-image/packages-x86_64.txt)"
+          if ! dpkg -s $packages > /dev/null 2>&1; then
+            apt-get update
+            apt-get install -y --no-install-recommends $packages
+          fi
 
-      - uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
+      # (master's, as the 64-bit ARM job's)
+      - uses: actions/cache/restore@v4
         with:
           path: .ccache
           key: ccache-linux-x86_64-${{ github.sha }}
           restore-keys: ccache-linux-x86_64-
+
+      - name: Start the compile cache
+        run: |
+          ccache --zero-stats
+          echo "CCACHE_START=$(date +%s)" >> "$GITHUB_ENV"
 
       # musl, SDL and the Vulkan headers, which configure.py fetches (and the
       # OpenXR headers, which the VR build fetches)
@@ -169,8 +325,38 @@ jobs:
           path: .cache/llvm
           key: guest-llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/guest_toolchain.py') }}
 
+      # the tests that need no build, started in the background beside the
+      # builds (a build that finds its objects in the compile cache leaves the
+      # processors mostly idle), their output and result in RUNNER_TEMP for
+      # the Test step, which waits for them: with the guests' LLVM on the
+      # PATH (clang, ld.lld and LLVM's tools), on every processor, each
+      # file's tests together (pytest-xdist's loadfile)
+      - name: Start the tests
+        run: |
+          PATH="$(python3 tools/guest_toolchain.py --cache "$CI_GUEST_LLVM_CACHE"):$PATH"
+          (python3 -m pytest -q -rs -n auto --dist loadfile --durations=10 tools/test_host_units.py tools/test_guest_image_check.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_guest_layout.py tools/test_linux_guest_build.py tools/test_guest_toolchain.py tools/test_linux_port.py tools/test_linux_package.py tools/test_install_layout.py tools/test_android_asm_convert.py tools/test_guest_asm_cache.py tools/test_host_watch_hash.py tools/test_touch_menu.py tools/harness tools/test_net_compare.py tools/test_loading_ring.py tools/test_preparation.py tools/test_progress_ownership.py \
+            > "$RUNNER_TEMP/tests.log" 2>&1 && status=0 || status=$?; echo "$status" > "$RUNNER_TEMP/tests.status") < /dev/null > /dev/null 2>&1 &
+
       - name: Debug
         run: python3 tools/ci_build.py linux_x86_64 debug
+
+      # the 60/120 Hz scorecard on the debug build (tools/scorecard/ci.py):
+      # StageKit, the rates compared, the known bugs caught, and the 30 Hz
+      # gate against master's logs, which master's runs keep in the cache
+      - uses: actions/cache/restore@v4
+        with:
+          path: .scorecard-baseline
+          key: scorecard-baseline-${{ github.sha }}
+          restore-keys: scorecard-baseline-
+      - name: Scorecard
+        env:
+          SCORECARD_HOLDOUTS_JSON: ${{ secrets.SCORECARD_HOLDOUTS_JSON }}
+        run: python3 tools/scorecard/ci.py
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .scorecard-baseline
+          key: scorecard-baseline-${{ github.sha }}
 
       # (the profiling build, configure.py --profile, which no other step
       # compiles: only when a run started by hand asks for it, as it costs a
@@ -189,28 +375,48 @@ jobs:
         if: github.ref == 'refs/heads/master'
         run: python3 tools/ci_build.py linux_x86_64 release --vr
 
-      # (with the guests' LLVM on the PATH: clang, ld.lld and LLVM's tools;
-      # but the profiling build's checks with the system's clang, whose
-      # sanitizers' runtimes the pinned LLVM leaves out)
+      # (the profiling build's checks, which read the build's build.ninja and
+      # objects, with the system's clang, whose sanitizers' runtimes the
+      # pinned LLVM leaves out; then the tests started beside the builds,
+      # waited for, their output shown, their result the step's)
       - name: Test
         run: |
           python3 -m pytest -q -rs tools/test_profile.py
+          for second in $(seq 1200); do [ -f "$RUNNER_TEMP/tests.status" ] && break; sleep 1; done
+          cat "$RUNNER_TEMP/tests.log"
+          [ "$(cat "$RUNNER_TEMP/tests.status")" = 0 ]
           PATH="$(python3 tools/guest_toolchain.py --cache "$CI_GUEST_LLVM_CACHE"):$PATH"
-          python3 -m pytest -q -rs tools/test_host_units.py tools/test_guest_image_check.py tools/test_check_host_imports.py tools/test_host_syscall.py tools/test_guest_layout.py tools/test_linux_guest_build.py tools/test_guest_toolchain.py tools/test_linux_port.py tools/test_linux_package.py tools/test_install_layout.py tools/test_android_asm_convert.py tools/test_host_watch_hash.py tools/test_touch_menu.py tools/harness tools/test_net_compare.py
           python3 tools/test_light_storage.py
 
       # the Vulkan backend's core over a fake Vulkan, and the VR host's OpenXR
       # binding, with the system's clang (its sanitizers): the pinned Vulkan
       # headers, which the build fetched, and the OpenXR headers, which only
       # the VR release fetches, fetched here where it did not run (branches);
-      # and the VR mode's vehicles' seats and steering against a fake world
+      # the VR mode's vehicles' seats and steering against a fake world; the
+      # VR mode's effects' thickness bake, eye transforms and shaders; the
+      # Vulkan and Metal texture caches' idle time against a fake clock; and
+      # display.hdr's contract (the classification, the reference, the two
+      # backends' one GLSL source)
       - name: Test the Vulkan backend and the VR host
         run: |
           python3 -c "import sys; sys.path.insert(0, '.'); from pathlib import Path; from tools.linux_guest_build import fetch_openxr_headers; fetch_openxr_headers(Path('build/linux_x86_64/third_party/openxr'))"
-          python3 -m pytest -q tools/test_vulkan_passes.py tools/test_host_vr_vulkan.py tools/test_vr_vehicles.py
+          python3 -m pytest -q -n auto --dist loadfile tools/test_vulkan_passes.py tools/test_host_vr_vulkan.py tools/test_vr_vehicles.py \
+            tools/test_vr_effects.py tools/test_host_texture_idle.py tools/test_hdr.py tools/test_hdr_backends.py
 
       - name: Compile cache
         run: ccache --show-stats
+
+      - name: Trim the compile cache
+        if: github.ref == 'refs/heads/master'
+        run: |
+          ccache --evict-older-than "$(( $(date +%s) - CCACHE_START + 60 ))s"
+          ccache --show-stats
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .ccache
+          key: ccache-linux-x86_64-${{ github.sha }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -233,6 +439,8 @@ jobs:
           retention-days: 3
 
   android:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     # The runner image has the Android SDK and NDK, a JDK and CMake; the
     # guest's compiler is the pinned LLVM configure.py downloads.
     runs-on: ubuntu-24.04
@@ -241,25 +449,51 @@ jobs:
       - name: Install the toolchain
         run: |
           mkdir -p "$RUNNER_TEMP/tools"
+          # (each download checked against the hash it had when it was pinned)
           curl -fsSL -o ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-linux.zip
+          curl -fsSL -o ccache.tar.xz https://github.com/ccache/ccache/releases/download/v4.10.2/ccache-4.10.2-linux-x86_64.tar.xz
+          sha256sum -c - <<'EOF'
+          6f98805688d19672bd699fbbfa2c2cf0fc054ac3df1f0e6a47664d963d530255  ninja.zip
+          80cab87bd510eca796467aee8e663c398239e0df1c4800a0b5dff11dca0b4f18  ccache.tar.xz
+          EOF
           unzip -q ninja.zip -d "$RUNNER_TEMP/tools" && rm ninja.zip
-          curl -fsSL https://github.com/ccache/ccache/releases/download/v4.10.2/ccache-4.10.2-linux-x86_64.tar.xz \
-            | tar -xJ -C "$RUNNER_TEMP/tools" --strip-components=1 ccache-4.10.2-linux-x86_64/ccache
+          tar -xJf ccache.tar.xz -C "$RUNNER_TEMP/tools" --strip-components=1 ccache-4.10.2-linux-x86_64/ccache && rm ccache.tar.xz
           echo "$RUNNER_TEMP/tools" >> "$GITHUB_PATH"
 
       - uses: actions/checkout@v4
 
-      - uses: actions/cache@v4
+      # (master's, as the 64-bit ARM job's)
+      - uses: actions/cache/restore@v4
         with:
           path: .ccache
           key: ccache-android-${{ github.sha }}
           restore-keys: ccache-android-
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/guest-asm
+          key: guest-asm-android-${{ github.sha }}
+          restore-keys: guest-asm-android-
+
+      - name: Start the compile cache
+        run: |
+          ccache --zero-stats
+          echo "CCACHE_START=$(date +%s)" >> "$GITHUB_ENV"
+          mkdir -p .cache/guest-asm && touch "$RUNNER_TEMP/build-start"
 
       # musl and SDL, which configure.py fetches
       - uses: actions/cache@v4
         with:
           path: build/android/third_party
           key: android-third-party-${{ hashFiles('tools/android_build.py', 'port/android/patches/**') }}
+
+      # (and the Linux x86-64 build's, which configure.py fetches too on this
+      # x86-64 Linux runner, for a build this job does not make: the
+      # linux-x86_64 job's cache, restored only)
+      - uses: actions/cache/restore@v4
+        with:
+          path: build/linux_x86_64/third_party
+          key: linux-x86_64-third-party-${{ hashFiles('tools/android_build.py', 'tools/vulkan_build.py', 'tools/linux_guest_build.py', 'port/android/patches/**') }}
 
       # the guests' LLVM, which configure.py fetches (tools/guest_toolchain.py)
       - uses: actions/cache@v4
@@ -276,10 +510,13 @@ jobs:
 
       # the app's signing key, from the ANDROID_KEYSTORE_BASE64 secret (a
       # keystore, base64) and ANDROID_KEYSTORE_PASSWORD (its password, and
-      # the key's, alias halo): every build signed with it installs over the
+      # the key's, alias openh1): every build signed with it installs over the
       # one before, as the app's self-updater (Updater.java) needs. Without
-      # them each build is signed with the runner's own debug key.
+      # them each build is signed with the runner's own debug key. Master's
+      # builds alone (the release's) get them: a branch's build, which runs
+      # the branch's code, is signed with the debug key.
       - name: Signing key
+        if: github.ref == 'refs/heads/master'
         env:
           KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
@@ -292,7 +529,7 @@ jobs:
 
       - name: Debug
         env:
-          HALO_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          HALO_ANDROID_KEYSTORE_PASSWORD: ${{ github.ref == 'refs/heads/master' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
         run: python3 tools/ci_build.py android debug
 
       - name: Release
@@ -308,6 +545,26 @@ jobs:
       - name: Compile cache
         run: ccache --show-stats
 
+      - name: Trim the compile cache
+        if: github.ref == 'refs/heads/master'
+        run: |
+          ccache --evict-older-than "$(( $(date +%s) - CCACHE_START + 60 ))s"
+          ccache --show-stats
+          find .cache/guest-asm -type f ! -newer "$RUNNER_TEMP/build-start" -delete
+          echo "guest objects kept: $(find .cache/guest-asm -type f | wc -l)"
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .ccache
+          key: ccache-android-${{ github.sha }}
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .cache/guest-asm
+          key: guest-asm-android-${{ github.sha }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: halo-android-debug
@@ -322,11 +579,22 @@ jobs:
           retention-days: 3
 
   windows:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     # The runner image has LLVM, Python, Git and Visual Studio's x64 libraries
     # and Windows SDK; the guest's compiler is the pinned LLVM configure.py
     # downloads (its Windows archive), the host's the image's clang.
     runs-on: windows-2025
     timeout-minutes: 40
+    # (the image's Android SDK hidden from configure.py, which would otherwise
+    # fetch the Android build's SDL and musl, uncached here, for a build this
+    # job does not make: 10 seconds or so)
+    env:
+      ANDROID_HOME: ""
+      ANDROID_SDK_ROOT: ""
+      ANDROID_NDK_HOME: ""
+      ANDROID_NDK_ROOT: ""
+      ANDROID_NDK: ""
     defaults:
       run:
         shell: bash
@@ -335,8 +603,11 @@ jobs:
         shell: pwsh
         run: |
           Invoke-WebRequest -OutFile ninja.zip https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip
-          Expand-Archive ninja.zip -DestinationPath "$env:RUNNER_TEMP\tools"
           Invoke-WebRequest -OutFile ccache.zip https://github.com/ccache/ccache/releases/download/v4.10.2/ccache-4.10.2-windows-x86_64.zip
+          # (each download checked against the hash it had when it was pinned)
+          if ((Get-FileHash ninja.zip -Algorithm SHA256).Hash -ne "F550FEC705B6D6FF58F2DB3C374C2277A37691678D6ABA463ADCBB129108467A") { throw "ninja.zip: unexpected SHA-256" }
+          if ((Get-FileHash ccache.zip -Algorithm SHA256).Hash -ne "6252F081876A9A9F700FAE13A5AEC5D0D486B28261D7F1F72AC11C7AD9DF4DA9") { throw "ccache.zip: unexpected SHA-256" }
+          Expand-Archive ninja.zip -DestinationPath "$env:RUNNER_TEMP\tools"
           Expand-Archive ccache.zip -DestinationPath $env:RUNNER_TEMP
           Copy-Item "$env:RUNNER_TEMP\ccache-4.10.2-windows-x86_64\ccache.exe" "$env:RUNNER_TEMP\tools"
           Remove-Item ninja.zip, ccache.zip
@@ -344,11 +615,17 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      - uses: actions/cache@v4
+      # (master's, as the 64-bit ARM job's)
+      - uses: actions/cache/restore@v4
         with:
           path: .ccache
           key: ccache-windows-${{ github.sha }}
           restore-keys: ccache-windows-
+
+      - name: Start the compile cache
+        run: |
+          ccache --zero-stats
+          echo "CCACHE_START=$(date +%s)" >> "$GITHUB_ENV"
 
       # SDL's development package, and the guest's musl, SDL3 and headers,
       # which configure.py fetches
@@ -375,6 +652,18 @@ jobs:
 
       - name: Compile cache
         run: ccache --show-stats
+
+      - name: Trim the compile cache
+        if: github.ref == 'refs/heads/master'
+        run: |
+          ccache --evict-older-than "$(( $(date +%s) - CCACHE_START + 60 ))s"
+          ccache --show-stats
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .ccache
+          key: ccache-windows-${{ github.sha }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -404,32 +693,72 @@ jobs:
           retention-days: 3
 
   macos:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     # The runner image has Xcode (clang, the Metal compiler), Python and
     # CMake; the guest's compiler is the pinned LLVM configure.py downloads.
-    # The app is signed ad hoc (tools/macos_app.py): without a Developer ID,
-    # macOS asks the player to allow it once (README, "Download").
+    # The app is signed ad hoc (tools/macos_app.py), and the release on
+    # master with the Developer ID and notarized ("Sign and notarize"), so
+    # macOS opens it without asking (README, "Download").
     runs-on: macos-15
     timeout-minutes: 40
+    # (the image's Android SDK hidden from configure.py, as in the Windows job)
+    env:
+      ANDROID_HOME: ""
+      ANDROID_SDK_ROOT: ""
+      ANDROID_NDK_HOME: ""
+      ANDROID_NDK_ROOT: ""
+      ANDROID_NDK: ""
     steps:
       - name: Install the toolchain
         run: |
           brew install ninja ccache
+          # (the disk image's window: tools/macos_app.py dmg)
+          python3 -m pip install --break-system-packages dmgbuild==1.6.7
           # (Xcode 26 downloads the Metal compiler apart)
           xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
 
       - uses: actions/checkout@v4
 
-      - uses: actions/cache@v4
+      # (master's, as the 64-bit ARM job's)
+      - uses: actions/cache/restore@v4
         with:
           path: .ccache
           key: ccache-macos-${{ github.sha }}
           restore-keys: ccache-macos-
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/guest-asm
+          key: guest-asm-macos-${{ github.sha }}
+          restore-keys: guest-asm-macos-
+
+      - name: Start the compile cache
+        run: |
+          ccache --zero-stats
+          echo "CCACHE_START=$(date +%s)" >> "$GITHUB_ENV"
+          mkdir -p .cache/guest-asm && touch "$RUNNER_TEMP/build-start"
 
       # musl, SDL and the OpenGL ES headers, which configure.py fetches
       - uses: actions/cache@v4
         with:
           path: build/macos/third_party
           key: macos-third-party-${{ hashFiles('tools/macos_build.py', 'tools/android_build.py', 'port/android/patches/**') }}
+
+      # SDL3's CMake build folder, whose configure checks are most of SDL's
+      # time on this 3-core runner (its compiles are ccache's): found again
+      # for the same SDL, options (the scripts) and the image's compiler,
+      # SDK and CMake, as a build's release step finds its debug step's.
+      # Restored on every branch, saved by master's builds.
+      - name: SDL3 build folder key
+        id: sdl3
+        run: echo "tools=$( (xcrun clang --version; xcrun --show-sdk-version; cmake --version) | shasum -a 256 | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache/restore@v4
+        id: sdl3-restore
+        with:
+          path: build/macos/sdl3-build
+          key: macos-sdl3-build-${{ steps.sdl3.outputs.tools }}-${{ hashFiles('tools/macos_build.py', 'tools/android_build.py', 'tools/build_common.py', 'port/android/patches/**') }}
 
       # the guests' LLVM, which configure.py fetches (tools/guest_toolchain.py)
       - uses: actions/cache@v4
@@ -440,12 +769,111 @@ jobs:
       - name: Debug
         run: python3 tools/ci_build.py macos debug
 
+      # (with the public half of Sparkle's key, SPARKLE_PUBLIC_KEY, the
+      # release app's Info.plist has the appcast and the key, and the app
+      # updates itself: tools/setup_sparkle_key.sh sets the variable)
       - name: Release
         if: github.ref == 'refs/heads/master'
+        env:
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
         run: python3 tools/ci_build.py macos release
+
+      # the release signed with the Developer ID and notarized
+      # (tools/macos_app.py notarize), its disk image in place of the ad hoc
+      # one: the certificate and its key from MACOS_CERTIFICATE (a .p12,
+      # base64) and MACOS_CERTIFICATE_PASSWORD, in a keychain of the run's
+      # own; notarytool's credentials an App Store Connect API key, ASC_KEY
+      # (its .p8, base64), ASC_KEY_ID and ASC_ISSUER_ID. Without them the
+      # release stays ad hoc
+      - name: Sign and notarize
+        id: notarize
+        if: github.ref == 'refs/heads/master'
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          ASC_KEY: ${{ secrets.ASC_KEY }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          if [ -z "$CERTIFICATE" ] || [ -z "$ASC_KEY" ]; then
+            echo "::warning::no MACOS_CERTIFICATE or ASC_KEY secret: the macOS app is signed ad hoc, not notarized"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          trap 'rm -f "$RUNNER_TEMP/certificate.p12" "$RUNNER_TEMP/AuthKey.p8"; security delete-keychain "$keychain" || true' EXIT
+          password="$(openssl rand -hex 16)"
+          printf '%s' "$CERTIFICATE" | base64 -d > "$RUNNER_TEMP/certificate.p12"
+          printf '%s' "$ASC_KEY" | base64 -d > "$RUNNER_TEMP/AuthKey.p8"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain" > /dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          identity="$(security find-identity -v -p codesigning "$keychain" | awk '/Developer ID Application/ { print $2; exit }')"
+          if [ -z "$identity" ]; then
+            echo "::error::MACOS_CERTIFICATE has no Developer ID Application identity"
+            exit 1
+          fi
+          python3 tools/macos_app.py notarize --app build/macos/OpenH1.app --output dist/halo-macos-release/OpenH1.dmg \
+            --identity "$identity" --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID"
+          echo "notarized=true" >> "$GITHUB_OUTPUT"
+
+      # the notarized disk image signed for Sparkle's appcast with the
+      # SPARKLE_PRIVATE_KEY secret (tools/setup_sparkle_key.sh), by the
+      # build's Sparkle (bin/sign_update): OpenH1.dmg.sparkle beside it, which
+      # the release job makes appcast.xml with (tools/macos_appcast.py).
+      # Without the secret, or a notarized app, the release has no appcast and
+      # the apps out stay as they are
+      - name: Sign the update
+        if: github.ref == 'refs/heads/master'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+          NOTARIZED: ${{ steps.notarize.outputs.notarized }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ] || [ -z "$SPARKLE_PUBLIC_KEY" ]; then
+            echo "::warning::no SPARKLE_PRIVATE_KEY secret or SPARKLE_PUBLIC_KEY variable: the release has no appcast, and the macOS app does not update itself (tools/setup_sparkle_key.sh)"
+            exit 0
+          fi
+          if [ "$NOTARIZED" != "true" ]; then
+            echo "::warning::the macOS app is not notarized: the release has no appcast"
+            exit 0
+          fi
+          dmg=dist/halo-macos-release/OpenH1.dmg
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | build/macos/third_party/Sparkle/bin/sign_update --ed-key-file - "$dmg" > "$dmg.sparkle"
+          cat "$dmg.sparkle"
+          plutil -extract SUPublicEDKey raw build/macos/OpenH1.app/Contents/Info.plist
 
       - name: Compile cache
         run: ccache --show-stats
+
+      - name: Trim the compile cache
+        if: github.ref == 'refs/heads/master'
+        run: |
+          ccache --evict-older-than "$(( $(date +%s) - CCACHE_START + 60 ))s"
+          ccache --show-stats
+          find .cache/guest-asm -type f ! -newer "$RUNNER_TEMP/build-start" -delete
+          echo "guest objects kept: $(find .cache/guest-asm -type f | wc -l)"
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .ccache
+          key: ccache-macos-${{ github.sha }}
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .cache/guest-asm
+          key: guest-asm-macos-${{ github.sha }}
+
+      # (once for each key: a key already saved is left as it is)
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master' && steps.sdl3-restore.outputs.cache-hit != 'true'
+        with:
+          path: build/macos/sdl3-build
+          key: macos-sdl3-build-${{ steps.sdl3.outputs.tools }}-${{ hashFiles('tools/macos_build.py', 'tools/android_build.py', 'tools/build_common.py', 'port/android/patches/**') }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -458,6 +886,91 @@ jobs:
         with:
           name: halo-macos-release
           path: dist/halo-macos-release
+          retention-days: 3
+
+  ios:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
+    # The iOS app (port/ios/README.md), built as the macOS one is, debug only
+    # and signed ad hoc: the job checks that it builds, and its .ipa is for
+    # sideloading tools to sign again. The release does not publish it yet.
+    runs-on: macos-15
+    timeout-minutes: 50
+    env:
+      ANDROID_HOME: ""
+      ANDROID_SDK_ROOT: ""
+      ANDROID_NDK_HOME: ""
+      ANDROID_NDK_ROOT: ""
+      ANDROID_NDK: ""
+    steps:
+      - name: Install the toolchain
+        run: |
+          brew install ninja ccache
+          xcrun -sdk iphoneos metal --version || xcodebuild -downloadComponent MetalToolchain
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-ios-${{ github.sha }}
+          restore-keys: ccache-ios-
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/guest-asm
+          key: guest-asm-ios-${{ github.sha }}
+          restore-keys: guest-asm-ios-
+
+      - name: Start the compile cache
+        run: |
+          ccache --zero-stats
+          echo "CCACHE_START=$(date +%s)" >> "$GITHUB_ENV"
+          mkdir -p .cache/guest-asm && touch "$RUNNER_TEMP/build-start"
+
+      # musl, SDL and the OpenGL ES headers, which configure.py fetches (the
+      # macOS build's too: the iOS build uses its shaders' tool)
+      - uses: actions/cache@v4
+        with:
+          path: |
+            build/ios/third_party
+            build/macos/third_party
+          key: ios-third-party-${{ hashFiles('tools/macos_build.py', 'tools/ios_build.py', 'tools/android_build.py', 'port/android/patches/**') }}
+
+      - uses: actions/cache@v4
+        with:
+          path: .cache/llvm
+          key: guest-llvm-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/guest_toolchain.py') }}
+
+      - name: Debug
+        run: python3 tools/ci_build.py ios debug
+
+      - name: Compile cache
+        run: ccache --show-stats
+
+      - name: Trim the compile cache
+        if: github.ref == 'refs/heads/master'
+        run: |
+          ccache --evict-older-than "$(( $(date +%s) - CCACHE_START + 60 ))s"
+          ccache --show-stats
+          find .cache/guest-asm -type f ! -newer "$RUNNER_TEMP/build-start" -delete
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .ccache
+          key: ccache-ios-${{ github.sha }}
+
+      - uses: actions/cache/save@v4
+        if: github.ref == 'refs/heads/master'
+        with:
+          path: .cache/guest-asm
+          key: guest-asm-ios-${{ github.sha }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: halo-ios-debug
+          path: dist/halo-ios-debug
           retention-days: 3
 
   release:
@@ -478,10 +991,14 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
-      # (the Linux builds' zips are tools/linux_package.py's)
+      # (the Linux builds' zips are tools/linux_package.py's, the release's
+      # names tools/release_names.py's)
       - uses: actions/checkout@v4
         with:
-          sparse-checkout: tools/linux_package.py
+          sparse-checkout: |
+            tools/linux_package.py
+            tools/macos_appcast.py
+            tools/release_names.py
           sparse-checkout-cone-mode: false
 
       - uses: actions/download-artifact@v4
@@ -489,19 +1006,59 @@ jobs:
           pattern: halo-*
           path: artifacts
 
-      # (the Linux builds with their executables' modes, which the artifacts
-      # lose)
+      # each build under the name players see (tools/release_names.py:
+      # OpenH1-Windows.zip, OpenH1-Linux.zip, OpenH1.dmg...): the Linux builds
+      # with their executables' modes, which the artifacts lose; the Steam
+      # Frame's package is a zip already, with its modes; the macOS build's
+      # disk image as it is, a file a Mac opens at once; the Android app's
+      # APK as it is, which a phone installs at once and which carries its
+      # licences (tools/android_build.py)
       - name: Package
         run: |
           mkdir release
           for build in artifacts/*/; do
             name="$(basename "$build")"
+            published="$(python3 tools/release_names.py "$name")"
             case "$name" in
-              halo-linux-*) python3 tools/linux_package.py zip "$build" "release/$name.zip" ;;
-              *) (cd "$build" && zip -qr "$GITHUB_WORKSPACE/release/$name.zip" .) ;;
+              halo-steam-frame-*) cp "$build/$name.zip" "release/$published.zip" ;;
+              halo-linux-*) python3 tools/linux_package.py zip "$build" "release/$published.zip" ;;
+              halo-macos-*) cp "$build/OpenH1.dmg" "release/$published.dmg" ;;
+              halo-android-*)
+                apks=("$build"*.apk)
+                if [ "${#apks[@]}" -ne 1 ] || [ ! -f "${apks[0]}" ]; then
+                  echo "::error::$name has no single APK"; exit 1
+                fi
+                cp "${apks[0]}" "release/$published.apk" ;;
+              *) (cd "$build" && zip -qr "$GITHUB_WORKSPACE/release/$published.zip" .) ;;
             esac
           done
           ls -l release
+
+      # the macOS app's appcast (tools/macos_appcast.py), when its disk image
+      # was signed for it (the macOS job's OpenH1.dmg.sparkle): this release's
+      # OpenH1.dmg, and its changes since the last release (the merged pull
+      # requests' titles, and the commits made on master itself)
+      - name: Appcast
+        run: |
+          signature=artifacts/halo-macos-release/OpenH1.dmg.sparkle
+          if [ ! -f "$signature" ]; then
+            echo "::warning::the macOS disk image was not signed for Sparkle: no appcast.xml"
+            exit 0
+          fi
+          tag="build-$GITHUB_RUN_NUMBER"
+          previous="$(gh release list --limit 20 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("build-"))] | sort_by(.createdAt) | reverse | .[0].tagName // ""')"
+          : > notes.txt
+          if [ -n "$previous" ]; then
+            gh api "repos/$GH_REPO/compare/$previous...$GITHUB_SHA" \
+              --jq '.commits[] | .commit.message | split("\n") | if (.[0] | startswith("Merge pull request")) then (map(select(length > 0)) | .[1] // empty) elif (.[0] | startswith("Merge ")) then empty else .[0] end' \
+              | awk '!seen[$0]++' > notes.txt || true
+          fi
+          python3 tools/macos_appcast.py --build "$GITHUB_RUN_NUMBER" \
+            --url "$GITHUB_SERVER_URL/$GH_REPO/releases/download/$tag/OpenH1.dmg" \
+            --signature "$signature" --notes notes.txt \
+            --release-page "$GITHUB_SERVER_URL/$GH_REPO/releases/tag/$tag" --output release/appcast.xml
+          cat release/appcast.xml
 
       - name: Publish
         id: publish
@@ -512,9 +1069,9 @@ jobs:
         run: |
           tag="build-$GITHUB_RUN_NUMBER"
           subject="$(printf '%s' "${MESSAGE:-manual run}" | head -n 1)"
-          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Linux, download halo-linux-x86_64-release.zip (halo-linux-arm64-release.zip on 64-bit ARM, halo-linux-x86_64-vr-release.zip for VR): it draws with Vulkan 1.3.\n\nOn Windows (64-bit Windows 10 1903 or later, with a Vulkan 1.3 graphics driver), download halo-windows-release.zip.\n\nOn macOS (Apple silicon, macOS 14.4 or later), download halo-macos-release.zip and open Halo.dmg in it. The app is not notarized yet: the first time, macOS asks to allow it in System Settings, Privacy & Security.\n' \
+          printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Windows (64-bit Windows 10 1903 or later, with a Vulkan 1.3 graphics driver), download OpenH1-Windows.zip.\n\nOn Linux and the Steam Deck, download OpenH1-Linux.zip (OpenH1-Linux-ARM64.zip on 64-bit ARM, OpenH1-Linux-VR.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, in desktop mode, download OpenH1-Steam-Frame.zip, unzip it and open install.sh in it (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download OpenH1.dmg, open it and drag OpenH1 to Applications: the app is signed and notarized.\n\nOn Android (64-bit, Android 9 or later, with Vulkan 1.3), download OpenH1-Android.apk on the phone and install it. The app is signed with OpenH1'"'"'s own key now: an install signed before it must be uninstalled once first (back up its maps and save folders).\n' \
             "$subject" "$COMMIT_URL" "$RUN_URL" > notes.md
-          gh release create "$tag" release/*.zip --target "$GITHUB_SHA" --latest \
+          gh release create "$tag" release/*.zip release/*.dmg release/*.apk $(ls release/appcast.xml 2> /dev/null) --target "$GITHUB_SHA" --latest \
             --title "Build $GITHUB_RUN_NUMBER (${GITHUB_SHA:0:7})" --notes-file notes.md
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
@@ -562,8 +1119,9 @@ jobs:
     # without it): green when every platform built, red when one did not,
     # with each platform's result, this run's release (master only), and
     # links to the latest release's builds.
-    needs: [linux-x86_64, linux-arm64, android, windows, macos, release]
-    if: ${{ !cancelled() }}
+    # (not for a push of documentation alone, which builds nothing)
+    needs: [changes, linux-x86_64, linux-arm64, android, windows, macos, release]
+    if: ${{ !cancelled() && needs.changes.outputs.build != 'false' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -603,7 +1161,7 @@ jobs:
             title="Build failed"; color=15548997
           fi
           latest="$SERVER/$REPOSITORY/releases/latest"
-          downloads="[Linux x86-64]($latest/download/halo-linux-x86_64-release.zip) · [Linux arm64]($latest/download/halo-linux-arm64-release.zip) · [Linux x86-64 VR]($latest/download/halo-linux-x86_64-vr-release.zip) · [Windows]($latest/download/halo-windows-release.zip) · [macOS]($latest/download/halo-macos-release.zip) · [Android]($latest/download/halo-android-release.zip) ([all builds]($latest))"
+          downloads="[Linux x86-64]($latest/download/OpenH1-Linux.zip) · [Linux arm64]($latest/download/OpenH1-Linux-ARM64.zip) · [Linux x86-64 VR]($latest/download/OpenH1-Linux-VR.zip) · [Steam Frame VR]($latest/download/OpenH1-Steam-Frame.zip) · [Windows]($latest/download/OpenH1-Windows.zip) · [macOS]($latest/download/OpenH1.dmg) · [Android]($latest/download/OpenH1-Android.apk) ([all builds]($latest))"
           if [ -n "$RELEASE_TAG" ]; then
             release="[$RELEASE_TAG]($SERVER/$REPOSITORY/releases/tag/$RELEASE_TAG)"
           else

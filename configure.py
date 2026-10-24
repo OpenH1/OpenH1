@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 # root build script: writes build.ninja for the native ports (Linux, Windows,
-# Android, macOS) and the web port
+# Android, macOS, iOS) and the web port
 
 import argparse
 import io
@@ -14,10 +14,16 @@ from tools import ninja_syntax
 from tools.android_build import android_configure_inputs, generate_android_build
 from tools.build_common import check_profile_options, common_configure_inputs, generate_msvc_semantics
 from tools.guest_toolchain import LLVM_VERSION, default_cache
+from tools.ios_build import generate_ios_build, ios_configure_inputs
 from tools.linux_guest_build import generate_linux_guest_builds, linux_guest_configure_inputs, native_linux_guest
 from tools.macos_build import generate_macos_build, is_macos_arm64, macos_configure_inputs
 from tools.web_build import generate_web_build, web_configure_inputs
 from tools.windows_build import generate_windows_build, windows_configure_inputs
+
+
+def is_windows() -> bool:
+    return os.name == "nt"
+
 
 # arguments
 parser = argparse.ArgumentParser()
@@ -66,6 +72,13 @@ parser.add_argument(
     "--guest-llvm-cache",
     metavar="FOLDER",
     help=f"where --guest-llvm=pinned keeps LLVM (default: {default_cache()})",
+)
+parser.add_argument(
+    "--guest-asm-cache",
+    metavar="FOLDER",
+    help="keep the arm64_32 guests' objects (Android, Linux arm64, macOS) in FOLDER, each found again by its "
+    "Darwin assembly, so that a build whose compile cache gives that back skips its conversion and assembly "
+    "(tools/guest_asm_cache.py; for CI, beside ccache)",
 )
 parser.add_argument(
     "--android-ndk",
@@ -127,10 +140,59 @@ parser.add_argument(
     "project's domain); macOS keeps the app's permissions (the microphone, the local network) by it",
 )
 parser.add_argument(
+    "--ios-team",
+    metavar="TEAM",
+    help="the Apple developer team that signs `ninja ios`'s app for development (its ID, such as 5NH5B2VG6Y): "
+    "its provisioning profile is made with Xcode's automatic signing (tools/ios_provision.py; Xcode signed in to "
+    "the team's account). Without it the app is signed ad hoc, for sideloading tools to sign again",
+)
+parser.add_argument(
+    "--ios-identity",
+    metavar="CERTIFICATE",
+    help="the certificate that signs the iOS app with --ios-team (default: \"Apple Development\", the keychain's)",
+)
+parser.add_argument(
+    "--ios-bundle-id",
+    type=str,
+    help="the iOS app's bundle identifier (default: the macOS app's, com.openh1.openh1)",
+)
+parser.add_argument(
     "--web-emcc",
     type=str,
     help="Emscripten's emcc for `ninja web` (default: emcc on the PATH, then EMSDK's or ~/emsdk's)",
 )
+
+# no need to spam those extra flags when running on Windows
+if not is_windows():
+    parser.add_argument(
+        "--windows-cross",
+        action="store_true",
+        help="generate the Windows build (`ninja windows`) on Linux, cross-compiling "
+        "with clang against an MSVC toolchain (--windows-vctools-dir and --windows-sdk-dir), "
+        "and make it the default target",
+    )
+    parser.add_argument(
+        "--windows-cc",
+        metavar="BINARY",
+        help="compiler for the Windows cross build, `ninja windows` (default: clang). "
+             "Only clang is supported for now.",
+    )
+    parser.add_argument(
+        "--windows-vctools-dir",
+        metavar="DIR",
+        type=Path,
+        help="the Visual C++ tools of the MSVC toolchain a --windows-cross build compiles "
+        "and links against: the versioned folder under VC/Tools/MSVC, the one with `include` "
+        "and `lib` (default: VCToolsInstallDir)",
+    )
+    parser.add_argument(
+        "--windows-sdk-dir",
+        metavar="DIR",
+        type=Path,
+        help="the Windows SDK a --windows-cross build compiles and links against: the "
+        "folder with `Include` and `Lib`, each with a versioned folder (default: WindowsSdkDir)",
+    )
+
 args = parser.parse_args()
 try:
     check_profile_options(args.profile, args.pgo)
@@ -148,6 +210,7 @@ sln = SimpleNamespace(
     android_ndk=args.android_ndk,
     guest_llvm=args.guest_llvm,
     guest_llvm_cache=args.guest_llvm_cache,
+    guest_asm_cache=args.guest_asm_cache,
     android_guest_cc=args.android_guest_cc,
     linux_arm64_cc=args.linux_arm64_cc,
     linux_x86_64_cc=args.linux_x86_64_cc,
@@ -156,13 +219,17 @@ sln = SimpleNamespace(
     macos_cc=args.macos_cc,
     macos_guest_cc=args.macos_guest_cc,
     macos_bundle_id=args.macos_bundle_id,
+    ios_team=args.ios_team,
+    ios_identity=args.ios_identity,
+    ios_bundle_id=args.ios_bundle_id,
     guest_base=args.guest_base,
     web_emcc=args.web_emcc,
 )
-
-
-def is_windows() -> bool:
-    return os.name == "nt"
+if not is_windows():
+    sln.windows_cc = args.windows_cc
+    sln.windows_cross = args.windows_cross
+    sln.windows_vctools_dir = args.windows_vctools_dir
+    sln.windows_sdk_dir = args.windows_sdk_dir
 
 
 # build.ninja
@@ -185,6 +252,7 @@ generate_android_build(n, sln)
 generate_linux_guest_builds(n, sln)
 generate_windows_build(n, sln)
 generate_macos_build(n, sln)
+generate_ios_build(n, sln)
 generate_web_build(n, sln)
 
 n.comment("Reconfigure on change")
@@ -205,6 +273,7 @@ n.build(
         *linux_guest_configure_inputs(),
         *windows_configure_inputs(),
         *macos_configure_inputs(),
+        *ios_configure_inputs(),
         *web_configure_inputs(),
     ],
 )
@@ -215,7 +284,7 @@ n.newline()
 # or ARM Linux its Linux build (linux_x86_64, linux_arm64); on a Mac with
 # Apple silicon the macOS build
 native_guest = native_linux_guest()
-default = ("windows" if is_windows() else native_guest.name if native_guest
+default = ("windows" if is_windows() or getattr(sln, "windows_cross", False) else native_guest.name if native_guest
            else "macos" if is_macos_arm64() else None)
 if default and f"\nbuild {default}: " in out.getvalue():
     n.comment("Default rule: the build for this computer")

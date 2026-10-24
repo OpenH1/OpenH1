@@ -17,15 +17,22 @@ finger down (host_gesture_insets).
 #include <stdlib.h>
 #include <string.h>
 
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_TOUCH_CONTROLS
 /* port/android/guest/runtime/guest_host.h (in a browser,
-port/web/src/web_touch.c) */
+port/web/src/web_touch.c; on iOS, port/android/host/host_touch.c in the
+host) */
 void host_gesture_insets(int *insets);
 void host_touch_read(int *state);
 void host_touch_look_read(float *delta);
 void host_touch_rumble(unsigned int low, unsigned int high);
 void host_touch_scene(int scene);
 void host_touch_bindings(const int *controls);
+
+/* the SDL gamepads in connection order, at most one per port
+(xinput_sdl.c); the touch controls are port 0's controller */
+#define TOUCH_PORTS 4
+struct SDL_Gamepad;
+int sdl_gamepads(struct SDL_Gamepad **gamepads);
 #endif
 
 /* the game's (port/linux/game/touch_game.c) */
@@ -33,6 +40,7 @@ int touch_game_cinematic_skippable(void);
 int touch_game_cinematic_playing(void);
 int touch_game_playing(void);
 void touch_game_button_controls(int *controls);
+int touch_game_context(void);
 
 /* the gamepad's buttons (input.h), which the touch controls are named by */
 #define TOUCH_BUTTONS 16
@@ -167,6 +175,7 @@ void touch_input_menu_read(struct platform_ui_pointer *pointer)
 	pointer->down_x = output.down_x;
 	pointer->down_y = output.down_y;
 	pointer->touch = TRUE;
+	pointer->left_held = FALSE;
 }
 
 /* port/linux/game/network_chat.c: its on-screen keyboard is up, which
@@ -221,12 +230,13 @@ void touch_input_gamepad(XINPUT_GAMEPAD *pad)
 	}
 }
 
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_TOUCH_CONTROLS
 /* ---------- the on-screen touch controls
 
 The overlay (port/android/app/.../TouchControls.java) draws and reads its
 own fingers on Android's UI thread; port/android/host/host_touch.c hands
-its state over. In a browser the page's overlay (port/web/site/touch.js)
+its state over. On iOS the overlay is port/ios/touch_controls.m, a UIKit
+view over SDL's, through the same host_touch.c. In a browser the page's overlay (port/web/site/touch.js)
 does, through port/web/src/web_touch.c. These bits tell it when to show: */
 enum
 {
@@ -239,12 +249,29 @@ enum
 	device has a touchscreen and no controller) */
 	_touch_scene_on = 1 << 2,
 	_touch_scene_off = 1 << 3,
+	/* the game reads a controller (SDL_GetGamepads): "auto" hides the
+	controls, and on Android the overlay's own input device list did not
+	show every controller (a Bluetooth pad arrived after it looked) */
+	_touch_scene_controller = 1 << 4,
+	/* display.hud_button_style, which the Android overlay draws the
+	controller's buttons in: 0 "classic", 1 "gems", 2 "menu_gems" */
+	_touch_scene_style_shift = 5,
+	_touch_scene_style = 3 << _touch_scene_style_shift,
+	/* input.touch_captions: each controller button's game control written
+	under it */
+	_touch_scene_captions = 1 << 7,
+	/* player 1's state, which the overlay's buttons show (touch_game.c's
+	_touch_context_* bits: an action prompted, a magazine to reload, no
+	grenades, in a vehicle), from this bit up */
+	_touch_scene_context_shift = 8,
 };
 
 /* the touch controls' stick at port 0's last read, -1..1, y down */
 static float move_x, move_y;
 
-/* input.touch_controls as _touch_scene_on, _touch_scene_off or 0 */
+/* the settings the overlay reads: input.touch_controls as
+_touch_scene_on, _touch_scene_off or 0, display.hud_button_style and
+input.touch_captions */
 static int touch_controls_setting(void)
 {
 	static int setting;
@@ -260,8 +287,25 @@ static int touch_controls_setting(void)
 			setting = _touch_scene_on;
 		else if (value && !strcmp(value, "off"))
 			setting = _touch_scene_off;
+		value = config_string("display.hud_button_style");
+		if (value && !strcmp(value, "gems"))
+			setting |= 1 << _touch_scene_style_shift;
+		else if (value && !strcmp(value, "menu_gems"))
+			setting |= 2 << _touch_scene_style_shift;
+		if (config_boolean("input.touch_captions"))
+			setting |= _touch_scene_captions;
 	}
 	return setting;
+}
+
+/* whether the controllers in connection order include one that is not
+port 0's alone (xinput_sdl.c, sdl_gamepads): the touch controls are port
+0's controller, so `count` of 1 is the overlay's own absence besides them */
+static int touch_controller_connected(void)
+{
+	struct SDL_Gamepad *gamepads[TOUCH_PORTS];
+
+	return sdl_gamepads(gamepads) > 1;
 }
 
 void touch_input_controls(XINPUT_GAMEPAD *pad, int menus)
@@ -284,13 +328,22 @@ void touch_input_controls(XINPUT_GAMEPAD *pad, int menus)
 	int bindings[TOUCH_BUTTONS];
 	int state[7];
 	int index;
+	int controller;
+	int playing;
 
+	/* a gamepad that is not the touch controls' own: the controls' state
+	goes to port 0 only, and the overlay's device list has left some
+	controllers out (it looked before a Bluetooth pad was paired) */
+	controller = touch_controller_connected();
 	/* (the controls show only in a game: not while it starts, at the main
 	menu, in a menu or during a cinematic; nor while the text chat's
 	on-screen keyboard is up, whose keys the fingers then tap) */
+	playing = touch_game_playing();
 	host_touch_scene(_touch_scene_known | touch_controls_setting() |
-		(menus || !touch_game_playing() || touch_game_cinematic_playing() || network_chat_keyboard_open() ?
-			_touch_scene_menus : 0));
+		(controller ? _touch_scene_controller : 0) |
+		(menus || !playing || touch_game_cinematic_playing() || network_chat_keyboard_open() ?
+			_touch_scene_menus : 0) |
+		(playing ? touch_game_context() << _touch_scene_context_shift : 0));
 	/* (the profile's mapping, for the buttons' names; only when it changes) */
 	touch_game_button_controls(bindings);
 	if (!bindings_known || memcmp(bindings, bindings_sent, sizeof(bindings)))

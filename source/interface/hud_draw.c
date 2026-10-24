@@ -83,6 +83,7 @@ symbols in this file:
 /* ---------- headers */
 
 #include "cseries/cseries.h"
+#include "passenger_camera.h" /* port: port/linux/game/passenger_camera.c */
 #include "cseries/errors.h"
 #include "math/real_math.h"
 #include "bitmaps/bitmaps.h"
@@ -1714,6 +1715,9 @@ static void hud_draw_bitmap_with_meter(
 		point.y += vr_render_crosshair_offset[1];
 	}
 #endif
+	/* port: the crosshairs_draw scope moves only the weapon's reticle */
+	if (is_crosshair_bitmap)
+		passenger_camera_reticle_offset(&point);
 	hud_calculate_bitmap_bounds(
 		bitmap,
 		absolute_placement->corner,

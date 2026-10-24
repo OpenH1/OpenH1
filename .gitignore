@@ -33,3 +33,5 @@ dist/
 
 # the Cloudflare CLI's cache
 /.cloudflare/
+# the scorecard's 30 Hz baseline, which CI keeps in its cache (tools/scorecard/ci.py)
+/.scorecard-baseline/

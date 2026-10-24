@@ -47,6 +47,18 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
     host's is once that stops, or if they drift apart while it moves;
   - which named objects exist, so scripted creates and deletes match.
 
+  Script actions naming player0 also reach the players beyond player1.
+  They use the same reverse datum order as the script's `(players)` list,
+  skipping players without units, so a scripted BSP transition does not
+  leave the extra players in the unloaded part of the level.
+
+  A script waiting for every player inside a trigger brings the others
+  beside a player who arrived, but advances only after their positions
+  are inside the volume. Failed placements retry, rather than closing a
+  one-way door on players left behind. An empty `(players)` list during
+  respawn does not satisfy that wait; empty AI lists keep their original
+  meaning.
+
   Every machine follows the host's structure BSP: a switch is sent at once
   and reliably, and each client's input says which BSP it has loaded.
   Until a client has the host's, the host takes none of its players'
@@ -84,6 +96,13 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   actor pool, `halo_port_capacity.h`, holds 1024). Riders a dropship has no
   seats for are kept, and placed beside its riders once they get out. Only
   the host runs the AI, so the clients see them as the host's other actors.
+
+  Each player chooses whether to play with friendly fire between players
+  (`network.coop_own_friendly_fire`, FRIENDLY FIRE in the pause menu): two
+  players hurt each other only if both do. A client's input tells the host
+  its choice. A player with no input for over 70 seconds (no button pressed
+  or let go, no stick or trigger held) is hurt by every player, whatever
+  either chose, until their next input.
 - **Host authoritative.** The host alone decides damage, deaths, spawns,
   pickups, scores and the game's objects; clients do not decide them but
   apply what the host sends.
@@ -122,13 +141,23 @@ with ideas from VALORANT's netcode articles, keeping the 30 Hz tick:
   than the player goes of their own (and up, what its tick added but a
   jump's), so a client that says it goes faster (a copy said to hover and
   fall, gaining the host's gravity each tick) gains nothing by it. A
-  teleporter, which moves the host's own copy too, starts afresh. On a
-  moving elevator the host takes only where a client's player is across,
+  teleporter, which moves the host's own copy too, starts afresh. Riding an
+  elevator (moving, or at rest with the player on its floor) the host takes
+  only where a client's player is across,
   not how high: the client's elevator follows the host's (co-op's device
   sync), so its player's height reaches the host a round trip behind the
   host's elevator, under its floor going up, where the host's copy would
   fall through it. Each machine's elevator carries its own copy up and
-  down, and they meet where it stops.
+  down, and they meet where it stops. Floor contact keeps that protection
+  through a stop or reversal; the remembered attachment alone after leaving
+  a stopped platform does not. A client echoing a prediction while still on
+  the same elevator keeps its local floor height, rather than applying the
+  difference between the platforms' phases to its current height, when that
+  difference is within 4 world units (the platform's travel over a round
+  trip); a greater one, jumps, leaving the platform and authoritative
+  teleports correct normally. Rider carry uses the platform's current
+  collision displacement, including phase corrections, rather than its
+  previous tick's displacement (network version 30).
 - **Shooter's hits.** A client reports what its own players hit; the host
   checks the report (the player's, a weapon they carry, fired from within
   its reach, the target where the host had it when the shooter saw it, no
@@ -201,7 +230,72 @@ limits, and readies a second weapon picked up while firing; version 29 names
 a Custom Edition map by its own name (`custom_maps\hugeass`, which every
 screen shows) and says which version it is by the map version of the game
 record, its hash's first 32 bits (the header checksum before), which a
-client finds its file by (below, "Map sharing").
+client finds its file by (below, "Map sharing"); version 30 carries an
+elevator's riders by its movement of the same tick, which the Xbox game did
+a tick late, so that every machine moves them alike; version 31 puts the
+Xbox game's begin game, graceful exit and pregame keep-alive field lists
+under their own messages (its table had each on its neighbour's) and makes
+the keep-alive a long, as it was sent: not a byte on the wire moves but the
+keep-alive's last two, the sender's stack before and zero now, and the
+table's record changed with it; and with it, every machine drops a datagram
+of the netcode stamped more than 15 seconds from its sender's latest, the
+host takes a client's hits, Discord user and readiness only over its
+connection, and the host answers each machine's datagrams where they come
+from, so that a second copy of the game on one computer, on a port of its
+own, plays too; version 32 sends the host's mouse aim assist policy
+(distributed message 90, `network_aim_assist.c`), which a client must not
+ignore, and has a client's input say whether its player plays co-op with
+friendly fire; version 33 sends with the game's settings whether co-op's
+players hurt their AI allies (Server Setup's ALLY FRIENDLY FIRE: the host
+then deals the players' hits of them no damage); version 34 takes clients'
+hits on, and sends the host's damage to, the map's scenery and devices
+whose shield is all damage can break (Rat Race's energy shields, a Custom
+Edition map's tripmines), which version 17 left out as having no body to
+destroy, and has every machine run those shields' stun and recharge itself;
+and the host deals what such an object deals itself (its shield or body
+breaking: a tripmine a client's player threw going off under the host's
+vehicle), which a client no longer reports and the host took from no one.
+One made in the game, a tripmine, is at an index of its own on each machine:
+the host takes a client's hit on its copy as one on the host's nearest where
+the client had it, and a client the host's damage to one as damage to its own
+copy nearest the damage. Then version 35 sends with the game's settings the
+options of OpenCE's gametypes (SWAT, Infection, Gun Game and Hardcore:
+`port/linux/game/game_modes.c`), which make the gametype's PC options 0x2C
+bytes where they were 0x1C, and the game settings record 16 bytes longer; and
+in an Infection game the host sends its round in the game type's state
+(`struct distributed_infection_state`: each player's role and score, the
+round's phase and winner) in place of Slayer's, which each client checks whole
+before taking it. Then version 36 sends the host's shield effects (distributed
+message 91, `network_shield_effects.c`: the shield glow, its Light Show reach
+and the overshield effect, Server Setup's SHIELD EFFECTS), which every client
+draws in place of its player's own, so that a build that would draw its own
+cannot join. Then version 37 sends with a game's LAN advertisement (the fourth
+of its reserved bytes) and internet listing (the first byte of its stamp) the
+game's kind: an OpenCE gametype's mode and Hardcore
+(`port/linux/game/game_modes.h`'s `game_modes_kind`), which the server
+browser names in its gametype column ("SWAT", "HC CTF"); a browser takes a
+mode for a Slayer game only, and one it does not know as none. Then version 38
+lets the host's shield effects be `players` (SHIELD EFFECTS' PLAYERS' OWN), a
+value of distributed message 91 that tells each client to draw its own
+settings', not synced.
+
+OpenH1's own games ("OpenH1 60 Tick" and the like, below; Standard games in
+the code) have a protocol version of their own,
+`HALO_PORT_STANDARD_NETWORK_VERSION` (`halo_port_limits.h`), separate from
+the network version, which stays the Legacy games' and OpenCE's. An OpenH1
+host advertises it with its top bit set (`HALO_PORT_STANDARD_VERSION_BIT`:
+version 1 is 0x8001) where a Legacy host advertises the network version, in
+its game's advertisement and its internet listing. A build that knows of
+OpenH1 games joins an OpenH1 host of its own protocol version, and tells the
+player which is newer otherwise. A build that does not (OpenCE, or OpenH1
+before these games) takes the advertised version for a newer one and does
+not join. OpenH1 games carry everything Legacy games carry, so the protocol
+version is raised with every raise of the network version as well as with
+any change of their own: `HALO_PORT_STANDARD_BASE_VERSION` names the network
+version it was last raised for, and the build fails while the two differ.
+Protocol version 1 (on network version 38) agrees on the game's tick rate
+and carries it in the game record, advertisement and listing; version 2
+sends each player's sub-steps at 60 and 120 (below, "Sub-step inputs").
 
 `port/linux/network_format.txt` records the wire format of the current
 version (`tools/network_format.py`): `test_linux_port.py` fails when the
@@ -359,6 +453,128 @@ host sends them none, and drop the kinds as unknown.
 A speed hack of less than a tenth is let be: the host's bounds on how far
 and how fast a client's player moves and fires hold it to the host's time
 anyway.
+
+The host's AIM ASSIST option in Player Options defaults to ALLOWED.
+BLOCK M+KB overrides optional mouse magnetism on every machine, including
+the host. Aiming with the controller or touch retains its existing behavior;
+the player's saved preference and the bullets' autoaim are unchanged.
+`network_aim_assist.c` sends the policy reliably on client ready and on
+change. Clients take it only from the host and default to blocked until it
+arrives. This adds distributed message 90; network version 32 requires
+matching builds so an older client cannot silently ignore the rule.
+
+## OpenH1 and Legacy games
+
+A host plays one of two kinds of game (`network.game_mode`, read when it
+starts hosting; `port/linux/game/network_standard.c`):
+
+- **Legacy**: OpenCE's netcode at network version 38 and 30 ticks a second,
+  which OpenCE builds join. A Legacy game is unchanged in every byte: its
+  advertisement, listing, join token and game record are as before.
+- **OpenH1** (`"openh1"`, the default when hosting; `"standard"`, its first
+  name, still works): OpenH1's own, shown to players as "OpenH1 <n> Tick"
+  with its tick rate ("OpenH1 60 Tick"). The code calls these Standard
+  games. The host picks the tick rate (`network.sim_rate`: 30, 60 or 120,
+  the powers of two the sub-steps scale by exactly, `sim_rate_supported`).
+  Every machine takes it before the game's first tick, and it holds for the
+  whole game.
+
+Server Setup's GAME row picks the kind and the rate: OPENH1 30 TICK, OPENH1
+60 TICK (the default), OPENH1 120 TICK or LEGACY. It writes
+`network.game_mode` and `network.sim_rate`. The server, made before Server
+Setup opens, reads them again when its START GAME is pressed, as long as no
+other machine has joined (`network_standard_server_mode_read`). Once a
+machine has joined, the kind of game stays as it was.
+
+The server browser and the system link list show each game's tick rate
+before its gametype ("60 SLAYER"; a Legacy game's 30), where a long
+gametype the column cuts leaves it. The lists sort by it and filter by
+kind (KIND: all, OpenH1 only, Legacy only): port/linux/README.md, "Server
+browser". The line under the
+list names the chosen game's kind: "OpenH1 60 Tick" or "Legacy".
+
+How OpenH1 machines recognise each other:
+
+- The advertisement's version word carries the OpenH1 protocol version
+  (above), and the reserved byte after the game's kind
+  (`HALO_PORT_ADVERTISED_RATE_OFFSET`) carries the tick rate. The internet
+  listing has the version in its version field and the rate in the second
+  byte of its stamp. OpenCE's parsers ignore both bytes, which are zero in
+  a Legacy game.
+- An OpenCE build sees an OpenH1 game as a newer version. On the LAN it
+  lists the game and refuses to join it ("The host is using a newer version
+  of the network code"). Its server browser hides the game, and says
+  "games are on a newer version" when nothing else is listed.
+  `HALO_PORT_STANDARD_REFUSAL` ("This is an OpenH1 60 Tick game; join a
+  Legacy game or get OpenH1", with the game's rate) is the text an OpenCE
+  build that knows of OpenH1 games would show. A build without that change
+  can show only its own messages: join refusals are codes, and host text
+  (notices, chat) reaches only a machine already in a game.
+- An OpenH1 host accepts a join only with an OpenH1 game's join token
+  (`network_standard_join_token`: the token's last two bytes changed by
+  "S" and the protocol version). Any other machine is refused with
+  `_rejection_code_bad_join_token`, whatever its advertisement check said.
+- The host reads `network.sim_rate` while its game is in the lobby. The
+  value it last read when the game starts is the game's rate. The game
+  record carries it to every machine, including a late joiner, in
+  `struct network_game`'s `standard_rate`: a short the Xbox game left
+  unused, which a Legacy host never writes. `sim_rate.c`'s
+  `sim_rate_network` is the only place where it becomes the rate a tick
+  takes: on the host, the rate it took; on a client of an OpenH1 game, the
+  rate in the record, if supported (otherwise 30); 30 in a Legacy game.
+
+### Sub-step inputs
+
+At 60 and 120 a tick runs 2 or 4 sub-steps, and each local player's unit
+takes a new reading of the controller in every sub-step after the first: the
+held controls (crouch, jump, triggers, grenade), the movement, the trigger's
+pull and the facing (`player_control.c`). Every machine replays the other
+players from the input it is given, so the sub-steps go between the machines
+too (`port/linux/game/network_substeps.c`, protocol version 2):
+
+- A client sends its own players' sub-steps of the tick it has just run
+  with its input of that tick, in the same datagram
+  (`_distributed_message_player_substeps`, 120, unreliable). The record is
+  keyed by the client's tick and carries full precision: what the unit was
+  given in each later sub-step (its held controls, throttle and trigger, and
+  its facing if its aim turned).
+- The host's next tick that takes that input gives the player's unit the
+  same controls in the same sub-steps, before the units and bipeds move.
+  It takes a record only if the record is of the tick whose input the tick
+  took (`update_queues_distributed_input_key`, latched as the tick begins).
+  A press in a later sub-step is seen there, as on the client (a jump
+  launches at that sub-step's end: `bipeds.c`).
+- The host relays, to each client, the sub-steps its tick ran for the
+  players whose input it relays that tick
+  (`_distributed_message_relayed_substeps`, 121, unreliable, keyed by the
+  host's update). The encoding is as compact as the relayed input: angles
+  in 16 bits, the sticks of 127, the trigger of 255. Each client replays
+  them as the host does.
+- A player whose sub-steps changed nothing of what the tick gave the unit
+  is not sent. A machine that has no record (none sent, or lost) holds the
+  tick's input through the tick's sub-steps, as at 30.
+
+Neither message is sent in a game of one sub-step a tick (a Legacy game, or
+an OpenH1 game at 30), and every number in either is checked: the player
+(the sender's own, on the host), the count of sub-steps (the game's), and
+values finite and within a controller's reach.
+
+Checked with `net_compare` (bloodgulch, the scripted bot, 30 s, each copy
+hosting in turn). The host's copy of the client's player moves as the
+client moved it: 0.4% to 4.8% of the ticks apart at 60, 5.8% to 13% at 120.
+With the host's replay turned off (a build made for the test), 33% at 60 and
+39% at 120. The datagrams' bytes a second (`network test: bandwidth`), with
+one player on each machine:
+
+| Rate | Host to client | Client to host |
+| --- | --- | --- |
+| 30 | 8,246 | 3,330 |
+| 60 | 8,403 to 8,415 | 4,706 to 4,858 |
+| 120 | 8,535 to 9,294 | 4,706 to 4,858 |
+
+A client's record is 80 bytes whatever the rate. A relayed record is 2
+bytes plus 10 for each later sub-step (12 at 60, 32 at 120), sent only for
+a player whose sub-steps changed something.
 
 ## Joining a game in progress
 
@@ -544,11 +760,16 @@ its name alone beside it, has its name given back as the map lists find it.
      and delete theirs to match. A client that has loaded asks for all the
      host's objects and is told when it has them; from then on it deletes
      any such object the host has not told it of, and nothing but the
-     host's word deletes the host's. That word deletes a CTF flag or an
-     oddball too, which the game itself never deletes (an assertion
-     stops a build that is not `--release` there, where a release host
-     goes on and tells its clients): the client takes it out of its
-     carrier's hands, and the goal its game type shows at it goes with it.
+     host's word deletes the host's. That word has deleted a CTF flag or
+     an oddball, which the game itself never deletes (two assertions,
+     in `objects.c` and `weapons.c`, stop a build that is not `--release`
+     there). Why the host deleted it is not known; the client follows
+     the host's word whatever the reason: it takes the flag or ball out
+     of its carrier's hands, and the goal its game type shows at it goes
+     with it. The two assertions are not made for anything a client
+     deletes in `distributed_client_delete`: the host's objects on its
+     word, one in the place of an object the host creates, and its own
+     the host has not told it of.
    - The objects placed when the map loads are placed alike everywhere:
      the host's word finds a client's already there. Past loading, a
      client's own objects (projectiles, effects: what only it sees) take
@@ -583,8 +804,17 @@ its name alone beside it, has its name given back as the map lists find it.
    rest is on the ground, so it lies limp again where it stops instead of
    keeping the pose of its fall in the air. A client puts its copies there, and the difference is
    drawn fading over a few ticks (`render_interpolation.c`) instead of a
-   jump. A vehicle no player drives is carried between those updates along
-   the positions the host sent, a recording's lifepod as well as a Pelican.
+   jump. An item loose in the world moves on a client by the same physics
+   as on the host, its copy a tick or two behind or ahead of the host's by
+   however late the host's states come, which varies; so a state is taken
+   only when it is off both the copy's path of its last ticks and the
+   host's last states' (`distributed_client_item_on_path`): compared with
+   where the copy is now, a state a tick late was a tick's motion off, and
+   the halfway moves back to it made a falling or bouncing item stutter. On
+   those paths a copy at rest stays at rest, and one still moving when the
+   host says its copy is at rest comes to rest by itself, unless it still
+   moves at the host's next word. A vehicle no player drives is carried
+   between those updates along the positions the host sent, a recording's lifepod as well as a Pelican.
    Its physics velocity swings about that path, so the carry steps from
    one of those positions to the next, and a jump further than a step of
    the path is left where the host put it. The host's word that it is at
@@ -711,7 +941,12 @@ Unity's Netcode for Entities, lightyear, netfox and the Ares source):
   messages (checked as the host's below); the game's own messages (a player
   added or removed, the game begun or over, its settings), which the host
   sends over its connection, are ignored in a datagram
-  (`network_client_message_handler.c`).
+  (`network_client_message_handler.c`). The host takes a client's hits,
+  Discord user and readiness only over its connection too, and every
+  machine drops a datagram of the netcode stamped with a tick more than 15
+  seconds from the latest it had from that machine (one stamped far ahead
+  would have the machine's newer ones taken for stale); a message over the
+  connection is taken whatever its tick (`network_distributed.c`).
 - **Nothing held back.** The game's connections (the reliable messages:
   objects made and deleted, the game type's state, hits, pickups) send each
   write at once (`TCP_NODELAY`, in `xnet.c` for the game's sockets and in
@@ -806,7 +1041,8 @@ Unity's Netcode for Entities, lightyear, netfox and the Ares source):
 
 `debug.network_test` (`port/linux/game/network_test.c`) hosts or joins a
 game without the menus (in a team game the joining player takes the other
-team), and `debug.test_input` plays controller 1 with a scripted bot (or,
+team; `local:<map>` plays a local split screen game instead, which the
+bots of `bots.count` join), and `debug.test_input` plays controller 1 with a scripted bot (or,
 `look:<seed>`, one that stands still, only turning and looking up and
 down); each machine logs every player's position, health and shields,
 where they aim and face, their animation state and how hard they move,
@@ -850,6 +1086,11 @@ started first), to test that nothing another machine sends can crash the
 game: a host and a client with a third of their datagrams damaged must play
 on, their logs noting what they refused.
 
+With `log`, `debug.network_test` hosts and joins nothing: it logs the game
+one machine plays (a `map_name` in `init.txt` plays one without the menus),
+as above. `debug.network_test_cues` has the host, or that machine, run
+console lines at their ticks, from the first tick every player is in.
+
 The host logs to `debug.txt` when a player on another machine presses the
 action button where the host has nothing for them to pick up, with where it
 has them and the nearest item: a client that sees a pickup the host does
@@ -878,7 +1119,7 @@ It needs the retail maps, so it runs on a developer's machine or a
 self-hosted runner, not in the public CI; run it before merging a change to
 a build's compiler, architecture, maths or the simulation itself. A build
 is its executable: a build's (`build/linux_x86_64/halo`), or a release
-tree's `bin/opence` (its `lib/` and `share/opence` are linked into
+tree's `bin/openh1` (its `lib/` and `share/openh1` are linked into
 the copy, which stays a portable tree). Each copy gets its own folder (an
 executable, `config.toml` written in the copy's folder, a data root linking
 the maps, and saves) in `build/net_compare/`, removed when every game

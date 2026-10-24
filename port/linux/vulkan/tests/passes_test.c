@@ -5,15 +5,19 @@ The real Vulkan core over a recording-only Vulkan: no driver or GPU.
 Checks attachment load actions, clears inside a pass, multiview layer
 selection, sampling an array's first layer as a 2D image, and capability
 requirements on devices with optional depth formats or query precision.
-Also checks packed vertex bindings and transfer/submission dependencies,
+Also checks the shader modules found again (by their words, or a fixed
+program's by their address), packed vertex bindings, each draw's state set
+only where it changed, and transfer/submission dependencies,
 the texture sets a submission reuses, the order of the enhanced dynamic
 lights' uploads among the draws, and anti-aliasing's passes: their order,
 attachments, barriers, samples and uniforms (xgpu_vulkan_post.c); and the
 clears of some of the colour's channels: drawn through their write mask,
 over each rectangle, in each view, while every channel's are cleared. And
 the window: a lost surface made again, the app in the background, the
-present mode of the swap interval, frames turned for the display; and the
-pipeline cache written only when pipelines were made.
+present mode of the swap interval, frames turned for the display; the
+pipeline cache written only when pipelines were made; and the VR effects'
+passes that sample their depth: begun after the depth's writes, storing no
+depth or stencil, ended by a draw or clear that writes them.
 */
 
 #include "../xgpu_vulkan.c"
@@ -36,6 +40,11 @@ static VkFormatFeatureFlags depth24_features, depth32_features;
 static unsigned int capability_errors;
 static unsigned int ended_queries;
 static unsigned int barriers, copies, bound_vertices;
+/* the vertex buffers each binding has, as the command buffer has them, and
+the calls that set state (a draw's state is set only where it changed) */
+static VkBuffer vertex_state[3];
+static VkDeviceSize vertex_state_offsets[3];
+static unsigned int state_calls;
 static unsigned int allocated_sets, set_updates, pool_resets;
 static VkMemoryBarrier last_memory;
 static VkPipelineStageFlags last_source, last_destination;
@@ -264,29 +273,58 @@ static void VKAPI_CALL fake_bind_vertices(VkCommandBuffer command, uint32_t firs
 	const uint32_t sources[3] = { 3, 15, XGPU_VULKAN_BINDING_CONSTANT };
 
 	(void)command;
-	assert(count == 1 && first == bound_vertices && first < 3);
+	assert(count == 1 && first < 3);
 	assert(buffers[0] == (VkBuffer)(uintptr_t)(100 + sources[first]));
 	assert(offsets[0] == sources[first] * 16);
+	vertex_state[first] = buffers[0];
+	vertex_state_offsets[first] = offsets[0];
 	bound_vertices++;
+	state_calls++;
+}
+
+static void VKAPI_CALL counted_bind_vertices(VkCommandBuffer command, uint32_t first, uint32_t count,
+	const VkBuffer *buffers, const VkDeviceSize *offsets)
+{
+	(void)command;
+	assert(count == 1 && first < 3);
+	vertex_state[first] = buffers[0];
+	vertex_state_offsets[first] = offsets[0];
+	bound_vertices++;
+	state_calls++;
 }
 
 static void VKAPI_CALL fake_viewport(VkCommandBuffer c, uint32_t first, uint32_t count, const VkViewport *v)
-{ (void)c; (void)first; (void)count; (void)v; }
+{ (void)c; (void)first; (void)count; (void)v; state_calls++; }
 static void VKAPI_CALL fake_scissor(VkCommandBuffer c, uint32_t first, uint32_t count, const VkRect2D *r)
-{ (void)c; (void)first; (void)count; (void)r; }
+{ (void)c; (void)first; (void)count; (void)r; state_calls++; }
+static float bias_state[2];
 static void VKAPI_CALL fake_bias(VkCommandBuffer c, float constant, float clamp, float slope)
-{ (void)c; (void)constant; (void)clamp; (void)slope; }
+{ (void)c; (void)clamp; bias_state[0] = slope; bias_state[1] = constant; state_calls++; }
 static void VKAPI_CALL fake_blend(VkCommandBuffer c, const float color[4])
-{ (void)c; (void)color; }
+{ (void)c; (void)color; state_calls++; }
 static void VKAPI_CALL fake_stencil(VkCommandBuffer c, VkStencilFaceFlags face, uint32_t reference)
-{ (void)c; (void)face; (void)reference; }
+{ (void)c; (void)face; (void)reference; state_calls++; }
 static void VKAPI_CALL fake_topology(VkCommandBuffer c, VkPrimitiveTopology topology)
-{ (void)c; (void)topology; }
+{ (void)c; (void)topology; state_calls++; }
 static void VKAPI_CALL fake_bind_sets(VkCommandBuffer c, VkPipelineBindPoint point, VkPipelineLayout layout,
 	uint32_t first, uint32_t count, const VkDescriptorSet *sets, uint32_t dynamic_count, const uint32_t *offsets)
-{ (void)c; (void)point; (void)layout; (void)first; (void)count; (void)sets; (void)dynamic_count; (void)offsets; }
+{ (void)c; (void)point; (void)layout; (void)first; (void)count; (void)sets; (void)dynamic_count; (void)offsets; state_calls++; }
+static void VKAPI_CALL plain_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first, uint32_t instance)
+{ (void)c; (void)vertices; (void)instances; (void)first; (void)instance; }
+/* (each binding the pipeline reads has its stream's buffer, set by this
+draw or kept from the one before) */
 static void VKAPI_CALL fake_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first, uint32_t instance)
-{ (void)c; (void)vertices; (void)instances; (void)first; (void)instance; assert(bound_vertices == 3); }
+{
+	const uint32_t sources[3] = { 3, 15, XGPU_VULKAN_BINDING_CONSTANT };
+	int index;
+
+	(void)c; (void)vertices; (void)instances; (void)first; (void)instance;
+	for (index = 0; index < 3; index++)
+	{
+		assert(vertex_state[index] == (VkBuffer)(uintptr_t)(100 + sources[index]));
+		assert(vertex_state_offsets[index] == sources[index] * 16);
+	}
+}
 
 static void vertex_input_test(void)
 {
@@ -332,8 +370,39 @@ static void vertex_input_test(void)
 	vkCmdBindDescriptorSets = fake_bind_sets;
 	vkCmdDraw = fake_draw;
 	bound_vertices = 0;
+	memset(vertex_state, 0, sizeof(vertex_state));
 	xgpu_vulkan_draw(&draw);
 	assert(bound_vertices == 3);
+	/* The same draw again sets nothing again: the command buffer keeps the
+	state, the buffers and the sets; a change sets only what changed. */
+	bound_vertices = state_calls = 0;
+	xgpu_vulkan_draw(&draw);
+	assert(bound_vertices == 0 && state_calls == 0);
+	draw.vertices[15].offset = 7 * 16;
+	draw.vertices[15].buffer = (VkBuffer)(uintptr_t)(100 + 7);
+	vkCmdBindVertexBuffers = counted_bind_vertices;
+	vkCmdDraw = plain_draw;
+	xgpu_vulkan_draw(&draw);
+	assert(bound_vertices == 1 && state_calls == 1 && vertex_state[1] == (VkBuffer)(uintptr_t)107);
+	draw.vertices[15].offset = 15 * 16;
+	draw.vertices[15].buffer = (VkBuffer)(uintptr_t)(100 + 15);
+	xgpu_vulkan_draw(&draw);
+	vkCmdBindVertexBuffers = fake_bind_vertices;
+	vkCmdDraw = fake_draw;
+	bound_vertices = state_calls = 0;
+	dynamic.depth_bias[0] = 2.0f;
+	dynamic.depth_bias[1] = 1.0f;
+	xgpu_vulkan_draw(&draw);
+	assert(state_calls == 1 && bias_state[0] == 2.0f && bias_state[1] == 1.0f);
+	draw.uniforms.offset = 256;
+	state_calls = 0;
+	xgpu_vulkan_draw(&draw);
+	assert(state_calls == 1);
+	/* A recording begun knows nothing of the last one's state. */
+	memset(&vk.bound, 0, sizeof(vk.bound));
+	state_calls = bound_vertices = 0;
+	xgpu_vulkan_draw(&draw);
+	assert(bound_vertices == 3 && state_calls == 10);
 	/* A draw that reads the dynamic lights orders their next upload after
 	it; others leave it free to go before the submission's draws. */
 	{
@@ -342,13 +411,58 @@ static void vertex_input_test(void)
 
 		vk.lights_block = &block;
 		vk.lights_cells = &cells;
-		bound_vertices = 0;
 		xgpu_vulkan_draw(&draw);
 		assert(block.used == 0 && cells.used == 0);
 		draw.dynamic_lights = 1;
-		bound_vertices = 0;
 		xgpu_vulkan_draw(&draw);
 		assert(block.used == vk.serial && cells.used == vk.serial);
+	}
+	/* The VR mode's effects sample the depth attachment they are tested
+	against: in a pass of their own that writes neither depth nor stencil
+	(and stores neither), begun after the depth's writes, which draws that
+	write neither share; a draw that writes depth ends it, as a clear of
+	depth does. */
+	{
+		const float black[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+		unsigned int before;
+
+		draw.dynamic_lights = 0;
+		draw.writes_depth = 1;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		before = begins;
+		assert(vk.pass_active && !vk.pass_reads_depth);
+		draw.writes_depth = 0;
+		draw.reads_depth = 1;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		assert(begins == before + 1 && vk.pass_reads_depth);
+		assert(began_depth.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_depth.storeOp == VK_ATTACHMENT_STORE_OP_NONE);
+		assert(began_stencil.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_stencil.storeOp == VK_ATTACHMENT_STORE_OP_NONE);
+		assert(began_color.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_color.storeOp == VK_ATTACHMENT_STORE_OP_STORE);
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		draw.reads_depth = 0;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		assert(begins == before + 1 && vk.pass_reads_depth);
+		draw.writes_depth = 1;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		assert(begins == before + 2 && !vk.pass_reads_depth && began_depth.storeOp == VK_ATTACHMENT_STORE_OP_STORE);
+		draw.writes_depth = 0;
+		draw.reads_depth = 1;
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		assert(begins == before + 3 && vk.pass_reads_depth);
+		xgpu_vulkan_clear((const int32_t[][4]){ { 0, 0, 8, 8 } }, 1, XGPU_VULKAN_CLEAR_DEPTH, black, 1.0f, 0);
+		assert(begins == before + 4 && !vk.pass_reads_depth && began_depth.storeOp == VK_ATTACHMENT_STORE_OP_STORE);
+		/* (targets changed: the next pass is an ordinary one) */
+		bound_vertices = 0;
+		xgpu_vulkan_draw(&draw);
+		xgpu_vulkan_set_target_views(&color_target, NULL, 0, 1);
+		assert(!vk.pass_active && !vk.pass_reads_depth);
+		draw.reads_depth = 0;
 	}
 }
 
@@ -573,6 +687,11 @@ static VkDescriptorImageInfo post_sampled[4][4];
 static VkViewport post_viewports[4];
 static VkRect2D post_scissors[4];
 static uint32_t post_offsets[4][2];
+/* the state the command buffer has (each draw's, as it draws: a draw sets
+only what changed) */
+static VkViewport post_viewport_state;
+static VkRect2D post_scissor_state;
+static uint32_t post_offset_state[2];
 static VkPipelineStageFlags post_barrier_sources[8], post_barrier_destinations[8];
 static VkAccessFlags post_barrier_access[8];
 static uint32_t post_barriers;
@@ -671,14 +790,14 @@ static void VKAPI_CALL post_viewport(VkCommandBuffer c, uint32_t first, uint32_t
 {
 	(void)c;
 	assert(first == 0 && count == 1);
-	post_viewports[post_draws] = v[0];
+	post_viewport_state = v[0];
 }
 
 static void VKAPI_CALL post_scissor(VkCommandBuffer c, uint32_t first, uint32_t count, const VkRect2D *r)
 {
 	(void)c;
 	assert(first == 0 && count == 1);
-	post_scissors[post_draws] = r[0];
+	post_scissor_state = r[0];
 }
 
 static void VKAPI_CALL post_bind_sets(VkCommandBuffer c, VkPipelineBindPoint point, VkPipelineLayout layout,
@@ -686,14 +805,18 @@ static void VKAPI_CALL post_bind_sets(VkCommandBuffer c, VkPipelineBindPoint poi
 {
 	(void)c; (void)point; (void)layout; (void)sets;
 	assert(first == 0 && count == 2 && dynamic_count == 2);
-	post_offsets[post_draws][0] = offsets[0];
-	post_offsets[post_draws][1] = offsets[1];
+	post_offset_state[0] = offsets[0];
+	post_offset_state[1] = offsets[1];
 }
 
 static void VKAPI_CALL post_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first, uint32_t instance)
 {
 	(void)c;
 	assert(vertices == 3 && instances == 1 && first == 0 && instance == 0 && post_draws < 4);
+	post_viewports[post_draws] = post_viewport_state;
+	post_scissors[post_draws] = post_scissor_state;
+	post_offsets[post_draws][0] = post_offset_state[0];
+	post_offsets[post_draws][1] = post_offset_state[1];
 	post_draws++;
 	post_event('D');
 }
@@ -773,6 +896,7 @@ static void post_test(void)
 	post.weights = &weights;
 	post.width = 64;
 	post.height = 48;
+	post.format = XGPU_VULKAN_FORMAT_BGRA8;
 	post_pipelines = 0;
 
 	assert(xgpu_vulkan_post_anti_alias(1, &target, 0, corners));
@@ -880,6 +1004,9 @@ static struct
 static VkViewport masked_viewports[4];
 static VkRect2D masked_scissors[4];
 static uint32_t masked_offsets[4];
+static VkViewport masked_viewport_state;
+static VkRect2D masked_scissor_state;
+static uint32_t masked_offset_state;
 static VkClearAttachment masked_cleared[2];
 static uint32_t masked_cleared_count;
 
@@ -934,14 +1061,14 @@ static void VKAPI_CALL masked_viewport(VkCommandBuffer c, uint32_t first, uint32
 {
 	(void)c;
 	assert(first == 0 && count == 1 && masked_draws < 4);
-	masked_viewports[masked_draws] = v[0];
+	masked_viewport_state = v[0];
 }
 
 static void VKAPI_CALL masked_scissor(VkCommandBuffer c, uint32_t first, uint32_t count, const VkRect2D *r)
 {
 	(void)c;
 	assert(first == 0 && count == 1 && masked_draws < 4);
-	masked_scissors[masked_draws] = r[0];
+	masked_scissor_state = r[0];
 }
 
 static void VKAPI_CALL masked_bind_sets(VkCommandBuffer c, VkPipelineBindPoint point, VkPipelineLayout layout,
@@ -949,7 +1076,7 @@ static void VKAPI_CALL masked_bind_sets(VkCommandBuffer c, VkPipelineBindPoint p
 {
 	(void)c; (void)point; (void)layout; (void)sets;
 	assert(first == 0 && count == 2 && dynamic_count == 2 && offsets[0] == offsets[1]);
-	masked_offsets[masked_draws] = offsets[1];
+	masked_offset_state = offsets[1];
 }
 
 static void VKAPI_CALL masked_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first,
@@ -957,6 +1084,9 @@ static void VKAPI_CALL masked_draw(VkCommandBuffer c, uint32_t vertices, uint32_
 {
 	(void)c;
 	assert(vertices == 3 && instances == 1 && first == 0 && instance == 0 && masked_draws < 4);
+	masked_viewports[masked_draws] = masked_viewport_state;
+	masked_scissors[masked_draws] = masked_scissor_state;
+	masked_offsets[masked_draws] = masked_offset_state;
 	masked_draws++;
 	masked_event('D');
 }
@@ -1577,6 +1707,532 @@ static void pipeline_cache_test(void)
 	reset();
 }
 
+static unsigned int modules_made;
+
+static VkResult VKAPI_CALL fake_shader_module(VkDevice device, const VkShaderModuleCreateInfo *info,
+	const VkAllocationCallbacks *allocator, VkShaderModule *module)
+{
+	(void)device; (void)allocator;
+	assert(info->codeSize % 4 == 0 && info->pCode);
+	*module = (VkShaderModule)(uintptr_t)(500 + modules_made++);
+	return VK_SUCCESS;
+}
+
+/* A module is the same for the same words, made once (by its words'
+hash, eight bytes at a time); the fixed programs' (the VR composition's,
+asked for at each of its draws) are found by their address, not read
+again. */
+static void shaders_test(void)
+{
+	static uint32_t fixed[5] = { 0x07230203, 1, 2, 3, 4 };
+	uint32_t copy[5], other[3] = { 0x07230203, 9, 9 };
+	VkShaderModule module;
+
+	reset();
+	modules_made = 0;
+	vkCreateShaderModule = fake_shader_module;
+	memcpy(copy, fixed, sizeof(copy));
+	module = xgpu_vulkan_shader_constant(fixed, 5);
+	assert(module && modules_made == 1);
+	assert(xgpu_vulkan_shader_constant(fixed, 5) == module && vk.constant_shader_count == 1);
+	/* (the same words elsewhere: the same module, by their hash) */
+	assert(xgpu_vulkan_shader(copy, 5) == module && modules_made == 1);
+	assert(xgpu_vulkan_shader(other, 3) != module && modules_made == 2);
+	/* (found by the address: the words are not hashed or compared again) */
+	fixed[4] = 5;
+	assert(xgpu_vulkan_shader_constant(fixed, 5) == module && modules_made == 2);
+	/* (another count at the address is another module) */
+	assert(xgpu_vulkan_shader_constant(fixed, 4) != module && modules_made == 3);
+	assert(bytes_hash64(copy, sizeof(copy)) != bytes_hash64(fixed, sizeof(fixed)));
+	assert(bytes_hash64(copy, 19) != bytes_hash64(copy, 20));
+	reset();
+}
+
+/* ---------- display.hdr (docs/hdr.md)
+
+What the core and the passes record for display.hdr's half of the contract:
+a draw that blends in its shader reads its colour attachment as set 2's
+input attachment, after a framebuffer-local barrier (by region, attachment
+writes before input reads) unless the device orders the reads itself, the
+set written once for the attachment and the submission; its pipeline's
+blending off, in rasterization order where the device has it; the swapchain
+HDR (HDR10's PQ, or scRGB's half floats) only while the frames are HDR and
+the display shows HDR and the surface has the colour space, the frame
+encoded for it, the display told the front end as it changes; the tone map
+a draw in the view's pass reading its pixels. */
+
+static char hdr_events[64];
+static VkDependencyFlags hdr_dependency;
+static VkPipelineStageFlags hdr_stages[2];
+static VkMemoryBarrier hdr_memory;
+static VkDescriptorSet hdr_input;
+static VkWriteDescriptorSet hdr_write;
+static VkDescriptorImageInfo hdr_write_image;
+static VkPipelineColorBlendStateCreateInfo hdr_blend;
+static VkPipelineColorBlendAttachmentState hdr_blend_attachment;
+static VkFormat hdr_color_format, hdr_depth_format;
+static VkSampleCountFlagBits hdr_samples;
+static int hdr_told[8][2];
+static float hdr_told_headroom[8];
+static unsigned int hdr_tells, hdr_encodes;
+static uint8_t hdr_encoded_format;
+static struct xgpu_hdr_frame hdr_encoded_frame;
+static struct xgpu_vulkan_image hdr_encoded;
+static int hdr_encode_fails;
+
+static void hdr_event(char event)
+{
+	size_t length = strlen(hdr_events);
+
+	assert(length + 1 < sizeof(hdr_events));
+	hdr_events[length] = event;
+}
+
+static void VKAPI_CALL hdr_barrier(VkCommandBuffer command, VkPipelineStageFlags source, VkPipelineStageFlags destination,
+	VkDependencyFlags dependency, uint32_t memory_count, const VkMemoryBarrier *memory, uint32_t buffer_count,
+	const VkBufferMemoryBarrier *buffers, uint32_t image_count, const VkImageMemoryBarrier *images)
+{
+	(void)command; (void)buffers; (void)images;
+	/* (local reads' dependency, inside a pass: a memory barrier alone, by
+	region; the others, a pass's end's and the copies', not counted) */
+	if (dependency & VK_DEPENDENCY_BY_REGION_BIT)
+	{
+		assert(vk.pass_active);
+		assert(memory_count == 1 && !buffer_count && !image_count);
+		hdr_dependency = dependency;
+		hdr_stages[0] = source;
+		hdr_stages[1] = destination;
+		hdr_memory = memory[0];
+		hdr_event('R');
+	}
+}
+
+static void VKAPI_CALL hdr_begin(VkCommandBuffer command, const VkRenderingInfo *info)
+{
+	(void)command; (void)info;
+	hdr_event('B');
+}
+
+static void VKAPI_CALL hdr_end(VkCommandBuffer command)
+{
+	(void)command;
+	hdr_event('E');
+}
+
+static void VKAPI_CALL hdr_update(VkDevice device, uint32_t count, const VkWriteDescriptorSet *writes,
+	uint32_t copies, const VkCopyDescriptorSet *copy)
+{
+	(void)device; (void)copies; (void)copy;
+	if (writes[0].descriptorType == VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT)
+	{
+		assert(count == 1);
+		hdr_write = writes[0];
+		hdr_write_image = writes[0].pImageInfo[0];
+		hdr_event('U');
+		return;
+	}
+	assert(count == 4);
+	hdr_event('T');
+}
+
+static void VKAPI_CALL hdr_bind_sets(VkCommandBuffer c, VkPipelineBindPoint point, VkPipelineLayout layout,
+	uint32_t first, uint32_t count, const VkDescriptorSet *sets, uint32_t dynamic_count, const uint32_t *offsets)
+{
+	(void)c; (void)point; (void)layout; (void)offsets;
+	if (first == 2)
+	{
+		assert(count == 1 && !dynamic_count);
+		hdr_input = sets[0];
+		hdr_event('I');
+		return;
+	}
+	assert(first == 0 && count == 2);
+	hdr_event('S');
+}
+
+static void VKAPI_CALL hdr_draw(VkCommandBuffer c, uint32_t vertices, uint32_t instances, uint32_t first, uint32_t instance)
+{
+	(void)c; (void)vertices; (void)instances; (void)first; (void)instance;
+	hdr_event('D');
+}
+
+static VkResult VKAPI_CALL hdr_pipeline(VkDevice device, VkPipelineCache cache, uint32_t count,
+	const VkGraphicsPipelineCreateInfo *info, const VkAllocationCallbacks *allocator, VkPipeline *pipeline)
+{
+	const VkPipelineRenderingCreateInfo *rendering = info->pNext;
+
+	(void)device; (void)cache; (void)allocator;
+	assert(count == 1);
+	hdr_blend = *info->pColorBlendState;
+	hdr_blend_attachment = info->pColorBlendState->pAttachments[0];
+	hdr_color_format = rendering->pColorAttachmentFormats[0];
+	hdr_depth_format = rendering->depthAttachmentFormat;
+	hdr_samples = info->pMultisampleState->rasterizationSamples;
+	*pipeline = (VkPipeline)(uintptr_t)90;
+	return VK_SUCCESS;
+}
+
+static void hdr_reset(void)
+{
+	reset();
+	memset(hdr_events, 0, sizeof(hdr_events));
+	hdr_input = VK_NULL_HANDLE;
+	memset(&hdr_write, 0, sizeof(hdr_write));
+	vk.color = &color_target;
+	vk.depth = NULL;
+	vk.layer = 0;
+	vk.views = 1;
+	vk.capabilities.color_read = 1;
+	vk.input_layout = (VkDescriptorSetLayout)(uintptr_t)77;
+	vk.ring_mapped = post_ring;
+	vk.ring = (VkBuffer)(uintptr_t)9;
+	recording.main = (VkCommandBuffer)(uintptr_t)1;
+	recording.descriptor_pools = &post_pool;
+	recording.descriptor_pool_count = 1;
+	vkCmdPipelineBarrier = hdr_barrier;
+	vkCmdBeginRendering = hdr_begin;
+	vkCmdEndRendering = hdr_end;
+	vkUpdateDescriptorSets = hdr_update;
+	vkCmdBindDescriptorSets = hdr_bind_sets;
+	vkCmdDraw = hdr_draw;
+	vkCmdBindPipeline = post_bind_pipeline;
+	vkCmdSetViewport = fake_viewport;
+	vkCmdSetScissor = fake_scissor;
+	vkCmdSetDepthBias = fake_bias;
+	vkCmdSetBlendConstants = fake_blend;
+	vkCmdSetStencilReference = fake_stencil;
+	vkCmdSetPrimitiveTopology = fake_topology;
+	vkCreateGraphicsPipelines = hdr_pipeline;
+}
+
+/* a triangle, its pipeline reading its colour attachment or not */
+static void hdr_triangle(int reads_color)
+{
+	static struct xgpu_vulkan_dynamic_state dynamic;
+	struct xgpu_vulkan_draw draw;
+	int stage;
+
+	memset(&dynamic, 0, sizeof(dynamic));
+	dynamic.viewport[2] = 64;
+	dynamic.viewport[3] = 48;
+	dynamic.depth_range[1] = 1.0f;
+	memset(&draw, 0, sizeof(draw));
+	draw.pipeline = (VkPipeline)(uintptr_t)(reads_color ? 91 : 92);
+	draw.dynamic = &dynamic;
+	draw.count = 3;
+	draw.topology = XGPU_VULKAN_TOPOLOGY_TRIANGLES;
+	draw.reads_color = (uint8_t)reads_color;
+	for (stage = 0; stage < 4; stage++)
+		draw.textures[stage].kind = XGPU_VULKAN_IMAGE_2D;
+	xgpu_vulkan_draw(&draw);
+}
+
+static void local_read_test(void)
+{
+	VkDescriptorSet first;
+
+	/* two draws that read the colour attachment, and one that does not:
+	the input set written once and bound once at set 2, a barrier before
+	each reading draw, none before the other */
+	hdr_reset();
+	hdr_triangle(1);
+	hdr_triangle(1);
+	hdr_triangle(0);
+	assert(!strcmp(hdr_events, "TBURISDRDD"));
+	assert(hdr_dependency == VK_DEPENDENCY_BY_REGION_BIT);
+	assert(hdr_stages[0] == VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT &&
+		hdr_stages[1] == VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
+	assert(hdr_memory.srcAccessMask == VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT &&
+		hdr_memory.dstAccessMask == VK_ACCESS_INPUT_ATTACHMENT_READ_BIT);
+	assert(hdr_write.dstBinding == 0 && hdr_write.descriptorCount == 1 && hdr_write.dstSet == hdr_input);
+	assert(hdr_write_image.imageView == color_target.attachments[0]);
+	assert(hdr_write_image.imageLayout == VK_IMAGE_LAYOUT_GENERAL && !hdr_write_image.sampler);
+	assert(vk.statistics.local_reads == 2);
+	first = hdr_input;
+
+	/* the next submission writes its own set (the slot's pools are reset
+	as it is used again) */
+	vk.serial++;
+	memset(hdr_events, 0, sizeof(hdr_events));
+	vk.bound.input = VK_NULL_HANDLE;
+	hdr_triangle(1);
+	assert(!strcmp(hdr_events, "URID") && hdr_input != first);
+
+	/* reads in rasterization order: no barrier at all */
+	hdr_reset();
+	vk.capabilities.raster_order = 1;
+	hdr_triangle(1);
+	hdr_triangle(1);
+	hdr_triangle(0);
+	assert(!strcmp(hdr_events, "TBUISDDD") && !vk.statistics.local_reads);
+
+	/* a device that cannot read its attachments draws no such draw */
+	hdr_reset();
+	vk.capabilities.color_read = 0;
+	vk.input_layout = VK_NULL_HANDLE;
+	hdr_triangle(1);
+	assert(!strchr(hdr_events, 'D') && !strchr(hdr_events, 'I'));
+	recording.descriptor_pools = NULL;
+	recording.descriptor_pool_count = 0;
+	reset();
+}
+
+/* a pipeline that reads its colour attachment blends in its shader: the
+fixed-function blending off, in rasterization order where the device
+orders the reads */
+static void hdr_pipeline_test(void)
+{
+	struct xgpu_vulkan_pipeline_description description;
+	VkResult result;
+	double elapsed;
+
+	hdr_reset();
+	vk.depth_format = VK_FORMAT_D24_UNORM_S8_UINT;
+	memset(&description, 0, sizeof(description));
+	description.vertex_shader = (VkShaderModule)(uintptr_t)1;
+	description.pixel_shader = (VkShaderModule)(uintptr_t)2;
+	description.primitive_class = XGPU_VULKAN_CLASS_TRIANGLES;
+	description.blend = 1;
+	/* (an add: xgpu_backend.h's XGPU_BLEND_ONE) */
+	description.blend_source = description.blend_destination = 1;
+	description.color_mask = 15;
+	description.color_format = XGPU_VULKAN_FORMAT_RGBA16F;
+	description.samples = 1;
+	assert(pipeline_build(&description, &result, &elapsed) && result == VK_SUCCESS);
+	assert(hdr_blend_attachment.blendEnable && !hdr_blend.flags);
+	assert(hdr_color_format == VK_FORMAT_R16G16B16A16_SFLOAT);
+	description.color_read = 1;
+	assert(pipeline_build(&description, &result, &elapsed));
+	assert(!hdr_blend_attachment.blendEnable && !hdr_blend.flags && hdr_blend_attachment.colorWriteMask == 15);
+	vk.capabilities.raster_order = 1;
+	assert(pipeline_build(&description, &result, &elapsed));
+	assert(!hdr_blend_attachment.blendEnable &&
+		hdr_blend.flags == VK_PIPELINE_COLOR_BLEND_STATE_CREATE_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_BIT_EXT);
+	recording.descriptor_pools = NULL;
+	recording.descriptor_pool_count = 0;
+	reset();
+}
+
+/* the surface's formats: the HDR ones first, then 8 bits in HDR10's
+colour space, then in sRGB's (which an SDR swapchain must take) */
+static VkResult VKAPI_CALL hdr_formats(VkPhysicalDevice physical, VkSurfaceKHR surface, uint32_t *count,
+	VkSurfaceFormatKHR *formats)
+{
+	(void)physical; (void)surface;
+	assert(*count >= 4);
+	*count = 4;
+	formats[0].format = VK_FORMAT_R16G16B16A16_SFLOAT;
+	formats[0].colorSpace = VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT;
+	formats[1].format = VK_FORMAT_B8G8R8A8_UNORM;
+	formats[1].colorSpace = VK_COLOR_SPACE_HDR10_ST2084_EXT;
+	formats[2].format = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+	formats[2].colorSpace = VK_COLOR_SPACE_HDR10_ST2084_EXT;
+	formats[3].format = VK_FORMAT_B8G8R8A8_UNORM;
+	formats[3].colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+	return VK_SUCCESS;
+}
+
+static void hdr_display(int hdr, float headroom)
+{
+	assert(hdr_tells < 8);
+	hdr_told[hdr_tells][0] = hdr;
+	hdr_told_headroom[hdr_tells] = headroom;
+	hdr_tells++;
+}
+
+static struct xgpu_vulkan_image *hdr_encode(struct xgpu_vulkan_image *image, const struct xgpu_hdr_frame *frame,
+	uint8_t format)
+{
+	assert(image == &window_frame);
+	hdr_encodes++;
+	hdr_encoded_format = format;
+	hdr_encoded_frame = *frame;
+	if (hdr_encode_fails)
+		return NULL;
+	hdr_encoded.description.format = format;
+	return &hdr_encoded;
+}
+
+static void hdr_window_reset(void)
+{
+	window_reset();
+	vkGetPhysicalDeviceSurfaceFormatsKHR = hdr_formats;
+	vk.colorspaces = 1;
+	vk.encode = hdr_encode;
+	vk.display_hdr = hdr_display;
+	vk.display_hdr_told = -1;
+	vk.hdr_paper_white = 100;
+	xgpu_vulkan_window_hdr(0, 1.0f, 1.0f);
+	hdr_tells = hdr_encodes = 0;
+	hdr_encode_fails = 0;
+	memset(&hdr_encoded, 0, sizeof(hdr_encoded));
+	hdr_encoded.image = (VkImage)(uintptr_t)800;
+	hdr_encoded.description.width = 640;
+	hdr_encoded.description.height = 480;
+}
+
+static void hdr_window_test(void)
+{
+	struct xgpu_hdr_frame frame;
+
+	/* an SDR display: an 8-bit swapchain in sRGB's colour space (not the
+	first 8-bit format, in HDR10's), the frame blitted as it is; the
+	display told it shows no HDR, once */
+	hdr_window_reset();
+	assert(window_present_frame() && window_swapchains == 1 && window_blit_source == window_frame.image);
+	assert(window_made.imageFormat == VK_FORMAT_B8G8R8A8_UNORM);
+	assert(window_made.imageColorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR);
+	assert(hdr_tells == 1 && !hdr_told[0][0] && hdr_told_headroom[0] == 1.0f && !hdr_encodes);
+	assert(window_present_frame() && hdr_tells == 1 && window_swapchains == 1);
+	xgpu_vulkan_hdr_frame(&frame);
+	assert(frame.output == XGPU_HDR_OUTPUT_SDR && frame.paper_white == 1.0f && frame.peak == 1.0f);
+
+	/* HDR on (SDL's, from another thread): told, with its headroom; the
+	frames still SDR, so the swapchain stays */
+	xgpu_vulkan_window_hdr(1, 2.5f, 4.0f);
+	assert(window_present_frame() && hdr_tells == 2 && hdr_told[1][0] && hdr_told_headroom[1] == 4.0f);
+	assert(window_swapchains == 1 && !hdr_encodes && window_blit_source == window_frame.image);
+
+	/* the frames HDR: HDR10 (A2B10G10R10, PQ) where the surface has both
+	(not Windows), the frame encoded for it and that blitted; paper white
+	200 nits (SDL's 2.5 times 80) in PQ's units, the peak the headroom */
+	xgpu_vulkan_hdr_state(1, XGPU_HDR_MODE_PUNCHY, 100);
+	assert(window_present_frame() && window_swapchains == 2);
+	assert(window_made.imageFormat == VK_FORMAT_A2B10G10R10_UNORM_PACK32);
+	assert(window_made.imageColorSpace == VK_COLOR_SPACE_HDR10_ST2084_EXT);
+	assert(hdr_encodes == 1 && hdr_encoded_format == XGPU_VULKAN_FORMAT_RGB10A2 && window_blit_source == hdr_encoded.image);
+	assert(hdr_encoded_frame.output == XGPU_HDR_OUTPUT_PQ && hdr_encoded_frame.mode == XGPU_HDR_MODE_PUNCHY);
+	assert(fabsf(hdr_encoded_frame.paper_white - 0.02f) < 1e-6f && hdr_encoded_frame.peak == 4.0f);
+	assert(hdr_tells == 2);
+
+	/* paper white twice the system's: the peak in paper whites halved;
+	past the headroom, no brighter than it */
+	xgpu_vulkan_hdr_state(1, XGPU_HDR_MODE_FAITHFUL, 200);
+	xgpu_vulkan_hdr_frame(&frame);
+	assert(fabsf(frame.paper_white - 0.04f) < 1e-6f && frame.peak == 2.0f && frame.mode == XGPU_HDR_MODE_FAITHFUL);
+	xgpu_vulkan_hdr_state(1, XGPU_HDR_MODE_FAITHFUL, 500);
+	xgpu_vulkan_hdr_frame(&frame);
+	assert(fabsf(frame.paper_white - 0.08f) < 1e-6f && frame.peak == 1.0f);
+	assert(window_present_frame() && window_swapchains == 2);
+
+	/* scRGB asked for: half floats in extended linear sRGB, paper white in
+	its units (80 nits) */
+	setenv("HALO_VULKAN_HDR_OUTPUT", "scrgb", 1);
+	xgpu_vulkan_hdr_state(1, XGPU_HDR_MODE_FAITHFUL, 100);
+	assert(window_present_frame() && window_swapchains == 3);
+	assert(window_made.imageFormat == VK_FORMAT_R16G16B16A16_SFLOAT);
+	assert(window_made.imageColorSpace == VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT);
+	assert(hdr_encoded_format == XGPU_VULKAN_FORMAT_RGBA16F && hdr_encoded_frame.output == XGPU_HDR_OUTPUT_SCRGB);
+	assert(fabsf(hdr_encoded_frame.paper_white - 2.5f) < 1e-6f && hdr_encoded_frame.peak == 4.0f);
+	unsetenv("HALO_VULKAN_HDR_OUTPUT");
+
+	/* the display's HDR off: told, and the swapchain SDR again, the frame
+	(still the half floats) blitted as it is, clamped */
+	xgpu_vulkan_window_hdr(0, 1.0f, 1.0f);
+	hdr_encodes = 0;
+	assert(window_present_frame() && hdr_tells == 3 && !hdr_told[2][0] && window_swapchains == 4);
+	assert(window_made.imageFormat == VK_FORMAT_B8G8R8A8_UNORM && !hdr_encodes);
+	assert(window_blit_source == window_frame.image);
+
+	/* an encoding that fails: nothing presented that frame, the window
+	SDR from then on, and the display told it shows no HDR */
+	xgpu_vulkan_window_hdr(1, 2.5f, 4.0f);
+	hdr_encode_fails = 1;
+	assert(!window_present_frame() && hdr_encodes == 1 && !vk.encode && vk.swapchain_stale);
+	assert(window_present_frame() && window_made.imageFormat == VK_FORMAT_B8G8R8A8_UNORM);
+	assert(!hdr_told[hdr_tells - 1][0]);
+
+	/* without the instance's colour spaces: no HDR, whatever SDL says */
+	hdr_window_reset();
+	vk.colorspaces = 0;
+	xgpu_vulkan_window_hdr(1, 2.5f, 4.0f);
+	xgpu_vulkan_hdr_state(1, XGPU_HDR_MODE_FAITHFUL, 100);
+	assert(window_present_frame() && window_made.imageFormat == VK_FORMAT_B8G8R8A8_UNORM && !hdr_encodes);
+	assert(hdr_tells == 1 && !hdr_told[0][0]);
+	reset();
+}
+
+/* the tone map: one triangle over the view's rectangle in the pass that
+drew it (its colour and depth attachments, no pass ended or begun), its
+pipeline reading the colour attachment and writing its colour alone, its
+uniforms the mode and the peak; the encoding: one triangle over all of an
+image of the swapchain's format, sampling the frame, its uniforms paper
+white, the peak and the output */
+static void hdr_post_test(void)
+{
+	static struct xgpu_vulkan_image target, depth, encoded, frame;
+	static const int32_t corners[4] = { 8, 4, 40, 44 };
+	static const float tone[4] = { 1.0f, 4.0f, 0.0f, 0.0f };
+	const struct xgpu_vulkan_post_uniforms *uniforms;
+	struct xgpu_hdr_frame encoding;
+
+	hdr_reset();
+	vk.depth_format = VK_FORMAT_D24_UNORM_S8_UINT;
+	post_image(&target, 1, XGPU_VULKAN_FORMAT_RGBA16F, 64, 48);
+	post_image(&depth, 3, XGPU_VULKAN_FORMAT_D24S8, 64, 48);
+	depth.aspect = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+	memset(&post, 0, sizeof(post));
+	post.vertex = (VkShaderModule)(uintptr_t)1;
+	post.pixel[XGPU_VULKAN_POST_HDR_TONE_MAP] = (VkShaderModule)(uintptr_t)2;
+	post.pixel[XGPU_VULKAN_POST_HDR_TONE_MAP_MS] = (VkShaderModule)(uintptr_t)3;
+	post.pixel[XGPU_VULKAN_POST_HDR_ENCODE] = (VkShaderModule)(uintptr_t)4;
+	post.sampler = (VkSampler)(uintptr_t)5;
+	xgpu_vulkan_set_target_views(&target, &depth, 0, 1);
+	hdr_triangle(0);
+	memset(hdr_events, 0, sizeof(hdr_events));
+	xgpu_vulkan_post_tone_map(&target, &depth, corners, tone);
+	assert(strspn(hdr_events, "URISD") == strlen(hdr_events) && strstr(hdr_events, "URI") && strchr(hdr_events, 'D'));
+	assert(vk.color == &target && vk.depth == &depth && vk.pass_active);
+	assert(!hdr_blend_attachment.blendEnable && hdr_blend_attachment.colorWriteMask == 7);
+	assert(hdr_color_format == VK_FORMAT_R16G16B16A16_SFLOAT && hdr_depth_format == VK_FORMAT_D24_UNORM_S8_UINT);
+	assert(hdr_samples == VK_SAMPLE_COUNT_1_BIT && hdr_write_image.imageView == target.attachments[0]);
+	uniforms = (const struct xgpu_vulkan_post_uniforms *)(post_ring + vk.bound.offsets[1]);
+	assert(uniforms->hdr[0] == 1.0f && uniforms->hdr[1] == 4.0f);
+	assert(vk.bound.viewport.x == 8.0f && vk.bound.viewport.y == 4.0f && vk.bound.viewport.width == 32.0f &&
+		vk.bound.viewport.height == 40.0f);
+	/* (an 8-bit target is no HDR frame: nothing) */
+	post_image(&frame, 6, XGPU_VULKAN_FORMAT_BGRA8, 64, 48);
+	memset(hdr_events, 0, sizeof(hdr_events));
+	xgpu_vulkan_post_tone_map(&frame, NULL, corners, tone);
+	assert(!hdr_events[0]);
+
+	/* the encoding into an image of its own, of the swapchain's format
+	(the pipelines made at the start) */
+	post.encode[1] = (VkPipeline)(uintptr_t)93;
+	post_image(&encoded, 7, XGPU_VULKAN_FORMAT_RGB10A2, 64, 48);
+	post.encoded = &encoded;
+	memset(&encoding, 0, sizeof(encoding));
+	encoding.output = XGPU_HDR_OUTPUT_PQ;
+	encoding.paper_white = 0.02f;
+	encoding.peak = 4.0f;
+	assert(!xgpu_vulkan_post_encode(&frame, &encoding, XGPU_VULKAN_FORMAT_RGBA16F));
+	memset(hdr_events, 0, sizeof(hdr_events));
+	assert(xgpu_vulkan_post_encode(&frame, &encoding, XGPU_VULKAN_FORMAT_RGB10A2) == &encoded);
+	assert(vk.color == &encoded && !vk.depth && strchr(hdr_events, 'D') && !strchr(hdr_events, 'I'));
+	uniforms = (const struct xgpu_vulkan_post_uniforms *)(post_ring + vk.bound.offsets[1]);
+	assert(uniforms->hdr[0] == 0.02f && uniforms->hdr[1] == 4.0f && uniforms->hdr[2] == (float)XGPU_HDR_OUTPUT_PQ);
+	assert(uniforms->metrics[0] == 0.0f && uniforms->metrics[2] == 1.0f / 64.0f && uniforms->metrics[3] == 1.0f / 48.0f);
+	assert(vk.bound.viewport.width == 64.0f && vk.bound.viewport.height == 48.0f);
+
+	free(target.attachments);
+	free(depth.attachments);
+	free(encoded.attachments);
+	free(frame.attachments);
+	memset(&post, 0, sizeof(post));
+	recording.descriptor_pools = NULL;
+	recording.descriptor_pool_count = 0;
+	reset();
+}
+
+/* the half floats read back as an SDR display shows them */
+static void half_test(void)
+{
+	assert(half_value(0x3c00) == 1.0f && half_value(0x3800) == 0.5f && half_value(0xbc00) == -1.0f);
+	assert(half_value(0x4000) == 2.0f && half_value(0x0001) == ldexpf(1.0f, -24));
+	assert(half_byte(0x3c00) == 255 && half_byte(0x4400) == 255 && half_byte(0xbc00) == 0);
+	assert(half_byte(0x3800) == 128 && half_byte(0x0000) == 0);
+}
+
 int main(void)
 {
 	static const int32_t full[1][4] = { { 0, 0, 64, 48 } };
@@ -1587,6 +2243,7 @@ int main(void)
 		XGPU_VULKAN_CLEAR_DEPTH | XGPU_VULKAN_CLEAR_STENCIL;
 
 	capabilities_test();
+	shaders_test();
 	vertex_input_test();
 	uploads_test();
 	dynamic_lights_test();
@@ -1597,6 +2254,11 @@ int main(void)
 	window_test();
 	rotate_test();
 	pipeline_cache_test();
+	local_read_test();
+	hdr_pipeline_test();
+	hdr_window_test();
+	hdr_post_test();
+	half_test();
 	reset();
 	xgpu_vulkan_clear(full, 0, all, color, 0.75f, 0x123);
 	assert(!begins && !clears);
@@ -1739,6 +2401,6 @@ int main(void)
 		vk.queries = NULL;
 	}
 	reset();
-	puts("Vulkan passes, image views, vertex bindings, synchronization, anti-aliasing and the window passed");
+	puts("Vulkan passes, image views, vertex bindings, synchronization, anti-aliasing, the window and display.hdr passed");
 	return 0;
 }

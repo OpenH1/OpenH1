@@ -1,0 +1,375 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OpenH1: get your maps</title>
+<meta name="description" content="How to give OpenH1 the game: a disc image of your own Halo: Combat Evolved disc for the original Xbox, how to make one, and where it goes on Windows, Mac, Steam Deck, Steam Frame and Android.">
+<meta name="theme-color" content="#040504">
+<meta property="og:title" content="OpenH1: get your maps">
+<meta property="og:description" content="OpenH1 plays the maps of your own Halo: Combat Evolved disc for the original Xbox. Here is how to give them to it.">
+<meta property="og:image" content="https://openh1.com/media/og-maps.jpg">
+<meta property="og:url" content="https://openh1.com/maps">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" sizes="32x32" type="image/png">
+<link rel="icon" href="favicon-16.png" sizes="16x16" type="image/png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preload" href="fonts/Archivo-Latin.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+/* Boot Glow, as index.html has it: the same fonts, colours, header, cards
+   and footer (its rules copied here as they are), and a few of this page's
+   own below them. Change the two together. */
+@font-face { font-family: "Archivo"; font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; src: url("fonts/Archivo-Latin.woff2") format("woff2"); }
+@font-face { font-family: "Inter"; font-weight: 400 800; font-display: swap; src: url("fonts/Inter-Latin.woff2") format("woff2"); }
+@font-face { font-family: "Overpass Mono"; font-weight: 400 700; font-display: swap; src: url("fonts/OverpassMono-Latin.woff2") format("woff2"); }
+
+:root {
+  color-scheme: dark;
+  --bg: #040504;
+  --panel: #090c08;
+  --line: rgba(157, 255, 60, 0.15);
+  --line-soft: rgba(238, 244, 234, 0.08);
+  --text: #eef4ea;
+  --soft: #c6cfc1;
+  --muted: #8e9a89;
+  --green: #9dff3c;
+  --glow: rgba(157, 255, 60, 0.42);
+  --display: "Archivo", "Arial Black", system-ui, sans-serif;
+  --body: "Inter", system-ui, sans-serif;
+  --mono: "Overpass Mono", ui-monospace, monospace;
+  --gutter: clamp(16px, 4vw, 48px);
+  --ease: cubic-bezier(.2, .7, .2, 1);
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 400 17px/1.6 var(--body); -webkit-font-smoothing: antialiased; }
+a { color: inherit; }
+::selection { background: var(--green); color: #061000; }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 0 var(--gutter); }
+.mono { font: 500 12px/1.45 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; }
+.skip { position: absolute; left: 12px; top: -60px; z-index: 50; padding: 10px 14px; background: var(--green); color: #061000; border-radius: 6px; font-weight: 700; }
+.skip:focus { top: 12px; }
+:focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+.lit { color: var(--green); text-shadow: 0 0 34px var(--glow); }
+
+/* ---------- header */
+.top { position: fixed; inset: 0 0 auto; z-index: 20; transition: background .4s ease, border-color .4s ease; border-bottom: 1px solid transparent; }
+.top.solid { background: rgba(4, 5, 4, 0.8); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2); border-bottom-color: var(--line-soft); }
+.top .wrap { display: flex; align-items: center; justify-content: space-between; height: 72px; gap: 20px; }
+.wordmark { display: inline-flex; text-decoration: none; }
+.wordmark img { display: block; height: 22px; width: auto; }
+footer .wordmark img { height: 18px; }
+.top nav { display: flex; gap: clamp(16px, 2.4vw, 32px); align-items: center; }
+.top nav a { text-decoration: none; color: var(--muted); font: 500 12px/1 var(--mono); letter-spacing: 0.16em; text-transform: uppercase; transition: color .2s; }
+.top nav a:hover { color: var(--text); }
+.top nav a.gh { color: var(--text); border: 1px solid rgba(238, 244, 234, 0.3); padding: 10px 14px; border-radius: 999px; }
+.top nav a.gh:hover { border-color: var(--green); color: var(--green); }
+
+.btn { display: inline-flex; align-items: center; gap: 10px; padding: 16px 26px; border-radius: 999px; background: var(--green); color: #061000; text-decoration: none; font: 700 15px/1 var(--body);
+  box-shadow: 0 0 0 1px rgba(157, 255, 60, 0.5), 0 10px 40px -8px var(--glow); transition: transform .2s ease, box-shadow .2s ease; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 0 0 1px var(--green), 0 14px 50px -6px var(--glow); }
+
+/* ---------- sections */
+.sec { padding: clamp(96px, 13vw, 180px) 0 0; }
+.sec-head { display: grid; grid-template-columns: 1.15fr 1fr; gap: 48px; align-items: end; margin-bottom: 48px; }
+.kicker { color: var(--green); margin: 0 0 18px; }
+h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stretch: 118%; letter-spacing: -0.02em; text-transform: uppercase; }
+.sec-head p { margin: 0; color: var(--soft); font-size: 18px; max-width: 470px; }
+
+/* your copy */
+.byo { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start; padding: clamp(32px, 5vw, 56px); border-radius: 10px; background: radial-gradient(ellipse 80% 120% at 0% 0%, rgba(157, 255, 60, 0.08), transparent 60%), var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.byo h2 { font-size: clamp(34px, 4.4vw, 64px); }
+.byo ol { margin: 0; padding: 0; list-style: none; counter-reset: s; }
+.byo li { counter-increment: s; position: relative; padding: 0 0 18px 48px; color: var(--soft); }
+.byo li::before { content: "0" counter(s); position: absolute; left: 0; top: 2px; color: var(--green); font: 600 13px/1.4 var(--mono); letter-spacing: .1em; }
+.byo code { font: 500 14px var(--mono); color: var(--text); }
+
+/* cards, as the downloads' */
+.dl { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.dl article { display: flex; flex-direction: column; padding: 28px 26px 26px; border-radius: 8px; background: linear-gradient(180deg, #0a0d09, #070906); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.dl article.mine { box-shadow: inset 0 0 0 1px var(--green), 0 0 60px -20px var(--glow); }
+.dl h3 { margin: 0 0 6px; font: 900 26px/1.1 var(--display); font-stretch: 116%; letter-spacing: -0.01em; }
+.dl p { margin: 0; color: var(--soft); font-size: 15px; }
+.dl ol { margin: 0; padding: 0 0 0 18px; color: var(--soft); font-size: 14px; }
+.dl li { margin-bottom: 8px; }
+.dl li::marker { color: var(--green); font: 600 12px var(--mono); }
+.dl code, .dl em { font: 500 13px var(--mono); font-style: normal; color: var(--text); }
+.dl .r { margin-top: auto; padding-top: 18px; color: var(--muted); }
+
+/* dense, as Under the hood's */
+.hood { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0 56px; }
+.hood dl { margin: 0; }
+.hood div { display: grid; grid-template-columns: 170px 1fr; gap: 20px; padding: 16px 0; border-top: 1px solid var(--line-soft); }
+.hood dt { color: var(--muted); font: 500 12px/1.75 var(--mono); letter-spacing: .14em; text-transform: uppercase; }
+.hood dd { margin: 0; font-size: 15px; color: var(--text); }
+.hood dd small { display: block; margin-top: 2px; color: var(--muted); font-size: 13.5px; line-height: 1.5; }
+.hood code { font: 500 13px var(--mono); color: var(--soft); }
+
+footer { margin-top: clamp(96px, 12vw, 160px); border-top: 1px solid var(--line-soft); padding: 40px 0 48px; color: var(--muted); font-size: 14px; }
+footer .row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px 24px; align-items: center; }
+footer nav { display: flex; flex-wrap: wrap; gap: 22px; }
+footer nav a { text-decoration: none; }
+footer nav a:hover { color: var(--text); }
+footer .legal { margin: 26px 0 0; max-width: 920px; font-size: 13px; line-height: 1.6; }
+footer .legal a { color: var(--soft); }
+
+/* ---------- this page's own */
+.page-head { padding-top: calc(72px + clamp(56px, 8vw, 112px)); position: relative; }
+.page-head::before { content: ""; position: absolute; inset: 0 0 -40%; z-index: -1; pointer-events: none; background: radial-gradient(ellipse 50% 60% at 12% 70%, rgba(157, 255, 60, 0.12), transparent 70%); }
+h1 { margin: 0; font: 900 clamp(46px, 7.4vw, 120px)/0.88 var(--display); font-stretch: 116%; letter-spacing: -0.02em; text-transform: uppercase; }
+h1 span { display: block; }
+h1 .lit { text-shadow: 0 0 40px var(--glow), 0 0 2px rgba(157, 255, 60, 0.8); }
+.eyebrow { color: var(--green); margin: 0 0 22px; text-shadow: 0 0 14px var(--glow); }
+.lede { max-width: 640px; margin: 26px 0 0; color: #d6dfd2; font-size: clamp(17px, 1.45vw, 20px); }
+.jump { display: flex; flex-wrap: wrap; gap: 10px; margin: 34px 0 0; padding: 0; list-style: none; }
+.jump a { display: inline-block; padding: 9px 14px; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--line); color: var(--text); text-decoration: none; font: 600 12px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; background: rgba(157, 255, 60, 0.04); }
+.jump a:hover { box-shadow: inset 0 0 0 1px var(--green); color: var(--green); }
+.prose a, .dl a, .hood a, .note a { color: var(--green); text-underline-offset: 3px; }
+.byo p { margin: 0 0 14px; color: var(--soft); }
+.byo p strong { color: var(--text); }
+.dl.two { grid-template-columns: repeat(2, 1fr); }
+.dl .tag { margin: 0 0 14px; color: var(--green); }
+.dl ol { margin-top: 18px; }
+.dl ol + p { margin-top: 10px; }
+.dl p + p { margin-top: 10px; }
+.dl .where { margin-top: auto; padding-top: 18px; color: var(--muted); font-size: 14px; }
+.dl .where code { color: var(--soft); word-break: break-word; }
+.dl article, .byo > div, .hood dd { min-width: 0; }
+pre { margin: 10px 0 8px; padding: 12px 14px; border-radius: 6px; background: #020302; box-shadow: inset 0 0 0 1px var(--line-soft); overflow-x: auto; font: 500 13px/1.6 var(--mono); color: var(--text); }
+pre code { font: inherit; }
+.note { margin: 24px 0 0; padding: 18px 20px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line); background: rgba(157, 255, 60, 0.04); color: var(--soft); font-size: 15px; max-width: 920px; }
+.note b { color: var(--text); }
+.note code { font: 500 13px var(--mono); color: var(--text); }
+
+@media (max-width: 900px) {
+  .top nav a.opt { display: none; }
+  .sec-head, .byo, .hood { grid-template-columns: 1fr; gap: 20px; }
+  .dl, .dl.two { grid-template-columns: 1fr 1fr; }
+  .hood { gap: 0; }
+}
+@media (max-width: 560px) {
+  .dl, .dl.two { grid-template-columns: 1fr; }
+  .hood div { grid-template-columns: 1fr; gap: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="top" id="top">
+  <div class="wrap">
+    <a class="wordmark" href="/" aria-label="OpenH1, home"><img src="brand/openh1-lockup.svg" alt="OpenH1" width="129" height="22"></a>
+    <nav aria-label="Sections">
+      <a class="opt" href="/#features">Features</a>
+      <a class="opt" href="/#vr">VR</a>
+      <a href="/#get">Download</a>
+      <a class="gh" href="https://github.com/OpenH1/OpenH1">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="page-head" aria-labelledby="page-title">
+    <div class="wrap">
+      <p class="eyebrow mono">Your copy · The one step before you play</p>
+      <h1 id="page-title"><span>Get your</span><span class="lit">maps.</span></h1>
+      <p class="lede">OpenH1 doesn't come with Halo's levels. You bring them from your own copy of the game: the original Xbox disc of Halo: Combat Evolved. Copy the disc once, show OpenH1 where the copy is, and it does the rest.</p>
+      <ul class="jump" aria-label="On this page">
+        <li><a href="#need">What you need</a></li>
+        <li><a href="#make">Make a disc image</a></li>
+        <li><a href="#give">Give it to OpenH1</a></li>
+        <li><a href="#help">If it goes wrong</a></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- 01: what you need -->
+  <section class="sec" id="need" aria-labelledby="need-title">
+    <div class="wrap">
+      <div class="byo">
+        <div>
+          <p class="kicker mono">01 · What you need</p>
+          <h2 id="need-title">Your disc, <span class="lit">copied.</span></h2>
+        </div>
+        <div>
+          <p><strong>Your own Halo: Combat Evolved disc for the original Xbox.</strong> Any region works: OpenH1 changes the European (PAL) version's maps to play as the North American (NTSC) ones do, so the two play together (<a href="https://github.com/OpenH1/OpenH1#game-data">README</a>).</p>
+          <p><strong>A disc image of it</strong>: an <code>.iso</code> or <code>.xiso</code> file, made from that disc. A copy of the disc's <code>maps</code> folder works too on most machines.</p>
+          <p>OpenH1 doesn't include the game, and never says where to download it. Halo PC and Custom Edition don't work as the base game: their maps are made differently.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02: making the image -->
+  <section class="sec" id="make" aria-labelledby="make-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <p class="kicker mono">02 · Make a disc image</p>
+          <h2 id="make-title">Copy the <span class="lit">disc.</span></h2>
+        </div>
+        <p>An ordinary PC or Mac DVD drive can't read an original Xbox game disc. It sees only a short video part at the start, not the game. Use one of these.</p>
+      </div>
+      <div class="dl two">
+        <article>
+          <p class="tag mono">The easiest, if you have one</p>
+          <h3>A modded Xbox</h3>
+          <p>An original Xbox with a custom dashboard (softmodded or modchipped) can read its own discs, and most such dashboards have an FTP server.</p>
+          <ol>
+            <li>Put the disc in the Xbox, and connect to the Xbox from your computer with an FTP app (FileZilla, or your system's).</li>
+            <li>Copy the disc's drive (<code>D</code>) to a folder on your computer. Its <code>maps</code> folder is what OpenH1 needs.</li>
+            <li>For a disc image, pack that folder with <a href="https://github.com/XboxDev/extract-xiso">extract-xiso</a>:</li>
+          </ol>
+          <pre><code>extract-xiso -c halo-folder halo.iso</code></pre>
+          <p class="where">Or skip the image: a Mac, a Steam Deck and the Steam Frame take the <code>maps</code> folder itself (below).</p>
+        </article>
+        <article>
+          <p class="tag mono">For a PC with the right drive</p>
+          <h3>A drive that reads Xbox discs</h3>
+          <p>A few DVD drives can read Xbox discs with special firmware: older Samsung and Toshiba drives with <em>Kreon</em> firmware, or some LG-made Blu-ray drives with <a href="https://github.com/RibShark/OmniDrive">OmniDrive</a>.</p>
+          <ol>
+            <li>Check your drive's exact model first: the wrong firmware can ruin a drive. The <a href="https://xboxdevwiki.net/Xbox_Game_Disc">Xbox Dev Wiki</a> lists the Kreon drives.</li>
+            <li>Dump the disc with <a href="https://github.com/superg/redumper">redumper</a> (Windows, Linux and Mac). It makes a full image of the disc, which OpenH1 reads as it is.</li>
+          </ol>
+          <p class="where">This is the disc-preservation community's method. Their guides go into the details.</p>
+        </article>
+      </div>
+      <p class="note">Copying a game you own for your own use is allowed in some countries and not in others. Check yours.</p>
+    </div>
+  </section>
+
+  <!-- 03: giving it to OpenH1 -->
+  <section class="sec" id="give" aria-labelledby="give-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <p class="kicker mono">03 · Give it to OpenH1</p>
+          <h2 id="give-title">Once, on <span class="lit">each machine.</span></h2>
+        </div>
+        <p>The first time you start it, OpenH1 asks for your maps and copies them out (about 2 GB). After that it starts straight into the game.</p>
+      </div>
+      <div class="dl" id="platforms">
+        <article data-os="windows">
+          <h3>Windows</h3>
+          <p>Takes a disc image.</p>
+          <ol>
+            <li>Open <code>halo.exe</code>. It asks for the game's data: choose <em>Yes</em>, then your disc image.</li>
+            <li>Or put the <code>.iso</code> next to <code>halo.exe</code> first, and it uses it without asking which file.</li>
+          </ol>
+          <p class="where">Maps go in <code>maps</code> next to <code>halo.exe</code>.</p>
+        </article>
+        <article data-os="mac">
+          <h3>Mac</h3>
+          <p>Takes a disc image or the <code>maps</code> folder.</p>
+          <ol>
+            <li>Open OpenH1. It asks for the game's maps: choose your disc image (<code>.iso</code> or <code>.xiso</code>), and it copies the maps (about 1.8 GB). Then you can delete the image.</li>
+            <li>Or choose the <code>maps</code> folder (the folder with <code>ui.map</code> and <code>bloodgulch.map</code>). It stays where it is, and OpenH1 remembers it, even if you move it. Don't delete it.</li>
+          </ol>
+          <p class="where">Maps from a disc image go in <code>~/Library/Application Support/OpenH1/maps</code>, which holds the rest too.</p>
+        </article>
+        <article data-os="linux">
+          <h3>Steam Deck</h3>
+          <p>And any Linux PC. Takes a disc image or a <code>maps</code> folder.</p>
+          <ol>
+            <li>Put your disc image in Downloads or on your SD card. From another computer, Steam's file transfer works in Game Mode.</li>
+            <li>Play OpenH1 from Game Mode. It finds the image: press <em>A</em> and it copies the maps.</li>
+            <li>Or choose the image or a <code>maps</code> folder when <code>install.sh</code> asks, in Desktop Mode.</li>
+          </ol>
+          <p class="where">Maps go in <code>~/Applications/OpenH1/maps</code>.</p>
+        </article>
+        <article data-os="frame">
+          <h3>Steam Frame</h3>
+          <p>Takes a disc image or the <code>maps</code> folder.</p>
+          <ol>
+            <li>Put your disc image in the Frame's Downloads, then play OpenH1 VR. It finds the image: press <em>A</em> and it copies the maps.</li>
+            <li>Or, on the Frame in Desktop Mode, open <code>install.sh</code> from the download. It asks for the maps folder: choose it, and it copies the maps.</li>
+          </ol>
+          <p class="where">Maps go in <code>~/apps/halo-vr/maps</code>.</p>
+        </article>
+        <article data-os="android">
+          <h3>Android</h3>
+          <p>Takes a disc image.</p>
+          <ol>
+            <li>Copy the disc image to the phone (over USB, or from a cloud drive).</li>
+            <li>Open OpenH1, tap <em>Choose disc image</em> and pick it. It copies the maps (about 1.8 GB). Then you can delete the image.</li>
+          </ol>
+          <p class="where">Maps go in the app's own storage, and are deleted when you remove the app.</p>
+        </article>
+        <article id="unpack">
+          <h3>Unpack an image</h3>
+          <p>If you'd rather keep the <code>maps</code> folder than the image: <a href="https://github.com/XboxDev/extract-xiso">extract-xiso</a> (Windows, Mac, Linux) takes a disc image apart.</p>
+          <pre><code>extract-xiso -x halo.iso</code></pre>
+          <p>It makes a folder named after the image, with <code>maps</code> inside.</p>
+          <p class="where">It reads full images too, as redumper makes them.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- 04: troubleshooting -->
+  <section class="sec" id="help" aria-labelledby="help-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <div>
+          <p class="kicker mono">04 · If it goes wrong</p>
+          <h2 id="help-title">Fixes.</h2>
+        </div>
+        <p>Something else? <a href="https://github.com/OpenH1/OpenH1/issues" style="color:var(--green)">Report a problem</a> on GitHub.</p>
+      </div>
+      <div class="hood">
+        <dl>
+          <div><dt>"Halo PC maps"</dt><dd>The <code>maps</code> folder is from Halo PC or Custom Edition, not the Xbox game. Move it aside, and give OpenH1 your Xbox disc image or its <code>maps</code> folder.<small>Custom Edition maps still work: they go in a <code>custom_maps</code> folder beside <code>maps</code>.</small></dd></div>
+          <div><dt>"Not an Xbox disc image"</dt><dd>The file isn't a copy of the game. An image made in an ordinary DVD drive has only the disc's video part: make one as above.</dd></div>
+          <div><dt>Image not found</dt><dd>On Linux, a Steam Deck and the Steam Frame, OpenH1 looks in Downloads, the Desktop, your home folder, SD cards and USB drives. Put the image there and choose <em>Look again</em>.</dd></div>
+          <div><dt>Game Mode</dt><dd>Works there: put your disc image in Downloads or on your SD card, then play OpenH1 from Game Mode. It finds it.</dd></div>
+        </dl>
+        <dl>
+          <div><dt>Disk space</dt><dd>About 2 GB free for the maps, as well as the disc image while they're copied.<small>On a Mac given the <code>maps</code> folder, nothing is copied: the folder is used where it is.</small></dd></div>
+          <div><dt>Copy stopped</dt><dd>Start the game again. A copy that didn't finish is left as <code>maps.partial</code>, and the game asks for the image again.</dd></div>
+          <div><dt>Where maps go</dt><dd>Windows: next to <code>halo.exe</code>. Mac: <code>~/Library/Application Support/OpenH1/maps</code>, or the folder you chose. Steam Deck: <code>~/Applications/OpenH1/maps</code>. Steam Frame: <code>~/apps/halo-vr/maps</code>. Android: the app's storage.</dd></div>
+          <div><dt>Some maps missing</dt><dd>The Mac says so when the folder or image lacks some of the disc's maps. You can play what's there, or choose a complete copy.</dd></div>
+        </dl>
+      </div>
+      <p style="margin-top:56px"><a class="btn" href="/#get">Download OpenH1</a></p>
+      <p class="mono" style="margin-top:28px; color: var(--muted, #8e9a89)">Shoutout to Clayton for the inspiration for this page.</p>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="row">
+      <a class="wordmark" href="/" aria-label="OpenH1, home"><img src="brand/openh1-lockup.svg" alt="OpenH1" width="105" height="18"></a>
+      <nav aria-label="Footer">
+        <a href="https://github.com/OpenH1/OpenH1">Source</a>
+        <a href="https://github.com/OpenH1/OpenH1/issues">Report a problem</a>
+        <a href="https://github.com/OpenH1/OpenH1/blob/master/LICENSE">Licence</a>
+        <a href="fonts/LICENSES.txt">Font licences</a>
+      </nav>
+    </div>
+    <p class="legal">Free software under the AGPL-3.0-or-later. Built on <a href="https://github.com/OpenCommunityEdition/OpenCE">OpenCE</a>.
+      OpenH1 is an unofficial fan project, not endorsed by or affiliated with Microsoft, Xbox Game Studios, Halo Studios or Bungie.
+      Halo is a trademark of Microsoft Corporation. No game data is included: you need your own copy of the game.</p>
+  </div>
+</footer>
+
+<script>
+(() => {
+  // the header turns solid past the top
+  const top = document.getElementById("top");
+  const onScroll = () => top.classList.toggle("solid", scrollY > 40);
+  addEventListener("scroll", onScroll, { passive: true }); onScroll();
+
+  // the visitor's machine first, and marked, as on the home page
+  const ua = navigator.userAgent, touch = navigator.maxTouchPoints > 1;
+  const os = /Android/.test(ua) ? "android" : /iPhone|iPad/.test(ua) ? "" : /Windows/.test(ua) ? "windows" : /Mac/.test(ua) ? (touch ? "" : "mac") : /Linux|CrOS/.test(ua) ? "linux" : "";
+  const mine = os && document.querySelector(`#platforms [data-os="${os}"]`);
+  if (mine) { mine.classList.add("mine"); mine.parentElement.prepend(mine); }
+})();
+</script>
+</body>
+</html>

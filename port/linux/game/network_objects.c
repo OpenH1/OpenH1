@@ -207,6 +207,10 @@ not carried on as the path */
 #define UNSTEERED_PATH_STEP 4.0f
 /* world units */
 #define REMOTE_OBJECT_TOLERANCE 0.05f
+/* the ticks of an item's path a client keeps, its own and the host's
+(distributed_client_item_on_path), and how many items it keeps them of */
+#define ITEM_PATH_TICKS 8
+#define MAXIMUM_ITEM_PATHS 64
 /* ... and the cosine of the angle (an object at rest turned) */
 #define REMOTE_OBJECT_ANGLE_TOLERANCE 0.98f
 /* how far a client's vehicle prediction moves the host's copy for the copy
@@ -431,6 +435,21 @@ static struct
 	long coast_ticks;
 	real_point3d position;
 } objects_client_unsteered_path[MAXIMUM_TRACKED_OBJECTS];
+/* ... the paths of the items loose in the world that move or lately moved
+(distributed_client_item_on_path): where its copy was at each of its last
+ticks and where the host's last states had it, the newest first; the last
+tick its copy moved, and when the host first said it was at rest while its
+copy still moved (NONE: not since it moved) */
+static struct
+{
+	long object_index;
+	long moved_time;
+	long rest_word_time;
+	short count;
+	short host_count;
+	real_point3d positions[ITEM_PATH_TICKS];
+	real_point3d host_positions[ITEM_PATH_TICKS];
+} objects_client_item_paths[MAXIMUM_ITEM_PATHS];
 /* ... its own objects made since the last tick (of any kind: those of the
 kinds the host has go), and whether to look through all the objects
 instead (the host's all told, too many made, or made where it cannot say) */
@@ -2122,9 +2141,10 @@ static void distributed_client_delete(
 		return;
 	if (TEST_FLAG(_object_mask_item, object->object.type))
 		distributed_client_release_item(object_index, TRUE);
-	/* (a flag or ball, which the game never deletes but a host may: a
-	release build's assertions do not stop it. Out of its carrier's hands
-	above, as any weapon; and the goal its game type shows at it goes too) */
+	/* (a flag or ball, which the game never deletes but a host has, for a
+	reason not known: the client follows its word all the same. Out of its
+	carrier's hands above, as any weapon; and the goal its game type shows
+	at it goes too) */
 	if (object->object.type == _object_type_weapon && game_engine_running() && weapon_is_flag(object_index))
 		game_engine_objective_weapon_deleted(object_index);
 	if (TEST_FLAG(_object_mask_unit, object->object.type))
@@ -2632,6 +2652,164 @@ static void distributed_client_note_unsteered_path(
 	objects_client_unsteered_path[absolute_index].position = *host_position;
 }
 
+/* Client: the item's path (objects_client_item_paths), or NONE; a new one
+(a free one, or the one longest still) when create */
+static short distributed_client_item_path(
+	long object_index,
+	boolean create)
+{
+	short index;
+	short found = NONE;
+
+	for (index = 0; index < MAXIMUM_ITEM_PATHS; index++)
+	{
+		if (objects_client_item_paths[index].object_index == object_index)
+			return index;
+		if (create && (found == NONE || objects_client_item_paths[index].object_index == NONE ||
+			(objects_client_item_paths[found].object_index != NONE &&
+				objects_client_item_paths[index].moved_time < objects_client_item_paths[found].moved_time)))
+		{
+			found = index;
+		}
+	}
+	if (found != NONE)
+	{
+		objects_client_item_paths[found].object_index = object_index;
+		objects_client_item_paths[found].moved_time = game_time_get();
+		objects_client_item_paths[found].rest_word_time = NONE;
+		objects_client_item_paths[found].count = 0;
+		objects_client_item_paths[found].host_count = 0;
+	}
+	return found;
+}
+
+/* the point's distance from the path through first and points (count of
+them), squared */
+static real distributed_path_distance_squared(
+	real_point3d const *point,
+	real_point3d const *first,
+	real_point3d const *points,
+	short count)
+{
+	real nearest = distance_squared3d(point, first);
+	short index;
+
+	for (index = 0; index < count; index++)
+	{
+		real_point3d const *a = index ? &points[index - 1] : first;
+		real_point3d const *b = &points[index];
+		real_vector3d ab, ap;
+		real length_squared, t;
+		real_point3d closest;
+		real distance;
+
+		vector_from_points3d(a, b, &ab);
+		vector_from_points3d(a, point, &ap);
+		length_squared = dot_product3d(&ab, &ab);
+		t = length_squared > 0.0f ? dot_product3d(&ap, &ab) / length_squared : 0.0f;
+		t = t < 0.0f ? 0.0f : t > 1.0f ? 1.0f : t;
+		closest.x = a->x + ab.i * t;
+		closest.y = a->y + ab.j * t;
+		closest.z = a->z + ab.k * t;
+		distance = distance_squared3d(point, &closest);
+		if (distance < nearest)
+			nearest = distance;
+	}
+	return nearest;
+}
+
+/* Client: notes where each item loose in the world is each tick, while it
+moves and a while after it stops */
+static void distributed_client_note_item_paths(
+	void)
+{
+	struct object_iterator iterator;
+	struct object_datum *object;
+	short index;
+
+	for (index = 0; index < MAXIMUM_ITEM_PATHS; index++)
+	{
+		long object_index = objects_client_item_paths[index].object_index;
+
+		object = object_index != NONE ? (struct object_datum *)object_try_and_get_and_verify_type(object_index,
+			_object_mask_item) : NULL;
+		if (object_index != NONE && (!object || object->object.parent_object_index != NONE ||
+			game_time_get() - objects_client_item_paths[index].moved_time > 2 * ITEM_PATH_TICKS))
+		{
+			objects_client_item_paths[index].object_index = NONE;
+		}
+	}
+	object_iterator_new(&iterator, _object_mask_item, 0);
+	while ((object = object_iterator_next(&iterator)) != NULL)
+	{
+		boolean moving = !TEST_FLAG(object->object.flags, _object_at_rest_bit);
+		short path_index;
+
+		if (object->object.parent_object_index != NONE ||
+			!TEST_FLAG(object->object.flags, _object_connected_to_map_bit))
+		{
+			continue;
+		}
+		path_index = distributed_client_item_path(iterator.index, moving);
+		if (path_index == NONE)
+			continue;
+		if (moving)
+			objects_client_item_paths[path_index].moved_time = game_time_get();
+		csmemmove(&objects_client_item_paths[path_index].positions[1], &objects_client_item_paths[path_index].positions[0],
+			(ITEM_PATH_TICKS - 1) * sizeof(real_point3d));
+		objects_client_item_paths[path_index].positions[0] = object->object.position;
+		if (objects_client_item_paths[path_index].count < ITEM_PATH_TICKS)
+			objects_client_item_paths[path_index].count++;
+	}
+}
+
+/* Client: whether to leave an item where its copy is, for this state of the
+host's. Both machines move an item loose in the world by the same physics,
+the client's copy behind or ahead of the host's by however late the host's
+states come, which varies (the internet's jitter). Compared with the copy's
+place now, a state a tick late or early is a tick's motion off (more than
+the tolerance, falling or bouncing), and moved halfway back to it with the
+velocity of then, the copy stuttered as it fell, bounced and settled. So
+the state is taken only when it is off both paths: the copy's of its last
+ticks (it is ahead), and the host's last states' (it is behind). On them
+the copy moves on by itself: one at rest ahead of the host's stays at rest
+(woken, it hopped), and one still moving when the host says its copy is at
+rest comes to rest itself, unless it still moves when the host says so
+again. */
+static boolean distributed_client_item_on_path(
+	long object_index,
+	real_point3d const *host_position,
+	boolean host_at_rest)
+{
+	struct object_datum *object = object_get(object_index);
+	short path_index = distributed_client_item_path(object_index,
+		!host_at_rest || !TEST_FLAG(object->object.flags, _object_at_rest_bit));
+	boolean on_path;
+
+	if (path_index == NONE)
+		return FALSE;
+	on_path = distributed_path_distance_squared(host_position, &object->object.position,
+			objects_client_item_paths[path_index].positions, objects_client_item_paths[path_index].count) <=
+			REMOTE_OBJECT_TOLERANCE * REMOTE_OBJECT_TOLERANCE ||
+		distributed_path_distance_squared(&object->object.position, host_position,
+			objects_client_item_paths[path_index].host_positions, objects_client_item_paths[path_index].host_count) <=
+			REMOTE_OBJECT_TOLERANCE * REMOTE_OBJECT_TOLERANCE;
+	csmemmove(&objects_client_item_paths[path_index].host_positions[1],
+		&objects_client_item_paths[path_index].host_positions[0], (ITEM_PATH_TICKS - 1) * sizeof(real_point3d));
+	objects_client_item_paths[path_index].host_positions[0] = *host_position;
+	if (objects_client_item_paths[path_index].host_count < ITEM_PATH_TICKS)
+		objects_client_item_paths[path_index].host_count++;
+	if (!host_at_rest || TEST_FLAG(object->object.flags, _object_at_rest_bit))
+	{
+		objects_client_item_paths[path_index].rest_word_time = NONE;
+		return on_path && !host_at_rest;
+	}
+	/* (the host's at rest, the copy still moving: once) */
+	if (objects_client_item_paths[path_index].rest_word_time == NONE)
+		objects_client_item_paths[path_index].rest_word_time = game_time_get();
+	return on_path && game_time_get() - objects_client_item_paths[path_index].rest_word_time < REST_STATE_REPEAT_TICKS;
+}
+
 void network_objects_handle_states(
 	void const *entries,
 	short count)
@@ -2721,6 +2899,14 @@ void network_objects_handle_states(
 				blend_distance = 0.0f;
 				own_vehicle = TRUE;
 			}
+		}
+		/* (an item loose in the world on its own path or the host's: as it
+		is here) */
+		if (TEST_FLAG(_object_mask_item, object->object.type) &&
+			distributed_client_item_on_path(state->object_index, &state->position,
+				TEST_FLAG(state->flags, _distributed_object_at_rest_bit)))
+		{
+			continue;
 		}
 		/* (at rest as the host has it, however close: a copy left at rest
 		while the host's falls hangs there; but not one this machine drives,
@@ -2956,6 +3142,27 @@ static void distributed_client_apply_inventory(
 				distributed_client_own_settled(own->grenade_times[grenade_type]))
 			{
 				unit->unit.grenade_counts[grenade_type] = count;
+			}
+		}
+		/* an AI unit's grenade type: the host's actor chose it as it gave the
+		unit its grenades (unit_add_grenade_type_to_inventory), and a client
+		has no actors. Without one, the throws the host's control starts
+		never begin here (unit_throw_grenade_begin), and the grenades, whose
+		blasts the host's damage brings, are never seen. The type it carries
+		is it; not changed in the middle of a throw */
+		if (!own && unit->unit.player_index == NONE &&
+			unit->unit.grenade_throw_state == _unit_grenade_throw_idle &&
+			(unit->unit.current_grenade_index == NONE ||
+				unit->unit.grenade_counts[unit->unit.current_grenade_index] == 0))
+		{
+			for (grenade_type = 0; grenade_type < NUMBER_OF_UNIT_GRENADE_TYPES; grenade_type++)
+			{
+				if (unit->unit.grenade_counts[grenade_type] > 0)
+				{
+					unit->unit.current_grenade_index = grenade_type;
+					unit->unit.desired_grenade_index = grenade_type;
+					break;
+				}
 			}
 		}
 	}
@@ -3296,6 +3503,7 @@ void network_objects_client_tick(
 	distributed_client_note_own_inventories();
 	distributed_client_send_vehicles();
 	distributed_client_carry_unsteered_vehicles();
+	distributed_client_note_item_paths();
 	/* (who it is, as its Discord told it: once its ready went, which makes
 	it a machine the host takes messages of) */
 	if (objects_client_ready_time != NONE)
@@ -3328,6 +3536,8 @@ void network_objects_new_game(
 		objects_client_unsteered_path[absolute_index].time = NONE;
 		objects_client_unsteered_path[absolute_index].coast_ticks = 0;
 	}
+	for (index = 0; index < MAXIMUM_ITEM_PATHS; index++)
+		objects_client_item_paths[index].object_index = NONE;
 	objects_host_told_count = 0;
 	objects_host_resting_cursor = 0;
 	objects_host_viewers.count = 0;

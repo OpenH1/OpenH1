@@ -16,6 +16,7 @@ Only integers, floats, strings and flat structures cross, as in host_sdl.c.
 #include "update.h"
 
 #include <SDL3/SDL.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -423,6 +424,7 @@ int host_sdl_show_message_box(struct host_message_box *box)
 struct file_dialog
 {
 	SDL_AtomicInt done;
+	int failed;
 	char *path;
 	uint32_t size;
 };
@@ -432,14 +434,17 @@ static void SDLCALL file_dialog_chosen(void *userdata, const char * const *files
 	struct file_dialog *dialog = userdata;
 
 	(void)filter;
-	if (files && files[0])
+	if (!files)
+		dialog->failed = 1;
+	else if (files[0])
 		SDL_strlcpy(dialog->path, files[0], dialog->size);
 	SDL_SetAtomicInt(&dialog->done, 1);
 }
 
 /* the file the player picks (filter_names and filter_patterns: the
 filters' names and patterns one after another, each NUL terminated), once
-the dialog closes; 1 with its path, 0 if none */
+the dialog closes; 1 with its path, 0 if none, -1 when no dialog could be
+shown (SDL needs the desktop portal or zenity: first_start.c then says so) */
 int host_sdl_open_file_dialog(int filter_count, const char *filter_names, const char *filter_patterns,
 	char *path, uint32_t size)
 {
@@ -468,6 +473,8 @@ int host_sdl_open_file_dialog(int filter_count, const char *filter_names, const 
 		SDL_PumpEvents();
 		SDL_Delay(50);
 	}
+	if (dialog.failed)
+		return -1;
 	return path[0] != 0;
 }
 
@@ -490,11 +497,11 @@ static void download_progress(void *context, unsigned long long received, unsign
 /* progress: the guest's void (*)(unsigned int context, unsigned int received,
 unsigned int total), called on this thread */
 int host_update_download(const char *url, const char *path, uint32_t progress, uint32_t context,
-	char *error, int error_size)
+	char *error, int error_size, uint32_t maximum)
 {
 	struct download_progress binding = { progress, context };
 
-	return update_download(url, path, progress ? download_progress : NULL, &binding, error, error_size);
+	return update_download(url, path, maximum, progress ? download_progress : NULL, &binding, error, error_size);
 }
 
 int host_update_executable_path(char *path, int size)
@@ -525,4 +532,21 @@ int host_update_make_executable(const char *path)
 int host_update_launch(const char *path)
 {
 	return update_launch(path);
+}
+
+/* ---------- the game's state, for the macOS app's updater */
+
+/* whether a game is played (1) or the main menu shown (0), as the guest
+says when it changes (updater.c's updater_poll); -1 until the game's first
+frame. port/macos/host_app.m shows a new version's window only at 0 */
+static _Atomic int host_playing = -1;
+
+void host_app_playing(int playing)
+{
+	atomic_store(&host_playing, playing ? 1 : 0);
+}
+
+int host_app_is_playing(void)
+{
+	return atomic_load(&host_playing);
 }

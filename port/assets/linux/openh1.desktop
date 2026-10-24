@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=OpenH1
+GenericName=First-person shooter
+Comment=Halo: Combat Evolved, ported from its decompilation
+Exec=openh1
+Icon=openh1
+Terminal=false
+Categories=Game;ActionGame;
+Keywords=Halo;Combat Evolved;Custom Edition;
+StartupWMClass=openh1

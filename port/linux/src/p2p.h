@@ -31,6 +31,9 @@ const unsigned char *p2p_identifier(void);
 /* the address the game reaches the machine with this identifier at, if it
 is an internet play peer (reached yet or not) */
 int p2p_peer_address(const unsigned char *identifier, unsigned long *address);
+/* the ping to the machine with this identifier, in milliseconds, if the
+tunnel reaches it; -1 if not, or not timed yet */
+int p2p_peer_ping(const unsigned char *identifier);
 
 /* a destination the game sends to or connects to (stream: a TCP socket;
 socket: the game's UDP socket connected to it, else -1): 1 if it is a peer's
@@ -78,6 +81,10 @@ void p2p_set_hosting_allowed(int allowed);
 /* the invite link of the game this machine hosts (empty, 0: none, or LAN
 only) */
 int p2p_invite_link(char *link, int size);
+/* an invite (a link or a code, or any text holding one) as the log shows
+it: its first digits only, since players post their logs and an invite lets
+anyone join; the dedicated server's log, its operator's, has it whole */
+const char *p2p_invite_log_text(const char *invite, char *text, int size);
 
 /* the hosted game's players and the most it takes, which Discord shows
 (0, 0: not hosting; until the game says, the machines the tunnel reaches
@@ -104,8 +111,11 @@ void p2p_set_hosting_password(const char *password);
 /* the hosted game's details as listed (printable ASCII is kept; NULL leaves
 one as it was): the game's server calls it as they change (calling it with
 the same again costs little) */
-void p2p_set_game_listing(const char *name, const char *map, const char *gametype, int engine_type, int open,
-	int in_progress, int has_teams);
+void p2p_set_game_listing(const char *name, const char *map, const char *gametype, int engine_type, int kind,
+	int open, int in_progress, int has_teams);
+/* ... whether it is an OpenH1 Standard game (port/linux/game/network_standard.c,
+its listing's version that game's protocol version), and its rate */
+void p2p_set_game_listing_standard(int standard, int rate);
 /* the server browser: while on, the public games are gathered (asked for
 when turned on, and by p2p_lobby_refresh) */
 void p2p_lobby_browse(int on);
@@ -135,6 +145,12 @@ struct p2p_listing
 	char map[P2P_LISTING_MAP_SIZE + 1];
 	char gametype[P2P_LISTING_GAMETYPE_SIZE + 1];
 	unsigned char player_count, maximum_player_count, engine_type;
+	/* the game's kind: an OpenCE gametype's mode, and Hardcore
+	(port/linux/game/game_modes.h's game_modes_kind) */
+	unsigned char kind;
+	/* an OpenH1 Standard game (port/linux/game/network_standard.c), and its
+	rate in Hz (a Legacy game's 30) */
+	unsigned char standard, rate;
 	unsigned char open, in_progress, has_teams;
 	/* joining it failed this run (p2p_lobby_mark_failed) */
 	unsigned char failed;
@@ -157,6 +173,13 @@ int p2p_joined_listed_host(void);
 /* a copy of the public games found, in the order shown (the most players
 first; then those not failed, the open ones, by name); returns their count */
 int p2p_lobby_games(struct p2p_listing *games, int maximum_count);
+/* how many hosts list a game of a newer network version, which is not
+shown (an old build sees none of the games) */
+int p2p_lobby_newer_games(void);
+/* the game the browser has chosen (asked each frame): its host is probed,
+and its tunnel kept open while it is chosen, so that joining it takes the
+tunnel up at once */
+void p2p_probe_keep(const struct p2p_listing *listing);
 /* a game the browser could not join: kept, marked failed, for this run */
 void p2p_lobby_mark_failed(const unsigned char *identifier);
 /* a locked game's invite (into its invite), if the password is its own:
@@ -224,6 +247,37 @@ int p2p_peer_reached(const unsigned char *identifier, unsigned long *address);
 /* this network's NAT gives each destination its own port and no router
 forwards the tunnel's: only games behind more lenient NATs can be reached */
 int p2p_nat_strict(void);
+
+/* where a join (p2p_join_invite, p2p_join_listing) has got to, for the
+menus: finding the host (this machine's public address, then the
+signalling brokers' answer), opening a path to it (the host answered: both
+send to each other's addresses), or reached (its game is listed under
+System Link) */
+enum
+{
+	_p2p_join_idle,
+	_p2p_join_finding,
+	_p2p_join_opening,
+	_p2p_join_reached,
+};
+struct p2p_join_status
+{
+	int stage;
+	/* milliseconds since the join was asked for */
+	unsigned long elapsed;
+	/* the rounds of pings sent to every address of the host's */
+	int tries;
+	/* internet play is on; the request went to the brokers; a broker is
+	connected */
+	int online, asked, brokers;
+	/* this network's NAT is strict (p2p_nat_strict); the host's addresses
+	show that its is; the router was asked to forward a port and did not */
+	int nat_strict, host_strict, upnp_tried;
+};
+void p2p_join_status(struct p2p_join_status *status);
+/* gives the join up (the menus' Back, and their timeout), the host not
+reached */
+void p2p_join_cancel(void);
 
 /* BLAKE2b with a 32-byte digest (Monocypher's): a map's pieces
 (map_share.c) */

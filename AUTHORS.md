@@ -4,10 +4,24 @@
 
 - **The loading screen**: by Paul Hontz (`port/assets/loading`).
 
-- **The game's icon** (the Android app's launcher icon, `halo.exe`'s icon
-  and the desktop windows' icon): by ORION (`port/assets/icon`).
-- **The controller's A, B, X and Y buttons** (the menus' button icons and
-  the HUD messages'): redraws by saulob (`port/assets/buttons`).
+- **The game's icon** (the macOS app's, the Android app's launcher icon,
+  `halo.exe`'s, the Linux release's, the web build's and the desktop
+  windows'): the OpenH1 logo, Tail Code, by Erin Cena
+  (`port/assets/icon/openh1-mark.svg`, from openh1.com's
+  `website/public/favicon.svg`).
+- **Steam's library artwork** (the capsules, hero, logo and icon of the
+  Steam shortcut the Linux and Steam Frame installs add, OpenH1's and
+  OpenH1 VR's): the OpenH1 lockup and mark by Erin Cena
+  (`website/public/brand`) in openh1.com's Boot Glow look, drawn by
+  `tools/steam_art.py` from `port/assets/steam/art.html`.
+- **The controller's A, B, X and Y buttons** (the menus' button icons, the
+  HUD messages' and the Android touch controls'): redraws by saulob
+  (`port/assets/buttons`).
+- **The HUD's button styles** (Classic, Gems and Menu Gems, the black and
+  white buttons, the triggers and the stick clicks, in the HUD and the
+  Android touch controls): added by chestahh (OpenCE #380,
+  `port/assets/buttons`, `tools/button_assets.py`); Classic recolours
+  saulob's redraws.
 - **The high-res HUD** (its meters, icons, scopes and messages, and the
   weapons' reticles): redraws by MrBruh (`port/assets/hud`), based on
   reference photos by Aerocatia. The sniper rifle's zoom labels (2x, 10x)
@@ -23,3 +37,9 @@
 - **The Mods menu's warning icons** (a mod out of its requested order, and
   a mod that cannot be played): `triangle-alert` and `circle-x` from
   [Lucide](https://lucide.dev) 1.53.0, under the same licence.
+- **The server browsers' favorite star**: `star` from
+  [Lucide](https://lucide.dev) 1.53.0, under the same licence.
+- **The Android touch controls' line icons** (start, back, the D-pad, the
+  toolbar): outlines of glyphs of [Mobile Controls](https://kenney.nl/assets/mobile-controls)
+  1.0 by Kenney (www.kenney.nl), CC0
+  (`port/assets/touch/kenney-mobile-controls`).

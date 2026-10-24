@@ -6,13 +6,13 @@ report):
     python tools/symbolize_crash.py halo.log path/to/folder
 
 The folder holds the build that crashed: halo.exe with its halo.pdb, and
-halo_guest.elf, the guest image (a release's halo-windows-<config>-symbols.zip
-has halo.pdb and halo_guest.elf; the zip of the same name without -symbols
-has halo.exe). Each frame of the report names its module and the offset in
-it: halo.exe's are found in the PDB, the guest image's in the image's own
-debugging information, by llvm-symbolizer. The crash reports that reach
-Sentry need none of this for the host's frames: Sentry symbolizes them
-itself.
+halo_guest.elf, the guest image (a release's
+OpenH1-Windows[-debug]-symbols.zip has halo.pdb and halo_guest.elf; the zip
+of the same name without -symbols has halo.exe). Each frame of the report
+names its module and the offset in it: halo.exe's are found in the PDB, the
+guest image's in the image's own debugging information, by llvm-symbolizer.
+The crash reports that reach Sentry need none of this for the host's frames:
+Sentry symbolizes them itself.
 """
 
 import argparse

@@ -234,6 +234,18 @@ static void shadow_volume_plane_pair(
 	real_plane3d *opposite_plane);
 static void render_object_shadow_end(
 	struct object_render_data *data);
+/* port: the shadow atlas's casters, whose receivers wait for every
+caster's (render_object_shadows) */
+static void render_object_shadow_defer(
+	struct object_render_data *data,
+	short region);
+static struct
+{
+	real_matrix4x3 shadow_matrix;
+	real shadow_bounding_radius;
+	short region;
+} deferred_shadows[RASTERIZER_SHADOW_ATLAS_REGIONS];
+static short deferred_shadow_count = 0;
 static void object_render_state_refresh(
 	long render_state_index,
 	long object_index,
@@ -345,6 +357,26 @@ struct render_lighting *object_get_cached_render_lighting(
 	return &lighting_storage;
 }
 
+/* port: the object's lighting as it was last drawn, if it was, the cache
+left as it is (a projectile deleted, drawn a tick longer:
+port/linux/game/render_interpolation.c) */
+boolean render_objects_port_last_lighting(
+	long object_index,
+	struct render_lighting *lighting)
+{
+	struct object_datum *object = object_get(object_index);
+
+	if (object->object.cached_render_state_index == NONE ||
+		!datum_try_and_get(cached_object_render_states, object->object.cached_render_state_index) ||
+		object_render_state_get(object->object.cached_render_state_index)->object_index != object_index)
+	{
+		return FALSE;
+	}
+	*lighting = object_render_state_get(object->object.cached_render_state_index)->lighting;
+
+	return TRUE;
+}
+
 void render_objects(
 	void)
 {
@@ -372,6 +404,9 @@ void render_objects(
 		first_person_pass = !first_person_pass;
 	}
 	while (first_person_pass);
+	/* port: the projectiles deleted in the last tick, drawn through it
+	(port/linux/game/render_interpolation.c) */
+	render_interpolation_ghosts_draw();
 
 	rasterizer_models_end();
 
@@ -392,6 +427,8 @@ boolean vr_grab_highlight(long object_index, struct render_lighting const *given
 #endif
 /* port: port/linux/game/shield_color.c */
 real_rgb_color const *shield_color_colors(long unit_index, real_rgb_color const *colors);
+/* port: port/linux/game/overshield_effect.c */
+real const *overshield_effect_values(long unit_index, real const *values, boolean arms);
 
 void render_object_shadows(
 	void)
@@ -404,8 +441,28 @@ void render_object_shadows(
 
 		rasterizer_environment_shadows_begin();
 
+		/* port: the casters into the shadow atlas, all of them blurred at
+		once, then each one's receivers (rasterizer_xbox_shadows.c) */
+		deferred_shadow_count = 0;
+		rasterizer_shadow_atlas_begin();
+
 		data.shadow = TRUE;
 		process_rendered_objects(&data);
+
+		/* port: (as above) */
+		rasterizer_shadow_atlas_convolve();
+		{
+			short index;
+
+			for (index = 0; index < deferred_shadow_count; index++)
+			{
+				rasterizer_shadow_atlas_receive(deferred_shadows[index].region);
+				data.shadow_matrix = deferred_shadows[index].shadow_matrix;
+				data.shadow_bounding_radius = deferred_shadows[index].shadow_bounding_radius;
+				render_object_shadow_end(&data);
+			}
+		}
+		rasterizer_shadow_atlas_end();
 
 		rasterizer_environment_shadows_end();
 	}
@@ -592,8 +649,12 @@ static void render_object_list(
 								TEST_FLAG(_object_mask_unit, object->object.type) ?
 									shield_color_colors(object_index, change_colors) :
 									change_colors;
+							/* port: an overshield as it rises and lasts
+							(port/linux/game/overshield_effect.c) */
 							model_effect.modifier_animation.values =
-								function_values;
+								TEST_FLAG(_object_mask_unit, object->object.type) ?
+									overshield_effect_values(object_index, function_values, FALSE) :
+									function_values;
 						}
 						else
 						{
@@ -974,6 +1035,24 @@ static void render_object_shadow_end(
 	return;
 }
 
+/* port: (above) */
+static void render_object_shadow_defer(
+	struct object_render_data *data,
+	short region)
+{
+	match_assert(
+		"c:\\halo\\SOURCE\\render\\render_objects.c",
+		0,
+		deferred_shadow_count < RASTERIZER_SHADOW_ATLAS_REGIONS);
+
+	deferred_shadows[deferred_shadow_count].shadow_matrix = data->shadow_matrix;
+	deferred_shadows[deferred_shadow_count].shadow_bounding_radius = data->shadow_bounding_radius;
+	deferred_shadows[deferred_shadow_count].region = region;
+	deferred_shadow_count++;
+
+	return;
+}
+
 static void object_render_state_refresh(
 	long render_state_index,
 	long object_index,
@@ -1227,8 +1306,20 @@ static void render_object(
 
 				if (render_object_shadow_begin(data, darkness_fraction * size_fraction))
 				{
+					/* port: a caster of the shadow atlas has its receivers drawn
+					after every caster's (render_object_shadows) */
+					short region;
+
 					render_object_list(data, NULL, data->object_index);
-					render_object_shadow_end(data);
+					region = rasterizer_shadow_atlas_caster_end();
+					if (region != NONE)
+					{
+						render_object_shadow_defer(data, region);
+					}
+					else
+					{
+						render_object_shadow_end(data);
+					}
 				}
 			}
 		}

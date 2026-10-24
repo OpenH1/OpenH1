@@ -190,6 +190,9 @@ void dynamic_lights_note(long rasterizer_light_index, long flags, real cone_scal
 	real_point3d const *tick_position);
 boolean dynamic_lights_first_person(long weapon_index, real_point3d *position);
 void dynamic_lights_submit(void);
+void dynamic_lights_rank(long *lights, short count,
+	void (*describe)(long light, real_point3d *position, real *radius, real *intensity));
+void dynamic_lights_drawn(long light, real_point3d const *position, real radius, real_rgb_color const *color);
 
 /* port: port/linux/src (halo.log) */
 void platform_log(const char *format, ...);
@@ -379,7 +382,8 @@ struct lights_globals
 	long marker;
 	short scene_point_light_count;
 	short padA;
-	long scene_point_lights[128];
+	/* port: the native builds' (render.h: the Xbox's 128) */
+	long scene_point_lights[MAXIMUM_RENDERED_LIGHTS];
 	struct rasterizer_lens_flare_submit_parameters queued_lens_flares[8];
 	short queued_lens_flare_count;
 	short pad34E;
@@ -403,8 +407,9 @@ typedef char verify_light_datum_size[
 	sizeof(struct light_datum) == 0x7C ? 1 : -1];
 typedef char verify_rasterizer_light_submit_parameters_size[
 	sizeof(struct rasterizer_light_submit_parameters) == 0x38 ? 1 : -1];
+/* port: (scene_point_lights' size) */
 typedef char verify_lights_globals_size[
-	sizeof(struct lights_globals) == 0x350 ? 1 : -1];
+	sizeof(struct lights_globals) == 0x350 + 4 * (MAXIMUM_RENDERED_LIGHTS - 128) ? 1 : -1];
 
 /* ---------- prototypes */
 
@@ -968,6 +973,22 @@ long light_new_unattached(
 	return light_index;
 }
 
+/* port: a light, to port/linux/game/dynamic_lights.c's ranking, as the game
+has it where it has no drawing of it: where it is, how far it reaches and
+how bright it is at the tick (0 if not yet: its color is made below) */
+static void light_port_rank_describe(
+	long light_index,
+	real_point3d *position,
+	real *radius,
+	real *intensity)
+{
+	struct light_datum const *light = light_get(light_index);
+
+	*position = light->position;
+	*radius = light->radius > 0.0f ? light->radius : light_definition_get(light->definition_index)->radius;
+	*intensity = MAX(light->color.red, MAX(light->color.green, light->color.blue));
+}
+
 void lights_preprocess_scene(
 	void)
 {
@@ -1027,6 +1048,11 @@ void lights_preprocess_scene(
 		light_unmarked,
 		light_mark);
 	light_marker_end();
+	/* port: more lights than the rasterizer's 128, the most visible first
+	(port/linux/game/dynamic_lights.c: as drawn last frame), not the first
+	found */
+	dynamic_lights_rank(lights_globals.scene_point_lights, lights_globals.scene_point_light_count,
+		light_port_rank_describe);
 	rasterizer_lights_begin();
 	for (rendered_cluster_index = 0;
 		rendered_cluster_index < render.rendered_cluster_count;
@@ -1049,6 +1075,12 @@ void lights_preprocess_scene(
 		real inverse_intensity;
 		real lens_flare_scale = 1.0f;
 		boolean projectile_lights;
+		/* port: how bright, and in what color, it is drawn: as the frame
+		is between the ticks (port/linux/game/render_interpolation.c), not
+		a step a tick; light->color, which the game reads, is the tick's */
+		real drawn_intensity;
+		real_rgb_color drawn_color;
+		real drawn_radius;
 
 		render_debug_light(scene_light_handle);
 		object = light->object_index != NONE
@@ -1058,6 +1090,8 @@ void lights_preprocess_scene(
 		{
 			/* port: a glow's color is as set (light_port_glow_set) */
 			intensity = 1.0f;
+			drawn_intensity = intensity;
+			drawn_color = light->color;
 		}
 		else if (light->parent_light_index == NONE)
 		{
@@ -1081,9 +1115,28 @@ void lights_preprocess_scene(
 				&definition->color_upper_bound,
 				color,
 				intensity);
+			/* port: (drawn from the object's function and change color
+			between the last two ticks', as its shaders are) */
+			drawn_intensity = intensity;
+			if (VALID_INDEX(light->function_index, NUMBER_OF_OUTGOING_OBJECT_FUNCTIONS))
+				drawn_intensity = render_interpolation_object_function_values(light->object_index)[light->function_index];
+			if (light->color_function_index != NONE)
+				color = &render_interpolation_object_change_colors(light->object_index)[light->color_function_index];
+			rgb_colors_interpolate_and_scale(
+				&drawn_color,
+				definition->color_interpolation_flags,
+				&definition->color_lower_bound,
+				&definition->color_upper_bound,
+				color,
+				drawn_intensity);
 		}
 		else
 		{
+			/* port: (drawn at the frame's time, which is the part of a tick
+			behind the tick's that the objects are, as it fades: not a step
+			a tick) */
+			real drawn_elapsed = (real)(current_time - light->parent_light_index) - render_interpolation_ticks_behind();
+
 			intensity = (1.0f - transition_function_evaluate(
 				definition->falloff_function,
 				(real)(current_time - light->parent_light_index)
@@ -1095,6 +1148,16 @@ void lights_preprocess_scene(
 				&definition->color_lower_bound.rgb,
 				&definition->color_upper_bound.rgb,
 				intensity);
+			drawn_intensity = (1.0f - transition_function_evaluate(
+				definition->falloff_function,
+				MAX(drawn_elapsed, 0.0f) / definition->transition_duration))
+				* light->intensity_scale;
+			rgb_colors_interpolate(
+				&drawn_color,
+				definition->color_interpolation_flags,
+				&definition->color_lower_bound.rgb,
+				&definition->color_upper_bound.rgb,
+				drawn_intensity);
 		}
 
 		inverse_intensity = 1.0f - intensity;
@@ -1131,6 +1194,9 @@ void lights_preprocess_scene(
 					light->color.red *= lens_flare_scale;
 					light->color.green *= lens_flare_scale;
 					light->color.blue *= lens_flare_scale;
+					drawn_color.red *= lens_flare_scale;
+					drawn_color.green *= lens_flare_scale;
+					drawn_color.blue *= lens_flare_scale;
 					match_assert(
 						"c:\\halo\\SOURCE\\objects\\object_lights.c",
 						0x1D1,
@@ -1168,6 +1234,14 @@ void lights_preprocess_scene(
 				if (TEST_FLAG(light->flags, _point_light_port_glow_bit))
 					light->radius = light->intensity_scale;
 				lights_port.radius_writes++;
+				/* port: (and as drawn) */
+				drawn_radius = light->radius;
+				if (!projectile_lights && !TEST_FLAG(light->flags, _point_light_port_glow_bit))
+				{
+					drawn_radius = (definition->radius_modifier_lower_bound * (1.0f - drawn_intensity)
+						+ definition->radius_modifier_upper_bound * drawn_intensity)
+						* definition->radius;
+				}
 				if (light->radius != 0.0f)
 				{
 					struct rasterizer_light_submit_parameters light_parameters;
@@ -1177,8 +1251,15 @@ void lights_preprocess_scene(
 					light_parameters.position = light->position;
 					light_parameters.forward = light->forward;
 					light_parameters.up = light->up;
-					light_parameters.radius = light->radius;
-					light_parameters.color = light->color;
+					/* port: as drawn (none where it is drawn reaching
+					nowhere, at the tick's radius) */
+					light_parameters.radius = drawn_radius;
+					light_parameters.color = drawn_color;
+					if (!(drawn_radius > 0.0f) && light->radius > 0.0f)
+					{
+						light_parameters.radius = light->radius;
+						light_parameters.color = *global_real_rgb_black;
+					}
 					match_assert(
 						"c:\\halo\\SOURCE\\objects\\object_lights.c",
 						0x1EE,
@@ -1261,6 +1342,10 @@ void lights_preprocess_scene(
 						}
 					}
 
+					/* port: (how it is drawn ranks it next frame:
+					port/linux/game/dynamic_lights.c) */
+					dynamic_lights_drawn(scene_light_handle, &light_parameters.position, light_parameters.radius,
+						&light_parameters.color);
 					light->rasterizer_light_index = rasterizer_light_submit(
 						&light_parameters);
 					debug_rasterizer_light_count = light->rasterizer_light_index + 1;
@@ -1307,10 +1392,11 @@ void lights_preprocess_scene(
 
 				lens_flare_parameters.definition = lens_flare_definition_get(
 					definition->lens_flare.index);
+				/* port: (as drawn) */
 				lens_flare_parameters.compressed_light_color =
-					real_a_rgb_color_to_pixel32(lens_flare_scale, &light->color);
+					real_a_rgb_color_to_pixel32(lens_flare_scale, &drawn_color);
 				lens_flare_parameters.compressed_light_scale =
-					compress_real_to_int8(intensity);
+					compress_real_to_int8(drawn_intensity);
 				lens_flare_parameters.compressed_window_index = (byte)render.window_index;
 				lens_flare_parameters.light_index =
 					(short)DATUM_INDEX_TO_ABSOLUTE_INDEX(scene_light_handle);

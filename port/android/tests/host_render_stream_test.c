@@ -1525,7 +1525,7 @@ static void test_loading_lifecycle(void)
 static void test_round_trip(void)
 {
 	const struct xgpu_stream_ring *ring;
-	struct xgpu_target_description description = {640, 480, FALSE, 1};
+	struct xgpu_target_description description = {640, 480, FALSE, 1, XGPU_FORMAT_BGRA8};
 	struct xgpu_vertex_program program;
 	struct xgpu_vr_info info;
 	struct xgpu_vr_frame vr_frame;

@@ -14,6 +14,14 @@ header included in hcex build.
 
 /* ---------- constants */
 
+enum
+{
+	/* port: the mass points a sub-step keeps contacts for (physics_substep):
+	physics_definitions.h's MAXIMUM_MASS_POINTS_PER_PHYSICS, which physics.c
+	checks */
+	MAXIMUM_PHYSICS_SUBSTEP_CONTACTS = 32,
+};
+
 /* ---------- macros */
 
 /* ---------- structures */
@@ -34,6 +42,44 @@ struct physics_test_vector_result
 {
 	real t;
 	real_plane3d plane;
+};
+
+/* port: (physics.c's) a vehicle's mass point where its tick began, and what
+it met there: the ground under it, the water round it, the ground its
+antigrav lifts it from (physics_compute_substep) */
+struct physics_substep_contact
+{
+	real_point3d position;
+	real_plane3d ground_plane;
+	real ground_depth;
+	short ground_material_type;
+	boolean on_volatile_surface;
+	boolean antigrav;
+	real water_depth;
+	real_vector3d antigrav_normal;
+	real antigrav_height;
+};
+
+/* port: one of a tick's sub-steps of a vehicle's physics, in the fast phase
+(port/linux/game/sim_rate.h, vehicles.c): physics_substep_set */
+struct physics_substep
+{
+	/* which (0 up to count - 1), of how many */
+	short index;
+	short count;
+	/* its share of a tick (1 / count) */
+	real fraction;
+	/* (physics.c's) whether the vehicle's physics has run in an earlier
+	sub-step of the tick (FALSE as the tick begins: vehicles.c) */
+	boolean begun;
+	/* (physics.c's, from the tick's first sub-step its physics runs in) the collision force and
+	torque the vehicle had kept for this tick, given each sub-step its share;
+	the vehicle as the tick began, and its mass points' contacts */
+	real_vector3d collision_force;
+	real_vector3d collision_torque;
+	real_matrix4x3 world_matrix;
+	real_point3d tick_position;
+	struct physics_substep_contact contacts[MAXIMUM_PHYSICS_SUBSTEP_CONTACTS];
 };
 
 /* ---------- prototypes/PHYSICS.C */
@@ -69,6 +115,12 @@ void physics_update(
 	real_vector3d const *magic_torque);
 
 void render_debug_physics(struct physics_instance *instance);
+
+/* port: physics_update moves a vehicle by a sub-step of a tick, as the
+substep says, from now until it is set NULL again (a tick's, as it always
+did): vehicles.c, around a vehicle's update in a sub-step of the fast phase
+(physics.c, "sub-steps") */
+void physics_substep_set(struct physics_substep *substep);
 
 
 /* ---------- globals */

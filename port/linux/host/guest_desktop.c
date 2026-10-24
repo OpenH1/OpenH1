@@ -3,7 +3,7 @@ GUEST_DESKTOP.C
 
 The guest's half of what the Linux desktop's code paths need beyond the
 Android app's (port/android/guest/runtime/guest_sdl.c): the SDL3 functions
-sdl_platform.c, menu_files.c, xiso.c and updater.c call, and update.h's for
+sdl_platform.c, first_start.c, menu_files.c, xiso.c and updater.c call, and update.h's for
 the self-updater. host_desktop.c is the host's half.
 
 What the guest can do itself it does here, on its own threads and its own C
@@ -70,13 +70,15 @@ int host_sdl_show_message_box(void *box);
 int host_sdl_open_file_dialog(int filter_count, const char *filter_names, const char *filter_patterns,
 	char *path, unsigned int size);
 int host_update_download(const char *url, const char *path, unsigned int progress, unsigned int context,
-	char *error, int error_size);
+	char *error, int error_size, unsigned int maximum);
 int host_update_executable_path(char *path, int size);
 int host_update_replace_file(const char *path, const char *new_path, const char *old_path);
 void host_update_delete_file(const char *path);
 int host_update_make_directory(const char *path);
 int host_update_make_executable(const char *path);
 int host_update_launch(const char *path);
+/* (the macOS app's updater: updater.c's updater_poll, port/macos/host_app.m) */
+void host_app_playing(int playing);
 
 /* ---------- general */
 
@@ -841,7 +843,9 @@ bool SDL_ShowMessageBox(const SDL_MessageBoxData *data, int *button)
 }
 
 /* the host waits for the dialog, then the callback runs here, before this
-returns (sdl_platform.c waits for it either way) */
+returns (sdl_platform.c and first_start.c wait for it either way): with no
+files when none was picked, and NULL, as SDL's own, when no dialog could be
+shown */
 void SDL_ShowOpenFileDialog(SDL_DialogFileCallback callback, void *userdata, SDL_Window *window,
 	const SDL_DialogFileFilter *filters, int filter_count, const char *default_location, bool allow_many)
 {
@@ -851,6 +855,7 @@ void SDL_ShowOpenFileDialog(SDL_DialogFileCallback callback, void *userdata, SDL
 	const char *files[2] = { path, NULL };
 	int count = 0;
 	int index;
+	int result;
 
 	(void)window;
 	(void)default_location;
@@ -868,8 +873,11 @@ void SDL_ShowOpenFileDialog(SDL_DialogFileCallback callback, void *userdata, SDL
 		patterns_used += pattern_length;
 		count++;
 	}
-	if (host_sdl_open_file_dialog(count, names, patterns, path, sizeof(path)))
+	result = host_sdl_open_file_dialog(count, names, patterns, path, sizeof(path));
+	if (result > 0)
 		callback(userdata, files, -1);
+	else if (result < 0)
+		callback(userdata, NULL, -1);
 	else
 		callback(userdata, files + 1, -1);
 }
@@ -890,13 +898,15 @@ static void download_progress(unsigned int context, unsigned int received, unsig
 	binding->progress(binding->context, received, total);
 }
 
-int update_download(const char *url, const char *path, update_progress_proc progress, void *context,
-	char *error, int error_size)
+int update_download(const char *url, const char *path, unsigned long long maximum, update_progress_proc progress,
+	void *context, char *error, int error_size)
 {
 	struct download_progress binding = { progress, context };
 
+	/* (the most a download may be, in 32 bits: a release is far below 4 GB) */
 	return host_update_download(url, path, progress ? (unsigned int)(uintptr_t)download_progress : 0,
-		(unsigned int)(uintptr_t)&binding, error, error_size);
+		(unsigned int)(uintptr_t)&binding, error, error_size,
+		maximum > 0xffffffffULL ? 0xffffffffU : (unsigned int)maximum);
 }
 
 int update_executable_path(char *path, int size)

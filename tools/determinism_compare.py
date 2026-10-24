@@ -21,6 +21,11 @@ and for a data array the elements and the offsets in them:
     python tools/determinism_compare.py a/determinism.txt b/determinism.txt \\
         --dump a/determinism.txt.300.bin b/determinism.txt.300.bin
 
+A log names the simulation's rate it ran at (game.sim_rate, 60 by default;
+none: 30). Two runs at different rates are compared only with
+--across-rates: a run to compare against an older build's is made at 30
+(HALO_SIM_RATE=30).
+
 Exit status: 0 when the logs agree for every tick both have, 1 when they
 part, 2 when a log cannot be read or has no ticks.
 """
@@ -56,12 +61,18 @@ FRAME_ALLOCATIONS = ["game time globals", "lights", "decal vertex cache", "parti
                      "scenario globals", "player control globals", "first person weapons"]
 
 
+# the simulation's rate of a log that names none (game.sim_rate: a build
+# before it, which ran at 30)
+CLASSIC_RATE = 30
+
+
 class Tick:
-    def __init__(self, number, global_seed, local_seed, state_hash):
+    def __init__(self, number, global_seed, local_seed, state_hash, rate=CLASSIC_RATE):
         self.number = number
         self.global_seed = global_seed
         self.local_seed = local_seed
         self.state_hash = state_hash
+        self.rate = rate
         self.allocations = []
         self.takers = {}
         self.frames = []
@@ -85,6 +96,7 @@ def read_log(path):
     ticks = []
     pending_allocations = None
     current = None
+    rate = CLASSIC_RATE
     with open(path, errors="replace") as log:
         for line in log:
             parts = line.split()
@@ -95,8 +107,10 @@ def read_log(path):
                 allocations[int(parts[1])] = (" ".join(parts[4:]), int(parts[2], 16), int(parts[3]))
             elif kind == "a":
                 pending_allocations = parts[1:]
+            elif kind == "rate" and len(parts) >= 2 and parts[1].isdigit():
+                rate = int(parts[1])
             elif kind == "t" and len(parts) >= 8:
-                current = Tick(int(parts[1]), parts[3], parts[5], parts[7])
+                current = Tick(int(parts[1]), parts[3], parts[5], parts[7], rate)
                 current.allocations = pending_allocations or []
                 pending_allocations = None
                 ticks.append(current)
@@ -281,6 +295,13 @@ def main():
                         help="compare only what the ticks do (for runs at different frame rates): not the frames, "
                              "the takers between ticks, nor the allocations the frames move (FRAME_ALLOCATIONS)")
     parser.add_argument("--context", type=int, default=2, help="ticks shown before the first difference")
+    parser.add_argument("--builds", action="store_true",
+                        help="two builds' runs (a change that must leave the game as it was): the game state, the "
+                             "seeds and how many took each seed in each tick, not the takers' sites (addresses in "
+                             "each build's code), the frames nor the clock's readers")
+    parser.add_argument("--across-rates", action="store_true",
+                        help="compare runs at different simulation rates (game.sim_rate): alike only while nothing "
+                             "runs in the fast phase, or in what stays on the 30 Hz tick")
     args = parser.parse_args()
 
     try:
@@ -294,6 +315,15 @@ def main():
         return 2
     if allocations_a != allocations_b:
         print("note: the two runs' game state allocations differ (another build?)")
+    rates_a = sorted({tick.rate for tick in ticks_a})
+    rates_b = sorted({tick.rate for tick in ticks_b})
+    if rates_a != rates_b:
+        rates = f"A {'/'.join(map(str, rates_a))} Hz, B {'/'.join(map(str, rates_b))} Hz"
+        if not args.across_rates:
+            print(f"error: the runs simulated at different rates ({rates}; game.sim_rate): a run to compare "
+                  "against is made at the same rate (HALO_SIM_RATE), or --across-rates compares them anyway")
+            return 2
+        print(f"note: comparing across simulation rates ({rates})")
     symbols = Symbols(args.symbols)
     if args.simulation:
         args.ignore += FRAME_ALLOCATIONS
@@ -314,7 +344,7 @@ def main():
             print(f"the runs' ticks part after {compared} alike: A's tick {tick_a.number}, B's {tick_b.number}")
             return 1
         compared += 1
-        if args.simulation:
+        if args.simulation or args.builds:
             tick_a.frames, tick_b.frames = [], []
         for index, (x, y) in enumerate(zip(tick_a.frames, tick_b.frames)):
             frames_compared += 1
@@ -324,8 +354,15 @@ def main():
                      if x != y and index not in ignored]
         seeds_differ = (tick_a.global_seed, tick_a.local_seed) != (tick_b.global_seed, tick_b.local_seed)
         tick_kinds = ("G", "L", "C") if args.simulation else tuple(TAKER_LABELS)
-        takers_differ = any(takers_apart(kind, tick_a.takers.get(kind), tick_b.takers.get(kind))
-                            for kind in tick_kinds)
+        if args.builds:
+            # (the sites are addresses in each build's code: how many took
+            # each seed in the tick, not where)
+            tick_kinds = ("G", "L")
+            takers_differ = any((tick_a.takers.get(kind) or [0])[0] != (tick_b.takers.get(kind) or [0])[0]
+                                for kind in tick_kinds)
+        else:
+            takers_differ = any(takers_apart(kind, tick_a.takers.get(kind), tick_b.takers.get(kind))
+                                for kind in tick_kinds)
         if not differing and not seeds_differ and not takers_differ:
             previous = (previous + [tick_a])[-args.context:]
             continue
@@ -336,7 +373,9 @@ def main():
             print(f"  game state differs in {len(differing)} allocations: " + ", ".join(names))
         for kind in tick_kinds:
             x, y = tick_a.takers.get(kind), tick_b.takers.get(kind)
-            if takers_apart(kind, x, y):
+            if args.builds and (x or [0])[0] != (y or [0])[0]:
+                print(f"  takers of the {TAKER_LABELS[kind]} differ: A {(x or [0])[0]}, B {(y or [0])[0]}")
+            elif not args.builds and takers_apart(kind, x, y):
                 print(f"  takers of the {TAKER_LABELS[kind]} differ:")
                 place = first_taker_difference((x or [0])[1:], (y or [0])[1:])
                 if place:
@@ -355,7 +394,8 @@ def main():
         return 1
     print(f"{compared} ticks alike (ticks {max(ticks_a[0].number, ticks_b[0].number)}-"
           f"{min(ticks_a[-1].number, ticks_b[-1].number)}), " +
-          ("the simulation only" if args.simulation else f"{frames_compared} frames compared"), end="")
+          ("the game state and the seeds" if args.builds else
+           "the simulation only" if args.simulation else f"{frames_compared} frames compared"), end="")
     if first_frame_difference:
         print(f"; first frame apart: tick {first_frame_difference[0]} frame {first_frame_difference[1]}")
         return 1

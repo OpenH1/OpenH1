@@ -19,6 +19,7 @@ and stages both, with the SDL3 Java sources, for the Gradle project in
 port/android/app, which ``ninja android_apk`` then assembles.
 """
 
+import hashlib
 import os
 import shutil
 import subprocess
@@ -35,6 +36,7 @@ from .build_common import (LINUX_PROFILE, MINIUPNPC_DEFINES, MINIUPNPC_DIR, MUSL
                            opus_cflags, opus_sources, pgo_profile, profile_use_flags, updater_defines, xdk_headers)
 from . import check_host_imports
 from .embed_assets import hud_assets_build, hud_configure_inputs
+from .linux_package import ROOT as REPO_ROOT, notices as release_notices
 from .ninja_syntax import Writer
 from .vulkan_build import VULKAN_DIR, fetch_vulkan_headers, host_vulkan_renderer
 
@@ -63,9 +65,11 @@ ZLIB_DEFINES = ("-DZ_PREFIX", "-Dz_errmsg=z_port_errmsg")
 MUSL_VERSION = "1.2.5"
 MUSL_DIR = THIRD_PARTY / f"musl-{MUSL_VERSION}"
 MUSL_URL = f"https://musl.libc.org/releases/musl-{MUSL_VERSION}.tar.gz"
+# (the download's SHA-256, and the tag's commit, when they were pinned)
 MUSL_SHA256 = "a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4"
 # (as tools/windows_build.py's SDL_VERSION)
 SDL_TAG = "release-3.4.16"
+SDL_COMMIT = "fa2c02bb6e21974a89ea9824bc53c9932abe5f9c"
 SDL_DIR = THIRD_PARTY / "SDL3"
 SDL_URL = "https://github.com/libsdl-org/SDL.git"
 SDL_ANDROID_MOUSE_PATCH = Path("port/android/patches/sdl-relative-mouse.patch")
@@ -207,6 +211,15 @@ def guest_abi_flags(arch: GuestArch, platform_defines: List[str]) -> List[str]:
     return [*arch.target_flags, *GUEST_FLAGS, *guest_defines, *arch.defines, *platform_defines]
 
 
+def check_sdl_commit(directory: Path) -> None:
+    """SDL3's clone refused unless its tag is still the pinned commit."""
+    commit = subprocess.run(["git", "-C", str(directory), "rev-parse", "HEAD"], capture_output=True, text=True,
+                            check=True).stdout.strip()
+    if commit != SDL_COMMIT:
+        shutil.rmtree(directory)
+        raise SystemExit(f"SDL3 {SDL_TAG} is {commit}, not the pinned {SDL_COMMIT}")
+
+
 def fetch_third_party(third_party: Path = THIRD_PARTY) -> None:
     """Download musl and SDL3 (configure time, once). musl's archive is
     checked against MUSL_SHA256 before it is unpacked; a failed download
@@ -237,6 +250,7 @@ def fetch_third_party(third_party: Path = THIRD_PARTY) -> None:
         print(f"Cloning SDL3 {SDL_TAG}")
         subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", SDL_TAG, SDL_URL, str(sdl_dir)],
                        check=True)
+        check_sdl_commit(sdl_dir)
     # SDL 3.4.16's generic mouse listener drops captured relative motion and
     # button transitions unless they are forwarded from captured pointer events.
     # A tree patched by another version of the patch (an older checkout, or
@@ -443,7 +457,15 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     # ---------- guest compilation: C -> object, or for a Darwin target
     # C -> Darwin assembly -> ELF assembly -> object
 
-    if arch.darwin_assembly:
+    # (with configure.py --guest-asm-cache, the conversion and assembly
+    # through tools/guest_asm_cache.py, which keeps their objects: ccache
+    # caches only the compile to Darwin assembly)
+    asm_cache = getattr(sln, "guest_asm_cache", None)
+    if arch.darwin_assembly and asm_cache:
+        guest_cc_command = (f"{compile_launcher(sln)}${prefix}_guest_cc -MMD -MF $out.d $cflags -S $in "
+                            f"-o $out.darwin.s && {python} tools/guest_asm_cache.py {asm_cache}{base_flag} "
+                            f"$out.darwin.s $out.s $out -- ${prefix}_guest_cc --target={asm_target} -c $out.s -o $out")
+    elif arch.darwin_assembly:
         guest_cc_command = (f"{compile_launcher(sln)}${prefix}_guest_cc -MMD -MF $out.d $cflags -S $in "
                             f"-o $out.darwin.s && {python} tools/android_asm_convert.py{base_flag} $out.darwin.s $out.s && "
                             f"${prefix}_guest_cc --target={asm_target} -c $out.s -o $out")
@@ -470,7 +492,9 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     ]
     guest_abi = " ".join(guest_abi_flags(arch, platform_defines) + base_register_flags + configuration_defines(sln))
     guest_code = " ".join(GUEST_CODE_FLAGS)
-    tool_implicit = [*([Path("tools/android_asm_convert.py")] if arch.darwin_assembly else []), *generated_headers]
+    tool_implicit = [*([Path("tools/android_asm_convert.py")] if arch.darwin_assembly else []),
+                     *([Path("tools/guest_asm_cache.py")] if arch.darwin_assembly and asm_cache else []),
+                     *generated_headers]
     if base_register:
         tool_implicit.append(Path("tools/guest_base_register.py"))
     # profile-guided optimisation with the committed Linux profile: the game
@@ -701,6 +725,8 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     n.comment("Android build (ninja android); see port/android/README.md")
     n.variable("android_guest_cc", guest_cc)
     n.variable("android_host_cc", str(host_cc))
+    # (and its C++, astc-encoder's: port/linux/astc)
+    n.variable("android_host_cxx", str(host_cc) + "++")
     n.variable("android_ndk_bin", str(ndk_bin))
 
     # (configure.py --guest-base: the guest's memory at a base the host
@@ -728,9 +754,13 @@ def generate_android_build(n: Writer, sln: Any) -> None:
 
     # ---------- SDL3
 
+    # (through the --compiler-launcher too, as the Linux builds' SDL:
+    # build_common.sdl3_rule)
+    launcher = getattr(sln, "compiler_launcher", None)
     n.rule(
         name="android_sdl3",
         command=(f"cmake -S {SDL_DIR} -B {sdl_build} -G Ninja "
+                 + (f"-DCMAKE_C_COMPILER_LAUNCHER={launcher} " if launcher else "") +
                  f"-DCMAKE_TOOLCHAIN_FILE={ndk}/build/cmake/android.toolchain.cmake "
                  f"-DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-{ANDROID_API} -DCMAKE_BUILD_TYPE=Release "
                  f"-DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF -DSDL_EXAMPLES=OFF "
@@ -787,15 +817,25 @@ def generate_android_build(n: Writer, sln: Any) -> None:
                 variables={"cflags": mbedtls_cflags + (" -w" if source.name != "posix_dtls.c" else "")})
         host_objects.append(obj)
     # the renderer for the command stream, Vulkan's, with the Xbox's texture
-    # decoding
+    # decoding, and the DXT textures as ASTC on the GPUs without BC (most
+    # phones': port/linux/astc), with astc-encoder, the host's C++
+    n.rule(
+        name="android_host_cxx",
+        command="$android_host_cxx -MMD -MF $out.d $cflags -c $in -o $out",
+        description="ANDROID HOST CXX $out",
+        depfile="$out.d",
+        deps="gcc",
+    )
     host_objects += host_vulkan_renderer(n, "android", "ANDROID", BUILD, "android_host_cc",
-                                         host_cflags, vulkan_headers, texture_decoding=True)
+                                         host_cflags, vulkan_headers, texture_decoding=True,
+                                         astc_cxx="android_host_cxx")
     table_obj = host_obj_dir / "host_import_table.c.o"
     n.build(outputs=table_obj, rule="android_host_cc", inputs=host_table_c, variables={"cflags": host_cflags})
     host_objects.append(table_obj)
     n.rule(
         name="android_host_link",
-        command=(f"$android_host_cc -shared -o $out $in -L{sdl_build} "
+        # (C++'s library linked in, astc-encoder's: none to ship beside it)
+        command=(f"$android_host_cxx -static-libstdc++ -shared -o $out $in -L{sdl_build} "
                  + " ".join(f"-l{lib}" for lib in HOST_LIBRARIES)
                  + " -Wl,-z,max-page-size=16384 -Wl,--no-undefined"),
         description="ANDROID HOST LINK $out",
@@ -813,7 +853,18 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     # config.toml (port/android/host/host_main.c)
     staged_brokers = assets_dir / "brokers.txt"
     n.build(outputs=staged_brokers, rule="android_copy", inputs=Path("port/assets/network/brokers.txt"))
-    n.build(outputs="android", rule="phony", inputs=[libmain, staged_sdl, staged_image, staged_brokers])
+    # the licences the APK carries (assets/licenses), as the macOS app does
+    # (Contents/Resources/Licenses): OpenH1's, the AGPL; those of what every
+    # build carries (tools/linux_package.py); and the SDL3 built here. The
+    # release publishes the APK alone (.github/workflows/build.yml)
+    licenses = [(Path("LICENSE"), "LICENSE.txt"),
+                *((source.relative_to(REPO_ROOT), name) for source, name in release_notices("android")),
+                (SDL_DIR / "LICENSE.txt", "SDL3-LICENSE.txt")]
+    staged_licenses = [assets_dir / "licenses" / name for _, name in licenses]
+    for (source, _), staged in zip(licenses, staged_licenses):
+        n.build(outputs=staged, rule="android_copy", inputs=source)
+    staged_assets = [staged_image, staged_brokers, *staged_licenses]
+    n.build(outputs="android", rule="phony", inputs=[libmain, staged_sdl, *staged_assets])
 
     apk = PORT_DIR / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
     sdl_android_mouse_listener = SDL_DIR / SDL_ANDROID_MOUSE_LISTENER
@@ -825,7 +876,7 @@ def generate_android_build(n: Writer, sln: Any) -> None:
         description="ANDROID GRADLE $out",
         pool="console",
     )
-    n.build(outputs=apk, rule="android_gradle", inputs=[libmain, staged_sdl, staged_image, staged_brokers],
+    n.build(outputs=apk, rule="android_gradle", inputs=[libmain, staged_sdl, *staged_assets],
             implicit=[sdl_android_mouse_listener])
     n.build(outputs="android_apk", rule="phony", inputs=apk)
     n.newline()

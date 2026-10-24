@@ -10,9 +10,17 @@ overlay needs to know: whether it is in a game with no menu or cinematic up
 and the input.touch_controls setting (host_touch_scene), the profile's
 button mapping, which names the buttons (host_touch_bindings), and how hard
 port 0 rumbles.
+
+The iOS app's overlay (port/ios/touch_controls.m, a UIKit view over SDL's)
+hands its state over through the same functions, host_touch.h's, without
+JNI.
 */
 
+#include "host_touch.h"
+
+#ifdef __ANDROID__
 #include <jni.h>
+#endif
 #include <pthread.h>
 #include <stdint.h>
 #include <string.h>
@@ -62,17 +70,12 @@ static uint32_t touch_inputs(const int32_t *state)
 	return ((uint32_t)state[6] & 0x7fff) | (state[4] ? 1u << 15 : 0) | (state[5] ? 1u << 16 : 0);
 }
 
-JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeState(
-	JNIEnv *env, jclass cls, jint lx, jint ly, jint rx, jint ry,
-	jint lt, jint rt, jint buttons)
+void host_touch_set_state(const int32_t *next)
 {
-	int32_t next[] = { lx, ly, rx, ry, lt, rt, buttons };
 	uint32_t pressed;
 	int64_t now = now_ns();
 	int input;
 
-	(void)env;
-	(void)cls;
 	pthread_mutex_lock(&touch_lock);
 	pressed = touch_inputs(next) & ~touch_inputs(touch_state);
 	for (input = 0; input < TOUCH_INPUTS; input++)
@@ -80,7 +83,7 @@ JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeState(
 		if (pressed & (1u << input))
 			touch_pressed_ns[input] = now;
 	}
-	memcpy(touch_state, next, sizeof(next));
+	memcpy(touch_state, next, sizeof(touch_state));
 	pthread_mutex_unlock(&touch_lock);
 }
 
@@ -106,11 +109,8 @@ void host_touch_read(int32_t *state)
 	pthread_mutex_unlock(&touch_lock);
 }
 
-JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeLook(
-	JNIEnv *env, jclass cls, jfloat dx, jfloat dy)
+void host_touch_add_look(float dx, float dy)
 {
-	(void)env;
-	(void)cls;
 	pthread_mutex_lock(&touch_lock);
 	look_delta[0] += dx;
 	look_delta[1] += dy;
@@ -118,11 +118,8 @@ JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeLook(
 	pthread_mutex_unlock(&touch_lock);
 }
 
-JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeGyro(
-	JNIEnv *env, jclass cls, jfloat dx, jfloat dy)
+void host_touch_add_gyro(float dx, float dy)
 {
-	(void)env;
-	(void)cls;
 	pthread_mutex_lock(&touch_lock);
 	gyro_delta[0] += dx;
 	gyro_delta[1] += dy;
@@ -130,10 +127,8 @@ JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeGyro(
 	pthread_mutex_unlock(&touch_lock);
 }
 
-JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeLookReset(JNIEnv *env, jclass cls)
+void host_touch_look_reset(void)
 {
-	(void)env;
-	(void)cls;
 	pthread_mutex_lock(&touch_lock);
 	look_delta[0] = look_delta[1] = 0.0f;
 	gyro_delta[0] = gyro_delta[1] = 0.0f;
@@ -172,13 +167,10 @@ void host_touch_rumble(unsigned int low, unsigned int high)
 	pthread_mutex_unlock(&touch_lock);
 }
 
-/* the phone's vibration strength, 0 or 64..255 */
-JNIEXPORT jint JNICALL Java_com_halo_decomp_TouchControls_nativeRumble(JNIEnv *env, jclass cls)
+int host_touch_rumble_strength(void)
 {
 	int amplitude;
 
-	(void)env;
-	(void)cls;
 	pthread_mutex_lock(&touch_lock);
 	amplitude = now_ns() - rumble_ns > TOUCH_STALE_NS ? 0 : rumble_amplitude;
 	pthread_mutex_unlock(&touch_lock);
@@ -202,19 +194,76 @@ void host_touch_bindings(const int32_t *controls)
 	pthread_mutex_unlock(&touch_lock);
 }
 
+int host_touch_bindings_read(int32_t *controls)
+{
+	int serial;
+
+	pthread_mutex_lock(&touch_lock);
+	memcpy(controls, touch_bindings, sizeof(touch_bindings));
+	serial = touch_bindings_serial;
+	pthread_mutex_unlock(&touch_lock);
+	return serial;
+}
+
+int host_touch_scene_read(void)
+{
+	return touch_scene;
+}
+
+#ifdef __ANDROID__
+/* ---------- the Android overlay's (TouchControls.java's natives) */
+
+JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeState(
+	JNIEnv *env, jclass cls, jint lx, jint ly, jint rx, jint ry,
+	jint lt, jint rt, jint buttons)
+{
+	int32_t next[] = { lx, ly, rx, ry, lt, rt, buttons };
+
+	(void)env;
+	(void)cls;
+	host_touch_set_state(next);
+}
+
+JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeLook(
+	JNIEnv *env, jclass cls, jfloat dx, jfloat dy)
+{
+	(void)env;
+	(void)cls;
+	host_touch_add_look(dx, dy);
+}
+
+JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeGyro(
+	JNIEnv *env, jclass cls, jfloat dx, jfloat dy)
+{
+	(void)env;
+	(void)cls;
+	host_touch_add_gyro(dx, dy);
+}
+
+JNIEXPORT void JNICALL Java_com_halo_decomp_TouchControls_nativeLookReset(JNIEnv *env, jclass cls)
+{
+	(void)env;
+	(void)cls;
+	host_touch_look_reset();
+}
+
+/* the phone's vibration strength, 0 or 64..255 */
+JNIEXPORT jint JNICALL Java_com_halo_decomp_TouchControls_nativeRumble(JNIEnv *env, jclass cls)
+{
+	(void)env;
+	(void)cls;
+	return host_touch_rumble_strength();
+}
+
 /* the mapping into controls[16]; returns its count of changes (0 before the
 game has sent it) */
 JNIEXPORT jint JNICALL Java_com_halo_decomp_TouchControls_nativeBindings(JNIEnv *env, jclass cls,
 	jintArray controls)
 {
 	int32_t copy[TOUCH_BUTTONS];
-	int serial;
+	int serial = host_touch_bindings_read(copy);
 
 	(void)cls;
-	pthread_mutex_lock(&touch_lock);
-	memcpy(copy, touch_bindings, sizeof(copy));
-	serial = touch_bindings_serial;
-	pthread_mutex_unlock(&touch_lock);
 	if (controls && (*env)->GetArrayLength(env, controls) >= TOUCH_BUTTONS)
 		(*env)->SetIntArrayRegion(env, controls, 0, TOUCH_BUTTONS, (const jint *)copy);
 	return serial;
@@ -225,5 +274,6 @@ JNIEXPORT jint JNICALL Java_com_halo_decomp_TouchControls_nativeScene(JNIEnv *en
 {
 	(void)env;
 	(void)cls;
-	return touch_scene;
+	return host_touch_scene_read();
 }
+#endif

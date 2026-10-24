@@ -596,6 +596,22 @@ void rasterizer_environment_shadow_draw(
 	struct vertex_buffer const *vertex_buffer);
 void rasterizer_environment_shadows_end(
 	void);
+/* port: the shadow atlas (rasterizer_xbox_shadows.c): the frame's casters
+drawn into it if begin returns TRUE; after each caster's models, its region
+(NONE: its shadow was drawn into the map as before, its receivers to be
+drawn now); after every caster, the chain over the atlas; then each
+region's receivers, after receive */
+#define RASTERIZER_SHADOW_ATLAS_REGIONS 9
+boolean rasterizer_shadow_atlas_begin(
+	void);
+short rasterizer_shadow_atlas_caster_end(
+	void);
+void rasterizer_shadow_atlas_convolve(
+	void);
+void rasterizer_shadow_atlas_receive(
+	short region);
+void rasterizer_shadow_atlas_end(
+	void);
 void rasterizer_environment_diffuse_textures_end(
 	void);
 void rasterizer_environment_diffuse_texture_draw(

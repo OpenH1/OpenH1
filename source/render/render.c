@@ -90,6 +90,7 @@ symbols in this file:
 #include "structures/structures.h"
 /* port: static transparent part links for the newly loaded model tags. */
 #include "models/models.h"
+#include "structure_culling.h" /* port: port/linux/game/structure_culling.c */
 
 #ifdef HALO_VR
 #include "../../port/linux/src/vr.h"
@@ -175,6 +176,7 @@ void vr_seat_blink_draw(void);
 void vr_death_draw(void);
 void vr_headwall_draw(void);
 boolean vr_headwall_faded(void);
+void vr_loading_fade_draw(void);
 /* the view in a raised scope, or the smart-link's on the visor while zoomed
 (port/linux/game/vr_scope.c), drawn before the eyes into an image of its
 own: the eye pass's state (the clusters seen, the lights, the scene) is then
@@ -182,6 +184,8 @@ the eyes' */
 boolean vr_scope_camera(struct render_camera *camera, struct render_camera *rasterizer_camera);
 /* port: its mono pipelines prepared at map load too (vr_scope.c) */
 void vr_scope_enumerate_camera(struct render_camera *camera, struct render_camera *rasterizer_camera);
+/* the smart-link window's zoomed view drawn over the scope's (vr_scope.c) */
+void vr_scope_draw_hud(void);
 void vr_render_scope_begin(void);
 void vr_render_scope_end(void);
 /* port/linux/game/vr_cabin.c: a feed cockpit's display, told to vr.c */
@@ -214,6 +218,8 @@ void render_initialize(
 	void)
 {
 	render_objects_initialize();
+	/* port: the structure culling tests display.structure_culling asks for */
+	structure_culling_initialize();
 }
 
 void render_initialize_for_new_map(
@@ -533,7 +539,10 @@ static void render_window(
 #ifdef HALO_VR
 		if (render_vr_scope_pass)
 		{
-			/* the scope's own reticle is drawn over its image (xgpu_gl.c) */
+			/* the scope's own reticle is drawn over its image (xgpu_gl.c),
+			or the smart-link's window the weapon's zoomed view, as the
+			flat screen shows it (port/linux/game/vr_scope.c) */
+			vr_scope_draw_hud();
 		}
 		else if (render_vr_eye_pass)
 		{
@@ -549,6 +558,9 @@ static void render_window(
 			/* the view faded with the head in a wall
 			(port/linux/game/vr_headwall.c) */
 			vr_headwall_draw();
+			/* the level coming up out of its loading screen's dark
+			(port/linux/game/loading_scene.c) */
+			vr_loading_fade_draw();
 			/* the crosshairs where the aim meets the world, in the eyes */
 			vr_render_crosshairs();
 			/* the teammates' triangles, the players' names and the
@@ -561,11 +573,16 @@ static void render_window(
 		/* port: (port/linux/game/render_enumerate.c) */
 		render_enumerate_lens_flares();
 		rasterizer_lens_flares_draw();
-		/* port: the 3D view antialiased (display.anti_aliasing), before the
-		HUD and menus are drawn over it (not the VR mode's eye pass: its
-		targets have a layer for each eye) */
+		/* port: the 3D view tone mapped (display.hdr) and antialiased
+		(display.anti_aliasing), before the HUD and menus are drawn over it
+		(not the VR mode's eye pass: its targets have a layer for each eye) */
 		if (rasterizer_target == _render_target_primary)
 		{
+			halo_screen_tone_map(
+				rasterizer_camera->viewport_bounds.x0,
+				rasterizer_camera->viewport_bounds.y0,
+				rasterizer_camera->viewport_bounds.x1,
+				rasterizer_camera->viewport_bounds.y1);
 			halo_screen_anti_alias(
 				rasterizer_camera->viewport_bounds.x0,
 				rasterizer_camera->viewport_bounds.y0,

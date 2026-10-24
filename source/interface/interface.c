@@ -89,6 +89,7 @@ symbols in this file:
 #include "interface/interface.h"
 #include "interface/hud_messaging.h"
 #include "interface/terminal.h"
+#include "interface/virtual_keyboard.h"
 #include "interface/weapon_hud_interface_definition.h"
 #include "main/main.h"
 #include "math/real_math.h"
@@ -287,6 +288,10 @@ void interface_dispose_from_old_map(
 	draw_string_dispose_from_old_map();
 	hud_dispose_from_old_map();
 	first_person_weapons_dispose_from_old_map();
+	/* port: and the virtual keyboard, whose keyboard tag was the old map's
+	(ui.map's: main_screen_shell_load sets it up again); a game map has none,
+	so it cannot open there (the PC menus' Settings, from the pause menu) */
+	virtual_keyboard_dispose();
 
 	return;
 }
@@ -567,14 +572,14 @@ void interface_draw_bitmap_modulated(
 	return;
 }
 
-void interface_draw_screen(
+/* port: the weapon HUD's screen effect (its mask, convolution, light
+enhancement and desaturation) on its own, for the VR mode's smart-link
+window too (interface_draw_vr_scope_screen_effect) */
+static void interface_draw_weapon_screen_effect(
 	void)
 {
 	real flashlight_power;
 	long weapon_hud_index;
-
-	if (render.local_player_index == NONE)
-		return;
 
 	weapon_hud_index = interface_get_weapon_hud_index(&flashlight_power);
 	if (weapon_hud_index != NONE)
@@ -720,11 +725,35 @@ void interface_draw_screen(
 		rasterizer_screen_effect(NULL);
 	}
 
+	return;
+}
+
+void interface_draw_screen(
+	void)
+{
+	if (render.local_player_index == NONE)
+		return;
+
+	interface_draw_weapon_screen_effect(); /* port: (above) */
 	hud_draw_screen();
 	game_engine_post_rasterize();
 
 	return;
 }
+
+#ifdef HALO_VR
+/* port: the weapon's zoomed screen effect (the scope's mask: dark and warped
+outside its frame) over the smart-link window's view in the VR mode's scope
+pass (port/linux/game/vr_scope.c), as the flat screen draws it zoomed */
+void interface_draw_vr_scope_screen_effect(
+	void)
+{
+	if (render.local_player_index != NONE)
+		interface_draw_weapon_screen_effect();
+
+	return;
+}
+#endif
 
 void interface_draw_bitmap_modulated_p32(
 	struct bitmap_data const *bitmap,

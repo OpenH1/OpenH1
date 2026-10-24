@@ -28,9 +28,23 @@ as OpenGL's mip_composite_get makes it.
 
 The VR host supplies the eyes' targets and transforms, and consumes their
 images for the OpenXR layers. The enhanced dynamic lights' block and cells
-are the draw set's, and their glows a pass of their own, as OpenGL's.
+are the draw set's, and their glows a pass of their own, as OpenGL's; in the
+VR mode's eyes, the light each bolt scatters toward each eye. The VR mode's
+effects (a pipeline whose pixel key has vr_effect: xgpu_spirv.h) sample the
+scene's depth (texture 2, in a pass that writes none: xgpu_vulkan_draw's
+reads_depth) and their bitmap's thickness (texture 3, baked by the texture
+cache), and reconstruct the world from each view's unprojection
+(xgpu_vulkan_effects.h) in their uniforms.
 Anti-aliasing's passes are xgpu_vulkan_post.c's, over the target's pixels as
 the record names them, in its first layer, as OpenGL's are.
+
+display.hdr (docs/hdr.md): where the core's draws can read their colour
+attachment (its capabilities' color_read: the desktop's), the stream says it
+draws HDR. The front end's back buffer is then RGBA16F, read where it is
+drawn; a draw whose tag blends in its shader has its pipeline's blending
+off and reads the pixel it draws over (xgpu_spirv.c); the tone map is a
+draw in the view's pass (xgpu_vulkan_post.c), the encoding the core's, for
+its swapchain.
 */
 
 #include "host.h"
@@ -38,9 +52,11 @@ the record names them, in its first layer, as OpenGL's are.
 #include "host_render_stream.h"
 #include "xgpu.h"
 #include "xgpu_backend.h"
+#include "xgpu_hdr.h"
 #include "xgpu_shader.h"
 #include "xgpu_spirv.h"
 #include "xgpu_vulkan.h"
+#include "xgpu_vulkan_effects.h"
 #include "xgpu_vulkan_loading.h"
 #include "xgpu_vulkan_post.h"
 #include "xgpu_vulkan_stream.h"
@@ -107,6 +123,9 @@ enum
 
 /* ---------- state */
 
+/* every stage's texture looked at again (stream.textures_dirty) */
+#define TEXTURES_ALL 15u
+
 struct stream_target
 {
 	struct xgpu_vulkan_image *image;
@@ -116,6 +135,9 @@ struct stream_target
 	int samples, unresolved;
 	uint32_t width, height, layers;
 	int depth, borrowed;
+	/* its colour's XGPU_VULKAN_FORMAT_* (display.hdr's back buffer:
+	RGBA16F, read where it is drawn) */
+	uint8_t format;
 	/* counts the draws and clears into it */
 	uint32_t written;
 };
@@ -136,6 +158,12 @@ struct stream_pipeline
 	/* the inputs its vertex shader reads */
 	uint16_t inputs;
 	struct variant variant;
+	/* its pixel shader is a VR effect's (XGPU_SPIRV_EFFECT_*: it samples
+	the scene's depth and the bitmap's thickness) */
+	uint8_t effect;
+	/* and a z-sprite's (xgpu_shader.h, xgpu_pixel_program_depth_stage),
+	which tests the depth itself, by its fade: xgpu_spirv.c */
+	uint8_t effect_tests_depth;
 };
 
 struct program_entry
@@ -191,6 +219,13 @@ static struct
 	struct xgpu_stream_draw_uniforms uniforms;
 	uint32_t uniforms_serial;
 	int uniforms_set, uniforms_dirty;
+	/* the uniforms uploaded have the VR effects' views (effect_views), for
+	the projection as it is; and the views, made for the projection, the
+	screen conversion, the viewport, the depth range and the eyes as they
+	are (effect_valid), and the conversion's uniforms they were made for */
+	int uniforms_effect, effect_valid;
+	float effect_unproject[4][4][4], effect_eye[4][4];
+	float effect_scale[4], effect_offset[4], effect_screen_offset;
 	float constants[192][4];
 	int constants_dirty;
 	struct xgpu_vulkan_dynamic_state dynamic;
@@ -199,16 +234,27 @@ static struct
 
 	/* the stages as set, their samplers' border axes the shader draws, and
 	what is bound for them (looked at again where a stage changed, a
-	watched page was written, or a target drawn into is sampled) */
+	watched page was written, or a target drawn into is sampled): the
+	stages to look at again (bits; TEXTURES_ALL) */
 	struct host_render_texture_stage stages[4];
 	uint8_t border[4];
-	int textures_dirty, feedback_bound;
+	unsigned int textures_dirty;
+	int feedback_bound;
 	uint32_t textures_serial;
 	struct xgpu_vulkan_texture textures[4];
 	/* the copy of a target drawn into that a draw samples: of which
 	target, as of which of its draws */
 	struct xgpu_vulkan_image *feedback;
 	uint32_t feedback_target, feedback_written;
+	/* texture 0's thickness, for the VR effects (effect_textures), and the
+	stage, the watched pages' serial and the texture cache's thickness epoch
+	it was looked up for (it is looked up again once any changes: the
+	texture another, or read again, or the image destroyed: its texture let
+	go of, which may come back for the same stage and serial) */
+	struct xgpu_vulkan_image *thickness;
+	int thickness_known;
+	struct xgpu_stream_texture_stage thickness_stage;
+	uint32_t thickness_serial, thickness_epoch;
 	struct composite *composites;
 
 	/* the vertex input: each input's attribute, the streams, the inputs'
@@ -225,6 +271,8 @@ static struct
 	uint32_t views, base;
 	int hud_group;
 	uint32_t back_buffer;
+	/* display.hdr: the frames are HDR (stream_hdr) */
+	int hdr_active;
 	int preparing, prepared;
 	uint64_t prepare_pipelines;
 	/* the dynamic lights' glows' shaders for 1, 2 and 4 layers
@@ -355,7 +403,7 @@ static void target_forget(uint32_t number)
 	composites_forget(number);
 	if (stream.feedback_target == number)
 		stream.feedback_target = 0;
-	stream.textures_dirty = 1;
+	stream.textures_dirty = TEXTURES_ALL;
 }
 
 static struct xgpu_vulkan_image *target_image_make(const struct stream_target *target, int samples)
@@ -364,8 +412,11 @@ static struct xgpu_vulkan_image *target_image_make(const struct stream_target *t
 
 	memset(&description, 0, sizeof(description));
 	description.type = target->layers > 1 ? XGPU_VULKAN_IMAGE_2D_ARRAY : XGPU_VULKAN_IMAGE_2D;
-	description.format = target->depth ? XGPU_VULKAN_FORMAT_D24S8 : XGPU_VULKAN_FORMAT_BGRA8;
+	description.format = target->depth ? XGPU_VULKAN_FORMAT_D24S8 :
+		target->format == XGPU_VULKAN_FORMAT_RGBA16F ? XGPU_VULKAN_FORMAT_RGBA16F : XGPU_VULKAN_FORMAT_BGRA8;
 	description.usage = XGPU_VULKAN_USAGE_SAMPLED | XGPU_VULKAN_USAGE_TARGET;
+	if (description.format == XGPU_VULKAN_FORMAT_RGBA16F)
+		description.usage |= XGPU_VULKAN_USAGE_INPUT;
 	description.samples = (uint8_t)(samples > 1 ? samples : 0);
 	description.width = target->width;
 	description.height = target->height;
@@ -403,6 +454,8 @@ static void stream_target_create(void *context, const struct xgpu_stream_target_
 	target->height = record->height;
 	target->layers = record->layers ? record->layers : 1;
 	target->depth = record->depth != 0;
+	target->format = record->format == XGPU_FORMAT_RGBA16F && stream.capabilities.color_read && !target->depth ?
+		XGPU_VULKAN_FORMAT_RGBA16F : XGPU_VULKAN_FORMAT_BGRA8;
 	target->image = target_image_make(target, 0);
 	if (!target->image)
 	{
@@ -410,7 +463,7 @@ static void stream_target_create(void *context, const struct xgpu_stream_target_
 		return;
 	}
 	stream.targets[record->target] = target;
-	stream.textures_dirty = 1;
+	stream.textures_dirty = TEXTURES_ALL;
 }
 
 struct xgpu_vulkan_image *xgpu_vulkan_stream_target(uint32_t number)
@@ -455,12 +508,16 @@ void xgpu_vulkan_stream_set_vr_target(uint32_t number, struct xgpu_vulkan_image 
 	target->height = description->height;
 	target->layers = description->type == XGPU_VULKAN_IMAGE_2D_ARRAY ? description->depth_or_layers : 1;
 	target->written++;
-	stream.textures_dirty = stream.uniforms_dirty = 1;
+	stream.textures_dirty = TEXTURES_ALL;
+	stream.uniforms_dirty = 1;
+	stream.uniforms_effect = stream.effect_valid = 0;
 }
 
 void xgpu_vulkan_stream_vr_changed(void)
 {
-	stream.uniforms_dirty = stream.textures_dirty = 1;
+	stream.uniforms_dirty = 1;
+	stream.textures_dirty = TEXTURES_ALL;
+	stream.uniforms_effect = stream.effect_valid = 0;
 }
 
 static void stream_target_delete(void *context, uint32_t target)
@@ -535,7 +592,7 @@ static void stream_set_targets(void *context, const struct xgpu_stream_set_targe
 	stream.base = record->views == -2 ? 1 : record->base;
 	stream.hud_group = record->hud_group;
 	/* (whether a stage samples the target drawn into) */
-	stream.textures_dirty = 1;
+	stream.textures_dirty = TEXTURES_ALL;
 	targets_bind();
 	/* The game's clears of some of the colour's channels are of alpha alone
 	(a fog screen's, and a split screen's window's end, which the map's
@@ -554,15 +611,16 @@ static void stream_clear(void *context, const struct xgpu_stream_clear *record)
 	if (target_get(stream.color))
 		target_get(stream.color)->written++;
 	targets_bind();
-	/* some of the colour's channels: drawn, through a pipeline made as the
-	map loads (not drawn then: the enumeration's frame is not seen) */
-	if (stream.preparing && (parts & XGPU_VULKAN_CLEAR_COLOR) &&
-		(parts & XGPU_VULKAN_CLEAR_CHANNELS) != XGPU_VULKAN_CLEAR_CHANNELS)
+	/* Preparation clears nothing: the enumeration's frame is not seen, and
+	its draws are not drawn, so its clears were its only GPU work, each a
+	pass of the whole target that a tiler loads and stores (1585 passes for
+	Blood Gulch, 0.4 s of the Steam Frame's preparation). Some of the
+	colour's channels are drawn, through a pipeline made now. */
+	if (stream.preparing)
 	{
-		(void)xgpu_vulkan_clear_prepare(parts);
-		parts &= ~(uint32_t)(XGPU_VULKAN_CLEAR_COLOR | XGPU_VULKAN_CLEAR_CHANNELS);
-		if (!(parts & (XGPU_VULKAN_CLEAR_DEPTH | XGPU_VULKAN_CLEAR_STENCIL)))
-			return;
+		if ((parts & XGPU_VULKAN_CLEAR_COLOR) && (parts & XGPU_VULKAN_CLEAR_CHANNELS) != XGPU_VULKAN_CLEAR_CHANNELS)
+			(void)xgpu_vulkan_clear_prepare(parts);
+		return;
 	}
 	before = xgpu_vulkan_pipeline_count();
 	xgpu_vulkan_clear((const int32_t (*)[4])record->rectangles, record->count, parts, record->color, record->depth,
@@ -585,6 +643,9 @@ static void stream_clear_target(void *context, const struct xgpu_stream_clear_ta
 	if (!target)
 		return;
 	target->written++;
+	/* (not while preparing, as stream_clear) */
+	if (stream.preparing)
+		return;
 	whole[0][0] = whole[0][1] = 0;
 	whole[0][2] = (int32_t)target->width;
 	whole[0][3] = (int32_t)target->height;
@@ -648,6 +709,16 @@ static VkSampler sampler_get(const struct xgpu_stream_sampler *from, uint8_t axe
 	return xgpu_vulkan_sampler(&to);
 }
 
+/* a stage of a palettized Xbox texture, whose palette's colours are read as
+its texture is looked for (xgpu_vulkan_textures.c): a palette is not
+watched, so such a stage is looked at again whenever the stages are set,
+as every stage was */
+static int stage_palettized(const struct xgpu_stream_texture_stage *stage)
+{
+	return stage->source == _source_texture && stage->palette &&
+		((stage->resource_format & D3DFORMAT_FORMAT_MASK) >> D3DFORMAT_FORMAT_SHIFT) == 0x0b;
+}
+
 static void stream_set_textures(void *context, const struct host_render_texture_stage stages[4])
 {
 	int index;
@@ -659,12 +730,16 @@ static void stream_set_textures(void *context, const struct host_render_texture_
 
 		if (memcmp(&stream.stages[index].stage.sampler, &stage->sampler, sizeof(stage->sampler)))
 			stream.uniforms_dirty = 1;
+		/* (only the stages that changed are looked at again: the guest
+		sends all four when any changes, and a draw's textures were a
+		noticeable part of the render thread's time on a headset) */
+		if (memcmp(&stream.stages[index], &stages[index], sizeof(stages[index])) || stage_palettized(stage))
+			stream.textures_dirty |= 1u << index;
 		stream.stages[index] = stages[index];
 		/* (the shader draws the border of a 2D or 3D texture's sampler) */
 		stream.border[index] = stage->source != _source_none && stage->sampler_type != _xgpu_sampler_cube &&
 			stage->sampler_type != _xgpu_sampler_2d_layered ? border_axes(&stage->sampler) : 0;
 	}
-	stream.textures_dirty = 1;
 }
 
 /* a copy of a target the draw draws into, which it samples (Vulkan cannot
@@ -793,9 +868,17 @@ static struct xgpu_vulkan_image *composite_get(const struct host_render_texture_
 static void textures_bind(void)
 {
 	uint32_t serial = host_memory_watch_serial();
+	unsigned int dirty = stream.textures_dirty;
 	int index;
 
-	if (!stream.textures_dirty && serial == stream.textures_serial && !stream.feedback_bound)
+	/* (a watched page written: any texture may be read again; a target
+	drawn into sampled: its copy is checked at each draw. Otherwise the
+	stages that did not change keep what they have: each stage's image
+	and sampler are its own stage's alone, and the targets' changes mark
+	them all) */
+	if (serial != stream.textures_serial || stream.feedback_bound)
+		dirty = TEXTURES_ALL;
+	if (!dirty)
 		return;
 	stream.textures_dirty = 0;
 	stream.textures_serial = serial;
@@ -806,6 +889,8 @@ static void textures_bind(void)
 		const struct xgpu_stream_texture_stage *stage = &source->stage;
 		struct xgpu_vulkan_texture *texture = &stream.textures[index];
 
+		if (!(dirty & (1u << index)))
+			continue;
 		texture->image = NULL;
 		texture->kind = stage->sampler_type == _xgpu_sampler_3d ? XGPU_VULKAN_IMAGE_3D :
 			stage->sampler_type == _xgpu_sampler_cube ? XGPU_VULKAN_IMAGE_CUBE :
@@ -858,6 +943,8 @@ static void textures_bind(void)
 XGPU_MODEL_LIGHT_REGISTER: c[-82], c[-79] to c[-69]) */
 #define MODEL_LIGHT_FIRST (96 - 82)
 #define MODEL_LIGHT_LAST (96 - 69)
+/* the screen conversion's registers (c[-38], c[-37]) */
+#define SCREEN_CONVERSION (96 - 38)
 
 static void stream_set_constants(void *context, const struct xgpu_stream_constants *record)
 {
@@ -872,6 +959,9 @@ static void stream_set_constants(void *context, const struct xgpu_stream_constan
 		return;
 	memcpy(stream.constants[record->first], record->values, (size_t)count * sizeof(stream.constants[0]));
 	stream.constants_dirty = 1;
+	/* (the world's projection or the screen conversion: the effects' views) */
+	if (record->first < 4 || (record->first <= SCREEN_CONVERSION + 1 && record->first + count > SCREEN_CONVERSION))
+		stream.uniforms_effect = stream.effect_valid = 0;
 	if (record->first <= MODEL_LIGHT_LAST && record->first + count > MODEL_LIGHT_FIRST)
 		stream.uniforms_dirty = 1;
 }
@@ -956,6 +1046,7 @@ static void pixel_program_convert(const struct xgpu_stream_pixel_program *wire, 
 	program->dynamic_lights = wire->dynamic_lights;
 	program->multiview = wire->multiview;
 	program->source_blend = wire->source_blend;
+	program->hdr = wire->hdr;
 }
 
 /* debug.gpu_dump_shaders (HALO_VULKAN_SHADERS) writes each module into its
@@ -984,6 +1075,41 @@ static uint32_t bytes_hash(const void *data, size_t size)
 	for (index = 0; index < size; index++)
 		hash = (hash ^ bytes[index]) * 16777619u;
 	return hash;
+}
+
+/* how a VR effect fades under its pipeline's blend (XGPU_SPIRV_FADE_*): to
+its blend's nothing, which leaves the target as it is. The effects' blends
+(rasterizer_xbox.c's framebuffer blend functions): alpha blend, multiply,
+double multiply, add, subtract, min, max, alpha-multiply add. */
+static int effect_fade(const struct xgpu_stream_pipeline_key *key)
+{
+	if (!key->blend)
+		return XGPU_SPIRV_FADE_NONE;
+	switch (key->blend_operation)
+	{
+	case XGPU_BLEND_MIN:
+		return XGPU_SPIRV_FADE_TO_WHITE;
+	case XGPU_BLEND_MAX:
+	case XGPU_BLEND_REVERSE_SUBTRACT:
+		return XGPU_SPIRV_FADE_COLOR;
+	case XGPU_BLEND_ADD:
+		break;
+	default:
+		return XGPU_SPIRV_FADE_NONE;
+	}
+	if (key->blend_source == XGPU_BLEND_SOURCE_ALPHA &&
+		(key->blend_destination == XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA || key->blend_destination == XGPU_BLEND_ONE))
+		return XGPU_SPIRV_FADE_ALPHA;
+	if (key->blend_source == XGPU_BLEND_ONE && key->blend_destination == XGPU_BLEND_ONE_MINUS_SOURCE_ALPHA)
+		return XGPU_SPIRV_FADE_COLOR_ALPHA;
+	if (key->blend_destination == XGPU_BLEND_ONE)
+		return XGPU_SPIRV_FADE_COLOR;
+	if ((key->blend_source == XGPU_BLEND_DESTINATION_COLOR && key->blend_destination == XGPU_BLEND_ZERO) ||
+		(key->blend_source == XGPU_BLEND_ZERO && key->blend_destination == XGPU_BLEND_SOURCE_COLOR))
+		return XGPU_SPIRV_FADE_TO_WHITE;
+	if (key->blend_source == XGPU_BLEND_DESTINATION_COLOR && key->blend_destination == XGPU_BLEND_SOURCE_COLOR)
+		return XGPU_SPIRV_FADE_TO_GREY;
+	return XGPU_SPIRV_FADE_NONE;
 }
 
 /* a pipeline's shaders for a variant: made if the pipeline has none for it;
@@ -1024,6 +1150,9 @@ static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_str
 	options.multiview = key->views;
 	options.foveated = variant->foveated;
 	options.count_samples = key->pixel.count_samples != 0;
+	/* (display.hdr: a draw blending in its shader reads its target's
+	pixel, each sample's own) */
+	options.input_samples = key->samples > 1 ? key->samples : 1;
 	options.debug_texture0 = getenv("HALO_GPU_DEBUG_T0") != NULL;
 	options.debug_flat = getenv("HALO_GPU_DEBUG_FLAT") != NULL;
 	program = malloc(sizeof(*program));
@@ -1041,12 +1170,21 @@ static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_str
 	}
 	free(program);
 	pixel_program_convert(&definition->pixel_program, &pixel);
+	/* (a VR effect's, where its program leaves the effects' textures free) */
+	entry->effect = entry->effect_tests_depth = 0;
+	if (key->pixel.vr_effect && key->pixel.vr_effect <= XGPU_SPIRV_EFFECT_THICK && xgpu_spirv_effect_possible(&pixel))
+	{
+		entry->effect = key->pixel.vr_effect;
+		entry->effect_tests_depth = xgpu_pixel_program_depth_stage(&pixel) != 0;
+		options.effect = key->pixel.vr_effect;
+		options.effect_fade = effect_fade(key);
+	}
 
 	if (xgpu_spirv_pixel_shader(&pixel, &options, &module))
 	{
-		snprintf(name, sizeof(name), "ps_%08x_%02x%02x%02x%02x_fovea%u", bytes_hash(&definition->pixel_program,
+		snprintf(name, sizeof(name), "ps_%08x_%02x%02x%02x%02x_fovea%u_effect%u%u", bytes_hash(&definition->pixel_program,
 			sizeof(definition->pixel_program)), options.border[0], options.border[1], options.border[2], options.border[3],
-			variant->foveated);
+			variant->foveated, (unsigned)options.effect, (unsigned)options.effect_fade);
 		shader_dump(name, &module);
 		entry->pixel_shader = xgpu_vulkan_shader(module.words, module.count);
 		free(module.words);
@@ -1107,6 +1245,11 @@ static int stream_pipeline(void *context, uint32_t id, const struct xgpu_stream_
 	pipeline->depth_test = key->depth_test;
 	pipeline->depth_function = key->depth_function;
 	pipeline->depth_write = key->depth_write;
+	/* (a VR z-sprite's puff is nearer than its card, which the scene's
+	depth would cut where it stands on a floor: its shader tests the depth
+	it computes against the scene's, sampled, and writes none) */
+	if (entry->effect_tests_depth)
+		pipeline->depth_test = pipeline->depth_write = 0;
 	pipeline->stencil_test = key->stencil_test;
 	pipeline->stencil_function = key->stencil_function;
 	pipeline->stencil_fail = key->stencil_fail;
@@ -1119,8 +1262,14 @@ static int stream_pipeline(void *context, uint32_t id, const struct xgpu_stream_
 	pipeline->cull_front = key->cull_front;
 	pipeline->fill = key->fill;
 	pipeline->depth_bias = key->depth_bias;
-	/* (the targets' formats: XGPU_FORMAT_NONE, _BGRA8, _D24S8) */
-	pipeline->color_format = key->color_format == 1 ? XGPU_VULKAN_FORMAT_BGRA8 : XGPU_VULKAN_FORMAT_NONE;
+	/* (the targets' formats: XGPU_FORMAT_NONE, _BGRA8, _D24S8, _RGBA16F) */
+	pipeline->color_format = key->color_format == XGPU_FORMAT_BGRA8 ? XGPU_VULKAN_FORMAT_BGRA8 :
+		key->color_format == XGPU_FORMAT_RGBA16F && stream.capabilities.color_read ? XGPU_VULKAN_FORMAT_RGBA16F :
+		XGPU_VULKAN_FORMAT_NONE;
+	/* (display.hdr: a tag that blends in the shader, which reads the pixel
+	it draws over: the pipeline's blending off) */
+	pipeline->color_read = pipeline->color_format == XGPU_VULKAN_FORMAT_RGBA16F &&
+		XGPU_HDR_SHADER_BLENDS(key->pixel.hdr);
 	pipeline->depth_format = key->depth_format == 2 ? XGPU_VULKAN_FORMAT_D24S8 : XGPU_VULKAN_FORMAT_NONE;
 	pipeline->samples = key->samples > 1 ? key->samples : 1;
 	return 1;
@@ -1135,7 +1284,13 @@ static void stream_draw_state(void *context, const struct xgpu_stream_dynamic_st
 		if (memcmp(stream.dynamic.blend_color, dynamic->blend_color, sizeof(stream.dynamic.blend_color)))
 			stream.uniforms_dirty = 1;
 		if (memcmp(stream.dynamic.viewport, dynamic->viewport, sizeof(stream.dynamic.viewport)))
+		{
 			stream.uniforms_dirty = 1;
+			stream.effect_valid = 0;
+		}
+		/* (the VR effects' views are of the depth range too) */
+		if (memcmp(stream.dynamic.depth_range, dynamic->depth_range, sizeof(stream.dynamic.depth_range)))
+			stream.uniforms_effect = stream.effect_valid = 0;
 		memcpy(&stream.dynamic, dynamic, sizeof(stream.dynamic));
 	}
 	if (uniforms && (!stream.uniforms_set || uniforms_serial != stream.uniforms_serial))
@@ -1155,12 +1310,57 @@ static void color_from_argb(uint32_t argb, float color[4])
 	color[3] = (float)(argb >> 24) / 255.0f;
 }
 
+/* the VR effects' views (xgpu_vulkan_effects.h) into the uniforms: the
+eyes', or foveated the eyes' peripheries and insets, as the uniforms' eye
+corrections and insets have them (host_vulkan_vr_uniforms, made first), for
+a projection (c[-96] to c[-93], c[-38], c[-37]) and the screen conversion,
+in the viewport and depth range drawn with; their clip transforms into
+clip (NULL: not wanted). The count made. */
+static int effect_views(const struct xgpu_spirv_uniforms *to, const float projection[6][4], const float scale[4],
+	const float offset[4], float screen_offset, float (*unproject)[4][4], float (*eye)[4], float (*clip)[4][4])
+{
+#ifdef HALO_VR
+	struct xgpu_vulkan_effects_view made;
+	int foveated = host_vulkan_vr_foveated(), view, count = 0;
+	float depth_range[2];
+
+	depth_range[0] = stream.dynamic.depth_range[0] >= 0.0f && stream.dynamic.depth_range[0] <= 1.0f ?
+		stream.dynamic.depth_range[0] : 0.0f;
+	depth_range[1] = stream.dynamic.depth_range[1] >= 0.0f && stream.dynamic.depth_range[1] <= 1.0f ?
+		stream.dynamic.depth_range[1] : 1.0f;
+	for (view = 0; view < (foveated ? 4 : 2); view++)
+	{
+		if (!xgpu_vulkan_effects_view(projection, scale, offset, screen_offset, to->eye_correction[foveated ? view >> 1 :
+			view], foveated ? to->fovea_view[view] : NULL, stream.dynamic.viewport, depth_range, &made))
+			continue;
+		memcpy(unproject[view], made.unproject, sizeof(made.unproject));
+		memcpy(eye[view], made.eye, sizeof(made.eye));
+		if (clip)
+			memcpy(clip[view], made.clip, sizeof(made.clip));
+		count++;
+	}
+	return count;
+#else
+	(void)to;
+	(void)projection;
+	(void)scale;
+	(void)offset;
+	(void)screen_offset;
+	(void)unproject;
+	(void)eye;
+	(void)clip;
+	return 0;
+#endif
+}
+
 /* the uniforms both stages read and the vertex constants, in the ring for
-this submission */
-static int uniforms_update(void)
+this submission (with the VR effects' views, for a VR effect's draw) */
+static int uniforms_update(int effect)
 {
 	uint64_t serial = xgpu_vulkan_serial();
 
+	if (effect && !stream.uniforms_effect)
+		stream.uniforms_dirty = 1;
 	if (stream.uniforms_dirty || stream.uniforms_uploaded != serial)
 	{
 		const struct xgpu_stream_draw_uniforms *from = &stream.uniforms;
@@ -1203,6 +1403,31 @@ static int uniforms_update(void)
 			unsigned long index = XGPU_VERTEX_CONSTANT_BIAS + (light ? -80 + light : -82);
 
 			memcpy(to->model_lights[light], stream.constants[index], sizeof(to->model_lights[0]));
+		}
+		stream.uniforms_effect = 0;
+		if (effect)
+		{
+			/* (made again only where what they are made of changed) */
+			if (!stream.effect_valid || memcmp(stream.effect_scale, from->viewport_scale, sizeof(stream.effect_scale)) ||
+				memcmp(stream.effect_offset, from->viewport_offset, sizeof(stream.effect_offset)) ||
+				stream.effect_screen_offset != from->screen_offset)
+			{
+				float projection[6][4];
+
+				memcpy(projection, stream.constants[0], 4 * sizeof(projection[0]));
+				memcpy(projection[4], stream.constants[SCREEN_CONVERSION], 2 * sizeof(projection[0]));
+				memset(stream.effect_unproject, 0, sizeof(stream.effect_unproject));
+				memset(stream.effect_eye, 0, sizeof(stream.effect_eye));
+				effect_views(to, (const float (*)[4])projection, from->viewport_scale, from->viewport_offset,
+					from->screen_offset, stream.effect_unproject, stream.effect_eye, NULL);
+				memcpy(stream.effect_scale, from->viewport_scale, sizeof(stream.effect_scale));
+				memcpy(stream.effect_offset, from->viewport_offset, sizeof(stream.effect_offset));
+				stream.effect_screen_offset = from->screen_offset;
+				stream.effect_valid = 1;
+			}
+			memcpy(to->effect_unproject, stream.effect_unproject, sizeof(to->effect_unproject));
+			memcpy(to->effect_eye, stream.effect_eye, sizeof(to->effect_eye));
+			stream.uniforms_effect = 1;
 		}
 		stream.uniforms_dirty = 0;
 		stream.uniforms_uploaded = serial;
@@ -1462,6 +1687,53 @@ static void pipeline_description_trace(const struct xgpu_vulkan_pipeline_descrip
 		(unsigned)variant->border[3], description);
 }
 
+/* a VR effect's textures (xgpu_spirv.h): the stages' and past them the
+scene's depth, the views' layers of the depth target drawn into (in a pass
+that writes none of it: returns 1, the draw's reads_depth; or a multisampled
+target's, resolved), and its bitmap's thickness (the texture cache's, baked
+the first time: xgpu_vulkan_effects.h). Before the draw's uploads: the
+resolve and the bake are ordered among the stream's work. */
+static int effect_textures(struct xgpu_vulkan_texture textures[4])
+{
+	struct stream_target *depth = target_get(stream.depth);
+	struct xgpu_vulkan_sampler_description sampler;
+	int reads_depth = 0;
+
+	memcpy(textures, stream.textures, sizeof(stream.textures));
+	memset(&sampler, 0, sizeof(sampler));
+	sampler.minify = sampler.magnify = XGPU_VULKAN_FILTER_POINT;
+	sampler.mip = XGPU_VULKAN_MIP_NONE;
+	sampler.address[0] = sampler.address[1] = sampler.address[2] = XGPU_VULKAN_ADDRESS_CLAMP;
+	sampler.anisotropy = 1;
+	textures[XGPU_SPIRV_EFFECT_DEPTH_BINDING].kind = XGPU_VULKAN_IMAGE_2D_ARRAY;
+	textures[XGPU_SPIRV_EFFECT_DEPTH_BINDING].sampler = xgpu_vulkan_sampler(&sampler);
+	textures[XGPU_SPIRV_EFFECT_DEPTH_BINDING].image = NULL;
+	if (depth && depth->depth)
+	{
+		if (depth->multisampled && stream.samples)
+			target_resolve(depth);
+		else
+			reads_depth = 1;
+		textures[XGPU_SPIRV_EFFECT_DEPTH_BINDING].image = depth->image;
+	}
+	sampler.minify = sampler.magnify = XGPU_VULKAN_FILTER_LINEAR;
+	textures[XGPU_SPIRV_EFFECT_THICKNESS_BINDING].kind = XGPU_VULKAN_IMAGE_2D;
+	textures[XGPU_SPIRV_EFFECT_THICKNESS_BINDING].sampler = xgpu_vulkan_sampler(&sampler);
+	if (!stream.thickness_known || stream.thickness_serial != stream.textures_serial ||
+		stream.thickness_epoch != xgpu_vulkan_textures_thickness_epoch() ||
+		memcmp(&stream.thickness_stage, &stream.stages[0].stage, sizeof(stream.thickness_stage)))
+	{
+		stream.thickness = xgpu_vulkan_textures_thickness(&stream.stages[0].stage);
+		stream.thickness_stage = stream.stages[0].stage;
+		stream.thickness_serial = stream.textures_serial;
+		/* (after the lookup, which may bake again) */
+		stream.thickness_epoch = xgpu_vulkan_textures_thickness_epoch();
+		stream.thickness_known = 1;
+	}
+	textures[XGPU_SPIRV_EFFECT_THICKNESS_BINDING].image = stream.thickness;
+	return reads_depth;
+}
+
 /* a draw of the current pipeline, made and drawn: its shaders for the
 draw's variant, its pipeline for the vertex layout, its textures and
 uniforms, its vertices and indices; nothing if it cannot be drawn */
@@ -1469,6 +1741,7 @@ static void draw_input(const struct draw_input *input)
 {
 	struct xgpu_vulkan_pipeline_description pipeline = stream.pipeline;
 	struct xgpu_vulkan_draw draw;
+	struct xgpu_vulkan_texture effect_draw_textures[4];
 	struct stream_pipeline *entry;
 	struct variant variant;
 	uint32_t index, attempt;
@@ -1518,6 +1791,9 @@ static void draw_input(const struct draw_input *input)
 	pipeline.view_mask = stream.views > 1 ? (uint8_t)((1u << stream.views) - 1) : 0;
 	if (target_image(stream.color))
 		pipeline.color_format = xgpu_vulkan_image_description(target_image(stream.color))->format;
+	/* (display.hdr: the target's half floats read where it is drawn) */
+	pipeline.color_read = pipeline.color_format == XGPU_VULKAN_FORMAT_RGBA16F && stream.capabilities.color_read &&
+		XGPU_HDR_SHADER_BLENDS(stream.definition->key.pixel.hdr);
 #ifdef HALO_VR
 	pipeline.depth_clamp = host_vulkan_vr_sky() != 0;
 #endif
@@ -1542,6 +1818,10 @@ static void draw_input(const struct draw_input *input)
 		the enumeration does not make either resource more ready. */
 		traced = preparation_start();
 		textures_bind();
+		/* (a VR effect's bitmap's thickness baked now, as the map is
+		prepared, not as it is first drawn in play) */
+		if (entry->effect)
+			(void)xgpu_vulkan_textures_thickness(&stream.stages[0].stage);
 		preparation_end(0, traced);
 		return;
 	}
@@ -1558,10 +1838,12 @@ static void draw_input(const struct draw_input *input)
 
 		traced = preparation_start();
 		textures_bind();
+		if (entry->effect)
+			draw.reads_depth = (uint8_t)effect_textures(effect_draw_textures);
 		preparation_end(0, traced);
 		serial = xgpu_vulkan_serial();
 		traced = preparation_start();
-		if (!uniforms_update())
+		if (!uniforms_update(entry->effect))
 		{
 			preparation_end(1, traced);
 			continue;
@@ -1603,6 +1885,21 @@ static void draw_input(const struct draw_input *input)
 	draw.uniforms = stream.uniforms_range;
 	draw.dynamic = &stream.dynamic;
 	draw.dynamic_lights = stream.definition->pixel_program.dynamic_lights != 0;
+	draw.reads_color = pipeline.color_read;
+	{
+		const struct xgpu_stream_pipeline_key *key = &stream.definition->key;
+
+		draw.writes_depth = (key->depth_test && key->depth_write && !entry->effect_tests_depth) ||
+			(key->stencil_test && key->stencil_write_mask &&
+			(key->stencil_fail != XGPU_STENCIL_KEEP || key->stencil_depth_fail != XGPU_STENCIL_KEEP ||
+			key->stencil_pass != XGPU_STENCIL_KEEP));
+	}
+	if (entry->effect)
+		memcpy(draw.textures, effect_draw_textures, sizeof(draw.textures));
+	/* (a multisampled depth target written: resolved again for the
+	effects that sample it) */
+	if (draw.writes_depth && stream.samples && target_get(stream.depth) && target_get(stream.depth)->multisampled)
+		target_get(stream.depth)->unresolved = 1;
 	if (target_get(stream.color))
 		target_get(stream.color)->written++;
 	traced = preparation_start();
@@ -1762,11 +2059,11 @@ static void stream_dynamic_lights_upload(void *context, const struct xgpu_stream
 }
 
 /* a glow's shaders for its layers' slot (0: the screen's target, 1: the VR
-mode's eyes, 2: its eyes foveated), made the first time; 0 if they cannot
-be */
+mode's eyes, 2: its eyes foveated: there, the light the bolt scatters toward
+each eye), made the first time; 0 if they cannot be */
 static int halo_shaders(int slot)
 {
-	static const char *const names[3] = { "halo", "halo_view1", "halo_view1_fovea1" };
+	static const char *const names[3] = { "halo", "glow_view1", "glow_view1_fovea1" };
 	struct xgpu_spirv_options options;
 	struct xgpu_spirv_module module;
 	char name[32];
@@ -1779,6 +2076,7 @@ static int halo_shaders(int slot)
 	memset(&options, 0, sizeof(options));
 	options.multiview = slot ? XGPU_MULTIVIEW_EYES : XGPU_MULTIVIEW_NONE;
 	options.foveated = slot == 2;
+	options.effect = slot ? XGPU_SPIRV_EFFECT_SOFT : XGPU_SPIRV_EFFECT_NONE;
 	if (xgpu_spirv_halo_vertex_shader(&options, &module))
 	{
 		snprintf(name, sizeof(name), "%s_vertex", names[slot]);
@@ -1838,11 +2136,63 @@ static void halo_depth_parameters(const struct xgpu_stream_dynamic_lights_halos 
 	parameters[3] = 0.0f;
 }
 
+/* the VR mode's glows' constants and uniforms (xgpu_spirv.h): each view's
+clip transform, unprojection and eye; the head's centre and the distance
+ahead of it of the quad drawn with the head in a glow (three times the near
+plane's), its right, up and forward (the world's projection's w row). 0 if
+the views cannot be made. */
+static int glow_constants(const struct xgpu_stream_dynamic_lights_halos *record, struct xgpu_spirv_uniforms *uniforms,
+	float (*constants)[4])
+{
+	float clip[4][4][4], forward[3], length, near_point[4], ahead = 0.0f;
+	const float (*unproject)[4] = (const float (*)[4])uniforms->effect_unproject[0];
+	int views = effect_views(uniforms, (const float (*)[4])record->projection, record->viewport_scale,
+		record->viewport_offset, record->screen_offset, uniforms->effect_unproject, uniforms->effect_eye, clip), view, row,
+		axis;
+
+	if (!views)
+		return 0;
+	for (view = 0; view < views; view++)
+		for (row = 0; row < 4; row++)
+			memcpy(constants[XGPU_SPIRV_GLOW_CLIP + view * 4 + row], clip[view][row], sizeof(clip[0][0]));
+	/* the near plane's distance: the middle pixel at the least depth */
+	for (axis = 0; axis < 4; axis++)
+		near_point[axis] = unproject[0][axis] * ((float)stream.dynamic.viewport[0] + 0.5f * stream.dynamic.viewport[2]) +
+			unproject[1][axis] * ((float)stream.dynamic.viewport[1] + 0.5f * stream.dynamic.viewport[3]) +
+			unproject[2][axis] * (stream.dynamic.depth_range[0] >= 0.0f && stream.dynamic.depth_range[0] <= 1.0f ?
+			stream.dynamic.depth_range[0] : 0.0f) + unproject[3][axis];
+	if (near_point[3] != 0.0f)
+	{
+		for (axis = 0; axis < 3; axis++)
+		{
+			float offset = near_point[axis] / near_point[3] - uniforms->effect_eye[0][axis];
+
+			ahead += offset * offset;
+		}
+		ahead = sqrtf(ahead);
+	}
+	ahead = 3.0f * ahead > 0.01f ? 3.0f * ahead : 0.01f;
+	memcpy(constants[XGPU_SPIRV_GLOW_HEAD], record->camera, sizeof(record->camera));
+	constants[XGPU_SPIRV_GLOW_HEAD][3] = ahead;
+	memcpy(constants[XGPU_SPIRV_GLOW_AXES], record->camera_right, sizeof(record->camera_right));
+	memcpy(constants[XGPU_SPIRV_GLOW_AXES + 1], record->camera_up, sizeof(record->camera_up));
+	for (axis = 0; axis < 3; axis++)
+		forward[axis] = record->projection[3][axis];
+	length = sqrtf(forward[0] * forward[0] + forward[1] * forward[1] + forward[2] * forward[2]);
+	for (axis = 0; axis < 3; axis++)
+		constants[XGPU_SPIRV_GLOW_AXES + 2][axis] = length > 0.0f ? forward[axis] / length : 0.0f;
+	return 1;
+}
+
 /* the glows of the frame's bolts' lights, into the 3D view, after its
 transparent geometry: added to what is there (not its alpha), into the
 target without its depth, which the shader samples (resolved, where it is
 multisampled), in each of the target's layers (the VR mode's eyes and
-insets, in one multiview pass) */
+insets, in one multiview pass). In the VR mode's eyes the depth stays bound,
+untested and unwritten, so that the glows are drawn in the pass the effects
+sample the depth in (xgpu_vulkan_draw's reads_depth), where they were drawn
+last, without a pass of their own (on a tiled GPU, the target's pixels
+written out and read back) */
 static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_dynamic_lights_halos *record)
 {
 	static const float corners[6][2] =
@@ -1855,7 +2205,7 @@ static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_
 	struct xgpu_vulkan_dynamic_state dynamic;
 	struct xgpu_vulkan_draw draw;
 	uint32_t layers = record->layers > 1 ? (uint32_t)record->layers : 1, attempt;
-	int slot = layers == 1 ? 0 : layers == 2 ? 1 : 2, halo, corner;
+	int slot = layers == 1 ? 0 : layers == 2 ? 1 : 2, halo, corner, merged;
 	uint64_t before;
 
 	(void)context;
@@ -1881,6 +2231,12 @@ static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_
 	pipeline.color_format = xgpu_vulkan_image_description(color->image)->format;
 	pipeline.samples = (uint8_t)(color->multisampled ? color->samples : 1);
 	pipeline.view_mask = layers > 1 ? (uint8_t)((1u << layers) - 1) : 0;
+	/* (the VR mode's eyes: drawn with the depth attachment bound, untested
+	and unwritten, which the shader samples, as the effects draw: in their
+	pass where they were the last drawn, not one of its own) */
+	merged = layers > 1 && !color->multisampled && !depth->multisampled;
+	if (merged)
+		pipeline.depth_format = XGPU_VULKAN_FORMAT_D24S8;
 	before = xgpu_vulkan_pipeline_count();
 	if (stream.preparing)
 	{
@@ -1954,6 +2310,8 @@ static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_
 #ifdef HALO_VR
 		host_vulkan_vr_uniforms(uniforms, dynamic.viewport);
 #endif
+		if (layers > 1 && !glow_constants(record, uniforms, constants))
+			return;
 		break;
 	}
 	if (attempt == 3)
@@ -1961,7 +2319,9 @@ static void stream_dynamic_lights_halos(void *context, const struct xgpu_stream_
 	if (color->multisampled)
 		color->unresolved = 1;
 	color->written++;
-	xgpu_vulkan_set_target_views(color->multisampled ? color->multisampled : color->image, NULL, 0, layers);
+	xgpu_vulkan_set_target_views(color->multisampled ? color->multisampled : color->image, merged ? depth->image : NULL,
+		0, layers);
+	draw.reads_depth = (uint8_t)merged;
 	xgpu_vulkan_draw(&draw);
 	/* (the stream's targets again, for what follows) */
 	targets_bind();
@@ -1973,8 +2333,11 @@ static void stream_anti_aliasing_prepare(void *context, uint32_t smaa)
 {
 	(void)context;
 	/* (made as the setting is chosen: the front end chooses it between
-	frames; queued as a map is prepared; logged if they cannot be) */
-	(void)xgpu_vulkan_post_prepare(smaa != 0, stream.preparing);
+	frames; queued as a map is prepared; logged if they cannot be; for
+	display.hdr's half floats too, while the frames are HDR) */
+	(void)xgpu_vulkan_post_prepare(smaa != 0, XGPU_VULKAN_FORMAT_BGRA8, stream.preparing);
+	if (stream.hdr_active)
+		(void)xgpu_vulkan_post_prepare(smaa != 0, XGPU_VULKAN_FORMAT_RGBA16F, stream.preparing);
 }
 
 /* FXAA or SMAA over a window's 3D view, before the HUD and menus are drawn
@@ -1991,7 +2354,7 @@ static void stream_anti_alias(void *context, const struct xgpu_stream_anti_alias
 	if (stream.preparing)
 	{
 		/* (made as the map loads, as the game's pipelines are) */
-		(void)xgpu_vulkan_post_prepare(record->smaa != 0, 1);
+		(void)xgpu_vulkan_post_prepare(record->smaa != 0, target->format, 1);
 		return;
 	}
 	if (target->multisampled)
@@ -1999,6 +2362,60 @@ static void stream_anti_alias(void *context, const struct xgpu_stream_anti_alias
 	target->written++;
 	xgpu_vulkan_post_anti_alias(record->smaa != 0, target->image, 0, record->corners);
 	/* (the stream's targets again, for what follows) */
+	targets_bind();
+}
+
+/* ---------- display.hdr (port/linux/src/xgpu_hdr.h)
+
+The front end's state, for the tone map and the core's encoding and
+swapchain; and the tone map of each window's 3D view, a draw in the pass
+that drew it (its multisampled attachments where it is drawn into them)
+before the anti-aliasing and the HUD. */
+
+static void stream_hdr(void *context, const struct xgpu_stream_hdr *record)
+{
+	(void)context;
+	stream.hdr_active = record->active != 0 && stream.capabilities.color_read;
+	xgpu_vulkan_hdr_state(stream.hdr_active, (int)record->mode, (int)record->paper_white);
+	/* (the tone map's pipeline for the back buffer's pass, made as HDR is
+	chosen, not in the middle of a frame) */
+	if (stream.hdr_active)
+		(void)xgpu_vulkan_post_prepare_hdr(XGPU_VULKAN_FORMAT_D24S8, 0, stream.preparing);
+}
+
+static void stream_tone_map(void *context, const struct xgpu_stream_tone_map *record)
+{
+	struct stream_target *target = target_get(record->target);
+	struct stream_target *depth = stream.color == record->target ? target_get(stream.depth) : NULL;
+	struct xgpu_vulkan_image *color_image, *depth_image;
+	struct xgpu_hdr_frame frame;
+	float hdr[4];
+
+	(void)context;
+	if (!target || target->depth || target->format != XGPU_VULKAN_FORMAT_RGBA16F || target->layers > 1)
+		return;
+	/* (the attachments the view was drawn into: multisampled where they
+	are, and both of a number of samples) */
+	color_image = stream.samples && target->multisampled ? target->multisampled : target->image;
+	depth_image = depth ? (stream.samples && depth->multisampled ? depth->multisampled : depth->image) : NULL;
+	if (depth_image && xgpu_vulkan_image_description(depth_image)->samples !=
+		xgpu_vulkan_image_description(color_image)->samples)
+		depth_image = NULL;
+	if (stream.preparing)
+	{
+		(void)xgpu_vulkan_post_prepare_hdr(depth_image ? XGPU_VULKAN_FORMAT_D24S8 : XGPU_VULKAN_FORMAT_NONE,
+			xgpu_vulkan_image_description(color_image)->samples, 1);
+		return;
+	}
+	xgpu_vulkan_hdr_frame(&frame);
+	hdr[0] = (float)frame.mode;
+	hdr[1] = frame.peak;
+	hdr[2] = hdr[3] = 0.0f;
+	target->written++;
+	if (color_image == target->multisampled)
+		target->unresolved = 1;
+	xgpu_vulkan_post_tone_map(color_image, depth_image, record->corners, hdr);
+	/* (the stream's targets again: the same, so that the pass goes on) */
 	targets_bind();
 }
 
@@ -2063,16 +2480,20 @@ static void stream_frame_end(void *context)
 			xgpu_vulkan_textures_statistics(&textures);
 			host_logf(HOST_LOG_INFO, "vulkan: %u frames: %u submissions, %u passes, %u draws, %u clears (%u drawn), "
 				"%u attachment loads, %u attachment clears, %u texture sets written, %u reused, %u pipelines made "
-				"(%.1f ms), %u uploads ordered, %u early, %llu ring bytes; textures %u made, %u remade, %u images",
+				"(%.1f ms), %u uploads ordered, %u early, %llu ring bytes; textures %u made, %u remade, %u images, "
+				"%u effects' thicknesses baked (%.1f ms)",
 				statistics.frames, statistics.submissions, statistics.passes, statistics.draws, statistics.clears,
 				statistics.clears_as_draws, statistics.attachment_loads, statistics.attachment_clears,
 				statistics.texture_sets_written,
 				statistics.texture_sets_reused,
 				statistics.pipelines_made, statistics.pipeline_seconds * 1000.0, statistics.uploads_ordered,
 				statistics.uploads_early, (unsigned long long)statistics.ring_bytes, textures.made, textures.remade,
-				textures.images);
+				textures.images, textures.thickness, textures.thickness_seconds * 1000.0);
 		}
 	}
+	/* (each stage's texture looked for at least once a frame, so that the
+	cache sees it used and keeps it: textures_bind) */
+	stream.textures_dirty = TEXTURES_ALL;
 }
 
 static void stream_open(void *context, void *ring, uint32_t ring_size, volatile uint32_t *visibility)
@@ -2112,6 +2533,10 @@ static void stream_initialize(void *context, struct xgpu_stream_capabilities *ca
 	/* (the lights' block and cells are made with the device) */
 	capabilities->dynamic_lights = 1;
 	capabilities->dynamic_lights_preparable = 1;
+	/* (display.hdr: the half floats, the draws' tags blended in their
+	shaders, reading the pixels they draw over, the tone map in place:
+	where the device reads its colour attachments, the desktop's) */
+	capabilities->hdr = stream.capabilities.color_read != 0;
 }
 
 static void stream_prepare(void *context)
@@ -2151,9 +2576,12 @@ static uint32_t stream_prepared(void *context)
 			now.submissions - stream.trace_statistics.submissions,
 			(unsigned long long)(now.ring_bytes - stream.trace_statistics.ring_bytes),
 			(unsigned long long)(now.waits - stream.trace_statistics.waits), now.wait_seconds - stream.trace_statistics.wait_seconds);
-		host_load_trace("prepare.vulkan.textures", "made=%u remade=%u images=%u bytes=%llu",
+		host_load_trace("prepare.vulkan.textures", "made=%u remade=%u images=%u bytes=%llu thickness=%u "
+			"thickness_seconds=%.6f",
 			textures.made - stream.trace_textures.made, textures.remade - stream.trace_textures.remade,
-			textures.images - stream.trace_textures.images, (unsigned long long)(textures.bytes - stream.trace_textures.bytes));
+			textures.images - stream.trace_textures.images, (unsigned long long)(textures.bytes - stream.trace_textures.bytes),
+			textures.thickness - stream.trace_textures.thickness,
+			textures.thickness_seconds - stream.trace_textures.thickness_seconds);
 		for (stage = 0; stage < 4; stage++)
 			host_load_trace("prepare.vulkan.stage", "stage=%s count=%llu seconds=%.6f", names[stage],
 				(unsigned long long)stream.trace_counts[stage], stream.trace_seconds[stage]);
@@ -2217,6 +2645,8 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.loading = xgpu_vulkan_loading;
 		backend.loading_owned = xgpu_vulkan_loading_owned;
 		backend.loading_art = xgpu_vulkan_loading_art;
+		backend.loading_scene = xgpu_vulkan_loading_scene;
+		backend.loading_progress = xgpu_vulkan_loading_progress;
 		backend.frame_end = stream_frame_end;
 		backend.prepare = stream_prepare;
 		backend.prepared = stream_prepared;
@@ -2225,6 +2655,8 @@ const struct host_render_backend *xgpu_vulkan_stream_backend(void)
 		backend.dynamic_lights_halos = stream_dynamic_lights_halos;
 		backend.anti_aliasing_prepare = stream_anti_aliasing_prepare;
 		backend.anti_alias = stream_anti_alias;
+		backend.hdr = stream_hdr;
+		backend.tone_map = stream_tone_map;
 #ifdef HALO_VR
 		host_vulkan_vr_backend(&backend);
 #endif

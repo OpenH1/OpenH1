@@ -98,6 +98,13 @@ enum
 	NUMBER_OF_JOYSTICK_CONTROLS,
 };
 
+/* port: input_xbox.c's GAMEPAD_STICK_DEAD_RANGE, for a sub-step's reading
+(input_abstraction_port_substep_state) */
+enum
+{
+	SUBSTEP_GAMEPAD_STICK_DEAD_RANGE = 9000,
+};
+
 enum
 {
 	_vehicle_type_human_plane = 3,
@@ -235,11 +242,13 @@ static void keyboard_hold_ticks(
 	return;
 }
 
-static void keyboard_controls_update(
+/* the keys held as a game input state's (the keyboard's ticks counted as
+keyboard_controls_update counted them) */
+static void keyboard_controls_apply(
 	long controller_index,
+	unsigned long held,
 	struct game_input_state *state)
 {
-	unsigned long held = halo_keyboard_actions((short)controller_index);
 	long control_index;
 	long x, y;
 
@@ -247,17 +256,9 @@ static void keyboard_controls_update(
 	{
 		if (keyboard_game_controls[control_index] < 0)
 			continue;
-		keyboard_hold_ticks(
-			&keyboard_controls[controller_index].ticks[control_index],
-			&keyboard_controls[controller_index].down_times[control_index],
-			TEST_FLAG(held, keyboard_game_controls[control_index]));
 		state->buttons[control_index] = MAX(state->buttons[control_index],
 			keyboard_controls[controller_index].ticks[control_index]);
 	}
-	keyboard_hold_ticks(
-		&keyboard_controls[controller_index].reload_ticks,
-		&keyboard_controls[controller_index].reload_down_time,
-		TEST_FLAG(held, HALO_KEYBOARD_RELOAD));
 	x = TEST_FLAG(held, HALO_KEYBOARD_STRAFE_RIGHT) - TEST_FLAG(held, HALO_KEYBOARD_STRAFE_LEFT);
 	y = TEST_FLAG(held, HALO_KEYBOARD_MOVE_FORWARD) - TEST_FLAG(held, HALO_KEYBOARD_MOVE_BACKWARD);
 	if (x || y)
@@ -289,6 +290,30 @@ static void keyboard_controls_update(
 	return;
 }
 
+static void keyboard_controls_update(
+	long controller_index,
+	struct game_input_state *state)
+{
+	unsigned long held = halo_keyboard_actions((short)controller_index);
+	long control_index;
+
+	for (control_index = 0; control_index < NUMBER_OF_GAME_CONTROLS; control_index++)
+	{
+		if (keyboard_game_controls[control_index] < 0)
+			continue;
+		keyboard_hold_ticks(
+			&keyboard_controls[controller_index].ticks[control_index],
+			&keyboard_controls[controller_index].down_times[control_index],
+			TEST_FLAG(held, keyboard_game_controls[control_index]));
+	}
+	keyboard_hold_ticks(
+		&keyboard_controls[controller_index].reload_ticks,
+		&keyboard_controls[controller_index].reload_down_time,
+		TEST_FLAG(held, HALO_KEYBOARD_RELOAD));
+	keyboard_controls_apply(controller_index, held, state);
+	return;
+}
+
 /* port: whether the controller's player holds the keyboard's reload key, and
 for how many ticks its jump key (which skips cutscenes, as the
 controller's A does) */
@@ -297,6 +322,39 @@ boolean input_abstraction_port_reload(
 {
 	return controller_index >= 0 && controller_index < MAXIMUM_GAMEPADS &&
 		keyboard_controls[controller_index].reload_ticks != 0;
+}
+
+/* port: the keyboard's action (halo_keyboard.h) for a game control, or for
+the game control the local player's profile puts on a controller button
+(game_control NONE), as the HUD's prompts name it (port/linux/game/
+hud_key_prompts.c); NONE for one the keyboard has no action for */
+short input_abstraction_port_keyboard_action(
+	short local_player_index,
+	short game_control,
+	short gamepad_button)
+{
+	if (game_control == NONE &&
+		local_player_index >= 0 && local_player_index < MAXIMUM_GAMEPADS)
+	{
+		long control_index;
+
+		for (control_index = 0; control_index < NUMBER_OF_GAME_CONTROLS; control_index++)
+		{
+			if (input_abstraction_globals.player_control_preferences[local_player_index].
+				game_control_to_xbox_buttons[control_index] == gamepad_button)
+			{
+				game_control = (short)control_index;
+				break;
+			}
+		}
+	}
+	if (game_control == _game_control_start)
+		return HALO_KEYBOARD_PAUSE;
+	if (game_control == _game_control_back)
+		return HALO_KEYBOARD_SCOREBOARD;
+	if (game_control < 0 || game_control >= NUMBER_OF_GAME_CONTROLS)
+		return NONE;
+	return keyboard_game_controls[game_control];
 }
 
 boolean input_abstraction_port_action_only(
@@ -317,23 +375,28 @@ byte input_abstraction_port_accept(
 trigger with an analog rate of fire reads (weapons.c): a game input state's
 buttons count the ticks a control is held, not its pressure, so a click
 reads as no pull at all. The keyboard and mouse pull all the way. */
-real input_abstraction_port_primary_trigger(
-	short controller_index)
+static real primary_trigger_pull(
+	short controller_index,
+	struct gamepad_state const *gamepad)
 {
-	struct gamepad_state const *gamepad;
 	short button_index;
 
-	if (controller_index < 0 || controller_index >= MAXIMUM_GAMEPADS)
-		return 0.f;
 	if (keyboard_controls[controller_index].ticks[_game_control_primary_trigger])
 		return 1.f;
-	gamepad = input_get_gamepad_state(controller_index);
 	if (!gamepad)
 		return 0.f;
 	button_index = input_abstraction_globals.player_control_preferences[controller_index].game_control_to_xbox_buttons[_game_control_primary_trigger];
 	if (button_index < NUMBER_OF_GAMEPAD_ANALOG_BUTTONS)
 		return gamepad->analog_buttons[button_index] * (1.f / 255.f);
 	return gamepad->buttons[button_index] ? 1.f : 0.f;
+}
+
+real input_abstraction_port_primary_trigger(
+	short controller_index)
+{
+	if (controller_index < 0 || controller_index >= MAXIMUM_GAMEPADS)
+		return 0.f;
+	return primary_trigger_pull(controller_index, input_get_gamepad_state(controller_index));
 }
 
 /* port: the game control on each of the controller's buttons by its
@@ -508,6 +571,245 @@ void input_abstraction_update_device_changes(
 	return;
 }
 
+/* port: a controller's game input state from its gamepad's, by its
+profile (input_abstraction_update's, and a sub-step's reading:
+input_abstraction_port_substep_state) */
+static void input_abstraction_state_from_gamepad(
+	long controller_index,
+	struct gamepad_state const *gamepad,
+	struct game_input_state *state)
+{
+	real left_angle;
+	real right_angle;
+	real_point2d left_stick;
+	real_point2d right_stick;
+	long control_index;
+	boolean invert_look;
+
+	{
+		real scale;
+
+		left_angle = arctangent(gamepad->sticks[_gamepad_stick_left].y, gamepad->sticks[_gamepad_stick_left].x);
+		scale = 1.0 / MAX(fabs(sine(left_angle)), fabs(cosine(left_angle)));
+		left_stick.x = PIN(gamepad->sticks[_gamepad_stick_left].x * gamepad_axis_normalization_scale * scale, -1.f, 1.f);
+		left_stick.y = PIN(gamepad->sticks[_gamepad_stick_left].y * gamepad_axis_normalization_scale * scale, -1.f, 1.f);
+	}
+	{
+		real scale;
+
+		right_angle = arctangent(gamepad->sticks[_gamepad_stick_right].y, gamepad->sticks[_gamepad_stick_right].x);
+		scale = 1.0 / MAX(fabs(sine(right_angle)), fabs(cosine(right_angle)));
+		right_stick.x = PIN(gamepad->sticks[_gamepad_stick_right].x * gamepad_axis_normalization_scale * scale, -1.f, 1.f);
+		right_stick.y = PIN(gamepad->sticks[_gamepad_stick_right].y * gamepad_axis_normalization_scale * scale, -1.f, 1.f);
+	}
+	for (control_index = 0; control_index < NUMBER_OF_GAME_CONTROLS; control_index++)
+	{
+		state->buttons[control_index] =
+			gamepad->buttons[input_abstraction_globals.player_control_preferences[controller_index].game_control_to_xbox_buttons[control_index]];
+	}
+
+	if (input_abstraction_globals.player_control_preferences[controller_index].joystick_controls == _joystick_controls_legacy ||
+		input_abstraction_globals.player_control_preferences[controller_index].joystick_controls == _joystick_controls_legacy_southpaw)
+	{
+		short left_quadrant = (left_stick.x < 0.f ? 1 : 0) | (left_stick.y < 0.f ? 2 : 0);
+		short right_quadrant = (right_stick.x < 0.f ? 1 : 0) | (right_stick.y < 0.f ? 2 : 0);
+		real left_difference = left_angle - stick_direction_angles[left_quadrant];
+		real right_difference = right_angle - stick_direction_angles[right_quadrant];
+		real left_magnitude = square_root(left_stick.x * left_stick.x + left_stick.y * left_stick.y);
+		real right_magnitude = square_root(right_stick.x * right_stick.x + right_stick.y * right_stick.y);
+
+		if (fabs(left_difference) < LEFT_STICK_DIAGONAL_SNAP_ANGLE)
+		{
+			real absolute_angle = fabs(left_angle);
+
+			if (absolute_angle < STICK_DIAGONAL_ANGLE ||
+				absolute_angle > STICK_SECOND_QUADRANT_DIAGONAL_ANGLE)
+			{
+				left_stick.x = (left_stick.x < 0.f ? -1 : 1) * left_magnitude;
+				left_stick.y = (left_stick.y < 0.f ? -1 : 1) * left_magnitude *
+					(1.0 - fabs(left_difference) * STICK_DIAGONAL_BLEND_SCALE);
+			}
+			else
+			{
+				left_stick.y = (left_stick.y < 0.f ? -1 : 1) * left_magnitude;
+				left_stick.x = (left_stick.x < 0.f ? -1 : 1) * left_magnitude *
+					(1.0 - fabs(left_difference) * STICK_DIAGONAL_BLEND_SCALE);
+			}
+		}
+		else
+		{
+			if (fabs(left_stick.x) > fabs(left_stick.y))
+			{
+				left_stick.x = (left_stick.x < 0.f ? -1 : 1) * left_magnitude;
+				left_stick.y = 0.f;
+			}
+			else
+			{
+				left_stick.y = (left_stick.y < 0.f ? -1 : 1) * left_magnitude;
+				left_stick.x = 0.f;
+			}
+		}
+
+		if (fabs(right_difference) < RIGHT_STICK_DIAGONAL_SNAP_ANGLE)
+		{
+			real absolute_angle = fabs(right_angle);
+
+			if (absolute_angle < STICK_DIAGONAL_ANGLE ||
+				absolute_angle > STICK_SECOND_QUADRANT_DIAGONAL_ANGLE)
+			{
+				right_stick.x = (right_stick.x < 0.f ? -1 : 1) * right_magnitude;
+				right_stick.y = (right_stick.y < 0.f ? -1 : 1) * right_magnitude *
+					(1.0 - fabs(right_difference) * STICK_DIAGONAL_BLEND_SCALE);
+			}
+			else
+			{
+				right_stick.y = (right_stick.y < 0.f ? -1 : 1) * right_magnitude;
+				right_stick.x = (right_stick.x < 0.f ? -1 : 1) * right_magnitude *
+					(1.0 - fabs(right_difference) * STICK_DIAGONAL_BLEND_SCALE);
+			}
+		}
+		else
+		{
+			if (fabs(right_stick.x) > fabs(right_stick.y))
+			{
+				right_stick.x = (right_stick.x < 0.f ? -1 : 1) * right_magnitude;
+				right_stick.y = 0.f;
+			}
+			else
+			{
+				right_stick.y = (right_stick.y < 0.f ? -1 : 1) * right_magnitude;
+				right_stick.x = 0.f;
+			}
+		}
+	}
+
+	invert_look = input_abstraction_globals.player_control_preferences[controller_index].invert_look;
+	if (!invert_look && input_abstraction_globals.player_control_preferences[controller_index].invert_look_aircraft_control)
+	{
+		invert_look = local_player_is_piloting_aircraft((short)controller_index);
+	}
+	switch (input_abstraction_globals.player_control_preferences[controller_index].joystick_controls)
+	{
+		case _joystick_controls_default:
+			if (gamepad->buttons[_gamepad_binary_button_dpad_left])
+			{
+				state->strafe = 1.f;
+			}
+			else if (gamepad->buttons[_gamepad_binary_button_dpad_right])
+			{
+				state->strafe = -1.f;
+			}
+			else
+			{
+				state->strafe = -left_stick.x;
+			}
+			if (gamepad->buttons[_gamepad_binary_button_dpad_up])
+			{
+				state->forward_movement = 1.f;
+			}
+			else if (gamepad->buttons[_gamepad_binary_button_dpad_down])
+			{
+				state->forward_movement = -1.f;
+			}
+			else
+			{
+				state->forward_movement = left_stick.y;
+			}
+			state->yaw = -right_stick.x;
+			state->pitch = (invert_look ? -1.f : 1.f) * right_stick.y;
+			break;
+		case _joystick_controls_southpaw:
+			if (gamepad->buttons[_gamepad_binary_button_dpad_left])
+			{
+				state->yaw = 1.f;
+			}
+			else if (gamepad->buttons[_gamepad_binary_button_dpad_right])
+			{
+				state->yaw = -1.f;
+			}
+			else
+			{
+				state->yaw = -left_stick.x;
+			}
+			if (gamepad->buttons[_gamepad_binary_button_dpad_up])
+			{
+				state->pitch = invert_look ? -1.f : 1.f;
+			}
+			else if (gamepad->buttons[_gamepad_binary_button_dpad_down])
+			{
+				state->pitch = invert_look ? 1.f : -1.f;
+			}
+			else
+			{
+				state->pitch = (invert_look ? -1.f : 1.f) * left_stick.y;
+			}
+			state->forward_movement = right_stick.y;
+			state->strafe = -right_stick.x;
+			break;
+		case _joystick_controls_legacy:
+			if (gamepad->buttons[_gamepad_binary_button_dpad_left])
+			{
+				state->yaw = 1.f;
+			}
+			else if (gamepad->buttons[_gamepad_binary_button_dpad_right])
+			{
+				state->yaw = -1.f;
+			}
+			else
+			{
+				state->yaw = -left_stick.x;
+			}
+			if (gamepad->buttons[_gamepad_binary_button_dpad_up])
+			{
+				state->forward_movement = 1.f;
+			}
+			else if (gamepad->buttons[_gamepad_binary_button_dpad_down])
+			{
+				state->forward_movement = -1.f;
+			}
+			else
+			{
+				state->forward_movement = left_stick.y;
+			}
+			state->strafe = -right_stick.x;
+			state->pitch = (invert_look ? -1.f : 1.f) * right_stick.y;
+			break;
+		case _joystick_controls_legacy_southpaw:
+			if (gamepad->buttons[_gamepad_binary_button_dpad_left])
+			{
+				state->strafe = 1.f;
+			}
+			else if (gamepad->buttons[_gamepad_binary_button_dpad_right])
+			{
+				state->strafe = -1.f;
+			}
+			else
+			{
+				state->strafe = -left_stick.x;
+			}
+			if (gamepad->buttons[_gamepad_binary_button_dpad_up])
+			{
+				state->pitch = invert_look ? -1.f : 1.f;
+			}
+			else if (gamepad->buttons[_gamepad_binary_button_dpad_down])
+			{
+				state->pitch = invert_look ? 1.f : -1.f;
+			}
+			else
+			{
+				state->pitch = (invert_look ? -1.f : 1.f) * left_stick.y;
+			}
+			state->forward_movement = right_stick.y;
+			state->yaw = -right_stick.x;
+			break;
+		default:
+			error(_error_silent, "unknown joystick preset");
+			break;
+	}
+
+	return;
+}
+
 void input_abstraction_update(
 	void)
 {
@@ -524,235 +826,10 @@ void input_abstraction_update(
 		if (gamepad)
 		{
 			struct game_input_state *state = &input_abstraction_globals.input_states[controller_index];
-			real left_angle;
-			real right_angle;
-			real_point2d left_stick;
-			real_point2d right_stick;
-			long control_index;
-			boolean invert_look;
 
 			player_look_yaw_rate[controller_index] = input_abstraction_globals.player_control_preferences[controller_index].yaw_rate;
 			player_look_pitch_rate[controller_index] = input_abstraction_globals.player_control_preferences[controller_index].pitch_rate;
-			{
-				real scale;
-
-				left_angle = arctangent(gamepad->sticks[_gamepad_stick_left].y, gamepad->sticks[_gamepad_stick_left].x);
-				scale = 1.0 / MAX(fabs(sine(left_angle)), fabs(cosine(left_angle)));
-				left_stick.x = PIN(gamepad->sticks[_gamepad_stick_left].x * gamepad_axis_normalization_scale * scale, -1.f, 1.f);
-				left_stick.y = PIN(gamepad->sticks[_gamepad_stick_left].y * gamepad_axis_normalization_scale * scale, -1.f, 1.f);
-			}
-			{
-				real scale;
-
-				right_angle = arctangent(gamepad->sticks[_gamepad_stick_right].y, gamepad->sticks[_gamepad_stick_right].x);
-				scale = 1.0 / MAX(fabs(sine(right_angle)), fabs(cosine(right_angle)));
-				right_stick.x = PIN(gamepad->sticks[_gamepad_stick_right].x * gamepad_axis_normalization_scale * scale, -1.f, 1.f);
-				right_stick.y = PIN(gamepad->sticks[_gamepad_stick_right].y * gamepad_axis_normalization_scale * scale, -1.f, 1.f);
-			}
-			for (control_index = 0; control_index < NUMBER_OF_GAME_CONTROLS; control_index++)
-			{
-				state->buttons[control_index] =
-					gamepad->buttons[input_abstraction_globals.player_control_preferences[controller_index].game_control_to_xbox_buttons[control_index]];
-			}
-
-			if (input_abstraction_globals.player_control_preferences[controller_index].joystick_controls == _joystick_controls_legacy ||
-				input_abstraction_globals.player_control_preferences[controller_index].joystick_controls == _joystick_controls_legacy_southpaw)
-			{
-				short left_quadrant = (left_stick.x < 0.f ? 1 : 0) | (left_stick.y < 0.f ? 2 : 0);
-				short right_quadrant = (right_stick.x < 0.f ? 1 : 0) | (right_stick.y < 0.f ? 2 : 0);
-				real left_difference = left_angle - stick_direction_angles[left_quadrant];
-				real right_difference = right_angle - stick_direction_angles[right_quadrant];
-				real left_magnitude = square_root(left_stick.x * left_stick.x + left_stick.y * left_stick.y);
-				real right_magnitude = square_root(right_stick.x * right_stick.x + right_stick.y * right_stick.y);
-
-				if (fabs(left_difference) < LEFT_STICK_DIAGONAL_SNAP_ANGLE)
-				{
-					real absolute_angle = fabs(left_angle);
-
-					if (absolute_angle < STICK_DIAGONAL_ANGLE ||
-						absolute_angle > STICK_SECOND_QUADRANT_DIAGONAL_ANGLE)
-					{
-						left_stick.x = (left_stick.x < 0.f ? -1 : 1) * left_magnitude;
-						left_stick.y = (left_stick.y < 0.f ? -1 : 1) * left_magnitude *
-							(1.0 - fabs(left_difference) * STICK_DIAGONAL_BLEND_SCALE);
-					}
-					else
-					{
-						left_stick.y = (left_stick.y < 0.f ? -1 : 1) * left_magnitude;
-						left_stick.x = (left_stick.x < 0.f ? -1 : 1) * left_magnitude *
-							(1.0 - fabs(left_difference) * STICK_DIAGONAL_BLEND_SCALE);
-					}
-				}
-				else
-				{
-					if (fabs(left_stick.x) > fabs(left_stick.y))
-					{
-						left_stick.x = (left_stick.x < 0.f ? -1 : 1) * left_magnitude;
-						left_stick.y = 0.f;
-					}
-					else
-					{
-						left_stick.y = (left_stick.y < 0.f ? -1 : 1) * left_magnitude;
-						left_stick.x = 0.f;
-					}
-				}
-
-				if (fabs(right_difference) < RIGHT_STICK_DIAGONAL_SNAP_ANGLE)
-				{
-					real absolute_angle = fabs(right_angle);
-
-					if (absolute_angle < STICK_DIAGONAL_ANGLE ||
-						absolute_angle > STICK_SECOND_QUADRANT_DIAGONAL_ANGLE)
-					{
-						right_stick.x = (right_stick.x < 0.f ? -1 : 1) * right_magnitude;
-						right_stick.y = (right_stick.y < 0.f ? -1 : 1) * right_magnitude *
-							(1.0 - fabs(right_difference) * STICK_DIAGONAL_BLEND_SCALE);
-					}
-					else
-					{
-						right_stick.y = (right_stick.y < 0.f ? -1 : 1) * right_magnitude;
-						right_stick.x = (right_stick.x < 0.f ? -1 : 1) * right_magnitude *
-							(1.0 - fabs(right_difference) * STICK_DIAGONAL_BLEND_SCALE);
-					}
-				}
-				else
-				{
-					if (fabs(right_stick.x) > fabs(right_stick.y))
-					{
-						right_stick.x = (right_stick.x < 0.f ? -1 : 1) * right_magnitude;
-						right_stick.y = 0.f;
-					}
-					else
-					{
-						right_stick.y = (right_stick.y < 0.f ? -1 : 1) * right_magnitude;
-						right_stick.x = 0.f;
-					}
-				}
-			}
-
-			invert_look = input_abstraction_globals.player_control_preferences[controller_index].invert_look;
-			if (!invert_look && input_abstraction_globals.player_control_preferences[controller_index].invert_look_aircraft_control)
-			{
-				invert_look = local_player_is_piloting_aircraft((short)controller_index);
-			}
-			switch (input_abstraction_globals.player_control_preferences[controller_index].joystick_controls)
-			{
-				case _joystick_controls_default:
-					if (gamepad->buttons[_gamepad_binary_button_dpad_left])
-					{
-						state->strafe = 1.f;
-					}
-					else if (gamepad->buttons[_gamepad_binary_button_dpad_right])
-					{
-						state->strafe = -1.f;
-					}
-					else
-					{
-						state->strafe = -left_stick.x;
-					}
-					if (gamepad->buttons[_gamepad_binary_button_dpad_up])
-					{
-						state->forward_movement = 1.f;
-					}
-					else if (gamepad->buttons[_gamepad_binary_button_dpad_down])
-					{
-						state->forward_movement = -1.f;
-					}
-					else
-					{
-						state->forward_movement = left_stick.y;
-					}
-					state->yaw = -right_stick.x;
-					state->pitch = (invert_look ? -1.f : 1.f) * right_stick.y;
-					break;
-				case _joystick_controls_southpaw:
-					if (gamepad->buttons[_gamepad_binary_button_dpad_left])
-					{
-						state->yaw = 1.f;
-					}
-					else if (gamepad->buttons[_gamepad_binary_button_dpad_right])
-					{
-						state->yaw = -1.f;
-					}
-					else
-					{
-						state->yaw = -left_stick.x;
-					}
-					if (gamepad->buttons[_gamepad_binary_button_dpad_up])
-					{
-						state->pitch = invert_look ? -1.f : 1.f;
-					}
-					else if (gamepad->buttons[_gamepad_binary_button_dpad_down])
-					{
-						state->pitch = invert_look ? 1.f : -1.f;
-					}
-					else
-					{
-						state->pitch = (invert_look ? -1.f : 1.f) * left_stick.y;
-					}
-					state->forward_movement = right_stick.y;
-					state->strafe = -right_stick.x;
-					break;
-				case _joystick_controls_legacy:
-					if (gamepad->buttons[_gamepad_binary_button_dpad_left])
-					{
-						state->yaw = 1.f;
-					}
-					else if (gamepad->buttons[_gamepad_binary_button_dpad_right])
-					{
-						state->yaw = -1.f;
-					}
-					else
-					{
-						state->yaw = -left_stick.x;
-					}
-					if (gamepad->buttons[_gamepad_binary_button_dpad_up])
-					{
-						state->forward_movement = 1.f;
-					}
-					else if (gamepad->buttons[_gamepad_binary_button_dpad_down])
-					{
-						state->forward_movement = -1.f;
-					}
-					else
-					{
-						state->forward_movement = left_stick.y;
-					}
-					state->strafe = -right_stick.x;
-					state->pitch = (invert_look ? -1.f : 1.f) * right_stick.y;
-					break;
-				case _joystick_controls_legacy_southpaw:
-					if (gamepad->buttons[_gamepad_binary_button_dpad_left])
-					{
-						state->strafe = 1.f;
-					}
-					else if (gamepad->buttons[_gamepad_binary_button_dpad_right])
-					{
-						state->strafe = -1.f;
-					}
-					else
-					{
-						state->strafe = -left_stick.x;
-					}
-					if (gamepad->buttons[_gamepad_binary_button_dpad_up])
-					{
-						state->pitch = invert_look ? -1.f : 1.f;
-					}
-					else if (gamepad->buttons[_gamepad_binary_button_dpad_down])
-					{
-						state->pitch = invert_look ? 1.f : -1.f;
-					}
-					else
-					{
-						state->pitch = (invert_look ? -1.f : 1.f) * left_stick.y;
-					}
-					state->forward_movement = right_stick.y;
-					state->yaw = -right_stick.x;
-					break;
-				default:
-					error(_error_silent, "unknown joystick preset");
-					break;
-			}
+			input_abstraction_state_from_gamepad(controller_index, gamepad, state);
 			keyboard_controls_update(controller_index, state);
 			input_abstraction_globals.controller_available[controller_index] = TRUE;
 		}
@@ -830,6 +907,66 @@ void input_abstraction_update(
 	}
 
 	return;
+}
+
+/* port: a sub-step's reading of a controller (port/linux/game/sim_rate.h,
+player_control.c): its game input state at the running sub-step's start,
+and how far its fire control is pulled, from the controller read again then
+(halo_linux_substep_gamepad, port/linux/src/xinput_sdl.c) as input_xbox.c
+reads one, the keys as the frame counted them. FALSE, and nothing written,
+when the reading is the frame's: the devices are read once a frame and a
+tick's sub-steps run within one, so only what the scripted player plays
+(debug.test_input "script:", on the simulation's clock) changes there. A
+button down that the frame saw down keeps the frame's count of the ticks it
+has been held; one the frame saw up counts 1, as a frame counts a press;
+one let go, 0. Nothing the frame keeps is changed: the next frame reads the
+controller as it would have. */
+boolean input_abstraction_port_substep_state(
+	short controller_index,
+	struct game_input_state *state,
+	real *primary_trigger)
+{
+	extern int halo_linux_substep_gamepad(short gamepad_index, XINPUT_GAMEPAD *pad);
+	struct gamepad_state const *frame;
+	struct gamepad_state gamepad;
+	XINPUT_GAMEPAD pad;
+	short button_index;
+
+	if (controller_index < 0 || controller_index >= MAXIMUM_GAMEPADS)
+		return FALSE;
+	frame = input_get_gamepad_state(controller_index);
+	if (!frame || !halo_linux_substep_gamepad(controller_index, &pad))
+		return FALSE;
+	gamepad = *frame;
+	/* (an XInput reading's analog buttons and its digital buttons' bits are
+	in the order of the gamepad's: xdk_xbox.h, input_xbox.c's tables) */
+	for (button_index = 0; button_index < NUMBER_OF_GAMEPAD_BUTTONS; button_index++)
+	{
+		boolean down;
+		byte *ticks = &gamepad.buttons[button_index];
+
+		if (button_index < NUMBER_OF_GAMEPAD_ANALOG_BUTTONS)
+		{
+			gamepad.analog_buttons[button_index] = pad.bAnalogButtons[button_index];
+			down = gamepad.analog_buttons[button_index] > frame->analog_button_thresholds[button_index];
+		}
+		else
+		{
+			down = TEST_FLAG(pad.wButtons, button_index - FIRST_GAMEPAD_BINARY_BUTTON);
+		}
+		if (!down)
+			*ticks = 0;
+		else if (!*ticks)
+			*ticks = 1;
+	}
+	gamepad.sticks[_gamepad_stick_left].x = fix_dead_zone(pad.sThumbLX, SUBSTEP_GAMEPAD_STICK_DEAD_RANGE);
+	gamepad.sticks[_gamepad_stick_left].y = fix_dead_zone(pad.sThumbLY, SUBSTEP_GAMEPAD_STICK_DEAD_RANGE);
+	gamepad.sticks[_gamepad_stick_right].x = fix_dead_zone(pad.sThumbRX, SUBSTEP_GAMEPAD_STICK_DEAD_RANGE);
+	gamepad.sticks[_gamepad_stick_right].y = fix_dead_zone(pad.sThumbRY, SUBSTEP_GAMEPAD_STICK_DEAD_RANGE);
+	input_abstraction_state_from_gamepad(controller_index, &gamepad, state);
+	keyboard_controls_apply(controller_index, halo_keyboard_actions(controller_index), state);
+	*primary_trigger = primary_trigger_pull(controller_index, &gamepad);
+	return TRUE;
 }
 
 /* ---------- private code */

@@ -6,13 +6,13 @@ Where the Linux build's own files are, and where the player's go.
 The Linux release (tools/linux_package.py) is a tree laid out as a Unix
 prefix is, which a package manager can copy to /usr as it is:
 
-	bin/opence                   the game
-	lib/opence/libSDL3.so.0      its SDL (an rpath of $ORIGIN/../lib/opence)
-	share/opence/brokers.txt     read-only data (install_shared_file)
-	share/applications/opence.desktop, share/icons/hicolor/<size>/apps/opence.png
-	share/doc/opence/, share/licenses/opence/
+	bin/openh1                   the game
+	lib/openh1/libSDL3.so.0      its SDL (an rpath of $ORIGIN/../lib/openh1)
+	share/openh1/brokers.txt     read-only data (install_shared_file)
+	share/applications/openh1.desktop, share/icons/hicolor/<size>/apps/openh1.png
+	share/doc/openh1/, share/licenses/openh1/
 
-The executable is in a tree when its folder is named bin and share/opence
+The executable is in a tree when its folder is named bin and share/openh1
 is beside that folder. Otherwise (a build: build/linux_x86_64/halo,
 build/linux_arm64/halo) its folder holds everything. The game's folder is
 the tree's root, or the executable's folder.
@@ -25,7 +25,7 @@ and keeps the player's files in their XDG folders: config.toml in
 $XDG_CONFIG_HOME/halo-linux (~/.config/halo-linux) and the game data in
 $XDG_DATA_HOME/halo-linux (~/.local/share/halo-linux, the save root's
 folder, xbox_files.c). A game is installed when its tree has
-share/opence/packaged, which a package adds, or when the player cannot
+share/openh1/packaged, which a package adds, or when the player cannot
 write to the game's folder (/usr, /opt, a portable copy on a read-only
 disk). A read-only folder's own config.toml and maps/ are still read where
 they are (a portable copy on a read-only USB stick, /opt/halo with the maps

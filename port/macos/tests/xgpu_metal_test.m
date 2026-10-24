@@ -26,6 +26,9 @@ and checks them.
 #undef host_page_size
 #include "xgpu_metal.h"
 #include "xgpu_metal_internal.h"
+#include "xgpu_metal_post_shaders.h"
+#define XGPU_HDR_REFERENCE
+#include "xgpu_hdr.h"
 #if __has_include("host_render_stream.h")
 #include "host_render_stream.h"
 #include "xgpu_metal_stream.h"
@@ -46,6 +49,8 @@ and checks them.
 
 uintptr_t host_guest_base;
 void (*host_memory_remapped)(uint32_t address, uint32_t size);
+/* (display.astc_textures: the default) */
+char host_astc_textures[16] = "auto";
 
 void host_logf(int priority, const char *format, ...)
 {
@@ -127,6 +132,12 @@ int host_render_stream_playing(void)
 void host_render_stream_display_paced(int paced)
 {
 	(void)paced;
+}
+
+void host_render_stream_display_hdr(int hdr, float headroom)
+{
+	(void)hdr;
+	(void)headroom;
 }
 
 uint64_t host_render_stream_frame_input(void)
@@ -1102,8 +1113,8 @@ static void test_stream_table(void)
 	struct xgpu_metal_stream_shaders shaders = { NULL, stream_shaders, NULL };
 	static volatile uint32_t visibility[XGPU_STREAM_VISIBILITY_SLOTS];
 	struct xgpu_stream_capabilities capabilities;
-	struct xgpu_stream_target_create create = { 0, 1, SIZE, SIZE, 0, 1, { 0, 0 } };
-	struct xgpu_stream_target_create create_depth = { 0, 2, SIZE, SIZE, 1, 1, { 0, 0 } };
+	struct xgpu_stream_target_create create = { 0, 1, SIZE, SIZE, 0, 1, 0, 0 };
+	struct xgpu_stream_target_create create_depth = { 0, 2, SIZE, SIZE, 1, 1, 0, 0 };
 	struct xgpu_stream_set_targets targets = { 0, 1, 2, -1, 1, 0, 1 };
 	struct xgpu_stream_pipeline_define definition;
 	struct xgpu_stream_dynamic_state dynamic;
@@ -1337,7 +1348,7 @@ static uint32_t swizzled(uint32_t x, uint32_t y)
 static void test_stream_emitter(void)
 {
 	const struct host_render_backend *backend = xgpu_metal_stream_backend();
-	struct xgpu_stream_target_create create = { 0, 11, SIZE, SIZE, 0, 1, { 0, 0 } };
+	struct xgpu_stream_target_create create = { 0, 11, SIZE, SIZE, 0, 1, 0, 0 };
 	struct xgpu_stream_set_targets targets = { 0, 11, 0, -1, 1, 0, 0 };
 	struct xgpu_stream_pipeline_define definition;
 	struct xgpu_stream_dynamic_state dynamic;
@@ -1556,6 +1567,682 @@ static void test_stream_emitter(void)
 #undef READ
 	free(layout);
 	backend->target_delete(NULL, 11);
+}
+
+/* ---------- anti-aliasing's passes, through the table
+
+display.anti_aliasing's passes (xgpu_metal_post.c) as the front end sends
+them: a white triangle over black, whose long edge is a staircase, then the
+pass over the left part of the target (the 3D view), then a rectangle drawn
+after it (the HUD), which must stay sharp, as must the edge right of the
+3D view. Both SMAA and FXAA. */
+
+/* a pixel neither black nor white: blended */
+static int blended(uint32_t value)
+{
+	uint32_t green = (value >> 8) & 0xff;
+
+	return green > 8 && green < 247;
+}
+
+static void test_stream_anti_aliasing(void)
+{
+	const struct host_render_backend *backend = xgpu_metal_stream_backend();
+	struct xgpu_metal_stream_shaders shaders = { NULL, stream_shaders, NULL, NULL };
+	struct xgpu_stream_target_create create = { 0, 21, SIZE, SIZE, 0, 1, 0, 0 };
+	struct xgpu_stream_set_targets targets = { 0, 21, 0, -1, 1, 0, 0 };
+	struct xgpu_stream_pipeline_define definition;
+	struct xgpu_stream_dynamic_state dynamic;
+	struct xgpu_stream_draw_uniforms uniforms;
+	struct host_render_vertex_input input;
+	struct host_render_texture_stage stages[4];
+	struct xgpu_stream_layout_define *layout;
+	struct xgpu_stream_anti_alias anti_alias;
+	struct xgpu_stream_read_target read;
+	struct xgpu_stream_draw draw;
+	struct vertex triangle[3], hud[6];
+	unsigned char *ring = (unsigned char *)host_address(GUEST_START + 0x100000);
+	uint32_t position = 0xc0000;
+	int smaa, x, y, inside_blended, outside_blended, hud_blended, alpha_kept;
+	union
+	{
+		struct xgpu_stream_clear clear;
+		unsigned char bytes[sizeof(struct xgpu_stream_clear) + sizeof(int32_t[4])];
+	} clear;
+
+	begin("anti-aliasing's passes through the table");
+	xgpu_metal_stream_set_shaders(&shaders);
+	backend->target_create(NULL, &create);
+	memset(&definition, 0, sizeof(definition));
+	definition.key.color_mask = 15;
+	definition.key.color_format = 1;
+	definition.key.samples = 1;
+	memset(&dynamic, 0, sizeof(dynamic));
+	dynamic.viewport[2] = dynamic.viewport[3] = SIZE;
+	dynamic.scissor[2] = dynamic.scissor[3] = SIZE;
+	dynamic.depth_range[1] = 1.0f;
+	memset(&uniforms, 0, sizeof(uniforms));
+	uniforms.viewport_scale[0] = uniforms.viewport_scale[1] = uniforms.viewport_scale[2] = uniforms.viewport_scale[3] = 1.0f;
+	memset(stages, 0, sizeof(stages));
+	layout = calloc(1, sizeof(*layout) + 2 * sizeof(struct xgpu_stream_vertex_element));
+	layout->id = 3;
+	layout->element_count = 2;
+	layout->elements[0] = (struct xgpu_stream_vertex_element){ 0, 0, XGPU_VERTEX_FLOAT4, 16, 0 };
+	layout->elements[1] = (struct xgpu_stream_vertex_element){ 3, 0, XGPU_VERTEX_COLOR, 4, 16 };
+	memset(&input, 0, sizeof(input));
+	input.layout = layout;
+	input.present = 1;
+	input.streams[0].segment = -1;
+	input.streams[0].stride = sizeof(struct vertex);
+	/* (a shallow edge from the top left to the right side's middle: a
+	staircase of runs four or five pixels long) */
+	triangle[0] = (struct vertex){ -1.0f, 1.0f, 0.5f, 1.0f, 0x80ffffffu, 0.0f, 0.0f };
+	triangle[1] = (struct vertex){ 1.0f, 0.1f, 0.5f, 1.0f, 0x80ffffffu, 0.0f, 0.0f };
+	triangle[2] = (struct vertex){ -1.0f, -1.0f, 0.5f, 1.0f, 0x80ffffffu, 0.0f, 0.0f };
+	/* the HUD's rectangle, over the 3D view's corner and past it (both
+	drawn with the clear's alpha, which the pass must leave as it is) */
+	rectangle_vertices(hud, 40, 50, 60, 60, 0.5f, 0x80ffffffu);
+	for (smaa = 1; smaa >= 0; smaa--)
+	{
+		backend->anti_aliasing_prepare(NULL, (uint32_t)smaa);
+		backend->set_targets(NULL, &targets);
+		memset(&clear, 0, sizeof(clear));
+		clear.clear.flags = XGPU_CLEAR_COLOR | XGPU_CLEAR_RED | XGPU_CLEAR_GREEN | XGPU_CLEAR_BLUE | XGPU_CLEAR_ALPHA;
+		clear.clear.color[3] = 0.5f;
+		backend->clear(NULL, &clear.clear);
+		CHECK(backend->pipeline(NULL, 6, &definition), "the pipeline is made");
+		backend->draw_state(NULL, &dynamic, &uniforms, 10 + (uint32_t)smaa);
+		backend->set_textures(NULL, stages);
+		input.streams[0].data = guest_address(ring_put(ring, &position, triangle, sizeof(triangle)));
+		input.streams[0].bytes = sizeof(triangle);
+		backend->set_vertices(NULL, &input);
+		draw = (struct xgpu_stream_draw){ 0, XGPU_TRIANGLES, 3 };
+		backend->draw(NULL, &draw);
+		/* the 3D view: the left 48 columns */
+		memset(&anti_alias, 0, sizeof(anti_alias));
+		anti_alias.target = 21;
+		anti_alias.smaa = (uint32_t)smaa;
+		anti_alias.corners[2] = 48;
+		anti_alias.corners[3] = SIZE;
+		backend->anti_alias(NULL, &anti_alias);
+		/* the HUD, after it, with the stream's own state again */
+		input.streams[0].data = guest_address(ring_put(ring, &position, hud, sizeof(hud)));
+		input.streams[0].bytes = sizeof(hud);
+		backend->set_vertices(NULL, &input);
+		draw = (struct xgpu_stream_draw){ 0, XGPU_TRIANGLES, 6 };
+		backend->draw(NULL, &draw);
+		backend->present(NULL, 21);
+		backend->frame_end(NULL);
+		backend->wait(NULL, backend->fence(NULL));
+		read = (struct xgpu_stream_read_target){ 0, 21, -1, 0, GUEST_START + 0x200000, SIZE * SIZE * 4, 0 };
+		CHECK(backend->read_target(NULL, &read), "read the target");
+		memcpy(pixels, (void *)host_address(read.pixels), sizeof(pixels));
+		inside_blended = outside_blended = hud_blended = 0;
+		alpha_kept = 1;
+		for (y = 0; y < SIZE; y++)
+		{
+			for (x = 0; x < SIZE; x++)
+			{
+				int in_hud = x >= 40 && x < 60 && y >= 50 && y < 60;
+
+				if (in_hud)
+					hud_blended += blended(pixel(x, y));
+				else if (x < 47)
+					inside_blended += blended(pixel(x, y));
+				else if (x >= 49)
+					outside_blended += blended(pixel(x, y));
+				/* (the pass writes colour alone: the clear's alpha stays,
+				where the HUD did not draw) */
+				if (!in_hud && (pixel(x, y) >> 24) != 0x80)
+					alpha_kept = 0;
+			}
+		}
+		CHECK(inside_blended >= 20, "%s blends the 3D view's staircase: %d pixels", smaa ? "SMAA" : "FXAA",
+			inside_blended);
+		CHECK(outside_blended == 0 && hud_blended == 0, "%s leaves the rest and the HUD drawn after it sharp: %d, %d",
+			smaa ? "SMAA" : "FXAA", outside_blended, hud_blended);
+		CHECK(pixel(50, 55) == 0x80ffffffu && pixel(4, 60) == 0x80ffffffu && pixel(30, 4) == 0x80000000u,
+			"the HUD drawn after it, where it is drawn: %08x %08x %08x", pixel(50, 55), pixel(4, 60), pixel(30, 4));
+		CHECK(alpha_kept, "%s keeps the target's alpha", smaa ? "SMAA" : "FXAA");
+	}
+	free(layout);
+	backend->target_delete(NULL, 21);
+}
+
+/* ---------- display.hdr's tone map and encoding (port/linux/src/xgpu_hdr.h)
+
+The contract's golden vectors: colours of the frame (under white, at it,
+a little and far past it, saturated and grey) in an RGBA16F target, each
+cleared into a block of its own, tone mapped through the table as the front
+end sends it, at the peaks of an SDR display, an HDR one and an XDR one at
+low brightness, in both modes; and encoded for an EDR layer by the
+presentation's function. Each pixel must be what the C reference
+(xgpu_hdr.h, XGPU_HDR_REFERENCE) makes of it, to half floats' precision;
+and the tone map must leave alpha (the game's) as it was. The Vulkan
+backend's shaders are the same GLSL, held to the same reference. */
+
+#define HDR_BLOCKS 16
+#define HDR_BLOCK (SIZE / 4)
+
+static const float hdr_vectors[HDR_BLOCKS][3] =
+{
+	{ 0.0f, 0.0f, 0.0f }, { 0.02f, 0.04f, 0.03f }, { 0.25f, 0.5f, 0.75f }, { 1.0f, 1.0f, 1.0f },
+	{ 0.2f, 0.6f, 1.0f }, { 1.0f, 0.5f, 0.1f }, { 1.05f, 1.0f, 0.9f }, { 0.55f, 1.1f, 1.2f },
+	{ 1.3f, 1.3f, 1.3f }, { 0.4f, 0.9f, 1.6f }, { 2.0f, 1.2f, 0.4f }, { 1.8f, 1.8f, 1.8f },
+	{ 3.0f, 2.5f, 1.5f }, { 0.6f, 1.5f, 3.0f }, { 4.0f, 4.0f, 4.0f }, { 6.0f, 0.2f, 0.2f },
+};
+
+/* a half-float target's pixels, by its shot's file (xgpu_metal_stream_shot:
+<path>.rgba16f, the frame's values) */
+static float *hdr_read(uint32_t target, const char *path)
+{
+	char name[512];
+	FILE *file;
+	uint32_t header[4];
+	__fp16 halves[SIZE * SIZE * 4];
+	float *values = malloc(sizeof(float) * SIZE * SIZE * 4);
+	int index;
+
+	snprintf(name, sizeof(name), "%s.rgba16f", path);
+	if (!values || !xgpu_metal_stream_shot(target, path) || !(file = fopen(name, "rb")))
+	{
+		free(values);
+		return NULL;
+	}
+	if (fread(header, sizeof(header), 1, file) != 1 || header[2] != SIZE || header[3] != SIZE ||
+		fread(halves, sizeof(halves), 1, file) != 1)
+	{
+		fclose(file);
+		free(values);
+		return NULL;
+	}
+	fclose(file);
+	for (index = 0; index < SIZE * SIZE * 4; index++)
+		values[index] = (float)halves[index];
+	return values;
+}
+
+/* within half floats' precision of the reference */
+static int hdr_close(float got, float expected)
+{
+	return fabsf(got - expected) <= 0.004f + 0.004f * fabsf(expected);
+}
+
+static void hdr_clear_blocks(const struct host_render_backend *backend, float alpha)
+{
+	int block;
+
+	for (block = 0; block < HDR_BLOCKS; block++)
+	{
+		union
+		{
+			struct xgpu_stream_clear clear;
+			unsigned char bytes[sizeof(struct xgpu_stream_clear) + sizeof(int32_t[4])];
+		} clear;
+
+		memset(&clear, 0, sizeof(clear));
+		clear.clear.flags = XGPU_CLEAR_COLOR | XGPU_CLEAR_RED | XGPU_CLEAR_GREEN | XGPU_CLEAR_BLUE | XGPU_CLEAR_ALPHA;
+		memcpy(clear.clear.color, hdr_vectors[block], sizeof(hdr_vectors[block]));
+		clear.clear.color[3] = alpha;
+		clear.clear.count = 1;
+		clear.clear.rectangles[0][0] = (block % 4) * HDR_BLOCK;
+		clear.clear.rectangles[0][1] = (block / 4) * HDR_BLOCK;
+		clear.clear.rectangles[0][2] = HDR_BLOCK;
+		clear.clear.rectangles[0][3] = HDR_BLOCK;
+		backend->clear(NULL, &clear.clear);
+	}
+}
+
+static void test_stream_hdr(void)
+{
+	static const float peaks[3] = { 1.0f, 4.0f, 16.0f };
+	const struct host_render_backend *backend = xgpu_metal_stream_backend();
+	struct xgpu_stream_target_create create = { 0, 41, SIZE, SIZE, 0, 1, 3, 0 };
+	struct xgpu_stream_set_targets targets = { 0, 41, 0, -1, 1, 0, 0 };
+	struct xgpu_stream_capabilities capabilities;
+	struct xgpu_stream_hdr state;
+	struct xgpu_stream_tone_map tone_map;
+	char path[512];
+	int mode, peak, block, channel, wrong, alpha_kept;
+
+	begin("display.hdr's tone map and encoding against the reference");
+	memset(&capabilities, 0, sizeof(capabilities));
+	backend->initialize(NULL, &capabilities);
+	CHECK(capabilities.hdr, "the backend draws display.hdr");
+	snprintf(path, sizeof(path), "%s/xgpu_metal_test_hdr_%d.png", getenv("TMPDIR") ? getenv("TMPDIR") : "/tmp",
+		(int)getpid());
+	backend->target_create(NULL, &create);
+	for (mode = XGPU_HDR_MODE_FAITHFUL; mode <= XGPU_HDR_MODE_PUNCHY; mode++)
+	{
+		for (peak = 0; peak < 3; peak++)
+		{
+			struct xgpu_hdr_frame frame;
+			float *values;
+
+			host_metal_hdr_override(peaks[peak]);
+			state = (struct xgpu_stream_hdr){ 0, 1, (uint32_t)mode, 100 };
+			backend->hdr(NULL, &state);
+			host_metal_hdr_frame(&frame);
+			backend->set_targets(NULL, &targets);
+			hdr_clear_blocks(backend, 0.25f);
+			memset(&tone_map, 0, sizeof(tone_map));
+			tone_map.target = 41;
+			tone_map.corners[2] = tone_map.corners[3] = SIZE;
+			backend->tone_map(NULL, &tone_map);
+			backend->present(NULL, 41);
+			backend->frame_end(NULL);
+			backend->wait(NULL, backend->fence(NULL));
+			values = hdr_read(41, path);
+			CHECK(values != NULL, "read the target's half floats");
+			if (!values)
+				continue;
+			wrong = 0;
+			alpha_kept = 1;
+			for (block = 0; block < HDR_BLOCKS; block++)
+			{
+				float expected[3];
+				const float *got = values + (((block / 4) * HDR_BLOCK + HDR_BLOCK / 2) * SIZE + (block % 4) * HDR_BLOCK +
+					HDR_BLOCK / 2) * 4;
+
+				memcpy(expected, hdr_vectors[block], sizeof(expected));
+				xgpu_hdr_tone_map(expected, mode, frame.peak);
+				for (channel = 0; channel < 3; channel++)
+				{
+					if (!hdr_close(got[channel], expected[channel]))
+					{
+						if (wrong++ < 4)
+							printf("  block %d channel %d: %.5f, the reference %.5f\n", block, channel, (double)got[channel],
+								(double)expected[channel]);
+					}
+				}
+				if (fabsf(got[3] - 0.25f) > 0.001f)
+					alpha_kept = 0;
+			}
+			CHECK(!wrong, "%s at peak %.0f: every vector as the reference has it (%d wrong)",
+				mode == XGPU_HDR_MODE_PUNCHY ? "punchy" : "faithful", (double)frame.peak, wrong);
+			CHECK(alpha_kept, "the tone map keeps the game's alpha");
+			if (mode == XGPU_HDR_MODE_FAITHFUL)
+			{
+				/* (under white: the frame's values themselves) */
+				const float *under = values + ((HDR_BLOCK / 2) * SIZE + 2 * HDR_BLOCK + HDR_BLOCK / 2) * 4;
+
+				CHECK(under[0] == (float)(__fp16)0.25f && under[1] == (float)(__fp16)0.5f && under[2] == (float)(__fp16)0.75f,
+					"faithful leaves a colour under white exactly as it was: %.6f %.6f %.6f", (double)under[0],
+					(double)under[1], (double)under[2]);
+			}
+			free(values);
+		}
+	}
+
+	/* the encoding: the presentation's function into an RGBA16F texture,
+	sampling the frame (the vectors, as they are) over the viewport */
+	{
+		uint32_t vertex = xgpu_metal_shader_create(xgpu_metal_post_functions[XGPU_METAL_POST_VERTEX].source,
+			xgpu_metal_post_functions[XGPU_METAL_POST_VERTEX].size, xgpu_metal_post_functions[XGPU_METAL_POST_VERTEX].entry);
+		uint32_t encode = xgpu_metal_shader_create(xgpu_metal_post_functions[XGPU_METAL_POST_HDR_ENCODE].source,
+			xgpu_metal_post_functions[XGPU_METAL_POST_HDR_ENCODE].size,
+			xgpu_metal_post_functions[XGPU_METAL_POST_HDR_ENCODE].entry);
+		struct xgpu_stream_target_create output_create = { 0, 42, SIZE, SIZE, 0, 1, 3, 0 };
+		struct xgpu_metal_pipeline pipeline;
+		struct xgpu_metal_dynamic_state dynamic;
+		struct xgpu_metal_post_uniforms uniforms;
+		struct xgpu_metal_sampler sampler;
+		struct xgpu_hdr_frame frame = { XGPU_HDR_MODE_FAITHFUL, XGPU_HDR_OUTPUT_EXTENDED_LINEAR, 1.5f, 4.0f };
+		uint32_t source = 0, output = 0;
+		float *values;
+		int output_wrong = 0;
+
+		CHECK(vertex && encode, "the encoding's functions are made");
+		backend->target_create(NULL, &output_create);
+		backend->set_targets(NULL, &targets);
+		hdr_clear_blocks(backend, 1.0f);
+		backend->present(NULL, 41);
+		backend->frame_end(NULL);
+		backend->wait(NULL, backend->fence(NULL));
+		{
+			/* (the targets' textures: the table's own) */
+			extern uint32_t xgpu_metal_stream_target_texture(uint32_t target);
+
+			source = xgpu_metal_stream_target_texture(41);
+			output = xgpu_metal_stream_target_texture(42);
+		}
+		memset(&pipeline, 0, sizeof(pipeline));
+		pipeline.vertex_shader = vertex;
+		pipeline.pixel_shader = encode;
+		pipeline.color_mask = 15;
+		pipeline.color_format = XGPU_METAL_FORMAT_RGBA16F;
+		pipeline.samples = 1;
+		xgpu_metal_set_targets(output, 0, 0, 0, 0);
+		xgpu_metal_set_pipeline(&pipeline);
+		memset(&dynamic, 0, sizeof(dynamic));
+		dynamic.viewport[2] = dynamic.scissor[2] = SIZE;
+		dynamic.viewport[3] = dynamic.scissor[3] = SIZE;
+		dynamic.depth_range[1] = 1.0f;
+		xgpu_metal_set_dynamic_state(&dynamic);
+		memset(&sampler, 0, sizeof(sampler));
+		sampler.min_filter = sampler.mag_filter = XGPU_METAL_FILTER_POINT;
+		sampler.mip_filter = XGPU_METAL_MIP_NONE;
+		sampler.address_u = sampler.address_v = sampler.address_w = XGPU_METAL_ADDRESS_CLAMP;
+		sampler.max_anisotropy = 1;
+		xgpu_metal_set_texture(0, source, &sampler);
+		memset(&uniforms, 0, sizeof(uniforms));
+		uniforms.metrics[2] = uniforms.metrics[3] = 1.0f / SIZE;
+		uniforms.hdr[0] = frame.paper_white;
+		uniforms.hdr[1] = frame.peak;
+		uniforms.hdr[2] = (float)frame.output;
+		xgpu_metal_set_draw_uniforms(&uniforms, sizeof(uniforms));
+		xgpu_metal_draw(XGPU_METAL_PRIMITIVE_TRIANGLES, 3, 0, 0, (struct xgpu_metal_source){ XGPU_METAL_SOURCE_NONE, 0, 0, 0 });
+		backend->present(NULL, 42);
+		backend->frame_end(NULL);
+		backend->wait(NULL, backend->fence(NULL));
+		values = hdr_read(42, path);
+		CHECK(values != NULL, "read the encoding's half floats");
+		for (block = 0; values && block < HDR_BLOCKS; block++)
+		{
+			float expected[3];
+			const float *got = values + (((block / 4) * HDR_BLOCK + HDR_BLOCK / 2) * SIZE + (block % 4) * HDR_BLOCK +
+				HDR_BLOCK / 2) * 4;
+
+			memcpy(expected, hdr_vectors[block], sizeof(expected));
+			xgpu_hdr_encode(expected, &frame);
+			for (channel = 0; channel < 3; channel++)
+			{
+				if (!hdr_close(got[channel], expected[channel]) && output_wrong++ < 4)
+					printf("  block %d channel %d: %.5f, the reference %.5f\n", block, channel, (double)got[channel],
+						(double)expected[channel]);
+			}
+		}
+		CHECK(values && !output_wrong, "the EDR encoding: every vector as the reference has it (%d wrong)", output_wrong);
+		free(values);
+		backend->target_delete(NULL, 42);
+	}
+	state = (struct xgpu_stream_hdr){ 0, 0, 0, 100 };
+	backend->hdr(NULL, &state);
+	host_metal_hdr_override(0.0f);
+	backend->target_delete(NULL, 41);
+	{
+		static const char *const suffixes[4] = { "", ".rgba16f", ".encoded.rgba16f", ".encoded.txt" };
+		char name[600];
+		int suffix;
+
+		for (suffix = 0; suffix < 4; suffix++)
+		{
+			snprintf(name, sizeof(name), "%s%s", path, suffixes[suffix]);
+			unlink(name);
+		}
+	}
+}
+
+/* ---------- the enhanced dynamic lights, through the table
+
+The emitter's lit structure (a lightmap pass's pixel program with the
+enhanced dynamic lights, XGPU_DYNAMIC_LIGHTS_ENVIRONMENT, and the
+environment's vertex shader): its shaders must compile, draw unlit where
+the frame has sent no lights, and lit, brighter near the light, once the
+block and cells are sent. Then a plasma bolt's glow, added to the target
+about the light's middle. */
+
+struct lit_vertex
+{
+	/* the world position, normal, binormal and tangent (v0 to v3), the
+	colour (v4) */
+	float position[4];
+	float normal[4];
+	float binormal[4];
+	float tangent[4];
+	uint32_t color;
+};
+
+static void test_stream_dynamic_lights(void)
+{
+	const struct host_render_backend *backend = xgpu_metal_stream_backend();
+	struct xgpu_stream_capabilities capabilities;
+	struct xgpu_stream_target_create create = { 0, 31, SIZE, SIZE, 0, 1, 0, 0 };
+	struct xgpu_stream_target_create create_depth = { 0, 32, SIZE, SIZE, 1, 1, 0, 0 };
+	struct xgpu_stream_set_targets targets = { 0, 31, 32, -1, 1, 0, 0 };
+	struct xgpu_stream_pipeline_define definition;
+	struct xgpu_stream_dynamic_state dynamic;
+	struct xgpu_stream_draw_uniforms uniforms;
+	struct host_render_vertex_input input;
+	struct host_render_texture_stage stages[4];
+	struct xgpu_stream_layout_define *layout;
+	struct xgpu_stream_read_target read;
+	struct xgpu_stream_draw draw;
+	struct xgpu_stream_dynamic_lights_upload *upload;
+	struct xgpu_stream_dynamic_lights_halos *halos;
+	unsigned char program_record[sizeof(struct xgpu_stream_vertex_program) + 3 * INSTRUCTION_SIZE];
+	struct xgpu_stream_vertex_program *program = (struct xgpu_stream_vertex_program *)program_record;
+	unsigned char halos_record[sizeof(struct xgpu_stream_dynamic_lights_halos) + 2 * 16];
+	unsigned char *ring = (unsigned char *)host_address(GUEST_START + 0x100000);
+	uint32_t position = 0x10000, *cells, index, unlit_middle, unlit_corner;
+	unsigned char *combiner;
+	struct lit_vertex corners[4], quad[6];
+	union
+	{
+		struct xgpu_stream_clear clear;
+		unsigned char bytes[sizeof(struct xgpu_stream_clear) + sizeof(int32_t[4])];
+	} clear;
+
+	begin("the enhanced dynamic lights through the table");
+	xgpu_metal_stream_set_shaders(xgpu_metal_shaders());
+	backend->initialize(NULL, &capabilities);
+	CHECK(capabilities.dynamic_lights && capabilities.dynamic_lights_preparable, "the capabilities say dynamic lights");
+	CHECK(backend->dynamic_lights_prepare(NULL), "the dynamic lights are prepared");
+	backend->target_create(NULL, &create);
+	backend->target_create(NULL, &create_depth);
+
+	/* the vertex program: oPos = v0, oD0 = v4 (the environment's lighting
+	reads v0 to v3 as the world position, normal, binormal and tangent) */
+	memset(program_record, 0, sizeof(program_record));
+	program->header = XGPU_STREAM_HEADER(XGPU_STREAM_VERTEX_PROGRAM, sizeof(program_record));
+	program->id = 2;
+	program->hash[0] = 0x2468ace0;
+	program->hash[1] = 0x13579bdf;
+	program->instruction_count = 2;
+	instruction_move(program->instructions[0], 0, 0, 0);
+	instruction_move(program->instructions[1], 4, 1, 1);
+	backend->vertex_program(NULL, program);
+	/* the pixel program: r0 = v0 (the vertex colour), lit by the enhanced
+	dynamic lights as a lightmap pass is */
+	memset(&definition, 0, sizeof(definition));
+	definition.id = 12;
+	definition.key.vertex_program[0] = program->hash[0];
+	definition.key.vertex_program[1] = program->hash[1];
+	definition.key.color_mask = 15;
+	definition.key.color_format = 1;
+	definition.key.depth_format = 2;
+	definition.key.samples = 1;
+	definition.key.lighting = 3;     /* XGPU_LIGHTING_ENVIRONMENT */
+	for (index = 0; index < 4; index++)
+		definition.pixel_program.stages[index][4] = (unsigned char)(index ? index - 1 : 0xff);
+	definition.pixel_program.combiner_count = 1;
+	combiner = definition.pixel_program.combiners[0];
+	combiner[0] = 4;           /* rgb: A = v0 */
+	combiner[3] = 0;           /* B = zero, inverted: 1 */
+	combiner[5] = 1;
+	combiner[16] = 12;         /* AB to r0 */
+	combiner[21 + 0] = 4;      /* alpha: A = v0's alpha */
+	combiner[21 + 1] = 1;
+	combiner[21 + 5] = 1;
+	combiner[21 + 16] = 12;
+	definition.pixel_program.dynamic_lights = 1;     /* XGPU_DYNAMIC_LIGHTS_ENVIRONMENT */
+	backend->pipeline_define(NULL, &definition);
+	CHECK(backend->pipeline(NULL, 12, &definition), "the lit structure's pipeline is made");
+
+	memset(&dynamic, 0, sizeof(dynamic));
+	dynamic.viewport[2] = dynamic.viewport[3] = SIZE;
+	dynamic.scissor[2] = dynamic.scissor[3] = SIZE;
+	dynamic.depth_range[1] = 1.0f;
+	memset(&uniforms, 0, sizeof(uniforms));
+	uniforms.viewport_scale[0] = SIZE / 2.0f;
+	uniforms.viewport_scale[1] = -SIZE / 2.0f;
+	uniforms.viewport_scale[2] = uniforms.viewport_scale[3] = 1.0f;
+	uniforms.viewport_offset[0] = uniforms.viewport_offset[1] = SIZE / 2.0f;
+	uniforms.point_size = 1.0f;
+	/* (the lightmap's colour, which the lights are multiplied by) */
+	uniforms.ps_final_c0[0] = uniforms.ps_final_c0[1] = uniforms.ps_final_c0[2] = uniforms.ps_final_c0[3] = 1.0f;
+	for (index = 0; index < 4; index++)
+		uniforms.texture_scale[index][0] = uniforms.texture_scale[index][1] = uniforms.texture_scale[index][2] =
+			uniforms.texture_scale[index][3] = 1.0f;
+	memset(stages, 0, sizeof(stages));
+	layout = calloc(1, sizeof(*layout) + 5 * sizeof(struct xgpu_stream_vertex_element));
+	layout->id = 4;
+	layout->element_count = 5;
+	for (index = 0; index < 4; index++)
+		layout->elements[index] = (struct xgpu_stream_vertex_element){ (uint8_t)index, 0, XGPU_VERTEX_FLOAT4, 16,
+			(uint16_t)(index * 16) };
+	layout->elements[4] = (struct xgpu_stream_vertex_element){ 4, 0, XGPU_VERTEX_COLOR, 4, 64 };
+	memset(&input, 0, sizeof(input));
+	input.layout = layout;
+	input.present = 1;
+	input.streams[0].segment = -1;
+	input.streams[0].stride = sizeof(struct lit_vertex);
+	/* a wall facing the camera (its normal toward it, -z), its world
+	position its screen position, dark grey */
+	for (index = 0; index < 4; index++)
+	{
+		float x = index & 1 ? SIZE - 0.5f : -0.5f, y = index & 2 ? SIZE - 0.5f : -0.5f;
+
+		corners[index] = (struct lit_vertex){ { x, y, 0.5f, 1.0f }, { 0.0f, 0.0f, -1.0f, 0.0f },
+			{ 0.0f, 1.0f, 0.0f, 0.0f }, { 1.0f, 0.0f, 0.0f, 0.0f }, 0xff404040u };
+	}
+	quad[0] = corners[0];
+	quad[1] = corners[1];
+	quad[2] = corners[2];
+	quad[3] = corners[2];
+	quad[4] = corners[1];
+	quad[5] = corners[3];
+
+#define LIT_DRAW() do { \
+		backend->set_targets(NULL, &targets); \
+		memset(&clear, 0, sizeof(clear)); \
+		clear.clear.flags = XGPU_CLEAR_COLOR | XGPU_CLEAR_RED | XGPU_CLEAR_GREEN | XGPU_CLEAR_BLUE | XGPU_CLEAR_ALPHA | \
+			XGPU_CLEAR_DEPTH; \
+		clear.clear.depth = 1.0f; \
+		backend->clear(NULL, &clear.clear); \
+		CHECK(backend->pipeline(NULL, 12, &definition), "the lit structure's pipeline"); \
+		backend->draw_state(NULL, &dynamic, &uniforms, 20); \
+		backend->set_textures(NULL, stages); \
+		input.streams[0].data = guest_address(ring_put(ring, &position, quad, sizeof(quad))); \
+		input.streams[0].bytes = sizeof(quad); \
+		backend->set_vertices(NULL, &input); \
+		draw = (struct xgpu_stream_draw){ 0, XGPU_TRIANGLES, 6 }; \
+		backend->draw(NULL, &draw); \
+	} while (0)
+#define LIT_READ() do { \
+		backend->present(NULL, 31); \
+		backend->frame_end(NULL); \
+		backend->wait(NULL, backend->fence(NULL)); \
+		read = (struct xgpu_stream_read_target){ 0, 31, -1, 0, GUEST_START + 0x200000, SIZE * SIZE * 4, 0 }; \
+		CHECK(backend->read_target(NULL, &read), "read the target"); \
+		memcpy(pixels, (void *)host_address(read.pixels), sizeof(pixels)); \
+	} while (0)
+
+	/* no lights sent this frame: the zeroed stand-ins, no light */
+	LIT_DRAW();
+	LIT_READ();
+	unlit_middle = pixel(32, 32);
+	unlit_corner = pixel(2, 2);
+	CHECK(near(unlit_middle, 0xff404040u, 2) && near(unlit_corner, 0xff404040u, 2),
+		"the lit structure's shaders draw, unlit with no lights sent: %08x %08x", unlit_middle, unlit_corner);
+
+	/* a green light before the wall's middle, 30 units' reach; every cell
+	says it reaches it */
+	upload = calloc(1, sizeof(*upload));
+	cells = calloc(1, XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE);
+	for (index = 0; index < XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE / 16; index++)
+		cells[index * 4] = 1;
+	upload->header = XGPU_STREAM_HEADER(XGPU_STREAM_DYNAMIC_LIGHTS_UPLOAD, sizeof(*upload));
+	upload->count = 1;
+	upload->size = XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE;
+	upload->block.grid[0][0] = upload->block.grid[0][1] = 32.0f;
+	upload->block.grid[0][3] = 1.0f;
+	upload->block.grid[1][0] = upload->block.grid[1][1] = upload->block.grid[1][2] = 1.0f;
+	upload->block.grid[1][3] = 2.0f;
+	/* (the look: brightness, core, spill past white, wrap: d3d8_device.c's) */
+	upload->block.grid[2][0] = 1.7f;
+	upload->block.grid[2][1] = 12.0f;
+	upload->block.grid[2][2] = 0.18f;
+	upload->block.grid[2][3] = 0.25f;
+	upload->block.position[0][0] = 32.0f;
+	upload->block.position[0][1] = 32.0f;
+	upload->block.position[0][2] = -0.5f;
+	upload->block.position[0][3] = 1.0f / 30.0f;
+	upload->block.color[0][1] = 3.0f;
+	upload->block.color[0][3] = 1.0f;
+	/* (the cells in the guest's memory, where the stream carries them) */
+	upload->cells = guest_address(ring_put(ring, &position, cells, XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE));
+	backend->dynamic_lights_upload(NULL, upload);
+	LIT_DRAW();
+	LIT_READ();
+	CHECK(((pixel(32, 32) >> 8) & 0xff) > ((unlit_middle >> 8) & 0xff) + 60 &&
+		((pixel(32, 32) >> 16) & 0xff) < ((unlit_middle >> 16) & 0xff) + 8,
+		"lit green before the light: %08x (unlit %08x)", pixel(32, 32), unlit_middle);
+	CHECK(((pixel(32, 32) >> 8) & 0xff) > ((pixel(2, 2) >> 8) & 0xff) + 20,
+		"brighter near the light than far from it: %08x %08x", pixel(32, 32), pixel(2, 2));
+
+	/* the next frame sent none: unlit again */
+	LIT_DRAW();
+	LIT_READ();
+	CHECK(near(pixel(32, 32), unlit_middle, 2), "unlit in a frame that sent no lights: %08x", pixel(32, 32));
+
+	/* a glow about a bolt's light in the middle of the screen, half the
+	screen across, green, over the scene's depth (cleared: far) */
+	LIT_DRAW();
+	memset(halos_record, 0, sizeof(halos_record));
+	halos = (struct xgpu_stream_dynamic_lights_halos *)halos_record;
+	halos->header = XGPU_STREAM_HEADER(XGPU_STREAM_DYNAMIC_LIGHTS_HALOS, sizeof(halos_record));
+	halos->color = 31;
+	halos->depth = 32;
+	halos->layers = 1;
+	halos->count = 1;
+	halos->camera_right[0] = 1.0f;
+	halos->camera_up[1] = 1.0f;
+	/* (the world is clip space; the screen conversion the game's) */
+	halos->projection[0][0] = halos->projection[1][1] = 1.0f;
+	halos->projection[2][3] = 0.5f;
+	halos->projection[3][2] = halos->projection[3][3] = 1.0f;
+	halos->projection[4][0] = SIZE / 2.0f;
+	halos->projection[4][1] = -SIZE / 2.0f;
+	halos->projection[4][2] = 1.0f;
+	halos->projection[5][0] = halos->projection[5][1] = SIZE / 2.0f;
+	memcpy(halos->viewport_scale, uniforms.viewport_scale, sizeof(halos->viewport_scale));
+	memcpy(halos->viewport_offset, uniforms.viewport_offset, sizeof(halos->viewport_offset));
+	halos->softness = 0.12f;
+	halos->halos[0][3] = 0.5f;
+	halos->halos[1][1] = 1.0f;
+	backend->dynamic_lights_halos(NULL, halos);
+	/* (and the stream's targets and state again after it: a draw over the
+	corner) */
+	{
+		struct lit_vertex corner[6];
+
+		memcpy(corner, quad, sizeof(corner));
+		for (index = 0; index < 6; index++)
+		{
+			corner[index].position[0] = corner[index].position[0] > 1.0f ? 7.5f : -0.5f;
+			corner[index].position[1] = corner[index].position[1] > 1.0f ? 7.5f : -0.5f;
+			corner[index].color = 0xffff0000u;
+		}
+		input.streams[0].data = guest_address(ring_put(ring, &position, corner, sizeof(corner)));
+		backend->set_vertices(NULL, &input);
+		backend->draw(NULL, &draw);
+	}
+	LIT_READ();
+	CHECK(((pixel(32, 32) >> 8) & 0xff) > 0xf0 && ((pixel(32, 32) >> 16) & 0xff) < 0x50,
+		"the glow added in its middle: %08x", pixel(32, 32));
+	CHECK(near(pixel(32, 12), unlit_middle, 2) && near(pixel(20, 32), unlit_middle, 32) &&
+		((pixel(20, 32) >> 8) & 0xff) > ((unlit_middle >> 8) & 0xff),
+		"soft and round: none past its edge, some near it: %08x %08x", pixel(32, 12), pixel(20, 32));
+	CHECK(near(pixel(3, 3), 0xffff0000u, 2) && (pixel(32, 32) >> 24) == 0xff,
+		"the stream's own draws go on after it, its alpha kept: %08x %08x", pixel(3, 3), pixel(32, 32));
+#undef LIT_DRAW
+#undef LIT_READ
+	free(upload);
+	free(cells);
+	free(layout);
+	backend->target_delete(NULL, 31);
+	backend->target_delete(NULL, 32);
 }
 #endif
 
@@ -1917,6 +2604,9 @@ int main(int argc, char *argv[])
 #ifdef TEST_STREAM
 		test_stream_table();
 		test_stream_emitter();
+		test_stream_anti_aliasing();
+		test_stream_dynamic_lights();
+		test_stream_hdr();
 #else
 		printf("(the command stream's table: not built, its header is not in the tree)\n");
 #endif

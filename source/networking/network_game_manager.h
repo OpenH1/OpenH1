@@ -48,6 +48,9 @@ enum
 	/* the players pass through each other (Server Setup's PLAYER COLLISIONS:
 	OFF, co-op's): network_coop_player_collisions */
 	_network_game_cooperative_no_player_collisions_bit = 0,
+	/* the players do their AI allies no harm (Server Setup's ALLY FRIENDLY
+	FIRE: OFF, co-op's): network_coop_ally_friendly_fire */
+	_network_game_cooperative_no_ally_friendly_fire_bit = 1,
 };
 
 struct network_game
@@ -69,7 +72,10 @@ struct network_game
 	struct network_machine machines[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
 	short player_count;
 	struct network_player players[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
-	short __unknown426;
+	/* port: a Standard game's rate in Hz (port/linux/game/network_standard.c),
+	in a short the Xbox game left unused, which a Legacy host sends as it
+	always has */
+	short standard_rate;
 	unsigned long random_seed;
 	long number_of_games_played;
 	/* port: the gametype's PC options (game_engine.h) */

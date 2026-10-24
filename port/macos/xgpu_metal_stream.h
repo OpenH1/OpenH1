@@ -17,6 +17,22 @@ struct xgpu_stream_sampler;
 struct xgpu_stream_vertex_lighting;
 struct xgpu_stream_vertex_program;
 
+/* the enhanced dynamic lights' cells' bytes (xgpu.h's grid, four words a
+cell: xgpu_metal_shaders.c checks it) */
+#define XGPU_METAL_STREAM_DYNAMIC_LIGHT_CELLS_SIZE (32 * 32 * 16 * 16)
+
+/* the glows' uniforms (the MSL emitter's struct xgpu_msl_halo_uniforms,
+xgpu_msl.h: xgpu_metal_shaders.c checks it) */
+struct xgpu_metal_halo_uniforms
+{
+	float projection[6][4];
+	float camera_axes[2][4];
+	float viewport_scale[4];
+	float viewport_offset[4];
+	float depth_parameters[4];
+	float screen_offset, unused[3];
+};
+
 /* the table (made once; xgpu_metal_initialize first) */
 const struct host_render_backend *xgpu_metal_stream_backend(void);
 
@@ -49,8 +65,11 @@ its key's variant and the draw's, and its pixel program in the draw's, and
 returns nonzero; program is the vertex program's record (NULL if none was
 sent), lighting a model lighting program's (NULL if none). uniforms writes
 the bytes both stages read as their uniforms (at most size) and returns
-how many; NULL: the front end's uniforms as they are. The MSL emitter's
-(xgpu_metal_shaders.c); tests give their own. */
+how many; NULL: the front end's uniforms as they are. halo sets the functions
+of the enhanced dynamic lights' glows (the MSL emitter's
+xgpu_msl_halo_shader, whose uniforms are struct xgpu_msl_halo_uniforms) and
+returns nonzero; NULL: no glows. The MSL emitter's (xgpu_metal_shaders.c);
+tests give their own. */
 struct xgpu_metal_stream_shaders
 {
 	void *context;
@@ -59,6 +78,7 @@ struct xgpu_metal_stream_shaders
 		const struct xgpu_metal_stream_variant *variant, uint32_t *vertex_shader, uint32_t *pixel_shader);
 	uint32_t (*uniforms)(void *context, const struct xgpu_metal_stream_uniform_inputs *inputs, void *bytes,
 		uint32_t size);
+	int (*halo)(void *context, uint32_t *vertex_shader, uint32_t *pixel_shader);
 };
 
 void xgpu_metal_stream_set_shaders(const struct xgpu_metal_stream_shaders *shaders);

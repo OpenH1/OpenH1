@@ -76,6 +76,7 @@ symbols in this file:
 #include "scenario/scenario.h"
 #include "sound/game_sound.h"
 #include "units/units.h"
+#include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
 
 /* ---------- constants */
 
@@ -113,16 +114,43 @@ static void item_set_rested_surface(
 	struct item_datum *item,
 	long surface_index);
 
+/* port: the fast phase (sim_rate.h) */
+static boolean item_move_substep(
+	long item_index,
+	struct item_definition *definition,
+	short substep_index);
+static void item_substeps_add(
+	long item_index);
+static void item_substep(
+	short substep_index,
+	short substep_count,
+	real seconds);
+
 /* ---------- globals */
 
 static struct profile_section item_update_section = { "item_update", NONE, TRUE };
 static real const item_maximum_impact_velocity = 0.1f;
+
+/* port: the items in flight this tick, moved through its first sub-step in
+item_update and through the others in the fast phase (item_substep), which
+forgets them at the tick's last: a tick's only, kept outside the game state
+(nothing of a sub-step outlives its tick, sim_rate.h). One that struck
+something is NONE, still until the next tick */
+static struct
+{
+	long time;
+	short count;
+	long item_indices[MAXIMUM_OBJECTS_PER_MAP];
+} item_substep_globals = { NONE, 0 };
 
 /* ---------- public code */
 
 void items_initialize(
 	void)
 {
+	/* port: thrown and dropped items fly in the fast phase */
+	sim_substep_register(_sim_substep_items, item_substep);
+	object_lane_register(_object_mask_item); /* port: ... in the micro lane (objects.h) */
 	return;
 }
 
@@ -141,6 +169,8 @@ void items_dispose_from_old_map(
 void items_dispose(
 	void)
 {
+	sim_substep_register(_sim_substep_items, NULL);
+	item_substep_globals.count = 0;
 	return;
 }
 
@@ -570,11 +600,230 @@ static void item_align_to_normal_and_point(
 	return;
 }
 
+/* port: an item in flight, moved through one sub-step of the tick
+(sim_rate.h; at 30 Hz the tick's only one, as it always moved): substep_index
+of sim_substep_count. Whether it struck something, which ends its movement
+for the tick.
+
+At 30 Hz the velocity, in world units a tick, takes the tick's gravity and
+then the position the new velocity: an exact parabola, launched at the
+velocity less half a tick's gravity (the bias of a ballistic start: a throw,
+a drop, a bounce), and the velocity it keeps is the mean of the tick's. A
+sub-step of a share h of the tick takes h of the gravity, and moves by the
+velocity less the gravity of the rest of the tick halved, (1 - h) / 2: the
+same parabola, where the tick's ends exactly where 30's does, the velocity
+it keeps the same mean, and at 30 (h = 1) the same arithmetic as before.
+
+A strike is the tick's, as at 30: the velocity takes the gravity of the
+rest of the tick first, so it bounces, sounds and comes to rest from the
+velocity 30's does, and the item stays where it struck until the next tick,
+from where 30's leaves again (the rest of a tick it loses at 30, in a
+bounce). */
+static boolean item_move_substep(
+	long item_index,
+	struct item_definition *definition,
+	short substep_index)
+{
+	struct item_datum *item = item_get(item_index);
+	boolean collided = FALSE;
+	struct collision_result collision;
+	real_vector3d new_velocity;
+	real_point3d new_position;
+	real const tick_fraction = sim_substep_tick_fraction();
+	short const substeps_left = sim_substep_count() - 1 - substep_index;
+	real gravity = 0.f;
+	real gravity_lag = 0.f;
+
+	new_velocity = item->object.translational_velocity;
+	if (!TEST_FLAG(
+			definition->item.flags,
+			_item_definition_antigravity_bit))
+	{
+		gravity = sim_per_substep(global_gravity);
+		gravity_lag = 0.5f * (global_gravity - gravity);
+		new_velocity.k -= gravity;
+	}
+
+	new_position.x = item->object.position.x + new_velocity.i * tick_fraction;
+	new_position.y = item->object.position.y + new_velocity.j * tick_fraction;
+	new_position.z = item->object.position.z + (new_velocity.k - gravity_lag) * tick_fraction;
+
+	if (collision_test_line(
+			ITEM_UPDATE_COLLISION_TEST_FLAGS,
+			&item->object.position,
+			&new_position,
+			item->item.ignore_object_index,
+			&collision))
+	{
+		long impulse_sound_index;
+		real impact_scale;
+
+		collided = TRUE;
+		if (substeps_left > 0)
+		{
+			new_velocity.k -= gravity * substeps_left;
+		}
+
+		point_from_line3d(
+			&new_position,
+			&collision.plane.n,
+			0.05f,
+			&new_position);
+
+		impact_scale = magnitude3d(&new_velocity);
+		impact_scale /= item_maximum_impact_velocity;
+		if (impact_scale < 0.f)
+		{
+			impact_scale = 0.f;
+		}
+		else if (impact_scale > 1.f)
+		{
+			impact_scale = 1.f;
+		}
+
+		if (definition->item.material_effects.index != NONE &&
+			material_effect_visible(&collision.point))
+		{
+			material_effect_new(
+				definition->item.material_effects.index,
+				8,
+				collision.material_type,
+				&collision.point,
+				&collision.plane.n,
+				&collision.location,
+				impact_scale);
+		}
+
+		impulse_sound_index = definition->item.collision_sound.index;
+		if (impulse_sound_index != NONE)
+		{
+			struct sound_location location;
+
+			location.position = new_position;
+			location.forward = collision.plane.n;
+			location.translational_velocity = *global_zero_vector3d;
+			location.game_location = item->object.location;
+			unattached_impulse_sound_new(
+				impulse_sound_index,
+				&location,
+				impact_scale);
+		}
+
+		if ((collision.type == _collision_result_structure ||
+			(collision.type == _collision_result_object &&
+				TEST_FLAG(
+					_object_mask_scenery | _object_mask_device,
+					object_get_type(collision.object_index)))) &&
+			collision.plane.n.k > 0.7071f &&
+			-dot_product3d(&collision.plane.n, &new_velocity) < 0.05f)
+		{
+			new_position = collision.point;
+			item_align_to_normal_and_point(
+				item_index,
+				&collision.plane.n,
+				&collision.point,
+				&new_position);
+			new_velocity.i = new_velocity.j = new_velocity.k = 0.f;
+			scale_vector3d(
+				&collision.plane.n,
+				dot_product3d(
+					&item->object.angular_velocity,
+					&collision.plane.n),
+				&item->object.angular_velocity);
+
+			if (!game_engine_running() &&
+				item->object.owner_player_index == NONE)
+			{
+				object_set_garbage(item_index, TRUE);
+			}
+
+			SET_FLAG(item->object.flags, _object_at_rest_bit, TRUE);
+			switch (collision.type)
+			{
+			case _collision_result_structure:
+				SET_FLAG(item->item.flags, _item_on_structure_bit, TRUE);
+				item_set_rested_surface(item, collision.surface_index);
+				item->item.bsp_index =
+					global_structure_bsp_index_get();
+				break;
+
+			case _collision_result_object:
+			{
+				real_matrix4x3 const *node_matrix;
+
+				SET_FLAG(item->item.flags, _item_on_object_bit, TRUE);
+				item->item.item_on_rest_object_index =
+					collision.object_index;
+				node_matrix = object_get_node_matrix(
+					collision.object_index,
+					0);
+				matrix4x3_inverse_transform_point(
+					node_matrix,
+					&collision.point,
+					&item->item.item_rest_object_offset);
+				break;
+			}
+
+			default:
+				match_assert(
+					"c:\\halo\\SOURCE\\items\\items.c",
+					283,
+					!"unreachable");
+				break;
+			}
+
+			item->item.rotation_axis = collision.plane.n;
+			item_adjust_for_angular_velocity_change(item_index);
+			item->item.ignore_object_index = NONE;
+		}
+		else
+		{
+			real reflection;
+
+			reflection = -1.4f * dot_product3d(
+				&collision.plane.n,
+				&new_velocity);
+			if (collision.type != _collision_result_structure)
+			{
+				reflection = MIN(1.5f, reflection);
+			}
+			new_position = collision.point;
+			new_velocity.i += collision.plane.n.i * reflection;
+			new_velocity.j += collision.plane.n.j * reflection;
+			new_velocity.k += collision.plane.n.k * reflection;
+			if (collision_test_point(
+					ITEM_UPDATE_COLLISION_TEST_FLAGS,
+					&new_position,
+					item_index))
+			{
+				point_from_line3d(
+					&collision.point,
+					&collision.plane.n,
+					0.05f,
+					&new_position);
+			}
+			collision_test_point(
+				ITEM_UPDATE_COLLISION_TEST_FLAGS,
+				&new_position,
+				item_index);
+		}
+	}
+
+	item->object.translational_velocity = new_velocity;
+	object_translate(
+		item_index,
+		&new_position,
+		&collision.location);
+
+	return collided;
+}
+
 boolean item_update(
 	long item_index)
 {
 	struct item_datum *item;
 	struct item_definition *definition;
+	boolean in_flight = FALSE;
 
 	item = item_get(item_index);
 	definition = item_definition_get(item->definition_index);
@@ -614,182 +863,9 @@ boolean item_update(
 
 		if (!TEST_FLAG(item->object.flags, _object_at_rest_bit))
 		{
-			struct collision_result collision;
-			real_vector3d new_velocity;
-			real_point3d new_position;
-
-			new_velocity = item->object.translational_velocity;
-			if (!TEST_FLAG(
-					definition->item.flags,
-					_item_definition_antigravity_bit))
-			{
-				new_velocity.k -= global_gravity;
-			}
-
-			new_position.x = item->object.position.x + new_velocity.i;
-			new_position.y = item->object.position.y + new_velocity.j;
-			new_position.z = item->object.position.z + new_velocity.k;
-
-			if (collision_test_line(
-					ITEM_UPDATE_COLLISION_TEST_FLAGS,
-					&item->object.position,
-					&new_position,
-					item->item.ignore_object_index,
-					&collision))
-			{
-				long impulse_sound_index;
-				real impact_scale;
-
-				point_from_line3d(
-					&new_position,
-					&collision.plane.n,
-					0.05f,
-					&new_position);
-
-				impact_scale = magnitude3d(&new_velocity);
-				impact_scale /= item_maximum_impact_velocity;
-				if (impact_scale < 0.f)
-				{
-					impact_scale = 0.f;
-				}
-				else if (impact_scale > 1.f)
-				{
-					impact_scale = 1.f;
-				}
-
-				if (definition->item.material_effects.index != NONE &&
-					material_effect_visible(&collision.point))
-				{
-					material_effect_new(
-						definition->item.material_effects.index,
-						8,
-						collision.material_type,
-						&collision.point,
-						&collision.plane.n,
-						&collision.location,
-						impact_scale);
-				}
-
-				impulse_sound_index = definition->item.collision_sound.index;
-				if (impulse_sound_index != NONE)
-				{
-					struct sound_location location;
-
-					location.position = new_position;
-					location.forward = collision.plane.n;
-					location.translational_velocity = *global_zero_vector3d;
-					location.game_location = item->object.location;
-					unattached_impulse_sound_new(
-						impulse_sound_index,
-						&location,
-						impact_scale);
-				}
-
-				if ((collision.type == _collision_result_structure ||
-					(collision.type == _collision_result_object &&
-						TEST_FLAG(
-							_object_mask_scenery | _object_mask_device,
-							object_get_type(collision.object_index)))) &&
-					collision.plane.n.k > 0.7071f &&
-					-dot_product3d(&collision.plane.n, &new_velocity) < 0.05f)
-				{
-					new_position = collision.point;
-					item_align_to_normal_and_point(
-						item_index,
-						&collision.plane.n,
-						&collision.point,
-						&new_position);
-					new_velocity.i = new_velocity.j = new_velocity.k = 0.f;
-					scale_vector3d(
-						&collision.plane.n,
-						dot_product3d(
-							&item->object.angular_velocity,
-							&collision.plane.n),
-						&item->object.angular_velocity);
-
-					if (!game_engine_running() &&
-						item->object.owner_player_index == NONE)
-					{
-						object_set_garbage(item_index, TRUE);
-					}
-
-					SET_FLAG(item->object.flags, _object_at_rest_bit, TRUE);
-					switch (collision.type)
-					{
-					case _collision_result_structure:
-						SET_FLAG(item->item.flags, _item_on_structure_bit, TRUE);
-						item_set_rested_surface(item, collision.surface_index);
-						item->item.bsp_index =
-							global_structure_bsp_index_get();
-						break;
-
-					case _collision_result_object:
-					{
-						real_matrix4x3 const *node_matrix;
-
-						SET_FLAG(item->item.flags, _item_on_object_bit, TRUE);
-						item->item.item_on_rest_object_index =
-							collision.object_index;
-						node_matrix = object_get_node_matrix(
-							collision.object_index,
-							0);
-						matrix4x3_inverse_transform_point(
-							node_matrix,
-							&collision.point,
-							&item->item.item_rest_object_offset);
-						break;
-					}
-
-					default:
-						match_assert(
-							"c:\\halo\\SOURCE\\items\\items.c",
-							283,
-							!"unreachable");
-						break;
-					}
-
-					item->item.rotation_axis = collision.plane.n;
-					item_adjust_for_angular_velocity_change(item_index);
-					item->item.ignore_object_index = NONE;
-				}
-				else
-				{
-					real reflection;
-
-					reflection = -1.4f * dot_product3d(
-						&collision.plane.n,
-						&new_velocity);
-					if (collision.type != _collision_result_structure)
-					{
-						reflection = MIN(1.5f, reflection);
-					}
-					new_position = collision.point;
-					new_velocity.i += collision.plane.n.i * reflection;
-					new_velocity.j += collision.plane.n.j * reflection;
-					new_velocity.k += collision.plane.n.k * reflection;
-					if (collision_test_point(
-							ITEM_UPDATE_COLLISION_TEST_FLAGS,
-							&new_position,
-							item_index))
-					{
-						point_from_line3d(
-							&collision.point,
-							&collision.plane.n,
-							0.05f,
-							&new_position);
-					}
-					collision_test_point(
-						ITEM_UPDATE_COLLISION_TEST_FLAGS,
-						&new_position,
-						item_index);
-				}
-			}
-
-			item->object.translational_velocity = new_velocity;
-			object_translate(
-				item_index,
-				&new_position,
-				&collision.location);
+			/* port: the tick's first sub-step here, the others in the fast
+			phase (item_substep) */
+			in_flight = !item_move_substep(item_index, definition, 0);
 		}
 		else if (!TEST_FLAG(
 			definition->item.flags,
@@ -950,6 +1026,19 @@ boolean item_update(
 		--item->item.detonation_ticks;
 		if (item->item.detonation_ticks == 0)
 		{
+			short substep_index;
+
+			/* port: the timer counts ticks, and it goes off at the tick's
+			end, where 30's does: in flight, moved through the tick's other
+			sub-steps first */
+			for (substep_index = 1;
+				in_flight && substep_index < sim_substep_count();
+				substep_index++)
+			{
+				in_flight = !item_move_substep(item_index, definition, substep_index);
+			}
+			in_flight = FALSE;
+
 			effect_new_from_object(
 				definition->item.detonation_effect.index,
 				item_index,
@@ -961,6 +1050,11 @@ boolean item_update(
 				NULL);
 			object_delete(item_index);
 		}
+	}
+
+	if (in_flight)
+	{
+		item_substeps_add(item_index);
 	}
 
 	if (TEST_FLAG(item->item.flags, _item_attached_to_unit_bit))
@@ -976,4 +1070,82 @@ boolean item_update(
 	profile_exit(item_update_section);
 
 	return TRUE;
+}
+
+/* ---------- private code */
+
+static void item_substeps_add(
+	long item_index)
+{
+	long time = game_time_get();
+
+	if (item_substep_globals.time != time)
+	{
+		item_substep_globals.time = time;
+		item_substep_globals.count = 0;
+	}
+	/* (each item is updated once a tick: the objects can't outnumber it) */
+	if (item_substep_globals.count < MAXIMUM_OBJECTS_PER_MAP)
+	{
+		item_substep_globals.item_indices[item_substep_globals.count++] = item_index;
+	}
+
+	return;
+}
+
+/* the fast phase's (sim_rate.h): the tick's items in flight, each through a
+sub-step after its first (item_update's), and forgotten at the last. A
+strike or a landing ends an item's movement for the tick; one picked up,
+deleted or come to rest otherwise since is left */
+static void item_substep(
+	short substep_index,
+	short substep_count,
+	real seconds)
+{
+	(void)seconds;
+
+	if (substep_index > 0 &&
+		item_substep_globals.time == game_time_get())
+	{
+		short i;
+
+		global_current_collision_users[global_current_collision_user_depth++] =
+			_collision_user_items;
+		for (i = 0; i < item_substep_globals.count; i++)
+		{
+			long item_index = item_substep_globals.item_indices[i];
+			struct item_datum *item;
+
+			if (item_index == NONE)
+				continue;
+			item = item_try_and_get(item_index);
+			if (!item ||
+				TEST_FLAG(object_header_get(item_index)->flags, _object_header_being_deleted_bit) ||
+				!TEST_FLAG(item->object.flags, _object_connected_to_map_bit) ||
+				item->object.parent_object_index != NONE ||
+				TEST_FLAG(item->object.flags, _object_at_rest_bit))
+			{
+				item_substep_globals.item_indices[i] = NONE;
+				continue;
+			}
+
+			if (item_move_substep(item_index, item_definition_get(item->definition_index), substep_index))
+			{
+				item_substep_globals.item_indices[i] = NONE;
+			}
+			/* (its pose for the sub-step: drawn, and struck by the others) */
+			if (!TEST_FLAG(item->object.flags, _object_do_not_recompute_node_matrices_bit))
+			{
+				object_compute_node_matrices(item_index);
+			}
+		}
+		--global_current_collision_user_depth;
+	}
+
+	if (substep_index >= substep_count - 1)
+	{
+		item_substep_globals.count = 0;
+	}
+
+	return;
 }

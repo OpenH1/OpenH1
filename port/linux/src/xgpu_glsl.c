@@ -753,6 +753,14 @@ static void texture_stage(struct xgpu_text *text, const struct xgpu_pixel_progra
 		xgpu_text_append(text, "\tdot%d = dot(xT%d.xyz, ", stage, stage);
 		dot_input(text, decoded);
 		xgpu_text_append(text, ");\n\tt%d = vec4(0.0);\n", stage);
+		/* the depth it replaces the fragment's with (xgpu_shader.h,
+		xgpu_pixel_program_depth_stage): a divisor that is not positive (a
+		fragment behind the eye) gives the far plane */
+		if (stage == xgpu_pixel_program_depth_stage(program))
+		{
+			xgpu_text_append(text, "\treplaced_depth = dot%d > 0.0 ? clamp(dot%d / dot%d / %.1f, 0.0, 1.0) : 1.0;\n",
+				stage, stage - 1, stage, (double)XGPU_REPLACED_DEPTH_UNITS);
+		}
 		break;
 	case XGPU_TEXTURE_DOT_REFLECT_DIFFUSE:
 		/* the normal takes its third component from stage 3's dot product */
@@ -982,8 +990,14 @@ char *xgpu_glsl_pixel_shader(const struct xgpu_pixel_program *program, const str
 	const struct xgpu_final_combiner *final = &program->final;
 	struct xgpu_text text = { 0 };
 	int stage;
+	BOOL replaces_depth = xgpu_pixel_program_depth_stage(program) != 0;
 
 	xgpu_text_append(&text, "#version %s\n", options->version);
+	/* a z-sprite's depth, only ever nearer than its card's (conservative:
+	the depth test before the shader keeps what it can); OpenGL ES has it
+	with the extension */
+	if (replaces_depth && options->es)
+		xgpu_text_append(&text, "#extension GL_EXT_conservative_depth : enable\n");
 	/* samples that pass the depth and stencil tests, as the NV2A's
 	occlusion counter (ES's; the VR mode's) */
 	if (options->es && program->count_samples)
@@ -1061,6 +1075,10 @@ char *xgpu_glsl_pixel_shader(const struct xgpu_pixel_program *program, const str
 	}
 	if (program->source_blend)
 		xgpu_text_append(&text, "uniform vec4 blend_constant;\n");
+	if (replaces_depth && options->es)
+		xgpu_text_append(&text, "#ifdef GL_EXT_conservative_depth\nlayout(depth_less) out highp float gl_FragDepth;\n#endif\n");
+	else if (replaces_depth)
+		xgpu_text_append(&text, "layout(depth_less) out float gl_FragDepth;\n");
 	if (program->dynamic_lights)
 		xgpu_dynamic_lights_glsl(&text);
 	if (program->dynamic_lights == XGPU_DYNAMIC_LIGHTS_ENVIRONMENT)
@@ -1083,6 +1101,8 @@ char *xgpu_glsl_pixel_shader(const struct xgpu_pixel_program *program, const str
 		"\tvec4 v1 = xD1;\n"
 		"\tvec4 t0 = vec4(0.0), t1 = vec4(0.0), t2 = vec4(0.0), t3 = vec4(0.0);\n"
 		"\tfloat dot0 = 0.0, dot1 = 0.0, dot2 = 0.0, dot3 = 0.0;\n");
+	if (replaces_depth)
+		xgpu_text_append(&text, "\tfloat replaced_depth = 1.0;\n");
 	if (program->per_pixel_lighting && program->dynamic_lights == XGPU_DYNAMIC_LIGHTS_MODEL)
 	{
 		xgpu_text_append(&text,
@@ -1212,6 +1232,9 @@ char *xgpu_glsl_pixel_shader(const struct xgpu_pixel_program *program, const str
 		xgpu_text_append(&text, "\tresult = vec4(t0.rgb, 1.0);\n");
 	if (options->debug_flat)
 		xgpu_text_append(&text, "\tresult = xD0.a > 0.0 ? vec4(xD0.rgb, 1.0) : vec4(1.0, 0.0, 1.0, 1.0);\n");
+	/* (no farther than the card: the conservative depth's promise) */
+	if (replaces_depth)
+		xgpu_text_append(&text, "\tgl_FragDepth = min(replaced_depth, gl_FragCoord.z);\n");
 	if (program->count_samples && program->multiview == XGPU_MULTIVIEW_EYES && options->foveated)
 	{
 		/* (foveated: the whole eyes' layers alone, as unfoveated eyes) */

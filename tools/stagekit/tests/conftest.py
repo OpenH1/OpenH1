@@ -1,0 +1,94 @@
+"""StageKit's tests' fixtures (README.md): the generator, built once, and each scenario played (twice) and shared by
+every test that asks for it. A scenario's test module (test_<name>.py) says how it is played: PLAY, play()'s
+arguments."""
+
+import concurrent.futures
+import importlib
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import runner  # noqa: E402
+
+# the Sessions the running test has read, whose logs a failure shows
+READ = []
+# each pytest-xdist worker's own runs' slots (their loopback addresses, runner.addresses)
+SLOTS_PER_WORKER = 24
+
+
+def worker():
+    """this pytest-xdist worker's number (PYTEST_XDIST_WORKER's), 0 without xdist"""
+    digits = "".join(c for c in os.environ.get("PYTEST_XDIST_WORKER", "") if c.isdigit())
+    return int(digits) if digits else 0
+
+
+@pytest.fixture(autouse=True)
+def read_sessions():
+    READ.clear()
+    yield
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    report = (yield).get_result()
+    if report.when == "call" and report.failed:
+        for session in READ:
+            report.sections.append((f"the game's logs ({session.folder.name})", session.tails()))
+
+
+@pytest.fixture(scope="session")
+def stagekit(tmp_path_factory):
+    reason = runner.can_build()
+    if reason:
+        pytest.skip(reason)
+    return runner.build(tmp_path_factory.mktemp("stagekit"))
+
+
+@pytest.fixture(scope="session")
+def map_validator(tmp_path_factory):
+    validator = runner.map_validator(tmp_path_factory.mktemp("map_validate"))
+    if not validator:
+        pytest.skip("map_validate builds only on 64-bit x86 Linux with the C library's 32-bit files")
+    return validator
+
+
+def sessions(stagekit, tmp_path_factory, setting, play, copies=1):
+    """play(scenario, copy=0) for each scenario whose test module plays it so (setting), copies times each: every
+    one the first time any is asked for, side by side. A run that failed is kept as its exception, which every test
+    of it then fails with; none plays it again"""
+    played = {}
+
+    def generated_and_played(name, slot, folder, settings):
+        runner.generate(stagekit, name, folder)
+        return play(folder, slot=slot, **settings)
+
+    def session(scenario, copy=0):
+        if not played:
+            modules = {name: importlib.import_module(f"test_{name}") for name in runner.SCENARIOS}
+            runs = [(name, copy, getattr(modules[name], setting)) for name in runner.SCENARIOS
+                    if hasattr(modules[name], setting) for copy in range(copies)]
+            with concurrent.futures.ThreadPoolExecutor(max(1, len(runs))) as pool:
+                results = {(name, copy): pool.submit(generated_and_played, name, slot,
+                                                     tmp_path_factory.mktemp(f"{name}-{setting.lower()}-{copy}"),
+                                                     settings)
+                           for slot, (name, copy, settings) in enumerate(runs, start=SLOTS_PER_WORKER * worker())}
+            for key, result in results.items():
+                played[key] = result.exception() or result.result()
+        if (scenario, copy) not in played:
+            raise LookupError(f"tests/test_{scenario}.py has no {setting}")
+        if isinstance(played[(scenario, copy)], BaseException):
+            raise RuntimeError(f"{scenario} was not played") from played[(scenario, copy)]
+        READ.append(played[(scenario, copy)])
+        return played[(scenario, copy)]
+
+    return session
+
+
+@pytest.fixture(scope="session")
+def play(stagekit, tmp_path_factory):
+    """play(scenario, copy=0): its Session on one machine, played twice (copy 1: the same, tick for tick)"""
+    return sessions(stagekit, tmp_path_factory, "PLAY", runner.play, copies=2)
+

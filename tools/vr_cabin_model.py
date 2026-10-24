@@ -205,16 +205,54 @@ SCORPION_HATCH = (0.445, 0.880, 0.660, 0.990)
 SCORPION_DARK = (0.000, 0.700, 0.120, 0.760)
 SCORPION_BOX = (0.000, 0.000, 0.105, 0.115)
 
+# the player's body as the game seats it in the Scorpion's driver seat (the
+# cyborg's "scorpion-driver unarmed idle", logged in the game: leant back, its
+# legs out ahead), from the top of its neck (its neck node), in the hull's
+# axes: the lowest of its seat (the hips and thighs), the back of its hips and
+# of its chest (with the pack), the top of its thighs and knees, the lowest of
+# its feet and their front, and its sides
+SEATED_SEAT = -0.232
+SEATED_HIPS_BACK = -0.005
+SEATED_CHEST_BACK = -0.096
+SEATED_KNEES_TOP = -0.127
+SEATED_FEET = -0.347
+SEATED_FEET_FRONT = 0.470
+SEATED_SIDE = 0.095
+# where first_person_legs.c draws that body in a cabin: the top of its neck
+# 4.9 cm behind and 3.3 cm below the eye (vr.c's top of the real neck, 10 cm
+# behind and below the eyes, and the body's own neck 5 cm behind that)
+SEATED_NECK_BACK = (0.10 + 0.05) / 3.048
+SEATED_NECK_DOWN = 0.10 / 3.048
+
+
+def seated_body(eye):
+	"""where the seated body's armour reaches in a cabin with this eye (the
+	hull's axes): its seat, the backs of its hips and chest, the top of its
+	thighs and knees, its feet's lowest and front, and its sides (right, left)"""
+	x, y, z = eye[0] - SEATED_NECK_BACK, eye[1], eye[2] - SEATED_NECK_DOWN
+	return {'seat': z + SEATED_SEAT, 'hips_back': x + SEATED_HIPS_BACK, 'chest_back': x + SEATED_CHEST_BACK,
+		'knees': z + SEATED_KNEES_TOP, 'feet': z + SEATED_FEET, 'front': x + SEATED_FEET_FRONT,
+		'sides': (y - SEATED_SIDE, y + SEATED_SIDE)}
+
 
 def scorpion_inside():
 	"""the driver's compartment at the front of the hull, under the front
 	plate, on the driver's (left) side: inside the hull (its top at up 0.64
 	to 0.665 there, its front plate from forward 0.69 down to 0.78), ahead of
-	the empty slot under the hatch (to forward 0.365)"""
+	the empty slot under the hatch (to forward 0.365), reaching back
+	into it behind the seat; a footwell through the front wall, under the
+	vision blocks, for the legs of the player's body seated (seated_body:
+	its seat, its floor and the room for its knees under the panel are where
+	the body is)"""
 	eye = (0.440, 0.200, 0.520)
-	x0, x1 = 0.370, 0.660
+	body = seated_body(eye)
+	x0, x1 = 0.280, 0.660
 	y0, y1 = 0.030, 0.370
-	z0, z1 = 0.190, 0.620
+	z0, z1 = round(body['feet'] - 0.005, 3), 0.620
+	# (the room for the knees: under the panel and the footwell's top; the
+	# footwell's front)
+	knees = round(body['knees'] + 0.015, 3)
+	well = round(body['front'] + 0.030, 3)
 	chamfer = 0.070
 	# the vision blocks' band (up), and the posts between them
 	band = (0.486, 0.560)
@@ -222,11 +260,21 @@ def scorpion_inside():
 	fittings = Mesh('frame hull', 'vehicles\\scorpion\\shaders\\hull_non_reflective')
 	height = z1 - z0
 	t0, t1 = band[0] - z0, band[1] - z0
-	# the front wall, between the corners: three vision blocks
+	# the front wall, between the corners: three vision blocks, and below
+	# them the footwell's mouth
 	front_length = (y1 - chamfer) - (y0 + chamfer)
-	wall_with_openings(walls, (x1, y0 + chamfer, z0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), front_length, height,
-		[(0.010, 0.068, t0, t1), (0.082, 0.118, t0, t1), (0.132, 0.190, t0, t1)], eye, SCORPION_PLATE_WIDE,
+	wall_with_openings(walls, (x1, y0 + chamfer, knees), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0), front_length, z1 - knees,
+		[(0.010, 0.068, band[0] - knees, band[1] - knees), (0.082, 0.118, band[0] - knees, band[1] - knees),
+		(0.132, 0.190, band[0] - knees, band[1] - knees)], eye, SCORPION_PLATE_WIDE,
 		reveal=0.025, reveal_region=SCORPION_DARK)
+	# the footwell: its sides, its front, its floor and its top
+	inside_well = ((x1 + well) / 2, (y0 + y1) / 2, (z0 + knees) / 2)
+	fy0, fy1 = y0 + chamfer, y1 - chamfer
+	walls.face([(x1, fy0, z0), (well, fy0, z0), (well, fy0, knees), (x1, fy0, knees)], inside_well, SCORPION_PLATE)
+	walls.face([(x1, fy1, z0), (well, fy1, z0), (well, fy1, knees), (x1, fy1, knees)], inside_well, SCORPION_PLATE)
+	walls.face([(well, fy0, z0), (well, fy1, z0), (well, fy1, knees), (well, fy0, knees)], inside_well, SCORPION_PLATE)
+	walls.face([(x1, fy0, z0), (well, fy0, z0), (well, fy1, z0), (x1, fy1, z0)], inside_well, SCORPION_DARK)
+	walls.face([(x1, fy0, knees), (well, fy0, knees), (well, fy1, knees), (x1, fy1, knees)], inside_well, SCORPION_DARK)
 	# the corners, each with a vision block
 	for (ya, yb), (xa, xb) in (((y0, y0 + chamfer), (x1 - chamfer, x1)), ((y1, y1 - chamfer), (x1 - chamfer, x1))):
 		along = normalize((xb - xa, yb - ya, 0.0))
@@ -239,7 +287,7 @@ def scorpion_inside():
 	walls.face([(x0, y0, z0), (x0, y1, z0), (x0, y1, z1), (x0, y0, z1)], eye, SCORPION_PLATE_WIDE)
 	floor = [(x0, y0, z0), (x1 - chamfer, y0, z0), (x1, y0 + chamfer, z0), (x1, y1 - chamfer, z0),
 		(x1 - chamfer, y1, z0), (x0, y1, z0)]
-	walls.face(floor, eye, SCORPION_DARK)
+	walls.face(floor, (eye[0], eye[1], z0 + 1.0), SCORPION_DARK)
 	hatch = (0.395, 0.535, 0.110, 0.290)
 	ceiling = [(x0, y0, z1), (x1 - chamfer, y0, z1), (x1, y0 + chamfer, z1), (x1, y1 - chamfer, z1),
 		(x1 - chamfer, y1, z1), (x0, y1, z1)]
@@ -262,32 +310,38 @@ def scorpion_inside():
 	for y in ((hy0 + hy1) / 2 - 0.040, (hy0 + hy1) / 2 + 0.040):
 		fittings.bar((hx0 + 0.030, y, z1 + recess - 0.012), (hx0 + 0.030, y, z1 + recess), 0.004, SCORPION_DARK)
 	# the instrument panel under the vision blocks: sloped back from the front
-	# wall, its face down to the floor's level of the legs, dials on top
+	# wall, its face down to the room for the knees, dials on top
 	px0, pz0, pz1 = 0.585, 0.400, 0.482
 	fittings.face([(px0, y0 + 0.020, pz0), (px0, y1 - 0.020, pz0), (x1 - 0.004, y1 - chamfer, pz1), (x1 - 0.004, y0 + chamfer, pz1)],
 		eye, SCORPION_SWITCHES)
-	fittings.face([(px0, y0 + 0.020, 0.330), (px0, y1 - 0.020, 0.330), (px0, y1 - 0.020, pz0), (px0, y0 + 0.020, pz0)],
+	fittings.face([(px0, y0 + 0.020, knees), (px0, y1 - 0.020, knees), (px0, y1 - 0.020, pz0), (px0, y0 + 0.020, pz0)],
 		eye, SCORPION_FUSES)
-	fittings.face([(px0, y0 + 0.020, 0.330), (px0, y1 - 0.020, 0.330), (x1 - 0.004, y1 - chamfer, 0.330), (x1 - 0.004, y0 + chamfer, 0.330)],
-		eye, SCORPION_DARK)
+	fittings.face([(px0, y0 + 0.020, knees), (px0, y1 - 0.020, knees), (x1 - 0.004, y1 - chamfer, knees), (x1 - 0.004, y0 + chamfer, knees)],
+		(px0, eye[1], knees - 1.0), SCORPION_DARK)
 	for ya, yb, ra in ((y0 + 0.020, y0 + chamfer, 1), (y1 - 0.020, y1 - chamfer, -1)):
-		fittings.face([(px0, ya, 0.330), (px0, ya, pz0), (x1 - 0.004, yb, pz1), (x1 - 0.004, yb, 0.330)],
+		fittings.face([(px0, ya, knees), (px0, ya, pz0), (x1 - 0.004, yb, pz1), (x1 - 0.004, yb, knees)],
 			(px0, ya + ra * 0.1, 0.4), SCORPION_DARK)
 	# (the dials' box on the panel, in the middle)
 	fittings.box((0.600, 0.150, 0.455), (0.630, 0.250, 0.492), {'x': SCORPION_DIALS, 'X': SCORPION_DARK, 'y': SCORPION_DARK,
 		'Y': SCORPION_DARK, 'z': SCORPION_DARK, 'Z': SCORPION_DARK}, faces='xyYZ')
-	# the steering levers: from the floor ahead of the seat, back to the hands
-	for y in (0.105, 0.295):
+	# the steering levers: from the floor ahead of the seat, back to the
+	# hands, either side of the body's hips
+	for y in (eye[1] - 0.115, eye[1] + 0.115):
 		fittings.bar((0.555, y, z0), (0.515, y, 0.380), 0.007, SCORPION_DARK)
-		fittings.bar((0.515, y - 0.006, 0.380), (0.505, y - 0.006, 0.425), 0.012, SCORPION_PLATE)
-	# the seat: its pan, its back (leaning back), a headrest
-	fittings.box((0.385, 0.080, 0.300), (0.490, 0.320, 0.330), SCORPION_DARK, faces='XyYZ')
-	fittings.face([(0.392, 0.085, 0.330), (0.392, 0.315, 0.330), (0.378, 0.315, 0.470), (0.378, 0.085, 0.470)], eye, SCORPION_DARK)
-	fittings.box((0.371, 0.150, 0.480), (0.386, 0.250, 0.560), SCORPION_DARK, faces='XyYZ')
+		fittings.bar((0.515, y, 0.380), (0.505, y, 0.425), 0.012, SCORPION_PLATE)
+	# the seat, under the body's: its pan, its back (leaning back as the
+	# body does, behind it), a headrest
+	right, left = body['sides']
+	seat, back = body['seat'], body['hips_back'] - 0.010
+	fittings.box((back, right, seat - 0.030), (back + 0.130, left, seat), SCORPION_DARK, faces='XyYZ')
+	rest = (body['chest_back'] - 0.010, seat + 0.240)
+	fittings.face([(back, right, seat), (back, left, seat), (rest[0], left, rest[1]), (rest[0], right, rest[1])],
+		(eye[0], eye[1], seat + 0.2), SCORPION_DARK)
+	fittings.box((rest[0] - 0.004, 0.150, rest[1] - 0.010), (rest[0] + 0.011, 0.250, rest[1] + 0.070), SCORPION_DARK, faces='XyYZ')
 	# a grille on the left wall, a box on the right
 	fittings.face([(0.430, y0 + 0.002, 0.420), (0.560, y0 + 0.002, 0.420), (0.560, y0 + 0.002, 0.470), (0.430, y0 + 0.002, 0.470)],
 		eye, SCORPION_GRILLE)
-	fittings.box((0.430, y1 - 0.045, 0.380), (0.520, y1, 0.470), {'x': SCORPION_BOX, 'X': SCORPION_DARK, 'y': SCORPION_BOX,
+	fittings.box((0.390, y1 - 0.045, 0.380), (0.480, y1, 0.470), {'x': SCORPION_BOX, 'X': SCORPION_DARK, 'y': SCORPION_BOX,
 		'Y': SCORPION_DARK, 'z': SCORPION_DARK, 'Z': SCORPION_DARK}, faces='xXyZz')
 	return {'eye': eye, 'meshes': [walls, fittings]}
 
@@ -325,8 +379,14 @@ def scorpion_feed(surfaces):
 	(vr_cabin.c lifts it above the ceiling, GRATE_TRAVEL up)"""
 	S = surfaces
 	eye = (0.465, 0.200, 0.520)
+	body = seated_body(eye)
 	cx, cy, r = eye[0], eye[1], 0.200
-	z0, z1 = 0.200, 0.730
+	z0, z1 = round(body['feet'] - 0.005, 3), 0.730
+	# (the room for the knees: under the dash and the footwell's top; the
+	# footwell's front, and how far about the front its mouth is cut in the
+	# wall, degrees)
+	knees = round(body['knees'] + 0.015, 3)
+	well, mouth = round(body['front'] + 0.030, 3), 33.75
 	bottom = eye[2] - r * math.tan(math.radians(20.0))
 	top = eye[2] + r * math.tan(math.radians(45.0))
 	segments, half = 32, 180.0
@@ -344,7 +404,9 @@ def scorpion_feed(surfaces):
 		(xa, ya), (xb, yb) = arc(a0), arc(a1)
 		u0 = S['front'][0] + (S['front'][2] - S['front'][0]) * (k % 4) / 4
 		u1 = S['front'][0] + (S['front'][2] - S['front'][0]) * (k % 4 + 1) / 4
-		for za, zb in ((z0, bottom), (top, z1)):
+		# (ahead, the footwell's mouth below the room for the knees)
+		low = knees if -mouth <= a0 and a1 <= mouth else z0
+		for za, zb in ((low, bottom), (top, z1)):
 			v0 = S['front'][1] + (S['front'][3] - S['front'][1]) * (z1 - zb) / (z1 - z0)
 			v1 = S['front'][1] + (S['front'][3] - S['front'][1]) * (z1 - za) / (z1 - z0)
 			walls.face([(xa, ya, za), (xb, yb, za), (xb, yb, zb), (xa, ya, zb)], eye, (u0, v0, u1, v1))
@@ -354,8 +416,18 @@ def scorpion_feed(surfaces):
 		fittings.face([(xa, ya, top), (xb, yb, top), (xd, yd, top), (xc, yc, top)], eye, S['dark'])
 	# the floor and the ceiling
 	ring = [arc(a) for a in angles[:-1]]
-	walls.face([(x, y, z0) for x, y in ring], eye, S['floor'])
+	walls.face([(x, y, z0) for x, y in ring], (cx, cy, z0 + 1.0), S['floor'])
 	walls.face([(x, y, z1) for x, y in ring], eye, S['ceiling'])
+	# the footwell, ahead through the wall's mouth: its sides, its front, its
+	# floor and its top, for the body's legs
+	(mx, my0), (_, my1) = arc(-mouth), arc(mouth)
+	inside_well = ((mx + well) / 2, cy, (z0 + knees) / 2)
+	walls.face([(mx, my0, z0), (well, my0, z0), (well, my0, knees), (mx, my0, knees)], inside_well, S['wall'])
+	walls.face([(mx, my1, z0), (well, my1, z0), (well, my1, knees), (mx, my1, knees)], inside_well, S['wall'])
+	walls.face([(well, my0, z0), (well, my1, z0), (well, my1, knees), (well, my0, knees)], inside_well, S['wall'])
+	mouth_arc = [arc(-mouth + 2 * mouth * k / 6) for k in range(7)]
+	walls.face([(x, y, z0) for x, y in mouth_arc] + [(well, my1, z0), (well, my0, z0)], inside_well, S['floor'])
+	walls.face([(x, y, knees) for x, y in mouth_arc] + [(well, my1, knees), (well, my0, knees)], inside_well, S['dark'])
 	# the ribs across the opening, every 45 degrees but ahead and behind (the
 	# panels' seams: the front panel from 45 degrees left to 45 right, the
 	# rear one as wide behind), a little within it
@@ -371,7 +443,7 @@ def scorpion_feed(surfaces):
 	front = [arc(-reach + 2 * reach * k / 12) for k in range(13)]
 	fittings.face([(edge, front[0][1], dash)] + [(x, y, dash) for x, y in front] + [(edge, front[-1][1], dash)], eye,
 		S['dash_top'])
-	fittings.face([(edge, front[0][1], 0.300), (edge, front[-1][1], 0.300), (edge, front[-1][1], dash),
+	fittings.face([(edge, front[0][1], knees), (edge, front[-1][1], knees), (edge, front[-1][1], dash),
 		(edge, front[0][1], dash)], eye, S['dash_face'])
 	# the holotable on the dash, ahead of the eye: an eight-sided pedestal
 	tx, ty, tr, th = 0.630, 0.200, 0.030, 0.008
@@ -384,17 +456,23 @@ def scorpion_feed(surfaces):
 	# the hull's chevron on it, pointing forward (the hologram's frame)
 	fittings.face([(tx + 0.028, ty, dash + th + 0.001), (tx + 0.019, ty + 0.009, dash + th + 0.001),
 		(tx + 0.019, ty - 0.009, dash + th + 0.001)], (tx, ty, 1.0), S['chevron'])
-	# the side consoles, a box each side of the knees
-	for ya, yb, yf in ((0.030, 0.070, 'Y'), (0.330, 0.370, 'y')):
-		fittings.box((0.400, ya, 0.300), (0.540, yb, 0.420), {'x': S['dark'], 'X': S['dark'], 'y': S['console'],
+	# the side consoles, a box each side of the knees, up from the floor
+	for ya, yb, yf in ((0.030, 0.066, 'Y'), (0.334, 0.370, 'y')):
+		fittings.box((0.400, ya, z0), (0.540, yb, 0.420), {'x': S['dark'], 'X': S['dark'], 'y': S['console'],
 			'Y': S['console'], 'z': S['dark'], 'Z': S['console_top']}, faces='xX' + yf + 'Z')
-	# the steering levers: from the floor before the dash, back to the hands
-	for y in (0.105, 0.295):
+	# the steering levers: from the floor before the dash, back to the
+	# hands, either side of the body's hips
+	for y in (cy - 0.114, cy + 0.114):
 		fittings.bar((0.515, y, z0), (0.480, y, 0.360), 0.007, S['dark'])
-		fittings.bar((0.480, y - 0.006, 0.360), (0.470, y - 0.006, 0.405), 0.012, S['grip'])
-	# the seat: its pan, its back
-	fittings.box((0.360, 0.080, 0.300), (0.460, 0.320, 0.330), S['seat'], faces='XyYZ')
-	fittings.face([(0.367, 0.085, 0.330), (0.367, 0.315, 0.330), (0.350, 0.315, 0.470), (0.350, 0.085, 0.470)], eye, S['seat'])
+		fittings.bar((0.480, y, 0.360), (0.470, y, 0.405), 0.012, S['grip'])
+	# the seat, under the body's: its pan, its back (leaning back as the body
+	# does, behind it)
+	right, left = body['sides']
+	seat, back = body['seat'], body['hips_back'] - 0.010
+	fittings.box((back, right, seat - 0.030), (back + 0.130, left, seat), S['seat'], faces='XyYZ')
+	rest = (body['chest_back'] - 0.010, seat + 0.240)
+	fittings.face([(back, right, seat), (back, left, seat), (rest[0], left, rest[1]), (rest[0], right, rest[1])],
+		(eye[0], eye[1], seat + 0.2), S['seat'])
 	# the grate over the front panel, closed: rails along it and bars down
 	# it every 7.5 degrees, just within the opening
 	gr = r - 0.004
@@ -447,7 +525,8 @@ def scorpion_hatch():
 	ring.box((hinge_x - 0.012, -0.110, top + h - 0.002), (hinge_x + 0.004, 0.110, top + h + 0.012), SCORPION_DARK, faces='xXyYZ')
 	ring.face([h0, h1, f1, f0], add(scale(add(h0, f1), 0.5), (0.5, 0.0, 0.2)), SCORPION_HATCH)
 	ring.face([h0, h1, f1, f0], add(scale(add(h0, f1), 0.5), (-0.5, 0.0, -0.2)), SCORPION_PLATE)
-	return {'eye': eye, 'meshes': [ring, inner_ring]}
+	# (the player's body stands in the hatch, its legs down in the turret)
+	return {'eye': eye, 'meshes': [ring, inner_ring], 'standing': True}
 
 
 # ---------- the Banshee (vehicles\banshee\banshee: banshee, 512 x 512)
@@ -619,7 +698,9 @@ choosing its view and the value for this one (NULL, NULL: always), the eye
 half angle about it (degrees) and its bottom and top (up); its grate's mesh
 (else -1), and its hologram's place on the holotable (its middle's foot)
 and length; the box the cockpit is (the least and the most forward, left
-and up: the vehicle is not drawn about an eye in it) */
+and up: the vehicle is not drawn about an eye in it); and whether the
+player's body drawn in the seat stands in it (first_person_legs.c), else it
+sits, its hips on the cabin's seat and its feet on its floor */
 struct vr_cabin_model
 {
 	char const *model_name;
@@ -633,6 +714,7 @@ struct vr_cabin_model
 	short grate_mesh;
 	real hologram[4];
 	real inside[6];
+	short standing;
 };
 
 /* the most vertices and triangles of any mesh (for the buffers they are
@@ -674,7 +756,7 @@ MESH_ENTRY = '''\t{ "%(node)s", "%(shader)s", vr_cabin_%(name)s_vertices, NUMBER
 
 ENTRY = '''\t{ "%(model)s", "%(seat)s", %(setting)s, %(view)s, { %(ex)s, %(ey)s, %(ez)s },
 \t\tvr_cabin_%(name)s_meshes, NUMBEROF(vr_cabin_%(name)s_meshes),
-\t\t{ %(display)s }, %(grate)d, { %(hologram)s }, { %(inside)s } },'''
+\t\t{ %(display)s }, %(grate)d, { %(hologram)s }, { %(inside)s }, %(standing)d },'''
 
 
 def f(x):
@@ -708,7 +790,7 @@ def header(cabins):
 			'view': '"%s"' % spec['view'] if spec.get('view') else 'NULL', 'ex': f(e[0]), 'ey': f(e[1]), 'ez': f(e[2]),
 			'name': spec['name'], 'display': ', '.join(f(x) for x in cabin.get('display', (0,) * 6)),
 			'grate': cabin.get('grate', -1), 'hologram': ', '.join(f(x) for x in cabin.get('hologram', (0,) * 4)),
-			'inside': ', '.join(f(x) for x in cabin.get('inside', (0,) * 6))})
+			'inside': ', '.join(f(x) for x in cabin.get('inside', (0,) * 6)), 'standing': int(cabin.get('standing', False))})
 	return HEADER % {'cabins': ''.join(parts), 'table': '\n'.join(table),
 		'maximum_vertices': max(len(m.vertices) for m in all_meshes),
 		'maximum_triangles': max(len(m.triangles) for m in all_meshes),

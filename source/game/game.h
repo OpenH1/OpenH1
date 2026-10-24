@@ -140,7 +140,9 @@ void game_dispose_from_old_map(void);
 void game_frame(real dt);
 void remove_quitting_players_from_game(
 	void);
-void game_tick(void);
+/* port: a sub-step of the tick (the first begins it, the last ends it, and
+says so: game.c, port/linux/game/sim_rate.h) */
+boolean game_tick_substep(short substep_index);
 void game_options_new(struct game_options *options);
 boolean game_options_verify(struct game_options *options);
 void game_initial_pulse(void);
@@ -188,6 +190,8 @@ boolean game_map_loaded(void);
 boolean game_time_get_paused(void);
 /* whether a client's clock waits for the host's first game update */
 boolean game_time_held(void);
+/* port: whether the main menu's scene is what ticks (game_time.c) */
+boolean game_time_menu_scene(void);
 void game_time_set_paused(boolean paused);
 real game_time_get_speed(void);
 void game_time_set_speed(real speed);
@@ -196,6 +200,12 @@ void game_time_start(void);
 progress: the host's) */
 void game_time_set_distributed(long time);
 void game_time_update(real time_delta_sec);
+/* port: game.sim_rate's sub-steps spread over the frames (game_time.c):
+whether the frames' work on the game as a whole waits for the open tick's
+end, the open tick run to its end at once, and an open tick given up */
+boolean game_time_tick_open_wait(void);
+void game_time_finish_tick(void);
+void game_time_port_drop_substeps(void);
 
 /* ---------- prototypes/MAIN.C */
 
