@@ -207,7 +207,10 @@ difficulty` are the port's, as the Xbox's take the Xbox's widgets. The
 settings screens': `port settings save` (OK) writes the settings changed
 (config.toml's, or `profile.<field>`: the profile being edited) and applies
 them, `port settings defaults` shows the defaults, `port settings help` the
-help of the row chosen; Controls Setup's `controls ...` bind the keyboard
+help of the row chosen; a slider row's (`tools/port_settings.py`'s `Slider`)
+`port slider left` and `right` step its value, and `port slider edit` sets
+it where a click on its track is (the mouse held drags it) or types a value
+into its number (Enter keeps it, Escape forgets it); Controls Setup's `controls ...` bind the keyboard
 and mouse's controls (Enter takes the next key or button pressed; left and
 right choose which of two; Escape cancels, Delete clears); Change Color's
 `color picker ...` (the Xbox's names) set the profile's colour. The others

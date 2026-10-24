@@ -6820,6 +6820,42 @@ void ui_widget_port_post_button(
 	return;
 }
 
+/* port: the pointer as the menus last read it, and the latest click on an
+item (its place and when), for a slider (menu_functions.c's settings
+slider: a click on its track sets it, the mouse held drags it) */
+static boolean ui_widget_port_pointer_active;
+static boolean ui_widget_port_pointer_held;
+static short ui_widget_port_pointer_x;
+static short ui_widget_port_click_x, ui_widget_port_click_y;
+static unsigned long ui_widget_port_click_time;
+static boolean ui_widget_port_click_taken = TRUE;
+
+boolean ui_widget_port_pointer(
+	short *x)
+{
+	*x = ui_widget_port_pointer_x;
+
+	return ui_widget_port_pointer_active && ui_widget_port_pointer_held;
+}
+
+/* the latest click on an item, once, if it was at most a quarter of a
+second ago (the press it made is being handled) */
+boolean ui_widget_port_take_click(
+	short *x,
+	short *y)
+{
+	if (ui_widget_port_click_taken ||
+		widget_globals.current_system_milliseconds - ui_widget_port_click_time > 250)
+	{
+		return FALSE;
+	}
+	ui_widget_port_click_taken = TRUE;
+	*x = ui_widget_port_click_x;
+	*y = ui_widget_port_click_y;
+
+	return TRUE;
+}
+
 /* logs a tap while the virtual keyboard is up: the key or legend that took it */
 static void ui_debug_log_keyboard_tap(
 	short x,
@@ -6868,6 +6904,13 @@ static void ui_widgets_process_mouse(
 	pointer_active = halo_ui_pointer_update(ui_mouse_menus_active(), &pointer) != 0;
 	if (pointer_active)
 		ui_mouse_pointer_is_touch = pointer.touch != 0;
+	/* port: (ui_widget_port_pointer) */
+	ui_widget_port_pointer_active = pointer_active;
+	if (pointer_active)
+	{
+		ui_widget_port_pointer_held = pointer.left_held != 0;
+		ui_widget_port_pointer_x = pointer.x;
+	}
 	if (pointer_active && ui_debug_targets_enabled())
 	{
 		if (pointer.downs)
@@ -7016,6 +7059,11 @@ static void ui_widgets_process_mouse(
 					}
 					ui_mouse_give_focus(target->widget);
 					ui_mouse_press(_gamepad_analog_button_a);
+					/* port: (ui_widget_port_take_click) */
+					ui_widget_port_click_x = ui_mouse_click_x;
+					ui_widget_port_click_y = ui_mouse_click_y;
+					ui_widget_port_click_time = widget_globals.current_system_milliseconds;
+					ui_widget_port_click_taken = FALSE;
 					break;
 				case _ui_mouse_target_value:
 				{

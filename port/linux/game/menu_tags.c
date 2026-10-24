@@ -448,6 +448,8 @@ static char const *const port_function_names[] =
 	"port settings begin", "port settings tab", "port settings tab next", "port settings tab previous",
 	"port settings ok", "port settings cancel", "port settings keep", "port settings page cancel",
 	"port settings new profile",
+	/* (Settings' sliders: menu_functions.c's settings_slider_*) */
+	"port slider left", "port slider right", "port slider edit",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from

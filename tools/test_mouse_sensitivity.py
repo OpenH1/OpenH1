@@ -51,3 +51,27 @@ def test_mouse_alone_uses_it():
         control.index("if (halo_linux_mouse_look(gamepad_index, &mouse_yaw, &mouse_pitch))")
     fov = (ROOT / "port/linux/game/view_fov.c").read_text()
     assert 'strcmp(config_string("input.zoom_sensitivity"), "halo")' in fov
+
+
+def test_menu_sliders_match_their_rows():
+    """menu_functions.c's settings_sliders and its track's layout are tools/port_settings.py's Slider rows', and the
+    slider's functions are ones menu_tags.c names"""
+    import sys
+    sys.path.insert(0, str(ROOT / "tools"))
+    import port_settings
+
+    functions = (ROOT / "port/linux/game/menu_functions.c").read_text()
+    table = functions[functions.index("} const settings_sliders[] ="):]
+    table = table[:table.index("};")]
+    rows = {(f"op_{row[1].split('.', 1)[1]}", row[1], row[2])
+            for page in port_settings.PAGES.values() for row in page["rows"]
+            if row[0] != port_settings.SECTION and isinstance(row[2], port_settings.Slider)}
+    assert rows
+    found = {(row, setting, port_settings.Slider(*map(float, numbers.split(", "))))
+             for row, setting, numbers in re.findall(r'\{ "(\w+)", "([\w.]+)", ([\d., ]+) \}', table)}
+    assert found == rows
+    for name in ("SLIDER_TRACK_WIDTH", "SLIDER_THUMB_WIDTH"):
+        assert re.search(rf"#define {name} {getattr(port_settings, name)}\b", functions), name
+    tags = (ROOT / "port/linux/game/menu_tags.c").read_text()
+    for name in ("left", "right", "edit"):
+        assert f'"port slider {name}"' in tags
