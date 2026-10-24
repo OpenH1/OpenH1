@@ -724,7 +724,9 @@ static const struct config_setting config_settings[] =
 		"Click\") while the keyboard and mouse were played with last, as Halo\n"
 		"PC did, and draws the controller's button while a controller (or the\n"
 		"touch controls) was; \"controller\" always the controller's buttons, as\n"
-		"the Xbox; \"keyboard\" always the keys. In VR: the stock prompts." },
+		"the Xbox; \"keyboard\" always the keys. In VR (but \"controller\"):\n"
+		"what presses it on the controllers in the hands, as the runtime names\n"
+		"it (\"A Button\", \"Right Hand Trigger\"), or the gesture that does." },
 
 	/* the keyboard and mouse's own controls (port/linux/src/xinput_sdl.c) */
 	{ "controls.move_forward", _config_string, "\"W\"", "HALO_KEY_MOVE_FORWARD", _environment_value, _platform_all,

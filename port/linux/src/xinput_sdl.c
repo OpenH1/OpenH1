@@ -862,7 +862,8 @@ int halo_keyboard_prompts(void)
 		snprintf(setting, sizeof(setting), "%s", config_string("input.button_prompts"));
 	}
 #ifdef HALO_VR
-	/* (in the headset, the hands' controllers: the stock prompts) */
+	/* (in the headset, the hands' controllers: port/linux/game/
+	hud_key_prompts.c names theirs) */
 	if (halo_vr_running())
 		return 0;
 #endif

@@ -20,6 +20,11 @@ local player's; what the keyboard has no action for (the D-pad, the menus'
 accept and back) keeps the controller's button. Movement is the four
 movement keys ("WASD"), looking the mouse.
 
+In VR (HALO_VR) a prompt names what presses its controller button on
+the controllers in the hands instead, as the OpenXR runtime names the
+input bound to it, or the gesture that does (port/linux/src/vr.c:
+halo_vr_button_name), unless input.button_prompts is "controller".
+
 Only what this machine draws changes: nothing is sent, and nothing the
 machines of a network game agree on.
 */
@@ -32,6 +37,13 @@ machines of a network game agree on.
 #include "rasterizer/rasterizer.h"
 #include "text/draw_string.h"
 #include "halo_keyboard.h"
+
+#ifdef HALO_VR
+/* port/linux/src/vr.c (vr.h) */
+int halo_vr_running(void);
+int halo_vr_button_name(int button, char *name, unsigned long size);
+char const *config_string(char const *name);
+#endif
 
 /* ---------- constants */
 
@@ -99,6 +111,41 @@ static void movement_name(char *name, long size)
 	return;
 }
 
+#ifdef HALO_VR
+/* in the headset: what presses the prompt's controller button on the
+controllers in the hands (a game control's, the player's profile puts it
+on), as the runtime names it, or the gesture that does (port/linux/src/
+vr.c: halo_vr_button_name); FALSE for the sticks' moving and looking, and
+with input.button_prompts "controller", which keep the button */
+static boolean vr_prompt_text(
+	short local_player_index,
+	short game_control,
+	short gamepad_button,
+	wchar_t *text,
+	long length)
+{
+	struct game_input_preferences preferences;
+	char name[64];
+
+	if (!strcmp(config_string("input.button_prompts"), "controller"))
+		return FALSE;
+	if (game_control != NONE)
+	{
+		if (game_control < 0 || game_control >= NUMBEROF(preferences.game_control_to_xbox_buttons))
+			return FALSE;
+		input_abstraction_get_local_player_preferences(local_player_index, &preferences);
+		gamepad_button = preferences.game_control_to_xbox_buttons[game_control];
+	}
+	if (gamepad_button == NONE || gamepad_button >= HUD_KEY_PROMPT_LEFT_STICK ||
+		!halo_vr_button_name(gamepad_button, name, sizeof(name)))
+	{
+		return FALSE;
+	}
+	latin1_to_wide(name, text, length);
+	return TRUE;
+}
+#endif
+
 /* ---------- public code */
 
 /* the key a prompt names for the keyboard and mouse, for a game control or
@@ -154,10 +201,21 @@ boolean hud_key_prompt_draw(
 	short start;
 	pixel32 fill;
 
-	if (local_player_index != 0 || !halo_keyboard_prompts())
+	if (local_player_index != 0)
 		return FALSE;
-	if (!hud_key_prompt_text(local_player_index, game_control, gamepad_button, text, NUMBEROF(text)))
+#ifdef HALO_VR
+	if (halo_vr_running())
+	{
+		if (!vr_prompt_text(local_player_index, game_control, gamepad_button, text, NUMBEROF(text)))
+			return FALSE;
+	}
+	else
+#endif
+	if (!halo_keyboard_prompts() ||
+		!hud_key_prompt_text(local_player_index, game_control, gamepad_button, text, NUMBEROF(text)))
+	{
 		return FALSE;
+	}
 
 	/* (in the HUD's units, as hud_hires_button_draw's: the key cap's margin
 	about its name, the text's leading inset, and half its height) */

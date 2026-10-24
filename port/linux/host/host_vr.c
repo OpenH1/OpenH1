@@ -79,7 +79,9 @@ layers. The Vulkan binding has been tested with Monado on Linux.
 	X(xrGetActionStateFloat) \
 	X(xrGetActionStateVector2f) \
 	X(xrGetActionStatePose) \
-	X(xrApplyHapticFeedback)
+	X(xrApplyHapticFeedback) \
+	X(xrEnumerateBoundSourcesForAction) \
+	X(xrGetInputSourceLocalizedName)
 
 #define XR_DECLARE(name) static PFN_##name name;
 XR_FUNCTIONS(XR_DECLARE)
@@ -1747,6 +1749,56 @@ int host_vr_input(struct vr_host_input *input)
 		get.subactionPath = vr.hands[hand];
 		input->active[hand] = xrGetActionStatePose(vr.session, &get, &state) == XR_SUCCESS && state.isActive;
 	}
+	return 1;
+}
+
+/* the name the runtime gives the source bound to one of the controllers'
+inputs (a VR_BUTTON_ bit, VR_INPUT_LEFT_TRIGGER or VR_INPUT_RIGHT_TRIGGER),
+for the HUD's prompts: its component ("A Button", "Trigger"), with its hand
+where the other hand has one too; 0 (and an empty name) without a session,
+or with nothing bound to it */
+int host_vr_input_name(int input, char *name, int size)
+{
+	XrBoundSourcesForActionEnumerateInfo enumerate = { XR_TYPE_BOUND_SOURCES_FOR_ACTION_ENUMERATE_INFO };
+	XrInputSourceLocalizedNameGetInfo get = { XR_TYPE_INPUT_SOURCE_LOCALIZED_NAME_GET_INFO };
+	XrPath sources[16];
+	uint32_t count = 0, length = 0;
+	char text[XR_MAX_LOCALIZED_ACTION_NAME_SIZE * 2];
+	int action = -1, index, paired;
+
+	if (!name || size <= 0)
+		return 0;
+	name[0] = 0;
+	if (!vr.running || !vr.session)
+		return 0;
+	if (input == VR_INPUT_LEFT_TRIGGER)
+		action = _action_left_trigger;
+	else if (input == VR_INPUT_RIGHT_TRIGGER)
+		action = _action_right_trigger;
+	for (index = 0; action < 0 && index < NUMBER_OF_BUTTON_ACTIONS; index++)
+	{
+		/* (a button's bit is its action's: host_vr_input) */
+		if (input == (int)(1u << index))
+			action = index;
+	}
+	if (action < 0)
+		return 0;
+	enumerate.action = vr.actions[action];
+	if (xrEnumerateBoundSourcesForAction(vr.session, &enumerate, 0, &count, NULL) != XR_SUCCESS || !count ||
+		count > sizeof(sources) / sizeof(sources[0]) ||
+		xrEnumerateBoundSourcesForAction(vr.session, &enumerate, count, &count, sources) != XR_SUCCESS || !count)
+		return 0;
+	paired = action == _action_left_trigger || action == _action_right_trigger ||
+		action == _action_left_bumper || action == _action_right_bumper ||
+		action == _action_left_stick_click || action == _action_right_stick_click;
+	get.sourcePath = sources[0];
+	get.whichComponents = XR_INPUT_SOURCE_LOCALIZED_NAME_COMPONENT_BIT |
+		(paired ? XR_INPUT_SOURCE_LOCALIZED_NAME_USER_PATH_BIT : 0);
+	if (xrGetInputSourceLocalizedName(vr.session, &get, (uint32_t)sizeof(text), &length, text) != XR_SUCCESS ||
+		length <= 1)
+		return 0;
+	text[sizeof(text) - 1] = 0;
+	snprintf(name, (size_t)size, "%s", text);
 	return 1;
 }
 

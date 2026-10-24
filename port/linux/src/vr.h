@@ -753,6 +753,13 @@ void halo_vr_present(int eyes_drawn, int hud_drawn, int scope_drawn);
 /* the controllers as port 0's gamepad (an XINPUT_GAMEPAD), merged in */
 void halo_vr_gamepad(void *gamepad);
 void halo_vr_rumble(float left, float right);
+/* the name of what presses one of the game's controller buttons (its index,
+input.h's _gamepad_ buttons: A, B, X, Y, black, white, the triggers, the
+d-pad, Start, Back, the sticks' clicks) on the controllers in the hands, as
+the runtime names it ("A Button", "Right Hand Trigger") or a fixed name, or
+the gesture that does ("Left Hand Throw"), Latin-1, for the HUD's prompts
+(port/linux/game/hud_key_prompts.c); 0 outside VR */
+int halo_vr_button_name(int button, char *name, unsigned long size);
 /* the menus are up: their layer stays in front of the recentred place,
 not of the head */
 void halo_vr_menus(int active);
