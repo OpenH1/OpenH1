@@ -288,9 +288,7 @@ read `xbox/include`. To add a name, follow `port/include/xdk/README.md`.
   do not play together.
 - Only the host decides; clients predict their own players. Read
   `port/linux/NETCODE.md` before changing the netcode.
-- Internet play is the same code in every build. The builds also take a
-  WebRTC data channel on their tunnel's socket (`p2p_webrtc.c`,
-  `posix_dtls.c`).
+- Internet play is the same code in every build.
 - Anything another machine sends is untrusted: check sizes, indices and
   rates, as the existing handlers do. `debug.network_corrupt` tests this.
 

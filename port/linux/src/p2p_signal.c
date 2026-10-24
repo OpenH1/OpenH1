@@ -198,8 +198,16 @@ enum
 	_message_join = 'J',
 	_message_accept = 'A',
 	/* 3: a JOIN proves its key before the host makes a session; 4: both
-	messages say the machine's WebRTC (p2p_webrtc.c), so browsers join */
+	messages say the machine's WebRTC (for the web port's browsers, which
+	OpenCE and builds before this one have: get_addresses) */
 	MESSAGE_VERSION = 4,
+	/* the WebRTC a machine says it has: none (this build's), a native
+	build's (one that took browsers on its tunnel's socket) or a browser's;
+	and its certificate's hash, which the native and browser kinds give */
+	_webrtc_none = 0,
+	_webrtc_native,
+	_webrtc_browser,
+	WEBRTC_FINGERPRINT_SIZE = 32,
 };
 
 struct broker
@@ -858,18 +866,12 @@ static void broker_connect(struct broker *broker)
 
 /* ---------- addresses */
 
-/* this machine's addresses and its WebRTC (p2p_webrtc_describe), for a
-message to the machine with that identifier: the count of addresses, each
-address and port, then the WebRTC's kind and, unless none, the certificate's
-hash, the ICE username fragment and password, each after its length, and
-the count of mDNS names, each after its length and before its port; returns
-the bytes written */
-static int put_addresses(unsigned char *message, const unsigned char *identifier, int proven)
+/* this machine's addresses, for a message: the count of addresses, each
+address and port, then the WebRTC's kind, none; returns the bytes written */
+static int put_addresses(unsigned char *message)
 {
 	struct p2p_candidate candidates[P2P_MAXIMUM_CANDIDATES];
-	struct p2p_webrtc webrtc;
-	int count = p2p_webrtc_describe(identifier, proven, &webrtc, candidates, P2P_MAXIMUM_CANDIDATES);
-	int size;
+	int count = p2p_local_candidates(candidates, P2P_MAXIMUM_CANDIDATES);
 	int index;
 
 	message[0] = (unsigned char)count;
@@ -878,78 +880,25 @@ static int put_addresses(unsigned char *message, const unsigned char *identifier
 		memcpy(message + 1 + index * 6, &candidates[index].address, 4);
 		memcpy(message + 1 + index * 6 + 4, &candidates[index].port, 2);
 	}
-	size = 1 + count * 6;
-	message[size++] = (unsigned char)webrtc.kind;
-	if (webrtc.kind == _p2p_webrtc_none)
-		return size;
-	memcpy(message + size, webrtc.fingerprint, P2P_FINGERPRINT_SIZE);
-	size += P2P_FINGERPRINT_SIZE;
-	message[size] = (unsigned char)strlen(webrtc.ufrag);
-	memcpy(message + size + 1, webrtc.ufrag, message[size]);
-	size += 1 + message[size];
-	message[size] = (unsigned char)strlen(webrtc.password);
-	memcpy(message + size + 1, webrtc.password, message[size]);
-	size += 1 + message[size];
-	message[size++] = (unsigned char)webrtc.name_count;
-	for (index = 0; index < webrtc.name_count; index++)
-	{
-		message[size] = (unsigned char)strlen(webrtc.names[index]);
-		memcpy(message + size + 1, webrtc.names[index], message[size]);
-		size += 1 + message[size];
-		memcpy(message + size, &webrtc.name_ports[index], 2);
-		size += 2;
-	}
-	return size;
+	message[1 + count * 6] = _webrtc_none;
+	return 1 + count * 6 + 1;
 }
 
-/* whether text is an mDNS name of a browser's address: letters, digits and
-"-" before ".local" (a browser puts it in its session description) */
-static int webrtc_name_valid(const char *text)
-{
-	int length = (int)strlen(text);
-
-	return length > 6 && !strcmp(text + length - 6, ".local") && (int)strspn(text,
-		"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-") == length - 6;
-}
-
-/* ICE's text (RFC 8839's ice-char: letters, digits, "+" and "/"), of a
-length from minimum to maximum, or none; a browser puts it in its session
-description */
-static int get_ice_text(const unsigned char *message, int size, int *offset, int minimum, int maximum,
-	char *text)
-{
-	int length;
-	int index;
-
-	if (*offset >= size)
-		return 0;
-	length = message[(*offset)++];
-	if ((length && (length < minimum || length > maximum)) || *offset + length > size)
-		return 0;
-	for (index = 0; index < length; index++)
-	{
-		char character = (char)message[*offset + index];
-
-		if (!((character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
-			(character >= '0' && character <= '9') || character == '+' || character == '/'))
-		{
-			return 0;
-		}
-		text[index] = character;
-	}
-	text[length] = 0;
-	*offset += length;
-	return 1;
-}
-
-/* the reverse: the bytes read, or -1 if they are not made so */
+/* the reverse: the bytes read, or -1 if they are not made so. Another
+machine's WebRTC (OpenCE's, or an earlier build's) is passed over: after
+its kind, unless none, its certificate's hash, the ICE username fragment and
+password, each after its length, and the count of mDNS names, each after its
+length and before its port. A browser's sets browser: it has no UDP to reach,
+and is not played with */
 static int get_addresses(const unsigned char *message, int size, struct p2p_candidate *candidates, int *count,
-	struct p2p_webrtc *webrtc)
+	int *browser)
 {
+	int kind;
+	int names;
 	int offset;
 	int index;
 
-	memset(webrtc, 0, sizeof(*webrtc));
+	*browser = 0;
 	if (size < 2)
 		return -1;
 	*count = message[0];
@@ -964,42 +913,43 @@ static int get_addresses(const unsigned char *message, int size, struct p2p_cand
 		memcpy(&candidates[index].port, message + 1 + index * 6 + 4, 2);
 	}
 	offset = 1 + *count * 6;
-	webrtc->kind = message[offset++];
-	if (webrtc->kind == _p2p_webrtc_none)
+	kind = message[offset++];
+	if (kind == _webrtc_none)
 		return offset;
-	if ((webrtc->kind != _p2p_webrtc_native && webrtc->kind != _p2p_webrtc_browser) ||
-		offset + P2P_FINGERPRINT_SIZE > size)
-	{
+	if (kind != _webrtc_native && kind != _webrtc_browser)
 		return -1;
-	}
-	memcpy(webrtc->fingerprint, message + offset, P2P_FINGERPRINT_SIZE);
-	offset += P2P_FINGERPRINT_SIZE;
-	if (!get_ice_text(message, size, &offset, 4, P2P_ICE_UFRAG_SIZE - 1, webrtc->ufrag) ||
-		!get_ice_text(message, size, &offset, 22, P2P_ICE_PASSWORD_SIZE - 1, webrtc->password) ||
-		!webrtc->ufrag[0] != !webrtc->password[0] || offset >= size)
+	*browser = kind == _webrtc_browser;
+	offset += WEBRTC_FINGERPRINT_SIZE;
+	/* (the username fragment and password) */
+	for (index = 0; index < 2; index++)
 	{
-		return -1;
-	}
-	webrtc->name_count = message[offset++];
-	if (webrtc->name_count > P2P_MAXIMUM_WEBRTC_NAMES)
-		return -1;
-	for (index = 0; index < webrtc->name_count; index++)
-	{
-		int length;
-
 		if (offset >= size)
 			return -1;
-		length = message[offset++];
-		if (length >= P2P_WEBRTC_NAME_SIZE || offset + length + 2 > size)
-			return -1;
-		memcpy(webrtc->names[index], message + offset, (size_t)length);
-		webrtc->names[index][length] = 0;
-		memcpy(&webrtc->name_ports[index], message + offset + length, 2);
-		offset += length + 2;
-		if (!webrtc_name_valid(webrtc->names[index]) || !webrtc->name_ports[index])
-			return -1;
+		offset += 1 + message[offset];
 	}
-	return offset;
+	if (offset >= size)
+		return -1;
+	names = message[offset++];
+	for (index = 0; index < names; index++)
+	{
+		if (offset >= size)
+			return -1;
+		offset += 1 + message[offset] + 2;
+	}
+	return offset <= size ? offset : -1;
+}
+
+/* a browser asked to join, or answered (OpenCE's web port): logged, at most
+every 10 seconds, as it asks again */
+static void browser_ignored(void)
+{
+	static unsigned long logged_time;
+
+	if (!logged_time || elapsed(logged_time, 10000))
+	{
+		p2p_log("Internet play: a browser asked to play, which this build cannot reach (native builds only)");
+		logged_time = p2p_now() | 1;
+	}
 }
 
 /* ---------- the keys: what only a joiner and the host can work out */
@@ -1118,7 +1068,7 @@ static void send_join(struct join *join)
 	size += P2P_KEY_SIZE;
 	memcpy(message + size, join->nonce, NONCE_SIZE);
 	size += NONCE_SIZE;
-	size += put_addresses(message + size, join->host, 1);
+	size += put_addresses(message + size);
 	/* answered: the proof that this machine holds its key, of which the host
 	makes the session */
 	if (join->answered)
@@ -1229,7 +1179,7 @@ static void send_accept(struct broker *broker, const unsigned char *identifier, 
 	size += NONCE_SIZE;
 	memcpy(answer + size, host_nonce, NONCE_SIZE);
 	size += NONCE_SIZE;
-	size += put_addresses(answer + size, identifier, proven);
+	size += put_addresses(answer + size);
 	message_tag(base, "accept", answer, size, answer + size);
 	size += TAG_SIZE;
 	size = p2p_seal(signalling.host_key, answer, size, sealed);
@@ -1244,8 +1194,6 @@ nonce, and a tag) once the host answered it */
 static void join_received(struct broker *broker, const unsigned char *message, int size)
 {
 	struct p2p_candidate candidates[P2P_MAXIMUM_CANDIDATES];
-	struct p2p_webrtc webrtc;
-	static const struct p2p_webrtc no_webrtc;
 	unsigned char identifier[P2P_IDENTIFIER_SIZE];
 	unsigned char request[P2P_IDENTIFIER_SIZE + NONCE_SIZE];
 	unsigned char host_nonce[NONCE_SIZE];
@@ -1258,16 +1206,20 @@ static void join_received(struct broker *broker, const unsigned char *message, i
 	struct joiner *joiner;
 	struct used_request *used;
 	int proven;
+	int browser;
 	int count;
 	int read;
 
-	/* (a browser answers once its WebRTC can be told: the joiner asks
-	again) */
-	if (size < fixed + 1 || !p2p_webrtc_ready())
+	if (size < fixed + 1)
 		return;
-	read = get_addresses(message + fixed, size - fixed, candidates, &count, &webrtc);
+	read = get_addresses(message + fixed, size - fixed, candidates, &count, &browser);
 	if (read < 0)
 		return;
+	if (browser)
+	{
+		browser_ignored();
+		return;
+	}
 	proven = size - fixed - read;
 	if (proven != 0 && proven != PROOF_SIZE)
 		return;
@@ -1285,8 +1237,7 @@ static void join_received(struct broker *broker, const unsigned char *message, i
 			return;
 		}
 		if (!elapsed(joiner->answered_broker_times[broker_index], ANSWER_INTERVAL) ||
-			!p2p_peer_reoffered(identifier, joiner->secret, candidates, proven ? count : 0,
-			proven ? &webrtc : &no_webrtc) ||
+			!p2p_peer_reoffered(identifier, joiner->secret, candidates, proven ? count : 0) ||
 			(!proven && !budget_left(&signalling.unproven_answers, MAXIMUM_UNPROVEN_ANSWERS,
 			UNPROVEN_ANSWER_INTERVAL, 1)))
 		{
@@ -1373,7 +1324,7 @@ static void join_received(struct broker *broker, const unsigned char *message, i
 	if (signalling.used_request_count == MAXIMUM_USED_REQUESTS && !elapsed(used->time, USED_REQUEST_TIME))
 		return;
 	session_secret(base, nonce, host_nonce, secret);
-	if (!p2p_peer_offered(identifier, public_key, secret, candidates, count, &webrtc, _p2p_offered_joiner))
+	if (!p2p_peer_offered(identifier, public_key, secret, candidates, count, _p2p_offered_joiner))
 		return;
 	memcpy(used->request, request, sizeof(request));
 	used->time = p2p_now();
@@ -1399,7 +1350,6 @@ static void join_received(struct broker *broker, const unsigned char *message, i
 static void accept_received(const unsigned char *message, int size)
 {
 	struct p2p_candidate candidates[P2P_MAXIMUM_CANDIDATES];
-	struct p2p_webrtc webrtc;
 	unsigned char hash[P2P_KEY_HASH_SIZE];
 	unsigned char secret[P2P_SHA256_SIZE];
 	const unsigned char *host_public = message + 2;
@@ -1407,6 +1357,7 @@ static void accept_received(const unsigned char *message, int size)
 	const unsigned char *host_nonce = nonce + NONCE_SIZE;
 	int fixed = 2 + P2P_KEY_SIZE + 2 * NONCE_SIZE;
 	struct join *join = NULL;
+	int browser;
 	int count;
 	int index;
 
@@ -1445,13 +1396,18 @@ static void accept_received(const unsigned char *message, int size)
 	/* and the answer is its */
 	if (!tag_right(join->base, "accept", message, size))
 		return;
-	if (get_addresses(message + fixed, size - TAG_SIZE - fixed, candidates, &count, &webrtc) !=
+	if (get_addresses(message + fixed, size - TAG_SIZE - fixed, candidates, &count, &browser) !=
 		size - TAG_SIZE - fixed)
 	{
 		return;
 	}
+	if (browser)
+	{
+		browser_ignored();
+		return;
+	}
 	session_secret(join->base, nonce, host_nonce, secret);
-	if (!p2p_peer_offered(join->host, host_public, secret, candidates, count, &webrtc,
+	if (!p2p_peer_offered(join->host, host_public, secret, candidates, count,
 		join_probe(join) ? _p2p_offered_probe : join == &signalling.joins[0] ? _p2p_offered_host :
 		_p2p_offered_player) || join->answered)
 	{
@@ -2043,9 +1999,7 @@ void p2p_signal_join(const unsigned char *host_hash, const unsigned char *token)
 	memcpy(signalling.join_token, token, P2P_TOKEN_SIZE);
 	derive(token, "seal", NULL, signalling.join_key);
 	make_topic(token, "joiner", p2p_identifier(), signalling.join_topic);
-	/* (new each time: the host makes one session of a request; a browser's
-	connection for the last goes, unless a session took it up) */
-	p2p_webrtc_new_request();
+	/* (new each time: the host makes one session of a request) */
 	join_start(&signalling.joins[0], host_hash, token);
 }
 

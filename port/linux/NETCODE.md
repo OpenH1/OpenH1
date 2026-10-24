@@ -220,7 +220,8 @@ the Xbox tools' limits, so both place the same objects; version 24 sends the
 gametype's PC vehicle set; version 25 sends a unit's integrated light with
 its object state; version 26 has each machine say its WebRTC in internet
 play's signalling (a native build's certificate, a browser's ICE credentials
-too), so that the web port's browsers played (the web port is removed since);
+too), so that the web port's browsers played (the web port is removed since,
+and a build now says it has none);
 version 27
 shares Custom Edition maps (below, "Map sharing"): a client asks the host for
 a map it lacks, and the game's players reach each other to send it; version

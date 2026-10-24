@@ -483,9 +483,8 @@ build machine.
 - Gives the audio callback of SDL to a thread with a guest stack
   (`host/host_sdl.c`).
 - Does the calls of the guest: system calls (`host/host_syscall.c`), SDL
-  (`host/host_sdl.c`), and the file, socket, UPnP and DTLS functions of
-  `port/linux/src/posix_*.c` (DTLS with Mbed TLS, for internet play with
-  browsers: `posix_dtls.c`).
+  (`host/host_sdl.c`), and the file, socket and UPnP functions of
+  `port/linux/src/posix_*.c`.
 - Draws the game's frames, which the guest writes as the renderer's command
   stream, with the Vulkan backend on a thread of its own
   (`port/linux/vulkan`, `host/host_render_stream.c`; "The renderer's command
