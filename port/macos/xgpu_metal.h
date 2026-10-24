@@ -514,7 +514,7 @@ returns its fence */
 uint64_t xgpu_metal_fence(void);
 
 /* reads a level's pixels (BGRA8 textures: 4 bytes a pixel; depth: 4-byte
-floats) after the work done so far; waits for the GPU (screenshots,
+floats, as the game has it, not reversed) after the work done so far; waits for the GPU (screenshots,
 tests). Returns 1 on success. */
 int xgpu_metal_read_pixels(uint32_t texture, uint32_t level, uint32_t layer, uint32_t x, uint32_t y,
 	uint32_t width, uint32_t height, void *pixels, uint32_t bytes_per_row);

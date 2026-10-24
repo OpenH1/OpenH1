@@ -163,7 +163,9 @@ static void capabilities_test(void)
 
 	vkGetPhysicalDeviceFormatProperties = fake_format_properties;
 	depth24_features = depth32_features = attachment | sampled;
-	assert(depth_format_choose() && vk.depth_format == VK_FORMAT_D24_UNORM_S8_UINT);
+	/* (reversed depth in a float where the device has both: xgpu_vulkan.h) */
+	assert(depth_format_choose() && vk.depth_format ==
+		(XGPU_VULKAN_REVERSED_DEPTH ? VK_FORMAT_D32_SFLOAT_S8_UINT : VK_FORMAT_D24_UNORM_S8_UINT));
 	/* D24 may draw correctly but not support the scope's sampled reads. */
 	depth24_features = attachment;
 	assert(depth_format_choose() && vk.depth_format == VK_FORMAT_D32_SFLOAT_S8_UINT);
@@ -393,7 +395,11 @@ static void vertex_input_test(void)
 	dynamic.depth_bias[0] = 2.0f;
 	dynamic.depth_bias[1] = 1.0f;
 	xgpu_vulkan_draw(&draw);
-	assert(state_calls == 1 && bias_state[0] == 2.0f && bias_state[1] == 1.0f);
+	/* (on reversed depth: the slope's turned, the constant the shaders') */
+	if (XGPU_VULKAN_REVERSED_DEPTH)
+		assert(state_calls == 1 && bias_state[0] == -2.0f && bias_state[1] == 0.0f);
+	else
+		assert(state_calls == 1 && bias_state[0] == 2.0f && bias_state[1] == 1.0f);
 	draw.uniforms.offset = 256;
 	state_calls = 0;
 	xgpu_vulkan_draw(&draw);

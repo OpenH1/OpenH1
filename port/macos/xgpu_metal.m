@@ -3529,8 +3529,19 @@ int xgpu_metal_read_pixels(uint32_t texture, uint32_t level, uint32_t layer, uin
 		serial = command_buffer_commit(nil);
 		xgpu_metal_frame_wait(serial);
 		for (row = 0; row < height; row++)
+		{
 			memcpy((unsigned char *)pixels + (size_t)row * bytes_per_row,
 				(const unsigned char *)buffer.contents + (size_t)row * row_size, row_size);
+			/* (float depth as the game has it: reversed, xgpu_backend.h) */
+			if (depth && row_size == width * 4)
+			{
+				float *values = (float *)((unsigned char *)pixels + (size_t)row * bytes_per_row);
+				uint32_t column;
+
+				for (column = 0; column < width; column++)
+					values[column] = 1.0f - values[column];
+			}
+		}
 		buffer = nil;
 	}
 	metal.dirty = _dirty_all;
