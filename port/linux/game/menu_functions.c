@@ -76,6 +76,7 @@ their handlers open opens.
 */
 
 #include "cseries.h"
+#include "game/game.h"
 #include "input/input.h"
 #include "interface/event_manager.h"
 #include "interface/player_ui.h"
@@ -3651,6 +3652,14 @@ int pc_menu_update_question_open(void)
 		platform_log("update: the menus have no update question (main_menu/update/update_screen)");
 	}
 	return 1;
+}
+
+/* updater.c's, the macOS app's: 1 while a game is played (its pause menu
+too), 0 at the main menu, where the app's updater may show its window
+(port/macos/host_app.m) */
+int pc_menu_game_playing(void)
+{
+	return game_in_progress() && !main_menu_is_active();
 }
 
 /* "port mods save" (OK): kept, and played at once (port_mods_save keeps

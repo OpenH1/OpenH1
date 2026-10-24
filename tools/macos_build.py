@@ -85,6 +85,21 @@ KHRONOS_URLS = [
     "https://cdn.jsdelivr.net/gh/KhronosGroup/{repository}@{commit}/api/{name}",
 ]
 
+# Sparkle, the macOS app's updater (port/macos/host_app.m; port/macos/README.md,
+# "Updates"): its release's framework and tools (bin/sign_update, which
+# signs a release's disk image for the appcast in CI), downloaded once
+# (MIT; its LICENSE goes in the app's Licenses)
+SPARKLE_VERSION = "2.10.0"
+SPARKLE_SHA256 = "c2bf58aa8387266ac179357b1415d6f2635f044da8be41042af32425dae6da0c"
+SPARKLE_URL = (f"https://github.com/sparkle-project/Sparkle/releases/download/{SPARKLE_VERSION}/"
+               f"Sparkle-{SPARKLE_VERSION}.tar.xz")
+# the appcast a release's app asks for new versions (each release has its
+# own, appcast.xml, written by tools/macos_appcast.py in CI's release job),
+# and the public half of the key its disk images are signed with (EdDSA:
+# tools/setup_sparkle_key.sh), from the SPARKLE_PUBLIC_KEY environment
+# variable (CI's repository variable); an app without both never looks
+SPARKLE_FEED = "https://github.com/OpenH1/OpenH1/releases/latest/download/appcast.xml"
+
 # the guest's code paths beside the architecture's: the Linux arm64 build's
 # OpenGL ES ones, and the Mac's (the base register is added by
 # generate_guest_image); Apple's clang otherwise notes that its macOS
@@ -152,6 +167,35 @@ def fetch_khronos_headers(khronos_dir: Path = KHRONOS_DIR) -> None:
         data = download([url.format(repository=repository, commit=commit, name=name) for url in KHRONOS_URLS], digest)
         header.with_suffix(".tmp").write_bytes(data)
         header.with_suffix(".tmp").replace(header)
+
+
+def fetch_sparkle(third_party: Path = THIRD_PARTY) -> Path:
+    """Download Sparkle's release (configure time, once) into
+    third_party/Sparkle: Sparkle.framework (its links kept), bin/ and
+    LICENSE; its folder."""
+    import io
+    import tarfile
+
+    folder = third_party / "Sparkle"
+    stamp = folder / ".sha256"
+    if stamp.is_file() and stamp.read_text().strip() == SPARKLE_SHA256:
+        return folder
+    print(f"Downloading Sparkle {SPARKLE_VERSION}")
+    data = download([SPARKLE_URL], SPARKLE_SHA256)
+    partial = folder.with_name("Sparkle.partial")
+    shutil.rmtree(partial, ignore_errors=True)
+    partial.mkdir(parents=True)
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:xz") as archive:
+        members = [member for member in archive.getmembers()
+                   if Path(member.name).parts[:1] in (("Sparkle.framework",), ("bin",), ("LICENSE",))]
+        if hasattr(tarfile, "data_filter"):
+            archive.extractall(partial, members=members, filter="tar")
+        else:
+            archive.extractall(partial, members=members)
+    (partial / ".sha256").write_text(SPARKLE_SHA256 + "\n")
+    shutil.rmtree(folder, ignore_errors=True)
+    partial.rename(folder)
+    return folder
 
 
 def _tool(name: str) -> str:
@@ -266,6 +310,9 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
     try:
         fetch_third_party(third_party)
         fetch_khronos_headers(khronos_dir)
+        # (the macOS app's updater: not the iOS app's, which the App Store
+        # or a developer's install updates)
+        sparkle = fetch_sparkle(third_party) if name == "macos" else None
     except (subprocess.CalledProcessError, OSError, RuntimeError) as error:
         print(f"{name} build disabled: cannot fetch musl, SDL3 or the OpenGL ES headers ({error})", file=sys.stderr)
         return None
@@ -412,7 +459,10 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
         if source.name in target.host_excluded:
             continue
         obj = host_obj_dir / (source.name + ".o")
-        n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source, variables={"cflags": objc_cflags})
+        # (the app's start: Sparkle's headers, its framework loaded at run
+        # time from the bundle, so that the bare executable runs without it)
+        flags = f"{objc_cflags} -F{sparkle}" if sparkle and source.name in APP_SOURCES else objc_cflags
+        n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source, variables={"cflags": flags})
         if source.name in APP_SOURCES:
             host_objects.append(obj)
         else:
@@ -512,7 +562,7 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
     # internet play's MQTT brokers, a file beside the game (network.brokers_file)
     brokers = build / "brokers.txt"
     n.build(outputs=brokers, rule=f"{name}_copy", inputs=Path("port/assets/network/brokers.txt"))
-    result = {"guest": guest, "executable": output, "sdl": libsdl, "library": library, "brokers": brokers,
+    result = {"sparkle": sparkle, "guest": guest, "executable": output, "sdl": libsdl, "library": library, "brokers": brokers,
               "metal_objects": metal_objects, "shared_objects": shared_objects, "host_obj_dir": host_obj_dir, "objc_cflags": objc_cflags}
     if name == "macos":
         _generate_macos_app(n, sln, result)
@@ -537,16 +587,25 @@ def _generate_macos_app(n: Writer, sln: Any, built: Dict[str, Any]) -> None:
     # the licences the app carries (Contents/Resources/Licenses): OpenH1's,
     # the AGPL; those of what every build carries (tools/linux_package.py);
     # and the SDL3 built here
+    sparkle = built["sparkle"]
     licenses = [(Path("LICENSE"), "LICENSE.txt"),
                 *((source.relative_to(REPO_ROOT), name) for source, name in release_notices("macos")),
-                (BUILD / "third_party/SDL3/LICENSE.txt", "SDL3-LICENSE.txt")]
+                (BUILD / "third_party/SDL3/LICENSE.txt", "SDL3-LICENSE.txt"),
+                (sparkle / "LICENSE", "Sparkle-LICENSE.txt")]
+    # Sparkle's appcast and key: a release's alone (a numbered build of
+    # CI's, release flavour; the debug builds and local ones never look)
+    release = getattr(sln, "port_release", False)
+    sparkle_key = os.environ.get("SPARKLE_PUBLIC_KEY", "").strip()
+    sparkle_options = f"--sparkle {sparkle / 'Sparkle.framework'}"
+    if build_number.isdigit() and int(build_number) > 0 and release and sparkle_key:
+        sparkle_options += f" --sparkle-feed {SPARKLE_FEED} --sparkle-key {sparkle_key}"
     n.rule(
         name="macos_app",
         command=(f"$python tools/macos_app.py bundle --app {app} --executable {output} --sdl {libsdl} "
-                 f"--icon {icon} --resource {brokers} --resource {library} --bundle-id {bundle_id} "
+                 f"--icon {icon} --resource {brokers} --resource {library} --bundle-id {bundle_id} {sparkle_options} "
                  f"{' '.join(f'--license {source}={name}' for source, name in licenses)} "
                  f"--build {build_number if build_number.isdigit() else 0} "
-                 f"--flavor {'release' if getattr(sln, 'port_release', False) else 'debug'} "
+                 f"--flavor {'release' if release else 'debug'} "
                  f"--minimum {MACOS_MINIMUM} > {BUILD}/app.log"),
         description=f"MACOS APP {app}",
     )

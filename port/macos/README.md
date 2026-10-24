@@ -63,6 +63,7 @@ Support's OpenH1 folder whatever the app is called, so an earlier
 | --- | --- |
 | `Contents/MacOS/halo` | The executable (its rpaths: `@executable_path`, and `@executable_path/../Frameworks` in the app) |
 | `Contents/Frameworks/libSDL3.0.dylib` | SDL |
+| `Contents/Frameworks/Sparkle.framework` | The updater ([Sparkle](https://sparkle-project.org) 2, MIT; without its XPC services, which only a sandboxed app uses), loaded by `host_app.m` at run time |
 | `Contents/Resources/openh1-icon.icns` | The icon, from `port/assets/icon` (`tools/app_icon.py` writes `port/macos/openh1-icon.icns`) |
 | `Contents/Resources/brokers.txt` | Internet play's brokers, copied beside `config.toml` at each start |
 | `Contents/Resources/Credits.html` | The About panel's text: the build |
@@ -127,6 +128,45 @@ a Mac app does, before the game starts:
 - **Menus.** SDL's: About, Hide, Quit (Cmd-Q quits as closing the window
   does; before the game starts, at once), and the Window menu with Toggle
   Full Screen (Cmd-Ctrl-F). The window has the native fullscreen button.
+
+### Updates
+
+A release's app updates itself with Sparkle 2, as Mac apps do. The build
+downloads Sparkle's release once, pinned by its SHA-256
+(`SPARKLE_VERSION` in `tools/macos_build.py`), into
+`build/macos/third_party/Sparkle`.
+
+- A release's `Info.plist` has `SUFeedURL`
+  (`https://github.com/OpenH1/OpenH1/releases/latest/download/appcast.xml`),
+  `SUPublicEDKey` (the `SPARKLE_PUBLIC_KEY` repository variable),
+  `SUEnableAutomaticChecks`, `SUScheduledCheckInterval` (four hours) and
+  `SUVerifyUpdateBeforeExtraction`. Debug and local builds have none of
+  them, and never look for updates.
+- The app looks when the game first reaches its main menu, then every four
+  hours, unless `update.auto` is false. The app menu's Automatically Check
+  for Updates and Settings > Network Setup > Check for Updates are both
+  `update.auto`. Check for Updates... in the app menu looks at once.
+- Sparkle's window shows the new version's notes, with Install Update,
+  Remind Me Later and Skip This Version. The window opens only at the main
+  menu. When a check finds a version during a game, the window waits until
+  the game is over: each frame, the guest tells the host whether a game is
+  being played (`updater.c`'s `updater_poll`, `host_app_playing`).
+- Install Update downloads the release's `OpenH1.dmg`, checks its EdDSA
+  signature and the app's Developer ID signature, replaces the app and
+  starts it again. Settings and saves are in Application Support, so the
+  update does not change them.
+- CI: the macOS job signs the notarized disk image with Sparkle's
+  `sign_update` and the `SPARKLE_PRIVATE_KEY` secret (`OpenH1.dmg.sparkle`).
+  The release job writes `appcast.xml` from it (`tools/macos_appcast.py`:
+  the build number, the disk image's URL, the signature, and the merged
+  pull requests since the last release as notes), and attaches it to the
+  release. Without the secret, or without a notarized app, the release has
+  no appcast and the apps already installed stay as they are.
+- The key: `bash tools/setup_sparkle_key.sh` (on the Mac whose Keychain
+  will keep the private key) makes it with Sparkle's `generate_keys`, sets
+  the secret and the variable, and prints the public key.
+- Test against an appcast of your own: `HALO_UPDATE_FEED=<url>` replaces the
+  appcast URL of an app whose `Info.plist` has a public key.
 
 ### Signing
 
@@ -750,4 +790,4 @@ draw, and cleared.
   made the first time a draw needs it, which the draw waits for (the shaders
   are the library's or specialised: no MSL is compiled); later runs find it
   in the archive.
-- The self-updater and the Discord invites are not set up for macOS.
+- The Discord invites are not set up for macOS.

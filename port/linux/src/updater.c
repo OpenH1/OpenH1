@@ -61,7 +61,7 @@ as tools/release_names.py names the release's files; on Linux, the release's
 tree); a build without one never looks for updates */
 #if defined(HALO_ANDROID) || defined(HALO_WEB) || defined(HALO_MACOS)
 /* (none: the Android app updates itself, the site through its service
-worker; the macOS app is replaced by its disk image) */
+worker; the macOS app through Sparkle, in its host: updater_poll below) */
 #elif defined(_WIN32)
 #define UPDATE_PLATFORM "windows"
 #define UPDATE_NAME "OpenH1-Windows"
@@ -1195,7 +1195,30 @@ void updater_update_now(void)
 {
 }
 
-#ifndef HALO_ANDROID
+#if defined(HALO_MACOS)
+#include <SDL3/SDL.h>
+
+/* menu_functions.c's: 1 while a game is played, 0 at the main menu */
+int pc_menu_game_playing(void);
+/* port/linux/host/guest_desktop.c's import */
+void host_app_playing(int playing);
+
+/* every frame, on the game's thread (sdl_platform.c): the macOS app is
+updated by Sparkle in the host (port/macos/host_app.m), which shows a new
+version's window only at the main menu, never in a game: the host is told
+whether a game is played as it changes */
+void updater_poll(SDL_Window *window)
+{
+	static int told = -1;
+	int playing = pc_menu_game_playing() ? 1 : 0;
+
+	(void)window;
+	if (playing == told)
+		return;
+	told = playing;
+	host_app_playing(playing);
+}
+#elif !defined(HALO_ANDROID)
 #include <SDL3/SDL.h>
 
 /* (nothing to ask about: the site updates itself, port/web/site/sw.js, and

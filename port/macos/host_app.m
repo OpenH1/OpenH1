@@ -26,11 +26,25 @@ HALO_SAVE_ROOT) and config.toml's paths.data and paths.saves are kept.
   (window.plist) and the next start opens it so (display.fullscreen, through
   HALO_FULLSCREEN, and the window's frame once it is a window).
 
+- Updates: a release's app updates itself with Sparkle (Sparkle.framework
+  in the bundle, loaded at run time; tools/macos_app.py gives a release's
+  Info.plist its appcast and public key). It looks when the game reaches
+  its main menu and every four hours after, unless update.auto is false; a
+  new version's window (its notes, Install Update, Remind Me Later, Skip
+  This Version) is shown only at the main menu: found during a game, it
+  waits until the game is over (the guest says which, updater.c's
+  updater_poll). Installing replaces the app and starts it again; the
+  player's files, here in Application Support, are untouched. The app's
+  menu has Check for Updates... and Automatically Check for Updates, which
+  is update.auto (written to config.toml; Settings > Network Setup > Check
+  for Updates is the same setting).
+
 SDL makes the app's menus (About, Hide, Quit, the Window menu with Toggle
 Full Screen) and turns Quit into the game's quit event.
 */
 
 #import <AppKit/AppKit.h>
+#import <Sparkle/Sparkle.h>
 #include <SDL3/SDL.h>
 
 /* (host.h's host_page_size is Mach's too: not used here) */
@@ -100,6 +114,25 @@ static NSString *config_path_setting(const char *name)
 
 		if (datum.type == TOML_STRING && datum.u.s[0])
 			value = [NSString stringWithUTF8String:datum.u.s];
+	}
+	toml_free(result);
+	return value;
+}
+
+/* a boolean setting of config.toml, else its default */
+static BOOL config_boolean_setting(const char *name, BOOL default_value)
+{
+	NSString *path = [support_folder stringByAppendingPathComponent:@"config.toml"];
+	toml_result_t result = toml_parse_file_ex(path.fileSystemRepresentation);
+	BOOL value = default_value;
+
+	if (!result.ok)
+		return value;
+	{
+		toml_datum_t datum = toml_seek(result.toptab, name);
+
+		if (datum.type == TOML_BOOLEAN)
+			value = datum.u.boolean ? YES : NO;
 	}
 	toml_free(result);
 	return value;
@@ -697,6 +730,274 @@ static void window_remember(void)
 	}
 }
 
+/* ---------- updates (Sparkle) */
+
+/* port/linux/host/host_desktop.c's: 1 while a game is played, 0 at the main
+menu, -1 before the game's first frame (updater.c's updater_poll) */
+int host_app_is_playing(void);
+
+@interface HaloUpdater : NSObject <SPUUpdaterDelegate, SPUStandardUserDriverDelegate, NSMenuItemValidation>
+@end
+
+static SPUStandardUpdaterController *updater_controller;
+static HaloUpdater *updater_delegate;
+/* a new version found during a game, to be shown at the main menu */
+static BOOL update_waiting;
+/* the check of the start, made at the first main menu */
+static BOOL update_start_checked;
+/* config.toml's modification date when update.auto was last read */
+static NSDate *update_config_read;
+
+static NSString *config_path(void)
+{
+	return [support_folder stringByAppendingPathComponent:@"config.toml"];
+}
+
+static NSDate *config_modified(void)
+{
+	return [[NSFileManager defaultManager] attributesOfItemAtPath:config_path() error:NULL].fileModificationDate;
+}
+
+/* update.auto = on written to config.toml as the game writes a setting:
+its line in [update] (or its commented default) replaced, else added. The
+game reads the file again before it writes any setting, and keeps this */
+static void config_write_update_auto(BOOL on)
+{
+	NSCharacterSet *blank = [NSCharacterSet whitespaceCharacterSet];
+	NSString *text = [NSString stringWithContentsOfFile:config_path() encoding:NSUTF8StringEncoding error:NULL] ?: @"";
+	NSMutableArray<NSString *> *lines = [[text componentsSeparatedByString:@"\n"] mutableCopy];
+	NSString *line = on ? @"auto = true" : @"auto = false";
+	NSUInteger section = NSNotFound, index;
+	BOOL replaced = NO;
+
+	for (index = 0; index < lines.count; index++)
+	{
+		NSString *trimmed = [lines[index] stringByTrimmingCharactersInSet:blank];
+
+		if ([trimmed hasPrefix:@"["])
+		{
+			if (section != NSNotFound)
+				break;
+			if ([trimmed isEqualToString:@"[update]"])
+				section = index;
+			continue;
+		}
+		if (section == NSNotFound)
+			continue;
+		if ([trimmed hasPrefix:@"#"])
+			trimmed = [[trimmed substringFromIndex:1] stringByTrimmingCharactersInSet:blank];
+		if ([trimmed hasPrefix:@"auto"] &&
+			[[[trimmed substringFromIndex:4] stringByTrimmingCharactersInSet:blank] hasPrefix:@"="])
+		{
+			lines[index] = line;
+			replaced = YES;
+			break;
+		}
+	}
+	if (!replaced && section == NSNotFound)
+	{
+		if (lines.count && [lines.lastObject length] == 0)
+			[lines removeLastObject];
+		[lines addObjectsFromArray:@[ @"", @"[update]", line, @"" ]];
+	}
+	else if (!replaced)
+		[lines insertObject:line atIndex:section + 1];
+	if (![[lines componentsJoinedByString:@"\n"] writeToFile:config_path() atomically:YES encoding:NSUTF8StringEncoding
+		error:NULL])
+	{
+		host_logf(HOST_LOG_WARN, "update: could not write update.auto to config.toml");
+	}
+}
+
+/* Sparkle's windows over the game's when it is fullscreen (in its Space),
+not in a Space of their own */
+static void update_windows_over_game(void)
+{
+	dispatch_async(dispatch_get_main_queue(), ^{
+		for (NSWindow *window in NSApp.windows)
+		{
+			if (is_game_window(window) || !window.visible)
+				continue;
+			window.collectionBehavior |= NSWindowCollectionBehaviorFullScreenAuxiliary |
+				NSWindowCollectionBehaviorMoveToActiveSpace;
+			[window orderFrontRegardless];
+		}
+	});
+}
+
+@implementation HaloUpdater
+
+/* (the appcast of a test: HALO_UPDATE_FEED, port/macos/README.md) */
+- (NSString *)feedURLStringForUpdater:(SPUUpdater *)updater
+{
+	const char *feed = getenv("HALO_UPDATE_FEED");
+
+	return feed && *feed ? [NSString stringWithUTF8String:feed] : nil;
+}
+
+- (void)updater:(SPUUpdater *)updater didFindValidUpdate:(SUAppcastItem *)item
+{
+	host_logf(HOST_LOG_INFO, "update: build %s is out", item.versionString.UTF8String);
+}
+
+- (void)updaterDidNotFindUpdate:(SPUUpdater *)updater
+{
+	host_logf(HOST_LOG_INFO, "update: this is the latest build");
+}
+
+- (void)updater:(SPUUpdater *)updater didAbortWithError:(NSError *)error
+{
+	host_logf(HOST_LOG_INFO, "update: %s", error.localizedDescription.UTF8String);
+}
+
+- (void)updaterWillRelaunchApplication:(SPUUpdater *)updater
+{
+	host_logf(HOST_LOG_INFO, "update: installed; starting the new build");
+}
+
+/* a version found by a check of Sparkle's own (not Check for Updates...):
+shown by Sparkle at the main menu, else kept for it (update_tick) */
+- (BOOL)supportsGentleScheduledUpdateReminders
+{
+	return YES;
+}
+
+- (BOOL)standardUserDriverShouldHandleShowingScheduledUpdate:(SUAppcastItem *)update andInImmediateFocus:(BOOL)immediateFocus
+{
+	return host_app_is_playing() == 0;
+}
+
+- (void)standardUserDriverWillHandleShowingUpdate:(BOOL)handleShowingUpdate forUpdate:(SUAppcastItem *)update
+	state:(SPUUserUpdateState *)state
+{
+	if (handleShowingUpdate)
+	{
+		update_windows_over_game();
+		return;
+	}
+	update_waiting = YES;
+	host_logf(HOST_LOG_INFO, "update: build %s shown at the main menu, after this game",
+		update.versionString.UTF8String);
+}
+
+- (void)standardUserDriverDidReceiveUserAttentionForUpdate:(SUAppcastItem *)update
+{
+	update_waiting = NO;
+}
+
+- (void)standardUserDriverWillFinishUpdateSession
+{
+	update_waiting = NO;
+}
+
+/* the app menu's Automatically Check for Updates: update.auto */
+- (void)toggleAutomaticChecks:(NSMenuItem *)item
+{
+	BOOL on = !updater_controller.updater.automaticallyChecksForUpdates;
+
+	updater_controller.updater.automaticallyChecksForUpdates = on;
+	config_write_update_auto(on);
+	update_config_read = config_modified();
+	host_logf(HOST_LOG_INFO, "update: update.auto = %s", on ? "true" : "false");
+}
+
+- (BOOL)validateMenuItem:(NSMenuItem *)item
+{
+	if (item.action == @selector(toggleAutomaticChecks:))
+	{
+		item.state = updater_controller.updater.automaticallyChecksForUpdates ? NSControlStateValueOn
+			: NSControlStateValueOff;
+	}
+	return YES;
+}
+
+@end
+
+/* every two seconds, on the main thread (between the game's frames, which
+pump its run loop): update.auto as Settings changes it, the start's check
+at the first main menu, and a version found during a game shown once the
+game is over */
+static void update_tick(void)
+{
+	SPUUpdater *updater = updater_controller.updater;
+	NSDate *modified = config_modified();
+
+	if (modified && ![modified isEqualToDate:update_config_read])
+	{
+		BOOL on = config_boolean_setting("update.auto", YES);
+
+		update_config_read = modified;
+		if (on != updater.automaticallyChecksForUpdates)
+		{
+			updater.automaticallyChecksForUpdates = on;
+			host_logf(HOST_LOG_INFO, "update: update.auto = %s", on ? "true" : "false");
+		}
+	}
+	if (host_app_is_playing() != 0)
+		return;
+	if (!update_start_checked)
+	{
+		update_start_checked = YES;
+		if (updater.automaticallyChecksForUpdates && updater.canCheckForUpdates)
+			[updater checkForUpdatesInBackground];
+	}
+	if (update_waiting)
+	{
+		update_waiting = NO;
+		[updater_controller checkForUpdates:nil];
+		update_windows_over_game();
+	}
+}
+
+/* once SDL has made the app's menus (NSApplicationDidFinishLaunching):
+Sparkle, if the app has it and an appcast (a release's), else nothing */
+static void update_start(void)
+{
+	NSBundle *bundle = [NSBundle mainBundle];
+	NSBundle *sparkle = [NSBundle bundleWithPath:[bundle.privateFrameworksPath
+		stringByAppendingPathComponent:@"Sparkle.framework"]];
+	BOOL test = getenv("HALO_UPDATE_FEED") && *getenv("HALO_UPDATE_FEED");
+	NSMenu *menu = NSApp.mainMenu.itemArray.firstObject.submenu;
+	NSError *error = nil;
+	Class controller;
+
+	if (updater_controller)
+		return;
+	if (![bundle objectForInfoDictionaryKey:@"SUPublicEDKey"] || (!test && ![bundle objectForInfoDictionaryKey:@"SUFeedURL"]))
+	{
+		host_logf(HOST_LOG_INFO, "update: not looked for (a release's app looks: this build has no appcast)");
+		return;
+	}
+	if (!sparkle || ![sparkle loadAndReturnError:&error] || !(controller = NSClassFromString(@"SPUStandardUpdaterController")))
+	{
+		host_logf(HOST_LOG_WARN, "update: no Sparkle (%s)", error ? error.localizedDescription.UTF8String : "");
+		return;
+	}
+	updater_delegate = [HaloUpdater new];
+	updater_controller = [[controller alloc] initWithStartingUpdater:NO updaterDelegate:updater_delegate
+		userDriverDelegate:updater_delegate];
+	[updater_controller startUpdater];
+	updater_controller.updater.automaticallyChecksForUpdates = config_boolean_setting("update.auto", YES);
+	update_config_read = config_modified();
+	host_logf(HOST_LOG_INFO, "update: Sparkle started (%s), update.auto = %s",
+		updater_controller.updater.feedURL.absoluteString.UTF8String,
+		updater_controller.updater.automaticallyChecksForUpdates ? "true" : "false");
+	if (menu)
+	{
+		NSMenuItem *check = [[NSMenuItem alloc] initWithTitle:@"Check for Updates\u2026"
+			action:@selector(checkForUpdates:) keyEquivalent:@""];
+		NSMenuItem *automatic = [[NSMenuItem alloc] initWithTitle:@"Automatically Check for Updates"
+			action:@selector(toggleAutomaticChecks:) keyEquivalent:@""];
+
+		check.target = updater_controller;
+		automatic.target = updater_delegate;
+		[menu insertItem:[NSMenuItem separatorItem] atIndex:1];
+		[menu insertItem:check atIndex:2];
+		[menu insertItem:automatic atIndex:3];
+	}
+	[NSTimer scheduledTimerWithTimeInterval:2 repeats:YES block:^(NSTimer *timer) { update_tick(); }];
+}
+
 /* ---------- start */
 
 void host_app_start(void)
@@ -745,5 +1046,9 @@ void host_app_start(void)
 			maps_find();
 		}
 		window_remember();
+		[[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidFinishLaunchingNotification object:nil
+			queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
+				dispatch_async(dispatch_get_main_queue(), ^{ update_start(); });
+			}];
 	}
 }

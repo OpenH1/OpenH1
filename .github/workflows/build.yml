@@ -761,8 +761,13 @@ jobs:
       - name: Debug
         run: python3 tools/ci_build.py macos debug
 
+      # (with the public half of Sparkle's key, SPARKLE_PUBLIC_KEY, the
+      # release app's Info.plist has the appcast and the key, and the app
+      # updates itself: tools/setup_sparkle_key.sh sets the variable)
       - name: Release
         if: github.ref == 'refs/heads/master'
+        env:
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
         run: python3 tools/ci_build.py macos release
 
       # the release signed with the Developer ID and notarized
@@ -773,6 +778,7 @@ jobs:
       # (its .p8, base64), ASC_KEY_ID and ASC_ISSUER_ID. Without them the
       # release stays ad hoc
       - name: Sign and notarize
+        id: notarize
         if: github.ref == 'refs/heads/master'
         env:
           CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
@@ -803,6 +809,33 @@ jobs:
           fi
           python3 tools/macos_app.py notarize --app build/macos/OpenH1.app --output dist/halo-macos-release/OpenH1.dmg \
             --identity "$identity" --key "$RUNNER_TEMP/AuthKey.p8" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID"
+          echo "notarized=true" >> "$GITHUB_OUTPUT"
+
+      # the notarized disk image signed for Sparkle's appcast with the
+      # SPARKLE_PRIVATE_KEY secret (tools/setup_sparkle_key.sh), by the
+      # build's Sparkle (bin/sign_update): OpenH1.dmg.sparkle beside it, which
+      # the release job makes appcast.xml with (tools/macos_appcast.py).
+      # Without the secret, or a notarized app, the release has no appcast and
+      # the apps out stay as they are
+      - name: Sign the update
+        if: github.ref == 'refs/heads/master'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          SPARKLE_PUBLIC_KEY: ${{ vars.SPARKLE_PUBLIC_KEY }}
+          NOTARIZED: ${{ steps.notarize.outputs.notarized }}
+        run: |
+          if [ -z "$SPARKLE_PRIVATE_KEY" ] || [ -z "$SPARKLE_PUBLIC_KEY" ]; then
+            echo "::warning::no SPARKLE_PRIVATE_KEY secret or SPARKLE_PUBLIC_KEY variable: the release has no appcast, and the macOS app does not update itself (tools/setup_sparkle_key.sh)"
+            exit 0
+          fi
+          if [ "$NOTARIZED" != "true" ]; then
+            echo "::warning::the macOS app is not notarized: the release has no appcast"
+            exit 0
+          fi
+          dmg=dist/halo-macos-release/OpenH1.dmg
+          printf '%s' "$SPARKLE_PRIVATE_KEY" | build/macos/third_party/Sparkle/bin/sign_update --ed-key-file - "$dmg" > "$dmg.sparkle"
+          cat "$dmg.sparkle"
+          plutil -extract SUPublicEDKey raw build/macos/OpenH1.app/Contents/Info.plist
 
       - name: Compile cache
         run: ccache --show-stats
@@ -956,6 +989,7 @@ jobs:
         with:
           sparse-checkout: |
             tools/linux_package.py
+            tools/macos_appcast.py
             tools/release_names.py
           sparse-checkout-cone-mode: false
 
@@ -992,6 +1026,32 @@ jobs:
           done
           ls -l release
 
+      # the macOS app's appcast (tools/macos_appcast.py), when its disk image
+      # was signed for it (the macOS job's OpenH1.dmg.sparkle): this release's
+      # OpenH1.dmg, and its changes since the last release (the merged pull
+      # requests' titles, and the commits made on master itself)
+      - name: Appcast
+        run: |
+          signature=artifacts/halo-macos-release/OpenH1.dmg.sparkle
+          if [ ! -f "$signature" ]; then
+            echo "::warning::the macOS disk image was not signed for Sparkle: no appcast.xml"
+            exit 0
+          fi
+          tag="build-$GITHUB_RUN_NUMBER"
+          previous="$(gh release list --limit 20 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("build-"))] | sort_by(.createdAt) | reverse | .[0].tagName // ""')"
+          : > notes.txt
+          if [ -n "$previous" ]; then
+            gh api "repos/$GH_REPO/compare/$previous...$GITHUB_SHA" \
+              --jq '.commits[] | .commit.message | split("\n") | if (.[0] | startswith("Merge pull request")) then (map(select(length > 0)) | .[1] // empty) elif (.[0] | startswith("Merge ")) then empty else .[0] end' \
+              | awk '!seen[$0]++' > notes.txt || true
+          fi
+          python3 tools/macos_appcast.py --build "$GITHUB_RUN_NUMBER" \
+            --url "$GITHUB_SERVER_URL/$GH_REPO/releases/download/$tag/OpenH1.dmg" \
+            --signature "$signature" --notes notes.txt \
+            --release-page "$GITHUB_SERVER_URL/$GH_REPO/releases/tag/$tag" --output release/appcast.xml
+          cat release/appcast.xml
+
       - name: Publish
         id: publish
         env:
@@ -1003,7 +1063,7 @@ jobs:
           subject="$(printf '%s' "${MESSAGE:-manual run}" | head -n 1)"
           printf '%s\n\nCommit: %s\nBuild: %s\n\nThe release builds are for playing; the debug builds stop at the first failed assertion and log it.\n\nOn Windows, download OpenH1-Windows.zip.\n\nOn Linux and the Steam Deck, download OpenH1-Linux.zip (OpenH1-Linux-ARM64.zip on 64-bit ARM, OpenH1-Linux-VR.zip for VR): it draws with Vulkan 1.3.\n\nOn the Steam Frame, in desktop mode, download OpenH1-Steam-Frame.zip, unzip it and open install.sh in it (port/linux/frame/README.md).\n\nOn macOS (Apple silicon, macOS 14.4 or later), download OpenH1.dmg, open it and drag OpenH1 to Applications: the app is signed and notarized.\n\nOn Android (64-bit, Android 9 or later, with Vulkan 1.3), download OpenH1-Android.apk on the phone and install it. The app is signed with OpenH1'"'"'s own key now: an install signed before it must be uninstalled once first (back up its maps and save folders).\n' \
             "$subject" "$COMMIT_URL" "$RUN_URL" > notes.md
-          gh release create "$tag" release/*.zip release/*.dmg release/*.apk --target "$GITHUB_SHA" --latest \
+          gh release create "$tag" release/*.zip release/*.dmg release/*.apk $(ls release/appcast.xml 2> /dev/null) --target "$GITHUB_SHA" --latest \
             --title "Build $GITHUB_RUN_NUMBER (${GITHUB_SHA:0:7})" --notes-file notes.md
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
 
