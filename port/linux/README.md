@@ -539,7 +539,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.prepare_shaders` | `true` | `HALO_PREPARE_SHADERS` | `true`: as a map loads, its first frame (and the first of each of its structures) is drawn unseen through every shader its tags hold, in each way the game's code draws them, so that the renderer makes their shaders and pipelines during the loading screen, not in play (`port/assets/render/README.md`, "A map's enumeration"). `false`: each is made the first time a draw needs it, which the draw waits for. |
 | `debug.gpu_flush_draws` | `-1` | `HALO_GPU_FLUSH_DRAWS` | The OpenGL backend only (the Windows build): flush the GPU's pipeline every this many draws. `-1`: every 3 on Intel graphics with Mesa's OpenGL driver, which could otherwise hang in the game's long runs of small draws and reset the desktop's graphics too. `0`: never. It does nothing with Vulkan (Linux, Android) or Metal (macOS). |
 | `display.interpolation` | `true` | `HALO_INTERPOLATION` | `true`: one frame for each refresh of the display. `false`: 30 frames each second, as on the Xbox. Refer to "Frame rate". |
-| `display.direct_camera` | `true` | `HALO_DIRECT_CAMERA` | `true`: in first person, on foot, the view points where the player aims in each frame, not where the last tick left it. Refer to "Frame rate". |
+| `display.direct_camera` | `true` | `HALO_DIRECT_CAMERA` | `true`: in first person, on foot, the view points where the player aims in each frame, not where the last tick left it; and (not in the VR mode) the view stands where the newest step left the player, and the gun and hands show the newest step's pose (a shot, a step, a reload seen 33 ms sooner). Refer to "Frame rate". |
 | `display.fov` | `0.0` | `HALO_FOV` | The first-person view's field of view on foot, in degrees across at 16:9, from 20 to 150. `0`: the stock view. Refer to "Field of view". |
 | `display.viewmodel_fov` | `0.0` | `HALO_VIEWMODEL_FOV` | The first-person weapon's and hands' field of view, in degrees across at 16:9, from 20 to 150. `0`: the weapon's stock view, also when `display.fov` widens the world. Refer to "Field of view". |
 | `display.viewmodel_visible` | `true` | `HALO_VIEWMODEL_VISIBLE` | `true`: the first-person weapon, hands and what is attached to them are drawn. `false`: they are not; firing, animation, sound and lights go on, and other players' models are drawn. |
@@ -949,8 +949,15 @@ Other things the game moves once a tick are drawn between ticks as well:
 The direction of the view is an exception. The game reads the mouse and the
 sticks in each frame. In first person, on foot, each frame points the view
 where the player aims at that time (`display.direct_camera`). Thus the view
-turns in the frame that the mouse moves. In a vehicle and in cinematics, the
-view mixes as the other things do. On Android, the view mixes as before.
+turns in the frame that the mouse moves. The view also stands where the
+newest step left the player, carried on by the player's velocity for the
+time since that step, and the gun and hands show the newest tick's pose,
+carried on as the last tick moved it: the player's own movement, shots and
+reloads are seen in the first frame after the step that made them, not a
+tick (33 ms) later (`debug.latency_log` measures it). Everything else, other
+players included, is drawn between the ticks as before. In a vehicle and in
+cinematics, the view mixes as the other things do, and the VR mode's eyes
+stand where they did. On Android, the view mixes as before.
 
 To get 30 frames each second, set `display.interpolation = false`.
 

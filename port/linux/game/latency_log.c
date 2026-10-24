@@ -20,8 +20,8 @@ drawn time has reached that step: the frames draw between the last two ticks
 (render_interpolation.c), the latest tick's end less one tick plus the
 fraction the clock has run into the next (render_interpolation_fraction),
 which counts the open tick's sub-steps; a step's own time is its end, in
-ticks. The first frame drawn after the step at all is what a frame drawn
-from the newest step would show.
+ticks; but the player's own view, drawn from the newest step
+(display.direct_camera), shows it in the first frame drawn after it.
 
     # latency log 1 rate <R>
     <kind> <press_to_read> <read_to_act> <act_to_frame> <frame_to_shown> <render> <present> <total> <fraction> <frame>
@@ -363,7 +363,9 @@ void latency_log_frame_begin(
 			event->framed = TRUE;
 			event->frame_ns = latency_log.frame_ns;
 		}
-		if (latency_log.frame_drawn >= event->act_time - 1e-3)
+		/* (the player's own view drawn from the newest step shows every step
+		run: render_interpolation_view_newest) */
+		if (render_interpolation_view_newest(0) || latency_log.frame_drawn >= event->act_time - 1e-3)
 		{
 			event->shown = TRUE;
 			event->shown_ns = latency_log.frame_ns;

@@ -199,7 +199,9 @@ static const struct config_setting config_settings[] =
 	{ "display.direct_camera", _config_boolean, "true", "HALO_DIRECT_CAMERA", _environment_value, _platform_desktop,
 		"In first person, point the view where the player aims now instead of\n"
 		"where the last tick left it: the view turns the frame the mouse moves,\n"
-		"not up to two ticks (66 ms) later." },
+		"not up to two ticks (66 ms) later. On foot (not in the VR mode), the\n"
+		"view also stands where the newest step left the player, and the gun\n"
+		"and hands show the newest step's pose, not a tick (33 ms) behind." },
 	{ "display.fov", _config_real, "0.0", "HALO_FOV", _environment_value, _platform_all,
 		"The first-person view's field of view on foot, in degrees across at\n"
 		"16:9 (20 to 150); 0 keeps the stock view. Vehicles, cinematics and\n"
