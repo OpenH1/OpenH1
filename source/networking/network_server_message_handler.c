@@ -805,8 +805,17 @@ boolean network_game_server_send_game_settings_to_client_machine(
 	struct message_server_game_settings_update message;
 	long offset;
 
-	/* port: a Standard game's rate in its record (a Legacy game's as it was) */
+	/* port: a Standard game's rate in its record (a Legacy game's as it was),
+	and an OpenCE machine's record as a Legacy host's (network_standard.c) */
 	network_standard_stamp_game(network_game_server_get_game(server), network_game_server_in_lobby(server));
+	if (game_size == sizeof(struct network_game))
+	{
+		long machine_index = NONE;
+
+		network_game_server_get_client_machine(server, machine, &machine_index);
+		game = network_standard_game_for_machine((struct network_game const *)game,
+			network_standard_machine_is_opence(machine_index));
+	}
 
 	for (offset = 0; offset < game_size; offset += sizeof(message.data))
 	{
@@ -1036,6 +1045,53 @@ boolean network_game_server_send_message_to_all_machines(
 	return result;
 }
 
+/* port: a message to the machines of a mixed game of one kind (TRUE its
+OpenCE machines, FALSE the rest: network_standard.c), or NONE to every
+machine (network_game_server_send_message_to_all_machines) */
+static boolean network_game_server_send_message_to_machines_of_kind(
+	struct network_game_server *server,
+	struct network_message *message,
+	short opence)
+{
+	byte message_buffer[NETWORK_MESSAGE_BUFFER_SIZE];
+	boolean result = TRUE;
+	word message_length = GET_MESSAGE_SIZE(message->header);
+	long machine_index;
+
+	if (opence == NONE)
+		return network_game_server_send_message_to_all_machines(server, message);
+	if (message_length > sizeof(message_buffer))
+		return FALSE;
+	for (machine_index = 0; machine_index < MAXIMUM_NETWORK_MACHINE_COUNT; machine_index++)
+	{
+		struct network_game_server_client_machine *machine =
+			network_game_server_get_client_machine_at_index(server, machine_index);
+		struct network_connection *connection;
+		long game_machine_index = NONE;
+
+		if (!network_game_server_client_machine_is_joined_to_game(server, machine) ||
+			network_game_server_machine_is_loading_late(server, machine))
+		{
+			continue;
+		}
+		network_game_server_get_client_machine(server, machine, &game_machine_index);
+		if (network_standard_machine_is_opence(game_machine_index) != (opence == TRUE))
+			continue;
+		connection = network_game_server_get_client_connection(machine);
+		if (connection && network_connection_active(connection))
+		{
+			csmemcpy(message_buffer, message, message_length);
+			if (!network_game_server_write(connection, message_buffer, message_length, NULL, 1))
+			{
+				network_event(
+					"network_game_server_write() failed in network_game_server_send_message_to_machines_of_kind()");
+				result = FALSE;
+			}
+		}
+	}
+	return result;
+}
+
 boolean network_game_server_send_player_joined_info_ingame(
 	struct network_game_server *server,
 	struct network_player *player)
@@ -1090,6 +1146,11 @@ boolean network_game_server_send_game_settings_to_all_machines(
 	struct message_server_game_settings_update message;
 	long offset;
 	boolean result = TRUE;
+	/* port: a mixed game's record goes to its OpenH1 machines, then, as a
+	Legacy host's, to its OpenCE ones (network_standard.c); any other game's
+	to every machine at once */
+	boolean mixed = network_standard_hosting_mixed() && game_size == sizeof(struct network_game);
+	short kind;
 
 	match_assert(
 		"c:\\halo\\SOURCE\\networking\\network_server_message_handler.c",
@@ -1098,37 +1159,43 @@ boolean network_game_server_send_game_settings_to_all_machines(
 	/* port: a Standard game's rate in its record (a Legacy game's as it was) */
 	network_standard_stamp_game(network_game_server_get_game(server), network_game_server_in_lobby(server));
 
-	/* every piece goes out even if one fails for a machine: the others
-	would otherwise keep the old settings (a machine whose connection failed
-	is closed, and is skipped when the update is sent again) */
-	for (offset = 0; offset < game_size; offset += sizeof(message.data))
+	for (kind = mixed ? FALSE : NONE; kind <= (mixed ? TRUE : NONE); kind++)
 	{
-		void *encoded_message;
+		void const *record = kind == NONE ? game :
+			network_standard_game_for_machine((struct network_game const *)game, kind == TRUE);
 
-		message.total_size = (word)game_size;
-		message.offset = (word)offset;
-		message.length = (word)MIN((long)sizeof(message.data), game_size - offset);
-		message.pad = 0;
-		csmemset(message.data, 0, sizeof(message.data));
-		csmemcpy(message.data, (byte const *)game + offset, message.length);
-		encoded_message = create_network_game_message(
-			_message_server_game_settings_update,
-			&message,
-			sizeof(message));
-		if (encoded_message)
+		/* every piece goes out even if one fails for a machine: the others
+		would otherwise keep the old settings (a machine whose connection
+		failed is closed, and is skipped when the update is sent again) */
+		for (offset = 0; offset < game_size; offset += sizeof(message.data))
 		{
-			/* (a piece that failed stays failed: the next is no retry of it) */
-			if (!network_game_server_send_message_to_all_machines(server, encoded_message))
+			void *encoded_message;
+
+			message.total_size = (word)game_size;
+			message.offset = (word)offset;
+			message.length = (word)MIN((long)sizeof(message.data), game_size - offset);
+			message.pad = 0;
+			csmemset(message.data, 0, sizeof(message.data));
+			csmemcpy(message.data, (byte const *)record + offset, message.length);
+			encoded_message = create_network_game_message(
+				_message_server_game_settings_update,
+				&message,
+				sizeof(message));
+			if (encoded_message)
 			{
-				network_event(
-					"failed to send message_server_game_settings_update message to all machines");
+				/* (a piece that failed stays failed: the next is no retry of it) */
+				if (!network_game_server_send_message_to_machines_of_kind(server, encoded_message, kind))
+				{
+					network_event(
+						"failed to send message_server_game_settings_update message to all machines");
+					result = FALSE;
+				}
+			}
+			else
+			{
+				network_event("failed to create a message_server_game_settings_update message");
 				result = FALSE;
 			}
-		}
-		else
-		{
-			network_event("failed to create a message_server_game_settings_update message");
-			result = FALSE;
 		}
 	}
 
@@ -1802,19 +1869,10 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 			older builds had: network_client_manager.c) */
 			/* port: (a Standard game's protocol version in its place, which
 			builds that know nothing of Standard games take for a newer
-			version, and its rate: network_standard.c) */
-			{
-				word version = network_standard_hosting() ?
-					HALO_PORT_STANDARD_ADVERTISED_VERSION : HALO_PORT_NETWORK_VERSION;
-
-				advertisement.reserved[HALO_PORT_ADVERTISED_VERSION_OFFSET] = (byte)(version & 0xFF);
-				advertisement.reserved[HALO_PORT_ADVERTISED_VERSION_OFFSET + 1] = (byte)(version >> 8);
-				if (network_standard_hosting())
-				{
-					advertisement.reserved[HALO_PORT_ADVERTISED_RATE_OFFSET] =
-						(byte)network_standard_server_rate(network_game_server_in_lobby(server));
-				}
-			}
+			version, and its rate; a mixed game's, which OpenCE joins, the
+			network version, its rate and protocol version beside it:
+			network_standard.c) */
+			network_standard_advertise(advertisement.reserved, network_game_server_in_lobby(server));
 			advertisement.reserved[HALO_PORT_ADVERTISED_FLAGS_OFFSET] =
 				HALO_PORT_ADVERTISED_DISTRIBUTED_FLAG;
 			if (network_game_server_get_state(server, NULL) != _network_game_server_state_pregame ||
@@ -2016,16 +2074,15 @@ static boolean network_game_server_handle_message_client_join_game_request(
 				!full)
 			{
 				byte join_game_token[JOIN_GAME_TOKEN_LENGTH];
+				short join_kind;
 
 				network_game_generate_join_game_token(join_game_token);
-				/* port: a Standard game takes a Standard game's token alone
-				(network_standard.c): a machine that is not of it is refused */
-				if (network_standard_hosting())
-					network_standard_join_token(join_game_token, sizeof(join_game_token));
-				if (!csmemcmp(
-					join_game_request.join_game_token,
-					join_game_token,
-					sizeof(join_game_token)))
+				/* port: a Standard game takes a Standard game's token alone,
+				and a mixed one an OpenCE machine's (the Legacy game's) too
+				(network_standard.c): a machine of neither is refused */
+				join_kind = network_standard_join_kind(join_game_request.join_game_token, join_game_token,
+					sizeof(join_game_token));
+				if (join_kind != NONE)
 				{
 					/* (the Xbox game refused a machine not named in the
 					development kit's d:\hosts.txt: a stray file of that name
@@ -2053,6 +2110,9 @@ static boolean network_game_server_handle_message_client_join_game_request(
 						in the lobby, is refused in game) */
 						if (late_join && client_machine)
 							csmemcpy(client_machine->name, machine_name, sizeof(client_machine->name));
+						/* port: the token it joined with, the machine's kind
+						(network_standard.c) */
+						network_standard_machine_joined(machine_index, join_kind);
 
 						acceptance.machine_index = (short)machine_index;
 						acceptance.random_seed = network_game_get_random_seed();
