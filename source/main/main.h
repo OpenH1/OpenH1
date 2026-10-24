@@ -172,6 +172,10 @@ void main_load_ui_scenario(
 void main_menu_load(
 	void);
 
+/* port: whether the main menu's map is the one loaded */
+boolean main_menu_is_loaded(
+	void);
+
 void main_present_frame(
 	void);
 

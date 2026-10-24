@@ -219,6 +219,22 @@ void prop_biped_shield(
 		1.f / (recharge_seconds * TICKS_PER_SECOND) : 0.f;
 }
 
+void prop_biped_crouch(
+	struct stage *stage)
+{
+	struct animation_graph_unit_seat *seat;
+	struct animation_graph_weapon_class *weapon_class;
+	struct animation_graph_weapon_type *weapon_type;
+
+	/* (units.c's base seat labels: "crouch", unarmed as stage.c's "stand") */
+	seat = cache_block_add(&stage->biped_animations->unit_seats, sizeof(*seat));
+	strcpy(seat->label, "crouch");
+	weapon_class = cache_block(&seat->weapon_classes, 1, sizeof(*weapon_class));
+	strcpy(weapon_class->label, "unarmed");
+	weapon_type = cache_block(&weapon_class->weapon_types, 1, sizeof(*weapon_type));
+	strcpy(weapon_type->label, "unarmed");
+}
+
 /* a scenery box placed, turned (radians) */
 static void obstacle_place(
 	struct stage *stage,

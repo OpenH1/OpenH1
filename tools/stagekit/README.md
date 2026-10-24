@@ -22,8 +22,8 @@ with the C library's 32-bit files, and skips elsewhere.
   players' biped, no scripts, a player start unless the scenario places its own.
 - `props.c`: what scenarios place (an obstacle, turned or not, an elevator, a car, the players' starts; a weapon, its
   projectile and the players' loadout; an AI's biped, which the console makes an actor of, and command lists it
-  walks; the players' biped's body, a collision model, with a shield or not; grenades and the biped's throw), each a
-  function, any number of each.
+  walks; the players' biped's body, a collision model, with a shield or not, and its crouch; grenades and the biped's
+  throw), each a function, any number of each.
 - `collision.c`: a box's collision, hollow (the chamber) or solid (a prop).
 
 ## A scenario

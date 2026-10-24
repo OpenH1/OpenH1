@@ -167,6 +167,7 @@ symbols in this file:
 #include "units/unit_definitions.h"
 #include "units/vehicle_definitions.h"
 #include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
+#include "network_standard.h" /* port: port/linux/game/network_standard.c */
 
 /* ---------- constants */
 
@@ -2635,6 +2636,10 @@ boolean vehicle_takes_substeps(
 	long driver_index = vehicle->unit.driver_object_index;
 
 	if (driver_index==NONE || unit_get(driver_index)->unit.player_index==NONE)
+		return FALSE;
+	/* (an OpenCE player's in a mixed game, which moves once a tick, as on
+	their own machine: network_standard.c) */
+	if (network_standard_player_is_opence(unit_get(driver_index)->unit.player_index))
 		return FALSE;
 	/* (physics.c's sub-steps are of mass points: not of a physics of a radius,
 	physics_update_old's, which no vehicle of the game has) */

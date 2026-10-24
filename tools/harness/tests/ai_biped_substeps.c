@@ -30,6 +30,14 @@ struct unit_datum
 };
 
 static struct unit_datum fake_unit;
+/* the player (its index) of an OpenCE machine in a mixed game
+(network_standard.c), NONE for none */
+static long opence_player = NONE;
+
+static boolean network_standard_player_is_opence(long player_index)
+{
+	return player_index != NONE && player_index == opence_player;
+}
 
 static struct unit_datum *unit_get(long index)
 {
@@ -133,9 +141,11 @@ int main(int argc, char **argv)
 			{ NONE, 0x10002, NONE, TRUE }, /* an actor's */
 			{ NONE, NONE, 0x20003, TRUE }, /* one of a swarm's */
 			{ NONE, NONE, NONE, FALSE }, /* nobody's: a body, a cinematic's */
+			{ 0x30004, NONE, NONE, FALSE }, /* an OpenCE player's, on the tick as on their machine */
 		};
 		int i;
 
+		opence_player = 0x30004;
 		for (i = 0; i < (int)(sizeof(units) / sizeof(units[0])); i++)
 		{
 			fake_unit.unit.player_index = units[i].player;
@@ -145,6 +155,7 @@ int main(int argc, char **argv)
 				"biped %d: player %ld actor %lx swarm %lx", i, units[i].player, units[i].actor, units[i].swarm);
 		}
 		/* (a vehicle the AI drives stays on the tick) */
+		fake_unit.unit.player_index = NONE;
 		fake_unit.unit.actor_index = 0x10002;
 		CHECK(!object_lane_micro_candidate(1, _object_type_vehicle), "a vehicle of the micro lane");
 	}

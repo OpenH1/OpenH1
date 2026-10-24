@@ -76,6 +76,11 @@ port/linux/game/game_modes.h's game_modes_kind), for the server browser */
 /* ... and, a Standard game's (port/linux/game/network_standard.c), its rate
 in Hz (a Legacy game's 0, as before) */
 #define HALO_PORT_ADVERTISED_RATE_OFFSET 4
+/* ... and, a Standard game that OpenCE players may join (a mixed game, which
+advertises HALO_PORT_NETWORK_VERSION, as a Legacy game does), the OpenH1
+protocol version (a Legacy game's 0). OpenCE reads no reserved byte past the
+game's kind */
+#define HALO_PORT_ADVERTISED_OPENH1_VERSION_OFFSET 5
 
 /* OpenH1's Standard games (port/linux/game/network_standard.c, NETCODE.md's
 "Versions") have a protocol version of their own, separate from
@@ -87,8 +92,9 @@ takes it for a newer version and does not join. Raise it with any change to
 what a Standard game's machines send each other, and with every raise of
 HALO_PORT_NETWORK_VERSION: HALO_PORT_STANDARD_BASE_VERSION is the network
 version it was last raised for, and the build fails until they agree. */
-#define HALO_PORT_STANDARD_NETWORK_VERSION 2
-/* (1: the rate agreed; 2: the players' sub-steps sent, network_substeps.c) */
+#define HALO_PORT_STANDARD_NETWORK_VERSION 3
+/* (1: the rate agreed; 2: the players' sub-steps sent, network_substeps.c;
+3: OpenCE players in the game, network_standard.c's mixed games) */
 #define HALO_PORT_STANDARD_BASE_VERSION 38
 #define HALO_PORT_STANDARD_VERSION_BIT 0x8000
 #define HALO_PORT_STANDARD_ADVERTISED_VERSION (HALO_PORT_STANDARD_VERSION_BIT | HALO_PORT_STANDARD_NETWORK_VERSION)

@@ -173,6 +173,10 @@ in recharge_seconds once stun_seconds have passed since it was struck
 (damage.c) */
 void prop_biped_shield(struct stage *stage, real body_vitality, real shield_vitality, real recharge_seconds,
 	real stun_seconds);
+/* the players' biped given a crouch: its animations' crouching seat, unarmed
+as its standing one, without which units.c never seats it crouched (and
+bipeds.c never lowers it) */
+void prop_biped_crouch(struct stage *stage);
 
 /* grenades: count of them in the players' hands as they start (the globals'
 first kind, units.c's, each kind projectile_handle's projectile), which the

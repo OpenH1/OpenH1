@@ -28,3 +28,5 @@ U14
 shield
 ledge
 U15
+# a player's crouch, a share a sub-step (StageKit's crouch)
+crouch
