@@ -2002,8 +2002,8 @@ unsigned long dsound_sdl_recorded_frames(void)
 	return record_frames;
 }
 
-/* audio.channels: "stereo", "5.1", or "auto" for 5.1 when the device has
-at least six channels. Android plays stereo */
+/* audio.channels: "stereo", "5.1", or "auto" (stereo: below). Android
+plays stereo */
 static unsigned long choose_output_channels(SDL_AudioDeviceID device)
 {
 #ifdef HALO_ANDROID
@@ -2011,10 +2011,8 @@ static unsigned long choose_output_channels(SDL_AudioDeviceID device)
 	return 2;
 #else
 	const char *setting = config_string("audio.channels");
-#ifndef HALO_GUEST
-	SDL_AudioSpec format;
-#endif
 
+	(void)device;
 	if (!strcmp(setting, "5.1"))
 		return 6;
 	if (strcmp(setting, "auto"))
@@ -2023,15 +2021,8 @@ static unsigned long choose_output_channels(SDL_AudioDeviceID device)
 			platform_log("audio.channels \"%s\" is not \"auto\", \"stereo\" or \"5.1\"; using stereo", setting);
 		return 2;
 	}
-#ifdef HALO_GUEST
-	/* (a guest's SDL bridges no device format to ask, guest_sdl.c: "auto" is
-	stereo there, and 5.1 is "5.1" asked for by name) */
-	(void)device;
-#else
-	if ((SDL_GetAudioDeviceFormat(device, &format, NULL) ||
-		SDL_GetAudioDeviceFormat(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &format, NULL)) && format.channels >= 6)
-		return 6;
-#endif
+	/* (the guest's SDL bridges no device format to ask, guest_sdl.c: "auto"
+	is stereo, and 5.1 is "5.1" asked for by name) */
 	return 2;
 #endif
 }
@@ -2063,16 +2054,18 @@ static void audio_start(void)
 		spec.format = SDL_AUDIO_F32;
 		spec.channels = (int)output_channels;
 		spec.freq = OUTPUT_RATE;
-#ifdef HALO_GUEST
-		/* frames per callback: on Android each callback is handed to a thread
-		that can run the guest (host_sdl.c): 512 left it too little time and
-		the menus' music broke up, which 1024 does not (about 21 ms at 48 kHz,
-		11 ms more than 512) */
-		SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "1024");
-#else
 		{
-			/* audio.buffer_frames: the device's buffer (port_config.c) */
+			/* frames per callback, which the host's SDL takes (host_sdl.c's
+			hint): each callback is handed to a thread that can run the
+			guest, and on Android 512 left it too little time and the menus'
+			music broke up, which 1024 does not (about 21 ms at 48 kHz, 11
+			ms more than 512). The desktop's: audio.buffer_frames
+			(port_config.c), 1024 unless set */
+#ifdef HALO_ANDROID
+			long buffer_frames = 1024;
+#else
 			long buffer_frames = config_integer("audio.buffer_frames");
+#endif
 			char frames[16];
 
 			if (buffer_frames < 64)
@@ -2082,7 +2075,6 @@ static void audio_start(void)
 			snprintf(frames, sizeof(frames), "%ld", buffer_frames);
 			SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, frames);
 		}
-#endif
 		audio_device_read_at = config_changes();
 		audio_stream = SDL_OpenAudioDeviceStream(platform_audio_device(FALSE, audio_device_name), &spec,
 			audio_callback, NULL);
