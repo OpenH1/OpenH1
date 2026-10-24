@@ -1087,7 +1087,9 @@ void test_input_press(unsigned long buttons)
 
 /* debug.test_input "menu:<buttons>": the buttons pressed one a second, from
 the first poll, for testing the menus: a, b, x, y, up, down, left, right,
-start, back, or wait (none), separated by spaces or commas */
+start, back, lb and rb (the white and black buttons), forward (the left
+stick pushed forward, which moves a player whom no menu has), or wait
+(none), separated by spaces or commas */
 static char test_input_menu[512];
 static Uint64 test_input_menu_since;
 
@@ -1110,6 +1112,8 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 		{ "right", -1, XINPUT_GAMEPAD_DPAD_RIGHT },
 		{ "start", -1, XINPUT_GAMEPAD_START },
 		{ "back", -1, XINPUT_GAMEPAD_BACK },
+		{ "lb", XINPUT_GAMEPAD_WHITE, 0 },
+		{ "rb", XINPUT_GAMEPAD_BLACK, 0 },
 	};
 	Uint64 elapsed = SDL_GetTicks() - test_input_menu_since;
 	Uint64 step = elapsed / 1000;
@@ -1131,6 +1135,8 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 		step--;
 		token += length;
 	}
+	if (length == 7 && !strncmp(token, "forward", 7))
+		pad->sThumbLY = 32767;
 	for (index = 0; index < sizeof(buttons) / sizeof(buttons[0]); index++)
 	{
 		if (strlen(buttons[index].name) == length && !strncmp(token, buttons[index].name, length))

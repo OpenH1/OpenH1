@@ -6239,14 +6239,18 @@ boolean ui_widget_port_open(
 
 /* a screen by name in place of the widget's, kept out of the history (back
 returns to the screen before the widget's): Settings' tabs, which B leaves
-together (port/linux/game/menu_functions.c) */
+together (port/linux/game/menu_functions.c). It is the same player's, as a
+screen opened from it is (ui_widget_launch_widget): in a game, the menus
+up for that player keep their controller's, keyboard's and mouse's input
+from the player (ui_widgets_active_for_local_player) */
 boolean ui_widget_port_switch(
 	struct widget_instance *widget,
 	char const *name,
 	boolean *widget_deleted)
 {
-	(void)widget;
-	if (!ui_widget_load_by_name_or_tag(name, NONE, NULL, NONE, NONE, NONE, NONE))
+	short local_player_index = widget_instance_get_topmost_parent(widget)->local_player_index;
+
+	if (!ui_widget_load_by_name_or_tag(name, NONE, NULL, local_player_index, NONE, NONE, NONE))
 	{
 		error(2, "event handler failed to spawn widget");
 		return FALSE;
