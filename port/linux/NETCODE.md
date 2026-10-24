@@ -737,8 +737,17 @@ its name alone beside it, has its name given back as the map lists find it.
    rest is on the ground, so it lies limp again where it stops instead of
    keeping the pose of its fall in the air. A client puts its copies there, and the difference is
    drawn fading over a few ticks (`render_interpolation.c`) instead of a
-   jump. A vehicle no player drives is carried between those updates along
-   the positions the host sent, a recording's lifepod as well as a Pelican.
+   jump. An item loose in the world moves on a client by the same physics
+   as on the host, its copy a tick or two behind or ahead of the host's by
+   however late the host's states come, which varies; so a state is taken
+   only when it is off both the copy's path of its last ticks and the
+   host's last states' (`distributed_client_item_on_path`): compared with
+   where the copy is now, a state a tick late was a tick's motion off, and
+   the halfway moves back to it made a falling or bouncing item stutter. On
+   those paths a copy at rest stays at rest, and one still moving when the
+   host says its copy is at rest comes to rest by itself, unless it still
+   moves at the host's next word. A vehicle no player drives is carried
+   between those updates along the positions the host sent, a recording's lifepod as well as a Pelican.
    Its physics velocity swings about that path, so the carry steps from
    one of those positions to the next, and a jump further than a step of
    the path is left where the host put it. The host's word that it is at
