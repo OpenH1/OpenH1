@@ -3719,6 +3719,8 @@ enum
 	_multiplayer_mode_direct_link,
 	_multiplayer_mode_host_internet,
 	_multiplayer_mode_host_lan,
+	/* a game of this machine alone, with bots (PLAY WITH BOTS) */
+	_multiplayer_mode_host_local,
 };
 
 enum
@@ -3764,6 +3766,7 @@ boolean ui_widget_port_cooperative_level_choose(char const *map_name, short diff
 short ui_widget_port_gametypes(long *indices, short maximum, short *last_used);
 boolean ui_widget_port_gametype_choose(long profile_index);
 boolean ui_widget_port_host(struct widget_instance *widget, struct event_record *event, boolean *widget_deleted);
+boolean ui_widget_port_host_local(struct widget_instance *widget, struct event_record *event, boolean *widget_deleted);
 boolean ui_widget_port_browse(struct widget_instance *widget, struct event_record *event, boolean *widget_deleted);
 boolean ui_widget_port_open(struct widget_instance *widget, char const *name, boolean *widget_deleted);
 boolean network_game_client_advertised_game_in_progress(void *client, struct advertised_game *game);
@@ -4261,6 +4264,7 @@ static void multiplayer_mode_set(struct widget_instance *widget)
 	multiplayer.mode =
 		strstr(name, "create_inter") || multiplayer.campaign_first ? _multiplayer_mode_host_internet :
 		strstr(name, "create_lan") ? _multiplayer_mode_host_lan :
+		strstr(name, "create_bots") ? _multiplayer_mode_host_local :
 		strstr(name, "join_lan") ? _multiplayer_mode_lan :
 		strstr(name, "join_direct") ? _multiplayer_mode_direct_link : _multiplayer_mode_server_browser;
 }
@@ -4276,7 +4280,8 @@ static boolean multiplayer_player(short controller)
 }
 
 /* Create Game's ("join controller to mp game", first): player 1 in, and
-the server made: an internet one (an invite, Discord) or a LAN one */
+the server made: an internet one (an invite, Discord), a LAN one, or (PLAY
+WITH BOTS) one of this machine alone */
 static boolean multiplayer_host(struct widget_instance *widget, struct event_record *event, short controller,
 	boolean *widget_deleted)
 {
@@ -4289,6 +4294,8 @@ static boolean multiplayer_host(struct widget_instance *widget, struct event_rec
 	multiplayer.game_private = !config_boolean("network.host_public");
 	p2p_set_hosting_public(multiplayer.mode == _multiplayer_mode_host_internet && !multiplayer.game_private);
 	multiplayer.cooperative_maximum_players_set = FALSE;
+	if (multiplayer.mode == _multiplayer_mode_host_local)
+		return ui_widget_port_host_local(widget, event, widget_deleted);
 	return ui_widget_port_host(widget, event, widget_deleted);
 }
 
@@ -4722,6 +4729,8 @@ VOTING), PASSWORD's and MAP SHARING's (its help_strings, tools/port_settings.py)
 #define MAP_SHARE_OPTIONS_HELP 15
 /* ... and GAME's first choice's (each choice its own) */
 #define GAME_MODE_HELP 16
+/* ... and the bots' rows' (BOTS, BOT SKILL, BOT TEAMS), after GAME's four */
+#define BOTS_HELP 20
 
 /* Server Setup's GAME: the kind of game hosted (network.game_mode) and its
 tick rate (network.sim_rate), as tools/port_settings.py's GAME_MODES have
@@ -4863,6 +4872,64 @@ static void wide_to_text(wchar_t const *wide, char *text, short size)
 	text[index] = 0;
 }
 
+/* Server Setup's bots (bots.count, bots.skill, bots.teams: bots.c), in a
+game of this machine alone (PLAY WITH BOTS), in the place of the rows of the
+network (GAME, INVITE LINK, MAP SHARING), which it hides; each row written to
+config.toml as it changes, so that the lobby's bots follow it. A gametype
+the bots do not play (not Slayer's: CTF, Oddball, King, Race) locks them,
+dimmed, passed over, and the line below them says why (tools/port_settings.py's
+BOTS_ROWS) */
+static char const *const server_settings_network_rows[] = { "op_game_mode", "op_invite", "op_map_share_options" };
+static char const *const server_settings_bots_rows[][2] =
+{
+	{ "op_bots_count", "bots_count_spinner" },
+	{ "op_bots_skill", "bots_skill_spinner" },
+	{ "op_bots_teams", "bots_teams_spinner" },
+};
+
+static void server_settings_bots(struct widget_instance *list, boolean local, boolean playable)
+{
+	struct widget_instance *help = list->parameters.list.extended_description;
+	boolean locked = local && !playable;
+	short index;
+
+	for (index = 0; index < NUMBEROF(server_settings_network_rows); index++)
+		visible_set(named(list, server_settings_network_rows[index], 0), !local);
+	for (index = 0; index < NUMBEROF(server_settings_bots_rows); index++)
+	{
+		struct widget_instance *row = named(list, server_settings_bots_rows[index][0], 0);
+		struct widget_instance *spinner = named(list, server_settings_bots_rows[index][1], 0);
+		struct pc_menu_setting *setting = spinner ? pc_menu_setting_get(spinner->definition_tag_index) : NULL;
+
+		if (!row || !spinner)
+			continue;
+		visible_set(row, local);
+		row->disabled = locked;
+		spinner->disabled = locked;
+		row->alpha_modifier = locked ? 0.4f : 1.0f;
+		/* (the focus on a row locked goes to the buttons) */
+		if (locked && list->focused_child == row)
+		{
+			struct widget_instance *child;
+			short child_index = 0;
+
+			for (child = list->child; child && strncmp(child->name, "button_bar", 10); child = child->next)
+				child_index++;
+			if (child)
+			{
+				list->focused_child = child;
+				list->parameters.list.selected_index = child_index;
+			}
+		}
+		/* (setting_changed_save passes over a locked spinner) */
+		if (local && setting)
+			setting_changed_save(spinner, setting);
+		if (help && local && list->focused_child == row)
+			help->parameters.text_box.string_list_index = (short)(BOTS_HELP + index);
+	}
+	visible_set(named(screen_of(list), "bots_hint", 0), locked);
+}
+
 /* "server settings update" */
 static void server_settings_update(struct widget_instance *list)
 {
@@ -4910,6 +4977,15 @@ static void server_settings_update(struct widget_instance *list)
 			else if (help && list->focused_child == named(list, "op_map_share_options", 0))
 				help->parameters.text_box.string_list_index = MAP_SHARE_OPTIONS_HELP;
 		}
+	}
+	/* (a game of this machine alone: its bots, and none of the network's
+	rows) */
+	{
+		void *server = global_network_game_server_get();
+		boolean local = server && network_game_is_splitscreen_local();
+
+		server_settings_bots(list, local,
+			local && network_game_server_get_game(server)->variant.game_engine_index == game_engine_slayer);
 	}
 	/* LISTING (an internet game's): PUBLIC, listed in everyone's server
 	browser, or PRIVATE, for this game. Its help is its choice's */
@@ -6895,6 +6971,7 @@ enum
 	_multiplayer_item_create_local,
 	_multiplayer_item_online_coop,
 	_multiplayer_item_split_screen_coop,
+	_multiplayer_item_bots,
 	_multiplayer_item_gametypes,
 };
 
@@ -7351,6 +7428,10 @@ static void multiplayer_status_update(struct widget_instance *list)
 		}
 		else
 			usnprintf(headline, NUMBEROF(headline) - 1, L"TWO PLAYERS, ONE SCREEN");
+		break;
+	case _multiplayer_item_bots:
+		usnprintf(headline, NUMBEROF(headline) - 1, L"BOTS ON THIS COMPUTER");
+		usnprintf(detail, NUMBEROF(detail) - 1, L"Slayer, SWAT, Infection and\r\nGun Game. Set them up in\r\nServer Setup.");
 		break;
 	case _multiplayer_item_gametypes:
 	{
@@ -9093,7 +9174,8 @@ boolean pc_menu_event_function_invoke(
 			to mp game" before; it fails with the game's port in use, by
 			another copy of the game) */
 			if ((multiplayer.mode == _multiplayer_mode_host_internet ||
-				multiplayer.mode == _multiplayer_mode_host_lan) && !global_network_game_server_get())
+				multiplayer.mode == _multiplayer_mode_host_lan ||
+				multiplayer.mode == _multiplayer_mode_host_local) && !global_network_game_server_get())
 			{
 				platform_log("menus: the game could not be made (is its port in use?)");
 				/* (said on the screen too: not a silent dead end) */

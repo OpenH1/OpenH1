@@ -6118,6 +6118,21 @@ boolean ui_widget_port_host(
 	return network_game_start_new_server(widget, event, widget_deleted);
 }
 
+/* hosting a game of this machine alone (Multiplayer's PLAY WITH BOTS,
+whose lobby takes the bots: port/linux/game/bots.c): a new game as
+ui_widget_port_host's, which takes no other machine, as the Xbox's split
+screen's (split_screen_game_initialize) */
+boolean ui_widget_port_host_local(
+	struct widget_instance *widget,
+	struct event_record *event,
+	boolean *widget_deleted)
+{
+	boolean result = ui_widget_port_host(widget, event, widget_deleted);
+
+	network_game_accept_remote_connections(FALSE);
+	return result;
+}
+
 /* the game browsing (as the Xbox's server list): found games' client */
 boolean ui_widget_port_browse(
 	struct widget_instance *widget,

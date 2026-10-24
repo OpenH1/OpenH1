@@ -81,14 +81,15 @@
 		<data input="multiplayer type menu update desc"/>
 		<data input="port multiplayer status"/>
 		<child widget="main_menu/multiplayer_type_select/multiplayer_type_join_item" x="-32" y="78"/>
-		<child widget="main_menu/multiplayer_type_select/multiplayer_type_join_internet_item" y="109"/>
-		<child widget="main_menu/multiplayer_type_select/multiplayer_type_join_lan_item" y="140"/>
-		<child widget="main_menu/multiplayer_type_select/multiplayer_type_join_direct_item" y="171"/>
-		<child widget="main_menu/multiplayer_type_select/multiplayer_type_create_item" x="-32" y="202"/>
-		<child widget="main_menu/multiplayer_type_select/multiplayer_type_create_internet_item" y="233"/>
-		<child widget="main_menu/multiplayer_type_select/multiplayer_type_create_lan_item" y="264"/>
-		<child widget="main_menu/multiplayer_type_select/multiplayer_type_online_coop_item" y="295"/>
-		<child widget="main_menu/multiplayer_type_select/multiplayer_type_coop_item" y="326"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_type_join_internet_item" y="106"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_type_join_lan_item" y="134"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_type_join_direct_item" y="162"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_type_create_item" x="-32" y="190"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_type_create_internet_item" y="218"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_type_create_lan_item" y="246"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_type_online_coop_item" y="274"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_type_coop_item" y="302"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_type_create_bots_item" y="330"/>
 		<child widget="main_menu/multiplayer_type_select/multiplayer_type_gametypes_item" y="370"/>
 		<child widget="main_menu/multiplayer_type_select/multiplayer_type_button_bar" y="414"/>
 	</widget>
