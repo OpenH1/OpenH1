@@ -50,6 +50,9 @@ static struct
 	unsigned long address;
 	char hardware_id[33];
 	boolean openh1;
+	/* ... and whether it joined with an OpenH1 game's token, which the host
+	knows it by (network_standard.c) */
+	boolean openh1_token;
 	/* the lines it showed */
 	char shown[MAXIMUM_SENT][CHAT_TEXT_SIZE];
 	short shown_count;
@@ -117,6 +120,15 @@ static void p2p_hardware_id_sanitize(
 	snprintf(destination, (size_t)size, "%s", source);
 }
 
+static boolean network_standard_machine_is_openh1(
+	long machine_index)
+{
+	return machines[machine_index].openh1_token;
+}
+
+/* the notices the host sent, to any machine */
+static short notices_sent;
+
 static boolean network_welcome_line(char const *text);
 
 /* (the host's chat) a notice to one client machine, which shows it as its
@@ -130,6 +142,7 @@ static void network_chat_host_notice(
 	CHECK(machine_index >= 0 && machine_index < MAXIMUM_MACHINES && machines[machine_index].present,
 		"a notice to machine %ld, which is not in the game", machine_index);
 	CHECK(strlen(text) < CHAT_TEXT_SIZE, "a line longer than the chat's: '%s'", text);
+	notices_sent++;
 	chat_text_clean(cleaned, text, CHAT_TEXT_SIZE);
 	if (machines[machine_index].openh1 && network_welcome_line(cleaned))
 		return;
@@ -238,6 +251,21 @@ int main(int argc, char **argv)
 		play(10000);
 		check_welcomed(1);
 		CHECK(machines[2].shown_count == 0, "the OpenH1 machine showed %d lines", machines[2].shown_count);
+		return 0;
+	}
+
+	/* a machine that joined an OpenH1 game with its token (an OpenH1
+	machine, as the host knows it) is sent nothing; one that joined with
+	OpenCE's, the welcome */
+	CASE("openh1-token")
+	{
+		join(1, 0x0A000001, "aa11", FALSE);
+		join(2, 0x0A000002, "bb22", TRUE);
+		machines[2].openh1_token = TRUE;
+		new_game();
+		play(10000);
+		check_welcomed(1);
+		CHECK(notices_sent == 2, "%d notices sent, not the OpenCE machine's 2", notices_sent);
 		return 0;
 	}
 

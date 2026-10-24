@@ -12,8 +12,10 @@ CASES = ['root-motion', 'player', 'bump', 'lane']
 CONTROLS = [
     ('velocity->i = kept->i + (velocity->i - prepared->i);', ';', 'root-motion'),
     ('velocity->i = kept->i + (velocity->i - prepared->i);', 'velocity->i = kept->i;', 'bump'),
-    (' || unit->unit.actor_index != NONE', '', 'lane'),
-    (' ||\n\t\t\tunit->unit.swarm_actor_index != NONE', '', 'lane'),
+    ('unit->unit.actor_index != NONE || ', '', 'lane'),
+    (' || unit->unit.swarm_actor_index != NONE', '', 'lane'),
+    # (an OpenCE player's biped in a mixed game: network_standard.c)
+    ('return !network_standard_player_is_opence(unit->unit.player_index);', 'return TRUE;', 'lane'),
 ]
 
 

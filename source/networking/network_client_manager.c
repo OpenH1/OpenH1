@@ -395,6 +395,9 @@ symbols in this file:
 #include "network_standard.h" /* port: port/linux/game/network_standard.c */
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
 
+/* port: port/linux/src/port_config.c */
+int config_boolean(char const *name);
+
 /* ---------- constants */
 
 enum
@@ -810,15 +813,47 @@ static unsigned long network_game_client_link_checked_time;
 static boolean network_game_client_link_down;
 
 /* each advertised game's host's network version and netcode, and the game's
-kind (game_modes_kind) and, a Standard game's, its rate, by its place in
-the client's available_games (HALO_PORT_NETWORK_VERSION) */
+kind (game_modes_kind) and, a Standard game's, its rate and, a mixed game's
+(one OpenCE joins too, network_standard.c), its OpenH1 protocol version, by
+its place in the client's available_games (HALO_PORT_NETWORK_VERSION) */
 static struct
 {
 	word version;
 	byte flags;
 	byte kind;
 	byte rate;
+	byte openh1_version;
 } network_game_client_advertised_versions[MAXIMUM_NETWORK_ADVERTISED_GAMES];
+
+/* port: the OpenH1 protocol version of the advertised game at the index: a
+Standard game's, a mixed game's (advertised as a Legacy game is, with its
+version beside), or 0 for a Legacy game's */
+static unsigned int network_game_client_advertised_openh1_version(
+	long game_index)
+{
+	word version = network_game_client_advertised_versions[game_index].version;
+
+	if (version & HALO_PORT_STANDARD_VERSION_BIT)
+		return version & ~HALO_PORT_STANDARD_VERSION_BIT;
+	if (version == HALO_PORT_NETWORK_VERSION && network_game_client_advertised_versions[game_index].rate)
+		return network_game_client_advertised_versions[game_index].openh1_version;
+	return 0;
+}
+
+/* port: whether this machine joins the advertised game at the index as an
+OpenH1 machine (a Standard game, or a mixed one of its own protocol: else a
+mixed game is joined as OpenCE joins it, at 30). debug.join_legacy joins
+every game as OpenCE does (the tests' stand-in for an OpenCE machine) */
+static boolean network_game_client_advertised_joins_as_openh1(
+	long game_index)
+{
+	word version = network_game_client_advertised_versions[game_index].version;
+
+	if (version & HALO_PORT_STANDARD_VERSION_BIT)
+		return TRUE;
+	return !config_boolean("debug.join_legacy") &&
+		network_game_client_advertised_openh1_version(game_index) == HALO_PORT_STANDARD_NETWORK_VERSION;
+}
 
 struct network_game_client network_game_client_dont_use_directly;
 boolean allow_out_of_sync = FALSE;
@@ -2097,13 +2132,14 @@ boolean network_game_client_initiate_join_game(
 		join_parameters,
 		sizeof(*join_parameters));
 	/* port: whether the game joined is a Standard one (its advertisement's
-	version; this machine's own server's, joined over the loopback, as it
-	hosts), whose rate its record brings and whose host takes a Standard
-	game's join token alone (network_standard.c) */
+	version, or a mixed game's of this machine's protocol; this machine's own
+	server's, joined over the loopback, as it hosts), whose rate its record
+	brings and whose host takes a Standard game's join token for an OpenH1
+	machine (network_standard.c) */
 	{
 		long game_index = game - client->available_games;
 		boolean standard = game_index >= 0 && game_index < MAXIMUM_NETWORK_ADVERTISED_GAMES ?
-			(network_game_client_advertised_versions[game_index].version & HALO_PORT_STANDARD_VERSION_BIT) != 0 :
+			network_game_client_advertised_joins_as_openh1(game_index) :
 			network_standard_hosting();
 
 		network_standard_client_joining(standard, client->join_parameters.join_token,
@@ -2573,6 +2609,8 @@ static boolean add_advertised_game(
 				advertisement->__unknown5A[HALO_PORT_ADVERTISED_KIND_OFFSET];
 			network_game_client_advertised_versions[game_index].rate =
 				advertisement->__unknown5A[HALO_PORT_ADVERTISED_RATE_OFFSET];
+			network_game_client_advertised_versions[game_index].openh1_version =
+				advertisement->__unknown5A[HALO_PORT_ADVERTISED_OPENH1_VERSION_OFFSET];
 		}
 
 		if (advertisement->game_name[0] != L'\0')
@@ -3223,6 +3261,24 @@ boolean network_game_client_advertised_game_compatible(
 		}
 		return FALSE;
 	}
+	/* port: (a mixed game, a Standard game OpenCE joins too: as an OpenH1
+	machine if of this machine's protocol, else as OpenCE joins it, at 30) */
+	if (theirs == ours && distributed && network_game_client_advertised_openh1_version(game_index))
+	{
+		if (network_game_client_advertised_joins_as_openh1(game_index))
+		{
+			network_event("joining an OpenH1 %u Tick host that OpenCE players join too (protocol version %u)",
+				(unsigned int)network_game_client_advertised_versions[game_index].rate,
+				network_game_client_advertised_openh1_version(game_index));
+		}
+		else
+		{
+			network_event("joining an OpenH1 %u Tick host (protocol version %u) as an OpenCE player, at 30",
+				(unsigned int)network_game_client_advertised_versions[game_index].rate,
+				network_game_client_advertised_openh1_version(game_index));
+		}
+		return TRUE;
+	}
 	if (theirs == ours && distributed)
 	{
 		network_event("joining a host of network version %u", theirs);
@@ -3283,8 +3339,8 @@ byte network_game_client_advertised_game_kind(
 		network_game_client_advertised_versions[game_index].kind : 0;
 }
 
-/* port: the advertised game's rate: a Standard game's (network_standard.c),
-a Legacy game's 30 */
+/* port: the advertised game's rate: a Standard game's (network_standard.c,
+a mixed one's too), a Legacy game's 30 */
 long network_game_client_advertised_game_rate(
 	struct network_game_client *client,
 	struct network_advertised_game const *game)
@@ -3292,14 +3348,15 @@ long network_game_client_advertised_game_rate(
 	long game_index = client ? game - client->available_games : NONE;
 
 	if (game_index < 0 || game_index >= MAXIMUM_NETWORK_ADVERTISED_GAMES ||
-		!(network_game_client_advertised_versions[game_index].version & HALO_PORT_STANDARD_VERSION_BIT))
+		!network_game_client_advertised_openh1_version(game_index))
 	{
 		return 30;
 	}
 	return network_game_client_advertised_versions[game_index].rate;
 }
 
-/* port: whether the advertised game is an OpenH1 Standard game */
+/* port: whether the advertised game is an OpenH1 Standard game (a mixed one
+too) */
 boolean network_game_client_advertised_game_standard(
 	struct network_game_client *client,
 	struct network_advertised_game const *game)
@@ -3307,7 +3364,7 @@ boolean network_game_client_advertised_game_standard(
 	long game_index = client ? game - client->available_games : NONE;
 
 	return game_index >= 0 && game_index < MAXIMUM_NETWORK_ADVERTISED_GAMES &&
-		(network_game_client_advertised_versions[game_index].version & HALO_PORT_STANDARD_VERSION_BIT) != 0;
+		network_game_client_advertised_openh1_version(game_index) != 0;
 }
 
 boolean network_game_client_join_first_available_game(

@@ -13,7 +13,9 @@ game it joined from the server browser.) A Legacy game is OpenCE's in every
 byte, so its host cannot tell an OpenCE machine from an OpenH1 one: it
 welcomes every client machine, in any kind of game, and an OpenH1 machine
 does not show the lines (network_welcome_line). Only OpenCE players see
-them (and OpenH1 builds older than the welcome).
+them (and OpenH1 builds older than the welcome). An OpenH1 game's host
+knows its OpenH1 machines by the token they joined with
+(network_standard_machine_is_openh1), and sends them none.
 
 A machine is welcomed once it has loaded the game (its client ready, which
 it sends from its first tick: a line sent while it loads is let go as its
@@ -28,6 +30,7 @@ game, nor joining again. network.opence_welcome turns it off.
 #include "game/game.h"
 #include "network_distributed.h"
 #include "network_chat.h"
+#include "network_standard.h"
 
 /* port_config.c's, cseries_windows.c's, network_server_manager.c's, p2p.c's */
 int config_boolean(const char *name);
@@ -159,8 +162,11 @@ void network_welcome_new_game(
 void network_welcome_machine_loaded(
 	long machine_index)
 {
+	/* (nor a machine that joined with an OpenH1 game's token: an OpenH1
+	machine, network_standard.c) */
 	if (game_connection() != _game_connection_network_server ||
-		machine_index < 0 || machine_index >= MAXIMUM_WELCOME_MACHINES)
+		machine_index < 0 || machine_index >= MAXIMUM_WELCOME_MACHINES ||
+		network_standard_machine_is_openh1(machine_index))
 	{
 		return;
 	}

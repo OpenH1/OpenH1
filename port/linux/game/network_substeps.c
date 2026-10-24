@@ -384,6 +384,9 @@ void network_substeps_tick_begun(
 	boolean active = network_substeps_active();
 	short player_index;
 
+	/* (the inputs this tick took, as the tests' reports have them: a tick's
+	sub-steps may be spread over frames, between which newer inputs come) */
+	network_distributed_tick_begun();
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 	{
 		struct substep_record *replaying = &network_substeps_globals.replaying[player_index];

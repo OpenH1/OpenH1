@@ -99,6 +99,108 @@ def test_no_drift_figures_is_a_problem(tmp_path):
     assert any("drift" in problem for problem in judge(host, client)["problems"])
 
 
+# ---------- a mixed game (OpenCE players in an OpenH1 game): its rates, its OpenCE players, what they heard
+
+
+def rate_line(rate, opence=(), heard=0, record=0, drift=None):
+    drifts = " ".join(f"{player}:{apart}/{compared}" for player, (apart, compared) in (drift or {}).items())
+    return (f"halo-linux: network test: rate {rate} opence players {' '.join(map(str, opence)) or 'none'} | "
+            f"legacy heard openh1 {heard} record {record} | drift by player {drifts or 'none'}\n")
+
+
+def write_mixed_logs(tmp_path, seconds=40, host_rate=120, opence_rate=30, heard=0, record=0, openh1_opence=(1,),
+                     opence_apart=0, older_opence=False):
+    """a host (player 0) and two clients: an OpenCE one (player 1, client.log) and an OpenH1 one (player 2,
+    client2.log)"""
+    host = tmp_path / "host.log"
+    opence = tmp_path / "client.log"
+    openh1 = tmp_path / "client2.log"
+    with open(host, "w") as host_log, open(opence, "w") as opence_log, open(openh1, "w") as openh1_log:
+        for second in range(1, seconds + 1):
+            tick = second * net_compare.TICKS_PER_SECOND
+            players = [player(0, second * 2.0), player(1, -second * 2.0, machine=1),
+                       player(2, second * 1.0, machine=2)]
+            host_log.write(line(tick, players, local=0))
+            host_log.write(rate_line(host_rate, (1,), drift={1: (opence_apart, 30), 2: (3, 30)}))
+            opence_log.write(line(tick, players, local=1))
+            if not older_opence:
+                opence_log.write(rate_line(opence_rate, (), heard, record))
+            openh1_log.write(line(tick, players, local=2))
+            openh1_log.write(rate_line(host_rate, openh1_opence))
+    return host, [opence, openh1]
+
+
+def judge_mixed(host, clients, rate=120):
+    arguments = argparse.Namespace(seconds=30, skip=3, rate=rate)
+    return net_compare.judge_mixed(host, clients, [True, False], arguments, dict(net_compare.TOLERANCES))
+
+
+def test_mixed_in_step(tmp_path):
+    divergences, problems, figures = judge_mixed(*write_mixed_logs(tmp_path))
+    assert not divergences and not problems, (divergences, problems)
+    assert figures["drift by player"][1].startswith("0 of 1110 apart")
+
+
+def test_mixed_opence_client_heard_openh1(tmp_path):
+    divergences, _, _ = judge_mixed(*write_mixed_logs(tmp_path, heard=4))
+    assert [item["field"] for item in divergences] == ["legacy"]
+
+
+def test_mixed_opence_record_rate(tmp_path):
+    divergences, _, _ = judge_mixed(*write_mixed_logs(tmp_path, record=120))
+    assert [item["field"] for item in divergences] == ["legacy"]
+
+
+def test_mixed_opence_client_not_at_30(tmp_path):
+    divergences, _, _ = judge_mixed(*write_mixed_logs(tmp_path, opence_rate=120))
+    assert [item["field"] for item in divergences] == ["rate"]
+
+
+def test_mixed_host_at_another_rate(tmp_path):
+    divergences, _, _ = judge_mixed(*write_mixed_logs(tmp_path, host_rate=60), rate=120)
+    assert "rate" in [item["field"] for item in divergences]
+
+
+def test_mixed_openh1_client_steps_others(tmp_path):
+    divergences, _, _ = judge_mixed(*write_mixed_logs(tmp_path, openh1_opence=()))
+    assert [item["field"] for item in divergences] == ["opence players"]
+
+
+def test_mixed_opence_player_moved_otherwise(tmp_path):
+    divergences, _, _ = judge_mixed(*write_mixed_logs(tmp_path, opence_apart=25))
+    assert [(item["player"], item["field"]) for item in divergences] == [(1, "drift")]
+
+
+def test_mixed_openh1_player_moved_otherwise(tmp_path):
+    host, clients = write_mixed_logs(tmp_path)
+    host.write_text(host.read_text().replace(" 2:3/30", " 2:25/30"))
+    divergences, _, _ = judge_mixed(host, clients)
+    assert [(item["player"], item["field"]) for item in divergences] == [(2, "drift")]
+
+
+def test_mixed_player_without_ticks_compared_is_noted(tmp_path):
+    """an OpenCE player whose inputs came while the host's tick was open has no tick to compare: noted, not failed,
+    while another player's drift is judged"""
+    host, clients = write_mixed_logs(tmp_path)
+    host.write_text(host.read_text().replace(" 1:0/30", ""))
+    divergences, problems, figures = judge_mixed(host, clients)
+    assert not divergences and not problems
+    assert figures["drift of OpenCE player 1"].startswith("not judged")
+
+
+def test_mixed_no_player_judged_is_a_problem(tmp_path):
+    host, clients = write_mixed_logs(tmp_path)
+    host.write_text(host.read_text().replace(" 1:0/30 2:3/30", " none"))
+    _, problems, _ = judge_mixed(host, clients)
+    assert any("judge its drift" in problem for problem in problems)
+
+
+def test_mixed_older_opence_build_judged_by_the_host(tmp_path):
+    divergences, problems, figures = judge_mixed(*write_mixed_logs(tmp_path, older_opence=True))
+    assert not divergences and not problems
+    assert "older build" in figures["client"]
+
+
 # ---------- the exit status, the tolerances, the copies' folders and processes
 
 

@@ -82,6 +82,7 @@ enum _distributed_message_notice 17
 enum _distributed_message_object_changes 5
 enum _distributed_message_object_states 6
 enum _distributed_message_objects_synchronized 8
+enum _distributed_message_opence_players 122
 enum _distributed_message_pickups 13
 enum _distributed_message_pings 19
 enum _distributed_message_player_inputs 14

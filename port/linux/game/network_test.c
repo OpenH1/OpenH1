@@ -83,6 +83,7 @@ Called from the main loop every frame (main.c).
 #include "network_chat.h"
 #include "network_voice.h"
 #include "sim_rate.h"
+#include "network_standard.h"
 #include "halo_keyboard.h"
 
 #include <math.h>
@@ -105,6 +106,7 @@ void damage_kill_object_for_player(long object_index, long player_index);
 void network_distributed_statistics(long *sent, long *received, long *corrections);
 void network_distributed_batch_bytes(long *to_host, long *to_clients, short *clients);
 void network_distributed_divergence(long *samples, long *apart, real *mean, real *largest);
+void network_distributed_player_divergence(short player_index, long *samples, long *apart);
 void network_distributed_item_statistics(long *creates, long *deletes, long *failures, long *removed);
 void network_damage_statistics(long *sent_reports, long *dealt_reports, long *rejected_reports, long *replayed_events);
 /* xinput_sdl.c's */
@@ -452,6 +454,41 @@ static void network_test_log_players(
 			network_distributed_batch_bytes(&to_host, &to_clients, &clients);
 			platform_log("network test: bandwidth to host %ld to clients %ld (%d clients, %ld each) bytes a second",
 				to_host, to_clients, (int)clients, clients ? to_clients / clients : 0L);
+		}
+		/* (mixed games, network_standard.c: this machine's rate, the players it
+		steps at 30 as OpenCE's, and, a client that joined as OpenCE does, what
+		of OpenH1's own it heard: none of OpenH1's messages, no rate in its
+		record; the host's drift, each client's player's) */
+		{
+			char opence[128];
+			char drift[256];
+			int opence_length = 0;
+			int drift_length = 0;
+			long openh1_messages, record_rate;
+			struct data_iterator players;
+
+			opence[0] = 0;
+			drift[0] = 0;
+			data_iterator_new(&players, player_data);
+			while (data_iterator_next(&players))
+			{
+				short absolute_index = (short)DATUM_INDEX_TO_ABSOLUTE_INDEX(players.datum_index);
+				long samples, apart;
+
+				if (network_standard_player_is_opence(players.datum_index))
+					network_test_append(opence, (int)sizeof(opence), &opence_length, " %d", (int)absolute_index);
+				network_distributed_player_divergence(absolute_index, &samples, &apart);
+				if (samples)
+				{
+					network_test_append(drift, (int)sizeof(drift), &drift_length, " %d:%ld/%ld", (int)absolute_index,
+						apart, samples);
+				}
+			}
+			network_standard_legacy_heard(&openh1_messages, &record_rate);
+			platform_log("network test: rate %ld opence players%s | legacy heard openh1 %ld record %ld"
+				" | drift by player%s",
+				sim_rate_get(), opence_length ? opence : " none", openh1_messages, record_rate,
+				drift_length ? drift : " none");
 		}
 	}
 }
