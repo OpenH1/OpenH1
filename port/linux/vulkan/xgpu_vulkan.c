@@ -4461,6 +4461,26 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 		blit.dstOffsets[1].y = (int32_t)(y + fit_height);
 		blit.dstOffsets[1].z = 1;
 		vk.loading_art_image->used = vk.loading_image->used = vk.serial;
+		/* (first the picture scaled to cover the whole image, its top and
+		bottom cut, so that a screen wider than 4:3 has the picture's own
+		space at its sides, not black bars; the letterboxed picture over it
+		keeps its text and sweep at their 4:3 size) */
+		if (!stereo && fit_width < width)
+		{
+			VkImageBlit cover = blit;
+			uint32_t rows = (uint32_t)((uint64_t)LOADING_ART_FRAME_WIDTH * height / width);
+
+			if (rows < 1)
+				rows = 1;
+			cover.srcOffsets[0].y = (int32_t)((LOADING_ART_FRAME_HEIGHT - rows) / 2);
+			cover.srcOffsets[1].y = cover.srcOffsets[0].y + (int32_t)rows;
+			cover.dstOffsets[0].x = 0;
+			cover.dstOffsets[0].y = 0;
+			cover.dstOffsets[1].x = (int32_t)width;
+			cover.dstOffsets[1].y = (int32_t)height;
+			vkCmdBlitImage(commands, vk.loading_art_image->image, VK_IMAGE_LAYOUT_GENERAL,
+				vk.loading_image->image, VK_IMAGE_LAYOUT_GENERAL, 1, &cover, VK_FILTER_LINEAR);
+		}
 		vkCmdBlitImage(commands, vk.loading_art_image->image, VK_IMAGE_LAYOUT_GENERAL,
 			vk.loading_image->image, VK_IMAGE_LAYOUT_GENERAL, 1, &blit, VK_FILTER_LINEAR);
 		transfer_done(commands);

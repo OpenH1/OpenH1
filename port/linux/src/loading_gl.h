@@ -66,6 +66,20 @@ static inline int loading_gl_draw(struct loading_gl *image, const unsigned char 
 	{
 		glClearColor(0.f, 0.f, 0.f, 1.f);
 		glClear(GL_COLOR_BUFFER_BIT);
+		/* First the picture scaled to cover the whole screen, its top and
+		bottom cut: a screen wider than 4:3 has the picture's own space at
+		its sides, not black bars; the letterboxed picture over it keeps its
+		text and sweep at their 4:3 size. */
+		if (fit_width < width)
+		{
+			int rows = LOADING_ART_FRAME_WIDTH * height / width, top;
+
+			if (rows < 1)
+				rows = 1;
+			top = (LOADING_ART_FRAME_HEIGHT - rows) / 2;
+			glBlitFramebuffer(0, top + rows, LOADING_ART_FRAME_WIDTH, top, 0, 0, width, height,
+				GL_COLOR_BUFFER_BIT, GL_LINEAR);
+		}
 		/* The shared pixels start with the top row; framebuffer Y starts below. */
 		glBlitFramebuffer(0, LOADING_ART_FRAME_HEIGHT, LOADING_ART_FRAME_WIDTH, 0,
 			x, y, x + fit_width, y + fit_height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
