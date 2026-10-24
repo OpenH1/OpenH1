@@ -13,11 +13,13 @@ are written there, and asks hud_hires_asset_at which bitmap they are: a block
 reused for another bitmap, or a map unloaded, is a write, which asks again.
 
 A texture drawn for only some of a bitmap's sprites (hud_msg_icons_sm's
-buttons) does not stand for its bitmap: the game draws those sprites from a
-placeholder (hud_hires_sprite_bitmap), a bitmap of the same size and format,
-so the same coordinates, made when first needed and deleted with the map;
-the texture cache draws the texture for it (hud_hires_placeholder_texture).
-When the texture cannot be drawn, the sprites are drawn from their bitmap.
+buttons, and hud_msg_icons' pictures of the weapons and the skull) does not
+stand for its bitmap: the game draws those sprites from a placeholder
+(hud_hires_sprite_bitmap), a bitmap of the same size and format, so the same
+coordinates, made when first needed and deleted with the map; the texture
+cache draws the texture for it (hud_hires_placeholder_texture). When the
+texture cannot be drawn for a sprite (its cell's texels, or its bitmap's,
+are not those it was drawn for), the sprite is drawn from its bitmap.
 */
 
 #include "cseries.h"
@@ -45,7 +47,8 @@ char const *hud_hires_asset_tag(long asset);
 long hud_hires_asset_bitmap(long asset);
 long hud_hires_asset_fits(long asset, long width, long height);
 unsigned long hud_hires_asset_sprites(long asset);
-int hud_hires_sprites_drawable(long asset, unsigned long address, unsigned long level0_size);
+unsigned long hud_hires_sprites_drawable(long asset, unsigned long address, long width, long height,
+	int linear, unsigned long level0_size);
 void hud_hires_register_placeholder(long asset, unsigned long const *texture);
 int hud_hires_asset_custom_edition(long asset);
 /* (custom_edition_cache.c) */
@@ -64,6 +67,8 @@ enum
 {
 	MAXIMUM_HIRES_BITMAPS = 128,
 	MAXIMUM_HIRES_SPRITE_BITMAPS = 8,
+	/* a bitmap's pixels in rows, not swizzled (bitmaps.c: _bitmap_linear_bit) */
+	BITMAP_LINEAR_BIT = 4,
 };
 
 /* ---------- globals */
@@ -78,14 +83,17 @@ static struct
 } hires_bitmaps[MAXIMUM_HIRES_BITMAPS];
 static long hires_bitmap_count = 0;
 
-/* Sheets without redraws: retain their original lettering and sprite layout. */
+/* Sheets without redraws: retain their original lettering and sprite layout.
+ * (The message icons' pictures, and hud_msg_icons_sm's buttons, are drawn
+ * from their own textures through a placeholder; their sheets' text is not,
+ * so every one of their bitmaps is upscaled still.) */
 static struct { struct bitmap_data *bitmap; long kind; } upscale_bitmaps[16];
 static long upscale_bitmap_count;
 
 /* the bitmaps some of whose sprites have a texture, with their placeholder,
-and whether the texture can be drawn for the pixels at checked_address
-(checked again when the texture cache loads them elsewhere, or the settings
-change) */
+and the sequences (a bit each) whose sprites the texture can be drawn for in
+the pixels at checked_address (checked again when the texture cache loads
+them elsewhere, or the settings change) */
 static struct
 {
 	struct bitmap_data *bitmap;
@@ -94,7 +102,7 @@ static struct
 	boolean placeholder_failed;
 	void *checked_address;
 	unsigned long checked_at;
-	boolean drawable;
+	unsigned long drawable;
 } hires_sprite_bitmaps[MAXIMUM_HIRES_SPRITE_BITMAPS];
 static long hires_sprite_bitmap_count = 0;
 
@@ -277,10 +285,16 @@ struct bitmap_data const *hud_hires_sprite_bitmap(
 			hires_sprite_bitmaps[index].drawable = hud_hires_sprites_drawable(
 				hires_sprite_bitmaps[index].asset,
 				(unsigned long)sprite_bitmap->base_address,
-				(unsigned long)bitmap_mipmap_get_pixel_data_size(sprite_bitmap, 0)) != 0;
+				sprite_bitmap->width,
+				sprite_bitmap->height,
+				TEST_FLAG(sprite_bitmap->flags, BITMAP_LINEAR_BIT) != 0,
+				(unsigned long)bitmap_mipmap_get_pixel_data_size(sprite_bitmap, 0));
 		}
-		if (hires_sprite_bitmaps[index].drawable &&
-			!hires_sprite_bitmaps[index].placeholder &&
+		/* (a sequence whose cells are not those the texture was drawn for is
+		drawn from its bitmap; the others still from the texture) */
+		if (!(hires_sprite_bitmaps[index].drawable & (1UL << sequence_index)))
+			break;
+		if (!hires_sprite_bitmaps[index].placeholder &&
 			!hires_sprite_bitmaps[index].placeholder_failed)
 		{
 			struct bitmap_data *placeholder = bitmap_2d_new(
@@ -308,7 +322,7 @@ struct bitmap_data const *hud_hires_sprite_bitmap(
 			}
 			hires_sprite_bitmaps[index].placeholder = placeholder;
 		}
-		if (hires_sprite_bitmaps[index].drawable && hires_sprite_bitmaps[index].placeholder)
+		if (hires_sprite_bitmaps[index].placeholder)
 			return hires_sprite_bitmaps[index].placeholder;
 		break;
 	}

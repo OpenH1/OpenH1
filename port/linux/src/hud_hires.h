@@ -3,8 +3,9 @@ HUD_HIRES.H
 
 The high-res HUD: textures drawn from the hand-made SVG redraws of the Halo PC
 HUD sheets (port/assets/hud, made by tools/hud_assets.py), each 8x the size
-of the bitmap of the Xbox maps it stands for (4x for the largest) and in that
-bitmap's layout. The menus' titles, pictures of text in the maps, are drawn
+of the bitmap of the Xbox maps it stands for (4x for the largest, and for the
+message icons' pictures, drawn from Aerocatia's and Jessie's art at its
+scale) and in that bitmap's layout. The menus' titles, pictures of text in the maps, are drawn
 the same way (port/assets/titles, made by tools/title_assets.py), and so are
 their controller button icons (port/assets/buttons, made by
 tools/button_assets.py).
@@ -13,8 +14,10 @@ decodes them, and the texture cache (xbox_textures.c) draws one in place of
 its bitmap whenever that bitmap's pixels are uploaded: the game still sizes
 and places the bitmap by its tag, so nothing else changes.
 A texture may instead stand for only some of a bitmap's sprites (the
-buttons among the message icons the menus set into their text): the game
-draws those sprites from a placeholder bitmap of the same size
+buttons among the message icons the menus set into their text, and the
+weapons' and the skull's pictures among the HUD's message icons, from
+Aerocatia's and Jessie's art: port/assets/hud/NOTICE.md): the game draws
+those sprites from a placeholder bitmap of the same size
 (port/linux/game/hud_hires_tags.c), which the texture cache draws the
 texture for, and the bitmap's other sprites from the bitmap as before.
 */
@@ -33,7 +36,20 @@ title: a menu title (port/assets/titles, made by tools/title_assets.py) or a
 button icon (port/assets/buttons, made by tools/button_assets.py), drawn with
 display.high_res_text rather than display.high_res_hud; sprites: the sequences
 of its bitmap's group (a bit each) whose sprites it is drawn for, through a
-placeholder, or 0: the whole bitmap, in its place */
+placeholder, or 0: the whole bitmap, in its place; cells: those sprites'
+cells, each checked on its own texels rather than the whole bitmap on crc
+(so that another language's maps, whose text beside them differs, draw them
+too), or none */
+struct hud_hires_cell
+{
+	/* the sequence its sprite is of, its texels' rectangle, and the CRC-32 of
+	those texels as the English maps store them: row by row, top first, each
+	texel's bytes */
+	unsigned int sequence;
+	unsigned int left, top, right, bottom;
+	unsigned int crc;
+};
+
 struct hud_hires_embedded
 {
 	const char *tag;
@@ -44,6 +60,8 @@ struct hud_hires_embedded
 	int point_threshold; /* red: exact discrete meter thresholds, zero elsewhere */
 	int title;
 	unsigned int sprites;
+	const struct hud_hires_cell *cells;
+	unsigned int cell_count;
 	/* drawn for a Custom Edition map's stock bitmap of its name too, whose
 	layout is its own (port/assets/hud/custom_edition.json) */
 	int custom_edition;
