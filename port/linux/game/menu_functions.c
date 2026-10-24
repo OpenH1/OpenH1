@@ -427,11 +427,11 @@ static struct
 /* ---------- Settings' changes kept (tools/port_settings.py's PAGES)
 
 What a tab or a page of Settings shows changed is kept here, by setting,
-until Settings' OK writes it all (settings_pending_write) or its Cancel
-forgets it: a tab or a page made again shows the changes kept (setting_load),
-whichever of them made them. Each page notes its rows' as they change
-(settings_page_update). A page a row opens keeps its own at its OK, and its
-Cancel puts back what was kept when it opened (settings_snapshot). */
+until Settings' OK, or a page's, writes it all (settings_pending_write), or
+Settings' Cancel forgets it: a tab or a page made again shows the changes
+kept (setting_load), whichever of them made them. Each page notes its rows'
+as they change (settings_page_update). A page's Cancel puts back what was
+kept when it opened (settings_snapshot). */
 
 #define SETTINGS_PENDING_COUNT 160
 
@@ -1834,9 +1834,9 @@ tab" (A or a click on one of the tabs), "port settings tab next" and
 history, so that B and Cancel ("port settings cancel": nothing kept, the
 profile's changes forgotten) leave Settings from any tab, and its OK ("port
 settings ok") writes every change kept, saves the profile's and applies the
-window's. A page a row opens keeps its changes at its OK ("port settings
-keep"), and its Cancel ("port settings page cancel") puts back what was kept
-when it opened. "port settings new profile" (CREATE PROFILE) asks for a new
+window's. A page a row opens writes them too at its OK ("port settings
+keep": an OK saves, wherever it is), and its Cancel ("port settings page
+cancel") puts back what was kept when it opened. "port settings new profile" (CREATE PROFILE) asks for a new
 profile's name, as the main menu's items do.
 
 "port settings page" (a tab's or a page's list, each frame) shows the rows
@@ -1927,11 +1927,14 @@ static boolean setting_stash(struct widget_instance *spinner, struct pc_menu_set
 	return TRUE;
 }
 
-/* Settings' OK: every change kept written (display.graphics first, which
-leaves those it chooses to it: those after it, at its values, stay so), the
-window's applied, and the profile's saved */
-static void settings_pending_write(void)
+/* Settings' OK, and a page's: every change kept written (display.graphics
+first, which leaves those it chooses to it: those after it, at its values,
+stay so), the window's applied, and the profile's saved; a page's goes on
+editing the profile, as saved, for Settings */
+static void settings_pending_write(boolean finish)
 {
+	long profile_index = player_ui_get_edit_profile_index();
+
 	short pass, index;
 
 	for (pass = 0; pass < 2; pass++)
@@ -1955,6 +1958,8 @@ static void settings_pending_write(void)
 		if (player_ui_edit_profile_is_dirty() && !player_ui_save_profile())
 			platform_log("menus: could not save the profile's changes");
 		player_ui_end_editing_profile();
+		if (!finish)
+			player_ui_begin_editing_profile(profile_index);
 	}
 }
 
@@ -2012,7 +2017,7 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 	else if (!strcmp(name, "ok"))
 	{
 		settings_each(screen, setting_stash);
-		settings_pending_write();
+		settings_pending_write(TRUE);
 	}
 	else if (!strcmp(name, "cancel"))
 	{
@@ -2022,6 +2027,7 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 	else if (!strcmp(name, "keep"))
 	{
 		settings_each(screen, setting_stash);
+		settings_pending_write(FALSE);
 	}
 	else if (!strcmp(name, "page cancel"))
 	{

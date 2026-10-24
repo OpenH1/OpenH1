@@ -219,10 +219,10 @@ FRAMES_ADDED = {
 # headers, and on the right a panel saying what the row chosen does: its name,
 # its value in large type and plain words. A row ending in "›" opens a page of
 # its own (Advanced Graphics, Controller...), laid out the same, with its own
-# title, OK and Cancel. A change is kept, on every tab and page, until
-# Settings' OK writes them all (config.toml's, and the profile's controller
-# settings, name and colour, saved), or Cancel forgets them all; a page's OK
-# keeps its changes for Settings' OK, its Cancel forgets them.
+# title, OK and Cancel. A change is kept, on every tab and page, until an OK
+# (Settings' or a page's) writes them all (config.toml's, and the profile's
+# controller settings, name and colour, saved), or Settings' Cancel forgets
+# them all; a page's Cancel forgets its own.
 #
 # Only the controller's settings, the name and the colour are the profile's
 # ("profile.<field>"): their page and the PROFILE tab, with no profile, offer
@@ -648,7 +648,7 @@ SETTINGS_BUTTON_HELP = {
             "Keeps your changes, on every tab, and applies them.",
             "Leaves Settings without keeping any change."],
     "page": ["Puts this page's settings back to their defaults.",
-             "Keeps these changes; Settings' OK applies them.",
+             "Saves your changes, on this page and every tab, and applies them.",
              "Goes back without these changes."],
 }
 # the pages' titles (TITLES): Settings', over every tab, and each page's

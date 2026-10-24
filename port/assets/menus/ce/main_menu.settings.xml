@@ -77,7 +77,7 @@
 		<string text="Keeps your changes, on every tab, and applies them."/>
 		<string text="Leaves Settings without keeping any change."/>
 		<string text="Puts this page's settings back to their defaults."/>
-		<string text="Keeps these changes; Settings' OK applies them."/>
+		<string text="Saves your changes, on this page and every tab, and applies them."/>
 		<string text="Goes back without these changes."/>
 	</strings>
 	<strings name="main_menu/settings/still_captions">
