@@ -392,6 +392,7 @@ symbols in this file:
 #include "networking/network_server_manager.h"
 #include "text/unicode.h"
 #include "map_share.h" /* port: port/linux/game/map_share.c */
+#include "network_standard.h" /* port: port/linux/game/network_standard.c */
 #include "custom_edition_cache.h" /* port: port/linux/game/custom_edition_cache.c */
 
 /* ---------- constants */
@@ -809,13 +810,14 @@ static unsigned long network_game_client_link_checked_time;
 static boolean network_game_client_link_down;
 
 /* each advertised game's host's network version and netcode, and the game's
-kind (game_modes_kind), by its place in the client's available_games
-(HALO_PORT_NETWORK_VERSION) */
+kind (game_modes_kind) and, a Standard game's, its rate, by its place in
+the client's available_games (HALO_PORT_NETWORK_VERSION) */
 static struct
 {
 	word version;
 	byte flags;
 	byte kind;
+	byte rate;
 } network_game_client_advertised_versions[MAXIMUM_NETWORK_ADVERTISED_GAMES];
 
 struct network_game_client network_game_client_dont_use_directly;
@@ -2094,6 +2096,19 @@ boolean network_game_client_initiate_join_game(
 		&client->join_parameters,
 		join_parameters,
 		sizeof(*join_parameters));
+	/* port: whether the game joined is a Standard one (its advertisement's
+	version; this machine's own server's, joined over the loopback, as it
+	hosts), whose rate its record brings and whose host takes a Standard
+	game's join token alone (network_standard.c) */
+	{
+		long game_index = game - client->available_games;
+		boolean standard = game_index >= 0 && game_index < MAXIMUM_NETWORK_ADVERTISED_GAMES ?
+			(network_game_client_advertised_versions[game_index].version & HALO_PORT_STANDARD_VERSION_BIT) != 0 :
+			network_standard_hosting();
+
+		network_standard_client_joining(standard, client->join_parameters.join_token,
+			sizeof(client->join_parameters.join_token));
+	}
 
 	success = network_connection_connect(client->connection, address, 0);
 
@@ -2556,6 +2571,8 @@ static boolean add_advertised_game(
 				advertisement->__unknown5A[HALO_PORT_ADVERTISED_FLAGS_OFFSET];
 			network_game_client_advertised_versions[game_index].kind =
 				advertisement->__unknown5A[HALO_PORT_ADVERTISED_KIND_OFFSET];
+			network_game_client_advertised_versions[game_index].rate =
+				advertisement->__unknown5A[HALO_PORT_ADVERTISED_RATE_OFFSET];
 		}
 
 		if (advertisement->game_name[0] != L'\0')
@@ -3180,6 +3197,31 @@ boolean network_game_client_advertised_game_compatible(
 	theirs = network_game_client_advertised_versions[game_index].version;
 	distributed = (network_game_client_advertised_versions[game_index].flags &
 		HALO_PORT_ADVERTISED_DISTRIBUTED_FLAG) != 0;
+	/* port: an OpenH1 Standard game (network_standard.c), of a protocol
+	version of its own */
+	if (theirs & HALO_PORT_STANDARD_VERSION_BIT)
+	{
+		ours = HALO_PORT_STANDARD_NETWORK_VERSION;
+		theirs &= ~HALO_PORT_STANDARD_VERSION_BIT;
+		if (theirs == ours && distributed)
+		{
+			network_event("joining a Standard host of protocol version %u at %u Hz", theirs,
+				(unsigned int)network_game_client_advertised_versions[game_index].rate);
+			return TRUE;
+		}
+		csprintf(message,
+			"The host's OpenH1 Standard game is of %s version than yours.\n\n"
+			"You are on Standard version %u. The host is on Standard version %u.\n\n"
+			"%s",
+			theirs > ours ? "a newer" : "an older", ours, theirs,
+			theirs > ours ? "Update the game to join this host." : "Ask the host to update the game.");
+		if (tell)
+		{
+			network_event("not joining a Standard host of protocol version %u (this machine's is %u)", theirs, ours);
+			platform_show_message("Halo: cannot join this game", message);
+		}
+		return FALSE;
+	}
 	if (theirs == ours && distributed)
 	{
 		network_event("joining a host of network version %u", theirs);
@@ -3238,6 +3280,22 @@ byte network_game_client_advertised_game_kind(
 
 	return game_index >= 0 && game_index < MAXIMUM_NETWORK_ADVERTISED_GAMES ?
 		network_game_client_advertised_versions[game_index].kind : 0;
+}
+
+/* port: the advertised game's rate: a Standard game's (network_standard.c),
+a Legacy game's 30 */
+long network_game_client_advertised_game_rate(
+	struct network_game_client *client,
+	struct network_advertised_game const *game)
+{
+	long game_index = client ? game - client->available_games : NONE;
+
+	if (game_index < 0 || game_index >= MAXIMUM_NETWORK_ADVERTISED_GAMES ||
+		!(network_game_client_advertised_versions[game_index].version & HALO_PORT_STANDARD_VERSION_BIT))
+	{
+		return 30;
+	}
+	return network_game_client_advertised_versions[game_index].rate;
 }
 
 boolean network_game_client_join_first_available_game(

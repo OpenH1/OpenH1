@@ -73,6 +73,30 @@ port/linux/game/game_modes.h's game_modes_kind), for the server browser */
 #define HALO_PORT_ADVERTISED_VERSION_OFFSET 0
 #define HALO_PORT_ADVERTISED_FLAGS_OFFSET 2
 #define HALO_PORT_ADVERTISED_KIND_OFFSET 3
+/* ... and, a Standard game's (port/linux/game/network_standard.c), its rate
+in Hz (a Legacy game's 0, as before) */
+#define HALO_PORT_ADVERTISED_RATE_OFFSET 4
+
+/* OpenH1's Standard games (port/linux/game/network_standard.c, NETCODE.md's
+"Versions") have a protocol version of their own, separate from
+HALO_PORT_NETWORK_VERSION, which stays the Legacy games' (OpenCE's). A
+Standard host advertises it, with HALO_PORT_STANDARD_VERSION_BIT, where a
+Legacy host advertises the network version (its game's advertisement and
+its internet listing), so a build that knows nothing of Standard games
+takes it for a newer version and does not join. Raise it with any change to
+what a Standard game's machines send each other, and with every raise of
+HALO_PORT_NETWORK_VERSION: HALO_PORT_STANDARD_BASE_VERSION is the network
+version it was last raised for, and the build fails until they agree. */
+#define HALO_PORT_STANDARD_NETWORK_VERSION 1
+#define HALO_PORT_STANDARD_BASE_VERSION 38
+#define HALO_PORT_STANDARD_VERSION_BIT 0x8000
+#define HALO_PORT_STANDARD_ADVERTISED_VERSION (HALO_PORT_STANDARD_VERSION_BIT | HALO_PORT_STANDARD_NETWORK_VERSION)
+#if HALO_PORT_STANDARD_BASE_VERSION != HALO_PORT_NETWORK_VERSION
+#error "HALO_PORT_NETWORK_VERSION was raised: raise HALO_PORT_STANDARD_NETWORK_VERSION and its base too"
+#endif
+/* what an OpenCE build that knows of Standard games tells its player
+joining one (NETCODE.md, "Standard and Legacy games") */
+#define HALO_PORT_STANDARD_REFUSAL "This is an OpenH1 Standard game; join a Legacy game or get OpenH1"
 /* ... the host plays the distributed netcode (always, since the lockstep
 netcode was removed; hosts of version 4 built before then may not) */
 #define HALO_PORT_ADVERTISED_DISTRIBUTED_FLAG 0x01

@@ -279,6 +279,22 @@ lets the host's shield effects be `players` (SHIELD EFFECTS' PLAYERS' OWN), a
 value of distributed message 91 that tells each client to draw its own
 settings', not synced.
 
+OpenH1's Standard games (below) have a protocol version of their own,
+`HALO_PORT_STANDARD_NETWORK_VERSION` (`halo_port_limits.h`), separate from
+the network version, which stays the Legacy games' and OpenCE's. A Standard
+host advertises it with its top bit set (`HALO_PORT_STANDARD_VERSION_BIT`:
+version 1 is 0x8001) where a Legacy host advertises the network version, in
+its game's advertisement and its internet listing. A build that knows of
+Standard games joins a Standard host of its own Standard version, and tells
+the player which is newer otherwise. A build that does not (OpenCE, or
+OpenH1 before Standard games) takes the advertised version for a newer one
+and does not join. Standard games carry everything Legacy games carry, so
+the Standard version is raised with every raise of the network version as
+well as with any change of their own: `HALO_PORT_STANDARD_BASE_VERSION`
+names the network version it was last raised for, and the build fails while
+the two differ. Standard version 1 (on network version 38) agrees on the
+game's rate and carries it in the game record, advertisement and listing.
+
 `port/linux/network_format.txt` records the wire format of the current
 version (`tools/network_format.py`): `test_linux_port.py` fails when the
 sources' messages, kinds, bits, structs sent whole or the sizes of their
@@ -444,6 +460,54 @@ the player's saved preference and the bullets' autoaim are unchanged.
 change. Clients take it only from the host and default to blocked until it
 arrives. This adds distributed message 90; network version 32 requires
 matching builds so an older client cannot silently ignore the rule.
+
+## Standard and Legacy games
+
+A host plays one of two kinds of game (`network.game_mode`, read when it
+starts hosting; `port/linux/game/network_standard.c`):
+
+- **Legacy**: OpenCE's netcode at network version 38 and 30 ticks a second,
+  which OpenCE builds join. A Legacy game is unchanged in every byte: its
+  advertisement, listing, join token and game record are as before.
+- **Standard** (the default when hosting): OpenH1's own. The host picks
+  the simulation rate (`network.sim_rate`: 30, 60 or 120, the powers of two
+  the sub-steps scale by exactly, `sim_rate_supported`). Every machine
+  takes it before the game's first tick, and it holds for the whole game.
+
+How OpenH1 machines recognise each other:
+
+- The advertisement's version word carries the Standard version (above),
+  and the reserved byte after the game's kind
+  (`HALO_PORT_ADVERTISED_RATE_OFFSET`) carries the rate in Hz. The internet
+  listing has the version in its version field and the rate in the second
+  byte of its stamp. OpenCE's parsers ignore both bytes, which are zero in
+  a Legacy game.
+- An OpenCE build sees a Standard game as a newer version. On the LAN it
+  lists the game and refuses to join it ("The host is using a newer version
+  of the network code"). Its server browser hides the game, and says
+  "games are on a newer version" when nothing else is listed.
+  `HALO_PORT_STANDARD_REFUSAL` ("This is an OpenH1 Standard game; join a
+  Legacy game or get OpenH1") is the text for an OpenCE build that knows of
+  Standard games to show. A build without that change can show only its
+  own messages: join refusals are codes, and host text (notices, chat)
+  reaches only a machine already in a game.
+- A Standard host accepts a join only with a Standard game's join token
+  (`network_standard_join_token`: the token's last two bytes changed by
+  "S" and the protocol version). Any other machine is refused with
+  `_rejection_code_bad_join_token`, whatever its advertisement check said.
+- The host reads `network.sim_rate` while its game is in the lobby. The
+  value it last read when the game starts is the game's rate. The game
+  record carries it to every machine, including a late joiner, in
+  `struct network_game`'s `standard_rate`: a short the Xbox game left
+  unused, which a Legacy host never writes. `sim_rate.c`'s
+  `sim_rate_network` is the only place where it becomes the rate a tick
+  takes: on the host, the rate it took; on a client of a Standard game, the
+  rate in the record, if supported (otherwise 30); 30 in a Legacy game.
+
+In version 1, inputs still go once a tick. The host relays each player's
+input for a tick, and remote players replay it across that tick's
+sub-steps. The game is not yet exact at 60 and 120. For that reason
+`network.sim_rate` defaults to 30.
 
 ## Joining a game in progress
 

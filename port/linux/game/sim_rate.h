@@ -70,9 +70,15 @@ typedef void (*sim_substep_procedure)(short substep_index, short substep_count, 
 
 /* ---------- prototypes */
 
-/* the rate this tick simulates at, 30, 60 or 120: game.sim_rate, but 30 in
-a network game of other machines (the classic netcode's, whatever the host
-or client) and in a saved film's playback */
+/* whether a rate is one the sub-steps step at: 30 times a power of two up
+to MAXIMUM_SIM_SUBSTEPS (30, 60 or 120). A network game's agreed rate and
+the settings are taken only so */
+boolean sim_rate_supported(long rate);
+
+/* the rate this tick simulates at, 30, 60 or 120: game.sim_rate, but in a
+network game of other machines the rate it agreed on (a Legacy game's 30,
+whatever the host or client; a Standard game's host's choice:
+sim_rate_network) and 30 in a saved film's playback */
 long sim_rate_get(void);
 
 /* whether the game played (or about to be, from a lobby) is of this machine
@@ -83,8 +89,9 @@ boolean sim_rate_follows_setting(void);
 /* whether game.sim_rate is set aside: the game played (or about to be, from
 a lobby) takes its rate from its connection, not the setting: a network
 game of other machines or a film's playback. The menus' SIMULATION row
-shows it locked at ORIGINAL (30) meanwhile (menu_functions.c's
-sim_rate_row_show) */
+shows it locked at the rate the game takes meanwhile (sim_rate_next: a
+Legacy game's ORIGINAL (30), a Standard game's agreed rate;
+menu_functions.c's sim_rate_row_show) */
 boolean sim_rate_locked(void);
 
 /* the sub-steps of this tick (1, 2 or 4), and the one running: 0 up to
