@@ -135,6 +135,7 @@ boolean ui_widget_port_dispatch_event(struct widget_instance *widget, short even
 	boolean *deleted);
 void ui_widget_port_go_back(struct widget_instance *widget);
 short ui_widget_port_list_index(struct widget_instance *list_widget);
+long ui_widget_port_text_box_font(struct widget_instance *widget, short *width);
 boolean ui_widget_port_saved_game(char const **map_name, short *level, short *difficulty);
 char const *ui_widget_event_handler_function_name(long function_index);
 short main_get_solo_level_from_name(char const *name);
@@ -1907,13 +1908,7 @@ static struct
 	struct widget_instance *screen;
 	long screen_tag;
 	long screen_time;
-	/* the panel's words' fonts and widths, as last drawn
-	(menu_functions_text_box_drawn): NONE before */
-	long text_font;
-	short text_width;
-	long note_font;
-	short note_width;
-} settings_page = { NULL, NONE, 0, NONE, 0, NONE, 0 };
+} settings_page = { NULL, NONE, 0 };
 
 static short settings_tab_of(struct widget_instance const *screen)
 {
@@ -2339,6 +2334,8 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	struct widget_instance *panel = list->parameters.list.extended_description;
 	struct widget_instance *row = list->focused_child;
 	struct widget_instance *text, *note;
+	long text_font, note_font;
+	short text_width, note_width;
 	wchar_t name[ROW_TEXT_LENGTH] = { 0 }, value[ROW_TEXT_LENGTH] = { 0 };
 	wchar_t words[SETTINGS_PANEL_TEXT_LENGTH] = { 0 }, wrapped[SETTINGS_PANEL_TEXT_LENGTH];
 	wchar_t const *help = NULL;
@@ -2426,24 +2423,28 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 		*bar++ = 0;
 	text_set_length(named(panel, "panel_name", 0), name, ROW_TEXT_LENGTH);
 	text_set_length(named(panel, "panel_value", 0), value, ROW_TEXT_LENGTH);
-	lines = settings_text_wrap(words, wrapped, SETTINGS_PANEL_TEXT_LENGTH, settings_page.text_font,
-		settings_page.text_width);
+	/* (wrapped in the text boxes' fonts, taken from their definitions in the
+	map loaded now: a font's tag index is not kept, as the next map's tags
+	are numbered again) */
 	text = named(panel, "panel_text", 0);
+	note = named(panel, "panel_note", 0);
+	text_font = ui_widget_port_text_box_font(text, &text_width);
+	note_font = ui_widget_port_text_box_font(note, &note_width);
+	lines = settings_text_wrap(words, wrapped, SETTINGS_PANEL_TEXT_LENGTH, text_font, text_width);
 	text_set_length(text, wrapped, SETTINGS_PANEL_TEXT_LENGTH);
 	/* (under the name, or under Quality's pictures) */
 	if (text && named(panel, "panel_name", 0))
 		text->vertical_offset = (short)(named(panel, "panel_name", 0)->vertical_offset +
 			(stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : picture ? SETTINGS_PANEL_TEXT_UNDER_PICTURE :
 			SETTINGS_PANEL_TEXT_TOP));
-	settings_text_wrap(bar, wrapped, SETTINGS_PANEL_TEXT_LENGTH, settings_page.note_font, settings_page.note_width);
-	note = named(panel, "panel_note", 0);
+	settings_text_wrap(bar, wrapped, SETTINGS_PANEL_TEXT_LENGTH, note_font, note_width);
 	text_set_length(note, wrapped, SETTINGS_PANEL_TEXT_LENGTH);
 	/* (the note a line under the words) */
 	if (note && text)
 	{
 		short line = 12;
 
-		if (settings_page.text_font != NONE)
+		if (text_font != NONE)
 		{
 			rectangle2d bounds, text_bounds, cursor;
 			static real_argb_color const white = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -2453,7 +2454,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 			bounds.x1 = 0x3FFF;
 			bounds.y1 = 480;
 			/* (a line's height: two lines' less one's) */
-			draw_string_set_draw_mode(settings_page.text_font, NONE, 0, 0, &white);
+			draw_string_set_draw_mode(text_font, NONE, 0, 0, &white);
 			draw_unicode_string_compute_bounds(&bounds, L"X\r\nX", &text_bounds, &cursor);
 			line = (short)(text_bounds.y1 - text_bounds.y0);
 			draw_unicode_string_compute_bounds(&bounds, L"X", &text_bounds, &cursor);
@@ -2493,11 +2494,6 @@ static void settings_page_update(struct widget_instance *list)
 		settings_page.screen = screen;
 		settings_page.screen_tag = screen->definition_tag_index;
 		settings_page.screen_time = screen->creation_time;
-		/* (the panel's fonts are tag indices of the map loaded when they were
-		drawn: forgotten until its text boxes draw again, so that one kept from
-		the main menu's map is not read as a tag of a game's, which halted on
-		its group) */
-		settings_page.text_font = settings_page.note_font = NONE;
 		if (tab == NONE)
 			settings_snapshot = settings_pending;
 	}
@@ -3194,8 +3190,8 @@ enum
 	NUMBER_OF_MOD_TEXT_BOXES
 };
 
-/* the text boxes' names, and as many characters as fit across each until
-it has been drawn, and its font is known */
+/* the text boxes' names, and as many characters as fit across each when
+its font is not known */
 static char const *const mod_text_box_names[NUMBER_OF_MOD_TEXT_BOXES] = { "mod_details_name", "mod_details_text",
 	"mod_name" };
 static short const mod_text_box_characters[NUMBER_OF_MOD_TEXT_BOXES] = { 17, 30, 24 };
@@ -3229,9 +3225,9 @@ static struct
 	focus from the rows) */
 	short first;
 	short chosen;
-	/* the text boxes' fonts and widths as they were last drawn
-	(menu_functions_text_box_drawn), which their lines are measured in;
-	NONE before then */
+	/* the text boxes' fonts and widths, which their lines are measured in:
+	taken from their definitions each update (mods_fonts_take), as a font's
+	tag index is good only in the map loaded now; NONE without one */
 	long fonts[NUMBER_OF_MOD_TEXT_BOXES];
 	short widths[NUMBER_OF_MOD_TEXT_BOXES];
 	/* what the details show (they are wrapped again when it changes), and
@@ -3552,6 +3548,14 @@ static void mods_update(struct widget_instance *list)
 	struct widget_instance *focused = mod_row(list->focused_child);
 	short count = (short)port_mods_count();
 	short focused_index = focused ? (short)(atoi(focused->name + 7) - 1) : NONE;
+	short box;
+
+	/* (the text boxes' fonts, from their definitions in this map) */
+	for (box = 0; box < NUMBER_OF_MOD_TEXT_BOXES; box++)
+	{
+		mods_screen.fonts[box] = ui_widget_port_text_box_font(named(box == _mod_row_name ? list :
+			list->parameters.list.extended_description, mod_text_box_names[box], 0), &mods_screen.widths[box]);
+	}
 
 	if (focused_index == MOD_ROWS - 1 && mods_screen.first + MOD_ROWS < count && list_scrolls_at_end())
 	{
@@ -7207,29 +7211,6 @@ voice chat (or muted) has a speaker just left of their name
 void menu_functions_text_box_drawn(struct widget_instance *widget, rectangle2d const *bounds)
 {
 	short row;
-
-	/* (Settings' panel's words: the font and width they are wrapped to,
-	settings_panel_show) */
-	if (widget->name && (!strcmp(widget->name, "panel_text") || !strcmp(widget->name, "panel_note")))
-	{
-		boolean note = !strcmp(widget->name, "panel_note");
-
-		*(note ? &settings_page.note_font : &settings_page.text_font) = draw_string_get_font();
-		*(note ? &settings_page.note_width : &settings_page.text_width) = (short)(bounds->x1 - bounds->x0);
-		return;
-	}
-
-	/* (the Mods screen's texts: the fonts and widths their lines are
-	measured in, mods_text_fits) */
-	for (row = 0; widget->name && row < NUMBER_OF_MOD_TEXT_BOXES; row++)
-	{
-		if (!strcmp(widget->name, mod_text_box_names[row]))
-		{
-			mods_screen.fonts[row] = draw_string_get_font();
-			mods_screen.widths[row] = (short)(bounds->x1 - bounds->x0);
-			return;
-		}
-	}
 
 	/* (as the lobby last updated them: the rows' widgets go with it) */
 	if (!lobby_icons.count || system_milliseconds() - lobby_icons.updated_at > 250)
