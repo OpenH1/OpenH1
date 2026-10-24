@@ -11,8 +11,9 @@ each count the mouse reports, 0.022 by default: linear, with no
 acceleration, whatever the field of view, the resolution or the frame rate.
 So does the mouse here: the counts are SDL's relative motion, which on
 every desktop build is the mouse's own (raw input, XInput2's raw events,
-Wayland's unaccelerated motion; macOS applies its pointer acceleration, which
-System Settings turns off), and each count is turned at once, not as a rate.
+Wayland's unaccelerated motion; on macOS GCMouse's counts in place of the
+system's accelerated pointer, port/macos/host_raw_mouse.m), and each count
+is turned at once, not as a rate.
 
 Zoomed, CS2 scales the turn by zoom_sensitivity_ratio (1 by default) times
 the zoomed field of view over the unzoomed one; the game scales it by one

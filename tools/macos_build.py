@@ -101,8 +101,8 @@ MACOS_GUEST_EXCLUDED = RENDER_STREAM_GUEST_EXCLUDED
 MACOS_BUNDLE_ID = "com.openh1.openh1"
 
 # the host's frameworks: Metal and its layer (port/macos/host_metal.m,
-# xgpu_metal.m)
-MACOS_FRAMEWORKS = "-framework Metal -framework QuartzCore -framework Foundation -framework AppKit -framework ImageIO -lcompression"
+# xgpu_metal.m), and the mouse's own counts (host_raw_mouse.m: GameController)
+MACOS_FRAMEWORKS = "-framework Metal -framework QuartzCore -framework Foundation -framework AppKit -framework ImageIO -framework GameController -lcompression"
 
 # (port/android/host's: those of the Android app alone, the fixed low
 # memory and Linux's system calls, which port/macos and host_memory_base.c
