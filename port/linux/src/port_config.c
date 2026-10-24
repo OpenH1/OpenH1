@@ -110,14 +110,9 @@ passes over the screen there, and smoother edges) */
 #define GRAPHICS_PER_PIXEL_LIGHTING "true"
 #define GRAPHICS_MODEL_DETAIL "\"native\""
 #define GRAPHICS_DYNAMIC_LIGHTS "\"enhanced\""
-/* display.astc_textures: off on Android until its Vulkan path has been seen
-right on a device without BC (Android's emulator, whose ASTC is emulated,
-drew those textures black), "auto" elsewhere (iPhones, through Metal) */
-#ifdef HALO_ANDROID
-#define ASTC_TEXTURES_DEFAULT "\"off\""
-#else
+/* display.astc_textures: "auto" everywhere (iPhones, through Metal; Android
+phones without BC, through Vulkan: seen right on a Pixel 11 Pro's PowerVR) */
 #define ASTC_TEXTURES_DEFAULT "\"auto\""
-#endif
 /* display.structure_culling's tests: all of them (in VR too, where the game
 culls once from the head's centre and the tests allow for the eyes beside it:
 structure_culling_set_camera_radius) */
