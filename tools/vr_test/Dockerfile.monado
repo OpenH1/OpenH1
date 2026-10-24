@@ -6,7 +6,7 @@ FROM ubuntu:24.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential cmake ninja-build pkg-config git ca-certificates \
     glslang-tools libvulkan-dev libeigen3-dev libx11-dev libx11-xcb-dev libxcb-randr0-dev libxrandr-dev libxcb1-dev \
-    libwayland-dev wayland-protocols libegl-dev libgl-dev libglx-dev libopengl-dev libgles-dev libudev-dev libusb-1.0-0-dev libhidapi-dev libbsd-dev \
+    libwayland-dev wayland-protocols libudev-dev libusb-1.0-0-dev libhidapi-dev libbsd-dev \
     libcjson-dev libsystemd-dev libdbus-1-dev python3 libxxf86vm-dev libsdl2-dev
 ARG MONADO_COMMIT=e26a272c1
 RUN git clone https://gitlab.freedesktop.org/monado/monado.git /src && git -C /src checkout $MONADO_COMMIT
