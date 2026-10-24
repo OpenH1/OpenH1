@@ -377,6 +377,27 @@ struct xgpu_dynamic_state
 	float depth_bias[2];
 };
 
+/* ---------- reversed depth
+
+The front end describes depth as the game has it: 0 at the near plane, 1
+at the far, a function less (nearer) passing, a clear to 1, a bias toward
+the camera negative, in the 24-bit depth buffer's units. The Metal and
+Vulkan backends keep it reversed, 1 - depth, in a floating-point buffer:
+the game's projection puts a point 100 m away at 0.9989, where a float, as
+the Xbox's 24-bit integers, steps 1/16777216 at a time, about 9 mm there
+(more by the sniper rifle's view than the eye can see: a light a few
+millimetres off its wall, as Blood Gulch's bases' are, fights the wall); near
+0, where reversed depth puts that point, a float steps a million times finer.
+Their emitters write w - z (as one dot product of the projection's rows
+where the program has them: xgpu_vertex_program_depth_rows), so that the
+precision is not lost first to the vertex's coordinates; the backends test
+with each function's mirror, clear to 1 - depth, take the depth range as
+1 - its ends, read depth as 1 - it, and add the constant bias in the shader
+(the same distance of depth as the Xbox's units, which a float's own units
+are not) and the slope's with its sign turned (xgpu_stream.h's
+xgpu_reversed_depth_function and xgpu_reversed_depth_bias). Nothing the
+game sees changes. */
+
 /* a vertex program the keys name (by its hash), as the game makes it (id:
 the vertex shader's number, for the logs), and where a model lighting
 program has its normal and position (nv2a_vertex_shader_lighting), for its

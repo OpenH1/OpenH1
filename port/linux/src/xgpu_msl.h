@@ -54,7 +54,9 @@ struct xgpu_msl_uniforms
 {
 	float viewport_scale[4];
 	float viewport_offset[4];
-	float point_size, screen_offset, alpha_reference, unused;
+	/* (depth_bias: the draw's constant depth bias, in the reversed depth's
+	own terms, a fraction of the range: xgpu_backend.h, "Reversed depth") */
+	float point_size, screen_offset, alpha_reference, depth_bias;
 	float ps_c0[8][4];
 	float ps_c1[8][4];
 	float ps_final_c0[4];

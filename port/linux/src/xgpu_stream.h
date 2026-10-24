@@ -544,6 +544,25 @@ struct xgpu_stream_dynamic_state
 	float depth_bias[2];
 };
 
+/* reversed depth (xgpu_backend.h, "Reversed depth"): the depth test's
+function that passes on reversed depth what the key's (xgpu_backend.h's
+XGPU_COMPARE_*: never, less, equal, less or equal, greater, not equal,
+greater or equal, always) passes on the game's */
+static __inline uint8_t xgpu_reversed_depth_function(uint8_t function)
+{
+	static const uint8_t reversed[8] = { 0, 4, 2, 6, 1, 5, 3, 7 };
+
+	return function < 8 ? reversed[function] : function;
+}
+
+/* a draw's constant depth bias (its dynamic state's depth_bias[1], in the
+24-bit depth buffer's units; the pipeline's depth_bias set) as the shaders
+add it to reversed depth: toward the camera, positive */
+static __inline float xgpu_reversed_depth_bias(int biased, float offset)
+{
+	return biased ? -offset / 16777215.0f : 0.0f;
+}
+
 /* xgpu_backend.h's struct xgpu_draw_uniforms (floats alone: alike on both
 sides) */
 struct xgpu_stream_draw_uniforms

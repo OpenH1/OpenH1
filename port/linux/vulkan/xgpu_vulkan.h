@@ -42,7 +42,13 @@ The core:
   presented through an HDR swapchain (VK_EXT_swapchain_colorspace: scRGB
   or HDR10's PQ) where the frames are HDR and the window's display shows
   HDR, encoded by the options' encode, with VK_EXT_hdr_metadata's metadata
-  where the device has it.
+  where the device has it;
+- keeps depth reversed (xgpu_backend.h, "Reversed depth"), in a float
+  format where the device has one (D32_SFLOAT_S8_UINT): the pipelines'
+  depth functions mirrored, the clears and the depth range as 1 - them,
+  the constant depth bias the shaders' and the slope's turned; but in the
+  VR build (HALO_VR), whose eyes, effects, cockpit and compositor's depth
+  read depth as the game has it (XGPU_VULKAN_REVERSED_DEPTH 0).
 
 Submissions are numbered by a timeline semaphore: xgpu_vulkan_fence ends the
 work recorded so far and returns its number, xgpu_vulkan_wait waits for it.
@@ -56,6 +62,13 @@ work recorded so far and returns its number, xgpu_vulkan_wait waits for it.
 
 #define VK_NO_PROTOTYPES
 #include <vulkan/vulkan_core.h>
+
+/* depth kept reversed (above) */
+#ifdef HALO_VR
+#define XGPU_VULKAN_REVERSED_DEPTH 0
+#else
+#define XGPU_VULKAN_REVERSED_DEPTH 1
+#endif
 
 /* ---------- the core's life */
 
@@ -447,7 +460,8 @@ struct xgpu_vulkan_dynamic_state
 	float depth_range[2];
 	uint32_t stencil_reference;
 	float blend_color[4];
-	/* the slope factor and the offset in the depth's units */
+	/* the slope factor and the offset in the depth's units (the offset
+	the shaders' where depth is reversed: xgpu_reversed_depth_bias) */
 	float depth_bias[2];
 };
 

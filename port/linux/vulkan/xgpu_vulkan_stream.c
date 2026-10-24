@@ -219,6 +219,8 @@ static struct
 	struct xgpu_stream_draw_uniforms uniforms;
 	uint32_t uniforms_serial;
 	int uniforms_set, uniforms_dirty;
+	/* (the constant depth bias the uniforms were made with) */
+	float depth_bias;
 	/* the uniforms uploaded have the VR effects' views (effect_views), for
 	the projection as it is; and the views, made for the projection, the
 	screen conversion, the viewport, the depth range and the eyes as they
@@ -1155,6 +1157,7 @@ static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_str
 	options.input_samples = key->samples > 1 ? key->samples : 1;
 	options.debug_texture0 = getenv("HALO_GPU_DEBUG_T0") != NULL;
 	options.debug_flat = getenv("HALO_GPU_DEBUG_FLAT") != NULL;
+	options.reversed_depth = XGPU_VULKAN_REVERSED_DEPTH;
 	program = malloc(sizeof(*program));
 	if (!program)
 		return 0;
@@ -1358,9 +1361,18 @@ this submission (with the VR effects' views, for a VR effect's draw) */
 static int uniforms_update(int effect)
 {
 	uint64_t serial = xgpu_vulkan_serial();
+	/* (the constant depth bias, reversed depth's: the pipeline's and the
+	dynamic state's) */
+	float depth_bias = XGPU_VULKAN_REVERSED_DEPTH && stream.definition ?
+		xgpu_reversed_depth_bias(stream.definition->key.depth_bias, stream.dynamic.depth_bias[1]) : 0.0f;
 
 	if (effect && !stream.uniforms_effect)
 		stream.uniforms_dirty = 1;
+	if (depth_bias != stream.depth_bias)
+	{
+		stream.depth_bias = depth_bias;
+		stream.uniforms_dirty = 1;
+	}
 	if (stream.uniforms_dirty || stream.uniforms_uploaded != serial)
 	{
 		const struct xgpu_stream_draw_uniforms *from = &stream.uniforms;
@@ -1379,6 +1391,7 @@ static int uniforms_update(int effect)
 		host_vulkan_vr_uniforms(to, stream.dynamic.viewport);
 #endif
 		to->visibility_counter = (float)xgpu_vulkan_visibility_counter();
+		to->depth_bias = stream.depth_bias;
 		memcpy(to->ps_c0, from->ps_c0, sizeof(to->ps_c0));
 		memcpy(to->ps_c1, from->ps_c1, sizeof(to->ps_c1));
 		memcpy(to->ps_final_c0, from->ps_final_c0, sizeof(to->ps_final_c0));
@@ -2077,6 +2090,7 @@ static int halo_shaders(int slot)
 	options.multiview = slot ? XGPU_MULTIVIEW_EYES : XGPU_MULTIVIEW_NONE;
 	options.foveated = slot == 2;
 	options.effect = slot ? XGPU_SPIRV_EFFECT_SOFT : XGPU_SPIRV_EFFECT_NONE;
+	options.reversed_depth = XGPU_VULKAN_REVERSED_DEPTH;
 	if (xgpu_spirv_halo_vertex_shader(&options, &module))
 	{
 		snprintf(name, sizeof(name), "%s_vertex", names[slot]);

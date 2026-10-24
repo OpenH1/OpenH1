@@ -244,6 +244,8 @@ static NSString *shader_source(void)
 		"{\n"
 		"\tvertex_out out;\n"
 		"\tout.position = in.position + float4(c[0].xy, 0.0, 0.0);\n"
+		/* (depth reversed, as the emitters write it: xgpu_backend.h) */
+		"\tout.position.z = out.position.w - out.position.z;\n"
 		"\tout.color = in.color;\n"
 		"\tout.uv = in.uv;\n"
 		"\treturn out;\n"
