@@ -125,9 +125,8 @@ structure_culling_set_camera_radius) */
 /* display.vsync: off on the Linux builds, Windows and macOS, whose players
 want the most frames and the least latency (display.max_fps still limits
 them, at twice the display's rate; the Mac shows the newest at each refresh,
-host_metal_vsync); on the phones, for their batteries. Under gamescope (the Steam Deck's Game
-Mode, the Steam Frame) the Linux builds read it unset as on
-(config_gamescope_vsync), gamescope pacing the frames to the display */
+host_metal_vsync), the Steam Deck's too; on the phones, for their
+batteries */
 #if defined(_WIN32) || (defined(HALO_VULKAN) && !defined(HALO_ANDROID)) || \
 	(defined(HALO_MACOS) && !defined(HALO_IOS))
 #define VSYNC_DEFAULT "false"
@@ -168,8 +167,7 @@ static const struct config_setting config_settings[] =
 		"640x480." },
 	{ "display.vsync", _config_boolean, VSYNC_DEFAULT, "HALO_NO_VSYNC", _environment_set_is_false, _platform_all,
 		"Wait for the display between frames; false draws as fast as possible\n"
-		"(up to display.max_fps). Commented out under gamescope (the Steam Deck's\n"
-		"Game Mode, the Steam Frame), true." },
+		"(up to display.max_fps)." },
 	{ "display.max_fps", _config_integer, "0", "HALO_MAX_FPS", _environment_value, _platform_desktop,
 		"With vsync off, the most frames a second: 0 for twice the display's\n"
 		"refresh rate, -1 for no limit (which can hang some Intel graphics)." },
@@ -2564,34 +2562,6 @@ static void config_check_words(void)
 	}
 }
 
-/* whether the game runs under gamescope (the Steam Deck's Game Mode, the
-Steam Frame), as first_start.c's first_start_gamescope */
-#if defined(HALO_VULKAN) && !defined(HALO_ANDROID)
-static int config_gamescope(void)
-{
-	const char *wayland_display = getenv("GAMESCOPE_WAYLAND_DISPLAY");
-	const char *desktop = getenv("XDG_CURRENT_DESKTOP");
-	const char *steam_deck = getenv("SteamDeck");
-	const char *gamepad_ui = getenv("SteamGamepadUI");
-
-	return (wayland_display && wayland_display[0]) || (desktop && strstr(desktop, "gamescope")) ||
-		(steam_deck && !strcmp(steam_deck, "1") && gamepad_ui && !strcmp(gamepad_ui, "1"));
-}
-#endif
-
-/* (config_load) display.vsync unset under gamescope: on (VSYNC_DEFAULT),
-where gamescope shows each frame at the display's refresh and frames drawn
-past it would only spend the battery */
-static void config_gamescope_vsync(void)
-{
-#if defined(HALO_VULKAN) && !defined(HALO_ANDROID)
-	long index = config_setting_index("display.vsync");
-
-	if (index >= 0 && !config_set[index] && config_gamescope())
-		config_values[index].boolean = 1;
-#endif
-}
-
 static void config_load(void)
 {
 	char path[1024];
@@ -2731,7 +2701,6 @@ static void config_load(void)
 			platform_log("settings: display.graphics \"%s\" is unknown, so enhanced", graphics);
 		config_graphics_apply();
 	}
-	config_gamescope_vsync();
 	config_battery_values_set();
 	config_check_words();
 }

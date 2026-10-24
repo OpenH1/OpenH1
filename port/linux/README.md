@@ -244,11 +244,13 @@ Frame"):
   password in Server Setup, and the password of a game in the server
   browser) open the keyboard of Steam. Type the text, then select Enter on
   that keyboard.
-- Frame rate: the game shows one frame for each refresh of the display. It
-  follows the refresh rate and the frame limit of Quick Access >
-  Performance (40 to 60 Hz on the LCD model, up to 90 Hz on the OLED model).
-  The world is calculated at 30 Hz at all rates. In Game Mode,
-  `display.vsync` is on unless it is set. Refer to "Frame rate". For a longer battery, set Video Setup >
+- Frame rate: with `display.vsync` off (the default), the game draws up to
+  twice the display's refresh rate (`display.max_fps`), for the least
+  latency; set `display.vsync = true` to show one frame for each refresh,
+  following the refresh rate and the frame limit of Quick Access >
+  Performance (40 to 60 Hz on the LCD model, up to 90 Hz on the OLED model),
+  which spends less of the battery. The world is calculated at 30 Hz at all
+  rates. Refer to "Frame rate". For a longer battery, set Video Setup >
   Battery Saver to Auto (on while the Deck is not charging) or On: 30
   frames each second at 60 or 90 Hz, 40 with the screen at 40 or 80 Hz, and
   the Classic look (refer to "Battery saver").
@@ -499,7 +501,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.resolution_scaling` | `"native"` | `HALO_RESOLUTION_SCALING` | `"native"`: the game draws at the resolution of the window, or of the display (or `display.resolution`) fullscreen. `"original"`: the game draws the 640x480 picture of the Xbox and scales it up to the window or the display, whatever `display.mode` is. Video Setup sets it. |
 | `display.window_size` | `""` | `HALO_WINDOW_SIZE` | The size of the window, as `"<width>x<height>"`, such as `"1920x1080"`, 640x480 or more. You can change the size of the window; the game's picture takes its shape. Empty: `display.window_scale` decides. Video Setup's Window Size sets it, from sizes of each shape (4:3, 16:10, 16:9 and 21:9) that fit the desktop; it shows with Windowed. |
 | `display.window_scale` | `2` | `HALO_WINDOW_SCALE` | Used when `display.window_size` is empty: the size of the window, as a multiple of 640x480. |
-| `display.vsync` | `false` (Linux, Windows, macOS); `true` (iOS, Android) | `HALO_NO_VSYNC=1` sets `false` | `true`: each frame waits for the display. `false`: as many frames as `display.max_fps` allows (twice the refresh rate by default). Under gamescope (the Steam Deck's Game Mode, the Steam Frame), the Linux builds read it as `true` where it is commented out, since gamescope shows one frame each refresh. With Vulkan, `false` presents in mailbox mode where the display has it (no tearing), else immediately. On macOS, `false` shows the newest frame at each refresh, with the older one dropped (no tearing). The VR mode's headset paces itself. |
+| `display.vsync` | `false` (Linux, Windows, macOS); `true` (iOS, Android) | `HALO_NO_VSYNC=1` sets `false` | `true`: each frame waits for the display. `false`: as many frames as `display.max_fps` allows (twice the refresh rate by default). With Vulkan, `false` presents in mailbox mode where the display has it (no tearing), else immediately. On macOS, `false` shows the newest frame at each refresh, with the older one dropped (no tearing). The VR mode's headset paces itself. |
 | `display.max_fps` | `0` | `HALO_MAX_FPS` | With vsync off, the most frames each second. `0`: twice the display's refresh rate. `-1`: no limit, which can hang some Intel graphics (Raptor Lake), resetting the desktop's graphics too. |
 | `display.battery_saver` | `"off"` | `HALO_BATTERY_SAVER` | Draw less, for a longer battery and a cooler machine. `"on"`: each frame stays on screen for a whole number of the display's refreshes, 30 to 60 frames each second (60 at 60 or 120 Hz, 45 at 90 Hz), and the settings `display.graphics` chooses that are commented out are drawn at their Classic values; those set keep their own. `"auto"`: on while the machine runs on its battery, off on its charger, as SDL says (a machine without a battery, or one that cannot tell, is taken to be on its charger). `"off"`: never. Not in VR. The game plays the same. Video Setup > Battery Saver. Refer to "Battery saver". |
 | `display.graphics` | `"enhanced"` | `HALO_GRAPHICS` | The look of the 3D view, as one choice. `"classic"`: as the Xbox drew it. `"enhanced"`: the port's improvements together, each as far as the machine's GPU does it well. It chooses `display.anti_aliasing`, `display.anisotropic_filtering`, `display.shadow_resolution`, `display.per_pixel_lighting`, `display.model_detail` and `display.dynamic_lights` where they are commented out; each of them set wins over it. Video Setup > Graphics > Preset. Refer to "Classic and Enhanced". |
@@ -843,8 +845,8 @@ The 64-bit ARM build downloads `OpenH1-Linux-ARM64.zip` (or
 
 The game calculates its world at 30 Hz, as on the Xbox. On the Xbox, the
 game showed one frame for each calculation (tick). This port shows more:
-on Linux, Windows and macOS, without vsync, up to twice the refresh rate (`display.max_fps`); with vsync (iOS, Android, the Steam
-Deck's Game Mode, or `display.vsync = true`), one frame for each
+on Linux, Windows and macOS, without vsync, up to twice the refresh rate (`display.max_fps`); with vsync (iOS, Android, or
+`display.vsync = true`), one frame for each
 refresh of the display, for example at 60, 120 or 240 Hz.
 
 Each frame shows the world between the last two ticks
