@@ -1144,6 +1144,36 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 	}
 }
 
+/* debug.test_input "menu:...": its "click:<x>:<y>" (x and y, 0 to 1 of the
+window) clicks the menus' pointer there, once, in its second
+(platform_ui_pointer_read, sdl_platform.c: the mouse's own path through the
+menus) */
+int platform_test_menu_click(float *x, float *y)
+{
+	static Uint64 clicked_step = (Uint64)-1;
+	Uint64 step;
+	const char *token = test_input_menu;
+	size_t length;
+
+	if (!test_input_menu[0])
+		return 0;
+	step = (SDL_GetTicks() - test_input_menu_since) / 1000;
+	for (length = 0;; step--)
+	{
+		token += strspn(token, " ,");
+		length = strcspn(token, " ,");
+		if (!length || !step)
+			break;
+		token += length;
+	}
+	step = (SDL_GetTicks() - test_input_menu_since) / 1000;
+	if (!length || strncmp(token, "click:", 6) || step == clicked_step ||
+		sscanf(token + 6, "%f:%f", x, y) != 2)
+		return 0;
+	clicked_step = step;
+	return 1;
+}
+
 /* debug.test_input "script:<event>;<event>...": the controller played on
 the simulation's clock (sim_trace_scenario_seconds), in seconds from the
 scenario's start, so that one script plays alike at 30, 60 and 120 steps a
