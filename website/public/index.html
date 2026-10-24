@@ -159,6 +159,15 @@ h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stret
 .co.west .lbl { left: auto; right: -14px; }
 .co.down .leader { bottom: auto; top: 9px; background: linear-gradient(180deg, var(--green), rgba(157, 255, 60, 0.25)); }
 .co.down .lbl { bottom: auto; top: calc(var(--len, 44px) + 9px); }
+.lat { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+.lat li { display: grid; grid-template-columns: minmax(130px, 210px) 1fr; gap: 16px; align-items: center; }
+.lat .who { color: var(--soft); font-size: 15px; }
+.lat .who small { display: block; color: var(--muted); font: 500 11px/1.4 var(--mono); }
+.lat .bar { position: relative; height: 34px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); overflow: hidden; }
+.lat .bar i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, rgba(157,255,60,.25), var(--green)); box-shadow: 0 0 18px var(--glow); }
+.lat .bar.old i { background: rgba(238,244,234,.18); box-shadow: none; }
+.lat .bar b { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); font: 700 14px/1 var(--mono); color: var(--text); }
+@media (max-width: 560px) { .lat li { grid-template-columns: 1fr; gap: 6px; } }
 .legend { display: none; margin: 16px 0 0; padding: 0; list-style: none; counter-reset: c; }
 .legend.always { display: block; }
 .legend li { counter-increment: c; position: relative; padding: 6px 0 6px 34px; color: var(--soft); font-size: 15px; }
@@ -489,12 +498,32 @@ footer .legal a { color: var(--soft); }
     </div>
   </section>
 
-  <!-- 05: VR -->
+  <!-- 05: responsiveness, measured -->
+  <section class="sec" id="fast" aria-labelledby="fast-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <div class="reveal">
+          <p class="kicker mono">05 · Responsive</p>
+          <h2 id="fast-title">Press. <span class="lit">It happens.</span></h2>
+        </div>
+        <p class="reveal d1">The time from your click to the shot on screen, measured in the game. The view turns the frame you move the mouse, your gun is drawn from the newest moment, and on OpenH1's own servers your input lands on a step up to 120 times a second instead of 30.</p>
+      </div>
+      <ul class="lat reveal" aria-label="Milliseconds from pressing fire to the frame that shows it, median">
+        <li><span class="who">Before<small>this port, 30 tick</small></span><span class="bar old"><i style="width:100%"></i><b>55 ms</b></span></li>
+        <li><span class="who">Now, Legacy servers<small>30 tick, plays with OpenCE</small></span><span class="bar"><i style="width:36%"></i><b>20 ms</b></span></li>
+        <li><span class="who">OpenH1 60 Tick<small>OpenH1's own servers</small></span><span class="bar"><i style="width:20%"></i><b>11 ms</b></span></li>
+        <li><span class="who">OpenH1 120 Tick<small>OpenH1's own servers</small></span><span class="bar"><i style="width:11%"></i><b>6 ms</b></span></li>
+      </ul>
+      <p class="caption mono">Measured in the game: pressing fire to the frame that shows the shot, median of 21 presses at each rate, a Mac, a local game with bots · your display adds its own few milliseconds · mouse sensitivity is 1:1 with Counter-Strike 2 (0.022° a count), read raw</p>
+    </div>
+  </section>
+
+  <!-- 06: VR -->
   <section class="sec" id="vr" aria-labelledby="vr-title">
     <div class="wrap">
       <div class="sec-head">
         <div class="reveal">
-          <p class="kicker mono">05 · VR on the Steam Frame</p>
+          <p class="kicker mono">06 · VR on the Steam Frame</p>
           <h2 id="vr-title">Step <span class="lit">inside it.</span></h2>
         </div>
         <p class="reveal d1">Made on a Steam Frame and drawn with Vulkan: the game in stereo, your head tracked, and your hands doing what the buttons did. It plays on PC headsets through OpenXR too.</p>
@@ -510,12 +539,12 @@ footer .legal a { color: var(--soft); }
     </div>
   </section>
 
-  <!-- 06: platforms -->
+  <!-- 07: platforms -->
   <section class="sec" id="platforms" aria-labelledby="platforms-title">
     <div class="wrap">
       <div class="sec-head">
         <div class="reveal">
-          <p class="kicker mono">06 · Platforms</p>
+          <p class="kicker mono">07 · Platforms</p>
           <h2 id="platforms-title">Wherever <span class="lit">you play.</span></h2>
         </div>
         <p class="reveal d1">One game, compiled for each machine and drawn by its own renderer. Keyboard and mouse, controllers, touch, or your own two hands.</p>
@@ -531,12 +560,12 @@ footer .legal a { color: var(--soft); }
     </div>
   </section>
 
-  <!-- 07: under the hood, dense -->
+  <!-- 08: under the hood, dense -->
   <section class="sec" id="hood" aria-labelledby="hood-title">
     <div class="wrap">
       <div class="sec-head">
         <div class="reveal">
-          <p class="kicker mono">07 · Under the hood</p>
+          <p class="kicker mono">08 · Under the hood</p>
           <h2 id="hood-title">For the <span class="lit">purists.</span></h2>
         </div>
         <p class="reveal d1">What makes it the original, and what it adds. Every line is in the project's documentation.</p>
@@ -545,7 +574,7 @@ footer .legal a { color: var(--soft); }
         <dl>
           <div><dt>Code</dt><dd>The Xbox game's decompiled C, compiled natively, with few and marked changes<small>Not emulation. Xbox build 2342.</small></dd></div>
           <div><dt>Simulation</dt><dd>30 ticks a second, as shipped<small>The same calculations on every machine. The scorecard holds every change bit-identical at 30 Hz, tick by tick.</small></dd></div>
-          <div><dt>60 / 120 Hz</dt><dd>Sub-steps for what you feel in your hands, in progress<small>Every rate plays exactly as 30 does</small></dd></div>
+          <div><dt>60 / 120 Hz</dt><dd>Sub-steps for what you feel in your hands, offline and on OpenH1 60 and 120 Tick servers<small>Every rate plays exactly as 30 does</small></dd></div>
           <div><dt>Frames</dt><dd>One per refresh of your display<small>Each frame drawn between the last two ticks; nothing the game calculates changes</small></dd></div>
           <div><dt>Architecture</dt><dd>A 64-bit program, with the game compiled as a 32-bit-pointer guest inside it<small>ILP32: arm64_32 on ARM, x32 on x86-64</small></dd></div>
           <div><dt>Renderers</dt><dd>Vulkan 1.3 on Linux, Android and in VR; Metal on the Mac<small>One command stream into both</small></dd></div>
@@ -554,7 +583,7 @@ footer .legal a { color: var(--soft); }
           <div><dt>Picture</dt><dd>SMAA or FXAA, anisotropic filtering, sharper shadows, per-pixel lighting<small>One switch: Video Setup › Graphics › Preset, Classic or Enhanced</small></dd></div>
           <div><dt>Lights</dt><dd>Per-pixel, inverse-square, in linear light, with a glow on every bolt<small>Placed where their objects are drawn, between ticks</small></dd></div>
           <div><dt>Display</dt><dd>Any resolution from 640 × 480, a field of view up to 150°, a HUD redrawn at 8×</dd></div>
-          <div><dt>Network</dt><dd>Plays online with OpenCE players; internet play needs no servers to set up</dd></div>
+          <div><dt>Network</dt><dd>Legacy games play online with OpenCE players; OpenH1 60 and 120 Tick games send every sub-step of your input<small>Internet play needs no servers to set up</small></dd></div>
           <div><dt>Mods</dt><dd>Texture, sound, text and model packs from the game's Mods menu; Custom Edition maps that share themselves</dd></div>
           <div><dt>Licence</dt><dd>Free software, AGPL-3.0-or-later<small>No game data included</small></dd></div>
         </dl>
@@ -562,12 +591,12 @@ footer .legal a { color: var(--soft); }
     </div>
   </section>
 
-  <!-- 08: your copy -->
+  <!-- 09: your copy -->
   <section class="sec" id="start" aria-labelledby="start-title">
     <div class="wrap">
       <div class="byo reveal">
         <div>
-          <p class="kicker mono">08 · Your copy</p>
+          <p class="kicker mono">09 · Your copy</p>
           <h2 id="start-title">Bring your <span class="lit">own game.</span></h2>
           <p style="color:var(--soft);max-width:460px">OpenH1 contains none of the game's data. You need your own Xbox disc image of the game. Any version works.</p>
         </div>
@@ -586,7 +615,7 @@ footer .legal a { color: var(--soft); }
     <div class="wrap">
       <div class="sec-head">
         <div class="reveal">
-          <p class="kicker mono">09 · Get it</p>
+          <p class="kicker mono">10 · Get it</p>
           <h2 id="get-title">Pick your <span class="lit">machine.</span></h2>
         </div>
         <p class="reveal d1">Free, and always the latest build. More machines are on the way.</p>
