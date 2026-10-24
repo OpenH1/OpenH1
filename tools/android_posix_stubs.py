@@ -18,6 +18,15 @@ Usage: android_posix_stubs.py [--base-register] posix.h output.c imports.list
 import re
 import sys
 
+# the pointer arguments that are the host's handles, not guest addresses:
+# a 64-bit host's directory streams are handles from 1 to 64
+# (posix_files.c's directory_handle_new), which posix_directory_open
+# returns. With the base register they must reach the host as they are;
+# made host addresses (base plus the handle), the host found no stream, and
+# every directory listed empty (the macOS build's saved games and player
+# profiles, never found again after a restart)
+HANDLE_ARGUMENTS = {("posix_directory_next", "directory"), ("posix_directory_close", "directory")}
+
 
 def main():
     arguments = sys.argv[1:]
@@ -56,7 +65,12 @@ def main():
         if params != "void":
             for param in params.split(","):
                 m = re.search(r"(\w+)\s*$", param.strip())
-                if base_register and "*" in param:
+                if base_register and (name, m.group(1)) in HANDLE_ARGUMENTS:
+                    # (a handle the host made, not a guest address: as it
+                    # came, zero-extended)
+                    args.append(f"(unsigned long long)(unsigned int){m.group(1)}")
+                    host_params.append("unsigned long long")
+                elif base_register and "*" in param:
                     args.append(f"host_address({m.group(1)})")
                     host_params.append("unsigned long long")
                 else:
