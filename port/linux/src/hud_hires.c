@@ -2,7 +2,7 @@
 HUD_HIRES.C
 
 The high-res HUD's textures (hud_hires.h): which one stands for a bitmap being
-uploaded, and each one's GL texture.
+uploaded, and each one's image (xgpu_images.h).
 
 Which bitmap is at an address the game knows (from the loaded map's tags:
 port/linux/game/hud_hires_tags.c). Each texture is decoded from its PNG when
@@ -14,8 +14,8 @@ MB for the message icons' sheet). On the desktop builds a map's HUD PNGs
 are decoded as it loads, on a thread of their own, so that the HUD's first
 frame only uploads them (decoding them there held that frame up); what is
 decoded and not drawn is let go when the map is unloaded.
-They are drawn with linear filtering and their mip levels (xgpu_gl.c,
-configure_sampler), as they are larger than they appear.
+They are drawn with linear filtering and their mip levels (the backends'
+samplers), as they are larger than they appear.
 
 The embedded PNGs are the ones tools/hud_assets.py, title_assets.py and
 button_assets.py write. A menus folder's PNGs can be anyone's. Only 8-bit
@@ -31,7 +31,7 @@ zlib (port/third_party/zlib).
 
 #include "zlib_prefixed.h"
 
-#if !defined(HALO_ANDROID)
+#ifndef HALO_ANDROID
 #define HUD_HIRES_DECODE_AHEAD
 #include <pthread.h>
 #endif
@@ -600,7 +600,7 @@ failed:
 	return NULL;
 }
 
-/* a GL texture of a decoded PNG's texels (which it frees), as below */
+/* an image of a decoded PNG's texels (which it frees), as below */
 static unsigned int png_pixels_texture(unsigned char *pixels, unsigned long width, unsigned long height,
 	unsigned long *levels)
 {

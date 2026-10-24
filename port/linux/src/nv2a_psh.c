@@ -3,7 +3,8 @@ NV2A_PSH.C
 
 Decoding of Xbox pixel shaders - the NV2A texture shader stages and
 register combiners, as held in the pixel shader render states - into the
-shader intermediate form (xgpu_shader.h); xgpu_glsl.c writes the GLSL.
+shader intermediate form (xgpu_shader.h); xgpu_spirv.c and xgpu_msl.c write
+the shaders.
 
 A pixel shader runs in three parts:
 - texture stages 0-3 (PSTextureModes) fetch t0-t3, some of them using the

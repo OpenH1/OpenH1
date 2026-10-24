@@ -120,9 +120,8 @@ cannot draw into the app's library, and checks the rest against it):
 1. It decodes the vertex program's microcode (`nv2a_vertex_program_decode`)
    and the pixel key (`xgpu_stream_pixel_key_restore`, then
    `nv2a_pixel_program_decode`).
-2. It writes their shaders: GLSL with `xgpu_glsl.c`, for example.
+2. It writes their shaders: SPIR-V with `xgpu_spirv.c`, or MSL with
+   `xgpu_msl.c`.
 3. It makes the pipeline from the key, the layout and the stages.
 
-An OpenGL backend could compile and link the programs at start-up, or keep
-their binaries (`glGetProgramBinary`). A Vulkan one could fill its pipeline
-cache.
+A Vulkan backend can fill its pipeline cache.

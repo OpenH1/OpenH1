@@ -44,8 +44,7 @@ Everything runs on the p2p thread, under p2p_lock.
 #include <stdlib.h>
 #include <string.h>
 
-/* the platform layer's (platform.h, which this file needs no more of: a
-test builds it for the computer it runs on, port/web/tests/webrtc_native.c) */
+/* the platform layer's (platform.h, which this file needs no more of) */
 void platform_log(const char *format, ...);
 
 enum

@@ -1,5 +1,5 @@
 """What the native builds' ninja rules share (tools/linux_guest_build.py,
-android_build.py, macos_build.py, windows_build.py, web_build.py): the game's
+android_build.py, macos_build.py, windows_build.py): the game's
 sources and their settings (port/linux/port.json), the vendored libraries and
 their flags, the configuration's defines, profile-guided optimisation, the
 SDL3 that the Linux builds bring, and the headers that give the game MSVC's
@@ -292,7 +292,7 @@ def profile_use_flags(profile: Any) -> List[str]:
 # ---------- MSVC's semantics for the game (tools/linux_msvc_semantics.py)
 
 # what every unit of the guests' game and platform layer includes (the
-# Android, Linux, macOS and web builds; the Windows build writes its own):
+# Android, Linux and macOS builds; the Windows build writes its own):
 # the struct tags MSVC gives file scope, and the inline functions it makes
 # COMDAT, which these make weak
 SEMANTICS_DIR = Path("build/msvc_semantics")

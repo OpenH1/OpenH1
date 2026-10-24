@@ -1234,11 +1234,6 @@ void p2p_peer_name(int peer, char *name)
 	memcpy(name, p2p.peers[peer].name, sizeof(p2p.peers[peer].name));
 }
 
-unsigned short p2p_tunnel_local_port(void)
-{
-	return p2p.tunnel_port;
-}
-
 /* whether a packet of this number from the peer is new: not received yet,
 nor from before the window */
 static int packet_fresh(const struct peer *peer, unsigned long long counter)
@@ -2720,7 +2715,7 @@ static int parse_invite(const char *text, unsigned char *host_hash, unsigned cha
 
 	for (search = text; *search && !start; search++)
 	{
-		/* (a link, or the web page's address with one: ?join=) */
+		/* (a link, or an address with one: ?join=) */
 		static const char *const prefixes[] = { "halo://join/", "?join=", "&join=" };
 		int prefix;
 

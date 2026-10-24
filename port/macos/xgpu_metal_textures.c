@@ -2,8 +2,8 @@
 XGPU_METAL_TEXTURES.C
 
 The Metal backend's cache of the Xbox's textures and the high-res
-replacements' images (xgpu_metal_textures.h), as the OpenGL backend's
-texture cache (port/linux/src/xbox_textures.c) has them, with the same
+replacements' images (xgpu_metal_textures.h), as the Vulkan backend's
+(port/linux/vulkan/xgpu_vulkan_textures.c) has them, with the same
 decoding (xbox_texture_decode.c, built into the host beside a stand-in for
 the platform header: tools/macos_build.py).
 
@@ -26,8 +26,7 @@ An image (a high-res replacement: port/linux/src/xgpu_images.h) is found by
 its number and made again when its serial changes; the backend makes its
 levels from the first.
 
-A texture no stage has drawn for half a minute of time is let go, as the
-OpenGL cache's are.
+A texture no stage has drawn for half a minute of time is let go.
 
 ASTC (display.astc_textures, xgpu_astc_chosen: on a GPU that samples ASTC
 and not BC, an iPhone's): a 2D or cube DXT texture's blocks are transcoded
@@ -56,7 +55,7 @@ left decoded.
 #define BUCKET_COUNT 4096
 /* the textures are looked over every SWEEP_SECONDS, and those no stage
 has drawn since the look SWEEP_COUNT before are let go: 30 to 40 seconds
-after they were last drawn, as the OpenGL cache (xbox_textures.c). Counted
+after they were last drawn. Counted
 in time, not frames: 1800 frames, half a minute at 60 frames a second, was
 15 seconds on a 120 Hz display */
 #define SWEEP_SECONDS 10
@@ -582,7 +581,7 @@ static struct entry *xbox_entry_find(const struct xgpu_stream_texture_stage *sta
 	xgpu_texture_describe(format_word, size_word, &entry->description);
 	entry->address = CONTIGUOUS_BASE | data;
 	/* (one larger than the device takes is never drawn, nor one outside the
-	contiguous memory: as the OpenGL cache) */
+	contiguous memory) */
 	if (xgpu_texture_size_supported(&entry->description))
 	{
 		uint64_t size = (uint64_t)xgpu_texture_face_size(&entry->description) * (entry->description.cube_map ? 6 : 1);

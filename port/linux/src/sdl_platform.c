@@ -124,7 +124,6 @@ void halo_loading_ready(void)
 	}
 }
 
-
 static struct platform_input_state input_state;
 /* keys pressed since the last read, so a press and release between two
 reads still counts as a press (input injected on Android, or a slow frame) */
@@ -199,7 +198,7 @@ extern const unsigned int platform_window_icon[];
 extern const unsigned long platform_window_icon_size;
 #endif
 
-#if !defined(HALO_ANDROID)
+#ifndef HALO_ANDROID
 /* the maps folder checked to hold the Xbox maps (platform_maps_folder_check).
 When it holds Halo PC's instead, or no ui.map, the player is told where each
 kind goes and the game quits, rather than failing to load Halo PC's ui.map
@@ -316,7 +315,7 @@ BOOL platform_sdl_initialize(void)
 #if !defined(HALO_ANDROID) && (defined(HALO_WINDOWS) || defined(HALO_MACOS))
 /* ---------- first start without game data (xbox_files.c), on Windows and
 macOS: the system's dialogs. (The Linux builds' is first_start.c, in the
-game's own window; the web page imports the data itself) */
+game's own window) */
 
 struct data_extraction
 {
@@ -1332,7 +1331,6 @@ static Uint64 frame_interval_ns(void)
 	return rate > 0.0f ? (Uint64)(1e9f / rate) : 0;
 }
 
-
 void platform_video_swap(void)
 {
 	Uint64 swap_start = SDL_GetTicks(), swap_time;
@@ -1704,7 +1702,6 @@ void platform_show_message(const char *title, const char *message)
 	platform_message_pending = TRUE;
 	pthread_mutex_unlock(&platform_message_lock);
 }
-
 
 int platform_ask(const char *title, const char *text, const char *const *labels, int count, int default_index)
 {

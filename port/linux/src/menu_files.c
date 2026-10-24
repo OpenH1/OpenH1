@@ -431,11 +431,11 @@ static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 				if (length)
 				{
 					if ((length != 7 || strncmp(name, "desktop", 7)) && (length != 7 || strncmp(name, "android", 7)) &&
-						(length != 3 || strncmp(name, "web", 3)) && (length != 2 || strncmp(name, "vr", 2)) &&
-						(length != 3 || strncmp(name, "hdr", 3)) && (length != 5 || strncmp(name, "touch", 5)) &&
-						(length != 7 || strncmp(name, "pointer", 7)) && (length != 8 || strncmp(name, "computer", 8)))
+						(length != 2 || strncmp(name, "vr", 2)) && (length != 3 || strncmp(name, "hdr", 3)) &&
+						(length != 5 || strncmp(name, "touch", 5)) && (length != 7 || strncmp(name, "pointer", 7)) &&
+						(length != 8 || strncmp(name, "computer", 8)))
 					{
-						reader_error(reader, "platform=\"%s\" names one that is not desktop, android, web, vr, hdr, "
+						reader_error(reader, "platform=\"%s\" names one that is not desktop, android, vr, hdr, "
 							"touch, pointer or computer", attributes[index + 1]);
 						return 1;
 					}

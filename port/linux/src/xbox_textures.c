@@ -1,8 +1,10 @@
 /*
 XBOX_TEXTURES.C
 
-The OpenGL texture cache of the Xbox's textures, and the high-res
-replacements drawn in their place; the decoding is xbox_texture_decode.c.
+The high-res replacements drawn in place of the Xbox's textures, and the
+Custom Edition channel orders; the host caches the textures themselves
+(port/linux/vulkan/xgpu_vulkan_textures.c, port/macos/xgpu_metal_textures.c),
+decoded by xbox_texture_decode.c.
 
 An Xbox texture is a Direct3D header - Common, Data (physical address),
 Lock, Format and Size - over texels in guest memory. Power-of-two textures
@@ -14,10 +16,8 @@ converted to 32-bit BGRA on upload.
 A cached texture stays valid until any page it was read from is written;
 memory_watch.c detects that by write-protecting the pages.
 
-Where the renderer's backend is on the host (HALO_RENDER_STREAM), the host
-caches the textures (port/macos/xgpu_metal_textures.c), and here are only
-the replacements, as images (xgpu_images.h), and the Custom Edition channel
-orders, which the command stream hands it.
+Here are the replacements, as images (xgpu_images.h), and the Custom
+Edition channel orders, which the command stream hands the host.
 */
 
 #include "xgpu_images.h"
@@ -152,7 +152,7 @@ unsigned long xgpu_texture_channels(unsigned long address)
 
 /* ---------- the replacements, where the renderer is on the host
 
-What texture_entry_result finds for the OpenGL cache: the high-res text's
+What the host's cache draws in a texture's place: the high-res text's
 atlas, a menu's art, a high-res HUD texture for a placeholder bitmap, or
 for the bitmap whose pixels these are. Which HUD texture stands for a
 bitmap's pixels is found again whenever they change (the write tracking),

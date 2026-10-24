@@ -7,7 +7,6 @@ the game draws it, so a deleted image's pixels are freed only after the
 frames in flight are done.
 */
 
-
 #include "xgpu_images.h"
 
 #include <stdlib.h>

@@ -1,7 +1,7 @@
 /*
 SDL_PLATFORM.H
 
-Window, OpenGL context and input state shared by the renderer and the
+Window and input state shared by the renderer and the
 controller emulation (see sdl_platform.c).
 */
 
@@ -61,7 +61,7 @@ struct platform_keystroke
 };
 
 BOOL platform_sdl_initialize(void);
-/* creates the window and makes its OpenGL context current on this thread */
+/* creates the window, which the host's renderer draws */
 BOOL platform_video_initialize(unsigned long width, unsigned long height);
 /* Loading owns presentation until phase 2 hands the next game picture back.
 Phase 0 waits until its presenter no longer touches the default framebuffer. */

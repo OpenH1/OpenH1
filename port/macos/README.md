@@ -28,8 +28,7 @@ maps and the campaign. It was tested on an Apple A18 Pro with macOS 27.
   folders (`brew install llvm lld`).
 - CMake, for SDL3.
 - A network connection for the first build. `configure.py` downloads musl
-  1.2.5, SDL 3.4.16 and the Khronos OpenGL ES headers (declarations only,
-  for the guest's renderer code) to `build/macos/third_party`.
+  1.2.5 and SDL 3.4.16 to `build/macos/third_party`.
 
 ## Start the game
 
@@ -289,8 +288,8 @@ rewrites AArch64 code:
 The host enters guest code through `port/android/host/host_enter.S`, which
 sets `x21`. The guest's calls to the host go through import stubs that
 change the pointer arguments into host addresses (`tools/android_imports.py`,
-from the prototypes in `guest/runtime/guest_host.h`; the OpenGL and posix
-wrappers do so in C). The host changes the pointers inside the structures
+from the prototypes in `guest/runtime/guest_host.h`; the posix wrappers do
+so in C). The host changes the pointers inside the structures
 that the guest gives it (`iovec`, `timespec`, ...).
 
 The guest's memory is `port/android/host/host_memory_base.c`: the 4 GB
@@ -344,12 +343,9 @@ memory (`host_run_on_stack`). The other threads are made as on Linux.
 ### Renderer
 
 The guest has the renderer's front end (`src/d3d8_device.c`) and, in place
-of a backend, the command stream's encoder (`src/xgpu_stream_encode.c`,
-built with `HALO_RENDER_STREAM`); the OpenGL backend (`src/xgpu_gl.c`,
-`src/xgpu_post.c`) is not built into it. The host gives it no OpenGL:
-`host_renderer.c` makes each OpenGL entry point stop the game with a
-message, and SDL is built without OpenGL. The renderer of this build is
-Metal's, in the host (below).
+of a backend, the command stream's encoder (`src/xgpu_stream_encode.c`).
+SDL is built without OpenGL. The renderer of this build is Metal's, in the
+host (below).
 
 ## Metal
 
@@ -361,8 +357,8 @@ in the guest) writes each frame as a command stream into its memory
 plays it into the backend (`port/android/host/host_render_stream.c`, the
 backend's table in `xgpu_metal_stream.m`) while the game simulates the next
 frame. The shaders are the MSL emitter's (`port/linux/src/xgpu_msl.c`) and
-the Xbox's textures are decoded as the OpenGL backend decodes them
-(`port/linux/src/xbox_texture_decode.c`), both built into the host.
+the Xbox's textures are decoded by `port/linux/src/xbox_texture_decode.c`,
+both built into the host.
 
 When the stream has no records ready, the render thread waits for either
 new records or a GPU completion notification. It can prepare the next
@@ -706,7 +702,7 @@ command stream's backend table. They run on one thread, the render thread.
 - **Textures** (`xgpu_metal_textures.c`). An Xbox texture is found by its
   header's Data, Format and Size (and a palettized one's palette, and a
   Custom Edition map's channel order), read from the guest's memory and
-  decoded as the OpenGL backend does (`xbox_texture_decode.c`): DXT as BC1
+  decoded by `xbox_texture_decode.c`: DXT as BC1
   to BC3, the rest to BGRA. On a GPU without BC (an iPhone's), DXT is
   transcoded to ASTC 4x4 (`display.astc_textures`; `port/linux/astc`,
   `port/ios/README.md`); `"always"` does so on a Mac too, and
@@ -724,24 +720,24 @@ command stream's backend table. They run on one thread, the render thread.
   texture of each, and its mip levels, again when its serial changes.
 - **A draw that samples its own target** (Metal cannot sample an attachment
   of the pass) samples a copy, made again once the target has been drawn
-  into since, as the web build's OpenGL does.
+  into since.
 - **Fans and line loops** (the game draws fans in immediate mode) are made
   into lists.
 - **The enhanced dynamic lights** (`display.dynamic_lights = "enhanced"`, the
   Enhanced preset's): the MSL emitter's lit structure and models
-  (`port/linux/src/xgpu_msl.c`, the GLSL emitter's lighting operation for
-  operation) read the frame's lights' block and their grid's cells from two
+  (`port/linux/src/xgpu_msl.c`, the SPIR-V emitter's lighting operation
+  for operation) read the frame's lights' block and their grid's cells from two
   buffers (`XGPU_METAL_BUFFER_DYNAMIC_LIGHTS`, `_DYNAMIC_LIGHT_CELLS`), which
   the stream's upload record copies into the frame's upload ring, so that
   the draws after it read them in the stream's order without a pass broken;
   where a frame has sent none, zeroed ones. The glow about each plasma bolt
-  is a pass of its own, as OpenGL's: a camera-facing quad about each light
+  is a pass of its own, as Vulkan's: a camera-facing quad about each light
   (the emitter's `xgpu_msl_halo_shader`), added to the 3D view's colour
   after its transparent geometry, faded against the depth the scene was
   drawn with (read at each pixel; a multisampled depth target's resolved
   first, `xgpu_metal_texture_resolve`).
 - **Anti-aliasing** (`display.anti_aliasing = "smaa"`, the Enhanced preset's,
-  or `"fxaa"`): the OpenGL backend's passes (`port/linux/src/xgpu_post.c`)
+  or `"fxaa"`): the Vulkan backend's passes (`tools/vulkan_post_shaders.py`)
   over the window's 3D view, after the glows and before the HUD and the
   menus, which stay sharp, drawn through the backend's own functions
   (`xgpu_metal_post.c`): the target's pixels copied, then FXAA, or SMAA's

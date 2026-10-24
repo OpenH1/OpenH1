@@ -14,8 +14,8 @@ import java.util.Locale;
 
 /**
  * Copies the maps folder out of the player's Xbox disc image of Halo, for
- * LauncherActivity, as the desktop games do (port/linux/src/xiso.c; the web
- * page's is port/web/site/xiso-worker.js). The image is a document the
+ * LauncherActivity, as the desktop games do (port/linux/src/xiso.c). The
+ * image is a document the
  * player picked, read through its FileChannel at absolute positions.
  *
  * Written from a description of the Xbox's disc file system, XDVDFS

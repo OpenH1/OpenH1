@@ -576,7 +576,7 @@ void collision_log_start_time(
 {
 	/* port: the clock is read only when the times are shown
 	(collision_log_time): this runs twice for every collision test, and a
-	read of the clock is slow in a browser */
+	read of the clock costs */
 	if (!collision_log_time)
 	{
 		start_time->QuadPart = 0;

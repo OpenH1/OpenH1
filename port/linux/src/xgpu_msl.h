@@ -3,19 +3,19 @@ XGPU_MSL.H
 
 Metal Shading Language from the shader intermediate form (xgpu_shader.h),
 for the Metal backend (the native macOS app): xgpu_msl.c. The programs are
-the GLSL emitter's (xgpu_glsl.c), spelled for Metal and its conventions:
+the SPIR-V emitter's (xgpu_spirv.c), spelled for Metal and its conventions:
 
 - clip space is Direct3D's (z 0 to 1, the first row at the top): the
   position is the one the game's programs mean, nothing flipped;
 - vertex attributes come through a vertex descriptor ([[stage_in]]): the
   attributes a program reads, at [[attribute(n)]] for v<n>. A D3DCOLOR is
-  MTLVertexFormatUChar4Normalized_BGRA (the shader reads it as RGBA, as
-  GL_BGRA gives it); NORMPACKED3 is MTLVertexFormatUInt, unpacked here; the
-  unnormalized shorts (D3DVSDT_SHORT1-4) are MTLVertexFormatShort1-4, read
-  as integers and converted here (Metal converts no integer format to
-  float); everything else is read as float4, the missing components 0, 0,
-  0, 1. An attribute the program reads that the declaration lacks is the
-  device's (D3DDevice_SetVertexData4f, 0, 0, 0, 1 at first): a buffer with
+  MTLVertexFormatUChar4Normalized_BGRA (the shader reads it as RGBA);
+  NORMPACKED3 is MTLVertexFormatUInt, unpacked here; the unnormalized shorts
+  (D3DVSDT_SHORT1-4) are MTLVertexFormatShort1-4, read as integers and
+  converted here (Metal converts no integer format to float); everything
+  else is read as float4, the missing components 0, 0, 0, 1. An attribute
+  the program reads that the declaration lacks is the device's
+  (D3DDevice_SetVertexData4f, 0, 0, 0, 1 at first): a buffer with
   MTLVertexStepFunctionConstant;
 - the vertex constants (192 float4) are buffer XGPU_MSL_BUFFER_CONSTANTS of
   the vertex stage (setVertexBytes: 3 KB); the draw's other values, struct
@@ -23,7 +23,7 @@ the GLSL emitter's (xgpu_glsl.c), spelled for Metal and its conventions:
   (setVertexBytes and setFragmentBytes);
 - a texture and a sampler for each stage, [[texture(n)]] and [[sampler(n)]];
   Metal samplers have no LOD bias, so D3DTSS_MIPMAPLODBIAS is the lookup's
-  (texture_lod_bias, as on OpenGL ES);
+  (texture_lod_bias);
 - border colors Metal cannot hold (it has transparent black, opaque black
   and opaque white; the motion tracker's is 0x46000000): the sampler clamps
   to the edge, and the shader mixes the stage's color in where the
@@ -106,8 +106,8 @@ xgpu_fragment. Returns a malloc'd string. */
 char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_msl_options *options);
 
 /* the glow about each plasma bolt's light (the enhanced dynamic lights,
-xgpu_backend.h's xgpu_backend_dynamic_lights_halos), as the OpenGL
-backend's program (xgpu_gl.c): xgpu_halo_vertex, a camera-facing quad of
+xgpu_backend.h's xgpu_backend_dynamic_lights_halos), as the SPIR-V
+emitter's (xgpu_spirv.h): xgpu_halo_vertex, a camera-facing quad of
 six vertices about each light ([[attribute(n)]]: XGPU_MSL_HALO_MIDDLE, its
 light's middle and the glow's size; _COLOR; _CORNER, -1 or 1 each way),
 projected as the game's programs are; and xgpu_halo_fragment, its light

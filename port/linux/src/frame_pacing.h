@@ -2,9 +2,9 @@
 FRAME_PACING.H
 
 When the game may start its next frame, and how long its input takes to
-reach the screen: one policy for every renderer, the command stream's host
-(port/android/host/host_render_stream.c, the Metal backend first) and the
-renderer inside the game (xgpu_gl.c through d3d8_device.c).
+reach the screen: one policy for the command stream's host
+(port/android/host/host_render_stream.c) and its backends, Vulkan's and
+Metal's.
 
 A frame's input is read when the game starts it: D3DDevice_Present pumps
 the window's events after the frame before has gone to the renderer, and

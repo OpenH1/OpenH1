@@ -13,7 +13,7 @@ the ammunition and the messages are where the game puts them, toward the
 edges of the view, but no farther out than the eyes turn comfortably. On a
 cylinder layer about the head where the runtime has them
 (XR_KHR_composition_layer_cylinder), else on a quad whose image is drawn
-curved (xgpu_gl.c): from the eyes the two look the same, the cylinder's
+curved (host_vulkan_vr.c): from the eyes the two look the same, the cylinder's
 edges merely as near as its middle. The HUD's camera projects through the
 same curve (vr_render.c, vr_render_hud_to_screen), so that the waypoints are
 where they belong.
@@ -26,7 +26,7 @@ rim does not lag: it is the helmet, and turns with the head exactly.
 The HUD's elements have depths of their own (vr.hud_depth), as a helmet's
 projection would give them, not one surface: each group of them (vr.h's
 HALO_VR_HUD_GROUP_*, by where the game anchors them: hud_draw.c, hud.c) is
-drawn into an image of its own (xgpu_gl.c) and shown on a panel of its own,
+drawn into an image of its own (host_vulkan_vr.c) and shown on a panel of its own,
 a quad layer at its own distance, curved in its image as the HUD is, so
 that each element is where it was in the HUD seen from the middle of the
 head, only nearer or farther: the motion tracker nearest, tilted back as a
@@ -41,7 +41,7 @@ It looks to be on the glass (vr.hud_glass): light on it, the world seen
 through it, the glass's gold in it and its bloom, its faint reflection in
 the glass's other surface; and it reacts to the world as a helmet's display
 would (vr.hud_react): more contrast before bright light, dimmer in the
-dark, and a moment's disturbance as the shields are hit (xgpu_gl.c draws
+dark, and a moment's disturbance as the shields are hit (host_vulkan_vr.c draws
 it so, from the eyes' images' light). But its layers stay where they are,
 at 1.45 to 2.5 m, as a real visor's display is collimated beyond the glass:
 the glass itself is too near for the eyes to cross on it or focus there.
@@ -51,7 +51,7 @@ cylinders): the compositor gives each its stereo depth, and the HUD's
 pixels are not drawn into the eyes' images, whose depth is the world's.
 
 The helmet (vr.helmet_rim): the faceplate's frame about the visor, a mesh
-drawn into each eye's image (xgpu_gl.c, vr_draw_rim), before the eyes as a
+drawn into each eye's image (host_vulkan_vr.c, rim), before the eyes as a
 helmet is, where only the edges of each eye's view see it: the left eye its
 left side, the right eye its right, both its brow and its chin. It does not
 lag: it is the helmet, and turns with the head exactly.
@@ -59,8 +59,8 @@ lag: it is the helmet, and turns with the head exactly.
 The visor's glass (vr.visor_frame, just within the rim): the edges of the
 view darkened, and the glass a faint gold (no line where the visor ends: a
 line fixed in the view reads as a smudge on the lenses, or a scratch across
-it). It is drawn into each eye's image, as the rim is (xgpu_gl.c,
-vr_draw_visor), each pixel where that eye's ray meets the glass's plane: no
+it). It is drawn into each eye's image, as the rim is (host_vulkan_vr.c,
+visor), each pixel where that eye's ray meets the glass's plane: no
 layer of its own. As a quad layer, head-locked a hand's breadth before the
 eyes and reaching past both their views (out to 80 degrees), it was the
 compositor's to draw, and on the Steam Frame each eye saw a straight line
@@ -79,7 +79,7 @@ flashing as they are full; the glass's rim pulses red while they are low or
 gone, and the HUD flickers as they break and comes up as the player takes
 control. More at the glass's edges than its middle, so that nothing is
 hidden. Other effects on the glass (water, dirt, cracks, reflections) would
-be drawn with it (xgpu_gl.c, vr_draw_visor).
+be drawn with it (host_vulkan_vr.c, visor).
 */
 
 #ifdef HALO_VR
@@ -601,7 +601,7 @@ static void panel_wrap(int index, float wrap, float out[3])
 /* the direction of a point of the HUD (its angles across and up) on a
 panel that follows the visor's curve (panel_wrap): turned, then bent, its
 angle up less (or more, below) by the bend times the square of its angle
-across, as the visor's brow falls away toward the sides; the copy (xgpu_gl.c)
+across, as the visor's brow falls away toward the sides; the copy (host_vulkan_vr.c)
 undoes it */
 static void wrapped_direction(float across, float up, const float wrap[3], float out[3])
 {
@@ -782,7 +782,7 @@ void vr_visor_layers(struct vr_host_layers *layers)
 	else
 	{
 		/* tall enough for the curve's corners, which are higher on the quad
-		than its middle's top (xgpu_gl.c, vr_copy_hud) */
+		than its middle's top (host_vulkan_vr.c, copy_hud_image) */
 		float offset[3];
 
 		quaternion_rotate(layers->hud_pose.orientation, forward, offset);

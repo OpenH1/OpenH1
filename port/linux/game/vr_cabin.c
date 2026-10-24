@@ -33,7 +33,7 @@ the model as the model is drawn:
   it, 85 degrees across and 40 high, which each eye sees the world through
   at its own place, as through a window: the world at its true size and
   depth. A grate of bars slides down over it once the eye is in, then the
-  feed washes over the opening (xgpu_gl.c, vr.c's halo_vr_cockpit_display:
+  feed washes over the opening (host_vulkan_vr.c, vr.c's halo_vr_cockpit_display:
   the smart-link's look, its frame and readouts), and the bars are gone;
   getting out, it collapses dark as a screen switched off. Below it, on a holotable on the dash, the tank
   itself: its own model drawn a hand's length long with the shields' glow,
@@ -592,7 +592,7 @@ boolean vr_cabin_feed(short index)
 }
 
 /* render.c, each VR frame before the eye pass: a feed cockpit's display
-told to vr.c (halo_vr_cockpit_display: xgpu_gl.c draws its feed over the
+told to vr.c (halo_vr_cockpit_display: the VR host draws its feed over the
 opening) while the eye is in it, the grate and the feed's wash as vr_seat.c
 has them, its readouts the range where the aim meets the world and the
 vehicle's weapon's rounds (the Scorpion's shells, and its machine gun's);

@@ -309,8 +309,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     desktop's). extra_runtime are more guest runtime sources, and
     extra_imports more lists of the host functions they import;
     updater_cflags are the desktop self-updater's defines
-    (port/linux/src/updater.c), for a guest that has it (the guests' renderer
-    is the host's, through the command stream: no OpenGL entry points).
+    (port/linux/src/updater.c), for a guest that has it.
     base_register builds a guest whose memory lies
     at any base the host chooses (tools/guest_base_register.py) rather than
     in the low 4 GB, for an architecture that has one

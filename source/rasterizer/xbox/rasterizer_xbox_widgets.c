@@ -167,9 +167,9 @@ static boolean warned_about_too_many_transparent_geometry_groups;
 
 /* port: the 3D sprites of a light volume (a plasma bolt's glow, a couple
 of hundred of them) as one list of quads, instead of a draw each: each
-draw is a call into the browser on the web, and work for the driver
-everywhere; the Xbox drew them from its push buffer. Only the sprites'
-own registers differ between them (rasterizer_widget_batch_sprites). */
+draw is work for the command stream and the driver; the Xbox drew them from
+its push buffer. Only the sprites' own registers differ between them
+(rasterizer_widget_batch_sprites). */
 #define WIDGET_SPRITE_BATCH_MAXIMUM 256
 
 struct widget_sprite_batch_vertex

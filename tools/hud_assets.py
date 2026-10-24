@@ -76,7 +76,7 @@ LAYOUT = ASSETS / "layout.json"
 # Aerocatia's and Jessie's art (NOTICE.md)
 ART = ASSETS / "art"
 # the textures' size over the Xbox bitmaps', but no side longer than every
-# OpenGL ES 3 device can take
+# phone's GPU can take
 SCALE = 8
 MAXIMUM_SIZE = 2048
 
@@ -879,7 +879,7 @@ def coverage(alpha: np.ndarray) -> np.ndarray:
     outline (covered texels next to uncovered ones) the share their alpha has
     of their brightest neighbour's. The meter shader reads only blue and
     alpha; the game eases the meter's darkening of what is behind it by this
-    (port/linux/src/xgpu_glsl.c, coverage_alpha), which on the Xbox stopped at
+    (port/linux/src/xgpu_spirv.c, coverage_alpha), which on the Xbox stopped at
     its point-sampled texels' edges, and filtered would leave a dark fringe."""
     from scipy import ndimage
 

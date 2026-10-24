@@ -330,7 +330,7 @@ static void structure_render_dynamic_triangles_from_bitvector(
 /* port: the surface indices in ascending order, as qsort_4byte with
 compare_surface_indices puts them, sorted by their bytes (a radix sort)
 instead of by comparisons through a function: the sort took a twentieth of
-the web build's frame */
+a frame in WebAssembly */
 static void structure_render_sort_surface_indices(
 	long *surface_indices,
 	long surface_count)

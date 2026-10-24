@@ -52,7 +52,7 @@ class GuestArch:
     # address from __host_import_table+{offset} and jumps to it, leaving the
     # arguments as they are ({name} and {offset} are filled in)
     import_stub: str
-    # the host's calling convention for the OpenGL stubs: the integer and
+    # the host's calling convention for the import stubs: the integer and
     # pointer arguments it takes in registers, and whether the guest packs
     # the stack's arguments by size where the host has 8-byte slots (so that
     # those arguments are passed as 64-bit values)

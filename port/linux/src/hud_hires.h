@@ -85,28 +85,28 @@ texture was drawn for (another language's maps, which have their own text,
 or modified ones) */
 long hud_hires_override_find(unsigned long address, unsigned long width, unsigned long height,
 	unsigned long level0_size);
-/* its GL texture (decoded and uploaded, mipmapped, on first use; 0 if it
+/* its image (decoded and uploaded, mipmapped, on first use; 0 if it
 could not be), and the number of its mip levels */
 unsigned int hud_hires_override_texture(long asset, unsigned long *levels);
-/* a GL texture drawn from an 8-bit RGBA PNG (as the tools write them), with
+/* an image drawn from an 8-bit RGBA PNG (as the tools write them), with
 all its mip levels, and their number; 0 if it could not be */
 unsigned int hud_hires_png_texture(const void *png, unsigned long size, unsigned long *levels);
 /* the HUD's textures for a map's bitmaps (port/linux/game/hud_hires_tags.c),
 decoded from their PNGs as it loads, on a thread of their own, so that they
 are only uploaded when first drawn; and, as it is unloaded, that stopped and
 what was decoded and not drawn let go. The desktop builds' alone: Android
-and the web decode each when it is first drawn */
+decodes each when it is first drawn */
 void hud_hires_map_loaded(const long *assets, long count);
 void hud_hires_map_unloaded(void);
-/* whether its green is its coverage (d3d8_device.c, xgpu_glsl.c:
+/* whether its green is its coverage (d3d8_device.c, xgpu_spirv.c:
 coverage_alpha) */
 int hud_hires_override_coverage(long asset);
-/* the GL texture of the texture drawn for some of a bitmap's sprites whose
+/* the image of the texture drawn for some of a bitmap's sprites whose
 placeholder's D3D texture has this Data, and the number of its mip levels;
 0 if data is no placeholder's */
 unsigned int hud_hires_placeholder_texture(unsigned long data, unsigned long *levels);
 /* whether its red holds exact segment thresholds, read unfiltered
-(d3d8_device.c, xgpu_glsl.c: point_threshold) */
+(d3d8_device.c, xgpu_spirv.c: point_threshold) */
 int hud_hires_override_point_threshold(long asset);
 
 /* Original HUD sheets lacking redraws, with their tag coordinates unchanged.

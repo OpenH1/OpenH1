@@ -7,8 +7,7 @@ Vulkan (the Linux desktop: HDR10 or scRGB swapchains,
 [port/linux/vulkan/README.md](../port/linux/vulkan/README.md)). Android and
 the VR mode do not: the Frame's OpenXR swapchains are 8-bit sRGB on SDR
 panels, and the extra bandwidth would cost the headset frame time for
-highlights it cannot show. The Windows build draws with OpenGL, which
-reports no HDR either.
+highlights it cannot show.
 
 ## What the player gets
 

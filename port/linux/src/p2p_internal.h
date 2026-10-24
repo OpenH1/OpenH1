@@ -263,8 +263,7 @@ void p2p_seal_token(const unsigned char *key, const unsigned char *signing_key, 
 int p2p_unseal_token(const unsigned char *key, const unsigned char *signing_key, const unsigned char *sealed,
 	unsigned char *token);
 
-/* ---------- WebRTC: tunnels to and from browsers (p2p_webrtc.c in the
-native builds, port/web/src/web_p2p.c in the browser) */
+/* ---------- WebRTC: tunnels to and from browsers (p2p_webrtc.c) */
 
 enum
 {
@@ -340,8 +339,6 @@ identifier in hex: 2 * P2P_IDENTIFIER_SIZE + 1 characters) */
 void p2p_tunnel_packet(const unsigned char *packet, int size, unsigned long address, unsigned short port);
 void p2p_tunnel_send(unsigned long address, unsigned short port, const void *data, int size);
 void p2p_peer_name(int peer, char *name);
-/* the tunnel's socket's port (network byte order) */
-unsigned short p2p_tunnel_local_port(void);
 /* the server browser's probe of a public game's host (its key's hash, its
 listing's token): the tunnel to it made, timed and closed again, its ping
 told p2p_lobby_probed (at once for this machine's own game, and a host the

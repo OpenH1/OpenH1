@@ -159,10 +159,7 @@ macOS, a disc image's `maps/` goes in
 `~/Library/Application Support/OpenH1`, and a maps folder chosen instead
 stays where it is. On
 Android, copy the disc image to the phone first. The app puts `maps/` in its
-data folder. Refer to [port/android/README.md](port/android/README.md). On
-the web, the page copies `maps/` out of the disc image into the browser's
-storage for the site; nothing is uploaded. Refer to
-[port/web/README.md](port/web/README.md).
+data folder. Refer to [port/android/README.md](port/android/README.md).
 
 ## Mods
 
@@ -186,7 +183,6 @@ Each platform has its own instructions:
 | Android (arm64 app, Vulkan 1.3, SDL3) | [port/android/README.md](port/android/README.md) |
 | macOS (Apple silicon: OpenH1.app, Metal) | [port/macos/README.md](port/macos/README.md) |
 | iOS and iPadOS (arm64, iOS 17.4 or later: OpenH1.app, Metal; built from source and sideloaded, not released yet) | [port/ios/README.md](port/ios/README.md) |
-| Web (WebAssembly; not built for now: it returns with a WebGPU renderer) | [port/web/README.md](port/web/README.md) |
 
 The Linux README also gives the controls, the settings and the multiplayer
 functions. These are almost the same on all platforms.
@@ -196,14 +192,11 @@ functions. These are almost the same on all platforms.
 The game can play system link games on a local network and on the internet:
 
 - A system link game can have up to 128 players on up to 128 machines.
-- Linux (x86-64 and arm64), Windows and Android machines and browsers can play
-  in the same game. On a local network, the native builds play system link;
-  browsers play each other in rooms, over WebRTC
-  ([port/web/README.md](port/web/README.md)).
+- Linux (x86-64 and arm64), Windows, macOS and Android machines can play in
+  the same game.
 - An invite link, or the server browser, lets a machine join a game on the
-  internet, browsers too: a native build takes a browser's WebRTC
-  ([port/linux/README.md](port/linux/README.md), "Browsers"). No server of
-  this project is necessary.
+  internet ([port/linux/README.md](port/linux/README.md)). No server of this
+  project is necessary.
 - The netcode is new. Each machine moves its own player at once,
   and the host makes the decisions for the game. Refer to
   [port/linux/NETCODE.md](port/linux/NETCODE.md).
@@ -232,14 +225,13 @@ To build the game:
 | `ninja android_apk` | `port/android/app/build/outputs/apk/debug/app-debug.apk` |
 | `ninja macos` (on a Mac with Apple silicon) | `build/macos/OpenH1.app` (and `halo` with `libSDL3.0.dylib`, for development); `ninja macos_dmg`: `OpenH1.dmg` |
 | `ninja ios` (on a Mac with Apple silicon and Xcode's iOS SDK) | `build/ios/OpenH1.app`, signed for development with `configure.py --ios-team`; `ninja ios_install` installs it on the connected device; `ninja ios_sim`: the Simulator's |
-| `ninja web` | `build/web/site/`, the web site (`python tools/web_serve.py` serves it) |
 
 If you enter `ninja` without a target, ninja builds the game for the
 computer that you use: on 64-bit x86 Linux, `ninja linux_x86_64`.
 
 The Linux builds are 64-bit, and draw with Vulkan 1.3: `configure.py`
 downloads the Vulkan headers with musl and SDL3, so the build needs no
-OpenGL or Vulkan development packages. Refer to
+Vulkan development packages. Refer to
 [port/linux/README.md](port/linux/README.md).
 
 `tools/ci_build.py` makes the same builds as GitHub Actions. For example,
@@ -260,7 +252,6 @@ Give these options to `configure.py`:
 | `--guest-llvm-cache FOLDER` | The folder for the pinned LLVM (else `~/.cache/openh1`, on macOS `~/Library/Caches/openh1`). |
 | `--guest-base` | The Linux arm64 and Android builds put the guest's memory at a base that the host chooses, not in the low 4 GB (a base register: `tools/guest_base_register.py`). The 64-bit x86 build has none: with it, `ninja linux_x86_64` stops with the reason. |
 | `--ios-team TEAM` | `ninja ios` signs the iOS app for development with the team's certificate and a provisioning profile that Xcode makes (`tools/ios_provision.py`; Xcode signed in to the team's account). Without it the app is signed ad hoc. `--ios-identity` and `--ios-bundle-id` choose another certificate and bundle identifier. Refer to [port/ios/README.md](port/ios/README.md). |
-| `--web-emcc PATH` | The Emscripten `emcc` for `ninja web` (else the one on the PATH, or `~/emsdk`'s). |
 
 
 ### The guests' compiler

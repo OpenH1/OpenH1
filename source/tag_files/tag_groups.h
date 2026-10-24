@@ -127,7 +127,8 @@ void *tag_data_get_pointer(struct tag_data const *data, long offset, long size);
 void *tag_block_get_element_with_size(struct tag_block const *block, long index, long element_size);
 
 /* port: tag_block_get_element_with_size without a call where all it checks
-holds (the game's most frequent call: a fortieth of the web build's frame),
+holds (the game's most frequent call: it took a fortieth of a frame in
+WebAssembly),
 and that function where something does not, which notes and handles it
 (__inline__: msvc_comdat.c makes __inline weak, which a static function
 cannot be) */

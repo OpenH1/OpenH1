@@ -16,13 +16,6 @@ Xbox kernel does.
 Halo Custom Edition maps need the window their tag data is linked to,
 0x40440000, reserved the same way when the game.custom_edition setting is on
 (port/linux/game/custom_edition_cache.c).
-
-The web build (HALO_WEB) has no pages to map or protect: WebAssembly's
-memory is one block, made large enough that the window is its top 128 MB
-(tools/web_build.py), and the C heap stays below it (port/web/src/web_main.c).
-A block is cleared when it is allocated, as fresh pages would be, and
-protection is only remembered. Custom Edition maps, whose window lies in the
-C heap there, do not run.
 */
 
 #include "platform.h"
@@ -37,7 +30,6 @@ C heap there, do not run.
 #include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
-
 
 #ifdef HALO_GUEST
 typedef char window_is_the_hosts[PLATFORM_CONTIGUOUS_BASE == HALO_GUEST_WINDOW_BASE &&

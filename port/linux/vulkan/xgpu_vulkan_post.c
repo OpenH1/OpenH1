@@ -3,8 +3,7 @@ XGPU_VULKAN_POST.C
 
 The post-process passes of display.anti_aliasing (xgpu_vulkan_post.h): FXAA
 and SMAA, run on a render target in place, over the rectangle of a window's
-3D view, as the OpenGL backend runs them (port/linux/src/xgpu_post.c), with
-its shaders compiled to SPIR-V (xgpu_vulkan_post_shaders.c, by
+3D view, their GLSL compiled to SPIR-V (xgpu_vulkan_post_shaders.c, by
 tools/vulkan_post_shaders.py). Each pass draws one triangle covering the
 rectangle (its corners from the vertex's index, with no vertex data) and
 finds its texels from the fragment's coordinates; the target's rows are
@@ -19,8 +18,8 @@ the copy's barrier its pixels to the first. SMAA's edges and weights are
 emptied whole before their passes, as the pass begins (a clear of the
 whole attachment loads none of it), so that no edge of another window's
 pass is found: they write only where there is an edge. The intermediate
-images are the target's size, as the OpenGL backend's textures are (the
-shaders' coordinates are the target's).
+images are the target's size (the shaders' coordinates are the
+target's).
 
 The present step's turn (xgpu_vulkan_post_rotate) is a pass of the same
 kind: the frame drawn turned by quarter turns into an image of its own, for
@@ -31,7 +30,7 @@ where the window's surface can be turned (xgpu_vulkan_post_rotate_prepare).
 The pipelines and SMAA's lookup textures are made as the setting is chosen
 (xgpu_vulkan_post_prepare), or queued as a map is prepared, not in the
 middle of a frame. The lookup textures are RGBA8 images of SMAA's one and
-two channels (the rest zero), sampled as OpenGL samples its R8 and RG8.
+two channels (the rest zero), sampled as an R8 and an RG8 texture would be.
 FXAA's and SMAA's blend into a target of its own format (display.hdr's
 half floats too); the copy is the target's format, SMAA's edges and
 weights 8 bits.

@@ -3,7 +3,7 @@ HOST_VULKAN_VR.C
 
 Vulkan's VR eye passes and composition. Poses, the late latch and OpenXR's
 frame loop belong to host_vr_stream.h. The fixed programs are generated
-from the OpenGL compositor's shader sources, and compiled at build time.
+from their GLSL (xgpu_vulkan_vr_glsl.inc), and compiled at build time.
 
 The game's images keep their encoded colour values in UNORM targets. The
 runtime's sRGB images receive the same bytes, without a second encoding.

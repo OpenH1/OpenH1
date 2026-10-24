@@ -2,11 +2,11 @@
 XGPU_SPIRV.C
 
 SPIR-V from the shader intermediate form (xgpu_shader.h), for the Vulkan
-backend; the conventions are in xgpu_spirv.h. The programs are the GLSL
-emitter's (xgpu_glsl.c, desktop OpenGL's) operation for operation, each
-spelled as glslang spells the GLSL (its comparisons, its clamps, its
-smeared scalars), so that the driver is handed the same arithmetic and the
-two backends draw alike: where this file says less, xgpu_glsl.c says why.
+backend; the conventions are in xgpu_spirv.h. The programs are OpenCE's
+GLSL emitter's operation for operation, each spelled as glslang spells the
+GLSL (its comparisons, its clamps, its smeared scalars), and the Metal
+emitter's (xgpu_msl.c) are this file's, so that the two backends draw
+alike.
 
 The words are written directly. A program has no control flow but its
 discards (and the enhanced dynamic lights' loops), so every register is an
@@ -1640,7 +1640,7 @@ BOOL xgpu_spirv_vertex_shader(const struct xgpu_vertex_program *program, unsigne
 		state.position = shuffle(&m, 4, state.position, corrected, xy_zw);
 	}
 
-	/* the clip position (xgpu_glsl.c: the conversion done with c[-38] and
+	/* the clip position (the conversion done with c[-38] and
 	c[-37] undone, pixel centres at half-integers, a w of zero behind the
 	camera) */
 	{
@@ -2036,7 +2036,7 @@ static void texture_stage(struct module *m, struct pixel_state *state, int stage
 		state->t[stage] = state->zero4;
 		/* the depth a DOT_ZW stage replaces the fragment's with: the previous
 		dot product over its own, in the depth buffer's units; the far plane
-		for a divisor that is not positive (xgpu_glsl.c) */
+		for a divisor that is not positive */
 		if (mode == XGPU_TEXTURE_DOT_ZW && stage == xgpu_pixel_program_depth_stage(program))
 		{
 			state->replaced_depth = op3(m, OP_SELECT, m->t_float,
@@ -2366,7 +2366,7 @@ static void combiner_stage(struct module *m, struct pixel_state *state, int stag
 	}
 }
 
-/* ---------- per-pixel model lighting (xgpu_glsl.c model_lighting) */
+/* ---------- per-pixel model lighting */
 
 static unsigned int model_lighting(struct module *m, struct pixel_state *state, BOOL point_lights, BOOL dynamic_lights)
 {
@@ -2405,7 +2405,7 @@ static unsigned int model_lighting(struct module *m, struct pixel_state *state, 
 	return saturate(m, 3, light);
 }
 
-/* ---------- the enhanced dynamic lights (xgpu_glsl.c xgpu_dynamic_lights_glsl) */
+/* ---------- the enhanced dynamic lights (xgpu.h) */
 
 static void declare_dynamic_lights(struct module *m)
 {
@@ -3182,8 +3182,7 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 
 	if (environment)
 	{
-		/* the lightmap pass's light, before the textures multiply it
-		(xgpu_glsl.c) */
+		/* the lightmap pass's light, before the textures multiply it */
 		unsigned int surface_normal = ext1(&m, GLSL_NORMALIZE, m.t_v3, xyz(&m, pixel_input(&m, &state, state.in_world_normal, m.t_v4)));
 		unsigned int bump, n, sum, lit;
 		static const unsigned int rgb[4] = { 4, 5, 6, 3 };
@@ -3217,7 +3216,7 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 		else if (sample_mask)
 		{
 			/* multisampled: the samples covered as alpha passes the reference
-			over the pixel (xgpu_glsl.c) */
+			over the pixel */
 			unsigned int test_alpha = fmul(&m, 1, alpha, constant_float(&m, 255.0f));
 			unsigned int difference = fsub(&m, 1, test_alpha, uniform(&m, U_ALPHA_REFERENCE, -1));
 			unsigned int coverage, samples, operands[2];
@@ -3339,8 +3338,7 @@ BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const str
 	return TRUE;
 }
 
-/* ---------- the enhanced dynamic lights' glows (xgpu_gl.c
-dynamic_lights_halo_program, its GLSL operation for operation) */
+/* ---------- the enhanced dynamic lights' glows (xgpu_spirv.h) */
 
 /* With the VR mode's effects: each glow as the light its bolt scatters
 toward the eye (xgpu_spirv.h). The vertex shader: the quad that covers the

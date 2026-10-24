@@ -37,10 +37,9 @@ noise), checked and decoded through the same cache as a draw's stage. */
 struct xgpu_vulkan_image *xgpu_vulkan_textures_header(uint32_t header);
 
 /* debug.texture_dump_directory: the folder the first level of each 2D Xbox
-texture is written into as it is read (again, once its texels change), as
-the OpenGL backend's texture cache writes it: tex<number>_fmt<format>_
-<width>x<height>.tga, 32-bit BGRA (NULL or empty: none; the string is
-kept) */
+texture is written into as it is read (again, once its texels change):
+tex<number>_fmt<format>_<width>x<height>.tga, 32-bit BGRA (NULL or empty:
+none; the string is kept) */
 void xgpu_vulkan_textures_dump(const char *folder);
 
 /* the folder the ASTC encoder keeps the DXT textures' encoded blocks in

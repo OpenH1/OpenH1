@@ -10,7 +10,7 @@ the Xbox maps' widths. A tag whose letters are narrower (the fonts of a
 Custom Edition loc.map) gets its font narrowed until its letters are, on
 the whole, as wide as the tag's, so that they do not run into each other;
 the Xbox maps' fonts are narrowed by a few hundredths. A glyph is rasterized when first drawn, at the display's
-pixels per unit of the 480 lines, into an 8-bit atlas; the GL texture the
+pixels per unit of the 480 lines, into an 8-bit atlas; the image the
 game's placeholder bitmap stands for (xbox_textures.c) is the atlas, its new
 rows uploaded when the placeholder is bound. A change of the display's
 scale (a window made fullscreen) or a full atlas starts it over.

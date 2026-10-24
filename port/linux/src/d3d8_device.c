@@ -12,7 +12,8 @@ stages and register combiners, 57 render states - a key the backend
 decodes and builds a shader from (nv2a_psh.c), the rest a pipeline key and
 dynamic state, the resources the draw reads and its range. What the game's
 states mean is known here and nowhere else; how a GPU draws it is the
-backend's (xgpu_gl.c: OpenGL).
+backend's (Vulkan's or Metal's, in the host, through the command stream:
+xgpu_stream_encode.c).
 
 Conventions carried over from the Xbox:
 - Clip space is D3D's (depth 0..1, y down in window space): viewports,
@@ -84,7 +85,8 @@ static long ui_offset;
 
 display.anti_aliasing, off unless it is set: the Xbox drew without any.
 "fxaa" and "smaa" are passes over each window's 3D view before the HUD and
-menus are drawn over it (halo_screen_anti_alias, xgpu_post.c); "ssaa2x"
+menus are drawn over it (halo_screen_anti_alias, xgpu_vulkan_post.c and
+xgpu_metal_post.c); "ssaa2x"
 draws the screen's targets at twice the resolution each way
 (screen_mode_choose), which the display blit scales down; "msaa2x" to
 "msaa8x" draw the back buffer and its depth buffer with that many samples a
@@ -165,7 +167,7 @@ static int anti_aliasing(void)
 /* ---------- display.hdr (xgpu_hdr.h)
 
 The frame is drawn in HDR where the backend can (Vulkan and Metal: not the
-OpenGL backend, nor the VR mode's eyes) and display.hdr asks for it: "on",
+VR mode's eyes) and display.hdr asks for it: "on",
 or "auto" while the backend's display shows HDR. The back buffer is then
 RGBA16F, each draw into it tagged (xgpu_hdr_classify: what the game's code
 says of it, halo_hdr_category and halo_hdr_draw_kind, its blend, and
@@ -829,7 +831,7 @@ projection. The HUD pass draws the HUD, the menus and everything else into
 the quad layer's image, over transparent black. The game draws both in its
 640x480 screen, each at its image's scale. The passes, and which views each
 draw goes to, are kept here; the eyes' images, the eye corrections and the
-present's composition are the backend's (xgpu_gl.c). */
+present's composition are the backend's (port/linux/vulkan/host_vulkan_vr.c). */
 
 /* (xgpu.h; the VR mode's initialization sets it) */
 int xgpu_foveated;
@@ -932,7 +934,7 @@ static struct
 
 /* the source blend factor the pixel shader applies (nv2a_pixel_shader_key's
 source_blend), when the draw's blend mixes a constant color factor with a
-constant alpha one, which the backend cannot (WebGL refuses it); 0
+constant alpha one, which the backends' shaders apply instead; 0
 otherwise */
 static unsigned char source_blend_in_shader(void)
 {
@@ -2874,16 +2876,15 @@ display.dynamic_lights "enhanced" (xgpu.h; the game's side is
 port/linux/game/dynamic_lights.c): each frame the game hands over its
 dynamic lights (halo_dynamic_lights_set), placed where the drawn objects are
 (between ticks), and the structure's lightmap pass and the models lit for
-each pixel add them for each pixel (xgpu_glsl.c), in place of the game's own
-passes over the structure for each light and its two lights for each
-object's vertices. A grid about the camera says which lights reach each of
+each pixel add them for each pixel (xgpu_spirv.c, xgpu_msl.c), in place of the
+game's own passes over the structure for each light and its two lights for
+each object's vertices. A grid about the camera says which lights reach each of
 its cells (xgpu.h), so a pixel weighs only the lights near it: a frame's
 lights cost what lights each pixel, not their number. A plasma bolt's light
 (a projectile with no model) also has a glow drawn about it
 (halo_dynamic_lights_halos_draw).
 "classic", the default: none of this, the game's own lighting. Where the
-backend has them (xgpu_backend_capabilities: desktop OpenGL, Vulkan,
-Metal). */
+backend has them (xgpu_backend_capabilities: Vulkan, Metal). */
 static struct
 {
 	unsigned long read_at;
@@ -2891,7 +2892,7 @@ static struct
 	/* the look: [0] the lights' brightness, the core (1 / (1 + core x^2)),
 	the spill past white, the models' wrap; [1] the glow's size (of the
 	light's radius), brightness, softness against what it meets (world
-	units), its least size (debug.dynamic_lights_look; xgpu_glsl.c) */
+	units), its least size (debug.dynamic_lights_look; xgpu_spirv.c) */
 	float look[2][4];
 	/* the lights this frame (0: none: drawn as classic) */
 	int count;
@@ -3100,7 +3101,7 @@ void halo_dynamic_lights_halos_draw(void)
 }
 
 /* display.per_pixel_lighting: the model lighting programs' draws are lit for
-each pixel (xgpu_glsl.c model_lighting), from shaders of their own; read
+each pixel (xgpu_spirv.c's model lighting), from shaders of their own; read
 again when a setting changes. The enhanced dynamic lights light models for
 each pixel too, whatever it says. */
 static BOOL per_pixel_lighting(void)
@@ -3338,7 +3339,7 @@ static BOOL prepare_draw(BOOL immediate, unsigned long primitive)
 		D3D__RenderState[D3DRS_DESTBLEND] == D3DBLEND_SRCALPHA;
 	key.point_threshold = key.point_threshold && key.coverage_alpha;
 	key.alpha_test_function = D3D__RenderState[D3DRS_ALPHATESTENABLE] ? D3D__RenderState[D3DRS_ALPHAFUNC] : 0;
-	/* (a sample mask: OpenGL ES has it only from 3.2) */
+	/* (a sample mask, where the backend has one) */
 	if (xgpu_backend_capabilities.sample_mask && target_samples > 1 && key.alpha_test_function &&
 		!D3D__RenderState[D3DRS_ALPHABLENDENABLE])
 	{
@@ -3875,8 +3876,9 @@ static void index_extent(const WORD *indices, unsigned long count, unsigned long
 
 /* ---------- vertex data */
 
-/* the backend reads D3DCOLOR elements as BGRA, or streams them swapped
-(OpenGL ES): a stream with colors cannot come from the mirror then */
+/* the backend reads D3DCOLOR elements as BGRA where it can
+(xgpu_backend_capabilities.bgra_vertex_colors), or streams them swapped: a
+stream with colors cannot come from the mirror then */
 static BOOL stream_has_colors(const struct vertex_shader_object *declaration, unsigned long stream)
 {
 	unsigned long index;
@@ -4289,8 +4291,8 @@ void halo_screen_tone_map(short x0, short y0, short x1, short y1)
 
 /* display.overshield_effect's rise (rasterizer_xbox_plasma_energy.c,
 port/linux/game/overshield_effect.c), OpenCE's: a fade above a height on
-the model, in OpenCE's OpenGL vertex shaders. None of OpenH1's emitters
-(GLSL, SPIR-V, MSL) has it yet, so the overshield is drawn whole as it
+the model, in OpenCE's OpenGL vertex shaders. Neither of OpenH1's emitters
+(SPIR-V, MSL) has it yet, so the overshield is drawn whole as it
 rises; Video Setup has no row for it (tools/port_settings.py) */
 void d3d8_gl_set_height_fade(float inverse_softness, float height, float offset, float scale)
 {

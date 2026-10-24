@@ -336,7 +336,7 @@ static inline void xgpu_hdr_encode(float rgb[3], const struct xgpu_hdr_frame *fr
 	}
 }
 
-/* the enhanced dynamic lights' shoulder (xgpu_glsl.c dynamic_light_add):
+/* the enhanced dynamic lights' shoulder (xgpu_spirv.c, xgpu_msl.c):
 the light a pixel had (base, the lights' gamma 2.2) with the dynamic light
 added (linear); with lights (XGPU_HDR_LIGHTS) on past white */
 static inline float xgpu_hdr_lights(float base, float light, int lights)

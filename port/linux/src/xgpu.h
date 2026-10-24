@@ -5,9 +5,8 @@ What the renderer's parts share, in no GPU API's terms: the vertex
 programs' and pixel shaders' keys and lighting (decoded by nv2a_vsh.c and
 nv2a_psh.c), the enhanced dynamic lights' layout, the Xbox's texture
 formats (xbox_textures.c) and generated source text. The front end
-(d3d8_device.c) and every backend include it; the OpenGL backend's own
-declarations are in xgpu_gl.h, the interface between front end and backend
-in xgpu_backend.h.
+(d3d8_device.c) and every backend include it; the interface between front
+end and backend is xgpu_backend.h.
 */
 
 #ifndef __HALO_LINUX_XGPU_H
@@ -60,13 +59,13 @@ binormal and tangent (v0 to v3) handed on as they are */
 struct xgpu_vertex_program;
 
 /* finds them in a model lighting program (decoded: xgpu_shader.h), checking
-that it lights its diffuse color as xgpu_glsl.c does for each pixel; FALSE if
+that it lights its diffuse color as xgpu_spirv.c does for each pixel; FALSE if
 it does not */
 BOOL nv2a_vertex_shader_lighting(const struct xgpu_vertex_program *program, struct nv2a_vertex_lighting *lighting);
 
 /* the views a draw goes to (a vertex program's multiview variant): with
-XGPU_MULTIVIEW_EYES, both of the VR mode's eyes at once (GL_OVR_multiview2):
-the clip position goes through each eye's correction (xgpu_gl.c,
+XGPU_MULTIVIEW_EYES, both of the VR mode's eyes at once (multiview): the
+clip position goes through each eye's correction (xgpu_spirv.c,
 halo_vr_set_eye_transforms); with XGPU_MULTIVIEW_LEFT_EYE or
 XGPU_MULTIVIEW_RIGHT_EYE, that eye's layer alone */
 enum
@@ -81,7 +80,7 @@ enum
 	correction (the crosshairs: halo_vr_draw_eye) */
 	XGPU_MULTIVIEW_RIGHT_EYE,
 };
-/* The VR mode's eye pass is foveated (vr.foveation, xgpu_gl.c): its targets
+/* The VR mode's eye pass is foveated (vr.foveation, host_vulkan_vr.c): its targets
 have four layers, two for each eye (layer 2 eye + 0, the whole eye at the
 periphery's resolution; 2 eye + 1, the inset about the gaze at full
 resolution, as large in pixels). XGPU_MULTIVIEW_EYES then draws all four
@@ -143,17 +142,17 @@ struct nv2a_pixel_shader_key
 	proportion to how far alpha is past the reference, not all of the pixel
 	or none of it, so that cut-out edges (foliage, grates) are smoothed too */
 	unsigned char alpha_test_samples;
-	/* drawn into both eyes at once (the VR mode, d3d8_device.c, xgpu_gl.c):
+	/* drawn into both eyes at once (the VR mode, d3d8_device.c, xgpu_vulkan.c):
 	layered render targets are sampled at the view's layer
 	(XGPU_MULTIVIEW_*) */
 	unsigned char multiview;
 	/* the source's blend factor, applied here instead (1 the blend color, 2
-	one less it, 3 its alpha, 4 one less that; 0 none): WebGL refuses a
-	blend of a constant color factor with a constant alpha one, as the
-	meters' (shader_transparent_meter) */
+	one less it, 3 its alpha, 4 one less that; 0 none), for a blend of a
+	constant color factor with a constant alpha one, as the meters'
+	(shader_transparent_meter) */
 	unsigned char source_blend;
 	/* the enhanced dynamic lights (display.dynamic_lights, d3d8_device.c,
-	xgpu_gl.c) added for each pixel: XGPU_DYNAMIC_LIGHTS_ENVIRONMENT to a
+	xgpu_spirv.c) added for each pixel: XGPU_DYNAMIC_LIGHTS_ENVIRONMENT to a
 	structure's lightmap pass (into the light the textures are then
 	multiplied by, the bump map in texture 0), XGPU_DYNAMIC_LIGHTS_MODEL to a
 	model's lighting lit for each pixel in place of its two point lights; 0
@@ -169,8 +168,8 @@ struct nv2a_pixel_shader_key
 };
 
 /* the vertex constants the per-pixel model lighting reads, in a uniform of
-their own (the vertex shader's 192 would pass OpenGL ES's least fragment
-uniform space): [0] c[-82] (the translucency in z), [1] to [11] c[-79] to
+their own (the vertex shader's 192 would pass the least fragment uniform
+space a GPU must have): [0] c[-82] (the translucency in z), [1] to [11] c[-79] to
 c[-69] (rasterizer_set_model_lighting's two point lights, two distant
 lights and the ambient light) */
 #define XGPU_MODEL_LIGHT_COUNT 12
@@ -188,14 +187,14 @@ XGPU_DYNAMIC_LIGHTS_BINDING. The cells grow away from the camera: a cell's
 index along each axis is log2(1 + |offset| / XGPU_DYNAMIC_LIGHTS_CELL) times
 that axis's scale, from the middle, so that the grid reaches
 XGPU_DYNAMIC_LIGHTS_REACH world units each way with small cells near the
-camera, where lights are seen large. Desktop OpenGL only. */
+camera, where lights are seen large. */
 #define XGPU_DYNAMIC_LIGHTS_MAXIMUM 128
 #define XGPU_DYNAMIC_LIGHTS_GRID_X 32
 #define XGPU_DYNAMIC_LIGHTS_GRID_Y 32
 #define XGPU_DYNAMIC_LIGHTS_GRID_Z 16
 #define XGPU_DYNAMIC_LIGHTS_CELL 0.5f
 #define XGPU_DYNAMIC_LIGHTS_REACH 128.0f
-/* the largest soft core of a light's falloff, world units (xgpu_glsl.c) */
+/* the largest soft core of a light's falloff, world units (xgpu_spirv.c) */
 #define XGPU_DYNAMIC_LIGHTS_CORE 0.6
 #define XGPU_DYNAMIC_LIGHTS_UNIT 12
 #define XGPU_DYNAMIC_LIGHTS_BINDING 1
@@ -207,7 +206,7 @@ enum
 
 /* the uniform block, as std140 lays it out: [0] the grid's middle (the
 camera) and the light count, [1] each axis's cells a doubling of the offset
-and 1 / XGPU_DYNAMIC_LIGHTS_CELL, [2] the look (xgpu_glsl.c); then each
+and 1 / XGPU_DYNAMIC_LIGHTS_CELL, [2] the look (xgpu_spirv.c); then each
 light's position and 1 / radius (less than 0: models only, the structure
 lit by the game's own pass: a spotlight's gel), its color (linear, the
 look's brightness in it) and its cone's offset, its cone's axis and scale
@@ -219,10 +218,6 @@ struct xgpu_dynamic_lights_block
 	float color[XGPU_DYNAMIC_LIGHTS_MAXIMUM][4];
 	float cone[XGPU_DYNAMIC_LIGHTS_MAXIMUM][4];
 };
-
-/* the GLSL of the block, the grid and the functions that light by them
-(xgpu_glsl.c) */
-void xgpu_dynamic_lights_glsl(struct xgpu_text *text);
 
 /* writes BGRA pixels as a BMP named <name><frame>.bmp in the screenshot
 folder (debug.screenshot_directory): rows from the top, or from the bottom

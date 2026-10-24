@@ -1218,7 +1218,6 @@ static void cache_file_windows_thread_proc(
 	return;
 }
 
-
 static void cache_file_windows_thread_create(
 	void)
 {

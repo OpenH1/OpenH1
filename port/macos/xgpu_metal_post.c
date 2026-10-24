@@ -3,9 +3,8 @@ XGPU_METAL_POST.C
 
 The post-process passes of display.anti_aliasing (xgpu_metal_post.h): FXAA
 and SMAA, run on a render target in place, over the rectangle of a window's
-3D view, as the OpenGL backend runs them (port/linux/src/xgpu_post.c) and
-the Vulkan backend (port/linux/vulkan/xgpu_vulkan_post.c), with the same
-shaders written as MSL (xgpu_metal_post_shaders.c, by
+3D view, as the Vulkan backend runs them (port/linux/vulkan/xgpu_vulkan_post.c),
+with the same shaders written as MSL (xgpu_metal_post_shaders.c, by
 tools/metal_post_shaders.py). Each pass draws one triangle covering the
 rectangle (its corners from the vertex's index, with no vertex data) and
 finds its texels from the fragment's position; the target's rows are the
@@ -20,14 +19,13 @@ is there for the next to sample). SMAA's edges and weights are emptied
 whole as their passes begin (a clear of the whole attachment, which loads
 none of it), so that no edge of another window's pass is found: they write
 only where there is an edge. The intermediate textures are the target's
-size, as the OpenGL backend's are (the shaders' coordinates are the
-target's).
+size (the shaders' coordinates are the target's).
 
 The functions, pipelines and SMAA's lookup textures are made as the setting
 is chosen (xgpu_metal_post_prepare), or asked for as a map is prepared, not
 in the middle of a frame. The lookup textures are RGBA8 textures of SMAA's
-one and two channels (the rest zero), sampled as OpenGL samples its R8 and
-RG8.
+one and two channels (the rest zero), sampled as an R8 and an RG8 texture
+would be.
 */
 
 #include "xgpu_metal.h"

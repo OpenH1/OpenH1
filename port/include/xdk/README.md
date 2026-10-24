@@ -56,7 +56,7 @@ where it came from.
 The hand-written headers were written by agents given only these sources
 and the list of names our code uses, never the SDK's headers or anything
 derived from them; the generator reads only the PDB. The few additions made
-while integrating them (`APIENTRY`, `<ctype.h>`, the C++ linkage of the
+while integrating them (`<ctype.h>`, the C++ linkage of the
 Direct3D tables) are public Win32 facts or C plumbing.
 
 ## How they are checked

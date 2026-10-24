@@ -3,8 +3,8 @@ XGPU_METAL_POST.H
 
 display.anti_aliasing's passes for the Metal backend (xgpu_metal_post.c):
 FXAA and SMAA over the rectangle of a window's 3D view, in the target,
-before the HUD and the menus are drawn over it, as the OpenGL and Vulkan
-backends run them.
+before the HUD and the menus are drawn over it, as the Vulkan backend runs
+them.
 */
 
 #ifndef __HALO_MACOS_XGPU_METAL_POST_H

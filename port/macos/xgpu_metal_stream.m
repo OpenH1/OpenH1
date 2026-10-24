@@ -23,8 +23,8 @@ stage that samples the target the draw draws into samples a copy of it.
 The enhanced dynamic lights' block and cells are copied into the frame's
 upload ring as the stream sends them, and bound for the draws after them
 (in the stream's order, with no pass broken); their glows are a pass of
-their own, as OpenGL's. Anti-aliasing's passes are xgpu_metal_post.c's,
-over the target's pixels as the record names them, as OpenGL's are.
+their own. Anti-aliasing's passes are xgpu_metal_post.c's, over the
+target's pixels as the record names them.
 
 Not here: the VR mode (no entries: the stream skips them), and a render
 target's mip levels drawn one by one (its first level is sampled).
@@ -516,7 +516,7 @@ static void stream_set_textures(void *context, const struct host_render_texture_
 
 /* a copy of a target the draw draws into, which it samples (Metal cannot
 sample an attachment of the pass): copied again once the target has been
-drawn into since (as the web build's OpenGL does: xgpu_gl.c feedback_copy) */
+drawn into since */
 static uint32_t feedback_copy(struct stream_target *target)
 {
 	if (target->description.format != XGPU_METAL_FORMAT_BGRA8 && target->description.format != XGPU_METAL_FORMAT_RGBA16F)
@@ -985,8 +985,8 @@ The front end works out the frame's lights and the grid's cells
 (d3d8_device.c); the block and the cells go into the frame's upload ring as
 the stream sends them, and the draws after them read them there (the MSL
 emitter's lit shaders: xgpu_msl.c), in the stream's order without a pass
-broken; and the glows are drawn here, as the OpenGL backend draws them
-(xgpu_gl.c). Where the frame has sent none, a zeroed block and cells are
+broken; and the glows are drawn here, as the Vulkan backend draws them
+(xgpu_vulkan_stream.c). Where the frame has sent none, a zeroed block and cells are
 bound (no light reaches anything). */
 
 _Static_assert(sizeof(struct xgpu_stream_dynamic_lights_block) == 6192, "the dynamic lights' block");
@@ -1070,7 +1070,7 @@ static int halo_shaders(void)
 
 /* the depth buffer's value for a distance from the camera, alpha + beta /
 distance (beta less than 0: nearer, less), from two points ahead; and the
-softness, world units (xgpu_gl.c's) */
+softness, world units (as xgpu_vulkan_stream.c's) */
 static void halo_depth_parameters(const struct xgpu_stream_dynamic_lights_halos *record, float parameters[4])
 {
 	const float (*c)[4] = (const float (*)[4])record->projection;

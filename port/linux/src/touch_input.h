@@ -18,8 +18,8 @@ on the game's main thread: a call from any other thread needs the lock.
 #include <SDL3/SDL_events.h>
 
 /* the on-screen touch controls: an overlay of the app's own over the game,
-Android's (port/android/app/.../TouchControls.java), the iPhone's
-(port/ios/touch_controls.m) and a browser's (port/web/site/touch.js) */
+Android's (port/android/app/.../TouchControls.java) and the iPhone's
+(port/ios/touch_controls.m) */
 #if defined(HALO_ANDROID) || defined(HALO_IOS)
 #define HALO_TOUCH_CONTROLS 1
 #endif
@@ -48,9 +48,9 @@ int touch_input_chat_taps(float *x, float *y);
 
 #ifdef HALO_TOUCH_CONTROLS
 /* the on-screen touch controls (port/android/app/.../TouchControls.java; on
-iOS, port/ios/touch_controls.m; in a browser, port/web/site/touch.js),
-a view over the game: tells them whether a menu is up and
-input.touch_controls, and adds their stick and buttons to port 0's state */
+iOS, port/ios/touch_controls.m), a view over the game: tells them whether a
+menu is up and input.touch_controls, and adds their stick and buttons to port
+0's state */
 void touch_input_controls(XINPUT_GAMEPAD *pad, int menus);
 
 /* the touch controls' stick as the player's movement, -1..1 (forward, and

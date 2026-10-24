@@ -3,7 +3,8 @@ NV2A_VSH.C
 
 Decoding of NV2A vertex programs (Xbox vertex shader microcode) into the
 shader intermediate form (xgpu_shader.h), and the analysis of the game's
-model lighting programs on it; xgpu_glsl.c writes the GLSL.
+model lighting programs on it; xgpu_spirv.c and xgpu_msl.c write the
+shaders.
 
 Each instruction is four little-endian words. Word 1 to 3 hold a MAC
 (vector) operation and an ILU (scalar) operation that execute in parallel
@@ -14,7 +15,7 @@ temporary r1, whatever the instruction's temporary register field says.
 
 Xbox vertex programs finish by converting their clip-space position to
 screen space with the viewport constants c[-38] and c[-37], which Direct3D
-maintains. The generated shader inverts that transform to hand OpenGL a
+maintains. The generated shader inverts that transform to hand the GPU a
 clip-space position again.
 */
 
@@ -183,7 +184,7 @@ the skinned position, r10 (by 12); in 27, of a single node, the normal is
 r3 (by 5). They are taken as the first instruction that lights by them
 reads them: in 9 the normal before instruction 19, in 10 and 17 the normal
 before 24 and the position before 19, in 27 the normal before 7. A program
-is taken only where its lighting is the sum xgpu_glsl.c computes for each
+is taken only where its lighting is the sum xgpu_spirv.c computes for each
 pixel (the diffuse color written once, by the sum; both distant lights by
 one normal; the translucency; each point light by one position, its cone
 by its axis reversed) and the registers keep the same normal and position

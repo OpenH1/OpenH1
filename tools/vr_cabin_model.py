@@ -25,7 +25,7 @@ shaders (its textures, its lighting), so that it reads as the same vehicle:
   closed compartment inside the hull, under a hatch in its ceiling (the eye
   comes down through it: vr_seat.c), its front wall curved about the eye
   with the display's opening in it, 85 degrees across and 40 high, which
-  the world is seen through as through a window (xgpu_gl.c draws the feed's
+  the world is seen through as through a window (host_vulkan_vr.c draws the feed's
   look over it); a grate of bars that slides down over the opening (its own
   mesh, which vr_cabin.c moves), a dash under it with a holotable, where the
   tank's hologram stands (vr_cabin.c), the steering levers, side consoles

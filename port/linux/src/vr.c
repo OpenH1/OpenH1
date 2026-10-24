@@ -3722,7 +3722,7 @@ float halo_vr_vignette(float fov[2][4])
 	return vr.vignette;
 }
 
-/* ---------- foveation (vr.foveation; xgpu_gl.c draws it) */
+/* ---------- foveation (vr.foveation; host_vulkan_vr.c draws it) */
 
 float halo_vr_foveation_inset(void)
 {

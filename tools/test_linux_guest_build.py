@@ -81,7 +81,7 @@ def test_pinned_llvm_that_cannot_be_fetched_is_this_target_unavailable(tree, cap
 @pytest.mark.parametrize("vr", [False, True], ids=["desktop", "openxr"])
 def test_vulkan_build_has_runtime_and_guest_imports(tree, monkeypatch, native, vr):
     """Both sides of the guest ABI and the runtime must agree on the renderer
-    (Vulkan's, with no OpenGL backend in either) and VR, including Vulkan
+    (Vulkan's) and VR, including Vulkan
     types used by the OpenXR graphics binding."""
     monkeypatch.setattr(linux_guest_build, "native_linux_guest", lambda: native)
     monkeypatch.setattr(linux_guest_build, "guest_toolchain", lambda sln, cc: None)

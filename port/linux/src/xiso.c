@@ -6,8 +6,7 @@ Windows). When no data root has a maps folder, the first start (Linux's
 first_start.c, which finds the images itself and checks each with
 xiso_is_halo_image; Windows' sdl_platform.c) asks the player for their disc
 image of Halo and this copies the image's maps folder to the game's folder.
-(The Android app's copy of this is XisoExtractor.java, the web page's
-xiso-worker.js.)
+(The Android app's copy of this is XisoExtractor.java.)
 
 Written from a description of the Xbox's disc file system, XDVDFS
 (xboxdevwiki's XDVDFS page, https://xboxdevwiki.net/XDVDFS, and the format
@@ -45,7 +44,7 @@ left) and given the name maps only when every file is complete.
 #include "platform.h"
 #include "xiso.h"
 
-#if !defined(HALO_ANDROID)
+#ifndef HALO_ANDROID
 
 #include "posix.h"
 

@@ -57,7 +57,6 @@ at startup whether to play them anyway, turn those named off, or quit
 #include <stdlib.h>
 #include <string.h>
 
-
 /* ---------- constants */
 
 /* the mods' format this build plays */
@@ -304,8 +303,8 @@ static void utf8_trim(char *text)
 }
 
 /* text as mod.toml has it, whole UTF-8 characters, and its control
-characters (but its line breaks, if `lines`) spaces: what the menus, the
-message box and the web page's dialog show of it */
+characters (but its line breaks, if `lines`) spaces: what the menus and the
+message box show of it */
 static void text_clean(char *text, int lines)
 {
 	utf8_trim(text);

@@ -34,7 +34,7 @@ again so if the body goes out of its sight or slides away. As the game
 brings the player back, the feed switches off; the helmet's view switches
 on, and the HUD boots over a second: the shield meter charges from empty,
 the motion sensor comes up, the ammo counts up (vr_death_hud_boot:
-hud_unit.c, motion_sensor.c, hud_weapon.c). xgpu_gl.c draws the switching
+hud_unit.c, motion_sensor.c, hud_weapon.c). The VR host draws the switching
 and the feed into the eyes' images (halo_vr_eye_feed).
 
 With vr.death_view = "face" (and "still") the eye stays where it was as the
@@ -101,7 +101,7 @@ const char *config_string(char const *name);
 long config_integer(char const *name);
 unsigned long config_changes(void);
 void platform_log(char const *format, ...);
-/* vr.c's, d3d8_device.c's, xgpu_gl.c's */
+/* vr.c's, d3d8_device.c's, xgpu_stream_encode.c's */
 int halo_vr_aimed(void);
 void halo_vr_test_screenshot(void);
 void halo_vr_eye_tint(float red, float green, float blue);
@@ -1017,7 +1017,7 @@ real_matrix4x3 const *vr_death_body_nodes(long object_index, real_matrix4x3 cons
 /* the eye pass, after the game's screen flash and the seat's blink
 (render.c): the world dimmed and reddened while dead, dimmed further while
 the body is at the eye, dark in a blink and before the player is back, all
-of each eye (xgpu_gl.c's tint, as they are presented) */
+of each eye (the VR host's tint, as they are presented) */
 void vr_death_draw(void)
 {
 	real tint = vr_death.tint;

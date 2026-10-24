@@ -9,7 +9,7 @@ centre of the head: the player's eye (where the game puts it, interpolated
 between ticks) moved by the head's position, turned by the head's
 orientation, its field of view the union of both eyes' (culling and LOD
 cover both). The renderer draws each draw into both eyes at once
-(GL_OVR_multiview2, port/linux/src/xgpu_gl.c), moving each vertex's clip
+(multiview, port/linux/vulkan/xgpu_vulkan.c), moving each vertex's clip
 position from the centre view's to its eye's: the eyes look the way the
 centre does, offset sideways, so the move is a fixed 4x4 per eye for the
 projection the game has set, clip_eye = P_eye V_eye inverse(P_centre

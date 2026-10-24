@@ -319,7 +319,7 @@ def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
         add(source, " ".join([*base_cflags, mbedtls_include, f"-I{MBEDTLS_DIR / 'library'}", "-w"]),
             name=f"mbedtls/{source.name}.o")
     # the renderer: Vulkan's (port/linux/vulkan), with its own texture
-    # decoding, as Android's host (there is no OpenGL backend beside it)
+    # decoding, as Android's host
     objects.extend(host_vulkan_renderer(n, "windows", "WINDOWS", BUILD, "windows_host_cc", host_cflags,
                                         VULKAN_HEADERS_DIR, vr=False, texture_decoding=True))
     add(guest["host_table_c"], host_cflags)

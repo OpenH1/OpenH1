@@ -3471,7 +3471,6 @@ PROFILE_SECTION(main_non_deterministic_update_section, "non_deterministic_update
 PROFILE_SECTION(main_throttle_section, "throttle")
 PROFILE_SECTION(main_present_section, "present")
 
-
 /* port: whether a frame has work at its start that changes the game as a
 whole (main_loop's, which waits while a tick is open between two of its
 sub-steps: game_time_tick_open_wait) */

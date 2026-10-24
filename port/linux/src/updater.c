@@ -611,7 +611,7 @@ static int SDLCALL updater_download_thread(void *context)
 }
 
 /* downloads the release's zip, showing how far it has got in a window of its
-own (drawn in software, clear of the game's OpenGL); 1 when it is there */
+own (drawn in software, clear of the game's renderer); 1 when it is there */
 static int updater_download_zip(const char *zip_path, char *error, size_t error_size)
 {
 	static struct updater_download download;
@@ -1222,8 +1222,8 @@ void updater_poll(SDL_Window *window)
 #elif !defined(HALO_ANDROID)
 #include <SDL3/SDL.h>
 
-/* (nothing to ask about: the site updates itself, port/web/site/sw.js, and
-the other builds without UPDATE_PLATFORM are updated otherwise) */
+/* (nothing to ask about: the builds without UPDATE_PLATFORM are updated
+otherwise) */
 void updater_poll(SDL_Window *window)
 {
 	(void)window;

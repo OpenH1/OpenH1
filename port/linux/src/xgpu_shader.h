@@ -2,8 +2,8 @@
 XGPU_SHADER.H
 
 The shader intermediate form: the NV2A's programs decoded once, every bit
-field resolved, for the emitters to write in a shading language (GLSL and
-ESSL: xgpu_glsl.c). nv2a_vsh.c decodes vertex programs, nv2a_psh.c pixel
+field resolved, for the emitters to write in a shading language (SPIR-V:
+xgpu_spirv.c; MSL: xgpu_msl.c). nv2a_vsh.c decodes vertex programs, nv2a_psh.c pixel
 shaders.
 
 The form is the hardware's own operations, typed: these programs have no

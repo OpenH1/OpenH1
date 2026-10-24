@@ -3,8 +3,8 @@ XGPU_MSL.C
 
 Metal Shading Language from the shader intermediate form (xgpu_shader.h),
 for the Metal backend; the conventions are in xgpu_msl.h. The programs are
-the GLSL emitter's (xgpu_glsl.c) operation for operation, so that the two
-draw alike: where this file says less, xgpu_glsl.c says why.
+the SPIR-V emitter's (xgpu_spirv.c) operation for operation, so that the
+two draw alike.
 
 Metal's compiler warns of locals that are declared and not read, which the
 GLSL's fixed set of registers would have in every program: the registers a
@@ -506,7 +506,7 @@ char *xgpu_msl_vertex_shader(const struct xgpu_vertex_program *program, unsigned
 		}
 	}
 
-	/* the clip position, as the GLSL's (xgpu_glsl.c: the conversion done
+	/* the clip position, as the SPIR-V's (xgpu_spirv.c: the conversion done
 	with c[-38] and c[-37] undone, pixel centres at half-integers, a w of
 	zero behind the camera); Metal's clip space is Direct3D's, as the
 	game's: nothing to flip, depth 0 to 1 */
@@ -1066,7 +1066,7 @@ static void texture_stage(struct xgpu_text *text, const struct xgpu_pixel_progra
 			dot_input(text, decoded);
 			xgpu_text_append(text, ");\n");
 		}
-		/* the depth it replaces the fragment's with (xgpu_glsl.c) */
+		/* the depth it replaces the fragment's with (xgpu_spirv.c) */
 		if (mode == XGPU_TEXTURE_DOT_ZW && stage == xgpu_pixel_program_depth_stage(program))
 		{
 			xgpu_text_append(text, "\treplaced_depth = dot%d > 0.0 ? saturate(dot%d / dot%d / %.1f) : 1.0;\n",
@@ -1189,7 +1189,7 @@ static const char *comparison_operator(unsigned long function)
 	}
 }
 
-/* per-pixel model lighting (xgpu_glsl.c model_lighting) */
+/* per-pixel model lighting (xgpu_spirv.c model_lighting) */
 static void model_lighting(struct xgpu_text *text, BOOL point_lights, BOOL dynamic_lights)
 {
 	int light;
@@ -1221,10 +1221,10 @@ static void model_lighting(struct xgpu_text *text, BOOL point_lights, BOOL dynam
 	xgpu_text_append(text, "\treturn saturate(light);\n}\n");
 }
 
-/* the enhanced dynamic lights (xgpu_glsl.c xgpu_dynamic_lights_glsl): the
-block (struct xgpu_dynamic_lights_block, 6 KB: a buffer, past
-setFragmentBytes' 4) and the cells (a buffer of four words a cell, which
-OpenGL's integer 3D texture holds, in its order) */
+/* the enhanced dynamic lights (xgpu.h): the block (struct
+xgpu_dynamic_lights_block, 6 KB: a buffer, past setFragmentBytes' 4) and
+the cells (a buffer of four words a cell, which Vulkan's integer 3D
+texture holds, in its order) */
 static void dynamic_lights_functions(struct xgpu_text *text, struct xgpu_text *functions)
 {
 	xgpu_text_append(text,
@@ -1606,7 +1606,7 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	if (environment)
 	{
 		/* the lightmap pass's light, before the textures multiply it
-		(xgpu_glsl.c) */
+		(xgpu_spirv.c) */
 		xgpu_text_append(&text,
 			"\t{\n"
 			"\t\tfloat3 surface_normal = normalize(in.xWorldNormal.xyz);\n"
@@ -1630,7 +1630,7 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 		else if (sample_mask)
 		{
 			/* multisampled: the samples covered as alpha passes the reference
-			over the pixel (xgpu_glsl.c) */
+			over the pixel (xgpu_spirv.c) */
 			xgpu_text_append(&text,
 				"\tfloat test_alpha = saturate(result.a) * 255.0;\n"
 				"\tfloat test_coverage = saturate(%s(test_alpha - u.alpha_reference) / max(fwidth(test_alpha), 1.0) + 0.5);\n"
@@ -1687,9 +1687,9 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	return text.buffer;
 }
 
-/* the glow about each plasma bolt's light (xgpu_msl.h), the OpenGL
-backend's program (xgpu_gl.c dynamic_lights_halo_program) for the screen's
-target, operation for operation: the light's quad facing the camera,
+/* the glow about each plasma bolt's light (xgpu_msl.h), the SPIR-V
+emitter's (xgpu_spirv.c) for the screen's target, operation for
+operation: the light's quad facing the camera,
 projected as the game's vertex programs project (the screen conversion
 undone, as the emitter's vertex shaders undo it: Metal's clip space is the
 game's), and in the pixel shader a wide soft glow and a small hot core,

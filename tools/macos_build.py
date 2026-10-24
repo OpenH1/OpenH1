@@ -22,7 +22,7 @@ wherever the host reserves them (port/android/host/host_memory_base.c).
   tests (port/macos/tests).
 
 The renderer is Metal's (port/macos/xgpu_metal.m), in the host: the guest
-writes its frames as the renderer's command stream (HALO_RENDER_STREAM).
+writes its frames as the renderer's command stream.
 Refer to port/macos/README.md.
 """
 

@@ -48,7 +48,7 @@ void xgpu_backend_consume(void);
 /* the most the mods' tags keep in memory (their files, their sounds'
 samples, their bitmaps' tags and their models' geometry; bitmaps' pixels
 are read as they are drawn) */
-#if defined(HALO_ANDROID)
+#ifdef HALO_ANDROID
 #define MAXIMUM_KEPT_BYTES (192UL * 1024 * 1024)
 #else
 #define MAXIMUM_KEPT_BYTES (512UL * 1024 * 1024)

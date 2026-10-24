@@ -21,7 +21,7 @@ The Xbox game state is 0x345000 bytes at 0x80061000 and ends where the tag
 cache begins (0x803A6000). Cache files are linked to that tag cache address,
 so the game state cannot grow in place. The native builds put a 16 MB game
 state above the tag cache (which ends at 0x819A6000), inside the Xbox memory
-window (0x80000000-0xA0000000, the AArch64 guests' and the web build's to
+window (0x80000000-0xA0000000, the AArch64 guests' to
 0x88000000: port/linux/src/platform.h) and below everything the window hands out
 top-down (texture and sound caches, Direct3D resources).
 
@@ -44,8 +44,8 @@ is drawn as the default one ("YOU GOT STABBED" in debug.txt; Elite_Alpha_Siege
 did at 22 MB), and a frame of bigass_v3 draws more than 64 MB (DamnationCE's
 measurement). The desktop builds' cache is 256 MB, half their 512 MB memory
 window (port/linux/src/platform.h), whose pages are backed as they are used.
-The AArch64 guests' window (Android's and 64-bit ARM Linux's) is 128 MB, as
-the web build's, and their cache the Xbox's; the x86-64 guest's window and
+The AArch64 guests' window (Android's and 64-bit ARM Linux's) is 128 MB, and
+their cache the Xbox's; the x86-64 guest's window and
 cache are the desktop's. */
 
 #if defined(HALO_GUEST) && defined(__aarch64__)
@@ -63,7 +63,7 @@ the Xbox. Halo Custom Edition maps' sounds, converted when they load
 over a map's by mods (mod_sounds.c), are longer than the Xbox maps' and fill it (a
 campaign map's dialogue and music did, "SOUND CACHE BLOWN" in debug.txt).
 The desktop builds' cache is 16 MB (the x86-64 guest's too); the 128 MB
-windows of the AArch64 guests and the web build keep the Xbox's. */
+windows of the AArch64 guests keep the Xbox's. */
 
 #if defined(HALO_GUEST) && defined(__aarch64__)
 #define HALO_PORT_SOUND_CACHE_SIZE 0x400000 /* (0x400000) */
@@ -81,7 +81,7 @@ charge glows and flashlights stop drawing. The desktop builds (x86-64 and
 the Mac's) draw four times as many. Only what is drawn changes: these are
 rebuilt every frame, outside the game state, and nothing of them reaches
 the network, so machines with other limits still play the same game.
-Android's, the web build's and Linux arm64's (boards and phones' cores)
+Android's and Linux arm64's (boards and phones' cores)
 keep the Xbox's. (The transparent geometry groups: below.)
 
 The lights found past the rasterizer's 128 are not lit (MAXIMUM_LIGHTS_PER_

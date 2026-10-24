@@ -89,8 +89,7 @@ that keyboard is up, and where the latest was (0 to 1 across and down the
 window) */
 int halo_chat_taps(float *x, float *y);
 /* whether the touch controls hold the screen's bottom left, where the chat
-then goes at the top left: on Android, and in a browser once its touch
-controls have been used */
+then goes at the top left: on Android and iOS */
 int halo_chat_touch_layout(void);
 
 #endif

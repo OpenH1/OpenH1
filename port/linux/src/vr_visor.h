@@ -2,8 +2,8 @@
 VR_VISOR.H
 
 The HUD on the helmet's visor (HALO_VR, vr.hud = "visor"; vr_visor.c): what
-vr.c and the renderer (d3d8_device.c, xgpu_gl.c) ask of it. The game's side
-is vr.h's halo_vr_visor_state.
+vr.c and the renderer (d3d8_device.c, port/linux/vulkan/host_vulkan_vr.c)
+ask of it. The game's side is vr.h's halo_vr_visor_state.
 */
 
 #ifndef __HALO_VR_VISOR_H
@@ -11,7 +11,7 @@ is vr.h's halo_vr_visor_state.
 
 #include "vr_host.h"
 
-/* how the HUD's layer shows the game's HUD image (xgpu_gl.c draws it so) */
+/* how the HUD's layer shows the game's HUD image (host_vulkan_vr.c draws it so) */
 struct vr_visor_hud_image
 {
 	/* 0: as it is (vr.hud = "flat", the menus); 1: curved about the eyes, in
@@ -32,7 +32,7 @@ struct vr_visor_hud_image
 	float glass;
 	/* the world's light (vr.hud_react, 0 none to 1): the HUD's contrast
 	with what is behind it, from a map of the world's light worked out from
-	the eyes' images (xgpu_gl.c): how far it reaches from the middle of the
+	the eyes' images (host_vulkan_vr.c): how far it reaches from the middle of the
 	head (tangents: left, right, up, down), how much of the frame's light it
 	takes in (its smoothing over time: 1 the frame's alone), and each eye's
 	transform from the head and field of view (as the rim's) */
@@ -76,7 +76,7 @@ struct vr_visor_panel
 };
 
 /* the helmet's rim (vr.helmet_rim): the faceplate's lip about the visor,
-drawn in each eye where it is, before it (xgpu_gl.c): its strength (0
+drawn in each eye where it is, before it (host_vulkan_vr.c): its strength (0
 none), how far before the middle of the head it is (metres:
 vr.helmet_rim_depth), how far in from the edges of the eyes' views on that
 plane its lip begins (a fraction of them: vr.helmet_rim_reach), the edges
@@ -95,7 +95,7 @@ struct vr_visor_rim
 
 /* the visor's glass, VR_GLASS_DISTANCE before the middle of the head, just
 behind the rim's lip: the edges of the view darkened, its tint, the
-warning's glow on its rim, and the shields' energy across it (xgpu_gl.c
+warning's glow on its rim, and the shields' energy across it (host_vulkan_vr.c
 draws it into each eye's image, as the rim) */
 #define VR_GLASS_DISTANCE 0.105f
 struct vr_visor_image

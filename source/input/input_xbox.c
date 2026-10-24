@@ -399,7 +399,7 @@ static void update_hold_ticks(
 	boolean down)
 {
 	/* port: the clock is read only for a button held: this runs for every
-	key each frame, and a read of the clock is slow in a browser */
+	key each frame */
 	if (!down)
 	{
 		*ticks = 0;
