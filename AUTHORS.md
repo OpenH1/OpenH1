@@ -25,10 +25,17 @@
 - **The high-res HUD** (its meters, icons, scopes and messages, and the
   weapons' reticles): redraws by MrBruh (`port/assets/hud`), based on
   reference photos by Aerocatia. The sniper rifle's zoom labels (2x, 10x)
-  are set in Overpass (`port/assets/fonts`).
+  are set in Overpass (`port/assets/fonts`). The message icons' pictures
+  are Aerocatia's and Jessie's (below).
 
 ## Third-party art
 
+- **The HUD's pictures of the weapons and the skull** (in its messages, as
+  "Hold to swap for" a weapon): Aerocatia's and Jessie's high-res HUD art
+  from [Halo PC Restored](https://github.com/Aerocatia/halopc-restored)
+  r220 (`port/assets/hud/art`), not under OpenH1's licence; see
+  `port/assets/hud/NOTICE.md`. Taken from ChupathingyCE, whose work by
+  MrMilenko the cutting and placing follow.
 - **Voice chat's speaker icons** (who talks, and who is muted, in the lobby,
   on the scoreboard and in the game): `volume-2` and `volume-x` from
   [Lucide](https://lucide.dev) 1.53.0, copyright (c) 2026 Lucide Icons and
