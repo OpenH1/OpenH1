@@ -138,8 +138,9 @@ extern void *global_d3d_device;
 extern struct pixel_shader_definition pixel_shader;
 
 /* port: the characters of a string (rasterizer_text_begin to _end) drawn
-together, as a list of quads, instead of a draw each: each draw is a call
-into the browser on the web, and a scoreboard is hundreds of characters.
+together, as a list of quads, instead of a draw each: each draw is work
+for the command stream and the driver, and a scoreboard is hundreds of
+characters.
 The Xbox drew them from its push buffer later all the same. The batch is
 drawn when the string ends, when it is full, and before a glyph's place in
 a texture is given to another (rasterizer_text_flush). */

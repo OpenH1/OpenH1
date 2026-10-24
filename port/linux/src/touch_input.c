@@ -18,9 +18,8 @@ finger down (host_gesture_insets).
 #include <string.h>
 
 #ifdef HALO_TOUCH_CONTROLS
-/* port/android/guest/runtime/guest_host.h (in a browser,
-port/web/src/web_touch.c; on iOS, port/android/host/host_touch.c in the
-host) */
+/* port/android/guest/runtime/guest_host.h (on iOS too,
+port/android/host/host_touch.c in the host) */
 void host_gesture_insets(int *insets);
 void host_touch_read(int *state);
 void host_touch_look_read(float *delta);
@@ -236,8 +235,8 @@ void touch_input_gamepad(XINPUT_GAMEPAD *pad)
 The overlay (port/android/app/.../TouchControls.java) draws and reads its
 own fingers on Android's UI thread; port/android/host/host_touch.c hands
 its state over. On iOS the overlay is port/ios/touch_controls.m, a UIKit
-view over SDL's, through the same host_touch.c. In a browser the page's overlay (port/web/site/touch.js)
-does, through port/web/src/web_touch.c. These bits tell it when to show: */
+view over SDL's, through the same host_touch.c. These bits tell it when to
+show: */
 enum
 {
 	/* the game has read its controller: the other bits are known */

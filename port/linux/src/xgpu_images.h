@@ -3,10 +3,9 @@ XGPU_IMAGES.H
 
 The high-res replacements' pictures (the high-res HUD's and titles'
 textures, the menus' art, the high-res text's atlas: hud_hires.c,
-menu_files.c, text_hires.c) where the renderer's backend is on the host
-(HALO_RENDER_STREAM: xgpu_stream_encode.c), in place of the OpenGL textures
-they are made as otherwise: pixels in the game's memory, which the host
-reads where they are and makes a texture of (xgpu_stream.h's
+menu_files.c, text_hires.c), for the renderer's backend on the host
+(xgpu_stream_encode.c): pixels in the game's memory, which the host reads
+where they are and makes a texture of (xgpu_stream.h's
 XGPU_STREAM_SOURCE_IMAGE). xgpu_images.c.
 */
 
@@ -56,9 +55,9 @@ void xgpu_texture_cache_begin_frame(void);
 
 /* (xbox_textures.c) the image drawn in place of the Xbox texture whose
 header is at resource, 0 if none, and its description as the replacement
-changes it (its levels, hires and what goes with it: as the OpenGL cache
-has it); and the channels the texels at address are sampled from (a Custom
-Edition map's: xgpu_stream.h's texture stage) */
+changes it (its levels, hires and what goes with it); and the channels the
+texels at address are sampled from (a Custom Edition map's: xgpu_stream.h's
+texture stage) */
 unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_description *description);
 unsigned long xgpu_texture_channels(unsigned long address);
 

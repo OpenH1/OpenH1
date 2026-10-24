@@ -2,16 +2,15 @@
 XGPU_VULKAN_TEXTURES.C
 
 The Vulkan backend's cache of the Xbox's textures and the high-res
-replacements' images (xgpu_vulkan_textures.h), as the OpenGL backend's
-texture cache (port/linux/src/xbox_textures.c) and the Metal backend's
-(port/macos/xgpu_metal_textures.c) have them, with the same decoding
+replacements' images (xgpu_vulkan_textures.h), as the Metal backend's
+(port/macos/xgpu_metal_textures.c) has them, with the same decoding
 (xbox_texture_decode.c, built into the host beside a stand-in for the
 platform header: xgpu_vulkan_platform.h).
 
 An Xbox texture is found by its Data, Format and Size words (and a
 palettized one's palette, and the channels a Custom Edition map's texels are
 sampled from); its texels are read from the guest's memory where they are.
-DXT textures are uploaded as they are (BC1 to BC3), as OpenGL's are, where
+DXT textures are uploaded as they are (BC1 to BC3), where
 the device has them, a volume's decoded; where it has not (most Android
 phones' GPUs), ASTC where it has that (below), else decoded; every other
 format is decoded to BGRA. The pages it was read from are write-protected (the write tracking,
@@ -27,10 +26,9 @@ its number and made again when its serial changes; its levels are made from
 its first.
 
 debug.texture_dump_directory writes each 2D Xbox texture's first level as it
-is read, decoded to BGRA, in the OpenGL cache's files (texture_dump).
+is read, decoded to BGRA (texture_dump).
 
-A texture no stage has drawn for half a minute of time is let go, as the
-OpenGL cache's are.
+A texture no stage has drawn for half a minute of time is let go.
 
 ASTC (HALO_ASTC, the Android app's build; display.astc_textures,
 xgpu_astc_chosen: on a device that samples ASTC 4x4 and not BC): a 2D or
@@ -71,7 +69,7 @@ texture with a thickness is not let go while the guest keeps its texels.
 #define BUCKET_COUNT 4096
 /* the textures are looked over every SWEEP_SECONDS, and those no stage
 has drawn since the look SWEEP_COUNT before are let go: 30 to 40 seconds
-after they were last drawn, as the OpenGL cache (xbox_textures.c). Counted
+after they were last drawn. Counted
 in time, not frames: 1800 frames, half a minute at 60 frames a second, was
 15 seconds on the Steam Frame at 120 */
 #define SWEEP_SECONDS 10
@@ -216,11 +214,10 @@ static uint32_t levels_most(unsigned long width, unsigned long height, unsigned 
 
 /* ---------- the textures written out (debug.texture_dump_directory) */
 
-/* a 2D texture's first level as it is read (texels: its BGRA, decoded),
-written as the OpenGL backend writes it (port/linux/src/xbox_textures.c,
-texture_dump): tex<number>_fmt<format>_<width>x<height>.tga, 32-bit, rows
-from the top, numbered in the order they are read; texels as stored (a
-Custom Edition map's channel orders are the sampler's, as OpenGL's) */
+/* a 2D texture's first level as it is read (texels: its BGRA, decoded):
+tex<number>_fmt<format>_<width>x<height>.tga, 32-bit, rows from the top,
+numbered in the order they are read; texels as stored (a Custom Edition
+map's channel orders are the sampler's) */
 static void texture_dump(const struct xgpu_texture_description *description, const DWORD *texels)
 {
 	unsigned long width = description->width, height = description->height;
@@ -492,7 +489,7 @@ static void xbox_texture_upload(struct entry *entry, const D3DCOLOR *palette)
 	unsigned long faces = description->cube_map ? 6 : 1, face_size = xgpu_texture_face_size(description);
 	unsigned long levels = xgpu_vulkan_image_description(entry->image)->levels, face, level;
 	int blocks = description->compressed && !entry->decoded;
-	/* (a 2D texture's first level written out, as OpenGL's are) */
+	/* (a 2D texture's first level written out) */
 	int dump = cache.dump_folder && !description->cube_map && description->depth <= 1;
 
 #ifdef HALO_ASTC
@@ -604,7 +601,7 @@ static struct entry *xbox_entry_find(const struct xgpu_stream_texture_stage *sta
 		entry->description.format == 0x0c;
 #endif
 	/* (one larger than the device takes is never drawn, nor one outside the
-	contiguous memory: as the OpenGL cache) */
+	contiguous memory) */
 	if (xgpu_texture_size_supported(&entry->description))
 	{
 		uint64_t size = (uint64_t)xgpu_texture_face_size(&entry->description) * (entry->description.cube_map ? 6 : 1);

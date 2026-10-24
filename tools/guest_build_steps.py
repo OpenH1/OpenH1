@@ -12,10 +12,6 @@ writes.
         bits/syscall.h: the input, then its __NR_ lines as SYS_ ones
     guest_build_steps.py version-h OUTPUT VERSION
         musl's version.h
-    guest_build_steps.py gl-include STAMP FOLDER [HEADERS]
-        FOLDER/GLES2, GLES3, KHR and GL: copies of HEADERS' (where it has
-        them; none without HEADERS, for a guest without OpenGL ES's code
-        paths), then STAMP
     guest_build_steps.py ar ARCHIVER OUTPUT RESPONSE_FILE
         a new archive of the objects the response file names
     guest_build_steps.py copy INPUT OUTPUT
@@ -31,7 +27,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 
 def write_if_changed(path: Path, text: str) -> None:
@@ -70,18 +65,6 @@ def syscall_h(output: Path, source: Path) -> None:
     write_if_changed(output, text + ("" if text.endswith("\n") else "\n") + "".join(f"{line}\n" for line in extra))
 
 
-def gl_include(stamp: Path, folder: Path, headers: Optional[Path]) -> None:
-    folder.mkdir(parents=True, exist_ok=True)
-    for name in ("GLES2", "GLES3", "KHR", "GL"):
-        target = folder / name
-        if target.exists():
-            shutil.rmtree(target)
-        if headers and (headers / name).is_dir():
-            shutil.copytree(headers / name, target)
-    stamp.parent.mkdir(parents=True, exist_ok=True)
-    stamp.write_text("", encoding="utf-8")
-
-
 def archive(archiver: str, output: Path, response: Path) -> None:
     if output.exists():
         output.unlink()
@@ -117,8 +100,6 @@ def main(arguments: list) -> int:
         syscall_h(Path(rest[0]), Path(rest[1]))
     elif step == "version-h" and len(rest) == 2:
         write_if_changed(Path(rest[0]), f'#define VERSION "{rest[1]}"\n')
-    elif step == "gl-include" and len(rest) in (2, 3):
-        gl_include(Path(rest[0]), Path(rest[1]), Path(rest[2]) if len(rest) == 3 else None)
     elif step == "ar" and len(rest) == 3:
         archive(rest[0], Path(rest[1]), Path(rest[2]))
     elif step == "copy" and len(rest) == 2:

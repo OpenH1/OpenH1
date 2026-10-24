@@ -8,9 +8,9 @@ pipeline key (everything a pipeline object bakes in: shaders, vertex
 layout, blend, depth and stencil, raster state, the targets' formats), the
 dynamic state no API bakes in (viewport, scissor, depth range, stencil
 reference, blend color, depth bias), the resources bound and the draw's
-range. A backend (xgpu_gl.c: OpenGL, OpenGL ES and WebGL) makes the GPU
-do it. One backend is built into an executable; the
-functions here are its.
+range. A backend (the host's, Vulkan's or Metal's, through the command
+stream: xgpu_stream_encode.c) makes the GPU do it. One backend is built into
+an executable; the functions here are its.
 
 Nothing here holds an Xbox value or a GL one: the front end translates the
 game's D3D states into these, each backend into its API's. And every call
@@ -49,7 +49,7 @@ struct xgpu_backend_capabilities
 	rather than by queries */
 	BOOL sample_counting;
 	/* vertex streams' D3DCOLOR elements read as the Xbox has them (BGRA);
-	else streamed with their bytes swapped (OpenGL ES), never from the
+	else streamed with their bytes swapped, never from the
 	mirror */
 	BOOL bgra_vertex_colors;
 	/* indexed draws from the mirror (a base vertex for them) */
@@ -58,12 +58,12 @@ struct xgpu_backend_capabilities
 	to alpha (a sample mask) */
 	BOOL sample_mask;
 	/* a blend mixing a constant color factor with a constant alpha one
-	(else the pixel shader applies the source factor: WebGL) */
+	(else the pixel shader applies the source factor) */
 	BOOL mixed_constant_blend;
 	/* the enhanced dynamic lights (display.dynamic_lights) */
 	BOOL dynamic_lights;
 	/* a draw can sample the target it draws into, as it was (else a copy
-	of it: WebGL, xgpu_texture_source's drawn) */
+	of it: xgpu_texture_source's drawn) */
 	BOOL sample_drawn_target;
 	/* display.hdr: an RGBA16F back buffer, the draws' tags carried out
 	(xgpu_hdr.h), the tone map and an HDR display's encoding */
@@ -489,8 +489,7 @@ enum
 streams' first; or an indexed draw whose indices are vertices from minimum
 on (the streams' first), from the mirror (segment 0 or more) or streamed
 from guest memory (temporary: the front end's, made for this draw, which a
-backend keeping index arrays drawn again and again must not keep: WebGL's,
-which has no base vertex) */
+backend keeping index arrays drawn again and again must not keep) */
 void xgpu_backend_draw(int primitive, unsigned long count);
 void xgpu_backend_draw_indices(int primitive, const WORD *indices, unsigned long count);
 void xgpu_backend_draw_indexed(int primitive, const WORD *indices, unsigned long count, unsigned long minimum,
@@ -518,9 +517,7 @@ void xgpu_backend_visibility_end(unsigned long slot, float area, int views, int 
 /* the latest count known for the slot (0: none yet; at most
 XGPU_VISIBILITY_COUNT_MOST). Answered now; it
 could wait: the counts are a frame or more old already (the GPU's), and a
-backend elsewhere would write them into guest memory the front end reads
-(only OpenGL ES 3.0's queries, read as soon as each is available, would
-then be read once a frame) */
+backend elsewhere would write them into guest memory the front end reads) */
 UINT xgpu_backend_visibility_result(unsigned long slot);
 
 /* ---------- frames */
@@ -571,7 +568,7 @@ void xgpu_backend_dynamic_lights_halos(xgpu_target color, xgpu_target depth, int
 The front end keeps the passes (vr.h's HALO_VR_PASS_*) and which views a
 draw goes to; the backend holds the eyes' images and the foveated layers,
 the HUD groups' targets, the eye corrections (halo_vr_set_eye_transforms),
-and composes the frame for OpenXR at the present (xgpu_gl.c). */
+and composes the frame for OpenXR at the present (host_vulkan_vr.c). */
 
 /* in: the eyes', HUD's and scope's sizes, debug.gpu_stats, and with it
 debug.vr_gpu_time (gpu_time: the settings file's, which a backend in the

@@ -539,7 +539,7 @@ static void render_window(
 #ifdef HALO_VR
 		if (render_vr_scope_pass)
 		{
-			/* the scope's own reticle is drawn over its image (xgpu_gl.c),
+			/* the scope's own reticle is drawn over its image (host_vulkan_vr.c),
 			or the smart-link's window the weapon's zoomed view, as the
 			flat screen shows it (port/linux/game/vr_scope.c) */
 			vr_scope_draw_hud();
@@ -838,7 +838,7 @@ static void render_vr_hud(
 	parameters.camera = camera;
 	render_camera_build_frustum(&parameters.camera, NULL, &parameters.frustum, TRUE);
 	parameters.rasterizer_target = _render_target_primary;
-	/* (the HUD pass began over transparent black: d3d8_device.c, xgpu_gl.c) */
+	/* (the HUD pass began over transparent black: d3d8_device.c) */
 	parameters.suppress_clear = TRUE;
 	parameters.window_index = render.window_index;
 	rasterizer_window_begin(&parameters);

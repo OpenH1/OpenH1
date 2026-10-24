@@ -2,9 +2,9 @@
 XGPU_SPIRV.H
 
 SPIR-V from the shader intermediate form (xgpu_shader.h), for the Vulkan
-backend (port/linux/vulkan): xgpu_spirv.c. The programs are the GLSL
-emitter's (xgpu_glsl.c, desktop OpenGL's), written as SPIR-V words directly
-rather than as GLSL for a compiler: the shaders are made from pipeline keys
+backend (port/linux/vulkan): xgpu_spirv.c. The programs are OpenCE's GLSL
+emitter's, written as SPIR-V words directly rather than as GLSL for a
+compiler: the shaders are made from pipeline keys
 as the game first draws with them, and a GLSL compiler in the host would
 cost a library of megabytes and milliseconds a shader there, where these
 programs (no control flow but discarding, a few dozen kinds of operation)
@@ -15,10 +15,9 @@ The conventions (SPIR-V 1.3, Vulkan 1.1):
 
 - clip space is Vulkan's (z 0 to 1, the first row at the top of the
   framebuffer, y down): the game's position (Direct3D's, y up) has its y
-  negated, as OpenGL ES's (xgpu_glsl.c), so that the targets' first row is
-  the Xbox's top one, as desktop OpenGL's glClipControl makes it;
+  negated, so that the targets' first row is the Xbox's top one;
 - vertex attributes are at location n for v<n>. A D3DCOLOR is
-  VK_FORMAT_B8G8R8A8_UNORM (read as RGBA, as GL_BGRA gives it); NORMPACKED3
+  VK_FORMAT_B8G8R8A8_UNORM (read as RGBA); NORMPACKED3
   is VK_FORMAT_R32_UINT, unpacked here; the unnormalized shorts
   (integer_attribute_mask) are VK_FORMAT_R16*_SINT, read as integers and
   converted here; everything else is read as a vec4, the missing components
@@ -31,8 +30,8 @@ The conventions (SPIR-V 1.3, Vulkan 1.1):
   visibility tests' counters (a storage buffer of uints) at theirs;
 - each stage's texture is a combined image sampler at binding n of
   XGPU_SPIRV_SET_TEXTURES; the samplers have D3DTSS_MIPMAPLODBIAS
-  (mipLodBias) and the border colors (VK_EXT_custom_border_color), as
-  OpenGL's do, or the shader draws the border as the Metal emitter's does
+  (mipLodBias) and the border colors (VK_EXT_custom_border_color), or the
+  shader draws the border as the Metal emitter's does
   (xgpu_spirv_options border);
 - the stages hand on, at locations XGPU_SPIRV_LOCATION_*: the colors, the
   texture coordinates, fog, and with lighting the world normal, position,
@@ -40,8 +39,8 @@ The conventions (SPIR-V 1.3, Vulkan 1.1):
 - the VR mode uses Vulkan multiview, with ViewIndex relative to the
   attachment view's first layer. A draw of one eye uses that eye's layer
   (its two layers when foveated) as the attachment view. The eyes and all
-  other targets have their first row at the top; unlike OpenXR's OpenGL
-  images, neither the eye positions nor layered texture lookups flip rows.
+  other targets have their first row at the top: neither the eye positions
+  nor layered texture lookups flip rows.
 */
 
 #ifndef __HALO_LINUX_XGPU_SPIRV_H
@@ -237,7 +236,8 @@ unsigned long xgpu_spirv_vertex_inputs(const struct xgpu_vertex_program *program
 BOOL xgpu_spirv_pixel_shader(const struct xgpu_pixel_program *program, const struct xgpu_spirv_options *options,
 	struct xgpu_spirv_module *module);
 
-/* the enhanced dynamic lights' glows (xgpu_gl.c dynamic_lights_halo_program):
+/* the enhanced dynamic lights' glows (xgpu_backend.h's
+xgpu_backend_dynamic_lights_halos):
 a camera-facing quad about each light, six vertices of a triangle list,
 added to the 3D view and faded against the depth the scene was drawn with.
 The vertices: v<XGPU_SPIRV_HALO_MIDDLE> the light's middle and the glow's
@@ -246,11 +246,11 @@ corner (-1 or 1 each way). The vertex constants: the world's projection
 and the screen conversion (c[-96] to c[-93], c[-38], c[-37]) at
 XGPU_SPIRV_HALO_PROJECTION, the camera's right and up at
 XGPU_SPIRV_HALO_CAMERA_AXES, and the depth for a distance and the softness
-at XGPU_SPIRV_HALO_DEPTH (xgpu_gl.c's depth_parameters). The uniforms are
-struct xgpu_spirv_uniforms (the viewport's, the screen offset, the eyes' and
-insets' corrections); the scene's depth is texture 0, sampled with
-texelFetch (an array of the views' layers with multiview). options:
-multiview (XGPU_MULTIVIEW_EYES or none), foveated and effect alone.
+at XGPU_SPIRV_HALO_DEPTH (xgpu_vulkan_stream.c's halo_depth_parameters).
+The uniforms are struct xgpu_spirv_uniforms (the viewport's, the screen
+offset, the eyes' and insets' corrections); the scene's depth is texture 0,
+sampled with texelFetch (an array of the views' layers with multiview).
+options: multiview (XGPU_MULTIVIEW_EYES or none), foveated and effect alone.
 
 With effect (the VR mode's eyes), each glow is the light its bolt
 scatters toward each eye from a haze about it, worked out for each pixel

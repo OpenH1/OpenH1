@@ -180,11 +180,6 @@ bool SDL_SetWindowRelativeMouseMode(SDL_Window *window, bool enabled)
 	return host_sdl_set_relative_mouse((unsigned int)window, enabled) != 0;
 }
 
-bool SDL_GL_SetAttribute(SDL_GLAttr attribute, int value)
-{
-	return host_sdl_gl_set_attribute((int)attribute, value) != 0;
-}
-
 /* ---------- events */
 
 bool SDL_PollEvent(SDL_Event *event)

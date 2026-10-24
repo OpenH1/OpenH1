@@ -17,7 +17,7 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_mode" x="28" y="124" platform="computer"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_resolution" x="28" y="145" platform="computer"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_window_size" x="28" y="145" platform="computer"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_max_fps" x="28" y="166" platform="desktop web"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_max_fps" x="28" y="166" platform="desktop"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_vsync" x="28" y="187"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_fov" x="28" y="208"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_first_person" x="28" y="229"/>
@@ -121,7 +121,7 @@
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/window_size_spinner" type="spinner" top="2" width="140" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="1280 x 960" setting="display.window_size" values="1280x960" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 140 14 146">
 		<on event="created" run="port setting load"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_max_fps" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="desktop web">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/op_max_fps" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="desktop">
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/max_fps_label"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/video_settings/max_fps_spinner" x="188"/>
 	</widget>

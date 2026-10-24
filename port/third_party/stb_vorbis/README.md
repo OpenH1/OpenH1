@@ -36,4 +36,4 @@ comment. As changed, its SHA-256 is
 sounds are decoded with it when a map loads
 (`port/linux/game/custom_edition_sounds.c`, which includes it for its
 declarations); it is compiled as the port's game units are and builds into
-the Linux, Windows, Android and web builds.
+every build.

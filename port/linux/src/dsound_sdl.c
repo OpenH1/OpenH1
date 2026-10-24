@@ -2003,10 +2003,10 @@ unsigned long dsound_sdl_recorded_frames(void)
 }
 
 /* audio.channels: "stereo", "5.1", or "auto" for 5.1 when the device has
-at least six channels. Android and the browser play stereo */
+at least six channels. Android plays stereo */
 static unsigned long choose_output_channels(SDL_AudioDeviceID device)
 {
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#ifdef HALO_ANDROID
 	(void)device;
 	return 2;
 #else
@@ -2069,9 +2069,7 @@ static void audio_start(void)
 		the menus' music broke up, which 1024 does not (about 21 ms at 48 kHz,
 		11 ms more than 512) */
 		SDL_SetHint(SDL_HINT_AUDIO_DEVICE_SAMPLE_FRAMES, "1024");
-#elif !defined(HALO_WEB)
-		/* (a browser's, SDL's own: with room for the page's scheduling, which
-		512 frames underran) */
+#else
 		{
 			/* audio.buffer_frames: the device's buffer (port_config.c) */
 			long buffer_frames = config_integer("audio.buffer_frames");

@@ -22,11 +22,10 @@ wherever the host reserves them (port/android/host/host_memory_base.c).
   tests (port/macos/tests).
 
 The renderer is Metal's (port/macos/xgpu_metal.m), in the host: the guest
-writes its frames as the renderer's command stream (HALO_RENDER_STREAM).
+writes its frames as the renderer's command stream.
 Refer to port/macos/README.md.
 """
 
-import hashlib
 import json
 import os
 import platform
@@ -38,7 +37,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
 from .linux_package import ROOT as REPO_ROOT, notices as release_notices
-from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, RENDER_STREAM_GUEST_EXCLUDED, SDL_TAG,
+from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, SDL_TAG,
                             TOML_DIR, fetch_third_party, generate_guest_image)
 from .build_common import (ASTC_CXX_FLAGS, ASTC_DIR, ASTC_HOST_CXX_SOURCES, ASTC_HOST_SOURCES, MBEDTLS_DIR, MINIUPNPC_DEFINES,
                            MINIUPNPC_DIR, astc_encoder_sources, compile_launcher, download, miniupnpc_sources)
@@ -58,33 +57,6 @@ SDL_DIR = THIRD_PARTY / "SDL3"
 # macOS 14.4: os_sync_wait_on_address (the guest's futexes, host_syscall.c)
 MACOS_MINIMUM = "14.4"
 
-# The Khronos OpenGL ES headers, for the guest's declarations only: the
-# guest's platform code that names OpenGL is compiled as on Linux arm64, but
-# the macOS host gives it no OpenGL (port/macos/host_renderer.c): the
-# renderer is Metal's, in the host.
-# (OpenGL-Registry and EGL-Registry, Apache-2.0 / MIT)
-KHRONOS_DIR = THIRD_PARTY / "khronos"
-KHRONOS_HEADERS = {
-    "GLES2/gl2.h": ("OpenGL-Registry", "6af574a14089ccfee87efe230ebcdd8742859813",
-                    "ba5e8e1755642efeb2d0f34b4cfe261cdbf6471e7763a40c7de10dff4c3c4921"),
-    "GLES2/gl2ext.h": ("OpenGL-Registry", "6af574a14089ccfee87efe230ebcdd8742859813",
-                       "9afc725e9dda7c8b476e7337e75b22fa660ed462c169e203ec28c10e62f91f4c"),
-    "GLES2/gl2platform.h": ("OpenGL-Registry", "6af574a14089ccfee87efe230ebcdd8742859813",
-                            "f5da0747540a50be5f44aad264aae45bdf157a192c40f17487dd9a2f99c71b6c"),
-    "GLES3/gl3.h": ("OpenGL-Registry", "6af574a14089ccfee87efe230ebcdd8742859813",
-                    "a0e4880142bd059bd4d7446f257920b5020b8bbb0a86eb0149cbd1ea2fcf8cb0"),
-    "GLES3/gl32.h": ("OpenGL-Registry", "6af574a14089ccfee87efe230ebcdd8742859813",
-                     "f203257863a7de3fce851efa61490907171db82082381d05f86f5d9bd39e8e17"),
-    "GLES3/gl3platform.h": ("OpenGL-Registry", "6af574a14089ccfee87efe230ebcdd8742859813",
-                            "a9e060dae5a2b11c5a889b679692b7089a10a7e03ebfbb6cf28217f6e322fb08"),
-    "KHR/khrplatform.h": ("EGL-Registry", "db3425b8246136faccb5e2782b5694960bd6edf1",
-                          "7b1e01aaa7ad8f6fc34b5c7bdf79ebf5189bb09e2c4d2e79fc5d350623d11e83"),
-}
-KHRONOS_URLS = [
-    "https://raw.githubusercontent.com/KhronosGroup/{repository}/{commit}/api/{name}",
-    "https://cdn.jsdelivr.net/gh/KhronosGroup/{repository}@{commit}/api/{name}",
-]
-
 # Sparkle, the macOS app's updater (port/macos/host_app.m; port/macos/README.md,
 # "Updates"): its release's framework and tools (bin/sign_update, which
 # signs a release's disk image for the appcast in CI), downloaded once
@@ -100,16 +72,11 @@ SPARKLE_URL = (f"https://github.com/sparkle-project/Sparkle/releases/download/{S
 # variable (CI's repository variable); an app without both never looks
 SPARKLE_FEED = "https://github.com/OpenH1/OpenH1/releases/latest/download/appcast.xml"
 
-# the guest's code paths beside the architecture's: the Linux arm64 build's
-# OpenGL ES ones, and the Mac's (the base register is added by
-# generate_guest_image); Apple's clang otherwise notes that its macOS
-# sysroot is not the watchOS target's, which the guest does not use
-MACOS_GUEST_DEFINES = ["-DHALO_GLES=1", "-DHALO_MACOS=1", "-DHALO_METAL", "-DHALO_RENDER_STREAM",
-                       "-Wno-incompatible-sysroot"]
-# (the renderer's backend is the host's, through the command stream:
-# port/linux/src/xgpu_stream_encode.c in place of the OpenGL backend and its
-# anti-aliasing passes)
-MACOS_GUEST_EXCLUDED = RENDER_STREAM_GUEST_EXCLUDED
+# the guest's code paths beside the architecture's: the Mac's (the base
+# register is added by generate_guest_image); Apple's clang otherwise notes
+# that its macOS sysroot is not the watchOS target's, which the guest does
+# not use
+MACOS_GUEST_DEFINES = ["-DHALO_MACOS=1", "-DHALO_METAL", "-Wno-incompatible-sysroot"]
 
 # the app's bundle identifier (configure.py --macos-bundle-id): the
 # reverse-DNS name of the project's domain, openh1.com
@@ -153,20 +120,6 @@ def is_macos_arm64() -> bool:
 
 def macos_configure_inputs() -> List[Path]:
     return [Path(__file__), GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, PORT_DIR, LINUX_HOST_DIR]
-
-
-def fetch_khronos_headers(khronos_dir: Path = KHRONOS_DIR) -> None:
-    """Download the OpenGL ES headers (configure time, once; a header whose
-    SHA-256 is wrong is downloaded again)."""
-    for name, (repository, commit, digest) in KHRONOS_HEADERS.items():
-        header = khronos_dir / name
-        if header.is_file() and hashlib.sha256(header.read_bytes()).hexdigest() == digest:
-            continue
-        print(f"Downloading the Khronos {name}")
-        header.parent.mkdir(parents=True, exist_ok=True)
-        data = download([url.format(repository=repository, commit=commit, name=name) for url in KHRONOS_URLS], digest)
-        header.with_suffix(".tmp").write_bytes(data)
-        header.with_suffix(".tmp").replace(header)
 
 
 def fetch_sparkle(third_party: Path = THIRD_PARTY) -> Path:
@@ -286,7 +239,6 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
         return None
     name, label, build, third_party = target.name, target.label, target.build, target.third_party
     sdl_dir = third_party / "SDL3"
-    khronos_dir = third_party / "khronos"
     cc = getattr(sln, "macos_cc", None) or "clang"
     # the guest's compiler and tools: --macos-guest-cc's, else --macos-cc's,
     # else the pinned LLVM's (tools/guest_toolchain.py, configure.py
@@ -309,12 +261,11 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
         return None
     try:
         fetch_third_party(third_party)
-        fetch_khronos_headers(khronos_dir)
         # (the macOS app's updater: not the iOS app's, which the App Store
         # or a developer's install updates)
         sparkle = fetch_sparkle(third_party) if name == "macos" else None
     except (subprocess.CalledProcessError, OSError, RuntimeError) as error:
-        print(f"{name} build disabled: cannot fetch musl, SDL3 or the OpenGL ES headers ({error})", file=sys.stderr)
+        print(f"{name} build disabled: cannot fetch musl or SDL3 ({error})", file=sys.stderr)
         return None
     config: Dict[str, Any] = json.loads(config_path.read_text(encoding="utf-8"))
 
@@ -324,7 +275,7 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
 
     guest = target.guest or generate_guest_image(
         n, sln, config, arch=ARM64_32, prefix=name, label=label, build=build, third_party=third_party,
-        guest_cc=guest_cc, gl_headers=khronos_dir.resolve(), ar=ar, ld=ld, objdump=objdump,
+        guest_cc=guest_cc, ar=ar, ld=ld, objdump=objdump,
         # (no runtime library: Apple's clang has none for an ELF image, and
         # the guest needs none of it)
         builtins_cc="", environment="gnu", platform_defines=MACOS_GUEST_DEFINES + target.guest_defines,
@@ -332,7 +283,7 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
         extra_imports=[LINUX_HOST_DIR / "host_imports.list", PORT_DIR / "host_imports.list",
                        *(target.guest_imports or [])],
         extra_prototypes=[LINUX_HOST_DIR / "guest_desktop.c", PORT_DIR / "guest_metal.c"],
-        base_register=True, excluded_platform_sources=MACOS_GUEST_EXCLUDED)
+        base_register=True)
 
     # ---------- SDL3, built from the same source as the guest's headers
 

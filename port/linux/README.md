@@ -32,8 +32,8 @@ To build:
 - CMake, and the development files that SDL3 uses for X11, Wayland and
   sound. Refer to the SDL documentation, or to the `linux-x86_64` and
   `linux-arm64` jobs in `.github/workflows/build.yml`. No OpenGL or Vulkan
-  development files are needed: the build uses no OpenGL, and downloads
-  the Vulkan headers it uses.
+  development files are needed: the build downloads the Vulkan headers it
+  uses.
 - A network connection for the first build. `configure.py` downloads musl
   1.2.5 (checked against its SHA-256), SDL 3.4.16 and the Khronos Vulkan
   headers (checked against their SHA-256) to `build/<name>/third_party`
@@ -318,7 +318,7 @@ switching grenades on A, action and reload on B and the flashlight on X.
 | fire | left mouse button |
 | throw a grenade | G |
 | jump (and skip a cutscene) | space |
-| crouch | left ctrl, C (C alone in the web build) |
+| crouch | left ctrl, C |
 | melee | F, mouse button 4 |
 | reload | R |
 | action (pick up, hold to swap weapons, enter or leave a vehicle; never reloads) | E |
@@ -535,9 +535,8 @@ the setting for one start of the game. It has priority over the file.
 | `display.max_fps` | `0` | `HALO_MAX_FPS` | With vsync off, the most frames each second. `0`: twice the display's refresh rate. `-1`: no limit, which can hang some Intel graphics (Raptor Lake), resetting the desktop's graphics too. |
 | `display.battery_saver` | `"off"` | `HALO_BATTERY_SAVER` | Draw less, for a longer battery and a cooler machine. `"on"`: each frame stays on screen for a whole number of the display's refreshes, 30 to 60 frames each second (60 at 60 or 120 Hz, 45 at 90 Hz), and the settings `display.graphics` chooses that are commented out are drawn at their Classic values; those set keep their own. `"auto"`: on while the machine runs on its battery, off on its charger, as SDL says (a machine without a battery, or one that cannot tell, is taken to be on its charger). `"off"`: never. Not in VR. The game plays the same. Video Setup > Battery Saver. Refer to "Battery saver". |
 | `display.graphics` | `"enhanced"` | `HALO_GRAPHICS` | The look of the 3D view, as one choice. `"classic"`: as the Xbox drew it. `"enhanced"`: the port's improvements together, each as far as the machine's GPU does it well. It chooses `display.anti_aliasing`, `display.anisotropic_filtering`, `display.shadow_resolution`, `display.per_pixel_lighting`, `display.model_detail` and `display.dynamic_lights` where they are commented out; each of them set wins over it. Video Setup > Graphics > Preset. Refer to "Classic and Enhanced". |
-| `display.anti_aliasing` | `display.graphics`'s | `HALO_ANTI_ALIASING` | The smoothing of jagged edges, which the Xbox did not have. `"off"`: none, as on the Xbox. `"fxaa"` or `"smaa"`: a pass over the 3D view after the game draws it. The HUD and the menus stay sharp. SMAA is the sharper and costs more. `"ssaa2x"`: the game draws at two times the resolution in each direction (at most the GPU's largest texture), and the picture is scaled down. The GPU does four times the work. Not with `display.resolution_scaling = "original"`. `"msaa2x"`, `"msaa4x"` or `"msaa8x"`: each pixel of the 3D view has that many samples (at most the GPU's). With OpenGL ES (the web), `"smaa"` gives FXAA; there and on Android, `"ssaa2x"` gives none. On iOS `display.graphics = "enhanced"` gives `"msaa4x"` (port/ios/README.md). The VR mode's eyes have neither pass. A change applies from the next frame. Refer to "Anti-aliasing" in "What operates". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
+| `display.anti_aliasing` | `display.graphics`'s | `HALO_ANTI_ALIASING` | The smoothing of jagged edges, which the Xbox did not have. `"off"`: none, as on the Xbox. `"fxaa"` or `"smaa"`: a pass over the 3D view after the game draws it. The HUD and the menus stay sharp. SMAA is the sharper and costs more. `"ssaa2x"`: the game draws at two times the resolution in each direction (at most the GPU's largest texture), and the picture is scaled down. The GPU does four times the work. Not with `display.resolution_scaling = "original"`. `"msaa2x"`, `"msaa4x"` or `"msaa8x"`: each pixel of the 3D view has that many samples (at most the GPU's). On Android, macOS and iOS `"ssaa2x"` gives none. On iOS `display.graphics = "enhanced"` gives `"msaa4x"` (port/ios/README.md). The VR mode's eyes have neither pass. A change applies from the next frame. Refer to "Anti-aliasing" in "What operates". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.prepare_shaders` | `true` | `HALO_PREPARE_SHADERS` | `true`: as a map loads, its first frame (and the first of each of its structures) is drawn unseen through every shader its tags hold, in each way the game's code draws them, so that the renderer makes their shaders and pipelines during the loading screen, not in play (`port/assets/render/README.md`, "A map's enumeration"). `false`: each is made the first time a draw needs it, which the draw waits for. |
-| `debug.gpu_flush_draws` | `-1` | `HALO_GPU_FLUSH_DRAWS` | The OpenGL backend only (the web build): flush the GPU's pipeline every this many draws. `-1`: every 3 on Intel graphics with Mesa's OpenGL driver, which could otherwise hang in the game's long runs of small draws and reset the desktop's graphics too. `0`: never. It does nothing with Vulkan (Linux, Android) or Metal (macOS). |
 | `display.interpolation` | `true` | `HALO_INTERPOLATION` | `true`: one frame for each refresh of the display. `false`: 30 frames each second, as on the Xbox. Refer to "Frame rate". |
 | `display.direct_camera` | `true` | `HALO_DIRECT_CAMERA` | `true`: in first person, on foot, the view points where the player aims in each frame, not where the last tick left it; and (not in the VR mode) the view stands where the newest step left the player, and the gun and hands show the newest step's pose (a shot, a step, a reload seen 33 ms sooner). Refer to "Frame rate". |
 | `display.fov` | `0.0` | `HALO_FOV` | The first-person view's field of view on foot, in degrees across at 16:9, from 20 to 150. `0`: the stock view. Refer to "Field of view". |
@@ -561,7 +560,7 @@ the setting for one start of the game. It has priority over the file.
 | `display.scoreboard_team_layout` | `"teams"` | `HALO_SCOREBOARD_TEAM_LAYOUT` | How the multiplayer scoreboard (hold BACK, or tab) lists a team game's players. `"teams"`: a column for each team, red on the left and blue on the right. `"score"`: all the players in order of score. With more players than fit, the mouse wheel and Page Up / Page Down scroll the scoreboard. |
 | `display.scoreboard_background` | `true` | `HALO_SCOREBOARD_BACKGROUND` | `true`: the multiplayer scoreboard (hold BACK, or tab) has a panel behind its text, for clearer text. |
 | `display.scoreboard_background_color` | `"16, 16, 16, 150"` | `HALO_SCOREBOARD_BACKGROUND_COLOR` | The colour of the scoreboard's panel: `"red, green, blue, alpha"`, each from `0` to `255`. Alpha `0` is see-through, `255` is solid. |
-| `display.anisotropic_filtering` | `display.graphics`'s | `HALO_ANISOTROPIC_FILTERING` | Textures seen at a grazing angle (floors, walls, terrain) are sampled along the angle from finer mip levels, so they stay sharp; the Xbox game asks for none. `0` or `1`: as on the Xbox. `2`, `4`, `8` or `16`: at most that many samples (at most the GPU's); `4` keeps most of `16`'s sharpness at less cost on slower GPUs. It applies to the textures of the map that have mip levels and are filtered linearly (base, detail, bump and environment maps; lightmaps have no mip levels), not to what the game renders, such as the water's ripples. On the web, only where the GPU has `GL_EXT_texture_filter_anisotropic`; with Vulkan (Linux, Android), where it has `samplerAnisotropy`. Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
+| `display.anisotropic_filtering` | `display.graphics`'s | `HALO_ANISOTROPIC_FILTERING` | Textures seen at a grazing angle (floors, walls, terrain) are sampled along the angle from finer mip levels, so they stay sharp; the Xbox game asks for none. `0` or `1`: as on the Xbox. `2`, `4`, `8` or `16`: at most that many samples (at most the GPU's); `4` keeps most of `16`'s sharpness at less cost on slower GPUs. It applies to the textures of the map that have mip levels and are filtered linearly (base, detail, bump and environment maps; lightmaps have no mip levels), not to what the game renders, such as the water's ripples. With Vulkan (Linux, Windows, Android), only where the GPU has `samplerAnisotropy`. Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.latency_meter` | `false` | `HALO_LATENCY_METER` | `true`: in a network game, your round trip to the host in milliseconds at the top right of the screen, "Ping 45 ms" with four bars: green below 80 ms, yellow below 150, red from 150. The host shows "Max ping", its slowest player's. A player's machine that has heard nothing from the host for two seconds shows "Connection problem". The round trip includes each machine's wait for its next tick, so a LAN reads 15 to 35 ms. Not shown in the menus, after the game, in a co-op cutscene or when the host plays alone. The scoreboard's pings take the same colours, and show the round trips this machine times itself (the host: each player's; a player: their own), so they agree with the meter. Nothing more is sent. Only in config.toml, not in the menus. |
 | `display.per_pixel_lighting` | `display.graphics`'s | `HALO_PER_PIXEL_LIGHTING` | `false`: the models (characters, weapons, vehicles, scenery) are lit at each vertex and the light is blended between them, as on the Xbox. The light across a curved surface then shows facets, and a point light that passes close lights only the vertices it reaches. `true`: the models are lit at each pixel by the same lights (the ambient light, two distant lights and two point lights), which changes their look. Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
 | `display.structure_culling` | `31` | `HALO_STRUCTURE_CULLING` | Which tests skip the triangles of the level (its walls, floors and terrain) that the camera cannot see before they are drawn, as bits added together: `1`, triangles outside the view; `2`, groups of triangles that all face away from the camera; `4`, single triangles that face away; `8`, smaller groups, so that more of them are skipped whole; `16`, the rooms nearest the camera first. Each test is conservative: the picture is the same, with fewer triangles drawn. `0`: the original walk, which draws every triangle of each visible room. The console's `structure_culling <bits>` changes it until the game quits, and `debug_structure_culling true` shows what was skipped (red: outside the view, blue: facing away). In the VR build the game culls once from the head's centre for both eyes, so the tests allow for them: they hold for every point within the farthest eye's distance from the centre, plus 3 cm the head may move before the late latch draws the frame (about 6 cm, in world units by `vr.world_scale`); the view's planes are the camera's own, moved out by that much, not a portal's, and there is no far plane (`game/vr_render.c`, `structure_culling_set_camera_radius`). |
@@ -569,8 +568,8 @@ the setting for one start of the game. It has priority over the file.
 | `display.shield_glow` | `false` | `HALO_SHIELD_GLOW` | `true`: as a unit's energy shield flares (hit, charging, falling), it lights what is around it and itself, as a plasma bolt does, in the shield shader's own color (a Spartan's gold, an Elite's blue), rising and falling with the flare seen on the body. An ordinary dynamic light of the game's, drawn with a light definition the map has (`shield_glow.c`). Up to 8 units near the camera. Video Setup's Extra Effects screen sets it. In a network game, the host's `network.shield_effects` decides, unless it is `players` (each player's own). |
 | `display.shield_glow_intensity` | `default` | `HALO_SHIELD_GLOW_INTENSITY` | The shield glow's reach and brightness: `default`, or `light_show` (three times as far, and at full strength from a third of the flare: a light is no brighter than full). The units glowing are those near any local player's camera, so each of a split screen's views has the same. Video Setup's Extra Effects screen sets it. In a network game, the host's `network.shield_effects` decides, unless it is `players` (each player's own). |
 | `display.overshield_effect` | `false` | `HALO_OVERSHIELD_EFFECT` | `true`: the overshield's flare rises up the body from the feet as it charges, with a soft edge (2 seconds, the charge's time from a full shield; 3 from a shield that was down; 2 from any other), then stays lit, whole, for as long as the overshield lasts, its energy moving at 30% of its speed, in its own color (the powerup's, 253, 78, 116), whatever shield color its player chose; the shield's own flares are not drawn over it, and its glow (`display.shield_glow`) rises and stays with it. With `display.viewmodel_shield` it comes up on the first-person arms as the rise reaches them. A hit on it plays what the projectile plays on an Elite's shield (its sound, sparks and light), when the map has that effect and it only shows and sounds. `false`: the overshield as the stock game draws it. Only this machine's drawing and sounds change (`overshield_effect.c`; the rise is a fade in the vertex shader, `d3d8_gl_set_height_fade`). Video Setup's Extra Effects screen sets it. In a network game, the host's `network.shield_effects` decides, unless it is `players` (each player's own). |
-| `display.dynamic_lights` | `display.graphics`'s | `HALO_DYNAMIC_LIGHTS` | The light of plasma bolts, needles, muzzle flashes, grenades and explosions. `"classic"`: the game's own. `"enhanced"`: the structure and the models are lit for each pixel by the lights near each pixel (a grid of the lights about the camera, not a cap of two lights an object), the structure through its bump maps; in linear light, falling off as the inverse square of the distance with a soft core, to nothing at the light tag's radius, under a soft shoulder that never clips (a light's color and radius are its tag's); placed where the objects are drawn between ticks; lighting the first-person weapon and hands; with a soft glow about each plasma bolt in flight (a projectile with no model). Bolts and needles light too (the game draws only their lens flares). Vulkan and Metal: the Linux builds, Windows and Android (Vulkan) and macOS (Metal); not OpenGL ES (the web), where it is `classic`. The structure's spotlights (a flashlight's gel) keep the game's own pass. Refer to "Dynamic lights" under "VR". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
-| `display.hdr` | `"auto"` | `HALO_HDR` | High dynamic range. `"auto"`: on while the window's display shows HDR (an XDR or HDR display: macOS's EDR headroom past 2, which an SDR panel's dimmed white never reaches); `"on"`: always (on an SDR display the highlights are rolled off under its white); `"off"`: never. The frame is drawn in half floats, which keep the light that the game's additive effects (plasma, explosions, muzzle flashes, the dynamic lights, lens flares, the sun) add past white, and an HDR display shows it brighter than paper white, its SDR white. Surfaces, the HUD and the menus stay where they are; the first-person weapon's displays and the HUD's flashes and motion tracker glow a little past paper white. Off, and with `"auto"` on an SDR display, the picture is the 8-bit one, unchanged. Metal (macOS) and Vulkan (the Linux desktop and Windows, where the device reads its colour attachments, `VK_KHR_dynamic_rendering_local_read`, and the compositor gives the swapchain an HDR colour space: HDR10 or scRGB; `"auto"` follows SDL's HDR state); the OpenGL renderer, Android and the VR mode draw SDR, and Video Setup shows the HDR rows only where the renderer draws HDR. The design: [docs/hdr.md](../../docs/hdr.md). A change applies from the next frame. |
+| `display.dynamic_lights` | `display.graphics`'s | `HALO_DYNAMIC_LIGHTS` | The light of plasma bolts, needles, muzzle flashes, grenades and explosions. `"classic"`: the game's own. `"enhanced"`: the structure and the models are lit for each pixel by the lights near each pixel (a grid of the lights about the camera, not a cap of two lights an object), the structure through its bump maps; in linear light, falling off as the inverse square of the distance with a soft core, to nothing at the light tag's radius, under a soft shoulder that never clips (a light's color and radius are its tag's); placed where the objects are drawn between ticks; lighting the first-person weapon and hands; with a soft glow about each plasma bolt in flight (a projectile with no model). Bolts and needles light too (the game draws only their lens flares). Vulkan and Metal: the Linux builds, Windows and Android (Vulkan) and macOS and iOS (Metal). The structure's spotlights (a flashlight's gel) keep the game's own pass. Refer to "Dynamic lights" under "VR". Commented out, `display.graphics` chooses it (refer to "Classic and Enhanced"); set, it wins over `display.graphics`. |
+| `display.hdr` | `"auto"` | `HALO_HDR` | High dynamic range. `"auto"`: on while the window's display shows HDR (an XDR or HDR display: macOS's EDR headroom past 2, which an SDR panel's dimmed white never reaches); `"on"`: always (on an SDR display the highlights are rolled off under its white); `"off"`: never. The frame is drawn in half floats, which keep the light that the game's additive effects (plasma, explosions, muzzle flashes, the dynamic lights, lens flares, the sun) add past white, and an HDR display shows it brighter than paper white, its SDR white. Surfaces, the HUD and the menus stay where they are; the first-person weapon's displays and the HUD's flashes and motion tracker glow a little past paper white. Off, and with `"auto"` on an SDR display, the picture is the 8-bit one, unchanged. Metal (macOS) and Vulkan (the Linux desktop and Windows, where the device reads its colour attachments, `VK_KHR_dynamic_rendering_local_read`, and the compositor gives the swapchain an HDR colour space: HDR10 or scRGB; `"auto"` follows SDL's HDR state); Android and the VR mode draw SDR, and Video Setup shows the HDR rows only where the renderer draws HDR. The design: [docs/hdr.md](../../docs/hdr.md). A change applies from the next frame. |
 | `display.hdr_mode` | `"faithful"` | `HALO_HDR_MODE` | With HDR: `"faithful"`: the picture as the game draws it, only its highlights brighter (what was under white stays exactly so); `"punchy"`: the whole scene and its bright parts lifted, each colour keeping its hue, for a brighter, remastered look. |
 | `display.hdr_paper_white` | `100` | `HALO_HDR_PAPER_WHITE` | With HDR, how bright paper white (white surfaces, the HUD, the menus) is, in percent of the system's SDR white (macOS's; on Vulkan, SDL's SDR white, or 203 nits where the system gives none), `50` to `250`. The highlights keep the rest of the display's headroom; paper white is never brighter than the display can show. |
 | `display.astc_textures` | `"auto"` | `HALO_ASTC_TEXTURES` | The builds with a host only, where the GPU cannot sample the maps' DXT (BC) textures: iPhones (Metal) and most Android phones (Vulkan). Checked on Android on a Pixel 11 Pro (PowerVR, no BC); the Android emulator, whose ASTC is emulated, draws those textures black. `"auto"`: where the GPU samples ASTC and not DXT, the DXT textures are transcoded to ASTC 4x4, a quarter of the memory and bandwidth of the decoded textures drawn before, and the same picture (within a third of an 8-bit step for nearly every block; the rest are encoded, at 39 to 43 dB of PSNR against their DXT texels, on worker threads the first time a texture is drawn, the texture drawn decoded meanwhile, and kept in the app's caches folder, 256 MB at most). `"always"`: wherever the GPU samples ASTC, beside DXT too (an Apple silicon Mac's, to try it). `"off"`: decoded, as before. Linux and Windows draw DXT as it is. Read by the host from the file at the start (`port/linux/astc/xgpu_astc.h`). |
@@ -578,8 +577,8 @@ the setting for one start of the game. It has priority over the file.
 | `audio.volume` | `1.0` | `HALO_VOLUME` | The master volume. |
 | `audio.music_volume` | `1.0` | `HALO_MUSIC_VOLUME` | The music's volume, of the master volume. |
 | `audio.effects_volume` | `1.0` | `HALO_EFFECTS_VOLUME` | The volume of the other sounds (effects and speech), of the master volume. |
-| `audio.buffer_frames` | `512` | `HALO_AUDIO_BUFFER_FRAMES` | The audio device's buffer, in sample frames at 48 kHz, from `64` to `8192`. Larger rides out stalls that would cut the sound out; smaller has less delay (512 is 11 ms, 2048 is 43 ms). Not on Android or the web. |
-| `audio.channels` | `"stereo"` | `HALO_AUDIO_CHANNELS` | `"stereo"`, or `"5.1"` for surround sound as with Dolby Digital on the Xbox. `"auto"`: 5.1 if the sound device has 6 or more channels (on Windows; the Linux builds and macOS, whose game cannot ask the device, take `"auto"` as stereo, and give 5.1 when it is asked for by name). Not on Android or the web. In VR, 5.1 turns `vr.hrtf` off. |
+| `audio.buffer_frames` | `512` | `HALO_AUDIO_BUFFER_FRAMES` | The audio device's buffer, in sample frames at 48 kHz, from `64` to `8192`. Larger rides out stalls that would cut the sound out; smaller has less delay (512 is 11 ms, 2048 is 43 ms). Not on Android. |
+| `audio.channels` | `"stereo"` | `HALO_AUDIO_CHANNELS` | `"stereo"`, or `"5.1"` for surround sound as with Dolby Digital on the Xbox. `"auto"`: 5.1 if the sound device has 6 or more channels (on Windows; the Linux builds and macOS, whose game cannot ask the device, take `"auto"` as stereo, and give 5.1 when it is asked for by name). Not on Android. In VR, 5.1 turns `vr.hrtf` off. |
 | `audio.reverb` | `true` | `HALO_REVERB` | `true`: the sounds of the world reverberate as the place the player is in does: the sound environments of the maps (a corridor, a cave, a large hall, outdoors) set the reverberation, as the I3DL2 reverb of the Xbox did. A sound behind a wall or a door is muffled in it too. `false`: no reverberation (sounds behind a wall are still muffled). |
 | `audio.resampler` | `"sinc"` | `HALO_AUDIO_RESAMPLER` | How the sounds are converted to the output's rate (48 kHz): `"sinc"` with a band-limited low pass, which keeps out the images above the sound's own rate; `"linear"` between neighbouring samples, which lets some of them through and sounds brighter for it. Audio Setup's SOUND PROCESSING screen sets it, with `audio.reverb`. |
 | `audio.voice_chat` | `"push_to_talk"` | `HALO_VOICE_CHAT` | How you talk in voice chat: `"push_to_talk"` (while `controls.push_to_talk` is held; the microphone opens when you first press it), `"open_mic"` (when the microphone hears speech), or `"off"`. You hear the other players in every case. Refer to "Voice chat". |
@@ -664,14 +663,14 @@ the setting for one start of the game. It has priority over the file.
 | `debug.join_legacy` | `false` | `HALO_DEBUG_JOIN_LEGACY` | `true`: join every game as an OpenCE build joins it, an OpenH1 game that OpenCE players can join (`network.allow_opence`) too: at 30 ticks a second, with the Legacy game's join token. The tests' stand-in for an OpenCE machine (`tools/stagekit/tests/test_mixed.py`). |
 | `debug.no_clipboard` | `false` | `HALO_NO_CLIPBOARD` | `true`: the game leaves the clipboard alone, for tests and tools: it puts no invite link on it and joins none found there. A run with `debug.null_renderer`, `debug.test_input`, `debug.fixed_step`, `debug.network_test` or `debug.exit_after` leaves it alone too. |
 | `debug.render_manifest` | `""` | `HALO_RENDER_MANIFEST` | A file the draws' shaders and pipelines are recorded into, each new one added (the renderer's manifest: `port/assets/render/README.md`), and a map's enumeration (as `display.prepare_shaders`): each later draw the map's enumeration does not have is marked missed, with the functions it was drawn in (`tools/render_manifest.py check`). Empty: none. |
-| `debug.gpu_stats`, `debug.gpu_trace_frame`, `debug.gpu_trace_constants`, `debug.gpu_dump_shaders`, `debug.texture_dump_directory`, `debug.texture_log`, `debug.gpu_validation`, `debug.texture_no_cache` | off | `HALO_GPU_STATS`, `HALO_GPU_TRACE`, `HALO_GPU_TRACE_CONSTANTS`, `HALO_GPU_DUMP_SHADERS`, `HALO_TEXTURE_DUMP`, `HALO_TEXTURE_LOG`, `HALO_GPU_VALIDATION`, `HALO_TEXTURE_NO_CACHE` | Tools to find problems in the graphics: counts for each frame (with Vulkan, also its submissions, passes, clears and pipelines every 600 frames, as `HALO_VULKAN_STATS`), every draw of one frame, the shaders' code (Vulkan's SPIR-V, as `.spv` files, as `HALO_VULKAN_SHADERS`; OpenGL's GLSL on the web), the textures as they are read (TGA files, `tex<number>_fmt<format>_<width>x<height>.tga`, the same with Vulkan and OpenGL), the OpenGL texture cache's log and its reading every texture again at each use (the web: the other builds' textures are their host's), and the graphics API's errors in the log (Vulkan's validation layers, which must be installed, as `HALO_VULKAN_VALIDATION`; OpenGL's debug output on Windows). |
+| `debug.gpu_stats`, `debug.gpu_trace_frame`, `debug.gpu_trace_constants`, `debug.gpu_dump_shaders`, `debug.texture_dump_directory`, `debug.gpu_validation` | off | `HALO_GPU_STATS`, `HALO_GPU_TRACE`, `HALO_GPU_TRACE_CONSTANTS`, `HALO_GPU_DUMP_SHADERS`, `HALO_TEXTURE_DUMP`, `HALO_GPU_VALIDATION` | Tools to find problems in the graphics: counts for each frame (with Vulkan, also its submissions, passes, clears and pipelines every 600 frames, as `HALO_VULKAN_STATS`), every draw of one frame, the shaders' code (Vulkan's SPIR-V, as `.spv` files, as `HALO_VULKAN_SHADERS`), the textures as they are read (TGA files, `tex<number>_fmt<format>_<width>x<height>.tga`), and the graphics API's errors in the log (Vulkan's validation layers, which must be installed, as `HALO_VULKAN_VALIDATION`). |
 | `debug.gl_debug` | `false` | `HALO_GL_DEBUG` | Deprecated: `debug.gpu_validation`'s old name, which still turns it on (with Vulkan, the validation layers). |
 | `debug.skip_cinematics` | `false` | `HALO_SKIP_CINEMATICS` | Skip each cinematic of a local game: as the skip button does where the level lets it be skipped, else run at sixteen times its speed (`main_skip`), so that a test reaches play in seconds (b30's opening, which cannot be skipped, in about 100 frames rather than 2,400). |
 | `debug.menu_open` | `""` | `HALO_MENU_OPEN` | Start on this screen of the menus (`main_menu/settings_select/...`, as `port/assets/menus` names it), a player profile being edited, to look at it. |
-| `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with a GLSL expression (for example `t0.rgb`). `debug.gpu_debug_expression` is OpenGL only (the web build; Metal takes `HALO_GPU_DEBUG_EXPR` as MSL): it does nothing with Vulkan, the Linux builds' renderer, whose shaders are SPIR-V written directly, with no GLSL to put it in. |
+| `debug.gpu_skip_vertex_shaders`, `debug.gpu_debug_expression`, `debug.gpu_debug_flat`, `debug.gpu_debug_texture0` | off | `HALO_GPU_SKIP_VS`, `HALO_GPU_DEBUG_EXPR`, `HALO_GPU_DEBUG_FLAT`, `HALO_GPU_DEBUG_T0` | Tools to find problems in the graphics: skip the draws of a vertex shader, or replace the output of all pixel shaders with an expression (for example `t0.rgb`). `debug.gpu_debug_expression` is Metal's alone (`HALO_GPU_DEBUG_EXPR`, as MSL): it does nothing with Vulkan, whose shaders are SPIR-V written directly, with no source to put it in. |
 | `debug.dynamic_lights_look`, `debug.dynamic_lights_log` | `""`, `false` | `HALO_DYNAMIC_LIGHTS_LOOK`, `HALO_DYNAMIC_LIGHTS_LOG` | Tools for the enhanced dynamic lights: up to eight numbers in place of their look's (the lights' brightness, `1.7`; their core's inverse square in radii, `12`; the spill past white, `0.18`; the wrap on models, `0.25`; the glow's size in the light's radius, `0.22`, its brightness, `1.2`, its softness against what it meets in world units, `0.12`, and its least size, `0.035`), and a log of where the first projectile's light is drawn each frame beside where the game placed it at the tick, and once a second how many lights there are. |
 | `debug.network_test`, `debug.network_test_start`, `debug.network_test_kill`, `debug.network_test_score`, `debug.network_test_shoot`, `debug.network_test_vehicle`, `debug.network_test_hitch`, `debug.network_test_pickup`, `debug.network_test_pickup_weapon`, `debug.network_test_chat`, `debug.network_test_name`, `debug.network_test_public`, `debug.test_input` | off | `HALO_NETWORK_TEST`, `HALO_NETWORK_TEST_START`, `HALO_NETWORK_TEST_KILL`, `HALO_NETWORK_TEST_SCORE`, `HALO_NETWORK_TEST_SHOOT`, `HALO_NETWORK_TEST_VEHICLE`, `HALO_NETWORK_TEST_HITCH`, `HALO_NETWORK_TEST_PICKUP`, `HALO_NETWORK_TEST_PICKUP_WEAPON`, `HALO_NETWORK_TEST_CHAT`, `HALO_NETWORK_TEST_NAME`, `HALO_NETWORK_TEST_PUBLIC`, `HALO_TEST_INPUT` | Automatic tests of system link, or (`log`) a log of the game one machine plays (`game/network_test.c`); a test game starts `debug.network_test_start` seconds (`15.0`) after the host opens it. Refer to `NETCODE.md`. `debug.test_input = "menu:a down down a"` presses menu buttons one a second (`a`, `b`, `x`, `y`, `up`, `down`, `left`, `right`, `start`, `back` or `wait`, or `click:<x>:<y>`, a click of the pointer there, `x` and `y` 0 to 1 of the window), for testing the menus; `"script:0.5 jump; 1-2 move=0,1; 2 aim=90,10"` presses, holds and aims on the simulation's clock, in seconds from the scenario's start, the same at any simulation rate (`tools/scorecard`). |
-| `debug.network_test_cues`, `debug.network_test_cue_players` | none, `1` | `HALO_NETWORK_TEST_CUES`, `HALO_NETWORK_TEST_CUE_PLAYERS` | Console lines a test runs at their seconds, from the first tick that many players are in (`"<second> <line>\|..."`; not on the web). |
+| `debug.network_test_cues`, `debug.network_test_cue_players` | none, `1` | `HALO_NETWORK_TEST_CUES`, `HALO_NETWORK_TEST_CUE_PLAYERS` | Console lines a test runs at their seconds, from the first tick that many players are in (`"<second> <line>\|..."`). |
 | `debug.bot_trace` | `0` | `HALO_BOT_TRACE` | Every this many seconds, each bot's state is written to the log: where it is and where it goes, its path, its target and its weapon. `0`: never. |
 | `debug.bot_player` | `false` | `HALO_BOT_PLAYER` (set) | In a local game with bots (`bots.count`), a bot of its own plays the first player too, and its view is drawn as the player's: footage of a fighter without a person at the controls. |
 | `debug.bot_player_weapon` | `""` | `HALO_BOT_PLAYER_WEAPON` | With `debug.bot_player`, a weapon (part of its tag's name: `sniper`, `rocket`) the player's bot goes for wherever on the map it lies, and keeps; with a sniper rifle it looks through the scope at a distance. |
@@ -725,9 +724,8 @@ keeps `"auto"` for that reason: the headset's eyes have many more lines than
 the Xbox's 480.
 
 A renderer without a feature draws without it, as it does when the setting
-is chosen by hand: OpenGL ES (the web) draws FXAA in SMAA's place and no
-enhanced dynamic lights. Vulkan (the Linux builds, Android) and Metal
-(macOS) draw them all, SMAA on a phone too. Enhanced gains them as the
+is chosen by hand. Vulkan (the Linux builds, Windows, Android) and Metal
+(macOS, iOS) draw them all, SMAA on a phone too. Enhanced gains them as the
 renderers do.
 The preset changes only the drawing: nothing the game simulates or sends.
 The HUD, the text, the field of view, smooth motion and the shield glow
@@ -1149,20 +1147,17 @@ To join a game, do one of these steps:
 - Enter `halo <link>`.
 - Accept a Discord invite. Refer to "Discord".
 
-The game also takes the address of the web build's page with an invite
+The game also takes a web address with an invite
 (`https://openh1.com/?join=<64 digits>`), as a link.
 
 When the machines connect, the game of the host shows in Multiplayer,
 System Link. Join the game as on a local network. System link on a local
 network does not need an invite.
 
-### Browsers
+### WebRTC
 
-The web build ([port/web/README.md](../web/README.md)) plays internet games
-with the Linux, Windows and Android builds: it hosts and joins by invite, and
-the server browser lists its public games and theirs. A browser has no UDP
-socket, only WebRTC, so a native build takes a browser's WebRTC on the port
-of its tunnel (`network.tunnel_port`), as little of it as one data channel
+A build takes a WebRTC peer's connection (a browser's) on the port of its
+tunnel (`network.tunnel_port`), as little of WebRTC as one data channel
 needs (`src/p2p_webrtc.c`):
 
 - ICE: the native build is an ICE-lite agent. It answers the checks of the
@@ -1179,11 +1174,6 @@ needs (`src/p2p_webrtc.c`):
   agreed before (unordered, without retransmissions), carries the packets of
   the tunnel. They are sealed as on UDP, and KCP makes the streams reliable
   as on UDP.
-
-Two browsers connect to each other with their own WebRTC. There is no relay:
-as between native builds, two networks that do not let a direct connection
-through (some company and school networks block WebRTC) cannot play
-together.
 
 ### Text chat
 
@@ -1203,8 +1193,8 @@ the key, X deletes, Y switches capitals, D-pad Up and Down change who the
 line is to (all the players, your team, your vehicle), Start sends the
 line, and B closes the keyboard (the button that closed it does nothing in
 the game until you let it go). Its last row has Aa (capitals), #+= (the
-symbols), space, DEL and SEND. On a touchscreen (Android, and a browser on
-a phone or tablet), the touch controls' D-pad Up opens it, a tap on a key
+symbols), space, DEL and SEND. On a touchscreen (Android, iOS), the touch
+controls' D-pad Up opens it, a tap on a key
 types it, and a tap anywhere else closes it: the touch controls hide while
 it is up. While the keyboard is up the controller and the touch controls
 move nothing in the game. The face buttons are the same places on
@@ -1220,8 +1210,7 @@ Setup > Multiplayer HUD (`display.chat_style`) draws them all white, as
 Custom Edition does. A line to the
 team says "(team)" after the name, one to the vehicle "(vehicle)". The
 lines go after ten seconds; while you type, the last six rows show. Where
-the touch controls are (Android, and a browser whose touch controls you
-use), the lines go at the top left, the newest highest. In split screen,
+the touch controls are (Android, iOS), the lines go at the top left, the newest highest. In split screen,
 each player's view shows the lines that player hears, and the first player
 types. No line shows, and none can be typed, in a menu, in a cinematic or
 while the HUD is hidden; opening a menu ends the line being typed. A new
@@ -1505,8 +1494,8 @@ Only machines with the invite can find the game:
   other machines with the invite cannot read or change the packets.
 - Each packet is encrypted and authenticated, with a different key in each
   direction. A machine ignores a packet that it already received. To and
-  from a browser, the packets also go through DTLS, with the certificates
-  that the signalling messages named.
+  from a WebRTC peer, the packets also go through DTLS, with the
+  certificates that the signalling messages named.
 - A machine can send only to the ports of the game on the other machine.
 - The host makes one session from each request of a player. If a person
   sends a copy of an old request again, the host ignores it. A player that
@@ -1695,8 +1684,7 @@ What you type is shown as you type it.
 
 Your own words: `text_filter.txt` in the data root, with lines of `add
 <word>` (hidden whenever streamer mode is on) and `allow <word>` (never
-hidden), read when the game starts and when the settings change. The web
-build's page draws its own list of mods, which is not filtered.
+hidden), read when the game starts and when the settings change.
 
 ## Map checks
 
@@ -1810,8 +1798,8 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
   `ARM64_32` of `tools/guest_arch.py`), with the desktop code paths of the
   platform layer. `tools/linux_guest_build.py` builds it and the host; each
   of its builds (`LINUX_GUESTS`) is for one architecture. The guest code has
-  `HALO_GUEST` (and `HALO_ARM64_GUEST`, `HALO_GUEST_MACHO`), `HALO_VULKAN`
-  and `HALO_RENDER_STREAM`, and neither `HALO_GLES` nor `HALO_ANDROID`.
+  `HALO_GUEST` (and `HALO_ARM64_GUEST`, `HALO_GUEST_MACHO`) and
+  `HALO_VULKAN`, not `HALO_ANDROID`.
 - The host is the Android host (`port/android/host`) as a Linux executable.
   `host/host_main.c` replaces its `host_main.c` and `host_touch.c`; what
   both entry points do is in its `host_common.c`. The host's log is the
@@ -1827,8 +1815,7 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
   The host does the windows, the displays, the 2D renderer, the dialogs
   and the downloads of the self-updater (`src/posix_update.c`).
 - The renderer is Vulkan's, in the host ("The renderer's command stream",
-  below, and [the Vulkan README](vulkan/README.md)). The guest has no
-  OpenGL backend, and the host links no OpenGL library.
+  below, and [the Vulkan README](vulkan/README.md)).
 - The host keeps the GPU driver from the kernel's `trace_marker`
   (`src/posix_trace_marker.c`, under "The platform layer" below): on the
   Steam Frame, its markers took the game from the headset's 72 Hz to about
@@ -1844,9 +1831,9 @@ port operates" in [port/android/README.md](../android/README.md#how-the-port-ope
 
 The renderer's backend runs on the 64-bit host, not in the guest. The
 game's renderer is in two halves (`src/xgpu_backend.h`): a front end that
-knows the Xbox's Direct3D, and a backend that drives the GPU. Built with
-`HALO_RENDER_STREAM`, the front end's calls go to a command stream instead
-of a backend in the guest (`src/xgpu_stream.h`). The guest writes each call
+knows the Xbox's Direct3D, and a backend that drives the GPU. The front
+end's calls go to a command stream instead of a backend in the guest
+(`src/xgpu_stream.h`). The guest writes each call
 as a record into a ring in its own memory (`src/xgpu_stream_encode.c`), and
 one host call each frame hands the frame over. A thread of the host plays
 the records into a backend of the host: Vulkan on Linux and Android, Metal
@@ -1884,17 +1871,12 @@ no graphics call crosses from the guest to the host.
   images: their pixels in the game's memory (`src/xgpu_images.c`), which a
   texture stage names in the Xbox texture's place.
 
-Every build with a host uses it: the Linux builds and Android with the
-Vulkan backend (`vulkan/`, its [README](vulkan/README.md)), and macOS with
-the Metal backend (port/macos/README.md, "Metal"). The builds without a
-host, the web build alone now, draw with the OpenGL backend in
-the game (`src/xgpu_gl.c`). On Linux:
+Every build uses it: the Linux builds, Windows and Android with the Vulkan
+backend (`vulkan/`, its [README](vulkan/README.md)), and macOS and iOS with
+the Metal backend (port/macos/README.md, "Metal"). On Linux:
 
 - The host builds the Vulkan backend (`tools/vulkan_build.py`), with the
-  texture decoding, and links no OpenGL library; the guest builds none of
-  the OpenGL backend (`src/xgpu_gl.c`, its GLSL emitter, its anti-aliasing
-  passes and entry points: `RENDER_STREAM_GUEST_EXCLUDED` in
-  `tools/android_build.py`).
+  texture decoding.
 - The guest makes the window (`src/sdl_platform.c`) and hands it to the
   host (`host_vulkan_window_open`; `vulkan/guest_vulkan.c`,
   `vulkan/host_vulkan.c`): the host makes its Vulkan surface and swapchain,
@@ -2008,10 +1990,8 @@ SMAA, and the clears of some of a target's colour channels (a fog screen's,
 and a split screen's windows' ends, clear alpha alone). It takes the
 graphics' debugging settings: `debug.gpu_stats`, `debug.gpu_dump_shaders`
 (SPIR-V), `debug.gpu_validation` (the validation layers; `debug.gl_debug`
-is its old name) and `debug.texture_dump_directory` (the same files as the
-OpenGL backend's). `debug.gpu_debug_expression` and `debug.gpu_flush_draws`
-are the OpenGL backend's alone (the web build's), and do nothing with
-Vulkan.
+is its old name) and `debug.texture_dump_directory`.
+`debug.gpu_debug_expression` is Metal's alone, and does nothing with Vulkan.
 
 ## VR
 
@@ -3409,10 +3389,8 @@ needles, muzzle flashes, grenades and explosions are drawn for each pixel:
   the VR mode's eyes it is the light the bolt scatters toward each eye
   from a haze about it, worked out along each eye's ray ("Effects with
   depth", below).
-- Vulkan draws them as the OpenGL backend did: the same
-  lights, grid and shoulder, and the glows from the same shaders' operations
-  (written as SPIR-V), prepared with the map's other pipelines as it
-  loads.
+- Vulkan draws the lights, grid and shoulder, and the glows, from shaders
+  written as SPIR-V, prepared with the map's other pipelines as it loads.
 - The light is added in linear light under a soft shoulder: a light's core
   comes up bright and fades softly outward, never clipping to a flat
   disc. An explosion (its tag's radius 10 world units) is bright about it,
@@ -4507,11 +4485,11 @@ does; making the eye images from the four layers cost 0.2 ms more there.
 | Area | Status |
 | --- | --- |
 | Game code | All 466 C files of the game. The changes are in "Game source changes". |
-| Graphics | Direct3D 8 on Vulkan 1.3, in the host, with SDL3's window. A front end (`src/d3d8_device.c`) keeps the Direct3D state and turns each draw into a description that any graphics API can draw (`src/xgpu_backend.h`: the pipeline's key, the textures and targets it binds, the draw's ranges, all plain data); the Vulkan backend (`vulkan/`) draws them in the host, building the pipeline for a key once and keeping it (the web draws them with the OpenGL backend, `src/xgpu_gl.c`). The port translates the NV2A vertex shaders and register combiners into a description of their operations (`src/xgpu_shader.h`), which `src/xgpu_spirv.c` writes as SPIR-V (and `src/xgpu_glsl.c` as GLSL, for OpenGL). It decodes all the Xbox texture formats. The vertex and index buffers come from a copy of the Xbox memory on the GPU. |
+| Graphics | Direct3D 8 on Vulkan 1.3, in the host, with SDL3's window. A front end (`src/d3d8_device.c`) keeps the Direct3D state and turns each draw into a description that any graphics API can draw (`src/xgpu_backend.h`: the pipeline's key, the textures and targets it binds, the draw's ranges, all plain data); the Vulkan backend (`vulkan/`) draws them in the host, building the pipeline for a key once and keeping it (on macOS and iOS the Metal backend). The port translates the NV2A vertex shaders and register combiners into a description of their operations (`src/xgpu_shader.h`), which `src/xgpu_spirv.c` writes as SPIR-V (and `src/xgpu_msl.c` as MSL, for Metal). It decodes all the Xbox texture formats. The vertex and index buffers come from a copy of the Xbox memory on the GPU. |
 | High-res HUD | The HUD is drawn from high-res assets: redraws at 8x the size of the maps' bitmaps (4x for the largest), in `port/assets/hud`. They cover the meters, counters, panels and their outlines, the motion sensor, reticles, waypoints and scopes, but no bitmap with English text. `tools/hud_assets.py` makes them from the SVG redraws (the weapons' reticles from those of the PC HUD sheet that match the Xbox's exactly, the sniper rifle's 2x and 10x set in Overpass), and the build embeds them in the executable. When the game uploads one of those bitmaps, `src/hud_hires.c` gives the high-res texture in its place, if the bitmap's pixels are those of the English maps: another language's maps keep their own. The message icons' pictures of the weapons and the skull (the prompts' "Hold to swap for" a weapon) are Aerocatia's and Jessie's art from Halo PC Restored (`port/assets/hud/NOTICE.md`), cut and placed by `tools/hud_assets.py` (pictures) at the art's 4x: the game draws those sprites alone from it, each checked on its own cell's texels, so that every language's maps draw them, beside the sheets' own text. The game sizes and places the HUD from its tags as before. `display.high_res_hud = false` turns this off. |
 | High-res text | The menus' and HUD's text is drawn with Overpass (`port/assets/fonts`, SIL Open Font License) in place of the maps' bitmap fonts, which are Interstate. `src/text_hires.c` rasterizes each glyph with stb_truetype (`port/third_party/stb`) at the resolution the game draws at, into an atlas that a placeholder bitmap of the game stands for. The game lays the text out from its font tags as before: each font is as tall as its tag's capitals, and narrowed where the tag's letters are narrower than the Xbox maps' (the fonts of a Custom Edition `loc.map`), so that its letters do not run into each other. The menus' titles (the screens' headers and the main menu's items) are pictures of text in the maps, so they are drawn as the high-res HUD is: `tools/title_assets.py` sets each one again in OpenCE, Roger White's public-domain Newtown respaced to match the maps' commercial title typeface (`tools/title_font.py`), at 4x the bitmap's size over its own plate or glow, each letter placed where the map's letter is, in `port/assets/titles`. The postgame carnage report's title is set over a hand-made SVG redraw of its panel (`port/assets/titles/svg`) instead. The A, B, X and Y button icons beside the menus' key labels and in their text ("Press A to Join") are drawn from hand-made SVG redraws at 8x the size of the maps' bitmaps (`port/assets/buttons`, made by `tools/button_assets.py`), in the same sizes and places. `display.high_res_text = false` turns it off. |
-| Dynamic lights | `display.dynamic_lights = "enhanced"` (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_glsl.c`, `game/dynamic_lights.c`; Vulkan's `src/xgpu_spirv.c`, `vulkan/xgpu_vulkan_stream.c`): the frame's lights are a uniform block, and a 32 x 32 x 16 grid about the camera, its cells growing with the distance (out to 128 world units each way), a 128-bit mask of the lights that reach each cell (an integer 3D texture). The structure's lightmap pass and the models' per-pixel lighting (`display.per_pixel_lighting`'s, which this turns on) add the lights of their cell for each pixel, in place of the game's pass over the structure for each light and its two lights for each model. The vertex shaders hand on the world position: a model program's skinned position before it is projected, a structure's vertex as it is. The glows are a camera-facing quad each, projected as the game's programs are, faded against the scene's depth, sampled with the target drawn into without it. Vulkan draws them alike: the block and the cells are its draw set's, written in the stream's order, and the glows' shaders are the SPIR-V emitter's, from the same GLSL, operation for operation. Metal draws them alike (`src/xgpu_msl.c`, `port/macos/xgpu_metal_stream.m`): the block and the cells (in buffers: the cells' masks in the texture's order) are copied into the frame's upload ring as the stream sends them and bound for the draws after them, and the glows' functions are the MSL emitter's, from the same GLSL. A view that finds more lights than the 128 lit (512 on the desktop builds and the Mac, 256 on the Steam Frame: `include/halo_port_capacity.h`) lights the 128 that show most, each scored by its brightness times its radius over its distance as it was drawn last frame, those wholly behind the camera last (`game/dynamic_lights.c`, `dynamic_lights_rank`), classic lights too. |
-| Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_device.c`, `src/xgpu_gl.c`, `src/xgpu_post.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). Their programs are built when the setting is chosen. The Vulkan backend runs the same passes, their GLSL compiled to SPIR-V when the port is changed (`vulkan/xgpu_vulkan_post.c`, `tools/vulkan_post_shaders.py`), its pipelines made when the setting is chosen and as a map is prepared. The Metal backend runs them too, the same SPIR-V written as MSL by SPIRV-Cross (`port/macos/xgpu_metal_post.c`, `tools/metal_post_shaders.py`). Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (the sample mask; not on OpenGL ES: the web). |
+| Dynamic lights | `display.dynamic_lights = "enhanced"` (`src/d3d8_device.c`, `game/dynamic_lights.c`; Vulkan's `src/xgpu_spirv.c`, `vulkan/xgpu_vulkan_stream.c`): the frame's lights are a uniform block, and a 32 x 32 x 16 grid about the camera, its cells growing with the distance (out to 128 world units each way), a 128-bit mask of the lights that reach each cell (an integer 3D texture). The structure's lightmap pass and the models' per-pixel lighting (`display.per_pixel_lighting`'s, which this turns on) add the lights of their cell for each pixel, in place of the game's pass over the structure for each light and its two lights for each model. The vertex shaders hand on the world position: a model program's skinned position before it is projected, a structure's vertex as it is. The glows are a camera-facing quad each, projected as the game's programs are, faded against the scene's depth, sampled with the target drawn into without it. With Vulkan the block and the cells are its draw set's, written in the stream's order, and the glows' shaders are the SPIR-V emitter's. Metal draws them alike (`src/xgpu_msl.c`, `port/macos/xgpu_metal_stream.m`): the block and the cells (in buffers: the cells' masks in the texture's order) are copied into the frame's upload ring as the stream sends them and bound for the draws after them, and the glows' functions are the MSL emitter's, the SPIR-V emitter's operation for operation. A view that finds more lights than the 128 lit (512 on the desktop builds and the Mac, 256 on the Steam Frame: `include/halo_port_capacity.h`) lights the 128 that show most, each scored by its brightness times its radius over its distance as it was drawn last frame, those wholly behind the camera last (`game/dynamic_lights.c`, `dynamic_lights_rank`), classic lights too. |
+| Anti-aliasing | Off unless `display.anti_aliasing` is set (`src/d3d8_device.c`). FXAA (written in the port) and SMAA (`port/third_party/smaa`, MIT licensed, at its HIGH preset, compiled as GLSL) are passes over the 3D view of each window, after the lens flares and before the HUD and the menus (`render/render.c`). The Vulkan backend runs them, their GLSL (`tools/vulkan_post_shaders.py`) compiled to SPIR-V when the port is changed (`vulkan/xgpu_vulkan_post.c`), its pipelines made when the setting is chosen and as a map is prepared. The Metal backend runs them too, the same SPIR-V written as MSL by SPIRV-Cross (`port/macos/xgpu_metal_post.c`, `tools/metal_post_shaders.py`). Supersampling draws the render targets the size of the screen at two times the resolution in each direction, and the display blit scales them down. Multisampling draws the back buffer and its depth buffer into multisampled renderbuffers, and with them any target that is drawn together with one of them (a mirror's view, in the secondary target with the back buffer's depth buffer), so that the attachments of a framebuffer are all multisampled or none is. A target's pixels are resolved into its texture before something reads the texture (as a texture, or at the display blit). Visibility tests count samples, divided by the samples of a pixel. An alpha-tested surface (foliage, grates) covers the samples of a pixel in proportion to its alpha past the reference (the sample mask). |
 | Sound | Xbox DirectSound on SDL3 audio (`src/dsound_sdl.c`): PCM and Xbox ADPCM, mixed at 48 kHz in stereo or 5.1, with volume, pitch, mix bins, distance, pan, occlusion and obstruction. There is no Doppler effect and no cones. On 5.1 the game gets the AC-3 speaker setting of the Xbox and sends its 2D sounds to the center and back speakers, 3D sounds pan across the five speakers, and the reverb plays from the front and back pairs. The game sends nothing to the LFE channel. |
 | Input | XInput on SDL3 (`src/xinput_sdl.c`): keyboard, mouse, gamepads with rumble, and the debug keyboard for the console. |
 | Files | The Win32 file functions and the MSVC file functions on POSIX, with the translation of Xbox paths. |
@@ -4561,7 +4539,7 @@ These files supply the MSVC functions that clang does not have:
 | `include/halo_linux_prefix.h` | The first header of each file: the architecture macros of the SDK, MSVC `__inline`, SEH keywords, `__declspec(selectany)`. |
 | `include/` | Headers that add MSVC names to the C runtime headers. |
 | `port/include/xdk` | The Xbox SDK declarations. The compiler reads this folder after all the other folders. |
-| `tools/linux_msvc_semantics.py` | Makes a header that declares each struct tag at file scope, as MSVC does (`build/msvc_semantics`, for every guest and the web). It also makes the header inline functions weak, as the COMDAT functions of MSVC. `game/msvc_comdat.c` gives one external copy of each. |
+| `tools/linux_msvc_semantics.py` | Makes a header that declares each struct tag at file scope, as MSVC does (`build/msvc_semantics`, for every guest). It also makes the header inline functions weak, as the COMDAT functions of MSVC. `game/msvc_comdat.c` gives one external copy of each. |
 | `include/halo_linux_winsock_names.h` | Gives new names to the Winsock functions of the SDK. Thus they do not link to the glibc functions with the same names. |
 | `include/halo_linux_source_fixups.h` | Declares the port's functions that the game's sources call. |
 
@@ -4592,49 +4570,22 @@ These files supply the MSVC functions that clang does not have:
 ### The renderer
 
 The game draws through the Xbox's Direct3D 8. The renderer has two halves,
-so that a second graphics API (Metal, then Vulkan) needs a backend and no
-second copy of what the Xbox's states mean:
+so that each graphics API (Vulkan, Metal) needs a backend and no copy of
+its own of what the Xbox's states mean:
 
 | File | Contents |
 | --- | --- |
 | `src/d3d8_device.c` | The front end: the `D3DDevice_*` functions and the device's state. It finds the render targets by the Xbox surface's address and numbers them, keeps the vertex shaders and declarations, the visibility tests' slots, the screen's size and scale, the mirror's pages and the VR mode's passes. For each draw it fills a pipeline key, the dynamic state, the textures bound and the draw's range. |
-| `src/xgpu_backend.h` | What passes between the halves. It holds no Xbox value and no GL one. Each call is plain data: targets are numbers, guest data is a guest address and a size, and the backend keeps no pointer into the front end's memory. A few calls are answered at once (a texture's description, whether a pipeline's shaders build, a visibility test's count, a screenshot's pixels); the header says how each could wait for the frame's end. So the calls of a frame go to the 64-bit host as one stream ("The renderer's command stream", under "64-bit ARM"). |
+| `src/xgpu_backend.h` | What passes between the halves. It holds no Xbox value and no graphics API's. Each call is plain data: targets are numbers, guest data is a guest address and a size, and the backend keeps no pointer into the front end's memory. A few calls are answered at once (a texture's description, whether a pipeline's shaders build, a visibility test's count, a screenshot's pixels); the header says how each could wait for the frame's end. So the calls of a frame go to the 64-bit host as one stream ("The renderer's command stream", under "64-bit ARM"). |
 | `vulkan/` | The Vulkan backend, the Linux builds' and Android's, in the host: the command stream's backend ([its README](vulkan/README.md)). In the VR mode it holds the eyes' images and the HUD's, and composes the frame for OpenXR (`vulkan/host_vulkan_vr.c`). |
-| `src/xgpu_gl.c` | The OpenGL backend (OpenGL 4.5, OpenGL ES 3.0 to 3.2, WebGL 2), with `src/xgpu_gl.h`, of the build without a host: the web. It keeps a pipeline for each key: the program and the GL state, made the first time a draw needs it. It holds the targets, the stream buffers, the mirror's buffers and the visibility queries or counters. |
 | `src/xgpu_shader.h` | The vertex programs and pixel shaders, decoded once: `src/nv2a_vsh.c` decodes the NV2A vertex microcode, `src/nv2a_psh.c` the texture stages and register combiners. |
 | `src/xgpu_spirv.c` | Writes SPIR-V from the decoded programs, for Vulkan. |
-| `src/xgpu_glsl.c` | Writes GLSL 4.50 or ESSL 3.00 and 3.10 from the decoded programs, for OpenGL. |
+| `src/xgpu_msl.c` | Writes MSL from the decoded programs, for Metal. |
 
-In the builds without a host, the texture cache (`src/xbox_textures.c`)
-and the high-res replacements (`src/hud_hires.c`, `src/text_hires.c`,
-`src/menu_files.c`) make OpenGL textures themselves. With the command
-stream, the host caches the textures, and the replacements are images
-(`src/xgpu_images.c`).
-
-### OpenGL ES
-
-The OpenGL backend (`src/xgpu_gl.c`) with `HALO_GLES`, the web's (WebGL 2),
-uses OpenGL ES 3.0, and some functions of OpenGL ES 3.2 if they are
-available. The 64-bit ARM build drew with it before it drew with Vulkan,
-where most of what follows was measured:
-
-- The vertex shaders flip y and change the depth range from 0..1. The front
-  face winding is inverted.
-- BGRA textures go to the GPU as RGBA with a swizzle. If the driver has no
-  S3TC (Mali GPUs), the CPU decodes the DXT textures.
-- The pixel shaders apply the LOD bias of the sampler.
-- The upload changes the byte order of `D3DCOLOR` vertex attributes.
-- Dynamic vertex and index data goes into a ring of three buffers, one for
-  each frame. On Mali, other methods used too much memory.
-- On OpenGL ES 3.2, indexed draws use a base vertex. Before 3.2, the CPU
-  changes the indices.
-- On OpenGL ES 3.1 and later, the visibility tests (lens flares) count
-  samples with an atomic counter, as the NV2A did. OpenGL ES 3.0 tells only
-  if a sample is visible. The GPU copies the counters at the end of each
-  frame, and the CPU reads the copy two frames later, when the frame's fence
-  has passed: a result is the latest count the GPU has finished, as with
-  the query buffer of desktop OpenGL. A read of the counters themselves
-  waits for the GPU, which halved the frame rate on Turnip (Zink).
+The host caches the textures (`src/xbox_textures.c` keeps only the
+high-res replacements' lookup and the Custom Edition channel orders), and
+the high-res replacements (`src/hud_hires.c`, `src/text_hires.c`,
+`src/menu_files.c`) are images (`src/xgpu_images.c`).
 
 ### Presenting during map loading
 
@@ -4657,8 +4608,7 @@ The shared renderer prepares distinct pipeline and texture combinations in
 bounded batches. Vulkan and Metal prepare their pipelines without drawing the
 unseen enumeration or uploading its transient geometry. The host render thread
 services loading presentation between records and while waiting for pipeline
-compilation. Direct OpenGL builds use a separate context for the loading panel;
-the browser and Metal use their independent presentation callbacks.
+compilation. Metal uses its independent presentation callbacks.
 
 Vulkan can queue up to 512 owned native pipeline descriptions ahead of one
 compiler worker. The render thread owns the pipeline table and publishes
@@ -4700,7 +4650,7 @@ gap from the preceding game picture to the first loading picture, the largest
 gap between loading pictures, and the handoff to the first game picture.
 Unproven boundaries are `null`. The conservative bracketing metric remains
 separate: it can include the interval from the first to the second game frame.
-OpenGL, Vulkan and OpenXR timestamps describe swap or submission returns;
+Vulkan and OpenXR timestamps describe submission returns;
 Metal uses drawable presentation times, including callbacks received after
 the loading epoch ends. These timestamps do not all prove physical display.
 
@@ -4968,7 +4918,7 @@ Other changes:
 | `cutscene/cinematics.c` | A scenario's titles (some Custom Edition maps show their name for the whole game) are not drawn over a menu, as the letterbox is not: the screen's overlays are drawn after the players' menus. |
 | `tag_files/tag_groups.h` | `TAG_BLOCK_GET_ELEMENT` returns an element in the block without a call, and calls `tag_block_get_element_with_size` for anything else. |
 | `game/players.c`, `networking/network_server_manager.c` | Bots (`game/bots.c`, `bots.count`): the lobby of a local Slayer game takes the bot players, each the one player of a machine of its own that no real machine is, and every tick their actions come from `game/bots.c` instead of their empty queues. Nothing changes in a system link or internet game. |
-| `input/input_xbox.c`, `physics/collision_usage.c` | The clock is read only for a button held, and for collision tests only when their times are shown: a read of the clock is slow in a browser. |
+| `input/input_xbox.c`, `physics/collision_usage.c` | The clock is read only for a button held, and for collision tests only when their times are shown (a read of the clock was slow in a browser, for the web port). |
 | `math/random_math.c`, `game/game.c`, `game/game_time.c` | The local seed is set from the game's at a map's start, and is two: the ticks' and the frames' ("Determinism"). The seeds' takers and the game state's allocations go to the determinism check (`game/determinism_log.c`). |
 | `cseries/debug_memory.c` | The debug allocator fills a new allocation from a seed of its own, not the game's local seed. |
 | `networking/network_game_globals.c` | A new network game's seed takes the clock's too, as the local seed is the last map's; `debug.random_seed` sets it. |
@@ -4999,11 +4949,7 @@ can optimize that code for each processor:
 
 The x87 control and status words (`_control87`, `_statusfp`, `_clearfp` in
 `src/msvc_crt.c`) use `fenv.h`. On AArch64 (Android, Linux arm64), they use
-the FPCR and FPSR; on x86-64, MXCSR and the x87 control word. In the web
-build, the control word is only remembered.
+the FPCR and FPSR; on x86-64, MXCSR and the x87 control word.
 
-The web build's changes (`HALO_WEB`: the main loop runs one iteration for
-each of the browser's frames, the cache thread starts at a function of
-`CreateThread`'s type, `debug.txt`'s lines go to the page's log) and the
-declarations given their definitions' types, which WebAssembly needs, are
-listed in "Game source changes" in [../web/README.md](../web/README.md).
+Some of the game's declarations have their definitions' types, which the
+web port's WebAssembly needed (it checks each call's type); they stay.

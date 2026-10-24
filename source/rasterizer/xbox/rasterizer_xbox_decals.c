@@ -295,8 +295,8 @@ static long last_decal_index_queried_by_lruv_cache = NONE;
 /* port: the decals drawn one after another with the same blend function and
 bitmap are one draw, a list of their quads with each decal's color in its
 vertices, instead of a draw each. A long fight leaves hundreds of decals in
-view, and a draw is a call into the browser on the web and work for the
-driver everywhere; on the Xbox each was a few words of push buffer. The
+view, and a draw is work for the command stream and the driver; on the
+Xbox each was a few words of push buffer. The
 vertices are the decal's own (position, then its texture coordinates as the
 declaration's normalized shorts), given as immediate data. */
 #define DECAL_BATCH_MAXIMUM_DECALS 256

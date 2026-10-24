@@ -87,7 +87,7 @@ def data_root(assets: Path, root: Path) -> None:
 
 def without_desktop() -> bool:
     """whether this process runs in Windows' session 0, which has no desktop
-    and no OpenGL driver (a service, or ssh)"""
+    and no GPU driver (a service, or ssh)"""
     if not WINDOWS:
         return False
     import ctypes

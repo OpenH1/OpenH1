@@ -163,9 +163,9 @@ markers of the most instances), and as many of its permutations' */
 #define MAXIMUM_MARKER_INSTANCES (2 * MAXIMUM_MARKERS_PER_MODEL * MAXIMUM_INSTANCES_PER_MODEL_MARKER)
 
 /* the most of the Xbox's contiguous memory the mods' models take (what is
-left is the game's: its own maps' geometry, and on Android and the web a
-window of it in all); past it, their geometry is drawn from the heap */
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+left is the game's: its own maps' geometry, and on Android a window of it
+in all); past it, their geometry is drawn from the heap */
+#ifdef HALO_ANDROID
 #define MAXIMUM_CONTIGUOUS_GEOMETRY_BYTES (24UL * 1024 * 1024)
 #else
 #define MAXIMUM_CONTIGUOUS_GEOMETRY_BYTES (128UL * 1024 * 1024)

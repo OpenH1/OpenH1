@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Vulkan's anti-aliasing passes from the OpenGL backend's.
+"""Build Vulkan's anti-aliasing passes.
 
 Run with glslangValidator and spirv-val on PATH:
     python3 tools/vulkan_post_shaders.py
@@ -8,29 +8,32 @@ SPIR-V of display.anti_aliasing's passes and SMAA's lookup textures,
 inflated; the game needs no shader compiler and no zlib for them.
 --check verifies that the checked-in file still matches its sources.
 
-The passes are port/linux/src/xgpu_post.c's GLSL: its vertex shader, FXAA,
-and the main functions of SMAA's three passes after SMAA.hlsl
-(port/third_party/smaa), with the defines program_build gives it. Only the
-interface changes here: the uniforms become a block (set 0, binding 1, as
-the backend's other draws have their uniforms), the samplers take the
-texture units program_build gives them as their bindings (set 1), the
-output a location, and gl_VertexID is gl_VertexIndex. The rotate program
+The passes are the GLSL below: a vertex shader, FXAA, and the main
+functions of SMAA's three passes after SMAA.hlsl (port/third_party/smaa) at
+its HIGH preset. Each pass draws one triangle covering the rectangle (its
+corners from gl_VertexID, with no vertex data) and finds its texels from
+gl_FragCoord. FXAA is written here, after Timothy Lottes' description: the
+direction of an edge from the luma around a pixel, the edge's ends found by
+stepping along it, and the pixel blended across it by where it lies between
+them, or by how much it stands out from its neighbours. Only the interface
+changes when they are built: the uniforms become a block (set 0, binding 1,
+as the backend's other draws have their uniforms), the samplers take the
+texture units UNITS gives them as their bindings (set 1), the output a
+location, and gl_VertexID is gl_VertexIndex. The rotate program
 (ROTATE_SOURCE) is Vulkan's own: the present step's turn for a swapchain the
 display turns. display.hdr's tone map and encoding are xgpu_hdr.c's GLSL
 (hdr_programs), the same source tools/metal_post_shaders.py compiles for
 Metal: the tone map reads the pixel it draws over as its input attachment
 (set 2, binding 0: VK_KHR_dynamic_rendering_local_read), and again as each
 sample's own for a multisampled target (hdr_tone_map_ms). The coordinates
-stay:
-xgpu_post.c's textures and targets have their first row at the top, as
-Vulkan's images do, and gl_FragCoord counts rows from it in both. glslang
-16.6.0 and SPIRV-Tools 2026.4 (Homebrew's) produce the checked-in words.
+stay: the passes' textures and targets have their first row at the top, as
+Vulkan's images do, and gl_FragCoord counts rows from it. glslang 16.6.0 and
+SPIRV-Tools 2026.4 (Homebrew's) produce the checked-in words.
 
 Beside them, CLEAR is the pixel shader of the core's clears of some of a
-target's colour channels (xgpu_vulkan.c, xgpu_vulkan_clear), which OpenGL
-clears through glColorMask and vkCmdClearAttachments cannot: drawn with the
-vertex shader above, through the channels' write mask, it writes the
-uniforms' colour.
+target's colour channels (xgpu_vulkan.c, xgpu_vulkan_clear), which
+vkCmdClearAttachments cannot do: drawn with the vertex shader above,
+through the channels' write mask, it writes the uniforms' colour.
 """
 
 from __future__ import annotations
@@ -44,7 +47,6 @@ import subprocess
 import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "port/linux/src/xgpu_post.c"
 # display.hdr's tone map and encoding (their functions and main functions)
 HDR_SOURCE = ROOT / "port/linux/src/xgpu_hdr.c"
 SMAA = ROOT / "port/third_party/smaa"
@@ -60,10 +62,162 @@ UNIFORMS = ("metrics", "bounds", "hdr")
 # the fragment programs, in xgpu_vulkan_post_shaders.h's order
 PROGRAMS = ("fxaa", "smaa_edges", "smaa_weights", "smaa_blend", "rotate", "hdr_tone_map", "hdr_tone_map_ms",
             "hdr_encode")
-# Vulkan's own program, which the OpenGL backend has no need of: the frame
-# turned for a swapchain the display turns (a phone held sideways:
-# xgpu_vulkan_post_rotate). Each pixel takes the texel the bounds' matrix
-# (its rows xy and zw) turns it to, about the image's centre.
+# one triangle over the whole viewport
+VERTEX_SOURCE = (
+    "void main()\n"
+    "{\n"
+    "\tgl_Position = vec4(float((gl_VertexID & 1) << 2) - 1.0, float((gl_VertexID & 2) << 1) - 1.0, 0.0, 1.0);\n"
+    "}\n"
+)
+FXAA_SOURCE = (
+    "uniform sampler2D color_texture;\n"
+    "\n"
+    "uniform vec4 metrics;\n"
+    "\n"
+    "uniform vec4 bounds;\n"
+    "out vec4 result;\n"
+    "\n"
+    "const float EDGE_THRESHOLD = 0.125;\n"
+    "const float EDGE_THRESHOLD_MINIMUM = 0.0312;\n"
+    "const float SUBPIXEL_QUALITY = 0.75;\n"
+    "const int STEPS = 12;\n"
+    "const float STEP_LENGTHS[12] = float[12](1.0, 1.0, 1.0, 1.0, 1.0, 1.5, 2.0, 2.0, 2.0, 2.0, 4.0, 8.0);\n"
+    "\n"
+    "vec3 color_at(vec2 position)\n"
+    "{\n"
+    "\treturn textureLod(color_texture, clamp(position, bounds.xy, bounds.zw), 0.0).rgb;\n"
+    "}\n"
+    "\n"
+    "float luma_at(vec2 position)\n"
+    "{\n"
+    "\treturn dot(color_at(position), vec3(0.299, 0.587, 0.114));\n"
+    "}\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "\tvec2 position = gl_FragCoord.xy * metrics.xy;\n"
+    "\tfloat luma = luma_at(position);\n"
+    "\tfloat up = luma_at(position + vec2(0.0, -metrics.y));\n"
+    "\tfloat down = luma_at(position + vec2(0.0, metrics.y));\n"
+    "\tfloat left = luma_at(position + vec2(-metrics.x, 0.0));\n"
+    "\tfloat right = luma_at(position + vec2(metrics.x, 0.0));\n"
+    "\tfloat highest = max(luma, max(max(up, down), max(left, right)));\n"
+    "\tfloat range = highest - min(luma, min(min(up, down), min(left, right)));\n"
+    "\n"
+    "\t\n"
+    "\tif (range < max(EDGE_THRESHOLD_MINIMUM, highest * EDGE_THRESHOLD))\n"
+    "\t\tdiscard;\n"
+    "\tfloat up_left = luma_at(position + vec2(-metrics.x, -metrics.y));\n"
+    "\tfloat up_right = luma_at(position + vec2(metrics.x, -metrics.y));\n"
+    "\tfloat down_left = luma_at(position + vec2(-metrics.x, metrics.y));\n"
+    "\tfloat down_right = luma_at(position + vec2(metrics.x, metrics.y));\n"
+    "\n"
+    "\t\n"
+    "\tfloat average = (2.0 * (up + down + left + right) + up_left + up_right + down_left + down_right) / 12.0;\n"
+    "\tfloat subpixel = smoothstep(0.0, 1.0, clamp(abs(average - luma) / range, 0.0, 1.0));\n"
+    "\tsubpixel = subpixel * subpixel * SUBPIXEL_QUALITY;\n"
+    "\n"
+    "\t\n"
+    "\tbool horizontal = abs(up_left + down_left - 2.0 * left) + 2.0 * abs(up + down - 2.0 * luma) +\n"
+    "\t\tabs(up_right + down_right - 2.0 * right) >=\n"
+    "\t\tabs(up_left + up_right - 2.0 * up) + 2.0 * abs(left + right - 2.0 * luma) +\n"
+    "\t\tabs(down_left + down_right - 2.0 * down);\n"
+    "\tfloat before = horizontal ? up : left;\n"
+    "\tfloat after = horizontal ? down : right;\n"
+    "\tbool before_steeper = abs(before - luma) >= abs(after - luma);\n"
+    "\tfloat gradient = 0.25 * max(abs(before - luma), abs(after - luma));\n"
+    "\tfloat edge_luma = 0.5 * ((before_steeper ? before : after) + luma);\n"
+    "\tvec2 across = (horizontal ? vec2(0.0, metrics.y) : vec2(metrics.x, 0.0)) * (before_steeper ? -1.0 : 1.0);\n"
+    "\tvec2 along = horizontal ? vec2(metrics.x, 0.0) : vec2(0.0, metrics.y);\n"
+    "\n"
+    "\t\n"
+    "\tvec2 end_before = position + 0.5 * across - along;\n"
+    "\tvec2 end_after = position + 0.5 * across + along;\n"
+    "\tfloat luma_before = luma_at(end_before) - edge_luma;\n"
+    "\tfloat luma_after = luma_at(end_after) - edge_luma;\n"
+    "\tbool reached_before = abs(luma_before) >= gradient;\n"
+    "\tbool reached_after = abs(luma_after) >= gradient;\n"
+    "\tfor (int index = 1; index < STEPS && !(reached_before && reached_after); index++)\n"
+    "\t{\n"
+    "\t\tif (!reached_before)\n"
+    "\t\t{\n"
+    "\t\t\tend_before -= along * STEP_LENGTHS[index];\n"
+    "\t\t\tluma_before = luma_at(end_before) - edge_luma;\n"
+    "\t\t\treached_before = abs(luma_before) >= gradient;\n"
+    "\t\t}\n"
+    "\t\tif (!reached_after)\n"
+    "\t\t{\n"
+    "\t\t\tend_after += along * STEP_LENGTHS[index];\n"
+    "\t\t\tluma_after = luma_at(end_after) - edge_luma;\n"
+    "\t\t\treached_after = abs(luma_after) >= gradient;\n"
+    "\t\t}\n"
+    "\t}\n"
+    "\n"
+    "\t\n"
+    "\tfloat distance_before = horizontal ? position.x - end_before.x : position.y - end_before.y;\n"
+    "\tfloat distance_after = horizontal ? end_after.x - position.x : end_after.y - position.y;\n"
+    "\tfloat pixel_offset = 0.5 - min(distance_before, distance_after) / (distance_before + distance_after);\n"
+    "\tbool varies = ((distance_before < distance_after ? luma_before : luma_after) < 0.0) != (luma < edge_luma);\n"
+    "\tresult = vec4(color_at(position + max(varies ? pixel_offset : 0.0, subpixel) * across), 1.0);\n"
+    "}\n"
+)
+# the main functions of SMAA's passes, after SMAA.hlsl; its vertex functions'
+# offsets are found for each pixel
+SMAA_EDGES_SOURCE = (
+    "uniform sampler2D color_texture;\n"
+    "out vec4 result;\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "\tvec2 texcoord = gl_FragCoord.xy * metrics.xy;\n"
+    "\tvec4 offset[3];\n"
+    "\tSMAAEdgeDetectionVS(texcoord, offset);\n"
+    "\tresult = vec4(SMAALumaEdgeDetectionPS(texcoord, offset, color_texture), 0.0, 0.0);\n"
+    "}\n"
+)
+SMAA_WEIGHTS_SOURCE = (
+    "uniform sampler2D edges_texture;\n"
+    "uniform sampler2D area_texture;\n"
+    "uniform sampler2D search_texture;\n"
+    "out vec4 result;\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "\tvec2 texcoord = gl_FragCoord.xy * metrics.xy;\n"
+    "\tvec2 pixcoord;\n"
+    "\tvec4 offset[3];\n"
+    "\tSMAABlendingWeightCalculationVS(texcoord, pixcoord, offset);\n"
+    "\tresult = SMAABlendingWeightCalculationPS(texcoord, pixcoord, offset, edges_texture, area_texture,\n"
+    "\t\tsearch_texture, vec4(0.0));\n"
+    "}\n"
+)
+SMAA_BLEND_SOURCE = (
+    "uniform sampler2D color_texture;\n"
+    "uniform sampler2D weights_texture;\n"
+    "out vec4 result;\n"
+    "\n"
+    "void main()\n"
+    "{\n"
+    "\tvec2 texcoord = gl_FragCoord.xy * metrics.xy;\n"
+    "\tvec4 offset;\n"
+    "\tSMAANeighborhoodBlendingVS(texcoord, offset);\n"
+    "\tresult = SMAANeighborhoodBlendingPS(texcoord, offset, color_texture, weights_texture);\n"
+    "}\n"
+)
+SMAA_MAINS = (SMAA_EDGES_SOURCE, SMAA_WEIGHTS_SOURCE, SMAA_BLEND_SOURCE)
+# what comes before SMAA.hlsl and a pass's main function
+SMAA_PREFIX = (
+    "#define SMAA_GLSL_4 1\n"
+    "uniform vec4 metrics;\n"
+    "#define SMAA_RT_METRICS metrics\n"
+    "#define SMAA_PRESET_HIGH 1\n"
+)
+# each sampler's texture unit, which becomes its binding
+UNITS = {"color_texture": 0, "edges_texture": 0, "area_texture": 1, "search_texture": 2, "weights_texture": 1}
+# Vulkan's own program: the frame turned for a swapchain the display turns
+# (a phone held sideways: xgpu_vulkan_post_rotate). Each pixel takes the
+# texel the bounds' matrix (its rows xy and zw) turns it to, about the
+# image's centre.
 ROTATE_SOURCE = (
     "uniform sampler2D color_texture;\n"
     "/* 1 / width, 1 / height, width, height of the turned image */\n"
@@ -103,43 +257,13 @@ def literal(text: str) -> str:
 def declaration(source: str, name: str) -> str:
     match = re.search(r"(?:static )?const char " + name + r"\[\]\s*=\s*(.*?);\n", source, re.S)
     if not match:
-        raise ValueError(f"{name} not found in {SOURCE.name}")
+        raise ValueError(f"{name} not found in {HDR_SOURCE.name}")
     return literal(match[1])
 
 
-def smaa_mains(source: str) -> list[str]:
-    """smaa_mains's three strings, each its adjacent literals joined."""
-    match = re.search(r"static const char \*const smaa_mains\[\]\s*=\s*\{(.*?)\n\};", source, re.S)
-    if not match:
-        raise ValueError(f"smaa_mains not found in {SOURCE.name}")
-    body = COMMENTS.sub("", match[1])
-    mains = []
-    for group in re.findall(r'((?:\s*"(?:\\.|[^"\\])*")+)\s*,', body):
-        mains.append(literal(group))
-    if len(mains) != 3:
-        raise ValueError(f"smaa_mains has {len(mains)} strings, not 3")
-    return mains
-
-
-def smaa_prefix(source: str) -> str:
-    """What program_build puts before SMAA.hlsl and a pass's main: the
-    defines' text, as far as its first %s."""
-    match = re.search(r'xgpu_text_append\(&text,((?:\s*"(?:\\.|[^"\\])*")+)\s*,\s*\(const char \*\)xgpu_smaa_shader',
-                      source)
-    if not match:
-        raise ValueError(f"program_build's SMAA defines not found in {SOURCE.name}")
-    text = literal(match[1])
-    if not text.endswith("%s\n%s"):
-        raise ValueError("program_build's SMAA format changed")
-    return text[:-len("%s\n%s")]
-
-
-def units(source: str) -> dict[str, int]:
-    """program_build's samplers' texture units, which become bindings."""
-    found = {name: int(unit) for name, unit in re.findall(r'\{ "(\w+_texture)", (\d+) \}', source)}
-    if not found:
-        raise ValueError(f"program_build's texture units not found in {SOURCE.name}")
-    return found
+def smaa_hlsl() -> str:
+    """SMAA.hlsl, its few characters beyond ASCII (in comments) spaces."""
+    return bytes(byte if byte < 0x80 else 0x20 for byte in (SMAA / "SMAA.hlsl").read_bytes()).decode("ascii")
 
 
 def hdr_programs() -> dict[str, str]:
@@ -194,18 +318,13 @@ def words_array(name: str, data: bytes, public: bool = False) -> str:
 def generate(args):
     build = args.build_dir
     build.mkdir(parents=True, exist_ok=True)
-    source = SOURCE.read_text()
-    # (as tools/embed_assets.py gives it to the OpenGL backend: ASCII)
-    hlsl = bytes(byte if byte < 0x80 else 0x20 for byte in (SMAA / "SMAA.hlsl").read_bytes()).decode("ascii")
-    bindings = units(source)
-    prefix = smaa_prefix(source)
-    mains = smaa_mains(source)
+    hlsl = smaa_hlsl()
     programs = {
-        "post": ("vert", declaration(source, "vertex_source")),
-        "fxaa": ("frag", declaration(source, "fxaa_source")),
+        "post": ("vert", VERTEX_SOURCE),
+        "fxaa": ("frag", FXAA_SOURCE),
     }
-    for name, main in zip(PROGRAMS[1:4], mains):
-        programs[name] = ("frag", prefix + hlsl + "\n" + main)
+    for name, main in zip(PROGRAMS[1:4], SMAA_MAINS):
+        programs[name] = ("frag", SMAA_PREFIX + hlsl + "\n" + main)
     programs["rotate"] = ("frag", ROTATE_SOURCE)
     hdr = hdr_programs()
     programs["hdr_tone_map"] = ("frag", hdr["tone_map"])
@@ -213,13 +332,13 @@ def generate(args):
     programs["hdr_encode"] = ("frag", hdr["encode"])
     programs["clear"] = ("frag", CLEAR)
     text = [
-        "/* Generated by tools/vulkan_post_shaders.py from xgpu_post.c, xgpu_hdr.c and port/third_party/smaa. "
+        "/* Generated by tools/vulkan_post_shaders.py from its GLSL, xgpu_hdr.c and port/third_party/smaa. "
         "Do not edit. */\n",
         '#include "xgpu_vulkan_post_shaders.h"\n',
     ]
     for name, (stage, code) in programs.items():
         path = build / f"{name}.{stage}"
-        path.write_text(code if name == "clear" else translate(stage, code, bindings))
+        path.write_text(code if name == "clear" else translate(stage, code, UNITS))
         spv = path.with_suffix(f".{stage}.spv")
         spv.unlink(missing_ok=True)
         subprocess.run([args.compiler, "-V", "--target-env", "vulkan1.1", "-o", str(spv), str(path)],

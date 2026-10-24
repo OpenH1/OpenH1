@@ -153,29 +153,6 @@ int main(void) {
 ''')
 
 
-def test_direct_gl_requires_live_phase_and_web_keeps_fallback(tmp_path):
-    query = function('port/linux/src/xgpu_gl.c', 'int xgpu_backend_loading_owned(void)')
-    source = r'''
-#include <assert.h>
-static int phase;
-int platform_loading_active(void) { return phase; }
-''' + query + r'''
-int main(void) {
-    phase=0; assert(!xgpu_backend_loading_owned());
-    phase=1;
-#ifdef HALO_WEB
-    assert(!xgpu_backend_loading_owned());
-#else
-    assert(xgpu_backend_loading_owned());
-#endif
-    phase=2; assert(!xgpu_backend_loading_owned());
-    return 0;
-}
-'''
-    run(tmp_path, source)
-    run(tmp_path, '#define HALO_WEB 1\n' + source)
-
-
 def test_metal_requires_started_presenter_and_live_hold(tmp_path):
     query = function('port/macos/host_metal.m', 'int host_metal_loading_owned(void *context)')
     run(tmp_path, r'''

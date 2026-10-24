@@ -21,6 +21,4 @@ and the lookup textures inflated, in
 `tools/vulkan_post_shaders.py` generates from these files. The Metal
 backend has them as MSL, by way of the same SPIR-V and SPIRV-Cross, in
 `port/macos/xgpu_metal_post_shaders.c`, which `tools/metal_post_shaders.py`
-generates. The OpenGL backend (the Windows build's) compiles them as GLSL
-(`port/linux/src/xgpu_post.c`), the files embedded in the game by
-`tools/embed_assets.py`. OpenGL ES (the web) has FXAA in its place.
+generates.

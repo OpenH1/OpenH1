@@ -57,7 +57,7 @@ int text_hires_glyph(long font, unsigned long code, struct text_hires_glyph *gly
 and its size; NULL forgets it */
 void text_hires_register_atlas(const unsigned long *texture, unsigned long width, unsigned long height);
 
-/* the GL texture of the atlas when data (a D3D texture's Data) is its
+/* the image of the atlas when data (a D3D texture's Data) is its
 placeholder's, its rasterized glyphs uploaded; 0 otherwise */
 unsigned int text_hires_atlas_texture(unsigned long data);
 

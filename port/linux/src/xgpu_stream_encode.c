@@ -9,20 +9,18 @@ goes on to the next. One host call a frame hands the frame over
 (host_render_stream_submit); the game waits only when the ring is full or
 two frames are still unfinished.
 
-Built in place of a backend of its own (HALO_RENDER_STREAM: macOS's Metal,
-later the Steam Frame's OpenGL on the host). The calls that answer at once
-are answered here: the capabilities and the VR mode's at start-up, by a
-synchronous record; a pipeline's success a frame or two late (TRUE until
-the host says otherwise); visibility counts from where the host writes
-them; a texture's description from its header; a target's pixels
-(screenshots) synchronously.
+Every build's backend: the host's is Vulkan's (port/linux/vulkan) or
+Metal's (port/macos). The calls that answer at once are answered here: the
+capabilities and the VR mode's at start-up, by a synchronous record; a
+pipeline's success a frame or two late (TRUE until the host says
+otherwise); visibility counts from where the host writes them; a texture's
+description from its header; a target's pixels (screenshots)
+synchronously.
 
 Records are written compactly: pipeline keys and vertex layouts are sent
 once and named by a number after, and the draw state, textures and the
 inputs no stream feeds only when they change.
 */
-
-#ifdef HALO_RENDER_STREAM
 
 #include "frame_pacing.h"
 #include "xgpu_backend.h"
@@ -1537,8 +1535,8 @@ void xgpu_backend_frame_end(void)
 	xgpu_texture_cache_begin_frame();
 #endif
 #if !defined(HALO_METAL) && !defined(XGPU_STREAM_TEST)
-	/* (the frames paced as the OpenGL backend's present paces them,
-	display.max_fps, while the host shows this one: sdl_platform.c) */
+	/* (the frames paced by display.max_fps while the host shows this one:
+	sdl_platform.c) */
 	platform_video_swap();
 #endif
 }
@@ -1752,7 +1750,7 @@ void xgpu_backend_vr_eyes(xgpu_target eye_target, unsigned int image)
 	record_body->foveation = 0;
 	record_body->latched = 0;
 #ifdef HALO_VR
-	/* (where the backend asks, foveated: xgpu_gl.c's vr_fovea_place) */
+	/* (where the backend asks, foveated: host_vulkan_vr.c's fovea_place) */
 	if (xgpu_foveated)
 		record_body->foveation = halo_vr_foveation(record_body->centres);
 	{
@@ -2009,4 +2007,3 @@ void halo_vr_eye_tint(float red, float green, float blue)
 }
 #endif
 
-#endif

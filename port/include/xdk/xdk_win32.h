@@ -38,11 +38,6 @@ xdk_pdb.h agree. */
 #define CALLBACK __stdcall
 #define NTAPI __stdcall
 #define PASCAL __stdcall
-/* APIENTRY is WINAPI (learn.microsoft.com, "Windows Data Types"; mingw-w64
-minwindef.h, public domain). The platform's OpenGL header (port/linux/src/gl.h)
-relies on it: with APIENTRY defined, SDL's OpenGL header does not include
-the host's windows.h on Windows. */
-#define APIENTRY WINAPI
 #define STDMETHODCALLTYPE __stdcall
 
 #define VOID void

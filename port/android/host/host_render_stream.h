@@ -3,8 +3,8 @@ HOST_RENDER_STREAM.H
 
 The host's half of the renderer's command stream (port/linux/src/xgpu_stream.h):
 a render thread that plays the guest's records into a backend on the host
-(Metal on macOS; the OpenGL backend, moved to the host, on the Steam
-Frame), and the guest's imports that hand it the frames
+(Vulkan's, port/linux/vulkan; Metal's on macOS and iOS), and the guest's
+imports that hand it the frames
 (host_render_stream.c).
 
 A backend is a table of functions, one for each kind of record, called on

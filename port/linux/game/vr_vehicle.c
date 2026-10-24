@@ -15,7 +15,7 @@ eased a little (VEHICLE_HEADING_SECONDS), and the player's axes turn with
 it (src/vr.c's body_yaw), so that the view looks along the vehicle wherever
 it turns, and the head looks about from there; the edges of the view dim a
 little as it turns fast, or the vehicle speeds up or slows hard (the
-comfort vignette, src/xgpu_gl.c). The view stays level, and the eye, held
+comfort vignette, vulkan/host_vulkan_vr.c). The view stays level, and the eye, held
 in the seat (vr_seat.c), is held in the vehicle as it would be level,
 turned with it alone: the vehicle's pitching and rolling as it hovers (up to
 9 degrees on b30's beach, the eye 1.45 m behind and 0.58 m above the

@@ -37,7 +37,7 @@ APP_NAME = "OpenH1"
 EXECUTABLE = "halo"
 DEFAULT_APP = ROOT / "build/ios" / (APP_NAME + ".app")
 DEFAULT_BUNDLE_ID = "com.openh1.openh1"
-# what the web page and the README say of the project (tools/macos_app.py's)
+# what the README says of the project (tools/macos_app.py's)
 COPYRIGHT = ("OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
              "Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft "
              "Corporation. No game data is included: you need your own copy of the game.")

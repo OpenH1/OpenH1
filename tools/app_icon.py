@@ -14,8 +14,7 @@ the artwork the icons are made from:
 - openh1-icon-render.png, the plate alone on transparency (1024x1024), smaller
   in its square, so that a launcher's round mask leaves its corners: the
   Android app's launcher icon;
-- openh1-icon.png again: the web page's icons (port/web/site/icons), its tab's,
-  the installed web app's and the home screen's; the Linux release's
+- openh1-icon.png again: the Linux release's icons
   (port/assets/icon/hicolor/openh1-<size>.png, which tools/linux_package.py
   puts in share/icons/hicolor/<size>x<size>/apps/openh1.png for the desktop
   entry, port/assets/linux/openh1.desktop);
@@ -69,10 +68,6 @@ VISIBLE_DP = 72
 # pixels per dp of each density
 DENSITIES = {"mdpi": 1.0, "hdpi": 1.5, "xhdpi": 2.0, "xxhdpi": 3.0, "xxxhdpi": 4.0}
 WINDOWS_SIZES = [16, 20, 24, 32, 40, 48, 64, 128, 256]
-# the web page's: its tab's (32), iOS's home screen's (180) and the web app
-# manifest's (192, 512)
-WEB_ICONS = ROOT / "port/web/site/icons"
-WEB_SIZES = [32, 180, 192, 512]
 # the Linux release's, for the freedesktop icon theme's hicolor sizes
 LINUX_ICONS = ARTWORK / "hicolor"
 LINUX_SIZES = [16, 24, 32, 48, 64, 128, 256, 512]
@@ -131,13 +126,6 @@ def monochrome(render: Image.Image) -> Image.Image:
     out[..., :3] = 255
     out[..., 3] = np.round(alpha * 255).astype(np.uint8)
     return Image.fromarray(out, "RGBA")
-
-
-def web_icons(icon: Image.Image) -> None:
-    WEB_ICONS.mkdir(parents=True, exist_ok=True)
-    for size in WEB_SIZES:
-        icon.resize((size, size), Image.LANCZOS).save(WEB_ICONS / f"icon-{size}.png", optimize=True)
-    print(f"{WEB_ICONS.relative_to(ROOT)}: {', '.join(str(size) for size in WEB_SIZES)}")
 
 
 def linux_icons(icon: Image.Image) -> None:
@@ -214,7 +202,6 @@ def main() -> None:
     print(f"{WINDOW_ICON.relative_to(ROOT)}: 256x256")
     icon.save(WINDOWS_ICON, sizes=[(size, size) for size in WINDOWS_SIZES])
     print(f"{WINDOWS_ICON.relative_to(ROOT)}: {', '.join(str(size) for size in WINDOWS_SIZES)}")
-    web_icons(icon)
     linux_icons(icon)
 
     # the launcher's layers

@@ -12,8 +12,8 @@ glows, in each of the layers they are drawn into; display.hdr's tags
 (xgpu_hdr.h: every ceiling, expanded or not, the alpha limit and the
 dynamic lights past white, over each blend, into a target of one sample and
 of four); and anti-aliasing's and display.hdr's passes
-(port/linux/vulkan/xgpu_vulkan_post_shaders.c, generated from the OpenGL
-backend's GLSL and xgpu_hdr.c's).
+(port/linux/vulkan/xgpu_vulkan_post_shaders.c, generated from
+tools/vulkan_post_shaders.py's GLSL and xgpu_hdr.c's).
 
   spirv_corpus <capture dir> <out dir>
 

@@ -5,8 +5,7 @@
 - **The loading screen**: by Paul Hontz (`port/assets/loading`).
 
 - **The game's icon** (the macOS app's, the Android app's launcher icon,
-  `halo.exe`'s, the Linux release's, the web build's and the desktop
-  windows'): the OpenH1 logo, Tail Code, by Erin Cena
+  `halo.exe`'s, the Linux release's and the desktop windows'): the OpenH1 logo, Tail Code, by Erin Cena
   (`port/assets/icon/openh1-mark.svg`, from openh1.com's
   `website/public/favicon.svg`).
 - **Steam's library artwork** (the capsules, hero, logo and icon of the

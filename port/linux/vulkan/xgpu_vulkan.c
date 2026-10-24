@@ -1130,15 +1130,14 @@ void *xgpu_vulkan_upload(uint32_t size, uint32_t alignment, struct xgpu_vulkan_r
 
 /* ---------- queries */
 
-/* The visibility tests' counts reach the game as the OpenGL backend's do:
-the counts of a frame's tests are copied at the next frame's end (by the GPU,
-after that frame's work) and read at the end of the frame after it
-(xgpu_gl.c, visibility_copy_batch, frame_end_buffers), so that the game,
-drawing frame k + 1, has frame k - 2's. Here they are written into the
+/* The visibility tests' counts reach the game as OpenCE's OpenGL backend's
+did: the counts of a frame's tests copied at the next frame's end (by the
+GPU, after that frame's work) and read at the end of the frame after it, so
+that the game, drawing frame k + 1, has frame k - 2's. Here they are written into the
 game's slots at the end of frame k (the frame's queries waited for, which
 they have long been): with the guest waiting for each frame's GPU work (as
 a test of the same frames does), the game has the same counts in the same
-frames as with OpenGL. */
+frames as it had with OpenGL. */
 static void queries_publish(uint64_t last)
 {
 	/* the latest test of each slot, and its count so far */
@@ -1227,8 +1226,8 @@ static void queries_publish(uint64_t last)
 
 				if (!seen[query])
 					continue;
-				/* the count in the game's pixels (as the OpenGL backend's
-				visibility_unscaled) */
+				/* the count in the game's pixels (as OpenCE's OpenGL backend
+				counted it) */
 				count = areas[query] > 1.0f ? (uint64_t)((float)sums[query] / areas[query] + 0.5f) : sums[query];
 				vk.visibility_output[query] = count < XGPU_VULKAN_VISIBILITY_MOST ? (uint32_t)count :
 					XGPU_VULKAN_VISIBILITY_MOST;
@@ -2100,7 +2099,7 @@ void xgpu_vulkan_buffer_write(struct xgpu_vulkan_buffer *buffer, uint32_t offset
 OpenGL and Vulkan alike (a narrowed blend, "brilinear"), but OpenGL's blend
 is centred between the levels and Vulkan's begins at the lower: OpenGL's
 LOD is Vulkan's less a constant that depends on the most anisotropy, which
-this bias takes off, so that this backend's textures are the OpenGL
+this bias takes off, so that this backend's textures are OpenCE's OpenGL
 backend's pixel for pixel. Measured with random textured triangles drawn by
 both on an RTX 4090: exact for 2x to 16x, both mip filters, every
 anisotropy of the footprint; none without mip levels (OpenGL's GL_LINEAR
@@ -2176,7 +2175,7 @@ VkSampler xgpu_vulkan_sampler(const struct xgpu_vulkan_sampler_description *desc
 	memset(&info, 0, sizeof(info));
 	info.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
 	/* (a cube map's faces filtered each alone, as OpenGL's are without
-	GL_TEXTURE_CUBE_MAP_SEAMLESS, which the OpenGL backend leaves off) */
+	GL_TEXTURE_CUBE_MAP_SEAMLESS, which OpenCE's OpenGL backend left off) */
 	if (vk.non_seamless)
 		info.flags = VK_SAMPLER_CREATE_NON_SEAMLESS_CUBE_MAP_BIT_EXT;
 	info.magFilter = description->magnify == XGPU_VULKAN_FILTER_LINEAR ? VK_FILTER_LINEAR : VK_FILTER_NEAREST;

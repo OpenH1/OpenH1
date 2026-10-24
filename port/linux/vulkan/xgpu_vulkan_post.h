@@ -3,7 +3,7 @@ XGPU_VULKAN_POST.H
 
 display.anti_aliasing's passes for the Vulkan backend (xgpu_vulkan_post.c):
 FXAA or SMAA antialias a window's 3D view in place before the HUD and menus
-are drawn over it, as the OpenGL backend's (port/linux/src/xgpu_post.c).
+are drawn over it (their GLSL: tools/vulkan_post_shaders.py).
 Supersampling and multisampling are the front end's and the core's. And
 display.hdr's tone map and encoding (port/linux/src/xgpu_hdr.c's shaders).
 */

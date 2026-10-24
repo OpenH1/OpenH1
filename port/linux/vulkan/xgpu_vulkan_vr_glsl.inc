@@ -6,8 +6,8 @@ map, the HUD's and the scope's copies, the visor, its rim, the feed, the
 cockpit's display, the vignette, the tint, the eyes' depth, the scope's
 window), from which tools/vulkan_vr_shaders.py makes their SPIR-V
 (xgpu_vulkan_vr_shaders.c): each pass a function holding its
-vertex_source and fragment_source, as the OpenGL backend's VR mode had them
-(xgpu_gl.c, before VR became Vulkan's alone). The generator keeps their
+vertex_source and fragment_source, as OpenCE's OpenGL backend's VR mode
+had them. The generator keeps their
 equations and uniform names, and changes only interface declarations,
 built-ins, row orientation and sRGB framebuffer operations.
 

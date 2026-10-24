@@ -1234,11 +1234,6 @@ void p2p_peer_name(int peer, char *name)
 	memcpy(name, p2p.peers[peer].name, sizeof(p2p.peers[peer].name));
 }
 
-unsigned short p2p_tunnel_local_port(void)
-{
-	return p2p.tunnel_port;
-}
-
 /* whether a packet of this number from the peer is new: not received yet,
 nor from before the window */
 static int packet_fresh(const struct peer *peer, unsigned long long counter)
@@ -1388,10 +1383,6 @@ static void stun_setup(void)
 {
 	const char *text = config_string("network.stun_servers");
 
-#ifdef HALO_WEB
-	/* (a page's addresses are its WebRTC connections' own: web_p2p.c) */
-	text = "";
-#endif
 	while (*text && p2p.stun_count < MAXIMUM_STUN_SERVERS)
 	{
 		const char *end = text + strcspn(text, ",");
@@ -2612,10 +2603,6 @@ static void probe_end(int index)
 
 int p2p_probe_start(const unsigned char *host_hash, const unsigned char *token)
 {
-#ifdef HALO_WEB
-	/* (a browser reaches a host only by a WebRTC connection of its own) */
-	return 0;
-#else
 	unsigned char host[P2P_IDENTIFIER_SIZE];
 	struct peer *peer;
 	int free_index = -1;
@@ -2654,7 +2641,6 @@ int p2p_probe_start(const unsigned char *host_hash, const unsigned char *token)
 	p2p.probes[free_index].time = p2p_now();
 	p2p.probes[free_index].reported = 0;
 	return 1;
-#endif
 }
 
 /* the probes timed (PROBE_PINGS answered) end, as do those not reached in
@@ -2729,7 +2715,7 @@ static int parse_invite(const char *text, unsigned char *host_hash, unsigned cha
 
 	for (search = text; *search && !start; search++)
 	{
-		/* (a link, or the web page's address with one: ?join=) */
+		/* (a link, or an address with one: ?join=) */
 		static const char *const prefixes[] = { "halo://join/", "?join=", "&join=" };
 		int prefix;
 
@@ -3460,10 +3446,6 @@ static void update_upnp(void)
 
 	if (allowed < 0)
 		allowed = config_boolean("network.allow_upnp") ? 1 : 0;
-#ifdef HALO_WEB
-	/* (a page cannot reach the router) */
-	allowed = 0;
-#endif
 	if (!allowed || p2p.upnp_working || p2p.upnp_released)
 		return;
 	if (p2p.upnp_forwarded)

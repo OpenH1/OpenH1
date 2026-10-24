@@ -761,9 +761,9 @@ struct xgpu_stream_dynamic_lights_halos
 
 The backend composes each frame (the eyes' images, the HUD's and its
 panels', the scope's) and ends it with OpenXR, on the host's render thread:
-OpenXR's calls that use the GL context (the session made, the swapchains'
+OpenXR's calls that use the device (the session made, the swapchains'
 images acquired and released, the frame begun and ended) are made there
-(port/linux/host/host_gl_vr.c); the game waits for the runtime's frames and
+(port/linux/host/host_vr_stream.c); the game waits for the runtime's frames and
 locates the views (vr.c). What the composition reads of the game's VR mode
 (vr.h's and vr_visor.h's functions the guest's backend calls) comes in the
 records: VR_STATE before each VR_COMPOSE, the gaze with VR_EYES, the layers

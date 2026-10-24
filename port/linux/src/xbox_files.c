@@ -90,7 +90,7 @@ const char *platform_data_root(void)
 				if (slash)
 					*slash = '\0';
 			}
-#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_MACOS)
 			/* on Linux, the game's folder (the release's root, above its
 			bin/), or ~/.local/share/halo-linux when the game is installed
 			(install_layout.c) */
@@ -124,7 +124,7 @@ const char *platform_data_root(void)
 						snprintf(root, sizeof(root), "%s", executable);
 				}
 			}
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#ifndef HALO_ANDROID
 			if (!has_maps(root) && game_folder[0] && platform_offer_game_data(game_folder) &&
 				has_maps(game_folder))
 			{
@@ -577,8 +577,8 @@ static BOOL read_at(struct platform_file *file, LPVOID buffer, DWORD count, LPDW
 			break;
 		if (bounce)
 		{
-			/* (where pages are watched by their hashes, port/web, so that a
-			page long unchanged is checked again in the next frame) */
+			/* (where pages are watched by their hashes, host_watch_hash.h, so
+			that a page long unchanged is checked again in the next frame) */
 			memory_watch_prepare_write((char *)buffer + total, (unsigned long)result);
 			memcpy((char *)buffer + total, staging, (size_t)result);
 		}

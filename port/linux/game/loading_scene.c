@@ -46,7 +46,7 @@ map is disposed of.
 #include <stdlib.h>
 #include <string.h>
 
-/* (port/linux/src/xgpu_stream_encode.c, xgpu_gl.c) */
+/* (port/linux/src/xgpu_stream_encode.c) */
 void xgpu_backend_loading_scene(void const *data, unsigned long bytes);
 
 /* ---------- constants */

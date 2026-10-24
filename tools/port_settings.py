@@ -41,7 +41,7 @@ VOLUMES = [(str(step), f"{step / 10:g}") for step in range(11)]
 # the platforms a menu element's platform attribute names (menu_files.c's
 # MENU_PLATFORM, "vr": the VR build, playing in the headset, and "hdr": a
 # renderer that draws display.hdr)
-MENU_PLATFORMS = ("desktop", "android", "web", "vr", "hdr", "touch", "pointer", "computer")
+MENU_PLATFORMS = ("desktop", "android", "vr", "hdr", "touch", "pointer", "computer")
 # display.hdr_paper_white's values, percent of the system's SDR white
 PAPER_WHITES = (50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200, 250)
 
@@ -340,7 +340,7 @@ PAGES = {
              [("AUTO", "0"), ("30", "30"), ("60", "60"), ("120", "120"), ("144", "144"), ("165", "165"),
               ("240", "240"), ("NONE", "-1")],
              "The most frames drawn a second while V-Sync is off. Auto is twice the display's refresh rate. More "
-             "feels smoother and uses more power; None draws as fast as it can.", "desktop web"),
+             "feels smoother and uses more power; None draws as fast as it can.", "desktop"),
             ("VSYNC", "display.vsync", ON_OFF,
              "Waits for the display before showing each frame, so that the picture never tears. It adds a little "
              "input lag, and holds the frame rate to the display's refresh rate.", None),
@@ -433,7 +433,7 @@ PAGES = {
              "controller.", None),
             ("INSTANT AIM", "display.direct_camera", ON_OFF,
              "Turns the view the moment the mouse moves, not up to two of the game's updates later. Off feels as "
-             "the original did.", "computer web"),
+             "the original did.", "computer"),
             (SECTION, "CONTROLLER"),
             ("CONTROLLER ›", None, _page_screen(*CONTROLLER),
              "The look sensitivity and inversion, the button and stick layouts, and vibration, kept in your player "
@@ -460,7 +460,7 @@ PAGES = {
             (SECTION, "INTERNET"),
             ("INTERNET PLAY", "network.online", ON_OFF,
              "Host and join games over the internet with invite links, and find public games. Off keeps to the "
-             "local network.", "desktop android web"),
+             "local network.", "desktop android"),
             ("OPEN ROUTER PORT", "network.allow_upnp", ON_OFF,
              "Asks your router to open the game's port (UPnP), so that players can reach the games you host.",
              "desktop android"),
@@ -550,19 +550,15 @@ PAGES = {
             (SECTION, "IMAGE"),
             ("RENDER RESOLUTION", "display.resolution_scaling", [("FULL", "native"), ("XBOX 640X480", "original")],
              "Full draws the game at your screen's resolution. Xbox draws it at the Xbox's 640x480 and scales it "
-             "up: softer, and very light on the graphics card.", "computer web"),
+             "up: softer, and very light on the graphics card.", "computer"),
             ("ANTI-ALIASING", "display.anti_aliasing",
              [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("SSAA 2X", "ssaa2x"), ("MSAA 2X", "msaa2x"),
               ("MSAA 4X", "msaa4x"), ("MSAA 8X", "msaa8x")],
              ANTI_ALIASING_HELP.format("SSAA and MSAA are", "cost"), "desktop"),
-            # (Android's Vulkan draws SMAA; the web's OpenGL ES has FXAA alone)
+            # (Android's Vulkan draws SMAA, but no supersampling)
             ("ANTI-ALIASING", "display.anti_aliasing",
              [("OFF", "off"), ("FXAA", "fxaa"), ("SMAA", "smaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x")],
              ANTI_ALIASING_HELP.format("MSAA is", "costs"), "android", "anti_aliasing_android"),
-            ("ANTI-ALIASING", "display.anti_aliasing",
-             [("OFF", "off"), ("FXAA", "fxaa"), ("MSAA 2X", "msaa2x"), ("MSAA 4X", "msaa4x")],
-             "Smooths jagged edges. FXAA costs little; MSAA is sharper and costs more of the graphics card.",
-             "web", "anti_aliasing_web"),
             ("TEXTURE FILTERING", "display.anisotropic_filtering",
              [("OFF", "0"), ("2X", "2"), ("4X", "4"), ("8X", "8"), ("16X", "16")],
              "Keeps floors and walls sharp into the distance, at a small cost. Off looks as the Xbox did: surfaces "
@@ -829,7 +825,7 @@ def _setting_screen(folder: str, spec: dict) -> list:
     # (platform_places: each platform's rows in places of their own, with
     # no gap where the others' are; a row in one place for all its
     # platforms, else a child for each place)
-    places = {"desktop": -1, "android": -1, "web": -1}
+    places = {"desktop": -1, "android": -1}
     for index, (label, setting, choices, _, platform, *named) in enumerate(spec["rows"]):
         if setting is None:
             # (a row that opens another screen, choices: its widget)
@@ -1001,8 +997,8 @@ def _settings_platform(rows: list, start: int):
 
 # the rows in the place of the row before them, each platform having one of
 # them at most, or menu_functions.c showing one (video_rows_show): Window Size
-# in Resolution's, Android's and the web's anti-aliasing in the desktop's
-SETTINGS_SAME_PLACE = {"window_size", "anti_aliasing_android", "anti_aliasing_web"}
+# in Resolution's, Android's anti-aliasing in the desktop's
+SETTINGS_SAME_PLACE = {"window_size", "anti_aliasing_android"}
 
 
 def _settings_page(folder: str, page: dict) -> list:
@@ -1365,7 +1361,6 @@ SETTINGS_VALUE_PICTURES = {
     "anti_aliasing": ["stills/aa_off.png", "stills/aa_smaa.png", "stills/aa_smaa.png"] + ["stills/aa_msaa.png"] * 4,
     "anti_aliasing_android": ["stills/aa_off.png", "stills/aa_smaa.png", "stills/aa_smaa.png",
                               "stills/aa_msaa.png", "stills/aa_msaa.png"],
-    "anti_aliasing_web": ["stills/aa_off.png", "stills/aa_smaa.png", "stills/aa_msaa.png", "stills/aa_msaa.png"],
     "resolution_scaling": ["stills/aa_smaa.png", "stills/render_xbox.png"],
     "high_res_hud": ["stills/hud_high_res.png", "stills/hud_game.png"],
     "hud_button_style": ["stills/buttons_classic.png", "stills/buttons_gems.png", "stills/buttons_dark_gems.png"],

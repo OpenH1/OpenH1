@@ -46,9 +46,9 @@ def test_configuration_defines():
 
 def test_every_native_build_takes_the_configuration_defines():
     # (the guests' (Android, Linux, macOS: android_build.py's
-    # generate_guest_image), the Windows build's and the web build's game and
-    # platform layer: one place decides what --release and --profile define)
-    for name in ("windows_build.py", "android_build.py", "web_build.py"):
+    # generate_guest_image) and the Windows build's game and platform layer:
+    # one place decides what --release and --profile define)
+    for name in ("windows_build.py", "android_build.py"):
         text = (ROOT / "tools" / name).read_text(encoding="utf-8")
         assert "configuration_defines(sln)" in text, name
         assert '["-DHALO_RELEASE"] if' not in text, name
@@ -76,7 +76,7 @@ def test_guest_build_compiles_with_the_profile_define(monkeypatch):
         ninja_syntax.Writer(out), SimpleNamespace(compiler_launcher=None, port_release=False, port_pgo="off",
                                                   port_pgo_profile=None, port_profile=True),
         config, arch=X32, prefix="linux_x86_64", label="LINUX X86_64", build=build,
-        third_party=build / "third_party", guest_cc="clang", gl_headers=None, ar="llvm-ar", ld="ld.lld",
+        third_party=build / "third_party", guest_cc="clang", ar="llvm-ar", ld="ld.lld",
         objdump="llvm-objdump", builtins_cc="", environment="gnu", platform_defines=["-DHALO_VULKAN=1"])
     # (ninja_syntax wraps long lines with " $"; Windows paths have backslashes)
     text = re.sub(r" \$\n *", " ", out.getvalue()).replace("\\", "/")

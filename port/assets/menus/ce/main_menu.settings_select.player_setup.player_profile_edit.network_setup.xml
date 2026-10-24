@@ -13,8 +13,8 @@
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/options_menu" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_children" description="main_menu/settings/tab_panel">
 		<data input="port settings page"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_0" x="28" y="104" platform="desktop android web"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_online" x="28" y="124" platform="desktop android web"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_0" x="28" y="104" platform="desktop android"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_online" x="28" y="124" platform="desktop android"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_allow_upnp" x="28" y="145" platform="desktop android"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_join_from_clipboard" x="28" y="166" platform="desktop android"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_4" x="28" y="193" platform="desktop android"/>
@@ -84,12 +84,12 @@
 		<on event="start" run="port settings cancel" back="true"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_0" width="344" height="18" bitmap="main_menu/settings/section" platform="desktop android web">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_0" width="344" height="18" bitmap="main_menu/settings/section" platform="desktop android">
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_0_title"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/section_0_title" type="text" controller="1" width="344" height="18" string_list="main_menu/settings_select/player_setup/player_profile_edit/network_setup/labels" color="#FF6F9CD0" text_x="2" text_y="1" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_online" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="desktop android web">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/network_setup/op_online" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="desktop android">
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/online_label"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/network_setup/online_spinner" x="188"/>
 	</widget>

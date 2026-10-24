@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-# root build script: writes build.ninja for the native ports (Linux, Windows,
-# Android, macOS, iOS) and the web port
+# root build script: writes build.ninja for the ports (Linux, Windows,
+# Android, macOS, iOS)
 
 import argparse
 import io
@@ -17,7 +17,6 @@ from tools.guest_toolchain import LLVM_VERSION, default_cache
 from tools.ios_build import generate_ios_build, ios_configure_inputs
 from tools.linux_guest_build import generate_linux_guest_builds, linux_guest_configure_inputs, native_linux_guest
 from tools.macos_build import generate_macos_build, is_macos_arm64, macos_configure_inputs
-from tools.web_build import generate_web_build, web_configure_inputs
 from tools.windows_build import generate_windows_build, windows_configure_inputs
 
 
@@ -36,7 +35,7 @@ parser.add_argument(
 parser.add_argument(
     "--release",
     action="store_true",
-    help="release builds (Linux, Windows, Android, web): assertions are not checked",
+    help="release builds (Linux, Windows, Android): assertions are not checked",
 )
 parser.add_argument(
     "--profile",
@@ -156,11 +155,6 @@ parser.add_argument(
     type=str,
     help="the iOS app's bundle identifier (default: the macOS app's, com.openh1.openh1)",
 )
-parser.add_argument(
-    "--web-emcc",
-    type=str,
-    help="Emscripten's emcc for `ninja web` (default: emcc on the PATH, then EMSDK's or ~/emsdk's)",
-)
 
 # no need to spam those extra flags when running on Windows
 if not is_windows():
@@ -223,7 +217,6 @@ sln = SimpleNamespace(
     ios_identity=args.ios_identity,
     ios_bundle_id=args.ios_bundle_id,
     guest_base=args.guest_base,
-    web_emcc=args.web_emcc,
 )
 if not is_windows():
     sln.windows_cc = args.windows_cc
@@ -253,7 +246,6 @@ generate_linux_guest_builds(n, sln)
 generate_windows_build(n, sln)
 generate_macos_build(n, sln)
 generate_ios_build(n, sln)
-generate_web_build(n, sln)
 
 n.comment("Reconfigure on change")
 n.rule(
@@ -274,7 +266,6 @@ n.build(
         *windows_configure_inputs(),
         *macos_configure_inputs(),
         *ios_configure_inputs(),
-        *web_configure_inputs(),
     ],
 )
 n.newline()

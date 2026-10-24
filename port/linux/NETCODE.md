@@ -220,7 +220,8 @@ the Xbox tools' limits, so both place the same objects; version 24 sends the
 gametype's PC vehicle set; version 25 sends a unit's integrated light with
 its object state; version 26 has each machine say its WebRTC in internet
 play's signalling (a native build's certificate, a browser's ICE credentials
-too), so that browsers play (port/linux/README.md, "Browsers"); version 27
+too), so that the web port's browsers played (the web port is removed since);
+version 27
 shares Custom Edition maps (below, "Map sharing"): a client asks the host for
 a map it lacks, and the game's players reach each other to send it; version
 28 holds the players of a machine still downloading the map out of the game
@@ -1186,8 +1187,7 @@ shortens the game, to test the next (`host:<map>:<variant>,<variant>...`
 plays the variants in turn, the next once a game is over, as the host's
 button on the scores does). `debug.network_test_public` lists the host's
 game in the server browser, and `browse` joins the one listed there with the
-most players (not co-op, if it can), as the server browser does
-(port/web/tests/internet.mjs plays the native build and browsers so).
+most players (not co-op, if it can), as the server browser does.
 `debug.network_latency` and
 `debug.network_loss` hold back what a machine receives and drop some of its
 datagrams, to test as over the internet. `debug.network_corrupt` damages

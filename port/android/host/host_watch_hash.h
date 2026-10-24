@@ -10,13 +10,12 @@ A watched page's hash is kept. Asking for its generation hashes it again,
 at most once a frame (watch_hash_begin_frame), and a different hash counts
 as a write. A write is therefore seen in the next frame, not at once.
 
-Hashing every page drawn from each frame is a large part of the frame on
-the web (port/web/src/web_memory_watch.c), where most of them never change
-once loaded. With the optional unchanged counts, a page whose hash stayed the
-same WATCH_HASH_STABLE_CHECKS times in a row is hashed only every
-WATCH_HASH_STABLE_FRAMES frames, until a write into it is announced
-(watch_hash_prepare_write: the file layer's reads, the Direct3D locks) or
-its hash changes. A write that is not announced into such a page is seen up
+Hashing every page drawn from each frame is a large part of the frame, and
+most of them never change once loaded. With the optional unchanged counts, a
+page whose hash stayed the same WATCH_HASH_STABLE_CHECKS times in a row is
+hashed only every WATCH_HASH_STABLE_FRAMES frames, until a write into it is
+announced (watch_hash_prepare_write: the file layer's reads, the Direct3D
+locks) or its hash changes. A write that is not announced into such a page is seen up
 to that many frames late.
 */
 

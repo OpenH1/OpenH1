@@ -4,8 +4,8 @@ tools/hud_assets.py), the menus' titles (port/assets/titles, made by
 tools/title_assets.py), their controller button icons (port/assets/buttons,
 made by tools/button_assets.py), the fonts the text is drawn with
 (port/assets/fonts), the menus' files (port/assets/menus, made by
-tools/ce_menus.py) and SMAA's shader and lookup textures
-(port/third_party/smaa) in the game as C data:
+tools/ce_menus.py), the windows' icon and the loading picture in the game
+as C data:
 
     python tools/embed_assets.py OUTPUT.c
 
@@ -13,12 +13,11 @@ writes OUTPUT.c with each PNG and the bitmap it stands for (its tag, index
 and checksum of its pixels, from port/assets/hud/layout.json,
 port/assets/titles/titles.json and port/assets/buttons/buttons.json), the
 fonts and their tags from port/assets/fonts/fonts.json, the menu files
-listed in port/assets/menus/menus.json, and SMAA's shader and lookup
-textures, as port/linux/src/hud_hires.h, text_hires.h, menu_files.h and
-xgpu_post.c declare them. The builds generate it
-(hud_assets_build, called by tools/android_build.py, which the other guest
-builds share, windows_build.py and web_build.py), so the assets are the
-committed source and the guests need no files beside their image.
+listed in port/assets/menus/menus.json, the icon and the picture, as
+port/linux/src/hud_hires.h, text_hires.h, menu_files.h and sdl_platform.c
+declare them. The builds generate it (hud_assets_build, called by
+tools/android_build.py, which the other guest builds share), so the assets
+are the committed source and the guests need no files beside their image.
 
 The data are 32-bit words, not bytes: the Android build passes the guest's
 assembly through tools/android_asm_convert.py, which rewrites identifiers in
@@ -44,10 +43,6 @@ FONT_ASSETS = Path("port/assets/fonts")
 FONT_LIST = FONT_ASSETS / "fonts.json"
 MENU_ASSETS = Path("port/assets/menus")
 MENU_LIST = MENU_ASSETS / "menus.json"
-# SMAA's files and the names port/linux/src/xgpu_post.c declares them by
-SMAA_ASSETS = Path("port/third_party/smaa")
-SMAA_FILES = (("SMAA.hlsl", "xgpu_smaa_shader"), ("area_tex.zlib", "xgpu_smaa_area_texture"),
-              ("search_tex.zlib", "xgpu_smaa_search_texture"))
 # the desktop windows' icon (tools/app_icon.py; port/linux/src/sdl_platform.c)
 WINDOW_ICON = Path("port/assets/icon/openh1-icon-256.png")
 LOADING_PICTURE = Path("port/assets/loading/loading.rgba.zlib")
@@ -81,18 +76,12 @@ def menu_files() -> List[str]:
     return json.loads((ROOT / MENU_LIST).read_text())["files"]
 
 
-def smaa_files() -> List[tuple]:
-    """SMAA's files that the checkout has, with their symbols."""
-    return [(name, symbol) for name, symbol in SMAA_FILES if (ROOT / SMAA_ASSETS / name).is_file()]
-
-
 def hud_asset_inputs() -> List[Path]:
     """The files the generated source is made from."""
     inputs = [listing for listing in (LAYOUT, CUSTOM_EDITION_HUD, TITLE_LIST, BUTTON_LIST, FONT_LIST, MENU_LIST)
               if (ROOT / listing).is_file()]
     return [*inputs, *(folder / f"{asset['name']}.png" for folder, asset, _ in textures()),
             *(FONT_ASSETS / name for name in font_files()), *(MENU_ASSETS / name for name in menu_files()),
-            *(SMAA_ASSETS / name for name, _ in smaa_files()),
             *([WINDOW_ICON] if (ROOT / WINDOW_ICON).is_file() else []),
             *([LOADING_PICTURE] if (ROOT / LOADING_PICTURE).is_file() else [])]
 
@@ -106,8 +95,6 @@ def hud_configure_inputs() -> List[Path]:
                             (FONT_ASSETS, FONT_LIST), (MENU_ASSETS, MENU_LIST)):
         if (ROOT / listing).is_file():
             inputs += [folder, listing]
-    if (ROOT / SMAA_ASSETS).is_dir():
-        inputs.append(SMAA_ASSETS)
     return inputs
 
 
@@ -131,24 +118,6 @@ def hud_assets_build(n: Any, prefix: str, output: Path) -> List[Path]:
     )
     n.build(outputs=output, rule=f"{prefix}_embed_assets", implicit=[Path("tools/embed_assets.py"), *inputs])
     return [output]
-
-
-def smaa_lines() -> List[str]:
-    """SMAA's shader, as text a GLSL compiler takes (ASCII, ending in a NUL),
-    and its lookup textures (xgpu_post.c); each of size 0 that the checkout
-    does not have. The OpenGL ES renderer has no SMAA."""
-    lines = ["#ifndef HALO_GLES"]
-    present = dict(smaa_files())
-    for name, symbol in SMAA_FILES:
-        data = (ROOT / SMAA_ASSETS / name).read_bytes() if name in present else b""
-        if data and name.endswith(".hlsl"):
-            data = bytes(byte if byte < 0x80 else 0x20 for byte in data) + b"\0"
-        lines.append("")
-        lines.append(f"const unsigned int {symbol}[] = {{")
-        lines.extend(words(data) if data else ["\t0,"])
-        lines.append("};")
-        lines.append(f"const unsigned long {symbol}_size = {len(data)};")
-    return lines
 
 
 def write_output(output: Path, lines: List[str]) -> None:
@@ -266,8 +235,6 @@ def main() -> None:
         lines.append("\t{ 0 },")
     lines.append("};")
     lines.append(f"const unsigned int menu_files_embedded_count = {len(menus)};")
-    lines.append("")
-    lines.extend(smaa_lines())
     # the windows' icon, a PNG (of size 0 where the checkout has none)
     data = (ROOT / WINDOW_ICON).read_bytes() if (ROOT / WINDOW_ICON).is_file() else b""
     lines.append("")
@@ -275,8 +242,6 @@ def main() -> None:
     lines.extend(words(data) if data else ["\t0,"])
     lines.append("};")
     lines.append(f"const unsigned long platform_window_icon_size = {len(data)};")
-    lines.append("")
-    lines.append("#endif")
     data = (ROOT / LOADING_PICTURE).read_bytes() if (ROOT / LOADING_PICTURE).is_file() else b""
     lines.append("")
     lines.append("const unsigned int platform_loading_picture[] = {")

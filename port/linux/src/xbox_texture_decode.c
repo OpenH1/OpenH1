@@ -3,11 +3,10 @@ XBOX_TEXTURE_DECODE.C
 
 The Xbox's textures as they lie in its memory, read: their formats, their
 layout (levels, cube faces, pitch) and their texels converted to 32-bit
-BGRA, swizzled ones unswizzled. Shared by the renderers that read the
-Xbox's textures: the OpenGL texture cache (xbox_textures.c) and the macOS
-host's Metal one (port/macos/xgpu_metal_textures.c), which builds this file
-beside a stand-in for the platform header. Refer to xbox_textures.c for
-what an Xbox texture is.
+BGRA, swizzled ones unswizzled. Shared by the hosts' texture caches
+(port/linux/vulkan/xgpu_vulkan_textures.c, port/macos/xgpu_metal_textures.c),
+which build this file beside a stand-in for the platform header. Refer to
+xbox_textures.c for what an Xbox texture is.
 */
 
 #include "xgpu.h"

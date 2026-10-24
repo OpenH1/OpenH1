@@ -59,12 +59,10 @@ def notices(platform: str) -> List[Tuple[Path, str]]:
     """the licences of what a platform's build carries, which its release
     has beside it ((source, name in the release) pairs; tools/ci_build.py's
     for every platform; the Linux build's SDL3-LICENSE.txt is apart)"""
-    pairs = []
-    if platform != "web":
+    pairs = [
         # internet play's DTLS with browsers, and the Linux self-updater's
         # TLS (port/third_party/mbedtls), whose Apache license asks the same
-        pairs.append((ROOT / "port/third_party/mbedtls/LICENSE", "mbedtls-LICENSE.txt"))
-    pairs += [
+        (ROOT / "port/third_party/mbedtls/LICENSE", "mbedtls-LICENSE.txt"),
         # internet play's UPnP (port/third_party/miniupnpc), in every build,
         # whose BSD license asks binaries to carry its notice
         (ROOT / "port/third_party/miniupnpc/LICENSE", "miniupnpc-LICENSE.txt"),

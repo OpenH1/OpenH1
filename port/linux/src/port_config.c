@@ -60,8 +60,6 @@ enum
 	_platform_all = _platform_desktop | _platform_android,
 	/* (of the desktop builds, only Windows) */
 	_platform_windows = 4,
-	/* (the web build, which has the desktop's settings, and these) */
-	_platform_web = 8,
 	/* (the Linux builds whose game runs as a guest of the Android port's
 	host, port/linux/host, which have the desktop's settings, and the
 	host's own) */
@@ -84,19 +82,14 @@ struct config_setting
 	const char *comment;
 };
 
-/* crouching's keys (in a browser C alone: a page cannot keep Ctrl+W, Ctrl+S or
-Ctrl+D, which moving and crouching would press, from the browser) */
-#ifdef HALO_WEB
-#define CROUCH_KEYS "\"C\""
-#else
+/* crouching's keys */
 #define CROUCH_KEYS "\"Left Ctrl, C\""
-#endif
 
 /* display.graphics = "enhanced": the values it gives the settings it
 chooses (config_graphics), which are their defaults, the same on every
-build: SMAA (OpenGL ES FXAA; on iOS MSAA 4x), 16x anisotropic filtering,
-512 shadow maps, the models' detail by the display's lines and lit for each
-pixel, the enhanced dynamic lights (OpenGL ES draws them classic) */
+build: SMAA (on iOS MSAA 4x), 16x anisotropic filtering, 512 shadow maps,
+the models' detail by the display's lines and lit for each pixel, the
+enhanced dynamic lights */
 #ifdef HALO_IOS
 /* (an iPhone's tile-based GPU resolves MSAA in its tile memory, the 3D view
 drawn in one pass, port/macos/xgpu_metal.m: about the cost of SMAA's
@@ -191,8 +184,7 @@ static const struct config_setting config_settings[] =
 		"or \"smaa\" smooth the 3D view once it is drawn (the HUD and menus stay\n"
 		"sharp); \"ssaa2x\" draws at twice the resolution each way (four times\n"
 		"the work); \"msaa2x\", \"msaa4x\" or \"msaa8x\" draw with that many samples\n"
-		"a pixel. OpenGL ES (the web, 64-bit ARM Linux's OpenGL build) has\n"
-		"\"fxaa\" for \"smaa\"; it and Android have no \"ssaa2x\"." GRAPHICS_CHOOSES },
+		"a pixel. Android, macOS and iOS have no \"ssaa2x\"." GRAPHICS_CHOOSES },
 	{ "display.interpolation", _config_boolean, "true", "HALO_INTERPOLATION", _environment_value, _platform_all,
 		"Draw a frame for every display refresh, blending between the game's 30\n"
 		"ticks a second; false keeps the original 30 frames a second." },
@@ -303,7 +295,7 @@ static const struct config_setting config_settings[] =
 		"white, and an HDR display shows it brighter than paper white, the\n"
 		"display's SDR white; surfaces, the HUD and the menus stay as they are.\n"
 		"Off draws 8 bits a channel, as the Xbox did. Metal only for now (the\n"
-		"Vulkan and OpenGL renderers draw SDR, and the VR mode does)." },
+		"Vulkan renderer draws SDR, and the VR mode does)." },
 	{ "display.hdr_mode", _config_string, "\"faithful\"", "HALO_HDR_MODE", _environment_value, _platform_all,
 		"With HDR: \"faithful\" keeps the picture as the game draws it, only its\n"
 		"highlights brighter; \"punchy\" lifts the whole scene and its bright\n"
@@ -696,7 +688,7 @@ static const struct config_setting config_settings[] =
 
 #endif
 	{ "input.touch_controls", _config_string, "\"auto\"", "HALO_TOUCH_CONTROLS", _environment_value,
-		_platform_android | _platform_web | _platform_ios,
+		_platform_android | _platform_ios,
 		"The on-screen touch controls in a game: \"auto\" shows them on a\n"
 		"touchscreen while no controller is connected, \"on\" also with a\n"
 		"controller, \"off\" never. A device without a touchscreen never shows\n"
@@ -707,7 +699,7 @@ static const struct config_setting config_settings[] =
 		"profile (JUMP, MELEE, FIRE) under it, in the HUD's font and colour.\n"
 		"false: the buttons alone, drawn in display.hud_button_style." },
 	{ "input.touch_aim_assist", _config_boolean, "true", "HALO_TOUCH_AIM_ASSIST", _environment_value,
-		_platform_android | _platform_web | _platform_ios,
+		_platform_android | _platform_ios,
 		"The touch controls' swipe aiming gets a controller's aim assist: the\n"
 		"aim slows over a target and follows a moving one. false: none, as a\n"
 		"mouse (the bullets' own autoaim stays)." },
@@ -899,8 +891,7 @@ static const struct config_setting config_settings[] =
 		"explosions: \"classic\" (the game's own) or \"enhanced\": for each pixel\n"
 		"of the walls and models, through the walls' bump maps, gliding with\n"
 		"the bolt between ticks, brighter in its core and fading softly, with\n"
-		"a glow about each plasma bolt, and lighting your own weapon and hands.\n"
-		"Desktop OpenGL, Vulkan and Metal (not OpenGL ES: there, classic)." GRAPHICS_CHOOSES },
+		"a glow about each plasma bolt, and lighting your own weapon and hands." GRAPHICS_CHOOSES },
 	{ "display.shield_color", _config_string, "\"default\"", "HALO_SHIELD_COLOR", _environment_value, _platform_all,
 		"Your energy shield's color, as this machine draws it: \"default\" (the\n"
 		"shield's own) or a multiplayer armor color: white, black, red, blue,\n"
@@ -1182,8 +1173,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.network_test_cues", _config_string, "\"\"", "HALO_NETWORK_TEST_CUES", _environment_value, _platform_all,
 		"Console lines an automated test runs at a game second, from the first tick\n"
 		"every player of debug.network_test_cue_players has a unit:\n"
-		"\"<second> <line>|<second> <line>...\" (the host's, or a game of one machine;\n"
-		"not on the web)." },
+		"\"<second> <line>|<second> <line>...\" (the host's, or a game of one\n"
+		"machine)." },
 	{ "debug.network_test_cue_players", _config_integer, "1", "HALO_NETWORK_TEST_CUE_PLAYERS", _environment_value,
 		_platform_all,
 		"The players debug.network_test_cues waits for." },
@@ -1499,8 +1490,8 @@ static const struct config_setting config_settings[] =
 		"new one added to it), for the renderer's manifest\n"
 		"(port/assets/render/README.md); empty for none." },
 	{ "debug.gpu_validation", _config_boolean, "false", "HALO_GPU_VALIDATION", _environment_set_is_true, _platform_all,
-		"Report the graphics API's errors in the log: OpenGL's debug output, or\n"
-		"Vulkan's validation layers (which must be installed)." },
+		"Report the graphics API's errors in the log: Vulkan's validation layers\n"
+		"(which must be installed)." },
 	{ "debug.gl_debug", _config_boolean, "false", "HALO_GL_DEBUG", _environment_set_is_true, _platform_desktop,
 		"Deprecated: gpu_validation's old name, which turns it on too." },
 	{ "debug.skip_cinematics", _config_boolean, "false", "HALO_SKIP_CINEMATICS", _environment_set_is_true, _platform_all,
@@ -1510,9 +1501,6 @@ static const struct config_setting config_settings[] =
 	{ "debug.menu_open", _config_string, "\"\"", "HALO_MENU_OPEN", _environment_value, _platform_all,
 		"Start on this screen of the menus (port/assets/menus) instead of the main\n"
 		"menu, a player profile being edited; empty for the main menu." },
-	{ "debug.gpu_flush_draws", _config_integer, "-1", "HALO_GPU_FLUSH_DRAWS", _environment_value, _platform_desktop,
-		"OpenGL only: flush the GPU's pipeline every this many draws: -1 for every\n"
-		"3 on Intel graphics with Mesa's driver (which can hang without), 0 never." },
 	{ "debug.gpu_stats", _config_boolean, "false", "HALO_GPU_STATS", _environment_set_is_true, _platform_all,
 		"Log the renderer's draw counts once a second (with Vulkan, also its\n"
 		"submissions, passes, clears and pipelines every 600 frames)." },
@@ -1523,8 +1511,8 @@ static const struct config_setting config_settings[] =
 	{ "debug.gpu_skip_vertex_shaders", _config_string, "\"\"", "HALO_GPU_SKIP_VS", _environment_value, _platform_all,
 		"Comma-separated ids of vertex shaders not to draw with." },
 	{ "debug.gpu_dump_shaders", _config_string, "\"\"", "HALO_GPU_DUMP_SHADERS", _environment_value, _platform_all,
-		"A folder to write the generated shaders to (OpenGL's GLSL, Vulkan's\n"
-		"SPIR-V); empty none." },
+		"A folder to write the generated shaders to (Vulkan's SPIR-V); empty\n"
+		"none." },
 	{ "debug.dynamic_lights_look", _config_string, "\"\"", "HALO_DYNAMIC_LIGHTS_LOOK", _environment_value, _platform_all,
 		"The enhanced dynamic lights' look, for tuning it: up to eight numbers,\n"
 		"the lights' brightness, core, spill past white and wrap on models, the\n"
@@ -1534,8 +1522,8 @@ static const struct config_setting config_settings[] =
 		"Log where the first projectile's light is drawn each frame (the\n"
 		"enhanced dynamic lights)." },
 	{ "debug.gpu_debug_expression", _config_string, "\"\"", "HALO_GPU_DEBUG_EXPR", _environment_value, _platform_all,
-		"OpenGL only (and Metal's MSL), not Vulkan's SPIR-V: a GLSL expression\n"
-		"every pixel shader shows instead of its result." },
+		"Metal only, not Vulkan's SPIR-V: an expression (MSL) every pixel shader\n"
+		"shows instead of its result." },
 	{ "debug.gpu_debug_texture0", _config_boolean, "false", "HALO_GPU_DEBUG_T0", _environment_set_is_true, _platform_all,
 		"Pixel shaders show their first texture." },
 	{ "debug.gpu_debug_flat", _config_boolean, "false", "HALO_GPU_DEBUG_FLAT", _environment_set_is_true, _platform_all,
@@ -1556,10 +1544,6 @@ static const struct config_setting config_settings[] =
 		"simulation; 0 to the last frame." },
 	{ "debug.texture_dump_directory", _config_string, "\"\"", "HALO_TEXTURE_DUMP", _environment_value, _platform_all,
 		"A folder to write every texture to as it is uploaded; empty none." },
-	{ "debug.texture_log", _config_boolean, "false", "HALO_TEXTURE_LOG", _environment_set_is_true, _platform_all,
-		"Log texture uploads." },
-	{ "debug.texture_no_cache", _config_boolean, "false", "HALO_TEXTURE_NO_CACHE", _environment_set_is_true, _platform_all,
-		"Upload textures again every time they are used." },
 	{ "debug.sample_seconds", _config_real, "0.0", "HALO_SAMPLE", _environment_value, _platform_android | _platform_guest,
 		"Log where every game thread is this often, in seconds (read by the\n"
 		"host, port/android/host/host_debug.c); 0 never." },
@@ -1589,8 +1573,6 @@ static const struct config_setting config_settings[] =
 
 #ifdef HALO_ANDROID
 #define CONFIG_PLATFORM _platform_android
-#elif defined(HALO_WEB)
-#define CONFIG_PLATFORM (_platform_desktop | _platform_web)
 #elif defined(HALO_WINDOWS)
 /* (the Windows build: a guest, tools/windows_build.py) */
 #define CONFIG_PLATFORM (_platform_desktop | _platform_windows | _platform_guest)
@@ -1622,9 +1604,8 @@ static pthread_mutex_t config_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void config_path(char *path, size_t size)
 {
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
-	/* the data folder, which the app names (port/android/host/host_main.c;
-	on the web, port/web/src/web_main.c) */
+#ifdef HALO_ANDROID
+	/* the data folder, which the app names (port/android/host/host_main.c) */
 	const char *root = getenv("HALO_DATA_ROOT");
 
 	snprintf(path, size, "%s/config.toml", root && *root ? root : ".");
@@ -2658,7 +2639,7 @@ static int config_skip_line(char *text, int line_number, const char *message)
 	return 1;
 }
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#ifndef HALO_ANDROID
 /* a config.toml the game never reads, likely edited in its place: said in
 the log, with the one it reads (path) */
 static void config_report_unread(const char *path)
@@ -2820,7 +2801,7 @@ static void config_load(void)
 	}
 
 	config_path(path, sizeof(path));
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#ifndef HALO_ANDROID
 	config_report_unread(path);
 #endif
 	text = config_read_file(path, &size);

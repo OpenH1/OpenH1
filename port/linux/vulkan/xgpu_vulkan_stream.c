@@ -5,12 +5,12 @@ The Vulkan backend as the command stream's backend table (struct
 host_render_backend, port/android/host/host_render_stream.h): each record's
 entry, in terms of xgpu_vulkan.h's functions, called by the render thread
 in the records' order. As the Metal backend's (port/macos/xgpu_metal_stream.m),
-with the OpenGL backend's ways (port/linux/src/xgpu_gl.c) where the two
-differ, which is the backend this one is to draw as.
+with OpenCE's OpenGL backend's ways where the two differ: the backend these
+were made to draw as.
 
 What the records name, this file keeps: the game's render targets (by its
 numbers) as images, a multisampled one's attachment beside its texture,
-resolved into it as OpenGL's are (before anything reads the texture); the
+resolved into it (before anything reads the texture); the
 mirror's segments as buffers; the vertex programs, the pipelines'
 definitions and the shaders made for each (SPIR-V, port/linux/src/xgpu_spirv.c);
 the vertex input of the last set_vertices. A draw's pipeline is the
@@ -18,25 +18,24 @@ pipeline's fixed-function part with the attributes its vertex shader reads,
 from the streams that feed them or from the inputs' values.
 
 The shaders depend on the draw besides the pipeline's key where the device
-lacks what OpenGL has: the unnormalized shorts read as integers (no SSCALED
+lacks what it needs: the unnormalized shorts read as integers (no SSCALED
 vertex formats) and the border colours drawn by the shader (no custom border
 colours). The stages' textures are the cache's (xgpu_vulkan_textures.c);
 a stage that samples the target the draw draws into samples a copy of it; a
 render target sampled with its mip levels (the game's levels drawn one by
-one) samples a composite of them, the levels past them made from the last,
-as OpenGL's mip_composite_get makes it.
+one) samples a composite of them, the levels past them made from the last.
 
 The VR host supplies the eyes' targets and transforms, and consumes their
 images for the OpenXR layers. The enhanced dynamic lights' block and cells
-are the draw set's, and their glows a pass of their own, as OpenGL's; in the
-VR mode's eyes, the light each bolt scatters toward each eye. The VR mode's
+are the draw set's, and their glows a pass of their own; in the VR mode's
+eyes, the light each bolt scatters toward each eye. The VR mode's
 effects (a pipeline whose pixel key has vr_effect: xgpu_spirv.h) sample the
 scene's depth (texture 2, in a pass that writes none: xgpu_vulkan_draw's
 reads_depth) and their bitmap's thickness (texture 3, baked by the texture
 cache), and reconstruct the world from each view's unprojection
 (xgpu_vulkan_effects.h) in their uniforms.
 Anti-aliasing's passes are xgpu_vulkan_post.c's, over the target's pixels as
-the record names them, in its first layer, as OpenGL's are.
+the record names them, in its first layer.
 
 display.hdr (docs/hdr.md): where the core's draws can read their colour
 attachment (its capabilities' color_read: the desktop's), the stream says it
@@ -536,9 +535,9 @@ static void stream_target_multisample(void *context, const struct xgpu_stream_ta
 	(void)context;
 	if (!target || target->samples == samples)
 		return;
-	/* (its pixels resolved first; the new attachment's are cleared, as
-	OpenGL ES's are: the front end changes it between frames, which clear
-	the screen's targets before they draw) */
+	/* (its pixels resolved first; the new attachment's are cleared: the
+	front end changes it between frames, which clear the screen's targets
+	before they draw) */
 	target_resolve(target);
 	xgpu_vulkan_image_destroy(target->multisampled);
 	target->multisampled = samples ? target_image_make(target, samples) : NULL;
@@ -689,8 +688,8 @@ static uint8_t border_axes(const struct xgpu_stream_sampler *sampler)
 	return axes;
 }
 
-/* the sampler as OpenGL's sampler_parameters makes it; axes: those whose
-border the shader draws, clamped to the edge here */
+/* the sampler the record describes; axes: those whose border the shader
+draws, clamped to the edge here */
 static VkSampler sampler_get(const struct xgpu_stream_sampler *from, uint8_t axes)
 {
 	struct xgpu_vulkan_sampler_description to;
@@ -1143,8 +1142,8 @@ static int pipeline_shaders(struct stream_pipeline *entry, const struct xgpu_str
 	}
 	entry->variant = *variant;
 	entry->vertex_shader = entry->pixel_shader = VK_NULL_HANDLE;
-	/* (as the OpenGL backend's: a model lighting program's normal and
-	position, or a structure's lightmap pass's own) */
+	/* (a model lighting program's normal and position, or a structure's
+	lightmap pass's own) */
 	vertex_lighting_convert(lighting_record ? lighting_record->record : NULL, &model);
 	lighting = key->lighting == _lighting_none ? NULL : key->lighting == _lighting_environment ? &environment : &model;
 	memset(&options, 0, sizeof(options));
@@ -1479,8 +1478,8 @@ static void stream_mirror_write(void *context, const struct xgpu_stream_mirror_w
 		record->size, record->unused != 0);
 }
 
-/* an element's vertex format, as OpenGL reads it (attribute_format); the
-unnormalized shorts read as integers where there are no SSCALED formats */
+/* an element's vertex format; the unnormalized shorts read as integers where
+there are no SSCALED formats */
 static VkFormat element_format(uint8_t format, int *integers)
 {
 	int scaled = stream.capabilities.scaled_shorts;
@@ -2036,8 +2035,7 @@ static void stream_draw_immediate(void *context, const struct xgpu_stream_draw_i
 
 The front end works out the frame's lights and the grid's cells
 (d3d8_device.c); the block and the cells are the draw set's (xgpu_vulkan.c),
-written in the stream's order, and the glows are drawn here, as the OpenGL
-backend draws them (xgpu_gl.c). */
+written in the stream's order, and the glows are drawn here. */
 
 #define DYNAMIC_LIGHTS_CELLS_SIZE \
 	(XGPU_DYNAMIC_LIGHTS_GRID_X * XGPU_DYNAMIC_LIGHTS_GRID_Y * XGPU_DYNAMIC_LIGHTS_GRID_Z * 16)
@@ -2116,7 +2114,7 @@ static int halo_shaders(int slot)
 
 /* the depth buffer's value for a distance from the camera, alpha + beta /
 distance (beta less than 0: nearer, less), from two points ahead; and the
-softness, world units (xgpu_gl.c's depth_parameters) */
+softness, world units */
 static void halo_depth_parameters(const struct xgpu_stream_dynamic_lights_halos *record, float parameters[4])
 {
 	const float (*c)[4] = (const float (*)[4])record->projection;
@@ -2446,7 +2444,7 @@ static void stream_visibility_end(void *context, const struct xgpu_stream_visibi
 {
 	(void)context;
 	/* (the count written for the game is of its pixels: divided by the
-	samples one of them is, as the OpenGL backend's) */
+	samples one of them is) */
 #ifdef HALO_VR
 	if (host_vulkan_vr_active() && stream.capabilities.fragment_stores)
 		xgpu_vulkan_visibility_end(record->slot, record->area * (float)(record->views > 1 ? record->views : 1));

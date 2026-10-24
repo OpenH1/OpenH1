@@ -10,7 +10,7 @@ port/android/README.md), and of the Linux builds made the same way (the
   arm64_32 on AArch64, x32 on x86-64) and linked into a static image that
   runs in the low 4 GB of the process;
 - the host: an ordinary 64-bit Android library (libmain.so), or Linux
-  executable, that loads the image, owns the process (SDL3, OpenGL, the C
+  executable, that loads the image, owns the process (SDL3, Vulkan, the C
   library) and serves the guest's requests.
 
 The guest calls the host through import stubs that jump through a table of

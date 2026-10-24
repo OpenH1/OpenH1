@@ -64,7 +64,7 @@ level, for the test to lean the head into a wall from there.
 const char *config_string(char const *name);
 unsigned long config_changes(void);
 void platform_log(char const *format, ...);
-/* xgpu_gl.c's */
+/* xgpu_stream_encode.c's */
 void halo_vr_eye_tint(float red, float green, float blue);
 
 /* the eyes' sphere about their middle (metres: each eye is some 3 cm from
@@ -338,7 +338,7 @@ void vr_headwall_update(boolean playing, real_point3d const *eye, real_point3d c
 }
 
 /* the eye pass, after the game's screen flash (render.c): the fade over
-both eyes, all of each (xgpu_gl.c's tint, as they are presented; the HUD's
+both eyes, all of each (the VR host's tint, as they are presented; the HUD's
 layer stays lit) */
 void vr_headwall_draw(void)
 {

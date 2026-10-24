@@ -57,11 +57,6 @@ at startup whether to play them anyway, turn those named off, or quit
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef HALO_WEB
-/* (port/web/src/web_library.js) */
-void web_js_post(int kind, const char *text);
-#endif
-
 /* ---------- constants */
 
 /* the mods' format this build plays */
@@ -308,8 +303,8 @@ static void utf8_trim(char *text)
 }
 
 /* text as mod.toml has it, whole UTF-8 characters, and its control
-characters (but its line breaks, if `lines`) spaces: what the menus, the
-message box and the web page's dialog show of it */
+characters (but its line breaks, if `lines`) spaces: what the menus and the
+message box show of it */
 static void text_clean(char *text, int lines)
 {
 	utf8_trim(text);
@@ -1417,11 +1412,6 @@ void port_mods_startup(void)
 	else if (answer == 2)
 	{
 		platform_log("mods: quitting, as asked, over mods that cannot be played together");
-#ifdef HALO_WEB
-		/* (the page starts again: a worker's exit does not end the page's
-		game) */
-		web_js_post(4, "quit");
-#endif
 		exit(EXIT_SUCCESS);
 	}
 	else if (answer < 0)

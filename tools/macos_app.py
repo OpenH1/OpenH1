@@ -47,7 +47,7 @@ EXECUTABLE = "halo"
 SDL_LIBRARY = "libSDL3.0.dylib"
 SPARKLE = "Sparkle.framework"
 ICON = "openh1-icon"
-# what the web page and the README say of the project (port/web/site/index.html)
+# what the README says of the project
 COPYRIGHT = ("OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
              "Game Studios, Halo Studios or Bungie. Halo and Halo: Combat Evolved are trademarks of Microsoft "
              "Corporation. No game data is included: you need your own copy of the game.")

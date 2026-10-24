@@ -9,7 +9,6 @@
     python tools/ci_build.py linux_arm64 release --vr
     python tools/ci_build.py android release
     python tools/ci_build.py windows release       (on Windows)
-    python tools/ci_build.py web release
     python tools/ci_build.py macos release         (on a Mac with Apple silicon)
     python tools/ci_build.py ios debug             (on a Mac with Apple silicon and Xcode's iOS SDK)
 
@@ -23,7 +22,7 @@ configure.py --profile, so that the profiling build is built too. CI_COMPILER_LA
 passed on as --compiler-launcher, CI_GUEST_LLVM_CACHE as --guest-llvm-cache, and CI_GUEST_ASM_CACHE as
 --guest-asm-cache. A build of the master branch gets the run's
 number (HALO_BUILD_NUMBER), which its release is named after and the
-self-updater compares (and the web site's version.json names).
+self-updater compares.
 
 --vr builds the VR mode in (configure.py --vr; "VR" in port/linux/README.md).
 For linux_x86_64, into dist/halo-linux-x86_64-vr-<config>/, a build of its
@@ -49,11 +48,6 @@ The iOS build is the app (ninja ios), signed ad hoc (tools/ios_app.py: a
 device refuses it, a sideloading tool such as AltStore signs it again), as
 an .ipa (Payload/OpenH1.app, zipped), alone in dist/halo-ios-<config>/. The
 release does not publish it yet (port/ios/README.md).
-
-The web build (port/web/README.md) needs Emscripten (emcc on the PATH, as
-emsdk_env.sh puts it); dist/halo-web-<config>/ is the whole site, which a
-static host serves as it is: the workflow publishes the release build's to
-GitHub Pages.
 """
 
 import argparse
@@ -80,7 +74,6 @@ OUTPUTS = {
     "macos": ["build/macos/OpenH1.dmg"],
     "ios": [],  # the .ipa, below
     "android": [],  # the APK, below
-    "web": [],  # the site, below
 }
 APKS = {
     "debug": "port/android/app/build/outputs/apk/debug/app-debug.apk",
@@ -169,15 +162,6 @@ def main() -> int:
         print(f"build number {os.environ['HALO_BUILD_NUMBER']}", flush=True)
     run(configure)
 
-    if args.platform == "web":
-        # the whole site (tools/web_build.py), its licences in licenses.txt
-        run(["ninja", "web"])
-        dist = ROOT / "dist" / f"halo-web-{args.config}"
-        if dist.exists():
-            shutil.rmtree(dist)
-        shutil.copytree(ROOT / "build/web/site", dist)
-        print(f"build/web/site -> {dist.relative_to(ROOT)}", flush=True)
-        return 0
     if args.platform == "ios":
         # the app as an .ipa: Payload/OpenH1.app, zipped with its modes
         # (ditto), which the workflow's artifacts would lose

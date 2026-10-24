@@ -215,11 +215,6 @@ int host_sdl_set_relative_mouse(uint32_t window, int enabled)
 	return object ? SDL_SetWindowRelativeMouseMode(object, enabled != 0) : 0;
 }
 
-int host_sdl_gl_set_attribute(int attribute, int value)
-{
-	return SDL_GL_SetAttribute((SDL_GLAttr)attribute, value);
-}
-
 /* ---------- events */
 
 int host_sdl_poll_event(void *event)

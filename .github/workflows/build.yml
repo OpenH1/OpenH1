@@ -4,9 +4,7 @@ name: Build
 # macOS) for every pushed commit, uploaded as artifacts: on master
 # the debug and release builds (and the VR ones: x86-64's, and the Steam
 # Frame's package on arm64), elsewhere the debug builds
-# alone, a quick check until a faster build system replaces this one. (The
-# web port is not built: its WebGL renderer goes with OpenGL, and it comes
-# back with WebGPU.)
+# alone, a quick check until a faster build system replaces this one.
 # tools/ci_build.py does each build; see it for the options.
 #
 # Kept cheap:
@@ -33,7 +31,7 @@ name: Build
 # newest marked latest, so that
 # https://github.com/<repository>/releases/latest/download/<file> always
 # gives the latest build (the README's download links); the last five are
-# kept. (openh1.com is the landing page, website/, not the web build.)
+# kept. (openh1.com is the landing page, website/.)
 # (every push starts the run, documentation's too, so that the platforms'
 # checks are always reported: the changes job decides whether they build)
 on:
@@ -267,13 +265,12 @@ jobs:
     # The 64-bit x86 build (ninja linux_x86_64: the game as x32 code in a
     # 64-bit host, drawn with Vulkan), made as the 64-bit ARM one is: Ubuntu
     # 22.04 (glibc 2.35, so the build starts on older distributions too) with
-    # its clang for the host and the development files SDL3 builds with (no
-    # OpenGL's: the build needs none), the guest's compiler (x32) the pinned
-    # LLVM; and the tests: the guest's call boundary and image checks, which
-    # need this processor, and the rest, among them those that compile the
-    # engine's code in the game's 32-bit x86 ABI (tools/harness,
-    # tools/x86_game_abi.py: test tools only, with gcc-multilib's 32-bit C
-    # library; nothing 32-bit ships).
+    # its clang for the host and the development files SDL3 builds with, the
+    # guest's compiler (x32) the pinned LLVM; and the tests: the guest's call
+    # boundary and image checks, which need this processor, and the rest,
+    # among them those that compile the engine's code in the game's 32-bit
+    # x86 ABI (tools/harness, tools/x86_game_abi.py: test tools only, with
+    # gcc-multilib's 32-bit C library; nothing 32-bit ships).
     runs-on: ubuntu-24.04
     # (.github/ci-image/Dockerfile, as the 64-bit ARM job's)
     container:
@@ -757,7 +754,7 @@ jobs:
           echo "CCACHE_START=$(date +%s)" >> "$GITHUB_ENV"
           mkdir -p .cache/guest-asm && touch "$RUNNER_TEMP/build-start"
 
-      # musl, SDL and the OpenGL ES headers, which configure.py fetches
+      # musl and SDL, which configure.py fetches
       - uses: actions/cache@v4
         with:
           path: build/macos/third_party
@@ -946,8 +943,8 @@ jobs:
           echo "CCACHE_START=$(date +%s)" >> "$GITHUB_ENV"
           mkdir -p .cache/guest-asm && touch "$RUNNER_TEMP/build-start"
 
-      # musl, SDL and the OpenGL ES headers, which configure.py fetches (the
-      # macOS build's too: the iOS build uses its shaders' tool)
+      # musl and SDL, which configure.py fetches (the macOS build's too: the
+      # iOS build uses its shaders' tool)
       - uses: actions/cache@v4
         with:
           path: |

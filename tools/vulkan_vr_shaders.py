@@ -7,8 +7,8 @@ The generated C embeds SPIR-V; the game does not need a shader compiler.
 --check verifies that the checked-in words still match their sources.
 
 The game shaders have their own direct SPIR-V emitter (xgpu_spirv.c).
-These fixed passes are written in OpenGL's GLSL, as the OpenGL backend's VR
-mode had them, and keep its equations and uniform names. Only interface
+These fixed passes are written in OpenGL's GLSL, as OpenCE's OpenGL backend's
+VR mode had them, and keep its equations and uniform names. Only interface
 declarations, built-ins, row orientation and sRGB framebuffer operations
 change here. glslang 12.0.0 and SPIRV-Tools 2023.1 produce the checked-in
 words.

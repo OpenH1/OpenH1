@@ -988,7 +988,7 @@ boolean network_voice_machine_speaking(
 	long machine_index)
 {
 	/* (the clock read only for a machine that has spoken: this is asked for
-	every player each frame, and a read of the clock is slow in a browser) */
+	every player each frame) */
 	if (!voice_session || !voice_machine_valid(machine_index))
 		return FALSE;
 	if (machine_index == network_game_client_get_local_machine_index())

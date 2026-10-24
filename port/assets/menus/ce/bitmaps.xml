@@ -536,12 +536,6 @@
 		<frame png="stills/aa_msaa.png" width="160" height="100"/>
 		<frame png="stills/aa_msaa.png" width="160" height="100"/>
 	</bitmap>
-	<bitmap name="main_menu/settings/pictures_anti_aliasing_web">
-		<frame png="stills/aa_off.png" width="160" height="100"/>
-		<frame png="stills/aa_smaa.png" width="160" height="100"/>
-		<frame png="stills/aa_msaa.png" width="160" height="100"/>
-		<frame png="stills/aa_msaa.png" width="160" height="100"/>
-	</bitmap>
 	<bitmap name="main_menu/settings/pictures_resolution_scaling">
 		<frame png="stills/aa_smaa.png" width="160" height="100"/>
 		<frame png="stills/render_xbox.png" width="160" height="100"/>
