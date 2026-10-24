@@ -184,3 +184,20 @@ def test_import_stubs_translate_pointers(tmp_path):
                               "--base-register", "--prototypes", str(header), str(output), str(names)],
                              capture_output=True, text=True)
     assert refused.returncode != 0 and "no base register" in refused.stderr
+
+
+def test_posix_wrappers_keep_directory_handles(tmp_path):
+    """the posix wrappers make guest pointers host addresses, but not the
+    directory handles posix_directory_open returns (1 to 64 on a 64-bit
+    host): made addresses, every directory listed empty on macOS"""
+    output = tmp_path / "posix.c"
+    names = tmp_path / "posix.list"
+    subprocess.run([sys.executable, str(ROOT / "tools" / "android_posix_stubs.py"), "--base-register",
+                    str(ROOT / "port" / "linux" / "src" / "posix.h"), str(output), str(names)], check=True)
+    text = output.read_text()
+    for name in ("posix_directory_next", "posix_directory_close"):
+        body = text.split(f" {name}(")[1].split("}")[0]
+        assert "host_address(directory)" not in body and "(unsigned int)directory" in body, body
+    # (its name is still a guest pointer)
+    assert "host_address(name)" in text.split(" posix_directory_next(")[1].split("}")[0]
+    assert "host_address(path)" in text.split(" posix_directory_open(")[1].split("}")[0]
