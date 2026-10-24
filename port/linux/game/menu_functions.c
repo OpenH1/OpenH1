@@ -5995,6 +5995,13 @@ static void lobby_browser_update(struct widget_instance *list)
 	if (focused != NONE && !ui_widget_port_hover_focused())
 		lobby_browser.chosen = (short)(lobby_browser.first + focused);
 	chosen = lobby_browser.chosen;
+	/* (its host's tunnel opened and kept while it is chosen: joining it is
+	then at once) */
+	if (chosen < lobby_browser.count && !lobby_browser.joining && lobby_browser.games[chosen].open &&
+		!lobby_browser.games[chosen].failed)
+	{
+		p2p_probe_keep(&lobby_browser.games[chosen]);
+	}
 	for (row = list->child; row; row = row->next)
 	{
 		short index = browser_row_index(row);
