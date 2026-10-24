@@ -4,7 +4,7 @@
 # under Wine on Linux" in port/windows/README.md.
 #
 #   tools/wine_bench.sh setup
-#   tools/wine_bench.sh fetch [latest | <tag> | <PR> | run:<run id> | <zip or folder>] [--debug]
+#   tools/wine_bench.sh fetch [latest | <tag> | <PR> | run:<run id> | <zip URL, zip or folder>] [--debug]
 #   tools/wine_bench.sh run [--visible] [--build <name>] [--seconds <s>] [--map <map>]
 #           [--bots <n>] [--size <w>x<h>] [--refresh <Hz>] [--vsync] [--menus]
 #           [VAR=value...] [-- <halo.exe's arguments>]
@@ -16,13 +16,13 @@
 # fetch: a Windows build into the bench (it becomes the current one): the
 #   latest release's OpenH1-Windows.zip (--debug: OpenH1-Windows-debug.zip),
 #   a release's by its tag (build-515), a pull request's (or a workflow
-#   run's) CI artifact, halo-windows-debug, with gh; or a zip or a folder.
+#   run's) CI artifact, halo-windows-debug, with gh (logged in once: gh auth
+#   login); or a zip's URL, a zip or a folder. Releases need no login.
 # run: the current build (or --build's). Without --visible, on a display of
-#   its own that nobody sees (a headless compositor on the GPU), with silent
+#   its own that nobody sees (Xvfb, or gamescope's on the GPU), with silent
 #   sound and no internet play, a game of bots (--map, default bloodgulch;
 #   --bots, default 7; local:<map>:slayer) for --seconds (default 30), then
-#   it quits and prints the frame rate (the headless display refreshes at
-#   --refresh Hz, default 1000, which limits OpenGL's). --visible: on this
+#   it quits and prints the renderer and the frame rate. --visible: on this
 #   computer's own display (someone at it, or over remote desktop), with
 #   sound, at the menus unless --map is given. VAR=value sets a setting's
 #   variable (HALO_*, port/linux/README.md) or Wine's for the run; they win
@@ -33,10 +33,12 @@
 #   last run's by default).
 # doctor: what the bench needs, and the GPU the game draws with.
 #
-# The bench is OPENH1_BENCH (default ~/openh1-wine): prefix/ (Wine's),
-# builds/<name>/ (current: the last fetched), runs/<date>-<build>/ (each
-# run's data root, with maps/ linked to OPENH1_BENCH_MAPS, its debug.txt,
-# wine.log and shots), xdg/ (the headless compositor's own settings). Retail
+# The bench is OPENH1_BENCH (default ~/openh1-wine, of whoever runs it):
+# prefix/ (Wine's), builds/<name>/ (current: the last fetched),
+# runs/<date>-<build>/ (each run's data root, with maps/ linked to the game
+# data, its debug.txt, wine.log and shots), xdg/ (the headless display's own
+# settings). The game data is OPENH1_BENCH_MAPS, a maps folder: by default
+# /srv/openh1/maps where the computer has one, else ~/openh1-wine/data/maps. Retail
 # maps are for local tests: shots show the game's content, so they stay on
 # this computer, out of the repository and out of public places.
 set -euo pipefail
@@ -47,7 +49,14 @@ bench=${OPENH1_BENCH:-$HOME/openh1-wine}
 if [ -z "${OPENH1_BENCH_MAPS:-}" ] && [ -f /srv/openh1/maps/bloodgulch.map ]; then
 	OPENH1_BENCH_MAPS=/srv/openh1/maps
 fi
-maps=${OPENH1_BENCH_MAPS:-$HOME/halo-x86-maps/maps}
+# the game data: the computer's shared maps folder, else the bench's own
+if [ -n "${OPENH1_BENCH_MAPS:-}" ]; then
+	maps=$OPENH1_BENCH_MAPS
+elif [ -d /srv/openh1/maps ]; then
+	maps=/srv/openh1/maps
+else
+	maps=$bench/data/maps
+fi
 custom_maps=${OPENH1_BENCH_CUSTOM_MAPS:-}
 repository=${OPENH1_BENCH_REPO:-OpenH1/OpenH1}
 prefix=$bench/prefix
@@ -91,7 +100,9 @@ command_setup() {
 	# a crash ends the run instead of waiting on Wine's crash dialog
 	WINEDEBUG=-all wine reg add 'HKCU\Software\Wine\WineDbg' /v ShowCrashDialog /t REG_DWORD /d 0 /f >/dev/null
 	wineserver -w
-	[ -f "$maps/bloodgulch.map" ] || echo "wine_bench: no game data at $maps (OPENH1_BENCH_MAPS names the maps folder)" >&2
+	mkdir -p "$bench/data"
+	[ -f "$maps/bloodgulch.map" ] ||
+		echo "wine_bench: no game data at $maps: put the maps folder there, or name it with OPENH1_BENCH_MAPS" >&2
 	echo "wine_bench: the bench is $bench ($(wine --version))"
 }
 
@@ -139,7 +150,12 @@ command_fetch() {
 	done
 	mkdir -p "$bench/builds"
 	download=$(mktemp -d "$bench/builds/.download.XXXXXX")
-	if [ -e "$what" ]; then
+	if [[ $what =~ ^https?:// ]]; then
+		echo "wine_bench: $what"
+		curl -fL --progress-bar -o "$download/build.zip" "$what" || { rm -rf "$download"; fail "cannot download $what"; }
+		name=$(basename "${what%%\?*}")
+		install_build "url-${name%.zip}" "$download/build.zip"
+	elif [ -e "$what" ]; then
 		install_build "local-$(basename "${what%.zip}")" "$(cd "$(dirname "$what")" && pwd)/$(basename "$what")"
 	elif [[ $what =~ ^[0-9]+$ ]] || [[ $what =~ ^run:[0-9]+$ ]]; then
 		command -v gh >/dev/null || fail "a CI artifact needs gh, logged in (gh auth login)"
@@ -192,35 +208,43 @@ command_fetch() {
 	rm -rf "$download"
 }
 
-# headless: a display of the run's own, on the GPU, that no one sees:
-# gamescope's headless backend, else KWin's virtual one (OPENH1_BENCH_DISPLAY
-# chooses: gamescope or kwin), each with an Xwayland whose GLX is the GPU's.
-# OpenGL's frames wait for the display's refresh even with vsync off:
-# gamescope's is <refresh> Hz, so that the frame rate is the game's own,
-# KWin's 60 Hz. (gamescope crashes as it quits, after the game.) The display, and
-# the game, get a D-Bus and settings folders of their own (xdg/), so that
-# they touch nothing of the desktop's session (KWin writes its outputs and
-# shortcuts to its settings).
+# headless: a display of the run's own that no one sees: Xvfb (by default;
+# its OpenGL is Mesa's, drawn by the processor, while Vulkan is the GPU's
+# driver's), or gamescope's headless backend (OPENH1_BENCH_DISPLAY=gamescope:
+# OpenGL on the GPU too, its frames paced at <refresh> Hz; it crashes as it
+# quits, after the game). The display, and the game, get settings folders
+# of their own (xdg/), and gamescope a D-Bus of its own, so that they touch
+# nothing of the desktop's session.
 headless() {
-	local width=$1 height=$2 refresh=$3
+	local width=$1 height=$2 refresh=$3 status
 	shift 3
 	unset DISPLAY WAYLAND_DISPLAY
 	export XDG_CONFIG_HOME=$bench/xdg/config XDG_DATA_HOME=$bench/xdg/data
 	export XDG_STATE_HOME=$bench/xdg/state XDG_CACHE_HOME=$bench/xdg/cache
 	mkdir -p "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$XDG_STATE_HOME" "$XDG_CACHE_HOME"
-	local server=${OPENH1_BENCH_DISPLAY:-}
-	if [ -z "$server" ]; then
-		server=kwin
-		! command -v gamescope >/dev/null || server=gamescope
-	fi
-	if [ "$server" = kwin ] && command -v kwin_wayland >/dev/null && command -v dbus-run-session >/dev/null; then
-		dbus-run-session -- kwin_wayland --virtual --xwayland --no-lockscreen --no-global-shortcuts \
-			--no-kactivities --width "$width" --height "$height" --socket "openh1-bench-$$" --exit-with-session "$@"
-	elif [ "$server" = gamescope ] && command -v gamescope >/dev/null; then
+	case ${OPENH1_BENCH_DISPLAY:-xvfb} in
+	xvfb)
+		command -v Xvfb >/dev/null || fail "no Xvfb (xorg-server-xvfb, xvfb), or OPENH1_BENCH_DISPLAY=gamescope"
+		local number xvfb fifo
+		fifo=$(mktemp -u "$bench/.xvfb.XXXXXX")
+		mkfifo "$fifo"
+		Xvfb -displayfd 3 -screen 0 "${width}x${height}x24" -nolisten tcp +extension GLX 3>"$fifo" &
+		xvfb=$!
+		read -r number <"$fifo"
+		rm -f "$fifo"
+		[ -n "$number" ] || fail "Xvfb did not start"
+		status=0
+		DISPLAY=:$number "$@" || status=$?
+		kill "$xvfb" 2>/dev/null
+		wait "$xvfb" 2>/dev/null
+		return $status
+		;;
+	gamescope)
+		command -v gamescope >/dev/null || fail "no gamescope"
 		(ulimit -c 0; dbus-run-session -- gamescope --backend headless -W "$width" -H "$height" -r "$refresh" -- "$@")
-	else
-		fail "no headless display: install kwin (kwin_wayland --virtual) or gamescope"
-	fi
+		;;
+	*) fail "OPENH1_BENCH_DISPLAY is xvfb or gamescope" ;;
+	esac
 }
 
 # (in the display, from run): the game, its output timestamped, then the
@@ -285,6 +309,8 @@ command_run() {
 	export HALO_NET_PUBLIC_LOBBY=false HALO_FULLSCREEN=false HALO_WINDOW_SIZE=$size HALO_GPU_STATS=1
 	[ $visible = 1 ] && [ -z "$map" ] && [ -z "$seconds" ] && menus=1
 	if [ $visible = 0 ]; then
+		[ "${OPENH1_BENCH_DISPLAY:-xvfb}" != xvfb ] || command -v Xvfb >/dev/null ||
+			fail "no Xvfb for a headless run (xorg-server-xvfb, xvfb), or OPENH1_BENCH_DISPLAY=gamescope"
 		# no internet play, system link on the loopback, silent sound, the
 		# game 3 seconds after it is hosted (not 15)
 		export HALO_NET_ONLINE=false HALO_NET_ADDRESS=127.0.0.1 SDL_AUDIO_DRIVER=dummy HALO_NETWORK_TEST_START=3
@@ -319,9 +345,8 @@ command_run() {
 		fi
 		command_inner "$run/wine.log" "${arguments[@]}"
 	else
-		# (the command as a file: KWin's --exit-with-session takes no
-		# arguments. The timeout leaves time for the loading: debug.exit_after
-		# counts from the window's opening.)
+		# (the timeout leaves time for the loading: debug.exit_after counts
+		# from the window's opening)
 		printf '#!/bin/sh\nexec %q _inner %q' "$self" "$run/wine.log" >"$run/inner.sh"
 		printf ' %q' "${arguments[@]}" >>"$run/inner.sh"
 		echo >>"$run/inner.sh"
@@ -431,7 +456,7 @@ command_doctor() {
 	echo "== Vulkan (the host's: Wine's winevulkan goes to it)"
 	vulkaninfo --summary 2>/dev/null | grep -E 'deviceName|driverName|apiVersion' | sort -u ||
 		echo "vulkaninfo: none (vulkan-tools)"
-	echo "== OpenGL in the headless display"
+	echo "== OpenGL in the headless display (${OPENH1_BENCH_DISPLAY:-xvfb})"
 	if command -v glxinfo >/dev/null; then
 		local renderer
 		renderer=$(timeout -k 5 30 "$self" _headless 640 480 60 "$(command -v glxinfo)" 2>/dev/null || true)

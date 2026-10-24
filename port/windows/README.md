@@ -225,18 +225,28 @@ argument to a function of the C runtime.
 
 `tools/wine_bench.sh` runs a Windows build under Wine on a Linux computer
 with a GPU. It can start the game and play a level, draw it with the GPU's
-driver, collect the logs and take shots, all without a Windows machine. It
-needs Wine (with winevulkan, as Wine has had for years), the GPU's OpenGL
-and Vulkan drivers, gamescope or KWin for the headless display, `unzip`,
-`curl`, `python3`, and `gh` for CI artifacts. It also needs game data: a
-`maps` folder, `~/halo-x86-maps/maps` by default (`OPENH1_BENCH_MAPS`).
+driver, collect the logs and take shots, all without a Windows machine.
+Any user can run it: everything it makes is in `~/openh1-wine`
+(`OPENH1_BENCH`) of whoever runs it.
+
+It needs these:
+
+- Wine (with winevulkan, which current Wine has), and the GPU's Vulkan
+  driver.
+- Xvfb for the hidden runs (`xorg-server-xvfb`, `xvfb`), or gamescope.
+- `unzip`, `curl` and `python3`.
+- Game data: a `maps` folder. The bench uses `OPENH1_BENCH_MAPS`, or else
+  `/srv/openh1/maps` where the computer has one, or else
+  `~/openh1-wine/data/maps`.
+- For CI artifacts (`fetch <PR>`, `fetch run:<id>`): `gh`, logged in once
+  with `gh auth login`. Releases and zip URLs need no login.
 
 ```sh
 tools/wine_bench.sh setup               # the Wine prefix and folders, in ~/openh1-wine (OPENH1_BENCH)
 tools/wine_bench.sh fetch               # the latest release's OpenH1-Windows.zip
 tools/wine_bench.sh fetch build-510     # a release by its tag (--debug: OpenH1-Windows-debug.zip)
 tools/wine_bench.sh fetch 199           # a pull request's halo-windows-debug artifact (gh)
-tools/wine_bench.sh fetch run:<run id>  # a workflow run's; or a path to a zip or a folder
+tools/wine_bench.sh fetch run:<run id>  # a workflow run's; or a zip's URL, a zip or a folder
 tools/wine_bench.sh run                 # 30 s of bots on Blood Gulch, headless; then the frame rate
 tools/wine_bench.sh run --map ratrace --bots 3 --seconds 60 HALO_INTERPOLATION=false
 tools/wine_bench.sh run --visible       # in a window on the computer's own display, at the menus
@@ -253,17 +263,19 @@ tools/wine_bench.sh doctor              # Wine, the GPU, OpenGL in the headless 
   game's output and Wine's, timestamped), `environment.txt`, `halo.log`
   (from a release build) and `shots/`. `runs/last` is the newest run.
 - A run without `--visible` uses a display of its own that nobody sees:
-  gamescope's headless backend (or KWin's virtual one, with
-  `OPENH1_BENCH_DISPLAY=kwin`), drawn by the GPU. The display gets its own
-  D-Bus and settings folder, so it does not touch the desktop session.
+  Xvfb, or gamescope's headless backend with `OPENH1_BENCH_DISPLAY=gamescope`.
+  Xvfb's OpenGL is Mesa's, drawn by the processor (llvmpipe), so the
+  32-bit build's frames there do not show the GPU. Vulkan goes to the
+  GPU's driver where the driver can present to Xvfb; the run's summary
+  names the device. gamescope draws OpenGL on the GPU too, but paces the frames at
+  its `--refresh` (1000 Hz by default), even with vsync off. The display
+  gets its own settings folder, so it does not touch the desktop session.
   The run plays a local game with bots (`debug.network_test`
   `local:<map>:slayer`, `bots.count`) with vsync off, silent sound,
   system link on the loopback, and no internet play, updates, crash
   reports or clipboard. When `debug.exit_after` ends it, the bench prints
   the renderer, the frame rate while playing (from `debug.gpu_stats`'
-  line every 60 frames) and Wine's errors. With OpenGL, the headless
-  display refreshes at `--refresh` Hz (1000 by default), and its refresh
-  limits the frame rate even with vsync off.
+  line every 60 frames) and Wine's errors.
 - `VAR=value` gives a run a setting's variable (`HALO_*`, as in the
   settings table of [port/linux/README.md](../linux/README.md)) or one of
   Wine's (`WINEDEBUG=+wgl`), over the bench's own. The words after `--`
