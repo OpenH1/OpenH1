@@ -559,18 +559,22 @@
 		<frame png="ce/port/main_menu/parts/tab__2.png" width="90" height="22"/>
 		<frame png="ce/port/main_menu/parts/tab__3.png" width="90" height="22"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/row_392x18">
-		<frame png="ce/port/main_menu/parts/row_392x18__0.png" width="392" height="18"/>
-		<frame png="ce/port/main_menu/parts/row_392x18__1.png" width="392" height="18"/>
-		<frame png="ce/port/main_menu/parts/row_392x18__2.png" width="392" height="18"/>
+	<bitmap name="main_menu/parts/row_404x18">
+		<frame png="ce/port/main_menu/parts/row_404x18__0.png" width="404" height="18"/>
+		<frame png="ce/port/main_menu/parts/row_404x18__1.png" width="404" height="18"/>
+		<frame png="ce/port/main_menu/parts/row_404x18__2.png" width="404" height="18"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/item_248x26">
-		<frame png="ce/port/main_menu/parts/item_248x26__0.png" width="248" height="26"/>
-		<frame png="ce/port/main_menu/parts/item_248x26__1.png" width="248" height="26"/>
+	<bitmap name="main_menu/parts/item_264x26">
+		<frame png="ce/port/main_menu/parts/item_264x26__0.png" width="264" height="26"/>
+		<frame png="ce/port/main_menu/parts/item_264x26__1.png" width="264" height="26"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/item_96x22">
 		<frame png="ce/port/main_menu/parts/item_96x22__0.png" width="96" height="22"/>
 		<frame png="ce/port/main_menu/parts/item_96x22__1.png" width="96" height="22"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_100x22">
+		<frame png="ce/port/main_menu/parts/item_100x22__0.png" width="100" height="22"/>
+		<frame png="ce/port/main_menu/parts/item_100x22__1.png" width="100" height="22"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/item_124x22">
 		<frame png="ce/port/main_menu/parts/item_124x22__0.png" width="124" height="22"/>
@@ -580,21 +584,17 @@
 		<frame png="ce/port/main_menu/parts/item_144x22__0.png" width="144" height="22"/>
 		<frame png="ce/port/main_menu/parts/item_144x22__1.png" width="144" height="22"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/item_188x22">
-		<frame png="ce/port/main_menu/parts/item_188x22__0.png" width="188" height="22"/>
-		<frame png="ce/port/main_menu/parts/item_188x22__1.png" width="188" height="22"/>
+	<bitmap name="main_menu/parts/line_404">
+		<frame png="ce/port/main_menu/parts/line_404__0.png" width="404" height="4"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/line_392">
-		<frame png="ce/port/main_menu/parts/line_392__0.png" width="392" height="4"/>
+	<bitmap name="main_menu/parts/line_264">
+		<frame png="ce/port/main_menu/parts/line_264__0.png" width="264" height="4"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/line_248">
-		<frame png="ce/port/main_menu/parts/line_248__0.png" width="248" height="4"/>
+	<bitmap name="main_menu/parts/panel_172x296">
+		<frame png="ce/port/main_menu/parts/panel_172x296__0.png" width="172" height="296"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/panel_184x296">
-		<frame png="ce/port/main_menu/parts/panel_184x296__0.png" width="184" height="296"/>
-	</bitmap>
-	<bitmap name="main_menu/parts/panel_324x320">
-		<frame png="ce/port/main_menu/parts/panel_324x320__0.png" width="324" height="320"/>
+	<bitmap name="main_menu/parts/panel_308x320">
+		<frame png="ce/port/main_menu/parts/panel_308x320__0.png" width="308" height="320"/>
 	</bitmap>
 	<bitmap name="main_menu/parts/pill_30">
 		<frame png="ce/port/main_menu/parts/pill_30__0.png" width="30" height="16"/>
@@ -611,8 +611,8 @@
 		<frame png="ce/port/main_menu/parts/pill_132__1.png" width="132" height="16"/>
 		<frame png="ce/port/main_menu/parts/pill_132__2.png" width="132" height="16"/>
 	</bitmap>
-	<bitmap name="main_menu/parts/button_160x24">
-		<frame png="ce/port/main_menu/parts/button_160x24__0.png" width="160" height="24"/>
-		<frame png="ce/port/main_menu/parts/button_160x24__1.png" width="160" height="24"/>
+	<bitmap name="main_menu/parts/button_148x24">
+		<frame png="ce/port/main_menu/parts/button_148x24__0.png" width="148" height="24"/>
+		<frame png="ce/port/main_menu/parts/button_148x24__1.png" width="148" height="24"/>
 	</bitmap>
 </menus>

@@ -7,7 +7,7 @@
 shared text fitting (port/linux/game/menu_functions.c, in Settings' look:
 tools/port_settings.py's _browser): a tab lists its kind of game (OpenH1's,
 Legacy, co-op) or the favorites, the favorites first and the rest sorted,
-the favorites offline only on ALL and FAVOURITES; a list with no games says
+the favorites offline only on ALL and FAVORITES; a list with no games says
 why, and the local network's what to do; a name too long for its column is
 cut short with "..." where it fits, and one that fits is kept whole */
 
@@ -127,9 +127,9 @@ int main(int argc, char **argv)
 		listed(_browser_tab_coop, names, sizeof(names), &offline);
 		CHECK(!strcmp(names, "echo coop "), "CO-OP lists %s", names);
 		CHECK(offline == 0, "CO-OP lists the favorites offline");
-		listed(_browser_tab_favourites, names, sizeof(names), &offline);
-		CHECK(!strcmp(names, "bravo echo "), "FAVOURITES lists %s", names);
-		CHECK(offline == 2, "FAVOURITES lists no favorites offline");
+		listed(_browser_tab_favorites, names, sizeof(names), &offline);
+		CHECK(!strcmp(names, "bravo echo "), "FAVORITES lists %s", names);
+		CHECK(offline == 2, "FAVORITES lists no favorites offline");
 		return 0;
 	}
 	CASE("empty")
@@ -142,9 +142,9 @@ int main(int argc, char **argv)
 			"the local network's empty list says %ls", text);
 		browser_empty_text(_multiplayer_mode_lan, _browser_tab_openh1, TRUE, TRUE, FALSE, 0, text, NUMBEROF(text));
 		CHECK(contains(text, L"No OpenH1 games on your network."), "OPENH1's says %ls", text);
-		browser_empty_text(_multiplayer_mode_lan, _browser_tab_favourites, TRUE, TRUE, FALSE, 0, text,
+		browser_empty_text(_multiplayer_mode_lan, _browser_tab_favorites, TRUE, TRUE, FALSE, 0, text,
 			NUMBEROF(text));
-		CHECK(contains(text, L"favourites") && contains(text, L"%y-button"), "FAVOURITES' says %ls", text);
+		CHECK(contains(text, L"favorites") && contains(text, L"%y-button"), "FAVORITES' says %ls", text);
 		/* the server browser's: still looking, off, none of a kind, newer */
 		browser_empty_text(_multiplayer_mode_server_browser, _browser_tab_all, TRUE, TRUE, TRUE, 0, text,
 			NUMBEROF(text));
@@ -161,10 +161,31 @@ int main(int argc, char **argv)
 		browser_empty_text(_multiplayer_mode_server_browser, _browser_tab_all, TRUE, TRUE, FALSE, 0, text,
 			NUMBEROF(text));
 		CHECK(contains(text, L"No public games found"), "none says %ls", text);
-		/* Join by Link's: how to paste a link, its prompt the device's */
+		/* Join by Link's: how to paste a link (its footer's prompt) */
 		browser_empty_text(_multiplayer_mode_direct_link, _browser_tab_all, TRUE, TRUE, FALSE, 0, text,
 			NUMBEROF(text));
-		CHECK(contains(text, L"%right-trigger"), "Join by Link's says %ls", text);
+		CHECK(contains(text, L"PASTE LINK"), "Join by Link's says %ls", text);
+		return 0;
+	}
+	CASE("ping")
+	{
+		wchar_t text[16];
+
+		/* the ping's column: its milliseconds, a faded "..." while it is
+		measured, a dash while it is not known */
+		browser_ping_cell(_browser_ping_measured, 38, text, NUMBEROF(text));
+		CHECK(!wcscmp(text, L"38"), "38 ms shown as %ls", text);
+		browser_ping_cell(_browser_ping_measuring, -1, text, NUMBEROF(text));
+		CHECK(!wcscmp(text, L"\x2026"), "a ping being measured shown as %ls", text);
+		browser_ping_cell(_browser_ping_locked, -1, text, NUMBEROF(text));
+		CHECK(!wcscmp(text, L"\x2013"), "a game with a password's ping shown as %ls", text);
+		browser_ping_cell(_browser_ping_failed, -1, text, NUMBEROF(text));
+		CHECK(!wcscmp(text, L"\x2013"), "a host not reached's ping shown as %ls", text);
+		browser_ping_cell(_browser_ping_local, -1, text, NUMBEROF(text));
+		CHECK(!wcscmp(text, L"\x2013"), "a local network game's ping shown as %ls", text);
+		/* (the bars' frame by how good: none lit, poor, fair, good) */
+		CHECK(browser_ping_bars(-1) == 0 && browser_ping_bars(38) == 3 && browser_ping_bars(PING_GOOD) == 2 &&
+			browser_ping_bars(PING_FAIR) == 1, "the bars do not follow the ping");
 		return 0;
 	}
 	CASE("ellipsis")

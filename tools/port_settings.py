@@ -3095,18 +3095,21 @@ def part_button(width: int, height: int) -> str:
 # column's place and width in a row (menu_functions.c's browser_row_show
 # places the tick badge and the lock after the name)
 BROWSER_TABS = [("tab_all", "ALL"), ("tab_openh1", "OPENH1"), ("tab_legacy", "LEGACY"), ("tab_coop", "CO-OP"),
-                ("tab_favourites", "FAVOURITES")]
-BROWSER_LIST_X, BROWSER_LIST_WIDTH = 28, 392
+                ("tab_favorites", "FAVORITES")]
+BROWSER_LIST_X, BROWSER_LIST_WIDTH = 28, 404
 BROWSER_HEADERS_TOP = 104
 BROWSER_ROWS_TOP, BROWSER_ROW_HEIGHT, BROWSER_ROW_STEP, BROWSER_ROWS = 124, 18, 19, 14
-BROWSER_PANEL = (428, 104, 184, 296)
+BROWSER_PANEL = (440, 104, 172, 296)
 BROWSER_COLUMNS = {
-    "favorite": (2, 16), "server_name": (20, 128), "map": (152, 88), "type": (244, 56), "players": (302, 54),
-    "ping": (368, 24),
+    "favorite": (2, 16), "server_name": (20, 122), "map": (146, 84), "type": (234, 56), "players": (292, 52),
+    "ping": (350, 54),
 }
-# (a title wider than its column: Players' ends where its column ends, its
-# numbers' right; Ping's starts at its bars, past the list's end)
-BROWSER_HEADER_WIDTHS = {"type": 44, "players": 64, "ping": 48}
+# the ping's column: its bars, then its milliseconds at its right (the bars
+# left out for a number too wide for both: menu_functions.c's browser_row_show)
+BROWSER_PING_BARS = 24
+# (a title wider or narrower than its column: Players' ends where its
+# column ends, with its numbers)
+BROWSER_HEADER_WIDTHS = {"type": 40, "players": 70}
 # the column titles: (widget, words, column)
 BROWSER_HEADERS = [("op_sort_header_server_name", "SERVER", "server_name"), ("op_sort_header_map", "MAP", "map"),
                    ("op_sort_header_type", "MODE", "type"), ("op_sort_header_players", "PLAYERS", "players"),
@@ -3114,23 +3117,23 @@ BROWSER_HEADERS = [("op_sort_header_server_name", "SERVER", "server_name"), ("op
 BROWSER_TICK_BADGE = 30
 # the panel's pills: a game's kind and tick rate, and OpenCE's
 BROWSER_PILL, BROWSER_WIDE_PILL = 64, 132
-BROWSER_JOIN = (160, 24)
+BROWSER_JOIN = (148, 24)
 # the footer's prompts: (widget, words, x, width, its function); the
 # browser shows those of its list (menu_functions.c's browser_prompts_show)
 BROWSER_PROMPTS = [
-    ("prompt_favourite", "%y-button FAVOURITE", 28, 124, '<on event="a" run="port browser favorite"/>'),
+    ("prompt_favorite", "%y-button FAVORITE", 28, 124, '<on event="a" run="port browser favorite"/>'),
     ("prompt_refresh", "%right-trigger REFRESH", 156, 124, '<on event="a" run="port browser refresh"/>'),
     ("prompt_paste", "%right-trigger PASTE LINK", 156, 144, '<on event="a" run="port browser refresh"/>'),
-    # (its words the column sorted by: menu_functions.c's browser_sort_headers_show)
-    ("prompt_sort", None, 304, 188, '<on event="a" run="port browser sort"/>'),
+    # (the next column's title sorts: menu_functions.c's browser_sort_choose)
+    ("prompt_sort", "%x-button SORT", 304, 100, '<on event="a" run="port browser sort"/>'),
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>'),
 ]
 # Multiplayer's: its list's items (and its two pages': CREATE GAME's and
 # CO-OP CAMPAIGN's), the panel beside them, the line over EDIT GAMETYPES
 HUB = f"{MT}/hub"
-HUB_ITEM = (248, 26)
+HUB_ITEM = (264, 26)
 HUB_LIST_X = 28
-HUB_PANEL = (288, 80, 324, 320)
+HUB_PANEL = (304, 80, 308, 320)
 HUB_PROMPTS = [
     ("prompt_refresh", "%right-trigger REFRESH", 28, 124, '<on event="a" run="port multiplayer refresh"/>'),
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>'),
@@ -3252,17 +3255,17 @@ def _section(name: str, words: str, width: int) -> list:
 
 
 def _header_x(column: str) -> int:
-    """a column title's place in a row: its column's, or where a title wider
-    than its column starts to end where the column ends"""
+    """a column title's place in a row: its column's left, or for Players'
+    and Ping's (their numbers at their right) where it ends where they do"""
     x, width = BROWSER_COLUMNS[column]
-    return x + width - BROWSER_HEADER_WIDTHS[column] if column == "players" else x - 8 if column == "ping" else x
+    return x + width - BROWSER_HEADER_WIDTHS.get(column, width) if column in ("players", "ping") else x
 
 
 def _browser() -> list:
     """Join Game's list of games (the server browser's, the local network's
     and Join by Link's, by the mode Multiplayer chose: menu_functions.c's
     browser_initialize), in Settings' look: its tabs (every game, OpenH1's,
-    Legacy ones, co-op, the favourites: LB and RB, Q and E, or a click), the
+    Legacy ones, co-op, the favorites: LB and RB, Q and E, or a click), the
     games' rows under their columns (a long name, map or mode cut short with
     "...": menu_functions.c's menu_text_fit), the game chosen's details in
     the panel beside them with JOIN GAME, words in the list's place while it
@@ -3330,7 +3333,7 @@ def _browser() -> list:
                       for name, _, column in BROWSER_HEADERS])
     for name, words, column in BROWSER_HEADERS:
         width = BROWSER_HEADER_WIDTHS.get(column, BROWSER_COLUMNS[column][1])
-        right = column == "players"
+        right = column in ("players", "ping")
         lines += _widget(f"{base}/{name}", [("type", "text"), ("width", width), ("height", 16), ("text", words),
                                            ("font", "ui\\small_ui"), ("color", PART_DIM),
                                            ("align", "right" if right else None)],
@@ -3359,7 +3362,8 @@ def _browser() -> list:
                             for column in ("server_name", "map", "type", "players")),
                           f'<child widget="{base}/server_item_tick" y="1"/>',
                           f'<child widget="{base}/server_item_locked" y="1"/>',
-                          f'<child widget="{base}/server_item_ping" x="{BROWSER_COLUMNS["ping"][0]}" y="1"/>'])
+                          f'<child widget="{base}/server_item_ping" x="{BROWSER_COLUMNS["ping"][0]}" y="1"/>',
+                          f'<child widget="{base}/server_item_ping_ms" x="{BROWSER_COLUMNS["ping"][0]}"/>'])
     for column in ("server_name", "map", "type", "players"):
         lines += _widget(f"{base}/server_item_{column}",
                          [("type", "text"), ("width", BROWSER_COLUMNS[column][1]), ("height", BROWSER_ROW_HEIGHT),
@@ -3373,7 +3377,14 @@ def _browser() -> list:
                                                   ("text_flags", "no_focus_test")], [])
     lines += _widget(f"{base}/server_item_locked", [("width", 16), ("height", 16),
                                                     ("bitmap", f"{base}/locked_icon")], [])
-    lines += _widget(f"{base}/server_item_ping", [("width", 24), ("height", 16), ("bitmap", PING_BARS)], [])
+    lines += _widget(f"{base}/server_item_ping", [("width", BROWSER_PING_BARS), ("height", 16),
+                                                  ("bitmap", PING_BARS)], [])
+    # (its milliseconds, coloured by how good, "..." faded while measured:
+    # menu_functions.c's pc_menu_text_color)
+    lines += _widget(f"{base}/server_item_ping_ms", [("type", "text"), ("width", BROWSER_COLUMNS["ping"][1]),
+                                                     ("height", BROWSER_ROW_HEIGHT), ("font", "ui\\small_ui"),
+                                                     ("color", "#FFC9DCF7"), ("align", "right"), ("text_y", 2),
+                                                     ("text_flags", "no_focus_test")], [])
     # (the panel: the game chosen's name, map and mode, its kind, tick rate
     # and whether OpenCE's players join it, its players and ping, a line of
     # how it is (under way, a password, joining), and JOIN GAME over it:
@@ -3385,7 +3396,7 @@ def _browser() -> list:
                 ("panel_players", 151, inner_width, 24, "ui\\large_ui", "#FFFFFFFF", "right"),
                 ("panel_ping_label", 176, 70, 20, "ui\\small_ui", PART_DIM, None),
                 ("panel_ping", 173, inner_width, 24, "ui\\large_ui", "#FFFFFFFF", "right"),
-                ("panel_status", 202, inner_width, 52, "ui\\small_ui", SETTINGS_BLUE, None)]
+                ("panel_status", 202, inner_width, 60, "ui\\small_ui", SETTINGS_BLUE, None)]
     panel_children = []
     for name, y, width, height, font, color, align in children:
         panel_children.append(f'<child widget="{base}/{name}" x="{inner_left}" y="{panel_top + y}"/>')
@@ -3526,7 +3537,7 @@ def _hub() -> list:
     lines += text("multiplayer_status", x, top + 14, inner, 24, "ui\\large_ui", "#FFFFFFFF")
     lines += text("multiplayer_status_detail", x, top + 42, inner, 120, "ui\\large_ui", SETTINGS_BLUE)
     lines += text("online_now_label", x, top + 12, 200, 16, "ui\\small_ui", PART_DIM, words="ONLINE NOW")
-    players_x = x + 150
+    players_x = x + 132
     for count, count_x in (("games", x), ("players", players_x)):
         for digit in range(STATUS_DIGIT_PLACES):
             panel.append(f'<child widget="{HUB}/online_{count}_{digit}"/>')
@@ -3549,7 +3560,8 @@ def _hub() -> list:
                                                      ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
                                                      ("align", "center"), ("text_flags", "no_focus_test")], [])
         lines += text(f"best_{row}_about", x, row_top + 19, 196, 18, "ui\\small_ui", SETTINGS_BLUE)
-        lines += text(f"best_{row}_players", x + 200, row_top + 6, 58, 20, "ui\\large_ui", "#FFFFFFFF", "right")
+        lines += text(f"best_{row}_players", x + inner - 92, row_top + 6, 58, 20, "ui\\large_ui", "#FFFFFFFF",
+                      "right")
         panel.append(f'<child widget="{HUB}/best_{row}_ping"/>')
         lines += _widget(f"{HUB}/best_{row}_ping", [("controller", 1), ("left", x + inner - 24),
                                                     ("top", row_top + 9), ("width", 24), ("height", 16),

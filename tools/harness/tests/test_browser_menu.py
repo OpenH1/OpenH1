@@ -1,6 +1,6 @@
 """The server browser and Multiplayer in Settings' look (tools/port_settings.py's _browser and _hub, the menus'
 shared parts; port/linux/game/menu_functions.c): the browser's tabs (every game, OpenH1's, Legacy ones, co-op, the
-favourites) filter its list, a list with no games says why (the local network's, what to do), a text too long for
+favorites) filter its list, a list with no games says why (the local network's, what to do), a text too long for
 its column is cut short with "...", and the footers' key prompts are buttons a key of the keyboard presses
 (menu_keys.c checks each key); the menu files are as the generator writes them, the parts' pictures as
 tools/ce_menus.py draws them, and Multiplayer keeps every place it opened."""
@@ -15,16 +15,19 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, ROOT, build, enum_with, function, mutated, read, run, structure  # noqa: E402
 
-CASES = ["tabs", "empty", "ellipsis"]
+CASES = ["tabs", "empty", "ellipsis", "ping"]
 
 NEGATIVE_CONTROLS = {
-    "favourites-on-every-tab": (("\tcase _browser_tab_favourites:\n\t\treturn favorite;\n", ""), "tabs"),
+    "favorites-on-every-tab": (("\tcase _browser_tab_favorites:\n\t\treturn favorite;\n", ""), "tabs"),
     "legacy-as-openh1": (("\t\treturn !entry->openh1;", "\t\treturn entry->openh1;"), "tabs"),
     "offline-on-every-tab": (("\tif (!browser_tab_lists_offline())\n\t\tbrowser_offline_count = 0;\n", ""), "tabs"),
     "lan-says-nothing-to-do": (("L\"No games on your network yet.\\r\\nHost one from Create Game.\"",
                                 "L\"No games.\""), "empty"),
     "never-cut": (("if (font == NONE || width <= 0 || settings_text_width(font, fitted) <= width)",
                    "if (TRUE)"), "ellipsis"),
+    "ping-unknown-as-measuring": (("\telse if (ping_state == _browser_ping_measuring)",
+                                   "\telse if (ping_state != _browser_ping_measured)"), "ping"),
+    "ping-bars-one-off": (("ping < PING_GOOD ? 3", "ping <= PING_GOOD ? 3"), "ping"),
     "cut-one-too-many": (("\t\tif (settings_text_width(font, fitted) <= width)\n\t\t\tlow = middle;",
                           "\t\tif (settings_text_width(font, fitted) < width)\n\t\t\tlow = middle;"), "ellipsis"),
 }
@@ -37,7 +40,9 @@ def generated(fault=None):
     menus = read("port/linux/game/menu_functions.c")
     config = "\n\n".join([
         enum_with(menus, "_multiplayer_mode_server_browser"), enum_with(menus, "_browser_sort_players"),
-        enum_with(menus, "_browser_tab_all"),
+        enum_with(menus, "_browser_tab_all"), enum_with(menus, "_browser_ping_measured"),
+        enum_with(menus, "PING_GOOD = 80"),
+        "\n".join(re.findall(r"^#define BROWSER_PING_\w+ L[^\n]+", menus, re.M)),
         "#define BROWSER_MODE_LENGTH %s" % re.search(r"#define BROWSER_MODE_LENGTH (\d+)", menus).group(1),
         "#define MENU_TEXT_ELLIPSIS_LENGTH %s" % re.search(r"#define MENU_TEXT_ELLIPSIS_LENGTH (\d+)",
                                                            menus).group(1),
@@ -45,7 +50,7 @@ def generated(fault=None):
     code = "\n\n".join(function(menus, name) for name in (
         "settings_wide_copy", "browser_text_compare", "browser_wide_compare", "browser_sort_before",
         "browser_tab_shows", "browser_tab_lists_offline", "browser_favorites_order", "browser_empty_text",
-        "menu_text_cut", "menu_text_fit"))
+        "menu_text_cut", "menu_text_fit", "browser_ping_cell", "browser_ping_bars"))
     if fault:
         code = mutated(code, *fault)
     return (("config.inc", config), ("under_test.inc", code))
@@ -116,7 +121,7 @@ def test_browser_layout():
     tabs = re.findall(rf'<widget name="{MT}/join_game/(tab_\w+)"[^>]*text="([^"]*)"', text)
     assert tabs == port_settings.BROWSER_TABS == [("tab_all", "ALL"), ("tab_openh1", "OPENH1"),
                                                  ("tab_legacy", "LEGACY"), ("tab_coop", "CO-OP"),
-                                                 ("tab_favourites", "FAVOURITES")]
+                                                 ("tab_favorites", "FAVORITES")]
     # (the tabs in menu_functions.c's order)
     menus = read("port/linux/game/menu_functions.c")
     order = re.findall(r"_browser_tab_(\w+),", enum_with(menus, "_browser_tab_all"))
@@ -137,6 +142,13 @@ def test_browser_layout():
         places.append((title_x, title_x + title_width))
     assert all(places[index][1] <= places[index + 1][0] for index in range(len(places) - 1)), places
     assert [words for _, words, _ in port_settings.BROWSER_HEADERS] == ["SERVER", "MAP", "MODE", "PLAYERS", "PING"]
+    # (the ping's column: its bars, then its number at its right, as wide as the column, its title at its right)
+    x, width = port_settings.BROWSER_COLUMNS["ping"]
+    assert f'<child widget="{MT}/join_game/server_item_ping_ms" x="{x}"/>' in text
+    assert re.search(rf'<widget name="{MT}/join_game/server_item_ping_ms" type="text" width="{width}"[^>]*'
+                     r'align="right"', text)
+    assert width >= port_settings.BROWSER_PING_BARS + 24
+    assert port_settings._header_x("ping") + width == x + width
     for column in ("server_name", "map", "type", "players", "ping"):
         x, _ = port_settings.BROWSER_COLUMNS[column]
         assert f'<child widget="{MT}/join_game/server_item_{column}" x="{x}"' in text, column
@@ -148,13 +160,17 @@ def test_browser_layout():
     assert f'<widget name="{MT}/join_game/browser_empty"' in text
     # (the footer's prompts: each its button's picture, a key of the keyboard's: menu_keys.c)
     keys = function(read("source/interface/ui_widget.c"), "ui_widget_port_menu_key")
-    sort = function(menus, "browser_sort_headers_show")
-    assert 'L"%%x-button SORT: %s"' in sort and 'named(list, "prompt_sort", 0)' in sort
     for name, words, _, _, handler in port_settings.BROWSER_PROMPTS + port_settings.HUB_PROMPTS:
-        icon = re.match(r"%([a-z-]+) ", words or "%x-button SORT").group(1).replace("-", "_")
+        icon = re.match(r"%([a-z-]+) ", words).group(1).replace("-", "_")
         assert f"case _icon_{icon}:" in keys, f"{name}'s {icon} has no key"
-    assert [words.split(" ", 1)[1] if words else None for _, words, *_ in port_settings.BROWSER_PROMPTS] == \
-        ["FAVOURITE", "REFRESH", "PASTE LINK", None, "BACK"]
+    assert [words.split(" ", 1)[1] for _, words, *_ in port_settings.BROWSER_PROMPTS] == \
+        ["FAVORITE", "REFRESH", "PASTE LINK", "SORT", "BACK"]
+    # (the sort is the column titles': each sorts by its column, X the next of them; the title sorted by
+    # brighter, its arrow its way; no sort of its own by the tabs)
+    sorts = re.findall(r'\{ "(op_sort_header_\w+)", L"(\w+)", (?:TRUE|FALSE) \}', menus)
+    assert sorted(sorts) == sorted((header, words) for header, words, _ in port_settings.BROWSER_HEADERS)
+    assert "browser_sort_header_current(widget)" in function(menus, "pc_menu_text_color")
+    assert "browser_sort" not in text.replace("browser_sort_", "")
 
 
 def test_hub_keeps_every_place():
