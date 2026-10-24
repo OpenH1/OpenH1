@@ -11,7 +11,8 @@
 
 - bundle: OpenH1.app from the build: Contents/MacOS/halo (the executable, with
   an rpath of @executable_path/../Frameworks), Contents/Frameworks/
-  libSDL3.0.dylib, Contents/Resources (the icon, brokers.txt, the About
+  libSDL3.0.dylib and Sparkle.framework (the updater, which the host loads
+  from there: port/macos/host_app.m), Contents/Resources (the icon, brokers.txt, the About
   panel's credits, and in Licenses the licences of the app and of what it
   carries, which each copy must have) and Info.plist, signed with the hardened runtime and
   port/macos/halo.entitlements: ad hoc ("-") unless an identity is given.
@@ -44,6 +45,7 @@ ENTITLEMENTS = ROOT / "port/macos/halo.entitlements"
 APP_NAME = "OpenH1"
 EXECUTABLE = "halo"
 SDL_LIBRARY = "libSDL3.0.dylib"
+SPARKLE = "Sparkle.framework"
 ICON = "openh1-icon"
 # what the web page and the README say of the project (port/web/site/index.html)
 COPYRIGHT = ("OpenH1 is an unofficial fan project. It is not endorsed by or affiliated with Microsoft, Xbox "
@@ -70,13 +72,28 @@ def run_retried(*command: str, tries: int = 5, wait: int = 20) -> None:
         time.sleep(wait * attempt)
 
 
-def info_plist(bundle_id: str, build: int, minimum: str) -> dict:
+def info_plist(bundle_id: str, build: int, minimum: str, feed: str = None, key: str = None) -> dict:
     """the app's Info.plist. The version is the build's number (that of the
     release it is, HALO_BUILD_NUMBER; 0 for a local build), as the game
-    names itself ("OpenH1 macOS | build <n>"). The games category and Game
-    Mode's key make macOS turn Game Mode on while the game is fullscreen."""
+    names itself ("OpenH1 macOS | build <n>"), and as Sparkle compares it
+    with the appcast's sparkle:version. The games category and Game
+    Mode's key make macOS turn Game Mode on while the game is fullscreen.
+    A release's app has Sparkle's appcast and public key (feed, key): it
+    looks for a new version at each start and every four hours after
+    (port/macos/README.md, "Updates"), without asking first whether it may
+    (update.auto, on by default, says whether it does)."""
     version = str(build)
+    sparkle = {}
+    if feed and key:
+        sparkle = {
+            "SUFeedURL": feed,
+            "SUPublicEDKey": key,
+            "SUEnableAutomaticChecks": True,
+            "SUScheduledCheckInterval": 4 * 3600,
+            "SUVerifyUpdateBeforeExtraction": True,
+        }
     return {
+        **sparkle,
         "CFBundleDevelopmentRegion": "en",
         "CFBundleDisplayName": APP_NAME,
         "CFBundleExecutable": EXECUTABLE,
@@ -117,13 +134,26 @@ def codesign(path: Path, identity: str, entitlements: Path = None) -> None:
     run(*command, str(path))
 
 
+def sign_sparkle(framework: Path, identity: str) -> None:
+    """Sparkle.framework's helpers, then the framework, as Sparkle's
+    documentation signs them for a Developer ID (with the hardened
+    runtime). The app is not sandboxed: the framework's XPC services, a
+    sandboxed app's, are not in it (bundle)."""
+    versions = framework / "Versions" / "B"
+    codesign(versions / "Autoupdate", identity)
+    codesign(versions / "Updater.app", identity)
+    codesign(framework, identity)
+
+
 def sign_app(app: Path, identity: str) -> None:
-    """the library, then the app (whose signature covers it), and checks.
+    """the libraries, then the app (whose signature covers them), and checks.
     Signed ad hoc, the app also has disable-library-validation: the hardened
     runtime loads only libraries of the app's team, and ad hoc signatures
     have none ("mapping process and mapped file (non-platform) have
     different Team IDs"); a Developer ID's are the same team."""
     codesign(app / "Contents/Frameworks" / SDL_LIBRARY, identity)
+    if (app / "Contents/Frameworks" / SPARKLE).is_dir():
+        sign_sparkle(app / "Contents/Frameworks" / SPARKLE, identity)
     if identity != "-":
         codesign(app, identity, ENTITLEMENTS)
     else:
@@ -147,6 +177,11 @@ def bundle(args: argparse.Namespace) -> None:
         (contents / folder).mkdir(parents=True)
     shutil.copy2(args.executable, contents / "MacOS" / EXECUTABLE)
     shutil.copy2(args.sdl, contents / "Frameworks" / SDL_LIBRARY)
+    if args.sparkle:
+        # (its links kept, as a framework's must be for its signature; not
+        # its XPC services, which only a sandboxed app uses)
+        shutil.copytree(args.sparkle, contents / "Frameworks" / SPARKLE, symlinks=True,
+                        ignore=shutil.ignore_patterns("XPCServices"))
     shutil.copy2(args.icon, contents / "Resources" / (ICON + ".icns"))
     for resource in args.resource or []:
         shutil.copy2(resource, contents / "Resources" / Path(resource).name)
@@ -154,7 +189,7 @@ def bundle(args: argparse.Namespace) -> None:
         source, name = license.split("=", 1)
         (contents / "Resources" / "Licenses").mkdir(exist_ok=True)
         shutil.copy2(source, contents / "Resources" / "Licenses" / name)
-    plist = info_plist(args.bundle_id, args.build, args.minimum)
+    plist = info_plist(args.bundle_id, args.build, args.minimum, args.sparkle_feed, args.sparkle_key)
     with open(contents / "Info.plist", "wb") as file:
         plistlib.dump(plist, file)
     (contents / "PkgInfo").write_text("APPL????")
@@ -269,6 +304,9 @@ def main() -> None:
     command.add_argument("--app", required=True)
     command.add_argument("--executable", required=True)
     command.add_argument("--sdl", required=True)
+    command.add_argument("--sparkle", help="Sparkle.framework, the updater")
+    command.add_argument("--sparkle-feed", help="the appcast's URL (SUFeedURL): a release's")
+    command.add_argument("--sparkle-key", help="the public EdDSA key its updates are signed with (SUPublicEDKey)")
     command.add_argument("--icon", required=True)
     command.add_argument("--resource", action="append")
     command.add_argument("--license", action="append", help="<file>=<name>: a licence, in Resources/Licenses")

@@ -16,6 +16,7 @@ Only integers, floats, strings and flat structures cross, as in host_sdl.c.
 #include "update.h"
 
 #include <SDL3/SDL.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -531,4 +532,21 @@ int host_update_make_executable(const char *path)
 int host_update_launch(const char *path)
 {
 	return update_launch(path);
+}
+
+/* ---------- the game's state, for the macOS app's updater */
+
+/* whether a game is played (1) or the main menu shown (0), as the guest
+says when it changes (updater.c's updater_poll); -1 until the game's first
+frame. port/macos/host_app.m shows a new version's window only at 0 */
+static _Atomic int host_playing = -1;
+
+void host_app_playing(int playing)
+{
+	atomic_store(&host_playing, playing ? 1 : 0);
+}
+
+int host_app_is_playing(void)
+{
+	return atomic_load(&host_playing);
 }

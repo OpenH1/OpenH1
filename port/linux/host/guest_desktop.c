@@ -77,6 +77,8 @@ void host_update_delete_file(const char *path);
 int host_update_make_directory(const char *path);
 int host_update_make_executable(const char *path);
 int host_update_launch(const char *path);
+/* (the macOS app's updater: updater.c's updater_poll, port/macos/host_app.m) */
+void host_app_playing(int playing);
 
 /* ---------- general */
 
