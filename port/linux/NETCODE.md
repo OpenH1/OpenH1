@@ -493,9 +493,13 @@ before its gametype ("60 SLAYER"; a Legacy game's 30), where a long
 gametype the column cuts leaves it. The lists sort by it and filter by
 kind (KIND: all, OpenH1 only, Legacy only): port/linux/README.md, "Server
 browser". The line under the
-list names the chosen game's kind: "OpenH1 60 Tick" or "Legacy".
+list names the chosen game's kind: "OpenH1 60 Tick, OpenCE can join" (a
+mixed game, below), "OpenH1 60 Tick" or "Legacy".
 
-How OpenH1 machines recognise each other:
+How OpenH1 machines recognise each other in an OpenH1 game that OpenH1
+players alone join (`network.allow_opence` false; by default OpenCE players
+join an OpenH1 game too, advertised as below, "OpenCE players in an OpenH1
+game"):
 
 - The advertisement's version word carries the OpenH1 protocol version
   (above), and the reserved byte after the game's kind
@@ -503,13 +507,14 @@ How OpenH1 machines recognise each other:
   listing has the version in its version field and the rate in the second
   byte of its stamp. OpenCE's parsers ignore both bytes, which are zero in
   a Legacy game.
-- An OpenCE build sees an OpenH1 game as a newer version. On the LAN it
+- An OpenCE build sees such a game as a newer version. On the LAN it
   lists the game and refuses to join it ("The host is using a newer version
   of the network code"). Its server browser hides the game, and says
   "games are on a newer version" when nothing else is listed.
   `HALO_PORT_STANDARD_REFUSAL` ("This is an OpenH1 60 Tick game; join a
   Legacy game or get OpenH1", with the game's rate) is the text an OpenCE
-  build that knows of OpenH1 games would show. A build without that change
+  build that knows of OpenH1 games would show for one. No game needs it
+  otherwise: everything an OpenH1 game plays, OpenCE players join. A build without that change
   can show only its own messages: join refusals are codes, and host text
   (notices, chat) reaches only a machine already in a game.
 - An OpenH1 host accepts a join only with an OpenH1 game's join token
@@ -594,8 +599,10 @@ a player whose sub-steps changed something.
 
 ### OpenCE players in an OpenH1 game
 
-An OpenH1 game's host with `network.allow_opence` takes OpenCE players
-too (a mixed game; `port/linux/game/network_standard.c`). Each player plays
+An OpenH1 game's host takes OpenCE players too (`network.allow_opence`,
+on by default: a mixed game; `port/linux/game/network_standard.c`). The
+server browser and the LAN list say so ("OpenH1 60 Tick, OpenCE can join"),
+and Server Setup's GAME choices. Each player plays
 at their own rate: OpenCE players at 30, as in a Legacy game, and OpenH1
 players at the game's rate with their sub-step inputs. OpenCE needs no
 change:
@@ -604,10 +611,14 @@ change:
   OpenCE lists and joins the game. The reserved bytes after the game's kind,
   which OpenCE never reads, carry the rate
   (`HALO_PORT_ADVERTISED_RATE_OFFSET`) and the OpenH1 protocol version
-  (`HALO_PORT_ADVERTISED_OPENH1_VERSION_OFFSET`). An OpenH1 build of that
-  protocol joins it as an OpenH1 game, with the OpenH1 join token. Any other
-  build (OpenCE, an older or newer OpenH1) joins it as a Legacy game, with
-  the Legacy token, and plays at 30.
+  (`HALO_PORT_ADVERTISED_OPENH1_VERSION_OFFSET`). Its internet listing is so
+  too: the network version, which OpenCE's server browser lists, and the
+  rate and the protocol version in the second and third bytes of its stamp
+  (`p2p_lobby.c`). An OpenH1 build of that protocol joins it as an OpenH1
+  game, with the OpenH1 join token, and its lists show "OpenH1 60 Tick,
+  OpenCE can join". Any other build (OpenCE, an older or newer OpenH1)
+  joins it as a Legacy game, with the Legacy token, plays at 30, and lists
+  it as one.
 - The host takes either token, and so knows each machine's kind
   (`network_standard_machine_is_opence`, `network_standard_machine_is_openh1`).
   A Legacy host cannot tell them apart: every machine's token is the same.

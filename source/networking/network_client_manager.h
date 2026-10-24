@@ -55,8 +55,13 @@ byte network_game_client_advertised_game_kind(
 long network_game_client_advertised_game_rate(
 	struct network_game_client *client,
 	struct network_advertised_game const *game);
-/* port: whether the advertised game is an OpenH1 Standard game */
+/* port: whether the advertised game is an OpenH1 Standard game (this
+machine joins it as one), and one OpenCE players join too (a mixed game:
+port/linux/game/network_standard.c) */
 boolean network_game_client_advertised_game_standard(
+	struct network_game_client *client,
+	struct network_advertised_game const *game);
+boolean network_game_client_advertised_game_mixed(
 	struct network_game_client *client,
 	struct network_advertised_game const *game);
 boolean network_game_client_advertised_game_compatible(

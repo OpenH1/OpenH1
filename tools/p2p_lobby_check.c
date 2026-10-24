@@ -396,15 +396,31 @@ static void lobby_checks(void)
 		listing.rate == 30, "a Legacy game is listed at the network version, at 30");
 	/* a Standard game: its protocol's version, which builds that know
 	nothing of it take for a newer one, and its rate */
-	p2p_set_game_listing_standard(1, 120);
+	p2p_set_game_listing_standard(1, 0, 120);
 	clock_now += 6000;
 	lobby_update(token, 3, 16);
 	hear(published, published_size, 0, NULL);
 	check(published[3] == (HALO_PORT_STANDARD_ADVERTISED_VERSION >> 8) &&
 		published[4] == (HALO_PORT_STANDARD_ADVERTISED_VERSION & 0xFF) &&
 		((published[3] << 8) | published[4]) > HALO_PORT_NETWORK_VERSION, "a Standard game's listing version");
-	check(games(&listing) == 1 && listing.standard && listing.rate == 120 && listing.kind == 0x81,
+	check(games(&listing) == 1 && listing.standard && !listing.mixed && listing.rate == 120 && listing.kind == 0x81,
 		"a Standard game is listed, with its rate");
+	/* a mixed game (one OpenCE joins too): the network version, which
+	OpenCE lists, with the rate and the protocol in its stamp */
+	p2p_set_game_listing_standard(1, 1, 60);
+	clock_now += 6000;
+	lobby_update(token, 3, 16);
+	hear(published, published_size, 0, NULL);
+	check(published[3] == (HALO_PORT_NETWORK_VERSION >> 8) && published[4] == (HALO_PORT_NETWORK_VERSION & 0xFF) &&
+		published[published_size - P2P_SIGNATURE_SIZE - 7] == 60 &&
+		published[published_size - P2P_SIGNATURE_SIZE - 6] == HALO_PORT_STANDARD_NETWORK_VERSION,
+		"a mixed game's listing: the network version, its rate and protocol in the stamp");
+	check(games(&listing) == 1 && listing.standard && listing.mixed && listing.rate == 60,
+		"a mixed game is listed as an OpenH1 game OpenCE joins too, with its rate");
+	p2p_set_game_listing_standard(1, 0, 120);
+	clock_now += 6000;
+	lobby_update(token, 3, 16);
+	hear(published, published_size, 0, NULL);
 	/* a newer Standard version's game is counted, not shown */
 	{
 		unsigned char newer[512];

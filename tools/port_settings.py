@@ -2058,10 +2058,10 @@ def _password_screen() -> list:
 # (network.game_mode and network.sim_rate: menu_functions.c's
 # server_settings_game_modes, in this order), each choice's help
 GAME_MODES = [
-    ("OPENH1 30 TICK", "OpenH1 players only, at the original 30 ticks a\nsecond. Legacy (OpenCE) players cannot join."),
-    ("OPENH1 60 TICK", "OpenH1 players only, smoother at 60 ticks a\nsecond. Legacy (OpenCE) players cannot join."),
-    ("OPENH1 120 TICK", "OpenH1 players only, smoothest at 120 ticks a\nsecond, and the most work for each machine."),
-    ("LEGACY", "Plays with OpenCE players too, at 30 ticks a\nsecond, as OpenCE does."),
+    ("OPENH1 30 TICK", "OpenH1 players at the original 30 ticks a\nsecond. OpenCE players can join too."),
+    ("OPENH1 60 TICK", "OpenH1 players smoother at 60 ticks a second.\nOpenCE players can join too, at their 30."),
+    ("OPENH1 120 TICK", "OpenH1 players smoothest at 120 ticks a second.\nOpenCE players can join too, at their 30."),
+    ("LEGACY", "OpenCE's own netcode for everyone, at 30 ticks\na second, as OpenCE plays."),
 ]
 
 
