@@ -45,16 +45,19 @@ From the top:
   - 04, frames between ticks: two clips side by side.
   The wipe and the lens play one short demo the first time it scrolls into view
   (none for less motion), and stops as soon as the visitor touches it.
-- **05, Responsive**: the race, one click slowed 25 times on one time axis
-  (0 to 60 ms): the Original's lane and OpenH1 120 Tick's, each flashing at
-  its measured median (47.7 and 5.9 ms) over faint marks at its steps (30
-  and 120 a second), then the gap between them and "8× sooner". It plays when
-  it comes into view, holds the result 1.5 s and plays again (a Pause
-  button; for less motion, the end, still). "Try it at real speed" opens the
-  click-it-yourself demo: two panels that answer one press at those medians.
-  Under it, where the time goes: each stage's median of
-  `tools/latency_summary.py` as a stacked bar. Change the numbers with a new
-  measurement only.
+- **05, Responsive**: a headline and a line in plain words, always shown,
+  then the race: one click slowed 25 times on one time axis (0 to 60 ms).
+  "You click" at the left; in each lane, the Original's (grey) and OpenH1
+  120 Tick's (green, "Faster"), a dot travels from the click to a screen,
+  the game's frame, which shows the shot when the dot arrives, at the
+  lane's measured median (47.7 and 5.9 ms), over faint marks at its steps
+  (30 and 120 a second); a bracket under the Original's lane measures the
+  wait, "42 ms you'd be waiting". It plays when it comes into view, holds
+  the result 1.5 s and plays again (a Pause button; for less motion, the
+  end, still). "Try it at real speed" opens the click-it-yourself demo: two
+  panels that answer one press at those medians. Under it, where the time
+  goes: each stage's median of `tools/latency_summary.py` as a stacked bar.
+  Change the numbers with a new measurement only.
 - **VR**, **Platforms**, **Under the hood** (the details for purists, in a
   dense list), **Bring your own game**, **Get it** (the downloads), and the
   footer.
@@ -107,6 +110,7 @@ own projects only, never to a site that offers the game.
 | `edges-original.*`, `edges-openh1.*` | 02 | Blood Gulch's cliffs against the sky, a slow strafe out and back (`capture/`): the Classic preset at 640 × 480 and Enhanced (SMAA). A quarter of the frame (320 × 180 of the Original's pixels) at 1280 × 720, 4× by nearest neighbour, shown with `image-rendering: pixelated`; 5.3 s, a loop without a fade |
 | `glow-original.*`, `glow-openh1.*` | 03 | Rat Race, the plasma rifle fired down a dark corridor, a burst before the clip leaving the scorch marks (`capture/`): the Classic preset a frame a tick, and Enhanced at 60 fps between ticks. 4 s, 1280 × 960, a loop without a fade |
 | `strafe-original.*`, `strafe-openh1.*` | 04 | Rat Race, a strafe past pillars and back to where it began (`capture/`): the Classic preset at one frame a tick, and Enhanced at 60 fps between ticks. 3.9 s, 1280 × 720 (a 16:9 crop of 4:3 masters), a loop without a fade |
+| `latency-pistol-idle.webp`, `latency-pistol-fire.webp` | 05 | Blood Gulch, a local SWAT game, the pistol fired once (`capture/`, "latency, 2026-10-24"): the frame before the shot and the one with the muzzle flash at its brightest, Enhanced. A 16:9 crop of the lower middle of a 1280 × 720 window (drawn at 2560 × 1440), 640 × 360, about 30 KB each |
 
 Each comparison is a pair of layers, `.layer.before` (the Original) under
 `.layer.after` (OpenH1), each holding an `<img>` or a `<video>`. A video

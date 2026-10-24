@@ -181,6 +181,26 @@ tools/encode-web.sh strafe strafe 3840:2160:0:360 1280x720
   `final.py` gives each game 1500 s of wall time (the trace's end quits it
   first).
 
+### latency, 2026-10-24
+
+The race's two screens (05): one pistol shot on macOS, hidden and silent,
+in a local SWAT game on Blood Gulch with no bots (SWAT starts with the
+pistol), seed 7, Enhanced, a 1280 × 720 window, frames of a fixed 1/60 s,
+the shot scripted and the frames saved only around it:
+
+```sh
+HALO_NETWORK_TEST=local:bloodgulch:swat HALO_NETWORK_TEST_START=3 HALO_BOTS=0 \
+HALO_GRAPHICS=enhanced HALO_HDR=off HALO_WINDOW_SIZE=1280x720 HALO_FRAME_TIME=0.0166667 HALO_RANDOM_SEED=7 \
+HALO_TEST_INPUT='script:5 fire;8 fire' HALO_SCREENSHOT_DIR=frames HALO_SCREENSHOT_EVERY=1 \
+HALO_SCREENSHOT_FROM=4.8 HALO_SCREENSHOT_UNTIL=5.4 build/macos/halo
+magick frame01591.bmp -crop 1408x792+704+648 +repage -resize 640x360 -quality 74 -define webp:method=6 latency-pistol-idle.webp
+magick frame01593.bmp -crop 1408x792+704+648 +repage -resize 640x360 -quality 74 -define webp:method=6 latency-pistol-fire.webp
+```
+
+The flash is two frames (the 13th and 14th saved); the second is the
+brighter. The frames are 2560 × 1440 (the Retina window), so the crop is in
+those pixels.
+
 ### Capturing on macOS: two problems, and the local workarounds used
 
 Neither is fixed in the game. The workarounds below were local edits to
