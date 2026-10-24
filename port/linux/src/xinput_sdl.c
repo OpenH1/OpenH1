@@ -83,6 +83,11 @@ extern void sim_trace_aim(double yaw, double pitch);
 /* port/linux/game/bots.c: the view turned toward the nearest enemy in
 sight, and how the player moves; TRUE once on it (the script's "hunt") */
 extern unsigned char bots_hunt(float *forward, float *strafe);
+/* port/linux/game/latency_log.c: the first controller's reading, its fire
+control's pull and left stick (debug.latency_log) */
+extern void latency_log_read(int trigger, int stick_x, int stick_y);
+/* ... and when the scripted player pressed what it reads ("latency:") */
+extern void latency_log_pressed(unsigned long long when_ns);
 
 /* ---------- device tables */
 
@@ -1305,6 +1310,43 @@ static void test_script_gamepad(XINPUT_GAMEPAD *pad)
 	}
 }
 
+/* debug.test_input "latency:<seed>": the fire control pulled for 60 ms, or
+the left stick pushed forward for 200 ms, in turn, each 350 to 650 ms after
+the last let go, on the real clock: presses that fall anywhere in a tick, as
+a person's do, for debug.latency_log (port/linux/game/latency_log.c). The
+player otherwise stands still. (A weapon that fires as the control is
+pulled: SWAT's pistol, debug.network_test "local:<map>:swat"; the plasma
+pistol, a multiplayer game's otherwise, fires as it is let go) */
+static void test_latency_gamepad(XINPUT_GAMEPAD *pad, int seed)
+{
+	static Uint64 next_ns, until_ns;
+	static unsigned long random_state;
+	static int firing;
+	Uint64 now = SDL_GetTicksNS();
+
+	if (!next_ns)
+	{
+		random_state = 12345u + (unsigned long)seed * 7919u;
+		next_ns = now + 1000000000ull;
+	}
+	if (now >= next_ns)
+	{
+		firing = !firing;
+		/* (pressed when its time came, which this reading may be a frame
+		after) */
+		latency_log_pressed(next_ns);
+		until_ns = next_ns + (firing ? 60000000ull : 200000000ull);
+		random_state = random_state * 1103515245u + 12345u;
+		next_ns = until_ns + 350000000ull + (Uint64)((random_state >> 8) % 300000u) * 1000ull;
+	}
+	if (now >= until_ns)
+		return;
+	if (firing)
+		pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] = 255;
+	else
+		pad->sThumbLY = 32000;
+}
+
 static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 {
 	static const WORD digital[] =
@@ -1317,6 +1359,7 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	static int looking;
 	static int walking;
 	static int pad_test;
+	static int latency_test;
 	double t;
 	int index;
 
@@ -1369,6 +1412,11 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 			seed = 0;
 			pad_test = 1;
 		}
+		else if (!strncmp(setting, "latency:", 8))
+		{
+			seed = atoi(setting + 8);
+			latency_test = 1;
+		}
 		else if (!strncmp(setting, "script:", 7))
 			test_script_parse(setting + 7);
 	}
@@ -1387,6 +1435,11 @@ static void test_input_gamepad(XINPUT_GAMEPAD *pad)
 	if (pad_test)
 	{
 		test_pad_gamepad(pad);
+		return;
+	}
+	if (latency_test)
+	{
+		test_latency_gamepad(pad, seed);
 		return;
 	}
 	if (test_input_holding_action)
@@ -1777,6 +1830,9 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 		test_input_gamepad(&state->Gamepad);
 		substep_frame_reading = state->Gamepad;
 		touch_input_gamepad(&state->Gamepad);
+		/* (debug.latency_log: when the input was read) */
+		latency_log_read(state->Gamepad.bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER], state->Gamepad.sThumbLX,
+			state->Gamepad.sThumbLY);
 #ifdef HALO_TOUCH_CONTROLS
 		touch_input_controls(&state->Gamepad, input.menus);
 #endif

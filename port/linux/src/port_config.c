@@ -1212,7 +1212,9 @@ static const struct config_setting config_settings[] =
 		"network tests); \"look:<seed>\" stands still, only turning and looking\n"
 		"up and down; \"walk:<seed>\" plays as \"bot\" without turning (the same\n"
 		"input each tick at any frame rate); \"pad\" turns, looks, fires, throws, holds Back and walks in\n"
-		"turn, logging each (the VR mode's vr.aim = \"gamepad\"); \"menu:<buttons>\" presses menu\n"
+		"turn, logging each (the VR mode's vr.aim = \"gamepad\"); \"latency:<seed>\" pulls the fire\n"
+		"control and pushes the stick in turn on the real clock (debug.latency_log);\n"
+		"\"menu:<buttons>\" presses menu\n"
 		"buttons one a second (a, b, x, y, up, down, left, right, start, back or\n"
 		"wait, separated by spaces or commas), for testing the menus;\n"
 		"\"script:<second>[-<second>] <action>;...\" presses, holds and aims (\"hunt\": at the\n"
@@ -1272,6 +1274,14 @@ static const struct config_setting config_settings[] =
 	{ "debug.voice_test", _config_boolean, "false", "HALO_VOICE_TEST", _environment_set_is_true, _platform_all,
 		"Voice chat's automated tests: a tone instead of the microphone, and\n"
 		"each voice heard logged once a second." },
+	{ "debug.latency_log", _config_string, "\"\"", "HALO_LATENCY_LOG", _environment_value, _platform_all,
+		"A file to write a line to for each press of the fire control and each\n"
+		"move from standing of the first player: the milliseconds from the\n"
+		"controller's reading to the step that acts on it, to the first frame\n"
+		"drawn after it, to the first frame that shows it (the frames draw a\n"
+		"tick behind), and that frame's drawing and handing on\n"
+		"(port/linux/game/latency_log.c, tools/latency_summary.py); empty for\n"
+		"none." },
 	{ "debug.determinism_log", _config_string, "\"\"", "HALO_DETERMINISM_LOG", _environment_value, _platform_all,
 		"A file to write a line a tick to: a hash of the game state, the random\n"
 		"seeds and every taker of a seed by its call site, to compare two runs\n"

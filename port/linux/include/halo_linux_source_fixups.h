@@ -88,6 +88,18 @@ void sim_trace_projectile_collision(long projectile_index, void const *point, vo
 	float time_remaining, float fraction);
 void sim_trace_projectile_detonate(long projectile_index);
 void sim_trace_weapon_fire(long weapon_index, long owner_object_index, short trigger_index);
+/* debug.latency_log (port/linux/game/latency_log.c): the first local
+player's input to the frame that shows it, each call made only while the
+log is on (LATENCY_LOG): a weapon fired (weapons.c), each simulation step
+(game_time.c), each frame drawn (main.c) */
+extern int latency_log_on;
+#define LATENCY_LOG(call) do { if (latency_log_on) { call; } } while (0)
+void latency_log_fire(long owner_object_index);
+void latency_log_substep_begin(void);
+void latency_log_substep_end(void);
+void latency_log_frame_begin(void);
+void latency_log_frame_rendered(void);
+void latency_log_frame_presented(void);
 /* the Custom Edition tag cache window, or NULL unless the
 game.custom_edition setting reserved it (port/linux/src/xbox_memory.c) */
 void *halo_custom_edition_tag_cache(void);
