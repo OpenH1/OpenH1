@@ -27,7 +27,7 @@ MODS = "main_menu/mods"
 MOD_ROWS = 11
 MODS_ITEM_PLACE = (192, 391)
 QUIT_ITEM_PLACE = (192, 427)
-# the Steam Frame's update question, over the main menu (_update)
+# the update question (the Steam Frame's, gamescope's), over the main menu (_update)
 UPDATE = "main_menu/update"
 YES_NO = [("YES", "true"), ("NO", "false")]
 ON_OFF = [("ON", "true"), ("OFF", "false")]
@@ -3031,8 +3031,9 @@ def multiplayer_files() -> dict:
         OPENCE_EDIT.replace("/", ".") + ".port.xml": head + _opence_options() + ["</menus>", ""],
         MODS.replace("/", ".") + ".xml": [head[0], "<!-- The port's Mods screen, in the PC version's style "
                                           "(tools/port_settings.py) -->", head[2]] + _mods() + ["</menus>", ""],
-        UPDATE.replace("/", ".") + ".xml": [head[0], "<!-- The Steam Frame's update question, in the style of the "
-                                            "PC version's Quit (tools/port_settings.py) -->", head[2]]
+        UPDATE.replace("/", ".") + ".xml": [head[0], "<!-- The update question (the Steam Frame's, gamescope's), in "
+                                            "the style of the PC version's Quit (tools/port_settings.py) -->",
+                                            head[2]]
         + _update() + ["</menus>", ""],
     }
 
@@ -3146,8 +3147,8 @@ def _mods() -> list:
     it; OK keeps it all (load_order.toml) and plays them, Cancel forgets it
     (menu_functions.c)"""
     base = MODS
-    # (its game data input notes the main menu shown, over which the Steam
-    # Frame's update question opens: _update)
+    # (its game data input notes the main menu shown, over which the update
+    # question opens: _update)
     lines = _widget("main_menu/main_menu_item_mods",
                     [("type", "text"), ("width", 256), ("height", 33), ("bitmap", "main_menu/menu_mods")],
                     ['<data input="port update question"/>',
@@ -3217,11 +3218,13 @@ def _mods() -> list:
 
 
 def _update() -> list:
-    """the Steam Frame's update question (port/linux/src/updater.c, which a
-    system dialog would not show in the headset), laid out as the PC
-    version's Quit is (ce/main_menu.quit_select.xml): its box, its header,
-    and its two buttons, UPDATE ("port update now": the game quits, and its
-    launcher installs the update and starts it again) and NOT NOW (back to
+    """the update question of the Steam Frame and of gamescope (the Steam
+    Deck's Game Mode: port/linux/src/updater.c, where a system dialog would
+    not show), laid out as the PC version's Quit is
+    (ce/main_menu.quit_select.xml): its box, its header, and its two
+    buttons, UPDATE ("port update now": the game closes, and its launcher,
+    or the game itself under gamescope, puts the update in place and starts
+    it) and NOT NOW (back to
     the main menu, which menu_functions.c's pc_menu_update_question_open
     opened it over); B is NOT NOW. To stop the questions: Network Setup's
     CHECK FOR UPDATES"""

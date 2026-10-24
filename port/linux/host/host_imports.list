@@ -44,4 +44,5 @@ host_update_delete_file
 host_update_make_directory
 host_update_make_executable
 host_update_launch
+host_update_restart
 host_app_playing

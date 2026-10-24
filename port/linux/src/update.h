@@ -46,4 +46,10 @@ int update_make_directory(const char *path);
 this process's environment and none of its files; 1 on success */
 int update_launch(const char *path);
 
+/* starts the executable at path in place of this program, in this process
+(its id and its parent kept), with no arguments, this process's
+environment and none of its files: what started the game sees it go on
+(Linux; nothing on Windows); returns only if it could not be */
+int update_restart(const char *path);
+
 #endif

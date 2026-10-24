@@ -534,6 +534,11 @@ int host_update_launch(const char *path)
 	return update_launch(path);
 }
 
+int host_update_restart(const char *path)
+{
+	return update_restart(path);
+}
+
 /* ---------- the game's state, for the macOS app's updater */
 
 /* whether a game is played (1) or the main menu shown (0), as the guest

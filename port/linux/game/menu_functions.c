@@ -62,13 +62,14 @@ begin" makes two players, player 1 on its profile; "port coop player 2"
 gives player 2 the profile chosen and the controller that chose it; then the
 campaign's New Game and difficulty start the game for both.
 
-The update question (the Steam Frame's self-updater, port/linux/src/updater.c,
-which can show no system dialog in the headset): "port update question",
-the main menu's MODS item's game data input, notes that the main menu is
-shown; pc_menu_update_question_open, from the updater between frames, then
-opens main_menu/update/update_screen over it, whose UPDATE runs "port update
-now" (updater_update_now: the game quits, and its launcher installs the
-update).
+The update question (the self-updater's, port/linux/src/updater.c, on the
+Steam Frame and under gamescope, where it can show no system dialog):
+"port update question", the main menu's MODS item's game data input, notes
+that the main menu is shown; pc_menu_update_question_open, from the updater
+between frames, then opens main_menu/update/update_screen over it, whose
+UPDATE runs "port update now" (updater_update_now: on the Frame, the game
+quits, and its launcher installs the update; under gamescope, the game puts
+the update in place and starts it in its own process).
 
 The rest are the PC version's, which its menus (port/assets/menus/ce)
 name and the Xbox's has not: they do nothing yet, and succeed, so that what
@@ -3626,7 +3627,7 @@ static void mods_update(struct widget_instance *list)
 	mods_details_show(list->parameters.list.extended_description, count ? mods_screen.chosen : NONE, count);
 }
 
-/* ---------- the update question (updater.c's, the Steam Frame's) */
+/* ---------- the update question (updater.c's, the Steam Frame's and gamescope's) */
 
 static struct
 {
