@@ -96,6 +96,7 @@ their handlers open opens.
 #include "game_modes.h"
 #include "network_voice.h"
 #include "sim_rate.h"
+#include "network_standard.h"
 #include "text/draw_string.h"
 /* (internet play's server browser: the platform layer's) */
 #include "../src/p2p.h"
@@ -115,6 +116,7 @@ void event_manager_post_button(short controller_index, short button_index);
 int config_text(char const *name, char *text, unsigned int size);
 int config_write(char const *name, char const *value);
 int config_boolean(char const *name);
+long config_integer(char const *name);
 int config_default(char const *name, char *text, unsigned int size);
 int config_graphics_value(char const *graphics, char const *name, char *text, unsigned int size);
 char const *config_graphics_setting(int entry);
@@ -4717,6 +4719,50 @@ VOTING), PASSWORD's and MAP SHARING's (its help_strings, tools/port_settings.py)
 #define COOPERATIVE_VOICE_OPTIONS_HELP 13
 #define SERVER_PASSWORD_HELP 14
 #define MAP_SHARE_OPTIONS_HELP 15
+/* ... and GAME's first choice's (each choice its own) */
+#define GAME_MODE_HELP 16
+
+/* Server Setup's GAME: the kind of game hosted (network.game_mode) and its
+tick rate (network.sim_rate), as tools/port_settings.py's GAME_MODES have
+them, in this order; a rate of 0 is Legacy (OpenCE's, at 30) */
+static long const server_settings_game_modes[] = { 30, 60, 120, 0 };
+#define DEFAULT_GAME_MODE 1
+
+/* the choice network.game_mode and network.sim_rate make */
+static short server_settings_game_mode(void)
+{
+	char const *mode = config_string("network.game_mode");
+	long rate = config_integer("network.sim_rate");
+	short index;
+
+	if (mode && !strcmp(mode, "legacy"))
+		return NUMBEROF(server_settings_game_modes) - 1;
+	for (index = 0; index < NUMBEROF(server_settings_game_modes) - 1; index++)
+	{
+		if (server_settings_game_modes[index] == rate)
+			return index;
+	}
+	return DEFAULT_GAME_MODE;
+}
+
+/* ... written, if it is another */
+static void server_settings_game_mode_set(short index)
+{
+	long rate;
+	char text[16];
+
+	if (index < 0 || index >= NUMBEROF(server_settings_game_modes) || index == server_settings_game_mode())
+		return;
+	rate = server_settings_game_modes[index];
+	if (!config_write("network.game_mode", rate ? "openh1" : "legacy"))
+		platform_log("menus: could not write network.game_mode to config.toml");
+	if (rate)
+	{
+		snprintf(text, sizeof(text), "%ld", rate);
+		if (!config_write("network.sim_rate", text))
+			platform_log("menus: could not write network.sim_rate to config.toml");
+	}
+}
 
 /* co-op's EXTRA ENEMIES' choices (network.coop_enemies_mode's values, as
 gametype_options' coop_extra_enemies_spinner has them, in this order): its
@@ -4800,6 +4846,9 @@ static boolean server_settings_initialize(struct widget_instance *list)
 	back from an option's screen) */
 	if ((spinner = named(list, "listing_spinner", 0)) != NULL)
 		spinner->parameters.list.selected_index = server_settings_private() ? 1 : 0;
+	/* (GAME: as network.game_mode and network.sim_rate have it) */
+	if ((spinner = named(list, "game_mode_spinner", 0)) != NULL)
+		spinner->parameters.list.selected_index = server_settings_game_mode();
 	p2p_set_hosting_public(multiplayer.mode == _multiplayer_mode_host_internet && !server_settings_private());
 	return TRUE;
 }
@@ -4876,6 +4925,17 @@ static void server_settings_update(struct widget_instance *list)
 		if (help && list->focused_child == named(list, "op_listing", 0))
 			help->parameters.text_box.string_list_index = (short)(10 + spinner->parameters.list.selected_index);
 	}
+	/* GAME: OpenH1 at a tick rate, or Legacy (network.game_mode,
+	network.sim_rate), written as it is chosen. Its help is its choice's */
+	if ((spinner = named(list, "game_mode_spinner", 0)) != NULL)
+	{
+		struct widget_instance *help = list->parameters.list.extended_description;
+		short index = (short)PIN(spinner->parameters.list.selected_index, 0, NUMBEROF(server_settings_game_modes) - 1);
+
+		server_settings_game_mode_set(index);
+		if (help && list->focused_child == named(list, "op_game_mode", 0))
+			help->parameters.text_box.string_list_index = (short)(GAME_MODE_HELP + index);
+	}
 	/* PASSWORD (a PUBLIC internet game's): its stars, NONE if it has none */
 	row = named(list, "op_password", 0);
 	visible_set(row, named(list, "op_listing", 0) && named(list, "op_listing", 0)->visible &&
@@ -4947,6 +5007,9 @@ static boolean server_start(void)
 		text_field_end(TRUE);
 	network_game_server_port_set_settings(multiplayer.game_name,
 		maximum_players[PIN(*server_settings_maximum_players_index(), 0, NUMBEROF(maximum_players) - 1)]);
+	/* (GAME as chosen, if no other machine has joined yet:
+	network_standard.c) */
+	network_standard_server_mode_read();
 	/* (its listing's password: a PUBLIC internet game's, else none) */
 	p2p_set_hosting_password(multiplayer.mode == _multiplayer_mode_host_internet && !server_settings_private() ?
 		multiplayer.game_password : NULL);

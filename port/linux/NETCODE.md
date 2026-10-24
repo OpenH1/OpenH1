@@ -479,6 +479,13 @@ starts hosting; `port/linux/game/network_standard.c`):
   Every machine takes it before the game's first tick, and it holds for the
   whole game.
 
+Server Setup's GAME row picks the kind and the rate: OPENH1 30 TICK, OPENH1
+60 TICK (the default), OPENH1 120 TICK or LEGACY. It writes
+`network.game_mode` and `network.sim_rate`. The server, made before Server
+Setup opens, reads them again when its START GAME is pressed, as long as no
+other machine has joined (`network_standard_server_mode_read`). Once a
+machine has joined, the kind of game stays as it was.
+
 The server browser and the system link list show each game's tick rate
 before its gametype ("60 SLAYER"; a Legacy game's 30), where a long
 gametype the column cuts leaves it. The line under the

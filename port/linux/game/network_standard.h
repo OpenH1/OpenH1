@@ -14,6 +14,9 @@ struct network_game;
 /* hosting: the server made reads network.game_mode, which holds while it
 hosts: whether its games are Standard */
 void network_standard_server_created(void);
+/* ... and again (Server Setup's GAME, chosen after the server was made),
+while no other machine has joined: a game's kind holds once one has */
+void network_standard_server_mode_read(void);
 boolean network_standard_hosting(void);
 /* the rate of the Standard game hosted: network.sim_rate as read in the
 lobby (in_lobby, before the game's start), the same from the start to the
