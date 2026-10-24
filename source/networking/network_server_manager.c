@@ -483,6 +483,8 @@ server browser's listing of a public game (p2p_lobby.c) */
 void p2p_set_game_player_counts(int count, int maximum);
 void p2p_set_game_listing(const char *name, const char *map, const char *gametype, int engine_type, int kind,
 	int open, int in_progress, int has_teams);
+void p2p_set_game_listing_standard(int standard, int rate);
+#include "network_standard.h" /* port: port/linux/game/network_standard.c */
 
 /* ---------- constants */
 
@@ -1286,6 +1288,9 @@ struct network_game_server *network_game_server_create(
 			server->state = _network_game_server_state_pregame;
 			server->flags = FLAG(_network_game_server_game_valid_bit);
 			csmemset(&server->game, 0, sizeof(server->game));
+			/* port: whether its games are OpenH1's Standard ones or Legacy
+			(network.game_mode), for as long as it hosts */
+			network_standard_server_created();
 
 			network_connection_set_connection_rejection_procedure(
 				server->connection,
@@ -1525,6 +1530,9 @@ static void network_game_server_list(
 	p2p_set_game_listing(name, tag_name_strip_path(game->map.name), gametype, game->variant.game_engine_index,
 		game_modes_kind(&game->variant, &game->variant_options), open, in_progress,
 		game->variant.universal_variant.teams);
+	/* port: (a Standard game's, and its rate: network_standard.c) */
+	p2p_set_game_listing_standard(network_standard_hosting(),
+		(int)network_standard_server_rate(state == _network_game_server_state_pregame && !in_progress));
 }
 
 /* port: the bots (port/linux/game/bots.c, the settings' bots.count and

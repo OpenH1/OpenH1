@@ -16,12 +16,12 @@ machine, its own server's, that takes no other machine
 (network_game_is_splitscreen_local) for its whole length. It is 30,
 whatever game.sim_rate says, in a game that must stay as it was:
 
-- A network game of other machines, hosting or joining: the netcode is
-  OpenCE's (NETCODE.md), whose machines each simulate the players from the
-  same input, so all of them must step alike, and OpenCE steps at 30. A
-  protocol of OpenH1's own could agree on a rate with every machine before
-  the game starts; it would say so in sim_rate_network (below), the one
-  place that decides it.
+- A Legacy network game of other machines, hosting or joining: the
+  netcode is OpenCE's (NETCODE.md), whose machines each simulate the
+  players from the same input, so all of them must step alike, and OpenCE
+  steps at 30. A Standard game (OpenH1's own, network_standard.c) agrees
+  on a rate with every machine before the game starts, the host's choice:
+  sim_rate_network (below) is the one place that decides it.
 - A saved film's playback (game_connection's film playback), which replays
   a recording's input tick by tick.
 
@@ -51,6 +51,7 @@ sub-step a frame.
 #include "math/real_math.h"
 #include "game/game.h"
 #include "sim_rate.h"
+#include "network_standard.h"
 
 /* port/linux/src/port_config.c */
 long config_integer(char const *name);
@@ -81,7 +82,24 @@ static struct
 
 /* ---------- private code */
 
-/* game.sim_rate: 30, 60 or 120, anything else 30 */
+/* (public: sim_rate.h) */
+boolean sim_rate_supported(
+	long rate)
+{
+	long count;
+
+	/* (30 times a power of two, of no more sub-steps than a tick has room
+	for: the conversions scale exactly, sim_root takes its roots) */
+	for (count = 1; count <= MAXIMUM_SIM_SUBSTEPS; count *= 2)
+	{
+		if (rate == SIM_RATE_CLASSIC * count)
+			return TRUE;
+	}
+	return FALSE;
+}
+
+/* game.sim_rate: a rate this file steps at (sim_rate_supported), anything
+else 30 */
 static long sim_rate_setting(
 	void)
 {
@@ -91,20 +109,23 @@ static long sim_rate_setting(
 
 		sim_rate_globals.read = TRUE;
 		sim_rate_globals.read_at = config_changes();
-		sim_rate_globals.setting = (setting == 60 || setting == 120) ? setting : SIM_RATE_CLASSIC;
+		sim_rate_globals.setting = sim_rate_supported(setting) ? setting : SIM_RATE_CLASSIC;
 	}
 	return sim_rate_globals.setting;
 }
 
-/* the rate of a network game: the one every machine of it agreed to. The
-classic netcode (OpenCE's, which this one plays with) agrees on none, so
-30. A protocol of OpenH1's own would bring the rate the host chose and every
-machine took (and only one every machine can run) here, set before the
-game's first tick and the same for its whole length. */
+/* the rate of a network game: the one every machine of it agreed to. A
+Legacy game (OpenCE's netcode, which this one plays with) agrees on none,
+so 30. A Standard game (OpenH1's own, network_standard.c) brings the rate
+its host chose and every machine took, set before the game's first tick
+and the same for its whole length; only one this file steps at
+(sim_rate_supported), else 30. */
 static long sim_rate_network(
 	void)
 {
-	return SIM_RATE_CLASSIC;
+	long rate = network_standard_agreed_rate();
+
+	return rate && sim_rate_supported(rate) ? rate : SIM_RATE_CLASSIC;
 }
 
 /* (public: sim_rate.h) */

@@ -11,16 +11,19 @@ whose X25519 form's hash is the invite's host part (p2p.c), so no one but
 the host can list its invite, alter its listing, or list another's under
 false details:
 
-	"HL", format 1, the lobby version (2: HALO_PORT_NETWORK_VERSION; browsers
-	hide others), flags (open, under way, teams, closed, password), sequence
+	"HL", format 1, the lobby version (2: HALO_PORT_NETWORK_VERSION, or a
+	Standard game's HALO_PORT_STANDARD_ADVERTISED_VERSION, which builds that
+	know nothing of Standard games take for a newer version; browsers hide
+	others), flags (open, under way, teams, closed, password), sequence
 	(4: newest wins), Unix time (4), the Ed25519 key (32), the invite's token
 	(16; a password's game's sealed with the password's key, 56:
 	p2p_seal_token; a tombstone's zero), players, most players, the
 	gametype's engine (1 each), the game's name,
 	map and gametype (a length byte, then up to 32, 32 and 24 characters of
 	printable ASCII), a stamp (8: the game's kind, an OpenCE gametype's mode
-	and Hardcore, port/linux/game/game_modes.h's game_modes_kind; the rest
-	reserved, zero), and the signature (64) of "hceu-lobby-1" and all before
+	and Hardcore, port/linux/game/game_modes.h's game_modes_kind; then a
+	Standard game's rate in Hz, a Legacy game's zero; the rest reserved,
+	zero), and the signature (64) of "hceu-lobby-1" and all before
 	it.
 
 Each host has a slot, hceu/3/lobby/s/<its key's hash in hex>: its listing,
@@ -124,7 +127,7 @@ struct listing
 	unsigned char token[P2P_TOKEN_SIZE];
 	/* (_listing_password: its token, sealed) */
 	unsigned char sealed_token[P2P_SEALED_TOKEN_SIZE];
-	int player_count, maximum_player_count, engine_type, kind;
+	int player_count, maximum_player_count, engine_type, kind, rate;
 	char name[P2P_LISTING_NAME_SIZE + 1];
 	char map[P2P_LISTING_MAP_SIZE + 1];
 	char gametype[P2P_LISTING_GAMETYPE_SIZE + 1];
@@ -176,6 +179,8 @@ static struct
 	char gametype[P2P_LISTING_GAMETYPE_SIZE + 1];
 	int engine_type;
 	int kind;
+	/* a Standard game (port/linux/game/network_standard.c), and its rate */
+	int standard, rate;
 	int flags;
 	int player_count, maximum_player_count;
 	/* the password's key (p2p_set_hosting_password), if it has one */
@@ -292,8 +297,12 @@ static int listing_make(unsigned char *bytes, int flags)
 	bytes[size++] = 'H';
 	bytes[size++] = 'L';
 	bytes[size++] = LISTING_FORMAT;
-	bytes[size++] = (unsigned char)(HALO_PORT_NETWORK_VERSION >> 8);
-	bytes[size++] = (unsigned char)HALO_PORT_NETWORK_VERSION;
+	{
+		int version = lobby.standard ? HALO_PORT_STANDARD_ADVERTISED_VERSION : HALO_PORT_NETWORK_VERSION;
+
+		bytes[size++] = (unsigned char)(version >> 8);
+		bytes[size++] = (unsigned char)version;
+	}
 	bytes[size++] = (unsigned char)flags;
 	put_long(bytes + size, ++lobby.sequence);
 	size += 4;
@@ -323,6 +332,8 @@ static int listing_make(unsigned char *bytes, int flags)
 	size += put_text(bytes + size, lobby.gametype, P2P_LISTING_GAMETYPE_SIZE);
 	memset(bytes + size, 0, STAMP_SIZE);
 	bytes[size] = (unsigned char)lobby.kind;
+	if (lobby.standard)
+		bytes[size + 1] = (unsigned char)lobby.rate;
 	size += STAMP_SIZE;
 	memcpy(data, signature_label, sizeof(signature_label) - 1);
 	memcpy(data + sizeof(signature_label) - 1, signed_part, (size_t)size);
@@ -390,6 +401,7 @@ static int listing_read(const unsigned char *bytes, int size, struct listing *li
 	/* (the stamp: the game's kind first; a listing too short for it fails
 	the size check below) */
 	listing->kind = offset < size ? bytes[offset] : 0;
+	listing->rate = offset + 1 < size ? bytes[offset + 1] : 0;
 	offset += STAMP_SIZE;
 	if (offset + P2P_SIGNATURE_SIZE != size)
 		return 0;
@@ -673,6 +685,9 @@ static void listing_take(const struct queued *queued, const struct listing *list
 	shown->maximum_player_count = (unsigned char)listing->maximum_player_count;
 	shown->engine_type = (unsigned char)listing->engine_type;
 	shown->kind = (unsigned char)listing->kind;
+	/* (a Standard game's rate; a Legacy game's 30) */
+	shown->standard = (listing->version & HALO_PORT_STANDARD_VERSION_BIT) != 0;
+	shown->rate = (unsigned char)(shown->standard ? listing->rate : 30);
 	shown->open = (listing->flags & _listing_open) != 0;
 	shown->in_progress = (listing->flags & _listing_in_progress) != 0;
 	shown->has_teams = (listing->flags & _listing_has_teams) != 0;
@@ -705,6 +720,21 @@ static void update_probes(void)
 			refused++;
 		}
 	}
+}
+
+/* a listing's version: one of this build's (a Legacy game's network
+version, or a Standard game's protocol version), or a newer one of either
+kind */
+static int version_ours(int version)
+{
+	return version == HALO_PORT_NETWORK_VERSION || version == HALO_PORT_STANDARD_ADVERTISED_VERSION;
+}
+
+static int version_newer(int version)
+{
+	if (version & HALO_PORT_STANDARD_VERSION_BIT)
+		return (version & ~HALO_PORT_STANDARD_VERSION_BIT) > HALO_PORT_STANDARD_NETWORK_VERSION;
+	return version > HALO_PORT_NETWORK_VERSION;
 }
 
 /* a host heard listing a game of a newer network version (lobby.newer) */
@@ -751,12 +781,12 @@ static void update_browsing(void)
 		/* (a newer version's game is counted, not shown: its host's key
 		hash only, unverified, so it is no more than a count) */
 		if (lobby.browsing && listing_read(queued.payload, queued.size, &listing) &&
-			listing.version > HALO_PORT_NETWORK_VERSION && !(listing.flags & _listing_closed))
+			version_newer(listing.version) && !(listing.flags & _listing_closed))
 		{
 			newer_heard(queued.key_hash);
 			continue;
 		}
-		if (!listing_read(queued.payload, queued.size, &listing) || listing.version != HALO_PORT_NETWORK_VERSION ||
+		if (!listing_read(queued.payload, queued.size, &listing) || !version_ours(listing.version) ||
 			!signing_key_hash(listing.key, key_hash) || memcmp(key_hash, queued.key_hash, P2P_KEY_HASH_SIZE))
 		{
 			continue;
@@ -908,6 +938,22 @@ void p2p_set_game_listing(const char *name, const char *map, const char *gametyp
 	lobby.engine_type = engine_type;
 	lobby.kind = kind & 0xFF;
 	lobby.flags = flags;
+	if (lobby.listed)
+		republish_soon(0);
+	pthread_mutex_unlock(&p2p_lock);
+}
+
+void p2p_set_game_listing_standard(int standard, int rate)
+{
+	standard = standard ? 1 : 0;
+	rate = standard ? rate & 0xFF : 0;
+	/* (only the game's server writes these: unchanged, it need not wait for
+	the lock) */
+	if (standard == lobby.standard && rate == lobby.rate)
+		return;
+	pthread_mutex_lock(&p2p_lock);
+	lobby.standard = standard;
+	lobby.rate = rate;
 	if (lobby.listed)
 		republish_soon(0);
 	pthread_mutex_unlock(&p2p_lock);

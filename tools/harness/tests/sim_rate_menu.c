@@ -43,6 +43,15 @@ static boolean sim_rate_locked(void)
 	return locked;
 }
 
+/* the rate the game takes while locked: a Legacy game's 30, or a Standard
+game's agreed rate */
+static long agreed_rate = 30;
+
+static long sim_rate_next(void)
+{
+	return agreed_rate;
+}
+
 static struct widget_instance *named(struct widget_instance *widget, char const *name, long nth)
 {
 	struct widget_instance *child;
@@ -163,6 +172,23 @@ int main(int argc, char **argv)
 		setting_changed_save(&spinner, &sim_rate_setting);
 		CHECK(writes == 0 && !strcmp(config_value, "120"), "Defaults then OK wrote: %s", config_value);
 		CHECK(other_row.alpha_modifier == 1.0f && !other_row.disabled, "another row locked");
+		return 0;
+	}
+
+	/* a Standard network game: its agreed rate shown, locked, and OK leaves
+	the setting as it was */
+	if (!strcmp(case_name, "locked-agreed"))
+	{
+		strcpy(config_value, "30");
+		locked = TRUE;
+		agreed_rate = 120;
+		setup();
+		sim_rate_row_show(&list);
+		CHECK(spinner.parameters.list.selected_index == 2, "a Standard game at 120 shows %d",
+			spinner.parameters.list.selected_index);
+		CHECK(row.disabled && spinner.disabled, "locked row takes focus or events");
+		setting_changed_save(&spinner, &sim_rate_setting);
+		CHECK(writes == 0 && !strcmp(config_value, "30"), "OK wrote the agreed rate: %s", config_value);
 		return 0;
 	}
 

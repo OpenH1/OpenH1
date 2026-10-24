@@ -17,6 +17,7 @@ password never. Prints PASS or the failures.
 */
 
 #include "p2p_internal.h"
+#include "halo_port_limits.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -389,6 +390,32 @@ static void lobby_checks(void)
 	hear(published, published_size, 0, NULL);
 	check(games(&listing) == 1 && !listing.locked && !strcmp(listing.invite, expected_invite),
 		"a game whose password is taken off is listed open");
+	/* a Legacy game's listing as before: the network version, no rate */
+	check(published[3] == (HALO_PORT_NETWORK_VERSION >> 8) && published[4] == (HALO_PORT_NETWORK_VERSION & 0xFF) &&
+		published[published_size - P2P_SIGNATURE_SIZE - 7] == 0 && listing.kind == 0x81 && !listing.standard &&
+		listing.rate == 30, "a Legacy game is listed at the network version, at 30");
+	/* a Standard game: its protocol's version, which builds that know
+	nothing of it take for a newer one, and its rate */
+	p2p_set_game_listing_standard(1, 120);
+	clock_now += 6000;
+	lobby_update(token, 3, 16);
+	hear(published, published_size, 0, NULL);
+	check(published[3] == (HALO_PORT_STANDARD_ADVERTISED_VERSION >> 8) &&
+		published[4] == (HALO_PORT_STANDARD_ADVERTISED_VERSION & 0xFF) &&
+		((published[3] << 8) | published[4]) > HALO_PORT_NETWORK_VERSION, "a Standard game's listing version");
+	check(games(&listing) == 1 && listing.standard && listing.rate == 120 && listing.kind == 0x81,
+		"a Standard game is listed, with its rate");
+	/* a newer Standard version's game is counted, not shown */
+	{
+		unsigned char newer[512];
+
+		memcpy(newer, published, (size_t)published_size);
+		newer[4] = (unsigned char)(newer[4] + 1);
+		clock_now += 91000;
+		lobby_update(token, 3, 16);
+		hear(newer, published_size, 0, NULL);
+		check(games(NULL) == 0 && p2p_lobby_newer_games() == 1, "a newer Standard version's game is counted");
+	}
 }
 
 int main(void)

@@ -1795,8 +1795,9 @@ static void graphics_preset_show(struct widget_instance *list)
 }
 
 /* Graphics' SIMULATION row (game.sim_rate): where the game sets the setting
-aside and plays at 30 (sim_rate_locked: a network game of other machines,
-a film's playback), the row is locked. It shows ORIGINAL (30), dimmed, the
+aside (sim_rate_locked: a network game of other machines, a film's
+playback), the row is locked. It shows the rate the game takes (ORIGINAL
+(30), or a Standard game's agreed rate), dimmed, the
 list and the pointer pass over it, and OK leaves the setting as it was
 (setting_changed_save passes over a disabled spinner). Unlocked, it shows
 the setting's value again */
@@ -1820,7 +1821,9 @@ static void sim_rate_row_show(struct widget_instance *list)
 	{
 		char classic[16];
 
-		snprintf(classic, sizeof(classic), "%d", SIM_RATE_CLASSIC);
+		/* (the rate the game takes: a Legacy game's 30, a Standard game's
+		agreed rate) */
+		snprintf(classic, sizeof(classic), "%ld", sim_rate_next());
 		spinner->parameters.list.selected_index = setting_value_index(setting, classic);
 	}
 	else if (setting->loaded_index >= 0 && setting->loaded_index < setting->value_count)

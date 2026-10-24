@@ -27,6 +27,14 @@ static unsigned long changes = 1;
 static short connection = _game_connection_local;
 /* a network server's game takes no other machine (split screen) */
 static boolean splitscreen = FALSE;
+/* the rate a network game agreed on (network_standard.c: a Standard
+game's, 0 for a Legacy game's) */
+static long agreed = 0;
+
+long network_standard_agreed_rate(void)
+{
+	return agreed;
+}
 
 long config_integer(char const *name)
 {
@@ -204,6 +212,40 @@ int main(int argc, char **argv)
 		splitscreen = FALSE;
 		set(120, _game_connection_network_server);
 		CHECK(sim_rate_get() == 30, "a server that takes other machines: %ld", sim_rate_get());
+		return 0;
+	}
+
+	/* a Standard game's agreed rate (network_standard.c), whatever the
+	setting, on host and client alike; one the sub-steps do not step at, 30;
+	a Legacy game's (none), 30; never a film's playback */
+	if (!strcmp(case_name, "network-agreed"))
+	{
+		static short const connections[] = { _game_connection_network_client, _game_connection_network_server };
+		static long const rates[] = { 30, 60, 120 };
+		short rate_index;
+
+		for (index = 0; index < NUMBEROF(connections); index++)
+		{
+			for (rate_index = 0; rate_index < NUMBEROF(rates); rate_index++)
+			{
+				agreed = rates[rate_index];
+				set(rate_index ? 30 : 120, connections[index]);
+				CHECK(sim_rate_get() == rates[rate_index] && sim_substep_count() == rates[rate_index] / 30,
+					"connection %d agreed %ld: rate %ld", connections[index], agreed, sim_rate_get());
+			}
+			agreed = 90;
+			set(120, connections[index]);
+			CHECK(sim_rate_get() == 30, "connection %d agreed 90: %ld", connections[index], sim_rate_get());
+			agreed = 240;
+			set(120, connections[index]);
+			CHECK(sim_rate_get() == 30, "connection %d agreed 240: %ld", connections[index], sim_rate_get());
+		}
+		agreed = 60;
+		set(120, _game_connection_film_playback);
+		CHECK(sim_rate_get() == 30, "film playback: %ld", sim_rate_get());
+		agreed = 0;
+		CHECK(sim_rate_supported(30) && sim_rate_supported(60) && sim_rate_supported(120) && !sim_rate_supported(0) &&
+			!sim_rate_supported(90) && !sim_rate_supported(240) && !sim_rate_supported(-30), "supported rates");
 		return 0;
 	}
 

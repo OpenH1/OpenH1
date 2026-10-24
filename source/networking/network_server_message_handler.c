@@ -249,6 +249,7 @@ symbols in this file:
 
 #include "cseries.h"
 #include "game_modes.h" /* port: port/linux/game/game_modes.c */
+#include "network_standard.h" /* port: port/linux/game/network_standard.c */
 #include "bungie_net/common/message_header.h"
 #include "bungie_net/network/transport.h"
 #include "bungie_net/network/transport_endpoint_winsock.h"
@@ -785,6 +786,16 @@ boolean network_game_server_send_message_to_client_machine(
 	return network_game_server_write(connection, buffer, size, NULL, 1);
 }
 
+/* port: whether the server's game is in its lobby, not yet started (a
+Standard game's rate is read again there, and holds from its start:
+network_standard.c) */
+static boolean network_game_server_in_lobby(
+	struct network_game_server *server)
+{
+	return network_game_server_get_state(server, NULL) == _network_game_server_state_pregame &&
+		!network_game_server_game_is_loading(server);
+}
+
 boolean network_game_server_send_game_settings_to_client_machine(
 	struct network_game_server *server,
 	struct network_game_server_client_machine *machine,
@@ -793,6 +804,9 @@ boolean network_game_server_send_game_settings_to_client_machine(
 {
 	struct message_server_game_settings_update message;
 	long offset;
+
+	/* port: a Standard game's rate in its record (a Legacy game's as it was) */
+	network_standard_stamp_game(network_game_server_get_game(server), network_game_server_in_lobby(server));
 
 	for (offset = 0; offset < game_size; offset += sizeof(message.data))
 	{
@@ -1081,6 +1095,8 @@ boolean network_game_server_send_game_settings_to_all_machines(
 		"c:\\halo\\SOURCE\\networking\\network_server_message_handler.c",
 		0x1C8,
 		server);
+	/* port: a Standard game's rate in its record (a Legacy game's as it was) */
+	network_standard_stamp_game(network_game_server_get_game(server), network_game_server_in_lobby(server));
 
 	/* every piece goes out even if one fails for a machine: the others
 	would otherwise keep the old settings (a machine whose connection failed
@@ -1784,8 +1800,21 @@ static boolean network_game_server_handle_message_client_broadcast_game_search(
 			/* the native builds' network version and netcode (a client
 			refuses a host of another version, or of the lockstep netcode
 			older builds had: network_client_manager.c) */
-			advertisement.reserved[HALO_PORT_ADVERTISED_VERSION_OFFSET] = (byte)(HALO_PORT_NETWORK_VERSION & 0xFF);
-			advertisement.reserved[HALO_PORT_ADVERTISED_VERSION_OFFSET + 1] = (byte)(HALO_PORT_NETWORK_VERSION >> 8);
+			/* port: (a Standard game's protocol version in its place, which
+			builds that know nothing of Standard games take for a newer
+			version, and its rate: network_standard.c) */
+			{
+				word version = network_standard_hosting() ?
+					HALO_PORT_STANDARD_ADVERTISED_VERSION : HALO_PORT_NETWORK_VERSION;
+
+				advertisement.reserved[HALO_PORT_ADVERTISED_VERSION_OFFSET] = (byte)(version & 0xFF);
+				advertisement.reserved[HALO_PORT_ADVERTISED_VERSION_OFFSET + 1] = (byte)(version >> 8);
+				if (network_standard_hosting())
+				{
+					advertisement.reserved[HALO_PORT_ADVERTISED_RATE_OFFSET] =
+						(byte)network_standard_server_rate(network_game_server_in_lobby(server));
+				}
+			}
 			advertisement.reserved[HALO_PORT_ADVERTISED_FLAGS_OFFSET] =
 				HALO_PORT_ADVERTISED_DISTRIBUTED_FLAG;
 			if (network_game_server_get_state(server, NULL) != _network_game_server_state_pregame ||
@@ -1989,6 +2018,10 @@ static boolean network_game_server_handle_message_client_join_game_request(
 				byte join_game_token[JOIN_GAME_TOKEN_LENGTH];
 
 				network_game_generate_join_game_token(join_game_token);
+				/* port: a Standard game takes a Standard game's token alone
+				(network_standard.c): a machine that is not of it is refused */
+				if (network_standard_hosting())
+					network_standard_join_token(join_game_token, sizeof(join_game_token));
 				if (!csmemcmp(
 					join_game_request.join_game_token,
 					join_game_token,

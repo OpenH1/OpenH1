@@ -113,6 +113,9 @@ one as it was): the game's server calls it as they change (calling it with
 the same again costs little) */
 void p2p_set_game_listing(const char *name, const char *map, const char *gametype, int engine_type, int kind,
 	int open, int in_progress, int has_teams);
+/* ... whether it is an OpenH1 Standard game (port/linux/game/network_standard.c,
+its listing's version that game's protocol version), and its rate */
+void p2p_set_game_listing_standard(int standard, int rate);
 /* the server browser: while on, the public games are gathered (asked for
 when turned on, and by p2p_lobby_refresh) */
 void p2p_lobby_browse(int on);
@@ -145,6 +148,9 @@ struct p2p_listing
 	/* the game's kind: an OpenCE gametype's mode, and Hardcore
 	(port/linux/game/game_modes.h's game_modes_kind) */
 	unsigned char kind;
+	/* an OpenH1 Standard game (port/linux/game/network_standard.c), and its
+	rate in Hz (a Legacy game's 30) */
+	unsigned char standard, rate;
 	unsigned char open, in_progress, has_teams;
 	/* joining it failed this run (p2p_lobby_mark_failed) */
 	unsigned char failed;

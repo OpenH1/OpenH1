@@ -72,7 +72,10 @@ struct network_game
 	struct network_machine machines[HALO_PORT_MAXIMUM_NETWORK_MACHINES];
 	short player_count;
 	struct network_player players[HALO_PORT_MAXIMUM_NETWORK_PLAYERS];
-	short __unknown426;
+	/* port: a Standard game's rate in Hz (port/linux/game/network_standard.c),
+	in a short the Xbox game left unused, which a Legacy host sends as it
+	always has */
+	short standard_rate;
 	unsigned long random_seed;
 	long number_of_games_played;
 	/* port: the gametype's PC options (game_engine.h) */
