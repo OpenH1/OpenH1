@@ -3766,6 +3766,8 @@ boolean ui_widget_port_browse(struct widget_instance *widget, struct event_recor
 boolean ui_widget_port_open(struct widget_instance *widget, char const *name, boolean *widget_deleted);
 boolean network_game_client_advertised_game_in_progress(void *client, struct advertised_game *game);
 byte network_game_client_advertised_game_kind(void *client, struct advertised_game *game);
+long network_game_client_advertised_game_rate(void *client, struct advertised_game *game);
+boolean network_game_client_advertised_game_standard(void *client, struct advertised_game *game);
 boolean ui_widget_port_join(struct widget_instance *widget, void *advertised_game, char const *lobby_name,
 	boolean *widget_deleted);
 boolean ui_widget_port_multiplayer_player(short controller_index, long profile_index);
@@ -5247,6 +5249,43 @@ static byte advertised_game_kind(struct advertised_game *game)
 	return network_game_client_advertised_game_kind(global_network_game_client_get(), game);
 }
 
+/* ... its rate (a Standard game's, a Legacy game's 30), and whether it is a
+Standard game (port/linux/game/network_standard.c) */
+static long advertised_game_rate(struct advertised_game *game)
+{
+	return network_game_client_advertised_game_rate(global_network_game_client_get(), game);
+}
+
+static boolean advertised_game_standard(struct advertised_game *game)
+{
+	return network_game_client_advertised_game_standard(global_network_game_client_get(), game);
+}
+
+/* a browser row's gametype with the game's tick rate before it ("60
+SLAYER"), which every game shows: an OpenH1 game's agreed rate, a Legacy
+game's 30. First, so a long gametype the column cuts ("120 HC INFECTIO")
+keeps it; the footer names the kind (game_mode_text) */
+static void game_kind_rate_text(wchar_t *text, long size, long engine_type, byte kind, long rate)
+{
+	usnprintf(text, size - 1, L"%ld %s", rate, game_kind_name(engine_type, kind, TRUE));
+	text[size - 1] = 0;
+}
+
+/* the footer's name of a game's kind: "OpenH1 60 Tick" (OpenH1's own, at
+its tick rate) or "Legacy" (OpenCE's netcode at 30, which OpenCE players
+join too) */
+static wchar_t const *game_mode_text(boolean standard, long rate)
+{
+	static wchar_t text[32];
+
+	if (standard)
+		usnprintf(text, NUMBEROF(text) - 1, L"OpenH1 %ld Tick", rate);
+	else
+		usnprintf(text, NUMBEROF(text) - 1, L"Legacy");
+	text[NUMBEROF(text) - 1] = 0;
+	return text;
+}
+
 /* a map's name as the menus show it (a campaign level's too, hosted as
 network co-op; its scenario's name, if not one of theirs), from its
 scenario's path or name */
@@ -5779,7 +5818,8 @@ static void lobby_browser_update(struct widget_instance *list)
 		text_set(named(row, "server_item_server_name", 0), text);
 		map_display_name(game->map, text);
 		text_set(named(row, "server_item_map", 0), text);
-		text_set(named(row, "server_item_type", 0), game_kind_name(game->engine_type, game->kind, TRUE));
+		game_kind_rate_text(text, ROW_TEXT_LENGTH, game->engine_type, game->kind, game->rate);
+		text_set(named(row, "server_item_type", 0), text);
 		usnprintf(text, ROW_TEXT_LENGTH - 1, L"%d/%d", game->player_count, game->maximum_player_count);
 		text_set(named(row, "server_item_players", 0), text);
 		/* (its host's ping, once probed: p2p_lobby.c; "..." while it is
@@ -5896,9 +5936,9 @@ static void lobby_browser_update(struct widget_instance *list)
 			wchar_t gametype[P2P_LISTING_GAMETYPE_SIZE + 1];
 
 			text_to_wide(game->gametype, gametype, NUMBEROF(gametype));
-			usnprintf(text, NUMBEROF(text) - 1, L"%s: %d %s of %d%s%s", gametype, game->player_count,
-				game->player_count == 1 ? L"player" : L"players", game->maximum_player_count,
-				!game->open ? L", full or starting" : game->in_progress ? L", under way" : L"",
+			usnprintf(text, NUMBEROF(text) - 1, L"%s, %s: %d %s of %d%s%s", game_mode_text(game->standard, game->rate),
+				gametype, game->player_count, game->player_count == 1 ? L"player" : L"players",
+				game->maximum_player_count, !game->open ? L", full or starting" : game->in_progress ? L", under way" : L"",
 				game->locked ? L", password" : L"");
 		}
 		else
@@ -6201,8 +6241,9 @@ static void browser_update(struct widget_instance *list)
 		text_set(named(row, "server_item_server_name", 0), text);
 		game_map_name(game, text);
 		text_set(named(row, "server_item_map", 0), text);
-		text_set(named(row, "server_item_type", 0),
-			game_kind_name(game->engine_type, advertised_game_kind(game), TRUE));
+		game_kind_rate_text(text, ROW_TEXT_LENGTH, game->engine_type, advertised_game_kind(game),
+			advertised_game_rate(game));
+		text_set(named(row, "server_item_type", 0), text);
 		usnprintf(text, ROW_TEXT_LENGTH - 1, L"%d/%d", game->player_count, game->maximum_player_count);
 		text_set(named(row, "server_item_players", 0), text);
 		/* (a Direct Link game's host: the tunnel's ping) */
@@ -6236,8 +6277,9 @@ static void browser_update(struct widget_instance *list)
 		{
 			struct advertised_game *game = multiplayer.games[multiplayer.game_chosen];
 
-			usnprintf(text, NUMBEROF(text) - 1, L"%d players of %d, on %d machines%s", game->player_count,
-				game->maximum_player_count, game->machine_count, advertised_in_progress(game) ? L": under way" : L"");
+			usnprintf(text, NUMBEROF(text) - 1, L"%s: %d players of %d, on %d machines%s",
+				game_mode_text(advertised_game_standard(game), advertised_game_rate(game)), game->player_count,
+				game->maximum_player_count, game->machine_count, advertised_in_progress(game) ? L", under way" : L"");
 		}
 		text[NUMBEROF(text) - 1] = 0;
 		text_set(named(list, "ticker_player_info", 0), text);

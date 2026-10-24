@@ -845,7 +845,7 @@ static const struct config_setting config_settings[] =
 		"made), 60 or 120, in steps inside the game's 30 ticks a second, which\n"
 		"everything else keeps. For games of this computer alone: the campaign,\n"
 		"split screen and games with bots. Network games play at the rate they\n"
-		"agreed on (a Legacy game's 30, a Standard game's network.sim_rate), and\n"
+		"agreed on (a Legacy game's 30, an OpenH1 game's network.sim_rate), and\n"
 		"saved films at 30, whatever this is." },
 	{ "game.custom_edition", _config_boolean, "true", "HALO_CUSTOM_EDITION", _environment_value, _platform_all,
 		"Load and run Halo Custom Edition maps (not those that need OpenSauce):\n"
@@ -966,12 +966,13 @@ static const struct config_setting config_settings[] =
 		"in everyone's server browser: anyone can see and join it) or, false,\n"
 		"PRIVATE (only players with its invite link can join). Server Setup's\n"
 		"LISTING changes it for each game." },
-	{ "network.game_mode", _config_string, "\"standard\"", "HALO_NET_GAME_MODE", _environment_value, _platform_all,
-		"Hosting: \"standard\", an OpenH1 game (OpenH1 players only) at the rate\n"
+	{ "network.game_mode", _config_string, "\"openh1\"", "HALO_NET_GAME_MODE", _environment_value, _platform_all,
+		"Hosting: \"openh1\", an OpenH1 game (OpenH1 players only) at the rate\n"
 		"network.sim_rate picks, or \"legacy\", OpenCE's netcode at 30 ticks a\n"
-		"second, which OpenCE players join too. Read as the game is hosted." },
+		"second, which OpenCE players join too. Read as the game is hosted\n"
+		"(\"standard\" is \"openh1\" too)." },
 	{ "network.sim_rate", _config_integer, "30", "HALO_NET_SIM_RATE", _environment_value, _platform_all,
-		"Hosting a Standard game: its simulation rate, 30, 60 or 120 (game.sim_rate's\n"
+		"Hosting an OpenH1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
 		"steps), which every machine of it takes as the game starts. A Legacy game\n"
 		"plays at 30." },
 	{ "network.voice_lobby", _config_boolean, "true", "HALO_NET_VOICE_LOBBY", _environment_value, _platform_all,
@@ -2717,7 +2718,7 @@ static const struct
 	{ "input.zoom_sensitivity", { "cs2", "halo", NULL }, "cs2" },
 	{ "game.console_log", { "important", "all", "none", NULL }, NULL },
 	{ "game.language", { "", "ja", "de", "fr", "es", "it", NULL }, NULL },
-	{ "network.game_mode", { "standard", "legacy", NULL }, NULL },
+	{ "network.game_mode", { "openh1", "legacy", "standard", NULL }, NULL },
 	{ "network.text_chat", { "on", "links", "off", NULL }, NULL },
 	{ "network.voice_mode", { "off", "team_proximity", "team_enemy_proximity", "team_global",
 		"team_global_enemy_proximity", NULL }, NULL },

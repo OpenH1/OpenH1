@@ -7,8 +7,9 @@ games"):
 - Legacy: OpenCE's netcode at HALO_PORT_NETWORK_VERSION, at 30 ticks a
   second, which OpenCE builds join. Nothing of it changes here: its
   advertisement, listing, join token and game record are as they were.
-- Standard: OpenH1's own (network.game_mode "standard", the default when
-  hosting), whose host picks the simulation's rate (network.sim_rate: 30,
+- Standard: OpenH1's own (network.game_mode "openh1", or "standard" as
+  it was first named; the default when hosting), which players see as
+  "OpenH1 <rate> Tick", whose host picks the simulation's rate (network.sim_rate: 30,
   60 or 120, sim_rate.h). Its host advertises
   HALO_PORT_STANDARD_ADVERTISED_VERSION where a Legacy host advertises the
   network version, and the rate beside it (HALO_PORT_ADVERTISED_RATE_OFFSET,
@@ -69,7 +70,8 @@ void network_standard_server_created(
 {
 	char const *mode = config_string("network.game_mode");
 
-	/* (anything but "legacy" is the default, Standard) */
+	/* (anything but "legacy" is the default, OpenH1's: "openh1", and
+	"standard", its first name) */
 	network_standard_globals.hosting = !(mode && !csstrcmp(mode, "legacy"));
 	network_standard_globals.hosting_rate = network_standard_rate_setting();
 }
