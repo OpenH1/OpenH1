@@ -141,6 +141,9 @@ static void VKAPI_CALL fake_update(VkDevice device, uint32_t count, const VkWrit
 	}
 }
 
+/* a clear's depth as the core clears it: reversed (xgpu_vulkan.h) */
+#define CLEARED(depth) (XGPU_VULKAN_REVERSED_DEPTH ? 1.0f - (depth) : (depth))
+
 static void VKAPI_CALL fake_format_properties(VkPhysicalDevice physical, VkFormat format, VkFormatProperties *properties)
 {
 	(void)physical;
@@ -1166,7 +1169,7 @@ static void masked_clear_test(void)
 		1.0f, 0);
 	assert(!strcmp(masked_events, "BD"));
 	assert(began_color.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_depth.loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR);
-	assert(began_stencil.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_depth.clearValue.depthStencil.depth == 1.0f);
+	assert(began_stencil.loadOp == VK_ATTACHMENT_LOAD_OP_LOAD && began_depth.clearValue.depthStencil.depth == CLEARED(1.0f));
 	assert(vk.statistics.attachment_clears == 1 && vk.statistics.clears_as_draws == 1);
 	assert(masked_pipelines == 1 && masked_made.mask == VK_COLOR_COMPONENT_A_BIT && !masked_made.blend);
 	assert(!masked_made.depth_test && !masked_made.depth_write && !masked_made.stencil_test);
@@ -2275,7 +2278,7 @@ int main(void)
 	assert(began_color.loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR && began_depth.loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR);
 	assert(began_stencil.loadOp == VK_ATTACHMENT_LOAD_OP_CLEAR);
 	assert(began_color.clearValue.color.float32[0] == 0.25f);
-	assert(began_depth.clearValue.depthStencil.depth == 0.75f);
+	assert(began_depth.clearValue.depthStencil.depth == CLEARED(0.75f));
 	assert(began_stencil.clearValue.depthStencil.stencil == 0x23);
 	assert(began_color.storeOp == VK_ATTACHMENT_STORE_OP_STORE && began_depth.storeOp == VK_ATTACHMENT_STORE_OP_STORE);
 	assert(began_stencil.storeOp == VK_ATTACHMENT_STORE_OP_STORE);
@@ -2284,7 +2287,7 @@ int main(void)
 	earlier draw's initial attachment values retroactively. */
 	xgpu_vulkan_clear(full, 1, all, color, 0.5f, 7);
 	assert(begins == 1 && clears == 1);
-	assert(cleared[1].clearValue.depthStencil.depth == 0.5f);
+	assert(cleared[1].clearValue.depthStencil.depth == CLEARED(0.5f));
 
 	reset();
 	xgpu_vulkan_clear(full, 1, XGPU_VULKAN_CLEAR_DEPTH, color, 0.75f, 0);
