@@ -74,6 +74,7 @@ winding about (rasterizer_set_model_skinning).
 
 #include "cseries.h"
 #include "math/real_math.h"
+#include "cache/cache_files.h"
 #include "models/model_animation_definitions.h"
 #include "render/render_debug.h"
 #include "tag_files/tag_files.h"
@@ -238,8 +239,11 @@ struct vr_hands_graph_node
 static struct
 {
 	/* the first-person animation graph whose nodes are known (the weapon
-	in hand's), and whether it has both wrists, and both arms */
+	in hand's), the tags' generation its index is of (another map numbers
+	its graphs again: cache_files_tags_generation), and whether it has both
+	wrists, and both arms */
 	long animation_graph_index;
+	unsigned long generation;
 	boolean usable;
 	boolean arms_usable;
 	short node_count;
@@ -616,9 +620,13 @@ static boolean hands_learn(void)
 	real_point3d left_centre;
 	short node_count, node_index, side;
 
-	if (animation_graph_index == vr_hands.animation_graph_index)
+	if (animation_graph_index == vr_hands.animation_graph_index &&
+		vr_hands.generation == cache_files_tags_generation())
+	{
 		return vr_hands.usable;
+	}
 	vr_hands.animation_graph_index = animation_graph_index;
+	vr_hands.generation = cache_files_tags_generation();
 	vr_hands.usable = FALSE;
 	vr_hands.arms_usable = FALSE;
 	if (animation_graph_index == NONE)

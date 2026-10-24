@@ -262,6 +262,9 @@ extern struct cache_file_tag_instance *global_tag_instances;
 the table (port/linux/game/menu_tags.c); the map's tag header keeps its own,
 which a Custom Edition map's loader goes on reading. */
 static long global_tag_count;
+/* port: one more each time a map's tags are loaded or unloaded
+(cache_files_tags_generation) */
+static unsigned long cache_file_tags_generation = 1;
 static char const *data_00316820[] =
 {
 	"d:\\maps_de\\",
@@ -628,6 +631,7 @@ void scenario_tags_unload(
 	cache_file_globals.tags_loaded = FALSE;
 	global_tag_instances = NULL;
 	global_tag_count = 0;
+	cache_file_tags_generation++; /* port: cache_files_tags_generation */
 
 	return;
 }
@@ -864,6 +868,39 @@ char const *cache_file_loaded_map_name(
 	void)
 {
 	return cache_file_loaded_name;
+}
+
+/* port: the loaded tags' generation. A tag index names a tag of the map
+loaded now only (each map's tags are numbered again, the menus' added to
+them: port/linux/game/menu_tags.c), as a pointer into its tag data points
+into it only: what keeps either past a frame keeps the generation with it,
+and takes it again when this has changed */
+unsigned long cache_files_tags_generation(
+	void)
+{
+	return cache_file_tags_generation;
+}
+
+/* port: a tag index kept with the generation it was taken in, if it is
+still this map's; else NONE, and a checked build stops on it, naming what
+kept it, rather than reading another map's tag as it (whose group would
+not be the one asked for: "expected tag group 'font' but got 'lsnd'") */
+long cache_files_kept_tag_index(
+	long tag_index,
+	unsigned long generation,
+	char const *what)
+{
+	if (tag_index == NONE || generation == cache_file_tags_generation)
+		return tag_index;
+#ifndef HALO_RELEASE
+	match_vassert(
+		__FILE__,
+		__LINE__,
+		FALSE,
+		csprintf(temporary, "tag index from an earlier map: %s", what ? what : "<unnamed>"));
+#endif
+
+	return NONE;
 }
 
 boolean cache_file_header_verify(
@@ -1194,6 +1231,7 @@ long scenario_tags_load(
 	boolean read_complete;
 
 	halo_load_trace("tags.begin", scenario_name); /* port: loading measurement */
+	cache_file_tags_generation++; /* port: cache_files_tags_generation */
 	stripped_scenario_name = tag_name_strip_path(scenario_name);
 	result = NONE;
 	/* port: the map being loaded, by its name (cache_file_loaded_map_name) */

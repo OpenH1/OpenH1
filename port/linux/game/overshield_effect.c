@@ -31,6 +31,7 @@ from below its lowest node to above its highest.
 
 #include "cseries.h"
 #include "real_math.h"
+#include "cache/cache_files.h"
 #include "objects/objects.h"
 #include "objects/object_definitions.h"
 #include "models/model_definitions.h"
@@ -105,7 +106,8 @@ static boolean overshield_effects_initialized = FALSE;
 
 /* the heights of a model's skeleton at rest, its lowest node's and its
 highest's (from each node's default inverse, the model's space to the
-node's) */
+node's), by its tag index: forgotten when another map's tags are loaded
+(cache_files_tags_generation), which numbers its models again */
 static struct
 {
 	long model_index;
@@ -113,6 +115,7 @@ static struct
 	real top;
 } overshield_effect_models[OVERSHIELD_EFFECT_MODELS];
 static short overshield_effect_next_model = 0;
+static unsigned long overshield_effect_models_generation = 0;
 
 /* port/linux/src/port_config.c */
 int config_boolean(const char *name);
@@ -150,6 +153,12 @@ static boolean overshield_effect_model_heights(
 
 	if (model_index == NONE)
 		return FALSE;
+	if (overshield_effect_models_generation != cache_files_tags_generation())
+	{
+		for (index = 0; index < OVERSHIELD_EFFECT_MODELS; index++)
+			overshield_effect_models[index].model_index = NONE;
+		overshield_effect_models_generation = cache_files_tags_generation();
+	}
 	for (index = 0; index < OVERSHIELD_EFFECT_MODELS; index++)
 	{
 		if (overshield_effect_models[index].model_index == model_index)
