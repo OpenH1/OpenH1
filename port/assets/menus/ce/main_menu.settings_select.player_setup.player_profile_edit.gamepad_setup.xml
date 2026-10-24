@@ -176,6 +176,6 @@
 		<string text="Rumbles the controller."/>
 		<string text="Shows the game's hints about its controls."/>
 		<string text=""/>
-		<string text="Your name, colour and controller layout are kept in a player profile. Make one to set them; the rest of Settings works without one."/>
+		<string text="Your name, color and controller layout are kept in a player profile. Make one to set them; the rest of Settings works without one."/>
 	</strings>
 </menus>

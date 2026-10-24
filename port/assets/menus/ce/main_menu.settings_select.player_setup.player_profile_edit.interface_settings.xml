@@ -231,7 +231,7 @@
 		<string text="Draws a dark panel behind the scoreboard, for clearer text."/>
 		<string text=""/>
 		<string text="Shows the text chat. Hide draws none of its lines, and its keys and D-pad Up open nothing."/>
-		<string text="Colors draws the names in their team's colour; White draws it all white, as Custom Edition does."/>
+		<string text="Colors draws the names in their team's color; White draws it all white, as Custom Edition does."/>
 		<string text="Hides offensive words in names and text from other players, maps and mods, as stars."/>
 	</strings>
 </menus>
