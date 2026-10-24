@@ -1587,6 +1587,13 @@ DIGIT_COLOR = (0xFF, 0xFF, 0xFF, 255)
 # fair (two, yellow), good (three, green): menu_functions.c's PING_GOOD and
 # PING_FAIR
 PING_BARS = f"{MT}/ping_bars"
+# the browsers' rows' star (menu_functions.c's browser_row_star): its widget
+# and bitmap, whose frames are none, a favorite (gold), a favorite offline
+# (grey) and the outline a click on the row focused stars (Lucide's star,
+# port/assets/icons/lucide)
+FAVORITE_STAR_WIDGET = f"{MT}/join_game/server_item_favorite"
+FAVORITE_STAR = f"{MT}/join_game/favorite_star"
+FAVORITE_STAR_STYLES = [None, ("#E8C547", "#E8C547"), ("#7F8A99", "#7F8A99"), ("none", "#2896FF")]
 # the digits of a count (to 999), and the games BEST FOR YOU names
 STATUS_DIGIT_PLACES = 3
 BEST_GAMES = 3
@@ -1757,10 +1764,25 @@ WIDGET_PATCHES = {
     # Refresh, and Refresh in Get List's: the Server Browser's only, which
     # asks the public games' hosts again; "swap" puts another widget in a
     # child's place)
+    # (and FAVORITES in FILTERS': only the favorite games, or all again)
     f"{MT}/join_game/join_game_button_bar": {"swap": {
         f"{MT}/join_game/join_game_button_refresh": f"{MT}/join_game/button_clipboard",
         f"{MT}/join_game/join_game_button_update": f"{MT}/join_game/join_game_button_refresh",
+        f"{MT}/join_game/join_game_button_filters": f"{MT}/join_game/button_favorites",
     }},
+    # (the browsers' rows: each game's star, in the place of the PC version's
+    # dedicated server column, which the rows leave empty, and Y (F on the
+    # keyboard) stars or unstars the game: menu_functions.c's favorites)
+    **{f"{MT}/join_game/server_item_{row}": {
+        "handlers": [
+            '<on event="a" run="gamespy select item"/>',
+            '<on event="start" run="gamespy select item"/>',
+            '<on event="left_mouse" run="mouse emit accept event"/>',
+            '<on event="double_click" run="gamespy select item"/>',
+            '<on event="y" run="port browser favorite"/>',
+        ],
+        "children": [f'<child widget="{FAVORITE_STAR_WIDGET}" x="20"/>'],
+    } for row in range(1, 16)},
 }
 
 # frames added after a PC bitmap's (by our names): (the Xbox map's bitmap,
@@ -1923,6 +1945,13 @@ def _join_game_extras() -> list:
                                                   ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 2)],
                      ['<on event="a" run="direct ip connect go"/>', '<on event="start" run="direct ip connect go"/>',
                       '<on event="left_mouse" run="mouse emit accept event"/>'])
+    # (FAVORITES, which menu_functions.c names ALL GAMES while it shows only
+    # the favorites)
+    lines += _text_button(f"{base}/button_favorites", "FAVORITES",
+                          ['<on event="a" run="gamespy select button"/>',
+                           '<on event="start" run="gamespy select button"/>'])
+    # (each row's star: WIDGET_PATCHES puts it in the rows)
+    lines += _widget(FAVORITE_STAR_WIDGET, [("width", 16), ("height", 18), ("bitmap", FAVORITE_STAR)], [])
     return lines
 
 
@@ -2614,6 +2643,18 @@ def _map_kind() -> list:
     lines += _strings("main_menu/new_select/var_map_kinds",
                       ["SINGLEPLAYER", "MULTIPLAYER", "CUSTOM SINGLEPLAYER", "CUSTOM MULTIPLAYER"])
     return lines
+
+
+def favorite_star_frames(icons: Path) -> list:
+    """the browsers' star's frames, 16 pixels square (FAVORITE_STAR_STYLES):
+    Lucide's star filled and stroked in each frame's colours, the first
+    frame empty"""
+    blank = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"/>\n'
+    star = (icons / "star.svg").read_text()
+    return [(blank, 16, 16)] + [
+        (star.replace('fill="none"', f'fill="{fill}"').replace('stroke="currentColor"', f'stroke="{stroke}"')
+         .replace('width="24"', 'width="16"').replace('height="24"', 'height="16"'), 16, 16)
+        for fill, stroke in FAVORITE_STAR_STYLES[1:]]
 
 
 def ping_bars_frames() -> list:

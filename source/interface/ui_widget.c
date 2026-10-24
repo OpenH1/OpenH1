@@ -4173,9 +4173,12 @@ void draw_string_and_hack_in_icons(
 			(input.button_prompts) */
 			draw_string_get_color(&key_color);
 			/* port: the menus' LB and RB (Settings' tabs) as their keys, Q
-			and E, while the keyboard and mouse play */
-			if ((icon_type == _icon_white_button || icon_type == _icon_black_button) &&
-				hud_key_prompt_draw_key(icon_type == _icon_white_button ? "Q" : "E", bounds, &cursor_bounds,
+			and E, and Y (the server browsers' favorite) as F, while the
+			keyboard and mouse play */
+			if ((icon_type == _icon_white_button || icon_type == _icon_black_button ||
+					icon_type == _icon_y_button) &&
+				hud_key_prompt_draw_key(icon_type == _icon_white_button ? "Q" :
+					icon_type == _icon_black_button ? "E" : "F", bounds, &cursor_bounds,
 					real_argb_color_to_pixel32(&key_color)))
 			{
 				continue;
