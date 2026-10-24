@@ -161,6 +161,10 @@ SCREENS = {
              "Moving the mouse forward looks down.", None),
             ("AIM ASSIST:", "input.mouse_aim_assist", ON_OFF,
              "Slow and drag the view along with a target while\naiming with the mouse, as with a controller.", None),
+            ("BUTTON PROMPTS:", "input.button_prompts",
+             [("AUTO", "auto"), ("CONTROLLER", "controller"), ("KEYBOARD", "keyboard")],
+             "The HUD's prompts name the key bound to the action.\nAuto: the keys or the buttons, as last played with.",
+             None),
         ],
     },
     "audio_settings": {

@@ -60,6 +60,13 @@ enum
 	VR_BUTTON_RIGHT_BUMPER = 1 << 13,
 };
 
+/* the triggers, for host_vr_input_name */
+enum
+{
+	VR_INPUT_LEFT_TRIGGER = 1 << 14,
+	VR_INPUT_RIGHT_TRIGGER = 1 << 15,
+};
+
 struct vr_host_info
 {
 	/* in: the eye images' size (0: the runtime's recommendation scaled by
@@ -220,6 +227,10 @@ int host_vr_frame_wait(struct vr_host_views *views);
 /* the views, head and controllers at the frame's display time */
 int host_vr_locate(struct vr_host_views *views);
 int host_vr_input(struct vr_host_input *input);
+/* the name the runtime gives the source bound to an input (a VR_BUTTON_ bit,
+or VR_INPUT_LEFT_TRIGGER, VR_INPUT_RIGHT_TRIGGER), UTF-8, for the HUD's
+prompts; 0 when it gives none */
+int host_vr_input_name(int input, char *name, int size);
 void host_vr_haptic(int hand, float amplitude, float seconds);
 
 #endif

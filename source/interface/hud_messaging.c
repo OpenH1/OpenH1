@@ -469,6 +469,9 @@ static void render_state_text(
 boolean hud_hires_button_draw(struct icon_hud_element_definition const *icon,
 	rectangle2d *cursor, pixel32 color);
 struct bitmap_data const *hud_hires_sprite_bitmap(struct bitmap_data const *bitmap, short sequence_index);
+/* port: the keyboard and mouse's keys in the prompts, port/linux/game/hud_key_prompts.c */
+boolean hud_key_prompt_draw(short local_player_index, short game_control, short gamepad_button,
+	rectangle2d *bounds, rectangle2d *cursor, pixel32 color);
 
 static void render_state_bitmap(
 	rectangle2d *bounds,
@@ -1595,6 +1598,21 @@ void hud_messaging_update(
 						{
 							short icon_index = NONE;
 
+							/* port: the key bound to it for the keyboard and
+							mouse (input.button_prompts) */
+							if (element->data <= _icon_look && hud_key_prompt_draw(
+								local_player_index,
+								element->data >= _icon_action && element->data <= _icon_zoom ?
+									button_mappings[element->data - _icon_action] : NONE,
+								element->data == _icon_move ? _icon_left_stick :
+									element->data == _icon_look ? _icon_right_stick :
+									element->data <= _icon_right_stick ? element->data : NONE,
+								&line_bounds,
+								&line_cursor,
+								pixel_color))
+							{
+								break;
+							}
 							if (element->data > _icon_right_stick)
 							{
 								if (element->data <= _icon_look)

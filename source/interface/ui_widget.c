@@ -1391,6 +1391,14 @@ texture from, or the sheet if it has none (port/linux/game/hud_hires_tags.c) */
 struct bitmap_data const *hud_hires_sprite_bitmap(
 	struct bitmap_data const *sheet,
 	short sequence_index);
+/* port: the keyboard and mouse's keys in the prompts (port/linux/game/hud_key_prompts.c) */
+boolean hud_key_prompt_draw(
+	short local_player_index,
+	short game_control,
+	short gamepad_button,
+	rectangle2d *bounds,
+	rectangle2d *cursor,
+	pixel32 color);
 static void widget_instance_initialize(
 	struct widget_instance *widget,
 	struct widget_instance *parent,
@@ -4147,8 +4155,23 @@ void draw_string_and_hack_in_icons(
 		{
 			short remapped_icon_type;
 			short icon_index;
+			real_argb_color key_color;
 
 			current = icon_spec + wcslen(icon_names[icon_type]);
+			/* port: a game control's key for the keyboard and mouse
+			(input.button_prompts) */
+			draw_string_get_color(&key_color);
+			if (icon_type >= _icon_action && icon_type <= _icon_zoom &&
+				hud_key_prompt_draw(
+					local_player_index_for_draw_string_and_hack_in_icons,
+					button_mappings[icon_type - _icon_action],
+					NONE,
+					bounds,
+					&cursor_bounds,
+					real_argb_color_to_pixel32(&key_color)))
+			{
+				continue;
+			}
 			remapped_icon_type = remap_sticks_for_local_player(
 				icon_type,
 				local_player_index_for_draw_string_and_hack_in_icons);
