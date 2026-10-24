@@ -643,6 +643,24 @@ jobs:
       - name: Debug
         run: python tools/ci_build.py windows debug
 
+      # The debug build started: the 64-bit host reserves the guest's memory,
+      # loads the guest image and runs it through its start-up (settings,
+      # SDL, the files) until it finds no game data and quits, saying so.
+      # The runner has no game data and no GPU, so it goes no further;
+      # HALO_HIDDEN_WINDOW keeps it from asking for the data.
+      - name: Start the game
+        run: |
+          start="$RUNNER_TEMP/start"
+          rm -rf "$start"
+          cp -r dist/halo-windows-debug "$start"
+          cd "$start"
+          status=0
+          HALO_HIDDEN_WINDOW=1 timeout 120 ./halo.exe > start.log 2>&1 || status=$?
+          cat start.log
+          echo "halo.exe exited with $status"
+          grep -q "is not the Xbox maps" start.log
+          [ "$status" = 1 ]
+
       - name: Release
         if: github.ref == 'refs/heads/master'
         run: python tools/ci_build.py windows release
