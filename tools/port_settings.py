@@ -1949,6 +1949,39 @@ def _value_row(base: str, key: str, label_index: int, run: str) -> list:
     return lines
 
 
+def _connect_screen() -> list:
+    """internet play's connecting box, laid out as the PC version's Quit is
+    (ce/main_menu.quit_select.xml): opened over the browser as a game is
+    joined (menu_functions.c's connect_dialog), it names the step the join
+    is at (finding the host, opening a path to it, joining), and once it
+    gives up (about 10 seconds) why, and what to do; RETRY (shown then)
+    asks again, BACK (and B) gives the join up. Its header and its text are
+    the game's ("port connect update")"""
+    base = f"{MT}/join_game/connect"
+    lines = _widget(f"{base}/connect_screen",
+                    [("type", "text"), ("controller", 1), ("left", 180), ("top", 160), ("width", 280), ("height", 160),
+                     ("flags", "pass_unhandled_to_focused_child"), ("bitmap", "bitmaps/alert_bkd"),
+                     ("font", "ui\\small_ui"), ("color", "#FF2896FF"), ("align", "center"), ("text_x", -10),
+                     ("text_y", 36)],
+                    ['<data input="port connect update"/>',
+                     '<on event="b" run="port connect back"/>', '<on event="back" run="port connect back"/>',
+                     f'<child widget="{base}/button_bar" x="182" y="293"/>',
+                     f'<child widget="{base}/header_connect" x="182" y="164"/>'])
+    lines += _widget(f"{base}/header_connect",
+                     [("type", "text"), ("controller", 1), ("width", 270), ("height", 20),
+                      ("font", "ui\\large_ui"), ("color", "#FF2896FF")], [])
+    # (BACK first, with the focus: RETRY is shown only once the join failed)
+    lines += _widget(f"{base}/button_bar",
+                     [("type", "column_list"), ("width", 256), ("height", 20),
+                      ("flags", "pass_unhandled_to_focused_child up_down_tabs_items left_right_tabs_items")],
+                     [f'<child widget="{base}/button_back" x="128"/>', f'<child widget="{base}/button_retry"/>'])
+    lines += _text_button(f"{base}/button_retry", "RETRY", ['<on event="a" run="port connect retry"/>',
+                                                           '<on event="start" run="port connect retry"/>'])
+    lines += _text_button(f"{base}/button_back", "BACK", ['<on event="a" run="port connect back"/>',
+                                                         '<on event="start" run="port connect back"/>'])
+    return lines
+
+
 def _join_game_extras() -> list:
     """the browser's added titles, Direct Link's clipboard button, and the
     password screen"""
@@ -1956,6 +1989,7 @@ def _join_game_extras() -> list:
     lines = _password_screen()
     lines += _header(f"{base}/header_server_browser", f"{base}/header_server_browser")
     lines += _header(f"{base}/header_direct_link", f"{base}/header_direct_link")
+    lines += _connect_screen()
     lines += _widget(f"{base}/button_clipboard", [("type", "text"), ("width", 128), ("height", 24),
                                                   ("bitmap", "bitmaps/text_button_background"),
                                                   ("text", "PASTE LINK"), ("font", "ui\\small_ui"),

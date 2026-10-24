@@ -5583,12 +5583,216 @@ static struct
 	char failed_name[P2P_LISTING_NAME_SIZE + 1];
 	unsigned long failed_time;
 	boolean failed_nat_strict;
+	/* why (connect_failure_text) */
+	wchar_t failed_headline[32];
+	wchar_t failed_detail[160];
 	/* a game with a password chosen: the password screen's (its own copy:
 	the rows' are read again each frame), and a join it began, which the
 	browser takes up again as it comes back */
 	struct p2p_listing password_game;
 	boolean password_joined;
 } lobby_browser;
+
+/* ---- internet play's connecting box (tools/port_settings.py's
+_connect_screen): opened over the browser as a game is joined (a server
+browser's row, Direct Link's PASTE LINK), it names the step the join is at,
+from p2p_join_status: finding the host (this machine's public address, then
+the brokers' answer), opening a path to it (the host answered: both send to
+each other's addresses, a round of them each try), joining (reached: the
+browser joins its game). Given up after CONNECT_TIMEOUT, it says why, from
+what internet play knows, and what would help; RETRY asks again, BACK (B)
+gives the join up */
+
+#define CONNECT_NAME "pc\\main_menu\\multiplayer_type_select\\join_game\\connect\\connect_screen"
+/* milliseconds: a host not reached in this long is given up */
+#define CONNECT_TIMEOUT 10000
+#define CONNECT_HEADLINE_LENGTH 32
+#define CONNECT_DETAIL_LENGTH 160
+
+static struct
+{
+	/* what is joined: a server browser's game, or Direct Link's invite */
+	boolean listing;
+	struct p2p_listing game;
+	char link[TEXT_FIELD_LENGTH];
+	/* the controller that asked */
+	short controller;
+	unsigned long start_time;
+	/* given up, its reason shown; or reached, the A press posted (to
+	whichever button has the focus) to go back and join */
+	boolean failed, proceed;
+	wchar_t headline[CONNECT_HEADLINE_LENGTH];
+	wchar_t detail[CONNECT_DETAIL_LENGTH];
+} connect_dialog;
+
+/* the step a join is at, for the box and the server browser's line */
+static void connect_stage_text(struct p2p_join_status const *status, wchar_t *text, short length)
+{
+	if (status->stage == _p2p_join_reached)
+		usnprintf(text, length - 1, L"Joining...");
+	else if (status->stage == _p2p_join_opening)
+		usnprintf(text, length - 1, L"Opening a path to the host...\r\n(try %d)", status->tries + 1);
+	else
+		usnprintf(text, length - 1, L"Finding the host...");
+	text[length - 1] = 0;
+}
+
+/* why a join gave up, as far as internet play can tell, and what would
+help */
+static void connect_failure_text(struct p2p_join_status const *status, wchar_t *headline, wchar_t *detail)
+{
+	if (!status->online)
+	{
+		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"INTERNET PLAY IS OFF");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, L"Turn it on in Settings,\r\nNetwork Setup.");
+	}
+	else if (!status->brokers)
+	{
+		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"NO CONNECTION");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1,
+			L"Could not reach internet\r\nplay's servers. Check your\r\nconnection.");
+	}
+	else if (status->stage != _p2p_join_opening)
+	{
+		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"NO ANSWER");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1,
+			L"The game may have ended,\r\nor the host may be offline.");
+	}
+	else if (status->nat_strict)
+	{
+		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"STRICT NETWORK");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, config_boolean("network.allow_upnp") ?
+			L"Your router opened no port.\r\nAsk the host to turn on\r\nOPEN ROUTER PORT." :
+			L"Turn on OPEN ROUTER PORT\r\nin Network Setup, or ask\r\nthe host to.");
+	}
+	else if (status->host_strict)
+	{
+		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"HOST'S NETWORK STRICT");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, L"Ask the host to turn on\r\nOPEN ROUTER PORT in\r\nNetwork Setup.");
+	}
+	else
+	{
+		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"NO PATH TO HOST");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1,
+			L"A network between you is\r\nstrict. Ask the host to turn\r\non OPEN ROUTER PORT.");
+	}
+	headline[CONNECT_HEADLINE_LENGTH - 1] = detail[CONNECT_DETAIL_LENGTH - 1] = 0;
+}
+
+/* the log's line of a join given up */
+static void connect_failure_log(char const *name, struct p2p_join_status const *status)
+{
+	platform_log("menus: could not reach %s after %lu ms (%s; %s, %d tries; brokers %s; this network %s, the "
+		"host's %s)", name, status->elapsed, !status->online ? "internet play is off" :
+		!status->brokers ? "no signalling broker" : status->stage == _p2p_join_opening ? "the host answered" :
+		"no answer from the host", status->stage == _p2p_join_opening ? "no path" : "no session", status->tries,
+		status->brokers ? "connected" : "not connected", status->nat_strict ? "strict" : "not known strict",
+		status->host_strict ? "strict" : "not known strict");
+}
+
+/* the box opened over the browser (its B returns to it), if the join is
+under way (a host reached already is joined as before) */
+static boolean connect_open(struct widget_instance *widget, short controller, boolean *widget_deleted)
+{
+	struct p2p_join_status status;
+
+	p2p_join_status(&status);
+	if (status.stage != _p2p_join_finding && status.stage != _p2p_join_opening)
+		return TRUE;
+	connect_dialog.controller = controller;
+	connect_dialog.start_time = system_milliseconds();
+	connect_dialog.failed = connect_dialog.proceed = FALSE;
+	return ui_widget_port_open(widget, CONNECT_NAME, widget_deleted);
+}
+
+/* "port connect update": the step, or why it gave up */
+static void connect_update(struct widget_instance *screen)
+{
+	struct p2p_join_status status;
+	unsigned long now = system_milliseconds();
+	struct widget_instance *retry = named(screen, "button_retry", 0);
+	wchar_t text[CONNECT_DETAIL_LENGTH];
+
+	p2p_join_status(&status);
+	if (!connect_dialog.failed && !connect_dialog.proceed)
+	{
+		if (status.stage == _p2p_join_reached)
+		{
+			connect_dialog.proceed = TRUE;
+			ui_widget_port_post_button(connect_dialog.controller, BUTTON_A);
+		}
+		else if (status.stage == _p2p_join_idle || now - connect_dialog.start_time > CONNECT_TIMEOUT)
+		{
+			char name[P2P_LISTING_NAME_SIZE + 1];
+
+			connect_failure_text(&status, connect_dialog.headline, connect_dialog.detail);
+			snprintf(name, sizeof(name), "%s", connect_dialog.listing ? connect_dialog.game.name : "the invite's host");
+			connect_failure_log(name, &status);
+			p2p_join_cancel();
+			if (connect_dialog.listing)
+				p2p_lobby_mark_failed(connect_dialog.game.identifier);
+			connect_dialog.failed = TRUE;
+			ui_play_audio_feedback_sound(SOUND_ERROR);
+		}
+	}
+	if (connect_dialog.failed)
+	{
+		text_set(named(screen, "header_connect", 0), connect_dialog.headline);
+		text_set_length(screen, connect_dialog.detail, CONNECT_DETAIL_LENGTH);
+	}
+	else
+	{
+		text_set(named(screen, "header_connect", 0), L"CONNECTING");
+		connect_stage_text(&status, text, NUMBEROF(text));
+		text_set_length(screen, text, CONNECT_DETAIL_LENGTH);
+	}
+	if (retry)
+	{
+		retry->visible = connect_dialog.failed;
+		retry->disabled = !connect_dialog.failed;
+	}
+}
+
+/* back to the browser: a game reached is joined there (as the password
+screen's join is) */
+static boolean connect_return(struct widget_instance *widget, boolean *widget_deleted)
+{
+	if (connect_dialog.proceed && connect_dialog.listing)
+	{
+		lobby_browser.password_joined = TRUE;
+		lobby_browser.join_time = system_milliseconds();
+	}
+	ui_widget_port_go_back(widget);
+	*widget_deleted = TRUE;
+	return TRUE;
+}
+
+/* "port connect back" (BACK, B): the join given up, unless it reached the
+host (the A press posted) */
+static boolean connect_back(struct widget_instance *widget, boolean *widget_deleted)
+{
+	if (!connect_dialog.proceed && !connect_dialog.failed)
+		p2p_join_cancel();
+	return connect_return(widget, widget_deleted);
+}
+
+/* "port connect retry" (RETRY, once it gave up): asked again */
+static boolean connect_retry(struct widget_instance *widget, boolean *widget_deleted)
+{
+	int joined;
+
+	if (connect_dialog.proceed)
+		return connect_return(widget, widget_deleted);
+	if (!connect_dialog.failed)
+		return TRUE;
+	joined = connect_dialog.listing ? p2p_join_listing(&connect_dialog.game) : p2p_join_invite(connect_dialog.link);
+	if (!joined)
+		return campaign_fail();
+	connect_dialog.start_time = system_milliseconds();
+	connect_dialog.failed = FALSE;
+	ui_play_audio_feedback_sound(SOUND_FORWARD);
+	return TRUE;
+}
 
 /* the row of the browser's chosen game, NONE if it is not on the rows */
 static short browser_chosen_row(void)
@@ -5875,8 +6079,14 @@ static void lobby_browser_update(struct widget_instance *list)
 			lobby_browser.ready_time = now;
 			ui_widget_port_post_button(lobby_browser.controller, BUTTON_A);
 		}
-		else if (now - lobby_browser.join_time > LOBBY_BROWSER_JOIN_TIMEOUT)
+		else if (now - lobby_browser.join_time > CONNECT_TIMEOUT)
 		{
+			struct p2p_join_status status;
+
+			p2p_join_status(&status);
+			connect_failure_log(lobby_browser.name, &status);
+			connect_failure_text(&status, lobby_browser.failed_headline, lobby_browser.failed_detail);
+			p2p_join_cancel();
 			p2p_lobby_mark_failed(lobby_browser.identifier);
 			csmemcpy(lobby_browser.failed_name, lobby_browser.name, sizeof(lobby_browser.failed_name));
 			lobby_browser.failed_time = now ? now : 1;
@@ -5896,17 +6106,27 @@ static void lobby_browser_update(struct widget_instance *list)
 			usnprintf(text, NUMBEROF(text) - 1, L"The server browser is off (network.public_lobby)");
 		else if (lobby_browser.joining)
 		{
+			struct p2p_join_status status;
+			wchar_t stage[ROW_TEXT_LENGTH];
+			short index;
+
+			p2p_join_status(&status);
+			connect_stage_text(&status, stage, NUMBEROF(stage));
+			for (index = 0; stage[index]; index++)
+			{
+				if (stage[index] == '\r' || stage[index] == '\n')
+					stage[index] = ' ';
+			}
 			text_to_wide(lobby_browser.name, name, NUMBEROF(name));
-			usnprintf(text, NUMBEROF(text) - 1, L"Connecting to %s...", name);
+			usnprintf(text, NUMBEROF(text) - 1, L"Connecting to %s: %s", name, stage);
 		}
 		else if (lobby_browser.failed_time && now - lobby_browser.failed_time < LOBBY_BROWSER_FAILED_TIME)
 		{
 			text_to_wide(lobby_browser.failed_name, name, NUMBEROF(name));
 			/* (and why, when this network's NAT is what stops it: the router's
 			UPnP, or a forwarded network.tunnel_port, lets it through) */
-			usnprintf(text, NUMBEROF(text) - 1, lobby_browser.failed_nat_strict ?
-				L"Strict NAT, turn on UPnP: could not reach %s" :
-				L"Could not reach %s", name);
+			usnprintf(text, NUMBEROF(text) - 1, lobby_browser.failed_detail[0] ? L"Could not reach %s: %s" :
+				L"Could not reach %s", name, lobby_browser.failed_headline);
 		}
 		else if (chosen >= lobby_browser.count && chosen < rows)
 		{
@@ -6045,7 +6265,11 @@ static boolean lobby_browser_select(struct widget_instance *widget, short contro
 		lobby_browser.controller = controller;
 		return ui_widget_port_open(widget, PASSWORD_NAME, widget_deleted);
 	}
-	return lobby_browser_join(game, controller) || campaign_fail();
+	if (!lobby_browser_join(game, controller))
+		return campaign_fail();
+	connect_dialog.listing = TRUE;
+	connect_dialog.game = *game;
+	return connect_open(widget, controller, widget_deleted);
 }
 
 /* ---- the server browser's password screen (a game with a password
@@ -6821,6 +7045,8 @@ static boolean direct_link_from_clipboard(void)
 		platform_log("menus: the clipboard has no invite link");
 		return campaign_fail();
 	}
+	connect_dialog.listing = FALSE;
+	snprintf(connect_dialog.link, sizeof(connect_dialog.link), "%s", link);
 	return TRUE;
 }
 
@@ -8619,7 +8845,15 @@ boolean pc_menu_event_function_invoke(
 		}
 		else if (!strcmp(name, "direct ip connect go"))
 		{
-			return direct_link_from_clipboard();
+			return direct_link_from_clipboard() && connect_open(widget, controller, widget_deleted);
+		}
+		else if (!strcmp(name, "port connect back"))
+		{
+			return connect_back(widget, widget_deleted);
+		}
+		else if (!strcmp(name, "port connect retry"))
+		{
+			return connect_retry(widget, widget_deleted);
 		}
 		else if (!strcmp(name, "join controller to mp game"))
 		{
@@ -8919,6 +9153,8 @@ void pc_menu_game_data_function_invoke(
 		mods_update(widget);
 	else if (!strcmp(name, "port update question"))
 		update_question_note(widget);
+	else if (!strcmp(name, "port connect update"))
+		connect_update(widget);
 	else if (!strcmp(name, "color picker update"))
 		color_list_update(widget);
 	else if (!strcmp(name, "3wide player profile list update"))
