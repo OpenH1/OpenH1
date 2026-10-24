@@ -825,6 +825,13 @@ static void update_windows_over_game(void)
 	});
 }
 
+static BOOL update_test_install(void)
+{
+	const char *test = getenv("HALO_UPDATE_TEST");
+
+	return test && !strcmp(test, "install");
+}
+
 @implementation HaloUpdater
 
 /* (the appcast of a test: HALO_UPDATE_FEED, port/macos/README.md) */
@@ -855,6 +862,26 @@ static void update_windows_over_game(void)
 	host_logf(HOST_LOG_INFO, "update: installed; starting the new build");
 }
 
+/* (HALO_UPDATE_TEST=install, port/macos/README.md: a downloaded update
+installed at once, as Install Update does, but the app not started again,
+which LaunchServices would do without the test's environment) */
+- (BOOL)updater:(SPUUpdater *)updater willInstallUpdateOnQuit:(SUAppcastItem *)item
+	immediateInstallationBlock:(void (^)(void))immediateInstallHandler
+{
+	host_logf(HOST_LOG_INFO, "update: build %s downloaded and checked", item.versionString.UTF8String);
+	if (!update_test_install())
+		return NO;
+	immediateInstallHandler();
+	return YES;
+}
+
+/* (never in a test: LaunchServices would start the new app without the
+test's environment, in the player's own folders) */
+- (BOOL)updaterShouldRelaunchApplication:(SPUUpdater *)updater
+{
+	return !getenv("HALO_UPDATE_TEST");
+}
+
 /* a version found by a check of Sparkle's own (not Check for Updates...):
 shown by Sparkle at the main menu, else kept for it (update_tick) */
 - (BOOL)supportsGentleScheduledUpdateReminders
@@ -872,6 +899,7 @@ shown by Sparkle at the main menu, else kept for it (update_tick) */
 {
 	if (handleShowingUpdate)
 	{
+		host_logf(HOST_LOG_INFO, "update: build %s shown", update.versionString.UTF8String);
 		update_windows_over_game();
 		return;
 	}
@@ -949,7 +977,7 @@ static void update_tick(void)
 	}
 }
 
-/* once SDL has made the app's menus (NSApplicationDidFinishLaunching):
+/* once SDL has made the app's menus (host_app_start's timer):
 Sparkle, if the app has it and an appcast (a release's), else nothing */
 static void update_start(void)
 {
@@ -978,6 +1006,8 @@ static void update_start(void)
 		userDriverDelegate:updater_delegate];
 	[updater_controller startUpdater];
 	updater_controller.updater.automaticallyChecksForUpdates = config_boolean_setting("update.auto", YES);
+	if (update_test_install())
+		updater_controller.updater.automaticallyDownloadsUpdates = YES;
 	update_config_read = config_modified();
 	host_logf(HOST_LOG_INFO, "update: Sparkle started (%s), update.auto = %s",
 		updater_controller.updater.feedURL.absoluteString.UTF8String,
@@ -995,7 +1025,13 @@ static void update_start(void)
 		[menu insertItem:check atIndex:2];
 		[menu insertItem:automatic atIndex:3];
 	}
-	[NSTimer scheduledTimerWithTimeInterval:2 repeats:YES block:^(NSTimer *timer) { update_tick(); }];
+	/* (the tests, HALO_UPDATE_TEST: window, the update window at once, as
+	Check for Updates... shows it; install, the update looked for at once,
+	downloaded and installed: whatever the game is doing) */
+	if (update_test_install())
+		[updater_controller.updater checkForUpdatesInBackground];
+	else if (getenv("HALO_UPDATE_TEST") && !strcmp(getenv("HALO_UPDATE_TEST"), "window"))
+		[updater_controller checkForUpdates:nil];
 }
 
 /* ---------- start */
@@ -1046,9 +1082,30 @@ void host_app_start(void)
 			maps_find();
 		}
 		window_remember();
-		[[NSNotificationCenter defaultCenter] addObserverForName:NSApplicationDidFinishLaunchingNotification object:nil
-			queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
-				dispatch_async(dispatch_get_main_queue(), ^{ update_start(); });
-			}];
+	}
+}
+
+/* host_sdl.c's, each time the game reads its events (on the main thread):
+the updater started once the game reads them, and its tick every two
+seconds. (Not a timer of the run loop: the game's event pump does not run
+them, and NSApplicationDidFinishLaunching does not come) */
+void host_app_update_tick(void)
+{
+	static Uint64 next;
+	static BOOL started;
+	Uint64 now = SDL_GetTicks();
+
+	if (!support_folder || now < next)
+		return;
+	next = now + 2000;
+	@autoreleasepool
+	{
+		if (!started)
+		{
+			started = YES;
+			update_start();
+		}
+		if (updater_controller)
+			update_tick();
 	}
 }

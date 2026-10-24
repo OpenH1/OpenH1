@@ -55,10 +55,13 @@ if [ -z "$public" ]; then
     if gh secret list --repo "$GH_REPO" | grep -q '^SPARKLE_PRIVATE_KEY'; then
         [ "$FORCE" = 1 ] || fail "$GH_REPO has a SPARKLE_PRIVATE_KEY, but this Mac's Keychain has no key: run this on the Mac that made it, or import its backup (generate_keys --account $ACCOUNT -f <file>), or give --force to replace it (the apps already out will refuse the updates)"
     fi
-    "$generate_keys" --account "$ACCOUNT" > /dev/null
-    public="$("$generate_keys" --account "$ACCOUNT" -p)"
+    # (its output shown: the Keychain's prompt can make it fail, and says so)
+    status=0
+    "$generate_keys" --account "$ACCOUNT" || status=$?
+    [ "$status" = 0 ] || fail "generate_keys failed (status $status): allow the Keychain prompt, or run $generate_keys --account $ACCOUNT yourself, then run this again"
+    public="$("$generate_keys" --account "$ACCOUNT" -p)" || fail "generate_keys -p found no key after making it: allow the Keychain prompt, or run $generate_keys --account $ACCOUNT yourself, then run this again"
 fi
-[[ "$public" =~ ^[A-Za-z0-9+/]{43}=$ ]] || fail "generate_keys gave no public key"
+[[ "$public" =~ ^[A-Za-z0-9+/]{43}=$ ]] || fail "generate_keys gave no public key ('$public'): allow the Keychain prompt, or run $generate_keys --account $ACCOUNT yourself, then run this again"
 [ "$had_key" = 1 ] && echo "found the Keychain's key" || echo "made a new key"
 
 step "Setting the secret and the variable on $GH_REPO"
