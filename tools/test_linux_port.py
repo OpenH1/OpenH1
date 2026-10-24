@@ -451,17 +451,17 @@ def test_battery_saver_reads_the_classic_values(config_check_mac):
     assert run("saving", "display.anti_aliasing") == "msaa4x msaa4x"
     assert run("saving", "display.anisotropic_filtering") == "0 16"
     # (the other settings are as they are)
-    assert run("saving", "display.vsync") == "true true"
+    assert run("saving", "display.vsync") == "false false"
     assert run("saving", "display.fov") == "0 0"
 
 
 def test_vsync_default_by_build(tmp_path, monkeypatch, config_check_mac):
-    """display.vsync: off on the Linux builds (and Windows), on the Mac; on
+    """display.vsync: off on the Linux builds, Windows and the Mac; on
     under gamescope (the Steam Deck's Game Mode) where the player has not
     set it, and as set where they have"""
     for name in ("GAMESCOPE_WAYLAND_DISPLAY", "XDG_CURRENT_DESKTOP", "SteamDeck", "SteamGamepadUI", "HALO_NO_VSYNC"):
         monkeypatch.delenv(name, raising=False)
-    assert config_check_mac("get", "display.vsync") == "true"
+    assert config_check_mac("get", "display.vsync") == "false"
     run = config_check_build(tmp_path / "linux", ["-DHALO_VULKAN=1", "-DHALO_GUEST=1"])
     assert run("get", "display.vsync") == "false"
     assert "\n# vsync = false\n" in run.config.read_text()
