@@ -41,6 +41,14 @@ TOLERANCES = {
     "crouch_curve": dict(absolute=0.0001, unit="wu rms"),
     "crouch_time": dict(absolute=0.001, unit="s"),
     "crouch_between": dict(absolute=0.001, unit="wu"),
+    # a player strafing one way and the other (A and D in turn, U1's): its place and velocity every 30th of a second,
+    # how far it went, the most its velocity changes in a step a second (a tick's change made at one sub-step is
+    # 2 or 4 times as much), and how far its velocity is between the grid's times from the ticks' lines
+    "strafe_path": dict(absolute=0.001, unit="wu rms"),
+    "strafe_speed": dict(absolute=0.001, unit="wu/s rms"),
+    "strafe_walked": dict(relative=0.001, unit="wu"),
+    "strafe_acceleration": dict(relative=0.01, unit="wu/s2"),
+    "strafe_between": dict(absolute=0.001, unit="wu/s"),
     # a player's vehicle (U17): the plan's row 9 (0 to its top speed 2%, its top speed 1%, its turning circle 2%);
     # its path and height through a run within a tenth of a unit RMS; a jump's apex and its suspension's travel
     # after landing within 3 hundredths; a crash's moment within two ticks (vehicles find each other at a tick's
@@ -446,6 +454,44 @@ def measure_crouch(trace, start=0.0, end=None, player=0):
     return result
 
 
+def measure_strafe(trace, start=0.0, end=None, player=0):
+    """a player strafing one way and the other: its place and its velocity across the floor at every 30th of a second
+    from start to end, compared by their RMS; how far it went (so a run that never moves cannot pass by agreeing);
+    the most its velocity across the floor changed in one step, a second (an acceleration: the same at every rate
+    when each sub-step makes its share of a tick's change, a tick's change at one sub-step otherwise); and how far its
+    velocity at each step between the grid's times is from the line between the ticks' ends, as RMS (none at 30:
+    0)"""
+    steps = [step for step in trace.steps if player in step["players"] and
+             start - GRID_SLACK <= step["t"] <= (end if end is not None else math.inf) + GRID_SLACK]
+    if not steps:
+        return {}
+
+    def velocity(step):
+        return tuple(step["players"][player][3:5])
+
+    grid = on_grid([(step["t"], step) for step in steps])
+    path = tuple(tuple(step["players"][player][0:3]) for _, step in grid)
+    result = {"path": (path, "strafe_path"),
+              "speed": (tuple(velocity(step) for _, step in grid), "strafe_speed"),
+              "walked": (sum(distance(a, b) for a, b in zip(path, path[1:])), "strafe_walked")}
+    result["acceleration"] = (max(distance(velocity(a), velocity(b)) / (b["t"] - a["t"])
+                                  for a, b in zip(steps, steps[1:])), "strafe_acceleration")
+    ticks = {}
+    for step in steps:
+        ticks.setdefault(step["tick"], []).append(step)
+    gaps = []
+    for tick, tick_steps in ticks.items():
+        before = ticks.get(tick - 1)
+        if len(tick_steps) < 2 or not before:
+            continue
+        a, b = velocity(before[-1]), velocity(tick_steps[-1])
+        for index, step in enumerate(tick_steps[:-1]):
+            fraction = (index + 1) / len(tick_steps)
+            gaps.append(distance(velocity(step), tuple(x + (y - x) * fraction for x, y in zip(a, b))))
+    result["between"] = (math.sqrt(sum(g * g for g in gaps) / len(gaps)) if gaps else 0.0, "strafe_between")
+    return result
+
+
 def vehicle_steps(trace, player=0):
     """each step the player rides a vehicle: (t, its fields: place, velocity, forward, up, angular velocity; on the
     ground)"""
@@ -562,6 +608,7 @@ MEASURES = {
     "shield": measure_shield,
     "ai_path": measure_ai_path,
     "crouch": measure_crouch,
+    "strafe": measure_strafe,
 }
 
 
@@ -585,7 +632,7 @@ def tolerance(kind, rates):
 def apart(a, b, kind):
     """how far apart two measures are: numbers by their difference, places by their distance, curves by the RMS of
     their differences (over the times both have)"""
-    if TOLERANCES[kind]["unit"] == "wu rms":
+    if TOLERANCES[kind]["unit"] in ("wu rms", "wu/s rms"):
         count = min(len(a), len(b))
         if not count or len(a) != len(b):
             return math.inf

@@ -40,6 +40,17 @@ def grenade_volley(pitches):
     return "; ".join(events)
 
 
+def strafe_script(ticks, start=0.5, end=2.5):
+    """strafing one way and the other (A and D held in turn), each held so many 30ths of a second, from start to end"""
+    events = []
+    tick, side = round(start * 30), -1
+    while tick < round(end * 30):
+        events.append(f"{tick / 30:.6f}-{(tick + ticks) / 30:.6f} move={side},0")
+        tick += ticks
+        side = -side
+    return "; ".join(events)
+
+
 SCENARIOS = [
     # jumps (the plan's row 2): apex height and time, air time, distance
     scenario("jump_standing", "walk", "jump", ["jump", "biped"], script="0.5 jump", seconds=2.5,
@@ -68,6 +79,15 @@ SCENARIOS = [
              seconds=3.5, arguments=dict(start=0.4)),
     scenario("crouch_jumping", "crouch", "crouch", ["crouch", "biped"], script="0.5 jump; 0.6-1.6 crouch",
              seconds=2.5, arguments=dict(start=0.4)),
+    # strafing one way and the other (U1's, synthetic: A and D in turn, as in a fight), each held a fifth and a tenth
+    # of a second: the player's place and velocity every 30th of a second, how far it went, the most its velocity
+    # changes in a step a second, and how far its velocity is from the ticks' lines between the grid's times (a
+    # tick's change made at one sub-step, a staircase, is 2 or 4 times the acceleration). (Not while the view turns:
+    # the aim turns in the sub-steps, so the way it strafes does, and the paths part by design)
+    scenario("strafe_fifths", "walk", "strafe", ["strafe", "biped"], script=strafe_script(6), seconds=3.0,
+             arguments=dict(start=0.4)),
+    scenario("strafe_tenths", "walk", "strafe", ["strafe", "biped"], script=strafe_script(3), seconds=3.0,
+             arguments=dict(start=0.4)),
     # the first shot's travel (row 6): where it is a 30th, 2, 3 and 5 30ths of a second after it is fired, flying
     # free (a wall 500 away), level and aimed up
     scenario("first_shot_level", "shoot", "shots", ["first_shot", "projectile", "weapon"],
