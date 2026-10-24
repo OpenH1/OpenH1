@@ -2,21 +2,18 @@
 OPENXR_PROBE.C
 
 What an OpenXR runtime offers the VR build (port/linux/host/host_vr.c): its
-instance extensions, the GL bindings among them (XR_KHR_opengl_enable, and
-XR_MNDX_egl_enable, without which the session takes GLX's binding), and
-whether it has a headset (xrGetSystem). The runtime is loaded as host_vr.c
-loads it: from a manifest's library_path, through
-xrNegotiateLoaderRuntimeInterface, without the OpenXR loader.
+instance extensions, whether Vulkan's binding is among them
+(XR_KHR_vulkan_enable2, without which the game plays flat), and whether it
+has a headset (xrGetSystem). The runtime is loaded as host_vr.c loads it:
+from a manifest's library_path, through xrNegotiateLoaderRuntimeInterface,
+without the OpenXR loader.
 
-	openxr_probe [--extensions-only | --egl-session] [MANIFEST]
+	openxr_probe [--extensions-only] [MANIFEST]
 
 MANIFEST, else $XR_RUNTIME_JSON, else the active runtime's
 ($XDG_CONFIG_HOME or ~/.config, then /etc/xdg: openxr/1/active_runtime.json).
 --extensions-only stops before xrCreateInstance (which may start the
-runtime's server: SteamVR's does). --egl-session goes on to open a session
-with XR_MNDX_egl_enable's binding, on a desktop OpenGL 4.5 context of EGL's
-default display without a surface (the game's has its window's), with
-libEGL.so.1 loaded at run time. The exit status is 0 when the runtime was
+runtime's server: SteamVR's does). The exit status is 0 when the runtime was
 loaded and listed its extensions.
 
 A 64-bit host tool, built with the headers the VR build downloads into
@@ -27,17 +24,10 @@ the repository:
 	python3 -c 'from pathlib import Path; from tools.linux_guest_build import fetch_openxr_headers; \
 		fetch_openxr_headers(Path("build/linux_x86_64/third_party/openxr"))'
 	cc -O1 -I build/linux_x86_64/third_party/openxr tools/vr_test/openxr_probe.c -o build/openxr_probe -ldl
-
-(EGL's header from libegl-dev or Mesa; the probe needs no EGL library but
-for --egl-session.)
 */
 
 #define XR_NO_PROTOTYPES
 
-#define XR_USE_PLATFORM_EGL
-#define XR_USE_GRAPHICS_API_OPENGL
-
-#include <EGL/egl.h>
 #include <dlfcn.h>
 #include <limits.h>
 #include <stdio.h>
@@ -45,11 +35,10 @@ for --egl-session.)
 #include <string.h>
 
 #include <openxr/openxr.h>
-#include <openxr/openxr_platform.h>
 #include <openxr/openxr_loader_negotiation.h>
 
-#define XR_KHR_OPENGL_ENABLE XR_KHR_OPENGL_ENABLE_EXTENSION_NAME
-#define XR_MNDX_EGL_ENABLE XR_MNDX_EGL_ENABLE_EXTENSION_NAME
+/* (openxr_platform.h's name, which would need Vulkan's headers) */
+#define XR_KHR_VULKAN_ENABLE2 "XR_KHR_vulkan_enable2"
 
 static PFN_xrGetInstanceProcAddr get_instance_proc_address;
 
@@ -170,103 +159,10 @@ static const char *result_text(PFN_xrResultToString to_string, XrInstance instan
 	return text;
 }
 
-/* a session with EGL's binding (--egl-session): 1 if xrCreateSession took it */
-static int egl_session(XrInstance instance, XrSystemId system, PFN_xrResultToString to_string)
-{
-	void *library = dlopen("libEGL.so.1", RTLD_NOW | RTLD_GLOBAL);
-	EGLDisplay (*get_display)(EGLNativeDisplayType);
-	EGLBoolean (*initialize)(EGLDisplay, EGLint *, EGLint *);
-	EGLBoolean (*bind_api)(EGLenum);
-	EGLBoolean (*choose_config)(EGLDisplay, const EGLint *, EGLConfig *, EGLint, EGLint *);
-	EGLContext (*create_context)(EGLDisplay, EGLConfig, EGLContext, const EGLint *);
-	EGLBoolean (*make_current)(EGLDisplay, EGLSurface, EGLSurface, EGLContext);
-	EGLBoolean (*destroy_context)(EGLDisplay, EGLContext);
-	EGLBoolean (*terminate)(EGLDisplay);
-	PFN_xrEglGetProcAddressMNDX get_proc_address;
-	PFN_xrGetOpenGLGraphicsRequirementsKHR requirements_get;
-	PFN_xrCreateSession create_session;
-	PFN_xrDestroySession destroy_session;
-	static const EGLint config_attributes[] = { EGL_RENDERABLE_TYPE, EGL_OPENGL_BIT, EGL_SURFACE_TYPE, EGL_PBUFFER_BIT,
-		EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_NONE };
-	static const EGLint context_attributes[] = { 0x3098 /* EGL_CONTEXT_MAJOR_VERSION */, 4,
-		0x30FB /* EGL_CONTEXT_MINOR_VERSION */, 5, EGL_NONE };
-	XrGraphicsRequirementsOpenGLKHR requirements = { XR_TYPE_GRAPHICS_REQUIREMENTS_OPENGL_KHR };
-	XrGraphicsBindingEGLMNDX binding = { XR_TYPE_GRAPHICS_BINDING_EGL_MNDX };
-	XrSessionCreateInfo create = { XR_TYPE_SESSION_CREATE_INFO };
-	XrSession session = XR_NULL_HANDLE;
-	EGLDisplay display;
-	EGLConfig config = NULL;
-	EGLContext context;
-	EGLint count = 0, major = 0, minor = 0;
-	XrResult result;
-
-	if (!library)
-	{
-		printf("session: no libEGL.so.1\n");
-		return 0;
-	}
-	get_display = (EGLDisplay (*)(EGLNativeDisplayType))dlsym(library, "eglGetDisplay");
-	initialize = (EGLBoolean (*)(EGLDisplay, EGLint *, EGLint *))dlsym(library, "eglInitialize");
-	bind_api = (EGLBoolean (*)(EGLenum))dlsym(library, "eglBindAPI");
-	choose_config = (EGLBoolean (*)(EGLDisplay, const EGLint *, EGLConfig *, EGLint, EGLint *))dlsym(library,
-		"eglChooseConfig");
-	create_context = (EGLContext (*)(EGLDisplay, EGLConfig, EGLContext, const EGLint *))dlsym(library,
-		"eglCreateContext");
-	make_current = (EGLBoolean (*)(EGLDisplay, EGLSurface, EGLSurface, EGLContext))dlsym(library, "eglMakeCurrent");
-	destroy_context = (EGLBoolean (*)(EGLDisplay, EGLContext))dlsym(library, "eglDestroyContext");
-	terminate = (EGLBoolean (*)(EGLDisplay))dlsym(library, "eglTerminate");
-	get_proc_address = (PFN_xrEglGetProcAddressMNDX)dlsym(library, "eglGetProcAddress");
-	if (!get_display || !initialize || !bind_api || !choose_config || !create_context || !make_current ||
-		!destroy_context || !terminate || !get_proc_address)
-	{
-		printf("session: libEGL.so.1 lacks a function\n");
-		return 0;
-	}
-	display = get_display(EGL_DEFAULT_DISPLAY);
-	if (display == EGL_NO_DISPLAY || !initialize(display, &major, &minor) || !bind_api(EGL_OPENGL_API) ||
-		!choose_config(display, config_attributes, &config, 1, &count) || count < 1)
-	{
-		printf("session: no EGL display or desktop OpenGL config\n");
-		return 0;
-	}
-	context = create_context(display, config, EGL_NO_CONTEXT, context_attributes);
-	if (context == EGL_NO_CONTEXT || !make_current(display, EGL_NO_SURFACE, EGL_NO_SURFACE, context))
-	{
-		printf("session: no current OpenGL 4.5 context on EGL %d.%d\n", (int)major, (int)minor);
-		return 0;
-	}
-	printf("session: EGL %d.%d, an OpenGL 4.5 context\n", (int)major, (int)minor);
-	requirements_get = (PFN_xrGetOpenGLGraphicsRequirementsKHR)function(instance,
-		"xrGetOpenGLGraphicsRequirementsKHR");
-	create_session = (PFN_xrCreateSession)function(instance, "xrCreateSession");
-	destroy_session = (PFN_xrDestroySession)function(instance, "xrDestroySession");
-	if (requirements_get && requirements_get(instance, system, &requirements) == XR_SUCCESS)
-	{
-		printf("session: OpenGL %u.%u to %u.%u\n", (unsigned)XR_VERSION_MAJOR(requirements.minApiVersionSupported),
-			(unsigned)XR_VERSION_MINOR(requirements.minApiVersionSupported),
-			(unsigned)XR_VERSION_MAJOR(requirements.maxApiVersionSupported),
-			(unsigned)XR_VERSION_MINOR(requirements.maxApiVersionSupported));
-	}
-	binding.getProcAddress = get_proc_address;
-	binding.display = display;
-	binding.config = config;
-	binding.context = context;
-	create.next = &binding;
-	create.systemId = system;
-	result = create_session ? create_session(instance, &create, &session) : XR_ERROR_FUNCTION_UNSUPPORTED;
-	printf("session: xrCreateSession (EGL): %s\n", result_text(to_string, instance, result));
-	if (result == XR_SUCCESS && destroy_session)
-		destroy_session(session);
-	make_current(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-	destroy_context(display, context);
-	terminate(display);
-	return result == XR_SUCCESS;
-}
-
 int main(int argc, char **argv)
 {
 	const char *manifest = NULL;
-	int extensions_only = 0, session = 0, index, has_opengl = 0, has_egl = 0;
+	int extensions_only = 0, index, has_vulkan = 0;
 	PFN_xrEnumerateInstanceExtensionProperties enumerate;
 	PFN_xrCreateInstance create_instance;
 	PFN_xrDestroyInstance destroy_instance;
@@ -283,14 +179,12 @@ int main(int argc, char **argv)
 	XrSystemProperties system = { XR_TYPE_SYSTEM_PROPERTIES };
 	XrInstance instance = XR_NULL_HANDLE;
 	XrSystemId system_id = XR_NULL_SYSTEM_ID;
-	const char *enabled[2] = { XR_KHR_OPENGL_ENABLE, XR_MNDX_EGL_ENABLE };
+	const char *enabled[1] = { XR_KHR_VULKAN_ENABLE2 };
 
 	for (index = 1; index < argc; index++)
 	{
 		if (!strcmp(argv[index], "--extensions-only"))
 			extensions_only = 1;
-		else if (!strcmp(argv[index], "--egl-session"))
-			session = 1;
 		else
 			manifest = argv[index];
 	}
@@ -322,21 +216,14 @@ int main(int argc, char **argv)
 	for (extension = 0; extension < count; extension++)
 	{
 		printf("  %s %u\n", extensions[extension].extensionName, (unsigned)extensions[extension].extensionVersion);
-		has_opengl |= !strcmp(extensions[extension].extensionName, XR_KHR_OPENGL_ENABLE);
-		has_egl |= !strcmp(extensions[extension].extensionName, XR_MNDX_EGL_ENABLE);
+		has_vulkan |= !strcmp(extensions[extension].extensionName, XR_KHR_VULKAN_ENABLE2);
 	}
 	free(extensions);
-	printf("%s: %s\n%s: %s\n", XR_KHR_OPENGL_ENABLE, has_opengl ? "yes" : "no", XR_MNDX_EGL_ENABLE,
-		has_egl ? "yes" : "no");
-	/* (GLX's binding is the game's only on SDL's X11 video driver,
-	host_vr.c's binding_choose: under Wayland, SDL_VIDEO_DRIVER=x11) */
-	printf("binding: %s\n", !has_opengl ? "none (no OpenGL)" : has_egl ? "EGL (XrGraphicsBindingEGLMNDX)" :
-		"GLX (XrGraphicsBindingOpenGLXlibKHR), which the game takes only on SDL's X11 video driver "
-		"(SDL_VIDEO_DRIVER=x11; else it plays flat)");
+	printf("%s: %s\n", XR_KHR_VULKAN_ENABLE2, has_vulkan ? "yes" : "no (the game plays flat)");
 	if (extensions_only)
 		return 0;
 
-	/* the instance (with OpenGL's extension, as the game's), and its system */
+	/* the instance (with Vulkan's binding, as the game's), and its system */
 	if (!create_instance)
 	{
 		printf("instance: no xrCreateInstance\n");
@@ -346,7 +233,7 @@ int main(int argc, char **argv)
 	create.applicationInfo.applicationVersion = 1;
 	strcpy(create.applicationInfo.engineName, "halo-ce-universal");
 	create.applicationInfo.apiVersion = XR_MAKE_VERSION(1, 0, 0);
-	create.enabledExtensionCount = !has_opengl ? 0 : session && has_egl ? 2 : 1;
+	create.enabledExtensionCount = has_vulkan ? 1 : 0;
 	create.enabledExtensionNames = enabled;
 	result = create_instance(&create, &instance);
 	if (result != XR_SUCCESS)
@@ -377,10 +264,6 @@ int main(int argc, char **argv)
 			printf("system: %s (vendor %u)\n", system.systemName, (unsigned)system.vendorId);
 		else
 			printf("system: %llu\n", (unsigned long long)system_id);
-		if (session && !has_egl)
-			printf("session: no XR_MNDX_egl_enable\n");
-		else if (session)
-			egl_session(instance, system_id, to_string);
 	}
 	else
 	{

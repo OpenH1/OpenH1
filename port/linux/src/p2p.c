@@ -211,9 +211,6 @@ struct peer
 	/* the hash of its public key, which another machine reaches it by */
 	unsigned char key_hash[P2P_KEY_HASH_SIZE];
 	int connected;
-	/* the WebRTC connection carrying its tunnel (p2p_webrtc.c: a browser's),
-	or -1 (the UDP tunnel) */
-	int connection;
 	struct p2p_candidate candidates[P2P_MAXIMUM_CANDIDATES];
 	int candidate_count;
 	struct p2p_candidate endpoint;
@@ -925,7 +922,7 @@ static void peer_send_to(struct peer *peer, const struct p2p_candidate *to, cons
 	int sealed;
 	int index;
 
-	if ((p2p.tunnel_socket < 0 && peer->connection < 0) || size > MAXIMUM_INNER_SIZE)
+	if (p2p.tunnel_socket < 0 || size > MAXIMUM_INNER_SIZE)
 		return;
 	/* the header, authenticated with the rest */
 	counter = ++peer->send_counter;
@@ -936,12 +933,6 @@ static void peer_send_to(struct peer *peer, const struct p2p_candidate *to, cons
 	packet_nonce(packet, nonce);
 	sealed = p2p_aead_seal(peer->send_key, nonce, packet, TUNNEL_HEADER_SIZE, inner, size,
 		packet + TUNNEL_HEADER_SIZE);
-	/* (a browser's: over its WebRTC connection, wherever that goes) */
-	if (peer->connection >= 0)
-	{
-		p2p_webrtc_send(peer->connection, packet, TUNNEL_HEADER_SIZE + sealed);
-		return;
-	}
 	make_address(&address, to->address, to->port);
 	posix_socket_sendto(p2p.tunnel_socket, packet, TUNNEL_HEADER_SIZE + sealed, 0, &address, sizeof(address));
 }
@@ -1032,8 +1023,6 @@ static void drop_peer(struct peer *peer, const char *reason)
 		peer_send(peer, &bye, 1);
 	}
 	release_peer_links((int)(peer - p2p.peers), 0);
-	if (peer->connection >= 0)
-		p2p_webrtc_close(peer->connection);
 	/* a session that ended does not come back: its packets would pass
 	again. (Not a probe's, which pushes no other's out: its request ended
 	with it, and the game never had its address) */
@@ -1142,7 +1131,7 @@ int p2p_peer_turned_away(const unsigned char *peer_identifier, int is_host)
 }
 
 int p2p_peer_offered(const unsigned char *peer_identifier, const unsigned char *public_key, const unsigned char *secret,
-	const struct p2p_candidate *candidates, int count, const struct p2p_webrtc *webrtc, int offered)
+	const struct p2p_candidate *candidates, int count, int offered)
 {
 	struct peer *peer = find_peer(peer_identifier);
 	/* (a player answering as a host does: the keys of a host's session) */
@@ -1192,46 +1181,31 @@ int p2p_peer_offered(const unsigned char *peer_identifier, const unsigned char *
 		peer->is_player = offered == _p2p_offered_player;
 		peer->probe = offered == _p2p_offered_probe;
 		p2p_key_hash(public_key, peer->key_hash);
-		peer->connection = -1;
 		peer->offered_time = p2p_now();
 		if (!peer->probe && offered == _p2p_offered_host && p2p.joining)
 		{
 			/* (the host answered: the path to it is opened now) */
-			p2p_log("Internet play: reaching host %s%s, %d %s (%lu ms after the join was asked for)", peer->name,
-				webrtc->kind == _p2p_webrtc_browser ? " (a browser)" : "", count, count == 1 ? "address" : "addresses",
-				join_elapsed());
+			p2p_log("Internet play: reaching host %s, %d %s (%lu ms after the join was asked for)", peer->name,
+				count, count == 1 ? "address" : "addresses", join_elapsed());
 		}
 		else if (!peer->probe)
 		{
-			p2p_log("Internet play: reaching %s %s%s", offered == _p2p_offered_host ? "host" : "player",
-				peer->name, webrtc->kind == _p2p_webrtc_browser ? " (a browser)" : "");
+			p2p_log("Internet play: reaching %s %s", offered == _p2p_offered_host ? "host" : "player", peer->name);
 		}
 	}
 	add_candidates(peer, candidates, count);
-	peer->connection = p2p_webrtc_offered(peer->connection, (int)(peer - p2p.peers), peer->secret, webrtc,
-		candidates, count, peer->is_host);
 	return 1;
 }
 
 int p2p_peer_reoffered(const unsigned char *peer_identifier, const unsigned char *secret,
-	const struct p2p_candidate *candidates, int count, const struct p2p_webrtc *webrtc)
+	const struct p2p_candidate *candidates, int count)
 {
 	struct peer *peer = find_peer(peer_identifier);
 
 	if (!peer || memcmp(peer->secret, secret, P2P_SHA256_SIZE))
 		return 0;
 	add_candidates(peer, candidates, count);
-	if (count || webrtc->ufrag[0])
-	{
-		peer->connection = p2p_webrtc_offered(peer->connection, (int)(peer - p2p.peers), peer->secret, webrtc,
-			candidates, count, peer->is_host);
-	}
 	return 1;
-}
-
-void p2p_peer_name(int peer, char *name)
-{
-	memcpy(name, p2p.peers[peer].name, sizeof(p2p.peers[peer].name));
 }
 
 /* whether a packet of this number from the peer is new: not received yet,
@@ -1345,10 +1319,8 @@ static void update_peers(void)
 			/* (every address it gave, until a packet sealed by it arrives
 			from one: then only that one, above. The addresses are anyone's
 			who has the invite to give, so they are sent to no longer than
-			this. A browser's go over its WebRTC connection, once it is open) */
-			if (peer->connection >= 0)
-				peer_ping(peer, &peer->endpoint);
-			for (candidate = 0; candidate < peer->candidate_count && peer->connection < 0; candidate++)
+			this) */
+			for (candidate = 0; candidate < peer->candidate_count; candidate++)
 				peer_ping(peer, &peer->candidates[candidate]);
 			peer->sent_time = p2p_now();
 			peer->punch_rounds++;
@@ -2531,24 +2503,6 @@ static void tunnel_received(const unsigned char *packet, int size, const struct 
 	}
 }
 
-void p2p_tunnel_packet(const unsigned char *packet, int size, unsigned long address, unsigned short port)
-{
-	struct sockaddr_in from;
-
-	make_address(&from, address, port);
-	tunnel_received(packet, size, &from);
-}
-
-void p2p_tunnel_send(unsigned long address, unsigned short port, const void *data, int size)
-{
-	struct sockaddr_in to;
-
-	if (p2p.tunnel_socket < 0)
-		return;
-	make_address(&to, address, port);
-	posix_socket_sendto(p2p.tunnel_socket, data, size, 0, &to, sizeof(to));
-}
-
 static void tunnel_readable(void)
 {
 	unsigned char packet[2048];
@@ -2562,9 +2516,7 @@ static void tunnel_readable(void)
 
 		if (size < 0)
 			break;
-		/* (a browser's ICE checks and DTLS, which carries its tunnel) */
-		if (!p2p_webrtc_received(packet, size, from.sin_addr.s_addr, from.sin_port))
-			tunnel_received(packet, size, &from);
+		tunnel_received(packet, size, &from);
 	}
 }
 
@@ -2906,12 +2858,12 @@ static void update_joining(void)
 
 	if (p2p.join_requested)
 	{
-		/* the offer carries the public address, if there is one, and a
-		browser's WebRTC; the brokers are connected to meanwhile (not after:
-		their handshakes and STUN's answers take round trips each) */
+		/* the offer carries the public address, if there is one; the
+		brokers are connected to meanwhile (not after: their handshakes and
+		STUN's answers take round trips each) */
 		p2p.stun_started = 1;
 		p2p_signal_start();
-		if (!stun_ready() || !p2p_webrtc_ready())
+		if (!stun_ready())
 			return;
 		p2p.join_requested = 0;
 		p2p.joining = 1;
@@ -3647,8 +3599,6 @@ static void *p2p_thread(void *unused)
 	static int read[MAXIMUM_SOCKETS], write[MAXIMUM_SOCKETS];
 	static int asked_read[MAXIMUM_SOCKETS], asked_write[MAXIMUM_SOCKETS];
 	static int read_owners[MAXIMUM_SOCKETS], write_owners[MAXIMUM_SOCKETS];
-	/* WebRTC's connections opening or open (their timers) */
-	int webrtc_busy = 0;
 
 	(void)unused;
 #ifdef HALO_PROFILE
@@ -3669,7 +3619,7 @@ static void *p2p_thread(void *unused)
 		int asked_read_count, asked_write_count;
 		/* KCP's clock needs a pass every LOOP_INTERVAL while it carries
 		streams; otherwise the thread can sleep longer */
-		int wait = webrtc_busy ? LOOP_INTERVAL : LOOP_INTERVAL * 5;
+		int wait = LOOP_INTERVAL * 5;
 		int index, asked;
 		unsigned long waited;
 
@@ -3838,7 +3788,6 @@ static void *p2p_thread(void *unused)
 #endif
 		update_peers();
 		update_probes();
-		webrtc_busy = p2p_webrtc_update();
 		expire_proxies();
 		stun_update();
 		update_hosting();

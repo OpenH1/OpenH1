@@ -14,8 +14,8 @@ others are the host's measure in ticks, which every machine is sent
 
 What it shows is the distributed netcode's own round trip (NETCODE.md),
 timed in milliseconds rather than ticks (network_distributed.c): nothing is
-sent for it, so it is the same over system link, internet play's tunnel
-and a browser's WebRTC data channel.
+sent for it, so it is the same over system link and internet play's
+tunnel.
 
 - A client: its players' input names the host's latest tick it had, and the
   host's state of its player names the client's tick the host has it at

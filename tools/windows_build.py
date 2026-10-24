@@ -41,8 +41,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .android_build import (MBEDTLS_DIR, TOML_DIR, fetch_third_party,
-                            generate_guest_image)
+from .android_build import TOML_DIR, fetch_third_party, generate_guest_image
 from .build_common import (MINIUPNPC_DIR, OPTIMISATION, compile_launcher, configuration_defines, miniupnpc_sources,
                            updater_defines)
 from .guest_arch import X32
@@ -278,13 +277,9 @@ def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
         f"-I{LINUX_DIR / 'src'}", f"-I{TOML_DIR}", f"-I{_quote(sdl_include)}", f"-I{VULKAN_HEADERS_DIR}",
         "-DHALO_VULKAN=1",
     ])
-    # (the files of port/windows/src talk to Windows alone; and posix_dtls.c's
-    # Mbed TLS, and win32_upnp.c's miniupnpc)
+    # (the files of port/windows/src talk to Windows alone; and win32_upnp.c's
+    # miniupnpc)
     win32_cflags = " ".join([*base_cflags, f"-I{LINUX_DIR / 'src'}", f"-I{_quote(sdl_include)}"])
-    # (with Mbed TLS's own locks, on the POSIX threads of posix/pthread.h, as
-    # the Linux host builds it: tools/linux_guest_build.py)
-    mbedtls_include = (f"-I{MBEDTLS_DIR / 'include'} -I{PORT_DIR / 'posix'} -DMBEDTLS_THREADING_C "
-                       "-DMBEDTLS_THREADING_PTHREAD")
     miniupnpc_include = f"-I{MINIUPNPC_DIR / 'include'} -DMINIUPNP_STATICLIB"
 
     objects: List[Path] = []
@@ -314,10 +309,6 @@ def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
     for source in miniupnpc_sources():
         add(source, " ".join([*base_cflags, miniupnpc_include, f"-I{MINIUPNPC_DIR / 'src'}", "-w"]),
             name=f"miniupnpc_{source.name}.o")
-    add(LINUX_DIR / "src" / "posix_dtls.c", f"{win32_cflags} {mbedtls_include}")
-    for source in sorted((MBEDTLS_DIR / "library").glob("*.c")):
-        add(source, " ".join([*base_cflags, mbedtls_include, f"-I{MBEDTLS_DIR / 'library'}", "-w"]),
-            name=f"mbedtls/{source.name}.o")
     # the renderer: Vulkan's (port/linux/vulkan), with its own texture
     # decoding, as Android's host
     objects.extend(host_vulkan_renderer(n, "windows", "WINDOWS", BUILD, "windows_host_cc", host_cflags,

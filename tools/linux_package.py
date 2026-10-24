@@ -60,9 +60,6 @@ def notices(platform: str) -> List[Tuple[Path, str]]:
     has beside it ((source, name in the release) pairs; tools/ci_build.py's
     for every platform; the Linux build's SDL3-LICENSE.txt is apart)"""
     pairs = [
-        # internet play's DTLS with browsers, and the Linux self-updater's
-        # TLS (port/third_party/mbedtls), whose Apache license asks the same
-        (ROOT / "port/third_party/mbedtls/LICENSE", "mbedtls-LICENSE.txt"),
         # internet play's UPnP (port/third_party/miniupnpc), in every build,
         # whose BSD license asks binaries to carry its notice
         (ROOT / "port/third_party/miniupnpc/LICENSE", "miniupnpc-LICENSE.txt"),
@@ -80,6 +77,11 @@ def notices(platform: str) -> List[Tuple[Path, str]]:
         # notice
         (ROOT / "port/assets/icons/lucide/LICENSE", "lucide-LICENSE.txt"),
     ]
+    if platform.startswith("linux") or platform in ("macos", "ios"):
+        # the self-updater's TLS (port/third_party/mbedtls: posix_update.c,
+        # in the Linux and Apple hosts), whose Apache license asks binaries
+        # to carry it
+        pairs.insert(0, (ROOT / "port/third_party/mbedtls/LICENSE", "mbedtls-LICENSE.txt"))
     if platform in ("macos", "ios", "android"):
         # the DXT textures' ASTC encoder (port/third_party/astc-encoder), in
         # the Apple and Android hosts, whose Apache license asks the same

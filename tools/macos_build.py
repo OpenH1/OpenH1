@@ -471,13 +471,12 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
         n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source,
                 variables={"cflags": miniupnpc_cflags + (" -w" if source.name != "posix_upnp.c" else "")})
         host_objects.append(obj)
-    # the self-updater's download (posix_update.c) and internet play's DTLS
-    # with browsers (posix_dtls.c), with port/third_party/mbedtls
+    # the self-updater's download (posix_update.c), with
+    # port/third_party/mbedtls
     mbedtls_cflags = " ".join([host_cflags, f"-I{MBEDTLS_DIR / 'include'}"])
-    for source_name in ("posix_update.c", "posix_dtls.c"):
-        n.build(outputs=host_obj_dir / (source_name + ".o"), rule=f"{name}_host_cc",
-                inputs=LINUX_DIR / "src" / source_name, variables={"cflags": mbedtls_cflags})
-        host_objects.append(host_obj_dir / (source_name + ".o"))
+    n.build(outputs=host_obj_dir / "posix_update.c.o", rule=f"{name}_host_cc",
+            inputs=LINUX_DIR / "src" / "posix_update.c", variables={"cflags": mbedtls_cflags})
+    host_objects.append(host_obj_dir / "posix_update.c.o")
     for source in sorted((MBEDTLS_DIR / "library").glob("*.c")):
         obj = host_obj_dir / "mbedtls" / (source.name + ".o")
         n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source,

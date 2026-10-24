@@ -581,7 +581,7 @@ the setting for one start of the game. It has priority over the file.
 | `audio.volume` | `1.0` | `HALO_VOLUME` | The master volume. |
 | `audio.music_volume` | `1.0` | `HALO_MUSIC_VOLUME` | The music's volume, of the master volume. |
 | `audio.effects_volume` | `1.0` | `HALO_EFFECTS_VOLUME` | The volume of the other sounds (effects and speech), of the master volume. |
-| `audio.buffer_frames` | `512` | `HALO_AUDIO_BUFFER_FRAMES` | The audio device's buffer, in sample frames at 48 kHz, from `64` to `8192`. Larger rides out stalls that would cut the sound out; smaller has less delay (512 is 11 ms, 2048 is 43 ms). Not on Android. |
+| `audio.buffer_frames` | `1024` | `HALO_AUDIO_BUFFER_FRAMES` | The audio device's buffer, in sample frames at 48 kHz, from `64` to `8192`. Larger rides out stalls that would cut the sound out; smaller has less delay (1024 is 21 ms, 2048 is 43 ms). Not on Android. |
 | `audio.channels` | `"stereo"` | `HALO_AUDIO_CHANNELS` | `"stereo"`, or `"5.1"` for surround sound as with Dolby Digital on the Xbox. `"auto"`: 5.1 if the sound device has 6 or more channels (on Windows; the Linux builds and macOS, whose game cannot ask the device, take `"auto"` as stereo, and give 5.1 when it is asked for by name). Not on Android. In VR, 5.1 turns `vr.hrtf` off. |
 | `audio.reverb` | `true` | `HALO_REVERB` | `true`: the sounds of the world reverberate as the place the player is in does: the sound environments of the maps (a corridor, a cave, a large hall, outdoors) set the reverberation, as the I3DL2 reverb of the Xbox did. A sound behind a wall or a door is muffled in it too. `false`: no reverberation (sounds behind a wall are still muffled). |
 | `audio.resampler` | `"sinc"` | `HALO_AUDIO_RESAMPLER` | How the sounds are converted to the output's rate (48 kHz): `"sinc"` with a band-limited low pass, which keeps out the images above the sound's own rate; `"linear"` between neighbouring samples, which lets some of them through and sounds brighter for it. Audio Setup's SOUND PROCESSING screen sets it, with `audio.reverb`. |
@@ -1173,27 +1173,6 @@ When the machines connect, the game of the host shows in Multiplayer,
 System Link. Join the game as on a local network. System link on a local
 network does not need an invite.
 
-### WebRTC
-
-A build takes a WebRTC peer's connection (a browser's) on the port of its
-tunnel (`network.tunnel_port`), as little of WebRTC as one data channel
-needs (`src/p2p_webrtc.c`):
-
-- ICE: the native build is an ICE-lite agent. It answers the checks of the
-  browser, and the browser chooses the path. The credentials come from the
-  secret of the session, which both machines have. Until the browser
-  connects, the native build sends STUN indications to the addresses of the
-  browser, which open its NAT to the checks of the browser.
-- DTLS 1.2 (`src/posix_dtls.c`, Mbed TLS: `port/third_party/mbedtls`): the
-  native build is the server, with a certificate that it makes when it
-  starts (ECDSA P-256). Each machine sends the SHA-256 of its certificate in
-  its signalling messages, which the token seals and the proof of the
-  session authenticates; the other machine accepts only that certificate.
-- SCTP, over DTLS: the browser opens the association, and one data channel,
-  agreed before (unordered, without retransmissions), carries the packets of
-  the tunnel. They are sealed as on UDP, and KCP makes the streams reliable
-  as on UDP.
-
 ### Text chat
 
 Network games have a text chat, as the PC version had. Press T
@@ -1515,9 +1494,7 @@ Only machines with the invite can find the game:
   a random number from each. The keys do not go through the brokers. Thus
   other machines with the invite cannot read or change the packets.
 - Each packet is encrypted and authenticated, with a different key in each
-  direction. A machine ignores a packet that it already received. To and
-  from a WebRTC peer, the packets also go through DTLS, with the
-  certificates that the signalling messages named.
+  direction. A machine ignores a packet that it already received.
 - A machine can send only to the ports of the game on the other machine.
 - The host makes one session from each request of a player. If a person
   sends a copy of an old request again, the host ignores it. A player that

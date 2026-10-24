@@ -327,11 +327,11 @@ static const struct config_setting config_settings[] =
 	{ "audio.effects_volume", _config_real, "1.0", "HALO_EFFECTS_VOLUME", _environment_value, _platform_all,
 		"The volume of every other sound (effects and speech), 0.0 to 1.0 (of\n"
 		"audio.volume)." },
-	{ "audio.buffer_frames", _config_integer, "512", "HALO_AUDIO_BUFFER_FRAMES", _environment_value,
+	{ "audio.buffer_frames", _config_integer, "1024", "HALO_AUDIO_BUFFER_FRAMES", _environment_value,
 		_platform_desktop,
 		"The audio device's buffer, in sample frames at 48 kHz (64 to 8192): larger\n"
-		"rides out stalls that cut the sound out, smaller has less delay (512\n"
-		"is 11 ms, 2048 is 43 ms)." },
+		"rides out stalls that cut the sound out, smaller has less delay (1024\n"
+		"is 21 ms, 2048 is 43 ms)." },
 	{ "audio.channels", _config_string, "\"stereo\"", "HALO_AUDIO_CHANNELS", _environment_value, _platform_desktop,
 		"\"stereo\", \"5.1\" (surround, as the Xbox's Dolby Digital), or \"auto\"\n"
 		"for 5.1 when the sound device has six or more channels." },

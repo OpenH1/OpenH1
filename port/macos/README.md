@@ -329,9 +329,10 @@ structures (`stat`, `dirent64`, `utsname`, `timespec`), the clocks and the
 error numbers. The futexes of musl's locks use `os_sync_wait_on_address`.
 `HALO_TRACE_SYSCALLS=1` writes each call and its result to the log.
 
-`src/posix_*.c` (files, sockets, UPnP, DTLS) run in the host as on Linux,
-with macOS's differences: no `SOCK_CLOEXEC` or `accept4`, `getentropy`
-for random bytes, and socket addresses that start with a length byte.
+`src/posix_*.c` (files, sockets, UPnP, the updater's TLS) run in the host
+as on Linux, with macOS's differences: no `SOCK_CLOEXEC` or `accept4`,
+`getentropy` for random bytes, and socket addresses that start with a
+length byte.
 
 ### The main thread
 
