@@ -542,6 +542,8 @@ static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GA
 	/* the system back key (gesture or button) backs out of menus */
 	pad->bAnalogButtons[XINPUT_GAMEPAD_B] |= analog(k[SDL_SCANCODE_AC_BACK]);
 #endif
+	/* (Delete and E as X: the server browsers' sort, drawn as E in the
+	menus' prompts while the keyboard and mouse play: ui_widget.c) */
 	pad->bAnalogButtons[XINPUT_GAMEPAD_X] |= analog(k[SDL_SCANCODE_DELETE] || k[SDL_SCANCODE_E]);
 	/* (Q and E as LB and RB, the white and black buttons: Settings' tabs) */
 	pad->bAnalogButtons[XINPUT_GAMEPAD_WHITE] |= analog(k[SDL_SCANCODE_Q]);
