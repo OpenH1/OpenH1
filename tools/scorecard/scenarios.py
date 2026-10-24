@@ -59,6 +59,15 @@ SCENARIOS = [
              script="0.2-3 move=0,1; 0.7375 jump", seconds=2.7, arguments=dict(press=0.7375, after=0.6)),
     scenario("jump_off_grid_strafing", "walk", "jump_off_grid", ["jump", "biped"],
              script="0.2-3 move=1,0.5; 1.02 jump", seconds=3.0, arguments=dict(press=1.02, after=0.9)),
+    # a crouch (U1's, synthetic): the player crouches for a second, then taps crouch (a tenth of a second, so it
+    # stands again before it is all the way down), standing and in a jump (where the crouch lifts its feet): how far
+    # it is crouched and its eye's height every 30th of a second, when each change starts and ends, and how far its
+    # eye is from the ticks' lines between the grid's times (the view, which stands where the newest step left it:
+    # render_interpolation.c)
+    scenario("crouch_standing", "crouch", "crouch", ["crouch", "biped"], script="0.5-1.5 crouch; 2.5 crouch",
+             seconds=3.5, arguments=dict(start=0.4)),
+    scenario("crouch_jumping", "crouch", "crouch", ["crouch", "biped"], script="0.5 jump; 0.6-1.6 crouch",
+             seconds=2.5, arguments=dict(start=0.4)),
     # the first shot's travel (row 6): where it is a 30th, 2, 3 and 5 30ths of a second after it is fired, flying
     # free (a wall 500 away), level and aimed up
     scenario("first_shot_level", "shoot", "shots", ["first_shot", "projectile", "weapon"],
