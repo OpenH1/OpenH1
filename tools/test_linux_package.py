@@ -485,7 +485,7 @@ def test_release_names():
     assert release_names.published("halo-macos-debug") == "OpenH1-debug"
     assert release_names.published("halo-android-release") == "OpenH1-Android"
     assert release_names.published("halo-android-debug") == "OpenH1-Android-debug"
-    assert release_names.published("halo-web-release") == "halo-web-release"
+    assert release_names.published("halo-plan9-release") == "halo-plan9-release"
     workflow = (ROOT / ".github/workflows/build.yml").read_text()
     assert 'published="$(python3 tools/release_names.py "$name")"' in workflow
     # (the release job's checkout has only the files it names)

@@ -45,12 +45,11 @@ def test_loading_embedding(tmp_path, monkeypatch, present):
     compiler = shutil.which("cc")
     if not compiler:
         pytest.skip("needs a C preprocessor")
-    # Use the generated declarations after preprocessing, including GLES's
-    # disabled SMAA branch; a source-text search alone misses guard mistakes.
+    # Use the generated declarations after preprocessing; a source-text
+    # search alone misses guard mistakes.
     for name in ("hud_hires.h", "text_hires.h", "menu_files.h"):
         (tmp_path / name).write_text("")
-    for flags in ([], ["-DHALO_GLES"]):
-        result = subprocess.run([compiler, "-E", "-P", *flags, "-I", str(tmp_path), str(output)],
-                                check=True, capture_output=True, text=True).stdout
-        assert "const unsigned int platform_loading_picture[]" in result
-        assert f"platform_loading_picture_size = {len(payload) if present else 0};" in result
+    result = subprocess.run([compiler, "-E", "-P", "-I", str(tmp_path), str(output)],
+                            check=True, capture_output=True, text=True).stdout
+    assert "const unsigned int platform_loading_picture[]" in result
+    assert f"platform_loading_picture_size = {len(payload) if present else 0};" in result

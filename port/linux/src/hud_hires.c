@@ -26,16 +26,12 @@ zlib (port/third_party/zlib).
 #include "hud_hires.h"
 #include "platform.h"
 #include "port_config.h"
-#ifdef HALO_RENDER_STREAM
 /* (the renderer's backend is on the host: the pictures are images) */
 #include "xgpu_images.h"
-#else
-#include "xgpu_gl.h"
-#endif
 
 #include "zlib_prefixed.h"
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_ANDROID)
 #define HUD_HIRES_DECODE_AHEAD
 #include <pthread.h>
 #endif
@@ -394,9 +390,6 @@ unsigned int hud_hires_upscale_texture(const unsigned char *bgra, unsigned long 
 {
 	unsigned char *pixels = hud_hires_upscale_pixels(bgra, width, height);
 	unsigned long largest;
-#ifndef HALO_RENDER_STREAM
-	GLuint texture;
-#endif
 
 	if (!pixels)
 		return 0;
@@ -404,21 +397,7 @@ unsigned int hud_hires_upscale_texture(const unsigned char *bgra, unsigned long 
 	*levels = 1;
 	for (largest = (width > height ? width : height) * 4; largest > 1; largest >>= 1)
 		(*levels)++;
-#ifdef HALO_RENDER_STREAM
 	return xgpu_image_create(pixels, width * 4, height * 4, *levels, XGPU_IMAGE_RGBA, TRUE);
-#else
-	glGenTextures(1, &texture);
-	glBindTexture(GL_TEXTURE_2D, texture);
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)*levels - 1);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)width * 4, (GLsizei)height * 4,
-		0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-	glGenerateMipmap(GL_TEXTURE_2D);
-	xgpu_gl_state_invalidate();
-	free(pixels);
-	return texture;
-#endif
 }
 
 static unsigned long big_endian_long(const unsigned char *bytes)
@@ -551,31 +530,14 @@ static unsigned int png_pixels_texture(unsigned char *pixels, unsigned long widt
 	unsigned long *levels)
 {
 	unsigned long largest;
-#ifndef HALO_RENDER_STREAM
-	GLuint texture;
-#endif
 
 	if (!pixels)
 		return 0;
 	*levels = 1;
 	for (largest = width > height ? width : height; largest > 1; largest >>= 1)
 		(*levels)++;
-#ifdef HALO_RENDER_STREAM
 	/* (the host makes its levels) */
 	return xgpu_image_create(pixels, width, height, *levels, XGPU_IMAGE_RGBA, TRUE);
-#else
-	glGenTextures(1, &texture);
-	glBindTexture(GL_TEXTURE_2D, texture);
-	xgpu_gl_state_invalidate();
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, (GLint)*levels - 1);
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, (GLsizei)width, (GLsizei)height, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels);
-	glGenerateMipmap(GL_TEXTURE_2D);
-	xgpu_gl_state_invalidate();
-	free(pixels);
-	return texture;
-#endif
 }
 
 unsigned int hud_hires_png_texture(const void *png, unsigned long size, unsigned long *levels)

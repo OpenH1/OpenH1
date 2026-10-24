@@ -27,7 +27,6 @@ host_sdl_thread_id
 host_sdl_create_window
 host_sdl_window_size_in_pixels
 host_sdl_set_relative_mouse
-host_sdl_gl_set_attribute
 host_sdl_poll_event
 host_sdl_set_clipboard_text
 host_sdl_get_clipboard_text
@@ -55,6 +54,5 @@ host_render_stream_open
 host_render_stream_submit
 host_render_stream_wait
 host_render_stream_close
-host_gl_window
 
 host_errno

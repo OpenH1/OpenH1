@@ -90,7 +90,7 @@ const char *platform_data_root(void)
 				if (slash)
 					*slash = '\0';
 			}
-#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_MACOS)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_MACOS)
 			/* on Linux, the game's folder (the release's root, above its
 			bin/), or ~/.local/share/halo-linux when the game is installed
 			(install_layout.c) */
@@ -124,7 +124,7 @@ const char *platform_data_root(void)
 						snprintf(root, sizeof(root), "%s", executable);
 				}
 			}
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_ANDROID)
 			if (!has_maps(root) && game_folder[0] && platform_offer_game_data(game_folder) &&
 				has_maps(game_folder))
 			{

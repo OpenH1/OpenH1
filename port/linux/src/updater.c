@@ -59,7 +59,7 @@ looking.
 /* the release's build that this one updates to (UPDATE_NAME[-debug].zip,
 as tools/release_names.py names the release's files; on Linux, the release's
 tree); a build without one never looks for updates */
-#if defined(HALO_ANDROID) || defined(HALO_WEB) || defined(HALO_MACOS)
+#if defined(HALO_ANDROID) || defined(HALO_MACOS)
 /* (none: the Android app updates itself, the site through its service
 worker; the macOS app through Sparkle, in its host: updater_poll below) */
 #elif defined(HALO_WINDOWS)

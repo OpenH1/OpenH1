@@ -109,18 +109,13 @@ static const struct
 {
 	{ "off", _anti_aliasing_off, 0 },
 	{ "fxaa", _anti_aliasing_fxaa, 0 },
-#if defined(HALO_GLES) && !defined(HALO_VULKAN) && !defined(HALO_METAL)
-	/* (OpenGL ES has no SMAA, xgpu_post.c: FXAA in its place) */
-	{ "smaa", _anti_aliasing_fxaa, 0 },
-#else
 	/* (Vulkan draws it on a phone too, as on the desktop, and Metal on a
 	Mac: passes of fixed cost whatever the scene; "fxaa" is the cheaper
 	pass) */
 	{ "smaa", _anti_aliasing_smaa, 0 },
-#endif
-#ifdef HALO_GLES
+#if defined(HALO_ANDROID) || defined(HALO_MACOS)
 	/* (supersampling's four times the pixels are more than a phone's GPU
-	has to spare: none) */
+	has to spare: none, on Android, and with Metal on macOS and iOS) */
 	{ "ssaa2x", _anti_aliasing_off, 0 },
 #else
 	{ "ssaa2x", _anti_aliasing_ssaa, 0 },

@@ -1,11 +1,11 @@
 """The Metal backend's anti-aliasing passes (tools/metal_post_shaders.py,
 port/macos/xgpu_metal_post_shaders.c) and where the front end runs them.
 
-The generated file must still be what the tool writes from xgpu_post.c and
-SMAA.hlsl (with glslangValidator and spirv-cross on PATH), each function
+The generated file must still be what the tool writes from Vulkan's GLSL
+(tools/vulkan_post_shaders.py) and SMAA.hlsl (with glslangValidator and spirv-cross on PATH), each function
 must compile for the Mac (with Xcode's Metal compiler), and the game must
 run the pass over the 3D view after the dynamic lights' glows and before
-the HUD and menus, as the OpenGL and Vulkan backends draw it. The passes'
+the HUD and menus, as the Vulkan backend draws it. The passes'
 drawing itself is checked on the GPU by port/macos/tests/xgpu_metal_test.m
 (tools/test_macos_metal.py)."""
 import re
@@ -53,9 +53,9 @@ def test_pass_before_the_hud():
     assert halos < anti_alias < hud
 
 
-def test_macos_draws_smaa():
-    """The macOS guest (HALO_GLES and HALO_METAL) takes "smaa" as SMAA, not
-    OpenGL ES's FXAA in its place."""
+def test_every_build_draws_smaa():
+    """Every build takes "smaa" as SMAA (Vulkan's passes, and Metal's)."""
     device = (ROOT / "port/linux/src/d3d8_device.c").read_text()
-    condition = re.search(r"#if (.*)\n\t/\* \(OpenGL ES has no SMAA", device)
-    assert condition and "!defined(HALO_METAL)" in condition[1]
+    values = device[device.index("anti_aliasing_values[] ="):]
+    values = values[:values.index("};")]
+    assert re.findall(r'\{ "smaa", (\w+), 0 \}', values) == ["_anti_aliasing_smaa"]

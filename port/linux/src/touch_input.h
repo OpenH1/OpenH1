@@ -20,7 +20,7 @@ on the game's main thread: a call from any other thread needs the lock.
 /* the on-screen touch controls: an overlay of the app's own over the game,
 Android's (port/android/app/.../TouchControls.java), the iPhone's
 (port/ios/touch_controls.m) and a browser's (port/web/site/touch.js) */
-#if defined(HALO_ANDROID) || defined(HALO_WEB) || defined(HALO_IOS)
+#if defined(HALO_ANDROID) || defined(HALO_IOS)
 #define HALO_TOUCH_CONTROLS 1
 #endif
 

@@ -40,17 +40,15 @@ back until mods_enable true, or until the map changes.
 char *tag_get_name(long tag_index);
 int config_boolean(char const *key);
 
-#ifdef HALO_RENDER_STREAM
 /* the host consumes queued draws before their textures or models change */
 void xgpu_backend_consume(void);
-#endif
 
 /* ---------- constants */
 
 /* the most the mods' tags keep in memory (their files, their sounds'
 samples, their bitmaps' tags and their models' geometry; bitmaps' pixels
 are read as they are drawn) */
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#if defined(HALO_ANDROID)
 #define MAXIMUM_KEPT_BYTES (192UL * 1024 * 1024)
 #else
 #define MAXIMUM_KEPT_BYTES (512UL * 1024 * 1024)
@@ -87,10 +85,8 @@ static void mods_update(
 	boolean remove_all,
 	boolean at_load)
 {
-#ifdef HALO_RENDER_STREAM
 	if (!at_load)
 		xgpu_backend_consume();
-#endif
 	mods_globals.string_count = mod_strings_update(remove_all, at_load);
 	mods_globals.bitmap_count = mod_bitmaps_update(remove_all, at_load);
 	mods_globals.sound_count = mod_sounds_update(remove_all, at_load);
@@ -277,9 +273,7 @@ their own definitions back if `give_back` (their tags are still there). */
 static void mods_let_go(
 	boolean give_back)
 {
-#ifdef HALO_RENDER_STREAM
 	xgpu_backend_consume();
-#endif
 	mod_sounds_tags_unloaded();
 	mod_bitmaps_tags_unloaded();
 	mod_models_tags_unloaded(give_back);

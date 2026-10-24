@@ -143,7 +143,7 @@ that window at start-up and hands out page-granular blocks from it, so the
 physical/virtual arithmetic the game and Direct3D rely on keeps working. */
 
 #define PLATFORM_CONTIGUOUS_BASE 0x80000000UL
-#if defined(HALO_WEB) || (defined(HALO_GUEST) && defined(__aarch64__))
+#if defined(HALO_GUEST) && defined(__aarch64__)
 /* 128 MB, a development kit's: the AArch64 guests' image (Android's, and
 64-bit ARM Linux's) is linked just above the window, and the web build's
 WebAssembly memory ends with it (tools/web_build.py). The guests' host

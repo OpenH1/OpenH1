@@ -325,7 +325,7 @@ build's host/host_import_table.c) */
 /* the host function for an import name, or NULL */
 void *host_resolve_import(const char *name);
 
-/* ---------- SDL / GL (host_sdl.c, host_gl.c) */
+/* ---------- SDL (host_sdl.c) */
 
 /* SDL objects are 64-bit pointers, which the guest cannot hold: it gets
 small handles into a table instead (host_sdl.c; port/linux/host's

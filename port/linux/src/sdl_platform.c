@@ -1,7 +1,7 @@
 /*
 SDL_PLATFORM.C
 
-The SDL3 window, OpenGL context and event loop behind the Linux build.
+The SDL3 window and event loop behind the ports.
 
 The window is created with the Direct3D device (d3d8_device.c) on the game's
 main thread, which is also the only thread that pumps events. Keyboard and
@@ -11,7 +11,6 @@ and the debug keyboard that the game's console reads.
 
 #include "platform.h"
 #include "sdl_platform.h"
-#include "gl.h"
 #include "port_config.h"
 #include "battery_saver.h"
 #include "frame_pacing.h"
@@ -38,16 +37,8 @@ and the debug keyboard that the game's console reads.
 #if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID)
 #include <signal.h>
 #endif
-#if defined(__linux__) && !defined(HALO_GUEST) && !defined(HALO_ANDROID)
-#include <dlfcn.h>
-#include <unistd.h>
-#endif
 
 static SDL_Window *platform_window;
-#ifndef HALO_RENDER_STREAM
-/* (the game's own renderer's; else the host has it) */
-static SDL_GLContext platform_gl_context;
-#endif
 static SDL_ThreadID platform_event_thread;
 static BOOL platform_sdl_started = FALSE;
 /* the game's window was asked for (platform_video_initialize): without one
@@ -133,294 +124,6 @@ void halo_loading_ready(void)
 	}
 }
 
-#if !defined(HALO_RENDER_STREAM) && !defined(HALO_WEB)
-#include "loading_gl.h"
-/* The second context owns no game objects. The game keeps drawing only to
-its offscreen targets while this thread owns the window's framebuffer. */
-static struct
-{
-	SDL_GLContext context;
-	SDL_Thread *thread;
-	pthread_mutex_t lock;
-	pthread_cond_t changed;
-	int started, ready, stop, phase, busy, width, height, trace;
-	Uint64 epoch, started_ns, serial, interval_ns;
-	struct loading_art art;
-	struct loading_gl image;
-} loading_window = { .lock = PTHREAD_MUTEX_INITIALIZER, .changed = PTHREAD_COND_INITIALIZER };
-
-static void platform_loading_trace(const char *phase, Uint64 epoch, Uint64 serial, Uint64 elapsed)
-{
-	struct timespec now;
-	double wall = -1.0;
-
-	if (!loading_window.trace)
-		return;
-	if (clock_gettime(CLOCK_MONOTONIC, &now) == 0)
-		wall = (double)now.tv_sec + (double)now.tv_nsec * 1e-9;
-	load_trace_log("LOAD phase=%s wall=%.6f thread=-1 process=-1 owner=host:%llx "
-		"detail=epoch=%llu serial=%llu elapsed_ns=%llu", phase, wall,
-		(unsigned long long)SDL_GetCurrentThreadID(), (unsigned long long)epoch,
-		(unsigned long long)serial, (unsigned long long)elapsed);
-}
-
-static int platform_loading_thread(void *unused)
-{
-	int current;
-
-	(void)unused;
-	current = SDL_GL_MakeCurrent(platform_window, loading_window.context);
-	if (current)
-		SDL_GL_SetSwapInterval(1);
-	pthread_mutex_lock(&loading_window.lock);
-	loading_window.ready = current ? 1 : -1;
-	pthread_cond_signal(&loading_window.changed);
-	while (current && !loading_window.stop)
-	{
-		struct loading_presentation_frame frame;
-		Uint64 started, interval, elapsed;
-		int width, height;
-		uint32_t index;
-		const unsigned char *pixels;
-
-		while (!loading_window.phase && !loading_window.stop)
-			pthread_cond_wait(&loading_window.changed, &loading_window.lock);
-		if (loading_window.stop)
-			break;
-		loading_window.busy = 1;
-		width = loading_window.width;
-		height = loading_window.height;
-		interval = loading_window.interval_ns;
-		memset(&frame, 0, sizeof(frame));
-		frame.epoch = loading_window.epoch;
-		frame.started_ns = loading_window.started_ns;
-		frame.serial = ++loading_window.serial;
-		frame.active = 1;
-		pthread_mutex_unlock(&loading_window.lock);
-		started = SDL_GetTicksNS();
-		frame.elapsed_ns = started - frame.started_ns;
-		loading_presentation_build(&frame);
-		/* (the frame at the window's shape) */
-		loading_art_width(&loading_window.art, (unsigned int)width, (unsigned int)height);
-		pixels = loading_art_render(&loading_window.art, &frame);
-		glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		glDisable(GL_SCISSOR_TEST);
-		glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-		glClearColor(LOADING_PRESENTATION_RED, LOADING_PRESENTATION_GREEN, LOADING_PRESENTATION_BLUE, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
-		/* The fallback remains available when the original picture is unavailable. */
-		if (!loading_gl_draw(&loading_window.image, pixels, (int)loading_window.art.width, width, height))
-		{
-			for (index = 0; index < frame.count; index++)
-			{
-				const struct loading_presentation_rect *rectangle = &frame.rectangles[index];
-				int x = rectangle->x * width / LOADING_PRESENTATION_WIDTH;
-				int y = rectangle->y * height / LOADING_PRESENTATION_HEIGHT;
-				int right = (rectangle->x + rectangle->width) * width / LOADING_PRESENTATION_WIDTH;
-				int bottom = (rectangle->y + rectangle->height) * height / LOADING_PRESENTATION_HEIGHT;
-
-				glEnable(GL_SCISSOR_TEST);
-				glScissor(x, height - bottom, right - x, bottom - y);
-				glClearColor(rectangle->color[0], rectangle->color[1], rectangle->color[2], rectangle->color[3]);
-				glClear(GL_COLOR_BUFFER_BIT);
-			}
-		}
-		glDisable(GL_SCISSOR_TEST);
-		SDL_GL_SwapWindow(platform_window);
-		platform_loading_trace("loading.swap.return", frame.epoch, frame.serial, frame.elapsed_ns);
-		/* Drivers without swap pacing still show one update per refresh. */
-		elapsed = SDL_GetTicksNS() - started;
-		if (elapsed < interval)
-			SDL_DelayPrecise(interval - elapsed);
-		pthread_mutex_lock(&loading_window.lock);
-		if (!loading_window.phase || loading_window.stop)
-		{
-			pthread_mutex_unlock(&loading_window.lock);
-			glFinish();
-			pthread_mutex_lock(&loading_window.lock);
-		}
-		loading_window.busy = 0;
-		pthread_cond_broadcast(&loading_window.changed);
-	}
-	pthread_mutex_unlock(&loading_window.lock);
-	if (current)
-		loading_gl_dispose(&loading_window.image);
-	if (current)
-		SDL_GL_MakeCurrent(platform_window, NULL);
-	return 0;
-}
-
-static void platform_loading_shutdown(void)
-{
-	if (!loading_window.started)
-		return;
-	pthread_mutex_lock(&loading_window.lock);
-	loading_window.stop = 1;
-	loading_window.phase = 0;
-	pthread_cond_signal(&loading_window.changed);
-	pthread_mutex_unlock(&loading_window.lock);
-	SDL_WaitThread(loading_window.thread, NULL);
-	loading_window.thread = NULL;
-	SDL_GL_DestroyContext(loading_window.context);
-	loading_window.context = NULL;
-	loading_window.started = 0;
-}
-
-static void platform_loading_initialize(void)
-{
-	int shared = 0;
-
-	loading_window.trace = config_boolean("debug.load_trace");
-	SDL_GL_GetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, &shared);
-	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, 0);
-	loading_window.context = SDL_GL_CreateContext(platform_window);
-	SDL_GL_SetAttribute(SDL_GL_SHARE_WITH_CURRENT_CONTEXT, shared);
-	SDL_GL_MakeCurrent(platform_window, platform_gl_context);
-	if (!loading_window.context)
-	{
-		platform_log("loading: cannot create presentation context: %s", SDL_GetError());
-		return;
-	}
-	loading_window.thread = SDL_CreateThread(platform_loading_thread, "loading", NULL);
-	if (!loading_window.thread)
-	{
-		SDL_GL_DestroyContext(loading_window.context);
-		loading_window.context = NULL;
-		platform_log("loading: cannot create presentation thread");
-		return;
-	}
-	loading_window.started = 1;
-	pthread_mutex_lock(&loading_window.lock);
-	while (!loading_window.ready)
-		pthread_cond_wait(&loading_window.changed, &loading_window.lock);
-	pthread_mutex_unlock(&loading_window.lock);
-	if (loading_window.ready < 0)
-	{
-		platform_log("loading: presentation context could not become current");
-		platform_loading_shutdown();
-		return;
-	}
-	atexit(platform_loading_shutdown);
-}
-
-void platform_loading_art(const unsigned char *rgba)
-{
-	int phase;
-
-	pthread_mutex_lock(&loading_window.lock);
-	phase = loading_window.phase;
-	loading_window.phase = 0;
-	while (loading_window.busy)
-		pthread_cond_wait(&loading_window.changed, &loading_window.lock);
-	loading_art_set(&loading_window.art, rgba);
-	loading_window.phase = phase;
-	pthread_cond_broadcast(&loading_window.changed);
-	pthread_mutex_unlock(&loading_window.lock);
-}
-
-void platform_loading_scene(const void *data, unsigned long bytes)
-{
-	int phase;
-
-	pthread_mutex_lock(&loading_window.lock);
-	phase = loading_window.phase;
-	loading_window.phase = 0;
-	while (loading_window.busy)
-		pthread_cond_wait(&loading_window.changed, &loading_window.lock);
-	loading_art_scene(&loading_window.art, bytes ? data : NULL, bytes);
-	loading_window.phase = phase;
-	pthread_cond_broadcast(&loading_window.changed);
-	pthread_mutex_unlock(&loading_window.lock);
-}
-
-void platform_loading_progress(float progress)
-{
-	pthread_mutex_lock(&loading_window.lock);
-	loading_art_progress(&loading_window.art, progress);
-	pthread_mutex_unlock(&loading_window.lock);
-}
-
-void platform_loading_set(int phase)
-{
-	int width = 0, height = 0, previous;
-	Uint64 interval = 16666667;
-
-	if (!loading_window.started)
-		return;
-	if (phase == 1)
-	{
-		SDL_DisplayID display = SDL_GetDisplayForWindow(platform_window);
-		const SDL_DisplayMode *mode = display ? SDL_GetCurrentDisplayMode(display) : NULL;
-
-		SDL_GetWindowSizeInPixels(platform_window, &width, &height);
-		if (mode && mode->refresh_rate > 0.0f)
-			interval = (Uint64)(1000000000.0 / mode->refresh_rate);
-	}
-	pthread_mutex_lock(&loading_window.lock);
-	previous = loading_window.phase;
-	if (phase == 1 && !loading_window.phase)
-	{
-		loading_window.epoch++;
-		loading_window.started_ns = SDL_GetTicksNS();
-		loading_window.serial = 0;
-		loading_window.width = width > 0 ? width : 640;
-		loading_window.height = height > 0 ? height : 480;
-		loading_window.interval_ns = interval;
-		platform_loading_trace("loading.begin", loading_window.epoch, 0, 0);
-	}
-	if (phase != 2 || loading_window.phase)
-		loading_window.phase = phase;
-	pthread_cond_broadcast(&loading_window.changed);
-	while (!phase && loading_window.busy)
-		pthread_cond_wait(&loading_window.changed, &loading_window.lock);
-	if (!phase && previous)
-		platform_loading_trace("loading.end", loading_window.epoch, loading_window.serial,
-			SDL_GetTicksNS() - loading_window.started_ns);
-	pthread_mutex_unlock(&loading_window.lock);
-}
-
-int platform_loading_active(void)
-{
-	int phase;
-
-	pthread_mutex_lock(&loading_window.lock);
-	phase = loading_window.phase;
-	pthread_mutex_unlock(&loading_window.lock);
-	return phase;
-}
-#elif defined(HALO_WEB)
-void web_loading_set(int phase);
-void web_loading_art(const unsigned char *rgba);
-static int loading_phase;
-
-void platform_loading_art(const unsigned char *rgba)
-{
-	web_loading_art(rgba);
-}
-
-void platform_loading_scene(const void *data, unsigned long bytes)
-{
-	/* (the web's loading screen is the page's: the picture alone) */
-	(void)data;
-	(void)bytes;
-}
-
-void platform_loading_progress(float progress)
-{
-	(void)progress;
-}
-
-void platform_loading_set(int phase)
-{
-	loading_phase = phase;
-	web_loading_set(phase);
-}
-
-int platform_loading_active(void)
-{
-	return loading_phase;
-}
-#endif
 
 static struct platform_input_state input_state;
 /* keys pressed since the last read, so a press and release between two
@@ -491,14 +194,12 @@ void dsound_sdl_output_device_check(void);
 void updater_start(void);
 void updater_poll(SDL_Window *window);
 static void screen_keyboard_update(void);
-#ifndef HALO_GLES
 /* the windows' icon, a PNG (tools/embed_assets.py, from port/assets/icon) */
 extern const unsigned int platform_window_icon[];
 extern const unsigned long platform_window_icon_size;
 #endif
-#endif
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_ANDROID)
 /* the maps folder checked to hold the Xbox maps (platform_maps_folder_check).
 When it holds Halo PC's instead, or no ui.map, the player is told where each
 kind goes and the game quits, rather than failing to load Halo PC's ui.map
@@ -553,36 +254,6 @@ static void data_check_maps(void)
 }
 #endif
 
-#if defined(__linux__) && !defined(HALO_GUEST) && !defined(HALO_ANDROID)
-/* NVIDIA's driver draws into a Wayland window through its egl-wayland
-library, which distributions ship 64-bit only (Arch has no lib32 package
-of it). In this 32-bit game, OpenGL on Wayland (EGL) then falls back to
-Mesa's llvmpipe, drawn on the processor, while on X11 (XWayland, GLX) the
-32-bit driver draws it. So with NVIDIA's module loaded and no 32-bit
-egl-wayland, SDL tries X11 before Wayland; SDL_VIDEO_DRIVER still decides */
-static void platform_choose_video_driver(void)
-{
-	static const char *const egl_wayland[] = { "libnvidia-egl-wayland.so.1", "libnvidia-egl-wayland2.so.1" };
-	size_t index;
-
-	if (getenv("SDL_VIDEO_DRIVER") || !getenv("WAYLAND_DISPLAY") || access("/sys/module/nvidia", F_OK) != 0)
-		return;
-	for (index = 0; index < sizeof(egl_wayland) / sizeof(egl_wayland[0]); index++)
-	{
-		void *library = dlopen(egl_wayland[index], RTLD_LAZY | RTLD_LOCAL);
-
-		if (library)
-		{
-			dlclose(library);
-			return;
-		}
-	}
-	platform_log("video: NVIDIA's driver has no 32-bit egl-wayland here: X11 (XWayland) before Wayland, "
-		"where OpenGL would be drawn on the processor (SDL_VIDEO_DRIVER=wayland chooses Wayland)");
-	SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11,wayland");
-}
-#endif
-
 BOOL platform_sdl_initialize(void)
 {
 	if (platform_sdl_started)
@@ -598,9 +269,6 @@ BOOL platform_sdl_initialize(void)
 	if (p2p_hand_off_invite())
 		exit(EXIT_SUCCESS);
 	SDL_SetHint(SDL_HINT_APP_NAME, "Halo");
-#if defined(__linux__) && !defined(HALO_GUEST) && !defined(HALO_ANDROID)
-	platform_choose_video_driver();
-#endif
 #ifdef HALO_ANDROID
 	/* landscape only; the back key arrives as a key event (xinput_sdl.c)
 	instead of closing the activity */
@@ -635,9 +303,7 @@ BOOL platform_sdl_initialize(void)
 	/* found (or offered to the player, platform_offer_game_data) before the
 	game's window opens, and checked to be the Xbox maps */
 	platform_data_root();
-#ifndef HALO_WEB
 	data_check_maps();
-#endif
 	/* (a new version looked for meanwhile, updater_poll asking about it) */
 	updater_start();
 #endif
@@ -647,7 +313,7 @@ BOOL platform_sdl_initialize(void)
 	return TRUE;
 }
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB) && (defined(HALO_WINDOWS) || defined(HALO_MACOS))
+#if !defined(HALO_ANDROID) && (defined(HALO_WINDOWS) || defined(HALO_MACOS))
 /* ---------- first start without game data (xbox_files.c), on Windows and
 macOS: the system's dialogs. (The Linux builds' is first_start.c, in the
 game's own window; the web page imports the data itself) */
@@ -1373,39 +1039,6 @@ static long platform_window_width = -1, platform_window_height = -1;
 /* the last configured mode; F11 can change the window independently */
 static int platform_window_mode = _display_mode_windowed;
 
-/* OpenCE's display.hdr_output: the window's pixels are half floats (scRGB),
--1 until the window is first made; FALSE once the driver has none (OpenH1's
-renderers draw their own HDR windows: docs/hdr.md, so it stays FALSE) */
-static int platform_float_window = -1;
-
-/* the attributes of a window with (or without) floating-point pixels */
-static void platform_float_window_attributes(BOOL floating)
-{
-	int size = floating ? 16 : 8;
-
-	SDL_GL_SetAttribute(SDL_GL_FLOATBUFFERS, floating ? 1 : 0);
-	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, size);
-	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, size);
-	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, size);
-	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, size);
-}
-
-/* a window with floating-point pixels that cannot be made, or have a
-context made for it: one without them (on Windows a window's pixel format
-is set once, so a new window) */
-static BOOL platform_float_window_refused(void)
-{
-	if (platform_float_window != TRUE)
-		return FALSE;
-	platform_log("HDR output: no floating-point window (%s); the window is SDR", SDL_GetError());
-	platform_float_window = FALSE;
-	platform_float_window_attributes(FALSE);
-	if (platform_window)
-		SDL_DestroyWindow(platform_window);
-	platform_window = NULL;
-	return TRUE;
-}
-
 BOOL platform_video_hdr(float *sdr_white, float *headroom)
 {
 #ifdef HALO_GUEST
@@ -1455,61 +1088,15 @@ int host_vulkan_window_open(unsigned int window, unsigned int debug, const char 
 #define HOST_VULKAN_DEBUG_STATISTICS 1
 #define HOST_VULKAN_DEBUG_VALIDATION 2
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_VULKAN
-#else
-#define PLATFORM_WINDOW_DRAWING SDL_WINDOW_OPENGL
 #endif
 
 BOOL platform_video_initialize(unsigned long width, unsigned long height)
 {
-	int version;
-
 	if (platform_window)
 		return TRUE;
 	platform_video_tried = TRUE;
 	if (!platform_sdl_initialize())
 		return FALSE;
-#ifndef HALO_ANDROID
-	/* (OpenCE's OpenGL backend presented its HDR back buffer into a
-	floating-point window; OpenH1's renderers make their own HDR windows,
-	Metal's layer and Vulkan's swapchain (docs/hdr.md), so the GL window keeps
-	8 bits a channel; a browser's canvas has them too) */
-	platform_float_window = FALSE;
-	if (platform_float_window)
-		platform_float_window_attributes(TRUE);
-#endif
-
-#if defined(HALO_METAL) || defined(HALO_VULKAN)
-	/* (no OpenGL: the window is Metal's or Vulkan's, drawn by the host) */
-#elif defined(HALO_GLES)
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-#else
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
-#endif
-#if !defined(HALO_METAL) && !defined(HALO_VULKAN)
-	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
-	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 0);
-#ifdef HALO_WEB
-	/* an opaque canvas: the game keeps scratch values in destination alpha,
-	which a page would otherwise blend the picture by (black, or the page's
-	colours through it) */
-	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
-#endif
-	if (config_boolean("debug.gpu_validation") || config_boolean("debug.gl_debug"))
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
-#endif
-#if !defined(HALO_ANDROID) && !defined(HALO_WINDOWS) && !defined(HALO_RENDER_STREAM)
-	/* Mesa's GL thread: the renderer makes thousands of GL calls a frame
-	and never waits for their results, so handing them to a thread of
-	their own takes a fifth of the main thread's time off it. It leaves an
-	explicit mesa_glthread setting alone and other drivers ignore it. */
-	setenv("mesa_glthread", "true", 0);
-#endif
-
 #ifdef HALO_ANDROID
 	{
 		long pixel_width = 0, pixel_height = 0;
@@ -1560,18 +1147,14 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 #endif
 	if (!platform_window)
 	{
-#ifndef HALO_ANDROID
-		if (platform_float_window_refused())
-			return platform_video_initialize(width, height);
-#endif
 		platform_log("SDL_CreateWindow failed: %s", SDL_GetError());
 		return FALSE;
 	}
 #ifndef HALO_ANDROID
 	/* the game's icon, which the desktop shows for the window (on Windows
-	also halo.exe's own, port/windows/host/halo.rc; a web page has its own; not
-	a guest's, which reaches no SDL surfaces) */
-#if !defined(HALO_GLES) && !defined(HALO_GUEST)
+	also halo.exe's own, port/windows/host/halo.rc; not a guest's, which
+	reaches no SDL surfaces) */
+#ifndef HALO_GUEST
 	if (platform_window_icon_size)
 	{
 		SDL_Surface *icon = SDL_LoadPNG_IO(SDL_IOFromConstMem(platform_window_icon, platform_window_icon_size), true);
@@ -1585,7 +1168,6 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 	platform_window_mode = platform_display_mode();
 	platform_fullscreen_kind_apply();
 #endif
-#if defined(HALO_METAL) || defined(HALO_VULKAN)
 #ifdef HALO_METAL
 	if (!host_metal_window_open((unsigned int)(uintptr_t)platform_window))
 	{
@@ -1618,52 +1200,8 @@ BOOL platform_video_initialize(unsigned long width, unsigned long height)
 				, NULL);
 		return FALSE;
 	}
-#endif
 	platform_event_thread = SDL_GetCurrentThreadID();
 	platform_mouse_capture(TRUE);
-	(void)version;
-	return TRUE;
-#endif
-#ifndef HALO_RENDER_STREAM
-	platform_gl_context = SDL_GL_CreateContext(platform_window);
-#ifdef HALO_GLES
-	/* ES 3.2 where the driver has it, otherwise the renderer makes do with
-	3.0 plus extensions */
-	if (!platform_gl_context)
-	{
-		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
-		platform_gl_context = SDL_GL_CreateContext(platform_window);
-	}
-#endif
-#ifndef HALO_ANDROID
-	if (!platform_gl_context && platform_float_window_refused())
-		return platform_video_initialize(width, height);
-#endif
-	if (!platform_gl_context)
-	{
-		platform_log("cannot create an OpenGL context: %s", SDL_GetError());
-		return FALSE;
-	}
-	SDL_GL_MakeCurrent(platform_window, platform_gl_context);
-	if (!gl_functions_load())
-		return FALSE;
-	version = SDL_GL_SetSwapInterval(config_boolean("display.vsync") ? 1 : 0);
-	(void)version;
-	platform_event_thread = SDL_GetCurrentThreadID();
-	platform_log("OpenGL %s on %s", (const char *)glGetString(GL_VERSION), (const char *)glGetString(GL_RENDERER));
-#ifndef HALO_WEB
-	platform_loading_initialize();
-#endif
-#ifndef HALO_ANDROID
-	{
-		float sdr_white, headroom;
-		BOOL hdr = platform_video_hdr(&sdr_white, &headroom);
-
-		platform_log("display: HDR %s (SDR white %.2f, headroom %.2f), %s window", hdr ? "on" : "off", sdr_white,
-			headroom, platform_float_window ? "floating-point" : "8-bit");
-	}
-	platform_mouse_capture(TRUE);
-#endif
 	return TRUE;
 #endif
 }
@@ -1733,22 +1271,12 @@ static float platform_refresh_rate(void)
 #endif
 }
 
-#if !defined(HALO_VULKAN) && !defined(HALO_METAL)
-/* (the OpenGL builds) battery saver's frame every few refreshes is the swap
-interval's; else its frames are spaced by the clock (frame_interval_ns) */
-static BOOL platform_swap_divides;
-#endif
-
 /* display.vsync's swap interval, with battery saver's frames a second
 (battery_saver.c): the Vulkan host shows each frame for a whole number of
-refreshes, the Metal host's display link runs at that rate, and the OpenGL
-builds swap at that interval where the driver can */
+refreshes, and the Metal host's display link runs at that rate */
 void platform_frame_rate_apply(void)
 {
 	int saving = battery_saver_active();
-#if !defined(HALO_VULKAN) && !defined(HALO_METAL)
-	int interval = config_boolean("display.vsync") ? 1 : 0;
-#endif
 
 	if (!platform_window)
 		return;
@@ -1759,19 +1287,6 @@ void platform_frame_rate_apply(void)
 	/* (the window open already: only its swap interval is taken) */
 	host_vulkan_window_open((unsigned int)(uintptr_t)platform_window, 0, "", "",
 		config_boolean("display.vsync") ? 1 : 0, saving);
-#else
-	platform_swap_divides = FALSE;
-	if (interval && saving)
-	{
-		int divisor = (int)frame_pacing_divisor(platform_refresh_rate(), BATTERY_SAVER_LEAST, BATTERY_SAVER_MOST);
-
-		if (divisor > 1 && SDL_GL_SetSwapInterval(divisor))
-		{
-			platform_swap_divides = TRUE;
-			return;
-		}
-	}
-	SDL_GL_SetSwapInterval(interval);
 #endif
 }
 
@@ -1785,7 +1300,7 @@ twice the display's refresh rate), or 0 for no limit. A GPU never left idle
 can hang (Intel's Raptor Lake graphics, whose reset then takes the desktop
 with it); the limit gives it a rest every frame. And battery saver's
 (battery_saver.c), where the display does not space its frames: without
-vsync, or an OpenGL driver without that swap interval. (Android has no
+vsync. (Android has no
 display.max_fps.) */
 static Uint64 frame_interval_ns(void)
 {
@@ -1806,11 +1321,7 @@ static Uint64 frame_interval_ns(void)
 	}
 	if (!vsync && maximum >= 0)
 		rate = maximum ? (float)maximum : 2.0f * (platform_refresh_rate() > 0.0f ? platform_refresh_rate() : 60.0f);
-#if defined(HALO_RENDER_STREAM)
 	if (battery_saver_active() && !vsync)
-#else
-	if (battery_saver_active() && !platform_swap_divides)
-#endif
 	{
 		float refresh = platform_refresh_rate() > 0.0f ? platform_refresh_rate() : 60.0f;
 		float saving = refresh / (float)frame_pacing_divisor(refresh, BATTERY_SAVER_LEAST, BATTERY_SAVER_MOST);
@@ -1821,33 +1332,18 @@ static Uint64 frame_interval_ns(void)
 	return rate > 0.0f ? (Uint64)(1e9f / rate) : 0;
 }
 
-#ifdef HALO_WEB
-#include "web_shared.h"
-
-/* port/web/src/web_main.c's: the frames shown, which the page reads; and
-web_library.js's: a line for the page (2: an invite link to offer) */
-void web_frame_shown(void);
-void web_js_post(int kind, const char *text);
-#endif
 
 void platform_video_swap(void)
 {
 	Uint64 swap_start = SDL_GetTicks(), swap_time;
 	static Uint64 next_frame;
 	Uint64 interval, now;
-#ifdef HALO_RENDER_STREAM
 	/* (the host shows the frame, on its render thread: here it is paced) */
-#else
-	SDL_GL_SwapWindow(platform_window);
-#endif
 	/* (a frame the graphics driver held for seconds: the game froze, and
 	online, a host stops hearing a machine after a few; the log says where) */
 	swap_time = SDL_GetTicks() - swap_start;
 	if (swap_time >= 2000)
 		platform_log("display: showing a frame took %.1f s in the graphics driver", (double)swap_time / 1000.0);
-#ifdef HALO_WEB
-	web_frame_shown();
-#endif
 	interval = frame_interval_ns();
 	if (!interval)
 		return;
@@ -1866,7 +1362,7 @@ void platform_video_swap(void)
 	next_frame = now - next_frame > interval ? now + interval : next_frame + interval;
 }
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_GUEST)
+#if !defined(HALO_ANDROID) && !defined(HALO_GUEST)
 #define PLATFORM_MOUSE_WARP
 #endif
 #ifdef PLATFORM_MOUSE_WARP
@@ -1880,11 +1376,6 @@ static int mouse_warp_y;
 
 void platform_mouse_capture(BOOL capture)
 {
-#ifdef HALO_WEB
-	/* (for the page, which takes the pointer lock back on a click:
-	web_shared.h) */
-	__atomic_store_n(&web_shared[_web_mouse_wanted], capture ? 1 : 0, __ATOMIC_RELAXED);
-#endif
 	if (!platform_window)
 		return;
 #ifndef PLATFORM_MOUSE_WARP
@@ -2160,15 +1651,9 @@ static void platform_invite_clipboard(BOOL look)
 		return;
 	if (invite)
 	{
-#ifdef HALO_WEB
-		/* (a page may write the clipboard only when it is clicked: the page
-		shows the link, with a button that copies it) */
-		web_js_post(2, invite);
-#else
 		SDL_SetClipboardText(invite);
 		snprintf(seen, sizeof(seen), "%s", invite);
 		platform_log("Internet play: the invite link is on the clipboard");
-#endif
 #ifdef HALO_ANDROID
 		SDL_ShowAndroidToast("Hosting: the invite link is on the clipboard", 1, -1, 0, 0);
 #endif
@@ -2220,11 +1705,6 @@ void platform_show_message(const char *title, const char *message)
 	pthread_mutex_unlock(&platform_message_lock);
 }
 
-#ifdef HALO_WEB
-/* web_library.js's: the page asks, and writes the answer in web_shared's
-_web_answer */
-void web_js_ask(const char *title, const char *text, const char *labels);
-#endif
 
 int platform_ask(const char *title, const char *text, const char *const *labels, int count, int default_index)
 {
@@ -2234,13 +1714,9 @@ int platform_ask(const char *title, const char *text, const char *const *labels,
 	static char shown_labels[3][128];
 	const char *shown[3];
 	int index;
-#ifdef HALO_WEB
-	char joined[512] = "";
-#else
 	SDL_MessageBoxButtonData buttons[3];
 	SDL_MessageBoxData question;
 	int answer = -1;
-#endif
 
 	if (count > 3)
 		count = 3;
@@ -2257,22 +1733,6 @@ int platform_ask(const char *title, const char *text, const char *const *labels,
 	title = shown_title;
 	text = shown_text;
 	labels = shown;
-#ifdef HALO_WEB
-	/* (the page's dialog: the game's thread waits for the player there, as
-	SDL's box would, which a page's worker cannot show) */
-	for (index = 0; index < count; index++)
-	{
-		size_t length = strlen(joined);
-
-		snprintf(joined + length, sizeof(joined) - length, "%s%s", index ? "\n" : "", labels[index]);
-	}
-	__atomic_store_n(&web_shared[_web_answer], -1, __ATOMIC_SEQ_CST);
-	web_js_ask(title, text, joined);
-	while (__atomic_load_n(&web_shared[_web_answer], __ATOMIC_SEQ_CST) < 0)
-		SDL_Delay(50);
-	(void)default_index;
-	return __atomic_load_n(&web_shared[_web_answer], __ATOMIC_SEQ_CST);
-#else
 	for (index = 0; index < count; index++)
 	{
 		buttons[index].flags = index == default_index ?
@@ -2290,7 +1750,6 @@ int platform_ask(const char *title, const char *text, const char *const *labels,
 	if (!SDL_ShowMessageBox(&question, &answer))
 		return -1;
 	return answer;
-#endif
 }
 
 static void platform_show_pending_message(void)

@@ -66,7 +66,6 @@ long long host_sdl_thread_id(void);
 unsigned int host_sdl_create_window(const char *title, int width, int height, long long flags);
 void host_sdl_window_size_in_pixels(unsigned int window, int *width, int *height);
 int host_sdl_set_relative_mouse(unsigned int window, int enabled);
-int host_sdl_gl_set_attribute(int attribute, int value);
 int host_sdl_poll_event(void *event);
 int host_sdl_set_clipboard_text(const char *text);
 void host_sdl_get_clipboard_text(char *buffer, unsigned int size);
@@ -110,10 +109,6 @@ int host_render_stream_open(unsigned int ring);
 void host_render_stream_submit(unsigned int flags);
 void host_render_stream_wait(unsigned int position);
 void host_render_stream_close(void);
-/* the window drawn by a host's OpenGL backend, which no host has now: every
-one's is a stand-in that draws nothing (port/android/host_renderer.c,
-port/macos/host_renderer.c), and the guests do not call it */
-int host_gl_window(unsigned int window, int interval);
 
 /* ---------- Android (android_imports.list) */
 

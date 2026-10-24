@@ -19,7 +19,7 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_zoom_sensitivity" x="28" y="166"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_invert_mouse" x="28" y="187"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_mouse_aim_assist" x="28" y="208"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_direct_camera" x="28" y="229" platform="computer web"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_direct_camera" x="28" y="229" platform="computer"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_7" x="28" y="256"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_controller" x="28" y="276"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/section_9" x="28" y="303"/>
@@ -148,7 +148,7 @@
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_aim_assist_spinner" type="spinner" top="2" width="140" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ON|OFF" setting="input.mouse_aim_assist" values="true|false" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 140 14 146">
 		<on event="created" run="port setting load"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_direct_camera" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="computer web">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_direct_camera" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF" platform="computer">
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_label"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/direct_camera_spinner" x="188"/>
 	</widget>

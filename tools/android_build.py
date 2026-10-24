@@ -26,7 +26,7 @@ import subprocess
 import sys
 import tarfile
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .guest_arch import ARM64_32, GuestArch
 from .guest_toolchain import LLVM_VERSION, guest_toolchain
@@ -92,12 +92,10 @@ GUEST_FLAGS = [
     "-ffp-contract=off",
     "-O2",
 ]
-# the Android app's code paths, and the OpenGL ES renderer's: the app's
-# renderer is Vulkan's, in the host, and its guest has no OpenGL backend, but
-# its platform code names OpenGL ES's declarations and limits, with the
-# anti-aliasing a phone's GPU can spare (d3d8_device.c); the Linux guests have
-# the desktop's code paths instead (tools/linux_guest_build.py)
-ANDROID_DEFINES = ["-DHALO_GLES=1", "-DHALO_ANDROID=1"]
+# the Android app's code paths, with the anti-aliasing a phone's GPU can
+# spare (d3d8_device.c); the Linux guests have the desktop's code paths
+# instead (tools/linux_guest_build.py)
+ANDROID_DEFINES = ["-DHALO_ANDROID=1"]
 
 # the MSVC semantics the game's sources were written for, as the Windows
 # build has them (tools/windows_build.py), minus what only x86 needs
@@ -158,14 +156,6 @@ VARIADIC_PROTOTYPE_FILES = {
 }
 
 HOST_LIBRARIES = ["SDL3", "log", "android", "m", "dl"]
-# the stand-in for the window import of the OpenGL backend that the hosts
-# once had (host_gl_window, every guest's), which the guests no longer call:
-# every host's renderer is Vulkan's or Metal's (the Linux hosts build it too)
-HOST_RENDERER = PORT_DIR / "host_renderer.c"
-# the files of port/linux/src that a guest whose renderer is in its host
-# (the command stream, HALO_RENDER_STREAM) does not build: the OpenGL
-# backend, its GLSL emitter, anti-aliasing passes and entry points
-RENDER_STREAM_GUEST_EXCLUDED = ["xgpu_gl.c", "xgpu_post.c", "xgpu_glsl.c", "gl_functions.c"]
 
 
 def _quote(path: Any) -> str:
@@ -300,20 +290,17 @@ def android_configure_inputs() -> List[Path]:
 
 
 def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: GuestArch, prefix: str, label: str,
-                         build: Path, third_party: Path, guest_cc: str, gl_headers: Optional[Path], ar: str, ld: str,
+                         build: Path, third_party: Path, guest_cc: str, ar: str, ld: str,
                          objdump: str, builtins_cc: str, environment: str, platform_defines: List[str],
                          extra_runtime: Optional[List[Path]] = None, extra_imports: Optional[List[Path]] = None,
                          extra_prototypes: Optional[List[Path]] = None, updater_cflags: str = "",
                          base_register: bool = False, link_flags: str = "",
-                         excluded_platform_sources: Iterable[str] = (),
                          host_abi: Optional[str] = None) -> Dict[str, Path]:
     """The guest image (build/halo_guest.elf) and the host's import table, for
     the builds that run the game as ILP32 code of the architecture arch
     (tools/guest_arch.py): Android, and the desktop guest builds
     (tools/linux_guest_build.py). The caller sets ${prefix}_guest_cc to
-    guest_cc; gl_headers holds the OpenGL ES headers (GLES2, GLES3, KHR) for
-    a guest with OpenGL ES's code paths (HALO_GLES; None for one without), and
-    ar, ld and objdump are the archiver, the linker and the disassembler (with
+    guest_cc; ar, ld and objdump are the archiver, the linker and the disassembler (with
     which tools/guest_image_check.py checks the image). builtins_cc is the compiler
     that names the runtime library the image links with (empty for none: the
     macOS guest's, as Apple's clang has no ELF one), and environment the
@@ -330,8 +317,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     (GuestArch.base_register_flags); extra_prototypes are then the files that
     declare extra_imports' functions, whose pointer arguments the import
     stubs translate. link_flags are more of the image's linker options.
-    excluded_platform_sources are files of port/linux/src the guest does not
-    build (the OpenGL backend: the renderer is the host's). host_abi "sysv"
+    host_abi "sysv"
     is for a host whose calling convention is not the guest's (the 64-bit
     Windows host, tools/windows_build.py): its table's entries are thunks
     (tools/android_imports.py --host-abi), from every import's prototype
@@ -350,7 +336,6 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     gen_dir = guest_dir / "gen"
     libc_include = guest_dir / "libc_include"
     libc_internal = guest_dir / "libc_internal"
-    gl_include = guest_dir / "gl_include"
     libc_arch = PORT_DIR / "guest" / "libc" / "arch" / arch.name
     # what every guest architecture shares: the system call interface the
     # host translates (port/android/include/halo_guest_syscall.h)
@@ -392,21 +377,6 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
         description=f"{label} MUSL $out",
     )
     n.build(outputs=version_h, rule=f"{prefix}_version_h")
-
-    # the OpenGL ES headers (C declarations only) for a guest with OpenGL
-    # ES's code paths (the NDK's, or Khronos's); none for the others
-    gl_stamp = gl_include / "stamp"
-    n.rule(
-        name=f"{prefix}_gl_include",
-        command=(f"{steps} gl-include $out {gl_include}{f' {gl_headers}' if gl_headers else ''}" if steps else
-                 f"mkdir -p {gl_include} && ln -sfn {gl_headers}/GLES2 {gl_include}/GLES2 && "
-                 f"ln -sfn {gl_headers}/GLES3 {gl_include}/GLES3 && "
-                 f"ln -sfn {gl_headers}/KHR {gl_include}/KHR && "
-                 f"ln -sfn {gl_headers}/GL {gl_include}/GL && touch $out" if gl_headers else
-                 f"mkdir -p {gl_include} && touch $out"),
-        description=f"{label} GL HEADERS",
-    )
-    n.build(outputs=gl_stamp, rule=f"{prefix}_gl_include")
 
     guest_posix_c = gen_dir / "guest_posix.c"
     posix_imports = gen_dir / "posix_imports.list"
@@ -451,7 +421,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
             implicit=[Path("tools/android_imports.py"), GUEST_ARCH_SCRIPT, imports_checked,
                       *(prototypes if base_register or host_abi else [])])
 
-    generated_headers = [*xdk_headers(), alltypes, syscall_h, version_h, gl_stamp,
+    generated_headers = [*xdk_headers(), alltypes, syscall_h, version_h,
                          semantics_header, platform_semantics_header]
 
     # ---------- guest compilation: C -> object, or for a Darwin target
@@ -569,12 +539,11 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
         f"-I{LINUX_DIR}/src", f"-I{LINUX_DIR}/include", f"-I{PORT_DIR}/guest/runtime",
         f"-I{PORT_DIR}/include", f"-I{TOML_DIR}", f"-I{EXPAT_DIR}", f"-I{KCP_DIR}", f"-I{MONOCYPHER_DIR}",
         f"-I{ZLIB_DIR}", "-Isource -Isource/cseries",
-        f"-I{sdl_dir}/include", f"-I{gl_include}", *libc_includes, f"-idirafter {XDK_INCLUDE}",
+        f"-I{sdl_dir}/include", *libc_includes, f"-idirafter {XDK_INCLUDE}",
     ])
     guest_host_only = {"memory_watch.c"}  # replaced by guest_memory_watch.c
     for source in sorted((LINUX_DIR / "src").glob("*.c")):
-        if source.name.startswith("posix_") or source.name in guest_host_only or \
-                source.name in excluded_platform_sources:
+        if source.name.startswith("posix_") or source.name in guest_host_only:
             continue
         if source.name == "updater.c" and updater_cflags:
             objects.append(guest_object(source, f"{platform_cflags} {updater_cflags}"))
@@ -621,7 +590,7 @@ def generate_guest_image(n: Writer, sln: Any, config: Dict[str, Any], *, arch: G
     runtime_cflags = " ".join([
         guest_abi, guest_code, "-std=gnu11", "-D_GNU_SOURCE",
         f"-I{PORT_DIR}/guest/runtime", f"-I{PORT_DIR}/include", f"-I{LINUX_DIR}/src",
-        f"-I{sdl_dir}/include", f"-I{gl_include}", *libc_includes,
+        f"-I{sdl_dir}/include", *libc_includes,
     ])
     runtime_dir = PORT_DIR / "guest" / "runtime"
     for source in sorted(runtime_dir.glob("*.c")):
@@ -708,7 +677,6 @@ def generate_android_build(n: Writer, sln: Any) -> None:
             return
         _host_tag = _tags[0]
     toolchain = prebuilt / _host_tag
-    sysroot_include = toolchain / "sysroot" / "usr" / "include"
     host_cc = toolchain / "bin" / f"aarch64-linux-android{ANDROID_API}-clang"
     ndk_bin = toolchain / "bin"
     # the guest's compiler and tools: --android-guest-cc, else the pinned
@@ -733,17 +701,16 @@ def generate_android_build(n: Writer, sln: Any) -> None:
     # chooses, tools/guest_base_register.py, instead of the fixed low ranges)
     base_register = getattr(sln, "guest_base", False)
     # (the renderer's backend is the host's, as the Linux guest builds have
-    # it, Vulkan's: the guest builds no OpenGL backend of its own)
+    # it, Vulkan's)
     guest = generate_guest_image(
         n, sln, config, arch=ARM64_32, prefix="android", label="ANDROID", build=BUILD, third_party=THIRD_PARTY,
-        guest_cc=guest_cc, gl_headers=sysroot_include, ar=toolchain.ar if toolchain else "$android_ndk_bin/llvm-ar",
+        guest_cc=guest_cc, ar=toolchain.ar if toolchain else "$android_ndk_bin/llvm-ar",
         ld=toolchain.ld if toolchain else "$android_ndk_bin/ld.lld",
         objdump=toolchain.objdump if toolchain else "$android_ndk_bin/llvm-objdump", builtins_cc="$android_host_cc",
-        environment="android", platform_defines=ANDROID_DEFINES + ["-DHALO_RENDER_STREAM=1", "-DHALO_VULKAN=1"],
+        environment="android", platform_defines=ANDROID_DEFINES + ["-DHALO_VULKAN=1"],
         extra_imports=[PORT_DIR / "android_imports.list", VULKAN_DIR / "host_imports.list"],
         extra_runtime=[VULKAN_DIR / "guest_vulkan.c"],
-        extra_prototypes=[VULKAN_DIR / "guest_vulkan.c"], base_register=base_register,
-        excluded_platform_sources=RENDER_STREAM_GUEST_EXCLUDED)
+        extra_prototypes=[VULKAN_DIR / "guest_vulkan.c"], base_register=base_register)
     image = guest["image"]
     host_table_c = guest["host_table_c"]
     sdl_build = BUILD / "sdl3-build"
@@ -789,7 +756,7 @@ def generate_android_build(n: Writer, sln: Any) -> None:
         f"-I{TOML_DIR}", "-DHALO_VULKAN=1", *(["-DHALO_GUEST_BASE=1"] if base_register else []),
     ])
     host_sources = host_memory_sources(sorted((PORT_DIR / "host").glob("*.c")), base_register) + [
-        HOST_RENDERER, LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",
+        LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",
         # the app reads debug.sample_seconds from config.toml (host_main.c)
         TOML_DIR / "tomlc17.c",
     ]

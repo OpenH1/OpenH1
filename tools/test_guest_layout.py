@@ -104,15 +104,14 @@ def test_image_range_is_the_hosts(name):
 
 def test_window_sizes():
     """the x86-64 guest, whose image is below the window, has the desktop's
-    window and caches; the AArch64 guests, whose image is right above it, and
-    the web build have a development kit's window and the Xbox's caches"""
+    window and caches; the AArch64 guests, whose image is right above it, have
+    a development kit's window and the Xbox's caches"""
     x32 = guest_macros(guest_flags(X32))
     native = guest_macros(["--target=i686-linux-gnu"])
     assert x32["PLATFORM_CONTIGUOUS_SIZE"] == native["PLATFORM_CONTIGUOUS_SIZE"] == DESKTOP_WINDOW
     for name in ("HALO_PORT_TEXTURE_CACHE_PAGE_COUNT", "HALO_PORT_SOUND_CACHE_SIZE"):
         assert x32[name] == native[name], name
-    small = [guest_macros(guest_flags(ARM64_32)), guest_macros(["--target=wasm32", "-DHALO_WEB=1"])]
-    for values in small:
-        assert values["PLATFORM_CONTIGUOUS_SIZE"] == DEVELOPMENT_KIT_WINDOW
-        assert values["HALO_PORT_TEXTURE_CACHE_PAGE_COUNT"] == 0x580
-        assert values["HALO_PORT_SOUND_CACHE_SIZE"] == 0x400000
+    small = guest_macros(guest_flags(ARM64_32))
+    assert small["PLATFORM_CONTIGUOUS_SIZE"] == DEVELOPMENT_KIT_WINDOW
+    assert small["HALO_PORT_TEXTURE_CACHE_PAGE_COUNT"] == 0x580
+    assert small["HALO_PORT_SOUND_CACHE_SIZE"] == 0x400000

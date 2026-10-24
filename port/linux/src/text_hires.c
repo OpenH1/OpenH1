@@ -19,12 +19,8 @@ scale (a window made fullscreen) or a full atlas starts it over.
 #include "text_hires.h"
 #include "platform.h"
 #include "port_config.h"
-#ifdef HALO_RENDER_STREAM
 /* (the renderer's backend is on the host: the pictures are images) */
 #include "xgpu_images.h"
-#else
-#include "xgpu_gl.h"
-#endif
 
 #include <math.h>
 #include <stdio.h>
@@ -312,7 +308,6 @@ unsigned int text_hires_atlas_texture(unsigned long data)
 {
 	if (!data || data != placeholder_data || !atlas)
 		return 0;
-#ifdef HALO_RENDER_STREAM
 	/* (the host reads the atlas where it is, again once it has changed) */
 	if (!atlas_texture)
 		atlas_texture = xgpu_image_create(atlas, ATLAS_SIZE, ATLAS_SIZE, 1, XGPU_IMAGE_COVERAGE, FALSE);
@@ -323,43 +318,4 @@ unsigned int text_hires_atlas_texture(unsigned long data)
 		dirty_bottom = 0;
 	}
 	return atlas_texture;
-#else
-	if (!atlas_texture)
-	{
-		glGenTextures(1, &atlas_texture);
-		glBindTexture(GL_TEXTURE_2D, atlas_texture);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ATLAS_SIZE, ATLAS_SIZE, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-		xgpu_gl_state_invalidate();
-		dirty_top = 0;
-		dirty_bottom = ATLAS_SIZE;
-	}
-	if (dirty_top < dirty_bottom)
-	{
-		/* (white, the glyph's coverage its alpha, as the maps' fonts are) */
-		long rows = dirty_bottom - dirty_top;
-		unsigned char *texels = malloc((size_t)rows * ATLAS_SIZE * 4);
-
-		if (texels)
-		{
-			long index;
-			const unsigned char *coverage = atlas + (long)dirty_top * ATLAS_SIZE;
-
-			for (index = 0; index < rows * ATLAS_SIZE; index++)
-			{
-				texels[index * 4 + 0] = texels[index * 4 + 1] = texels[index * 4 + 2] = 255;
-				texels[index * 4 + 3] = coverage[index];
-			}
-			glBindTexture(GL_TEXTURE_2D, atlas_texture);
-			glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, dirty_top, ATLAS_SIZE, (GLsizei)rows, GL_RGBA, GL_UNSIGNED_BYTE, texels);
-			xgpu_gl_state_invalidate();
-			free(texels);
-			dirty_top = ATLAS_SIZE;
-			dirty_bottom = 0;
-		}
-	}
-	return atlas_texture;
-#endif
 }

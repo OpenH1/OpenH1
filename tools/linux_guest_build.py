@@ -20,8 +20,7 @@ library:
 
 The renderer is Vulkan's, in the host (port/linux/vulkan), as the Android
 app's: the guest writes its frames as the renderer's command stream
-(HALO_RENDER_STREAM), and has no OpenGL backend; the host builds no OpenGL
-backend either, and links no OpenGL library. With configure.py --vr the
+(port/linux/src/xgpu_stream.h). With configure.py --vr the
 build has the VR mode (OpenXR, HALO_VR: port/linux/host/host_vr.c).
 
 Each build is a LinuxGuest in LINUX_GUESTS, generated on a computer of its
@@ -43,7 +42,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT, HOST_RENDERER, RENDER_STREAM_GUEST_EXCLUDED,
+from .android_build import (GUEST_ARCH_SCRIPT, GUEST_TOOLCHAIN_SCRIPT,
                             SDL_TAG, TOML_DIR, fetch_third_party, generate_guest_image, host_memory_sources)
 from .build_common import (MBEDTLS_DIR, MINIUPNPC_DEFINES, MINIUPNPC_DIR, SDL_RPATH_LDFLAGS, compile_launcher,
                            download, miniupnpc_sources, sdl3_rule, updater_defines)
@@ -75,12 +74,10 @@ OPENXR_HEADERS = {
 # (no Vulkan loader: the host loads it, through SDL, when the window is made;
 # no OpenGL, EGL or OpenGL ES)
 HOST_LIBRARIES = ["SDL3", "m", "dl", "pthread"]
-# the guest's and the host's code paths: the desktop's (no HALO_ANDROID, nor
-# HALO_GLES: the guest's platform code that names OpenGL takes desktop
-# OpenGL's declarations, from SDL's headers), Vulkan's window, and the
-# renderer's backend in the host (the guest's frames are its command stream,
-# port/linux/src/xgpu_stream.h)
-GUEST_DEFINES = ["-DHALO_VULKAN=1", "-DHALO_RENDER_STREAM=1"]
+# the guest's and the host's code paths: the desktop's (no HALO_ANDROID) and
+# Vulkan's window, the renderer's backend in the host (the guest's frames are
+# its command stream, port/linux/src/xgpu_stream.h)
+GUEST_DEFINES = ["-DHALO_VULKAN=1"]
 HOST_DEFINES = ["-DHALO_VULKAN=1"]
 
 
@@ -235,7 +232,7 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
 
     guest = generate_guest_image(
         n, sln, config, arch=target.arch, prefix=prefix, label=label, build=build, third_party=third_party,
-        guest_cc=guest_cc, gl_headers=None, ar=toolchain.ar if toolchain else "llvm-ar",
+        guest_cc=guest_cc, ar=toolchain.ar if toolchain else "llvm-ar",
         ld=toolchain.ld if toolchain else "ld.lld", objdump=toolchain.objdump if toolchain else "llvm-objdump",
         builtins_cc=f"${prefix}_cc",
         environment="gnu", platform_defines=guest_defines,
@@ -245,7 +242,7 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
         extra_prototypes=[PORT_DIR / "guest_desktop.c", *([LINUX_DIR / "src" / "vr_host.h"] if vr else []),
                           VULKAN_DIR / "guest_vulkan.c"],
         updater_cflags=updater_defines(getattr(sln, "port_release", False)),
-        base_register=base_register, excluded_platform_sources=RENDER_STREAM_GUEST_EXCLUDED)
+        base_register=base_register)
 
     # ---------- SDL3, built from the same source as the guest's headers
 
@@ -279,9 +276,6 @@ def _generate(n: Writer, sln: Any, target: LinuxGuest, config_path: Path, third_
                     if source.name not in android_only]
     host_sources += [
         PORT_DIR / "host_main.c", PORT_DIR / "host_desktop.c",
-        # (host_gl_window, which the guests import and do not call: the
-        # window has no OpenGL backend, as the Android app's)
-        HOST_RENDERER,
         LINUX_DIR / "src" / "posix_files.c", LINUX_DIR / "src" / "posix_net.c",
         LINUX_DIR / "src" / "posix_trace_marker.c",
         # (where config.toml is, for the debugging settings host_main.c reads)

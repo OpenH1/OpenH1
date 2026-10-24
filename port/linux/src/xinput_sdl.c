@@ -244,7 +244,7 @@ int halo_chat_touch_layout(void)
 {
 #if defined(HALO_ANDROID)
 	return TRUE;
-#elif defined(HALO_WEB) || defined(HALO_IOS)
+#elif defined(HALO_IOS)
 	int used;
 
 	pthread_mutex_lock(&mouse_lock);
@@ -983,11 +983,7 @@ once a frame, at the display's refresh rate. */
 /* how far the wheel turns before it switches: a notch. A browser's notch is
 pixels, which SDL counts as a notch per 100, and some send fewer for one
 (about half), so in the web build half of SDL's notch is one */
-#ifdef HALO_WEB
-#define WHEEL_NOTCH 0.5f
-#else
 #define WHEEL_NOTCH 1.0f
-#endif
 
 /* debug.test_input "bot:<seed>": a scripted player for the automated
 network tests (port/linux/game/network_test.c), different for each seed:

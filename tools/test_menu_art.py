@@ -16,7 +16,6 @@ def test_menu_art_registration_replacement_and_forget(tmp_path):
 #include <stdlib.h>
 #include <string.h>
 #define MAXIMUM_ART 1024
-#define HALO_RENDER_STREAM 1
 static unsigned int created, deleted;
 static void platform_log(const char *format, ...) { (void)format; }
 static void xgpu_image_delete(unsigned int image) { assert(image); deleted++; }

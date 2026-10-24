@@ -165,7 +165,7 @@ markers of the most instances), and as many of its permutations' */
 /* the most of the Xbox's contiguous memory the mods' models take (what is
 left is the game's: its own maps' geometry, and on Android and the web a
 window of it in all); past it, their geometry is drawn from the heap */
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#if defined(HALO_ANDROID)
 #define MAXIMUM_CONTIGUOUS_GEOMETRY_BYTES (24UL * 1024 * 1024)
 #else
 #define MAXIMUM_CONTIGUOUS_GEOMETRY_BYTES (128UL * 1024 * 1024)

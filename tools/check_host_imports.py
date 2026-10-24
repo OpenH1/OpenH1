@@ -90,11 +90,6 @@ HOST_DEFINITION_FOLDERS = [
     Path("port/windows/host"),
     Path("port/linux/vulkan"),
 ]
-# and the files outside them that define one (host_gl_window's stand-in, which
-# the Android app and the Linux and Windows builds build)
-HOST_DEFINITION_FILES = [
-    Path("port/android/host_renderer.c"),
-]
 
 # functions whose pointer result is safe for the guest, and why
 POINTER_RESULTS = {
@@ -380,8 +375,7 @@ def check(lists: Dict[str, List[str]], listed_declarations: Dict[str, List[Proto
 
 
 def host_sources(root: Path) -> List[Path]:
-    return ([path for folder in HOST_DEFINITION_FOLDERS for path in sorted((root / folder).glob("*.c"))]
-            + [root / path for path in HOST_DEFINITION_FILES])
+    return [path for folder in HOST_DEFINITION_FOLDERS for path in sorted((root / folder).glob("*.c"))]
 
 
 def inputs() -> List[Path]:

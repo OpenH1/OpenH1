@@ -40,10 +40,8 @@ ON_THE_MAC = sys.platform == "darwin" and platform.machine().lower() == "arm64"
 
 
 def test_one_source():
-    source = vulkan_post_shaders.SOURCE.read_text()
-    bindings = vulkan_post_shaders.units(source)
     for name, code in vulkan_post_shaders.hdr_programs().items():
-        vulkan = vulkan_post_shaders.translate("frag", code, bindings)
+        vulkan = vulkan_post_shaders.translate("frag", code, vulkan_post_shaders.UNITS)
         metal = vulkan.replace("set = 0, binding = 1)", f"set = 0, binding = {metal_post_shaders.UNIFORMS_BUFFER})")
         assert metal != vulkan, name
         assert "uniform vec4 hdr" not in vulkan and "\tvec4 hdr;\n" in vulkan, name

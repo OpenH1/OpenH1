@@ -244,7 +244,6 @@ static void network_test_read_settings(
 	network_test.score_to_win = (long)config_integer("debug.network_test_score");
 	network_test.cue_players = MAX(1, config_integer("debug.network_test_cue_players"));
 	network_test.cues_start = NONE;
-#ifndef HALO_WEB
 	/* (not on the web, where a link's ?set= would have it run what it says) */
 	{
 		char const *cue = config_string("debug.network_test_cues");
@@ -282,7 +281,6 @@ static void network_test_read_settings(
 			cue += length + (end != NULL);
 		}
 	}
-#endif
 	if (network_test.mode != _network_test_off)
 		platform_log("network test: %s", setting);
 }

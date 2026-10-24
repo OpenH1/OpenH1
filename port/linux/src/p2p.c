@@ -1388,10 +1388,6 @@ static void stun_setup(void)
 {
 	const char *text = config_string("network.stun_servers");
 
-#ifdef HALO_WEB
-	/* (a page's addresses are its WebRTC connections' own: web_p2p.c) */
-	text = "";
-#endif
 	while (*text && p2p.stun_count < MAXIMUM_STUN_SERVERS)
 	{
 		const char *end = text + strcspn(text, ",");
@@ -2612,10 +2608,6 @@ static void probe_end(int index)
 
 int p2p_probe_start(const unsigned char *host_hash, const unsigned char *token)
 {
-#ifdef HALO_WEB
-	/* (a browser reaches a host only by a WebRTC connection of its own) */
-	return 0;
-#else
 	unsigned char host[P2P_IDENTIFIER_SIZE];
 	struct peer *peer;
 	int free_index = -1;
@@ -2654,7 +2646,6 @@ int p2p_probe_start(const unsigned char *host_hash, const unsigned char *token)
 	p2p.probes[free_index].time = p2p_now();
 	p2p.probes[free_index].reported = 0;
 	return 1;
-#endif
 }
 
 /* the probes timed (PROBE_PINGS answered) end, as do those not reached in
@@ -3460,10 +3451,6 @@ static void update_upnp(void)
 
 	if (allowed < 0)
 		allowed = config_boolean("network.allow_upnp") ? 1 : 0;
-#ifdef HALO_WEB
-	/* (a page cannot reach the router) */
-	allowed = 0;
-#endif
 	if (!allowed || p2p.upnp_working || p2p.upnp_released)
 		return;
 	if (p2p.upnp_forwarded)

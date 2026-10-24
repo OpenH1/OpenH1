@@ -45,7 +45,7 @@ left) and given the name maps only when every file is complete.
 #include "platform.h"
 #include "xiso.h"
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_ANDROID)
 
 #include "posix.h"
 

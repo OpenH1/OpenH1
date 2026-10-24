@@ -1428,7 +1428,7 @@ void network_game_server_dispose(
 	/* port: native transports flush before closing sockets, and unregistering
 	an XNet key is a stub (the web build's too: Emscripten is no __linux__).
 	Preserve the original grace period on other builds. */
-#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(__linux__)
+#if !defined(HALO_WINDOWS) && !defined(HALO_ANDROID) && !defined(__linux__)
 	SleepEx(MILLISECONDS_PER_SECOND, FALSE);
 #endif
 	transport_server_terminate();

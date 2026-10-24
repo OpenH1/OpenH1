@@ -41,7 +41,7 @@ import zipfile
 from pathlib import Path
 from typing import Any, Dict, List
 
-from .android_build import (MBEDTLS_DIR, RENDER_STREAM_GUEST_EXCLUDED, TOML_DIR, fetch_third_party,
+from .android_build import (MBEDTLS_DIR, TOML_DIR, fetch_third_party,
                             generate_guest_image)
 from .build_common import (MINIUPNPC_DIR, OPTIMISATION, compile_launcher, configuration_defines, miniupnpc_sources,
                            updater_defines)
@@ -71,13 +71,12 @@ LINUX_DIR = Path("port/linux")
 LINUX_HOST_DIR = Path("port/linux/host")
 
 # the guest's code paths beside the architecture's (generate_guest_image adds
-# HALO_GUEST): the Linux Vulkan build's (tools/linux_guest_build.py: desktop
-# OpenGL's declarations, the renderer's command stream, Vulkan's window) and
-# Windows's; and its code generation: no red zone, as Windows's exception
+# HALO_GUEST): the Linux Vulkan build's (tools/linux_guest_build.py: the
+# renderer's command stream, Vulkan's window) and Windows's; and its code generation: no red zone, as Windows's exception
 # dispatch writes its records right below the interrupted stack pointer (the
 # write tracking's page faults happen in guest code), and frame pointers in
 # musl too, for the host's walk of guest frames
-WINDOWS_GUEST_DEFINES = ["-DHALO_WINDOWS=1", "-DHALO_VULKAN=1", "-DHALO_RENDER_STREAM=1", "-mno-red-zone",
+WINDOWS_GUEST_DEFINES = ["-DHALO_WINDOWS=1", "-DHALO_VULKAN=1", "-mno-red-zone",
                          "-fno-omit-frame-pointer"]
 
 # the host's files of port/android/host (the rest is port/windows/host's: the
@@ -201,7 +200,7 @@ def generate_windows_build(n: Writer, sln: Any) -> None:
     n.variable("windows_guest_cc", toolchain.cc)
     guest = generate_guest_image(
         n, sln, config, arch=X32, prefix="windows", label="WINDOWS", build=BUILD, third_party=THIRD_PARTY,
-        guest_cc=toolchain.cc, gl_headers=None, ar=toolchain.ar, ld=toolchain.ld,
+        guest_cc=toolchain.cc, ar=toolchain.ar, ld=toolchain.ld,
         objdump=toolchain.objdump, builtins_cc="", environment="gnu", platform_defines=WINDOWS_GUEST_DEFINES,
         extra_runtime=[LINUX_HOST_DIR / "guest_desktop.c", VULKAN_DIR / "guest_vulkan.c", PORT_DIR / "guest_windows.c"],
         extra_imports=[LINUX_HOST_DIR / "host_imports.list", VULKAN_DIR / "host_imports.list",
@@ -209,7 +208,7 @@ def generate_windows_build(n: Writer, sln: Any) -> None:
         extra_prototypes=[LINUX_HOST_DIR / "guest_desktop.c", VULKAN_DIR / "guest_vulkan.c",
                           PORT_DIR / "guest_windows.c"],
         updater_cflags=updater_defines(getattr(sln, "port_release", False)),
-        excluded_platform_sources=RENDER_STREAM_GUEST_EXCLUDED, host_abi="sysv")
+        host_abi="sysv")
     n.build(outputs="windows_guest", rule="phony", inputs=[guest["image"], guest["checked"]])
     n.newline()
     if sys.platform != "win32" and not windows_cross(sln):
@@ -306,8 +305,6 @@ def _generate_host(n: Writer, sln: Any, guest: Dict[str, Path]) -> None:
     for name in SHARED_HOST_SOURCES:
         add(ANDROID_DIR / "host" / name, host_cflags)
     add(LINUX_HOST_DIR / "host_desktop.c", host_cflags)
-    # (host_gl_window: the window has no OpenGL backend, as Android's)
-    add(ANDROID_DIR / "host_renderer.c", host_cflags)
     add(TOML_DIR / "tomlc17.c", " ".join([*base_cflags, "-w"]))
     for name in WIN32_HOST_SOURCES:
         cflags = win32_cflags

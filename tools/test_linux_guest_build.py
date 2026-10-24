@@ -99,10 +99,7 @@ def test_vulkan_build_has_runtime_and_guest_imports(tree, monkeypatch, native, v
     graph = output.getvalue()
     third_party = Path("build") / native.name / "third_party"
     assert guest["arch"] == native.arch
-    assert "-DHALO_VULKAN=1" in guest["platform_defines"] and "-DHALO_RENDER_STREAM=1" in guest["platform_defines"]
-    # (no OpenGL ES code paths, nor headers: the desktop's, from SDL's)
-    assert "-DHALO_GLES=1" not in guest["platform_defines"] and guest["gl_headers"] is None
-    assert "xgpu_gl.c" in guest["excluded_platform_sources"]
+    assert "-DHALO_VULKAN=1" in guest["platform_defines"]
     assert ("-DHALO_VR=1" in guest["platform_defines"]) == vr
     assert (Path("port/linux/host/vr_imports.list") in guest["extra_imports"]) == vr
     assert Path("port/linux/vulkan/host_imports.list") in guest["extra_imports"]
@@ -112,10 +109,8 @@ def test_vulkan_build_has_runtime_and_guest_imports(tree, monkeypatch, native, v
     assert ("port/linux/vulkan/xgpu_vulkan_vr_shaders.c" in graph) == vr
     assert f"-I{third_party}/vulkan-headers" in graph
     assert "-Iport/linux/host" in graph
-    # (the host has no OpenGL backend: the Xbox's texture decoding is its own,
-    # and the window import's stand-in is Android's)
-    assert "xbox_texture_decode.c" in graph and "port/android/host_renderer.c" in graph
-    assert "host_gl" not in graph and "XGPU_GL_HOST" not in graph and "HALO_DESKTOP_GL" not in graph
+    # (the host decodes the Xbox's textures itself)
+    assert "xbox_texture_decode.c" in graph
     link = next(line for line in graph.splitlines() if "-pie -o $out" in line)
     for library in ("GLESv2", "EGL", "OpenGL", "GL "):
         assert f"-l{library}" not in link, link

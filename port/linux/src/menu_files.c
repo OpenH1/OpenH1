@@ -23,12 +23,8 @@ high-res HUD's are (hud_hires.c).
 #include "menu_files.h"
 #include "platform.h"
 #include "port_config.h"
-#ifdef HALO_RENDER_STREAM
 /* (the renderer's backend is on the host: the pictures are images) */
 #include "xgpu_images.h"
-#else
-#include "xgpu_gl.h"
-#endif
 #ifdef HALO_VR
 #include "vr.h"
 #endif
@@ -399,8 +395,6 @@ static long current_line(struct reader *reader)
 /* this build's platform, as the platform attribute names it */
 #ifdef HALO_ANDROID
 #define MENU_PLATFORM "android"
-#elif defined(HALO_WEB)
-#define MENU_PLATFORM "web"
 #else
 #define MENU_PLATFORM "desktop"
 #endif
@@ -445,7 +439,7 @@ static int for_this_platform(struct reader *reader, const XML_Char **attributes)
 							"touch, pointer or computer", attributes[index + 1]);
 						return 1;
 					}
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB) && !defined(HALO_IOS)
+#if !defined(HALO_ANDROID) && !defined(HALO_IOS)
 					if (length == 8 && !strncmp(name, "computer", 8))
 						found = 1;
 #endif
@@ -1114,12 +1108,7 @@ void halo_menus_art_register(void const *texture, char const *png)
 		free(art[index].png);
 		if (art[index].texture)
 		{
-#ifdef HALO_RENDER_STREAM
 			xgpu_image_delete(art[index].texture);
-#else
-			xgpu_gl_texture_deleted(art[index].texture);
-			glDeleteTextures(1, &art[index].texture);
-#endif
 		}
 	}
 	memset(&art[index], 0, sizeof(art[index]));
@@ -1136,12 +1125,7 @@ void halo_menus_art_forget(void)
 		free(art[index].png);
 		if (art[index].texture)
 		{
-#ifdef HALO_RENDER_STREAM
 			xgpu_image_delete(art[index].texture);
-#else
-			xgpu_gl_texture_deleted(art[index].texture);
-			glDeleteTextures(1, &art[index].texture);
-#endif
 		}
 	}
 	art_count = 0;

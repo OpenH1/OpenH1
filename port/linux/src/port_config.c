@@ -86,11 +86,7 @@ struct config_setting
 
 /* crouching's keys (in a browser C alone: a page cannot keep Ctrl+W, Ctrl+S or
 Ctrl+D, which moving and crouching would press, from the browser) */
-#ifdef HALO_WEB
-#define CROUCH_KEYS "\"C\""
-#else
 #define CROUCH_KEYS "\"Left Ctrl, C\""
-#endif
 
 /* display.graphics = "enhanced": the values it gives the settings it
 chooses (config_graphics), which are their defaults, the same on every
@@ -1589,8 +1585,6 @@ static const struct config_setting config_settings[] =
 
 #ifdef HALO_ANDROID
 #define CONFIG_PLATFORM _platform_android
-#elif defined(HALO_WEB)
-#define CONFIG_PLATFORM (_platform_desktop | _platform_web)
 #elif defined(HALO_WINDOWS)
 /* (the Windows build: a guest, tools/windows_build.py) */
 #define CONFIG_PLATFORM (_platform_desktop | _platform_windows | _platform_guest)
@@ -1622,7 +1616,7 @@ static pthread_mutex_t config_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void config_path(char *path, size_t size)
 {
-#if defined(HALO_ANDROID) || defined(HALO_WEB)
+#if defined(HALO_ANDROID)
 	/* the data folder, which the app names (port/android/host/host_main.c;
 	on the web, port/web/src/web_main.c) */
 	const char *root = getenv("HALO_DATA_ROOT");
@@ -2658,7 +2652,7 @@ static int config_skip_line(char *text, int line_number, const char *message)
 	return 1;
 }
 
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_ANDROID)
 /* a config.toml the game never reads, likely edited in its place: said in
 the log, with the one it reads (path) */
 static void config_report_unread(const char *path)
@@ -2820,7 +2814,7 @@ static void config_load(void)
 	}
 
 	config_path(path, sizeof(path));
-#if !defined(HALO_ANDROID) && !defined(HALO_WEB)
+#if !defined(HALO_ANDROID)
 	config_report_unread(path);
 #endif
 	text = config_read_file(path, &size);

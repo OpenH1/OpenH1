@@ -7,7 +7,6 @@ the game draws it, so a deleted image's pixels are freed only after the
 frames in flight are done.
 */
 
-#ifdef HALO_RENDER_STREAM
 
 #include "xgpu_images.h"
 
@@ -97,4 +96,3 @@ void xgpu_images_frame_end(void)
 	}
 }
 
-#endif

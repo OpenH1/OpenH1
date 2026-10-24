@@ -22,7 +22,6 @@ once and named by a number after, and the draw state, textures and the
 inputs no stream feeds only when they change.
 */
 
-#ifdef HALO_RENDER_STREAM
 
 #include "frame_pacing.h"
 #include "xgpu_backend.h"
@@ -2009,4 +2008,3 @@ void halo_vr_eye_tint(float red, float green, float blue)
 }
 #endif
 
-#endif

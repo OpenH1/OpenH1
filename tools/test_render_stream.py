@@ -44,7 +44,7 @@ def interface_folder():
 def build(cc, headers, binary, flags):
     subprocess.run(
         [cc, "-std=gnu11", "-Wall", "-Wextra", "-Werror", "-O1", "-g", *flags, "-D_GNU_SOURCE", "-D_DARWIN_C_SOURCE",
-         "-DHALO_GUEST_BASE=1", "-DHALO_RENDER_STREAM=1", "-DXGPU_STREAM_TEST=1",
+         "-DHALO_GUEST_BASE=1", "-DXGPU_STREAM_TEST=1",
          f"-I{headers}", f"-I{ROOT / 'port' / 'linux' / 'src'}", f"-I{ROOT / 'port' / 'android' / 'host'}",
          f"-I{ROOT / 'port' / 'android' / 'include'}",
          str(ROOT / "port" / "android" / "tests" / "host_render_stream_test.c"),
