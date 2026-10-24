@@ -2853,7 +2853,7 @@ enum
 	/* the table's inner margin, its heading's height, and its rows' tallest */
 	CARNAGE_TABLE_PADDING = 10,
 	CARNAGE_HEADING_HEIGHT = 18,
-	CARNAGE_MAXIMUM_ROW_HEIGHT = 26,
+	CARNAGE_MAXIMUM_ROW_HEIGHT = 30,
 	/* the columns' widths but the player's, which takes the rest */
 	CARNAGE_PLACE_WIDTH = 42,
 	CARNAGE_SCORE_WIDTH = 60,
@@ -3457,16 +3457,18 @@ void game_engine_post_rasterize_post_game(
 
 	carnage_report_banner(entries, entry_count, small_font, large_font);
 
-	/* the table: its panel, its heading, the players' rows, the teams'
-	totals */
-	bounds.y0 = CARNAGE_TABLE_TOP;
-	bounds.y1 = CARNAGE_TABLE_BOTTOM;
-	carnage_report_box(&bounds, CARNAGE_TABLE_FILL, CARNAGE_TABLE_EDGE);
+	/* the table: its panel (ending under its last row, a few players' rows
+	at their tallest leaving the panel's foot, not the table, empty), its
+	heading, the players' rows, the teams' totals */
 	column_count = carnage_report_columns(teams, CARNAGE_LEFT + CARNAGE_TABLE_PADDING,
 		CARNAGE_RIGHT - CARNAGE_TABLE_PADDING, columns);
 	row_height = carnage_report_row_height(entry_count + (teams ? 2 : 0),
 		CARNAGE_TABLE_BOTTOM - CARNAGE_TABLE_TOP - 2 * 4);
 	text_height = MIN(11.0f, 0.7f * row_height);
+	bounds.y0 = CARNAGE_TABLE_TOP;
+	bounds.y1 = (short)MIN(CARNAGE_TABLE_BOTTOM,
+		CARNAGE_TABLE_TOP + 2 * 4 + CARNAGE_HEADING_HEIGHT + (entry_count + (teams ? 2 : 0)) * row_height);
+	carnage_report_box(&bounds, CARNAGE_TABLE_FILL, CARNAGE_TABLE_EDGE);
 	top = CARNAGE_TABLE_TOP + 4;
 	game_engine->format_score_name(string);
 	string[NUMBEROF(string) - 1] = 0;
@@ -3509,8 +3511,6 @@ void game_engine_post_rasterize_post_game(
 
 		carnage_report_quad(CARNAGE_LEFT + CARNAGE_TABLE_PADDING, top, CARNAGE_RIGHT - CARNAGE_TABLE_PADDING,
 			(short)(top + 1), CARNAGE_RULE);
-		/* (the totals at the table's foot) */
-		top = (short)MAX(top, CARNAGE_TABLE_BOTTOM - 4 - 2 * row_height);
 		for (team = 0; team < 2; team++)
 		{
 			carnage_report_draw_row(columns, column_count, &totals[team], NULL, top, row_height, small_font,
