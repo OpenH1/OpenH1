@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- The port's settings screen, in the PC version's style (tools/port_settings.py) -->
+<menus>
+	<widget name="main_menu/settings/header_settings" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/settings/header_settings">
+	</widget>
+	<widget name="main_menu/settings/tab_panel" controller="1" left="388" top="104" width="224" height="296" bitmap="main_menu/settings/tab_panel">
+		<child widget="main_menu/settings/panel_name" x="402" y="116"/>
+		<child widget="main_menu/settings/panel_value" x="402" y="130"/>
+		<child widget="main_menu/settings/panel_classic" x="400" y="156"/>
+		<child widget="main_menu/settings/panel_classic_frame" x="400" y="156"/>
+		<child widget="main_menu/settings/panel_classic_caption" x="400" y="218"/>
+		<child widget="main_menu/settings/panel_enhanced" x="504" y="156"/>
+		<child widget="main_menu/settings/panel_enhanced_frame" x="504" y="156"/>
+		<child widget="main_menu/settings/panel_enhanced_caption" x="504" y="218"/>
+		<child widget="main_menu/settings/panel_text" x="402" y="156"/>
+		<child widget="main_menu/settings/panel_note" x="402" y="360"/>
+	</widget>
+	<widget name="main_menu/settings/page_panel" controller="1" left="388" top="80" width="224" height="320" bitmap="main_menu/settings/page_panel">
+		<child widget="main_menu/settings/panel_name" x="402" y="92"/>
+		<child widget="main_menu/settings/panel_value" x="402" y="106"/>
+		<child widget="main_menu/settings/panel_classic" x="400" y="132"/>
+		<child widget="main_menu/settings/panel_classic_frame" x="400" y="132"/>
+		<child widget="main_menu/settings/panel_classic_caption" x="400" y="194"/>
+		<child widget="main_menu/settings/panel_enhanced" x="504" y="132"/>
+		<child widget="main_menu/settings/panel_enhanced_frame" x="504" y="132"/>
+		<child widget="main_menu/settings/panel_enhanced_caption" x="504" y="194"/>
+		<child widget="main_menu/settings/panel_text" x="402" y="132"/>
+		<child widget="main_menu/settings/panel_note" x="402" y="360"/>
+	</widget>
+	<widget name="main_menu/settings/panel_name" type="text" controller="1" width="196" height="18" color="#FF6F9CD0" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings/panel_value" type="text" controller="1" width="196" height="24" font="ui\large_ui" color="#FFFFFFFF">
+	</widget>
+	<widget name="main_menu/settings/panel_text" type="text" controller="1" width="196" height="220" color="#FF2896FF" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings/panel_note" type="text" controller="1" width="196" height="40" color="#FF6F9CD0" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings/panel_classic" controller="1" width="96" height="60" bitmap="main_menu/settings/graphics_classic">
+	</widget>
+	<widget name="main_menu/settings/panel_classic_frame" controller="1" width="96" height="60" bitmap="main_menu/settings/still_frame">
+	</widget>
+	<widget name="main_menu/settings/panel_classic_caption" type="text" controller="1" width="96" height="18" string_list="main_menu/settings/still_captions" color="#FF2896FF" align="center" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings/panel_enhanced" controller="1" width="96" height="60" bitmap="main_menu/settings/graphics_enhanced">
+	</widget>
+	<widget name="main_menu/settings/panel_enhanced_frame" controller="1" width="96" height="60" bitmap="main_menu/settings/still_frame">
+	</widget>
+	<widget name="main_menu/settings/panel_enhanced_caption" type="text" controller="1" width="96" height="18" string_list="main_menu/settings/still_captions" string_index="1" color="#FF2896FF" align="center" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings/settings_creating_profile" width="640" height="480" flags="pass_unhandled_to_focused_child no_history" auto_close="1">
+		<on event="deleted" run="new campaign decision" open="main_menu/settings/settings_saving_profile"/>
+	</widget>
+	<widget name="main_menu/settings/settings_saving_profile" width="640" height="480" flags="pass_unhandled_to_focused_child no_history" auto_close="1000" auto_close_fade="500">
+		<on event="b" run="NULL"/>
+		<on event="back" run="NULL"/>
+		<on event="deleted" run="NULL" back="true"/>
+		<child widget="error/warning_creating_player_profile_screen"/>
+	</widget>
+	<strings name="main_menu/settings/tab_names">
+		<string text="VIDEO"/>
+		<string text="AUDIO"/>
+		<string text="CONTROLS"/>
+		<string text="ONLINE"/>
+		<string text="INTERFACE"/>
+		<string text="PROFILE"/>
+	</strings>
+	<strings name="main_menu/settings/tab_about">
+		<string text="The window, the frame rate and the graphics."/>
+		<string text="The devices, the volumes, voice chat and the sound."/>
+		<string text="The mouse, the controller and the keys."/>
+		<string text="Internet play, sharing maps and updates."/>
+		<string text="The HUD, the players' names, the scoreboard and the chat."/>
+		<string text="Your player profile: your name and your colour."/>
+	</strings>
+	<strings name="main_menu/settings/button_help">
+		<string text="Puts this tab's settings back to their defaults. Nothing changes until OK."/>
+		<string text="Keeps your changes, on every tab, and applies them."/>
+		<string text="Leaves Settings without keeping any change."/>
+		<string text="Puts this page's settings back to their defaults."/>
+		<string text="Saves your changes, on this page and every tab, and applies them."/>
+		<string text="Goes back without these changes."/>
+	</strings>
+	<strings name="main_menu/settings/still_captions">
+		<string text="CLASSIC"/>
+		<string text="ENHANCED"/>
+	</strings>
+</menus>

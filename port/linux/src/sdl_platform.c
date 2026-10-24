@@ -2898,6 +2898,10 @@ BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer)
 	ui_pointer.right_clicks = 0;
 	ui_pointer.wheel_steps = 0;
 	pthread_mutex_unlock(&input_lock);
+	/* (a scripted run of the menus, debug.test_input = "menu:...", takes its
+	presses alone: the mouse of whoever is at the computer moves no focus) */
+	if (!strncmp(config_string("debug.test_input"), "menu:", 5))
+		return FALSE;
 	return active;
 }
 

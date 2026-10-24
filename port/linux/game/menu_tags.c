@@ -434,8 +434,6 @@ static char const *const port_function_names[] =
 	"player profile save changes",
 	/* (the server browser's password screen) */
 	"port password init", "port password edit", "port password join", "port password back",
-	/* (Gamepads' OK in a single-player campaign: pause_settings_patch) */
-	"port profile settings save",
 	/* (a new profile's screens: Settings' is then being edited, which the
 	Xbox's leaves to its own screens) */
 	"new campaign decision",
@@ -446,6 +444,10 @@ static char const *const port_function_names[] =
 	"port update now",
 	/* (Multiplayer's panel: menu_functions.c's multiplayer_status) */
 	"port multiplayer status end", "port multiplayer refresh", "port multiplayer open",
+	/* (Settings' tabs and pages: menu_functions.c's settings_*) */
+	"port settings begin", "port settings tab", "port settings tab next", "port settings tab previous",
+	"port settings ok", "port settings cancel", "port settings keep", "port settings page cancel",
+	"port settings new profile",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -476,6 +478,8 @@ static char const *const port_game_data_input_names[] =
 	"port multiplayer status",
 	/* (the gametype editor's description, with OPENCE OPTIONS' row) */
 	"port playlist edit desc",
+	/* (Settings' tabs and pages: the rows shown, the panel) */
+	"port settings page",
 };
 
 static struct
@@ -1555,7 +1559,8 @@ pausebox2 pieces), the box is the port's taller one (pause/pausebox_*:
 tools/port_settings.py), centred where the old one was; on a custom map's,
 what is below the list moves down. */
 
-#define PAUSE_SETTINGS_SCREEN "main_menu/settings_select/player_setup/player_profile_edit/player_profile_edit_screen"
+/* (Settings' first tab: tools/port_settings.py) */
+#define PAUSE_SETTINGS_SCREEN "main_menu/settings_select/player_setup/player_profile_edit/video_settings/video_settings_screen"
 #define PAUSE_BUTTON_SPACING 35
 #define PAUSE_BOX_FIRST_BUTTONS 3
 
@@ -1688,7 +1693,7 @@ static long pause_list_patch(struct cache_file_tag_instance *instances, struct u
 	names[0] = "pause/settings_button";
 	tags[0] = next_tag();
 	buttons[0] = pause_button(instances, model, names[0], "SETTINGS",
-		function_index("profile set edit begin", "pause", 0), build.widget_tags[settings_widget], NULL, NONE);
+		function_index("port settings begin", "pause", 0), build.widget_tags[settings_widget], NULL, NONE);
 	names[1] = build.coop ? "pause/friendly_fire_button" : "pause/end_game_button";
 	tags[1] = added > 1 ? next_tag() : NONE;
 	buttons[1] = build.coop ?
@@ -1863,26 +1868,8 @@ Its list gets the same SETTINGS (pause_list_patch) before REVERT TO SAVED, a
 copy of it, and in network co-op FRIENDLY FIRE after SETTINGS. The rows use
 the PC version's pause menu's pitch, so a highlight sits clear of the next
 label. The prompts (B and A) stay that same gap under the last row, and the
-box beside the mission objectives grows with them. Settings there has only
-the items that work in a game (pause_settings_patch), and Gamepads' OK saves
-the profile itself. */
-
-#define PAUSE_SETTINGS_LIST "main_menu/settings_select/player_setup/player_profile_edit/profile_edit_select_list"
-#define PAUSE_SETTINGS_GAMEPADS_OK "main_menu/settings_select/player_setup/player_profile_edit/gamepad_setup/button_ok"
-#define PAUSE_NETWORK_ITEM "main_menu/settings_select/player_setup/player_profile_edit/network_settings_profile_item"
-#define PAUSE_NETWORK_SCREEN \
-	"main_menu/settings_select/player_setup/player_profile_edit/network_setup/in_game/in_game_network_settings_screen"
-
-/* Change Name's keyboard and Change Color's pictures are ui.map's, Network
-Setup is for others' games (shown in co-op: its pages, pause_network_patch),
-and About is nothing to it */
-static char const *const pause_settings_hidden_items[] =
-{
-	"main_menu/settings_select/player_setup/player_profile_edit/name_profile_item",
-	PAUSE_NETWORK_ITEM,
-	"main_menu/settings_select/player_setup/player_profile_edit/color_profile_item",
-	"main_menu/settings_select/player_setup/player_profile_edit/about_item",
-};
+box beside the mission objectives grows with them. Settings there hides the
+rows that do not work in a game (menu_functions.c's settings_rows_show). */
 
 /* the PC version's pause menu's row pitch (30 apart). The pause box's frames
 from the third, and the mission objectives' box's, are the stock 159 grown by
@@ -2010,102 +1997,6 @@ static void pause_campaign_grow_box(struct ui_widget_definition *widget, short s
 		widget->bounds.y1 = (short)(widget->bounds.y1 + shift);
 }
 
-static boolean pause_settings_item_hidden(long tag_index)
-{
-	short index;
-
-	for (index = 0; index < (short)NUMBEROF(pause_settings_hidden_items); index++)
-	{
-		long widget = widget_named(pause_settings_hidden_items[index]);
-
-		/* (Network Setup stays in a co-op game, which is a network one or
-		has players beside this one: build.campaign is a game alone) */
-		if (!build.campaign && !strcmp(pause_settings_hidden_items[index], PAUSE_NETWORK_ITEM))
-			continue;
-		if (widget != NONE && build.widget_tags[widget] == tag_index)
-			return TRUE;
-	}
-	return FALSE;
-}
-
-/* in a game (a multiplayer map's pause menu, a campaign's in co-op),
-Network Setup opens its pages alone (PAUSE_NETWORK_SCREEN: map sharing, the
-multiplayer HUD and the text chat, streamer mode: tools/port_settings.py),
-not the rows that would drop the game (internet play) or are for the main
-menu (the router, the clipboard, the updates) */
-static void pause_network_patch(void)
-{
-	long item_widget = widget_named(PAUSE_NETWORK_ITEM);
-	long screen_widget = widget_named(PAUSE_NETWORK_SCREEN);
-	struct ui_widget_definition *item;
-	struct ui_widget_event_handler_reference *handlers;
-	long handler;
-
-	if (item_widget == NONE || screen_widget == NONE)
-		return;
-	item = tag_get(UI_WIDGET_DEFINITION_TAG, build.widget_tags[item_widget]);
-	handlers = item->event_handlers.address;
-	for (handler = 0; handler < item->event_handlers.count; handler++)
-	{
-		if (TEST_FLAG(handlers[handler].flags, _event_handler_open_widget_bit))
-			reference_set(&handlers[handler].widget_tag, UI_WIDGET_DEFINITION_TAG, build.widget_tags[screen_widget]);
-	}
-}
-
-/* the hidden items stay in the list, empty and taking no events (which it
-passes over), as an item's description is the one at its place in the list;
-the others move up into the first places */
-static void pause_settings_patch(void)
-{
-	long list_widget = widget_named(PAUSE_SETTINGS_LIST);
-	long ok_widget = widget_named(PAUSE_SETTINGS_GAMEPADS_OK);
-	long settings_save = function_index("port settings save", "pause", 0);
-	struct ui_widget_definition *list, *ok;
-	struct ui_widget_child_reference *children;
-	struct ui_widget_event_handler_reference *handlers;
-	short places[16];
-	long child, handler, place_count = 0, place = 0;
-
-	if (list_widget == NONE || ok_widget == NONE)
-		return;
-	list = tag_get(UI_WIDGET_DEFINITION_TAG, build.widget_tags[list_widget]);
-	children = list->child_widgets.address;
-	for (child = 0; child < list->child_widgets.count && place_count < (long)NUMBEROF(places); child++)
-	{
-		struct ui_widget_definition *item = tag_get(UI_WIDGET_DEFINITION_TAG, children[child].widget_tag.index);
-
-		if (item->type == _widget_type_text_box)
-			places[place_count++] = (short)(item->bounds.y0 + children[child].vertical_offset);
-	}
-	for (child = 0; child < list->child_widgets.count && place < place_count; child++)
-	{
-		struct ui_widget_definition *item = tag_get(UI_WIDGET_DEFINITION_TAG, children[child].widget_tag.index);
-
-		if (item->type != _widget_type_text_box)
-			continue;
-		if (pause_settings_item_hidden(children[child].widget_tag.index))
-		{
-			item->event_handlers.count = 0;
-			reference_clear(&item->background_bitmap, BITMAP_GROUP_TAG);
-			reference_clear(&item->text_label_string_list, UNICODE_STRING_LIST_TAG);
-			/* (nowhere for the mouse to focus it) */
-			item->bounds.y1 = item->bounds.y0;
-			item->bounds.x1 = item->bounds.x0;
-		}
-		else
-		{
-			children[child].vertical_offset = (short)(places[place++] - item->bounds.y0);
-		}
-	}
-	ok = tag_get(UI_WIDGET_DEFINITION_TAG, build.widget_tags[ok_widget]);
-	handlers = ok->event_handlers.address;
-	for (handler = 0; handler < ok->event_handlers.count; handler++)
-	{
-		if (handlers[handler].function == settings_save)
-			handlers[handler].function = (short)function_index("port profile settings save", "pause", 0);
-	}
-}
-
 static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 {
 	long screen = tag_loaded(UI_WIDGET_DEFINITION_TAG, CAMPAIGN_PAUSE_SCREEN);
@@ -2175,7 +2066,6 @@ static void pause_campaign_patch(struct cache_file_tag_instance *instances)
 				pause_campaign_shift_prompts(definition, need);
 				pause_campaign_grow_box(definition, need);
 			}
-			pause_settings_patch();
 			platform_log("menus: the pause menu has SETTINGS%s", build.coop ? " and FRIENDLY FIRE" : "");
 		}
 		return;
@@ -2358,7 +2248,6 @@ void menu_tags_loaded(
 		pause_patch(instances);
 		if (campaign)
 			pause_campaign_patch(instances);
-		pause_network_patch();
 		if (build.failed)
 			goto failed;
 		/* (those it made) */
@@ -2470,6 +2359,16 @@ char const *pc_menu_function_name(
 {
 	return function_index >= 0 && function_index < (long)NUMBEROF(port_function_names) ?
 		port_function_names[function_index] : NULL;
+}
+
+/* a widget definition's list of texts (its label's, a spinner's values'),
+else NONE (Settings' panel: menu_functions.c's settings_panel_show) */
+long pc_menu_widget_string_list(
+	long definition_index)
+{
+	struct ui_widget_definition *definition = tag_get(UI_WIDGET_DEFINITION_TAG, definition_index);
+
+	return definition ? definition->text_label_string_list.index : NONE;
 }
 
 /* a widget definition's string_index (port settings help: its label's) */

@@ -41,6 +41,20 @@ picture of Gamepad Setup: the Xbox's Controller Setup's pictures of the button s
 | `main_menu/settings_select/player_setup/player_profile_edit/profile_options` | `ui\shell\main_menu\settings_select\player_setup\player_profile_edit\controller_edit\config_controller` frame 7 |
 | `main_menu/settings_select/player_setup/player_profile_edit/profile_options` | `ui\shell\main_menu\settings_select\player_setup\player_profile_edit\controller_edit\config_controller` frame 8 |
 
+## Screenshots
+
+Settings' Quality row shows these two small screenshots of the game, the same view drawn by each preset
+(`port/assets/menus/stills`, shipped as they are). They are this port's own drawing of the game: a local
+Slayer game on Blood Gulch (`debug.network_test = "local:bloodgulch:slayer"`, `debug.random_seed = 7`,
+four bots), the same frame of each run captured offscreen by the macOS build at 1600x1200
+(`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (three times their size in the menu) and
+reduced to 96 colours for size.
+
+| File | Size | What it shows |
+| --- | --- | --- |
+| `stills/graphics_classic.png` | 96x60 | Quality CLASSIC (`display.graphics = "classic"`) |
+| `stills/graphics_enhanced.png` | 96x60 | Quality ENHANCED (`display.graphics = "enhanced"`) |
+
 ## Placeholders, to be redrawn
 
 The Xbox's map has none of these (or other pictures under the name), so each frame is a placeholder
@@ -62,7 +76,7 @@ until it is redrawn.
 | `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__6.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__6.png` |
 | `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__8.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__8.png` |
 
-13 of 183 frames are placeholders.
+13 of 202 frames are placeholders.
 
 The PC version's `ui\gamespy` and `ui\ticker` fonts are drawn with `ui\small_ui`, which
 the Xbox's map has.

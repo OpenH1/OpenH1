@@ -361,6 +361,15 @@ class Art:
                           f"\t\t<frame{attributes([('png', png), ('width', 512), ('height', 64)])}/>",
                           "\t</bitmap>"])
 
+    def still(self, name: str, png: str, width: int, height: int) -> str:
+        """a <bitmap> of a picture shipped as it is (port/assets/menus/stills:
+        NON_HANDDRAWN.md says what each is), outside ce/, which this script
+        writes anew"""
+        self.pngs.append(png)
+        return "\n".join([f"\t<bitmap{attributes([('name', name)])}>",
+                          f"\t\t<frame{attributes([('png', png), ('width', width), ('height', height)])}/>",
+                          "\t</bitmap>"])
+
     def digits(self, name: str) -> str:
         """a <bitmap> of the ten digits, a frame each, set as the titles are
         (OpenCE, the titles' colour) at port_settings.DIGIT_CAP units high,
@@ -722,6 +731,9 @@ def main() -> None:
     lines.append(art.port_picture(port_settings.TOUCH_PANEL_BODY, body))
     lines.append(art.port_picture(port_settings.TOUCH_PANEL_CAP, cap))
     lines.append(art.port_picture(port_settings.TOUCH_OPEN_BUTTON, port_settings.touch_open_frames()))
+    # (Settings' rows, tabs and panels, and the Quality row's stills)
+    lines += [art.port_picture(name, frames) for name, frames in port_settings.settings_pictures()]
+    lines += [art.still(name, png, width, height) for name, png, width, height, _ in port_settings.SETTINGS_STILLS]
     lines.append("</menus>")
     (CE / "bitmaps.xml").write_text("\n".join(lines) + "\n")
     # what is not hand-drawn
@@ -758,6 +770,16 @@ def main() -> None:
         "| --- | --- |",
     ]
     report += [f"| `{name}` | `{tag}` frame {index} |" for name, tag, index in art.added_frames]
+    report += [
+        "",
+        "## Screenshots",
+        "",
+        *port_settings.SETTINGS_STILLS_MADE,
+        "",
+        "| File | Size | What it shows |",
+        "| --- | --- | --- |",
+    ]
+    report += [f"| `{png}` | {width}x{height} | {what} |" for _, png, width, height, what in port_settings.SETTINGS_STILLS]
     report += [
         "",
         "## Placeholders, to be redrawn",
