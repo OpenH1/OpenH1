@@ -455,6 +455,8 @@ static char const *const port_function_names[] =
 	"port browser favorite",
 	/* (internet play's connecting box: menu_functions.c's connect_dialog) */
 	"port connect retry", "port connect back",
+	/* (the browsers' sort, X on a row: menu_functions.c's browser_sort_choose) */
+	"port browser sort",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from

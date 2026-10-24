@@ -481,7 +481,9 @@ starts hosting; `port/linux/game/network_standard.c`):
 
 The server browser and the system link list show each game's tick rate
 before its gametype ("60 SLAYER"; a Legacy game's 30), where a long
-gametype the column cuts leaves it. The line under the
+gametype the column cuts leaves it. The lists sort by it and filter by
+kind (KIND: all, OpenH1 only, Legacy only): port/linux/README.md, "Server
+browser". The line under the
 list names the chosen game's kind: "OpenH1 60 Tick" or "Legacy".
 
 How OpenH1 machines recognise each other:

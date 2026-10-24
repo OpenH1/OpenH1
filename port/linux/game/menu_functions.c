@@ -5103,7 +5103,9 @@ static void focus_off_hidden(struct widget_instance *bar)
 /* whether the browser's list's child can take focus (once visible) */
 static boolean browser_item_usable(struct widget_instance *child)
 {
-	return browser_row_index(child) != NONE || !strcmp(child->name, "join_game_button_bar");
+	/* (and the column titles, which sort: up from the first row) */
+	return browser_row_index(child) != NONE || !strcmp(child->name, "join_game_button_bar") ||
+		!strcmp(child->name, "join_game_header");
 }
 
 /* the browser's focus, off what cannot have it (at the start, or a row whose
@@ -5173,6 +5175,13 @@ static boolean browser_initialize(struct widget_instance *screen, struct event_r
 	for (index = 0; index < NUMBEROF(unused); index++)
 		visible_set(named(screen, unused[index], 0), FALSE);
 	visible_set(named(screen, "button_clipboard", 0), multiplayer.mode == _multiplayer_mode_direct_link);
+	/* (the kind button in the clipboard's place, but for Direct Link's,
+	whose games are its invites) */
+	visible_set(named(screen, "button_kind_filter", 0), multiplayer.mode != _multiplayer_mode_direct_link);
+	/* (the titles of the lock's and the favorites' columns, which sort
+	nothing, passed over) */
+	if (named(screen, "op_sort_header_locked", 0))
+		named(screen, "op_sort_header_locked", 0)->disabled = TRUE;
 	visible_set(named(screen, "join_game_button_refresh", 0), multiplayer.mode == _multiplayer_mode_server_browser);
 	{
 		struct widget_instance *list = named(screen, "join_game_items_list", 0);
@@ -5186,8 +5195,8 @@ static boolean browser_initialize(struct widget_instance *screen, struct event_r
 	}
 	visible_set(named(screen, "scroll_up_button", 0), FALSE);
 	visible_set(named(screen, "scroll_down_button", 0), FALSE);
-	/* (the columns' sort arrows, both of each over its title: the list is
-	not sorted) */
+	/* (the columns' sort arrows, both of each over its title: the sorted
+	column's shown, its way, each frame: browser_sort_headers_show) */
 	for (index = 0; named(screen, "header_sort_arrows", index); index++)
 		visible_set(named(screen, "header_sort_arrows", index), FALSE);
 	multiplayer.game_chosen = 0;
@@ -5458,9 +5467,126 @@ static void browser_favorites_match(struct browser_favorite const *games, short 
 	}
 }
 
+/* ---- the browsers' order and filter (Join Game's three lists): a column's
+title chosen (a click, a tap, or A on it: up from the first row reaches the
+titles, left and right go between them) sorts the games by it, again the
+other way; X on a row goes through the columns in turn, then back to the
+order found. The favorites stay first, each part sorted alike. The kind
+button (in the PC version's Get List's place) shows every game, OpenH1's
+own only, or Legacy ones only (OpenCE's netcode: port/linux/game/
+network_standard.c). Nothing is sent: it is the list's, and kept while the
+game runs */
+
+enum
+{
+	_browser_sort_found,
+	_browser_sort_players,
+	_browser_sort_ping,
+	_browser_sort_name,
+	_browser_sort_tick,
+	_browser_sort_map,
+	NUMBER_OF_BROWSER_SORTS
+};
+
+enum
+{
+	_browser_kind_all,
+	_browser_kind_openh1,
+	_browser_kind_legacy,
+	NUMBER_OF_BROWSER_KINDS
+};
+
+/* what a game is sorted and filtered by */
+struct browser_sort_entry
+{
+	char name[P2P_LISTING_NAME_SIZE + 1];
+	char map[P2P_LISTING_MAP_SIZE + 1];
+	short players;
+	/* milliseconds, NONE if not known (last whichever way) */
+	short ping;
+	short rate;
+	boolean openh1;
+};
+
+static short browser_sort_column = _browser_sort_found;
+static boolean browser_sort_descending;
+static short browser_kind_filter = _browser_kind_all;
+
+/* each column's title (op_sort_header_*), words for the line below the
+rows, and the way it sorts first (more players, a higher tick rate first) */
+static struct
+{
+	char const *header;
+	wchar_t const *words;
+	boolean descending;
+} const browser_sorts[NUMBER_OF_BROWSER_SORTS] =
+{
+	{ NULL, L"Found", FALSE },
+	{ "op_sort_header_players", L"Players", TRUE },
+	{ "op_sort_header_ping", L"Ping", FALSE },
+	{ "op_sort_header_server_name", L"Name", FALSE },
+	{ "op_sort_header_type", L"Tick", TRUE },
+	{ "op_sort_header_map", L"Map", FALSE },
+};
+
+/* text compared without case */
+static int browser_text_compare(char const *a, char const *b)
+{
+	for (; *a && *b; a++, b++)
+	{
+		int x = *a >= 'a' && *a <= 'z' ? *a - 32 : *a;
+		int y = *b >= 'a' && *b <= 'z' ? *b - 32 : *b;
+
+		if (x != y)
+			return x - y;
+	}
+	return (unsigned char)*a - (unsigned char)*b;
+}
+
+/* whether game a goes before game b, as the list is sorted */
+static boolean browser_sort_before(struct browser_sort_entry const *a, struct browser_sort_entry const *b)
+{
+	int difference = 0;
+
+	switch (browser_sort_column)
+	{
+	case _browser_sort_players:
+		difference = a->players - b->players;
+		break;
+	case _browser_sort_ping:
+		/* (a ping not known after the others, whichever way) */
+		if ((a->ping < 0) != (b->ping < 0))
+			return b->ping < 0;
+		difference = a->ping - b->ping;
+		break;
+	case _browser_sort_name:
+		difference = browser_text_compare(a->name, b->name);
+		break;
+	case _browser_sort_tick:
+		/* (an OpenH1 game before a Legacy one of the same rate) */
+		difference = a->rate != b->rate ? a->rate - b->rate : (int)a->openh1 - (int)b->openh1;
+		break;
+	case _browser_sort_map:
+		difference = browser_text_compare(a->map, b->map);
+		break;
+	default:
+		return FALSE;
+	}
+	return browser_sort_descending ? difference > 0 : difference < 0;
+}
+
+/* whether the kind button lets the game be shown */
+static boolean browser_kind_shown(struct browser_sort_entry const *entry)
+{
+	return browser_kind_filter == _browser_kind_all ||
+		(browser_kind_filter == _browser_kind_openh1) == (entry->openh1 != FALSE);
+}
+
 /* the order of the games found: the favorites first, then the others (none,
-with FAVORITES), each in the order found; into `order`, returning how many */
-static short browser_favorites_order(short const *favorite_of, short count, short *order)
+with FAVORITES), those the kind button shows, each part in the order found
+or sorted by the column chosen; into `order`, returning how many */
+static short browser_favorites_order(short const *favorite_of, struct browser_sort_entry const *entries,
+	short count, short *order)
 {
 	short pass, index;
 	short written = 0;
@@ -5468,15 +5594,105 @@ static short browser_favorites_order(short const *favorite_of, short count, shor
 	browser_found_favorites = 0;
 	for (pass = 0; pass < 2; pass++)
 	{
+		short start = written;
+		short sorted;
+
 		for (index = 0; index < count; index++)
 		{
-			if ((favorite_of[index] != NONE) == (pass == 0) && (pass == 0 || !browser_favorites_only))
+			if ((favorite_of[index] != NONE) == (pass == 0) && (pass == 0 || !browser_favorites_only) &&
+				browser_kind_shown(&entries[index]))
+			{
 				order[written++] = index;
+			}
+		}
+		/* (each part sorted, alike ones kept in the order found) */
+		for (sorted = (short)(start + 1); sorted < written; sorted++)
+		{
+			short moving = order[sorted];
+			short place = sorted;
+
+			while (place > start && browser_sort_before(&entries[moving], &entries[order[place - 1]]))
+			{
+				order[place] = order[place - 1];
+				place--;
+			}
+			order[place] = moving;
 		}
 		if (pass == 0)
 			browser_found_favorites = written;
 	}
 	return written;
+}
+
+/* the list from its top again, its first game chosen (below: the server
+browser's list) */
+static void browser_list_restart(void);
+
+/* the column titles' arrows: the sorted column's, its way */
+static void browser_sort_headers_show(struct widget_instance *list)
+{
+	short sort;
+
+	for (sort = 1; sort < NUMBER_OF_BROWSER_SORTS; sort++)
+	{
+		struct widget_instance *header = named(list, browser_sorts[sort].header, 0);
+		struct widget_instance *arrows = header ? named(header, "header_sort_arrows", 0) : NULL;
+
+		if (!arrows)
+			continue;
+		visible_set(arrows, sort == browser_sort_column);
+		visible_set(named(arrows, "header_sort_up_arrow", 0), !browser_sort_descending);
+		visible_set(named(arrows, "header_sort_down_arrow", 0), browser_sort_descending);
+	}
+}
+
+/* a column sorted by (its title chosen: the other way if it sorts already;
+X: the next column, after the last the order found) */
+static boolean browser_sort_choose(short sort, boolean next)
+{
+	if (next)
+	{
+		sort = (short)((browser_sort_column + 1) % NUMBER_OF_BROWSER_SORTS);
+		browser_sort_descending = browser_sorts[sort].descending;
+	}
+	else if (sort == browser_sort_column)
+		browser_sort_descending = !browser_sort_descending;
+	else
+		browser_sort_descending = browser_sorts[sort].descending;
+	browser_sort_column = sort;
+	browser_list_restart();
+	ui_play_audio_feedback_sound(SOUND_FORWARD);
+	return TRUE;
+}
+
+/* "gamespy select header": a column's title */
+static boolean browser_sort_header(struct widget_instance *widget)
+{
+	short sort;
+
+	for (sort = 1; sort < NUMBER_OF_BROWSER_SORTS; sort++)
+	{
+		if (!strcmp(widget->name, browser_sorts[sort].header))
+			return browser_sort_choose(sort, FALSE);
+	}
+	return campaign_fail();
+}
+
+/* the line below the rows when the kind button shows none of the games */
+static wchar_t const *browser_kind_none_text(void)
+{
+	return browser_kind_filter == _browser_kind_openh1 ? L"No OpenH1 games found: KIND shows every game" :
+		L"No Legacy games found: KIND shows every game";
+}
+
+/* the kind button's words: what it shows, KIND: ALL, OPENH1 or LEGACY (its
+string list's, in browser_kind_filter's order) */
+static void browser_kind_button(struct widget_instance *list)
+{
+	struct widget_instance *button = named(list, "button_kind_filter", 0);
+
+	if (button)
+		button->parameters.text_box.string_list_index = browser_kind_filter;
 }
 
 /* a row's star (server_item_favorite): gold for a favorite, grey for one
@@ -5536,16 +5752,26 @@ static void browser_favorite_prompt(struct widget_instance *list, boolean chosen
 {
 	/* (in the place of the PC version's rules, which this line never had:
 	its label, RULES, hidden) */
+	wchar_t text[ROW_TEXT_LENGTH * 2];
+
 	visible_set(named(list, "ticker_rules_info_label", 0), FALSE);
-	text_set(named(list, "ticker_rules_info", 0), !chosen ? L"" : favorite ?
-		L"%y-button Remove from favorites" : L"%y-button Add to favorites");
+	/* (and X's sort: the column the list is sorted by) */
+	usnprintf(text, NUMBEROF(text) - 1, L"%s    %%x-button Sort: %s", favorite ?
+		L"%y-button Remove from favorites" : L"%y-button Add to favorites", browser_sorts[browser_sort_column].words);
+	text[NUMBEROF(text) - 1] = 0;
+	text_set(named(list, "ticker_rules_info", 0), !chosen ? L"" : text);
 }
 
 /* FAVORITES' words (tools/port_settings.py's button_favorites, in the place
-of the PC version's FILTERS): what pressing it shows */
+of the PC version's FILTERS): what pressing it shows, FAVORITES or ALL GAMES,
+its string list's (a text set on it would be drawn over by them, and outgrow
+the words it has) */
 static void browser_favorites_button(struct widget_instance *list)
 {
-	text_set(named(list, "button_favorites", 0), browser_favorites_only ? L"ALL GAMES" : L"FAVORITES");
+	struct widget_instance *button = named(list, "button_favorites", 0);
+
+	if (button)
+		button->parameters.text_box.string_list_index = browser_favorites_only ? 1 : 0;
 }
 
 /* ---- Join Game > Server Browser: internet play's public games (their
@@ -5592,6 +5818,12 @@ static struct
 	struct p2p_listing password_game;
 	boolean password_joined;
 } lobby_browser;
+
+static void browser_list_restart(void)
+{
+	lobby_browser.first = lobby_browser.chosen = 0;
+	multiplayer.game_chosen = 0;
+}
 
 /* ---- internet play's connecting box (tools/port_settings.py's
 _connect_screen): opened over the browser as a game is joined (a server
@@ -5873,10 +6105,22 @@ static short lobby_browser_favorites(short count)
 	short favorite_of[LOBBY_BROWSER_GAMES], order[LOBBY_BROWSER_GAMES];
 	short index, listed;
 
+	static struct browser_sort_entry entries[LOBBY_BROWSER_GAMES];
+
 	for (index = 0; index < count; index++)
-		listing_favorite(&lobby_browser.games[index], &favorites[index]);
+	{
+		struct p2p_listing const *game = &lobby_browser.games[index];
+
+		listing_favorite(game, &favorites[index]);
+		snprintf(entries[index].name, sizeof(entries[index].name), "%s", game->name);
+		snprintf(entries[index].map, sizeof(entries[index].map), "%s", game->map);
+		entries[index].players = game->player_count;
+		entries[index].ping = game->failed ? NONE : game->ping;
+		entries[index].rate = game->rate;
+		entries[index].openh1 = game->standard != 0;
+	}
 	browser_favorites_match(favorites, count, favorite_of, "net:");
-	listed = browser_favorites_order(favorite_of, count, order);
+	listed = browser_favorites_order(favorite_of, entries, count, order);
 	for (index = 0; index < listed; index++)
 		ordered[index] = lobby_browser.games[order[index]];
 	csmemcpy(lobby_browser.games, ordered, listed * sizeof(ordered[0]));
@@ -6149,6 +6393,8 @@ static void lobby_browser_update(struct widget_instance *list)
 				usnprintf(text, NUMBEROF(text) - 1, L"Looking for public games...");
 			else if (browser_favorites_only)
 				usnprintf(text, NUMBEROF(text) - 1, L"None of your favorites is online");
+			else if (browser_kind_filter != _browser_kind_all)
+				usnprintf(text, NUMBEROF(text) - 1, L"%s", browser_kind_none_text());
 			else if (newer)
 			{
 				usnprintf(text, NUMBEROF(text) - 1, L"%d %s on a newer version: update the game to join", newer,
@@ -6174,6 +6420,8 @@ static void lobby_browser_update(struct widget_instance *list)
 		text_set(named(list, "ticker_player_info", 0), text);
 		browser_favorite_prompt(list, chosen < rows, chosen < browser_found_favorites || chosen >= lobby_browser.count);
 		browser_favorites_button(list);
+		browser_kind_button(list);
+		browser_sort_headers_show(list);
 	}
 	if (stats)
 	{
@@ -6389,18 +6637,29 @@ rows; returns how many rows there are */
 static short local_browser_favorites(struct widget_instance *list)
 {
 	static struct browser_favorite favorites[MAXIMUM_ADVERTISED_GAMES];
+	static struct browser_sort_entry entries[MAXIMUM_ADVERTISED_GAMES];
 	struct advertised_game *games[MAXIMUM_ADVERTISED_GAMES];
 	short favorite_of[MAXIMUM_ADVERTISED_GAMES], order[MAXIMUM_ADVERTISED_GAMES];
 	short index, rows;
 
 	for (index = 0; index < multiplayer.game_count; index++)
 	{
-		advertised_favorite(multiplayer.games[index], &favorites[index]);
-		games[index] = multiplayer.games[index];
+		struct advertised_game *game = multiplayer.games[index];
+
+		advertised_favorite(game, &favorites[index]);
+		games[index] = game;
+		snprintf(entries[index].name, sizeof(entries[index].name), "%s", favorites[index].name);
+		snprintf(entries[index].map, sizeof(entries[index].map), "%s", favorites[index].map);
+		entries[index].players = game->player_count;
+		/* (a Direct Link game's host's: the tunnel's) */
+		entries[index].ping = multiplayer.mode == _multiplayer_mode_direct_link ?
+			(short)p2p_peer_ping(game->xnaddr + 2) : NONE;
+		entries[index].rate = (short)advertised_game_rate(game);
+		entries[index].openh1 = advertised_game_standard(game);
 	}
 	browser_favorites_match(favorites, multiplayer.game_count, favorite_of,
 		multiplayer.mode == _multiplayer_mode_lan ? "lan:" : NULL);
-	multiplayer.game_count = browser_favorites_order(favorite_of, multiplayer.game_count, order);
+	multiplayer.game_count = browser_favorites_order(favorite_of, entries, multiplayer.game_count, order);
 	for (index = 0; index < multiplayer.game_count; index++)
 		multiplayer.games[index] = games[order[index]];
 	rows = (short)MIN(multiplayer.game_count + browser_offline_count, BROWSER_ROWS);
@@ -6500,6 +6759,7 @@ static void browser_update(struct widget_instance *list)
 		else if (!multiplayer.game_count)
 		{
 			usnprintf(text, NUMBEROF(text) - 1, L"%s", browser_favorites_only ? L"None of your favorites is open" :
+				browser_kind_filter != _browser_kind_all ? browser_kind_none_text() :
 				multiplayer.mode == _multiplayer_mode_direct_link ?
 				L"Copy an invite link and PASTE LINK, or accept a Discord invite" :
 				L"Looking for games on your local network...");
@@ -6517,6 +6777,8 @@ static void browser_update(struct widget_instance *list)
 		browser_favorite_prompt(list, multiplayer.game_chosen < rows,
 			multiplayer.game_chosen < browser_found_favorites || multiplayer.game_chosen >= multiplayer.game_count);
 		browser_favorites_button(list);
+		browser_kind_button(list);
+		browser_sort_headers_show(list);
 	}
 	if (stats)
 	{
@@ -7123,6 +7385,15 @@ static boolean browser_select(struct widget_instance *widget, struct event_recor
 	if (strstr(widget->name, "button_favorites"))
 	{
 		browser_favorites_only = !browser_favorites_only;
+		lobby_browser.first = lobby_browser.chosen = 0;
+		multiplayer.game_chosen = 0;
+		ui_play_audio_feedback_sound(SOUND_FORWARD);
+		return TRUE;
+	}
+	/* (the kind button: every game, OpenH1's only, Legacy ones only) */
+	if (strstr(widget->name, "button_kind_filter"))
+	{
+		browser_kind_filter = (short)((browser_kind_filter + 1) % NUMBER_OF_BROWSER_KINDS);
 		lobby_browser.first = lobby_browser.chosen = 0;
 		multiplayer.game_chosen = 0;
 		ui_play_audio_feedback_sound(SOUND_FORWARD);
@@ -8770,6 +9041,15 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port browser favorite"))
 		{
 			return browser_favorite_toggle(browser_row_index(widget));
+		}
+		/* (the browsers' sort: a column's title; X on a row, the next) */
+		else if (!strcmp(name, "gamespy select header"))
+		{
+			return browser_sort_header(widget);
+		}
+		else if (!strcmp(name, "port browser sort"))
+		{
+			return browser_sort_choose(_browser_sort_found, TRUE);
 		}
 		else if (!strcmp(name, "gamespy back handler") && text_field_editing(NULL))
 		{

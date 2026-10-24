@@ -1781,11 +1781,15 @@ WIDGET_PATCHES = {
     # Refresh, and Refresh in Get List's: the Server Browser's only, which
     # asks the public games' hosts again; "swap" puts another widget in a
     # child's place)
-    # (and FAVORITES in FILTERS': only the favorite games, or all again)
+    # (and FAVORITES in FILTERS': only the favorite games, or all again;
+    # and the kind button before it, in the clipboard's place, which Direct
+    # Link alone shows: every game, OpenH1's own only, or Legacy ones only)
     f"{MT}/join_game/join_game_button_bar": {"swap": {
         f"{MT}/join_game/join_game_button_refresh": f"{MT}/join_game/button_clipboard",
         f"{MT}/join_game/join_game_button_update": f"{MT}/join_game/join_game_button_refresh",
         f"{MT}/join_game/join_game_button_filters": f"{MT}/join_game/button_favorites",
+    }, "insert_before": {
+        f"{MT}/join_game/join_game_button_filters": [f'<child widget="{MT}/join_game/button_kind_filter" x="128" y="1"/>'],
     }},
     # (the browsers' rows: each game's star, in the place of the PC version's
     # dedicated server column, which the rows leave empty, and Y (F on the
@@ -1797,6 +1801,9 @@ WIDGET_PATCHES = {
             '<on event="left_mouse" run="mouse emit accept event"/>',
             '<on event="double_click" run="gamespy select item"/>',
             '<on event="y" run="port browser favorite"/>',
+            # (X: the list sorted by the next column: menu_functions.c's
+            # browser_sort_choose)
+            '<on event="x" run="port browser sort"/>',
         ],
         "children": [f'<child widget="{FAVORITE_STAR_WIDGET}" x="20"/>'],
     } for row in range(1, 16)},
@@ -1998,9 +2005,16 @@ def _join_game_extras() -> list:
                       '<on event="left_mouse" run="mouse emit accept event"/>'])
     # (FAVORITES, which menu_functions.c names ALL GAMES while it shows only
     # the favorites)
-    lines += _text_button(f"{base}/button_favorites", "FAVORITES",
-                          ['<on event="a" run="gamespy select button"/>',
-                           '<on event="start" run="gamespy select button"/>'])
+    # (its words, FAVORITES or ALL GAMES, by menu_functions.c's
+    # browser_favorites_button)
+    lines += _words_button(f"{base}/button_favorites", ["FAVORITES", "ALL GAMES"],
+                           ['<on event="a" run="gamespy select button"/>',
+                            '<on event="start" run="gamespy select button"/>'])
+    # (the kind button: menu_functions.c's browser_kind_button names what it
+    # shows)
+    lines += _words_button(f"{base}/button_kind_filter", ["KIND: ALL", "KIND: OPENH1", "KIND: LEGACY"],
+                           ['<on event="a" run="gamespy select button"/>',
+                            '<on event="start" run="gamespy select button"/>'])
     # (each row's star: WIDGET_PATCHES puts it in the rows)
     lines += _widget(FAVORITE_STAR_WIDGET, [("width", 16), ("height", 18), ("bitmap", FAVORITE_STAR)], [])
     return lines
@@ -3067,6 +3081,17 @@ def mod_status_frames(icons: Path, size: int = 24) -> list:
         ((icons / f"{icon}.svg").read_text().replace('stroke="currentColor"', f'stroke="{color}"')
          .replace('width="24"', f'width="{size}"').replace('height="24"', f'height="{size}"'), size, size)
         for icon, color in MOD_STATUS_ICONS]
+
+
+def _words_button(name: str, words: list, handlers: list) -> list:
+    """a button of the button bar whose words change: its string list's, the
+    one shown chosen by its string_list_index (menu_functions.c), as a text
+    set on a button of fixed words is drawn over by them"""
+    pairs = [("type", "text"), ("width", 128), ("height", 24), ("bitmap", "bitmaps/text_button_background"),
+             ("string_list", f"{name}_words"), ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+             ("text_y", 2)]
+    return (_widget(name, pairs, handlers + ['<on event="left_mouse" run="mouse emit accept event"/>']) +
+            _strings(f"{name}_words", words))
 
 
 def _text_button(name: str, text: str, handlers: list) -> list:
