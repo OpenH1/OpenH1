@@ -9,3 +9,4 @@ translate its arguments with the base register.
 
 int host_metal_window_open(unsigned int window);
 void host_metal_battery_saver(int on);
+void host_metal_vsync(int on);

@@ -122,13 +122,14 @@ drew those textures black), "auto" elsewhere (iPhones, through Metal) */
 culls once from the head's centre and the tests allow for the eyes beside it:
 structure_culling_set_camera_radius) */
 #define STRUCTURE_CULLING_DEFAULT "31"
-/* display.vsync: off on the Linux builds and Windows, whose PCs' displays
-are mostly fast and whose players want the most frames (display.max_fps
-still limits them, at twice the display's rate); on where a phone's or a
-Mac's display link paces the frames. Under gamescope (the Steam Deck's Game
+/* display.vsync: off on the Linux builds, Windows and macOS, whose players
+want the most frames and the least latency (display.max_fps still limits
+them, at twice the display's rate; the Mac shows the newest at each refresh,
+host_metal_vsync); on the phones, for their batteries. Under gamescope (the Steam Deck's Game
 Mode, the Steam Frame) the Linux builds read it unset as on
 (config_gamescope_vsync), gamescope pacing the frames to the display */
-#if defined(_WIN32) || (defined(HALO_VULKAN) && !defined(HALO_ANDROID))
+#if defined(_WIN32) || (defined(HALO_VULKAN) && !defined(HALO_ANDROID)) || \
+	(defined(HALO_MACOS) && !defined(HALO_IOS))
 #define VSYNC_DEFAULT "false"
 #else
 #define VSYNC_DEFAULT "true"
