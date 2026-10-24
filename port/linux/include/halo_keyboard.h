@@ -52,6 +52,13 @@ unsigned long halo_keyboard_actions(short controller_index);
 /* whether voice chat's push to talk is held (controls.push_to_talk), in the
 game and in the menus alike */
 int halo_push_to_talk_held(void);
+/* whether the HUD's button prompts name the keyboard and mouse's bindings
+in place of the controller's buttons (input.button_prompts: "auto" follows
+the device the first player played with last); the first binding of an
+action as a prompt shows it ("E", "Left Click", "Mouse 4"), 0 if it has none.
+The name is Latin-1. */
+int halo_keyboard_prompts(void);
+int halo_keyboard_action_name(int action, char *name, unsigned long size);
 
 /* the first controller's buttons (with the touch controls'), as the text
 chat's on-screen keyboard reads them: a bit for each (port/linux/game/

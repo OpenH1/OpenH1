@@ -324,6 +324,39 @@ boolean input_abstraction_port_reload(
 		keyboard_controls[controller_index].reload_ticks != 0;
 }
 
+/* port: the keyboard's action (halo_keyboard.h) for a game control, or for
+the game control the local player's profile puts on a controller button
+(game_control NONE), as the HUD's prompts name it (port/linux/game/
+hud_key_prompts.c); NONE for one the keyboard has no action for */
+short input_abstraction_port_keyboard_action(
+	short local_player_index,
+	short game_control,
+	short gamepad_button)
+{
+	if (game_control == NONE &&
+		local_player_index >= 0 && local_player_index < MAXIMUM_GAMEPADS)
+	{
+		long control_index;
+
+		for (control_index = 0; control_index < NUMBER_OF_GAME_CONTROLS; control_index++)
+		{
+			if (input_abstraction_globals.player_control_preferences[local_player_index].
+				game_control_to_xbox_buttons[control_index] == gamepad_button)
+			{
+				game_control = (short)control_index;
+				break;
+			}
+		}
+	}
+	if (game_control == _game_control_start)
+		return HALO_KEYBOARD_PAUSE;
+	if (game_control == _game_control_back)
+		return HALO_KEYBOARD_SCOREBOARD;
+	if (game_control < 0 || game_control >= NUMBER_OF_GAME_CONTROLS)
+		return NONE;
+	return keyboard_game_controls[game_control];
+}
+
 boolean input_abstraction_port_action_only(
 	short controller_index)
 {

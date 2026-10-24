@@ -60,6 +60,10 @@ byte input_abstraction_port_accept(
 	short controller_index);
 boolean input_abstraction_port_action_only(
 	short controller_index);
+short input_abstraction_port_keyboard_action(
+	short local_player_index,
+	short game_control,
+	short gamepad_button);
 real input_abstraction_port_primary_trigger(
 	short controller_index);
 /* port: the game control on each of the controller's buttons, and the

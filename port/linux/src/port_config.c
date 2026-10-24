@@ -718,6 +718,14 @@ static const struct config_setting config_settings[] =
 		"How far the view turns up and down for the mouse's movement; 0 for the\n"
 		"same as input.mouse_sensitivity." },
 
+	{ "input.button_prompts", _config_string, "\"auto\"", "HALO_BUTTON_PROMPTS", _environment_value, _platform_all,
+		"The HUD's button prompts (\"Hold [X] to pick up\", \"Press [flashlight]\"):\n"
+		"\"auto\" names the key or mouse button bound to the action (\"E\", \"Left\n"
+		"Click\") while the keyboard and mouse were played with last, as Halo\n"
+		"PC did, and draws the controller's button while a controller (or the\n"
+		"touch controls) was; \"controller\" always the controller's buttons, as\n"
+		"the Xbox; \"keyboard\" always the keys. In VR: the stock prompts." },
+
 	/* the keyboard and mouse's own controls (port/linux/src/xinput_sdl.c) */
 	{ "controls.move_forward", _config_string, "\"W\"", "HALO_KEY_MOVE_FORWARD", _environment_value, _platform_all,
 		"The keyboard and mouse's controls, which Settings > Controls Setup\n"
@@ -2477,6 +2485,7 @@ static const struct
 	{ "audio.resampler", { "sinc", "linear", NULL }, NULL },
 	{ "audio.voice_chat", { "push_to_talk", "open_mic", "off", NULL }, NULL },
 	{ "input.touch_controls", { "auto", "on", "off", NULL }, NULL },
+	{ "input.button_prompts", { "auto", "controller", "keyboard", NULL }, NULL },
 	{ "game.console_log", { "important", "all", "none", NULL }, NULL },
 	{ "game.language", { "", "ja", "de", "fr", "es", "it", NULL }, NULL },
 	{ "network.text_chat", { "on", "links", "off", NULL }, NULL },

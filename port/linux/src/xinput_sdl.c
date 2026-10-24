@@ -101,6 +101,8 @@ static struct controller keyboard_device;
 static DWORD reported_gamepads = 0;
 static BOOL reported_keyboard = FALSE;
 
+static BOOL gamepad_idle(SDL_Gamepad *gamepad);
+
 /* ---------- mouse */
 
 static pthread_mutex_t mouse_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -800,6 +802,155 @@ int halo_push_to_talk_held(void)
 			return 1;
 	}
 	return 0;
+}
+
+/* ---------- the HUD's button prompts (halo_keyboard_prompts) */
+
+/* what the first player last played with: the keyboard and mouse (a key
+or button bound to an action, the captured mouse moved), or a controller
+(its buttons, sticks and triggers; the touch controls, which draw its
+buttons); nothing yet */
+enum
+{
+	PROMPT_DEVICE_NONE,
+	PROMPT_DEVICE_KEYBOARD,
+	PROMPT_DEVICE_CONTROLLER
+};
+
+static int prompt_device = PROMPT_DEVICE_NONE;
+static BOOL prompt_controller_connected;
+static Uint64 prompt_mouse_seen_ms;
+#ifdef HALO_TOUCH_CONTROLS
+static Uint64 prompt_touch_seen_ms;
+#endif
+
+/* the device a reading leaves the prompts to: the one used in it, the
+controller if both were (a controller's stick at rest is often a little
+off its centre, which gamepad_idle allows for), else the one before */
+static int prompt_device_next(int device, BOOL keyboard_used, BOOL controller_used)
+{
+	if (controller_used)
+		return PROMPT_DEVICE_CONTROLLER;
+	if (keyboard_used)
+		return PROMPT_DEVICE_KEYBOARD;
+	return device;
+}
+
+/* whether the prompts show keys: input.button_prompts "keyboard", or
+"auto" and the keyboard and mouse were used last (before either is: unless
+a controller is connected, or the touch controls are there) */
+static int prompts_show_keys(const char *setting, int device, BOOL controller_connected, BOOL touch_controls)
+{
+	if (!strcmp(setting, "keyboard"))
+		return 1;
+	if (strcmp(setting, "auto"))
+		return 0;
+	if (device == PROMPT_DEVICE_NONE)
+		return !controller_connected && !touch_controls;
+	return device == PROMPT_DEVICE_KEYBOARD;
+}
+
+int halo_keyboard_prompts(void)
+{
+	static unsigned long read_at = (unsigned long)-1;
+	static char setting[16];
+	BOOL touch_controls = FALSE;
+
+	if (read_at != config_changes())
+	{
+		read_at = config_changes();
+		snprintf(setting, sizeof(setting), "%s", config_string("input.button_prompts"));
+	}
+#ifdef HALO_VR
+	/* (in the headset, the hands' controllers: the stock prompts) */
+	if (halo_vr_running())
+		return 0;
+#endif
+#ifdef HALO_TOUCH_CONTROLS
+	touch_controls = TRUE;
+#endif
+	return prompts_show_keys(setting, prompt_device, prompt_controller_connected, touch_controls);
+}
+
+/* a binding's name as a prompt shows it: the mouse's buttons by their
+clicks, a key by its label (halo_input_shown_name) */
+static void prompt_binding_name(int input, char *name, size_t size)
+{
+	static const struct
+	{
+		int input;
+		const char *name;
+	} clicks[] =
+	{
+		{ INPUT_MOUSE + SDL_BUTTON_LEFT, "Left Click" },
+		{ INPUT_MOUSE + SDL_BUTTON_RIGHT, "Right Click" },
+		{ INPUT_MOUSE + SDL_BUTTON_MIDDLE, "Middle Click" },
+	};
+	char binding[64];
+	size_t index;
+
+	for (index = 0; index < sizeof(clicks) / sizeof(clicks[0]); index++)
+	{
+		if (clicks[index].input == input)
+		{
+			snprintf(name, size, "%s", clicks[index].name);
+			return;
+		}
+	}
+	halo_input_name(input, binding, sizeof(binding));
+	halo_input_shown_name(binding, name, size);
+}
+
+int halo_keyboard_action_name(int action, char *name, unsigned long size)
+{
+	int slot, pass;
+
+	if (size)
+		name[0] = 0;
+	if (action < 0 || action >= NUMBER_OF_HALO_KEYBOARD_ACTIONS || !size)
+		return 0;
+	bindings_read();
+	/* (a key or button before the wheel: "Press 1", not "Press Wheel") */
+	for (pass = 0; pass < 2; pass++)
+	{
+		for (slot = 0; slot < MAXIMUM_BINDINGS; slot++)
+		{
+			int input = bindings[action][slot];
+
+			if (input >= 0 && (pass || input < INPUT_WHEEL))
+			{
+				prompt_binding_name(input, name, size);
+				return name[0] != 0;
+			}
+		}
+	}
+	return 0;
+}
+
+/* what port 0's reading used (XInputGetState): the actions bound to keys
+and mouse buttons held, the captured mouse moved, the gamepad off rest, the
+touch controls changed the reading or moved the player or the aim */
+static void prompt_device_update(unsigned long held, SDL_Gamepad *gamepad, int gamepads, BOOL touched)
+{
+	BOOL keyboard_used = held != 0;
+	BOOL controller_used = gamepad && !gamepad_idle(gamepad);
+
+	pthread_mutex_lock(&mouse_lock);
+	if (mouse_aimed_ms != prompt_mouse_seen_ms)
+	{
+		prompt_mouse_seen_ms = mouse_aimed_ms;
+		keyboard_used = TRUE;
+	}
+#ifdef HALO_TOUCH_CONTROLS
+	if (touch_aimed_ms != prompt_touch_seen_ms)
+	{
+		prompt_touch_seen_ms = touch_aimed_ms;
+		touched = TRUE;
+	}
+#endif
+	pthread_mutex_unlock(&mouse_lock);
+	prompt_controller_connected = gamepads > 0;
+	prompt_device = prompt_device_next(prompt_device, keyboard_used, controller_used || touched);
 }
 
 /* A scroll of the wheel switches weapons once: it holds Y for WHEEL_PRESS_MS
@@ -1620,6 +1771,9 @@ DWORD WINAPI XInputGetState(HANDLE device, PXINPUT_STATE state)
 #ifdef HALO_TOUCH_CONTROLS
 		touch_input_controls(&state->Gamepad, input.menus);
 #endif
+		/* (the HUD's prompts follow the device played with last) */
+		prompt_device_update(held, port_gamepad(gamepads, count, 0), count,
+			memcmp(&state->Gamepad, &substep_frame_reading, sizeof(state->Gamepad)) != 0);
 #ifdef HALO_VR
 		/* a gamepad's Back held recentres (not the keyboard's tab, the
 		scores) */
