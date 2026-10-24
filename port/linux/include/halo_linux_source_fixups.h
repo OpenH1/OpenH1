@@ -48,6 +48,11 @@ struct observer_result const *render_interpolation_camera(short local_player_ind
 /* the local player's own view (and first-person weapon) was drawn last from
 the newest step, not a tick behind (display.direct_camera) */
 unsigned char render_interpolation_view_newest(short local_player_index);
+/* the first-person weapons' animations advanced (first_person_weapons.c,
+in the tick), and how far the frame is past that, in ticks: -1 for a view
+drawn between the ticks (render_interpolation.c) */
+void render_interpolation_first_person_updated(void);
+float render_interpolation_first_person_phase(short local_player_index);
 void render_interpolation_first_person(short local_player_index, struct real_matrix4x3 *node_matrices,
 	short node_count, struct render_camera const *camera);
 float render_interpolation_game_time_sec(long ticks);
