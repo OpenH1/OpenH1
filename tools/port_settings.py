@@ -1628,13 +1628,15 @@ MULTIPLAYER_ROWS = {
         "multiplayer_type_join_direct_item", "multiplayer_type_create_item", "multiplayer_type_create_internet_item",
         "multiplayer_type_create_lan_item", "multiplayer_type_online_coop_item", "multiplayer_type_coop_item",
         "multiplayer_type_create_bots_item"])}
-MULTIPLAYER_LINE_PLACE = (64, 363)
+# (the screen's line, in the PC version's line's place: the hub's, over
+# EDIT GAMETYPES, _hub)
+MULTIPLAYER_LINE_PLACE = (28, 308)
 # the screen's children for one platform only (tools/ce_menus.py): the
-# computer's list and its line, the touchscreen's in their place
-# (_multiplayer_touch)
+# computer's list and its line (the hub's, in the PC version's places:
+# WIDGET_PATCHES' swap), the touchscreen's in their place (_multiplayer_touch)
 CHILD_PLATFORMS = {
-    (f"{MT}/multiplayer_type_select_screen", f"{MT}/multiplayer_type_select_list"): "pointer",
-    (f"{MT}/multiplayer_type_select_screen", "main_menu/blueline"): "pointer",
+    (f"{MT}/multiplayer_type_select_screen", f"{MT}/hub/hub_list"): "pointer",
+    (f"{MT}/multiplayer_type_select_screen", f"{MT}/hub/hub_divider"): "pointer",
 }
 MULTIPLAYER_GAMETYPES_PLACE = (0, 370)
 
@@ -1698,9 +1700,15 @@ WIDGET_PATCHES = {
     f"{MT}/multiplayer_type_button_bar": {"set": {"flags": "pass_unhandled_to_focused_child left_right_tabs_items "
                                                            "anchor_right"}, "insert_before": {
         "common_button_back": [f'<child widget="{MT}/multiplayer_button_refresh" x="380" y="1"/>']}},
+    # (the computer's list Multiplayer's own, in Settings' look, and its
+    # line over EDIT GAMETYPES: _hub; the right trigger, R on the keyboard,
+    # looks for the games again)
     f"{MT}/multiplayer_type_select_screen": {"handlers": [
         '<on event="created" run="mp type menu initialize"/>',
-        '<on event="deleted" run="port multiplayer status end"/>'], "children": [
+        '<on event="deleted" run="port multiplayer status end"/>',
+        '<on event="right_trigger" run="port multiplayer refresh"/>'], "swap": {
+        f"{MT}/multiplayer_type_select_list": f"{MT}/hub/hub_list", "main_menu/blueline": f"{MT}/hub/hub_divider",
+    }, "children": [
         f'<child widget="{MT}/touch/multiplayer_touch_list" platform="touch"/>',
         f'<child widget="{MT}/touch/multiplayer_touch_open_bar" y="346" platform="touch"/>',
         f'<child widget="{MT}/touch/multiplayer_touch_hint" platform="touch"/>']},
@@ -1742,16 +1750,6 @@ WIDGET_PATCHES = {
         f'<child widget="{MT}/mp_map_select/mp_map_right_pic"/>',
         f'<child widget="{MT}/mp_map_select/mp_map_right_data"/>',
     ]},
-    f"{MT}/join_game/header_join_game": {"children": [
-        f'<child widget="{MT}/join_game/header_server_browser"/>',
-        f'<child widget="{MT}/join_game/header_direct_link"/>',
-    ]},
-    # (Join's local network list: LOCAL NETWORK, not the PC version's LAN
-    # LOBBY: TITLES)
-    f"{MT}/join_game/header_lan": {"set": {"bitmap": f"{MT}/join_game/header_local_network"}},
-    # (the small font's line does not fit below their 4 units of offset)
-    f"{MT}/join_game/ticker_player_info": {"set": {"text_y": 1}},
-    f"{MT}/join_game/ticker_rules_info": {"set": {"text_y": 1}},
     # (Item Options' loadout rows, over its buttons)
     "main_menu/settings_select/multiplayer_setup/item_options_edit/item_options_menu": {"insert_before": {
         "main_menu/settings_select/multiplayer_setup/item_options_edit/item_button_bar": [
@@ -1776,36 +1774,6 @@ WIDGET_PATCHES = {
         '<on event="start" open="main_menu/settings_select/multiplayer_setup/vehicle_options_edit/vehicle_options_screen"/>',
         '<on event="left_mouse" run="mouse emit accept event"/>',
     ]},
-    # (Direct Link's clipboard button in the place of the PC version's
-    # Refresh, and Refresh in Get List's: the Server Browser's only, which
-    # asks the public games' hosts again; "swap" puts another widget in a
-    # child's place)
-    # (and FAVORITES in FILTERS': only the favorite games, or all again;
-    # and the kind button before it, in the clipboard's place, which Direct
-    # Link alone shows: every game, OpenH1's own only, or Legacy ones only)
-    f"{MT}/join_game/join_game_button_bar": {"swap": {
-        f"{MT}/join_game/join_game_button_refresh": f"{MT}/join_game/button_clipboard",
-        f"{MT}/join_game/join_game_button_update": f"{MT}/join_game/join_game_button_refresh",
-        f"{MT}/join_game/join_game_button_filters": f"{MT}/join_game/button_favorites",
-    }, "insert_before": {
-        f"{MT}/join_game/join_game_button_filters": [f'<child widget="{MT}/join_game/button_kind_filter" x="128" y="1"/>'],
-    }},
-    # (the browsers' rows: each game's star, in the place of the PC version's
-    # dedicated server column, which the rows leave empty, and Y (F on the
-    # keyboard) stars or unstars the game: menu_functions.c's favorites)
-    **{f"{MT}/join_game/server_item_{row}": {
-        "handlers": [
-            '<on event="a" run="gamespy select item"/>',
-            '<on event="start" run="gamespy select item"/>',
-            '<on event="left_mouse" run="mouse emit accept event"/>',
-            '<on event="double_click" run="gamespy select item"/>',
-            '<on event="y" run="port browser favorite"/>',
-            # (X: the list sorted by the next column: menu_functions.c's
-            # browser_sort_choose)
-            '<on event="x" run="port browser sort"/>',
-        ],
-        "children": [f'<child widget="{FAVORITE_STAR_WIDGET}" x="20"/>'],
-    } for row in range(1, 16)},
 }
 
 # frames added after a PC bitmap's (by our names): (the Xbox map's bitmap,
@@ -1989,32 +1957,14 @@ def _connect_screen() -> list:
 
 
 def _join_game_extras() -> list:
-    """the browser's added titles, Direct Link's clipboard button, and the
+    """the browser's titles, its connecting box, its rows' star, and the
     password screen"""
     base = f"{MT}/join_game"
     lines = _password_screen()
     lines += _header(f"{base}/header_server_browser", f"{base}/header_server_browser")
     lines += _header(f"{base}/header_direct_link", f"{base}/header_direct_link")
     lines += _connect_screen()
-    lines += _widget(f"{base}/button_clipboard", [("type", "text"), ("width", 128), ("height", 24),
-                                                  ("bitmap", "bitmaps/text_button_background"),
-                                                  ("text", "PASTE LINK"), ("font", "ui\\small_ui"),
-                                                  ("color", "#FFFFFFFF"), ("align", "center"), ("text_y", 2)],
-                     ['<on event="a" run="direct ip connect go"/>', '<on event="start" run="direct ip connect go"/>',
-                      '<on event="left_mouse" run="mouse emit accept event"/>'])
-    # (FAVORITES, which menu_functions.c names ALL GAMES while it shows only
-    # the favorites)
-    # (its words, FAVORITES or ALL GAMES, by menu_functions.c's
-    # browser_favorites_button)
-    lines += _words_button(f"{base}/button_favorites", ["FAVORITES", "ALL GAMES"],
-                           ['<on event="a" run="gamespy select button"/>',
-                            '<on event="start" run="gamespy select button"/>'])
-    # (the kind button: menu_functions.c's browser_kind_button names what it
-    # shows)
-    lines += _words_button(f"{base}/button_kind_filter", ["KIND: ALL", "KIND: OPENH1", "KIND: LEGACY"],
-                           ['<on event="a" run="gamespy select button"/>',
-                            '<on event="start" run="gamespy select button"/>'])
-    # (each row's star: WIDGET_PATCHES puts it in the rows)
+    # (each row's star: _browser puts it in the rows)
     lines += _widget(FAVORITE_STAR_WIDGET, [("width", 16), ("height", 18), ("bitmap", FAVORITE_STAR)], [])
     return lines
 
@@ -3092,13 +3042,562 @@ def _multiplayer_status() -> list:
     return lines
 
 
+# ---------- the menus' shared parts, in Settings' look (its pictures' shapes
+# and colours: settings_pictures): a strip of tabs (the current one framed,
+# LB and RB, or Q and E, either side), a list's rows' highlight, the line
+# under a section's or a list's column titles, a details panel of any size,
+# pills (a game's kind, its tick rate), a large button, and a footer of key
+# prompts (the HUD's button pictures, or the keyboard's keys while it plays:
+# ui_widget.c's ui_widget_port_menu_key), each prompt a button the pointer
+# clicks too. menu_functions.c's menu parts fill them in (menu_tabs_show,
+# menu_text_fit, menu_text_box_wrap, menu_prompts_show). The server browser
+# and Multiplayer use them; another screen can, by the same names
+PARTS = "main_menu/parts"
+PARTS_TAB = f"{PARTS}/tab"
+PART_TEXT = "#FFCFE3FF"
+PART_DIM = SETTINGS_DIM
+PART_PROMPT_HEIGHT = 22
+PART_PILL_HEIGHT = 16
+
+
+def part_highlight(width: int, height: int) -> str:
+    """a list item's highlight (nothing, and Settings' framed row while it
+    has the focus: two frames, which the engine shows by the focus)"""
+    return f"{PARTS}/item_{width}x{height}"
+
+
+def part_row(width: int, height: int) -> str:
+    """a row of a list whose functions choose its frame: nothing, focused,
+    and the row chosen (brighter, as the current tab)"""
+    return f"{PARTS}/row_{width}x{height}"
+
+
+def part_line(width: int) -> str:
+    return f"{PARTS}/line_{width}"
+
+
+def part_section(width: int) -> str:
+    """a section's title's picture: its line along its foot, under the
+    title, as Settings' section"""
+    return f"{PARTS}/section_{width}"
+
+
+PART_SECTION_HEIGHT = 20
+
+
+def part_panel(width: int, height: int) -> str:
+    return f"{PARTS}/panel_{width}x{height}"
+
+
+def part_pill(width: int) -> str:
+    """a pill: an OpenH1 game's (blue), a Legacy game's (grey), and an
+    outline, by the frame"""
+    return f"{PARTS}/pill_{width}"
+
+
+def part_button(width: int, height: int) -> str:
+    return f"{PARTS}/button_{width}x{height}"
+
+
+# the browser's geometry, in the 640x480 menu units: the tabs (Settings'),
+# the list's left and width, its rows, the details panel beside it, and each
+# column's place and width in a row (menu_functions.c's browser_row_show
+# places the tick badge and the lock after the name)
+BROWSER_TABS = [("tab_all", "ALL"), ("tab_openh1", "OPENH1"), ("tab_legacy", "LEGACY"), ("tab_coop", "CO-OP"),
+                ("tab_favorites", "FAVORITES")]
+BROWSER_LIST_X, BROWSER_LIST_WIDTH = 28, 404
+BROWSER_HEADERS_TOP = 104
+BROWSER_ROWS_TOP, BROWSER_ROW_HEIGHT, BROWSER_ROW_STEP, BROWSER_ROWS = 124, 18, 19, 14
+BROWSER_PANEL = (440, 104, 172, 296)
+BROWSER_COLUMNS = {
+    "favorite": (6, 16), "server_name": (26, 110), "map": (140, 78), "type": (222, 60), "players": (284, 56),
+    "ping": (344, 54),
+}
+# (the star in a place of its own, in from the highlight's rounded end, and
+# the ping's number as far in from its other end)
+# the ping's column: its bars, then its milliseconds at its right (the bars
+# left out for a number too wide for both: menu_functions.c's browser_row_show)
+BROWSER_PING_BARS = 24
+# (a title wider or narrower than its column: Players' ends where its
+# column ends, with its numbers)
+BROWSER_HEADER_WIDTHS = {"type": 40, "players": 70}
+# the column titles: (widget, words, column)
+BROWSER_HEADERS = [("op_sort_header_server_name", "SERVER", "server_name"), ("op_sort_header_map", "MAP", "map"),
+                   ("op_sort_header_type", "MODE", "type"), ("op_sort_header_players", "PLAYERS", "players"),
+                   ("op_sort_header_ping", "PING", "ping")]
+BROWSER_TICK_BADGE = 30
+# the panel's pills: a game's kind and tick rate, and OpenCE's
+BROWSER_PILL, BROWSER_WIDE_PILL = 64, 132
+BROWSER_JOIN = (148, 24)
+# the footer's prompts: (widget, words, x, width, its function); the
+# browser shows those of its list (menu_functions.c's browser_prompts_show)
+BROWSER_PROMPTS = [
+    ("prompt_favorite", "%y-button FAVORITE", 28, 124, '<on event="a" run="port browser favorite"/>'),
+    ("prompt_refresh", "%right-trigger REFRESH", 156, 124, '<on event="a" run="port browser refresh"/>'),
+    ("prompt_paste", "%right-trigger PASTE LINK", 156, 144, '<on event="a" run="port browser refresh"/>'),
+    # (the next column's title sorts: menu_functions.c's browser_sort_choose)
+    ("prompt_sort", "%x-button SORT", 304, 100, '<on event="a" run="port browser sort"/>'),
+    ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>'),
+]
+# Multiplayer's: its list's items (and its two pages': CREATE GAME's and
+# CO-OP CAMPAIGN's), the panel beside them, the line over EDIT GAMETYPES
+HUB = f"{MT}/hub"
+HUB_ITEM = (280, 26)
+HUB_LIST_X = 28
+HUB_PANEL = (316, 80, 296, 320)
+HUB_PROMPTS = [
+    ("prompt_refresh", "%right-trigger REFRESH", 28, 124, '<on event="a" run="port multiplayer refresh"/>'),
+    ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>'),
+]
+HUB_PAGE_PROMPTS = [HUB_PROMPTS[1]]
+# the items' descriptions, in menu_functions.c's _multiplayer_item_* order
+HUB_DESCRIPTIONS = [
+    "Every public game on the Internet, OpenH1 and Legacy. Press %a-button to see them all.",
+    "Games hosted on your Wi-Fi or local network appear here as they open.",
+    "Join a friend's game with the invite link they sent you.",
+    "Host a game on the Internet: friends join with your invite link.",
+    "Host a game for players on your Wi-Fi or local network.",
+    "Play the campaign together over the Internet: friends join with your invite link.",
+    "Play the campaign with a friend on this screen. Player 2 uses a controller.",
+    "Play Slayer against computer players, alone or with friends on this screen.",
+    "Make your own gametypes: the rules, weapons and vehicles, kept for next time.",
+    "Host a game on the Internet, or for players on your local network only.",
+    "Play the campaign together: online, or split screen on this computer.",
+]
+
+
+def parts_pictures() -> list:
+    """(bitmap name, [(SVG, width, height)] for its frames) of the parts the
+    multiplayer screens use, at their sizes"""
+    tab_w, tab_h = SETTINGS_TAB_WIDTH, SETTINGS_TAB_HEIGHT
+
+    def framed(width, height, fill, opacity, stroke, radius=8):
+        return _svg(width, height, [_rounded(width, height, 1, radius, fill, opacity, stroke, 2)])
+
+    def highlight(width, height):
+        return [(_svg(width, height, []), width, height),
+                (framed(width, height, "#002244", 0.9, "#2299ff"), width, height)]
+
+    def line(width):
+        return [(_svg(width, 4, [f'  <rect x="0" y="2.5" width="{width}" height="1" fill="#2995ff" '
+                                 'fill-opacity="0.45"/>']), width, 4)]
+
+    def pill(width):
+        height = PART_PILL_HEIGHT
+        return [(_svg(width, height, [_rounded(width, height, 0.5, 3, "#1e5fd1", 1.0)]), width, height),
+                (_svg(width, height, [_rounded(width, height, 0.5, 3, "#4a5a78", 1.0)]), width, height),
+                (_svg(width, height, [_rounded(width, height, 0.75, 3, stroke="#2f7fff", stroke_width=1.5)]),
+                 width, height)]
+
+    rows = [(part_row(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT), highlight(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT) +
+             [(framed(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT, "#0d3a7a", 0.9, "#8cc8ff"), BROWSER_LIST_WIDTH,
+               BROWSER_ROW_HEIGHT)])]
+    prompt_widths = sorted({width for *_, width, _ in BROWSER_PROMPTS + HUB_PROMPTS})
+    join_w, join_h = BROWSER_JOIN
+    return [
+        # (Settings' tab, then its current one: menu_functions.c's
+        # menu_tabs_show chooses the frame)
+        (PARTS_TAB, [(_svg(tab_w, tab_h, []), tab_w, tab_h),
+                     (framed(tab_w, tab_h, "#002244", 0.9, "#2299ff"), tab_w, tab_h),
+                     (framed(tab_w, tab_h, "#0a2a5a", 0.75, "#2299ff"), tab_w, tab_h),
+                     (framed(tab_w, tab_h, "#0d3a7a", 0.9, "#8cc8ff"), tab_w, tab_h)]),
+        *rows,
+        (part_highlight(*HUB_ITEM), highlight(*HUB_ITEM)),
+        *((part_highlight(width, PART_PROMPT_HEIGHT), highlight(width, PART_PROMPT_HEIGHT))
+          for width in prompt_widths),
+        (part_line(BROWSER_LIST_WIDTH), line(BROWSER_LIST_WIDTH)),
+        (part_line(HUB_ITEM[0]), line(HUB_ITEM[0])),
+        (part_section(HUB_ITEM[0]), [(_svg(HUB_ITEM[0], PART_SECTION_HEIGHT, [
+            f'  <rect x="0" y="{PART_SECTION_HEIGHT - 1.5:g}" width="{HUB_ITEM[0]}" height="1" fill="#2995ff" '
+            'fill-opacity="0.45"/>']), HUB_ITEM[0], PART_SECTION_HEIGHT)]),
+        (part_panel(*BROWSER_PANEL[2:]), [(framed(*BROWSER_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5),
+                                           *BROWSER_PANEL[2:])]),
+        (part_panel(*HUB_PANEL[2:]), [(framed(*HUB_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5), *HUB_PANEL[2:])]),
+        *((part_pill(width), pill(width)) for width in (BROWSER_TICK_BADGE, BROWSER_PILL, BROWSER_WIDE_PILL)),
+        (part_button(join_w, join_h), [(framed(join_w, join_h, "#1e5fd1", 0.9, "#5aa9ff"), join_w, join_h),
+                                       (framed(join_w, join_h, "#2a6fe0", 1.0, "#b8dbff"), join_w, join_h)]),
+    ]
+
+
+def _part_text(name: str, pairs: list) -> list:
+    """a text the game fills in (no words of its own, which would be drawn
+    over the game's: a text given here is fixed)"""
+    return _widget(name, [("type", "text"), ("controller", 1), *pairs, ("text_flags", "no_focus_test")], [])
+
+
+def _tab_strip(base: str, strip: str, tabs: list, handlers: list) -> list:
+    """a strip of tabs, a column list (menu_functions.c's menu_tabs_show
+    knows it by its name's end, "_tabs"): each tab's words, its picture
+    Settings' tab (menu_tabs_show frames the current one); A or a click
+    runs the handlers"""
+    lines = _widget(f"{base}/{strip}", [("type", "column_list"), ("width", 640), ("height", SETTINGS_TAB_HEIGHT),
+                                       ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                    [f'<child widget="{base}/{name}" x="{SETTINGS_TABS_X + index * SETTINGS_TAB_STEP}"/>'
+                     for index, (name, _) in enumerate(tabs)])
+    for name, words in tabs:
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", SETTINGS_TAB_WIDTH),
+                                           ("height", SETTINGS_TAB_HEIGHT), ("bitmap", PARTS_TAB), ("text", words),
+                                           ("font", "ui\\small_ui"), ("color", SETTINGS_BLUE), ("align", "center"),
+                                           ("text_y", 3)],
+                         handlers + ['<on event="left_mouse" run="mouse emit accept event"/>'])
+    return lines
+
+
+def _prompts(base: str, bar: str, prompts: list, defined: tuple = ()) -> list:
+    """a footer of key prompts, a bar of buttons: each its button's picture
+    in its words (the device's, menu_functions.c's), highlighted while it
+    has the focus, and its function run by A or a click (those another
+    footer has, by their names in defined, its)"""
+    lines = _widget(f"{base}/{bar}", [("type", "column_list"), ("width", 640), ("height", PART_PROMPT_HEIGHT + 4),
+                                     ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                    [f'<child widget="{base}/{name}" x="{x}" y="1"/>' for name, _, x, _, _ in prompts])
+    for name, words, _, width, handler in (prompt for prompt in prompts if prompt[0] not in defined):
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("width", width), ("height", PART_PROMPT_HEIGHT),
+                                           ("bitmap", part_highlight(width, PART_PROMPT_HEIGHT)), ("text", words),
+                                           ("font", "ui\\small_ui"), ("color", PART_TEXT), ("text_x", 8),
+                                           ("text_y", 4)],
+                         [handler, handler.replace('event="a"', 'event="start"'),
+                          '<on event="left_mouse" run="mouse emit accept event"/>'])
+    return lines
+
+
+def _section(name: str, words: str, width: int) -> list:
+    """a section's title over its line, which a list passes over (it takes
+    no events)"""
+    return _widget(name, [("type", "text"), ("width", width), ("height", PART_SECTION_HEIGHT),
+                          ("bitmap", part_section(width)),
+                          ("text", words), ("font", "ui\\small_ui"), ("color", PART_DIM), ("text_x", 4)], [])
+
+
+def _header_x(column: str) -> int:
+    """a column title's place in a row: its column's left, or for Players'
+    and Ping's (their numbers at their right) where it ends where they do"""
+    x, width = BROWSER_COLUMNS[column]
+    return x + width - BROWSER_HEADER_WIDTHS.get(column, width) if column in ("players", "ping") else x
+
+
+def _browser() -> list:
+    """Join Game's list of games (the server browser's, the local network's
+    and Join by Link's, by the mode Multiplayer chose: menu_functions.c's
+    browser_initialize), in Settings' look: its tabs (every game, OpenH1's,
+    Legacy ones, co-op, the favorites: LB and RB, Q and E, or a click), the
+    games' rows under their columns (a long name, map or mode cut short with
+    "...": menu_functions.c's menu_text_fit), the game chosen's details in
+    the panel beside them with JOIN GAME, words in the list's place while it
+    has none, and the footer's key prompts"""
+    base = f"{MT}/join_game"
+    list_name = f"{base}/join_game_items_list"
+    panel_left, panel_top, panel_width, panel_height = BROWSER_PANEL
+    inner_left, inner_width = panel_left + 12, panel_width - 24
+    lines = _widget(f"{base}/join_game_screen",
+                    [("width", 640), ("height", 480), ("flags", "pass_unhandled_to_focused_child"),
+                     ("bitmap", "bitmaps/gradient")],
+                    ['<on event="created" run="gamespy screen init"/>',
+                     '<on event="deleted" run="gamespy screen dispose"/>',
+                     '<on event="b" run="gamespy back handler"/>', '<on event="back" run="gamespy back handler"/>',
+                     '<on event="white" run="port browser tab previous"/>',
+                     '<on event="black" run="port browser tab next"/>',
+                     '<on event="x" run="port browser sort"/>', '<on event="y" run="port browser favorite"/>',
+                     '<on event="right_trigger" run="port browser refresh"/>',
+                     f'<child widget="{base}/header_join_game"/>',
+                     f'<child widget="{base}/browser_counts"/>',
+                     f'<child widget="{SETTINGS}/tab_prompt_previous" x="6" y="{SETTINGS_TABS_TOP}"/>',
+                     f'<child widget="{SETTINGS}/tab_prompt_next" '
+                     f'x="{SETTINGS_TABS_X + (len(BROWSER_TABS) - 1) * SETTINGS_TAB_STEP + SETTINGS_TAB_WIDTH + 4}" '
+                     f'y="{SETTINGS_TABS_TOP}"/>',
+                     f'<child widget="{base}/browser_columns_line"/>',
+                     f'<child widget="{base}/browser_empty"/>',
+                     f'<child widget="{list_name}"/>'])
+    # (the title of the mode chosen: menu_functions.c's browser_initialize)
+    lines += _widget(f"{base}/header_join_game", [("controller", 1), ("left", 35), ("top", 11), ("width", 363),
+                                                  ("height", 59)],
+                     [f'<child widget="{base}/{name}"/>' for name in
+                      ("header_server_browser", "header_lan", "header_direct_link")])
+    lines += _header(f"{base}/header_lan", f"{base}/header_local_network")
+    lines += _part_text(f"{base}/browser_counts", [("left", 420), ("top", 46), ("width", 192), ("height", 18),
+                                                  ("font", "ui\\small_ui"), ("color", PART_DIM), ("align", "right")])
+    lines += _widget(f"{base}/browser_columns_line", [("controller", 1), ("left", BROWSER_LIST_X),
+                                                      ("top", BROWSER_HEADERS_TOP + 14), ("width", BROWSER_LIST_WIDTH),
+                                                      ("height", 4), ("bitmap", part_line(BROWSER_LIST_WIDTH))], [])
+    # (the list's words while it has no rows: menu_functions.c's
+    # browser_empty_text)
+    lines += _part_text(f"{base}/browser_empty", [("left", BROWSER_LIST_X + 24), ("top", 200),
+                                                 ("width", BROWSER_LIST_WIDTH - 48), ("height", 80),
+                                                 ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE),
+                                                 ("align", "center")])
+    # (the list: the tabs, the column titles (up from the first row), the
+    # rows, JOIN GAME, the footer; the panel is its description)
+    rows = [f'<child widget="{base}/server_item_{row}" x="{BROWSER_LIST_X}" '
+            f'y="{BROWSER_ROWS_TOP + BROWSER_ROW_STEP * (row - 1)}"/>' for row in range(1, BROWSER_ROWS + 1)]
+    lines += _widget(list_name, [("type", "column_list"), ("width", 640), ("height", 480),
+                                 ("flags", "pass_unhandled_to_focused_child up_down_tabs_children"),
+                                 ("description", f"{base}/browser_panel")],
+                     ['<data input="gamespy screen update"/>',
+                      f'<child widget="{base}/browser_tabs" y="{SETTINGS_TABS_TOP}"/>',
+                      f'<child widget="{base}/join_game_header" y="{BROWSER_HEADERS_TOP}"/>',
+                      *rows,
+                      f'<child widget="{base}/browser_join_bar" y="{panel_top + panel_height - BROWSER_JOIN[1] - 10}"/>',
+                      f'<child widget="{base}/join_game_button_bar" y="414"/>'])
+    lines += _tab_strip(base, "browser_tabs", BROWSER_TABS, ['<on event="a" run="port browser tab"/>',
+                                                             '<on event="start" run="port browser tab"/>'])
+    # (the column titles: A or a click sorts by one, again the other way;
+    # its arrow says which way: menu_functions.c's browser_sort_headers_show)
+    lines += _widget(f"{base}/join_game_header", [("type", "column_list"), ("width", 640), ("height", 16),
+                                                  ("flags", "pass_unhandled_to_focused_child left_right_tabs_items")],
+                     [f'<child widget="{base}/{name}" x="{BROWSER_LIST_X + _header_x(column)}"/>'
+                      for name, _, column in BROWSER_HEADERS])
+    for name, words, column in BROWSER_HEADERS:
+        width = BROWSER_HEADER_WIDTHS.get(column, BROWSER_COLUMNS[column][1])
+        right = column in ("players", "ping")
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("width", width), ("height", 16), ("text", words),
+                                           ("font", "ui\\small_ui"), ("color", PART_DIM),
+                                           ("align", "right" if right else None)],
+                         ['<on event="a" run="gamespy select header"/>',
+                          '<on event="start" run="gamespy select header"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          f'<child widget="{base}/header_sort_arrows"/>'])
+    lines += _widget(f"{base}/header_sort_arrows", [("width", 16), ("height", 16)],
+                     [f'<child widget="{base}/header_sort_up_arrow"/>',
+                      f'<child widget="{base}/header_sort_down_arrow"/>'])
+    for way in ("up", "down"):
+        lines += _widget(f"{base}/header_sort_{way}_arrow", [("width", 16), ("height", 16),
+                                                            ("bitmap", f"bitmaps/arrow_sm_{way}")], [])
+    # (a row: its game's star, its name with its tick rate's badge (OpenH1's
+    # games) and its lock (a password) after it, its map, its mode, its
+    # players and its ping's bars)
+    for row in range(1, BROWSER_ROWS + 1):
+        lines += _widget(f"{base}/server_item_{row}",
+                         [("width", BROWSER_LIST_WIDTH), ("height", BROWSER_ROW_HEIGHT),
+                          ("bitmap", part_row(BROWSER_LIST_WIDTH, BROWSER_ROW_HEIGHT))],
+                         ['<on event="a" run="gamespy select item"/>', '<on event="start" run="gamespy select item"/>',
+                          '<on event="left_mouse" run="mouse emit accept event"/>',
+                          '<on event="double_click" run="gamespy select item"/>',
+                          f'<child widget="{FAVORITE_STAR_WIDGET}" x="{BROWSER_COLUMNS["favorite"][0]}" y="1"/>',
+                          *(f'<child widget="{base}/server_item_{column}" x="{BROWSER_COLUMNS[column][0]}"/>'
+                            for column in ("server_name", "map", "type", "players")),
+                          f'<child widget="{base}/server_item_tick" y="1"/>',
+                          f'<child widget="{base}/server_item_locked" y="1"/>',
+                          f'<child widget="{base}/server_item_ping" x="{BROWSER_COLUMNS["ping"][0]}" y="1"/>',
+                          f'<child widget="{base}/server_item_ping_ms" x="{BROWSER_COLUMNS["ping"][0]}"/>'])
+    for column in ("server_name", "map", "type", "players"):
+        lines += _widget(f"{base}/server_item_{column}",
+                         [("type", "text"), ("width", BROWSER_COLUMNS[column][1]), ("height", BROWSER_ROW_HEIGHT),
+                          ("font", "ui\\small_ui"),
+                          ("color", "#FFFFFFFF" if column == "server_name" else "#FFC9DCF7"),
+                          ("align", "right" if column == "players" else None), ("text_y", 2)], [])
+    lines += _widget(f"{base}/server_item_tick", [("type", "text"), ("width", BROWSER_TICK_BADGE),
+                                                  ("height", PART_PILL_HEIGHT),
+                                                  ("bitmap", part_pill(BROWSER_TICK_BADGE)), ("font", "ui\\small_ui"),
+                                                  ("color", "#FFFFFFFF"), ("align", "center"),
+                                                  ("text_flags", "no_focus_test")], [])
+    lines += _widget(f"{base}/server_item_locked", [("width", 16), ("height", 16),
+                                                    ("bitmap", f"{base}/locked_icon")], [])
+    lines += _widget(f"{base}/server_item_ping", [("width", BROWSER_PING_BARS), ("height", 16),
+                                                  ("bitmap", PING_BARS)], [])
+    # (its milliseconds, coloured by how good, "..." faded while measured:
+    # menu_functions.c's pc_menu_text_color)
+    lines += _widget(f"{base}/server_item_ping_ms", [("type", "text"), ("width", BROWSER_COLUMNS["ping"][1]),
+                                                     ("height", BROWSER_ROW_HEIGHT), ("font", "ui\\small_ui"),
+                                                     ("color", "#FFC9DCF7"), ("align", "right"), ("text_y", 2),
+                                                     ("text_flags", "no_focus_test")], [])
+    # (the panel: the game chosen's name, map and mode, its kind, tick rate
+    # and whether OpenCE's players join it, its players and ping, a line of
+    # how it is (under way, a password, joining), and JOIN GAME over it:
+    # menu_functions.c's browser_panel_show)
+    # (PLAYERS and PING each a line: its title, and its value at its right)
+    children = [("panel_title", 12, inner_width, 48, "ui\\large_ui", "#FFFFFFFF", None),
+                ("panel_where", 60, inner_width, 44, "ui\\small_ui", SETTINGS_BLUE, None),
+                ("panel_players_label", 154, 70, 20, "ui\\small_ui", PART_DIM, None),
+                ("panel_players", 151, inner_width, 24, "ui\\large_ui", "#FFFFFFFF", "right"),
+                ("panel_ping_label", 176, 70, 20, "ui\\small_ui", PART_DIM, None),
+                ("panel_ping", 173, inner_width, 24, "ui\\large_ui", "#FFFFFFFF", "right"),
+                ("panel_status", 202, inner_width, 60, "ui\\small_ui", SETTINGS_BLUE, None)]
+    panel_children = []
+    for name, y, width, height, font, color, align in children:
+        panel_children.append(f'<child widget="{base}/{name}" x="{inner_left}" y="{panel_top + y}"/>')
+        lines += _part_text(f"{base}/{name}", [("width", width), ("height", height), ("font", font),
+                                               ("color", color), ("align", align)])
+    for name, x, y, width in (("panel_kind", 0, 108, BROWSER_PILL), ("panel_tick", BROWSER_PILL + 4, 108, BROWSER_PILL),
+                              ("panel_opence", 0, 128, BROWSER_WIDE_PILL)):
+        panel_children.append(f'<child widget="{base}/{name}" x="{inner_left + x}" y="{panel_top + y}"/>')
+        lines += _widget(f"{base}/{name}", [("type", "text"), ("controller", 1), ("width", width),
+                                           ("height", PART_PILL_HEIGHT), ("bitmap", part_pill(width)),
+                                           ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"), ("align", "center"),
+                                           ("text_flags", "no_focus_test")], [])
+    lines += _widget(f"{base}/browser_panel", [("controller", 1), ("left", panel_left), ("top", panel_top),
+                                               ("width", panel_width), ("height", panel_height),
+                                               ("bitmap", part_panel(panel_width, panel_height))], panel_children)
+    join_w, join_h = BROWSER_JOIN
+    lines += _widget(f"{base}/browser_join_bar", [("type", "column_list"), ("width", 640), ("height", join_h),
+                                                  ("flags", "pass_unhandled_to_focused_child")],
+                     [f'<child widget="{base}/button_join" x="{inner_left}"/>'])
+    lines += _widget(f"{base}/button_join", [("type", "text"), ("width", join_w), ("height", join_h),
+                                             ("bitmap", part_button(join_w, join_h)),
+                                             ("text", "%a-button JOIN GAME"), ("font", "ui\\small_ui"),
+                                             ("color", "#FFFFFFFF"), ("text_x", 12), ("text_y", 5)],
+                     ['<on event="a" run="gamespy select button"/>', '<on event="start" run="gamespy select button"/>',
+                      '<on event="left_mouse" run="mouse emit accept event"/>'])
+    lines += _prompts(base, "join_game_button_bar", BROWSER_PROMPTS)
+    return lines
+
+
+def _hub() -> list:
+    """Multiplayer, in Settings' look: PLAY ONLINE's items (the server
+    browser, its games counted; the local network, its games found; a
+    friend's link), HOST's (CREATE GAME and CO-OP CAMPAIGN, each a page of
+    two, and PLAY WITH BOTS), EDIT GAMETYPES under a line, the panel beside
+    them (menu_functions.c's multiplayer_status_update: the games online
+    and the best of them for the server browser, else what is live for the
+    item, and its description), and the footer's key prompts. Each item
+    opens what the PC version's (and the port's) did; the touchscreen keeps
+    its own list (_multiplayer_touch)"""
+    left, top, width, height = HUB_PANEL
+    item_w, item_h = HUB_ITEM
+    joins = lambda screen: [f'<on event="a" run="mp type set mode" open="{screen}"/>',  # noqa: E731
+                            f'<on event="start" run="mp type set mode" open="{screen}"/>']
+    creates = ['<on event="a" run="join controller to mp game"/>',
+               f'<on event="a" run="mp type set mode" open="{MT}/connected/connected_map_select_wrapper"/>']
+    browser = f"{MT}/join_game/join_game_screen"
+    # (each item's name tells menu_functions.c's multiplayer_mode_set what
+    # it is, and multiplayer_items its panel)
+    items = {
+        "hub_join_internet": ("SERVER BROWSER", joins(browser), "browser_note"),
+        "hub_join_lan_item": ("LOCAL NETWORK", joins(browser), "item_note"),
+        "hub_join_direct": ("JOIN BY LINK", joins(browser), "invite_note"),
+        "hub_create": ("CREATE GAME ›", [f'<on event="{event}" open="{HUB}/create_screen"/>'
+                                              for event in ("a", "start")], None),
+        "hub_create_bots": ("PLAY WITH BOTS", creates, None),
+        "hub_coop": ("CO-OP CAMPAIGN ›", [f'<on event="{event}" open="{HUB}/coop_screen"/>'
+                                               for event in ("a", "start")], None),
+        "hub_gametypes": ("EDIT GAMETYPES", [
+            f'<on event="{event}" open="main_menu/settings_select/multiplayer_setup/playlist_select/'
+            'gametype_select_screen"/>' for event in ("a", "start")], None),
+        "hub_create_inter": ("INTERNET", creates, None),
+        "hub_create_lan_item": ("LOCAL NETWORK", creates, None),
+        "hub_online_coop": ("ONLINE CO-OP", creates, None),
+        "hub_split_coop": ("SPLIT-SCREEN CO-OP", [
+            f'<on event="{event}" run="port coop begin" open="{MT}/coop/player_2_profile_screen"/>'
+            for event in ("a", "start")], None),
+    }
+    step = item_h + 2
+
+    def page_list(name, sections, prompts):
+        children, y = [], top
+        for section, words, names in sections:
+            if section:
+                children.append(f'<child widget="{HUB}/{section}" x="{HUB_LIST_X}" y="{y}"/>')
+                y += PART_SECTION_HEIGHT + 2
+            for item in names:
+                if item == "hub_gametypes":
+                    y = MULTIPLAYER_LINE_PLACE[1] + 9
+                children.append(f'<child widget="{HUB}/{item}" x="{HUB_LIST_X}" y="{y}"/>')
+                y += step
+            y += 8
+        children.append(f'<child widget="{HUB}/{prompts}" y="414"/>')
+        return _widget(f"{HUB}/{name}", [("type", "column_list"), ("width", 640), ("height", 480),
+                                         ("flags", "pass_unhandled_to_focused_child up_down_tabs_items"),
+                                         ("description", f"{HUB}/hub_panel")],
+                       ['<data input="port multiplayer status"/>', *children])
+
+    lines = page_list("hub_list", [("section_online", "PLAY ONLINE", ["hub_join_internet", "hub_join_lan_item",
+                                                                      "hub_join_direct"]),
+                                   ("section_host", "HOST", ["hub_create", "hub_create_bots", "hub_coop"]),
+                                   (None, None, ["hub_gametypes"])], "hub_prompts")
+    lines += _section(f"{HUB}/section_online", "PLAY ONLINE", item_w)
+    lines += _section(f"{HUB}/section_host", "HOST", item_w)
+    lines += _widget(f"{HUB}/hub_divider", [("width", item_w), ("height", 4), ("bitmap", part_line(item_w))], [])
+    # (CREATE GAME's page and CO-OP CAMPAIGN's: their two items, the same
+    # panel, B back to Multiplayer)
+    for page, words, names in (("create", "CREATE GAME", ["hub_create_inter", "hub_create_lan_item"]),
+                               ("coop", "CO-OP CAMPAIGN", ["hub_online_coop", "hub_split_coop"])):
+        lines += _widget(f"{HUB}/{page}_screen", [("width", 640), ("height", 480),
+                                                  ("flags", "pass_unhandled_to_focused_child"),
+                                                  ("bitmap", "bitmaps/gradient")],
+                         ['<on event="created" run="mp type menu initialize"/>',
+                          '<on event="deleted" run="port multiplayer status end"/>',
+                          f'<child widget="{MT}/header_multiplayer"/>', f'<child widget="{HUB}/{page}_list"/>'])
+        lines += page_list(f"{page}_list", [(f"section_{page}", words, names)], "page_prompts")
+        lines += _section(f"{HUB}/section_{page}", words, item_w)
+    for name, (words, handlers, note) in items.items():
+        lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w), ("height", item_h),
+                                           ("bitmap", part_highlight(item_w, item_h)), ("text", words),
+                                           ("font", "ui\\large_ui"), ("color", SETTINGS_BLUE), ("text_x", 10),
+                                           ("text_y", 5)],
+                         [*handlers, '<on event="left_mouse" run="mouse emit accept event"/>',
+                          *([f'<child widget="{HUB}/{note}"/>'] if note else [])])
+    # (at the items' ends: the server browser's games, the local network's
+    # found, an invite link copied, in green: menu_functions.c's
+    # multiplayer_status_notes)
+    # (right-aligned in from the highlight's end, clear of the items' words)
+    for name, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C")):
+        lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
+                                           ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
+                                           ("text_y", 8), ("text_flags", "no_focus_test")], [])
+    lines += _prompts(HUB, "hub_prompts", HUB_PROMPTS)
+    lines += _prompts(HUB, "page_prompts", HUB_PAGE_PROMPTS, defined=tuple(name for name, *_ in HUB_PROMPTS))
+    # (the panel, by the touchscreen's panel's names: what is live for the
+    # item chosen, and its description)
+    x, inner = left + 14, width - 28
+    panel = []
+
+    # (each placed by its own left and top, which the panel's functions move
+    # it from: menu_functions.c's multiplayer_status_number, the badges)
+    def text(name, tx, ty, w, h, font, color, align=None, words=None):
+        panel.append(f'<child widget="{HUB}/{name}"/>')
+        pairs = [("left", tx), ("top", ty), ("width", w), ("height", h), ("font", font), ("color", color),
+                 ("align", align)]
+        return (_widget(f"{HUB}/{name}", [("type", "text"), ("controller", 1), *pairs, ("text", words),
+                                         ("text_flags", "no_focus_test")], [])
+                if words else _part_text(f"{HUB}/{name}", pairs))
+
+    lines += text("multiplayer_status", x, top + 14, inner, 24, "ui\\large_ui", "#FFFFFFFF")
+    lines += text("multiplayer_status_detail", x, top + 42, inner, 120, "ui\\large_ui", SETTINGS_BLUE)
+    lines += text("online_now_label", x, top + 12, 200, 16, "ui\\small_ui", PART_DIM, words="ONLINE NOW")
+    players_x = x + 124
+    for count, count_x in (("games", x), ("players", players_x)):
+        for digit in range(STATUS_DIGIT_PLACES):
+            panel.append(f'<child widget="{HUB}/online_{count}_{digit}"/>')
+            lines += _widget(f"{HUB}/online_{count}_{digit}", [("controller", 1),
+                                                               ("left", count_x + DIGIT_SIZE[0] * digit),
+                                                               ("top", top + 28), ("width", DIGIT_SIZE[0]),
+                                                               ("height", DIGIT_SIZE[1]), ("bitmap", STATUS_DIGITS)],
+                             [])
+    lines += text("online_games_label", x, top + 46, 80, 18, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("online_players_label", players_x, top + 46, 90, 18, "ui\\small_ui", SETTINGS_BLUE)
+    lines += text("best_label", x, top + 76, 200, 16, "ui\\small_ui", PART_DIM, words="BEST FOR YOU")
+    for row in range(BEST_GAMES):
+        row_top = top + 94 + 40 * row
+        lines += text(f"best_{row}_name", x, row_top, 166, 20, "ui\\large_ui", "#FFFFFFFF")
+        panel.append(f'<child widget="{HUB}/best_{row}_badge"/>')
+        lines += _widget(f"{HUB}/best_{row}_badge", [("type", "text"), ("controller", 1), ("left", x),
+                                                     ("top", row_top + 3), ("width", BROWSER_PILL),
+                                                     ("height", PART_PILL_HEIGHT),
+                                                     ("bitmap", part_pill(BROWSER_PILL)),
+                                                     ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
+                                                     ("align", "center"), ("text_flags", "no_focus_test")], [])
+        lines += text(f"best_{row}_about", x, row_top + 19, 176, 18, "ui\\small_ui", SETTINGS_BLUE)
+        lines += text(f"best_{row}_players", x + inner - 100, row_top + 6, 70, 20, "ui\\large_ui", "#FFFFFFFF",
+                      "right")
+        panel.append(f'<child widget="{HUB}/best_{row}_ping"/>')
+        lines += _widget(f"{HUB}/best_{row}_ping", [("controller", 1), ("left", x + inner - 24),
+                                                    ("top", row_top + 9), ("width", 24), ("height", 16),
+                                                    ("bitmap", PING_BARS)], [])
+    lines += text("multiplayer_options_txt", x, top + height - 76, inner, 64, "ui\\small_ui", SETTINGS_BLUE)
+    lines += _widget(f"{HUB}/hub_panel", [("controller", 1), ("left", left), ("top", top), ("width", width),
+                                          ("height", height), ("bitmap", part_panel(width, height))], panel)
+    lines += _strings(f"{HUB}/descriptions", HUB_DESCRIPTIONS)
+    return lines
+
+
 def multiplayer_files() -> dict:
     """the port's multiplayer widgets: the browser's additions, the server
     settings, the lobby"""
     head = ['<?xml version="1.0" encoding="UTF-8"?>',
             "<!-- The port's multiplayer screens, in the PC version's style (tools/port_settings.py) -->", "<menus>"]
     return {
+        f"{MT}/join_game".replace("/", ".") + ".xml": head + _browser() + ["</menus>", ""],
         f"{MT}/join_game".replace("/", ".") + ".port.xml": head + _join_game_extras() + ["</menus>", ""],
+        f"{HUB}".replace("/", ".") + ".xml": head + _hub() + ["</menus>", ""],
         f"{MT}/server_settings".replace("/", ".") + ".xml": head + _server_settings() + ["</menus>", ""],
         f"{MT}/lobby".replace("/", ".") + ".xml": head + _lobby() + ["</menus>", ""],
         f"{MT}/coop".replace("/", ".") + ".xml": head + _coop() + ["</menus>", ""],
@@ -3119,7 +3618,9 @@ def multiplayer_files() -> dict:
     }
 
 
-REPLACED_FOLDERS = [f"{MT}/server_settings"]
+# (the server browser's folder, and with it its filters, which it no longer
+# has: _browser)
+REPLACED_FOLDERS = [f"{MT}/server_settings", f"{MT}/join_game"]
 
 
 # ---------- the mods (port/linux/game/mods.c, docs/mods.md): the main menu's

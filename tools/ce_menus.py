@@ -92,11 +92,6 @@ CHILD_OFFSETS = {
     **{("ui\\shell\\main_menu\\multiplayer_type_select\\multiplayer_type_select_list",
         f"ui\\shell\\main_menu\\multiplayer_type_select\\{name}"): place
        for name, place in port_settings.MULTIPLAYER_ROWS.items()},
-    # the browser's rows up under the column titles, into the place of the
-    # scroll up button (hidden: the list does not scroll)
-    **{("ui\\shell\\main_menu\\multiplayer_type_select\\join_game\\join_game_items_list",
-        f"ui\\shell\\main_menu\\multiplayer_type_select\\join_game\\server_item_{row}"): (10, 102 + 17 * (row - 1))
-       for row in range(1, 16)},
     # the map lists' first row, the SINGLEPLAYER or MULTIPLAYER chooser
     # (port_settings.MAP_KIND_CHOOSER), where the gametype list has its own
     **{(f"ui\\shell\\main_menu\\{list_tag}", "ui\\shell\\main_menu\\new_select\\list_item_0"): (82, 73)
@@ -743,6 +738,9 @@ def main() -> None:
     lines += [art.still(f"{port_settings.SETTINGS}/pictures_{key}", pngs, port_settings.SETTINGS_PICTURE_WIDTH,
                         port_settings.SETTINGS_PICTURE_HEIGHT)
               for key, pngs in port_settings.SETTINGS_VALUE_PICTURES.items()]
+    # (the menus' shared parts, in Settings' look: the server browser's and
+    # Multiplayer's tabs, rows, panels, pills, button and prompts)
+    lines += [art.port_picture(name, frames) for name, frames in port_settings.parts_pictures()]
     lines.append("</menus>")
     (CE / "bitmaps.xml").write_text("\n".join(lines) + "\n")
     # what is not hand-drawn

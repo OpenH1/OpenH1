@@ -59,6 +59,14 @@ action as a prompt shows it ("E", "Left Click", "Mouse 4"), 0 if it has none.
 The name is Latin-1. */
 int halo_keyboard_prompts(void);
 int halo_keyboard_action_name(int action, char *name, unsigned long size);
+/* the server browsers' keys in the menus (port/linux/game/menu_functions.c
+says, each frame one is shown, that one is): Tab is X (their sort) and E is
+RB alone (their next tab), where elsewhere Tab is Y (the Profiles screen's
+new profile) and E is X too (Load Game's, Profiles' and the gametypes'
+delete) as well as RB. Whether they are, for the keys and their prompts
+(source/interface/ui_widget.c) */
+void halo_keyboard_browser_keys(void);
+int halo_keyboard_browser_keys_active(void);
 
 /* the first controller's buttons (with the touch controls'), as the text
 chat's on-screen keyboard reads them: a bit for each (port/linux/game/

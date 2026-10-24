@@ -119,9 +119,13 @@ def test_multiplayer_has_play_with_bots():
     for row, (x, y) in port_settings.MULTIPLAYER_ROWS.items():
         place = (f' x="{x}"' if x else "") + f' y="{y}"'
         assert f'<child widget="{MT}/{row}"{place}/>' in menu, row
-    bots_y = port_settings.MULTIPLAYER_ROWS["multiplayer_type_create_bots_item"][1]
-    assert bots_y + 32 <= port_settings.MULTIPLAYER_LINE_PLACE[1]
-    assert menu.index("multiplayer_type_create_bots_item") < menu.index('multiplayer_type_gametypes_item" y=')
+    # (the computer's list, Multiplayer's own: PLAY WITH BOTS under HOST, above EDIT GAMETYPES' line,
+    # test_browser_menu.py's test_hub_keeps_every_place)
+    hub = (CE / "main_menu.multiplayer_type_select.hub.xml").read_text()
+    bots_y = int(re.search(rf'<child widget="{MT}/hub/hub_create_bots" x="\d+" y="(\d+)"/>', hub).group(1))
+    assert bots_y + port_settings.HUB_ITEM[1] <= port_settings.MULTIPLAYER_LINE_PLACE[1]
+    assert hub.index(f"{MT}/hub/section_host") < hub.index(f"{MT}/hub/hub_create_bots") < \
+        hub.index(f'{MT}/hub/hub_gametypes" x=')
     strings = (CE / "strings.xml").read_text()
     options = re.search(rf'<strings name="{MT}/multiplayer_options"[^>]*>(.*?)</strings>', strings, re.S).group(1)
     assert re.findall(r'text="([^"]*)"', options) == port_settings.STRING_OVERRIDES[f"{MT}/multiplayer_options"]

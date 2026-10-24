@@ -1346,52 +1346,53 @@ GAME joins only with the correct password. The invite link of the game joins
 it without the password. The host keeps the password only while the game
 runs.
 
-In the Server Browser, as in Custom Edition's, a click selects a game
-(outlined in yellow), and a click on the selected game, a double click, A,
-Enter or JOIN joins it. The game joins the invite of the game, as for a
+The Server Browser, the LAN list and Join by Link are laid out as Settings
+is: tabs across the top, the games under their columns (Server, Map, Mode,
+Players, Ping), the chosen game's details in a panel at the right with JOIN
+GAME, and the keys at the bottom (F Favorite, R Refresh, Tab Sort, Esc Back
+on the keyboard; a controller's Y, right trigger, X and B). A name, map or
+mode too long for its column ends in "..."; the panel shows all of it. A
+click selects a game, and a click on the selected game, a double click, A,
+Enter or JOIN GAME joins it. The game joins the invite of the game, as for a
 link. When it reaches the host, it opens the lobby. If it cannot reach the
-host in 30 seconds, it marks the game FAILED; when this machine's NAT gives
-each destination its own port and no router forwards
-`network.tunnel_port`, the line below the games says so (turn on UPnP on
-the router, or forward the port: refer to "Connection").
+host in 30 seconds, it marks the game failed, and the panel says why; when
+this machine's NAT gives each destination its own port and no router
+forwards `network.tunnel_port`, it says so (turn on UPnP on the router, or
+forward the port: refer to "Connection").
 
-The PING column shows the round trip to each host in milliseconds. The
-browser times it as a join would reach the host: it makes the tunnel with
-the listing's invite, keeps the shortest of three pings, and closes the
-tunnel again. It times a few hosts at once, each again every two minutes
-and on REFRESH. Joining a host whose tunnel is open uses that tunnel. A
-game with a password, whose invite the listing hides, shows no ping, nor
-does a host not reached; a game that is full or starting shows CLOSED.
-REFRESH also asks the hosts for their listings again.
+The Ping column shows the round trip to each host in milliseconds, coloured
+by how good it is, with bars before it. The browser times it as a join would
+reach the host: it makes the tunnel with the listing's invite, keeps the
+shortest of three pings, and closes the tunnel again. It times a few hosts
+at once, each again every two minutes and on Refresh. Joining a host whose
+tunnel is open uses that tunnel. While it is timed the column shows a faded
+"…"; a game with a password, whose invite the listing hides, a host not
+reached and a LAN game show "–". Refresh also asks the hosts for their
+listings again.
 
-The gametype column names an OpenCE gametype's kind (SWAT, INFECTION, GUN
-GAME, or HC and the game engine for Hardcore: HC CTF, HC SLAYER), which the
-host sends with the game (network version 37), and otherwise the game
-engine's (SLAYER, CTF, KING OF THE HILL). The browser of LAN games, and the
-preview of a game before joining it, name it the same way.
+The Mode column names an OpenCE gametype's kind (SWAT, INFECTION, GUN GAME,
+or HC and the game engine for Hardcore: HC CTF, HC SLAYER), which the host
+sends with the game (network version 37), and otherwise the game engine's
+(SLAYER, CTF, KING OF THE HILL). The preview of a game before joining it
+names it the same way. An OpenH1 game shows its tick rate in a badge after
+its name ("60", "120"); a Legacy game shows none. The panel names the
+chosen game's kind (OPENH1 or LEGACY), its tick rate (a Legacy game's 30),
+and OPENCE CAN JOIN for one OpenCE players join too (an OpenH1 game at 30,
+the default, and every Legacy game: NETCODE.md, "OpenH1 and Legacy games").
 
-Before the gametype, the column shows each game's tick rate ("60 SLAYER"; a
-Legacy game shows 30). The line below the games names the chosen game's
-kind: "OpenH1 60 Tick, OpenCE can join" (an OpenH1 game that OpenCE players
-join too, at 30: the default), "OpenH1 60 Tick" (OpenH1 players only) or
-"Legacy" (NETCODE.md, "OpenH1 and Legacy games").
+Sorting and the tabs, in all three lists, for this run of the game:
 
-Sorting and filtering, in all three lists (Server Browser, LAN, Direct
-Link), for this run of the game:
-
-- Choosing a column's title sorts the games by it: Server Name, Map, Game
-  (the tick rate, and an OpenH1 game before a Legacy one at 30), Players or
-  Ping. Choosing it again sorts the other way. Click or tap the title, or
-  with a controller press up from the first game to reach the titles, left
-  and right to pick one, and A. An arrow over the title shows the way.
-  Players and the tick rate sort the highest first; a ping not known goes
-  last either way.
-- X on a game sorts by the next column, then back to the order found. The
-  line below the games names the sort.
-- KIND (left of FAVORITES; not in Direct Link) shows every game, OpenH1's
-  own only (those OpenCE players can join too among them), or Legacy ones
-  only.
-- Favorites stay at the top, sorted the same way among themselves.
+- Choosing a column's title sorts the games by it; choosing it again sorts
+  the other way. Click or tap the title, or with a controller press up from
+  the first game to reach the titles, left and right to pick one, and A.
+  The title sorted by is brighter, with an arrow its way. Players sort the
+  most first; a ping not known goes last either way. Tab (X) sorts by the
+  next column.
+- The tabs (Q and E, LB and RB, or a click; not in Join by Link) show every
+  game, OpenH1's own only (those OpenCE players can join too among them),
+  Legacy ones only, co-op games, or the favorites.
+- Favorites stay at the top, sorted the same way among themselves; those
+  not found stay at the bottom of All and Favorites, grey.
 
 How it operates (`src/p2p_lobby.c`):
 

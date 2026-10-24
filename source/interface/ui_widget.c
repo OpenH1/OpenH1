@@ -1393,7 +1393,10 @@ texture from, or the sheet if it has none (port/linux/game/hud_hires_tags.c) */
 struct bitmap_data const *hud_hires_sprite_bitmap(
 	struct bitmap_data const *sheet,
 	short sequence_index);
-/* port: the keyboard and mouse's keys in the prompts (port/linux/game/hud_key_prompts.c) */
+/* port: the keyboard and mouse's keys in the prompts (port/linux/game/hud_key_prompts.c),
+and whether a server browser's are the menus' (port/linux/src/xinput_sdl.c) */
+int halo_keyboard_browser_keys_active(
+	void);
 boolean hud_key_prompt_draw(
 	short local_player_index,
 	short game_control,
@@ -4137,10 +4140,13 @@ static void render_state_bitmap(
 /* port: the key the keyboard presses a controller button of the menus
 with (port/linux/src/xinput_sdl.c's keyboard_gamepad, the controller the
 keyboard is in the menus): A as Enter (or Space), B as Esc (or Backspace),
-X as E (the server browsers' sort), Y as F (their favorite), LB and RB (the
-white and black buttons, Settings' tabs) as Q and E, back as F1; NULL for
-the others (the D-pad, which the arrow keys press, Start, the triggers and
-the sticks), drawn as the controller's */
+X as E (the delete of Load Game, Profiles and the gametypes), or in a server
+browser as Tab (its sort: halo_keyboard_browser_keys_active), Y as F (their
+favorite), LB and RB (the white and black buttons, Settings' and the
+browsers' tabs) as Q and E, the right trigger (Multiplayer's and the
+browsers' refresh) as R, back as F1;
+NULL for the others (the D-pad, which the arrow keys press, Start, the left
+trigger and the sticks), drawn as the controller's */
 static char const *ui_widget_port_menu_key(
 	short icon_type)
 {
@@ -4151,8 +4157,11 @@ static char const *ui_widget_port_menu_key(
 	case _icon_b_button:
 		return "Esc";
 	case _icon_x_button:
+		return halo_keyboard_browser_keys_active() ? "Tab" : "E";
 	case _icon_black_button:
 		return "E";
+	case _icon_right_trigger:
+		return "R";
 	case _icon_y_button:
 		return "F";
 	case _icon_white_button:
