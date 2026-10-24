@@ -87,18 +87,18 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/join_game_header" type="column_list" width="640" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<child widget="main_menu/multiplayer_type_select/join_game/op_sort_header_server_name" x="48"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/op_sort_header_map" x="174"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/op_sort_header_type" x="262"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/op_sort_header_map" x="168"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/op_sort_header_type" x="254"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/op_sort_header_players" x="302"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/op_sort_header_ping" x="378"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_server_name" type="text" width="122" height="16" text="SERVER" font="ui\small_ui" color="#FF6F9CD0">
+	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_server_name" type="text" width="116" height="16" text="SERVER" font="ui\small_ui" color="#FF6F9CD0">
 		<on event="a" run="gamespy select header"/>
 		<on event="start" run="gamespy select header"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/header_sort_arrows"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_map" type="text" width="84" height="16" text="MAP" font="ui\small_ui" color="#FF6F9CD0">
+	<widget name="main_menu/multiplayer_type_select/join_game/op_sort_header_map" type="text" width="82" height="16" text="MAP" font="ui\small_ui" color="#FF6F9CD0">
 		<on event="a" run="gamespy select header"/>
 		<on event="start" run="gamespy select header"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
@@ -137,9 +137,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -152,9 +152,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -167,9 +167,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -182,9 +182,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -197,9 +197,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -212,9 +212,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -227,9 +227,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -242,9 +242,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -257,9 +257,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -272,9 +272,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -287,9 +287,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -302,9 +302,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -317,9 +317,9 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
@@ -332,21 +332,21 @@
 		<on event="double_click" run="gamespy select item"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_favorite" x="2" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_server_name" x="20"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="146"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="234"/>
-		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="292"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_map" x="140"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_type" x="226"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/server_item_players" x="290"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_tick" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_locked" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping" x="350" y="1"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/server_item_ping_ms" x="350"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_server_name" type="text" width="122" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_server_name" type="text" width="116" height="18" font="ui\small_ui" color="#FFFFFFFF" text_y="2">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_map" type="text" width="84" height="18" font="ui\small_ui" color="#FFC9DCF7" text_y="2">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_map" type="text" width="82" height="18" font="ui\small_ui" color="#FFC9DCF7" text_y="2">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_type" type="text" width="56" height="18" font="ui\small_ui" color="#FFC9DCF7" text_y="2">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_type" type="text" width="62" height="18" font="ui\small_ui" color="#FFC9DCF7" text_y="2">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/server_item_players" type="text" width="52" height="18" font="ui\small_ui" color="#FFC9DCF7" align="right" text_y="2">
+	<widget name="main_menu/multiplayer_type_select/join_game/server_item_players" type="text" width="54" height="18" font="ui\small_ui" color="#FFC9DCF7" align="right" text_y="2">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/server_item_tick" type="text" width="30" height="16" bitmap="main_menu/parts/pill_30" font="ui\small_ui" color="#FFFFFFFF" align="center" text_flags="no_focus_test">
 	</widget>
@@ -391,7 +391,7 @@
 	<widget name="main_menu/multiplayer_type_select/join_game/browser_join_bar" type="column_list" width="640" height="24" flags="pass_unhandled_to_focused_child">
 		<child widget="main_menu/multiplayer_type_select/join_game/button_join" x="452"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/button_join" type="text" width="148" height="24" bitmap="main_menu/parts/button_148x24" text="%a-button JOIN GAME" font="ui\small_ui" color="#FFFFFFFF" text_x="22" text_y="5">
+	<widget name="main_menu/multiplayer_type_select/join_game/button_join" type="text" width="148" height="24" bitmap="main_menu/parts/button_148x24" text="%a-button JOIN GAME" font="ui\small_ui" color="#FFFFFFFF" text_x="12" text_y="5">
 		<on event="a" run="gamespy select button"/>
 		<on event="start" run="gamespy select button"/>
 		<on event="left_mouse" run="mouse emit accept event"/>

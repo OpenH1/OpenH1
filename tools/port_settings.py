@@ -3101,7 +3101,7 @@ BROWSER_HEADERS_TOP = 104
 BROWSER_ROWS_TOP, BROWSER_ROW_HEIGHT, BROWSER_ROW_STEP, BROWSER_ROWS = 124, 18, 19, 14
 BROWSER_PANEL = (440, 104, 172, 296)
 BROWSER_COLUMNS = {
-    "favorite": (2, 16), "server_name": (20, 122), "map": (146, 84), "type": (234, 56), "players": (292, 52),
+    "favorite": (2, 16), "server_name": (20, 116), "map": (140, 82), "type": (226, 62), "players": (290, 54),
     "ping": (350, 54),
 }
 # the ping's column: its bars, then its milliseconds at its right (the bars
@@ -3419,7 +3419,7 @@ def _browser() -> list:
     lines += _widget(f"{base}/button_join", [("type", "text"), ("width", join_w), ("height", join_h),
                                              ("bitmap", part_button(join_w, join_h)),
                                              ("text", "%a-button JOIN GAME"), ("font", "ui\\small_ui"),
-                                             ("color", "#FFFFFFFF"), ("text_x", 22), ("text_y", 5)],
+                                             ("color", "#FFFFFFFF"), ("text_x", 12), ("text_y", 5)],
                      ['<on event="a" run="gamespy select button"/>', '<on event="start" run="gamespy select button"/>',
                       '<on event="left_mouse" run="mouse emit accept event"/>'])
     lines += _prompts(base, "join_game_button_bar", BROWSER_PROMPTS)
@@ -3551,7 +3551,7 @@ def _hub() -> list:
     lines += text("best_label", x, top + 76, 200, 16, "ui\\small_ui", PART_DIM, words="BEST FOR YOU")
     for row in range(BEST_GAMES):
         row_top = top + 94 + 40 * row
-        lines += text(f"best_{row}_name", x, row_top, 196, 20, "ui\\large_ui", "#FFFFFFFF")
+        lines += text(f"best_{row}_name", x, row_top, 176, 20, "ui\\large_ui", "#FFFFFFFF")
         panel.append(f'<child widget="{HUB}/best_{row}_badge"/>')
         lines += _widget(f"{HUB}/best_{row}_badge", [("type", "text"), ("controller", 1), ("left", x),
                                                      ("top", row_top + 3), ("width", BROWSER_PILL),
@@ -3559,8 +3559,8 @@ def _hub() -> list:
                                                      ("bitmap", part_pill(BROWSER_PILL)),
                                                      ("font", "ui\\small_ui"), ("color", "#FFFFFFFF"),
                                                      ("align", "center"), ("text_flags", "no_focus_test")], [])
-        lines += text(f"best_{row}_about", x, row_top + 19, 196, 18, "ui\\small_ui", SETTINGS_BLUE)
-        lines += text(f"best_{row}_players", x + inner - 92, row_top + 6, 58, 20, "ui\\large_ui", "#FFFFFFFF",
+        lines += text(f"best_{row}_about", x, row_top + 19, 176, 18, "ui\\small_ui", SETTINGS_BLUE)
+        lines += text(f"best_{row}_players", x + inner - 100, row_top + 6, 70, 20, "ui\\large_ui", "#FFFFFFFF",
                       "right")
         panel.append(f'<child widget="{HUB}/best_{row}_ping"/>')
         lines += _widget(f"{HUB}/best_{row}_ping", [("controller", 1), ("left", x + inner - 24),

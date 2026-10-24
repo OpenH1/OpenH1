@@ -144,7 +144,7 @@ int main(int argc, char **argv)
 		CHECK(contains(text, L"No OpenH1 games on your network."), "OPENH1's says %ls", text);
 		browser_empty_text(_multiplayer_mode_lan, _browser_tab_favorites, TRUE, TRUE, FALSE, 0, text,
 			NUMBEROF(text));
-		CHECK(contains(text, L"favorites") && contains(text, L"%y-button"), "FAVORITES' says %ls", text);
+		CHECK(contains(text, L"favorites") && contains(text, L"FAVORITE on a game"), "FAVORITES' says %ls", text);
 		/* the server browser's: still looking, off, none of a kind, newer */
 		browser_empty_text(_multiplayer_mode_server_browser, _browser_tab_all, TRUE, TRUE, TRUE, 0, text,
 			NUMBEROF(text));

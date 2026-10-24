@@ -5794,9 +5794,9 @@ static struct
 	{ "op_sort_header_map", L"MAP", FALSE },
 	{ "op_sort_header_type", L"MODE", FALSE },
 };
-/* a title's arrow's width (bitmaps/arrow_sm_up's art, in the middle of
-its 16 units) */
-#define BROWSER_ARROW_WIDTH 12
+/* the space a title's arrow leaves before its art (bitmaps/arrow_sm_up's,
+in the middle of its 16 units) */
+#define BROWSER_ARROW_GAP 2
 
 /* text compared without case */
 static int browser_text_compare(char const *a, char const *b)
@@ -5926,9 +5926,9 @@ static short browser_favorites_order(short const *favorite_of, struct browser_so
 browser's list) */
 static void browser_list_restart(void);
 
-/* the column titles' arrows: the sorted column's, its way, beside its words
-(before them in a title whose words end at its right); its words brighter
-(pc_menu_text_color) */
+/* the column titles' arrows: the sorted column's, its way, after its words
+(past the end of a title whose words end at its right, Players' and Ping's);
+its words brighter (pc_menu_text_color) */
 static void browser_sort_headers_show(struct widget_instance *list)
 {
 	short sort;
@@ -5949,7 +5949,7 @@ static void browser_sort_headers_show(struct widget_instance *list)
 		{
 			words = settings_text_width(font, browser_sorts[sort].title);
 			arrows->horizontal_offset = (short)(sort == _browser_sort_players || sort == _browser_sort_ping ?
-				width - words - BROWSER_ARROW_WIDTH : words);
+				width - BROWSER_ARROW_GAP : words);
 		}
 	}
 }
@@ -6035,7 +6035,7 @@ static void browser_empty_text(short mode, short tab, boolean online, boolean pu
 	else if (tab == _browser_tab_favorites)
 	{
 		usnprintf(text, size - 1, server_browser ? L"None of your favorites is online.\r\n%s" :
-			L"None of your favorites is open.\r\n%s", L"Press %y-button on a game to add it.");
+			L"None of your favorites is open.\r\n%s", L"Choose FAVORITE on a game to add it.");
 	}
 	else if (tab != _browser_tab_all)
 	{
@@ -6216,6 +6216,7 @@ ping's bars and its number */
 #define BROWSER_LOCK_WIDTH 14
 /* (port_settings.py's BROWSER_PING_BARS) */
 #define BROWSER_PING_BARS_WIDTH 24
+#define BROWSER_PING_GAP 2
 
 /* a game's row (row_index: 0 to BROWSER_ROWS - 1) */
 static void browser_row_show(struct widget_instance *row_widget, short row_index, struct browser_row const *row,
@@ -6277,7 +6278,7 @@ static void browser_row_show(struct widget_instance *row_widget, short row_index
 	browser_ping_cell(row->ping_state, row->ping, text, NUMBEROF(text));
 	drawn = menu_text_box_fit(ping_ms, row->offline ? L"" : text, 0);
 	ui_widget_port_text_box_font(ping_ms, &x);
-	visible_set(ping, !row->offline && drawn + BROWSER_NAME_GAP + BROWSER_PING_BARS_WIDTH <= x);
+	visible_set(ping, !row->offline && drawn + BROWSER_PING_GAP + BROWSER_PING_BARS_WIDTH <= x);
 	if (ping)
 		ping->animation.current_frame_index = browser_ping_bars(browser_row_pings[row_index]);
 }
@@ -6400,9 +6401,27 @@ static void browser_header_show(struct widget_instance *list, short games, long 
 	struct widget_instance *screen = list;
 	wchar_t text[ROW_TEXT_LENGTH];
 
+	static short tab_shown = NONE;
+	struct widget_instance *strip = named(list, "browser_tabs", 0);
+
 	while (screen->parent)
 		screen = screen->parent;
-	menu_tabs_show(named(list, "browser_tabs", 0), browser_tab);
+	/* (a tab chosen by LB or RB takes the strip's focus) */
+	if (strip && tab_shown != browser_tab)
+	{
+		struct widget_instance *tab = strip->child;
+		short index;
+
+		for (index = 0; tab && index < browser_tab; index++)
+			tab = tab->next;
+		if (tab)
+		{
+			strip->focused_child = tab;
+			strip->parameters.list.selected_index = browser_tab;
+		}
+	}
+	tab_shown = browser_tab;
+	menu_tabs_show(strip, browser_tab);
 	browser_sort_headers_show(list);
 	usnprintf(text, NUMBEROF(text) - 1, L"%d %s    %ld %s", games, games == 1 ? L"GAME" : L"GAMES", players,
 		players == 1 ? L"PLAYER" : L"PLAYERS");
@@ -6514,7 +6533,7 @@ static void connect_failure_text(struct p2p_join_status const *status, wchar_t *
 	if (!status->online)
 	{
 		usnprintf(headline, CONNECT_HEADLINE_LENGTH - 1, L"INTERNET PLAY IS OFF");
-		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, L"Turn it on in Settings,\r\nNetwork Setup.");
+		usnprintf(detail, CONNECT_DETAIL_LENGTH - 1, L"Turn it on in Settings,\r\nOnline.");
 	}
 	else if (!status->brokers)
 	{
@@ -6998,8 +7017,7 @@ static void lobby_browser_update(struct widget_instance *list)
 			browser_status_text(&shown, text, NUMBEROF(text));
 		else
 		{
-			usnprintf(text, NUMBEROF(text) - 1, L"Every public game on the Internet, OpenH1 and Legacy: "
-				L"OpenH1's at their tick rate, Legacy ones at 30.");
+			usnprintf(text, NUMBEROF(text) - 1, L"Every public game on the Internet, OpenH1 and Legacy.");
 		}
 		text[NUMBEROF(text) - 1] = 0;
 		browser_panel_show(list, chosen < rows ? &shown : NULL, L"SERVER BROWSER", text);
@@ -7299,7 +7317,7 @@ static void browser_update(struct widget_instance *list)
 	{
 		usnprintf(text, NUMBEROF(text) - 1, multiplayer.mode == _multiplayer_mode_direct_link ?
 			L"Games you were invited to, by a link or on Discord." :
-			L"Games hosted on your Wi-Fi or local network, as they open.");
+			L"Games hosted on your Wi-Fi or local network.");
 		text[NUMBEROF(text) - 1] = 0;
 	}
 	browser_panel_show(list, chosen < rows ? &shown : NULL,
@@ -7777,7 +7795,7 @@ static void multiplayer_status_update(struct widget_instance *list)
 		if (!config_boolean("network.online"))
 		{
 			usnprintf(headline, NUMBEROF(headline) - 1, L"INTERNET PLAY IS OFF");
-			usnprintf(detail, NUMBEROF(detail) - 1, L"Turn it on in Settings,\r\nNetwork Setup.");
+			usnprintf(detail, NUMBEROF(detail) - 1, L"Turn it on in Settings,\r\nOnline.");
 		}
 		else if (!multiplayer_status.browsing)
 			usnprintf(headline, NUMBEROF(headline) - 1, L"PUBLIC GAMES ARE HIDDEN");
@@ -7815,7 +7833,7 @@ static void multiplayer_status_update(struct widget_instance *list)
 		if (!config_boolean("network.online"))
 		{
 			usnprintf(headline, NUMBEROF(headline) - 1, L"INTERNET PLAY IS OFF");
-			usnprintf(detail, NUMBEROF(detail) - 1, L"Turn it on in Settings,\r\nNetwork Setup.");
+			usnprintf(detail, NUMBEROF(detail) - 1, L"Turn it on in Settings,\r\nOnline.");
 		}
 		else if (p2p_nat_strict())
 		{
