@@ -26,6 +26,12 @@ fraction of the screen's pixels the game draws at */
 void host_app_background_wait(void);
 float host_app_render_scale(void);
 #endif
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
+/* port/macos/host_raw_mouse.m: the mouse's unaccelerated counts */
+#define HOST_RAW_MOUSE 1
+void host_raw_mouse_start(void);
+int host_raw_mouse_take(float *x, float *y);
+#endif
 
 #define HANDLE_COUNT 256
 
@@ -196,6 +202,10 @@ int host_sdl_set_relative_mouse(uint32_t window, int enabled)
 {
 	SDL_Window *object = host_sdl_handle_get(window, _handle_window);
 
+#ifdef HOST_RAW_MOUSE
+	if (enabled)
+		host_raw_mouse_start();
+#endif
 	return object ? SDL_SetWindowRelativeMouseMode(object, enabled != 0) : 0;
 }
 
@@ -215,7 +225,45 @@ int host_sdl_poll_event(void *event)
 	host_app_background_wait();
 #endif
 	if (!SDL_PollEvent(&host_event))
+	{
+#ifdef HOST_RAW_MOUSE
+		/* (the counts that came since the last motion, as one more, read as
+		late as the game reads its events: host_raw_mouse.m) */
+		SDL_Window *focus = SDL_GetMouseFocus();
+		float x, y;
+
+		if (!focus || !SDL_GetWindowRelativeMouseMode(focus) || !host_raw_mouse_take(&x, &y) ||
+			(x == 0.0f && y == 0.0f))
+			return 0;
+		SDL_zero(host_event);
+		host_event.type = SDL_EVENT_MOUSE_MOTION;
+		host_event.motion.timestamp = SDL_GetTicksNS();
+		host_event.motion.windowID = SDL_GetWindowID(focus);
+		host_event.motion.which = 1;
+		host_event.motion.state = SDL_GetMouseState(&host_event.motion.x, &host_event.motion.y);
+		host_event.motion.xrel = x;
+		host_event.motion.yrel = y;
+		memcpy(event, &host_event, sizeof(host_event));
+		return 1;
+#else
 		return 0;
+#endif
+	}
+#ifdef HOST_RAW_MOUSE
+	/* (captured, the mouse's motion is its own counts, not the system's
+	accelerated pointer's: host_raw_mouse.m) */
+	if (host_event.type == SDL_EVENT_MOUSE_MOTION && host_event.motion.which != SDL_TOUCH_MOUSEID)
+	{
+		SDL_Window *window = SDL_GetWindowFromID(host_event.motion.windowID);
+		float x, y;
+
+		if (window && SDL_GetWindowRelativeMouseMode(window) && host_raw_mouse_take(&x, &y))
+		{
+			host_event.motion.xrel = x;
+			host_event.motion.yrel = y;
+		}
+	}
+#endif
 	/* the layouts agree except for the pointers of text, drop and user
 	events, which the guest does not read */
 	memcpy(event, &host_event, sizeof(host_event));
