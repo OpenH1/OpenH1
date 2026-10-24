@@ -294,7 +294,8 @@ version is raised with every raise of the network version as well as with
 any change of their own: `HALO_PORT_STANDARD_BASE_VERSION` names the network
 version it was last raised for, and the build fails while the two differ.
 Protocol version 1 (on network version 38) agrees on the game's tick rate
-and carries it in the game record, advertisement and listing.
+and carries it in the game record, advertisement and listing; version 2
+sends each player's sub-steps at 60 and 120 (below, "Sub-step inputs").
 
 `port/linux/network_format.txt` records the wire format of the current
 version (`tools/network_format.py`): `test_linux_port.py` fails when the
@@ -513,10 +514,58 @@ How OpenH1 machines recognise each other:
   takes: on the host, the rate it took; on a client of an OpenH1 game, the
   rate in the record, if supported (otherwise 30); 30 in a Legacy game.
 
-In protocol version 1, inputs still go once a tick. The host relays each
-player's input for a tick, and remote players replay it across that tick's
-sub-steps. The game is not yet exact at 60 and 120. For that reason
-`network.sim_rate` defaults to 30.
+### Sub-step inputs
+
+At 60 and 120 a tick runs 2 or 4 sub-steps, and each local player's unit
+takes a new reading of the controller in every sub-step after the first: the
+held controls (crouch, jump, triggers, grenade), the movement, the trigger's
+pull and the facing (`player_control.c`). Every machine replays the other
+players from the input it is given, so the sub-steps go between the machines
+too (`port/linux/game/network_substeps.c`, protocol version 2):
+
+- A client sends its own players' sub-steps of the tick it has just run
+  with its input of that tick, in the same datagram
+  (`_distributed_message_player_substeps`, 120, unreliable). The record is
+  keyed by the client's tick and carries full precision: what the unit was
+  given in each later sub-step (its held controls, throttle and trigger, and
+  its facing if its aim turned).
+- The host's next tick that takes that input gives the player's unit the
+  same controls in the same sub-steps, before the units and bipeds move.
+  It takes a record only if the record is of the tick whose input the tick
+  took (`update_queues_distributed_input_key`, latched as the tick begins).
+  A press in a later sub-step is seen there, as on the client (a jump
+  launches at that sub-step's end: `bipeds.c`).
+- The host relays, to each client, the sub-steps its tick ran for the
+  players whose input it relays that tick
+  (`_distributed_message_relayed_substeps`, 121, unreliable, keyed by the
+  host's update). The encoding is as compact as the relayed input: angles
+  in 16 bits, the sticks of 127, the trigger of 255. Each client replays
+  them as the host does.
+- A player whose sub-steps changed nothing of what the tick gave the unit
+  is not sent. A machine that has no record (none sent, or lost) holds the
+  tick's input through the tick's sub-steps, as at 30.
+
+Neither message is sent in a game of one sub-step a tick (a Legacy game, or
+an OpenH1 game at 30), and every number in either is checked: the player
+(the sender's own, on the host), the count of sub-steps (the game's), and
+values finite and within a controller's reach.
+
+Checked with `net_compare` (bloodgulch, the scripted bot, 30 s, each copy
+hosting in turn). The host's copy of the client's player moves as the
+client moved it: 0.4% to 4.8% of the ticks apart at 60, 5.8% to 13% at 120.
+With the host's replay turned off (a build made for the test), 33% at 60 and
+39% at 120. The datagrams' bytes a second (`network test: bandwidth`), with
+one player on each machine:
+
+| Rate | Host to client | Client to host |
+| --- | --- | --- |
+| 30 | 8,246 | 3,330 |
+| 60 | 8,403 to 8,415 | 4,706 to 4,858 |
+| 120 | 8,535 to 9,294 | 4,706 to 4,858 |
+
+A client's record is 80 bytes whatever the rate. A relayed record is 2
+bytes plus 10 for each later sub-step (12 at 60, 32 at 120), sent only for
+a player whose sub-steps changed something.
 
 ## Joining a game in progress
 

@@ -141,6 +141,13 @@ enum
 	reliably, when it is ready and when they change */
 	_distributed_message_shield_effects = 91,
 
+	/* an OpenH1 game's sub-step inputs (network_substeps.c), at 60 and 120
+	only, numbered clear of the kinds upstream adds: a client's own players'
+	sub-steps of the tick just run, with its input (unreliable), and the
+	sub-steps the host's tick ran for the players it relays (unreliable) */
+	_distributed_message_player_substeps = 120,
+	_distributed_message_relayed_substeps = 121,
+
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
 

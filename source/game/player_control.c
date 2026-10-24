@@ -213,6 +213,7 @@ symbols in this file:
 #include "passenger_camera.h" /* port: port/linux/game/passenger_camera.c; after the limit2d alias above */
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
+#include "network_substeps.h" /* port: port/linux/game/network_substeps.c */
 #include "view_fov.h" /* port: port/linux/game/view_fov.c */
 
 /* ---------- constants */
@@ -2407,8 +2408,11 @@ The one-shot controls (the action and reload, the flashlight, equipment,
 the weapon and grenade switches and the zoom) stay the tick's: a frame's
 press reaches one tick, latched until it is let go (player_queues_new.c).
 Nothing is counted here (the autolevel's and the look acceleration's are the
-frame's). In a network game of other machines every tick has one sub-step,
-so nothing here runs, as in a game at 30. */
+frame's). A network game of other machines has one sub-step a tick, so
+nothing here runs, as in a game at 30, but for an OpenH1 game at 60 or 120:
+there each local player's sub-steps are read as here, and what each gave the
+unit goes to the other machines, which give the player's unit the same in
+the same sub-steps (network_substeps.c). */
 
 /* the unit controls a sub-step's reading changes */
 #define PLAYER_CONTROL_SUBSTEP_HELD_FLAGS ( \
@@ -2542,9 +2546,10 @@ static void player_control_substep_read(
 }
 
 /* a local player whose unit a sub-step's reading moves: the player, or NONE
-(a network game of other machines', none or one without a controller, input
-taken away; split screen, a network game of one machine, is this machine's
-alone: sim_rate_follows_setting) */
+(none or one without a controller, input taken away; split screen, a network
+game of one machine, is this machine's alone: sim_rate_follows_setting; a
+network game of other machines only an OpenH1 game of several sub-steps a
+tick, whose sub-steps go to the other machines: network_substeps_active) */
 static long player_control_substep_player_index(
 	short local_player_index)
 {
@@ -2552,7 +2557,7 @@ static long player_control_substep_player_index(
 	struct player_datum *player;
 	short gamepad_index;
 
-	if (!sim_rate_follows_setting() || player_index == NONE)
+	if ((!sim_rate_follows_setting() && !network_substeps_active()) || player_index == NONE)
 		return NONE;
 	player = player_get(player_index);
 	gamepad_index = player->local_player_index;
@@ -2606,6 +2611,7 @@ static void player_control_substep_player(
 	unsigned long changed;
 	short gamepad_index;
 	boolean first_of_frame;
+	boolean turned;
 	real pull;
 
 	substep->pressed_flags = 0;
@@ -2666,7 +2672,8 @@ static void player_control_substep_player(
 			sim_per_substep(reading.look.pitch - substep->frame.look.pitch));
 		player_control_angle_step_ticks = 1.f;
 	}
-	if (control->desired_angles.yaw != facing.yaw || control->desired_angles.pitch != facing.pitch)
+	turned = control->desired_angles.yaw != facing.yaw || control->desired_angles.pitch != facing.pitch;
+	if (turned)
 	{
 		real_vector3d aiming_vector;
 
@@ -2675,6 +2682,10 @@ static void player_control_substep_player(
 		unit->unit.desired_facing_vector = aiming_vector;
 		unit->unit.desired_looking_vector = aiming_vector;
 	}
+	/* (what the unit was given, for the other machines of an OpenH1 game:
+	network_substeps.c) */
+	network_substeps_local_given(player_index, player->unit_index, sim_substep_index(), sim_substep_count(),
+		&control->desired_angles, turned);
 	substep->given_angles = control->desired_angles;
 	substep->given_valid = TRUE;
 	substep->last = reading;
@@ -2705,6 +2716,12 @@ static void player_control_substep(
 			player_control_substep_player(local_player_index);
 		}
 	}
+	/* (an OpenH1 game's other players: their sub-steps as their machines
+	gave them, network_substeps.c) */
+	if (substep_index == 0)
+		network_substeps_tick_begun(substep_count);
+	else
+		network_substeps_replay(substep_index, substep_count);
 	return;
 }
 
@@ -2726,5 +2743,6 @@ unsigned long player_control_substep_pressed_flags(
 		if (substep->begun && substep->unit_index == unit_index)
 			return substep->pressed_flags;
 	}
-	return 0;
+	/* (another machine's player's, replayed: network_substeps.c) */
+	return network_substeps_pressed_flags(unit_index);
 }

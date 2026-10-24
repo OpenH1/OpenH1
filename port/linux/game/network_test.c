@@ -103,6 +103,7 @@ unsigned long system_milliseconds(void);
 void damage_kill_object_for_player(long object_index, long player_index);
 /* network_distributed.c's */
 void network_distributed_statistics(long *sent, long *received, long *corrections);
+void network_distributed_batch_bytes(long *to_host, long *to_clients, short *clients);
 void network_distributed_divergence(long *samples, long *apart, real *mean, real *largest);
 void network_distributed_item_statistics(long *creates, long *deletes, long *failures, long *removed);
 void network_damage_statistics(long *sent_reports, long *dealt_reports, long *rejected_reports, long *replayed_events);
@@ -442,6 +443,16 @@ static void network_test_log_players(
 			camera ? camera->position.x : 0.0f, camera ? camera->position.y : 0.0f, camera ? camera->position.z : 0.0f,
 			local_player_index == NONE ? 0L : (long)player_get(local_player_index)->respawn_timer,
 			divergence_samples, divergence_apart, divergence_mean, divergence_largest);
+		/* (the bytes of the second's datagrams, the per-tick stream: to the
+		host, and to the clients, each) */
+		{
+			long to_host, to_clients;
+			short clients;
+
+			network_distributed_batch_bytes(&to_host, &to_clients, &clients);
+			platform_log("network test: bandwidth to host %ld to clients %ld (%d clients, %ld each) bytes a second",
+				to_host, to_clients, (int)clients, clients ? to_clients / clients : 0L);
+		}
 	}
 }
 

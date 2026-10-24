@@ -971,7 +971,7 @@ static const struct config_setting config_settings[] =
 		"network.sim_rate picks, or \"legacy\", OpenCE's netcode at 30 ticks a\n"
 		"second, which OpenCE players join too. Read as the game is hosted\n"
 		"(\"standard\" is \"openh1\" too)." },
-	{ "network.sim_rate", _config_integer, "30", "HALO_NET_SIM_RATE", _environment_value, _platform_all,
+	{ "network.sim_rate", _config_integer, "60", "HALO_NET_SIM_RATE", _environment_value, _platform_all,
 		"Hosting an OpenH1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
 		"steps), which every machine of it takes as the game starts. A Legacy game\n"
 		"plays at 30." },
