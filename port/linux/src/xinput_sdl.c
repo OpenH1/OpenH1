@@ -41,6 +41,7 @@ drive the controller.
 #include "sdl_platform.h"
 #include "port_config.h"
 #include "touch_input.h"
+#include "mouse_sensitivity.h"
 /* port/linux/game/network_aim_assist.c */
 extern unsigned char network_aim_assist_block_mouse(void);
 #include "halo_keyboard.h"
@@ -129,9 +130,11 @@ static Uint64 touch_aimed_ms = 0;
 worn stick's drift */
 #define STICK_AIMING_DEFLECTION 8000
 
-/* (input.mouse_vertical_sensitivity, read with it) */
+/* (input.mouse_vertical_sensitivity, read with it: a multiplier of the
+horizontal, as CS2's m_pitch is of m_yaw) */
 static float vertical_sensitivity = 1.0f;
 
+/* input.mouse_sensitivity, in CS2's units (mouse_sensitivity.h) */
 static float mouse_sensitivity(void)
 {
 	static float sensitivity;
@@ -141,24 +144,25 @@ static float mouse_sensitivity(void)
 	{
 		read_at = config_changes();
 		sensitivity = (float)config_real("input.mouse_sensitivity");
-		if (sensitivity <= 0.0f)
-			sensitivity = 1.0f;
+		if (!(sensitivity > 0.0f))
+			sensitivity = (float)MOUSE_SENSITIVITY_DEFAULT;
 		vertical_sensitivity = (float)config_real("input.mouse_vertical_sensitivity");
-		if (vertical_sensitivity <= 0.0f)
-			vertical_sensitivity = sensitivity;
+		if (!(vertical_sensitivity > 0.0f))
+			vertical_sensitivity = 1.0f;
 	}
 	return sensitivity;
 }
 
-/* radians of yaw and pitch for the mouse motion since the last call; the
-game adds these to the facing change of the player on gamepad 0 */
+/* radians of yaw and pitch for the mouse motion since the last call: each
+count turns the view 0.022 degrees times the sensitivity, as CS2's does
+(mouse_sensitivity.h); the game adds these to the facing change of the
+player on gamepad 0, after its zoom has scaled them (view_fov.c's
+mouse_zoom_look_scale) */
 int halo_linux_mouse_look(short gamepad_index, float *yaw, float *pitch)
 {
-	/* radians per pixel of relative motion at sensitivity 1 */
-	const float scale = 0.0022f;
 	static int invert;
 	static unsigned long read_at = (unsigned long)-1;
-	float x, y;
+	float x, y, radians;
 
 	*yaw = 0.0f;
 	*pitch = 0.0f;
@@ -178,8 +182,9 @@ int halo_linux_mouse_look(short gamepad_index, float *yaw, float *pitch)
 	pthread_mutex_unlock(&mouse_lock);
 	if (x == 0.0f && y == 0.0f)
 		return FALSE;
-	*yaw = -x * scale * mouse_sensitivity();
-	*pitch = (invert ? y : -y) * scale * vertical_sensitivity;
+	radians = mouse_radians_per_count(mouse_sensitivity());
+	*yaw = -x * radians;
+	*pitch = (invert ? y : -y) * radians * vertical_sensitivity;
 	return TRUE;
 }
 

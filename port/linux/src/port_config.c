@@ -130,6 +130,12 @@ batteries */
 #endif
 /* (in the comment of each setting it chooses) */
 #define GRAPHICS_CHOOSES "\nCommented out, display.graphics chooses it."
+/* in input.mouse_sensitivity's comment: a file with it has the mouse's
+settings in CS2's units; one without, the older versions' (config_migrate_mouse) */
+#define CONFIG_MOUSE_MARK "Counter-Strike 2's"
+/* the older versions' input.mouse_sensitivity times this is CS2's: 0.0022
+radians a count over CS2's 0.022 degrees (port/linux/include/mouse_sensitivity.h) */
+#define CONFIG_MOUSE_FROM_OLD (0.0022 * 180.0 / 3.14159265358979323846 / 0.022)
 
 static const struct config_setting config_settings[] =
 {
@@ -703,8 +709,18 @@ static const struct config_setting config_settings[] =
 		"The touch controls' swipe aiming gets a controller's aim assist: the\n"
 		"aim slows over a target and follows a moving one. false: none, as a\n"
 		"mouse (the bullets' own autoaim stays)." },
-	{ "input.mouse_sensitivity", _config_real, "1.0", "HALO_MOUSE_SENSITIVITY", _environment_value, _platform_desktop,
-		"How far the view turns for the mouse's movement." },
+	{ "input.mouse_sensitivity", _config_real, "5.73", "HALO_MOUSE_SENSITIVITY", _environment_value, _platform_desktop,
+		"How far the view turns for the mouse's movement, on " CONFIG_MOUSE_MARK " scale:\n"
+		"0.022 degrees a count of the mouse times this, with no acceleration,\n"
+		"whatever the field of view or the frame rate. The same number as in\n"
+		"CS2 turns the same. (Older versions' scale, 0.0022 radians a count,\n"
+		"was converted once: times 5.7296.)" },
+	{ "input.zoom_sensitivity", _config_string, "\"cs2\"", "HALO_ZOOM_SENSITIVITY", _environment_value,
+		_platform_desktop,
+		"How the mouse turns while zoomed: \"cs2\", by the zoomed field of view\n"
+		"over the unzoomed one (CS2's zoom_sensitivity_ratio 1), at every zoom\n"
+		"of every weapon; \"halo\", by one over the zoom's magnification, as the\n"
+		"game turns. Controllers and the touch controls keep the game's." },
 	{ "input.playstation_kernel_driver", _config_boolean, "false", "HALO_PLAYSTATION_KERNEL_DRIVER",
 		_environment_value, _platform_desktop,
 		"Linux: a PlayStation controller (DualSense, DualShock 4) through the\n"
@@ -727,10 +743,11 @@ static const struct config_setting config_settings[] =
 		"slowed and dragged along by a target. The last of the mouse and the\n"
 		"right stick to move decides. The bullets' autoaim (bent toward the\n"
 		"target) stays either way." },
-	{ "input.mouse_vertical_sensitivity", _config_real, "0.0", "HALO_MOUSE_VERTICAL_SENSITIVITY", _environment_value,
+	{ "input.mouse_vertical_sensitivity", _config_real, "1.0", "HALO_MOUSE_VERTICAL_SENSITIVITY", _environment_value,
 		_platform_desktop,
-		"How far the view turns up and down for the mouse's movement; 0 for the\n"
-		"same as input.mouse_sensitivity." },
+		"How far the view turns up and down for the mouse's movement, times\n"
+		"input.mouse_sensitivity (as CS2's m_pitch is of m_yaw): 1 the same as\n"
+		"side to side, 0.5 half as far." },
 
 	{ "input.button_prompts", _config_string, "\"auto\"", "HALO_BUTTON_PROMPTS", _environment_value, _platform_all,
 		"The HUD's button prompts (\"Hold [X] to pick up\", \"Press [flashlight]\"):\n"
@@ -1876,6 +1893,163 @@ static char *config_migrate(const char *text, toml_datum_t table)
 	return result;
 }
 
+/* whether the line (after spaces) is a commented default, "# key = ..." */
+static int config_line_commented_default(const char *line, const char *end)
+{
+	const char *key;
+
+	while (line < end && (*line == ' ' || *line == '\t'))
+		line++;
+	if (line >= end || *line != '#')
+		return 0;
+	for (line++; line < end && (*line == ' ' || *line == '\t'); line++)
+	{
+	}
+	for (key = line; line < end && (isalnum((unsigned char)*line) || *line == '_'); line++)
+	{
+	}
+	if (line == key)
+		return 0;
+	while (line < end && (*line == ' ' || *line == '\t'))
+		line++;
+	return line < end && *line == '=';
+}
+
+/* text with the setting's block (the comment lines just above its line,
+and its line or its commented default) in place of the one it has: its
+comment as this version writes it, and value (NULL: its commented
+default). NULL if the file has not the setting, or out of memory */
+static char *config_replace_setting(const char *text, const struct config_setting *setting, const char *value)
+{
+	const char *dot = strchr(setting->name, '.');
+	struct config_text block = { NULL, 0, 0 };
+	struct config_text out = { NULL, 0, 0 };
+	const char *line, *start, *end;
+	char section[64];
+	char *before;
+
+	if (!dot)
+		return NULL;
+	snprintf(section, sizeof(section), "%.*s", (int)(dot - setting->name), setting->name);
+	line = config_find_line(text, section, dot + 1, 0);
+	if (!line)
+		line = config_find_line(text, section, dot + 1, 1);
+	if (!line)
+		return NULL;
+	end = line + strcspn(line, "\n");
+	if (*end)
+		end++;
+	/* (back over the comment above it, to a blank line, a section, a
+	value or another setting's commented default) */
+	for (start = line; start > text;)
+	{
+		const char *previous_end = start - 1;
+		const char *previous = previous_end;
+		const char *first;
+
+		while (previous > text && previous[-1] != '\n')
+			previous--;
+		for (first = previous; first < previous_end && (*first == ' ' || *first == '\t'); first++)
+		{
+		}
+		if (first >= previous_end || *first != '#' || config_line_commented_default(previous, previous_end))
+			break;
+		start = previous;
+	}
+	config_append_setting(&block, setting);
+	if (!block.buffer)
+		return NULL;
+	if (value)
+	{
+		/* (its commented default's line, the last, made its value) */
+		char *last;
+
+		block.buffer[--block.length] = 0;
+		last = strrchr(block.buffer, '\n');
+		if (last)
+		{
+			char line_text[300];
+
+			block.length = (size_t)(last + 1 - block.buffer);
+			block.buffer[block.length] = 0;
+			snprintf(line_text, sizeof(line_text), "%s = %s\n", dot + 1, value);
+			config_append(&block, line_text);
+		}
+	}
+	before = config_copy(text, (size_t)(start - text));
+	if (before)
+		config_append(&out, before);
+	free(before);
+	/* (without the blank line config_append_setting starts with) */
+	config_append(&out, block.buffer + 1);
+	config_append(&out, end);
+	free(block.buffer);
+	return out.buffer;
+}
+
+/* a number as config.toml has a real: at most four decimals, and a point */
+static void config_real_text(double number, char *text, size_t size)
+{
+	size_t length;
+
+	snprintf(text, size, "%.4f", number);
+	length = strlen(text);
+	while (length > 2 && text[length - 1] == '0' && text[length - 2] != '.')
+		text[--length] = 0;
+}
+
+/* a file whose mouse settings are the older versions' (without
+CONFIG_MOUSE_MARK): input.mouse_sensitivity, a multiplier of 0.0022
+radians a count, in CS2's units (times CONFIG_MOUSE_FROM_OLD), and
+input.mouse_vertical_sensitivity, the same scale as it (0: the same), made
+a multiplier of it; each with this version's comment, which has the mark,
+so that it is done once. A setting the player had not set stays at its
+default (5.73, the old default's turn). Returns the new text, or NULL */
+static char *config_migrate_mouse(const char *text, toml_datum_t table)
+{
+	long horizontal_index = config_setting_index("input.mouse_sensitivity");
+	long vertical_index = config_setting_index("input.mouse_vertical_sensitivity");
+	toml_datum_t horizontal = toml_seek(table, "input.mouse_sensitivity");
+	toml_datum_t vertical = toml_seek(table, "input.mouse_vertical_sensitivity");
+	double old_horizontal = 1.0, old_vertical = 0.0;
+	int horizontal_set = 0, vertical_set = 0;
+	char value[64];
+	char *result, *updated;
+
+	if (strstr(text, CONFIG_MOUSE_MARK) || horizontal_index < 0 || vertical_index < 0 ||
+		!(config_settings[horizontal_index].platforms & CONFIG_PLATFORM))
+		return NULL;
+	if (horizontal.type == TOML_FP64 || horizontal.type == TOML_INT64)
+	{
+		old_horizontal = horizontal.type == TOML_FP64 ? horizontal.u.fp64 : (double)horizontal.u.int64;
+		horizontal_set = old_horizontal > 0.0;
+		if (!horizontal_set)
+			old_horizontal = 1.0;
+	}
+	if (vertical.type == TOML_FP64 || vertical.type == TOML_INT64)
+	{
+		old_vertical = vertical.type == TOML_FP64 ? vertical.u.fp64 : (double)vertical.u.int64;
+		vertical_set = old_vertical > 0.0;
+	}
+	config_real_text(old_horizontal * CONFIG_MOUSE_FROM_OLD, value, sizeof(value));
+	result = config_replace_setting(text, &config_settings[horizontal_index], horizontal_set ? value : NULL);
+	if (result && horizontal_set)
+		platform_log("settings: input.mouse_sensitivity %g is now %s, on CS2's scale (the same turn)", old_horizontal,
+			value);
+	config_real_text(old_vertical / old_horizontal, value, sizeof(value));
+	updated = config_replace_setting(result ? result : text, &config_settings[vertical_index],
+		vertical_set ? value : NULL);
+	if (updated)
+	{
+		free(result);
+		result = updated;
+		if (vertical_set)
+			platform_log("settings: input.mouse_vertical_sensitivity %g is now %s, times input.mouse_sensitivity",
+				old_vertical, value);
+	}
+	return result;
+}
+
 /* the settings of this build that text (the file, parsed as table) lacks,
 added to it in their sections, keeping the rest as it is: a newer version's
 settings appear in an older file. Returns the new text, or NULL if nothing
@@ -2519,6 +2693,7 @@ static const struct
 	{ "audio.voice_chat", { "push_to_talk", "open_mic", "off", NULL }, NULL },
 	{ "input.touch_controls", { "auto", "on", "off", NULL }, NULL },
 	{ "input.button_prompts", { "auto", "controller", "keyboard", NULL }, NULL },
+	{ "input.zoom_sensitivity", { "cs2", "halo", NULL }, "cs2" },
 	{ "game.console_log", { "important", "all", "none", NULL }, NULL },
 	{ "game.language", { "", "ja", "de", "fr", "es", "it", NULL }, NULL },
 	{ "network.text_chat", { "on", "links", "off", NULL }, NULL },
@@ -2642,6 +2817,20 @@ static void config_load(void)
 			free(text);
 			text = migrated;
 			result = toml_parse(text, (int)strlen(text));
+		}
+		/* (the mouse's settings in CS2's units, once) */
+		if (result.ok && !skipped)
+		{
+			char *mouse = config_migrate_mouse(text, result.toptab);
+
+			if (mouse)
+			{
+				toml_free(result);
+				free(text);
+				text = mouse;
+				result = toml_parse(text, (int)strlen(text));
+				migrated = text;
+			}
 		}
 		if (result.ok)
 		{

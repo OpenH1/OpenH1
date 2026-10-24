@@ -17,6 +17,13 @@ real render_fov_reticle_scale(short local_player_index);
 /* the view's own vertical angle when display.fov widened it, else 0 */
 real render_fov_authored_vertical(short local_player_index);
 
+/* what the unit's zoom multiplies the mouse's turn by (input.zoom_sensitivity,
+port/linux/include/mouse_sensitivity.h): "cs2", the zoomed field of view
+over the unzoomed one, each as the view is drawn; "halo", the game's one
+over the magnification. 1 unzoomed. The mouse's alone: the sticks, the
+touch controls and VR keep the game's scaling */
+real mouse_zoom_look_scale(short local_player_index, long unit_index, short zoom_level);
+
 /* the first-person weapon's projection (display.viewmodel_fov) around its
 passes: balanced and nestable, the current local render view only */
 void viewmodel_projection_begin(void);
