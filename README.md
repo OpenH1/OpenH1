@@ -145,7 +145,8 @@ so players of the two versions can play together.
    with a controller, the keyboard or the mouse. This works in the Steam
    Deck's Game Mode and needs no file picker. On Windows, select it in the
    file picker (a disc image next to `halo.exe` is used without one). The
-   macOS app asks for the maps folder copied from the disc instead.
+   macOS app's open panel takes the disc image or the maps folder copied
+   from the disc.
 3. The game extracts the `maps/` folder. Then the game starts.
 
 The `maps/` folder holds the Xbox maps only. If it holds Halo PC's maps
@@ -154,6 +155,9 @@ so and stops: Custom Edition maps go in `custom_maps/`, beside `maps/`.
 
 On Linux, the game puts `maps/` in the folder of the release (next to
 `bin/`). On Windows, the game puts `maps/` next to the executable. On
+macOS, a disc image's `maps/` goes in
+`~/Library/Application Support/OpenH1`, and a maps folder chosen instead
+stays where it is. On
 Android, copy the disc image to the phone first. The app puts `maps/` in its
 data folder. Refer to [port/android/README.md](port/android/README.md). On
 the web, the page copies `maps/` out of the disc image into the browser's

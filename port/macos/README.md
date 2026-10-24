@@ -34,8 +34,8 @@ maps and the campaign. It was tested on an Apple A18 Pro with macOS 27.
 ## Start the game
 
 Open `build/macos/OpenH1.app` (from Finder, or `open build/macos/OpenH1.app`).
-The first time, it asks for the maps folder of the Xbox game (refer to
-"The app").
+The first time, it asks for the disc image or the maps folder of the Xbox
+game (refer to "The app").
 
 For development, the executable runs without the app as on Linux:
 
@@ -99,15 +99,23 @@ a Mac app does, before the game starts:
   `HALO_DATA_ROOT` and `HALO_SAVE_ROOT`, and `paths.data` and `paths.saves`
   in `config.toml`, still choose other folders.
 - **The maps.** The players supply them. Without a maps folder, an open
-  panel asks for the Xbox game's (a short explanation in it). The folder is
-  checked: `ui.map` must be an Xbox cache file (the PC version's and Custom
-  Edition's are refused, with the reason), and a folder that lacks some of
-  the disc's 23 maps can be used once the player agrees. It is kept as a
+  panel asks for the Xbox game's disc image or its maps folder (a short
+  explanation in it). It enables folders and, of the files, disc images
+  (`.iso` or `.xiso` in any case, as `halo1.xiso.iso`). A disc image's maps
+  folder is extracted by `port/linux/src/xiso.c` (the desktop builds' and the
+  iOS app's extractor, built into the host: `shared_extra` in
+  `tools/macos_build.py`) into the data root's `maps`, a folder of its own
+  (no bookmark, no link), through `maps.partial`, with a window showing the
+  copy; an image that is not one, or has no maps, is refused with xiso.c's
+  reason. Either is checked: `ui.map` must be an Xbox cache file (the PC
+  version's and Custom Edition's are refused, with the reason), and maps
+  that lack some of the disc's 23 can be used once the player agrees. A
+  folder is kept as a
   bookmark (`maps.bookmark`), which finds the folder again when it is moved
   or renamed, and the data root's `maps` is a symbolic link to it, made
   again at each start. A `maps` folder of the data root's own (not a link)
   is used as it is. The panel's tests:
-  `HALO_MAPS_PANEL_ANSWER=<folder>;<folder>...` (or `cancel`) answers each
+  `HALO_MAPS_PANEL_ANSWER=<folder or image>;...` (or `cancel`) answers each
   showing of the panel with the next one, and each alert with its first
   button.
 - **The window.** Its place and size, and whether it was fullscreen, are
