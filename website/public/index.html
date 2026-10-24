@@ -262,22 +262,38 @@ h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stret
 .keys { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 20px 0 0; padding: 0; list-style: none; color: var(--soft); font-size: 14px; }
 .keys li { display: flex; align-items: center; gap: 8px; }
 .keys li::before { content: ""; width: 12px; height: 12px; border-radius: 3px; background: var(--c); }
-@media (max-width: 560px) {
-  .race-grid { grid-template-columns: 1fr; grid-template-rows: none; row-gap: 8px; }
-  .lane-name { display: none; }
-  .track, .axis { grid-column: 1; grid-row: auto; }
-  .lane { height: 150px; }
-  .lane .path, .lane .dot, .lane .wait { top: 40px; }
-  .lane .scr { top: auto; bottom: 10px; left: 10px; width: 52%; }
-  .lane .arr, .lane.old .arr { top: auto; bottom: 12px; left: calc(52% + 22px); right: auto; transform: none; text-align: left; white-space: normal; }
-  .bracket { top: 158px; }
-  .lane::before { display: block; left: 26px; }
+@media (max-width: 820px) {
+  .race-big { font-size: clamp(26px, 7.2vw, 46px); line-height: 1; }
+  .race-top { margin-bottom: 8px; }
+  .race-grid { display: block; margin-top: 0; }
+  .lane-name, .axis, .click::before { display: none; }
+  .track { padding-top: 46px; }
+  .click { top: 6px; bottom: auto; left: 16px; height: 30px; }
+  .click svg { top: 2px; }
+  .click i { top: -6px; }
+  .click b { top: 6px; }
+  .lane { height: auto; padding: 74px 16px 16px; border-radius: 8px; background: rgba(238, 244, 234, 0.015); }
+  .lane.old { padding-top: 104px; }
+  .lane.new { margin-top: 16px; }
+  .lane::before { display: block; left: 16px; top: 16px; font-size: 12px; color: var(--soft); }
   .lane.new::before { color: var(--green); }
-  .race-grid { margin-top: 40px; row-gap: 0; }
-  .lane .arr { font-size: 9px; letter-spacing: 0.06em; }
-  .lane .arr b { font-size: 15px; }
-  .lane .win { top: 6px; right: 8px; font-size: 10px; }
-  .axis { margin-top: 6px; }
+  .lane .win { top: 12px; right: 16px; }
+  .lane .path { left: 16px; right: 16px; top: 50px; width: auto; height: 8px; margin: 0; border: 0; border-radius: 4px; opacity: 1; background: repeating-linear-gradient(90deg, rgba(238, 244, 234, 0.22) 0 1px, transparent 1px var(--step)), rgba(238, 244, 234, 0.06); }
+  .lane .path::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: calc(min(var(--t), var(--f)) / 60 * 100%); border-radius: 4px; background: var(--c); opacity: .55; }
+  .lane .dot { top: 54px; left: calc(16px + min(var(--t), var(--f)) / 60 * (100% - 32px)); width: 16px; height: 16px; margin: -8px 0 0 -8px; }
+  .lane .wait { top: 16px; left: auto; right: 16px; transform: none; font-size: 11px; }
+  .bracket { top: 66px; left: calc(16px + 5.9 / 60 * (100% - 32px)); width: calc(max(0, min(var(--t), 47.7) - 5.9) / 60 * (100% - 32px)); }
+  .bracket b { top: 14px; }
+  .lane .scr { position: relative; top: auto; left: auto; display: block; width: 100%; max-width: 520px; }
+  .lane .arr, .lane.old .arr { position: static; transform: none; margin-top: 10px; text-align: left; white-space: normal; font-size: 10px; letter-spacing: 0.05em; }
+  .lane .arr b { display: inline; margin-right: 8px; font-size: 20px; }
+}
+@media (min-width: 561px) and (max-width: 820px) {
+  .lane .scr { display: inline-block; vertical-align: bottom; width: 360px; }
+  .lane .arr, .lane.old .arr { display: inline-block; vertical-align: bottom; margin: 0 0 4px 16px; font-size: 11px; }
+  .lane .arr b { display: block; margin: 0 0 4px; font-size: 26px; }
+}
+@media (max-width: 560px) {
   .feel { grid-template-columns: 1fr 1fr; gap: 8px; }
   .pane { aspect-ratio: 4 / 5; }
   .pane svg { width: 62%; }
@@ -646,8 +662,7 @@ footer .legal a { color: var(--soft); }
           <span class="lane-name old">Original<small>30 ticks a second</small></span>
           <span class="lane-name new">OpenH1 120 Tick<small>120 steps a second</small></span>
           <div class="track">
-            <div class="lane old" data-name="Original"><span class="path"></span><span class="dot"></span><span class="wait mono">still waiting…</span><span class="scr"><img src="media/latency-pistol-idle.webp" alt="" width="640" height="360" loading="lazy" decoding="async"><img src="media/latency-pistol-fire.webp" alt="" width="640" height="360" loading="lazy" decoding="async"></span><span class="arr"><b>48 ms</b>Your shot shows on screen</span></div>
-            <div class="bracket"><b>42 ms you'd be waiting</b></div>
+            <div class="lane old" data-name="Original"><span class="path"></span><span class="dot"></span><div class="bracket"><b>42 ms you'd be waiting</b></div><span class="wait mono">still waiting…</span><span class="scr"><img src="media/latency-pistol-idle.webp" alt="" width="640" height="360" loading="lazy" decoding="async"><img src="media/latency-pistol-fire.webp" alt="" width="640" height="360" loading="lazy" decoding="async"></span><span class="arr"><b>48 ms</b>Your shot shows on screen</span></div>
             <div class="lane new" data-name="OpenH1 120 Tick"><span class="path"></span><span class="dot"></span><span class="scr"><img src="media/latency-pistol-idle.webp" alt="" width="640" height="360" loading="lazy" decoding="async"><img src="media/latency-pistol-fire.webp" alt="" width="640" height="360" loading="lazy" decoding="async"></span><span class="arr"><b>6 ms</b>Your shot shows on screen</span><b class="win">✓ Faster</b></div>
             <div class="click"><i></i><svg viewBox="0 0 24 30"><path d="M2 2v22l6-6 4 10 4-2-4-9h8z" fill="#eef4ea" stroke="#040504" stroke-width="1.5" stroke-linejoin="round"/></svg><b class="mono">You click</b></div>
           </div>
