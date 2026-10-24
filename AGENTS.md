@@ -227,6 +227,8 @@ python -m pytest -q tools/test_net_compare.py               # net_compare.py's j
 python -m pytest -q tools/test_determinism_compare.py       # determinism_compare.py's reading of the determinism logs
 python tools/net_compare.py --a build/linux_x86_64/halo --b <other build> --data <game data> --swap
                                                             # two builds in one network game, in step (retail maps: local only)
+tools/wine_bench.sh run                                     # a Windows build under Wine, headless, on a Linux GPU
+                                                            # (fetch, shot, logs: port/windows/README.md)
 ```
 
 `tools/harness/README.md` explains how to add an asset-free test: the code

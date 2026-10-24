@@ -221,6 +221,79 @@ build, set the `HALO_CRASH_REPORTS_ANY_BUILD` environment variable.
 The crash reports also include the crashes of `abort()` and of an invalid
 argument to a function of the C runtime.
 
+## Testing under Wine on Linux
+
+`tools/wine_bench.sh` runs a Windows build under Wine on a Linux computer
+with a GPU. It can start the game and play a level, draw it with the GPU's
+driver, collect the logs and take shots, all without a Windows machine. It
+needs Wine (with winevulkan, as Wine has had for years), the GPU's OpenGL
+and Vulkan drivers, gamescope or KWin for the headless display, `unzip`,
+`curl`, `python3`, and `gh` for CI artifacts. It also needs game data: a
+`maps` folder, `~/halo-x86-maps/maps` by default (`OPENH1_BENCH_MAPS`).
+
+```sh
+tools/wine_bench.sh setup               # the Wine prefix and folders, in ~/openh1-wine (OPENH1_BENCH)
+tools/wine_bench.sh fetch               # the latest release's OpenH1-Windows.zip
+tools/wine_bench.sh fetch build-510     # a release by its tag (--debug: OpenH1-Windows-debug.zip)
+tools/wine_bench.sh fetch 199           # a pull request's halo-windows-debug artifact (gh)
+tools/wine_bench.sh fetch run:<run id>  # a workflow run's; or a path to a zip or a folder
+tools/wine_bench.sh run                 # 30 s of bots on Blood Gulch, headless; then the frame rate
+tools/wine_bench.sh run --map ratrace --bots 3 --seconds 60 HALO_INTERPOLATION=false
+tools/wine_bench.sh run --visible       # in a window on the computer's own display, at the menus
+tools/wine_bench.sh shot --every 600 --max 6   # a frame every 600, to the run's shots/
+tools/wine_bench.sh logs                # the last run's debug.txt, halo.log, frame rate and Wine's errors
+tools/wine_bench.sh doctor              # Wine, the GPU, OpenGL in the headless display, the builds
+```
+
+- The last build fetched is the current one, and `run --build <name>`
+  runs another. The builds are in `~/openh1-wine/builds`.
+- Each run gets its own folder, `~/openh1-wine/runs/<date>-<build>`.
+  The folder is the run's data root: `maps/` is linked to the game data,
+  and the folder also holds the run's `debug.txt`, its `wine.log` (the
+  game's output and Wine's, timestamped), `environment.txt`, `halo.log`
+  (from a release build) and `shots/`. `runs/last` is the newest run.
+- A run without `--visible` uses a display of its own that nobody sees:
+  gamescope's headless backend (or KWin's virtual one, with
+  `OPENH1_BENCH_DISPLAY=kwin`), drawn by the GPU. The display gets its own
+  D-Bus and settings folder, so it does not touch the desktop session.
+  The run plays a local game with bots (`debug.network_test`
+  `local:<map>:slayer`, `bots.count`) with vsync off, silent sound,
+  system link on the loopback, and no internet play, updates, crash
+  reports or clipboard. When `debug.exit_after` ends it, the bench prints
+  the renderer, the frame rate while playing (from `debug.gpu_stats`'
+  line every 60 frames) and Wine's errors. With OpenGL, the headless
+  display refreshes at `--refresh` Hz (1000 by default), and its refresh
+  limits the frame rate even with vsync off.
+- `VAR=value` gives a run a setting's variable (`HALO_*`, as in the
+  settings table of [port/linux/README.md](../linux/README.md)) or one of
+  Wine's (`WINEDEBUG=+wgl`), over the bench's own. The words after `--`
+  go to `halo.exe` as its arguments.
+- `shot` saves frames (`debug.screenshot_every`) and keeps at most
+  `--max` of them, spread over the run. They show the game's content:
+  keep them on the computer, out of the repository and out of public
+  places, as with the maps.
+- The prefix uses Wine's GLX (`UseEGL` = `N`). With Wine 11's EGL, its
+  default on X11, SDL finds no pixel format for the window on NVIDIA's
+  driver, and the game runs without a window.
+- Only one run at a time: runs share the prefix, and each run stops the
+  prefix's Wine processes when it ends.
+
+Wine is not Windows. A run under Wine shows that the game starts, plays
+and draws with a real GPU driver, and it gives the logs and shots to
+compare with the Linux builds. It does not show these:
+
+- The drivers on Windows. Wine passes OpenGL and Vulkan to the Linux
+  driver, which differs from the same GPU's Windows driver in its
+  behaviour, its bugs and its frame pacing. Measure frame rate and pacing
+  on Windows.
+- Windows itself: its memory layout (the DLLs, overlays and security
+  programs in the low 4 GB), its exception dispatch and stack limits, and
+  minidumps.
+- Microsoft Defender, SmartScreen and the Mark of the Web, the unsigned
+  executable, Scoop, and the updater replacing a real install.
+
+Check these on a Windows computer before a release.
+
 ## Limits
 
 - Bink video is not available. The game skips the movies.
