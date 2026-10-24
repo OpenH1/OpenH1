@@ -1322,7 +1322,9 @@ player's biped or the AI's (an actor's, or one of a swarm's: the AI decides
 on the tick, its body moves in the sub-steps, bipeds.c), a vehicle a player
 drives (vehicle_takes_substeps), a projectile, an item loose in the world
 (thrown, dropped); each one's own, never a thing carried, which goes where
-its carrier does */
+its carrier does. In a mixed game an OpenCE player's biped, the vehicle they
+drive and their projectiles are not: they move once a tick, as on the
+player's own machine (port/linux/game/network_standard.c) */
 static boolean object_lane_micro_candidate(
 	long root_index,
 	short type)
@@ -1342,6 +1344,9 @@ static boolean object_lane_micro_candidate(
 	case _object_type_vehicle:
 		return vehicle_takes_substeps(root_index);
 	case _object_type_projectile:
+		/* (an OpenCE player's shot or grenade in a mixed game flies once a
+		tick, as on their own machine: network_standard.c) */
+		return !network_standard_player_is_opence(object_get(root_index)->object.owner_player_index);
 	case _object_type_weapon:
 	case _object_type_equipment:
 	case _object_type_garbage:

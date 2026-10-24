@@ -1303,6 +1303,8 @@ static __inline real compute_offset_coordinate(
 	real delta_per_second);
 static short get_icon_type(
 	wchar_t const *string);
+static boolean ui_mouse_menus_active(
+	void);
 static void render_state_text(
 	rectangle2d *bounds,
 	rectangle2d *cursor_bounds,
@@ -4132,6 +4134,36 @@ static void render_state_bitmap(
 	return;
 }
 
+/* port: the key the keyboard presses a controller button of the menus
+with (port/linux/src/xinput_sdl.c's keyboard_gamepad, the controller the
+keyboard is in the menus): A as Enter (or Space), B as Esc (or Backspace),
+X as E (the server browsers' sort), Y as F (their favorite), LB and RB (the
+white and black buttons, Settings' tabs) as Q and E, back as F1; NULL for
+the others (the D-pad, which the arrow keys press, Start, the triggers and
+the sticks), drawn as the controller's */
+static char const *ui_widget_port_menu_key(
+	short icon_type)
+{
+	switch (icon_type)
+	{
+	case _icon_a_button:
+		return "Enter";
+	case _icon_b_button:
+		return "Esc";
+	case _icon_x_button:
+	case _icon_black_button:
+		return "E";
+	case _icon_y_button:
+		return "F";
+	case _icon_white_button:
+		return "Q";
+	case _icon_back_button:
+		return "F1";
+	default:
+		return NULL;
+	}
+}
+
 void draw_string_and_hack_in_icons(
 	rectangle2d *bounds,
 	rectangle2d *clip,
@@ -4189,17 +4221,32 @@ void draw_string_and_hack_in_icons(
 			/* port: a game control's key for the keyboard and mouse
 			(input.button_prompts) */
 			draw_string_get_color(&key_color);
-			/* port: the menus' LB and RB (Settings' tabs) as their keys, Q
-			and E, Y (the server browsers' favorite) as F, and X (their
-			sort) as E (port/linux/src/xinput_sdl.c's menu keys), while the
-			keyboard and mouse play */
-			if ((icon_type == _icon_white_button || icon_type == _icon_black_button ||
-					icon_type == _icon_y_button || icon_type == _icon_x_button) &&
-				hud_key_prompt_draw_key(icon_type == _icon_white_button ? "Q" :
-					icon_type == _icon_y_button ? "F" : "E", bounds, &cursor_bounds,
-					real_argb_color_to_pixel32(&key_color)))
+			/* port: a controller button as its key while the keyboard and
+			mouse play: where the keyboard drives the menus (their screens,
+			and the scores after a game, whose A picks the next game and B
+			quits), the menus' key for it (ui_widget_port_menu_key); in game,
+			the key of the control the player's profile puts on it */
+			if (icon_type <= _icon_right_thumb)
 			{
-				continue;
+				boolean menus = ui_mouse_menus_active();
+				char const *menu_key = menus ? ui_widget_port_menu_key(icon_type) : NULL;
+
+				if (menu_key &&
+					hud_key_prompt_draw_key(menu_key, bounds, &cursor_bounds, real_argb_color_to_pixel32(&key_color)))
+				{
+					continue;
+				}
+				if (!menus &&
+					hud_key_prompt_draw(
+						local_player_index_for_draw_string_and_hack_in_icons,
+						NONE,
+						icon_type,
+						bounds,
+						&cursor_bounds,
+						real_argb_color_to_pixel32(&key_color)))
+				{
+					continue;
+				}
 			}
 			if (icon_type >= _icon_action && icon_type <= _icon_zoom &&
 				hud_key_prompt_draw(

@@ -39,6 +39,23 @@ static boolean network_standard_player_is_opence(long player_index)
 	return player_index != NONE && player_index == opence_player;
 }
 
+/* the fake object (a projectile's owner) */
+struct object_datum
+{
+	struct
+	{
+		long owner_player_index;
+	} object;
+};
+
+static struct object_datum fake_object;
+
+static struct object_datum *object_get(long index)
+{
+	(void)index;
+	return &fake_object;
+}
+
 static struct unit_datum *unit_get(long index)
 {
 	(void)index;
@@ -158,6 +175,14 @@ int main(int argc, char **argv)
 		fake_unit.unit.player_index = NONE;
 		fake_unit.unit.actor_index = 0x10002;
 		CHECK(!object_lane_micro_candidate(1, _object_type_vehicle), "a vehicle of the micro lane");
+		/* (a projectile in the sub-steps, but an OpenCE player's, on the tick
+		as on their machine) */
+		fake_object.object.owner_player_index = NONE;
+		CHECK(object_lane_micro_candidate(1, _object_type_projectile), "nobody's projectile on the tick");
+		fake_object.object.owner_player_index = 0x50006;
+		CHECK(object_lane_micro_candidate(1, _object_type_projectile), "an OpenH1 player's projectile on the tick");
+		fake_object.object.owner_player_index = 0x30004;
+		CHECK(!object_lane_micro_candidate(1, _object_type_projectile), "an OpenCE player's projectile in the sub-steps");
 	}
 	else
 	{
