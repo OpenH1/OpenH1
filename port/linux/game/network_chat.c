@@ -55,7 +55,8 @@ in either case), which then sends no line further than the host till
 the minutes are up (or the host unmutes it) and is told for how long; every
 machine is told of each mute and unmute, a line of the host's alone in the
 chat (_chat_line_notice_bit). A client's /mute is not sent: only the host
-mutes.
+mutes. The host's welcome to OpenCE players is a notice too
+(network_welcome.c), which an OpenH1 machine does not show.
 */
 
 #include "cseries.h"
@@ -1277,6 +1278,14 @@ static void chat_host_notice(
 	chat_add_notice(text);
 }
 
+void network_chat_host_notice(
+	long machine_index,
+	char const *text)
+{
+	if (chat_host() && machine_index != NONE)
+		chat_host_notice(machine_index, text);
+}
+
 /* (the host) a player's name muted for everyone, their lines and their
 voice (network_voice.c), for minutes, every machine told; FALSE (said to the
 host alone) when every mute is held */
@@ -1483,6 +1492,13 @@ void network_chat_handle_down(
 		return;
 	if (TEST_FLAG(line.flags, _chat_line_notice_bit))
 	{
+		/* (but the host's welcome to OpenCE players: this machine has
+		OpenH1, network_welcome.c) */
+		if (network_welcome_line(text))
+		{
+			error(_error_log, "chat: the host's welcome to OpenCE players, not shown");
+			return;
+		}
 		chat_add_notice(text);
 		return;
 	}

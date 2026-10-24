@@ -3855,6 +3855,7 @@ void network_distributed_new_game(
 	network_aim_assist_reset();
 	network_shield_effects_reset();
 	network_votekick_new_game();
+	network_welcome_new_game();
 	network_substeps_new_game();
 }
 
@@ -3915,6 +3916,7 @@ void network_distributed_tick(
 		if (game_time_get() % GAME_STATE_INTERVAL_TICKS == 0)
 			profile_scope(distributed_tick_send_game_state_section, distributed_send_game_state(NONE);)
 		network_votekick_host_tick();
+		network_welcome_host_tick();
 	}
 	else if (connection == _game_connection_network_client)
 	{
@@ -4876,6 +4878,8 @@ void network_distributed_handle_message(
 		{
 			distributed_send_all_statistics(machine_index);
 			distributed_send_game_state(machine_index);
+			/* (and, an OpenCE player's machine, the host's welcome) */
+			network_welcome_machine_loaded(machine_index);
 		}
 		break;
 	}

@@ -523,6 +523,20 @@ How OpenH1 machines recognise each other:
   takes: on the host, the rate it took; on a client of an OpenH1 game, the
   rate in the record, if supported (otherwise 30); 30 in a Legacy game.
 
+The host welcomes OpenCE players (`port/linux/game/network_welcome.c`,
+`network.opence_welcome`): a few seconds after a client machine has loaded
+the game (its client ready), the host sends it two notices of the text
+chat, "This server runs OpenH1." and "Get it free at openh1.com for
+smoother 60 and 120 tick games.", once a player (their machine's real
+address and hardware id) while it hosts. A notice is OpenCE's own
+`_distributed_message_chat_down` with `_chat_line_notice_bit`, which
+OpenCE's chat shows as a line from no player, so nothing new goes between
+the machines. A Legacy game is the same in every byte from OpenCE and
+OpenH1 machines, so the host cannot tell them apart: it welcomes every
+client machine, in any kind of game, and an OpenH1 machine does not show
+the two lines. An OpenCE client in a public game it joined from the server
+browser shows no chat at all, so it does not see them either.
+
 ### Sub-step inputs
 
 At 60 and 120 a tick runs 2 or 4 sub-steps, and each local player's unit
