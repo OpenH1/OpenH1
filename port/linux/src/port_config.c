@@ -252,7 +252,7 @@ static const struct config_setting config_settings[] =
 	{ "display.scoreboard_background", _config_boolean, "true", "HALO_SCOREBOARD_BACKGROUND", _environment_value,
 		_platform_all,
 		"Draw a panel behind the multiplayer scoreboard, for clearer text." },
-	{ "display.scoreboard_background_color", _config_string, "\"16, 16, 16, 150\"", "HALO_SCOREBOARD_BACKGROUND_COLOR",
+	{ "display.scoreboard_background_color", _config_string, "\"6, 20, 48, 190\"", "HALO_SCOREBOARD_BACKGROUND_COLOR",
 		_environment_value, _platform_all,
 		"The scoreboard panel's color: \"red, green, blue, alpha\", each 0 to 255\n"
 		"(alpha 0 is see-through, 255 solid)." },

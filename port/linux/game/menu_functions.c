@@ -5619,6 +5619,17 @@ static void map_display_name(char const *map_name, wchar_t *text)
 	text[index] = 0;
 }
 
+/* a map's name as the menus show it, at most size characters with its end
+(game_engine.c's carnage report) */
+void ui_widget_port_map_name(char const *map_name, wchar_t *text, short size)
+{
+	wchar_t name[ROW_TEXT_LENGTH];
+
+	map_display_name(map_name, name);
+	ustrncpy(text, name, size - 1);
+	text[size - 1] = 0;
+}
+
 static void game_map_name(struct advertised_game const *game, wchar_t *text)
 {
 	map_display_name(game->map_name, text);
