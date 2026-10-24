@@ -49,9 +49,9 @@ two can play together. OpenCE starts from the decompilation of
 
 | | Original | OpenH1 |
 | --- | --- | --- |
-| **Dynamic lights**<br><sub>Derelict, a frag grenade</sub> | <img src="website/public/media/lights-original.webp" alt="A frag grenade lit as the original drew it" width="360"> | <img src="website/public/media/lights-openh1.webp" alt="The same moment with OpenH1's per-pixel lights" width="360"> |
-| **Anti-aliasing**<br><sub>Blood Gulch, enlarged 2×</sub> | <img src="website/public/media/edge-original.webp" alt="Blood Gulch's cliffs with no anti-aliasing" width="360"> | <img src="website/public/media/edge-openh1.webp" alt="The same cliffs with SMAA" width="360"> |
-| **Plasma glow**<br><sub>Blood Gulch, a charged plasma pistol</sub> | <img src="website/public/media/glow-original.webp" alt="A plasma bolt as the original drew it" width="360"> | <img src="website/public/media/glow-openh1.webp" alt="The same bolt with OpenH1's glow" width="360"> |
+| **Dynamic lights**<br><sub>Rat Race, a frag grenade</sub> | <img src="website/public/media/lights-original-poster.webp" alt="A grenade going off in a room as the original drew it: the whole room turns yellow at once" width="360"> | <img src="website/public/media/lights-openh1-poster.webp" alt="The same moment in OpenH1: the light pools around the blast" width="360"> |
+| **Anti-aliasing**<br><sub>Blood Gulch, enlarged 4×</sub> | <img src="website/public/media/edges-original-poster.webp" alt="Blood Gulch's cliffs with no anti-aliasing" width="360"> | <img src="website/public/media/edges-openh1-poster.webp" alt="The same cliffs with SMAA" width="360"> |
+| **Plasma glow**<br><sub>Blood Gulch, a charged plasma pistol</sub> | <img src="website/public/media/glow-original-poster.webp" alt="A plasma bolt as the original drew it" width="360"> | <img src="website/public/media/glow-openh1-poster.webp" alt="The same bolt with OpenH1's glow" width="360"> |
 
 <sub>Real captures, the same moment twice. [openh1.com](https://openh1.com) has them side by side, with clips.</sub>
 
