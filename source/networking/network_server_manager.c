@@ -483,7 +483,7 @@ server browser's listing of a public game (p2p_lobby.c) */
 void p2p_set_game_player_counts(int count, int maximum);
 void p2p_set_game_listing(const char *name, const char *map, const char *gametype, int engine_type, int kind,
 	int open, int in_progress, int has_teams);
-void p2p_set_game_listing_standard(int standard, int rate);
+void p2p_set_game_listing_standard(int standard, int mixed, int rate);
 #include "network_standard.h" /* port: port/linux/game/network_standard.c */
 
 /* ---------- constants */
@@ -1530,8 +1530,9 @@ static void network_game_server_list(
 	p2p_set_game_listing(name, tag_name_strip_path(game->map.name), gametype, game->variant.game_engine_index,
 		game_modes_kind(&game->variant, &game->variant_options), open, in_progress,
 		game->variant.universal_variant.teams);
-	/* port: (a Standard game's, and its rate: network_standard.c) */
-	p2p_set_game_listing_standard(network_standard_hosting(),
+	/* port: (a Standard game's, one OpenCE players join too, and its rate:
+	network_standard.c) */
+	p2p_set_game_listing_standard(network_standard_hosting(), network_standard_hosting_mixed(),
 		(int)network_standard_server_rate(state == _network_game_server_state_pregame && !in_progress));
 }
 

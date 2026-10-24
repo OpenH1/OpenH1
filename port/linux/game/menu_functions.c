@@ -3770,6 +3770,7 @@ boolean network_game_client_advertised_game_in_progress(void *client, struct adv
 byte network_game_client_advertised_game_kind(void *client, struct advertised_game *game);
 long network_game_client_advertised_game_rate(void *client, struct advertised_game *game);
 boolean network_game_client_advertised_game_standard(void *client, struct advertised_game *game);
+boolean network_game_client_advertised_game_mixed(void *client, struct advertised_game *game);
 boolean ui_widget_port_join(struct widget_instance *widget, void *advertised_game, char const *lobby_name,
 	boolean *widget_deleted);
 boolean ui_widget_port_multiplayer_player(short controller_index, long profile_index);
@@ -5333,6 +5334,11 @@ static boolean advertised_game_standard(struct advertised_game *game)
 	return network_game_client_advertised_game_standard(global_network_game_client_get(), game);
 }
 
+static boolean advertised_game_mixed(struct advertised_game *game)
+{
+	return network_game_client_advertised_game_mixed(global_network_game_client_get(), game);
+}
+
 /* a browser row's gametype with the game's tick rate before it ("60
 SLAYER"), which every game shows: an OpenH1 game's agreed rate, a Legacy
 game's 30. First, so a long gametype the column cuts ("120 HC INFECTIO")
@@ -5344,13 +5350,16 @@ static void game_kind_rate_text(wchar_t *text, long size, long engine_type, byte
 }
 
 /* the footer's name of a game's kind: "OpenH1 60 Tick" (OpenH1's own, at
-its tick rate) or "Legacy" (OpenCE's netcode at 30, which OpenCE players
-join too) */
-static wchar_t const *game_mode_text(boolean standard, long rate)
+its tick rate; "OpenH1 60 Tick, OpenCE can join" one that OpenCE players
+join too, network_standard.c) or "Legacy" (OpenCE's netcode at 30, which
+OpenCE players join too) */
+static wchar_t const *game_mode_text(boolean standard, boolean mixed, long rate)
 {
-	static wchar_t text[32];
+	static wchar_t text[48];
 
-	if (standard)
+	if (standard && mixed)
+		usnprintf(text, NUMBEROF(text) - 1, L"OpenH1 %ld Tick, OpenCE can join", rate);
+	else if (standard)
 		usnprintf(text, NUMBEROF(text) - 1, L"OpenH1 %ld Tick", rate);
 	else
 		usnprintf(text, NUMBEROF(text) - 1, L"Legacy");
@@ -6472,7 +6481,8 @@ static void lobby_browser_update(struct widget_instance *list)
 			wchar_t gametype[P2P_LISTING_GAMETYPE_SIZE + 1];
 
 			text_to_wide(game->gametype, gametype, NUMBEROF(gametype));
-			usnprintf(text, NUMBEROF(text) - 1, L"%s, %s: %d %s of %d%s%s", game_mode_text(game->standard, game->rate),
+			usnprintf(text, NUMBEROF(text) - 1, L"%s, %s: %d %s of %d%s%s",
+				game_mode_text(game->standard, game->mixed, game->rate),
 				gametype, game->player_count, game->player_count == 1 ? L"player" : L"players",
 				game->maximum_player_count, !game->open ? L", full or starting" : game->in_progress ? L", under way" : L"",
 				game->locked ? L", password" : L"");
@@ -6832,7 +6842,8 @@ static void browser_update(struct widget_instance *list)
 			struct advertised_game *game = multiplayer.games[multiplayer.game_chosen];
 
 			usnprintf(text, NUMBEROF(text) - 1, L"%s: %d players of %d, on %d machines%s",
-				game_mode_text(advertised_game_standard(game), advertised_game_rate(game)), game->player_count,
+				game_mode_text(advertised_game_standard(game), advertised_game_mixed(game),
+				advertised_game_rate(game)), game->player_count,
 				game->maximum_player_count, game->machine_count, advertised_in_progress(game) ? L", under way" : L"");
 		}
 		text[NUMBEROF(text) - 1] = 0;

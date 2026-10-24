@@ -233,10 +233,10 @@
 		<string text="Voice chat, text chat and votes to kick a player,\nfor this game."/>
 		<string text="Players from the Server Browser must type it to\njoin (an invite link needs none). Enter sets it."/>
 		<string text="Sending players who join without the game's\nCustom Edition map the map, and how fast."/>
-		<string text="OpenH1 players only, at the original 30 ticks a&#10;second. Legacy (OpenCE) players cannot join."/>
-		<string text="OpenH1 players only, smoother at 60 ticks a&#10;second. Legacy (OpenCE) players cannot join."/>
-		<string text="OpenH1 players only, smoothest at 120 ticks a&#10;second, and the most work for each machine."/>
-		<string text="Plays with OpenCE players too, at 30 ticks a&#10;second, as OpenCE does."/>
+		<string text="OpenH1 and OpenCE players, all at 30 ticks."/>
+		<string text="OpenH1 players at 60 ticks, OpenCE players at 30."/>
+		<string text="OpenH1 players at 120 ticks, OpenCE players at 30."/>
+		<string text="OpenCE's own netcode for everyone, at 30 ticks."/>
 	</strings>
 	<widget name="main_menu/multiplayer_type_select/server_settings/coop_options/coop_options_screen" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/gradient">
 		<child widget="main_menu/multiplayer_type_select/server_settings/coop_options/header_coop_options"/>

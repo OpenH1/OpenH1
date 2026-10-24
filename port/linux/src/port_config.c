@@ -958,18 +958,19 @@ static const struct config_setting config_settings[] =
 		"PRIVATE (only players with its invite link can join). Server Setup's\n"
 		"LISTING changes it for each game." },
 	{ "network.game_mode", _config_string, "\"openh1\"", "HALO_NET_GAME_MODE", _environment_value, _platform_all,
-		"Hosting: \"openh1\", an OpenH1 game (OpenH1 players only) at the rate\n"
-		"network.sim_rate picks, or \"legacy\", OpenCE's netcode at 30 ticks a\n"
-		"second, which OpenCE players join too. Read as the game is hosted\n"
-		"(\"standard\" is \"openh1\" too)." },
+		"Hosting: \"openh1\", an OpenH1 game at the rate network.sim_rate picks,\n"
+		"which OpenCE players join too at 30 (network.allow_opence), or\n"
+		"\"legacy\", OpenCE's netcode at 30 ticks a second for everyone. Read as\n"
+		"the game is hosted (\"standard\" is \"openh1\" too)." },
 	{ "network.sim_rate", _config_integer, "60", "HALO_NET_SIM_RATE", _environment_value, _platform_all,
 		"Hosting an OpenH1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
 		"steps), which every machine of it takes as the game starts. A Legacy game\n"
 		"plays at 30." },
-	{ "network.allow_opence", _config_boolean, "false", "HALO_NET_ALLOW_OPENCE", _environment_value, _platform_all,
+	{ "network.allow_opence", _config_boolean, "true", "HALO_NET_ALLOW_OPENCE", _environment_value, _platform_all,
 		"Hosting an OpenH1 game: let OpenCE players join it too. They play at 30\n"
 		"ticks a second, as on their own machine, and OpenH1 players at\n"
-		"network.sim_rate. Read with network.game_mode." },
+		"network.sim_rate. False: OpenH1 players only. Read with\n"
+		"network.game_mode." },
 	{ "network.opence_welcome", _config_boolean, "true", "HALO_NET_OPENCE_WELCOME", _environment_value,
 		_platform_all,
 		"Hosting: tell each OpenCE player, a few seconds after they load into a\n"

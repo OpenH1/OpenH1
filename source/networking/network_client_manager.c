@@ -3348,15 +3348,16 @@ long network_game_client_advertised_game_rate(
 	long game_index = client ? game - client->available_games : NONE;
 
 	if (game_index < 0 || game_index >= MAXIMUM_NETWORK_ADVERTISED_GAMES ||
-		!network_game_client_advertised_openh1_version(game_index))
+		!network_game_client_advertised_joins_as_openh1(game_index))
 	{
 		return 30;
 	}
 	return network_game_client_advertised_versions[game_index].rate;
 }
 
-/* port: whether the advertised game is an OpenH1 Standard game (a mixed one
-too) */
+/* port: whether the advertised game is an OpenH1 Standard game this machine
+joins as one (a mixed one of its protocol too: another it joins as OpenCE
+does, at 30, a Legacy game for it) */
 boolean network_game_client_advertised_game_standard(
 	struct network_game_client *client,
 	struct network_advertised_game const *game)
@@ -3364,7 +3365,19 @@ boolean network_game_client_advertised_game_standard(
 	long game_index = client ? game - client->available_games : NONE;
 
 	return game_index >= 0 && game_index < MAXIMUM_NETWORK_ADVERTISED_GAMES &&
-		network_game_client_advertised_openh1_version(game_index) != 0;
+		network_game_client_advertised_joins_as_openh1(game_index);
+}
+
+/* port: ... and one that OpenCE players join too (network_standard.c) */
+boolean network_game_client_advertised_game_mixed(
+	struct network_game_client *client,
+	struct network_advertised_game const *game)
+{
+	long game_index = client ? game - client->available_games : NONE;
+
+	return game_index >= 0 && game_index < MAXIMUM_NETWORK_ADVERTISED_GAMES &&
+		network_game_client_advertised_joins_as_openh1(game_index) &&
+		!(network_game_client_advertised_versions[game_index].version & HALO_PORT_STANDARD_VERSION_BIT);
 }
 
 boolean network_game_client_join_first_available_game(
