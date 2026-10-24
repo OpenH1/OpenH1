@@ -160,8 +160,55 @@ h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stret
 .co.west .lbl { left: auto; right: -14px; }
 .co.down .leader { bottom: auto; top: 9px; background: linear-gradient(180deg, var(--green), rgba(157, 255, 60, 0.25)); }
 .co.down .lbl { bottom: auto; top: calc(var(--len, 44px) + 9px); }
-/* 05: the "feel it" demo (both panels answer one press, each after its
-   measured median) and where the time goes (each stage's median) */
+/* 05: the race, one click on one time axis (0 to 60 ms, shown 25x slower):
+   each lane's flash at its measured median, its steps behind it */
+.race { --t: 0; overflow: hidden; margin: 0; padding: clamp(18px, 3vw, 32px); border-radius: 10px; background: radial-gradient(ellipse 70% 120% at 0% 0%, rgba(157, 255, 60, 0.06), transparent 60%), var(--panel); box-shadow: inset 0 0 0 1px var(--line); }
+.race-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 18px; margin: 0 0 22px; }
+.race-clock { font: 700 clamp(30px, 4.6vw, 54px)/1 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
+.race-clock small { font-size: 0.45em; color: var(--muted); margin-left: 4px; }
+.race-top .mono { color: var(--muted); }
+.race-top .mono b { color: var(--green); font-weight: 500; }
+.race-grid { display: grid; grid-template-columns: minmax(120px, 190px) 1fr; grid-template-rows: 72px 72px auto; column-gap: 20px; row-gap: 14px; }
+.lane-name { align-self: center; color: var(--soft); font-size: 15px; }
+.lane-name small { display: block; color: var(--muted); font: 500 11px/1.4 var(--mono); }
+.lane-name.new { color: var(--green); }
+.track { position: relative; grid-column: 2; grid-row: 1 / span 2; }
+.lane { position: relative; height: 72px; border-radius: 5px; background: repeating-linear-gradient(90deg, rgba(238, 244, 234, 0.16) 0 1px, transparent 1px var(--step)), rgba(238, 244, 234, 0.02); box-shadow: inset 0 0 0 1px var(--line-soft); }
+.lane + .lane { margin-top: 14px; }
+.lane.old { --step: 55.555%; --f: 47.7; --c: #e9ad45; }
+.lane.new { --step: 13.889%; --f: 5.9; --c: var(--green); }
+.lane .run { position: absolute; left: 0; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; width: calc(min(var(--t), var(--f)) / 60 * 100%); background: linear-gradient(90deg, transparent, var(--c)); opacity: 0.75; }
+.lane .wait { position: absolute; top: 50%; left: calc(min(var(--t), var(--f)) / 60 * 100%); transform: translate(10px, -50%); color: var(--muted); white-space: nowrap; opacity: 0; transition: opacity .2s; }
+.race.fired-new:not(.fired-old) .lane.old .wait { opacity: 1; }
+.lane .fire { position: absolute; top: 50%; left: calc(var(--f) / 60 * 100%); width: 0; height: 0; opacity: 0; }
+.lane .fire i { position: absolute; left: -36px; top: -36px; width: 72px; height: 72px; border-radius: 50%; background: radial-gradient(circle, #fff 0 9%, var(--c) 22%, rgba(255, 200, 90, 0.3) 45%, transparent 70%); }
+.lane .fire s { position: absolute; left: -1px; top: -36px; width: 2px; height: 72px; background: var(--c); box-shadow: 0 0 12px var(--c); }
+.lane .fire b { position: absolute; left: 12px; top: -34px; font: 700 15px/1 var(--mono); color: var(--c); white-space: nowrap; }
+.race.fired-new .lane.new .fire, .race.fired-old .lane.old .fire { opacity: 1; }
+.race.fired-new .lane.new .fire i, .race.fired-old .lane.old .fire i { animation: burst .5s ease-out both; }
+@keyframes burst { 0% { opacity: 1; transform: scale(.4); } 100% { opacity: 0; transform: scale(1.5); } }
+.click { position: absolute; left: 0; top: -10px; bottom: -10px; width: 0; }
+.click::before { content: ""; position: absolute; left: -1px; top: 0; bottom: 0; width: 2px; background: var(--text); opacity: .7; }
+.click i { position: absolute; left: -26px; top: 50%; margin-top: -26px; width: 52px; height: 52px; border-radius: 50%; border: 2px solid var(--text); opacity: 0; }
+.race.clicked .click i { animation: pulse .7s ease-out both; }
+@keyframes pulse { 0% { opacity: 1; transform: scale(.2); } 100% { opacity: 0; transform: scale(1.8); } }
+.click svg { position: absolute; left: -3px; top: calc(50% - 4px); width: 24px; height: 30px; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, .8)); transition: transform .12s; }
+.race.clicked .click svg { transform: scale(.86); }
+.gap { position: absolute; top: -6px; bottom: -6px; left: calc(5.9% / 0.6); width: calc((47.7% - 5.9%) / 0.6); border-radius: 4px; background: rgba(157, 255, 60, 0.07); box-shadow: inset 1px 0 0 var(--green), inset -1px 0 0 #e9ad45; opacity: 0; transition: opacity .4s; pointer-events: none; }
+.race.done .gap { opacity: 1; }
+.axis { grid-column: 2; position: relative; height: 26px; margin-top: -4px; color: var(--muted); }
+.lane::before { content: attr(data-name); position: absolute; left: 10px; top: 7px; display: none; font: 500 10px/1.2 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.axis span { position: absolute; top: 4px; transform: translateX(-50%); font: 500 11px/1 var(--mono); }
+.axis span:first-child { transform: none; }
+.axis span:last-child { transform: translateX(-100%); }
+.verdict { margin: 18px 0 0; font: 900 clamp(26px, 3.6vw, 44px)/1.05 var(--display); font-stretch: 112%; text-transform: uppercase; opacity: 0; transition: opacity .4s; }
+.race.done .verdict { opacity: 1; }
+.race-foot { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; margin: 16px 0 0; }
+.chip { padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--soft); cursor: pointer; }
+.chip:hover { color: var(--text); border-color: var(--green); }
+.race-foot .mono:last-child { color: var(--muted); margin-left: auto; }
+#realspeed { margin: 18px 0 0; }
+/* the real-speed demo: both panels answer one press, each at its median */
 .feel { position: relative; display: grid; grid-template-columns: 1fr 1fr; gap: clamp(10px, 2vw, 20px); width: 100%; margin: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: crosshair; touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; border-radius: 8px; }
 .feel:focus-visible { outline-offset: 6px; }
 .pane { position: relative; aspect-ratio: 16 / 10; border-radius: 6px; overflow: hidden; background: radial-gradient(ellipse 70% 60% at 50% 50%, rgba(157, 255, 60, 0.05), transparent 70%), repeating-linear-gradient(0deg, rgba(238, 244, 234, 0.025) 0 1px, transparent 1px 4px), #070906; box-shadow: 0 0 0 1px var(--line), 0 30px 90px -40px rgba(157, 255, 60, 0.28); }
@@ -199,6 +246,13 @@ h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stret
 .keys li { display: flex; align-items: center; gap: 8px; }
 .keys li::before { content: ""; width: 12px; height: 12px; border-radius: 3px; background: var(--c); }
 @media (max-width: 560px) {
+  .race-grid { grid-template-columns: 1fr; grid-template-rows: none; row-gap: 8px; }
+  .lane-name { display: none; }
+  .track, .axis { grid-column: 1; grid-row: auto; }
+  .lane { height: 64px; }
+  .lane::before { display: block; left: 26px; }
+  .lane.new::before { color: var(--green); }
+  .lane .fire b { top: 14px; }
   .feel { grid-template-columns: 1fr 1fr; gap: 8px; }
   .pane { aspect-ratio: 4 / 5; }
   .pane svg { width: 62%; }
@@ -211,6 +265,8 @@ h2 { margin: 0; font: 900 clamp(40px, 6vw, 92px)/0.92 var(--display); font-stret
 }
 @media (prefers-reduced-motion: reduce) {
   .pane.hit .fl { animation: none; opacity: 0; }
+  .race .fire i, .race .click i { animation: none !important; opacity: 0; }
+  .race .gap, .race .verdict, .lane .wait { transition: none; }
   .pane.hit .hm { animation: none; opacity: 1; }
 }
 .legend { display: none; margin: 16px 0 0; padding: 0; list-style: none; counter-reset: c; }
@@ -551,9 +607,34 @@ footer .legal a { color: var(--soft); }
           <p class="kicker mono">05 · Responsive</p>
           <h2 id="fast-title">Press. <span class="lit">It happens.</span></h2>
         </div>
-        <p class="reveal d1">The time from your click to the shot on screen, measured in the game. The view turns the frame you move the mouse, your gun is drawn from the newest moment, and on OpenH1's own servers your input lands on a step up to 120 times a second instead of 30. Feel the difference.</p>
+        <p class="reveal d1">The time from your click to the shot on screen, measured in the game. The view turns the frame you move the mouse, your gun is drawn from the newest moment, and on OpenH1's own servers your input lands on a step up to 120 times a second instead of 30. Here is one click, slowed down.</p>
       </div>
-      <button type="button" class="feel reveal" id="feel" aria-labelledby="feel-label" aria-describedby="feel-hint">
+      <figure class="race reveal" id="race" aria-describedby="race-desc">
+        <div class="race-top" aria-hidden="true">
+          <span class="race-clock"><span id="race-ms">0.0</span><small>ms</small></span>
+          <span class="mono">One click · <b>shown 25× slower</b></span>
+        </div>
+        <div class="race-grid" aria-hidden="true">
+          <span class="lane-name old">Original<small>30 ticks a second</small></span>
+          <span class="lane-name new">OpenH1 120 Tick<small>120 steps a second</small></span>
+          <div class="track">
+            <div class="gap"></div>
+            <div class="lane old" data-name="Original · 30 ticks/s"><span class="run"></span><span class="wait mono">still waiting…</span><span class="fire"><i></i><s></s><b>48 ms</b></span></div>
+            <div class="lane new" data-name="OpenH1 120 Tick · 120/s"><span class="run"></span><span class="fire"><i></i><s></s><b>6 ms</b></span></div>
+            <div class="click"><i></i><svg viewBox="0 0 24 30"><path d="M2 2v22l6-6 4 10 4-2-4-9h8z" fill="#eef4ea" stroke="#040504" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+          </div>
+          <div class="axis"><span style="left:0">0</span><span style="left:33.333%">20</span><span style="left:66.667%">40</span><span style="left:100%">60 ms</span></div>
+        </div>
+        <p class="verdict" aria-hidden="true">OpenH1 fired <span class="lit">8× sooner</span></p>
+        <p class="sr-only" id="race-desc">A slowed-down race from one click: OpenH1 120 Tick shows the shot 5.9 milliseconds after the click, the original 47.7 milliseconds after it. OpenH1 fired 8 times sooner. Faint marks behind each lane are its steps: every 33.3 milliseconds for the original, every 8.3 for OpenH1.</p>
+        <div class="race-foot">
+          <button type="button" class="chip mono" id="race-pause" aria-pressed="false">Pause</button>
+          <button type="button" class="chip mono" id="realspeed-open" aria-expanded="false" aria-controls="realspeed">Try it at real speed</button>
+          <span class="mono">Timed from our measurements</span>
+        </div>
+      </figure>
+      <div id="realspeed" hidden>
+      <button type="button" class="feel" id="feel" aria-labelledby="feel-label" aria-describedby="feel-hint">
           <span class="pane old" data-ms="47.7">
             <span class="tagl l mono">Original</span>
             <span class="fl"></span>
@@ -570,6 +651,7 @@ footer .legal a { color: var(--soft); }
       </button>
       <p class="feel-hint mono" id="feel-hint"><span><strong>Click, tap</strong> or press <strong>Space</strong> to fire</span><span>Timed from our measurements</span></p>
       <p class="sr-only" id="feel-out" aria-live="polite"></p>
+      </div>
 
       <div class="where reveal">
         <h3>Where the time goes</h3>
@@ -807,7 +889,56 @@ footer .legal a { color: var(--soft); }
     }, 2000);
   }
 
-  // 05, feel it: one press, both panels answer, each at its measured median
+  // 05, the race: one click on one axis, 0 to 60 ms shown 25x slower; it
+  // plays when it comes into view, holds the result, and plays again
+  const race = document.getElementById("race");
+  if (race) {
+    const SLOW = 25, END = 60, LEAD = 600, HOLD = 1500, OLD = 47.7, NEW = 5.9;
+    const clock = document.getElementById("race-ms"), pause = document.getElementById("race-pause");
+    let start = 0, visible = false, paused = false, raf = 0, pausedAt = 0;
+    const show = (t) => {
+      race.style.setProperty("--t", Math.max(0, Math.min(END, t)).toFixed(2));
+      clock.textContent = Math.max(0, Math.min(END, t)).toFixed(1);
+      race.classList.toggle("clicked", t >= 0);
+      race.classList.toggle("fired-new", t >= NEW);
+      race.classList.toggle("fired-old", t >= OLD);
+      race.classList.toggle("done", t >= OLD);
+    };
+    const step = (now) => {
+      raf = 0;
+      if (!visible || paused) return;
+      let e = now - start;
+      if (e > LEAD + END * SLOW + HOLD) { start = now; e = 0; }
+      show((e - LEAD) / SLOW);
+      raf = requestAnimationFrame(step);
+    };
+    const go = () => { if (!raf && visible && !paused) raf = requestAnimationFrame(step); };
+    if (still) {
+      show(END);
+      pause.hidden = true;
+    } else {
+      show(-1);
+      new IntersectionObserver(([e]) => {
+        visible = e.isIntersecting;
+        if (visible && !start) start = performance.now();
+        go();
+      }, { threshold: 0.35 }).observe(race);
+      pause.addEventListener("click", () => {
+        paused = !paused;
+        pause.setAttribute("aria-pressed", paused);
+        pause.textContent = paused ? "Play" : "Pause";
+        if (paused) pausedAt = performance.now(); else { start += performance.now() - pausedAt; go(); }
+      });
+    }
+    const open = document.getElementById("realspeed-open"), real = document.getElementById("realspeed");
+    open.addEventListener("click", () => {
+      real.hidden = !real.hidden;
+      open.setAttribute("aria-expanded", !real.hidden);
+      if (!real.hidden) document.getElementById("feel").focus();
+    });
+  }
+
+  // the real-speed demo: one press, both panels answer, each at its measured median
   // (the display's own delay is the same for both)
   const feel = document.getElementById("feel");
   if (feel) {

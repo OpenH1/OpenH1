@@ -43,14 +43,18 @@ From the top:
   - 02, anti-aliasing: a lens, OpenH1 inside it;
   - 03, the plasma glow: two clips side by side, with a numbered legend;
   - 04, frames between ticks: two clips side by side.
-- **05, Responsive**: the "feel it" demo (one button, two panels: a press
-  flashes the Original after its measured median, 47.7 ms, and OpenH1 120
-  Tick after its own, 5.9 ms; for less motion, the hit marker without the
-  burst), and where the time goes, each stage's median of
-  `tools/latency_summary.py` as a stacked bar. Change the numbers with a new
-  measurement only.
   The wipe and the lens play one short demo the first time it scrolls into view
   (none for less motion), and stops as soon as the visitor touches it.
+- **05, Responsive**: the race, one click slowed 25 times on one time axis
+  (0 to 60 ms): the Original's lane and OpenH1 120 Tick's, each flashing at
+  its measured median (47.7 and 5.9 ms) over faint marks at its steps (30
+  and 120 a second), then the gap between them and "8× sooner". It plays when
+  it comes into view, holds the result 1.5 s and plays again (a Pause
+  button; for less motion, the end, still). "Try it at real speed" opens the
+  click-it-yourself demo: two panels that answer one press at those medians.
+  Under it, where the time goes: each stage's median of
+  `tools/latency_summary.py` as a stacked bar. Change the numbers with a new
+  measurement only.
 - **VR**, **Platforms**, **Under the hood** (the details for purists, in a
   dense list), **Bring your own game**, **Get it** (the downloads), and the
   footer.
