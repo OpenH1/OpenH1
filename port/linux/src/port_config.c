@@ -254,7 +254,7 @@ static const struct config_setting config_settings[] =
 		"Draw a panel behind the multiplayer scoreboard, for clearer text." },
 	{ "display.scoreboard_background_color", _config_string, "\"16, 16, 16, 150\"", "HALO_SCOREBOARD_BACKGROUND_COLOR",
 		_environment_value, _platform_all,
-		"The scoreboard panel's colour: \"red, green, blue, alpha\", each 0 to 255\n"
+		"The scoreboard panel's color: \"red, green, blue, alpha\", each 0 to 255\n"
 		"(alpha 0 is see-through, 255 solid)." },
 	{ "display.anisotropic_filtering", _config_integer, GRAPHICS_ANISOTROPIC_FILTERING, "HALO_ANISOTROPIC_FILTERING",
 		_environment_value, _platform_all,
@@ -265,7 +265,7 @@ static const struct config_setting config_settings[] =
 		"In a network game, your round trip to the host in milliseconds at the\n"
 		"screen's top right, with bars (the host: its slowest player's), and\n"
 		"\"Connection problem\" when the host has sent nothing for two seconds;\n"
-		"the scoreboard's pings in the same colours, as this machine times them." },
+		"the scoreboard's pings in the same colors, as this machine times them." },
 	{ "display.per_pixel_lighting", _config_boolean, GRAPHICS_PER_PIXEL_LIGHTING, "HALO_PER_PIXEL_LIGHTING",
 		_environment_value, _platform_all,
 		"Light the models (characters, weapons, vehicles, scenery) for each\n"
@@ -299,7 +299,7 @@ static const struct config_setting config_settings[] =
 	{ "display.hdr_mode", _config_string, "\"faithful\"", "HALO_HDR_MODE", _environment_value, _platform_all,
 		"With HDR: \"faithful\" keeps the picture as the game draws it, only its\n"
 		"highlights brighter; \"punchy\" lifts the whole scene and its bright\n"
-		"parts, keeping each colour's hue, for a brighter, remastered look." },
+		"parts, keeping each color's hue, for a brighter, remastered look." },
 	{ "display.hdr_paper_white", _config_integer, "100", "HALO_HDR_PAPER_WHITE", _environment_value, _platform_all,
 		"With HDR, how bright paper white (white surfaces, the HUD, the menus) is,\n"
 		"in percent of the system's SDR white (macOS's; 203 nits where the system\n"
@@ -403,7 +403,7 @@ static const struct config_setting config_settings[] =
 	{ "vr.weapon_offset", _config_string, "\"0.15, -0.22, 0.30\"", "HALO_VR_WEAPON_OFFSET", _environment_value,
 		_platform_desktop,
 		"With vr.aim = \"controller\" and vr.hands = \"game\", where the weapon's\n"
-		"grip is from the eye it is drawn for, in metres: \"right, up, forward\"." },
+		"grip is from the eye it is drawn for, in meters: \"right, up, forward\"." },
 	{ "vr.depth", _config_boolean, "false", "HALO_VR_DEPTH", _environment_value, _platform_desktop,
 		"Give the runtime the eyes' depth too, for its reprojection (SteamVR on\n"
 		"the Steam Frame cannot take it yet)." },
@@ -533,7 +533,7 @@ static const struct config_setting config_settings[] =
 	{ "vr.shoulders", _config_string, "\"0.19, -0.20, -0.07\"", "HALO_VR_SHOULDERS", _environment_value,
 		_platform_desktop,
 		"With vr.hands = \"arms\", where each shoulder is from your eyes, in\n"
-		"metres: \"out to its side, up, forward\" (turned with your body)." },
+		"meters: \"out to its side, up, forward\" (turned with your body)." },
 	{ "vr.vehicle_view", _config_string, "\"first_person\"", "HALO_VR_VEHICLE_VIEW", _environment_value, _platform_desktop,
 		"The view in a vehicle's seat: \"first_person\" from your head where you\n"
 		"sit, level with the horizon; \"third_person\" the game's camera following\n"
@@ -597,7 +597,7 @@ static const struct config_setting config_settings[] =
 		"gamepad's Back, held) is the player's eye. \"standing\": the head\n"
 		"vr.player_height above the floor is." },
 	{ "vr.player_height", _config_real, "1.65", "HALO_VR_PLAYER_HEIGHT", _environment_value, _platform_desktop,
-		"Standing, the height of your eyes in metres." },
+		"Standing, the height of your eyes in meters." },
 	{ "vr.world_scale", _config_real, "1.0", "HALO_VR_WORLD_SCALE", _environment_value, _platform_desktop,
 		"How large the world looks: more than 1 makes it larger (and your\n"
 		"movements and eyes smaller in it)." },
@@ -608,7 +608,7 @@ static const struct config_setting config_settings[] =
 		"vr.hud_glow, vr.hud_glass, vr.hud_react, vr.helmet_rim, vr.visor_frame,\n"
 		"vr.visor_effects); \"flat\" a flat screen before your eyes." },
 	{ "vr.hud_distance", _config_real, "2.0", "HALO_VR_HUD_DISTANCE", _environment_value, _platform_desktop,
-		"How far in front of your eyes the HUD is, in metres." },
+		"How far in front of your eyes the HUD is, in meters." },
 	{ "vr.hud_size", _config_real, "60.0", "HALO_VR_HUD_SIZE", _environment_value, _platform_desktop,
 		"How wide the HUD is, in degrees of your view (20 to 120)." },
 	{ "vr.hud_lag", _config_real, "0.03", "HALO_VR_HUD_LAG", _environment_value, _platform_desktop,
@@ -621,19 +621,19 @@ static const struct config_setting config_settings[] =
 	{ "vr.hud_depth_tracker", _config_real, "-0.55", "HALO_VR_HUD_DEPTH_TRACKER", _environment_value,
 		_platform_desktop,
 		"With vr.hud = \"visor\", the motion tracker's distance from the HUD's at\n"
-		"vr.hud_depth 1, in metres (before it less than 0)." },
+		"vr.hud_depth 1, in meters (before it less than 0)." },
 	{ "vr.hud_depth_status", _config_real, "-0.35", "HALO_VR_HUD_DEPTH_STATUS", _environment_value,
 		_platform_desktop,
 		"With vr.hud = \"visor\", the shields' and health's distance from the HUD's\n"
-		"at vr.hud_depth 1, in metres." },
+		"at vr.hud_depth 1, in meters." },
 	{ "vr.hud_depth_weapon", _config_real, "-0.25", "HALO_VR_HUD_DEPTH_WEAPON", _environment_value,
 		_platform_desktop,
 		"With vr.hud = \"visor\", the weapon's, its ammunition's and the grenades'\n"
-		"distance from the HUD's at vr.hud_depth 1, in metres." },
+		"distance from the HUD's at vr.hud_depth 1, in meters." },
 	{ "vr.hud_depth_world", _config_real, "0.5", "HALO_VR_HUD_DEPTH_WORLD", _environment_value,
 		_platform_desktop,
 		"With vr.hud = \"visor\", the waypoints' and the players' names' distance\n"
-		"from the HUD's at vr.hud_depth 1, in metres." },
+		"from the HUD's at vr.hud_depth 1, in meters." },
 	{ "vr.hud_tracker_tilt", _config_real, "20.0", "HALO_VR_HUD_TRACKER_TILT", _environment_value,
 		_platform_desktop,
 		"With vr.hud = \"visor\" and vr.hud_depth, how far the motion tracker\n"
@@ -659,7 +659,7 @@ static const struct config_setting config_settings[] =
 		"edges of your view, in depth (0 none to 1)." },
 	{ "vr.helmet_rim_depth", _config_real, "0.10", "HALO_VR_HELMET_RIM_DEPTH", _environment_value,
 		_platform_desktop,
-		"The helmet's rim's lip: how far before your eyes it is, in metres (0.05\n"
+		"The helmet's rim's lip: how far before your eyes it is, in meters (0.05\n"
 		"to 0.25)." },
 	{ "vr.helmet_rim_reach", _config_real, "0.07", "HALO_VR_HELMET_RIM_REACH", _environment_value,
 		_platform_desktop,
@@ -670,15 +670,15 @@ static const struct config_setting config_settings[] =
 		"darkened, and its faint tint (0 none to 1)." },
 	{ "vr.visor_effects", _config_boolean, "true", "HALO_VR_VISOR_EFFECTS", _environment_value, _platform_desktop,
 		"With vr.hud = \"visor\", the shields on the visor's glass: their energy\n"
-		"across it, the armour's own, as they are hit and as they recharge; its\n"
+		"across it, the armor's own, as they are hit and as they recharge; its\n"
 		"rim pulses red while they are low, and the HUD flickers as they break." },
 	{ "vr.visor_energy", _config_real, "1.0", "HALO_VR_VISOR_ENERGY", _environment_value, _platform_desktop,
 		"With vr.visor_effects, how strong the shields' energy on the glass is (0\n"
 		"none to 2)." },
 	{ "vr.menu_distance", _config_real, "2.5", "HALO_VR_MENU_DISTANCE", _environment_value, _platform_desktop,
-		"How far in front of you the menus are, in metres." },
+		"How far in front of you the menus are, in meters." },
 	{ "vr.menu_width", _config_real, "2.6", "HALO_VR_MENU_WIDTH", _environment_value, _platform_desktop,
-		"How wide the menus are, in metres." },
+		"How wide the menus are, in meters." },
 	{ "vr.hrtf", _config_boolean, "true", "HALO_VR_HRTF", _environment_value, _platform_desktop,
 		"Hear the world's sounds as your ears would, on headphones or the\n"
 		"headset's speakers: each from its direction by the time and the\n"
@@ -696,7 +696,7 @@ static const struct config_setting config_settings[] =
 	{ "input.touch_captions", _config_boolean, "true", "HALO_TOUCH_CAPTIONS", _environment_value,
 		_platform_android | _platform_ios,
 		"The touch controls write what each controller button does in the\n"
-		"profile (JUMP, MELEE, FIRE) under it, in the HUD's font and colour.\n"
+		"profile (JUMP, MELEE, FIRE) under it, in the HUD's font and color.\n"
 		"false: the buttons alone, drawn in display.hud_button_style." },
 	{ "input.touch_aim_assist", _config_boolean, "true", "HALO_TOUCH_AIM_ASSIST", _environment_value,
 		_platform_android | _platform_ios,
@@ -823,7 +823,7 @@ static const struct config_setting config_settings[] =
 		"its keys (and a controller's D-pad Up) from opening it, as for purists\n"
 		"and streamers." },
 	{ "display.chat_style", _config_string, "\"colors\"", "HALO_CHAT_STYLE", _environment_value, _platform_all,
-		"The text chat's colours: \"colors\" (names in their team's colour, the\n"
+		"The text chat's colors: \"colors\" (names in their team's color, the\n"
 		"text a pale blue) or \"white\" (all white, as Custom Edition)." },
 	{ "game.enhanced_animations", _config_boolean, "true", "HALO_ENHANCED_ANIMATIONS", _environment_value, _platform_all,
 		"The player bipeds' grenade throws keep their legs moving (crouched,\n"
@@ -991,7 +991,7 @@ static const struct config_setting config_settings[] =
 		"second (8 to 64)." },
 	{ "network.voice_proximity", _config_real, "15.0", "HALO_NET_VOICE_PROXIMITY", _environment_value,
 		_platform_all,
-		"Hosting: how near (world units: 1 is about 3 metres) a player must be\n"
+		"Hosting: how near (world units: 1 is about 3 meters) a player must be\n"
 		"to be heard by proximity voice chat (5 to 100)." },
 	{ "network.text_chat", _config_string, "\"on\"", "HALO_NET_TEXT_CHAT", _environment_value, _platform_all,
 		"Hosting: the text chat: \"on\" (links in lines are refused), \"links\"\n"
@@ -1319,7 +1319,7 @@ static const struct config_setting config_settings[] =
 		"one each game, from the clock." },
 	{ "debug.audio_log", _config_boolean, "false", "HALO_AUDIO_LOG", _environment_value, _platform_desktop,
 		"Log the sounds placed in the world playing, five times a second: where\n"
-		"each is from the listener (metres ahead, right and up), its gain in\n"
+		"each is from the listener (meters ahead, right and up), its gain in\n"
 		"each ear (and in the VR mode the HRTF's delays and filters), and the\n"
 		"time the mixing takes." },
 	{ "debug.audio_record", _config_string, "\"\"", "HALO_AUDIO_RECORD", _environment_value, _platform_desktop,
@@ -1364,7 +1364,7 @@ static const struct config_setting config_settings[] =
 		"[, trigger[, head[, frames[, move[, down[, nod[, forward[, right[, stick x[,\n"
 		"stick y[, right grip]]]]]]]]]]]]]\",\n"
 		"the left and right hands in\n"
-		"metres right, up and forward from the recentred head and degrees of yaw\n"
+		"meters right, up and forward from the recentred head and degrees of yaw\n"
 		"(left), pitch (up) and roll (right), the left grip's pull (0 to 1), the\n"
 		"buttons pressed for the pose's first 20 frames (A 1, B 2, X 4, Y 8, the\n"
 		"right trigger 65536, the left 131072, the right grip 262144, the right\n"
@@ -1372,8 +1372,8 @@ static const struct config_setting config_settings[] =
 		"0: the finger off it, as the trigger's touch senses), the head\n"
 		"turned (degrees left), the frames the pose lasts (0: 288)\n"
 		"and the frames the hands take to move to it from the pose before (0:\n"
-		"none; a swing), the head lowered (metres, as a crouch), nodded\n"
-		"about the neck (degrees up) and moved in the room (metres forward\n"
+		"none; a swing), the head lowered (meters, as a crouch), nodded\n"
+		"about the neck (degrees up) and moved in the room (meters forward\n"
 		"and right), each moved with the hands, the left stick (right, forward:\n"
 		"-1 to 1) and the right grip's pull (0 to 1) through the pose; poses\n"
 		"separated by ';' (512 at\n"
@@ -1413,7 +1413,7 @@ static const struct config_setting config_settings[] =
 		"(vr_hands.c's trigger_fingers), for tests: \"<rest> <rest> <rest> <pull>\n"
 		"<pull> <pull> [<travel> [<off> <off> <off>]]\", its curl at each joint\n"
 		"from the knuckle at rest and how much more at a full pull (radians), how\n"
-		"far back the trigger goes (metres), and its curl off the trigger; empty\n"
+		"far back the trigger goes (meters), and its curl off the trigger; empty\n"
 		"none." },
 	{ "debug.vr_test_weapons", _config_string, "\"\"", "HALO_VR_TEST_WEAPONS", _environment_value, _platform_desktop,
 		"Give the first player these weapons as the map starts, in place of their\n"
@@ -1423,7 +1423,7 @@ static const struct config_setting config_settings[] =
 	{ "debug.vr_test_flip", _config_string, "\"\"", "HALO_VR_TEST_FLIP", _environment_value, _platform_desktop,
 		"Overturn a vehicle before the first VR player 3 s after they first aim,\n"
 		"once a map, the level's AI erased, for automated tests of the lift:\n"
-		"\"<name> [roof|side|upright] [<metres ahead>]\", name a part of the\n"
+		"\"<name> [roof|side|upright] [<meters ahead>]\", name a part of the\n"
 		"vehicle's tag name (\"warthog\"), on its roof (by default) or side, or\n"
 		"upright (to enter), its middle as far ahead as puts it within reach (by\n"
 		"default); empty none." },
@@ -1434,9 +1434,9 @@ static const struct config_setting config_settings[] =
 	{ "debug.vr_test_grab", _config_string, "\"\"", "HALO_VR_TEST_GRAB", _environment_value, _platform_desktop,
 		"Lay weapons on the ground before the first VR player 3 s after they\n"
 		"first aim, once a map, the level's AI erased, for automated tests of\n"
-		"the grab: \"weapon <name>[ @ <metres ahead> <metres right>][; weapon\n"
+		"the grab: \"weapon <name>[ @ <meters ahead> <meters right>][; weapon\n"
 		"...]\", name a part of the weapon's tag name (\"plasma rifle\"), 0.5 m\n"
-		"ahead and 0.15 m right by default; or \"control [<n> [<metres>]]\",\n"
+		"ahead and 0.15 m right by default; or \"control [<n> [<meters>]]\",\n"
 		"stand them before the nth nearest control they could use, facing it,\n"
 		"0.6 m from it by default (as a network game's host, flat, the last\n"
 		"player, whose machine turns them to it); empty none." },
@@ -1444,7 +1444,7 @@ static const struct config_setting config_settings[] =
 		"Place a still biped before the first VR player 3 s after they first aim\n"
 		"on foot (again 2 s after it dies), the level's AI erased, point the right\n"
 		"controller held by debug.vr_test_hands at its middle, and log each hit\n"
-		"on it, for automated tests of the aim: \"<metres ahead> [<metres right>\n"
+		"on it, for automated tests of the aim: \"<meters ahead> [<meters right>\n"
 		"[<name> [free|head]]][; <vehicle>]\", name a part of the biped's tag name\n"
 		"(\"grunt\" if none; \"-\": none), head pointing at its head, free not\n"
 		"pointing; after a ';', seated in a vehicle whose tag's name has that in\n"
@@ -1528,7 +1528,7 @@ static const struct config_setting config_settings[] =
 	{ "debug.gpu_debug_texture0", _config_boolean, "false", "HALO_GPU_DEBUG_T0", _environment_set_is_true, _platform_all,
 		"Pixel shaders show their first texture." },
 	{ "debug.gpu_debug_flat", _config_boolean, "false", "HALO_GPU_DEBUG_FLAT", _environment_set_is_true, _platform_all,
-		"Pixel shaders show their vertex colour." },
+		"Pixel shaders show their vertex color." },
 	{ "debug.screenshot_directory", _config_string, "\"\"", "HALO_SCREENSHOT_DIR", _environment_value, _platform_all,
 		"A folder to save frames to (with screenshot_every); empty none." },
 	{ "debug.screenshot_every", _config_integer, "0", "HALO_SCREENSHOT_EVERY", _environment_value, _platform_all,

@@ -312,7 +312,7 @@ STREAMER = ("interface_settings/streamer_mode", "streamer_mode_screen")
 # (making a profile: as the main menu's items do, its name asked, then the
 # profile made and edited, menu_functions.c's settings_profile_new)
 CREATE_PROFILE = ("CREATE PROFILE ›", None, None,
-                  "Your name, colour and controller layout are kept in a player profile. Make one to set them; the "
+                  "Your name, color and controller layout are kept in a player profile. Make one to set them; the "
                   "rest of Settings works without one.", None, "create_profile", "port settings new profile")
 
 PAGES = {
@@ -348,7 +348,7 @@ PAGES = {
              "How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view; wider shows "
              "more around you.", None),
             ("FIRST PERSON ›", None, _page_screen(*FIRST_PERSON),
-             "Your weapon's field of view and whether it is drawn, your legs and arms, your shield's colour, and the "
+             "Your weapon's field of view and whether it is drawn, your legs and arms, your shield's color, and the "
              "view from a vehicle's passenger seat.", None),
             (SECTION, "GRAPHICS"),
             # (Classic or Enhanced, CUSTOM while any setting it chooses is
@@ -517,7 +517,7 @@ PAGES = {
             ("TEXT CHAT", "display.text_chat", [("SHOW", "true"), ("HIDE", "false")],
              "Shows the text chat. Hide draws none of its lines, and its keys and D-pad Up open nothing.", None),
             ("CHAT TEXT", "display.chat_style", [("COLORS", "colors"), ("WHITE", "white")],
-             "Colors draws the names in their team's colour; White draws it all white, as Custom Edition does.",
+             "Colors draws the names in their team's color; White draws it all white, as Custom Edition does.",
              None),
             ("STREAMER MODE ›", None, _page_screen(*STREAMER),
              "Hides offensive words in names and text from other players, maps and mods, as stars.", None),
@@ -525,7 +525,7 @@ PAGES = {
     },
     "profile_settings": {
         "screen": "profile_settings_screen", "tab": "PROFILE",
-        "about": "Your player profile: your name and your colour.",
+        "about": "Your player profile: your name and your color.",
         "rows": [
             # (with no profile, NAME and COLOR are hidden and CREATE PROFILE
             # shown; in a game, those whose screens are ui.map's: the name's
@@ -535,7 +535,7 @@ PAGES = {
              "The name the other players see, kept in your player profile.", None, "name",
              "player profile change name"),
             ("COLOR ›", None, f"{PE}/color_edit/color_select_screen",
-             "Your armour's colour in free-for-all multiplayer games, kept in your player profile.", None, "color"),
+             "Your armor's color in free-for-all multiplayer games, kept in your player profile.", None, "color"),
             CREATE_PROFILE,
             (SECTION, "ABOUT"),
             ("OPENH1", None, None,
@@ -578,7 +578,7 @@ PAGES = {
              "Enhanced: plasma bolts, muzzle flashes and blasts light their surroundings smoothly, with a glow. "
              "Classic lights them as the Xbox did.", "desktop android"),
             ("SHIELD GLOW", "display.shield_glow", ON_OFF,
-             "Shields light their surroundings as they flare, in the shield's own colour. Online: the host's "
+             "Shields light their surroundings as they flare, in the shield's own color. Online: the host's "
              "choice.", None),
             ("GLOW INTENSITY", "display.shield_glow_intensity", [("DEFAULT", "default"), ("LIGHT SHOW", "light_show")],
              "Light Show: the shields' glow reaches three times as far, and is brighter. Online: the host's choice.",
@@ -621,7 +621,7 @@ PAGES = {
             ("ARM SHIELDS", "display.viewmodel_shield", ON_OFF,
              "Your shield's flare on your first-person arms too, as on your body.", None),
             ("SHIELD COLOR", "display.shield_color", [("DEFAULT", "default")] + [(c.upper(), c) for c in SHIELD_COLORS],
-             "Your shield's flare in an armour colour, whatever your armour. Only you see it. Default keeps its "
+             "Your shield's flare in an armor color, whatever your armor. Only you see it. Default keeps its "
              "own.", None),
         ],
     },
@@ -715,7 +715,7 @@ TEAMPLAY_ROWS = [
     ("voice_kbps", "VOICE QUALITY:", [f"{kbps} KBPS" for kbps in VOICE_QUALITIES],
      [f"Voices at {kbps} kilobits a second, in the lobby\\nand in the game." for kbps in VOICE_QUALITIES]),
     ("voice_proximity", "VOICE NEAR DISTANCE:", ["15 M", "30 M", "45 M", "60 M", "90 M", "150 M"],
-     [f"Players {metres} metres apart or less are near\\nfor voice chat." for metres in (15, 30, 45, 60, 90, 150)]),
+     [f"Players {metres} meters apart or less are near\\nfor voice chat." for metres in (15, 30, 45, 60, 90, 150)]),
     # (network_votekick.c)
     ("votekick", "VOTE KICK:", ["ON", "OFF"], [
         "Players can vote to kick a player, from the\\nscoreboard.",
@@ -1391,8 +1391,8 @@ SETTINGS_STILLS_MADE = [
     "Slayer game on Blood Gulch (`debug.network_test = \"local:bloodgulch:slayer\"`, `debug.random_seed = 7`,",
     "four bots), the same frame of each run captured offscreen by the macOS build at 1600x1200",
     "(`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (three times their size in the menu) and",
-    "reduced to 96 colours for size. The pictures of other rows' values are made the same way at the frame 12 s",
-    "into the game with the setting set, 320x200 (twice their size in the menu), reduced to 64 colours: the whole",
+    "reduced to 96 colors for size. The pictures of other rows' values are made the same way at the frame 12 s",
+    "into the game with the setting set, 320x200 (twice their size in the menu), reduced to 64 colors: the whole",
     "view, or a part of it at 1:1 or larger.",
 ]
 
