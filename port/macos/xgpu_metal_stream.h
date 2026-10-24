@@ -50,13 +50,16 @@ struct xgpu_metal_stream_variant
 
 /* the draw's values the uniforms are made of: the front end's uniforms,
 the blend colour, the 192 vertex constants (the per-pixel lighting's lights
-are some of them) and the four stages' samplers (their border colours) */
+are some of them), the four stages' samplers (their border colours) and the
+constant depth bias the vertex shader adds to reversed depth
+(xgpu_reversed_depth_bias) */
 struct xgpu_metal_stream_uniform_inputs
 {
 	const struct xgpu_stream_draw_uniforms *uniforms;
 	const float *blend_color;
 	const float (*constants)[4];
 	const struct xgpu_stream_sampler *samplers;
+	float depth_bias;
 };
 
 /* Where a pipeline's shaders come from: make sets the MSL functions

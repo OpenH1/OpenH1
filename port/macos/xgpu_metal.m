@@ -1603,7 +1603,8 @@ static void texture_clear_new(id<MTLTexture> texture)
 			pass.depthAttachment.slice = slice;
 			pass.depthAttachment.loadAction = MTLLoadActionClear;
 			pass.depthAttachment.storeAction = MTLStoreActionStore;
-			pass.depthAttachment.clearDepth = 1.0;
+			/* (the far plane: depth reversed, xgpu_backend.h) */
+			pass.depthAttachment.clearDepth = 0.0;
 			if (stencil)
 			{
 				pass.stencilAttachment.texture = texture;
@@ -2747,6 +2748,8 @@ void xgpu_metal_clear(const int32_t (*rectangles)[4], uint32_t count, uint32_t p
 	id<MTLRenderPipelineState> state;
 	uint32_t index;
 
+	/* (depth reversed: xgpu_backend.h) */
+	depth = 1.0f - depth;
 	if (!color_entry || !(parts & XGPU_METAL_CLEAR_CHANNELS))
 		parts &= ~(uint32_t)XGPU_METAL_CLEAR_COLOR;
 	if (!depth_entry)
@@ -3052,7 +3055,9 @@ static id<MTLDepthStencilState> depth_stencil_state_get(const struct xgpu_metal_
 	if (state)
 		return state;
 	descriptor = [MTLDepthStencilDescriptor new];
-	descriptor.depthCompareFunction = key.depth_test ? xgpu_metal_compare_function(key.depth_function) : MTLCompareFunctionAlways;
+	/* (depth reversed: xgpu_backend.h) */
+	descriptor.depthCompareFunction = key.depth_test ?
+		xgpu_metal_compare_function(xgpu_reversed_depth_function(key.depth_function)) : MTLCompareFunctionAlways;
 	descriptor.depthWriteEnabled = key.depth_write != 0;
 	if (key.stencil_test)
 	{
@@ -3223,8 +3228,10 @@ static BOOL draw_state_apply(id<MTLRenderCommandEncoder> render)
 		[render setFrontFacingWinding:pipeline->front_counter_clockwise ? MTLWindingCounterClockwise : MTLWindingClockwise];
 		/* (Metal draws no points for a polygon: lines) */
 		[render setTriangleFillMode:pipeline->fill == XGPU_FILL_SOLID ? MTLTriangleFillModeFill : MTLTriangleFillModeLines];
+		/* (on reversed depth: the constant bias the shader's, the slope's
+		turned: xgpu_backend.h) */
 		if (pipeline->depth_bias)
-			[render setDepthBias:metal.dynamic.depth_bias[1] slopeScale:metal.dynamic.depth_bias[0] clamp:0.0f];
+			[render setDepthBias:0.0f slopeScale:-metal.dynamic.depth_bias[0] clamp:0.0f];
 		else
 			[render setDepthBias:0.0f slopeScale:0.0f clamp:0.0f];
 		[render setDepthClipMode:pipeline->depth_clamp ? MTLDepthClipModeClamp : MTLDepthClipModeClip];
@@ -3233,8 +3240,9 @@ static BOOL draw_state_apply(id<MTLRenderCommandEncoder> render)
 	{
 		const int32_t *viewport = metal.dynamic.viewport;
 
+		/* (the depth range reversed: xgpu_backend.h) */
 		[render setViewport:(MTLViewport){ viewport[0], viewport[1], viewport[2], viewport[3],
-			metal.dynamic.depth_range[0], metal.dynamic.depth_range[1] }];
+			1.0 - metal.dynamic.depth_range[1], 1.0 - metal.dynamic.depth_range[0] }];
 	}
 	if (dirty & _dirty_scissor)
 	{

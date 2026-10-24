@@ -30,7 +30,7 @@ static const char uniforms_declaration[] =
 	"{\n"
 	"\tfloat4 viewport_scale;\n"
 	"\tfloat4 viewport_offset;\n"
-	"\tfloat point_size, screen_offset, alpha_reference, unused;\n"
+	"\tfloat point_size, screen_offset, alpha_reference, depth_bias;\n"
 	"\tfloat4 ps_c0[8];\n"
 	"\tfloat4 ps_c1[8];\n"
 	"\tfloat4 ps_final_c0;\n"
@@ -314,8 +314,9 @@ char *xgpu_msl_vertex_shader(const struct xgpu_vertex_program *program, unsigned
 {
 	struct xgpu_text text = { 0 };
 	struct vertex_usage usage;
-	unsigned long index, functions_at;
+	unsigned long index, functions_at, depth_z, depth_w;
 	BOOL environment = lighting && lighting->lights == XGPU_ENVIRONMENT_LIGHTING;
+	BOOL depth_rows = xgpu_vertex_program_depth_rows(program, &depth_z, &depth_w);
 
 	(void)options;
 	vertex_usage(program, lighting, &usage);
@@ -396,6 +397,10 @@ char *xgpu_msl_vertex_shader(const struct xgpu_vertex_program *program, unsigned
 	if (usage.ilu_used)
 		xgpu_text_append(&text, "\tfloat4 ilu;\n");
 	xgpu_text_append(&text, "\tfloat4 clip_position = float4(0.0);\n\tbool clip_captured = false;\n");
+	/* the point and the projection's rows its depth is the dot products of
+	(xgpu_vertex_program_depth_rows) */
+	if (depth_rows)
+		xgpu_text_append(&text, "\tfloat4 depth_point = float4(0.0), depth_z_row = float4(0.0), depth_w_row = float4(0.0);\n");
 	if (lighting)
 		xgpu_text_append(&text, "\tfloat4 xWorldNormal = float4(0.0);\n");
 	if (lighting_position(lighting))
@@ -438,6 +443,10 @@ char *xgpu_msl_vertex_shader(const struct xgpu_vertex_program *program, unsigned
 		{
 			xgpu_text_append(&text, "\tC = "); operand(&text, &instruction->c, instruction->relative); xgpu_text_append(&text, ";\n");
 		}
+		if (depth_rows && index == depth_z)
+			xgpu_text_append(&text, "\tdepth_point = A;\n\tdepth_z_row = B;\n");
+		if (depth_rows && index == depth_w)
+			xgpu_text_append(&text, "\tdepth_w_row = B;\n");
 
 		if (usage.mac[index])
 		{
@@ -509,7 +518,7 @@ char *xgpu_msl_vertex_shader(const struct xgpu_vertex_program *program, unsigned
 	/* the clip position, as the GLSL's (xgpu_glsl.c: the conversion done
 	with c[-38] and c[-37] undone, pixel centres at half-integers, a w of
 	zero behind the camera); Metal's clip space is Direct3D's, as the
-	game's: nothing to flip, depth 0 to 1 */
+	game's: nothing to flip, depth 0 to 1 (and then reversed) */
 	xgpu_text_append(&text,
 		"\t/* undo the screen-space conversion done with c[-38] and c[-37] */\n"
 		"\tfloat3 scale = float3(u.viewport_scale.x != 0.0 ? u.viewport_scale.x : 1.0,\n"
@@ -523,7 +532,27 @@ char *xgpu_msl_vertex_shader(const struct xgpu_vertex_program *program, unsigned
 		"\t{\n"
 		"\t\tfloat3 ndc = (float3(oPos.xy + float2(0.5 + u.screen_offset, 0.5), oPos.z) - u.viewport_offset.xyz) / scale;\n"
 		"\t\tposition = float4(ndc * oPos.w, oPos.w);\n"
-		"\t}\n"
+		"\t}\n",
+		XGPU_VERTEX_CONSTANT_BIAS - 38, XGPU_VERTEX_CONSTANT_BIAS - 37);
+	/* the depth reversed (xgpu_backend.h, "Reversed depth"): w - z, as one
+	dot product where the program's z and w are the projection's rows',
+	which keeps every bit of the depth the world's coordinates would round
+	away; the draw's constant depth bias toward the camera */
+	xgpu_text_append(&text, "\tposition.z = position.w - position.z;\n");
+	if (depth_rows)
+	{
+		xgpu_text_append(&text,
+			"\tif (clip_captured && c[%d].z == scale.z && c[%d].z == u.viewport_offset.z)\n"
+			"\t{\n"
+			"\t\tfloat4 depth_row = depth_w_row - depth_z_row;\n"
+			"\t\tposition.z = %s;\n"
+			"\t}\n",
+			XGPU_VERTEX_CONSTANT_BIAS - 38, XGPU_VERTEX_CONSTANT_BIAS - 37,
+			program->instructions[depth_z].mac == XGPU_MAC_DPH ? "dot(depth_point.xyz, depth_row.xyz) + depth_row.w" :
+			"dot(depth_point, depth_row)");
+	}
+	xgpu_text_append(&text,
+		"\tposition.z += u.depth_bias * position.w;\n"
 		"\tif (!(abs(position.w) > 0.0))\n"
 		"\t\tposition = float4(0.0, 0.0, 0.0, -1.0);\n"
 		"\txgpu_vertex_out output;\n"
@@ -535,8 +564,7 @@ char *xgpu_msl_vertex_shader(const struct xgpu_vertex_program *program, unsigned
 		"\toutput.xT1 = oT1;\n"
 		"\toutput.xT2 = oT2;\n"
 		"\toutput.xT3 = oT3;\n"
-		"\toutput.xFog = oFog.x;\n",
-		XGPU_VERTEX_CONSTANT_BIAS - 38, XGPU_VERTEX_CONSTANT_BIAS - 37);
+		"\toutput.xFog = oFog.x;\n");
 	if (lighting)
 		xgpu_text_append(&text, "\toutput.xWorldNormal = xWorldNormal;\n");
 	if (lighting_position(lighting))
@@ -1440,7 +1468,8 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	unsigned long functions_at;
 	const char *comparison = program->alpha_test ? comparison_operator(program->alpha_test) : "";
 	/* a z-sprite (xgpu_shader.h): its depth, only ever nearer than its
-	card's (depth(less): the depth test before the shader keeps what it can) */
+	card's (depth(greater), depth reversed: the depth test before the shader
+	keeps what it can) */
 	BOOL replaces_depth = xgpu_pixel_program_depth_stage(program) != 0;
 	int stage;
 
@@ -1472,7 +1501,7 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 	if (sample_mask)
 		xgpu_text_append(&text, "\tuint sample_mask [[sample_mask]];\n");
 	if (replaces_depth)
-		xgpu_text_append(&text, "\tfloat depth [[depth(less)]];\n");
+		xgpu_text_append(&text, "\tfloat depth [[depth(greater)]];\n");
 	xgpu_text_append(&text, "};\n");
 	/* (the functions the shader calls: put in before it at the end) */
 	if (program->dynamic_lights)
@@ -1653,9 +1682,10 @@ char *xgpu_msl_pixel_shader(const struct xgpu_pixel_program *program, const stru
 		xgpu_text_append(&text, "\tresult = in.xD0.a > 0.0 ? float4(in.xD0.rgb, 1.0) : float4(1.0, 0.0, 1.0, 1.0);\n");
 	if (count_samples)
 		xgpu_text_append(&text, "\tatomic_fetch_add_explicit(visible_samples, 1u, memory_order_relaxed);\n");
-	/* (no farther than the card: depth(less)'s promise) */
+	/* (no farther than the card: depth(greater)'s promise, on reversed
+	depth: xgpu_backend.h) */
 	if (replaces_depth)
-		xgpu_text_append(&text, "\toutput.depth = min(replaced_depth, in.frag_position.z);\n");
+		xgpu_text_append(&text, "\toutput.depth = max(1.0 - replaced_depth, in.frag_position.z);\n");
 	if (program->source_blend)
 	{
 		static const char *const factors[] =
@@ -1751,7 +1781,7 @@ char *xgpu_msl_halo_shader(BOOL pixel)
 			"\tfloat r2 = dot(in.corner, in.corner);\n"
 			"\tif (r2 >= 1.0)\n"
 			"\t\tdiscard_fragment();\n"
-			"\tfloat scene = scene_depth.read(uint2(in.position.xy));\n"
+			"\tfloat scene = 1.0 - scene_depth.read(uint2(in.position.xy));\n"
 			"\tfloat away = scene - u.depth_parameters.x;\n"
 			"\tfloat distance = away * u.depth_parameters.y > 0.0 ? u.depth_parameters.y / away : 1.0e9;\n"
 			"\tfloat fade = scene >= 1.0 ? 1.0 : saturate((distance - in.depth) / u.depth_parameters.z);\n"
