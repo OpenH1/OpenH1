@@ -37,6 +37,8 @@
 - **The Mods menu's warning icons** (a mod out of its requested order, and
   a mod that cannot be played): `triangle-alert` and `circle-x` from
   [Lucide](https://lucide.dev) 1.53.0, under the same licence.
+- **The server browsers' favorite star**: `star` from
+  [Lucide](https://lucide.dev) 1.53.0, under the same licence.
 - **The Android touch controls' line icons** (start, back, the D-pad, the
   toolbar): outlines of glyphs of [Mobile Controls](https://kenney.nl/assets/mobile-controls)
   1.0 by Kenney (www.kenney.nl), CC0

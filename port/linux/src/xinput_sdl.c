@@ -541,7 +541,9 @@ static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GA
 	/* (Q and E as LB and RB, the white and black buttons: Settings' tabs) */
 	pad->bAnalogButtons[XINPUT_GAMEPAD_WHITE] |= analog(k[SDL_SCANCODE_Q]);
 	pad->bAnalogButtons[XINPUT_GAMEPAD_BLACK] |= analog(k[SDL_SCANCODE_E]);
-	pad->bAnalogButtons[XINPUT_GAMEPAD_Y] |= analog(k[SDL_SCANCODE_TAB]);
+	/* (F too: the server browsers' favorite, drawn as F in the menus'
+	prompts while the keyboard and mouse play: ui_widget.c) */
+	pad->bAnalogButtons[XINPUT_GAMEPAD_Y] |= analog(k[SDL_SCANCODE_TAB] || k[SDL_SCANCODE_F]);
 }
 
 /* the keys held when the game and the menus switch, or typing or the

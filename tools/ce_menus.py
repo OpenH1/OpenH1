@@ -726,6 +726,9 @@ def main() -> None:
     # (Multiplayer's panel: its counts' digits, and a game's ping as bars)
     lines.append(art.digits(port_settings.STATUS_DIGITS))
     lines.append(art.port_picture(port_settings.PING_BARS, port_settings.ping_bars_frames()))
+    # (the browsers' rows' star: Lucide's, port/assets/icons/lucide)
+    lines.append(art.port_picture(port_settings.FAVORITE_STAR,
+                                  port_settings.favorite_star_frames(ROOT / "port/assets/icons/lucide")))
     # (the touchscreen's Multiplayer: its rows, its panel's two parts, its
     # OPEN button)
     body, cap = port_settings.touch_panel_frames()

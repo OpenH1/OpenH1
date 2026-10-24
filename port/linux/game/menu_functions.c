@@ -98,6 +98,7 @@ their handlers open opens.
 #include "text/draw_string.h"
 /* (internet play's server browser: the platform layer's) */
 #include "../src/p2p.h"
+#include "../src/browser_favorites.h"
 #include "text_filter.h"
 
 #include <stdlib.h>
@@ -5003,8 +5004,7 @@ static void browser_games_read(void)
 			}
 		}
 	}
-	if (multiplayer.game_chosen >= multiplayer.game_count)
-		multiplayer.game_chosen = (short)MAX(0, multiplayer.game_count - 1);
+	/* (the game chosen kept among the rows: local_browser_favorites) */
 }
 
 static short browser_row_index(struct widget_instance *row)
@@ -5019,6 +5019,10 @@ static short browser_row_pings[BROWSER_ROWS];
 grey (pc_menu_text_color) */
 static boolean browser_row_closed[BROWSER_ROWS];
 #define PLAYERS_COLOR_CLOSED 0x7F8A99FFUL
+/* whether each row's game is a favorite, and whether the row is a favorite
+offline (its text all grey, as a closed game's players) */
+static boolean browser_row_favorite[BROWSER_ROWS];
+static boolean browser_row_offline[BROWSER_ROWS];
 enum
 {
 	PING_GOOD = 80,
@@ -5029,8 +5033,8 @@ enum
 #define PING_COLOR_POOR 0xE86A5AFFUL
 
 /* ui_widget.c: a text's colour in place of its own (FALSE: its own): a
-server browser row's ping by how good it is, and a closed game's players
-grey */
+server browser row's ping by how good it is, a closed game's players grey,
+and an offline favorite's row grey */
 boolean pc_menu_text_color(struct widget_instance *widget, real_argb_color *color)
 {
 	short row = widget->parent ? browser_row_index(widget->parent) : NONE;
@@ -5039,7 +5043,9 @@ boolean pc_menu_text_color(struct widget_instance *widget, real_argb_color *colo
 
 	if (row < 0 || row >= BROWSER_ROWS)
 		return FALSE;
-	if (!strcmp(widget->name, "server_item_players"))
+	if (browser_row_offline[row])
+		rgba = PLAYERS_COLOR_CLOSED;
+	else if (!strcmp(widget->name, "server_item_players"))
 	{
 		if (!browser_row_closed[row])
 			return FALSE;
@@ -5141,7 +5147,7 @@ static boolean browser_initialize(struct widget_instance *screen, struct event_r
 	char const *const titles[] = { "header_internet", "header_lan", "header_direct_link", "header_server_browser" };
 	/* (and the column titles of the dedicated and classic columns, which
 	the rows leave empty) */
-	char const *const unused[] = { "op_browser_mode", "join_game_button_update", "join_game_button_filters",
+	char const *const unused[] = { "op_browser_mode", "join_game_button_update",
 		"op_sort_header_dedicated", "op_sort_header_classic" };
 	short index;
 
@@ -5293,6 +5299,202 @@ static void game_map_name(struct advertised_game const *game, wchar_t *text)
 	map_display_name(game->map_name, text);
 }
 
+/* ---- the browsers' favorites (port/linux/src/browser_favorites.c): a game
+starred (Y, F on the keyboard, or a click on its row's star) is kept on this
+machine, known by its host's internet-play identifier (an internet or Direct
+Link game) or its address (a local network game), not by its name. The
+favorites found go to the top of the list, FAVORITES shows only them, and
+those not found stay listed after the others, grey, by their last known
+name, map and gametype. A host's identifier is new each time it starts, so
+an internet favorite not found by it is found again by its last known name,
+and takes the new one. Nothing is sent */
+
+/* FAVORITES (the PC version's FILTERS button): only the favorites shown */
+static boolean browser_favorites_only;
+/* the favorites listed offline, after the games found (their indices) */
+static short browser_offline[BROWSER_FAVORITES_MAXIMUM];
+static short browser_offline_count;
+/* how many of the games found are favorites (the first ones listed) */
+static short browser_found_favorites;
+/* the game starred or unstarred last, whose row takes the focus once the
+list is ordered again (empty: none) */
+static char browser_follow_key[BROWSER_FAVORITE_KEY_SIZE];
+
+static void listing_favorite(struct p2p_listing const *game, struct browser_favorite *favorite)
+{
+	csmemset(favorite, 0, sizeof(*favorite));
+	browser_favorite_key_internet(game->identifier, favorite->key);
+	snprintf(favorite->name, sizeof(favorite->name), "%s", game->name);
+	snprintf(favorite->map, sizeof(favorite->map), "%s", game->map);
+	snprintf(favorite->gametype, sizeof(favorite->gametype), "%s", game->gametype);
+	favorite->engine_type = game->engine_type;
+	favorite->kind = game->kind;
+}
+
+/* a local network game's, by its host's address; a Direct Link game's by
+its host's identifier, as the server browser's */
+static void advertised_favorite(struct advertised_game *game, struct browser_favorite *favorite)
+{
+	unsigned long address;
+	short index;
+
+	csmemset(favorite, 0, sizeof(*favorite));
+	if (game_from_peer(game))
+		browser_favorite_key_internet(game->xnaddr + 2, favorite->key);
+	else
+	{
+		csmemcpy(&address, game->xnaddr + 8, sizeof(address));
+		browser_favorite_key_address(address, favorite->key);
+	}
+	for (index = 0; index < NUMBEROF(game->game_name) && game->game_name[index] &&
+		index < (short)sizeof(favorite->name) - 1; index++)
+	{
+		favorite->name[index] = game->game_name[index] >= 0x20 && game->game_name[index] < 0x7F ?
+			(char)game->game_name[index] : '?';
+	}
+	snprintf(favorite->map, sizeof(favorite->map), "%s", scenario_name(game->map_name));
+	favorite->engine_type = game->engine_type;
+	favorite->kind = advertised_game_kind(game);
+}
+
+/* the favorites of the games found (each one's index, else NONE), those
+found again by name given their new keys, each seen now; then the
+favorites not found whose keys are of the kind the list shows ("net:",
+"lan:"; NULL: none), its offline ones */
+static void browser_favorites_match(struct browser_favorite const *games, short count, short *favorite_of,
+	char const *offline_kind)
+{
+	boolean seen[BROWSER_FAVORITES_MAXIMUM];
+	short favorites = (short)browser_favorites_count();
+	short index, favorite;
+
+	csmemset(seen, 0, sizeof(seen));
+	for (index = 0; index < count; index++)
+	{
+		favorite_of[index] = (short)browser_favorites_find(games[index].key);
+		if (favorite_of[index] != NONE)
+			seen[favorite_of[index]] = TRUE;
+	}
+	for (index = 0; index < count; index++)
+	{
+		if (favorite_of[index] != NONE || strncmp(games[index].key, "net:", 4) || !games[index].name[0])
+			continue;
+		for (favorite = 0; favorite < favorites; favorite++)
+		{
+			struct browser_favorite const *known = browser_favorites_get(favorite);
+
+			if (!seen[favorite] && !strncmp(known->key, "net:", 4) && !strcmp(known->name, games[index].name))
+			{
+				browser_favorites_rekey(favorite, games[index].key);
+				seen[favorite] = TRUE;
+				favorite_of[index] = favorite;
+				break;
+			}
+		}
+	}
+	for (index = 0; index < count; index++)
+	{
+		if (favorite_of[index] != NONE)
+			browser_favorites_seen(favorite_of[index], &games[index]);
+	}
+	browser_offline_count = 0;
+	for (favorite = 0; offline_kind && favorite < favorites; favorite++)
+	{
+		if (!seen[favorite] && !strncmp(browser_favorites_get(favorite)->key, offline_kind, 4))
+			browser_offline[browser_offline_count++] = favorite;
+	}
+}
+
+/* the order of the games found: the favorites first, then the others (none,
+with FAVORITES), each in the order found; into `order`, returning how many */
+static short browser_favorites_order(short const *favorite_of, short count, short *order)
+{
+	short pass, index;
+	short written = 0;
+
+	browser_found_favorites = 0;
+	for (pass = 0; pass < 2; pass++)
+	{
+		for (index = 0; index < count; index++)
+		{
+			if ((favorite_of[index] != NONE) == (pass == 0) && (pass == 0 || !browser_favorites_only))
+				order[written++] = index;
+		}
+		if (pass == 0)
+			browser_found_favorites = written;
+	}
+	return written;
+}
+
+/* a row's star (server_item_favorite): gold for a favorite, grey for one
+offline, an outline on the row focused that is neither (a click on it stars
+the game), else nothing */
+static void browser_row_star(struct widget_instance *row, short row_index, boolean focused)
+{
+	struct widget_instance *star = named(row, "server_item_favorite", 0);
+
+	if (!star)
+		return;
+	star->visible = TRUE;
+	star->animation.current_frame_index = browser_row_offline[row_index] ? 2 :
+		browser_row_favorite[row_index] ? 1 : focused ? 3 : 0;
+}
+
+/* an offline favorite's row: its last known name, map and gametype, OFFLINE
+for its players */
+static void browser_offline_row(struct widget_instance *row, struct browser_favorite const *favorite)
+{
+	wchar_t text[ROW_TEXT_LENGTH];
+	short index;
+
+	for (index = 0; favorite->name[index] && index < ROW_TEXT_LENGTH - 1; index++)
+		text[index] = (wchar_t)(unsigned char)favorite->name[index];
+	text[index] = 0;
+	text_set(named(row, "server_item_server_name", 0), text);
+	map_display_name(favorite->map, text);
+	text_set(named(row, "server_item_map", 0), text);
+	text_set(named(row, "server_item_type", 0),
+		game_kind_name(favorite->engine_type, (byte)favorite->kind, TRUE));
+	text_set(named(row, "server_item_players", 0), L"OFFLINE");
+	text_set(named(row, "server_item_ping", 0), L"");
+	visible_set(named(row, "server_item_locked", 0), FALSE);
+	visible_set(named(row, "server_item_dedicated", 0), FALSE);
+	visible_set(named(row, "server_item_classic", 0), FALSE);
+}
+
+/* the line below the rows for an offline favorite: when it was last seen */
+static void browser_offline_line(struct browser_favorite const *favorite, wchar_t *text, short size)
+{
+	char when[32];
+	wchar_t wide[32];
+	short index;
+
+	browser_favorite_last_seen_text(favorite->last_seen, browser_favorites_now(), when, sizeof(when));
+	for (index = 0; when[index] && index < NUMBEROF(wide) - 1; index++)
+		wide[index] = (wchar_t)(unsigned char)when[index];
+	wide[index] = 0;
+	usnprintf(text, size - 1, L"Offline \x00B7 last seen %s", wide);
+	text[size - 1] = 0;
+}
+
+/* the line below it: Y (F on the keyboard) stars or unstars the game
+chosen, its button drawn as the device in use has it */
+static void browser_favorite_prompt(struct widget_instance *list, boolean chosen, boolean favorite)
+{
+	/* (in the place of the PC version's rules, which this line never had:
+	its label, RULES, hidden) */
+	visible_set(named(list, "ticker_rules_info_label", 0), FALSE);
+	text_set(named(list, "ticker_rules_info", 0), !chosen ? L"" : favorite ?
+		L"%y-button Remove from favorites" : L"%y-button Add to favorites");
+}
+
+/* FAVORITES' words (tools/port_settings.py's button_favorites, in the place
+of the PC version's FILTERS): what pressing it shows */
+static void browser_favorites_button(struct widget_instance *list)
+{
+	text_set(named(list, "button_favorites", 0), browser_favorites_only ? L"ALL GAMES" : L"FAVORITES");
+}
+
 /* ---- Join Game > Server Browser: internet play's public games (their
 hosts' listings, p2p_lobby.c). Joining one joins its invite (as Direct
 Link's PASTE LINK); once its host is reached its game is among the client's,
@@ -5342,8 +5544,9 @@ static short browser_chosen_row(void)
 	short chosen = server_browser ? lobby_browser.chosen : multiplayer.game_chosen;
 	short row = server_browser ? (short)(chosen - lobby_browser.first) : chosen;
 
-	return chosen < (server_browser ? lobby_browser.count : multiplayer.game_count) && row >= 0 &&
-		row < BROWSER_ROWS ? row : NONE;
+	/* (the favorites offline after the games found are rows too) */
+	return chosen < (server_browser ? lobby_browser.count : multiplayer.game_count) + browser_offline_count &&
+		row >= 0 && row < BROWSER_ROWS ? row : NONE;
 }
 
 static void lobby_browser_begin(void)
@@ -5404,6 +5607,31 @@ static short lobby_browser_valid_games(struct p2p_listing *games, short count)
 	return written;
 }
 
+/* the games found in the favorites' order (browser_favorites_order), the
+favorites offline after them; returns how many found are listed */
+static short lobby_browser_favorites(short count)
+{
+	static struct browser_favorite favorites[LOBBY_BROWSER_GAMES];
+	static struct p2p_listing ordered[LOBBY_BROWSER_GAMES];
+	short favorite_of[LOBBY_BROWSER_GAMES], order[LOBBY_BROWSER_GAMES];
+	short index, listed;
+
+	for (index = 0; index < count; index++)
+		listing_favorite(&lobby_browser.games[index], &favorites[index]);
+	browser_favorites_match(favorites, count, favorite_of, "net:");
+	listed = browser_favorites_order(favorite_of, count, order);
+	for (index = 0; index < listed; index++)
+		ordered[index] = lobby_browser.games[order[index]];
+	csmemcpy(lobby_browser.games, ordered, listed * sizeof(ordered[0]));
+	return listed;
+}
+
+/* the rows the list has: the games found, then the favorites offline */
+static short lobby_browser_rows(void)
+{
+	return (short)(lobby_browser.count + browser_offline_count);
+}
+
 /* the game being joined, once its host is reached (the client's game from
 it), else NULL */
 static struct advertised_game *lobby_browser_joined_game(void)
@@ -5451,11 +5679,37 @@ static void lobby_browser_update(struct widget_instance *list)
 	short focused = browser_row_index(list->focused_child);
 	wchar_t text[ROW_TEXT_LENGTH * 2];
 	unsigned long now = system_milliseconds();
-	short chosen;
+	short chosen, rows;
 
 	lobby_browser.count = lobby_browser_valid_games(lobby_browser.games,
 		(short)p2p_lobby_games(lobby_browser.games, LOBBY_BROWSER_GAMES));
-	if (focused == BROWSER_ROWS - 1 && lobby_browser.first + BROWSER_ROWS < lobby_browser.count && list_scrolls_at_end())
+	lobby_browser.count = lobby_browser_favorites(lobby_browser.count);
+	rows = lobby_browser_rows();
+	/* (the game starred or unstarred, moved by it: its row focused) */
+	if (browser_follow_key[0])
+	{
+		short index;
+
+		for (index = 0; index < rows; index++)
+		{
+			struct browser_favorite favorite;
+
+			if (index < lobby_browser.count)
+				listing_favorite(&lobby_browser.games[index], &favorite);
+			else
+				favorite = *browser_favorites_get(browser_offline[index - lobby_browser.count]);
+			if (!strcmp(favorite.key, browser_follow_key))
+			{
+				lobby_browser.chosen = index;
+				lobby_browser.first = (short)PIN(lobby_browser.first, index - BROWSER_ROWS + 1, index);
+				focused = (short)(index - lobby_browser.first);
+				lobby_browser_focus_row(list, focused);
+				break;
+			}
+		}
+		browser_follow_key[0] = 0;
+	}
+	if (focused == BROWSER_ROWS - 1 && lobby_browser.first + BROWSER_ROWS < rows && list_scrolls_at_end())
 	{
 		lobby_browser.first++;
 		lobby_browser_focus_row(list, --focused);
@@ -5465,10 +5719,10 @@ static void lobby_browser_update(struct widget_instance *list)
 		lobby_browser.first--;
 		lobby_browser_focus_row(list, ++focused);
 	}
-	lobby_browser.first = (short)PIN(lobby_browser.first, 0, MAX(0, lobby_browser.count - BROWSER_ROWS));
+	lobby_browser.first = (short)PIN(lobby_browser.first, 0, MAX(0, rows - BROWSER_ROWS));
 	/* (the first game found takes the focus from the buttons, which had it
 	while there were none) */
-	if (lobby_browser.count && !lobby_browser.shown)
+	if (rows && !lobby_browser.shown)
 	{
 		struct widget_instance *first_row = named(list, "server_item_1", 0);
 
@@ -5487,14 +5741,25 @@ static void lobby_browser_update(struct widget_instance *list)
 	for (row = list->child; row; row = row->next)
 	{
 		short index = browser_row_index(row);
+		short row_index = index;
 		struct p2p_listing const *game;
 
 		if (index == NONE)
 			continue;
 		index = (short)(index + lobby_browser.first);
-		row->visible = index < lobby_browser.count;
-		if (index >= lobby_browser.count)
+		row->visible = index < rows;
+		if (index >= rows)
 			continue;
+		browser_row_favorite[row_index] = index < browser_found_favorites || index >= lobby_browser.count;
+		browser_row_offline[row_index] = index >= lobby_browser.count;
+		browser_row_star(row, row_index, row == list->focused_child);
+		if (index >= lobby_browser.count)
+		{
+			browser_row_pings[row_index] = -1;
+			browser_row_closed[row_index] = FALSE;
+			browser_offline_row(row, browser_favorites_get(browser_offline[index - lobby_browser.count]));
+			continue;
+		}
 		game = &lobby_browser.games[index];
 		text_to_wide(game->name, text, ROW_TEXT_LENGTH);
 		text_set(named(row, "server_item_server_name", 0), text);
@@ -5506,8 +5771,8 @@ static void lobby_browser_update(struct widget_instance *list)
 		/* (its host's ping, once probed: p2p_lobby.c; "..." while it is
 		measured, "-" never, for a game with a password, N/A for a host not
 		reached. Whether the game is under way or full is the footer's) */
-		browser_row_pings[index - lobby_browser.first] = game->failed ? -1 : game->ping;
-		browser_row_closed[index - lobby_browser.first] = !game->open;
+		browser_row_pings[row_index] = game->failed ? -1 : game->ping;
+		browser_row_closed[row_index] = !game->open;
 		usnprintf(text, ROW_TEXT_LENGTH - 1, L"%d", game->ping);
 		text_set(named(row, "server_item_ping", 0), game->failed ? L"N/A" : game->ping >= 0 ? text :
 			game->locked ? L"-" : L"...");
@@ -5589,6 +5854,11 @@ static void lobby_browser_update(struct widget_instance *list)
 				L"Strict NAT, turn on UPnP: could not reach %s" :
 				L"Could not reach %s", name);
 		}
+		else if (chosen >= lobby_browser.count && chosen < rows)
+		{
+			browser_offline_line(browser_favorites_get(browser_offline[chosen - lobby_browser.count]), text,
+				NUMBEROF(text));
+		}
 		else if (!lobby_browser.count)
 		{
 			/* (an old build sees none of the games: it says why) */
@@ -5596,6 +5866,8 @@ static void lobby_browser_update(struct widget_instance *list)
 
 			if (now - lobby_browser.begin_time < LOBBY_BROWSER_LOOK_TIME)
 				usnprintf(text, NUMBEROF(text) - 1, L"Looking for public games...");
+			else if (browser_favorites_only)
+				usnprintf(text, NUMBEROF(text) - 1, L"None of your favorites is online");
 			else if (newer)
 			{
 				usnprintf(text, NUMBEROF(text) - 1, L"%d %s on a newer version: update the game to join", newer,
@@ -5619,7 +5891,8 @@ static void lobby_browser_update(struct widget_instance *list)
 			text[0] = 0;
 		text[NUMBEROF(text) - 1] = 0;
 		text_set(named(list, "ticker_player_info", 0), text);
-		text_set(named(list, "ticker_rules_info", 0), L"");
+		browser_favorite_prompt(list, chosen < rows, chosen < browser_found_favorites || chosen >= lobby_browser.count);
+		browser_favorites_button(list);
 	}
 	if (stats)
 	{
@@ -5634,7 +5907,7 @@ static void lobby_browser_update(struct widget_instance *list)
 		text_set(named(stats, "player_count_label", 0), text);
 		string_get(JOIN_GAME_LABELS, _join_game_label_page, label);
 		usnprintf(text, ROW_TEXT_LENGTH - 1, L"%s %d/%d", label, chosen / BROWSER_ROWS + 1,
-			MAX(1, (lobby_browser.count + BROWSER_ROWS - 1) / BROWSER_ROWS));
+			MAX(1, (rows + BROWSER_ROWS - 1) / BROWSER_ROWS));
 		text_set(named(stats, "page_count_label", 0), text);
 		string_get(JOIN_GAME_LABELS, _join_game_label_servers, label);
 		usnprintf(text, ROW_TEXT_LENGTH - 1, L"%s %d", label, lobby_browser.count);
@@ -5823,6 +6096,50 @@ static boolean password_screen_edit(struct widget_instance *row, boolean *widget
 	return TRUE;
 }
 
+/* the Local Network and Direct Link lists' games in the favorites' order
+(browser_favorites_order), the local network's favorites offline after them
+(Direct Link's games are invites': none is listed offline); the game
+starred or unstarred last chosen again, and the game chosen kept among the
+rows; returns how many rows there are */
+static short local_browser_favorites(struct widget_instance *list)
+{
+	static struct browser_favorite favorites[MAXIMUM_ADVERTISED_GAMES];
+	struct advertised_game *games[MAXIMUM_ADVERTISED_GAMES];
+	short favorite_of[MAXIMUM_ADVERTISED_GAMES], order[MAXIMUM_ADVERTISED_GAMES];
+	short index, rows;
+
+	for (index = 0; index < multiplayer.game_count; index++)
+	{
+		advertised_favorite(multiplayer.games[index], &favorites[index]);
+		games[index] = multiplayer.games[index];
+	}
+	browser_favorites_match(favorites, multiplayer.game_count, favorite_of,
+		multiplayer.mode == _multiplayer_mode_lan ? "lan:" : NULL);
+	multiplayer.game_count = browser_favorites_order(favorite_of, multiplayer.game_count, order);
+	for (index = 0; index < multiplayer.game_count; index++)
+		multiplayer.games[index] = games[order[index]];
+	rows = (short)MIN(multiplayer.game_count + browser_offline_count, BROWSER_ROWS);
+	if (browser_follow_key[0])
+	{
+		for (index = 0; index < rows; index++)
+		{
+			char const *key = index < multiplayer.game_count ? favorites[order[index]].key :
+				browser_favorites_get(browser_offline[index - multiplayer.game_count])->key;
+
+			if (!strcmp(key, browser_follow_key))
+			{
+				multiplayer.game_chosen = index;
+				lobby_browser_focus_row(list, index);
+				break;
+			}
+		}
+		browser_follow_key[0] = 0;
+	}
+	if (multiplayer.game_chosen >= rows)
+		multiplayer.game_chosen = (short)MAX(0, rows - 1);
+	return rows;
+}
+
 /* "gamespy screen update": the games' rows (name, map, gametype, players),
 the one chosen's line, the counts over the titles (the PC version's: its
 players, page, servers) */
@@ -5831,6 +6148,7 @@ static void browser_update(struct widget_instance *list)
 	struct widget_instance *row;
 	struct widget_instance *stats = list->parameters.list.extended_description;
 	short focused = browser_row_index(list->focused_child);
+	short rows;
 
 	if (multiplayer.mode == _multiplayer_mode_server_browser)
 	{
@@ -5838,7 +6156,8 @@ static void browser_update(struct widget_instance *list)
 		return;
 	}
 	browser_games_read();
-	if (focused != NONE && focused < multiplayer.game_count && !ui_widget_port_hover_focused())
+	rows = local_browser_favorites(list);
+	if (focused != NONE && focused < rows && !ui_widget_port_hover_focused())
 		multiplayer.game_chosen = focused;
 	for (row = list->child; row; row = row->next)
 	{
@@ -5849,9 +6168,19 @@ static void browser_update(struct widget_instance *list)
 
 		if (index == NONE)
 			continue;
-		row->visible = index < multiplayer.game_count;
-		if (index >= multiplayer.game_count)
+		row->visible = index < rows;
+		if (index >= rows)
 			continue;
+		browser_row_favorite[index] = index < browser_found_favorites || index >= multiplayer.game_count;
+		browser_row_offline[index] = index >= multiplayer.game_count;
+		browser_row_star(row, index, row == list->focused_child);
+		if (index >= multiplayer.game_count)
+		{
+			browser_row_pings[index] = -1;
+			browser_row_closed[index] = FALSE;
+			browser_offline_row(row, browser_favorites_get(browser_offline[index - multiplayer.game_count]));
+			continue;
+		}
 		game = multiplayer.games[index];
 		ustrncpy(text, game->game_name, NUMBEROF(game->game_name) - 1);
 		text[NUMBEROF(game->game_name) - 1] = 0;
@@ -5877,9 +6206,15 @@ static void browser_update(struct widget_instance *list)
 
 		if (multiplayer.mode == _multiplayer_mode_server_browser)
 			text[0] = 0;
+		else if (multiplayer.game_chosen >= multiplayer.game_count && multiplayer.game_chosen < rows)
+		{
+			browser_offline_line(browser_favorites_get(browser_offline[multiplayer.game_chosen -
+				multiplayer.game_count]), text, NUMBEROF(text));
+		}
 		else if (!multiplayer.game_count)
 		{
-			usnprintf(text, NUMBEROF(text) - 1, L"%s", multiplayer.mode == _multiplayer_mode_direct_link ?
+			usnprintf(text, NUMBEROF(text) - 1, L"%s", browser_favorites_only ? L"None of your favorites is open" :
+				multiplayer.mode == _multiplayer_mode_direct_link ?
 				L"Copy an invite link and PASTE LINK, or accept a Discord invite" :
 				L"Looking for games on your local network...");
 		}
@@ -5892,7 +6227,9 @@ static void browser_update(struct widget_instance *list)
 		}
 		text[NUMBEROF(text) - 1] = 0;
 		text_set(named(list, "ticker_player_info", 0), text);
-		text_set(named(list, "ticker_rules_info", 0), L"");
+		browser_favorite_prompt(list, multiplayer.game_chosen < rows,
+			multiplayer.game_chosen < browser_found_favorites || multiplayer.game_chosen >= multiplayer.game_count);
+		browser_favorites_button(list);
 	}
 	if (stats)
 	{
@@ -6441,12 +6778,69 @@ static boolean browser_join(struct widget_instance *widget, short controller, bo
 	return ui_widget_port_join(widget, multiplayer.games[multiplayer.game_chosen], LOBBY_NAME, widget_deleted);
 }
 
+/* "port browser favorite" (Y on a row, F on the keyboard) and a click on a
+row's star: the row's game (NONE: the one chosen) made a favorite, or no
+longer one; its row keeps the focus as it moves */
+static boolean browser_favorite_toggle(short row)
+{
+	boolean server_browser = multiplayer.mode == _multiplayer_mode_server_browser;
+	short count = server_browser ? lobby_browser.count : multiplayer.game_count;
+	struct browser_favorite game;
+	short index;
+	int starred;
+
+	if (row == NONE)
+		row = browser_chosen_row();
+	if (row == NONE)
+		return campaign_fail();
+	index = server_browser ? (short)(lobby_browser.first + row) : row;
+	if (index < count && server_browser)
+		listing_favorite(&lobby_browser.games[index], &game);
+	else if (index < count)
+		advertised_favorite(multiplayer.games[index], &game);
+	else if (index - count < browser_offline_count)
+		game = *browser_favorites_get(browser_offline[index - count]);
+	else
+		return campaign_fail();
+	starred = browser_favorites_toggle(&game);
+	if (starred < 0)
+		return campaign_fail();
+	snprintf(browser_follow_key, sizeof(browser_follow_key), "%s", game.key);
+	ui_play_audio_feedback_sound(starred ? SOUND_FORWARD : SOUND_BACK);
+	return TRUE;
+}
+
+/* whether a click (the pointer's, or a tap) on a row was on its star */
+static boolean browser_click_on_star(struct widget_instance *row)
+{
+	struct widget_instance *star = named(row, "server_item_favorite", 0);
+	short x, y, left;
+
+	if (!star || !ui_widget_port_take_click(&x, &y))
+		return FALSE;
+	left = settings_slider_track_x(star);
+	/* (a little wider than the star, for a finger) */
+	return x >= left - 4 && x < left + 20;
+}
+
 /* "gamespy select item" (a row: chooses its game, or joins it once chosen)
 and "gamespy select button" (Join) */
 static boolean browser_select(struct widget_instance *widget, struct event_record *event, short controller,
 	boolean *widget_deleted)
 {
 	short row = browser_row_index(widget);
+
+	/* (FAVORITES: only the favorites shown, or every game again) */
+	if (strstr(widget->name, "button_favorites"))
+	{
+		browser_favorites_only = !browser_favorites_only;
+		lobby_browser.first = lobby_browser.chosen = 0;
+		multiplayer.game_chosen = 0;
+		ui_play_audio_feedback_sound(SOUND_FORWARD);
+		return TRUE;
+	}
+	if (row != NONE && !lobby_browser.ready && browser_click_on_star(widget))
+		return browser_favorite_toggle(row);
 
 	/* (a row not chosen, clicked after the pointer passed over it: chosen,
 	as Custom Edition's; a click on it chosen, a double click, A or JOIN
@@ -8106,6 +8500,10 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "gamespy select item") || !strcmp(name, "gamespy select button"))
 		{
 			return browser_select(widget, event, controller, widget_deleted);
+		}
+		else if (!strcmp(name, "port browser favorite"))
+		{
+			return browser_favorite_toggle(browser_row_index(widget));
 		}
 		else if (!strcmp(name, "gamespy back handler") && text_field_editing(NULL))
 		{

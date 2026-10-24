@@ -450,6 +450,8 @@ static char const *const port_function_names[] =
 	"port settings new profile",
 	/* (Settings' sliders: menu_functions.c's settings_slider_*) */
 	"port slider left", "port slider right", "port slider edit",
+	/* (the server browsers' favorites: menu_functions.c's browser_favorite_toggle) */
+	"port browser favorite",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
