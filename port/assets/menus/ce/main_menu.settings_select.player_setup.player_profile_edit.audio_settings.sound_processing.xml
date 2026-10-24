@@ -37,7 +37,7 @@
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/sound_processing/resampler_label" type="text" controller="1" width="300" height="22" string_list="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/sound_processing/labels" string_index="1" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="4">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/sound_processing/resampler_spinner" type="spinner" left="3" top="2" width="147" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="SINC|LINEAR" setting="audio.resampler" values="sinc|linear" font="ui\large_ui" color="#FF2896FF" align="center" text_y="1" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 150 19 156">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/sound_processing/resampler_spinner" type="spinner" left="3" top="2" width="147" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="CLEAN|CLASSIC" setting="audio.resampler" values="sinc|linear" font="ui\large_ui" color="#FF2896FF" align="center" text_y="1" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 150 19 156">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/sound_processing/button_defaults" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="strings/common_button_captions" string_index="3" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
@@ -57,6 +57,6 @@
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/audio_settings/sound_processing/help_strings">
 		<string text=""/>
 		<string text="Echo sounds as the place you are in does, and\nmuffle those behind walls, as the Xbox did."/>
-		<string text="How sounds are converted to the output's rate:\nsinc is clean; linear is brighter, with aliasing."/>
+		<string text="How sounds are converted to your speakers' rate:\nClean is clear; Classic is brighter but harsher."/>
 	</strings>
 </menus>

@@ -85,12 +85,12 @@
 		<string text="GLOW INTENSITY:"/>
 		<string text="HDR:"/>
 		<string text="HDR MODE:"/>
-		<string text="PAPER WHITE:"/>
+		<string text="HDR BRIGHTNESS:"/>
 	</strings>
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/extra_effects/help_strings">
 		<string text=""/>
 		<string text="Shields light their surroundings as they flare,\nin the shield's own color."/>
-		<string text="Light Show: the shield glow three times as far,\nat full from a third of the flare."/>
+		<string text="Light Show: the shield glow reaches three times\nas far, and is brighter."/>
 		<string text="Brighter highlights on an HDR display. Auto: on\nwhen the display shows HDR."/>
 		<string text="Faithful: the stock picture, brighter highlights.\nPunchy: the whole scene lifted, remaster style."/>
 		<string text="With HDR, how bright white surfaces and the HUD\nare, in percent of the system's white."/>

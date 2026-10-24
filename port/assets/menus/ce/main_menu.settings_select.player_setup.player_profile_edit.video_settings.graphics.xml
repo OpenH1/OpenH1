@@ -112,7 +112,7 @@
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/shadow_resolution_label" type="text" controller="1" width="300" height="22" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/labels" string_index="8" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="4">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/shadow_resolution_spinner" type="spinner" left="3" top="2" width="147" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="128|256|512|1024" setting="display.shadow_resolution" values="128|256|512|1024" font="ui\large_ui" color="#FF2896FF" align="center" text_y="1" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 150 19 156">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/shadow_resolution_spinner" type="spinner" left="3" top="2" width="147" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="XBOX|MEDIUM|HIGH|ULTRA" setting="display.shadow_resolution" values="128|256|512|1024" font="ui\large_ui" color="#FF2896FF" align="center" text_y="1" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 150 19 156">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/op_per_pixel_lighting" width="512" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/option_bkds" color="#FF2896FF">
@@ -130,7 +130,7 @@
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/model_detail_label" type="text" controller="1" width="300" height="22" string_list="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/labels" string_index="10" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="4">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/model_detail_spinner" type="spinner" left="3" top="2" width="147" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="AUTO|STOCK|NATIVE|HIGHEST" setting="display.model_detail" values="auto|stock|native|highest" font="ui\large_ui" color="#FF2896FF" align="center" text_y="1" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 150 19 156">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/model_detail_spinner" type="spinner" left="3" top="2" width="147" height="20" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="AUTO|XBOX|FULL|HIGHEST" setting="display.model_detail" values="auto|stock|native|highest" font="ui\large_ui" color="#FF2896FF" align="center" text_y="1" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="7 -6 19 0" footer_bounds="7 150 19 156">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/op_dynamic_lights" width="512" height="28" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/option_bkds" color="#FF2896FF" platform="desktop android">
@@ -179,12 +179,12 @@
 		<string text="ANTI-ALIASING:"/>
 		<string text="ANTI-ALIASING:"/>
 		<string text="TEXTURE FILTERING:"/>
-		<string text="SHADOW RESOLUTION:"/>
-		<string text="PER-PIXEL LIGHTING:"/>
+		<string text="SHADOW QUALITY:"/>
+		<string text="SMOOTH LIGHTING:"/>
 		<string text="MODEL DETAIL:"/>
 		<string text="DYNAMIC LIGHTS:"/>
 		<string text="MATCH TIMER:"/>
-		<string text="SIMULATION:"/>
+		<string text="TICK RATE:"/>
 	</strings>
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/video_settings/graphics/help_strings">
 		<string text=""/>
@@ -192,15 +192,15 @@
 		<string text="Draw the HUD from the high-res redraws; off\ndraws the game's own pictures."/>
 		<string text="Classic: plain Xbox buttons. Gems: shaded Xbox\nbuttons. Dark Gems: the menu's button artwork."/>
 		<string text="Draw text and titles with high-res fonts; off\ndraws the game's own."/>
-		<string text="Smooth jagged edges, which the Xbox did not. FXAA\nand SMAA are cheap; SSAA and MSAA are sharper."/>
-		<string text="Smooth jagged edges, which the Xbox did not. FXAA\nand SMAA are cheap; MSAA is sharper."/>
-		<string text="Smooth jagged edges, which the Xbox did not. FXAA\nis cheap; MSAA is sharper."/>
-		<string text="Keep floors and walls sharp at a grazing angle,\nwhich the Xbox did not. Off: as the Xbox."/>
-		<string text="The size objects' shadows are drawn at: 128 as on\nthe Xbox; larger for smoother, as soft, edges."/>
-		<string text="Light models for each pixel, without the facets\nof the Xbox's lighting for each vertex."/>
-		<string text="Stock picks models' detail by the Xbox's 480 lines;\nnative by this display's; auto: native in VR."/>
-		<string text="Enhanced: plasma, flashes and blasts light each\npixel, gliding with the bolt, a glow about it."/>
+		<string text="Smooth jagged edges. FXAA and SMAA cost little;\nSSAA and MSAA are sharper and cost more."/>
+		<string text="Smooth jagged edges. FXAA and SMAA cost little;\nMSAA is sharper and costs more."/>
+		<string text="Smooth jagged edges. FXAA costs little; MSAA is\nsharper and costs more."/>
+		<string text="Keep floors and walls sharp into the distance.\nOff looks as the Xbox did."/>
+		<string text="How smooth the edges of objects' shadows are:\nXBOX as the original; higher costs more."/>
+		<string text="Light characters and weapons smoothly, without\nthe flat facets of the Xbox's lighting."/>
+		<string text="Detail of models in the distance: Xbox as on a TV,\nFull for your screen. Auto: Full in VR."/>
+		<string text="Enhanced: plasma bolts, muzzle flashes and blasts\nlight their surroundings smoothly, with a glow."/>
 		<string text="Draw a clock at the bottom right in multiplayer,\ncounting up from the start of the game."/>
-		<string text="How often the world moves. Original plays exactly\nas shipped; 60 and 120 respond faster."/>
+		<string text="How often the world updates. 60 and 120 respond\nfaster; online games always play at 30."/>
 	</strings>
 </menus>

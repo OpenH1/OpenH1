@@ -72,6 +72,7 @@
   "ce/port/main_menu/mods/header_mods.png",
   "ce/port/main_menu/multiplayer_type_select/coop/header_player_2.png",
   "ce/port/main_menu/multiplayer_type_select/join_game/header_direct_link.png",
+  "ce/port/main_menu/multiplayer_type_select/join_game/header_local_network.png",
   "ce/port/main_menu/multiplayer_type_select/join_game/header_password.png",
   "ce/port/main_menu/multiplayer_type_select/join_game/header_server_browser.png",
   "ce/port/main_menu/multiplayer_type_select/lobby/header_add_player.png",

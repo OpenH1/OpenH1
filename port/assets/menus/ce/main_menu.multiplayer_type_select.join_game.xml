@@ -20,7 +20,7 @@
 		<child widget="main_menu/multiplayer_type_select/join_game/header_server_browser"/>
 		<child widget="main_menu/multiplayer_type_select/join_game/header_direct_link"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/header_lan" controller="1" left="35" top="11" width="363" height="59" bitmap="main_menu/multiplayer_type_select/join_game/header_lan">
+	<widget name="main_menu/multiplayer_type_select/join_game/header_lan" controller="1" left="35" top="11" width="363" height="59" bitmap="main_menu/multiplayer_type_select/join_game/header_local_network">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/header_sort_arrows" width="64" height="32">
 		<child widget="main_menu/multiplayer_type_select/join_game/header_sort_up_arrow"/>
