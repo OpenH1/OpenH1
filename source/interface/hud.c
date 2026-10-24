@@ -1184,7 +1184,8 @@ static void hud_draw_player_name(
 	long player_index,
 	boolean ally,
 	boolean indicator,
-	real enemy_range)
+	real enemy_range,
+	real fade)
 {
 	struct player_datum const *player = player_get(player_index);
 	long font_index = hud_get_font_index();
@@ -1252,6 +1253,8 @@ static void hud_draw_player_name(
 		/* (whole up to four fifths of the range, then fading out) */
 		color.alpha = PIN((enemy_range - distance) / (0.2f * enemy_range), 0.0f, 1.0f);
 	}
+	/* (fading out as the scoreboard fades in) */
+	color.alpha *= fade;
 	/* (centred: 2; scaled about its bottom's middle, over the head) */
 	draw_string_set_draw_mode(font_index, NONE, 2, 0, &color);
 	rasterizer_text_set_scale(hud_player_name_scale(), (real)x, (real)y);
@@ -1290,8 +1293,10 @@ static void hud_draw_player_names(
 	boolean indicators;
 	long team_index;
 	real enemy_range;
+	/* (none under the scoreboard: they fade out as it fades in) */
+	real fade = 1.0f - game_engine_scoreboard_alpha(render.local_player_index);
 
-	if (setting == _player_names_none || player_index == NONE)
+	if (setting == _player_names_none || player_index == NONE || fade <= 0.0f)
 		return;
 	team_index = player_get(player_index)->team_index;
 	/* the campaign always draws teammate triangles (hud_draw_players) */
@@ -1312,7 +1317,7 @@ static void hud_draw_player_names(
 		{
 			continue;
 		}
-		hud_draw_player_name(iterator.datum_index, ally, ally && indicators, enemy_range);
+		hud_draw_player_name(iterator.datum_index, ally, ally && indicators, enemy_range, fade);
 	}
 
 	return;

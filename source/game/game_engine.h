@@ -472,6 +472,8 @@ boolean game_engine_running(
 	void);
 boolean game_engine_showing_postgame(
 	void);
+real game_engine_scoreboard_alpha(
+	short local_player_index);
 boolean game_engine_in_play(
 	void);
 

@@ -812,10 +812,6 @@ int __cdecl sort_statistic_buffer_ranking(
 	void const *entry0_pointer,
 	void const *entry1_pointer);
 
-static void drawline(
-	wchar_t const *string,
-	long row_index,
-	short justification);
 
 static boolean game_engine_infinite_grenades_internal(
 	void);
@@ -1714,12 +1710,18 @@ a split-screen view's keeps the Xbox's six rows): SCOREBOARD_SCALE times the
 HUD's text, centred, on a panel (display.scoreboard_background). A team game's
 players in a column for each team (display.scoreboard_team_layout), else in
 order of score in one column, or two when one has too few rows; each with
-the player's ping in a network game (the host's measure:
-network_distributed.c). More players than a page are scrolled to with the
-mouse wheel and Page Up/Down (platform_scoreboard_scroll), a footer telling
-which are shown; opened, it shows the viewer's own player's page. Network
-co-op's campaign, with no game engine, lists its players as they joined,
-with only their names and pings. */
+the player's ping in a network game with other machines (the host's
+measure: network_distributed.c; scoreboard_ping_shown). Laid out as the
+carnage report is (the menus' Settings): a rule under the headings, one
+between the rows, the viewer's own row lit, and a footer under a rule, its
+prompts there, not in the table's rows. More players than a page are
+scrolled to with the mouse wheel and Page Up/Down
+(platform_scoreboard_scroll), the footer telling which are shown; opened,
+it shows the viewer's own player's page. Network co-op's campaign, with no
+game engine, lists its players as they joined, with only their names and
+pings. While it shows, the players' names over their heads fade out with
+it (hud.c's hud_draw_player_names, game_engine_scoreboard_alpha), so that
+none is drawn under its rows. */
 enum
 {
 	/* the rows' widths (in the scoreboard's text, before it is scaled):
@@ -1729,7 +1731,6 @@ enum
 	SCOREBOARD_NAME_WIDTH = 150,
 	SCOREBOARD_SCORE_WIDTH = 95,
 	SCOREBOARD_PING_WIDTH = 40,
-	SCOREBOARD_COLUMN_WIDTH = SCOREBOARD_PLACE_WIDTH + SCOREBOARD_NAME_WIDTH + SCOREBOARD_SCORE_WIDTH + SCOREBOARD_PING_WIDTH,
 	SCOREBOARD_COLUMN_GAP = 40,
 	/* the rows a column has: as many as fit between 6 rows of the screen
 	from its top and 2 from its bottom (the motion sensor); the scoreboard
@@ -1753,6 +1754,8 @@ const char *config_string(const char *name);
 unsigned long config_changes(void);
 /* cinematics.c's */
 void draw_quad(rectangle2d *rectangle, pixel32 color);
+/* menu_functions.c's: a map's name as the menus show it */
+void ui_widget_port_map_name(char const *map_name, wchar_t *text, short size);
 
 /* display.scoreboard_background(_color): the panel behind the scoreboard's
 text, its colour "red, green, blue, alpha" (0 to 255 each), or 0 for none */
@@ -1766,7 +1769,7 @@ static pixel32 scoreboard_background_color(
 	if (read_at != config_changes())
 	{
 		char const *text = config_string("display.scoreboard_background_color");
-		long parts[4] = { 16, 16, 16, 150 };
+		long parts[4] = { 6, 20, 48, 190 };
 		short part;
 
 		read_at = config_changes();
@@ -1844,6 +1847,34 @@ static void scoreboard_draw_row(
 	return;
 }
 
+/* a line of the scoreboard (its footer's prompt) ending at right, as
+scoreboard_draw_row's start at its left */
+static void scoreboard_draw_row_right(
+	wchar_t const *string,
+	real_argb_color const *color,
+	long row_index,
+	short top,
+	short right)
+{
+	long font_index = hud_get_font_index();
+	rectangle2d bounds;
+	long line_height;
+	struct font_header *font;
+
+	if (font_index == NONE)
+		return;
+	font = font_definition_get(font_index);
+	line_height = font->leading_height + font->descending_height + font->ascending_height;
+	bounds.x1 = right;
+	bounds.x0 = (short)(right - 1000);
+	bounds.y0 = (short)(top + row_index * line_height);
+	bounds.y1 = (short)(bounds.y0 + line_height);
+	draw_string_set_tab_stops(NULL, 0);
+	/* (right: 1) */
+	draw_string_set_draw_mode(font_index, NONE, 1, 0, color);
+	rasterizer_draw_unicode_string(&bounds, NULL, NULL, 0, string);
+}
+
 /* sdl_platform.c's: the wheel's and Page Up/Down's moves of the open
 scoreboard (notches and pages, down positive) */
 void platform_scoreboard_scroll(int open, long *notches, long *pages);
@@ -1872,6 +1903,37 @@ static boolean scoreboard_team_columns(
 	}
 
 	return (boolean)setting;
+}
+
+/* whether the scoreboard has the players' pings: a network game's with
+other machines, not a game of this machine alone (its split screen, its
+bots: network_game_is_splitscreen_local), whose are all 0 */
+static boolean scoreboard_ping_shown(
+	boolean network)
+{
+	return network && !network_game_is_splitscreen_local();
+}
+
+/* a column's width: its place, name and score, and its ping if shown */
+static short scoreboard_column_width(
+	boolean ping_shown)
+{
+	return (short)(SCOREBOARD_PLACE_WIDTH + SCOREBOARD_NAME_WIDTH + SCOREBOARD_SCORE_WIDTH +
+		(ping_shown ? SCOREBOARD_PING_WIDTH : 0));
+}
+
+/* the scoreboard's lines: its rules (under the headings, over the footer),
+between its rows, and the viewer's own row (pixel32, alpha its own,
+multiplied by the scoreboard's) */
+#define SCOREBOARD_RULE 0xC02F7FFF
+#define SCOREBOARD_ROW_RULE 0x8012305F
+#define SCOREBOARD_ROW_LIT 0xB00E2A63
+
+static pixel32 scoreboard_faded(
+	pixel32 color,
+	real alpha)
+{
+	return ((pixel32)(long)((color >> 24) * PIN(alpha, 0.0f, 1.0f)) << 24) | (color & 0x00FFFFFF);
 }
 
 /* a network game's scoreboard picks players with the mouse
@@ -2003,6 +2065,25 @@ static void scoreboard_rectangle(
 	rectangle->y1 = (short)(top + (row_index + row_count) * line_height * SCOREBOARD_SCALE);
 }
 
+/* a rule of the scoreboard: across its text from left, width wide (laid out
+at full size), at the top of a row (from the title's), drawn a pixel high
+at the least */
+static void scoreboard_rule(
+	short bounds_left,
+	short top,
+	long line_height,
+	short left,
+	short width,
+	long row_index,
+	pixel32 color)
+{
+	rectangle2d rule;
+
+	scoreboard_rectangle(&rule, bounds_left, top, line_height, left, width, row_index, 1);
+	rule.y1 = (short)(rule.y0 + MAX(1, line_height / 16));
+	draw_quad(&rule, color);
+}
+
 static boolean scoreboard_point_in(
 	rectangle2d const *rectangle,
 	short x,
@@ -2076,7 +2157,13 @@ static void game_engine_rasterize_scoreboard(
 	boolean network = game_connection() == _game_connection_network_client ||
 		game_connection() == _game_connection_network_server;
 	boolean campaign = !game_engine;
+	boolean ping_shown = scoreboard_ping_shown(network);
+	short column_width = scoreboard_column_width(ping_shown);
 	boolean team_columns;
+	/* (the footer: how to pick a player, and where the scroll is) */
+	boolean pick_prompt;
+	boolean footer;
+	short block_width;
 	long font_index = hud_get_font_index();
 	long string_list_index;
 	long line_height;
@@ -2124,11 +2211,12 @@ static void game_engine_rasterize_scoreboard(
 	/* (laid out at full size, then drawn scaled about the title's top left:
 	the screen holds 1/SCOREBOARD_SCALE as much) */
 	width = (short)((bounds.x1 - bounds.x0) / SCOREBOARD_SCALE);
-	/* (port: a network game's lines beneath, the vote running and how to
-	pick a player, have their rows) */
+	/* (port: a network game's lines beneath, the vote running and the
+	footer with how to pick a player, have their rows) */
 	pointer_state = halo_scoreboard_pointer_update(network && network_votekick_available(), &pointer);
 	voting = network && network_votekick_get_status(&vote);
-	extra_rows = (voting ? 1 : 0) + (network && pointer_state >= 0 ? 1 : 0);
+	pick_prompt = network && pointer_state >= 0;
+	extra_rows = (voting ? 1 : 0) + (pick_prompt ? 1 : 0);
 	rows = (long)((bounds.y1 - SCOREBOARD_LAYOUT_TOP_ROWS * line_height) / SCOREBOARD_SCALE / line_height) - 2 -
 		SCOREBOARD_BOTTOM_ROWS - extra_rows;
 	rows = MAX(rows, 1);
@@ -2142,7 +2230,7 @@ static void game_engine_rasterize_scoreboard(
 		ranked_count = populate_statistic_buffer(ranked, _postgame_statistic_ranking, FALSE);
 		statistic_buffer_in_game_only = FALSE;
 	}
-	team_columns = has_teams && scoreboard_team_columns() && width >= 2 * SCOREBOARD_COLUMN_WIDTH + SCOREBOARD_COLUMN_GAP;
+	team_columns = has_teams && scoreboard_team_columns() && width >= 2 * column_width + SCOREBOARD_COLUMN_GAP;
 	for (index = 0; index < ranked_count; index++)
 	{
 		struct player_datum *player = player_try_and_get(ranked[index].player_index);
@@ -2160,7 +2248,7 @@ static void game_engine_rasterize_scoreboard(
 	}
 	else
 	{
-		columns = list_counts[0] > rows && width >= 2 * SCOREBOARD_COLUMN_WIDTH + SCOREBOARD_COLUMN_GAP ? 2 : 1;
+		columns = list_counts[0] > rows && width >= 2 * column_width + SCOREBOARD_COLUMN_GAP ? 2 : 1;
 		total = list_counts[0];
 		page = rows * columns;
 	}
@@ -2189,13 +2277,13 @@ static void game_engine_rasterize_scoreboard(
 		scoreboard_scroll += notches * SCOREBOARD_WHEEL_STEP + pages * page;
 		scoreboard_scroll = PIN(scoreboard_scroll, 0, MAX(total - page, 0));
 	}
-	left = (short)(bounds.x0 + (width - (columns * SCOREBOARD_COLUMN_WIDTH + (columns - 1) * SCOREBOARD_COLUMN_GAP)) / 2);
+	block_width = (short)(columns * column_width + (columns - 1) * SCOREBOARD_COLUMN_GAP);
+	left = (short)(bounds.x0 + (width - block_width) / 2);
 	/* (centred on the rows shown: the title's, the heading's, the longest
-	column's, and the footer telling where the scroll is) */
-	shown_rows = MIN(rows, total);
-	if (total > page)
-		shown_rows++;
-	shown_rows += extra_rows;
+	column's, the vote's, and the footer's) */
+	footer = pick_prompt || total > page;
+	shown_rows = MIN(rows, total) + (voting ? 1 : 0) + (footer ? 1 : 0) +
+		(pick_prompt && total > page && columns < 2 ? 1 : 0);
 	{
 		real height = (2 + shown_rows) * line_height * SCOREBOARD_SCALE;
 
@@ -2205,7 +2293,7 @@ static void game_engine_rasterize_scoreboard(
 		{
 			pixel32 background = scoreboard_background_color();
 			real padding = 0.5f * line_height * SCOREBOARD_SCALE;
-			real block_width = (columns * SCOREBOARD_COLUMN_WIDTH + (columns - 1) * SCOREBOARD_COLUMN_GAP) * SCOREBOARD_SCALE;
+			real scaled_width = block_width * SCOREBOARD_SCALE;
 			real block_left = bounds.x0 + (left - bounds.x0) * SCOREBOARD_SCALE;
 
 			if (background >> 24)
@@ -2215,7 +2303,7 @@ static void game_engine_rasterize_scoreboard(
 
 				panel.x0 = (short)(block_left - padding);
 				/* (the ping, nearly as wide as its column, given room) */
-				panel.x1 = (short)(block_left + block_width + padding + 8.0f * SCOREBOARD_SCALE);
+				panel.x1 = (short)(block_left + scaled_width + padding + (ping_shown ? 8.0f * SCOREBOARD_SCALE : 0.0f));
 				panel.y0 = (short)(top - padding);
 				panel.y1 = (short)(top + height + padding);
 				draw_quad(&panel, ((pixel32)panel_alpha << 24) | (background & 0x00FFFFFF));
@@ -2268,14 +2356,16 @@ static void game_engine_rasterize_scoreboard(
 		}
 	}
 
+	/* port: the carnage report's red and blue, clear on the blue panel (the
+	Xbox's, a dark red and violet, were for its grey) */
 	team_colors[0].alpha = alpha;
-	team_colors[0].red = 0.6f;
-	team_colors[0].green = 0.3f;
-	team_colors[0].blue = 0.3f;
+	team_colors[0].red = 0.9f;
+	team_colors[0].green = 0.45f;
+	team_colors[0].blue = 0.42f;
 	team_colors[1].alpha = alpha;
-	team_colors[1].red = 0.3f;
-	team_colors[1].green = 0.3f;
-	team_colors[1].blue = 0.6f;
+	team_colors[1].red = 0.38f;
+	team_colors[1].green = 0.62f;
+	team_colors[1].blue = 1.0f;
 
 	if (campaign)
 		usprintf(title_string, L"Co-op");
@@ -2293,13 +2383,16 @@ static void game_engine_rasterize_scoreboard(
 		game_engine->format_score_name(score_string);
 	/* port: bounded (the map's column names) */
 	usnprintf(row_string, NUMBEROF(row_string), L"\t%s\t%s\t%s\t%s", column_name, score_name, score_string,
-		network ? L"Ping" : L"");
+		ping_shown ? L"Ping" : L"");
 	row_string[NUMBEROF(row_string) - 1] = 0;
 	{
 		long column;
 
 		for (column = 0; column < columns; column++)
 		{
+			/* port: a rule under each column's headings */
+			scoreboard_rule(bounds.x0, top, line_height, (short)(left + column * (column_width + SCOREBOARD_COLUMN_GAP)),
+				column_width, 2, scoreboard_faded(SCOREBOARD_RULE, alpha));
 			/* (a team column's heading in its team's colour, brightened) */
 			if (team_columns)
 			{
@@ -2314,7 +2407,7 @@ static void game_engine_rasterize_scoreboard(
 				color.red = color.green = color.blue = 0.5f;
 			}
 			scoreboard_draw_row(row_string, FALSE, &color, 1, top,
-				(short)(left + column * (SCOREBOARD_COLUMN_WIDTH + SCOREBOARD_COLUMN_GAP)), TRUE);
+				(short)(left + column * (column_width + SCOREBOARD_COLUMN_GAP)), TRUE);
 		}
 	}
 
@@ -2331,6 +2424,7 @@ static void game_engine_rasterize_scoreboard(
 		real_argb_color *row_color;
 		long ping = NONE;
 		boolean ping_colored;
+		short column_left = (short)(left + column * (column_width + SCOREBOARD_COLUMN_GAP));
 
 		if (row >= rows || position >= list_counts[list])
 			continue;
@@ -2338,6 +2432,19 @@ static void game_engine_rasterize_scoreboard(
 		player = player_try_and_get(entry->player_index);
 		if (!player)
 			continue;
+		/* port: a rule between the rows, and the viewer's own row lit */
+		if (row > 0)
+		{
+			scoreboard_rule(bounds.x0, top, line_height, column_left, column_width, 2 + row,
+				scoreboard_faded(SCOREBOARD_ROW_RULE, alpha));
+		}
+		if (player_index == entry->player_index)
+		{
+			rectangle2d band;
+
+			scoreboard_rectangle(&band, bounds.x0, top, line_height, column_left, column_width, 2 + row, 1);
+			draw_quad(&band, scoreboard_faded(SCOREBOARD_ROW_LIT, alpha));
+		}
 		color = *hud_get_text_color(&text_color);
 		color.alpha = alpha;
 		score_string[0] = 0;
@@ -2351,7 +2458,7 @@ static void game_engine_rasterize_scoreboard(
 				status_string = string_list_index != NONE ? unicode_string_list_get_string(string_list_index, 0x8B) : L"";
 		}
 		ping_string[0] = 0;
-		if (network)
+		if (ping_shown)
 		{
 			/* port: as this machine times it, with the latency meter on
 			(latency_meter.c); else the host's measure, as before */
@@ -2385,7 +2492,7 @@ static void game_engine_rasterize_scoreboard(
 		{
 			rectangle2d icon;
 			rectangle2d text;
-			short row_left = (short)(left + column * (SCOREBOARD_COLUMN_WIDTH + SCOREBOARD_COLUMN_GAP));
+			short row_left = (short)(left + column * (column_width + SCOREBOARD_COLUMN_GAP));
 			short size;
 			short middle;
 
@@ -2420,9 +2527,9 @@ static void game_engine_rasterize_scoreboard(
 		{
 			rectangle2d rectangle;
 			rectangle2d menu_rectangle;
-			short row_left = (short)(left + column * (SCOREBOARD_COLUMN_WIDTH + SCOREBOARD_COLUMN_GAP));
+			short row_left = (short)(left + column * (column_width + SCOREBOARD_COLUMN_GAP));
 
-			scoreboard_rectangle(&rectangle, bounds.x0, top, line_height, row_left, SCOREBOARD_COLUMN_WIDTH,
+			scoreboard_rectangle(&rectangle, bounds.x0, top, line_height, row_left, column_width,
 				2 + row, 1);
 			scoreboard_rectangle(&menu_rectangle, bounds.x0, top, line_height, scoreboard_menu.left,
 				SCOREBOARD_MENU_WIDTH, menu_first_row, menu_item_count);
@@ -2446,7 +2553,7 @@ static void game_engine_rasterize_scoreboard(
 			row_color,
 			2 + row,
 			top,
-			(short)(left + column * (SCOREBOARD_COLUMN_WIDTH + SCOREBOARD_COLUMN_GAP)),
+			(short)(left + column * (column_width + SCOREBOARD_COLUMN_GAP)),
 			TRUE);
 		if (ping_colored)
 		{
@@ -2462,23 +2569,12 @@ static void game_engine_rasterize_scoreboard(
 				&ping_color,
 				2 + row,
 				top,
-				(short)(left + column * (SCOREBOARD_COLUMN_WIDTH + SCOREBOARD_COLUMN_GAP)),
+				(short)(left + column * (column_width + SCOREBOARD_COLUMN_GAP)),
 				TRUE);
 		}
 	}
-	/* (where the scroll is, and how to move it) */
-	if (total > page)
-	{
-		long first = scoreboard_scroll + 1;
-		long last = MIN(scoreboard_scroll + page, total);
-
-		color.alpha = alpha;
-		color.red = color.green = color.blue = 0.6f;
-		usprintf(row_string, L"%ld-%ld of %ld   (Page Up / Page Down, mouse wheel)", first, last, total);
-		scoreboard_draw_row(row_string, FALSE, &color, 2 + rows, top, left, FALSE);
-	}
-	/* port: the vote running, and how to pick a player */
-	next_row = 2 + MIN(rows, total) + (total > page ? 1 : 0);
+	/* port: the vote running, then the footer */
+	next_row = 2 + MIN(rows, total);
 	if (voting)
 	{
 		struct data_iterator iterator;
@@ -2504,15 +2600,36 @@ static void game_engine_rasterize_scoreboard(
 			vote.seconds_left, note);
 		scoreboard_draw_row(row_string, FALSE, &color, next_row++, top, left, FALSE);
 	}
-	if (network && pointer_state >= 0)
+	/* port: the footer, under a rule across the scoreboard: where the scroll
+	is and how to move it on the left, how to pick a player on the right (on
+	a row of its own under it when one column leaves no room for both) */
+	if (footer)
 	{
 		color.alpha = alpha;
-		color.red = color.green = color.blue = 0.6f;
-		if (pointer_state == 0)
-			usprintf(row_string, L"Right-click to pick a player");
-		else
-			usprintf(row_string, L"Pick a player   (right-click to aim)");
-		scoreboard_draw_row(row_string, FALSE, &color, next_row++, top, left, FALSE);
+		color.red = 0.81f;
+		color.green = 0.89f;
+		color.blue = 1.0f;
+		scoreboard_rule(bounds.x0, top, line_height, left, block_width, next_row,
+			scoreboard_faded(SCOREBOARD_RULE, alpha));
+		if (total > page)
+		{
+			long first = scoreboard_scroll + 1;
+			long last = MIN(scoreboard_scroll + page, total);
+
+			usprintf(row_string, L"%ld-%ld of %ld   (Page Up / Page Down, mouse wheel)", first, last, total);
+			scoreboard_draw_row(row_string, FALSE, &color, next_row, top, left, FALSE);
+			if (pick_prompt && columns < 2)
+				next_row++;
+		}
+		if (pick_prompt)
+		{
+			if (pointer_state == 0)
+				usprintf(row_string, L"Right-click to pick a player");
+			else
+				usprintf(row_string, L"Pick a player   (right-click to aim)");
+			scoreboard_draw_row_right(row_string, &color, next_row, top, (short)(left + block_width));
+		}
+		next_row++;
 	}
 	/* port: the picked player's menu, over the rows, its item under the
 	pointer lit */
@@ -2692,25 +2809,574 @@ static void game_engine_rasterize_in_game_score(
 	return;
 }
 
-static void drawline(
-	wchar_t const *string,
-	long row_index,
-	short justification)
+/* port: the carnage report after a game (game_engine_post_rasterize_post_game),
+laid out as the menus' Settings are, on the map's panel (the hud globals'
+carnage report bitmap, the report's 640 by 480): a line of the game (its
+gametype, map and length), the result (each team's score, the winner's
+marked, or the free for all's winner), then one table of the players, a
+row each in order of place: place, name (with a team game's team's colour),
+score (the gametype's), kills, assists, deaths, kills per death, suicides
+and, in a team game, betrayals (the statistics the game keeps of each player:
+game_statistics.c, which keeps no shots or sprees), the rows of this
+machine's players lit; a team game's teams' totals under them, in the same
+columns. The rows share the table's height, so that it fills the panel. The
+footer has the scores' buttons (game_engine_update_non_deterministic): the
+host's A picks the next game and B leaves, a client's B leaves, drawn as the
+keys that press them while the keyboard and mouse play (ui_widget.c's
+ui_widget_port_menu_key). Only what this machine draws changes. */
+enum
 {
-	rectangle2d bounds = render.camera.window_bounds;
-	long line_height = 18;
-	long line_spacing = 8;
+	_carnage_column_place,
+	_carnage_column_player,
+	_carnage_column_score,
+	_carnage_column_kills,
+	_carnage_column_assists,
+	_carnage_column_deaths,
+	_carnage_column_ratio,
+	_carnage_column_suicides,
+	_carnage_column_betrayals,
+	NUMBER_OF_CARNAGE_COLUMNS,
 
-	offset_rectangle2d(
-		&bounds,
-		-render.camera.viewport_bounds.x0,
-		-render.camera.viewport_bounds.y0);
-	bounds.y0 = (short)(row_index * line_height);
-	bounds.y1 = (short)((row_index + 1) * line_height + line_spacing);
-	draw_string_set_format(NONE, justification, 0);
-	rasterizer_draw_unicode_string(&bounds, NULL, NULL, 0, string);
+	/* the report's panel (the map's bitmap: its rules at 68 and 407, its
+	footer's strip below), its sides' margin, and its parts' tops */
+	CARNAGE_LEFT = 24,
+	CARNAGE_RIGHT = 616,
+	CARNAGE_INFO_TOP = 72,
+	CARNAGE_INFO_BOTTOM = 88,
+	CARNAGE_BANNER_TOP = 92,
+	CARNAGE_BANNER_BOTTOM = 122,
+	CARNAGE_BANNER_GAP = 12,
+	CARNAGE_TABLE_TOP = 128,
+	CARNAGE_TABLE_BOTTOM = 400,
+	CARNAGE_FOOTER_TOP = 408,
+	CARNAGE_FOOTER_BOTTOM = 442,
+	/* the table's inner margin, its heading's height, and its rows' tallest */
+	CARNAGE_TABLE_PADDING = 10,
+	CARNAGE_HEADING_HEIGHT = 18,
+	CARNAGE_MAXIMUM_ROW_HEIGHT = 30,
+	/* the columns' widths but the player's, which takes the rest */
+	CARNAGE_PLACE_WIDTH = 42,
+	CARNAGE_SCORE_WIDTH = 60,
+	CARNAGE_NUMBER_WIDTH = 54,
+	CARNAGE_RATIO_WIDTH = 46,
+	CARNAGE_SUICIDES_WIDTH = 64,
+	CARNAGE_BETRAYALS_WIDTH = 70,
+	/* the players the table has room for (more are as select_players_to_display
+	picks them: the best, and this machine's) */
+	CARNAGE_MAXIMUM_ROWS = 16,
+};
 
-	return;
+/* a column of the table: what it shows, its left and right in the report,
+and how its text is justified (draw_string's: 0 left, 1 right) */
+struct carnage_column
+{
+	short kind;
+	short x0;
+	short x1;
+	short justification;
+};
+
+/* a row of the table: a player's, or (player_index NONE) a team's totals */
+struct carnage_row
+{
+	long player_index;
+	long team_index;
+	boolean local;
+	long kills;
+	long assists;
+	long deaths;
+	long suicides;
+	long betrayals;
+};
+
+/* the game's length when it ended (game_engine_end_game,
+game_engine_switch_to_postgame), in ticks; NONE while it plays */
+static long carnage_report_game_ticks = NONE;
+
+/* the table's columns, from left to right between left and right: a team
+game's have betrayals, which a free for all has none of; the count */
+static short carnage_report_columns(
+	boolean teams,
+	short left,
+	short right,
+	struct carnage_column *columns)
+{
+	static short const widths[NUMBER_OF_CARNAGE_COLUMNS] =
+	{
+		CARNAGE_PLACE_WIDTH, 0, CARNAGE_SCORE_WIDTH, CARNAGE_NUMBER_WIDTH, CARNAGE_NUMBER_WIDTH,
+		CARNAGE_NUMBER_WIDTH, CARNAGE_RATIO_WIDTH, CARNAGE_SUICIDES_WIDTH, CARNAGE_BETRAYALS_WIDTH,
+	};
+	short count = teams ? NUMBER_OF_CARNAGE_COLUMNS : _carnage_column_betrayals;
+	short fixed = 0;
+	short x = left;
+	short kind;
+
+	for (kind = 0; kind < count; kind++)
+		fixed = (short)(fixed + widths[kind]);
+	for (kind = 0; kind < count; kind++)
+	{
+		short width = kind == _carnage_column_player ? (short)MAX(right - left - fixed, 0) : widths[kind];
+
+		columns[kind].kind = kind;
+		columns[kind].x0 = x;
+		columns[kind].x1 = (short)(x + width);
+		/* (the numbers right, under their headings) */
+		columns[kind].justification = kind > _carnage_column_player ? 1 : 0;
+		x = columns[kind].x1;
+	}
+
+	return count;
+}
+
+/* the table's rows of the players shown (entries, in order of place): their
+team, whether this machine's, and their statistics */
+static void carnage_report_rows(
+	struct statistic_buffer const *entries,
+	long count,
+	struct carnage_row *rows)
+{
+	long index;
+
+	for (index = 0; index < count; index++)
+	{
+		struct player_datum *player = player_get(entries[index].player_index);
+		struct carnage_row *row = &rows[index];
+
+		row->player_index = entries[index].player_index;
+		row->team_index = player->team_index;
+		row->local = player->local_player_index != NONE;
+		row->kills = player->statistics.kills[0];
+		row->assists = player->statistics.assists[0];
+		row->deaths = player->statistics.deaths;
+		row->suicides = player->statistics.suicides;
+		row->betrayals = player->statistics.friendly_fire_kills;
+	}
+}
+
+/* a team game's two teams' totals (red's, blue's): every player's of the
+game (all, populate_statistic_buffer's), shown or not */
+static void carnage_report_team_totals(
+	struct statistic_buffer const *all,
+	long count,
+	struct carnage_row *totals)
+{
+	long index;
+	short team;
+
+	for (team = 0; team < 2; team++)
+	{
+		csmemset(&totals[team], 0, sizeof(totals[team]));
+		totals[team].player_index = NONE;
+		totals[team].team_index = team;
+	}
+	for (index = 0; index < count; index++)
+	{
+		struct player_datum *player = player_get(all[index].player_index);
+		struct carnage_row *total;
+
+		if (player->team_index < 0 || player->team_index > 1)
+			continue;
+		total = &totals[player->team_index];
+		total->kills += player->statistics.kills[0];
+		total->assists += player->statistics.assists[0];
+		total->deaths += player->statistics.deaths;
+		total->suicides += player->statistics.suicides;
+		total->betrayals += player->statistics.friendly_fire_kills;
+	}
+}
+
+/* a row's height: the players' and the totals' rows share the table's room
+under its heading, none taller than the tallest */
+static short carnage_report_row_height(
+	long row_count,
+	short height)
+{
+	return (short)MIN(CARNAGE_MAXIMUM_ROW_HEIGHT, (height - CARNAGE_HEADING_HEIGHT) / MAX(row_count, 1));
+}
+
+/* kills per death in tenths (rounded; a player never killed: per one) */
+static long carnage_report_ratio_tenths(
+	long kills,
+	long deaths)
+{
+	long divisor = MAX(deaths, 1);
+
+	return (kills * 10 + divisor / 2) / divisor;
+}
+
+static void carnage_report_color(
+	unsigned long rgb,
+	real alpha,
+	real_argb_color *color)
+{
+	color->alpha = alpha;
+	color->red = ((rgb >> 16) & 0xFF) / 255.0f;
+	color->green = ((rgb >> 8) & 0xFF) / 255.0f;
+	color->blue = (rgb & 0xFF) / 255.0f;
+}
+
+/* a font of the menus' (Settings': ui\small_ui, or ui\large_ui), else the
+report's own */
+static long carnage_report_font(
+	boolean large)
+{
+	long font_index = tag_loaded('font', large ? "ui\\large_ui" : "ui\\small_ui");
+
+	return font_index != NONE ? font_index : hud_globals->messaging.single_player_font.index;
+}
+
+/* text in the bounds (the report's), justified (0 left, 1 right, 2 centred),
+its letters height high (the font's ascent and descent scaled to it) and
+centred on the bounds' middle */
+static void carnage_report_text(
+	rectangle2d const *bounds,
+	wchar_t const *string,
+	long font_index,
+	short justification,
+	real height,
+	real_argb_color const *color)
+{
+	struct font_header *font = font_definition_get(font_index);
+	real scale = height / (real)MAX(font->ascending_height + font->descending_height, 1);
+	real origin_x = justification == 1 ? bounds->x1 : justification == 2 ? 0.5f * (bounds->x0 + bounds->x1) : bounds->x0;
+	real top = 0.5f * (bounds->y0 + bounds->y1) - 0.5f * height;
+	/* (laid out at the font's size, then scaled about the origin: as wide
+	as the bounds once scaled) */
+	real width = (bounds->x1 - bounds->x0) / scale;
+	rectangle2d layout;
+
+	layout.y0 = (short)top;
+	layout.y1 = (short)(top + (font->ascending_height + font->descending_height + font->leading_height) * 2);
+	layout.x0 = (short)(justification == 1 ? origin_x - width : justification == 2 ? origin_x - 0.5f * width : origin_x);
+	layout.x1 = (short)(layout.x0 + width);
+	draw_string_set_draw_mode(font_index, NONE, justification, 0, color);
+	draw_string_set_tab_stops(NULL, 0);
+	rasterizer_text_set_scale(scale, origin_x, (real)layout.y0);
+	rasterizer_draw_unicode_string(&layout, NULL, NULL, 0, string);
+	rasterizer_text_set_scale(1.0f, 0.0f, 0.0f);
+}
+
+static void carnage_report_quad(
+	short x0,
+	short y0,
+	short x1,
+	short y1,
+	unsigned long argb)
+{
+	rectangle2d rectangle;
+
+	rectangle.x0 = x0;
+	rectangle.y0 = y0;
+	rectangle.x1 = x1;
+	rectangle.y1 = y1;
+	draw_quad(&rectangle, (pixel32)argb);
+}
+
+/* a box: filled (if its fill has alpha) and edged one unit wide */
+static void carnage_report_box(
+	rectangle2d const *box,
+	unsigned long fill,
+	unsigned long edge)
+{
+	if (fill >> 24)
+		carnage_report_quad(box->x0, box->y0, box->x1, box->y1, fill);
+	carnage_report_quad(box->x0, box->y0, box->x1, (short)(box->y0 + 1), edge);
+	carnage_report_quad(box->x0, (short)(box->y1 - 1), box->x1, box->y1, edge);
+	carnage_report_quad(box->x0, box->y0, (short)(box->x0 + 1), box->y1, edge);
+	carnage_report_quad((short)(box->x1 - 1), box->y0, box->x1, box->y1, edge);
+}
+
+/* ASCII letters as capitals (the menus' style), in place */
+static void carnage_report_capitals(
+	wchar_t *string)
+{
+	for (; *string; string++)
+	{
+		if (*string >= L'a' && *string <= L'z')
+			*string = (wchar_t)(*string - L'a' + L'A');
+	}
+}
+
+/* the line of the game: its gametype (its own name, else its game engine's,
+with OpenCE's kind of it), map and length */
+static void carnage_report_info(
+	wchar_t *string,
+	long size)
+{
+	static wchar_t const *const engine_names[] = { L"", L"CTF", L"SLAYER", L"ODDBALL", L"KING", L"RACE" };
+	struct game_variant *variant = game_engine_get_variant();
+	wchar_t const *kind = game_modes_variant_kind_name(variant, game_variant_options_get());
+	wchar_t gametype[NUMBEROF(variant->human_readable_game_description) + 1];
+	wchar_t name[48];
+	wchar_t map[64];
+	long seconds = MAX(carnage_report_game_ticks != NONE ? carnage_report_game_ticks : game_time_get(), 0) /
+		TICKS_PER_SECOND;
+
+	ustrncpy(gametype, variant->human_readable_game_description, NUMBEROF(gametype) - 1);
+	gametype[NUMBEROF(gametype) - 1] = 0;
+	if (gametype[0] && kind)
+		usnprintf(name, NUMBEROF(name), L"%s (%s)", gametype, kind);
+	else if (gametype[0] || kind)
+		usnprintf(name, NUMBEROF(name), L"%s", gametype[0] ? gametype : kind);
+	else
+	{
+		usnprintf(name, NUMBEROF(name), L"%s%s", global_variant.universal_variant.teams ? L"TEAM " : L"",
+			engine_names[PIN(variant->game_engine_index, 0, (long)NUMBEROF(engine_names) - 1)]);
+	}
+	name[NUMBEROF(name) - 1] = 0;
+	ui_widget_port_map_name(tag_get_name(global_scenario_index), map, NUMBEROF(map));
+	usnprintf(string, size, L"%s  \x00B7  %s  \x00B7  %ld:%02ld", name, map, seconds / 60, seconds % 60);
+	string[size - 1] = 0;
+	carnage_report_capitals(string);
+}
+
+/* a player's name (at most the 12 characters it has room for) */
+static void carnage_report_name(
+	long player_index,
+	wchar_t *name)
+{
+	struct player_datum *player = player_get(player_index);
+	short index;
+
+	for (index = 0; index < (short)NUMBEROF(player->name) && player->name[index]; index++)
+		name[index] = player->name[index];
+	name[index] = 0;
+}
+
+/* a cell of a row (a player's, or a team's totals) */
+static void carnage_report_cell(
+	struct carnage_row const *row,
+	struct statistic_buffer *entry,
+	short kind,
+	wchar_t *string,
+	long size)
+{
+	string[0] = 0;
+	switch (kind)
+	{
+	case _carnage_column_place:
+		if (entry)
+			usnprintf(string, size, L"%s", get_place_string(entry));
+		break;
+	case _carnage_column_player:
+		if (row->player_index != NONE && size >= 16)
+			carnage_report_name(row->player_index, string);
+		else if (row->player_index == NONE)
+			usnprintf(string, size, row->team_index == 0 ? L"RED TEAM" : L"BLUE TEAM");
+		break;
+	case _carnage_column_score:
+		if (row->player_index != NONE)
+			game_engine->format_player_score(row->player_index, string);
+		else
+			game_engine->format_team_name(row->team_index, string);
+		break;
+	case _carnage_column_kills:
+		usnprintf(string, size, L"%ld", row->kills);
+		break;
+	case _carnage_column_assists:
+		usnprintf(string, size, L"%ld", row->assists);
+		break;
+	case _carnage_column_deaths:
+		usnprintf(string, size, L"%ld", row->deaths);
+		break;
+	case _carnage_column_ratio:
+	{
+		long tenths = carnage_report_ratio_tenths(row->kills, row->deaths);
+
+		usnprintf(string, size, L"%ld.%ld", tenths / 10, tenths % 10);
+		break;
+	}
+	case _carnage_column_suicides:
+		usnprintf(string, size, L"%ld", row->suicides);
+		break;
+	case _carnage_column_betrayals:
+		usnprintf(string, size, L"%ld", row->betrayals);
+		break;
+	}
+	string[size - 1] = 0;
+}
+
+/* the colours: the menus' blue and the report's (the mockup Erin approved) */
+#define CARNAGE_TEXT 0xE6EFFF
+#define CARNAGE_TEXT_LIT 0xFFFFFF
+#define CARNAGE_INFO 0x9CBBE6
+#define CARNAGE_HEADING 0x7F9FCB
+#define CARNAGE_PROMPT 0xCFE3FF
+#define CARNAGE_RED 0xFF8A80
+#define CARNAGE_BLUE 0x5AA9FF
+#define CARNAGE_TABLE_FILL 0xD8081A40
+#define CARNAGE_TABLE_EDGE 0xFF2F7FFF
+#define CARNAGE_RULE 0xFF1F4F9A
+#define CARNAGE_ROW_RULE 0xFF12305F
+#define CARNAGE_ROW_LIT 0xFF0E2A63
+
+/* the result: a team game's two teams' scores, the winner's marked; a free
+for all's winner (or a tie for first) and score */
+static void carnage_report_banner(
+	struct statistic_buffer *entries,
+	long entry_count,
+	long label_font,
+	long score_font)
+{
+	wchar_t label[64];
+	wchar_t score[256];
+	real_argb_color color;
+	rectangle2d box;
+	rectangle2d text;
+
+	box.y0 = CARNAGE_BANNER_TOP;
+	box.y1 = CARNAGE_BANNER_BOTTOM;
+	if (global_variant.universal_variant.teams)
+	{
+		boolean won[2];
+		short team;
+
+		won[0] = game_engine_did_team_win(0) != FALSE;
+		won[1] = game_engine_did_team_win(1) != FALSE;
+		for (team = 0; team < 2; team++)
+		{
+			unsigned long team_color = team == 0 ? CARNAGE_RED : CARNAGE_BLUE;
+			/* (a tie: both or neither won) */
+			boolean tie = won[0] == won[1];
+
+			box.x0 = (short)(team == 0 ? CARNAGE_LEFT : (CARNAGE_LEFT + CARNAGE_RIGHT + CARNAGE_BANNER_GAP) / 2);
+			box.x1 = (short)(team == 0 ? (CARNAGE_LEFT + CARNAGE_RIGHT - CARNAGE_BANNER_GAP) / 2 : CARNAGE_RIGHT);
+			if (won[team] && !tie)
+				carnage_report_box(&box, team == 0 ? 0xF02A0F16 : 0xF00A2456, 0xFF000000 | (team == 0 ? 0xFF6B5E : team_color));
+			else
+				carnage_report_box(&box, 0xD8081A40, CARNAGE_RULE);
+			usnprintf(label, NUMBEROF(label), L"%s%s", team == 0 ? L"RED" : L"BLUE",
+				tie ? L" TIES" : won[team] ? L" WINS" : L"");
+			label[NUMBEROF(label) - 1] = 0;
+			text = box;
+			text.x0 = (short)(box.x0 + 12);
+			text.x1 = (short)(box.x1 - 12);
+			carnage_report_color(team_color, 1.0f, &color);
+			carnage_report_text(&text, label, label_font, 0, 15.0f, &color);
+			game_engine->format_team_name(team, score);
+			score[NUMBEROF(score) - 1] = 0;
+			carnage_report_color(CARNAGE_TEXT_LIT, 1.0f, &color);
+			carnage_report_text(&text, score, score_font, 1, 20.0f, &color);
+		}
+	}
+	else if (entry_count > 0)
+	{
+		wchar_t name[16];
+		/* (the first place tied: populate_statistic_buffer marks it) */
+		boolean tie = (entries[0].place & 0x80000000) != 0;
+
+		carnage_report_name(entries[0].player_index, name);
+		box.x0 = CARNAGE_LEFT;
+		box.x1 = CARNAGE_RIGHT;
+		carnage_report_box(&box, 0xF00A2456, 0xFF5AA9FF);
+		if (tie)
+			usnprintf(label, NUMBEROF(label), L"TIED FOR FIRST");
+		else
+			usnprintf(label, NUMBEROF(label), L"%s WINS", name);
+		label[NUMBEROF(label) - 1] = 0;
+		carnage_report_capitals(label);
+		text = box;
+		text.x0 = (short)(box.x0 + 12);
+		text.x1 = (short)(box.x1 - 12);
+		carnage_report_color(CARNAGE_BLUE, 1.0f, &color);
+		carnage_report_text(&text, label, label_font, 0, 15.0f, &color);
+		game_engine->format_player_score(entries[0].player_index, score);
+		score[NUMBEROF(score) - 1] = 0;
+		carnage_report_color(CARNAGE_TEXT_LIT, 1.0f, &color);
+		carnage_report_text(&text, score, score_font, 1, 20.0f, &color);
+	}
+}
+
+/* a row of the table at its top (a player's with its entry, or a team's
+totals), lit if this machine's */
+static void carnage_report_draw_row(
+	struct carnage_column const *columns,
+	short column_count,
+	struct carnage_row const *row,
+	struct statistic_buffer *entry,
+	short top,
+	short height,
+	long font_index,
+	real text_height)
+{
+	wchar_t string[256];
+	real_argb_color color;
+	rectangle2d cell;
+	short column;
+
+	if (row->local)
+	{
+		rectangle2d band;
+
+		band.x0 = (short)(columns[0].x0 - 6);
+		band.x1 = (short)(columns[column_count - 1].x1 + 6);
+		band.y0 = (short)(top + 1);
+		band.y1 = (short)(top + height - 1);
+		carnage_report_box(&band, CARNAGE_ROW_LIT, CARNAGE_TABLE_EDGE);
+	}
+	cell.y0 = top;
+	cell.y1 = (short)(top + height);
+	for (column = 0; column < column_count; column++)
+	{
+		unsigned long rgb = row->local ? CARNAGE_TEXT_LIT : CARNAGE_TEXT;
+
+		cell.x0 = columns[column].x0;
+		cell.x1 = columns[column].x1;
+		carnage_report_cell(row, entry, columns[column].kind, string, NUMBEROF(string));
+		if (columns[column].kind == _carnage_column_place)
+		{
+			rgb = row->local ? CARNAGE_TEXT_LIT : CARNAGE_INFO;
+		}
+		else if (columns[column].kind == _carnage_column_player && global_variant.universal_variant.teams)
+		{
+			short size = (short)(text_height * 0.55f);
+			short middle = (short)(top + height / 2);
+			unsigned long team = row->team_index == 0 ? 0xFF6B5E : 0x5AA9FF;
+
+			/* (a team game's player: a mark of the team's colour before the
+			name; a team's totals: its name in it) */
+			if (row->player_index != NONE)
+			{
+				carnage_report_quad(cell.x0, (short)(middle - size / 2), (short)(cell.x0 + size),
+					(short)(middle - size / 2 + size), 0xFF000000 | team);
+				cell.x0 = (short)(cell.x0 + size + 6);
+			}
+			else
+			{
+				rgb = row->team_index == 0 ? CARNAGE_RED : CARNAGE_BLUE;
+			}
+		}
+		carnage_report_color(rgb, 1.0f, &color);
+		carnage_report_text(&cell, string, font_index, columns[column].justification, text_height, &color);
+	}
+}
+
+/* the footer's prompts: the buttons of the scores (the host's A, the next
+game; B, leaving), from the right, fading in as the report does */
+static void carnage_report_footer(
+	long font_index)
+{
+	struct network_game_server *server = global_network_game_server_get();
+	boolean keys = halo_keyboard_prompts();
+	real_argb_color color;
+	rectangle2d bounds;
+
+	carnage_report_color(CARNAGE_PROMPT, game_engine_globals.postgame_progress, &color);
+	draw_string_set_draw_mode(font_index, NONE, 0, 0, &color);
+	draw_string_set_tab_stops(NULL, 0);
+	bounds.y0 = CARNAGE_FOOTER_TOP + 6;
+	bounds.y1 = CARNAGE_FOOTER_BOTTOM;
+	bounds.x1 = 640;
+	/* (each as wide as its text and button: the keys' caps, Enter and Esc,
+	are wider than the controller's buttons) */
+	bounds.x0 = (short)(CARNAGE_RIGHT - (keys ? 82 : 72));
+	draw_string_and_hack_in_icons(&bounds, NULL, NULL, 0, L"%b-button LEAVE", FALSE);
+	if (server)
+	{
+		bounds.y0 = CARNAGE_FOOTER_TOP + 6;
+		bounds.x0 = (short)(CARNAGE_RIGHT - (keys ? 82 + 18 + 136 : 72 + 18 + 116));
+		draw_string_and_hack_in_icons(&bounds, NULL, NULL, 0, L"%a-button NEXT GAME", FALSE);
+	}
 }
 
 void game_engine_post_rasterize_post_game(
@@ -2718,45 +3384,37 @@ void game_engine_post_rasterize_post_game(
 {
 	/* port: sized like every buffer handed to populate_statistic_buffer */
 	struct statistic_buffer entries[MULTIPLAYER_MAXIMUM_PLAYERS];
-	wchar_t score_string[256];
-	wchar_t row_string[256];
-	short tab_stops[6];
-	real_argb_color winner_color;
-	real_argb_color normal_color;
-	real_argb_color hilite_color;
-	long font_index;
+	struct statistic_buffer all[MULTIPLAYER_MAXIMUM_PLAYERS];
+	struct carnage_row rows[CARNAGE_MAXIMUM_ROWS];
+	struct carnage_row totals[2];
+	struct carnage_column columns[NUMBER_OF_CARNAGE_COLUMNS];
+	/* (256: the game engines' format functions fill as much, Slayer's score
+	name ustrncpy_terminated's) */
+	wchar_t string[256];
+	real_argb_color color;
+	rectangle2d bounds;
+	boolean teams;
+	long small_font;
+	long large_font;
 	long entry_count;
+	long all_count;
 	long entry_index;
+	short column_count;
+	short row_height;
+	short top;
+	short column;
+	real text_height;
 
 	if (!game_engine)
 		return;
-
-	tab_stops[0] = 50;
-	tab_stops[1] = 125;
-	tab_stops[2] = 250;
-	tab_stops[3] = 350;
-	tab_stops[4] = 410;
-	tab_stops[5] = 500;
-
-	font_index = hud_globals->messaging.single_player_font.index;
-	get_postgame_hilite_colors(
-		&winner_color,
-		&normal_color,
-		&hilite_color);
-	draw_string_set_draw_mode(
-		font_index,
-		NONE,
-		2,
-		8,
-		&winner_color);
-	draw_string_set_color(&winner_color);
-	draw_string_set_format(NONE, 0, 0);
+	teams = global_variant.universal_variant.teams;
+	small_font = carnage_report_font(FALSE);
+	large_font = carnage_report_font(TRUE);
 
 	{
 		struct hud_globals_definition *hud_definition =
 			hud_globals_definition_get(
 				interface_get_tag_index(_interface_hud_globals));
-		rectangle2d bounds;
 
 		bounds.x0 = 0;
 		bounds.y0 = 0;
@@ -2775,238 +3433,93 @@ void game_engine_post_rasterize_post_game(
 		}
 	}
 
-	if (global_variant.universal_variant.teams)
+	entry_count = select_players_to_display(_postgame_statistic_ranking, NONE, entries, CARNAGE_MAXIMUM_ROWS);
+	all_count = populate_statistic_buffer(all, _postgame_statistic_ranking, FALSE);
+	carnage_report_rows(entries, entry_count, rows);
+	if (teams)
+		carnage_report_team_totals(all, all_count, totals);
+
+	/* the game, and the players shown of more */
+	carnage_report_info(string, NUMBEROF(string));
+	if (all_count > entry_count)
 	{
-		short team_tab_stops[6] = { 50, 200, 300, 350, 410, 500 };
-		long team_order[2] = { 0, 1 };
-		wchar_t const *team_formats[2];
-		long string_list_index;
-		long team_row;
-		long red_team_won;
+		long length = ustrlen(string);
 
-		red_team_won = game_engine_did_team_win(0);
-		string_list_index = tag_loaded('ustr', "ui\\multiplayer_game_text");
-		team_formats[0] =
-			string_list_index != NONE ?
-				unicode_string_list_get_string(string_list_index, 0x41) :
-				L"";
-		string_list_index = tag_loaded('ustr', "ui\\multiplayer_game_text");
-		team_formats[1] =
-			string_list_index != NONE ?
-				unicode_string_list_get_string(string_list_index, 0x42) :
-				L"";
-
-		if (!red_team_won)
-		{
-			team_order[0] = 1;
-			team_order[1] = 0;
-		}
-
-		draw_string_set_tab_stops(team_tab_stops, NUMBEROF(team_tab_stops));
-		for (team_row = 0; team_row < 2; team_row++)
-		{
-			long team_index = team_order[team_row];
-
-			game_engine->format_team_name(
-				team_index,
-				score_string);
-			usnprintf(
-				row_string,
-				NUMBEROF(row_string),
-				ustring_format_checked(team_formats[team_index], "s"),
-				score_string);
-			row_string[NUMBEROF(row_string) - 1] = 0;
-			drawline(row_string, team_row + 4, 0);
-		}
+		usnprintf(string + length, NUMBEROF(string) - length, L"   /   %ld OF %ld PLAYERS", entry_count, all_count);
+		string[NUMBEROF(string) - 1] = 0;
 	}
+	bounds.x0 = CARNAGE_LEFT;
+	bounds.x1 = CARNAGE_RIGHT;
+	bounds.y0 = CARNAGE_INFO_TOP;
+	bounds.y1 = CARNAGE_INFO_BOTTOM;
+	carnage_report_color(CARNAGE_INFO, 1.0f, &color);
+	carnage_report_text(&bounds, string, small_font, 0, 10.0f, &color);
 
+	carnage_report_banner(entries, entry_count, small_font, large_font);
+
+	/* the table: its panel (ending under its last row, a few players' rows
+	at their tallest leaving the panel's foot, not the table, empty), its
+	heading, the players' rows, the teams' totals */
+	column_count = carnage_report_columns(teams, CARNAGE_LEFT + CARNAGE_TABLE_PADDING,
+		CARNAGE_RIGHT - CARNAGE_TABLE_PADDING, columns);
+	row_height = carnage_report_row_height(entry_count + (teams ? 2 : 0),
+		CARNAGE_TABLE_BOTTOM - CARNAGE_TABLE_TOP - 2 * 4);
+	text_height = MIN(11.0f, 0.7f * row_height);
+	bounds.y0 = CARNAGE_TABLE_TOP;
+	bounds.y1 = (short)MIN(CARNAGE_TABLE_BOTTOM,
+		CARNAGE_TABLE_TOP + 2 * 4 + CARNAGE_HEADING_HEIGHT + (entry_count + (teams ? 2 : 0)) * row_height);
+	carnage_report_box(&bounds, CARNAGE_TABLE_FILL, CARNAGE_TABLE_EDGE);
+	top = CARNAGE_TABLE_TOP + 4;
+	game_engine->format_score_name(string);
+	string[NUMBEROF(string) - 1] = 0;
+	for (column = 0; column < column_count; column++)
 	{
-		long string_list_index;
-		wchar_t const *column_strings[5];
+		static wchar_t const *const headings[NUMBER_OF_CARNAGE_COLUMNS] =
+		{
+			L"#", L"PLAYER", NULL, L"KILLS", L"ASSISTS", L"DEATHS", L"K/D", L"SUICIDES", L"BETRAYALS",
+		};
+		wchar_t heading[64];
 
-		string_list_index = tag_loaded('ustr', "ui\\multiplayer_game_text");
-		column_strings[0] =
-			string_list_index != NONE ?
-				unicode_string_list_get_string(string_list_index, 0x43) :
-				L"";
-		string_list_index = tag_loaded('ustr', "ui\\multiplayer_game_text");
-		column_strings[1] =
-			string_list_index != NONE ?
-				unicode_string_list_get_string(string_list_index, 0x44) :
-				L"";
-		string_list_index = tag_loaded('ustr', "ui\\multiplayer_game_text");
-		column_strings[2] =
-			string_list_index != NONE ?
-				unicode_string_list_get_string(string_list_index, 0x45) :
-				L"";
-		string_list_index = tag_loaded('ustr', "ui\\multiplayer_game_text");
-		column_strings[3] =
-			string_list_index != NONE ?
-				unicode_string_list_get_string(string_list_index, 0x46) :
-				L"";
-		string_list_index = tag_loaded('ustr', "ui\\multiplayer_game_text");
-		column_strings[4] =
-			string_list_index != NONE ?
-				unicode_string_list_get_string(string_list_index, 0x47) :
-				L"";
-
-		game_engine->format_score_name(score_string);
-		usnprintf(
-			row_string,
-			NUMBEROF(row_string),
-			L"\t%s\t%s\t%s\t%s\t%s\t%s",
-			column_strings[0],
-			column_strings[1],
-			score_string,
-			column_strings[2],
-			column_strings[3],
-			column_strings[4]);
-		row_string[NUMBEROF(row_string) - 1] = 0;
-		draw_string_set_tab_stops(tab_stops, NUMBEROF(tab_stops));
-		drawline(row_string, 7, 0);
+		bounds.x0 = columns[column].x0;
+		bounds.x1 = columns[column].x1;
+		bounds.y0 = top;
+		bounds.y1 = (short)(top + CARNAGE_HEADING_HEIGHT);
+		/* (the score's: the gametype's name for it) */
+		ustrncpy(heading, headings[column] ? headings[column] : string, NUMBEROF(heading) - 1);
+		heading[NUMBEROF(heading) - 1] = 0;
+		carnage_report_capitals(heading);
+		carnage_report_color(CARNAGE_HEADING, 1.0f, &color);
+		carnage_report_text(&bounds, heading, small_font, columns[column].justification, 8.0f, &color);
 	}
-
-	entry_count = select_players_to_display(_postgame_statistic_ranking, NONE, entries, 12);
+	top = (short)(top + CARNAGE_HEADING_HEIGHT);
+	carnage_report_quad(CARNAGE_LEFT + CARNAGE_TABLE_PADDING, (short)(top - 1), CARNAGE_RIGHT - CARNAGE_TABLE_PADDING,
+		top, CARNAGE_RULE);
 	for (entry_index = 0; entry_index < entry_count; entry_index++)
 	{
-		long player_index = entries[entry_index].player_index;
-		long draw_row = entry_index + 8;
-		struct player_datum *player = player_get(player_index);
-		real_argb_color team_colors[2];
-		wchar_t const *place_string;
-
-		if (player->local_player_index != NONE)
-			draw_string_set_color(&normal_color);
-		else
-			draw_string_set_color(&winner_color);
-		draw_string_set_tab_stops(tab_stops, NUMBEROF(tab_stops));
-		place_string = get_place_string(&entries[entry_index]);
-		usnprintf(row_string, NUMBEROF(row_string), L" \t%s", place_string);
-		row_string[NUMBEROF(row_string) - 1] = 0;
-		drawline(row_string, draw_row, 0);
-		draw_string_set_color(&winner_color);
-
-		if (global_variant.universal_variant.teams)
+		carnage_report_draw_row(columns, column_count, &rows[entry_index], &entries[entry_index], top, row_height,
+			small_font, text_height);
+		top = (short)(top + row_height);
+		if (entry_index + 1 < entry_count)
 		{
-			long team_index = player->team_index;
-
-			team_colors[0].red = 0.8f;
-			team_colors[0].green = 0.4f;
-			team_colors[0].blue = 0.4f;
-			team_colors[0].alpha = 1.0f;
-			team_colors[1].red = 0.4f;
-			team_colors[1].green = 0.4f;
-			team_colors[1].blue = 0.8f;
-			team_colors[1].alpha = 1.0f;
-			draw_string_set_color(
-				&team_colors[PIN(team_index, 0, 1)]);
+			carnage_report_quad(CARNAGE_LEFT + CARNAGE_TABLE_PADDING, (short)(top - 1),
+				CARNAGE_RIGHT - CARNAGE_TABLE_PADDING, top, CARNAGE_ROW_RULE);
 		}
-		usnprintf(row_string, NUMBEROF(row_string), L" \t \t%s", player->name);
-		row_string[NUMBEROF(row_string) - 1] = 0;
-		drawline(row_string, draw_row, 0);
-		draw_string_set_color(&winner_color);
-
-		if (!postgame_statistic_get_rating(player_index, _postgame_statistic_score, FALSE))
-			draw_string_set_color(&hilite_color);
-		game_engine->format_player_score(
-			player_index,
-			score_string);
-		usnprintf(row_string, NUMBEROF(row_string), L" \t \t \t%s", score_string);
-		row_string[NUMBEROF(row_string) - 1] = 0;
-		drawline(row_string, draw_row, 0);
-		draw_string_set_color(&winner_color);
-
-		if (!postgame_statistic_get_rating(player_index, _postgame_statistic_kills, FALSE))
-			draw_string_set_color(&hilite_color);
-		usnprintf(
-			row_string,
-			NUMBEROF(row_string),
-			L" \t \t \t \t%d",
-			(long)player->statistics.kills[0]);
-		row_string[NUMBEROF(row_string) - 1] = 0;
-		drawline(row_string, draw_row, 0);
-		draw_string_set_color(&winner_color);
-
-		if (!postgame_statistic_get_rating(player_index, _postgame_statistic_assists, FALSE))
-			draw_string_set_color(&hilite_color);
-		usnprintf(
-			row_string,
-			NUMBEROF(row_string),
-			L" \t \t \t \t \t%d",
-			(long)player->statistics.assists[0]);
-		row_string[NUMBEROF(row_string) - 1] = 0;
-		drawline(row_string, draw_row, 0);
-		draw_string_set_color(&winner_color);
-
-		if (!postgame_statistic_get_rating(player_index, _postgame_statistic_deaths, FALSE))
-			draw_string_set_color(&hilite_color);
-		usnprintf(
-			row_string,
-			NUMBEROF(row_string),
-			L" \t \t \t \t \t \t%d",
-			(long)player->statistics.deaths);
-		row_string[NUMBEROF(row_string) - 1] = 0;
-		drawline(row_string, draw_row, 0);
-		draw_string_set_tab_stops(tab_stops, NUMBEROF(tab_stops));
 	}
-
+	if (teams)
 	{
-		real_argb_color prompt_color;
-		long string_list_index;
-		wchar_t const *prompt;
-		struct network_game_server *server;
-		rectangle2d bounds;
+		short team;
 
-		bounds = render.camera.window_bounds;
-		prompt_color = winner_color;
-		prompt_color.alpha = game_engine_globals.postgame_progress;
-		bounds.y0 = 410;
-		bounds.x0 = 70;
-		offset_rectangle2d(
-			&bounds,
-			-render.camera.viewport_bounds.x0,
-			-render.camera.viewport_bounds.y0);
-		draw_string_set_tab_stops(NULL, 0);
-		draw_string_set_color(&prompt_color);
-
-		server = global_network_game_server_get();
-		if (server)
+		carnage_report_quad(CARNAGE_LEFT + CARNAGE_TABLE_PADDING, top, CARNAGE_RIGHT - CARNAGE_TABLE_PADDING,
+			(short)(top + 1), CARNAGE_RULE);
+		for (team = 0; team < 2; team++)
 		{
-			/* port: further left while the keyboard and mouse play, whose
-			keys' caps (Esc, Enter: ui_widget.c's ui_widget_port_menu_key)
-			are wider than the controller's buttons */
-			bounds.x0 = halo_keyboard_prompts() ? 300 : 380;
-			string_list_index =
-				tag_loaded('ustr', "ui\\multiplayer_game_text");
-			if (string_list_index != NONE)
-				prompt =
-					unicode_string_list_get_string(string_list_index, 0x48);
-			else
-				prompt = L"";
-			draw_string_and_hack_in_icons(
-				&bounds,
-				NULL,
-				NULL,
-				0,
-				prompt,
-				FALSE);
-			return;
+			carnage_report_draw_row(columns, column_count, &totals[team], NULL, top, row_height, small_font,
+				text_height);
+			top = (short)(top + row_height);
 		}
-
-		bounds.x0 = halo_keyboard_prompts() ? 490 : 520;
-		string_list_index = tag_loaded('ustr', "ui\\multiplayer_game_text");
-		if (string_list_index != NONE)
-			prompt = unicode_string_list_get_string(string_list_index, 0x49);
-		else
-			prompt = L"";
-		draw_string_and_hack_in_icons(
-			&bounds,
-			NULL,
-			NULL,
-			0,
-			prompt,
-			FALSE);
 	}
+
+	carnage_report_footer(small_font);
 
 	return;
 }
@@ -4086,6 +4599,21 @@ static void game_engine_post_rasterize_in_game(
 	game_engine_globals.hud_message_timers[local_player_index] = fade;
 
 	return;
+}
+
+/* port: how much a local player's view shows the scoreboard (0 to 1, as it
+fades in and out with the button held), for the names over the players'
+heads, which fade out under it (hud.c's hud_draw_player_names) */
+real game_engine_scoreboard_alpha(
+	short local_player_index)
+{
+	if ((!game_engine && !network_coop_active()) || local_player_index < 0 ||
+		local_player_index >= MAXIMUM_LOCAL_PLAYERS)
+	{
+		return 0.0f;
+	}
+
+	return linear_to_non_linear_alpha(PIN(game_engine_globals.hud_message_timers[local_player_index], 0.0f, 1.0f));
 }
 
 long game_engine_player_get_team_index(
@@ -5754,6 +6282,8 @@ void game_engine_switch_to_postgame(
 {
 	if (game_engine_globals.postgame_state==game_engine_mode_active)
 	{
+		/* port: the game's length, for the carnage report */
+		carnage_report_game_ticks = game_time_get();
 		if (global_network_game_server_get())
 		{
 			game_engine_globals.postgame_state = game_engine_mode_postgame_delay;
@@ -5786,6 +6316,8 @@ void game_engine_end_game(
 {
 	if (game_engine_globals.postgame_state==game_engine_mode_active)
 	{
+		/* port: the game's length, for the carnage report */
+		carnage_report_game_ticks = game_time_get();
 		game_engine_globals.postgame_state = game_engine_mode_postgame_delay;
 		game_engine_globals.postgame_timer = 7.0f;
 		game_engine_play_multiplayer_sound(_multiplayer_sound_game_over);
@@ -7543,6 +8075,7 @@ void game_engine_initialize_for_new_map(
 		game_engine_vehicle_home_count = NONE;
 		timeout_for_endgame_sound = 0;
 		game_engine_network_state_read = FALSE;
+		carnage_report_game_ticks = NONE;
 
 		if (game_engine->initialize_for_new_map &&
 			!game_engine->initialize_for_new_map())
