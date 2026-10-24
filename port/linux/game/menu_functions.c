@@ -3664,7 +3664,9 @@ too), 0 at the main menu, where the app's updater may show its window
 (port/macos/host_app.m) */
 int pc_menu_game_playing(void)
 {
-	return game_in_progress() && !main_menu_is_active();
+	/* (asked from the first frame, updater_poll's: before the game's clock
+	is made, game_in_progress asserts) */
+	return game_time_initialized() && game_in_progress() && !main_menu_is_active();
 }
 
 /* "port mods save" (OK): kept, and played at once (port_mods_save keeps
