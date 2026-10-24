@@ -416,7 +416,7 @@ void host_metal_loading_scene(void *context, const void *data, uint32_t bytes)
 static void loading_upload_initialize(void)
 {
 	MTLTextureDescriptor *description;
-	NSUInteger size = LOADING_ART_FRAME_PIXELS * 4;
+	NSUInteger size = LOADING_ART_FRAME_MAXIMUM_PIXELS * 4;
 	int index;
 
 	description = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm
@@ -430,15 +430,30 @@ static void loading_upload_initialize(void)
 }
 
 static id<MTLTexture> loading_upload(id<MTLCommandBuffer> buffer,
-	const struct loading_presentation_frame *frame)
+	const struct loading_presentation_frame *frame, NSUInteger screen_width, NSUInteger screen_height)
 {
 	id<MTLTexture> texture = nil;
 	id<MTLBuffer> upload = nil;
 	id<MTLBlitCommandEncoder> blit;
 	const uint8_t *pixels;
+	unsigned int width;
 	int index;
 
 	pthread_mutex_lock(&presentation.lock);
+	/* (the frame at the screen's shape: a texture of its width) */
+	loading_art_width(&presentation.loading_art, (unsigned int)screen_width, (unsigned int)screen_height);
+	width = presentation.loading_art.width;
+	if (presentation.loading_texture && presentation.loading_texture.width != width)
+	{
+		MTLTextureDescriptor *description = [MTLTextureDescriptor
+			texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA8Unorm width:width height:LOADING_ART_FRAME_HEIGHT
+			mipmapped:NO];
+
+		description.storageMode = MTLStorageModePrivate;
+		description.usage = MTLTextureUsageShaderRead;
+		presentation.loading_texture = [xgpu_metal_device() newTextureWithDescriptor:description];
+		presentation.loading_texture_valid = NO;
+	}
 	for (index = 0; index < LOADING_UPLOADS; index++)
 	{
 		if (presentation.loading_uploads[index] && !presentation.loading_upload_busy[index])
@@ -448,11 +463,11 @@ static id<MTLTexture> loading_upload(id<MTLCommandBuffer> buffer,
 	{
 		pixels = loading_art_render(&presentation.loading_art, frame);
 		if (pixels && host_loading_capture_due(frame))
-			host_loading_capture_write(frame, pixels, LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, 0, 0);
+			host_loading_capture_write(frame, pixels, width, LOADING_ART_FRAME_HEIGHT, 0, 0);
 		if (pixels)
 		{
 			upload = presentation.loading_uploads[index];
-			memcpy(upload.contents, pixels, LOADING_ART_FRAME_PIXELS * 4);
+			memcpy(upload.contents, pixels, (size_t)width * LOADING_ART_FRAME_HEIGHT * 4);
 			presentation.loading_upload_busy[index] = YES;
 			presentation.loading_texture_valid = YES;
 		}
@@ -469,8 +484,8 @@ static id<MTLTexture> loading_upload(id<MTLCommandBuffer> buffer,
 	/* Uploads and all sampling share the presentation queue. A later game
 	aside cannot delay them, and CPU writes never reuse an in-flight buffer. */
 	blit = [buffer blitCommandEncoder];
-	[blit copyFromBuffer:upload sourceOffset:0 sourceBytesPerRow:LOADING_ART_FRAME_WIDTH * 4
-		sourceBytesPerImage:0 sourceSize:MTLSizeMake(LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, 1)
+	[blit copyFromBuffer:upload sourceOffset:0 sourceBytesPerRow:width * 4
+		sourceBytesPerImage:0 sourceSize:MTLSizeMake(width, LOADING_ART_FRAME_HEIGHT, 1)
 		toTexture:texture destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
 	[blit endEncoding];
 	[buffer addCompletedHandler:^(id<MTLCommandBuffer> done) {
@@ -964,7 +979,7 @@ static CAFrameRateRange link_rate_range(int saving);
 
 		buffer = host_metal_present_buffer(image ? producer_frame : 0);
 		if (loading_frame.active)
-			loading_image = loading_upload(buffer, &loading_frame);
+			loading_image = loading_upload(buffer, &loading_frame, drawable.texture.width, drawable.texture.height);
 		sampled_image = loading_image ? loading_image : image;
 		pass = [MTLRenderPassDescriptor renderPassDescriptor];
 		pass.colorAttachments[0].texture = drawable.texture;
@@ -982,28 +997,25 @@ static CAFrameRateRange link_rate_range(int saving);
 			MTLClearColorMake(edr_value(drawable, LOADING_PRESENTATION_RED), edr_value(drawable, LOADING_PRESENTATION_GREEN),
 				edr_value(drawable, LOADING_PRESENTATION_BLUE), 1.0) : MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 		encoder = [buffer renderCommandEncoderWithDescriptor:pass];
-		/* the loading picture first scaled to cover the whole screen (its top
-		and bottom cut), so that a screen wider than 4:3 has the picture's
-		own space at its sides, not black bars; then letterboxed over it, its
-		text and sweep at their 4:3 size. A game's frame is letterboxed
-		alone */
-		for (int cover = loading_image ? 1 : 0; cover >= 0; cover--)
+		if (loading_image || (image && !loading_frame.active))
 		{
-			if (!loading_image && !(image && !loading_frame.active))
-				break;
-			/* letterboxed to the frame's shape (or covering the screen) */
+			/* letterboxed to the frame's shape (the loading screen's is the
+			screen's: loading_art_width) */
 			double drawable_width = drawable.texture.width, drawable_height = drawable.texture.height;
 			double fit_width = drawable_width, fit_height = drawable_width * sampled_image.height / sampled_image.width;
 
-			if (cover ? fit_height < drawable_height : fit_height > drawable_height)
+			if (fit_height > drawable_height)
 			{
 				fit_height = drawable_height;
 				fit_width = drawable_height * sampled_image.width / sampled_image.height;
 			}
-			if (cover && fit_width <= drawable_width && fit_height <= drawable_height)
-				continue;
+			/* (within a pixel of the screen's shape: all of it) */
+			if (loading_image && fabs(fit_width - drawable_width) < sampled_image.width / 480.0 + 1.0)
+				fit_width = drawable_width;
+			if (loading_image && fabs(fit_height - drawable_height) < 2.0)
+				fit_height = drawable_height;
 			MTLViewport viewport = { floor((drawable_width - fit_width) / 2.0), floor((drawable_height - fit_height) / 2.0),
-				cover ? ceil(fit_width) : floor(fit_width), cover ? ceil(fit_height) : floor(fit_height), 0.0, 1.0 };
+				floor(fit_width), floor(fit_height), 0.0, 1.0 };
 
 			[encoder setViewport:viewport];
 			[encoder setFragmentTexture:sampled_image atIndex:0];

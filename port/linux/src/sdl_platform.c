@@ -204,6 +204,8 @@ static int platform_loading_thread(void *unused)
 		started = SDL_GetTicksNS();
 		frame.elapsed_ns = started - frame.started_ns;
 		loading_presentation_build(&frame);
+		/* (the frame at the window's shape) */
+		loading_art_width(&loading_window.art, (unsigned int)width, (unsigned int)height);
 		pixels = loading_art_render(&loading_window.art, &frame);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		glDisable(GL_SCISSOR_TEST);
@@ -211,7 +213,7 @@ static int platform_loading_thread(void *unused)
 		glClearColor(LOADING_PRESENTATION_RED, LOADING_PRESENTATION_GREEN, LOADING_PRESENTATION_BLUE, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT);
 		/* The fallback remains available when the original picture is unavailable. */
-		if (!loading_gl_draw(&loading_window.image, pixels, width, height))
+		if (!loading_gl_draw(&loading_window.image, pixels, (int)loading_window.art.width, width, height))
 		{
 			for (index = 0; index < frame.count; index++)
 			{

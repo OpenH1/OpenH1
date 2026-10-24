@@ -692,7 +692,9 @@ static inline void loading_ring_triangle(struct loading_ring *ring, const struct
 {
 	const struct loading_ring_texture *textures[LOADING_SCENE_PART_MAPS];
 	uint32_t levels[LOADING_SCENE_PART_MAPS], map;
-	float w = (float)ring->width, h = (float)ring->height, scale = ring->focal * w * ring->view_zoom;
+	/* (the camera's field of view across a 4:3 frame, kept up and down: a
+	wider frame sees more at its sides) */
+	float w = (float)ring->width, h = (float)ring->height, scale = ring->focal * (h * 4.0f / 3.0f) * ring->view_zoom;
 	float middle = w * 0.5f + ring->view_shift[0], centre = h * 0.5f - ring->view_shift[1];
 	float ax = middle + scale * a->x / a->z, ay = centre - scale * a->y / a->z;
 	float bx = middle + scale * b->x / b->z, by = centre - scale * b->y / b->z;
@@ -887,7 +889,7 @@ static inline void loading_ring_transform(struct loading_ring *ring, uint32_t la
 	picture (glint_x, its pixel), lighting the edges that face across it */
 	{
 		float across = ((ring->glint_x - (float)ring->width * 0.5f - ring->view_shift[0]) /
-			((float)ring->width * ring->focal * ring->view_zoom));
+			((float)ring->height * 4.0f / 3.0f * ring->focal * ring->view_zoom));
 
 		for (i = 0; i < 3; i++)
 			light[i] = ring->camera_forward[i] + across * ring->camera_right[i] + 0.15f * ring->camera_up[i];

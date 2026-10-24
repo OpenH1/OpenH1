@@ -88,7 +88,8 @@ uint64_t xgpu_vulkan_loading(void *context, const struct loading_presentation_fr
 	}
 #endif
 	xgpu_vulkan_loading_stereo(0);
-	image = xgpu_vulkan_loading_draw(frame, LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT,
+	/* (the frame at the window's shape, which it then fills) */
+	image = xgpu_vulkan_loading_draw(frame, xgpu_vulkan_loading_frame_width(), LOADING_ART_FRAME_HEIGHT,
 		XGPU_VULKAN_FORMAT_BGRA8);
 	if (image)
 	{
