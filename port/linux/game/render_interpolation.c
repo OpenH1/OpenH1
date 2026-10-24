@@ -2227,10 +2227,45 @@ static struct observer_result const *render_interpolation_blended_camera(
 
 /* ---------- first-person weapon */
 
+/* when the first-person weapons' animations last advanced
+(first_person_weapons_update, in the tick's own work), in ticks of the
+game's clock (render_interpolation_first_person_phase) */
+static double first_person_updated_time;
+
+/* (first_person_weapons.c, in the tick's own work: its first sub-step's,
+which ends a sub-step into the tick) */
+void render_interpolation_first_person_updated(void)
+{
+	first_person_updated_time = (double)game_time_get() + 1.0 / (double)sim_substep_count();
+}
+
+/* The player's own view drawn from the newest step
+(render_interpolation_view_newest): how far, in ticks (0 to 1), the frame
+is past the first-person animations' last advance. Their animations are
+authored a frame a tick and advance a frame each tick, so the frame drawn
+samples each where it is now, between its frame and the next
+(first_person_weapons.c): the animation moves every frame at any rate, as
+the clock does, none of it guessed or a tick behind. At 60 and 120 the
+animations advance in the tick's first sub-step, not at its end, which the
+blend between ticks below keyed them to: a jump each tick. -1 for any other
+view, drawn between the ticks as before */
+real render_interpolation_first_person_phase(short local_player_index)
+{
+	double phase;
+
+	if (!interpolation_rendering || !render_interpolation_view_newest(local_player_index))
+		return -1.0f;
+	if (game_time_get_paused())
+		return 0.0f;
+	phase = (double)game_time_get() + (double)interpolation_fraction - first_person_updated_time;
+	return phase < 0.0 ? 0.0f : phase > 1.0 ? 1.0f : (real)phase;
+}
+
 /* The first-person weapon and hands are posed in world space from the drawn
 camera each frame, from animation state that changes once a tick: blend the
-pose relative to the camera (or, the player's own view drawn from the newest
-step, carry it on from the latest tick: render_interpolation_newest_camera). */
+pose relative to the camera. The player's own view drawn from the newest
+step is posed as it is: its animations sampled at the frame's time
+(render_interpolation_first_person_phase), from the camera of the frame. */
 void render_interpolation_first_person(
 	short local_player_index,
 	real_matrix4x3 *node_matrices,
@@ -2243,7 +2278,6 @@ void render_interpolation_first_person(
 	struct interpolation_rotation previous_rotations[MAXIMUM_INTERPOLATED_NODES];
 	struct interpolation_rotation latest_rotations[MAXIMUM_INTERPOLATED_NODES];
 	short node_index;
-	real t;
 
 	if (!interpolation_rendering ||
 		local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS ||
@@ -2267,7 +2301,7 @@ void render_interpolation_first_person(
 	for (node_index = 0; node_index < node_count; node_index++)
 		matrix4x3_multiply(&inverse_camera, &node_matrices[node_index], &first_person->latest[node_index]);
 	first_person->node_count = node_count;
-	if (!first_person->has_previous)
+	if (!first_person->has_previous || render_interpolation_first_person_phase(local_player_index) >= 0.0f)
 		return;
 	/* a node that jumped further in the camera's frame than a tick allows:
 	the last pose was another weapon's skeleton (of as many nodes), not this
@@ -2285,10 +2319,6 @@ void render_interpolation_first_person(
 		rotation_from_matrix(previous, &previous_rotations[node_index]);
 		rotation_from_matrix(latest, &latest_rotations[node_index]);
 	}
-	/* (the player's own view drawn from the newest step: the pose of the
-	latest tick, moved on as the last tick moved it for the time since, not
-	a tick behind; the animation then moves every frame, as before) */
-	t = render_interpolation_view_newest(local_player_index) ? 1.0f + interpolation_fraction : interpolation_fraction;
 	for (node_index = 0; node_index < node_count; node_index++)
 	{
 		real_matrix4x3 blended;
@@ -2298,7 +2328,7 @@ void render_interpolation_first_person(
 			&first_person->latest[node_index],
 			&previous_rotations[node_index],
 			&latest_rotations[node_index],
-			t,
+			interpolation_fraction,
 			&blended);
 		matrix4x3_multiply(&camera_matrix, &blended, &node_matrices[node_index]);
 	}
