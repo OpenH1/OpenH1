@@ -4173,6 +4173,24 @@ static void settings_sliders_show(struct widget_instance *list)
 		}
 		settings_slider_text(value, text, sizeof(text));
 		text_field_show(value_text, text, text_field_editing(row));
+		/* (typed into: its field lit, and the caret held on, not blinking,
+		so that it is plain that the number takes what is typed) */
+		if (value_text)
+		{
+			wchar_t *shown = value_text->parameters.text_box.text;
+
+			value_text->animation.current_frame_index = (short)(text_field_editing(row) != FALSE);
+			if (shown && text_field_editing(row))
+			{
+				short length = (short)ustrlen(shown);
+
+				if ((!length || shown[length - 1] != L'_') && length < ROW_TEXT_LENGTH - 1)
+				{
+					shown[length] = L'_';
+					shown[length + 1] = 0;
+				}
+			}
+		}
 	}
 }
 

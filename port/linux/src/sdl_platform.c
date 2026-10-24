@@ -2902,7 +2902,21 @@ BOOL platform_ui_pointer_read(struct platform_ui_pointer *pointer)
 	/* (a scripted run of the menus, debug.test_input = "menu:...", takes its
 	presses alone: the mouse of whoever is at the computer moves no focus) */
 	if (!strncmp(config_string("debug.test_input"), "menu:", 5))
-		return FALSE;
+	{
+		/* (but its own clicks: "click:<x>:<y>", platform_test_menu_click) */
+		float x, y;
+		int width, height;
+
+		if (!active || !platform_test_menu_click(&x, &y))
+			return FALSE;
+		SDL_GetWindowSize(platform_window, &width, &height);
+		memset(pointer, 0, sizeof(*pointer));
+		pointer->x = pointer->click_x = x * width;
+		pointer->y = pointer->click_y = y * height;
+		pointer->moved = TRUE;
+		pointer->left_clicks = 1;
+		return TRUE;
+	}
 	return active;
 }
 

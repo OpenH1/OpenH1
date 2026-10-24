@@ -101,7 +101,7 @@
 		<on event="left_mouse" run="mouse emit accept event"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_label"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_track" x="188" y="3"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_value" x="282"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_value" x="282" y="0"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/labels" string_index="1" color="#FF2896FF" text_x="10" text_y="2" font="ui\small_ui">
 	</widget>
@@ -110,7 +110,7 @@
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_thumb" controller="1" width="8" height="14" bitmap="main_menu/settings/slider_thumb">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_value" type="text" controller="1" width="46" height="20" color="#FF2896FF" align="center" text_y="4" text_flags="no_focus_test" font="ui\small_ui">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_sensitivity_value" type="text" controller="1" width="46" height="20" bitmap="main_menu/settings/slider_field" color="#FF2896FF" align="center" text_y="0" text_flags="no_focus_test" font="ui\small_ui">
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/op_mouse_vertical_sensitivity" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/mouse_vertical_sensitivity_label"/>
@@ -224,7 +224,7 @@
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/mouse_settings/help_strings">
 		<string text="The mouse, the controller and the keys."/>
 		<string text=""/>
-		<string text="How far the view turns as the mouse moves, on Counter-Strike 2's scale: your CS2 number turns the same here. Drag the slider or press left and right; press A or click the number to type one, then Enter.|No acceleration."/>
+		<string text="How far the view turns as the mouse moves, on Counter-Strike 2's scale: your CS2 number turns the same here. Drag the slider, or press left and right. Click the number (or press A) to type an exact value, e.g. 1.7, then press Enter.|No acceleration."/>
 		<string text="How far the view turns up and down, of how far it turns side to side. 1X turns it as far."/>
 		<string text="How fast you turn while zoomed in. CS2 matches Counter-Strike 2's scoped feel; Original is how Halo felt.|Mouse only: controllers always turn as Halo did."/>
 		<string text="Moving the mouse forward looks down, as a flight stick does."/>

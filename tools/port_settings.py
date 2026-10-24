@@ -267,7 +267,7 @@ class Slider(NamedTuple):
 
 # a slider's track, its thumb and its number, in the value's column
 SLIDER_TRACK_WIDTH, SLIDER_THUMB_WIDTH, SLIDER_TRACK_HEIGHT = 92, 8, 14
-SLIDER_VALUE_X, SLIDER_VALUE_WIDTH = 94, 46
+SLIDER_VALUE_X, SLIDER_VALUE_WIDTH, SLIDER_VALUE_HEIGHT = 94, 46, 20
 # input.mouse_sensitivity's: CS2's sensitivity (port/linux/include/mouse_sensitivity.h)
 MOUSE_SENSITIVITY = Slider(0.1, 10.0, 0.05, 0.01, 100.0)
 # the geometry, in the 640x480 menu units (menu_functions.c's SETTINGS_*
@@ -418,8 +418,8 @@ PAGES = {
             (SECTION, "MOUSE"),
             ("SENSITIVITY", "input.mouse_sensitivity", MOUSE_SENSITIVITY,
              "How far the view turns as the mouse moves, on Counter-Strike 2's scale: your CS2 number turns the "
-             "same here. Drag the slider or press left and right; press A or click the number to type one, then "
-             "Enter.|No acceleration.",
+             "same here. Drag the slider, or press left and right. Click the number (or press A) to type an exact "
+             "value, e.g. 1.7, then press Enter.|No acceleration.",
              None),
             ("VERTICAL SENSITIVITY", "input.mouse_vertical_sensitivity", VERTICAL_SENSITIVITIES,
              "How far the view turns up and down, of how far it turns side to side. 1X turns it as far.", None),
@@ -1067,7 +1067,8 @@ def _settings_page(folder: str, page: dict) -> list:
                               f'<child widget="{base}/{key}_label"/>',
                               f'<child widget="{base}/{key}_track" x="{SETTINGS_SPINNER_X}" '
                               f'y="{(SETTINGS_ROW_HEIGHT - SLIDER_TRACK_HEIGHT) // 2}"/>',
-                              f'<child widget="{base}/{key}_value" x="{SETTINGS_SPINNER_X + SLIDER_VALUE_X}"/>'])
+                              f'<child widget="{base}/{key}_value" x="{SETTINGS_SPINNER_X + SLIDER_VALUE_X}" '
+                              f'y="{(SETTINGS_ROW_HEIGHT - SLIDER_VALUE_HEIGHT) // 2}"/>'])
             extra += label_widget
             extra += _widget(f"{base}/{key}_track", [("controller", 1), ("width", SLIDER_TRACK_WIDTH),
                                                      ("height", SLIDER_TRACK_HEIGHT),
@@ -1076,9 +1077,13 @@ def _settings_page(folder: str, page: dict) -> list:
             extra += _widget(f"{base}/{key}_thumb", [("controller", 1), ("width", SLIDER_THUMB_WIDTH),
                                                      ("height", SLIDER_TRACK_HEIGHT),
                                                      ("bitmap", f"{SETTINGS}/slider_thumb")], [])
+            # (its number in a field's frame, lit while typed into:
+            # menu_functions.c's settings_sliders_show)
             extra += _settings_text(f"{base}/{key}_value", [("width", SLIDER_VALUE_WIDTH),
-                                                            ("height", SETTINGS_ROW_HEIGHT), ("color", SETTINGS_BLUE),
-                                                            ("align", "center"), ("text_y", 4),
+                                                            ("height", SLIDER_VALUE_HEIGHT),
+                                                            ("bitmap", f"{SETTINGS}/slider_field"),
+                                                            ("color", SETTINGS_BLUE), ("align", "center"),
+                                                            ("text_y", 0),
                                                             ("text_flags", "no_focus_test")])
         elif setting:
             extra += _widget(row, row_pairs, [f'<child widget="{base}/{key}_label"/>',
@@ -1314,6 +1319,17 @@ def settings_pictures() -> list:
         'fill-opacity="0.9" stroke="#2995ff" stroke-width="1"/>']), track_w, track_h)]))
     pictures.append((f"{SETTINGS}/slider_thumb", [(_svg(thumb_w, track_h, [
         _rounded(thumb_w, track_h, 1, 2.5, "#8cc8ff", 1.0, "#2299ff", 1.5)]), thumb_w, track_h)]))
+    # (its number's field, as the CE text fields are framed: a navy box with
+    # a blue rim and a line under the number; typed into, a brighter rim
+    # and field)
+    field_w, field_h = SLIDER_VALUE_WIDTH, SLIDER_VALUE_HEIGHT
+    underline = (f'  <rect x="6" y="{field_h - 3.5:g}" width="{field_w - 12}" height="1" fill="#2995ff" '
+                 'fill-opacity="0.8"/>')
+    pictures.append((f"{SETTINGS}/slider_field", [
+        (_svg(field_w, field_h, [_rounded(field_w, field_h, 2, 3, "#000e23", 0.9, "#2995ff", 1.5), underline]),
+         field_w, field_h),
+        (_svg(field_w, field_h, [_rounded(field_w, field_h, 2, 3, "#0d3a7a", 0.95, "#8cc8ff", 1.5),
+                                 underline.replace("#2995ff", "#8cc8ff")]), field_w, field_h)]))
     for kind, top in (("tab", SETTINGS_TOP), ("page", PAGE_TOP)):
         height = SETTINGS_PANEL_BOTTOM - top
         # (list_field's framed panel: a navy field, a blue rim)
