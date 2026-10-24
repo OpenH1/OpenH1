@@ -147,9 +147,17 @@ enum
 	sub-steps the host's tick ran for the players it relays (unreliable) */
 	_distributed_message_player_substeps = 120,
 	_distributed_message_relayed_substeps = 121,
+	/* a mixed game's (network_standard.c): the players of OpenCE machines, a
+	bit each, to the host's OpenH1 clients (unreliable, each second and when
+	they change) */
+	_distributed_message_opence_players = 122,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
+
+/* the first of OpenH1's own messages (those of a Standard game: 120 and
+after), which no OpenCE machine is sent (network_standard_message_goes_to) */
+#define FIRST_OPENH1_DISTRIBUTED_MESSAGE _distributed_message_player_substeps
 
 /* where a message goes */
 enum
@@ -243,6 +251,9 @@ long distributed_living_unit(struct player_datum const *player);
 /* whether the player is one of that client machine's (the host) */
 boolean distributed_machine_has_player(long machine_index, short player_index);
 void distributed_count_correction(void);
+/* a tick begun (network_substeps_tick_begun, at every rate): the tests'
+reports take the input each player's unit takes in it */
+void network_distributed_tick_begun(void);
 /* (the host) the client machines in the game, but for its own; their count */
 short distributed_client_machines(long *machine_indices, short maximum);
 /* (the host) how long a message takes that client and its answer back, in

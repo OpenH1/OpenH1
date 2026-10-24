@@ -80,6 +80,7 @@ machine (their datum identifiers need not be).
 #include "network_aim_assist.h"
 #include "network_shield_effects.h"
 #include "network_substeps.h"
+#include "network_standard.h"
 #include "map_share.h"
 #include "latency_meter.h"
 #include "profile_sections.h"
@@ -783,9 +784,17 @@ static struct
 	/* where that prediction had the player, and where it left the host's */
 	real_point3d taken_position[MAXIMUM_TRACKED_PLAYERS];
 	real_point3d taken_host_position[MAXIMUM_TRACKED_PLAYERS];
-	/* the client's tick of the latest input the host has of each player
-	(what the host's tick ran it with) */
+	/* the client's tick of the latest input the host has of each player,
+	and of the one the host's tick ran it with: the latest as the tick began
+	(network_distributed_tick_begun). At 60 and 120 a tick's sub-steps may be
+	spread over several frames, between which a newer input may come, which
+	the next tick takes */
+	long input_heard_time[MAXIMUM_TRACKED_PLAYERS];
 	long input_time[MAXIMUM_TRACKED_PLAYERS];
+	/* ... and each player's ticks compared and apart (a mixed game's OpenCE
+	and OpenH1 players told apart: network_standard.c) */
+	long player_samples[MAXIMUM_TRACKED_PLAYERS];
+	long player_apart[MAXIMUM_TRACKED_PLAYERS];
 } distributed_divergence;
 
 /* ---------- shared (network_distributed.h) */
@@ -846,6 +855,29 @@ void network_distributed_divergence(
 	distributed_divergence.apart = 0;
 	distributed_divergence.total = 0.0f;
 	distributed_divergence.largest = 0.0f;
+}
+
+void network_distributed_tick_begun(
+	void)
+{
+	/* (the tests' reports: the input each player's unit takes this tick) */
+	csmemcpy(distributed_divergence.input_time, distributed_divergence.input_heard_time,
+		sizeof(distributed_divergence.input_time));
+}
+
+void network_distributed_player_divergence(
+	short player_index,
+	long *samples,
+	long *apart)
+{
+	*samples = 0;
+	*apart = 0;
+	if (player_index < 0 || player_index >= MAXIMUM_TRACKED_PLAYERS)
+		return;
+	*samples = distributed_divergence.player_samples[player_index];
+	*apart = distributed_divergence.player_apart[player_index];
+	distributed_divergence.player_samples[player_index] = 0;
+	distributed_divergence.player_apart[player_index] = 0;
 }
 
 boolean distributed_real_valid(
@@ -1091,6 +1123,10 @@ static void distributed_batch_add(
 	if (size < sizeof(header))
 		return;
 	csmemcpy(&header, message, sizeof(header));
+	/* (none of OpenH1's own messages to an OpenCE machine of a mixed game:
+	network_standard.c) */
+	if (sender != HOST_SENDER && !network_standard_message_goes_to(sender, header.type))
+		return;
 	entries_size = (word)(size - sizeof(header));
 	count = header.count;
 	if (!entry_size || !count || entries_size != count * entry_size)
@@ -1210,6 +1246,8 @@ void distributed_send_to_machine_reliably(
 	short count,
 	word size)
 {
+	if (!network_standard_message_goes_to(machine_index, type))
+		return;
 	distributed_fill_header(message, type, count, size);
 	network_distributed_server_send_to_machine_reliably(machine_index, message, size);
 }
@@ -2487,8 +2525,12 @@ static void distributed_take_prediction(
 		real distance = (real)sqrt(mx * mx + my * my + mz * mz);
 
 		distributed_divergence.samples++;
+		distributed_divergence.player_samples[player_index]++;
 		if (distance > DIVERGENCE_APART_DISTANCE)
+		{
 			distributed_divergence.apart++;
+			distributed_divergence.player_apart[player_index]++;
+		}
 		distributed_divergence.total += distance;
 		if (distance > distributed_divergence.largest)
 			distributed_divergence.largest = distance;
@@ -2879,14 +2921,15 @@ static void distributed_handle_inputs(
 			&action, input->control_flags, DISTRIBUTED_INPUT_HISTORY);
 		/* (for the tests' reports: the newest, as the input taken is, or one
 		a second or more older, the client's clock set back; the subtraction
-		kept from overflowing, as the tick is the client's word) */
+		kept from overflowing, as the tick is the client's word; the next tick
+		to begin takes it) */
 		{
-			long newest = distributed_divergence.input_time[input->player_index];
+			long newest = distributed_divergence.input_heard_time[input->player_index];
 
 			if (newest == NONE || input->tick > newest ||
 				(newest >= LONG_MIN + TICKS_PER_SECOND && input->tick < newest - TICKS_PER_SECOND))
 			{
-				distributed_divergence.input_time[input->player_index] = input->tick;
+				distributed_divergence.input_heard_time[input->player_index] = input->tick;
 			}
 		}
 		if (input->host_time != NONE && (host_time == NONE || input->host_time > host_time))
@@ -3844,6 +3887,7 @@ void network_distributed_new_game(
 	{
 		distributed_divergence.taken_time[player_index] = NONE;
 		distributed_divergence.taken_host_time[player_index] = NONE;
+		distributed_divergence.input_heard_time[player_index] = NONE;
 		distributed_divergence.input_time[player_index] = NONE;
 	}
 	/* (each player's latest input: player_queues_new.c) */
@@ -3857,6 +3901,7 @@ void network_distributed_new_game(
 	network_votekick_new_game();
 	network_welcome_new_game();
 	network_substeps_new_game();
+	network_standard_new_game();
 }
 
 /* after each tick (game_time.c) */
@@ -3917,6 +3962,8 @@ void network_distributed_tick(
 			profile_scope(distributed_tick_send_game_state_section, distributed_send_game_state(NONE);)
 		network_votekick_host_tick();
 		network_welcome_host_tick();
+		/* (a mixed game's: its OpenCE players, to its OpenH1 clients) */
+		network_standard_host_tick();
 	}
 	else if (connection == _game_connection_network_client)
 	{
@@ -4540,10 +4587,23 @@ void network_distributed_handle_message(
 		network_shield_effects_handle_message(machine_index, message, size);
 		return;
 	}
+	/* (a client that joined as OpenCE does hears none of OpenH1's own: the
+	network test counts any, network_standard.c) */
+	if (machine_index == NONE && size >= sizeof(header))
+	{
+		csmemcpy(&header, message, sizeof(header));
+		network_standard_message_heard(header.type);
+	}
 	/* (an OpenH1 game's sub-steps: network_substeps.c) */
 	if (network_substeps_handles_message(message, size))
 	{
 		network_substeps_handle_message(machine_index, message, size);
+		return;
+	}
+	/* (a mixed game's OpenCE players: network_standard.c) */
+	if (network_standard_handles_message(message, size))
+	{
+		network_standard_handle_message(machine_index, message, size);
 		return;
 	}
 	if (network_voice_handles_message(message, size))

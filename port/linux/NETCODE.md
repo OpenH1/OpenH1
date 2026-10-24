@@ -295,7 +295,9 @@ any change of their own: `HALO_PORT_STANDARD_BASE_VERSION` names the network
 version it was last raised for, and the build fails while the two differ.
 Protocol version 1 (on network version 38) agrees on the game's tick rate
 and carries it in the game record, advertisement and listing; version 2
-sends each player's sub-steps at 60 and 120 (below, "Sub-step inputs").
+sends each player's sub-steps at 60 and 120 (below, "Sub-step inputs");
+version 3 lets OpenCE players into an OpenH1 game (below, "OpenCE players in
+an OpenH1 game").
 
 `port/linux/network_format.txt` records the wire format of the current
 version (`tools/network_format.py`): `test_linux_port.py` fails when the
@@ -589,6 +591,60 @@ one player on each machine:
 A client's record is 80 bytes whatever the rate. A relayed record is 2
 bytes plus 10 for each later sub-step (12 at 60, 32 at 120), sent only for
 a player whose sub-steps changed something.
+
+### OpenCE players in an OpenH1 game
+
+An OpenH1 game's host with `network.allow_opence` takes OpenCE players
+too (a mixed game; `port/linux/game/network_standard.c`). Each player plays
+at their own rate: OpenCE players at 30, as in a Legacy game, and OpenH1
+players at the game's rate with their sub-step inputs. OpenCE needs no
+change:
+
+- The host advertises the network version (38), as a Legacy host does, so
+  OpenCE lists and joins the game. The reserved bytes after the game's kind,
+  which OpenCE never reads, carry the rate
+  (`HALO_PORT_ADVERTISED_RATE_OFFSET`) and the OpenH1 protocol version
+  (`HALO_PORT_ADVERTISED_OPENH1_VERSION_OFFSET`). An OpenH1 build of that
+  protocol joins it as an OpenH1 game, with the OpenH1 join token. Any other
+  build (OpenCE, an older or newer OpenH1) joins it as a Legacy game, with
+  the Legacy token, and plays at 30.
+- The host takes either token, and so knows each machine's kind
+  (`network_standard_machine_is_opence`, `network_standard_machine_is_openh1`).
+  A Legacy host cannot tell them apart: every machine's token is the same.
+- An OpenCE machine gets exactly what a Legacy host sends. Its game record has
+  no rate (`network_standard_game_for_machine`: `standard_rate` 0), and it
+  gets none of OpenH1's own messages (120 and above:
+  `network_standard_message_goes_to`, checked where the distributed netcode
+  queues a datagram's messages and a reliable one). Everything else in an
+  OpenH1 game is network version 38's already.
+- Each player is stepped at their own rate on every OpenH1 machine. An
+  OpenCE player's biped, and the vehicle they drive, are of the macro lane
+  (`objects.h`): they move once a tick, exactly as on the player's own
+  machine, so the host's move of the player matches the OpenCE client's
+  prediction. Their shots stay on the tick (`weapons_substep` fires ahead
+  only for a unit of the micro lane). The sub-steps of OpenH1 players see
+  them between their ticks' poses, as they see anything of the macro lane.
+- The host tells its OpenH1 clients which players are OpenCE's
+  (`_distributed_message_opence_players`, 122, a bit a player, unreliable,
+  when it changes and each second), so that they step them on the tick too.
+  Until then, a client steps them as a player whose sub-steps it never
+  heard, holding the tick's input, and the host's corrections keep it near.
+- The host does not welcome OpenH1 machines it knows by their token
+  (`network.opence_welcome`).
+
+`debug.join_legacy` makes an OpenH1 build join every game as OpenCE joins it,
+the tests' stand-in for an OpenCE machine: the network test logs each
+second, on every machine, the rate it plays at, the players it steps as
+OpenCE's, and, on a client that joined as OpenCE does, how many of OpenH1's
+messages it heard and the rate its record brought, both 0 from a mixed
+host, and, the host, each client's player's drift (below, "Comparing two
+builds"): `network test: rate <rate> opence players <players> | legacy
+heard openh1 <messages> record <rate> | drift by player <player>:<apart>/<compared>...`.
+An OpenCE player's drift is that of a Legacy game (none apart but where
+the player touched something), as the host moves them a tick at a time as
+their machine does. `tools/net_compare.py --c` plays a third copy, a second
+client, and `--opence` names the copies that join as OpenCE: it checks
+those lines too.
 
 ## Joining a game in progress
 

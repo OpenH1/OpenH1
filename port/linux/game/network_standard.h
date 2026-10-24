@@ -9,6 +9,20 @@ OpenH1's Standard games and OpenCE's Legacy ones (network_standard.c).
 
 struct network_game;
 
+/* ---------- constants */
+
+/* the token a machine joined a host with (network_standard_join_kind) */
+enum
+{
+	/* a Legacy game's (whatever the machine is: a Legacy host cannot tell) */
+	_network_standard_join_legacy = 0,
+	/* a Standard game's, an OpenH1 machine's */
+	_network_standard_join_openh1,
+	/* a mixed game's Legacy token: an OpenCE machine's (or an OpenH1 one
+	that joined as OpenCE does) */
+	_network_standard_join_opence,
+};
+
 /* ---------- prototypes */
 
 /* hosting: the server made reads network.game_mode, which holds while it
@@ -38,5 +52,48 @@ void network_standard_join_token(byte *join_token, long token_size);
 sim_rate_network): the Standard game's, its host's or the one its record
 brought, or 0 for a Legacy game (or none) */
 long network_standard_agreed_rate(void);
+
+/* Mixed games: a Standard game that OpenCE players join (network.allow_opence,
+read with network.game_mode) */
+boolean network_standard_hosting_mixed(void);
+/* the host's advertisement's reserved bytes: its version (a mixed game's the
+Legacy game's), and a Standard game's rate and, a mixed game's, the OpenH1
+protocol version */
+void network_standard_advertise(byte *reserved, boolean in_lobby);
+/* the host: the token a join request carries (_network_standard_join_*),
+against the game's own (network_game_generate_join_game_token), or NONE
+when this host takes no join with it */
+short network_standard_join_kind(byte const *request_token, byte const *game_token, long token_size);
+/* ... the machine accepted with it, at its index in the game */
+void network_standard_machine_joined(long machine_index, short kind);
+/* the host: whether the machine (its index in the game) joined this OpenH1
+game as an OpenCE machine (its Legacy token, in a mixed game), or as an
+OpenH1 one (the Standard token). A Legacy host, and any client, knows
+neither */
+boolean network_standard_machine_is_opence(long machine_index);
+boolean network_standard_machine_is_openh1(long machine_index);
+/* the host: whether a distributed message of the type may go to the machine:
+none of OpenH1's own (FIRST_OPENH1_DISTRIBUTED_MESSAGE and after) goes to an
+OpenCE machine */
+boolean network_standard_message_goes_to(long machine_index, byte type);
+/* the host: its game record as it goes to a machine: to an OpenCE one, a copy
+without the Standard game's rate, as a Legacy host has it */
+struct network_game const *network_standard_game_for_machine(struct network_game const *game, boolean opence);
+/* every OpenH1 machine of a mixed game: whether the player (a datum index)
+plays on an OpenCE machine, and so at 30 (objects.c's lanes): the host's
+from its machines, a client's from its host
+(_distributed_message_opence_players) */
+boolean network_standard_player_is_opence(long player_index);
+/* a new game (network_distributed.c), each tick of the host (it tells its
+OpenH1 clients which players are OpenCE's) and the message it sends them */
+void network_standard_new_game(void);
+void network_standard_host_tick(void);
+boolean network_standard_handles_message(word const *message, word size);
+void network_standard_handle_message(long machine_index, word const *message, word size);
+/* a client: a distributed message heard; and, if it joined as OpenCE does
+(a Legacy join), how many of OpenH1's own it heard and the rate a record
+brought it, both 0 from a mixed game's host (the network test logs them) */
+void network_standard_message_heard(byte type);
+void network_standard_legacy_heard(long *openh1_messages, long *record_rate);
 
 #endif

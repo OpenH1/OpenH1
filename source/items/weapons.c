@@ -3332,7 +3332,9 @@ static void weapons_substep(
 	data_iterator_new(&iterator, player_data);
 	while ((player= (struct player_datum *)data_iterator_next(&iterator))!=NULL)
 	{
-		if (player->unit_index!=NONE)
+		/* (a unit of the micro lane: an OpenCE player's in a mixed game,
+		which moves once a tick, fires on the tick, as on their own machine) */
+		if (player->unit_index!=NONE && object_lane_moves_in_substeps(player->unit_index))
 		{
 			weapon_fire_ahead(player->unit_index);
 		}
