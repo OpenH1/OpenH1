@@ -114,6 +114,10 @@ int config_boolean(const char *name);
 unsigned long config_changes(void);
 /* render_objects.c */
 boolean render_objects_port_last_lighting(long object_index, struct render_lighting *lighting);
+#ifdef HALO_VR
+/* port/linux/src/vr.c: the VR mode is on */
+int halo_vr_running(void);
+#endif
 
 #include <math.h>
 #include <stdlib.h>
@@ -1716,29 +1720,30 @@ void render_interpolation_correct_object(long object_index, real_vector3d const 
 /* ---------- camera */
 
 static struct observer_result direct_cameras[MAXIMUM_LOCAL_PLAYERS];
+/* each local player's view drawn last from the newest step
+(render_interpolation_view_newest) */
+static boolean newest_views[MAXIMUM_LOCAL_PLAYERS];
 
 static struct observer_result const *render_interpolation_blended_camera(
 	short local_player_index,
 	struct observer_result const *observer);
 
-/* A first-person view is posed from the player's facing, which the input
-turns every frame (player_control.c), but the observer keeps it as of the
-last tick and the blend above draws it a tick later still. On foot, the view
-points where the player aims now (display.direct_camera). In a vehicle's
-seat or a cinematic the view is the seat's or the script's: left as it is.
-Desktop only: display.direct_camera is not an Android setting, and its
-default would otherwise apply there. */
-static struct observer_result const *render_interpolation_direct_camera(
+/* display.direct_camera: TRUE while the local player's view is their own,
+in first person on foot (not in a vehicle's seat, whose view is the seat's,
+nor in a cinematic, the script's), and its facing is theirs. Desktop only:
+display.direct_camera is not an Android setting, and its default would
+otherwise apply there. */
+static boolean render_interpolation_direct(
 	short local_player_index,
 	struct observer_result const *observer)
 {
 #ifdef HALO_ANDROID
 	(void)local_player_index;
-	return observer;
+	(void)observer;
+	return FALSE;
 #else
 	static int enabled;
 	static unsigned long read_at = (unsigned long)-1;
-	struct observer_result *direct;
 	long unit_index;
 
 	if (read_at != config_changes())
@@ -1751,28 +1756,100 @@ static struct observer_result const *render_interpolation_direct_camera(
 		director_inhibited_facing(local_player_index) ||
 		cinematic_in_progress())
 	{
-		return observer;
+		return FALSE;
 	}
 	unit_index = player_control_get_unit_index(local_player_index);
-	if (unit_index == NONE || object_get(unit_index)->object.parent_object_index != NONE)
-		return observer;
+	return unit_index != NONE && object_try_and_get_and_verify_type(unit_index, _object_mask_unit) &&
+		object_get(unit_index)->object.parent_object_index == NONE;
+#endif
+}
 
+/* A first-person view is posed from the player's facing, which the input
+turns every frame (player_control.c), but the observer keeps it as of the
+last tick and the blend above draws it a tick later still. On foot, the view
+points where the player aims now (display.direct_camera). */
+static struct observer_result const *render_interpolation_direct_camera(
+	short local_player_index,
+	struct observer_result const *observer)
+{
+	struct observer_result *direct;
+
+	if (!render_interpolation_direct(local_player_index, observer))
+		return observer;
 	direct = &direct_cameras[local_player_index];
 	*direct = *observer;
 	player_control_get_facing_direction(local_player_index, &direct->forward);
 	observer_up_from_forward(&direct->forward, &direct->up);
 	return direct;
-#endif
+}
+
+/* The player's own view on foot (display.direct_camera, while frames are
+drawn between the ticks, and not in the VR mode, whose eyes stay as they
+were) stands where the newest step left the unit, not where the blend of the
+last two ticks has it a tick behind: the observer (taken after the frame's
+steps, the open tick's sub-steps too) moved on by the unit's own velocity for
+the time since that step, so that it moves every frame at 30 as at 60. The
+first-person weapon, posed from it, goes with it (render_interpolation_
+first_person). What the netcode glides (correction) is kept. Everything else
+is drawn as before. */
+static void render_interpolation_newest_camera(
+	short local_player_index,
+	struct observer_result const *observer,
+	struct observer_result *drawn)
+{
+	struct interpolated_camera *camera = &interpolated_cameras[local_player_index];
+	long unit_index = player_control_get_unit_index(local_player_index);
+	real_vector3d const *velocity = &object_get(unit_index)->object.translational_velocity;
+	real steps = interpolation_fraction * (real)interpolation_substep_count;
+	/* (the time since the newest step, in ticks: past the last whole sub-step) */
+	real since = (steps - (real)floor(steps)) / (real)interpolation_substep_count;
+
+	drawn->position = observer->position;
+	if (velocity->i * velocity->i + velocity->j * velocity->j + velocity->k * velocity->k <=
+		CAMERA_CUT_DISTANCE * CAMERA_CUT_DISTANCE)
+	{
+		drawn->position.x += velocity->i * since;
+		drawn->position.y += velocity->j * since;
+		drawn->position.z += velocity->k * since;
+	}
+	if (camera->valid && camera->unit_index == unit_index &&
+		(correction_significant(&camera->correction) || correction_significant(&camera->correction_pending)))
+	{
+		real_vector3d correction;
+
+		correction_drawn(&camera->correction, &camera->correction_pending, &correction);
+		drawn->position.x += correction.i;
+		drawn->position.y += correction.j;
+		drawn->position.z += correction.k;
+	}
 }
 
 struct observer_result const *render_interpolation_camera(
 	short local_player_index,
 	struct observer_result const *observer)
 {
+	struct observer_result const *blended;
+	struct observer_result const *direct;
+
 	if (local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS)
 		return observer;
-	return render_interpolation_direct_camera(local_player_index,
-		render_interpolation_blended_camera(local_player_index, observer));
+	blended = render_interpolation_blended_camera(local_player_index, observer);
+	direct = render_interpolation_direct_camera(local_player_index, blended);
+	newest_views[local_player_index] = interpolation_rendering && direct == &direct_cameras[local_player_index];
+#ifdef HALO_VR
+	if (halo_vr_running())
+		newest_views[local_player_index] = FALSE;
+#endif
+	if (newest_views[local_player_index])
+		render_interpolation_newest_camera(local_player_index, observer, &direct_cameras[local_player_index]);
+	return direct;
+}
+
+boolean render_interpolation_view_newest(
+	short local_player_index)
+{
+	return local_player_index >= 0 && local_player_index < MAXIMUM_LOCAL_PLAYERS &&
+		newest_views[local_player_index];
 }
 
 /* between two of the observer's results: the position, the axes (up kept
@@ -2152,7 +2229,8 @@ static struct observer_result const *render_interpolation_blended_camera(
 
 /* The first-person weapon and hands are posed in world space from the drawn
 camera each frame, from animation state that changes once a tick: blend the
-pose relative to the camera. */
+pose relative to the camera (or, the player's own view drawn from the newest
+step, carry it on from the latest tick: render_interpolation_newest_camera). */
 void render_interpolation_first_person(
 	short local_player_index,
 	real_matrix4x3 *node_matrices,
@@ -2165,6 +2243,7 @@ void render_interpolation_first_person(
 	struct interpolation_rotation previous_rotations[MAXIMUM_INTERPOLATED_NODES];
 	struct interpolation_rotation latest_rotations[MAXIMUM_INTERPOLATED_NODES];
 	short node_index;
+	real t;
 
 	if (!interpolation_rendering ||
 		local_player_index < 0 || local_player_index >= MAXIMUM_LOCAL_PLAYERS ||
@@ -2206,6 +2285,10 @@ void render_interpolation_first_person(
 		rotation_from_matrix(previous, &previous_rotations[node_index]);
 		rotation_from_matrix(latest, &latest_rotations[node_index]);
 	}
+	/* (the player's own view drawn from the newest step: the pose of the
+	latest tick, moved on as the last tick moved it for the time since, not
+	a tick behind; the animation then moves every frame, as before) */
+	t = render_interpolation_view_newest(local_player_index) ? 1.0f + interpolation_fraction : interpolation_fraction;
 	for (node_index = 0; node_index < node_count; node_index++)
 	{
 		real_matrix4x3 blended;
@@ -2215,7 +2298,7 @@ void render_interpolation_first_person(
 			&first_person->latest[node_index],
 			&previous_rotations[node_index],
 			&latest_rotations[node_index],
-			interpolation_fraction,
+			t,
 			&blended);
 		matrix4x3_multiply(&camera_matrix, &blended, &node_matrices[node_index]);
 	}

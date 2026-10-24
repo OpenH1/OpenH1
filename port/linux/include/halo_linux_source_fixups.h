@@ -45,6 +45,9 @@ union real_rgb_color const *render_interpolation_object_change_colors(long objec
 float render_interpolation_unit_camouflage(long unit_index, float *super_amount);
 struct observer_result const *render_interpolation_camera(short local_player_index,
 	struct observer_result const *observer);
+/* the local player's own view (and first-person weapon) was drawn last from
+the newest step, not a tick behind (display.direct_camera) */
+unsigned char render_interpolation_view_newest(short local_player_index);
 void render_interpolation_first_person(short local_player_index, struct real_matrix4x3 *node_matrices,
 	short node_count, struct render_camera const *camera);
 float render_interpolation_game_time_sec(long ticks);
