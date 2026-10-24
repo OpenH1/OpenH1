@@ -1,6 +1,7 @@
 """Tests for the Linux port's tooling (port/linux, the build scripts), its
 settings, menus and maps' checks."""
 
+import math
 import os
 import re
 import shutil
@@ -380,6 +381,54 @@ def test_config_keeps_an_older_file(config_check):
     # (any other value of an older file stays)
     config_check.config.write_text(old.replace('"floating"', '"game"'))
     assert config_check("get", "vr.hands") == "game"
+
+
+MOUSE_FROM_OLD = 0.0022 * 180 / math.pi / 0.022  # the older scale's radians a count over CS2's degrees
+
+
+def test_config_mouse_sensitivity_in_cs2_units(config_check_mac):
+    """input.mouse_sensitivity set on the older scale (0.0022 radians a
+    count) becomes CS2's (0.022 degrees a count) for the same turn, and the
+    vertical one, on that scale too (0 the same), a multiplier of it; once:
+    the file then has the setting's new comment, and a value written in CS2's
+    units stays. A file that never set them keeps the defaults, 5.73 being
+    the old default's turn"""
+    run = config_check_mac
+    assert run("get", "input.mouse_sensitivity") == "5.73"
+    assert run("get", "input.mouse_vertical_sensitivity") == "1"
+    assert run("get", "input.zoom_sensitivity") == "cs2"
+    assert abs(5.73 / MOUSE_FROM_OLD - 1) < 1e-3
+    new = run.config.read_text()
+    assert "Counter-Strike 2's" in new
+    run("write", "input.mouse_sensitivity", "1.7")
+    assert run("get", "input.mouse_sensitivity") == "1.7"
+
+    # an older version's, with the note (commented defaults) and its comment
+    old = ("# Halo settings\n#\n# A setting commented out (\"# key = value\") is at its default, which a\n#\n\n"
+           "[input]\n\n# How far the view turns for the mouse's movement.\n"
+           "# (for one run: HALO_MOUSE_SENSITIVITY=<value>)\nmouse_sensitivity = 0.5\n\n"
+           "# Moving the mouse forward looks down.\n# (for one run: HALO_MOUSE_INVERT=1 makes it true)\n"
+           "invert_mouse = true\n\n"
+           "# How far the view turns up and down for the mouse's movement; 0 for the\n"
+           "# same as input.mouse_sensitivity.\n# (for one run: HALO_MOUSE_VERTICAL_SENSITIVITY=<value>)\n"
+           "mouse_vertical_sensitivity = 0.25\n")
+    run.config.write_text(old)
+    assert float(run("get", "input.mouse_sensitivity")) == pytest.approx(0.5 * MOUSE_FROM_OLD, abs=1e-4)
+    assert float(run("get", "input.mouse_vertical_sensitivity")) == pytest.approx(0.5)
+    assert run("get", "input.invert_mouse") == "true"
+    text = run.config.read_text()
+    assert "Counter-Strike 2's" in text and "0 for the" not in text
+    assert len(re.findall(r"^(# )?mouse_sensitivity = ", text, re.M)) == 1
+    assert "\ninvert_mouse = true\n" in text
+    run("get", "input.mouse_sensitivity")
+    assert run.config.read_text() == text
+
+    # (not set: the defaults; "0", the same, is the multiplier 1)
+    run.config.write_text(old.replace("mouse_sensitivity = 0.5", "# mouse_sensitivity = 1.0")
+                          .replace("mouse_vertical_sensitivity = 0.25", "mouse_vertical_sensitivity = 0.0"))
+    assert run("get", "input.mouse_sensitivity") == "5.73"
+    assert run("get", "input.mouse_vertical_sensitivity") == "1"
+    assert "\n# mouse_sensitivity = 5.73\n" in run.config.read_text()
 
 
 # the settings display.graphics chooses, and their values in Classic and in

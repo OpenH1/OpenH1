@@ -213,6 +213,7 @@ symbols in this file:
 #include "passenger_camera.h" /* port: port/linux/game/passenger_camera.c; after the limit2d alias above */
 #include "network_coop.h" /* port: port/linux/game/network_coop.c */
 #include "sim_rate.h" /* port: port/linux/game/sim_rate.c */
+#include "view_fov.h" /* port: port/linux/game/view_fov.c */
 
 /* ---------- constants */
 
@@ -1535,14 +1536,18 @@ static void get_local_player_input_blob(
 
 						if (halo_linux_mouse_look(gamepad_index, &mouse_yaw, &mouse_pitch))
 						{
+							/* port: the zoom's scaling as input.zoom_sensitivity
+							chooses (view_fov.c): CS2's, or the game's one over
+							the magnification */
 							if (player->unit_index != NONE && control->zoom_level != NONE)
 							{
-								real inverse_zoom = 1.f / unit_get_zoom_magnification(
+								real zoom_scale = mouse_zoom_look_scale(
+									local_player_index,
 									player->unit_index,
 									control->zoom_level);
 
-								mouse_yaw *= inverse_zoom;
-								mouse_pitch *= inverse_zoom;
+								mouse_yaw *= zoom_scale;
+								mouse_pitch *= zoom_scale;
 							}
 							input->facing_delta.yaw += mouse_yaw;
 							input->facing_delta.pitch += mouse_pitch;

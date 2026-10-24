@@ -26,7 +26,10 @@ that draw the first-person weapon (rasterizer and render sources).
 #include "units/unit_definitions.h"
 #include "units/units.h"
 
+#include "mouse_sensitivity.h"
+
 #include <math.h>
+#include <string.h>
 
 /* (the window's rasterizer target, as the rasterizer's sources number it) */
 enum
@@ -37,6 +40,7 @@ enum
 double config_real(const char *name);
 int config_boolean(const char *name);
 unsigned long config_changes(void);
+char const *config_string(char const *name);
 
 /* ---------- the world's field of view */
 
@@ -163,6 +167,49 @@ real render_fov_reticle_scale(short local_player_index)
 		return 1.0f;
 	}
 	return reticle_scales[local_player_index];
+}
+
+/* ---------- the mouse's turn zoomed (input.zoom_sensitivity) */
+
+/* a vertical angle as the horizontal one across 4:3, as CS2 gives its
+fields of view (and the game its units' cameras) */
+static real fov_horizontal_4_3(real vertical)
+{
+	return 2.0f * atanf(tanf(vertical * 0.5f) / 0.75f);
+}
+
+real mouse_zoom_look_scale(short local_player_index, long unit_index, short zoom_level)
+{
+	static int mode = _mouse_zoom_cs2;
+	static unsigned long read_at = (unsigned long)-1;
+	struct unit_datum *unit;
+	long weapon_index;
+	real magnification, unzoomed_angle, zoomed_angle, unzoomed_drawn, zoomed_drawn;
+
+	if (unit_index == NONE || zoom_level == NONE)
+		return 1.0f;
+	if (read_at != config_changes())
+	{
+		read_at = config_changes();
+		mode = strcmp(config_string("input.zoom_sensitivity"), "halo") ? _mouse_zoom_cs2 : _mouse_zoom_halo;
+	}
+	magnification = unit_get_zoom_magnification(unit_index, zoom_level);
+	unit = unit_try_and_get(unit_index);
+	weapon_index = unit ? unit_inventory_get_weapon(unit_index, unit->unit.current_weapon_index) : NONE;
+	if (mode != _mouse_zoom_cs2 || weapon_index == NONE)
+		return mouse_zoom_scale(_mouse_zoom_halo, magnification, 0.0f, 0.0f);
+	/* the angles the view is drawn at, unzoomed and at this zoom level (the
+	game's, then display.fov's: render_fov_adjust), across 4:3 */
+	unzoomed_angle = unit_definition_get(unit->definition_index)->unit.camera_field_of_view;
+	if (!(unzoomed_angle >= 0.001f && unzoomed_angle <= _pi / 2.0f))
+		return mouse_zoom_scale(_mouse_zoom_halo, magnification, 0.0f, 0.0f);
+	zoomed_angle = weapon_get_field_of_view(weapon_index, unzoomed_angle, zoom_level);
+	unzoomed_drawn = render_fov_adjust(local_player_index,
+		2.0f * atanf(0.75f * render_camera_get_adjusted_field_of_view_tangent(unzoomed_angle)));
+	zoomed_drawn = render_fov_adjust(local_player_index,
+		2.0f * atanf(0.75f * render_camera_get_adjusted_field_of_view_tangent(zoomed_angle)));
+	return mouse_zoom_scale(_mouse_zoom_cs2, magnification, fov_horizontal_4_3(zoomed_drawn),
+		fov_horizontal_4_3(unzoomed_drawn));
 }
 
 /* ---------- the first-person weapon's */
