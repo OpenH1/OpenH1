@@ -24,27 +24,12 @@ Edition channel orders, which the command stream hands the host.
 #include "hud_hires.h"
 #include "menu_files.h"
 #include "text_hires.h"
-#include "port_config.h"
 #include "../game/cache_file_formats.h"
 
 #include <SDL3/SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-/* Draws query this for each texture; read the setting only when it changes. */
-static int hud_upscale_enabled(void)
-{
-	static unsigned long read_at = (unsigned long)-1;
-	static int enabled;
-
-	if (read_at != config_changes())
-	{
-		enabled = config_boolean("display.high_res_hud");
-		read_at = config_changes();
-	}
-	return enabled;
-}
 
 
 /* ---------- Custom Edition channel orders
@@ -68,6 +53,9 @@ static const unsigned char custom_edition_channel_sources[NUMBER_OF_CUSTOM_EDITI
 	{ 2, 1, 3, 0 },
 	/* the fill order in color, the shape in alpha */
 	{ 3, 3, 3, 0 },
+	/* a meter's, in the Xbox's order as its map has it (drawn as it is, by
+	meters too) */
+	{ 0, 1, 2, 3 },
 };
 
 struct custom_edition_texels
@@ -79,6 +67,17 @@ struct custom_edition_texels
 static struct custom_edition_texels *custom_edition_texels;
 static unsigned long custom_edition_texel_count;
 static unsigned long custom_edition_texel_capacity;
+
+/* whether a HUD meter of a Custom Edition map is being drawn (hud_draw.c):
+a sheet that is a meter's and other pictures' too keeps the order it has for
+the pictures, and its texels in the Xbox's order are sampled in the meters'
+for the meter's draw alone (its first stage) */
+static int custom_edition_hud_meter_active;
+
+void halo_custom_edition_hud_meter(int active)
+{
+	custom_edition_hud_meter_active = active;
+}
 
 /* the order of the texels at address */
 static unsigned char custom_edition_texels_order(unsigned long address)
@@ -134,19 +133,23 @@ void halo_custom_edition_texels_channels(const void *texels, unsigned char chann
 
 void halo_custom_edition_texels_forget(void)
 {
+	custom_edition_hud_meter_active = 0;
 	free(custom_edition_texels);
 	custom_edition_texels = NULL;
 	custom_edition_texel_count = 0;
 	custom_edition_texel_capacity = 0;
 }
 
-unsigned long xgpu_texture_channels(unsigned long address)
+unsigned long xgpu_texture_channels(unsigned long address, int stage)
 {
 	unsigned char order = custom_edition_texels_order(address);
-	const unsigned char *sources = custom_edition_channel_sources[order];
+	const unsigned char *sources;
 
-	if (order == _custom_edition_channels_xbox)
+	if (order == _custom_edition_channels_xbox && stage == 0 && custom_edition_hud_meter_active)
+		order = _custom_edition_channels_hud_meter;
+	if (order == _custom_edition_channels_xbox || order == _custom_edition_channels_hud_meter_xbox)
 		return 0;
+	sources = custom_edition_channel_sources[order];
 	return 0x100 | sources[0] | (sources[1] << 2) | (sources[2] << 4) | ((unsigned long)sources[3] << 6);
 }
 
@@ -316,7 +319,7 @@ unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_descri
 		description->hires_point_threshold = hud_hires_override_point_threshold(override);
 		return image;
 	}
-	if (hud_upscale_enabled())
+	if (hud_hires_enabled())
 	{
 		if (!entry->hud_upscale_checked)
 		{
@@ -324,14 +327,29 @@ unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_descri
 			unsigned long size = xgpu_texture_face_size(description);
 			long kind = hud_hires_upscale_at(address, description->width, description->height);
 
+			/* (a Custom Edition map's stock sheet, kind 4, may be DXT and
+			up to 512 square) */
+			unsigned long largest = kind == 4 ? 512 : 256;
+
 			entry->hud_upscale_checked = TRUE;
-			if (kind && size && !description->compressed && description->width <= 256 && description->height <= 256 &&
+			if (kind && size && (!description->compressed || kind == 4) &&
+				description->width <= largest && description->height <= largest &&
 				custom_edition_texels_order(address) == _custom_edition_channels_xbox &&
 				platform_is_contiguous((void *)address) && platform_is_contiguous((void *)(address + size - 1)))
 			{
 				DWORD *pixels = malloc(description->width * description->height * 4);
+				BOOL decoded = FALSE;
 
-				if (pixels && xgpu_texture_decode_level(description, 0, (const unsigned char *)address, NULL, pixels))
+				if (pixels && description->compressed)
+				{
+					xgpu_texture_decode_dxt(description, 0, (const unsigned char *)address, pixels);
+					decoded = TRUE;
+				}
+				else if (pixels)
+				{
+					decoded = xgpu_texture_decode_level(description, 0, (const unsigned char *)address, NULL, pixels);
+				}
+				if (decoded)
 					entry->hud_upscale = hud_hires_upscale_texture((const unsigned char *)pixels,
 						description->width, description->height, kind, &entry->hud_upscale_levels);
 				free(pixels);

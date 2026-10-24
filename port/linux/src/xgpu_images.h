@@ -56,9 +56,9 @@ void xgpu_texture_cache_begin_frame(void);
 /* (xbox_textures.c) the image drawn in place of the Xbox texture whose
 header is at resource, 0 if none, and its description as the replacement
 changes it (its levels, hires and what goes with it); and the channels the
-texels at address are sampled from (a Custom Edition map's: xgpu_stream.h's
-texture stage) */
+texels at address are sampled from at the stage (a Custom Edition map's:
+xgpu_stream.h's texture stage) */
 unsigned int xgpu_texture_replacement(DWORD resource, struct xgpu_texture_description *description);
-unsigned long xgpu_texture_channels(unsigned long address);
+unsigned long xgpu_texture_channels(unsigned long address, int stage);
 
 #endif

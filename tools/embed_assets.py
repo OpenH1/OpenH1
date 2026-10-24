@@ -33,6 +33,8 @@ from typing import Any, List
 ROOT = Path(__file__).resolve().parent.parent
 HUD_ASSETS = Path("port/assets/hud")
 LAYOUT = HUD_ASSETS / "layout.json"
+CE_LAYOUT = HUD_ASSETS / "ce_layout.json"
+CE_STOCK = HUD_ASSETS / "ce_stock.json"
 # the HUD textures whose bitmaps Halo Custom Edition lays out alike
 CUSTOM_EDITION_HUD = HUD_ASSETS / "custom_edition.json"
 TITLE_ASSETS = Path("port/assets/titles")
@@ -63,7 +65,7 @@ def textures() -> List[tuple]:
     text)."""
     result = []
     for folder, listing, title in ((HUD_ASSETS, LAYOUT, False), (TITLE_ASSETS, TITLE_LIST, True),
-                                   (BUTTON_ASSETS, BUTTON_LIST, True)):
+                                   (BUTTON_ASSETS, BUTTON_LIST, True), (HUD_ASSETS, CE_LAYOUT, False)):
         if (ROOT / listing).is_file():
             result += [(folder, asset, title) for asset in json.loads((ROOT / listing).read_text())["assets"]]
     return result
@@ -78,7 +80,7 @@ def menu_files() -> List[str]:
 
 def hud_asset_inputs() -> List[Path]:
     """The files the generated source is made from."""
-    inputs = [listing for listing in (LAYOUT, CUSTOM_EDITION_HUD, TITLE_LIST, BUTTON_LIST, FONT_LIST, MENU_LIST)
+    inputs = [listing for listing in (LAYOUT, CE_LAYOUT, CE_STOCK, CUSTOM_EDITION_HUD, TITLE_LIST, BUTTON_LIST, FONT_LIST, MENU_LIST)
               if (ROOT / listing).is_file()]
     return [*inputs, *(folder / f"{asset['name']}.png" for folder, asset, _ in textures()),
             *(FONT_ASSETS / name for name in font_files()), *(MENU_ASSETS / name for name in menu_files()),
@@ -91,7 +93,7 @@ def hud_configure_inputs() -> List[Path]:
     folders, for files added or removed), not each file, which a change of a
     list may rename or remove."""
     inputs = []
-    for folder, listing in ((HUD_ASSETS, LAYOUT), (TITLE_ASSETS, TITLE_LIST), (BUTTON_ASSETS, BUTTON_LIST),
+    for folder, listing in ((HUD_ASSETS, LAYOUT), (HUD_ASSETS, CE_LAYOUT), (TITLE_ASSETS, TITLE_LIST), (BUTTON_ASSETS, BUTTON_LIST),
                             (FONT_ASSETS, FONT_LIST), (MENU_ASSETS, MENU_LIST)):
         if (ROOT / listing).is_file():
             inputs += [folder, listing]
@@ -148,9 +150,9 @@ def main() -> None:
         "",
     ]
     table = []
-    custom_edition = set()
+    custom_edition = {}
     if (ROOT / CUSTOM_EDITION_HUD).is_file():
-        custom_edition = {(entry["tag"], entry["bitmap"])
+        custom_edition = {(entry["tag"], entry["bitmap"]): entry
                           for entry in json.loads((ROOT / CUSTOM_EDITION_HUD).read_text())["assets"]}
     for index, (folder, asset, title) in enumerate(textures()):
         name = f"{asset['name']}.png"
@@ -164,8 +166,8 @@ def main() -> None:
         lines.append("};")
         lines.append("")
         tag = asset["tag"].replace("\\", "\\\\")
-        coverage = int(any(cell["kind"] == "meter" for cell in asset.get("cells", [])))
-        point_threshold = int(any(cell.get("thresholds") for cell in asset.get("cells", [])))
+        coverage = int(asset.get("coverage", False) or any(cell.get("kind") == "meter" for cell in asset.get("cells", [])))
+        point_threshold = int(asset.get("point_threshold", False) or any(cell.get("thresholds") for cell in asset.get("cells", [])))
         # (the sequences whose sprites it stands for, a bit each of 32; 0: the whole bitmap)
         sequences = [sprite["sequence"] for sprite in asset.get("sprites", [])]
         if any(not 0 <= sequence < 32 for sequence in sequences):
@@ -180,10 +182,16 @@ def main() -> None:
                          f"0x{cell['crc']:08x}u }}," for cell in cells)
             lines.append("};")
             lines.append("")
+        # (a Custom Edition map's stock bitmap it is drawn for too, and that
+        # bitmap's first level as the Custom Edition loader leaves it)
+        ce = custom_edition.get((asset["tag"], asset["bitmap"]), {})
+        if ce.get("replacement", asset["name"]) != asset["name"]:
+            ce = {}
         table.append(f'\t{{ "{tag}", {asset["bitmap"]}, {width}, {height}, 0x{asset["crc"]:08x}u, {coverage}, '
                      f'{point_threshold}, {int(title)}, 0x{sprites:x}u, '
                      f'{f"cells{index}" if cells else "0"}, {len(cells)}, '
-                     f'{int((asset["tag"], asset["bitmap"]) in custom_edition)}, asset{index}, {len(data)} }},')
+                     f'{int(bool(ce))}, {int(asset.get("ce_only", False))}, {ce.get("width", 0)}, {ce.get("height", 0)}, '
+                     f'{ce.get("size", 0)}, 0x{ce.get("crc", 0):08x}u, asset{index}, {len(data)} }},')
     lines.append("const struct hud_hires_embedded hud_hires_embedded[] =")
     lines.append("{")
     lines.extend(table)
@@ -191,6 +199,18 @@ def main() -> None:
         lines.append("\t{ 0 },")
     lines.append("};")
     lines.append(f"const unsigned int hud_hires_embedded_count = {len(table)};")
+    # (the Custom Edition maps' stock HUD sheets the high-res HUD upscales,
+    # each by its first level as the Custom Edition loader leaves it)
+    stock = json.loads((ROOT / CE_STOCK).read_text())["bitmaps"] if (ROOT / CE_STOCK).is_file() else []
+    lines.append("const struct hud_hires_ce_stock hud_hires_ce_stock[] = {")
+    for item in stock:
+        tag = item['tag'].replace('\\', '\\\\')
+        lines.append(f'\t{{ "{tag}", {item["bitmap"]}, {item["width"]}, {item["height"]}, '
+                     f'{item["size"]}, 0x{item["crc"]:08x}u }},')
+    if not stock:
+        lines.append("\t{ 0 },")
+    lines.append("};")
+    lines.append(f"const unsigned int hud_hires_ce_stock_count = {len(stock)};")
     lines.append("")
     # the fonts, and which draws each font tag (text_hires.h)
     lines.append('#include "text_hires.h"')

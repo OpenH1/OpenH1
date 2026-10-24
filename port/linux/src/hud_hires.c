@@ -90,6 +90,35 @@ int hud_hires_asset_custom_edition(long asset)
 	return asset >= 0 && asset < hud_hires_asset_count() && hud_hires_embedded[asset].custom_edition;
 }
 
+int hud_hires_asset_ce_only(long asset)
+{
+	return asset >= 0 && asset < hud_hires_asset_count() && hud_hires_embedded[asset].ce_only;
+}
+
+long hud_hires_ce_stock_find(char const *tag, long bitmap)
+{
+	unsigned int index;
+	for (index = 0; index < hud_hires_ce_stock_count; index++)
+		if (hud_hires_ce_stock[index].bitmap == bitmap && !strcmp(tag, hud_hires_ce_stock[index].tag))
+			return (long)index;
+	return -1;
+}
+
+long hud_hires_ce_stock_count_get(void) { return hud_hires_ce_stock_count; }
+char const *hud_hires_ce_stock_tag(long index) { return hud_hires_ce_stock[index].tag; }
+long hud_hires_ce_stock_bitmap(long index) { return hud_hires_ce_stock[index].bitmap; }
+
+int hud_hires_ce_stock_matches(long index, unsigned long address, long width, long height,
+	unsigned long size)
+{
+	const struct hud_hires_ce_stock *stock;
+	if (index < 0 || (unsigned long)index >= hud_hires_ce_stock_count || !address)
+		return 0;
+	stock = &hud_hires_ce_stock[index];
+	return width == stock->width && height == stock->height && size == stock->size &&
+		crc32(0L, (const Bytef *)address, (uInt)size) == stock->crc;
+}
+
 char const *hud_hires_asset_tag(long asset)
 {
 	return hud_hires_embedded[asset].tag;
@@ -110,6 +139,31 @@ long hud_hires_asset_fits(long asset, long width, long height)
 		embedded->width / width == embedded->height / height && embedded->width / width > 1;
 }
 
+static unsigned long settings_read_at = (unsigned long)-1;
+static int settings_hud, settings_titles;
+
+static void settings_read(void)
+{
+	if (settings_read_at != config_changes())
+	{
+		settings_read_at = config_changes();
+		settings_hud = config_boolean("display.high_res_hud") != 0;
+		settings_titles = config_boolean("display.high_res_text") != 0;
+	}
+}
+
+int hud_hires_enabled(void)
+{
+	settings_read();
+	return settings_hud;
+}
+
+int hud_hires_titles_enabled(void)
+{
+	settings_read();
+	return settings_titles;
+}
+
 /* Changed settings since the previous rendered frame: HUD bit 0, titles bit 1.
  * Pending menu edits do not change config_changes(). */
 unsigned long hud_hires_settings_changed(void)
@@ -119,8 +173,7 @@ unsigned long hud_hires_settings_changed(void)
 	unsigned long current, changed;
 
 	if (read_at == config_changes()) return 0;
-	current = (config_boolean("display.high_res_hud") ? 1UL : 0UL) |
-		(config_boolean("display.high_res_text") ? 2UL : 0UL);
+	current = (hud_hires_enabled() ? 1UL : 0UL) | (hud_hires_titles_enabled() ? 2UL : 0UL);
 	changed = read_at == (unsigned long)-1 ? 0 : previous ^ current;
 	read_at = config_changes();
 	previous = current;
@@ -140,16 +193,9 @@ int hud_hires_bitmap_affected(unsigned long address, long width, long height, un
 long hud_hires_override_find(unsigned long address, unsigned long width, unsigned long height,
 	unsigned long level0_size)
 {
-	static int hud_enabled, titles_enabled;
-	static unsigned long read_at = (unsigned long)-1;
+	int hud_enabled = hud_hires_enabled(), titles_enabled = hud_hires_titles_enabled();
 	long asset;
 
-	if (read_at != config_changes())
-	{
-		read_at = config_changes();
-		hud_enabled = config_boolean("display.high_res_hud");
-		titles_enabled = config_boolean("display.high_res_text");
-	}
 	if (!hud_enabled && !titles_enabled)
 		return -1;
 	asset = hud_hires_asset_at(address, (long)width, (long)height);
@@ -160,7 +206,15 @@ long hud_hires_override_find(unsigned long address, unsigned long width, unsigne
 	/* (a Custom Edition map's stock HUD bitmap, laid out as this texture's,
 	has its own pixels) */
 	if (hud_hires_asset_stock_custom_edition(address, (long)width, (long)height, asset))
-		return asset;
+	{
+		const struct hud_hires_embedded *embedded = &hud_hires_embedded[asset];
+
+		/* Resource maps can be modified too. Match the stock pixels after
+		the CE loader has put them in hardware order, not just their name. */
+		return width == embedded->ce_width && height == embedded->ce_height &&
+			level0_size == embedded->ce_size &&
+			crc32(0L, (const Bytef *)address, (uInt)level0_size) == embedded->ce_crc ? asset : -1;
+	}
 	if (crc32(0L, (const Bytef *)address, (uInt)level0_size) != hud_hires_embedded[asset].crc)
 	{
 		if (!textures[asset].other_pixels_logged)
@@ -243,19 +297,11 @@ cell's own, or the whole bitmap's), and the texture decoded; 0 if none */
 unsigned long hud_hires_sprites_drawable(long asset, unsigned long address, long width, long height,
 	int linear, unsigned long level0_size)
 {
-	static int hud_enabled, titles_enabled;
-	static unsigned long read_at = (unsigned long)-1;
 	const struct hud_hires_embedded *embedded;
 	unsigned long levels, drawable;
 
-	if (read_at != config_changes())
-	{
-		read_at = config_changes();
-		hud_enabled = config_boolean("display.high_res_hud");
-		titles_enabled = config_boolean("display.high_res_text");
-	}
 	if (asset < 0 || asset >= hud_hires_asset_count() || !hud_hires_embedded[asset].sprites ||
-		!(hud_hires_embedded[asset].title ? titles_enabled : hud_enabled))
+		!(hud_hires_embedded[asset].title ? hud_hires_titles_enabled() : hud_hires_enabled()))
 	{
 		return 0;
 	}
@@ -359,12 +405,13 @@ static void upscale_weights(float t, float *weights)
 	weights[3] = -0.5f * square + 0.5f * cube;
 }
 
-unsigned char *hud_hires_upscale_pixels(const unsigned char *bgra, unsigned long width, unsigned long height)
+static unsigned char *upscale_pixels(const unsigned char *bgra, unsigned long width, unsigned long height,
+	unsigned long maximum)
 {
 	unsigned char *out;
 	unsigned long x, y, channel;
 
-	if (!bgra || !width || !height || width > 256 || height > 256)
+	if (!bgra || !width || !height || width > maximum || height > maximum)
 		return NULL;
 	out = malloc(width * height * 16 * 4);
 	if (!out)
@@ -410,6 +457,11 @@ unsigned char *hud_hires_upscale_pixels(const unsigned char *bgra, unsigned long
 		}
 	}
 	return out;
+}
+
+unsigned char *hud_hires_upscale_pixels(const unsigned char *bgra, unsigned long width, unsigned long height)
+{
+	return upscale_pixels(bgra, width, height, 256);
 }
 
 static unsigned char *png_decode(const unsigned char *data, unsigned long size,
@@ -463,7 +515,8 @@ static void upscale_outline(unsigned char *pixels, const unsigned char *bgra,
 unsigned int hud_hires_upscale_texture(const unsigned char *bgra, unsigned long width,
 	unsigned long height, long kind, unsigned long *levels)
 {
-	unsigned char *pixels = hud_hires_upscale_pixels(bgra, width, height);
+	unsigned char *pixels = kind == 4 ? upscale_pixels(bgra, width, height, 512) :
+		hud_hires_upscale_pixels(bgra, width, height);
 	unsigned long largest;
 
 	if (!pixels)
@@ -742,7 +795,7 @@ void hud_hires_map_loaded(const long *assets, long count)
 	hud_hires_map_unloaded();
 	/* (none for a test's run that draws nothing, or with the high-res HUD
 	off: then each is decoded when first drawn, as titles are) */
-	if (!config_boolean("display.high_res_hud") || config_boolean("debug.null_renderer"))
+	if (!hud_hires_enabled() || config_boolean("debug.null_renderer"))
 		return;
 	for (index = 0; index < count; index++)
 	{
