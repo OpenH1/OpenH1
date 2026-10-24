@@ -107,6 +107,7 @@ moved with that point onto the vehicle's path.
 #include "render/render.h"
 #include "render/render_cameras_internal.h"
 #include "units/units.h"
+#include "units/bipeds.h"
 #include "sim_rate.h"
 
 /* port/linux/src/port_config.c */
@@ -1788,8 +1789,9 @@ drawn between the ticks, and not in the VR mode, whose eyes stay as they
 were) stands where the newest step left the unit, not where the blend of the
 last two ticks has it a tick behind: the observer (taken after the frame's
 steps, the open tick's sub-steps too) moved on by the unit's own velocity for
-the time since that step, so that it moves every frame at 30 as at 60. The
-first-person weapon, posed from it, goes with it (render_interpolation_
+the time since that step, and its eye by its crouch's change
+(bipeds.c's biped_eye_rise_ahead), so that it moves every frame at 30 as at
+60. The first-person weapon, posed from it, goes with it (render_interpolation_
 first_person). What the netcode glides (correction) is kept. Everything else
 is drawn as before. */
 static void render_interpolation_newest_camera(
@@ -1812,6 +1814,10 @@ static void render_interpolation_newest_camera(
 		drawn->position.y += velocity->j * since;
 		drawn->position.z += velocity->k * since;
 	}
+	/* (and its eye on with its crouch, which goes down or up a step at a
+	time as the unit's place does) */
+	if (object_try_and_get_and_verify_type(unit_index, _object_mask_biped))
+		drawn->position.z += biped_eye_rise_ahead(unit_index, since);
 	if (camera->valid && camera->unit_index == unit_index &&
 		(correction_significant(&camera->correction) || correction_significant(&camera->correction_pending)))
 	{

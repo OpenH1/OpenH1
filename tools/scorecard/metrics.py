@@ -34,6 +34,13 @@ TOLERANCES = {
     "ai_path": dict(absolute=0.01, unit="wu rms"),
     "ai_walked": dict(relative=0.005, unit="wu"),
     "ai_between": dict(absolute=0.002, unit="wu"),
+    # a player's crouch (U1's): how far it is crouched and its eye's height every 30th of a second, and when each
+    # change starts and ends, the same at every rate as at 30 (the tick's crouch, a share a sub-step); and how far
+    # its eye's height above its feet is between the grid's times from the ticks' lines (a crouch made once a tick, at its first sub-step,
+    # is a staircase a tick's share ahead of them)
+    "crouch_curve": dict(absolute=0.0001, unit="wu rms"),
+    "crouch_time": dict(absolute=0.001, unit="s"),
+    "crouch_between": dict(absolute=0.001, unit="wu"),
     # a player's vehicle (U17): the plan's row 9 (0 to its top speed 2%, its top speed 1%, its turning circle 2%);
     # its path and height through a run within a tenth of a unit RMS; a jump's apex and its suspension's travel
     # after landing within 3 hundredths; a crash's moment within two ticks (vehicles find each other at a tick's
@@ -76,7 +83,7 @@ class Trace:
                 elif step is None:
                     continue
                 elif words[0] == "p":
-                    step["players"][int(words[1])] = [float(word) for word in words[2:14]]
+                    step["players"][int(words[1])] = [float(word) for word in words[2:16]]
                 elif words[0] == "o":
                     step["objects"][words[1]] = tuple(float(word) for word in words[2:8])
                 elif words[0] == "u":
@@ -396,6 +403,49 @@ def measure_ai_path(trace, start=0.0, end=None):
     return result
 
 
+def measure_crouch(trace, start=0.0, end=None, player=0):
+    """the player's crouch (0 to 1) and its eye's height (the first-person camera's) at every 30th of a second from
+    start to end, compared by their RMS; each time it started to crouch or to stand (the end of the last step before
+    the crouch changed) and finished (the end of the first step all the way down or up); and how far its eye's height
+    above its feet (the crouch's part of the eye's path, not a jump's arc) is at each step between the grid's times
+    from the line between the ticks' ends, as RMS (none at 30: 0)"""
+    steps = [step for step in trace.steps if len(step["players"].get(player, ())) > 13 and
+             start - GRID_SLACK <= step["t"] <= (end if end is not None else math.inf) + GRID_SLACK]
+    if not steps:
+        return {}
+    grid = on_grid([(step["t"], step) for step in steps])
+    result = {"crouch": (tuple(step["players"][player][12] for _, step in grid), "crouch_curve"),
+              "eye": (tuple(step["players"][player][13] for _, step in grid), "crouch_curve")}
+    changes = {"down": 0, "up": 0}
+    for before, after in zip(steps, steps[1:]):
+        a, b = before["players"][player][12], after["players"][player][12]
+        if a == b:
+            continue
+        way = "down" if b > a else "up"
+        if a == (0.0 if way == "down" else 1.0):
+            result[f"{way}{changes[way]}.start"] = (before["t"], "crouch_time")
+        if b == (1.0 if way == "down" else 0.0):
+            result[f"{way}{changes[way]}.end"] = (after["t"], "crouch_time")
+            changes[way] += 1
+    ticks = {}
+    for step in steps:
+        ticks.setdefault(step["tick"], []).append(step)
+
+    def eye(step):
+        return step["players"][player][13] - step["players"][player][2]
+
+    gaps = []
+    for tick, tick_steps in ticks.items():
+        before = ticks.get(tick - 1)
+        if len(tick_steps) < 2 or not before:
+            continue
+        a, b = eye(before[-1]), eye(tick_steps[-1])
+        for index, step in enumerate(tick_steps[:-1]):
+            gaps.append(eye(step) - (a + (b - a) * (index + 1) / len(tick_steps)))
+    result["between"] = (math.sqrt(sum(g * g for g in gaps) / len(gaps)) if gaps else 0.0, "crouch_between")
+    return result
+
+
 def vehicle_steps(trace, player=0):
     """each step the player rides a vehicle: (t, its fields: place, velocity, forward, up, angular velocity; on the
     ground)"""
@@ -511,6 +561,7 @@ MEASURES = {
     "fall": measure_fall,
     "shield": measure_shield,
     "ai_path": measure_ai_path,
+    "crouch": measure_crouch,
 }
 
 

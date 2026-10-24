@@ -21,13 +21,18 @@ Lines:
                                                    start; the 30 Hz tick it is
                                                    in; its index in that tick
     p <player> <x> <y> <z> <vx> <vy> <vz> <ax> <ay> <az> <air> <body> <shield>
-                                                   each player's unit: place,
+      <crouch> <eye>                               each player's unit: place,
                                                    velocity (world units a
                                                    second), aim (a unit
                                                    vector), 1 airborne, its
                                                    body's and shield's
                                                    vitality (fractions of
-                                                   their maximums: 0 without)
+                                                   their maximums: 0 without),
+                                                   how far it is crouched (0
+                                                   to 1: 0 but a biped's) and
+                                                   its eye's height (the
+                                                   first-person camera's,
+                                                   unit_get_camera_position)
     v <player> <id> <x> <y> <z> <vx> <vy> <vz> <fx> <fy> <fz> <ux> <uy> <uz>
       <wx> <wy> <wz> <ground>                      each vehicle, and the player
                                                    whose unit rides it (-1 for
@@ -382,15 +387,19 @@ static void sim_trace_players(
 		long absolute_index = DATUM_INDEX_TO_ABSOLUTE_INDEX(iterator.datum_index);
 		struct unit_datum *unit;
 		boolean airborne = FALSE;
+		real crouch = 0.f;
+		real_point3d eye;
 
 		if (player->unit_index == NONE)
 			continue;
 		unit = unit_get(player->unit_index);
+		unit_get_camera_position(player->unit_index, &eye);
 		if (TEST_FLAG(_object_mask_biped, unit->object.type))
 		{
 			struct biped_datum *biped = biped_get(player->unit_index);
 
 			airborne = TEST_FLAG(biped->biped.flags, _biped_airborne_bit);
+			crouch = biped->biped.crouch;
 			/* (a jump: off the ground since the last step, rising) */
 			if (sim_trace.mutation == _mutation_jump && absolute_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS &&
 				airborne && !sim_trace.airborne[absolute_index] && unit->object.translational_velocity.k > 0.f)
@@ -400,13 +409,13 @@ static void sim_trace_players(
 		}
 		if (absolute_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
 			sim_trace.airborne[absolute_index] = airborne;
-		fprintf(sim_trace.file, "p %ld %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %d %.6f %.6f\n", absolute_index,
+		fprintf(sim_trace.file, "p %ld %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %d %.6f %.6f %.6f %.6f\n", absolute_index,
 			unit->object.position.x, unit->object.position.y, unit->object.position.z,
 			unit->object.translational_velocity.i * SECONDS_PER_VELOCITY_UNIT,
 			unit->object.translational_velocity.j * SECONDS_PER_VELOCITY_UNIT,
 			unit->object.translational_velocity.k * SECONDS_PER_VELOCITY_UNIT,
 			unit->unit.aiming_vector.i, unit->unit.aiming_vector.j, unit->unit.aiming_vector.k, airborne ? 1 : 0,
-			unit->object.body_vitality, unit->object.shield_vitality);
+			unit->object.body_vitality, unit->object.shield_vitality, crouch, eye.z);
 		if (absolute_index < HALO_PORT_MAXIMUM_NETWORK_PLAYERS)
 			sim_trace_weapon_events(absolute_index, unit);
 	}
