@@ -975,6 +975,11 @@ static const struct config_setting config_settings[] =
 		"Hosting an OpenH1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
 		"steps), which every machine of it takes as the game starts. A Legacy game\n"
 		"plays at 30." },
+	{ "network.opence_welcome", _config_boolean, "true", "HALO_NET_OPENCE_WELCOME", _environment_value,
+		_platform_all,
+		"Hosting: tell each OpenCE player, a few seconds after they load into a\n"
+		"game, that this server runs OpenH1 and where to get it (two lines of\n"
+		"the text chat, once a player). OpenH1 players do not see them." },
 	{ "network.voice_lobby", _config_boolean, "true", "HALO_NET_VOICE_LOBBY", _environment_value, _platform_all,
 		"Hosting: voice chat in the lobby, before and after a game, where every\n"
 		"player hears every other." },

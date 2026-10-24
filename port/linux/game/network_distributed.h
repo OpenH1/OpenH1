@@ -345,6 +345,21 @@ word network_chat_line_entry_size(void);
 /* (a client) the host's chat settings; from_stream: as above */
 void network_chat_handle_config(void const *entries, boolean from_stream);
 word network_chat_config_entry_size(void);
+/* (the host) a notice to one client machine: its text alone, from no
+player, as an OpenCE build shows it */
+void network_chat_host_notice(long machine_index, char const *text);
+
+/* ---------- prototypes/NETWORK_WELCOME.C */
+
+void network_welcome_new_game(void);
+/* (the host) a client machine new at its index has loaded the game (its
+client ready) */
+void network_welcome_machine_loaded(long machine_index);
+/* after each tick, on the host: the machines due their welcome welcomed */
+void network_welcome_host_tick(void);
+/* (a client) whether a notice from the host is its welcome to OpenCE
+players, which this machine does not show */
+boolean network_welcome_line(char const *text);
 
 /* ---------- prototypes/NETWORK_ACTORS.C */
 
