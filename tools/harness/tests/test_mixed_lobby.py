@@ -32,8 +32,10 @@ NEGATIVE_CONTROLS = {
                                "players"),
     "players-never-told-again": (("game_time_get() - network_standard_globals.opence_players_sent_time < "
                                   "OPENCE_PLAYERS_INTERVAL_TICKS", "1"), "players"),
-    "unmixed-players-at-30": (("\t\tif (!network_standard_hosting_mixed())\n\t\t\treturn FALSE;\n\t\t/* (taken",
-                               "\t\t/* (taken"), "players-unmixed"),
+    "client-takes-them-mid-tick": (("network_standard_globals.opence_players_heard[player_index] =",
+                                    "network_standard_globals.opence_players[player_index] ="), "players"),
+    "unmixed-players-at-30": (("\t\tif (!network_standard_hosting_mixed())\n\t\t\treturn FALSE;\n\t\tbreak;",
+                               "\t\tbreak;"), "players-unmixed"),
 }
 
 

@@ -99,10 +99,13 @@ static struct
 	by its index in the game */
 	byte machine_kinds[MAXIMUM_STANDARD_MACHINES];
 	/* every OpenH1 machine: whether each player (by absolute index) is an
-	OpenCE machine's: the host's from its machines' tokens, as of the tick
-	opence_players_time; a client's as its host last said */
+	OpenCE machine's, taken as the tick opence_players_time began and held
+	for it (a lane holds for a tick, whose sub-steps the frames between may
+	spread: sim_rate.h): the host's from its machines' tokens, a client's
+	from what its host last said (opence_players_heard) */
 	boolean opence_players[MAXIMUM_TRACKED_PLAYERS];
 	long opence_players_time;
+	boolean opence_players_heard[MAXIMUM_TRACKED_PLAYERS];
 	/* the host: the players last told, and when */
 	byte opence_players_sent[OPENCE_PLAYER_MASK_SIZE];
 	long opence_players_sent_time;
@@ -293,18 +296,27 @@ boolean network_standard_player_is_opence(
 	case _game_connection_network_server:
 		if (!network_standard_hosting_mixed())
 			return FALSE;
-		/* (taken once a tick: no machine's players change in one) */
-		if (network_standard_globals.opence_players_time != game_time_get())
-		{
-			network_standard_note_opence_players();
-			network_standard_globals.opence_players_time = game_time_get();
-		}
-		return network_standard_globals.opence_players[absolute_index];
+		break;
 	case _game_connection_network_client:
-		return network_standard_globals.joined && network_standard_globals.opence_players[absolute_index];
+		if (!network_standard_globals.joined)
+			return FALSE;
+		break;
 	default:
 		return FALSE;
 	}
+	/* (taken as a tick begins, and held for it) */
+	if (network_standard_globals.opence_players_time != game_time_get())
+	{
+		if (game_connection() == _game_connection_network_server)
+			network_standard_note_opence_players();
+		else
+		{
+			csmemcpy(network_standard_globals.opence_players, network_standard_globals.opence_players_heard,
+				sizeof(network_standard_globals.opence_players));
+		}
+		network_standard_globals.opence_players_time = game_time_get();
+	}
+	return network_standard_globals.opence_players[absolute_index];
 }
 
 void network_standard_new_game(
@@ -312,6 +324,7 @@ void network_standard_new_game(
 {
 	csmemset(network_standard_globals.opence_players, 0, sizeof(network_standard_globals.opence_players));
 	network_standard_globals.opence_players_time = NONE;
+	csmemset(network_standard_globals.opence_players_heard, 0, sizeof(network_standard_globals.opence_players_heard));
 	csmemset(network_standard_globals.opence_players_sent, 0, sizeof(network_standard_globals.opence_players_sent));
 	network_standard_globals.opence_players_sent_time = NONE;
 }
@@ -384,9 +397,10 @@ void network_standard_handle_message(
 		return;
 	}
 	csmemcpy(&received, message, sizeof(received));
+	/* (taken by the next tick to begin: network_standard_player_is_opence) */
 	for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 	{
-		network_standard_globals.opence_players[player_index] =
+		network_standard_globals.opence_players_heard[player_index] =
 			TEST_FLAG(received.players[player_index / 8], player_index % 8) != 0;
 	}
 }

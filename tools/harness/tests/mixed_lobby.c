@@ -409,6 +409,9 @@ int main(int argc, char **argv)
 		network_standard_new_game();
 		CHECK(!network_standard_player_is_opence(DATUM_INDEX_NEW(3, 0x8103)), "known before told");
 		network_standard_handle_message(NONE, (word const *)sent[1].bytes, sent[1].size);
+		/* (heard in a tick, taken as the next begins: a lane holds for a tick) */
+		CHECK(!network_standard_player_is_opence(DATUM_INDEX_NEW(3, 0x8103)), "taken in the tick it was heard");
+		now++;
 		CHECK(network_standard_player_is_opence(DATUM_INDEX_NEW(3, 0x8103)), "player 3 not taken");
 		CHECK(!network_standard_player_is_opence(DATUM_INDEX_NEW(1, 0x8101)), "player 1 kept");
 		return 0;
