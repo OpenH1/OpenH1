@@ -5,6 +5,9 @@ ladder, which its weapon's folder holds), laid out as the Xbox maps' sheets:
 
     python tools/hud_assets.py layout --map assets/maps/bloodgulch.map \\
         --hek ../halo-pc-restored/halopc-restored --svg ../halo-pc-restored/ui-svg-handmade
+    python tools/hud_assets.py reticles --map assets/maps/bloodgulch.map \\
+        --reticles ../halo-pc-restored/HUD2_left_reticles
+    python tools/hud_assets.py pictures --map assets/maps/bloodgulch.map --hek ../halopc-restored
     python tools/hud_assets.py build
     python tools/hud_assets.py thresholds  # update only discrete segment data
     python tools/hud_assets.py check --map assets/maps/bloodgulch.map --out /tmp/hud_check
@@ -31,15 +34,26 @@ reticles: puts the reticle redraws that match the Xbox's exactly (RETICLES,
     Xbox sprite best. The sniper's zoom labels beside its reticle, which no
     redraw has, are set in a font (LABELS). Updates layout.json's reticle
     entries only; run it after layout, which puts back the reticles it chose.
-
-        python tools/hud_assets.py reticles --map assets/maps/bloodgulch.map \\
-            --reticles ../halo-pc-restored/HUD2_left_reticles
-build: renders port/assets/hud/svg with layout.json into port/assets/hud/*.png
-    (committed; the builds embed them).
+pictures: the message icons' pictures (PICTURES: the weapons' and the
+    skull's, which say nothing in any language), cut from Aerocatia's and
+    Jessie's high-res HUD art in Halo PC Restored (port/assets/hud/art, its
+    r220 tags' sheets decoded unchanged: port/assets/hud/NOTICE.md), each
+    from the restored sprite whose shape matches it best, aligned by its
+    content, at the art's own scale (4x). --hek is a checkout of Halo PC
+    Restored at r220: its tags' sprite rectangles, and their pixels, which
+    the art must be. Each such texture stands for those sprites alone (the
+    sheet's text and buttons are drawn as the map has them), each checked
+    on its own texels (a sprite's "crc"), so that another language's maps,
+    whose text differs, draw them too. Updates layout.json's message icon
+    entries only; run it after layout, which leaves them out.
+build: renders port/assets/hud/svg and art with layout.json into
+    port/assets/hud/*.png (committed; the builds embed them).
 check: compares each PNG, reduced to the tag's size, with the map's bitmap
+    (only its sprites' cells, for a texture that stands for some sprites)
     and writes side-by-side images into --out.
 
-Needs rsvg-convert, Pillow, NumPy and SciPy.
+Needs rsvg-convert, Pillow, NumPy and SciPy (pictures, build of the
+pictures alone, and check: Pillow and NumPy).
 """
 
 import argparse
@@ -59,6 +73,8 @@ from PIL import Image
 ROOT = Path(__file__).resolve().parent.parent
 ASSETS = ROOT / "port/assets/hud"
 LAYOUT = ASSETS / "layout.json"
+# Aerocatia's and Jessie's art (NOTICE.md)
+ART = ASSETS / "art"
 # the textures' size over the Xbox bitmaps', but no side longer than every
 # OpenGL ES 3 device can take
 SCALE = 8
@@ -83,7 +99,8 @@ METERS = {
                                        "extra/xbox_order_hud_meters/tags/ui/hud/bitmaps/combined/hud_ammo_meters.bitmap"),
 }
 # redraws not used: those with English text (other languages' maps have
-# their own; the Xbox message icons all have some), the sniper's zoom labels
+# their own; the Xbox message icons all have some, and their pictures are
+# drawn from the restored art: PICTURES), the sniper's zoom labels
 # (2x and 8x, where the Xbox's are 2x and 10x), and the meters in the PC
 # channel order
 UNUSED = {
@@ -157,6 +174,19 @@ LABEL_SPACINGS = (-10, -8, -6, -4, -2, 0, 2, 4)
 # around the one its extent gives
 FIT_TEXELS = 8
 FIT_SCALES = np.linspace(0.85, 1.15, 31)
+
+# the message icons' pictures, by the Xbox bitmap and the sequences of its
+# sprites they are: drawn from the restored art (ART, named as the redraws
+# are), the sheets' other sprites (text, and the buttons, which the HUD draws
+# from port/assets/buttons) as the map has them
+PICTURES = {
+    HUD + "combined\\hud_msg_icons": {
+        0: (4, 5, 6, 9),  # sniper rifle, rocket launcher, plasma pistol, pistol
+        1: (7, 8, 11),    # flamethrower, assault rifle, plasma rifle
+        2: (10, 12),      # needler, shotgun
+        3: (23,),         # skull
+    },
+}
 
 
 # ---------- Xbox maps
@@ -274,16 +304,30 @@ def decode_dxt(kind: str, data: bytes, width: int, height: int) -> np.ndarray:
     return image
 
 
+def stored_texels(bitmap: dict) -> np.ndarray:
+    """An uncompressed bitmap's level 0 texels as they are stored (each
+    one's bytes), by row and column."""
+    width, height = bitmap["width"], bitmap["height"]
+    pixels = np.frombuffer(bitmap["pixels"][:level0_size(bitmap)], np.uint8)
+    order = (np.arange(width * height).reshape(height, width) if bitmap["flags"] & BITMAP_LINEAR_FLAG else
+             morton_order(width, height))
+    return pixels.reshape(-1, level0_size(bitmap) // (width * height))[order]
+
+
+def cell_crc(bitmap: dict, cell: list) -> int:
+    """The CRC-32 of a cell's texels as they are stored, row by row, top
+    first, each texel's bytes (as port/linux/src/hud_hires.c, cell_crc,
+    reads them)."""
+    left, top, right, bottom = cell
+    return zlib.crc32(np.ascontiguousarray(stored_texels(bitmap)[top:bottom, left:right]).tobytes())
+
+
 def decode_bitmap(bitmap: dict) -> np.ndarray:
     """An Xbox HUD bitmap's level 0 as RGBA, as xbox_texture_decode.c decodes it."""
     width, height, kind = bitmap["width"], bitmap["height"], FORMATS[bitmap["format"]]
-    pixels = np.frombuffer(bitmap["pixels"][:level0_size(bitmap)], np.uint8)
     if kind.startswith("dxt"):
         return decode_dxt(kind, bitmap["pixels"], width, height)
-    order = (np.arange(width * height).reshape(height, width) if bitmap["flags"] & BITMAP_LINEAR_FLAG else
-             morton_order(width, height))
-    texel = level0_size(bitmap) // (width * height)
-    raw = pixels.reshape(-1, texel)[order]
+    raw = stored_texels(bitmap)
     image = np.zeros((height, width, 4), np.uint8)
     if kind == "a8":
         image[..., :3], image[..., 3] = 255, raw[..., 0]
@@ -309,9 +353,9 @@ def decode_bitmap(bitmap: dict) -> np.ndarray:
 
 
 def hek_bitmap_group(path: Path) -> dict:
-    """A HEK bitmap tag's bitmaps (sizes and formats) and sprites (big-endian;
-    its blocks follow the 0x40-byte file header and the 0x6C-byte tag in
-    order: data, sequences with their sprites, bitmaps)."""
+    """A HEK bitmap tag's bitmaps (sizes, formats and pixels) and sprites
+    (big-endian; its blocks follow the 0x40-byte file header and the
+    0x6C-byte tag in order: data, sequences with their sprites, bitmaps)."""
     data = path.read_bytes()
     header = data[0x40:0x40 + 0x6C]
     compressed_size, = struct.unpack_from(">I", header, 0x1C)
@@ -328,7 +372,11 @@ def hek_bitmap_group(path: Path) -> dict:
         position += count * 0x20
     for index in range(bitmap_count):
         width, height, _, _, format = struct.unpack_from(">HHHhh", data, position + index * 0x30 + 4)
-        group["bitmaps"].append({"width": width, "height": height, "format": format})
+        # (its pixels at its offset in the pixel data, which follows the
+        # compressed import data; in rows, not swizzled)
+        offset, = struct.unpack_from(">i", data, position + index * 0x30 + 0x18)
+        group["bitmaps"].append({"width": width, "height": height, "format": format, "flags": BITMAP_LINEAR_FLAG,
+                                 "pixels": data[0x40 + 0x6C + compressed_size + offset:]})
     return group
 
 
@@ -399,6 +447,26 @@ def match(alpha: np.ndarray, render: np.ndarray, clip: list, scale: int) -> tupl
             score = overlap(window(source, at[0], at[1], width * scale, height * scale), target)
             if score > best[0]:
                 best = (score, at)
+    return best
+
+
+def similar_size(clip: list, cell: list, scale: int) -> bool:
+    """Whether a PC sprite (clip, on a sheet scale times the Xbox's) is about
+    the size of an Xbox cell."""
+    return (0.6 < (clip[2] - clip[0]) / ((cell[2] - cell[0]) * scale) < 1.6 and
+            0.6 < (clip[3] - clip[1]) / ((cell[3] - cell[1]) * scale) < 1.6)
+
+
+def best_match(scored: list):
+    """Of the matches for a cell, each (score, source, scale, corner, clip,
+    kind, whether its sprite numbers are the cell's), the best; but the
+    sprite of the same numbers where the sheets agree and it matches nearly
+    as well (small glyphs, a dot or a colon, overlap others as much as their
+    own). None if there are none."""
+    best = max(scored, default=None)
+    same = max((entry for entry in scored if entry[6]), default=None)
+    if same is not None and best is not None and same[0] >= max(MATCH, 0.6 * best[0]):
+        best = same
     return best
 
 
@@ -478,20 +546,12 @@ def layout(arguments) -> None:
                                 for sequence_index, sequence in enumerate(pc_group["sequences"])
                                 for sprite_index, sprite in enumerate(sequence) if sprite[0] == pc_index]
                     for clip, pc_numbers in pc_cells or [([0, 0, render.shape[1], render.shape[0]], None)]:
-                        # (about the same size)
-                        if not (0.6 < (clip[2] - clip[0]) / ((right - left) * scale) < 1.6 and
-                                0.6 < (clip[3] - clip[1]) / ((bottom - top) * scale) < 1.6):
+                        if not similar_size(clip, cell, scale):
                             continue
                         score, corner = match(alpha, render, clip, scale)
                         scored.append((score, svg, scale, corner, clip, KINDS.get(pc_bitmap["format"]),
                                        pc_numbers in numbers))
-                # the best match; but the sprite of the same numbers where the
-                # sheets agree and it matches nearly as well (small glyphs, a
-                # dot or a colon, overlap others as much as their own)
-                best = max(scored, default=None)
-                same = max((entry for entry in scored if entry[6]), default=None)
-                if same is not None and best is not None and same[0] >= max(MATCH, 0.6 * best[0]):
-                    best = same
+                best = best_match(scored)
                 if best is None or best[0] < MATCH or best[5] is None:
                     matched = None
                     print(f"{name}: left out, cell {cell} " +
@@ -708,6 +768,91 @@ def reticles(arguments) -> None:
     LAYOUT.write_text(json.dumps(description, indent=1) + "\n")
 
 
+# ---------- the message icons' pictures
+
+
+def art_name(tag: str, index: int, count: int) -> str:
+    """A restored sheet's PNG in ART, named as the redraws are: its tag's
+    path (under ui), with the bitmap's index when the tag has more than one."""
+    parts = tag.split("\\")
+    name = "__".join(parts[1:] if parts[0] == "ui" else parts).replace(" ", "_")
+    return name + (f"__{index}" if count > 1 else "") + ".png"
+
+
+def art_texels(name: str) -> np.ndarray:
+    return np.asarray(Image.open(ART / name).convert("RGBA")).copy()
+
+
+def pictures(arguments) -> None:
+    xbox_map = XboxMap(Path(arguments.map))
+    hek_root = Path(arguments.hek)
+    description = json.loads(LAYOUT.read_text())
+    entries = description["assets"]
+    for tag, bitmaps in PICTURES.items():
+        group = xbox_map.bitmap_group(tag)
+        pc_group = hek_bitmap_group(hek_root / "tags" / Path(*tag.split("\\")).with_suffix(".bitmap"))
+        # (the restored sheets in ART, which must be the tag's pixels as
+        # they are: those the pictures are cut from)
+        sheets = []
+        for pc_index, pc_bitmap in enumerate(pc_group["bitmaps"]):
+            art = art_name(tag, pc_index, len(pc_group["bitmaps"]))
+            if not (ART / art).exists():
+                continue
+            texels = art_texels(art)
+            if not np.array_equal(texels, decode_bitmap(pc_bitmap)):
+                sys.exit(f"{art}: not the pixels of {tag} bitmap {pc_index} in {hek_root}")
+            sheets.append((art, pc_index, texels, KINDS[pc_bitmap["format"]]))
+        for index, sequences in sorted(bitmaps.items()):
+            bitmap = group["bitmaps"][index]
+            width, height = bitmap["width"], bitmap["height"]
+            xbox = decode_bitmap(bitmap)
+            name = tag[len(HUD):].replace("combined\\", "").replace("\\", "__").replace(" ", "_") + f"__{index}"
+            sprites, laid = [], []
+            for sequence in sequences:
+                for sprite_index, sprite in enumerate(group["sequences"][sequence]):
+                    if sprite[0] != index:
+                        sys.exit(f"{name}: sequence {sequence}'s sprite {sprite_index} is on bitmap {sprite[0]}")
+                    cell = pixel_rectangle(sprite, width, height)
+                    left, top, right, bottom = cell
+                    alpha = xbox[top:bottom, left:right, 3]
+                    scored = []
+                    for art, pc_index, texels, kind in sheets:
+                        scale = texels.shape[1] // width
+                        for pc_sequence, pc_sprites in enumerate(pc_group["sequences"]):
+                            for pc_sprite_index, pc_sprite in enumerate(pc_sprites):
+                                clip = pixel_rectangle(pc_sprite, texels.shape[1], texels.shape[0])
+                                if pc_sprite[0] != pc_index or not similar_size(clip, cell, scale):
+                                    continue
+                                score, corner = match(alpha, texels, clip, scale)
+                                scored.append((score, art, scale, corner, clip, kind,
+                                               (pc_sequence, pc_sprite_index) == (sequence, sprite_index)))
+                    best = best_match(scored)
+                    if best is None or best[0] < MATCH:
+                        sys.exit(f"{name}: sequence {sequence}'s sprite {sprite_index} matches no restored sprite")
+                    score, art, scale, corner, clip, kind, _ = best
+                    sprites.append({"sequence": sequence, "cell": cell, "crc": cell_crc(bitmap, cell)})
+                    laid.append({"xbox": cell, "art": art, "source_scale": scale, "source": corner, "clip": clip,
+                                 "kind": kind, "score": round(score, 3)})
+                    print(f"{name} {cell} (sequence {sequence}): {art} {clip} at {corner}, overlap {score:.2f}")
+            scales = {cell["source_scale"] for cell in laid}
+            if len(scales) != 1:
+                sys.exit(f"{name}: its pictures are cut from sheets of different scales")
+            entry = {"name": name, "tag": tag, "bitmap": index, "width": width, "height": height,
+                     "format": FORMATS[bitmap["format"]], "scale": scales.pop(),
+                     "crc": zlib.crc32(bitmap["pixels"][:level0_size(bitmap)]),
+                     # (the sprites it stands for, each checked on its own
+                     # cell's texels: hud_hires.h)
+                     "sprites": sprites, "cells": laid}
+            old = next((e for e in entries if e["name"] == name), None)
+            if old is not None:
+                entries[entries.index(old)] = entry
+            else:
+                # (after its folder's)
+                folder = tag.rsplit("\\", 1)[0]
+                entries.insert(max(i for i, e in enumerate(entries) if e["tag"].startswith(folder)) + 1, entry)
+    LAYOUT.write_text(json.dumps(description, indent=1) + "\n")
+
+
 # ---------- building
 
 
@@ -831,7 +976,12 @@ def build_asset(entry: dict, renders: dict) -> np.ndarray:
         zoom = scale / cell["source_scale"]
         if zoom == int(zoom):
             zoom = int(zoom)
-        key = (cell["svg"], zoom)
+        # (or the restored art's sheet, at its scale: copied as it is)
+        key = (cell.get("svg") or cell["art"], zoom)
+        if key not in renders and "art" in cell:
+            if zoom != 1:
+                sys.exit(f"{entry['name']}: {cell['art']} is drawn at its own scale ({cell['source_scale']}x)")
+            renders[key] = art_texels(cell["art"])
         if key not in renders:
             renders[key] = render_svg(ASSETS / "svg" / cell["svg"], zoom)
         left, top, right, bottom = cell["xbox"]
@@ -859,11 +1009,15 @@ def thresholds(arguments) -> None:
 def build(arguments) -> None:
     description = json.loads(LAYOUT.read_text())
     names = {f"{entry['name']}.png" for entry in description["assets"]}
-    for stale in ASSETS.glob("*.png"):
-        if stale.name not in names:
-            stale.unlink()
+    # (all of them, the stale ones removed; or only those named)
+    if not arguments.names:
+        for stale in ASSETS.glob("*.png"):
+            if stale.name not in names:
+                stale.unlink()
     renders = {}
     for entry in description["assets"]:
+        if arguments.names and entry["name"] not in arguments.names:
+            continue
         image = build_asset(entry, renders)
         Image.fromarray(image, "RGBA").save(ASSETS / f"{entry['name']}.png", optimize=True)
         print(f"{entry['name']}.png: {image.shape[1]}x{image.shape[0]}")
@@ -878,13 +1032,29 @@ def check(arguments) -> None:
     output.mkdir(parents=True, exist_ok=True)
     description = json.loads(LAYOUT.read_text())
     for entry in description["assets"]:
+        if ("bitm", entry["tag"]) not in xbox_map.tags:
+            print(f"{entry['name']}: not in this map")
+            continue
         bitmap = xbox_map.bitmap_group(entry["tag"])["bitmaps"][entry["bitmap"]]
-        if zlib.crc32(bitmap["pixels"][:level0_size(bitmap)]) != entry["crc"]:
+        sprites = entry.get("sprites", [])
+        if any("crc" in sprite for sprite in sprites):
+            # (checked by its sprites' cells, as the game checks them)
+            other = [sprite["sequence"] for sprite in sprites if cell_crc(bitmap, sprite["cell"]) != sprite["crc"]]
+            if other:
+                print(f"{entry['name']}: this map's sprites of sequences {other} are not the ones laid out")
+        elif zlib.crc32(bitmap["pixels"][:level0_size(bitmap)]) != entry["crc"]:
             print(f"{entry['name']}: this map's bitmap is not the one laid out")
         xbox = decode_bitmap(bitmap)
         image = Image.open(ASSETS / f"{entry['name']}.png").convert("RGBA")
         reduced = np.asarray(image.resize((entry["width"], entry["height"]), Image.BOX))
-        score = overlap(reduced[..., 3].astype(float), xbox[..., 3].astype(float))
+        # (a texture of some sprites compared on their cells alone)
+        mask = np.zeros(xbox.shape[:2], bool)
+        for sprite in sprites:
+            left, top, right, bottom = sprite["cell"]
+            mask[top:bottom, left:right] = True
+        if not sprites:
+            mask[...] = True
+        score = overlap(reduced[..., 3][mask].astype(float), xbox[..., 3][mask].astype(float))
         print(f"{entry['name']}: alpha overlap {score:.2f}")
         # Xbox | ours reduced | ours, each over blue, then each one's alpha
         panels = [Image.fromarray(picture, "RGBA").resize(image.size, Image.NEAREST) for picture in (xbox, reduced)]
@@ -908,13 +1078,17 @@ def main() -> None:
     command = commands.add_parser("reticles")
     command.add_argument("--map", required=True)
     command.add_argument("--reticles", required=True)
-    commands.add_parser("build")
+    command = commands.add_parser("pictures")
+    command.add_argument("--map", required=True)
+    command.add_argument("--hek", required=True)
+    command = commands.add_parser("build")
+    command.add_argument("names", nargs="*", help="only these textures (as layout.json names them)")
     commands.add_parser("thresholds")
     command = commands.add_parser("check")
     command.add_argument("--map", required=True)
     command.add_argument("--out", required=True)
     arguments = parser.parse_args()
-    {"layout": layout, "reticles": reticles, "build": build, "thresholds": thresholds,
+    {"layout": layout, "reticles": reticles, "pictures": pictures, "build": build, "thresholds": thresholds,
      "check": check}[arguments.command](arguments)
 
 
