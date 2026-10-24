@@ -175,6 +175,7 @@ void touch_input_menu_read(struct platform_ui_pointer *pointer)
 	pointer->down_x = output.down_x;
 	pointer->down_y = output.down_y;
 	pointer->touch = TRUE;
+	pointer->left_held = FALSE;
 }
 
 /* port/linux/game/network_chat.c: its on-screen keyboard is up, which

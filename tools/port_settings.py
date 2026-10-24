@@ -16,6 +16,7 @@ mouse's controls, by the functions the PC version names for it.
 import re
 import sys
 from pathlib import Path
+from typing import NamedTuple
 from xml.sax.saxutils import quoteattr
 
 PE = "main_menu/settings_select/player_setup/player_profile_edit"
@@ -33,7 +34,9 @@ ON_OFF = [("ON", "true"), ("OFF", "false")]
 # the multiplayer armor colors, in the profile's order (player_profile.c)
 SHIELD_COLORS = ["white", "black", "red", "blue", "gray", "yellow", "green", "pink", "purple", "cyan", "cobalt",
                  "orange", "teal", "sage", "brown", "tan", "maroon", "salmon"]
-SENSITIVITIES = [(f"{value:g}", f"{value:g}") for value in (0.1, 0.15, 0.25, 0.4, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4)]
+# input.mouse_vertical_sensitivity's: a multiplier of the horizontal
+VERTICAL_SENSITIVITIES = [(f"{value:g}X", f"{value:g}") for value in (0.25, 0.5, 0.6, 0.7, 0.75, 0.8, 0.9, 1, 1.1, 1.25,
+                                                                       1.5, 2)]
 VOLUMES = [(str(step), f"{step / 10:g}") for step in range(11)]
 # the platforms a menu element's platform attribute names (menu_files.c's
 # MENU_PLATFORM, "vr": the VR build, playing in the headset, and "hdr": a
@@ -247,6 +250,26 @@ FRAMES_ADDED = {
 # then python3 tools/port_settings.py writes the pages' files.)
 
 SECTION = "section"
+
+
+class Slider(NamedTuple):
+    """a slider row's choices, in place of [(shown, value)]: its track runs
+    from least to most, left and right step it by step (holding them steps
+    on), a click on the track or the mouse dragged along it sets it, and A, or
+    a click on its number, types a value (Enter keeps it) from typed_least to
+    typed_most. menu_functions.c's settings_sliders has the same"""
+    least: float
+    most: float
+    step: float
+    typed_least: float
+    typed_most: float
+
+
+# a slider's track, its thumb and its number, in the value's column
+SLIDER_TRACK_WIDTH, SLIDER_THUMB_WIDTH, SLIDER_TRACK_HEIGHT = 92, 8, 14
+SLIDER_VALUE_X, SLIDER_VALUE_WIDTH = 94, 46
+# input.mouse_sensitivity's: CS2's sensitivity (port/linux/include/mouse_sensitivity.h)
+MOUSE_SENSITIVITY = Slider(0.1, 10.0, 0.05, 0.01, 100.0)
 # the geometry, in the 640x480 menu units (menu_functions.c's SETTINGS_*
 # have the same): the rows' column and the panel beside it
 SETTINGS_ROW_X, SETTINGS_ROW_WIDTH, SETTINGS_ROW_HEIGHT, SETTINGS_ROW_STEP = 28, 344, 20, 21
@@ -393,10 +416,16 @@ PAGES = {
         "about": "The mouse, the controller and the keys.",
         "rows": [
             (SECTION, "MOUSE"),
-            ("SENSITIVITY", "input.mouse_sensitivity", SENSITIVITIES,
-             "How fast the view turns side to side as the mouse moves.", None),
-            ("VERTICAL SENSITIVITY", "input.mouse_vertical_sensitivity", [("SAME", "0")] + SENSITIVITIES,
-             "How fast the view turns up and down. Same turns it as fast as side to side.", None),
+            ("SENSITIVITY", "input.mouse_sensitivity", MOUSE_SENSITIVITY,
+             "How far the view turns as the mouse moves, on Counter-Strike 2's scale: your CS2 number turns the "
+             "same here. Drag the slider or press left and right; press A or click the number to type one, then "
+             "Enter.|No acceleration.",
+             None),
+            ("VERTICAL SENSITIVITY", "input.mouse_vertical_sensitivity", VERTICAL_SENSITIVITIES,
+             "How far the view turns up and down, of how far it turns side to side. 1X turns it as far.", None),
+            ("ZOOM AIM SPEED", "input.zoom_sensitivity", [("CS2", "cs2"), ("ORIGINAL", "halo")],
+             "How fast you turn while zoomed in. CS2 matches Counter-Strike 2's scoped feel; Original is how Halo "
+             "felt.|Mouse only: controllers always turn as Halo did.", None),
             ("INVERT MOUSE", "input.invert_mouse", YES_NO,
              "Moving the mouse forward looks down, as a flight stick does.", None),
             ("MOUSE AIM ASSIST", "input.mouse_aim_assist", ON_OFF,
@@ -1025,7 +1054,33 @@ def _settings_page(folder: str, page: dict) -> list:
         row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
                      ("flags", "pass_unhandled_to_focused_child"), ("bitmap", f"{SETTINGS}/row"),
                      ("color", SETTINGS_BLUE), ("platform", platform)]
-        if setting:
+        if setting and isinstance(choices, Slider):
+            # (a slider: its track, the thumb on it, and its number, which
+            # menu_functions.c's "port slider ..." set and its page update
+            # places and shows; while its number is typed into, Enter is
+            # Start and Escape B)
+            run = "port slider"
+            extra += _widget(row, row_pairs,
+                             [f'<on event="left" run="{run} left"/>', f'<on event="right" run="{run} right"/>',
+                              f'<on event="a" run="{run} edit"/>', f'<on event="start" run="{run} edit"/>',
+                              '<on event="left_mouse" run="mouse emit accept event"/>',
+                              f'<child widget="{base}/{key}_label"/>',
+                              f'<child widget="{base}/{key}_track" x="{SETTINGS_SPINNER_X}" '
+                              f'y="{(SETTINGS_ROW_HEIGHT - SLIDER_TRACK_HEIGHT) // 2}"/>',
+                              f'<child widget="{base}/{key}_value" x="{SETTINGS_SPINNER_X + SLIDER_VALUE_X}"/>'])
+            extra += label_widget
+            extra += _widget(f"{base}/{key}_track", [("controller", 1), ("width", SLIDER_TRACK_WIDTH),
+                                                     ("height", SLIDER_TRACK_HEIGHT),
+                                                     ("bitmap", f"{SETTINGS}/slider_track")],
+                             [f'<child widget="{base}/{key}_thumb"/>'])
+            extra += _widget(f"{base}/{key}_thumb", [("controller", 1), ("width", SLIDER_THUMB_WIDTH),
+                                                     ("height", SLIDER_TRACK_HEIGHT),
+                                                     ("bitmap", f"{SETTINGS}/slider_thumb")], [])
+            extra += _settings_text(f"{base}/{key}_value", [("width", SLIDER_VALUE_WIDTH),
+                                                            ("height", SETTINGS_ROW_HEIGHT), ("color", SETTINGS_BLUE),
+                                                            ("align", "center"), ("text_y", 4),
+                                                            ("text_flags", "no_focus_test")])
+        elif setting:
             extra += _widget(row, row_pairs, [f'<child widget="{base}/{key}_label"/>',
                                               f'<child widget="{base}/{key}_spinner" x="{SETTINGS_SPINNER_X}"/>'])
             extra += label_widget
@@ -1251,6 +1306,14 @@ def settings_pictures() -> list:
          [(_svg(tab_w, tab_h, [_rounded(tab_w, tab_h, 1, 8, "#0a2a5a", 0.75, "#2299ff", 2)]), tab_w, tab_h),
           (_svg(tab_w, tab_h, [_rounded(tab_w, tab_h, 1, 8, "#0d3a7a", 0.9, "#8cc8ff", 2)]), tab_w, tab_h)]),
     ]
+    # (a slider's track, a groove in the redraws' navy and blue rim, and its
+    # thumb, a blue tab)
+    track_w, track_h, thumb_w = SLIDER_TRACK_WIDTH, SLIDER_TRACK_HEIGHT, SLIDER_THUMB_WIDTH
+    pictures.append((f"{SETTINGS}/slider_track", [(_svg(track_w, track_h, [
+        f'  <rect x="1" y="{track_h / 2 - 2.5:g}" width="{track_w - 2}" height="5" rx="2.5" fill="#000e23" '
+        'fill-opacity="0.9" stroke="#2995ff" stroke-width="1"/>']), track_w, track_h)]))
+    pictures.append((f"{SETTINGS}/slider_thumb", [(_svg(thumb_w, track_h, [
+        _rounded(thumb_w, track_h, 1, 2.5, "#8cc8ff", 1.0, "#2299ff", 1.5)]), thumb_w, track_h)]))
     for kind, top in (("tab", SETTINGS_TOP), ("page", PAGE_TOP)):
         height = SETTINGS_PANEL_BOTTOM - top
         # (list_field's framed panel: a navy field, a blue rim)

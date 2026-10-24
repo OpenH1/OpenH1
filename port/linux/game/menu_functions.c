@@ -239,10 +239,22 @@ struct pc_menu_setting
 };
 
 struct pc_menu_setting *pc_menu_setting_get(long definition_index);
+/* the menus' pointer and their latest click on an item (ui_widget.c) */
+boolean ui_widget_port_pointer(short *x);
+boolean ui_widget_port_take_click(short *x, short *y);
 
 /* ---------- private code */
 
 static boolean campaign_profile(short controller, struct player_profile *profile);
+/* (a text field: Settings' sliders' numbers, below) */
+static boolean text_field_editing(struct widget_instance *row);
+static void text_field_end(boolean keep);
+static void settings_sliders_show(struct widget_instance *list);
+static void settings_sliders_default(struct widget_instance *screen);
+static boolean settings_slider_function(char const *name, struct widget_instance *row);
+static short settings_slider_of(struct widget_instance const *row);
+static double settings_slider_value(short slider);
+static void settings_slider_text(double value, char *text, unsigned int size);
 
 static boolean text_is_number(char const *text, double *number)
 {
@@ -2000,6 +2012,16 @@ static boolean settings_function(char const *name, struct widget_instance *widge
 	struct widget_instance *screen = screen_of(widget);
 
 	*result = TRUE;
+	/* (a slider's number typed into: B and Escape forget what was typed
+	and stay, failing so that the page is not left; OK keeps it) */
+	if (text_field_editing(NULL) && (!strcmp(name, "cancel") || !strcmp(name, "page cancel")))
+	{
+		text_field_end(FALSE);
+		*result = FALSE;
+		return TRUE;
+	}
+	if (text_field_editing(NULL) && (!strcmp(name, "ok") || !strcmp(name, "keep") || !strncmp(name, "tab", 3)))
+		text_field_end(TRUE);
 	if (!strcmp(name, "begin"))
 	{
 		settings_pending_clear();
@@ -2360,6 +2382,16 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 			settings_wide_copy(value, settings_widget_text(spinner, spinner->parameters.list.selected_index),
 				ROW_TEXT_LENGTH);
 		}
+		else if (settings_slider_of(row) != NONE)
+		{
+			/* (a slider's: its number) */
+			char number[32];
+
+			settings_slider_text(settings_slider_value(settings_slider_of(row)), number, sizeof(number));
+			for (length = 0; number[length] && length < ROW_TEXT_LENGTH - 1; length++)
+				value[length] = (wchar_t)number[length];
+			value[length] = 0;
+		}
 		else if (profile && !strcmp(row->name, "op_name"))
 		{
 			ustrncpy(value, profile->player_name, MAXIMUM_PLAYER_PROFILE_NAME_LENGTH);
@@ -2468,6 +2500,7 @@ static void settings_page_update(struct widget_instance *list)
 	graphics_preset_show(list);
 	sim_rate_row_show(list);
 	settings_each(screen, setting_stash);
+	settings_sliders_show(list);
 	settings_rows_pack(list, tab != NONE);
 	settings_focus_shown(list);
 	settings_tabs_show(list, tab);
@@ -3915,6 +3948,252 @@ static void text_field_show(struct widget_instance *value, char const *text, boo
 		text_filter_exempt(value->parameters.text_box.text);
 	else if (!text_field_editing(NULL))
 		text_filter_exempt(NULL);
+}
+
+/* ---- Settings' sliders (tools/port_settings.py's Slider rows): a track
+with its thumb at the value, and the value's number. Left and right step it
+("port slider left", "right"); a click on the track sets it where it is, and
+the mouse held drags it along; A, Start or a click elsewhere on the row
+types a value into its number ("port slider edit": Enter, which is Start
+while typing, keeps it, Escape forgets it). The value is a change kept, as a
+spinner's is (settings_pending), which Settings' OK writes. */
+
+/* each slider by its row: its setting, its track's range and step, the
+values it may be typed (as tools/port_settings.py's Slider has them) */
+static struct
+{
+	char const *row;
+	char const *setting;
+	double least, most, step;
+	double typed_least, typed_most;
+} const settings_sliders[] =
+{
+	{ "op_mouse_sensitivity", "input.mouse_sensitivity", 0.1, 10.0, 0.05, 0.01, 100.0 },
+};
+
+/* the track and the thumb, as tools/port_settings.py lays them out
+(SLIDER_TRACK_WIDTH, SLIDER_THUMB_WIDTH) */
+#define SLIDER_TRACK_WIDTH 92
+#define SLIDER_THUMB_WIDTH 8
+
+/* the slider the mouse drags (its row), and the one typed into */
+static struct
+{
+	struct widget_instance *dragged;
+	short typed;
+} settings_slider = { NULL, NONE };
+
+static short settings_slider_of(struct widget_instance const *row)
+{
+	short index;
+
+	for (index = 0; row && row->name && index < (short)NUMBEROF(settings_sliders); index++)
+	{
+		if (!strcmp(row->name, settings_sliders[index].row))
+			return index;
+	}
+	return NONE;
+}
+
+/* the slider's value as Settings shows it: the change kept, else the
+setting's (else its default) */
+static double settings_slider_value(short slider)
+{
+	char text[64];
+	double value;
+
+	if (!settings_value(settings_sliders[slider].setting, text, sizeof(text)) || !text_is_number(text, &value) ||
+		!(value > 0.0))
+	{
+		if (!setting_text(settings_sliders[slider].setting, text, sizeof(text), TRUE) || !text_is_number(text, &value))
+			value = settings_sliders[slider].least;
+	}
+	return value;
+}
+
+/* a value as the slider shows and writes it: at most three decimals */
+static void settings_slider_text(double value, char *text, unsigned int size)
+{
+	size_t length;
+
+	snprintf(text, size, "%.3f", value);
+	length = strlen(text);
+	while (length > 3 && text[length - 1] == '0' && text[length - 2] != '.')
+		text[--length] = 0;
+}
+
+/* the value kept as a change, or none if it is the setting's */
+static void settings_slider_set(short slider, double value)
+{
+	char text[64], current[64];
+
+	value = PIN(value, settings_sliders[slider].typed_least, settings_sliders[slider].typed_most);
+	settings_slider_text(value, text, sizeof(text));
+	if (setting_text(settings_sliders[slider].setting, current, sizeof(current), FALSE) &&
+		settings_values_same(current, text))
+	{
+		settings_pending_remove(settings_sliders[slider].setting);
+	}
+	else
+	{
+		settings_pending_set(settings_sliders[slider].setting, text);
+	}
+}
+
+/* the track's left edge on the screen (its offsets and its parents', as the
+menus draw them: each widget's in its parent's) */
+static short settings_slider_track_x(struct widget_instance *track)
+{
+	short x = 0;
+
+	for (; track; track = track->parent)
+		x = (short)(x + track->horizontal_offset);
+	return x;
+}
+
+/* the value at a place on the track (its range, in steps) */
+static void settings_slider_place(short slider, struct widget_instance *track, short x)
+{
+	double fraction = (double)(x - settings_slider_track_x(track) - SLIDER_THUMB_WIDTH / 2) /
+		(SLIDER_TRACK_WIDTH - SLIDER_THUMB_WIDTH);
+	double least = settings_sliders[slider].least, most = settings_sliders[slider].most;
+	double step = settings_sliders[slider].step;
+	double value = least + PIN(fraction, 0.0, 1.0) * (most - least);
+
+	settings_slider_set(slider, PIN((double)(long)(value / step + 0.5) * step, least, most));
+}
+
+/* (the number typed: kept if it is one) */
+static void settings_slider_typed(char const *text)
+{
+	double value;
+
+	if (settings_slider.typed != NONE && text_is_number(text, &value) && value > 0.0)
+		settings_slider_set(settings_slider.typed, value);
+	settings_slider.typed = NONE;
+}
+
+static struct widget_instance *settings_slider_track(struct widget_instance *row)
+{
+	struct widget_instance *child;
+
+	for (child = row ? row->child : NULL; child; child = child->next)
+	{
+		if (child->name && strstr(child->name, "_track"))
+			return child;
+	}
+	return NULL;
+}
+
+/* "port slider <name>" (its row's) */
+static boolean settings_slider_function(char const *name, struct widget_instance *row)
+{
+	short slider = settings_slider_of(row);
+	struct widget_instance *track = settings_slider_track(row);
+
+	if (slider == NONE || !track)
+		return FALSE;
+	if (!strcmp(name, "left") || !strcmp(name, "right"))
+	{
+		double step = settings_sliders[slider].step;
+		double value = settings_slider_value(slider);
+
+		/* (the arrow keys move nothing while the number is typed) */
+		if (text_field_editing(row))
+			return TRUE;
+		value = (double)(long)(value / step + 0.5) * step + (!strcmp(name, "left") ? -step : step);
+		settings_slider_set(slider, PIN(value, settings_sliders[slider].least, settings_sliders[slider].most));
+		ui_play_audio_feedback_sound(SOUND_CURSOR);
+		return TRUE;
+	}
+	if (!strcmp(name, "edit"))
+	{
+		char text[64];
+		short x, y;
+
+		if (text_field_editing(row))
+		{
+			text_field_end(TRUE);
+			return TRUE;
+		}
+		/* (a click on the track sets the value there, and drags it) */
+		if (ui_widget_port_take_click(&x, &y) && x >= settings_slider_track_x(track) - 4 &&
+			x < settings_slider_track_x(track) + SLIDER_TRACK_WIDTH + 4)
+		{
+			settings_slider_place(slider, track, x);
+			settings_slider.dragged = row;
+			return TRUE;
+		}
+		if (text_field_editing(NULL))
+			text_field_end(TRUE);
+		settings_slider.typed = slider;
+		settings_slider_text(settings_slider_value(slider), text, sizeof(text));
+		text_field_begin(row, text, 7, settings_slider_typed);
+		return TRUE;
+	}
+	return FALSE;
+}
+
+/* (each frame of a page) the sliders' thumbs at their values and their
+numbers shown (typed into, the text typed); the one dragged follows the
+mouse while its button is held; one typed into whose row lost the focus
+keeps what was typed */
+static void settings_sliders_show(struct widget_instance *list)
+{
+	struct widget_instance *row;
+
+	for (row = list->child; row; row = row->next)
+	{
+		short slider = settings_slider_of(row);
+		struct widget_instance *track = slider != NONE ? settings_slider_track(row) : NULL;
+		struct widget_instance *thumb = track ? track->child : NULL;
+		struct widget_instance *value_text;
+		char text[64];
+		double value, fraction;
+		short x;
+
+		if (!track)
+			continue;
+		if (settings_slider.dragged == row)
+		{
+			if (ui_widget_port_pointer(&x))
+				settings_slider_place(slider, track, x);
+			else
+				settings_slider.dragged = NULL;
+		}
+		if (text_field_editing(row) && list->focused_child != row)
+			text_field_end(TRUE);
+		value = settings_slider_value(slider);
+		fraction = (value - settings_sliders[slider].least) /
+			(settings_sliders[slider].most - settings_sliders[slider].least);
+		if (thumb)
+			thumb->horizontal_offset = (short)(PIN(fraction, 0.0, 1.0) * (SLIDER_TRACK_WIDTH - SLIDER_THUMB_WIDTH) + 0.5);
+		for (value_text = track->next; value_text && value_text->type != 1; value_text = value_text->next)
+		{
+		}
+		settings_slider_text(value, text, sizeof(text));
+		text_field_show(value_text, text, text_field_editing(row));
+	}
+}
+
+/* "port settings defaults": the sliders' settings at their defaults (what
+is being typed forgotten) */
+static void settings_sliders_default(struct widget_instance *screen)
+{
+	char text[64];
+	double value;
+	short slider;
+
+	if (text_field_editing(NULL))
+		text_field_end(FALSE);
+	for (slider = 0; slider < (short)NUMBEROF(settings_sliders); slider++)
+	{
+		if (named(screen, settings_sliders[slider].row, 0) &&
+			setting_text(settings_sliders[slider].setting, text, sizeof(text), TRUE) && text_is_number(text, &value))
+		{
+			settings_slider_set(slider, value);
+		}
+	}
 }
 
 /* ---- the menu */
@@ -7953,6 +8232,11 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port settings defaults"))
 		{
 			settings_each(screen_of(widget), setting_default_show);
+			settings_sliders_default(screen_of(widget));
+		}
+		else if (!strncmp(name, "port slider ", 12))
+		{
+			return settings_slider_function(name + 12, widget);
 		}
 		else if (!strcmp(name, "port mods init") || !strcmp(name, "port mods close"))
 		{
