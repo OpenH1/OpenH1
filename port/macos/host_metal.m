@@ -982,19 +982,28 @@ static CAFrameRateRange link_rate_range(int saving);
 			MTLClearColorMake(edr_value(drawable, LOADING_PRESENTATION_RED), edr_value(drawable, LOADING_PRESENTATION_GREEN),
 				edr_value(drawable, LOADING_PRESENTATION_BLUE), 1.0) : MTLClearColorMake(0.0, 0.0, 0.0, 1.0);
 		encoder = [buffer renderCommandEncoderWithDescriptor:pass];
-		if (loading_image || (image && !loading_frame.active))
+		/* the loading picture first scaled to cover the whole screen (its top
+		and bottom cut), so that a screen wider than 4:3 has the picture's
+		own space at its sides, not black bars; then letterboxed over it, its
+		text and sweep at their 4:3 size. A game's frame is letterboxed
+		alone */
+		for (int cover = loading_image ? 1 : 0; cover >= 0; cover--)
 		{
-			/* letterboxed to the frame's shape */
+			if (!loading_image && !(image && !loading_frame.active))
+				break;
+			/* letterboxed to the frame's shape (or covering the screen) */
 			double drawable_width = drawable.texture.width, drawable_height = drawable.texture.height;
 			double fit_width = drawable_width, fit_height = drawable_width * sampled_image.height / sampled_image.width;
 
-			if (fit_height > drawable_height)
+			if (cover ? fit_height < drawable_height : fit_height > drawable_height)
 			{
 				fit_height = drawable_height;
 				fit_width = drawable_height * sampled_image.width / sampled_image.height;
 			}
+			if (cover && fit_width <= drawable_width && fit_height <= drawable_height)
+				continue;
 			MTLViewport viewport = { floor((drawable_width - fit_width) / 2.0), floor((drawable_height - fit_height) / 2.0),
-				floor(fit_width), floor(fit_height), 0.0, 1.0 };
+				cover ? ceil(fit_width) : floor(fit_width), cover ? ceil(fit_height) : floor(fit_height), 0.0, 1.0 };
 
 			[encoder setViewport:viewport];
 			[encoder setFragmentTexture:sampled_image atIndex:0];
