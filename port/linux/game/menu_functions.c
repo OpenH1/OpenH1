@@ -2491,6 +2491,11 @@ static void settings_page_update(struct widget_instance *list)
 		settings_page.screen = screen;
 		settings_page.screen_tag = screen->definition_tag_index;
 		settings_page.screen_time = screen->creation_time;
+		/* (the panel's fonts are tag indices of the map loaded when they were
+		drawn: forgotten until its text boxes draw again, so that one kept from
+		the main menu's map is not read as a tag of a game's, which halted on
+		its group) */
+		settings_page.text_font = settings_page.note_font = NONE;
 		if (tab == NONE)
 			settings_snapshot = settings_pending;
 	}
