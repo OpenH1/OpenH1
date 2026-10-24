@@ -99,6 +99,7 @@ their handlers open opens.
 #include "sim_rate.h"
 #include "network_standard.h"
 #include "text/draw_string.h"
+#include "halo_keyboard.h"
 /* (internet play's server browser: the platform layer's) */
 #include "../src/p2p.h"
 #include "../src/browser_favorites.h"
@@ -7278,6 +7279,9 @@ static void browser_update(struct widget_instance *list)
 	long players = 0;
 	short index;
 
+	/* (the browsers' keys, while one is shown: Tab sorts, E is the next tab
+	alone; halo_keyboard_browser_keys) */
+	halo_keyboard_browser_keys();
 	if (multiplayer.mode == _multiplayer_mode_server_browser)
 	{
 		lobby_browser_update(list);

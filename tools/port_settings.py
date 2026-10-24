@@ -1630,7 +1630,7 @@ MULTIPLAYER_ROWS = {
         "multiplayer_type_create_bots_item"])}
 # (the screen's line, in the PC version's line's place: the hub's, over
 # EDIT GAMETYPES, _hub)
-MULTIPLAYER_LINE_PLACE = (28, 297)
+MULTIPLAYER_LINE_PLACE = (28, 308)
 # the screen's children for one platform only (tools/ce_menus.py): the
 # computer's list and its line (the hub's, in the PC version's places:
 # WIDGET_PATCHES' swap), the touchscreen's in their place (_multiplayer_touch)
@@ -3076,6 +3076,15 @@ def part_line(width: int) -> str:
     return f"{PARTS}/line_{width}"
 
 
+def part_section(width: int) -> str:
+    """a section's title's picture: its line along its foot, under the
+    title, as Settings' section"""
+    return f"{PARTS}/section_{width}"
+
+
+PART_SECTION_HEIGHT = 20
+
+
 def part_panel(width: int, height: int) -> str:
     return f"{PARTS}/panel_{width}x{height}"
 
@@ -3101,9 +3110,11 @@ BROWSER_HEADERS_TOP = 104
 BROWSER_ROWS_TOP, BROWSER_ROW_HEIGHT, BROWSER_ROW_STEP, BROWSER_ROWS = 124, 18, 19, 14
 BROWSER_PANEL = (440, 104, 172, 296)
 BROWSER_COLUMNS = {
-    "favorite": (2, 16), "server_name": (20, 116), "map": (140, 82), "type": (226, 62), "players": (290, 54),
-    "ping": (350, 54),
+    "favorite": (6, 16), "server_name": (26, 110), "map": (140, 78), "type": (222, 60), "players": (284, 56),
+    "ping": (344, 54),
 }
+# (the star in a place of its own, in from the highlight's rounded end, and
+# the ping's number as far in from its other end)
 # the ping's column: its bars, then its milliseconds at its right (the bars
 # left out for a number too wide for both: menu_functions.c's browser_row_show)
 BROWSER_PING_BARS = 24
@@ -3131,9 +3142,9 @@ BROWSER_PROMPTS = [
 # Multiplayer's: its list's items (and its two pages': CREATE GAME's and
 # CO-OP CAMPAIGN's), the panel beside them, the line over EDIT GAMETYPES
 HUB = f"{MT}/hub"
-HUB_ITEM = (264, 26)
+HUB_ITEM = (280, 26)
 HUB_LIST_X = 28
-HUB_PANEL = (304, 80, 308, 320)
+HUB_PANEL = (316, 80, 296, 320)
 HUB_PROMPTS = [
     ("prompt_refresh", "%right-trigger REFRESH", 28, 124, '<on event="a" run="port multiplayer refresh"/>'),
     ("prompt_back", "%b-button BACK", 516, 96, '<on event="a" run="mouse emit back event"/>'),
@@ -3196,6 +3207,9 @@ def parts_pictures() -> list:
           for width in prompt_widths),
         (part_line(BROWSER_LIST_WIDTH), line(BROWSER_LIST_WIDTH)),
         (part_line(HUB_ITEM[0]), line(HUB_ITEM[0])),
+        (part_section(HUB_ITEM[0]), [(_svg(HUB_ITEM[0], PART_SECTION_HEIGHT, [
+            f'  <rect x="0" y="{PART_SECTION_HEIGHT - 1.5:g}" width="{HUB_ITEM[0]}" height="1" fill="#2995ff" '
+            'fill-opacity="0.45"/>']), HUB_ITEM[0], PART_SECTION_HEIGHT)]),
         (part_panel(*BROWSER_PANEL[2:]), [(framed(*BROWSER_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5),
                                            *BROWSER_PANEL[2:])]),
         (part_panel(*HUB_PANEL[2:]), [(framed(*HUB_PANEL[2:], "#000e23", 0.88, "#2995ff", 9.5), *HUB_PANEL[2:])]),
@@ -3250,7 +3264,8 @@ def _prompts(base: str, bar: str, prompts: list, defined: tuple = ()) -> list:
 def _section(name: str, words: str, width: int) -> list:
     """a section's title over its line, which a list passes over (it takes
     no events)"""
-    return _widget(name, [("type", "text"), ("width", width), ("height", 18), ("bitmap", part_line(width)),
+    return _widget(name, [("type", "text"), ("width", width), ("height", PART_SECTION_HEIGHT),
+                          ("bitmap", part_section(width)),
                           ("text", words), ("font", "ui\\small_ui"), ("color", PART_DIM), ("text_x", 4)], [])
 
 
@@ -3471,7 +3486,7 @@ def _hub() -> list:
         for section, words, names in sections:
             if section:
                 children.append(f'<child widget="{HUB}/{section}" x="{HUB_LIST_X}" y="{y}"/>')
-                y += 18
+                y += PART_SECTION_HEIGHT + 2
             for item in names:
                 if item == "hub_gametypes":
                     y = MULTIPLAYER_LINE_PLACE[1] + 9
@@ -3513,8 +3528,9 @@ def _hub() -> list:
     # (at the items' ends: the server browser's games, the local network's
     # found, an invite link copied, in green: menu_functions.c's
     # multiplayer_status_notes)
+    # (right-aligned in from the highlight's end, clear of the items' words)
     for name, color in (("browser_note", "#FF7FB2FF"), ("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C")):
-        lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 10), ("height", item_h),
+        lines += _widget(f"{HUB}/{name}", [("type", "text"), ("width", item_w - 16), ("height", item_h),
                                            ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
                                            ("text_y", 8), ("text_flags", "no_focus_test")], [])
     lines += _prompts(HUB, "hub_prompts", HUB_PROMPTS)
@@ -3537,7 +3553,7 @@ def _hub() -> list:
     lines += text("multiplayer_status", x, top + 14, inner, 24, "ui\\large_ui", "#FFFFFFFF")
     lines += text("multiplayer_status_detail", x, top + 42, inner, 120, "ui\\large_ui", SETTINGS_BLUE)
     lines += text("online_now_label", x, top + 12, 200, 16, "ui\\small_ui", PART_DIM, words="ONLINE NOW")
-    players_x = x + 132
+    players_x = x + 124
     for count, count_x in (("games", x), ("players", players_x)):
         for digit in range(STATUS_DIGIT_PLACES):
             panel.append(f'<child widget="{HUB}/online_{count}_{digit}"/>')
@@ -3551,7 +3567,7 @@ def _hub() -> list:
     lines += text("best_label", x, top + 76, 200, 16, "ui\\small_ui", PART_DIM, words="BEST FOR YOU")
     for row in range(BEST_GAMES):
         row_top = top + 94 + 40 * row
-        lines += text(f"best_{row}_name", x, row_top, 176, 20, "ui\\large_ui", "#FFFFFFFF")
+        lines += text(f"best_{row}_name", x, row_top, 166, 20, "ui\\large_ui", "#FFFFFFFF")
         panel.append(f'<child widget="{HUB}/best_{row}_badge"/>')
         lines += _widget(f"{HUB}/best_{row}_badge", [("type", "text"), ("controller", 1), ("left", x),
                                                      ("top", row_top + 3), ("width", BROWSER_PILL),

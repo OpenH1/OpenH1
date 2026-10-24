@@ -11,7 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, enum_with, function, mutated, read, run  # noqa: E402
 
-CASES = ["keys", "scores", "unnamed"]
+CASES = ["keys", "scores", "unnamed", "browser"]
 
 # a fault in the code, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -20,6 +20,9 @@ NEGATIVE_CONTROLS = {
     # the scores' A as the controller's
     "a-unnamed": ("menu", ('\tcase _icon_a_button:\n\t\treturn "Enter";\n', ""), "scores"),
     # the keyboard's B without Escape
+    # Tab as X (delete) in the Profiles screen, as the browsers'
+    "tab-deletes": ("keyboard", ("(browser ? k[SDL_SCANCODE_TAB] : k[SDL_SCANCODE_E])", "k[SDL_SCANCODE_TAB]"),
+                    "browser"),
     "escape-not-b": ("keyboard", ("k[SDL_SCANCODE_ESCAPE] || k[SDL_SCANCODE_BACKSPACE]", "k[SDL_SCANCODE_BACKSPACE]"),
                      "keys"),
 }
