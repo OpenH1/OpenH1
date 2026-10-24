@@ -2134,6 +2134,21 @@ static BOOL platform_clipboard_left_alone(void)
 		config_string("debug.network_test")[0] || config_real("debug.exit_after") > 0.0;
 }
 
+/* whether the clipboard has an invite link on it (the multiplayer menu's
+JOIN BY LINK says so), unless it is left alone */
+int platform_clipboard_has_invite(void)
+{
+	char *clipboard;
+	int found;
+
+	if (platform_clipboard_left_alone())
+		return 0;
+	clipboard = SDL_GetClipboardText();
+	found = clipboard && platform_text_has_invite_link(clipboard);
+	SDL_free(clipboard);
+	return found;
+}
+
 void platform_clipboard_set(const char *text)
 {
 	if (!platform_clipboard_left_alone())

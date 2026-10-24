@@ -395,6 +395,8 @@ static char const *const port_function_names[] =
 	"port mods save",
 	/* (the Steam Frame's update question: menu_functions.c) */
 	"port update now",
+	/* (Multiplayer's panel: menu_functions.c's multiplayer_status) */
+	"port multiplayer status end", "port multiplayer refresh",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -421,6 +423,8 @@ static char const *const port_game_data_input_names[] =
 	"port mods update", "port update question",
 	/* (network co-op's pause menu's FRIENDLY FIRE: its text, ON or OFF) */
 	"port coop friendly fire text",
+	/* (Multiplayer's panel, what is live for the item chosen) */
+	"port multiplayer status",
 };
 
 static struct

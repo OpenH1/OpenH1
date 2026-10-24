@@ -2013,7 +2013,12 @@ static boolean coop_begin(short controller)
 	player_spawn_count = 1;
 	player_ui_reset_single_player_local_player_controllers();
 	if (!campaign_profile(controller, &profile))
+	{
+		/* (said, the menu staying as it was: its item opened nothing else,
+		and failing left a blank menu) */
+		display_error_text_deferred(L"Choose a player profile\r\nfirst (Profiles, on the\r\nmain menu).", NONE);
 		return campaign_fail();
+	}
 	player_spawn_count = 2;
 	return TRUE;
 }
@@ -2926,6 +2931,7 @@ int p2p_invite_link(char *link, int size);
 void p2p_set_hosting_allowed(int allowed);
 int p2p_peer_address(unsigned char const *identifier, unsigned long *address);
 int platform_clipboard_get(char *text, int size);
+int platform_clipboard_has_invite(void);
 void platform_clipboard_set(char const *text);
 void platform_text_field(int typing, int password);
 int config_boolean(char const *name);
@@ -3947,6 +3953,7 @@ static void browser_focus(struct widget_instance *list, short chosen_row)
 
 /* (the server browser's: below) */
 static void lobby_browser_begin(void);
+static boolean direct_link_from_clipboard(void);
 static void lobby_browser_update(struct widget_instance *list);
 static boolean lobby_browser_select(struct widget_instance *widget, short controller, short row,
 	boolean *widget_deleted);
@@ -3992,6 +3999,10 @@ static boolean browser_initialize(struct widget_instance *screen, struct event_r
 	one reaches its host, whose game the client then finds as Direct Link's) */
 	if (multiplayer.mode == _multiplayer_mode_server_browser)
 		lobby_browser_begin();
+	/* (JOIN BY LINK with an invite link copied: joined at once, as PASTE
+	LINK would) */
+	if (multiplayer.mode == _multiplayer_mode_direct_link && platform_clipboard_has_invite())
+		direct_link_from_clipboard();
 	return ui_widget_port_browse(screen, event, widget_deleted);
 }
 
@@ -4713,6 +4724,410 @@ static void browser_update(struct widget_instance *list)
 		text_set(named(stats, "server_count_label", 0), text);
 	}
 	browser_focus(list, browser_chosen_row());
+}
+
+/* ---- Multiplayer's panel: in the place of the PC version's pictures, what
+is live for the item chosen ("port multiplayer status", each frame): the
+games online now (internet play's listings, looked for from the moment the
+menu opens: the server browser then opens with them), an invite link on the
+clipboard, whether others can reach this machine, the campaign's next level,
+the gametypes. A headline (white) and a line below it; the item's
+description stays below them. */
+
+/* the items, in the list's order (ui_widget_port_list_index: its headers
+left out) */
+enum
+{
+	_multiplayer_item_server_browser,
+	_multiplayer_item_join_local,
+	_multiplayer_item_join_link,
+	_multiplayer_item_create_internet,
+	_multiplayer_item_create_local,
+	_multiplayer_item_online_coop,
+	_multiplayer_item_split_screen_coop,
+	_multiplayer_item_gametypes,
+};
+
+/* how often the games online and the clipboard are read again */
+#define MULTIPLAYER_STATUS_READ_TIME 500
+/* the games with players the panel names, and how much of each name */
+#define MULTIPLAYER_STATUS_GAMES 4
+#define MULTIPLAYER_STATUS_NAME 18
+
+static struct
+{
+	/* the menu's own looking for games (lobby_browser_begin's is the
+	browser's) */
+	boolean browsing;
+	unsigned long browse_time;
+	/* the last read */
+	unsigned long read_time;
+	short games, players;
+	boolean invite;
+} multiplayer_status;
+
+/* "port multiplayer status end" (the menu's deleted): its looking stopped
+(the server browser, opened next, looks for itself) */
+static void multiplayer_status_end(void)
+{
+	if (multiplayer_status.browsing)
+		p2p_lobby_browse(FALSE);
+	multiplayer_status.browsing = FALSE;
+}
+
+/* whether internet play's public games can be looked for */
+static boolean multiplayer_status_online(void)
+{
+	return config_boolean("network.online") && config_boolean("network.public_lobby");
+}
+
+static void multiplayer_status_read(void)
+{
+	unsigned long now = system_milliseconds();
+
+	if (multiplayer_status.read_time && now - multiplayer_status.read_time < MULTIPLAYER_STATUS_READ_TIME)
+		return;
+	multiplayer_status.read_time = now;
+	if (multiplayer_status_online() && !multiplayer_status.browsing)
+	{
+		p2p_lobby_browse(TRUE);
+		multiplayer_status.browsing = TRUE;
+		multiplayer_status.browse_time = now;
+		multiplayer_status.games = multiplayer_status.players = 0;
+	}
+	if (multiplayer_status.browsing)
+	{
+		short count = lobby_browser_valid_games(lobby_browser.games,
+			(short)p2p_lobby_games(lobby_browser.games, LOBBY_BROWSER_GAMES));
+		short index;
+
+		multiplayer_status.games = count;
+		multiplayer_status.players = 0;
+		for (index = 0; index < count; index++)
+			multiplayer_status.players = (short)(multiplayer_status.players + lobby_browser.games[index].player_count);
+	}
+	multiplayer_status.invite = platform_clipboard_has_invite() != 0;
+}
+
+/* the campaign's next level for player 1's profile (the one after the last
+it finished), else NONE: without changing the profile chosen */
+static short multiplayer_status_next_level(void)
+{
+	struct player_profile profile;
+	long profile_index = player_ui_get_active_player_profile_index(0);
+	short level, difficulty;
+
+	if (profile_index == NONE)
+		profile_index = player_ui_get_player1_last_used_profile_index();
+	if (profile_index == NONE || !player_profile_get(profile_index, &profile))
+		return NONE;
+	player_profile_get_highest_completed_solo_level(&profile, &level, &difficulty);
+	return (short)PIN(level + 1, 0, NUMBER_OF_SINGLE_PLAYER_LEVELS - 1);
+}
+
+/* the width of a digit of the counts (port_settings.DIGIT_SIZE), and how
+many places a count has */
+#define MULTIPLAYER_STATUS_DIGIT_WIDTH 24
+#define MULTIPLAYER_STATUS_DIGIT_PLACES 3
+#define MULTIPLAYER_STATUS_BEST_GAMES 3
+
+/* a count in the titles' type: its digits (online_<name>_<place>, frames of
+the digits' bitmap) from the left, and its label after them */
+static void multiplayer_status_number(struct widget_instance *description, char const *name, long value,
+	wchar_t const *label)
+{
+	char widget_name[32];
+	char digits[8];
+	short places, place;
+	struct widget_instance *label_widget;
+
+	snprintf(digits, sizeof(digits), "%ld", PIN(value, 0, 999));
+	places = (short)strlen(digits);
+	for (place = 0; place < MULTIPLAYER_STATUS_DIGIT_PLACES; place++)
+	{
+		struct widget_instance *digit;
+
+		snprintf(widget_name, sizeof(widget_name), "online_%s_%d", name, place);
+		digit = named(description, widget_name, 0);
+		visible_set(digit, place < places);
+		if (digit && place < places)
+			digit->animation.current_frame_index = (short)(digits[place] - '0');
+	}
+	snprintf(widget_name, sizeof(widget_name), "online_%s_label", name);
+	label_widget = named(description, widget_name, 0);
+	if (label_widget)
+		label_widget->horizontal_offset = (short)(places * MULTIPLAYER_STATUS_DIGIT_WIDTH + 6);
+	text_set(label_widget, label);
+}
+
+/* how worth joining a game is: open, with room, the fuller the better, a
+near host better than a far one */
+static long multiplayer_status_game_score(struct p2p_listing const *game)
+{
+	if (!game->open || game->locked || game->failed || game->player_count >= game->maximum_player_count ||
+		!game->maximum_player_count)
+	{
+		return -1;
+	}
+	return (long)game->player_count * 1000 / game->maximum_player_count - (game->ping >= 0 ? game->ping : 150);
+}
+
+/* BEST FOR YOU: the games most worth joining, their names, maps and
+gametypes, players and pings */
+static void multiplayer_status_best(struct widget_instance *description)
+{
+	short chosen[MULTIPLAYER_STATUS_BEST_GAMES];
+	short count = 0, row;
+
+	while (count < MULTIPLAYER_STATUS_BEST_GAMES)
+	{
+		short index, best = NONE;
+		long best_score = -1;
+
+		for (index = 0; index < multiplayer_status.games; index++)
+		{
+			long score = multiplayer_status_game_score(&lobby_browser.games[index]);
+			short taken;
+
+			for (taken = 0; taken < count && chosen[taken] != index; taken++)
+			{
+			}
+			if (taken == count && score > best_score)
+			{
+				best = index;
+				best_score = score;
+			}
+		}
+		if (best == NONE)
+			break;
+		chosen[count++] = best;
+	}
+	visible_set(named(description, "best_label", 0), count > 0);
+	for (row = 0; row < MULTIPLAYER_STATUS_BEST_GAMES; row++)
+	{
+		struct p2p_listing const *game = row < count ? &lobby_browser.games[chosen[row]] : NULL;
+		char name[32];
+		wchar_t text[ROW_TEXT_LENGTH], map[ROW_TEXT_LENGTH], gametype[ROW_TEXT_LENGTH];
+		struct widget_instance *ping;
+		char const *const parts[] = { "name", "about", "players", "ping" };
+		short part;
+
+		for (part = 0; part < NUMBEROF(parts); part++)
+		{
+			snprintf(name, sizeof(name), "best_%d_%s", row, parts[part]);
+			visible_set(named(description, name, 0), game != NULL);
+		}
+		if (!game)
+			continue;
+		snprintf(name, sizeof(name), "best_%d_name", row);
+		text_to_wide(game->name, text, MULTIPLAYER_STATUS_NAME + 1);
+		text_set(named(description, name, 0), text);
+		map_display_name(game->map, map);
+		if (game->gametype[0])
+			text_to_wide(game->gametype, gametype, NUMBEROF(gametype));
+		else
+			usnprintf(gametype, NUMBEROF(gametype) - 1, L"%s", game_type_name(game->engine_type));
+		gametype[NUMBEROF(gametype) - 1] = 0;
+		usnprintf(text, NUMBEROF(text) - 1, L"%s, %s", map, gametype);
+		text[NUMBEROF(text) - 1] = 0;
+		snprintf(name, sizeof(name), "best_%d_about", row);
+		text_set(named(description, name, 0), text);
+		usnprintf(text, NUMBEROF(text) - 1, L"%d/%d", game->player_count, game->maximum_player_count);
+		snprintf(name, sizeof(name), "best_%d_players", row);
+		text_set(named(description, name, 0), text);
+		snprintf(name, sizeof(name), "best_%d_ping", row);
+		if ((ping = named(description, name, 0)) != NULL)
+		{
+			ping->animation.current_frame_index = (short)(game->ping < 0 ? 0 : game->ping < PING_GOOD ? 3 :
+				game->ping < PING_FAIR ? 2 : 1);
+		}
+	}
+}
+
+/* the games the local network's client has found (one made by the Local
+Network list before), else NONE: none is looked for from here */
+static short multiplayer_status_local_games(void)
+{
+	void *client = global_network_game_client_get();
+	struct advertised_game *games;
+	short index, count = 0;
+
+	if (!client || (games = network_game_client_get_available_games(client)) == NULL)
+		return NONE;
+	for (index = 0; index < MAXIMUM_ADVERTISED_GAMES; index++)
+	{
+		if (network_game_client_advertised_game_is_valid(&games[index]) && !game_from_peer(&games[index]))
+			count++;
+	}
+	return count;
+}
+
+/* the notes at the end of the items, beside their names: the local games
+found, an invite link copied */
+static void multiplayer_status_notes(struct widget_instance *list)
+{
+	wchar_t text[ROW_TEXT_LENGTH];
+	short local = multiplayer_status_local_games();
+
+	text[0] = 0;
+	if (local != NONE)
+		usnprintf(text, NUMBEROF(text) - 1, L"%d found", local);
+	text_set(named(list, "item_note", 0), text);
+	text_set(named(list, "invite_note", 0), multiplayer_status.invite ? L"INVITE READY" : L"");
+}
+
+static void multiplayer_status_update(struct widget_instance *list)
+{
+	struct widget_instance *description = list->parameters.list.extended_description;
+	wchar_t headline[ROW_TEXT_LENGTH * 2], detail[ROW_TEXT_LENGTH * 8];
+	short item = ui_widget_port_list_index(list);
+
+	boolean counts;
+
+	if (!description)
+		return;
+	multiplayer_status_read();
+	multiplayer_status_notes(list);
+	/* (the PC version's pictures, which these take the place of) */
+	visible_set(named(description, "multiplayer_options_pic", 0), FALSE);
+	/* (the Server Browser's, once games are found: ONLINE NOW's counts and
+	BEST FOR YOU) */
+	counts = item == _multiplayer_item_server_browser && multiplayer_status.browsing && multiplayer_status.games;
+	{
+		char const *const names[] = { "online_now_label", "online_games_label", "online_players_label" };
+		short index;
+
+		for (index = 0; index < NUMBEROF(names); index++)
+			visible_set(named(description, names[index], 0), counts);
+		visible_set(named(description, "multiplayer_status", 0), !counts);
+		visible_set(named(description, "multiplayer_status_detail", 0), !counts);
+	}
+	if (counts)
+	{
+		multiplayer_status_number(description, "games", multiplayer_status.games, L"GAMES");
+		multiplayer_status_number(description, "players", multiplayer_status.players, L"PLAYERS");
+		multiplayer_status_best(description);
+		return;
+	}
+	{
+		char name[32];
+		short place, row;
+		char const *const parts[] = { "name", "about", "players", "ping" };
+
+		for (place = 0; place < MULTIPLAYER_STATUS_DIGIT_PLACES; place++)
+		{
+			snprintf(name, sizeof(name), "online_games_%d", place);
+			visible_set(named(description, name, 0), FALSE);
+			snprintf(name, sizeof(name), "online_players_%d", place);
+			visible_set(named(description, name, 0), FALSE);
+		}
+		visible_set(named(description, "best_label", 0), FALSE);
+		for (row = 0; row < MULTIPLAYER_STATUS_BEST_GAMES; row++)
+		{
+			for (place = 0; place < NUMBEROF(parts); place++)
+			{
+				snprintf(name, sizeof(name), "best_%d_%s", row, parts[place]);
+				visible_set(named(description, name, 0), FALSE);
+			}
+		}
+	}
+	headline[0] = detail[0] = 0;
+	switch (item)
+	{
+	case _multiplayer_item_server_browser:
+		if (!config_boolean("network.online"))
+		{
+			usnprintf(headline, NUMBEROF(headline) - 1, L"INTERNET PLAY IS OFF");
+			usnprintf(detail, NUMBEROF(detail) - 1, L"Turn it on in Settings,\r\nNetwork Setup.");
+		}
+		else if (!multiplayer_status.browsing)
+			usnprintf(headline, NUMBEROF(headline) - 1, L"PUBLIC GAMES ARE HIDDEN");
+		else if (!multiplayer_status.games &&
+			system_milliseconds() - multiplayer_status.browse_time < LOBBY_BROWSER_LOOK_TIME)
+		{
+			usnprintf(headline, NUMBEROF(headline) - 1, L"LOOKING FOR GAMES...");
+		}
+		else
+		{
+			usnprintf(headline, NUMBEROF(headline) - 1, multiplayer_status.games == 1 ? L"1 GAME ONLINE" :
+				L"%d GAMES ONLINE", multiplayer_status.games);
+			usnprintf(detail, NUMBEROF(detail) - 1, multiplayer_status.players == 1 ? L"1 player in them now" :
+				L"%d players in them now", multiplayer_status.players);
+		}
+		break;
+	case _multiplayer_item_join_local:
+		usnprintf(headline, NUMBEROF(headline) - 1, L"WI-FI AND LAN");
+		usnprintf(detail, NUMBEROF(detail) - 1, L"Games hosted on this\r\nnetwork appear as they open.");
+		break;
+	case _multiplayer_item_join_link:
+		if (multiplayer_status.invite)
+		{
+			usnprintf(headline, NUMBEROF(headline) - 1, L"INVITE LINK COPIED");
+			usnprintf(detail, NUMBEROF(detail) - 1, L"Press A to join it.");
+		}
+		else
+		{
+			usnprintf(headline, NUMBEROF(headline) - 1, L"NO INVITE LINK YET");
+			usnprintf(detail, NUMBEROF(detail) - 1, L"Copy the link your friend\r\nsent you, then come back.");
+		}
+		break;
+	case _multiplayer_item_create_internet:
+	case _multiplayer_item_online_coop:
+		if (!config_boolean("network.online"))
+		{
+			usnprintf(headline, NUMBEROF(headline) - 1, L"INTERNET PLAY IS OFF");
+			usnprintf(detail, NUMBEROF(detail) - 1, L"Turn it on in Settings,\r\nNetwork Setup.");
+		}
+		else if (p2p_nat_strict())
+		{
+			usnprintf(headline, NUMBEROF(headline) - 1, L"YOUR NETWORK IS STRICT");
+			usnprintf(detail, NUMBEROF(detail) - 1, config_boolean("network.allow_upnp") ?
+				L"Some players may not reach\r\nyour game." : L"Turn on OPEN ROUTER PORT\r\nin Network Setup.");
+		}
+		else if (item == _multiplayer_item_online_coop && multiplayer_status_next_level() != NONE)
+		{
+			wchar_t level[ROW_TEXT_LENGTH];
+
+			string_get("pc\\main_menu\\map_list", multiplayer_status_next_level(), level);
+			usnprintf(headline, NUMBEROF(headline) - 1, L"NEXT LEVEL");
+			usnprintf(detail, NUMBEROF(detail) - 1, L"%s", level);
+		}
+		else
+		{
+			usnprintf(headline, NUMBEROF(headline) - 1, L"INVITE BY LINK");
+			usnprintf(detail, NUMBEROF(detail) - 1, L"Your link is copied when\r\nthe game opens.");
+		}
+		break;
+	case _multiplayer_item_create_local:
+		usnprintf(headline, NUMBEROF(headline) - 1, L"WI-FI AND LAN");
+		usnprintf(detail, NUMBEROF(detail) - 1, L"Players on this network\r\nsee it in LOCAL NETWORK.");
+		break;
+	case _multiplayer_item_split_screen_coop:
+		if (multiplayer_status_next_level() != NONE)
+		{
+			wchar_t level[ROW_TEXT_LENGTH];
+
+			string_get("pc\\main_menu\\map_list", multiplayer_status_next_level(), level);
+			usnprintf(headline, NUMBEROF(headline) - 1, L"NEXT LEVEL");
+			usnprintf(detail, NUMBEROF(detail) - 1, L"%s", level);
+		}
+		else
+			usnprintf(headline, NUMBEROF(headline) - 1, L"TWO PLAYERS, ONE SCREEN");
+		break;
+	case _multiplayer_item_gametypes:
+	{
+		long indices[MAXIMUM_GAMETYPES];
+		short last_used;
+		short count = ui_widget_port_gametypes(indices, MAXIMUM_GAMETYPES, &last_used);
+
+		usnprintf(headline, NUMBEROF(headline) - 1, L"%d GAMETYPES", count);
+		usnprintf(detail, NUMBEROF(detail) - 1, L"Slayer, CTF, Oddball, King\r\nof the Hill, Race and yours.");
+		break;
+	}
+	}
+	headline[NUMBEROF(headline) - 1] = detail[NUMBEROF(detail) - 1] = 0;
+	text_set(named(description, "multiplayer_status", 0), headline);
+	text_set(named(description, "multiplayer_status_detail", 0), detail);
 }
 
 /* "direct ip connect go" (Direct Link's PASTE LINK): the invite
@@ -6526,6 +6941,16 @@ boolean pc_menu_event_function_invoke(
 		{
 			updater_update_now();
 		}
+		else if (!strcmp(name, "port multiplayer status end"))
+		{
+			multiplayer_status_end();
+		}
+		else if (!strcmp(name, "port multiplayer refresh"))
+		{
+			p2p_lobby_refresh();
+			multiplayer_status.read_time = 0;
+			ui_play_audio_feedback_sound(SOUND_FORWARD);
+		}
 		else if (!strcmp(name, "controls screen init") || !strcmp(name, "controls screen defaults"))
 		{
 			return controls_load(!strcmp(name, "controls screen defaults"));
@@ -6721,4 +7146,6 @@ void pc_menu_game_data_function_invoke(
 		profile_gamepad_layout(widget);
 	else if (!strcmp(name, "port coop friendly fire text"))
 		coop_friendly_fire_text(widget);
+	else if (!strcmp(name, "port multiplayer status"))
+		multiplayer_status_update(widget);
 }
