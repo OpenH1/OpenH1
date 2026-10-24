@@ -79,6 +79,7 @@ machine (their datum identifiers need not be).
 #include "network_voice.h"
 #include "network_aim_assist.h"
 #include "network_shield_effects.h"
+#include "network_substeps.h"
 #include "map_share.h"
 #include "latency_meter.h"
 #include "profile_sections.h"
@@ -789,6 +790,32 @@ static struct
 
 /* ---------- shared (network_distributed.h) */
 
+/* the bytes of the datagrams sent to each machine (to the host, a client's
+HOST_SENDER) since the tests last asked (network_distributed_batch_bytes) */
+static long distributed_batch_bytes[MAXIMUM_SENDERS];
+
+void network_distributed_batch_bytes(
+	long *to_host,
+	long *to_clients,
+	short *clients)
+{
+	short sender;
+
+	*to_host = distributed_batch_bytes[HOST_SENDER];
+	*to_clients = 0;
+	*clients = 0;
+	for (sender = 0; sender < MAXIMUM_SENDERS; sender++)
+	{
+		if (sender != HOST_SENDER && distributed_batch_bytes[sender])
+		{
+			*to_clients += distributed_batch_bytes[sender];
+			(*clients)++;
+		}
+		distributed_batch_bytes[sender] = 0;
+	}
+	distributed_batch_bytes[HOST_SENDER] = 0;
+}
+
 void network_distributed_statistics(
 	long *sent,
 	long *received,
@@ -1003,6 +1030,7 @@ static void distributed_batch_flush(
 		network_distributed_client_send(batch->data, batch->size);
 	else
 		network_distributed_server_send_to_machine(sender, batch->data, batch->size);
+	distributed_batch_bytes[sender] += batch->size;
 	batch->size = 0;
 }
 
@@ -3285,6 +3313,19 @@ static void distributed_host_send_players(
 			}
 		}
 		distributed_packer_flush(&distributed_packer);
+		/* (an OpenH1 game's: the sub-steps the tick ran for the same players,
+		network_substeps.c) */
+		{
+			short relayed[MAXIMUM_TRACKED_PLAYERS];
+			short relayed_count = 0;
+
+			for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
+			{
+				if (TEST_FLAG(distributed_sends[machine_index][player_index], _distributed_send_action_bit))
+					relayed[relayed_count++] = player_index;
+			}
+			network_substeps_host_send(machine_index, distributed_host_update_number, relayed, relayed_count);
+		}
 		distributed_packer_begin(&distributed_packer, (short)machine_index, _distributed_message_unit_states, NULL, 0);
 		for (player_index = 0; player_index < MAXIMUM_TRACKED_PLAYERS; player_index++)
 		{
@@ -3814,6 +3855,7 @@ void network_distributed_new_game(
 	network_aim_assist_reset();
 	network_shield_effects_reset();
 	network_votekick_new_game();
+	network_substeps_new_game();
 }
 
 /* after each tick (game_time.c) */
@@ -3880,6 +3922,8 @@ void network_distributed_tick(
 		if (game_time_get() % PING_REFRESH_TICKS == 0 && latency_meter_enabled())
 			distributed_refresh_pings();
 		profile_scope(distributed_tick_send_inputs_section, distributed_client_send_inputs();)
+		/* (an OpenH1 game's sub-steps of the same tick, in the same datagram) */
+		network_substeps_client_send();
 		profile_scope(distributed_tick_send_predictions_section, distributed_client_send_predictions();)
 		profile_scope(distributed_tick_objects_client_tick_section, network_objects_client_tick();)
 		profile_scope(distributed_tick_damage_client_tick_section, network_damage_client_tick();)
@@ -4492,6 +4536,12 @@ void network_distributed_handle_message(
 	if (network_shield_effects_handles_message(message, size))
 	{
 		network_shield_effects_handle_message(machine_index, message, size);
+		return;
+	}
+	/* (an OpenH1 game's sub-steps: network_substeps.c) */
+	if (network_substeps_handles_message(message, size))
+	{
+		network_substeps_handle_message(machine_index, message, size);
 		return;
 	}
 	if (network_voice_handles_message(message, size))

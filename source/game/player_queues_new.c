@@ -1141,6 +1141,28 @@ void update_server_handle_distributed_input(
 	queue->current_action = *action;
 }
 
+/* port: the tick (the host's, of a client's player: the client's tick) or
+update (a client's, of another's: the host's) the player's latest input is
+of, which an OpenH1 game's sub-steps of that input are keyed by
+(port/linux/game/network_substeps.c); NONE for none */
+long update_queues_distributed_input_key(
+	long absolute_player_index)
+{
+	if (absolute_player_index < 0 || absolute_player_index >= MAXIMUM_NUMBER_OF_PLAYERS)
+		return NONE;
+	switch (game_connection())
+	{
+	case _game_connection_network_server:
+		return update_server_distributed_inputs[absolute_player_index].valid ?
+			update_server_distributed_inputs[absolute_player_index].tick : NONE;
+	case _game_connection_network_client:
+		return update_client_relayed_actions[absolute_player_index].valid ?
+			update_client_relayed_actions[absolute_player_index].update_number : NONE;
+	default:
+		return NONE;
+	}
+}
+
 long update_server_ticked_update_number(
 	void)
 {

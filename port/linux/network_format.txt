@@ -14,6 +14,7 @@ bound MAP_SHARE_HASH_BYTES 32
 bound MAXIMUM_DEVICE_GROUPS 1024
 bound MAXIMUM_DEVICE_STATES_PER_MESSAGE 64
 bound MAXIMUM_ENTRIES_PER_MESSAGE 64
+bound MAXIMUM_LATER_SUBSTEPS MAXIMUM_SIM_SUBSTEPS - 1
 bound MAXIMUM_OBJECT_LOOKS_PER_MESSAGE 64
 bound MAXIMUM_OBJECT_NAMES_PER_SCENARIO 0x200
 bound MAXIMUM_OBJECT_TRANSFORMS_PER_MESSAGE 64
@@ -21,6 +22,7 @@ bound MAXIMUM_PINGS_PER_MESSAGE 128
 bound MAXIMUM_QUEUED_DAMAGE_ANIMATIONS 32
 bound MAXIMUM_QUEUED_EVENTS 128
 bound MAXIMUM_REGIONS_PER_OBJECT 8
+bound MAXIMUM_SIM_SUBSTEPS 4
 bound MAXIMUM_STATISTICS_PER_MESSAGE 64
 bound MAXIMUM_WEAPONS_PER_UNIT 4
 bound NUMBER_OF_ANGLES enum f0ce7d0319b6
@@ -85,7 +87,9 @@ enum _distributed_message_pings 19
 enum _distributed_message_player_inputs 14
 enum _distributed_message_player_prediction 1
 enum _distributed_message_player_statistics 3
+enum _distributed_message_player_substeps 120
 enum _distributed_message_relayed_actions 15
+enum _distributed_message_relayed_substeps 121
 enum _distributed_message_shield_effects 91
 enum _distributed_message_structure_bsp 65
 enum _distributed_message_unit_states 2
@@ -285,6 +289,8 @@ struct distributed_player_statistics 2a44afb8f96c
 struct distributed_statistics_message 79134e6e9811
 struct distributed_structure_bsp 53f7d5067cc9
 struct distributed_structure_bsp_message 096278a05681
+struct distributed_substep_input 79949fc6d82c
+struct distributed_substep_input_control 4b2645f870ed
 struct distributed_vector e80d7f9fc970
 struct distributed_voice_config 665bdc14478b
 struct distributed_voice_down e3751d692f16
