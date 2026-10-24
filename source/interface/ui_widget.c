@@ -1399,6 +1399,11 @@ boolean hud_key_prompt_draw(
 	rectangle2d *bounds,
 	rectangle2d *cursor,
 	pixel32 color);
+boolean hud_key_prompt_draw_key(
+	char const *name,
+	rectangle2d *bounds,
+	rectangle2d *cursor,
+	pixel32 color);
 static void widget_instance_initialize(
 	struct widget_instance *widget,
 	struct widget_instance *parent,
@@ -4167,6 +4172,14 @@ void draw_string_and_hack_in_icons(
 			/* port: a game control's key for the keyboard and mouse
 			(input.button_prompts) */
 			draw_string_get_color(&key_color);
+			/* port: the menus' LB and RB (Settings' tabs) as their keys, Q
+			and E, while the keyboard and mouse play */
+			if ((icon_type == _icon_white_button || icon_type == _icon_black_button) &&
+				hud_key_prompt_draw_key(icon_type == _icon_white_button ? "Q" : "E", bounds, &cursor_bounds,
+					real_argb_color_to_pixel32(&key_color)))
+			{
+				continue;
+			}
 			if (icon_type >= _icon_action && icon_type <= _icon_zoom &&
 				hud_key_prompt_draw(
 					local_player_index_for_draw_string_and_hack_in_icons,

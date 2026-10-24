@@ -56,6 +56,10 @@
 		<on event="deleted" run="NULL" back="true"/>
 		<child widget="error/warning_creating_player_profile_screen"/>
 	</widget>
+	<widget name="main_menu/settings/tab_prompt_previous" type="text" controller="1" width="30" height="22" text="%white-button" color="#FF2896FF" text_x="2" text_y="3" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings/tab_prompt_next" type="text" controller="1" width="30" height="22" text="%black-button" color="#FF2896FF" text_x="2" text_y="3" font="ui\small_ui">
+	</widget>
 	<strings name="main_menu/settings/tab_names">
 		<string text="VIDEO"/>
 		<string text="AUDIO"/>

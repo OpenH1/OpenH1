@@ -1846,10 +1846,11 @@ the one shown, and fills in the panel for the row chosen (settings_panel_show):
 its name, its value in large type, and its words wrapped to the panel. */
 
 /* as tools/port_settings.py lays the rows out (SETTINGS_ROW_STEP,
-SETTINGS_SECTION_STEP, SETTINGS_TOP, PAGE_TOP), and the panel's words'
+SETTINGS_SECTION_STEP, SETTINGS_SECTION_GAP, SETTINGS_TOP, PAGE_TOP), and the panel's words'
 places under its name (_settings_shared) */
 #define SETTINGS_ROW_STEP 21
 #define SETTINGS_SECTION_STEP 20
+#define SETTINGS_SECTION_GAP 6
 #define SETTINGS_TABS_ROWS_TOP 104
 #define SETTINGS_PAGE_ROWS_TOP 80
 #define SETTINGS_PANEL_TEXT_TOP 44
@@ -2100,6 +2101,7 @@ static void settings_rows_pack(struct widget_instance *list, boolean tab)
 {
 	short y = tab ? SETTINGS_TABS_ROWS_TOP : SETTINGS_PAGE_ROWS_TOP;
 	struct widget_instance *child;
+	boolean rows_above = FALSE;
 
 	for (child = list->child; child; child = child->next)
 	{
@@ -2119,6 +2121,9 @@ static void settings_rows_pack(struct widget_instance *list, boolean tab)
 			}
 			if (child->visible)
 			{
+				/* (a gap above a section after rows) */
+				if (rows_above)
+					y += SETTINGS_SECTION_GAP;
 				child->vertical_offset = (short)(list->vertical_offset + y);
 				y += SETTINGS_SECTION_STEP;
 			}
@@ -2127,6 +2132,7 @@ static void settings_rows_pack(struct widget_instance *list, boolean tab)
 		{
 			child->vertical_offset = (short)(list->vertical_offset + y);
 			y += SETTINGS_ROW_STEP;
+			rows_above = TRUE;
 		}
 	}
 }
