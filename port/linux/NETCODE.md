@@ -622,8 +622,10 @@ change:
   (`objects.h`): they move once a tick, exactly as on the player's own
   machine, so the host's move of the player matches the OpenCE client's
   prediction. Their shots stay on the tick (`weapons_substep` fires ahead
-  only for a unit of the micro lane). The sub-steps of OpenH1 players see
-  them between their ticks' poses, as they see anything of the macro lane.
+  only for a unit of the micro lane), and their projectiles and grenades
+  fly once a tick too, as on their machine. The sub-steps of OpenH1 players
+  see them between their ticks' poses, as they see anything of the macro
+  lane.
 - The host tells its OpenH1 clients which players are OpenCE's
   (`_distributed_message_opence_players`, 122, a bit a player, unreliable,
   when it changes and each second), so that they step them on the tick too.
@@ -631,6 +633,47 @@ change:
   heard, holding the tick's input, and the host's corrections keep it near.
 - The host does not welcome OpenH1 machines it knows by their token
   (`network.opence_welcome`).
+
+Shots between players of different rates are resolved as every client's
+shots are (above, "Shooter's hits"), and nothing in that reads a rate:
+
+- The shooter's own machine decides what its shot hit, at the shooter's
+  rate. A 30 Hz OpenCE machine steps its shot once a tick against its
+  targets where its ticks have them: an OpenH1 player as the host's relayed
+  input and corrections move them, a tick at a time. A 60 or 120 Hz OpenH1
+  machine steps its shot in the sub-steps against its targets where each
+  sub-step sees them: another OpenH1 player as their sub-steps move them,
+  an OpenCE player (of the macro lane) between where their last two ticks
+  left them. The machine reports the hit, with where it saw the target and
+  the host's tick it had heard of.
+- The host takes the report if the target is within 2 world units, and a
+  few ticks of how fast it went (`REPORT_HISTORY_TOLERANCE`,
+  `REPORT_HISTORY_LEAD_TICKS`), of where the host had it at one of its ticks
+  as far back as the report was made. The host keeps a tick's poses, not a
+  sub-step's: a sub-step's pose is less than a tick's movement from a tick's,
+  far inside that reach, so a 120 Hz shooter's hit between two ticks and a
+  30 Hz shooter's hit at a tick are taken alike, and a target where the host
+  never had it is refused whatever the shooter's rate
+  (`tools/harness/tests/test_cross_rate_hits.py`). The other checks (the
+  weapon's rate of fire, its reach from where the host had the shooter) are
+  in ticks too, and a shot fired at a sub-step keeps the 30 Hz cadence
+  (`weapon_fire_ahead`).
+- The host's own player's shots, at the host's rate, hit what the host's
+  sub-steps see, as any OpenH1 machine's do, and the host deals them
+  without a report.
+
+So each player's shot hits what that player saw, at their own rate, and the
+host holds every shooter to the same reach.
+
+A prediction a client sends of its player is taken as the tick after it
+was heard ends, and with it the client's input that the tick took. At 60
+and 120 a tick's sub-steps may be spread over several frames
+(`sim_rate.h`). A prediction heard between them waits for the next tick, as
+an input heard then does (`network_distributed_tick_begun`). Taken at the
+open tick's end, it put the host's copy of the player where the client was
+a tick after the input the host had moved it with. An OpenCE machine sends
+as its 30 Hz tick ends, which is in the middle of a 120 Hz host's tick, so
+its player was moved so in most ticks.
 
 `debug.join_legacy` makes an OpenH1 build join every game as OpenCE joins it,
 the tests' stand-in for an OpenCE machine: the network test logs each
@@ -644,7 +687,9 @@ An OpenCE player's drift is that of a Legacy game (none apart but where
 the player touched something), as the host moves them a tick at a time as
 their machine does. `tools/net_compare.py --c` plays a third copy, a second
 client, and `--opence` names the copies that join as OpenCE: it checks
-those lines too.
+those lines too, and with `--events` that each client reported hits and the
+host rejected none (`debug.network_test_shoot`: the OpenCE player shoots an
+OpenH1 player, an OpenH1 player the OpenCE one).
 
 ## Joining a game in progress
 

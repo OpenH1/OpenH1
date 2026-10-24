@@ -739,6 +739,9 @@ RATE_RE = re.compile(r"network test: rate (\d+) opence players((?: \d+)+| none) 
                      r"record (\d+) \| drift by player((?: \d+:\d+/\d+)+| none)")
 
 
+HITS_RE = re.compile(r"\| hits (\d+) dealt (\d+) rejected (\d+) replayed (\d+)")
+
+
 def parse_rates(path):
     """each second's mixed-game line of a copy's log (port/linux/NETCODE.md, "OpenCE players in an OpenH1 game"):
     [{rate, opence: set of players, heard, record, drift: {player: (apart, compared)}}], none from a build without
@@ -841,6 +844,29 @@ def judge_mixed(host_log, client_logs, opence, args, tolerances):
                                           f"of {compared} ticks"})
     if not judged:
         problems.append("no client's player had the ticks to judge its drift by")
+    # (--events: each client's shots, at its rate, reported to the host, which takes them all: a 30 Hz OpenCE
+    # player's at an OpenH1 player, an OpenH1 player's at the OpenCE one; network_test_shoot)
+    if getattr(args, "events", False):
+        def hits(path):
+            found = None
+            with open(path, errors="replace") as log:
+                for line in log:
+                    found = HITS_RE.search(line) or found
+            return tuple(int(value) for value in found.groups()) if found else None
+
+        host_hits = hits(host_log)
+        reported = []
+        for client_log, is_opence in zip(client_logs, opence):
+            client_hits = hits(client_log)
+            reported.append(client_hits[0] if client_hits else 0)
+            if not client_hits or not client_hits[0]:
+                problems.append(f"{client_log.stem} reported no hits to judge the host's check by")
+        if host_hits:
+            figures["hits"] = (f"reported {' and '.join(map(str, reported))} (OpenCE first), the host dealt "
+                               f"{host_hits[1]} and rejected {host_hits[2]}")
+            if host_hits[2]:
+                divergences.append({"player": None, "field": "hits", "tick": 0,
+                                    "detail": f"the host rejected {host_hits[2]} of the clients' hits"})
     return divergences, problems, figures
 
 
