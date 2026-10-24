@@ -928,7 +928,7 @@ STRING_OVERRIDES.update({
     # (the items' in the list's order: menu_functions.c's description of
     # the item chosen)
     f"{MT}/multiplayer_option_descriptions": [
-        "Public games on the Internet,\\nwith their players and ping.",
+        "Every public game on the\\nInternet. Press A to see\\nthem all.",
         "Games on your Wi-Fi or local\\nnetwork.",
         "Join a friend's game with the\\ninvite link they send you, or\\na Discord invite.",
         "Host a game on the Internet.\\nFriends join with your invite\\nlink.",
@@ -998,6 +998,22 @@ OVERRIDE_ORIGINALS = {
 # CUSTOM MULTIPLAYER maps (_map_kind)
 MAP_KIND_CHOOSER = "main_menu/new_select/list_item_0_map_kind"
 
+# Multiplayer's panel's counts: the digits' bitmap (tools/ce_menus.py's
+# Art.digits), a frame's size in units and the digits' height, white
+STATUS_DIGITS = f"{MT}/status_digits"
+DIGIT_SIZE = (24, 36)
+DIGIT_CAP = 28
+DIGIT_COLOR = (0xFF, 0xFF, 0xFF, 255)
+# a game's ping as bars, a frame each: not measured (grey), poor (one, red),
+# fair (two, yellow), good (three, green): menu_functions.c's PING_GOOD and
+# PING_FAIR
+PING_BARS = f"{MT}/ping_bars"
+# the digits of a count (to 999), and the games BEST FOR YOU names
+STATUS_DIGIT_PLACES = 3
+BEST_GAMES = 3
+PING_BAR_COLORS = [None, "#E86A5A", "#E8C547", "#5ED38C"]
+
+
 # Multiplayer's rows, a step closer than the PC version's 33 units for
 # Create Game's ONLINE CO-OP and SPLIT-SCREEN CO-OP: each item's and
 # header's place (x, y) in the list, then the line and EDIT GAMETYPES below
@@ -1045,13 +1061,27 @@ WIDGET_PATCHES = {
         f'<on event="a" run="mp type set mode" open="{MT}/connected/connected_map_select_wrapper"/>',
         '<on event="left_mouse" run="mouse emit accept event"/>',
     ]},
-    f"{MT}/multiplayer_type_join_direct_item": {"handlers": [
+    f"{MT}/multiplayer_type_join_direct_item": {"children": [f'<child widget="{MT}/invite_note"/>'], "handlers": [
         f'<on event="a" run="mp type set mode" open="{MT}/join_game/join_game_screen"/>',
         f'<on event="start" run="mp type set mode" open="{MT}/join_game/join_game_screen"/>',
         '<on event="left_mouse" run="mouse emit accept event"/>',
     ]},
+    # (Multiplayer's panel: _multiplayer_status, filled each frame; the menu
+    # stops its own looking for games as it closes)
+    f"{MT}/multiplayer_type_list_ext_desc": {"children": [
+        f'<child widget="{MT}/{name}"/>' for name in [
+            "multiplayer_status", "multiplayer_status_detail", "online_now_label",
+            *[f"online_{count}_{digit}" for count in ("games", "players") for digit in range(STATUS_DIGIT_PLACES)],
+            "online_games_label", "online_players_label", "best_label",
+            *[f"best_{row}_{part}" for row in range(BEST_GAMES) for part in ("name", "about", "players", "ping")]]]},
+    f"{MT}/multiplayer_type_join_lan_item": {"children": [f'<child widget="{MT}/item_note"/>']},
+    f"{MT}/multiplayer_type_button_bar": {"insert_before": {
+        "common_button_back": [f'<child widget="{MT}/multiplayer_button_refresh" x="380" y="1"/>']}},
+    f"{MT}/multiplayer_type_select_screen": {"handlers": [
+        '<on event="created" run="mp type menu initialize"/>',
+        '<on event="deleted" run="port multiplayer status end"/>']},
     # (Co-op, after Create Game's: _coop)
-    f"{MT}/multiplayer_type_select_list": {"insert_before": {
+    f"{MT}/multiplayer_type_select_list": {"inputs": ["port multiplayer status"], "insert_before": {
         f"{MT}/multiplayer_type_gametypes_item": [
             f'<child widget="{MT}/{name}" y="{MULTIPLAYER_ROWS[name][1]}"/>'
             for name in ("multiplayer_type_online_coop_item", "multiplayer_type_coop_item")],
@@ -1786,8 +1816,8 @@ def _coop() -> list:
                     [("type", "text"), ("left", 51), ("width", 232), ("height", 32), ("bitmap", "bitmaps/list_item_bkd"),
                      ("string_list", f"{MT}/multiplayer_options"), ("string_index", 7), ("font", "ui\\large_ui"),
                      ("color", "#FF2896FF"), ("text_x", 13), ("text_y", 5)],
-                    [f'<on event="a" run="port coop begin" open="{base}/player_2_profile_screen" branch="true"/>',
-                     f'<on event="start" run="port coop begin" open="{base}/player_2_profile_screen" branch="true"/>',
+                    [f'<on event="a" run="port coop begin" open="{base}/player_2_profile_screen"/>',
+                     f'<on event="start" run="port coop begin" open="{base}/player_2_profile_screen"/>',
                      '<on event="left_mouse" run="mouse emit accept event"/>'])
     # (ONLINE CO-OP, under Create Game: hosting over the Internet, the map
     # list opening on the campaign's levels, menu_functions.c's
@@ -1947,6 +1977,71 @@ def _map_kind() -> list:
     return lines
 
 
+def ping_bars_frames() -> list:
+    """the ping bars' frames: three bars rising, those lit in the frame's
+    colour, the rest dim"""
+    frames = []
+    for lit, color in enumerate(PING_BAR_COLORS):
+        bars = []
+        for bar in range(3):
+            height = 6 + 4 * bar
+            fill = color if color and bar < lit else "#2A4A6A"
+            bars.append(f'<rect x="{3 + 7 * bar}" y="{16 - height}" width="5" height="{height}" rx="1" '
+                        f'fill="{fill}"/>')
+        frames.append(('<svg xmlns="http://www.w3.org/2000/svg" width="24" height="16" viewBox="0 0 24 16">'
+                       + "".join(bars) + "</svg>\n", 24, 16))
+    return frames
+
+
+def _multiplayer_status() -> list:
+    """Multiplayer's panel: in the place of the PC version's pictures, what
+    is live for the item chosen, a headline and a line below it (the games
+    online, an invite link copied, the campaign's next level:
+    menu_functions.c's multiplayer_status_update), over the item's
+    description"""
+    lines = _widget(f"{MT}/multiplayer_status", [("type", "text"), ("controller", 1), ("left", 290), ("top", 96),
+                                                 ("width", 295), ("height", 30), ("font", "ui\\large_ui"),
+                                                 ("color", "#FFFFFFFF"), ("text_flags", "no_focus_test")], [])
+    lines += _widget(f"{MT}/multiplayer_status_detail", [("type", "text"), ("controller", 1), ("left", 290),
+                                                         ("top", 128), ("width", 295), ("height", 150),
+                                                         ("font", "ui\\large_ui"), ("color", "#FF2896FF"),
+                                                         ("text_flags", "no_focus_test")], [])
+    # (the Server Browser's: ONLINE NOW, its games and players in the
+    # titles' type, and BEST FOR YOU, the games most worth joining)
+    def text(name, left, top, width, height, font, color, align=None, value=None):
+        return _widget(f"{MT}/{name}", [("type", "text"), ("controller", 1), ("left", left), ("top", top),
+                                        ("width", width), ("height", height), ("text", value),
+                                        ("font", font), ("color", color), ("align", align),
+                                        ("text_flags", "no_focus_test")], [])
+    lines += text("online_now_label", 290, 84, 200, 18, "ui\\small_ui", "#FF2896FF", value="ONLINE NOW")
+    for count, left in (("games", 290), ("players", 436)):
+        for digit in range(STATUS_DIGIT_PLACES):
+            lines += _widget(f"{MT}/online_{count}_{digit}",
+                             [("controller", 1), ("left", left + DIGIT_SIZE[0] * digit), ("top", 102),
+                              ("width", DIGIT_SIZE[0]), ("height", DIGIT_SIZE[1]), ("bitmap", STATUS_DIGITS)], [])
+    lines += text("online_games_label", 290, 120, 140, 20, "ui\\large_ui", "#FF2896FF")
+    lines += text("online_players_label", 436, 120, 150, 20, "ui\\large_ui", "#FF2896FF")
+    lines += text("best_label", 290, 146, 200, 18, "ui\\small_ui", "#FF2896FF", value="BEST FOR YOU")
+    for row in range(BEST_GAMES):
+        top = 164 + 38 * row
+        lines += text(f"best_{row}_name", 290, top, 195, 20, "ui\\large_ui", "#FFFFFFFF")
+        lines += text(f"best_{row}_about", 290, top + 18, 195, 18, "ui\\small_ui", "#FF2896FF")
+        lines += text(f"best_{row}_players", 486, top + 6, 72, 20, "ui\\large_ui", "#FFFFFFFF", "right")
+        lines += _widget(f"{MT}/best_{row}_ping", [("controller", 1), ("left", 564), ("top", top + 9), ("width", 24),
+                                                   ("height", 16), ("bitmap", PING_BARS)], [])
+    # (at the end of the items, beside their names, what is live for them:
+    # the local games found, an invite link copied, in green; SERVER
+    # BROWSER's name leaves no room, and the panel counts its games)
+    for name, color in (("item_note", "#FF7FB2FF"), ("invite_note", "#FF5ED38C")):
+        lines += _widget(f"{MT}/{name}", [("type", "text"), ("width", 226), ("height", 32),
+                                          ("font", "ui\\small_ui"), ("color", color), ("align", "right"),
+                                          ("text_y", 8), ("text_flags", "no_focus_test")], [])
+    lines += _text_button(f"{MT}/multiplayer_button_refresh", "REFRESH",
+                          ['<on event="a" run="port multiplayer refresh"/>',
+                           '<on event="start" run="port multiplayer refresh"/>'])
+    return lines
+
+
 def multiplayer_files() -> dict:
     """the port's multiplayer widgets: the browser's additions, the server
     settings, the lobby"""
@@ -1957,6 +2052,7 @@ def multiplayer_files() -> dict:
         f"{MT}/server_settings".replace("/", ".") + ".xml": head + _server_settings() + ["</menus>", ""],
         f"{MT}/lobby".replace("/", ".") + ".xml": head + _lobby() + ["</menus>", ""],
         f"{MT}/coop".replace("/", ".") + ".xml": head + _coop() + ["</menus>", ""],
+        MT.replace("/", ".") + ".port.xml": head + _multiplayer_status() + ["</menus>", ""],
         "main_menu/new_select".replace("/", ".") + ".port.xml": head + _map_kind() + ["</menus>", ""],
         "main_menu/settings_select/multiplayer_setup/item_options_edit".replace("/", ".") + ".port.xml": head + _item_options_extras() + ["</menus>", ""],
         PLAYER_EDIT.replace("/", ".") + ".port.xml": head + _player_options_extras() + ["</menus>", ""],

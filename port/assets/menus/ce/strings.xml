@@ -369,7 +369,7 @@
 		<string text="UNKNOWN LEVEL\n\n\n" map="19"/>
 	</strings>
 	<strings name="main_menu/multiplayer_type_select/multiplayer_option_descriptions" map="ui\shell\main_menu\multiplayer_type_select\multiplayer_option_descriptions">
-		<string text="Public games on the Internet,\nwith their players and ping."/>
+		<string text="Every public game on the\nInternet. Press A to see\nthem all."/>
 		<string text="Games on your Wi-Fi or local\nnetwork."/>
 		<string text="Join a friend's game with the\ninvite link they send you, or\na Discord invite."/>
 		<string text="Host a game on the Internet.\nFriends join with your invite\nlink."/>

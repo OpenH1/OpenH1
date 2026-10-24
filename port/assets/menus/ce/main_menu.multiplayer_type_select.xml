@@ -9,6 +9,7 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_type_button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
 		<data input="common button bar update"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_button_refresh" x="380" y="1"/>
 		<child widget="common_button_back" x="510" y="1"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_type_create_internet_item" type="text" left="51" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/multiplayer_type_select/multiplayer_options" string_index="2" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
@@ -32,6 +33,7 @@
 		<on event="a" run="mp type set mode" open="main_menu/multiplayer_type_select/join_game/join_game_screen"/>
 		<on event="start" run="mp type set mode" open="main_menu/multiplayer_type_select/join_game/join_game_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/multiplayer_type_select/invite_note"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_type_join_internet_item" type="text" left="51" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/multiplayer_type_select/multiplayer_options" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5" string_index="6">
 		<on event="a" run="mp type set mode" open="main_menu/multiplayer_type_select/join_game/join_game_screen"/>
@@ -44,14 +46,40 @@
 		<on event="a" run="mp type set mode" open="main_menu/multiplayer_type_select/join_game/join_game_screen"/>
 		<on event="start" run="mp type set mode" open="main_menu/multiplayer_type_select/join_game/join_game_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
+		<child widget="main_menu/multiplayer_type_select/item_note"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_type_list_ext_desc" controller="1" left="275" top="78" width="320" height="322" bitmap="bitmaps/list_field" color="#FF0080FF">
 		<child widget="main_menu/multiplayer_type_select/multiplayer_options_pic"/>
 		<child widget="main_menu/multiplayer_type_select/multiplayer_options_txt" y="37"/>
 		<child widget="main_menu/current_profile_name"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_status"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_status_detail"/>
+		<child widget="main_menu/multiplayer_type_select/online_now_label"/>
+		<child widget="main_menu/multiplayer_type_select/online_games_0"/>
+		<child widget="main_menu/multiplayer_type_select/online_games_1"/>
+		<child widget="main_menu/multiplayer_type_select/online_games_2"/>
+		<child widget="main_menu/multiplayer_type_select/online_players_0"/>
+		<child widget="main_menu/multiplayer_type_select/online_players_1"/>
+		<child widget="main_menu/multiplayer_type_select/online_players_2"/>
+		<child widget="main_menu/multiplayer_type_select/online_games_label"/>
+		<child widget="main_menu/multiplayer_type_select/online_players_label"/>
+		<child widget="main_menu/multiplayer_type_select/best_label"/>
+		<child widget="main_menu/multiplayer_type_select/best_0_name"/>
+		<child widget="main_menu/multiplayer_type_select/best_0_about"/>
+		<child widget="main_menu/multiplayer_type_select/best_0_players"/>
+		<child widget="main_menu/multiplayer_type_select/best_0_ping"/>
+		<child widget="main_menu/multiplayer_type_select/best_1_name"/>
+		<child widget="main_menu/multiplayer_type_select/best_1_about"/>
+		<child widget="main_menu/multiplayer_type_select/best_1_players"/>
+		<child widget="main_menu/multiplayer_type_select/best_1_ping"/>
+		<child widget="main_menu/multiplayer_type_select/best_2_name"/>
+		<child widget="main_menu/multiplayer_type_select/best_2_about"/>
+		<child widget="main_menu/multiplayer_type_select/best_2_players"/>
+		<child widget="main_menu/multiplayer_type_select/best_2_ping"/>
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_type_select_list" type="column_list" width="640" height="480" flags="pass_unhandled_to_focused_child up_down_tabs_items" description="main_menu/multiplayer_type_select/multiplayer_type_list_ext_desc">
 		<data input="multiplayer type menu update desc"/>
+		<data input="port multiplayer status"/>
 		<child widget="main_menu/multiplayer_type_select/multiplayer_type_join_item" x="-32" y="78"/>
 		<child widget="main_menu/multiplayer_type_select/multiplayer_type_join_internet_item" y="109"/>
 		<child widget="main_menu/multiplayer_type_select/multiplayer_type_join_lan_item" y="140"/>
@@ -66,6 +94,7 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_type_select_screen" width="640" height="480" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/gradient">
 		<on event="created" run="mp type menu initialize"/>
+		<on event="deleted" run="port multiplayer status end"/>
 		<child widget="main_menu/multiplayer_type_select/header_multiplayer"/>
 		<child widget="main_menu/multiplayer_type_select/multiplayer_type_select_list"/>
 		<child widget="main_menu/blueline" x="64" y="363"/>

@@ -355,6 +355,33 @@ class Art:
                           f"\t\t<frame{attributes([('png', png), ('width', 512), ('height', 64)])}/>",
                           "\t</bitmap>"])
 
+    def digits(self, name: str) -> str:
+        """a <bitmap> of the ten digits, a frame each, set as the titles are
+        (OpenCE, the titles' colour) at port_settings.DIGIT_CAP units high,
+        each in the middle of a frame of one width: Multiplayer's panel's
+        counts (menu_functions.c's multiplayer_status_number)"""
+        from PIL import ImageDraw, ImageFont
+        scale = SCALE
+        width, height = port_settings.DIGIT_SIZE
+        probe = ImageFont.truetype(str(TITLE_FONT), 1000)
+        left, top, right, bottom = probe.getbbox("0")
+        font = ImageFont.truetype(str(TITLE_FONT), round(port_settings.DIGIT_CAP * scale * 1000 / (bottom - top)))
+        lines = [f"\t<bitmap{attributes([('name', name)])}>"]
+        for digit in range(10):
+            image = Image.new("RGBA", (width * scale, height * scale), (0, 0, 0, 0))
+            draw = ImageDraw.Draw(image)
+            box = font.getbbox(str(digit))
+            x = (width * scale - (box[2] - box[0])) / 2 - box[0]
+            y = (height * scale - (box[3] - box[1])) / 2 - box[1]
+            draw.text((x, y), str(digit), font=font, fill=port_settings.DIGIT_COLOR)
+            png = f"ce/port/{name}__{digit}.png"
+            (MENUS / png).parent.mkdir(parents=True, exist_ok=True)
+            image.save(MENUS / png, optimize=True)
+            self.pngs.append(png)
+            lines.append(f"\t\t<frame{attributes([('png', png), ('width', width), ('height', height)])}/>")
+        lines.append("\t</bitmap>")
+        return "\n".join(lines)
+
     def port_picture(self, name: str, frames: list) -> str:
         """a <bitmap> of this port's own drawing: each frame an SVG (text,
         width, height) written to port_svg/ and drawn"""
@@ -678,6 +705,9 @@ def main() -> None:
     # menu_tags.c)
     lines.append(art.port_picture("blank", [
         ('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4" viewBox="0 0 4 4"/>\n', 4, 4)]))
+    # (Multiplayer's panel: its counts' digits, and a game's ping as bars)
+    lines.append(art.digits(port_settings.STATUS_DIGITS))
+    lines.append(art.port_picture(port_settings.PING_BARS, port_settings.ping_bars_frames()))
     lines.append("</menus>")
     (CE / "bitmaps.xml").write_text("\n".join(lines) + "\n")
     # what is not hand-drawn
