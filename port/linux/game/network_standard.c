@@ -32,6 +32,7 @@ takes.
 #include "game/game.h"
 #include "networking/network_game_manager.h"
 #include "networking/network_game_globals.h"
+#include "networking/network_server_manager_internal.h"
 #include "sim_rate.h"
 #include "network_standard.h"
 #include "halo_port_limits.h"
@@ -74,6 +75,15 @@ void network_standard_server_created(
 	"standard", its first name) */
 	network_standard_globals.hosting = !(mode && !csstrcmp(mode, "legacy"));
 	network_standard_globals.hosting_rate = network_standard_rate_setting();
+}
+
+void network_standard_server_mode_read(
+	void)
+{
+	struct network_game_server *server = global_network_game_server_get();
+
+	if (server && network_game_server_get_game(server)->machine_count <= 1)
+		network_standard_server_created();
 }
 
 boolean network_standard_hosting(
