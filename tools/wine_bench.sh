@@ -42,6 +42,11 @@
 set -euo pipefail
 
 bench=${OPENH1_BENCH:-$HOME/openh1-wine}
+# (the shared copy a machine's admin may put in /srv/openh1/maps, for every
+# account on it, else this account's own)
+if [ -z "${OPENH1_BENCH_MAPS:-}" ] && [ -f /srv/openh1/maps/bloodgulch.map ]; then
+	OPENH1_BENCH_MAPS=/srv/openh1/maps
+fi
 maps=${OPENH1_BENCH_MAPS:-$HOME/halo-x86-maps/maps}
 custom_maps=${OPENH1_BENCH_CUSTOM_MAPS:-}
 repository=${OPENH1_BENCH_REPO:-OpenH1/OpenH1}
