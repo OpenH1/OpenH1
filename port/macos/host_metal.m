@@ -168,6 +168,8 @@ static struct
 	/* a frame waits for an image (host_metal_present_exchange) */
 	_Atomic int image_waiting;
 	BOOL unpaced;
+	/* HALO_METAL_UNPACED: unpaced whatever display.vsync says */
+	BOOL unpaced_forced;
 	/* battery saver, as the guest asks (host_metal_battery_saver), and as the
 	link's rate was last set for it (the link's thread's) */
 	_Atomic int battery_saver;
@@ -1261,6 +1263,22 @@ void host_metal_battery_saver(int on)
 	atomic_store(&presentation.battery_saver, on ? 1 : 0);
 }
 
+/* (a host import: the guest's sdl_platform.c, as display.vsync is read or
+changes) on, the game is paced by the link's refreshes; off, it draws as fast
+as its own clock lets it (display.max_fps, sdl_platform.c's
+frame_interval_ns) and each refresh shows the newest frame, the one queued
+before it dropped (as HALO_METAL_UNPACED): no tearing, the least latency */
+void host_metal_vsync(int on)
+{
+	BOOL unpaced = !on || presentation.unpaced_forced;
+
+	pthread_mutex_lock(&presentation.lock);
+	presentation.unpaced = unpaced;
+	pthread_cond_broadcast(&presentation.freed);
+	pthread_mutex_unlock(&presentation.lock);
+	host_render_stream_display_paced(!unpaced);
+}
+
 #if TARGET_OS_IPHONE
 /* port/ios/touch_controls.m */
 void host_touch_overlay_install(void *window);
@@ -1416,7 +1434,8 @@ int host_metal_window_open(uint32_t window)
 		reason:@"The game draws a frame for each of the display's refreshes"];
 	SDL_AddEventWatch(window_event, NULL);
 	presentation.stats_interval = stats ? atof(stats) : 0.0;
-	presentation.unpaced = getenv("HALO_METAL_UNPACED") && atoi(getenv("HALO_METAL_UNPACED"));
+	presentation.unpaced = presentation.unpaced_forced =
+		getenv("HALO_METAL_UNPACED") && atoi(getenv("HALO_METAL_UNPACED"));
 	/* (the game starts each frame as the display takes the last: frame_pacing.h) */
 	host_render_stream_display_paced(!presentation.unpaced);
 	presentation.stats_since = presentation.started = seconds_now();

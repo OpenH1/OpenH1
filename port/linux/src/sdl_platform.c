@@ -1438,6 +1438,9 @@ int host_metal_window_open(unsigned int window);
 /* port/macos/host_metal.m: battery saver on or off (battery_saver.c), the
 display link at a whole fraction of the display's rate (frame_pacing.h) */
 void host_metal_battery_saver(int on);
+/* port/macos/host_metal.m: display.vsync, the game paced by the display or
+drawn as fast as display.max_fps lets it (frame_interval_ns) */
+void host_metal_vsync(int on);
 /* the window's kind of drawing */
 #define PLATFORM_WINDOW_DRAWING SDL_WINDOW_METAL
 #elif defined(HALO_VULKAN)
@@ -1755,6 +1758,7 @@ void platform_frame_rate_apply(void)
 	if (!platform_window)
 		return;
 #if defined(HALO_METAL)
+	host_metal_vsync(config_boolean("display.vsync"));
 	host_metal_battery_saver(saving);
 #elif defined(HALO_VULKAN)
 	/* (the window open already: only its swap interval is taken) */
