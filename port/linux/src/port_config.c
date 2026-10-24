@@ -975,6 +975,10 @@ static const struct config_setting config_settings[] =
 		"Hosting an OpenH1 game: its tick rate, 30, 60 or 120 (game.sim_rate's\n"
 		"steps), which every machine of it takes as the game starts. A Legacy game\n"
 		"plays at 30." },
+	{ "network.allow_opence", _config_boolean, "false", "HALO_NET_ALLOW_OPENCE", _environment_value, _platform_all,
+		"Hosting an OpenH1 game: let OpenCE players join it too. They play at 30\n"
+		"ticks a second, as on their own machine, and OpenH1 players at\n"
+		"network.sim_rate. Read with network.game_mode." },
 	{ "network.opence_welcome", _config_boolean, "true", "HALO_NET_OPENCE_WELCOME", _environment_value,
 		_platform_all,
 		"Hosting: tell each OpenCE player, a few seconds after they load into a\n"
@@ -1131,6 +1135,10 @@ static const struct config_setting config_settings[] =
 		"Sentry project (port/windows/host/host_crash_win.c): \"yes\" sends them, \"no\"\n"
 		"never does, \"ask\" asks at the next crash and writes the answer here." },
 
+	{ "debug.join_legacy", _config_boolean, "false", "HALO_DEBUG_JOIN_LEGACY", _environment_value, _platform_all,
+		"Join every game as an OpenCE build joins it: an OpenH1 game that OpenCE\n"
+		"players join too (network.allow_opence) at 30 ticks a second, with the\n"
+		"Legacy game's join token. The tests' stand-in for an OpenCE machine." },
 	{ "debug.network_test", _config_string, "\"\"", "HALO_NETWORK_TEST", _environment_value, _platform_all,
 		"Automated system link sessions for testing (port/linux/game/network_test.c):\n"
 		"\"host:<map>\" hosts a game on that map, \"local:<map>\" plays a local (split\n"

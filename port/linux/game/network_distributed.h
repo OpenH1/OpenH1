@@ -147,9 +147,17 @@ enum
 	sub-steps the host's tick ran for the players it relays (unreliable) */
 	_distributed_message_player_substeps = 120,
 	_distributed_message_relayed_substeps = 121,
+	/* a mixed game's (network_standard.c): the players of OpenCE machines, a
+	bit each, to the host's OpenH1 clients (unreliable, each second and when
+	they change) */
+	_distributed_message_opence_players = 122,
 
 	NUMBER_OF_DISTRIBUTED_MESSAGES
 };
+
+/* the first of OpenH1's own messages (those of a Standard game: 120 and
+after), which no OpenCE machine is sent (network_standard_message_goes_to) */
+#define FIRST_OPENH1_DISTRIBUTED_MESSAGE _distributed_message_player_substeps
 
 /* where a message goes */
 enum

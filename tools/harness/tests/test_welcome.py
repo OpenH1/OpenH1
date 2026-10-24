@@ -11,8 +11,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from harness import CHECK_FAILED, build, constant, function, mutated, read, run  # noqa: E402
 
-CASES = ["lines-fit", "once", "delay", "rejoin", "replaced", "game-ends", "off", "client", "clock-wrap",
-         "remember-full"]
+CASES = ["lines-fit", "once", "openh1-token", "delay", "rejoin", "replaced", "game-ends", "off", "client",
+         "clock-wrap", "remember-full"]
 
 # a fault in network_welcome.c, and the case that must catch it
 NEGATIVE_CONTROLS = {
@@ -28,6 +28,7 @@ NEGATIVE_CONTROLS = {
     "clock-wrap-broken": (("return now - loaded_at >= WELCOME_DELAY_MILLISECONDS;",
                            "return now >= loaded_at + WELCOME_DELAY_MILLISECONDS;"), "clock-wrap"),
     "oldest-kept": (("players[*oldest] = *player;", ";"), "remember-full"),
+    "openh1-token-welcomed": (("||\n\t\tnetwork_standard_machine_is_openh1(machine_index))", ")"), "openh1-token"),
 }
 
 

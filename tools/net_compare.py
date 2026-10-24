@@ -634,16 +634,18 @@ def stop_all():
         signal.pthread_sigmask(signal.SIG_SETMASK, blocked)
 
 
-def play(run_folder, host_copy, client_copy, map_name, args, host_extra, client_extra, seeds):
-    """runs one game; the paths of the host's and the client's logs"""
+def play(run_folder, host_copy, clients, map_name, args, host_extra, seeds):
+    """runs one game, the host's copy hosting and each client's (copy, extra settings) joining; the paths of the
+    host's log and of each client's ("client.log", then "client2.log" and on), and the copies' exit statuses"""
     run_folder.mkdir(parents=True, exist_ok=True)
     base = args.address_base.rsplit(".", 1)
     host_address = args.address_base
-    client_address = f"{base[0]}.{int(base[1]) + 1}"
+    client_addresses = [f"{base[0]}.{int(base[1]) + 1 + number}" for number in range(len(clients))]
     host_log = run_folder / "host.log"
-    client_log = run_folder / "client.log"
+    client_logs = [run_folder / ("client.log" if not number else f"client{number + 1}.log")
+                   for number in range(len(clients))]
     # (each copy's debug.txt is its own, and grows: a fresh one each game)
-    for copy in (host_copy, client_copy):
+    for copy in [host_copy] + [copy for copy, _ in clients]:
         (copy["data"] / "debug.txt").unlink(missing_ok=True)
     test = f"host:{map_name}" + (f":{args.variant}" if args.variant else "")
     processes = []
@@ -651,21 +653,24 @@ def play(run_folder, host_copy, client_copy, map_name, args, host_extra, client_
         with open(host_log, "w") as log:
             processes.append(start(
                 host_copy["command"], cwd=host_copy["folder"], stdout=log, stderr=subprocess.STDOUT,
-                env=copy_environment(host_copy, host_address, client_address, test, seeds[0], args, host_extra)))
-        time.sleep(1.0)
-        with open(client_log, "w") as log:
-            processes.append(start(
-                client_copy["command"], cwd=client_copy["folder"], stdout=log, stderr=subprocess.STDOUT,
-                env=copy_environment(client_copy, client_address, host_address, "join", seeds[1], args,
-                                     client_extra)))
+                env=copy_environment(host_copy, host_address, ",".join(client_addresses), test, seeds[0], args,
+                                     host_extra)))
+        for number, ((client_copy, client_extra), address, client_log) in enumerate(
+                zip(clients, client_addresses, client_logs)):
+            time.sleep(1.0)
+            with open(client_log, "w") as log:
+                processes.append(start(
+                    client_copy["command"], cwd=client_copy["folder"], stdout=log, stderr=subprocess.STDOUT,
+                    env=copy_environment(client_copy, address, host_address, "join", seeds[1] + number, args,
+                                         client_extra)))
         goal = (args.skip + args.seconds) * TICKS_PER_SECOND
         deadline = time.monotonic() + args.start + args.seconds + args.skip + args.timeout
         while time.monotonic() < deadline:
             if any(process.poll() is not None for process in processes):
                 break
-            ticks = [latest_tick(host_log), latest_tick(client_log)]
+            ticks = [latest_tick(host_log)] + [latest_tick(client_log) for client_log in client_logs]
             if all(tick is not None and tick >= goal for tick in ticks):
-                # (a second more, so the client's last second is logged too)
+                # (a second more, so the clients' last second is logged too)
                 time.sleep(1.0)
                 break
             time.sleep(0.5)
@@ -680,14 +685,14 @@ def play(run_folder, host_copy, client_copy, map_name, args, host_extra, client_
         finally:
             signal.pthread_sigmask(signal.SIG_SETMASK, blocked)
     # (the end of each copy's debug.txt, beside its log: a crash's story)
-    for copy, name in ((host_copy, "host"), (client_copy, "client")):
+    for copy, log in [(host_copy, host_log)] + [(copy, log) for (copy, _), log in zip(clients, client_logs)]:
         try:
             with open(copy["data"] / "debug.txt", "rb") as debug:
                 debug.seek(max(0, os.path.getsize(debug.name) - 65536))
-                (run_folder / f"{name}.debug.txt").write_bytes(debug.read())
+                (run_folder / f"{log.stem}.debug.txt").write_bytes(debug.read())
         except OSError:
             pass
-    return host_log, client_log, exits
+    return host_log, client_logs, exits
 
 
 # ---------- a run, judged
@@ -727,6 +732,102 @@ def judge_run(host_log, client_log, args, tolerances):
     return result
 
 
+RATE_RE = re.compile(r"network test: rate (\d+) opence players((?: \d+)+| none) \| legacy heard openh1 (\d+) "
+                     r"record (\d+) \| drift by player((?: \d+:\d+/\d+)+| none)")
+
+
+def parse_rates(path):
+    """each second's mixed-game line of a copy's log (port/linux/NETCODE.md, "OpenCE players in an OpenH1 game"):
+    [{rate, opence: set of players, heard, record, drift: {player: (apart, compared)}}], none from a build without
+    them"""
+    lines = []
+    with open(path, errors="replace") as log:
+        for line in log:
+            found = RATE_RE.search(line)
+            if not found:
+                continue
+            drift = {}
+            for entry in found.group(5).split():
+                if entry != "none":
+                    player, _, counts = entry.partition(":")
+                    apart, _, compared = counts.partition("/")
+                    drift[int(player)] = (int(apart), int(compared))
+            lines.append({"rate": int(found.group(1)),
+                          "opence": {int(word) for word in found.group(2).split() if word != "none"},
+                          "heard": int(found.group(3)), "record": int(found.group(4)), "drift": drift})
+    return lines
+
+
+def judge_mixed(host_log, client_logs, opence, args, tolerances):
+    """a mixed game's checks (OpenCE players in an OpenH1 game): the host and its OpenH1 clients at the game's rate,
+    each OpenCE client (opence: whether each client joined as OpenCE does) at 30, hearing none of OpenH1's messages
+    and no rate in its record; the host and its OpenH1 clients stepping exactly the OpenCE clients' players at 30;
+    and the host moving an OpenCE client's player as its machine does (its drift). A client whose build logs none of
+    this (an older one) is judged by the host's word alone. (divergences, problems, figures)"""
+    divergences, problems, figures = [], [], {}
+    host = parse_rates(host_log)
+    # (the second half of the game: every machine's word has come by then)
+    settled = host[len(host) // 2:]
+    if not settled:
+        return divergences, [f"the host logged no mixed-game lines ({host_log})"], figures
+    rate = settled[-1]["rate"]
+    if args.rate and rate != args.rate:
+        divergences.append({"player": None, "field": "rate", "tick": 0,
+                            "detail": f"the host played at {rate}, not {args.rate}"})
+    opence_players = set()
+    for client_log, is_opence in zip(client_logs, opence):
+        samples, _, _ = parse_log(client_log)
+        locals_ = sorted({sample["local"] for sample in samples.values() if sample.get("local", -1) >= 0})
+        if is_opence and locals_:
+            opence_players.add(locals_[0])
+    if settled[-1]["opence"] != opence_players:
+        divergences.append({"player": None, "field": "opence players", "tick": 0,
+                            "detail": f"the host steps {sorted(settled[-1]['opence'])} at 30, not the OpenCE "
+                                      f"clients' {sorted(opence_players)}"})
+    for client_log, is_opence in zip(client_logs, opence):
+        lines = parse_rates(client_log)[len(parse_rates(client_log)) // 2:]
+        name = client_log.stem
+        if not lines:
+            figures[name] = "no mixed-game lines (an older build): judged by the host's word"
+            continue
+        rates = {line["rate"] for line in lines}
+        expected = 30 if is_opence else rate
+        if rates != {expected}:
+            divergences.append({"player": None, "field": "rate", "tick": 0,
+                                "detail": f"{name} played at {sorted(rates)}, not {expected}"})
+        if is_opence:
+            heard, record = lines[-1]["heard"], lines[-1]["record"]
+            figures[name] = f"OpenCE: at {sorted(rates)}, heard {heard} of OpenH1's messages, record rate {record}"
+            if heard or record:
+                divergences.append({"player": None, "field": "legacy", "tick": 0,
+                                    "detail": f"{name}, which joined as OpenCE, heard {heard} of OpenH1's messages "
+                                              f"and a record rate of {record}"})
+        else:
+            figures[name] = f"OpenH1: at {sorted(rates)}, steps {sorted(lines[-1]['opence'])} at 30"
+            if lines[-1]["opence"] != opence_players:
+                divergences.append({"player": None, "field": "opence players", "tick": 0,
+                                    "detail": f"{name} steps {sorted(lines[-1]['opence'])} at 30, not "
+                                              f"{sorted(opence_players)}"})
+    # (each client's player's drift, the host's: past the start's seconds)
+    drift = {}
+    for line in host[args.skip:]:
+        for player, (apart, compared) in line["drift"].items():
+            total = drift.setdefault(player, [0, 0])
+            total[0] += apart
+            total[1] += compared
+    figures["drift by player"] = {player: f"{apart} of {compared} apart ({apart / compared:.1%})"
+                                  for player, (apart, compared) in sorted(drift.items()) if compared}
+    for player in opence_players:
+        apart, compared = drift.get(player, (0, 0))
+        if compared < tolerances["drift_samples"]:
+            problems.append(f"only {compared} ticks of the OpenCE player {player} on foot to judge its drift by")
+        elif apart / compared > tolerances["drift_share"]:
+            divergences.append({"player": player, "field": "drift", "tick": 0,
+                                "detail": f"the host moved the OpenCE player otherwise than its machine in {apart} "
+                                          f"of {compared} ticks"})
+    return divergences, problems, figures
+
+
 def describe(result):
     lines = []
     figures = result.get("figures")
@@ -742,6 +843,8 @@ def describe(result):
                      f"{summary['mean']:.6f}, largest {summary['largest']:.6f} world units")
     if "client_corrections" in result:
         lines.append(f"  client corrections: {result['client_corrections']}")
+    for name, figure in result.get("mixed", {}).items():
+        lines.append(f"  {name}: {figure}")
     for problem in result["problems"]:
         lines.append(f"  PROBLEM: {problem}")
     if result["divergences"]:
@@ -807,6 +910,18 @@ def main():
     parser.add_argument("--a-wrapper", default="", metavar="COMMAND",
                         help="a command A's executable is run with (an emulator: \"qemu-aarch64 -L ...\")")
     parser.add_argument("--b-wrapper", default="", metavar="COMMAND", help="the same for B")
+    parser.add_argument("--c", help="build C's executable: a third copy, joining A's game as a second client "
+                                    "(B and C join; no --swap)")
+    parser.add_argument("--c-data", help="the game data's folder for C (default: --data)")
+    parser.add_argument("--c-env", action="append", default=[], metavar="KEY=VALUE", help="a setting for C")
+    parser.add_argument("--c-wrapper", default="", metavar="COMMAND", help="the same for C")
+    parser.add_argument("--mixed", action="store_true",
+                        help="the host's game an OpenH1 game that OpenCE players join too (network.allow_opence), "
+                             "checked as one (NETCODE.md, \"OpenCE players in an OpenH1 game\")")
+    parser.add_argument("--rate", type=int, default=0, help="the host's OpenH1 tick rate (network.sim_rate)")
+    parser.add_argument("--opence", default="", metavar="COPIES",
+                        help="with --mixed: the copies (B, C) that join as OpenCE: with debug.join_legacy (an "
+                             "older build, which joins as OpenCE anyway, too)")
     parser.add_argument("--maps", default="bloodgulch,beavercreek",
                         help="comma-separated multiplayer maps, a game on each")
     parser.add_argument("--variant", default="", help="the game variant (slayer if empty)")
@@ -860,6 +975,12 @@ def main():
         parser.error("--a and --data are needed to play (or --compare two logs)")
     if args.display and not args.window:
         parser.error("--display is for --window's windows")
+    if args.c and args.swap:
+        parser.error("--swap is for two copies: with --c, A hosts")
+    if args.opence and not args.mixed:
+        parser.error("--opence is for a --mixed game")
+    if set(args.opence.upper().replace(" ", "").split(",")) - {"", "B", "C"}:
+        parser.error("--opence names the joining copies, B and C")
     stop_on_signals()
     try:
         return play_all(args, tolerances)
@@ -884,30 +1005,54 @@ def play_all(args, tolerances):
         "A": prepare_copy(work, "A", args.a, args.data, args.a_wrapper),
         "B": prepare_copy(work, "B", args.b or args.a, args.b_data or args.data, args.b_wrapper),
     }
-    extra = {"A": args.a_env, "B": args.b_env}
-    orders = [("A", "B")] + ([("B", "A")] if args.swap else [])
+    extra = {"A": list(args.a_env), "B": list(args.b_env)}
+    if args.c:
+        copies["C"] = prepare_copy(work, "C", args.c, args.c_data or args.data, args.c_wrapper)
+        extra["C"] = list(args.c_env)
+    opence = {name for name in args.opence.upper().replace(" ", "").split(",") if name}
+    # (a mixed game: OpenCE players let into the host's OpenH1 game, and the OpenCE stand-ins joining as OpenCE)
+    hosting = []
+    if args.mixed:
+        hosting = ["HALO_NET_GAME_MODE=openh1", "HALO_NET_ALLOW_OPENCE=true"]
+        for name in opence:
+            extra[name].append("HALO_DEBUG_JOIN_LEGACY=1")
+    if args.rate:
+        hosting.append(f"HALO_NET_SIM_RATE={args.rate}")
+    orders = [("A", ["B", "C"])] if args.c else [("A", ["B"])] + ([("B", ["A"])] if args.swap else [])
     results = []
     seed = args.seed
     for repeat in range(args.repeat):
         for map_name in [name for name in args.maps.split(",") if name]:
-            for host_name, client_name in orders:
-                label = f"{map_name}, {host_name} hosts, {client_name} joins" + \
-                        (f", run {repeat + 1}" if args.repeat > 1 else "")
-                run_folder = work / "runs" / f"{map_name}.{host_name}{client_name}.{repeat + 1}"
+            for host_name, client_names in orders:
+                label = f"{map_name}, {host_name} hosts, {' and '.join(client_names)} join" + \
+                        ("s" if len(client_names) == 1 else "") + (f", run {repeat + 1}" if args.repeat > 1 else "")
+                run_folder = work / "runs" / f"{map_name}.{host_name}{''.join(client_names)}.{repeat + 1}"
                 host_copy = copies[host_name]
-                client_copy = copies[client_name]
                 started = time.monotonic()
-                host_log, client_log, exits = play(run_folder, host_copy, client_copy, map_name, args,
-                                                   extra[host_name], extra[client_name], (seed, seed + 1))
-                seed += 2
-                result = judge_run(host_log, client_log, args, tolerances)
+                host_log, client_logs, exits = play(run_folder, host_copy,
+                                                    [(copies[name], extra[name]) for name in client_names],
+                                                    map_name, args, extra[host_name] + hosting, (seed, seed + 1))
+                seed += 1 + len(client_names)
+                result = judge_run(host_log, client_logs[0], args, tolerances)
+                for client_log in client_logs[1:]:
+                    other = judge_run(host_log, client_log, args, tolerances)
+                    result["divergences"].extend(other["divergences"])
+                    result["problems"].extend(other["problems"])
+                if args.mixed:
+                    divergences, problems, figures = judge_mixed(host_log, client_logs,
+                                                                 [name in opence for name in client_names], args,
+                                                                 tolerances)
+                    result["divergences"].extend(divergences)
+                    result["problems"].extend(problems)
+                    result["mixed"] = figures
                 if any(code not in (None, 0) for code in exits):
                     result["problems"].append(f"a copy ended early (exit statuses {exits})")
                 verdict = "FAIL" if result["divergences"] else ("ERROR" if result["problems"] else "PASS")
                 print(f"{verdict}: {label} ({time.monotonic() - started:.0f} s; logs {run_folder})")
                 print("\n".join(describe(result)), flush=True)
-                result.update({"map": map_name, "host": host_name, "client": client_name, "repeat": repeat + 1,
-                               "verdict": verdict, "host_log": str(host_log), "client_log": str(client_log)})
+                result.update({"map": map_name, "host": host_name, "client": ",".join(client_names),
+                               "repeat": repeat + 1, "verdict": verdict, "host_log": str(host_log),
+                               "client_log": ",".join(str(log) for log in client_logs)})
                 results.append(result)
     passed = sum(result["verdict"] == "PASS" for result in results)
     print(f"{passed} of {len(results)} games in step"
