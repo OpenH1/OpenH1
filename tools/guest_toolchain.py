@@ -254,8 +254,10 @@ def fetch_llvm(cache: Path) -> Path:
         return folder
     cache.mkdir(parents=True, exist_ok=True)
     archive = cache / name
+    # (on standard error: main's standard output is the bin/ folder alone,
+    # which CI puts on the PATH)
     print(f"Downloading LLVM {LLVM_VERSION} for the guest builds ({name}, about 1.5 GB, once) into {cache}",
-          flush=True)
+          file=sys.stderr, flush=True)
     _download(LLVM_URL.format(version=LLVM_VERSION, name=name), digest, archive)
     # (unpacked beside it and then moved, so that an interrupted unpacking
     # leaves no folder that a later configure would take as complete)
