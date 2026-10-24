@@ -377,6 +377,7 @@
 		<string text="Host a game for players on\nyour Wi-Fi or local network."/>
 		<string text="Play the campaign together\nover the Internet: friends\njoin with your invite link."/>
 		<string text="Play the campaign with a\nfriend on this screen.\nPlayer 2 uses a controller."/>
+		<string text="Play Slayer against computer\nplayers, alone or with\nfriends on this screen."/>
 		<string text="Make your own gametypes:\nthe rules, weapons and\nvehicles, kept for next time."/>
 	</strings>
 	<strings name="main_menu/multiplayer_type_select/multiplayer_options" map="ui\shell\main_menu\multiplayer_type_select\multiplayer_options">
@@ -389,6 +390,7 @@
 		<string text="SERVER BROWSER"/>
 		<string text="SPLIT-SCREEN CO-OP"/>
 		<string text="ONLINE CO-OP"/>
+		<string text="PLAY WITH BOTS"/>
 	</strings>
 	<strings name="main_menu/multiplayer_type_select/server_settings/cap_server_settings_options" map="ui\shell\main_menu\multiplayer_type_select\server_settings\cap_server_settings_options">
 		<string text="Enter a name for your server." map="0"/>
