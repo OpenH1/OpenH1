@@ -168,6 +168,7 @@ WIRED = {
     "load game menu delete request", "load game menu delete finish",
     "controls screen init", "controls begin binding", "controls screen change set", "controls screen defaults",
     "controls update menu", "profile manager select", "direct ip connect go", "ss edit server password",
+    "gamespy select header",
 }
 
 # ---------- HEK tags

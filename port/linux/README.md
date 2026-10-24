@@ -1361,6 +1361,26 @@ host sends with the game (network version 37), and otherwise the game
 engine's (SLAYER, CTF, KING OF THE HILL). The browser of LAN games, and the
 preview of a game before joining it, name it the same way.
 
+Before the gametype, the column shows each game's tick rate ("60 SLAYER"; a
+Legacy game shows 30). The line below the games names the chosen game's
+kind: "OpenH1 60 Tick" or "Legacy" (NETCODE.md, "OpenH1 and Legacy games").
+
+Sorting and filtering, in all three lists (Server Browser, LAN, Direct
+Link), for this run of the game:
+
+- Choosing a column's title sorts the games by it: Server Name, Map, Game
+  (the tick rate, and an OpenH1 game before a Legacy one at 30), Players or
+  Ping. Choosing it again sorts the other way. Click or tap the title, or
+  with a controller press up from the first game to reach the titles, left
+  and right to pick one, and A. An arrow over the title shows the way.
+  Players and the tick rate sort the highest first; a ping not known goes
+  last either way.
+- X on a game sorts by the next column, then back to the order found. The
+  line below the games names the sort.
+- KIND (left of FAVORITES; not in Direct Link) shows every game, OpenH1's
+  own only, or Legacy ones only.
+- Favorites stay at the top, sorted the same way among themselves.
+
 How it operates (`src/p2p_lobby.c`):
 
 - The host of a public game publishes a listing: the invite, and the name,
