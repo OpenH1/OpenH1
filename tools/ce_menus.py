@@ -361,13 +361,15 @@ class Art:
                           f"\t\t<frame{attributes([('png', png), ('width', 512), ('height', 64)])}/>",
                           "\t</bitmap>"])
 
-    def still(self, name: str, png: str, width: int, height: int) -> str:
+    def still(self, name: str, png, width: int, height: int) -> str:
         """a <bitmap> of a picture shipped as it is (port/assets/menus/stills:
         NON_HANDDRAWN.md says what each is), outside ce/, which this script
         writes anew"""
-        self.pngs.append(png)
+        pngs = [png] if isinstance(png, str) else png
+        self.pngs += [frame for frame in pngs if frame not in self.pngs]
         return "\n".join([f"\t<bitmap{attributes([('name', name)])}>",
-                          f"\t\t<frame{attributes([('png', png), ('width', width), ('height', height)])}/>",
+                          *(f"\t\t<frame{attributes([('png', frame), ('width', width), ('height', height)])}/>"
+                            for frame in pngs),
                           "\t</bitmap>"])
 
     def digits(self, name: str) -> str:
@@ -734,6 +736,9 @@ def main() -> None:
     # (Settings' rows, tabs and panels, and the Quality row's stills)
     lines += [art.port_picture(name, frames) for name, frames in port_settings.settings_pictures()]
     lines += [art.still(name, png, width, height) for name, png, width, height, _ in port_settings.SETTINGS_STILLS]
+    lines += [art.still(f"{port_settings.SETTINGS}/pictures_{key}", pngs, port_settings.SETTINGS_PICTURE_WIDTH,
+                        port_settings.SETTINGS_PICTURE_HEIGHT)
+              for key, pngs in port_settings.SETTINGS_VALUE_PICTURES.items()]
     lines.append("</menus>")
     (CE / "bitmaps.xml").write_text("\n".join(lines) + "\n")
     # what is not hand-drawn
@@ -780,6 +785,8 @@ def main() -> None:
         "| --- | --- | --- |",
     ]
     report += [f"| `{png}` | {width}x{height} | {what} |" for _, png, width, height, what in port_settings.SETTINGS_STILLS]
+    report += [f"| `{png}` | {port_settings.SETTINGS_PICTURE_WIDTH}x{port_settings.SETTINGS_PICTURE_HEIGHT} | {what} |"
+               for png, what in port_settings.SETTINGS_PICTURE_FILES.items()]
     report += [
         "",
         "## Placeholders, to be redrawn",

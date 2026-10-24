@@ -12,6 +12,14 @@
 		<child widget="main_menu/settings/panel_enhanced" x="504" y="156"/>
 		<child widget="main_menu/settings/panel_enhanced_frame" x="504" y="156"/>
 		<child widget="main_menu/settings/panel_enhanced_caption" x="504" y="218"/>
+		<child widget="main_menu/settings/panel_picture_fov" x="420" y="156"/>
+		<child widget="main_menu/settings/panel_picture_anti_aliasing" x="420" y="156"/>
+		<child widget="main_menu/settings/panel_picture_anti_aliasing_android" x="420" y="156"/>
+		<child widget="main_menu/settings/panel_picture_anti_aliasing_web" x="420" y="156"/>
+		<child widget="main_menu/settings/panel_picture_resolution_scaling" x="420" y="156"/>
+		<child widget="main_menu/settings/panel_picture_high_res_hud" x="420" y="156"/>
+		<child widget="main_menu/settings/panel_picture_hud_button_style" x="420" y="156"/>
+		<child widget="main_menu/settings/panel_picture_hdr_mode" x="420" y="156"/>
 		<child widget="main_menu/settings/panel_text" x="402" y="156"/>
 		<child widget="main_menu/settings/panel_note" x="402" y="360"/>
 	</widget>
@@ -24,6 +32,14 @@
 		<child widget="main_menu/settings/panel_enhanced" x="504" y="132"/>
 		<child widget="main_menu/settings/panel_enhanced_frame" x="504" y="132"/>
 		<child widget="main_menu/settings/panel_enhanced_caption" x="504" y="194"/>
+		<child widget="main_menu/settings/panel_picture_fov" x="420" y="132"/>
+		<child widget="main_menu/settings/panel_picture_anti_aliasing" x="420" y="132"/>
+		<child widget="main_menu/settings/panel_picture_anti_aliasing_android" x="420" y="132"/>
+		<child widget="main_menu/settings/panel_picture_anti_aliasing_web" x="420" y="132"/>
+		<child widget="main_menu/settings/panel_picture_resolution_scaling" x="420" y="132"/>
+		<child widget="main_menu/settings/panel_picture_high_res_hud" x="420" y="132"/>
+		<child widget="main_menu/settings/panel_picture_hud_button_style" x="420" y="132"/>
+		<child widget="main_menu/settings/panel_picture_hdr_mode" x="420" y="132"/>
 		<child widget="main_menu/settings/panel_text" x="402" y="132"/>
 		<child widget="main_menu/settings/panel_note" x="402" y="360"/>
 	</widget>
@@ -46,6 +62,22 @@
 	<widget name="main_menu/settings/panel_enhanced_frame" controller="1" width="96" height="60" bitmap="main_menu/settings/still_frame">
 	</widget>
 	<widget name="main_menu/settings/panel_enhanced_caption" type="text" controller="1" width="96" height="18" string_list="main_menu/settings/still_captions" string_index="1" color="#FF2896FF" align="center" font="ui\small_ui">
+	</widget>
+	<widget name="main_menu/settings/panel_picture_fov" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_fov">
+	</widget>
+	<widget name="main_menu/settings/panel_picture_anti_aliasing" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_anti_aliasing">
+	</widget>
+	<widget name="main_menu/settings/panel_picture_anti_aliasing_android" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_anti_aliasing_android">
+	</widget>
+	<widget name="main_menu/settings/panel_picture_anti_aliasing_web" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_anti_aliasing_web">
+	</widget>
+	<widget name="main_menu/settings/panel_picture_resolution_scaling" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_resolution_scaling">
+	</widget>
+	<widget name="main_menu/settings/panel_picture_high_res_hud" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_high_res_hud">
+	</widget>
+	<widget name="main_menu/settings/panel_picture_hud_button_style" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_hud_button_style">
+	</widget>
+	<widget name="main_menu/settings/panel_picture_hdr_mode" controller="1" width="160" height="100" bitmap="main_menu/settings/pictures_hdr_mode">
 	</widget>
 	<widget name="main_menu/settings/settings_creating_profile" width="640" height="480" flags="pass_unhandled_to_focused_child no_history" auto_close="1">
 		<on event="deleted" run="new campaign decision" open="main_menu/settings/settings_saving_profile"/>

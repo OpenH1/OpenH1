@@ -235,7 +235,7 @@
 		<string text="The window's size: 4:3 first, then 16:10, 16:9 and 21:9. Its edges can also be dragged."/>
 		<string text="The most frames drawn a second while V-Sync is off. Auto is twice the display's refresh rate. More feels smoother and uses more power; None draws as fast as it can."/>
 		<string text="Waits for the display before showing each frame, so that the picture never tears. It adds a little input lag, and holds the frame rate to the display's refresh rate."/>
-		<string text="How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view. Wider shows more around you, and makes everything look smaller and farther away."/>
+		<string text="How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view; wider shows more around you."/>
 		<string text="Your weapon's field of view and whether it is drawn, your legs and arms, your shield's colour, and the view from a vehicle's passenger seat."/>
 		<string text=""/>
 		<string text="Enhanced: smoother edges, sharper textures and shadows, smoother lighting. Classic looks as the Xbox did.|Changing one shows CUSTOM."/>

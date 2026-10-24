@@ -486,4 +486,61 @@
 	<bitmap name="main_menu/settings/graphics_enhanced">
 		<frame png="stills/graphics_enhanced.png" width="96" height="60"/>
 	</bitmap>
+	<bitmap name="main_menu/settings/pictures_fov">
+		<frame png="stills/fov_default.png" width="160" height="100"/>
+		<frame png="stills/fov_default.png" width="160" height="100"/>
+		<frame png="stills/fov_default.png" width="160" height="100"/>
+		<frame png="stills/fov_default.png" width="160" height="100"/>
+		<frame png="stills/fov_100.png" width="160" height="100"/>
+		<frame png="stills/fov_100.png" width="160" height="100"/>
+		<frame png="stills/fov_100.png" width="160" height="100"/>
+		<frame png="stills/fov_100.png" width="160" height="100"/>
+		<frame png="stills/fov_100.png" width="160" height="100"/>
+		<frame png="stills/fov_130.png" width="160" height="100"/>
+		<frame png="stills/fov_130.png" width="160" height="100"/>
+		<frame png="stills/fov_130.png" width="160" height="100"/>
+		<frame png="stills/fov_130.png" width="160" height="100"/>
+		<frame png="stills/fov_130.png" width="160" height="100"/>
+		<frame png="stills/fov_130.png" width="160" height="100"/>
+		<frame png="stills/fov_130.png" width="160" height="100"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/pictures_anti_aliasing">
+		<frame png="stills/aa_off.png" width="160" height="100"/>
+		<frame png="stills/aa_smaa.png" width="160" height="100"/>
+		<frame png="stills/aa_smaa.png" width="160" height="100"/>
+		<frame png="stills/aa_msaa.png" width="160" height="100"/>
+		<frame png="stills/aa_msaa.png" width="160" height="100"/>
+		<frame png="stills/aa_msaa.png" width="160" height="100"/>
+		<frame png="stills/aa_msaa.png" width="160" height="100"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/pictures_anti_aliasing_android">
+		<frame png="stills/aa_off.png" width="160" height="100"/>
+		<frame png="stills/aa_smaa.png" width="160" height="100"/>
+		<frame png="stills/aa_smaa.png" width="160" height="100"/>
+		<frame png="stills/aa_msaa.png" width="160" height="100"/>
+		<frame png="stills/aa_msaa.png" width="160" height="100"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/pictures_anti_aliasing_web">
+		<frame png="stills/aa_off.png" width="160" height="100"/>
+		<frame png="stills/aa_smaa.png" width="160" height="100"/>
+		<frame png="stills/aa_msaa.png" width="160" height="100"/>
+		<frame png="stills/aa_msaa.png" width="160" height="100"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/pictures_resolution_scaling">
+		<frame png="stills/aa_smaa.png" width="160" height="100"/>
+		<frame png="stills/render_xbox.png" width="160" height="100"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/pictures_high_res_hud">
+		<frame png="stills/hud_high_res.png" width="160" height="100"/>
+		<frame png="stills/hud_game.png" width="160" height="100"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/pictures_hud_button_style">
+		<frame png="stills/buttons_classic.png" width="160" height="100"/>
+		<frame png="stills/buttons_gems.png" width="160" height="100"/>
+		<frame png="stills/buttons_dark_gems.png" width="160" height="100"/>
+	</bitmap>
+	<bitmap name="main_menu/settings/pictures_hdr_mode">
+		<frame png="stills/fov_default.png" width="160" height="100"/>
+		<frame png="stills/hdr_punchy.png" width="160" height="100"/>
+	</bitmap>
 </menus>

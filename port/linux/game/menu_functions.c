@@ -1855,6 +1855,7 @@ places under its name (_settings_shared) */
 #define SETTINGS_PAGE_ROWS_TOP 80
 #define SETTINGS_PANEL_TEXT_TOP 44
 #define SETTINGS_PANEL_TEXT_UNDER_STILLS 122
+#define SETTINGS_PANEL_TEXT_UNDER_PICTURE 146
 #define SETTINGS_PANEL_TEXT_LENGTH 512
 #define SETTINGS_FOLDER "pc\\main_menu\\settings_select\\player_setup\\player_profile_edit\\"
 #define SETTINGS_SHARED "pc\\main_menu\\settings\\"
@@ -2281,9 +2282,34 @@ static short settings_text_wrap(wchar_t const *text, wchar_t *wrapped, short siz
 	return lines;
 }
 
+/* a row's picture of each value (tools/port_settings.py's
+SETTINGS_VALUE_PICTURES: panel_picture_<the row's key>) shown, at the value
+shown, the others hidden; FALSE if the row has none */
+static boolean settings_value_picture_show(struct widget_instance *panel, struct widget_instance *row,
+	struct widget_instance *spinner)
+{
+	struct widget_instance *child;
+	boolean shown = FALSE;
+
+	for (child = panel->child; child; child = child->next)
+	{
+		if (!child->name || strncmp(child->name, "panel_picture_", 14))
+			continue;
+		child->visible = row && spinner && row->name && !strncmp(row->name, "op_", 3) &&
+			!strcmp(child->name + 14, row->name + 3);
+		if (child->visible)
+		{
+			child->animation.current_frame_index = spinner->parameters.list.selected_index;
+			shown = TRUE;
+		}
+	}
+	return shown;
+}
+
 /* the panel: the row chosen's name, its value in large type and its words
 (after a "|", a note under them); Quality's pictures, the preset shown
-framed; the tabs' and the buttons' own words */
+framed, or a picture of the value shown (settings_value_picture_show); the
+tabs' and the buttons' own words */
 static void settings_panel_show(struct widget_instance *list, short tab)
 {
 	struct widget_instance *panel = list->parameters.list.extended_description;
@@ -2294,7 +2320,8 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	wchar_t const *help = NULL;
 	wchar_t *bar;
 	short still = NONE, length, lines, index;
-	boolean stills = FALSE;
+	boolean stills = FALSE, picture = FALSE;
+	struct widget_instance *row_spinner = NULL;
 	char const *const stills_names[] = { "panel_classic", "panel_enhanced" };
 
 	if (!panel || !row || !row->name)
@@ -2344,6 +2371,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 				profile->primary_color_index, value);
 		}
 		help = settings_row_help(label);
+		row_spinner = spinner;
 		/* (Quality: CLASSIC or ENHANCED framed, neither for CUSTOM) */
 		if (!strcmp(row->name, "op_graphics") && spinner)
 		{
@@ -2355,6 +2383,7 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 				still = !strcmp(setting->values[shown], "classic") ? 0 : !strcmp(setting->values[shown], "enhanced") ? 1 : NONE;
 		}
 	}
+	picture = settings_value_picture_show(panel, row, row_spinner) && !stills;
 	settings_wide_copy(words, help, SETTINGS_PANEL_TEXT_LENGTH);
 	for (bar = words; *bar && *bar != '|'; bar++)
 	{
@@ -2370,7 +2399,8 @@ static void settings_panel_show(struct widget_instance *list, short tab)
 	/* (under the name, or under Quality's pictures) */
 	if (text && named(panel, "panel_name", 0))
 		text->vertical_offset = (short)(named(panel, "panel_name", 0)->vertical_offset +
-			(stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : SETTINGS_PANEL_TEXT_TOP));
+			(stills ? SETTINGS_PANEL_TEXT_UNDER_STILLS : picture ? SETTINGS_PANEL_TEXT_UNDER_PICTURE :
+			SETTINGS_PANEL_TEXT_TOP));
 	settings_text_wrap(bar, wrapped, SETTINGS_PANEL_TEXT_LENGTH, settings_page.note_font, settings_page.note_width);
 	note = named(panel, "panel_note", 0);
 	text_set_length(note, wrapped, SETTINGS_PANEL_TEXT_LENGTH);

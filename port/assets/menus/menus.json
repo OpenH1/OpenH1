@@ -290,7 +290,20 @@
   "ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__8.png",
   "ce/shell/main_menu/settings_select/player_setup/player_profile_edit/video_settings/header_profile_video_settings__0.png",
   "ce/shell/main_menu/solo_level_select/header_load_level__0.png",
+  "stills/aa_msaa.png",
+  "stills/aa_off.png",
+  "stills/aa_smaa.png",
+  "stills/buttons_classic.png",
+  "stills/buttons_dark_gems.png",
+  "stills/buttons_gems.png",
+  "stills/fov_100.png",
+  "stills/fov_130.png",
+  "stills/fov_default.png",
   "stills/graphics_classic.png",
-  "stills/graphics_enhanced.png"
+  "stills/graphics_enhanced.png",
+  "stills/hdr_punchy.png",
+  "stills/hud_game.png",
+  "stills/hud_high_res.png",
+  "stills/render_xbox.png"
  ]
 }

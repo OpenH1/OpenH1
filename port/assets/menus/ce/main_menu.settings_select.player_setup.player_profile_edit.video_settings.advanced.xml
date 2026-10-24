@@ -225,7 +225,7 @@
 		<string text="Enhanced: plasma bolts, muzzle flashes and blasts light their surroundings smoothly, with a glow. Classic lights them as the Xbox did."/>
 		<string text="Shields light their surroundings as they flare, in the shield's own colour. Online: the host's choice."/>
 		<string text="Light Show: the shields' glow reaches three times as far, and is brighter. Online: the host's choice."/>
-		<string text="Faithful keeps the original picture and brightens its highlights. Punchy lifts the whole scene, as a remaster would."/>
+		<string text="Faithful keeps the original picture and brightens its highlights. Punchy lifts the whole scene, as a remaster would.|The pictures are shown approximately: no SDR picture can show HDR."/>
 		<string text="With HDR, how bright white surfaces and the HUD are, in percent of your system's white. Raise it in a bright room."/>
 		<string text=""/>
 		<string text="How often the world updates each second. 60 and 120 respond faster and take more of the processor. Online games and split screen always play at 30, the original's rate."/>
