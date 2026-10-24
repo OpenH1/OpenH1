@@ -13,10 +13,10 @@
 		<data input="port settings page"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/section_0" x="28" y="80"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/op_enabled" x="28" y="100"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/section_2" x="28" y="121"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/op_slurs" x="28" y="141"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/op_swearing" x="28" y="162"/>
-		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/op_insults" x="28" y="183"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/section_2" x="28" y="127"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/op_slurs" x="28" y="147"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/op_swearing" x="28" y="168"/>
+		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/op_insults" x="28" y="189"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_bar" y="414"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
@@ -48,9 +48,9 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/enabled_label"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/enabled_spinner" x="188"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/enabled_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/labels" string_index="1" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/enabled_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/labels" string_index="1" color="#FF2896FF" text_x="10" text_y="2" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/enabled_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ON|OFF" setting="streamer.enabled" values="true|false" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/enabled_spinner" type="spinner" top="2" width="140" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="ON|OFF" setting="streamer.enabled" values="true|false" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 140 14 146">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/section_2" width="344" height="18" bitmap="main_menu/settings/section">
@@ -62,27 +62,27 @@
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/slurs_label"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/slurs_spinner" x="188"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/slurs_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/labels" string_index="3" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/slurs_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/labels" string_index="3" color="#FF2896FF" text_x="10" text_y="2" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/slurs_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="OFF|SEVERE|STRONG AND WORSE|MILD AND WORSE" setting="streamer.slurs" values="off|severe|strong|mild" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/slurs_spinner" type="spinner" top="2" width="140" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="OFF|SEVERE|STRONG AND WORSE|MILD AND WORSE" setting="streamer.slurs" values="off|severe|strong|mild" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 140 14 146">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/op_swearing" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/swearing_label"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/swearing_spinner" x="188"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/swearing_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/labels" string_index="4" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/swearing_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/labels" string_index="4" color="#FF2896FF" text_x="10" text_y="2" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/swearing_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="OFF|SEVERE|STRONG AND WORSE|MILD AND WORSE" setting="streamer.swearing" values="off|severe|strong|mild" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/swearing_spinner" type="spinner" top="2" width="140" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="OFF|SEVERE|STRONG AND WORSE|MILD AND WORSE" setting="streamer.swearing" values="off|severe|strong|mild" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 140 14 146">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/op_insults" width="344" height="20" flags="pass_unhandled_to_focused_child" bitmap="main_menu/settings/row" color="#FF2896FF">
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/insults_label"/>
 		<child widget="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/insults_spinner" x="188"/>
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/insults_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/labels" string_index="5" color="#FF2896FF" text_x="10" text_y="4" font="ui\small_ui">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/insults_label" type="text" controller="1" width="184" height="20" string_list="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/labels" string_index="5" color="#FF2896FF" text_x="10" text_y="2" font="ui\small_ui">
 	</widget>
-	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/insults_spinner" type="spinner" top="2" width="146" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="OFF|SEVERE|STRONG AND WORSE|MILD AND WORSE" setting="streamer.insults" values="off|severe|strong|mild" font="ui\small_ui" color="#FF2896FF" align="center" text_y="2" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 146 14 152">
+	<widget name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/insults_spinner" type="spinner" top="2" width="140" height="16" flags="pass_unhandled_to_focused_child left_right_tabs_items" strings="OFF|SEVERE|STRONG AND WORSE|MILD AND WORSE" setting="streamer.insults" values="off|severe|strong|mild" font="ui\small_ui" color="#FF2896FF" align="center" text_y="0" header_bitmap="bitmaps/arrow_sm_left" footer_bitmap="bitmaps/arrow_sm_right" header_bounds="2 -6 14 0" footer_bounds="2 140 14 146">
 		<on event="created" run="port setting load"/>
 	</widget>
 	<strings name="main_menu/settings_select/player_setup/player_profile_edit/interface_settings/streamer_mode/labels">

@@ -250,13 +250,15 @@ SECTION = "section"
 # the geometry, in the 640x480 menu units (menu_functions.c's SETTINGS_*
 # have the same): the rows' column and the panel beside it
 SETTINGS_ROW_X, SETTINGS_ROW_WIDTH, SETTINGS_ROW_HEIGHT, SETTINGS_ROW_STEP = 28, 344, 20, 21
-SETTINGS_SECTION_HEIGHT, SETTINGS_SECTION_STEP = 18, 20
+# (a section after rows has SETTINGS_SECTION_GAP more above it)
+SETTINGS_SECTION_HEIGHT, SETTINGS_SECTION_STEP, SETTINGS_SECTION_GAP = 18, 20, 6
 SETTINGS_TOP, PAGE_TOP = 104, 80
 SETTINGS_TABS_TOP = 76
-SETTINGS_TAB_WIDTH, SETTINGS_TAB_HEIGHT, SETTINGS_TAB_STEP = 90, 22, 96
+# (the tabs from SETTINGS_TABS_X, LB and RB, or Q and E, either side)
+SETTINGS_TAB_WIDTH, SETTINGS_TAB_HEIGHT, SETTINGS_TAB_STEP, SETTINGS_TABS_X = 90, 22, 92, 40
 SETTINGS_PANEL_X, SETTINGS_PANEL_WIDTH, SETTINGS_PANEL_BOTTOM = 388, 224, 400
 # the value's column in a row, and the arrows either side of it
-SETTINGS_SPINNER_X, SETTINGS_SPINNER_WIDTH = 188, 146
+SETTINGS_SPINNER_X, SETTINGS_SPINNER_WIDTH = 188, 140
 # the Quality row's pictures in the panel (its stills: SETTINGS_STILLS)
 SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT = 96, 60
 SETTINGS_BLUE = "#FF2896FF"
@@ -320,8 +322,8 @@ PAGES = {
              "Waits for the display before showing each frame, so that the picture never tears. It adds a little "
              "input lag, and holds the frame rate to the display's refresh rate.", None),
             ("FIELD OF VIEW", "display.fov", FIELDS_OF_VIEW,
-             "How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view. Wider shows "
-             "more around you, and makes everything look smaller and farther away.", None),
+             "How wide you see on foot, in degrees across a 16:9 screen. Default keeps the Xbox's view; wider shows "
+             "more around you.", None),
             ("FIRST PERSON ›", None, _page_screen(*FIRST_PERSON),
              "Your weapon's field of view and whether it is drawn, your legs and arms, your shield's colour, and the "
              "view from a vehicle's passenger seat.", None),
@@ -558,7 +560,7 @@ PAGES = {
              None),
             ("HDR MODE", "display.hdr_mode", [("FAITHFUL", "faithful"), ("PUNCHY", "punchy")],
              "Faithful keeps the original picture and brightens its highlights. Punchy lifts the whole scene, as a "
-             "remaster would.", "hdr"),
+             "remaster would.|The pictures are shown approximately: no SDR picture can show HDR.", "hdr"),
             ("HDR BRIGHTNESS", "display.hdr_paper_white", [(f"{value}%", str(value)) for value in PAPER_WHITES],
              "With HDR, how bright white surfaces and the HUD are, in percent of your system's white. Raise it in a "
              "bright room.", "hdr"),
@@ -992,6 +994,8 @@ def _settings_page(folder: str, page: dict) -> list:
             # menu_functions.c's settings_rows_pack disables it)
             platform = _settings_platform(page["rows"], index)
             name = f"{base}/section_{index}"
+            if labels:
+                y += SETTINGS_SECTION_GAP
             children.append(f'<child{attributes([("widget", name), ("x", SETTINGS_ROW_X), ("y", y), ("platform", platform)])}/>')
             extra += _widget(name, [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_SECTION_HEIGHT),
                                     ("bitmap", f"{SETTINGS}/section"), ("platform", platform)],
@@ -1017,7 +1021,7 @@ def _settings_page(folder: str, page: dict) -> list:
                                       [("width", SETTINGS_SPINNER_X - 4 if setting else SETTINGS_ROW_WIDTH - 12),
                                        ("height", SETTINGS_ROW_HEIGHT), ("string_list", f"{base}/labels"),
                                        ("string_index", len(labels) or None), ("color", SETTINGS_BLUE),
-                                       ("text_x", 10), ("text_y", 4)])
+                                       ("text_x", 10), ("text_y", 2)])
         row_pairs = [("width", SETTINGS_ROW_WIDTH), ("height", SETTINGS_ROW_HEIGHT),
                      ("flags", "pass_unhandled_to_focused_child"), ("bitmap", f"{SETTINGS}/row"),
                      ("color", SETTINGS_BLUE), ("platform", platform)]
@@ -1030,7 +1034,7 @@ def _settings_page(folder: str, page: dict) -> list:
                               ("flags", "pass_unhandled_to_focused_child left_right_tabs_items"),
                               ("strings", "|".join(shown for shown, _ in choices)), ("setting", setting),
                               ("values", "|".join(value for _, value in choices)), ("font", "ui\\small_ui"),
-                              ("color", SETTINGS_BLUE), ("align", "center"), ("text_y", 2),
+                              ("color", SETTINGS_BLUE), ("align", "center"), ("text_y", 0),
                               ("header_bitmap", "bitmaps/arrow_sm_left"), ("footer_bitmap", "bitmaps/arrow_sm_right"),
                               ("header_bounds", "2 -6 14 0"),
                               ("footer_bounds", f"2 {SETTINGS_SPINNER_WIDTH} 14 {SETTINGS_SPINNER_WIDTH + 6}")],
@@ -1060,6 +1064,10 @@ def _settings_page(folder: str, page: dict) -> list:
                       *(['<on event="white" run="port settings tab previous"/>',
                          '<on event="black" run="port settings tab next"/>'] if tab else []),
                       f'<child widget="{header}"/>',
+                      *([f'<child widget="{SETTINGS}/tab_prompt_previous" x="6" y="{SETTINGS_TABS_TOP}"/>',
+                         f'<child widget="{SETTINGS}/tab_prompt_next" '
+                         f'x="{SETTINGS_TABS_X + 5 * SETTINGS_TAB_STEP + SETTINGS_TAB_WIDTH + 4}" '
+                         f'y="{SETTINGS_TABS_TOP}"/>'] if tab else []),
                       f'<child widget="{base}/options_menu"/>'])
     if not tab:
         lines += _widget(header, [("controller", 1), ("left", 35), ("top", 11), ("width", 605), ("height", 59),
@@ -1084,12 +1092,12 @@ def _settings_page(folder: str, page: dict) -> list:
         for index, other in enumerate(SETTINGS_TAB_PAGES):
             current = other == folder
             name = f"{base}/tab_{PAGES[other]['screen'][:-len('_screen')]}"
-            items.append(f'<child widget="{name}" x="{SETTINGS_ROW_X + index * SETTINGS_TAB_STEP}"/>')
+            items.append(f'<child widget="{name}" x="{SETTINGS_TABS_X + index * SETTINGS_TAB_STEP}"/>')
             lines += _settings_text(name, [("width", SETTINGS_TAB_WIDTH), ("height", SETTINGS_TAB_HEIGHT),
                                            ("bitmap", f"{SETTINGS}/{'tab_current' if current else 'tab'}"),
                                            ("string_list", f"{SETTINGS}/tab_names"), ("string_index", index or None),
                                            ("color", "#FFFFFFFF" if current else SETTINGS_BLUE),
-                                           ("align", "center"), ("text_y", 5)],
+                                           ("align", "center"), ("text_y", 3)],
                                     ['<on event="a" run="port settings tab"/>',
                                      '<on event="start" run="port settings tab"/>',
                                      '<on event="left_mouse" run="mouse emit accept event"/>'])
@@ -1126,6 +1134,9 @@ def _settings_shared() -> list:
             children += [f'<child widget="{SETTINGS}/panel_{still}" x="{x}" y="{still_y}"/>',
                          f'<child widget="{SETTINGS}/panel_{still}_frame" x="{x}" y="{still_y}"/>',
                          f'<child widget="{SETTINGS}/panel_{still}_caption" x="{x}" y="{still_y + SETTINGS_STILL_HEIGHT + 2}"/>']
+        children += [f'<child widget="{SETTINGS}/panel_picture_{key}" '
+                     f'x="{SETTINGS_PANEL_X + (SETTINGS_PANEL_WIDTH - SETTINGS_PICTURE_WIDTH) // 2}" y="{still_y}"/>'
+                     for key in SETTINGS_VALUE_PICTURES]
         children += [f'<child widget="{SETTINGS}/panel_text" x="{left}" y="{top + 52}"/>',
                      f'<child widget="{SETTINGS}/panel_note" x="{left}" y="{top + height - 40}"/>']
         lines += _widget(f"{SETTINGS}/{kind}_panel",
@@ -1148,6 +1159,10 @@ def _settings_shared() -> list:
                                 [("width", SETTINGS_STILL_WIDTH), ("height", 18),
                                  ("string_list", f"{SETTINGS}/still_captions"), ("string_index", index or None),
                                  ("color", SETTINGS_BLUE), ("align", "center")])
+    for key in SETTINGS_VALUE_PICTURES:
+        lines += _widget(f"{SETTINGS}/panel_picture_{key}",
+                         [("controller", 1), ("width", SETTINGS_PICTURE_WIDTH), ("height", SETTINGS_PICTURE_HEIGHT),
+                          ("bitmap", f"{SETTINGS}/pictures_{key}")], [])
     # (making a profile, from CREATE PROFILE: its name asked, as the main
     # menu's items ask it ("new campaign chosen", settings_profile_new), the
     # profile made and edited ("new campaign decision", which edits it for
@@ -1162,6 +1177,13 @@ def _settings_shared() -> list:
                      ['<on event="b" run="NULL"/>', '<on event="back" run="NULL"/>',
                       '<on event="deleted" run="NULL" back="true"/>',
                       '<child widget="error/warning_creating_player_profile_screen"/>'])
+    # (LB and RB, or Q and E while the keyboard and mouse play, either side
+    # of the tabs: the HUD's button pictures, display.hud_button_style, or
+    # its key caps, ui_widget.c and hud_key_prompts.c)
+    for name, icon in (("previous", "white"), ("next", "black")):
+        lines += _settings_text(f"{SETTINGS}/tab_prompt_{name}", [("width", 30), ("height", SETTINGS_TAB_HEIGHT),
+                                                                 ("text", f"%{icon}-button"), ("color", SETTINGS_BLUE), ("text_x", 2),
+                                                                 ("text_y", 3)])
     lines += _strings(f"{SETTINGS}/tab_names", [PAGES[folder]["tab"] for folder in SETTINGS_TAB_PAGES])
     lines += _strings(f"{SETTINGS}/tab_about", [PAGES[folder]["about"] for folder in SETTINGS_TAB_PAGES])
     lines += _strings(f"{SETTINGS}/button_help", SETTINGS_BUTTON_HELP["tab"] + SETTINGS_BUTTON_HELP["page"])
@@ -1252,6 +1274,41 @@ SETTINGS_STILLS = [
     (f"{SETTINGS}/graphics_enhanced", "stills/graphics_enhanced.png", SETTINGS_STILL_WIDTH, SETTINGS_STILL_HEIGHT,
      "Quality ENHANCED (`display.graphics = \"enhanced\"`)"),
 ]
+# a picture for each value of these rows (by their keys), in the panel as
+# their row is chosen (menu_functions.c's settings_panel_show): each value's
+# file (port/assets/menus/stills), in the row's order, and what each file is
+SETTINGS_PICTURE_WIDTH, SETTINGS_PICTURE_HEIGHT = 160, 100
+_FOV_PICTURES = (["stills/fov_default.png"] * 4 + ["stills/fov_100.png"] * 5 + ["stills/fov_130.png"] * 7)
+SETTINGS_VALUE_PICTURES = {
+    "fov": _FOV_PICTURES,
+    "viewmodel_fov": None,
+    "anti_aliasing": ["stills/aa_off.png", "stills/aa_smaa.png", "stills/aa_smaa.png"] + ["stills/aa_msaa.png"] * 4,
+    "anti_aliasing_android": ["stills/aa_off.png", "stills/aa_smaa.png", "stills/aa_smaa.png",
+                              "stills/aa_msaa.png", "stills/aa_msaa.png"],
+    "anti_aliasing_web": ["stills/aa_off.png", "stills/aa_smaa.png", "stills/aa_msaa.png", "stills/aa_msaa.png"],
+    "resolution_scaling": ["stills/aa_smaa.png", "stills/render_xbox.png"],
+    "high_res_hud": ["stills/hud_high_res.png", "stills/hud_game.png"],
+    "hud_button_style": ["stills/buttons_classic.png", "stills/buttons_gems.png", "stills/buttons_dark_gems.png"],
+    "hdr_mode": ["stills/fov_default.png", "stills/hdr_punchy.png"],
+}
+del SETTINGS_VALUE_PICTURES["viewmodel_fov"]
+SETTINGS_PICTURE_FILES = {
+    "stills/fov_default.png": "Field of view DEFAULT (`display.fov = 0`); HDR mode FAITHFUL",
+    "stills/fov_100.png": "Field of view 100, for 95 to 115",
+    "stills/fov_130.png": "Field of view 130, for 120 to 150",
+    "stills/aa_off.png": "Anti-aliasing OFF, close on an edge (each pixel twice its size)",
+    "stills/aa_smaa.png": "Anti-aliasing SMAA (and FXAA), the same; render resolution FULL",
+    "stills/aa_msaa.png": "Anti-aliasing MSAA 4X (and SSAA and MSAA's others), the same",
+    "stills/render_xbox.png": "Render resolution XBOX 640X480, the same edge, its pixels as drawn",
+    "stills/hud_high_res.png": "High-res HUD ON: the health and shields meters, close",
+    "stills/hud_game.png": "High-res HUD OFF, the same",
+    "stills/hdr_punchy.png": "HDR mode PUNCHY, approximately: the DEFAULT scene lifted in SDR, as no SDR picture can "
+                             "show HDR",
+    "stills/buttons_classic.png": "Button style CLASSIC: A, B, X and Y, the HUD's own pictures "
+                                  "(port/assets/buttons), not a screenshot",
+    "stills/buttons_gems.png": "Button style GEMS, the same",
+    "stills/buttons_dark_gems.png": "Button style DARK GEMS, the same",
+}
 # NON_HANDDRAWN.md's words for them (tools/ce_menus.py)
 SETTINGS_STILLS_MADE = [
     "Settings' Quality row shows these two small screenshots of the game, the same view drawn by each preset",
@@ -1259,7 +1316,9 @@ SETTINGS_STILLS_MADE = [
     "Slayer game on Blood Gulch (`debug.network_test = \"local:bloodgulch:slayer\"`, `debug.random_seed = 7`,",
     "four bots), the same frame of each run captured offscreen by the macOS build at 1600x1200",
     "(`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (three times their size in the menu) and",
-    "reduced to 96 colours for size.",
+    "reduced to 96 colours for size. The pictures of other rows' values are made the same way at the frame 12 s",
+    "into the game with the setting set, 320x200 (twice their size in the menu), reduced to 64 colours: the whole",
+    "view, or a part of it at 1:1 or larger.",
 ]
 
 

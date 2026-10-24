@@ -61,6 +61,7 @@ boolean hud_key_prompt_text(short local_player_index, short game_control, short 
 	wchar_t *text, long length);
 boolean hud_key_prompt_draw(short local_player_index, short game_control, short gamepad_button,
 	rectangle2d *bounds, rectangle2d *cursor, pixel32 color);
+boolean hud_key_prompt_draw_key(char const *name, rectangle2d *bounds, rectangle2d *cursor, pixel32 color);
 
 /* ---------- private code */
 
@@ -148,6 +149,60 @@ static boolean vr_prompt_text(
 
 /* ---------- public code */
 
+/* the key's name at the cursor in a key cap, as the HUD draws a button
+there, the cursor moved past it */
+static boolean key_cap_draw(wchar_t const *text, rectangle2d *bounds, rectangle2d *cursor, pixel32 color)
+{
+	rectangle2d text_bounds, box, edge;
+	real scale;
+	short margin, inset, line_top, middle, half;
+	short start;
+	pixel32 fill;
+
+	/* (in the HUD's units, as hud_hires_button_draw's: the key cap's margin
+	about its name, the text's leading inset, and half its height) */
+	scale = local_player_count() > 1 ? 0.75f : 1.0f;
+	margin = (short)(3.0f * scale);
+	inset = (short)(4.0f * scale);
+	half = (short)(10.0f * scale);
+	start = cursor->x0;
+	line_top = cursor->y0;
+	cursor->x0 += margin;
+	draw_string_set_indents(cursor->x0 - bounds->x0, 0);
+	draw_unicode_string_compute_bounds(bounds, text, &text_bounds, cursor);
+	cursor->x0 -= 3;
+	box.x0 = (short)(start + inset);
+	box.x1 = (short)(cursor->x0 + 4 + margin);
+	if (cursor->y0 == line_top)
+	{
+		/* a key cap: the prompt's colour faintly filled, edged in it */
+		middle = draw_unicode_string_capital_middle(cursor, L"");
+		box.y0 = (short)(middle - half + 1);
+		box.y1 = (short)(middle + half);
+		fill = ((pixel32)((color >> 24) * 3 / 10) << 24) | (color & 0x00FFFFFFUL);
+		draw_quad(&box, fill);
+		edge = box;
+		edge.y1 = (short)(box.y0 + 1);
+		draw_quad(&edge, color);
+		edge.y0 = (short)(box.y1 - 1);
+		edge.y1 = box.y1;
+		draw_quad(&edge, color);
+		edge.y0 = (short)(box.y0 + 1);
+		edge.y1 = (short)(box.y1 - 1);
+		edge.x1 = (short)(box.x0 + 1);
+		draw_quad(&edge, color);
+		edge.x0 = (short)(box.x1 - 1);
+		edge.x1 = box.x1;
+		draw_quad(&edge, color);
+	}
+	text_bounds.x0 = bounds->x0;
+	rasterizer_draw_unicode_string(&text_bounds, NULL, NULL, 0, text);
+	bounds->y0 = cursor->y0;
+	/* (the text that follows starts past the cap) */
+	cursor->x0 = (short)(box.x1 - inset + 1);
+	return TRUE;
+}
+
 /* the key a prompt names for the keyboard and mouse, for a game control or
 (game_control NONE) a controller button; FALSE when the keyboard has none */
 boolean hud_key_prompt_text(
@@ -195,11 +250,6 @@ boolean hud_key_prompt_draw(
 	pixel32 color)
 {
 	wchar_t text[64];
-	rectangle2d text_bounds, box, edge;
-	real scale;
-	short margin, inset, line_top, middle, half;
-	short start;
-	pixel32 fill;
 
 	if (local_player_index != 0)
 		return FALSE;
@@ -216,47 +266,26 @@ boolean hud_key_prompt_draw(
 	{
 		return FALSE;
 	}
+	return key_cap_draw(text, bounds, cursor, color);
+}
 
-	/* (in the HUD's units, as hud_hires_button_draw's: the key cap's margin
-	about its name, the text's leading inset, and half its height) */
-	scale = local_player_count() > 1 ? 0.75f : 1.0f;
-	margin = (short)(3.0f * scale);
-	inset = (short)(4.0f * scale);
-	half = (short)(10.0f * scale);
-	start = cursor->x0;
-	line_top = cursor->y0;
-	cursor->x0 += margin;
-	draw_string_set_indents(cursor->x0 - bounds->x0, 0);
-	draw_unicode_string_compute_bounds(bounds, text, &text_bounds, cursor);
-	cursor->x0 -= 3;
-	box.x0 = (short)(start + inset);
-	box.x1 = (short)(cursor->x0 + 4 + margin);
-	if (cursor->y0 == line_top)
-	{
-		/* a key cap: the prompt's colour faintly filled, edged in it */
-		middle = draw_unicode_string_capital_middle(cursor, L"");
-		box.y0 = (short)(middle - half + 1);
-		box.y1 = (short)(middle + half);
-		fill = ((pixel32)((color >> 24) * 3 / 10) << 24) | (color & 0x00FFFFFFUL);
-		draw_quad(&box, fill);
-		edge = box;
-		edge.y1 = (short)(box.y0 + 1);
-		draw_quad(&edge, color);
-		edge.y0 = (short)(box.y1 - 1);
-		edge.y1 = box.y1;
-		draw_quad(&edge, color);
-		edge.y0 = (short)(box.y0 + 1);
-		edge.y1 = (short)(box.y1 - 1);
-		edge.x1 = (short)(box.x0 + 1);
-		draw_quad(&edge, color);
-		edge.x0 = (short)(box.x1 - 1);
-		edge.x1 = box.x1;
-		draw_quad(&edge, color);
-	}
-	text_bounds.x0 = bounds->x0;
-	rasterizer_draw_unicode_string(&text_bounds, NULL, NULL, 0, text);
-	bounds->y0 = cursor->y0;
-	/* (the text that follows starts past the cap) */
-	cursor->x0 = (short)(box.x1 - inset + 1);
-	return TRUE;
+/* the menus' key of their own (Settings' tabs' Q and E for LB and RB:
+port/linux/src/xinput_sdl.c), drawn as the prompts' keys are while the
+keyboard and mouse play; FALSE (nothing drawn) while a controller does */
+boolean hud_key_prompt_draw_key(
+	char const *name,
+	rectangle2d *bounds,
+	rectangle2d *cursor,
+	pixel32 color)
+{
+	wchar_t text[16];
+
+#ifdef HALO_VR
+	if (halo_vr_running())
+		return FALSE;
+#endif
+	if (!halo_keyboard_prompts())
+		return FALSE;
+	latin1_to_wide(name, text, NUMBEROF(text));
+	return key_cap_draw(text, bounds, cursor, color);
 }

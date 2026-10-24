@@ -48,12 +48,27 @@ Settings' Quality row shows these two small screenshots of the game, the same vi
 Slayer game on Blood Gulch (`debug.network_test = "local:bloodgulch:slayer"`, `debug.random_seed = 7`,
 four bots), the same frame of each run captured offscreen by the macOS build at 1600x1200
 (`debug.screenshot_every`), cropped to 16:10, scaled to 288x180 (three times their size in the menu) and
-reduced to 96 colours for size.
+reduced to 96 colours for size. The pictures of other rows' values are made the same way at the frame 12 s
+into the game with the setting set, 320x200 (twice their size in the menu), reduced to 64 colours: the whole
+view, or a part of it at 1:1 or larger.
 
 | File | Size | What it shows |
 | --- | --- | --- |
 | `stills/graphics_classic.png` | 96x60 | Quality CLASSIC (`display.graphics = "classic"`) |
 | `stills/graphics_enhanced.png` | 96x60 | Quality ENHANCED (`display.graphics = "enhanced"`) |
+| `stills/fov_default.png` | 160x100 | Field of view DEFAULT (`display.fov = 0`); HDR mode FAITHFUL |
+| `stills/fov_100.png` | 160x100 | Field of view 100, for 95 to 115 |
+| `stills/fov_130.png` | 160x100 | Field of view 130, for 120 to 150 |
+| `stills/aa_off.png` | 160x100 | Anti-aliasing OFF, close on an edge (each pixel twice its size) |
+| `stills/aa_smaa.png` | 160x100 | Anti-aliasing SMAA (and FXAA), the same; render resolution FULL |
+| `stills/aa_msaa.png` | 160x100 | Anti-aliasing MSAA 4X (and SSAA and MSAA's others), the same |
+| `stills/render_xbox.png` | 160x100 | Render resolution XBOX 640X480, the same edge, its pixels as drawn |
+| `stills/hud_high_res.png` | 160x100 | High-res HUD ON: the health and shields meters, close |
+| `stills/hud_game.png` | 160x100 | High-res HUD OFF, the same |
+| `stills/hdr_punchy.png` | 160x100 | HDR mode PUNCHY, approximately: the DEFAULT scene lifted in SDR, as no SDR picture can show HDR |
+| `stills/buttons_classic.png` | 160x100 | Button style CLASSIC: A, B, X and Y, the HUD's own pictures (port/assets/buttons), not a screenshot |
+| `stills/buttons_gems.png` | 160x100 | Button style GEMS, the same |
+| `stills/buttons_dark_gems.png` | 160x100 | Button style DARK GEMS, the same |
 
 ## Placeholders, to be redrawn
 
@@ -76,7 +91,7 @@ until it is redrawn.
 | `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__6.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__6.png` |
 | `ce/shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__8.png` | 512x256 | `shell/main_menu/settings_select/player_setup/player_profile_edit/profile_options__8.png` |
 
-13 of 202 frames are placeholders.
+13 of 215 frames are placeholders.
 
 The PC version's `ui\gamespy` and `ui\ticker` fonts are drawn with `ui\small_ui`, which
 the Xbox's map has.
