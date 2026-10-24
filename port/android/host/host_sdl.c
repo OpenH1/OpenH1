@@ -27,6 +27,12 @@ void host_app_background_wait(void);
 float host_app_render_scale(void);
 #endif
 #if defined(__APPLE__) && !TARGET_OS_IPHONE
+/* port/macos/host_app.m: the updater's (weak: the Metal tests and the
+replay have no host_app.m) */
+void host_app_update_tick(void);
+#pragma weak host_app_update_tick
+#endif
+#if defined(__APPLE__) && !TARGET_OS_IPHONE
 /* port/macos/host_raw_mouse.m: the mouse's unaccelerated counts */
 #define HOST_RAW_MOUSE 1
 void host_raw_mouse_start(void);
@@ -223,6 +229,11 @@ int host_sdl_poll_event(void *event)
 #if defined(__APPLE__) && TARGET_OS_IPHONE
 	/* (the game waits here while the app is in the background) */
 	host_app_background_wait();
+#elif defined(__APPLE__)
+	/* (the macOS app's updater: port/macos/host_app.m; not in the Metal
+	tests, which link no host_app.m) */
+	if (host_app_update_tick)
+		host_app_update_tick();
 #endif
 	if (!SDL_PollEvent(&host_event))
 	{

@@ -167,6 +167,18 @@ downloads Sparkle's release once, pinned by its SHA-256
   the secret and the variable, and prints the public key.
 - Test against an appcast of your own: `HALO_UPDATE_FEED=<url>` replaces the
   appcast URL of an app whose `Info.plist` has a public key.
+  `HALO_UPDATE_TEST=window` shows the update window at once (a visible
+  window), and `HALO_UPDATE_TEST=install` downloads, checks and installs
+  the update at once without a window. With either, the app is never
+  started again after an install, because LaunchServices would start it
+  without the test's environment, in the player's own folders. Give a test
+  its own home (`CFFIXED_USER_HOME`), data and save roots, Metal archive
+  (`HALO_METAL_ARCHIVE`) and bundle ID.
+- The updater starts on the first `host_sdl_poll_event` call
+  (`host_app_update_tick`), and ticks every two seconds after that.
+  Neither a run-loop timer nor `NSApplicationDidFinishLaunching` works
+  here: the game's event pump does not fire timers, and the notification
+  never arrives.
 
 ### Signing
 
