@@ -2876,6 +2876,7 @@ static void weapon_trigger_fire(
 	if (fired)
 	{
 		SIM_TRACE(sim_trace_weapon_fire(weapon_index, owner_object_index, trigger_index)); /* port: debug.trace */
+		LATENCY_LOG(latency_log_fire(owner_object_index)); /* port: debug.latency_log */
 		if (TEST_FLAG(weapon->item.flags, _item_belongs_to_player_bit) && game_engine_running())
 		{
 			long player_index= player_index_from_unit_index(owner_object_index);

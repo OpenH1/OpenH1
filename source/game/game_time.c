@@ -710,7 +710,9 @@ static boolean game_time_run_substep(
 	tick take the ticks' (random_math.c) */
 	determinism_log_tick_begin();
 	random_math_port_set_ticking(TRUE);
+	LATENCY_LOG(latency_log_substep_begin()); /* port: debug.latency_log */
 	tick_ended = game_tick_substep(sim_substep_next());
+	LATENCY_LOG(latency_log_substep_end()); /* port: debug.latency_log */
 	if (tick_ended)
 	{
 		sim_trace_step(game_time_globals->server_time, sim_substep_count() - 1, sim_substep_count()); /* port: debug.trace */

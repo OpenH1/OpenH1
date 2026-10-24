@@ -3814,7 +3814,9 @@ static boolean main_loop_iteration(
 						halo_load_trace("first_game_frame.begin", load_trace_map);
 						load_trace_first_frame = 2;
 					}
+					LATENCY_LOG(latency_log_frame_begin()); /* port: debug.latency_log */
 					main_game_render((double)main_globals.seconds_elapsed);
+					LATENCY_LOG(latency_log_frame_rendered()); /* port: debug.latency_log */
 					halo_loading_ready(); /* port: a picture with no player window has no enumeration handoff */
 					loading_game_frame = TRUE; /* port: preparation is complete for this picture */
 					render_interpolation_frame_end();
@@ -3833,6 +3835,7 @@ static boolean main_loop_iteration(
 			if (render_frame && !debug_no_drawing)
 			{
 				profile_scope(main_present_section, main_present_frame();)
+				LATENCY_LOG(latency_log_frame_presented()); /* port: debug.latency_log */
 				if (loading_game_frame)
 					halo_loading_end(); /* port: return presentation after the first complete game picture */
 				/* port: submission returned; host traces measure presentation */
