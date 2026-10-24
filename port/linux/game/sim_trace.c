@@ -72,6 +72,16 @@ Lines:
                                                    grenade's throw (melee,
                                                    melee_airborne, throw);
                                                    "-" when it ends
+    f <seconds> <t> <x> <y> <z> <gf> <gl> <gu>     each frame drawn with the
+                                                   first-person weapon (a
+                                                   game that draws: not the
+                                                   scorecard's): the frames'
+                                                   time since the first, the
+                                                   newest step's t, the
+                                                   camera's place, and the
+                                                   weapon's nodes' mean place
+                                                   along its forward, left
+                                                   and up
 
 An event's line comes after the step's s line it happened in. Identifiers
 are object datum indexes in hexadecimal; a player is its absolute index, or
@@ -98,6 +108,7 @@ uncorrected 60 Hz jump does); "speed", a projectile starts 1% slow.
 #include "cseries.h"
 #include "game/game.h"
 #include "game/players.h"
+#include "main/main.h"
 #include "objects/objects.h"
 #include "units/units.h"
 #include "units/bipeds.h"
@@ -617,6 +628,50 @@ void sim_trace_weapon_fire(
 {
 	sim_trace_event("e fire %ld %lx %d\n", sim_trace_player_of_unit(object_get_ultimate_parent(owner_object_index)),
 		weapon_index, (int)trigger_index);
+}
+
+/* (first_person_weapons.c, each frame drawn) the first local player's view
+as drawn: the camera's place, and where the first-person weapon's nodes are
+on average as seen from it (along its forward, left and up), after the
+frames' time since the last one */
+void sim_trace_frame(
+	short local_player_index,
+	void const *camera_position,
+	void const *camera_forward,
+	void const *camera_up,
+	void const *node_matrices,
+	short node_count)
+{
+	static double frames_seconds = -1.0;
+	real_point3d const *position = camera_position;
+	real_vector3d const *forward = camera_forward;
+	real_vector3d const *up = camera_up;
+	real_matrix4x3 const *nodes = node_matrices;
+	real_vector3d left;
+	double along[3] = { 0.0, 0.0, 0.0 };
+	short node_index;
+
+	if (local_player_index != 0 || !sim_trace_logging())
+		return;
+	frames_seconds = frames_seconds < 0.0 ? 0.0 : frames_seconds + main_get_seconds_elapsed();
+	cross_product3d(up, forward, &left);
+	for (node_index = 0; node_index < node_count; node_index++)
+	{
+		real_vector3d offset;
+
+		vector_from_points3d(position, &nodes[node_index].position, &offset);
+		along[0] += dot_product3d(&offset, forward);
+		along[1] += dot_product3d(&offset, &left);
+		along[2] += dot_product3d(&offset, up);
+	}
+	if (node_count > 0)
+	{
+		along[0] /= node_count;
+		along[1] /= node_count;
+		along[2] /= node_count;
+	}
+	fprintf(sim_trace.file, "f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", frames_seconds,
+		sim_trace_seconds(), position->x, position->y, position->z, along[0], along[1], along[2]);
 }
 
 /* debug.test_input "script:"'s aim (port/linux/src/xinput_sdl.c): the first

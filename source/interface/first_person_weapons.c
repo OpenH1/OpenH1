@@ -146,6 +146,12 @@ enum
 };
 
 #define FIRST_PERSON_WEAPON_FIRING_PUSH_BACK_VELOCITY 0.05f
+/* port: the firing push back's spring (first_person_weapon_update's
+accelerate_to_position, a step a tick): the most a step changes its
+velocity by, and its top speed, named for the frames drawn between its steps
+too (first_person_weapon_springs_at) */
+#define FIRST_PERSON_WEAPON_FIRING_PUSH_BACK_ACCELERATION 0.01f
+#define FIRST_PERSON_WEAPON_FIRING_PUSH_BACK_SPEED 0.2f
 
 enum first_person_weapon_state
 {
@@ -328,6 +334,13 @@ typedef char verify_game_globals_first_person_interface_offset[
 typedef char verify_animation_graph_nodes_offset[
 	offsetof(struct animation_graph, nodes) == 0x68 ? 1 : -1];
 
+/* port: the sways of the position (the unit's throttle) and of the turning */
+struct first_person_weapon_sways
+{
+	real_vector2d position;
+	real_vector2d turning;
+};
+
 /* ---------- prototypes */
 
 static void first_person_weapon_set_visibility(
@@ -426,6 +439,11 @@ differently with none. The state's current_sound_index holds the sound's
 definition, that the sound was begun. (A stale index, after a saved game is
 loaded, stops nothing: an index names its sound only.) */
 static long first_person_weapon_sound_indices[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS];
+/* port: the position's and the turning's sway as they were before their last
+step (first_person_weapon_update), which the frames drawn from the newest
+step blend from (first_person_weapon_springs_at): drawing only, beside the
+game state */
+static struct first_person_weapon_sways first_person_weapon_sways_before[MAXIMUM_NUMBER_OF_LOCAL_PLAYERS];
 
 /* ---------- public code */
 
@@ -1367,6 +1385,49 @@ static void first_person_weapon_set_state(
 	return;
 }
 
+/* port: the overlays' springs (first_person_weapon_update's position, turning
+and firing push back, a step a tick) as a frame drawn from the newest step
+has them, a phase of a tick (0 to 1, render_interpolation_first_person_phase)
+past their last step. The sways of the position (the unit's throttle:
+strafing, walking) and of the turning go toward targets the next step reads:
+each is drawn between where it was before its last step (before) and where
+that left it, a step behind, as the frames between the ticks draw the rest
+of the world. The push back's target stays at rest: it is drawn on the way
+to where its next step takes it, and a shot's kick at once. (Moved on by
+their velocity alone, they left out the step's change of it: while the sway
+sped up or slowed down, as it does all the way through a strafe one way and
+the other, the gun jumped at every tick.) Drawing only: the game state is
+not changed */
+static void first_person_weapon_springs_at(
+	struct first_person_weapon const *first_person_weapon,
+	struct first_person_weapon_sways const *before,
+	real phase,
+	real_vector2d *position,
+	real_vector2d *turning,
+	real *firing_push_back)
+{
+	real next_firing_push_back= first_person_weapon->firing_push_back;
+	real next_firing_push_back_velocity= first_person_weapon->firing_push_back_velocity;
+
+	position->i= before->position.i+(first_person_weapon->position.i-before->position.i)*phase;
+	position->j= before->position.j+(first_person_weapon->position.j-before->position.j)*phase;
+	turning->i= before->turning.i+(first_person_weapon->turning.i-before->turning.i)*phase;
+	turning->j= before->turning.j+(first_person_weapon->turning.j-before->turning.j)*phase;
+	accelerate_to_position(
+		&next_firing_push_back,
+		&next_firing_push_back_velocity,
+		0.0f,
+		FIRST_PERSON_WEAPON_FIRING_PUSH_BACK_ACCELERATION,
+		FIRST_PERSON_WEAPON_FIRING_PUSH_BACK_SPEED,
+		0.0f,
+		1.0f,
+		FALSE);
+	*firing_push_back= first_person_weapon->firing_push_back+
+		(next_firing_push_back-first_person_weapon->firing_push_back)*phase;
+
+	return;
+}
+
 /* port: the weapon's orientations are the animation graph's nodes (64 at
 most, the weapon's arrays): an animation of more nodes than the graph has,
 or than the arrays hold (the map's counts), is not applied, said once. Every
@@ -1467,19 +1528,20 @@ static void first_person_weapon_build_node_matrices(
 				drawn between the ticks (port/linux/game/render_interpolation.c) */
 				real phase= render_interpolation_first_person_phase(local_player_index);
 				/* port: the overlays' springs (position, turning, firing push
-				back) where their velocity has them at that time */
+				back) at that time (first_person_weapon_springs_at) */
 				real_vector2d position= first_person_weapon->position;
 				real_vector2d turning= first_person_weapon->turning;
 				real firing_push_back= first_person_weapon->firing_push_back;
 
 				if (phase>0.0f)
 				{
-					position.i= PIN(position.i+first_person_weapon->position_velocity.i*phase, -1.0f, 1.0f);
-					position.j= PIN(position.j+first_person_weapon->position_velocity.j*phase, -1.0f, 1.0f);
-					turning.i= PIN(turning.i+first_person_weapon->turning_velocity.i*phase, -1.0f, 1.0f);
-					turning.j= PIN(turning.j+first_person_weapon->turning_velocity.j*phase, -1.0f, 1.0f);
-					firing_push_back= PIN(firing_push_back+first_person_weapon->firing_push_back_velocity*phase,
-						0.0f, 1.0f);
+					first_person_weapon_springs_at(
+						first_person_weapon,
+						&first_person_weapon_sways_before[local_player_index],
+						phase,
+						&position,
+						&turning,
+						&firing_push_back);
 				}
 
 				if (first_person_weapon->state_animation.index!=NONE)
@@ -1787,6 +1849,10 @@ static void first_person_weapon_build_node_matrices(
 			first_person_weapon->node_matrices,
 			(short)MIN(animation_graph->nodes.count, MAXIMUM_NODES_PER_ANIMATION),
 			&render.camera);
+		/* port: the view as drawn (debug.trace, port/linux/game/sim_trace.c) */
+		SIM_TRACE(sim_trace_frame(local_player_index, &render.camera.position, &render.camera.forward,
+			&render.camera.up, first_person_weapon->node_matrices,
+			(short)MIN(animation_graph->nodes.count, MAXIMUM_NODES_PER_ANIMATION)));
 #ifdef HALO_VR
 		{
 			/* the VR mode: the hands and arms follow the controllers
@@ -2357,6 +2423,10 @@ static void first_person_weapon_update(
 			first_person_weapon->overcharged_jitter_animation.index= NONE;
 		}
 
+		/* port: (where the frames until the next step draw the sways from:
+		first_person_weapon_springs_at) */
+		first_person_weapon_sways_before[local_player_index].position= first_person_weapon->position;
+		first_person_weapon_sways_before[local_player_index].turning= first_person_weapon->turning;
 		if (first_person_weapon->rendered)
 		{
 			real_vector2d turning;
@@ -2414,8 +2484,8 @@ static void first_person_weapon_update(
 			&first_person_weapon->firing_push_back,
 			&first_person_weapon->firing_push_back_velocity,
 			0.0f,
-			0.01f,
-			0.2f,
+			FIRST_PERSON_WEAPON_FIRING_PUSH_BACK_ACCELERATION,
+			FIRST_PERSON_WEAPON_FIRING_PUSH_BACK_SPEED,
 			0.0f,
 			1.0f,
 			FALSE);
