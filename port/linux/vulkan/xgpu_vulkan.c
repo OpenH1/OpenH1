@@ -4345,6 +4345,21 @@ float xgpu_vulkan_loading_stereo_tangent(void)
 	return loading_art_stereo_tangent(&vk.loading_art);
 }
 
+/* the loading frame's width for the window (its swapchain as it is shown:
+turned for a turned screen), loading_art_width's */
+uint32_t xgpu_vulkan_loading_frame_width(void)
+{
+	uint32_t width = vk.swapchain_extent.width, height = vk.swapchain_extent.height;
+
+	if (vk.swapchain_turns && vk.rotate)
+	{
+		width = vk.swapchain_extent.height;
+		height = vk.swapchain_extent.width;
+	}
+	loading_art_width(&vk.loading_art, width, height);
+	return vk.loading_art.width;
+}
+
 struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presentation_frame *frame,
 	uint32_t width, uint32_t height, uint32_t format)
 {
@@ -4397,7 +4412,8 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 		description.type = XGPU_VULKAN_IMAGE_2D;
 		description.format = XGPU_VULKAN_FORMAT_RGBA8;
 		description.usage = XGPU_VULKAN_USAGE_SAMPLED;
-		description.width = 2 * LOADING_ART_FRAME_WIDTH;
+		description.width = 2 * LOADING_ART_FRAME_WIDTH > LOADING_ART_FRAME_MAXIMUM_WIDTH ? 2 * LOADING_ART_FRAME_WIDTH :
+			LOADING_ART_FRAME_MAXIMUM_WIDTH;
 		description.height = LOADING_ART_FRAME_HEIGHT;
 		description.depth_or_layers = description.levels = 1;
 		vk.loading_art_image = xgpu_vulkan_image_create(&description);
@@ -4420,13 +4436,13 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 		VkCommandBuffer commands;
 		VkImageBlit blit;
 		uint32_t fit_width = width;
-		uint32_t fit_height = (uint32_t)((uint64_t)width * LOADING_ART_FRAME_HEIGHT / LOADING_ART_FRAME_WIDTH);
+		uint32_t fit_height = (uint32_t)((uint64_t)width * LOADING_ART_FRAME_HEIGHT / vk.loading_art.width);
 		uint32_t x, y;
 
 		if (fit_height > height)
 		{
 			fit_height = height;
-			fit_width = (uint32_t)((uint64_t)height * LOADING_ART_FRAME_WIDTH / LOADING_ART_FRAME_HEIGHT);
+			fit_width = (uint32_t)((uint64_t)height * vk.loading_art.width / LOADING_ART_FRAME_HEIGHT);
 		}
 		if (!fit_width)
 			fit_width = 1;
@@ -4443,7 +4459,7 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 		}
 		pass_end();
 		xgpu_vulkan_image_upload(vk.loading_art_image, 0, 0, 0, 0, 0,
-			LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, 1, pixels, LOADING_ART_FRAME_WIDTH * 4, 0);
+			vk.loading_art.width, LOADING_ART_FRAME_HEIGHT, 1, pixels, vk.loading_art.width * 4, 0);
 		if (stereo)
 			xgpu_vulkan_image_upload(vk.loading_art_image, 0, 0, LOADING_ART_FRAME_WIDTH, 0, 0,
 				LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, 1, vk.loading_art.output_right,
@@ -4452,7 +4468,7 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 		memset(&blit, 0, sizeof(blit));
 		blit.srcSubresource.aspectMask = blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		blit.srcSubresource.layerCount = blit.dstSubresource.layerCount = 1;
-		blit.srcOffsets[1].x = stereo ? 2 * LOADING_ART_FRAME_WIDTH : LOADING_ART_FRAME_WIDTH;
+		blit.srcOffsets[1].x = stereo ? 2 * LOADING_ART_FRAME_WIDTH : (int32_t)vk.loading_art.width;
 		blit.srcOffsets[1].y = LOADING_ART_FRAME_HEIGHT;
 		blit.srcOffsets[1].z = 1;
 		blit.dstOffsets[0].x = (int32_t)x;
@@ -4461,26 +4477,6 @@ struct xgpu_vulkan_image *xgpu_vulkan_loading_draw(const struct loading_presenta
 		blit.dstOffsets[1].y = (int32_t)(y + fit_height);
 		blit.dstOffsets[1].z = 1;
 		vk.loading_art_image->used = vk.loading_image->used = vk.serial;
-		/* (first the picture scaled to cover the whole image, its top and
-		bottom cut, so that a screen wider than 4:3 has the picture's own
-		space at its sides, not black bars; the letterboxed picture over it
-		keeps its text and sweep at their 4:3 size) */
-		if (!stereo && fit_width < width)
-		{
-			VkImageBlit cover = blit;
-			uint32_t rows = (uint32_t)((uint64_t)LOADING_ART_FRAME_WIDTH * height / width);
-
-			if (rows < 1)
-				rows = 1;
-			cover.srcOffsets[0].y = (int32_t)((LOADING_ART_FRAME_HEIGHT - rows) / 2);
-			cover.srcOffsets[1].y = cover.srcOffsets[0].y + (int32_t)rows;
-			cover.dstOffsets[0].x = 0;
-			cover.dstOffsets[0].y = 0;
-			cover.dstOffsets[1].x = (int32_t)width;
-			cover.dstOffsets[1].y = (int32_t)height;
-			vkCmdBlitImage(commands, vk.loading_art_image->image, VK_IMAGE_LAYOUT_GENERAL,
-				vk.loading_image->image, VK_IMAGE_LAYOUT_GENERAL, 1, &cover, VK_FILTER_LINEAR);
-		}
 		vkCmdBlitImage(commands, vk.loading_art_image->image, VK_IMAGE_LAYOUT_GENERAL,
 			vk.loading_image->image, VK_IMAGE_LAYOUT_GENERAL, 1, &blit, VK_FILTER_LINEAR);
 		transfer_done(commands);

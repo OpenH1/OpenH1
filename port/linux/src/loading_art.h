@@ -18,6 +18,12 @@
 #define LOADING_ART_FRAME_WIDTH LOADING_ART_WIDTH
 #define LOADING_ART_FRAME_HEIGHT LOADING_ART_HEIGHT
 #define LOADING_ART_FRAME_PIXELS (LOADING_ART_FRAME_WIDTH * LOADING_ART_FRAME_HEIGHT)
+/* The frame is drawn at the screen's shape, 480 rows tall and as wide as
+ * the screen is for them (loading_art_width): the scene seeing more at its
+ * sides (Hor+), the sweep crossing all of it, the words at their size in
+ * its middle, the picture scaled to cover it. Its widest: */
+#define LOADING_ART_FRAME_MAXIMUM_WIDTH 1152
+#define LOADING_ART_FRAME_MAXIMUM_PIXELS (LOADING_ART_FRAME_MAXIMUM_WIDTH * LOADING_ART_FRAME_HEIGHT)
 /* how much of the menu's scene shows between the sweeps, of 256 */
 #ifndef LOADING_ART_SCENE_BASE
 #define LOADING_ART_SCENE_BASE 24
@@ -75,10 +81,15 @@ struct loading_art_axis
 
 struct loading_art
 {
-	uint8_t color[LOADING_ART_FRAME_PIXELS * 3];
-	uint8_t history[2][LOADING_ART_FRAME_PIXELS * 4];
-	uint8_t output[LOADING_ART_FRAME_PIXELS * 4];
-	struct loading_art_axis x[LOADING_ART_FRAME_WIDTH], y[LOADING_ART_FRAME_HEIGHT];
+	uint8_t color[LOADING_ART_FRAME_MAXIMUM_PIXELS * 3];
+	uint8_t history[2][LOADING_ART_FRAME_MAXIMUM_PIXELS * 4];
+	uint8_t output[LOADING_ART_FRAME_MAXIMUM_PIXELS * 4];
+	struct loading_art_axis x[LOADING_ART_FRAME_MAXIMUM_WIDTH], y[LOADING_ART_FRAME_HEIGHT];
+	/* the frame's width (loading_art_width: 640 until a presenter says
+	otherwise), and the supplied picture, which the frame's colour is made
+	from at each width */
+	unsigned int width;
+	uint8_t picture[LOADING_ART_BYTES];
 	uint64_t epoch, step;
 	unsigned int valid, started, current;
 	/* the menu's scene (loading_ring.h), when the presenter has one: drawn
@@ -86,9 +97,9 @@ struct loading_art
 	over it (their coverage, text), and what the sweep lights of it (feed);
 	VR's right eye's too, and its picture (stereo) */
 	struct loading_ring ring;
-	uint8_t scene[LOADING_ART_FRAME_PIXELS * 3];
-	uint8_t feed[LOADING_ART_FRAME_PIXELS * 3];
-	uint8_t text[LOADING_ART_FRAME_PIXELS];
+	uint8_t scene[LOADING_ART_FRAME_MAXIMUM_PIXELS * 3];
+	uint8_t feed[LOADING_ART_FRAME_MAXIMUM_PIXELS * 3];
+	uint8_t text[LOADING_ART_FRAME_MAXIMUM_PIXELS];
 	uint8_t scene_right[LOADING_ART_FRAME_PIXELS * 3];
 	uint8_t output_right[LOADING_ART_FRAME_PIXELS * 4];
 	/* the load's progress (negative: none told this load), and when it
@@ -97,7 +108,7 @@ struct loading_art
 	uint64_t progress_epoch, completed_ns;
 	unsigned int text_valid, stereo, eyes_valid, composed;
 	/* the feedback's rows blurred across (loading_art_row) */
-	uint32_t rows[4][LOADING_ART_FRAME_WIDTH * 3];
+	uint32_t rows[4][LOADING_ART_FRAME_MAXIMUM_WIDTH * 3];
 	unsigned int row_tags[4], row_next;
 	float eyes[2][3];
 	/* the picture's cumulative histogram, and the scene's brightness
@@ -239,11 +250,12 @@ static inline void loading_art_axes(struct loading_art *art)
 	for (index = 0; index < LOADING_ART_TINTS * 256; index++)
 		loading_art_tint_set(index / 256, index % 256, art->tints[index / 256][index % 256]);
 	/* Stock fade quad spans +/-129/128. Its source coordinates are
-	 * 3..637 horizontally and 0..480 vertically. */
-	for (index = 0; index < LOADING_ART_FRAME_WIDTH; index++)
+	 * 3..637 horizontally and 0..480 vertically (at 640; as much in from
+	 * each edge at any width). */
+	for (index = 0; index < art->width; index++)
 		loading_art_axis_set(&art->x[index], 2560 + (int)(
-			(UINT64_C(634) * ((2 * index + 1) * 128 + LOADING_ART_FRAME_WIDTH) * 1024) /
-			(LOADING_ART_FRAME_WIDTH * 258)), LOADING_ART_FRAME_WIDTH);
+			((uint64_t)(art->width - 6) * ((2 * index + 1) * 128 + art->width) * 1024) /
+			(art->width * 258)), art->width);
 	for (index = 0; index < LOADING_ART_FRAME_HEIGHT; index++)
 		loading_art_axis_set(&art->y[index], (int)(
 			(UINT64_C(480) * ((2 * index + 1) * 128 + LOADING_ART_FRAME_HEIGHT) * 1024) /
@@ -257,17 +269,75 @@ static inline void loading_art_axes(struct loading_art *art)
 #define LOADING_ART_TEXT_RIGHT 408
 #define LOADING_ART_TEXT_BOTTOM 256
 
+/* how far right of the frame's left the picture's 640 columns' middle part
+ * lies: the words' place */
+static inline unsigned int loading_art_middle(const struct loading_art *art)
+{
+	return (art->width - LOADING_ART_WIDTH) / 2;
+}
+
 static inline void loading_art_text(struct loading_art *art, const uint8_t *rgba)
 {
-	unsigned int x, y;
+	unsigned int x, y, middle = loading_art_middle(art);
 	memset(art->text, 0, sizeof(art->text));
 	for (y = LOADING_ART_TEXT_TOP; y < LOADING_ART_TEXT_BOTTOM; y++)
 		for (x = LOADING_ART_TEXT_LEFT; x < LOADING_ART_TEXT_RIGHT; x++)
 		{
-			unsigned int pixel = y * LOADING_ART_FRAME_WIDTH + x, blue = rgba[pixel * 4 + 2];
-			art->text[pixel] = (uint8_t)(blue <= 130 ? 0 : blue >= 210 ? 255 : (blue - 130) * 255 / 80);
+			unsigned int blue = rgba[(y * LOADING_ART_WIDTH + x) * 4 + 2];
+			art->text[y * art->width + x + middle] =
+				(uint8_t)(blue <= 130 ? 0 : blue >= 210 ? 255 : (blue - 130) * 255 / 80);
 		}
 	art->text_valid = 1;
+}
+
+/* The frame's colour: the picture scaled to cover the frame, in its middle,
+ * its top and bottom cut as the frame is wider (bilinear, one picture). */
+static inline void loading_art_color(struct loading_art *art)
+{
+	unsigned int x, y, channel;
+	/* (the picture's pixels a frame's pixel is, in 1/1024ths) */
+	uint32_t step = LOADING_ART_WIDTH * 1024 / art->width;
+	int top = (int)(LOADING_ART_HEIGHT * 512) - (int)(LOADING_ART_FRAME_HEIGHT * step / 2);
+	for (y = 0; y < LOADING_ART_FRAME_HEIGHT; y++)
+	{
+		int sy = top + (int)((2 * y + 1) * step / 2) - 512;
+		unsigned int y0, y1, fy;
+		if (sy < 0)
+			sy = 0;
+		y0 = (unsigned int)sy / 1024;
+		fy = (unsigned int)sy & 1023;
+		if (y0 >= LOADING_ART_HEIGHT - 1)
+		{
+			y0 = LOADING_ART_HEIGHT - 1;
+			fy = 0;
+		}
+		y1 = y0 + (y0 < LOADING_ART_HEIGHT - 1);
+		for (x = 0; x < art->width; x++)
+		{
+			int sx = (int)((2 * x + 1) * step / 2) - 512;
+			unsigned int x0, x1, fx;
+			if (sx < 0)
+				sx = 0;
+			x0 = (unsigned int)sx / 1024;
+			fx = (unsigned int)sx & 1023;
+			if (x0 >= LOADING_ART_WIDTH - 1)
+			{
+				x0 = LOADING_ART_WIDTH - 1;
+				fx = 0;
+			}
+			x1 = x0 + (x0 < LOADING_ART_WIDTH - 1);
+			for (channel = 0; channel < 3; channel++)
+			{
+				const uint8_t *p = art->picture;
+				uint32_t upper = p[(y0 * LOADING_ART_WIDTH + x0) * 4 + channel] * (1024 - fx) +
+					p[(y0 * LOADING_ART_WIDTH + x1) * 4 + channel] * fx;
+				uint32_t lower = p[(y1 * LOADING_ART_WIDTH + x0) * 4 + channel] * (1024 - fx) +
+					p[(y1 * LOADING_ART_WIDTH + x1) * 4 + channel] * fx;
+				art->color[(y * art->width + x) * 3 + channel] =
+					(uint8_t)((upper * (1024 - fy) + lower * fy + (1u << 19)) >> 20);
+			}
+		}
+	}
 }
 
 static inline unsigned int loading_art_luminance(unsigned int r, unsigned int g, unsigned int b)
@@ -294,21 +364,45 @@ static inline void loading_art_histogram(struct loading_art *art, const uint8_t 
 
 static inline void loading_art_set(struct loading_art *art, const uint8_t *rgba)
 {
-	unsigned int index, channel, stereo = art->stereo;
+	unsigned int stereo = art->stereo, width = art->width;
 	struct loading_ring ring = art->ring;
 	memset(art, 0, sizeof(*art));
 	art->ring = ring;
 	art->stereo = stereo;
+	art->width = width >= LOADING_ART_WIDTH && width <= LOADING_ART_FRAME_MAXIMUM_WIDTH ? width : LOADING_ART_WIDTH;
 	loading_art_axes(art);
 	if (!rgba)
 		return;
 	/* Keep the supplied artwork colors; alpha is opaque in the presentation. */
-	for (index = 0; index < LOADING_ART_PIXELS; index++)
-		for (channel = 0; channel < 3; channel++)
-			art->color[index * 3 + channel] = rgba[index * 4 + channel];
+	memcpy(art->picture, rgba, LOADING_ART_BYTES);
+	loading_art_color(art);
 	loading_art_text(art, rgba);
 	loading_art_histogram(art, rgba);
 	art->valid = 1;
+}
+
+/* The frame's width for a screen `screen_width` by `screen_height`: as wide
+ * as the screen is for 480 rows (even, 640 at the least, a 4:3 screen's,
+ * and at most LOADING_ART_FRAME_MAXIMUM_WIDTH), so that the presenter fills
+ * it; VR's window stays 640. A new width starts the sweep again. */
+static inline void loading_art_width(struct loading_art *art, unsigned int screen_width, unsigned int screen_height)
+{
+	unsigned int width = screen_height ? (unsigned int)((uint64_t)LOADING_ART_FRAME_HEIGHT * screen_width /
+		screen_height) & ~1u : LOADING_ART_WIDTH;
+	if (art->stereo || width < LOADING_ART_WIDTH)
+		width = LOADING_ART_WIDTH;
+	if (width > LOADING_ART_FRAME_MAXIMUM_WIDTH)
+		width = LOADING_ART_FRAME_MAXIMUM_WIDTH;
+	if (width == art->width)
+		return;
+	art->width = width;
+	loading_art_axes(art);
+	if (art->valid)
+	{
+		loading_art_color(art);
+		loading_art_text(art, art->picture);
+	}
+	art->started = 0;
 }
 
 /* The menu's scene (loading_scene.h) to draw in the picture's place; NULL
@@ -316,6 +410,8 @@ static inline void loading_art_set(struct loading_art *art, const uint8_t *rgba)
 static inline int loading_art_scene(struct loading_art *art, const void *data, size_t bytes)
 {
 	int valid = loading_ring_set(&art->ring, data, bytes);
+	if (art->width < LOADING_ART_WIDTH || art->width > LOADING_ART_FRAME_MAXIMUM_WIDTH)
+		art->width = LOADING_ART_WIDTH;
 	loading_art_axes(art);
 	art->started = 0;
 	return valid;
@@ -330,6 +426,17 @@ static inline void loading_art_stereo(struct loading_art *art, unsigned int ster
 	{
 		art->stereo = stereo;
 		art->started = 0;
+		/* (VR's window: the menus' 640) */
+		if (stereo && art->width != LOADING_ART_WIDTH)
+		{
+			art->width = LOADING_ART_WIDTH;
+			loading_art_axes(art);
+			if (art->valid)
+			{
+				loading_art_color(art);
+				loading_art_text(art, art->picture);
+			}
+		}
 	}
 }
 
@@ -409,16 +516,16 @@ static inline int loading_art_stereo_drawn(const struct loading_art *art)
  * histogram matched to the picture's, as a load's first frame has it. */
 static inline void loading_art_tone(struct loading_art *art, const uint32_t *pixels)
 {
-	uint32_t count[256], total = 0;
+	uint32_t count[256], total = 0, frame_pixels = art->width * LOADING_ART_FRAME_HEIGHT;
 	unsigned int index, level, target = 0;
 	memset(count, 0, sizeof(count));
-	for (index = 0; index < LOADING_ART_PIXELS; index++)
+	for (index = 0; index < frame_pixels; index++)
 		count[loading_art_luminance(pixels[index] & 255, (pixels[index] >> 8) & 255, (pixels[index] >> 16) & 255)]++;
 	for (level = 0; level < 256; level++)
 	{
 		uint32_t share;
 		total += count[level];
-		share = (uint32_t)((uint64_t)total * 65536 / LOADING_ART_PIXELS);
+		share = (uint32_t)((uint64_t)total * 65536 / frame_pixels);
 		while (art->histogram_valid && target < 255 && art->histogram[target] < share)
 			target++;
 		art->tone[level] = (uint8_t)(art->histogram_valid ? target : level);
@@ -428,9 +535,11 @@ static inline void loading_art_tone(struct loading_art *art, const uint32_t *pix
 
 /* The sweep's light on the ring: where the sweep's band is across the
  * picture at a phase (loading_art_step's mask at its brightest), in pixels. */
-static inline float loading_art_band(unsigned int phase)
+static inline float loading_art_band(const struct loading_art *art, unsigned int phase)
 {
-	return 3.2f * (float)phase - 64.5f;
+	/* (it crosses from 128 pixels left of the frame to its right edge:
+	3.2 a phase at 640) */
+	return (float)(art->width + LOADING_ART_WIDTH / 5) / 240.0f * (float)phase - 64.5f;
 }
 
 /* The scene for one eye (NULL: the menu's camera; else VR's, loading_ring_draw's) `seconds` into
@@ -441,26 +550,27 @@ static inline float loading_art_band(unsigned int phase)
 static inline int loading_art_scene_draw(struct loading_art *art, float seconds, unsigned int phase, const float *eye,
 	uint8_t *scene, uint8_t *feed)
 {
-	const uint32_t *pixels = loading_ring_draw(&art->ring, LOADING_ART_FRAME_WIDTH, LOADING_ART_FRAME_HEIGHT, seconds,
-		eye, loading_art_band(phase));
+	const uint32_t *pixels = loading_ring_draw(&art->ring, art->width, LOADING_ART_FRAME_HEIGHT, seconds,
+		eye, loading_art_band(art, phase));
+	unsigned int width = art->width, middle = loading_art_middle(art);
 	unsigned int x, y;
 	if (!pixels)
 		return 0;
 	if (!art->tone_valid)
 		loading_art_tone(art, pixels);
 	for (y = 0; y < LOADING_ART_FRAME_HEIGHT; y++)
-		for (x = 0; x < LOADING_ART_FRAME_WIDTH; x++)
+		for (x = 0; x < width; x++)
 		{
-			unsigned int pixel = y * LOADING_ART_FRAME_WIDTH + x, value = pixels[pixel];
+			unsigned int pixel = y * width + x, value = pixels[pixel];
 			int level = (int)art->tone[loading_art_luminance(value & 255, (value >> 8) & 255, (value >> 16) & 255)];
 			int edge = 0, coverage, light, channel, white;
 			unsigned int tint;
 			uint8_t rgb[3];
-			if (x > 0 && y > 0 && x + 1 < LOADING_ART_FRAME_WIDTH && y + 1 < LOADING_ART_FRAME_HEIGHT)
+			if (x > 0 && y > 0 && x + 1 < width && y + 1 < LOADING_ART_FRAME_HEIGHT)
 			{
 				const uint32_t *p = pixels + pixel;
 				int gx = (int)((p[1] >> 8) & 255) - (int)((p[-1] >> 8) & 255);
-				int gy = (int)((p[LOADING_ART_FRAME_WIDTH] >> 8) & 255) - (int)((p[-LOADING_ART_FRAME_WIDTH] >> 8) & 255);
+				int gy = (int)((p[width] >> 8) & 255) - (int)((p[-width] >> 8) & 255);
 				edge = (gx < 0 ? -gx : gx) + (gy < 0 ? -gy : gy);
 			}
 			coverage = art->text_valid ? art->text[pixel] : 0;
@@ -482,11 +592,11 @@ static inline int loading_art_scene_draw(struct loading_art *art, float seconds,
 					light = LOADING_ART_FEED_LIMIT;
 				memcpy(feed + pixel * 3, art->tints[tint][light > 255 ? 255 : light], 3);
 			}
-			/* (the words, where they are) */
+			/* (the words, where they are: the picture's own, at their size) */
 			if (coverage)
 				for (channel = 0; channel < 3; channel++)
 				{
-					rgb[channel] = art->color[pixel * 3 + channel];
+					rgb[channel] = art->picture[(y * LOADING_ART_WIDTH + x - middle) * 4 + channel];
 					scene[pixel * 3 + channel] = (uint8_t)(scene[pixel * 3 + channel] +
 						(rgb[channel] - scene[pixel * 3 + channel]) * coverage / 255);
 					if (feed)
@@ -518,7 +628,7 @@ static inline const uint32_t *loading_art_row(struct loading_art *art, const uin
 	slot = art->row_next++ & 3;
 	art->row_tags[slot] = row + 1;
 	sums = art->rows[slot];
-	for (x = 0; x < LOADING_ART_FRAME_WIDTH; x++)
+	for (x = 0; x < art->width; x++)
 	{
 		const struct loading_art_axis *ax = &art->x[x];
 		uint32_t r = 0, g = 0, b = 0;
@@ -528,7 +638,7 @@ static inline const uint32_t *loading_art_row(struct loading_art *art, const uin
 			uint32_t weight = ax->weight[tap];
 			if (!weight)
 				continue;
-			sample = previous + (row * LOADING_ART_FRAME_WIDTH + ax->index[tap]) * 4;
+			sample = previous + (row * art->width + ax->index[tap]) * 4;
 			r += sample[0] * weight;
 			g += sample[1] * weight;
 			b += sample[2] * weight;
@@ -565,9 +675,11 @@ static inline void loading_art_step(struct loading_art *art, unsigned int phase)
 			mask_y = 15 * 256;
 		iy = mask_y / 256;
 		fy = (unsigned int)mask_y & 255;
-		for (x = 0; x < LOADING_ART_FRAME_WIDTH; x++)
+		for (x = 0; x < art->width; x++)
 		{
-			mask_x = (int)(x * 256 + 32768) - (int)(phase * 768 * 256 / 240);
+			/* (the sweep's band crosses from 128 pixels left of the frame to
+			past its right edge, as it crosses the 640) */
+			mask_x = (int)(x * 256 + 32768) - (int)(phase * (art->width + 128) * 256 / 240);
 			/* Floor division, including the border to the left of the mask. */
 			ix = mask_x >= 0 ? mask_x / 256 : -((-mask_x + 255) / 256);
 			fx = (unsigned int)(mask_x - ix * 256);
@@ -576,7 +688,7 @@ static inline void loading_art_step(struct loading_art *art, unsigned int phase)
 			lower = loading_art_mask(ix, iy < 15 ? (unsigned int)iy + 1 : 15) * (256 - fx) +
 				loading_art_mask(ix + 1, iy < 15 ? (unsigned int)iy + 1 : 15) * fx;
 			mask = (upper * (256 - fy) + lower * fy + 32768) >> 16;
-			pixel = y * LOADING_ART_FRAME_WIDTH + x;
+			pixel = y * art->width + x;
 			sum[0] = sum[1] = sum[2] = 0;
 			for (ty = 0; ty < 3; ty++)
 			{
@@ -612,7 +724,7 @@ static inline void loading_art_compose(struct loading_art *art, const uint8_t *p
 	unsigned int x, y, channel, pixel;
 	if (!scene)
 	{
-		for (pixel = 0; pixel < LOADING_ART_FRAME_PIXELS; pixel++)
+		for (pixel = 0; pixel < art->width * LOADING_ART_FRAME_HEIGHT; pixel++)
 		{
 			for (channel = 0; channel < 3; channel++)
 				output[pixel * 4 + channel] = (uint8_t)((previous[pixel * 4 + channel] *
@@ -625,14 +737,14 @@ static inline void loading_art_compose(struct loading_art *art, const uint8_t *p
 	{
 		unsigned int vy = art->stereo ? (y < 40 ? y * 256 / 40 : y >= LOADING_ART_FRAME_HEIGHT - 40 ?
 			(LOADING_ART_FRAME_HEIGHT - 1 - y) * 256 / 40 : 256) : 256;
-		for (x = 0; x < LOADING_ART_FRAME_WIDTH; x++)
+		for (x = 0; x < art->width; x++)
 		{
 			unsigned int value, edge = vy;
-			pixel = y * LOADING_ART_FRAME_WIDTH + x;
+			pixel = y * art->width + x;
 			/* (VR's window darkens toward its edges) */
 			if (art->stereo)
-				edge = (x < 48 ? x * 256 / 48 : x >= LOADING_ART_FRAME_WIDTH - 48 ?
-					(LOADING_ART_FRAME_WIDTH - 1 - x) * 256 / 48 : 256) * vy >> 8;
+				edge = (x < 48 ? x * 256 / 48 : x >= art->width - 48 ?
+					(art->width - 1 - x) * 256 / 48 : 256) * vy >> 8;
 			for (channel = 0; channel < 3; channel++)
 			{
 				value = ((previous[pixel * 4 + channel] * (256 - fraction) +
@@ -660,6 +772,8 @@ static inline const uint8_t *loading_art_render(struct loading_art *art,
 	unsigned int stereo = art->stereo && art->ring.valid;
 	if (!art->valid && !art->ring.valid)
 		return NULL;
+	if (art->width < LOADING_ART_WIDTH || art->width > LOADING_ART_FRAME_MAXIMUM_WIDTH)
+		loading_art_width(art, LOADING_ART_WIDTH, LOADING_ART_FRAME_HEIGHT);
 	target = (frame->elapsed_ns / UINT64_C(1000000000)) * 60 +
 		(frame->elapsed_ns % UINT64_C(1000000000)) * 60 / UINT64_C(1000000000);
 	reset = !art->started || art->epoch != frame->epoch || target < art->step;
@@ -714,7 +828,7 @@ static inline const uint8_t *loading_art_render(struct loading_art *art,
 	if (completion < 256)
 	{
 		unsigned int pixel, channel;
-		for (pixel = 0; pixel < LOADING_ART_FRAME_PIXELS; pixel++)
+		for (pixel = 0; pixel < art->width * LOADING_ART_FRAME_HEIGHT; pixel++)
 			for (channel = 0; channel < 3; channel++)
 			{
 				art->output[pixel * 4 + channel] = (uint8_t)(art->output[pixel * 4 + channel] * completion >> 8);

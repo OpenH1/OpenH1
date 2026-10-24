@@ -139,3 +139,47 @@ int main(void) {
     free(input); free(reference); free(art); return 0;
 }
 ''')
+
+
+def test_frame_at_the_screens_shape(tmp_path):
+    """the frame drawn as wide as the screen is for its 480 rows: the picture
+    covering it, the words at their size in its middle, every pixel drawn;
+    VR's window stays 640"""
+    run(tmp_path, r'''
+int main(void) {
+    struct loading_art *art = calloc(1, sizeof(*art));
+    struct loading_presentation_frame frame;
+    uint8_t *input = malloc(LOADING_ART_BYTES);
+    const uint8_t *pixels;
+    unsigned int i, x, y, words = 0, middle;
+    assert(art && input); memset(&frame, 0, sizeof(frame));
+    for (i = 0; i < LOADING_ART_PIXELS; i++) {
+        input[i*4] = input[i*4+1] = 40; input[i*4+2] = 230; input[i*4+3] = 255;
+    }
+    loading_art_set(art, input);
+    assert(art->width == LOADING_ART_WIDTH);
+    loading_art_width(art, 2796, 1290); assert(art->width == 1040);
+    loading_art_width(art, 2560, 1600); assert(art->width == 768);
+    loading_art_width(art, 1024, 768); assert(art->width == LOADING_ART_WIDTH);
+    loading_art_width(art, 10000, 480); assert(art->width == LOADING_ART_FRAME_MAXIMUM_WIDTH);
+    loading_art_width(art, 2796, 1290);
+    middle = (1040 - LOADING_ART_WIDTH) / 2;
+    for (y = 0; y < LOADING_ART_FRAME_HEIGHT; y++)
+        for (x = 0; x < 1040; x++)
+            if (art->text[y * 1040 + x]) {
+                words++;
+                assert(x >= LOADING_ART_TEXT_LEFT + middle && x < LOADING_ART_TEXT_RIGHT + middle);
+                assert(y >= LOADING_ART_TEXT_TOP && y < LOADING_ART_TEXT_BOTTOM);
+            }
+    assert(words);
+    /* (the picture covers the frame: its colour at the edges too) */
+    assert(art->color[2] == 230 && art->color[(1040 * 480 - 1) * 3 + 2] == 230);
+    frame.epoch = 1; frame.active = 1; frame.elapsed_ns = UINT64_C(2000000000);
+    pixels = loading_art_render(art, &frame);
+    assert(pixels);
+    for (i = 0; i < 1040 * LOADING_ART_FRAME_HEIGHT; i++)
+        assert(pixels[i*4+3] == 255);
+    loading_art_stereo(art, 1); assert(art->width == LOADING_ART_WIDTH);
+    free(input); free(art); return 0;
+}
+''')
