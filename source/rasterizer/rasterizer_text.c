@@ -519,9 +519,11 @@ rasterizer_draw_string(
 			}
 			else
 			{
+				/* port: left of 0 where the menus' widgets are anchored to a wide
+				screen's left edge (ui_widget_port_anchor_extra) */
 				set_rectangle2d(
 					&viewport_bounds,
-					FLOOR(clip->x0, 0),
+					FLOOR(clip->x0, -ui_widget_port_anchor_extra()),
 					FLOOR(clip->y0, 0),
 					MIN(render.camera.viewport_bounds.x1 - render.camera.viewport_bounds.x0, clip->x1),
 					MIN(render.camera.viewport_bounds.y1 - render.camera.viewport_bounds.y0, clip->y1));
@@ -650,9 +652,11 @@ rasterizer_draw_unicode_string(
 			}
 			else
 			{
+				/* port: left of 0 where the menus' widgets are anchored to a wide
+				screen's left edge (ui_widget_port_anchor_extra) */
 				set_rectangle2d(
 					&viewport_bounds,
-					FLOOR(clip->x0, 0),
+					FLOOR(clip->x0, -ui_widget_port_anchor_extra()),
 					FLOOR(clip->y0, 0),
 					MIN(render.camera.viewport_bounds.x1 - render.camera.viewport_bounds.x0, clip->x1),
 					MIN(render.camera.viewport_bounds.y1 - render.camera.viewport_bounds.y0, clip->y1));

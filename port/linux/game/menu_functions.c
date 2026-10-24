@@ -4976,11 +4976,87 @@ static void multiplayer_status_notes(struct widget_instance *list)
 	text_set(named(list, "invite_note", 0), multiplayer_status.invite ? L"INVITE READY" : L"");
 }
 
+/* the touchscreen's rows (port_settings.py's _multiplayer_touch), by their
+names' last part, and the items they are */
+static struct
+{
+	char const *name;
+	short item;
+	/* its OPEN button's words, and what the panel says it is (a line: the
+	panel's text box is one line wide here) */
+	wchar_t const *open;
+	wchar_t const *description;
+} const multiplayer_touch_items[] =
+{
+	{ "multiplayer_touch_browser_item", _multiplayer_item_server_browser, L"OPEN SERVER BROWSER",
+		L"Browse every public game on the Internet." },
+	{ "multiplayer_touch_join_lan_item", _multiplayer_item_join_local, L"FIND LOCAL GAMES",
+		L"Games on your Wi-Fi or local network." },
+	{ "multiplayer_touch_join_direct_item", _multiplayer_item_join_link, L"JOIN BY LINK",
+		L"Join a friend's game with the link they sent you." },
+	{ "multiplayer_touch_create_inter_item", _multiplayer_item_create_internet, L"HOST ON THE INTERNET",
+		L"Host a game; friends join with your invite link." },
+	{ "multiplayer_touch_create_lan_item", _multiplayer_item_create_local, L"HOST ON THIS NETWORK",
+		L"Host a game for players on your Wi-Fi." },
+	{ "multiplayer_touch_online_coop", _multiplayer_item_online_coop, L"HOST ONLINE CO-OP",
+		L"Play the campaign together over the Internet." },
+	{ "multiplayer_touch_gametypes_item", _multiplayer_item_gametypes, L"EDIT GAMETYPES",
+		L"Make your own rules, weapons and vehicles." },
+};
+
+/* the touchscreen's row chosen in the list (the leaf of its focus: Create
+Game's row's item), its index in multiplayer_touch_items, else NONE */
+static short multiplayer_touch_chosen(struct widget_instance *list)
+{
+	struct widget_instance *leaf = list;
+	short index;
+
+	while (leaf->focused_child)
+		leaf = leaf->focused_child;
+	for (index = 0; index < NUMBEROF(multiplayer_touch_items); index++)
+	{
+		/* (an instance's name is cut to 31 characters) */
+		if (!strncmp(leaf->name, multiplayer_touch_items[index].name, 31))
+			return index;
+	}
+	return NONE;
+}
+
+/* the item chosen: the computer's list's place, the touchscreen's row's */
+static short multiplayer_status_item(struct widget_instance *list)
+{
+	short touch;
+
+	if (strcmp(list->name, "multiplayer_touch_list"))
+		return ui_widget_port_list_index(list);
+	touch = multiplayer_touch_chosen(list);
+	return touch == NONE ? _multiplayer_item_server_browser : multiplayer_touch_items[touch].item;
+}
+
+/* "port multiplayer open" (the touchscreen's OPEN): the row chosen used, as
+its A would */
+static boolean multiplayer_touch_open(struct widget_instance *widget, short controller, boolean *widget_deleted)
+{
+	struct widget_instance *screen = widget;
+	struct widget_instance *list;
+	struct widget_instance *leaf;
+
+	while (screen->parent)
+		screen = screen->parent;
+	list = named(screen, "multiplayer_touch_list", 0);
+	if (!list || multiplayer_touch_chosen(list) == NONE)
+		return campaign_fail();
+	for (leaf = list; leaf->focused_child; leaf = leaf->focused_child)
+	{
+	}
+	return ui_widget_port_dispatch_event(leaf, BUTTON_A, controller, widget_deleted);
+}
+
 static void multiplayer_status_update(struct widget_instance *list)
 {
 	struct widget_instance *description = list->parameters.list.extended_description;
 	wchar_t headline[ROW_TEXT_LENGTH * 2], detail[ROW_TEXT_LENGTH * 8];
-	short item = ui_widget_port_list_index(list);
+	short item = multiplayer_status_item(list);
 
 	boolean counts;
 
@@ -4990,6 +5066,18 @@ static void multiplayer_status_update(struct widget_instance *list)
 	multiplayer_status_notes(list);
 	/* (the PC version's pictures, which these take the place of) */
 	visible_set(named(description, "multiplayer_options_pic", 0), FALSE);
+	/* (the touchscreen's panel: the item's description, and OPEN's words) */
+	if (!strcmp(list->name, "multiplayer_touch_list"))
+	{
+		struct widget_instance *screen = list;
+		short touch = multiplayer_touch_chosen(list);
+
+		text_set(named(description, "multiplayer_options_txt", 0), touch == NONE ? L"" :
+			multiplayer_touch_items[touch].description);
+		while (screen->parent)
+			screen = screen->parent;
+		text_set(named(screen, "multiplayer_touch_open", 0), touch == NONE ? L"" : multiplayer_touch_items[touch].open);
+	}
 	/* (the Server Browser's, once games are found: ONLINE NOW's counts and
 	BEST FOR YOU) */
 	counts = item == _multiplayer_item_server_browser && multiplayer_status.browsing && multiplayer_status.games;
@@ -6944,6 +7032,10 @@ boolean pc_menu_event_function_invoke(
 		else if (!strcmp(name, "port multiplayer status end"))
 		{
 			multiplayer_status_end();
+		}
+		else if (!strcmp(name, "port multiplayer open"))
+		{
+			return multiplayer_touch_open(widget, controller, widget_deleted);
 		}
 		else if (!strcmp(name, "port multiplayer refresh"))
 		{

@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- The PC version's menus: ui\shell\main_menu\multiplayer_type_select (tools/ce_menus.py) -->
 <menus>
-	<widget name="main_menu/multiplayer_type_select/header_multiplayer" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/multiplayer_type_select/header_multiplayer">
+	<widget name="main_menu/multiplayer_type_select/header_multiplayer" controller="1" left="35" top="11" width="605" height="59" bitmap="main_menu/multiplayer_type_select/header_multiplayer" flags="anchor_left">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_options_pic" controller="1" left="288" top="82" width="307" height="244" bitmap="main_menu/multiplayer_type_select/mp_options">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_options_txt" type="text" controller="1" left="290" top="285" width="290" height="105" string_list="main_menu/multiplayer_type_select/multiplayer_option_descriptions" font="ui\large_ui" color="#FF2896FF">
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/multiplayer_type_button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items">
+	<widget name="main_menu/multiplayer_type_select/multiplayer_type_button_bar" type="column_list" width="640" height="28" flags="pass_unhandled_to_focused_child left_right_tabs_items anchor_right">
 		<data input="common button bar update"/>
 		<child widget="main_menu/multiplayer_type_select/multiplayer_button_refresh" x="380" y="1"/>
 		<child widget="common_button_back" x="510" y="1"/>
@@ -17,7 +17,7 @@
 		<on event="a" run="mp type set mode" open="main_menu/multiplayer_type_select/connected/connected_map_select_wrapper"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/multiplayer_type_create_item" type="text" left="51" width="232" height="32" string_list="main_menu/multiplayer_type_select/multiplayer_options" string_index="1" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
+	<widget name="main_menu/multiplayer_type_select/multiplayer_type_create_item" type="text" left="51" width="232" height="32" string_list="main_menu/multiplayer_type_select/multiplayer_options" string_index="1" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5" flags="anchor_left">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_type_create_lan_item" type="text" left="51" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/multiplayer_type_select/multiplayer_options" string_index="3" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" run="join controller to mp game"/>
@@ -40,7 +40,7 @@
 		<on event="start" run="mp type set mode" open="main_menu/multiplayer_type_select/join_game/join_game_screen"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/multiplayer_type_join_item" type="text" left="51" width="232" height="32" string_list="main_menu/multiplayer_type_select/multiplayer_options" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
+	<widget name="main_menu/multiplayer_type_select/multiplayer_type_join_item" type="text" left="51" width="232" height="32" string_list="main_menu/multiplayer_type_select/multiplayer_options" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5" flags="anchor_left">
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/multiplayer_type_join_lan_item" type="text" left="51" width="232" height="32" bitmap="bitmaps/list_item_bkd" string_list="main_menu/multiplayer_type_select/multiplayer_options" string_index="3" font="ui\large_ui" color="#FF2896FF" text_x="13" text_y="5">
 		<on event="a" run="mp type set mode" open="main_menu/multiplayer_type_select/join_game/join_game_screen"/>
@@ -96,7 +96,10 @@
 		<on event="created" run="mp type menu initialize"/>
 		<on event="deleted" run="port multiplayer status end"/>
 		<child widget="main_menu/multiplayer_type_select/header_multiplayer"/>
-		<child widget="main_menu/multiplayer_type_select/multiplayer_type_select_list"/>
-		<child widget="main_menu/blueline" x="64" y="363"/>
+		<child widget="main_menu/multiplayer_type_select/multiplayer_type_select_list" platform="pointer"/>
+		<child widget="main_menu/blueline" x="64" y="363" platform="pointer"/>
+		<child widget="main_menu/multiplayer_type_select/touch/multiplayer_touch_list" platform="touch"/>
+		<child widget="main_menu/multiplayer_type_select/touch/multiplayer_touch_open_bar" y="346" platform="touch"/>
+		<child widget="main_menu/multiplayer_type_select/touch/multiplayer_touch_hint" platform="touch"/>
 	</widget>
 </menus>

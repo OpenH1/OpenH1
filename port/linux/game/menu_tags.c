@@ -50,6 +50,7 @@ menu gets FRIENDLY FIRE too.
 /* the platform layer's (port/linux/src) */
 void platform_log(char const *format, ...);
 char const *config_string(char const *name);
+int config_boolean(char const *name);
 int platform_display_resolutions(long *widths, long *heights, int maximum);
 int platform_window_sizes(long *widths, long *heights, int maximum);
 /* (sdl_platform.c's PLATFORM_AUDIO_DEVICE_NAME_SIZE) */
@@ -294,7 +295,53 @@ static char const *const widget_flag_names[] =
 	"main_menu_if_no_history", "tag_controller_index", "nifty_fx", "no_history",
 	/* (the PC version's, which this engine has no use for) */
 	"force_handle_mouse", "no_widescreen_fill",
+	/* (the port's: ui_widget_port_anchor_offset, ui_widget_port_stretch) */
+	"anchor_left", "anchor_right", "stretch",
 };
+
+/* the port's widget flags' bits (widget_flag_names) */
+#define WIDGET_FLAG_ANCHOR_LEFT 17
+#define WIDGET_FLAG_ANCHOR_RIGHT 18
+#define WIDGET_FLAG_STRETCH 19
+
+/* how far the screen reaches past each side of the menus' 640 where its
+widgets are anchored to its edges: on the touchscreens' builds (the phones'
+wide screens, which the menus' 640 would leave with wide empty sides, or
+debug.touch_menus), else 0, the menus centred as the PC version has them */
+short ui_widget_port_anchor_extra(void)
+{
+#if !defined(HALO_ANDROID) && !defined(HALO_IOS)
+	static int touch_menus = -1;
+
+	if (touch_menus < 0)
+		touch_menus = config_boolean("debug.touch_menus") != 0;
+	if (!touch_menus)
+		return 0;
+#endif
+	return (short)MAX((halo_screen_width() - 640) / 2, 0);
+}
+
+/* anchor_left: the widget (and what is in it) moved to the screen's left
+edge by that much; anchor_right: to its right */
+short ui_widget_port_anchor_offset(long flags)
+{
+	short extra = ui_widget_port_anchor_extra();
+
+	if (!extra)
+		return 0;
+	if (flags & FLAG(WIDGET_FLAG_ANCHOR_LEFT))
+		return (short)-extra;
+	if (flags & FLAG(WIDGET_FLAG_ANCHOR_RIGHT))
+		return extra;
+	return 0;
+}
+
+/* stretch: the widget's picture drawn wider by both sides' width, from its
+left (a panel anchored left that reaches the right edge) */
+short ui_widget_port_stretch(long flags)
+{
+	return flags & FLAG(WIDGET_FLAG_STRETCH) ? (short)(2 * ui_widget_port_anchor_extra()) : 0;
+}
 
 static char const *const widget_type_names[] = { "container", "text", "spinner", "column_list" };
 static char const *const list_flag_names[] = { "items_in_code", "items_from_strings", "one_tooltip", "single_preview" };
@@ -396,7 +443,7 @@ static char const *const port_function_names[] =
 	/* (the Steam Frame's update question: menu_functions.c) */
 	"port update now",
 	/* (Multiplayer's panel: menu_functions.c's multiplayer_status) */
-	"port multiplayer status end", "port multiplayer refresh",
+	"port multiplayer status end", "port multiplayer refresh", "port multiplayer open",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
