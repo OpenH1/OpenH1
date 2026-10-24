@@ -68,6 +68,7 @@ only look up and create stand-ins.
 #include "profile_trace.h"
 #endif
 
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -214,6 +215,9 @@ struct peer
 	unsigned long endpoint_heard_time;
 	unsigned long sent_time;
 	unsigned long round_trip;
+	/* the rounds of pings sent to every address it gave, unreached (the
+	menus' "try") */
+	int punch_rounds;
 	/* the pings answered, and the shortest round trip of them */
 	int pongs;
 	unsigned long shortest_round_trip;
@@ -420,6 +424,10 @@ static struct
 	unsigned char join_host_hash[P2P_KEY_HASH_SIZE];
 	unsigned char join_token[P2P_TOKEN_SIZE];
 	unsigned long join_time;
+	/* when the join was asked for (the menus' and the log's clock), and
+	whether it reached the host (p2p_join_status) */
+	unsigned long join_asked_time;
+	int join_reached;
 
 	char clipboard[P2P_LINK_SIZE];
 	int has_clipboard;
@@ -462,6 +470,32 @@ static int elapsed(unsigned long since, unsigned long time)
 	half of it, which had nothing lapse from a time of 0 from 24.8 days of
 	uptime on) */
 	return (unsigned int)(p2p_now() - since) >= (unsigned int)time;
+}
+
+/* errors.c's: a line of debug.txt, with its date (the game's own lines
+are there: "attempting to connect to game") */
+void write_to_error_file(char *string, unsigned char date);
+
+void p2p_log(const char *format, ...)
+{
+	char text[512];
+	size_t length;
+	va_list arguments;
+
+	va_start(arguments, format);
+	vsnprintf(text, sizeof(text) - 2, format, arguments);
+	va_end(arguments);
+	platform_log("%s", text);
+	length = strlen(text);
+	memcpy(text + length, "\r\n", 3);
+	write_to_error_file(text, 1);
+}
+
+/* the milliseconds since the join was asked for (p2p_join_invite), for the
+log's lines of its steps */
+static unsigned long join_elapsed(void)
+{
+	return p2p_now() - p2p.join_asked_time;
 }
 
 unsigned long p2p_resolve(const char *host)
@@ -962,7 +996,7 @@ static void drop_peer(struct peer *peer, const char *reason)
 
 	if (!peer->probe)
 	{
-		platform_log("Internet play: %s %s: %s", peer->is_host && !peer->is_player ? "host" : "player", peer->name,
+		p2p_log("Internet play: %s %s: %s", peer->is_host && !peer->is_player ? "host" : "player", peer->name,
 			reason);
 	}
 	if (peer->connected)
@@ -1070,7 +1104,7 @@ int p2p_peer_turned_away(const unsigned char *peer_identifier, int is_host)
 	/* (anyone with the invite can ask as often as they like) */
 	if (!logged_time || elapsed(logged_time, 10000))
 	{
-		platform_log("Internet play: %s; one more was turned away (it asks again)", reason);
+		p2p_log("Internet play: %s; one more was turned away (it asks again)", reason);
 		logged_time = p2p_now() | 1;
 	}
 	return 1;
@@ -1119,9 +1153,16 @@ int p2p_peer_offered(const unsigned char *peer_identifier, const unsigned char *
 		p2p_key_hash(public_key, peer->key_hash);
 		peer->connection = -1;
 		peer->offered_time = p2p_now();
-		if (!peer->probe)
+		if (!peer->probe && offered == _p2p_offered_host && p2p.joining)
 		{
-			platform_log("Internet play: reaching %s %s%s", offered == _p2p_offered_host ? "host" : "player",
+			/* (the host answered: the path to it is opened now) */
+			p2p_log("Internet play: reaching host %s%s, %d %s (%lu ms after the join was asked for)", peer->name,
+				webrtc->kind == _p2p_webrtc_browser ? " (a browser)" : "", count, count == 1 ? "address" : "addresses",
+				join_elapsed());
+		}
+		else if (!peer->probe)
+		{
+			p2p_log("Internet play: reaching %s %s%s", offered == _p2p_offered_host ? "host" : "player",
 				peer->name, webrtc->kind == _p2p_webrtc_browser ? " (a browser)" : "");
 		}
 	}
@@ -1199,16 +1240,27 @@ static void peer_heard(struct peer *peer, unsigned long address, unsigned short 
 		peer->endpoint_heard_time = now;
 		if (peer->probe)
 			return;
-		platform_log("Internet play: connected to %s %s at %s", peer->is_host && !peer->is_player ? "host" : "player",
-			peer->name, log_address_ipv4(address, port, text, sizeof(text)));
+		if (p2p.joining && peer->is_host && !peer->is_player &&
+			!memcmp(p2p.join_host, peer->identifier, P2P_IDENTIFIER_SIZE))
+		{
+			p2p_log("Internet play: connected to host %s at %s (%lu ms after the join was asked for, %lu after "
+				"the host answered)", peer->name, log_address_ipv4(address, port, text, sizeof(text)), join_elapsed(),
+				now - peer->offered_time);
+		}
+		else
+		{
+			p2p_log("Internet play: connected to %s %s at %s", peer->is_host && !peer->is_player ? "host" : "player",
+				peer->name, log_address_ipv4(address, port, text, sizeof(text)));
+		}
 		if (peer->is_host && !peer->is_player)
 		{
 			if (p2p.joining && !memcmp(p2p.join_host, peer->identifier, P2P_IDENTIFIER_SIZE))
 			{
 				p2p.joining = 0;
+				p2p.join_reached = 1;
 				p2p_signal_stop_joining();
 			}
-			platform_log("Internet play: the host's game is listed under Multiplayer, System Link");
+			p2p_log("Internet play: the host's game is listed under Multiplayer, System Link");
 		}
 	}
 	else if (same)
@@ -1263,6 +1315,7 @@ static void update_peers(void)
 			for (candidate = 0; candidate < peer->candidate_count && peer->connection < 0; candidate++)
 				peer_ping(peer, &peer->candidates[candidate]);
 			peer->sent_time = p2p_now();
+			peer->punch_rounds++;
 		}
 	}
 }
@@ -1343,7 +1396,7 @@ static void stun_update(void)
 			server->address = p2p_resolve(server->host);
 			if (!server->address)
 			{
-				platform_log("Internet play: cannot look up the STUN server %s", server->host);
+				p2p_log("Internet play: cannot look up the STUN server %s", server->host);
 				/* (looked up again a refresh's time from now, below: the
 				network may not have been up yet) */
 				server->attempts = STUN_ATTEMPTS;
@@ -1423,14 +1476,14 @@ static void stun_received(const unsigned char *packet, int size, const struct so
 				memcpy(&server->mapped.address, ip, 4);
 				memcpy(&server->mapped.port, port, 2);
 				server->has_mapped = 1;
-				platform_log("Internet play: this machine's public address is %s (from %s)",
+				p2p_log("Internet play: this machine's public address is %s (from %s)",
 					log_address_ipv4(server->mapped.address, server->mapped.port, text, sizeof(text)), server->host);
 				for (other = 0; other < p2p.stun_count; other++)
 				{
 					if (other != index && p2p.stun[other].has_mapped &&
 						p2p.stun[other].mapped.port != server->mapped.port && !p2p.reported_symmetric)
 					{
-						platform_log("Internet play: this network's NAT gives each destination its own "
+						p2p_log("Internet play: this network's NAT gives each destination its own "
 							"port, so it can only connect to machines behind more lenient ones");
 						p2p.reported_symmetric = 1;
 					}
@@ -1516,7 +1569,7 @@ static void network_resumed(unsigned long stopped)
 		p2p.stun[index].attempts = 0;
 	}
 	p2p_signal_reconnect();
-	platform_log("Internet play: the game was stopped for %lu seconds; its public address is asked again and "
+	p2p_log("Internet play: the game was stopped for %lu seconds; its public address is asked again and "
 		"the brokers reconnected", stopped / 1000);
 }
 
@@ -2656,7 +2709,7 @@ static int join_invite(const char *text)
 	int parsed = parse_invite(text, hash, token);
 
 	if (parsed < 0)
-		platform_log("Internet play: that invite is from an older version of the game, which this one "
+		p2p_log("Internet play: that invite is from an older version of the game, which this one "
 			"cannot join");
 	if (parsed <= 0)
 		return parsed;
@@ -2683,14 +2736,16 @@ static int join_invite(const char *text)
 		memcpy(p2p.join_host, host, sizeof(host));
 		memcpy(p2p.join_host_hash, hash, sizeof(hash));
 		memcpy(p2p.join_token, token, sizeof(token));
-		platform_log("Internet play: joining %s's game, reached already; it is listed under Multiplayer, "
+		p2p.join_asked_time = p2p_now();
+		p2p.join_reached = 1;
+		p2p_log("Internet play: joining %s's game, reached already; it is listed under Multiplayer, "
 			"System Link", find_peer(host)->name);
 		return 1;
 	}
 	peer = find_peer(host);
 	if (peer && peer->connected)
 	{
-		platform_log("Internet play: already connected to that invite's host");
+		p2p_log("Internet play: already connected to that invite's host");
 		return 1;
 	}
 	if ((p2p.joining || p2p.join_requested) && !memcmp(hash, p2p.join_host_hash, sizeof(hash)) &&
@@ -2700,6 +2755,8 @@ static int join_invite(const char *text)
 	memcpy(p2p.join_host_hash, hash, sizeof(hash));
 	memcpy(p2p.join_token, token, sizeof(token));
 	p2p.join_requested = 1;
+	p2p.join_asked_time = p2p_now();
+	p2p.join_reached = 0;
 	return 1;
 }
 
@@ -2739,7 +2796,7 @@ int p2p_join_invite(const char *text)
 	result = join_invite(text);
 	pthread_mutex_unlock(&p2p_lock);
 	if (result > 0 && !p2p.running)
-		platform_log("Internet play is off (network.online in config.toml): the invite is ignored");
+		p2p_log("Internet play is off (network.online in config.toml): the invite is ignored");
 	return result > 0;
 }
 
@@ -2778,7 +2835,7 @@ void p2p_invite_received(const char *text)
 {
 	/* (an older version's is logged as such) */
 	if (!join_invite(text))
-		platform_log("Internet play: that is not an invite");
+		p2p_log("Internet play: that is not an invite");
 }
 
 static void update_joining(void)
@@ -2798,7 +2855,8 @@ static void update_joining(void)
 		/* (the last game's players are not this one's) */
 		memset(p2p.reaching, 0, sizeof(p2p.reaching));
 		p2p_hex(p2p.join_host, P2P_IDENTIFIER_SIZE, name);
-		platform_log("Internet play: joining %s's game", name);
+		p2p_log("Internet play: joining %s's game (%lu ms after it was asked for: this machine's public address "
+			"first)", name, join_elapsed());
 		p2p_signal_start();
 		p2p_signal_join(p2p.join_host_hash, p2p.join_token);
 	}
@@ -2806,7 +2864,7 @@ static void update_joining(void)
 	{
 		p2p.joining = 0;
 		p2p_signal_stop_joining();
-		platform_log("Internet play: no answer from the invite's host; it may have stopped hosting or quit");
+		p2p_log("Internet play: no answer from the invite's host; it may have stopped hosting or quit");
 	}
 }
 
@@ -2829,7 +2887,7 @@ static void update_answering(void)
 		p2p.answering_players = 1;
 		p2p_signal_start();
 		p2p_signal_host(p2p.join_token);
-		platform_log("Internet play: the game's other players may reach this machine (map sharing)");
+		p2p_log("Internet play: the game's other players may reach this machine (map sharing)");
 	}
 	else if (!want && p2p.answering_players)
 	{
@@ -2907,7 +2965,7 @@ void p2p_new_invite_if_listed(void)
 	{
 		char shown[128];
 
-		platform_log("Internet play: a new invite, so that the one listed lets no one in (private, or a new password): %s",
+		p2p_log("Internet play: a new invite, so that the one listed lets no one in (private, or a new password): %s",
 			p2p_invite_log_text(p2p.invite, shown, sizeof(shown)));
 	}
 	if (p2p.hosting)
@@ -2946,7 +3004,7 @@ static void update_hosting(void)
 			char shown[128];
 
 			/* (whole on the clipboard and in the menus) */
-			platform_log("Internet play: hosting. Invite players with this link (it only works while this "
+			p2p_log("Internet play: hosting. Invite players with this link (it only works while this "
 				"copy of the game runs; it is on the clipboard): %s",
 				p2p_invite_log_text(p2p.invite, shown, sizeof(shown)));
 		}
@@ -3049,6 +3107,84 @@ int p2p_reach_player(const unsigned char *key_hash)
 	return result;
 }
 
+/* whether a machine's addresses show a NAT that gives each destination its
+own port: two public addresses alike but for the port (what two STUN servers
+told it: one forwarded by UPnP would also be one) */
+static int candidates_strict(const struct p2p_candidate *candidates, int count)
+{
+	int index, other;
+
+	for (index = 0; index < count; index++)
+	{
+		unsigned long address = network_long(candidates[index].address);
+		unsigned long first = address >> 24;
+
+		/* (not a LAN's, CGNAT's, the loopback's or a link's) */
+		if (first == 10 || first == 127 || (address >> 20) == 0xAC1 || (address >> 16) == 0xC0A8 ||
+			(address >> 22) == (0x64400000UL >> 22) || (address >> 16) == 0xA9FE)
+			continue;
+		for (other = index + 1; other < count; other++)
+		{
+			if (candidates[other].address == candidates[index].address &&
+				candidates[other].port != candidates[index].port)
+				return 1;
+		}
+	}
+	return 0;
+}
+
+void p2p_join_status(struct p2p_join_status *status)
+{
+	struct peer const *peer;
+
+	memset(status, 0, sizeof(*status));
+	status->online = p2p.running;
+	if (!p2p.running)
+		return;
+	pthread_mutex_lock(&p2p_lock);
+	peer = p2p.join_requested || p2p.joining || p2p.join_reached ? find_peer(p2p.join_host) : NULL;
+	if (peer && peer->probe)
+		peer = NULL;
+	if (peer || p2p.join_requested || p2p.joining)
+		status->elapsed = p2p_now() - p2p.join_asked_time;
+	if (peer && peer->connected)
+		status->stage = _p2p_join_reached;
+	else if (peer)
+	{
+		status->stage = _p2p_join_opening;
+		status->tries = peer->punch_rounds;
+		status->host_strict = candidates_strict(peer->candidates, peer->candidate_count);
+	}
+	else if (p2p.join_requested || p2p.joining)
+		status->stage = _p2p_join_finding;
+	status->asked = p2p.joining;
+	status->brokers = p2p_signal_connected();
+	status->nat_strict = p2p.reported_symmetric && !p2p.upnp_forwarded;
+	status->upnp_tried = p2p.upnp_asked && !p2p.upnp_working && !p2p.upnp_forwarded;
+	pthread_mutex_unlock(&p2p_lock);
+}
+
+void p2p_join_cancel(void)
+{
+	struct peer *peer;
+
+	if (!p2p.running)
+		return;
+	pthread_mutex_lock(&p2p_lock);
+	if (p2p.join_requested || p2p.joining)
+	{
+		/* (first: drop_peer would ask the host again) */
+		if (p2p.joining)
+			p2p_signal_stop_joining();
+		p2p.join_requested = p2p.joining = p2p.join_reached = 0;
+		peer = find_peer(p2p.join_host);
+		if (peer && !peer->connected && !peer->probe && peer->is_host && !peer->is_player)
+			drop_peer(peer, "given up (the join was cancelled)");
+		p2p_log("Internet play: the join was given up after %lu ms", p2p_now() - p2p.join_asked_time);
+	}
+	pthread_mutex_unlock(&p2p_lock);
+}
+
 int p2p_nat_strict(void)
 {
 	int strict;
@@ -3144,7 +3280,7 @@ static void *upnp_thread(void *unused)
 		if (!p2p.upnp_forwarded || p2p.upnp_candidate.address != address ||
 			p2p.upnp_candidate.port != external_port)
 		{
-			platform_log("Internet play: the router forwards %s to this machine (UPnP)",
+			p2p_log("Internet play: the router forwards %s to this machine (UPnP)",
 				log_address_ipv4(address, external_port, text, sizeof(text)));
 		}
 		p2p.upnp_forwarded = 1;
@@ -3153,7 +3289,7 @@ static void *upnp_thread(void *unused)
 	}
 	else if (!p2p.upnp_forwarded)
 	{
-		platform_log("Internet play: UPnP: %s", error);
+		p2p_log("Internet play: UPnP: %s", error);
 	}
 	pthread_mutex_unlock(&p2p_lock);
 	return NULL;
@@ -3355,7 +3491,7 @@ int p2p_hand_off_invite(void)
 	}
 	posix_socket_close(socket);
 	if (result)
-		platform_log("Internet play: passed the invite to the copy of the game already running");
+		p2p_log("Internet play: passed the invite to the copy of the game already running");
 	return result;
 #endif
 }
@@ -3673,7 +3809,7 @@ void p2p_initialize(unsigned long local_address)
 		return;
 	if (tunnel_port < 0 || tunnel_port > 65535)
 	{
-		platform_log("Internet play: network.tunnel_port %ld is not a port (0 to 65535); the game selects one",
+		p2p_log("Internet play: network.tunnel_port %ld is not a port (0 to 65535); the game selects one",
 			tunnel_port);
 		tunnel_port = 0;
 	}
@@ -3687,7 +3823,7 @@ void p2p_initialize(unsigned long local_address)
 	p2p.tunnel_socket = open_socket(SOCK_DGRAM, 0, network_short((unsigned short)tunnel_port), &p2p.tunnel_port);
 	if (p2p.tunnel_socket < 0)
 	{
-		platform_log("Internet play: cannot open its socket (network.tunnel_port %ld in use?); it is off",
+		p2p_log("Internet play: cannot open its socket (network.tunnel_port %ld in use?); it is off",
 			tunnel_port);
 		return;
 	}

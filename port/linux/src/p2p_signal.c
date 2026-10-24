@@ -208,6 +208,8 @@ struct broker
 	unsigned short port;
 	unsigned long address;
 	int looked_up;
+	/* its connection was logged (again, once one fails) */
+	int logged_ready;
 	int socket;
 	int state;
 	unsigned long state_time;
@@ -823,7 +825,7 @@ static void broker_connect(struct broker *broker)
 		if (!broker->address)
 		{
 			if (!broker->failures)
-				platform_log("Internet play: cannot look up the signalling broker %s", broker->host);
+				p2p_log("Internet play: cannot look up the signalling broker %s", broker->host);
 			broker_close(broker, 1);
 			return;
 		}
@@ -1524,7 +1526,7 @@ static int broker_acknowledged(struct broker *broker, const unsigned char *body,
 	version), or 3.1.1's 1 (unacceptable protocol version) */
 	if (broker->protocol == 5 && (code == 0x84 || (size == 2 && code == 1)))
 	{
-		platform_log("Internet play: the signalling broker %s has not MQTT 5; using 3.1.1", broker->host);
+		p2p_log("Internet play: the signalling broker %s has not MQTT 5; using 3.1.1", broker->host);
 		broker->protocol = 4;
 		broker_close(broker, 0);
 		/* (again at once) */
@@ -1533,7 +1535,7 @@ static int broker_acknowledged(struct broker *broker, const unsigned char *body,
 	}
 	if (code != 0)
 	{
-		platform_log("Internet play: the signalling broker %s refused the connection", broker->host);
+		p2p_log("Internet play: the signalling broker %s refused the connection", broker->host);
 		broker_close(broker, 1);
 		return 0;
 	}
@@ -1605,6 +1607,9 @@ static int broker_acknowledged(struct broker *broker, const unsigned char *body,
 		}
 	}
 	broker->state = _broker_ready;
+	if (broker->failures || !broker->logged_ready)
+		p2p_log("Internet play: connected to the signalling broker %s", broker->host);
+	broker->logged_ready = 1;
 	broker->failures = 0;
 	broker->publish_tokens = PUBLISH_BURST;
 	broker->publish_time = p2p_now();
@@ -1807,7 +1812,7 @@ static void brokers_list(char *text, size_t size)
 #endif
 	if (!file)
 	{
-		platform_log("Internet play: the brokers' file %s cannot be read (network.brokers_file); "
+		p2p_log("Internet play: the brokers' file %s cannot be read (network.brokers_file); "
 			"using the game's own list", path);
 		snprintf(text, size, "%s", DEFAULT_BROKERS);
 		return;
@@ -1880,9 +1885,9 @@ void p2p_signal_start(void)
 		text = *end ? end + 1 : end;
 	}
 	if (!signalling.broker_count)
-		platform_log("Internet play: no signalling brokers (network.brokers_file), so invites cannot work");
+		p2p_log("Internet play: no signalling brokers (network.brokers_file), so invites cannot work");
 	else if (text[strspn(text, ", ")])
-		platform_log("Internet play: only the first %d signalling brokers are used", MAXIMUM_BROKERS);
+		p2p_log("Internet play: only the first %d signalling brokers are used", MAXIMUM_BROKERS);
 }
 
 void p2p_signal_select_sets(int *read, int *read_count, int *write, int *write_count, int maximum_count)

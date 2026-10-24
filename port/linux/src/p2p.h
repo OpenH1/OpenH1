@@ -244,6 +244,37 @@ int p2p_peer_reached(const unsigned char *identifier, unsigned long *address);
 forwards the tunnel's: only games behind more lenient NATs can be reached */
 int p2p_nat_strict(void);
 
+/* where a join (p2p_join_invite, p2p_join_listing) has got to, for the
+menus: finding the host (this machine's public address, then the
+signalling brokers' answer), opening a path to it (the host answered: both
+send to each other's addresses), or reached (its game is listed under
+System Link) */
+enum
+{
+	_p2p_join_idle,
+	_p2p_join_finding,
+	_p2p_join_opening,
+	_p2p_join_reached,
+};
+struct p2p_join_status
+{
+	int stage;
+	/* milliseconds since the join was asked for */
+	unsigned long elapsed;
+	/* the rounds of pings sent to every address of the host's */
+	int tries;
+	/* internet play is on; the request went to the brokers; a broker is
+	connected */
+	int online, asked, brokers;
+	/* this network's NAT is strict (p2p_nat_strict); the host's addresses
+	show that its is; the router was asked to forward a port and did not */
+	int nat_strict, host_strict, upnp_tried;
+};
+void p2p_join_status(struct p2p_join_status *status);
+/* gives the join up (the menus' Back, and their timeout), the host not
+reached */
+void p2p_join_cancel(void);
+
 /* BLAKE2b with a 32-byte digest (Monocypher's): a map's pieces
 (map_share.c) */
 void p2p_blake2b_256(const void *data, unsigned long size, unsigned char *digest);

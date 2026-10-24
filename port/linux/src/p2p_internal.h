@@ -76,6 +76,9 @@ struct p2p_candidate
 
 /* the milliseconds of a monotonic clock */
 unsigned long p2p_now(void);
+/* a line of internet play's log: the terminal's, and debug.txt's (with its
+date, beside the game's own lines) */
+void p2p_log(const char *format, ...);
 /* looks up a host name (posix_resolve_ipv4), letting go of the p2p lock
 while it waits; the p2p thread's */
 unsigned long p2p_resolve(const char *host);

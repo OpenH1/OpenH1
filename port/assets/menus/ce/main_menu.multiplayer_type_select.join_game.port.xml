@@ -56,6 +56,29 @@
 	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/header_direct_link" controller="1" left="35" top="11" width="363" height="59" bitmap="main_menu/multiplayer_type_select/join_game/header_direct_link">
 	</widget>
+	<widget name="main_menu/multiplayer_type_select/join_game/connect/connect_screen" type="text" controller="1" left="180" top="160" width="280" height="160" flags="pass_unhandled_to_focused_child" bitmap="bitmaps/alert_bkd" font="ui\small_ui" color="#FF2896FF" align="center" text_x="-10" text_y="36">
+		<data input="port connect update"/>
+		<on event="b" run="port connect back"/>
+		<on event="back" run="port connect back"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/connect/button_bar" x="182" y="293"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/connect/header_connect" x="182" y="164"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/join_game/connect/header_connect" type="text" controller="1" width="270" height="20" font="ui\large_ui" color="#FF2896FF">
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/join_game/connect/button_bar" type="column_list" width="256" height="20" flags="pass_unhandled_to_focused_child up_down_tabs_items left_right_tabs_items">
+		<child widget="main_menu/multiplayer_type_select/join_game/connect/button_back" x="128"/>
+		<child widget="main_menu/multiplayer_type_select/join_game/connect/button_retry"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/join_game/connect/button_retry" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="RETRY" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port connect retry"/>
+		<on event="start" run="port connect retry"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
+	<widget name="main_menu/multiplayer_type_select/join_game/connect/button_back" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="BACK" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
+		<on event="a" run="port connect back"/>
+		<on event="start" run="port connect back"/>
+		<on event="left_mouse" run="mouse emit accept event"/>
+	</widget>
 	<widget name="main_menu/multiplayer_type_select/join_game/button_clipboard" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="PASTE LINK" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
 		<on event="a" run="direct ip connect go"/>
 		<on event="start" run="direct ip connect go"/>

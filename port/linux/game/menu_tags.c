@@ -453,6 +453,8 @@ static char const *const port_function_names[] =
 	"port slider left", "port slider right", "port slider edit",
 	/* (the server browsers' favorites: menu_functions.c's browser_favorite_toggle) */
 	"port browser favorite",
+	/* (internet play's connecting box: menu_functions.c's connect_dialog) */
+	"port connect retry", "port connect back",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
@@ -485,6 +487,8 @@ static char const *const port_game_data_input_names[] =
 	"port playlist edit desc",
 	/* (Settings' tabs and pages: the rows shown, the panel) */
 	"port settings page",
+	/* (internet play's connecting box) */
+	"port connect update",
 };
 
 static struct
