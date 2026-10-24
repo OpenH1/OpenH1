@@ -264,12 +264,12 @@ pre code { font: inherit; }
         </article>
         <article data-os="mac">
           <h3>Mac</h3>
-          <p>Takes the <code>maps</code> folder.</p>
+          <p>Takes a disc image or the <code>maps</code> folder.</p>
           <ol>
-            <li>Open OpenH1. It asks for the maps folder: choose it (the folder with <code>ui.map</code> and <code>bloodgulch.map</code>).</li>
-            <li>Only have a disc image? Unpack it first (<a href="#unpack">below</a>), then choose the <code>maps</code> folder inside.</li>
+            <li>Open OpenH1. It asks for the game's maps: choose your disc image (<code>.iso</code> or <code>.xiso</code>), and it copies the maps (about 1.8 GB). Then you can delete the image.</li>
+            <li>Or choose the <code>maps</code> folder (the folder with <code>ui.map</code> and <code>bloodgulch.map</code>). It stays where it is, and OpenH1 remembers it, even if you move it. Don't delete it.</li>
           </ol>
-          <p class="where">The folder stays where it is, and OpenH1 remembers it, even if you move it. Don't delete it. <code>~/Library/Application Support/OpenH1</code> holds the rest.</p>
+          <p class="where">Maps from a disc image go in <code>~/Library/Application Support/OpenH1/maps</code>, which holds the rest too.</p>
         </article>
         <article data-os="linux">
           <h3>Steam Deck</h3>
@@ -301,7 +301,7 @@ pre code { font: inherit; }
         </article>
         <article id="unpack">
           <h3>Unpack an image</h3>
-          <p>For the Mac, which wants the folder: <a href="https://github.com/XboxDev/extract-xiso">extract-xiso</a> (Windows, Mac, Linux) takes a disc image apart.</p>
+          <p>If you'd rather keep the <code>maps</code> folder than the image: <a href="https://github.com/XboxDev/extract-xiso">extract-xiso</a> (Windows, Mac, Linux) takes a disc image apart.</p>
           <pre><code>extract-xiso -x halo.iso</code></pre>
           <p>It makes a folder named after the image, with <code>maps</code> inside.</p>
           <p class="where">It reads full images too, as redumper makes them.</p>
@@ -328,10 +328,10 @@ pre code { font: inherit; }
           <div><dt>Game Mode</dt><dd>Works there: put your disc image in Downloads or on your SD card, then play OpenH1 from Game Mode. It finds it.</dd></div>
         </dl>
         <dl>
-          <div><dt>Disk space</dt><dd>About 2 GB free for the maps, as well as the disc image while they're copied.<small>On a Mac nothing is copied: the folder you choose is used where it is.</small></dd></div>
+          <div><dt>Disk space</dt><dd>About 2 GB free for the maps, as well as the disc image while they're copied.<small>On a Mac given the <code>maps</code> folder, nothing is copied: the folder is used where it is.</small></dd></div>
           <div><dt>Copy stopped</dt><dd>Start the game again. A copy that didn't finish is left as <code>maps.partial</code>, and the game asks for the image again.</dd></div>
-          <div><dt>Where maps go</dt><dd>Windows: next to <code>halo.exe</code>. Mac: the folder you chose. Steam Deck: <code>~/Applications/OpenH1/maps</code>. Steam Frame: <code>~/apps/halo-vr/maps</code>. Android: the app's storage.</dd></div>
-          <div><dt>Some maps missing</dt><dd>The Mac says so when the folder lacks some of the disc's maps. You can play what's there, or choose a complete copy.</dd></div>
+          <div><dt>Where maps go</dt><dd>Windows: next to <code>halo.exe</code>. Mac: <code>~/Library/Application Support/OpenH1/maps</code>, or the folder you chose. Steam Deck: <code>~/Applications/OpenH1/maps</code>. Steam Frame: <code>~/apps/halo-vr/maps</code>. Android: the app's storage.</dd></div>
+          <div><dt>Some maps missing</dt><dd>The Mac says so when the folder or image lacks some of the disc's maps. You can play what's there, or choose a complete copy.</dd></div>
         </dl>
       </div>
       <p style="margin-top:56px"><a class="btn" href="/#get">Download OpenH1</a></p>

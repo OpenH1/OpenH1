@@ -204,8 +204,10 @@ class ApplePlatform:
     guest: Optional[Dict[str, Path]] = None
     # more lists of host functions the guest imports (iOS's touch controls')
     guest_imports: Optional[List[Path]] = None
-    # more of port/linux/src's files built into the host beside the
-    # platform.h stand-in (iOS's: the disc image's extractor, xiso.c)
+    # more of port/linux/src's files built into the app's host (not the
+    # Metal tests') beside the platform.h stand-in: the disc image's
+    # extractor, xiso.c, for the first start's (port/macos/host_app.m,
+    # port/ios/data_import.m)
     shared_extra: Optional[List[str]] = None
 
 
@@ -218,6 +220,8 @@ def macos_platform() -> ApplePlatform:
                      "-DSDL_SHARED=ON -DSDL_STATIC=OFF"),
         sdl_library="libSDL3.0.dylib", sdl_link="-lSDL3", guest_image_source=PORT_DIR / "guest_image.S",
         shader_platform="macos",
+        # (the first start's disc image extraction: host_app.m)
+        shared_extra=["xiso.h", "xiso.c", "posix.h"],
         link_flags="-Wl,-rpath,@executable_path -Wl,-rpath,@executable_path/../Frameworks")
 
 
@@ -372,7 +376,11 @@ def generate_apple_build(n: Writer, sln: Any, target: ApplePlatform) -> Optional
         obj = host_obj_dir / "shared" / (source.name + ".o")
         n.build(outputs=obj, rule=f"{name}_host_cc", inputs=source, order_only=shared_copies,
                 variables={"cflags": shared_cflags})
-        shared_objects.append(obj)
+        # (the app's own, shared_extra: in the app, not the Metal tests)
+        if source.name in (target.shared_extra or []):
+            host_objects.append(obj)
+        else:
+            shared_objects.append(obj)
     # the DXT textures as ASTC on a GPU without BC (an iPhone's:
     # port/linux/astc/xgpu_astc.h), with astc-encoder, the host's C++; linked
     # with the Metal backend into its tests and the replay too
