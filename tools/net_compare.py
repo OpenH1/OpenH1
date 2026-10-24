@@ -698,7 +698,9 @@ def play(run_folder, host_copy, clients, map_name, args, host_extra, seeds):
 # ---------- a run, judged
 
 
-def judge_run(host_log, client_log, args, tolerances):
+def judge_run(host_log, client_log, args, tolerances, drift_judged=True):
+    """the client's game against the host's; drift_judged FALSE leaves the drift (all the clients' players
+    together) to judge_mixed, which judges each player's"""
     host, host_names, host_errors = parse_log(host_log)
     client, _, client_errors = parse_log(client_log)
     result = {"divergences": [], "problems": host_errors + client_errors}
@@ -721,9 +723,10 @@ def judge_run(host_log, client_log, args, tolerances):
     if not any("drift" in sample for sample in host.values()):
         result["problems"].append("the host's log has no drift figures (a build from before net_compare.py)")
     client_players = sorted({sample["local"] for sample in client.values() if sample.get("local", -1) >= 0})
-    result["divergences"].extend(judge_drift(drift, tolerances, client_players[0] if client_players else None))
+    if drift_judged:
+        result["divergences"].extend(judge_drift(drift, tolerances, client_players[0] if client_players else None))
     result["drift"] = {key: value for key, value in drift.items() if key != "seconds"}
-    if drift["samples"] < tolerances["drift_samples"]:
+    if drift_judged and drift["samples"] < tolerances["drift_samples"]:
         result["problems"].append(f"only {drift['samples']} ticks of the client's player on foot to judge the "
                                   f"drift by (fewer than {tolerances['drift_samples']})")
     corrections = [client[tick].get("corrected") for tick in sorted(client) if "corrected" in client[tick]]
@@ -775,11 +778,14 @@ def judge_mixed(host_log, client_logs, opence, args, tolerances):
         divergences.append({"player": None, "field": "rate", "tick": 0,
                             "detail": f"the host played at {rate}, not {args.rate}"})
     opence_players = set()
+    client_players = []
     for client_log, is_opence in zip(client_logs, opence):
         samples, _, _ = parse_log(client_log)
         locals_ = sorted({sample["local"] for sample in samples.values() if sample.get("local", -1) >= 0})
-        if is_opence and locals_:
-            opence_players.add(locals_[0])
+        if locals_:
+            client_players.append(locals_[0])
+            if is_opence:
+                opence_players.add(locals_[0])
     if settled[-1]["opence"] != opence_players:
         divergences.append({"player": None, "field": "opence players", "tick": 0,
                             "detail": f"the host steps {sorted(settled[-1]['opence'])} at 30, not the OpenCE "
@@ -817,14 +823,24 @@ def judge_mixed(host_log, client_logs, opence, args, tolerances):
             total[1] += compared
     figures["drift by player"] = {player: f"{apart} of {compared} apart ({apart / compared:.1%})"
                                   for player, (apart, compared) in sorted(drift.items()) if compared}
-    for player in opence_players:
+    # (each client's player's, as judge_drift judges all of them in a game of two copies; a player whose inputs
+    # came while the host's tick was open, which the host takes the tick after, has no tick to compare: the host's
+    # tick ran with an older input than the client's)
+    judged = 0
+    for player in client_players:
         apart, compared = drift.get(player, (0, 0))
+        kind = "OpenCE" if player in opence_players else "OpenH1"
         if compared < tolerances["drift_samples"]:
-            problems.append(f"only {compared} ticks of the OpenCE player {player} on foot to judge its drift by")
-        elif apart / compared > tolerances["drift_share"]:
+            figures[f"drift of {kind} player {player}"] = f"not judged: {compared} ticks compared (its inputs came " \
+                                                          "while the host's tick was open)"
+            continue
+        judged += 1
+        if apart / compared > tolerances["drift_share"]:
             divergences.append({"player": player, "field": "drift", "tick": 0,
-                                "detail": f"the host moved the OpenCE player otherwise than its machine in {apart} "
+                                "detail": f"the host moved the {kind} player otherwise than its machine in {apart} "
                                           f"of {compared} ticks"})
+    if not judged:
+        problems.append("no client's player had the ticks to judge its drift by")
     return divergences, problems, figures
 
 
@@ -1033,9 +1049,10 @@ def play_all(args, tolerances):
                                                     [(copies[name], extra[name]) for name in client_names],
                                                     map_name, args, extra[host_name] + hosting, (seed, seed + 1))
                 seed += 1 + len(client_names)
-                result = judge_run(host_log, client_logs[0], args, tolerances)
+                # (a mixed game's drift is each player's: judge_mixed)
+                result = judge_run(host_log, client_logs[0], args, tolerances, drift_judged=not args.mixed)
                 for client_log in client_logs[1:]:
-                    other = judge_run(host_log, client_log, args, tolerances)
+                    other = judge_run(host_log, client_log, args, tolerances, drift_judged=not args.mixed)
                     result["divergences"].extend(other["divergences"])
                     result["problems"].extend(other["problems"])
                 if args.mixed:

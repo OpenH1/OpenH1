@@ -784,8 +784,12 @@ static struct
 	/* where that prediction had the player, and where it left the host's */
 	real_point3d taken_position[MAXIMUM_TRACKED_PLAYERS];
 	real_point3d taken_host_position[MAXIMUM_TRACKED_PLAYERS];
-	/* the client's tick of the latest input the host has of each player
-	(what the host's tick ran it with) */
+	/* the client's tick of the latest input the host has of each player,
+	and of the one the host's tick ran it with: the latest as the tick began
+	(network_distributed_tick_begun). At 60 and 120 a tick's sub-steps may be
+	spread over several frames, between which a newer input may come, which
+	the next tick takes */
+	long input_heard_time[MAXIMUM_TRACKED_PLAYERS];
 	long input_time[MAXIMUM_TRACKED_PLAYERS];
 	/* ... and each player's ticks compared and apart (a mixed game's OpenCE
 	and OpenH1 players told apart: network_standard.c) */
@@ -851,6 +855,14 @@ void network_distributed_divergence(
 	distributed_divergence.apart = 0;
 	distributed_divergence.total = 0.0f;
 	distributed_divergence.largest = 0.0f;
+}
+
+void network_distributed_tick_begun(
+	void)
+{
+	/* (the tests' reports: the input each player's unit takes this tick) */
+	csmemcpy(distributed_divergence.input_time, distributed_divergence.input_heard_time,
+		sizeof(distributed_divergence.input_time));
 }
 
 void network_distributed_player_divergence(
@@ -2909,14 +2921,15 @@ static void distributed_handle_inputs(
 			&action, input->control_flags, DISTRIBUTED_INPUT_HISTORY);
 		/* (for the tests' reports: the newest, as the input taken is, or one
 		a second or more older, the client's clock set back; the subtraction
-		kept from overflowing, as the tick is the client's word) */
+		kept from overflowing, as the tick is the client's word; the next tick
+		to begin takes it) */
 		{
-			long newest = distributed_divergence.input_time[input->player_index];
+			long newest = distributed_divergence.input_heard_time[input->player_index];
 
 			if (newest == NONE || input->tick > newest ||
 				(newest >= LONG_MIN + TICKS_PER_SECOND && input->tick < newest - TICKS_PER_SECOND))
 			{
-				distributed_divergence.input_time[input->player_index] = input->tick;
+				distributed_divergence.input_heard_time[input->player_index] = input->tick;
 			}
 		}
 		if (input->host_time != NONE && (host_time == NONE || input->host_time > host_time))
@@ -3874,6 +3887,7 @@ void network_distributed_new_game(
 	{
 		distributed_divergence.taken_time[player_index] = NONE;
 		distributed_divergence.taken_host_time[player_index] = NONE;
+		distributed_divergence.input_heard_time[player_index] = NONE;
 		distributed_divergence.input_time[player_index] = NONE;
 	}
 	/* (each player's latest input: player_queues_new.c) */
