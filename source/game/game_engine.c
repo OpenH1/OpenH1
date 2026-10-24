@@ -574,6 +574,7 @@ symbols in this file:
 #include "network_votekick.h" /* port: port/linux/game/network_votekick.c */
 #include "network_voice.h" /* port: port/linux/game/network_voice.c */
 #include "network_chat.h" /* port: port/linux/game/network_chat.c */
+#include "halo_keyboard.h" /* port: port/linux/src/xinput_sdl.c */
 /* (network_server_manager_internal.h's: the host's game record) */
 struct network_game *network_game_server_get_game(struct network_game_server *server);
 #include "objects.h"
@@ -2971,7 +2972,10 @@ void game_engine_post_rasterize_post_game(
 		server = global_network_game_server_get();
 		if (server)
 		{
-			bounds.x0 = 380;
+			/* port: further left while the keyboard and mouse play, whose
+			keys' caps (Esc, Enter: ui_widget.c's ui_widget_port_menu_key)
+			are wider than the controller's buttons */
+			bounds.x0 = halo_keyboard_prompts() ? 300 : 380;
 			string_list_index =
 				tag_loaded('ustr', "ui\\multiplayer_game_text");
 			if (string_list_index != NONE)
@@ -2989,7 +2993,7 @@ void game_engine_post_rasterize_post_game(
 			return;
 		}
 
-		bounds.x0 = 520;
+		bounds.x0 = halo_keyboard_prompts() ? 490 : 520;
 		string_list_index = tag_loaded('ustr', "ui\\multiplayer_game_text");
 		if (string_list_index != NONE)
 			prompt = unicode_string_list_get_string(string_list_index, 0x49);
