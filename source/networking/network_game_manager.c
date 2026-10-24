@@ -608,7 +608,15 @@ void network_game_reset_for_next_round(
 		csmemset(&game->local_data, 0, sizeof(game->local_data));
 	}
 
-	game_time_end();
+	/* port: the game's clock stops, but not the main menu's (loaded above),
+	whose map the next game's lobby is shown on: its clock runs, as in the
+	first lobby. Stopped, the frames drew the lobby only as the pregame
+	(main_loop's main_pregame_render), never a game picture, so the loading
+	screen begun as the ui loaded, which the first game picture ends
+	(port/linux/src/sdl_platform.c's halo_loading_end), stayed over the lobby
+	for good on every machine */
+	if (!main_menu_is_loaded())
+		game_time_end();
 	return;
 }
 
