@@ -42,6 +42,8 @@ static int scancode(char const *name)
 		{ "F", SDL_SCANCODE_F },
 		{ "Q", SDL_SCANCODE_Q },
 		{ "F1", SDL_SCANCODE_F1 },
+		{ "Tab", SDL_SCANCODE_TAB },
+		{ "R", SDL_SCANCODE_R },
 	};
 	size_t index;
 
@@ -64,6 +66,7 @@ static boolean pressed(XINPUT_GAMEPAD const *pad, short icon)
 	case _icon_y_button: return pad->bAnalogButtons[XINPUT_GAMEPAD_Y] != 0;
 	case _icon_black_button: return pad->bAnalogButtons[XINPUT_GAMEPAD_BLACK] != 0;
 	case _icon_white_button: return pad->bAnalogButtons[XINPUT_GAMEPAD_WHITE] != 0;
+	case _icon_right_trigger: return pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] != 0;
 	case _icon_back_button: return (pad->wButtons & XINPUT_GAMEPAD_BACK) != 0;
 	case _icon_start_button: return (pad->wButtons & XINPUT_GAMEPAD_START) != 0;
 	default: return FALSE;

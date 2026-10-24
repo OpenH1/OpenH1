@@ -4137,10 +4137,11 @@ static void render_state_bitmap(
 /* port: the key the keyboard presses a controller button of the menus
 with (port/linux/src/xinput_sdl.c's keyboard_gamepad, the controller the
 keyboard is in the menus): A as Enter (or Space), B as Esc (or Backspace),
-X as E (the server browsers' sort), Y as F (their favorite), LB and RB (the
-white and black buttons, Settings' tabs) as Q and E, back as F1; NULL for
-the others (the D-pad, which the arrow keys press, Start, the triggers and
-the sticks), drawn as the controller's */
+X as Tab (the server browsers' sort), Y as F (their favorite), LB and RB (the
+white and black buttons, Settings' and the browsers' tabs) as Q and E, the
+right trigger (Multiplayer's and the browsers' refresh) as R, back as F1;
+NULL for the others (the D-pad, which the arrow keys press, Start, the left
+trigger and the sticks), drawn as the controller's */
 static char const *ui_widget_port_menu_key(
 	short icon_type)
 {
@@ -4151,8 +4152,11 @@ static char const *ui_widget_port_menu_key(
 	case _icon_b_button:
 		return "Esc";
 	case _icon_x_button:
+		return "Tab";
 	case _icon_black_button:
 		return "E";
+	case _icon_right_trigger:
+		return "R";
 	case _icon_y_button:
 		return "F";
 	case _icon_white_button:

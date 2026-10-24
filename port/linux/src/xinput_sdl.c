@@ -542,15 +542,18 @@ static void keyboard_gamepad(const struct platform_input_state *input, XINPUT_GA
 	/* the system back key (gesture or button) backs out of menus */
 	pad->bAnalogButtons[XINPUT_GAMEPAD_B] |= analog(k[SDL_SCANCODE_AC_BACK]);
 #endif
-	/* (Delete and E as X: the server browsers' sort, drawn as E in the
+	/* (Delete and Tab as X: the server browsers' sort, drawn as Tab in the
 	menus' prompts while the keyboard and mouse play: ui_widget.c) */
-	pad->bAnalogButtons[XINPUT_GAMEPAD_X] |= analog(k[SDL_SCANCODE_DELETE] || k[SDL_SCANCODE_E]);
-	/* (Q and E as LB and RB, the white and black buttons: Settings' tabs) */
+	pad->bAnalogButtons[XINPUT_GAMEPAD_X] |= analog(k[SDL_SCANCODE_DELETE] || k[SDL_SCANCODE_TAB]);
+	/* (Q and E as LB and RB, the white and black buttons: Settings' and the
+	server browsers' tabs) */
 	pad->bAnalogButtons[XINPUT_GAMEPAD_WHITE] |= analog(k[SDL_SCANCODE_Q]);
 	pad->bAnalogButtons[XINPUT_GAMEPAD_BLACK] |= analog(k[SDL_SCANCODE_E]);
-	/* (F too: the server browsers' favorite, drawn as F in the menus'
-	prompts while the keyboard and mouse play: ui_widget.c) */
-	pad->bAnalogButtons[XINPUT_GAMEPAD_Y] |= analog(k[SDL_SCANCODE_TAB] || k[SDL_SCANCODE_F]);
+	/* (F as Y: the server browsers' favorite, drawn as F) */
+	pad->bAnalogButtons[XINPUT_GAMEPAD_Y] |= analog(k[SDL_SCANCODE_F]);
+	/* (R as the right trigger: Multiplayer's and the server browser's
+	refresh, drawn as R) */
+	pad->bAnalogButtons[XINPUT_GAMEPAD_RIGHT_TRIGGER] |= analog(k[SDL_SCANCODE_R]);
 }
 
 /* the keys held when the game and the menus switch, or typing or the
@@ -1090,7 +1093,8 @@ void test_input_press(unsigned long buttons)
 
 /* debug.test_input "menu:<buttons>": the buttons pressed one a second, from
 the first poll, for testing the menus: a, b, x, y, up, down, left, right,
-start, back, lb and rb (the white and black buttons), forward (the left
+start, back, lb and rb (the white and black buttons), lt and rt (the
+triggers), forward (the left
 stick pushed forward, which moves a player whom no menu has), or wait
 (none), separated by spaces or commas */
 static char test_input_menu[512];
@@ -1117,6 +1121,8 @@ static void test_input_menu_gamepad(XINPUT_GAMEPAD *pad)
 		{ "back", -1, XINPUT_GAMEPAD_BACK },
 		{ "lb", XINPUT_GAMEPAD_WHITE, 0 },
 		{ "rb", XINPUT_GAMEPAD_BLACK, 0 },
+		{ "lt", XINPUT_GAMEPAD_LEFT_TRIGGER, 0 },
+		{ "rt", XINPUT_GAMEPAD_RIGHT_TRIGGER, 0 },
 	};
 	Uint64 elapsed = SDL_GetTicks() - test_input_menu_since;
 	Uint64 step = elapsed / 1000;

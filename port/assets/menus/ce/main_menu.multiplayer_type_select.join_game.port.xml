@@ -79,30 +79,6 @@
 		<on event="start" run="port connect back"/>
 		<on event="left_mouse" run="mouse emit accept event"/>
 	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/button_clipboard" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" text="PASTE LINK" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
-		<on event="a" run="direct ip connect go"/>
-		<on event="start" run="direct ip connect go"/>
-		<on event="left_mouse" run="mouse emit accept event"/>
-	</widget>
-	<widget name="main_menu/multiplayer_type_select/join_game/button_favorites" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="main_menu/multiplayer_type_select/join_game/button_favorites_words" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
-		<on event="a" run="gamespy select button"/>
-		<on event="start" run="gamespy select button"/>
-		<on event="left_mouse" run="mouse emit accept event"/>
-	</widget>
-	<strings name="main_menu/multiplayer_type_select/join_game/button_favorites_words">
-		<string text="FAVORITES"/>
-		<string text="ALL GAMES"/>
-	</strings>
-	<widget name="main_menu/multiplayer_type_select/join_game/button_kind_filter" type="text" width="128" height="24" bitmap="bitmaps/text_button_background" string_list="main_menu/multiplayer_type_select/join_game/button_kind_filter_words" font="ui\small_ui" color="#FFFFFFFF" align="center" text_y="2">
-		<on event="a" run="gamespy select button"/>
-		<on event="start" run="gamespy select button"/>
-		<on event="left_mouse" run="mouse emit accept event"/>
-	</widget>
-	<strings name="main_menu/multiplayer_type_select/join_game/button_kind_filter_words">
-		<string text="KIND: ALL"/>
-		<string text="KIND: OPENH1"/>
-		<string text="KIND: LEGACY"/>
-	</strings>
 	<widget name="main_menu/multiplayer_type_select/join_game/server_item_favorite" width="16" height="18" bitmap="main_menu/multiplayer_type_select/join_game/favorite_star">
 	</widget>
 </menus>

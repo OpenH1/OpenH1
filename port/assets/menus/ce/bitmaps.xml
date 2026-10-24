@@ -553,4 +553,66 @@
 		<frame png="stills/fov_default.png" width="160" height="100"/>
 		<frame png="stills/hdr_punchy.png" width="160" height="100"/>
 	</bitmap>
+	<bitmap name="main_menu/parts/tab">
+		<frame png="ce/port/main_menu/parts/tab__0.png" width="90" height="22"/>
+		<frame png="ce/port/main_menu/parts/tab__1.png" width="90" height="22"/>
+		<frame png="ce/port/main_menu/parts/tab__2.png" width="90" height="22"/>
+		<frame png="ce/port/main_menu/parts/tab__3.png" width="90" height="22"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/row_392x18">
+		<frame png="ce/port/main_menu/parts/row_392x18__0.png" width="392" height="18"/>
+		<frame png="ce/port/main_menu/parts/row_392x18__1.png" width="392" height="18"/>
+		<frame png="ce/port/main_menu/parts/row_392x18__2.png" width="392" height="18"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_248x26">
+		<frame png="ce/port/main_menu/parts/item_248x26__0.png" width="248" height="26"/>
+		<frame png="ce/port/main_menu/parts/item_248x26__1.png" width="248" height="26"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_96x22">
+		<frame png="ce/port/main_menu/parts/item_96x22__0.png" width="96" height="22"/>
+		<frame png="ce/port/main_menu/parts/item_96x22__1.png" width="96" height="22"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_124x22">
+		<frame png="ce/port/main_menu/parts/item_124x22__0.png" width="124" height="22"/>
+		<frame png="ce/port/main_menu/parts/item_124x22__1.png" width="124" height="22"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_144x22">
+		<frame png="ce/port/main_menu/parts/item_144x22__0.png" width="144" height="22"/>
+		<frame png="ce/port/main_menu/parts/item_144x22__1.png" width="144" height="22"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/item_188x22">
+		<frame png="ce/port/main_menu/parts/item_188x22__0.png" width="188" height="22"/>
+		<frame png="ce/port/main_menu/parts/item_188x22__1.png" width="188" height="22"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/line_392">
+		<frame png="ce/port/main_menu/parts/line_392__0.png" width="392" height="4"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/line_248">
+		<frame png="ce/port/main_menu/parts/line_248__0.png" width="248" height="4"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/panel_184x296">
+		<frame png="ce/port/main_menu/parts/panel_184x296__0.png" width="184" height="296"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/panel_324x320">
+		<frame png="ce/port/main_menu/parts/panel_324x320__0.png" width="324" height="320"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/pill_30">
+		<frame png="ce/port/main_menu/parts/pill_30__0.png" width="30" height="16"/>
+		<frame png="ce/port/main_menu/parts/pill_30__1.png" width="30" height="16"/>
+		<frame png="ce/port/main_menu/parts/pill_30__2.png" width="30" height="16"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/pill_64">
+		<frame png="ce/port/main_menu/parts/pill_64__0.png" width="64" height="16"/>
+		<frame png="ce/port/main_menu/parts/pill_64__1.png" width="64" height="16"/>
+		<frame png="ce/port/main_menu/parts/pill_64__2.png" width="64" height="16"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/pill_132">
+		<frame png="ce/port/main_menu/parts/pill_132__0.png" width="132" height="16"/>
+		<frame png="ce/port/main_menu/parts/pill_132__1.png" width="132" height="16"/>
+		<frame png="ce/port/main_menu/parts/pill_132__2.png" width="132" height="16"/>
+	</bitmap>
+	<bitmap name="main_menu/parts/button_160x24">
+		<frame png="ce/port/main_menu/parts/button_160x24__0.png" width="160" height="24"/>
+		<frame png="ce/port/main_menu/parts/button_160x24__1.png" width="160" height="24"/>
+	</bitmap>
 </menus>

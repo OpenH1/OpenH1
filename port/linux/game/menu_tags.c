@@ -457,6 +457,9 @@ static char const *const port_function_names[] =
 	"port connect retry", "port connect back",
 	/* (the browsers' sort, X on a row: menu_functions.c's browser_sort_choose) */
 	"port browser sort",
+	/* (the browsers' tabs and refresh: menu_functions.c's browser_tab_choose,
+	browser_refresh) */
+	"port browser tab", "port browser tab next", "port browser tab previous", "port browser refresh",
 };
 
 /* the PC version's game data functions that the Xbox's have not, from
